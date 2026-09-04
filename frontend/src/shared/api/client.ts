@@ -111,6 +111,21 @@ export interface AuthHooks {
 }
 
 /**
+ * Tracks what this module attached to each client so a second call REPLACES
+ * rather than stacks. Axios has no built-in "is this attached" query, and
+ * stacked handlers are silently destructive here: the second error handler
+ * receives the first's `ApiError`, which carries no `.response`, so every
+ * status collapses to 0 and the symptom points nowhere near the cause.
+ *
+ * Eject-and-replace rather than a skip-if-present guard, deliberately: a guard
+ * would make a re-attach with DIFFERENT hooks — an HMR reload, or a consuming
+ * app wiring auth from two entry points — silently keep the stale hooks. This
+ * makes the function a "set", not an "add". Keyed by client instance, so
+ * separate clients never interfere.
+ */
+const attached = new WeakMap<typeof httpClient, { req: number; res: number }>();
+
+/**
  * Attaches the bearer token to every request and signs the user out on a 401.
  *
  * Takes its session access as callbacks rather than importing the store:
@@ -124,13 +139,19 @@ export interface AuthHooks {
  * interceptor, which would fight the router.
  */
 export function attachAuthInterceptors(client: typeof httpClient, hooks: AuthHooks): void {
-  client.interceptors.request.use((config) => {
+  const prior = attached.get(client);
+  if (prior) {
+    client.interceptors.request.eject(prior.req);
+    client.interceptors.response.eject(prior.res);
+  }
+
+  const req = client.interceptors.request.use((config) => {
     const token = hooks.getToken();
     if (token) config.headers.Authorization = `Bearer ${token}`;
     return config;
   });
 
-  client.interceptors.response.use(
+  const res = client.interceptors.response.use(
     (response) => response,
     (error) => {
       const status = error?.response?.status;
@@ -147,4 +168,6 @@ export function attachAuthInterceptors(client: typeof httpClient, hooks: AuthHoo
       );
     },
   );
+
+  attached.set(client, { req, res });
 }

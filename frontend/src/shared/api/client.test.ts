@@ -1,6 +1,14 @@
-import { describe, it, expect } from 'vitest';
+import axios from 'axios';
+import { describe, it, expect, vi } from 'vitest';
 import MockAdapter from 'axios-mock-adapter';
-import { httpClient, ApiError, extractErrorMessage, extractErrorDetails, extractErrorReason } from './client';
+import {
+  httpClient,
+  ApiError,
+  attachAuthInterceptors,
+  extractErrorMessage,
+  extractErrorDetails,
+  extractErrorReason,
+} from './client';
 
 describe('httpClient', () => {
   it('prefixes requests with env.apiUrl', async () => {
@@ -101,5 +109,43 @@ describe('ApiError reason', () => {
 
   it('leaves reason undefined when not provided', () => {
     expect(new ApiError(403, 'Forbidden').reason).toBeUndefined();
+  });
+});
+
+describe('attachAuthInterceptors idempotency', () => {
+  // A dedicated client, not the shared `httpClient` singleton other test
+  // files attach to at module scope — this test needs to control exactly
+  // how many times attachAuthInterceptors has run against it.
+  it('replaces a prior attachment instead of stacking it', async () => {
+    const client = axios.create({ baseURL: 'http://localhost:3000' });
+    const mock = new MockAdapter(client);
+    mock.onGet('/things').reply(401, {});
+
+    const firstHooks = { getToken: () => null, onUnauthorized: vi.fn() };
+    const secondHooks = { getToken: () => null, onUnauthorized: vi.fn() };
+
+    attachAuthInterceptors(client, firstHooks);
+    attachAuthInterceptors(client, secondHooks);
+
+    const error = await client.get('/things').catch((e: unknown) => e);
+
+    // If the second attach had merely stacked onto the first (rather than
+    // ejecting it), the first interceptor's Promise.reject(ApiError) would
+    // flow into the second interceptor's error handler, which reads
+    // `error.response.status` off an ApiError — an object with no
+    // `.response` — collapsing the real 401 to 0. A live status of 401
+    // here is proof only one pair of interceptors ran.
+    expect(error).toBeInstanceOf(ApiError);
+    expect((error as ApiError).status).toBe(401);
+
+    // This is what actually distinguishes eject-and-replace from a
+    // skip-if-present guard: a guard would also produce a correct status
+    // (it would just never re-run attachAuthInterceptors's setup), but it
+    // would keep running the STALE first hooks forever. Only eject-and-
+    // replace guarantees the newest hooks are the ones that fire.
+    expect(secondHooks.onUnauthorized).toHaveBeenCalledTimes(1);
+    expect(firstHooks.onUnauthorized).not.toHaveBeenCalled();
+
+    mock.restore();
   });
 });
