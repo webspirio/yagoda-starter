@@ -90,7 +90,13 @@ import { uploadsConfig } from './config/uploads.config';
         // <feature>.entity.ts needs no central list. The CLI data source
         // (data-source.ts) discovers them via glob instead.
         autoLoadEntities: true,
-        migrations: [`${__dirname}/migrations/*{.ts,.js}`],
+        // Numeric-prefixed only, matching data-source.ts's CLI glob: this
+        // repo's build excludes `**/*.db-spec.ts` from dist/ today, so an
+        // unrestricted glob happens to be safe here — but that safety lives
+        // in tsconfig.build.json, a file this glob doesn't reference. Stating
+        // the restriction here too means a future build-config change can't
+        // silently reintroduce the CLI's schema.db-spec.ts crash at runtime.
+        migrations: [`${__dirname}/migrations/[0-9]*{.ts,.js}`],
         migrationsTableName: 'migrations',
         migrationsRun: true,
         synchronize: false,
