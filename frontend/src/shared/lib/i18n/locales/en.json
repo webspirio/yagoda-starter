@@ -38,6 +38,12 @@
     "title": "Page not found",
     "backHome": "Back to dashboard"
   },
+  "errorFallback": {
+    "title": "Something went wrong",
+    "body": "An unexpected error occurred. Try reloading the page.",
+    "tryAgain": "Try again",
+    "reload": "Reload"
+  },
   "actions": {
     "showAll": "Show all ({{count}})",
     "collapse": "Collapse"
