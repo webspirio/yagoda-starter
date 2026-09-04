@@ -13,8 +13,11 @@ import { PointKind } from '../point-kind.enum';
 
 /**
  * ABSENT and NULL mean different things here, and the service tells them apart
- * with `in`: an absent target is left alone, an explicit `null` CLEARS it back
- * to "not known" (§6.9). `@IsOptional()` on `target_cash`/`target_crates`
+ * with `!== undefined` — NOT `in`, which is permanently TRUE on a
+ * transformed DTO (see `CollectionPointsService.update`'s own comment on
+ * `target_cash`/`target_crates` for why, and the exact bug that shape caused
+ * once already): an absent target is left alone, an explicit `null` CLEARS it
+ * back to "not known" (§6.9). `@IsOptional()` on `target_cash`/`target_crates`
  * permits both, which is exactly what is wanted for THOSE two columns — they
  * are nullable, and null is meaningful.
  *

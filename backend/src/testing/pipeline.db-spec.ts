@@ -147,17 +147,25 @@ describe('auth + me pipeline (HTTP)', () => {
   it('refuses an operator an owner-only route, and allows the owner', async () => {
     const users = app.get(UsersService);
     const credentials = app.get(CredentialsService);
+    const jwt = app.get(JwtService);
 
-    const tokenFor = async (username: string): Promise<string> => {
-      const res = await request(app.getHttpServer())
-        .post('/auth/login')
-        .send({ username, password: 'hunter2!!' })
-        .expect(200);
-      return res.body.access_token as string;
-    };
+    // Signed with the app's own JwtService, NOT minted through `/auth/login`.
+    // AuthController caps that route at 10 requests/min per IP (see its own
+    // comment), and `npm run test:db` is not idempotent within a minute:
+    // every test in this file shares that one Redis-backed counter, so two
+    // runs inside 60s would 429 here instead of asserting 403/200 — a
+    // misleading failure in an AUTHORIZATION test, which is the worst place
+    // to teach a team that red means noise. The one exception is the first
+    // test above, which is the only end-to-end proof that scrypt
+    // verification actually works over a real `/auth/login` POST; every
+    // other token in this file is minted this way, matching the newest test
+    // below (which never had this problem, because it always did this).
+    // The token is still real: JwtStrategy.validate() reloads the user from
+    // the database on every request below regardless of how it was signed.
+    const tokenFor = (userId: string): string => jwt.sign({ sub: userId });
 
     const ownerLogin = `owner-${randomUUID()}`;
-    await users.createWithIdentity(
+    const { user: owner } = await users.createWithIdentity(
       {
         provider: LOCAL_PROVIDER,
         providerUserId: ownerLogin,
@@ -167,7 +175,7 @@ describe('auth + me pipeline (HTTP)', () => {
       },
       async (created, manager) => credentials.set(created.id, 'hunter2!!', manager),
     );
-    const ownerToken = await tokenFor(ownerLogin);
+    const ownerToken = tokenFor(owner.id);
 
     // The owner CAN create a point — over the REAL pipeline (login, then this
     // POST with the minted token), not a direct service call. Without this
@@ -184,7 +192,7 @@ describe('auth + me pipeline (HTTP)', () => {
     const pointId = createRes.body.id as string;
 
     const operatorLogin = `op-${randomUUID()}`;
-    await users.createWithIdentity(
+    const { user: operator } = await users.createWithIdentity(
       {
         provider: LOCAL_PROVIDER,
         providerUserId: operatorLogin,
@@ -195,7 +203,7 @@ describe('auth + me pipeline (HTTP)', () => {
       },
       async (created, manager) => credentials.set(created.id, 'hunter2!!', manager),
     );
-    const operatorToken = await tokenFor(operatorLogin);
+    const operatorToken = tokenFor(operator.id);
 
     // The operator can READ points…
     await request(app.getHttpServer())
@@ -229,11 +237,14 @@ describe('auth + me pipeline (HTTP)', () => {
    *    Postgres can fail this one.
    *
    * Tokens are signed with the app's own JwtService rather than minted through
-   * `/auth/login`: that controller is capped at 10 requests/min per IP (see
-   * AuthController) and the two tests above already spend three of them, so
-   * two `npm run test:db` runs inside a minute would start 429-ing. The tokens
-   * are real — JwtStrategy still reloads each user from the database on every
-   * request below.
+   * `/auth/login`, same as the "refuses an operator" test above and for the
+   * same reason: that controller is capped at 10 requests/min per IP (see
+   * AuthController), and this file's very first test already spends the only
+   * `/auth/login` call it needs — it is the one end-to-end proof that scrypt
+   * verification works over real HTTP, so it stays a real login. Minting the
+   * rest avoids two `npm run test:db` runs inside a minute 429-ing on a route
+   * this test isn't even about. The tokens are still real — JwtStrategy still
+   * reloads each user from the database on every request below.
    */
   it('administers accounts through POST/PATCH/PUT /users, owner-only', async () => {
     const users = app.get(UsersService);

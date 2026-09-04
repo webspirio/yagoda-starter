@@ -29,6 +29,11 @@ export class SeedDevAdmin1788600000001 implements MigrationInterface {
     );
 
     // ⚠️ Plain text, matching CredentialsService. Dev only — see the guard above.
+    //
+    // This SQL is frozen — do not edit it. `YagodaFoundation` (…0002) renames
+    // `password` to `password_hash` and re-hashes this very row's plain-text
+    // value with scrypt; it stays written as `password` = 'admin' here
+    // because that is exactly what ran at the time.
     await queryRunner.query(
       `INSERT INTO "user_credentials" ("user_id", "password") VALUES ($1, 'admin')`,
       [user.id],

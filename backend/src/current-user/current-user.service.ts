@@ -37,7 +37,15 @@ export class CurrentUserService {
 
   async updateMe(actor: AuthenticatedUser, dto: UpdateMeDto): Promise<MeResponse> {
     const before = await this.users.findById(actor.sub);
-    const updated = await this.users.update(actor.sub, dto);
+    // Projected explicitly, like every other caller of UsersService.update —
+    // NOT `dto` itself. `UpdatableUserFields` also carries `role`,
+    // `collection_point_id` and `is_active`; `UpdateMeDto` only declares
+    // `language_code` today and the global ValidationPipe's `whitelist: true`
+    // strips anything else, so nothing is exploitable right now. But this is
+    // the one SELF-service write path in the system, and "a user cannot
+    // change their own role" should not rest entirely on nobody ever adding a
+    // field to `UpdateMeDto` — this projection is what actually guarantees it.
+    const updated = await this.users.update(actor.sub, { language_code: dto.language_code });
 
     // Only the fields that actually moved. A no-op PATCH writing an audit
     // entry would make the log unreadable: mostly noise, with the real

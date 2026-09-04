@@ -25,11 +25,14 @@ export class AuthController {
 
   /**
    * The token is a stateless JWT with no server-side session to destroy, so
-   * logging out is still entirely a client-side discard — this endpoint
-   * cannot revoke the token itself (see `users.is_active`'s doc comment and
-   * the README's "no token revocation" note for why). It exists for
-   * symmetry with login and to put the sign-out moment in the audit log,
-   * which is why it requires a valid token rather than being a no-op.
+   * this endpoint cannot revoke the token itself — logging out is still a
+   * client-side discard. That's fine because revocation already happens
+   * elsewhere: `JwtStrategy.validate()` reloads the user row on every
+   * authenticated request (see `users.is_active`'s doc comment), so
+   * deactivation takes effect on the very next request regardless of whether
+   * this endpoint was ever called. Logout exists for symmetry with login and
+   * to put the sign-out moment in the audit log, which is why it requires a
+   * valid token rather than being a no-op.
    */
   @Post('logout')
   @Auth()

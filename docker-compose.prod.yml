@@ -86,6 +86,22 @@ services:
       # CWD-relative — a process launched with a different working directory would
       # silently read/write the wrong place (and its files would miss this volume).
       UPLOADS_DIR: /app/uploads
+      # BootstrapOwner1788600000003 runs INSIDE this container as part of the
+      # startup migration run (migrationsRun: true) and only ever runs once — it
+      # records itself as applied on its very first invocation, whether or not it
+      # actually created anyone. Compose's top-level .env only interpolates
+      # `${…}` inside this file, it does NOT inject vars into the container, so
+      # without listing these explicitly here BOOTSTRAP_OWNER_LOGIN/_PASSWORD are
+      # undefined at boot, the migration silently no-ops, and — since public
+      # registration is deleted — the install has no owner and no recovery path
+      # short of hand-inserting a user row, an identity row and a hand-computed
+      # scrypt hash. A missed variable here is unrecoverable, not merely
+      # inconvenient, so forward these even though the defaults are empty.
+      BOOTSTRAP_OWNER_LOGIN: ${BOOTSTRAP_OWNER_LOGIN:-}
+      BOOTSTRAP_OWNER_PASSWORD: ${BOOTSTRAP_OWNER_PASSWORD:-}
+      BOOTSTRAP_OWNER_FIRST_NAME: ${BOOTSTRAP_OWNER_FIRST_NAME:-}
+      BOOTSTRAP_OWNER_LAST_NAME: ${BOOTSTRAP_OWNER_LAST_NAME:-}
+      APP_TIMEZONE: ${APP_TIMEZONE:-Europe/Kyiv}
     volumes:
       - uploads_data:/app/uploads
     healthcheck:

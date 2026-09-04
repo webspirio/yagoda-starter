@@ -245,6 +245,70 @@ describe('UserAdminService', () => {
     });
   });
 
+  // Trim, don't lowercase — a person's name is a display value, not an
+  // identifier (see normalize-login.ts). An all-whitespace value must be a
+  // 400, not a silently-saved empty string that displayNameOf then renders
+  // blank.
+  describe('name trimming', () => {
+    it('rejects an all-whitespace first_name on create', async () => {
+      await expect(
+        service.create(owner, {
+          first_name: '   ',
+          last_name: 'B',
+          login: 'ab',
+          password: 'hunter2!!',
+          role: UserRole.PointOperator,
+          collection_point_id: 'p-1',
+        }),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('rejects an all-whitespace last_name on create', async () => {
+      await expect(
+        service.create(owner, {
+          first_name: 'A',
+          last_name: '   ',
+          login: 'ab',
+          password: 'hunter2!!',
+          role: UserRole.PointOperator,
+          collection_point_id: 'p-1',
+        }),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('trims first_name/last_name before creating', async () => {
+      users.createWithIdentity.mockResolvedValue({ user: target() });
+
+      await service.create(owner, {
+        first_name: '  Оксана  ',
+        last_name: '  Приймальник ',
+        login: 'ab',
+        password: 'hunter2!!',
+        role: UserRole.PointOperator,
+        collection_point_id: 'p-1',
+      });
+
+      expect(users.createWithIdentity).toHaveBeenCalledWith(
+        expect.objectContaining({ first_name: 'Оксана', last_name: 'Приймальник' }),
+        expect.any(Function),
+      );
+    });
+
+    it('rejects an all-whitespace first_name on update', async () => {
+      await expect(service.update(owner, 'u-target', { first_name: '   ' })).rejects.toThrow(
+        BadRequestException,
+      );
+    });
+
+    it('trims first_name/last_name before updating', async () => {
+      await service.update(owner, 'u-target', { first_name: '  Нове ' });
+      expect(users.update).toHaveBeenCalledWith(
+        'u-target',
+        expect.objectContaining({ first_name: 'Нове' }),
+      );
+    });
+  });
+
   describe('setPassword', () => {
     it('stores the new password and audits the fact without the value', async () => {
       await service.setPassword(owner, 'u-target', { password: 'nova-parolya' });

@@ -14,8 +14,7 @@
     "signOut": "Sign out",
     "username": "Username",
     "password": "Password",
-    "usernameHint": "Any unique name — an email address works too",
-    "passwordHint": "At least 8 characters",
+    "usernameHint": "The login your network owner gave you",
     "invalidCredentials": "Invalid username or password"
   },
   "nav": {

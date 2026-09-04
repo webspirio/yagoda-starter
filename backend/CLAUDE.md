@@ -41,10 +41,15 @@ up: its `testRegex` (`.*\.spec\.ts$`) does not match `.db-spec.ts`.
   internal `app_net`) because `pipeline.db-spec.ts` boots the full
   `AppModule`, whose global `ThrottlerGuard` needs a reachable Redis. Without
   a host-mapped port, every request in that spec 500s instead of throttling.
-- `npm run test:db` is not idempotent within a minute: the pipeline specs make
-  several `/auth/login` calls each against the Redis-backed 10-per-minute-per-IP
-  login throttle, so running the suite more than ~twice in 60 seconds starts
-  returning 429 instead of the expected status. Space out repeated runs.
+- `pipeline.db-spec.ts` mints exactly ONE token via a real `/auth/login` call
+  (its first test — the one end-to-end proof that scrypt verification works
+  over HTTP) and signs every other token in the file with the app's own
+  `JwtService`, precisely so `npm run test:db` stays idempotent within a
+  minute against the Redis-backed 10-per-minute-per-IP login throttle. A new
+  pipeline test that needs a token should mint it the same way, not add
+  another `/auth/login` call — that throttle is shared across every test in
+  the file and reintroducing several real logins reopens a 429 that shows up
+  as a misleading failure in whatever test happens to run fourth.
 
 ## Structure
 

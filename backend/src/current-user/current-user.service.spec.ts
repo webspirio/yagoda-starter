@@ -89,6 +89,32 @@ describe('CurrentUserService', () => {
     });
   });
 
+  // The one self-service write path in the system: `UsersService.update`
+  // accepts `role`/`collection_point_id`/`is_active` too, so this asserts the
+  // guarantee "a user cannot change their own role" comes from an explicit
+  // projection here — NOT merely from `UpdateMeDto` never declaring those
+  // fields. `as unknown as UpdateMeDto` simulates a value that carries an
+  // extra field at runtime despite the type, exactly the shape a future
+  // whitelist bypass or a DTO change could produce.
+  it('projects the update to language_code only, even if the dto carries more', async () => {
+    users.findById.mockResolvedValue({ ...BASE, language_code: 'en' });
+    users.update.mockResolvedValue({ ...BASE, language_code: 'uk' });
+
+    const smuggledDto = {
+      language_code: 'uk',
+      role: UserRole.PointOperator,
+      collection_point_id: 'p-1',
+      is_active: false,
+    } as unknown as import('./dto/update-me.dto').UpdateMeDto;
+
+    await service.updateMe(
+      { sub: 'u1', username: 'alice', role: UserRole.NetworkOwner, collection_point_id: null },
+      smuggledDto,
+    );
+
+    expect(users.update).toHaveBeenCalledWith('u1', { language_code: 'uk' });
+  });
+
   it('does not record an audit entry when nothing actually changed', async () => {
     users.findById.mockResolvedValue({ ...BASE, language_code: 'en' });
     users.update.mockResolvedValue({ ...BASE, language_code: 'en' });

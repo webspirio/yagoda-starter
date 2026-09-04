@@ -1,4 +1,9 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { CollectionPoint } from './collection-point.entity';
@@ -63,9 +68,12 @@ export class CollectionPointsService {
     actor: AuthenticatedUser,
     dto: CreateCollectionPointDto,
   ): Promise<CollectionPointResponse> {
+    const name = this.assertNameValid(dto.name);
+    await this.assertNameFree(name);
+
     const point = await this.repo.save(
       this.repo.create({
-        name: dto.name,
+        name,
         kind: dto.kind,
         // ?? null, never ?? 0 — see CollectionPoint's doc comment.
         target_cash: dto.target_cash ?? null,
@@ -102,7 +110,11 @@ export class CollectionPointsService {
     // the guard stays defensive rather than trusting that upstream alone —
     // `!= null` excludes both `undefined` (field absent, leave alone) and
     // `null` (should never arrive here, and must not be assigned if it does).
-    if (dto.name != null) point.name = dto.name;
+    if (dto.name != null) {
+      const name = this.assertNameValid(dto.name);
+      if (name !== point.name) await this.assertNameFree(name, point.id);
+      point.name = name;
+    }
     if (dto.kind != null) point.kind = dto.kind;
     if (dto.is_active != null) point.is_active = dto.is_active;
     // `!== undefined`, not a truthiness check: an explicit null CLEARS a target
@@ -162,6 +174,39 @@ export class CollectionPointsService {
 
   private targetsOf(point: CollectionPoint): Record<(typeof TARGET_FIELDS)[number], unknown> {
     return { target_cash: point.target_cash, target_crates: point.target_crates };
+  }
+
+  /**
+   * Trims a name and rejects an all-whitespace one with a 400 — done BEFORE
+   * both the uniqueness check and the save. `@Length(1, 128)` on the DTO
+   * counts whitespace toward length, so " " alone already passes it; without
+   * trimming here, "dupe-check" and " dupe-check " render identically on the
+   * transfer screen (a mistaken transfer there is real money in dispute) but
+   * compare unequal to `UQ_collection_points_name`, defeating the whole point
+   * of the constraint. See `normalize-login.ts` for why this trims but does
+   * NOT lowercase — a point name is a display value, not an identifier.
+   */
+  private assertNameValid(raw: string): string {
+    const name = raw.trim();
+    if (!name) {
+      throw new BadRequestException({
+        message: 'name cannot be empty or all whitespace',
+        code: 'POINT_NAME_EMPTY',
+      });
+    }
+    return name;
+  }
+
+  /** A pre-check for a friendly 409, mirroring
+   *  `UserAdminService.assertLoginFree`. The UNIQUE index
+   *  (`UQ_collection_points_name`) is still the real guarantee — two
+   *  simultaneous writes both pass this, and the loser gets a 500 rather than
+   *  a silent duplicate. */
+  private async assertNameFree(name: string, excludeId?: string): Promise<void> {
+    const existing = await this.repo.findOne({ where: { name } });
+    if (existing && existing.id !== excludeId) {
+      throw new ConflictException({ message: 'That name is taken', code: 'POINT_NAME_TAKEN' });
+    }
   }
 
   /**

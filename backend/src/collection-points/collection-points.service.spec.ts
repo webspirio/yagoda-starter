@@ -1,4 +1,4 @@
-import { ConflictException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
 import { UserRole } from '../users/user-role.enum';
@@ -42,7 +42,12 @@ describe('CollectionPointsService', () => {
     repo = {
       find: jest.fn(),
       findAndCount: jest.fn().mockResolvedValue([[point()], 1]),
-      findOne: jest.fn().mockResolvedValue(point()),
+      // Default to "no such row": `findOne` backs BOTH the by-id lookup in
+      // `update()`/`findOne()` (which every test needing an existing point
+      // overrides below with `point(...)`) and `assertNameFree`'s by-name
+      // uniqueness check. A default of `point()` would make every `create()`
+      // call see its own name as already taken.
+      findOne: jest.fn().mockResolvedValue(null),
       save: jest.fn().mockImplementation((p) => Promise.resolve(p)),
       // `point(p)` rather than the bare `p`: a real repo.create() merges its
       // partial onto a fresh entity, so the result still has id/created_at/
@@ -121,6 +126,54 @@ describe('CollectionPointsService', () => {
   it('allows deactivating a point with no active users', async () => {
     repo.findOne.mockResolvedValue(point());
     await expect(service.update(owner, 'p-1', { is_active: false })).resolves.toBeDefined();
+  });
+
+  // A pre-check 409, mirroring UserAdminService.assertLoginFree — plus the
+  // trimming that makes " dupe-check " and "dupe-check" collide, matching
+  // what the UNIQUE index already enforces byte-for-byte.
+  describe('name uniqueness and trimming', () => {
+    it('returns 409 POINT_NAME_TAKEN when the name is already used', async () => {
+      repo.findOne.mockResolvedValue(point({ id: 'other-point' }));
+
+      await expect(service.create(owner, { name: 'Копайгород' })).rejects.toThrow(
+        ConflictException,
+      );
+    });
+
+    it('trims the name before the uniqueness check and before saving', async () => {
+      repo.findOne.mockResolvedValue(null);
+
+      await service.create(owner, { name: '  dupe-check  ' });
+
+      expect(repo.findOne).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { name: 'dupe-check' } }),
+      );
+      expect(repo.save.mock.calls[0][0].name).toBe('dupe-check');
+    });
+
+    it('rejects an all-whitespace name with a 400', async () => {
+      await expect(service.create(owner, { name: '   ' })).rejects.toThrow(BadRequestException);
+    });
+
+    it('lets a point keep its own name on update (excludeId)', async () => {
+      repo.findOne
+        .mockResolvedValueOnce(point({ name: 'Копайгород' })) // the by-id fetch
+        .mockResolvedValueOnce(point({ name: 'Копайгород' })); // assertNameFree's by-name lookup — same row
+
+      await expect(
+        service.update(owner, 'p-1', { name: '  Копайгород  ' }),
+      ).resolves.toBeDefined();
+    });
+
+    it('refuses renaming to a name another point already holds', async () => {
+      repo.findOne
+        .mockResolvedValueOnce(point({ id: 'p-1', name: 'Копайгород' })) // the by-id fetch
+        .mockResolvedValueOnce(point({ id: 'p-2', name: 'Інша назва' })); // a DIFFERENT row holds the target name
+
+      await expect(service.update(owner, 'p-1', { name: 'Інша назва' })).rejects.toThrow(
+        ConflictException,
+      );
+    });
   });
 
   it('throws NotFound for an unknown point', async () => {

@@ -53,6 +53,8 @@ export class UserAdminService {
 
   async create(actor: AuthenticatedUser, dto: CreateUserDto): Promise<UserResponse> {
     const login = normalizeLogin(dto.login);
+    const firstName = this.assertNameValid(dto.first_name, 'first_name');
+    const lastName = this.assertNameValid(dto.last_name, 'last_name');
     const pointId = dto.collection_point_id ?? null;
 
     this.assertRolePointCoherent(dto.role, pointId);
@@ -63,8 +65,8 @@ export class UserAdminService {
       {
         provider: LOCAL_PROVIDER,
         providerUserId: login,
-        first_name: dto.first_name,
-        last_name: dto.last_name,
+        first_name: firstName,
+        last_name: lastName,
         role: dto.role,
         collection_point_id: pointId,
       },
@@ -196,9 +198,14 @@ export class UserAdminService {
     const updated = await this.users.update(userId, {
       // `!= null` on the two NOT NULL text columns, matching the DTO's own
       // reasoning: absent leaves them alone, and an explicit null — already a
-      // 400 upstream — must never be assigned if it somehow arrives.
-      ...(dto.first_name != null ? { first_name: dto.first_name } : {}),
-      ...(dto.last_name != null ? { last_name: dto.last_name } : {}),
+      // 400 upstream — must never be assigned if it somehow arrives. Trimmed
+      // and rejected-if-empty through assertNameValid, same as create().
+      ...(dto.first_name != null
+        ? { first_name: this.assertNameValid(dto.first_name, 'first_name') }
+        : {}),
+      ...(dto.last_name != null
+        ? { last_name: this.assertNameValid(dto.last_name, 'last_name') }
+        : {}),
       // Role and point in ONE call, always. Splitting them into two updates
       // would leave the row violating CHK_users_role_point in between.
       role: nextRole,
@@ -287,6 +294,27 @@ export class UserAdminService {
         code: 'POINT_UNUSABLE',
       });
     }
+  }
+
+  /**
+   * Trims a name and rejects an all-whitespace one with a 400 — mirroring
+   * `CollectionPointsService.assertNameValid`. Without this, "   " passes
+   * `@Length(1, 64)` (whitespace counts toward length), and saving it
+   * untrimmed would leave `displayNameOf` rendering blanks around real
+   * content; saving it trimmed WITHOUT this check would instead write an
+   * empty string to a NOT NULL column that has no length floor of its own.
+   * See `normalize-login.ts` for why this trims but does NOT lowercase — a
+   * person's name is a display value, not an identifier.
+   */
+  private assertNameValid(raw: string, field: 'first_name' | 'last_name'): string {
+    const name = raw.trim();
+    if (!name) {
+      throw new BadRequestException({
+        message: `${field} cannot be empty or all whitespace`,
+        code: 'USER_NAME_EMPTY',
+      });
+    }
+    return name;
   }
 
   /** A pre-check for a friendly 409. The UNIQUE index is still the real
