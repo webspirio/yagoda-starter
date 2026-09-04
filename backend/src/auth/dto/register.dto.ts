@@ -1,6 +1,6 @@
 import { IsString, Length, Matches } from 'class-validator';
 
-export class CredentialsDto {
+export class RegisterDto {
   /**
    * Any unique string — an email address or not. Deliberately NOT validated as
    * an email: this starter never sends mail, so requiring one would be a
@@ -14,6 +14,8 @@ export class CredentialsDto {
   @Matches(/^\S+$/, { message: 'username must not contain whitespace' })
   username: string;
 
+  /** The password policy. Change it here and it applies to new accounts only —
+   *  existing credentials keep working, which is why LoginDto has no length rule. */
   @IsString()
   @Length(8, 128)
   password: string;

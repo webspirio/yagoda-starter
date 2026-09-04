@@ -5,7 +5,8 @@ import { CredentialsService } from '../users/credentials.service';
 import { AuditService } from '../audit/audit.service';
 import { LOCAL_PROVIDER } from '../users/user-identity.entity';
 import { User } from '../users/user.entity';
-import { CredentialsDto } from './dto/credentials.dto';
+import { RegisterDto } from './dto/register.dto';
+import { LoginDto } from './dto/login.dto';
 import type { AuthenticatedUser } from './jwt.strategy';
 
 /**
@@ -27,7 +28,7 @@ export class AuthService {
     private readonly jwt: JwtService,
   ) {}
 
-  async register(dto: CredentialsDto): Promise<{ access_token: string }> {
+  async register(dto: RegisterDto): Promise<{ access_token: string }> {
     const username = normalizeUsername(dto.username);
 
     // A pre-check for a friendly 409. The UNIQUE index is still the real
@@ -62,7 +63,7 @@ export class AuthService {
     return { access_token: this.signToken(user, username) };
   }
 
-  async login(dto: CredentialsDto): Promise<{ access_token: string }> {
+  async login(dto: LoginDto): Promise<{ access_token: string }> {
     const username = normalizeUsername(dto.username);
     const identity = await this.users.findByIdentity(LOCAL_PROVIDER, username);
 

@@ -1,12 +1,15 @@
 import { Test } from '@nestjs/testing';
 import { JwtService } from '@nestjs/jwt';
 import { ConflictException, UnauthorizedException } from '@nestjs/common';
+import { validate } from 'class-validator';
 import { AuthService, normalizeUsername } from './auth.service';
 import { UsersService } from '../users/users.service';
 import { CredentialsService } from '../users/credentials.service';
 import { AuditService } from '../audit/audit.service';
 import { LOCAL_PROVIDER } from '../users/user-identity.entity';
 import { authConfig } from '../config/auth.config';
+import { RegisterDto } from './dto/register.dto';
+import { LoginDto } from './dto/login.dto';
 
 describe('AuthService', () => {
   let service: AuthService;
@@ -140,6 +143,29 @@ describe('AuthService', () => {
         target_type: 'user',
         target_id: 'u1',
       });
+    });
+  });
+
+  // Exercises class-validator's own validate() directly against the DTOs —
+  // AuthService's other tests above mock every collaborator and call the
+  // service with plain object literals, which never runs through
+  // class-validator at all. This is the layer that actually enforces the
+  // password policy split; the global ValidationPipe wiring on top of it
+  // (main.ts) is proven separately by a live curl login of the seeded
+  // admin/admin account — see the report.
+  describe('password length policy', () => {
+    const shortPassword = 'admin'; // exactly what the dev seed uses
+
+    it('rejects a short password on RegisterDto', async () => {
+      const dto = Object.assign(new RegisterDto(), { username: 'admin', password: shortPassword });
+      const errors = await validate(dto);
+      expect(errors.some((e) => e.property === 'password')).toBe(true);
+    });
+
+    it('accepts the same short password on LoginDto', async () => {
+      const dto = Object.assign(new LoginDto(), { username: 'admin', password: shortPassword });
+      const errors = await validate(dto);
+      expect(errors).toHaveLength(0);
     });
   });
 });

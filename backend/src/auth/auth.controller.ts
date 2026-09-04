@@ -1,7 +1,8 @@
 import { Body, Controller, HttpCode, HttpStatus, Post } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { AuthService } from './auth.service';
-import { CredentialsDto } from './dto/credentials.dto';
+import { RegisterDto } from './dto/register.dto';
+import { LoginDto } from './dto/login.dto';
 
 /**
  * Both endpoints are far more attractive to a brute-forcer than the rest of
@@ -14,13 +15,13 @@ export class AuthController {
   constructor(private readonly auth: AuthService) {}
 
   @Post('register')
-  register(@Body() dto: CredentialsDto) {
+  register(@Body() dto: RegisterDto) {
     return this.auth.register(dto);
   }
 
   @Post('login')
   @HttpCode(HttpStatus.OK)
-  login(@Body() dto: CredentialsDto) {
+  login(@Body() dto: LoginDto) {
     return this.auth.login(dto);
   }
 
