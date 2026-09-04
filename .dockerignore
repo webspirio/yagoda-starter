@@ -1,0 +1,21 @@
+node_modules
+**/node_modules
+**/.env
+**/.env.*
+.git
+**/dist
+.turbo
+**/.turbo
+# Locally-populated backend upload dir (seeded/imported images). Never a build
+# input — the prod image creates /app/uploads fresh — so excluding it keeps a
+# developer's local files out of the dev/build image layers and the context.
+**/uploads
+.claude
+.superpowers
+.references
+.workflow
+docs
+reference
+**/*.md
+*.log
+.DS_Store
