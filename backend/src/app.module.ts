@@ -16,6 +16,7 @@ import { HealthModule } from './health/health.module';
 import { TimeModule } from './time/time.module';
 import { UsersModule } from './users/users.module';
 import { AuditModule } from './audit/audit.module';
+import { MediaModule } from './media/media.module';
 import { appConfig } from './config/app.config';
 import { databaseConfig } from './config/database.config';
 import { authConfig } from './config/auth.config';
@@ -103,6 +104,7 @@ import { uploadsConfig } from './config/uploads.config';
     TimeModule,
     UsersModule,
     AuditModule,
+    MediaModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },
