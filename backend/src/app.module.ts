@@ -48,7 +48,13 @@ import { uploadsConfig } from './config/uploads.config';
         DB_SSL: Joi.boolean().default(false),
         REDIS_HOST: Joi.string().default('localhost'),
         REDIS_PORT: Joi.number().integer().default(6379),
-        APP_TIMEZONE: Joi.string().default('UTC'),
+        APP_TIMEZONE: Joi.string().default('Europe/Kyiv'),
+        // Read ONLY by the BootstrapOwner migration, and only when the users
+        // table is empty. Unset in development, where SeedDevAdmin covers it.
+        BOOTSTRAP_OWNER_LOGIN: Joi.string().optional(),
+        BOOTSTRAP_OWNER_PASSWORD: Joi.string().min(8).optional(),
+        BOOTSTRAP_OWNER_FIRST_NAME: Joi.string().optional(),
+        BOOTSTRAP_OWNER_LAST_NAME: Joi.string().optional(),
         UPLOADS_DIR: Joi.string().optional(),
       }),
     }),

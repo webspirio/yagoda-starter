@@ -7,6 +7,7 @@ import {
   ManyToOne,
   JoinColumn,
   Unique,
+  Index,
 } from 'typeorm';
 import { Exclude } from 'class-transformer';
 import { User } from './user.entity';
@@ -20,6 +21,11 @@ export const LOCAL_PROVIDER = 'local';
 
 @Entity('user_identities')
 @Unique(['provider', 'provider_user_id'])
+// UsersService.findAuthContext filters on (provider, user_id) on EVERY
+// authenticated request (JwtStrategy.validate()) — declared here so a future
+// `migration:generate` sees the index the hand-written migration
+// (IndexUserIdentityUser) already created and never proposes dropping it.
+@Index('IDX_user_identities_user', ['user'])
 export class UserIdentity {
   @PrimaryGeneratedColumn('uuid')
   id: string;

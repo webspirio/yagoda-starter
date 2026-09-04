@@ -29,16 +29,16 @@ src/
   main.tsx                    # entry point — wires auth interceptors, initI18n, global error reporting, renders App
   app/
     App.tsx                   # root component: ErrorBoundary > QueryClientProvider > RouterProvider
-    router.tsx                # createBrowserRouter — /login, /register, / (dashboard), /profile, catch-all 404
+    router.tsx                # createBrowserRouter — /login, / (dashboard), /profile, catch-all 404 — no /register, there is no public registration
     layouts/AppLayout.tsx      # persistent shell (top bar + collapsible sidebar); renders auth pages bare (no chrome)
     providers/
       ErrorBoundary.tsx        # React class error boundary → ErrorFallback
       ErrorFallback.tsx        # dev: full stack trace / prod: generic message + retry/reload
       RouteError.tsx           # router errorElement — reports the error, renders ErrorFallback
-  entities/user/                # session store (Zustand), Me type, useMeQuery / useUpdateMeMutation — authenticated-account concerns only
-  features/auth/                 # login/register API calls, LoginForm, RegisterForm, RequireAuth route guard
+  entities/user/                # session store (Zustand), Me type (id, username, display_name, role, collection_point_id, …), useMeQuery / useUpdateMeMutation — authenticated-account concerns only
+  features/auth/                 # login/logout API calls, LoginForm, RequireAuth route guard — no register API, no RegisterForm
   features/edit-profile/         # useUploadAvatarMutation
-  pages/login/, pages/register/, pages/dashboard/, pages/profile/, pages/not-found/
+  pages/login/, pages/dashboard/, pages/profile/, pages/not-found/
   shared/
     api/                       # httpClient (axios instance, env.apiUrl baseURL) + ApiError + attachAuthInterceptors + queryClient + queryKeys + persister
     lib/
@@ -71,15 +71,19 @@ delete them as dead code, and don't invent a consumer just to "use" them.
 ## Auth
 
 `features/auth` holds the whole client-side auth surface: `authApi.ts` (`login`,
-`register`, `logout` — plain axios calls, not routed through TanStack Query),
-`LoginForm`/`RegisterForm` (local `useState`, not `react-hook-form` — see
-"Forms" below), and `RequireAuth` (`ui/RequireAuth.tsx`), the route-guard
-component: renders nothing but a redirect to `/login` when there is no token,
-otherwise renders `children`. It guards on the token's *presence* only — the
-backend is the sole authority on whether it's still valid, and a 401 (caught
-by `attachAuthInterceptors` in `shared/api/client.ts`) clears the session,
-which re-renders `RequireAuth` and redirects. There is no refresh token in
-this starter, so a 401 has exactly one meaning: sign the user out.
+`logout` — plain axios calls, not routed through TanStack Query; there is no
+`register` call, since the backend has no public registration route),
+`LoginForm` (local `useState`, not `react-hook-form` — see "Forms" below), and
+`RequireAuth` (`ui/RequireAuth.tsx`), the route-guard component: renders
+nothing but a redirect to `/login` when there is no token, otherwise renders
+`children`. It guards on the token's *presence* only — the backend is the sole
+authority on whether it's still valid, and a 401 (caught by
+`attachAuthInterceptors` in `shared/api/client.ts`) clears the session, which
+re-renders `RequireAuth` and redirects. There is no refresh token in this
+starter, so a 401 has exactly one meaning: sign the user out — which now also
+covers the backend rejecting a still-unexpired token because the account was
+deactivated, demoted, or reassigned since it was issued (`JwtStrategy.validate()`
+reloads the user on every request).
 
 The session itself (`entities/user/model/store.ts`, `useSession`) is a
 Zustand store holding just the JWT, mirrored into `localStorage` under
@@ -103,19 +107,19 @@ with the resolved language automatically.
 
 `createBrowserRouter` (BrowserRouter) works because nginx SPA-fallbacks unknown paths to `index.html` (`try_files $uri $uri/ /index.html`); use HashRouter only for static hosting without rewrites.
 
-`/login` and `/register` are the only public routes (`router.tsx`); `/`, `/profile`, and the catch-all 404 are each individually wrapped in `RequireAuth` rather than guarding the whole layout, so `AppLayout` can render the auth screens bare (see its `CHROMELESS` list).
+`/login` is the only public route (`router.tsx`) — there is no `/register`; `/`, `/profile`, and the catch-all 404 are each individually wrapped in `RequireAuth` rather than guarding the whole layout, so `AppLayout` can render the auth screen bare (see its `CHROMELESS` list).
 
 ## Server state
 
 `shared/api/queryClient.ts` exports the shared `QueryClient`, wired into the tree via `QueryClientProvider` in `App.tsx`. Defaults: `retry: 1` (most failures are auth/validation errors that won't succeed on a second try), `staleTime: 30_000`, `gcTime: 24h`, `refetchOnWindowFocus: false`. `STALE` (`list`/`detail`/`reference` freshness windows) is exported for reads that want a longer window than the default — none of this starter's own reads need one yet, but new list/detail reads should import from it rather than hand-writing a duration.
 
-`entities/user/api/useMeQuery.ts` is the exemplar hook: `queryKey: queryKeys.me`, `queryFn` calling `GET /me` through `httpClient`, gated with `enabled: token !== null` so it never fires before a session exists. Copy this shape — queryKey + queryFn + `enabled` — for every new server-state read. `useUpdateMeMutation` is the exemplar mutation: it seeds the cache from the response (`setQueryData`) instead of invalidating and paying for a second round trip, which is the right default whenever the mutation response IS the new resource.
+`entities/user/api/useMeQuery.ts` is the exemplar hook: `queryKey: queryKeys.me`, `queryFn` calling `GET /me` through `httpClient`, gated with `enabled: token !== null` so it never fires before a session exists. Copy this shape — queryKey + queryFn + `enabled` — for every new server-state read. `useUpdateMeMutation` is the exemplar mutation: it seeds the cache from the response (`setQueryData`) instead of invalidating and paying for a second round trip, which is the right default whenever the mutation response IS the new resource. It has had no caller since the profile identity fields became read-only (the owner renames staff over `PATCH /users/:id`, not `/me`) — kept as the pattern reference, not dead code to delete.
 
 `shared/api/persister.ts` provides a localStorage-backed TanStack Query persister (`isPersistableKey` allowlists only the `me` query) and `buildPersistOptions()` for wiring it up via `PersistQueryClientProvider`. `App.tsx` wires this up: it wraps the tree in `PersistQueryClientProvider` and scopes the buster to the session token (`buildPersistOptions(token ?? 'anon')`) rather than a user id — there is no synchronously-known user id at bootstrap, since the `me` query that would supply one is itself the thing being restored from the persisted cache.
 
 ## Forms
 
-`react-hook-form` is a dependency, but `LoginForm`/`RegisterForm` use plain `useState` — they're two fields each, and a form library buys nothing there yet. `shared/lib/form-draft/useFormDraft` is the one place `react-hook-form` is actually wired up today, as a `localStorage`-backed draft-persistence hook (unused by any page — see "Structure" above). `@hookform/resolvers` is NOT a dependency (removed as unused; there is no schema-driven form in this starter yet) — reach for `react-hook-form` once a form has more than a couple of fields or needs real per-field validation, and add `@hookform/resolvers` + `zodResolver` at that point if schema validation is worth it; `ApiError.details` (`shared/api/client.ts`) — the backend's raw per-field `message` array from `class-validator` — exists so a form can map server-side validation failures onto individual fields once there's a form to map them onto.
+`react-hook-form` is a dependency, but `LoginForm` uses plain `useState` — it's two fields, and a form library buys nothing there yet. `shared/lib/form-draft/useFormDraft` is the one place `react-hook-form` is actually wired up today, as a `localStorage`-backed draft-persistence hook (unused by any page — see "Structure" above). `@hookform/resolvers` is NOT a dependency (removed as unused; there is no schema-driven form in this starter yet) — reach for `react-hook-form` once a form has more than a couple of fields or needs real per-field validation, and add `@hookform/resolvers` + `zodResolver` at that point if schema validation is worth it; `ApiError.details` (`shared/api/client.ts`) — the backend's raw per-field `message` array from `class-validator` — exists so a form can map server-side validation failures onto individual fields once there's a form to map them onto.
 
 ## Uploads
 

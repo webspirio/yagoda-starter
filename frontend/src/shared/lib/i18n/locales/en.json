@@ -36,10 +36,8 @@
     },
     "avatar": "Avatar",
     "changeAvatar": "Change avatar",
-    "saved": "Profile saved",
     "avatarTooLarge": "Image must be smaller than 10 MB",
     "avatarWrongType": "Image must be JPEG, PNG or WebP",
-    "saveFailed": "Could not save your profile",
     "avatarUploadFailed": "Could not upload that image"
   },
   "dashboard": {

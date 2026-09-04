@@ -297,3 +297,62 @@ describe('YagodaFoundation', () => {
     expect(foundEmptyPoint?.target_crates).toBeNull();
   });
 });
+
+describe('BootstrapOwner', () => {
+  let ds: DataSource;
+
+  beforeAll(async () => {
+    ds = await openTestDataSource();
+  });
+
+  afterAll(async () => {
+    await ds?.destroy();
+  });
+
+  // The test database is not empty (SeedDevAdmin ran), and BOOTSTRAP_OWNER_*
+  // is unset here. Both are reasons to no-op, and this asserts the migration
+  // took neither as licence to invent an account.
+  it('creates no owner when the users table is not empty', async () => {
+    const rows = await ds.query(
+      `SELECT 1 FROM user_identities WHERE provider = 'local' AND provider_user_id = 'bootstrap-owner'`,
+    );
+    expect(rows).toHaveLength(0);
+  });
+
+  it('left the dev admin as a usable network owner', async () => {
+    const [row] = await ds.query(
+      `SELECT u.role, u.collection_point_id, c.password_hash
+         FROM user_identities i
+         JOIN users u ON u.id = i.user_id
+         JOIN user_credentials c ON c.user_id = u.id
+        WHERE i.provider = 'local' AND i.provider_user_id = 'admin'`,
+    );
+    expect(row.role).toBe('network_owner');
+    expect(row.collection_point_id).toBeNull();
+    // The migration re-hashed the plain-text seed value in place.
+    expect(row.password_hash.startsWith('scrypt$')).toBe(true);
+  });
+});
+
+describe('IndexUserIdentityUser', () => {
+  let ds: DataSource;
+
+  beforeAll(async () => {
+    ds = await openTestDataSource();
+  });
+
+  afterAll(async () => {
+    await ds?.destroy();
+  });
+
+  // JwtStrategy.validate() runs findAuthContext (filtered on provider +
+  // user_id) on EVERY authenticated request; without this index that lookup
+  // is a sequential scan pretending to be indexed.
+  it('indexes user_identities(user_id)', async () => {
+    const [row] = await ds.query(
+      `SELECT indexdef FROM pg_indexes
+        WHERE tablename = 'user_identities' AND indexname = 'IDX_user_identities_user'`,
+    );
+    expect(row?.indexdef).toContain('(user_id)');
+  });
+});
