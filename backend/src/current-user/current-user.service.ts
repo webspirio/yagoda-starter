@@ -1,6 +1,8 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { UsersService } from '../users/users.service';
 import { AuditService } from '../audit/audit.service';
+import { MediaService } from '../media/media.service';
+import { messageOf } from '../common/errors/message-of';
 import type { AuthenticatedUser } from '../auth/jwt.strategy';
 import { UpdateMeDto } from './dto/update-me.dto';
 
@@ -14,9 +16,12 @@ export interface MeResponse {
 
 @Injectable()
 export class CurrentUserService {
+  private readonly logger = new Logger(CurrentUserService.name);
+
   constructor(
     private readonly users: UsersService,
     private readonly audit: AuditService,
+    private readonly media: MediaService,
   ) {}
 
   async getMe(actor: AuthenticatedUser): Promise<MeResponse> {
@@ -52,6 +57,21 @@ export class CurrentUserService {
   async setAvatar(actor: AuthenticatedUser, url: string | null): Promise<MeResponse> {
     const before = await this.users.findById(actor.sub);
     const updated = await this.users.update(actor.sub, { avatar_url: url });
+
+    // Delete the file this one replaces, AFTER the row is safely updated —
+    // deleting first would destroy the current avatar if the update then failed.
+    // Best-effort: a failed cleanup leaves an orphan on disk, which is far
+    // better than 500-ing a request whose actual work already succeeded. Without
+    // this, every re-upload orphans the previous file forever.
+    if (before.avatar_url && before.avatar_url !== url) {
+      try {
+        await this.media.deleteByUrl(before.avatar_url);
+      } catch (err) {
+        this.logger.warn(
+          `Failed to delete superseded avatar ${before.avatar_url}: ${messageOf(err)}`,
+        );
+      }
+    }
 
     await this.audit.record({
       action: 'user.avatar-changed',
