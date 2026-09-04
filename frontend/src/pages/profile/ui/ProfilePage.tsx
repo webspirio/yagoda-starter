@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { toast } from '@/shared/ui/toast';
+import { toastSuccess, toastError } from '@/shared/ui/toast';
 import { useMeQuery, useUpdateMeMutation } from '@/entities/user';
 import { useUploadAvatarMutation } from '@/features/edit-profile';
 import { resolveUploadUrl, validateImageFile } from '@/shared/lib/upload';
@@ -82,6 +82,11 @@ export function ProfilePage() {
           title={t('profile.changeAvatar')}
           value={pendingAvatar}
           onChange={(file) => {
+            // Ignore a new pick while one is in flight. Two concurrent uploads
+            // share this mutation, and whichever response lands LAST wins in
+            // setQueryData — so correcting a mistaken upload with a faster
+            // second one can persist the first, wrong avatar.
+            if (uploadAvatar.isPending) return;
             setPendingAvatar(file);
             if (!file) return;
             // Validate client-side before spending an upload round trip. The
@@ -94,7 +99,13 @@ export function ProfilePage() {
               return;
             }
             setAvatarError(null);
-            uploadAvatar.mutate(file, { onSettled: () => setPendingAvatar(null) });
+            uploadAvatar.mutate(file, {
+              // Without onError a failed upload is indistinguishable from a
+              // successful one: the picker just reverts and nothing tells the
+              // user why.
+              onError: () => toastError(t('profile.avatarUploadFailed')),
+              onSettled: () => setPendingAvatar(null),
+            });
           }}
           error={avatarError ?? undefined}
         />
@@ -108,7 +119,10 @@ export function ProfilePage() {
           event.preventDefault();
           updateMe.mutate(
             { display_name: displayName },
-            { onSuccess: () => toast.success(t('profile.saved')) },
+            {
+              onSuccess: () => toastSuccess(t('profile.saved')),
+              onError: () => toastError(t('profile.saveFailed')),
+            },
           );
         }}
       >

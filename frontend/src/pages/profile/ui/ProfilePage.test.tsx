@@ -1,9 +1,11 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import MockAdapter from 'axios-mock-adapter';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { httpClient, attachAuthInterceptors } from '@/shared/api';
+import { IMAGE_MAX_BYTES } from '@/shared/lib/upload';
+import { Toaster } from '@/shared/ui/sonner';
 import { sessionAuthHooks } from '@/entities/user';
 
 // Attached ONCE at module scope, never in beforeEach. `httpClient` is a shared
@@ -78,8 +80,26 @@ function renderPage() {
   return render(
     <QueryClientProvider client={client}>
       <ProfilePage />
+      {/* Mounted here (rather than relying on AppLayout) because the toast
+          failure-path tests assert on rendered toast text, and sonner's
+          `toast()` calls are inert until a <Toaster/> is in the tree. */}
+      <Toaster />
     </QueryClientProvider>,
   );
+}
+
+/** A same-content, same-type file the picker's client-side checks accept. */
+function validAvatarFile() {
+  return new File(['x'], 'avatar.png', { type: 'image/png' });
+}
+
+/** Drives the hidden file input `ImagePicker` wires an onChange to — see
+ * image-picker.tsx: the button that's visible/clickable only opens this
+ * input, so tests go straight at the input via a change event rather than
+ * simulating a click-then-pick round trip through a real OS file dialog. */
+function pickAvatarFile(file: File) {
+  const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+  fireEvent.change(input, { target: { files: [file] } });
 }
 
 describe('ProfilePage', () => {
@@ -131,5 +151,93 @@ describe('ProfilePage', () => {
 
     const img = await screen.findByRole('img', { name: 'Alice' });
     expect(img).toHaveAttribute('src', 'http://localhost:3000/uploads/avatars/x.webp');
+  });
+
+  it('uploads a picked avatar and renders the returned image', async () => {
+    mock.onPost('/me/avatar').reply(200, { ...ME, avatar_url: '/uploads/avatars/new.webp' });
+    renderPage();
+    await screen.findByDisplayValue('Alice');
+
+    pickAvatarFile(validAvatarFile());
+
+    await waitFor(() => expect(mock.history.post).toHaveLength(1));
+    const img = await screen.findByRole('img', { name: 'Alice' });
+    expect(img).toHaveAttribute('src', 'http://localhost:3000/uploads/avatars/new.webp');
+  });
+
+  it('rejects an oversized avatar client-side and never calls the API', async () => {
+    renderPage();
+    await screen.findByDisplayValue('Alice');
+
+    const tooBig = new File([new Uint8Array(IMAGE_MAX_BYTES + 1)], 'huge.png', {
+      type: 'image/png',
+    });
+    pickAvatarFile(tooBig);
+
+    expect(await screen.findByText('Image must be smaller than 10 MB')).toBeInTheDocument();
+    expect(mock.history.post).toHaveLength(0);
+  });
+
+  it('rejects a non-image avatar client-side and never calls the API', async () => {
+    renderPage();
+    await screen.findByDisplayValue('Alice');
+
+    const wrongType = new File(['x'], 'notes.pdf', { type: 'application/pdf' });
+    pickAvatarFile(wrongType);
+
+    expect(await screen.findByText('Image must be JPEG, PNG or WebP')).toBeInTheDocument();
+    expect(mock.history.post).toHaveLength(0);
+  });
+
+  it('shows an error toast when the avatar upload fails', async () => {
+    mock.onPost('/me/avatar').reply(500, { message: 'boom' });
+    renderPage();
+    await screen.findByDisplayValue('Alice');
+
+    pickAvatarFile(validAvatarFile());
+
+    expect(await screen.findByText('Could not upload that image')).toBeInTheDocument();
+  });
+
+  it('shows an error toast when saving the display name fails', async () => {
+    mock.onPatch('/me').reply(500, { message: 'boom' });
+    renderPage();
+
+    const input = await screen.findByDisplayValue('Alice');
+    await userEvent.clear(input);
+    await userEvent.type(input, 'Alicia');
+    await userEvent.click(screen.getByRole('button', { name: /save/i }));
+
+    expect(await screen.findByText('Could not save your profile')).toBeInTheDocument();
+  });
+
+  // Two picks in quick succession must not start two concurrent uploads:
+  // whichever response lands LAST would win in setQueryData regardless of
+  // which file was picked last, so a user correcting a mistaken upload with
+  // a faster second one could end up with the first, wrong avatar persisted.
+  it('ignores a second pick while an avatar upload is already in flight', async () => {
+    let resolveFirstUpload: (() => void) | undefined;
+    mock.onPost('/me/avatar').reply(
+      () =>
+        new Promise((resolve) => {
+          resolveFirstUpload = () =>
+            resolve([200, { ...ME, avatar_url: '/uploads/avatars/first.webp' }]);
+        }),
+    );
+    renderPage();
+    await screen.findByDisplayValue('Alice');
+
+    pickAvatarFile(new File(['a'], 'a.png', { type: 'image/png' }));
+    await waitFor(() => expect(mock.history.post).toHaveLength(1));
+
+    pickAvatarFile(new File(['b'], 'b.png', { type: 'image/png' }));
+    // Give an (incorrect) second request a tick to fire before asserting it
+    // did not — this is the assertion the removed-guard regression run
+    // (see report) confirms is actually exercised.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(mock.history.post).toHaveLength(1);
+
+    resolveFirstUpload?.();
+    await waitFor(() => expect(mock.history.post).toHaveLength(1));
   });
 });
