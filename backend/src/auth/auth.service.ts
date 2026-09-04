@@ -57,8 +57,8 @@ export class AuthService {
 
   /**
    * The token is stateless, so there is nothing server-side to revoke — this
-   * exists for symmetry with register/login and so the sign-out moment shows
-   * up in the audit log.
+   * exists for symmetry with login and so the sign-out moment shows up in the
+   * audit log.
    */
   async logout(actor: AuthenticatedUser): Promise<void> {
     await this.audit.record({

@@ -28,8 +28,8 @@ export class AuthController {
    * logging out is still entirely a client-side discard — this endpoint
    * cannot revoke the token itself (see `users.is_active`'s doc comment and
    * the README's "no token revocation" note for why). It exists for
-   * symmetry with register/login and to put the sign-out moment in the audit
-   * log, which is why it requires a valid token rather than being a no-op.
+   * symmetry with login and to put the sign-out moment in the audit log,
+   * which is why it requires a valid token rather than being a no-op.
    */
   @Post('logout')
   @Auth()
