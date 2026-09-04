@@ -13,9 +13,7 @@ node_modules
 .claude
 .superpowers
 .references
-.workflow
 docs
-reference
 **/*.md
 *.log
 .DS_Store

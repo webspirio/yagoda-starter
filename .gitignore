@@ -1,56 +1,23 @@
 .DS_Store
 *.log
+node_modules/
+dist/
+coverage/
+.turbo/
+
+# Local secrets. .env.example IS committed.
 .env
 .env.*
 !.env.example
-node_modules/
-.turbo/
-.claude/projects/
-.claude/settings.local.json
-.references/
 
-# Subagent-driven-development scratch (ledger, briefs, review packages)
-.superpowers/
-.idea/dataSources.local.xml
-.idea/workspace.xml
-.idea/dataSources/
-
-
-# Source spreadsheets for the founding-member import: personal data (names,
-# phones, e-mails, Telegram ids, addresses, birth dates). The migration carries
-# the derived subset it needs in backend/src/migrations/seed-assets/; keeping the
-# raw workbooks and the intermediate dataset out of git limits that to one copy.
-# Regenerate with scripts/member-import/{build_dataset,generate_migration,
-# build_events,generate_events_migration}.py
-docs/members/*.xlsx
-scripts/member-import/dataset.json
-# Attendance by register name — who attended which event, same PII class.
-scripts/member-import/events.json
-# The Telegram channel export: 98 announcements plus ~11 MB of images, of which
-# the 79 an event actually points at are committed under
-# backend/src/migrations/seed-assets/event-covers/. Keeping the raw export out
-# avoids carrying those bytes twice, and matches the rule above for the source
-# workbooks. Regenerate with build_event_details.py.
-docs/events/
-scripts/member-import/event_details.json
-__pycache__/
-*.pyc
-
-# Local pg_dump output from scripts/reset-data.sh — plain-text production PII.
+# Local pg_dump output from scripts/reset-data.sh.
 backups/
 
-# Member photos exported from Drive for the founding-member import.
-docs/members/photos/
-docs/db-dump/
+# Agent tooling scratch.
+.claude/projects/
+.claude/settings.local.json
+.superpowers/
 
-# The 2026-09 client drop of the same questionnaire in CSV form, plus the merged
-# table generated from it. Same PII class as the workbooks above — full
-# questionnaire responses with phones, e-mails, addresses and birth dates — and
-# the same rule applies: the derived subset lives in seed-assets/, the raw source
-# does not enter git. Regenerate the merged table with
-# scripts/member-import/merge_new_input.py.
-docs/members/New-input/
-
-# pg_dump output left in the repo root (`ua-well-prod-…-dump.sql`). Plain-text
-# production PII for the whole database, not just the members.
-/*-dump.sql
+.idea/workspace.xml
+.idea/dataSources/
+.idea/dataSources.local.xml
