@@ -1,0 +1,38 @@
+{
+  "common": {
+    "save": "Save",
+    "cancel": "Cancel",
+    "loading": "Loading…",
+    "retry": "Retry",
+    "somethingWentWrong": "Something went wrong"
+  },
+  "auth": {
+    "signIn": "Sign in",
+    "signUp": "Create account",
+    "signOut": "Sign out",
+    "username": "Username",
+    "password": "Password",
+    "usernameHint": "Any unique name — an email address works too",
+    "passwordHint": "At least 8 characters",
+    "invalidCredentials": "Invalid username or password",
+    "usernameTaken": "That username is taken",
+    "noAccount": "Don't have an account?",
+    "haveAccount": "Already have an account?"
+  },
+  "nav": {
+    "dashboard": "Dashboard",
+    "profile": "Profile",
+    "settings": "Settings"
+  },
+  "profile": {
+    "title": "Profile",
+    "displayName": "Display name",
+    "avatar": "Avatar",
+    "changeAvatar": "Change avatar",
+    "saved": "Profile saved"
+  },
+  "notFound": {
+    "title": "Page not found",
+    "backHome": "Back to dashboard"
+  }
+}

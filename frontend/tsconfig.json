@@ -1,0 +1,16 @@
+{
+  "files": [],
+  // "paths" is duplicated from tsconfig.app.json: the shadcn CLI reads compilerOptions.paths
+  // from this root file directly and does not follow "references". Without it, `shadcn add`
+  // silently writes into a bogus ./@/ folder instead of src/ (see frontend/CLAUDE.md).
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["src/*"]
+    }
+  },
+  "references": [
+    { "path": "./tsconfig.app.json" },
+    { "path": "./tsconfig.node.json" }
+  ]
+}

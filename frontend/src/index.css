@@ -1,0 +1,200 @@
+@import 'tailwindcss';
+/* Revives the enter/exit animation utilities (animate-in / fade-in-0 /
+   zoom-in-95 / slide-in-from-*) that Dialog/AlertDialog/Select/Popover already
+   reference — the classes were dead before this plugin was added. */
+@import 'tw-animate-css';
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+  --radius: 0.625rem;
+
+  /* Brand tokens — light. Warm stone neutrals + the logo orange.
+     TWO BRAND PRIMITIVES (classified by ROLE, not CSS property):
+       --primary = the LOGO orange #FF8912 — FILL ONLY (buttons, checked
+                   controls, tooltip bubble+arrow, switch on-track). Always paired
+                   with near-black --primary-foreground; never ink on another
+                   surface. Its /N opacity variants are decorative tint surfaces.
+       --brand   = brand INK on light = #B45309 (amber-700, WCAG-safe darkening of
+                   the logo orange): links, required marks, outlines, indicator
+                   dots. Also a secondary fill (bg-brand + --brand-foreground). In
+                   dark it becomes the logo orange #FF8912.
+     The literal logo hex lives in --primary (both themes) and in --brand in dark.
+     Amber #F7941D stays DECORATIVE / non-text only (the --fam family). */
+  --background: #faf9f7; /* proto --bg */
+  --foreground: #1c1c1c; /* proto --text (brand wordmark #1C1C1C) */
+  --surface: #ffffff; /* proto --surface: headers, sticky bars, sheets */
+  --card: #ffffff; /* proto --card */
+  --card-foreground: #1c1c1c;
+  --popover: #ffffff;
+  --popover-foreground: #1c1c1c;
+  --primary: #ff8912; /* logo orange — FILL only; pair with near-black (7.17:1) */
+  --primary-foreground: #1c1c1c;
+  --secondary: #f5f5f4;
+  --secondary-foreground: #1c1c1c;
+  --muted: #f5f5f4;
+  --muted-foreground: #57534e; /* proto --muted (brand #57534E) */
+  --muted2: #78716c; /* proto --muted2: tertiary body text */
+  --accent: #fff3e6; /* pale logo-orange tint — non-text surface */
+  --accent-foreground: #92400e; /* amber-800 ink on the tinted surface (6.49:1) */
+  --brand: #b45309; /* brand INK on light (amber-700) — 4.77:1 on --background */
+  --brand-foreground: #ffffff; /* text on bg-brand fills (5.02:1) */
+  --brand-dark: #78350f; /* avatar gradient dark end (amber-900); invariant */
+  --destructive: #be123c;
+  --success: #047857;
+  --border: #eceae5; /* proto --line: hairline dividers */
+  --line2: #dcd8d0; /* proto --line2: field borders, stronger dividers */
+  --input: #dcd8d0;
+  --ring: #b45309; /* focus-ring ink — full-opacity ≥4.59:1 on all light surfaces */
+  /* "fam" amber status pill — a pending / awaiting-review state. Amber is
+     allowed HERE only because it's a non-text-bearing status tint. */
+  --fam: #fffbeb;
+  --fam-foreground: #b45309;
+  --fam-border: #fde68a;
+  /* "info" blue status tint — e.g. a cost/info marker in a list view. Blue is
+     introduced here as a non-text-bearing cost/info accent; the -foreground
+     is the ink ON the tint (≥4.5:1). */
+  --info: #eff6ff; /* blue-50 */
+  --info-foreground: #1d4ed8; /* blue-700 ink — ~7:1 on the blue-50 tint */
+  --info-border: #bfdbfe; /* blue-200 */
+  /* Text colors for the over-image white pills (bg-white/95), which stay white
+     in BOTH themes — so these are theme-INVARIANT (never overridden in .dark),
+     unlike --success which flips light in dark mode and would be illegible here. */
+  --on-light-chip-success: #047857;
+  --on-light-chip-warning: #a16207;
+  --on-light-chip-brand: #b45309; /* brand ink for over-image white pills — 5.02:1 on white */
+}
+
+.dark {
+  /* Brand tokens — dark. --primary stays the logo orange #FF8912 in both
+     themes (fill only, paired with near-black --primary-foreground); --brand
+     switches from the light-mode amber-700 ink to the logo orange itself,
+     which stays legible against the dark surfaces. See the :root comment
+     above for the full --primary vs --brand contract. */
+  --background: #181819; /* proto --bg */
+  --foreground: #f5f5f4; /* proto --text */
+  --surface: #242426; /* proto --surface (brand: unified dark surface) */
+  --card: #242426; /* proto --card */
+  --card-foreground: #f5f5f4;
+  --popover: #242426;
+  --popover-foreground: #f5f5f4;
+  --primary: #ff8912; /* logo orange fill (both themes) */
+  --primary-foreground: #1c1c1c;
+  --secondary: #2c2c2f;
+  --secondary-foreground: #f5f5f4;
+  --muted: #2c2c2f;
+  --muted-foreground: #b8b3ad; /* proto --muted (brand #B8B3AD) */
+  --muted2: #8f8a82; /* proto --muted2 */
+  --accent: #3a2416; /* orange-tinted dark surface */
+  --accent-foreground: #fdba74; /* orange-300 text on the tinted dark surface */
+  --brand: #ff8912; /* logo orange ink — legible on dark (≥5.86:1) */
+  --brand-foreground: #1c1c1c; /* text on bg-brand fills in dark (7.17:1) */
+  --brand-dark: #78350f; /* invariant with light */
+  --destructive: #fb7185;
+  --success: #6ee7b7;
+  --border: #2c2c2f; /* proto --line */
+  --line2: #3a3a3e; /* proto --line2 */
+  --input: #3a3a3e;
+  --ring: #ff8912; /* focus-ring ink — full-opacity ≥5.86:1 on all dark surfaces */
+  --fam: #33270c;
+  --fam-foreground: #fbbf24;
+  --fam-border: #5b4a1e;
+  --info: #0c1f33; /* dark navy tint */
+  --info-foreground: #60a5fa; /* blue-400 ink — ≥6:1 on the dark tint */
+  --info-border: #24466b;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-surface: var(--surface);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted2: var(--muted2);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-brand: var(--brand);
+  --color-brand-foreground: var(--brand-foreground);
+  --color-brand-dark: var(--brand-dark);
+  --color-destructive: var(--destructive);
+  --color-success: var(--success);
+  --color-border: var(--border);
+  --color-line2: var(--line2);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-fam: var(--fam);
+  --color-fam-foreground: var(--fam-foreground);
+  --color-fam-border: var(--fam-border);
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
+  --color-info-border: var(--info-border);
+  --color-on-light-chip-success: var(--on-light-chip-success);
+  --color-on-light-chip-warning: var(--on-light-chip-warning);
+  --color-on-light-chip-brand: var(--on-light-chip-brand);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  /* Corporate typeface — change here to re-font the whole app. Geist (variable)
+     is this starter's default face; Geist Mono for numerals/tabular. */
+  --font-sans: 'Geist Variable', ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-mono: 'Geist Mono Variable', ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  /* Mobile-web reset (Rule 9 — native by default). Kill the blue tap flash and
+     the long-press callout so taps feel native, not web. */
+  html {
+    -webkit-tap-highlight-color: transparent;
+    -webkit-touch-callout: none;
+    /* `body` sets this too, but `html` is the half that matters here — the
+       browser chains overscroll off the root element, which is what a mobile
+       browser reads as a pull-to-refresh / back-swipe navigation gesture. */
+    overscroll-behavior: none;
+  }
+  body {
+    @apply bg-background font-sans text-foreground;
+    /* Stop rubber-band / pull-to-refresh scroll-chaining on mobile browsers. */
+    overscroll-behavior: none;
+  }
+  /* Snappy taps on controls: no 300ms delay / double-tap-zoom (scroll
+     containers stay free to pan). */
+  button,
+  a,
+  [role='button'],
+  label,
+  summary,
+  input,
+  select,
+  textarea {
+    touch-action: manipulation;
+  }
+}
+
+/* Hides a scroll container's scrollbar while leaving it fully scrollable — the
+   iOS look, where scrollbars are transient overlays rather than permanent
+   chrome. Reach for it only on surfaces that read as native panels (a bottom
+   sheet or drawer), never on long-form page content where the bar is the only
+   cue that there is more below.
+
+   On desktop browsers with space-taking scrollbars this also gives the element
+   back the ~15px it was reserving, so a layout sized off the scroller's width
+   stops disagreeing with the layers behind it. */
+@utility no-scrollbar {
+  scrollbar-width: none; /* Firefox + the standard property */
+  &::-webkit-scrollbar {
+    display: none; /* WebKit / Blink, incl. every mobile WebView */
+  }
+}
+
