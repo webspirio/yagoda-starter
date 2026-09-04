@@ -34,7 +34,9 @@
     "displayName": "Display name",
     "avatar": "Avatar",
     "changeAvatar": "Change avatar",
-    "saved": "Profile saved"
+    "saved": "Profile saved",
+    "avatarTooLarge": "Image must be smaller than 10 MB",
+    "avatarWrongType": "Image must be JPEG, PNG or WebP"
   },
   "dashboard": {
     "signedInAs": "Signed in as {{name}}"
