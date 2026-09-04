@@ -27,7 +27,13 @@
   },
   "profile": {
     "title": "Profile",
-    "displayName": "Display name",
+    "name": "Name",
+    "login": "Login",
+    "role": "Role",
+    "roles": {
+      "network_owner": "Network owner",
+      "point_operator": "Point operator"
+    },
     "avatar": "Avatar",
     "changeAvatar": "Change avatar",
     "saved": "Profile saved",
