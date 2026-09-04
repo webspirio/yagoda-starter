@@ -18,6 +18,7 @@ import { UsersModule } from './users/users.module';
 import { AuditModule } from './audit/audit.module';
 import { MediaModule } from './media/media.module';
 import { AuthModule } from './auth/auth.module';
+import { CurrentUserModule } from './current-user/current-user.module';
 import { appConfig } from './config/app.config';
 import { databaseConfig } from './config/database.config';
 import { authConfig } from './config/auth.config';
@@ -107,6 +108,7 @@ import { uploadsConfig } from './config/uploads.config';
     AuditModule,
     MediaModule,
     AuthModule,
+    CurrentUserModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },
