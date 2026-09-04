@@ -78,27 +78,55 @@ export function createCachePersister(storage: Storage | undefined): Persister {
 }
 
 /**
- * The localStorage-backed persister. Exported so the sign-out path can wipe
- * the persisted blob (`persister.removeClient()`) the moment a session is
- * dropped, rather than leaving it for the next app open.
+ * The localStorage-backed persister. Exported so `AppLayout`'s `signOut` can
+ * wipe the persisted blob (`persister.removeClient()`) the moment a session
+ * ends, rather than leaving it behind for the next app open.
  */
 export const persister = createCachePersister(safeStorage(() => window.localStorage));
 
 /**
+ * Short, non-reversible fingerprint of `value`, rendered as hex (djb2a: a
+ * cheap synchronous string hash — no crypto API, no new dependency).
+ *
+ * `buildPersistOptions` uses this to turn the signed-in identity into a
+ * `buster` scope. TanStack's sync-storage persister writes `buster` into the
+ * persisted blob verbatim, so whatever is used as the scope sits in
+ * `localStorage` in plaintext for as long as that blob lives — a hash still
+ * changes on every sign-in (all the buster needs to stop one account's cache
+ * rehydrating under another) without itself being usable to authenticate.
+ * Exported for direct testing.
+ */
+export function hashToken(value: string): string {
+  let hash = 5381;
+  for (let i = 0; i < value.length; i++) {
+    hash = (hash * 33) ^ value.charCodeAt(i);
+  }
+  return (hash >>> 0).toString(16);
+}
+
+/**
  * Build persistence options for the current signed-in identity. The `buster`
- * embeds the user id so a cache written by one account is discarded (never
- * rehydrated) when a DIFFERENT account signs in on the same browser —
- * closing the cross-user data-bleed on a shared, multi-account device.
- * `userScope` is the signed-in user's id as a string, or `'anon'` before the
- * identity is known.
+ * incorporates a fingerprint of `identity` so a cache written by one account
+ * is discarded (never rehydrated) when a DIFFERENT account signs in on the
+ * same browser — closing the cross-user data-bleed on a shared, multi-account
+ * device.
+ *
+ * `identity` is the signed-in user's bearer token, or `'anon'` before one
+ * exists. It is NEVER used raw: this function hashes it (`hashToken`) before
+ * it reaches `buster`, because `buster` is persisted verbatim in the blob
+ * this module writes to `localStorage` — passing the token through un-hashed
+ * would leave a still-valid credential sitting in plaintext next to the
+ * cached data. `'anon'` is kept literal, since it identifies no one and
+ * carries nothing to protect.
  */
 export function buildPersistOptions(
-  userScope: string,
+  identity: string,
 ): Omit<PersistQueryClientOptions, 'queryClient'> {
+  const scope = identity === 'anon' ? 'anon' : hashToken(identity);
   return {
     persister,
     maxAge: 24 * 60 * 60_000,
-    buster: `v${PERSIST_VERSION}:${userScope}`,
+    buster: `v${PERSIST_VERSION}:${scope}`,
     dehydrateOptions: {
       shouldDehydrateQuery: (query: Query) =>
         query.state.status === 'success' && isPersistableKey(query.queryKey),

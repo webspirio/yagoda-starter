@@ -22,13 +22,16 @@ import { AppModule } from '../app.module';
 
 /**
  * The one HTTP-layer test (design review item I3): drives the real Nest
- * pipeline — controllers, guards, the global ValidationPipe and
- * ClassSerializerInterceptor, AllExceptionsFilter — through supertest,
+ * pipeline — controllers, guards, the global ValidationPipe,
+ * ClassSerializerInterceptor, and AllExceptionsFilter — through supertest,
  * against a real Postgres. Nothing else in this repo would fail if `@Auth()`
- * stopped guarding `MeController`, if `ClassSerializerInterceptor` were
- * dropped from `main.ts`, or if the global `ValidationPipe` were
- * misconfigured; every other spec mocks its collaborators and never sees the
- * actual HTTP plumbing.
+ * stopped guarding `MeController` or if the global `ValidationPipe`'s
+ * `forbidNonWhitelisted` were misconfigured; every other spec mocks its
+ * collaborators and never sees the actual HTTP plumbing. It does NOT cover
+ * `ClassSerializerInterceptor`: `CurrentUserService.getMe` returns a
+ * hand-built plain `MeResponse`, not an entity with `@Exclude()`-annotated
+ * fields, so the assertion below on `meRes.body` would pass identically with
+ * the interceptor removed from `main.ts`.
  *
  * Lives beside `db-harness.ts` (a `*.db-spec.ts`, so `npm run test:db` picks
  * it up — see `jest.db.config.js`; the unit `testRegex` does not match this

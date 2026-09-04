@@ -89,6 +89,27 @@ describe('AppLayout', () => {
     expect(useSession.getState().token).toBeNull();
   });
 
+  // Regression guard: sign-out must wipe the persisted TanStack Query cache,
+  // not just the session token — otherwise a still-valid bearer token (via
+  // `buster`) and the signed-out user's cached `/me` profile stay behind in
+  // localStorage under a second key for as long as the JWT remains valid.
+  // This fails if `persister.removeClient()` is removed from `signOut`.
+  it('wipes the persisted query cache blob on sign-out', async () => {
+    mock.onPost('/auth/logout').reply(204);
+    window.localStorage.setItem(
+      'web-starter-rq-cache',
+      JSON.stringify({
+        timestamp: Date.now(),
+        buster: 'v1:deadbeef',
+        clientState: { mutations: [], queries: [] },
+      }),
+    );
+    useSession.setState({ token: 'tok' });
+    renderLayout('/');
+    await userEvent.click(await screen.findByRole('button', { name: /sign out/i }));
+    expect(window.localStorage.getItem('web-starter-rq-cache')).toBeNull();
+  });
+
   it('applies the dark class to <html> when the OS prefers dark and no explicit preference is set', async () => {
     mockMatchMedia(true);
     useSession.setState({ token: 'tok' });

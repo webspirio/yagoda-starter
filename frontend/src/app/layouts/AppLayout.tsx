@@ -6,6 +6,7 @@ import { cn } from '@/shared/lib/cn';
 import { useSession } from '@/entities/user';
 import { logout } from '@/features/auth';
 import { useAppTheme } from '@/shared/lib/theme';
+import { persister } from '@/shared/api';
 import { Button } from '@/shared/ui/button';
 import { Toaster } from '@/shared/ui/sonner';
 
@@ -54,6 +55,17 @@ export function AppLayout() {
     // request must never leave the user stuck signed in.
     const outgoingToken = token;
     setToken(null);
+    // Wipe the persisted query cache too, not just the session: it can hold
+    // the signed-out user's cached `/me` profile, and leaving it behind
+    // would let the next person on this browser rehydrate stale data. Guard
+    // the call the same way persister.ts guards localStorage itself — a
+    // throwing removeClient() (private windows, storage disabled) must not
+    // stop sign-out from completing.
+    try {
+      persister.removeClient();
+    } catch {
+      // Best effort — sign-out proceeds regardless.
+    }
     void logout(outgoingToken).catch(() => undefined);
   };
 

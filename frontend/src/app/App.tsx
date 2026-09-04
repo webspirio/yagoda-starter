@@ -15,7 +15,9 @@ export function App() {
   // persisted cache, so it can't gate the buster used to restore it. The
   // token is available synchronously (mirrored into localStorage by the
   // session store) and changes on every sign-in/out, so it is scope enough
-  // to stop one account's cache from rehydrating under another.
+  // to stop one account's cache from rehydrating under another. (It is
+  // fingerprinted, not used raw, before it ever reaches the persisted blob
+  // — see `buildPersistOptions` in `shared/api/persister.ts`.)
   const persistOptions = useMemo(() => buildPersistOptions(token ?? 'anon'), [token]);
 
   return (

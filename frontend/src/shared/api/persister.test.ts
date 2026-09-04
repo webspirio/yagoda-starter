@@ -1,6 +1,13 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import type { PersistedClient } from '@tanstack/react-query-persist-client';
-import { isPersistableKey, buildPersistOptions, safeStorage, createCachePersister, PERSIST_VERSION } from './persister';
+import {
+  isPersistableKey,
+  buildPersistOptions,
+  safeStorage,
+  createCachePersister,
+  hashToken,
+  PERSIST_VERSION,
+} from './persister';
 
 describe('isPersistableKey', () => {
   it('allows the signed-in user profile key', () => {
@@ -19,10 +26,28 @@ describe('buildPersistOptions', () => {
   // against PERSIST_VERSION rather than a literal so a deliberate bump does not
   // read as a regression here — what a bump must not do is silently drop the
   // `:<identity>` suffix, which is exactly what this still catches.
-  it('scopes the buster to the signed-in user id', () => {
-    expect(buildPersistOptions('42').buster).toBe(`v${PERSIST_VERSION}:42`);
+  it('scopes the buster to a fingerprint of the identity, keeping anon literal', () => {
+    expect(buildPersistOptions('some-token').buster).toBe(
+      `v${PERSIST_VERSION}:${hashToken('some-token')}`,
+    );
     expect(buildPersistOptions('anon').buster).toBe(`v${PERSIST_VERSION}:anon`);
-    expect(buildPersistOptions('42').buster).not.toBe(buildPersistOptions('anon').buster);
+    expect(buildPersistOptions('some-token').buster).not.toBe(buildPersistOptions('anon').buster);
+  });
+
+  // Regression guard for the security fix: the raw bearer token must never
+  // sit in the persisted blob. TanStack's sync-storage persister writes
+  // `{ buster, ... }` to localStorage verbatim, so if `buildPersistOptions`
+  // ever went back to using the token as-is, this is what would catch it.
+  it('never embeds the raw token in the buster', () => {
+    const token = 'eyJhbGciOiJIUzI1NiJ9.super-secret-session-token.sig';
+    expect(buildPersistOptions(token).buster).not.toContain(token);
+  });
+
+  // The other half of the regression guard: a hash that collapsed every
+  // token to the same value would also pass the assertion above while
+  // silently breaking cross-account cache isolation.
+  it('scopes different tokens to different busters', () => {
+    expect(buildPersistOptions('token-a').buster).not.toBe(buildPersistOptions('token-b').buster);
   });
 
   it('persists only successful allowlisted queries', () => {
