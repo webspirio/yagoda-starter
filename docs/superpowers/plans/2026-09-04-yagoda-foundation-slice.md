@@ -2577,7 +2577,7 @@ git commit -m "feat(backend): add the collection-points module with owner-only t
 
 **Files:**
 - Create: `backend/src/users/normalize-login.ts`, `backend/src/user-admin/user-admin.module.ts`, `user-admin.service.ts`, `user-admin.service.spec.ts`, `users.controller.ts`, `user.mapper.ts`, `dto/create-user.dto.ts`, `dto/update-user.dto.ts`, `dto/set-password.dto.ts`, `dto/list-users.query.ts`
-- Modify: `backend/src/users/users.service.ts`, `backend/src/auth/auth.service.ts`, `backend/src/auth/auth.service.spec.ts`, `backend/src/app.module.ts`
+- Modify: `backend/src/users/users.service.ts`, `backend/src/auth/auth.service.ts`, `backend/src/auth/auth.service.spec.ts`, `backend/src/app.module.ts`, `backend/src/collection-points/collection-points.service.ts` (adds the `findOneRaw` read seam — see Step 6)
 
 **Interfaces:**
 - Consumes: everything from Tasks 3, 5 and 6, plus `CollectionPointsService` (to validate an assignment).
