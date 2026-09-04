@@ -15,6 +15,7 @@ import { RedisModule, REDIS_CLIENT } from './redis/redis.module';
 import { HealthModule } from './health/health.module';
 import { TimeModule } from './time/time.module';
 import { UsersModule } from './users/users.module';
+import { AuditModule } from './audit/audit.module';
 import { appConfig } from './config/app.config';
 import { databaseConfig } from './config/database.config';
 import { authConfig } from './config/auth.config';
@@ -101,6 +102,7 @@ import { uploadsConfig } from './config/uploads.config';
     HealthModule,
     TimeModule,
     UsersModule,
+    AuditModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },

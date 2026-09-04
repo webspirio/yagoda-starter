@@ -1,0 +1,75 @@
+import {
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  CreateDateColumn,
+  ManyToOne,
+  JoinColumn,
+  Index,
+} from 'typeorm';
+import { User } from '../users/user.entity';
+
+/**
+ * Audited actions. A TS string union stored as varchar — adding an action must
+ * never require a DB migration. These four are the starter's own; a consuming
+ * project extends the union with its domain actions.
+ */
+export const AUDIT_ACTIONS = [
+  'user.registered',
+  'user.logged-in',
+  'user.updated',
+  'user.avatar-changed',
+] as const;
+
+export type AuditAction = (typeof AUDIT_ACTIONS)[number];
+
+/**
+ * One immutable entry in the audit timeline. APPEND-ONLY BY CONVENTION — there
+ * is no update or delete API for this table, ever.
+ *
+ * `actor_id` → users RESTRICT: an audited actor can never be hard-deleted.
+ *
+ * `target_type` + `target_id` are polymorphic and carry NO foreign key, which
+ * is exactly what lets one log serve every table in a consuming project:
+ * `('user', <uuid>)`, `('invoice', <uuid>)`, and so on. The price is that a
+ * `target_id` can outlive the row it names, so `before`/`after` must carry
+ * enough context to stay readable after the target is gone.
+ */
+@Entity('audit_log')
+@Index('IDX_audit_log_target_at', ['target_type', 'target_id', 'at'])
+@Index('IDX_audit_log_actor_at', ['actor_id', 'at'])
+export class AuditLog {
+  @PrimaryGeneratedColumn('uuid')
+  id: string;
+
+  @Column({ type: 'varchar' })
+  action: AuditAction;
+
+  @Column({ type: 'uuid' })
+  actor_id: string;
+
+  @ManyToOne(() => User, { onDelete: 'RESTRICT', nullable: false })
+  @JoinColumn({ name: 'actor_id' })
+  actor: User;
+
+  /** What kind of row `target_id` names, e.g. 'user'. Null for entries with no target. */
+  @Column({ type: 'varchar', nullable: true })
+  target_type: string | null;
+
+  @Column({ type: 'uuid', nullable: true })
+  target_id: string | null;
+
+  @CreateDateColumn({ type: 'timestamptz' })
+  at: Date;
+
+  // Before/after snapshots of the changed fields; null for actions with
+  // nothing to diff.
+  @Column({ type: 'jsonb', nullable: true })
+  before: Record<string, unknown> | null;
+
+  @Column({ type: 'jsonb', nullable: true })
+  after: Record<string, unknown> | null;
+
+  @Column({ type: 'text', nullable: true })
+  note: string | null;
+}
