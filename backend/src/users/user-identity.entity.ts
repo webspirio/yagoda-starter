@@ -47,9 +47,9 @@ export class UserIdentity {
   @Column({ type: 'jsonb', nullable: true })
   provider_data: Record<string, unknown> | null;
 
-  @CreateDateColumn()
+  @CreateDateColumn({ type: 'timestamptz' })
   created_at: Date;
 
-  @UpdateDateColumn()
+  @UpdateDateColumn({ type: 'timestamptz' })
   updated_at: Date;
 }

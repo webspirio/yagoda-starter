@@ -42,7 +42,7 @@ describe('AuthService', () => {
     it('returns a token for correct credentials', async () => {
       users.findByIdentity.mockResolvedValue({
         provider_user_id: 'alice',
-        user: { id: 'u1', is_active: true, display_name: 'Alice', avatar_url: null },
+        user: { id: 'u1', is_active: true, first_name: 'Alice', last_name: 'Owner', avatar_url: null },
       });
       credentials.verify.mockResolvedValue(true);
 
@@ -54,16 +54,17 @@ describe('AuthService', () => {
     it('signs the username and profile into the token, and never the password', async () => {
       users.findByIdentity.mockResolvedValue({
         provider_user_id: 'alice',
-        user: { id: 'u1', is_active: true, display_name: 'Alice', avatar_url: '/uploads/a.webp' },
+        user: { id: 'u1', is_active: true, first_name: 'Alice', last_name: 'Owner', avatar_url: '/uploads/a.webp' },
       });
       credentials.verify.mockResolvedValue(true);
 
       await service.login({ username: 'alice', password: 'hunter2!!' });
 
+      // display_name is DERIVED from first_name + last_name; the column is gone.
       expect(jwt.sign).toHaveBeenCalledWith({
         sub: 'u1',
         username: 'alice',
-        display_name: 'Alice',
+        display_name: 'Alice Owner',
         avatar_url: '/uploads/a.webp',
       });
     });
@@ -100,7 +101,7 @@ describe('AuthService', () => {
     it('records the login in the audit log', async () => {
       users.findByIdentity.mockResolvedValue({
         provider_user_id: 'alice',
-        user: { id: 'u1', is_active: true, display_name: null, avatar_url: null },
+        user: { id: 'u1', is_active: true, first_name: 'Alice', last_name: 'Owner', avatar_url: null },
       });
       credentials.verify.mockResolvedValue(true);
 

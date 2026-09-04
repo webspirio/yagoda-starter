@@ -76,11 +76,18 @@ export class AuthService {
     });
   }
 
+  /**
+   * `display_name` is DERIVED here, exactly as in `CurrentUserService` — there
+   * is no such column any more. The token carries a snapshot taken at sign-in,
+   * so a renamed user keeps the old name in their token until it expires; the
+   * authoritative value is whatever `GET /me` returns, and nothing in the
+   * backend reads this claim.
+   */
   private signToken(user: User, username: string): string {
     const payload: AuthenticatedUser = {
       sub: user.id,
       username,
-      display_name: user.display_name ?? null,
+      display_name: `${user.first_name} ${user.last_name}`.trim(),
       avatar_url: user.avatar_url ?? null,
     };
     return this.jwt.sign(payload);

@@ -5,13 +5,18 @@ import { MediaService } from '../media/media.service';
 import { messageOf } from '../common/errors/message-of';
 import type { AuthenticatedUser } from '../auth/jwt.strategy';
 import { UpdateMeDto } from './dto/update-me.dto';
+import { User } from '../users/user.entity';
+import { UserRole } from '../users/user-role.enum';
 
 export interface MeResponse {
   id: string;
   username: string;
-  display_name: string | null;
+  /** DERIVED from first_name + last_name — there is no such column. */
+  display_name: string;
   avatar_url: string | null;
   language_code: string | null;
+  role: UserRole;
+  collection_point_id: string | null;
 }
 
 @Injectable()
@@ -87,16 +92,15 @@ export class CurrentUserService {
 
   /** The username lives on the identity row, not on `users`. It is already in
    *  the verified token, so reading it from there costs no extra query. */
-  private toResponse(
-    user: { id: string; display_name: string | null; avatar_url: string | null; language_code: string | null },
-    username: string,
-  ): MeResponse {
+  private toResponse(user: User, username: string): MeResponse {
     return {
       id: user.id,
       username,
-      display_name: user.display_name,
+      display_name: `${user.first_name} ${user.last_name}`.trim(),
       avatar_url: user.avatar_url,
       language_code: user.language_code,
+      role: user.role,
+      collection_point_id: user.collection_point_id,
     };
   }
 }

@@ -5,6 +5,7 @@ import type { EntityManager } from 'typeorm';
 import { UsersService } from './users.service';
 import { User } from './user.entity';
 import { UserIdentity, LOCAL_PROVIDER } from './user-identity.entity';
+import { UserRole } from './user-role.enum';
 
 /**
  * A stand-in EntityManager for createWithIdentity's transaction closure.
@@ -75,12 +76,38 @@ describe('UsersService', () => {
       const result = await service.createWithIdentity({
         provider: LOCAL_PROVIDER,
         providerUserId: 'carol',
-        display_name: 'Carol',
+        first_name: 'Carol',
+        last_name: 'Owner',
+        role: UserRole.NetworkOwner,
       });
 
       expect(result.identity.provider).toBe(LOCAL_PROVIDER);
       expect(result.identity.provider_user_id).toBe('carol');
-      expect(result.user.display_name).toBe('Carol');
+      expect(result.user.first_name).toBe('Carol');
+      expect(result.user.last_name).toBe('Owner');
+      expect(result.user.role).toBe(UserRole.NetworkOwner);
+      // A network_owner is NOT pinned to a point — CHK_users_role_point makes
+      // the alternative a database error, so the default must be an explicit null.
+      expect(result.user.collection_point_id).toBeNull();
+    });
+
+    it("carries a point_operator's collection point onto the created user", async () => {
+      const manager = fakeEntityManager();
+      userRepo.manager.transaction.mockImplementation((cb: (em: EntityManager) => unknown) =>
+        cb(manager),
+      );
+
+      const result = await service.createWithIdentity({
+        provider: LOCAL_PROVIDER,
+        providerUserId: 'oksana',
+        first_name: 'Oksana',
+        last_name: 'Operator',
+        role: UserRole.PointOperator,
+        collection_point_id: 'point-1',
+      });
+
+      expect(result.user.role).toBe(UserRole.PointOperator);
+      expect(result.user.collection_point_id).toBe('point-1');
     });
 
     it('runs onCreated inside the transaction, passing it the same manager, before the transaction settles', async () => {
@@ -108,7 +135,13 @@ describe('UsersService', () => {
       });
 
       const createPromise = service.createWithIdentity(
-        { provider: LOCAL_PROVIDER, providerUserId: 'dave' },
+        {
+          provider: LOCAL_PROVIDER,
+          providerUserId: 'dave',
+          first_name: 'Dave',
+          last_name: 'Owner',
+          role: UserRole.NetworkOwner,
+        },
         onCreated,
       );
 
@@ -139,7 +172,16 @@ describe('UsersService', () => {
       const onCreated = jest.fn().mockRejectedValue(error);
 
       await expect(
-        service.createWithIdentity({ provider: LOCAL_PROVIDER, providerUserId: 'erin' }, onCreated),
+        service.createWithIdentity(
+          {
+            provider: LOCAL_PROVIDER,
+            providerUserId: 'erin',
+            first_name: 'Erin',
+            last_name: 'Owner',
+            role: UserRole.NetworkOwner,
+          },
+          onCreated,
+        ),
       ).rejects.toThrow('credential write failed');
       expect(settled).toBe(false);
     });

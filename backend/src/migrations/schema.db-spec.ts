@@ -3,6 +3,9 @@ import { DataSource } from 'typeorm';
 import { openTestDataSource } from '../testing/db-harness';
 import { User } from '../users/user.entity';
 import { UserIdentity } from '../users/user-identity.entity';
+import { CollectionPoint } from '../collection-points/collection-point.entity';
+import { PointKind } from '../collection-points/point-kind.enum';
+import { UserRole } from '../users/user-role.enum';
 
 describe('InitialSchema', () => {
   let ds: DataSource;
@@ -33,7 +36,7 @@ describe('InitialSchema', () => {
   it('enforces one identity per (provider, provider_user_id)', async () => {
     const providerUserId = `taken-${randomUUID()}`;
     const [user] = await ds.query(
-      `INSERT INTO users (display_name) VALUES ('dupe') RETURNING id`,
+      `INSERT INTO users (first_name, last_name, role) VALUES ('Dupe', 'User', 'network_owner') RETURNING id`,
     );
     await ds.query(
       `INSERT INTO user_identities (provider, provider_user_id, "user_id") VALUES ('local', $1, $2)`,
@@ -50,9 +53,9 @@ describe('InitialSchema', () => {
 
   it('cascades credentials away when the user is deleted', async () => {
     const [user] = await ds.query(
-      `INSERT INTO users (display_name) VALUES ('cascade') RETURNING id`,
+      `INSERT INTO users (first_name, last_name, role) VALUES ('Cascade', 'User', 'network_owner') RETURNING id`,
     );
-    await ds.query(`INSERT INTO user_credentials (user_id, password) VALUES ($1, 'pw')`, [user.id]);
+    await ds.query(`INSERT INTO user_credentials (user_id, password_hash) VALUES ($1, 'pw')`, [user.id]);
 
     await ds.query(`DELETE FROM users WHERE id = $1`, [user.id]);
 
@@ -62,7 +65,7 @@ describe('InitialSchema', () => {
 
   it('refuses to delete a user who is an audit actor', async () => {
     const [user] = await ds.query(
-      `INSERT INTO users (display_name) VALUES ('actor') RETURNING id`,
+      `INSERT INTO users (first_name, last_name, role) VALUES ('Actor', 'User', 'network_owner') RETURNING id`,
     );
     await ds.query(`INSERT INTO audit_log (action, actor_id) VALUES ('user.logged-in', $1)`, [
       user.id,
@@ -83,7 +86,12 @@ describe('InitialSchema', () => {
     const identityRepo = ds.getRepository(UserIdentity);
 
     const savedUser = await userRepo.save(
-      userRepo.create({ display_name: 'Round Trip', is_active: true }),
+      userRepo.create({
+        first_name: 'Round',
+        last_name: 'Trip',
+        role: UserRole.NetworkOwner,
+        is_active: true,
+      }),
     );
 
     // Unique per run, for the reason documented on the duplicate-key test above.
@@ -104,5 +112,165 @@ describe('InitialSchema', () => {
     expect(foundIdentity).not.toBeNull();
     expect(foundIdentity?.user.id).toBe(savedUser.id);
     expect(foundIdentity?.provider_user_id).toBe(providerUserId);
+  });
+});
+
+describe('YagodaFoundation', () => {
+  let ds: DataSource;
+
+  beforeAll(async () => {
+    ds = await openTestDataSource();
+  });
+
+  afterAll(async () => {
+    await ds?.destroy();
+  });
+
+  const point = async (name: string): Promise<string> => {
+    const [row] = await ds.query(`INSERT INTO collection_points (name) VALUES ($1) RETURNING id`, [
+      name,
+    ]);
+    return row.id;
+  };
+
+  it('creates the collection_points table', async () => {
+    const [row] = await ds.query(`SELECT to_regclass('public.collection_points') IS NOT NULL AS present`);
+    expect(row.present).toBe(true);
+  });
+
+  it.each(['user_role', 'point_kind'])('creates the %s enum type', async (typeName) => {
+    const [row] = await ds.query(`SELECT to_regtype($1) IS NOT NULL AS present`, [typeName]);
+    expect(row.present).toBe(true);
+  });
+
+  it('rejects a value outside the user_role enum', async () => {
+    await expect(
+      ds.query(`INSERT INTO users (first_name, last_name, role) VALUES ('X', 'Y', 'point_manager')`),
+    ).rejects.toThrow(/invalid input value for enum/);
+  });
+
+  // A unique name per run: `app_test` persists between runs and is never
+  // truncated, so a fixed literal would fail with "duplicate key" on the
+  // SECOND run for the wrong reason. Same convention as pipeline.db-spec.ts.
+  it('enforces one collection point per name', async () => {
+    const name = `Копайгород-${randomUUID()}`;
+    await point(name);
+    await expect(point(name)).rejects.toThrow(/duplicate key/);
+  });
+
+  // §6.9 and §7.10: an unset target means "not known", NOT zero. A default of 0
+  // would make the two indistinguishable; this asserts the column really does
+  // come back NULL rather than 0.
+  it('leaves both targets NULL when they are not given', async () => {
+    const id = await point(`no-targets-${Date.now()}`);
+    const [row] = await ds.query(
+      `SELECT target_cash, target_crates FROM collection_points WHERE id = $1`,
+      [id],
+    );
+    expect(row.target_cash).toBeNull();
+    expect(row.target_crates).toBeNull();
+  });
+
+  it.each([
+    ['target_cash', "'-1'"],
+    ['target_crates', '-1'],
+  ])('rejects a negative %s', async (column, value) => {
+    await expect(
+      ds.query(
+        `INSERT INTO collection_points (name, ${column}) VALUES ('neg-${column}', ${value})`,
+      ),
+    ).rejects.toThrow(/violates check constraint/);
+  });
+
+  it('refuses a point_operator with no collection point', async () => {
+    await expect(
+      ds.query(`INSERT INTO users (first_name, last_name, role) VALUES ('No', 'Point', 'point_operator')`),
+    ).rejects.toThrow(/violates check constraint "CHK_users_role_point"/);
+  });
+
+  it('refuses a network_owner pinned to a collection point', async () => {
+    const pointId = await point(`owner-pinned-${Date.now()}`);
+    await expect(
+      ds.query(
+        `INSERT INTO users (first_name, last_name, role, collection_point_id)
+         VALUES ('Pinned', 'Owner', 'network_owner', $1)`,
+        [pointId],
+      ),
+    ).rejects.toThrow(/violates check constraint "CHK_users_role_point"/);
+  });
+
+  it('accepts a point_operator that has a collection point', async () => {
+    const pointId = await point(`operator-home-${Date.now()}`);
+    const [row] = await ds.query(
+      `INSERT INTO users (first_name, last_name, role, collection_point_id)
+       VALUES ('Оксана', 'Приймальник', 'point_operator', $1) RETURNING id`,
+      [pointId],
+    );
+    expect(row.id).toEqual(expect.any(String));
+  });
+
+  it('refuses to delete a collection point that still has a user', async () => {
+    const pointId = await point(`restricted-${Date.now()}`);
+    await ds.query(
+      `INSERT INTO users (first_name, last_name, role, collection_point_id)
+       VALUES ('Held', 'Back', 'point_operator', $1)`,
+      [pointId],
+    );
+    await expect(ds.query(`DELETE FROM collection_points WHERE id = $1`, [pointId])).rejects.toThrow(
+      /violates foreign key constraint/,
+    );
+  });
+
+  it('renamed the credential column and dropped display_name', async () => {
+    const columns = await ds.query(
+      `SELECT table_name, column_name FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND (table_name, column_name) IN (
+            ('user_credentials','password'), ('user_credentials','password_hash'), ('users','display_name')
+          )`,
+    );
+    const found = columns.map((c: { table_name: string; column_name: string }) =>
+      `${c.table_name}.${c.column_name}`,
+    );
+    expect(found).toEqual(['user_credentials.password_hash']);
+  });
+
+  it('stores instants as timestamptz on the reshaped tables', async () => {
+    const rows = await ds.query(
+      `SELECT table_name, column_name, data_type FROM information_schema.columns
+        WHERE table_schema = 'public' AND column_name IN ('created_at','updated_at')
+          AND table_name IN ('users','user_identities','collection_points')`,
+    );
+    expect(rows).not.toHaveLength(0);
+    for (const row of rows) expect(row.data_type).toBe('timestamp with time zone');
+  });
+
+  // Proves the entity metadata agrees with the hand-written DDL — a raw insert
+  // above would still pass against a column TypeORM itself would never emit.
+  it('round-trips a CollectionPoint and an operator through the repositories', async () => {
+    const pointRepo = ds.getRepository(CollectionPoint);
+    const userRepo = ds.getRepository(User);
+
+    const savedPoint = await pointRepo.save(
+      pointRepo.create({ name: `round-trip-${Date.now()}`, kind: PointKind.Base, target_crates: 800 }),
+    );
+    const savedUser = await userRepo.save(
+      userRepo.create({
+        first_name: 'Round',
+        last_name: 'Trip',
+        role: UserRole.PointOperator,
+        collection_point_id: savedPoint.id,
+      }),
+    );
+
+    const found = await userRepo.findOne({ where: { id: savedUser.id } });
+    expect(found?.role).toBe(UserRole.PointOperator);
+    expect(found?.collection_point_id).toBe(savedPoint.id);
+
+    const foundPoint = await pointRepo.findOne({ where: { id: savedPoint.id } });
+    // numeric arrives as a string, and is expected to: see the spec's §5.1.
+    expect(foundPoint?.target_cash).toBeNull();
+    expect(foundPoint?.target_crates).toBe(800);
+    expect(foundPoint?.kind).toBe(PointKind.Base);
   });
 });

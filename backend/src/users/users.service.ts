@@ -3,15 +3,35 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { EntityManager, Repository } from 'typeorm';
 import { User } from './user.entity';
 import { UserIdentity } from './user-identity.entity';
+import { UserRole } from './user-role.enum';
 
 export interface CreateUserInput {
   provider: string;
-  /** Already normalised by the caller (lowercased for local usernames). */
+  /** Already normalised by the caller (lowercased for local logins). */
   providerUserId: string;
-  display_name?: string | null;
+  first_name: string;
+  last_name: string;
+  role: UserRole;
+  /** NULL for a network_owner, required for a point_operator — see
+   *  CHK_users_role_point. Passing the wrong combination is a 500 from the
+   *  database, so callers validate first. */
+  collection_point_id?: string | null;
   language_code?: string | null;
   providerData?: Record<string, unknown> | null;
 }
+
+export type UpdatableUserFields = Partial<
+  Pick<
+    User,
+    | 'first_name'
+    | 'last_name'
+    | 'avatar_url'
+    | 'language_code'
+    | 'role'
+    | 'collection_point_id'
+    | 'is_active'
+  >
+>;
 
 @Injectable()
 export class UsersService {
@@ -36,7 +56,7 @@ export class UsersService {
   /**
    * Create a user and its identity in one transaction. The caller writes
    * credentials inside the same transaction by passing the manager on to
-   * CredentialsService.set() — see AuthService.register().
+   * CredentialsService.set() — see the account-creation path in `user-admin/`.
    */
   async createWithIdentity(
     input: CreateUserInput,
@@ -44,7 +64,10 @@ export class UsersService {
   ): Promise<{ user: User; identity: UserIdentity }> {
     return this.userRepo.manager.transaction(async (em) => {
       const user = em.create(User, {
-        display_name: input.display_name ?? null,
+        first_name: input.first_name,
+        last_name: input.last_name,
+        role: input.role,
+        collection_point_id: input.collection_point_id ?? null,
         language_code: input.language_code ?? null,
         avatar_url: null,
         is_active: true,
@@ -73,7 +96,7 @@ export class UsersService {
 
   async update(
     id: string,
-    dto: Partial<Pick<User, 'display_name' | 'avatar_url' | 'language_code'>>,
+    dto: UpdatableUserFields,
     manager?: EntityManager,
   ): Promise<User> {
     if (Object.keys(dto).length === 0) return this.findById(id);

@@ -14,6 +14,7 @@ import { RedisModule, REDIS_CLIENT } from './redis/redis.module';
 import { HealthModule } from './health/health.module';
 import { TimeModule } from './time/time.module';
 import { UsersModule } from './users/users.module';
+import { CollectionPointsModule } from './collection-points/collection-points.module';
 import { AuditModule } from './audit/audit.module';
 import { MediaModule } from './media/media.module';
 import { AuthModule } from './auth/auth.module';
@@ -109,6 +110,7 @@ import { uploadsConfig } from './config/uploads.config';
     HealthModule,
     TimeModule,
     UsersModule,
+    CollectionPointsModule,
     AuditModule,
     MediaModule,
     AuthModule,

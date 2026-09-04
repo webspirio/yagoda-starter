@@ -22,6 +22,7 @@ import { AppModule } from '../app.module';
 import { UsersService } from '../users/users.service';
 import { CredentialsService } from '../users/credentials.service';
 import { LOCAL_PROVIDER } from '../users/user-identity.entity';
+import { UserRole } from '../users/user-role.enum';
 
 /**
  * The one HTTP-layer test (design review item I3): drives the real Nest
@@ -87,7 +88,13 @@ describe('auth + me pipeline (HTTP)', () => {
     const users = app.get(UsersService);
     const credentials = app.get(CredentialsService);
     await users.createWithIdentity(
-      { provider: LOCAL_PROVIDER, providerUserId: username, display_name: username },
+      {
+        provider: LOCAL_PROVIDER,
+        providerUserId: username,
+        first_name: 'Pipeline',
+        last_name: 'User',
+        role: UserRole.NetworkOwner,
+      },
       async (created, manager) => credentials.set(created.id, password, manager),
     );
 
@@ -109,9 +116,11 @@ describe('auth + me pipeline (HTTP)', () => {
     expect(meRes.body).toEqual({
       id: expect.any(String),
       username,
-      display_name: username,
+      display_name: 'Pipeline User',
       avatar_url: null,
       language_code: null,
+      role: 'network_owner',
+      collection_point_id: null,
     });
 
     // The global ValidationPipe's forbidNonWhitelisted: true, exercised for
