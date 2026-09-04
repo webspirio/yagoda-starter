@@ -1,0 +1,145 @@
+import { Test } from '@nestjs/testing';
+import { JwtService } from '@nestjs/jwt';
+import { ConflictException, UnauthorizedException } from '@nestjs/common';
+import { AuthService, normalizeUsername } from './auth.service';
+import { UsersService } from '../users/users.service';
+import { CredentialsService } from '../users/credentials.service';
+import { AuditService } from '../audit/audit.service';
+import { LOCAL_PROVIDER } from '../users/user-identity.entity';
+import { authConfig } from '../config/auth.config';
+
+describe('AuthService', () => {
+  let service: AuthService;
+  const users = { findByIdentity: jest.fn(), createWithIdentity: jest.fn() };
+  const credentials = { set: jest.fn(), verify: jest.fn() };
+  const audit = { record: jest.fn() };
+  const jwt = { sign: jest.fn().mockReturnValue('signed.jwt.token') };
+
+  beforeEach(async () => {
+    jest.clearAllMocks();
+    const moduleRef = await Test.createTestingModule({
+      providers: [
+        AuthService,
+        { provide: UsersService, useValue: users },
+        { provide: CredentialsService, useValue: credentials },
+        { provide: AuditService, useValue: audit },
+        { provide: JwtService, useValue: jwt },
+        { provide: authConfig.KEY, useValue: { jwtSecret: 'x'.repeat(32), jwtExpiresIn: '7d' } },
+      ],
+    }).compile();
+    service = moduleRef.get(AuthService);
+  });
+
+  describe('normalizeUsername', () => {
+    it('lowercases and trims so usernames cannot collide by case alone', () => {
+      expect(normalizeUsername('  Alice  ')).toBe('alice');
+      expect(normalizeUsername('ALICE')).toBe('alice');
+    });
+  });
+
+  describe('register', () => {
+    it('creates the user, stores credentials in the same transaction, and returns a token', async () => {
+      users.findByIdentity.mockResolvedValue(null);
+      users.createWithIdentity.mockImplementation(async (_input, onCreated) => {
+        const user = { id: 'u1', display_name: 'Alice', avatar_url: null };
+        if (onCreated) await onCreated(user, 'MANAGER');
+        return { user, identity: { provider_user_id: 'alice' } };
+      });
+
+      await expect(service.register({ username: 'Alice', password: 'hunter2!!' })).resolves.toEqual(
+        { access_token: 'signed.jwt.token' },
+      );
+
+      expect(users.createWithIdentity).toHaveBeenCalledWith(
+        expect.objectContaining({ provider: LOCAL_PROVIDER, providerUserId: 'alice' }),
+        expect.any(Function),
+      );
+      expect(credentials.set).toHaveBeenCalledWith('u1', 'hunter2!!', 'MANAGER');
+    });
+
+    it('rejects a username that is already taken', async () => {
+      users.findByIdentity.mockResolvedValue({ user: { id: 'u1' } });
+
+      await expect(
+        service.register({ username: 'alice', password: 'hunter2!!' }),
+      ).rejects.toBeInstanceOf(ConflictException);
+      expect(users.createWithIdentity).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('login', () => {
+    it('returns a token for correct credentials', async () => {
+      users.findByIdentity.mockResolvedValue({
+        provider_user_id: 'alice',
+        user: { id: 'u1', is_active: true, display_name: 'Alice', avatar_url: null },
+      });
+      credentials.verify.mockResolvedValue(true);
+
+      await expect(service.login({ username: 'Alice', password: 'hunter2!!' })).resolves.toEqual({
+        access_token: 'signed.jwt.token',
+      });
+    });
+
+    it('signs the username and profile into the token, and never the password', async () => {
+      users.findByIdentity.mockResolvedValue({
+        provider_user_id: 'alice',
+        user: { id: 'u1', is_active: true, display_name: 'Alice', avatar_url: '/uploads/a.webp' },
+      });
+      credentials.verify.mockResolvedValue(true);
+
+      await service.login({ username: 'alice', password: 'hunter2!!' });
+
+      expect(jwt.sign).toHaveBeenCalledWith({
+        sub: 'u1',
+        username: 'alice',
+        display_name: 'Alice',
+        avatar_url: '/uploads/a.webp',
+      });
+    });
+
+    it('rejects an unknown username and a wrong password identically', async () => {
+      users.findByIdentity.mockResolvedValue(null);
+      const unknown = await service.login({ username: 'nobody', password: 'whatever1' }).catch((e) => e);
+
+      users.findByIdentity.mockResolvedValue({
+        provider_user_id: 'alice',
+        user: { id: 'u1', is_active: true },
+      });
+      credentials.verify.mockResolvedValue(false);
+      const wrong = await service.login({ username: 'alice', password: 'wrongpass' }).catch((e) => e);
+
+      expect(unknown).toBeInstanceOf(UnauthorizedException);
+      expect(wrong).toBeInstanceOf(UnauthorizedException);
+      expect(unknown.message).toBe(wrong.message);
+    });
+
+    it('rejects a deactivated account', async () => {
+      users.findByIdentity.mockResolvedValue({
+        provider_user_id: 'alice',
+        user: { id: 'u1', is_active: false },
+      });
+      credentials.verify.mockResolvedValue(true);
+
+      await expect(
+        service.login({ username: 'alice', password: 'hunter2!!' }),
+      ).rejects.toBeInstanceOf(UnauthorizedException);
+    });
+
+    it('records the login in the audit log', async () => {
+      users.findByIdentity.mockResolvedValue({
+        provider_user_id: 'alice',
+        user: { id: 'u1', is_active: true, display_name: null, avatar_url: null },
+      });
+      credentials.verify.mockResolvedValue(true);
+
+      await service.login({ username: 'alice', password: 'hunter2!!' });
+
+      expect(audit.record).toHaveBeenCalledWith({
+        action: 'user.logged-in',
+        actor_id: 'u1',
+        target_type: 'user',
+        target_id: 'u1',
+      });
+    });
+  });
+});
