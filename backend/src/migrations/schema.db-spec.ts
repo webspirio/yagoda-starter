@@ -1,3 +1,4 @@
+import { randomUUID } from 'crypto';
 import { DataSource } from 'typeorm';
 import { openTestDataSource } from '../testing/db-harness';
 import { User } from '../users/user.entity';
@@ -24,19 +25,25 @@ describe('InitialSchema', () => {
     expect(row.present).toBe(true);
   });
 
+  // A UNIQUE value per RUN, not a literal. `app_test` persists between runs and
+  // this suite deliberately never truncates (see db-harness.ts), so a fixed
+  // 'taken' passes on a fresh database and then fails on every later run — with
+  // a duplicate-key error that looks exactly like the one being asserted, from
+  // the WRONG insert. pipeline.db-spec.ts already documents this convention.
   it('enforces one identity per (provider, provider_user_id)', async () => {
+    const providerUserId = `taken-${randomUUID()}`;
     const [user] = await ds.query(
       `INSERT INTO users (display_name) VALUES ('dupe') RETURNING id`,
     );
     await ds.query(
-      `INSERT INTO user_identities (provider, provider_user_id, "user_id") VALUES ('local', 'taken', $1)`,
-      [user.id],
+      `INSERT INTO user_identities (provider, provider_user_id, "user_id") VALUES ('local', $1, $2)`,
+      [providerUserId, user.id],
     );
 
     await expect(
       ds.query(
-        `INSERT INTO user_identities (provider, provider_user_id, "user_id") VALUES ('local', 'taken', $1)`,
-        [user.id],
+        `INSERT INTO user_identities (provider, provider_user_id, "user_id") VALUES ('local', $1, $2)`,
+        [providerUserId, user.id],
       ),
     ).rejects.toThrow(/duplicate key/);
   });
@@ -79,10 +86,12 @@ describe('InitialSchema', () => {
       userRepo.create({ display_name: 'Round Trip', is_active: true }),
     );
 
+    // Unique per run, for the reason documented on the duplicate-key test above.
+    const providerUserId = `round-trip-${randomUUID()}`;
     const savedIdentity = await identityRepo.save(
       identityRepo.create({
         provider: 'local',
-        provider_user_id: 'round-trip',
+        provider_user_id: providerUserId,
         user: savedUser,
       }),
     );
@@ -94,6 +103,6 @@ describe('InitialSchema', () => {
 
     expect(foundIdentity).not.toBeNull();
     expect(foundIdentity?.user.id).toBe(savedUser.id);
-    expect(foundIdentity?.provider_user_id).toBe('round-trip');
+    expect(foundIdentity?.provider_user_id).toBe(providerUserId);
   });
 });

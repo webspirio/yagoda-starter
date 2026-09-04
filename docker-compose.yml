@@ -34,6 +34,14 @@ services:
   redis:
     image: redis:7-alpine
     command: ["redis-server", "--appendonly", "yes", "--appendfsync", "everysec"]
+    # Published on the LOOPBACK ONLY so host-run tooling works: pipeline.db-spec.ts
+    # boots the full AppModule, whose global ThrottlerGuard needs Redis, and
+    # without a host port every request in that spec 500s. Postgres is already
+    # published for the same reason (host-run migration:generate) — but on
+    # 0.0.0.0, whereas this stays on 127.0.0.1: nothing outside this machine has
+    # any reason to reach a passwordless dev Redis.
+    ports:
+      - "127.0.0.1:6379:6379"
     volumes:
       - redis_dev:/data
     networks:
