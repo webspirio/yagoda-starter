@@ -100,6 +100,21 @@ export class UserAdminService {
     const nextRole = dto.role ?? user.role;
     const nextActive = dto.is_active ?? user.is_active;
 
+    // A point on someone who is (or is becoming) an owner is REFUSED, not
+    // quietly dropped. The `nextPoint` computation below hands an owner `null`
+    // unconditionally, so without this line a
+    // `PATCH {"collection_point_id": "<uuid>"}` on an existing owner would
+    // return 200 having done nothing — and `create()` returns 400 for exactly
+    // that combination, so the two endpoints would disagree about the same
+    // rule. `!= null`, so an explicit `null` (clear it — already true for an
+    // owner) and an absent field (promotion) both stay legal.
+    if (nextRole === UserRole.NetworkOwner && dto.collection_point_id != null) {
+      throw new BadRequestException({
+        message: 'A network owner belongs to the network, not to a collection point',
+        code: 'OWNER_HAS_NO_POINT',
+      });
+    }
+
     // Promotion clears the home point, demotion demands one — computed here so
     // role and point always move in a single UPDATE and CHK_users_role_point
     // is never transiently violated.
@@ -123,7 +138,14 @@ export class UserAdminService {
     const demoting = user.role === UserRole.NetworkOwner && nextRole !== UserRole.NetworkOwner;
     const deactivating = user.is_active && !nextActive;
 
-    if (userId === actor.sub && (demoting || deactivating)) {
+    // `user.id`, NOT the `userId` route param. Both sides are then values
+    // Postgres canonicalised: `uuid` comparison is case-INSENSITIVE and
+    // ParseUUIDPipe accepts an uppercased uuid, so `findById(userId)` returns
+    // the actor's own row while a raw `userId === actor.sub` string compare —
+    // the one case-sensitive step in the whole chain — reads false. That is a
+    // `PATCH /users/<OWN-UUID-UPPERCASED> {"is_active": false}` walking
+    // straight past this guard.
+    if (user.id === actor.sub && (demoting || deactivating)) {
       // Refused even when another owner exists: nobody does this on purpose,
       // and the recovery cost is total.
       throw new ForbiddenException({
@@ -138,9 +160,21 @@ export class UserAdminService {
       // direct database access — and no other owner to call, since passwords
       // are owner-issued.
       //
-      // The exclusion argument is what makes this correct: this user is still
-      // an active owner in the database at this moment, so counting them would
-      // see 1 and let the last one go.
+      // WHAT THIS COVERS: one owner-removing request at a time. The exclusion
+      // argument is load-bearing — this user is still an active owner in the
+      // database right now, so counting them would see 1 and let the last one
+      // go — and it is done in SQL (`u.id != :excludeUserId`), so an
+      // uppercased uuid cannot slip past it the way it could past a string
+      // compare.
+      //
+      // WHAT IT DOES NOT COVER: concurrency. This is a check-then-act across
+      // two statements with no transaction and no row lock, so two PATCHes
+      // demoting the last two owners in parallel can both read `remaining === 1`
+      // and both proceed, leaving zero. Known and deferred: closing it means
+      // one transaction holding `SELECT … FOR UPDATE` over the owner rows (or
+      // a partial unique index asserting at least one active owner), and this
+      // guard is a usability rail against the single-request mistake, not a
+      // serialisability guarantee.
       const remaining = await this.users.countActiveOwners(userId);
       if (remaining === 0) {
         throw new ConflictException({

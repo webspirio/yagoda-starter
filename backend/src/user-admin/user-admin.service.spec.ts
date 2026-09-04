@@ -95,6 +95,40 @@ describe('UserAdminService', () => {
       ).rejects.toThrow(BadRequestException);
     });
 
+    // The owner branch of the `nextPoint` computation hands an owner `null`
+    // unconditionally, so a point named in the body used to be silently
+    // DROPPED — 200, nothing changed, and `create()` returning 400 for the
+    // same combination. Refusing it keeps the two endpoints agreeing.
+    it('refuses to pin an existing owner to a point rather than dropping it', async () => {
+      users.findById.mockResolvedValue(target({ role: UserRole.NetworkOwner, collection_point_id: null }));
+      await expect(
+        service.update(owner, 'u-target', { collection_point_id: 'p-2' }),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('refuses a promotion that also names a point', async () => {
+      await expect(
+        service.update(owner, 'u-target', {
+          role: UserRole.NetworkOwner,
+          collection_point_id: 'p-1',
+        }),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    // The other side of that guard: `!= null`, so an EXPLICIT null is still a
+    // legal way to spell "promote and clear", exactly as an absent field is
+    // (proved by the promotion test above).
+    it('still promotes when the point is explicitly null', async () => {
+      await service.update(owner, 'u-target', {
+        role: UserRole.NetworkOwner,
+        collection_point_id: null,
+      });
+      expect(users.update).toHaveBeenCalledWith(
+        'u-target',
+        expect.objectContaining({ role: UserRole.NetworkOwner, collection_point_id: null }),
+      );
+    });
+
     // A DIFFERENT point than the one the user already has: `update` only
     // validates a point it is actually moving them to, so reassigning someone
     // to the point they are already at must not re-run the check.
@@ -151,6 +185,26 @@ describe('UserAdminService', () => {
       users.countActiveOwners.mockResolvedValue(5);
 
       await expect(service.update(owner, owner.sub, { is_active: false })).rejects.toThrow(
+        ForbiddenException,
+      );
+    });
+
+    /**
+     * `uuid` is compared case-INSENSITIVELY by Postgres and ParseUUIDPipe
+     * accepts an uppercased one, so `findById` returns the actor's OWN row
+     * while a raw `userId === actor.sub` string compare — the single
+     * case-sensitive step in the chain — reads false. Comparing the loaded
+     * row's id instead closes it. `countActiveOwners` returns 5 here on
+     * purpose: with another owner standing by, SELF_LOCKOUT is the only guard
+     * that can fire, so this test fails if the comparison regresses.
+     */
+    it('refuses self-deactivation even when the path id is uppercased', async () => {
+      const id = '9b1f6c4e-3a2d-4f71-8c05-1e7a2d6b4f88';
+      const self: AuthenticatedUser = { ...owner, sub: id };
+      users.findById.mockResolvedValue(target({ id, role: UserRole.NetworkOwner, collection_point_id: null }));
+      users.countActiveOwners.mockResolvedValue(5);
+
+      await expect(service.update(self, id.toUpperCase(), { is_active: false })).rejects.toThrow(
         ForbiddenException,
       );
     });

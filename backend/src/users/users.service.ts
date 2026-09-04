@@ -104,6 +104,20 @@ export class UsersService {
     return user;
   }
 
+  /**
+   * The ONE write seam for a user row. There is deliberately no `setActive`
+   * sibling any more: it had no caller, and a public method that writes
+   * `is_active` on its own is a second deactivation path with none of the
+   * guards `UserAdminService.update` puts in front of this one — no
+   * owner-count check, no self-lockout check. Deactivating a user goes through
+   * that service.
+   *
+   * `is_active` is a real-time lockout wherever it is written:
+   * JwtStrategy.validate() reloads this row on every authenticated request, so
+   * a deactivated user is refused on their very next request with the token
+   * they already hold — not when it finally expires. Login is blocked too (see
+   * AuthService.login), but that is the lesser half of the effect.
+   */
   async update(
     id: string,
     dto: UpdatableUserFields,
@@ -133,18 +147,6 @@ export class UsersService {
     });
     if (!identity?.user) return null;
     return { user: identity.user, login: identity.provider_user_id };
-  }
-
-  /**
-   * Idempotent, and a real-time lockout: JwtStrategy.validate() reloads this
-   * row on every authenticated request, so a deactivated user is refused on
-   * their very next request with the token they already hold — not when it
-   * finally expires. Login is blocked too (see AuthService.login), but that
-   * is now the lesser half of the effect.
-   */
-  async setActive(id: string, isActive: boolean): Promise<void> {
-    const result = await this.userRepo.update(id, { is_active: isActive });
-    if (result.affected === 0) throw new NotFoundException('User not found');
   }
 
   /**

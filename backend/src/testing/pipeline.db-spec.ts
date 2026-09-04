@@ -342,8 +342,15 @@ describe('auth + me pipeline (HTTP)', () => {
 
     // Self-lockout, refused outright — there are plenty of other active owners
     // in this database, and it is still refused.
+    //
+    // UPPERCASED on purpose, against a real Postgres: `uuid` comparison is
+    // case-insensitive and ParseUUIDPipe accepts this form, so the row loads
+    // and every SQL-side check behaves — which is exactly what made comparing
+    // the raw route param to `actor.sub` (the one case-sensitive step in the
+    // chain) a way to walk straight past SELF_LOCKOUT. If this 403 ever
+    // becomes a 200, that comparison has regressed to the route param.
     const selfRes = await request(app.getHttpServer())
-      .patch(`/users/${boss.id}`)
+      .patch(`/users/${boss.id.toUpperCase()}`)
       .set('Authorization', `Bearer ${bossToken}`)
       .send({ is_active: false })
       .expect(403);
