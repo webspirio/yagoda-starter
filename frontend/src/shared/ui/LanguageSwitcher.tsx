@@ -19,14 +19,15 @@ import { Segmented } from './segmented';
  */
 export function LanguageSwitcher({ className }: { className?: string }) {
   const { t, i18n } = useTranslation();
+
+  if (SUPPORTED_LANGUAGES.length <= 1) return null;
+
   const active = i18n.resolvedLanguage as (typeof SUPPORTED_LANGUAGES)[number] | undefined;
   const set = (code: string) => {
     void i18n.changeLanguage(code);
     storeLanguage(code);
   };
   const options = SUPPORTED_LANGUAGES.map((code) => ({ value: code, label: t(`lang.${code}`) }));
-
-  if (options.length <= 1) return null;
 
   return (
     <Segmented

@@ -81,11 +81,7 @@ describe('TagPicker', () => {
     const onChange = renderPicker();
 
     fireEvent.change(screen.getByRole('textbox'), { target: { value: 'Delta' } });
-    // The starter's trimmed i18n resource (shared/lib/i18n/locales/en.json)
-    // does not define a `picker.create` key, so i18next falls back to
-    // rendering the raw key — a real app adding this key would see its own
-    // copy here instead.
-    const createChip = screen.getByRole('button', { name: 'picker.create' });
+    const createChip = screen.getByRole('button', { name: 'Add “Delta”' });
     fireEvent.click(createChip);
 
     expect(onChange).toHaveBeenCalledWith(['Delta']);
@@ -95,7 +91,7 @@ describe('TagPicker', () => {
     renderPicker();
 
     fireEvent.change(screen.getByRole('textbox'), { target: { value: 'alpha' } });
-    expect(screen.queryByText(/Додати/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Add /)).not.toBeInTheDocument();
     // The existing option still shows up as a selectable suggestion.
     expect(screen.getByRole('button', { name: 'Alpha' })).toBeInTheDocument();
   });
@@ -104,7 +100,7 @@ describe('TagPicker', () => {
     renderPicker({ allowCreate: false });
 
     fireEvent.change(screen.getByRole('textbox'), { target: { value: 'Nowhere' } });
-    expect(screen.queryByText(/Додати /)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Add /)).not.toBeInTheDocument();
   });
 
   it('exposes selection state to assistive tech', () => {
@@ -141,15 +137,13 @@ describe('TagPicker', () => {
     expect(screen.queryByRole('button', { name: 'Option 8' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Option 11' })).not.toBeInTheDocument();
 
-    // See the comment above the 'offers a create chip' test: the trimmed
-    // i18n resource has no `actions.showAll`/`actions.collapse` key, so
-    // i18next renders the raw key.
-    await user.click(screen.getByRole('button', { name: 'actions.showAll' }));
+    // 12 options, 8 visible while collapsed -> 4 hidden.
+    await user.click(screen.getByRole('button', { name: 'Show all (4)' }));
 
     expect(screen.getByRole('button', { name: 'Option 8' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Option 11' })).toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: 'actions.collapse' }));
+    await user.click(screen.getByRole('button', { name: 'Collapse' }));
 
     expect(screen.queryByRole('button', { name: 'Option 8' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Option 7' })).toBeInTheDocument();
@@ -207,10 +201,7 @@ describe('TagPicker', () => {
     renderPicker({ options: MANY, visibleCount: 8, searchable: false });
 
     expect(screen.queryByRole('button', { name: 'Option 8' })).not.toBeInTheDocument();
-    // See the comment above the 'offers a create chip' test: the trimmed
-    // i18n resource has no `actions.showAll`/`actions.collapse` key, so
-    // i18next renders the raw key.
-    await user.click(screen.getByRole('button', { name: 'actions.showAll' }));
+    await user.click(screen.getByRole('button', { name: 'Show all (4)' }));
     expect(screen.getByRole('button', { name: 'Option 8' })).toBeInTheDocument();
   });
 

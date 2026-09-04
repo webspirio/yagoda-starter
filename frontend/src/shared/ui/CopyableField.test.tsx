@@ -15,9 +15,14 @@ describe('CopyableField', () => {
     expect(screen.getByText('42')).toBeInTheDocument();
   });
 
+  it('names the icon-only copy button so AT can announce it', () => {
+    render(<CopyableField label="Account ID" value="42" />);
+    expect(screen.getByRole('button', { name: 'Copy' })).toBeInTheDocument();
+  });
+
   it('copies the value on click', async () => {
     render(<CopyableField label="Account ID" value="42" />);
-    fireEvent.click(screen.getByRole('button'));
+    fireEvent.click(screen.getByRole('button', { name: 'Copy' }));
     await waitFor(() => expect(writeText).toHaveBeenCalledWith('42'));
   });
 });

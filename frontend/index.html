@@ -1,15 +1,15 @@
 <!DOCTYPE html>
-<html lang="uk">
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>UA WELL</title>
+    <title>Web Starter</title>
     <script>
       // Pre-hydration theme seed: apply an EXPLICIT light/dark override before
       // the app bundle loads so paint 0 isn't the wrong colour. 'system' /
-      // absent is left to the SDK-driven useAppTheme at runtime.
+      // absent is left to the media-query-driven useAppTheme at runtime.
       try {
-        var t = localStorage.getItem('ua-well:theme');
+        var t = localStorage.getItem('web-starter:theme');
         if (t === 'dark') document.documentElement.classList.add('dark');
         else if (t === 'light') document.documentElement.classList.remove('dark');
       } catch (e) {}

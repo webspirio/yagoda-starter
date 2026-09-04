@@ -2,9 +2,12 @@
   "common": {
     "save": "Save",
     "cancel": "Cancel",
+    "close": "Close",
     "loading": "Loading…",
     "retry": "Retry",
-    "somethingWentWrong": "Something went wrong"
+    "somethingWentWrong": "Something went wrong",
+    "copy": "Copy",
+    "copied": "Copied"
   },
   "auth": {
     "signIn": "Sign in",
@@ -34,5 +37,17 @@
   "notFound": {
     "title": "Page not found",
     "backHome": "Back to dashboard"
+  },
+  "actions": {
+    "showAll": "Show all ({{count}})",
+    "collapse": "Collapse"
+  },
+  "picker": {
+    "searchPlaceholder": "Start typing or pick below…",
+    "create": "Add “{{label}}”"
+  },
+  "lang": {
+    "label": "Language",
+    "en": "EN"
   }
 }

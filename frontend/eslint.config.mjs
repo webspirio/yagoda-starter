@@ -96,13 +96,14 @@ export default tseslint.config(
     },
   },
   {
-    // A raw `<input>` silently drops the 16px floor that keeps iOS Safari/the
-    // Telegram WebView from auto-zooming the viewport on focus — five of them
-    // shipped at `text-sm` (14px) before this rule existed. `shared/ui` is
-    // exempt: that's where the primitives (and their tests) legitimately render
-    // the element. File pickers are the one honest exception outside it — they
-    // are `sr-only` and never focused for typing, so they disable this line with
-    // a reason rather than route through `TextInput`.
+    // A raw `<input>` silently drops the 16px floor that keeps mobile browsers
+    // (iOS Safari and other WebViews) from auto-zooming the viewport on focus
+    // — five of them shipped at `text-sm` (14px) before this rule existed.
+    // `shared/ui` is exempt: that's where the primitives (and their tests)
+    // legitimately render the element. File pickers are the one honest
+    // exception outside it — they are `sr-only` and never focused for typing,
+    // so they disable this line with a reason rather than route through
+    // `TextInput`.
     files: ['src/entities/**/*.tsx', 'src/features/**/*.tsx', 'src/pages/**/*.tsx'],
     rules: {
       'no-restricted-syntax': [
