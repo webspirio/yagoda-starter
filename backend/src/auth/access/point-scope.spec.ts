@@ -44,4 +44,20 @@ describe('resolvePointFilter', () => {
     expect(resolvePointFilter(owner, 'point-b')).toBe('point-b');
     expect(resolvePointFilter(owner, undefined)).toBeUndefined();
   });
+
+  // Fails CLOSED, symmetrically with assertOwnsPoint, which throws on this
+  // same actor. Returning undefined here would mean "every point" — the one
+  // answer a scope-less operator must never get.
+  it('refuses an operator with no point rather than scoping them to everything', () => {
+    const unassigned: AuthenticatedUser = {
+      sub: 'u-none',
+      username: 'nowhere',
+      role: UserRole.PointOperator,
+      collection_point_id: null,
+    };
+
+    expect(() => resolvePointFilter(unassigned, undefined)).toThrow(ForbiddenException);
+    expect(() => resolvePointFilter(unassigned, 'point-b')).toThrow(ForbiddenException);
+    expect(() => assertOwnsPoint(unassigned, 'point-a')).toThrow(ForbiddenException);
+  });
 });

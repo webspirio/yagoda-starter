@@ -31,11 +31,24 @@ export function assertOwnsPoint(actor: AuthenticatedUser, pointId: string): void
  * than rejected — there is nothing meaningful to report, because the parameter
  * can neither widen nor redirect their scope. An owner gets what they asked
  * for, or `undefined` meaning "every point".
+ *
+ * A non-owner with no point THROWS rather than returning `undefined`, and the
+ * difference is the whole safety of this function: `undefined` is its encoding
+ * for "every point", so falling back to it would hand a scope-less operator
+ * the entire network — failing open on exactly the input `assertOwnsPoint`
+ * fails closed on. CHK_users_role_point should make that state unreachable;
+ * this is what happens if it ever is not.
  */
 export function resolvePointFilter(
   actor: AuthenticatedUser,
   requested?: string,
 ): string | undefined {
   if (actor.role === UserRole.NetworkOwner) return requested;
-  return actor.collection_point_id ?? undefined;
+  if (!actor.collection_point_id) {
+    throw new ForbiddenException({
+      message: 'No collection point assigned',
+      code: 'NO_COLLECTION_POINT',
+    });
+  }
+  return actor.collection_point_id;
 }
