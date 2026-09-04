@@ -3,10 +3,20 @@ import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { createMemoryRouter, RouterProvider } from 'react-router';
 import MockAdapter from 'axios-mock-adapter';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { httpClient } from '@/shared/api';
 import { useSession } from '@/entities/user';
+import { useThemePreference } from '@/shared/lib/theme';
 import { AppLayout } from './AppLayout';
+
+function mockMatchMedia(matches: boolean) {
+  vi.stubGlobal('matchMedia', (query: string) => ({
+    matches,
+    media: query,
+    addEventListener: () => {},
+    removeEventListener: () => {},
+  }));
+}
 
 function renderLayout(initial = '/') {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -34,10 +44,16 @@ describe('AppLayout', () => {
 
   beforeEach(() => {
     useSession.setState({ token: null });
+    useThemePreference.setState({ preference: 'system' });
+    document.documentElement.classList.remove('dark');
+    mockMatchMedia(false);
     mock = new MockAdapter(httpClient);
   });
 
-  afterEach(() => mock.restore());
+  afterEach(() => {
+    mock.restore();
+    vi.unstubAllGlobals();
+  });
 
   it('renders the routed page inside the shell', async () => {
     useSession.setState({ token: 'tok' });
@@ -71,5 +87,13 @@ describe('AppLayout', () => {
     renderLayout('/');
     await userEvent.click(await screen.findByRole('button', { name: /sign out/i }));
     expect(useSession.getState().token).toBeNull();
+  });
+
+  it('applies the dark class to <html> when the OS prefers dark and no explicit preference is set', async () => {
+    mockMatchMedia(true);
+    useSession.setState({ token: 'tok' });
+    renderLayout('/');
+    await screen.findByText('dashboard body');
+    expect(document.documentElement.classList.contains('dark')).toBe(true);
   });
 });

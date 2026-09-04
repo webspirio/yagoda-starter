@@ -26,9 +26,12 @@ export function RegisterForm() {
     },
   });
 
+  // Branch on the machine-readable `code` first; the status is only a
+  // fallback for a body that (for whatever reason) didn't carry one.
   const message =
     mutation.error instanceof ApiError
-      ? mutation.error.status === 409
+      ? (mutation.error.code ?? (mutation.error.status === 409 ? 'USERNAME_TAKEN' : null)) ===
+        'USERNAME_TAKEN'
         ? t('auth.usernameTaken')
         : mutation.error.message
       : null;

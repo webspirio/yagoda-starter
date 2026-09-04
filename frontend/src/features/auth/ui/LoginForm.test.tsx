@@ -62,6 +62,17 @@ describe('LoginForm', () => {
     expect(useSession.getState().token).toBeNull();
   });
 
+  it('branches on the machine-readable code rather than the message', async () => {
+    mock.onPost('/auth/login').reply(401, { message: 'nope', code: 'INVALID_CREDENTIALS' });
+    renderForm();
+
+    await userEvent.type(screen.getByLabelText(/username/i), 'alice');
+    await userEvent.type(screen.getByLabelText(/password/i), 'wrongpass');
+    await userEvent.click(screen.getByRole('button', { name: /sign in/i }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/invalid username or password/i);
+  });
+
   it('does not submit an empty form', async () => {
     renderForm();
     await userEvent.click(screen.getByRole('button', { name: /sign in/i }));

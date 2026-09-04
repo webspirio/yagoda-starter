@@ -26,9 +26,12 @@ export function LoginForm() {
     },
   });
 
+  // Branch on the machine-readable `code` first; the status is only a
+  // fallback for a body that (for whatever reason) didn't carry one.
   const message =
     mutation.error instanceof ApiError
-      ? mutation.error.status === 401
+      ? (mutation.error.code ?? (mutation.error.status === 401 ? 'INVALID_CREDENTIALS' : null)) ===
+        'INVALID_CREDENTIALS'
         ? t('auth.invalidCredentials')
         : mutation.error.message
       : null;

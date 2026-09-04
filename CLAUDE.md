@@ -53,7 +53,7 @@ npm run build
 ## Architecture
 
 - **API:** frontend → nginx `location /api/` (prefix stripped via `proxy_pass` trailing slash) → backend on port 3000. In dev the frontend calls the backend directly (`VITE_API_URL`); there is no Nest global prefix.
-- **Auth:** username + password. The backend verifies credentials and issues a JWT (HS256, 7 days) that the frontend keeps in `localStorage`. No refresh token, no roles — `@Auth()` means "any authenticated user".
+- **Auth:** username + password. The backend verifies credentials and issues a JWT (HS256, 7 days) that the frontend keeps in `localStorage`. No refresh token, no roles — `@Auth()` means "any authenticated user". No token revocation: `users.is_active` and account deletion both only block new logins — `JwtStrategy.validate()` never queries the database, so a token already issued keeps working until it expires. Revoking a live token means checking the user in `JwtStrategy.validate()`, at the cost of a database query per authenticated request.
 - **Identity seam:** `user_identities(provider, provider_user_id)` is the single login lookup path. This starter writes `provider = 'local'`; adding an OAuth provider means writing a different value, with no schema change.
 - **Data:** PostgreSQL via TypeORM — `synchronize: false`, migrations run automatically on startup.
 - **Redis:** rate-limit counters only; no durable state.

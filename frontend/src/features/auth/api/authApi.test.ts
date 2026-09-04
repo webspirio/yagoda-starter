@@ -47,4 +47,12 @@ describe('authApi', () => {
     mock.onPost('/auth/logout').reply(204);
     await expect(logout()).resolves.toBeUndefined();
   });
+
+  it('sends an explicit Authorization header when passed a token, rather than relying on the session store', async () => {
+    mock.onPost('/auth/logout').reply((config) => {
+      expect(config.headers?.Authorization).toBe('Bearer outgoing.tok');
+      return [204];
+    });
+    await expect(logout('outgoing.tok')).resolves.toBeUndefined();
+  });
 });

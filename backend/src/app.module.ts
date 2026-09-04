@@ -5,7 +5,6 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { ScheduleModule } from '@nestjs/schedule';
 import { ThrottlerStorageRedisService } from '@nest-lab/throttler-storage-redis';
-import { EventEmitterModule } from '@nestjs/event-emitter';
 import { LoggerModule } from 'nestjs-pino';
 import { randomUUID } from 'crypto';
 import * as Joi from 'joi';
@@ -106,7 +105,6 @@ import { uploadsConfig } from './config/uploads.config';
     // with >1 replica every instance fires each tick, and only a DB-side
     // conditional UPDATE keeps such a job exactly-once (see guarded-tick.ts).
     ScheduleModule.forRoot(),
-    EventEmitterModule.forRoot(),
     RedisModule,
     HealthModule,
     TimeModule,

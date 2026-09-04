@@ -11,12 +11,13 @@ import { User } from '../users/user.entity';
 
 /**
  * Audited actions. A TS string union stored as varchar — adding an action must
- * never require a DB migration. These four are the starter's own; a consuming
+ * never require a DB migration. These five are the starter's own; a consuming
  * project extends the union with its domain actions.
  */
 export const AUDIT_ACTIONS = [
   'user.registered',
   'user.logged-in',
+  'user.logged-out',
   'user.updated',
   'user.avatar-changed',
 ] as const;

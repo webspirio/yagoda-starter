@@ -5,6 +5,7 @@ import { Menu, X } from 'lucide-react';
 import { cn } from '@/shared/lib/cn';
 import { useSession } from '@/entities/user';
 import { logout } from '@/features/auth';
+import { useAppTheme } from '@/shared/lib/theme';
 import { Button } from '@/shared/ui/button';
 import { Toaster } from '@/shared/ui/sonner';
 
@@ -28,6 +29,11 @@ export function AppLayout() {
   const setToken = useSession((s) => s.setToken);
   const [menuOpen, setMenuOpen] = useState(false);
 
+  // Owns the `.dark` class on <html> for the lifetime of the app — called
+  // unconditionally here, above the chromeless early return, so a user who
+  // lands on /login or /register still gets the right theme.
+  useAppTheme();
+
   const bare = CHROMELESS.includes(location.pathname) || token === null;
 
   if (bare) {
@@ -40,10 +46,15 @@ export function AppLayout() {
   }
 
   const signOut = () => {
-    // Clear locally first: the network call is a courtesy the backend logs,
-    // and a failing request must never leave the user stuck signed in.
+    // Capture the outgoing token before clearing it: `/auth/logout` requires
+    // one (it records an audit entry), and the request's own interceptor
+    // would otherwise read the session store AFTER it's already cleared
+    // below. Clearing locally still happens synchronously and unconditionally
+    // — the network call is a courtesy the backend logs, and a failing
+    // request must never leave the user stuck signed in.
+    const outgoingToken = token;
     setToken(null);
-    void logout().catch(() => undefined);
+    void logout(outgoingToken).catch(() => undefined);
   };
 
   return (

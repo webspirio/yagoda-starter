@@ -13,7 +13,12 @@ adds exactly what it needs, rather than ripping out what it doesn't:
 - **No authorization / roles.** Every authenticated user is equal — `@Auth()`
   takes zero arguments. See "What to change first" below for how to add roles.
 - **No refresh token.** One JWT, 7-day expiry, held in `localStorage`. When it
-  expires or is invalidated, the user signs in again.
+  expires, the user signs in again.
+- **No token revocation.** `users.is_active` blocks new logins only —
+  flipping it false does not invalidate a token already issued, since
+  `JwtStrategy` never re-checks the database. An existing token keeps
+  authenticating until it expires. Deleting a user has the same limit; see
+  `scripts/reset-data.sh` for the operational consequences.
 - **No email.** Registration takes a username and password; the username is
   never validated as an email address, and the app never sends mail.
 - **No CD pipeline.** CI (build, lint, test) runs on every push and PR; there

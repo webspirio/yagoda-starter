@@ -48,40 +48,16 @@ export const openTestDataSource = async (): Promise<DataSource> => {
     // creates schema — `synchronize: false` stands, so `runMigrations()` below
     // remains the only DDL path.
     entities: [join(__dirname, '../**/*.entity{.ts,.js}')],
-    migrations: [join(__dirname, '../migrations/*{.ts,.js}')],
+    // Numeric-prefixed only — the third site of this restriction, alongside
+    // app.module.ts's runtime TypeORM config and data-source.ts's CLI data
+    // source. A bare `*{.ts,.js}` here also matches this very directory's
+    // sibling specs (e.g. `migrations/schema.db-spec.ts`), which TypeORM
+    // would then try to `require()` and run as a migration.
+    migrations: [join(__dirname, '../migrations/[0-9]*{.ts,.js}')],
     migrationsTableName: 'migrations',
     synchronize: false,
   });
   await ds.initialize();
   await ds.runMigrations();
   return ds;
-};
-
-/** `users` has a default for every NOT NULL column, so an id is the whole row. */
-export const insertTestUser = async (ds: DataSource, id: string): Promise<void> => {
-  await ds.query(`INSERT INTO "users" ("id") VALUES ($1) ON CONFLICT ("id") DO NOTHING`, [id]);
-};
-
-/**
- * Re-apply one-shot data migrations, in the order given, against an open source.
- *
- * Sibling suites in this serial run may TRUNCATE the very tables a migration
- * populates, so whether a seeded row survives to a given suite is a question
- * of jest's file ordering, not of the migration itself.
- *
- * A spec that asserts on seeded data should call this in `beforeAll` rather
- * than depend on that ordering. It is safe because every migration named here
- * is idempotent — the property each of those specs also asserts directly.
- */
-export const applyMigrations = async (ds: DataSource, names: string[]): Promise<void> => {
-  for (const name of names) {
-    const migration = ds.migrations.find((m) => m.name === name);
-    if (!migration) throw new Error(`applyMigrations: no migration named ${name}`);
-    const runner = ds.createQueryRunner();
-    try {
-      await migration.up(runner);
-    } finally {
-      await runner.release();
-    }
-  }
 };

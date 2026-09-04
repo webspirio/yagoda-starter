@@ -55,60 +55,26 @@ export class TimeService {
   }
 
   /**
-   * DST-correct "fire `lead` before `eventStart`", returning the instant a
+   * DST-correct "fire `lead` before `startAt`", returning the instant a
    * scheduler would store as the trigger timestamp for a delayed action.
    *
    * `lead` is a Luxon duration, applied with the semantics that fit its unit —
    * which is exactly what you want on either side of a DST change:
    *   - calendar units ({days}, {weeks}, {months}) are wall-clock-preserving, so
-   *     "1 day before" a 10:00 event stays at 10:00 local and spans 23h/25h of
-   *     real time across a boundary rather than a naive fixed 24h;
+   *     "1 day before" a 10:00 instant stays at 10:00 local and spans 23h/25h
+   *     of real time across a boundary rather than a naive fixed 24h;
    *   - exact units ({hours}, {minutes}) are fixed elapsed time, so "2h before"
    *     is always 2 real hours — its local wall-clock shifts by an hour when a
    *     transition falls between (a 2h lead before 04:00 CEST lands at 01:00 CET).
    * Choose the unit that matches the intent (a "day before" vs. a "2 hours before"
-   * reminder).
+   * trigger).
    */
-  reminderInstant(eventStart: Date, lead: DurationLike): Date {
-    return this.fromJSDate(eventStart).minus(lead).toJSDate();
+  reminderInstant(startAt: Date, lead: DurationLike): Date {
+    return this.fromJSDate(startAt).minus(lead).toJSDate();
   }
 
   /** DST-correct wall-clock addition of a duration in the app zone. */
   addInZone(instant: Date, duration: DurationLike): Date {
     return this.fromJSDate(instant).plus(duration).toJSDate();
-  }
-
-  /**
-   * Half-open calendar range `[start, endExclusive)` containing `at`, in the app
-   * zone — the single source of month/quarter/year boundaries for any
-   * reporting or analytics feature built on this starter. It lives on
-   * TimeService rather than being reimplemented per feature so that no module
-   * sprinkles a `startOf('quarter')` of its own and drifts off the canonical
-   * zone.
-   *
-   * HALF-OPEN on purpose. The REJECTED shape was the obvious
-   * `{ start: startOf(unit), end: endOf(unit) }` behind a `BETWEEN` / `<=`
-   * bound: luxon's `endOf()` returns `…T23:59:59.999`, while a `TIMESTAMPTZ`
-   * column this bounds keeps MICROSECONDS, so every instant inside the
-   * period's final millisecond (`…23:59:59.999123`) sits above a `<=` bound
-   * and is SILENTLY dropped from its own period — no error, just a row
-   * missing from one bucket and present in neither. A `< endExclusive` bound
-   * cannot lose a row, and consecutive ranges tile the timeline with no gap
-   * and no overlap, which is what lets a period-based aggregation partition
-   * history by construction.
-   *
-   * `at` is re-zoned before `startOf` because a period boundary is a WALL-CLOCK
-   * fact, not a UTC one: 2026-01-01T00:00 Berlin is 2025-12-31T23:00Z, so a
-   * caller handing in a `utc`-zoned `DateTime` (or host-local math) buckets New
-   * Year's midnight into the wrong year. DST is left entirely to luxon's zone
-   * arithmetic — never a fixed hour count — because the ranges are genuinely
-   * uneven: March 2026 spans 743h, October 2026 745h, Q1 2026 2159h.
-   */
-  calendarRange(
-    at: DateTime,
-    unit: 'month' | 'quarter' | 'year',
-  ): { start: DateTime; endExclusive: DateTime } {
-    const start = at.setZone(this.zone).startOf(unit);
-    return { start, endExclusive: start.plus({ [unit]: 1 }) };
   }
 }

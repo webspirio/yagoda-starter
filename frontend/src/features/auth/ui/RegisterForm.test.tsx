@@ -63,6 +63,17 @@ describe('RegisterForm', () => {
     expect(useSession.getState().token).toBeNull();
   });
 
+  it('branches on the machine-readable code rather than the message', async () => {
+    mock.onPost('/auth/register').reply(409, { message: 'nope', code: 'USERNAME_TAKEN' });
+    renderForm();
+
+    await userEvent.type(screen.getByLabelText(/username/i), 'alice');
+    await userEvent.type(screen.getByLabelText(/password/i), 'hunter2!!');
+    await userEvent.click(screen.getByRole('button', { name: /create account/i }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/that username is taken/i);
+  });
+
   it('does not submit an empty form', async () => {
     renderForm();
     await userEvent.click(screen.getByRole('button', { name: /create account/i }));

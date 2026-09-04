@@ -60,12 +60,17 @@ describe('AuthService', () => {
       expect(credentials.set).toHaveBeenCalledWith('u1', 'hunter2!!', 'MANAGER');
     });
 
-    it('rejects a username that is already taken', async () => {
+    it('rejects a username that is already taken, with a machine-readable code', async () => {
       users.findByIdentity.mockResolvedValue({ user: { id: 'u1' } });
 
-      await expect(
-        service.register({ username: 'alice', password: 'hunter2!!' }),
-      ).rejects.toBeInstanceOf(ConflictException);
+      const error = await service
+        .register({ username: 'alice', password: 'hunter2!!' })
+        .catch((e: unknown) => e);
+
+      expect(error).toBeInstanceOf(ConflictException);
+      expect((error as ConflictException).getResponse()).toMatchObject({
+        code: 'USERNAME_TAKEN',
+      });
       expect(users.createWithIdentity).not.toHaveBeenCalled();
     });
   });
@@ -114,6 +119,7 @@ describe('AuthService', () => {
       expect(unknown).toBeInstanceOf(UnauthorizedException);
       expect(wrong).toBeInstanceOf(UnauthorizedException);
       expect(unknown.message).toBe(wrong.message);
+      expect(unknown.getResponse()).toMatchObject({ code: 'INVALID_CREDENTIALS' });
     });
 
     it('rejects a deactivated account', async () => {
@@ -139,6 +145,24 @@ describe('AuthService', () => {
 
       expect(audit.record).toHaveBeenCalledWith({
         action: 'user.logged-in',
+        actor_id: 'u1',
+        target_type: 'user',
+        target_id: 'u1',
+      });
+    });
+  });
+
+  describe('logout', () => {
+    it('records the sign-out in the audit log', async () => {
+      await service.logout({
+        sub: 'u1',
+        username: 'alice',
+        display_name: 'Alice',
+        avatar_url: null,
+      });
+
+      expect(audit.record).toHaveBeenCalledWith({
+        action: 'user.logged-out',
         actor_id: 'u1',
         target_type: 'user',
         target_id: 'u1',

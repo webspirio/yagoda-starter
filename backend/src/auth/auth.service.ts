@@ -36,7 +36,10 @@ export class AuthService {
     // loser gets a 500 rather than a silent duplicate. Acceptable for a
     // starter; a consuming project can catch 23505 here.
     if (await this.users.findByIdentity(LOCAL_PROVIDER, username)) {
-      throw new ConflictException('That username is taken');
+      // `code` is the seam client.ts documents (ApiError.code): a
+      // machine-readable value a frontend can branch on without parsing the
+      // human-readable `message`.
+      throw new ConflictException({ message: 'That username is taken', code: 'USERNAME_TAKEN' });
     }
 
     const { user } = await this.users.createWithIdentity(
@@ -83,8 +86,25 @@ export class AuthService {
     return { access_token: this.signToken(identity.user, identity.provider_user_id) };
   }
 
+  /**
+   * The token is stateless, so there is nothing server-side to revoke — this
+   * exists for symmetry with register/login and so the sign-out moment shows
+   * up in the audit log.
+   */
+  async logout(actor: AuthenticatedUser): Promise<void> {
+    await this.audit.record({
+      action: 'user.logged-out',
+      actor_id: actor.sub,
+      target_type: 'user',
+      target_id: actor.sub,
+    });
+  }
+
   private deny(): UnauthorizedException {
-    return new UnauthorizedException('Invalid username or password');
+    return new UnauthorizedException({
+      message: 'Invalid username or password',
+      code: 'INVALID_CREDENTIALS',
+    });
   }
 
   private signToken(user: User, username: string): string {

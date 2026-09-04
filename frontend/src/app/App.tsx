@@ -1,15 +1,28 @@
-import { QueryClientProvider } from '@tanstack/react-query';
+import '@fontsource-variable/geist';
+import '@fontsource-variable/geist-mono';
+import { useMemo } from 'react';
+import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
 import { RouterProvider } from 'react-router';
 import { ErrorBoundary } from './providers';
-import { queryClient } from '@/shared/api/queryClient';
+import { queryClient, buildPersistOptions } from '@/shared/api';
+import { useSession } from '@/entities/user';
 import { router } from './router';
 
 export function App() {
+  const token = useSession((s) => s.token);
+  // There is no synchronously-known user id at bootstrap — the `me` query
+  // that would supply one is itself the thing being restored from the
+  // persisted cache, so it can't gate the buster used to restore it. The
+  // token is available synchronously (mirrored into localStorage by the
+  // session store) and changes on every sign-in/out, so it is scope enough
+  // to stop one account's cache from rehydrating under another.
+  const persistOptions = useMemo(() => buildPersistOptions(token ?? 'anon'), [token]);
+
   return (
     <ErrorBoundary>
-      <QueryClientProvider client={queryClient}>
+      <PersistQueryClientProvider client={queryClient} persistOptions={persistOptions}>
         <RouterProvider router={router} />
-      </QueryClientProvider>
+      </PersistQueryClientProvider>
     </ErrorBoundary>
   );
 }

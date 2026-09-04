@@ -22,7 +22,15 @@ export class User {
   @Column({ type: 'varchar', nullable: true })
   language_code: string | null;
 
-  /** Login gate. Register sets this true; flip it false to lock an account out. */
+  /**
+   * Checked only on the login path (AuthService.login). Register sets this
+   * true; flipping it false blocks NEW logins only — it does nothing to a
+   * token already issued. JwtStrategy.validate() never queries the database,
+   * so an existing token keeps authenticating until it expires (up to
+   * JWT_EXPIRES_IN). There is no token revocation in this starter; adding
+   * one means checking the user in JwtStrategy.validate() at the cost of a
+   * database query on every authenticated request.
+   */
   @Column({ type: 'bool', nullable: false, default: true })
   is_active: boolean;
 

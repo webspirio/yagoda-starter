@@ -3,6 +3,9 @@ import { Throttle } from '@nestjs/throttler';
 import { AuthService } from './auth.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
+import { Auth } from './decorators/auth.decorators';
+import { CurrentUser } from './decorators/current-user.decorator';
+import type { AuthenticatedUser } from './jwt.strategy';
 
 /**
  * Both endpoints are far more attractive to a brute-forcer than the rest of
@@ -27,11 +30,16 @@ export class AuthController {
 
   /**
    * The token is a stateless JWT with no server-side session to destroy, so
-   * logging out is entirely a client-side discard. The endpoint exists so the
-   * frontend has one obvious thing to call, and so a consuming project that
-   * adds token revocation has the seam already wired.
+   * logging out is still entirely a client-side discard — this endpoint
+   * cannot revoke the token itself (see `users.is_active`'s doc comment and
+   * the README's "no token revocation" note for why). It exists for
+   * symmetry with register/login and to put the sign-out moment in the audit
+   * log, which is why it requires a valid token rather than being a no-op.
    */
   @Post('logout')
+  @Auth()
   @HttpCode(HttpStatus.NO_CONTENT)
-  logout(): void {}
+  logout(@CurrentUser() actor: AuthenticatedUser): Promise<void> {
+    return this.auth.logout(actor);
+  }
 }

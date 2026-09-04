@@ -83,7 +83,11 @@ export class UsersService {
     return this.findById(id);
   }
 
-  /** Admin-style lockout toggle. Idempotent. */
+  /**
+   * Idempotent. Blocks new logins only (see AuthService.login) — a token
+   * issued before this call remains valid until it expires, since
+   * JwtStrategy never re-checks the database. Not a real-time lockout.
+   */
   async setActive(id: string, isActive: boolean): Promise<void> {
     const result = await this.userRepo.update(id, { is_active: isActive });
     if (result.affected === 0) throw new NotFoundException('User not found');

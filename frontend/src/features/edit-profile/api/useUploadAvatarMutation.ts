@@ -4,11 +4,10 @@ import { queryKeys } from '@/shared/api/queryKeys';
 import type { Me } from '@/entities/user';
 
 /**
- * Not built on `shared/lib/upload/useImageUpload` — that hook is typed for
- * endpoints returning `{ id?, url }`, but `POST /me/avatar` returns the whole
- * updated `Me`, which is what needs to land in the `/me` query cache. The
- * response shapes don't match, so this mutation talks to `httpClient`
- * directly instead of forcing a cast through `useImageUpload`.
+ * `POST /me/avatar` returns the whole updated `Me`, which is what needs to
+ * land in the `/me` query cache — so this mutation talks to `httpClient`
+ * directly rather than through a generic upload helper typed for a narrower
+ * `{ id?, url }` response shape.
  */
 export function useUploadAvatarMutation() {
   const queryClient = useQueryClient();
