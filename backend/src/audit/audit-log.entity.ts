@@ -15,6 +15,8 @@ import { User } from '../users/user.entity';
  * project extends the union with its domain actions.
  */
 export const AUDIT_ACTIONS = [
+  // Historical: no writer since public registration was removed. Kept in the
+  // union so rows written before that still type-check when read back.
   'user.registered',
   'user.logged-in',
   'user.logged-out',

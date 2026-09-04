@@ -11,16 +11,12 @@
   },
   "auth": {
     "signIn": "Sign in",
-    "signUp": "Create account",
     "signOut": "Sign out",
     "username": "Username",
     "password": "Password",
     "usernameHint": "Any unique name — an email address works too",
     "passwordHint": "At least 8 characters",
-    "invalidCredentials": "Invalid username or password",
-    "usernameTaken": "That username is taken",
-    "noAccount": "Don't have an account?",
-    "haveAccount": "Already have an account?"
+    "invalidCredentials": "Invalid username or password"
   },
   "nav": {
     "dashboard": "Dashboard",

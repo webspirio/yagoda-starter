@@ -19,6 +19,9 @@ import { Reflector } from '@nestjs/core';
 // import ORDER, which TypeScript does preserve.
 import { resolveTestDatabaseName } from './db-harness';
 import { AppModule } from '../app.module';
+import { UsersService } from '../users/users.service';
+import { CredentialsService } from '../users/credentials.service';
+import { LOCAL_PROVIDER } from '../users/user-identity.entity';
 
 /**
  * The one HTTP-layer test (design review item I3): drives the real Nest
@@ -78,11 +81,15 @@ describe('auth + me pipeline (HTTP)', () => {
     const username = `pipeline-${randomUUID()}`;
     const password = 'hunter2!!';
 
-    const registerRes = await request(app.getHttpServer())
-      .post('/auth/register')
-      .send({ username, password })
-      .expect(201);
-    expect(registerRes.body).toEqual({ access_token: expect.any(String) });
+    // Registration no longer exists as an endpoint, so the fixture user is
+    // created through the same domain services `POST /users` uses. This is
+    // still an end-to-end token: it is minted by the real /auth/login below.
+    const users = app.get(UsersService);
+    const credentials = app.get(CredentialsService);
+    await users.createWithIdentity(
+      { provider: LOCAL_PROVIDER, providerUserId: username, display_name: username },
+      async (created, manager) => credentials.set(created.id, password, manager),
+    );
 
     const loginRes = await request(app.getHttpServer())
       .post('/auth/login')

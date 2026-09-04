@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate, useLocation, Link } from 'react-router';
+import { useNavigate, useLocation } from 'react-router';
 import { useMutation } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { ApiError } from '@/shared/api';
@@ -82,10 +82,6 @@ export function LoginForm() {
       <Button type="submit" disabled={mutation.isPending}>
         {t('auth.signIn')}
       </Button>
-
-      <p className="text-center text-sm text-muted-foreground">
-        {t('auth.noAccount')} <Link to="/register" className="underline">{t('auth.signUp')}</Link>
-      </p>
     </form>
   );
 }

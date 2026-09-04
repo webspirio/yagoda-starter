@@ -28,11 +28,6 @@ describe('router', () => {
     expect(await screen.findByRole('heading', { name: /sign in/i })).toBeInTheDocument();
   });
 
-  it('serves /register without a token', async () => {
-    renderAt('/register');
-    expect(await screen.findByRole('heading', { name: /create account/i })).toBeInTheDocument();
-  });
-
   it('renders the dashboard for an authenticated visitor', async () => {
     useSession.setState({ token: 'tok' });
     renderAt('/');

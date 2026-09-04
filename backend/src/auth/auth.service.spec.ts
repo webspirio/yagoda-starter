@@ -1,14 +1,12 @@
 import { Test } from '@nestjs/testing';
 import { JwtService } from '@nestjs/jwt';
-import { ConflictException, UnauthorizedException } from '@nestjs/common';
+import { UnauthorizedException } from '@nestjs/common';
 import { validate } from 'class-validator';
 import { AuthService, normalizeUsername } from './auth.service';
 import { UsersService } from '../users/users.service';
 import { CredentialsService } from '../users/credentials.service';
 import { AuditService } from '../audit/audit.service';
-import { LOCAL_PROVIDER } from '../users/user-identity.entity';
 import { authConfig } from '../config/auth.config';
-import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 
 describe('AuthService', () => {
@@ -37,41 +35,6 @@ describe('AuthService', () => {
     it('lowercases and trims so usernames cannot collide by case alone', () => {
       expect(normalizeUsername('  Alice  ')).toBe('alice');
       expect(normalizeUsername('ALICE')).toBe('alice');
-    });
-  });
-
-  describe('register', () => {
-    it('creates the user, stores credentials in the same transaction, and returns a token', async () => {
-      users.findByIdentity.mockResolvedValue(null);
-      users.createWithIdentity.mockImplementation(async (_input, onCreated) => {
-        const user = { id: 'u1', display_name: 'Alice', avatar_url: null };
-        if (onCreated) await onCreated(user, 'MANAGER');
-        return { user, identity: { provider_user_id: 'alice' } };
-      });
-
-      await expect(service.register({ username: 'Alice', password: 'hunter2!!' })).resolves.toEqual(
-        { access_token: 'signed.jwt.token' },
-      );
-
-      expect(users.createWithIdentity).toHaveBeenCalledWith(
-        expect.objectContaining({ provider: LOCAL_PROVIDER, providerUserId: 'alice' }),
-        expect.any(Function),
-      );
-      expect(credentials.set).toHaveBeenCalledWith('u1', 'hunter2!!', 'MANAGER');
-    });
-
-    it('rejects a username that is already taken, with a machine-readable code', async () => {
-      users.findByIdentity.mockResolvedValue({ user: { id: 'u1' } });
-
-      const error = await service
-        .register({ username: 'alice', password: 'hunter2!!' })
-        .catch((e: unknown) => e);
-
-      expect(error).toBeInstanceOf(ConflictException);
-      expect((error as ConflictException).getResponse()).toMatchObject({
-        code: 'USERNAME_TAKEN',
-      });
-      expect(users.createWithIdentity).not.toHaveBeenCalled();
     });
   });
 
@@ -179,12 +142,6 @@ describe('AuthService', () => {
   // admin/admin account — see the report.
   describe('password length policy', () => {
     const shortPassword = 'admin'; // exactly what the dev seed uses
-
-    it('rejects a short password on RegisterDto', async () => {
-      const dto = Object.assign(new RegisterDto(), { username: 'admin', password: shortPassword });
-      const errors = await validate(dto);
-      expect(errors.some((e) => e.property === 'password')).toBe(true);
-    });
 
     it('accepts the same short password on LoginDto', async () => {
       const dto = Object.assign(new LoginDto(), { username: 'admin', password: shortPassword });

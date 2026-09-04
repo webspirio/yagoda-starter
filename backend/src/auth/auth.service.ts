@@ -1,11 +1,10 @@
-import { ConflictException, Injectable, UnauthorizedException } from '@nestjs/common';
+import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { UsersService } from '../users/users.service';
 import { CredentialsService } from '../users/credentials.service';
 import { AuditService } from '../audit/audit.service';
 import { LOCAL_PROVIDER } from '../users/user-identity.entity';
 import { User } from '../users/user.entity';
-import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import type { AuthenticatedUser } from './jwt.strategy';
 
@@ -19,6 +18,14 @@ export function normalizeUsername(raw: string): string {
   return raw.trim().toLowerCase();
 }
 
+/**
+ * There is no `register` here on purpose. Accounts are created by a
+ * network_owner through `POST /users` (see `user-admin/`), because a
+ * self-registered account would need a `role` and a `collection_point_id`
+ * and there is no safe default for either: `point_operator` with no point
+ * violates the users role↔point CHECK constraint, and any point assignment
+ * hands a stranger that point's data.
+ */
 @Injectable()
 export class AuthService {
   constructor(
@@ -27,44 +34,6 @@ export class AuthService {
     private readonly audit: AuditService,
     private readonly jwt: JwtService,
   ) {}
-
-  async register(dto: RegisterDto): Promise<{ access_token: string }> {
-    const username = normalizeUsername(dto.username);
-
-    // A pre-check for a friendly 409. The UNIQUE index is still the real
-    // guarantee — two simultaneous registrations both pass this check, and the
-    // loser gets a 500 rather than a silent duplicate. Acceptable for a
-    // starter; a consuming project can catch 23505 here.
-    if (await this.users.findByIdentity(LOCAL_PROVIDER, username)) {
-      // `code` is the seam client.ts documents (ApiError.code): a
-      // machine-readable value a frontend can branch on without parsing the
-      // human-readable `message`.
-      throw new ConflictException({ message: 'That username is taken', code: 'USERNAME_TAKEN' });
-    }
-
-    const { user } = await this.users.createWithIdentity(
-      {
-        provider: LOCAL_PROVIDER,
-        providerUserId: username,
-        display_name: dto.username.trim(),
-      },
-      // Credentials are written inside the user-creation transaction: a user
-      // row without a credential row could never log in and could never be
-      // registered again, because the username would already be taken.
-      async (created, manager) => {
-        await this.credentials.set(created.id, dto.password, manager);
-      },
-    );
-
-    await this.audit.record({
-      action: 'user.registered',
-      actor_id: user.id,
-      target_type: 'user',
-      target_id: user.id,
-    });
-
-    return { access_token: this.signToken(user, username) };
-  }
 
   async login(dto: LoginDto): Promise<{ access_token: string }> {
     const username = normalizeUsername(dto.username);

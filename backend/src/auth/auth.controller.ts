@@ -1,26 +1,21 @@
 import { Body, Controller, HttpCode, HttpStatus, Post } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { AuthService } from './auth.service';
-import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { Auth } from './decorators/auth.decorators';
 import { CurrentUser } from './decorators/current-user.decorator';
 import type { AuthenticatedUser } from './jwt.strategy';
 
 /**
- * Both endpoints are far more attractive to a brute-forcer than the rest of
- * the API, so they carry a tighter limit than the global 100/min: 10 requests
- * per minute per IP, counted in Redis so the limit holds across replicas.
+ * `login` is far more attractive to a brute-forcer than the rest of the API,
+ * so this controller carries a tighter limit than the global 100/min: 10
+ * requests per minute per IP, counted in Redis so the limit holds across
+ * replicas. `logout` inherits it harmlessly — it already requires a token.
  */
 @Controller('auth')
 @Throttle({ default: { limit: 10, ttl: 60_000 } })
 export class AuthController {
   constructor(private readonly auth: AuthService) {}
-
-  @Post('register')
-  register(@Body() dto: RegisterDto) {
-    return this.auth.register(dto);
-  }
 
   @Post('login')
   @HttpCode(HttpStatus.OK)

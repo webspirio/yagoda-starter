@@ -3,7 +3,6 @@ import { AppLayout } from './layouts/AppLayout';
 import { RouteError } from './providers/RouteError';
 import { RequireAuth } from '@/features/auth';
 import { LoginPage } from '@/pages/login';
-import { RegisterPage } from '@/pages/register';
 import { DashboardPage } from '@/pages/dashboard';
 import { ProfilePage } from '@/pages/profile';
 import { NotFoundPage } from '@/pages/not-found';
@@ -12,9 +11,9 @@ import { NotFoundPage } from '@/pages/not-found';
  * `routes` is exported separately from `router` so tests can drive the same
  * tree through `createMemoryRouter`.
  *
- * `/login` and `/register` are the only public routes. Everything else is
- * wrapped in RequireAuth individually rather than guarding the layout, so the
- * layout can render the auth screens bare (see AppLayout's CHROMELESS list).
+ * `/login` is the only public route. Everything else is wrapped in
+ * RequireAuth individually rather than guarding the layout, so the layout can
+ * render the auth screens bare (see AppLayout's CHROMELESS list).
  */
 export const routes: RouteObject[] = [
   {
@@ -22,7 +21,6 @@ export const routes: RouteObject[] = [
     errorElement: <RouteError />,
     children: [
       { path: '/login', element: <LoginPage /> },
-      { path: '/register', element: <RegisterPage /> },
       {
         path: '/',
         element: (
