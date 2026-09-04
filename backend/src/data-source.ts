@@ -25,6 +25,14 @@ export const AppDataSource = new DataSource({
   // how they drift.
   extra: { max: 20 },
   entities: [join(__dirname, '**/*.entity{.ts,.js}')],
-  migrations: [join(__dirname, 'migrations/*{.ts,.js}')],
+  // Numeric-prefixed only (the `<epoch-ms>-Name.ts` convention every migration
+  // in this repo follows) — a bare `*{.ts,.js}` here also matches
+  // `migrations/schema.db-spec.ts`, which ts-node then `require()`s as a
+  // migration module and crashes on `describe(...)` (a Jest global that
+  // doesn't exist outside Jest). The compiled runtime (`nest build` /
+  // `nest start`) never hits this: `tsconfig.build.json` excludes
+  // `**/*.db-spec.ts`, so it's simply absent from `dist/migrations`. This CLI
+  // data source has no such build step, so the glob itself has to exclude it.
+  migrations: [join(__dirname, 'migrations/[0-9]*{.ts,.js}')],
   migrationsTableName: 'migrations',
 });
