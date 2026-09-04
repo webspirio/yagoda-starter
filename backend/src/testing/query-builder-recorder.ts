@@ -65,7 +65,7 @@ export const firstArgs = (builder: RecordedBuilder, method: string): unknown[] |
 export const called = (builder: RecordedBuilder, method: string): boolean =>
   builder.some((c) => c.method === method);
 
-/** Chains whose `method` call named `target` — e.g. every `.update(Notification)`. */
+/** Chains whose `method` call named `target` — e.g. every `.update(User)`. */
 export const targeting = (
   builders: RecordedBuilder[],
   method: string,

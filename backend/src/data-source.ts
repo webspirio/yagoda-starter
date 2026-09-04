@@ -18,10 +18,11 @@ export const AppDataSource = new DataSource({
   password: db.password,
   database: db.name,
   ssl: db.ssl ? { rejectUnauthorized: false } : undefined,
-  // node-postgres defaults Pool.max to 10, shared with the bot webhook and
-  // /health/ready. Stated here as well as in app.module.ts on purpose: these
-  // are two INDEPENDENT TypeORM configurations (runtime vs CLI/migrations)
-  // and setting it in only one is how they drift.
+  // node-postgres defaults Pool.max to 10, shared across every code path in
+  // this process that queries through it (e.g. /health/ready). Stated here as
+  // well as in app.module.ts on purpose: these are two INDEPENDENT TypeORM
+  // configurations (runtime vs CLI/migrations) and setting it in only one is
+  // how they drift.
   extra: { max: 20 },
   entities: [join(__dirname, '**/*.entity{.ts,.js}')],
   migrations: [join(__dirname, 'migrations/*{.ts,.js}')],

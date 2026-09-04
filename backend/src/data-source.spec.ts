@@ -35,12 +35,13 @@ const loadAppDataSource = async (): Promise<DataSource> => {
 
 describe('AppDataSource — the CLI / migrations connection', () => {
   it('pins the connection-pool ceiling that app.module.ts sets INDEPENDENTLY', async () => {
-    // node-postgres defaults `Pool.max` to 10, shared with the bot webhook and
-    // `/health/ready`, while `/kpi/overview` alone peaks at ~3× its `history` in
-    // concurrent statements. The runtime (`app.module.ts`) and the CLI (here) are
-    // two SEPARATE TypeORM configurations, so the ceiling is written twice and
-    // nothing else notices when one of them drifts — which is the whole reason
-    // this assertion exists rather than being «obviously» covered.
+    // node-postgres defaults `Pool.max` to 10, shared across every code path
+    // in this process that queries through it — a handful of concurrent-heavy
+    // endpoints easily exhaust it. The runtime (`app.module.ts`) and the CLI
+    // (here) are two SEPARATE TypeORM configurations, so the ceiling is
+    // written twice and nothing else notices when one of them drifts — which
+    // is the whole reason this assertion exists rather than being «obviously»
+    // covered.
     const dataSource = await loadAppDataSource();
     expect(dataSource.options.extra).toEqual({ max: 20 });
   });

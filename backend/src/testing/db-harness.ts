@@ -44,7 +44,7 @@ export const openTestDataSource = async (): Promise<DataSource> => {
     database,
     // Entity metadata IS required: the services under test build statements with
     // the QueryBuilder, which resolves table and column names from metadata
-    // (`.update(Notification)` throws EntityMetadataNotFound without it). It never
+    // (`.update(User)` throws EntityMetadataNotFound without it). It never
     // creates schema — `synchronize: false` stands, so `runMigrations()` below
     // remains the only DDL path.
     entities: [join(__dirname, '../**/*.entity{.ts,.js}')],
@@ -65,11 +65,9 @@ export const insertTestUser = async (ds: DataSource, id: string): Promise<void> 
 /**
  * Re-apply one-shot data migrations, in the order given, against an open source.
  *
- * Sibling suites in this serial run truncate the tables those migrations
- * populate — `profile-search.db-spec.ts` does `TRUNCATE "profiles", "users"
- * CASCADE`, which also takes identities and registrations with it, and three
- * event suites truncate `events`. Whether a seeded row survives to a given
- * suite is therefore a question of jest's file ordering, not of the migration.
+ * Sibling suites in this serial run may TRUNCATE the very tables a migration
+ * populates, so whether a seeded row survives to a given suite is a question
+ * of jest's file ordering, not of the migration itself.
  *
  * A spec that asserts on seeded data should call this in `beforeAll` rather
  * than depend on that ordering. It is safe because every migration named here

@@ -5,10 +5,10 @@ import { timezoneConfig } from '../config/timezone.config';
 
 /**
  * The single seam for timezone-aware time in the backend. Every feature that
- * reasons about wall-clock time (events, notifications, deferred jobs) injects
- * this instead of touching `luxon` or raw `Date` arithmetic directly, so the
- * canonical zone (Europe/Berlin) and its DST rules are applied consistently
- * (GBR-4, DEC-23).
+ * reasons about wall-clock time (scheduled tasks, deferred jobs, reminders)
+ * injects this instead of touching `luxon` or raw `Date` arithmetic directly,
+ * so the canonical zone (configured via `APP_TIMEZONE`) and its DST rules are
+ * applied consistently across the app.
  *
  * Storage stays UTC (`timestamptz` → JS `Date`); this service is the read/compute
  * layer that projects those instants into the app zone and back.
@@ -56,7 +56,7 @@ export class TimeService {
 
   /**
    * DST-correct "fire `lead` before `eventStart`", returning the instant a
-   * scheduler (FND-09 / UWP-24) stores in `event_notifications.trigger_at`.
+   * scheduler would store as the trigger timestamp for a delayed action.
    *
    * `lead` is a Luxon duration, applied with the semantics that fit its unit —
    * which is exactly what you want on either side of a DST change:
@@ -80,22 +80,22 @@ export class TimeService {
 
   /**
    * Half-open calendar range `[start, endExclusive)` containing `at`, in the app
-   * zone — the single source of the month/quarter/year boundaries behind
-   * `GET /kpi/overview` and `GET /kpi/stats/*` (KPI design §3.1). It lives on
-   * TimeService rather than in `kpi/` so that no feature module sprinkles a
-   * `startOf('quarter')` of its own and drifts off the canonical zone
-   * (GBR-4, DEC-23).
+   * zone — the single source of month/quarter/year boundaries for any
+   * reporting or analytics feature built on this starter. It lives on
+   * TimeService rather than being reimplemented per feature so that no module
+   * sprinkles a `startOf('quarter')` of its own and drifts off the canonical
+   * zone.
    *
    * HALF-OPEN on purpose. The REJECTED shape was the obvious
    * `{ start: startOf(unit), end: endOf(unit) }` behind a `BETWEEN` / `<=`
-   * bound: luxon's `endOf()` returns `…T23:59:59.999`, while the columns this
-   * bounds (`events.start_at`, `TIMESTAMPTZ` — UWP-42) keep MICROSECONDS, so
-   * every instant inside the period's final millisecond (`…23:59:59.999123`)
-   * sits above a `<=` bound and is SILENTLY dropped from its own period — no
-   * error, just a row missing from one bucket and present in neither. A
-   * `< endExclusive` bound cannot lose a row, and consecutive ranges tile the
-   * timeline with no gap and no overlap, which is what lets `recentPeriods`
-   * partition history by construction.
+   * bound: luxon's `endOf()` returns `…T23:59:59.999`, while a `TIMESTAMPTZ`
+   * column this bounds keeps MICROSECONDS, so every instant inside the
+   * period's final millisecond (`…23:59:59.999123`) sits above a `<=` bound
+   * and is SILENTLY dropped from its own period — no error, just a row
+   * missing from one bucket and present in neither. A `< endExclusive` bound
+   * cannot lose a row, and consecutive ranges tile the timeline with no gap
+   * and no overlap, which is what lets a period-based aggregation partition
+   * history by construction.
    *
    * `at` is re-zoned before `startOf` because a period boundary is a WALL-CLOCK
    * fact, not a UTC one: 2026-01-01T00:00 Berlin is 2025-12-31T23:00Z, so a

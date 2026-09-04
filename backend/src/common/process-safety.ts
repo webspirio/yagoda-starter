@@ -7,8 +7,8 @@ import { messageOf } from './errors/message-of';
  * Node ≥ 22 (this backend's floor) defaults `unhandledRejection` to `throw`, so
  * without a listener any stray rejection kills the process. The case that
  * actually reaches here is a background tick rejecting on a transient DB or
- * network blip — killing the HTTP API and the bot webhook for every user to
- * recover from one bad iteration of one loop is the worse outcome. Prod runs
+ * network blip — killing the HTTP API for every user to recover from one bad
+ * iteration of one loop is the worse outcome. Prod runs
  * `restart: unless-stopped`, so exiting WOULD be recovered, but a persistent
  * fault turns that into a crash loop that serves nothing and re-runs migrations
  * on every boot.

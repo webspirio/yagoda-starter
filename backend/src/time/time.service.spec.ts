@@ -37,7 +37,7 @@ describe('TimeService', () => {
     });
   });
 
-  describe('reminderInstant — DST correctness (GBR-4)', () => {
+  describe('reminderInstant — DST correctness', () => {
     it('spans exactly 24h when no DST boundary intervenes', () => {
       // Event 2026-06-15 12:00 Berlin (CEST); reminder 1 day before, same offset.
       const eventStart = new Date('2026-06-15T10:00:00Z');
@@ -102,7 +102,7 @@ describe('TimeService', () => {
     });
   });
 
-  describe('calendarRange — half-open calendar periods (KPI design §3.1)', () => {
+  describe('calendarRange — half-open calendar periods', () => {
     describe('month', () => {
       it('starts at local midnight on the 1st and ends at local midnight on the next 1st', () => {
         const svc = berlin();
