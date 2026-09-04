@@ -1,0 +1,120 @@
+# Distinct project name: without it, running this file from the same directory
+# as the dev stack would silently reuse the dev-initialized pg_data volume
+# (and its dev credentials) for production.
+name: web-starter-prod
+
+networks:
+  app_net:
+
+volumes:
+  pg_data:
+  # Uploaded images (avatars, etc.) are written under /app/uploads and served
+  # as static assets. Without this volume they live inside the backend
+  # container and are lost on every redeploy.
+  uploads_data:
+  # AOF, not just the volume. The image's default RDB policy
+  # (save 3600 1 / 300 100 / 60 10000) may not snapshot for an hour on a
+  # low-write instance, so rate-limit counters written minutes before a
+  # restart would be lost even with /data persisted. appendfsync everysec
+  # bounds that loss to ~1s.
+  redis_data:
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    # Bind to the host LOOPBACK only (127.0.0.1), never 0.0.0.0 — Docker's
+    # published ports bypass the host firewall (UFW/iptables), so a bare
+    # "5432:5432" would expose Postgres to the public internet. Loopback-only
+    # keeps it reachable exclusively from the host itself, i.e. through an SSH
+    # tunnel: `ssh -N -L 5433:localhost:5432 user@host`, then connect to
+    # localhost:5433.
+    ports:
+      - "127.0.0.1:5432:5432"
+    environment:
+      POSTGRES_USER: ${DB_USER:-app}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME:-app}
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-app}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - app_net
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes", "--appendfsync", "everysec"]
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+    networks:
+      - app_net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    # This starter ships no CD workflow (see .github/workflows/ci.yml), so
+    # these images are not built and pushed automatically. Build and push them
+    # yourself (`docker build -f backend/Dockerfile .` / `-f nginx/Dockerfile
+    # .`) and point GHCR_REPO / IMAGE_TAG at wherever you push them, or swap
+    # this `image:` for a local `build:` block if you deploy from source.
+    image: ghcr.io/${GHCR_REPO:-webspirio/web-starter}-backend:${IMAGE_TAG:-latest}
+    environment:
+      NODE_ENV: production
+      APP_URL: ${APP_URL}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: ${DB_USER:-app}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_NAME: ${DB_NAME:-app}
+      # Proxy hops in front of the backend: host TLS terminator + nginx. Rate
+      # limiting keys on the client IP taken this many hops back in X-Forwarded-For.
+      TRUST_PROXY_HOPS: 2
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      # Pin the uploads dir to the volume's absolute mount path. Without this the
+      # backend (and any migration run) falls back to `./uploads`, which is
+      # CWD-relative — a process launched with a different working directory would
+      # silently read/write the wrong place (and its files would miss this volume).
+      UPLOADS_DIR: /app/uploads
+    volumes:
+      - uploads_data:/app/uploads
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO/dev/null http://127.0.0.1:3000/health/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - app_net
+
+  # nginx is a pure internal reverse proxy (frontend static assets + backend
+  # API) — it does NOT terminate TLS. It only binds 127.0.0.1:8080 and must
+  # sit behind a host-level reverse proxy or load balancer (e.g. Caddy,
+  # Cloudflare, an existing nginx/Apache on the host) that owns the public
+  # HTTPS listener and forwards to 127.0.0.1:8080.
+  nginx:
+    image: ghcr.io/${GHCR_REPO:-webspirio/web-starter}-nginx:${IMAGE_TAG:-latest}
+    ports:
+      - "127.0.0.1:8080:8080"
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - app_net

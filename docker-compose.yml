@@ -1,0 +1,97 @@
+# Explicit project name keeps dev volumes/networks separate from the prod stack
+# (docker-compose.prod.yml uses web-starter-prod).
+name: web-starter
+
+networks:
+  app_net:
+
+volumes:
+  pg_data:
+  # Mirrors prod's uploads volume so uploaded images survive container
+  # recreation. `down -v` resets the DB and uploads together.
+  uploads_dev:
+  redis_dev:
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: app
+      POSTGRES_DB: app
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U app"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - app_net
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes", "--appendfsync", "everysec"]
+    volumes:
+      - redis_dev:/data
+    networks:
+      - app_net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+      target: dev
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./backend/src:/app/backend/src
+      # start:dev runs node via `npm -w backend`, so its cwd is /app/backend and
+      # uploads resolve to /app/backend/uploads (prod runs `node` from /app →
+      # /app/uploads, mounted separately in docker-compose.prod.yml).
+      - uploads_dev:/app/backend/uploads
+    environment:
+      NODE_ENV: development
+      APP_URL: ${APP_URL}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: app
+      DB_PASSWORD: app
+      DB_NAME: app
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO/dev/null http://127.0.0.1:3000/health/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - app_net
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend/src:/app/frontend/src
+    environment:
+      VITE_API_URL: ${VITE_API_URL}
+    networks:
+      - app_net

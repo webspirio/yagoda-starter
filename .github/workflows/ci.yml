@@ -1,0 +1,259 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Cancel superseded in-progress runs for the same PR branch when new commits are
+# pushed. main is never cancelled (cancel-in-progress is false for push events) so
+# every merge's CI run completes and reports an accurate status for that commit.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+# CI never pushes, comments, or writes packages (docker builds with push:false;
+# the turbo/buildx caches use the Actions runtime token, not GITHUB_TOKEN), so
+# the job token is dropped to read-only. CD sets its own job-scoped permissions.
+permissions:
+  contents: read
+
+jobs:
+  # Determine whether a PR changes anything consumed by the Docker image builds.
+  #
+  # This job only decides whether the expensive build steps may be skipped. The
+  # `docker` job itself always runs on PRs, so it remains safe as a required check.
+  #
+  # Detection is fail-closed:
+  # - if this job succeeds and docker=false, build steps may be skipped;
+  # - if this job fails/cancels/is otherwise non-successful, the docker job builds.
+  changes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    if: github.event_name == 'pull_request'
+
+    outputs:
+      docker: ${{ steps.filter.outputs.docker }}
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # Full history is required so merge-base(BASE, HEAD) is always
+          # available for the three-dot PR diff.
+          fetch-depth: 0
+
+      - id: filter
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        # Use the PR payload SHAs rather than checkout HEAD: pull_request
+        # workflows normally check out GitHub's synthetic merge ref.
+        #
+        # Three-dot diff means "changes introduced by this PR since its merge
+        # base", so unrelated changes that landed on main do not cause a build.
+        #
+        # --name-status -M is intentional: for renames we inspect both the old
+        # and new paths. Moving/deleting something out of a Docker-relevant path
+        # must still trigger a build.
+        #
+        # Trigger set is the audited Docker build-input surface:
+        #   - backend/**          backend image inputs
+        #   - frontend/**         nginx image contains the built frontend
+        #   - nginx/**            nginx image/config inputs
+        #   - every Dockerfile
+        #   - root package manifest + lockfile
+        #   - .dockerignore
+        #
+        # turbo.json and docker-compose*.yml are intentionally absent: the
+        # Dockerfiles invoke workspace builds directly and CI builds the images
+        # through docker/build-push-action rather than Compose.
+        #
+        # FAIL CLOSED inside the detector as well: inability to compute the diff
+        # means docker=true, never a skipped image build.
+        shell: bash
+        run: |
+          set -uo pipefail
+
+          if [ -z "${BASE:-}" ] || [ -z "${HEAD:-}" ]; then
+            echo "Missing PR base/head SHA -> build (fail-closed)"
+            echo "docker=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if ! changed="$(git diff --name-status -M "$BASE"..."$HEAD")"; then
+            echo "git diff failed -> build (fail-closed)"
+            echo "docker=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          is_docker_input() {
+            case "$1" in
+              backend/*|frontend/*|nginx/*|Dockerfile|*/Dockerfile|package.json|package-lock.json|.dockerignore)
+                return 0
+                ;;
+              *)
+                return 1
+                ;;
+            esac
+          }
+
+          docker=false
+
+          while IFS=$'\t' read -r status path1 path2; do
+            [ -z "${status:-}" ] && continue
+
+            # For ordinary add/modify/delete entries, path1 is the affected
+            # path. For rename/copy entries, path1 is the old path and path2 is
+            # the new path; either side being Docker-relevant must trigger CI.
+            if [ -n "${path1:-}" ] && is_docker_input "$path1"; then
+              docker=true
+              break
+            fi
+
+            if [ -n "${path2:-}" ] && is_docker_input "$path2"; then
+              docker=true
+              break
+            fi
+          done <<< "$changed"
+
+          echo "docker-relevant change: $docker"
+          echo "docker=$docker" >> "$GITHUB_OUTPUT"
+
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+
+      # Persist Turborepo's local task cache across CI runs.
+      #
+      # Each commit gets an immutable cache key. On an exact-key miss,
+      # restore-keys lets Actions restore the newest cache visible to this ref
+      # (including an eligible cache from main), then Turborepo independently
+      # validates every task by its input hash before replaying it.
+      #
+      # PR-created caches remain scoped by GitHub's cache visibility rules;
+      # main acts as the canonical shared seed for new PRs.
+      - name: Cache turbo
+        uses: actions/cache@v4
+        with:
+          path: .turbo
+          key: turbo-${{ github.job }}-${{ runner.os }}-${{ github.sha }}
+          restore-keys: |
+            turbo-${{ github.job }}-${{ runner.os }}-
+
+      - run: npm run lint
+      - run: npm test
+      - run: npm run build
+
+  db-checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    # The engine's guarantees are Postgres semantics — FOR UPDATE SKIP LOCKED,
+    # UNIQUE NULLS NOT DISTINCT, CHECK — which no mocked spec can verify.
+    # This job runs the handful of *.db-spec.ts suites requiring a real DB.
+    #
+    # It invokes Jest directly rather than through Turborepo, so it is
+    # intentionally not covered by the .turbo cache.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: app
+          POSTGRES_PASSWORD: app
+          POSTGRES_DB: app_test
+        ports:
+          - '5432:5432'
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+
+      # Backend-only job: install just the backend workspace and avoid pulling
+      # frontend-only React/Vite/etc. dependencies into this job.
+      - run: npm ci --workspace=backend
+
+      - run: npm run test:db -w backend
+        env:
+          DB_HOST: localhost
+          DB_PORT: '5432'
+          DB_USER: app
+          DB_PASSWORD: app
+          TEST_DB_NAME: app_test
+
+  docker:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    # Docker is deliberately independent from `checks`: both required checks can
+    # run in parallel, reducing wall-clock PR feedback time.
+    #
+    # `always()` is important here. Without it, a failed/cancelled `changes` job
+    # would cause this dependent job to be skipped before its own condition was
+    # evaluated. A skipped required check could then hide failure of the path
+    # detector.
+    needs: [changes]
+    if: ${{ always() && github.event_name == 'pull_request' }}
+
+    # This starter ships no CD workflow, so image builds run on PRs only —
+    # they exist to catch Dockerfile breakage before merge.
+    #
+    # The job itself always runs on PRs. Build steps run when:
+    #   1. changes says a Docker input changed; OR
+    #   2. changes did not finish successfully.
+    #
+    # Case (2) makes gating fail-closed at the job level: detector failure costs
+    # a redundant build rather than silently skipping one.
+    steps:
+      - uses: actions/checkout@v7
+        if: >-
+          needs.changes.result != 'success' ||
+          needs.changes.outputs.docker == 'true'
+
+      - uses: docker/setup-buildx-action@v4
+        if: >-
+          needs.changes.result != 'success' ||
+          needs.changes.outputs.docker == 'true'
+
+      - name: Build backend image
+        if: >-
+          needs.changes.result != 'success' ||
+          needs.changes.outputs.docker == 'true'
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: backend/Dockerfile
+          target: prod
+          push: false
+          cache-from: type=gha,scope=backend
+          cache-to: type=gha,mode=max,scope=backend
+
+      - name: Build nginx image
+        if: >-
+          needs.changes.result != 'success' ||
+          needs.changes.outputs.docker == 'true'
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: nginx/Dockerfile
+          push: false
+          cache-from: type=gha,scope=nginx
+          cache-to: type=gha,mode=max,scope=nginx

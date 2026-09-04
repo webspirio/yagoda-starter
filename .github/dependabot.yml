@@ -1,0 +1,50 @@
+version: 2
+updates:
+  # npm workspaces (backend, frontend) — Dependabot resolves both from the
+  # single root package-lock.json, so one entry covers the whole tree.
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    groups:
+      minor-and-patch:
+        update-types:
+          - "minor"
+          - "patch"
+    ignore:
+      # Pinned to the Node LTS major (see Dockerfiles) — bump by hand when
+      # adopting the next LTS, don't let Dependabot chase Current releases.
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
+
+  # node base images track the Active LTS major, bumped manually on each
+  # October LTS transition — ignore major updates so Dependabot doesn't
+  # propose non-LTS "Current" releases (e.g. 24 -> 26 before Oct 2026).
+  - package-ecosystem: "docker"
+    directory: "/backend"
+    schedule:
+      interval: "weekly"
+    ignore:
+      - dependency-name: "node"
+        update-types: ["version-update:semver-major"]
+
+  - package-ecosystem: "docker"
+    directory: "/frontend"
+    schedule:
+      interval: "weekly"
+    ignore:
+      - dependency-name: "node"
+        update-types: ["version-update:semver-major"]
+
+  - package-ecosystem: "docker"
+    directory: "/nginx"
+    schedule:
+      interval: "weekly"
+    ignore:
+      - dependency-name: "node"
+        update-types: ["version-update:semver-major"]
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
