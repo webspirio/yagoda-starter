@@ -5,18 +5,9 @@ import { CredentialsService } from '../users/credentials.service';
 import { AuditService } from '../audit/audit.service';
 import { LOCAL_PROVIDER } from '../users/user-identity.entity';
 import { User } from '../users/user.entity';
+import { normalizeLogin } from '../users/normalize-login';
 import { LoginDto } from './dto/login.dto';
 import type { AuthenticatedUser, JwtPayload } from './jwt.strategy';
-
-/**
- * Usernames are compared case-insensitively and stored lowercased, so
- * `Alice` and `alice` can never be two accounts. Doing it here rather than in
- * the database keeps the existing UNIQUE (provider, provider_user_id) index
- * working for every provider without a functional index.
- */
-export function normalizeUsername(raw: string): string {
-  return raw.trim().toLowerCase();
-}
 
 /**
  * There is no `register` here on purpose. Accounts are created by a
@@ -36,7 +27,7 @@ export class AuthService {
   ) {}
 
   async login(dto: LoginDto): Promise<{ access_token: string }> {
-    const username = normalizeUsername(dto.username);
+    const username = normalizeLogin(dto.username);
     const identity = await this.users.findByIdentity(LOCAL_PROVIDER, username);
 
     // One failure mode, one message. Distinguishing "no such user" from "wrong

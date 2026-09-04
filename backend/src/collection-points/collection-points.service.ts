@@ -7,6 +7,7 @@ import { UpdateCollectionPointDto } from './dto/update-collection-point.dto';
 import { ListCollectionPointsQueryDto } from './dto/list-collection-points.query';
 import { CollectionPointResponse, toCollectionPointResponse } from './collection-point.mapper';
 import { UsersService } from '../users/users.service';
+import { displayNameOf } from '../users/display-name';
 import { AuditService } from '../audit/audit.service';
 import { assertOwnsPoint, resolvePointFilter } from '../auth/access/point-scope';
 import { Paginated } from '../common/dto/paginated';
@@ -42,6 +43,13 @@ export class CollectionPointsService {
     });
 
     return { data: data.map(toCollectionPointResponse), total, page: query.page, limit: query.limit };
+  }
+
+  /** The entity, unmapped and unscoped — for other modules that need to
+   *  validate a point exists and is usable. Reads across domains are open;
+   *  going through the owner keeps them from growing their own query. */
+  async findOneRaw(id: string): Promise<CollectionPoint | null> {
+    return this.repo.findOne({ where: { id } });
   }
 
   async findOne(actor: AuthenticatedUser, id: string): Promise<CollectionPointResponse> {
@@ -97,12 +105,20 @@ export class CollectionPointsService {
     if (dto.name != null) point.name = dto.name;
     if (dto.kind != null) point.kind = dto.kind;
     if (dto.is_active != null) point.is_active = dto.is_active;
-    // `in`, not a truthiness check: an explicit null CLEARS a target back to
-    // "not known", while an absent field leaves it alone (§6.9). Unlike the
-    // three fields above, target_cash/target_crates ARE nullable — null here
-    // is meaningful, not a defect to guard against.
-    if ('target_cash' in dto) point.target_cash = dto.target_cash ?? null;
-    if ('target_crates' in dto) point.target_crates = dto.target_crates ?? null;
+    // `!== undefined`, not a truthiness check: an explicit null CLEARS a target
+    // back to "not known", while an absent field leaves it alone (§6.9).
+    // Unlike the three fields above, target_cash/target_crates ARE nullable —
+    // null here is meaningful, not a defect to guard against.
+    //
+    // And NOT `'target_cash' in dto`, which is what this used to say: this
+    // repo's tsconfig targets ES2023, so `useDefineForClassFields` defaults to
+    // TRUE and every declared field EXISTS on a DTO instance as `undefined`.
+    // The global ValidationPipe runs `transform: true`, so what arrives here
+    // is such an instance and `in` was ALWAYS true — meaning a
+    // `PATCH {"name": "…"}` silently wiped both targets. Only `!== undefined`
+    // tells absent from explicitly-null on a transformed DTO.
+    if (dto.target_cash !== undefined) point.target_cash = dto.target_cash ?? null;
+    if (dto.target_crates !== undefined) point.target_crates = dto.target_crates ?? null;
 
     const saved = await this.repo.save(point);
     const targetsAfter = this.targetsOf(saved);
@@ -161,7 +177,7 @@ export class CollectionPointsService {
     const assigned = await this.users.findActiveAtPoint(pointId);
     if (assigned.length === 0) return;
 
-    const names = assigned.map((u) => `${u.first_name} ${u.last_name}`).join(', ');
+    const names = assigned.map(displayNameOf).join(', ');
     throw new ConflictException({
       message: `Reassign these users before deactivating this point: ${names}`,
       code: 'POINT_HAS_ACTIVE_USERS',

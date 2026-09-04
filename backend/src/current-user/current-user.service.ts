@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { UsersService } from '../users/users.service';
+import { displayNameOf } from '../users/display-name';
 import { AuditService } from '../audit/audit.service';
 import { MediaService } from '../media/media.service';
 import { messageOf } from '../common/errors/message-of';
@@ -96,7 +97,7 @@ export class CurrentUserService {
     return {
       id: user.id,
       username,
-      display_name: `${user.first_name} ${user.last_name}`.trim(),
+      display_name: displayNameOf(user),
       avatar_url: user.avatar_url,
       language_code: user.language_code,
       role: user.role,

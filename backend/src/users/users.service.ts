@@ -20,6 +20,16 @@ export interface CreateUserInput {
   providerData?: Record<string, unknown> | null;
 }
 
+/**
+ * `role` and `collection_point_id` are admitted TOGETHER on purpose, and must
+ * MOVE together: CHK_users_role_point demands a point for a point_operator and
+ * no point for a network_owner, so setting one without the other — promoting
+ * someone to owner while their old point stays on the row, demoting them
+ * before a point is chosen — is a CHECK violation, i.e. a 500 from the
+ * database rather than a validation error. Compute both, then pass both in a
+ * single call (see `UserAdminService.update`). Same warning as
+ * `CreateUserInput.collection_point_id` above; this is the update half of it.
+ */
 export type UpdatableUserFields = Partial<
   Pick<
     User,
@@ -135,6 +145,68 @@ export class UsersService {
   async setActive(id: string, isActive: boolean): Promise<void> {
     const result = await this.userRepo.update(id, { is_active: isActive });
     if (result.affected === 0) throw new NotFoundException('User not found');
+  }
+
+  /**
+   * How many ACTIVE owners exist, optionally ignoring one user — the shape the
+   * lockout guard needs: "if I change this person, is anyone left?". The
+   * exclusion is the whole point: counting the user about to be demoted would
+   * see one owner and cheerfully leave zero.
+   */
+  async countActiveOwners(excludeUserId?: string): Promise<number> {
+    const qb = this.userRepo
+      .createQueryBuilder('u')
+      .where('u.role = :role', { role: UserRole.NetworkOwner })
+      .andWhere('u.is_active = true');
+    if (excludeUserId) qb.andWhere('u.id != :excludeUserId', { excludeUserId });
+    return qb.getCount();
+  }
+
+  async list(opts: {
+    page: number;
+    limit: number;
+    collection_point_id?: string;
+    include_inactive?: boolean;
+  }): Promise<[User[], number]> {
+    const where: Record<string, unknown> = {};
+    if (opts.collection_point_id) where.collection_point_id = opts.collection_point_id;
+    if (!opts.include_inactive) where.is_active = true;
+
+    return this.userRepo.findAndCount({
+      where,
+      order: { last_name: 'ASC', first_name: 'ASC' },
+      skip: (opts.page - 1) * opts.limit,
+      take: opts.limit,
+    });
+  }
+
+  /**
+   * The write seam for the login itself, which lives on the identity row.
+   * Callers normalise and check availability first — the UNIQUE index is the
+   * real guarantee, and a race loses with a 500 rather than a duplicate.
+   *
+   * A query builder rather than `repo.update({ user: { id } }, …)`: TypeORM's
+   * `update()` does NOT resolve a nested relation in its criteria, and would
+   * silently match no rows. `findOne` does support that form — which is why
+   * `findAuthContext` above can use it and this cannot.
+   */
+  async setLogin(userId: string, login: string, manager?: EntityManager): Promise<void> {
+    const repo = manager ? manager.getRepository(UserIdentity) : this.identityRepo;
+    const result = await repo
+      .createQueryBuilder()
+      .update(UserIdentity)
+      .set({ provider_user_id: login })
+      .where('provider = :provider AND user_id = :userId', {
+        provider: LOCAL_PROVIDER,
+        userId,
+      })
+      .execute();
+    if (result.affected === 0) throw new NotFoundException('User has no local login');
+  }
+
+  async findLogin(userId: string): Promise<string | null> {
+    const context = await this.findAuthContext(userId);
+    return context?.login ?? null;
   }
 
   /** Active users whose home point is `pointId`. Used to refuse deactivating a

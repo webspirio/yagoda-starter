@@ -2,7 +2,7 @@ import { Test } from '@nestjs/testing';
 import { JwtService } from '@nestjs/jwt';
 import { UnauthorizedException } from '@nestjs/common';
 import { validate } from 'class-validator';
-import { AuthService, normalizeUsername } from './auth.service';
+import { AuthService } from './auth.service';
 import { UsersService } from '../users/users.service';
 import { CredentialsService } from '../users/credentials.service';
 import { AuditService } from '../audit/audit.service';
@@ -30,13 +30,6 @@ describe('AuthService', () => {
       ],
     }).compile();
     service = moduleRef.get(AuthService);
-  });
-
-  describe('normalizeUsername', () => {
-    it('lowercases and trims so usernames cannot collide by case alone', () => {
-      expect(normalizeUsername('  Alice  ')).toBe('alice');
-      expect(normalizeUsername('ALICE')).toBe('alice');
-    });
   });
 
   describe('login', () => {

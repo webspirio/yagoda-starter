@@ -1,4 +1,5 @@
 import { ConflictException, NotFoundException } from '@nestjs/common';
+import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
 import { UserRole } from '../users/user-role.enum';
 import { PointKind } from './point-kind.enum';
@@ -141,6 +142,31 @@ describe('CollectionPointsService', () => {
       // objectContaining on `where` too: it also carries is_active, and a
       // strict literal here would assert the filter is the ONLY one applied.
       expect.objectContaining({ where: expect.objectContaining({ id: 'p-1' }) }),
+    );
+  });
+
+  /**
+   * The regression the `in` check used to have. `tsconfig.json` targets
+   * ES2023, so `useDefineForClassFields` defaults to TRUE and every declared
+   * DTO field EXISTS on a transformed instance as `undefined`. The global
+   * ValidationPipe runs `transform: true`, so `'target_cash' in dto` was
+   * ALWAYS true in production and a `PATCH {"name": "…"}` silently wiped both
+   * targets. Every other test in this file passes plain object literals, where
+   * `in` behaves as intended — only a real `plainToInstance` sees it.
+   */
+  it('leaves both targets alone on a TRANSFORMED dto that does not mention them', async () => {
+    repo.findOne.mockResolvedValue(point({ target_cash: '600.00', target_crates: 40 }));
+    const dto = plainToInstance(UpdateCollectionPointDto, { name: 'Нова назва' });
+    expect('target_cash' in dto).toBe(true); // the trap itself
+
+    await service.update(owner, 'p-1', dto);
+
+    expect(repo.save.mock.calls[0][0]).toMatchObject({
+      target_cash: '600.00',
+      target_crates: 40,
+    });
+    expect(audit.record).not.toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'point.target-changed' }),
     );
   });
 

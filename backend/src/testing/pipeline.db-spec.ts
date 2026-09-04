@@ -6,6 +6,7 @@ import { randomUUID } from 'crypto';
 // is the interop-independent form for an `export =` module.
 import request = require('supertest');
 import { Test } from '@nestjs/testing';
+import { JwtService } from '@nestjs/jwt';
 import { ClassSerializerInterceptor, INestApplication, ValidationPipe } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 // MUST be imported before `../app.module`: this file's own top-level code
@@ -208,5 +209,144 @@ describe('auth + me pipeline (HTTP)', () => {
       .set('Authorization', `Bearer ${operatorToken}`)
       .send({ name: 'forbidden' })
       .expect(403);
+  }, 30_000);
+
+  /**
+   * The owner-administered user surface, over the real pipeline. Everything it
+   * proves is invisible to `user-admin.service.spec.ts`, which hands the
+   * service plain object literals and never sees the ValidationPipe:
+   *
+   *  - `@Auth(UserRole.NetworkOwner)` on the CLASS (the repo's first) actually
+   *    reaches every handler, including ones carrying no decorator of their own;
+   *  - a PATCH that does not mention `collection_point_id` leaves it alone.
+   *    `useDefineForClassFields` (ES2023 target) puts every declared field on
+   *    the transformed instance as `undefined`, so an `in` check here would be
+   *    permanently true and this PATCH would 400 on OPERATOR_NEEDS_POINT;
+   *  - an explicit `null` is a 400 on a NOT NULL field and an APPLIED value on
+   *    the nullable `collection_point_id` — the asymmetry, both directions;
+   *  - promotion moves `role` and `collection_point_id` in ONE update, so
+   *    CHK_users_role_point never sees the intermediate row. Nothing but a real
+   *    Postgres can fail this one.
+   *
+   * Tokens are signed with the app's own JwtService rather than minted through
+   * `/auth/login`: that controller is capped at 10 requests/min per IP (see
+   * AuthController) and the two tests above already spend three of them, so
+   * two `npm run test:db` runs inside a minute would start 429-ing. The tokens
+   * are real — JwtStrategy still reloads each user from the database on every
+   * request below.
+   */
+  it('administers accounts through POST/PATCH/PUT /users, owner-only', async () => {
+    const users = app.get(UsersService);
+    const credentials = app.get(CredentialsService);
+    const jwt = app.get(JwtService);
+
+    const { user: boss } = await users.createWithIdentity(
+      {
+        provider: LOCAL_PROVIDER,
+        providerUserId: `boss-${randomUUID()}`,
+        first_name: 'Головний',
+        last_name: 'Власник',
+        role: UserRole.NetworkOwner,
+      },
+      async (created, manager) => credentials.set(created.id, 'hunter2!!', manager),
+    );
+    const bossToken = jwt.sign({ sub: boss.id });
+
+    const pointRes = await request(app.getHttpServer())
+      .post('/collection-points')
+      .set('Authorization', `Bearer ${bossToken}`)
+      .send({ name: `admin-point-${randomUUID()}` })
+      .expect(201);
+    const pointId = pointRes.body.id as string;
+
+    // Staff are HIRED, not signed up: this endpoint is the only way an account
+    // comes into existence now that registration is gone.
+    const login = `hired-${randomUUID()}`;
+    const createRes = await request(app.getHttpServer())
+      .post('/users')
+      .set('Authorization', `Bearer ${bossToken}`)
+      .send({
+        first_name: 'Оксана',
+        last_name: 'Приймальник',
+        login,
+        password: 'hunter2!!',
+        role: 'point_operator',
+        collection_point_id: pointId,
+      })
+      .expect(201);
+    expect(createRes.body).toMatchObject({
+      login,
+      display_name: 'Оксана Приймальник',
+      role: 'point_operator',
+      collection_point_id: pointId,
+      is_active: true,
+    });
+    const hiredId = createRes.body.id as string;
+
+    // The class-level role, running for real. The handler carries no decorator
+    // of its own — the guard has to find the role on the controller class.
+    const hiredToken = jwt.sign({ sub: hiredId });
+    await request(app.getHttpServer())
+      .get('/users')
+      .set('Authorization', `Bearer ${hiredToken}`)
+      .expect(403);
+    await request(app.getHttpServer())
+      .get('/users')
+      .set('Authorization', `Bearer ${bossToken}`)
+      .expect(200);
+
+    // ABSENT collection_point_id: leave it alone. This is the assertion that
+    // fails if anyone reintroduces `'collection_point_id' in dto`.
+    const renamed = await request(app.getHttpServer())
+      .patch(`/users/${hiredId}`)
+      .set('Authorization', `Bearer ${bossToken}`)
+      .send({ first_name: 'Оксана-Марія' })
+      .expect(200);
+    expect(renamed.body).toMatchObject({
+      first_name: 'Оксана-Марія',
+      collection_point_id: pointId,
+    });
+
+    // NULL on a NOT NULL field: 400, not a 500 from the database.
+    await request(app.getHttpServer())
+      .patch(`/users/${hiredId}`)
+      .set('Authorization', `Bearer ${bossToken}`)
+      .send({ first_name: null })
+      .expect(400);
+
+    // NULL on the nullable one: accepted by the DTO, APPLIED by the service —
+    // and refused by the invariant, because an operator must have a point.
+    const cleared = await request(app.getHttpServer())
+      .patch(`/users/${hiredId}`)
+      .set('Authorization', `Bearer ${bossToken}`)
+      .send({ collection_point_id: null })
+      .expect(400);
+    expect(cleared.body.message).toContain('collection point');
+
+    // Promotion: role and point move together, in one UPDATE. Two statements
+    // here would trip CHK_users_role_point and return a 500.
+    const promoted = await request(app.getHttpServer())
+      .patch(`/users/${hiredId}`)
+      .set('Authorization', `Bearer ${bossToken}`)
+      .send({ role: 'network_owner' })
+      .expect(200);
+    expect(promoted.body).toMatchObject({ role: 'network_owner', collection_point_id: null });
+
+    // The owner ISSUES a password; nothing about it comes back in the response.
+    await request(app.getHttpServer())
+      .put(`/users/${hiredId}/password`)
+      .set('Authorization', `Bearer ${bossToken}`)
+      .send({ password: 'nova-parolya' })
+      .expect(204);
+    expect(await credentials.verify(hiredId, 'nova-parolya')).toBe(true);
+
+    // Self-lockout, refused outright — there are plenty of other active owners
+    // in this database, and it is still refused.
+    const selfRes = await request(app.getHttpServer())
+      .patch(`/users/${boss.id}`)
+      .set('Authorization', `Bearer ${bossToken}`)
+      .send({ is_active: false })
+      .expect(403);
+    expect(selfRes.body.message).toContain('your own account');
   }, 30_000);
 });
