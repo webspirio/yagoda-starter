@@ -23,6 +23,7 @@ import { UsersService } from '../users/users.service';
 import { CredentialsService } from '../users/credentials.service';
 import { LOCAL_PROVIDER } from '../users/user-identity.entity';
 import { UserRole } from '../users/user-role.enum';
+import { CollectionPointsService } from '../collection-points/collection-points.service';
 
 /**
  * The one HTTP-layer test (design review item I3): drives the real Nest
@@ -142,4 +143,67 @@ describe('auth + me pipeline (HTTP)', () => {
       .set('Authorization', `Bearer ${token}`)
       .expect(401);
   });
+
+  it('refuses an operator an owner-only route, and allows the owner', async () => {
+    const points = app.get(CollectionPointsService);
+    const users = app.get(UsersService);
+    const credentials = app.get(CredentialsService);
+
+    // Built from the created row rather than a placeholder mutated after the
+    // fact: `ownerUser.id` is the real sub a token for this user would carry.
+    const { user: ownerUser } = await users.createWithIdentity(
+      {
+        provider: LOCAL_PROVIDER,
+        providerUserId: `owner-${randomUUID()}`,
+        first_name: 'Net',
+        last_name: 'Owner',
+        role: UserRole.NetworkOwner,
+      },
+      async (created, manager) => credentials.set(created.id, 'hunter2!!', manager),
+    );
+    const ownerActor = {
+      sub: ownerUser.id,
+      username: '',
+      role: UserRole.NetworkOwner,
+      collection_point_id: null,
+    };
+
+    const point = await points.create(ownerActor, { name: `pipeline-point-${randomUUID()}` });
+
+    const operatorLogin = `op-${randomUUID()}`;
+    await users.createWithIdentity(
+      {
+        provider: LOCAL_PROVIDER,
+        providerUserId: operatorLogin,
+        first_name: 'Оксана',
+        last_name: 'Приймальник',
+        role: UserRole.PointOperator,
+        collection_point_id: point.id,
+      },
+      async (created, manager) => credentials.set(created.id, 'hunter2!!', manager),
+    );
+
+    const tokenFor = async (username: string): Promise<string> => {
+      const res = await request(app.getHttpServer())
+        .post('/auth/login')
+        .send({ username, password: 'hunter2!!' })
+        .expect(200);
+      return res.body.access_token as string;
+    };
+
+    const operatorToken = await tokenFor(operatorLogin);
+
+    // The operator can READ points…
+    await request(app.getHttpServer())
+      .get('/collection-points')
+      .set('Authorization', `Bearer ${operatorToken}`)
+      .expect(200);
+
+    // …and cannot create one. This is the RolesGuard, running for real.
+    await request(app.getHttpServer())
+      .post('/collection-points')
+      .set('Authorization', `Bearer ${operatorToken}`)
+      .send({ name: 'forbidden' })
+      .expect(403);
+  }, 30_000);
 });

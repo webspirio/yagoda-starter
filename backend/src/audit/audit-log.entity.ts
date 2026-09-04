@@ -22,6 +22,11 @@ export const AUDIT_ACTIONS = [
   'user.logged-out',
   'user.updated',
   'user.avatar-changed',
+  'user.created',
+  'user.password-changed',
+  'point.created',
+  'point.updated',
+  'point.target-changed',
 ] as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];

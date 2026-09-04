@@ -136,4 +136,11 @@ export class UsersService {
     const result = await this.userRepo.update(id, { is_active: isActive });
     if (result.affected === 0) throw new NotFoundException('User not found');
   }
+
+  /** Active users whose home point is `pointId`. Used to refuse deactivating a
+   *  point out from under someone: an orphaned operator would keep a valid
+   *  token whose every scoping assertion silently matches nothing. */
+  async findActiveAtPoint(pointId: string): Promise<User[]> {
+    return this.userRepo.find({ where: { collection_point_id: pointId, is_active: true } });
+  }
 }

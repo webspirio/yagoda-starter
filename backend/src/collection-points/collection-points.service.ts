@@ -1,0 +1,163 @@
+import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { CollectionPoint } from './collection-point.entity';
+import { CreateCollectionPointDto } from './dto/create-collection-point.dto';
+import { UpdateCollectionPointDto } from './dto/update-collection-point.dto';
+import { ListCollectionPointsQueryDto } from './dto/list-collection-points.query';
+import { CollectionPointResponse, toCollectionPointResponse } from './collection-point.mapper';
+import { UsersService } from '../users/users.service';
+import { AuditService } from '../audit/audit.service';
+import { assertOwnsPoint, resolvePointFilter } from '../auth/access/point-scope';
+import { Paginated } from '../common/dto/paginated';
+import type { AuthenticatedUser } from '../auth/jwt.strategy';
+
+const TARGET_FIELDS = ['target_cash', 'target_crates'] as const;
+
+@Injectable()
+export class CollectionPointsService {
+  constructor(
+    @InjectRepository(CollectionPoint)
+    private readonly repo: Repository<CollectionPoint>,
+    private readonly users: UsersService,
+    private readonly audit: AuditService,
+  ) {}
+
+  async list(
+    actor: AuthenticatedUser,
+    query: ListCollectionPointsQueryDto,
+  ): Promise<Paginated<CollectionPointResponse>> {
+    const pointId = resolvePointFilter(actor);
+    const where: Record<string, unknown> = {};
+    // An operator sees exactly one row: their own point. Derived from the
+    // actor, never from a query parameter.
+    if (pointId) where.id = pointId;
+    if (query.include_inactive !== 'true') where.is_active = true;
+
+    const [data, total] = await this.repo.findAndCount({
+      where,
+      order: { name: 'ASC' },
+      skip: (query.page - 1) * query.limit,
+      take: query.limit,
+    });
+
+    return { data: data.map(toCollectionPointResponse), total, page: query.page, limit: query.limit };
+  }
+
+  async findOne(actor: AuthenticatedUser, id: string): Promise<CollectionPointResponse> {
+    const point = await this.repo.findOne({ where: { id } });
+    if (!point) throw new NotFoundException('Collection point not found');
+    assertOwnsPoint(actor, point.id);
+    return toCollectionPointResponse(point);
+  }
+
+  async create(
+    actor: AuthenticatedUser,
+    dto: CreateCollectionPointDto,
+  ): Promise<CollectionPointResponse> {
+    const point = await this.repo.save(
+      this.repo.create({
+        name: dto.name,
+        kind: dto.kind,
+        // ?? null, never ?? 0 — see CollectionPoint's doc comment.
+        target_cash: dto.target_cash ?? null,
+        target_crates: dto.target_crates ?? null,
+      }),
+    );
+
+    await this.audit.record({
+      action: 'point.created',
+      actor_id: actor.sub,
+      target_type: 'collection_point',
+      target_id: point.id,
+      after: { name: point.name, kind: point.kind },
+    });
+
+    return toCollectionPointResponse(point);
+  }
+
+  async update(
+    actor: AuthenticatedUser,
+    id: string,
+    dto: UpdateCollectionPointDto,
+  ): Promise<CollectionPointResponse> {
+    const point = await this.repo.findOne({ where: { id } });
+    if (!point) throw new NotFoundException('Collection point not found');
+
+    if (dto.is_active === false && point.is_active) await this.assertNoActiveUsers(point.id);
+
+    const targetsBefore = this.targetsOf(point);
+    const before = { name: point.name, kind: point.kind, is_active: point.is_active };
+
+    // `in`, not a truthiness check: an explicit null CLEARS a target back to
+    // "not known", while an absent field leaves it alone (§6.9).
+    if ('name' in dto && dto.name !== undefined) point.name = dto.name;
+    if ('kind' in dto && dto.kind !== undefined) point.kind = dto.kind;
+    if ('is_active' in dto && dto.is_active !== undefined) point.is_active = dto.is_active;
+    if ('target_cash' in dto) point.target_cash = dto.target_cash ?? null;
+    if ('target_crates' in dto) point.target_crates = dto.target_crates ?? null;
+
+    const saved = await this.repo.save(point);
+    const targetsAfter = this.targetsOf(saved);
+
+    const movedTargets = TARGET_FIELDS.filter((f) => targetsBefore[f] !== targetsAfter[f]);
+    if (movedTargets.length > 0) {
+      // The DBML says outright that author and reason for a target change are
+      // "не зберігається" anywhere in the schema, since targets carry no
+      // history. They are recorded HERE instead: the audit log is not target
+      // state, it does not feed any calculation, and §6.1's own worked example
+      // shows exactly this information.
+      await this.audit.record({
+        action: 'point.target-changed',
+        actor_id: actor.sub,
+        target_type: 'collection_point',
+        target_id: saved.id,
+        before: Object.fromEntries(movedTargets.map((f) => [f, targetsBefore[f]])),
+        after: Object.fromEntries(movedTargets.map((f) => [f, targetsAfter[f]])),
+        note: dto.reason ?? null,
+      });
+    }
+
+    const after = { name: saved.name, kind: saved.kind, is_active: saved.is_active };
+    const movedFields = (Object.keys(before) as (keyof typeof before)[]).filter(
+      (k) => before[k] !== after[k],
+    );
+    if (movedFields.length > 0) {
+      await this.audit.record({
+        action: 'point.updated',
+        actor_id: actor.sub,
+        target_type: 'collection_point',
+        target_id: saved.id,
+        before: Object.fromEntries(movedFields.map((k) => [k, before[k]])),
+        after: Object.fromEntries(movedFields.map((k) => [k, after[k]])),
+        note: dto.reason ?? null,
+      });
+    }
+
+    return toCollectionPointResponse(saved);
+  }
+
+  private targetsOf(point: CollectionPoint): Record<(typeof TARGET_FIELDS)[number], unknown> {
+    return { target_cash: point.target_cash, target_crates: point.target_crates };
+  }
+
+  /**
+   * A point cannot be deactivated while someone still calls it home: their
+   * token stays valid and every scoping assertion would silently match
+   * nothing. The error names them so the owner knows what to reassign.
+   *
+   * TODO (when `shifts` lands): also refuse while an open shift exists at this
+   * point. §7.8 — two open shifts are two books for one drawer; a point that
+   * disappears under an open one is the same class of problem.
+   */
+  private async assertNoActiveUsers(pointId: string): Promise<void> {
+    const assigned = await this.users.findActiveAtPoint(pointId);
+    if (assigned.length === 0) return;
+
+    const names = assigned.map((u) => `${u.first_name} ${u.last_name}`).join(', ');
+    throw new ConflictException({
+      message: `Reassign these users before deactivating this point: ${names}`,
+      code: 'POINT_HAS_ACTIVE_USERS',
+    });
+  }
+}
