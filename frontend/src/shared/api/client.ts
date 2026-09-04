@@ -104,3 +104,47 @@ export const httpClient = axios.create({
   baseURL: env.apiUrl,
   paramsSerializer: { indexes: null },
 });
+
+export interface AuthHooks {
+  getToken: () => string | null;
+  onUnauthorized: () => void;
+}
+
+/**
+ * Attaches the bearer token to every request and signs the user out on a 401.
+ *
+ * Takes its session access as callbacks rather than importing the store:
+ * `shared` is FSD's lowest layer and must never import from `entities`. The
+ * app layer supplies the session-backed implementations in main.tsx, and
+ * tests supply their own.
+ *
+ * There is no refresh token in this starter (design §3), so a 401 has exactly
+ * one meaning: the token is gone or expired. Clearing it flips RequireAuth,
+ * which redirects to /login — no imperative navigation from inside an
+ * interceptor, which would fight the router.
+ */
+export function attachAuthInterceptors(client: typeof httpClient, hooks: AuthHooks): void {
+  client.interceptors.request.use((config) => {
+    const token = hooks.getToken();
+    if (token) config.headers.Authorization = `Bearer ${token}`;
+    return config;
+  });
+
+  client.interceptors.response.use(
+    (response) => response,
+    (error) => {
+      const status = error?.response?.status;
+      if (status === 401) hooks.onUnauthorized();
+      return Promise.reject(
+        new ApiError(
+          status ?? 0,
+          extractErrorMessage(status ?? 0, error?.response?.data),
+          extractErrorDetails(error?.response?.data),
+          extractErrorCode(error?.response?.data),
+          extractErrorPayload(error?.response?.data),
+          extractErrorReason(error?.response?.data),
+        ),
+      );
+    },
+  );
+}
