@@ -70,8 +70,17 @@ export class User {
   // The relation exists so TypeORM knows about the foreign key. Without it a
   // future `migration:generate` would propose DROPping a constraint the
   // hand-written migration created.
+  //
+  // `foreignKeyConstraintName` is what actually makes that true, and is not
+  // decoration: RdbmsSchemaBuilder matches foreign keys by NAME, so without it
+  // TypeORM compares the database's `FK_users_collection_point` against a
+  // naming-strategy-computed `FK_<sha1>`, never matches, and proposes a
+  // drop-and-recreate — the same failure the four CHK/UQ names above prevent.
   @ManyToOne(() => CollectionPoint, { onDelete: 'RESTRICT', nullable: true })
-  @JoinColumn({ name: 'collection_point_id' })
+  @JoinColumn({
+    name: 'collection_point_id',
+    foreignKeyConstraintName: 'FK_users_collection_point',
+  })
   collection_point: CollectionPoint | null;
 
   /**

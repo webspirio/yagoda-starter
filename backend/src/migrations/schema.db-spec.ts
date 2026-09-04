@@ -252,7 +252,18 @@ describe('YagodaFoundation', () => {
     const userRepo = ds.getRepository(User);
 
     const savedPoint = await pointRepo.save(
-      pointRepo.create({ name: `round-trip-${Date.now()}`, kind: PointKind.Base, target_crates: 800 }),
+      pointRepo.create({
+        name: `round-trip-${Date.now()}`,
+        kind: PointKind.Base,
+        target_cash: '1500.00',
+        target_crates: 800,
+      }),
+    );
+    // A SECOND point, so the null case and the string case are both covered by
+    // this test: the assertions below need one point with a target_cash and one
+    // without, and `target_cash` cannot be both at once.
+    const savedEmptyPoint = await pointRepo.save(
+      pointRepo.create({ name: `round-trip-empty-${Date.now()}` }),
     );
     const savedUser = await userRepo.save(
       userRepo.create({
@@ -268,9 +279,21 @@ describe('YagodaFoundation', () => {
     expect(found?.collection_point_id).toBe(savedPoint.id);
 
     const foundPoint = await pointRepo.findOne({ where: { id: savedPoint.id } });
-    // numeric arrives as a string, and is expected to: see the spec's §5.1.
-    expect(foundPoint?.target_cash).toBeNull();
+    // numeric arrives as a STRING, and is expected to: see the spec's §5.1.
+    // Money must never pass through a binary float, so this asserts the exact
+    // string rather than a loose equality — `toBe('1500.00')` fails for the
+    // number 1500, which is the regression a number-converting transformer
+    // would introduce. If this ever comes back as a number, the fix is to
+    // remove the transformer, NOT to relax the assertion.
+    expect(foundPoint?.target_cash).toBe('1500.00');
+    expect(typeof foundPoint?.target_cash).toBe('string');
     expect(foundPoint?.target_crates).toBe(800);
     expect(foundPoint?.kind).toBe(PointKind.Base);
+
+    // …and an unset target is NULL, not 0 and not '0.00' — §6.9/§7.10 depend on
+    // the two being distinguishable.
+    const foundEmptyPoint = await pointRepo.findOne({ where: { id: savedEmptyPoint.id } });
+    expect(foundEmptyPoint?.target_cash).toBeNull();
+    expect(foundEmptyPoint?.target_crates).toBeNull();
   });
 });
