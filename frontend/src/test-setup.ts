@@ -5,11 +5,12 @@ import { i18n, initI18n } from './shared/lib/i18n';
 
 /**
  * Testing Library's async utilities (`findBy*`, `waitFor`) default to a 1000ms
- * budget. That is fine for a state flush, but some screens await a `lazy()`
- * dynamic import, and resolving one of those chunks means a Vite transform in
- * a cold worker process — that routinely outruns 1000ms under a full-suite
- * run, which is what makes those files intermittently red while passing in
- * isolation.
+ * budget. That is fine for a single file run in isolation, but a full-suite
+ * run executes every test file's worker concurrently, and the resulting CPU
+ * contention can push an otherwise-fast mocked round trip (axios-mock-adapter
+ * resolving, a re-render, a DOM query) past 1000ms on a busy machine or CI
+ * runner — which is what makes a handful of files intermittently red under
+ * the full suite while passing every time in isolation.
  *
  * Raised globally rather than per call site: per-test bumps are whack-a-mole
  * against a moving threshold. This does NOT slow the suite — a passing
@@ -49,6 +50,26 @@ if (!Element.prototype.setPointerCapture) {
   Element.prototype.setPointerCapture = () => {};
   Element.prototype.releasePointerCapture = () => {};
   Element.prototype.hasPointerCapture = () => false;
+}
+
+// jsdom doesn't implement matchMedia; useAppTheme (mounted by AppLayout, so
+// every test that renders the real router tree hits this) and useIsDesktop
+// both call window.matchMedia() unconditionally on mount. Default to "no
+// preference matches" (light theme, mobile layout) — a neutral baseline a
+// test can override per-file with vi.stubGlobal('matchMedia', …) (see
+// useAppTheme.test.ts / AppLayout.test.tsx for that pattern) when the
+// specific match value is what's under test.
+if (!window.matchMedia) {
+  window.matchMedia = ((query: string) => ({
+    matches: false,
+    media: query,
+    onchange: null,
+    addListener: () => {},
+    removeListener: () => {},
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    dispatchEvent: () => false,
+  })) as unknown as typeof window.matchMedia;
 }
 
 // Some hooks persist form drafts or UI state to localStorage/sessionStorage

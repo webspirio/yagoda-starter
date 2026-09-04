@@ -21,7 +21,8 @@ adds exactly what it needs, rather than ripping out what it doesn't:
   `scripts/reset-data.sh` for the operational consequences.
 - **No email.** Registration takes a username and password; the username is
   never validated as an email address, and the app never sends mail.
-- **No CD pipeline.** CI (build, lint, test) runs on every push and PR; there
+- **No CD pipeline.** CI (build, lint, test) runs on every push to `main` and
+  on every pull request (see `.github/workflows/ci.yml`); there
   is no automated deploy workflow. Build and push your own images, or deploy
   from source, using `docker-compose.prod.yml` as the target shape.
 

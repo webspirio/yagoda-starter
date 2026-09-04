@@ -36,10 +36,13 @@ sudo ufw enable
 sudo ufw status
 ```
 
-Docker-published ports aren't affected by this — `docker-compose.prod.yml` only
-publishes `127.0.0.1:8080` (loopback-only), so postgres/redis/backend/the internal
-nginx are never reachable from outside the box regardless of firewall state. This
-step just locks down the host itself to SSH/HTTP/HTTPS.
+Docker-published ports aren't affected by this — `docker-compose.prod.yml`
+publishes `127.0.0.1:8080` (the internal nginx) and `127.0.0.1:5432`
+(postgres, reachable only via an SSH tunnel from the host itself — see the
+comment on that port in the compose file), both loopback-only, so redis/
+backend/the internal nginx are never reachable from outside the box
+regardless of firewall state, and postgres only via that tunnel. This step
+just locks down the host itself to SSH/HTTP/HTTPS.
 
 ## 3. Add an HTTP server block
 

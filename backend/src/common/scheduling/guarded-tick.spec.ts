@@ -13,7 +13,7 @@ describe('runGuardedTick', () => {
     const run = jest.fn().mockResolvedValue(undefined);
 
     await expect(
-      runGuardedTick(logger as unknown as Logger, 'events scheduler', run),
+      runGuardedTick(logger as unknown as Logger, 'cleanup scheduler', run),
     ).resolves.toBeUndefined();
 
     expect(run).toHaveBeenCalledTimes(1);
@@ -33,9 +33,9 @@ describe('runGuardedTick', () => {
   it('survives a non-Error throw rather than losing the tick', async () => {
     const run = jest.fn().mockRejectedValue('weird');
 
-    await runGuardedTick(logger as unknown as Logger, 'remind scheduler', run);
+    await runGuardedTick(logger as unknown as Logger, 'digest scheduler', run);
 
-    expect(logger.warn).toHaveBeenCalledWith('remind scheduler tick failed: weird');
+    expect(logger.warn).toHaveBeenCalledWith('digest scheduler tick failed: weird');
   });
 });
 

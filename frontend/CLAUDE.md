@@ -5,11 +5,11 @@ React SPA for Web Starter.
 ## Stack
 
 - **React 19** (strict TS) — UI
-- **Vite 7** — dev server and bundler
+- **Vite 8** — dev server and bundler
 - **Tailwind v4 + shadcn/ui** — component library; static light/dark CSS-variable palette in `src/index.css`, dark mode toggled by a `.dark` class on `<html>` (`useAppTheme`)
 - **Zustand 5** — client state (the auth session: `token`)
-- **TanStack Query v5** — server state (queries and mutations)
-- **React Router v7** — client-side routing (`react-router` + `react-router/dom` imports)
+- **TanStack Query v5** — server state (queries and mutations), persisted to `localStorage` via `PersistQueryClientProvider` (`shared/api/persister.ts`)
+- **React Router v8** — client-side routing (`react-router` imports only; no `react-router/dom`)
 - **i18next / react-i18next** — i18n; this starter ships English only
 
 ## Commands
@@ -17,7 +17,7 @@ React SPA for Web Starter.
 ```bash
 npm run dev     # start Vite dev server (port 5173, --host for LAN access)
 npm test        # run Vitest tests
-npm run lint    # ESLint 9 flat config (typescript-eslint + react-hooks + react-refresh)
+npm run lint    # ESLint 10 flat config (typescript-eslint + react-hooks + react-refresh)
 ```
 
 ## Structure
@@ -111,11 +111,11 @@ with the resolved language automatically.
 
 `entities/user/api/useMeQuery.ts` is the exemplar hook: `queryKey: queryKeys.me`, `queryFn` calling `GET /me` through `httpClient`, gated with `enabled: token !== null` so it never fires before a session exists. Copy this shape — queryKey + queryFn + `enabled` — for every new server-state read. `useUpdateMeMutation` is the exemplar mutation: it seeds the cache from the response (`setQueryData`) instead of invalidating and paying for a second round trip, which is the right default whenever the mutation response IS the new resource.
 
-`shared/api/persister.ts` provides a localStorage-backed TanStack Query persister (`isPersistableKey` allowlists only the `me` query) and `buildPersistOptions()` for wiring it up via `PersistQueryClientProvider`. It exists as ready-to-use infrastructure — `App.tsx` currently uses the plain `QueryClientProvider`, so nothing is persisted across reloads yet. Swap in `PersistQueryClientProvider` with `buildPersistOptions(userId)` when a real read is expensive or slow enough to be worth surviving a reload.
+`shared/api/persister.ts` provides a localStorage-backed TanStack Query persister (`isPersistableKey` allowlists only the `me` query) and `buildPersistOptions()` for wiring it up via `PersistQueryClientProvider`. `App.tsx` wires this up: it wraps the tree in `PersistQueryClientProvider` and scopes the buster to the session token (`buildPersistOptions(token ?? 'anon')`) rather than a user id — there is no synchronously-known user id at bootstrap, since the `me` query that would supply one is itself the thing being restored from the persisted cache.
 
 ## Forms
 
-`react-hook-form` and `@hookform/resolvers` (with `zod`) are dependencies, but `LoginForm`/`RegisterForm` use plain `useState` — they're two fields each, and a form library buys nothing there yet. `shared/lib/form-draft/useFormDraft` is the one place `react-hook-form` is actually wired up today, as a `localStorage`-backed draft-persistence hook (unused by any page — see "Structure" above). Reach for `react-hook-form` + `zodResolver` once a form has more than a couple of fields or needs real per-field validation; `ApiError.details` (`shared/api/client.ts`) — the backend's raw per-field `message` array from `class-validator` — exists so a form can map server-side validation failures onto individual fields once there's a form to map them onto.
+`react-hook-form` is a dependency, but `LoginForm`/`RegisterForm` use plain `useState` — they're two fields each, and a form library buys nothing there yet. `shared/lib/form-draft/useFormDraft` is the one place `react-hook-form` is actually wired up today, as a `localStorage`-backed draft-persistence hook (unused by any page — see "Structure" above). `@hookform/resolvers` is NOT a dependency (removed as unused; there is no schema-driven form in this starter yet) — reach for `react-hook-form` once a form has more than a couple of fields or needs real per-field validation, and add `@hookform/resolvers` + `zodResolver` at that point if schema validation is worth it; `ApiError.details` (`shared/api/client.ts`) — the backend's raw per-field `message` array from `class-validator` — exists so a form can map server-side validation failures onto individual fields once there's a form to map them onto.
 
 ## Uploads
 
@@ -125,11 +125,11 @@ with the resolved language automatically.
 
 `frontend/tsconfig.json` carries a `compilerOptions.paths` block that duplicates
 `tsconfig.app.json`'s `@/* -> src/*` mapping — see the comment there. The shadcn CLI (`npx
-shadcn@latest add/info/diff`, and the `shadcn` MCP server in `.mcp.json`) reads `paths` from the
-root `tsconfig.json` directly and does not follow TS project `references`; without that
-duplicated block it can't resolve the `@` alias, silently reports zero installed components, and
-`add` writes new files into a bogus `./@/` folder instead of `src/`. Don't remove it as "dead"
-config during a tsconfig cleanup.
+shadcn@latest add/info/diff`, and any shadcn MCP server configured for this project) reads
+`paths` from the root `tsconfig.json` directly and does not follow TS project `references`;
+without that duplicated block it can't resolve the `@` alias, silently reports zero installed
+components, and `add` writes new files into a bogus `./@/` folder instead of `src/`. Don't
+remove it as "dead" config during a tsconfig cleanup.
 
 Separately, the shadcn CLI's MCP tools have their own bugs unrelated to this project's
 config: `search_items_in_registries`/`list_items_in_registries` don't fall back to the project's

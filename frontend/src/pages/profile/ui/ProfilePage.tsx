@@ -117,8 +117,12 @@ export function ProfilePage() {
         className="mt-6 flex flex-col gap-4"
         onSubmit={(event) => {
           event.preventDefault();
+          // `UpdateMeDto.display_name` is `@Length(1, 128)` when present — an
+          // empty string 400s. Trim and omit the field entirely when blank
+          // (a no-op that keeps the existing name) rather than sending ''.
+          const trimmedDisplayName = displayName.trim();
           updateMe.mutate(
-            { display_name: displayName },
+            trimmedDisplayName ? { display_name: trimmedDisplayName } : {},
             {
               onSuccess: () => toastSuccess(t('profile.saved')),
               onError: () => toastError(t('profile.saveFailed')),

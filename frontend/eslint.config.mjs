@@ -43,8 +43,8 @@ export default tseslint.config(
   // exports rather than split the file. Scoped per-path (flat-config later block
   // wins; rule OPTIONS are replaced, not merged, so `allowConstantExport` is
   // repeated). Genuine helper *functions* are NOT whitelisted here — they're
-  // extracted to their own modules (screen-padding.ts, getPageNumbers.ts) so the
-  // rule keeps guarding real component/helper mixing.
+  // extracted to their own modules (shared/lib/cn.ts, shared/lib/debounce.ts)
+  // so the rule keeps guarding real component/helper mixing.
   {
     // shadcn primitives keep their cva variants / base-class const beside the
     // component for customization ergonomics (allowConstantExport can't cover
@@ -64,20 +64,6 @@ export default tseslint.config(
           ],
         },
       ],
-    },
-  },
-  {
-    // The route table: exports `routes` + `router` (config) alongside local
-    // `lazy()` page consts. A router is never hot-swapped, so it isn't a Fast
-    // Refresh boundary. Unlike the shared/ui primitives, this one can't be
-    // cleared by `allowExportNames`/`extraHOCs`: the warnings sit on the local
-    // lazy consts (not the exports), and `lazy(() => import())` doesn't match the
-    // HOC(Component) shape extraHOCs recognizes. Whitelisting can't reach them,
-    // and splitting the lazy wrappers into a second file to appease the rule buys
-    // nothing (you still never hot-swap a route table) — so disable it here.
-    files: ['src/app/router.tsx'],
-    rules: {
-      'react-refresh/only-export-components': 'off',
     },
   },
   {

@@ -21,6 +21,13 @@
 #     the 1788600000001-SeedDevAdmin migration, which is already recorded in
 #     `migrations` and will NOT re-run after this wipe. If you need it back,
 #     revert that one migration and re-run it, or insert the row by hand.
+#     `migration:revert` is safe to run RIGHT AFTER this script: the TRUNCATE
+#     above already emptied audit_log, so there's nothing blocking the
+#     revert's DELETE. Outside of that — reverting this migration on a
+#     database you have NOT just wiped — fails once the dev admin has ever
+#     logged in: audit_log.actor_id is ON DELETE RESTRICT, and the resulting
+#     'user.logged-in' row blocks the DELETE. Clear that user's audit_log
+#     rows first (or run this whole script) before reverting in that case.
 #
 #   - ISSUED JWTs stay valid for up to their configured JWT_EXPIRES_IN.
 #     JwtStrategy.validate() never reads the database — it trusts the payload

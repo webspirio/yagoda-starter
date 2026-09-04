@@ -6,18 +6,19 @@ import { databaseEnv } from '../config/database.defaults';
 config({ path: join(__dirname, '../../../.env') });
 
 /**
- * The data source for `*.db-spec.ts` suites — the ONLY tests here that touch a real
- * Postgres. Create the database once with
- * `docker compose exec postgres createdb -U app app_test`.
+ * Resolves and validates the database `*.db-spec.ts` suites are allowed to
+ * touch (`TEST_DB_NAME`, default `app_test`) — SEPARATE from `DB_NAME`
+ * because these specs TRUNCATE, and that separation is ENFORCED here rather
+ * than documented: `.env` is loaded into this process, so a stray
+ * `TEST_DB_NAME=app` line would otherwise silently aim the truncation at a
+ * developer's own database.
  *
- * It targets a SEPARATE database (`TEST_DB_NAME`, default `app_test`) because the
- * specs TRUNCATE, and that separation is ENFORCED below rather than documented:
- * `.env` is loaded into this process, so a stray `TEST_DB_NAME=app` line would
- * otherwise silently aim the truncation at a developer's own database. Migrations
- * are RUN, not synchronized — the point is to test the schema the migration
- * actually produces, including constraints TypeORM cannot express.
+ * Exported (not just used by `openTestDataSource` below) so any other
+ * harness that needs the same guaranteed-safe database name — e.g. an
+ * HTTP-level pipeline spec that bootstraps the full Nest app rather than a
+ * bare `DataSource` — gets it from ONE place instead of re-deriving it.
  */
-export const openTestDataSource = async (): Promise<DataSource> => {
+export const resolveTestDatabaseName = (): string => {
   const db = databaseEnv();
   const database = process.env.TEST_DB_NAME ?? 'app_test';
 
@@ -34,6 +35,20 @@ export const openTestDataSource = async (): Promise<DataSource> => {
         `These specs TRUNCATE tables, and the suffix is the only thing marking a database as disposable.`,
     );
   }
+  return database;
+};
+
+/**
+ * The data source for `*.db-spec.ts` suites — the ONLY tests here that touch a real
+ * Postgres. Create the database once with
+ * `docker compose exec postgres createdb -U app app_test`.
+ *
+ * Migrations are RUN, not synchronized — the point is to test the schema the
+ * migration actually produces, including constraints TypeORM cannot express.
+ */
+export const openTestDataSource = async (): Promise<DataSource> => {
+  const db = databaseEnv();
+  const database = resolveTestDatabaseName();
 
   const ds = new DataSource({
     type: 'postgres',

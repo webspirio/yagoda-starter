@@ -92,8 +92,8 @@ describe('MultiSelectChips', () => {
     expect(screen.getByText('Усі')).toHaveClass('h-11');
   });
 
-  // `shrink-0` is not this component's call — it's per-call-site layout (the
-  // format row scrolls and wants it, the city row wraps and never had it), so
+  // `shrink-0` is not this component's call — it's per-call-site layout (one
+  // filter row scrolls and wants it, another wraps and never had it), so
   // the component must pass `chipClassName` through unmodified rather than
   // hardcoding shrink-0 onto every chip.
   it('does not force shrink-0 onto chips absent from chipClassName', () => {

@@ -87,7 +87,7 @@ export function extractErrorReason(body: unknown): string | undefined {
 
 /**
  * `paramsSerializer: { indexes: null }` — without it axios's default array
- * serializer emits bracketed indices (`cityIds[]=a&cityIds[]=b`). Two things
+ * serializer emits bracketed indices (`tagIds[]=a&tagIds[]=b`). Two things
  * downstream conspire to reject that: `express@5`'s default `query parser`
  * is `simple` (Node's `querystring`, not `qs` — express@4's default), so the
  * key never gets un-bracketed server-side and arrives literally as

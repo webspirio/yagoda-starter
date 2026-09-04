@@ -135,6 +135,36 @@ describe('ProfilePage', () => {
     expect(JSON.parse(mock.history.patch[0].data)).toEqual({ display_name: 'Alicia' });
   });
 
+  // `UpdateMeDto.display_name` is `@Length(1, 128)` when present — sending ''
+  // 400s. Clearing the field and saving must omit the key rather than send
+  // an empty string, so it round-trips as a no-op instead of a validation error.
+  it('omits display_name from the PATCH when the field is cleared', async () => {
+    mock.onPatch('/me').reply(200, ME);
+    renderPage();
+
+    const input = await screen.findByDisplayValue('Alice');
+    await userEvent.clear(input);
+    await userEvent.click(screen.getByRole('button', { name: /save/i }));
+
+    await waitFor(() => expect(mock.history.patch).toHaveLength(1));
+    expect(JSON.parse(mock.history.patch[0].data)).toEqual({});
+  });
+
+  // Leading/trailing whitespace shouldn't count as "blank" one way and
+  // "content" the other — trim before both the emptiness check and the send.
+  it('trims display_name before sending it', async () => {
+    mock.onPatch('/me').reply(200, { ...ME, display_name: 'Alicia' });
+    renderPage();
+
+    const input = await screen.findByDisplayValue('Alice');
+    await userEvent.clear(input);
+    await userEvent.type(input, '  Alicia  ');
+    await userEvent.click(screen.getByRole('button', { name: /save/i }));
+
+    await waitFor(() => expect(mock.history.patch).toHaveLength(1));
+    expect(JSON.parse(mock.history.patch[0].data)).toEqual({ display_name: 'Alicia' });
+  });
+
   it('shows an error when the profile fails to load', async () => {
     mock.onGet('/me').reply(500, { message: 'boom' });
     renderPage();

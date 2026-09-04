@@ -23,5 +23,17 @@ export default tseslint.config(
       ],
     },
   },
+  {
+    // supertest is an `export =` (CommonJS export-assignment) module, and
+    // this repo's tsconfig has no `esModuleInterop` — `import request =
+    // require('supertest')` is the correct, interop-independent form (a
+    // default import type-checks but resolves to `undefined` at runtime; see
+    // the comment in pipeline.db-spec.ts). `allowAsImport` permits exactly
+    // that TS-specific syntax, not a plain `require()` call.
+    files: ['src/testing/pipeline.db-spec.ts'],
+    rules: {
+      '@typescript-eslint/no-require-imports': ['error', { allowAsImport: true }],
+    },
+  },
   prettier,
 );

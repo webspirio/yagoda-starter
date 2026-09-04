@@ -32,7 +32,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
     let message: string | string[] = 'Internal server error';
     // Machine-readable extras (design §3 error contract): an HttpException
     // constructed with an object may carry a `code` plus context fields
-    // (e.g. { code: 'CAPACITY_BELOW_OCCUPIED', occupied: 7 }) — pass them
+    // (e.g. { code: 'USERNAME_TAKEN', field: 'username' }) — pass them
     // through into the JSON error body so clients can branch without parsing
     // human-readable messages. `reason` is hoisted to a first-class envelope
     // field alongside this generic passthrough.

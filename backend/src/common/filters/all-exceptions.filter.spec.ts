@@ -2,8 +2,10 @@ import { ArgumentsHost, ConflictException, NotFoundException } from '@nestjs/com
 import { AllExceptionsFilter } from './all-exceptions.filter';
 
 // Hand-rolled ArgumentsHost/response mocks (no NestJS TestingModule) — the
-// filter is pure request/response plumbing, so a unit spec is enough; the
-// pipeline specs exercise it end-to-end through supertest.
+// filter is pure request/response plumbing, so a unit spec is enough here.
+// `testing/pipeline.db-spec.ts` exercises it end-to-end through supertest (a
+// 400 from the global ValidationPipe, a 401 from JwtAuthGuard) — that one
+// needs a real Postgres, so it runs under `npm run test:db`, not this suite.
 describe('AllExceptionsFilter', () => {
   let filter: AllExceptionsFilter;
   let json: jest.Mock;
@@ -41,9 +43,9 @@ describe('AllExceptionsFilter', () => {
   it('passes code + extra fields through for an object-bodied HttpException', () => {
     filter.catch(
       new ConflictException({
-        code: 'CAPACITY_BELOW_OCCUPIED',
-        occupied: 7,
-        message: 'Capacity below occupied seats',
+        code: 'USERNAME_TAKEN',
+        field: 'username',
+        message: 'That username is taken',
       }),
       host(),
     );
@@ -51,9 +53,9 @@ describe('AllExceptionsFilter', () => {
     expect(json).toHaveBeenCalledWith(
       expect.objectContaining({
         statusCode: 409,
-        code: 'CAPACITY_BELOW_OCCUPIED',
-        occupied: 7,
-        message: 'Capacity below occupied seats',
+        code: 'USERNAME_TAKEN',
+        field: 'username',
+        message: 'That username is taken',
       }),
     );
   });
@@ -61,7 +63,7 @@ describe('AllExceptionsFilter', () => {
   it('envelope keys always win over same-named extras', () => {
     filter.catch(
       new ConflictException({
-        code: 'AUDIENCE_NARROWING',
+        code: 'DUPLICATE_ENTRY',
         affectedCount: 3,
         path: '/spoofed', // must NOT override the real request path
         message: 'msg',
@@ -70,7 +72,7 @@ describe('AllExceptionsFilter', () => {
     );
     const body = json.mock.calls[0][0] as Record<string, unknown>;
     expect(body.path).toBe('/widgets/w1');
-    expect(body.code).toBe('AUDIENCE_NARROWING');
+    expect(body.code).toBe('DUPLICATE_ENTRY');
     expect(body.affectedCount).toBe(3);
   });
 
