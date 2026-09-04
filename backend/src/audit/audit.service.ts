@@ -37,11 +37,19 @@ export class AuditService {
       actor_id: entry.actor_id,
       target_type: entry.target_type ?? null,
       target_id: entry.target_id ?? null,
-      before: entry.before ?? null,
-      after: entry.after ?? null,
-      note: entry.note ?? null,
+      // The casts are confined to the two jsonb columns and are unavoidable:
+      // TypeORM's QueryDeepPartialEntity<T> recurses into `Record<string,
+      // unknown>` and cannot accept a plain object for a jsonb field. Casting
+      // the WHOLE payload instead would also suppress key checking on
+      // `action`, `actor_id`, `target_type`, `target_id` and `note` — and this
+      // object literal is the one place those keys must match the entity's
+      // columns, so a typo has to stay a compile error.
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    } as any);
+      before: (entry.before ?? null) as any,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      after: (entry.after ?? null) as any,
+      note: entry.note ?? null,
+    });
   }
 
   async list({ page, limit }: PaginationQueryDto): Promise<Paginated<AuditLog>> {

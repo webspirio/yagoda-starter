@@ -1,5 +1,6 @@
 import { Test } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
+import type { EntityManager } from 'typeorm';
 import { AuditService } from './audit.service';
 import { AuditLog } from './audit-log.entity';
 
@@ -52,6 +53,22 @@ describe('AuditService', () => {
       after: null,
       note: null,
     });
+  });
+
+  it('writes through a supplied EntityManager instead of the default repo', async () => {
+    const managerRepo = { insert: jest.fn().mockResolvedValue({ identifiers: [] }) };
+    const manager = { getRepository: jest.fn().mockReturnValue(managerRepo) };
+
+    await service.record(
+      { action: 'user.registered', actor_id: 'actor-1' },
+      manager as unknown as EntityManager,
+    );
+
+    // The whole point of the manager parameter: the entry must join the
+    // caller's transaction, not commit independently on the default repo.
+    expect(manager.getRepository).toHaveBeenCalledWith(AuditLog);
+    expect(managerRepo.insert).toHaveBeenCalledTimes(1);
+    expect(repo.insert).not.toHaveBeenCalled();
   });
 
   it('lists newest first and paginates', async () => {
