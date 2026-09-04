@@ -89,11 +89,18 @@ export class CollectionPointsService {
     const targetsBefore = this.targetsOf(point);
     const before = { name: point.name, kind: point.kind, is_active: point.is_active };
 
+    // `!= null` (not `!== undefined`) for the three NOT NULL columns: the DTO
+    // rejects an explicit null on these with a 400 (see its doc comment), but
+    // the guard stays defensive rather than trusting that upstream alone —
+    // `!= null` excludes both `undefined` (field absent, leave alone) and
+    // `null` (should never arrive here, and must not be assigned if it does).
+    if (dto.name != null) point.name = dto.name;
+    if (dto.kind != null) point.kind = dto.kind;
+    if (dto.is_active != null) point.is_active = dto.is_active;
     // `in`, not a truthiness check: an explicit null CLEARS a target back to
-    // "not known", while an absent field leaves it alone (§6.9).
-    if ('name' in dto && dto.name !== undefined) point.name = dto.name;
-    if ('kind' in dto && dto.kind !== undefined) point.kind = dto.kind;
-    if ('is_active' in dto && dto.is_active !== undefined) point.is_active = dto.is_active;
+    // "not known", while an absent field leaves it alone (§6.9). Unlike the
+    // three fields above, target_cash/target_crates ARE nullable — null here
+    // is meaningful, not a defect to guard against.
     if ('target_cash' in dto) point.target_cash = dto.target_cash ?? null;
     if ('target_crates' in dto) point.target_crates = dto.target_crates ?? null;
 

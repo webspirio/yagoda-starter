@@ -23,7 +23,6 @@ import { UsersService } from '../users/users.service';
 import { CredentialsService } from '../users/credentials.service';
 import { LOCAL_PROVIDER } from '../users/user-identity.entity';
 import { UserRole } from '../users/user-role.enum';
-import { CollectionPointsService } from '../collection-points/collection-points.service';
 
 /**
  * The one HTTP-layer test (design review item I3): drives the real Nest
@@ -145,43 +144,8 @@ describe('auth + me pipeline (HTTP)', () => {
   });
 
   it('refuses an operator an owner-only route, and allows the owner', async () => {
-    const points = app.get(CollectionPointsService);
     const users = app.get(UsersService);
     const credentials = app.get(CredentialsService);
-
-    // Built from the created row rather than a placeholder mutated after the
-    // fact: `ownerUser.id` is the real sub a token for this user would carry.
-    const { user: ownerUser } = await users.createWithIdentity(
-      {
-        provider: LOCAL_PROVIDER,
-        providerUserId: `owner-${randomUUID()}`,
-        first_name: 'Net',
-        last_name: 'Owner',
-        role: UserRole.NetworkOwner,
-      },
-      async (created, manager) => credentials.set(created.id, 'hunter2!!', manager),
-    );
-    const ownerActor = {
-      sub: ownerUser.id,
-      username: '',
-      role: UserRole.NetworkOwner,
-      collection_point_id: null,
-    };
-
-    const point = await points.create(ownerActor, { name: `pipeline-point-${randomUUID()}` });
-
-    const operatorLogin = `op-${randomUUID()}`;
-    await users.createWithIdentity(
-      {
-        provider: LOCAL_PROVIDER,
-        providerUserId: operatorLogin,
-        first_name: 'Оксана',
-        last_name: 'Приймальник',
-        role: UserRole.PointOperator,
-        collection_point_id: point.id,
-      },
-      async (created, manager) => credentials.set(created.id, 'hunter2!!', manager),
-    );
 
     const tokenFor = async (username: string): Promise<string> => {
       const res = await request(app.getHttpServer())
@@ -191,6 +155,45 @@ describe('auth + me pipeline (HTTP)', () => {
       return res.body.access_token as string;
     };
 
+    const ownerLogin = `owner-${randomUUID()}`;
+    await users.createWithIdentity(
+      {
+        provider: LOCAL_PROVIDER,
+        providerUserId: ownerLogin,
+        first_name: 'Net',
+        last_name: 'Owner',
+        role: UserRole.NetworkOwner,
+      },
+      async (created, manager) => credentials.set(created.id, 'hunter2!!', manager),
+    );
+    const ownerToken = await tokenFor(ownerLogin);
+
+    // The owner CAN create a point — over the REAL pipeline (login, then this
+    // POST with the minted token), not a direct service call. Without this
+    // half, a RolesGuard that denied every role would also pass this test:
+    // the "allows the owner" half of its name has to actually exercise the
+    // allow path, not just the deny path below. `pipeline-point-${randomUUID()}`
+    // keeps the name unique on every run — `collection_points.name` is UNIQUE
+    // and `app_test` is never truncated.
+    const createRes = await request(app.getHttpServer())
+      .post('/collection-points')
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .send({ name: `pipeline-point-${randomUUID()}` })
+      .expect(201);
+    const pointId = createRes.body.id as string;
+
+    const operatorLogin = `op-${randomUUID()}`;
+    await users.createWithIdentity(
+      {
+        provider: LOCAL_PROVIDER,
+        providerUserId: operatorLogin,
+        first_name: 'Оксана',
+        last_name: 'Приймальник',
+        role: UserRole.PointOperator,
+        collection_point_id: pointId,
+      },
+      async (created, manager) => credentials.set(created.id, 'hunter2!!', manager),
+    );
     const operatorToken = await tokenFor(operatorLogin);
 
     // The operator can READ points…

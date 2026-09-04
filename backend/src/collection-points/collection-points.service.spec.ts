@@ -1,7 +1,9 @@
 import { ConflictException, NotFoundException } from '@nestjs/common';
+import { validate } from 'class-validator';
 import { UserRole } from '../users/user-role.enum';
 import { PointKind } from './point-kind.enum';
 import { CollectionPointsService } from './collection-points.service';
+import { UpdateCollectionPointDto } from './dto/update-collection-point.dto';
 import type { AuthenticatedUser } from '../auth/jwt.strategy';
 
 const owner: AuthenticatedUser = {
@@ -140,5 +142,39 @@ describe('CollectionPointsService', () => {
       // strict literal here would assert the filter is the ONLY one applied.
       expect.objectContaining({ where: expect.objectContaining({ id: 'p-1' }) }),
     );
+  });
+
+  // Exercises class-validator's own validate() directly against the DTO — the
+  // rest of this file mocks the repo and calls the service with plain object
+  // literals, which never runs through class-validator at all. `name`, `kind`
+  // and `is_active` are NOT NULL columns: an explicit null must be REJECTED
+  // here (400 once the global ValidationPipe is in front of it), not silently
+  // assigned and left to crash the database constraint at `repo.save()`.
+  describe('UpdateCollectionPointDto nullability', () => {
+    it('rejects an explicit null for name', async () => {
+      const dto = Object.assign(new UpdateCollectionPointDto(), { name: null });
+      const errors = await validate(dto);
+      expect(errors.some((e) => e.property === 'name')).toBe(true);
+    });
+
+    it('rejects an explicit null for kind', async () => {
+      const dto = Object.assign(new UpdateCollectionPointDto(), { kind: null });
+      const errors = await validate(dto);
+      expect(errors.some((e) => e.property === 'kind')).toBe(true);
+    });
+
+    it('rejects an explicit null for is_active', async () => {
+      const dto = Object.assign(new UpdateCollectionPointDto(), { is_active: null });
+      const errors = await validate(dto);
+      expect(errors.some((e) => e.property === 'is_active')).toBe(true);
+    });
+
+    it('accepts a real name and leaves an absent name untouched', async () => {
+      const withName = Object.assign(new UpdateCollectionPointDto(), { name: 'Копайгород' });
+      expect(await validate(withName)).toHaveLength(0);
+
+      const absent = Object.assign(new UpdateCollectionPointDto(), { reason: 'бо треба' });
+      expect(await validate(absent)).toHaveLength(0);
+    });
   });
 });
