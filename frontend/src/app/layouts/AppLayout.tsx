@@ -53,7 +53,7 @@ export function AppLayout() {
           variant="ghost"
           size="icon"
           className="md:hidden"
-          aria-label={menuOpen ? 'Close menu' : 'Open menu'}
+          aria-label={menuOpen ? t('nav.closeMenu') : t('nav.openMenu')}
           onClick={() => setMenuOpen((open) => !open)}
         >
           {menuOpen ? <X size={18} /> : <Menu size={18} />}
@@ -72,7 +72,10 @@ export function AppLayout() {
             'w-56 shrink-0 border-r p-3',
             // Below md the sidebar is an overlay driven by `menuOpen`; from md
             // up it is always in flow and the toggle is hidden.
-            'fixed inset-y-14 left-0 z-20 bg-background transition-transform md:sticky md:top-14 md:translate-x-0',
+            // `top-14` only — never `inset-y-14`, which also sets `bottom: 3.5rem`
+            // and leaves the mobile drawer 56px short of the viewport floor while
+            // making the sticky desktop sidebar stop early on a long page.
+            'fixed bottom-0 top-14 left-0 z-20 bg-background transition-transform md:sticky md:bottom-auto md:top-14 md:translate-x-0',
             menuOpen ? 'translate-x-0' : '-translate-x-full',
           )}
         >

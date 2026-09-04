@@ -44,4 +44,13 @@ describe('router', () => {
     renderAt('/nope');
     expect(await screen.findByRole('heading', { name: /page not found/i })).toBeInTheDocument();
   });
+
+  it('sends an unauthenticated visitor from an unknown path to the login screen, not the 404', async () => {
+    // The catch-all is wrapped in RequireAuth individually (see router.tsx's
+    // doc comment), so an unauthenticated visitor hitting a bogus path never
+    // reaches NotFoundPage — CHROMELESS and RequireAuth interact here.
+    renderAt('/nope');
+    expect(await screen.findByRole('heading', { name: /sign in/i })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: /page not found/i })).not.toBeInTheDocument();
+  });
 });

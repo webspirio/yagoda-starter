@@ -25,7 +25,9 @@
   "nav": {
     "dashboard": "Dashboard",
     "profile": "Profile",
-    "settings": "Settings"
+    "settings": "Settings",
+    "openMenu": "Open menu",
+    "closeMenu": "Close menu"
   },
   "profile": {
     "title": "Profile",
@@ -33,6 +35,9 @@
     "avatar": "Avatar",
     "changeAvatar": "Change avatar",
     "saved": "Profile saved"
+  },
+  "dashboard": {
+    "signedInAs": "Signed in as {{name}}"
   },
   "notFound": {
     "title": "Page not found",
