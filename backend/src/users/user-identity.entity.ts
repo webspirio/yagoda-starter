@@ -5,6 +5,7 @@ import {
   CreateDateColumn,
   UpdateDateColumn,
   ManyToOne,
+  JoinColumn,
   Unique,
 } from 'typeorm';
 import { Exclude } from 'class-transformer';
@@ -23,7 +24,11 @@ export class UserIdentity {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
+  // Explicit @JoinColumn: without it TypeORM's naming strategy derives
+  // `"userId"`, a quoted camelCase column in an otherwise snake_case schema —
+  // a trap for anyone later writing raw SQL or a migration by hand.
   @ManyToOne(() => User, (user) => user.identities, { onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'user_id' })
   user: User;
 
   /** e.g. 'local'. A future OAuth provider writes 'google', 'github', … */

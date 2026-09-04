@@ -1,5 +1,6 @@
 import { Test } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
+import type { EntityManager } from 'typeorm';
 import { CredentialsService } from './credentials.service';
 import { UserCredentials } from './user-credentials.entity';
 
@@ -48,5 +49,26 @@ describe('CredentialsService', () => {
     await service.set('user-1', 'second');
     await expect(service.verify('user-1', 'first')).resolves.toBe(false);
     await expect(service.verify('user-1', 'second')).resolves.toBe(true);
+  });
+
+  it('writes through a given manager instead of the default repo', async () => {
+    const managerRows = new Map<string, UserCredentials>();
+    const managerRepo = {
+      upsert: jest.fn((row: UserCredentials) => {
+        managerRows.set(row.user_id, row);
+        return Promise.resolve({ identifiers: [] });
+      }),
+    };
+    const manager = {
+      getRepository: jest.fn().mockReturnValue(managerRepo),
+    } as unknown as EntityManager;
+
+    await service.set('user-2', 'via-manager', manager);
+
+    // The write must land on the manager's repo, not the constructor-injected one.
+    expect(manager.getRepository).toHaveBeenCalledWith(UserCredentials);
+    expect(managerRepo.upsert).toHaveBeenCalledTimes(1);
+    expect(repo.upsert).not.toHaveBeenCalled();
+    expect(managerRows.get('user-2')?.password).toBe('via-manager');
   });
 });
