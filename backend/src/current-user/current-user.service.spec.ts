@@ -52,16 +52,22 @@ describe('CurrentUserService', () => {
       collection_point_id: null,
     });
 
-    await expect(service.getMe({ sub: 'u1', username: 'alice', display_name: null, avatar_url: null }))
-      .resolves.toEqual({
-        id: 'u1',
+    await expect(
+      service.getMe({
+        sub: 'u1',
         username: 'alice',
-        display_name: 'Alice Owner',
-        avatar_url: null,
-        language_code: 'en',
-        role: 'network_owner',
+        role: UserRole.NetworkOwner,
         collection_point_id: null,
-      });
+      }),
+    ).resolves.toEqual({
+      id: 'u1',
+      username: 'alice',
+      display_name: 'Alice Owner',
+      avatar_url: null,
+      language_code: 'en',
+      role: 'network_owner',
+      collection_point_id: null,
+    });
   });
 
   it('records what changed when the profile is updated', async () => {
@@ -69,7 +75,7 @@ describe('CurrentUserService', () => {
     users.update.mockResolvedValue({ ...BASE, language_code: 'uk' });
 
     await service.updateMe(
-      { sub: 'u1', username: 'alice', display_name: null, avatar_url: null },
+      { sub: 'u1', username: 'alice', role: UserRole.NetworkOwner, collection_point_id: null },
       { language_code: 'uk' },
     );
 
@@ -88,7 +94,7 @@ describe('CurrentUserService', () => {
     users.update.mockResolvedValue({ ...BASE, language_code: 'en' });
 
     await service.updateMe(
-      { sub: 'u1', username: 'alice', display_name: null, avatar_url: null },
+      { sub: 'u1', username: 'alice', role: UserRole.NetworkOwner, collection_point_id: null },
       { language_code: 'en' },
     );
 
@@ -96,7 +102,12 @@ describe('CurrentUserService', () => {
   });
 
   describe('setAvatar', () => {
-    const actor = { sub: 'u1', username: 'alice', display_name: null, avatar_url: null };
+    const actor = {
+      sub: 'u1',
+      username: 'alice',
+      role: UserRole.NetworkOwner,
+      collection_point_id: null,
+    };
 
     it('deletes the superseded avatar after the update succeeds', async () => {
       users.findById.mockResolvedValue({

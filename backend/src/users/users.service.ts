@@ -2,7 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { EntityManager, Repository } from 'typeorm';
 import { User } from './user.entity';
-import { UserIdentity } from './user-identity.entity';
+import { UserIdentity, LOCAL_PROVIDER } from './user-identity.entity';
 import { UserRole } from './user-role.enum';
 
 export interface CreateUserInput {
@@ -107,9 +107,30 @@ export class UsersService {
   }
 
   /**
-   * Idempotent. Blocks new logins only (see AuthService.login) — a token
-   * issued before this call remains valid until it expires, since
-   * JwtStrategy never re-checks the database. Not a real-time lockout.
+   * Everything an authenticated request needs about its caller, in one query.
+   * Called on EVERY authenticated request by JwtStrategy.validate(), which is
+   * what makes deactivation, demotion and point reassignment take effect
+   * immediately instead of when the token expires.
+   *
+   * Returns null for a user with no local identity — a future OAuth-only
+   * account would land here, and rejecting it is the safe default until that
+   * case actually exists.
+   */
+  async findAuthContext(userId: string): Promise<{ user: User; login: string } | null> {
+    const identity = await this.identityRepo.findOne({
+      where: { provider: LOCAL_PROVIDER, user: { id: userId } },
+      relations: { user: true },
+    });
+    if (!identity?.user) return null;
+    return { user: identity.user, login: identity.provider_user_id };
+  }
+
+  /**
+   * Idempotent, and a real-time lockout: JwtStrategy.validate() reloads this
+   * row on every authenticated request, so a deactivated user is refused on
+   * their very next request with the token they already hold — not when it
+   * finally expires. Login is blocked too (see AuthService.login), but that
+   * is now the lesser half of the effect.
    */
   async setActive(id: string, isActive: boolean): Promise<void> {
     const result = await this.userRepo.update(id, { is_active: isActive });

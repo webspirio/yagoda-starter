@@ -6,7 +6,7 @@ import { AuditService } from '../audit/audit.service';
 import { LOCAL_PROVIDER } from '../users/user-identity.entity';
 import { User } from '../users/user.entity';
 import { LoginDto } from './dto/login.dto';
-import type { AuthenticatedUser } from './jwt.strategy';
+import type { AuthenticatedUser, JwtPayload } from './jwt.strategy';
 
 /**
  * Usernames are compared case-insensitively and stored lowercased, so
@@ -52,7 +52,7 @@ export class AuthService {
       target_id: identity.user.id,
     });
 
-    return { access_token: this.signToken(identity.user, identity.provider_user_id) };
+    return { access_token: this.signToken(identity.user) };
   }
 
   /**
@@ -76,20 +76,10 @@ export class AuthService {
     });
   }
 
-  /**
-   * `display_name` is DERIVED here, exactly as in `CurrentUserService` — there
-   * is no such column any more. The token carries a snapshot taken at sign-in,
-   * so a renamed user keeps the old name in their token until it expires; the
-   * authoritative value is whatever `GET /me` returns, and nothing in the
-   * backend reads this claim.
-   */
-  private signToken(user: User, username: string): string {
-    const payload: AuthenticatedUser = {
-      sub: user.id,
-      username,
-      display_name: `${user.first_name} ${user.last_name}`.trim(),
-      avatar_url: user.avatar_url ?? null,
-    };
+  /** The token carries the subject and nothing else: every other fact about
+   *  the caller is read from the database on each request (JwtStrategy). */
+  private signToken(user: User): string {
+    const payload: JwtPayload = { sub: user.id };
     return this.jwt.sign(payload);
   }
 }

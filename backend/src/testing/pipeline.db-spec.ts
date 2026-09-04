@@ -130,5 +130,16 @@ describe('auth + me pipeline (HTTP)', () => {
       .set('Authorization', `Bearer ${token}`)
       .send({ not_a_real_property: 'x' })
       .expect(400);
+
+    // The token stays cryptographically valid — nothing revokes it. What
+    // changes is that JwtStrategy.validate() now reads the user row, so the
+    // very next request with the SAME token is rejected. This is the only
+    // test in the repo that proves deactivation actually does anything.
+    await users.update(meRes.body.id, { is_active: false });
+
+    await request(app.getHttpServer())
+      .get('/me')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(401);
   });
 });

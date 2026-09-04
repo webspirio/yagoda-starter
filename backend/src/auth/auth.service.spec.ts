@@ -8,6 +8,7 @@ import { CredentialsService } from '../users/credentials.service';
 import { AuditService } from '../audit/audit.service';
 import { authConfig } from '../config/auth.config';
 import { LoginDto } from './dto/login.dto';
+import { UserRole } from '../users/user-role.enum';
 
 describe('AuthService', () => {
   let service: AuthService;
@@ -51,7 +52,7 @@ describe('AuthService', () => {
       });
     });
 
-    it('signs the username and profile into the token, and never the password', async () => {
+    it('signs only the subject into the token — never the password, and never a stale profile', async () => {
       users.findByIdentity.mockResolvedValue({
         provider_user_id: 'alice',
         user: { id: 'u1', is_active: true, first_name: 'Alice', last_name: 'Owner', avatar_url: '/uploads/a.webp' },
@@ -60,13 +61,10 @@ describe('AuthService', () => {
 
       await service.login({ username: 'alice', password: 'hunter2!!' });
 
-      // display_name is DERIVED from first_name + last_name; the column is gone.
-      expect(jwt.sign).toHaveBeenCalledWith({
-        sub: 'u1',
-        username: 'alice',
-        display_name: 'Alice Owner',
-        avatar_url: '/uploads/a.webp',
-      });
+      // Nothing but `sub`: role, point and is_active are read from the
+      // database on every request (JwtStrategy.validate), so putting a copy
+      // of any of them in here would be a fact that can go stale for a week.
+      expect(jwt.sign).toHaveBeenCalledWith({ sub: 'u1' });
     });
 
     it('rejects an unknown username and a wrong password identically', async () => {
@@ -121,8 +119,8 @@ describe('AuthService', () => {
       await service.logout({
         sub: 'u1',
         username: 'alice',
-        display_name: 'Alice',
-        avatar_url: null,
+        role: UserRole.NetworkOwner,
+        collection_point_id: null,
       });
 
       expect(audit.record).toHaveBeenCalledWith({

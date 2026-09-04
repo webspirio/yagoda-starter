@@ -54,6 +54,27 @@ describe('UsersService', () => {
     await expect(service.findByIdentity(LOCAL_PROVIDER, 'nobody')).resolves.toBeNull();
   });
 
+  // Called on EVERY authenticated request by JwtStrategy.validate(), so both
+  // the shape it returns and the single query it costs are load-bearing.
+  describe('findAuthContext', () => {
+    it('returns the user with the login taken from the local identity row', async () => {
+      const user = { id: 'u1', is_active: true } as User;
+      identityRepo.findOne.mockResolvedValue({ user, provider_user_id: 'alice' });
+
+      await expect(service.findAuthContext('u1')).resolves.toEqual({ user, login: 'alice' });
+      expect(identityRepo.findOne).toHaveBeenCalledTimes(1);
+      expect(identityRepo.findOne).toHaveBeenCalledWith({
+        where: { provider: LOCAL_PROVIDER, user: { id: 'u1' } },
+        relations: { user: true },
+      });
+    });
+
+    it('returns null when the user has no local identity', async () => {
+      identityRepo.findOne.mockResolvedValue(null);
+      await expect(service.findAuthContext('u1')).resolves.toBeNull();
+    });
+  });
+
   it('throws NotFound for an unknown user id', async () => {
     userRepo.findOne.mockResolvedValue(null);
     await expect(service.findById('missing')).rejects.toBeInstanceOf(NotFoundException);
