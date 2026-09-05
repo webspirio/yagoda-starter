@@ -164,6 +164,12 @@ jobs:
     #
     # It invokes Jest directly rather than through Turborepo, so it is
     # intentionally not covered by the .turbo cache.
+    #
+    # Redis is here for ONE suite: testing/pipeline.db-spec.ts boots the whole
+    # AppModule, and its global ThrottlerGuard counts every request through
+    # ThrottlerStorageRedisService. Without a reachable Redis the guard rejects
+    # and each request 500s, so the pipeline spec needs the same backing
+    # services the app does — not only Postgres.
     services:
       postgres:
         image: postgres:16-alpine
@@ -175,6 +181,16 @@ jobs:
           - '5432:5432'
         options: >-
           --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - '6379:6379'
+        options: >-
+          --health-cmd "redis-cli ping"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
@@ -191,13 +207,23 @@ jobs:
       # frontend-only React/Vite/etc. dependencies into this job.
       - run: npm ci --workspace=backend
 
+      # Developers get these from the untracked root .env, which db-harness.ts
+      # loads; CI has no .env, so the job spells out the same variables. APP_URL
+      # and JWT_SECRET are Joi-`required()` in AppModule and so are load-bearing
+      # for pipeline.db-spec.ts alone — the other suites open a bare DataSource
+      # and never run that validation. Both values are throwaway CI fixtures:
+      # nothing outside this job ever verifies a token signed with this secret.
       - run: npm run test:db -w backend
         env:
+          APP_URL: http://localhost:5173
+          JWT_SECRET: ci-only-not-a-secret-0123456789abcdef
           DB_HOST: localhost
           DB_PORT: '5432'
           DB_USER: app
           DB_PASSWORD: app
           TEST_DB_NAME: app_test
+          REDIS_HOST: localhost
+          REDIS_PORT: '6379'
 
   docker:
     runs-on: ubuntu-latest
