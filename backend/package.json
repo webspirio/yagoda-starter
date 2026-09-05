@@ -40,7 +40,7 @@
     "ioredis": "^5.11.1",
     "joi": "^18.2.3",
     "luxon": "^3.7.2",
-    "nestjs-pino": "^4.6.1",
+    "nestjs-pino": "^5.1.0",
     "passport": "^0.7.0",
     "passport-jwt": "^4.0.1",
     "pg": "^8.23.0",
