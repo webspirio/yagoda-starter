@@ -2,7 +2,7 @@ import MockAdapter from 'axios-mock-adapter';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { httpClient, ApiError, attachAuthInterceptors } from '@/shared/api';
 import { sessionAuthHooks } from '@/entities/user';
-import { login, register, logout } from './authApi';
+import { login, logout } from './authApi';
 
 // Attached once at module scope, matching the pattern the source project's
 // own attachAuthInterceptors tests use — the shared httpClient instance is a
@@ -35,12 +35,6 @@ describe('authApi', () => {
     const error = await login({ username: 'alice', password: 'nope' }).catch((e) => e);
     expect(error).toBeInstanceOf(ApiError);
     expect(error.status).toBe(401);
-  });
-
-  it('surfaces a 409 on a taken username', async () => {
-    mock.onPost('/auth/register').reply(409, { message: 'That username is taken' });
-    const error = await register({ username: 'alice', password: 'hunter2!!' }).catch((e) => e);
-    expect(error.status).toBe(409);
   });
 
   it('posts to logout', async () => {

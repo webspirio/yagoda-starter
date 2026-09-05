@@ -10,17 +10,13 @@ not to be a demo of everything a web app could have.
 The starter is deliberately small in a few places so a consuming project
 adds exactly what it needs, rather than ripping out what it doesn't:
 
-- **No authorization / roles.** Every authenticated user is equal — `@Auth()`
-  takes zero arguments. See "What to change first" below for how to add roles.
 - **No refresh token.** One JWT, 7-day expiry, held in `localStorage`. When it
   expires, the user signs in again.
-- **No token revocation.** `users.is_active` blocks new logins only —
-  flipping it false does not invalidate a token already issued, since
-  `JwtStrategy` never re-checks the database. An existing token keeps
-  authenticating until it expires. Deleting a user has the same limit; see
-  `scripts/reset-data.sh` for the operational consequences.
-- **No email.** Registration takes a username and password; the username is
-  never validated as an email address, and the app never sends mail.
+- **No public registration.** `POST /auth/login` is the only public auth
+  route. A `network_owner` creates every other account via `POST /users`
+  (the `user-admin` module) — there is no self-service sign-up.
+- **No email.** Login is a username/login and password; it is never validated
+  as an email address, and the app never sends mail.
 - **No CD pipeline.** CI (build, lint, test) runs on every push to `main` and
   on every pull request (see `.github/workflows/ci.yml`); there
   is no automated deploy workflow. Build and push your own images, or deploy
@@ -68,47 +64,9 @@ password: admin
 ```
 
 It is guarded on `NODE_ENV !== production` — it can never create this
-known-credential account in a production deployment. Sign in with it, or
-register your own account from `/register`.
-
-## ⚠️ Passwords are stored in plain text
-
-This is the single most important thing to know before you deploy this
-starter anywhere real.
-
-`user_credentials.password` holds the raw password string, and
-`CredentialsService.verify()` compares it with `===`. There is no hashing, no
-salt, no key-derivation function.
-
-**This is a deliberate, recorded decision for this starter's first consumer
-project — not a bug, and not an oversight.** It is called out here, in
-`CLAUDE.md`, and directly on `UserCredentials` and `CredentialsService` in
-the source, so nobody mistakes it for one.
-
-**It must be replaced before any deployment holding a password a human might
-reuse elsewhere.** The swap is small and needs no new dependency — Node ships
-`scrypt` in `node:crypto`:
-
-```ts
-import { randomBytes, scrypt as scryptCb, timingSafeEqual } from 'node:crypto';
-import { promisify } from 'node:util';
-const scrypt = promisify(scryptCb);
-
-// set(): derive and store a salted hash instead of the raw password
-const salt = randomBytes(16).toString('hex');
-const key = (await scrypt(password, salt, 64)) as Buffer;
-// store `${salt}:${key.toString('hex')}`
-
-// verify(): split the stored value on ':', re-derive with the same salt,
-// compare with timingSafeEqual (never `===`, which leaks timing information)
-```
-
-The whole change touches exactly two functions —
-`backend/src/users/credentials.service.ts`'s `set()` and `verify()` — plus one
-migration to widen/rename the `user_credentials.password` column if you want
-the column name to reflect what it now holds. Nothing else in the codebase
-reads or writes a password; `CredentialsService` is documented as the only
-place that does.
+known-credential account in a production deployment. Sign in with it; there
+is no self-service registration, so every other account is created by an
+owner over `POST /users` once one is signed in.
 
 ## Project layout
 
@@ -157,13 +115,14 @@ including the production build variant and the multi-replica caveat.
 
 ## What to change first
 
-This starter ships four seams specifically so a consuming project doesn't
+This starter ships three seams specifically so a consuming project doesn't
 have to fight the existing code to extend it:
 
 1. **Add a login provider.** `user_identities(provider, provider_user_id)` is
-   the single login lookup path (`UNIQUE`). This starter writes exactly one
-   provider, `'local'`. Adding Google/GitHub/etc. OAuth means writing a
-   different `provider` value at registration time — no schema change.
+   the single login lookup path (`UNIQUE`, plus an index on `user_id` for the
+   per-request auth lookup). This starter writes exactly one provider,
+   `'local'`. Adding Google/GitHub/etc. OAuth means writing a different
+   `provider` value at account-creation time — no schema change.
 2. **Add a `MediaPurpose`.** `backend/src/media/media.constants.ts` ships one
    purpose, `Avatar`. Adding another (a cover photo, a document, …) means
    adding a member to that enum, a subdirectory under `UPLOADS_DIR`, and an
@@ -172,12 +131,29 @@ have to fight the existing code to extend it:
    `AUDIT_ACTIONS` is a TypeScript string union stored as `varchar`, not a DB
    enum — add a new action string and start calling `AuditService.record()`
    with it; no migration required.
-4. **Add roles back via `@Auth()`.** `backend/src/auth/decorators/auth.decorators.ts`
-   ships `@Auth()` with zero arguments — every authenticated user is equal.
-   Reintroducing authorization means adding a role column/table, a
-   `RolesGuard`, and an optional argument to `@Auth()` (e.g.
-   `@Auth('admin')`) that composes it in — the same shape NestJS's own guard
-   composition supports, just not pre-built here.
+
+Roles (`network_owner` / `point_operator`) and route-level authorization
+(`@Auth(...roles)`) already exist — see `backend/CLAUDE.md`'s "Route
+protection" entry rather than adding them again.
+
+## Deployment
+
+Before the **first** production boot of a fresh database, set four
+environment variables so the network has an owner able to sign in at all
+(public registration doesn't exist — see "What this is not" above):
+
+- `BOOTSTRAP_OWNER_LOGIN`, `BOOTSTRAP_OWNER_PASSWORD` (required to create the
+  account) and optionally `BOOTSTRAP_OWNER_FIRST_NAME`,
+  `BOOTSTRAP_OWNER_LAST_NAME`.
+
+They are read exactly once, by the `BootstrapOwner` migration, and only when
+the `users` table is empty — harmless to leave set afterward, but pointless,
+since the migration has already run and will not run again. Unset in
+development, where `SeedDevAdmin` already seeds `admin`/`admin`. If a
+production database is first booted **without** these set, the migration
+still records itself as applied and no owner is ever created; recovery at
+that point is a manual `INSERT`, not a re-run. See `backend/CLAUDE.md`'s
+"Migrations" section and the migration's own doc comment.
 
 ## Operational runbooks
 

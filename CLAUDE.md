@@ -46,15 +46,12 @@ npm run lint
 npm run build
 ```
 
-## ⚠️ Before you deploy this
-
-**Passwords are stored in plain text.** `user_credentials.password` holds the raw string, and `CredentialsService` compares it directly. This is a deliberate placeholder, not a bug — see the comments on `backend/src/users/user-credentials.entity.ts`. Replace it with a real KDF before any deployment holding a password a human might reuse. Node's built-in `scrypt` needs no new dependency; the change touches `CredentialsService.set()`, `.verify()`, and one migration.
-
 ## Architecture
 
 - **API:** frontend → nginx `location /api/` (prefix stripped via `proxy_pass` trailing slash) → backend on port 3000. In dev the frontend calls the backend directly (`VITE_API_URL`); there is no Nest global prefix.
-- **Auth:** username + password. The backend verifies credentials and issues a JWT (HS256, 7 days) that the frontend keeps in `localStorage`. No refresh token, no roles — `@Auth()` means "any authenticated user". No token revocation: `users.is_active` and account deletion both only block new logins — `JwtStrategy.validate()` never queries the database, so a token already issued keeps working until it expires. Revoking a live token means checking the user in `JwtStrategy.validate()`, at the cost of a database query per authenticated request.
+- **Auth:** login + password. The backend verifies credentials and issues a JWT (HS256, 7 days, payload `{ sub }` and nothing else) that the frontend keeps in `localStorage`. `JwtStrategy.validate()` reloads the user row on every authenticated request, so deactivation, demotion and point reassignment take effect on that user's very next request — there is no refresh token, but there is real revocation. Two roles, `network_owner` and `point_operator`: `@Auth()` means "any authenticated user", `@Auth(UserRole.NetworkOwner)` means owner only. There is no public registration — `POST /auth/login` is the only public route; a `network_owner` creates accounts via `POST /users`.
 - **Identity seam:** `user_identities(provider, provider_user_id)` is the single login lookup path. This starter writes `provider = 'local'`; adding an OAuth provider means writing a different value, with no schema change.
+- **Domain:** the schema of record is `28-db-schema.dbml` (repo root); this slice implements `users` and `collection_points` from it. The spec lives at `docs/superpowers/specs/2026-09-04-yagoda-foundation-slice.md`.
 - **Data:** PostgreSQL via TypeORM — `synchronize: false`, migrations run automatically on startup.
 - **Redis:** rate-limit counters only; no durable state.
 - **Health:** `GET /health/live` (process) and `GET /health/ready` (DB + Redis); compose healthchecks gate on `/health/ready`.

@@ -14,10 +14,12 @@ import { RedisModule, REDIS_CLIENT } from './redis/redis.module';
 import { HealthModule } from './health/health.module';
 import { TimeModule } from './time/time.module';
 import { UsersModule } from './users/users.module';
+import { CollectionPointsModule } from './collection-points/collection-points.module';
 import { AuditModule } from './audit/audit.module';
 import { MediaModule } from './media/media.module';
 import { AuthModule } from './auth/auth.module';
 import { CurrentUserModule } from './current-user/current-user.module';
+import { UserAdminModule } from './user-admin/user-admin.module';
 import { appConfig } from './config/app.config';
 import { databaseConfig } from './config/database.config';
 import { authConfig } from './config/auth.config';
@@ -46,7 +48,13 @@ import { uploadsConfig } from './config/uploads.config';
         DB_SSL: Joi.boolean().default(false),
         REDIS_HOST: Joi.string().default('localhost'),
         REDIS_PORT: Joi.number().integer().default(6379),
-        APP_TIMEZONE: Joi.string().default('UTC'),
+        APP_TIMEZONE: Joi.string().default('Europe/Kyiv'),
+        // Read ONLY by the BootstrapOwner migration, and only when the users
+        // table is empty. Unset in development, where SeedDevAdmin covers it.
+        BOOTSTRAP_OWNER_LOGIN: Joi.string().optional(),
+        BOOTSTRAP_OWNER_PASSWORD: Joi.string().min(8).optional(),
+        BOOTSTRAP_OWNER_FIRST_NAME: Joi.string().optional(),
+        BOOTSTRAP_OWNER_LAST_NAME: Joi.string().optional(),
         UPLOADS_DIR: Joi.string().optional(),
       }),
     }),
@@ -109,10 +117,12 @@ import { uploadsConfig } from './config/uploads.config';
     HealthModule,
     TimeModule,
     UsersModule,
+    CollectionPointsModule,
     AuditModule,
     MediaModule,
     AuthModule,
     CurrentUserModule,
+    UserAdminModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },

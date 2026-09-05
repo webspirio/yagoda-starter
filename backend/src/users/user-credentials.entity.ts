@@ -3,16 +3,14 @@ import { Exclude } from 'class-transformer';
 import { User } from './user.entity';
 
 /**
- * ⚠️ PLACEHOLDER — PASSWORDS ARE STORED IN PLAIN TEXT.
+ * The stored password verifier. `password_hash`, not `password`: the name is
+ * the one place the schema states that a hash — never a password — is what
+ * lives here.
  *
- * This is a deliberate, recorded decision for this starter's first consumer
- * project, not an oversight (see the design spec, §"Authentication"). It MUST
- * be replaced with a real key-derivation function before any deployment that
- * holds a password a human might reuse elsewhere.
- *
- * Replacing it touches exactly two functions — CredentialsService.set() and
- * .verify() — plus one migration renaming the column. Node ships `scrypt` in
- * `node:crypto`, so the replacement needs no new dependency.
+ * The value is produced and checked ONLY by `password-hashing.ts`, through
+ * `CredentialsService.set()` / `.verify()`. Its format is self-describing
+ * (`scrypt$N$r$p$salt$hash`), so raising the cost parameters later needs no
+ * migration and locks nobody out.
  *
  * The column lives in its own table rather than on `users` so that no query
  * which reads a user can accidentally serialize the secret.
@@ -26,10 +24,9 @@ export class UserCredentials {
   @JoinColumn({ name: 'user_id' })
   user: User;
 
-  /** ⚠️ Plain text. See the class comment above. */
   @Exclude()
   @Column({ type: 'varchar' })
-  password: string;
+  password_hash: string;
 
   @UpdateDateColumn({ type: 'timestamptz' })
   updated_at: Date;

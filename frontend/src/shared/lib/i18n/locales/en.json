@@ -11,16 +11,11 @@
   },
   "auth": {
     "signIn": "Sign in",
-    "signUp": "Create account",
     "signOut": "Sign out",
     "username": "Username",
     "password": "Password",
-    "usernameHint": "Any unique name — an email address works too",
-    "passwordHint": "At least 8 characters",
-    "invalidCredentials": "Invalid username or password",
-    "usernameTaken": "That username is taken",
-    "noAccount": "Don't have an account?",
-    "haveAccount": "Already have an account?"
+    "usernameHint": "The login your network owner gave you",
+    "invalidCredentials": "Invalid username or password"
   },
   "nav": {
     "dashboard": "Dashboard",
@@ -31,13 +26,17 @@
   },
   "profile": {
     "title": "Profile",
-    "displayName": "Display name",
+    "name": "Name",
+    "login": "Login",
+    "role": "Role",
+    "roles": {
+      "network_owner": "Network owner",
+      "point_operator": "Point operator"
+    },
     "avatar": "Avatar",
     "changeAvatar": "Change avatar",
-    "saved": "Profile saved",
     "avatarTooLarge": "Image must be smaller than 10 MB",
     "avatarWrongType": "Image must be JPEG, PNG or WebP",
-    "saveFailed": "Could not save your profile",
     "avatarUploadFailed": "Could not upload that image"
   },
   "dashboard": {

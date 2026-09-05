@@ -1,42 +1,19 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { toastSuccess, toastError } from '@/shared/ui/toast';
-import { useMeQuery, useUpdateMeMutation } from '@/entities/user';
+import { toastError } from '@/shared/ui/toast';
+import { useMeQuery } from '@/entities/user';
 import { useUploadAvatarMutation } from '@/features/edit-profile';
 import { resolveUploadUrl, validateImageFile } from '@/shared/lib/upload';
 import { Avatar, AvatarImage, AvatarFallback } from '@/shared/ui/avatar';
-import { Button } from '@/shared/ui/button';
-import { Field } from '@/shared/ui/field';
 import { ImagePicker } from '@/shared/ui/image-picker';
 import { Skeleton } from '@/shared/ui/skeleton';
-import { TextInput } from '@/shared/ui/text-input';
 
 export function ProfilePage() {
   const { t } = useTranslation();
   const { data, isPending, isError } = useMeQuery();
-  const updateMe = useUpdateMeMutation();
   const uploadAvatar = useUploadAvatarMutation();
-  const [displayName, setDisplayName] = useState('');
   const [pendingAvatar, setPendingAvatar] = useState<File | null>(null);
   const [avatarError, setAvatarError] = useState<string | null>(null);
-
-  // Seed the input once the profile arrives, adjusted DURING RENDER rather
-  // than in a useEffect — react-hooks/set-state-in-effect correctly rejects a
-  // plain "if (data) setDisplayName(...)" effect here: the value is entirely
-  // derivable from `data`, so no effect (no external system) is warranted.
-  // `syncedDisplayName` starts at `undefined`, a value `data.display_name`
-  // (`string | null`) can never equal, so the very first render with data
-  // always seeds; after that it's keyed on the loaded value rather than
-  // `data` identity, so a refetch that returns the same profile does not
-  // wipe out what the user is in the middle of typing. Two setState calls
-  // during render is the pattern React's own docs use for this ("Adjusting
-  // state when a prop changes") — React re-renders immediately with the new
-  // state before committing, so this never flashes stale content.
-  const [syncedDisplayName, setSyncedDisplayName] = useState<string | null | undefined>(undefined);
-  if (data && data.display_name !== syncedDisplayName) {
-    setSyncedDisplayName(data.display_name);
-    setDisplayName(data.display_name ?? '');
-  }
 
   if (isPending) {
     return (
@@ -68,11 +45,9 @@ export function ProfilePage() {
         <Avatar className="size-20">
           <AvatarImage
             src={data.avatar_url ? resolveUploadUrl(data.avatar_url) : undefined}
-            alt={data.display_name ?? data.username}
+            alt={data.display_name}
           />
-          <AvatarFallback>
-            {(data.display_name ?? data.username).slice(0, 2).toUpperCase()}
-          </AvatarFallback>
+          <AvatarFallback>{data.display_name.slice(0, 2).toUpperCase()}</AvatarFallback>
         </Avatar>
         {/* `ImagePicker` is CONTROLLED — `value: File | null`, `onChange`,
             `title`. Hold the picked File in state and fire the upload from
@@ -111,39 +86,16 @@ export function ProfilePage() {
         />
       </div>
 
-      <p className="mt-4 text-sm text-muted-foreground">{data.username}</p>
+      <dl className="mt-6 grid grid-cols-[auto_1fr] gap-x-6 gap-y-2 text-sm">
+        <dt className="text-muted-foreground">{t('profile.name')}</dt>
+        <dd>{data.display_name}</dd>
 
-      <form
-        className="mt-6 flex flex-col gap-4"
-        onSubmit={(event) => {
-          event.preventDefault();
-          // `UpdateMeDto.display_name` is `@Length(1, 128)` when present — an
-          // empty string 400s. Trim and omit the field entirely when blank
-          // (a no-op that keeps the existing name) rather than sending ''.
-          const trimmedDisplayName = displayName.trim();
-          updateMe.mutate(
-            trimmedDisplayName ? { display_name: trimmedDisplayName } : {},
-            {
-              onSuccess: () => toastSuccess(t('profile.saved')),
-              onError: () => toastError(t('profile.saveFailed')),
-            },
-          );
-        }}
-      >
-        <Field name="display_name" label={t('profile.displayName')}>
-          {(a11y) => (
-            <TextInput
-              {...a11y}
-              value={displayName}
-              onChange={(e) => setDisplayName(e.target.value)}
-            />
-          )}
-        </Field>
+        <dt className="text-muted-foreground">{t('profile.login')}</dt>
+        <dd>{data.username}</dd>
 
-        <Button type="submit" disabled={updateMe.isPending}>
-          {t('common.save')}
-        </Button>
-      </form>
+        <dt className="text-muted-foreground">{t('profile.role')}</dt>
+        <dd>{t(`profile.roles.${data.role}`)}</dd>
+      </dl>
     </section>
   );
 }

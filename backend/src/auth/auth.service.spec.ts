@@ -1,15 +1,14 @@
 import { Test } from '@nestjs/testing';
 import { JwtService } from '@nestjs/jwt';
-import { ConflictException, UnauthorizedException } from '@nestjs/common';
+import { UnauthorizedException } from '@nestjs/common';
 import { validate } from 'class-validator';
-import { AuthService, normalizeUsername } from './auth.service';
+import { AuthService } from './auth.service';
 import { UsersService } from '../users/users.service';
 import { CredentialsService } from '../users/credentials.service';
 import { AuditService } from '../audit/audit.service';
-import { LOCAL_PROVIDER } from '../users/user-identity.entity';
 import { authConfig } from '../config/auth.config';
-import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
+import { UserRole } from '../users/user-role.enum';
 
 describe('AuthService', () => {
   let service: AuthService;
@@ -33,53 +32,11 @@ describe('AuthService', () => {
     service = moduleRef.get(AuthService);
   });
 
-  describe('normalizeUsername', () => {
-    it('lowercases and trims so usernames cannot collide by case alone', () => {
-      expect(normalizeUsername('  Alice  ')).toBe('alice');
-      expect(normalizeUsername('ALICE')).toBe('alice');
-    });
-  });
-
-  describe('register', () => {
-    it('creates the user, stores credentials in the same transaction, and returns a token', async () => {
-      users.findByIdentity.mockResolvedValue(null);
-      users.createWithIdentity.mockImplementation(async (_input, onCreated) => {
-        const user = { id: 'u1', display_name: 'Alice', avatar_url: null };
-        if (onCreated) await onCreated(user, 'MANAGER');
-        return { user, identity: { provider_user_id: 'alice' } };
-      });
-
-      await expect(service.register({ username: 'Alice', password: 'hunter2!!' })).resolves.toEqual(
-        { access_token: 'signed.jwt.token' },
-      );
-
-      expect(users.createWithIdentity).toHaveBeenCalledWith(
-        expect.objectContaining({ provider: LOCAL_PROVIDER, providerUserId: 'alice' }),
-        expect.any(Function),
-      );
-      expect(credentials.set).toHaveBeenCalledWith('u1', 'hunter2!!', 'MANAGER');
-    });
-
-    it('rejects a username that is already taken, with a machine-readable code', async () => {
-      users.findByIdentity.mockResolvedValue({ user: { id: 'u1' } });
-
-      const error = await service
-        .register({ username: 'alice', password: 'hunter2!!' })
-        .catch((e: unknown) => e);
-
-      expect(error).toBeInstanceOf(ConflictException);
-      expect((error as ConflictException).getResponse()).toMatchObject({
-        code: 'USERNAME_TAKEN',
-      });
-      expect(users.createWithIdentity).not.toHaveBeenCalled();
-    });
-  });
-
   describe('login', () => {
     it('returns a token for correct credentials', async () => {
       users.findByIdentity.mockResolvedValue({
         provider_user_id: 'alice',
-        user: { id: 'u1', is_active: true, display_name: 'Alice', avatar_url: null },
+        user: { id: 'u1', is_active: true, first_name: 'Alice', last_name: 'Owner', avatar_url: null },
       });
       credentials.verify.mockResolvedValue(true);
 
@@ -88,21 +45,19 @@ describe('AuthService', () => {
       });
     });
 
-    it('signs the username and profile into the token, and never the password', async () => {
+    it('signs only the subject into the token — never the password, and never a stale profile', async () => {
       users.findByIdentity.mockResolvedValue({
         provider_user_id: 'alice',
-        user: { id: 'u1', is_active: true, display_name: 'Alice', avatar_url: '/uploads/a.webp' },
+        user: { id: 'u1', is_active: true, first_name: 'Alice', last_name: 'Owner', avatar_url: '/uploads/a.webp' },
       });
       credentials.verify.mockResolvedValue(true);
 
       await service.login({ username: 'alice', password: 'hunter2!!' });
 
-      expect(jwt.sign).toHaveBeenCalledWith({
-        sub: 'u1',
-        username: 'alice',
-        display_name: 'Alice',
-        avatar_url: '/uploads/a.webp',
-      });
+      // Nothing but `sub`: role, point and is_active are read from the
+      // database on every request (JwtStrategy.validate), so putting a copy
+      // of any of them in here would be a fact that can go stale for a week.
+      expect(jwt.sign).toHaveBeenCalledWith({ sub: 'u1' });
     });
 
     it('rejects an unknown username and a wrong password identically', async () => {
@@ -137,7 +92,7 @@ describe('AuthService', () => {
     it('records the login in the audit log', async () => {
       users.findByIdentity.mockResolvedValue({
         provider_user_id: 'alice',
-        user: { id: 'u1', is_active: true, display_name: null, avatar_url: null },
+        user: { id: 'u1', is_active: true, first_name: 'Alice', last_name: 'Owner', avatar_url: null },
       });
       credentials.verify.mockResolvedValue(true);
 
@@ -157,8 +112,8 @@ describe('AuthService', () => {
       await service.logout({
         sub: 'u1',
         username: 'alice',
-        display_name: 'Alice',
-        avatar_url: null,
+        role: UserRole.NetworkOwner,
+        collection_point_id: null,
       });
 
       expect(audit.record).toHaveBeenCalledWith({
@@ -179,12 +134,6 @@ describe('AuthService', () => {
   // admin/admin account — see the report.
   describe('password length policy', () => {
     const shortPassword = 'admin'; // exactly what the dev seed uses
-
-    it('rejects a short password on RegisterDto', async () => {
-      const dto = Object.assign(new RegisterDto(), { username: 'admin', password: shortPassword });
-      const errors = await validate(dto);
-      expect(errors.some((e) => e.property === 'password')).toBe(true);
-    });
 
     it('accepts the same short password on LoginDto', async () => {
       const dto = Object.assign(new LoginDto(), { username: 'admin', password: shortPassword });

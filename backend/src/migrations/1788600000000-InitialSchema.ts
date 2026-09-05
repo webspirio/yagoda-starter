@@ -45,6 +45,11 @@ export class InitialSchema1788600000000 implements MigrationInterface {
     // ⚠️ `password` holds a PLAIN TEXT password. Deliberate starter placeholder —
     // see UserCredentials and CredentialsService. Replace with a KDF-derived
     // value (salt:hash) before any real deployment.
+    //
+    // This SQL is frozen — do not edit it. `YagodaFoundation` (…0002) renames
+    // this column to `password_hash` and re-hashes every existing value with
+    // scrypt; this file still describes the schema exactly as it looked the
+    // moment it ran, which is why the column is still named `password` here.
     await queryRunner.query(`
       CREATE TABLE "user_credentials" (
         "user_id" uuid NOT NULL,

@@ -1,17 +1,23 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { UsersService } from '../users/users.service';
+import { displayNameOf } from '../users/display-name';
 import { AuditService } from '../audit/audit.service';
 import { MediaService } from '../media/media.service';
 import { messageOf } from '../common/errors/message-of';
 import type { AuthenticatedUser } from '../auth/jwt.strategy';
 import { UpdateMeDto } from './dto/update-me.dto';
+import { User } from '../users/user.entity';
+import { UserRole } from '../users/user-role.enum';
 
 export interface MeResponse {
   id: string;
   username: string;
-  display_name: string | null;
+  /** DERIVED from first_name + last_name — there is no such column. */
+  display_name: string;
   avatar_url: string | null;
   language_code: string | null;
+  role: UserRole;
+  collection_point_id: string | null;
 }
 
 @Injectable()
@@ -31,7 +37,15 @@ export class CurrentUserService {
 
   async updateMe(actor: AuthenticatedUser, dto: UpdateMeDto): Promise<MeResponse> {
     const before = await this.users.findById(actor.sub);
-    const updated = await this.users.update(actor.sub, dto);
+    // Projected explicitly, like every other caller of UsersService.update —
+    // NOT `dto` itself. `UpdatableUserFields` also carries `role`,
+    // `collection_point_id` and `is_active`; `UpdateMeDto` only declares
+    // `language_code` today and the global ValidationPipe's `whitelist: true`
+    // strips anything else, so nothing is exploitable right now. But this is
+    // the one SELF-service write path in the system, and "a user cannot
+    // change their own role" should not rest entirely on nobody ever adding a
+    // field to `UpdateMeDto` — this projection is what actually guarantees it.
+    const updated = await this.users.update(actor.sub, { language_code: dto.language_code });
 
     // Only the fields that actually moved. A no-op PATCH writing an audit
     // entry would make the log unreadable: mostly noise, with the real
@@ -87,16 +101,15 @@ export class CurrentUserService {
 
   /** The username lives on the identity row, not on `users`. It is already in
    *  the verified token, so reading it from there costs no extra query. */
-  private toResponse(
-    user: { id: string; display_name: string | null; avatar_url: string | null; language_code: string | null },
-    username: string,
-  ): MeResponse {
+  private toResponse(user: User, username: string): MeResponse {
     return {
       id: user.id,
       username,
-      display_name: user.display_name,
+      display_name: displayNameOf(user),
       avatar_url: user.avatar_url,
       language_code: user.language_code,
+      role: user.role,
+      collection_point_id: user.collection_point_id,
     };
   }
 }

@@ -11,7 +11,7 @@ import { Button } from '@/shared/ui/button';
 import { Toaster } from '@/shared/ui/sonner';
 
 /** Routes that render bare, without the app chrome. */
-const CHROMELESS = ['/login', '/register'];
+const CHROMELESS = ['/login'];
 
 const NAV = [
   { to: '/', labelKey: 'nav.dashboard' },
@@ -32,7 +32,7 @@ export function AppLayout() {
 
   // Owns the `.dark` class on <html> for the lifetime of the app — called
   // unconditionally here, above the chromeless early return, so a user who
-  // lands on /login or /register still gets the right theme.
+  // lands on /login still gets the right theme.
   useAppTheme();
 
   const bare = CHROMELESS.includes(location.pathname) || token === null;

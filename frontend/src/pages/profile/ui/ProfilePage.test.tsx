@@ -1,5 +1,4 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
 import MockAdapter from 'axios-mock-adapter';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
@@ -23,9 +22,11 @@ let mock: MockAdapter;
 const ME = {
   id: 'u1',
   username: 'alice',
-  display_name: 'Alice',
+  display_name: 'Alice Operator',
   avatar_url: null,
-  language_code: 'en',
+  language_code: null,
+  role: 'point_operator',
+  collection_point_id: 'p1',
 };
 
 // Radix Avatar preloads via `new Image()` and only commits the real <img>
@@ -117,52 +118,15 @@ describe('ProfilePage', () => {
 
   it('renders the loaded profile', async () => {
     renderPage();
-    expect(await screen.findByDisplayValue('Alice')).toBeInTheDocument();
+    expect(await screen.findByText('Alice Operator')).toBeInTheDocument();
     expect(screen.getByText('alice')).toBeInTheDocument();
   });
 
-  it('saves an edited display name', async () => {
-    mock.onPatch('/me').reply(200, { ...ME, display_name: 'Alicia' });
+  it('shows the name as read-only text, with no field to edit it', async () => {
     renderPage();
-
-    const input = await screen.findByDisplayValue('Alice');
-    await userEvent.clear(input);
-    await userEvent.type(input, 'Alicia');
-    await userEvent.click(screen.getByRole('button', { name: /save/i }));
-
-    expect(await screen.findByDisplayValue('Alicia')).toBeInTheDocument();
-    expect(mock.history.patch).toHaveLength(1);
-    expect(JSON.parse(mock.history.patch[0].data)).toEqual({ display_name: 'Alicia' });
-  });
-
-  // `UpdateMeDto.display_name` is `@Length(1, 128)` when present — sending ''
-  // 400s. Clearing the field and saving must omit the key rather than send
-  // an empty string, so it round-trips as a no-op instead of a validation error.
-  it('omits display_name from the PATCH when the field is cleared', async () => {
-    mock.onPatch('/me').reply(200, ME);
-    renderPage();
-
-    const input = await screen.findByDisplayValue('Alice');
-    await userEvent.clear(input);
-    await userEvent.click(screen.getByRole('button', { name: /save/i }));
-
-    await waitFor(() => expect(mock.history.patch).toHaveLength(1));
-    expect(JSON.parse(mock.history.patch[0].data)).toEqual({});
-  });
-
-  // Leading/trailing whitespace shouldn't count as "blank" one way and
-  // "content" the other — trim before both the emptiness check and the send.
-  it('trims display_name before sending it', async () => {
-    mock.onPatch('/me').reply(200, { ...ME, display_name: 'Alicia' });
-    renderPage();
-
-    const input = await screen.findByDisplayValue('Alice');
-    await userEvent.clear(input);
-    await userEvent.type(input, '  Alicia  ');
-    await userEvent.click(screen.getByRole('button', { name: /save/i }));
-
-    await waitFor(() => expect(mock.history.patch).toHaveLength(1));
-    expect(JSON.parse(mock.history.patch[0].data)).toEqual({ display_name: 'Alicia' });
+    expect(await screen.findByText('Alice Operator')).toBeInTheDocument();
+    expect(screen.queryByLabelText(/display name/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /save/i })).not.toBeInTheDocument();
   });
 
   it('shows an error when the profile fails to load', async () => {
@@ -179,25 +143,25 @@ describe('ProfilePage', () => {
     mock.onGet('/me').reply(200, { ...ME, avatar_url: '/uploads/avatars/x.webp' });
     renderPage();
 
-    const img = await screen.findByRole('img', { name: 'Alice' });
+    const img = await screen.findByRole('img', { name: 'Alice Operator' });
     expect(img).toHaveAttribute('src', 'http://localhost:3000/uploads/avatars/x.webp');
   });
 
   it('uploads a picked avatar and renders the returned image', async () => {
     mock.onPost('/me/avatar').reply(200, { ...ME, avatar_url: '/uploads/avatars/new.webp' });
     renderPage();
-    await screen.findByDisplayValue('Alice');
+    await screen.findByText('Alice Operator');
 
     pickAvatarFile(validAvatarFile());
 
     await waitFor(() => expect(mock.history.post).toHaveLength(1));
-    const img = await screen.findByRole('img', { name: 'Alice' });
+    const img = await screen.findByRole('img', { name: 'Alice Operator' });
     expect(img).toHaveAttribute('src', 'http://localhost:3000/uploads/avatars/new.webp');
   });
 
   it('rejects an oversized avatar client-side and never calls the API', async () => {
     renderPage();
-    await screen.findByDisplayValue('Alice');
+    await screen.findByText('Alice Operator');
 
     const tooBig = new File([new Uint8Array(IMAGE_MAX_BYTES + 1)], 'huge.png', {
       type: 'image/png',
@@ -210,7 +174,7 @@ describe('ProfilePage', () => {
 
   it('rejects a non-image avatar client-side and never calls the API', async () => {
     renderPage();
-    await screen.findByDisplayValue('Alice');
+    await screen.findByText('Alice Operator');
 
     const wrongType = new File(['x'], 'notes.pdf', { type: 'application/pdf' });
     pickAvatarFile(wrongType);
@@ -222,23 +186,11 @@ describe('ProfilePage', () => {
   it('shows an error toast when the avatar upload fails', async () => {
     mock.onPost('/me/avatar').reply(500, { message: 'boom' });
     renderPage();
-    await screen.findByDisplayValue('Alice');
+    await screen.findByText('Alice Operator');
 
     pickAvatarFile(validAvatarFile());
 
     expect(await screen.findByText('Could not upload that image')).toBeInTheDocument();
-  });
-
-  it('shows an error toast when saving the display name fails', async () => {
-    mock.onPatch('/me').reply(500, { message: 'boom' });
-    renderPage();
-
-    const input = await screen.findByDisplayValue('Alice');
-    await userEvent.clear(input);
-    await userEvent.type(input, 'Alicia');
-    await userEvent.click(screen.getByRole('button', { name: /save/i }));
-
-    expect(await screen.findByText('Could not save your profile')).toBeInTheDocument();
   });
 
   // Two picks in quick succession must not start two concurrent uploads:
@@ -255,7 +207,7 @@ describe('ProfilePage', () => {
         }),
     );
     renderPage();
-    await screen.findByDisplayValue('Alice');
+    await screen.findByText('Alice Operator');
 
     pickAvatarFile(new File(['a'], 'a.png', { type: 'image/png' }));
     await waitFor(() => expect(mock.history.post).toHaveLength(1));

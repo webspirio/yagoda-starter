@@ -29,15 +29,39 @@ that a mocked spec cannot reach** — constraints, unique indexes, cascade rules
 and whether a hand-written statement even parses. `npm test` never picks them
 up: its `testRegex` (`.*\.spec\.ts$`) does not match `.db-spec.ts`.
 
+**Two testing gotchas worth knowing before you distrust a green run:**
+- Both jest configs set `watchman: false` — the unit config (the `"jest"` key
+  in `package.json`) and `jest.db.config.js` — and it is NOT a preference.
+  When the machine's `watchman` binary is broken (a mismatched Homebrew
+  boost/folly is the common cause), Jest's haste-map crawler returns an EMPTY
+  file list and Jest exits 0 having run nothing. A green exit code for zero
+  tests is worse than a red one, so the Node crawler is forced on
+  unconditionally.
+- `docker-compose.yml` publishes Redis on `127.0.0.1:6379` (not just the
+  internal `app_net`) because `pipeline.db-spec.ts` boots the full
+  `AppModule`, whose global `ThrottlerGuard` needs a reachable Redis. Without
+  a host-mapped port, every request in that spec 500s instead of throttling.
+- `pipeline.db-spec.ts` mints exactly ONE token via a real `/auth/login` call
+  (its first test — the one end-to-end proof that scrypt verification works
+  over HTTP) and signs every other token in the file with the app's own
+  `JwtService`, precisely so `npm run test:db` stays idempotent within a
+  minute against the Redis-backed 10-per-minute-per-IP login throttle. A new
+  pipeline test that needs a token should mint it the same way, not add
+  another `/auth/login` call — that throttle is shared across every test in
+  the file and reintroducing several real logins reopens a 429 that shows up
+  as a misleading failure in whatever test happens to run fourth.
+
 ## Structure
 
 ```
 src/
   app.module.ts         # root module — TypeORM/logger/throttler config, imports all feature modules
   main.ts               # bootstrap: helmet, trust proxy, CORS allowlist, ValidationPipe, static /uploads, listen :PORT
-  auth/                  # JWT strategy, /auth/register + /auth/login, @Auth() route-protection decorator
-  users/                 # User, UserIdentity, UserCredentials entities; UsersService, CredentialsService (domain only — no controller)
-  current-user/          # /me — read, update display name, avatar upload (the one controller that reads/writes User)
+  auth/                  # JWT strategy (reloads the user every request), @Auth(...roles) decorator, RolesGuard, point-scope assert* helpers; POST /auth/login + /auth/logout only — no public registration
+  users/                 # User, UserIdentity, UserCredentials entities; UsersService, CredentialsService; password-hashing.ts (scrypt), normalize-login.ts, display-name.ts (domain only — no controller)
+  collection-points/     # CollectionPoint entity + owner-only writes (POST/PATCH), nullable targets, GET scoped by role
+  user-admin/             # owner-only POST /users, PATCH /users/:id, PUT /users/:id/password — the only way an account is created
+  current-user/          # /me — read, update language_code, avatar upload (the one controller that reads/writes User; identity fields are owner-managed via user-admin)
   audit/                 # append-only audit log (AUDIT_ACTIONS union + AuditService)
   media/                 # local-disk image storage — upload validation, image re-encoding, MediaFile entity
   common/                # cross-cutting: global exception filter, shared pagination DTOs (PaginationQueryDto, Paginated<T>)
@@ -45,7 +69,7 @@ src/
   redis/                 # global RedisModule — shared ioredis client (REDIS_CLIENT token)
   time/                   # TimeService — the one seam for timezone-aware time (APP_TIMEZONE)
   config/                 # typed, namespaced env config factories (app, database, auth, redis, timezone, uploads)
-  migrations/             # InitialSchema + SeedDevAdmin (guarded off in production)
+  migrations/             # InitialSchema, SeedDevAdmin (guarded off in production), YagodaFoundation, BootstrapOwner, IndexUserIdentityUser
 ```
 
 ## Key conventions
@@ -53,16 +77,18 @@ src/
 - Every feature lives in its own NestJS module under `src/<feature>/`.
 - Entities register themselves — `TypeOrmModule.forRootAsync` in `app.module.ts` uses `autoLoadEntities: true`, so any entity passed to a module's `TypeOrmModule.forFeature([...])` is picked up automatically; a new `<feature>.entity.ts` needs no central list. The CLI data source (`src/data-source.ts`, used by `migration:generate`/`run`/`revert`) discovers entities and migrations independently via `__dirname`-relative globs (`**/*.entity{.ts,.js}`), so it works unchanged from both `src/` (ts-node) and compiled `dist/` (the prod migration step — see "Migrations" below).
 - **Strict TypeScript** — `"strict": true` in `tsconfig.json`, with `strictPropertyInitialization` off (entities and DTOs are populated by TypeORM/class-validator, not constructors). No `@ts-ignore`, no `as any`.
-- **Route protection — `@Auth()` is the only blessed pattern.** `@Auth()` (any authenticated user), from `src/auth/decorators/auth.decorators.ts`, applies `AuthGuard('jwt')` via `applyDecorators`. It takes zero arguments on purpose — this starter ships no authorization, so every authenticated user is equal. Adding roles later means changing this one decorator plus a migration, not auditing every controller; see the root `README.md`'s "What to change first" section.
+- **Route protection — `@Auth(...roles)` is the only blessed pattern.** From `src/auth/decorators/auth.decorators.ts`: `@Auth()` (any authenticated user) or `@Auth(UserRole.NetworkOwner)` (owner only), composing `JwtAuthGuard` (populates `request.user`) then `RolesGuard` (`src/auth/guards/roles.guard.ts`, reads it). Roles match EXACTLY — there is no hierarchy, so an owner does not implicitly satisfy an operator-only route. A bare `@Auth()` on one method of a role-restricted controller INHERITS the class's roles rather than clearing them; see the decorator's own doc comment for why the metadata is `undefined`, not `[]`, when no role is given.
+- **Guards decide from the request alone; `assert*` methods decide from a row.** `@Auth(...)` only ever answers a role-only question. A rule that has to read data first — "only the owning point may accept" (`assertOwnsPoint`), "which points can this caller see" (`resolvePointFilter`, `src/auth/access/point-scope.ts`), the last-active-owner lockout guard — is a named `assert*`/`resolve*` method on the relevant service, called explicitly from the handler, never a guard.
 - **Pagination** — collection endpoints take `PaginationQueryDto` (`?page=&limit=`, `src/common/dto/pagination-query.dto.ts`, page ≥ 1, 1 ≤ limit ≤ 100) and return the `Paginated<T>` envelope (`{ data, total, page, limit }`, `src/common/dto/paginated.ts`). Copy this pair for every new list endpoint instead of an unpaginated `find()` — nothing in this starter uses it yet, but it's the intended shape for the first one that does.
-- **Serialization boundary** — a global `ClassSerializerInterceptor` (wired in `main.ts`) runs on every response. Mark sensitive entity fields `@Exclude()` (class-transformer) — see `UserCredentials.password` and `UserIdentity.provider_data` — instead of hand-picking fields per controller; the exclusion then applies no matter which handler returns the entity.
-- **Identity seam** — `user_identities(provider, provider_user_id)` (`UNIQUE`) is the single login lookup path (`UsersService.findByIdentity`). This starter writes exactly one provider, `'local'` (`LOCAL_PROVIDER` in `user-identity.entity.ts`); adding an OAuth provider means writing a different value there, with no schema change. `AuthService.register`/`login` are the reference callers.
-- **Password storage is a deliberate placeholder — plain text.** `CredentialsService.set()`/`.verify()` (`src/users/credentials.service.ts`) are the *only* place a password is read or written; `UserCredentials.password` (`src/users/user-credentials.entity.ts`) holds the raw string. See the root `CLAUDE.md`'s "Before you deploy this" section before shipping this anywhere real.
-- **Registration vs. login asymmetry is intentional.** `RegisterDto` enforces an 8-character minimum (`src/auth/dto/register.dto.ts`); `LoginDto` enforces none, only a DoS-guard max length (`src/auth/dto/login.dto.ts`). A length rule on login would lock out credentials that were valid when created, the first time anyone tightens the policy — tighten `RegisterDto` freely, never add a `@Length` to `LoginDto`.
+- **Serialization boundary** — a global `ClassSerializerInterceptor` (wired in `main.ts`) runs on every response. Mark sensitive entity fields `@Exclude()` (class-transformer) — see `UserCredentials.password_hash` and `UserIdentity.provider_data` — instead of hand-picking fields per controller; the exclusion then applies no matter which handler returns the entity.
+- **Identity seam** — `user_identities(provider, provider_user_id)` (`UNIQUE`, plus a plain index on `user_id` for the per-request auth lookup — see `IndexUserIdentityUser`) is the single login lookup path (`UsersService.findByIdentity`, `findAuthContext`). This starter writes exactly one provider, `'local'` (`LOCAL_PROVIDER` in `user-identity.entity.ts`); adding an OAuth provider means writing a different value there, with no schema change. `AuthService.login` and `UserAdminService` (account creation, login changes) are the reference callers.
+- **Password storage is scrypt, self-describing.** `CredentialsService.set()`/`.verify()` (`src/users/credentials.service.ts`) delegate to `src/users/password-hashing.ts`'s `hashPassword`/`verifyPassword` — the *only* place a password is read, written or compared. `node:crypto` scrypt, `N=16384, r=8, p=1`, a 64-byte derived key and a 16-byte random salt per password. The stored value is `scrypt$<N>$<r>$<p>$<salt b64>$<hash b64>` (`UserCredentials.password_hash`) rather than parameters implied by whatever code happens to be deployed — raising the cost later re-hashes nothing and locks out nobody, because every stored value still carries the parameters it was created with. `verifyPassword` returns `false` rather than throwing for every failure shape (wrong password, malformed value, unknown scheme), so a corrupt row can't be distinguished from a wrong password by an attacker or turned into a 500.
+- **Account-creation vs. login asymmetry is intentional.** `CreateUserDto`/`SetPasswordDto` (`src/user-admin/dto/`) enforce an 8-character minimum on a new password; `LoginDto` (`src/auth/dto/login.dto.ts`) enforces none, only a DoS-guard `@MaxLength`. A length rule on login would lock out credentials that were valid when created, the first time anyone tightens the policy — tighten the account-creation DTOs freely, never add a `@Length` minimum to `LoginDto`.
+- **`numeric` is a string end to end.** Postgres `numeric` columns (`collection_points.target_cash`) are typed `string | null` on the entity, with no TypeORM transformer converting them to `number` — see `CollectionPoint`'s doc comment and the round-trip db-spec asserting `typeof … === 'string'`. Nothing in this slice does arithmetic on money; `decimal.js` is not yet a dependency and arrives with the first module that actually computes something, rather than being pre-installed for a hypothetical one.
 - Environment variables are managed via `@nestjs/config` with typed namespaced factories in `src/config/`. Use `@Inject(xConfig.KEY)` with `ConfigType<typeof xConfig>` to access config in services. `PORT` (default 3000) sets the listen port; `JWT_SECRET` must be at least 32 characters (Joi-validated at startup, see `app.module.ts`). `DB_SSL` (default `false`) enables TLS on the Postgres connection for managed providers (Neon/RDS/Supabase/…); the bundled compose Postgres doesn't need it.
 - **Media** — one purpose, `MediaPurpose.Avatar` (`src/media/media.constants.ts`), demonstrating the per-purpose directory pattern without importing a domain. Adding a purpose means adding a member to that enum, a subdirectory under `UPLOADS_DIR`, and an `ALTER TYPE` migration for the `media_purpose` Postgres enum. `MEDIA_MAX_BYTES` (10 MB) is the single source of truth for the size cap, enforced by each `FileInterceptor`'s `limits.fileSize` (413 before the buffer lands) and mirrored client-side for UX. Any reverse proxy in front of the app must allow at least ~12 MB request bodies, or an at-the-limit upload 413s before it ever reaches Nest.
 - **Audit log** — append-only, no update/delete API, ever (`src/audit/audit-log.entity.ts`). `AUDIT_ACTIONS` is a TS string union stored as `varchar`, not a DB enum, so adding an action is a code change with no migration. `target_type`/`target_id` are polymorphic with no foreign key, which is what lets one log serve every table a consuming project adds — the price is that a `target_id` can outlive the row it names, so `before`/`after` should carry enough context to stay readable after the target is gone.
-- **Deliberately deferred** — API versioning (no `/v1` prefix or header-based scheme), soft-delete (no `deleted_at` column), and authorization (no roles) aren't implemented; add them when a real requirement shows up rather than pre-building for a hypothetical one.
+- **Deliberately deferred** — API versioning (no `/v1` prefix or header-based scheme) and soft-delete (no `deleted_at` column) aren't implemented; deactivation (`is_active`) is the only removal verb this slice has, and there is no `DELETE` route anywhere. Add these when a real requirement shows up rather than pre-building for a hypothetical one.
 - **Frontend contract drift** — DTO shapes returned here (e.g. the `GET /me` response) are hand-mirrored on the frontend as plain TypeScript types (e.g. `Me` in `frontend/src/entities/user`), not generated. Fine at the current API surface; if keeping them in sync by hand becomes error-prone as the API grows, consider a shared `packages/contracts` workspace (types, maybe zod schemas) both sides import instead.
 
 ## Security & observability
@@ -79,6 +105,10 @@ src/
 TypeORM migrations run automatically on startup (`migrationsRun: true`). `synchronize` is disabled in all environments. The CLI data source (`src/data-source.ts`) and the runtime config (`src/config/database.config.ts`) share one set of DB connection defaults via `src/config/database.defaults.ts`.
 
 **Multi-replica caveat:** `migrationsRun: true` is safe today because the prod stack (`docker-compose.prod.yml`) runs exactly one backend replica and TypeORM's migration runner is idempotent — re-applying an already-applied migration on the next boot is a no-op. It stops being safe the moment more than one replica starts concurrently, since two containers could race to apply the same pending migration. This starter ships no CD pipeline, so there is no automated pre-flight migration step; before scaling the backend past one replica, remove `migrationsRun: true` from `app.module.ts` entirely and run migrations as an explicit, single, one-shot step before the new containers start.
+
+**`SeedDevAdmin` (…0001) is deliberately not amended** to write `first_name`/`last_name`/`role` — it runs before `YagodaFoundation` (…0002), so a version referencing those columns would fail on every fresh database. `YagodaFoundation` backfills the row it left instead. This is why a migration is layout-frozen once another migration is written to depend on its output: fix forward, don't edit history.
+
+**`BootstrapOwner` (…0003) needs its environment variables set before the FIRST production boot.** It creates the first `network_owner` from `BOOTSTRAP_OWNER_LOGIN`/`BOOTSTRAP_OWNER_PASSWORD` (plus optional first/last name), but only when the `users` table is empty — so it silently no-ops in development (`SeedDevAdmin` already populated a user) and, more importantly, no-ops for good on a production database that first boots without those variables set: a migration runs once, and an unset-variable boot still records itself as applied. Recovery at that point is a manual `INSERT`, not a re-run. See the migration's own doc comment.
 
 **Workflow for schema changes:**
 

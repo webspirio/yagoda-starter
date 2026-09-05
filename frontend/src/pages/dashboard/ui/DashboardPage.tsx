@@ -18,7 +18,7 @@ export function DashboardPage() {
         <Skeleton className="mt-4 h-5 w-48" />
       ) : (
         <p className="mt-4 text-muted-foreground">
-          {t('dashboard.signedInAs', { name: data?.display_name ?? data?.username })}
+          {t('dashboard.signedInAs', { name: data?.display_name })}
         </p>
       )}
     </section>
