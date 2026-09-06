@@ -85,6 +85,18 @@
       "createTitle": "New product",
       "editTitle": "Edit product"
     },
+    "grades": {
+      "add": "Add grade",
+      "empty": "No grades yet.",
+      "name": "Name",
+      "product": "Product",
+      "allProducts": "All products",
+      "active": "Active",
+      "inactive": "Inactive",
+      "createTitle": "New grade",
+      "editTitle": "Edit grade",
+      "activeLabel": "Active"
+    },
     "actions": { "edit": "Edit", "save": "Save", "cancel": "Cancel" },
     "saved": "Saved"
   }
