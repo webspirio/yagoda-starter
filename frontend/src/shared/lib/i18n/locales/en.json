@@ -63,5 +63,17 @@
   "lang": {
     "label": "Language",
     "en": "EN"
+  },
+  "catalog": {
+    "errors": {
+      "nameRequired": "Name is required",
+      "nameTooLong": "Name must be 128 characters or fewer",
+      "nameTaken": "That name is already taken",
+      "nameEmpty": "Name cannot be blank",
+      "productRequired": "Choose a product",
+      "weightFormat": "Use a number with up to 2 decimals, e.g. 1.20",
+      "depositFormat": "Use a number with up to 2 decimals, e.g. 120.00",
+      "saveFailed": "Could not save. Please try again."
+    }
   }
 }
