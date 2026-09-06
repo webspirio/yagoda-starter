@@ -1605,6 +1605,14 @@ git commit -m "feat: products module with owner-only writes"
 
 ## Task 5: Product grades
 
+> **Superseded during execution.** The `dataSource.transaction` mock shown in this task's spec
+> below — `cb({ getRepository: () => repo })` — was rejected by the Task 4 review: handing the
+> callback the same object as `this.repo` collapses the distinction the test exists to protect,
+> so an escape-the-transaction regression passes unnoticed. What was actually built uses a
+> distinct `txRepo`, asserts the transactional write went through it and NOT through `repo`, and
+> asserts `audit.record`'s second argument is the exact `manager`. See
+> `backend/src/products/products.service.spec.ts` for the pattern.
+
 Same module, second entity. `product_id` is required on create, immutable thereafter.
 
 **Files:**
@@ -2105,6 +2113,14 @@ git commit -m "feat: product grades, addressed flat and never re-parented"
 ---
 
 ## Task 6: Tare types module
+
+> **Superseded during execution.** The `dataSource.transaction` mock shown in this task's spec
+> below — `cb({ getRepository: () => repo })` — was rejected by the Task 4 review: handing the
+> callback the same object as `this.repo` collapses the distinction the test exists to protect,
+> so an escape-the-transaction regression passes unnoticed. What was actually built uses a
+> distinct `txRepo`, asserts the transactional write went through it and NOT through `repo`, and
+> asserts `audit.record`'s second argument is the exact `manager`. See
+> `backend/src/products/products.service.spec.ts` for the pattern.
 
 **Files:**
 - Create: `backend/src/tare-types/tare-type.mapper.ts`

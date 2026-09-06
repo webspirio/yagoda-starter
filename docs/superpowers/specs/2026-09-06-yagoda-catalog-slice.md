@@ -443,6 +443,15 @@ pre-existing case collisions. Migrations run once inside the test harness, so ex
 branch needs a bespoke fixture database. Verified by inspection, with a failure message that
 names the colliding values — the same treatment `verifyPassword`'s boundary cases received.
 
+> **Observed in practice during implementation.** The guard is no longer merely inspected. The
+> TDD red step ran the new db-spec against `app_test` before the migration existed, and because
+> the old constraint was still case-SENSITIVE, both halves of the "rejects a case-variant
+> duplicate" assertion inserted successfully and persisted — the suite never truncates. The
+> guard then caught exactly that pair on the next run, aborted, and named the colliding values,
+> which is the behaviour this section could not test for. It remains uncovered by an automated
+> test; it is no longer unproven. Anyone repeating this pattern for a future case-insensitivity
+> retrofit should expect the same red-step trap.
+
 ## 13. Migration
 
 One hand-written migration, `1788600000005-YagodaCatalog.ts`:
