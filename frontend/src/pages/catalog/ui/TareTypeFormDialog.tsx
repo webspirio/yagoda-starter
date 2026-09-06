@@ -104,7 +104,9 @@ export function TareTypeFormDialog({
   });
 
   return (
-    <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
+    // Gated on `isSubmitting` too: without it, Escape or an overlay click
+    // can close a submitting dialog exactly like Cancel could (see below).
+    <Dialog open={open} onOpenChange={(next) => !next && !isSubmitting && onClose()}>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>
@@ -143,6 +145,12 @@ export function TareTypeFormDialog({
                 {...register('weight_kg', {
                   required: 'catalog.errors.weightFormat',
                   pattern: { value: WEIGHT_PATTERN, message: 'catalog.errors.weightFormat' },
+                  // `inputMode="decimal"` shows the device locale's
+                  // separator, which is a comma on a Ukrainian phone or
+                  // keyboard layout. A pure string substitution — never
+                  // `Number()`/`parseFloat`, which would put a binary float
+                  // back between the keypress and the wire.
+                  setValueAs: (v: string) => v.replace(',', '.'),
                 })}
               />
             )}
@@ -161,6 +169,7 @@ export function TareTypeFormDialog({
                 {...register('deposit_price', {
                   required: 'catalog.errors.depositFormat',
                   pattern: { value: DEPOSIT_PATTERN, message: 'catalog.errors.depositFormat' },
+                  setValueAs: (v: string) => v.replace(',', '.'),
                 })}
               />
             )}
@@ -199,7 +208,11 @@ export function TareTypeFormDialog({
           )}
 
           <DialogFooter>
-            <Button type="button" variant="ghost" onClick={onClose}>
+            {/* Disabled while submitting: a stale instance's `await
+                mutateAsync` resolving after Cancel → Add-again would
+                otherwise close the freshly-opened dialog and discard what
+                the user just typed into it. */}
+            <Button type="button" variant="ghost" onClick={onClose} disabled={isSubmitting}>
               {t('catalog.actions.cancel')}
             </Button>
             <Button type="submit" disabled={isSubmitting}>

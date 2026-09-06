@@ -43,6 +43,16 @@ describe('ProductsTab', () => {
     expect(await screen.findByText('No products yet.')).toBeInTheDocument();
   });
 
+  // A failed GET must not be indistinguishable from an empty catalog: without
+  // an isError branch, data falls back to [] and the owner sees "No products
+  // yet." with an Add button, with no hint anything went wrong.
+  it('shows an error instead of the empty state when the list fails to load', async () => {
+    mock.onGet('/products').reply(500, { message: 'boom' });
+    renderTab();
+    expect(await screen.findByRole('alert')).toHaveTextContent('Something went wrong');
+    expect(screen.queryByText('No products yet.')).not.toBeInTheDocument();
+  });
+
   // The API caps these lists at 100. If the business ever exceeds that, a
   // silently short list means an owner cannot find a berry that exists.
   it('warns when the server returned fewer rows than it counted', async () => {

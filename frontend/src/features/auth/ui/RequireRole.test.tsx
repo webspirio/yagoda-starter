@@ -73,6 +73,18 @@ describe('RequireRole', () => {
     expect(screen.queryByText('secret catalog')).not.toBeInTheDocument();
   });
 
+  // A failed `me` query must not fall through to the role comparison: that
+  // would bounce a legitimate owner to the dashboard on a transient 500,
+  // indistinguishable from "you are not allowed here". Fail-closed buys
+  // nothing here since the server 403s regardless.
+  it('shows an error instead of redirecting when the me query fails', async () => {
+    mock.onGet('/me').reply(500, { message: 'boom' });
+    renderGuarded();
+    expect(await screen.findByRole('alert')).toBeInTheDocument();
+    expect(screen.queryByText('dashboard')).not.toBeInTheDocument();
+    expect(screen.queryByText('secret catalog')).not.toBeInTheDocument();
+  });
+
   // THE REASON THIS COMPONENT EXISTS. Role is not in the JWT — the payload is
   // `{ sub }` — so it arrives from the `me` query. A guard that redirects
   // synchronously would bounce an owner to the dashboard on every cold load of

@@ -99,7 +99,9 @@ export function GradeFormDialog({
   const parentName = grade ? products.find((p) => p.id === grade.product_id)?.name : null;
 
   return (
-    <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
+    // Gated on `isSubmitting` too: without it, Escape or an overlay click
+    // can close a submitting dialog exactly like Cancel could (see below).
+    <Dialog open={open} onOpenChange={(next) => !next && !isSubmitting && onClose()}>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>
@@ -109,15 +111,21 @@ export function GradeFormDialog({
 
         <form onSubmit={onSubmit} className="flex flex-col gap-4">
           {grade ? (
-            <Field name="product_static" label={t('catalog.grades.product')}>
-              {() => (
-                <p className="text-base">
-                  {/* Falls back to the raw id: the FK guarantees the product
-                      exists, so a blank cell here would hide a real bug. */}
-                  {parentName ?? grade.product_id}
-                </p>
-              )}
-            </Field>
+            // Not `Field`: its `<label htmlFor>` would point at no element
+            // here, since this render prop is static text rather than a
+            // focusable control — a label with no target does nothing on
+            // click and announces to assistive tech as pointing nowhere.
+            // This reproduces `Field`'s visual label styling directly.
+            <div>
+              <div className="mb-[7px] text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+                {t('catalog.grades.product')}
+              </div>
+              <p className="text-base">
+                {/* Falls back to the raw id: the FK guarantees the product
+                    exists, so a blank cell here would hide a real bug. */}
+                {parentName ?? grade.product_id}
+              </p>
+            </div>
           ) : (
             <Field
               name="product_id"
@@ -179,7 +187,11 @@ export function GradeFormDialog({
           )}
 
           <DialogFooter>
-            <Button type="button" variant="ghost" onClick={onClose}>
+            {/* Disabled while submitting: a stale instance's `await
+                mutateAsync` resolving after Cancel → Add-again would
+                otherwise close the freshly-opened dialog and discard what
+                the user just typed into it. */}
+            <Button type="button" variant="ghost" onClick={onClose} disabled={isSubmitting}>
               {t('catalog.actions.cancel')}
             </Button>
             <Button type="submit" disabled={isSubmitting}>

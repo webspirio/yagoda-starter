@@ -14,7 +14,7 @@ import type { TareType } from '../model/tareType';
  *  matching the one on the receipt. */
 export function TareTypesTab() {
   const { t } = useTranslation();
-  const { data, isPending } = useTareTypesQuery();
+  const { data, isPending, isError } = useTareTypesQuery();
   const [editing, setEditing] = useState<TareType | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   // Bumped on every open so `TareTypeFormDialog` below remounts instead of
@@ -45,8 +45,16 @@ export function TareTypesTab() {
     );
   }
 
-  const rows = data?.data ?? [];
-  const truncated = (data?.total ?? 0) > rows.length;
+  if (isError || !data) {
+    return (
+      <p role="alert" className="py-8 text-center text-destructive">
+        {t('common.somethingWentWrong')}
+      </p>
+    );
+  }
+
+  const rows = data.data ?? [];
+  const truncated = (data.total ?? 0) > rows.length;
 
   return (
     <div className="flex flex-col gap-4">
