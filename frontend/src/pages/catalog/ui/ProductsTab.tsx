@@ -17,14 +17,22 @@ export function ProductsTab() {
   const { data, isPending } = useProductsQuery();
   const [editing, setEditing] = useState<Product | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
+  // Bumped on every open so `ProductFormDialog` below remounts instead of
+  // being reset by an effect: a fresh `key` gives it fresh `useForm` state
+  // (seeded from `editing` at mount) and a fresh `formError`, whether this
+  // open is a different product, the same product again, or create after
+  // edit — with no effect needed to tell those cases apart.
+  const [dialogInstance, setDialogInstance] = useState(0);
 
   const openCreate = () => {
     setEditing(null);
     setDialogOpen(true);
+    setDialogInstance((n) => n + 1);
   };
   const openEdit = (product: Product) => {
     setEditing(product);
     setDialogOpen(true);
+    setDialogInstance((n) => n + 1);
   };
 
   // Skeleton rows rather than a spinner: the row count is roughly known, so
@@ -86,6 +94,7 @@ export function ProductsTab() {
       )}
 
       <ProductFormDialog
+        key={dialogInstance}
         open={dialogOpen}
         product={editing}
         onClose={() => setDialogOpen(false)}

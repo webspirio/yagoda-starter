@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
 import {
@@ -24,6 +24,13 @@ const FIELDS = ['name'] as const;
  * They share every validation rule, and the backend deliberately gives create
  * and update DIFFERENT DTO shapes — so the difference belongs in one visible
  * mode flag rather than two components that drift apart.
+ *
+ * There is no reset-on-open effect here. `ProductsTab` remounts this
+ * component (via a `key` that changes on every open) each time the dialog is
+ * opened, so `useForm`'s `defaultValues` and this component's own
+ * `formError` state are simply re-initialised by mounting rather than
+ * reset by an effect — nothing here is derived from an impure external
+ * system, so there is nothing an effect should own.
  */
 export function ProductFormDialog({
   open,
@@ -42,24 +49,9 @@ export function ProductFormDialog({
   const {
     register,
     handleSubmit,
-    reset,
     setError,
     formState: { errors, isSubmitting },
-  } = useForm<ProductFormValues>({ defaultValues: { name: '' } });
-
-  // Re-seed whenever the dialog opens: the component stays mounted between
-  // openings, so without this an edit would show the previous row's values.
-  useEffect(() => {
-    if (open) {
-      reset({ name: product?.name ?? '' });
-      // Clearing a stale error from a previous submission on reopen; the
-      // component stays mounted between openings, so this can't be derived
-      // from props (see the same pattern's justification in
-      // shared/ui/image-picker.tsx).
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setFormError(null);
-    }
-  }, [open, product, reset]);
+  } = useForm<ProductFormValues>({ defaultValues: { name: product?.name ?? '' } });
 
   const onSubmit = handleSubmit(async (values) => {
     setFormError(null);
