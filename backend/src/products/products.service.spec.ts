@@ -17,6 +17,15 @@ describe('ProductsService', () => {
     create: jest.Mock;
     createQueryBuilder: jest.Mock;
   };
+  // A DISTINCT repo object standing in for `manager.getRepository(Product)`
+  // inside the transaction. If this were the same object as `repo`, a
+  // regression that swapped `manager.getRepository(Product).save(...)` for
+  // `this.repo.save(...)` — escaping the transaction, so the audit entry could
+  // survive a rolled-back write — would be invisible: both mocks would look
+  // identical and the suite would pass regardless. Keeping them apart is what
+  // lets the assertions below actually prove which repo a save went through.
+  let txRepo: { create: jest.Mock; save: jest.Mock };
+  let manager: { getRepository: () => typeof txRepo };
   let audit: { record: jest.Mock };
   let dataSource: { transaction: jest.Mock };
   let service: ProductsService;
@@ -44,11 +53,19 @@ describe('ProductsService', () => {
         getOne: nameLookup,
       }),
     };
+    // Same merge behaviour as `repo.create` above, but on a repo the
+    // non-transactional paths (`findOne`, `createQueryBuilder`) never see.
+    txRepo = {
+      create: jest.fn().mockImplementation((p) => product(p)),
+      save: jest.fn().mockImplementation((p) => Promise.resolve(p)),
+    };
+    manager = { getRepository: () => txRepo };
     audit = { record: jest.fn().mockResolvedValue(undefined) };
-    // Run the callback against the same mock repo, so a transactional write is
-    // exercised exactly like a plain one.
+    // Resolve the callback against `manager`, which hands back `txRepo` — NOT
+    // `repo`. A transactional write and a plain read must go through
+    // observably different repos, or the transaction boundary is unproven.
     dataSource = {
-      transaction: jest.fn().mockImplementation((cb) => cb({ getRepository: () => repo })),
+      transaction: jest.fn().mockImplementation((cb) => cb(manager)),
     };
     service = new ProductsService(repo as never, dataSource as never, audit as never);
   });
@@ -73,9 +90,15 @@ describe('ProductsService', () => {
   describe('create', () => {
     it('trims the name and records an audit entry inside the transaction', async () => {
       const result = await service.create(owner, { name: '  Малина  ' });
-      expect(repo.create).toHaveBeenCalledWith({ name: 'Малина' });
+      // The write goes through the transactional repo, never the plain one.
+      expect(txRepo.create).toHaveBeenCalledWith({ name: 'Малина' });
+      expect(txRepo.save).toHaveBeenCalled();
+      expect(repo.save).not.toHaveBeenCalled();
       expect(result.name).toBe('Малина');
       expect(dataSource.transaction).toHaveBeenCalledTimes(1);
+      // The audit entry must commit atomically with the write, so it has to
+      // carry the SAME manager the transaction callback received — not just
+      // some object shaped like one.
       expect(audit.record).toHaveBeenCalledWith(
         expect.objectContaining({
           action: 'product.created',
@@ -83,7 +106,7 @@ describe('ProductsService', () => {
           target_type: 'product',
           after: { name: 'Малина' },
         }),
-        expect.anything(),
+        manager,
       );
     });
 
@@ -106,13 +129,20 @@ describe('ProductsService', () => {
     it('renames and audits only the field that moved', async () => {
       repo.findOne.mockResolvedValue(product());
       await service.update(owner, 'prod-1', { name: 'Полуниця' });
+      // The rename is saved through the transactional repo, never the plain
+      // one — the entity found via `repo.findOne` must be persisted via
+      // `manager.getRepository(Product)`, not `this.repo`.
+      expect(txRepo.save).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 'prod-1', name: 'Полуниця' }),
+      );
+      expect(repo.save).not.toHaveBeenCalled();
       expect(audit.record).toHaveBeenCalledWith(
         expect.objectContaining({
           action: 'product.updated',
           before: { name: 'Малина' },
           after: { name: 'Полуниця' },
         }),
-        expect.anything(),
+        manager,
       );
     });
 
