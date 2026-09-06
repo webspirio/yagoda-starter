@@ -32,7 +32,13 @@ export class ProductGradesService {
 
     const [data, total] = await this.repo.findAndCount({
       where,
-      order: { name: 'ASC' },
+      // `id: 'ASC'` is a tiebreaker, not a second sort key anyone reads: grade
+      // names are unique only PER PRODUCT (`UQ_product_grades_product_name_lower`),
+      // so without a `product_id` filter "1 сорт" appears once per berry — a
+      // genuine tie on `name` alone. Postgres does not promise a stable order
+      // among tied rows, so `skip`/`take` could return one of them twice across
+      // pages, or drop it entirely, without this.
+      order: { name: 'ASC', id: 'ASC' },
       skip: (query.page - 1) * query.limit,
       take: query.limit,
     });

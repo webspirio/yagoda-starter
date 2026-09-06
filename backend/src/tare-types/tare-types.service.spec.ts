@@ -173,5 +173,16 @@ describe('TareTypesService', () => {
       await service.update(owner, 'tare-1', {});
       expect(audit.record).not.toHaveBeenCalled();
     });
+
+    // Mirrors ProductsService's equivalent test: the unique index is on
+    // `lower(name)`, so a pure case fix ("ящик" → "Ящик") on the SAME row must
+    // not be checked against itself and must not 409.
+    it('allows a pure case correction without a uniqueness conflict', async () => {
+      repo.findOne.mockResolvedValue(tare({ name: 'ящик' }));
+      await service.update(owner, 'tare-1', { name: 'Ящик' });
+      // The row is itself — no lookup, no 409.
+      expect(nameLookup).not.toHaveBeenCalled();
+      expect(audit.record).toHaveBeenCalled();
+    });
   });
 });

@@ -27,17 +27,29 @@ export class YagodaCatalog1788600000005 implements MigrationInterface {
     // only by case, the unique index below cannot be created, and the operator
     // must decide which name survives. Naming the values is the difference
     // between a fixable message and a bare constraint-violation stack.
-    const collisions: { name: string; occurrences: string }[] = await queryRunner.query(`
-      SELECT lower("name") AS name, count(*)::text AS occurrences
+    const collisions: { name: string; occurrences: string; ids: string }[] =
+      await queryRunner.query(`
+      SELECT lower("name") AS name, count(*)::text AS occurrences,
+             string_agg("id"::text, ', ') AS ids
         FROM "collection_points"
        GROUP BY lower("name")
       HAVING count(*) > 1
     `);
     if (collisions.length > 0) {
-      const detail = collisions.map((c) => `"${c.name}" (${c.occurrences})`).join(', ');
+      // "Rename" is the ONLY remedy that exists — deactivating a colliding row
+      // is not an option: `UQ_collection_points_name_lower` is not a partial
+      // index (no `WHERE is_active`), so a deactivated collision still
+      // collides and the migration would abort again on the very next run.
+      // Spec §5.6 forbids DELETE outright. Naming both the values AND the row
+      // ids is the difference between a fixable message and a bare
+      // constraint-violation stack: the operator can `UPDATE … WHERE id = …`
+      // straight from this error without first writing their own `GROUP BY`.
+      const detail = collisions
+        .map((c) => `"${c.name}" (${c.occurrences}: ${c.ids})`)
+        .join(', ');
       throw new Error(
         `Cannot make collection_points.name case-insensitive: these names already ` +
-          `collide when case is ignored — ${detail}. Rename or deactivate the duplicates, ` +
+          `collide when case is ignored — ${detail}. Rename the duplicates, ` +
           `then re-run this migration.`,
       );
     }
@@ -105,10 +117,20 @@ export class YagodaCatalog1788600000005 implements MigrationInterface {
   }
 
   /**
-   * Reverses the schema, not the intent: restoring the case-SENSITIVE point
-   * constraint fails if case-variant point names were created while this
-   * migration was applied. That is the safe direction — the same posture
-   * `BootstrapOwner.down()` takes.
+   * Reverses the schema, not the intent. `down()` always succeeds: the
+   * case-insensitive index this migration installed is strictly STRONGER than
+   * the plain `UNIQUE("name")` it restores — any row set that satisfies
+   * `lower(name)` uniqueness necessarily satisfies plain uniqueness too, since
+   * two rows that differ can't collide once case is ignored if they didn't
+   * already collide with it. There is no row set `down()` can be run against
+   * that would make the `ADD CONSTRAINT` below fail.
+   *
+   * The risk runs the OTHER direction: re-running `up()` afterwards. Once the
+   * weak, case-sensitive constraint is back in place, case-variant names
+   * («Копайгород» next to «копайгород») become insertable again, and the
+   * collision guard at the top of `up()` will abort until every such pair is
+   * renamed. That is the same posture `BootstrapOwner.down()` takes — safe to
+   * unwind, not necessarily safe to redo blind.
    */
   public async down(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`DROP INDEX "UQ_collection_points_name_lower"`);

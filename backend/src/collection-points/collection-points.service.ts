@@ -109,7 +109,12 @@ export class CollectionPointsService {
     // `null` (should never arrive here, and must not be assigned if it does).
     if (dto.name != null) {
       const name = assertTrimmedName(dto.name, 'name', 'POINT_NAME_EMPTY');
-      if (name !== point.name) await this.assertNameFree(name, point.id);
+      // Compared case-INSENSITIVELY, matching the unique index. A pure case
+      // correction ("копайгород" → "Копайгород") is the same row, so it must
+      // not be checked against itself and must not 409.
+      if (name.toLowerCase() !== point.name.toLowerCase()) {
+        await this.assertNameFree(name, point.id);
+      }
       point.name = name;
     }
     if (dto.kind != null) point.kind = dto.kind;
@@ -171,13 +176,22 @@ export class CollectionPointsService {
     return { target_cash: point.target_cash, target_crates: point.target_crates };
   }
 
-  /** A pre-check for a friendly 409, mirroring
-   *  `UserAdminService.assertLoginFree`. The UNIQUE index
-   *  (`UQ_collection_points_name`) is still the real guarantee — two
-   *  simultaneous writes both pass this, and the loser gets a 500 rather than
-   *  a silent duplicate. */
+  /**
+   * A pre-check for a friendly 409. `UQ_collection_points_name_lower` is still
+   * the real guarantee — two simultaneous writes both pass this, and the
+   * loser gets a 500 rather than a silent duplicate.
+   *
+   * `lower(...) = lower(...)` on BOTH sides, matching the index exactly: a
+   * case-sensitive pre-check would let «копайгород» through to a constraint
+   * violation, turning a 409 into a 500. The comparison is case-insensitive
+   * because the index it guards is.
+   */
   private async assertNameFree(name: string, excludeId?: string): Promise<void> {
-    const existing = await this.repo.findOne({ where: { name } });
+    const existing = await this.repo
+      .createQueryBuilder('point')
+      .where('lower(point.name) = lower(:name)', { name })
+      .getOne();
+
     if (existing && existing.id !== excludeId) {
       throw new ConflictException({ message: 'That name is taken', code: 'POINT_NAME_TAKEN' });
     }

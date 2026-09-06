@@ -82,7 +82,13 @@ describe('ProductGradesService', () => {
     it('hides inactive grades by default', async () => {
       await service.list({ page: 1, limit: 100 });
       expect(repo.findAndCount).toHaveBeenCalledWith(
-        expect.objectContaining({ where: { is_active: true }, order: { name: 'ASC' } }),
+        // `id: 'ASC'` breaks ties on `name`, which is unique only per product —
+        // without a `product_id` filter, "1 сорт" genuinely repeats across
+        // every berry.
+        expect.objectContaining({
+          where: { is_active: true },
+          order: { name: 'ASC', id: 'ASC' },
+        }),
       );
     });
 
@@ -142,6 +148,13 @@ describe('ProductGradesService', () => {
   });
 
   describe('update', () => {
+    it('404s on an unknown id', async () => {
+      repo.findOne.mockResolvedValue(null);
+      await expect(service.update(owner, 'nope', { name: 'X' })).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+
     it('deactivates the last active grade without complaint — that is the retirement mechanism', async () => {
       repo.findOne.mockResolvedValue(grade());
       const result = await service.update(owner, 'grade-1', { is_active: false });
@@ -176,6 +189,17 @@ describe('ProductGradesService', () => {
       repo.findOne.mockResolvedValue(grade());
       await service.update(owner, 'grade-1', {});
       expect(audit.record).not.toHaveBeenCalled();
+    });
+
+    // Mirrors ProductsService's equivalent test: the unique index is on
+    // `(product_id, lower(name))`, so a pure case fix ("1 сорт" → "1 Сорт") on
+    // the SAME row must not be checked against itself and must not 409.
+    it('allows a pure case correction without a uniqueness conflict', async () => {
+      repo.findOne.mockResolvedValue(grade({ name: '1 сорт' }));
+      await service.update(owner, 'grade-1', { name: '1 Сорт' });
+      // The row is itself — no lookup, no 409.
+      expect(nameLookup).not.toHaveBeenCalled();
+      expect(audit.record).toHaveBeenCalled();
     });
   });
 });

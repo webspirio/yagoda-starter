@@ -156,6 +156,42 @@ describe('catalog pipeline (HTTP)', () => {
       .expect(404);
   });
 
+  it('treats collection point names as case-insensitive, matching the unique index', async () => {
+    const users = app.get(UsersService);
+    const credentials = app.get(CredentialsService);
+    const jwt = app.get(JwtService);
+
+    const { user: owner } = await users.createWithIdentity(
+      {
+        provider: LOCAL_PROVIDER,
+        providerUserId: `cat-ci-${randomUUID()}`,
+        first_name: 'CI',
+        last_name: 'Owner',
+        role: UserRole.NetworkOwner,
+      },
+      async (created, manager) => credentials.set(created.id, 'hunter2!!', manager),
+    );
+    const token = jwt.sign({ sub: owner.id });
+
+    const pointName = `Копайгород-${randomUUID()}`;
+
+    await request(app.getHttpServer())
+      .post('/collection-points')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ name: pointName })
+      .expect(201);
+
+    // Same name, only the case differs. `UQ_collection_points_name_lower`
+    // folds case, so this must land as a friendly 409 from the service's own
+    // pre-check — never a 500 raw stack trace from the index rejecting a
+    // case-blind pre-check that let it through.
+    await request(app.getHttpServer())
+      .post('/collection-points')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ name: pointName.toLowerCase() })
+      .expect(409);
+  });
+
   it('rejects a query flag that used to be accepted and ignored', async () => {
     const users = app.get(UsersService);
     const credentials = app.get(CredentialsService);
