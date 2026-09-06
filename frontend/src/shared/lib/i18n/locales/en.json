@@ -74,6 +74,18 @@
       "weightFormat": "Use a number with up to 2 decimals, e.g. 1.20",
       "depositFormat": "Use a number with up to 2 decimals, e.g. 120.00",
       "saveFailed": "Could not save. Please try again."
-    }
+    },
+    "title": "Catalog",
+    "tabs": { "products": "Products", "grades": "Grades", "tareTypes": "Tare types" },
+    "truncated": "Showing {{shown}} of {{total}}. Some rows are not listed.",
+    "products": {
+      "add": "Add product",
+      "empty": "No products yet.",
+      "name": "Name",
+      "createTitle": "New product",
+      "editTitle": "Edit product"
+    },
+    "actions": { "edit": "Edit", "save": "Save", "cancel": "Cancel" },
+    "saved": "Saved"
   }
 }
