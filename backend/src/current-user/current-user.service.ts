@@ -4,6 +4,7 @@ import { displayNameOf } from '../users/display-name';
 import { AuditService } from '../audit/audit.service';
 import { MediaService } from '../media/media.service';
 import { messageOf } from '../common/errors/message-of';
+import { diffFields } from '../common/diff-fields';
 import type { AuthenticatedUser } from '../auth/jwt.strategy';
 import { UpdateMeDto } from './dto/update-me.dto';
 import { User } from '../users/user.entity';
@@ -50,18 +51,16 @@ export class CurrentUserService {
     // Only the fields that actually moved. A no-op PATCH writing an audit
     // entry would make the log unreadable: mostly noise, with the real
     // changes buried in it.
-    const changed = (Object.keys(dto) as (keyof UpdateMeDto)[]).filter(
-      (key) => before[key] !== updated[key],
-    );
+    const diff = diffFields(before, updated, Object.keys(dto) as (keyof User & string)[]);
 
-    if (changed.length > 0) {
+    if (diff) {
       await this.audit.record({
         action: 'user.updated',
         actor_id: actor.sub,
         target_type: 'user',
         target_id: actor.sub,
-        before: Object.fromEntries(changed.map((k) => [k, before[k]])),
-        after: Object.fromEntries(changed.map((k) => [k, updated[k]])),
+        before: diff.before,
+        after: diff.after,
       });
     }
 

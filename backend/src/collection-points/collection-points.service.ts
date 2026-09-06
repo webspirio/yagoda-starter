@@ -1,9 +1,4 @@
-import {
-  BadRequestException,
-  ConflictException,
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
+import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { CollectionPoint } from './collection-point.entity';
@@ -16,6 +11,8 @@ import { displayNameOf } from '../users/display-name';
 import { AuditService } from '../audit/audit.service';
 import { assertOwnsPoint, resolvePointFilter } from '../auth/access/point-scope';
 import { Paginated } from '../common/dto/paginated';
+import { diffFields } from '../common/diff-fields';
+import { assertTrimmedName } from '../common/trimmed-name';
 import type { AuthenticatedUser } from '../auth/jwt.strategy';
 
 const TARGET_FIELDS = ['target_cash', 'target_crates'] as const;
@@ -68,7 +65,7 @@ export class CollectionPointsService {
     actor: AuthenticatedUser,
     dto: CreateCollectionPointDto,
   ): Promise<CollectionPointResponse> {
-    const name = this.assertNameValid(dto.name);
+    const name = assertTrimmedName(dto.name, 'name', 'POINT_NAME_EMPTY');
     await this.assertNameFree(name);
 
     const point = await this.repo.save(
@@ -111,7 +108,7 @@ export class CollectionPointsService {
     // `!= null` excludes both `undefined` (field absent, leave alone) and
     // `null` (should never arrive here, and must not be assigned if it does).
     if (dto.name != null) {
-      const name = this.assertNameValid(dto.name);
+      const name = assertTrimmedName(dto.name, 'name', 'POINT_NAME_EMPTY');
       if (name !== point.name) await this.assertNameFree(name, point.id);
       point.name = name;
     }
@@ -135,8 +132,8 @@ export class CollectionPointsService {
     const saved = await this.repo.save(point);
     const targetsAfter = this.targetsOf(saved);
 
-    const movedTargets = TARGET_FIELDS.filter((f) => targetsBefore[f] !== targetsAfter[f]);
-    if (movedTargets.length > 0) {
+    const targetDiff = diffFields(targetsBefore, targetsAfter, TARGET_FIELDS);
+    if (targetDiff) {
       // The DBML says outright that author and reason for a target change are
       // "не зберігається" anywhere in the schema, since targets carry no
       // history. They are recorded HERE instead: the audit log is not target
@@ -147,24 +144,22 @@ export class CollectionPointsService {
         actor_id: actor.sub,
         target_type: 'collection_point',
         target_id: saved.id,
-        before: Object.fromEntries(movedTargets.map((f) => [f, targetsBefore[f]])),
-        after: Object.fromEntries(movedTargets.map((f) => [f, targetsAfter[f]])),
+        before: targetDiff.before,
+        after: targetDiff.after,
         note: dto.reason ?? null,
       });
     }
 
     const after = { name: saved.name, kind: saved.kind, is_active: saved.is_active };
-    const movedFields = (Object.keys(before) as (keyof typeof before)[]).filter(
-      (k) => before[k] !== after[k],
-    );
-    if (movedFields.length > 0) {
+    const fieldDiff = diffFields(before, after, ['name', 'kind', 'is_active']);
+    if (fieldDiff) {
       await this.audit.record({
         action: 'point.updated',
         actor_id: actor.sub,
         target_type: 'collection_point',
         target_id: saved.id,
-        before: Object.fromEntries(movedFields.map((k) => [k, before[k]])),
-        after: Object.fromEntries(movedFields.map((k) => [k, after[k]])),
+        before: fieldDiff.before,
+        after: fieldDiff.after,
         note: dto.reason ?? null,
       });
     }
@@ -174,27 +169,6 @@ export class CollectionPointsService {
 
   private targetsOf(point: CollectionPoint): Record<(typeof TARGET_FIELDS)[number], unknown> {
     return { target_cash: point.target_cash, target_crates: point.target_crates };
-  }
-
-  /**
-   * Trims a name and rejects an all-whitespace one with a 400 — done BEFORE
-   * both the uniqueness check and the save. `@Length(1, 128)` on the DTO
-   * counts whitespace toward length, so " " alone already passes it; without
-   * trimming here, "dupe-check" and " dupe-check " render identically on the
-   * transfer screen (a mistaken transfer there is real money in dispute) but
-   * compare unequal to `UQ_collection_points_name`, defeating the whole point
-   * of the constraint. See `normalize-login.ts` for why this trims but does
-   * NOT lowercase — a point name is a display value, not an identifier.
-   */
-  private assertNameValid(raw: string): string {
-    const name = raw.trim();
-    if (!name) {
-      throw new BadRequestException({
-        message: 'name cannot be empty or all whitespace',
-        code: 'POINT_NAME_EMPTY',
-      });
-    }
-    return name;
   }
 
   /** A pre-check for a friendly 409, mirroring
