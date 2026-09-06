@@ -21,6 +21,7 @@
     "dashboard": "Dashboard",
     "profile": "Profile",
     "settings": "Settings",
+    "catalog": "Catalog",
     "openMenu": "Open menu",
     "closeMenu": "Close menu"
   },
@@ -63,5 +64,54 @@
   "lang": {
     "label": "Language",
     "en": "EN"
+  },
+  "catalog": {
+    "errors": {
+      "nameRequired": "Name is required",
+      "nameTooLong": "Name must be 128 characters or fewer",
+      "nameTaken": "That name is already taken",
+      "nameEmpty": "Name cannot be blank",
+      "productRequired": "Choose a product",
+      "weightFormat": "Use a number with up to 2 decimals, e.g. 1.20",
+      "depositFormat": "Use a number with up to 2 decimals, e.g. 120.00",
+      "saveFailed": "Could not save. Please try again."
+    },
+    "title": "Catalog",
+    "tabs": { "products": "Products", "grades": "Grades", "tareTypes": "Tare types" },
+    "truncated": "Showing {{shown}} of {{total}}. Some rows are not listed.",
+    "products": {
+      "add": "Add product",
+      "empty": "No products yet.",
+      "name": "Name",
+      "createTitle": "New product",
+      "editTitle": "Edit product"
+    },
+    "grades": {
+      "add": "Add grade",
+      "empty": "No grades yet.",
+      "name": "Name",
+      "product": "Product",
+      "allProducts": "All products",
+      "active": "Active",
+      "inactive": "Inactive",
+      "createTitle": "New grade",
+      "editTitle": "Edit grade",
+      "activeLabel": "Active"
+    },
+    "actions": { "edit": "Edit", "save": "Save", "cancel": "Cancel" },
+    "saved": "Saved",
+    "tareTypes": {
+      "add": "Add tare type",
+      "empty": "No tare types yet.",
+      "name": "Name",
+      "weight": "Weight (kg)",
+      "deposit": "Deposit price",
+      "isCrate": "Counts as a crate",
+      "active": "Active",
+      "inactive": "Inactive",
+      "createTitle": "New tare type",
+      "editTitle": "Edit tare type",
+      "activeLabel": "Active"
+    }
   }
 }
