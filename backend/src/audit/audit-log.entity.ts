@@ -27,6 +27,12 @@ export const AUDIT_ACTIONS = [
   'point.created',
   'point.updated',
   'point.target-changed',
+  'product.created',
+  'product.updated',
+  'product-grade.created',
+  'product-grade.updated',
+  'tare-type.created',
+  'tare-type.updated',
 ] as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
