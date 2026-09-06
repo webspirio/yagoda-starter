@@ -341,9 +341,18 @@ describe('diffFields', () => {
     expect(diffFields(before, after, ['name'])).toBeNull();
   });
 
+  // Both operands are annotated because `diffFields<T>(before: T, after: T, …)`
+  // infers T from the FIRST argument: written as bare literals, T would be
+  // `{ target: null }` and `{ target: undefined }` would not be assignable.
   it('treats null and undefined as different values', () => {
-    const diff = diffFields({ target: null }, { target: undefined }, ['target']);
-    expect(diff).toEqual({ changed: ['target'], before: { target: null }, after: { target: undefined } });
+    type Nullable = { target: string | null | undefined };
+    const before: Nullable = { target: null };
+    const after: Nullable = { target: undefined };
+    expect(diffFields(before, after, ['target'])).toEqual({
+      changed: ['target'],
+      before: { target: null },
+      after: { target: undefined },
+    });
   });
 
   it('reports several moved keys at once', () => {
