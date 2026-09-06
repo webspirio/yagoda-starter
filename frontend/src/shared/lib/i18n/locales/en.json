@@ -98,6 +98,19 @@
       "activeLabel": "Active"
     },
     "actions": { "edit": "Edit", "save": "Save", "cancel": "Cancel" },
-    "saved": "Saved"
+    "saved": "Saved",
+    "tareTypes": {
+      "add": "Add tare type",
+      "empty": "No tare types yet.",
+      "name": "Name",
+      "weight": "Weight (kg)",
+      "deposit": "Deposit price",
+      "isCrate": "Counts as a crate",
+      "active": "Active",
+      "inactive": "Inactive",
+      "createTitle": "New tare type",
+      "editTitle": "Edit tare type",
+      "activeLabel": "Active"
+    }
   }
 }
