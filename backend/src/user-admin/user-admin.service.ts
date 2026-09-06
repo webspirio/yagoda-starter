@@ -33,7 +33,7 @@ export class UserAdminService {
       page: query.page,
       limit: query.limit,
       collection_point_id: query.collection_point_id,
-      include_inactive: query.include_inactive === 'true',
+      include_inactive: query.include_inactive ?? false,
     });
 
     // No point scoping here: every route on this controller is owner-only, and

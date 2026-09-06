@@ -38,7 +38,7 @@ export class CollectionPointsService {
     // An operator sees exactly one row: their own point. Derived from the
     // actor, never from a query parameter.
     if (pointId) where.id = pointId;
-    if (query.include_inactive !== 'true') where.is_active = true;
+    if (!query.include_inactive) where.is_active = true;
 
     const [data, total] = await this.repo.findAndCount({
       where,
