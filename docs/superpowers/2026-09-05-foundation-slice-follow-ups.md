@@ -8,6 +8,13 @@ nobody fixes.
 
 Ordered by when it starts to matter, not by severity.
 
+> **Status update, 2026-09-06 (catalog slice).** The two items under "Worth
+> doing before the next module copies it" marked **CLOSED** below were closed by
+> the catalog slice, which was the next module. The three items in this first
+> section are now the **first task of the owner admin UI slice**, not open-ended
+> follow-ups: that slice is what makes them reachable. Two new entries appear at
+> the end.
+
 ## Blocks the users admin UI
 
 **The active-owner count is a check-then-act with no serialisation.**
@@ -43,13 +50,18 @@ from a row" convention isn't followed. Its three siblings are named methods.
 
 ## Worth doing before the next module copies it
 
-- **`include_inactive` accepts values it then ignores.** `@IsBooleanString()`
-  passes `'1'`, `'0'`, `'TRUE'`; the services test `=== 'true'`. So
-  `?include_inactive=1` is accepted and silently means "false". Both list DTOs.
-- **Field diffing is hand-rolled in four places** now
-  (`CollectionPointsService.update`, `UserAdminService.update`,
-  `CurrentUserService.updateMe`, and the target-diff block). A
-  `diffFields(before, after, keys)` helper is overdue.
+- **CLOSED (catalog slice, `ca7809c`).** ~~`include_inactive` accepts values it
+  then ignores.~~ Replaced by one shared `@BooleanQueryParam()` in
+  `common/dto/boolean-query-param.ts`: `'true'`/`'1'` → true, `'false'`/`'0'` →
+  false, anything else is a 400. Adopted by all four list DTOs that have the
+  flag, and both services now read a typed boolean.
+- **CLOSED (catalog slice, `d4771ba`).** ~~Field diffing is hand-rolled in four
+  places.~~ Extracted to `common/diff-fields.ts`, returning `null` when nothing
+  moved so every call site's "a no-op PATCH writes no audit entry" guard reads
+  as `if (diff)`. All four original sites adopted it, and the three catalog
+  services use it rather than growing a fifth, sixth and seventh copy.
+  `assertTrimmedName` (`common/trimmed-name.ts`) was extracted in the same
+  commit for the same reason.
 - **`migration:generate` still proposes destructive churn for four inherited
   constraints** — `FK_user_identities_user`, `FK_audit_log_actor`,
   `FK_user_credentials_user`, `UQ_user_identities_provider` — because those
@@ -106,3 +118,41 @@ Do not "fix" these; both are argued for in the spec and commented in the code.
 - **`'user.registered'` remains in `AUDIT_ACTIONS`** with no writer. Rows
   written before registration was removed still carry it and must type-check
   when read back.
+
+## New, from the catalog slice (2026-09-06)
+
+- **`CollectionPointsService` records its audit entries outside a transaction.**
+  It saves, then calls `audit.record()` unwrapped, so a failed audit insert
+  leaves a point with no entry. The three catalog services all use
+  `AuditService.record`'s `EntityManager` seam inside `dataSource.transaction()`,
+  which makes the correct shape the majority — three modules to one. Align
+  `CollectionPointsService` during the admin UI slice, when that file is being
+  touched anyway. Recorded as accepted debt in the catalog spec's §9.
+
+- **The migration collision guard is observed but still not covered by a test.**
+  `1788600000005-YagodaCatalog` aborts with a named-values error if
+  `collection_points` already holds names colliding case-insensitively. The
+  catalog spec recorded this branch as inspection-only. It has since fired for
+  real: the TDD red step wrote a colliding pair into `app_test` while the old
+  case-sensitive constraint was still in force, and the guard caught it on the
+  next run and named the values. So the branch is proven to work — but only
+  anecdotally. Covering it properly needs a fixture database the harness does
+  not currently provide.
+
+- **`down()`'s doc comment in `1788600000005-YagodaCatalog` overstates the
+  risk.** It claims restoring the case-sensitive constraint can fail if
+  case-variant names appeared meanwhile. It cannot: while the migration is
+  applied, the case-insensitive index is strictly stronger, so anything passing
+  it passes the weaker constraint too. Harmless, but it invites a future reader
+  to handle an impossible case.
+
+- **The `db-harness.ts` comment contradicts the db-specs.** It says "these specs
+  TRUNCATE tables"; both `schema.db-spec.ts` and `catalog-schema.db-spec.ts`
+  document that they never truncate and rely on per-run `randomUUID()` names
+  instead. Pre-existing, surfaced during the catalog slice.
+
+- **`assertNameFree` is a check-then-act in every catalog service.** Two
+  concurrent creates can both pass the pre-check; the loser gets a 500 rather
+  than a friendly 409. The unique index is the real guarantee, and this matches
+  the pre-existing shape in `CollectionPointsService` and `UserAdminService` —
+  recorded for consistency, not as a new defect.

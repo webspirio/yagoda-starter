@@ -21,10 +21,13 @@ describe('CollectionPointsService', () => {
     findOne: jest.Mock;
     save: jest.Mock;
     create: jest.Mock;
+    createQueryBuilder: jest.Mock;
   };
   let users: { findActiveAtPoint: jest.Mock };
   let audit: { record: jest.Mock };
   let service: CollectionPointsService;
+  let nameLookupWhere: jest.Mock;
+  let nameLookup: jest.Mock;
 
   const point = (over: Record<string, unknown> = {}) => ({
     id: 'p-1',
@@ -39,14 +42,17 @@ describe('CollectionPointsService', () => {
   });
 
   beforeEach(() => {
+    // `getOne` backs assertNameFree's case-insensitive lookup. Default "no
+    // such row" so a create() never sees its own name as taken.
+    nameLookup = jest.fn().mockResolvedValue(null);
+    nameLookupWhere = jest.fn().mockReturnThis();
     repo = {
       find: jest.fn(),
       findAndCount: jest.fn().mockResolvedValue([[point()], 1]),
-      // Default to "no such row": `findOne` backs BOTH the by-id lookup in
-      // `update()`/`findOne()` (which every test needing an existing point
-      // overrides below with `point(...)`) and `assertNameFree`'s by-name
-      // uniqueness check. A default of `point()` would make every `create()`
-      // call see its own name as already taken.
+      // Default to "no such row": `findOne` backs the by-id lookup in
+      // `update()`/`findOne()`, which every test needing an existing point
+      // overrides below with `point(...)`. The by-NAME uniqueness check goes
+      // through `createQueryBuilder`/`nameLookup` instead — see below.
       findOne: jest.fn().mockResolvedValue(null),
       save: jest.fn().mockImplementation((p) => Promise.resolve(p)),
       // `point(p)` rather than the bare `p`: a real repo.create() merges its
@@ -55,6 +61,10 @@ describe('CollectionPointsService', () => {
       // needs. Returning the partial as-is would leave created_at undefined
       // and crash the mapper in the "creates a point" test below.
       create: jest.fn().mockImplementation((p) => point(p)),
+      createQueryBuilder: jest.fn().mockReturnValue({
+        where: nameLookupWhere,
+        getOne: nameLookup,
+      }),
     };
     users = { findActiveAtPoint: jest.fn().mockResolvedValue([]) };
     audit = { record: jest.fn().mockResolvedValue(undefined) };
@@ -133,7 +143,7 @@ describe('CollectionPointsService', () => {
   // what the UNIQUE index already enforces byte-for-byte.
   describe('name uniqueness and trimming', () => {
     it('returns 409 POINT_NAME_TAKEN when the name is already used', async () => {
-      repo.findOne.mockResolvedValue(point({ id: 'other-point' }));
+      nameLookup.mockResolvedValue(point({ id: 'other-point' }));
 
       await expect(service.create(owner, { name: 'Копайгород' })).rejects.toThrow(
         ConflictException,
@@ -141,13 +151,13 @@ describe('CollectionPointsService', () => {
     });
 
     it('trims the name before the uniqueness check and before saving', async () => {
-      repo.findOne.mockResolvedValue(null);
+      nameLookup.mockResolvedValue(null);
 
       await service.create(owner, { name: '  dupe-check  ' });
 
-      expect(repo.findOne).toHaveBeenCalledWith(
-        expect.objectContaining({ where: { name: 'dupe-check' } }),
-      );
+      expect(nameLookupWhere).toHaveBeenCalledWith('lower(point.name) = lower(:name)', {
+        name: 'dupe-check',
+      });
       expect(repo.save.mock.calls[0][0].name).toBe('dupe-check');
     });
 
@@ -156,22 +166,36 @@ describe('CollectionPointsService', () => {
     });
 
     it('lets a point keep its own name on update (excludeId)', async () => {
-      repo.findOne
-        .mockResolvedValueOnce(point({ name: 'Копайгород' })) // the by-id fetch
-        .mockResolvedValueOnce(point({ name: 'Копайгород' })); // assertNameFree's by-name lookup — same row
+      repo.findOne.mockResolvedValue(point({ name: 'Копайгород' })); // the by-id fetch
 
       await expect(
         service.update(owner, 'p-1', { name: '  Копайгород  ' }),
       ).resolves.toBeDefined();
+      // Same name, same case, after trimming — the skip-guard fires and
+      // assertNameFree's lookup never runs at all.
+      expect(nameLookup).not.toHaveBeenCalled();
     });
 
     it('refuses renaming to a name another point already holds', async () => {
-      repo.findOne
-        .mockResolvedValueOnce(point({ id: 'p-1', name: 'Копайгород' })) // the by-id fetch
-        .mockResolvedValueOnce(point({ id: 'p-2', name: 'Інша назва' })); // a DIFFERENT row holds the target name
+      repo.findOne.mockResolvedValue(point({ id: 'p-1', name: 'Копайгород' })); // the by-id fetch
+      nameLookup.mockResolvedValue(point({ id: 'p-2', name: 'Інша назва' })); // a DIFFERENT row holds the target name
 
       await expect(service.update(owner, 'p-1', { name: 'Інша назва' })).rejects.toThrow(
         ConflictException,
+      );
+    });
+
+    // Mirrors ProductsService's equivalent test: the unique index is on
+    // `lower(name)`, so a pure case fix ("копайгород" → "Копайгород") on the
+    // SAME row must not be checked against itself and must not 409.
+    it('allows a pure case correction without a uniqueness conflict', async () => {
+      repo.findOne.mockResolvedValue(point({ name: 'копайгород' }));
+
+      await service.update(owner, 'p-1', { name: 'Копайгород' });
+
+      expect(nameLookup).not.toHaveBeenCalled();
+      expect(audit.record).toHaveBeenCalledWith(
+        expect.objectContaining({ action: 'point.updated' }),
       );
     });
   });

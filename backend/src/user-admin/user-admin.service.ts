@@ -17,6 +17,7 @@ import { SetPasswordDto } from './dto/set-password.dto';
 import { ListUsersQueryDto } from './dto/list-users.query';
 import { UserResponse, toUserResponse } from './user.mapper';
 import { Paginated } from '../common/dto/paginated';
+import { diffFields } from '../common/diff-fields';
 import type { AuthenticatedUser } from '../auth/jwt.strategy';
 
 @Injectable()
@@ -33,7 +34,7 @@ export class UserAdminService {
       page: query.page,
       limit: query.limit,
       collection_point_id: query.collection_point_id,
-      include_inactive: query.include_inactive === 'true',
+      include_inactive: query.include_inactive ?? false,
     });
 
     // No point scoping here: every route on this controller is owner-only, and
@@ -229,20 +230,25 @@ export class UserAdminService {
       collection_point_id: updated.collection_point_id,
       is_active: updated.is_active,
     };
-    const moved = (Object.keys(before) as (keyof typeof before)[]).filter(
-      (k) => before[k] !== after[k],
-    );
+    const diff = diffFields(before, after, [
+      'login',
+      'first_name',
+      'last_name',
+      'role',
+      'collection_point_id',
+      'is_active',
+    ]);
 
     // A no-op PATCH must not write an entry: an audit log full of noise is one
     // nobody reads.
-    if (moved.length > 0) {
+    if (diff) {
       await this.audit.record({
         action: 'user.updated',
         actor_id: actor.sub,
         target_type: 'user',
         target_id: userId,
-        before: Object.fromEntries(moved.map((k) => [k, before[k]])),
-        after: Object.fromEntries(moved.map((k) => [k, after[k]])),
+        before: diff.before,
+        after: diff.after,
       });
     }
 

@@ -4,7 +4,6 @@ import {
   CreateDateColumn,
   Entity,
   PrimaryGeneratedColumn,
-  Unique,
   UpdateDateColumn,
 } from 'typeorm';
 import { PointKind } from './point-kind.enum';
@@ -35,9 +34,16 @@ import { PointKind } from './point-kind.enum';
  * explicitly and is silent here with no Note defending the silence, so this
  * reads as an oversight: two points both called "Копайгород" would be a live
  * hazard on the transfer screen, where a mistaken transfer is money in dispute.
+ *
+ * That uniqueness is now CASE-INSENSITIVE and is NOT declared here. It lives in
+ * `1788600000005-YagodaCatalog` as `UQ_collection_points_name_lower`, a unique
+ * index on `lower(name)` — a shape TypeORM metadata cannot express, so a
+ * `@Unique` decorator here would make `migration:generate` propose re-creating
+ * the old case-sensitive constraint on every run. The case fold is the DBML's
+ * own argument, applied here: the `villages` table was deleted because one
+ * village appeared four ways in the client's book.
  */
 @Entity('collection_points')
-@Unique('UQ_collection_points_name', ['name'])
 @Check('CHK_collection_points_target_cash', `"target_cash" IS NULL OR "target_cash" >= 0`)
 @Check('CHK_collection_points_target_crates', `"target_crates" IS NULL OR "target_crates" >= 0`)
 export class CollectionPoint {

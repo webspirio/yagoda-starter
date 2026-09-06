@@ -30,7 +30,7 @@ export default tseslint.config(
     // default import type-checks but resolves to `undefined` at runtime; see
     // the comment in pipeline.db-spec.ts). `allowAsImport` permits exactly
     // that TS-specific syntax, not a plain `require()` call.
-    files: ['src/testing/pipeline.db-spec.ts'],
+    files: ['src/testing/pipeline.db-spec.ts', 'src/testing/catalog-pipeline.db-spec.ts'],
     rules: {
       '@typescript-eslint/no-require-imports': ['error', { allowAsImport: true }],
     },
