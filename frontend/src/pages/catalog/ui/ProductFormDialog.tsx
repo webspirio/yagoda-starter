@@ -70,7 +70,9 @@ export function ProductFormDialog({
   });
 
   return (
-    <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
+    // Gated on `isSubmitting` too: without it, Escape or an overlay click
+    // can close a submitting dialog exactly like Cancel could (see below).
+    <Dialog open={open} onOpenChange={(next) => !next && !isSubmitting && onClose()}>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>
@@ -105,7 +107,11 @@ export function ProductFormDialog({
           )}
 
           <DialogFooter>
-            <Button type="button" variant="ghost" onClick={onClose}>
+            {/* Disabled while submitting: a stale instance's `await
+                mutateAsync` resolving after Cancel → Add-again would
+                otherwise close the freshly-opened dialog and discard what
+                the user just typed into it. */}
+            <Button type="button" variant="ghost" onClick={onClose} disabled={isSubmitting}>
               {t('catalog.actions.cancel')}
             </Button>
             <Button type="submit" disabled={isSubmitting}>

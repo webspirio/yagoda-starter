@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { Navigate } from 'react-router';
+import { useTranslation } from 'react-i18next';
 import { useMeQuery, type UserRole } from '@/entities/user';
 import { Spinner } from '@/shared/ui/spinner';
 
@@ -21,9 +22,18 @@ import { Spinner } from '@/shared/ui/spinner';
  * This is UX, not enforcement. Every write the guarded screens make is
  * `@Auth(UserRole.NetworkOwner)` server-side and 403s regardless of what the
  * client chose to render.
+ *
+ * A FAILED `me` query is rendered as an error, not treated as "wrong role".
+ * `isPending` going false with `data` undefined means the request errored —
+ * falling through to the role comparison would redirect a legitimate owner
+ * to a dashboard that is itself blank on a transient 500 or dropped
+ * connection, indistinguishable from "you are not allowed here". Fail-closed
+ * buys nothing here since the server 403s regardless — this is not a
+ * security control.
  */
 export function RequireRole({ role, children }: { role: UserRole; children: ReactNode }) {
-  const { data: me, isPending } = useMeQuery();
+  const { t } = useTranslation();
+  const { data: me, isPending, isError } = useMeQuery();
 
   if (isPending) {
     return (
@@ -32,6 +42,13 @@ export function RequireRole({ role, children }: { role: UserRole; children: Reac
       </div>
     );
   }
-  if (me?.role !== role) return <Navigate to="/" replace />;
+  if (isError || !me) {
+    return (
+      <p role="alert" className="text-destructive">
+        {t('common.somethingWentWrong')}
+      </p>
+    );
+  }
+  if (me.role !== role) return <Navigate to="/" replace />;
   return <>{children}</>;
 }

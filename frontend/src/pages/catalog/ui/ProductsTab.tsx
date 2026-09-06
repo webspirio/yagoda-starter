@@ -14,7 +14,7 @@ import type { Product } from '../model/product';
  */
 export function ProductsTab() {
   const { t } = useTranslation();
-  const { data, isPending } = useProductsQuery();
+  const { data, isPending, isError } = useProductsQuery();
   const [editing, setEditing] = useState<Product | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   // Bumped on every open so `ProductFormDialog` below remounts instead of
@@ -47,8 +47,16 @@ export function ProductsTab() {
     );
   }
 
-  const products = data?.data ?? [];
-  const truncated = (data?.total ?? 0) > products.length;
+  if (isError || !data) {
+    return (
+      <p role="alert" className="py-8 text-center text-destructive">
+        {t('common.somethingWentWrong')}
+      </p>
+    );
+  }
+
+  const products = data.data ?? [];
+  const truncated = (data.total ?? 0) > products.length;
 
   return (
     <div className="flex flex-col gap-4">

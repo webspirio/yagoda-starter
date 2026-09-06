@@ -55,9 +55,20 @@ export function GradesTab() {
     );
   }
 
-  const productList = products.data?.data ?? [];
-  const rows = grades.data?.data ?? [];
-  const truncated = (grades.data?.total ?? 0) > rows.length;
+  // A missing product list breaks this screen even when grades load: the
+  // product column would fall back to raw UUIDs and the create dialog's
+  // product <Select> would offer nothing to pick.
+  if (grades.isError || products.isError || !grades.data || !products.data) {
+    return (
+      <p role="alert" className="py-8 text-center text-destructive">
+        {t('common.somethingWentWrong')}
+      </p>
+    );
+  }
+
+  const productList = products.data.data ?? [];
+  const rows = grades.data.data ?? [];
+  const truncated = (grades.data.total ?? 0) > rows.length;
   const nameOf = (id: string) => productList.find((p) => p.id === id)?.name ?? id;
 
   return (
