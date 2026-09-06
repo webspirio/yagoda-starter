@@ -4,6 +4,8 @@ import { Product } from './product.entity';
 import { ProductGrade } from './product-grade.entity';
 import { ProductsService } from './products.service';
 import { ProductsController } from './products.controller';
+import { ProductGradesService } from './product-grades.service';
+import { ProductGradesController } from './product-grades.controller';
 import { AuditModule } from '../audit/audit.module';
 
 /**
@@ -13,8 +15,8 @@ import { AuditModule } from '../audit/audit.module';
  */
 @Module({
   imports: [TypeOrmModule.forFeature([Product, ProductGrade]), AuditModule],
-  controllers: [ProductsController],
-  providers: [ProductsService],
-  exports: [TypeOrmModule, ProductsService],
+  controllers: [ProductsController, ProductGradesController],
+  providers: [ProductsService, ProductGradesService],
+  exports: [TypeOrmModule, ProductsService, ProductGradesService],
 })
 export class ProductsModule {}
