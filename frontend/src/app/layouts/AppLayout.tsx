@@ -3,7 +3,7 @@ import { NavLink, Outlet, useLocation } from 'react-router';
 import { useTranslation } from 'react-i18next';
 import { Menu, X } from 'lucide-react';
 import { cn } from '@/shared/lib/cn';
-import { useSession } from '@/entities/user';
+import { useSession, useMeQuery } from '@/entities/user';
 import { logout } from '@/features/auth';
 import { useAppTheme } from '@/shared/lib/theme';
 import { persister } from '@/shared/api';
@@ -16,6 +16,7 @@ const CHROMELESS = ['/login'];
 const NAV = [
   { to: '/', labelKey: 'nav.dashboard' },
   { to: '/profile', labelKey: 'nav.profile' },
+  { to: '/catalog', labelKey: 'nav.catalog', role: 'network_owner' },
 ] as const;
 
 /**
@@ -29,6 +30,10 @@ export function AppLayout() {
   const token = useSession((s) => s.token);
   const setToken = useSession((s) => s.setToken);
   const [menuOpen, setMenuOpen] = useState(false);
+  const { data: me } = useMeQuery();
+  // A role-restricted item stays hidden while `me` is loading: briefly missing
+  // is better than briefly appearing and then vanishing under the cursor.
+  const navItems = NAV.filter((item) => !('role' in item) || item.role === me?.role);
 
   // Owns the `.dark` class on <html> for the lifetime of the app — called
   // unconditionally here, above the chromeless early return, so a user who
@@ -103,7 +108,7 @@ export function AppLayout() {
           )}
         >
           <ul className="flex flex-col gap-1">
-            {NAV.map((item) => (
+            {navItems.map((item) => (
               <li key={item.to}>
                 <NavLink
                   to={item.to}

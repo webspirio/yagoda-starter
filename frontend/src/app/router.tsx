@@ -1,10 +1,11 @@
 import { createBrowserRouter, type RouteObject } from 'react-router';
 import { AppLayout } from './layouts/AppLayout';
 import { RouteError } from './providers/RouteError';
-import { RequireAuth } from '@/features/auth';
+import { RequireAuth, RequireRole } from '@/features/auth';
 import { LoginPage } from '@/pages/login';
 import { DashboardPage } from '@/pages/dashboard';
 import { ProfilePage } from '@/pages/profile';
+import { CatalogPage } from '@/pages/catalog';
 import { NotFoundPage } from '@/pages/not-found';
 
 /**
@@ -34,6 +35,16 @@ export const routes: RouteObject[] = [
         element: (
           <RequireAuth>
             <ProfilePage />
+          </RequireAuth>
+        ),
+      },
+      {
+        path: '/catalog',
+        element: (
+          <RequireAuth>
+            <RequireRole role="network_owner">
+              <CatalogPage />
+            </RequireRole>
           </RequireAuth>
         ),
       },
