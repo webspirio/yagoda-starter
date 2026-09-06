@@ -94,4 +94,35 @@ describe('ProductsTab', () => {
     await waitFor(() => expect(mock.history.patch).toHaveLength(1));
     expect(JSON.parse(mock.history.patch[0].data)).toEqual({ name: 'Полуниця' });
   });
+
+  // Reopening for CREATE right after an EDIT must not carry the edited row's
+  // value forward — the two sessions must not bleed into each other.
+  it('does not carry an edited row into a fresh create dialog', async () => {
+    mock.onGet('/products').reply(200, list([MALYNA]));
+
+    renderTab();
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit Малина' }));
+    expect(screen.getByLabelText('Name')).toHaveValue('Малина');
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Add product' }));
+    expect(screen.getByLabelText('Name')).toHaveValue('');
+  });
+
+  // A server error from a previous attempt must not survive into the next
+  // time the dialog is opened.
+  it('clears a previous conflict error when the dialog reopens', async () => {
+    mock.onGet('/products').reply(200, list([]));
+    mock.onPost('/products').reply(409, { message: 'That name is taken', code: 'PRODUCT_NAME_TAKEN' });
+
+    renderTab();
+    fireEvent.click(await screen.findByRole('button', { name: 'Add product' }));
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'малина' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    expect(await screen.findByText('That name is already taken')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Add product' }));
+    expect(screen.queryByText('That name is already taken')).not.toBeInTheDocument();
+  });
 });
