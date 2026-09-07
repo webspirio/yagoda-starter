@@ -501,12 +501,26 @@ describe('suppliers + grade prices (HTTP)', () => {
       .send({ first_name: 'Іван', last_name: last, phone })
       .expect(201);
 
+    // The NEGATIVE control. Everything at this point fits inside one page, so
+    // `.some(...)` alone proves «found», never «narrowed» — deleting the whole
+    // `q` branch would leave it green. A supplier with NO phone can never
+    // match `s.phone LIKE`, so this is deterministic rather than a 1-in-10⁴
+    // collision.
+    const decoy = `Ігнор-${randomUUID()}`;
+    await request(app.getHttpServer())
+      .post('/suppliers')
+      .set('Authorization', `Bearer ${operatorToken}`)
+      .send({ first_name: 'Іван', last_name: decoy })
+      .expect(201);
+
     const res = await request(app.getHttpServer())
-      .get(`/suppliers?q=${phone.slice(-4)}`)
+      .get(`/suppliers?limit=100&q=${phone.slice(-4)}`)
       .set('Authorization', `Bearer ${operatorToken}`)
       .expect(200);
 
-    expect(res.body.data.some((s: { last_name: string }) => s.last_name === last)).toBe(true);
+    const names = res.body.data.map((s: { last_name: string }) => s.last_name);
+    expect(names).toContain(last);
+    expect(names).not.toContain(decoy);
   });
 
   it('finds a supplier by a Cyrillic fragment of their name', async () => {
@@ -522,20 +536,49 @@ describe('suppliers + grade prices (HTTP)', () => {
       .send({ first_name: 'Марія', last_name: last, phone: uniquePhone() })
       .expect(201);
 
+    // Negative control, same reasoning as the phone-fragment test above. The
+    // uuid suffix is hex, so «Мельник-…» can never contain «ончарен».
+    const decoy = `Мельник-${randomUUID()}`;
+    await request(app.getHttpServer())
+      .post('/suppliers')
+      .set('Authorization', `Bearer ${operatorToken}`)
+      .send({ first_name: 'Марія', last_name: decoy, phone: uniquePhone() })
+      .expect(201);
+
     const res = await request(app.getHttpServer())
-      .get('/suppliers?q=ончарен')
+      .get('/suppliers?limit=100&q=ончарен')
       .set('Authorization', `Bearer ${operatorToken}`)
       .expect(200);
 
-    expect(res.body.data.some((s: { last_name: string }) => s.last_name === last)).toBe(true);
+    const names = res.body.data.map((s: { last_name: string }) => s.last_name);
+    expect(names).toContain(last);
+    expect(names).not.toContain(decoy);
   });
 
   it('scopes an operator’s list to their own point even when another is requested', async () => {
+    // The pointB supplier is created HERE rather than relied on from a later
+    // test. Without it the requested point holds no rows at all, so the
+    // honour-the-request bug this test exists to catch returns `[]` — and
+    // `[].every(...)` is TRUE. The assertion has to have something to reject.
+    const elsewhere = await request(app.getHttpServer())
+      .post('/suppliers')
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .send({
+        collection_point_id: pointB,
+        first_name: 'Оксана',
+        last_name: `Чужа-Список-${randomUUID()}`,
+      })
+      .expect(201);
+
     const res = await request(app.getHttpServer())
-      .get(`/suppliers?collection_point_id=${pointB}`)
+      .get(`/suppliers?limit=100&collection_point_id=${pointB}`)
       .set('Authorization', `Bearer ${operatorToken}`)
       .expect(200);
 
+    // Non-empty is an ASSERTION, not an assumption: it is what stops
+    // everything below it from passing vacuously.
+    expect(res.body.data.length).toBeGreaterThan(0);
+    expect(res.body.data.map((s: { id: string }) => s.id)).not.toContain(elsewhere.body.id);
     expect(
       res.body.data.every((s: { collection_point_id: string }) => s.collection_point_id === pointA),
     ).toBe(true);
@@ -868,7 +911,11 @@ describe('suppliers + grade prices (HTTP)', () => {
     // prices grows with every run of this suite and this run's two rows are not
     // guaranteed to be on page one.
     const mine: { collection_point_id: string; base_price: string }[] = [];
-    for (let page = 1; page <= 50; page++) {
+    // Driven purely off `total`. A hard page cap would be a trap with a long
+    // fuse here: `app_test` is never truncated and this read spans every point
+    // ever created, so the pair count grows every run and the cap would one day
+    // turn this red for a reason unrelated to the code.
+    for (let page = 1; ; page++) {
       const res = await request(app.getHttpServer())
         .get(`/grade-prices/current?page=${page}&limit=100`)
         .set('Authorization', `Bearer ${ownerToken}`)
@@ -885,5 +932,127 @@ describe('suppliers + grade prices (HTTP)', () => {
     const byPoint = Object.fromEntries(mine.map((p) => [p.collection_point_id, p.base_price]));
     expect(byPoint[pointA]).toBe('40.00');
     expect(byPoint[pointB]).toBe('60.00');
+  });
+
+  it('scopes BOTH price reads to an operator’s own point', async () => {
+    // Prices for one grade at TWO points, so "sees only their own" is a claim
+    // about ROWS rather than about a `params` array handed to a mock. Until
+    // this test, `/grade-prices/current` was only read by an operator via
+    // `.find()` on its own grade — never asserting another point's row was
+    // absent — and `GET /grade-prices` was never read by an operator at all,
+    // on any layer above a `jest.fn()`.
+    const run = randomUUID();
+    const productRes = await request(app.getHttpServer())
+      .post('/products')
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .send({ name: `Смородина-${run}` })
+      .expect(201);
+    const gradeRes = await request(app.getHttpServer())
+      .post('/product-grades')
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .send({ product_id: productRes.body.id, name: `Перший-${run}` })
+      .expect(201);
+    const scopedGradeId: string = gradeRes.body.id;
+
+    for (const [point, base_price] of [
+      [pointA, '40'],
+      [pointB, '60'],
+    ] as const) {
+      await request(app.getHttpServer())
+        .post('/grade-prices')
+        .set('Authorization', `Bearer ${ownerToken}`)
+        .send({
+          collection_point_id: point,
+          product_grade_id: scopedGradeId,
+          base_price,
+          max_markup: '30',
+          max_discount: '20',
+        })
+        .expect(201);
+    }
+
+    // Both reads ASK for pointB. An operator must get their own point anyway.
+    const current = await request(app.getHttpServer())
+      .get(`/grade-prices/current?limit=100&collection_point_id=${pointB}`)
+      .set('Authorization', `Bearer ${operatorToken}`)
+      .expect(200);
+    const mine = current.body.data.filter(
+      (p: { product_grade_id: string }) => p.product_grade_id === scopedGradeId,
+    );
+    expect(mine).toHaveLength(1);
+    expect(mine[0]).toMatchObject({ collection_point_id: pointA, base_price: '40.00' });
+
+    const journal = await request(app.getHttpServer())
+      .get(`/grade-prices?limit=100&product_grade_id=${scopedGradeId}&collection_point_id=${pointB}`)
+      .set('Authorization', `Bearer ${operatorToken}`)
+      .expect(200);
+    expect(journal.body.total).toBe(1);
+    expect(journal.body.data[0]).toMatchObject({
+      collection_point_id: pointA,
+      base_price: '40.00',
+    });
+  });
+
+  it('drops a deactivated grade from /current, and returns it with include_inactive', async () => {
+    // §4.5's whole mechanism, and the one that carries the most weight after
+    // `business_date` was removed — a retired grade must not be offered at
+    // intake. It was asserted only against generated SQL text (`pg.is_active =
+    // true` appearing in the string), which still matches when the clause is
+    // built wrong; nothing observed a row appearing or disappearing.
+    const run = randomUUID();
+    const productRes = await request(app.getHttpServer())
+      .post('/products')
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .send({ name: `Ожина-${run}` })
+      .expect(201);
+    const gradeRes = await request(app.getHttpServer())
+      .post('/product-grades')
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .send({ product_id: productRes.body.id, name: `Другий-${run}` })
+      .expect(201);
+    const retiredGradeId: string = gradeRes.body.id;
+
+    await request(app.getHttpServer())
+      .post('/grade-prices')
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .send({
+        collection_point_id: pointA,
+        product_grade_id: retiredGradeId,
+        base_price: '77',
+        max_markup: '10',
+        max_discount: '10',
+      })
+      .expect(201);
+
+    const visible = await request(app.getHttpServer())
+      .get(`/grade-prices/current?limit=100&collection_point_id=${pointA}`)
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .expect(200);
+    expect(
+      visible.body.data.map((p: { product_grade_id: string }) => p.product_grade_id),
+    ).toContain(retiredGradeId);
+
+    await request(app.getHttpServer())
+      .patch(`/product-grades/${retiredGradeId}`)
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .send({ is_active: false })
+      .expect(200);
+
+    const afterRetire = await request(app.getHttpServer())
+      .get(`/grade-prices/current?limit=100&collection_point_id=${pointA}`)
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .expect(200);
+    expect(
+      afterRetire.body.data.map((p: { product_grade_id: string }) => p.product_grade_id),
+    ).not.toContain(retiredGradeId);
+
+    const withInactive = await request(app.getHttpServer())
+      .get(`/grade-prices/current?limit=100&collection_point_id=${pointA}&include_inactive=true`)
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .expect(200);
+    const back = withInactive.body.data.find(
+      (p: { product_grade_id: string }) => p.product_grade_id === retiredGradeId,
+    );
+    expect(back).toMatchObject({ base_price: '77.00' });
   });
 });
