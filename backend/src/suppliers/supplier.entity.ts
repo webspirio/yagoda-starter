@@ -55,8 +55,14 @@ export class Supplier {
   @Column({ type: 'uuid' })
   collection_point_id: string;
 
+  // The relation exists so TypeORM knows about the foreign key, and
+  // `foreignKeyConstraintName` is what makes that work: the schema builder
+  // matches foreign keys by NAME, so without it a future `migration:generate`
+  // compares the database's `FK_suppliers_point` against a computed
+  // `FK_<sha1>`, never matches, and proposes a drop-and-recreate. Same
+  // reasoning as `User.collection_point` and `ProductGrade.product`.
   @ManyToOne(() => CollectionPoint, { onDelete: 'RESTRICT' })
-  @JoinColumn({ name: 'collection_point_id' })
+  @JoinColumn({ name: 'collection_point_id', foreignKeyConstraintName: 'FK_suppliers_point' })
   collection_point: CollectionPoint;
 
   @Column({ type: 'varchar' })

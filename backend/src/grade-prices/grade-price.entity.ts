@@ -73,8 +73,14 @@ export class GradePrice {
   @Column({ type: 'uuid' })
   collection_point_id: string;
 
+  // The relation exists so TypeORM knows about the foreign key, and
+  // `foreignKeyConstraintName` is what makes that work: the schema builder
+  // matches foreign keys by NAME, so without it a future `migration:generate`
+  // compares the database's `FK_grade_prices_point` against a computed
+  // `FK_<sha1>`, never matches, and proposes a drop-and-recreate. Same
+  // reasoning as `User.collection_point` and `ProductGrade.product`.
   @ManyToOne(() => CollectionPoint, { onDelete: 'RESTRICT' })
-  @JoinColumn({ name: 'collection_point_id' })
+  @JoinColumn({ name: 'collection_point_id', foreignKeyConstraintName: 'FK_grade_prices_point' })
   collection_point: CollectionPoint;
 
   /** §4.1 — the price key is the GRADE; the reporting key is the product. */
@@ -82,7 +88,7 @@ export class GradePrice {
   product_grade_id: string;
 
   @ManyToOne(() => ProductGrade, { onDelete: 'RESTRICT' })
-  @JoinColumn({ name: 'product_grade_id' })
+  @JoinColumn({ name: 'product_grade_id', foreignKeyConstraintName: 'FK_grade_prices_grade' })
   product_grade: ProductGrade;
 
   /** `numeric` — a STRING in TypeScript, never a number. */
@@ -101,7 +107,7 @@ export class GradePrice {
   created_by_user_id: string;
 
   @ManyToOne(() => User, { onDelete: 'RESTRICT' })
-  @JoinColumn({ name: 'created_by_user_id' })
+  @JoinColumn({ name: 'created_by_user_id', foreignKeyConstraintName: 'FK_grade_prices_author' })
   created_by: User;
 
   /** §4.2's worked example — «конкуренти підняли». */
