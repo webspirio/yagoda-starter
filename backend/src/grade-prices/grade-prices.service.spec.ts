@@ -140,10 +140,13 @@ describe('GradePricesService', () => {
   });
 
   describe('list (the journal)', () => {
-    it('orders newest first', async () => {
+    it('orders newest first, breaking ties on id', async () => {
+      // The `id` half is not decoration: `created_at` defaults to `now()`,
+      // which is transaction start time, so every row §4.8's bulk gesture
+      // writes in one transaction will share a timestamp exactly.
       await service.list(owner, { page: 1, limit: 20 } as never);
       expect(repo.findAndCount).toHaveBeenCalledWith(
-        expect.objectContaining({ order: { created_at: 'DESC' } }),
+        expect.objectContaining({ order: { created_at: 'DESC', id: 'DESC' } }),
       );
     });
 

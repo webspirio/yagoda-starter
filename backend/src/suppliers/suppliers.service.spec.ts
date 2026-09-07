@@ -258,6 +258,11 @@ describe('SuppliersService', () => {
       });
     });
 
+    it('breaks name ties on id so a page boundary cannot drop or repeat a row', async () => {
+      await service.list(operator, { page: 1, limit: 20 } as never);
+      expect(qb.addOrderBy).toHaveBeenCalledWith('s.id', 'ASC');
+    });
+
     it('hides inactive suppliers by default', async () => {
       await service.list(operator, { page: 1, limit: 20 } as never);
       expect(qb.andWhere).toHaveBeenCalledWith('s.is_active = true');

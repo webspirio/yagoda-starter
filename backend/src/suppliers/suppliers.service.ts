@@ -96,6 +96,14 @@ export class SuppliersService {
     const [data, total] = await qb
       .orderBy('s.last_name', 'ASC')
       .addOrderBy('s.first_name', 'ASC')
+      // Tiebreaker, not a third sort key anyone reads. §6.3 refuses name
+      // uniqueness outright — two «Іван Коваль»s at one point are ordinary —
+      // and §3.9 makes the tie STRUCTURAL for an owner reading network-wide,
+      // since one person delivering to two points is two rows with identical
+      // names. Postgres promises no order among tied rows, so without this
+      // `skip`/`take` can return one twice across pages or drop it entirely.
+      // Same reasoning as `ProductGradesService.list`.
+      .addOrderBy('s.id', 'ASC')
       .skip((query.page - 1) * query.limit)
       .take(query.limit)
       .getManyAndCount();

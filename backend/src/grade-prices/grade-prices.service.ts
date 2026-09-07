@@ -77,7 +77,7 @@ export class GradePricesService {
         FROM grade_prices gp
         JOIN product_grades pg ON pg.id = gp.product_grade_id
         ${where}
-       ORDER BY gp.collection_point_id, gp.product_grade_id, gp.created_at DESC`;
+       ORDER BY gp.collection_point_id, gp.product_grade_id, gp.created_at DESC, gp.id DESC`;
 
     const [countRow] = await this.repo.manager.query(
       `SELECT count(*)::int AS count FROM (${latest}) t`,
@@ -111,7 +111,13 @@ export class GradePricesService {
 
     const [data, total] = await this.repo.findAndCount({
       where,
-      order: { created_at: 'DESC' },
+      // `id: 'DESC'` is a tiebreaker, not a second sort key anyone reads —
+      // same reasoning as `ProductGradesService.list`. `created_at` defaults
+      // to `now()`, which is TRANSACTION start time, so every row §4.8's bulk
+      // «поставити всім» writes in one transaction will carry the SAME
+      // timestamp. `id` is a random uuid: this buys DETERMINISM across pages,
+      // not «the later one».
+      order: { created_at: 'DESC', id: 'DESC' },
       skip: (query.page - 1) * query.limit,
       take: query.limit,
     });
@@ -132,6 +138,10 @@ export class GradePricesService {
    * up in the browser where no test can reach it.
    */
   async create(actor: AuthenticatedUser, dto: CreateGradePriceDto): Promise<GradePriceResponse> {
+    // A no-op for an owner, since they own every point — and the route is
+    // owner-only, so nothing else reaches this line. Kept as defensive depth
+    // and ordered before the existence check, but the body-supplied point is
+    // really guarded by `@Auth(UserRole.NetworkOwner)` plus the 404 below.
     assertOwnsPoint(actor, dto.collection_point_id);
 
     const point = await this.points.findOneRaw(dto.collection_point_id);

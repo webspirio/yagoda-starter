@@ -176,7 +176,11 @@ export class UsersService {
 
     return this.userRepo.findAndCount({
       where,
-      order: { last_name: 'ASC', first_name: 'ASC' },
+      // `id: 'ASC'` is a tiebreaker, not a third sort key anyone reads: there
+      // is no uniqueness on user names either, so a paginated list of two
+      // people who share one can repeat or drop a row across pages. Same
+      // reasoning as `ProductGradesService.list` and `SuppliersService.list`.
+      order: { last_name: 'ASC', first_name: 'ASC', id: 'ASC' },
       skip: (opts.page - 1) * opts.limit,
       take: opts.limit,
     });
