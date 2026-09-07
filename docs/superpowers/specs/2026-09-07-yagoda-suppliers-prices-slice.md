@@ -288,9 +288,13 @@ anywhere. `kind` does not justify a split rule: §2.11 is explicit that «баз
 не залежить ніколи», so `wholesale` is a reporting marker with no effect on money and there is
 nothing for a stricter role to protect.
 
-**This is also the first module to use `point-scope.ts` as written** — the point derived from
-the actor, never accepted from the body — rather than the documented exception `grade_prices`
-needs (§7).
+**This is the first module to derive the point from the actor for SOME of its writes rather
+than always taking it from the body.** When the actor is an operator, `point-scope.ts` applies
+as written — the point comes from their token, and a body value naming a different point is
+refused. An owner has no point of their own, so the DTO still accepts `collection_point_id` for
+that case and validates it with `assertOwnsPoint` (a no-op for an owner, since they own every
+point). `grade_prices` is owner-only end to end (§7), so it always takes the point from the
+body — there is no actor point to derive it from.
 
 **Accepted cost, recorded rather than guarded:** an operator can rename a supplier, and debt
 follows `supplier_id`, not the name. Editing «Іван Коваль» into «Петро Мельник» silently

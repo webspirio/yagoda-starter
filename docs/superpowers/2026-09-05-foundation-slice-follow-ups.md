@@ -201,3 +201,22 @@ Do not "fix" these; both are argued for in the spec and commented in the code.
   transaction.** Now five modules to one. `SuppliersService` uses the
   `EntityManager` seam like the three catalog services. Align during the admin
   UI slice.
+
+- **`PATCH /suppliers/:id` reopens the existence oracle that `GET` closed.**
+  `findOne` returns 404 for another point's supplier (spec §8.3), but `update`
+  returns 403 for the same row and 404 for an unknown id — so an empty,
+  fully-whitelisted `PATCH {}` is a zero-side-effect probe distinguishing
+  "exists at another point" from "does not exist", on rows holding real names
+  and phone numbers. Deliberately not changed: spec §7's authorization table
+  prescribes `assertOwnsPoint` for PATCH, and §8.3's argument is scoped to a
+  *guessable* id while these are UUIDv4. Close it by routing `update`'s
+  ownership failure through the same 404 when that file is next opened.
+
+- **A deactivated supplier blocks re-creation with their own phone.**
+  `UQ_suppliers_point_phone` has no `WHERE is_active` predicate, so a supplier
+  deactivated by mistake cannot be re-created with their number — they must be
+  reactivated instead. That is what spec §5.7 specifies and reactivation is
+  the better path, but the 409 message ("A supplier with that phone already
+  exists at this point") does not say the blocker is deactivated and
+  therefore invisible in the default list. Consider naming the deactivated
+  case in that error.
