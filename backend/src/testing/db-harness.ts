@@ -6,6 +6,27 @@ import { databaseEnv } from '../config/database.defaults';
 config({ path: join(__dirname, '../../../.env') });
 
 /**
+ * The DB_NAME this process started with, captured ONCE at module load,
+ * before any test code has a chance to redirect it. `resolveTestDatabaseName`
+ * below must always validate against this fixed baseline rather than
+ * re-reading `process.env.DB_NAME` on every call: a pipeline-style spec
+ * redirects the whole app by doing `process.env.DB_NAME =
+ * resolveTestDatabaseName()` in its own `beforeAll`, and a file with a SECOND
+ * such `describe` block (e.g. `pipeline.db-spec.ts`'s `suppliers + grade
+ * prices` block, added to reuse the first block's app-boot machinery rather
+ * than duplicate it) then calls this function again in the SAME process.
+ * Comparing against a live `databaseEnv().name` at that point would compare
+ * the candidate against the app's OWN prior redirection, not the true
+ * original — silently blind to a real collision (e.g. a second block
+ * resolving `staging_test` while `DB_NAME` was actually `staging_test` all
+ * along, once the first block's redirect has overwritten the visible value
+ * to something else). Capturing it once, before any redirection, keeps every
+ * call — no matter how many, no matter what `TEST_DB_NAME` says at the time —
+ * validated against the one value this guard actually exists to protect.
+ */
+const originalDbName = databaseEnv().name;
+
+/**
  * Resolves and validates the database `*.db-spec.ts` suites are allowed to
  * touch (`TEST_DB_NAME`, default `app_test`) — SEPARATE from `DB_NAME`
  * because these specs TRUNCATE, and that separation is ENFORCED here rather
@@ -18,27 +39,15 @@ config({ path: join(__dirname, '../../../.env') });
  * HTTP-level pipeline spec that bootstraps the full Nest app rather than a
  * bare `DataSource` — gets it from ONE place instead of re-deriving it.
  *
- * MEMOIZED PER NAME, not just per call: a pipeline-style spec redirects the
- * whole app by doing `process.env.DB_NAME = resolveTestDatabaseName()` in its
- * own `beforeAll`. A file with a SECOND such `describe` block (e.g.
- * `pipeline.db-spec.ts`'s `suppliers + grade prices` block, added to reuse the
- * first block's app-boot machinery rather than duplicate it) then calls this
- * function again in the same process — by which point `DB_NAME` has already
- * been overwritten to `database`, and the two would compare equal, tripping
- * the "same as DB_NAME" guard against a redirection this same module
- * performed. Once a name has been validated safe once, it stays safe for the
- * rest of this process (Jest gives every `*.db-spec.ts` FILE its own fresh
- * module registry, so this cache never crosses files).
+ * Safe to call more than once per process (see `originalDbName` above):
+ * every call validates against the ORIGINAL `DB_NAME`, not whatever
+ * `process.env.DB_NAME` has since been redirected to by a caller's own
+ * `beforeAll`.
  */
-const validatedTestDatabaseNames = new Set<string>();
-
 export const resolveTestDatabaseName = (): string => {
   const database = process.env.TEST_DB_NAME ?? 'app_test';
-  if (validatedTestDatabaseNames.has(database)) return database;
 
-  const db = databaseEnv();
-
-  if (database === db.name) {
+  if (database === originalDbName) {
     throw new Error(
       `Refusing to run db-specs against "${database}": it is the same database as DB_NAME. ` +
         `These specs TRUNCATE tables. Point TEST_DB_NAME at a dedicated database ` +
@@ -51,7 +60,6 @@ export const resolveTestDatabaseName = (): string => {
         `These specs TRUNCATE tables, and the suffix is the only thing marking a database as disposable.`,
     );
   }
-  validatedTestDatabaseNames.add(database);
   return database;
 };
 
