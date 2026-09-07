@@ -62,7 +62,7 @@ src/
   collection-points/     # CollectionPoint entity + owner-only writes (POST/PATCH), nullable targets, GET scoped by role
   products/               # products and their grades — one aggregate, two entities; §4.1's visibility rule spans both
   tare-types/             # tare catalog — weight_kg and deposit_price, both snapshotted downstream by §2.7
-  suppliers/              # point-scoped supplier records — OPERATOR-writable (the only module whose writes are not owner-only), phone canonicalized to E.164
+  suppliers/              # point-scoped supplier records — OPERATOR-writable (the only DOMAIN module whose writes are open to both roles; self-service `/me` aside), phone canonicalized to E.164
   grade-prices/           # append-only price journal — current price is the newest row per (point, grade); carries §2.9's max_markup/max_discount
   user-admin/             # owner-only POST /users, PATCH /users/:id, PUT /users/:id/password — the only way an account is created
   current-user/          # /me — read, update language_code, avatar upload (the one controller that reads/writes User; identity fields are owner-managed via user-admin)

@@ -8,12 +8,12 @@ import { ListSuppliersQueryDto } from './dto/list-suppliers.query';
 import type { AuthenticatedUser } from '../auth/jwt.strategy';
 
 /**
- * THE FIRST MODULE IN THIS PROJECT WHOSE WRITES ARE NOT OWNER-ONLY, and the
- * break is deliberate. A car arrives at a roadside point with 40 kg of
- * raspberries and a person the operator has never seen; under owner-only
- * writes the delivery cannot be taken until someone elsewhere creates the
- * record. §3.9 nails the supplier to the point precisely because this is a
- * point-level, in-the-moment act.
+ * THE ONLY DOMAIN MODULE WHOSE WRITES ARE OPEN TO BOTH ROLES (self-service
+ * `/me` aside), and the break is deliberate. A car arrives at a roadside point
+ * with 40 kg of raspberries and a person the operator has never seen; under
+ * owner-only writes the delivery cannot be taken until someone elsewhere
+ * creates the record. §3.9 nails the supplier to the point precisely because
+ * this is a point-level, in-the-moment act.
  *
  * `kind` does not justify a stricter rule on part of the row: §2.11 is
  * explicit that «базова ціна від маркера не залежить ніколи», so `wholesale`
