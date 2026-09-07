@@ -48,7 +48,7 @@ export function canonicalizePhone(raw: string): string {
   // U+2015 HORIZONTAL BAR) — a paste from a spreadsheet or a phone keyboard
   // produces those, and writing them literally inside a character class makes
   // the range boundaries invisible in review.
-  const stripped = raw.replace(/[\s()\-‐-―]/g, '');
+  const stripped = raw.replace(/[\s()\-\u2010-\u2015]/g, '');
 
   if (UA_INTERNATIONAL.test(stripped)) {
     return stripped.startsWith('+') ? stripped : `+${stripped}`;
