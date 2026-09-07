@@ -59,6 +59,11 @@ export class YagodaSuppliersAndPrices1788600000006 implements MigrationInterface
     );
 
     await queryRunner.query(`
+      -- NO UNIQUE ON (collection_point_id, product_grade_id). This table is an
+      -- APPEND-ONLY JOURNAL — §4.2, «записи не перетираються, а додаються» —
+      -- and one such constraint would destroy every price history in the
+      -- system on the next write. See the header for the full argument before
+      -- «fixing» the apparent omission.
       CREATE TABLE "grade_prices" (
         "id" uuid NOT NULL DEFAULT uuid_generate_v4(),
         "collection_point_id" uuid NOT NULL,

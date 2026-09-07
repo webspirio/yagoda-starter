@@ -220,3 +220,42 @@ Do not "fix" these; both are argued for in the spec and commented in the code.
   exists at this point") does not say the blocker is deactivated and
   therefore invisible in the default list. Consider naming the deactivated
   case in that error.
+
+- **A `+38`-shaped mistype is a second supplier row, and no server-side rule
+  can catch it.** `'+38 67 123 45 67'` — the conventional Ukrainian written
+  form minus the national `0` — canonicalizes to `+38671234567`, satisfies
+  `CHK_suppliers_phone_e164`, and becomes a distinct row from
+  `+380671234567`. Dropping the `3` or the `8` instead leaks the same way
+  (`+80671234567`, `+30671234567`). This is not a hole in `phone.ts`'s
+  `UA_CLAIMED` guard: it is the direct consequence of spec §5.7 choosing an
+  E.164 *shape* test, and the near-miss families that CAN be closed already
+  are (`38671234567`, `+3800…`, `00380…`, legacy trunk `8…` all 400).
+  **Do not "fix" this by rejecting `+38` + 9 digits.** Ukraine's national
+  number is 9 digits and its seven `+38x` neighbours' are 8, so that rule
+  rejects every 11-digit `+38x` number — 100% of Slovenia, Bosnia,
+  Montenegro, Kosovo and North Macedonia. `+38671234567` is simultaneously a
+  Ukrainian mistype and a well-formed Slovenian landline; they are the same
+  string. `libphonenumber-js` does not separate them either — a leading `+`
+  makes it read the country code and parse the value as Slovenia. The fix
+  belongs at ENTRY: an input mask or a `+380` prefill on the supplier form,
+  which does not exist yet. Documented in `phone.ts` at the code itself.
+
+- **Neither `suppliers` nor `grade_prices` checks that the collection point is
+  ACTIVE.** Both now 404 a point that does not exist, but an owner can still
+  create a supplier at — or append a price to — a *deactivated* point, and
+  `/grade-prices/current` serves that price afterwards.
+  `UserAdminService.assertPointUsable` rejects exactly this with a 400 and
+  `POINT_UNUSABLE`, so the codebase already holds both answers. Deliberately
+  not changed during review: the two new modules agree with each other, no
+  spec section decides it, and "a retired point stops accepting new data" is
+  a product call rather than a defect to be fixed silently. Decide it, then
+  make all three agree.
+
+- **`GradePricesService.current` runs its `DISTINCT ON` subquery twice per
+  request** — once for the count, once for the page. The doc comment's
+  argument for why `findAndCount` is wrong here is correct, but a
+  `count(*) OVER ()` window column would produce the same `total` in one pass
+  and halve the work on this module's hot read. The two statements are also
+  not in one transaction, so `total` and `data` can disagree under a
+  concurrent insert — consistent with `findAndCount` everywhere else in the
+  repo, hence recorded rather than fixed.

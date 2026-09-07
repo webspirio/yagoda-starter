@@ -86,12 +86,18 @@ coupling.
 
 | Module | Owns | Reads |
 |---|---|---|
-| `suppliers` | `suppliers` | `collection_points` (FK only) |
-| `grade-prices` | `grade_prices` | `product_grades` (validity of the target grade) |
+| `suppliers` | `suppliers` | `collection_points` (existence of a body-supplied point) |
+| `grade-prices` | `grade_prices` | `product_grades` (validity of the target grade), `collection_points` (existence) |
 
 `GradePricesService` needs to reject a `product_grade_id` that is unknown or inactive, so it
 imports `ProductsModule` and calls its service rather than reaching for the repository
 directly — the dependency points one way, and `products` stays the sole writer of its tables.
+Both modules import `CollectionPointsModule` on the same terms, to turn a body-supplied
+`collection_point_id` that names nothing into a 404 instead of letting the foreign key raise a
+500. `assertOwnsPoint` cannot do that job: it is a pure id comparison and a no-op for an owner.
+
+**Corrected after review.** This table previously showed `suppliers` reading `collection_points`
+"FK only" and `grade-prices` not reading it at all.
 
 **Layout** follows the existing flat convention (`<name>.service.ts`, `<name>.controller.ts`,
 `<name>.mapper.ts`, `dto/`, entity co-located), for the reason the catalog spec §3 already
@@ -433,9 +439,17 @@ rows, which are concepts rather than people. Phone is the only unique key on thi
 
 | List | Order | Pagination |
 |---|---|---|
-| `/suppliers` | `last_name, first_name ASC` | `PaginationQueryDto` (default 20) |
-| `/grade-prices/current` | `product_grade_id` | `CatalogPaginationQueryDto` (default 100) |
-| `/grade-prices` | `created_at DESC` | `PaginationQueryDto` (default 20) |
+| `/suppliers` | `last_name, first_name, id ASC` | `PaginationQueryDto` (default 20) |
+| `/grade-prices/current` | `collection_point_id, product_grade_id` | `CatalogPaginationQueryDto` (default 100) |
+| `/grade-prices` | `created_at DESC, id DESC` | `PaginationQueryDto` (default 20) |
+
+The `/current` order is on the PAIR, matching the `DISTINCT ON` key — ordering on the grade
+alone would not be a total order once an owner spans several points. Every list here carries an
+`id` tiebreaker for the same reason `ProductGradesService` does: Postgres promises no order
+among tied rows, and `skip`/`take` over a tie can repeat a row on one page and drop it from the
+next. On `suppliers` that tie is ordinary (§6.3 refuses name uniqueness) and on `grade_prices`
+it arrives with §4.8's bulk gesture, whose rows will share one `created_at` exactly —
+`now()` is transaction start time.
 
 **`/suppliers` uses the 20-default deliberately**, and it is worth stating because the previous
 three modules all used the catalog DTO. Suppliers is unbounded and grows forever — a busy point
@@ -444,9 +458,14 @@ accumulates hundreds and there is no delete — so it is a browsable list, not a
 
 `/grade-prices/current` is bounded by the grade count and *is* a picker, so it takes the
 catalog default. **Named limit:** an owner calling it with no point filter gets
-`points × grades` rows — 5 points × 30 grades is 150, above the `@Max(100)` ceiling — so that
-screen must fetch one point at a time. `total` in the `Paginated<T>` envelope makes the
-truncation visible rather than silent, which is the convention the catalog spec established.
+`points × grades` rows — 5 points × 30 grades is 150, above the `@Max(100)` ceiling for ONE
+PAGE. That screen therefore pages, or narrows to one point; it is not forced to the latter, and
+the pair test in `pipeline.db-spec.ts` pages through this route network-wide. `total` in the
+`Paginated<T>` envelope makes a client that ignores paging visible rather than silent, which is
+the convention the catalog spec established.
+
+**Corrected after review.** This paragraph previously said the owner's screen *must* fetch one
+point at a time. It must not — that read the `@Max(100)` per-page ceiling as a total.
 
 ### 6.5 Filters and search
 
@@ -529,6 +548,16 @@ with suppliers queueing.
 - **A stale price fails silently and in the buyer's disfavour.** Nothing expires, so a price
   set in July is still live in September unless someone changes it. Under the daily scheme the
   absence of a row was loud (the grade vanished from the intake screen); now it is invisible.
+- **A price takes effect the instant it is written, and cannot be staged.** This is the twin of
+  the stale-price cost above and of equal size, and it was missing from the first draft of this
+  list. There is no future-dating and no batch atomicity, so an owner cannot prepare tomorrow's
+  numbers the night before, and re-pricing 30 grades at a point is 30 separate `POST`s that an
+  operator's intake screen can observe HALF-APPLIED mid-shift. It bites hardest on exactly the
+  two columns §5.2 justifies as *daily trading decisions* that «change day to day»:
+  `max_markup` and `max_discount`. The daily scheme's `business_date` gave staging for free.
+  Carry this into §4.8's bulk route when it is built — that route must be ONE transaction, which
+  is also what makes the `id` tiebreaker on the journal (§6.4) load-bearing rather than
+  defensive.
 - **Foundation §5.2's `business_date` paragraph no longer describes this table.** It remains
   correct and binding for `shifts`, `intakes`, `payouts` and the cash book, which is where it
   actually matters. The sentence naming the daily price as its primary consumer is superseded
@@ -578,9 +607,10 @@ For `grade_prices` the condition fails: **the table is the history.** An `audit_
 carry the actor (already `created_by_user_id`), the timestamp (already `created_at`), the reason
 (already `reason`) and a before/after diff reconstructible from two adjacent journal rows —
 four duplicated facts in a schema whose header declares «два примірники одного факту в цьому
-проєкті заборонені». No `price.*` action is added to `AUDIT_ACTIONS`, and the entity carries a
-doc comment saying why the absence is deliberate, in the same voice as `products`' missing
-`is_active`.
+проєкті заборонені». No `price.*` action is added to `AUDIT_ACTIONS`, and `GradePricesService` carries the doc
+comment saying why the absence is deliberate, in the same voice as `products`' missing
+`is_active`. (The entity's own three-absences comment covers the missing `updated_at`, `UNIQUE`
+and update path; the audit argument is on the service, where the writes are.)
 
 **The named cost:** `audit_log` is the single cross-cutting "what did this person change last
 Tuesday" view, and prices are now a hole in it. Cheap to close later with an audit *reader* that
@@ -624,7 +654,10 @@ Carried forward unchanged, with reasons:
   churn. This slice's migration is hand-written SQL, as its two predecessors were, so the tool
   is not on its critical path.
 - **`APP_TIMEZONE` / `TimeService` wiring.** Removing `business_date` (§8.1) removes this
-  slice's need for it entirely. It lands with `shifts`.
+  slice's WRITE-side need for it entirely. Not the read side: the historical query §8.1
+  advertises in the same breath — «the last row with `created_at <=` end of that day» — still
+  needs a timezone to define where that day ends. Nothing in this slice issues that query, so
+  nothing here is wrong today. It lands with `shifts`.
 - **`assertNameFree`-style check-then-act.** The friendly-409 pre-check on
   `(collection_point_id, phone)` is the same shape: two concurrent creates can both pass it and
   the loser gets a 500 rather than a 409. The unique index is the real guarantee. Recorded for

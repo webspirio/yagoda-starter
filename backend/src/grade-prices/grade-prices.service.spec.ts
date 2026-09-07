@@ -113,20 +113,28 @@ describe('GradePricesService', () => {
       expect(params).not.toContain(POINT_B);
     });
 
-    it('uses DISTINCT ON so each grade appears once, newest first', async () => {
+    // THESE THREE ASSERT GENERATED SQL TEXT, NOT BEHAVIOUR, and their names
+    // say so on purpose. `/DISTINCT ON/` still matches under `DISTINCT ON
+    // (gp.product_grade_id)` — the exact bug that would leak another point's
+    // price — so a name like "each grade appears once" would promise a
+    // guarantee this layer cannot give. They are change-detectors against a
+    // mocked query; the behaviour they gesture at is proven over real Postgres
+    // in `pipeline.db-spec.ts` («keys DISTINCT ON on the (point, grade) pair»
+    // and «drops a deactivated grade from /current»).
+    it('emits a DISTINCT ON clause keyed on the point/grade pair', async () => {
       await service.current(operator, { page: 1, limit: 100 } as never);
       const [sql] = repo.manager.query.mock.calls[0];
-      expect(sql).toMatch(/DISTINCT ON/i);
+      expect(sql).toMatch(/DISTINCT ON \(gp\.collection_point_id, gp\.product_grade_id\)/i);
       expect(sql).toMatch(/created_at DESC/i);
     });
 
-    it('hides prices for inactive grades by default', async () => {
+    it('emits the pg.is_active predicate by default', async () => {
       await service.current(operator, { page: 1, limit: 100 } as never);
       const [sql] = repo.manager.query.mock.calls[0];
       expect(sql).toMatch(/pg\.is_active = true/);
     });
 
-    it('includes them when asked', async () => {
+    it('omits the pg.is_active predicate when include_inactive is set', async () => {
       await service.current(operator, { page: 1, limit: 100, include_inactive: true } as never);
       const [sql] = repo.manager.query.mock.calls[0];
       expect(sql).not.toMatch(/pg\.is_active = true/);
