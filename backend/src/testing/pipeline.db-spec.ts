@@ -368,3 +368,185 @@ describe('auth + me pipeline (HTTP)', () => {
     expect(selfRes.body.message).toContain('your own account');
   }, 30_000);
 });
+
+describe('suppliers + grade prices (HTTP)', () => {
+  let app: INestApplication;
+  let ownerToken: string;
+  let operatorToken: string;
+  let pointA: string;
+  let pointB: string;
+  // Built now (Task 4) but not read by any test in THIS describe block yet —
+  // Task 6 appends grade-price tests inside this same block and reuses it,
+  // rather than duplicating this fixture's ~60 lines of setup.
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  let gradeId: string;
+
+  beforeAll(async () => {
+    process.env.DB_NAME = resolveTestDatabaseName();
+    const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
+    app = moduleRef.createNestApplication();
+    app.useGlobalPipes(
+      new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }),
+    );
+    app.useGlobalInterceptors(new ClassSerializerInterceptor(app.get(Reflector)));
+    await app.init();
+
+    const jwt = app.get(JwtService);
+    const users = app.get(UsersService);
+    const credentials = app.get(CredentialsService);
+    const run = randomUUID();
+
+    // Points and a grade, created through the API's own owner so the fixture
+    // exercises nothing this suite is not already testing elsewhere.
+    const bootstrapOwner = await users.createWithIdentity(
+      {
+        provider: LOCAL_PROVIDER,
+        providerUserId: `sup-owner-${run}`,
+        first_name: 'Ціно',
+        last_name: 'Ставник',
+        role: UserRole.NetworkOwner,
+        collection_point_id: null,
+      },
+      async (created, manager) => credentials.set(created.id, 'hunter2!!', manager),
+    );
+    ownerToken = jwt.sign({ sub: bootstrapOwner.user.id });
+
+    const pointRes = await request(app.getHttpServer())
+      .post('/collection-points')
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .send({ name: `Точка А-${run}`, kind: 'reception' })
+      .expect(201);
+    pointA = pointRes.body.id;
+
+    const pointBRes = await request(app.getHttpServer())
+      .post('/collection-points')
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .send({ name: `Точка Б-${run}`, kind: 'reception' })
+      .expect(201);
+    pointB = pointBRes.body.id;
+
+    const productRes = await request(app.getHttpServer())
+      .post('/products')
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .send({ name: `Малина-${run}` })
+      .expect(201);
+
+    const gradeRes = await request(app.getHttpServer())
+      .post('/product-grades')
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .send({ product_id: productRes.body.id, name: `1 сорт-${run}` })
+      .expect(201);
+    gradeId = gradeRes.body.id;
+
+    const op = await users.createWithIdentity(
+      {
+        provider: LOCAL_PROVIDER,
+        providerUserId: `sup-op-${run}`,
+        first_name: 'Оксана',
+        last_name: 'Приймальник',
+        role: UserRole.PointOperator,
+        collection_point_id: pointA,
+      },
+      async (created, manager) => credentials.set(created.id, 'hunter2!!', manager),
+    );
+    operatorToken = jwt.sign({ sub: op.user.id });
+  }, 30_000);
+
+  afterAll(async () => {
+    await app?.close();
+  });
+
+  const uniquePhone = () => `067${String(Math.floor(1e6 + Math.random() * 9e6))}`;
+
+  it('lets an OPERATOR create a supplier at their own point, deriving the point from the token', async () => {
+    const res = await request(app.getHttpServer())
+      .post('/suppliers')
+      .set('Authorization', `Bearer ${operatorToken}`)
+      .send({ first_name: 'Іван', last_name: `Коваль-${randomUUID()}`, phone: uniquePhone() })
+      .expect(201);
+
+    expect(res.body.collection_point_id).toBe(pointA);
+    expect(res.body.phone).toMatch(/^\+380\d{9}$/);
+  });
+
+  it('refuses an operator creating at another point', async () => {
+    await request(app.getHttpServer())
+      .post('/suppliers')
+      .set('Authorization', `Bearer ${operatorToken}`)
+      .send({
+        collection_point_id: pointB,
+        first_name: 'Іван',
+        last_name: `Чужий-${randomUUID()}`,
+      })
+      .expect(403);
+  });
+
+  it('400s on a phone it cannot canonicalize', async () => {
+    await request(app.getHttpServer())
+      .post('/suppliers')
+      .set('Authorization', `Bearer ${operatorToken}`)
+      .send({ first_name: 'Іван', last_name: `Кривий-${randomUUID()}`, phone: '067123' })
+      .expect(400);
+  });
+
+  it('finds a supplier by the last four digits of their phone', async () => {
+    const phone = uniquePhone();
+    const last = `Пошук-${randomUUID()}`;
+    await request(app.getHttpServer())
+      .post('/suppliers')
+      .set('Authorization', `Bearer ${operatorToken}`)
+      .send({ first_name: 'Іван', last_name: last, phone })
+      .expect(201);
+
+    const res = await request(app.getHttpServer())
+      .get(`/suppliers?q=${phone.slice(-4)}`)
+      .set('Authorization', `Bearer ${operatorToken}`)
+      .expect(200);
+
+    expect(res.body.data.some((s: { last_name: string }) => s.last_name === last)).toBe(true);
+  });
+
+  it('scopes an operator’s list to their own point even when another is requested', async () => {
+    const res = await request(app.getHttpServer())
+      .get(`/suppliers?collection_point_id=${pointB}`)
+      .set('Authorization', `Bearer ${operatorToken}`)
+      .expect(200);
+
+    expect(
+      res.body.data.every((s: { collection_point_id: string }) => s.collection_point_id === pointA),
+    ).toBe(true);
+  });
+
+  it('returns 404, NOT 403, for another point’s supplier', async () => {
+    const created = await request(app.getHttpServer())
+      .post('/suppliers')
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .send({
+        collection_point_id: pointB,
+        first_name: 'Петро',
+        last_name: `Інший-${randomUUID()}`,
+      })
+      .expect(201);
+
+    await request(app.getHttpServer())
+      .get(`/suppliers/${created.body.id}`)
+      .set('Authorization', `Bearer ${operatorToken}`)
+      .expect(404);
+  });
+
+  it('rejects collection_point_id in a PATCH body — the point is immutable', async () => {
+    const created = await request(app.getHttpServer())
+      .post('/suppliers')
+      .set('Authorization', `Bearer ${operatorToken}`)
+      .send({ first_name: 'Іван', last_name: `Незмінний-${randomUUID()}` })
+      .expect(201);
+
+    // `forbidNonWhitelisted: true` turns an unknown property into a 400 — which
+    // is what makes "absent from the DTO" an enforced rule rather than a note.
+    await request(app.getHttpServer())
+      .patch(`/suppliers/${created.body.id}`)
+      .set('Authorization', `Bearer ${operatorToken}`)
+      .send({ collection_point_id: pointB })
+      .expect(400);
+  });
+});

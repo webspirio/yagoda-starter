@@ -17,10 +17,26 @@ config({ path: join(__dirname, '../../../.env') });
  * harness that needs the same guaranteed-safe database name — e.g. an
  * HTTP-level pipeline spec that bootstraps the full Nest app rather than a
  * bare `DataSource` — gets it from ONE place instead of re-deriving it.
+ *
+ * MEMOIZED PER NAME, not just per call: a pipeline-style spec redirects the
+ * whole app by doing `process.env.DB_NAME = resolveTestDatabaseName()` in its
+ * own `beforeAll`. A file with a SECOND such `describe` block (e.g.
+ * `pipeline.db-spec.ts`'s `suppliers + grade prices` block, added to reuse the
+ * first block's app-boot machinery rather than duplicate it) then calls this
+ * function again in the same process — by which point `DB_NAME` has already
+ * been overwritten to `database`, and the two would compare equal, tripping
+ * the "same as DB_NAME" guard against a redirection this same module
+ * performed. Once a name has been validated safe once, it stays safe for the
+ * rest of this process (Jest gives every `*.db-spec.ts` FILE its own fresh
+ * module registry, so this cache never crosses files).
  */
+const validatedTestDatabaseNames = new Set<string>();
+
 export const resolveTestDatabaseName = (): string => {
-  const db = databaseEnv();
   const database = process.env.TEST_DB_NAME ?? 'app_test';
+  if (validatedTestDatabaseNames.has(database)) return database;
+
+  const db = databaseEnv();
 
   if (database === db.name) {
     throw new Error(
@@ -35,6 +51,7 @@ export const resolveTestDatabaseName = (): string => {
         `These specs TRUNCATE tables, and the suffix is the only thing marking a database as disposable.`,
     );
   }
+  validatedTestDatabaseNames.add(database);
   return database;
 };
 
