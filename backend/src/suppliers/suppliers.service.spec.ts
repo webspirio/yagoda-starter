@@ -20,6 +20,7 @@ describe('SuppliersService', () => {
   let txRepo: { create: jest.Mock; save: jest.Mock };
   let manager: { getRepository: () => typeof txRepo };
   let audit: { record: jest.Mock };
+  let points: { findOneRaw: jest.Mock };
   let dataSource: { transaction: jest.Mock };
   let qb: {
     where: jest.Mock; andWhere: jest.Mock; orderBy: jest.Mock; addOrderBy: jest.Mock;
@@ -69,8 +70,14 @@ describe('SuppliersService', () => {
     };
     manager = { getRepository: () => txRepo };
     audit = { record: jest.fn().mockResolvedValue(undefined) };
+    points = { findOneRaw: jest.fn().mockResolvedValue({ id: POINT_B, is_active: true }) };
     dataSource = { transaction: jest.fn().mockImplementation((cb) => cb(manager)) };
-    service = new SuppliersService(repo as never, dataSource as never, audit as never);
+    service = new SuppliersService(
+      repo as never,
+      dataSource as never,
+      audit as never,
+      points as never,
+    );
   });
 
   describe('create', () => {
@@ -92,6 +99,23 @@ describe('SuppliersService', () => {
       expect(txRepo.create).toHaveBeenCalledWith(
         expect.objectContaining({ collection_point_id: POINT_B }),
       );
+    });
+
+    it('404s on a body point that does not exist, rather than 500ing on the FK', async () => {
+      // `assertOwnsPoint` is a pure id comparison and no-ops for an owner, so
+      // nothing else validates a body-supplied uuid. Without the existence
+      // check this reaches `FK_suppliers_point` and the filter — which has no
+      // `QueryFailedError` mapping — turns it into a bare 500.
+      points.findOneRaw.mockResolvedValue(null);
+      await expect(
+        service.create(owner, { ...dto, collection_point_id: POINT_B } as never),
+      ).rejects.toThrow(NotFoundException);
+      expect(txRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('does NOT re-read the point for an operator, whose point comes from the token', async () => {
+      await service.create(operator, { ...dto } as never);
+      expect(points.findOneRaw).not.toHaveBeenCalled();
     });
 
     it('refuses an operator naming someone else’s point', async () => {
@@ -224,6 +248,16 @@ describe('SuppliersService', () => {
       );
     });
 
+    it('honours a point an OWNER requests — the reason resolvePointFilter takes two args', async () => {
+      // The operator-ignores-it and owner-spans-everything branches are both
+      // covered above; this is the branch the second argument exists for, and
+      // it had no assertion anywhere.
+      await service.list(owner, { page: 1, limit: 20, collection_point_id: POINT_B } as never);
+      expect(qb.andWhere).toHaveBeenCalledWith('s.collection_point_id = :pointId', {
+        pointId: POINT_B,
+      });
+    });
+
     it('hides inactive suppliers by default', async () => {
       await service.list(operator, { page: 1, limit: 20 } as never);
       expect(qb.andWhere).toHaveBeenCalledWith('s.is_active = true');
@@ -267,8 +301,13 @@ describe('SuppliersService', () => {
     it('ignores a whitespace-only q rather than matching everything', async () => {
       await service.list(operator, { page: 1, limit: 20, q: '   ' } as never);
       expect(qb.andWhere).not.toHaveBeenCalledWith('s.phone LIKE :phone', expect.anything());
+      // Matched against what the implementation ACTUALLY emits. The earlier
+      // form of this assertion named the pre-ESCAPE SQL string, which the
+      // service stopped producing when the escape clause landed — so it
+      // passed unconditionally and would not have noticed the name lane
+      // running.
       expect(qb.andWhere).not.toHaveBeenCalledWith(
-        '(s.first_name ILIKE :q OR s.last_name ILIKE :q)',
+        expect.stringContaining('ILIKE'),
         expect.anything(),
       );
     });

@@ -14,6 +14,7 @@ import { UpdateSupplierDto } from './dto/update-supplier.dto';
 import { ListSuppliersQueryDto } from './dto/list-suppliers.query';
 import { SupplierResponse, toSupplierResponse } from './supplier.mapper';
 import { AuditService } from '../audit/audit.service';
+import { CollectionPointsService } from '../collection-points/collection-points.service';
 import { assertOwnsPoint, resolvePointFilter } from '../auth/access/point-scope';
 import { assertTrimmedName } from '../common/trimmed-name';
 import { diffFields } from '../common/diff-fields';
@@ -35,12 +36,16 @@ export class SuppliersService {
     private readonly repo: Repository<Supplier>,
     private readonly dataSource: DataSource,
     private readonly audit: AuditService,
+    private readonly points: CollectionPointsService,
   ) {}
 
   /**
    * PERFORMANCE, STATED RATHER THAN BURIED: the phone suffix `LIKE` and the
-   * name substring `ILIKE` both ignore `IDX_suppliers_point_last_name` — these
-   * are sequential scans WITHIN one point. That is fine at hundreds of
+   * name substring `ILIKE` are not sargable, so neither PREDICATE can use
+   * `IDX_suppliers_point_last_name` — the index still serves the
+   * `collection_point_id` equality and the `last_name` ordering, which is most
+   * of why the scan stays cheap. These are sequential scans WITHIN one point.
+   * That is fine at hundreds of
    * suppliers per point and stops being fine somewhere in the low tens of
    * thousands, at which point the answer is a `pg_trgm` GIN index. That is
    * purely additive; do not pre-build it.
@@ -59,6 +64,10 @@ export class SuppliersService {
     if (q) {
       if (LOOKS_LIKE_PHONE.test(q)) {
         const digits = q.replace(/\D/g, '');
+        // A `q` of PURE PUNCTUATION («+», «()», «--») reduces to no digits and
+        // deliberately drops the filter rather than matching nothing: it is
+        // the same end state as the whitespace-only case below, and «typed
+        // punctuation, got the unfiltered list» beats «got an empty screen».
         if (digits) {
           // A FULL number is matched exactly on its canonical form; a partial
           // one on its suffix, because «останні чотири цифри?» is how this is
@@ -111,6 +120,17 @@ export class SuppliersService {
 
   async create(actor: AuthenticatedUser, dto: CreateSupplierDto): Promise<SupplierResponse> {
     const pointId = this.resolveWritePoint(actor, dto.collection_point_id);
+    // A BODY-SUPPLIED point is unvalidated until this line. `assertOwnsPoint`
+    // is a pure id comparison that returns on its first line for an owner, so
+    // without this a well-formed but nonexistent uuid reaches
+    // `FK_suppliers_point` and the caller gets a 500 — there is no
+    // `QueryFailedError` mapping anywhere in the backend. Same check, same
+    // 404, as `GradePricesService.create`. An operator's own point comes from
+    // their token and is guaranteed by the users FK, so it is not re-read.
+    if (dto.collection_point_id) {
+      const point = await this.points.findOneRaw(pointId);
+      if (!point) throw new NotFoundException('Collection point not found');
+    }
     const first_name = assertTrimmedName(dto.first_name, 'first_name', 'SUPPLIER_NAME_EMPTY');
     const last_name = assertTrimmedName(dto.last_name, 'last_name', 'SUPPLIER_NAME_EMPTY');
     const phone = dto.phone == null ? null : canonicalizePhone(dto.phone);
@@ -157,6 +177,12 @@ export class SuppliersService {
    * up first" is not even well-defined: the `suppliers` Note establishes that
    * debt can legitimately be NEGATIVE after a voided receipt, and that
    * «інваріанта борг >= 0 в цій схемі теж немає».
+   *
+   * 403 HERE, 404 IN `findOne` — deliberately, not an oversight in either.
+   * §7's table mandates `assertOwnsPoint` on PATCH, while §8.3 argues the read
+   * must not confirm a row exists at another point. A write already needs the
+   * id AND a payload, so the oracle it offers is the weaker of the two. Do not
+   * «fix» one to match the other without reading both sections.
    *
    * A RENAME REASSIGNS A MONEY BALANCE, and no guard here prevents it. Debt
    * follows `supplier_id`, not the name, so editing «Іван Коваль» into «Петро
