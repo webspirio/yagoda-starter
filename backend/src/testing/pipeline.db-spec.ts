@@ -9,6 +9,7 @@ import { Test } from '@nestjs/testing';
 import { JwtService } from '@nestjs/jwt';
 import { ClassSerializerInterceptor, INestApplication, ValidationPipe } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
+import { DataSource } from 'typeorm';
 // MUST be imported before `../app.module`: this file's own top-level code
 // loads `.env` into process.env as a side effect. `AppModule`'s `@Module()`
 // decorator calls `ConfigModule.forRoot()` — including its Joi validation —
@@ -373,6 +374,9 @@ describe('suppliers + grade prices (HTTP)', () => {
   let app: INestApplication;
   let ownerToken: string;
   let operatorToken: string;
+  // The audit assertions below check `actor_id`, which is the user id — not the
+  // token — so the fixture keeps both.
+  let operatorUserId: string;
   let pointA: string;
   let pointB: string;
   // Built in Task 4; consumed by Task 6's grade-price tests below, which
@@ -447,6 +451,7 @@ describe('suppliers + grade prices (HTTP)', () => {
       },
       async (created, manager) => credentials.set(created.id, 'hunter2!!', manager),
     );
+    operatorUserId = op.user.id;
     operatorToken = jwt.sign({ sub: op.user.id });
   }, 30_000);
 
@@ -646,5 +651,239 @@ describe('suppliers + grade prices (HTTP)', () => {
         max_discount: '20',
       })
       .expect(400);
+  });
+
+  it('rejects a duplicate phone at the same point — canonically — and allows it at another', async () => {
+    const phone = uniquePhone();
+    // The same number as a human would retype it at 06:40: spaces, no country
+    // code. `canonicalizePhone` folds both to one `+380…`, which is the ONLY
+    // reason `UQ_suppliers_point_phone` on raw text is worth anything.
+    const spaced = `${phone.slice(0, 3)} ${phone.slice(3, 6)} ${phone.slice(6, 8)} ${phone.slice(8)}`;
+
+    await request(app.getHttpServer())
+      .post('/suppliers')
+      .set('Authorization', `Bearer ${operatorToken}`)
+      .send({ first_name: 'Іван', last_name: `Перший-${randomUUID()}`, phone })
+      .expect(201);
+
+    const conflict = await request(app.getHttpServer())
+      .post('/suppliers')
+      .set('Authorization', `Bearer ${operatorToken}`)
+      .send({ first_name: 'Інший', last_name: `Дублікат-${randomUUID()}`, phone: spaced })
+      .expect(409);
+    expect(conflict.body.code).toBe('SUPPLIER_PHONE_TAKEN');
+
+    // The SAME number at another point is a DIFFERENT person as far as this
+    // table is concerned — the unique index is on the PAIR. One human bringing
+    // berries to two points has two supplier rows and two balances, and §5.5's
+    // merge tool was cancelled by правка 6, so this is permanent, intended, and
+    // worth a test that fails loudly if the index is ever narrowed to `phone`.
+    const elsewhere = await request(app.getHttpServer())
+      .post('/suppliers')
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .send({
+        collection_point_id: pointB,
+        first_name: 'Іван',
+        last_name: `Той-Самий-${randomUUID()}`,
+        phone,
+      })
+      .expect(201);
+    expect(elsewhere.body.collection_point_id).toBe(pointB);
+    expect(elsewhere.body.phone).toBe(`+38${phone}`);
+  });
+
+  it('treats % and _ in the search box as literal characters, not wildcards', async () => {
+    // Without the ESCAPE clause in `SuppliersService.list`, `?q=%` matches
+    // every supplier at the point and `?q=_` any single character — a search
+    // box that silently dumps the whole customer list. Unit-proven against a
+    // mocked query builder; this is the same claim against real Postgres.
+    const run = randomUUID();
+    const wildcard = `Сто%Відсотків-${run}`;
+    const underscore = `Іва_н-${run}`;
+    const plain = `Звичайний-${run}`;
+
+    for (const last_name of [wildcard, underscore, plain]) {
+      await request(app.getHttpServer())
+        .post('/suppliers')
+        .set('Authorization', `Bearer ${operatorToken}`)
+        .send({ first_name: 'Пошук', last_name })
+        .expect(201);
+    }
+
+    const lastNames = async (q: string): Promise<string[]> => {
+      const res = await request(app.getHttpServer())
+        .get(`/suppliers?limit=100&q=${encodeURIComponent(q)}`)
+        .set('Authorization', `Bearer ${operatorToken}`)
+        .expect(200);
+      return res.body.data.map((s: { last_name: string }) => s.last_name);
+    };
+
+    const percent = await lastNames('%');
+    expect(percent).toContain(wildcard);
+    expect(percent).not.toContain(plain);
+
+    const under = await lastNames('_');
+    expect(under).toContain(underscore);
+    expect(under).not.toContain(plain);
+  });
+
+  it('answers a cross-point PATCH with 403 and a cross-point GET with 404 — deliberately different', async () => {
+    // §8.3: `findOne` hides the row's existence because suppliers are real
+    // people's names and phone numbers, while `update` goes through
+    // `assertOwnsPoint` and says plainly that the point is not yours. Asserted
+    // TOGETHER so the asymmetry reads as the intent it is, and so narrowing
+    // either one to match the other fails here.
+    const created = await request(app.getHttpServer())
+      .post('/suppliers')
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .send({
+        collection_point_id: pointB,
+        first_name: 'Оксана',
+        last_name: `Чужа-${randomUUID()}`,
+      })
+      .expect(201);
+
+    const patch = await request(app.getHttpServer())
+      .patch(`/suppliers/${created.body.id}`)
+      .set('Authorization', `Bearer ${operatorToken}`)
+      .send({ first_name: 'Перейменована' })
+      .expect(403);
+    expect(patch.body.code).toBe('WRONG_COLLECTION_POINT');
+
+    await request(app.getHttpServer())
+      .get(`/suppliers/${created.body.id}`)
+      .set('Authorization', `Bearer ${operatorToken}`)
+      .expect(404);
+  });
+
+  it('audits a supplier create and update, narrows the diff, and writes nothing for a no-op', async () => {
+    // Read straight from `audit_log`: there is no audit READ route, and §9's
+    // whole argument for wrapping these two writes in a transaction is that
+    // the row lands. Nothing else in this repo checks that it does.
+    const ds = app.get(DataSource);
+    const entries = (targetId: string) =>
+      ds.query(
+        `SELECT action, actor_id, target_type, before, after
+           FROM audit_log WHERE target_id = $1 ORDER BY at, action`,
+        [targetId],
+      ) as Promise<
+        {
+          action: string;
+          actor_id: string;
+          target_type: string;
+          before: Record<string, unknown> | null;
+          after: Record<string, unknown> | null;
+        }[]
+      >;
+
+    const phone = uniquePhone();
+    const created = await request(app.getHttpServer())
+      .post('/suppliers')
+      .set('Authorization', `Bearer ${operatorToken}`)
+      .send({ first_name: 'Іван', last_name: `Аудит-${randomUUID()}`, phone })
+      .expect(201);
+
+    const afterCreate = await entries(created.body.id);
+    expect(afterCreate).toHaveLength(1);
+    expect(afterCreate[0]).toMatchObject({
+      action: 'supplier.created',
+      // The OPERATOR, not the owner — the actor is taken from the token, and
+      // suppliers is the one domain module both roles can write.
+      actor_id: operatorUserId,
+      target_type: 'supplier',
+      before: null,
+    });
+    expect(afterCreate[0].after).toMatchObject({
+      collection_point_id: pointA,
+      first_name: 'Іван',
+      phone: `+38${phone}`,
+    });
+
+    await request(app.getHttpServer())
+      .patch(`/suppliers/${created.body.id}`)
+      .set('Authorization', `Bearer ${operatorToken}`)
+      .send({ first_name: 'Петро' })
+      .expect(200);
+
+    const afterUpdate = await entries(created.body.id);
+    expect(afterUpdate).toHaveLength(2);
+    expect(afterUpdate[1].action).toBe('supplier.updated');
+    // `diffFields` narrows to what MOVED: the phone and the surname are
+    // untouched and must not appear. A rename reassigns a money balance
+    // (see `SuppliersService.update`) and this diff is the only trail of it,
+    // so a diff padded with unchanged fields is a trail nobody reads.
+    expect(afterUpdate[1].before).toEqual({ first_name: 'Іван' });
+    expect(afterUpdate[1].after).toEqual({ first_name: 'Петро' });
+
+    // The same value again is not a change. `diffFields` returns null and the
+    // service skips the write — an audit log full of no-op rows is one nobody
+    // reads, which is the reason that branch exists.
+    await request(app.getHttpServer())
+      .patch(`/suppliers/${created.body.id}`)
+      .set('Authorization', `Bearer ${operatorToken}`)
+      .send({ first_name: 'Петро' })
+      .expect(200);
+
+    expect(await entries(created.body.id)).toHaveLength(2);
+  });
+
+  it('keeps one current price per (point, grade) PAIR, not one per grade', async () => {
+    // The collapse `GradePricesService.current` warns about: keying DISTINCT ON
+    // the grade alone would fold every point's price for a grade into one
+    // arbitrary row, and an owner reading the network-wide screen would see a
+    // price that belongs to some other point. A fresh grade of its own so the
+    // earlier price tests' rows cannot mask the result.
+    const run = randomUUID();
+    const productRes = await request(app.getHttpServer())
+      .post('/products')
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .send({ name: `Полуниця-${run}` })
+      .expect(201);
+    const gradeRes = await request(app.getHttpServer())
+      .post('/product-grades')
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .send({ product_id: productRes.body.id, name: `Вищий-${run}` })
+      .expect(201);
+    const pairGradeId: string = gradeRes.body.id;
+
+    for (const [point, base_price] of [
+      [pointA, '40'],
+      [pointB, '60'],
+    ] as const) {
+      await request(app.getHttpServer())
+        .post('/grade-prices')
+        .set('Authorization', `Bearer ${ownerToken}`)
+        .send({
+          collection_point_id: point,
+          product_grade_id: pairGradeId,
+          base_price,
+          max_markup: '30',
+          max_discount: '20',
+        })
+        .expect(201);
+    }
+
+    // Paged rather than read in one shot: an owner with no point filter spans
+    // every point, and `app_test` is never truncated, so the number of current
+    // prices grows with every run of this suite and this run's two rows are not
+    // guaranteed to be on page one.
+    const mine: { collection_point_id: string; base_price: string }[] = [];
+    for (let page = 1; page <= 50; page++) {
+      const res = await request(app.getHttpServer())
+        .get(`/grade-prices/current?page=${page}&limit=100`)
+        .set('Authorization', `Bearer ${ownerToken}`)
+        .expect(200);
+      mine.push(
+        ...res.body.data.filter(
+          (p: { product_grade_id: string }) => p.product_grade_id === pairGradeId,
+        ),
+      );
+      if (res.body.page * res.body.limit >= res.body.total) break;
+    }
+
+    expect(mine).toHaveLength(2);
+    const byPoint = Object.fromEntries(mine.map((p) => [p.collection_point_id, p.base_price]));
+    expect(byPoint[pointA]).toBe('40.00');
+    expect(byPoint[pointB]).toBe('60.00');
   });
 });
