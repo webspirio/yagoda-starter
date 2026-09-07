@@ -375,10 +375,8 @@ describe('suppliers + grade prices (HTTP)', () => {
   let operatorToken: string;
   let pointA: string;
   let pointB: string;
-  // Built now (Task 4) but not read by any test in THIS describe block yet —
-  // Task 6 appends grade-price tests inside this same block and reuses it,
-  // rather than duplicating this fixture's ~60 lines of setup.
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  // Built in Task 4; consumed by Task 6's grade-price tests below, which
+  // reuse it rather than duplicating this fixture's ~60 lines of setup.
   let gradeId: string;
 
   beforeAll(async () => {
@@ -547,6 +545,85 @@ describe('suppliers + grade prices (HTTP)', () => {
       .patch(`/suppliers/${created.body.id}`)
       .set('Authorization', `Bearer ${operatorToken}`)
       .send({ collection_point_id: pointB })
+      .expect(400);
+  });
+
+  it('lets the OWNER set a price and the OPERATOR read it back as the current one', async () => {
+    await request(app.getHttpServer())
+      .post('/grade-prices')
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .send({
+        collection_point_id: pointA,
+        product_grade_id: gradeId,
+        base_price: '52',
+        max_markup: '30',
+        max_discount: '20',
+        reason: 'конкуренти підняли',
+      })
+      .expect(201);
+
+    // A second row for the same pair — §4.2's history. No UNIQUE forbids it,
+    // and the LATER one must win.
+    await request(app.getHttpServer())
+      .post('/grade-prices')
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .send({
+        collection_point_id: pointA,
+        product_grade_id: gradeId,
+        base_price: '55',
+        max_markup: '30',
+        max_discount: '20',
+      })
+      .expect(201);
+
+    const current = await request(app.getHttpServer())
+      .get('/grade-prices/current')
+      .set('Authorization', `Bearer ${operatorToken}`)
+      .expect(200);
+
+    const row = current.body.data.find(
+      (p: { product_grade_id: string }) => p.product_grade_id === gradeId,
+    );
+    // '55' in, '55.00' out — @CanonicalDecimal() plus numeric(10,2), carried
+    // as a STRING the whole way.
+    expect(row).toMatchObject({ base_price: '55.00', max_markup: '30.00' });
+    expect(typeof row.base_price).toBe('string');
+
+    // Both rows survive in the journal; nothing was overwritten.
+    const journal = await request(app.getHttpServer())
+      .get(`/grade-prices?product_grade_id=${gradeId}`)
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .expect(200);
+    expect(journal.body.total).toBeGreaterThanOrEqual(2);
+    expect(journal.body.data[0].base_price).toBe('55.00');
+  });
+
+  it('403s an operator trying to set a price', async () => {
+    // The one assertion proving the owner-only split reached the decorators.
+    await request(app.getHttpServer())
+      .post('/grade-prices')
+      .set('Authorization', `Bearer ${operatorToken}`)
+      .send({
+        collection_point_id: pointA,
+        product_grade_id: gradeId,
+        base_price: '99',
+        max_markup: '30',
+        max_discount: '20',
+      })
+      .expect(403);
+  });
+
+  it('400s on a negative limit before it reaches the CHECK constraint', async () => {
+    await request(app.getHttpServer())
+      .post('/grade-prices')
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .send({
+        collection_point_id: pointA,
+        product_grade_id: gradeId,
+        base_price: '52',
+        max_markup: '-1',
+        max_discount: '20',
+      })
       .expect(400);
   });
 });

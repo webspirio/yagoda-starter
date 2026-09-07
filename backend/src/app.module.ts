@@ -18,6 +18,7 @@ import { CollectionPointsModule } from './collection-points/collection-points.mo
 import { ProductsModule } from './products/products.module';
 import { TareTypesModule } from './tare-types/tare-types.module';
 import { SuppliersModule } from './suppliers/suppliers.module';
+import { GradePricesModule } from './grade-prices/grade-prices.module';
 import { AuditModule } from './audit/audit.module';
 import { MediaModule } from './media/media.module';
 import { AuthModule } from './auth/auth.module';
@@ -124,6 +125,7 @@ import { uploadsConfig } from './config/uploads.config';
     ProductsModule,
     TareTypesModule,
     SuppliersModule,
+    GradePricesModule,
     AuditModule,
     MediaModule,
     AuthModule,
