@@ -504,6 +504,27 @@ describe('suppliers + grade prices (HTTP)', () => {
     expect(res.body.data.some((s: { last_name: string }) => s.last_name === last)).toBe(true);
   });
 
+  it('finds a supplier by a Cyrillic fragment of their name', async () => {
+    // A FRAGMENT, not the whole name — proving the ILIKE substring match, and
+    // Cyrillic to prove it against real Postgres collation on non-ASCII text,
+    // which nothing else here checks. §12's "by partial phone and by name
+    // fragment" is otherwise only proven at the unit level against a mocked
+    // query builder.
+    const last = `Гончаренко-${randomUUID()}`;
+    await request(app.getHttpServer())
+      .post('/suppliers')
+      .set('Authorization', `Bearer ${operatorToken}`)
+      .send({ first_name: 'Марія', last_name: last, phone: uniquePhone() })
+      .expect(201);
+
+    const res = await request(app.getHttpServer())
+      .get('/suppliers?q=ончарен')
+      .set('Authorization', `Bearer ${operatorToken}`)
+      .expect(200);
+
+    expect(res.body.data.some((s: { last_name: string }) => s.last_name === last)).toBe(true);
+  });
+
   it('scopes an operator’s list to their own point even when another is requested', async () => {
     const res = await request(app.getHttpServer())
       .get(`/suppliers?collection_point_id=${pointB}`)

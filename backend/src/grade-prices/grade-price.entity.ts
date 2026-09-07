@@ -65,6 +65,14 @@ import { User } from '../users/user.entity';
 @Check('CHK_grade_prices_base_price', `"base_price" >= 0`)
 @Check('CHK_grade_prices_max_markup', `"max_markup" >= 0`)
 @Check('CHK_grade_prices_max_discount', `"max_discount" >= 0`)
+// EXCEPTION to this file's claim of declaring everything TypeORM can express
+// faithfully: the migration creates this index with `created_at DESC`, and
+// TypeORM's array form has no per-column direction, so it can only be written
+// ascending here. Inert, not wrong — TypeORM matches indexes by name and
+// column set, not by direction, so `migration:generate` proposes no churn
+// against the DESC index actually in the database. The DESC is not
+// cosmetic: it is what lets "the newest row for this (point, grade) pair" be
+// served as an index-only lookup instead of a sort.
 @Index('IDX_grade_prices_lookup', ['collection_point_id', 'product_grade_id', 'created_at'])
 export class GradePrice {
   @PrimaryGeneratedColumn('uuid')

@@ -70,7 +70,17 @@ export class SuppliersService {
           else qb.andWhere('s.phone LIKE :phone', { phone: `%${digits}` });
         }
       } else {
-        qb.andWhere('(s.first_name ILIKE :q OR s.last_name ILIKE :q)', { q: `%${q}%` });
+        // `q` is parameterized, so there is no injection risk — but `%` and
+        // `_` are ILIKE metacharacters and would pass through into the
+        // pattern unescaped: `?q=%` would then match every supplier in scope
+        // and `?q=_` any single character. Escaping them (and a literal
+        // backslash, so the escape character itself can't be forged) plus a
+        // named ESCAPE clause keeps the search literal.
+        const escaped = q.replace(/[%_\\]/g, '\\$&');
+        qb.andWhere(
+          "(s.first_name ILIKE :q ESCAPE '\\' OR s.last_name ILIKE :q ESCAPE '\\')",
+          { q: `%${escaped}%` },
+        );
       }
     }
 
@@ -207,8 +217,10 @@ export class SuppliersService {
     });
   }
 
-  /** An operator's point comes from their token; an owner has none and must
-   *  name one. This is `point-scope.ts`'s rule applied as written. */
+  /** An operator's point is derived from their token — a body value naming a
+   *  different point is refused. An owner has no point of their own and must
+   *  name one, which is then validated with `assertOwnsPoint` (a no-op for an
+   *  owner, since they own every point). */
   private resolveWritePoint(actor: AuthenticatedUser, requested?: string): string {
     if (actor.collection_point_id && !requested) return actor.collection_point_id;
     if (!requested) {

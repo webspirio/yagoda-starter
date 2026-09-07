@@ -243,8 +243,24 @@ describe('SuppliersService', () => {
     it('takes the NAME lane for anything else, across both name columns', async () => {
       await service.list(operator, { page: 1, limit: 20, q: 'Ковал' } as never);
       expect(qb.andWhere).toHaveBeenCalledWith(
-        '(s.first_name ILIKE :q OR s.last_name ILIKE :q)',
+        "(s.first_name ILIKE :q ESCAPE '\\' OR s.last_name ILIKE :q ESCAPE '\\')",
         { q: '%Ковал%' },
+      );
+    });
+
+    it('escapes a literal % in q rather than letting it wildcard-match everything', async () => {
+      await service.list(operator, { page: 1, limit: 20, q: '%' } as never);
+      expect(qb.andWhere).toHaveBeenCalledWith(
+        "(s.first_name ILIKE :q ESCAPE '\\' OR s.last_name ILIKE :q ESCAPE '\\')",
+        { q: '%\\%%' },
+      );
+    });
+
+    it('escapes a literal _ in q rather than letting it match any single character', async () => {
+      await service.list(operator, { page: 1, limit: 20, q: '_' } as never);
+      expect(qb.andWhere).toHaveBeenCalledWith(
+        "(s.first_name ILIKE :q ESCAPE '\\' OR s.last_name ILIKE :q ESCAPE '\\')",
+        { q: '%\\_%' },
       );
     });
 
