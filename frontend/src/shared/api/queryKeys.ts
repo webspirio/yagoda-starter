@@ -12,4 +12,11 @@ export const queryKeys = {
   productGrades: (productId?: string) =>
     productId ? (['product-grades', productId] as const) : (['product-grades'] as const),
   tareTypes: ['tare-types'] as const,
+  /** Shifts — prefix for `/current` and by-date reads; a read appends the point (and date). */
+  shifts: ['shifts'] as const,
+  /** Document journals — prefix for every filtered list; a read appends its filter object. */
+  intakes: ['intakes'] as const,
+  payouts: ['payouts'] as const,
+  /** `/supplier-balances` and `/suppliers/:id/balance` — invalidated together by any document write. */
+  supplierBalances: ['supplier-balances'] as const,
 };
