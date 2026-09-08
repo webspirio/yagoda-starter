@@ -17,12 +17,17 @@ export interface Column<Row> {
 const HIDE = { sm: 'max-sm:hidden', md: 'max-md:hidden', lg: 'max-lg:hidden' } as const;
 const ALIGN = { left: 'text-left', center: 'text-center', right: 'text-right' } as const;
 
+/** The mock's table shell: every table there sits in a white card with the
+ *  hairline ring, never bare on the paper background. */
+const FRAME_CLASS = 'overflow-hidden rounded-xl bg-card ring-1 ring-foreground/10';
+
 export function DataTable<Row>({
   columns,
   rows,
   rowKey,
   onRowClick,
   empty,
+  frame = true,
   className,
 }: {
   columns: Column<Row>[];
@@ -30,12 +35,15 @@ export function DataTable<Row>({
   rowKey?: (row: Row, index: number) => React.Key;
   onRowClick?: (row: Row, index: number) => void;
   empty?: React.ReactNode;
+  /** Wrap in the card shell (default). Pass `false` when the table already
+   *  lives inside a card, so it does not draw a card within a card. */
+  frame?: boolean;
   className?: string;
 }) {
   const colClass = (c: Column<Row>) =>
     cn(c.align && ALIGN[c.align], c.hideBelow && HIDE[c.hideBelow], c.className);
 
-  return (
+  const table = (
     <Table className={className}>
       <TableHeader>
         <TableRow>
@@ -68,5 +76,12 @@ export function DataTable<Row>({
         )}
       </TableBody>
     </Table>
+  );
+
+  if (!frame) return table;
+  return (
+    <div data-slot="data-table-frame" className={FRAME_CLASS}>
+      {table}
+    </div>
   );
 }

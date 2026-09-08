@@ -8,6 +8,9 @@
 
 :root {
   --radius: 0.5rem;
+  /* Scroll cap for Dialog/AlertDialog content — referenced by both, defined
+     nowhere before this, so a tall form could not scroll. */
+  --app-content-max-h: calc(100dvh - 2rem);
 
   /* Palette — light. The mock's identity: cool leaf-grey paper, one loud berry
      accent, plus domain "instrument" colours (leaf / amber / sky) used by charts

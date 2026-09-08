@@ -20,6 +20,9 @@ export const fieldBaseClass = cn(
   'w-full rounded-xl bg-card border border-input px-3.5',
   'transition-colors placeholder:text-muted2',
   'focus:border-brand disabled:cursor-not-allowed disabled:opacity-50',
+  // The mock's invalid state: a destructive hairline plus a soft destructive
+  // ring, driven by the `aria-invalid` that `Field` already hands the control.
+  'aria-invalid:border-destructive aria-invalid:ring-[3px] aria-invalid:ring-destructive/20',
 );
 
 /**
@@ -32,6 +35,7 @@ export const fieldGhostClass = cn(
   fieldTextClass,
   'min-w-0 rounded-lg bg-transparent px-2',
   'transition-[color,box-shadow] disabled:cursor-not-allowed disabled:opacity-50',
+  'aria-invalid:ring-[3px] aria-invalid:ring-destructive/20',
 );
 
 /**
