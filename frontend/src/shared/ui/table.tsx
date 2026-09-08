@@ -7,7 +7,8 @@ import { cn } from '@/shared/lib/cn';
 // first glyph read as cramped in review — 24px horizontal, 10px vertical. The
 // header is a SOLID muted band (no opacity — at 60% it dissolved into the card
 // in dark mode) with eyebrow-style labels so it reads as a header rather than
-// as one more row.
+// as one more row. Labels are in `foreground` ink, not `muted-foreground`:
+// 11px grey on the light band sank below comfortable contrast on review.
 
 function Table({ className, ...props }: React.ComponentProps<'table'>) {
   return (
@@ -69,7 +70,7 @@ function TableHead({ className, ...props }: React.ComponentProps<'th'>) {
     <th
       data-slot="table-head"
       className={cn(
-        'h-10 px-6 text-left align-middle text-[11px] font-semibold tracking-[0.12em] uppercase whitespace-nowrap text-muted-foreground [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px]',
+        'h-10 px-6 text-left align-middle text-[11px] font-semibold tracking-[0.12em] uppercase whitespace-nowrap text-foreground [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px]',
         className,
       )}
       {...props}
