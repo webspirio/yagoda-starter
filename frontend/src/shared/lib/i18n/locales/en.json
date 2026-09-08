@@ -19,10 +19,52 @@
   },
   "nav": {
     "dashboard": "Dashboard",
+    "points": "Points",
     "profile": "Profile",
     "settings": "Settings",
     "openMenu": "Open menu",
     "closeMenu": "Close menu"
+  },
+  "points": {
+    "eyebrow": "Directory",
+    "title": "Collection points",
+    "description": "The points where berries are received, with their daily cash and crate targets.",
+    "new": "New point",
+    "col": {
+      "name": "Name",
+      "kind": "Kind",
+      "targetCash": "Cash target",
+      "targetCrates": "Crate target",
+      "status": "Status"
+    },
+    "kind": { "reception": "Reception", "base": "Base" },
+    "active": "Active",
+    "inactive": "Inactive",
+    "empty": {
+      "title": "No points yet",
+      "hint": "Add the first collection point to start a season."
+    },
+    "form": {
+      "createTitle": "New collection point",
+      "editTitle": "Edit collection point",
+      "name": "Name",
+      "kind": "Kind",
+      "targetCash": "Cash target, ₴",
+      "targetCrates": "Crate target",
+      "targetHint": "Leave empty if not set",
+      "active": "Active"
+    },
+    "toast": { "created": "Point created", "updated": "Point updated" },
+    "errors": {
+      "saveFailed": "Could not save the point",
+      "nameTaken": "A point with this name already exists",
+      "nameEmpty": "Enter a name",
+      "nameRequired": "Enter a name",
+      "nameInvalid": "Name must be 1–128 characters",
+      "hasActiveUsers": "This point still has assigned staff — reassign them before deactivating",
+      "cashFormat": "Enter an amount like 15000 or 15000.50",
+      "cratesFormat": "Enter a whole number of crates"
+    }
   },
   "profile": {
     "title": "Profile",
