@@ -61,7 +61,16 @@ import { ShiftStatus } from './shift-status.enum';
 // 'awaiting_explanation' stays storable alongside a closed_at when cash_counts
 // lands. The stricter form would need a migration then.
 @Check('CHK_shifts_open_status', `("status" = 'open') = ("closed_at" IS NULL)`)
-@Index('IDX_shifts_point_business_date', ['collection_point_id', 'business_date'])
+// DECLARED SO `migration:generate` DOES NOT PROPOSE DROPPING IT. TypeORM's
+// `where` option can express this partial index, and omitting it made a
+// generate run offer to remove the one constraint §7.8 rests on — «дві
+// відкриті зміни це дві книги на одну шухляду». There is no separate
+// `@Index` on (collection_point_id, business_date): `@Unique` above already
+// creates one, and declaring both made generate propose a redundant index.
+@Index('UQ_shifts_open_per_point', ['collection_point_id'], {
+  unique: true,
+  where: 'closed_at IS NULL',
+})
 export class Shift {
   @PrimaryGeneratedColumn('uuid')
   id: string;

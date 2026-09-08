@@ -485,4 +485,215 @@ describe('documents pipeline (HTTP)', () => {
     });
   });
 
+
+  describe('payouts and the supplier balance', () => {
+    let gradeId: string;
+    let crateId: string;
+    let supplierId: string;
+    let intakeId: string;
+    let payoutId: string;
+
+    const balanceOf = async (token: string): Promise<string> => {
+      const res = await request(app.getHttpServer())
+        .get(`/suppliers/${supplierId}/balance`)
+        .set('Authorization', `Bearer ${token}`)
+        .expect(200);
+      return res.body.debt as string;
+    };
+
+    beforeAll(async () => {
+      const productRes = await request(app.getHttpServer())
+        .post('/products')
+        .set('Authorization', `Bearer ${ownerToken}`)
+        .send({ name: `Смородина-${randomUUID()}` })
+        .expect(201);
+
+      const gradeRes = await request(app.getHttpServer())
+        .post('/product-grades')
+        .set('Authorization', `Bearer ${ownerToken}`)
+        .send({ product_id: productRes.body.id, name: `1 сорт-${randomUUID()}` })
+        .expect(201);
+      gradeId = gradeRes.body.id as string;
+
+      const tareRes = await request(app.getHttpServer())
+        .post('/tare-types')
+        .set('Authorization', `Bearer ${ownerToken}`)
+        .send({ name: `Ящик-${randomUUID()}`, weight_kg: '1.20', deposit_price: '120.00' })
+        .expect(201);
+      crateId = tareRes.body.id as string;
+
+      await request(app.getHttpServer())
+        .post('/grade-prices')
+        .set('Authorization', `Bearer ${ownerToken}`)
+        .send({
+          collection_point_id: pointId,
+          product_grade_id: gradeId,
+          base_price: '57.00',
+          max_markup: '30.00',
+          max_discount: '20.00',
+        })
+        .expect(201);
+
+      const supplierRes = await request(app.getHttpServer())
+        .post('/suppliers')
+        .set('Authorization', `Bearer ${operatorToken}`)
+        .send({ first_name: 'Петро', last_name: `Мельник-${randomUUID()}` })
+        .expect(201);
+      supplierId = supplierRes.body.id as string;
+
+      const intakeRes = await request(app.getHttpServer())
+        .post('/intakes')
+        .set('Authorization', `Bearer ${operatorToken}`)
+        .send({
+          code: '05000',
+          supplier_id: supplierId,
+          items: [
+            {
+              product_grade_id: gradeId,
+              gross_kg: '12.00',
+              tare: [{ tare_type_id: crateId, units: 1 }],
+            },
+          ],
+        })
+        .expect(201);
+      // (12.00 − 0.00 − 1.20) × 57.00 = 615.60
+      expect(intakeRes.body.amount).toBe('615.60');
+      intakeId = intakeRes.body.id as string;
+    }, 30_000);
+
+    it('shows the debt after the intake — §3.1’s «Разом»', async () => {
+      expect(await balanceOf(operatorToken)).toBe('615.60');
+    });
+
+    it('refuses a payout above the debt and NAMES the balance', async () => {
+      const res = await request(app.getHttpServer())
+        .post('/payouts')
+        .set('Authorization', `Bearer ${operatorToken}`)
+        .send({ code: '00031', supplier_id: supplierId, amount: '615.61' })
+        .expect(400);
+
+      expect(res.body.code).toBe('PAYOUT_EXCEEDS_DEBT');
+      expect(JSON.stringify(res.body)).toContain('615.60');
+    });
+
+    it('pays part of it and lowers the balance', async () => {
+      const res = await request(app.getHttpServer())
+        .post('/payouts')
+        .set('Authorization', `Bearer ${operatorToken}`)
+        .send({ code: '00031', supplier_id: supplierId, amount: '600.00' })
+        .expect(201);
+
+      expect(res.body.code).toMatch(/^[A-Z0-9]{2,8}-PO-\d{8}-00031$/);
+      payoutId = res.body.id as string;
+      expect(await balanceOf(operatorToken)).toBe('15.60');
+    });
+
+    it('the SECOND payout sees the first one’s effect on the balance', async () => {
+      // The service-level proof that the ceiling reads live data rather than a
+      // value cached anywhere. `payout-race.db-spec.ts` proves the lock that
+      // makes this correct under concurrency; this proves it sequentially.
+      await request(app.getHttpServer())
+        .post('/payouts')
+        .set('Authorization', `Bearer ${operatorToken}`)
+        .send({ code: '00032', supplier_id: supplierId, amount: '15.61' })
+        .expect(400);
+
+      await request(app.getHttpServer())
+        .post('/payouts')
+        .set('Authorization', `Bearer ${operatorToken}`)
+        .send({ code: '00032', supplier_id: supplierId, amount: '15.60' })
+        .expect(201);
+
+      expect(await balanceOf(operatorToken)).toBe('0.00');
+    });
+
+    it('refuses a zero payout', async () => {
+      // Spec §8.6 — stricter than §3.7. A receipt for handing over nothing.
+      await request(app.getHttpServer())
+        .post('/payouts')
+        .set('Authorization', `Bearer ${operatorToken}`)
+        .send({ code: '00033', supplier_id: supplierId, amount: '0.00' })
+        .expect(400);
+    });
+
+    it('refuses settle-return on a payout that is not voided', async () => {
+      await request(app.getHttpServer())
+        .post(`/payouts/${payoutId}/settle-return`)
+        .set('Authorization', `Bearer ${ownerToken}`)
+        .send({})
+        .expect(409);
+    });
+
+    it('voids the payout WITHOUT returning the cash', async () => {
+      // §9.3 — «сторновано виплату 8 000,00 ₴ → каса НЕ виросла на 8 000».
+      const res = await request(app.getHttpServer())
+        .post(`/payouts/${payoutId}/void`)
+        .set('Authorization', `Bearer ${operatorToken}`)
+        .send({ reason: 'видав не тій людині' })
+        .expect(201);
+
+      expect(res.body.voided_at).not.toBeNull();
+      expect(res.body.return_settled_at).toBeNull();
+      // The voided payout leaves the DEBT formula, so the balance rises again.
+      expect(await balanceOf(operatorToken)).toBe('600.00');
+    });
+
+    it('refuses settle-return to the operator who voided it', async () => {
+      // §9.3's loop, kept open: the person holding the drawer is not the person
+      // who attests it was refilled — «інакше сторно стає способом красти».
+      await request(app.getHttpServer())
+        .post(`/payouts/${payoutId}/settle-return`)
+        .set('Authorization', `Bearer ${operatorToken}`)
+        .send({})
+        .expect(403);
+    });
+
+    it('lets the owner record the cash coming back, once', async () => {
+      const res = await request(app.getHttpServer())
+        .post(`/payouts/${payoutId}/settle-return`)
+        .set('Authorization', `Bearer ${ownerToken}`)
+        .send({ note: 'вніс готівку назад 09.09' })
+        .expect(201);
+
+      expect(res.body.return_settled_at).not.toBeNull();
+      expect(res.body.return_note).toBe('вніс готівку назад 09.09');
+
+      await request(app.getHttpServer())
+        .post(`/payouts/${payoutId}/settle-return`)
+        .set('Authorization', `Bearer ${ownerToken}`)
+        .send({})
+        .expect(409);
+    });
+
+    it('voiding the intake drives the balance NEGATIVE, and is allowed', async () => {
+      // «сторно КВИТАНЦІЇ ЄДИНИЙ шлях у мінус, і воно ДОЗВОЛЕНЕ, з
+      // попередженням». There is no floor anywhere, by design.
+      await request(app.getHttpServer())
+        .post(`/intakes/${intakeId}/void`)
+        .set('Authorization', `Bearer ${operatorToken}`)
+        .send({ reason: 'квитанція на іншу людину' })
+        .expect(201);
+
+      // intakes: 0 (voided). payouts: 15.60 live, 600.00 voided → debt −15.60.
+      expect(await balanceOf(operatorToken)).toBe('-15.60');
+    });
+
+    it('404s another point’s supplier balance for an operator', async () => {
+      const otherSupplier = await request(app.getHttpServer())
+        .post('/suppliers')
+        .set('Authorization', `Bearer ${ownerToken}`)
+        .send({
+          collection_point_id: otherPointId,
+          first_name: 'Чужий',
+          last_name: `Постачальник-${randomUUID()}`,
+        })
+        .expect(201);
+
+      await request(app.getHttpServer())
+        .get(`/suppliers/${otherSupplier.body.id}/balance`)
+        .set('Authorization', `Bearer ${operatorToken}`)
+        .expect(404);
+    });
+  });
+
 });
