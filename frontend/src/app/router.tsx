@@ -122,15 +122,13 @@ export const routes: RouteObject[] = [
         ),
       },
       {
-        // Day prices are owner-only: `/current` GET is open to both roles
-        // server-side, but `POST /grade-prices` is @Auth(NetworkOwner). The
-        // operator's read-only price view arrives with the intake screen later.
+        // Both roles: `GET /grade-prices` (current + history) is open to both
+        // server-side, but `POST /grade-prices` is @Auth(NetworkOwner) — the
+        // operator sees the same table LOCKED instead of Change/Set.
         path: '/prices',
         element: (
           <RequireAuth>
-            <RequireRole role="network_owner">
-              <PricesPage />
-            </RequireRole>
+            <PricesPage />
           </RequireAuth>
         ),
       },

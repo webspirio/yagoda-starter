@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Pencil } from 'lucide-react';
+import { History, Lock, Pencil } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { ListPage } from '@/shared/ui/templates/list-page';
 import type { Column } from '@/shared/ui/data-table';
@@ -9,8 +9,10 @@ import { EmptyState } from '@/shared/ui/empty-state';
 import { Spinner } from '@/shared/ui/spinner';
 import { usePointOptionsQuery } from '@/entities/collection-point';
 import { useGradeCatalogQuery, type GradeCatalogItem } from '@/entities/product-grade';
+import { useMeQuery, usePointScope } from '@/entities/user';
 import { useCurrentPricesQuery } from '../api/gradePrices';
 import { SetPriceDialog } from './SetPriceDialog';
+import { PriceHistoryDialog } from './PriceHistoryDialog';
 
 /** The mock's `PriceMissing` for a reader: a muted dash, never a bare "—" in ink. */
 function Missing() {
@@ -18,10 +20,13 @@ function Missing() {
 }
 
 /**
- * Owner-only "Day prices": pick a point, see the current buy price per grade,
- * and set a new one. SIMPLE by design — no history and no all-points matrix; a
- * price correction is a fresh POST (the latest row wins), read back by the
- * `/current` picker one point at a time.
+ * "Day prices": pick a point, see the current buy price per grade. The owner
+ * sets it (a price correction is a fresh POST — the latest row wins, read
+ * back by the `/current` picker one point at a time); an operator sees the
+ * same table LOCKED (mock §5.4: a hidden field breeds suspicion, a locked one
+ * with a caption teaches the rule) — pinned to their own point, no picker.
+ * Every priced row also offers «Історія», a read-only journal of every price
+ * the grade has ever had at that point, open to both roles.
  *
  * Money is rendered RAW — the values are decimal strings straight off the wire,
  * never through `toFixed`/`Number`, so nothing passes through a binary float.
@@ -29,11 +34,11 @@ function Missing() {
  */
 export function PricesPage() {
   const { t } = useTranslation();
+  const { data: me } = useMeQuery();
+  const { pointId, canPick, setPointId } = usePointScope();
   const { data: points } = usePointOptionsQuery();
+  const isOperator = me?.role === 'point_operator';
 
-  // '' means "no point picked yet" — the SelectField's own empty option.
-  const [selectedPointId, setSelectedPointId] = useState('');
-  const pointId = selectedPointId === '' ? null : selectedPointId;
   const pointName = (points ?? []).find((p) => p.id === pointId)?.name ?? '';
 
   const grades = useGradeCatalogQuery();
@@ -49,6 +54,16 @@ export function PricesPage() {
     setEditing(grade);
     setDialogInstance((n) => n + 1);
     setDialogOpen(true);
+  };
+
+  const [historyGrade, setHistoryGrade] = useState<GradeCatalogItem | null>(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [historyInstance, setHistoryInstance] = useState(0);
+
+  const openHistory = (grade: GradeCatalogItem) => {
+    setHistoryGrade(grade);
+    setHistoryInstance((n) => n + 1);
+    setHistoryOpen(true);
   };
 
   const columns: Column<GradeCatalogItem>[] = [
@@ -90,14 +105,35 @@ export function PricesPage() {
       // header over a button cell.
       header: <span className="sr-only">{t('prices.col.action')}</span>,
       align: 'right',
-      // The mock's verb pair: a priced grade is CHANGED (pencil), an unpriced
-      // one is SET — the invitation, not the correction.
-      cell: (g) => (
-        <Button size="sm" variant="outline" onClick={() => openSetPrice(g)}>
-          <Pencil className="size-3.5" />
-          {priceMap[g.id] ? t('prices.change') : t('prices.set')}
-        </Button>
-      ),
+      cell: (g) => {
+        const priced = priceMap[g.id] != null;
+        return (
+          <div className="flex items-center justify-end gap-2">
+            {priced ? (
+              <Button size="sm" variant="ghost" onClick={() => openHistory(g)}>
+                <History className="size-3.5" />
+                {t('prices.history.button')}
+              </Button>
+            ) : null}
+            {isOperator ? (
+              <span
+                role="img"
+                aria-label={t('prices.readOnly')}
+                className="inline-flex items-center justify-center px-1 text-muted-foreground"
+              >
+                <Lock className="size-3.5" aria-hidden="true" />
+              </span>
+            ) : (
+              // The mock's verb pair: a priced grade is CHANGED (pencil), an
+              // unpriced one is SET — the invitation, not the correction.
+              <Button size="sm" variant="outline" onClick={() => openSetPrice(g)}>
+                <Pencil className="size-3.5" />
+                {priced ? t('prices.change') : t('prices.set')}
+              </Button>
+            )}
+          </div>
+        );
+      },
     },
   ];
 
@@ -113,20 +149,26 @@ export function PricesPage() {
         title={t('prices.title')}
         description={t('prices.description')}
         toolbar={
-          <div className="w-full max-w-xs">
-            <SelectField
-              aria-label={t('prices.pickPoint')}
-              value={selectedPointId}
-              onChange={(e) => setSelectedPointId(e.target.value)}
-            >
-              <option value="">{t('prices.pickPoint')}</option>
-              {(points ?? []).map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                </option>
-              ))}
-            </SelectField>
-          </div>
+          canPick ? (
+            <div className="w-full max-w-xs">
+              <SelectField
+                aria-label={t('prices.pickPoint')}
+                value={pointId ?? ''}
+                onChange={(e) => setPointId(e.target.value || null)}
+              >
+                <option value="">{t('prices.pickPoint')}</option>
+                {(points ?? []).map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </SelectField>
+            </div>
+          ) : isOperator ? (
+            <p className="rounded-md bg-muted/60 px-3 py-2 text-sm text-muted-foreground">
+              {t('prices.banner')}
+            </p>
+          ) : null
         }
         columns={columns}
         rows={grades.data}
@@ -154,6 +196,16 @@ export function PricesPage() {
           current={priceMap[editing.id] ?? null}
           open={dialogOpen}
           onClose={() => setDialogOpen(false)}
+        />
+      ) : null}
+
+      {historyGrade && pointId !== null ? (
+        <PriceHistoryDialog
+          key={historyInstance}
+          pointId={pointId}
+          grade={historyGrade}
+          open={historyOpen}
+          onClose={() => setHistoryOpen(false)}
         />
       ) : null}
     </>

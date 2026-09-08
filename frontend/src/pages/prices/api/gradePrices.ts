@@ -42,6 +42,38 @@ export function useCurrentPricesQuery(pointId: string | null) {
   });
 }
 
+/** `GET /grade-prices` envelope — the full journal, newest first (unlike
+ *  `/current`, rows are not reduced: a price NEVER overwrites, so the history
+ *  for one grade at one point is every row it has ever had). */
+interface PriceHistoryEnvelope {
+  data: GradePrice[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
+/**
+ * One grade's price history at one point — the last 20 rows, newest first as
+ * the API already orders them (no client-side re-sort). `enabled` only once
+ * both ids are known, so the dialog never fires before its row has resolved a
+ * point and a grade. The key nests under the `gradePrices` PREFIX behind a
+ * `'history'` leaf so it never collides with the `/current` map cached at
+ * `[...queryKeys.gradePrices, pointId]`.
+ */
+export function usePriceHistoryQuery(pointId: string | null, gradeId: string | null) {
+  return useQuery({
+    queryKey: [...queryKeys.gradePrices, 'history', pointId, gradeId],
+    enabled: pointId !== null && gradeId !== null,
+    queryFn: async (): Promise<GradePrice[]> => {
+      const { data } = await httpClient.get<PriceHistoryEnvelope>('/grade-prices', {
+        params: { collection_point_id: pointId, product_grade_id: gradeId, limit: 20 },
+      });
+      return data.data;
+    },
+    staleTime: STALE.list,
+  });
+}
+
 /**
  * Sets a grade's price — a POST that APPENDS a new row (there is no PATCH; the
  * latest row wins). Invalidates the `['grade-prices']` PREFIX so every point's

@@ -317,6 +317,20 @@
       "saveFailed": "Could not save",
       "priceFormat": "Enter an amount like 50 or 50.00",
       "reasonTooLong": "The reason must be at most 1000 characters"
+    },
+    "readOnly": "view only",
+    "banner": "The owner sets the day's price — this view only shows it. Every change leaves a trace: who, when and why.",
+    "history": {
+      "button": "History",
+      "title": "{{grade}} · history",
+      "col": {
+        "date": "Date",
+        "base": "Base price",
+        "markup": "Markup",
+        "discount": "Discount",
+        "reason": "Reason"
+      },
+      "empty": "The price has not changed yet."
     }
   },
   "day": {
