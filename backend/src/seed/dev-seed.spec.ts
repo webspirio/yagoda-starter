@@ -1,11 +1,14 @@
 import { addMoney } from './dev-seed';
 import {
   SEED_GRADES,
+  SEED_INTAKES,
   SEED_OPERATORS,
+  SEED_PAYOUTS,
   SEED_POINTS,
   SEED_PRICE_CHANGES,
   SEED_PRICE_LIMITS,
   SEED_PRODUCTS,
+  SEED_SHIFTS,
   SEED_SUPPLIERS,
   SEED_TARE_TYPES,
 } from './dev-seed.data';
@@ -94,6 +97,75 @@ describe('dev seed dataset', () => {
       const grade = SEED_GRADES.find((g) => g.product === c.product && g.name === c.grade);
       expect(grade?.is_active).toBe(true);
     }
+  });
+});
+
+describe('dev seed documents', () => {
+  const money = /^-?\d{1,8}\.\d{2}$/;
+  const shiftKeys = new Set(SEED_SHIFTS.map((s) => `${s.point}/${s.day}`));
+  const supplierKeys = new Set(
+    SEED_SUPPLIERS.map((s) => `${s.point}/${s.first_name} ${s.last_name}`),
+  );
+  const activeGrades = new Set(
+    SEED_GRADES.filter((g) => g.is_active).map((g) => `${g.product}/${g.name}`),
+  );
+  const tareNames = new Set(SEED_TARE_TYPES.map((t) => t.name));
+  const operators = new Set(SEED_OPERATORS.filter((u) => u.is_active).map((u) => u.login));
+  const active = new Map(SEED_POINTS.map((p) => [p.name, p.is_active]));
+
+  it('every shift is on a working point and the operator who opens it works there', () => {
+    const pointOf = new Map(SEED_OPERATORS.map((u) => [u.login, u.point]));
+    for (const s of SEED_SHIFTS) {
+      expect(active.get(s.point)).toBe(true);
+      expect(pointOf.get(s.openedBy)).toBe(s.point);
+    }
+  });
+
+  it('every document sits in a seeded shift, names a seeded supplier of that point and an active operator', () => {
+    for (const d of [...SEED_INTAKES, ...SEED_PAYOUTS]) {
+      expect(shiftKeys.has(`${d.point}/${d.day}`)).toBe(true);
+      expect(supplierKeys.has(`${d.point}/${d.supplier}`)).toBe(true);
+      expect(operators.has('receivedBy' in d ? d.receivedBy : d.paidBy)).toBe(true);
+      expect(d.typed).toMatch(/^[A-Z0-9][A-Z0-9-]{0,15}$/);
+      expect(d.time).toMatch(/^\d{2}:\d{2}$/);
+    }
+  });
+
+  it('typed receipt numbers are unique per point, day and kind (UQ on the composed code)', () => {
+    const seen = new Set<string>();
+    for (const [kind, docs] of [
+      ['IN', SEED_INTAKES],
+      ['PO', SEED_PAYOUTS],
+    ] as const) {
+      for (const d of docs) {
+        const key = `${d.point}/${d.day}/${kind}/${d.typed}`;
+        expect(seen.has(key)).toBe(false);
+        seen.add(key);
+      }
+    }
+  });
+
+  it('intake lines use active grades, seeded tare types, at least one tare line, and money at scale 2', () => {
+    for (const d of SEED_INTAKES) {
+      expect(d.lines.length).toBeGreaterThan(0);
+      for (const l of d.lines) {
+        expect(activeGrades.has(`${l.product}/${l.grade}`)).toBe(true);
+        expect(l.tare.length).toBeGreaterThan(0);
+        for (const t of l.tare) {
+          expect(tareNames.has(t.type)).toBe(true);
+          expect(t.units).toBeGreaterThan(0);
+        }
+        expect(l.gross_kg).toMatch(money);
+        expect(l.pallet_kg).toMatch(money);
+        expect(l.bonus).toMatch(money);
+      }
+    }
+    for (const p of SEED_PAYOUTS) expect(p.amount).toMatch(/^\d{1,8}\.\d{2}$/);
+  });
+
+  it('every payout goes to a supplier who has a seeded receipt at that point', () => {
+    const paid = new Set(SEED_INTAKES.map((d) => `${d.point}/${d.supplier}`));
+    for (const p of SEED_PAYOUTS) expect(paid.has(`${p.point}/${p.supplier}`)).toBe(true);
   });
 });
 

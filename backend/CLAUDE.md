@@ -166,7 +166,11 @@ the tables that exist: 11 collection points (5 working, the warehouse, 5 in the
 registry), 10 products with 14 grades (2 inactive), 4 tare types, 7 operators
 (one deactivated), 17 suppliers, and a day price for every active grade at every
 working point plus three intraday corrections on Шипинки so the price journal has
-a «latest wins» case. Sign in as `admin`/`admin` (owner) or as an operator
+a «latest wins» case — and, once the intakes slice is in, a closed shift yesterday
+and open shifts today on Шипинки / Конищів / Гайове with ten receipts and four
+payouts whose numbers come from the server's own `buildIntake()` and
+`composeDocumentCode()`, so the demo stores exactly what the API would have.
+Points carry real receipt-code prefixes (`SHP`, `KON`, …). Sign in as `admin`/`admin` (owner) or as an operator
 (`oksana`, `maria`, `taras`, `ihor`, `bohdan`, `lesia`) with password `operator`.
 
 It is a SCRIPT, not a migration, on purpose: migrations are frozen once applied,

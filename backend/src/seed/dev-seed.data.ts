@@ -438,3 +438,304 @@ export const SEED_PRICE_CHANGES: readonly SeedPriceChange[] = [
     reason: 'Ціна від переробника з обіду',
   },
 ];
+
+/* ------------------------------------------------------------------------- *
+ * Documents: shifts, intakes, payouts (the intakes & payouts slice).
+ *
+ * Yesterday on Шипинки is a CLOSED shift with four receipts and two payouts;
+ * today is an OPEN shift there and on Конищів and Гайове, with receipts by
+ * both cashiers of Шипинки. Попівці and Михайлівці have NO shift, so the
+ * «open one first» state is reachable. Amounts are never written here: the
+ * seed runs the server's own `buildIntake()` over the seeded prices and tare
+ * weights, so what the demo stores is exactly what the API would have stored.
+ * ------------------------------------------------------------------------- */
+
+export type SeedDay = 'today' | 'yesterday';
+
+export interface SeedShift {
+  point: string;
+  day: SeedDay;
+  /** Operator login who opened it (and closed it, when `closed`). */
+  openedBy: string;
+  closed: boolean;
+}
+
+export const SEED_SHIFTS: readonly SeedShift[] = [
+  { point: 'Шипинки', day: 'yesterday', openedBy: 'oksana', closed: true },
+  { point: 'Шипинки', day: 'today', openedBy: 'oksana', closed: false },
+  { point: 'Конищів', day: 'today', openedBy: 'taras', closed: false },
+  { point: 'Гайове', day: 'today', openedBy: 'ihor', closed: false },
+];
+
+export interface SeedIntakeLine {
+  product: string;
+  grade: string;
+  gross_kg: string;
+  pallet_kg: string;
+  /** Signed, within the seeded ±30 bound. */
+  bonus: string;
+  tare: { type: string; units: number }[];
+}
+
+export interface SeedIntake {
+  point: string;
+  day: SeedDay;
+  /** What the operator typed from the paper book; the server prefixes it. */
+  typed: string;
+  /** `first_name last_name` of a seeded supplier at that point. */
+  supplier: string;
+  receivedBy: string;
+  /** Local wall-clock time on the business date, HH:MM. */
+  time: string;
+  lines: SeedIntakeLine[];
+}
+
+export const SEED_INTAKES: readonly SeedIntake[] = [
+  {
+    point: 'Шипинки',
+    day: 'yesterday',
+    typed: '00412',
+    supplier: 'Галина Кушнірук',
+    receivedBy: 'oksana',
+    time: '08:20',
+    lines: [
+      {
+        product: 'Малина',
+        grade: '1 сорт',
+        gross_kg: '126.40',
+        pallet_kg: '0.00',
+        bonus: '0.00',
+        tare: [{ type: 'Чешка', units: 12 }],
+      },
+    ],
+  },
+  {
+    point: 'Шипинки',
+    day: 'yesterday',
+    typed: '00413',
+    supplier: 'Христина Каленчук',
+    receivedBy: 'oksana',
+    time: '09:05',
+    lines: [
+      {
+        product: 'Ожина',
+        grade: 'Стандарт',
+        gross_kg: '18.60',
+        pallet_kg: '0.00',
+        bonus: '0.00',
+        tare: [{ type: 'Лубянка', units: 6 }],
+      },
+    ],
+  },
+  {
+    point: 'Шипинки',
+    day: 'yesterday',
+    typed: '00414',
+    supplier: 'Тарас Кирилюк',
+    receivedBy: 'oksana',
+    time: '11:40',
+    lines: [
+      {
+        product: 'Малина',
+        grade: 'Вищий сорт',
+        gross_kg: '84.30',
+        pallet_kg: '0.00',
+        bonus: '5.00',
+        tare: [{ type: 'Чешка', units: 8 }],
+      },
+      {
+        product: 'Смородина',
+        grade: 'Стандарт',
+        gross_kg: '41.00',
+        pallet_kg: '0.00',
+        bonus: '0.00',
+        tare: [{ type: 'Мішок', units: 4 }],
+      },
+    ],
+  },
+  {
+    point: 'Шипинки',
+    day: 'yesterday',
+    typed: '00415',
+    supplier: 'Жанна Осадчук',
+    receivedBy: 'maria',
+    time: '16:15',
+    lines: [
+      {
+        product: 'Малина',
+        grade: '2 сорт',
+        gross_kg: '210.00',
+        pallet_kg: '19.30',
+        bonus: '-3.00',
+        tare: [{ type: 'Чешка', units: 20 }],
+      },
+    ],
+  },
+  {
+    point: 'Шипинки',
+    day: 'today',
+    typed: '00416',
+    supplier: 'Галина Кушнірук',
+    receivedBy: 'oksana',
+    time: '07:55',
+    lines: [
+      {
+        product: 'Малина',
+        grade: '1 сорт',
+        gross_kg: '98.70',
+        pallet_kg: '0.00',
+        bonus: '2.00',
+        tare: [{ type: 'Чешка', units: 9 }],
+      },
+    ],
+  },
+  {
+    point: 'Шипинки',
+    day: 'today',
+    typed: '00417',
+    supplier: 'Марія Приймак',
+    receivedBy: 'maria',
+    time: '09:30',
+    lines: [
+      {
+        product: 'Порічка',
+        grade: 'Стандарт',
+        gross_kg: '22.40',
+        pallet_kg: '0.00',
+        bonus: '0.00',
+        tare: [{ type: 'Лубянка', units: 8 }],
+      },
+    ],
+  },
+  {
+    point: 'Шипинки',
+    day: 'today',
+    typed: '00418',
+    supplier: 'Ніна Ільчук',
+    receivedBy: 'oksana',
+    time: '10:45',
+    lines: [
+      {
+        product: 'Малина',
+        grade: '3 сорт',
+        gross_kg: '150.00',
+        pallet_kg: '18.00',
+        bonus: '0.00',
+        tare: [{ type: 'Чешка', units: 14 }],
+      },
+    ],
+  },
+  {
+    point: 'Конищів',
+    day: 'today',
+    typed: '00071',
+    supplier: 'Дарія Савчук',
+    receivedBy: 'taras',
+    time: '08:40',
+    lines: [
+      {
+        product: 'Малина',
+        grade: '1 сорт',
+        gross_kg: '64.20',
+        pallet_kg: '0.00',
+        bonus: '0.00',
+        tare: [{ type: 'Чешка', units: 6 }],
+      },
+    ],
+  },
+  {
+    point: 'Конищів',
+    day: 'today',
+    typed: '00072',
+    supplier: 'Михайло Ткачук',
+    receivedBy: 'taras',
+    time: '12:10',
+    lines: [
+      {
+        product: 'Вишня',
+        grade: 'Стандарт',
+        gross_kg: '30.50',
+        pallet_kg: '0.00',
+        bonus: '0.00',
+        tare: [{ type: 'Ящик', units: 3 }],
+      },
+    ],
+  },
+  {
+    point: 'Гайове',
+    day: 'today',
+    typed: '00133',
+    supplier: 'Неля Фурман',
+    receivedBy: 'ihor',
+    time: '09:15',
+    lines: [
+      {
+        product: 'Ожина',
+        grade: 'Стандарт',
+        gross_kg: '44.80',
+        pallet_kg: '0.00',
+        bonus: '0.00',
+        tare: [{ type: 'Лубянка', units: 14 }],
+      },
+      {
+        product: 'Бузина',
+        grade: 'Стандарт',
+        gross_kg: '12.00',
+        pallet_kg: '0.00',
+        bonus: '0.00',
+        tare: [{ type: 'Мішок', units: 2 }],
+      },
+    ],
+  },
+];
+
+export interface SeedPayout {
+  point: string;
+  day: SeedDay;
+  typed: string;
+  supplier: string;
+  paidBy: string;
+  time: string;
+  /** Kept well under the supplier's seeded receipts — the API's debt ceiling
+   *  is real, and the db-spec proves no seeded balance goes negative. */
+  amount: string;
+}
+
+export const SEED_PAYOUTS: readonly SeedPayout[] = [
+  {
+    point: 'Шипинки',
+    day: 'yesterday',
+    typed: '00088',
+    supplier: 'Галина Кушнірук',
+    paidBy: 'oksana',
+    time: '17:30',
+    amount: '10000.00',
+  },
+  {
+    point: 'Шипинки',
+    day: 'yesterday',
+    typed: '00089',
+    supplier: 'Тарас Кирилюк',
+    paidBy: 'oksana',
+    time: '17:35',
+    amount: '5000.00',
+  },
+  {
+    point: 'Шипинки',
+    day: 'today',
+    typed: '00090',
+    supplier: 'Галина Кушнірук',
+    paidBy: 'oksana',
+    time: '11:00',
+    amount: '4000.00',
+  },
+  {
+    point: 'Гайове',
+    day: 'today',
+    typed: '00021',
+    supplier: 'Неля Фурман',
+    paidBy: 'ihor',
+    time: '12:00',
+    amount: '2000.00',
+  },
+];
