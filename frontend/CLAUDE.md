@@ -29,7 +29,7 @@ src/
   main.tsx                    # entry point — wires auth interceptors, initI18n, global error reporting, renders App
   app/
     App.tsx                   # root component: ErrorBoundary > QueryClientProvider > RouterProvider
-    router.tsx                # createBrowserRouter — /login, / (dashboard), /profile, /suppliers, /points, /users, /prices, /catalog, /day, /reception, /ui-kit, catch-all 404 — no /register
+    router.tsx                # createBrowserRouter — /login, / (dashboard), /profile, /suppliers, /points, /users, /prices, /catalog, /day, /reception, /debts, /suppliers/:id, /ui-kit, catch-all 404 — no /register
     layouts/AppLayout.tsx      # persistent shell: dark sidebar with role-aware grouped nav + PAPER top bar (mock composition) with scope, ThemeToggle, sign-out; renders auth pages bare
     providers/
       ErrorBoundary.tsx        # React class error boundary → ErrorFallback
@@ -51,6 +51,7 @@ src/
   pages/login/, pages/dashboard/, pages/profile/, pages/not-found/, pages/ui-kit/
   pages/points/, pages/users/, pages/suppliers/, pages/catalog/, pages/prices/   # each: api/ (TanStack hooks) · model/ (wire types + form values) · lib/apiErrorToFields · ui/ (page + dialogs + tests)
   pages/day/, pages/reception/   # the money screens — «Каса за день» and «Прийомка ягоди» (RHF form + live server preview)
+  pages/debts/, pages/supplier-card/   # «Залишки за нами» (balances per point, «Видати без ягоди») and the supplier card (balance, tiles, timeline of receipts and payouts) — both roles
   shared/
     api/                       # httpClient (axios instance, env.apiUrl baseURL) + ApiError + attachAuthInterceptors + queryClient + queryKeys + persister
     lib/
