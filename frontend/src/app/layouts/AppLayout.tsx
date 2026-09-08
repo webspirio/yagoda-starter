@@ -31,6 +31,7 @@ import { useAppTheme } from '@/shared/lib/theme';
 import { persister } from '@/shared/api';
 import { Button } from '@/shared/ui/button';
 import { Toaster } from '@/shared/ui/sonner';
+import { ThemeToggle } from '@/shared/ui/theme-toggle';
 
 /** Routes that render bare, without the app chrome. */
 const CHROMELESS = ['/login'];
@@ -262,6 +263,7 @@ export function AppLayout() {
                 </span>
               </span>
             ) : null}
+            <ThemeToggle />
             <Button variant="ghost" size="sm" onClick={signOut}>
               {t('auth.signOut')}
             </Button>

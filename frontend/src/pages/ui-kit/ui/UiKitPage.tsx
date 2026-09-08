@@ -196,7 +196,7 @@ export function UiKitPage() {
       <Band title="Компоненти · layout" note="shared/ui" />
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         <Cell name="DataTable<Row>" tag="layout">
-          <DataTable columns={supplierColumns} rows={supplierRows} rowKey={(r) => r.id} />
+          <DataTable columns={supplierColumns} rows={supplierRows} rowKey={(r) => r.id} frame={false} />
         </Cell>
         <Cell name="SectionCard · LedgerRow" tag="layout">
           <SectionCard eyebrow="Розрахунок візиту" aside={<Badge>зійшлося</Badge>}>

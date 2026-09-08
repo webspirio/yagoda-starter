@@ -48,12 +48,20 @@ vi.mock('../api/tareTypes', () => ({
   useUpdateTareTypeMutation: () => ({ mutateAsync: updateTareMock }),
 }));
 
-const product: Product = { id: 'pr1', name: 'Raspberry', created_at: '2026-08-01' };
-const grade: ProductGrade = {
+const raspberry: Product = { id: 'pr1', name: 'Raspberry', created_at: '2026-08-01' };
+const cornel: Product = { id: 'pr2', name: 'Cornel', created_at: '2026-08-01' };
+const grade1: ProductGrade = {
   id: 'g1',
   product_id: 'pr1',
   name: 'Grade 1',
   is_active: true,
+  created_at: '2026-08-01',
+};
+const retired: ProductGrade = {
+  id: 'g2',
+  product_id: 'pr1',
+  name: 'Substandard',
+  is_active: false,
   created_at: '2026-08-01',
 };
 const tare: TareType = {
@@ -73,12 +81,12 @@ const loaded = <T,>(rows: T[]) => ({
 });
 
 beforeEach(() => {
-  productsQueryMock.mockReset().mockReturnValue(loaded([product]));
-  createProductMock.mockReset().mockResolvedValue(product);
-  updateProductMock.mockReset().mockResolvedValue(product);
-  gradesQueryMock.mockReset().mockReturnValue(loaded([grade]));
-  createGradeMock.mockReset().mockResolvedValue(grade);
-  updateGradeMock.mockReset().mockResolvedValue(grade);
+  productsQueryMock.mockReset().mockReturnValue(loaded([raspberry, cornel]));
+  createProductMock.mockReset().mockResolvedValue(raspberry);
+  updateProductMock.mockReset().mockResolvedValue(raspberry);
+  gradesQueryMock.mockReset().mockReturnValue(loaded([grade1, retired]));
+  createGradeMock.mockReset().mockResolvedValue(grade1);
+  updateGradeMock.mockReset().mockResolvedValue(grade1);
   tareQueryMock.mockReset().mockReturnValue(loaded([tare]));
   createTareMock.mockReset().mockResolvedValue(tare);
   updateTareMock.mockReset().mockResolvedValue(tare);
@@ -92,15 +100,28 @@ const renderPage = (entry = '/catalog') => {
 };
 
 describe('CatalogPage', () => {
-  it('renders the products tab with rows and the New action by default', async () => {
+  it('opens on the products & grades tab with every grade grouped under its product', async () => {
     const { container } = renderPage();
-    expect(screen.getByRole('tab', { name: 'Products', selected: true })).toBeInTheDocument();
+    expect(
+      screen.getByRole('tab', { name: 'Products & grades', selected: true }),
+    ).toBeInTheDocument();
+
+    // Raspberry carries its two grades; Cornel has none and says so.
     expect(screen.getByText('Raspberry')).toBeInTheDocument();
+    expect(screen.getByText('2 grades')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Grade 1' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Substandard/ })).toHaveTextContent('Inactive');
+    expect(screen.getByText('Cornel')).toBeInTheDocument();
+    expect(screen.getByText('0 grades')).toBeInTheDocument();
+    expect(screen.getByText(/No grades yet/)).toBeInTheDocument();
+
+    // The grades query is unfiltered — grouping is done client-side.
+    expect(gradesQueryMock).toHaveBeenCalledWith(undefined);
     expect(screen.getByRole('button', { name: 'New product' })).toBeInTheDocument();
     await expectNoAxeViolations(container);
   });
 
-  it('shows tare rows after switching to the Tare types tab', async () => {
+  it('shows the tare table after switching to the Tare types tab', async () => {
     renderPage();
     await userEvent.click(screen.getByRole('tab', { name: 'Tare types' }));
     expect(await screen.findByText('Green crate')).toBeInTheDocument();
@@ -109,14 +130,35 @@ describe('CatalogPage', () => {
     expect(screen.getByRole('button', { name: 'New tare type' })).toBeInTheDocument();
   });
 
+  it('falls back to the first tab for a stale ?tab=grades link', () => {
+    renderPage('/catalog?tab=grades');
+    expect(
+      screen.getByRole('tab', { name: 'Products & grades', selected: true }),
+    ).toBeInTheDocument();
+  });
+
   it('creates a product through the New dialog with the mapped payload', async () => {
     renderPage();
     await userEvent.click(screen.getByRole('button', { name: 'New product' }));
-    // Dialog title is distinct from the "New product" button, so the field is
-    // the unambiguous signal the dialog is open.
     await userEvent.type(screen.getByLabelText('Name'), 'Blueberry');
     await userEvent.click(screen.getByRole('button', { name: 'Save' }));
     await waitFor(() => expect(createProductMock).toHaveBeenCalledTimes(1));
     expect(createProductMock).toHaveBeenCalledWith({ name: 'Blueberry' });
+  });
+
+  it('adds a grade from its product card with that product preselected', async () => {
+    renderPage();
+    await userEvent.click(screen.getByRole('button', { name: 'Add a grade to Cornel' }));
+    expect(await screen.findByLabelText('Product')).toHaveValue('pr2');
+    await userEvent.type(screen.getByLabelText('Name'), 'Standard');
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(createGradeMock).toHaveBeenCalledTimes(1));
+    expect(createGradeMock).toHaveBeenCalledWith({ product_id: 'pr2', name: 'Standard' });
+  });
+
+  it('opens a grade row for editing with its current values', async () => {
+    renderPage();
+    await userEvent.click(screen.getByRole('button', { name: 'Grade 1' }));
+    expect(await screen.findByLabelText('Name')).toHaveValue('Grade 1');
   });
 });

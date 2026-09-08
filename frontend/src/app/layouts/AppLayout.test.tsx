@@ -110,6 +110,24 @@ describe('AppLayout', () => {
     expect(window.localStorage.getItem('web-starter-rq-cache')).toBeNull();
   });
 
+  it('offers a theme switch in the header that stores the chosen preference', async () => {
+    useSession.setState({ token: 'tok' });
+    mock.onGet('/me').reply(200, {
+      id: 'u1',
+      username: 'admin',
+      display_name: 'Dev Admin',
+      role: 'network_owner',
+      collection_point_id: null,
+    });
+    renderLayout('/');
+    const toggle = await screen.findByRole('button', { name: 'Theme' });
+    expect(toggle).toHaveAttribute('aria-pressed', 'false');
+    await userEvent.click(toggle);
+    expect(useThemePreference.getState().preference).toBe('dark');
+    expect(document.documentElement.classList.contains('dark')).toBe(true);
+    expect(toggle).toHaveAttribute('aria-pressed', 'true');
+  });
+
   it('applies the dark class to <html> when the OS prefers dark and no explicit preference is set', async () => {
     mockMatchMedia(true);
     useSession.setState({ token: 'tok' });

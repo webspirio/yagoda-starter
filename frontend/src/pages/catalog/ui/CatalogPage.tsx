@@ -1,12 +1,13 @@
 import { useState, type ReactNode } from 'react';
+import { Pencil, Plus } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import { cn } from '@/shared/lib/cn';
 import { useUrlParam } from '@/shared/lib/url-state';
 import { PageHeader } from '@/shared/ui/page-header';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/shared/ui/tabs';
 import { DataTable, type Column } from '@/shared/ui/data-table';
 import { Button } from '@/shared/ui/button';
 import { Badge } from '@/shared/ui/badge';
-import { SelectField } from '@/shared/ui/select-field';
 import { EmptyState } from '@/shared/ui/empty-state';
 import { Spinner } from '@/shared/ui/spinner';
 import { useProductsQuery } from '../api/products';
@@ -19,23 +20,24 @@ import type { Product } from '../model/product';
 import type { ProductGrade } from '../model/productGrade';
 import type { TareType } from '../model/tareType';
 
-const TABS = ['products', 'grades', 'tareTypes'] as const;
+const TABS = ['products', 'tareTypes'] as const;
 type TabId = (typeof TABS)[number];
 
 const isTabId = (value: string | null): value is TabId =>
   value !== null && (TABS as readonly string[]).includes(value);
 
 /**
- * One owner-only screen for all three catalogs, because they are one job: an
- * owner setting up a season adds a berry, adds its grades, then adds the tare it
- * arrives in. The active tab lives in the query string so it survives a reload
- * and can be linked; `useUrlParam` REPLACES rather than pushes, so switching
- * tabs does not fill the back stack.
+ * One owner-only screen for all three catalogs, as TWO tabs: «Товари і сорти»
+ * — every grade listed UNDER its product, the mock's `RefsPage` grouping,
+ * because a season is set up by adding a berry and then its grades and the
+ * two are edited together — and «Тара», a plain table. The active tab lives
+ * in the query string so it survives a reload and can be linked;
+ * `useUrlParam` REPLACES rather than pushes, so switching tabs does not fill
+ * the back stack. A stale `?tab=grades` link falls back to the first tab.
  */
 export function CatalogPage() {
   const { t } = useTranslation();
   const [tab, setTab] = useUrlParam('tab');
-  // A hand-edited or stale URL falls back rather than rendering an empty shell.
   const active: TabId = isTabId(tab) ? tab : 'products';
 
   return (
@@ -48,15 +50,11 @@ export function CatalogPage() {
       <Tabs value={active} onValueChange={(next) => setTab(next)}>
         <TabsList>
           <TabsTrigger value="products">{t('catalog.tabs.products')}</TabsTrigger>
-          <TabsTrigger value="grades">{t('catalog.tabs.grades')}</TabsTrigger>
           <TabsTrigger value="tareTypes">{t('catalog.tabs.tareTypes')}</TabsTrigger>
         </TabsList>
 
         <TabsContent value="products" className="mt-5">
           <ProductsPanel />
-        </TabsContent>
-        <TabsContent value="grades" className="mt-5">
-          <GradesPanel />
         </TabsContent>
         <TabsContent value="tareTypes" className="mt-5">
           <TareTypesPanel />
@@ -99,45 +97,65 @@ function AsyncBody({
   return <>{children}</>;
 }
 
+/** The mock's list row: a hairline-bordered pill that IS the edit affordance. */
+const GRADE_ROW_CLASS = cn(
+  'flex w-full items-center gap-2.5 rounded-lg border border-border/70 px-3 py-1.5 text-left transition-colors',
+  'hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50',
+);
+
 function ProductsPanel() {
   const { t } = useTranslation();
-  const { data, isPending, isError } = useProductsQuery();
+  const products = useProductsQuery();
+  // Unfiltered and including inactive grades: the owner reactivates retired
+  // grades from here, and grouping by product happens client-side.
+  const grades = useProductGradesQuery();
 
-  const [editing, setEditing] = useState<Product | null>(null);
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [dialogInstance, setDialogInstance] = useState(0);
+  const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const [productOpen, setProductOpen] = useState(false);
+  const [productInstance, setProductInstance] = useState(0);
 
-  const openCreate = () => {
-    setEditing(null);
-    setDialogInstance((n) => n + 1);
-    setDialogOpen(true);
+  const [editingGrade, setEditingGrade] = useState<ProductGrade | null>(null);
+  const [gradeProductId, setGradeProductId] = useState<string | null>(null);
+  const [gradeOpen, setGradeOpen] = useState(false);
+  const [gradeInstance, setGradeInstance] = useState(0);
+
+  const openProduct = (product: Product | null) => {
+    setEditingProduct(product);
+    setProductInstance((n) => n + 1);
+    setProductOpen(true);
   };
-  const openEdit = (product: Product) => {
-    setEditing(product);
-    setDialogInstance((n) => n + 1);
-    setDialogOpen(true);
+  const openGrade = (grade: ProductGrade | null, productId: string | null) => {
+    setEditingGrade(grade);
+    setGradeProductId(productId);
+    setGradeInstance((n) => n + 1);
+    setGradeOpen(true);
   };
 
-  const rows = data?.data ?? [];
-
-  const columns: Column<Product>[] = [
-    {
-      id: 'name',
-      header: t('catalog.products.col.name'),
-      cell: (p) => <span className="font-medium">{p.name}</span>,
-    },
-  ];
+  const productRows = products.data?.data ?? [];
+  const gradeRows = grades.data?.data ?? [];
+  const byProduct = new Map<string, ProductGrade[]>();
+  for (const g of gradeRows)
+    byProduct.set(g.product_id, [...(byProduct.get(g.product_id) ?? []), g]);
+  const groups = [...productRows]
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .map((product) => ({
+      product,
+      grades: (byProduct.get(product.id) ?? []).sort((a, b) => a.name.localeCompare(b.name)),
+    }));
 
   return (
     <div className="flex flex-col gap-4">
       <div className="flex justify-end">
-        <Button onClick={openCreate}>{t('catalog.products.new')}</Button>
+        <Button onClick={() => openProduct(null)}>
+          <Plus className="size-4" />
+          {t('catalog.products.new')}
+        </Button>
       </div>
 
       <AsyncBody
-        isPending={isPending}
-        isError={isError}
-        isEmpty={rows.length === 0}
+        isPending={products.isPending || grades.isPending}
+        isError={products.isError || grades.isError}
+        isEmpty={productRows.length === 0}
         empty={
           <EmptyState
             title={t('catalog.products.empty.title')}
@@ -145,115 +163,75 @@ function ProductsPanel() {
           />
         }
       >
-        <DataTable<Product> columns={columns} rows={rows} rowKey={(p) => p.id} onRowClick={openEdit} />
+        {/* One card per product, its grades beneath — two columns on wide screens. */}
+        <ul className="grid items-start gap-4 md:grid-cols-2">
+          {groups.map(({ product, grades: list }) => (
+            <li key={product.id} className="rounded-xl bg-card p-4 ring-1 ring-foreground/10">
+              <div className="mb-2 flex items-center gap-2">
+                <span className="font-display text-base font-medium">{product.name}</span>
+                <span className="text-[11px] text-muted-foreground">
+                  {t('catalog.grades.count', { count: list.length })}
+                </span>
+                <span className="ml-auto flex items-center gap-1">
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label={t('catalog.products.edit', { name: product.name })}
+                    onClick={() => openProduct(product)}
+                  >
+                    <Pencil />
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    aria-label={t('catalog.grades.addAria', { name: product.name })}
+                    onClick={() => openGrade(null, product.id)}
+                  >
+                    <Plus />
+                    {t('catalog.grades.add')}
+                  </Button>
+                </span>
+              </div>
+              {list.length === 0 ? (
+                <p className="rounded-lg border border-dashed border-border px-3 py-2 text-xs text-muted-foreground">
+                  {t('catalog.products.noGrades')}
+                </p>
+              ) : (
+                <ul className="flex flex-col gap-1">
+                  {list.map((grade) => (
+                    <li key={grade.id}>
+                      <button
+                        type="button"
+                        className={cn(GRADE_ROW_CLASS, !grade.is_active && 'text-muted-foreground')}
+                        onClick={() => openGrade(grade, grade.product_id)}
+                      >
+                        <span className="min-w-0 flex-1 truncate text-sm">{grade.name}</span>
+                        {grade.is_active ? null : (
+                          <Badge variant="outline">{t('catalog.grades.inactive')}</Badge>
+                        )}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </li>
+          ))}
+        </ul>
       </AsyncBody>
 
       <ProductDialog
-        key={dialogInstance}
-        product={editing}
-        open={dialogOpen}
-        onClose={() => setDialogOpen(false)}
+        key={productInstance}
+        product={editingProduct}
+        open={productOpen}
+        onClose={() => setProductOpen(false)}
       />
-    </div>
-  );
-}
-
-function GradesPanel() {
-  const { t } = useTranslation();
-  const [productId, setProductId] = useUrlParam('product_id');
-  const filterId = productId ? productId : undefined;
-
-  const { data: productsData } = useProductsQuery();
-  const products = productsData?.data ?? [];
-  const { data, isPending, isError } = useProductGradesQuery(filterId);
-
-  const [editing, setEditing] = useState<ProductGrade | null>(null);
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [dialogInstance, setDialogInstance] = useState(0);
-
-  const openCreate = () => {
-    setEditing(null);
-    setDialogInstance((n) => n + 1);
-    setDialogOpen(true);
-  };
-  const openEdit = (grade: ProductGrade) => {
-    setEditing(grade);
-    setDialogInstance((n) => n + 1);
-    setDialogOpen(true);
-  };
-
-  const rows = data?.data ?? [];
-  const productName = new Map(products.map((p) => [p.id, p.name]));
-
-  const columns: Column<ProductGrade>[] = [
-    {
-      id: 'name',
-      header: t('catalog.grades.col.name'),
-      cell: (g) => <span className="font-medium">{g.name}</span>,
-    },
-    {
-      id: 'product',
-      header: t('catalog.grades.col.product'),
-      cell: (g) => productName.get(g.product_id) ?? '—',
-    },
-    {
-      id: 'is_active',
-      header: t('catalog.grades.col.status'),
-      align: 'right',
-      cell: (g) => (
-        <Badge variant={g.is_active ? 'default' : 'secondary'}>
-          {g.is_active ? t('catalog.grades.active') : t('catalog.grades.inactive')}
-        </Badge>
-      ),
-    },
-  ];
-
-  return (
-    <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="w-full max-w-xs">
-          <SelectField
-            aria-label={t('catalog.grades.filterLabel')}
-            value={productId ?? ''}
-            onChange={(e) => setProductId(e.target.value === '' ? null : e.target.value)}
-          >
-            <option value="">{t('catalog.grades.allProducts')}</option>
-            {products.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-              </option>
-            ))}
-          </SelectField>
-        </div>
-        <Button onClick={openCreate}>{t('catalog.grades.new')}</Button>
-      </div>
-
-      <AsyncBody
-        isPending={isPending}
-        isError={isError}
-        isEmpty={rows.length === 0}
-        empty={
-          <EmptyState
-            title={t('catalog.grades.empty.title')}
-            hint={t('catalog.grades.empty.hint')}
-          />
-        }
-      >
-        <DataTable<ProductGrade>
-          columns={columns}
-          rows={rows}
-          rowKey={(g) => g.id}
-          onRowClick={openEdit}
-        />
-      </AsyncBody>
-
       <GradeDialog
-        key={dialogInstance}
-        grade={editing}
-        products={products}
-        defaultProductId={filterId ?? null}
-        open={dialogOpen}
-        onClose={() => setDialogOpen(false)}
+        key={gradeInstance}
+        grade={editingGrade}
+        products={productRows}
+        defaultProductId={gradeProductId}
+        open={gradeOpen}
+        onClose={() => setGradeOpen(false)}
       />
     </div>
   );
@@ -308,7 +286,7 @@ function TareTypesPanel() {
       align: 'right',
       hideBelow: 'sm',
       cell: (x) => (
-        <Badge variant={x.is_crate ? 'default' : 'outline'}>
+        <Badge variant={x.is_crate ? 'secondary' : 'outline'}>
           {x.is_crate ? t('catalog.tareTypes.crate') : t('catalog.tareTypes.notCrate')}
         </Badge>
       ),
@@ -328,7 +306,10 @@ function TareTypesPanel() {
   return (
     <div className="flex flex-col gap-4">
       <div className="flex justify-end">
-        <Button onClick={openCreate}>{t('catalog.tareTypes.new')}</Button>
+        <Button onClick={openCreate}>
+          <Plus className="size-4" />
+          {t('catalog.tareTypes.new')}
+        </Button>
       </div>
 
       <AsyncBody

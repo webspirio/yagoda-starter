@@ -194,15 +194,15 @@
   "catalog": {
     "eyebrow": "Directory",
     "title": "Tare & grades",
-    "description": "The berry catalog: products, their grades, and the tare they arrive in.",
+    "description": "The berry catalog: products with their grades side by side, and the tare they arrive in.",
     "tabs": {
-      "products": "Products",
-      "grades": "Grades",
+      "products": "Products & grades",
       "tareTypes": "Tare types"
     },
     "products": {
       "new": "New product",
-      "col": { "name": "Name" },
+      "edit": "Edit {{name}}",
+      "noGrades": "No grades yet — add one so the product appears on intake.",
       "empty": {
         "title": "No products yet",
         "hint": "Add the first berry to your catalog."
@@ -215,16 +215,12 @@
       "toast": { "created": "Product created", "updated": "Product updated" }
     },
     "grades": {
-      "new": "New grade",
-      "allProducts": "All products",
-      "filterLabel": "Filter by product",
+      "add": "Grade",
+      "addAria": "Add a grade to {{name}}",
+      "count_one": "{{count}} grade",
+      "count_other": "{{count}} grades",
       "active": "Active",
       "inactive": "Inactive",
-      "col": { "name": "Name", "product": "Product", "status": "Status" },
-      "empty": {
-        "title": "No grades yet",
-        "hint": "Add a grade to a product to make it visible on intake."
-      },
       "form": {
         "createTitle": "Add grade",
         "editTitle": "Edit grade",
@@ -348,5 +344,10 @@
     "label": "Language",
     "uk": "UK",
     "en": "EN"
+  },
+  "theme": {
+    "label": "Theme",
+    "light": "Light",
+    "dark": "Dark"
   }
 }
