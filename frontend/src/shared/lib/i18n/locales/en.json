@@ -317,6 +317,62 @@
       "reasonTooLong": "The reason must be at most 1000 characters"
     }
   },
+  "day": {
+    "eyebrow": "{{point}} · {{weekday}}",
+    "title": "Cash for {{date}}",
+    "description": "How much berry came in, how much cash went out and what carried over to balances — from the shift's own documents.",
+    "pickPoint": "Select a point",
+    "today": "Today",
+    "status": {
+      "open": "Shift open",
+      "closed": "Shift closed",
+      "awaiting_explanation": "Needs an explanation",
+      "none": "No shift that day",
+      "noneToday": "Shift not opened yet"
+    },
+    "open": "Open shift",
+    "close": "Close shift",
+    "reopen": "Reopen shift",
+    "confirmClose": {
+      "title": "Close the shift?",
+      "body": "Once it is closed, no more receipts or payouts can be booked for this day. Only the owner can reopen it."
+    },
+    "reopenDialog": {
+      "title": "Reopen shift",
+      "reason": "Reason",
+      "reasonHint": "Who asked and why — it stays in the journal",
+      "submit": "Reopen"
+    },
+    "tiles": {
+      "receipts": "Receipts",
+      "accrued": "Accrued",
+      "accruedHint": "value of the berry taken in",
+      "paid": "Paid",
+      "paidHint": "cash for the day",
+      "toDebt": "To balance",
+      "toDebtHint": "carries over to supplier balances"
+    },
+    "feed": {
+      "title": "Day feed",
+      "empty": "Nothing moved on this day.",
+      "noShift": "The shift is not open yet — no receipts and no payouts.",
+      "intake": "Receipt",
+      "payout": "Payout",
+      "voided": "voided"
+    },
+    "toast": {
+      "opened": "Shift opened",
+      "closed": "Shift closed",
+      "reopened": "Shift reopened"
+    },
+    "errors": {
+      "failed": "Could not change the shift",
+      "alreadyOpen": "A shift is already open at this point",
+      "notOpen": "The shift is not open",
+      "notClosed": "Only a closed shift can be reopened",
+      "reasonRequired": "Give a reason"
+    }
+  },
   "profile": {
     "title": "Profile",
     "name": "Name",
