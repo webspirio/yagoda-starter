@@ -21,3 +21,15 @@ export class PaginationQueryDto {
   @Max(100)
   limit: number = 20;
 }
+
+/**
+ * The `skip` for a page. Trivial arithmetic, but it lives here for two reasons:
+ * every list endpoint repeats it verbatim, and the modules that handle money
+ * ban `*` outright (see `eslint.config.mjs`) so that a `price * kg` cannot slip
+ * into a service. A page offset is neither money nor weight; putting it behind
+ * a named helper keeps that ban strict rather than teaching people to write
+ * disable comments next to it.
+ */
+export function skipOf({ page, limit }: PaginationQueryDto): number {
+  return (page - 1) * limit;
+}

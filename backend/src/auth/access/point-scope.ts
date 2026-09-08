@@ -1,4 +1,4 @@
-import { ForbiddenException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import { UserRole } from '../../users/user-role.enum';
 import type { AuthenticatedUser } from '../jwt.strategy';
 
@@ -22,6 +22,33 @@ export function assertOwnsPoint(actor: AuthenticatedUser, pointId: string): void
     message: 'That collection point is not yours',
     code: 'WRONG_COLLECTION_POINT',
   });
+}
+
+/**
+ * The point a WRITE lands on.
+ *
+ * An operator's comes from their token, and a body value naming another point
+ * is refused by `assertOwnsPoint`. An owner has no point of their own, so they
+ * must name one.
+ *
+ * Lifted here from `SuppliersService`, which grew it first, for the reason this
+ * module's header already gives: keeping the rule in one place is what stops
+ * several endpoints each implementing it slightly differently — and the
+ * documents slice adds three more callers.
+ *
+ * NOT used by `shifts`: §10.3 makes opening and closing a shift the operator's
+ * alone, so there is no owner branch there and no body point to resolve.
+ */
+export function resolveWritePoint(actor: AuthenticatedUser, requested?: string): string {
+  if (actor.collection_point_id && !requested) return actor.collection_point_id;
+  if (!requested) {
+    throw new BadRequestException({
+      message: 'collection_point_id is required',
+      code: 'COLLECTION_POINT_REQUIRED',
+    });
+  }
+  assertOwnsPoint(actor, requested);
+  return requested;
 }
 
 /**
