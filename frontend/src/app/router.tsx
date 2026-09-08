@@ -10,6 +10,7 @@ import { UsersPage } from '@/pages/users';
 import { SuppliersPage } from '@/pages/suppliers';
 import { CatalogPage } from '@/pages/catalog';
 import { PricesPage } from '@/pages/prices';
+import { DayPage } from '@/pages/day';
 import { NotFoundPage } from '@/pages/not-found';
 import { UiKitPage } from '@/pages/ui-kit';
 
@@ -54,6 +55,15 @@ export const routes: RouteObject[] = [
         element: (
           <RequireAuth>
             <SuppliersPage />
+          </RequireAuth>
+        ),
+      },
+      {
+        // Both roles: the operator runs their shift, the owner reads (and reopens).
+        path: '/day',
+        element: (
+          <RequireAuth>
+            <DayPage />
           </RequireAuth>
         ),
       },
