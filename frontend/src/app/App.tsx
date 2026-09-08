@@ -1,5 +1,6 @@
-import '@fontsource-variable/geist';
-import '@fontsource-variable/geist-mono';
+import '@fontsource-variable/onest';
+import '@fontsource-variable/unbounded';
+import '@fontsource-variable/jetbrains-mono';
 import { useMemo } from 'react';
 import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
 import { RouterProvider } from 'react-router';
