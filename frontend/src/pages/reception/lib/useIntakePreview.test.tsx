@@ -187,6 +187,58 @@ describe('useIntakePreview', () => {
     expect(result.current.isPending).toBe(false);
   });
 
+  it('stops reporting itself settled the moment the form moves under it', async () => {
+    mock.onPost('/intakes/preview').reply(200, previewResponse('990.00'));
+    const { result, rerender } = renderHook(
+      ({ values }) => useIntakePreview(values, null, { enabled: true }),
+      { wrapper, initialProps: { values: previewableValues('100') } },
+    );
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(250);
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(result.current.isSettled).toBe(true);
+
+    // A keystroke: the 250ms window has not even started to expire, so
+    // `isPending` is still false and the LAST preview is still on screen —
+    // but it answers a body the form no longer holds, and a caller that
+    // submits on it would submit numbers nobody computed.
+    rerender({ values: previewableValues('126.40') });
+    expect(result.current.isPending).toBe(false);
+    expect(result.current.preview?.amount).toBe('990.00');
+    expect(result.current.isSettled).toBe(false);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(250);
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(result.current.isSettled).toBe(true);
+  });
+
+  it('is never settled while the server is refusing', async () => {
+    mock.onPost('/intakes/preview').reply(400, { message: 'no price', code: 'GRADE_NOT_PRICED' });
+
+    const { result } = renderHook(
+      () => useIntakePreview(previewableValues('100'), null, { enabled: true }),
+      { wrapper },
+    );
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(250);
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(result.current.error).not.toBeNull();
+    expect(result.current.isSettled).toBe(false);
+  });
+
   it('does not fire when disabled, even if previewable', async () => {
     mock.onPost('/intakes/preview').reply(200, previewResponse('990.00'));
     renderHook(() => useIntakePreview(previewableValues('100'), null, { enabled: false }), {

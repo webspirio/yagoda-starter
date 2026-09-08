@@ -240,6 +240,26 @@ const page = <T,>(data: T[]) => ({
   isError: false,
 });
 
+interface PreviewState {
+  preview: IntakePreview | null;
+  error: { fieldErrors: { field: string; messageKey: string }[]; formErrorKey: string | null } | null;
+  isPending: boolean;
+  isSettled: boolean;
+}
+
+/** `useIntakePreview`'s return shape. Nothing on screen may act on numbers that
+ *  are not `isSettled`, so every case states it explicitly. */
+const previewState = (over: Partial<PreviewState> = {}): PreviewState => ({
+  preview: null,
+  error: null,
+  isPending: false,
+  isSettled: false,
+  ...over,
+});
+
+/** The happy case: the server has priced exactly what the form now says. */
+const SETTLED = previewState({ preview: PREVIEW, isSettled: true });
+
 function renderReception() {
   const router = createMemoryRouter(
     [
@@ -275,7 +295,7 @@ beforeEach(() => {
   tareTypesMock
     .mockReset()
     .mockReturnValue({ data: TARE_TYPES, isPending: false, isError: false });
-  previewMock.mockReset().mockReturnValue({ preview: null, error: null, isPending: false });
+  previewMock.mockReset().mockReturnValue(previewState());
   createMock.mockReset().mockResolvedValue(CREATED);
   openShiftMock.mockReset().mockResolvedValue(openShift);
 });
@@ -294,6 +314,18 @@ describe('ReceptionPage — before the shift is open', () => {
 
     await user.click(screen.getByRole('button', { name: 'Open shift' }));
     await waitFor(() => expect(openShiftMock).toHaveBeenCalledTimes(1));
+  });
+
+  it('says so when the shift could not be read, rather than offering to open one', () => {
+    // A failed read and «no shift» look identical in the data, and the wrong
+    // guess here lets an operator open a shift that is already open.
+    shiftMock.mockReturnValue({ data: undefined, isPending: false, isError: true });
+
+    renderReception();
+
+    expect(screen.getByRole('alert')).toHaveTextContent('Something went wrong');
+    expect(screen.queryByText('Shift not opened yet')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Open shift' })).toBeNull();
   });
 
   it('tells the owner that opening the shift is the operator’s job', () => {
@@ -370,7 +402,7 @@ describe('ReceptionPage — choosing the supplier', () => {
 
 describe('ReceptionPage — a one-line receipt', () => {
   beforeEach(() => {
-    previewMock.mockReturnValue({ preview: PREVIEW, error: null, isPending: false });
+    previewMock.mockReturnValue(SETTLED);
   });
 
   it('shows the server’s numbers and posts exactly what was typed', async () => {
@@ -411,6 +443,51 @@ describe('ReceptionPage — a one-line receipt', () => {
     expect(screen.getByLabelText('Last name or phone…')).toBeInTheDocument();
   });
 
+  it('sends the owner’s picked point, which an operator’s token supplies instead', async () => {
+    const user = userEvent.setup();
+    meMock.mockReturnValue({ data: OWNER });
+    pointScopeMock.mockReturnValue({
+      pointId: 'p1',
+      canPick: true,
+      setPointId: vi.fn(),
+      isLoading: false,
+    });
+
+    renderReception();
+
+    await user.click(screen.getByRole('button', { name: /Mariia Kovalchuk/ }));
+    await user.type(screen.getByLabelText('Receipt no.'), '00412');
+    await fillDraft(user);
+    await user.click(screen.getByRole('button', { name: 'Accept 120.40 kg' }));
+
+    await waitFor(() =>
+      expect(createMock).toHaveBeenCalledWith(
+        expect.objectContaining({ collection_point_id: 'p1', supplier_id: 's1' }),
+      ),
+    );
+    // The preview is asked the same question with the same point.
+    expect(previewMock).toHaveBeenCalledWith(expect.anything(), 'p1', { enabled: true });
+  });
+
+  it('holds the receipt back while the preview is still catching up with the form', async () => {
+    const user = userEvent.setup();
+    // The 250ms debounce window: nothing is in flight (`isPending` false) and
+    // the last preview is still on screen, but it answers an older form.
+    previewMock.mockReturnValue(previewState({ preview: PREVIEW, isSettled: false }));
+
+    renderReception();
+
+    await user.click(screen.getByRole('button', { name: /Mariia Kovalchuk/ }));
+    await user.type(screen.getByLabelText('Receipt no.'), '00412');
+    await fillDraft(user);
+
+    // No weight on the button and no total: those numbers are not this form's.
+    expect(screen.getByRole('button', { name: 'Accept' })).toBeDisabled();
+    expect(screen.queryByRole('button', { name: /Accept 120.40 kg/ })).toBeNull();
+    expect(screen.getByText('Accrued').closest('div')).toHaveTextContent('…');
+    expect(screen.getByRole('button', { name: 'Add line' })).toBeDisabled();
+  });
+
   it('will not submit a receipt number the paper book could not carry', async () => {
     const user = userEvent.setup();
     renderReception();
@@ -426,7 +503,7 @@ describe('ReceptionPage — a one-line receipt', () => {
 
 describe('ReceptionPage — several lines', () => {
   beforeEach(() => {
-    previewMock.mockReturnValue({ preview: PREVIEW, error: null, isPending: false });
+    previewMock.mockReturnValue(SETTLED);
   });
 
   it('commits the draft into the lines table and stops at five', async () => {
@@ -462,21 +539,59 @@ describe('ReceptionPage — several lines', () => {
       screen.getByText('Real data never has more than 5 lines per visit — no more are added.'),
     ).toBeInTheDocument();
   });
+
+  it('locks the per-row trash once the shift is closed, like every other control', async () => {
+    const user = userEvent.setup();
+    renderReception();
+
+    await user.click(screen.getByRole('button', { name: /Mariia Kovalchuk/ }));
+    await fillDraft(user);
+    await user.click(screen.getByRole('button', { name: 'Add line' }));
+    expect(screen.getAllByRole('button', { name: 'Remove line' })[0]).toBeEnabled();
+
+    // The operator closed the shift in the other tab; the receipt cannot be
+    // written any more, so it cannot be edited any more either.
+    shiftMock.mockReturnValue({ data: null, isPending: false, isError: false });
+    await user.type(screen.getByLabelText('Receipt no.'), 'A');
+
+    expect(screen.getAllByRole('button', { name: 'Remove line' })[0]).toBeDisabled();
+  });
+});
+
+describe('ReceptionPage — the client-side sanity hints', () => {
+  it('warns about an implausible gross weight without choking on the spaces around it', async () => {
+    const user = userEvent.setup();
+    renderReception();
+
+    // A leading space survives a paste from the scale's display; `formatDecimal`
+    // admits no whitespace, so an untrimmed value used to throw mid-render and
+    // take the half-typed receipt down with it.
+    const gross = screen.getByLabelText('Gross — berries including tare');
+    await user.clear(gross);
+    await user.type(gross, ' 800');
+
+    expect(
+      screen.getByText(
+        '800.00 kg — more than the largest line of the season (701.5 kg). Check the gross weight.',
+      ),
+    ).toBeInTheDocument();
+  });
 });
 
 describe('ReceptionPage — a refusal from the server', () => {
   it('puts a mapped line error under the field it names and holds the receipt back', async () => {
     const user = userEvent.setup();
-    previewMock.mockReturnValue({
-      preview: PREVIEW,
-      error: {
-        fieldErrors: [
-          { field: 'items.0.gross_kg', messageKey: 'reception.errors.decimalFormat' },
-        ],
-        formErrorKey: null,
-      },
-      isPending: false,
-    });
+    previewMock.mockReturnValue(
+      previewState({
+        preview: PREVIEW,
+        error: {
+          fieldErrors: [
+            { field: 'items.0.gross_kg', messageKey: 'reception.errors.decimalFormat' },
+          ],
+          formErrorKey: null,
+        },
+      }),
+    );
 
     renderReception();
 
@@ -489,8 +604,65 @@ describe('ReceptionPage — a refusal from the server', () => {
     expect(gross.getAttribute('aria-describedby')).toContain('items.0.gross_kg-error');
     expect(screen.getByText('Enter a weight like 126.40')).toBeInTheDocument();
 
-    expect(screen.getByRole('button', { name: 'Accept 120.40 kg' })).toBeDisabled();
+    // A refused line is neither submittable nor committable — the last good
+    // preview is still on screen, and it is not an answer to THIS form.
+    expect(screen.getByRole('button', { name: 'Accept' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Add line' })).toBeDisabled();
     expect(createMock).not.toHaveBeenCalled();
+  });
+
+  it('reveals the pallet field to carry an error the operator never opened it for', async () => {
+    const user = userEvent.setup();
+    previewMock.mockReturnValue(
+      previewState({
+        preview: PREVIEW,
+        error: {
+          fieldErrors: [
+            { field: 'items.0.pallet_kg', messageKey: 'reception.errors.decimalFormat' },
+          ],
+          formErrorKey: null,
+        },
+      }),
+    );
+
+    renderReception();
+    await user.click(screen.getByRole('button', { name: /Mariia Kovalchuk/ }));
+
+    const pallet = screen.getByLabelText('Pallet');
+    expect(pallet).toHaveAttribute('aria-invalid', 'true');
+    expect(pallet.getAttribute('aria-describedby')).toContain('items.0.pallet_kg-error');
+    expect(screen.getByText('Enter a weight like 126.40')).toBeInTheDocument();
+  });
+
+  it('says so out loud when the refused field is on a line the editor no longer shows', async () => {
+    const user = userEvent.setup();
+    previewMock.mockReturnValue(SETTLED);
+
+    renderReception();
+    await user.click(screen.getByRole('button', { name: /Mariia Kovalchuk/ }));
+    await fillDraft(user);
+    await user.click(screen.getByRole('button', { name: 'Add line' }));
+
+    // Line 0 is committed now; the draft is line 1, so nothing on screen owns
+    // an `items.0.*` error — without the banner the submit would be disabled
+    // with no explanation anywhere.
+    previewMock.mockReturnValue(
+      previewState({
+        preview: PREVIEW,
+        error: {
+          fieldErrors: [
+            { field: 'items.0.gross_kg', messageKey: 'reception.errors.decimalFormat' },
+          ],
+          formErrorKey: null,
+        },
+      }),
+    );
+    await user.type(screen.getByLabelText('Receipt no.'), 'A');
+
+    expect(
+      screen.getByText('The server refused one of the lines — check the rows in the table'),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Accept' })).toBeDisabled();
   });
 });
 
@@ -502,7 +674,7 @@ describe('ReceptionPage — accessibility', () => {
 
   it('has no axe violations once a supplier is chosen and a line is drafted', async () => {
     const user = userEvent.setup();
-    previewMock.mockReturnValue({ preview: PREVIEW, error: null, isPending: false });
+    previewMock.mockReturnValue(SETTLED);
     balanceMock.mockReturnValue({
       data: { supplier_id: 's1', debt: '4000.00' },
       isPending: false,

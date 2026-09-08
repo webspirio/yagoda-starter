@@ -33,6 +33,10 @@ import { ShiftBanner } from './ShiftBanner';
 /** §3 — a UI cap that matches the paper book (4 committed + the draft). */
 const MAX_LINES = 5;
 
+/** The draft-line fields `LineEditor` actually renders an error slot for; its
+ *  tare block claims every `tare.*` name on top of these. */
+const DRAFT_FIELDS = new Set(['gross_kg', 'pallet_kg', 'bonus', 'product_grade_id']);
+
 /**
  * «Прийомка ягоди» — one supplier, up to five lines, one document.
  *
@@ -104,6 +108,22 @@ export function ReceptionPage() {
     (serverErrors.fieldErrors.length > 0 || serverErrors.formErrorKey !== null);
 
   const draftIndex = lines.fields.length - 1;
+  // Which field names actually have somewhere to render on this screen. Only
+  // the DRAFT line is editable, so an error on a committed line — or on a
+  // draft field nothing draws — would otherwise disable the submit in silence.
+  const draftPrefix = `items.${draftIndex}.`;
+  const isFieldRendered = (field: string) => {
+    if (field === 'code') return true;
+    if (!field.startsWith(draftPrefix)) return false;
+    const suffix = field.slice(draftPrefix.length);
+    return DRAFT_FIELDS.has(suffix) || suffix.startsWith('tare.');
+  };
+  const hasUnplaceableError = (serverErrors?.fieldErrors ?? []).some(
+    (e) => !isFieldRendered(e.field),
+  );
+  const formErrorKey =
+    serverErrors?.formErrorKey ?? (hasUnplaceableError ? 'reception.errors.lineRefused' : null);
+
   const draft = values.items[draftIndex];
   // What makes a line worth COMMITTING: a grade, a weight and some tare. The
   // narrower question of whether the form is worth previewing belongs to
@@ -125,18 +145,19 @@ export function ReceptionPage() {
     item: preview.preview?.items[index] ?? null,
   }));
 
-  const accrued = preview.preview?.amount ?? null;
-  const netKg = preview.preview ? sum(preview.preview.items.map((i) => i.net_kg)) : null;
+  // ONLY a settled preview may become a number on screen or a submitted body.
+  // `!isPending` is not enough: inside the 250ms debounce window nothing is in
+  // flight and the previous preview still stands, and it answers a form the
+  // operator has already changed.
+  const settled = preview.isSettled ? preview.preview : null;
+  const accrued = settled?.amount ?? null;
+  const netKg = settled ? sum(settled.items.map((i) => i.net_kg)) : null;
+  const isPreviewing = !preview.isSettled && (preview.isPending || preview.preview !== null);
   const codeError =
     errorAt('code') ??
     (values.code !== '' && !isValidCode(values.code) ? 'reception.errors.codeFormat' : null);
   const canSubmit =
-    shiftOpen &&
-    values.supplier_id !== '' &&
-    isValidCode(values.code) &&
-    !preview.isPending &&
-    preview.preview !== null &&
-    !hasServerError;
+    shiftOpen && values.supplier_id !== '' && isValidCode(values.code) && settled !== null && !hasServerError;
 
   const onSubmit = handleSubmit(async (formValues) => {
     setSubmitFailure(null);
@@ -212,7 +233,14 @@ export function ReceptionPage() {
       <EmptyState title={t('reception.noPrices.title')} hint={t('reception.noPrices.hint')} />
     ) : (
       <>
-        {!shift.isPending && !shiftOpen ? (
+        {/* A failed read and «no shift» are the same `null` in the data, and an
+            «Open shift» button on the first one lets an operator open a shift
+            that is already open. */}
+        {shift.isError ? (
+          <p role="alert" className="mb-5 text-sm text-destructive">
+            {t('common.somethingWentWrong')}
+          </p>
+        ) : !shift.isPending && !shiftOpen ? (
           <ShiftBanner
             canOpen={me?.role === 'point_operator'}
             isOpening={openShift.isPending}
@@ -239,29 +267,32 @@ export function ReceptionPage() {
                 grades={grades.data}
                 tareTypes={tareTypes.data ?? []}
                 previewItem={preview.preview?.items[draftIndex] ?? null}
-                isPreviewPending={preview.isPending}
+                isPreviewPending={!preview.isSettled}
                 codeError={codeError}
                 errorAt={errorAt}
                 disabled={!shiftOpen}
               />
               <LinesTable
                 rows={committed}
-                // A line is committed only once the server has priced it: the
-                // preview covers EVERY line, so a draft the server has not
-                // accepted would take the whole form's numbers down with it.
-                canAdd={draftReady && !atCap && shiftOpen && preview.preview !== null}
+                // A line is committed only once the server has PRICED IT AS IT
+                // STANDS: the preview covers every line, so committing one the
+                // server has not settled on (or has just refused) would take
+                // the whole form's numbers down with it.
+                canAdd={draftReady && !atCap && shiftOpen && settled !== null && !hasServerError}
                 atCap={atCap}
+                disabled={!shiftOpen}
                 onAdd={() => lines.append(emptyLine(defaultTareTypeId))}
                 onRemove={(index) => lines.remove(index)}
               />
               <TotalsSection
                 accrued={accrued}
                 netKg={netKg}
-                lineCount={preview.preview?.items.length ?? lines.fields.length}
+                lineCount={settled?.items.length ?? lines.fields.length}
                 debt={debt}
                 disabled={!canSubmit}
+                isPreviewing={isPreviewing}
                 isSubmitting={create.isPending}
-                formErrorKey={serverErrors?.formErrorKey ?? null}
+                formErrorKey={formErrorKey}
               />
             </Card>
           </form>

@@ -16,14 +16,18 @@ export function TotalsSection({
   lineCount,
   debt,
   disabled,
+  isPreviewing,
   isSubmitting,
   formErrorKey,
 }: {
+  /** `null` unless the preview has SETTLED on the form as it stands now. */
   accrued: string | null;
   netKg: string | null;
   lineCount: number;
   debt: string | null;
   disabled: boolean;
+  /** The numbers are being (re)computed — «…» rather than a bare dash. */
+  isPreviewing: boolean;
   isSubmitting: boolean;
   formErrorKey: string | null;
 }) {
@@ -47,7 +51,11 @@ export function TotalsSection({
         <div className="flex items-baseline justify-between gap-3 text-sm">
           <span className="text-muted-foreground">{t('reception.totals.accrued')}</span>
           <span className="font-mono">
-            {accrued === null ? '—' : formatUah(accrued, locale)}
+            {accrued === null ? (
+              <span className="text-muted-foreground">{isPreviewing ? '…' : '—'}</span>
+            ) : (
+              formatUah(accrued, locale)
+            )}
           </span>
         </div>
 
@@ -59,8 +67,14 @@ export function TotalsSection({
             </div>
             <div className="flex items-baseline justify-between gap-3 text-sm font-medium">
               <span>{t('reception.totals.total')}</span>
+              {/* Never «balance + 0,00» while the accrual is unknown: that reads
+                  as a real figure and is not one. */}
               <span className="font-mono">
-                {formatUah(add(accrued ?? '0.00', debt), locale)}
+                {accrued === null ? (
+                  <span className="text-muted-foreground">{isPreviewing ? '…' : '—'}</span>
+                ) : (
+                  formatUah(add(accrued, debt), locale)
+                )}
               </span>
             </div>
           </>

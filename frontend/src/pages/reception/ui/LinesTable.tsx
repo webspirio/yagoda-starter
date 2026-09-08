@@ -26,12 +26,15 @@ export function LinesTable({
   rows,
   canAdd,
   atCap,
+  disabled,
   onAdd,
   onRemove,
 }: {
   rows: CommittedLine[];
   canAdd: boolean;
   atCap: boolean;
+  /** No shift, no document — a committed line cannot be dropped either. */
+  disabled: boolean;
   onAdd: () => void;
   onRemove: (index: number) => void;
 }) {
@@ -110,6 +113,7 @@ export function LinesTable({
                       variant="ghost"
                       size="icon-sm"
                       aria-label={t('reception.lines.remove')}
+                      disabled={disabled}
                       onClick={() => onRemove(index)}
                     >
                       <Trash2 className="size-3.5" />

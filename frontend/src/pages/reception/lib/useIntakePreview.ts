@@ -70,12 +70,24 @@ function isPreviewable(values: IntakeFormValues): boolean {
  * discarded by comparing a `useRef` counter, bumped once per fired request,
  * against its own snapshot after the `await` — the classic race a debounced
  * network call must guard against regardless of debounce.
+ *
+ * `isSettled` is the ONE flag a caller may act on — submit, or commit a line.
+ * `!isPending` is not enough: during the 250ms debounce window nothing is in
+ * flight yet and the previous preview is still on screen, so a caller reading
+ * `preview` there would act on numbers that no longer describe the form. This
+ * is true only when the preview in hand ANSWERED THE CURRENT (un-debounced)
+ * body, with no request in flight and no refusal standing.
  */
 export function useIntakePreview(
   values: IntakeFormValues,
   pointId: string | null,
   { enabled }: { enabled: boolean },
-): { preview: IntakePreview | null; error: ApiFieldErrors | null; isPending: boolean } {
+): {
+  preview: IntakePreview | null;
+  error: ApiFieldErrors | null;
+  isPending: boolean;
+  isSettled: boolean;
+} {
   const { mutateAsync } = usePreviewIntakeMutation();
   // Captured via a ref, not the effect's dependency array: `mutateAsync`'s
   // identity is not guaranteed stable across renders, and depending on it
@@ -98,6 +110,9 @@ export function useIntakePreview(
   const active = enabled && debounced !== null;
 
   const [preview, setPreview] = useState<IntakePreview | null>(null);
+  // The serialized body the `preview` in hand actually answered — state, not a
+  // ref, because `isSettled` is read during render and a ref would not re-run it.
+  const [answeredBody, setAnsweredBody] = useState<string | null>(null);
   const [error, setError] = useState<ApiFieldErrors | null>(null);
   const [isPending, setIsPending] = useState(false);
   const requestRef = useRef(0);
@@ -122,6 +137,7 @@ export function useIntakePreview(
         const result = await mutateRef.current(body);
         if (requestRef.current !== requestId) return; // superseded — discard
         setPreview(result);
+        setAnsweredBody(debounced);
         setIsPending(false);
       } catch (err) {
         if (requestRef.current !== requestId) return; // superseded — discard
@@ -136,5 +152,10 @@ export function useIntakePreview(
     preview: active ? preview : null,
     error: active ? error : null,
     isPending: active && isPending,
+    // Compared against `serializedBody` — the CURRENT body, not the debounced
+    // one: the whole point is to be false for the 250ms in which the form has
+    // already moved and the request has not yet been sent.
+    isSettled:
+      active && preview !== null && !isPending && error === null && answeredBody === serializedBody,
   };
 }

@@ -107,9 +107,10 @@ export function LineEditor({
       null,
     );
   const grossError = errorAt(`items.${index}.gross_kg`);
+  const palletError = errorAt(`items.${index}.pallet_kg`);
   const bonusError = errorAt(`items.${index}.bonus`);
   const gradeError = errorAt(`items.${index}.product_grade_id`);
-  const hasLineError = Boolean(grossError || bonusError || gradeError || tareError);
+  const hasLineError = Boolean(grossError || palletError || bonusError || gradeError || tareError);
 
   // Bounds are the GRADE's, not a global setting (§3): `max_discount` is a
   // magnitude, so the floor is its negation.
@@ -139,7 +140,11 @@ export function LineEditor({
     });
   };
 
-  const grossWarning = compare(gross, IMPLAUSIBLE_GROSS) === 1;
+  // ONE normalization, fed to both the comparison and the formatter: they use
+  // different regexes, and `formatDecimal`'s admits no surrounding whitespace —
+  // so a pasted " 800" used to pass the comparison and then throw mid-render.
+  const normalizedGross = gross.trim().replace(',', '.');
+  const grossWarning = compare(normalizedGross, IMPLAUSIBLE_GROSS) === 1;
   // Per crate is read off the SERVER's net weight and the integer unit counts it
   // resolved — never off a typed weight, and never through a float (`div` is
   // BigInt kopiykas).
@@ -200,10 +205,11 @@ export function LineEditor({
             )}
           </Field>
 
-          {showPallet ? (
+          {showPallet || palletError !== null ? (
             <Field
               name={`items.${index}.pallet_kg`}
               label={t('reception.weight.pallet')}
+              error={palletError ?? undefined}
               className="w-[124px]"
             >
               {(a11y) => (
@@ -235,7 +241,7 @@ export function LineEditor({
         {grossWarning ? (
           <p className="mt-1.5 flex items-start gap-2 text-xs text-amber">
             <AlertTriangle className="mt-px size-3.5 shrink-0" />
-            {t('reception.line.grossWarning', { gross: formatDecimal(gross.replace(',', '.'), locale) })}
+            {t('reception.line.grossWarning', { gross: formatDecimal(normalizedGross, locale) })}
           </p>
         ) : null}
 
