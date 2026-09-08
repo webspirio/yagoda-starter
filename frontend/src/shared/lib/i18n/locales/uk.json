@@ -419,7 +419,39 @@
     "avatarUploadFailed": "Не вдалося завантажити зображення"
   },
   "dashboard": {
-    "signedInAs": "Ви увійшли як {{name}}"
+    "eyebrow": "{{weekday}} · сезон {{year}}",
+    "title": "Зведення",
+    "description": "Сьогодні по мережі: зміни, квитанції, гроші й залишки — по точках.",
+    "operatorDescription": "Сьогодні на вашій точці: зміна, квитанції та швидкі дії.",
+    "tiles": {
+      "pointsOpen": "Точок працює",
+      "receipts": "Квитанцій сьогодні",
+      "accrued": "Нараховано",
+      "paid": "Видано",
+      "balances": "Залишків по мережі",
+      "balancesHint": "перші 100"
+    },
+    "points": {
+      "title": "Точки сьогодні",
+      "empty": "Точок ще немає",
+      "status": {
+        "open": "Зміна відкрита",
+        "closed": "Зміну закрито",
+        "awaiting_explanation": "Потребує пояснення",
+        "none": "Зміну ще не відкрито"
+      },
+      "dayCash": "Каса за день",
+      "reception": "Прийомка"
+    },
+    "topBalances": {
+      "title": "Найбільші залишки",
+      "empty": "Заборгованостей немає"
+    },
+    "shortcuts": {
+      "reception": "Прийомка",
+      "dayCash": "Каса за день",
+      "balances": "Залишки"
+    }
   },
   "notFound": {
     "title": "Сторінку не знайдено",

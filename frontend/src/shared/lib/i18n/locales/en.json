@@ -413,7 +413,39 @@
     "avatarUploadFailed": "Could not upload that image"
   },
   "dashboard": {
-    "signedInAs": "Signed in as {{name}}"
+    "eyebrow": "{{weekday}} · season {{year}}",
+    "title": "Summary",
+    "description": "Today across the network: shifts, receipts, cash and balances — by point.",
+    "operatorDescription": "Today at your point: shift, receipts and quick actions.",
+    "tiles": {
+      "pointsOpen": "Points open",
+      "receipts": "Receipts today",
+      "accrued": "Accrued",
+      "paid": "Paid",
+      "balances": "Network balances",
+      "balancesHint": "first 100"
+    },
+    "points": {
+      "title": "Points today",
+      "empty": "No active points yet",
+      "status": {
+        "open": "Shift open",
+        "closed": "Shift closed",
+        "awaiting_explanation": "Needs an explanation",
+        "none": "Shift not opened yet"
+      },
+      "dayCash": "Cash for the day",
+      "reception": "Intake"
+    },
+    "topBalances": {
+      "title": "Biggest balances",
+      "empty": "No balances owed"
+    },
+    "shortcuts": {
+      "reception": "Intake",
+      "dayCash": "Cash for the day",
+      "balances": "Balances"
+    }
   },
   "notFound": {
     "title": "Page not found",
