@@ -5,7 +5,7 @@ import MockAdapter from 'axios-mock-adapter';
 import type { ReactNode } from 'react';
 import { httpClient } from '@/shared/api';
 import { queryKeys } from '@/shared/api/queryKeys';
-import { useIntakesQuery, intakesQueryOptions } from './useIntakes';
+import { usePayoutsQuery, payoutsQueryOptions } from './usePayouts';
 
 let mock: MockAdapter;
 const wrapper = ({ children }: { children: ReactNode }) => (
@@ -19,45 +19,45 @@ beforeEach(() => {
 });
 afterEach(() => mock.restore());
 
-describe('useIntakesQuery', () => {
+describe('usePayoutsQuery', () => {
   it('does not fire with no shift, supplier or point set', () => {
-    const { result } = renderHook(() => useIntakesQuery({}), { wrapper });
+    const { result } = renderHook(() => usePayoutsQuery({}), { wrapper });
     expect(result.current.fetchStatus).toBe('idle');
   });
 
   it('fetches headers for a shift, mapping the filter to snake_case params', async () => {
-    const envelope = { data: [{ id: 'i1' }], total: 1, page: 1, limit: 100 };
+    const envelope = { data: [{ id: 'p1' }], total: 1, page: 1, limit: 100 };
     mock
-      .onGet('/intakes', { params: { shift_id: 's1', include_voided: true, limit: 100 } })
+      .onGet('/payouts', { params: { shift_id: 's1', include_voided: true, limit: 100 } })
       .reply(200, envelope);
-    const { result } = renderHook(() => useIntakesQuery({ shiftId: 's1' }), { wrapper });
+    const { result } = renderHook(() => usePayoutsQuery({ shiftId: 's1' }), { wrapper });
     await waitFor(() => expect(result.current.data).toEqual(envelope));
   });
 
   it('sends a date range and page, and is enabled by a range alone', async () => {
     mock
-      .onGet('/intakes', {
+      .onGet('/payouts', {
         params: { from: '2026-09-01', to: '2026-09-30', page: 2, include_voided: true, limit: 100 },
       })
       .reply(200, { data: [], total: 0, page: 2, limit: 100 });
     const { result } = renderHook(
-      () => useIntakesQuery({ from: '2026-09-01', to: '2026-09-30', page: 2 }),
+      () => usePayoutsQuery({ from: '2026-09-01', to: '2026-09-30', page: 2 }),
       { wrapper },
     );
     await waitFor(() => expect(result.current.data?.page).toBe(2));
   });
 });
 
-describe('intakesQueryOptions', () => {
+describe('payoutsQueryOptions', () => {
   it('has the same queryKey the hook registers for the same filter', () => {
     const filter = {};
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     const localWrapper = ({ children }: { children: ReactNode }) => (
       <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
     );
-    renderHook(() => useIntakesQuery(filter), { wrapper: localWrapper });
+    renderHook(() => usePayoutsQuery(filter), { wrapper: localWrapper });
     const [query] = queryClient.getQueryCache().getAll();
-    expect(query?.queryKey).toEqual(intakesQueryOptions(filter).queryKey);
-    expect(intakesQueryOptions(filter).queryKey).toEqual([...queryKeys.intakes, filter]);
+    expect(query?.queryKey).toEqual(payoutsQueryOptions(filter).queryKey);
+    expect(payoutsQueryOptions(filter).queryKey).toEqual([...queryKeys.payouts, filter]);
   });
 });

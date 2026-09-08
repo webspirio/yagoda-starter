@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { queryOptions, useQuery } from '@tanstack/react-query';
 import { httpClient } from '@/shared/api';
 import { queryKeys } from '@/shared/api/queryKeys';
 import { STALE } from '@/shared/api/queryClient';
@@ -15,16 +15,26 @@ export function documentParams(f: DocumentFilter) {
     ...(f.shiftId ? { shift_id: f.shiftId } : {}),
     ...(f.supplierId ? { supplier_id: f.supplierId } : {}),
     ...(f.pointId ? { collection_point_id: f.pointId } : {}),
+    ...(f.from ? { from: f.from } : {}),
+    ...(f.to ? { to: f.to } : {}),
+    ...(f.page ? { page: f.page } : {}),
     include_voided: f.includeVoided ?? true,
     limit: f.limit ?? 100,
   };
 }
 
-/** Payout headers for a shift, a supplier or a point — never all of them. */
-export function usePayoutsQuery(filter: DocumentFilter) {
-  const enabled = Boolean(filter.shiftId || filter.supplierId || filter.pointId);
-  return useQuery({
-    queryKey: [...queryKeys.payouts, filter],
+/**
+ * Payout headers for a shift, a supplier, a point, or a `from`/`to` date
+ * range — never bare. Built with `queryOptions()` so `useQueries` callers
+ * (the owner overview) can share this exact queryKey/queryFn/staleTime
+ * without duplicating the fetcher.
+ */
+export function payoutsQueryOptions(filter: DocumentFilter) {
+  const enabled = Boolean(
+    filter.shiftId || filter.supplierId || filter.pointId || (filter.from && filter.to),
+  );
+  return queryOptions({
+    queryKey: [...queryKeys.payouts, filter] as const,
     enabled,
     queryFn: async (): Promise<Paginated<Payout>> => {
       const { data } = await httpClient.get<Paginated<Payout>>('/payouts', {
@@ -34,4 +44,9 @@ export function usePayoutsQuery(filter: DocumentFilter) {
     },
     staleTime: STALE.list,
   });
+}
+
+/** Payout headers for a shift, a supplier, a point, or a date range — never all of them. */
+export function usePayoutsQuery(filter: DocumentFilter) {
+  return useQuery(payoutsQueryOptions(filter));
 }

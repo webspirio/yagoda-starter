@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { queryOptions, useQuery } from '@tanstack/react-query';
 import { httpClient, ApiError } from '@/shared/api';
 import { queryKeys } from '@/shared/api/queryKeys';
 import type { Shift } from '../model/shift';
@@ -36,10 +36,14 @@ export function useCurrentShiftQuery(pointId: string | null) {
   });
 }
 
-/** The one shift a point had on a date (UQ point+date), or `null`. */
-export function useShiftOnDateQuery(pointId: string | null, date: string) {
-  return useQuery({
-    queryKey: [...queryKeys.shifts, 'on', pointId, date],
+/**
+ * The one shift a point had on a date (UQ point+date), or `null`. Built with
+ * `queryOptions()` so `useQueries` callers (the owner overview) can share
+ * this exact queryKey/queryFn/staleTime without duplicating the fetcher.
+ */
+export function shiftOnDateQueryOptions(pointId: string | null, date: string) {
+  return queryOptions({
+    queryKey: [...queryKeys.shifts, 'on', pointId, date] as const,
     enabled: pointId !== null,
     queryFn: async (): Promise<Shift | null> => {
       const { data } = await httpClient.get<ShiftListEnvelope>('/shifts', {
@@ -49,4 +53,9 @@ export function useShiftOnDateQuery(pointId: string | null, date: string) {
     },
     staleTime: 30_000,
   });
+}
+
+/** The one shift a point had on a date (UQ point+date), or `null`. */
+export function useShiftOnDateQuery(pointId: string | null, date: string) {
+  return useQuery(shiftOnDateQueryOptions(pointId, date));
 }

@@ -34,6 +34,10 @@ export interface DocumentFilter {
   shiftId?: string;
   supplierId?: string;
   pointId?: string;
+  /** `YYYY-MM-DD` business date bounds — both together are a valid scope on their own. */
+  from?: string;
+  to?: string;
   includeVoided?: boolean;
+  page?: number;
   limit?: number;
 }

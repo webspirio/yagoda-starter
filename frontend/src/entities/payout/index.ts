@@ -1,2 +1,2 @@
-export type { Payout } from './model/payout';
-export { usePayoutsQuery } from './api/usePayouts';
+export type { Payout, Paginated, DocumentFilter } from './model/payout';
+export { usePayoutsQuery, payoutsQueryOptions } from './api/usePayouts';

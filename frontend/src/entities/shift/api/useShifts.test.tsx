@@ -4,7 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import MockAdapter from 'axios-mock-adapter';
 import type { ReactNode } from 'react';
 import { httpClient, attachAuthInterceptors } from '@/shared/api';
-import { useCurrentShiftQuery, useShiftOnDateQuery } from './useShifts';
+import { useCurrentShiftQuery, useShiftOnDateQuery, shiftOnDateQueryOptions } from './useShifts';
 
 // Without this, a mocked 404 surfaces as a plain AxiosError rather than the
 // ApiError the 404-as-null branch in useCurrentShiftQuery checks for — see
@@ -67,5 +67,17 @@ describe('useShiftOnDateQuery', () => {
       });
     const { result } = renderHook(() => useShiftOnDateQuery('p1', '2026-09-07'), { wrapper });
     await waitFor(() => expect(result.current.data?.id).toBe('s0'));
+  });
+});
+
+describe('shiftOnDateQueryOptions', () => {
+  it('has the same queryKey the hook registers for the same input', () => {
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const localWrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    );
+    renderHook(() => useShiftOnDateQuery(null, '2026-09-07'), { wrapper: localWrapper });
+    const [query] = queryClient.getQueryCache().getAll();
+    expect(query?.queryKey).toEqual(shiftOnDateQueryOptions(null, '2026-09-07').queryKey);
   });
 });

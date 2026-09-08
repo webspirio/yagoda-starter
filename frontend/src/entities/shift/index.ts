@@ -1,2 +1,2 @@
 export type { Shift, ShiftStatus } from './model/shift';
-export { useCurrentShiftQuery, useShiftOnDateQuery } from './api/useShifts';
+export { useCurrentShiftQuery, useShiftOnDateQuery, shiftOnDateQueryOptions } from './api/useShifts';
