@@ -1,16 +1,17 @@
 import i18n from 'i18next';
 import { initReactI18next } from 'react-i18next';
 import en from './locales/en.json';
+import uk from './locales/uk.json';
 import { getStoredLanguage } from './language-preference';
 
 /**
  * Seed the UI language. A previously persisted manual choice
- * (LanguageSwitcher / storeLanguage) wins if present; otherwise 'en', the
- * only locale this starter ships. Kept as its own function so a project
- * adding a second locale has a single place to widen the fallback logic.
+ * (LanguageSwitcher / storeLanguage) wins if present; otherwise 'uk' — this is
+ * a Ukrainian-first product (the berry network's own language). English stays
+ * registered as the fallback so any not-yet-translated key still resolves.
  */
 function detectLanguage(): string {
-  return getStoredLanguage() ?? 'en';
+  return getStoredLanguage() ?? 'uk';
 }
 
 /**
@@ -30,6 +31,7 @@ function syncHtmlLang(): void {
 export function initI18n(): void {
   void i18n.use(initReactI18next).init({
     resources: {
+      uk: { translation: uk },
       en: { translation: en },
     },
     lng: detectLanguage(),

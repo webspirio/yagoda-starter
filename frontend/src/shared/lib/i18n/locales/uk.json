@@ -1,0 +1,68 @@
+{
+  "common": {
+    "save": "Зберегти",
+    "cancel": "Скасувати",
+    "close": "Закрити",
+    "loading": "Завантаження…",
+    "retry": "Повторити",
+    "somethingWentWrong": "Щось пішло не так",
+    "copy": "Копіювати",
+    "copied": "Скопійовано"
+  },
+  "auth": {
+    "signIn": "Увійти",
+    "signOut": "Вийти",
+    "username": "Логін",
+    "password": "Пароль",
+    "usernameHint": "Логін, який дав вам керівник мережі",
+    "invalidCredentials": "Неправильний логін або пароль"
+  },
+  "nav": {
+    "dashboard": "Зведення",
+    "profile": "Профіль",
+    "settings": "Налаштування",
+    "openMenu": "Відкрити меню",
+    "closeMenu": "Закрити меню"
+  },
+  "profile": {
+    "title": "Профіль",
+    "name": "Імʼя",
+    "login": "Логін",
+    "role": "Роль",
+    "roles": {
+      "network_owner": "Керівник мережі",
+      "point_operator": "Приймальник"
+    },
+    "avatar": "Аватар",
+    "changeAvatar": "Змінити аватар",
+    "avatarTooLarge": "Зображення має бути менше за 10 МБ",
+    "avatarWrongType": "Зображення має бути JPEG, PNG або WebP",
+    "avatarUploadFailed": "Не вдалося завантажити зображення"
+  },
+  "dashboard": {
+    "signedInAs": "Ви увійшли як {{name}}"
+  },
+  "notFound": {
+    "title": "Сторінку не знайдено",
+    "backHome": "До зведення"
+  },
+  "errorFallback": {
+    "title": "Щось пішло не так",
+    "body": "Сталася неочікувана помилка. Спробуйте перезавантажити сторінку.",
+    "tryAgain": "Спробувати ще раз",
+    "reload": "Перезавантажити"
+  },
+  "actions": {
+    "showAll": "Показати всі ({{count}})",
+    "collapse": "Згорнути"
+  },
+  "picker": {
+    "searchPlaceholder": "Почніть вводити або оберіть нижче…",
+    "create": "Додати «{{label}}»"
+  },
+  "lang": {
+    "label": "Мова",
+    "uk": "UK",
+    "en": "EN"
+  }
+}
