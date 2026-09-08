@@ -437,6 +437,33 @@
       "reasonRequired": "Enter a reason"
     }
   },
+  "payout": {
+    "form": {
+      "title": "Pay out the balance — {{name}}",
+      "description": "Cash leaves the till today; the berries stay dated when they were received. Both dates stay in the books, so the daily reconciliation adds up.",
+      "code": "Receipt no.",
+      "codeHint": "The number from the paper payout book — the system adds the point and date",
+      "amount": "Amount"
+    },
+    "allButton": "All — {{uah}}",
+    "submit": "Pay out {{uah}}",
+    "toast": {
+      "paid": "Paid out {{uah}}"
+    },
+    "errors": {
+      "codeRequired": "Enter the receipt number",
+      "codeFormat": "1–16 Latin letters, digits or dashes",
+      "codeTaken": "A payout with this number already exists today",
+      "amountFormat": "Enter an amount like 4000 or 4000.50",
+      "amountZero": "The amount must be above zero",
+      "exceedsDebt": "Cannot pay more than the balance — balance {{debt}}",
+      "exceedsDebtServer": "Refused: the amount exceeds the balance",
+      "noOpenShift": "No open shift — open one in Cash for the day",
+      "supplierInactive": "The supplier is deactivated",
+      "shiftClosed": "The shift is already closed",
+      "failed": "Could not record the payout"
+    }
+  },
   "theme": {
     "label": "Theme",
     "light": "Light",
