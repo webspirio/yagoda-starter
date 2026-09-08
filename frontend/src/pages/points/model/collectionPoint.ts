@@ -16,6 +16,8 @@ export interface Paginated<T> {
 export interface CollectionPoint {
   id: string;
   name: string;
+  /** 2–8 A–Z/0–9 — the first segment of every receipt code written at this point (§6.2). */
+  code: string;
   kind: PointKind;
   target_cash: string | null;
   target_crates: number | null;
@@ -26,6 +28,7 @@ export interface CollectionPoint {
 /** POST body. `name` required; omit a target (undefined) to leave it unset. */
 export interface CreateCollectionPointInput {
   name: string;
+  code: string;
   kind?: PointKind;
   target_cash?: string | null;
   target_crates?: number | null;
@@ -38,6 +41,7 @@ export interface CreateCollectionPointInput {
  */
 export interface UpdateCollectionPointInput {
   name?: string;
+  code?: string;
   kind?: PointKind;
   target_cash?: string | null;
   target_crates?: number | null;
@@ -48,6 +52,7 @@ export interface UpdateCollectionPointInput {
 /** Form values — strings for text inputs; '' means "not set" → null on submit. */
 export interface CollectionPointFormValues {
   name: string;
+  code: string;
   kind: PointKind;
   target_cash: string;
   target_crates: string;

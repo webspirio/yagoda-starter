@@ -33,7 +33,12 @@ export function PointsPage() {
   const rows = data?.data ?? [];
 
   const columns: Column<CollectionPoint>[] = [
-    { id: 'name', header: t('points.col.name'), cell: (p) => <span className="font-medium">{p.name}</span> },
+    {
+      id: 'name',
+      header: t('points.col.name'),
+      cell: (p) => <span className="font-medium">{p.name}</span>,
+    },
+    { id: 'code', header: t('points.col.code'), className: 'font-mono', cell: (p) => p.code },
     { id: 'kind', header: t('points.col.kind'), cell: (p) => t(`points.kind.${p.kind}`) },
     {
       id: 'target_cash',
