@@ -486,3 +486,29 @@ schedules yet — a kit/consistency pass, not a feature:
   is 100 per journal — 100 intakes + 5 payouts reads «перші 105 документів».
 - **A refused close banner survives navigation** on the day page (step to another
   day, switch point); clear it in the date/point setters.
+
+## Learned from the debts and overview screens (2026-09-09)
+
+- **`DataTable`'s `onRowClick` lands on a bare `<tr>`** with no role, no
+  `tabIndex` and no key handler, so a row-click page is unreachable by
+  keyboard — and axe cannot flag it. Six pages do it now (users, catalog,
+  suppliers, points, debts, journal). Fix it once in `shared/ui/data-table.tsx`
+  (a focusable row with Enter/Space) rather than per page; `/debts` and
+  `/suppliers` carry a per-row `Link` as the interim path.
+- **`usePointScope().isLoading` is ignored** by the day, reception and debts
+  pages: an operator's first render fires the read with `pointId: null`, then
+  again under the real point once `me` resolves. Harmless (the server pins the
+  operator) but one wasted request per cold load; gate with `enabled`.
+- **Spec drift recorded, all deliberate:** §5.3's «card list, not accordion»
+  became a `DataTable`; §5.3's supplier kind badge was dropped because
+  `SupplierBalanceRow` carries no `kind`; §5.4's «Показати ще» became a fixed
+  `limit: 100` with a «перші 100» hint; the card's «Здач за сезон» is the
+  envelope `total` (voided included) while «Нараховано» excludes voided.
+- **Operators void from the supplier card far more often against closed
+  shifts** than anywhere else — the `SHIFT_CLOSED` banner is the backstop, but
+  it is a spec question whether the card should hide «Анулювати» on rows from
+  closed shifts for an operator.
+- **The journal's supplier picker** is capped at the entity's `limit: 100`
+  without search, and table names fall back to an 8-char id past the first
+  100 balance rows on «Усі точки». Fine for a season's network; revisit with
+  a server-side name lookup if the directory grows.
