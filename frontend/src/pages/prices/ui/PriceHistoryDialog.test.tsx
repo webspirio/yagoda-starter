@@ -85,20 +85,44 @@ describe('PriceHistoryDialog', () => {
     await expectNoAxeViolations(container);
   });
 
-  it('formats the date and time from the SAME local clock reading, so they never disagree by a day', () => {
-    // 22:30 UTC on the 8th is already 01:30 on the 9th in Kyiv (UTC+3) — a
-    // date sliced from the UTC string and a time formatted from the local
-    // one would show "09/08" next to "01:30 AM", a day apart.
+  it('formats the date and time from the SAME local clock reading, so they never disagree by a day, while row order and reasons still render', () => {
+    // 22:30 UTC on the 8th crosses local midnight in most positive-offset
+    // timezones — a date sliced from the UTC string and a time formatted
+    // from the local one would then show two different calendar days. The
+    // expectation below is computed with the SAME formatter (options and
+    // locale) the component uses, over the SAME Date, so this assertion
+    // holds under any runner timezone (including CI's `TZ=UTC`) instead of
+    // hardcoding a Kyiv-only reading.
+    const createdAt = '2026-09-08T22:30:00Z';
+    const expected = new Intl.DateTimeFormat('en', {
+      day: '2-digit',
+      month: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+    }).format(new Date(createdAt));
+
     historyMock.mockReturnValue({
-      data: [row({ id: 'gp1', created_at: '2026-09-08T22:30:00Z' })],
+      data: [
+        row({ id: 'gp2', created_at: createdAt, reason: 'Season peak' }),
+        row({ id: 'gp1', created_at: '2026-09-01T07:10:00Z' }),
+      ],
       isPending: false,
       isError: false,
     });
     render(<PriceHistoryDialog pointId="p1" grade={grade} open onClose={() => {}} />);
 
     const table = screen.getByRole('table');
-    const dataRow = within(table).getAllByRole('row')[1];
-    expect(within(dataRow).getByText('09/09, 01:30 AM')).toBeInTheDocument();
+    const rows = within(table).getAllByRole('row').slice(1); // drop the header row
+    expect(rows).toHaveLength(2);
+
+    // Timezone-dependent: the newest row's date/time cell, computed the same
+    // way the component computes it.
+    expect(within(rows[0]).getByText(expected)).toBeInTheDocument();
+
+    // Timezone-free: newest-first row order (as the API returned them) and
+    // the reason still render.
+    expect(within(rows[0]).getByText('Season peak')).toBeInTheDocument();
+    expect(within(rows[1]).getByText('—')).toBeInTheDocument();
   });
 
   it('shows the empty state when the grade has never been priced', () => {
