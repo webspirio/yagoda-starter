@@ -17,9 +17,11 @@ export interface Column<Row> {
 const HIDE = { sm: 'max-sm:hidden', md: 'max-md:hidden', lg: 'max-lg:hidden' } as const;
 const ALIGN = { left: 'text-left', center: 'text-center', right: 'text-right' } as const;
 
-/** The mock's table shell: every table there sits in a white card with the
- *  hairline ring, never bare on the paper background. */
-const FRAME_CLASS = 'overflow-hidden rounded-xl bg-card ring-1 ring-foreground/10';
+/** The mock's table shell: every table there sits in a card, never bare on the
+ *  paper background. The outline is a real `line2` border rather than the
+ *  mock's `ring-foreground/10`: at 10% the ring is invisible on the dark
+ *  paper, and the header band then read as part of the page. */
+const FRAME_CLASS = 'overflow-hidden rounded-xl border border-line2 bg-card';
 
 export function DataTable<Row>({
   columns,

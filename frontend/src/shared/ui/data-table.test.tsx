@@ -47,7 +47,7 @@ it('sits in the card frame by default, and renders bare with frame={false}', () 
     <DataTable columns={columns} rows={rows} rowKey={(r) => r.id} />,
   );
   const frame = container.querySelector('[data-slot="data-table-frame"]');
-  expect(frame).toHaveClass('bg-card', 'ring-1');
+  expect(frame).toHaveClass('bg-card', 'border-line2');
   expect(frame?.querySelector('table')).not.toBeNull();
 
   rerender(<DataTable columns={columns} rows={rows} rowKey={(r) => r.id} frame={false} />);
