@@ -143,7 +143,7 @@ jobs:
       # PR-created caches remain scoped by GitHub's cache visibility rules;
       # main acts as the canonical shared seed for new PRs.
       - name: Cache turbo
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: .turbo
           key: turbo-${{ github.job }}-${{ runner.os }}-${{ github.sha }}
