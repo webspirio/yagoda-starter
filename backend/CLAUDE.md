@@ -93,6 +93,7 @@ src/
   time/                   # TimeService — the one seam for timezone-aware time (APP_TIMEZONE)
   config/                 # typed, namespaced env config factories (app, database, auth, redis, timezone, uploads)
   migrations/             # InitialSchema, SeedDevAdmin (guarded off in production), YagodaFoundation, BootstrapOwner, IndexUserIdentityUser, YagodaCatalog, YagodaSuppliersAndPrices
+  seed/                   # dev-seed — idempotent demo dataset for manual testing (`npm run seed:dev`); NOT a migration, never runs on its own
 ```
 
 ## Key conventions
@@ -133,6 +134,29 @@ TypeORM migrations run automatically on startup (`migrationsRun: true`). `synchr
 **`SeedDevAdmin` (…0001) is deliberately not amended** to write `first_name`/`last_name`/`role` — it runs before `YagodaFoundation` (…0002), so a version referencing those columns would fail on every fresh database. `YagodaFoundation` backfills the row it left instead. This is why a migration is layout-frozen once another migration is written to depend on its output: fix forward, don't edit history.
 
 **`BootstrapOwner` (…0003) needs its environment variables set before the FIRST production boot.** It creates the first `network_owner` from `BOOTSTRAP_OWNER_LOGIN`/`BOOTSTRAP_OWNER_PASSWORD` (plus optional first/last name), but only when the `users` table is empty — so it silently no-ops in development (`SeedDevAdmin` already populated a user) and, more importantly, no-ops for good on a production database that first boots without those variables set: a migration runs once, and an unset-variable boot still records itself as applied. Recovery at that point is a manual `INSERT`, not a re-run. See the migration's own doc comment.
+
+## Dev seed
+
+`npm run seed:dev -w backend` (or `npm run db:seed` from the repo root) loads the
+demo dataset from `src/seed/dev-seed.data.ts` — the mock CRM's season reduced to
+the tables that exist: 11 collection points (5 working, the warehouse, 5 in the
+registry), 10 products with 14 grades (2 inactive), 4 tare types, 7 operators
+(one deactivated), 17 suppliers, and a day price for every active grade at every
+working point plus three intraday corrections on Шипинки so the price journal has
+a «latest wins» case. Sign in as `admin`/`admin` (owner) or as an operator
+(`oksana`, `maria`, `taras`, `ihor`, `bohdan`, `lesia`) with password `operator`.
+
+It is a SCRIPT, not a migration, on purpose: migrations are frozen once applied,
+the seed is meant to evolve with the screens, and a migration would also run
+inside every `*.db-spec.ts` suite. It is **idempotent** — every row is looked up
+by its natural key and inserted only when missing; existing rows are never
+modified, so hand edits survive a re-run and re-running only restores what was
+deleted. One transaction: a failure leaves the database untouched. The CLI
+refuses under `NODE_ENV=production` and on a database with pending migrations.
+Runs from the host (`.env`'s `DB_HOST=localhost`; compose publishes Postgres on
+5432) or inside the container (`docker compose exec backend npm run seed:dev -w backend`).
+`src/seed/dev-seed.db-spec.ts` proves idempotency and the journal ordering
+against a real Postgres; `dev-seed.spec.ts` checks the dataset's own consistency.
 
 **Workflow for schema changes:**
 
