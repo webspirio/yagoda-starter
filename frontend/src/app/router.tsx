@@ -14,6 +14,7 @@ import { CatalogPage } from '@/pages/catalog';
 import { PricesPage } from '@/pages/prices';
 import { DayPage } from '@/pages/day';
 import { ReceptionPage } from '@/pages/reception';
+import { JournalPage } from '@/pages/journal';
 import { NotFoundPage } from '@/pages/not-found';
 import { UiKitPage } from '@/pages/ui-kit';
 
@@ -140,6 +141,18 @@ export const routes: RouteObject[] = [
           <RequireAuth>
             <RequireRole role="network_owner">
               <CatalogPage />
+            </RequireRole>
+          </RequireAuth>
+        ),
+      },
+      {
+        // The full receipts/payouts register is owner-only — an operator's
+        // view is scoped to their own point's shift already (Каса за день).
+        path: '/journal',
+        element: (
+          <RequireAuth>
+            <RequireRole role="network_owner">
+              <JournalPage />
             </RequireRole>
           </RequireAuth>
         ),

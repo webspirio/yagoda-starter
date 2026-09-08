@@ -70,7 +70,7 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { labelKey: 'nav.suppliers', icon: Users, to: '/suppliers' },
       { labelKey: 'nav.debts', icon: Wallet, to: '/debts' },
-      { labelKey: 'nav.journal', icon: History, role: 'network_owner' },
+      { labelKey: 'nav.journal', icon: History, to: '/journal', role: 'network_owner' },
     ],
   },
   {

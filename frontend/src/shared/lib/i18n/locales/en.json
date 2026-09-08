@@ -678,6 +678,44 @@
       "truncated": "Showing the first 100 receipts and payouts"
     }
   },
+  "journal": {
+    "eyebrow": "full register",
+    "title": "Receipt journal",
+    "description": "All receipts and payouts in one place, filtered by point, month and supplier.",
+    "pickPoint": "Select a point",
+    "allPoints": "All points",
+    "pickMonth": "Month",
+    "pickSupplier": "Select a supplier",
+    "allSuppliers": "All suppliers",
+    "showVoided": "show voided",
+    "kind": {
+      "intakes": "Receipts",
+      "payouts": "Payouts"
+    },
+    "tiles": {
+      "receipts": "Receipt count",
+      "payouts": "Payout count",
+      "accrued": "Accrued",
+      "paid": "Paid",
+      "pageHint": "on this page"
+    },
+    "col": {
+      "date": "Date",
+      "time": "Time",
+      "code": "Receipt",
+      "point": "Point",
+      "supplier": "Supplier",
+      "amount": "Amount",
+      "status": "Status"
+    },
+    "voided": "Voided",
+    "empty": "No records for this period.",
+    "pagination": {
+      "prev": "Back",
+      "next": "Next",
+      "range": "{{from}}–{{to}} of {{total}}"
+    }
+  },
   "theme": {
     "label": "Theme",
     "light": "Light",
