@@ -431,7 +431,7 @@
     },
     "errors": {
       "notYourDocument": "Only the author or the owner can void a document",
-      "shiftClosed": "The shift is closed — the owner must reopen it first",
+      "shiftClosed": "The shift is closed — ask the network owner to void it",
       "alreadyVoided": "Already voided",
       "failed": "Could not void",
       "reasonRequired": "Enter a reason"
