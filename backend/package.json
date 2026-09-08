@@ -9,7 +9,7 @@
     "start:prod": "node dist/main",
     "test": "jest",
     "test:watch": "jest --watch",
-    "test:db": "jest --config jest.db.config.js",
+    "test:db": "NODE_OPTIONS=--experimental-vm-modules jest --config jest.db.config.js",
     "lint": "eslint .",
     "migration:create": "typeorm-ts-node-commonjs migration:create",
     "migration:generate": "typeorm-ts-node-commonjs migration:generate -d src/data-source.ts",
@@ -19,7 +19,7 @@
     "migration:run:prod": "typeorm migration:run -d dist/data-source.js"
   },
   "engines": {
-    "node": ">=22"
+    "node": ">=24.15.0"
   },
   "dependencies": {
     "@nest-lab/throttler-storage-redis": "^1.2.0",
