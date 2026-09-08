@@ -81,22 +81,27 @@
   --popover-foreground: #f5f5f4;
   --primary: #c81e4e;
   --primary-foreground: #fff4f7;
-  --secondary: #2c2c2f;
+  /* Secondary surfaces (table header band, secondary badges, hover fills)
+     must read AGAINST the #242426 card, not blend into it — #2c2c2f was 8
+     units off and invisible. Lifted to keep the same step the light palette
+     has between card and muted. */
+  --secondary: #35353b;
   --secondary-foreground: #f5f5f4;
-  --muted: #2c2c2f;
+  --muted: #35353b;
   --muted-foreground: #b8b3ad;
   --muted2: #8f8a82;
-  --accent: #2c2c2f;
+  --accent: #3b3b42;
   --accent-foreground: #f5f5f4;
   --brand: #e8557a; /* berry, lightened for legibility on dark surfaces */
   --brand-foreground: #1a0a10;
   --destructive: #fb7185;
   --success: #6ee7b7;
   /* Dividers sit on #242426 cards and #181819 paper — the old #2c2c2f was
-     one step off both and vanished; lifted to stay a visible hairline. */
-  --border: #3f3f45;
-  --line2: #4c4c53;
-  --input: #4c4c53;
+     one step off both and vanished. Lifted twice on review to stay a clearly
+     visible hairline (#4d4d55 is ~40 units off the card). */
+  --border: #4d4d55;
+  --line2: #5b5b64;
+  --input: #5b5b64;
   --ring: #e8557a;
 
   --readout: #a8e86a;
