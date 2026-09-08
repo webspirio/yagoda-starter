@@ -21,15 +21,32 @@ describe('apiErrorToBanner', () => {
     expect(apiErrorToBanner(apiError(409, 'SHIFT_NOT_CLOSED'))).toBe('day.errors.notClosed');
   });
 
+  it('tells the day apart from the open shift — one point, one shift per date', () => {
+    // ShiftsService.open, UQ_shifts_point_business_date: the remedy is a reopen,
+    // not a close, which is why it cannot share alreadyOpen's line.
+    expect(apiErrorToBanner(apiError(409, 'SHIFT_DAY_ALREADY_USED'))).toBe(
+      'day.errors.dayAlreadyUsed',
+    );
+  });
+
+  it('says only the point’s most recent shift can be reopened', () => {
+    expect(apiErrorToBanner(apiError(409, 'SHIFT_NOT_NEWEST'))).toBe('day.errors.notNewest');
+  });
+
+  it('names the owner as the only actor for an owner-only verb', () => {
+    expect(apiErrorToBanner(apiError(403, 'OWNER_ONLY'))).toBe('day.errors.ownerOnly');
+  });
+
+  it('sends an operator with no point to the owner', () => {
+    expect(apiErrorToBanner(apiError(403, 'NO_COLLECTION_POINT'))).toBe('day.errors.noPoint');
+  });
+
   it('falls back for an operator acting on another point — that 404 carries no code', () => {
     expect(apiErrorToBanner(apiError(404))).toBe('day.errors.failed');
   });
 
-  it('falls back for a shift code with no copy of its own', () => {
-    // SHIFT_NOT_NEWEST, SHIFT_DAY_ALREADY_USED, OWNER_ONLY and
-    // NO_COLLECTION_POINT are all reachable but have no dedicated line yet.
-    expect(apiErrorToBanner(apiError(409, 'SHIFT_NOT_NEWEST'))).toBe('day.errors.failed');
-    expect(apiErrorToBanner(apiError(403, 'OWNER_ONLY'))).toBe('day.errors.failed');
+  it('falls back for a code this screen has never seen', () => {
+    expect(apiErrorToBanner(apiError(409, 'SOME_FUTURE_CODE'))).toBe('day.errors.failed');
   });
 
   it('falls back for a non-ApiError (network down, aborted request)', () => {

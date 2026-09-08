@@ -271,7 +271,7 @@ describe('DayPage — the owner', () => {
     });
     shiftMock.mockReturnValue({ data: closedShift, isPending: false, isError: false });
 
-    const { router } = renderDay('/day?point=p1&date=2026-09-07');
+    const { router, container } = renderDay('/day?point=p1&date=2026-09-07');
 
     expect(
       screen.getByRole('heading', { level: 1, name: 'Cash for September 7, 2026' }),
@@ -280,6 +280,9 @@ describe('DayPage — the owner', () => {
     expect(screen.queryByRole('button', { name: 'Close shift' })).toBeNull();
     // Yesterday, so stepping forward is allowed.
     expect(screen.getByRole('button', { name: 'Наступний день' })).toBeEnabled();
+
+    // The owner's own toolbar — the point picker carries only an aria-label.
+    await expectNoAxeViolations(container);
 
     await user.click(screen.getByRole('button', { name: 'Today' }));
     await waitFor(() =>

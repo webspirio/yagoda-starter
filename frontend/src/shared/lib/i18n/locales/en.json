@@ -370,6 +370,10 @@
       "alreadyOpen": "A shift is already open at this point",
       "notOpen": "The shift is not open",
       "notClosed": "Only a closed shift can be reopened",
+      "dayAlreadyUsed": "A shift for this date already exists — a day cannot have two",
+      "notNewest": "Only the point's most recent shift can be reopened",
+      "ownerOnly": "Only the network owner can do this",
+      "noPoint": "Your account has no collection point — ask the owner",
       "reasonRequired": "Give a reason"
     }
   },
