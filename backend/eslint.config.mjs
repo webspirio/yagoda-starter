@@ -24,6 +24,48 @@ export default tseslint.config(
     },
   },
   {
+    // MONEY ARITHMETIC IS CONFINED TO src/common/money.ts, AND THIS IS WHAT
+    // KEEPS IT THERE. Foundation §5.1: `numeric` values are strings end to end
+    // and «no arithmetic operator is ever applied to a monetary or weight
+    // value». A `price * kg` in a service compiles, passes review at a glance,
+    // and produces a wrong `amount` that §2.7 then freezes forever on a
+    // supplier's printed receipt.
+    //
+    // Scoped to the four modules that handle money rather than applied
+    // globally: `*` and `/` are perfectly ordinary in pagination offsets,
+    // image resizing and time arithmetic, and a repo-wide ban would train
+    // people to write disable comments.
+    files: [
+      'src/intakes/**/*.ts',
+      'src/payouts/**/*.ts',
+      'src/shifts/**/*.ts',
+      'src/supplier-balance/**/*.ts',
+    ],
+    ignores: ['**/*.spec.ts', '**/*.db-spec.ts'],
+    rules: {
+      'no-restricted-globals': [
+        'error',
+        { name: 'parseFloat', message: 'Use src/common/money.ts — parseFloat cannot round-trip numeric(12,2).' },
+        { name: 'parseInt', message: 'Use src/common/money.ts for decimals; parseInt silently truncates.' },
+      ],
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: "BinaryExpression[operator=/^[*/]$/]",
+          message: 'Money and weight arithmetic belongs in src/common/money.ts (foundation §5.1).',
+        },
+        {
+          selector: "CallExpression[callee.name='Number']",
+          message: 'Never convert a numeric string to a JS number — see src/common/money.ts.',
+        },
+        {
+          selector: "MemberExpression[property.name='toFixed']",
+          message: 'toFixed rounds half-to-even on a double. Use src/common/money.ts.',
+        },
+      ],
+    },
+  },
+  {
     // supertest is an `export =` (CommonJS export-assignment) module, and
     // this repo's tsconfig has no `esModuleInterop` — `import request =
     // require('supertest')` is the correct, interop-independent form (a
