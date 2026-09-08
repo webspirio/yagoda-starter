@@ -92,9 +92,11 @@
   --brand-foreground: #1a0a10;
   --destructive: #fb7185;
   --success: #6ee7b7;
-  --border: #2c2c2f;
-  --line2: #3a3a3e;
-  --input: #3a3a3e;
+  /* Dividers sit on #242426 cards and #181819 paper — the old #2c2c2f was
+     one step off both and vanished; lifted to stay a visible hairline. */
+  --border: #3f3f45;
+  --line2: #4c4c53;
+  --input: #4c4c53;
   --ring: #e8557a;
 
   --readout: #a8e86a;

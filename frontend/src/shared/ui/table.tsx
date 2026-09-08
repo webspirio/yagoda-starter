@@ -4,7 +4,9 @@ import { cn } from '@/shared/lib/cn';
 
 // Cell padding is wider than shadcn's `p-2` on purpose: every table here sits
 // in the card frame (see data-table.tsx), and 8px from the card edge to the
-// first glyph read as cramped in review — 16px horizontal, 10px vertical.
+// first glyph read as cramped in review — 24px horizontal, 10px vertical. The
+// header is a muted band with eyebrow-style labels so it reads as a header
+// rather than as one more row.
 
 function Table({ className, ...props }: React.ComponentProps<'table'>) {
   return (
@@ -19,7 +21,13 @@ function Table({ className, ...props }: React.ComponentProps<'table'>) {
 }
 
 function TableHeader({ className, ...props }: React.ComponentProps<'thead'>) {
-  return <thead data-slot="table-header" className={cn('[&_tr]:border-b', className)} {...props} />;
+  return (
+    <thead
+      data-slot="table-header"
+      className={cn('bg-muted/60 [&_tr]:border-b', className)}
+      {...props}
+    />
+  );
 }
 
 function TableBody({ className, ...props }: React.ComponentProps<'tbody'>) {
@@ -60,7 +68,7 @@ function TableHead({ className, ...props }: React.ComponentProps<'th'>) {
     <th
       data-slot="table-head"
       className={cn(
-        'h-11 px-4 text-left align-middle font-medium whitespace-nowrap text-foreground [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px]',
+        'h-10 px-6 text-left align-middle text-[11px] font-semibold tracking-[0.12em] uppercase whitespace-nowrap text-muted-foreground [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px]',
         className,
       )}
       {...props}
@@ -73,7 +81,7 @@ function TableCell({ className, ...props }: React.ComponentProps<'td'>) {
     <td
       data-slot="table-cell"
       className={cn(
-        'px-4 py-2.5 align-middle whitespace-nowrap [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px]',
+        'px-6 py-2.5 align-middle whitespace-nowrap [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px]',
         className,
       )}
       {...props}
