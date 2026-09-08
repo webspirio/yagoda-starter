@@ -2,7 +2,7 @@ import { useQueries } from '@tanstack/react-query';
 import { httpClient } from '@/shared/api';
 import { STALE } from '@/shared/api/queryClient';
 import { queryKeys } from '@/shared/api/queryKeys';
-import type { GradeCatalogItem } from '../model/types';
+import type { GradeCatalogItem } from '../model/product-grade';
 
 /** Only the fields joined here are read; the API envelope carries more. */
 interface ProductsEnvelope {

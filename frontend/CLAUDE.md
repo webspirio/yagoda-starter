@@ -10,7 +10,7 @@ React SPA for Web Starter.
 - **Zustand 5** — client state (the auth session: `token`)
 - **TanStack Query v5** — server state (queries and mutations), persisted to `localStorage` via `PersistQueryClientProvider` (`shared/api/persister.ts`)
 - **React Router v8** — client-side routing (`react-router` imports only; no `react-router/dom`)
-- **i18next / react-i18next** — i18n; this starter ships English only
+- **i18next / react-i18next** — i18n; `uk` is the default locale, `en` the second (both in `SUPPORTED_LANGUAGES`)
 
 ## Commands
 
@@ -29,16 +29,19 @@ src/
   main.tsx                    # entry point — wires auth interceptors, initI18n, global error reporting, renders App
   app/
     App.tsx                   # root component: ErrorBoundary > QueryClientProvider > RouterProvider
-    router.tsx                # createBrowserRouter — /login, / (dashboard), /profile, catch-all 404 — no /register, there is no public registration
-    layouts/AppLayout.tsx      # persistent shell (top bar + collapsible sidebar); renders auth pages bare (no chrome)
+    router.tsx                # createBrowserRouter — /login, / (dashboard), /profile, /suppliers, /points, /users, /prices, /catalog, /ui-kit, catch-all 404 — no /register
+    layouts/AppLayout.tsx      # persistent shell: dark sidebar with role-aware grouped nav + PAPER top bar (mock composition) with scope, ThemeToggle, sign-out; renders auth pages bare
     providers/
       ErrorBoundary.tsx        # React class error boundary → ErrorFallback
       ErrorFallback.tsx        # dev: full stack trace / prod: generic message + retry/reload
       RouteError.tsx           # router errorElement — reports the error, renders ErrorFallback
-  entities/user/                # session store (Zustand), Me type (id, username, display_name, role, collection_point_id, …), useMeQuery / useUpdateMeMutation — authenticated-account concerns only
-  features/auth/                 # login/logout API calls, LoginForm, RequireAuth route guard — no register API, no RegisterForm
-  features/edit-profile/         # useUploadAvatarMutation
-  pages/login/, pages/dashboard/, pages/profile/, pages/not-found/
+  entities/user/                # session store (Zustand), Me type (model/user.ts), useMeQuery / useUpdateMeMutation — authenticated-account concerns only
+  entities/collection-point/    # usePointOptionsQuery — active points as select options, shared by users / suppliers / prices
+  entities/product-grade/       # useGradeCatalogQuery — grades joined to product names, for prices (and the intake screen later)
+  features/auth/                 # login/logout API calls, LoginForm, RequireAuth + RequireRole route guards — no register API
+  features/edit-profile/         # useUploadAvatarMutation (single consumer: pages/profile — kept as the upload exemplar)
+  pages/login/, pages/dashboard/, pages/profile/, pages/not-found/, pages/ui-kit/
+  pages/points/, pages/users/, pages/suppliers/, pages/catalog/, pages/prices/   # each: api/ (TanStack hooks) · model/ (wire types + form values) · lib/apiErrorToFields · ui/ (page + dialogs + tests)
   shared/
     api/                       # httpClient (axios instance, env.apiUrl baseURL) + ApiError + attachAuthInterceptors + queryClient + queryKeys + persister
     lib/
@@ -49,9 +52,9 @@ src/
       error-reporting/         # reportError(error, context) — swap body for Sentry later
       clipboard/, cn.ts, debounce.ts, useDebouncedValue.ts, useIsDesktop.ts — small framework-free utilities
       form-draft/               # useFormDraft — localStorage-backed draft persistence; infrastructure, not yet wired into any form
-      url-state/                 # useUrlParam / useUrlFlag / useUrlList / useUrlNumber / useUrlPatch — query-string state helpers; infrastructure, not yet wired into any route
+      url-state/                 # useUrlParam / useUrlFlag / useUrlList / useUrlNumber / useUrlPatch — query-string state; pages/catalog uses useUrlParam for ?tab= and ?product=
       motion.ts                 # shared motion/spring presets (used by animated-number.tsx, segmented.tsx)
-    ui/                        # shadcn primitives (button, avatar, dialog, drawer, table, tabs, …) + a few hand-built ones (image-picker, stat-tile, filter-button, url-state-aware pickers)
+    ui/                        # the mock's kit in the starter's layout: primitives (button, badge, dialog, table, tabs, …), signature pieces (eyebrow, page-header, stat-tile, empty-state, sparkline), layout (Card, DataTable, SectionCard, ListPage template), ThemeToggle — plus starter leftovers no screen uses yet (chip, drawer, segmented, TagPicker, …; see the «Kit hygiene» note below)
 ```
 
 FSD layer boundaries (`shared < entities < features < pages < app`, each layer may
@@ -61,12 +64,29 @@ relying on review to catch it. There's no `widgets/` layer yet (it sits between
 `features` and `pages` in FSD, for composed UI shared across multiple pages); add it
 if/when something actually needs that — don't pre-create the empty folder.
 
-`shared/lib/form-draft` and `shared/lib/url-state` ship as tested, ready-to-use
-infrastructure carried over from the boilerplate this starter was extracted
-from, but nothing in this starter currently consumes either — there is no form
-worth drafting yet and no list/filter UI worth mirroring into the query
-string. Reach for them the moment a real feature needs what they do; don't
-delete them as dead code, and don't invent a consumer just to "use" them.
+`shared/lib/form-draft` ships as tested, ready-to-use infrastructure carried
+over from the boilerplate this starter was extracted from, but nothing consumes
+it yet — there is no form worth drafting. `shared/lib/url-state` found its first
+consumer in `pages/catalog` (the active tab and the chosen product live in the
+query string). Reach for form-draft the moment a real feature needs it; don't
+delete it as dead code, and don't invent a consumer just to "use" it.
+
+**Kit hygiene.** Spec §5.3 wants ONE kit. Today `shared/ui` still carries starter
+primitives no screen or the `/ui-kit` gallery imports (`chip`, `drawer`,
+`segmented`, `TagPicker`, `multi-select-chips`, `filter-button`, `filter-section`,
+`screen`, `section-label`, `animated-number`, `CopyableField`, `progress`,
+`radio-group`, `checkbox`, `select` (Radix — screens use the native `SelectField`),
+`dropdown-menu`, `tooltip`, `confirm-dialog`/`alert-dialog`, `LanguageSwitcher`).
+They are tested and harmless, but each is a second answer to a question the mock
+kit already answers. When a screen needs one, prefer restyling it to the mock and
+adding it to `/ui-kit`; otherwise they are candidates for deletion in a dedicated
+cleanup, not for silent reuse.
+
+**Surfaces.** `Card` (`rounded-xl border border-line2 bg-card`) is the one
+outlined shell: `DataTable`'s frame and the catalog's master–detail panes use it.
+`SectionCard`/`StatTile` still wear the mock's `ring-foreground/10`, which is
+near-invisible on the dark paper — the next dark-mode pass should move them onto
+`Card` too.
 
 ## Auth
 

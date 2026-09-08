@@ -1,5 +1,6 @@
 import * as React from 'react';
 import { cn } from '@/shared/lib/cn';
+import { Card } from './card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './table';
 
 /** Generic column descriptor — no domain types; the page owns every cell renderer. */
@@ -16,12 +17,6 @@ export interface Column<Row> {
 
 const HIDE = { sm: 'max-sm:hidden', md: 'max-md:hidden', lg: 'max-lg:hidden' } as const;
 const ALIGN = { left: 'text-left', center: 'text-center', right: 'text-right' } as const;
-
-/** The mock's table shell: every table there sits in a card, never bare on the
- *  paper background. The outline is a real `line2` border rather than the
- *  mock's `ring-foreground/10`: at 10% the ring is invisible on the dark
- *  paper, and the header band then read as part of the page. */
-const FRAME_CLASS = 'overflow-hidden rounded-xl border border-line2 bg-card';
 
 export function DataTable<Row>({
   columns,
@@ -81,9 +76,7 @@ export function DataTable<Row>({
   );
 
   if (!frame) return table;
-  return (
-    <div data-slot="data-table-frame" className={FRAME_CLASS}>
-      {table}
-    </div>
-  );
+  // The mock's table shell: every table there sits in a card, never bare on
+  // the paper. `Card` owns the outline so a pane and a table frame match.
+  return <Card data-slot="data-table-frame">{table}</Card>;
 }

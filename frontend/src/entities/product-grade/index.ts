@@ -1,2 +1,2 @@
-export type { GradeCatalogItem } from './model/types';
+export type { GradeCatalogItem } from './model/product-grade';
 export { useGradeCatalogQuery } from './api/useGradeCatalog';

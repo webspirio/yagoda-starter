@@ -2,16 +2,18 @@ import * as React from 'react';
 import { cn } from '@/shared/lib/cn';
 
 /**
- * Bordered surface container. The base is the shared card look; per-site padding
- * and the border token (e.g. a dense surface's `border-line2`) ride in via
- * `className`. No baked padding and no variants — YAGNI; add only when a real
- * need appears.
+ * The ONE outlined surface for a table frame, a master–detail pane, or any
+ * block that must read as an object on the paper: `rounded-xl`, a real
+ * `line2` hairline (the mock's `ring-foreground/10` vanishes on the dark
+ * paper), card fill, clipped corners. No baked padding — a table wants none,
+ * a pane adds its own. Per-site tweaks ride in via `className` (twMerge,
+ * last wins).
  */
 export function Card({ className, ...props }: React.ComponentProps<'div'>) {
   return (
     <div
       data-slot="card"
-      className={cn('rounded-2xl border border-border bg-card', className)}
+      className={cn('overflow-hidden rounded-xl border border-line2 bg-card', className)}
       {...props}
     />
   );

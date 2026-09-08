@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { httpClient } from '@/shared/api';
 import { STALE } from '@/shared/api/queryClient';
 import { queryKeys } from '@/shared/api/queryKeys';
-import type { PointOption } from '../model/types';
+import type { PointOption } from '../model/collection-point';
 
 /**
  * The paginated envelope the backend returns for the point registry — only the

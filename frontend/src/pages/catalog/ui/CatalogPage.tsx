@@ -7,6 +7,7 @@ import { PageHeader } from '@/shared/ui/page-header';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/shared/ui/tabs';
 import { DataTable, type Column } from '@/shared/ui/data-table';
 import { Button } from '@/shared/ui/button';
+import { Card } from '@/shared/ui/card';
 import { Badge } from '@/shared/ui/badge';
 import { TextInput } from '@/shared/ui/text-input';
 import { EmptyState } from '@/shared/ui/empty-state';
@@ -97,9 +98,6 @@ function AsyncBody({
   if (isEmpty) return <>{empty}</>;
   return <>{children}</>;
 }
-
-/** The master–detail card shell: the same outline the table frame uses. */
-const PANE_CLASS = 'overflow-hidden rounded-xl border border-line2 bg-card';
 
 const byName = <T extends { name: string }>(a: T, b: T) => a.name.localeCompare(b.name);
 
@@ -203,46 +201,45 @@ function ProductsPanel() {
               {t('catalog.products.new')}
             </Button>
           </div>
-          <ul
-            aria-label={t('catalog.products.list')}
-            className={cn(PANE_CLASS, 'divide-y divide-border')}
-          >
-            {visible.map((p) => {
-              const count = gradesByProduct.get(p.id)?.length ?? 0;
-              const isSelected = selected?.id === p.id;
-              return (
-                <li key={p.id}>
-                  <button
-                    type="button"
-                    aria-current={isSelected ? 'true' : undefined}
-                    className={cn(
-                      'flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm transition-colors',
-                      'hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:ring-inset',
-                      isSelected &&
-                        'bg-primary/8 font-medium shadow-[inset_3px_0_0_var(--primary)]',
-                      count === 0 && !isSelected && 'text-muted-foreground',
-                    )}
-                    onClick={() => setProductParam(p.id)}
-                  >
-                    <span className="min-w-0 flex-1 truncate">{p.name}</span>
-                    <span className="font-mono text-xs tabular-nums text-muted-foreground">
-                      {count}
-                    </span>
-                  </button>
+          <Card>
+            <ul aria-label={t('catalog.products.list')} className="divide-y divide-border">
+              {visible.map((p) => {
+                const count = gradesByProduct.get(p.id)?.length ?? 0;
+                const isSelected = selected?.id === p.id;
+                return (
+                  <li key={p.id}>
+                    <button
+                      type="button"
+                      aria-current={isSelected ? 'true' : undefined}
+                      className={cn(
+                        'flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm transition-colors',
+                        'hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:ring-inset',
+                        isSelected &&
+                          'bg-primary/8 font-medium shadow-[inset_3px_0_0_var(--primary)]',
+                        count === 0 && !isSelected && 'text-muted-foreground',
+                      )}
+                      onClick={() => setProductParam(p.id)}
+                    >
+                      <span className="min-w-0 flex-1 truncate">{p.name}</span>
+                      <span className="font-mono text-xs tabular-nums text-muted-foreground">
+                        {count}
+                      </span>
+                    </button>
+                  </li>
+                );
+              })}
+              {visible.length === 0 ? (
+                <li className="px-4 py-6 text-center text-sm text-muted-foreground">
+                  {t('catalog.products.noMatch')}
                 </li>
-              );
-            })}
-            {visible.length === 0 ? (
-              <li className="px-4 py-6 text-center text-sm text-muted-foreground">
-                {t('catalog.products.noMatch')}
-              </li>
-            ) : null}
-          </ul>
+              ) : null}
+            </ul>
+          </Card>
         </div>
 
         {/* Detail: the chosen product's grades, with the ONE pair of actions in its header. */}
         {selected ? (
-          <section aria-labelledby="catalog-product-title" className={PANE_CLASS}>
+          <Card aria-labelledby="catalog-product-title" role="region">
             <div className="flex flex-wrap items-center gap-3 border-b border-border px-5 py-4">
               <div className="min-w-0">
                 <h2 id="catalog-product-title" className="font-display text-lg font-medium">
@@ -279,7 +276,7 @@ function ProductsPanel() {
                 onRowClick={(g) => openGrade(g)}
               />
             )}
-          </section>
+          </Card>
         ) : null}
       </div>
 
