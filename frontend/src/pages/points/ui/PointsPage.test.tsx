@@ -19,6 +19,7 @@ vi.mock('../api/collectionPoints', () => ({
 const point: CollectionPoint = {
   id: 'p1',
   name: 'Шипинки',
+  code: 'SHP',
   kind: 'reception',
   target_cash: '15000.00',
   target_crates: 800,
@@ -48,7 +49,9 @@ describe('PointsPage', () => {
   it('renders points and the New action when loaded', () => {
     queryMock.mockReturnValue(loaded([point]));
     render(<PointsPage />);
-    expect(screen.getByRole('heading', { level: 1, name: 'Collection points' })).toBeInTheDocument();
+    expect(
+      screen.getByRole('heading', { level: 1, name: 'Collection points' }),
+    ).toBeInTheDocument();
     expect(screen.getByText('Шипинки')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'New point' })).toBeInTheDocument();
   });
@@ -59,10 +62,12 @@ describe('PointsPage', () => {
     await userEvent.click(screen.getByRole('button', { name: 'New point' }));
     expect(screen.getByText('New collection point')).toBeInTheDocument();
     await userEvent.type(screen.getByLabelText('Name'), 'Гаї');
+    await userEvent.type(screen.getByLabelText('Point code'), 'hai');
     await userEvent.click(screen.getByRole('button', { name: 'Save' }));
     await waitFor(() => expect(createMock).toHaveBeenCalledTimes(1));
     expect(createMock).toHaveBeenCalledWith({
       name: 'Гаї',
+      code: 'HAI',
       kind: 'reception',
       target_cash: null,
       target_crates: null,

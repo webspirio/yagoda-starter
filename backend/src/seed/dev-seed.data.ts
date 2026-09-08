@@ -27,6 +27,8 @@ export const DEV_OPERATOR_PASSWORD = 'operator';
 
 export interface SeedPoint {
   name: string;
+  /** Receipt-code prefix, 2–8 A–Z/0–9 (`collection_points.code`, intakes spec §6.2). */
+  code: string;
   kind: 'reception' | 'base';
   is_active: boolean;
   target_cash: string | null;
@@ -38,6 +40,7 @@ export interface SeedPoint {
 export const SEED_POINTS: readonly SeedPoint[] = [
   {
     name: 'Шипинки',
+    code: 'SHP',
     kind: 'reception',
     is_active: true,
     target_cash: '145453.00',
@@ -46,6 +49,7 @@ export const SEED_POINTS: readonly SeedPoint[] = [
   },
   {
     name: 'Конищів',
+    code: 'KON',
     kind: 'reception',
     is_active: true,
     target_cash: null,
@@ -54,6 +58,7 @@ export const SEED_POINTS: readonly SeedPoint[] = [
   },
   {
     name: 'Гайове',
+    code: 'HAI',
     kind: 'reception',
     is_active: true,
     target_cash: '50000.00',
@@ -62,6 +67,7 @@ export const SEED_POINTS: readonly SeedPoint[] = [
   },
   {
     name: 'Попівці',
+    code: 'POP',
     kind: 'reception',
     is_active: true,
     target_cash: null,
@@ -70,6 +76,7 @@ export const SEED_POINTS: readonly SeedPoint[] = [
   },
   {
     name: 'Михайлівці',
+    code: 'MYK',
     kind: 'reception',
     is_active: true,
     target_cash: null,
@@ -78,6 +85,7 @@ export const SEED_POINTS: readonly SeedPoint[] = [
   },
   {
     name: 'Склад',
+    code: 'BASE',
     kind: 'base',
     is_active: true,
     target_cash: null,
@@ -87,6 +95,7 @@ export const SEED_POINTS: readonly SeedPoint[] = [
   // In the registry, not yet opened — «від 5 до 10».
   {
     name: 'Журавлівка',
+    code: 'ZHU',
     kind: 'reception',
     is_active: false,
     target_cash: null,
@@ -95,6 +104,7 @@ export const SEED_POINTS: readonly SeedPoint[] = [
   },
   {
     name: 'Осламів',
+    code: 'OSL',
     kind: 'reception',
     is_active: false,
     target_cash: null,
@@ -103,6 +113,7 @@ export const SEED_POINTS: readonly SeedPoint[] = [
   },
   {
     name: 'Зоряне',
+    code: 'ZOR',
     kind: 'reception',
     is_active: false,
     target_cash: null,
@@ -111,6 +122,7 @@ export const SEED_POINTS: readonly SeedPoint[] = [
   },
   {
     name: 'Дашківці',
+    code: 'DAS',
     kind: 'reception',
     is_active: false,
     target_cash: null,
@@ -119,6 +131,7 @@ export const SEED_POINTS: readonly SeedPoint[] = [
   },
   {
     name: 'Войнашівка',
+    code: 'VOI',
     kind: 'reception',
     is_active: false,
     target_cash: null,

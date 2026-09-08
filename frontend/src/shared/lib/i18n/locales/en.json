@@ -61,6 +61,7 @@
       "name": "Name",
       "kind": "Kind",
       "targetCash": "Cash target",
+      "code": "Code",
       "targetCrates": "Crate target",
       "status": "Status"
     },
@@ -75,6 +76,8 @@
       "createTitle": "New collection point",
       "editTitle": "Edit collection point",
       "name": "Name",
+      "code": "Point code",
+      "codeHint": "2–8 letters or digits — the first segment of every receipt code at this point",
       "kind": "Kind",
       "targetCash": "Cash target, ₴",
       "targetCrates": "Crate target",
@@ -90,7 +93,9 @@
       "nameInvalid": "Name must be 1–128 characters",
       "hasActiveUsers": "This point still has assigned staff — reassign them before deactivating",
       "cashFormat": "Enter an amount like 15000 or 15000.50",
-      "cratesFormat": "Enter a whole number of crates"
+      "cratesFormat": "Enter a whole number of crates",
+      "codeTaken": "A point with this code already exists",
+      "codeFormat": "Code must be 2–8 Latin letters or digits"
     }
   },
   "users": {

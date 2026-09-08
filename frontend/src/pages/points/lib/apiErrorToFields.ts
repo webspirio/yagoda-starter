@@ -9,16 +9,19 @@ export interface ApiFieldErrors {
 
 const FORM_LEVEL = 'points.errors.saveFailed';
 
-// machine-code suffix -> message key
-const CODE_SUFFIX: ReadonlyArray<[string, string]> = [
-  ['_NAME_TAKEN', 'points.errors.nameTaken'],
-  ['_NAME_EMPTY', 'points.errors.nameEmpty'],
-  ['_HAS_ACTIVE_USERS', 'points.errors.hasActiveUsers'],
+// machine-code suffix -> [field it lands on (null = banner), message key]
+const CODE_SUFFIX: ReadonlyArray<[suffix: string, field: string | null, messageKey: string]> = [
+  ['_NAME_TAKEN', 'name', 'points.errors.nameTaken'],
+  ['_NAME_EMPTY', 'name', 'points.errors.nameEmpty'],
+  ['_CODE_TAKEN', 'code', 'points.errors.codeTaken'],
+  // a state conflict, not a field problem
+  ['_HAS_ACTIVE_USERS', null, 'points.errors.hasActiveUsers'],
 ];
 
 // class-validator property (first token of each details string) -> message key
 const PROPERTY: Readonly<Record<string, string>> = {
   name: 'points.errors.nameInvalid',
+  code: 'points.errors.codeFormat',
   target_cash: 'points.errors.cashFormat',
   target_crates: 'points.errors.cratesFormat',
 };
@@ -35,11 +38,10 @@ export function apiErrorToFields(error: unknown, fields: readonly string[]): Api
   if (error.code) {
     const match = CODE_SUFFIX.find(([suffix]) => error.code!.endsWith(suffix));
     if (match) {
-      const [suffix, key] = match;
-      if ((suffix === '_NAME_TAKEN' || suffix === '_NAME_EMPTY') && fields.includes('name')) {
-        return { fieldErrors: [{ field: 'name', messageKey: key }], formErrorKey: null };
+      const [, field, key] = match;
+      if (field && fields.includes(field)) {
+        return { fieldErrors: [{ field, messageKey: key }], formErrorKey: null };
       }
-      // _HAS_ACTIVE_USERS is a state conflict, not a field problem
       return { fieldErrors: [], formErrorKey: key };
     }
   }

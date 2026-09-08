@@ -22,6 +22,12 @@ describe('dev seed dataset', () => {
   const productNames = new Set(SEED_PRODUCTS);
   const gradeKeys = new Set(SEED_GRADES.map((g) => `${g.product}/${g.name}`));
 
+  it('point codes are unique and shaped for CHK_collection_points_code', () => {
+    const codes = SEED_POINTS.map((p) => p.code);
+    expect(new Set(codes).size).toBe(codes.length);
+    for (const code of codes) expect(code).toMatch(/^[A-Z0-9]{2,8}$/);
+  });
+
   it('every grade belongs to a seeded product', () => {
     for (const g of SEED_GRADES) expect(productNames.has(g.product)).toBe(true);
   });
