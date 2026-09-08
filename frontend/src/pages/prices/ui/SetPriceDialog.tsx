@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -34,12 +35,15 @@ const DECIMAL = /^\d{1,8}(\.\d{1,2})?$/;
  */
 export function SetPriceDialog({
   pointId,
+  pointName,
   grade,
   current,
   open,
   onClose,
 }: {
   pointId: string;
+  /** Display name of the point — the dialog names WHERE the price applies, as the mock does. */
+  pointName: string;
   grade: GradeCatalogItem;
   current: { base_price: string; max_markup: string; max_discount: string } | null;
   open: boolean;
@@ -94,6 +98,7 @@ export function SetPriceDialog({
       <DialogContent>
         <DialogHeader>
           <DialogTitle>{t('prices.form.title', { grade: gradeLabel })}</DialogTitle>
+          <DialogDescription>{t('prices.form.description', { point: pointName })}</DialogDescription>
         </DialogHeader>
 
         <form onSubmit={onSubmit} className="flex flex-col gap-4" noValidate>
@@ -107,6 +112,7 @@ export function SetPriceDialog({
               <TextInput
                 {...a11y}
                 inputMode="decimal"
+                className="font-mono"
                 {...register('base_price', {
                   required: 'prices.errors.priceFormat',
                   pattern: { value: DECIMAL, message: 'prices.errors.priceFormat' },
@@ -126,6 +132,7 @@ export function SetPriceDialog({
               <TextInput
                 {...a11y}
                 inputMode="decimal"
+                className="font-mono"
                 {...register('max_markup', {
                   required: 'prices.errors.priceFormat',
                   pattern: { value: DECIMAL, message: 'prices.errors.priceFormat' },
@@ -144,6 +151,7 @@ export function SetPriceDialog({
               <TextInput
                 {...a11y}
                 inputMode="decimal"
+                className="font-mono"
                 {...register('max_discount', {
                   required: 'prices.errors.priceFormat',
                   pattern: { value: DECIMAL, message: 'prices.errors.priceFormat' },
@@ -157,7 +165,7 @@ export function SetPriceDialog({
               <Textarea
                 {...a11y}
                 {...register('reason', {
-                  maxLength: { value: 1000, message: 'prices.errors.saveFailed' },
+                  maxLength: { value: 1000, message: 'prices.errors.reasonTooLong' },
                 })}
               />
             )}

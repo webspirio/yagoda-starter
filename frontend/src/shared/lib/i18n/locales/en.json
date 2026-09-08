@@ -284,17 +284,19 @@
     },
     "col": {
       "grade": "Grade",
-      "base": "Base price",
-      "markup": "Max markup",
-      "discount": "Max discount",
-      "action": "Set price"
+      "base": "Base price, ₴/kg",
+      "markup": "Max markup, ₴/kg",
+      "discount": "Max discount, ₴/kg",
+      "action": "Action"
     },
-    "setPrice": "Set price",
+    "set": "Set price",
+    "change": "Change",
     "form": {
       "title": "Set price · {{grade}}",
-      "base": "Base price",
-      "markup": "Max markup",
-      "discount": "Max discount",
+      "description": "{{point}} · the new price applies to the next receipts; earlier ones keep theirs.",
+      "base": "Base price, ₴/kg",
+      "markup": "Max markup, ₴/kg",
+      "discount": "Max discount, ₴/kg",
       "reason": "Reason (optional)"
     },
     "toast": {
@@ -302,7 +304,8 @@
     },
     "errors": {
       "saveFailed": "Could not save",
-      "priceFormat": "Enter an amount like 50 or 50.00"
+      "priceFormat": "Enter an amount like 50 or 50.00",
+      "reasonTooLong": "The reason must be at most 1000 characters"
     }
   },
   "profile": {

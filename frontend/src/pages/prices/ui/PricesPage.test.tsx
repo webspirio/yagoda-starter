@@ -32,8 +32,18 @@ vi.mock('@/entities/collection-point', () => ({
   }),
 }));
 
-const g1: GradeCatalogItem = { id: 'g1', name: 'Grade 1', productId: 'pr1', productName: 'Raspberry' };
-const g2: GradeCatalogItem = { id: 'g2', name: 'Grade 2', productId: 'pr1', productName: 'Raspberry' };
+const g1: GradeCatalogItem = {
+  id: 'g1',
+  name: 'Grade 1',
+  productId: 'pr1',
+  productName: 'Raspberry',
+};
+const g2: GradeCatalogItem = {
+  id: 'g2',
+  name: 'Grade 2',
+  productId: 'pr1',
+  productName: 'Raspberry',
+};
 
 // Only g1 is priced; g2 must render "—" across all three money columns.
 const priceMap: CurrentPriceMap = {
@@ -41,8 +51,12 @@ const priceMap: CurrentPriceMap = {
 };
 
 beforeEach(() => {
-  gradeCatalogMock.mockReset().mockReturnValue({ data: [g1, g2], isPending: false, isError: false });
-  currentPricesMock.mockReset().mockReturnValue({ data: priceMap, isPending: false, isError: false });
+  gradeCatalogMock
+    .mockReset()
+    .mockReturnValue({ data: [g1, g2], isPending: false, isError: false });
+  currentPricesMock
+    .mockReset()
+    .mockReturnValue({ data: priceMap, isPending: false, isError: false });
   setPriceMock.mockReset().mockResolvedValue({ id: 'gp1' });
 });
 
@@ -56,7 +70,7 @@ describe('PricesPage', () => {
   });
 
   it('renders grade rows with the current price, and "—" for unpriced grades', async () => {
-    render(<PricesPage />);
+    const { container } = render(<PricesPage />);
     await userEvent.selectOptions(screen.getByLabelText('Select a point'), 'p1');
 
     expect(await screen.findByRole('table')).toBeInTheDocument();
@@ -68,17 +82,23 @@ describe('PricesPage', () => {
     expect(screen.getByText('3.00')).toBeInTheDocument();
     // …and g2 is unpriced across all three money columns.
     expect(screen.getAllByText('—')).toHaveLength(3);
+    // The verb tells the two apart: a priced grade is changed, an unpriced one set.
+    expect(screen.getByRole('button', { name: 'Change' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Set price' })).toBeInTheDocument();
+    // The table sits in the card frame, like every table in the mock.
+    expect(container.querySelector('[data-slot="data-table-frame"] table')).not.toBeNull();
+    await expectNoAxeViolations(container);
   });
 
   it('opens the dialog and sets a price with the point + grade + money payload', async () => {
     render(<PricesPage />);
     await userEvent.selectOptions(screen.getByLabelText('Select a point'), 'p1');
 
-    // Row order matches the mocked catalog: [g1 (priced), g2 (unpriced)].
-    await userEvent.click(screen.getAllByRole('button', { name: 'Set price' })[0]);
+    await userEvent.click(screen.getByRole('button', { name: 'Change' }));
 
-    // Dialog is open and prefilled from g1's current price.
-    expect(await screen.findByLabelText('Base price')).toHaveValue('50.00');
+    // Dialog is open, names the point, and is prefilled from g1's current price.
+    expect(await screen.findByLabelText('Base price, ₴/kg')).toHaveValue('50.00');
+    expect(screen.getByText(/^Shypynky · /)).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole('button', { name: 'Save' }));
     await waitFor(() => expect(setPriceMock).toHaveBeenCalledTimes(1));
@@ -89,5 +109,12 @@ describe('PricesPage', () => {
       max_markup: '5.00',
       max_discount: '3.00',
     });
+  });
+
+  it('opens an empty dialog for an unpriced grade', async () => {
+    render(<PricesPage />);
+    await userEvent.selectOptions(screen.getByLabelText('Select a point'), 'p1');
+    await userEvent.click(screen.getByRole('button', { name: 'Set price' }));
+    expect(await screen.findByLabelText('Base price, ₴/kg')).toHaveValue('');
   });
 });
