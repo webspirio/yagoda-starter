@@ -119,8 +119,16 @@ describe('apiErrorToFields', () => {
     expect(out.formErrorKey).toBe('reception.errors.failed');
   });
 
-  it('falls back to the form-level banner for an unknown code', () => {
-    const out = apiErrorToFields(apiError({ status: 400, code: 'RATE_NEGATIVE' }), 1);
+  it('maps RATE_NEGATIVE onto the last line’s bonus', () => {
+    const out = apiErrorToFields(apiError({ status: 400, code: 'RATE_NEGATIVE' }), 2);
+    expect(out.fieldErrors).toEqual([
+      { field: 'items.1.bonus', messageKey: 'reception.errors.rateNegative' },
+    ]);
+    expect(out.formErrorKey).toBeNull();
+  });
+
+  it('falls back to the form-level banner for a genuinely unknown code', () => {
+    const out = apiErrorToFields(apiError({ status: 400, code: 'SOME_FUTURE_CODE' }), 1);
     expect(out.fieldErrors).toEqual([]);
     expect(out.formErrorKey).toBe('reception.errors.failed');
   });

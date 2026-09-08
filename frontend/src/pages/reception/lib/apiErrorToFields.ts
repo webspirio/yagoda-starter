@@ -31,6 +31,12 @@ const LINE_FIELD: Readonly<Record<string, { suffix: string; messageKey: string }
   },
   BONUS_OUT_OF_RANGE: { suffix: 'bonus', messageKey: 'reception.errors.bonusOutOfRange' },
   NET_WEIGHT_NOT_POSITIVE: { suffix: 'gross_kg', messageKey: 'reception.errors.netNotPositive' },
+  // "price + bonus must not be negative" — a legal bonus can still drive the
+  // rate below zero on a cheaply priced grade (`max_discount` is an
+  // independent magnitude, not a fraction of the price). Landed on `bonus`,
+  // same as `BONUS_OUT_OF_RANGE`: it is the field the operator would change
+  // to fix it.
+  RATE_NEGATIVE: { suffix: 'bonus', messageKey: 'reception.errors.rateNegative' },
 };
 
 /** Codes that name a top-level (non-line) form field. */
