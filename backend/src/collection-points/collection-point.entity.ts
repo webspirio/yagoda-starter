@@ -4,6 +4,7 @@ import {
   CreateDateColumn,
   Entity,
   PrimaryGeneratedColumn,
+  Unique,
   UpdateDateColumn,
 } from 'typeorm';
 import { PointKind } from './point-kind.enum';
@@ -44,6 +45,8 @@ import { PointKind } from './point-kind.enum';
  * village appeared four ways in the client's book.
  */
 @Entity('collection_points')
+@Unique('UQ_collection_points_code', ['code'])
+@Check('CHK_collection_points_code', `"code" ~ '^[A-Z0-9]{2,8}$'`)
 @Check('CHK_collection_points_target_cash', `"target_cash" IS NULL OR "target_cash" >= 0`)
 @Check('CHK_collection_points_target_crates', `"target_crates" IS NULL OR "target_crates" >= 0`)
 export class CollectionPoint {
@@ -52,6 +55,26 @@ export class CollectionPoint {
 
   @Column({ type: 'varchar' })
   name: string;
+
+  /**
+   * The point's short identifier, and the first segment of every receipt code
+   * written here: `KPG-IN-20260908-04412` (spec §6.2).
+   *
+   * NOT IN `28-db-schema.dbml`. It exists because the operator types the number
+   * from the paper receipt book, and two points buying identical books both
+   * have an «04412» — without a point segment the DBML's own global UNIQUE on
+   * `intakes.code` refuses the second one mid-transaction with a car waiting.
+   *
+   * Upper ASCII alphanumeric only, CHECK-enforced, so a composed code survives
+   * any encoding. THE ALPHABET HERE AND IN `common/document-code.ts` MUST
+   * AGREE — changing one without the other writes codes the database rejects.
+   *
+   * MUTABLE, deliberately. A rename does NOT rewrite codes on documents already
+   * written: those are frozen strings, not a join. The only cost is that old
+   * and new receipts read differently, which is true of paper books too.
+   */
+  @Column({ type: 'varchar' })
+  code: string;
 
   @Column({ type: 'enum', enum: PointKind, enumName: 'point_kind', default: PointKind.Reception })
   kind: PointKind;

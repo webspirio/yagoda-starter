@@ -9,6 +9,12 @@ import { Reflector } from '@nestjs/core';
 // MUST be imported before `../app.module` — it loads `.env` as a side effect,
 // and AppModule's decorator runs ConfigModule.forRoot() eagerly at import time.
 import { resolveTestDatabaseName } from './db-harness';
+
+/** A unique, CHECK-valid `collection_points.code`. Required on create since the
+ *  intakes & payouts slice — it is the first segment of every receipt code
+ *  written at the point (spec §6.2). */
+const pointCode = (): string => randomUUID().replace(/-/g, '').slice(0, 8).toUpperCase();
+
 import { AppModule } from '../app.module';
 import { UsersService } from '../users/users.service';
 import { CredentialsService } from '../users/credentials.service';
@@ -61,7 +67,7 @@ describe('catalog pipeline (HTTP)', () => {
     const pointRes = await request(app.getHttpServer())
       .post('/collection-points')
       .set('Authorization', `Bearer ${ownerToken}`)
-      .send({ name: `cat-point-${randomUUID()}` })
+      .send({ name: `cat-point-${randomUUID()}`, code: pointCode() })
       .expect(201);
 
     const { user: operator } = await users.createWithIdentity(
@@ -178,7 +184,7 @@ describe('catalog pipeline (HTTP)', () => {
     await request(app.getHttpServer())
       .post('/collection-points')
       .set('Authorization', `Bearer ${token}`)
-      .send({ name: pointName })
+      .send({ name: pointName, code: pointCode() })
       .expect(201);
 
     // Same name, only the case differs. `UQ_collection_points_name_lower`
@@ -188,7 +194,7 @@ describe('catalog pipeline (HTTP)', () => {
     await request(app.getHttpServer())
       .post('/collection-points')
       .set('Authorization', `Bearer ${token}`)
-      .send({ name: pointName.toLowerCase() })
+      .send({ name: pointName.toLowerCase(), code: pointCode() })
       .expect(409);
   });
 

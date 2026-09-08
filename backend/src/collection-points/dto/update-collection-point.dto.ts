@@ -40,6 +40,16 @@ export class UpdateCollectionPointDto {
   @Length(1, 128)
   name?: string;
 
+  /** `@ValidateIf`, not `@IsOptional()`, for the reason in this class's header:
+   *  `code` is a NOT NULL column, so an explicit `null` must reach the
+   *  validators and be rejected with a 400 rather than reaching `save()`. */
+  @ValidateIf((o: UpdateCollectionPointDto) => o.code !== undefined)
+  @IsString()
+  @Matches(/^\s*[A-Za-z0-9]{2,8}\s*$/, {
+    message: 'code must be 2–8 characters, letters and digits only',
+  })
+  code?: string;
+
   @ValidateIf((o: UpdateCollectionPointDto) => o.kind !== undefined)
   @IsEnum(PointKind)
   kind?: PointKind;

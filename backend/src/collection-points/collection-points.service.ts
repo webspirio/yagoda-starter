@@ -17,6 +17,17 @@ import type { AuthenticatedUser } from '../auth/jwt.strategy';
 
 const TARGET_FIELDS = ['target_cash', 'target_crates'] as const;
 
+/**
+ * Trims and upper-cases a point code. Normalizing HERE rather than in a DTO
+ * `@Transform` follows how `name` is handled in this same service
+ * (`assertTrimmedName`): one normalization pattern per module, and the value a
+ * direct caller passes is treated the same as one that came over HTTP.
+ * `CHK_collection_points_code` is the guarantee behind it.
+ */
+function normalizePointCode(raw: string): string {
+  return raw.trim().toUpperCase();
+}
+
 @Injectable()
 export class CollectionPointsService {
   constructor(
@@ -67,10 +78,13 @@ export class CollectionPointsService {
   ): Promise<CollectionPointResponse> {
     const name = assertTrimmedName(dto.name, 'name', 'POINT_NAME_EMPTY');
     await this.assertNameFree(name);
+    const code = normalizePointCode(dto.code);
+    await this.assertCodeFree(code);
 
     const point = await this.repo.save(
       this.repo.create({
         name,
+        code,
         kind: dto.kind,
         // ?? null, never ?? 0 — see CollectionPoint's doc comment.
         target_cash: dto.target_cash ?? null,
@@ -83,7 +97,7 @@ export class CollectionPointsService {
       actor_id: actor.sub,
       target_type: 'collection_point',
       target_id: point.id,
-      after: { name: point.name, kind: point.kind },
+      after: { name: point.name, code: point.code, kind: point.kind },
     });
 
     return toCollectionPointResponse(point);
@@ -100,7 +114,12 @@ export class CollectionPointsService {
     if (dto.is_active === false && point.is_active) await this.assertNoActiveUsers(point.id);
 
     const targetsBefore = this.targetsOf(point);
-    const before = { name: point.name, kind: point.kind, is_active: point.is_active };
+    const before = {
+      name: point.name,
+      code: point.code,
+      kind: point.kind,
+      is_active: point.is_active,
+    };
 
     // `!= null` (not `!== undefined`) for the three NOT NULL columns: the DTO
     // rejects an explicit null on these with a 400 (see its doc comment), but
@@ -116,6 +135,13 @@ export class CollectionPointsService {
         await this.assertNameFree(name, point.id);
       }
       point.name = name;
+    }
+    if (dto.code != null) {
+      const code = normalizePointCode(dto.code);
+      if (code !== point.code) {
+        await this.assertCodeFree(code, point.id);
+        point.code = code;
+      }
     }
     if (dto.kind != null) point.kind = dto.kind;
     if (dto.is_active != null) point.is_active = dto.is_active;
@@ -155,8 +181,16 @@ export class CollectionPointsService {
       });
     }
 
-    const after = { name: saved.name, kind: saved.kind, is_active: saved.is_active };
-    const fieldDiff = diffFields(before, after, ['name', 'kind', 'is_active']);
+    const after = {
+      name: saved.name,
+      code: saved.code,
+      kind: saved.kind,
+      is_active: saved.is_active,
+    };
+    // `code` is in the diff because it is the first segment of every receipt
+    // written here from now on: a rename changes how new paper reads, and the
+    // audit entry is the only record of when it changed.
+    const fieldDiff = diffFields(before, after, ['name', 'code', 'kind', 'is_active']);
     if (fieldDiff) {
       await this.audit.record({
         action: 'point.updated',
@@ -194,6 +228,22 @@ export class CollectionPointsService {
 
     if (existing && existing.id !== excludeId) {
       throw new ConflictException({ message: 'That name is taken', code: 'POINT_NAME_TAKEN' });
+    }
+  }
+
+  /**
+   * Same division of labour as `assertNameFree`: `UQ_collection_points_code` is
+   * the real guarantee, this only produces the friendly 409 instead of a 500
+   * from an unmapped `QueryFailedError`.
+   *
+   * No case fold here, unlike the name check — the DTO has already upper-cased
+   * the value and `CHK_collection_points_code` rejects anything else, so
+   * `lower()` on both sides would only hide a value that cannot be stored.
+   */
+  private async assertCodeFree(code: string, excludeId?: string): Promise<void> {
+    const existing = await this.repo.findOne({ where: { code } });
+    if (existing && existing.id !== excludeId) {
+      throw new ConflictException({ message: 'That code is taken', code: 'POINT_CODE_TAKEN' });
     }
   }
 

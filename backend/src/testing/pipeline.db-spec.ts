@@ -20,6 +20,12 @@ import { DataSource } from 'typeorm';
 // late regardless of where it sits in this file — the only lever left is
 // import ORDER, which TypeScript does preserve.
 import { resolveTestDatabaseName } from './db-harness';
+
+/** A unique, CHECK-valid `collection_points.code`. Required on create since the
+ *  intakes & payouts slice — it is the first segment of every receipt code
+ *  written at the point (spec §6.2). */
+const pointCode = (): string => randomUUID().replace(/-/g, '').slice(0, 8).toUpperCase();
+
 import { AppModule } from '../app.module';
 import { UsersService } from '../users/users.service';
 import { CredentialsService } from '../users/credentials.service';
@@ -188,7 +194,7 @@ describe('auth + me pipeline (HTTP)', () => {
     const createRes = await request(app.getHttpServer())
       .post('/collection-points')
       .set('Authorization', `Bearer ${ownerToken}`)
-      .send({ name: `pipeline-point-${randomUUID()}` })
+      .send({ name: `pipeline-point-${randomUUID()}`, code: pointCode() })
       .expect(201);
     const pointId = createRes.body.id as string;
 
@@ -216,7 +222,7 @@ describe('auth + me pipeline (HTTP)', () => {
     await request(app.getHttpServer())
       .post('/collection-points')
       .set('Authorization', `Bearer ${operatorToken}`)
-      .send({ name: 'forbidden' })
+      .send({ name: 'forbidden', code: pointCode() })
       .expect(403);
   }, 30_000);
 
@@ -267,7 +273,7 @@ describe('auth + me pipeline (HTTP)', () => {
     const pointRes = await request(app.getHttpServer())
       .post('/collection-points')
       .set('Authorization', `Bearer ${bossToken}`)
-      .send({ name: `admin-point-${randomUUID()}` })
+      .send({ name: `admin-point-${randomUUID()}`, code: pointCode() })
       .expect(201);
     const pointId = pointRes.body.id as string;
 
@@ -416,14 +422,14 @@ describe('suppliers + grade prices (HTTP)', () => {
     const pointRes = await request(app.getHttpServer())
       .post('/collection-points')
       .set('Authorization', `Bearer ${ownerToken}`)
-      .send({ name: `Точка А-${run}`, kind: 'reception' })
+      .send({ name: `Точка А-${run}`, kind: 'reception', code: pointCode() })
       .expect(201);
     pointA = pointRes.body.id;
 
     const pointBRes = await request(app.getHttpServer())
       .post('/collection-points')
       .set('Authorization', `Bearer ${ownerToken}`)
-      .send({ name: `Точка Б-${run}`, kind: 'reception' })
+      .send({ name: `Точка Б-${run}`, kind: 'reception', code: pointCode() })
       .expect(201);
     pointB = pointBRes.body.id;
 
