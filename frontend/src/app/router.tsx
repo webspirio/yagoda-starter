@@ -8,6 +8,7 @@ import { ProfilePage } from '@/pages/profile';
 import { PointsPage } from '@/pages/points';
 import { UsersPage } from '@/pages/users';
 import { SuppliersPage } from '@/pages/suppliers';
+import { CatalogPage } from '@/pages/catalog';
 import { NotFoundPage } from '@/pages/not-found';
 import { UiKitPage } from '@/pages/ui-kit';
 
@@ -71,6 +72,18 @@ export const routes: RouteObject[] = [
           <RequireAuth>
             <RequireRole role="network_owner">
               <UsersPage />
+            </RequireRole>
+          </RequireAuth>
+        ),
+      },
+      {
+        // The tare & grades catalog is owner-only: GET is open to both roles
+        // server-side, but every write here is @Auth(NetworkOwner).
+        path: '/catalog',
+        element: (
+          <RequireAuth>
+            <RequireRole role="network_owner">
+              <CatalogPage />
             </RequireRole>
           </RequireAuth>
         ),

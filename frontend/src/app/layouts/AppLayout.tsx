@@ -83,7 +83,7 @@ const NAV_GROUPS: NavGroup[] = [
       { labelKey: 'nav.transfers', icon: ArrowLeftRight },
       { labelKey: 'nav.points', icon: MapPin, to: '/points' },
       { labelKey: 'nav.users', icon: UserCog, to: '/users' },
-      { labelKey: 'nav.refs', icon: Package },
+      { labelKey: 'nav.refs', icon: Package, to: '/catalog' },
     ],
   },
 ];

@@ -191,6 +191,88 @@
       "pointRequired": "Choose a collection point"
     }
   },
+  "catalog": {
+    "eyebrow": "Directory",
+    "title": "Tare & grades",
+    "description": "The berry catalog: products, their grades, and the tare they arrive in.",
+    "tabs": {
+      "products": "Products",
+      "grades": "Grades",
+      "tareTypes": "Tare types"
+    },
+    "products": {
+      "new": "New product",
+      "col": { "name": "Name" },
+      "empty": {
+        "title": "No products yet",
+        "hint": "Add the first berry to your catalog."
+      },
+      "form": {
+        "createTitle": "Add product",
+        "editTitle": "Edit product",
+        "name": "Name"
+      },
+      "toast": { "created": "Product created", "updated": "Product updated" }
+    },
+    "grades": {
+      "new": "New grade",
+      "allProducts": "All products",
+      "filterLabel": "Filter by product",
+      "active": "Active",
+      "inactive": "Inactive",
+      "col": { "name": "Name", "product": "Product", "status": "Status" },
+      "empty": {
+        "title": "No grades yet",
+        "hint": "Add a grade to a product to make it visible on intake."
+      },
+      "form": {
+        "createTitle": "Add grade",
+        "editTitle": "Edit grade",
+        "name": "Name",
+        "product": "Product",
+        "active": "Active"
+      },
+      "toast": { "created": "Grade created", "updated": "Grade updated" }
+    },
+    "tareTypes": {
+      "new": "New tare type",
+      "active": "Active",
+      "inactive": "Inactive",
+      "crate": "Crate",
+      "notCrate": "Other tare",
+      "col": {
+        "name": "Name",
+        "weight": "Weight, kg",
+        "deposit": "Deposit, ₴",
+        "isCrate": "Crate",
+        "status": "Status"
+      },
+      "empty": {
+        "title": "No tare types yet",
+        "hint": "Add the crates and packaging berries arrive in."
+      },
+      "form": {
+        "createTitle": "Add tare type",
+        "editTitle": "Edit tare type",
+        "name": "Name",
+        "weight": "Weight, kg",
+        "deposit": "Deposit, ₴",
+        "isCrate": "Returnable crate",
+        "active": "Active"
+      },
+      "toast": { "created": "Tare type created", "updated": "Tare type updated" }
+    },
+    "errors": {
+      "saveFailed": "Could not save",
+      "nameTaken": "This name is already taken",
+      "nameEmpty": "Enter a name",
+      "nameRequired": "Enter a name",
+      "nameTooLong": "Name must be 1–128 characters",
+      "productRequired": "Choose a product",
+      "weightFormat": "Enter a weight like 1 or 1.20",
+      "depositFormat": "Enter an amount like 120 or 120.00"
+    }
+  },
   "profile": {
     "title": "Profile",
     "name": "Name",
