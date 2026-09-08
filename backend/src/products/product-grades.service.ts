@@ -51,6 +51,13 @@ export class ProductGradesService {
     };
   }
 
+  /** The entity, unmapped — for other modules that need to validate a grade
+   *  exists and is active. Reads across domains are open; going through the
+   *  owner keeps them from growing their own query. */
+  async findOneRaw(id: string): Promise<ProductGrade | null> {
+    return this.repo.findOne({ where: { id } });
+  }
+
   async create(
     actor: AuthenticatedUser,
     dto: CreateProductGradeDto,

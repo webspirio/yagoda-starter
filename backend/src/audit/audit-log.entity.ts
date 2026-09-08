@@ -33,6 +33,8 @@ export const AUDIT_ACTIONS = [
   'product-grade.updated',
   'tare-type.created',
   'tare-type.updated',
+  'supplier.created',
+  'supplier.updated',
 ] as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];

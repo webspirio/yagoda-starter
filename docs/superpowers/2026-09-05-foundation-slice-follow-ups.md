@@ -156,3 +156,106 @@ Do not "fix" these; both are argued for in the spec and commented in the code.
   than a friendly 409. The unique index is the real guarantee, and this matches
   the pre-existing shape in `CollectionPointsService` and `UserAdminService` —
   recorded for consistency, not as a new defect.
+
+## New, from the suppliers & prices slice (2026-09-07)
+
+- **Per-point grade acceptance does not exist.** `product_grades.is_active` is
+  network-wide, and with `business_date` removed there is no longer any
+  per-point way to stop buying a grade: once priced at a point it is offered
+  there forever. The DBML rejected an `is_enabled` field, but its reasoning
+  («відсутність рядка і є вимкненням») depended on the daily row this slice
+  removed. Closable additively — `is_accepted boolean NOT NULL DEFAULT true`
+  on the price row, latest row per (point, grade) deciding both price and
+  acceptance. Accepted because the network currently buys one assortment
+  everywhere. Spec §5.4.
+
+- **The §4.8 «поставити всім» bulk price route is not built.** When it is: the
+  склад carve-out belongs SERVER-side. Take the target as intent
+  (`{ kind: 'all_reception_points' }`, expanded to active `kind = 'reception'`
+  points) rather than an array of point ids from the client, or the rule ends
+  up in the browser where no test reaches it. Spec §5.5.
+
+- **`max_markup` and `max_discount` are written and never read.** Nothing
+  clamps `intake_items.bonus` against them because `intake_items` does not
+  exist. They are proven stored and proven non-negative and nothing more; the
+  `intakes` slice owes the test that they constrain anything. Spec §5.2.
+
+- **Supplier search is a sequential scan within one point.** The phone suffix
+  `LIKE` and the name substring `ILIKE` both ignore
+  `IDX_suppliers_point_last_name`. Fine at hundreds of suppliers per point;
+  the answer at low tens of thousands is a `pg_trgm` GIN index, which is
+  additive. Judgement, not measurement — no benchmark was run. Spec §6.5.
+
+- **`grade_prices` is a hole in the cross-cutting audit view.** It writes no
+  `audit_log` entries, deliberately (the table is its own history — spec §9),
+  so "what did this person change last Tuesday" misses price moves. Closable
+  with an audit READER that unions the journal.
+
+- **A supplier rename reassigns a money balance, unguarded.** Debt follows
+  `supplier_id`, not the name, and правка 6 cancelled the merge tool. The
+  audit before/after diff is the only trail. A guard was considered and
+  rejected: every version also blocks fixing a typo, which is the common case.
+  Spec §5.6.
+
+- **`CollectionPointsService` still records audit entries outside a
+  transaction.** Now five modules to one. `SuppliersService` uses the
+  `EntityManager` seam like the three catalog services. Align during the admin
+  UI slice.
+
+- **`PATCH /suppliers/:id` reopens the existence oracle that `GET` closed.**
+  `findOne` returns 404 for another point's supplier (spec §8.3), but `update`
+  returns 403 for the same row and 404 for an unknown id — so an empty,
+  fully-whitelisted `PATCH {}` is a zero-side-effect probe distinguishing
+  "exists at another point" from "does not exist", on rows holding real names
+  and phone numbers. Deliberately not changed: spec §7's authorization table
+  prescribes `assertOwnsPoint` for PATCH, and §8.3's argument is scoped to a
+  *guessable* id while these are UUIDv4. Close it by routing `update`'s
+  ownership failure through the same 404 when that file is next opened.
+
+- **A deactivated supplier blocks re-creation with their own phone.**
+  `UQ_suppliers_point_phone` has no `WHERE is_active` predicate, so a supplier
+  deactivated by mistake cannot be re-created with their number — they must be
+  reactivated instead. That is what spec §5.7 specifies and reactivation is
+  the better path, but the 409 message ("A supplier with that phone already
+  exists at this point") does not say the blocker is deactivated and
+  therefore invisible in the default list. Consider naming the deactivated
+  case in that error.
+
+- **A `+38`-shaped mistype is a second supplier row, and no server-side rule
+  can catch it.** `'+38 67 123 45 67'` — the conventional Ukrainian written
+  form minus the national `0` — canonicalizes to `+38671234567`, satisfies
+  `CHK_suppliers_phone_e164`, and becomes a distinct row from
+  `+380671234567`. Dropping the `3` or the `8` instead leaks the same way
+  (`+80671234567`, `+30671234567`). This is not a hole in `phone.ts`'s
+  `UA_CLAIMED` guard: it is the direct consequence of spec §5.7 choosing an
+  E.164 *shape* test, and the near-miss families that CAN be closed already
+  are (`38671234567`, `+3800…`, `00380…`, legacy trunk `8…` all 400).
+  **Do not "fix" this by rejecting `+38` + 9 digits.** Ukraine's national
+  number is 9 digits and its seven `+38x` neighbours' are 8, so that rule
+  rejects every 11-digit `+38x` number — 100% of Slovenia, Bosnia,
+  Montenegro, Kosovo and North Macedonia. `+38671234567` is simultaneously a
+  Ukrainian mistype and a well-formed Slovenian landline; they are the same
+  string. `libphonenumber-js` does not separate them either — a leading `+`
+  makes it read the country code and parse the value as Slovenia. The fix
+  belongs at ENTRY: an input mask or a `+380` prefill on the supplier form,
+  which does not exist yet. Documented in `phone.ts` at the code itself.
+
+- **Neither `suppliers` nor `grade_prices` checks that the collection point is
+  ACTIVE.** Both now 404 a point that does not exist, but an owner can still
+  create a supplier at — or append a price to — a *deactivated* point, and
+  `/grade-prices/current` serves that price afterwards.
+  `UserAdminService.assertPointUsable` rejects exactly this with a 400 and
+  `POINT_UNUSABLE`, so the codebase already holds both answers. Deliberately
+  not changed during review: the two new modules agree with each other, no
+  spec section decides it, and "a retired point stops accepting new data" is
+  a product call rather than a defect to be fixed silently. Decide it, then
+  make all three agree.
+
+- **`GradePricesService.current` runs its `DISTINCT ON` subquery twice per
+  request** — once for the count, once for the page. The doc comment's
+  argument for why `findAndCount` is wrong here is correct, but a
+  `count(*) OVER ()` window column would produce the same `total` in one pass
+  and halve the work on this module's hot read. The two statements are also
+  not in one transaction, so `total` and `data` can disagree under a
+  concurrent insert — consistent with `findAndCount` everywhere else in the
+  repo, hence recorded rather than fixed.
