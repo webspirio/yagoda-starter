@@ -18,12 +18,38 @@
     "invalidCredentials": "Неправильний логін або пароль"
   },
   "nav": {
+    "group": {
+      "onPoint": "Робота на точці",
+      "peopleMoney": "Люди та гроші",
+      "management": "Керівництву"
+    },
     "dashboard": "Зведення",
+    "reception": "Прийомка",
+    "crates": "Ящики",
+    "day": "Каса за день",
+    "pointCash": "Каса точки",
+    "prices": "Ціни дня",
+    "suppliers": "Постачальники",
+    "debts": "Залишки",
+    "journal": "Журнал",
+    "cost": "Собівартість дня",
+    "reweigh": "Переважування",
+    "network": "Середня ціна по мережі",
+    "sheet": "Аркуш керівника",
+    "transfers": "Перекази",
     "points": "Точки",
+    "refs": "Тара і сорти",
     "profile": "Профіль",
     "settings": "Налаштування",
     "openMenu": "Відкрити меню",
     "closeMenu": "Закрити меню"
+  },
+  "shell": {
+    "brand": "Ягода",
+    "allPoints": "усі точки",
+    "yourPoint": "ваша точка",
+    "season": "сезон 2026",
+    "soon": "Скоро"
   },
   "points": {
     "eyebrow": "Довідник",

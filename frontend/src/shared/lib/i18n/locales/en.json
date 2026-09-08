@@ -18,12 +18,38 @@
     "invalidCredentials": "Invalid username or password"
   },
   "nav": {
-    "dashboard": "Dashboard",
+    "group": {
+      "onPoint": "On the point",
+      "peopleMoney": "People & money",
+      "management": "Management"
+    },
+    "dashboard": "Summary",
+    "reception": "Intake",
+    "crates": "Crates",
+    "day": "Day cash",
+    "pointCash": "Point cash",
+    "prices": "Day prices",
+    "suppliers": "Suppliers",
+    "debts": "Balances",
+    "journal": "Journal",
+    "cost": "Cost of day",
+    "reweigh": "Re-weighing",
+    "network": "Network average",
+    "sheet": "Owner sheet",
+    "transfers": "Transfers",
     "points": "Points",
+    "refs": "Tare & grades",
     "profile": "Profile",
     "settings": "Settings",
     "openMenu": "Open menu",
     "closeMenu": "Close menu"
+  },
+  "shell": {
+    "brand": "Yagoda",
+    "allPoints": "all points",
+    "yourPoint": "your point",
+    "season": "season 2026",
+    "soon": "Coming soon"
   },
   "points": {
     "eyebrow": "Directory",
