@@ -334,6 +334,68 @@ describe('documents pipeline (HTTP)', () => {
       }
     }, 30_000);
 
+    it('previews the receipt without writing it, and the real POST stores the very same numbers', async () => {
+      // §2.4/§2.8/§2.9 — the server is the ONLY place these numbers are
+      // computed, so the screen asks for them live instead of computing its
+      // own. The body is `POST /intakes` minus `code`: nothing about a receipt
+      // number changes a weight or an amount.
+      const items = [
+        {
+          product_grade_id: gradeId,
+          gross_kg: '42.00',
+          pallet_kg: '1.50',
+          tare: [{ tare_type_id: crateId, units: 3 }],
+        },
+        {
+          product_grade_id: gradeId,
+          gross_kg: '20.00',
+          bonus: '-2.00',
+          tare: [{ tare_type_id: crateId, units: 1 }],
+        },
+      ];
+      const journalBefore = await request(app.getHttpServer())
+        .get('/intakes')
+        .set('Authorization', `Bearer ${operatorToken}`)
+        .expect(200);
+
+      // 200, not 201: a computed answer, and nothing was created.
+      const preview = await request(app.getHttpServer())
+        .post('/intakes/preview')
+        .set('Authorization', `Bearer ${operatorToken}`)
+        .send({ supplier_id: supplierId, items })
+        .expect(200);
+
+      expect(preview.body.amount).toBe('3137.30');
+      expect(preview.body.items.map((i: { net_kg: string }) => i.net_kg)).toEqual([
+        '36.90',
+        '18.80',
+      ]);
+      expect(preview.body.collection_point_id).toBe(pointId);
+      expect(preview.body.business_date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+      expect(preview.body).not.toHaveProperty('id');
+      expect(preview.body).not.toHaveProperty('code');
+      expect(preview.body.items[0]).not.toHaveProperty('id');
+
+      const journalAfter = await request(app.getHttpServer())
+        .get('/intakes')
+        .set('Authorization', `Bearer ${operatorToken}`)
+        .expect(200);
+      expect(journalAfter.body.total).toBe(journalBefore.body.total);
+
+      const stored = await request(app.getHttpServer())
+        .post('/intakes')
+        .set('Authorization', `Bearer ${operatorToken}`)
+        .send({ code: '04411', supplier_id: supplierId, items })
+        .expect(201);
+
+      const numbers = (i: { net_kg: string; amount: string }) => ({
+        net_kg: i.net_kg,
+        amount: i.amount,
+      });
+      expect(stored.body.amount).toBe(preview.body.amount);
+      expect(stored.body.items.map(numbers)).toEqual(preview.body.items.map(numbers));
+    });
+
     it('records a two-line intake and returns the computed total', async () => {
       const res = await request(app.getHttpServer())
         .post('/intakes')

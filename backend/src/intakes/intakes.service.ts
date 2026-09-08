@@ -10,22 +10,32 @@ import { DataSource, EntityManager, Repository } from 'typeorm';
 import { Intake } from './intake.entity';
 import { IntakeItem } from './intake-item.entity';
 import { IntakeItemTareType } from './intake-item-tare-type.entity';
-import { buildIntake, type PriceSnapshot, type TareSnapshot } from './intake-lines';
+import {
+  buildIntake,
+  type BuiltIntake,
+  type PriceSnapshot,
+  type TareSnapshot,
+} from './intake-lines';
 import { CreateIntakeDto } from './dto/create-intake.dto';
+import { PreviewIntakeDto } from './dto/preview-intake.dto';
 import { VoidDocumentDto } from './dto/void-document.dto';
 import { ListIntakesQueryDto } from './dto/list-intakes.query';
 import {
   IntakeDetailResponse,
   IntakeResponse,
+  PreviewIntakeResponse,
   toIntakeDetailResponse,
   toIntakeResponse,
+  toPreviewIntakeResponse,
 } from './intake.mapper';
 import { Shift } from '../shifts/shift.entity';
 import { ShiftsService } from '../shifts/shifts.service';
 import { SuppliersService } from '../suppliers/suppliers.service';
+import type { SupplierResponse } from '../suppliers/supplier.mapper';
 import { GradePricesService } from '../grade-prices/grade-prices.service';
 import { TareTypesService } from '../tare-types/tare-types.service';
 import { CollectionPointsService } from '../collection-points/collection-points.service';
+import type { CollectionPoint } from '../collection-points/collection-point.entity';
 import { AuditService } from '../audit/audit.service';
 import { composeDocumentCode } from '../common/document-code';
 import { resolveWritePoint, resolvePointFilter } from '../auth/access/point-scope';
@@ -70,48 +80,17 @@ export class IntakesService {
    * first (so a closed shift fails before any snapshot is read), then the
    * snapshots (so the price stored is the price current when the row was
    * written), then every rule at once in `buildIntake`, then the insert.
+   *
+   * `resolveTarget` and `compute` are the steps `preview` SHARES — the point
+   * and supplier outside the transaction, the shift, snapshots and rules
+   * inside it — so a preview and the document that follows it are the same
+   * reads in the same order, and the only thing this method adds is the write.
    */
   async create(actor: AuthenticatedUser, dto: CreateIntakeDto): Promise<IntakeDetailResponse> {
-    const pointId = resolveWritePoint(actor, dto.collection_point_id);
-
-    // The point row is loaded for its `code`, which is the first segment of
-    // every receipt written here. A body-supplied point that names nothing
-    // would otherwise reach the FK and produce a 500 — there is no
-    // QueryFailedError mapping anywhere in this backend.
-    const point = await this.points.findOneRaw(pointId);
-    if (!point) throw new NotFoundException('Collection point not found');
-
-    // Outside the transaction on purpose: it is a read that cannot race
-    // meaningfully — a supplier deactivated between here and the insert is a
-    // document written a second early, not a corrupt one — and doing it first
-    // means the common failure returns without ever opening a transaction.
-    // `findOne` also enforces visibility, so another point's supplier is a 404.
-    const supplier = await this.suppliers.findOne(actor, dto.supplier_id);
-    if (supplier.collection_point_id !== pointId) {
-      throw new NotFoundException('Supplier not found');
-    }
-    if (!supplier.is_active) {
-      throw new BadRequestException({
-        message: 'That supplier is deactivated',
-        code: 'SUPPLIER_INACTIVE',
-      });
-    }
+    const { pointId, point, supplier } = await this.resolveTarget(actor, dto);
 
     return this.dataSource.transaction(async (m) => {
-      const shift = await this.shifts.findOpenAtPoint(pointId, m);
-      if (!shift) {
-        throw new ConflictException({
-          message: 'No open shift at this point — open one first',
-          code: 'NO_OPEN_SHIFT',
-        });
-      }
-
-      const prices = await this.snapshotPrices(pointId, dto, m);
-      const tareTypes = await this.snapshotTare(dto, m);
-
-      // Every rule and every number, in one pure call. If this throws, the
-      // transaction rolls back and no partial document exists.
-      const built = buildIntake(dto.items, prices, tareTypes);
+      const { shift, built } = await this.compute(pointId, dto, m);
 
       const code = composeDocumentCode(point.code, 'IN', shift.business_date, dto.code);
 
@@ -164,6 +143,36 @@ export class IntakesService {
         throw this.translateDuplicateCode(error, dto.code, shift.business_date);
       }
     });
+  }
+
+  /**
+   * `create` UP TO THE POINT WHERE IT WOULD WRITE, and then nothing.
+   *
+   * The reception screen shows net weight, price, bonus and the line and
+   * document amounts LIVE as the operator types, and §2.4/§2.8/§2.9 make the
+   * server the only place those may be computed — so the client asks for the
+   * numbers without asking for a document. Same body minus `code`, same
+   * refusals in the same order: an inactive supplier, a missing shift, an
+   * unpriced grade, an unknown tare type or an out-of-range bonus all fail
+   * here exactly as they would on submit, which is the point — the operator
+   * learns the form is unusable BEFORE typing a whole receipt into it.
+   *
+   * NOT A TRANSACTION, ON PURPOSE. Nothing here writes, so there is nothing
+   * for one to make atomic; the snapshot reads go through the plain manager.
+   * Nothing is saved, audited or numbered — a preview is not an event.
+   */
+  async preview(actor: AuthenticatedUser, dto: PreviewIntakeDto): Promise<PreviewIntakeResponse> {
+    const { pointId, supplier } = await this.resolveTarget(actor, dto);
+    const { shift, built } = await this.compute(pointId, dto, this.dataSource.manager);
+
+    return toPreviewIntakeResponse(
+      {
+        collection_point_id: pointId,
+        supplier_id: supplier.id,
+        business_date: shift.business_date,
+      },
+      built,
+    );
   }
 
   /**
@@ -324,12 +333,79 @@ export class IntakesService {
     return toIntakeDetailResponse(intake, shift, items);
   }
 
+  /**
+   * WHERE the document lands and WHO it is for — the first two steps of both
+   * `create` and `preview`, shared so the two cannot drift.
+   *
+   * Outside any transaction on purpose: these are reads that cannot race
+   * meaningfully — a supplier deactivated between here and the insert is a
+   * document written a second early, not a corrupt one — and doing them first
+   * means the common failure returns without ever opening a transaction.
+   */
+  private async resolveTarget(
+    actor: AuthenticatedUser,
+    dto: PreviewIntakeDto,
+  ): Promise<{ pointId: string; point: CollectionPoint; supplier: SupplierResponse }> {
+    const pointId = resolveWritePoint(actor, dto.collection_point_id);
+
+    // The point row is loaded for its `code`, which is the first segment of
+    // every receipt written here. A body-supplied point that names nothing
+    // would otherwise reach the FK and produce a 500 — there is no
+    // QueryFailedError mapping anywhere in this backend.
+    const point = await this.points.findOneRaw(pointId);
+    if (!point) throw new NotFoundException('Collection point not found');
+
+    // `findOne` also enforces visibility, so another point's supplier is a 404.
+    const supplier = await this.suppliers.findOne(actor, dto.supplier_id);
+    if (supplier.collection_point_id !== pointId) {
+      throw new NotFoundException('Supplier not found');
+    }
+    if (!supplier.is_active) {
+      throw new BadRequestException({
+        message: 'That supplier is deactivated',
+        code: 'SUPPLIER_INACTIVE',
+      });
+    }
+
+    return { pointId, point, supplier };
+  }
+
+  /**
+   * The open shift, the two snapshots and every rule in one pure call — steps
+   * three to five of both verbs. `create` runs it inside its transaction so
+   * the price stored is the price current when the row is written; `preview`
+   * runs it on the plain manager. SAME reads, SAME order, in both — which is
+   * what makes a preview trustworthy: it cannot disagree with the document
+   * that follows it except by a price or tare row changing in between, and
+   * then the document is right to win.
+   */
+  private async compute(
+    pointId: string,
+    dto: PreviewIntakeDto,
+    m: EntityManager,
+  ): Promise<{ shift: Shift; built: BuiltIntake }> {
+    const shift = await this.shifts.findOpenAtPoint(pointId, m);
+    if (!shift) {
+      throw new ConflictException({
+        message: 'No open shift at this point — open one first',
+        code: 'NO_OPEN_SHIFT',
+      });
+    }
+
+    const prices = await this.snapshotPrices(pointId, dto, m);
+    const tareTypes = await this.snapshotTare(dto, m);
+
+    // Every rule and every number, in one pure call. If this throws inside
+    // `create`, the transaction rolls back and no partial document exists.
+    return { shift, built: buildIntake(dto.items, prices, tareTypes) };
+  }
+
   /** §2.8 — the price is a SNAPSHOT of the row current at this moment, read
    *  inside the transaction so what is stored is what was current. §4.5 makes
    *  a missing row a refusal, raised by `buildIntake` naming the grade. */
   private async snapshotPrices(
     pointId: string,
-    dto: CreateIntakeDto,
+    dto: PreviewIntakeDto,
     m: EntityManager,
   ): Promise<Map<string, PriceSnapshot>> {
     const gradeIds = [...new Set(dto.items.map((i) => i.product_grade_id))];
@@ -350,7 +426,7 @@ export class IntakesService {
 
   /** §2.5 — «вага тари підставляється сама». */
   private async snapshotTare(
-    dto: CreateIntakeDto,
+    dto: PreviewIntakeDto,
     m: EntityManager,
   ): Promise<Map<string, TareSnapshot>> {
     const tareIds = [...new Set(dto.items.flatMap((i) => i.tare.map((t) => t.tare_type_id)))];
