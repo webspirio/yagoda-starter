@@ -421,6 +421,22 @@
     "uk": "UK",
     "en": "EN"
   },
+  "void": {
+    "title": "Void {{code}}?",
+    "description": "A document is never edited — void it and write a new one. The reason stays in the journal.",
+    "reason": "Reason",
+    "submit": "Void",
+    "toast": {
+      "voided": "Document voided"
+    },
+    "errors": {
+      "notYourDocument": "Only the author or the owner can void a document",
+      "shiftClosed": "The shift is closed — the owner must reopen it first",
+      "alreadyVoided": "Already voided",
+      "failed": "Could not void",
+      "reasonRequired": "Enter a reason"
+    }
+  },
   "theme": {
     "label": "Theme",
     "light": "Light",
