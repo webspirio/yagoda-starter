@@ -40,6 +40,11 @@ function formatBonus(bonus: string, locale: string): string | null {
  * §"Structure"): the reception, day and supplier-card screens each open the
  * same receipt on the same document, so it lives above `features` and below
  * `pages` rather than inside any one of them.
+ *
+ * `payoutOpen`/`voidOpen` are local state, so if a caller keeps this dialog
+ * mounted (`open` staying `true`) while swapping `intakeId` to a different
+ * document, that state would carry over from the previous receipt — remount
+ * with `key={intakeId}` when doing that.
  */
 export function ReceiptDialog({
   intakeId,
@@ -72,6 +77,15 @@ export function ReceiptDialog({
   const meQuery = useMeQuery();
   const me = meQuery.data;
 
+  const isError =
+    intakeQuery.isError ||
+    supplierQuery.isError ||
+    balanceQuery.isError ||
+    gradeCatalog.isError ||
+    tareTypesQuery.isError ||
+    pointsQuery.isError ||
+    meQuery.isError;
+
   const [payoutOpen, setPayoutOpen] = useState(false);
   const [payoutKey, setPayoutKey] = useState(0);
   const [voidOpen, setVoidOpen] = useState(false);
@@ -95,9 +109,21 @@ export function ReceiptDialog({
     return null;
   }
 
-  let body: ReactNode = <p className="text-sm text-muted-foreground">{t('common.loading')}</p>;
+  let content: ReactNode = (
+    <p className="text-sm text-muted-foreground">{t('common.loading')}</p>
+  );
+  // Extra actions beyond the always-present «Закрити» — only meaningful once
+  // the receipt actually resolved.
+  let actions: ReactNode = null;
+  let dialogs: ReactNode = null;
 
-  if (intake && supplier && balance && !gradeCatalog.isPending && tareTypes && points && me) {
+  if (isError) {
+    content = (
+      <p role="alert" className="text-destructive">
+        {t('common.somethingWentWrong')}
+      </p>
+    );
+  } else if (intake && supplier && balance && !gradeCatalog.isPending && tareTypes && points && me) {
     const gradeById = new Map(gradeCatalog.data.map((g) => [g.id, g]));
     const tareById = new Map(tareTypes.map((tt) => [tt.id, tt]));
     const pointName = points.find((p) => p.id === intake.collection_point_id)?.name ?? '—';
@@ -129,39 +155,40 @@ export function ReceiptDialog({
     const showVoid =
       !voided && (me.role === 'network_owner' || me.id === intake.received_by_user_id);
 
-    body = (
+    content = (
+      <ReceiptSheet
+        code={intake.code}
+        date={formatLongDate(intake.business_date, locale)}
+        pointName={pointName}
+        supplierName={supplierName(supplier)}
+        lines={lines}
+        accrued={formatUah(intake.amount, locale)}
+        balance={formatUah(balance.debt, locale)}
+        receivedBy={receivedBy}
+        voided={voided ? { reason: intake.void_reason ?? '' } : null}
+      />
+    );
+
+    actions = (
       <>
-        <ReceiptSheet
-          code={intake.code}
-          date={formatLongDate(intake.business_date, locale)}
-          pointName={pointName}
-          supplierName={supplierName(supplier)}
-          lines={lines}
-          accrued={formatUah(intake.amount, locale)}
-          balance={formatUah(balance.debt, locale)}
-          receivedBy={receivedBy}
-          voided={voided ? { reason: intake.void_reason ?? '' } : null}
-        />
-
-        <DialogFooter className="print-hide">
-          <Button type="button" variant="ghost" onClick={onClose}>
-            {t('common.close')}
+        {showVoid ? (
+          <Button type="button" variant="destructive" onClick={openVoid}>
+            {t('receipt.void')}
           </Button>
-          {showVoid ? (
-            <Button type="button" variant="destructive" onClick={openVoid}>
-              {t('receipt.void')}
-            </Button>
-          ) : null}
-          {showPayout ? (
-            <Button type="button" variant="outline" onClick={openPayout}>
-              {t('receipt.payOut')}
-            </Button>
-          ) : null}
-          <Button type="button" onClick={() => window.print()}>
-            {t('receipt.print')}
+        ) : null}
+        {showPayout ? (
+          <Button type="button" variant="outline" onClick={openPayout}>
+            {t('receipt.payOut')}
           </Button>
-        </DialogFooter>
+        ) : null}
+        <Button type="button" onClick={() => window.print()}>
+          {t('receipt.print')}
+        </Button>
+      </>
+    );
 
+    dialogs = (
+      <>
         <PayoutDialog
           key={payoutKey}
           supplier={{
@@ -199,7 +226,16 @@ export function ReceiptDialog({
           <DialogDescription>{t('receipt.description')}</DialogDescription>
         </DialogHeader>
 
-        {body}
+        {content}
+
+        <DialogFooter className="print-hide">
+          <Button type="button" variant="ghost" onClick={onClose}>
+            {t('common.close')}
+          </Button>
+          {actions}
+        </DialogFooter>
+
+        {dialogs}
       </DialogContent>
     </Dialog>
   );

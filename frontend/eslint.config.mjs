@@ -5,7 +5,7 @@ import reactRefresh from 'eslint-plugin-react-refresh';
 import prettier from 'eslint-config-prettier';
 import globals from 'globals';
 
-// Feature-Sliced Design layer boundaries: shared < entities < features < pages < app.
+// Feature-Sliced Design layer boundaries: shared < entities < features < widgets < pages < app.
 // A layer may import from any layer below it, never from one above. Cross-imports
 // between slices of the *same* layer (e.g. features/auth -> features/other) are
 // intentionally not restricted here — only the layer direction is enforced.
@@ -19,7 +19,7 @@ function forbidLayers(layers) {
         {
           patterns: layers.map((layer) => ({
             group: [`@/${layer}/**`, `**/${layer}/**`],
-            message: `FSD layer violation: this file's layer may not import from ${layer}/ (shared < entities < features < pages < app).`,
+            message: `FSD layer violation: this file's layer may not import from ${layer}/ (shared < entities < features < widgets < pages < app).`,
           })),
         },
       ],

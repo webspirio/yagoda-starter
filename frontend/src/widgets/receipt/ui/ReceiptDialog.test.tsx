@@ -143,14 +143,24 @@ function setUp({
   intake = buildIntake(),
   debt = '9000.00',
   me = OPERATOR_OTHER,
+  intakeIsError = false,
 }: {
   intake?: IntakeDetail | null;
   debt?: string;
   me?: typeof OPERATOR_AUTHOR | typeof OPERATOR_OTHER | typeof OWNER;
+  intakeIsError?: boolean;
 } = {}) {
-  intakeMock.mockReturnValue({ data: intake ?? undefined, isPending: intake === null });
-  supplierMock.mockReturnValue({ data: SUPPLIER, isPending: false });
-  balanceMock.mockReturnValue({ data: { supplier_id: 'supplier-1', debt }, isPending: false });
+  intakeMock.mockReturnValue({
+    data: intake ?? undefined,
+    isPending: intake === null && !intakeIsError,
+    isError: intakeIsError,
+  });
+  supplierMock.mockReturnValue({ data: SUPPLIER, isPending: false, isError: false });
+  balanceMock.mockReturnValue({
+    data: { supplier_id: 'supplier-1', debt },
+    isPending: false,
+    isError: false,
+  });
   gradesMock.mockReturnValue({
     data: [{ id: 'grade-1', name: '1 сорт', productId: 'product-1', productName: 'Малина' }],
     isPending: false,
@@ -159,9 +169,14 @@ function setUp({
   tareTypesMock.mockReturnValue({
     data: [{ id: 'tare-1', name: 'Чешка', weight_kg: '1.20', is_crate: true }],
     isPending: false,
+    isError: false,
   });
-  pointsMock.mockReturnValue({ data: [{ id: 'point-1', name: 'Шипинки' }], isPending: false });
-  meMock.mockReturnValue({ data: me, isPending: false });
+  pointsMock.mockReturnValue({
+    data: [{ id: 'point-1', name: 'Шипинки' }],
+    isPending: false,
+    isError: false,
+  });
+  meMock.mockReturnValue({ data: me, isPending: false, isError: false });
 }
 
 beforeEach(() => {
@@ -207,6 +222,26 @@ describe('ReceiptDialog', () => {
 
     expect(screen.getByText('Loading…')).toBeInTheDocument();
     expect(screen.queryByText('Pay out in cash')).not.toBeInTheDocument();
+  });
+
+  it('keeps Close reachable while the intake query is pending', () => {
+    setUp({ intake: null });
+    render(<ReceiptDialog intakeId="intake-1" open onClose={vi.fn()} />);
+
+    expect(screen.getByRole('button', { name: 'Close' })).toBeInTheDocument();
+  });
+
+  it('shows an error message and a working Close button when the intake query fails', async () => {
+    setUp({ intakeIsError: true });
+    const onClose = vi.fn();
+    render(<ReceiptDialog intakeId="intake-1" open onClose={onClose} />);
+
+    expect(screen.getByRole('alert')).toHaveTextContent('Something went wrong');
+    expect(screen.queryByText('Loading…')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Pay out in cash' })).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Close' }));
+    expect(onClose).toHaveBeenCalledTimes(1);
   });
 
   it('opens the payout dialog prefilled with min(amount, debt) when the debt is the smaller figure', async () => {
