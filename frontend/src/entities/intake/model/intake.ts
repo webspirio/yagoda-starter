@@ -14,6 +14,40 @@ export interface Intake {
   created_at: string;
 }
 
+/** One tare line on a receipt item — a tare type and how many units of it. */
+export interface IntakeItemTare {
+  tare_type_id: string;
+  units: number;
+}
+
+/**
+ * One line of a receipt. Mirrors the backend's `IntakeItemResponse`
+ * (`intakes/intake.mapper.ts`). Every weight and money field is a STRING —
+ * `numeric` carried end to end so no value passes through a binary float,
+ * same discipline as `Intake.amount`. `tare` lists the tare types applied to
+ * this line (§2.5's automatic weight subtraction), never empty on a real
+ * item but not guaranteed non-empty by the type.
+ */
+export interface IntakeItem {
+  id: string;
+  item_order: number;
+  product_grade_id: string;
+  gross_kg: string;
+  pallet_kg: string;
+  tare_weight_kg: string;
+  net_kg: string;
+  price: string;
+  bonus: string;
+  amount: string;
+  tare: IntakeItemTare[];
+}
+
+/** `GET /intakes/:id` — the header (`Intake`) plus its lines, ordered like the
+ *  paper. `GET /intakes` (the list) never nests items; only the detail read does. */
+export interface IntakeDetail extends Intake {
+  items: IntakeItem[];
+}
+
 export interface Paginated<T> {
   data: T[];
   total: number;

@@ -15,3 +15,16 @@ export interface GradeCatalogItem {
   productId: string;
   productName: string;
 }
+
+/**
+ * A grade catalog row priced for one collection point — `usePricedGradesQuery`'s
+ * shape. The three money fields are STRINGS, same discipline as `GradePrice`
+ * (`pages/prices/model/gradePrice.ts`): `numeric` end to end, no binary float.
+ * Only grades that have a current price at the point become a `PricedGrade` —
+ * an unpriced grade cannot be received (§2.4 needs a `base_price`).
+ */
+export type PricedGrade = GradeCatalogItem & {
+  base_price: string;
+  max_markup: string;
+  max_discount: string;
+};
