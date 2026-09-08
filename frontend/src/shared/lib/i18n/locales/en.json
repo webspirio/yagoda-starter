@@ -143,6 +143,54 @@
       "pointRequired": "Choose a collection point"
     }
   },
+  "suppliers": {
+    "eyebrow": "Directory",
+    "title": "Suppliers",
+    "description": "The people who bring berries to a point — their contact, kind and point.",
+    "new": "New supplier",
+    "searchPlaceholder": "Search by name or phone",
+    "col": {
+      "name": "Name",
+      "phone": "Phone",
+      "kind": "Kind",
+      "point": "Point",
+      "status": "Status"
+    },
+    "kindLabel": {
+      "none": "Regular",
+      "wholesale": "Wholesale",
+      "farmer": "Farmer"
+    },
+    "active": "Active",
+    "inactive": "Inactive",
+    "empty": {
+      "title": "No suppliers yet",
+      "hint": "Add the first supplier to start taking deliveries."
+    },
+    "form": {
+      "createTitle": "Add supplier",
+      "editTitle": "Edit supplier",
+      "firstName": "First name",
+      "lastName": "Last name",
+      "phone": "Phone",
+      "noPhone": "No phone",
+      "kind": "Kind",
+      "note": "Note",
+      "point": "Collection point",
+      "active": "Active"
+    },
+    "toast": {
+      "created": "Supplier created",
+      "updated": "Supplier updated"
+    },
+    "errors": {
+      "saveFailed": "Could not save the supplier",
+      "phoneTaken": "A supplier with this phone already exists at this point",
+      "phoneInvalid": "Enter a valid phone number",
+      "nameRequired": "Enter a name",
+      "pointRequired": "Choose a collection point"
+    }
+  },
   "profile": {
     "title": "Profile",
     "name": "Name",

@@ -7,6 +7,7 @@ import { DashboardPage } from '@/pages/dashboard';
 import { ProfilePage } from '@/pages/profile';
 import { PointsPage } from '@/pages/points';
 import { UsersPage } from '@/pages/users';
+import { SuppliersPage } from '@/pages/suppliers';
 import { NotFoundPage } from '@/pages/not-found';
 import { UiKitPage } from '@/pages/ui-kit';
 
@@ -40,6 +41,17 @@ export const routes: RouteObject[] = [
         element: (
           <RequireAuth>
             <ProfilePage />
+          </RequireAuth>
+        ),
+      },
+      {
+        // Suppliers are a point-level record open to BOTH roles — an operator
+        // sees only their own point's (scoped server-side from the token), the
+        // owner sees all — so this is RequireAuth WITHOUT a role gate.
+        path: '/suppliers',
+        element: (
+          <RequireAuth>
+            <SuppliersPage />
           </RequireAuth>
         ),
       },
