@@ -57,7 +57,7 @@ const NAV_GROUPS: NavGroup[] = [
   {
     labelKey: 'nav.group.onPoint',
     items: [
-      { labelKey: 'nav.reception', icon: Scale },
+      { labelKey: 'nav.reception', icon: Scale, to: '/reception' },
       { labelKey: 'nav.crates', icon: Boxes },
       { labelKey: 'nav.day', icon: CalendarCheck2, to: '/day' },
       { labelKey: 'nav.pointCash', icon: Banknote },

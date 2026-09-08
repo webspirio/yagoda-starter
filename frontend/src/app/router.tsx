@@ -11,6 +11,7 @@ import { SuppliersPage } from '@/pages/suppliers';
 import { CatalogPage } from '@/pages/catalog';
 import { PricesPage } from '@/pages/prices';
 import { DayPage } from '@/pages/day';
+import { ReceptionPage } from '@/pages/reception';
 import { NotFoundPage } from '@/pages/not-found';
 import { UiKitPage } from '@/pages/ui-kit';
 
@@ -55,6 +56,17 @@ export const routes: RouteObject[] = [
         element: (
           <RequireAuth>
             <SuppliersPage />
+          </RequireAuth>
+        ),
+      },
+      {
+        // Both roles: the operator receives the berries, the owner watches the
+        // same screen on a point they picked. Owner-only actions inside are
+        // gated by `me.role`, not by the route.
+        path: '/reception',
+        element: (
+          <RequireAuth>
+            <ReceptionPage />
           </RequireAuth>
         ),
       },

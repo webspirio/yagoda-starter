@@ -2,7 +2,30 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { httpClient } from '@/shared/api';
 import { queryKeys } from '@/shared/api/queryKeys';
 import type { IntakeDetail } from '@/entities/intake';
+import type { Shift } from '@/entities/shift';
 import type { CreateIntakeBody, IntakePreview, PreviewIntakeBody } from '../model/intakeForm';
+
+/**
+ * Operator only — the point is the actor's own, derived from the token; no body.
+ *
+ * A DELIBERATE DUPLICATE of `pages/day/api/shiftActions.ts`'s
+ * `useOpenShiftMutation`, invalidations included: a page may not import from
+ * another page, and the eight lines here are not worth promoting a shift WRITE
+ * into `entities/shift` (which owns reads). If a third screen ever opens a
+ * shift, move both to a `features/` slice rather than adding a third copy.
+ */
+export function useOpenShiftMutation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (): Promise<Shift> => (await httpClient.post<Shift>('/shifts')).data,
+    onSuccess: () =>
+      Promise.all([
+        qc.invalidateQueries({ queryKey: queryKeys.shifts }),
+        qc.invalidateQueries({ queryKey: queryKeys.intakes }),
+        qc.invalidateQueries({ queryKey: queryKeys.payouts }),
+      ]),
+  });
+}
 
 /**
  * Records the receipt — `POST /intakes` writes the whole document in one

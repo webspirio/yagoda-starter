@@ -487,6 +487,125 @@
     "payOut": "Pay out in cash",
     "void": "Void"
   },
+  "reception": {
+    "eyebrow": "{{point}} · {{date}}",
+    "title": "Berry intake",
+    "pickPoint": "Select a point",
+    "toPrices": "Day prices",
+    "toDay": "Cash for the day",
+    "shift": {
+      "none": "Shift not opened yet",
+      "noneOwner": "Shift not opened yet — the operator opens it",
+      "open": "Open shift",
+      "hint": "Nothing can be received until the shift is open."
+    },
+    "noPoint": "Select a point to receive berries",
+    "noPrices": {
+      "title": "No prices set for today",
+      "hint": "Until the day price is set, intake is blocked — so nobody counts by yesterday's."
+    },
+    "supplier": {
+      "eyebrow": "1 · Supplier",
+      "search": "Last name or phone…",
+      "noPhone": "no phone",
+      "change": "Change",
+      "empty": "Nobody found — check the name or add the person in Suppliers.",
+      "debt": "Previous balance {{uah}}",
+      "credit": "Overpaid by us {{uah}}",
+      "history": "Intake history",
+      "card": "Supplier card",
+      "historyEmpty": "No intakes yet — this will be the first."
+    },
+    "code": {
+      "label": "Receipt no.",
+      "hint": "The number from the paper book — the system adds the point and date"
+    },
+    "weight": {
+      "eyebrow": "2 · Weight with tare",
+      "gross": "Gross — berries including tare",
+      "unit": "kg",
+      "pallet": "Pallet",
+      "tare": "Tare — subtracted automatically",
+      "tareType": "Tare type",
+      "tareOption": "{{name}} {{weight}} kg",
+      "units": "Tare units",
+      "fewer": "One fewer",
+      "more": "One more",
+      "removeTare": "Remove tare row",
+      "otherTare": "Other tare"
+    },
+    "grade": {
+      "eyebrow": "3 · Product, grade and day price",
+      "product": "Product",
+      "productPlaceholder": "Select a product",
+      "grade": "Grade and day price",
+      "gradePlaceholder": "Select a grade",
+      "gradeOption": "{{name}} · {{price}} ₴/kg",
+      "bonus": "Extra price — for this line, ₴/kg",
+      "bonusDown": "Extra price down",
+      "bonusUp": "Extra price up",
+      "bounds": "limits: −{{discount}} … +{{markup}} ₴/kg",
+      "outOfRange": "out of range"
+    },
+    "line": {
+      "preview": "tare {{tare}} · net {{net}} · {{price}}+{{bonus}} → {{amount}}",
+      "pending": "…",
+      "grossWarning": "{{gross}} kg — more than the largest line of the season (701.5 kg). Check the gross weight.",
+      "perCrateWarning": "{{kg}} kg per crate. Check the gross weight or the tare count."
+    },
+    "lines": {
+      "add": "Add line",
+      "hint": "Several grades from one supplier add up into one total and one receipt.",
+      "capHint": "Real data never has more than 5 lines per visit — no more are added.",
+      "remove": "Remove line",
+      "title": "Receipt lines",
+      "col": {
+        "grade": "Grade",
+        "gross": "Gross",
+        "pallet": "Pallet",
+        "tare": "Tare",
+        "net": "Net",
+        "price": "Price",
+        "amount": "Amount"
+      }
+    },
+    "totals": {
+      "eyebrow": "4 · Settlement",
+      "accrued": "Accrued",
+      "debt": "Previous balance",
+      "total": "Total to pay out"
+    },
+    "submit": "Accept",
+    "submitKg": "Accept {{kg}}",
+    "submitLines_one": "Accept {{count}} line · {{kg}}",
+    "submitLines_other": "Accept {{count}} lines · {{kg}}",
+    "today": {
+      "title": "Today's receipts",
+      "empty": "Nothing received yet. The first receipt will appear here.",
+      "voided": "voided"
+    },
+    "toast": {
+      "opened": "Shift opened",
+      "accepted": "Accepted {{kg}} — {{uah}}"
+    },
+    "errors": {
+      "failed": "Could not record the receipt",
+      "openShiftFailed": "Could not open the shift",
+      "codeFormat": "1–16 Latin letters, digits or dashes",
+      "codeTaken": "A receipt with this number already exists today",
+      "decimalFormat": "Enter a weight like 126.40",
+      "gradeNotPriced": "This grade has no price for today — set it in Day prices",
+      "tareRequired": "Add the tare — without it the whole gross weight would count as net",
+      "tareTypeDuplicated": "The same tare type twice — merge the rows",
+      "tareTypeUnknown": "No such tare type",
+      "bonusOutOfRange": "The extra price is outside this grade's limits",
+      "netNotPositive": "Net weight comes out zero: the pallet and tare eat the whole gross",
+      "rateNegative": "Price plus extra price cannot be negative",
+      "noOpenShift": "No open shift — open one in Cash for the day",
+      "supplierInactive": "The supplier is deactivated",
+      "shiftClosed": "The shift is already closed"
+    }
+  },
   "theme": {
     "label": "Theme",
     "light": "Light",
