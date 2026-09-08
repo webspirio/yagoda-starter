@@ -354,4 +354,61 @@ describe('SupplierCardPage', () => {
 
     expect(screen.getByRole('alert')).toHaveTextContent('Something went wrong');
   });
+
+  it('shows a back link on the generic error state too', () => {
+    supplierMock.mockReturnValue({
+      data: undefined,
+      isPending: false,
+      isError: true,
+      error: new Error('network down'),
+    });
+
+    renderCard();
+
+    expect(screen.getByRole('link', { name: /All suppliers/ })).toBeInTheDocument();
+  });
+
+  it('warns the Paid tile is partial when payouts were truncated, same as Accrued', () => {
+    intakesMock.mockReturnValue(page<Intake>([]));
+    payoutsMock.mockReturnValue(page<Payout>([], 150));
+
+    renderCard();
+
+    expect(tile('Paid')).toHaveTextContent('first 100');
+    expect(tile('Accrued')).not.toHaveTextContent('first 100');
+  });
+
+  it('shows no truncation hints when both journals are complete', () => {
+    renderCard();
+
+    expect(tile('Accrued')).not.toHaveTextContent('first 100');
+    expect(tile('Paid')).not.toHaveTextContent('first 100');
+    expect(screen.queryByText('Showing the first 100 receipts and payouts')).toBeNull();
+  });
+
+  it('shows a timeline note when intakes were truncated', () => {
+    intakesMock.mockReturnValue(page<Intake>([], 150));
+
+    renderCard();
+
+    expect(screen.getByText('Showing the first 100 receipts and payouts')).toBeInTheDocument();
+  });
+
+  it('shows a timeline note when payouts were truncated', () => {
+    payoutsMock.mockReturnValue(page<Payout>([], 150));
+
+    renderCard();
+
+    expect(screen.getByText('Showing the first 100 receipts and payouts')).toBeInTheDocument();
+  });
+
+  it('waits for the intakes and payouts journals before rendering tiles, so they never flash 0', () => {
+    intakesMock.mockReturnValue({ data: undefined, isPending: true, isError: false });
+
+    renderCard();
+
+    expect(screen.getByRole('progressbar', { name: 'loading' })).toBeInTheDocument();
+    expect(screen.queryByText('Accrued')).toBeNull();
+    expect(screen.queryByRole('heading', { level: 1, name: 'Ivan Koval' })).toBeNull();
+  });
 });

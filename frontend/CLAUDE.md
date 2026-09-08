@@ -41,8 +41,8 @@ src/
   entities/product-grade/       # useGradeCatalogQuery / usePricedGradesQuery — grades joined to product names, for prices and reception
   entities/tare-type/           # useTareTypeOptionsQuery, TareTypeOption type — the tare registry, read by catalog and reception
   entities/shift/                # useShiftOnDateQuery / useCurrentShiftQuery, Shift type — one point's working day, read by pages/day
-  entities/intake/               # useIntakesQuery, Intake type — a point's receipts journal, read by pages/day
-  entities/payout/               # usePayoutsQuery, Payout type — a point's payouts journal, read by pages/day
+  entities/intake/               # useIntakesQuery, Intake type — a point's receipts journal, read by the day screen, the reception screen and the supplier card
+  entities/payout/               # usePayoutsQuery, Payout type — a point's payouts journal, read by the day screen, the reception screen and the supplier card
   features/auth/                 # login/logout API calls, LoginForm, RequireAuth + RequireRole route guards — no register API
   features/edit-profile/         # useUploadAvatarMutation (single consumer: pages/profile — kept as the upload exemplar)
   features/settle-payout/        # useCreatePayoutMutation, PayoutDialog — records a payout against a supplier's balance, opened from the receipt widget

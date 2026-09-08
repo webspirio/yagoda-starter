@@ -162,6 +162,7 @@
       "status": "Status",
       "card": "Card"
     },
+    "cardOf": "Card: {{name}}",
     "kindLabel": {
       "none": "Regular",
       "wholesale": "Wholesale",
@@ -633,7 +634,10 @@
     "payout": "Pay out without berries",
     "empty": {
       "title": "No open balances",
-      "hint": "Every drop-off has been settled in full."
+      "hint": "Every drop-off has been settled in full.",
+      "noMatchTitle": "Nobody found",
+      "noMatchHint": "Check the name. Only the first {{count}} balances are loaded.",
+      "noMatchHintShort": "Check the name."
     }
   },
   "supplierCard": {
@@ -656,7 +660,8 @@
       "empty": "No receipts yet — this will be the first.",
       "intake": "Receipt",
       "payout": "Payout",
-      "void": "Void"
+      "void": "Void",
+      "truncated": "Showing the first 100 receipts and payouts"
     }
   },
   "theme": {

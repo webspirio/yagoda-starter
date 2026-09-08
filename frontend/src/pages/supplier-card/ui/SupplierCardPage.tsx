@@ -79,13 +79,25 @@ export function SupplierCardPage() {
 
   if (supplier.isError || balance.isError || intakes.isError || payouts.isError) {
     return (
-      <p role="alert" className="py-6 text-center text-destructive">
-        {t('common.somethingWentWrong')}
-      </p>
+      <div className="flex flex-col items-center gap-3 py-6 text-center">
+        <p role="alert" className="text-destructive">
+          {t('common.somethingWentWrong')}
+        </p>
+        <Link to="/suppliers" className="text-sm underline">
+          {t('supplierCard.backLink')}
+        </Link>
+      </div>
     );
   }
 
-  if (supplier.isPending || balance.isPending || !supplier.data || !balance.data) {
+  if (
+    supplier.isPending ||
+    balance.isPending ||
+    intakes.isPending ||
+    payouts.isPending ||
+    !supplier.data ||
+    !balance.data
+  ) {
     return (
       <div className="flex justify-center py-12">
         <Spinner />
@@ -103,10 +115,11 @@ export function SupplierCardPage() {
   const livePayouts = payoutRows.filter((p) => p.voided_at === null);
   const accrued = sum(liveIntakes.map((i) => i.amount));
   const paid = sum(livePayouts.map((p) => p.amount));
-  // The journal is read at a fixed `limit: 100` (spec §5.4) — past that the
-  // «Нараховано» tile would under-report the season, so it says so instead
-  // of quietly summing only what happened to load.
+  // Both journals are read at a fixed `limit: 100` (spec §5.4) — past that
+  // the «Нараховано»/«Видано» tiles would under-report the season, so each
+  // says so instead of quietly summing only what happened to load.
   const truncated = intakes.data ? intakes.data.total > intakes.data.data.length : false;
+  const payoutsTruncated = payouts.data ? payouts.data.total > payouts.data.data.length : false;
 
   return (
     <>
@@ -148,7 +161,11 @@ export function SupplierCardPage() {
           value={formatUah(accrued, i18n.language)}
           hint={truncated ? t('supplierCard.tiles.accruedHint') : undefined}
         />
-        <StatTile label={t('supplierCard.tiles.paid')} value={formatUah(paid, i18n.language)} />
+        <StatTile
+          label={t('supplierCard.tiles.paid')}
+          value={formatUah(paid, i18n.language)}
+          hint={payoutsTruncated ? t('supplierCard.tiles.accruedHint') : undefined}
+        />
         <StatTile
           label={t('supplierCard.tiles.balance')}
           value={formatUah(debt, i18n.language)}
@@ -165,6 +182,11 @@ export function SupplierCardPage() {
           onOpenReceipt={openReceipt}
           onVoidPayout={openVoid}
         />
+        {truncated || payoutsTruncated ? (
+          <p className="mt-3 text-xs text-muted-foreground">
+            {t('supplierCard.timeline.truncated')}
+          </p>
+        ) : null}
       </SectionCard>
 
       <ReceiptDialog

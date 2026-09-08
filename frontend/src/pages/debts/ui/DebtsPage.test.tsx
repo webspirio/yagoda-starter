@@ -148,6 +148,30 @@ describe('DebtsPage — the operator', () => {
     expect(screen.queryByText('Марія Бондар')).toBeNull();
   });
 
+  it('shows "nobody found", not the settled empty state, when a search matches nothing', async () => {
+    const user = userEvent.setup();
+    renderDebts();
+
+    await user.type(screen.getByLabelText('Find a supplier'), 'zzzzz');
+
+    expect(screen.getByText('Nobody found')).toBeInTheDocument();
+    expect(screen.queryByText('No open balances')).toBeNull();
+    expect(screen.getByText('Check the name.')).toBeInTheDocument();
+  });
+
+  it('mentions the loaded count in the no-match hint when the server truncated the list', async () => {
+    const user = userEvent.setup();
+    balancesMock.mockReturnValue(page([rowA, rowB, rowC], 150));
+    renderDebts();
+
+    await user.type(screen.getByLabelText('Find a supplier'), 'zzzzz');
+
+    expect(screen.getByText('Nobody found')).toBeInTheDocument();
+    expect(
+      screen.getByText('Check the name. Only the first 3 balances are loaded.'),
+    ).toBeInTheDocument();
+  });
+
   it('opens the payout dialog for that row without navigating away', async () => {
     const user = userEvent.setup();
     const { router } = renderDebts();
@@ -176,6 +200,14 @@ describe('DebtsPage — the operator', () => {
     await user.click(tableRow('Оксана Кушнірук'));
 
     expect(router.state.location.pathname).toBe('/suppliers/s1');
+  });
+
+  it('exposes the supplier name as a keyboard-reachable link to the card', () => {
+    renderDebts();
+
+    expect(
+      within(tableRow('Оксана Кушнірук')).getByRole('link', { name: 'Оксана Кушнірук' }),
+    ).toHaveAttribute('href', '/suppliers/s1');
   });
 
   it('hides the point column and the point picker for an operator', () => {

@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { HandCoins } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import { useNavigate } from 'react-router';
+import { Link, useNavigate } from 'react-router';
 import { ListPage } from '@/shared/ui/templates/list-page';
 import type { Column } from '@/shared/ui/data-table';
 import { Badge } from '@/shared/ui/badge';
@@ -62,11 +62,15 @@ export function DebtsPage() {
   const rows = useMemo(() => data?.data ?? [], [data]);
   const total = data?.total ?? 0;
 
+  const needle = search.trim();
   const filteredRows = useMemo(() => {
-    const needle = search.trim().toLowerCase();
-    if (!needle) return rows;
-    return rows.filter((r) => supplierName(r).toLowerCase().includes(needle));
-  }, [rows, search]);
+    const lowerNeedle = needle.toLowerCase();
+    if (!lowerNeedle) return rows;
+    return rows.filter((r) => supplierName(r).toLowerCase().includes(lowerNeedle));
+  }, [rows, needle]);
+  // A non-empty search that matched nothing is a different story from "every
+  // balance is settled" — the rows exist, the search just didn't find them.
+  const noMatch = needle !== '' && filteredRows.length === 0;
 
   const totalOwed = sum(rows.filter((r) => cmp(r.debt, '0') === 1).map((r) => r.debt));
   // No point picked (owner default) is the only time rows can straddle more
@@ -79,7 +83,16 @@ export function DebtsPage() {
     header: t('debts.col.supplier'),
     cell: (row) => (
       <span className="flex items-center gap-2 font-medium">
-        {supplierName(row)}
+        <Link
+          to={`/suppliers/${row.supplier_id}`}
+          // The row itself navigates to the supplier card too (`onRowClick`
+          // below) — without this the link's click would bubble into that
+          // handler, firing the same navigation twice.
+          onClick={(e) => e.stopPropagation()}
+          className="text-primary underline-offset-2 hover:underline"
+        >
+          {supplierName(row)}
+        </Link>
         {!row.is_active ? <Badge variant="secondary">{t('debts.inactive')}</Badge> : null}
       </span>
     ),
@@ -184,7 +197,20 @@ export function DebtsPage() {
         rowKey={(row) => row.supplier_id}
         onRowClick={(row) => navigate(`/suppliers/${row.supplier_id}`)}
         isEmpty={!isPending && !isError && filteredRows.length === 0}
-        empty={<EmptyState title={t('debts.empty.title')} hint={t('debts.empty.hint')} />}
+        empty={
+          noMatch ? (
+            <EmptyState
+              title={t('debts.empty.noMatchTitle')}
+              hint={
+                total > rows.length
+                  ? t('debts.empty.noMatchHint', { count: rows.length })
+                  : t('debts.empty.noMatchHintShort')
+              }
+            />
+          ) : (
+            <EmptyState title={t('debts.empty.title')} hint={t('debts.empty.hint')} />
+          )
+        }
       >
         {isPending ? (
           <div className="flex justify-center py-12">

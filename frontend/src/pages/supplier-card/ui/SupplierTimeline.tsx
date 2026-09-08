@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Badge } from '@/shared/ui/badge';
 import { Button } from '@/shared/ui/button';
@@ -9,8 +10,7 @@ import type { Intake } from '@/entities/intake';
 import type { Payout } from '@/entities/payout';
 import type { Me } from '@/entities/user';
 
-interface TimelineRow {
-  kind: 'intake' | 'payout';
+interface TimelineRowBase {
   id: string;
   code: string;
   amount: string;
@@ -18,8 +18,11 @@ interface TimelineRow {
   createdAt: string;
   voided: boolean;
   reason: string | null;
-  payout?: Payout;
 }
+
+type TimelineRow =
+  | (TimelineRowBase & { kind: 'intake'; intake: Intake })
+  | (TimelineRowBase & { kind: 'payout'; payout: Payout });
 
 /**
  * intakes + payouts of one supplier, merged newest-first by `created_at`
@@ -48,33 +51,38 @@ export function SupplierTimeline({
   const canVoid = (p: Payout) =>
     p.voided_at === null && (me?.role === 'network_owner' || me?.id === p.paid_by_user_id);
 
-  const rows: TimelineRow[] = [
-    ...intakes.map(
-      (i): TimelineRow => ({
-        kind: 'intake',
-        id: i.id,
-        code: i.code,
-        amount: i.amount,
-        businessDate: i.business_date,
-        createdAt: i.created_at,
-        voided: i.voided_at !== null,
-        reason: i.void_reason,
-      }),
-    ),
-    ...payouts.map(
-      (p): TimelineRow => ({
-        kind: 'payout',
-        id: p.id,
-        code: p.code,
-        amount: p.amount,
-        businessDate: p.business_date,
-        createdAt: p.created_at,
-        voided: p.voided_at !== null,
-        reason: p.void_reason,
-        payout: p,
-      }),
-    ),
-  ].sort((a, b) => (a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : 0));
+  const rows: TimelineRow[] = useMemo(
+    () =>
+      [
+        ...intakes.map(
+          (i): TimelineRow => ({
+            kind: 'intake',
+            intake: i,
+            id: i.id,
+            code: i.code,
+            amount: i.amount,
+            businessDate: i.business_date,
+            createdAt: i.created_at,
+            voided: i.voided_at !== null,
+            reason: i.void_reason,
+          }),
+        ),
+        ...payouts.map(
+          (p): TimelineRow => ({
+            kind: 'payout',
+            payout: p,
+            id: p.id,
+            code: p.code,
+            amount: p.amount,
+            businessDate: p.business_date,
+            createdAt: p.created_at,
+            voided: p.voided_at !== null,
+            reason: p.void_reason,
+          }),
+        ),
+      ].sort((a, b) => (a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : 0)),
+    [intakes, payouts],
+  );
 
   if (rows.length === 0) {
     return <EmptyState title={t('supplierCard.timeline.empty')} />;
@@ -126,14 +134,12 @@ export function SupplierTimeline({
               >
                 {formatUah(row.amount, locale)}
               </span>
-              {row.payout && canVoid(row.payout) ? (
+              {canVoid(row.payout) ? (
                 <Button
                   type="button"
                   variant="ghost"
                   size="sm"
-                  // Narrowed by the guard above; TS loses it across the
-                  // closure since `payout` is an optional object property.
-                  onClick={() => onVoidPayout(row.payout as Payout)}
+                  onClick={() => onVoidPayout(row.payout)}
                 >
                   {t('supplierCard.timeline.void')}
                 </Button>

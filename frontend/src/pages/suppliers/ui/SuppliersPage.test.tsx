@@ -175,12 +175,12 @@ describe('SuppliersPage', () => {
     });
   });
 
-  it('links each row to its supplier card', () => {
+  it('links each row to its supplier card, labelled for the supplier it opens', () => {
     queryMock.mockReturnValue(loaded([ivan, petro]));
     renderSuppliers();
 
     const row = screen.getByText('Ivan Koval').closest('tr') as HTMLElement;
-    expect(within(row).getByRole('link', { name: 'Card' })).toHaveAttribute(
+    expect(within(row).getByRole('link', { name: 'Card: Ivan Koval' })).toHaveAttribute(
       'href',
       '/suppliers/s1',
     );
@@ -200,7 +200,7 @@ describe('SuppliersPage', () => {
     renderSuppliers();
 
     const row = screen.getByText('Ivan Koval').closest('tr') as HTMLElement;
-    await userEvent.click(within(row).getByRole('link', { name: 'Card' }));
+    await userEvent.click(within(row).getByRole('link', { name: 'Card: Ivan Koval' }));
 
     expect(screen.queryByLabelText('First name')).toBeNull();
     expect(screen.getByText('Card stub')).toBeInTheDocument();

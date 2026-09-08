@@ -81,6 +81,7 @@ export function SuppliersPage() {
           // without this the link's click would bubble into that handler too,
           // opening the dialog behind the navigation it just triggered.
           onClick={(e) => e.stopPropagation()}
+          aria-label={t('suppliers.cardOf', { name: `${s.first_name} ${s.last_name}` })}
           className="text-primary underline-offset-2 hover:underline"
         >
           {t('suppliers.col.card')}
