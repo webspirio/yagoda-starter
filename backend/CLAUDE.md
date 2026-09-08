@@ -30,19 +30,25 @@ and whether a hand-written statement even parses. `npm test` never picks them
 up: its `testRegex` (`.*\.spec\.ts$`) does not match `.db-spec.ts`.
 
 **Testing gotchas worth knowing before you distrust a green run:**
-- `test:db` runs Jest under `NODE_OPTIONS=--experimental-vm-modules`, and that
-  is load-bearing, not leftover debris. `@nestjs/schedule` v12 is pure ESM
-  (`"type": "module"`), so the two specs that boot the real `AppModule`
-  (`pipeline.db-spec.ts`, `catalog-pipeline.db-spec.ts`) `require()` an ES
-  module. Jest 30 *can* do that natively, but it gates the capability on
-  `typeof vm.SourceTextModule?.prototype.hasAsyncGraph === 'function'` — and
+- **BOTH** `test` and `test:db` run Jest under
+  `NODE_OPTIONS=--experimental-vm-modules`, and it is load-bearing on each, not
+  leftover debris. Several Nest packages are now pure ESM (`"type": "module"`)
+  — `@nestjs/schedule` v12 and `@nestjs/passport` v12 so far — so any spec that
+  loads one `require()`s an ES module. Jest 30 *can* do that natively, but it
+  gates the capability on
+  `typeof vm.SourceTextModule?.prototype.hasAsyncGraph === 'function'`, and
   `vm.SourceTextModule` only exists under that flag. Jest's own error message
   ("Use Node v24.9+ where Jest supports require(esm) natively") is misleading:
   a new enough Node is necessary but NOT sufficient without the flag. This is
-  also why `engines` now floors at Node 24.15 — `hasAsyncGraph` landed in
-  24.9, so the flag is inert on Node 22 and the suite cannot pass there. The
-  unit config does not need the flag: nothing it loads imports `ScheduleModule`,
-  which is exactly why `npm test` stayed green while `npm run test:db` broke.
+  also why `engines` floors at Node 24.15 — `hasAsyncGraph` landed in 24.9, so
+  the flag is inert on Node 22 and neither suite can pass there.
+- **Which suite an ESM dependency breaks depends only on who imports it, so
+  don't read a green `npm test` as coverage.** `@nestjs/schedule` is imported
+  by `app.module.ts` alone, so it took out only the two db-specs that boot the
+  real `AppModule` while `npm test` stayed green and CI's `db-checks` was the
+  sole signal. `@nestjs/passport` is imported by `auth.decorators.spec.ts` and
+  `jwt.strategy.spec.ts` as well, so it broke the unit suite too. The next
+  package to go ESM will land wherever its importers are — check both suites.
 - Both jest configs set `watchman: false` — the unit config (the `"jest"` key
   in `package.json`) and `jest.db.config.js` — and it is NOT a preference.
   When the machine's `watchman` binary is broken (a mismatched Homebrew
