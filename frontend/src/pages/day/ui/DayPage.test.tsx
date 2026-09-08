@@ -15,6 +15,7 @@ const {
   shiftMock,
   intakesMock,
   payoutsMock,
+  suppliersMock,
   openMock,
   closeMock,
   reopenMock,
@@ -24,6 +25,7 @@ const {
   shiftMock: vi.fn(),
   intakesMock: vi.fn(),
   payoutsMock: vi.fn(),
+  suppliersMock: vi.fn(),
   openMock: vi.fn(),
   closeMock: vi.fn(),
   reopenMock: vi.fn(),
@@ -44,6 +46,17 @@ vi.mock('@/entities/intake', () => ({
 
 vi.mock('@/entities/payout', () => ({
   usePayoutsQuery: (filter: unknown) => payoutsMock(filter),
+}));
+
+vi.mock('@/entities/supplier', () => ({
+  useSuppliersQuery: (search: string, pointId: string | null) => suppliersMock(search, pointId),
+  supplierName: (s: { first_name: string; last_name: string }) =>
+    `${s.first_name} ${s.last_name}`,
+}));
+
+vi.mock('@/widgets/receipt', () => ({
+  ReceiptDialog: ({ intakeId, open }: { intakeId: string | null; open: boolean }) =>
+    open ? <div>Receipt for {intakeId}</div> : null,
 }));
 
 vi.mock('@/entities/collection-point', () => ({
@@ -162,6 +175,16 @@ beforeEach(() => {
   shiftMock.mockReset().mockReturnValue({ data: openShift, isPending: false, isError: false });
   intakesMock.mockReset().mockReturnValue(page<Intake>([]));
   payoutsMock.mockReset().mockReturnValue(page<Payout>([]));
+  suppliersMock.mockReset().mockReturnValue({
+    data: {
+      data: [{ id: 'sup1', first_name: 'Iryna', last_name: 'Kovalenko' }],
+      total: 1,
+      page: 1,
+      limit: 100,
+    },
+    isPending: false,
+    isError: false,
+  });
   openMock.mockReset().mockResolvedValue(openShift);
   closeMock.mockReset().mockResolvedValue({ ...openShift, status: 'closed' });
   reopenMock.mockReset().mockResolvedValue({ ...openShift, status: 'open' });
@@ -251,6 +274,33 @@ describe('DayPage — the operator on an open shift', () => {
 
     await user.click(within(dialog).getByRole('button', { name: 'Close shift' }));
     await waitFor(() => expect(closeMock).toHaveBeenCalledWith('s1'));
+  });
+
+  it('opens the receipt for an intake row, but a payout row stays non-clickable', async () => {
+    const user = userEvent.setup();
+    renderDay();
+
+    expect(screen.queryByText('Receipt for i1')).toBeNull();
+    await user.click(screen.getByRole('button', { name: /KV-0001/ }));
+    expect(screen.getByText('Receipt for i1')).toBeInTheDocument();
+
+    // The payout row carries no button at all — the spec has no document view for it.
+    expect(screen.queryByRole('button', { name: /VD-0001/ })).toBeNull();
+  });
+
+  it("shows every feed row's supplier name, intake and payout alike", () => {
+    renderDay();
+
+    const intakeRow = screen.getByText('KV-0001').closest('li');
+    const payoutRow = screen.getByText('VD-0001').closest('li');
+    expect(within(intakeRow!).getByText('Iryna Kovalenko')).toBeInTheDocument();
+    expect(within(payoutRow!).getByText('Iryna Kovalenko')).toBeInTheDocument();
+  });
+
+  it('renders a voided row\'s reason as visible text, not only a title attribute', () => {
+    renderDay();
+
+    expect(screen.getByText('Voided: Wrong supplier')).toBeInTheDocument();
   });
 });
 

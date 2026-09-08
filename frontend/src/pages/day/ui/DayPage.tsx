@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { DashboardPage, type StatItem } from '@/shared/ui/templates/dashboard-page';
 import { SectionCard } from '@/shared/ui/section-card';
@@ -26,6 +26,8 @@ import { usePointOptionsQuery } from '@/entities/collection-point';
 import { useShiftOnDateQuery, type Shift } from '@/entities/shift';
 import { useIntakesQuery, type Intake } from '@/entities/intake';
 import { usePayoutsQuery, type Payout } from '@/entities/payout';
+import { useSuppliersQuery, supplierName } from '@/entities/supplier';
+import { ReceiptDialog } from '@/widgets/receipt';
 import { useOpenShiftMutation, useCloseShiftMutation } from '../api/shiftActions';
 import { apiErrorToBanner } from '../lib/apiErrorToBanner';
 import { ReopenShiftDialog } from './ReopenShiftDialog';
@@ -36,6 +38,7 @@ interface FeedRow {
   code: string;
   amount: string;
   at: string;
+  supplierId: string;
   voided: boolean;
   reason: string | null;
 }
@@ -64,11 +67,19 @@ export function DayPage() {
   const shiftId = shift.data?.id;
   const intakes = useIntakesQuery({ shiftId });
   const payouts = usePayoutsQuery({ shiftId });
+  // §5.1 — every feed row (intake AND payout) carries the supplier's name; the
+  // point already scopes the suppliers this feed can possibly reference.
+  const suppliers = useSuppliersQuery('', pointId);
+  const supplierNameById = useMemo(
+    () => new Map((suppliers.data?.data ?? []).map((s) => [s.id, supplierName(s)])),
+    [suppliers.data],
+  );
 
   const open = useOpenShiftMutation();
   const close = useCloseShiftMutation();
   const [confirmClose, setConfirmClose] = useState(false);
   const [reopenOpen, setReopenOpen] = useState(false);
+  const [receiptId, setReceiptId] = useState<string | null>(null);
   // Bumped on every open so the dialog remounts with fresh RHF defaults and no
   // banner from the refusal before it — the convention SetPriceDialog documents.
   const [reopenInstance, setReopenInstance] = useState(0);
@@ -132,6 +143,7 @@ export function DayPage() {
       code: i.code,
       amount: i.amount,
       at: i.created_at,
+      supplierId: i.supplier_id,
       voided: i.voided_at !== null,
       reason: i.void_reason,
     })),
@@ -141,6 +153,7 @@ export function DayPage() {
       code: p.code,
       amount: p.amount,
       at: p.created_at,
+      supplierId: p.supplier_id,
       voided: p.voided_at !== null,
       reason: p.void_reason,
     })),
@@ -249,33 +262,58 @@ export function DayPage() {
       <EmptyState title={t('day.feed.empty')} />
     ) : (
       <ul className="divide-y divide-border">
-        {feed.map((row) => (
-          <li
-            key={`${row.kind}-${row.id}`}
-            className={cn(
-              'flex items-center gap-3 py-2.5 text-sm',
-              row.voided && 'text-muted-foreground line-through',
-            )}
-            title={row.reason ?? undefined}
-          >
-            {/* Local wall clock, not the UTC slice of created_at — the operator
-                reads this against the clock on their own wall. */}
-            <span className="font-mono text-xs text-muted-foreground">
-              {new Date(row.at).toLocaleTimeString(i18n.language, {
-                hour: '2-digit',
-                minute: '2-digit',
-              })}
-            </span>
-            <Badge variant={row.kind === 'intake' ? 'secondary' : 'outline'}>
-              {t(`day.feed.${row.kind}`)}
-            </Badge>
-            <span className="font-mono">{row.code}</span>
-            {row.voided ? <span className="text-xs">{t('day.feed.voided')}</span> : null}
-            <span className="ml-auto font-mono tabular-nums">
-              {formatUah(row.amount, i18n.language)}
-            </span>
-          </li>
-        ))}
+        {feed.map((row) => {
+          const rowContent = (
+            <>
+              {/* Local wall clock, not the UTC slice of created_at — the operator
+                  reads this against the clock on their own wall. */}
+              <span className="font-mono text-xs text-muted-foreground">
+                {new Date(row.at).toLocaleTimeString(i18n.language, {
+                  hour: '2-digit',
+                  minute: '2-digit',
+                })}
+              </span>
+              <Badge variant={row.kind === 'intake' ? 'secondary' : 'outline'}>
+                {t(`day.feed.${row.kind}`)}
+              </Badge>
+              <span className="font-mono">{row.code}</span>
+              <span className="min-w-0 flex-1 truncate">
+                {supplierNameById.get(row.supplierId) ?? '—'}
+              </span>
+              {row.voided ? <span className="text-xs">{t('day.feed.voided')}</span> : null}
+              <span className="ml-auto font-mono tabular-nums">
+                {formatUah(row.amount, i18n.language)}
+              </span>
+            </>
+          );
+          const rowClassName = cn(
+            'flex items-center gap-3 text-sm',
+            row.voided && 'text-muted-foreground line-through',
+          );
+
+          return (
+            <li key={`${row.kind}-${row.id}`} className="py-2.5" title={row.reason ?? undefined}>
+              {/* Intake rows open the receipt (spec §5.1); a payout row has no
+                  document view, so it stays a plain, non-interactive row. */}
+              {row.kind === 'intake' ? (
+                <button
+                  type="button"
+                  onClick={() => setReceiptId(row.id)}
+                  className={cn(rowClassName, 'w-full text-left')}
+                >
+                  {rowContent}
+                </button>
+              ) : (
+                <div className={rowClassName}>{rowContent}</div>
+              )}
+              {row.voided && row.reason ? (
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {t('day.feed.voidedReason', { reason: row.reason })}
+                </p>
+              ) : null}
+            </li>
+          );
+        })}
       </ul>
     );
 
@@ -328,6 +366,13 @@ export function DayPage() {
           onClose={() => setReopenOpen(false)}
         />
       ) : null}
+
+      <ReceiptDialog
+        key={receiptId}
+        intakeId={receiptId}
+        open={receiptId !== null}
+        onClose={() => setReceiptId(null)}
+      />
     </>
   );
 }

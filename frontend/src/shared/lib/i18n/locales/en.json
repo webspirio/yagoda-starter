@@ -361,7 +361,8 @@
       "noShift": "The shift is not open yet — no receipts and no payouts.",
       "intake": "Receipt",
       "payout": "Payout",
-      "voided": "voided"
+      "voided": "voided",
+      "voidedReason": "Voided: {{reason}}"
     },
     "toast": {
       "opened": "Shift opened",
