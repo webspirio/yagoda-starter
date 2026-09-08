@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createMemoryRouter, RouterProvider } from 'react-router';
 import { expectNoAxeViolations } from '../../../test-axe';
@@ -99,26 +99,55 @@ const renderPage = (entry = '/catalog') => {
   return render(<RouterProvider router={router} />);
 };
 
+const productList = () => screen.getByRole('list', { name: 'Products' });
+const detail = () => screen.getByRole('region', { name: /Cornel|Raspberry/ });
+
 describe('CatalogPage', () => {
-  it('opens on the products & grades tab with every grade grouped under its product', async () => {
+  it('opens on the master–detail tab with the first product selected and its grades in the pane', async () => {
     const { container } = renderPage();
     expect(
       screen.getByRole('tab', { name: 'Products & grades', selected: true }),
     ).toBeInTheDocument();
 
-    // Raspberry carries its two grades; Cornel has none and says so.
-    expect(screen.getByText('Raspberry')).toBeInTheDocument();
-    expect(screen.getByText('2 grades')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Grade 1' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Substandard/ })).toHaveTextContent('Inactive');
-    expect(screen.getByText('Cornel')).toBeInTheDocument();
-    expect(screen.getByText('0 grades')).toBeInTheDocument();
-    expect(screen.getByText(/No grades yet/)).toBeInTheDocument();
+    // The list is alphabetical with a grade count per product; Cornel comes first.
+    const list = productList();
+    const items = within(list).getAllByRole('button');
+    expect(items.map((b) => b.textContent)).toEqual(['Cornel0', 'Raspberry2']);
+    expect(items[0]).toHaveAttribute('aria-current', 'true');
+
+    // Cornel has no grades: the pane says so instead of showing an empty table.
+    expect(within(detail()).getByRole('heading', { name: 'Cornel' })).toBeInTheDocument();
+    expect(within(detail()).getByText('No grades yet')).toBeInTheDocument();
+    expect(screen.queryByRole('table')).toBeNull();
 
     // The grades query is unfiltered — grouping is done client-side.
     expect(gradesQueryMock).toHaveBeenCalledWith(undefined);
-    expect(screen.getByRole('button', { name: 'New product' })).toBeInTheDocument();
     await expectNoAxeViolations(container);
+  });
+
+  it('switches the pane to the clicked product and lists its grades with status', async () => {
+    renderPage();
+    await userEvent.click(within(productList()).getByRole('button', { name: /Raspberry/ }));
+
+    const pane = detail();
+    expect(within(pane).getByRole('heading', { name: 'Raspberry' })).toBeInTheDocument();
+    expect(within(pane).getByText('2 grades · 1 active')).toBeInTheDocument();
+    expect(within(pane).getByText('Grade 1')).toBeInTheDocument();
+    const retiredRow = within(pane).getByText('Substandard').closest('tr');
+    expect(retiredRow).toHaveTextContent('Inactive');
+  });
+
+  it('selects the product named in the URL', () => {
+    renderPage('/catalog?product=pr1');
+    expect(within(detail()).getByRole('heading', { name: 'Raspberry' })).toBeInTheDocument();
+  });
+
+  it('filters the product list by the search box without losing the selection', async () => {
+    renderPage();
+    await userEvent.type(screen.getByLabelText('Search products'), 'rasp');
+    expect(within(productList()).queryByRole('button', { name: /Cornel/ })).toBeNull();
+    expect(within(productList()).getByRole('button', { name: /Raspberry/ })).toBeInTheDocument();
+    expect(within(detail()).getByRole('heading', { name: 'Cornel' })).toBeInTheDocument();
   });
 
   it('shows the tare table after switching to the Tare types tab', async () => {
@@ -146,9 +175,9 @@ describe('CatalogPage', () => {
     expect(createProductMock).toHaveBeenCalledWith({ name: 'Blueberry' });
   });
 
-  it('adds a grade from its product card with that product preselected', async () => {
+  it('adds a grade to the selected product with that product preselected', async () => {
     renderPage();
-    await userEvent.click(screen.getByRole('button', { name: 'Add a grade to Cornel' }));
+    await userEvent.click(within(detail()).getByRole('button', { name: 'New grade' }));
     expect(await screen.findByLabelText('Product')).toHaveValue('pr2');
     await userEvent.type(screen.getByLabelText('Name'), 'Standard');
     await userEvent.click(screen.getByRole('button', { name: 'Save' }));
@@ -157,8 +186,8 @@ describe('CatalogPage', () => {
   });
 
   it('opens a grade row for editing with its current values', async () => {
-    renderPage();
-    await userEvent.click(screen.getByRole('button', { name: 'Grade 1' }));
+    renderPage('/catalog?product=pr1');
+    await userEvent.click(within(detail()).getByText('Grade 1'));
     expect(await screen.findByLabelText('Name')).toHaveValue('Grade 1');
   });
 });

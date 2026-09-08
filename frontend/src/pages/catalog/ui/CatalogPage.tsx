@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react';
-import { Pencil, Plus } from 'lucide-react';
+import { Plus } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/shared/lib/cn';
 import { useUrlParam } from '@/shared/lib/url-state';
@@ -8,6 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/shared/ui/tabs';
 import { DataTable, type Column } from '@/shared/ui/data-table';
 import { Button } from '@/shared/ui/button';
 import { Badge } from '@/shared/ui/badge';
+import { TextInput } from '@/shared/ui/text-input';
 import { EmptyState } from '@/shared/ui/empty-state';
 import { Spinner } from '@/shared/ui/spinner';
 import { useProductsQuery } from '../api/products';
@@ -28,11 +29,11 @@ const isTabId = (value: string | null): value is TabId =>
 
 /**
  * One owner-only screen for all three catalogs, as TWO tabs: «Товари і сорти»
- * — every grade listed UNDER its product, the mock's `RefsPage` grouping,
- * because a season is set up by adding a berry and then its grades and the
- * two are edited together — and «Тара», a plain table. The active tab lives
- * in the query string so it survives a reload and can be linked;
- * `useUrlParam` REPLACES rather than pushes, so switching tabs does not fill
+ * — a master–detail pair, the product list on the left and the chosen
+ * product's grades on the right, because a berry and its grades are set up
+ * and edited together — and «Тара», a plain table. The active tab and the
+ * chosen product both live in the query string so they survive a reload and
+ * can be linked; `useUrlParam` REPLACES rather than pushes, so neither fills
  * the back stack. A stale `?tab=grades` link falls back to the first tab.
  */
 export function CatalogPage() {
@@ -97,11 +98,10 @@ function AsyncBody({
   return <>{children}</>;
 }
 
-/** The mock's list row: a hairline-bordered pill that IS the edit affordance. */
-const GRADE_ROW_CLASS = cn(
-  'flex w-full items-center gap-2.5 rounded-lg border border-border/70 px-3 py-1.5 text-left transition-colors',
-  'hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50',
-);
+/** The master–detail card shell: the same outline the table frame uses. */
+const PANE_CLASS = 'overflow-hidden rounded-xl border border-line2 bg-card';
+
+const byName = <T extends { name: string }>(a: T, b: T) => a.name.localeCompare(b.name);
 
 function ProductsPanel() {
   const { t } = useTranslation();
@@ -110,12 +110,16 @@ function ProductsPanel() {
   // grades from here, and grouping by product happens client-side.
   const grades = useProductGradesQuery();
 
+  // The chosen product rides in the URL; an unknown or missing id falls back
+  // to the first product, so the detail pane is never empty while data exists.
+  const [productParam, setProductParam] = useUrlParam('product');
+  const [search, setSearch] = useState('');
+
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [productOpen, setProductOpen] = useState(false);
   const [productInstance, setProductInstance] = useState(0);
 
   const [editingGrade, setEditingGrade] = useState<ProductGrade | null>(null);
-  const [gradeProductId, setGradeProductId] = useState<string | null>(null);
   const [gradeOpen, setGradeOpen] = useState(false);
   const [gradeInstance, setGradeInstance] = useState(0);
 
@@ -124,100 +128,160 @@ function ProductsPanel() {
     setProductInstance((n) => n + 1);
     setProductOpen(true);
   };
-  const openGrade = (grade: ProductGrade | null, productId: string | null) => {
+  const openGrade = (grade: ProductGrade | null) => {
     setEditingGrade(grade);
-    setGradeProductId(productId);
     setGradeInstance((n) => n + 1);
     setGradeOpen(true);
   };
 
-  const productRows = products.data?.data ?? [];
-  const gradeRows = grades.data?.data ?? [];
-  const byProduct = new Map<string, ProductGrade[]>();
-  for (const g of gradeRows)
-    byProduct.set(g.product_id, [...(byProduct.get(g.product_id) ?? []), g]);
-  const groups = [...productRows]
-    .sort((a, b) => a.name.localeCompare(b.name))
-    .map((product) => ({
-      product,
-      grades: (byProduct.get(product.id) ?? []).sort((a, b) => a.name.localeCompare(b.name)),
-    }));
+  const productRows = [...(products.data?.data ?? [])].sort(byName);
+  const gradesByProduct = new Map<string, ProductGrade[]>();
+  for (const g of grades.data?.data ?? [])
+    gradesByProduct.set(g.product_id, [...(gradesByProduct.get(g.product_id) ?? []), g]);
+
+  const selected = productRows.find((p) => p.id === productParam) ?? productRows[0] ?? null;
+  const needle = search.trim().toLocaleLowerCase();
+  const visible = needle
+    ? productRows.filter((p) => p.name.toLocaleLowerCase().includes(needle))
+    : productRows;
+
+  const selectedGrades = selected ? [...(gradesByProduct.get(selected.id) ?? [])].sort(byName) : [];
+  const activeCount = selectedGrades.filter((g) => g.is_active).length;
+
+  const columns: Column<ProductGrade>[] = [
+    {
+      id: 'name',
+      header: t('catalog.grades.col.name'),
+      cell: (g) => (
+        <span className={cn('font-medium', !g.is_active && 'text-muted-foreground')}>{g.name}</span>
+      ),
+    },
+    {
+      id: 'is_active',
+      header: t('catalog.grades.col.status'),
+      align: 'right',
+      cell: (g) => (
+        <Badge variant={g.is_active ? 'default' : 'secondary'}>
+          {g.is_active ? t('catalog.grades.active') : t('catalog.grades.inactive')}
+        </Badge>
+      ),
+    },
+  ];
 
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex justify-end">
-        <Button onClick={() => openProduct(null)}>
-          <Plus className="size-4" />
-          {t('catalog.products.new')}
-        </Button>
-      </div>
+    <AsyncBody
+      isPending={products.isPending || grades.isPending}
+      isError={products.isError || grades.isError}
+      isEmpty={productRows.length === 0}
+      empty={
+        <EmptyState
+          title={t('catalog.products.empty.title')}
+          hint={t('catalog.products.empty.hint')}
+          action={
+            <Button onClick={() => openProduct(null)}>
+              <Plus className="size-4" />
+              {t('catalog.products.new')}
+            </Button>
+          }
+        />
+      }
+    >
+      <div className="grid items-start gap-5 md:grid-cols-[minmax(240px,300px)_1fr]">
+        {/* Master: the product list — one flat, scannable column with a grade count. */}
+        <div className="flex flex-col gap-3">
+          <div className="flex gap-2">
+            <TextInput
+              type="search"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder={t('catalog.products.search')}
+              aria-label={t('catalog.products.search')}
+              className="min-w-0"
+            />
+            <Button className="h-[46px] shrink-0" onClick={() => openProduct(null)}>
+              <Plus className="size-4" />
+              {t('catalog.products.new')}
+            </Button>
+          </div>
+          <ul
+            aria-label={t('catalog.products.list')}
+            className={cn(PANE_CLASS, 'divide-y divide-border')}
+          >
+            {visible.map((p) => {
+              const count = gradesByProduct.get(p.id)?.length ?? 0;
+              const isSelected = selected?.id === p.id;
+              return (
+                <li key={p.id}>
+                  <button
+                    type="button"
+                    aria-current={isSelected ? 'true' : undefined}
+                    className={cn(
+                      'flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm transition-colors',
+                      'hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:ring-inset',
+                      isSelected &&
+                        'bg-primary/8 font-medium shadow-[inset_3px_0_0_var(--primary)]',
+                      count === 0 && !isSelected && 'text-muted-foreground',
+                    )}
+                    onClick={() => setProductParam(p.id)}
+                  >
+                    <span className="min-w-0 flex-1 truncate">{p.name}</span>
+                    <span className="font-mono text-xs tabular-nums text-muted-foreground">
+                      {count}
+                    </span>
+                  </button>
+                </li>
+              );
+            })}
+            {visible.length === 0 ? (
+              <li className="px-4 py-6 text-center text-sm text-muted-foreground">
+                {t('catalog.products.noMatch')}
+              </li>
+            ) : null}
+          </ul>
+        </div>
 
-      <AsyncBody
-        isPending={products.isPending || grades.isPending}
-        isError={products.isError || grades.isError}
-        isEmpty={productRows.length === 0}
-        empty={
-          <EmptyState
-            title={t('catalog.products.empty.title')}
-            hint={t('catalog.products.empty.hint')}
-          />
-        }
-      >
-        {/* One card per product, its grades beneath — two columns on wide screens. */}
-        <ul className="grid items-start gap-4 md:grid-cols-2">
-          {groups.map(({ product, grades: list }) => (
-            <li key={product.id} className="rounded-xl bg-card p-4 ring-1 ring-foreground/10">
-              <div className="mb-2 flex items-center gap-2">
-                <span className="font-display text-base font-medium">{product.name}</span>
-                <span className="text-[11px] text-muted-foreground">
-                  {t('catalog.grades.count', { count: list.length })}
-                </span>
-                <span className="ml-auto flex items-center gap-1">
-                  <Button
-                    variant="ghost"
-                    size="icon-sm"
-                    aria-label={t('catalog.products.edit', { name: product.name })}
-                    onClick={() => openProduct(product)}
-                  >
-                    <Pencil />
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    aria-label={t('catalog.grades.addAria', { name: product.name })}
-                    onClick={() => openGrade(null, product.id)}
-                  >
-                    <Plus />
-                    {t('catalog.grades.add')}
-                  </Button>
-                </span>
-              </div>
-              {list.length === 0 ? (
-                <p className="rounded-lg border border-dashed border-border px-3 py-2 text-xs text-muted-foreground">
-                  {t('catalog.products.noGrades')}
+        {/* Detail: the chosen product's grades, with the ONE pair of actions in its header. */}
+        {selected ? (
+          <section aria-labelledby="catalog-product-title" className={PANE_CLASS}>
+            <div className="flex flex-wrap items-center gap-3 border-b border-border px-5 py-4">
+              <div className="min-w-0">
+                <h2 id="catalog-product-title" className="font-display text-lg font-medium">
+                  {selected.name}
+                </h2>
+                <p className="text-xs text-muted-foreground">
+                  {t('catalog.grades.count', { count: selectedGrades.length })} ·{' '}
+                  {t('catalog.grades.activeCount', { count: activeCount })}
                 </p>
-              ) : (
-                <ul className="flex flex-col gap-1">
-                  {list.map((grade) => (
-                    <li key={grade.id}>
-                      <button
-                        type="button"
-                        className={cn(GRADE_ROW_CLASS, !grade.is_active && 'text-muted-foreground')}
-                        onClick={() => openGrade(grade, grade.product_id)}
-                      >
-                        <span className="min-w-0 flex-1 truncate text-sm">{grade.name}</span>
-                        {grade.is_active ? null : (
-                          <Badge variant="outline">{t('catalog.grades.inactive')}</Badge>
-                        )}
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </li>
-          ))}
-        </ul>
-      </AsyncBody>
+              </div>
+              <div className="ml-auto flex shrink-0 gap-2">
+                <Button variant="outline" size="sm" onClick={() => openProduct(selected)}>
+                  {t('catalog.products.rename')}
+                </Button>
+                <Button size="sm" onClick={() => openGrade(null)}>
+                  <Plus />
+                  {t('catalog.grades.new')}
+                </Button>
+              </div>
+            </div>
+            {selectedGrades.length === 0 ? (
+              <div className="p-5">
+                <EmptyState
+                  title={t('catalog.grades.empty.title')}
+                  hint={t('catalog.grades.empty.hint')}
+                />
+              </div>
+            ) : (
+              <DataTable<ProductGrade>
+                frame={false}
+                columns={columns}
+                rows={selectedGrades}
+                rowKey={(g) => g.id}
+                onRowClick={(g) => openGrade(g)}
+              />
+            )}
+          </section>
+        ) : null}
+      </div>
 
       <ProductDialog
         key={productInstance}
@@ -229,11 +293,11 @@ function ProductsPanel() {
         key={gradeInstance}
         grade={editingGrade}
         products={productRows}
-        defaultProductId={gradeProductId}
+        defaultProductId={selected?.id ?? null}
         open={gradeOpen}
         onClose={() => setGradeOpen(false)}
       />
-    </div>
+    </AsyncBody>
   );
 }
 

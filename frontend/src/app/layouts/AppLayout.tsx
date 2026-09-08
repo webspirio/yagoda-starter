@@ -100,6 +100,11 @@ function initials(name: string): string {
  * Desktop-first shell in the mock's identity: a dark sidebar (brand + grouped,
  * role-aware nav + signed-in footer) and a top bar (scope + signed-in user).
  * The sidebar collapses into a slide-over below `md`.
+ *
+ * The top bar is PAPER (`bg-background/85` + blur), exactly as the mock's
+ * `Shell.tsx`, not a white surface: the light theme then has two grounds —
+ * dark chrome and paper — with white objects (cards, the scope pill) on the
+ * paper, instead of a white bar stacked over paper over white cards.
  */
 export function AppLayout() {
   const { t } = useTranslation();
@@ -239,7 +244,7 @@ export function AppLayout() {
 
       {/* Main column */}
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-10 flex h-14 items-center gap-3 border-b border-border bg-surface px-4">
+        <header className="sticky top-0 z-10 flex h-14 items-center gap-3 border-b border-border/70 bg-background/85 px-4 backdrop-blur-md">
           <Button
             variant="ghost"
             size="icon"
@@ -250,7 +255,7 @@ export function AppLayout() {
             {menuOpen ? <X size={18} /> : <Menu size={18} />}
           </Button>
 
-          <span className="rounded-md border border-border px-2.5 py-1 text-sm text-muted-foreground">
+          <span className="rounded-md bg-card px-2.5 py-1 text-sm text-muted-foreground ring-1 ring-foreground/10">
             {scope}
           </span>
 

@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
+  <!-- Ягода: the mock's BerryMark — three berries and a leaf. Transparent ground so it sits on either tab colour. -->
+  <path d="M16.5 7.5c0-2.2 1.8-4 4-4" fill="none" stroke="#a8e86a" stroke-width="2.4" stroke-linecap="round"/>
+  <circle cx="16.3" cy="12.4" r="5.6" fill="#c81e4e" opacity="0.86"/>
+  <circle cx="11.6" cy="19.6" r="5.9" fill="#c81e4e"/>
+  <circle cx="20.9" cy="19.6" r="5.9" fill="#c81e4e" opacity="0.72"/>
+</svg>

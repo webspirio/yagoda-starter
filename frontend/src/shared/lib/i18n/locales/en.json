@@ -194,15 +194,17 @@
   "catalog": {
     "eyebrow": "Directory",
     "title": "Tare & grades",
-    "description": "The berry catalog: products with their grades side by side, and the tare they arrive in.",
+    "description": "The berry catalog: pick a product on the left to see and edit its grades; tare types are on their own tab.",
     "tabs": {
       "products": "Products & grades",
       "tareTypes": "Tare types"
     },
     "products": {
       "new": "New product",
-      "edit": "Edit {{name}}",
-      "noGrades": "No grades yet — add one so the product appears on intake.",
+      "rename": "Rename",
+      "search": "Search products",
+      "list": "Products",
+      "noMatch": "No product matches",
       "empty": {
         "title": "No products yet",
         "hint": "Add the first berry to your catalog."
@@ -215,12 +217,18 @@
       "toast": { "created": "Product created", "updated": "Product updated" }
     },
     "grades": {
-      "add": "Grade",
-      "addAria": "Add a grade to {{name}}",
+      "new": "New grade",
       "count_one": "{{count}} grade",
       "count_other": "{{count}} grades",
+      "activeCount_one": "{{count}} active",
+      "activeCount_other": "{{count}} active",
       "active": "Active",
       "inactive": "Inactive",
+      "col": { "name": "Grade", "status": "Status" },
+      "empty": {
+        "title": "No grades yet",
+        "hint": "Add a grade so the product appears on intake."
+      },
       "form": {
         "createTitle": "Add grade",
         "editTitle": "Edit grade",
