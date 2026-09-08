@@ -96,14 +96,16 @@ export function LineEditor({
   const usedTareTypeIds = new Set(tareRows.map((row) => row.tare_type_id));
   const freeTareType = tareTypes.find((type) => !usedTareTypeIds.has(type.id));
 
-  const tareError = errorAt(`items.${index}.tare.0.tare_type_id`) ?? tareUnitsError();
-  function tareUnitsError(): string | null {
-    for (let row = 0; row < tareRows.length; row++) {
-      const found = errorAt(`items.${index}.tare.${row}.units`);
-      if (found) return found;
-    }
-    return null;
-  }
+  // The tare block has no `Field` of its own (a type select plus a stepper is
+  // not one control), so it carries both of the tare errors the mapper can
+  // produce: the business-rule one it pins to row 0, and a class-validator
+  // complaint about any row's `units`.
+  const tareError =
+    errorAt(`items.${index}.tare.0.tare_type_id`) ??
+    tareRows.reduce<string | null>(
+      (found, _row, rowIndex) => found ?? errorAt(`items.${index}.tare.${rowIndex}.units`),
+      null,
+    );
   const grossError = errorAt(`items.${index}.gross_kg`);
   const bonusError = errorAt(`items.${index}.bonus`);
   const gradeError = errorAt(`items.${index}.product_grade_id`);
