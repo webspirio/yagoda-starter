@@ -32,6 +32,7 @@ describe('CollectionPointsService', () => {
   const point = (over: Record<string, unknown> = {}) => ({
     id: 'p-1',
     name: 'Копайгород',
+    code: 'KPG',
     kind: PointKind.Reception,
     target_cash: null,
     target_crates: null,
@@ -71,8 +72,54 @@ describe('CollectionPointsService', () => {
     service = new CollectionPointsService(repo as never, users as never, audit as never);
   });
 
+  /**
+   * `code` is the first segment of every receipt written at a point (§6.2), so
+   * it gets the same treatment `name` already has: normalized on the way in,
+   * pre-checked for a friendly 409, and carried into the audit diff because a
+   * rename changes how new paper reads.
+   */
+  describe('code', () => {
+    it('upper-cases and trims it on create', async () => {
+      repo.findOne.mockResolvedValue(null);
+
+      await service.create(owner, { name: 'Копайгород', code: ' kpg ' as string });
+
+      expect(repo.save.mock.calls[0][0].code).toBe('KPG');
+    });
+
+    it('reports a taken code as a 409, not a 500 from the constraint', async () => {
+      // The UNIQUE index is the real guarantee; this pre-check only turns an
+      // unmapped QueryFailedError into something the owner can act on.
+      repo.findOne.mockResolvedValue(point({ id: 'other-point', code: 'KPG' }));
+
+      await expect(service.create(owner, { name: 'Інша', code: 'KPG' })).rejects.toMatchObject({
+        response: { code: 'POINT_CODE_TAKEN' },
+      });
+    });
+
+    it('lets a point keep its own code on update', async () => {
+      repo.findOne.mockResolvedValue(point({ code: 'KPG' }));
+
+      await expect(service.update(owner, 'p-1', { code: 'KPG' })).resolves.toBeDefined();
+    });
+
+    it('audits a code change', async () => {
+      repo.findOne.mockResolvedValueOnce(point({ code: 'KPG' })).mockResolvedValueOnce(null);
+
+      await service.update(owner, 'p-1', { code: 'SHYP' });
+
+      expect(audit.record).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: 'point.updated',
+          before: expect.objectContaining({ code: 'KPG' }),
+          after: expect.objectContaining({ code: 'SHYP' }),
+        }),
+      );
+    });
+  });
+
   it('creates a point with both targets unset — NOT zero', async () => {
-    await service.create(owner, { name: 'Нова точка' });
+    await service.create(owner, { name: 'Нова точка', code: 'NOVA' });
 
     const saved = repo.save.mock.calls[0][0];
     expect(saved.target_cash).toBeNull();
@@ -145,7 +192,7 @@ describe('CollectionPointsService', () => {
     it('returns 409 POINT_NAME_TAKEN when the name is already used', async () => {
       nameLookup.mockResolvedValue(point({ id: 'other-point' }));
 
-      await expect(service.create(owner, { name: 'Копайгород' })).rejects.toThrow(
+      await expect(service.create(owner, { name: 'Копайгород', code: 'KPG' })).rejects.toThrow(
         ConflictException,
       );
     });
@@ -153,7 +200,7 @@ describe('CollectionPointsService', () => {
     it('trims the name before the uniqueness check and before saving', async () => {
       nameLookup.mockResolvedValue(null);
 
-      await service.create(owner, { name: '  dupe-check  ' });
+      await service.create(owner, { name: '  dupe-check  ', code: 'DUPE' });
 
       expect(nameLookupWhere).toHaveBeenCalledWith('lower(point.name) = lower(:name)', {
         name: 'dupe-check',
@@ -162,7 +209,7 @@ describe('CollectionPointsService', () => {
     });
 
     it('rejects an all-whitespace name with a 400', async () => {
-      await expect(service.create(owner, { name: '   ' })).rejects.toThrow(BadRequestException);
+      await expect(service.create(owner, { name: '   ', code: 'WSP' })).rejects.toThrow(BadRequestException);
     });
 
     it('lets a point keep its own name on update (excludeId)', async () => {

@@ -12,6 +12,7 @@ const owner = {
 describe('TareTypesService', () => {
   let repo: {
     findAndCount: jest.Mock;
+    find: jest.Mock;
     findOne: jest.Mock;
     save: jest.Mock;
     create: jest.Mock;
@@ -47,6 +48,7 @@ describe('TareTypesService', () => {
     nameLookup = jest.fn().mockResolvedValue(null);
     repo = {
       findAndCount: jest.fn().mockResolvedValue([[tare()], 1]),
+      find: jest.fn().mockResolvedValue([tare()]),
       findOne: jest.fn().mockResolvedValue(null),
       save: jest.fn().mockImplementation((t) => Promise.resolve(t)),
       create: jest.fn().mockImplementation((t) => tare(t)),
@@ -185,4 +187,30 @@ describe('TareTypesService', () => {
       expect(audit.record).toHaveBeenCalled();
     });
   });
+
+  describe('findManyRaw', () => {
+    it('asks for ACTIVE rows only — deactivation must stop something', async () => {
+      await service.findManyRaw(['t-1', 't-2']);
+
+      expect(repo.find).toHaveBeenCalledWith(
+        expect.objectContaining({ where: expect.objectContaining({ is_active: true }) }),
+      );
+    });
+
+    it('returns fewer rows than ids asked for, silently', async () => {
+      // The caller knows which LINE each id came from and turns the gap into
+      // TARE_TYPE_UNKNOWN naming it. This seam cannot see the request and must
+      // not guess at an error message for a caller it cannot see.
+      repo.find.mockResolvedValue([tare({ id: 't-1' })]);
+
+      await expect(service.findManyRaw(['t-1', 'missing'])).resolves.toHaveLength(1);
+    });
+
+    it('short-circuits an empty id list without touching the database', async () => {
+      await expect(service.findManyRaw([])).resolves.toEqual([]);
+
+      expect(repo.find).not.toHaveBeenCalled();
+    });
+  });
+
 });

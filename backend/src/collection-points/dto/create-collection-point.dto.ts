@@ -15,6 +15,25 @@ export class CreateCollectionPointDto {
   @Length(1, 128)
   name: string;
 
+  /**
+   * REQUIRED, and the alternative was considered and rejected. A generated
+   * `P07` would end up printed on a supplier's receipt with nobody ever having
+   * been asked; creating a point is a rare, owner-only act and is the right
+   * moment to ask. The migration backfills existing rows precisely because
+   * they had no such moment.
+   *
+   * VALIDATED CASE-INSENSITIVELY AND NORMALIZED IN THE SERVICE, matching how
+   * `name` is handled here (`assertTrimmedName`) rather than introducing a
+   * second normalization pattern in the same module. «kpg» is accepted and
+   * stored as «KPG»; the storage form is enforced by
+   * `CHK_collection_points_code`, which is the real guarantee either way.
+   */
+  @IsString()
+  @Matches(/^\s*[A-Za-z0-9]{2,8}\s*$/, {
+    message: 'code must be 2–8 characters, letters and digits only',
+  })
+  code: string;
+
   @IsOptional()
   @IsEnum(PointKind)
   kind?: PointKind;

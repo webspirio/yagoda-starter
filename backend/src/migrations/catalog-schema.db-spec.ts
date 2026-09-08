@@ -2,6 +2,12 @@ import { randomUUID } from 'crypto';
 import { DataSource } from 'typeorm';
 import { openTestDataSource } from '../testing/db-harness';
 
+/** A unique, CHECK-valid `collection_points.code` per insert. The column became
+ *  NOT NULL + UNIQUE with the intakes & payouts migration; 8 hex characters
+ *  upper-cased satisfies `^[A-Z0-9]{2,8}$` and never collides across runs. */
+const pointCode = (): string => randomUUID().replace(/-/g, '').slice(0, 8).toUpperCase();
+
+
 /**
  * Everything in the catalog schema that exists ONLY in hand-written SQL.
  *
@@ -126,9 +132,15 @@ describe('YagodaCatalog', () => {
 
   it('rejects a collection point whose name differs only by case', async () => {
     const name = `Копайгород-${randomUUID()}`;
-    await ds.query(`INSERT INTO collection_points (name) VALUES ($1)`, [name]);
+    await ds.query(`INSERT INTO collection_points (name, code) VALUES ($1, $2)`, [
+      name,
+      pointCode(),
+    ]);
     await expect(
-      ds.query(`INSERT INTO collection_points (name) VALUES ($1)`, [name.toLowerCase()]),
+      ds.query(`INSERT INTO collection_points (name, code) VALUES ($1, $2)`, [
+        name.toLowerCase(),
+        pointCode(),
+      ]),
     ).rejects.toThrow(/duplicate key/i);
   });
 });
