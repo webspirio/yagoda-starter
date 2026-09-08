@@ -6,6 +6,7 @@ import { LoginPage } from '@/pages/login';
 import { DashboardPage } from '@/pages/dashboard';
 import { ProfilePage } from '@/pages/profile';
 import { PointsPage } from '@/pages/points';
+import { UsersPage } from '@/pages/users';
 import { NotFoundPage } from '@/pages/not-found';
 import { UiKitPage } from '@/pages/ui-kit';
 
@@ -48,6 +49,16 @@ export const routes: RouteObject[] = [
           <RequireAuth>
             <RequireRole role="network_owner">
               <PointsPage />
+            </RequireRole>
+          </RequireAuth>
+        ),
+      },
+      {
+        path: '/users',
+        element: (
+          <RequireAuth>
+            <RequireRole role="network_owner">
+              <UsersPage />
             </RequireRole>
           </RequireAuth>
         ),

@@ -38,6 +38,7 @@
     "sheet": "Owner sheet",
     "transfers": "Transfers",
     "points": "Points",
+    "users": "Users",
     "refs": "Tare & grades",
     "profile": "Profile",
     "settings": "Settings",
@@ -90,6 +91,56 @@
       "hasActiveUsers": "This point still has assigned staff — reassign them before deactivating",
       "cashFormat": "Enter an amount like 15000 or 15000.50",
       "cratesFormat": "Enter a whole number of crates"
+    }
+  },
+  "users": {
+    "eyebrow": "Directory",
+    "title": "Users",
+    "description": "The people who sign in to Yagoda — owners and point operators, with their roles and points.",
+    "new": "New user",
+    "col": {
+      "name": "Name",
+      "login": "Login",
+      "role": "Role",
+      "point": "Point",
+      "status": "Status"
+    },
+    "roleLabel": {
+      "network_owner": "Network owner",
+      "point_operator": "Point operator"
+    },
+    "active": "Active",
+    "inactive": "Inactive",
+    "empty": {
+      "title": "No users yet",
+      "hint": "Add the first user to give your team access."
+    },
+    "form": {
+      "createTitle": "New user account",
+      "editTitle": "Edit user",
+      "firstName": "First name",
+      "lastName": "Last name",
+      "login": "Login",
+      "password": "Password",
+      "role": "Role",
+      "point": "Collection point",
+      "active": "Active",
+      "resetPassword": "Reset password",
+      "setPassword": "Set password"
+    },
+    "toast": {
+      "created": "User created",
+      "updated": "User updated",
+      "passwordSet": "Password updated"
+    },
+    "errors": {
+      "saveFailed": "Could not save the user",
+      "loginTaken": "This login is already taken",
+      "loginRequired": "Enter a login",
+      "loginWhitespace": "The login must not contain spaces",
+      "nameRequired": "Enter a name",
+      "passwordShort": "Password must be at least 8 characters",
+      "pointRequired": "Choose a collection point"
     }
   },
   "profile": {
