@@ -5,8 +5,10 @@ import { seedDev } from './dev-seed';
 import {
   DEV_OPERATOR_PASSWORD,
   SEED_GRADES,
+  SEED_INTAKES,
   SEED_POINTS,
   SEED_PRICE_CHANGES,
+  SEED_SHIFTS,
 } from './dev-seed.data';
 
 /**
@@ -38,7 +40,50 @@ describe('dev seed', () => {
       users: 0,
       suppliers: 0,
       prices: 0,
+      shifts: 0,
+      intakes: 0,
+      payouts: 0,
     });
+  });
+
+  it('seeds the documents the API would have written: shifts on their dates, receipts in shifts, no negative balance', async () => {
+    const [shifts] = await ds.query(
+      `SELECT count(*) FILTER (WHERE status = 'open')::int AS open,
+              count(*) FILTER (WHERE status = 'closed' AND closed_at IS NOT NULL AND closed_by_user_id IS NOT NULL)::int AS closed
+         FROM shifts s JOIN collection_points cp ON cp.id = s.collection_point_id
+        WHERE cp.name = ANY($1)`,
+      [SEED_SHIFTS.map((s) => s.point)],
+    );
+    expect(shifts.open).toBe(SEED_SHIFTS.filter((s) => !s.closed).length);
+    expect(shifts.closed).toBe(SEED_SHIFTS.filter((s) => s.closed).length);
+
+    // Every seeded intake has its lines and tare rows, and the document
+    // amount is the sum of its lines (§2.3 — the number printed on the paper).
+    const rows: { code: string; amount: string; lines: string; tare_rows: number }[] =
+      await ds.query(
+        `SELECT i.code, i.amount::text AS amount, sum(it.amount)::text AS lines,
+              count(tt.tare_type_id)::int AS tare_rows
+         FROM intakes i
+         JOIN intake_items it ON it.intake_id = i.id
+         LEFT JOIN intake_item_tare_types tt ON tt.item_id = it.id
+        WHERE split_part(i.code, '-', 1) IN ('SHP', 'KON', 'HAI')
+        GROUP BY i.id`,
+      );
+    expect(rows.length).toBeGreaterThanOrEqual(SEED_INTAKES.length);
+    for (const r of rows) {
+      expect(r.amount).toBe(r.lines);
+      expect(r.tare_rows).toBeGreaterThan(0);
+    }
+
+    // The payout ceiling holds for every seeded supplier: intakes − payouts ≥ 0.
+    const balances: { debt: string }[] = await ds.query(
+      `SELECT (COALESCE((SELECT SUM(i.amount) FROM intakes i WHERE i.supplier_id = s.id AND i.voided_at IS NULL), 0)
+             - COALESCE((SELECT SUM(p.amount) FROM payouts p WHERE p.supplier_id = s.id AND p.voided_at IS NULL), 0))::text AS debt
+         FROM suppliers s JOIN collection_points cp ON cp.id = s.collection_point_id
+        WHERE cp.code IN ('SHP', 'KON', 'HAI')`,
+    );
+    expect(balances.length).toBeGreaterThan(0);
+    for (const b of balances) expect(b.debt.startsWith('-')).toBe(false);
   });
 
   it('prices every active grade at every working point, exactly once per pair as the base', async () => {

@@ -1,15 +1,26 @@
 import { DataSource, QueryRunner } from 'typeorm';
 import { hashPassword } from '../users/password-hashing';
+import { composeDocumentCode } from '../common/document-code';
+import {
+  buildIntake,
+  type IntakeLineInput,
+  type PriceSnapshot,
+  type TareSnapshot,
+} from '../intakes/intake-lines';
 import {
   DEV_OPERATOR_PASSWORD,
   SEED_GRADES,
+  SEED_INTAKES,
   SEED_OPERATORS,
+  SEED_PAYOUTS,
   SEED_POINTS,
   SEED_PRICE_CHANGES,
   SEED_PRICE_LIMITS,
   SEED_PRODUCTS,
+  SEED_SHIFTS,
   SEED_SUPPLIERS,
   SEED_TARE_TYPES,
+  type SeedDay,
 } from './dev-seed.data';
 
 /** Rows INSERTED by one run — every key is 0 on a repeat run. */
@@ -21,6 +32,9 @@ export interface DevSeedSummary {
   users: number;
   suppliers: number;
   prices: number;
+  shifts: number;
+  intakes: number;
+  payouts: number;
 }
 
 const MONEY = /^(-)?(\d+)(?:\.(\d{1,2}))?$/;
@@ -77,6 +91,9 @@ export async function seedDev(ds: DataSource): Promise<DevSeedSummary> {
       users: 0,
       suppliers: 0,
       prices: 0,
+      shifts: 0,
+      intakes: 0,
+      payouts: 0,
     };
 
     const ownerId = await resolveOwner(qr, summary);
@@ -282,6 +299,8 @@ export async function seedDev(ds: DataSource): Promise<DevSeedSummary> {
       summary.prices += 1;
     }
 
+    await seedDocuments(qr, summary, pointId, gradeId, gradeKey);
+
     await qr.commitTransaction();
     return summary;
   } catch (error) {
@@ -289,6 +308,207 @@ export async function seedDev(ds: DataSource): Promise<DevSeedSummary> {
     throw error;
   } finally {
     await qr.release();
+  }
+}
+
+/**
+ * Shifts, intakes and payouts. Every intake's numbers come from the server's
+ * own `buildIntake()` over the price and tare snapshots the seed itself wrote,
+ * and every document code from `composeDocumentCode()` — the demo stores what
+ * the API would have stored. Idempotent by the schema's own keys: a shift by
+ * `(point, business_date)`, a document by its UNIQUE `code`.
+ *
+ * `business_date` is «today» in APP_TIMEZONE, so the open shifts are really
+ * open when the seed runs; timestamps are local wall-clock times on that date.
+ */
+async function seedDocuments(
+  qr: QueryRunner,
+  summary: DevSeedSummary,
+  pointId: Map<string, string>,
+  gradeId: Map<string, string>,
+  gradeKey: (product: string, grade: string) => string,
+): Promise<void> {
+  const tz = process.env.APP_TIMEZONE ?? 'Europe/Kyiv';
+  const days = await one<{ today: string; yesterday: string }>(
+    qr,
+    `SELECT (now() AT TIME ZONE $1)::date::text AS today,
+            ((now() AT TIME ZONE $1)::date - 1)::text AS yesterday`,
+    [tz],
+  );
+  const dateOf = (day: SeedDay) => (day === 'today' ? days!.today : days!.yesterday);
+  // A local wall-clock instant on a business date, as timestamptz — the
+  // placeholders are named by index so a fragment can sit anywhere in a VALUES.
+  const localTs = (dateIdx: number, timeIdx: number, tzIdx: number) =>
+    `($${dateIdx}::date + $${timeIdx}::time) AT TIME ZONE $${tzIdx}`;
+
+  const userByLogin = new Map<string, string>();
+  for (const login of new Set(SEED_OPERATORS.map((u) => u.login))) {
+    const row = await one<{ user_id: string }>(
+      qr,
+      `SELECT user_id FROM user_identities WHERE provider = 'local' AND provider_user_id = $1`,
+      [login],
+    );
+    if (row) userByLogin.set(login, row.user_id);
+  }
+  const pointCode = new Map(SEED_POINTS.map((p) => [p.name, p.code]));
+
+  const supplierId = new Map<string, string>();
+  const supplierFor = async (point: string, fullName: string): Promise<string> => {
+    const key = `${point}/${fullName}`;
+    const cached = supplierId.get(key);
+    if (cached) return cached;
+    const [first, ...rest] = fullName.split(' ');
+    const row = await one<{ id: string }>(
+      qr,
+      `SELECT id FROM suppliers
+        WHERE collection_point_id = $1 AND lower(first_name) = lower($2) AND lower(last_name) = lower($3)`,
+      [pointId.get(point)!, first, rest.join(' ')],
+    );
+    if (!row) throw new Error(`Seed supplier not found: ${key}`);
+    supplierId.set(key, row.id);
+    return row.id;
+  };
+
+  const tareByName = new Map<string, TareSnapshot>();
+  for (const t of SEED_TARE_TYPES) {
+    const row = await one<{ id: string; weight_kg: string }>(
+      qr,
+      `SELECT id, weight_kg::text AS weight_kg FROM tare_types WHERE lower(name) = lower($1)`,
+      [t.name],
+    );
+    if (row) tareByName.set(t.name, { id: row.id, weight_kg: row.weight_kg });
+  }
+  const tareById = new Map([...tareByName.values()].map((t) => [t.id, t]));
+
+  const priceFor = async (point: string, grade: string): Promise<PriceSnapshot> => {
+    const row = await one<PriceSnapshot>(
+      qr,
+      `SELECT base_price::text AS base_price, max_markup::text AS max_markup, max_discount::text AS max_discount
+         FROM grade_prices WHERE collection_point_id = $1 AND product_grade_id = $2
+        ORDER BY created_at DESC, id DESC LIMIT 1`,
+      [pointId.get(point)!, grade],
+    );
+    if (!row) throw new Error(`Seed price not found for ${point} / ${grade}`);
+    return row;
+  };
+
+  const shiftId = new Map<string, string>();
+  for (const sh of SEED_SHIFTS) {
+    const pid = pointId.get(sh.point)!;
+    const date = dateOf(sh.day);
+    const key = `${sh.point}/${sh.day}`;
+    const found = await one<{ id: string }>(
+      qr,
+      `SELECT id FROM shifts WHERE collection_point_id = $1 AND business_date = $2`,
+      [pid, date],
+    );
+    if (found) {
+      shiftId.set(key, found.id);
+      continue;
+    }
+    const opener = userByLogin.get(sh.openedBy)!;
+    const row = await one<{ id: string }>(
+      qr,
+      `INSERT INTO shifts
+         (collection_point_id, opened_by_user_id, business_date, status, closed_at, closed_by_user_id, created_at)
+       VALUES ($1, $2, $3::date, $4::shift_status,
+               CASE WHEN $5::boolean THEN ${localTs(3, 6, 8)} ELSE NULL END,
+               CASE WHEN $5::boolean THEN $2::uuid ELSE NULL END,
+               ${localTs(3, 7, 8)})
+       RETURNING id`,
+      [pid, opener, date, sh.closed ? 'closed' : 'open', sh.closed, '19:10', '07:30', tz],
+    );
+    shiftId.set(key, row!.id);
+    summary.shifts += 1;
+  }
+
+  for (const doc of SEED_INTAKES) {
+    const code = composeDocumentCode(pointCode.get(doc.point)!, 'IN', dateOf(doc.day), doc.typed);
+    const found = await one<{ id: string }>(qr, `SELECT id FROM intakes WHERE code = $1`, [code]);
+    if (found) continue;
+    const shift = shiftId.get(`${doc.point}/${doc.day}`);
+    if (!shift) throw new Error(`Seed intake ${code} has no shift`);
+
+    const prices = new Map<string, PriceSnapshot>();
+    const inputs: IntakeLineInput[] = [];
+    for (const line of doc.lines) {
+      const gid = gradeId.get(gradeKey(line.product, line.grade))!;
+      prices.set(gid, await priceFor(doc.point, gid));
+      inputs.push({
+        product_grade_id: gid,
+        gross_kg: line.gross_kg,
+        pallet_kg: line.pallet_kg,
+        bonus: line.bonus,
+        tare: line.tare.map((t) => ({ tare_type_id: tareByName.get(t.type)!.id, units: t.units })),
+      });
+    }
+    const built = buildIntake(inputs, prices, tareById);
+    const intake = await one<{ id: string }>(
+      qr,
+      `INSERT INTO intakes (code, shift_id, supplier_id, amount, received_by_user_id, created_at)
+       VALUES ($1, $2, $3, $4, $5, ${localTs(6, 7, 8)})
+       RETURNING id`,
+      [
+        code,
+        shift,
+        await supplierFor(doc.point, doc.supplier),
+        built.amount,
+        userByLogin.get(doc.receivedBy)!,
+        dateOf(doc.day),
+        doc.time,
+        tz,
+      ],
+    );
+    for (const item of built.items) {
+      const saved = await one<{ id: string }>(
+        qr,
+        `INSERT INTO intake_items
+           (intake_id, item_order, product_grade_id, gross_kg, pallet_kg, tare_weight_kg, net_kg, price, bonus, amount)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id`,
+        [
+          intake!.id,
+          item.item_order,
+          item.product_grade_id,
+          item.gross_kg,
+          item.pallet_kg,
+          item.tare_weight_kg,
+          item.net_kg,
+          item.price,
+          item.bonus,
+          item.amount,
+        ],
+      );
+      for (const t of item.tare) {
+        await qr.query(
+          `INSERT INTO intake_item_tare_types (item_id, tare_type_id, units) VALUES ($1, $2, $3)`,
+          [saved!.id, t.tare_type_id, t.units],
+        );
+      }
+    }
+    summary.intakes += 1;
+  }
+
+  for (const doc of SEED_PAYOUTS) {
+    const code = composeDocumentCode(pointCode.get(doc.point)!, 'PO', dateOf(doc.day), doc.typed);
+    const found = await one<{ id: string }>(qr, `SELECT id FROM payouts WHERE code = $1`, [code]);
+    if (found) continue;
+    const shift = shiftId.get(`${doc.point}/${doc.day}`);
+    if (!shift) throw new Error(`Seed payout ${code} has no shift`);
+    await qr.query(
+      `INSERT INTO payouts (code, shift_id, supplier_id, amount, paid_by_user_id, created_at)
+       VALUES ($1, $2, $3, $4, $5, ${localTs(6, 7, 8)})`,
+      [
+        code,
+        shift,
+        await supplierFor(doc.point, doc.supplier),
+        doc.amount,
+        userByLogin.get(doc.paidBy)!,
+        dateOf(doc.day),
+        doc.time,
+        tz,
+      ],
+    );
+    summary.payouts += 1;
   }
 }
 
