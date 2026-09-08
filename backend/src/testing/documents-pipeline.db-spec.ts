@@ -8,7 +8,7 @@ import { ClassSerializerInterceptor, INestApplication, ValidationPipe } from '@n
 import { Reflector } from '@nestjs/core';
 // MUST be imported before `../app.module` — it loads `.env` as a side effect,
 // and AppModule's decorator runs ConfigModule.forRoot() eagerly at import time.
-import { resolveTestDatabaseName } from './db-harness';
+import { relaxThrottleForTests, resolveTestDatabaseName } from './db-harness';
 
 import { AppModule } from '../app.module';
 import { UsersService } from '../users/users.service';
@@ -39,6 +39,7 @@ describe('documents pipeline (HTTP)', () => {
 
   beforeAll(async () => {
     process.env.DB_NAME = resolveTestDatabaseName();
+    relaxThrottleForTests();
 
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
     app = moduleRef.createNestApplication();

@@ -8,7 +8,7 @@ import { ClassSerializerInterceptor, INestApplication, ValidationPipe } from '@n
 import { Reflector } from '@nestjs/core';
 // MUST be imported before `../app.module` — it loads `.env` as a side effect,
 // and AppModule's decorator runs ConfigModule.forRoot() eagerly at import time.
-import { resolveTestDatabaseName } from './db-harness';
+import { relaxThrottleForTests, resolveTestDatabaseName } from './db-harness';
 
 /** A unique, CHECK-valid `collection_points.code`. Required on create since the
  *  intakes & payouts slice — it is the first segment of every receipt code
@@ -26,6 +26,7 @@ describe('catalog pipeline (HTTP)', () => {
 
   beforeAll(async () => {
     process.env.DB_NAME = resolveTestDatabaseName();
+    relaxThrottleForTests();
 
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
     app = moduleRef.createNestApplication();

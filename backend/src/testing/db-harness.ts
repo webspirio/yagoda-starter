@@ -44,6 +44,28 @@ const originalDbName = databaseEnv().name;
  * `process.env.DB_NAME` has since been redirected to by a caller's own
  * `beforeAll`.
  */
+/**
+ * Raises the global per-IP rate limit for the HTTP suites.
+ *
+ * The production default is 100 requests per minute per IP, and every request
+ * in a `*.db-spec.ts` comes from 127.0.0.1 — so ONE test run looks like a
+ * single abusive client. Before the documents pipeline existed the whole db
+ * suite fitted under that budget; it no longer does, and the failure surfaces
+ * as a scatter of `429 Too Many Requests` in whichever spec happens to run
+ * past request 100, which reads like a bug in that spec rather than in the
+ * shared budget.
+ *
+ * Call this BEFORE importing `AppModule` — its decorator runs
+ * `ConfigModule.forRoot()` eagerly at import time — alongside the
+ * `process.env.DB_NAME` redirect the pipeline specs already do.
+ *
+ * This does NOT weaken the production setting: `THROTTLE_LIMIT` is unset
+ * outside tests and the factory falls back to 100.
+ */
+export const relaxThrottleForTests = (): void => {
+  process.env.THROTTLE_LIMIT = process.env.THROTTLE_LIMIT ?? '100000';
+};
+
 export const resolveTestDatabaseName = (): string => {
   const database = process.env.TEST_DB_NAME ?? 'app_test';
 

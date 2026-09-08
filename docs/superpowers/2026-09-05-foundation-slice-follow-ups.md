@@ -259,3 +259,108 @@ Do not "fix" these; both are argued for in the spec and commented in the code.
   not in one transaction, so `total` and `data` can disagree under a
   concurrent insert — consistent with `findAndCount` everywhere else in the
   repo, hence recorded rather than fixed.
+
+## New, from the intakes & payouts slice (2026-09-08)
+
+This is the first slice written with `26-rules-by-example.md` actually in the
+repository. The first four items come from reading it; the rest are ordinary
+follow-ups.
+
+- **§4.5's daily price gate is not enforceable, and this slice is where that
+  starts to cost money.** The prices slice removed `grade_prices.business_date`
+  (its §8.1), so a price carries over until changed and
+  `GradePricesService.currentFor` will hand an intake on the 5th the price set
+  on the 4th — silently, and in the buyer's disfavour if the market moved. The
+  client's literal reason for the rule is «щоб ніхто не порахував по
+  вчорашній». **Closing it needs no migration:** refuse a grade whose newest
+  price row predates the shift's `business_date`. Deferred deliberately
+  (owner, 2026-09-08) because the gate means a morning with no prices set is a
+  morning the point cannot trade — which is exactly what §4.5 describes, but is
+  a real change to how the business runs. Recorded on `currentFor` itself so
+  whoever closes it finds the argument.
+
+- **§9.2's warning channel does not exist.** Four checks, all «дозволяємо, але
+  вголос»: kg per crate outside 2…14 («50,8 кг у ящику. Перевірте брутто або
+  кількість тари.»), gross over 750 kg, pallet over 50 % of gross, and an
+  identical line twice inside 60 seconds. The rule is that a warning «називає
+  ЧИСЛО І ПРИЧИНУ, а не "перевірте дані"». A 201 with no advisory field cannot
+  carry any of them. §9.2 itself is unresolved on «на кому відповідальність за
+  валідацію», so the shape of the answer is a product call first.
+
+- **§12.1's payout rounding.** «до цілої гривні, рівно 0,50 йде ВНИЗ» —
+  120,50 → 120, 120,80 → 121 — with the system suggesting the figure. Note it
+  is a DIFFERENT rounding from `common/money.ts`'s half-up at scale 2 on a line
+  amount, not a replacement for it; both can coexist. Filed at the source under
+  «Три місця, де відповіді ще немає» with «→ **Правка:** точно???», so it is
+  unsettled there too.
+
+- **Two contradictions in `26-rules-by-example.md` need the owner's answer.**
+  §9.4 vs §10.2 — whether an operator may void their own intake at all (§9.4's
+  table says yes for their own same-day receipt; §10.2's summary list puts
+  voiding under ТІЛЬКИ КЕРІВНИК). §9.1 vs §9.2 — whether a tare-less line is
+  refused or merely warned. This slice took §9.4 and §9.1; the intakes spec
+  §10.2 records what changes if the other reading was meant. The first is one
+  decorator.
+
+- **`SuppliersService` still has its own private `resolveWritePoint`.** The
+  shared one now lives in `auth/access/point-scope.ts` and the three new
+  services use it. Switching suppliers over is a three-line change covered by
+  its existing spec — left alone here to keep the slice inside its own tables.
+
+- **`collection-points.service.ts` — refuse deactivating a point with an open
+  shift.** The `TODO (when shifts lands)` is now buildable: `shifts` exists and
+  `ShiftsService.findOpenAtPoint` is exported. Left out deliberately as an
+  adjacent fix.
+
+- **Warn when deactivating a supplier who carries non-zero debt.** Parked by the
+  prices slice «when `intakes` and `payouts` exist». They now exist, and
+  `SupplierBalanceService.debtFor` answers it in one call. A WARNING, never a
+  refusal (правка 14, «заблокована кнопка вчить шукати обхід») — and note that
+  "settle up first" is not well defined, since a balance may legitimately be
+  negative.
+
+- **`POST /shifts` is provisional in SHAPE, not only in its close path.** §07:30
+  makes opening a shift «сума вводиться фактично порахована», which the
+  03.09.2026 schema note turns into TWO `cash_counts` records, one per book.
+  Today the route takes no body at all. It grows a DTO with `cash_counts`, at
+  the same time the close path grows §7.7's role split and mandatory
+  `explanation`.
+
+- **The payout ceiling is half a rule.** `min(Разом, каса за ягоду)` (§3.6):
+  the debt half is enforced under a row lock, the cash half needs `transfers`
+  and `cash_counts`. **A payout can currently exceed the cash physically in the
+  drawer and nothing notices.** The lock and the `supplier-balance` seam are
+  already the right shape for the second half.
+
+- **`decimal.js` replaces the internals of `common/money.ts`** when the
+  arithmetic stops being provisional. One file, by construction — that is the
+  reason the seam exists. The eslint rule scoped to the four money modules is
+  what keeps it true in the meantime.
+
+- **`migration:generate` cannot report "no changes" in this repo, and could not
+  before this slice.** It proposes renaming every hand-written foreign-key
+  constraint to a TypeORM-generated hash, including `FK_user_identities_user`,
+  `FK_audit_log_actor` and `UQ_product_grades_product_name_lower` from earlier
+  slices. Hand-written names are this repo's convention. What IS worth checking
+  after a schema change is that no COLUMN, type or constraint-body drift
+  appears — filter the generated file with `grep -v '"FK_'` and read what is
+  left. Verified clean for all five tables in this slice.
+
+- **The foundation spec's §5.2 is stale on one point** — it says `APP_TIMEZONE`
+  «currently defaults to `UTC`». It has defaulted to `Europe/Kyiv` since before
+  this slice, in both `timezone.config.ts` and the Joi schema. One-line
+  correction, worth making so nobody "fixes" a config that is already right.
+
+- **The three earlier specs state that `26-rules-by-example.md` is not in the
+  repository.** It is. Their reasoning was built on second-hand quotation from
+  the DBML's own `Note` blocks and has not been re-checked against the source;
+  the intakes spec §10.5 is the one divergence already known.
+
+- **The db suite now exceeds the production rate limit on its own.** Every
+  request in an HTTP spec comes from 127.0.0.1, so one run looks like a single
+  abusive client; the documents pipeline pushed the total past 100 req/min and
+  the failure appeared as scattered 429s in unrelated specs.
+  `relaxThrottleForTests()` raises `THROTTLE_LIMIT` for the test process only.
+  Worth revisiting if CI ever runs the suites in parallel against one Redis —
+  the counter is shared, so two concurrent runs would re-create the problem at
+  a higher number.

@@ -19,7 +19,7 @@ import { DataSource } from 'typeorm';
 // CommonJS, so a `config()` call written after these imports would run too
 // late regardless of where it sits in this file — the only lever left is
 // import ORDER, which TypeScript does preserve.
-import { resolveTestDatabaseName } from './db-harness';
+import { relaxThrottleForTests, resolveTestDatabaseName } from './db-harness';
 
 /** A unique, CHECK-valid `collection_points.code`. Required on create since the
  *  intakes & payouts slice — it is the first segment of every receipt code
@@ -66,6 +66,7 @@ describe('auth + me pipeline (HTTP)', () => {
 
   beforeAll(async () => {
     process.env.DB_NAME = resolveTestDatabaseName();
+    relaxThrottleForTests();
 
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
     app = moduleRef.createNestApplication();
@@ -391,6 +392,7 @@ describe('suppliers + grade prices (HTTP)', () => {
 
   beforeAll(async () => {
     process.env.DB_NAME = resolveTestDatabaseName();
+    relaxThrottleForTests();
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
     app = moduleRef.createNestApplication();
     app.useGlobalPipes(

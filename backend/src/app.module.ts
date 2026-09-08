@@ -57,6 +57,13 @@ import { uploadsConfig } from './config/uploads.config';
         REDIS_HOST: Joi.string().default('localhost'),
         REDIS_PORT: Joi.number().integer().default(6379),
         APP_TIMEZONE: Joi.string().default('Europe/Kyiv'),
+        // Global per-IP rate limit. Configurable ONLY so the DB-backed HTTP
+        // suites can raise it: every request in those specs comes from
+        // 127.0.0.1, so one test run looks like a single abusive client and
+        // trips the production default partway through. See
+        // `src/testing/db-harness.ts`.
+        THROTTLE_TTL_MS: Joi.number().integer().min(1).default(60_000),
+        THROTTLE_LIMIT: Joi.number().integer().min(1).default(100),
         // Read ONLY by the BootstrapOwner migration, and only when the users
         // table is empty. Unset in development, where SeedDevAdmin covers it.
         BOOTSTRAP_OWNER_LOGIN: Joi.string().optional(),
@@ -85,7 +92,12 @@ import { uploadsConfig } from './config/uploads.config';
     ThrottlerModule.forRootAsync({
       inject: [REDIS_CLIENT],
       useFactory: (redis: Redis) => ({
-        throttlers: [{ ttl: 60_000, limit: 100 }],
+        throttlers: [
+          {
+            ttl: Number(process.env.THROTTLE_TTL_MS ?? 60_000),
+            limit: Number(process.env.THROTTLE_LIMIT ?? 100),
+          },
+        ],
         storage: new ThrottlerStorageRedisService(redis),
       }),
     }),
