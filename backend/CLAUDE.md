@@ -98,9 +98,9 @@ src/
   suppliers/              # point-scoped supplier records — OPERATOR-writable (the only DOMAIN module whose writes are open to both roles; self-service `/me` aside), phone canonicalized to E.164
   grade-prices/           # append-only price journal — current price is the newest row per (point, grade); carries §2.9's max_markup/max_discount
   shifts/                 # one point's working day — the ONLY home of a document's point and business_date. Open/close are OPERATOR-only (§10.3), reopen is owner-only. No cash: `close` is a timestamp until cash_counts lands
-  intakes/                # the berry receipt — one aggregate, three entities, ONE POST in one transaction. `intake-lines.ts` is pure and holds every computation in the slice
+  intakes/                # the berry receipt — one aggregate, three entities, ONE POST in one transaction. `intake-lines.ts` is pure and holds every computation in the slice. `POST /intakes/preview` (200, both roles) is `create` minus the write — same body without `code`, same snapshots, same refusals — for the reception screen's live numbers
   payouts/                # cash over the counter — the debt half of §3.6's ceiling behind a supplier row lock; `settle-return` records cash physically coming back after a void
-  supplier-balance/       # owns ONE query: Σ intakes − Σ payouts, with `voided_at IS NULL` on both halves. Writes nothing, owns no table
+  supplier-balance/       # owns ONE query: Σ intakes − Σ payouts, with `voided_at IS NULL` on both halves — served per supplier (`GET /suppliers/:id/balance`) and per point (`GET /supplier-balances`, the «Залишки» list: same SQL correlated per row, paginated in Postgres, `include_zero=false` by default but a deactivated supplier with a balance stays listed). Writes nothing, owns no table
   user-admin/             # owner-only POST /users, PATCH /users/:id, PUT /users/:id/password — the only way an account is created
   current-user/          # /me — read, update language_code, avatar upload (the one controller that reads/writes User; identity fields are owner-managed via user-admin)
   audit/                 # append-only audit log (AUDIT_ACTIONS union + AuditService)

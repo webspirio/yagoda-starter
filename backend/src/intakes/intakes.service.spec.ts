@@ -41,7 +41,11 @@ describe('IntakesService', () => {
   let repo: { findOne: jest.Mock; createQueryBuilder: jest.Mock };
   let itemRepo: { find: jest.Mock };
   let manager: { getRepository: jest.Mock; save: jest.Mock; create: jest.Mock; findOne: jest.Mock };
-  let dataSource: { transaction: jest.Mock };
+  /** `dataSource.manager` — the NON-transactional manager `preview` reads
+   *  through. A separate object from `manager` so a test can tell which of
+   *  the two a snapshot read went through. */
+  let plainManager: { getRepository: jest.Mock };
+  let dataSource: { transaction: jest.Mock; manager: typeof plainManager };
   let shifts: { findOpenAtPoint: jest.Mock; findOneRaw: jest.Mock };
   let suppliers: { findOne: jest.Mock };
   let prices: { currentFor: jest.Mock };
@@ -97,8 +101,10 @@ describe('IntakesService', () => {
       save: jest.fn().mockImplementation((_e, v) => Promise.resolve(intake(v))),
       create: jest.fn().mockImplementation((_e, v) => v),
     };
+    plainManager = { getRepository: jest.fn().mockReturnValue(itemRepo) };
     dataSource = {
       transaction: jest.fn().mockImplementation((cb: (m: unknown) => unknown) => cb(manager)),
+      manager: plainManager,
     };
     repo = { findOne: jest.fn().mockResolvedValue(null), createQueryBuilder: jest.fn() };
     shifts = {
@@ -269,6 +275,123 @@ describe('IntakesService', () => {
         }),
         manager,
       );
+    });
+  });
+
+  /**
+   * `POST /intakes/preview` — `create` up to the point where it would write,
+   * and then nothing. The reception screen shows net weight, price, bonus and
+   * the line and document amounts LIVE as the operator types, and §2.4/§2.8/
+   * §2.9 make the server the only place those may be computed — so the client
+   * asks for the numbers without asking for a document.
+   */
+  describe('preview', () => {
+    const previewDto = (over: Record<string, unknown> = {}) => ({
+      supplier_id: SUPPLIER,
+      items: dto().items,
+      ...over,
+    });
+
+    it('computes exactly what create would store — lines, total, point, supplier, business date', async () => {
+      const result = await service.preview(oksana, previewDto());
+
+      expect(result).toEqual({
+        collection_point_id: POINT_A,
+        supplier_id: SUPPLIER,
+        business_date: '2026-09-08',
+        amount: '2103.30',
+        items: [
+          {
+            item_order: 1,
+            product_grade_id: GRADE,
+            gross_kg: '42.00',
+            pallet_kg: '1.50',
+            tare_weight_kg: '3.60',
+            net_kg: '36.90',
+            price: '57.00',
+            bonus: '0.00',
+            amount: '2103.30',
+            tare: [{ tare_type_id: CRATE, units: 3 }],
+          },
+        ],
+      });
+    });
+
+    it('writes NOTHING — no transaction, no save, no audit, no code', async () => {
+      const result = await service.preview(oksana, previewDto());
+
+      expect(dataSource.transaction).not.toHaveBeenCalled();
+      expect(manager.save).not.toHaveBeenCalled();
+      expect(audit.record).not.toHaveBeenCalled();
+      expect(result).not.toHaveProperty('id');
+      expect(result).not.toHaveProperty('code');
+      expect(result.items[0]).not.toHaveProperty('id');
+    });
+
+    it('takes the SAME snapshots create takes, through the plain manager', async () => {
+      // Same reads, same order, so the preview and the document that follows
+      // it can only disagree if a price or tare row changed in between.
+      await service.preview(oksana, previewDto());
+
+      expect(shifts.findOpenAtPoint).toHaveBeenCalledWith(POINT_A, plainManager);
+      expect(prices.currentFor).toHaveBeenCalledWith(POINT_A, GRADE, plainManager);
+      expect(tare.findManyRaw).toHaveBeenCalledWith([CRATE], plainManager);
+    });
+
+    it('409s when no shift is open — the form is unusable outside one, and the operator learns it early', async () => {
+      shifts.findOpenAtPoint.mockResolvedValue(null);
+
+      await expect(service.preview(oksana, previewDto())).rejects.toMatchObject({
+        response: { code: 'NO_OPEN_SHIFT' },
+      });
+    });
+
+    it('refuses the same supplier create refuses: inactive, or at another point', async () => {
+      suppliers.findOne.mockResolvedValueOnce({
+        id: SUPPLIER,
+        collection_point_id: POINT_A,
+        is_active: false,
+      });
+      await expect(service.preview(oksana, previewDto())).rejects.toMatchObject({
+        response: { code: 'SUPPLIER_INACTIVE' },
+      });
+
+      suppliers.findOne.mockResolvedValueOnce({
+        id: SUPPLIER,
+        collection_point_id: POINT_B,
+        is_active: true,
+      });
+      await expect(service.preview(oksana, previewDto())).rejects.toThrow(NotFoundException);
+    });
+
+    it('400s a grade with no current price at this point (§4.5)', async () => {
+      prices.currentFor.mockResolvedValue(null);
+
+      await expect(service.preview(oksana, previewDto())).rejects.toMatchObject({
+        response: { code: 'GRADE_NOT_PRICED' },
+      });
+    });
+
+    it('400s a tare type it cannot snapshot — unknown or deactivated', async () => {
+      tare.findManyRaw.mockResolvedValue([]);
+
+      await expect(service.preview(oksana, previewDto())).rejects.toMatchObject({
+        response: { code: 'TARE_TYPE_UNKNOWN' },
+      });
+    });
+
+    it('resolves the point the way create does: token for an operator, body for the owner', async () => {
+      await expect(service.preview(owner, previewDto())).rejects.toMatchObject({
+        response: { code: 'COLLECTION_POINT_REQUIRED' },
+      });
+
+      const result = await service.preview(owner, previewDto({ collection_point_id: POINT_A }));
+      expect(result.collection_point_id).toBe(POINT_A);
+
+      points.findOneRaw.mockResolvedValue(null);
+      await expect(
+        service.preview(owner, previewDto({ collection_point_id: POINT_B })),
+      ).rejects.toThrow(NotFoundException);
     });
   });
 
