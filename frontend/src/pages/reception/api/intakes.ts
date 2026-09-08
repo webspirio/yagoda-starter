@@ -1,0 +1,41 @@
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { httpClient } from '@/shared/api';
+import { queryKeys } from '@/shared/api/queryKeys';
+import type { IntakeDetail } from '@/entities/intake';
+import type { CreateIntakeBody, IntakePreview, PreviewIntakeBody } from '../model/intakeForm';
+
+/**
+ * Records the receipt — `POST /intakes` writes the whole document in one
+ * transaction (§2.3). Invalidates both the intake journal AND
+ * `supplierBalances`: an intake is one of the two flows (with payouts) that
+ * move a supplier's Σ intakes − Σ payouts number, so both caches go stale
+ * together — same shape as `features/settle-payout`'s `useCreatePayoutMutation`.
+ */
+export function useCreateIntakeMutation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (body: CreateIntakeBody): Promise<IntakeDetail> => {
+      const { data } = await httpClient.post<IntakeDetail>('/intakes', body);
+      return data;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.intakes });
+      qc.invalidateQueries({ queryKey: queryKeys.supplierBalances });
+    },
+  });
+}
+
+/**
+ * Computes the numbers §2.4/§2.8/§2.9 reserve to the server — net weight,
+ * price, bonus, and the line/document amounts — WITHOUT writing anything.
+ * Nothing here invalidates a cache: a preview is not an event. Consumed by
+ * `useIntakePreview`, which debounces and gates when this fires.
+ */
+export function usePreviewIntakeMutation() {
+  return useMutation({
+    mutationFn: async (body: PreviewIntakeBody): Promise<IntakePreview> => {
+      const { data } = await httpClient.post<IntakePreview>('/intakes/preview', body);
+      return data;
+    },
+  });
+}
