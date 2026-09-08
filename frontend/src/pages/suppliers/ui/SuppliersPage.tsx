@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Link } from 'react-router';
 import { useTranslation } from 'react-i18next';
 import { ListPage } from '@/shared/ui/templates/list-page';
 import type { Column } from '@/shared/ui/data-table';
@@ -67,6 +68,23 @@ export function SuppliersPage() {
         <Badge variant={s.is_active ? 'default' : 'secondary'}>
           {s.is_active ? t('suppliers.active') : t('suppliers.inactive')}
         </Badge>
+      ),
+    },
+    {
+      id: 'card',
+      header: t('suppliers.col.card'),
+      align: 'right',
+      cell: (s) => (
+        <Link
+          to={`/suppliers/${s.id}`}
+          // The row itself opens the edit dialog (`onRowClick` on ListPage) —
+          // without this the link's click would bubble into that handler too,
+          // opening the dialog behind the navigation it just triggered.
+          onClick={(e) => e.stopPropagation()}
+          className="text-primary underline-offset-2 hover:underline"
+        >
+          {t('suppliers.col.card')}
+        </Link>
       ),
     },
   ];

@@ -9,6 +9,7 @@ import { PointsPage } from '@/pages/points';
 import { UsersPage } from '@/pages/users';
 import { SuppliersPage } from '@/pages/suppliers';
 import { DebtsPage } from '@/pages/debts';
+import { SupplierCardPage } from '@/pages/supplier-card';
 import { CatalogPage } from '@/pages/catalog';
 import { PricesPage } from '@/pages/prices';
 import { DayPage } from '@/pages/day';
@@ -78,6 +79,16 @@ export const routes: RouteObject[] = [
         element: (
           <RequireAuth>
             <DebtsPage />
+          </RequireAuth>
+        ),
+      },
+      {
+        // The supplier's card — same point-level scope as the list above, so
+        // it carries the same guard: RequireAuth, no role gate.
+        path: '/suppliers/:id',
+        element: (
+          <RequireAuth>
+            <SupplierCardPage />
           </RequireAuth>
         ),
       },

@@ -159,7 +159,8 @@
       "phone": "Phone",
       "kind": "Kind",
       "point": "Point",
-      "status": "Status"
+      "status": "Status",
+      "card": "Card"
     },
     "kindLabel": {
       "none": "Regular",
@@ -633,6 +634,29 @@
     "empty": {
       "title": "No open balances",
       "hint": "Every drop-off has been settled in full."
+    }
+  },
+  "supplierCard": {
+    "eyebrow": "{{point}} · {{kind}}",
+    "noPhone": "no phone on file",
+    "note": "“{{note}}”",
+    "payOut": "Pay out balance {{uah}}",
+    "backLink": "All suppliers",
+    "notFound": "Card not found.",
+    "tiles": {
+      "seasonIntakes": "Receipts this season",
+      "accrued": "Accrued",
+      "accruedHint": "first 100",
+      "paid": "Paid",
+      "balance": "Balance",
+      "balanceHint": "fully settled"
+    },
+    "timeline": {
+      "title": "History — receipts and payouts",
+      "empty": "No receipts yet — this will be the first.",
+      "intake": "Receipt",
+      "payout": "Payout",
+      "void": "Void"
     }
   },
   "theme": {

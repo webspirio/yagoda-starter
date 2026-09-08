@@ -1,10 +1,25 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { createMemoryRouter, RouterProvider } from 'react-router';
 import { expectNoAxeViolations } from '../../../test-axe';
 import { SuppliersPage } from './SuppliersPage';
 import type { Supplier } from '@/entities/supplier';
 import type { Me } from '@/entities/user';
+
+/** `SuppliersPage` now links each row to its card (`/suppliers/:id`), so it
+ *  needs a real router context — a stub route stands in for the card page
+ *  itself, which this test suite has no business depending on. */
+function renderSuppliers() {
+  const router = createMemoryRouter(
+    [
+      { path: '/suppliers', element: <SuppliersPage /> },
+      { path: '/suppliers/:id', element: <div>Card stub</div> },
+    ],
+    { initialEntries: ['/suppliers'] },
+  );
+  return render(<RouterProvider router={router} />);
+}
 
 const { queryMock, createMock, updateMock, meMock } = vi.hoisted(() => ({
   queryMock: vi.fn(),
@@ -97,13 +112,13 @@ beforeEach(() => {
 describe('SuppliersPage', () => {
   it('shows a spinner while loading', () => {
     queryMock.mockReturnValue({ data: undefined, isPending: true, isError: false });
-    render(<SuppliersPage />);
+    renderSuppliers();
     expect(screen.queryByText('Ivan Koval')).toBeNull();
   });
 
   it('renders suppliers and the New action when loaded', async () => {
     queryMock.mockReturnValue(loaded([ivan, petro]));
-    const { container } = render(<SuppliersPage />);
+    const { container } = renderSuppliers();
     expect(screen.getByRole('heading', { level: 1, name: 'Suppliers' })).toBeInTheDocument();
     expect(screen.getByText('Ivan Koval')).toBeInTheDocument();
     expect(screen.getByText('Petro Melnyk')).toBeInTheDocument();
@@ -119,7 +134,7 @@ describe('SuppliersPage', () => {
   it('shows the point select in the New dialog for a network owner', async () => {
     meMock.mockReturnValue({ data: owner });
     queryMock.mockReturnValue(loaded([]));
-    render(<SuppliersPage />);
+    renderSuppliers();
     await userEvent.click(screen.getByRole('button', { name: 'New supplier' }));
     expect(screen.getByLabelText('First name')).toBeInTheDocument();
     expect(screen.getByLabelText('Collection point')).toBeInTheDocument();
@@ -128,7 +143,7 @@ describe('SuppliersPage', () => {
   it('hides the point select in the New dialog for a point operator', async () => {
     meMock.mockReturnValue({ data: operator });
     queryMock.mockReturnValue(loaded([]));
-    render(<SuppliersPage />);
+    renderSuppliers();
     await userEvent.click(screen.getByRole('button', { name: 'New supplier' }));
     expect(screen.getByLabelText('First name')).toBeInTheDocument();
     expect(screen.queryByLabelText('Collection point')).toBeNull();
@@ -137,7 +152,7 @@ describe('SuppliersPage', () => {
   it('the "no phone" toggle clears the phone and submits null', async () => {
     meMock.mockReturnValue({ data: operator });
     queryMock.mockReturnValue(loaded([]));
-    render(<SuppliersPage />);
+    renderSuppliers();
     await userEvent.click(screen.getByRole('button', { name: 'New supplier' }));
 
     await userEvent.type(screen.getByLabelText('First name'), 'Ivan');
@@ -158,5 +173,36 @@ describe('SuppliersPage', () => {
       note: null,
       kind: 'none',
     });
+  });
+
+  it('links each row to its supplier card', () => {
+    queryMock.mockReturnValue(loaded([ivan, petro]));
+    renderSuppliers();
+
+    const row = screen.getByText('Ivan Koval').closest('tr') as HTMLElement;
+    expect(within(row).getByRole('link', { name: 'Card' })).toHaveAttribute(
+      'href',
+      '/suppliers/s1',
+    );
+  });
+
+  it('clicking the row still opens the edit dialog with the card link in place', async () => {
+    queryMock.mockReturnValue(loaded([ivan]));
+    renderSuppliers();
+
+    await userEvent.click(screen.getByText('Ivan Koval'));
+
+    expect(screen.getByLabelText('First name')).toHaveValue('Ivan');
+  });
+
+  it('the card link does not also open the edit dialog', async () => {
+    queryMock.mockReturnValue(loaded([ivan]));
+    renderSuppliers();
+
+    const row = screen.getByText('Ivan Koval').closest('tr') as HTMLElement;
+    await userEvent.click(within(row).getByRole('link', { name: 'Card' }));
+
+    expect(screen.queryByLabelText('First name')).toBeNull();
+    expect(screen.getByText('Card stub')).toBeInTheDocument();
   });
 });
