@@ -206,9 +206,9 @@ export interface IntakeDetail extends Intake { items: IntakeItem[] }
 ### Task 8: Wire-up — day feed opens receipts, nav, locales, full verification
 
 **Files:**
-- Modify: `frontend/src/pages/day/ui/DayPage.tsx` (+ test): intake rows in the feed become buttons that open `ReceiptDialog` (`widgets/receipt`); `frontend/src/app/layouts/AppLayout.tsx` (`nav.reception` `to`), `frontend/src/app/router.tsx` (`/reception`), `frontend/CLAUDE.md` (routes list, `widgets/` line if Task 5 did not add it)
+- Modify: `frontend/src/pages/day/ui/DayPage.tsx` (+ test): intake rows in the feed become buttons that open `ReceiptDialog` (`widgets/receipt`, remounted via `key={intakeId}`); every feed row (intake AND payout) shows the supplier's name — §5.1 — resolved through `useSuppliersQuery('', pointId)` from `@/entities/supplier` (a `Map<id, supplierName>` over the loaded page; an id outside it renders «—»); a voided row's reason becomes visible muted text under the row (`day.feed.voidedReason` «Анульовано: {{reason}}»), not only a `title` attribute; `frontend/src/app/layouts/AppLayout.tsx` (`nav.reception` `to`), `frontend/src/app/router.tsx` (`/reception`), `frontend/CLAUDE.md` (routes list, `widgets/` line if Task 5 did not add it), locales (`day.feed.voidedReason`)
 
-- [ ] **Step 1:** add a DayPage test: clicking an intake row opens the receipt dialog for that id (mock `@/widgets/receipt`'s `ReceiptDialog` and assert `intakeId`). **Step 2:** RED. **Step 3:** implement. **Step 4:** `npm run lint -w frontend && npm test -w frontend && npm run build -w frontend` → green. **Step 5: Commit** `feat(day,app): day feed opens the receipt; /reception routed and in the nav`
+- [ ] **Step 1:** add DayPage tests: clicking an intake row opens the receipt dialog for that id (mock `@/widgets/receipt`'s `ReceiptDialog` and assert `intakeId`); a payout row shows the supplier's name; a voided row shows «Voided: {{reason}}» as text. **Step 2:** RED. **Step 3:** implement. **Step 4:** `npm run lint -w frontend && npm test -w frontend && npm run build -w frontend` → green. **Step 5: Commit** `feat(day,app): day feed opens the receipt; /reception routed and in the nav`
 
 ---
 

@@ -463,3 +463,26 @@ in a browser, then deleted once it had been checked. Two findings outlive them:
   balance; a second operator voiding a colleague's receipt in the same open
   shift answered `403 NOT_YOUR_DOCUMENT`; and an operator at the other point
   saw both journals empty.
+
+## Learned from the day and reception screens (2026-09-08)
+
+Findings from the final review of `feat/yagoda-day-screen` that no plan
+schedules yet — a kit/consistency pass, not a feature:
+
+- **`Badge` has no amber or leaf tone**, so the day feed's «очікує пояснення»
+  badge wears `destructive` where §5.1 wants amber. Add the two tones to
+  `shared/ui/badge.tsx` and switch the callers.
+- **`DateStepper`'s aria-labels are hard-coded Ukrainian** (`shared/ui/date-stepper.tsx`);
+  the English test suite finds the buttons by Ukrainian names. Give it label
+  props with the current strings as defaults and translate at the call site.
+- **`Paginated<T>` is hand-written five times** (intake, payout, catalog, points,
+  users). It is a transport envelope, not a domain type — move it to
+  `shared/api` and delete the copies. The ESLint layer rule only checks
+  direction, so nothing stops a sixth copy today.
+- **`pages/day/api/shiftActions.ts` has no test** for the invalidation trio
+  (`shifts`, `intakes`, `payouts`) that every later screen relies on; ~30 lines
+  with a real `QueryClient` would lock it.
+- **The day page's truncation notice counts the merged feed**, while the cap
+  is 100 per journal — 100 intakes + 5 payouts reads «перші 105 документів».
+- **A refused close banner survives navigation** on the day page (step to another
+  day, switch point); clear it in the date/point setters.
