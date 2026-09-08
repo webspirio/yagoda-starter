@@ -8,6 +8,7 @@ import { ProfilePage } from '@/pages/profile';
 import { PointsPage } from '@/pages/points';
 import { UsersPage } from '@/pages/users';
 import { SuppliersPage } from '@/pages/suppliers';
+import { DebtsPage } from '@/pages/debts';
 import { CatalogPage } from '@/pages/catalog';
 import { PricesPage } from '@/pages/prices';
 import { DayPage } from '@/pages/day';
@@ -67,6 +68,16 @@ export const routes: RouteObject[] = [
         element: (
           <RequireAuth>
             <ReceptionPage />
+          </RequireAuth>
+        ),
+      },
+      {
+        // Both roles: the API scopes an operator to their point and an owner
+        // to everything, same as /suppliers — no role gate here either.
+        path: '/debts',
+        element: (
+          <RequireAuth>
+            <DebtsPage />
           </RequireAuth>
         ),
       },

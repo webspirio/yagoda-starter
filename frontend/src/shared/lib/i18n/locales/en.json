@@ -609,6 +609,32 @@
       "shiftClosed": "The shift is already closed"
     }
   },
+  "debts": {
+    "eyebrow_one": "{{count}} supplier",
+    "eyebrow_other": "{{count}} suppliers",
+    "title": "Balances owed",
+    "description": "Every balance remembers exactly which drop-off created it. Cash here goes to whoever came without berries — if there are berries, the balance is simply added to the «Total» in the intake window.",
+    "allPoints": "All points",
+    "searchPlaceholder": "Find a supplier",
+    "tiles": {
+      "totalOwed": "Total owed",
+      "totalOwedHint": "on this page",
+      "withDebt": "Suppliers with a balance"
+    },
+    "col": {
+      "supplier": "Supplier",
+      "point": "Point",
+      "balance": "Balance",
+      "action": "Action"
+    },
+    "inactive": "inactive",
+    "overpaid": "overpaid {{uah}}",
+    "payout": "Pay out without berries",
+    "empty": {
+      "title": "No open balances",
+      "hint": "Every drop-off has been settled in full."
+    }
+  },
   "theme": {
     "label": "Theme",
     "light": "Light",
