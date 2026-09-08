@@ -5,9 +5,10 @@ import { cn } from '@/shared/lib/cn';
 // Cell padding is wider than shadcn's `p-2` on purpose: every table here sits
 // in the card frame (see data-table.tsx), and 8px from the card edge to the
 // first glyph read as cramped in review — 24px horizontal, 10px vertical. The
-// header is a SOLID muted band (no opacity — at 60% it dissolved into the card
-// in dark mode) with eyebrow-style labels so it reads as a header rather than
-// as one more row. Labels are in `foreground` ink, not `muted-foreground`:
+// header is a SOLID band on its own `table-header` token (see index.css: the
+// light `muted` is within a few units of the paper, so a muted band read as
+// page background) with eyebrow-style labels so it reads as a header rather
+// than as one more row. Labels are in `foreground` ink, not `muted-foreground`:
 // 11px grey on the light band sank below comfortable contrast on review.
 
 function Table({ className, ...props }: React.ComponentProps<'table'>) {
@@ -26,7 +27,7 @@ function TableHeader({ className, ...props }: React.ComponentProps<'thead'>) {
   return (
     <thead
       data-slot="table-header"
-      className={cn('bg-muted [&_tr]:border-b', className)}
+      className={cn('bg-table-header [&_tr]:border-b', className)}
       {...props}
     />
   );

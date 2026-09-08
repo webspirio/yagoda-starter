@@ -40,6 +40,10 @@
   --success: #2e7a3c; /* starter token → mock leaf */
   --border: #d7dbd0; /* hairline dividers */
   --line2: #cfd4c6; /* starter token: stronger divider → mock input */
+  /* Table header band. Deliberately NOT `--muted`: the light muted (#e4e7de)
+     is within a few units of the paper (#eceee8), so a muted band read as
+     page background bleeding into the card. One step darker than the paper. */
+  --table-header: #d9ded1;
   --input: #cfd4c6;
   --ring: #c81e4e;
 
@@ -102,6 +106,7 @@
   --border: #4d4d55;
   --line2: #5b5b64;
   --input: #5b5b64;
+  --table-header: #3a3a41; /* above muted, apart from both card and paper */
   --ring: #e8557a;
 
   --readout: #a8e86a;
@@ -139,6 +144,7 @@
   --color-success: var(--success);
   --color-border: var(--border);
   --color-line2: var(--line2);
+  --color-table-header: var(--table-header);
   --color-input: var(--input);
   --color-ring: var(--ring);
 
