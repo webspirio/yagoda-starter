@@ -286,6 +286,37 @@ describe('DayPage — the operator before the shift is open', () => {
   });
 });
 
+describe('DayPage — a failed read', () => {
+  it('shows the error state and hides the Open action when the shift query fails', () => {
+    shiftMock.mockReturnValue({ data: undefined, isPending: false, isError: true });
+
+    renderDay();
+
+    expect(screen.getByRole('alert')).toHaveTextContent('Something went wrong');
+    expect(screen.queryByRole('button', { name: 'Open shift' })).toBeNull();
+  });
+});
+
+describe('DayPage — the To-balance tile tone', () => {
+  it('stays the default tone when nothing is owed', () => {
+    renderDay();
+
+    const value = within(tile('To balance')).getByText('0.00 ₴');
+    expect(value.className).not.toContain('amber');
+  });
+
+  it('turns amber once a balance is owed', () => {
+    intakesMock.mockReturnValue(
+      page<Intake>([intake({ id: 'i1', code: 'KV-0001', amount: '10.00' })]),
+    );
+
+    renderDay();
+
+    const value = within(tile('To balance')).getByText('10.00 ₴');
+    expect(value.className).toContain('amber');
+  });
+});
+
 describe('DayPage — the date in the URL', () => {
   it('ignores a date that is shaped right but is not a real day', () => {
     // `isIsoDate` only checks the shape: 2026-02-31 would roll the title over to

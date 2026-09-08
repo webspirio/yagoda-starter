@@ -352,7 +352,8 @@
       "paidHint": "cash for the day",
       "toDebt": "To balance",
       "toDebtHint": "carries over to supplier balances",
-      "truncated": "Showing the first {{count}} documents — totals are partial"
+      "truncated_one": "Showing the first {{count}} document — totals are partial",
+      "truncated_other": "Showing the first {{count}} documents — totals are partial"
     },
     "feed": {
       "title": "Day feed",

@@ -1,5 +1,5 @@
 import { useCallback } from 'react';
-import { useUrlParam } from '@/shared/lib/url-state';
+import { useUrlParam, keepUuids } from '@/shared/lib/url-state';
 import { useMeQuery } from '../api/useMeQuery';
 
 /**
@@ -13,12 +13,16 @@ export function usePointScope() {
   const { data: me, isPending } = useMeQuery();
   const [param, setParam] = useUrlParam('point');
   const setPointId = useCallback((id: string | null) => setParam(id), [setParam]);
+  // `collection_point_id` is `@IsUUID()` server-side; a hand-edited or stale
+  // `?point=` must not reach the API as-is — shape it away here rather than
+  // 400 every read it scopes.
+  const pointId = keepUuids(param ? [param] : null)?.[0] ?? null;
 
   if (me?.role === 'point_operator') {
     return { pointId: me.collection_point_id, canPick: false, setPointId, isLoading: false };
   }
   return {
-    pointId: param,
+    pointId,
     canPick: me?.role === 'network_owner',
     setPointId,
     isLoading: isPending,

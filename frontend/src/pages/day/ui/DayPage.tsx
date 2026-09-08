@@ -11,11 +11,11 @@ import { Spinner } from '@/shared/ui/spinner';
 import { ConfirmDialog } from '@/shared/ui/confirm-dialog';
 import { toast } from '@/shared/ui/toast';
 import { useUrlParam } from '@/shared/lib/url-state';
-import { sum, sub, formatUah } from '@/shared/lib/money';
+import { sum, sub, cmp, formatUah } from '@/shared/lib/money';
 import {
   todayIso,
   addDaysIso,
-  isIsoDate,
+  isRealIsoDate,
   formatLongDate,
   formatWeekday,
   formatShortDate,
@@ -38,30 +38,6 @@ interface FeedRow {
   at: string;
   voided: boolean;
   reason: string | null;
-}
-
-/**
- * A `?date=` that is a REAL calendar day, not merely `YYYY-MM-DD` shaped.
- *
- * `isIsoDate` checks the shape only, and the two ways a shaped-but-impossible
- * date fails are both silent from here:
- *   - `2026-02-31` parses and ROLLS OVER, so the page would title itself
- *     «3 March» while asking the API for the 31st of February;
- *   - `2026-00-10` / `0000-00-00` parse to an Invalid Date, and the first
- *     `Intl` call on it throws a RangeError straight into the route error
- *     boundary — one hand-edited query param blanks the screen.
- *
- * Only a date that survives a round trip through `addDaysIso` is real. The
- * try/catch is not defensive padding: `addDaysIso` calls `toISOString()`, which
- * is exactly what throws on the Invalid Date case above.
- */
-function isRealIsoDate(value: unknown): value is string {
-  if (!isIsoDate(value)) return false;
-  try {
-    return addDaysIso(value, 0) === value;
-  } catch {
-    return false;
-  }
 }
 
 /**
@@ -116,6 +92,10 @@ export function DayPage() {
   // the difference is not cosmetic: an Open button on the second one lets an
   // operator open a shift that is already open. The toolbar waits, as the feed does.
   const isLoadingShift = pointId !== null && shift.isPending;
+  // A failed read must never look like a quiet zero: an empty feed under
+  // 0,00 ₴ tiles or an «Open shift» button over a shift the server never
+  // confirmed either way are both worse than saying so.
+  const isError = shift.isError || intakes.isError || payouts.isError;
 
   const liveIntakes = (intakes.data?.data ?? []).filter((i) => i.voided_at === null);
   const livePayouts = (payouts.data?.data ?? []).filter((p) => p.voided_at === null);
@@ -138,7 +118,10 @@ export function DayPage() {
       label: t('day.tiles.toDebt'),
       value: formatUah(sub(accrued, paid), i18n.language),
       hint: t('day.tiles.toDebtHint'),
-      tone: 'amber',
+      // §5.1: amber only while something is actually owed — a settled (or
+      // negative, which should not happen but must not shout either) balance
+      // reads as any other tile.
+      tone: cmp(sub(accrued, paid), '0') === 1 ? 'amber' : 'default',
     },
   ];
 
@@ -214,7 +197,12 @@ export function DayPage() {
           ? t('day.status.loading')
           : t(`day.status.${status === 'none' && isToday ? 'noneToday' : status}`)}
       </Badge>
-      {!isLoadingShift && isOperator && isToday && status === 'none' && pointId ? (
+      {!shift.isError &&
+      !isLoadingShift &&
+      isOperator &&
+      isToday &&
+      status === 'none' &&
+      pointId ? (
         <Button
           onClick={() => void run(() => open.mutateAsync(), 'day.toast.opened')}
           disabled={open.isPending}
@@ -222,12 +210,12 @@ export function DayPage() {
           {t('day.open')}
         </Button>
       ) : null}
-      {!isLoadingShift && isOperator && status === 'open' ? (
+      {!shift.isError && !isLoadingShift && isOperator && status === 'open' ? (
         <Button variant="outline" onClick={() => setConfirmClose(true)}>
           {t('day.close')}
         </Button>
       ) : null}
-      {!isLoadingShift && isOwner && status === 'closed' && shift.data ? (
+      {!shift.isError && !isLoadingShift && isOwner && status === 'closed' && shift.data ? (
         <Button
           variant="outline"
           onClick={() => {
@@ -244,6 +232,10 @@ export function DayPage() {
   const feedContent =
     pointId === null ? (
       <EmptyState title={t('day.pickPoint')} />
+    ) : isError ? (
+      <p role="alert" className="py-6 text-center text-destructive">
+        {t('common.somethingWentWrong')}
+      </p>
     ) : shift.isPending ? (
       <div className="flex justify-center py-12">
         <Spinner />
@@ -300,7 +292,7 @@ export function DayPage() {
         title={t('day.title', { date: formatLongDate(date, i18n.language) })}
         description={t('day.description')}
         actions={actions}
-        stats={pointId && status !== 'none' ? stats : undefined}
+        stats={pointId && status !== 'none' && !isError ? stats : undefined}
         statColumns={4}
       >
         {truncated ? (

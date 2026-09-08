@@ -7,6 +7,30 @@ const ISO = /^\d{4}-\d{2}-\d{2}$/;
 
 export const isIsoDate = (v: unknown): v is string => typeof v === 'string' && ISO.test(v);
 
+/**
+ * A `YYYY-MM-DD` that is a REAL calendar day, not merely shaped like one.
+ *
+ * `isIsoDate` checks the shape only, and the two ways a shaped-but-impossible
+ * date fails are both silent from there:
+ *   - `2026-02-31` parses and ROLLS OVER to 3 March, so a page titling itself
+ *     from the value would show one date while asking the API for another;
+ *   - `2026-00-10` / `0000-00-00` parse to an Invalid Date, and the first
+ *     `Intl` call on it throws a RangeError — one hand-edited query param
+ *     blanking a screen.
+ *
+ * Only a date that survives a round trip through `addDaysIso` is real. The
+ * try/catch is not defensive padding: `addDaysIso` calls `toISOString()`,
+ * which is exactly what throws on the Invalid Date case above.
+ */
+export function isRealIsoDate(value: unknown): value is string {
+  if (!isIsoDate(value)) return false;
+  try {
+    return addDaysIso(value, 0) === value;
+  } catch {
+    return false;
+  }
+}
+
 const toUtcNoon = (iso: string): Date => new Date(`${iso}T12:00:00Z`);
 const fromDate = (d: Date): string => d.toISOString().slice(0, 10);
 

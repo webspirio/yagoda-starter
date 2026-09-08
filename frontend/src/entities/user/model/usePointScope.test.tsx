@@ -48,7 +48,20 @@ describe('usePointScope', () => {
     });
     const { result } = renderHook(() => usePointScope(), { wrapper: wrapperAt('/x') });
     expect(result.current).toMatchObject({ pointId: null, canPick: true });
-    act(() => result.current.setPointId('p2'));
-    expect(result.current.pointId).toBe('p2');
+    // A real pointId is UUID-shaped on the wire — `keepUuids` would drop
+    // anything else, so the round trip has to use one here too.
+    act(() => result.current.setPointId('3fa85f64-5717-4562-b3fc-2c963f66afa6'));
+    expect(result.current.pointId).toBe('3fa85f64-5717-4562-b3fc-2c963f66afa6');
+  });
+
+  it('drops a mangled ?point= instead of forwarding it to the API', () => {
+    meMock.mockReturnValue({
+      data: { role: 'network_owner', collection_point_id: null },
+      isPending: false,
+    });
+    const { result } = renderHook(() => usePointScope(), {
+      wrapper: wrapperAt('/x?point=not-a-uuid'),
+    });
+    expect(result.current.pointId).toBeNull();
   });
 });

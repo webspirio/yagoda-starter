@@ -29,15 +29,18 @@ src/
   main.tsx                    # entry point — wires auth interceptors, initI18n, global error reporting, renders App
   app/
     App.tsx                   # root component: ErrorBoundary > QueryClientProvider > RouterProvider
-    router.tsx                # createBrowserRouter — /login, / (dashboard), /profile, /suppliers, /points, /users, /prices, /catalog, /ui-kit, catch-all 404 — no /register
+    router.tsx                # createBrowserRouter — /login, / (dashboard), /profile, /suppliers, /points, /users, /prices, /catalog, /day, /ui-kit, catch-all 404 — no /register
     layouts/AppLayout.tsx      # persistent shell: dark sidebar with role-aware grouped nav + PAPER top bar (mock composition) with scope, ThemeToggle, sign-out; renders auth pages bare
     providers/
       ErrorBoundary.tsx        # React class error boundary → ErrorFallback
       ErrorFallback.tsx        # dev: full stack trace / prod: generic message + retry/reload
       RouteError.tsx           # router errorElement — reports the error, renders ErrorFallback
-  entities/user/                # session store (Zustand), Me type (model/user.ts), useMeQuery / useUpdateMeMutation — authenticated-account concerns only
+  entities/user/                # session store (Zustand), Me type (model/user.ts), useMeQuery / useUpdateMeMutation / usePointScope (validated ?point= scoping for money screens) — authenticated-account concerns only
   entities/collection-point/    # usePointOptionsQuery — active points as select options, shared by users / suppliers / prices
   entities/product-grade/       # useGradeCatalogQuery — grades joined to product names, for prices (and the intake screen later)
+  entities/shift/                # useShiftOnDateQuery / useCurrentShiftQuery, Shift type — one point's working day, read by pages/day
+  entities/intake/               # useIntakesQuery, Intake type — a point's receipts journal, read by pages/day
+  entities/payout/               # usePayoutsQuery, Payout type — a point's payouts journal, read by pages/day
   features/auth/                 # login/logout API calls, LoginForm, RequireAuth + RequireRole route guards — no register API
   features/edit-profile/         # useUploadAvatarMutation (single consumer: pages/profile — kept as the upload exemplar)
   pages/login/, pages/dashboard/, pages/profile/, pages/not-found/, pages/ui-kit/
@@ -49,6 +52,8 @@ src/
       i18n/                    # i18next init + locales/en.json + language-preference (localStorage)
       theme/                   # useThemePreference (system/light/dark, localStorage) + useAppTheme — the single owner of the `.dark` class on <html>
       upload/                  # validateImageFile, resolveUploadUrl, useImageUpload — client-side mirror of the backend's MEDIA_MAX_BYTES cap
+      money/                    # sum / sub / cmp / isNegative / isZero (decimal-string arithmetic, kopiykas under the hood) + formatUah / formatDecimal / formatKg — the client-side twin of `backend/src/common/money.ts`, used wherever a screen totals or formats a money value
+      date/                     # todayIso / addDaysIso / isIsoDate / isRealIsoDate / formatLongDate / formatWeekday / formatShortDate — business-date (`YYYY-MM-DD`) helpers; pages/day owns the one `?date=` in the app
       error-reporting/         # reportError(error, context) — swap body for Sentry later
       clipboard/, cn.ts, debounce.ts, useDebouncedValue.ts, useIsDesktop.ts — small framework-free utilities
       form-draft/               # useFormDraft — localStorage-backed draft persistence; infrastructure, not yet wired into any form
@@ -60,7 +65,10 @@ src/
 FSD layer boundaries (`shared < entities < features < pages < app`, each layer may
 only import from layers below it) are enforced by ESLint (`no-restricted-imports` in
 `eslint.config.mjs`), not just convention — an upward import fails lint instead of
-relying on review to catch it. There's no `widgets/` layer yet (it sits between
+relying on review to catch it. The rule catches DIRECTION only: a same-layer
+cross-import (e.g. `entities/payout` reaching into `entities/intake`) compiles and
+lints clean, so keeping slices independent within a layer is a review discipline,
+not something lint enforces. There's no `widgets/` layer yet (it sits between
 `features` and `pages` in FSD, for composed UI shared across multiple pages); add it
 if/when something actually needs that — don't pre-create the empty folder.
 
@@ -116,7 +124,7 @@ instead of importing the store directly.
 
 ## i18n
 
-Strings live in `src/shared/lib/i18n/locales/en.json`; components use `useTranslation()`/`t()`.
+Strings live in `src/shared/lib/i18n/locales/uk.json` (default) and `en.json`; components use `useTranslation()`/`t()`.
 To add a locale: create `locales/<code>.json` mirroring `en.json`, add it to the
 `resources` map in `src/shared/lib/i18n/index.ts`, and add its code to
 `SUPPORTED_LANGUAGES` (`language-preference.ts`) — it becomes selectable once
