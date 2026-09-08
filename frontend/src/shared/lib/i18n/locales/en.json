@@ -527,11 +527,11 @@
       "unit": "kg",
       "pallet": "Pallet",
       "tare": "Tare — subtracted automatically",
-      "tareType": "Tare type",
+      "tareType": "Tare type {{n}}",
       "tareOption": "{{name}} {{weight}} kg",
-      "units": "Tare units",
-      "fewer": "One fewer",
-      "more": "One more",
+      "units": "Tare units {{n}}",
+      "fewer": "One fewer {{n}}",
+      "more": "One more {{n}}",
       "removeTare": "Remove tare row",
       "otherTare": "Other tare"
     },
@@ -549,7 +549,7 @@
       "outOfRange": "out of range"
     },
     "line": {
-      "preview": "tare {{tare}} · net {{net}} · {{price}}+{{bonus}} → {{amount}}",
+      "preview": "tare {{tare}} · net {{net}} · {{price}}{{bonus}} → {{amount}}",
       "pending": "…",
       "grossWarning": "{{gross}} kg — more than the largest line of the season (701.5 kg). Check the gross weight.",
       "perCrateWarning": "{{kg}} kg per crate. Check the gross weight or the tare count."
@@ -559,6 +559,7 @@
       "hint": "Several grades from one supplier add up into one total and one receipt.",
       "capHint": "Real data never has more than 5 lines per visit — no more are added.",
       "remove": "Remove line",
+      "draftHint": "Finish this line or remove it",
       "title": "Receipt lines",
       "col": {
         "grade": "Grade",

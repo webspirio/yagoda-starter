@@ -90,7 +90,12 @@ export default tseslint.config(
     // exception outside it — they are `sr-only` and never focused for typing,
     // so they disable this line with a reason rather than route through
     // `TextInput`.
-    files: ['src/entities/**/*.tsx', 'src/features/**/*.tsx', 'src/pages/**/*.tsx'],
+    files: [
+      'src/entities/**/*.tsx',
+      'src/features/**/*.tsx',
+      'src/widgets/**/*.tsx',
+      'src/pages/**/*.tsx',
+    ],
     rules: {
       'no-restricted-syntax': [
         'error',

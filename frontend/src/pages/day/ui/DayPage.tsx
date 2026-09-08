@@ -292,7 +292,7 @@ export function DayPage() {
           );
 
           return (
-            <li key={`${row.kind}-${row.id}`} className="py-2.5" title={row.reason ?? undefined}>
+            <li key={`${row.kind}-${row.id}`} className="py-2.5">
               {/* Intake rows open the receipt (spec §5.1); a payout row has no
                   document view, so it stays a plain, non-interactive row. */}
               {row.kind === 'intake' ? (

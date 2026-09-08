@@ -166,8 +166,17 @@ export function SupplierSection({
           ) : (
             <ul className="mt-2 flex flex-col gap-1">
               {(history.data?.data ?? []).map((row) => (
-                <li key={row.id} className="flex items-center gap-2 text-xs">
+                <li
+                  key={row.id}
+                  className={cn(
+                    'flex items-center gap-2 text-xs',
+                    row.voided_at !== null && 'text-muted-foreground line-through',
+                  )}
+                >
                   <span className="min-w-0 flex-1 truncate font-mono">{row.code}</span>
+                  {row.voided_at !== null ? (
+                    <span className="shrink-0">{t('reception.today.voided')}</span>
+                  ) : null}
                   <span className="shrink-0 text-muted-foreground">
                     {formatShortDate(row.business_date, locale)}
                   </span>

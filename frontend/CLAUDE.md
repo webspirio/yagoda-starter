@@ -37,12 +37,17 @@ src/
       RouteError.tsx           # router errorElement — reports the error, renders ErrorFallback
   entities/user/                # session store (Zustand), Me type (model/user.ts), useMeQuery / useUpdateMeMutation / usePointScope (validated ?point= scoping for money screens) — authenticated-account concerns only
   entities/collection-point/    # usePointOptionsQuery — active points as select options, shared by users / suppliers / prices
-  entities/product-grade/       # useGradeCatalogQuery — grades joined to product names, for prices (and the intake screen later)
+  entities/supplier/            # useSuppliersQuery / useSupplierQuery / useSupplierBalanceQuery, Supplier type — the point's supplier directory and running balance, read by suppliers, reception and the receipt widget
+  entities/product-grade/       # useGradeCatalogQuery / usePricedGradesQuery — grades joined to product names, for prices and reception
+  entities/tare-type/           # useTareTypeOptionsQuery, TareTypeOption type — the tare registry, read by catalog and reception
   entities/shift/                # useShiftOnDateQuery / useCurrentShiftQuery, Shift type — one point's working day, read by pages/day
   entities/intake/               # useIntakesQuery, Intake type — a point's receipts journal, read by pages/day
   entities/payout/               # usePayoutsQuery, Payout type — a point's payouts journal, read by pages/day
   features/auth/                 # login/logout API calls, LoginForm, RequireAuth + RequireRole route guards — no register API
   features/edit-profile/         # useUploadAvatarMutation (single consumer: pages/profile — kept as the upload exemplar)
+  features/settle-payout/        # useCreatePayoutMutation, PayoutDialog — records a payout against a supplier's balance, opened from the receipt widget
+  features/void-document/        # useVoidDocumentMutation, VoidDocumentDialog — voids an intake or payout (§9.3: a correction is a void plus a new document), opened from the receipt widget
+  widgets/receipt/               # ReceiptDialog — the printable receipt for one intake, opened from reception, day and the supplier card alike
   pages/login/, pages/dashboard/, pages/profile/, pages/not-found/, pages/ui-kit/
   pages/points/, pages/users/, pages/suppliers/, pages/catalog/, pages/prices/   # each: api/ (TanStack hooks) · model/ (wire types + form values) · lib/apiErrorToFields · ui/ (page + dialogs + tests)
   pages/day/, pages/reception/   # the money screens — «Каса за день» and «Прийомка ягоди» (RHF form + live server preview)
@@ -63,7 +68,7 @@ src/
     ui/                        # the mock's kit in the starter's layout: primitives (button, badge, dialog, table, tabs, …), signature pieces (eyebrow, page-header, stat-tile, empty-state, sparkline), layout (Card, DataTable, SectionCard, ListPage template), ThemeToggle — plus starter leftovers no screen uses yet (chip, drawer, segmented, TagPicker, …; see the «Kit hygiene» note below)
 ```
 
-FSD layer boundaries (`shared < entities < features < pages < app`, each layer may
+FSD layer boundaries (`shared < entities < features < widgets < pages < app`, each layer may
 only import from layers below it) are enforced by ESLint (`no-restricted-imports` in
 `eslint.config.mjs`), not just convention — an upward import fails lint instead of
 relying on review to catch it. The rule catches DIRECTION only: a same-layer

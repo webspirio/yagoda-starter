@@ -19,6 +19,7 @@ export function TotalsSection({
   isPreviewing,
   isSubmitting,
   formErrorKey,
+  showDraftHint,
 }: {
   /** `null` unless the preview has SETTLED on the form as it stands now. */
   accrued: string | null;
@@ -30,6 +31,10 @@ export function TotalsSection({
   isPreviewing: boolean;
   isSubmitting: boolean;
   formErrorKey: string | null;
+  /** «Ще позиція» left an empty draft behind — nudges the operator toward
+   *  finishing it or using `LineEditor`'s «Прибрати позицію» escape hatch,
+   *  rather than leaving a dark submit button unexplained. */
+  showDraftHint: boolean;
 }) {
   const { t, i18n } = useTranslation();
   const locale = i18n.resolvedLanguage ?? 'uk';
@@ -80,6 +85,10 @@ export function TotalsSection({
           </>
         ) : null}
       </div>
+
+      {showDraftHint ? (
+        <p className="mt-3 text-xs text-muted-foreground">{t('reception.lines.draftHint')}</p>
+      ) : null}
 
       {formErrorKey ? (
         <p role="alert" className="mt-3 text-sm text-destructive">

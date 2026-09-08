@@ -139,10 +139,17 @@ export function ReceptionPage() {
     const grade = grades.data.find((g) => g.id === gradeId);
     return grade ? `${grade.productName} · ${grade.name}` : '—';
   };
+  // The preview's items only line up with the FORM's items 1:1 the moment
+  // both describe the same number of lines — read by index otherwise (e.g.
+  // right after `remove(0)`, before the next response) and a surviving row
+  // is relabelled instantly while its numbers are still the DELETED line's.
+  // Falling back to `null` for one cycle shows «…» instead of a wrong number.
+  const rowsPreview =
+    preview.preview?.items.length === lines.fields.length ? preview.preview : null;
   const committed: CommittedLine[] = lines.fields.slice(0, draftIndex).map((field, index) => ({
     key: field.id,
     gradeLabel: gradeLabel(values.items[index]?.product_grade_id ?? ''),
-    item: preview.preview?.items[index] ?? null,
+    item: rowsPreview?.items[index] ?? null,
   }));
 
   // ONLY a settled preview may become a number on screen or a submitted body.
@@ -271,6 +278,7 @@ export function ReceptionPage() {
                 codeError={codeError}
                 errorAt={errorAt}
                 disabled={!shiftOpen}
+                onRemoveDraft={() => lines.remove(draftIndex)}
               />
               <LinesTable
                 rows={committed}
@@ -293,6 +301,7 @@ export function ReceptionPage() {
                 isPreviewing={isPreviewing}
                 isSubmitting={create.isPending}
                 formErrorKey={formErrorKey}
+                showDraftHint={draftIndex > 0 && !draftReady}
               />
             </Card>
           </form>

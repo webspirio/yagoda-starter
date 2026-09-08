@@ -38,6 +38,21 @@ function compare(a: string, b: string): -1 | 0 | 1 | null {
 }
 
 /**
+ * The bonus half of the draft's preview line: a leading `+` unless the bonus
+ * is already negative, in which case `formatDecimal`'s own typographic minus
+ * (U+2212) is the only sign a literal `+` glued in front of it used to render
+ * as `+−5,00`. Kept as `+`-for-non-negative rather than mirroring
+ * `widgets/receipt`'s `formatBonus` exactly (`+` only when strictly
+ * positive): that dialog OMITS a zero bonus row outright, which reads fine
+ * there, but this line concatenates price and bonus with no separator of its
+ * own — dropping the `+` for zero would glue them into one unreadable number.
+ */
+function formatBonusSign(bonus: string, locale: string): string {
+  const formatted = formatDecimal(bonus, locale);
+  return cmp(bonus, '0') === -1 ? formatted : `+${formatted}`;
+}
+
+/**
  * The draft line: the receipt number, the weights and tare (§2.5), the priced
  * grade and its per-line extra price (§2.8). NOTHING here computes money — the
  * numbers under the line are `previewItem`, straight off `POST /intakes/preview`.
@@ -59,6 +74,7 @@ export function LineEditor({
   codeError,
   errorAt,
   disabled,
+  onRemoveDraft,
 }: {
   index: number;
   control: Control<IntakeFormValues>;
@@ -72,6 +88,12 @@ export function LineEditor({
   codeError: string | null;
   errorAt: (field: string) => string | null;
   disabled: boolean;
+  /** Removes THIS draft from the field array — the escape hatch «Ще позиція»
+   *  needs the moment it appends an empty draft: `index > 0` (this is not
+   *  line 0) is the only condition for showing it, since line 0 is the form's
+   *  one unremovable line. Removing the draft promotes the last committed
+   *  line back into the editor — a coherent un-commit, not a delete. */
+  onRemoveDraft: () => void;
 }) {
   const { t, i18n } = useTranslation();
   const locale = i18n.resolvedLanguage ?? 'uk';
@@ -251,7 +273,7 @@ export function LineEditor({
             <div key={row.id} className="flex items-center gap-2">
               <div className="min-w-0 flex-1">
                 <SelectField
-                  aria-label={t('reception.weight.tareType')}
+                  aria-label={t('reception.weight.tareType', { n: rowIndex + 1 })}
                   disabled={disabled}
                   className="h-10"
                   {...register(`items.${index}.tare.${rowIndex}.tare_type_id`)}
@@ -271,7 +293,7 @@ export function LineEditor({
                   type="button"
                   variant="ghost"
                   size="icon-sm"
-                  aria-label={t('reception.weight.fewer')}
+                  aria-label={t('reception.weight.fewer', { n: rowIndex + 1 })}
                   disabled={disabled}
                   onClick={() => stepUnits(rowIndex, -1)}
                 >
@@ -279,7 +301,7 @@ export function LineEditor({
                 </Button>
                 <TextInput
                   variant="ghost"
-                  aria-label={t('reception.weight.units')}
+                  aria-label={t('reception.weight.units', { n: rowIndex + 1 })}
                   inputMode="numeric"
                   autoComplete="off"
                   disabled={disabled}
@@ -290,7 +312,7 @@ export function LineEditor({
                   type="button"
                   variant="ghost"
                   size="icon-sm"
-                  aria-label={t('reception.weight.more')}
+                  aria-label={t('reception.weight.more', { n: rowIndex + 1 })}
                   disabled={disabled}
                   onClick={() => stepUnits(rowIndex, 1)}
                 >
@@ -470,7 +492,7 @@ export function LineEditor({
                 tare: formatKg(previewItem.tare_weight_kg, locale),
                 net: formatKg(previewItem.net_kg, locale),
                 price: formatDecimal(previewItem.price, locale),
-                bonus: formatDecimal(previewItem.bonus, locale),
+                bonus: formatBonusSign(previewItem.bonus, locale),
                 amount: formatUah(previewItem.amount, locale),
               })
             : t('reception.line.pending')}
@@ -481,6 +503,25 @@ export function LineEditor({
             <AlertTriangle className="mt-px size-3.5 shrink-0" />
             {t('reception.line.perCrateWarning', { kg: formatDecimal(perCrate, locale) })}
           </p>
+        ) : null}
+
+        {/* «Ще позиція» always leaves an empty draft behind, and an empty
+            draft cannot preview (`isPreviewable` wants every line complete) —
+            with no way back the operator is stuck staring at a dark submit
+            button. This is that way back, offered the moment there IS a
+            committed line to fall back to. */}
+        {index > 0 ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="mt-3 text-muted-foreground"
+            disabled={disabled}
+            onClick={onRemoveDraft}
+          >
+            <Trash2 className="size-3.5" />
+            {t('reception.lines.remove')}
+          </Button>
         ) : null}
       </div>
     </>

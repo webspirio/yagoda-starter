@@ -26,12 +26,15 @@ export function TodayReceipts({
   const rows = [...(intakes.data?.data ?? [])].sort((a, b) =>
     a.created_at < b.created_at ? 1 : a.created_at > b.created_at ? -1 : 0,
   );
+  // A voided receipt stays LISTED (struck through, below) but is not one of
+  // "today's receipts" any more — the badge counts only the live ones.
+  const liveCount = rows.filter((row) => row.voided_at === null).length;
 
   return (
     <Card className="h-fit p-4">
       <div className="mb-2 flex items-center justify-between gap-2">
         <Eyebrow className="truncate">{t('reception.today.title')}</Eyebrow>
-        <Badge variant="secondary">{rows.length}</Badge>
+        <Badge variant="secondary">{liveCount}</Badge>
       </div>
 
       {rows.length === 0 ? (

@@ -8,7 +8,7 @@ import type { Intake, IntakeDetail } from '@/entities/intake';
 import type { Supplier } from '@/entities/supplier';
 import type { PricedGrade } from '@/entities/product-grade';
 import type { TareTypeOption } from '@/entities/tare-type';
-import type { IntakePreview } from '../model/intakeForm';
+import type { IntakeFormValues, IntakePreview } from '../model/intakeForm';
 import { ReceptionPage } from './ReceptionPage';
 
 const {
@@ -276,7 +276,7 @@ async function fillDraft(user: ReturnType<typeof userEvent.setup>, gross = '126,
   const grossInput = screen.getByLabelText('Gross — berries including tare');
   await user.clear(grossInput);
   await user.type(grossInput, gross);
-  const units = screen.getByLabelText('Tare units');
+  const units = screen.getByLabelText('Tare units 1');
   await user.clear(units);
   await user.type(units, '12');
   await user.selectOptions(screen.getByLabelText('Product'), 'Raspberry');
@@ -503,7 +503,17 @@ describe('ReceptionPage — a one-line receipt', () => {
 
 describe('ReceptionPage — several lines', () => {
   beforeEach(() => {
-    previewMock.mockReturnValue(SETTLED);
+    // A settled preview whose item COUNT tracks the current form. The static
+    // single-item `SETTLED` fixture would otherwise mismatch the moment a
+    // second line exists — after the row-preview guard fix (finding 2) that
+    // reads as a pending «…» rather than a real number, and these tests care
+    // about row count and control state, not any particular figure.
+    previewMock.mockImplementation((values: IntakeFormValues) =>
+      previewState({
+        preview: { ...PREVIEW, items: values.items.map(() => PREVIEW.items[0]) },
+        isSettled: true,
+      }),
+    );
   });
 
   it('commits the draft into the lines table and stops at five', async () => {
@@ -547,14 +557,166 @@ describe('ReceptionPage — several lines', () => {
     await user.click(screen.getByRole('button', { name: /Mariia Kovalchuk/ }));
     await fillDraft(user);
     await user.click(screen.getByRole('button', { name: 'Add line' }));
-    expect(screen.getAllByRole('button', { name: 'Remove line' })[0]).toBeEnabled();
+    // Scoped to the table: the draft now also offers its own «Remove line»
+    // escape hatch (finding 1), sharing the same name.
+    const rowTrash = () =>
+      within(screen.getByRole('table')).getByRole('button', { name: 'Remove line' });
+    expect(rowTrash()).toBeEnabled();
 
     // The operator closed the shift in the other tab; the receipt cannot be
     // written any more, so it cannot be edited any more either.
     shiftMock.mockReturnValue({ data: null, isPending: false, isError: false });
     await user.type(screen.getByLabelText('Receipt no.'), 'A');
 
-    expect(screen.getAllByRole('button', { name: 'Remove line' })[0]).toBeDisabled();
+    expect(rowTrash()).toBeDisabled();
+  });
+});
+
+describe('ReceptionPage — an accidental extra line', () => {
+  it('offers an escape hatch back to a submittable state', async () => {
+    const user = userEvent.setup();
+    // Mirrors the real hook's `isPreviewable`: settled only once EVERY line
+    // is complete, so committing the draft leaves a fresh empty one and the
+    // preview goes dark — exactly what strands the real screen (finding 1).
+    previewMock.mockImplementation((values: IntakeFormValues) => {
+      const complete = values.items.every(
+        (line) => line.product_grade_id !== '' && line.gross_kg.trim() !== '',
+      );
+      return complete ? SETTLED : previewState({ preview: PREVIEW, isSettled: false });
+    });
+
+    renderReception();
+    await user.click(screen.getByRole('button', { name: /Mariia Kovalchuk/ }));
+    await user.type(screen.getByLabelText('Receipt no.'), '00412');
+    await fillDraft(user);
+
+    await user.click(screen.getByRole('button', { name: 'Add line' }));
+
+    // The fresh draft is empty: nothing previews, so nothing can be added,
+    // submitted, or explained — until the hint and the escape hatch.
+    expect(screen.getByText('Finish this line or remove it')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Accept' })).toBeDisabled();
+
+    // The draft's own «Remove line» ghost button (LineEditor renders before
+    // the table, so it is first in DOM order) — not the committed row's trash.
+    await user.click(screen.getAllByRole('button', { name: 'Remove line' })[0]);
+
+    // Un-committing restores the (still-complete) surviving line, so the
+    // preview — and submit — are unstuck again.
+    expect(screen.queryByText('Finish this line or remove it')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Accept 120.40 kg' })).toBeEnabled();
+  });
+});
+
+describe('ReceptionPage — the committed table while the preview catches up', () => {
+  it('shows pending cells instead of a stale number right after a commit', async () => {
+    const user = userEvent.setup();
+    // A settled preview that still describes the PRE-commit form (one line) —
+    // the same shape the real hook returns for the debounce window right
+    // after a commit changes the form's line count.
+    previewMock.mockReturnValue(SETTLED);
+
+    renderReception();
+    await user.click(screen.getByRole('button', { name: /Mariia Kovalchuk/ }));
+    await fillDraft(user);
+    await user.click(screen.getByRole('button', { name: 'Add line' }));
+
+    const table = screen.getByRole('table');
+    // The preview still has ONE item; the form now has a committed line PLUS
+    // a fresh draft (two lines) — the committed row's preview item is no
+    // longer reliably at the same index, so its cells read pending, never
+    // the stale number.
+    expect(within(table).queryByText('120.40')).toBeNull();
+    expect(within(table).getAllByText('…').length).toBeGreaterThan(0);
+  });
+});
+
+describe('ReceptionPage — tare rows', () => {
+  it('gives each tare row a distinct accessible name', async () => {
+    const user = userEvent.setup();
+    renderReception();
+
+    await user.click(screen.getByRole('button', { name: 'Other tare' }));
+
+    expect(screen.getByLabelText('Tare type 1')).toBeInTheDocument();
+    expect(screen.getByLabelText('Tare type 2')).toBeInTheDocument();
+    expect(screen.getByLabelText('Tare units 1')).toBeInTheDocument();
+    expect(screen.getByLabelText('Tare units 2')).toBeInTheDocument();
+    expect(screen.getByLabelText('One fewer 1')).toBeInTheDocument();
+    expect(screen.getByLabelText('One fewer 2')).toBeInTheDocument();
+    expect(screen.getByLabelText('One more 1')).toBeInTheDocument();
+    expect(screen.getByLabelText('One more 2')).toBeInTheDocument();
+  });
+});
+
+describe('ReceptionPage — the draft line preview', () => {
+  it('shows a discount without a doubled sign', async () => {
+    const user = userEvent.setup();
+    previewMock.mockReturnValue(
+      previewState({
+        preview: { ...PREVIEW, items: [{ ...PREVIEW.items[0], bonus: '-5.00' }] },
+        isSettled: true,
+      }),
+    );
+
+    renderReception();
+    await user.click(screen.getByRole('button', { name: /Mariia Kovalchuk/ }));
+    await fillDraft(user);
+
+    expect(screen.getByText(/10\.00−5\.00/)).toBeInTheDocument();
+    expect(screen.queryByText(/\+−/)).toBeNull();
+  });
+});
+
+describe("ReceptionPage — the supplier's history and today's badge", () => {
+  it('marks a voided receipt in the history with a strike-through', async () => {
+    const user = userEvent.setup();
+    intakesMock.mockImplementation((filter: { supplierId?: string }) =>
+      filter.supplierId
+        ? page<Intake>([
+            intake({
+              id: 'i1',
+              code: 'SHP-IN-1',
+              amount: '100.00',
+              voided_at: '2026-09-07T10:00:00Z',
+            }),
+            intake({ id: 'i2', code: 'SHP-IN-2', amount: '200.00' }),
+          ])
+        : page<Intake>([]),
+    );
+
+    renderReception();
+    await user.click(screen.getByRole('button', { name: /Mariia Kovalchuk/ }));
+
+    const voidedRow = screen.getByText('SHP-IN-1').closest('li');
+    expect(voidedRow).toHaveClass('line-through');
+    expect(within(voidedRow!).getByText('voided')).toBeInTheDocument();
+
+    const liveRow = screen.getByText('SHP-IN-2').closest('li');
+    expect(liveRow).not.toHaveClass('line-through');
+  });
+
+  it("counts only live receipts in today's badge, though a voided one stays listed", async () => {
+    intakesMock.mockImplementation((filter: { shiftId?: string }) =>
+      filter.shiftId
+        ? page<Intake>([
+            intake({
+              id: 'i1',
+              code: 'SHP-IN-1',
+              amount: '100.00',
+              voided_at: '2026-09-07T10:00:00Z',
+            }),
+            intake({ id: 'i2', code: 'SHP-IN-2', amount: '200.00' }),
+          ])
+        : page<Intake>([]),
+    );
+
+    renderReception();
+
+    expect(screen.getByText('SHP-IN-1')).toBeInTheDocument();
+    expect(screen.getByText('SHP-IN-2')).toBeInTheDocument();
+    const badgeArea = screen.getByText("Today's receipts").parentElement;
+    expect(within(badgeArea!).getByText('1')).toBeInTheDocument();
   });
 });
 
