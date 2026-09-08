@@ -58,14 +58,18 @@ up: its `testRegex` (`.*\.spec\.ts$`) does not match `.db-spec.ts`.
   unconditionally.
 - **The global rate limiter is per IP, and every db-spec request comes from
   127.0.0.1 — so one test run looks like a single abusive client.** The
-  production default is 100 req/min; the full db suite now exceeds it. Each
-  HTTP spec calls `relaxThrottleForTests()` from `db-harness.ts` BEFORE
-  importing `AppModule` (its decorator runs `ConfigModule.forRoot()` eagerly at
-  import time), which sets `THROTTLE_LIMIT` for the process only. Without it
-  the failure is a scatter of `429 Too Many Requests` in whichever spec happens
-  to run past request 100 — which reads like a bug in that spec rather than in
-  the shared budget, and moves as specs are added. `THROTTLE_LIMIT` and
-  `THROTTLE_TTL_MS` are unset outside tests and fall back to 100 / 60 000.
+  production default is 100 req/min, and the current suite fits under it with a
+  thin margin — measured peak `x-ratelimit-remaining` is 79 of 100, so the next
+  HTTP spec is roughly where it stops fitting. Each HTTP spec calls
+  `relaxThrottleForTests()` from `db-harness.ts` BEFORE importing `AppModule`
+  (its decorator runs `ConfigModule.forRoot()` eagerly at import time), which
+  sets `THROTTLE_LIMIT` for the process only — **unconditionally**, because
+  `db-harness.ts` runs `dotenv` at module load, so a `THROTTLE_LIMIT` copied
+  from `.env.example` would otherwise win. Without it the failure is a scatter
+  of `429 Too Many Requests` in whichever spec happens to run past request
+  100 — which reads like a bug in that spec rather than in the shared budget,
+  and moves as specs are added. `THROTTLE_LIMIT` and `THROTTLE_TTL_MS` are
+  unset outside tests and fall back to 100 / 60 000.
 - `docker-compose.yml` publishes Redis on `127.0.0.1:6379` (not just the
   internal `app_net`) because `pipeline.db-spec.ts` boots the full
   `AppModule`, whose global `ThrottlerGuard` needs a reachable Redis. Without

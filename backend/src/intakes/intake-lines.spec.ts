@@ -91,6 +91,55 @@ describe('buildIntake', () => {
       expect(() => buildIntake([line({ tare: [] })], prices(), tare())).toThrow(/tare/i);
     });
 
+    /**
+     * §6.3 — «a `tare_type_id` may appear at most once per item — that is the
+     * composite primary key `(item_id, tare_type_id)`, so a repeated type is a
+     * 400 BEFORE it is a 23505». Without this the units are summed twice into
+     * `tare_weight_kg` and the cascade insert dies on
+     * `PK_intake_item_tare_types`, which no `QueryFailedError` mapping catches
+     * — the operator with a car waiting gets an opaque 500 for typing two rows
+     * of «Чешка» instead of one row with `units: 8`.
+     */
+    it('refuses the same tare type twice on one line', () => {
+      expect(() =>
+        buildIntake(
+          [
+            line({
+              tare: [
+                { tare_type_id: CRATE, units: 3 },
+                { tare_type_id: CRATE, units: 5 },
+              ],
+            }),
+          ],
+          prices(),
+          tare(),
+        ),
+      ).toThrow(/once/i);
+    });
+
+    it('names the repeated type with a stable code', () => {
+      try {
+        buildIntake(
+          [
+            line({
+              tare: [
+                { tare_type_id: BUCKET, units: 1 },
+                { tare_type_id: BUCKET, units: 1 },
+              ],
+            }),
+          ],
+          prices(),
+          tare(),
+        );
+        throw new Error('expected a BadRequestException');
+      } catch (error) {
+        expect(error).toBeInstanceOf(BadRequestException);
+        expect((error as BadRequestException).getResponse()).toMatchObject({
+          code: 'TARE_TYPE_DUPLICATED',
+        });
+      }
+    });
+
     it('rejects an unknown tare type rather than silently weighing nothing', () => {
       expect(() =>
         buildIntake([line({ tare: [{ tare_type_id: 'ghost', units: 1 }] })], prices(), tare()),

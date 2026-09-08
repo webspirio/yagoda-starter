@@ -99,6 +99,25 @@ function buildLine(
     );
   }
 
+  // §6.3 — «a `tare_type_id` may appear at most once per item — that is the
+  // composite primary key `(item_id, tare_type_id)`, so a repeated type is a
+  // 400 BEFORE it is a 23505». Both entries would otherwise resolve against the
+  // snapshot map and be summed, double-counting the units into
+  // `tare_weight_kg`, and the cascade insert would then die on
+  // `PK_intake_item_tare_types` — an error no `QueryFailedError` mapping in
+  // this backend catches, so it would surface as a generic 500 on the one
+  // route where an operator has a car waiting.
+  const seen = new Set<string>();
+  for (const t of input.tare) {
+    if (seen.has(t.tare_type_id)) {
+      bad(
+        `tare type ${t.tare_type_id} is listed twice on one line — record it once with the total units`,
+        'TARE_TYPE_DUPLICATED',
+      );
+    }
+    seen.add(t.tare_type_id);
+  }
+
   // §2.5 — «вага тари підставляється сама». Never typed, always derived from
   // the tare lines the same request carries.
   const tare_weight_kg = sum(

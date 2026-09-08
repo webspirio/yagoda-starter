@@ -356,11 +356,84 @@ follow-ups.
   the DBML's own `Note` blocks and has not been re-checked against the source;
   the intakes spec §10.5 is the one divergence already known.
 
-- **The db suite now exceeds the production rate limit on its own.** Every
-  request in an HTTP spec comes from 127.0.0.1, so one run looks like a single
-  abusive client; the documents pipeline pushed the total past 100 req/min and
-  the failure appeared as scattered 429s in unrelated specs.
-  `relaxThrottleForTests()` raises `THROTTLE_LIMIT` for the test process only.
+- **The db suite is close to the production rate limit.** Every request in an
+  HTTP spec comes from 127.0.0.1, so one run looks like a single abusive
+  client. Measured at `THROTTLE_LIMIT=100` the full suite still PASSES — peak
+  `x-ratelimit-remaining` dips to 79 — so the earlier claim here that it
+  "exceeds" the limit was wrong; the next HTTP spec is roughly where it stops
+  fitting, and the failure would appear as scattered 429s in unrelated specs.
+  `relaxThrottleForTests()` raises `THROTTLE_LIMIT` for the test process only,
+  unconditionally (`db-harness.ts` runs `dotenv` at module load, so a value
+  copied from `.env.example` would otherwise win and re-create the scatter).
   Worth revisiting if CI ever runs the suites in parallel against one Redis —
   the counter is shared, so two concurrent runs would re-create the problem at
   a higher number.
+
+## Raised by the intakes & payouts code review (2026-09-08)
+
+Four Important findings and two Minor ones were fixed in the slice itself.
+These are the rest — each one verified by the reviewer against a live database,
+and each one deliberately left because it belongs to a table this slice does
+not own or to a report nothing calls yet.
+
+- **`intake_items.product_grade_id` is unindexed.** Harmless today: there is no
+  `DELETE` route, and the detail read is already covered because
+  `UQ_intake_items_order (intake_id, item_order)` leads with `intake_id`. But
+  `intake_items` will be the largest table in the schema and the first
+  per-grade report will want this index. Add it with whichever slice writes
+  that report, so the index ships with a query that uses it.
+
+- **`snapshotPrices` runs one query per distinct grade.**
+  `intakes.service.ts` — `Promise.all(gradeIds.map(...))`, bounded by the
+  number of lines on one document, inside the create transaction. Spec §8.7
+  declined `@ArrayMaxSize(5)`, so it is formally unbounded. One
+  `product_grade_id = ANY($2)` with `DISTINCT ON (product_grade_id)` collapses
+  it to a single round trip. Not urgent at real document sizes; worth doing if
+  a bulk-import route ever appears.
+
+- **Two clocks in one slice.** `IntakesService.void` and `PayoutsService`
+  stamp `new Date()`; `ShiftsService` goes through `this.time.now()`. The
+  instants are identical for a `timestamptz`, so nothing is wrong — but
+  `TimeService` is described as *the* seam for timezone-aware time, and this is
+  the slice that wired it. Route the document timestamps through it when the
+  cash slice touches these services anyway.
+
+- **Two comments claim more than their checks do.** `intakes.service.ts` and
+  `payouts.service.ts` label the `shift.closed_at` test «квитанція минулого
+  дня → тільки керівник», but it tests *shift closed*, not *previous day*: an
+  operator who forgot to close Friday can still void a Friday receipt on
+  Saturday morning. Spec §5 deliberately makes the close the freeze line, so
+  the BEHAVIOUR is right and must not be "fixed" — the comments are what needs
+  correcting.
+
+- **The throttler bypasses the config convention.** `app.module.ts` reads
+  `process.env.THROTTLE_*` directly, the only place in the app that skips the
+  typed namespaced factories in `src/config/`. A four-line `throttle.config.ts`
+  would make the rule uniform.
+
+- **Spec §6.3's request annotation contradicts the code, and the code is
+  right.** It says `collection_point_id` is «ignored for an operator» on
+  `POST /intakes`; `resolveWritePoint` 403s instead. Failing closed is the
+  better behaviour — correct the spec and the DTO comment, not the service.
+  (`resolvePointFilter` on the LIST routes really does ignore it, which is now
+  covered by a test.)
+
+- **The `shifts` CHECK constraint diverges from spec §6.1 without being listed
+  in §8.** The spec writes `CHECK (status = 'closed') = (closed_at IS NOT
+  NULL)`; the migration implements `("status" = 'open') = ("closed_at" IS
+  NULL)`. The implemented form is the right one — it keeps
+  `awaiting_explanation` storable alongside a `closed_at` when `cash_counts`
+  lands, avoiding a migration — and it is documented in the entity, the
+  migration and a db-spec. It is simply missing from §8's list of divergences.
+
+- **Consider extending the eslint money ban to `-`.** `'1.00' - '2.00'`
+  coerces through `Number`, which is exactly what §5.1 forbids, and unlike `+`
+  (legitimate for string building) a `-` on a decimal string is never right. It
+  needs an exception for `intake.mapper.ts`'s `a.item_order - b.item_order`,
+  which argues for a small `sortByOrder` helper rather than a disable comment.
+
+- **`supplier-balance.service.spec.ts` asserts against SQL strings.**
+  Reformatting the query reds the tests with no behaviour change. They pair
+  with real coverage in `documents-pipeline.db-spec.ts`, so they could be
+  demoted to one "both `voided_at` filters are present" check and let the
+  db-spec own the behaviour.

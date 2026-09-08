@@ -26,16 +26,16 @@ import { Transform } from 'class-transformer';
 export function canonicalizeDecimalString(value: unknown): unknown {
   if (typeof value !== 'string') return value;
 
-  // Anything that doesn't already look like a plain unsigned decimal is left
+  // Anything that doesn't already look like a plain decimal is left
   // completely alone. This transform runs inside the ValidationPipe's
   // transform phase, which completes in full BEFORE `@Matches` ever runs — so
   // a malformed value must fall through unchanged and let `@Matches` reject
   // it with the usual 400, rather than being force-fit into canonical
   // nonsense in here.
-  const match = /^(\d+)(?:\.(\d{1,2}))?$/.exec(value);
+  const match = /^(-?)(\d+)(?:\.(\d{1,2}))?$/.exec(value);
   if (!match) return value;
 
-  const [, integerPart, fractionPart = ''] = match;
+  const [, sign, integerPart, fractionPart = ''] = match;
 
   // Strip leading zeros from the integer part, but never past a single "0"
   // ("007" -> "7", "0" -> "0", "000" -> "0"). The lookahead requires another
@@ -50,7 +50,14 @@ export function canonicalizeDecimalString(value: unknown): unknown {
   // 2 to pad.
   const normalizedFraction = fractionPart.padEnd(2, '0');
 
-  return `${normalizedInteger}.${normalizedFraction}`;
+  // `bonus` (§2.8) is signed — a discount is a negative bonus — so the sign has
+  // to survive the round trip. Negative ZERO does not: Postgres `numeric` has
+  // no such value, so '-0' would canonicalise to a string no `SELECT` could
+  // ever return, which is exactly the POST/GET mismatch this function exists to
+  // close.
+  const isZero = normalizedInteger === '0' && normalizedFraction === '00';
+
+  return `${isZero ? '' : sign}${normalizedInteger}.${normalizedFraction}`;
 }
 
 /** Normalises an already-`@Matches`-shaped decimal string to a fixed scale of

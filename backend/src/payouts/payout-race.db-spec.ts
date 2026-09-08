@@ -5,15 +5,25 @@ import { openTestDataSource } from '../testing/db-harness';
 const pointCode = (): string => randomUUID().replace(/-/g, '').slice(0, 8).toUpperCase();
 
 /**
- * TWO CONCURRENT PAYOUTS AGAINST ONE SUPPLIER.
+ * THE LOCKING PRIMITIVE, NOT THE ROUTE — and the distinction matters, because
+ * an earlier version of this header claimed otherwise.
  *
- * Delete the `SELECT … FOR UPDATE` from `PayoutsService.create` and every unit
- * test still passes: both transactions read the same debt, both clear the
- * ceiling, and the supplier is paid twice for one delivery. The schema has no
- * `борг >= 0` invariant to catch it, so nothing downstream ever notices.
+ * Nothing here calls `PayoutsService`: these two tests issue the `SELECT … FOR
+ * UPDATE` by hand on two real connections, so what they establish is that the
+ * statement `PayoutsService.create` relies on blocks, that it is HELD rather
+ * than merely requested, and that contention is per supplier rather than
+ * table-wide. Delete the `FOR UPDATE` from the service and this file stays
+ * green — it is a test of Postgres semantics and of the shape of the lock, not
+ * of the ceiling.
  *
- * This is the only test that can show the lock is load-bearing, and it needs a
- * real database with two real connections — a mocked spec cannot express it.
+ * The two tests that DO guard the ceiling live elsewhere, and both are
+ * necessary:
+ *   - `payouts.service.spec.ts` «locks the supplier row BEFORE reading the
+ *     debt» — the ORDER, which is what breaks if someone moves the line.
+ *   - `documents-pipeline.db-spec.ts` «lets exactly ONE of two simultaneous
+ *     payouts through» — the consequence: two requests in flight together
+ *     against a debt that admits one, and the second refused with
+ *     `PAYOUT_EXCEEDS_DEBT`. That is §11's «blocks AND THEN FAILS».
  */
 describe('payout concurrency', () => {
   let ds: DataSource;

@@ -9,14 +9,34 @@ const SHIFT_ID = '33333333-3333-3333-3333-333333333333';
 const SUPPLIER = '44444444-4444-4444-4444-444444444444';
 const PAYOUT_ID = '77777777-7777-7777-7777-777777777777';
 
-const owner = { sub: 'u-owner', username: 'owner', role: UserRole.NetworkOwner, collection_point_id: null };
-const oksana = { sub: 'u-oksana', username: 'oksana', role: UserRole.PointOperator, collection_point_id: POINT_A };
-const maria = { sub: 'u-maria', username: 'maria', role: UserRole.PointOperator, collection_point_id: POINT_A };
-const elsewhere = { sub: 'u-b', username: 'b', role: UserRole.PointOperator, collection_point_id: POINT_B };
+const owner = {
+  sub: 'u-owner',
+  username: 'owner',
+  role: UserRole.NetworkOwner,
+  collection_point_id: null,
+};
+const oksana = {
+  sub: 'u-oksana',
+  username: 'oksana',
+  role: UserRole.PointOperator,
+  collection_point_id: POINT_A,
+};
+const maria = {
+  sub: 'u-maria',
+  username: 'maria',
+  role: UserRole.PointOperator,
+  collection_point_id: POINT_A,
+};
+const elsewhere = {
+  sub: 'u-b',
+  username: 'b',
+  role: UserRole.PointOperator,
+  collection_point_id: POINT_B,
+};
 
 describe('PayoutsService', () => {
   let repo: { findOne: jest.Mock; createQueryBuilder: jest.Mock };
-  let manager: { query: jest.Mock; save: jest.Mock; create: jest.Mock };
+  let manager: { query: jest.Mock; save: jest.Mock; create: jest.Mock; findOne: jest.Mock };
   let dataSource: { transaction: jest.Mock };
   let shifts: { findOpenAtPoint: jest.Mock; findOneRaw: jest.Mock };
   let suppliers: { findOne: jest.Mock };
@@ -62,6 +82,7 @@ describe('PayoutsService', () => {
   beforeEach(() => {
     manager = {
       query: jest.fn().mockResolvedValue([]),
+      findOne: jest.fn().mockResolvedValue(null),
       save: jest.fn().mockImplementation((_e, v) => Promise.resolve(payout(v))),
       create: jest.fn().mockImplementation((_e, v) => v),
     };
@@ -203,8 +224,40 @@ describe('PayoutsService', () => {
 
   describe('void', () => {
     beforeEach(() => {
-      repo.findOne.mockResolvedValue(payout());
+      // The LOCKED read is the only one this path may use, so only the
+      // transactional manager is stocked. `repo.findOne` still answers null: a
+      // regression to the unlocked read 404s instead of passing quietly.
+      manager.findOne.mockResolvedValue(payout());
       shifts.findOneRaw.mockResolvedValue(shift());
+    });
+
+    /**
+     * CHECK-THEN-WRITE, AND THE CHECK MUST BE UNDER THE WRITE'S LOCK. Loading
+     * the row and reading `voided_at` before the transaction opens lets a
+     * double-tapped button — or a client retry on a slow response, the exact
+     * scenario the ceiling took a lock for — put two `payout.voided` entries in
+     * the audit log with different actors and different reasons, and leave
+     * `voided_by_user_id` as last-writer-wins. §6.5's «409 if already voided»
+     * is then decorative.
+     */
+    it('reads the row under a row lock, inside the transaction', async () => {
+      await service.void(oksana, PAYOUT_ID, { reason: 'помилка' });
+
+      expect(manager.findOne).toHaveBeenCalledWith(expect.anything(), {
+        where: { id: PAYOUT_ID },
+        lock: { mode: 'pessimistic_write' },
+      });
+      // ORDER, as in `create`: a lock taken after the state check protects
+      // nothing.
+      expect(dataSource.transaction.mock.invocationCallOrder[0]).toBeLessThan(
+        manager.findOne.mock.invocationCallOrder[0],
+      );
+    });
+
+    it('reads the shift inside the same transaction', async () => {
+      await service.void(oksana, PAYOUT_ID, { reason: 'помилка' });
+
+      expect(shifts.findOneRaw).toHaveBeenCalledWith(SHIFT_ID, manager);
     });
 
     it('follows the same §9.4 authority rule as intakes', async () => {
@@ -226,7 +279,7 @@ describe('PayoutsService', () => {
     });
 
     it('409s an already voided payout', async () => {
-      repo.findOne.mockResolvedValue(
+      manager.findOne.mockResolvedValue(
         payout({ voided_at: new Date(), voided_by_user_id: 'u-owner', void_reason: 'вже' }),
       );
 
@@ -238,23 +291,40 @@ describe('PayoutsService', () => {
 
   describe('settleReturn', () => {
     beforeEach(() => {
-      repo.findOne.mockResolvedValue(
+      manager.findOne.mockResolvedValue(
         payout({ voided_at: new Date(), voided_by_user_id: 'u-oksana', void_reason: 'помилка' }),
       );
       shifts.findOneRaw.mockResolvedValue(shift());
+    });
+
+    /**
+     * The same race as `void`, and it matters MORE here: this row is the
+     * owner's attestation that the cash physically went back in the drawer, and
+     * §9.3's whole argument is that the loop must not be closable unobserved. A
+     * second, differently-attributed record of one attestation is precisely the
+     * ambiguity that argument is about.
+     */
+    it('reads the row under a row lock, inside the transaction', async () => {
+      await service.settleReturn(owner, PAYOUT_ID, {});
+
+      expect(manager.findOne).toHaveBeenCalledWith(expect.anything(), {
+        where: { id: PAYOUT_ID },
+        lock: { mode: 'pessimistic_write' },
+      });
+      expect(dataSource.transaction.mock.invocationCallOrder[0]).toBeLessThan(
+        manager.findOne.mock.invocationCallOrder[0],
+      );
     });
 
     it('is refused to an operator at their own point', async () => {
       // The operator who voided the payout is the person holding the drawer.
       // Letting them also certify the refill closes §9.3's loop unobserved —
       // «інакше сторно стає способом красти».
-      await expect(service.settleReturn(oksana, PAYOUT_ID, {})).rejects.toThrow(
-        ForbiddenException,
-      );
+      await expect(service.settleReturn(oksana, PAYOUT_ID, {})).rejects.toThrow(ForbiddenException);
     });
 
     it('409s a payout that is not voided', async () => {
-      repo.findOne.mockResolvedValue(payout());
+      manager.findOne.mockResolvedValue(payout());
 
       await expect(service.settleReturn(owner, PAYOUT_ID, {})).rejects.toMatchObject({
         response: { code: 'PAYOUT_NOT_VOIDED' },
@@ -262,7 +332,7 @@ describe('PayoutsService', () => {
     });
 
     it('409s a payout already settled', async () => {
-      repo.findOne.mockResolvedValue(
+      manager.findOne.mockResolvedValue(
         payout({
           voided_at: new Date(),
           voided_by_user_id: 'u-oksana',

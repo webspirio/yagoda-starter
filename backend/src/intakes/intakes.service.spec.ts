@@ -11,16 +11,36 @@ const GRADE = '55555555-5555-5555-5555-555555555555';
 const CRATE = '66666666-6666-6666-6666-666666666666';
 const INTAKE_ID = '77777777-7777-7777-7777-777777777777';
 
-const owner = { sub: 'u-owner', username: 'owner', role: UserRole.NetworkOwner, collection_point_id: null };
-const oksana = { sub: 'u-oksana', username: 'oksana', role: UserRole.PointOperator, collection_point_id: POINT_A };
+const owner = {
+  sub: 'u-owner',
+  username: 'owner',
+  role: UserRole.NetworkOwner,
+  collection_point_id: null,
+};
+const oksana = {
+  sub: 'u-oksana',
+  username: 'oksana',
+  role: UserRole.PointOperator,
+  collection_point_id: POINT_A,
+};
 // §10.6's mid-day cashier swap: a SECOND operator at the SAME point.
-const maria = { sub: 'u-maria', username: 'maria', role: UserRole.PointOperator, collection_point_id: POINT_A };
-const elsewhere = { sub: 'u-b', username: 'b', role: UserRole.PointOperator, collection_point_id: POINT_B };
+const maria = {
+  sub: 'u-maria',
+  username: 'maria',
+  role: UserRole.PointOperator,
+  collection_point_id: POINT_A,
+};
+const elsewhere = {
+  sub: 'u-b',
+  username: 'b',
+  role: UserRole.PointOperator,
+  collection_point_id: POINT_B,
+};
 
 describe('IntakesService', () => {
   let repo: { findOne: jest.Mock; createQueryBuilder: jest.Mock };
   let itemRepo: { find: jest.Mock };
-  let manager: { getRepository: jest.Mock; save: jest.Mock; create: jest.Mock };
+  let manager: { getRepository: jest.Mock; save: jest.Mock; create: jest.Mock; findOne: jest.Mock };
   let dataSource: { transaction: jest.Mock };
   let shifts: { findOpenAtPoint: jest.Mock; findOneRaw: jest.Mock };
   let suppliers: { findOne: jest.Mock };
@@ -73,6 +93,7 @@ describe('IntakesService', () => {
     itemRepo = { find: jest.fn().mockResolvedValue([]) };
     manager = {
       getRepository: jest.fn().mockReturnValue(itemRepo),
+      findOne: jest.fn().mockResolvedValue(null),
       save: jest.fn().mockImplementation((_e, v) => Promise.resolve(intake(v))),
       create: jest.fn().mockImplementation((_e, v) => v),
     };
@@ -253,12 +274,44 @@ describe('IntakesService', () => {
 
   describe('void', () => {
     beforeEach(() => {
-      repo.findOne.mockResolvedValue(intake());
+      // Only the transactional manager is stocked: the locked read is the only
+      // one this path may use, so a regression to `repo.findOne` 404s loudly
+      // instead of passing.
+      manager.findOne.mockResolvedValue(intake());
       shifts.findOneRaw.mockResolvedValue(shift());
     });
 
+    /**
+     * The state check has to happen under the lock the write holds. Read
+     * `voided_at` before the transaction opens and two requests — a
+     * double-tapped button, a retry on a slow response — both see null and both
+     * write, leaving two `intake.voided` audit entries with possibly different
+     * actors and reasons and a last-writer-wins `voided_by_user_id`. §9.3's
+     * «спроба сторнувати той самий документ удруге → кнопки просто немає» is a
+     * statement about the record, not just the button.
+     */
+    it('reads the row under a row lock, inside the transaction', async () => {
+      await service.void(oksana, INTAKE_ID, { reason: 'помилка ваги' });
+
+      expect(manager.findOne).toHaveBeenCalledWith(expect.anything(), {
+        where: { id: INTAKE_ID },
+        lock: { mode: 'pessimistic_write' },
+      });
+      expect(dataSource.transaction.mock.invocationCallOrder[0]).toBeLessThan(
+        manager.findOne.mock.invocationCallOrder[0],
+      );
+    });
+
+    it('reads the shift inside the same transaction', async () => {
+      await service.void(oksana, INTAKE_ID, { reason: 'помилка ваги' });
+
+      expect(shifts.findOneRaw).toHaveBeenCalledWith(SHIFT_ID, manager);
+    });
+
     it('lets an operator void THEIR OWN intake while the shift is open', async () => {
-      await expect(service.void(oksana, INTAKE_ID, { reason: 'помилка ваги' })).resolves.toBeDefined();
+      await expect(
+        service.void(oksana, INTAKE_ID, { reason: 'помилка ваги' }),
+      ).resolves.toBeDefined();
     });
 
     /**
@@ -276,7 +329,9 @@ describe('IntakesService', () => {
     it('403s the author once the shift is closed', async () => {
       // §9.4's second row — «квитанція минулого дня → тільки керівник» — and the
       // freeze line the shift close draws.
-      shifts.findOneRaw.mockResolvedValue(shift({ closed_at: new Date(), status: ShiftStatus.Closed }));
+      shifts.findOneRaw.mockResolvedValue(
+        shift({ closed_at: new Date(), status: ShiftStatus.Closed }),
+      );
 
       await expect(service.void(oksana, INTAKE_ID, { reason: 'пізно' })).rejects.toMatchObject({
         response: { code: 'SHIFT_CLOSED' },
@@ -284,7 +339,9 @@ describe('IntakesService', () => {
     });
 
     it('lets the owner void a colleague’s intake in a closed shift', async () => {
-      shifts.findOneRaw.mockResolvedValue(shift({ closed_at: new Date(), status: ShiftStatus.Closed }));
+      shifts.findOneRaw.mockResolvedValue(
+        shift({ closed_at: new Date(), status: ShiftStatus.Closed }),
+      );
 
       await expect(service.void(owner, INTAKE_ID, { reason: 'перевірка' })).resolves.toBeDefined();
     });
@@ -297,7 +354,7 @@ describe('IntakesService', () => {
 
     it('409s an already-voided intake', async () => {
       // §9.3 — «спроба сторнувати той самий документ удруге → кнопки просто немає».
-      repo.findOne.mockResolvedValue(
+      manager.findOne.mockResolvedValue(
         intake({ voided_at: new Date(), voided_by_user_id: 'u-owner', void_reason: 'вже' }),
       );
 

@@ -184,49 +184,56 @@ export class IntakesService {
    * the section devoted to the question. Spec §10.2 records what changes if
    * §10.2 was meant literally — one decorator, and the operator branch goes.
    */
-  async void(
-    actor: AuthenticatedUser,
-    id: string,
-    dto: VoidDocumentDto,
-  ): Promise<IntakeResponse> {
-    const intake = await this.repo.findOne({ where: { id } });
-    if (!intake) throw new NotFoundException('Intake not found');
-
-    const shift = await this.shifts.findOneRaw(intake.shift_id);
-    if (!shift) throw new NotFoundException('Intake not found');
-
-    if (actor.role !== UserRole.NetworkOwner) {
-      // 404, not 403, for another point — these rows carry a real person's name
-      // and a money amount, so the id must not be confirmed.
-      if (actor.collection_point_id !== shift.collection_point_id) {
-        throw new NotFoundException('Intake not found');
-      }
-      if (intake.received_by_user_id !== actor.sub) {
-        throw new ForbiddenException({
-          message: 'You can only void a document you recorded yourself',
-          code: 'NOT_YOUR_DOCUMENT',
-        });
-      }
-      if (shift.closed_at) {
-        throw new ForbiddenException({
-          message: 'That shift is closed — ask the network owner to void it',
-          code: 'SHIFT_CLOSED',
-        });
-      }
-    }
-
-    if (intake.voided_at) {
-      throw new ConflictException({
-        message: 'That intake is already voided',
-        code: 'ALREADY_VOIDED',
-      });
-    }
-
-    // NO BALANCE CHECK HERE, DELIBERATELY. Voiding an intake is the only way a
-    // supplier's debt goes negative and it is allowed — «сторно КВИТАНЦІЇ
-    // ЄДИНИЙ шлях у мінус, і воно ДОЗВОЛЕНЕ, з попередженням». A floor check
-    // would contradict «інваріанта борг >= 0 в цій схемі теж немає».
+  async void(actor: AuthenticatedUser, id: string, dto: VoidDocumentDto): Promise<IntakeResponse> {
+    // THE LOAD AND THE STATE CHECK ARE INSIDE THE TRANSACTION, under a row
+    // lock. Reading `voided_at` before the transaction opens is a
+    // check-then-write: two requests — a double-tapped button, or a client
+    // retry on a slow response — both see a null `voided_at`, both write, and
+    // the audit log ends up with two `intake.voided` entries naming possibly
+    // different actors and reasons while `voided_by_user_id` is
+    // last-writer-wins. §9.3's «кнопки просто немає» is a claim about the
+    // record, and only the lock makes it one.
     return this.dataSource.transaction(async (m) => {
+      const intake = await m.findOne(Intake, {
+        where: { id },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!intake) throw new NotFoundException('Intake not found');
+
+      const shift = await this.shifts.findOneRaw(intake.shift_id, m);
+      if (!shift) throw new NotFoundException('Intake not found');
+
+      if (actor.role !== UserRole.NetworkOwner) {
+        // 404, not 403, for another point — these rows carry a real person's
+        // name and a money amount, so the id must not be confirmed.
+        if (actor.collection_point_id !== shift.collection_point_id) {
+          throw new NotFoundException('Intake not found');
+        }
+        if (intake.received_by_user_id !== actor.sub) {
+          throw new ForbiddenException({
+            message: 'You can only void a document you recorded yourself',
+            code: 'NOT_YOUR_DOCUMENT',
+          });
+        }
+        if (shift.closed_at) {
+          throw new ForbiddenException({
+            message: 'That shift is closed — ask the network owner to void it',
+            code: 'SHIFT_CLOSED',
+          });
+        }
+      }
+
+      if (intake.voided_at) {
+        throw new ConflictException({
+          message: 'That intake is already voided',
+          code: 'ALREADY_VOIDED',
+        });
+      }
+
+      // NO BALANCE CHECK HERE, DELIBERATELY. Voiding an intake is the only way
+      // a supplier's debt goes negative and it is allowed — «сторно КВИТАНЦІЇ
+      // ЄДИНИЙ шлях у мінус, і воно ДОЗВОЛЕНЕ, з попередженням». A floor check
+      // would contradict «інваріанта борг >= 0 в цій схемі теж немає».
       intake.voided_at = new Date();
       intake.voided_by_user_id = actor.sub;
       intake.void_reason = dto.reason;
@@ -302,7 +309,10 @@ export class IntakesService {
     const shift = await this.shifts.findOneRaw(intake.shift_id);
     if (!shift) throw new NotFoundException('Intake not found');
 
-    if (actor.role !== UserRole.NetworkOwner && actor.collection_point_id !== shift.collection_point_id) {
+    if (
+      actor.role !== UserRole.NetworkOwner &&
+      actor.collection_point_id !== shift.collection_point_id
+    ) {
       throw new NotFoundException('Intake not found');
     }
 

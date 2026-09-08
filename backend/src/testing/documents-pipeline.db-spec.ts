@@ -34,6 +34,7 @@ describe('documents pipeline (HTTP)', () => {
   let ownerToken: string;
   let operatorToken: string;
   let mariaToken: string;
+  let elsewhereToken: string;
   let pointId: string;
   let otherPointId: string;
 
@@ -108,6 +109,23 @@ describe('documents pipeline (HTTP)', () => {
       async (created, manager) => credentials.set(created.id, 'hunter2!!', manager),
     );
     mariaToken = tokenFor(maria.id);
+
+    // An operator at the OTHER point. `intakes` and `payouts` carry no
+    // `collection_point_id` at all — the scope is a JOIN through `shifts` — so
+    // this token is what proves the join is actually load-bearing rather than
+    // merely present.
+    const { user: elsewhere } = await users.createWithIdentity(
+      {
+        provider: LOCAL_PROVIDER,
+        providerUserId: `doc-op3-${randomUUID()}`,
+        first_name: 'Богдан',
+        last_name: 'Сусід',
+        role: UserRole.PointOperator,
+        collection_point_id: otherPointId,
+      },
+      async (created, manager) => credentials.set(created.id, 'hunter2!!', manager),
+    );
+    elsewhereToken = tokenFor(elsewhere.id);
   }, 30_000);
 
   afterAll(async () => {
@@ -242,7 +260,11 @@ describe('documents pipeline (HTTP)', () => {
         .set('Authorization', `Bearer ${operatorToken}`)
         .expect(200);
 
-      expect(res.body.data.every((s: { collection_point_id: string }) => s.collection_point_id === pointId)).toBe(true);
+      expect(
+        res.body.data.every(
+          (s: { collection_point_id: string }) => s.collection_point_id === pointId,
+        ),
+      ).toBe(true);
     });
   });
 
@@ -271,7 +293,12 @@ describe('documents pipeline (HTTP)', () => {
       const tareRes = await request(app.getHttpServer())
         .post('/tare-types')
         .set('Authorization', `Bearer ${ownerToken}`)
-        .send({ name: `Чешка-${randomUUID()}`, weight_kg: '1.20', deposit_price: '120.00', is_crate: true })
+        .send({
+          name: `Чешка-${randomUUID()}`,
+          weight_kg: '1.20',
+          deposit_price: '120.00',
+          is_crate: true,
+        })
         .expect(201);
       crateId = tareRes.body.id as string;
 
@@ -486,7 +513,6 @@ describe('documents pipeline (HTTP)', () => {
     });
   });
 
-
   describe('payouts and the supplier balance', () => {
     let gradeId: string;
     let crateId: string;
@@ -591,8 +617,9 @@ describe('documents pipeline (HTTP)', () => {
 
     it('the SECOND payout sees the first one’s effect on the balance', async () => {
       // The service-level proof that the ceiling reads live data rather than a
-      // value cached anywhere. `payout-race.db-spec.ts` proves the lock that
-      // makes this correct under concurrency; this proves it sequentially.
+      // value cached anywhere — sequentially. The concurrent case is «two
+      // payouts in flight at once» at the bottom of this file;
+      // `payout-race.db-spec.ts` covers the locking primitive under it.
       await request(app.getHttpServer())
         .post('/payouts')
         .set('Authorization', `Bearer ${operatorToken}`)
@@ -697,4 +724,195 @@ describe('documents pipeline (HTTP)', () => {
     });
   });
 
+  /**
+   * THE POINT SCOPE IS A JOIN, AND NOTHING ELSE GUARDS IT.
+   *
+   * Neither `intakes` nor `payouts` has a `collection_point_id`: the filter is
+   * a `WHERE` on a column that deliberately does not exist, reached only
+   * through `shifts`, combined with `skip`/`take` — which makes TypeORM rewrite
+   * the whole thing into a distinct-ids subquery. Swap an `innerJoin` for a
+   * `leftJoin`, or move the point clause after the `.skip()`, and both lists
+   * start serving the whole network with every other test still green.
+   *
+   * These run last, after both document blocks have populated point A.
+   */
+  describe('cross-point isolation of the document journals', () => {
+    it('shows the operator at point B none of point A’s intakes', async () => {
+      const mine = await request(app.getHttpServer())
+        .get('/intakes')
+        .set('Authorization', `Bearer ${elsewhereToken}`)
+        .expect(200);
+      expect(mine.body.data).toEqual([]);
+      expect(mine.body.total).toBe(0);
+
+      // Point A demonstrably HAS intakes — otherwise the assertion above would
+      // pass just as well against a broken join.
+      const theirs = await request(app.getHttpServer())
+        .get('/intakes')
+        .set('Authorization', `Bearer ${operatorToken}`)
+        .expect(200);
+      expect(theirs.body.total).toBeGreaterThan(0);
+    });
+
+    it('does not let an operator widen the intake journal by naming another point', async () => {
+      // `resolvePointFilter` IGNORES the parameter for an operator rather than
+      // rejecting it — the test is that it cannot REDIRECT the scope either.
+      const res = await request(app.getHttpServer())
+        .get('/intakes')
+        .query({ collection_point_id: pointId })
+        .set('Authorization', `Bearer ${elsewhereToken}`)
+        .expect(200);
+
+      expect(res.body.data).toEqual([]);
+    });
+
+    it('shows the operator at point B none of point A’s payouts', async () => {
+      const mine = await request(app.getHttpServer())
+        .get('/payouts')
+        .set('Authorization', `Bearer ${elsewhereToken}`)
+        .expect(200);
+      expect(mine.body.data).toEqual([]);
+
+      const theirs = await request(app.getHttpServer())
+        .get('/payouts')
+        .set('Authorization', `Bearer ${operatorToken}`)
+        .expect(200);
+      expect(theirs.body.total).toBeGreaterThan(0);
+    });
+
+    it('does not let an operator widen the payout journal by naming another point', async () => {
+      const res = await request(app.getHttpServer())
+        .get('/payouts')
+        .query({ collection_point_id: pointId })
+        .set('Authorization', `Bearer ${elsewhereToken}`)
+        .expect(200);
+
+      expect(res.body.data).toEqual([]);
+    });
+
+    it('shows the owner both points at once, and either one on request', async () => {
+      const all = await request(app.getHttpServer())
+        .get('/intakes')
+        .set('Authorization', `Bearer ${ownerToken}`)
+        .expect(200);
+
+      const scoped = await request(app.getHttpServer())
+        .get('/intakes')
+        .query({ collection_point_id: otherPointId })
+        .set('Authorization', `Bearer ${ownerToken}`)
+        .expect(200);
+
+      expect(all.body.total).toBeGreaterThan(0);
+      expect(scoped.body.total).toBe(0);
+    });
+  });
+
+  /**
+   * §3.6's ceiling UNDER CONCURRENCY, through the route.
+   *
+   * `payout-race.db-spec.ts` shows that a Postgres row lock blocks — a fact
+   * about Postgres. This shows the thing that actually matters: two payouts in
+   * flight together against a debt that admits only one, and the second is
+   * REFUSED. Spec §11 asked for «blocks and then fails»; the second half is
+   * this test. Delete the `FOR UPDATE` from `PayoutsService.create` and both
+   * requests read the same debt, both clear the ceiling, and 800,00 ₴ leaves
+   * the drawer against a 615,60 ₴ debt with nothing downstream to notice.
+   */
+  describe('two payouts in flight at once', () => {
+    let supplierId: string;
+
+    beforeAll(async () => {
+      const productRes = await request(app.getHttpServer())
+        .post('/products')
+        .set('Authorization', `Bearer ${ownerToken}`)
+        .send({ name: `Аґрус-${randomUUID()}` })
+        .expect(201);
+
+      const gradeRes = await request(app.getHttpServer())
+        .post('/product-grades')
+        .set('Authorization', `Bearer ${ownerToken}`)
+        .send({ product_id: productRes.body.id, name: `1 сорт-${randomUUID()}` })
+        .expect(201);
+
+      const tareRes = await request(app.getHttpServer())
+        .post('/tare-types')
+        .set('Authorization', `Bearer ${ownerToken}`)
+        .send({ name: `Ящик-${randomUUID()}`, weight_kg: '1.20', deposit_price: '120.00' })
+        .expect(201);
+
+      await request(app.getHttpServer())
+        .post('/grade-prices')
+        .set('Authorization', `Bearer ${ownerToken}`)
+        .send({
+          collection_point_id: pointId,
+          product_grade_id: gradeRes.body.id,
+          base_price: '57.00',
+          max_markup: '30.00',
+          max_discount: '20.00',
+        })
+        .expect(201);
+
+      const supplierRes = await request(app.getHttpServer())
+        .post('/suppliers')
+        .set('Authorization', `Bearer ${operatorToken}`)
+        .send({ first_name: 'Гонка', last_name: `Двох-${randomUUID()}` })
+        .expect(201);
+      supplierId = supplierRes.body.id as string;
+
+      const current = await request(app.getHttpServer())
+        .get('/shifts/current')
+        .set('Authorization', `Bearer ${operatorToken}`);
+      if (current.status === 404) {
+        await request(app.getHttpServer())
+          .post('/shifts')
+          .set('Authorization', `Bearer ${operatorToken}`)
+          .expect(201);
+      }
+
+      const intakeRes = await request(app.getHttpServer())
+        .post('/intakes')
+        .set('Authorization', `Bearer ${operatorToken}`)
+        .send({
+          code: '09100',
+          supplier_id: supplierId,
+          items: [
+            {
+              product_grade_id: gradeRes.body.id,
+              gross_kg: '12.00',
+              tare: [{ tare_type_id: tareRes.body.id, units: 1 }],
+            },
+          ],
+        })
+        .expect(201);
+      // (12.00 − 0.00 − 1.20) × 57.00 = 615.60
+      expect(intakeRes.body.amount).toBe('615.60');
+    }, 30_000);
+
+    it('lets exactly ONE of two simultaneous payouts through', async () => {
+      // 400 + 400 = 800 > 615.60, but EITHER one alone clears the ceiling — so
+      // a serial pair of checks passes both and only the lock stops it. The
+      // typed codes differ, so the unique index on `(shift, code)` is not what
+      // is doing the refusing.
+      const attempt = (code: string) =>
+        request(app.getHttpServer())
+          .post('/payouts')
+          .set('Authorization', `Bearer ${operatorToken}`)
+          .send({ code, supplier_id: supplierId, amount: '400.00' });
+
+      const results = await Promise.all([attempt('09101'), attempt('09102')]);
+      const statuses = results.map((r) => r.status).sort();
+
+      expect(statuses).toEqual([201, 400]);
+
+      const refused = results.find((r) => r.status === 400);
+      expect(refused?.body.code).toBe('PAYOUT_EXCEEDS_DEBT');
+
+      // And the survivor is the only one that moved the balance.
+      const balance = await request(app.getHttpServer())
+        .get(`/suppliers/${supplierId}/balance`)
+        .set('Authorization', `Bearer ${operatorToken}`)
+        .expect(200);
+      expect(balance.body.debt).toBe('215.60');
+    });
+  });
 });

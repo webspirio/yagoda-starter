@@ -6,7 +6,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, Repository } from 'typeorm';
+import { DataSource, EntityManager, Repository } from 'typeorm';
 import { Payout } from './payout.entity';
 import { CreatePayoutDto } from './dto/create-payout.dto';
 import { SettleReturnDto } from './dto/settle-return.dto';
@@ -173,16 +173,24 @@ export class PayoutsService {
    * money back.
    */
   async void(actor: AuthenticatedUser, id: string, dto: VoidDocumentDto): Promise<PayoutResponse> {
-    const { payout, shift } = await this.loadForWrite(actor, id, { requireAuthor: true });
-
-    if (payout.voided_at) {
-      throw new ConflictException({
-        message: 'That payout is already voided',
-        code: 'ALREADY_VOIDED',
-      });
-    }
-
+    // THE LOAD AND THE STATE CHECK ARE INSIDE THE TRANSACTION, under the row
+    // lock `loadForWrite` takes. Checking `voided_at` before the transaction
+    // opens is a check-then-write: two requests — a double-tapped button, or a
+    // client retry on a slow response — both read a null `voided_at`, both
+    // write, and the audit log ends up with two `payout.voided` entries naming
+    // possibly different actors and reasons while `voided_by_user_id` is
+    // last-writer-wins. §6.5's «409 if already voided» has to be enforced
+    // where the write happens or it is not enforced at all.
     return this.dataSource.transaction(async (m) => {
+      const { payout, shift } = await this.loadForWrite(actor, id, { requireAuthor: true }, m);
+
+      if (payout.voided_at) {
+        throw new ConflictException({
+          message: 'That payout is already voided',
+          code: 'ALREADY_VOIDED',
+        });
+      }
+
       payout.voided_at = new Date();
       payout.voided_by_user_id = actor.sub;
       payout.void_reason = dto.reason;
@@ -228,22 +236,26 @@ export class PayoutsService {
       });
     }
 
-    const { payout, shift } = await this.loadForWrite(actor, id, { requireAuthor: false });
-
-    if (!payout.voided_at) {
-      throw new ConflictException({
-        message: 'Only a voided payout can have its cash returned',
-        code: 'PAYOUT_NOT_VOIDED',
-      });
-    }
-    if (payout.return_settled_at) {
-      throw new ConflictException({
-        message: 'That payout’s cash has already been recorded as returned',
-        code: 'RETURN_ALREADY_SETTLED',
-      });
-    }
-
+    // Under the lock, for the reason `void` states — and it matters more here:
+    // this row is the owner's attestation that the cash went back in the
+    // drawer, and two differently-attributed records of one attestation is the
+    // ambiguity §9.3 is entirely about.
     return this.dataSource.transaction(async (m) => {
+      const { payout, shift } = await this.loadForWrite(actor, id, { requireAuthor: false }, m);
+
+      if (!payout.voided_at) {
+        throw new ConflictException({
+          message: 'Only a voided payout can have its cash returned',
+          code: 'PAYOUT_NOT_VOIDED',
+        });
+      }
+      if (payout.return_settled_at) {
+        throw new ConflictException({
+          message: 'That payout’s cash has already been recorded as returned',
+          code: 'RETURN_ALREADY_SETTLED',
+        });
+      }
+
       payout.return_settled_at = new Date();
       payout.return_settled_by_user_id = actor.sub;
       // NO AMOUNT. It always equals `payout.amount` — «внесення завжди на всю
@@ -310,11 +322,17 @@ export class PayoutsService {
   private async loadVisible(
     actor: AuthenticatedUser,
     id: string,
+    manager?: EntityManager,
   ): Promise<{ payout: Payout; shift: Shift }> {
-    const payout = await this.repo.findOne({ where: { id } });
+    // A `manager` means the caller is about to WRITE this row, so the read
+    // takes `FOR UPDATE` on it: the state the caller checks is then the state
+    // it writes against. The read path passes no manager and takes no lock.
+    const payout = manager
+      ? await manager.findOne(Payout, { where: { id }, lock: { mode: 'pessimistic_write' } })
+      : await this.repo.findOne({ where: { id } });
     if (!payout) throw new NotFoundException('Payout not found');
 
-    const shift = await this.shifts.findOneRaw(payout.shift_id);
+    const shift = await this.shifts.findOneRaw(payout.shift_id, manager);
     if (!shift) throw new NotFoundException('Payout not found');
 
     // 404, not 403 — these rows carry a real person's name and a money amount.
@@ -337,8 +355,9 @@ export class PayoutsService {
     actor: AuthenticatedUser,
     id: string,
     { requireAuthor }: { requireAuthor: boolean },
+    manager: EntityManager,
   ): Promise<{ payout: Payout; shift: Shift }> {
-    const { payout, shift } = await this.loadVisible(actor, id);
+    const { payout, shift } = await this.loadVisible(actor, id, manager);
 
     if (actor.role !== UserRole.NetworkOwner) {
       // «чужа квитанція → приймальник НІКОЛИ, навіть на своїй точці і в ту саму
