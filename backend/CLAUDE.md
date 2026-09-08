@@ -29,7 +29,20 @@ that a mocked spec cannot reach** — constraints, unique indexes, cascade rules
 and whether a hand-written statement even parses. `npm test` never picks them
 up: its `testRegex` (`.*\.spec\.ts$`) does not match `.db-spec.ts`.
 
-**Two testing gotchas worth knowing before you distrust a green run:**
+**Testing gotchas worth knowing before you distrust a green run:**
+- `test:db` runs Jest under `NODE_OPTIONS=--experimental-vm-modules`, and that
+  is load-bearing, not leftover debris. `@nestjs/schedule` v12 is pure ESM
+  (`"type": "module"`), so the two specs that boot the real `AppModule`
+  (`pipeline.db-spec.ts`, `catalog-pipeline.db-spec.ts`) `require()` an ES
+  module. Jest 30 *can* do that natively, but it gates the capability on
+  `typeof vm.SourceTextModule?.prototype.hasAsyncGraph === 'function'` — and
+  `vm.SourceTextModule` only exists under that flag. Jest's own error message
+  ("Use Node v24.9+ where Jest supports require(esm) natively") is misleading:
+  a new enough Node is necessary but NOT sufficient without the flag. This is
+  also why `engines` now floors at Node 24.15 — `hasAsyncGraph` landed in
+  24.9, so the flag is inert on Node 22 and the suite cannot pass there. The
+  unit config does not need the flag: nothing it loads imports `ScheduleModule`,
+  which is exactly why `npm test` stayed green while `npm run test:db` broke.
 - Both jest configs set `watchman: false` — the unit config (the `"jest"` key
   in `package.json`) and `jest.db.config.js` — and it is NOT a preference.
   When the machine's `watchman` binary is broken (a mismatched Homebrew
