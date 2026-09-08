@@ -1,6 +1,14 @@
 {
   "compilerOptions": {
     "module": "commonjs",
+    // node10 resolution is deprecated in TS 6 and removed in TS 7. It is kept
+    // deliberately: sharp's exports map points `require` at an `export =`
+    // declaration but its top-level `types` at the ESM `.d.mts` one, and
+    // src/media/image-processing.ts is typed against the latter. Migrating to
+    // node16 means retyping that binding AND moving Jest onto ESM
+    // (data-source.spec.ts's dynamic import needs --experimental-vm-modules).
+    "moduleResolution": "node10",
+    "ignoreDeprecations": "6.0",
     "removeComments": true,
     "emitDecoratorMetadata": true,
     "experimentalDecorators": true,
@@ -9,7 +17,7 @@
     "lib": ["ES2023"],
     "sourceMap": false,
     "outDir": "./dist",
-    "baseUrl": "./",
+    "rootDir": "./src",
     "incremental": true,
     "skipLibCheck": true,
     "strict": true,

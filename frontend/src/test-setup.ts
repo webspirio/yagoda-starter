@@ -41,7 +41,7 @@ class ResizeObserverStub {
   disconnect() {}
 }
 /* eslint-enable @typescript-eslint/no-unused-vars */
-global.ResizeObserver = ResizeObserverStub;
+globalThis.ResizeObserver = ResizeObserverStub;
 
 // jsdom doesn't implement pointer capture; vaul (the bottom-sheet drawer)
 // calls setPointerCapture on pointerdown inside the sheet and would throw on
