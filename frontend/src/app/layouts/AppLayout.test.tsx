@@ -135,4 +135,26 @@ describe('AppLayout', () => {
     await screen.findByText('dashboard body');
     expect(document.documentElement.classList.contains('dark')).toBe(true);
   });
+
+  it('wraps the sidebar brand in a link back to /', async () => {
+    useSession.setState({ token: 'tok' });
+    renderLayout('/');
+    await screen.findByRole('navigation');
+    const brandLink = screen.getByText('Yagoda').closest('a');
+    expect(brandLink).toHaveAttribute('href', '/');
+  });
+
+  it('gives the operator a route back to the overview, ungated by role', async () => {
+    useSession.setState({ token: 'tok' });
+    mock.onGet('/me').reply(200, {
+      id: 'u1',
+      username: 'operator',
+      display_name: 'Olha',
+      role: 'point_operator',
+      collection_point_id: 'p1',
+    });
+    renderLayout('/');
+    const dashboardLink = await screen.findByRole('link', { name: 'Summary' });
+    expect(dashboardLink).toHaveAttribute('href', '/');
+  });
 });

@@ -429,7 +429,8 @@
       "accrued": "Нараховано",
       "paid": "Видано",
       "balances": "Залишків по мережі",
-      "balancesHint": "перші 100"
+      "balancesHint": "перші 100",
+      "truncatedHint": "перші 100 на точку"
     },
     "points": {
       "title": "Точки сьогодні",

@@ -120,9 +120,10 @@ describe('useNetworkToday', () => {
     await waitFor(() => expect(result.current.isPending).toBe(false));
     expect(result.current.isError).toBe(false);
     expect(result.current.rows).toEqual([
-      { pointId: 'p1', shift: openShift, receipts: 2, accrued: '128.00', paid: '40.00' },
-      { pointId: 'p2', shift: null, receipts: 0, accrued: '0.00', paid: '0.00' },
+      { pointId: 'p1', shift: openShift, receipts: 2, accrued: '128.00', paid: '40.00', truncated: false },
+      { pointId: 'p2', shift: null, receipts: 0, accrued: '0.00', paid: '0.00', truncated: false },
     ]);
+    expect(result.current.anyTruncated).toBe(false);
   });
 
   it('flags isError when any of the three reads for any point fails', async () => {
@@ -165,5 +166,39 @@ describe('useNetworkToday', () => {
     expect(result.current.rows).toEqual([]);
     expect(result.current.isPending).toBe(false);
     expect(result.current.isError).toBe(false);
+    expect(result.current.anyTruncated).toBe(false);
+  });
+
+  it('flags a point truncated when its intakes hit the 100-row cap the day screen also uses, and aggregates that across the network', async () => {
+    const dateParams = { from: '2026-09-08', to: '2026-09-08' };
+    mock
+      .onGet('/shifts', { params: { collection_point_id: 'p1', ...dateParams, limit: 1 } })
+      .reply(200, { data: [openShift], total: 1, page: 1, limit: 1 });
+    mock
+      .onGet('/intakes', {
+        params: { collection_point_id: 'p1', ...dateParams, include_voided: true, limit: 100 },
+      })
+      // The server holds 150 receipts today at p1; only the first 100 (here,
+      // one, to keep the fixture small) come back on this page.
+      .reply(200, {
+        data: [intake({ id: 'i1', code: 'KV-0001', amount: '10.00' })],
+        total: 150,
+        page: 1,
+        limit: 100,
+      });
+    mock
+      .onGet('/payouts', {
+        params: { collection_point_id: 'p1', ...dateParams, include_voided: true, limit: 100 },
+      })
+      .reply(200, { data: [], total: 0, page: 1, limit: 100 });
+    mockPoint('p2', { shift: openShift, intakes: [intake({ id: 'i2', code: 'KV-0002', amount: '5.00' })] });
+
+    const { result } = renderHook(() => useNetworkToday(['p1', 'p2']), { wrapper });
+
+    await waitFor(() => expect(result.current.isPending).toBe(false));
+    expect(result.current.isError).toBe(false);
+    expect(result.current.rows[0]).toMatchObject({ pointId: 'p1', truncated: true });
+    expect(result.current.rows[1]).toMatchObject({ pointId: 'p2', truncated: false });
+    expect(result.current.anyTruncated).toBe(true);
   });
 });

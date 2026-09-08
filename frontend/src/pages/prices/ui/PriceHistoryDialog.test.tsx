@@ -85,6 +85,22 @@ describe('PriceHistoryDialog', () => {
     await expectNoAxeViolations(container);
   });
 
+  it('formats the date and time from the SAME local clock reading, so they never disagree by a day', () => {
+    // 22:30 UTC on the 8th is already 01:30 on the 9th in Kyiv (UTC+3) — a
+    // date sliced from the UTC string and a time formatted from the local
+    // one would show "09/08" next to "01:30 AM", a day apart.
+    historyMock.mockReturnValue({
+      data: [row({ id: 'gp1', created_at: '2026-09-08T22:30:00Z' })],
+      isPending: false,
+      isError: false,
+    });
+    render(<PriceHistoryDialog pointId="p1" grade={grade} open onClose={() => {}} />);
+
+    const table = screen.getByRole('table');
+    const dataRow = within(table).getAllByRole('row')[1];
+    expect(within(dataRow).getByText('09/09, 01:30 AM')).toBeInTheDocument();
+  });
+
   it('shows the empty state when the grade has never been priced', () => {
     historyMock.mockReturnValue({ data: [], isPending: false, isError: false });
     render(<PriceHistoryDialog pointId="p1" grade={grade} open onClose={() => {}} />);

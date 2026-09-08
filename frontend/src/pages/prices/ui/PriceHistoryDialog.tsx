@@ -2,7 +2,6 @@ import { useTranslation } from 'react-i18next';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/shared/ui/dialog';
 import { DataTable, type Column } from '@/shared/ui/data-table';
 import { formatDecimal } from '@/shared/lib/money';
-import { formatShortDate } from '@/shared/lib/date';
 import type { GradeCatalogItem } from '@/entities/product-grade';
 import { usePriceHistoryQuery } from '../api/gradePrices';
 import type { GradePrice } from '../model/gradePrice';
@@ -42,17 +41,19 @@ export function PriceHistoryDialog({
       id: 'date',
       header: t('prices.history.col.date'),
       className: 'font-mono text-xs whitespace-nowrap',
-      cell: (row) => (
-        <>
-          {formatShortDate(row.created_at.slice(0, 10), i18n.language)}{' '}
-          {/* Local wall clock, not the UTC slice of created_at — same
-              convention DayPage's feed uses for a document's timestamp. */}
-          {new Date(row.created_at).toLocaleTimeString(i18n.language, {
-            hour: '2-digit',
-            minute: '2-digit',
-          })}
-        </>
-      ),
+      // ONE `Intl.DateTimeFormat` call over `new Date(created_at)` — never a
+      // date sliced from the UTC string paired with a locally-formatted
+      // time, which can name the wrong calendar day for any timestamp within
+      // the viewer's UTC offset of local midnight. `created_at` is a
+      // timestamp, not money, so the local wall clock is the only reading
+      // that keeps the pair consistent.
+      cell: (row) =>
+        new Intl.DateTimeFormat(i18n.language, {
+          day: '2-digit',
+          month: '2-digit',
+          hour: '2-digit',
+          minute: '2-digit',
+        }).format(new Date(row.created_at)),
     },
     {
       id: 'base',

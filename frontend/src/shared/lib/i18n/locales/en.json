@@ -423,7 +423,8 @@
       "accrued": "Accrued",
       "paid": "Paid",
       "balances": "Network balances",
-      "balancesHint": "first 100"
+      "balancesHint": "first 100",
+      "truncatedHint": "first 100 per point"
     },
     "points": {
       "title": "Points today",

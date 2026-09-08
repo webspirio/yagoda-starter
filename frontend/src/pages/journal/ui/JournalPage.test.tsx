@@ -307,4 +307,32 @@ describe('JournalPage — the point and supplier filters', () => {
     expect(suppliersMock).toHaveBeenLastCalledWith('', P1);
     expect(screen.getByRole('option', { name: 'Olha K.' })).toBeInTheDocument();
   });
+
+  it('clears a stale supplier filter when the point changes', async () => {
+    const user = userEvent.setup();
+    suppliersMock.mockReturnValue(
+      page<Supplier>([supplier({ id: SUP1, first_name: 'Olha', last_name: 'K.' })]),
+    );
+
+    const { router } = renderJournal(`/journal?page=2&supplier=${SUP1}`);
+    expect(new URLSearchParams(router.state.location.search).get('supplier')).toBe(SUP1);
+
+    await user.selectOptions(screen.getByLabelText('Select a point'), P1);
+
+    const search = new URLSearchParams(router.state.location.search);
+    expect(search.get('point')).toBe(P1);
+    expect(search.get('supplier')).toBeNull();
+    expect(search.get('page')).toBeNull();
+  });
+});
+
+describe('JournalPage — the voided switch', () => {
+  it('resets the page when toggling «show voided»', async () => {
+    const user = userEvent.setup();
+    const { router } = renderJournal('/journal?page=3');
+
+    await user.click(screen.getByRole('switch', { name: 'show voided' }));
+
+    expect(new URLSearchParams(router.state.location.search).get('page')).toBeNull();
+  });
 });

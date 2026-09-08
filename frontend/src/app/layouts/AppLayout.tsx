@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { NavLink, Outlet, useLocation } from 'react-router';
+import { Link, NavLink, Outlet, useLocation } from 'react-router';
 import { useTranslation } from 'react-i18next';
 import {
   ArrowLeftRight,
@@ -57,6 +57,7 @@ const NAV_GROUPS: NavGroup[] = [
   {
     labelKey: 'nav.group.onPoint',
     items: [
+      { labelKey: 'nav.dashboard', icon: BarChart3, to: '/' },
       { labelKey: 'nav.reception', icon: Scale, to: '/reception' },
       { labelKey: 'nav.crates', icon: Boxes },
       { labelKey: 'nav.day', icon: CalendarCheck2, to: '/day' },
@@ -77,7 +78,6 @@ const NAV_GROUPS: NavGroup[] = [
     labelKey: 'nav.group.management',
     role: 'network_owner',
     items: [
-      { labelKey: 'nav.dashboard', icon: BarChart3, to: '/' },
       { labelKey: 'nav.cost', icon: Calculator },
       { labelKey: 'nav.reweigh', icon: Weight },
       { labelKey: 'nav.network', icon: Network },
@@ -153,7 +153,7 @@ export function AppLayout() {
           menuOpen ? 'translate-x-0' : '-translate-x-full',
         )}
       >
-        <div className="flex items-center gap-2 px-5 pb-2 pt-5">
+        <Link to="/" className="flex items-center gap-2 px-5 pb-2 pt-5">
           <Cherry size={22} className="shrink-0 text-primary" />
           <div className="min-w-0">
             <div className="font-display text-lg font-semibold leading-tight">
@@ -163,7 +163,7 @@ export function AppLayout() {
               {scope} · {t('shell.season')}
             </div>
           </div>
-        </div>
+        </Link>
 
         <div className="flex-1 overflow-y-auto px-3 py-4">
           {groups.map((group) => (

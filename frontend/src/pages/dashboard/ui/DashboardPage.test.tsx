@@ -90,11 +90,12 @@ beforeEach(() => {
   pointOptionsMock.mockReset().mockReturnValue({ data: POINTS, isPending: false, isError: false });
   networkTodayMock.mockReset().mockReturnValue({
     rows: [
-      { pointId: 'p1', shift: openShift, receipts: 3, accrued: '128.00', paid: '40.00' },
-      { pointId: 'p2', shift: null, receipts: 0, accrued: '0.00', paid: '0.00' },
+      { pointId: 'p1', shift: openShift, receipts: 3, accrued: '128.00', paid: '40.00', truncated: false },
+      { pointId: 'p2', shift: null, receipts: 0, accrued: '0.00', paid: '0.00', truncated: false },
     ],
     isPending: false,
     isError: false,
+    anyTruncated: false,
   });
   balancesMock.mockReset().mockReturnValue({
     data: { data: [balanceRow(), balanceRow({ supplier_id: 'sup2', first_name: 'Olena', last_name: 'Bila', collection_point_id: 'p2', debt: '5.00' })], total: 2, page: 1, limit: 100 },
@@ -163,15 +164,65 @@ describe('DashboardPage — the owner', () => {
     renderDashboard();
     expect(screen.queryByText('first 100')).toBeNull();
   });
+
+  it('hints at the 100-row cap on the receipts/accrued/paid tiles, and on the affected point row, once any point read hit it', () => {
+    networkTodayMock.mockReturnValue({
+      rows: [
+        { pointId: 'p1', shift: openShift, receipts: 100, accrued: '999.00', paid: '40.00', truncated: true },
+        { pointId: 'p2', shift: null, receipts: 0, accrued: '0.00', paid: '0.00', truncated: false },
+      ],
+      isPending: false,
+      isError: false,
+      anyTruncated: true,
+    });
+
+    renderDashboard();
+
+    const tile = (label: string) => screen.getByText(label).closest('[data-slot="stat-tile"]');
+    expect(tile('Receipts today')).toHaveTextContent('first 100 per point');
+    expect(tile('Accrued')).toHaveTextContent('first 100 per point');
+    expect(tile('Paid')).toHaveTextContent('first 100 per point');
+
+    const p1Row = screen.getByText('Shypynky').closest('[data-slot="card"]') as HTMLElement;
+    expect(within(p1Row).getByText('first 100 per point')).toBeInTheDocument();
+    const p2Row = screen.getByText('Haiove').closest('[data-slot="card"]') as HTMLElement;
+    expect(within(p2Row).queryByText('first 100 per point')).toBeNull();
+  });
+
+  it('flags a point whose shift awaits an explanation', () => {
+    networkTodayMock.mockReturnValue({
+      rows: [
+        {
+          pointId: 'p1',
+          shift: { ...openShift, status: 'awaiting_explanation' },
+          receipts: 3,
+          accrued: '128.00',
+          paid: '40.00',
+          truncated: false,
+        },
+        { pointId: 'p2', shift: null, receipts: 0, accrued: '0.00', paid: '0.00', truncated: false },
+      ],
+      isPending: false,
+      isError: false,
+      anyTruncated: false,
+    });
+
+    renderDashboard();
+
+    expect(screen.getByText('Needs an explanation')).toBeInTheDocument();
+  });
 });
 
 describe('DashboardPage — the operator', () => {
   beforeEach(() => {
     meMock.mockReturnValue({ data: OPERATOR, isPending: false });
     networkTodayMock.mockReturnValue({
-      rows: [{ pointId: 'p1', shift: openShift, receipts: 1, accrued: '10.00', paid: '0.00' }],
+      rows: [
+        { pointId: 'p1', shift: openShift, receipts: 1, accrued: '10.00', paid: '0.00', truncated: false },
+      ],
       isPending: false,
       isError: false,
+      anyTruncated: false,
     });
   });
 

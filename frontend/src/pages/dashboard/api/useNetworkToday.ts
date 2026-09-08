@@ -12,12 +12,18 @@ export interface PointToday {
   receipts: number;
   accrued: string;
   paid: string;
+  /** `true` when this point's intakes OR payouts read hit the 100-row page
+   *  cap below — the tiles built from `receipts`/`accrued`/`paid` are then a
+   *  read of only the first 100, not the point's true today. */
+  truncated: boolean;
 }
 
 export interface NetworkTodayResult {
   rows: PointToday[];
   isPending: boolean;
   isError: boolean;
+  /** `true` when ANY row is `truncated` — drives the network-wide tiles' hint. */
+  anyTruncated: boolean;
 }
 
 /**
@@ -29,9 +35,13 @@ export interface NetworkTodayResult {
  * N points fires 3N requests in parallel instead of point-by-point
  * waterfalls. Each query is built with the day screen's own `queryOptions`
  * factories (`shiftOnDateQueryOptions`, `intakesQueryOptions`,
- * `payoutsQueryOptions`) — same queryKey/queryFn/staleTime — so a point
- * opened from here and then on `/day` hits a warm cache instead of
- * refetching.
+ * `payoutsQueryOptions`). Only the SHIFT read actually shares a cache entry
+ * with `/day`: both call `shiftOnDateQueryOptions(pointId, date)` with the
+ * same `pointId`/date, so a point opened here and then opened on `/day` for
+ * today reuses that query instead of refetching it. The intakes/payouts
+ * reads do NOT — this hook keys them by the day's date range, while `/day`
+ * reads the same documents keyed by `shiftId`, a different queryKey — so
+ * those two screens each pay their own request for intakes/payouts.
  *
  * `combine` (rather than a plain `useMemo` over the raw results) gives the
  * returned object TanStack Query's structural-sharing stability: the page
@@ -62,12 +72,16 @@ export function useNetworkToday(pointIds: string[]): NetworkTodayResult {
         const liveIntakes = (intakesResult.data?.data ?? []).filter((x) => x.voided_at === null);
         const livePayouts = (payoutsResult.data?.data ?? []).filter((x) => x.voided_at === null);
 
+        const intakesTruncated = (intakesResult.data?.total ?? 0) > (intakesResult.data?.data.length ?? 0);
+        const payoutsTruncated = (payoutsResult.data?.total ?? 0) > (payoutsResult.data?.data.length ?? 0);
+
         return {
           pointId,
           shift: shiftResult.data ?? null,
           receipts: liveIntakes.length,
           accrued: sum(liveIntakes.map((x) => x.amount)),
           paid: sum(livePayouts.map((x) => x.amount)),
+          truncated: intakesTruncated || payoutsTruncated,
         };
       });
 
@@ -75,6 +89,7 @@ export function useNetworkToday(pointIds: string[]): NetworkTodayResult {
         rows,
         isPending: results.some((r) => r.isPending),
         isError: results.some((r) => r.isError),
+        anyTruncated: rows.some((r) => r.truncated),
       };
     },
   });

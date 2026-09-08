@@ -29,7 +29,7 @@ src/
   main.tsx                    # entry point — wires auth interceptors, initI18n, global error reporting, renders App
   app/
     App.tsx                   # root component: ErrorBoundary > QueryClientProvider > RouterProvider
-    router.tsx                # createBrowserRouter — /login, / (dashboard), /profile, /suppliers, /points, /users, /prices, /catalog, /day, /reception, /debts, /suppliers/:id, /ui-kit, catch-all 404 — no /register
+    router.tsx                # createBrowserRouter — /login, / (dashboard), /profile, /suppliers, /points, /users, /prices, /catalog, /day, /reception, /debts, /suppliers/:id, /journal, /ui-kit, catch-all 404 — no /register
     layouts/AppLayout.tsx      # persistent shell: dark sidebar with role-aware grouped nav + PAPER top bar (mock composition) with scope, ThemeToggle, sign-out; renders auth pages bare
     providers/
       ErrorBoundary.tsx        # React class error boundary → ErrorFallback
@@ -40,9 +40,9 @@ src/
   entities/supplier/            # useSuppliersQuery / useSupplierQuery / useSupplierBalanceQuery, Supplier type — the point's supplier directory and running balance, read by suppliers, reception and the receipt widget
   entities/product-grade/       # useGradeCatalogQuery / usePricedGradesQuery — grades joined to product names, for prices and reception
   entities/tare-type/           # useTareTypeOptionsQuery, TareTypeOption type — the tare registry, read by catalog and reception
-  entities/shift/                # useShiftOnDateQuery / useCurrentShiftQuery, Shift type — one point's working day, read by pages/day
-  entities/intake/               # useIntakesQuery, Intake type — a point's receipts journal, read by the day screen, the reception screen and the supplier card
-  entities/payout/               # usePayoutsQuery, Payout type — a point's payouts journal, read by the day screen, the reception screen and the supplier card
+  entities/shift/                # useShiftOnDateQuery / useCurrentShiftQuery / shiftOnDateQueryOptions, Shift type — one point's working day, read by pages/day and reception (the queryOptions factory also backs pages/dashboard's useNetworkToday fan-out)
+  entities/intake/               # useIntakesQuery / intakesQueryOptions, Intake type — a point's receipts journal, read by pages/day, reception, supplier-card and journal (the queryOptions factory also backs pages/dashboard's useNetworkToday fan-out)
+  entities/payout/               # usePayoutsQuery / payoutsQueryOptions, Payout type — a point's payouts journal, read by pages/day, supplier-card and journal (the queryOptions factory also backs pages/dashboard's useNetworkToday fan-out)
   features/auth/                 # login/logout API calls, LoginForm, RequireAuth + RequireRole route guards — no register API
   features/edit-profile/         # useUploadAvatarMutation (single consumer: pages/profile — kept as the upload exemplar)
   features/settle-payout/        # useCreatePayoutMutation, PayoutDialog — records a payout against a supplier's balance, opened from the receipt widget
@@ -53,6 +53,7 @@ src/
   pages/points/, pages/users/, pages/suppliers/, pages/catalog/, pages/prices/   # each: api/ (TanStack hooks) · model/ (wire types + form values) · lib/apiErrorToFields · ui/ (page + dialogs + tests)
   pages/day/, pages/reception/   # the money screens — «Каса за день» and «Прийомка ягоди» (RHF form + live server preview)
   pages/debts/, pages/supplier-card/   # «Залишки за нами» (balances per point, «Видати без ягоди») and the supplier card (balance, tiles, timeline of receipts and payouts) — both roles
+  pages/journal/                 # «Журнал прийомки» — the owner's register of every receipt and payout, filtered by point/month/supplier, server-paginated
   shared/
     api/                       # httpClient (axios instance, env.apiUrl baseURL) + ApiError + attachAuthInterceptors + queryClient + queryKeys + persister
     lib/

@@ -15,9 +15,11 @@ import { useSupplierBalancesQuery, supplierName } from '@/entities/supplier';
 import type { Shift } from '@/entities/shift';
 import { useNetworkToday, type PointToday } from '../api/useNetworkToday';
 
-/** Shift `Badge` variant for a point's row — open reads loud, closed and
- *  "needs an explanation" are quiet, and "no shift today" is the emptiest
- *  outline, same convention `pages/day` uses for its own toolbar badge. */
+/** Shift `Badge` variant for a point's row — open and "needs an explanation"
+ *  read loud (`default`/`destructive`), closed is quiet (`secondary`). "No
+ *  shift today" here is the emptiest `outline`; `pages/day`'s own toolbar
+ *  badge instead falls back to `secondary` for that same case, so this is
+ *  NOT the same convention for every status, just the loud/quiet ones. */
 function shiftBadgeVariant(status: Shift['status'] | 'none'): 'default' | 'secondary' | 'destructive' | 'outline' {
   if (status === 'open') return 'default';
   if (status === 'awaiting_explanation') return 'destructive';
@@ -68,14 +70,20 @@ export function DashboardPage() {
 
   const balanceRows = balances.data?.data ?? [];
   const positiveDebt = sum(balanceRows.filter((b) => cmp(b.debt, '0') === 1).map((b) => b.debt));
-  const balancesTruncated = (balances.data?.total ?? 0) > 100;
+  const balancesTruncated = (balances.data?.total ?? 0) > balanceRows.length;
   const topBalances = balanceRows.slice(0, 5);
+  const truncatedHint = network.anyTruncated ? t('dashboard.tiles.truncatedHint') : undefined;
 
   const stats: StatItem[] = [
     { label: t('dashboard.tiles.pointsOpen'), value: `${openCount} / ${activePoints.length}` },
-    { label: t('dashboard.tiles.receipts'), value: String(totalReceipts) },
-    { label: t('dashboard.tiles.accrued'), value: formatUah(totalAccrued, i18n.language) },
-    { label: t('dashboard.tiles.paid'), value: formatUah(totalPaid, i18n.language), tone: 'berry' },
+    { label: t('dashboard.tiles.receipts'), value: String(totalReceipts), hint: truncatedHint },
+    { label: t('dashboard.tiles.accrued'), value: formatUah(totalAccrued, i18n.language), hint: truncatedHint },
+    {
+      label: t('dashboard.tiles.paid'),
+      value: formatUah(totalPaid, i18n.language),
+      hint: truncatedHint,
+      tone: 'berry',
+    },
     {
       label: t('dashboard.tiles.balances'),
       value: formatUah(positiveDebt, i18n.language),
@@ -94,6 +102,11 @@ export function DashboardPage() {
             <Badge variant={shiftBadgeVariant(status)} className="mt-1">
               {t(`dashboard.points.status.${status}`)}
             </Badge>
+            {row.truncated ? (
+              <div className="mt-1 text-xs text-muted-foreground">
+                {t('dashboard.tiles.truncatedHint')}
+              </div>
+            ) : null}
           </div>
           <div className="flex flex-wrap items-center gap-4 text-sm text-muted-foreground">
             <span>

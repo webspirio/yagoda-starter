@@ -10,7 +10,7 @@ import { sum, formatUah } from '@/shared/lib/money';
 import { usePointOptionsQuery } from '@/entities/collection-point';
 import { useIntakesQuery, type DocumentFilter } from '@/entities/intake';
 import { usePayoutsQuery } from '@/entities/payout';
-import { useSuppliersQuery, useSupplierBalancesQuery } from '@/entities/supplier';
+import { useSuppliersQuery, useSupplierBalancesQuery, supplierName } from '@/entities/supplier';
 import { ReceiptDialog } from '@/widgets/receipt';
 import { monthRange, parseFilters, PAGE_SIZE } from '../model/journalFilters';
 import { JournalToolbar } from './JournalToolbar';
@@ -84,7 +84,7 @@ export function JournalPage() {
   // supplier can still own a historic document this journal has to label.
   const balancesQuery = useSupplierBalancesQuery({ pointId: filters.pointId, includeZero: true });
   const supplierNameById = new Map(
-    (balancesQuery.data?.data ?? []).map((r) => [r.supplier_id, `${r.first_name} ${r.last_name}`]),
+    (balancesQuery.data?.data ?? []).map((r) => [r.supplier_id, supplierName(r)]),
   );
   const supplierLabel = (supplierId: string) =>
     supplierNameById.get(supplierId) ?? supplierId.slice(0, 8);
@@ -136,7 +136,7 @@ export function JournalPage() {
             <JournalToolbar
               points={points ?? []}
               pointId={filters.pointId ?? ''}
-              onPointChange={(value) => patch({ point: value || null, page: null })}
+              onPointChange={(value) => patch({ point: value || null, supplier: null, page: null })}
               month={filters.from.slice(0, 7)}
               onMonthChange={(value) => {
                 if (!value) return;
@@ -147,7 +147,7 @@ export function JournalPage() {
               supplierId={filters.supplierId ?? ''}
               onSupplierChange={(value) => patch({ supplier: value || null, page: null })}
               includeVoided={filters.includeVoided}
-              onIncludeVoidedChange={(next) => patch({ voided: next ? null : '0' })}
+              onIncludeVoidedChange={(next) => patch({ voided: next ? null : '0', page: null })}
             />
           }
           stats={
