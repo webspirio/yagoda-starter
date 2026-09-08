@@ -273,6 +273,38 @@
       "depositFormat": "Enter an amount like 120 or 120.00"
     }
   },
+  "prices": {
+    "eyebrow": "Pricing",
+    "title": "Day prices",
+    "description": "The current buy price per grade at a point. Setting a price adds a new row — the latest one wins.",
+    "pickPoint": "Select a point",
+    "empty": {
+      "title": "No point selected",
+      "hint": "Choose a point to see and set its grade prices."
+    },
+    "col": {
+      "grade": "Grade",
+      "base": "Base price",
+      "markup": "Max markup",
+      "discount": "Max discount",
+      "action": "Set price"
+    },
+    "setPrice": "Set price",
+    "form": {
+      "title": "Set price · {{grade}}",
+      "base": "Base price",
+      "markup": "Max markup",
+      "discount": "Max discount",
+      "reason": "Reason (optional)"
+    },
+    "toast": {
+      "set": "Price set"
+    },
+    "errors": {
+      "saveFailed": "Could not save",
+      "priceFormat": "Enter an amount like 50 or 50.00"
+    }
+  },
   "profile": {
     "title": "Profile",
     "name": "Name",

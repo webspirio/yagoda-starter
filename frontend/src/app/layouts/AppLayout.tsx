@@ -60,7 +60,9 @@ const NAV_GROUPS: NavGroup[] = [
       { labelKey: 'nav.crates', icon: Boxes },
       { labelKey: 'nav.day', icon: CalendarCheck2 },
       { labelKey: 'nav.pointCash', icon: Banknote },
-      { labelKey: 'nav.prices', icon: CircleDollarSign },
+      // Setting prices is owner-only; the operator's read-only price view comes
+      // with the intake screen later, hence the role gate on an on-point item.
+      { labelKey: 'nav.prices', icon: CircleDollarSign, to: '/prices', role: 'network_owner' },
     ],
   },
   {

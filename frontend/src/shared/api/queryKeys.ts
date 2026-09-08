@@ -12,4 +12,7 @@ export const queryKeys = {
   productGrades: (productId?: string) =>
     productId ? (['product-grades', productId] as const) : (['product-grades'] as const),
   tareTypes: ['tare-types'] as const,
+  /** Grade prices — the invalidation PREFIX for every `/current?point=…` read;
+   *  a per-point read appends the point id (`[...queryKeys.gradePrices, pointId]`). */
+  gradePrices: ['grade-prices'] as const,
 };

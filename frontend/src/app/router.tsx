@@ -9,6 +9,7 @@ import { PointsPage } from '@/pages/points';
 import { UsersPage } from '@/pages/users';
 import { SuppliersPage } from '@/pages/suppliers';
 import { CatalogPage } from '@/pages/catalog';
+import { PricesPage } from '@/pages/prices';
 import { NotFoundPage } from '@/pages/not-found';
 import { UiKitPage } from '@/pages/ui-kit';
 
@@ -72,6 +73,19 @@ export const routes: RouteObject[] = [
           <RequireAuth>
             <RequireRole role="network_owner">
               <UsersPage />
+            </RequireRole>
+          </RequireAuth>
+        ),
+      },
+      {
+        // Day prices are owner-only: `/current` GET is open to both roles
+        // server-side, but `POST /grade-prices` is @Auth(NetworkOwner). The
+        // operator's read-only price view arrives with the intake screen later.
+        path: '/prices',
+        element: (
+          <RequireAuth>
+            <RequireRole role="network_owner">
+              <PricesPage />
             </RequireRole>
           </RequireAuth>
         ),
