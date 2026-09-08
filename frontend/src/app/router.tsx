@@ -6,6 +6,7 @@ import { LoginPage } from '@/pages/login';
 import { DashboardPage } from '@/pages/dashboard';
 import { ProfilePage } from '@/pages/profile';
 import { NotFoundPage } from '@/pages/not-found';
+import { UiKitPage } from '@/pages/ui-kit';
 
 /**
  * `routes` is exported separately from `router` so tests can drive the same
@@ -16,6 +17,9 @@ import { NotFoundPage } from '@/pages/not-found';
  * render the auth screens bare (see AppLayout's CHROMELESS list).
  */
 export const routes: RouteObject[] = [
+  // Standalone dev gallery of the shared/ui kit — no AppLayout shell, no auth,
+  // so it opens directly at /ui-kit for visual review.
+  { path: '/ui-kit', element: <UiKitPage />, errorElement: <RouteError /> },
   {
     element: <AppLayout />,
     errorElement: <RouteError />,
