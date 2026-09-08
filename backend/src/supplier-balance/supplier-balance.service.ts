@@ -1,5 +1,33 @@
 import { Injectable } from '@nestjs/common';
 import { DataSource, EntityManager } from 'typeorm';
+import { ListSupplierBalancesQueryDto } from './dto/list-supplier-balances.query';
+import {
+  SupplierBalanceRow,
+  SupplierBalanceRowResponse,
+  toSupplierBalanceRowResponse,
+} from './supplier-balance.mapper';
+import { resolvePointFilter } from '../auth/access/point-scope';
+import { Paginated } from '../common/dto/paginated';
+import { skipOf } from '../common/dto/pagination-query.dto';
+import type { AuthenticatedUser } from '../auth/jwt.strategy';
+
+/**
+ * THE FORMULA, WRITTEN ONCE. `supplier` is the SQL naming whose debt is
+ * wanted — the bind placeholder `$1` for one row, the outer row's own column
+ * `s.id` when correlated down a list. Both call sites pass a code literal;
+ * nothing from a request is ever spliced here.
+ *
+ * THE FALLBACK IS `0.00`, NOT `0`. `SUM` over no rows is NULL, and
+ * `COALESCE(NULL, 0)` is an integer zero that Postgres renders as `'0'` — so
+ * a supplier with no documents at all read `"0"` where every other balance
+ * reads to two places. The DBML writes `0`; the wire contract (every numeric a
+ * scale-2 string) is why this diverges from it by a literal.
+ */
+const debtSql = (supplier: string): string =>
+  `(COALESCE((SELECT SUM(i.amount) FROM intakes i
+               WHERE i.supplier_id = ${supplier} AND i.voided_at IS NULL), 0.00)
+  - COALESCE((SELECT SUM(p.amount) FROM payouts p
+               WHERE p.supplier_id = ${supplier} AND p.voided_at IS NULL), 0.00))`;
 
 /**
  * THE ONLY `SUM` OVER EITHER DOCUMENT TABLE IN THE BACKEND.
@@ -46,14 +74,75 @@ export class SupplierBalanceService {
     const runner = manager ?? this.dataSource.manager;
     // `::text` on the numeric expression so the value never passes through a
     // JS number on its way out of the driver (foundation §5.1).
-    const [row] = (await runner.query(
-      `SELECT (COALESCE((SELECT SUM(i.amount) FROM intakes i
-                          WHERE i.supplier_id = $1 AND i.voided_at IS NULL), 0)
-             - COALESCE((SELECT SUM(p.amount) FROM payouts p
-                          WHERE p.supplier_id = $1 AND p.voided_at IS NULL), 0))::text AS debt`,
-      [supplierId],
-    )) as { debt: string }[];
+    const sql = `SELECT ${debtSql('$1')}::text AS debt`;
+    const [row] = (await runner.query(sql, [supplierId])) as { debt: string }[];
 
     return row.debt;
+  }
+
+  /**
+   * Every supplier in scope with their balance — the «Залишки» screen.
+   *
+   * THE SAME SQL AS `debtFor`, correlated on each supplier row, so this list
+   * cannot carry a formula of its own. Aggregated, filtered, ordered and
+   * paginated IN POSTGRES: the `numeric` stays exact up to the projection,
+   * where `::text` hands it over, and no balance passes through JavaScript on
+   * its way to the page. The count runs over the same filtered set, so
+   * `total` and `data` cannot disagree about what is in scope.
+   *
+   * `include_zero=false` (the default) drops `0.00` rows AND ONLY THOSE. A
+   * deactivated supplier who is still owed money stays listed: deactivation is
+   * a fact about the card, the debt is a fact about the drawer, and a person
+   * must not vanish from the debts list because their card was retired. A
+   * negative balance — legal, see the class header — is not zero and stays
+   * too, at the bottom.
+   *
+   * THE ORDER IS TOTAL. `debt DESC` puts the biggest debts first; the name
+   * and id tiebreakers are what keep paging stable when two people are owed
+   * the same amount — Postgres promises no order among ties, so without them
+   * `LIMIT`/`OFFSET` can serve one row twice and another never.
+   *
+   * THE POINT FILTER HERE IS NOT THE ONE THE CLASS HEADER FORBIDS. That rule
+   * is about the FORMULA — a supplier's debt is the same number whichever
+   * point asks — and the formula above has none. This filter chooses WHICH
+   * suppliers appear, which is `resolvePointFilter`'s ordinary scope question.
+   */
+  async list(
+    actor: AuthenticatedUser,
+    query: ListSupplierBalancesQueryDto,
+  ): Promise<Paginated<SupplierBalanceRowResponse>> {
+    const pointId = resolvePointFilter(actor, query.collection_point_id) ?? null;
+    const manager = this.dataSource.manager;
+
+    // Shared by the page and the count, so the two cannot drift apart.
+    const scoped = `SELECT s.id, s.first_name, s.last_name, s.is_active, s.collection_point_id,
+                           ${debtSql('s.id')} AS debt
+                      FROM suppliers s
+                     WHERE ($1::uuid IS NULL OR s.collection_point_id = $1::uuid)`;
+    const visible = `($2::boolean OR b.debt <> 0)`;
+
+    const rows = (await manager.query(
+      `SELECT b.id AS supplier_id, b.first_name, b.last_name, b.is_active,
+              b.collection_point_id, b.debt::text AS debt
+         FROM (${scoped}) b
+        WHERE ${visible}
+        ORDER BY b.debt DESC, b.last_name ASC, b.first_name ASC, b.id ASC
+        LIMIT $3 OFFSET $4`,
+      [pointId, query.include_zero, query.limit, skipOf(query)],
+    )) as SupplierBalanceRow[];
+
+    // `::int` so the driver hands back a number: `COUNT` is `bigint`, which
+    // `pg` returns as a string, and `Number()` is banned in this module.
+    const [{ total }] = (await manager.query(
+      `SELECT COUNT(*)::int AS total FROM (${scoped}) b WHERE ${visible}`,
+      [pointId, query.include_zero],
+    )) as { total: number }[];
+
+    return {
+      data: rows.map(toSupplierBalanceRowResponse),
+      total,
+      page: query.page,
+      limit: query.limit,
+    };
   }
 }
