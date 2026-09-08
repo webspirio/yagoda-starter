@@ -328,7 +328,8 @@
       "closed": "Shift closed",
       "awaiting_explanation": "Needs an explanation",
       "none": "No shift that day",
-      "noneToday": "Shift not opened yet"
+      "noneToday": "Shift not opened yet",
+      "loading": "Loading…"
     },
     "open": "Open shift",
     "close": "Close shift",
@@ -350,7 +351,8 @@
       "paid": "Paid",
       "paidHint": "cash for the day",
       "toDebt": "To balance",
-      "toDebtHint": "carries over to supplier balances"
+      "toDebtHint": "carries over to supplier balances",
+      "truncated": "Showing the first {{count}} documents — totals are partial"
     },
     "feed": {
       "title": "Day feed",

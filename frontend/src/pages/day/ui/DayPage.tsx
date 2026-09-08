@@ -41,6 +41,30 @@ interface FeedRow {
 }
 
 /**
+ * A `?date=` that is a REAL calendar day, not merely `YYYY-MM-DD` shaped.
+ *
+ * `isIsoDate` checks the shape only, and the two ways a shaped-but-impossible
+ * date fails are both silent from here:
+ *   - `2026-02-31` parses and ROLLS OVER, so the page would title itself
+ *     «3 March» while asking the API for the 31st of February;
+ *   - `2026-00-10` / `0000-00-00` parse to an Invalid Date, and the first
+ *     `Intl` call on it throws a RangeError straight into the route error
+ *     boundary — one hand-edited query param blanks the screen.
+ *
+ * Only a date that survives a round trip through `addDaysIso` is real. The
+ * try/catch is not defensive padding: `addDaysIso` calls `toISOString()`, which
+ * is exactly what throws on the Invalid Date case above.
+ */
+function isRealIsoDate(value: unknown): value is string {
+  if (!isIsoDate(value)) return false;
+  try {
+    return addDaysIso(value, 0) === value;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * «Каса за день» — one point, one date, its shift and its documents. The date
  * lives in `?date=` (default today) and the owner's point in `?point=`
  * (`usePointScope`), so a reload or a shared link lands on the same day.
@@ -58,7 +82,7 @@ export function DayPage() {
   const today = todayIso();
   // A hand-edited (or stale-link) date is clamped rather than sent on: there is
   // no shift in the future, and a garbage param must not reach the API.
-  const date = isIsoDate(dateParam) && dateParam <= today ? dateParam : today;
+  const date = isRealIsoDate(dateParam) && dateParam <= today ? dateParam : today;
 
   const shift = useShiftOnDateQuery(pointId, date);
   const shiftId = shift.data?.id;
@@ -69,6 +93,9 @@ export function DayPage() {
   const close = useCloseShiftMutation();
   const [confirmClose, setConfirmClose] = useState(false);
   const [reopenOpen, setReopenOpen] = useState(false);
+  // Bumped on every open so the dialog remounts with fresh RHF defaults and no
+  // banner from the refusal before it — the convention SetPriceDialog documents.
+  const [reopenInstance, setReopenInstance] = useState(0);
   const [banner, setBanner] = useState<string | null>(null);
 
   const run = async (action: () => Promise<unknown>, toastKey: string) => {
@@ -85,6 +112,10 @@ export function DayPage() {
   const isOwner = me?.role === 'network_owner';
   const isToday = date === today;
   const status: Shift['status'] | 'none' = shift.data?.status ?? 'none';
+  // «No shift» and «not asked yet» are the same `undefined` in the data, and
+  // the difference is not cosmetic: an Open button on the second one lets an
+  // operator open a shift that is already open. The toolbar waits, as the feed does.
+  const isLoadingShift = pointId !== null && shift.isPending;
 
   const liveIntakes = (intakes.data?.data ?? []).filter((i) => i.voided_at === null);
   const livePayouts = (payouts.data?.data ?? []).filter((p) => p.voided_at === null);
@@ -132,6 +163,13 @@ export function DayPage() {
     })),
   ].sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0));
 
+  // Both journals are read with the entities' default `limit: 100`. Past that
+  // the tiles would quietly under-report a busy day, which is the one thing a
+  // cash screen may not do — so say so rather than raise the limit and hope.
+  const truncated =
+    (intakes.data ? intakes.data.total > intakes.data.data.length : false) ||
+    (payouts.data ? payouts.data.total > payouts.data.data.length : false);
+
   const pointName = (points ?? []).find((p) => p.id === pointId)?.name ?? '';
 
   const actions = (
@@ -163,16 +201,20 @@ export function DayPage() {
       />
       <Badge
         variant={
-          status === 'open'
-            ? 'default'
-            : status === 'awaiting_explanation'
-              ? 'destructive'
-              : 'secondary'
+          isLoadingShift
+            ? 'secondary'
+            : status === 'open'
+              ? 'default'
+              : status === 'awaiting_explanation'
+                ? 'destructive'
+                : 'secondary'
         }
       >
-        {t(`day.status.${status === 'none' && isToday ? 'noneToday' : status}`)}
+        {isLoadingShift
+          ? t('day.status.loading')
+          : t(`day.status.${status === 'none' && isToday ? 'noneToday' : status}`)}
       </Badge>
-      {isOperator && isToday && status === 'none' && pointId ? (
+      {!isLoadingShift && isOperator && isToday && status === 'none' && pointId ? (
         <Button
           onClick={() => void run(() => open.mutateAsync(), 'day.toast.opened')}
           disabled={open.isPending}
@@ -180,13 +222,19 @@ export function DayPage() {
           {t('day.open')}
         </Button>
       ) : null}
-      {isOperator && status === 'open' ? (
+      {!isLoadingShift && isOperator && status === 'open' ? (
         <Button variant="outline" onClick={() => setConfirmClose(true)}>
           {t('day.close')}
         </Button>
       ) : null}
-      {isOwner && status === 'closed' && shift.data ? (
-        <Button variant="outline" onClick={() => setReopenOpen(true)}>
+      {!isLoadingShift && isOwner && status === 'closed' && shift.data ? (
+        <Button
+          variant="outline"
+          onClick={() => {
+            setReopenInstance((n) => n + 1);
+            setReopenOpen(true);
+          }}
+        >
           {t('day.reopen')}
         </Button>
       ) : null}
@@ -255,6 +303,11 @@ export function DayPage() {
         stats={pointId && status !== 'none' ? stats : undefined}
         statColumns={4}
       >
+        {truncated ? (
+          <p className="-mt-2 mb-4 text-xs text-muted-foreground">
+            {t('day.tiles.truncated', { count: feed.length })}
+          </p>
+        ) : null}
         {banner ? (
           <p role="alert" className="mb-4 text-sm text-destructive">
             {t(banner)}
@@ -277,6 +330,7 @@ export function DayPage() {
       />
       {shift.data ? (
         <ReopenShiftDialog
+          key={reopenInstance}
           shift={shift.data}
           open={reopenOpen}
           onClose={() => setReopenOpen(false)}

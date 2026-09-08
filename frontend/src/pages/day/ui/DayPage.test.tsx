@@ -2,22 +2,32 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createMemoryRouter, RouterProvider } from 'react-router';
+import { ApiError } from '@/shared/api';
 import { expectNoAxeViolations } from '../../../test-axe';
 import type { Shift } from '@/entities/shift';
 import type { Intake } from '@/entities/intake';
 import type { Payout } from '@/entities/payout';
 import { DayPage } from './DayPage';
 
-const { meMock, pointScopeMock, shiftMock, intakesMock, payoutsMock, openMock, closeMock } =
-  vi.hoisted(() => ({
-    meMock: vi.fn(),
-    pointScopeMock: vi.fn(),
-    shiftMock: vi.fn(),
-    intakesMock: vi.fn(),
-    payoutsMock: vi.fn(),
-    openMock: vi.fn(),
-    closeMock: vi.fn(),
-  }));
+const {
+  meMock,
+  pointScopeMock,
+  shiftMock,
+  intakesMock,
+  payoutsMock,
+  openMock,
+  closeMock,
+  reopenMock,
+} = vi.hoisted(() => ({
+  meMock: vi.fn(),
+  pointScopeMock: vi.fn(),
+  shiftMock: vi.fn(),
+  intakesMock: vi.fn(),
+  payoutsMock: vi.fn(),
+  openMock: vi.fn(),
+  closeMock: vi.fn(),
+  reopenMock: vi.fn(),
+}));
 
 vi.mock('@/entities/user', () => ({
   useMeQuery: () => meMock(),
@@ -50,7 +60,7 @@ vi.mock('@/entities/collection-point', () => ({
 vi.mock('../api/shiftActions', () => ({
   useOpenShiftMutation: () => ({ mutateAsync: openMock, isPending: false }),
   useCloseShiftMutation: () => ({ mutateAsync: closeMock, isPending: false }),
-  useReopenShiftMutation: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useReopenShiftMutation: () => ({ mutateAsync: reopenMock, isPending: false }),
 }));
 
 const OPERATOR = {
@@ -118,8 +128,10 @@ const payout = (over: Partial<Payout> & Pick<Payout, 'id' | 'code' | 'amount'>):
   ...over,
 });
 
-const page = <T,>(data: T[]) => ({
-  data: { data, total: data.length, page: 1, limit: 100 },
+/** `total` defaults to what was returned; pass a bigger one to stand for a
+ *  journal the server truncated at the 100-row limit. */
+const page = <T,>(data: T[], total = data.length) => ({
+  data: { data, total, page: 1, limit: 100 },
   isPending: false,
   isError: false,
 });
@@ -152,6 +164,7 @@ beforeEach(() => {
   payoutsMock.mockReset().mockReturnValue(page<Payout>([]));
   openMock.mockReset().mockResolvedValue(openShift);
   closeMock.mockReset().mockResolvedValue({ ...openShift, status: 'closed' });
+  reopenMock.mockReset().mockResolvedValue({ ...openShift, status: 'open' });
 });
 
 afterEach(() => vi.useRealTimers());
@@ -204,6 +217,29 @@ describe('DayPage — the operator on an open shift', () => {
     await expectNoAxeViolations(container);
   });
 
+  it('warns that the totals are partial when the server truncated a journal', () => {
+    const hundred = Array.from({ length: 100 }, (_, n) =>
+      intake({ id: `i${n}`, code: `KV-${n}`, amount: '1.00' }),
+    );
+    intakesMock.mockReturnValue(page<Intake>(hundred, 150));
+    payoutsMock.mockReturnValue(page<Payout>([]));
+
+    renderDay();
+
+    expect(
+      screen.getByText('Showing the first 100 documents — totals are partial'),
+    ).toBeInTheDocument();
+    // The sums stand as they are — a partial total is still the truth about
+    // what was read, and inventing the rest would be worse.
+    expect(tile('Accrued')).toHaveTextContent('100.00 ₴');
+  });
+
+  it('says nothing about truncation when both journals came back whole', () => {
+    // The outer describe's 3 intakes + 1 payout all fit under the 100 limit.
+    renderDay();
+    expect(screen.queryByText(/Showing the first/)).toBeNull();
+  });
+
   it('closes the shift by its id, but only after the confirmation', async () => {
     const user = userEvent.setup();
     renderDay();
@@ -233,6 +269,44 @@ describe('DayPage — the operator before the shift is open', () => {
 
     await user.click(screen.getByRole('button', { name: 'Open shift' }));
     await waitFor(() => expect(openMock).toHaveBeenCalledTimes(1));
+  });
+
+  it('offers nothing while the shift query is still in flight', () => {
+    // «No shift» and «not asked yet» look identical in the data; only isPending
+    // tells them apart, and an Open button shown on the second one lets an
+    // operator open a shift that already exists.
+    shiftMock.mockReturnValue({ data: undefined, isPending: true, isError: false });
+
+    const { container } = renderDay();
+
+    expect(container.querySelector('[data-slot="badge"]')).toHaveTextContent('Loading…');
+    expect(screen.queryByText('Shift not opened yet')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Open shift' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Close shift' })).toBeNull();
+  });
+});
+
+describe('DayPage — the date in the URL', () => {
+  it('ignores a date that is shaped right but is not a real day', () => {
+    // `isIsoDate` only checks the shape: 2026-02-31 would roll the title over to
+    // 3 March while the query still asked for the 31st of February.
+    renderDay('/day?date=2026-02-31');
+
+    expect(
+      screen.getByRole('heading', { level: 1, name: 'Cash for September 8, 2026' }),
+    ).toBeInTheDocument();
+    expect(shiftMock).toHaveBeenCalledWith('p1', '2026-09-08');
+  });
+
+  it('ignores a date no calendar can even parse', () => {
+    // These reach `Intl` as an Invalid Date and throw a RangeError into the
+    // route error boundary — a blank screen from one hand-edited query param.
+    renderDay('/day?date=2026-00-10');
+
+    expect(
+      screen.getByRole('heading', { level: 1, name: 'Cash for September 8, 2026' }),
+    ).toBeInTheDocument();
+    expect(shiftMock).toHaveBeenCalledWith('p1', '2026-09-08');
   });
 });
 
@@ -293,5 +367,34 @@ describe('DayPage — the owner', () => {
     ).toBeInTheDocument();
     // The point survives the date reset — the URL is the shared link.
     expect(new URLSearchParams(router.state.location.search).get('point')).toBe('p1');
+  });
+
+  it('reopens the reopen dialog clean after a refusal and a cancel', async () => {
+    const user = userEvent.setup();
+    pointScopeMock.mockReturnValue({
+      pointId: 'p1',
+      canPick: true,
+      setPointId: vi.fn(),
+      isLoading: false,
+    });
+    shiftMock.mockReturnValue({ data: closedShift, isPending: false, isError: false });
+    reopenMock.mockRejectedValue(new ApiError(409, 'nope', undefined, 'SHIFT_NOT_NEWEST'));
+
+    renderDay('/day?point=p1&date=2026-09-07');
+
+    await user.click(screen.getByRole('button', { name: 'Reopen shift' }));
+    await user.type(await screen.findByLabelText('Reason'), 'Closed by mistake');
+    await user.click(screen.getByRole('button', { name: 'Reopen' }));
+
+    const banner = "Only the point's most recent shift can be reopened";
+    expect(await screen.findByText(banner)).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Cancel' }));
+    await waitFor(() => expect(screen.queryByLabelText('Reason')).toBeNull());
+
+    // Second open: a fresh dialog, not the refused one with its text still in it.
+    await user.click(screen.getByRole('button', { name: 'Reopen shift' }));
+    expect(await screen.findByLabelText('Reason')).toHaveValue('');
+    expect(screen.queryByText(banner)).toBeNull();
   });
 });
