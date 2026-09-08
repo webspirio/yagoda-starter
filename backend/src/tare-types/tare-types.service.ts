@@ -1,6 +1,6 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, Repository } from 'typeorm';
+import { DataSource, EntityManager, In, Repository } from 'typeorm';
 import { TareType } from './tare-type.entity';
 import { CreateTareTypeDto } from './dto/create-tare-type.dto';
 import { UpdateTareTypeDto } from './dto/update-tare-type.dto';
@@ -35,6 +35,25 @@ export class TareTypesService {
     });
 
     return { data: data.map(toTareTypeResponse), total, page: query.page, limit: query.limit };
+  }
+
+  /**
+   * Rows by id, for the intake path's §2.5 tare-weight substitution.
+   *
+   * ACTIVE ONLY — deactivation has to actually stop something, and this is the
+   * one place the intake path can learn a tare type was retired.
+   *
+   * Returns fewer rows than ids asked for WITHOUT complaining: the caller knows
+   * which line each id came from and turns the gap into `TARE_TYPE_UNKNOWN`
+   * naming it. A seam that cannot see the request should not be guessing at an
+   * error message for a caller it cannot see.
+   *
+   * Takes an `EntityManager` so the intake transaction reads inside itself.
+   */
+  async findManyRaw(ids: string[], manager?: EntityManager): Promise<TareType[]> {
+    if (ids.length === 0) return [];
+    const repo = manager ? manager.getRepository(TareType) : this.repo;
+    return repo.find({ where: { id: In(ids), is_active: true } });
   }
 
   async create(actor: AuthenticatedUser, dto: CreateTareTypeDto): Promise<TareTypeResponse> {

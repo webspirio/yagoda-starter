@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { EntityManager, Repository } from 'typeorm';
 import { GradePrice } from './grade-price.entity';
 import { CreateGradePriceDto } from './dto/create-grade-price.dto';
 import { ListGradePricesQueryDto } from './dto/list-grade-prices.query';
@@ -137,6 +137,50 @@ export class GradePricesService {
    * 'reception'` — not as an array of point ids from the client, or §4.8 ends
    * up in the browser where no test can reach it.
    */
+  /**
+   * The CURRENT price for ONE (point, grade) pair, or `null`.
+   *
+   * `current()` above is the same read shaped for a screen — paginated, many
+   * grades, mapped to a response. The intake path needs one row per line as an
+   * entity, inside its own transaction, so it gets its own narrow seam rather
+   * than paging through a list to find one pair.
+   *
+   * INACTIVE GRADES RETURN NULL. §4.5 — «сорт без ціни дня на прийомці не
+   * показується взагалі» — and the intake path has no other place to learn a
+   * grade was retired network-wide.
+   *
+   * KNOWN GAP, recorded rather than fixed here: this returns the newest row
+   * WHATEVER ITS AGE, so a grade priced last week is still «current» today.
+   * §4.5's literal reason is «щоб ніхто не порахував по вчорашній», and the
+   * prices slice removed `grade_prices.business_date` (its §8.1), which is what
+   * makes the rule unenforceable. Closing it needs no migration — refuse a row
+   * whose `created_at` predates the shift's `business_date` — and it was
+   * deferred deliberately (owner, 2026-09-08) because the gate means a morning
+   * with no prices set is a morning the point cannot trade. Spec §10.3.
+   */
+  async currentFor(
+    pointId: string,
+    gradeId: string,
+    manager?: EntityManager,
+  ): Promise<GradePrice | null> {
+    // `manager.query` rather than a repository call, matching `current()` above:
+    // both need raw SQL, and passing the caller's EntityManager is what keeps
+    // this read inside the intake's transaction.
+    const runner = manager ?? this.repo.manager;
+    const [row] = await runner.query(
+      `SELECT gp.*
+         FROM grade_prices gp
+         JOIN product_grades pg ON pg.id = gp.product_grade_id
+        WHERE gp.collection_point_id = $1
+          AND gp.product_grade_id = $2
+          AND pg.is_active = true
+        ORDER BY gp.created_at DESC, gp.id DESC
+        LIMIT 1`,
+      [pointId, gradeId],
+    );
+    return (row as GradePrice | undefined) ?? null;
+  }
+
   async create(actor: AuthenticatedUser, dto: CreateGradePriceDto): Promise<GradePriceResponse> {
     // A no-op for an owner, since they own every point — and the route is
     // owner-only, so nothing else reaches this line. Kept as defensive depth

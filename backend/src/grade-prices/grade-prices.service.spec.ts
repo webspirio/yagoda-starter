@@ -105,6 +105,47 @@ describe('GradePricesService', () => {
     });
   });
 
+  describe('currentFor', () => {
+    it('returns the newest row for the pair', async () => {
+      repo.manager.query = jest.fn().mockResolvedValue([price({ base_price: '150.00' })]);
+
+      const found = await service.currentFor(POINT_A, GRADE);
+
+      expect(found?.base_price).toBe('150.00');
+      // The ORDER BY is what makes "newest" true; assert it is in the SQL so a
+      // rewrite cannot quietly return an arbitrary row.
+      const [sql] = (repo.manager.query as jest.Mock).mock.calls[0] as [string];
+      expect(sql).toMatch(/ORDER BY[\s\S]*created_at DESC/);
+    });
+
+    it('returns null for a pair that has never been priced', async () => {
+      repo.manager.query = jest.fn().mockResolvedValue([]);
+
+      await expect(service.currentFor(POINT_A, GRADE)).resolves.toBeNull();
+    });
+
+    it('keys on the PAIR, so another point’s price cannot leak in', async () => {
+      // §4.8 — the склад runs its own, higher list. Keying on the grade alone
+      // would let a warehouse price land on a roadside intake.
+      repo.manager.query = jest.fn().mockResolvedValue([]);
+
+      await service.currentFor(POINT_A, GRADE);
+
+      const [sql, params] = (repo.manager.query as jest.Mock).mock.calls[0] as [string, unknown[]];
+      expect(sql).toMatch(/collection_point_id = \$1/);
+      expect(params).toEqual([POINT_A, GRADE]);
+    });
+
+    it('filters out an inactive grade in SQL (§4.5)', async () => {
+      repo.manager.query = jest.fn().mockResolvedValue([]);
+
+      await service.currentFor(POINT_A, GRADE);
+
+      const [sql] = (repo.manager.query as jest.Mock).mock.calls[0] as [string];
+      expect(sql).toMatch(/pg\.is_active = true/);
+    });
+  });
+
   describe('current', () => {
     it('pins an operator to their own point', async () => {
       await service.current(operator, { page: 1, limit: 100, collection_point_id: POINT_B } as never);
