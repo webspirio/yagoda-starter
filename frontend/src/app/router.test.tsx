@@ -31,7 +31,8 @@ describe('router', () => {
   it('renders the dashboard for an authenticated visitor', async () => {
     useSession.setState({ token: 'tok' });
     renderAt('/');
-    expect(await screen.findByRole('heading', { name: /dashboard/i })).toBeInTheDocument();
+    // The dashboard's heading is the "Summary" label (mock's «Зведення»).
+    expect(await screen.findByRole('heading', { name: /summary/i })).toBeInTheDocument();
   });
 
   it('renders the not-found page for an unknown path', async () => {

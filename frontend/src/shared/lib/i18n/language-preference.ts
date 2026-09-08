@@ -1,4 +1,4 @@
-export const SUPPORTED_LANGUAGES = ['en'] as const;
+export const SUPPORTED_LANGUAGES = ['uk', 'en'] as const;
 export type SupportedLanguage = (typeof SUPPORTED_LANGUAGES)[number];
 
 const KEY = 'web-starter:lang';

@@ -7,76 +7,103 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 :root {
-  --radius: 0.625rem;
+  --radius: 0.5rem;
 
-  /* Accent tokens — light. Warm stone neutrals + an orange accent.
-     TWO ACCENT PRIMITIVES (classified by ROLE, not CSS property):
-       --primary = the orange accent #FF8912 — FILL ONLY (buttons, checked
-                   controls, tooltip bubble+arrow, switch on-track). Always paired
-                   with near-black --primary-foreground; never ink on another
-                   surface. Its /N opacity variants are decorative tint surfaces.
-       --brand   = accent INK on light = #B45309 (amber-700, WCAG-safe darkening of
-                   the orange accent): links, required marks, outlines, indicator
-                   dots. Also a secondary fill (bg-brand + --brand-foreground). In
-                   dark it becomes the orange accent #FF8912.
-     Swap the hex values here (and in .dark below) to re-theme the whole app —
-     every consumer reads the semantic token, never the literal color. */
-  --background: #faf9f7;
-  --foreground: #1c1c1c;
-  --surface: #ffffff; /* headers, sticky bars, sheets */
+  /* Palette — light. The mock's identity: cool leaf-grey paper, one loud berry
+     accent, plus domain "instrument" colours (leaf / amber / sky) used by charts
+     and status. Swap the hex values here (and in .dark below) to re-theme the
+     whole app — every consumer reads the semantic token, never the literal hex.
+     The mock has a SINGLE accent, so --primary and --brand are both the berry:
+     the starter's fill/ink split collapses to one colour here. */
+  --background: #eceee8;
+  --foreground: #171a15;
+  --surface: #ffffff; /* starter token: headers, sticky bars, sheets */
   --card: #ffffff;
-  --card-foreground: #1c1c1c;
+  --card-foreground: #171a15;
   --popover: #ffffff;
-  --popover-foreground: #1c1c1c;
-  --primary: #ff8912; /* orange accent — FILL only; pair with near-black (7.17:1) */
-  --primary-foreground: #1c1c1c;
-  --secondary: #f5f5f4;
-  --secondary-foreground: #1c1c1c;
-  --muted: #f5f5f4;
-  --muted-foreground: #57534e;
-  --muted2: #78716c; /* tertiary body text */
-  --accent: #fff3e6; /* pale orange tint — non-text surface */
-  --accent-foreground: #92400e; /* amber-800 ink on the tinted surface (6.49:1) */
-  --brand: #b45309; /* accent INK on light (amber-700) — 4.77:1 on --background */
-  --brand-foreground: #ffffff; /* text on bg-brand fills (5.02:1) */
-  --destructive: #be123c;
-  --success: #047857;
-  --border: #eceae5; /* hairline dividers */
-  --line2: #dcd8d0; /* field borders, stronger dividers */
-  --input: #dcd8d0;
-  --ring: #b45309; /* focus-ring ink — full-opacity ≥4.59:1 on all light surfaces */
+  --popover-foreground: #171a15;
+  --primary: #c81e4e; /* berry — the one loud colour */
+  --primary-foreground: #fff4f7;
+  --secondary: #e1e4db;
+  --secondary-foreground: #2b2f27;
+  --muted: #e4e7de;
+  --muted-foreground: #6c7167;
+  --muted2: #6c7167; /* starter token: tertiary body text → muted-foreground */
+  --accent: #dee2d7;
+  --accent-foreground: #171a15;
+  --brand: #c81e4e; /* starter token: accent ink → berry */
+  --brand-foreground: #fff4f7; /* starter token: text on brand fills */
+  --destructive: #c02b2b;
+  --success: #2e7a3c; /* starter token → mock leaf */
+  --border: #d7dbd0; /* hairline dividers */
+  --line2: #cfd4c6; /* starter token: stronger divider → mock input */
+  --input: #cfd4c6;
+  --ring: #c81e4e;
+
+  /* instrument + domain colours */
+  --readout: #a8e86a;
+  --leaf: #2e7a3c;
+  --amber: #c57a00;
+  --sky: #2e7bc4;
+
+  /* validated categorical set — mock DESIGN.md */
+  --chart-1: #c81e4e;
+  --chart-2: #2e7bc4;
+  --chart-3: #c57a00;
+  --chart-4: #2e8b3e;
+  --chart-5: #7c4dc0;
+
+  /* dark sidebar (mock) */
+  --sidebar: #14170f;
+  --sidebar-foreground: #c4cbba;
+  --sidebar-primary: #c81e4e;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #232719;
+  --sidebar-accent-foreground: #f2f5ec;
+  --sidebar-border: #2b3022;
+  --sidebar-ring: #c81e4e;
 }
 
 .dark {
-  /* Accent tokens — dark. --primary stays the orange accent #FF8912 in both
-     themes (fill only, paired with near-black --primary-foreground); --brand
-     switches from the light-mode amber-700 ink to the orange accent itself,
-     which stays legible against the dark surfaces. See the :root comment
-     above for the full --primary vs --brand contract. */
+  /* The mock is light-only. These are the starter's dark neutrals kept
+     functional; the accent tokens are aligned to the berry (see the theme
+     portion's Task 3). A designed mock-dark palette is a separate, deferred
+     decision — see the design-system-foundation plan's Global Constraints. */
   --background: #181819;
   --foreground: #f5f5f4;
-  --surface: #242426; /* unified dark surface */
+  --surface: #242426;
   --card: #242426;
   --card-foreground: #f5f5f4;
   --popover: #242426;
   --popover-foreground: #f5f5f4;
-  --primary: #ff8912; /* orange accent fill (both themes) */
-  --primary-foreground: #1c1c1c;
+  --primary: #c81e4e;
+  --primary-foreground: #fff4f7;
   --secondary: #2c2c2f;
   --secondary-foreground: #f5f5f4;
   --muted: #2c2c2f;
   --muted-foreground: #b8b3ad;
   --muted2: #8f8a82;
-  --accent: #3a2416; /* orange-tinted dark surface */
-  --accent-foreground: #fdba74; /* orange-300 text on the tinted dark surface */
-  --brand: #ff8912; /* orange accent ink — legible on dark (≥5.86:1) */
-  --brand-foreground: #1c1c1c; /* text on bg-brand fills in dark (7.17:1) */
+  --accent: #2c2c2f;
+  --accent-foreground: #f5f5f4;
+  --brand: #e8557a; /* berry, lightened for legibility on dark surfaces */
+  --brand-foreground: #1a0a10;
   --destructive: #fb7185;
   --success: #6ee7b7;
   --border: #2c2c2f;
   --line2: #3a3a3e;
   --input: #3a3a3e;
-  --ring: #ff8912; /* focus-ring ink — full-opacity ≥5.86:1 on all dark surfaces */
+  --ring: #e8557a;
+
+  --readout: #a8e86a;
+  --leaf: #4ea85e;
+  --amber: #e0a038;
+  --sky: #5aa0e0;
+
+  --chart-1: #e8557a;
+  --chart-2: #5aa0e0;
+  --chart-3: #e0a038;
+  --chart-4: #56b06a;
+  --chart-5: #a082d8;
 }
 
 @theme inline {
@@ -104,14 +131,41 @@
   --color-line2: var(--line2);
   --color-input: var(--input);
   --color-ring: var(--ring);
-  --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: calc(var(--radius) - 2px);
+
+  /* mock domain colours */
+  --color-readout: var(--readout);
+  --color-leaf: var(--leaf);
+  --color-amber: var(--amber);
+  --color-sky: var(--sky);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+
+  /* radius scale — mock's multiplier ladder */
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) + 4px);
-  /* Corporate typeface — change here to re-font the whole app. Geist (variable)
-     is this starter's default face; Geist Mono for numerals/tabular. */
-  --font-sans: 'Geist Variable', ui-sans-serif, system-ui, -apple-system, sans-serif;
-  --font-mono: 'Geist Mono Variable', ui-monospace, SFMono-Regular, Menlo, monospace;
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+
+  /* Corporate typefaces — change here to re-font the whole app. Onest (variable)
+     for body, Unbounded for display/headings, JetBrains Mono for numerals. */
+  --font-sans: 'Onest Variable', ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-display: 'Unbounded Variable', 'Onest Variable', ui-sans-serif, sans-serif;
+  --font-heading: var(--font-display);
+  --font-mono: 'JetBrains Mono Variable', ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
 @layer base {
@@ -128,9 +182,11 @@
   html {
     -webkit-tap-highlight-color: transparent;
     -webkit-touch-callout: none;
+    @apply font-sans;
   }
   body {
     @apply bg-background font-sans text-foreground;
+    -webkit-font-smoothing: antialiased;
   }
   /* Snappy taps on controls: no 300ms delay / double-tap-zoom (scroll
      containers stay free to pan). */
@@ -143,6 +199,12 @@
   select,
   textarea {
     touch-action: manipulation;
+  }
+  /* every figure in this app is money or mass — always tabular */
+  .tnum,
+  table,
+  input {
+    font-variant-numeric: tabular-nums;
   }
 }
 
@@ -162,3 +224,137 @@
   }
 }
 
+@utility font-display {
+  font-family: var(--font-display);
+  letter-spacing: -0.03em;
+}
+
+@utility eyebrow {
+  font-size: 11px;
+  line-height: 1.2;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  color: var(--muted-foreground);
+}
+
+@keyframes sync-sweep {
+  0% {
+    transform: translateX(-120%);
+  }
+  100% {
+    transform: translateX(320%);
+  }
+}
+.animate-sweep {
+  animation: sync-sweep 1.2s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Anything marked .printable is what goes on paper — receipts and the day report */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  .printable,
+  .printable * {
+    visibility: visible;
+  }
+  .printable {
+    position: absolute;
+    top: 0;
+    left: 0;
+    margin: 0;
+    padding: 8mm;
+    width: 100%;
+    box-shadow: none !important;
+    border: none !important;
+    --tw-ring-shadow: 0 0 #0000 !important;
+  }
+  .print-only {
+    display: block !important;
+  }
+}
+.print-only {
+  display: none;
+}
+
+/* ─── Друк широкого аркуша: «Собівартість дня» (Н8) ───────────────────────────────
+   Споживачів `.printable` тепер три: чек (ReceiptDialog), звіт дня (DayPage) і аркуш
+   собівартості. Перші два — вузькі колонки, третій — широка таблиця, і саме її керівник
+   несе з собою.
+
+   ОРІЄНТАЦІЯ — єдине рішення тут, яке могло тихо зламати те, що вже працює.
+   `@page` не селектується класом, тому глобальний `@page { size: A4 landscape }`
+   розвернув би і ЧЕК: його рядки побудовані на `justify-between`, а сам `.printable`
+   тягнеться на всю ширину сторінки — підпис і сума розʼїхалися б з 210 мм на 297 мм.
+   Тому альбомну орієнтацію просить не весь друк, а ІМЕНОВАНА сторінка, яку бере лише
+   блок із `.print-landscape`. */
+@media print {
+  @page {
+    margin: 8mm;
+  }
+  @page landscape-sheet {
+    size: A4 landscape;
+    margin: 8mm;
+  }
+  .printable.print-landscape {
+    page: landscape-sheet;
+  }
+  .print-hide {
+    display: none !important;
+  }
+  .printable table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+  .printable thead {
+    display: table-header-group;
+  }
+  .printable tfoot {
+    display: table-footer-group;
+  }
+  .printable tr {
+    break-inside: avoid;
+  }
+  .printable :is(th, td) {
+    border-bottom: 0.5pt solid #b4b8ae;
+    padding: 1.2mm 2mm;
+    vertical-align: baseline;
+  }
+  .printable thead :is(th, td) {
+    border-bottom: 1pt solid #4a4f45;
+  }
+  .printable [class*='rounded-lg'],
+  .printable [class*='rounded-xl'] {
+    break-inside: avoid;
+  }
+  .print-landscape :is(th, td) {
+    font-size: 8.5pt;
+  }
+  .printable [class*='bg-destructive'],
+  .printable [class*='bg-[var(--leaf)]'],
+  .printable [class*='bg-[var(--amber)]'],
+  .printable [data-slot='badge'] {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  .printable [class*='bg-foreground'],
+  .printable [class*='bg-foreground'] * {
+    background: transparent !important;
+    color: #000 !important;
+  }
+  .printable [class*='bg-foreground'] {
+    border-top: 1.5pt solid #000;
+    border-radius: 0 !important;
+  }
+}
