@@ -33,6 +33,7 @@ describe('documents pipeline (HTTP)', () => {
   let app: INestApplication;
   let ownerToken: string;
   let operatorToken: string;
+  let mariaToken: string;
   let pointId: string;
   let otherPointId: string;
 
@@ -91,6 +92,21 @@ describe('documents pipeline (HTTP)', () => {
     );
     operatorToken = tokenFor(operator.id);
 
+    // A SECOND operator at the SAME point. §10.6's mid-day cashier swap —
+    // Оксана leaves her account at 14:00, Марія enters hers at 14:01 — is what
+    // makes §9.4's «чужа квитанція» case ordinary rather than hypothetical.
+    const { user: maria } = await users.createWithIdentity(
+      {
+        provider: LOCAL_PROVIDER,
+        providerUserId: `doc-op2-${randomUUID()}`,
+        first_name: 'Марія',
+        last_name: 'Змінниця',
+        role: UserRole.PointOperator,
+        collection_point_id: pointId,
+      },
+      async (created, manager) => credentials.set(created.id, 'hunter2!!', manager),
+    );
+    mariaToken = tokenFor(maria.id);
   }, 30_000);
 
   afterAll(async () => {
@@ -228,4 +244,245 @@ describe('documents pipeline (HTTP)', () => {
       expect(res.body.data.every((s: { collection_point_id: string }) => s.collection_point_id === pointId)).toBe(true);
     });
   });
+
+  describe('intakes', () => {
+    let gradeId: string;
+    let crateId: string;
+    let supplierId: string;
+    let intakeId: string;
+
+    beforeAll(async () => {
+      // The catalog this document needs. Names carry a per-run uuid: app_test
+      // persists between runs and is never truncated.
+      const productRes = await request(app.getHttpServer())
+        .post('/products')
+        .set('Authorization', `Bearer ${ownerToken}`)
+        .send({ name: `Малина-${randomUUID()}` })
+        .expect(201);
+
+      const gradeRes = await request(app.getHttpServer())
+        .post('/product-grades')
+        .set('Authorization', `Bearer ${ownerToken}`)
+        .send({ product_id: productRes.body.id, name: `1 сорт-${randomUUID()}` })
+        .expect(201);
+      gradeId = gradeRes.body.id as string;
+
+      const tareRes = await request(app.getHttpServer())
+        .post('/tare-types')
+        .set('Authorization', `Bearer ${ownerToken}`)
+        .send({ name: `Чешка-${randomUUID()}`, weight_kg: '1.20', deposit_price: '120.00', is_crate: true })
+        .expect(201);
+      crateId = tareRes.body.id as string;
+
+      await request(app.getHttpServer())
+        .post('/grade-prices')
+        .set('Authorization', `Bearer ${ownerToken}`)
+        .send({
+          collection_point_id: pointId,
+          product_grade_id: gradeId,
+          base_price: '57.00',
+          max_markup: '30.00',
+          max_discount: '20.00',
+        })
+        .expect(201);
+
+      const supplierRes = await request(app.getHttpServer())
+        .post('/suppliers')
+        .set('Authorization', `Bearer ${operatorToken}`)
+        .send({ first_name: 'Іван', last_name: `Коваль-${randomUUID()}` })
+        .expect(201);
+      supplierId = supplierRes.body.id as string;
+
+      // The shifts block above left one open; make that explicit rather than
+      // depending on describe ordering.
+      const current = await request(app.getHttpServer())
+        .get('/shifts/current')
+        .set('Authorization', `Bearer ${operatorToken}`);
+      if (current.status === 404) {
+        await request(app.getHttpServer())
+          .post('/shifts')
+          .set('Authorization', `Bearer ${operatorToken}`)
+          .expect(201);
+      }
+    }, 30_000);
+
+    it('records a two-line intake and returns the computed total', async () => {
+      const res = await request(app.getHttpServer())
+        .post('/intakes')
+        .set('Authorization', `Bearer ${operatorToken}`)
+        .send({
+          code: '04412',
+          supplier_id: supplierId,
+          items: [
+            {
+              product_grade_id: gradeId,
+              gross_kg: '42.00',
+              pallet_kg: '1.50',
+              tare: [{ tare_type_id: crateId, units: 3 }],
+            },
+            {
+              product_grade_id: gradeId,
+              gross_kg: '20.00',
+              bonus: '-2.00',
+              tare: [{ tare_type_id: crateId, units: 1 }],
+            },
+          ],
+        })
+        .expect(201);
+
+      expect(res.body.code).toMatch(/^[A-Z0-9]{2,8}-IN-\d{8}-04412$/);
+      // (42.00 − 1.50 − 3.60) × 57.00 = 2103.30
+      // (20.00 − 0.00 − 1.20) × 55.00 = 1034.00
+      expect(res.body.amount).toBe('3137.30');
+      expect(res.body.items).toHaveLength(2);
+      expect(res.body.items[0].net_kg).toBe('36.90');
+      expect(res.body.items[1].amount).toBe('1034.00');
+      // numeric is a STRING on the wire, always (foundation §5.1)
+      expect(typeof res.body.items[0].net_kg).toBe('string');
+      // Joined in from the shift — neither is a column on `intakes`.
+      expect(res.body.collection_point_id).toBe(pointId);
+      expect(res.body.business_date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+      intakeId = res.body.id as string;
+    });
+
+    it('refuses the same typed code twice on the same day at the same point', async () => {
+      const res = await request(app.getHttpServer())
+        .post('/intakes')
+        .set('Authorization', `Bearer ${operatorToken}`)
+        .send({
+          code: '04412',
+          supplier_id: supplierId,
+          items: [
+            {
+              product_grade_id: gradeId,
+              gross_kg: '10.00',
+              tare: [{ tare_type_id: crateId, units: 1 }],
+            },
+          ],
+        })
+        .expect(409);
+
+      expect(res.body.code).toBe('INTAKE_CODE_TAKEN');
+    });
+
+    it('refuses a line with no tare', async () => {
+      // §9.1 — «Вкажіть кількість тари — без неї брутто пішло б у чисту вагу
+      // цілком». Refused by the DTO, proving the guard is reachable over HTTP
+      // and not only from the pure module.
+      await request(app.getHttpServer())
+        .post('/intakes')
+        .set('Authorization', `Bearer ${operatorToken}`)
+        .send({
+          code: '04413',
+          supplier_id: supplierId,
+          items: [{ product_grade_id: gradeId, gross_kg: '10.00', tare: [] }],
+        })
+        .expect(400);
+    });
+
+    it('refuses an over-limit bonus with the maximum IN the message', async () => {
+      // The assertion is on the BODY, not just the status: §2.10 is a UI/UX
+      // recommendation about the resting screen, not a rule that the number is
+      // secret (owner, 2026-09-08). A 400 the operator cannot act on is the
+      // failure mode being avoided.
+      const res = await request(app.getHttpServer())
+        .post('/intakes')
+        .set('Authorization', `Bearer ${operatorToken}`)
+        .send({
+          code: '04414',
+          supplier_id: supplierId,
+          items: [
+            {
+              product_grade_id: gradeId,
+              gross_kg: '10.00',
+              bonus: '99.00',
+              tare: [{ tare_type_id: crateId, units: 1 }],
+            },
+          ],
+        })
+        .expect(400);
+
+      expect(JSON.stringify(res.body)).toMatch(/30\.00/);
+    });
+
+    it('returns the nested detail on GET /intakes/:id', async () => {
+      const res = await request(app.getHttpServer())
+        .get(`/intakes/${intakeId}`)
+        .set('Authorization', `Bearer ${operatorToken}`)
+        .expect(200);
+
+      expect(res.body.items).toHaveLength(2);
+      expect(res.body.items[0].item_order).toBe(1);
+      expect(res.body.items[0].tare[0].units).toBe(3);
+    });
+
+    it('refuses one operator the void of another operator’s intake', async () => {
+      // §9.4 — «чужа квитанція → приймальник НІКОЛИ, навіть на своїй точці і в
+      // ту саму зміну». Марія is at the SAME point, in the SAME open shift.
+      const res = await request(app.getHttpServer())
+        .post(`/intakes/${intakeId}/void`)
+        .set('Authorization', `Bearer ${mariaToken}`)
+        .send({ reason: 'не моя квитанція' })
+        .expect(403);
+
+      expect(res.body.code).toBe('NOT_YOUR_DOCUMENT');
+    });
+
+    it('refuses a void with no reason', async () => {
+      // §9.3 — «спроба сторнувати без причини → кнопка неактивна».
+      await request(app.getHttpServer())
+        .post(`/intakes/${intakeId}/void`)
+        .set('Authorization', `Bearer ${operatorToken}`)
+        .send({})
+        .expect(400);
+    });
+
+    it('has no PATCH route', async () => {
+      await request(app.getHttpServer())
+        .patch(`/intakes/${intakeId}`)
+        .set('Authorization', `Bearer ${ownerToken}`)
+        .send({ amount: '1.00' })
+        .expect(404);
+    });
+
+    it('has no DELETE route', async () => {
+      await request(app.getHttpServer())
+        .delete(`/intakes/${intakeId}`)
+        .set('Authorization', `Bearer ${ownerToken}`)
+        .expect(404);
+    });
+
+    it('keeps a voided intake in the journal and flags it', async () => {
+      // §9.3 — «лишається в журналі НАЗАВЖДИ з печаткою СТОРНОВАНО».
+      await request(app.getHttpServer())
+        .post(`/intakes/${intakeId}/void`)
+        .set('Authorization', `Bearer ${operatorToken}`)
+        .send({ reason: 'помилка ваги: 62,40 замість 26,40' })
+        .expect(201);
+
+      const listed = await request(app.getHttpServer())
+        .get('/intakes')
+        .set('Authorization', `Bearer ${operatorToken}`)
+        .expect(200);
+      const found = listed.body.data.find((i: { id: string }) => i.id === intakeId);
+      expect(found.voided_at).not.toBeNull();
+      expect(found.void_reason).toBe('помилка ваги: 62,40 замість 26,40');
+
+      const hidden = await request(app.getHttpServer())
+        .get('/intakes')
+        .query({ include_voided: 'false' })
+        .set('Authorization', `Bearer ${operatorToken}`)
+        .expect(200);
+      expect(hidden.body.data.some((i: { id: string }) => i.id === intakeId)).toBe(false);
+    });
+
+    it('409s voiding the same document twice', async () => {
+      await request(app.getHttpServer())
+        .post(`/intakes/${intakeId}/void`)
+        .set('Authorization', `Bearer ${operatorToken}`)
+        .send({ reason: 'ще раз' })
+        .expect(409);
+    });
+  });
+
 });
