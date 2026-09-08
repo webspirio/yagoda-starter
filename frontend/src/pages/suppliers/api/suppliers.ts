@@ -1,34 +1,8 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { httpClient } from '@/shared/api';
 import { queryKeys } from '@/shared/api/queryKeys';
-import { STALE } from '@/shared/api/queryClient';
-import type {
-  CreateSupplierInput,
-  Paginated,
-  Supplier,
-  UpdateSupplierInput,
-} from '../model/supplier';
-
-/**
- * Scoped server-side from the token: an operator sees only their own point's
- * suppliers, the owner sees all. `search` drives the backend's single `q` box
- * (sniffed into a name lane or a phone lane) — passed only when non-empty, so a
- * cleared search reuses the unfiltered cache entry. `include_inactive` is NOT
- * sent: the browsable list shows active suppliers and grows unbounded.
- */
-export function useSuppliersQuery(search: string) {
-  const q = search.trim();
-  return useQuery({
-    queryKey: [...queryKeys.suppliers, search],
-    queryFn: async (): Promise<Paginated<Supplier>> => {
-      const { data } = await httpClient.get<Paginated<Supplier>>('/suppliers', {
-        params: q ? { q } : undefined,
-      });
-      return data;
-    },
-    staleTime: STALE.list,
-  });
-}
+import type { Supplier } from '@/entities/supplier';
+import type { CreateSupplierInput, UpdateSupplierInput } from '../model/supplier';
 
 export function useCreateSupplierMutation() {
   const qc = useQueryClient();

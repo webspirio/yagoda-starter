@@ -1,13 +1,7 @@
 import { useState } from 'react';
 import { Controller, useForm, useWatch } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/shared/ui/dialog';
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/shared/ui/dialog';
 import { Field } from '@/shared/ui/field';
 import { TextInput } from '@/shared/ui/text-input';
 import { SelectField } from '@/shared/ui/select-field';
@@ -17,11 +11,11 @@ import { Button } from '@/shared/ui/button';
 import { toast } from '@/shared/ui/toast';
 import { usePointOptionsQuery } from '@/entities/collection-point';
 import { useMeQuery } from '@/entities/user';
+import type { Supplier } from '@/entities/supplier';
 import { useCreateSupplierMutation, useUpdateSupplierMutation } from '../api/suppliers';
 import { apiErrorToFields } from '../lib/apiErrorToFields';
 import type {
   CreateSupplierInput,
-  Supplier,
   SupplierFormValues,
   UpdateSupplierInput,
 } from '../model/supplier';

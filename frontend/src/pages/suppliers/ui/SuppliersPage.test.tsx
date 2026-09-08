@@ -3,7 +3,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { expectNoAxeViolations } from '../../../test-axe';
 import { SuppliersPage } from './SuppliersPage';
-import type { Supplier } from '../model/supplier';
+import type { Supplier } from '@/entities/supplier';
 import type { Me } from '@/entities/user';
 
 const { queryMock, createMock, updateMock, meMock } = vi.hoisted(() => ({
@@ -13,8 +13,11 @@ const { queryMock, createMock, updateMock, meMock } = vi.hoisted(() => ({
   meMock: vi.fn(),
 }));
 
-vi.mock('../api/suppliers', () => ({
+vi.mock('@/entities/supplier', () => ({
   useSuppliersQuery: () => queryMock(),
+}));
+
+vi.mock('../api/suppliers', () => ({
   useCreateSupplierMutation: () => ({ mutateAsync: createMock }),
   useUpdateSupplierMutation: () => ({ mutateAsync: updateMock }),
 }));

@@ -9,9 +9,9 @@ import { EmptyState } from '@/shared/ui/empty-state';
 import { Spinner } from '@/shared/ui/spinner';
 import { useDebouncedValue } from '@/shared/lib/useDebouncedValue';
 import { usePointOptionsQuery } from '@/entities/collection-point';
-import { useSuppliersQuery } from '../api/suppliers';
+import { useSuppliersQuery } from '@/entities/supplier';
+import type { Supplier } from '@/entities/supplier';
 import { SupplierFormDialog } from './SupplierFormDialog';
-import type { Supplier } from '../model/supplier';
 
 export function SuppliersPage() {
   const { t } = useTranslation();
