@@ -134,7 +134,12 @@ inventory for the money slices, which get their own brainstorming + backend late
 dialog, table, tabs, select, switch, input→text-input, sheet→drawer, popover, scroll-area,
 separator, command, chart) plus its signature components (§6). The starter's visual primitives
 are **superseded**, not merged with: where both define one (e.g. `StatTile`, `button`), the
-mock's replaces the starter's, so there is one kit, not two. The only starter pieces that stay
+mock's replaces the starter's, so there is one kit, not two.
+
+> **Amendment (2026-09-08, colours portion):** *colours, surfaces and radii* are the mock's;
+> *sizes* stay the starter's — the 46px / 16px-floor text controls (`field.tsx`, iOS no-zoom)
+> and the `h-9` / 44px `cta` buttons are touch rules the mock's 32px controls would break. This
+> is deliberate, not an unfinished port: do not "correct" the heights back to the mock's. The only starter pieces that stay
 under `shared/` are the non-visual/structural ones — `shared/api`, `shared/lib/*` (env, i18n,
 url-state, form-draft, theme, upload) — per the §0a seam. Existing starter screens are moved
 onto the mock kit in the same portion (§10).

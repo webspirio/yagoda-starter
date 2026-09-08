@@ -74,6 +74,48 @@ describe('dev seed', () => {
     }
   });
 
+  it('never buries a price someone set by hand — a lone hand-set row gets no seeded correction', async () => {
+    // Simulate a developer who priced one correction pair by hand BEFORE the
+    // seed ever ran: wipe the pair, insert one row that is not the seed's
+    // base, re-seed, and expect that row to still be the newest.
+    const c = SEED_PRICE_CHANGES[0];
+    const [pair] = await ds.query(
+      `SELECT cp.id AS point_id, pg.id AS grade_id
+         FROM collection_points cp, product_grades pg
+         JOIN products p ON p.id = pg.product_id
+        WHERE cp.name = $1 AND p.name = $2 AND pg.name = $3`,
+      [c.point, c.product, c.grade],
+    );
+    await ds.query(
+      `DELETE FROM grade_prices WHERE collection_point_id = $1 AND product_grade_id = $2`,
+      [pair.point_id, pair.grade_id],
+    );
+    const [owner] = await ds.query(
+      `SELECT id FROM users WHERE role = 'network_owner' ORDER BY created_at LIMIT 1`,
+    );
+    await ds.query(
+      `INSERT INTO grade_prices
+         (collection_point_id, product_grade_id, base_price, max_markup, max_discount, created_by_user_id, reason)
+       VALUES ($1, $2, '999.00', '30.00', '30.00', $3, 'set by hand')`,
+      [pair.point_id, pair.grade_id, owner.id],
+    );
+
+    const run = await seedDev(ds);
+    expect(run.prices).toBe(0);
+    const rows: { base_price: string }[] = await ds.query(
+      `SELECT base_price FROM grade_prices WHERE collection_point_id = $1 AND product_grade_id = $2`,
+      [pair.point_id, pair.grade_id],
+    );
+    expect(rows).toEqual([{ base_price: '999.00' }]);
+
+    // Restore the seed's own journal for the pair so the other cases stay true on re-run.
+    await ds.query(
+      `DELETE FROM grade_prices WHERE collection_point_id = $1 AND product_grade_id = $2`,
+      [pair.point_id, pair.grade_id],
+    );
+    await seedDev(ds);
+  });
+
   it('a seeded operator can sign in with the documented password and is pinned to their point', async () => {
     const [row] = await ds.query(
       `SELECT c.password_hash, u.role, cp.name AS point

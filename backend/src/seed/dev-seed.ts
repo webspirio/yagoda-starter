@@ -184,12 +184,21 @@ export async function seedDev(ds: DataSource): Promise<DevSeedSummary> {
 
     for (const s of SEED_SUPPLIERS) {
       const pid = pointId.get(s.point)!;
-      const found = await one<{ id: string }>(
-        qr,
-        `SELECT id FROM suppliers
-          WHERE collection_point_id = $1 AND lower(first_name) = lower($2) AND lower(last_name) = lower($3)`,
-        [pid, s.first_name, s.last_name],
-      );
+      // The schema's own key is (point, phone) — UQ_suppliers_point_phone — so a
+      // phoned supplier is looked up by it (a renamed row must not collide on
+      // re-run); the phoneless ones fall back to the names.
+      const found = s.phone
+        ? await one<{ id: string }>(
+            qr,
+            `SELECT id FROM suppliers WHERE collection_point_id = $1 AND phone = $2`,
+            [pid, s.phone],
+          )
+        : await one<{ id: string }>(
+            qr,
+            `SELECT id FROM suppliers
+              WHERE collection_point_id = $1 AND lower(first_name) = lower($2) AND lower(last_name) = lower($3)`,
+            [pid, s.first_name, s.last_name],
+          );
       if (found) continue;
       await qr.query(
         `INSERT INTO suppliers (collection_point_id, first_name, last_name, phone, kind, note, is_active)
@@ -227,17 +236,23 @@ export async function seedDev(ds: DataSource): Promise<DevSeedSummary> {
       }
     }
 
-    // Intraday corrections — appended only while the pair holds the seed's
-    // single base row, so a price someone set by hand is never buried.
+    // Intraday corrections — appended only while the pair holds exactly ONE
+    // row and that row is recognisably the seed's own base (no reason, authored
+    // by the owner, at the seed's base price). A single row someone set by hand
+    // before the first run fails that test, so it is never buried.
     for (const [i, c] of SEED_PRICE_CHANGES.entries()) {
+      const point = SEED_POINTS.find((p) => p.name === c.point)!;
+      const grade = SEED_GRADES.find((g) => g.product === c.product && g.name === c.grade)!;
       const pid = pointId.get(c.point)!;
       const gid = gradeId.get(gradeKey(c.product, c.grade))!;
-      const existing = await one<{ n: number }>(
+      const existing = await one<{ n: number; seed: number }>(
         qr,
-        `SELECT count(*)::int AS n FROM grade_prices WHERE collection_point_id = $1 AND product_grade_id = $2`,
-        [pid, gid],
+        `SELECT count(*)::int AS n,
+                count(*) FILTER (WHERE reason IS NULL AND created_by_user_id = $3 AND base_price = $4)::int AS seed
+           FROM grade_prices WHERE collection_point_id = $1 AND product_grade_id = $2`,
+        [pid, gid, ownerId, addMoney(grade.base_price, point.price_offset)],
       );
-      if (existing!.n !== 1) continue;
+      if (existing!.n !== 1 || existing!.seed !== 1) continue;
       await qr.query(
         `INSERT INTO grade_prices
            (collection_point_id, product_grade_id, base_price, max_markup, max_discount, created_by_user_id, reason, created_at)
@@ -277,7 +292,8 @@ async function resolveOwner(qr: QueryRunner, summary: DevSeedSummary): Promise<s
     qr,
     `SELECT i.user_id FROM user_identities i
        JOIN users u ON u.id = i.user_id
-      WHERE i.provider = 'local' AND i.provider_user_id = 'admin' AND u.role = 'network_owner'`,
+      WHERE i.provider = 'local' AND i.provider_user_id = 'admin'
+        AND u.role = 'network_owner' AND u.is_active`,
   );
   if (admin) return admin.user_id;
 

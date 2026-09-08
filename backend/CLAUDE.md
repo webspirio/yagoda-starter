@@ -157,6 +157,10 @@ Runs from the host (`.env`'s `DB_HOST=localhost`; compose publishes Postgres on
 5432) or inside the container (`docker compose exec backend npm run seed:dev -w backend`).
 `src/seed/dev-seed.db-spec.ts` proves idempotency and the journal ordering
 against a real Postgres; `dev-seed.spec.ts` checks the dataset's own consistency.
+Because that spec seeds `app_test` and nothing truncates it, the throwaway database
+carries the demo dataset permanently after a `test:db` run — every other db-spec
+already scopes its fixtures by a per-run uuid, and that convention is now load-bearing.
+The CLI also refuses a non-local `DB_HOST` unless `SEED_ALLOW_REMOTE_DB=1`.
 
 **Workflow for schema changes:**
 
