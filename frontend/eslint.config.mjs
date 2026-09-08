@@ -104,14 +104,18 @@ export default tseslint.config(
   },
   {
     files: ['src/shared/**/*.ts', 'src/shared/**/*.tsx'],
-    ...forbidLayers(['entities', 'features', 'pages', 'app']),
+    ...forbidLayers(['entities', 'features', 'widgets', 'pages', 'app']),
   },
   {
     files: ['src/entities/**/*.ts', 'src/entities/**/*.tsx'],
-    ...forbidLayers(['features', 'pages', 'app']),
+    ...forbidLayers(['features', 'widgets', 'pages', 'app']),
   },
   {
     files: ['src/features/**/*.ts', 'src/features/**/*.tsx'],
+    ...forbidLayers(['widgets', 'pages', 'app']),
+  },
+  {
+    files: ['src/widgets/**/*.ts', 'src/widgets/**/*.tsx'],
     ...forbidLayers(['pages', 'app']),
   },
   {

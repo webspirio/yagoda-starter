@@ -68,9 +68,11 @@ only import from layers below it) are enforced by ESLint (`no-restricted-imports
 relying on review to catch it. The rule catches DIRECTION only: a same-layer
 cross-import (e.g. `entities/payout` reaching into `entities/intake`) compiles and
 lints clean, so keeping slices independent within a layer is a review discipline,
-not something lint enforces. There's no `widgets/` layer yet (it sits between
-`features` and `pages` in FSD, for composed UI shared across multiple pages); add it
-if/when something actually needs that — don't pre-create the empty folder.
+not something lint enforces. `widgets/receipt` is the first (and so far only)
+`widgets/` slice — it sits between `features` and `pages` in FSD, for composed UI
+shared across multiple pages: the printable receipt (`ReceiptDialog`) is opened from
+the reception screen, the day screen and the supplier card alike, so it can't live
+inside any single one of them.
 
 `shared/lib/form-draft` ships as tested, ready-to-use infrastructure carried
 over from the boilerplate this starter was extracted from, but nothing consumes
