@@ -437,3 +437,29 @@ not own or to a report nothing calls yet.
   with real coverage in `documents-pipeline.db-spec.ts`, so they could be
   demoted to one "both `voided_at` filters are present" check and let the
   db-spec own the behaviour.
+
+## Learned from the demo scaffolding (2026-09-08, since removed)
+
+A seed migration and a throwaway `/dev` page were built to eyeball this slice
+in a browser, then deleted once it had been checked. Two findings outlive them:
+
+- **A dev seed must guard on `NODE_ENV === 'development'`, not on
+  `!== 'production'`.** `SeedDevAdmin` uses the latter, which is right for one
+  account but wrong for anything that inserts domain rows: the `*.db-spec.ts`
+  suites run every migration against `app_test` with `NODE_ENV=test`, so specs
+  asserting what a catalog list contains would fail on rows they never created.
+
+- **`/grade-prices/current` is documented as the intake picker read but
+  returns no labels** — only `product_grade_id`, so a caller needs
+  `/product-grades` and `/products` as well and has to join all three
+  client-side. The real intake screen will want either the product and grade
+  names on that response or a purpose-built picker read. Worth deciding when
+  that slice is specced rather than discovering it in the UI again.
+
+- **The whole slice was exercised by hand and behaved.** §2.4's own worked row
+  (552,30 − 14,30 − 100 × 1,20 = 418,00 × 65,00) produced `27170.00` through
+  the route; a repeated tare type answered `400 TARE_TYPE_DUPLICATED`; a payout
+  one kopiyka over the balance answered `400 PAYOUT_EXCEEDS_DEBT` naming the
+  balance; a second operator voiding a colleague's receipt in the same open
+  shift answered `403 NOT_YOUR_DOCUMENT`; and an operator at the other point
+  saw both journals empty.
