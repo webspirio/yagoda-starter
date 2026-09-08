@@ -44,6 +44,9 @@ function normalizeAmount(value: string): string {
  * `pointId` is omitted for an operator (their point comes from the token);
  * the owner's caller passes the picked point so `collection_point_id`
  * travels with the request.
+ *
+ * The parent remounts it via a changing `key` on every open, so the prefilled
+ * amount and code only reset when the whole `PayoutDialog` instance remounts.
  */
 export function PayoutDialog({
   supplier,

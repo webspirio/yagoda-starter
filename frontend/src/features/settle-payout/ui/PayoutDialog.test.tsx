@@ -129,6 +129,18 @@ describe('PayoutDialog', () => {
     expect(screen.getByLabelText('Amount')).toHaveValue('10944.00');
   });
 
+  it('renders the exact submit-label with formatted amount', async () => {
+    render(
+      <PayoutDialog supplier={supplier} pointId="p1" debt="10944.00" open onClose={vi.fn()} />,
+    );
+
+    const amountField = screen.getByLabelText('Amount');
+    await userEvent.clear(amountField);
+    await userEvent.type(amountField, '4000');
+
+    expect(screen.getByRole('button', { name: 'Pay out 4,000.00 ₴' })).toBeInTheDocument();
+  });
+
   it('upper-cases the typed receipt number', async () => {
     render(
       <PayoutDialog supplier={supplier} pointId="p1" debt="10944.00" open onClose={vi.fn()} />,
