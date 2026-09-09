@@ -12,8 +12,15 @@ import { timezoneConfig } from '../config/timezone.config';
  * the one place the timezone is already a bind parameter — so this service
  * needs no clock injected and both database specs can construct it with
  * nothing but a `DataSource`.
+ *
+ * IT TAKES SQL NAMINGS, NOT VALUES, for the same reason `cashSql` does: the
+ * CALLER owns its own bind numbering. An earlier draft was a constant with
+ * `$2` and `$3` baked in, which would have forced the list query in the next
+ * task — five parameters of its own — to bend its bind order around a literal
+ * defined in this file.
  */
-const ASOF = `COALESCE($2::date, (now() AT TIME ZONE $3::text)::date)`;
+const asOfSql = (asOf: string, tz: string): string =>
+  `COALESCE(${asOf}::date, (now() AT TIME ZONE ${tz}::text)::date)`;
 
 /**
  * THE BERRY CASH FORMULA, WRITTEN ONCE. `point` is the SQL naming whose drawer
@@ -138,7 +145,7 @@ export class PointCashService {
     const runner = manager ?? this.dataSource.manager;
     // `::text` on the numeric expression so the value never passes through a
     // JS number on its way out of the driver (foundation §5.1).
-    const sql = `SELECT ${cashSql('$1::uuid', ASOF, '$3')}::text AS cash`;
+    const sql = `SELECT ${cashSql('$1::uuid', asOfSql('$2', '$3'), '$3')}::text AS cash`;
     const [row] = (await runner.query(sql, [pointId, asOf ?? null, this.tz.appTimezone])) as {
       cash: string;
     }[];
@@ -147,4 +154,4 @@ export class PointCashService {
   }
 }
 
-export { cashSql, ASOF };
+export { cashSql, asOfSql };

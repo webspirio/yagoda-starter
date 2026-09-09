@@ -9,10 +9,12 @@ import { PointCashService } from './point-cash.service';
  * below is one branch that would silently return the wrong number if a later
  * reader "tidied" it.
  *
- * Four of the twelve exist specifically to stop someone harmonising the two
+ * Five of the thirteen exist specifically to stop someone harmonising the two
  * opposite readings of `voided_at`: voided PAYOUTS stay subtracted (the money
  * left the drawer), voided TRANSFERS stop being added (no valid document
- * accounts for them). §9.3 — «інакше сторно стає способом красти».
+ * accounts for them). §9.3 — «інакше сторно стає способом красти». Scenario 13 is
+ * narrower still: it defends the PLACEMENT of the transfer filter, which no
+ * other scenario can distinguish.
  *
  * THE TIMEZONE IS PINNED, NOT INHERITED. The service is constructed with an
  * explicit `{ appTimezone: 'Europe/Kyiv' }` for EVERY scenario, not only
@@ -251,5 +253,34 @@ describe('PointCashService.cashFor (Postgres)', () => {
     const p = await newPoint();
     await transfer(p, { cash: '1000.00', accepted_date: '2026-09-02' });
     await expect(service.cashFor(p)).resolves.toBe('1000.00');
+  });
+
+  /**
+   * THIS SCENARIO EXISTS TO FAIL IF `voided_at IS NULL` EVER MOVES INTO THE
+   * `CASE`. Scenario 3 does not defend that placement: a voided ACCEPTED
+   * transfer yields NULL under either arrangement, so `WHEN t.status =
+   * 'accepted' AND t.voided_at IS NULL` would keep it green. The row with no
+   * coverage until now is this one — disputed, then RESOLVED, then VOIDED —
+   * which under that "tidy" falls through to the `resolved_at IS NOT NULL`
+   * arm and goes on adding `resolved_cash` to the drawer forever. That is the
+   * theft path §9.3 names. The filter belongs in the outer `WHERE`, where
+   * voided beats resolved; nothing but this test says so in code.
+   */
+  it('13. a RESOLVED dispute that is then voided adds nothing — the void filter must stay in the outer WHERE, not the CASE', async () => {
+    const p = await newPoint();
+    await transfer(p, {
+      cash: '150000.00',
+      status: 'disputed',
+      reported_cash: '140000.00',
+      dispute_note: 'мішок легший',
+      resolved_cash: '145000.00',
+      resolved_crates: 200,
+      resolved_by_user_id: ownerId,
+      resolved_at: new Date(),
+      voided_at: new Date(),
+      voided_by_user_id: ownerId,
+      void_reason: 'дубль',
+    });
+    await expect(service.cashFor(p, '2026-09-30')).resolves.toBe('0.00');
   });
 });
