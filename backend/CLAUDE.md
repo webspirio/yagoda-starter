@@ -100,7 +100,9 @@ src/
   shifts/                 # one point's working day — the ONLY home of a document's point and business_date. Open/close are OPERATOR-only (§10.3), reopen is owner-only. No cash: `close` is a timestamp until cash_counts lands
   intakes/                # the berry receipt — one aggregate, three entities, ONE POST in one transaction. `intake-lines.ts` is pure and holds every computation in the slice. `POST /intakes/preview` (200, both roles) is `create` minus the write — same body without `code`, same snapshots, same refusals — for the reception screen's live numbers
   payouts/                # cash over the counter — the debt half of §3.6's ceiling behind a supplier row lock; `settle-return` records cash physically coming back after a void
+  transfers/              # money and empty crates travelling from the base to a point (§7.9), the only thing that puts cash INTO a point's drawer. Five verbs: create/resolve/void are owner-only, accept and dispute are the POINT's alone and refused to the owner (§10.3). Carries its own `collection_point_id` and `accepted_date` rather than getting them from a shift — the one money document that needs no open shift. A voided transfer keeps `status = 'accepted'`, so every cash query filters `voided_at IS NULL` itself
   supplier-balance/       # owns ONE query: Σ intakes − Σ payouts, with `voided_at IS NULL` on both halves — served per supplier (`GET /suppliers/:id/balance`) and per point (`GET /supplier-balances`, the «Залишки» list: same SQL correlated per row, paginated in Postgres, `include_zero=false` by default but a deactivated supplier with a balance stays listed). Writes nothing, owns no table
+  point-cash/              # owns ONE query: accepted transfers in, payouts out, settled returns back, as of a date. Writes nothing, owns no table, same shape as `supplier-balance/`. Serves `GET /point-cash` (the one screen both roles open, §7.10) and `GET /point-cash/:pointId`. Voided PAYOUTS stay subtracted while voided TRANSFERS stop being added — the same column read two opposite ways, §9.3
   user-admin/             # owner-only POST /users, PATCH /users/:id, PUT /users/:id/password — the only way an account is created
   current-user/          # /me — read, update language_code, avatar upload (the one controller that reads/writes User; identity fields are owner-managed via user-admin)
   audit/                 # append-only audit log (AUDIT_ACTIONS union + AuditService)
@@ -110,7 +112,7 @@ src/
   redis/                 # global RedisModule — shared ioredis client (REDIS_CLIENT token)
   time/                   # TimeService — the one seam for timezone-aware time (APP_TIMEZONE)
   config/                 # typed, namespaced env config factories (app, database, auth, redis, timezone, uploads)
-  migrations/             # InitialSchema, SeedDevAdmin (guarded off in production), YagodaFoundation, BootstrapOwner, IndexUserIdentityUser, YagodaCatalog, YagodaSuppliersAndPrices, YagodaIntakesAndPayouts
+  migrations/             # InitialSchema, SeedDevAdmin (guarded off in production), YagodaFoundation, BootstrapOwner, IndexUserIdentityUser, YagodaCatalog, YagodaSuppliersAndPrices, YagodaIntakesAndPayouts, YagodaTransfers
   seed/                   # dev-seed — idempotent demo dataset for manual testing (`npm run seed:dev`); NOT a migration, never runs on its own
 ```
 

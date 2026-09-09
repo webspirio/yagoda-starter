@@ -1,8 +1,9 @@
 import { IsString, Length, Matches } from 'class-validator';
 
 /**
- * Shared by `intakes` and `payouts`: §9.3 governs both identically — «сторно
- * повне, з обов'язковою причиною» — and two copies of one rule drift.
+ * Shared by `intakes`, `payouts` and `transfers`: §9.3 governs all three
+ * identically — «сторно повне, з обов'язковою причиною» — and separate copies
+ * of one rule drift.
  *
  * The reason is MANDATORY, and that is the whole argument for why voiding is a
  * trio of columns rather than a status value: «спроба сторнувати без причини →
