@@ -179,10 +179,13 @@ export class TransfersService {
    * reaches the owner — would never be written.
    */
   async accept(actor: AuthenticatedUser, id: string): Promise<TransferResponse> {
-    return this.transition(actor, id, 'transfer.accepted', (transfer, now, today) => {
+    return this.transition(actor, id, 'transfer.accepted', (transfer, now, businessDate) => {
       transfer.status = TransferStatus.Accepted;
-      this.stampArrival(transfer, actor, now, today);
-      return { after: { status: TransferStatus.Accepted, accepted_date: today }, note: null };
+      this.stampArrival(transfer, actor, now, businessDate);
+      return {
+        after: { status: TransferStatus.Accepted, accepted_date: businessDate },
+        note: null,
+      };
     });
   }
 
@@ -194,16 +197,16 @@ export class TransfersService {
     id: string,
     dto: DisputeTransferDto,
   ): Promise<TransferResponse> {
-    return this.transition(actor, id, 'transfer.disputed', (transfer, now, today) => {
+    return this.transition(actor, id, 'transfer.disputed', (transfer, now, businessDate) => {
       transfer.status = TransferStatus.Disputed;
-      this.stampArrival(transfer, actor, now, today);
+      this.stampArrival(transfer, actor, now, businessDate);
       transfer.reported_cash = dto.reported_cash;
       transfer.reported_crates = dto.reported_crates;
       transfer.dispute_note = dto.dispute_note.trim();
       return {
         after: {
           status: TransferStatus.Disputed,
-          accepted_date: today,
+          accepted_date: businessDate,
           reported_cash: dto.reported_cash,
           reported_crates: dto.reported_crates,
         },
@@ -266,7 +269,7 @@ export class TransfersService {
     apply: (
       transfer: Transfer,
       now: Date,
-      today: string,
+      businessDate: string,
     ) => { after: Record<string, unknown>; note: string | null },
   ): Promise<TransferResponse> {
     // §7.9 with §10.3 — «керівник не може зробити це за неї». The owner is

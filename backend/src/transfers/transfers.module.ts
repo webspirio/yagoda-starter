@@ -17,8 +17,11 @@ import { timezoneConfig } from '../config/timezone.config';
  * §4.1. `ShiftsService.findOpenAtPoint` takes an `EntityManager`, so the
  * lookup happens inside the same transaction as the write.
  *
- * NO CYCLE: `shifts` imports `point-cash` for its movement arithmetic, and
- * `point-cash` imports nothing but `ConfigModule`.
+ * `TransfersModule` importing `ShiftsModule` is safe because `ShiftsModule`
+ * imports neither this module nor anything that reaches back to it — its
+ * imports are `AuditModule` and `CollectionPointsModule`. A later slice gives
+ * `shifts` a dependency on `point-cash` for the movement arithmetic; that
+ * stays acyclic too, because `point-cash` imports nothing but `ConfigModule`.
  *
  * `ConfigModule.forFeature(timezoneConfig)` IS REQUIRED, not decorative: the
  * list's date filter compares `sent_at` — a `timestamptz` — against a local
