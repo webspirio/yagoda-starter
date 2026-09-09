@@ -219,6 +219,12 @@ happened.
 
 ### 6.4 No open shift is required — RULING 3
 
+> **SUPERSEDED 2026-09-09 by the cash counts slice (`2026-09-09-yagoda-cash-counts-slice.md`
+> §4.1).** Accepting a transfer now REQUIRES an open shift, and `accepted_date` comes from that
+> shift's `business_date` rather than from the clock. The reasoning below is preserved because it
+> is still why `transfers` carries no `shift_id`; only the no-open-shift-required conclusion is
+> reversed.
+
 `transfers` is the only money document that carries `collection_point_id` **directly**.
 `intakes` and `payouts` deliberately store neither point nor date and learn both from
 `shift_id`; this table stores its own point and its own `accepted_date`. That is a design
@@ -293,6 +299,11 @@ payouts written so far. The module header must say this, because the next reader
 a timestamp.
 
 ### 6.6 `point-cash` — the read module
+
+> **SUPERSEDED 2026-09-09 by the cash counts slice §3.2.** The go-live ceremony described here —
+> the owner sending each point a transfer for its opening balance — is retired. A point's opening
+> balance is now its first cash count. The rest of this section, on why there is no
+> `cashBookFrom` setting, still stands.
 
 `cashFor(pointId, asOf?, manager?)` returns the berry cash as a decimal string; `asOf` defaults
 to today's local date. The optional `EntityManager` follows `SupplierBalanceService.debtFor` so
