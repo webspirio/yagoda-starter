@@ -83,20 +83,31 @@ export async function seedDev(ds: DataSource): Promise<DevSeedSummary> {
 
     const pointId = new Map<string, string>();
     for (const p of SEED_POINTS) {
-      const found = await one<{ id: string }>(
+      const found = await one<{ id: string; code: string }>(
         qr,
-        `SELECT id FROM collection_points WHERE lower(name) = lower($1)`,
+        `SELECT id, code FROM collection_points WHERE lower(name) = lower($1)`,
         [p.name],
       );
       if (found) {
         pointId.set(p.name, found.id);
+        // The ONE exception to «existing rows are never modified»: the
+        // YagodaIntakesAndPayouts migration backfills `code` with a placeholder
+        // (`P01`, `P02`, …) on databases seeded before the column existed. A
+        // placeholder is not a hand edit, so it is replaced by the seed's code;
+        // any other value is somebody's choice and stays.
+        if (/^P\d{2,}$/.test(found.code) && found.code !== p.code) {
+          await qr.query(`UPDATE collection_points SET code = $1 WHERE id = $2`, [
+            p.code,
+            found.id,
+          ]);
+        }
         continue;
       }
       const row = await one<{ id: string }>(
         qr,
-        `INSERT INTO collection_points (name, kind, target_cash, target_crates, is_active)
-         VALUES ($1, $2, $3, $4, $5) RETURNING id`,
-        [p.name, p.kind, p.target_cash, p.target_crates, p.is_active],
+        `INSERT INTO collection_points (name, code, kind, target_cash, target_crates, is_active)
+         VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
+        [p.name, p.code, p.kind, p.target_cash, p.target_crates, p.is_active],
       );
       pointId.set(p.name, row!.id);
       summary.points += 1;
