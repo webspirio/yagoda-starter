@@ -7,6 +7,7 @@ export interface PointCashRow {
   target_cash: string | null;
   cash: string;
   shortfall: string | null;
+  unexplained_difference: string;
   latest_transfer_status: TransferStatus | null;
   latest_transfer_sent_at: Date | null;
 }
@@ -32,6 +33,22 @@ export interface PointCashRowResponse {
   target_cash: string | null;
   cash: string;
   shortfall: string | null;
+  /**
+   * `Σ (counted − expected)` over every count at this point — how far the
+   * drawer has drifted from what the documents say, since the first count.
+   *
+   * IT IS NOT A SECOND STORED LINE, and it never needed to be: the count chain
+   * and the document line can differ by the recorded discrepancies and by
+   * nothing else, so this sum IS the divergence (spec §3.1).
+   *
+   * EXPLAINED INCIDENTS ARE STILL IN IT. An explanation changes what is open,
+   * never what is true — §7.7's «розбіжність у документі лишається».
+   *
+   * INCLUDES EVERY KIND, `midday` too: a midday count never ANCHORS the cash
+   * figure (§8), but a discrepancy it recorded is still a discrepancy that
+   * happened.
+   */
+  unexplained_difference: string;
   latest_transfer: { status: TransferStatus; sent_at: Date } | null;
 }
 
@@ -44,6 +61,7 @@ export function toPointCashRowResponse(row: PointCashRow): PointCashRowResponse 
     target_cash: row.target_cash,
     cash: row.cash,
     shortfall: row.shortfall,
+    unexplained_difference: row.unexplained_difference,
     latest_transfer:
       row.latest_transfer_status && row.latest_transfer_sent_at
         ? { status: row.latest_transfer_status, sent_at: row.latest_transfer_sent_at }

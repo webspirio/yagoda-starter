@@ -703,4 +703,50 @@ describe('PointCashService.list (Postgres)', () => {
     expect(page.data).toHaveLength(1);
     expect(page.data[0].collection_point_id).toBe(withoutTarget);
   });
+
+  // NOTE: the `PointCashService.list` describe opens its OWN DataSource, so the
+  // outer block's `shift`/`count`/`newPoint` helpers are not in scope here —
+  // they close over a different connection. These fixtures are local on purpose.
+  const localShift = async (pointId: string, businessDate: string): Promise<string> => {
+    const [{ id }] = (await ds.query(
+      `INSERT INTO shifts (collection_point_id, opened_by_user_id, business_date,
+                           closed_at, closed_by_user_id, status)
+       VALUES ($1, $2, $3, now(), $2, 'closed') RETURNING id`,
+      [pointId, ownerId, businessDate],
+    )) as { id: string }[];
+    return id;
+  };
+  const localCount = (
+    shiftId: string,
+    kind: 'opening' | 'closing',
+    counted: string,
+    expected: string,
+  ) =>
+    ds.query(
+      `INSERT INTO cash_counts (shift_id, book, kind, counted_amount, expected_amount,
+                                counted_by_user_id, counted_at)
+       VALUES ($1, 'berry', $2, $3, $4, $5, now())`,
+      [shiftId, kind, counted, expected, ownerId],
+    );
+
+  it('unexplained_difference is Σ(counted − expected), and explaining does NOT change it', async () => {
+    const tag = randomUUID().slice(0, 8);
+    const [{ id: p }] = (await ds.query(
+      `INSERT INTO collection_points (name, code, kind, target_cash, is_active)
+       VALUES ($1, $2, 'reception', '500000.00', true) RETURNING id`,
+      [`Точка ${tag}`, `D${tag.slice(0, 6).toUpperCase()}`],
+    )) as { id: string }[];
+
+    const s1 = await localShift(p, '2026-09-01');
+    await localCount(s1, 'opening', '1000.00', '1000.00');
+    await localCount(s1, 'closing', '990.00', '1000.00'); // −10
+    const s2 = await localShift(p, '2026-09-02');
+    await localCount(s2, 'opening', '990.00', '990.00');
+    await localCount(s2, 'closing', '980.00', '990.00'); // −10
+    await ds.query(`UPDATE shifts SET explanation = 'знайшли причину' WHERE id = $1`, [s2]);
+
+    const page = await service.list(owner, query({ collection_point_id: p }) as never);
+    // §6.5 — an explanation changes what is OPEN, never what is TRUE.
+    expect(page.data[0].unexplained_difference).toBe('-20.00');
+  });
 });

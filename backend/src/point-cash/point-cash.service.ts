@@ -19,11 +19,10 @@ import { PointCashRow, PointCashRowResponse, toPointCashRowResponse } from './po
  * needs no clock injected and both database specs can construct it with
  * nothing but a `DataSource`.
  *
- * IT TAKES SQL NAMINGS, NOT VALUES, for the same reason `cashSql` does: the
- * CALLER owns its own bind numbering. An earlier draft was a constant with
- * `$2` and `$3` baked in, which would have forced the list query in the next
- * task — five parameters of its own — to bend its bind order around a literal
- * defined in this file.
+ * IT TAKES SQL NAMINGS, NOT VALUES, because the CALLER owns its own bind
+ * numbering. An earlier draft was a constant with `$2` and `$3` baked in,
+ * which would have forced the list query — five parameters of its own — to
+ * bend its bind order around a literal defined in this file.
  */
 const asOfSql = (asOf: string, tz: string): string =>
   `COALESCE(${asOf}::date, (now() AT TIME ZONE ${tz}::text)::date)`;
@@ -308,7 +307,23 @@ export class PointCashService {
                           + CASE WHEN a.kind = 'opening' THEN ${movementsSql('a.shift_id', '$3')}
                                  ELSE 0.00 END)
                     FROM ${anchorSql('cp.id', asOfSql('$2', '$3'))} a
-                ), 0.00) AS cash
+                ), 0.00) AS cash,
+                -- §3.1 — the count chain and the document line can differ by
+                -- the recorded discrepancies and by nothing else, so this SUM
+                -- IS the divergence. It is free: no second stored line, no
+                -- write path of its own. EXPLAINED INCIDENTS STAY IN IT — an
+                -- explanation changes what is OPEN, never what is TRUE (§7.7).
+                -- EVERY KIND counts, midday included: a midday count never
+                -- ANCHORS the cash figure (§8), but a discrepancy it recorded
+                -- is still a discrepancy that happened. Unlike the anchor
+                -- above, this is NOT only_discrepancies-filtered -- that
+                -- predicate belongs to a different read with a different
+                -- question.
+                COALESCE((SELECT SUM(c.counted_amount - c.expected_amount)
+                            FROM cash_counts c
+                            JOIN shifts sh ON sh.id = c.shift_id
+                           WHERE sh.collection_point_id = cp.id
+                             AND c.book = 'berry'), 0.00) AS unexplained_difference
            FROM collection_points cp
           WHERE ($1::uuid IS NULL OR cp.id = $1::uuid)
        )
@@ -318,6 +333,7 @@ export class PointCashService {
               -- NULL propagates: a point with no target gets a null shortfall
               -- with no CASE and no branch to forget.
               (s.target_cash - s.cash)::text AS shortfall,
+              s.unexplained_difference::text AS unexplained_difference,
               lt.status  AS latest_transfer_status,
               lt.sent_at AS latest_transfer_sent_at
          FROM scoped s

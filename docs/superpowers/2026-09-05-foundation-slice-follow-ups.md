@@ -551,3 +551,16 @@ Found by the reviews during that slice's execution, judged and deferred:
   covers the `COALESCE` (drop it and the result changes) but not the
   `AT TIME ZONE` inside it — any timezone puts "today" past the fixture's date.
   Worth knowing if `asOfSql` is ever refactored.
+- **`unexplained_difference` (task 8) is NOT scoped by `as_of`, unlike the
+  `cash`/`shortfall` columns on the same row.** It is a running total over
+  every count a point has ever had, computed the same way whatever `as_of` the
+  caller passes — deliberately, per the brief and spec §3.1, but it means one
+  row in the list response can mix a point-in-time figure (`cash`) with an
+  all-time one (`unexplained_difference`). Worth a second look if a future
+  screen implies otherwise.
+- **`unexplained_difference` is exposed on `GET /point-cash` (the list) but
+  not on `GET /point-cash/:pointId`**, which still returns only `cashFor`'s
+  bare `{ cash }`. Not a bug — the brief scoped this task to `list` — but the
+  single-point read and the list row now disagree about what fields a point's
+  cash carries; worth deciding whether the single read should grow the same
+  field before the frontend task builds against it.
