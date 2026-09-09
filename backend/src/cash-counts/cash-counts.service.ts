@@ -28,6 +28,14 @@ export class CashCountsService {
     actor: AuthenticatedUser,
     query: ListCashCountsQueryDto,
   ): Promise<Paginated<CashCountRowResponse>> {
+    // `?? null`: node-postgres itself already binds `undefined` the same as
+    // `null` (both become SQL NULL — see pg/lib/utils.js's `prepareValue`), so
+    // this normalization changes no runtime behaviour. It exists to keep the
+    // `$1::uuid IS NULL` guard below self-documenting: `resolvePointFilter`
+    // returns `undefined` to mean "an owner asked for every point", and
+    // writing that as an explicit `null` says "this is deliberately SQL NULL"
+    // rather than leaving a reader to trust the driver's implicit coercion.
+    // Same pattern as `point-cash.service.ts` and `supplier-balance.service.ts`.
     const pointId = resolvePointFilter(actor, query.collection_point_id) ?? null;
     const m = this.dataSource.manager;
 
