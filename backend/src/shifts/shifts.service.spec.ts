@@ -35,6 +35,9 @@ describe('ShiftsService', () => {
     create: jest.Mock;
     createQueryBuilder: jest.Mock;
   };
+  let manager: { save: jest.Mock; getRepository: jest.Mock };
+  let dataSource: { transaction: jest.Mock };
+  let cash: { expectedForOpening: jest.Mock };
   let audit: { record: jest.Mock };
   let time: { now: jest.Mock };
   let service: ShiftsService;
@@ -53,6 +56,11 @@ describe('ShiftsService', () => {
     ...over,
   });
 
+  // §6.1's opening count, minimal and unused by anything outside the `open`
+  // describe block below — most tests here care only that a shift row lands,
+  // not what the drawer held.
+  const openDto = { counted_amount: '100.00' } as never;
+
   beforeEach(() => {
     repo = {
       findOne: jest.fn().mockResolvedValue(null),
@@ -61,20 +69,41 @@ describe('ShiftsService', () => {
       create: jest.fn().mockImplementation((s) => shift(s)),
       createQueryBuilder: jest.fn(),
     };
+    // `open` now runs inside `this.dataSource.transaction`, writing the shift
+    // and its opening count through the transaction's own `EntityManager`
+    // rather than through `repo` directly — `close` and `reopen` are
+    // unchanged by this task and still go through `repo.save`.
+    manager = {
+      save: jest.fn().mockImplementation((_entityClass: unknown, data: Record<string, unknown>) =>
+        Promise.resolve({ id: SHIFT_ID, ...data }),
+      ),
+      getRepository: jest.fn(),
+    };
+    dataSource = { transaction: jest.fn((cb: (m: unknown) => unknown) => cb(manager)) };
+    cash = { expectedForOpening: jest.fn().mockResolvedValue(null) };
     audit = { record: jest.fn().mockResolvedValue(undefined) };
     time = {
       now: jest.fn().mockReturnValue(DateTime.fromISO('2026-09-08T07:30', { zone: 'Europe/Kyiv' })),
     };
-    service = new ShiftsService(repo as never, {} as never, audit as never, time as never);
+    service = new ShiftsService(
+      repo as never,
+      {} as never,
+      audit as never,
+      time as never,
+      dataSource as never,
+      cash as never,
+    );
   });
 
   describe('open', () => {
     it('derives business_date from TimeService in the app zone, not from a request', async () => {
-      // foundation §5.2 — server-derived, never editable. There is no DTO on
-      // this route at all, so there is nothing a caller could smuggle in.
-      await service.open(operator);
+      // foundation §5.2 — server-derived, never editable. The DTO carries only
+      // `counted_amount` (§6.1); there is no `business_date` field a caller
+      // could smuggle in.
+      await service.open(operator, openDto);
 
-      expect(repo.save).toHaveBeenCalledWith(
+      expect(manager.save).toHaveBeenCalledWith(
+        expect.anything(),
         expect.objectContaining({ business_date: '2026-09-08' }),
       );
     });
@@ -84,9 +113,10 @@ describe('ShiftsService', () => {
       // under UTC this shift, and every document in it, files under the 9th.
       time.now.mockReturnValue(DateTime.fromISO('2026-09-08T23:30', { zone: 'Europe/Kyiv' }));
 
-      await service.open(operator);
+      await service.open(operator, openDto);
 
-      expect(repo.save).toHaveBeenCalledWith(
+      expect(manager.save).toHaveBeenCalledWith(
+        expect.anything(),
         expect.objectContaining({ business_date: '2026-09-08' }),
       );
     });
@@ -94,9 +124,10 @@ describe('ShiftsService', () => {
     it('always takes the point from the operator token', async () => {
       // §10.3 — the owner has no open verb at all, so there is no body point to
       // validate and no `resolveWritePoint` call here.
-      await service.open(operator);
+      await service.open(operator, openDto);
 
-      expect(repo.save).toHaveBeenCalledWith(
+      expect(manager.save).toHaveBeenCalledWith(
+        expect.anything(),
         expect.objectContaining({ collection_point_id: POINT_A, opened_by_user_id: 'u-op' }),
       );
     });
@@ -104,13 +135,13 @@ describe('ShiftsService', () => {
     it('refuses an actor with no point rather than opening one nowhere', async () => {
       // CHK_users_role_point should make this unreachable and the guard should
       // stop an owner earlier still; this is what happens if both ever fail.
-      await expect(service.open(owner)).rejects.toThrow(ForbiddenException);
+      await expect(service.open(owner, openDto)).rejects.toThrow(ForbiddenException);
     });
 
     it('translates a 23505 on the partial index into a readable 409', async () => {
-      repo.save.mockRejectedValue({ code: '23505', constraint: 'UQ_shifts_open_per_point' });
+      manager.save.mockRejectedValue({ code: '23505', constraint: 'UQ_shifts_open_per_point' });
 
-      await expect(service.open(operator)).rejects.toMatchObject({
+      await expect(service.open(operator, openDto)).rejects.toMatchObject({
         response: { code: 'SHIFT_ALREADY_OPEN' },
       });
     });
@@ -119,18 +150,19 @@ describe('ShiftsService', () => {
       // Two constraints, two causes, two remedies: «close the open one» versus
       // «ask the owner to reopen today's». One message for both would send the
       // operator down the wrong path with cars waiting.
-      repo.save.mockRejectedValue({ code: '23505', constraint: 'UQ_shifts_point_business_date' });
+      manager.save.mockRejectedValue({ code: '23505', constraint: 'UQ_shifts_point_business_date' });
 
-      await expect(service.open(operator)).rejects.toMatchObject({
+      await expect(service.open(operator, openDto)).rejects.toMatchObject({
         response: { code: 'SHIFT_DAY_ALREADY_USED' },
       });
     });
 
     it('audits shift.opened', async () => {
-      await service.open(operator);
+      await service.open(operator, openDto);
 
       expect(audit.record).toHaveBeenCalledWith(
         expect.objectContaining({ action: 'shift.opened', actor_id: 'u-op' }),
+        expect.anything(),
       );
     });
   });
@@ -272,5 +304,89 @@ describe('ShiftsService', () => {
 
       await expect(service.findOpenAtPoint(POINT_A)).resolves.toBeNull();
     });
+  });
+});
+
+describe('ShiftsService.open with a count', () => {
+  const build = (opts: { previous?: string | null } = {}) => {
+    const saved: Record<string, unknown>[] = [];
+    const manager = {
+      save: jest.fn((_e: unknown, x: Record<string, unknown>) => {
+        saved.push(x);
+        return { id: 'sh-1', created_at: new Date(), ...x };
+      }),
+      getRepository: jest.fn(),
+    };
+    const dataSource = { transaction: jest.fn((cb: (m: unknown) => unknown) => cb(manager)) };
+    const cash = {
+      expectedForOpening: jest.fn().mockResolvedValue(
+        opts.previous === undefined ? null : opts.previous,
+      ),
+    };
+    const audit = { record: jest.fn().mockResolvedValue(undefined) };
+    const time = {
+      now: () => ({ toISODate: () => '2026-09-09', toJSDate: () => new Date('2026-09-09T04:30:00Z') }),
+    };
+    const service = new ShiftsService(
+      { create: (x: unknown) => x } as never,
+      {} as never,
+      audit as never,
+      time as never,
+      dataSource as never,
+      cash as never,
+    );
+    return { service, saved, audit, cash };
+  };
+
+  const operator = {
+    sub: 'u-op',
+    username: 'op',
+    role: UserRole.PointOperator,
+    collection_point_id: 'p1',
+  } as never;
+
+  it("a point's FIRST count sets expected = counted, so the discrepancy is zero", async () => {
+    const { service, saved } = build({ previous: null });
+    await service.open(operator, { counted_amount: '47000.00' } as never);
+
+    const countRow = saved.find((r) => 'counted_amount' in r)!;
+    // The regression test for spec §3.2 — get this wrong and every point's
+    // first day reports its whole drawer as a surplus.
+    expect(countRow.counted_amount).toBe('47000.00');
+    expect(countRow.expected_amount).toBe('47000.00');
+    expect(countRow.kind).toBe('opening');
+    expect(countRow.book).toBe('berry');
+  });
+
+  it("a later opening expects the previous close's COUNTED figure", async () => {
+    const { service, saved } = build({ previous: '15066.10' });
+    await service.open(operator, { counted_amount: '15066.10' } as never);
+    const countRow = saved.find((r) => 'counted_amount' in r)!;
+    expect(countRow.expected_amount).toBe('15066.10');
+  });
+
+  it('records a discrepancy without refusing', async () => {
+    const { service, saved } = build({ previous: '15416.10' });
+    const result = await service.open(operator, { counted_amount: '15066.10' } as never);
+    const countRow = saved.find((r) => 'counted_amount' in r)!;
+    expect(countRow.counted_amount).toBe('15066.10');
+    expect(countRow.expected_amount).toBe('15416.10');
+    expect(result.status).toBe(ShiftStatus.Open);
+  });
+
+  it('stamps the counter, not the shift opener', async () => {
+    const { service, saved } = build({ previous: null });
+    await service.open(operator, { counted_amount: '10.00' } as never);
+    const countRow = saved.find((r) => 'counted_amount' in r)!;
+    expect(countRow.counted_by_user_id).toBe('u-op');
+  });
+
+  it('writes a cash-count.recorded audit entry inside the transaction', async () => {
+    const { service, audit } = build({ previous: null });
+    await service.open(operator, { counted_amount: '10.00' } as never);
+    expect(audit.record).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'cash-count.recorded' }),
+      expect.anything(),
+    );
   });
 });

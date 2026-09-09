@@ -2,6 +2,7 @@ import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Query } from '@nestj
 import { Auth } from '../auth/decorators/auth.decorators';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { ShiftsService } from './shifts.service';
+import { OpenShiftDto } from './dto/open-shift.dto';
 import { ReopenShiftDto } from './dto/reopen-shift.dto';
 import { ListShiftsQueryDto } from './dto/list-shifts.query';
 import { CurrentShiftQueryDto } from './dto/current-shift.query';
@@ -9,16 +10,15 @@ import { UserRole } from '../users/user-role.enum';
 import type { AuthenticatedUser } from '../auth/jwt.strategy';
 
 /**
- * A shift is one point's working day. IN THIS SLICE IT IS A CONTAINER AND
- * NOTHING MORE — it exists so `intakes` and `payouts` have somewhere to hang a
- * point and a business date, neither of which they store themselves.
+ * A shift is one point's working day. It exists so `intakes` and `payouts`
+ * have somewhere to hang a point and a business date, neither of which they
+ * store themselves.
  *
- * WHAT THIS MODULE DELIBERATELY DOES NOT DO: no cash count on open, no
- * reconciliation on close, no discrepancy, no `explanation`, and
- * `awaiting_explanation` is unreachable. All of it needs `cash_counts`, whose
- * `expected_amount` comes from a five-table formula over `transfers`,
- * `payouts`, `crate_issuances`, `crate_returns` and `intakes` — three of which
- * do not exist. `close` is a timestamp. Spec §2.1 prices this cut.
+ * OPENING NOW COUNTS THE DRAWER (spec §6.1) — `POST /shifts` writes the shift
+ * row and its `opening` cash count in one transaction, so a shift can never
+ * exist without an opening count for the closing expectation to anchor on.
+ * `close` is STILL a timestamp: the closing count, the discrepancy, and
+ * `explanation`/`awaiting_explanation` are Task 6's cut, not this one's.
  *
  * ROLES ARE NOT UNIFORM HERE, and the split is §10.3 + §10.2:
  *
@@ -30,11 +30,10 @@ import type { AuthenticatedUser } from '../auth/jwt.strategy';
  *                   with the owner.
  *   reads         → both, scoped by `resolvePointFilter`.
  *
- * `POST /shifts` TAKES NO BODY. `business_date` is server-derived (foundation
- * §5.2) and the point comes from the operator's token, which leaves nothing a
- * caller could send. The route is nonetheless PROVISIONAL IN SHAPE: §07:30
- * makes opening a shift «сума вводиться фактично порахована», two records — one
- * per cash book — and that is when it grows a DTO.
+ * `POST /shifts` TAKES ONE FIELD, `counted_amount` — see `OpenShiftDto`.
+ * `business_date` stays server-derived (foundation §5.2) and the point still
+ * comes from the operator's token; `counted_amount` is the one thing a caller
+ * supplies, because only a human standing at the drawer can supply it.
  */
 @Controller('shifts')
 export class ShiftsController {
@@ -42,8 +41,8 @@ export class ShiftsController {
 
   @Post()
   @Auth(UserRole.PointOperator)
-  open(@CurrentUser() actor: AuthenticatedUser) {
-    return this.shifts.open(actor);
+  open(@CurrentUser() actor: AuthenticatedUser, @Body() dto: OpenShiftDto) {
+    return this.shifts.open(actor, dto);
   }
 
   /**

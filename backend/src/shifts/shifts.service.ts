@@ -5,9 +5,10 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { EntityManager, IsNull, Repository } from 'typeorm';
+import { DataSource, EntityManager, IsNull, Repository } from 'typeorm';
 import { Shift } from './shift.entity';
 import { ShiftStatus } from './shift-status.enum';
+import { OpenShiftDto } from './dto/open-shift.dto';
 import { ReopenShiftDto } from './dto/reopen-shift.dto';
 import { ListShiftsQueryDto } from './dto/list-shifts.query';
 import { CurrentShiftQueryDto } from './dto/current-shift.query';
@@ -20,6 +21,10 @@ import { skipOf } from '../common/dto/pagination-query.dto';
 import { TimeService } from '../time/time.service';
 import { UserRole } from '../users/user-role.enum';
 import type { AuthenticatedUser } from '../auth/jwt.strategy';
+import { CashCount } from '../cash-counts/cash-count.entity';
+import { CashBook } from '../cash-counts/cash-book.enum';
+import { CashCountKind } from '../cash-counts/cash-count-kind.enum';
+import { PointCashService } from '../point-cash/point-cash.service';
 
 /** Shape of the driver error TypeORM surfaces for a unique violation. Narrowed
  *  rather than cast, because `constraint` is what tells the two apart. */
@@ -36,26 +41,25 @@ export class ShiftsService {
     private readonly points: CollectionPointsService,
     private readonly audit: AuditService,
     private readonly time: TimeService,
+    private readonly dataSource: DataSource,
+    private readonly cash: PointCashService,
   ) {}
 
   /**
-   * OPERATOR ONLY, and the absence of an owner branch is the rule rather than a
-   * simplification. §10.3 — «Тільки приймальник — і це не помилка»:
+   * OPERATOR ONLY (§10.3) — unchanged. What is new is that opening a shift
+   * COUNTS THE DRAWER, in the same transaction (spec §6.1).
    *
-   *   «Відкрити чужий робочий день і закрити його за людину нема кому, а підпис
-   *    під зведеною касою мусить належати тому, хто цю касу тримав у руках.»
+   * THE FIRST COUNT AT A POINT SETS `expected = counted`, and that is not a
+   * fudge: the client's ruling is that the counted figure BECOMES the starting
+   * balance, so at that instant the expectation genuinely is whatever is in
+   * the drawer. It keeps `Σ (counted − expected)` — the point's accumulated
+   * unexplained difference — correct with no special case, because the first
+   * count contributes zero to it.
    *
-   * So there is no DTO, no body, and no point to resolve: an operator's point
-   * comes from their token and an owner has none. The controller's
-   * `@Auth(UserRole.PointOperator)` is the real gate; the check below is what
-   * happens if `CHK_users_role_point` and the guard both ever fail.
-   *
-   * THE ROUTE IS PROVISIONAL IN SHAPE, not only in its close path. §07:30 makes
-   * opening a shift «сума вводиться фактично порахована», and the 03.09.2026
-   * schema note makes that TWO records, one per cash book. Both arrive with
-   * `cash_counts`, and that is when this grows a DTO.
+   * A DISCREPANCY DOES NOT REFUSE. Client ruling of 09.09.2026, overruling
+   * §7.7: «якщо каса не сходиться, це не блокує процес».
    */
-  async open(actor: AuthenticatedUser): Promise<ShiftResponse> {
+  async open(actor: AuthenticatedUser, dto: OpenShiftDto): Promise<ShiftResponse> {
     const pointId = actor.collection_point_id;
     if (!pointId) {
       throw new ForbiddenException({
@@ -70,30 +74,67 @@ export class ShiftsService {
     // 9th. Under APP_TIMEZONE=UTC this line silently misfiles an evening shift
     // and every document in it.
     const business_date = this.time.now().toISODate()!;
+    const countedAt = this.time.now().toJSDate();
 
-    let shift: Shift;
-    try {
-      shift = await this.repo.save(
-        this.repo.create({
-          collection_point_id: pointId,
-          opened_by_user_id: actor.sub,
-          business_date,
-          status: ShiftStatus.Open,
-        }),
+    return this.dataSource.transaction(async (m) => {
+      let shift: Shift;
+      try {
+        shift = await m.save(
+          Shift,
+          this.repo.create({
+            collection_point_id: pointId,
+            opened_by_user_id: actor.sub,
+            business_date,
+            status: ShiftStatus.Open,
+          }),
+        );
+      } catch (error) {
+        throw this.translateUniqueViolation(error);
+      }
+
+      // `null` means this point has never been counted — see the header.
+      const previous = await this.cash.expectedForOpening(pointId, m);
+      const expected = previous ?? dto.counted_amount;
+
+      const countRow = await m.save(CashCount, {
+        shift_id: shift.id,
+        book: CashBook.Berry,
+        kind: CashCountKind.Opening,
+        counted_amount: dto.counted_amount,
+        expected_amount: expected,
+        // §10.6 — whoever pressed the button, not whoever opened the shift.
+        counted_by_user_id: actor.sub,
+        counted_at: countedAt,
+      });
+
+      await this.audit.record(
+        {
+          action: 'shift.opened',
+          actor_id: actor.sub,
+          target_type: 'shift',
+          target_id: shift.id,
+          after: { collection_point_id: pointId, business_date },
+        },
+        m,
       );
-    } catch (error) {
-      throw this.translateUniqueViolation(error);
-    }
+      await this.audit.record(
+        {
+          action: 'cash-count.recorded',
+          actor_id: actor.sub,
+          target_type: 'cash_count',
+          target_id: countRow.id,
+          after: {
+            shift_id: shift.id,
+            kind: CashCountKind.Opening,
+            counted_amount: dto.counted_amount,
+            expected_amount: expected,
+          },
+        },
+        m,
+      );
 
-    await this.audit.record({
-      action: 'shift.opened',
-      actor_id: actor.sub,
-      target_type: 'shift',
-      target_id: shift.id,
-      after: { collection_point_id: pointId, business_date },
+      return toShiftResponse(shift);
     });
-
-    return toShiftResponse(shift);
   }
 
   /**

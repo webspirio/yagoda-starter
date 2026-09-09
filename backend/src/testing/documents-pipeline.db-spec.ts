@@ -136,9 +136,13 @@ describe('documents pipeline (HTTP)', () => {
     let shiftId: string;
 
     it('lets the operator open a shift, deriving point and business_date', async () => {
+      // §6.1 — opening now counts the drawer in the same request. This is the
+      // point's FIRST count, so its expected figure is the counted one, with
+      // no discrepancy — nothing this suite asserts on here, only exercised.
       const res = await request(app.getHttpServer())
         .post('/shifts')
         .set('Authorization', `Bearer ${operatorToken}`)
+        .send({ counted_amount: '5000.00' })
         .expect(201);
 
       expect(res.body.collection_point_id).toBe(pointId);
@@ -165,6 +169,7 @@ describe('documents pipeline (HTTP)', () => {
       const res = await request(app.getHttpServer())
         .post('/shifts')
         .set('Authorization', `Bearer ${operatorToken}`)
+        .send({ counted_amount: '5000.00' })
         .expect(409);
       expect(res.body.code ?? res.body.message).toBeDefined();
     });
@@ -234,6 +239,7 @@ describe('documents pipeline (HTTP)', () => {
       const res = await request(app.getHttpServer())
         .post('/shifts')
         .set('Authorization', `Bearer ${operatorToken}`)
+        .send({ counted_amount: '5000.00' })
         .expect(409);
       expect(res.body.code).toBe('SHIFT_DAY_ALREADY_USED');
 
@@ -330,6 +336,7 @@ describe('documents pipeline (HTTP)', () => {
         await request(app.getHttpServer())
           .post('/shifts')
           .set('Authorization', `Bearer ${operatorToken}`)
+          .send({ counted_amount: '5000.00' })
           .expect(201);
       }
     }, 30_000);
@@ -928,6 +935,7 @@ describe('documents pipeline (HTTP)', () => {
         await request(app.getHttpServer())
           .post('/shifts')
           .set('Authorization', `Bearer ${operatorToken}`)
+          .send({ counted_amount: '5000.00' })
           .expect(201);
       }
 
