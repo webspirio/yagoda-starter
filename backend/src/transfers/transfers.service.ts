@@ -2,9 +2,11 @@ import {
   BadRequestException,
   ConflictException,
   ForbiddenException,
+  Inject,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { ConfigType } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, EntityManager, Repository } from 'typeorm';
 import { Transfer } from './transfer.entity';
@@ -21,6 +23,7 @@ import { assertOwnsPoint, resolvePointFilter } from '../auth/access/point-scope'
 import { Paginated } from '../common/dto/paginated';
 import { skipOf } from '../common/dto/pagination-query.dto';
 import { TimeService } from '../time/time.service';
+import { timezoneConfig } from '../config/timezone.config';
 import { UserRole } from '../users/user-role.enum';
 import type { AuthenticatedUser } from '../auth/jwt.strategy';
 
@@ -48,6 +51,16 @@ export class TransfersService {
     private readonly audit: AuditService,
     private readonly time: TimeService,
     private readonly dataSource: DataSource,
+    /**
+     * THE APP TIMEZONE, AND IT IS LAST ON PURPOSE. `list` compares a
+     * `timestamptz` against a business DATE, which cannot be done without
+     * naming a zone — see the filter's own comment. The parameter is appended
+     * rather than slotted in alphabetically because `transfers.service.spec.ts`
+     * constructs this service POSITIONALLY in four blocks; a new argument in
+     * the middle would silently re-bind `audit` to a clock.
+     */
+    @Inject(timezoneConfig.KEY)
+    private readonly tz: ConfigType<typeof timezoneConfig>,
   ) {}
 
   /** §7.9 step 1 — OWNER ONLY. */
@@ -184,7 +197,11 @@ export class TransfersService {
           reported_cash: dto.reported_cash,
           reported_crates: dto.reported_crates,
         },
-        note: dto.dispute_note,
+        // THE TRIMMED VALUE, the one the column actually stores. Auditing the
+        // raw DTO would put a string in the log that differs from the row it
+        // claims to describe — the audit log's whole job is to be quotable
+        // against the document later.
+        note: transfer.dispute_note,
       };
     });
   }
@@ -272,8 +289,14 @@ export class TransfersService {
         });
       }
 
-      const now = this.time.now().toJSDate();
-      const today = this.time.now().toISODate()!;
+      // ONE CLOCK READING, TWO FIELDS DERIVED FROM IT. Calling `now()` twice
+      // lets a request that straddles local midnight stamp `accepted_at` on
+      // one day and `accepted_date` on the next — and `accepted_date` is the
+      // single field the cash formula filters on (§6.5), so the money would
+      // land in the drawer on a day its own timestamp denies.
+      const stamp = this.time.now();
+      const now = stamp.toJSDate();
+      const today = stamp.toISODate()!;
       const { after, note } = apply(transfer, now, today);
       const saved = await m.save(Transfer, transfer);
 
@@ -418,12 +441,40 @@ export class TransfersService {
     // ON `sent_at`, NOT `accepted_date` — see the DTO's comment. A `sent`
     // transfer has no acceptance day, and those are the rows this list exists
     // to surface.
+    // `AT TIME ZONE` IS NOT DECORATION, and it is the same hazard
+    // `PointCashService` documents on `return_settled_at`. `sent_at` is a
+    // `timestamptz` and spec §4 filters on «`sent_at`'s LOCAL date»; a bare
+    // comparison against a `date` resolves in the SESSION timezone, which is
+    // not necessarily `APP_TIMEZONE`. With `APP_TIMEZONE=Europe/Kyiv` and a UTC
+    // session, a transfer dispatched 10.09 at 01:00 Kyiv is stored as
+    // `2026-09-09 22:00Z` and `?from=2026-09-10&to=2026-09-10` would miss it
+    // while `from=2026-09-09` showed it — the owner's journal would file the
+    // evening runs, which is most of them, on the wrong day.
+    //
+    // Once both sides are local `date`s the upper bound is INCLUSIVE (`<=`)
+    // rather than the old half-open `< :to + 1`: there is no time-of-day left
+    // to fall between the two forms.
+    //
     // `CAST(:from AS date)` RATHER THAN `:from::date`. TypeORM scans for
     // `:name` parameters textually, and a `::` cast sitting against a
     // placeholder is the one place that scan misreads — `:from::date` can be
-    // taken as a parameter named `date`. The ANSI form cannot be confused.
-    if (query.from) qb.andWhere('t.sent_at >= CAST(:from AS date)', { from: query.from });
-    if (query.to) qb.andWhere('t.sent_at < CAST(:to AS date) + 1', { to: query.to });
+    // taken as a parameter named `date`. The ANSI form cannot be confused, and
+    // `CAST(:tz AS text)` is there for a second reason besides: `AT TIME ZONE`
+    // is overloaded on `text` and `interval`, so an untyped placeholder is
+    // ambiguous to Postgres, not merely to TypeORM.
+    const sentLocalDate = '(t.sent_at AT TIME ZONE CAST(:tz AS text))::date';
+    if (query.from) {
+      qb.andWhere(`${sentLocalDate} >= CAST(:from AS date)`, {
+        from: query.from,
+        tz: this.tz.appTimezone,
+      });
+    }
+    if (query.to) {
+      qb.andWhere(`${sentLocalDate} <= CAST(:to AS date)`, {
+        to: query.to,
+        tz: this.tz.appTimezone,
+      });
+    }
 
     const [data, total] = await qb
       .orderBy('t.sent_at', 'DESC')

@@ -43,6 +43,7 @@ describe('TransfersService.create', () => {
       audit as never,
       time as never,
       { transaction: jest.fn() } as never,
+      { appTimezone: 'Europe/Kyiv' },
     );
     return { service, repo, points, audit };
   };
@@ -144,6 +145,7 @@ describe('TransfersService.accept / dispute', () => {
       audit as never,
       time as never,
       dataSource as never,
+      { appTimezone: 'Europe/Kyiv' },
     );
     return { service, audit, saved, manager };
   };
@@ -158,6 +160,37 @@ describe('TransfersService.accept / dispute', () => {
       accepted_date: '2026-09-09',
     });
     expect(saved[0].accepted_at).toBeInstanceOf(Date);
+  });
+
+  it('reads the clock ONCE, so accepted_at and accepted_date cannot disagree', async () => {
+    // The clock ticks over local midnight between the first call and the
+    // second. Two readings would file the timestamp on the 9th and the
+    // business date on the 10th — and `accepted_date` is the only field the
+    // cash formula filters on (§6.5).
+    const readings = [
+      { toISODate: () => '2026-09-09', toJSDate: () => new Date('2026-09-09T20:59:59Z') },
+      { toISODate: () => '2026-09-10', toJSDate: () => new Date('2026-09-09T21:00:00Z') },
+    ];
+    const saved: Record<string, unknown>[] = [];
+    const manager = {
+      findOne: jest.fn().mockResolvedValue(sentTransfer()),
+      save: jest.fn((_e: unknown, x: Record<string, unknown>) => {
+        saved.push(x);
+        return x;
+      }),
+    };
+    const service = new TransfersService(
+      {} as never,
+      {} as never,
+      { record: jest.fn().mockResolvedValue(undefined) } as never,
+      { now: () => (readings.length > 1 ? readings.shift()! : readings[0]) } as never,
+      { transaction: jest.fn((cb: (m: unknown) => unknown) => cb(manager)) } as never,
+      { appTimezone: 'Europe/Kyiv' },
+    );
+
+    await service.accept(operatorA, 't-1');
+    expect(saved[0].accepted_date).toBe('2026-09-09');
+    expect(saved[0].accepted_at).toEqual(new Date('2026-09-09T20:59:59Z'));
   });
 
   it('REFUSES THE OWNER — §7.9 with §10.3, only the point may press Прийняв', async () => {
@@ -225,6 +258,19 @@ describe('TransfersService.accept / dispute', () => {
       expect.objectContaining({ action: 'transfer.disputed' }),
       expect.anything(),
     );
+
+    // THE AUDITED NOTE IS THE STORED NOTE. The service trims before saving, so
+    // logging the raw DTO would quote a string the row does not contain.
+    const t = build();
+    await t.service.dispute(operatorA, 't-1', {
+      reported_cash: '140000.00',
+      reported_crates: 195,
+      dispute_note: '  мішок легший  ',
+    } as never);
+    expect(t.audit.record).toHaveBeenCalledWith(
+      expect.objectContaining({ note: 'мішок легший' }),
+      expect.anything(),
+    );
   });
 });
 
@@ -274,6 +320,7 @@ describe('TransfersService.resolve / void', () => {
       audit as never,
       time as never,
       dataSource as never,
+      { appTimezone: 'Europe/Kyiv' },
     );
     return { service, audit, saved };
   };
@@ -391,6 +438,10 @@ describe('TransfersService.list / findOne', () => {
       { record: jest.fn() } as never,
       { now: () => ({ toISODate: () => '2026-09-09', toJSDate: () => new Date() }) } as never,
       {} as never,
+      // The zone is PINNED, never inherited from `.env` (which sets UTC
+      // here): a spec touching the list's date filter must state the zone it
+      // is testing. Same argument as `point-cash.db-spec.ts`'s header.
+      { appTimezone: 'Europe/Kyiv' },
     );
     return { service, builder, repo };
   };
@@ -424,6 +475,27 @@ describe('TransfersService.list / findOne', () => {
     const clauses = builder.andWhere.mock.calls.map((c) => String(c[0]));
     expect(clauses.some((c) => c.includes('t.sent_at') && c.includes(':from'))).toBe(true);
     expect(clauses.some((c) => c.includes('accepted_date'))).toBe(false);
+  });
+
+  it('resolves the date range in APP_TIMEZONE, not the session zone', async () => {
+    const { service, builder } = build();
+    await service.list(owner, query({ from: '2026-09-10', to: '2026-09-10' }) as never);
+
+    // BOTH BOUNDS, not just one. `sent_at` is a `timestamptz` and spec §4
+    // filters on its LOCAL date; without the cast a transfer dispatched at
+    // 01:00 Kyiv is stored at 22:00Z the previous day and drops out of its own
+    // day's page whenever the session zone is not the app's.
+    const dateClauses = builder.andWhere.mock.calls
+      .map((c) => String(c[0]))
+      .filter((c) => c.includes('t.sent_at'));
+    expect(dateClauses).toHaveLength(2);
+    for (const clause of dateClauses) {
+      expect(clause).toContain('AT TIME ZONE');
+    }
+
+    // The zone reaches the query as a BIND, never spliced into the SQL.
+    const bound = builder.andWhere.mock.calls.map((c) => c[1] as Record<string, unknown>);
+    expect(bound.some((b) => b?.tz === 'Europe/Kyiv')).toBe(true);
   });
 
   it("findOne is a 404 for another point's transfer", async () => {
