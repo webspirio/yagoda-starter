@@ -107,7 +107,9 @@ Recorded so it is not re-litigated. Each row is verified.
 
 ## 4. Repo layout
 
-One private repo, pnpm 10 workspace, one lockfile, **no registry, no PATs, no version bumps**.
+One private repo, **pnpm 11.5.2** workspace (matching `order-pharm` and `static-website-template`;
+verified installed), Node 24 via `.nvmrc` (three of four repos already pin 24), one lockfile,
+**no registry, no PATs, no version bumps**.
 
 ```
 agency/
