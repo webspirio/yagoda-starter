@@ -1,10 +1,11 @@
-import { Body, Controller, Param, ParseUUIDPipe, Post } from '@nestjs/common';
+import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Query } from '@nestjs/common';
 import { Auth } from '../auth/decorators/auth.decorators';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { TransfersService } from './transfers.service';
 import { CreateTransferDto } from './dto/create-transfer.dto';
 import { DisputeTransferDto } from './dto/dispute-transfer.dto';
 import { ResolveTransferDto } from './dto/resolve-transfer.dto';
+import { ListTransfersQueryDto } from './dto/list-transfers.query';
 import { VoidDocumentDto } from '../intakes/dto/void-document.dto';
 import { UserRole } from '../users/user-role.enum';
 import type { AuthenticatedUser } from '../auth/jwt.strategy';
@@ -23,6 +24,18 @@ import type { AuthenticatedUser } from '../auth/jwt.strategy';
 @Controller('transfers')
 export class TransfersController {
   constructor(private readonly transfers: TransfersService) {}
+
+  @Get()
+  @Auth()
+  list(@CurrentUser() actor: AuthenticatedUser, @Query() query: ListTransfersQueryDto) {
+    return this.transfers.list(actor, query);
+  }
+
+  @Get(':id')
+  @Auth()
+  findOne(@CurrentUser() actor: AuthenticatedUser, @Param('id', ParseUUIDPipe) id: string) {
+    return this.transfers.findOne(actor, id);
+  }
 
   @Post()
   @Auth(UserRole.NetworkOwner)

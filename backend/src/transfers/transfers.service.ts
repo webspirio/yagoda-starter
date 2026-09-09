@@ -12,10 +12,14 @@ import { TransferStatus } from './transfer-status.enum';
 import { CreateTransferDto } from './dto/create-transfer.dto';
 import { DisputeTransferDto } from './dto/dispute-transfer.dto';
 import { ResolveTransferDto } from './dto/resolve-transfer.dto';
+import { ListTransfersQueryDto } from './dto/list-transfers.query';
 import { VoidDocumentDto } from '../intakes/dto/void-document.dto';
 import { TransferResponse, toTransferResponse } from './transfer.mapper';
 import { AuditService } from '../audit/audit.service';
 import { CollectionPointsService } from '../collection-points/collection-points.service';
+import { assertOwnsPoint, resolvePointFilter } from '../auth/access/point-scope';
+import { Paginated } from '../common/dto/paginated';
+import { skipOf } from '../common/dto/pagination-query.dto';
 import { TimeService } from '../time/time.service';
 import { UserRole } from '../users/user-role.enum';
 import type { AuthenticatedUser } from '../auth/jwt.strategy';
@@ -392,6 +396,56 @@ export class TransfersService {
 
       return saved;
     });
+  }
+
+  /**
+   * §7.9's journal, and the owner's «стан переказу» column in §7.10.
+   *
+   * NEWEST FIRST BY DISPATCH, with `id` as the tiebreaker. Postgres promises
+   * no order among ties, so without it `skip`/`take` can serve one row twice
+   * and another never — the same reasoning as `SuppliersService.list`.
+   */
+  async list(
+    actor: AuthenticatedUser,
+    query: ListTransfersQueryDto,
+  ): Promise<Paginated<TransferResponse>> {
+    const pointId = resolvePointFilter(actor, query.collection_point_id);
+
+    const qb = this.repo.createQueryBuilder('t');
+    if (pointId) qb.andWhere('t.collection_point_id = :pointId', { pointId });
+    if (query.status) qb.andWhere('t.status = :status', { status: query.status });
+    if (!query.include_voided) qb.andWhere('t.voided_at IS NULL');
+    // ON `sent_at`, NOT `accepted_date` — see the DTO's comment. A `sent`
+    // transfer has no acceptance day, and those are the rows this list exists
+    // to surface.
+    // `CAST(:from AS date)` RATHER THAN `:from::date`. TypeORM scans for
+    // `:name` parameters textually, and a `::` cast sitting against a
+    // placeholder is the one place that scan misreads — `:from::date` can be
+    // taken as a parameter named `date`. The ANSI form cannot be confused.
+    if (query.from) qb.andWhere('t.sent_at >= CAST(:from AS date)', { from: query.from });
+    if (query.to) qb.andWhere('t.sent_at < CAST(:to AS date) + 1', { to: query.to });
+
+    const [data, total] = await qb
+      .orderBy('t.sent_at', 'DESC')
+      .addOrderBy('t.id', 'ASC')
+      .skip(skipOf(query))
+      .take(query.limit)
+      .getManyAndCount();
+
+    return { data: data.map(toTransferResponse), total, page: query.page, limit: query.limit };
+  }
+
+  async findOne(actor: AuthenticatedUser, id: string): Promise<TransferResponse> {
+    const transfer = await this.repo.findOne({ where: { id } });
+    if (!transfer) throw new NotFoundException('Transfer not found');
+    if (actor.role !== UserRole.NetworkOwner) {
+      // 404, not 403 — matching ShiftsService.loadVisible.
+      if (actor.collection_point_id !== transfer.collection_point_id) {
+        throw new NotFoundException('Transfer not found');
+      }
+      assertOwnsPoint(actor, transfer.collection_point_id);
+    }
+    return toTransferResponse(transfer);
   }
 
   /** The owner's two verbs share their authority check, row lock and 404. */

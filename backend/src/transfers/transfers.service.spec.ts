@@ -358,3 +358,76 @@ describe('TransfersService.resolve / void', () => {
     );
   });
 });
+
+describe('TransfersService.list / findOne', () => {
+  const qb = () => {
+    const b: {
+      andWhere: jest.Mock;
+      orderBy: jest.Mock;
+      addOrderBy: jest.Mock;
+      skip: jest.Mock;
+      take: jest.Mock;
+      getManyAndCount: jest.Mock;
+    } = {
+      andWhere: jest.fn(() => b),
+      orderBy: jest.fn(() => b),
+      addOrderBy: jest.fn(() => b),
+      skip: jest.fn(() => b),
+      take: jest.fn(() => b),
+      getManyAndCount: jest.fn().mockResolvedValue([[], 0]),
+    };
+    return b;
+  };
+
+  const build = (findOneResult: unknown = null) => {
+    const builder = qb();
+    const repo = {
+      createQueryBuilder: jest.fn(() => builder),
+      findOne: jest.fn().mockResolvedValue(findOneResult),
+    };
+    const service = new TransfersService(
+      repo as never,
+      {} as never,
+      { record: jest.fn() } as never,
+      { now: () => ({ toISODate: () => '2026-09-09', toJSDate: () => new Date() }) } as never,
+      {} as never,
+    );
+    return { service, builder, repo };
+  };
+
+  const query = (over: Record<string, unknown> = {}) => ({
+    page: 1,
+    limit: 20,
+    include_voided: false,
+    ...over,
+  });
+
+  it('pins an operator to their own point regardless of the query', async () => {
+    const { service, builder } = build();
+    await service.list(operatorA, query({ collection_point_id: 'point-b' }) as never);
+
+    expect(builder.andWhere).toHaveBeenCalledWith('t.collection_point_id = :pointId', {
+      pointId: 'point-a',
+    });
+  });
+
+  it('hides voided transfers by default', async () => {
+    const { service, builder } = build();
+    await service.list(owner, query() as never);
+    expect(builder.andWhere).toHaveBeenCalledWith('t.voided_at IS NULL');
+  });
+
+  it('filters the date range on sent_at, never on accepted_date', async () => {
+    const { service, builder } = build();
+    await service.list(owner, query({ from: '2026-09-01', to: '2026-09-09' }) as never);
+
+    const clauses = builder.andWhere.mock.calls.map((c) => String(c[0]));
+    expect(clauses.some((c) => c.includes('t.sent_at') && c.includes(':from'))).toBe(true);
+    expect(clauses.some((c) => c.includes('accepted_date'))).toBe(false);
+  });
+
+  it("findOne is a 404 for another point's transfer", async () => {
+    const { service } = build({ id: 't-1', collection_point_id: 'point-b' });
+    await expect(service.findOne(operatorA, 't-1')).rejects.toThrow(NotFoundException);
+  });
+});
