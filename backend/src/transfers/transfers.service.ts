@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Injectable,
   NotFoundException,
@@ -9,6 +10,7 @@ import { DataSource, Repository } from 'typeorm';
 import { Transfer } from './transfer.entity';
 import { TransferStatus } from './transfer-status.enum';
 import { CreateTransferDto } from './dto/create-transfer.dto';
+import { DisputeTransferDto } from './dto/dispute-transfer.dto';
 import { TransferResponse, toTransferResponse } from './transfer.mapper';
 import { AuditService } from '../audit/audit.service';
 import { CollectionPointsService } from '../collection-points/collection-points.service';
@@ -137,5 +139,151 @@ export class TransfersService {
     });
 
     return toTransferResponse(transfer);
+  }
+
+  /**
+   * §7.9 step 4а — «Прийняв». OPERATOR AT THAT POINT ONLY.
+   *
+   * No body, and that is a rule: §7.9 gives the point «рівно дві дії» and
+   * «поля суми в точки НЕМАЄ». A point that could type a number here would
+   * never press the other button, and the dispute record — the only thing that
+   * reaches the owner — would never be written.
+   */
+  async accept(actor: AuthenticatedUser, id: string): Promise<TransferResponse> {
+    return this.transition(actor, id, 'transfer.accepted', (transfer, now, today) => {
+      transfer.status = TransferStatus.Accepted;
+      this.stampArrival(transfer, actor, now, today);
+      return { after: { status: TransferStatus.Accepted, accepted_date: today }, note: null };
+    });
+  }
+
+  /**
+   * §7.9 step 4б — «Не сходиться». OPERATOR AT THAT POINT ONLY.
+   */
+  async dispute(
+    actor: AuthenticatedUser,
+    id: string,
+    dto: DisputeTransferDto,
+  ): Promise<TransferResponse> {
+    return this.transition(actor, id, 'transfer.disputed', (transfer, now, today) => {
+      transfer.status = TransferStatus.Disputed;
+      this.stampArrival(transfer, actor, now, today);
+      transfer.reported_cash = dto.reported_cash;
+      transfer.reported_crates = dto.reported_crates;
+      transfer.dispute_note = dto.dispute_note.trim();
+      return {
+        after: {
+          status: TransferStatus.Disputed,
+          accepted_date: today,
+          reported_cash: dto.reported_cash,
+          reported_crates: dto.reported_crates,
+        },
+        note: dto.dispute_note,
+      };
+    });
+  }
+
+  /**
+   * BOTH POINT ACTIONS STAMP THE ARRIVAL, and this shared helper is what makes
+   * that visible rather than a coincidence of two code paths.
+   *
+   * «Прийняв» and «Не сходиться» record the same physical fact — the money got
+   * here today — and differ only on whether the amount matched. §7.9's own
+   * reason for using the acceptance day at all is «машина виїхала ввечері,
+   * точка порахувала вранці, і гроші не мають лежати в касі за день, коли їх
+   * фізично не було»: the point counted the disputed money on the 5th, so it
+   * belongs in the drawer from the 5th.
+   *
+   * Without this on the dispute path, the `cash_counts` formula — whose outer
+   * filter is `accepted_date <= D` — can never see a disputed transfer, and
+   * both of its `disputed` branches are dead code. Spec §6.2.
+   */
+  private stampArrival(
+    transfer: Transfer,
+    actor: AuthenticatedUser,
+    now: Date,
+    today: string,
+  ): void {
+    transfer.accepted_by_user_id = actor.sub;
+    transfer.accepted_at = now;
+    transfer.accepted_date = today;
+  }
+
+  /**
+   * The two point actions share everything but their body: authority, the row
+   * lock, the state check and the audit entry.
+   *
+   * THE LOAD AND THE STATE CHECK ARE INSIDE THE TRANSACTION, under the row
+   * lock, exactly as `PayoutsService.void` does and for the same reason.
+   * Checking `status` before the transaction opens is a check-then-write: two
+   * operators at one point — or one double-tapped button — both read `sent`,
+   * both write, and `accepted_by_user_id` becomes last-writer-wins while the
+   * audit log gains two entries naming different people. §6.11's 409 has to be
+   * enforced where the write happens or it is not enforced at all.
+   */
+  private async transition(
+    actor: AuthenticatedUser,
+    id: string,
+    action: 'transfer.accepted' | 'transfer.disputed',
+    apply: (
+      transfer: Transfer,
+      now: Date,
+      today: string,
+    ) => { after: Record<string, unknown>; note: string | null },
+  ): Promise<TransferResponse> {
+    // §7.9 with §10.3 — «керівник не може зробити це за неї». The owner is
+    // refused OUTRIGHT here, which inverts this codebase's usual shape.
+    if (actor.role !== UserRole.PointOperator) {
+      throw new ForbiddenException({
+        message: 'Only the collection point may accept or dispute a transfer',
+        code: 'POINT_OPERATOR_ONLY',
+      });
+    }
+
+    return this.dataSource.transaction(async (m) => {
+      const transfer = await m.findOne(Transfer, {
+        where: { id },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!transfer) throw new NotFoundException('Transfer not found');
+
+      // A 404, not a 403 — matching ShiftsService.loadVisible. Another point's
+      // delivery is not this operator's business to know about.
+      if (transfer.collection_point_id !== actor.collection_point_id) {
+        throw new NotFoundException('Transfer not found');
+      }
+
+      if (transfer.voided_at) {
+        throw new ConflictException({
+          message: 'That transfer is voided',
+          code: 'TRANSFER_VOIDED',
+        });
+      }
+      if (transfer.status !== TransferStatus.Sent) {
+        throw new ConflictException({
+          message: 'That transfer has already been answered',
+          code: 'TRANSFER_ALREADY_ANSWERED',
+        });
+      }
+
+      const now = this.time.now().toJSDate();
+      const today = this.time.now().toISODate()!;
+      const { after, note } = apply(transfer, now, today);
+      const saved = await m.save(Transfer, transfer);
+
+      await this.audit.record(
+        {
+          action,
+          actor_id: actor.sub,
+          target_type: 'transfer',
+          target_id: saved.id,
+          after,
+          note,
+        },
+        m,
+      );
+
+      return toTransferResponse(saved);
+    });
   }
 }

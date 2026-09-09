@@ -1,8 +1,9 @@
-import { Body, Controller, Post } from '@nestjs/common';
+import { Body, Controller, Param, ParseUUIDPipe, Post } from '@nestjs/common';
 import { Auth } from '../auth/decorators/auth.decorators';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { TransfersService } from './transfers.service';
 import { CreateTransferDto } from './dto/create-transfer.dto';
+import { DisputeTransferDto } from './dto/dispute-transfer.dto';
 import { UserRole } from '../users/user-role.enum';
 import type { AuthenticatedUser } from '../auth/jwt.strategy';
 
@@ -25,5 +26,21 @@ export class TransfersController {
   @Auth(UserRole.NetworkOwner)
   create(@CurrentUser() actor: AuthenticatedUser, @Body() dto: CreateTransferDto) {
     return this.transfers.create(actor, dto);
+  }
+
+  @Post(':id/accept')
+  @Auth()
+  accept(@CurrentUser() actor: AuthenticatedUser, @Param('id', ParseUUIDPipe) id: string) {
+    return this.transfers.accept(actor, id);
+  }
+
+  @Post(':id/dispute')
+  @Auth()
+  dispute(
+    @CurrentUser() actor: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: DisputeTransferDto,
+  ) {
+    return this.transfers.dispute(actor, id, dto);
   }
 }

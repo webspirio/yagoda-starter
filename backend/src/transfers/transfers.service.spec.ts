@@ -1,4 +1,9 @@
-import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  NotFoundException,
+} from '@nestjs/common';
 import { TransfersService } from './transfers.service';
 import { TransferStatus } from './transfer-status.enum';
 import { UserRole } from '../users/user-role.enum';
@@ -86,6 +91,139 @@ describe('TransfersService.create', () => {
     await service.create(owner, dto as never);
     expect(audit.record).toHaveBeenCalledWith(
       expect.objectContaining({ action: 'transfer.created', actor_id: 'u-owner' }),
+    );
+  });
+});
+
+describe('TransfersService.accept / dispute', () => {
+  const sentTransfer = () => ({
+    id: 't-1',
+    collection_point_id: 'point-a',
+    cash: '150000.00',
+    crates: 200,
+    carrier: 'Іван',
+    status: TransferStatus.Sent,
+    accepted_by_user_id: null,
+    accepted_date: null,
+    accepted_at: null,
+    reported_cash: null,
+    reported_crates: null,
+    dispute_note: null,
+    resolved_cash: null,
+    resolved_crates: null,
+    resolved_by_user_id: null,
+    resolved_at: null,
+    correction_of_transfer_id: null,
+    voided_at: null,
+    voided_by_user_id: null,
+    void_reason: null,
+    sent_by_user_id: 'u-owner',
+    sent_at: new Date(),
+    created_at: new Date(),
+  });
+
+  const build = (row: Record<string, unknown> | null = sentTransfer()) => {
+    const saved: Record<string, unknown>[] = [];
+    const manager = {
+      findOne: jest.fn().mockResolvedValue(row),
+      save: jest.fn((_e: unknown, x: Record<string, unknown>) => {
+        saved.push(x);
+        return x;
+      }),
+    };
+    const audit = { record: jest.fn().mockResolvedValue(undefined) };
+    const dataSource = {
+      transaction: jest.fn((cb: (m: unknown) => unknown) => cb(manager)),
+    };
+    const time = {
+      now: () => ({ toISODate: () => '2026-09-09', toJSDate: () => new Date('2026-09-09T06:00:00Z') }),
+    };
+    const service = new TransfersService(
+      {} as never,
+      {} as never,
+      audit as never,
+      time as never,
+      dataSource as never,
+    );
+    return { service, audit, saved, manager };
+  };
+
+  it('accept stamps all three accepted_* fields and the accepted status', async () => {
+    const { service, saved } = build();
+    await service.accept(operatorA, 't-1');
+
+    expect(saved[0]).toMatchObject({
+      status: TransferStatus.Accepted,
+      accepted_by_user_id: 'u-op-a',
+      accepted_date: '2026-09-09',
+    });
+    expect(saved[0].accepted_at).toBeInstanceOf(Date);
+  });
+
+  it('REFUSES THE OWNER — §7.9 with §10.3, only the point may press Прийняв', async () => {
+    const { service } = build();
+    await expect(service.accept(owner, 't-1')).rejects.toThrow(ForbiddenException);
+    await expect(
+      service.dispute(owner, 't-1', {
+        reported_cash: '140000.00',
+        reported_crates: 200,
+        dispute_note: 'мішок легший',
+      } as never),
+    ).rejects.toThrow(ForbiddenException);
+  });
+
+  it("is a 404 for another point's transfer", async () => {
+    const { service } = build({ ...sentTransfer(), collection_point_id: 'point-b' });
+    await expect(service.accept(operatorA, 't-1')).rejects.toThrow(NotFoundException);
+  });
+
+  it('dispute stamps accepted_* AS WELL AS reported_* — spec §6.2', async () => {
+    const { service, saved } = build();
+    await service.dispute(operatorA, 't-1', {
+      reported_cash: '140000.00',
+      reported_crates: 195,
+      dispute_note: 'мішок легший',
+    } as never);
+
+    expect(saved[0]).toMatchObject({
+      status: TransferStatus.Disputed,
+      // The whole ruling in one assertion: without accepted_date the cash
+      // formula's disputed branch is unreachable.
+      accepted_date: '2026-09-09',
+      accepted_by_user_id: 'u-op-a',
+      reported_cash: '140000.00',
+      reported_crates: 195,
+      dispute_note: 'мішок легший',
+    });
+  });
+
+  it('refuses to accept a transfer that is not sent', async () => {
+    const { service } = build({ ...sentTransfer(), status: TransferStatus.Accepted });
+    await expect(service.accept(operatorA, 't-1')).rejects.toThrow(ConflictException);
+  });
+
+  it('refuses to accept a voided transfer', async () => {
+    const { service } = build({ ...sentTransfer(), voided_at: new Date() });
+    await expect(service.accept(operatorA, 't-1')).rejects.toThrow(ConflictException);
+  });
+
+  it('writes transfer.accepted and transfer.disputed audit entries', async () => {
+    const a = build();
+    await a.service.accept(operatorA, 't-1');
+    expect(a.audit.record).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'transfer.accepted' }),
+      expect.anything(),
+    );
+
+    const d = build();
+    await d.service.dispute(operatorA, 't-1', {
+      reported_cash: '140000.00',
+      reported_crates: 195,
+      dispute_note: 'мішок легший',
+    } as never);
+    expect(d.audit.record).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'transfer.disputed' }),
+      expect.anything(),
     );
   });
 });
