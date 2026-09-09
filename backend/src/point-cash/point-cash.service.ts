@@ -29,79 +29,88 @@ const asOfSql = (asOf: string, tz: string): string =>
   `COALESCE(${asOf}::date, (now() AT TIME ZONE ${tz}::text)::date)`;
 
 /**
- * THE BERRY CASH FORMULA, WRITTEN ONCE. `point` is the SQL naming whose drawer
- * is wanted — the bind placeholder `$1` for one point, the outer row's own
- * column `cp.id` when correlated down a list. Both call sites pass a code
- * literal; nothing from a request is ever spliced here.
+ * THE MOVEMENTS OF ONE SHIFT — the `+ operations` half of every expectation.
  *
- * Copied from the `cash_counts` Note in `28-db-schema.dbml` as amended on
- * 09.09.2026, including every filter. FIVE OF THEM ARE LOAD-BEARING AND ONE OF
- * THEM IS A THEFT PATH IF REMOVED:
+ * SHIFT-BOUNDED BY THE CLIENT'S DECISION, and the reasoning is recorded
+ * because it outranks the technical argument: «closing the shift is an
+ * important part of the process, and it will be easier for us to make sure
+ * shifts are closed on time than to deal with time boundaries». A rule the
+ * business can train and audit beats a boundary only the code can see. The
+ * cost is named in the spec's §9.1 and is accepted.
  *
- * 1. `t.voided_at IS NULL` — voided TRANSFERS drop out. They must be filtered
- *    BY ROW, not by status: `transfer_status` has no `void` member, so a voided
- *    transfer keeps `status = 'accepted'` and without this line would go on
- *    adding money to the drawer forever. The filter sits in the OUTER `WHERE`
- *    and not inside the `CASE` on purpose — a transfer can be resolved and
- *    LATER voided, and voided must win over resolved.
+ * TRANSFERS JOIN BY (point, accepted_date), NOT BY A COLUMN. `transfers` has
+ * no `shift_id` — the DBML omits it deliberately — and it does not need one:
+ * `UQ_shifts_point_business_date` gives exactly one shift per point per day,
+ * and the cash counts slice §4.1 guarantees every accepted transfer was taken
+ * into an open shift whose business date it carries. A `sent` transfer has a
+ * NULL `accepted_date` and cannot match, which is §7.9's «у стані sent не
+ * рухається НІЧОГО» falling out for free.
  *
- * 2. Payouts are summed WITHOUT a `voided_at` filter, ON PURPOSE, and this is
- *    the exact opposite of the debt formula in `supplier-balance`. §9.3: the
- *    money physically left the drawer and voiding does not put it back. It
- *    returns only when a human physically returns it, which is what
- *    `return_settled_at` stamps — the third term. «Інакше сторно стає способом
- *    красти.» A reader who harmonises these two queries has opened that path.
+ * BOTH VOIDED READINGS SURVIVE FROM THE TRANSFERS SLICE, and harmonising them
+ * opens a theft path (§9.3): a voided TRANSFER stops being added, a voided
+ * PAYOUT stays subtracted, because that money physically left the drawer and
+ * comes back only when a human returns it — the third term.
  *
- * 3. The three-way `CASE` is the 09.09.2026 client ruling, which overrules
- *    §7.9 step 4б. An unresolved dispute contributes the point's OWN counted
- *    figure: the money is credited at the amount actually received and the
- *    shortfall is settled outside the system. Excluding it would leave that
- *    point's expected cash wrong by the shortfall on every count from then on,
- *    burying the real discrepancy under a permanent phantom one.
+ * The transfer void filter sits in the OUTER `WHERE` and not inside the `CASE`
+ * on purpose — a transfer can be resolved and LATER voided, and voided must win
+ * over resolved. Scenario 13 of the database spec exists to fail if it moves.
  *
- * 4. `sent` transfers need no explicit filter — their `accepted_date` is NULL
- *    and `accepted_date <= D` already excludes them. §7.9 step 2: «у стані sent
- *    не рухається НІЧОГО».
- *
- * 5. `AT TIME ZONE` on `return_settled_at` is not decoration. It is a
- *    `timestamptz` compared against a business DATE, and a bare `::date` would
- *    take the session timezone and misfile a late-evening settlement by a day.
- *    Everything else in the formula is already `date`-typed.
+ * The three-way `CASE` is the 09.09.2026 client ruling, which overrules §7.9
+ * step 4б. An unresolved dispute contributes the point's OWN counted figure:
+ * the money is credited at the amount actually received and the shortfall is
+ * settled outside the system. Excluding it would leave that point's expected
+ * cash wrong by the shortfall on every count from then on, burying the real
+ * discrepancy under a permanent phantom one.
  *
  * THE FALLBACK IS `0.00`, NOT `0`. `SUM` over no rows is NULL, and
  * `COALESCE(NULL, 0)` is an integer zero that Postgres renders as `'0'` — so a
- * brand-new point would read `"0"` where every other figure reads to two
- * places. Same literal, same reason, as `supplier-balance`.
+ * shift with nothing in it would read `"0"` where every other figure reads to
+ * two places. Same literal, same reason, as `supplier-balance`.
  *
- * THERE IS NO TIMESTAMP IN THIS FORMULA AND THERE CANNOT BE ONE. Transfers
- * contribute by `accepted_date` and payouts by `shifts.business_date`, both
- * `date`-typed; «cash at 14:00» is not expressible. This is survivable because
- * a cash count's `expected_amount` is a SNAPSHOT computed at the instant of
- * counting — a midday count at 14:00 asks for `D = today` and picks up exactly
- * the payouts written so far. Do not try to add one.
+ * `shift` is a SQL naming, never a value: the bind placeholder the caller
+ * chose, or the anchor row's own `a.shift_id`. Nothing from a request is
+ * spliced here.
  *
  * WHAT IS NOT HERE: the crates book (`cash_book = 'crates'`), which needs
  * `crate_issuances` and `crate_returns` and has no formula until they exist.
  */
-const cashSql = (point: string, asOf: string, tz: string): string => `(
+const movementsSql = (shift: string): string => `(
     COALESCE((SELECT SUM(CASE
                 WHEN t.status = 'accepted' THEN t.cash
                 WHEN t.status = 'disputed' AND t.resolved_at IS NOT NULL THEN t.resolved_cash
                 WHEN t.status = 'disputed' THEN t.reported_cash
               END)
          FROM transfers t
-        WHERE t.collection_point_id = ${point}
-          AND t.voided_at IS NULL
-          AND t.accepted_date <= ${asOf}), 0.00)
-  - COALESCE((SELECT SUM(p.amount)
-         FROM payouts p JOIN shifts s ON s.id = p.shift_id
-        WHERE s.collection_point_id = ${point}
-          AND s.business_date <= ${asOf}), 0.00)
-  + COALESCE((SELECT SUM(p.amount)
-         FROM payouts p JOIN shifts s ON s.id = p.shift_id
-        WHERE s.collection_point_id = ${point}
-          AND p.return_settled_at IS NOT NULL
-          AND (p.return_settled_at AT TIME ZONE ${tz}::text)::date <= ${asOf}), 0.00)
+         JOIN shifts s ON s.collection_point_id = t.collection_point_id
+                      AND s.business_date = t.accepted_date
+        WHERE s.id = ${shift}
+          AND t.voided_at IS NULL), 0.00)
+  - COALESCE((SELECT SUM(p.amount) FROM payouts p
+        WHERE p.shift_id = ${shift}), 0.00)
+  + COALESCE((SELECT SUM(p.amount) FROM payouts p
+        WHERE p.shift_id = ${shift}
+          AND p.return_settled_at IS NOT NULL), 0.00)
+)`;
+
+/**
+ * THE ANCHOR — the latest `opening` or `closing` count at a point, on or
+ * before `asOf`. `midday` is excluded and that is load-bearing rather than
+ * tidy: a demoted midday count (spec §6.3) sits mid-shift, and isolating "the
+ * movements after it" would need a timestamp bound shift-bounded accounting
+ * does not have.
+ *
+ * The ordering tiebreak puts `closing` after `opening` within one shift.
+ */
+const anchorSql = (point: string, asOf: string): string => `(
+  SELECT c.counted_amount, c.kind, c.shift_id
+    FROM cash_counts c
+    JOIN shifts s ON s.id = c.shift_id
+   WHERE s.collection_point_id = ${point}
+     AND c.book = 'berry'
+     AND c.kind <> 'midday'
+     AND s.business_date <= ${asOf}
+   ORDER BY s.business_date DESC, (c.kind = 'closing') DESC, c.counted_at DESC
+   LIMIT 1
 )`;
 
 /**
@@ -113,6 +122,17 @@ const cashSql = (point: string, asOf: string, tz: string): string => `(
  * forbidden for the reason `intakes` has no `remaining` column (§3.2), and the
  * DBML supplies the field evidence: in the client's own workbook the
  * hand-copied balance chain is broken in 124 переходах із 1 473.
+ *
+ * RE-ANCHORED BY THE CASH COUNTS SLICE. This formula no longer runs from the
+ * beginning of time: a point's cash is its latest non-midday COUNT, plus that
+ * shift's movements when the count was an `opening`. Nothing is still stored
+ * and nothing is still cached — the anchor is a row someone wrote by counting
+ * a drawer, not a balance the system maintained.
+ *
+ * A POINT WITH NO COUNTS READS `0.00` NO MATTER WHAT ITS DOCUMENTS SAY. That
+ * is correct — until a human has counted the drawer the system has no claim
+ * about it — and it is a visible behaviour change from the transfers slice.
+ * It will look like a regression on deploy and it is not one.
  *
  * THERE IS NO OPENING-BALANCE DOCUMENT AND NO `cashBookFrom` SETTING. The
  * `cash_counts` Note names `AppConfig.cashBookFrom` as an application
@@ -149,14 +169,73 @@ export class PointCashService {
    */
   async cashFor(pointId: string, asOf?: string, manager?: EntityManager): Promise<string> {
     const runner = manager ?? this.dataSource.manager;
+    // The anchor plus, when the anchor is an OPENING count, that shift's
+    // movements. There is no third term for "shifts after the anchor": §6.1
+    // makes every shift opening write a count, so a later shift would hold a
+    // later count and BE the anchor.
+    //
     // `::text` on the numeric expression so the value never passes through a
     // JS number on its way out of the driver (foundation §5.1).
-    const sql = `SELECT ${cashSql('$1::uuid', asOfSql('$2', '$3'), '$3')}::text AS cash`;
+    const sql = `
+      SELECT COALESCE((
+        SELECT (a.counted_amount
+                + CASE WHEN a.kind = 'opening' THEN ${movementsSql('a.shift_id')}
+                       ELSE 0.00 END)
+          FROM ${anchorSql('$1::uuid', asOfSql('$2', '$3'))} a
+      ), 0.00)::text AS cash`;
     const [row] = (await runner.query(sql, [pointId, asOf ?? null, this.tz.appTimezone])) as {
       cash: string;
     }[];
 
     return row.cash;
+  }
+
+  /**
+   * The signed movements of one shift, as a decimal STRING. A shift with
+   * nothing in it reads `'0.00'`.
+   */
+  async movementsForShift(shiftId: string, manager?: EntityManager): Promise<string> {
+    const runner = manager ?? this.dataSource.manager;
+    const [row] = (await runner.query(`SELECT ${movementsSql('$1::uuid')}::text AS movements`, [
+      shiftId,
+    ])) as { movements: string }[];
+    return row.movements;
+  }
+
+  /**
+   * What an OPENING count should find: the previous non-midday count's figure,
+   * or `null` when the point has never been counted.
+   *
+   * THERE IS NO MOVEMENTS TERM HERE, and that is a consequence of the transfers
+   * reversal rather than an omission: every cash movement now belongs to a
+   * shift (spec §4.1), and a shift's movements are settled by its own closing
+   * count. Nothing can move between one shift's close and the next one's open.
+   */
+  async expectedForOpening(pointId: string, manager?: EntityManager): Promise<string | null> {
+    const runner = manager ?? this.dataSource.manager;
+    const rows = (await runner.query(
+      `SELECT a.counted_amount::text AS expected
+         FROM ${anchorSql('$1::uuid', "'infinity'::date")} a`,
+      [pointId],
+    )) as { expected: string }[];
+    return rows[0]?.expected ?? null;
+  }
+
+  /**
+   * What a CLOSING count should find: this shift's opening count plus its
+   * movements. `null` when the shift has no opening count — impossible through
+   * the API (§6.1 writes one in the same transaction) and therefore a signal
+   * that something wrote a shift directly.
+   */
+  async expectedForClosing(shiftId: string, manager?: EntityManager): Promise<string | null> {
+    const runner = manager ?? this.dataSource.manager;
+    const rows = (await runner.query(
+      `SELECT (c.counted_amount + ${movementsSql('$1::uuid')})::text AS expected
+         FROM cash_counts c
+        WHERE c.shift_id = $1::uuid AND c.book = 'berry' AND c.kind = 'opening'`,
+      [shiftId],
+    )) as { expected: string }[];
+    return rows[0]?.expected ?? null;
   }
 
   /**
@@ -198,7 +277,12 @@ export class PointCashService {
     const rows = (await manager.query(
       `WITH scoped AS (
          SELECT cp.id, cp.name, cp.target_cash,
-                ${cashSql('cp.id', asOfSql('$2', '$3'), '$3')} AS cash
+                COALESCE((
+                  SELECT (a.counted_amount
+                          + CASE WHEN a.kind = 'opening' THEN ${movementsSql('a.shift_id')}
+                                 ELSE 0.00 END)
+                    FROM ${anchorSql('cp.id', asOfSql('$2', '$3'))} a
+                ), 0.00) AS cash
            FROM collection_points cp
           WHERE ($1::uuid IS NULL OR cp.id = $1::uuid)
        )
@@ -240,4 +324,4 @@ export class PointCashService {
   }
 }
 
-export { cashSql, asOfSql };
+export { movementsSql, anchorSql, asOfSql };
