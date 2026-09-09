@@ -512,3 +512,42 @@ schedules yet — a kit/consistency pass, not a feature:
   without search, and table names fall back to an 8-char id past the first
   100 balance rows on «Усі точки». Fine for a season's network; revisit with
   a server-side name lookup if the directory grows.
+
+## Learned from the transfers and cash slice (2026-09-09)
+
+- **The Friday/Saturday question is slice 2's**, and is stated in spec §12.
+  `cashFor`'s `asOf` exists so slice 2 can express either answer.
+- **Go-live needs a ceremony**: one transfer per point for its opening
+  balance, each accepted by its operator (spec §6.6). Belongs in the
+  deployment notes.
+- **`PointKind` is still read by nothing.** Spec §8.3 declines to make this
+  slice the first. If a later slice branches on it, §7.3 versus §4.8 must be
+  settled with the client first.
+
+Found by the reviews during that slice's execution, judged and deferred:
+
+- **`CHK_transfers_no_self_correction` has no test.** The constraint is present
+  in both the entity and the migration; nothing watches it reject anything. A
+  gap in the plan's spec, not in the implementation.
+- **`VoidDocumentDto` accepts a whitespace-only reason.** `@Length(1, 500)`
+  passes `"   "`, which the service then trims to empty, so §9.3's mandatory
+  reason is not actually enforced. This slice fixed its own two DTOs
+  (`carrier`, `dispute_note`) with `@Matches(/\S/)` and deliberately did NOT
+  touch `VoidDocumentDto`, which `intakes` and `payouts` share. Fixing it means
+  deciding for all three modules at once.
+- **`transfers` has no CHECK requiring `reported_cash` when `status =
+  'disputed'`.** Such a row contributes NULL to the cash formula and vanishes
+  from the drawer silently rather than erroring. NOT reachable through the API
+  — `DisputeTransferDto` makes the field mandatory — so it needs hand-written
+  SQL to occur. Deferred rather than spend a second migration in the slice.
+  **Do not "fix" it with a `COALESCE` in the formula**: that would mask the bad
+  row instead of refusing it.
+- **`.env` sets `APP_TIMEZONE=UTC`** while `.env.example` and the Joi default
+  both say `Europe/Kyiv`. `ShiftsService.open`'s own comment warns that under
+  UTC an evening shift and every document in it is silently misfiled by a day.
+  The cash database specs pin their own timezone rather than inherit this, so
+  the slice is unaffected — but local env setup is not.
+- **`point-cash.db-spec.ts` scenario 12 pins only half of `asOfSql`.** It
+  covers the `COALESCE` (drop it and the result changes) but not the
+  `AT TIME ZONE` inside it — any timezone puts "today" past the fixture's date.
+  Worth knowing if `asOfSql` is ever refactored.
