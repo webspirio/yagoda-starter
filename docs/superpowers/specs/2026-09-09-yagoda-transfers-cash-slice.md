@@ -473,8 +473,13 @@ things a later reader will try to "fix":
 
 ## 8. Divergences from `28-db-schema.dbml`
 
-Three, each a decision rather than an oversight. All three are also amended into the source
-documents by §9, so this section is a summary rather than the record.
+Three, each a decision rather than an oversight. The first two (§8.1, §8.2) are also amended into
+the source documents by §9, so for those this section is a summary rather than the record. The
+third (§8.3) is **not** amended anywhere: `28-db-schema.dbml` and `26-rules-by-example.md` say
+nothing this slice contradicts on `kind` — §7.3's sentence is simply about the sending side, not
+the receiving one — so there is nothing to supersede and this section is its only record. A reader
+who wants to know why a base-kind point may receive a transfer will find the answer here and
+nowhere else.
 
 ### 8.1 A disputed transfer carries `accepted_date`
 

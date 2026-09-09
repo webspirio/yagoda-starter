@@ -31,7 +31,7 @@ export default tseslint.config(
     // and produces a wrong `amount` that §2.7 then freezes forever on a
     // supplier's printed receipt.
     //
-    // Scoped to the four modules that handle money rather than applied
+    // Scoped to the six modules that handle money rather than applied
     // globally: `*` and `/` are perfectly ordinary in pagination offsets,
     // image resizing and time arithmetic, and a repo-wide ban would train
     // people to write disable comments.
