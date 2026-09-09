@@ -24,6 +24,14 @@
 - Run before every commit: `npm run lint -w backend` and the focused test named in the task. Full `npm test -w backend`, `npm run test:db -w backend` and `npm run build -w backend` at the end of Task 8.
 - Commit messages end with `Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>`.
 
+**Fixture columns, verified against the entities on 2026-09-09** — get these wrong and a database spec fails at setup, not at its assertion:
+
+- `users` has **no `name` column**: it is `(first_name, last_name, role, is_active)`. `CHK_users_role_point` also requires `collection_point_id IS NULL` for a `network_owner`.
+- `collection_points`: `(name, code, kind, target_cash, is_active)`; `code` must match `^[A-Z0-9]{2,8}$`.
+- `shifts`: `(collection_point_id, opened_by_user_id, business_date, closed_at, closed_by_user_id, status)`. There is **no `opened_at`** — `created_at` is the open instant.
+- `suppliers`: `(collection_point_id, first_name, last_name, kind, is_active)`.
+- `payouts`: `(code, shift_id, supplier_id, amount, paid_by_user_id)` plus the optional `voided_*` / `return_settled_*` groups.
+
 **Command reference** (run from `backend/`):
 
 | What | Command |
@@ -258,7 +266,8 @@ describe('transfers schema (Postgres)', () => {
       [`Точка ${run}`, `T${run.slice(0, 6).toUpperCase()}`],
     );
     [{ id: userId }] = await ds.query(
-      `INSERT INTO users (name, role, is_active) VALUES ($1, 'network_owner', true) RETURNING id`,
+      `INSERT INTO users (first_name, last_name, role, is_active)
+       VALUES ('Тест', $1, 'network_owner', true) RETURNING id`,
       [`Owner ${run}`],
     );
   });
@@ -2190,8 +2199,12 @@ Expected: FAIL — `service.list is not a function`.
     // ON `sent_at`, NOT `accepted_date` — see the DTO's comment. A `sent`
     // transfer has no acceptance day, and those are the rows this list exists
     // to surface.
-    if (query.from) qb.andWhere('t.sent_at >= :from::date', { from: query.from });
-    if (query.to) qb.andWhere('t.sent_at < (:to::date + 1)', { to: query.to });
+    // `CAST(:from AS date)` RATHER THAN `:from::date`. TypeORM scans for
+    // `:name` parameters textually, and a `::` cast sitting against a
+    // placeholder is the one place that scan misreads — `:from::date` can be
+    // taken as a parameter named `date`. The ANSI form cannot be confused.
+    if (query.from) qb.andWhere('t.sent_at >= CAST(:from AS date)', { from: query.from });
+    if (query.to) qb.andWhere('t.sent_at < CAST(:to AS date) + 1', { to: query.to });
 
     const [data, total] = await qb
       .orderBy('t.sent_at', 'DESC')
@@ -2387,7 +2400,8 @@ describe('PointCashService.cashFor (Postgres)', () => {
     service = new PointCashService(ds);
     run = randomUUID().slice(0, 8);
     [{ id: ownerId }] = (await ds.query(
-      `INSERT INTO users (name, role, is_active) VALUES ($1, 'network_owner', true) RETURNING id`,
+      `INSERT INTO users (first_name, last_name, role, is_active)
+       VALUES ('Тест', $1, 'network_owner', true) RETURNING id`,
       [`Owner ${run}`],
     )) as { id: string }[];
   });
@@ -2873,7 +2887,8 @@ describe('PointCashService.list (Postgres)', () => {
     service = new PointCashService(ds);
     const run = randomUUID().slice(0, 8);
     [{ id: ownerId }] = (await ds.query(
-      `INSERT INTO users (name, role, is_active) VALUES ($1, 'network_owner', true) RETURNING id`,
+      `INSERT INTO users (first_name, last_name, role, is_active)
+       VALUES ('Тест', $1, 'network_owner', true) RETURNING id`,
       [`Owner list ${run}`],
     )) as { id: string }[];
     owner.sub = ownerId;
@@ -3099,7 +3114,7 @@ export class PointCashController {
 }
 ```
 
-Add `PointCashController` to `PointCashModule`'s `controllers`. Register `TransfersModule` and `PointCashModule` in `backend/src/app.module.ts` after `PayoutsModule`.
+Add `PointCashController` to `PointCashModule`'s `controllers`. Register **`PointCashModule`** in `backend/src/app.module.ts` after `TransfersModule` — `TransfersModule` was already registered in Task 3, so do not add it twice.
 
 - [ ] **Step 7: Update `CLAUDE.md`**
 
