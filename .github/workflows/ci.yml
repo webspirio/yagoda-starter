@@ -339,8 +339,9 @@ jobs:
           cache-to: type=gha,mode=max,scope=nginx-${{ steps.meta.outputs.scope }}
 
   # ---------------------------------------------------------------------------
-  # CD. Both jobs deploy through Coolify's API and then verify the application
-  # itself (scripts/ci/coolify-deploy.sh). They are gated on the repository
+  # CD. The deploy jobs deploy through Coolify's API and then verify the
+  # application itself (preview-note-skipped only edits a comment)
+  # (scripts/ci/coolify-deploy.sh). They are gated on the repository
   # variable COOLIFY_ENABLED so the workflow is valid before the server exists.
   # ---------------------------------------------------------------------------
 
@@ -363,6 +364,7 @@ jobs:
     permissions:
       contents: read
       pull-requests: write
+      issues: write # gh label create / gh pr edit --add-label use the Issues API
     env:
       # Provisional 6 (spec §1): recalibrated after Coolify's RSS is measured.
       # The repository variable PREVIEW_CAP overrides it without a commit —
