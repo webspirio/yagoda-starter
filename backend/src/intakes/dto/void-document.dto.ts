@@ -1,4 +1,4 @@
-import { IsString, Length } from 'class-validator';
+import { IsString, Length, Matches } from 'class-validator';
 
 /**
  * Shared by `intakes` and `payouts`: §9.3 governs both identically — «сторно
@@ -12,5 +12,13 @@ import { IsString, Length } from 'class-validator';
 export class VoidDocumentDto {
   @IsString()
   @Length(1, 500)
+  // `@Length(1, …)` ALONE IS NOT «NON-BLANK». It counts characters, so
+  // `{"reason":"   "}` passes it — and every service that stores this trims
+  // before writing, so the column ends up holding an empty string on a
+  // document that §9.3 says may not be voided without a reason. «Спроба
+  // сторнувати без причини → кнопка неактивна» has to hold for the API too,
+  // or the button is the only thing enforcing it. `\S` is the whole test: at
+  // least one character that survives the trim.
+  @Matches(/\S/, { message: 'reason must not be blank' })
   reason: string;
 }
