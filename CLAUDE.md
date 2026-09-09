@@ -44,6 +44,7 @@ docker compose logs -f     # stream logs
 npm test                   # both workspaces
 npm run lint
 npm run build
+npm run db:seed             # idempotent demo dataset for manual testing — see backend/CLAUDE.md «Dev seed»
 ```
 
 ## Architecture

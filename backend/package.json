@@ -16,7 +16,8 @@
     "migration:run": "typeorm-ts-node-commonjs migration:run -d src/data-source.ts",
     "migration:revert": "typeorm-ts-node-commonjs migration:revert -d src/data-source.ts",
     "migration:show": "typeorm-ts-node-commonjs migration:show -d src/data-source.ts",
-    "migration:run:prod": "typeorm migration:run -d dist/data-source.js"
+    "migration:run:prod": "typeorm migration:run -d dist/data-source.js",
+    "seed:dev": "ts-node src/seed/dev-seed.cli.ts"
   },
   "engines": {
     "node": ">=24.15.0"

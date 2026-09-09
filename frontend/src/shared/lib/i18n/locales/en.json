@@ -18,11 +18,299 @@
     "invalidCredentials": "Invalid username or password"
   },
   "nav": {
-    "dashboard": "Dashboard",
+    "group": {
+      "onPoint": "On the point",
+      "peopleMoney": "People & money",
+      "management": "Management"
+    },
+    "dashboard": "Summary",
+    "reception": "Intake",
+    "crates": "Crates",
+    "day": "Day cash",
+    "pointCash": "Point cash",
+    "prices": "Day prices",
+    "suppliers": "Suppliers",
+    "debts": "Balances",
+    "journal": "Journal",
+    "cost": "Cost of day",
+    "reweigh": "Re-weighing",
+    "network": "Network average",
+    "sheet": "Owner sheet",
+    "transfers": "Transfers",
+    "points": "Points",
+    "users": "Users",
+    "refs": "Tare & grades",
     "profile": "Profile",
     "settings": "Settings",
     "openMenu": "Open menu",
     "closeMenu": "Close menu"
+  },
+  "shell": {
+    "brand": "Yagoda",
+    "allPoints": "all points",
+    "yourPoint": "your point",
+    "season": "season 2026",
+    "soon": "Coming soon"
+  },
+  "points": {
+    "eyebrow": "Directory",
+    "title": "Collection points",
+    "description": "The points where berries are received, with their daily cash and crate targets.",
+    "new": "New point",
+    "col": {
+      "name": "Name",
+      "kind": "Kind",
+      "targetCash": "Cash target",
+      "targetCrates": "Crate target",
+      "status": "Status"
+    },
+    "kind": { "reception": "Reception", "base": "Base" },
+    "active": "Active",
+    "inactive": "Inactive",
+    "empty": {
+      "title": "No points yet",
+      "hint": "Add the first collection point to start a season."
+    },
+    "form": {
+      "createTitle": "New collection point",
+      "editTitle": "Edit collection point",
+      "name": "Name",
+      "kind": "Kind",
+      "targetCash": "Cash target, ₴",
+      "targetCrates": "Crate target",
+      "targetHint": "Leave empty if not set",
+      "active": "Active"
+    },
+    "toast": { "created": "Point created", "updated": "Point updated" },
+    "errors": {
+      "saveFailed": "Could not save the point",
+      "nameTaken": "A point with this name already exists",
+      "nameEmpty": "Enter a name",
+      "nameRequired": "Enter a name",
+      "nameInvalid": "Name must be 1–128 characters",
+      "hasActiveUsers": "This point still has assigned staff — reassign them before deactivating",
+      "cashFormat": "Enter an amount like 15000 or 15000.50",
+      "cratesFormat": "Enter a whole number of crates"
+    }
+  },
+  "users": {
+    "eyebrow": "Directory",
+    "title": "Users",
+    "description": "The people who sign in to Yagoda — owners and point operators, with their roles and points.",
+    "new": "New user",
+    "col": {
+      "name": "Name",
+      "login": "Login",
+      "role": "Role",
+      "point": "Point",
+      "status": "Status"
+    },
+    "roleLabel": {
+      "network_owner": "Network owner",
+      "point_operator": "Point operator"
+    },
+    "active": "Active",
+    "inactive": "Inactive",
+    "empty": {
+      "title": "No users yet",
+      "hint": "Add the first user to give your team access."
+    },
+    "form": {
+      "createTitle": "New user account",
+      "editTitle": "Edit user",
+      "firstName": "First name",
+      "lastName": "Last name",
+      "login": "Login",
+      "password": "Password",
+      "role": "Role",
+      "point": "Collection point",
+      "active": "Active",
+      "resetPassword": "Reset password",
+      "setPassword": "Set password"
+    },
+    "toast": {
+      "created": "User created",
+      "updated": "User updated",
+      "passwordSet": "Password updated"
+    },
+    "errors": {
+      "saveFailed": "Could not save the user",
+      "loginTaken": "This login is already taken",
+      "loginRequired": "Enter a login",
+      "loginWhitespace": "The login must not contain spaces",
+      "nameRequired": "Enter a name",
+      "passwordShort": "Password must be at least 8 characters",
+      "pointRequired": "Choose a collection point"
+    }
+  },
+  "suppliers": {
+    "eyebrow": "Directory",
+    "title": "Suppliers",
+    "description": "The people who bring berries to a point — their contact, kind and point.",
+    "new": "New supplier",
+    "searchPlaceholder": "Search by name or phone",
+    "col": {
+      "name": "Name",
+      "phone": "Phone",
+      "kind": "Kind",
+      "point": "Point",
+      "status": "Status"
+    },
+    "kindLabel": {
+      "none": "Regular",
+      "wholesale": "Wholesale",
+      "farmer": "Farmer"
+    },
+    "active": "Active",
+    "inactive": "Inactive",
+    "empty": {
+      "title": "No suppliers yet",
+      "hint": "Add the first supplier to start taking deliveries."
+    },
+    "form": {
+      "createTitle": "Add supplier",
+      "editTitle": "Edit supplier",
+      "firstName": "First name",
+      "lastName": "Last name",
+      "phone": "Phone",
+      "noPhone": "No phone",
+      "kind": "Kind",
+      "note": "Note",
+      "point": "Collection point",
+      "active": "Active"
+    },
+    "toast": {
+      "created": "Supplier created",
+      "updated": "Supplier updated"
+    },
+    "errors": {
+      "saveFailed": "Could not save the supplier",
+      "phoneTaken": "A supplier with this phone already exists at this point",
+      "phoneInvalid": "Enter a valid phone number",
+      "nameRequired": "Enter a name",
+      "pointRequired": "Choose a collection point"
+    }
+  },
+  "catalog": {
+    "eyebrow": "Directory",
+    "title": "Tare & grades",
+    "description": "The berry catalog: pick a product on the left to see and edit its grades; tare types are on their own tab.",
+    "tabs": {
+      "products": "Products & grades",
+      "tareTypes": "Tare types"
+    },
+    "products": {
+      "new": "New product",
+      "rename": "Rename",
+      "search": "Search products",
+      "list": "Products",
+      "noMatch": "No product matches",
+      "empty": {
+        "title": "No products yet",
+        "hint": "Add the first berry to your catalog."
+      },
+      "form": {
+        "createTitle": "Add product",
+        "editTitle": "Edit product",
+        "name": "Name"
+      },
+      "toast": { "created": "Product created", "updated": "Product updated" }
+    },
+    "grades": {
+      "new": "New grade",
+      "count_one": "{{count}} grade",
+      "count_other": "{{count}} grades",
+      "activeCount_one": "{{count}} active",
+      "activeCount_other": "{{count}} active",
+      "active": "Active",
+      "inactive": "Inactive",
+      "col": { "name": "Grade", "status": "Status" },
+      "empty": {
+        "title": "No grades yet",
+        "hint": "Add a grade so the product appears on intake."
+      },
+      "form": {
+        "createTitle": "Add grade",
+        "editTitle": "Edit grade",
+        "name": "Name",
+        "product": "Product",
+        "active": "Active"
+      },
+      "toast": { "created": "Grade created", "updated": "Grade updated" }
+    },
+    "tareTypes": {
+      "new": "New tare type",
+      "active": "Active",
+      "inactive": "Inactive",
+      "crate": "Crate",
+      "notCrate": "Other tare",
+      "col": {
+        "name": "Name",
+        "weight": "Weight, kg",
+        "deposit": "Deposit, ₴",
+        "isCrate": "Crate",
+        "status": "Status"
+      },
+      "empty": {
+        "title": "No tare types yet",
+        "hint": "Add the crates and packaging berries arrive in."
+      },
+      "form": {
+        "createTitle": "Add tare type",
+        "editTitle": "Edit tare type",
+        "name": "Name",
+        "weight": "Weight, kg",
+        "deposit": "Deposit, ₴",
+        "isCrate": "Returnable crate",
+        "active": "Active"
+      },
+      "toast": { "created": "Tare type created", "updated": "Tare type updated" }
+    },
+    "errors": {
+      "saveFailed": "Could not save",
+      "nameTaken": "This name is already taken",
+      "nameEmpty": "Enter a name",
+      "nameRequired": "Enter a name",
+      "nameTooLong": "Name must be 1–128 characters",
+      "productRequired": "Choose a product",
+      "weightFormat": "Enter a weight like 1 or 1.20",
+      "depositFormat": "Enter an amount like 120 or 120.00"
+    }
+  },
+  "prices": {
+    "eyebrow": "Pricing",
+    "title": "Day prices",
+    "description": "The current buy price per grade at a point. Setting a price adds a new row — the latest one wins.",
+    "pickPoint": "Select a point",
+    "empty": {
+      "title": "No point selected",
+      "hint": "Choose a point to see and set its grade prices."
+    },
+    "col": {
+      "grade": "Grade",
+      "base": "Base price, ₴/kg",
+      "markup": "Max markup, ₴/kg",
+      "discount": "Max discount, ₴/kg",
+      "action": "Action"
+    },
+    "set": "Set price",
+    "change": "Change",
+    "form": {
+      "title": "Set price · {{grade}}",
+      "description": "{{point}} · the new price applies to the next receipts; earlier ones keep theirs.",
+      "base": "Base price, ₴/kg",
+      "markup": "Max markup, ₴/kg",
+      "discount": "Max discount, ₴/kg",
+      "reason": "Reason (optional)"
+    },
+    "toast": {
+      "set": "Price set"
+    },
+    "errors": {
+      "saveFailed": "Could not save",
+      "priceFormat": "Enter an amount like 50 or 50.00",
+      "reasonTooLong": "The reason must be at most 1000 characters"
+    }
   },
   "profile": {
     "title": "Profile",
@@ -62,6 +350,12 @@
   },
   "lang": {
     "label": "Language",
+    "uk": "UK",
     "en": "EN"
+  },
+  "theme": {
+    "label": "Theme",
+    "light": "Light",
+    "dark": "Dark"
   }
 }

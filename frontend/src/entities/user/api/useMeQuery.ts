@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { httpClient } from '@/shared/api';
 import { queryKeys } from '@/shared/api/queryKeys';
 import { useSession } from '../model/store';
-import type { Me } from '../model/types';
+import type { Me } from '../model/user';
 
 export function useMeQuery() {
   const token = useSession((s) => s.token);

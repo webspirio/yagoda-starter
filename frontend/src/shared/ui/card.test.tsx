@@ -2,21 +2,22 @@ import { it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { Card } from './card';
 
-it('renders children on a card surface', () => {
+it('renders children on the outlined card surface', () => {
   render(<Card>content</Card>);
   expect(screen.getByText('content')).toHaveClass(
-    'rounded-2xl',
+    'rounded-xl',
     'border',
-    'border-border',
+    'border-line2',
     'bg-card',
+    'overflow-hidden',
   );
 });
 
 it('lets className override the border token (twMerge last-wins)', () => {
-  render(<Card className="border-line2 p-5">content</Card>);
+  render(<Card className="border-border p-5">content</Card>);
   const el = screen.getByText('content');
-  expect(el).toHaveClass('border-line2', 'p-5');
-  expect(el).not.toHaveClass('border-border');
+  expect(el).toHaveClass('border-border', 'p-5');
+  expect(el).not.toHaveClass('border-line2');
 });
 
 it('forwards arbitrary div props and data-slot', () => {
