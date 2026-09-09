@@ -1,0 +1,8 @@
+[Unit]
+Description=yagoda nightly backup (pg_dump + uploads tar, atomic pair)
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/yagoda-backup.sh
