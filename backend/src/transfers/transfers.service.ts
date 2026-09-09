@@ -25,15 +25,19 @@ import { skipOf } from '../common/dto/pagination-query.dto';
 import { TimeService } from '../time/time.service';
 import { timezoneConfig } from '../config/timezone.config';
 import { UserRole } from '../users/user-role.enum';
+import { ShiftsService } from '../shifts/shifts.service';
 import type { AuthenticatedUser } from '../auth/jwt.strategy';
 
 /**
  * §7.9 — money and empty crates from the base to a point.
  *
- * THIS SERVICE DOES NOT INJECT `ShiftsService`, AND THAT IS THE RULE RATHER
- * THAN AN OMISSION. `transfers` is the only money document carrying its own
- * point and its own date; accepting one requires no open shift (spec §6.4).
- * The carrier arrives when they arrive.
+ * AS OF THE CASH COUNTS SLICE, ACCEPTING OR DISPUTING REQUIRES AN OPEN
+ * SHIFT — see `transition`'s §4.1 check. This reverses the module's original
+ * rule (formerly documented here as spec §6.4): cash is now counted per
+ * shift, so a transfer accepted outside one belongs to no shift's arithmetic
+ * — it enters no expectation and surfaces as a discrepancy when nothing went
+ * wrong. `create` and `resolve`/`void` still need no shift; only the two
+ * point actions that stamp `accepted_date` do.
  *
  * THE OWNER MAY NOT ACCEPT OR DISPUTE, which inverts this codebase's usual
  * shape where an owner may do anything an operator may. §7.9 step 3 with
@@ -61,6 +65,12 @@ export class TransfersService {
      */
     @Inject(timezoneConfig.KEY)
     private readonly tz: ConfigType<typeof timezoneConfig>,
+    /**
+     * §4.1 — a transfer may only be accepted into an OPEN SHIFT, which is what
+     * makes shift-bounded cash arithmetic airtight. Injected last so the five
+     * existing positional construction sites in the unit spec keep their order.
+     */
+    private readonly shifts: ShiftsService,
   ) {}
 
   /** §7.9 step 1 — OWNER ONLY. */
@@ -211,11 +221,16 @@ export class TransfersService {
    * that visible rather than a coincidence of two code paths.
    *
    * «Прийняв» and «Не сходиться» record the same physical fact — the money got
-   * here today — and differ only on whether the amount matched. §7.9's own
-   * reason for using the acceptance day at all is «машина виїхала ввечері,
-   * точка порахувала вранці, і гроші не мають лежати в касі за день, коли їх
-   * фізично не було»: the point counted the disputed money on the 5th, so it
-   * belongs in the drawer from the 5th.
+   * here — and differ only on whether the amount matched. §7.9's own reason
+   * for using the acceptance day at all is «машина виїхала ввечері, точка
+   * порахувала вранці, і гроші не мають лежати в касі за день, коли їх фізично
+   * не було»: the point counted the disputed money on the shift's day, so it
+   * belongs in the drawer from that day.
+   *
+   * `businessDate` is the OPEN SHIFT's business date as of the cash counts
+   * slice (§4.2), not the local calendar day. §7.9's argument was only ever
+   * «не днем відправлення»; the shift's business date IS the operational day
+   * of acceptance.
    *
    * Without this on the dispute path, the `cash_counts` formula — whose outer
    * filter is `accepted_date <= D` — can never see a disputed transfer, and
@@ -276,6 +291,16 @@ export class TransfersService {
         throw new NotFoundException('Transfer not found');
       }
 
+      // §4.1 — SHIFT REQUIRED. Read inside the transaction so a shift cannot
+      // be closed between the check and the write.
+      const shift = await this.shifts.findOpenAtPoint(transfer.collection_point_id, m);
+      if (!shift) {
+        throw new ConflictException({
+          message: 'Open a shift before signing for a delivery',
+          code: 'NO_OPEN_SHIFT',
+        });
+      }
+
       if (transfer.voided_at) {
         throw new ConflictException({
           message: 'That transfer is voided',
@@ -289,15 +314,13 @@ export class TransfersService {
         });
       }
 
-      // ONE CLOCK READING, TWO FIELDS DERIVED FROM IT. Calling `now()` twice
-      // lets a request that straddles local midnight stamp `accepted_at` on
-      // one day and `accepted_date` on the next — and `accepted_date` is the
-      // single field the cash formula filters on (§6.5), so the money would
-      // land in the drawer on a day its own timestamp denies.
-      const stamp = this.time.now();
-      const now = stamp.toJSDate();
-      const today = stamp.toISODate()!;
-      const { after, note } = apply(transfer, now, today);
+      const now = this.time.now().toJSDate();
+      // THE SHIFT'S BUSINESS DATE, NOT THE CLOCK (§4.2). A shift opened Friday
+      // and closed Saturday morning has `business_date = Friday`; a transfer
+      // accepted into it on Saturday must land on Friday, or it falls outside
+      // its own shift's movements and shows up as a discrepancy on both sides.
+      const businessDate = shift.business_date;
+      const { after, note } = apply(transfer, now, businessDate);
       const saved = await m.save(Transfer, transfer);
 
       await this.audit.record(

@@ -7,11 +7,18 @@ import { TransfersController } from './transfers.controller';
 import { CollectionPointsModule } from '../collection-points/collection-points.module';
 import { AuditModule } from '../audit/audit.module';
 import { TimeModule } from '../time/time.module';
+import { ShiftsModule } from '../shifts/shifts.module';
 import { timezoneConfig } from '../config/timezone.config';
 
 /**
- * NO `ShiftsModule` IMPORT, deliberately — spec §6.4. A transfer is
- * point-scoped and its acceptance needs no open shift.
+ * IMPORTS `ShiftsModule` AS OF THE CASH COUNTS SLICE, reversing this module's
+ * original refusal. Cash is now counted per shift, so a transfer accepted
+ * outside one belongs to no shift's arithmetic — see the cash counts spec
+ * §4.1. `ShiftsService.findOpenAtPoint` takes an `EntityManager`, so the
+ * lookup happens inside the same transaction as the write.
+ *
+ * NO CYCLE: `shifts` imports `point-cash` for its movement arithmetic, and
+ * `point-cash` imports nothing but `ConfigModule`.
  *
  * `ConfigModule.forFeature(timezoneConfig)` IS REQUIRED, not decorative: the
  * list's date filter compares `sent_at` — a `timestamptz` — against a local
@@ -25,6 +32,7 @@ import { timezoneConfig } from '../config/timezone.config';
     CollectionPointsModule,
     AuditModule,
     TimeModule,
+    ShiftsModule,
   ],
   providers: [TransfersService],
   controllers: [TransfersController],

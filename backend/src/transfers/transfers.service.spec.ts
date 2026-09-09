@@ -37,6 +37,7 @@ describe('TransfersService.create', () => {
     };
     const audit = { record: jest.fn().mockResolvedValue(undefined) };
     const time = { now: () => ({ toISODate: () => '2026-09-09', toJSDate: () => new Date() }) };
+    const shifts = { findOpenAtPoint: jest.fn().mockResolvedValue({ id: 's-1', business_date: '2026-09-09' }) };
     const service = new TransfersService(
       repo as never,
       points as never,
@@ -44,6 +45,7 @@ describe('TransfersService.create', () => {
       time as never,
       { transaction: jest.fn() } as never,
       { appTimezone: 'Europe/Kyiv' },
+      shifts as never,
     );
     return { service, repo, points, audit };
   };
@@ -123,7 +125,10 @@ describe('TransfersService.accept / dispute', () => {
     created_at: new Date(),
   });
 
-  const build = (row: Record<string, unknown> | null = sentTransfer()) => {
+  const build = (
+    row: Record<string, unknown> | null = sentTransfer(),
+    opts: { openShift?: { id: string; business_date: string } | null; today?: string } = {},
+  ) => {
     const saved: Record<string, unknown>[] = [];
     const manager = {
       findOne: jest.fn().mockResolvedValue(row),
@@ -136,8 +141,14 @@ describe('TransfersService.accept / dispute', () => {
     const dataSource = {
       transaction: jest.fn((cb: (m: unknown) => unknown) => cb(manager)),
     };
+    const today = opts.today ?? '2026-09-09';
     const time = {
-      now: () => ({ toISODate: () => '2026-09-09', toJSDate: () => new Date('2026-09-09T06:00:00Z') }),
+      now: () => ({ toISODate: () => today, toJSDate: () => new Date(`${today}T06:00:00Z`) }),
+    };
+    const shifts = {
+      findOpenAtPoint: jest
+        .fn()
+        .mockResolvedValue(opts.openShift === undefined ? { id: 's-1', business_date: today } : opts.openShift),
     };
     const service = new TransfersService(
       {} as never,
@@ -146,8 +157,9 @@ describe('TransfersService.accept / dispute', () => {
       time as never,
       dataSource as never,
       { appTimezone: 'Europe/Kyiv' },
+      shifts as never,
     );
-    return { service, audit, saved, manager };
+    return { service, audit, saved, manager, shifts };
   };
 
   it('accept stamps all three accepted_* fields and the accepted status', async () => {
@@ -179,6 +191,7 @@ describe('TransfersService.accept / dispute', () => {
         return x;
       }),
     };
+    const shifts = { findOpenAtPoint: jest.fn().mockResolvedValue({ id: 's-1', business_date: '2026-09-09' }) };
     const service = new TransfersService(
       {} as never,
       {} as never,
@@ -186,6 +199,7 @@ describe('TransfersService.accept / dispute', () => {
       { now: () => (readings.length > 1 ? readings.shift()! : readings[0]) } as never,
       { transaction: jest.fn((cb: (m: unknown) => unknown) => cb(manager)) } as never,
       { appTimezone: 'Europe/Kyiv' },
+      shifts as never,
     );
 
     await service.accept(operatorA, 't-1');
@@ -272,6 +286,44 @@ describe('TransfersService.accept / dispute', () => {
       expect.anything(),
     );
   });
+
+  it('REFUSES when the point has no open shift — spec §4.1', async () => {
+    const { service } = build(sentTransfer(), { openShift: null });
+    await expect(service.accept(operatorA, 't-1')).rejects.toThrow(ConflictException);
+    await expect(
+      service.dispute(operatorA, 't-1', {
+        reported_cash: '140000.00',
+        reported_crates: 195,
+        dispute_note: 'мішок легший',
+      } as never),
+    ).rejects.toThrow(ConflictException);
+  });
+
+  it("takes accepted_date from the SHIFT's business_date, not from today — spec §4.2", async () => {
+    // The shift opened Friday and is being closed Saturday; the clock says
+    // Saturday, and the transfer must still land on Friday or it falls outside
+    // its own shift's movements.
+    const { service, saved } = build(sentTransfer(), {
+      openShift: { id: 's-fri', business_date: '2026-09-04' },
+      today: '2026-09-05',
+    });
+    await service.accept(operatorA, 't-1');
+    expect(saved[0].accepted_date).toBe('2026-09-04');
+  });
+
+  it('stamps the same shift date on a dispute', async () => {
+    const { service, saved } = build(sentTransfer(), {
+      openShift: { id: 's-fri', business_date: '2026-09-04' },
+      today: '2026-09-05',
+    });
+    await service.dispute(operatorA, 't-1', {
+      reported_cash: '140000.00',
+      reported_crates: 195,
+      dispute_note: 'мішок легший',
+    } as never);
+    expect(saved[0].accepted_date).toBe('2026-09-04');
+    expect(saved[0].reported_cash).toBe('140000.00');
+  });
 });
 
 describe('TransfersService.resolve / void', () => {
@@ -314,6 +366,7 @@ describe('TransfersService.resolve / void', () => {
     const audit = { record: jest.fn().mockResolvedValue(undefined) };
     const dataSource = { transaction: jest.fn((cb: (m: unknown) => unknown) => cb(manager)) };
     const time = { now: () => ({ toISODate: () => '2026-09-09', toJSDate: () => new Date() }) };
+    const shifts = { findOpenAtPoint: jest.fn().mockResolvedValue({ id: 's-1', business_date: '2026-09-09' }) };
     const service = new TransfersService(
       {} as never,
       {} as never,
@@ -321,6 +374,7 @@ describe('TransfersService.resolve / void', () => {
       time as never,
       dataSource as never,
       { appTimezone: 'Europe/Kyiv' },
+      shifts as never,
     );
     return { service, audit, saved };
   };
@@ -432,6 +486,7 @@ describe('TransfersService.list / findOne', () => {
       createQueryBuilder: jest.fn(() => builder),
       findOne: jest.fn().mockResolvedValue(findOneResult),
     };
+    const shifts = { findOpenAtPoint: jest.fn().mockResolvedValue({ id: 's-1', business_date: '2026-09-09' }) };
     const service = new TransfersService(
       repo as never,
       {} as never,
@@ -442,6 +497,7 @@ describe('TransfersService.list / findOne', () => {
       // here): a spec touching the list's date filter must state the zone it
       // is testing. Same argument as `point-cash.db-spec.ts`'s header.
       { appTimezone: 'Europe/Kyiv' },
+      shifts as never,
     );
     return { service, builder, repo };
   };
