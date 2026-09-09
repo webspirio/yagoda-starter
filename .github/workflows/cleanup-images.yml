@@ -30,4 +30,8 @@ jobs:
         run: |
           OPEN_PRS=$(gh pr list --repo "$GITHUB_REPOSITORY" --state open --limit 200 --json number --jq '[.[].number] | join(" ")')
           export OPEN_PRS
+          # Derive org/package names from the repository instead of hard-coding
+          # them; ghcr-cleanup.sh's own defaults stay as a fallback for local runs.
+          export GHCR_ORG="${GITHUB_REPOSITORY_OWNER}"
+          export PACKAGES="${GITHUB_REPOSITORY#*/}-backend ${GITHUB_REPOSITORY#*/}-nginx"
           bash scripts/ci/ghcr-cleanup.sh

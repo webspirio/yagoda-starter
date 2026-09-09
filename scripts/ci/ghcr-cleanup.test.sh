@@ -12,13 +12,18 @@ fixture=$(cat <<EOF
  {"id":4,"created_at":"$OLD","metadata":{"container":{"tags":["sha-aaaa"]}}},
  {"id":5,"created_at":"$NOW","metadata":{"container":{"tags":["sha-bbbb"]}}},
  {"id":6,"created_at":"$OLD","metadata":{"container":{"tags":["sha-cccc","pr-8"]}}},
- {"id":7,"created_at":"$OLD","metadata":{"container":{"tags":["keep-me"]}}}
+ {"id":7,"created_at":"$OLD","metadata":{"container":{"tags":["keep-me"]}}},
+ {"id":8,"created_at":"$OLD","metadata":{"container":{"tags":["sha-dddd","pr-7"]}}},
+ {"id":9,"created_at":"$NOW","metadata":{"container":{"tags":["sha-eeee","pr-7"]}}}
 ]
 EOF
 )
 got=$(printf '%s' "$fixture" | OPEN_PRS="8" KEEP_SHA_DAYS=30 bash "$HERE/ghcr-cleanup.sh" --select | sort -n | tr '\n' ' ')
-# 1 untagged; 2 pr-7 closed; 4 old sha only. Kept: 3 (open pr), 5 (fresh sha), 6 (carries open pr alias), 7 (foreign tag)
-if [ "$got" = "1 2 4 " ]; then echo "select: ok"; else echo "select: got '$got' want '1 2 4 '"; exit 1; fi
+# 1 untagged; 2 pr-7 closed (pr-only, deleted immediately); 4 old sha only;
+# 8 mixed sha+pr-7 (closed), old -> deleted once past the cutoff.
+# Kept: 3 (open pr), 5 (fresh sha), 6 (carries open pr alias), 7 (foreign tag),
+# 9 mixed sha+pr-7 (closed) but still fresh -> kept.
+if [ "$got" = "1 2 4 8 " ]; then echo "select: ok"; else echo "select: got '$got' want '1 2 4 8 '"; exit 1; fi
 
 # --- scenario 2: a package that 404s (not created yet / not accessible) must be
 # skipped, not abort the whole run — the other package still gets pruned. ---------
