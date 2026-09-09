@@ -86,7 +86,7 @@ GitHub App webhook when the PR closes.
 | `JWT_SECRET` | 48+ random chars | different 48+ random chars | `openssl rand -base64 48` |
 | `DB_PASSWORD` | random | random | |
 | `BOOTSTRAP_OWNER_LOGIN` / `_PASSWORD` / `_FIRST_NAME` / `_LAST_NAME` | the real owner | `owner` / `preview-owner-1` / `Preview` / `Owner` | read once, on the first boot of an empty DB |
-| `SEED_DEV_DATA` | *(absent)* | `true` | enables the one-shot `seed` service |
+| `SEED_DEV_DATA` | *(absent)* | `true` | enables the one-shot `seed` service — **the only thing that keeps demo data out of production; never set it in the production env set** |
 | `IMAGE_TAG` | *(absent)* | *(absent)* | **never set** unless the fallback below is in force |
 
 ¹ Coolify substitutes `{{pr_id}}` in the preview URL template; whether it does so

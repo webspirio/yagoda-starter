@@ -132,17 +132,22 @@ services:
   # while migrations are pending and the backend's start-up is the only
   # migration runner in the stack — a healthy backend is the signal that the
   # schema exists. Idempotent: a redeploy of the same preview inserts 0 rows.
-  # NODE_ENV=development applies to this process alone (the seed refuses
-  # production by design); the backend container stays production.
+  #
+  # The seed's own NODE_ENV=production refusal does NOT guard production in
+  # this topology: the command below flips NODE_ENV to development only for
+  # the exec'd process, after the guard has already let it through, so that
+  # refusal never fires here. Its local-host check also passes (DB_HOST is
+  # `postgres`). The ONLY thing keeping demo data out of production is that
+  # SEED_DEV_DATA is absent from the production env set — never set it there.
   seed:
     image: ghcr.io/${GHCR_REPO:-webspirio/yagoda-starter}-backend:${IMAGE_TAG:-sha-${SOURCE_COMMIT}}
     command:
       - sh
       - -c
-      - '[ "$$SEED_DEV_DATA" = "true" ] || exit 0; exec node backend/dist/seed/dev-seed.cli.js'
+      - '[ "$$SEED_DEV_DATA" = "true" ] || exit 0; exec env NODE_ENV=development node backend/dist/seed/dev-seed.cli.js'
     environment:
       SEED_DEV_DATA: ${SEED_DEV_DATA:-}
-      NODE_ENV: development
+      NODE_ENV: production
       # Heap cap below mem_limit (256m) for the same reason as the backend's.
       NODE_OPTIONS: --max-old-space-size=192
       DB_HOST: postgres

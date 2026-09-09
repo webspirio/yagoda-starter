@@ -414,8 +414,9 @@ jobs:
           base-url: ${{ env.PREVIEW_URL }}
           commit: ${{ env.HEAD_SHA }}
           pr-number: ${{ env.PR }}
-          # Demo credentials from backend/src/seed/dev-seed.data.ts — the seed
-          # refuses NODE_ENV=production, so they never exist on prod.
+          # Demo credentials from backend/src/seed/dev-seed.data.ts. They exist
+          # only where the preview env set carries SEED_DEV_DATA=true — that
+          # variable must never be set on production (docs/coolify-deploy.md).
           seed-username: oksana
           seed-password: operator
 
