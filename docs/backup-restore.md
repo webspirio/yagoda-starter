@@ -75,41 +75,43 @@ Restore the database and the uploads volume TOGETHER, from a matching pair
 of backup files (same `$STAMP`) — restoring one without the other reproduces
 the inconsistency the nightly script exists to avoid.
 
-1. Copy the desired `-db.sql.gz` and `-uploads.tar.gz` onto the VPS (or
+1. Load the backup configuration so the commands below know the container
+   and volume names: `set -a; . /etc/yagoda-backup.env; set +a` (on a VPS
+   without Coolify, export `PG_CONTAINER=yagoda-prod-postgres-1`,
+   `UPLOADS_VOLUME=yagoda-prod_uploads_data`, `DB_USER=app`, `DB_NAME=app`
+   instead).
+2. Copy the desired `-db.sql.gz` and `-uploads.tar.gz` onto the VPS (or
    wherever you're restoring to) and decompress the dump:
    `gunzip -k 20260707-023000-db.sql.gz`.
-2. Stop the backend so it isn't writing during the restore (Postgres itself
+3. Stop the backend so it isn't writing during the restore (Postgres itself
    stays up). Under Coolify, stop the `backend` service from the application
    page (or `docker stop <backend-container>`); on a standalone VPS:
    ```bash
    docker compose -f docker-compose.prod.yml stop backend
    ```
-3. Drop and recreate the database (this discards whatever is currently in
+4. Drop and recreate the database (this discards whatever is currently in
    it — make sure that's what you want, or restore into a fresh/renamed
    database instead if you need to keep the current data around for
-   comparison). `$PG_CONTAINER` here is the same value configured in
-   `/etc/yagoda-backup.env`:
+   comparison):
    ```bash
    docker exec -i "$PG_CONTAINER" \
      psql -U "$DB_USER" -d postgres -c "DROP DATABASE \"$DB_NAME\";"
    docker exec -i "$PG_CONTAINER" \
      psql -U "$DB_USER" -d postgres -c "CREATE DATABASE \"$DB_NAME\";"
    ```
-4. Load the dump:
+5. Load the dump:
    ```bash
    docker exec -i "$PG_CONTAINER" \
      psql -U "$DB_USER" "$DB_NAME" < 20260707-023000-db.sql
    ```
-5. Replace `uploads_data`'s contents with the matching archive — this
-   discards whatever is currently on the volume, same caveat as step 3.
-   `$UPLOADS_VOLUME` here is the same value configured in
-   `/etc/yagoda-backup.env`:
+6. Replace `uploads_data`'s contents with the matching archive — this
+   discards whatever is currently on the volume, same caveat as step 4:
    ```bash
    docker run --rm -v "$UPLOADS_VOLUME":/data \
      -v "$(pwd)":/backup alpine sh -c \
      'rm -rf /data/* && tar xzf /backup/20260707-023000-uploads.tar.gz -C /data'
    ```
-6. Restart the backend. Under Coolify, start it from the application page
+7. Restart the backend. Under Coolify, start it from the application page
    (or `docker start <backend-container>`); on a standalone VPS:
    ```bash
    docker compose -f docker-compose.prod.yml up -d backend
@@ -122,9 +124,12 @@ the inconsistency the nightly script exists to avoid.
 
 A backup you've never restored is a hope, not a plan. Periodically (e.g.
 quarterly, or after any significant schema change) run the restore procedure
-above against a scratch environment — a second VPS, a local `docker compose`
-stack, or a throwaway database and volume on the same box under different
-names — and confirm the app actually boots, reads data correctly, AND that
+above — starting with step 1's configuration load — against a scratch
+environment — a second VPS, a local `docker compose` stack, or a throwaway
+database and volume on the same box under different names (set `PG_CONTAINER`
+/ `UPLOADS_VOLUME` / `DB_USER` / `DB_NAME` to that environment's own values in
+step 1, rather than sourcing `/etc/yagoda-backup.env`) — and confirm the app
+actually boots, reads data correctly, AND that
 an avatar image (or other upload) referenced by a `media_files` row actually
 loads — not just that the row exists. Finding out a dump is corrupt or
 incomplete (or that the two backups drifted out of sync) during an actual

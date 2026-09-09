@@ -128,7 +128,7 @@ turns a wrong image into a failed job, not a silent wrong preview.
 | `deploy-*` job: Coolify `failed`, log shows compose error | compose file in that branch is invalid | `docker compose -f docker-compose.prod.yml config` locally |
 | `serves commit 'X', expected 'Y'` | Coolify deployed another commit (fallback misuse, or Auto Deploy got switched on) | Check Auto Deploy is off; re-run the job |
 | `/ready` never 200 | backend crash-loop | Coolify → application → logs; usually a missing env var |
-| «Preview not deployed — limit reached» | 6 live previews | close/merge an older PR |
+| «Preview not deployed — limit reached» | `PREVIEW_CAP` live previews (default 6) | close/merge an older PR |
 | Prod is wrong after a merge | | `git revert <merge>` + push. **This does not revert schema migrations** — see `docs/backup-restore.md` to restore last night's pair if a migration destroyed data. |
 
 ## Leaving Coolify

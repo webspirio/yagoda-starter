@@ -33,7 +33,8 @@ Web Starter — a production-ready web application boilerplate with a NestJS bac
 | `frontend/` | React SPA — see `frontend/CLAUDE.md` |
 | `nginx/` | Production reverse proxy (nginx config + Dockerfile) |
 | `docker-compose.yml` | Local dev stack (postgres, redis, backend, frontend) |
-| `docker-compose.prod.yml` | Production stack (postgres, redis, backend, nginx) |
+| `docker-compose.prod.yml` | Production/preview stack for Coolify (postgres, redis, backend, seed, nginx) — no host ports |
+| `docker-compose.standalone.yml` | Override adding loopback ports for a VPS without Coolify |
 | `.env` | Local secrets — not committed; copy from `.env.example` |
 
 ## Commands
