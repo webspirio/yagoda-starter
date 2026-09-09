@@ -31,62 +31,22 @@ just resets those counters to zero — no user-visible state depends on it. It
 is **not** business data and does not need to be in the backup rotation; it
 needs to survive redeploys, which the volume plus `--appendonly yes` provides.
 
-## Nightly backup with cron + pg_dump + tar
+## Nightly backup
 
-Run this on the VPS, from the same directory as `docker-compose.prod.yml`
-(wherever you deployed the repo, e.g. `/opt/web-starter` or your own
-`DEPLOY_PATH`). It dumps the database through the running `postgres`
-container and archives `uploads_data` through a throwaway container — no
-extra Postgres client (or anything else) needs to be installed on the host.
-Both run in the SAME script invocation so the two snapshots are taken close
-together — `media_files` rows and the files on disk drift out of sync the
-longer the gap between the two, since nothing pauses uploads in between.
+`scripts/vps/backup.sh` (installed as `/usr/local/bin/yagoda-backup.sh` by the
+Coolify runbook, run by `yagoda-backup.timer` at 02:30) takes ONE logical
+snapshot: a `pg_dump` and a tar of the uploads volume under a single `STAMP`,
+written as `.partial` files and renamed into place only when both succeeded and
+verified — the directory never holds an unmatched half. `flock` keeps a manual
+`systemctl start yagoda-backup.service` from overlapping the timer. Retention
+(14 days) prunes by pair. Configuration lives in `/etc/yagoda-backup.env`
+(`PG_CONTAINER`, `UPLOADS_VOLUME` — Coolify names them `postgres-<uuid>` and
+`<uuid>_uploads_data`; check with `docker ps` / `docker volume ls`).
 
-```bash
-#!/usr/bin/env bash
-# /opt/web-starter/scripts/backup-db.sh
-set -euo pipefail
+Output: `/data/backups/<STAMP>-db.sql.gz` + `/data/backups/<STAMP>-uploads.tar.gz`.
 
-cd "$(dirname "$0")/.."
-set -a; source .env; set +a   # loads DB_USER / DB_NAME (and everything else) into the shell
-
-BACKUP_DIR="/opt/backups/web-starter"
-mkdir -p "$BACKUP_DIR"
-STAMP="$(date +%Y%m%d-%H%M%S)"
-
-docker compose -f docker-compose.prod.yml exec -T postgres \
-  pg_dump -U "$DB_USER" "$DB_NAME" | gzip > "$BACKUP_DIR/$STAMP-db.sql.gz"
-
-# uploads_data: a throwaway alpine container mounts the named volume
-# read-only and tars it straight to stdout — no need to stop the backend or
-# touch the running container.
-docker run --rm -v web-starter-prod_uploads_data:/data:ro alpine \
-  tar czf - -C /data . > "$BACKUP_DIR/$STAMP-uploads.tar.gz"
-
-# Retention: keep the last 14 daily backups (both files), prune the rest.
-find "$BACKUP_DIR" -name '*-db.sql.gz' -mtime +14 -delete
-find "$BACKUP_DIR" -name '*-uploads.tar.gz' -mtime +14 -delete
-```
-
-```bash
-chmod +x scripts/backup-db.sh
-```
-
-Schedule it (as the `deploy` user, so it can run `docker` and `docker compose`):
-
-```bash
-crontab -e
-# Nightly at 02:30 server time
-30 2 * * * /opt/web-starter/scripts/backup-db.sh >> /var/log/web-starter-backup.log 2>&1
-```
-
-The volume name (`web-starter-prod_uploads_data` above) follows Compose's
-`<project>_<volume>` convention from this stack's `name: web-starter-prod`
-(`docker-compose.prod.yml`); confirm yours with `docker volume ls` if you
-overrode the project name.
-
-Adjust `DB_USER`/`DB_NAME` defaults (`app`/`app`) if you changed them in
-`.env`; adjust the retention window (`-mtime +14`) to taste.
+On a VPS without Coolify the same script works with the standalone stack's
+names (`yagoda-prod-postgres-1`, `yagoda-prod_uploads_data`).
 
 ## Off-box copies
 
@@ -97,12 +57,13 @@ other is exactly the inconsistent state described above, just moved off-box.
 Pick whichever fits your setup:
 
 - **rsync/scp to another machine** — simplest option, e.g. a cron job on a
-  second host that pulls nightly: `rsync -az deploy@vps:/opt/backups/web-starter/ /local/backups/`.
+  second host that pulls nightly: `rsync -az deploy@vps:/data/backups/ /local/backups/`.
 - **[restic](https://restic.net/)** — encrypted, deduplicated backups to S3,
   Backblaze B2, SFTP, or a local disk; add a `restic backup "$BACKUP_DIR"`
-  line to the script above once a repository is initialized.
+  call to `scripts/vps/backup.sh` once a repository is initialized.
 - **Cloud object storage directly** — `aws s3 cp`, `rclone copy`, or your
-  provider's CLI, appended to the backup script after the two lines above.
+  provider's CLI, appended to `scripts/vps/backup.sh` after the backup
+  succeeds.
 
 Whichever you choose, keep at least one copy that isn't reachable from the
 VPS itself (so a compromised or destroyed VPS can't take out your backups
@@ -118,33 +79,38 @@ the inconsistency the nightly script exists to avoid.
    wherever you're restoring to) and decompress the dump:
    `gunzip -k 20260707-023000-db.sql.gz`.
 2. Stop the backend so it isn't writing during the restore (Postgres itself
-   stays up):
+   stays up). Under Coolify, stop the `backend` service from the application
+   page (or `docker stop <backend-container>`); on a standalone VPS:
    ```bash
    docker compose -f docker-compose.prod.yml stop backend
    ```
 3. Drop and recreate the database (this discards whatever is currently in
    it — make sure that's what you want, or restore into a fresh/renamed
    database instead if you need to keep the current data around for
-   comparison):
+   comparison). `$PG_CONTAINER` here is the same value configured in
+   `/etc/yagoda-backup.env`:
    ```bash
-   docker compose -f docker-compose.prod.yml exec -T postgres \
+   docker exec -i "$PG_CONTAINER" \
      psql -U "$DB_USER" -d postgres -c "DROP DATABASE \"$DB_NAME\";"
-   docker compose -f docker-compose.prod.yml exec -T postgres \
+   docker exec -i "$PG_CONTAINER" \
      psql -U "$DB_USER" -d postgres -c "CREATE DATABASE \"$DB_NAME\";"
    ```
 4. Load the dump:
    ```bash
-   docker compose -f docker-compose.prod.yml exec -T postgres \
+   docker exec -i "$PG_CONTAINER" \
      psql -U "$DB_USER" "$DB_NAME" < 20260707-023000-db.sql
    ```
 5. Replace `uploads_data`'s contents with the matching archive — this
-   discards whatever is currently on the volume, same caveat as step 3:
+   discards whatever is currently on the volume, same caveat as step 3.
+   `$UPLOADS_VOLUME` here is the same value configured in
+   `/etc/yagoda-backup.env`:
    ```bash
-   docker run --rm -v web-starter-prod_uploads_data:/data \
+   docker run --rm -v "$UPLOADS_VOLUME":/data \
      -v "$(pwd)":/backup alpine sh -c \
      'rm -rf /data/* && tar xzf /backup/20260707-023000-uploads.tar.gz -C /data'
    ```
-6. Restart the backend:
+6. Restart the backend. Under Coolify, start it from the application page
+   (or `docker start <backend-container>`); on a standalone VPS:
    ```bash
    docker compose -f docker-compose.prod.yml up -d backend
    ```

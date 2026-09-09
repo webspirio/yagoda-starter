@@ -827,7 +827,7 @@ CONFIG=$S/bk.env bash scripts/vps/backup.sh && ls "$S/backups"
 # 2) failure in the SECOND half leaves NO files behind (the db half was already
 #    written as .partial). Docker auto-creates a missing named volume, so use an
 #    INVALID volume name to make `docker run -v` itself fail.
-sed 's/^UPLOADS_VOLUME=.*/UPLOADS_VOLUME=invalid volume name!/' "$S/bk.env" > "$S/bk.bad.env"
+sed 's/^UPLOADS_VOLUME=.*/UPLOADS_VOLUME="invalid volume name!"/' "$S/bk.env" > "$S/bk.bad.env"
 CONFIG=$S/bk.bad.env bash scripts/vps/backup.sh; echo "exit=$?"; ls "$S/backups" | grep -c partial || true
 # 3) lock: a second run while the first holds the lock skips
 ( exec 9>"$S/bk.lock"; flock 9; CONFIG=$S/bk.env bash scripts/vps/backup.sh; echo "locked exit=$?" )

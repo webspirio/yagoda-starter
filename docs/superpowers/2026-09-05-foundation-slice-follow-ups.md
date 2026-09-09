@@ -512,3 +512,21 @@ schedules yet — a kit/consistency pass, not a feature:
   without search, and table names fall back to an 8-char id past the first
   100 balance rows on «Усі точки». Fine for a season's network; revisit with
   a server-side name lookup if the directory grows.
+
+## Learned from the Coolify deployment (2026-09-09)
+
+- **Pre-migration `pg_dump` is required before the first destructive
+  migration** (drop/rename column, type change, data rewrite). An image
+  rollback (`git revert`) does not roll the schema back. Planned as a one-shot
+  `predeploy-dump` compose service gated by `PREDEPLOY_DUMP=true` in the
+  production env set, on which `backend` `depends_on … service_completed_successfully`
+  — spec §9.
+- **Off-box copy of `/data/backups`** — Hetzner Storage Box (rclone/sftp) or
+  restic to S3; `docs/backup-restore.md` lists both. Until then a lost disk
+  loses the backups too.
+- **DBLab** — revisit when the production database exceeds ~1–2 GB, on a
+  separate ≥ 8 GiB machine (ZFS/LVM pool, ARC capped).
+- **Monitoring** — Coolify Sentinel + Telegram notifications; nothing alerts
+  today when prod goes down.
+- **Preview cap is a repo constant** (`PREVIEW_CAP` in `ci.yml`); recheck it
+  against the measured Coolify RSS whenever Coolify is updated.
