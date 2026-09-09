@@ -2,6 +2,12 @@ import { Inject, Injectable } from '@nestjs/common';
 import { ConfigType } from '@nestjs/config';
 import { DataSource, EntityManager } from 'typeorm';
 import { timezoneConfig } from '../config/timezone.config';
+import { Paginated } from '../common/dto/paginated';
+import { skipOf } from '../common/dto/pagination-query.dto';
+import { resolvePointFilter } from '../auth/access/point-scope';
+import type { AuthenticatedUser } from '../auth/jwt.strategy';
+import { ListPointCashQueryDto } from './dto/list-point-cash.query';
+import { PointCashRow, PointCashRowResponse, toPointCashRowResponse } from './point-cash.mapper';
 
 /**
  * «As of» resolves to TODAY IN `APP_TIMEZONE` when the caller names no date,
@@ -151,6 +157,77 @@ export class PointCashService {
     }[];
 
     return row.cash;
+  }
+
+  /**
+   * Every point in scope with its cash — §7.10's table, and the one screen both
+   * roles open. «Керівник відкриває той самий екран каси, який бачить
+   * приймальник цієї точки, плюс свої блоки: одна правда для обох, різна
+   * повнота» — which is why this widens by role rather than splitting in two.
+   *
+   * THE SAME SQL AS `cashFor`, correlated on each point row, so this list
+   * cannot grow a formula of its own.
+   *
+   * THE SHORTFALL IS SUBTRACTED BY POSTGRES, NOT BY JAVASCRIPT, and that is
+   * not stylistic: `numeric` arithmetic in SQL is exact, and `NULL - x` is
+   * `NULL`, so a point with no target gets its `null` shortfall for free with
+   * no branch to forget. Writing `target_cash - cash` in TypeScript is the
+   * exact shape foundation §5.1 forbids, and `eslint.config.mjs` refuses it in
+   * this directory.
+   *
+   * THE ORDER IS TOTAL — name, then id. Postgres promises no order among ties,
+   * so without the id tiebreaker `LIMIT`/`OFFSET` can serve one row twice.
+   */
+  async list(
+    actor: AuthenticatedUser,
+    query: ListPointCashQueryDto,
+  ): Promise<Paginated<PointCashRowResponse>> {
+    const pointId = resolvePointFilter(actor, query.collection_point_id) ?? null;
+    const manager = this.dataSource.manager;
+
+    const rows = (await manager.query(
+      `WITH scoped AS (
+         SELECT cp.id, cp.name, cp.target_cash,
+                ${cashSql('cp.id', asOfSql('$2', '$3'), '$3')} AS cash
+           FROM collection_points cp
+          WHERE cp.is_active = true
+            AND ($1::uuid IS NULL OR cp.id = $1::uuid)
+       )
+       SELECT s.id AS collection_point_id, s.name,
+              s.target_cash::text AS target_cash,
+              s.cash::text        AS cash,
+              -- NULL propagates: a point with no target gets a null shortfall
+              -- with no CASE and no branch to forget.
+              (s.target_cash - s.cash)::text AS shortfall,
+              lt.status  AS latest_transfer_status,
+              lt.sent_at AS latest_transfer_sent_at
+         FROM scoped s
+         LEFT JOIN LATERAL (
+              SELECT t.status, t.sent_at
+                FROM transfers t
+               WHERE t.collection_point_id = s.id
+                 AND t.voided_at IS NULL
+               ORDER BY t.sent_at DESC, t.id DESC
+               LIMIT 1) lt ON TRUE
+        ORDER BY s.name ASC, s.id ASC
+        LIMIT $4 OFFSET $5`,
+      [pointId, query.as_of ?? null, this.tz.appTimezone, query.limit, skipOf(query)],
+    )) as PointCashRow[];
+
+    // The count runs over the same scope, so `total` and `data` cannot
+    // disagree about what is listed. It does not need the formula.
+    const [{ total }] = (await manager.query(
+      `SELECT COUNT(*)::int AS total FROM collection_points cp
+        WHERE cp.is_active = true AND ($1::uuid IS NULL OR cp.id = $1::uuid)`,
+      [pointId],
+    )) as { total: number }[];
+
+    return {
+      data: rows.map(toPointCashRowResponse),
+      total,
+      page: query.page,
+      limit: query.limit,
+    };
   }
 }
 

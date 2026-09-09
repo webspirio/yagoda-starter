@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { PointCashService } from './point-cash.service';
+import { PointCashController } from './point-cash.controller';
 import { timezoneConfig } from '../config/timezone.config';
 
 /**
@@ -15,6 +16,7 @@ import { timezoneConfig } from '../config/timezone.config';
 @Module({
   imports: [ConfigModule.forFeature(timezoneConfig)],
   providers: [PointCashService],
+  controllers: [PointCashController],
   exports: [PointCashService],
 })
 export class PointCashModule {}

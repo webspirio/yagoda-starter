@@ -2,6 +2,8 @@ import { randomUUID } from 'crypto';
 import { DataSource } from 'typeorm';
 import { openTestDataSource } from '../testing/db-harness';
 import { PointCashService } from './point-cash.service';
+import { UserRole } from '../users/user-role.enum';
+import type { AuthenticatedUser } from '../auth/jwt.strategy';
 
 /**
  * THE FORMULA, AGAINST A REAL POSTGRES. A unit spec can only assert the text
@@ -282,5 +284,110 @@ describe('PointCashService.cashFor (Postgres)', () => {
       void_reason: 'дубль',
     });
     await expect(service.cashFor(p, '2026-09-30')).resolves.toBe('0.00');
+  });
+});
+
+describe('PointCashService.list (Postgres)', () => {
+  // Reuses the outer describe's harness by re-opening its own — see
+  // supplier-balance-list.db-spec.ts for the same shape.
+  let ds: DataSource;
+  let service: PointCashService;
+  let ownerId: string;
+  let withTarget: string;
+  let withoutTarget: string;
+
+  const owner: AuthenticatedUser = {
+    sub: 'placeholder',
+    username: 'owner',
+    role: UserRole.NetworkOwner,
+    collection_point_id: null,
+  };
+
+  const query = (over: Record<string, unknown> = {}) => ({
+    page: 1,
+    limit: 50,
+    as_of: '2026-09-30',
+    ...over,
+  });
+
+  beforeAll(async () => {
+    ds = await openTestDataSource();
+    service = new PointCashService(ds, { appTimezone: 'Europe/Kyiv' });
+    const run = randomUUID().slice(0, 8);
+    [{ id: ownerId }] = (await ds.query(
+      `INSERT INTO users (first_name, last_name, role, is_active)
+       VALUES ('Тест', $1, 'network_owner', true) RETURNING id`,
+      [`Owner list ${run}`],
+    )) as { id: string }[];
+    owner.sub = ownerId;
+
+    const mk = async (target: string | null) => {
+      const tag = randomUUID().slice(0, 8);
+      const [{ id }] = (await ds.query(
+        `INSERT INTO collection_points (name, code, kind, target_cash, is_active)
+         VALUES ($1, $2, 'reception', $3, true) RETURNING id`,
+        [`Точка ${tag}`, `L${tag.slice(0, 6).toUpperCase()}`, target],
+      )) as { id: string }[];
+      return id;
+    };
+    withTarget = await mk('500000.00');
+    withoutTarget = await mk(null);
+
+    await ds.query(
+      `INSERT INTO transfers (collection_point_id, cash, crates, carrier, sent_by_user_id,
+                              sent_at, status, accepted_by_user_id, accepted_date, accepted_at)
+       VALUES ($1, '1616.10', 0, 'Іван', $2, '2026-09-01T18:00:00Z', 'accepted',
+               $2, '2026-09-02', '2026-09-02T07:00:00Z')`,
+      [withTarget, ownerId],
+    );
+  });
+
+  afterAll(async () => {
+    await ds?.destroy();
+  });
+
+  it('computes the shortfall in Postgres, exact to the kopiyka', async () => {
+    const page = await service.list(owner, query({ collection_point_id: withTarget }) as never);
+    expect(page.data[0]).toMatchObject({
+      target_cash: '500000.00',
+      cash: '1616.10',
+      shortfall: '498383.90',
+    });
+  });
+
+  it('KEEPS a point with no target_cash, with a null shortfall — the 09.09.2026 ruling', async () => {
+    const page = await service.list(owner, query({ collection_point_id: withoutTarget }) as never);
+    expect(page.total).toBe(1);
+    expect(page.data[0]).toMatchObject({
+      target_cash: null,
+      cash: '0.00',
+      shortfall: null,
+    });
+  });
+
+  it('carries the latest transfer state, and null when there is none', async () => {
+    const withT = await service.list(owner, query({ collection_point_id: withTarget }) as never);
+    expect(withT.data[0].latest_transfer?.status).toBe('accepted');
+
+    const without = await service.list(
+      owner,
+      query({ collection_point_id: withoutTarget }) as never,
+    );
+    expect(without.data[0].latest_transfer).toBeNull();
+  });
+
+  it('pins an operator to their own point regardless of the query', async () => {
+    const operator: AuthenticatedUser = {
+      sub: ownerId,
+      username: 'op',
+      role: UserRole.PointOperator,
+      collection_point_id: withoutTarget,
+    };
+    const page = await service.list(
+      operator,
+      query({ collection_point_id: withTarget }) as never,
+    );
+    expect(page.data).toHaveLength(1);
+    expect(page.data[0].collection_point_id).toBe(withoutTarget);
   });
 });
