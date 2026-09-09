@@ -1194,6 +1194,25 @@ Replace `cashFor`'s query, keeping its signature:
   }
 ```
 
+**Re-anchor `list` in the same step — it has the other call site.** In `list`'s `scoped` CTE,
+replace `${cashSql('cp.id', asOfSql('$2', '$3'), '$3')} AS cash` with the same anchored
+expression:
+
+```sql
+                COALESCE((
+                  SELECT (a.counted_amount
+                          + CASE WHEN a.kind = 'opening' THEN ${movementsSql('a.shift_id')}
+                                 ELSE 0.00 END)
+                    FROM ${anchorSql('cp.id', asOfSql('$2', '$3'))} a
+                ), 0.00) AS cash
+```
+
+**Then DELETE `cashSql` entirely.** Both of its call sites are now anchored, and leaving a
+document-line formula in the file is how the two endpoints drift apart again. Its comment block
+is not lost: `movementsSql`'s header already carries both `voided_at` asymmetries and the
+three-way status `CASE`, which were the parts worth keeping. `asOfSql` STAYS — the anchor query
+still bounds by business date.
+
 Replace the module header's "NOTHING IS CACHED" paragraph's second half with:
 
 ```ts
@@ -1662,8 +1681,18 @@ describe('ShiftsService.reopen demotes the closing count', () => {
       }),
     };
     const dataSource = { transaction: jest.fn((cb: (m: unknown) => unknown) => cb(manager)) };
+    // `reopen` calls findOne THREE times with different intents: loadVisible,
+    // findOpenAtPoint (which passes `closed_at: IsNull()`), and the
+    // newest-shift check. A mock that returns the row for all three makes
+    // findOpenAtPoint report an open shift and reopen throws
+    // SHIFT_ALREADY_OPEN before reaching the demotion. Discriminate on the
+    // where clause.
     const repo = {
-      findOne: jest.fn().mockResolvedValue(shiftRow),
+      findOne: jest.fn((opts: { where?: Record<string, unknown> }) =>
+        Promise.resolve(
+          opts?.where && 'closed_at' in opts.where ? null : shiftRow,
+        ),
+      ),
       create: (x: unknown) => x,
     };
     const service = new ShiftsService(
@@ -2380,7 +2409,15 @@ MSG
 
 ### Task 9: The frontend catches up
 
-The uncommitted entity slices and pages from the current session assume the previous model. **They are uncommitted on purpose — keep them that way** unless the user says otherwise; commit only if explicitly asked.
+The entity slices and pages from the current session assume the previous model.
+
+**THE FRONTEND IS STASHED. Start with `git stash pop`.** The controller stashed it before Task 1
+so backend work ran against a clean tree; the stash message reads «frontend: transfers+point-cash
+entities/pages, and CatalogPage refactor (pre cash-counts slice)». It also carries an unrelated
+`CatalogPage.tsx` refactor belonging to the user — do not touch that file.
+
+**Everything here stays uncommitted — keep it that way** unless the user says otherwise; commit
+only if explicitly asked.
 
 **Files:**
 - Modify: `frontend/src/entities/shift/model/shift.ts`, `api/useShifts.ts`
