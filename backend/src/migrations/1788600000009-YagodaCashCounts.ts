@@ -18,6 +18,15 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
  *    Adding an enum value later is a migration nobody should have to write,
  *    and 28-db-schema.dbml is the schema of record.
  *
+ * ONE THING IN HERE WAS AN ERROR: `CHK_cash_counts_expected_non_negative`.
+ * `28-db-schema.dbml` never specified it, an expectation is a SIGNED
+ * arithmetic result rather than a pile of banknotes, and the constraint made a
+ * shift whose payouts exceeded its takings permanently uncloseable. It is
+ * dropped by `1788600000010`, which argues it at length. It is left in the
+ * `CREATE TABLE` above because this migration has already been applied and
+ * this repo fixes forward. `CHK_cash_counts_counted_non_negative` is NOT an
+ * error and stays.
+ *
  * `shifts.explanation` and `shift_status.awaiting_explanation` were created by
  * `YagodaIntakesAndPayouts` and left unwritten "until cash_counts lands". This
  * IS that slice, and only the first of the two gets used: the client's ruling

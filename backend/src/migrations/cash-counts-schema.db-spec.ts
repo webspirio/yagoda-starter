@@ -76,13 +76,32 @@ describe('cash_counts schema (Postgres)', () => {
     await expect(insert({ kind: 'opening', book: 'crates' })).resolves.toHaveLength(1);
   });
 
-  it('refuses negative amounts', async () => {
+  it('refuses a negative COUNT — banknotes cannot be negative', async () => {
     await expect(insert({ counted_amount: '-1.00' })).rejects.toThrow(
       /CHK_cash_counts_counted_non_negative/,
     );
-    await expect(insert({ expected_amount: '-1.00' })).rejects.toThrow(
-      /CHK_cash_counts_expected_non_negative/,
-    );
+  });
+
+  /**
+   * THE ASYMMETRY IS DELIBERATE and this scenario is what pins it. An
+   * expectation is the previous count plus this shift's SIGNED movements
+   * (§3.3), so it goes negative whenever a shift paid out more than it took
+   * in — an ordinary event, not a corrupt row. `1788600000009` shipped a
+   * `CHK_cash_counts_expected_non_negative` alongside the counted-amount one;
+   * it made every such shift permanently uncloseable, and `1788600000010`
+   * drops it. Re-adding the constraint makes this red.
+   */
+  it('ACCEPTS a negative EXPECTATION — it is an arithmetic result, not a pile of banknotes', async () => {
+    await expect(insert({ expected_amount: '-8000.00' })).resolves.toHaveLength(1);
+  });
+
+  it('no longer carries CHK_cash_counts_expected_non_negative at all', async () => {
+    const rows = (await ds.query(
+      `SELECT conname FROM pg_constraint
+        WHERE conrelid = 'cash_counts'::regclass AND conname LIKE 'CHK_cash_counts%'
+        ORDER BY conname`,
+    )) as { conname: string }[];
+    expect(rows.map((r) => r.conname)).toEqual(['CHK_cash_counts_counted_non_negative']);
   });
 
   it('requires both amounts', async () => {

@@ -50,8 +50,16 @@ import { CashCountKind } from './cash-count-kind.enum';
  * `kind` on reopen, argued there.
  */
 @Entity('cash_counts')
+// ONLY `counted_amount` IS CONSTRAINED, AND THE ASYMMETRY IS THE POINT. A
+// count is a pile of banknotes and cannot be negative. An expectation is an
+// arithmetic result — the previous count plus this shift's SIGNED movements
+// (§3.3) — and it goes negative whenever more money left the drawer than
+// entered it, which is exactly the fact this slice exists to surface. The
+// matching `CHK_cash_counts_expected_non_negative` shipped in
+// `1788600000009`, made every such shift uncloseable, and was dropped by
+// `1788600000010`; re-adding it here would make `migration:generate` propose
+// putting it back.
 @Check('CHK_cash_counts_counted_non_negative', `"counted_amount" >= 0`)
-@Check('CHK_cash_counts_expected_non_negative', `"expected_amount" >= 0`)
 @Index('IDX_cash_counts_shift_counted_at', ['shift_id', 'counted_at'])
 export class CashCount {
   @PrimaryGeneratedColumn('uuid')
@@ -74,7 +82,8 @@ export class CashCount {
   @Column({ type: 'numeric', precision: 12, scale: 2 })
   counted_amount: string;
 
-  /** See this class's header — a SNAPSHOT, never recomputed. */
+  /** See this class's header — a SNAPSHOT, never recomputed. It is SIGNED and
+   *  may be negative; see the `@Check` note above the class. */
   @Column({ type: 'numeric', precision: 12, scale: 2 })
   expected_amount: string;
 
