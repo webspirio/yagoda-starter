@@ -103,6 +103,16 @@ describe('PointCashService.cashFor (Postgres)', () => {
   };
 
   /**
+   * A CLOSING count is stamped LATER THAN THE OPENING it closes, and passing
+   * this explicitly is not decoration. The anchor's ordering is
+   * `business_date DESC, (kind = 'closing') DESC, counted_at DESC`; if both
+   * counts of a shift carried the same `counted_at`, removing the middle
+   * tiebreak would leave the order undefined and these scenarios would go
+   * FLAKY rather than reliably red. Real timestamps make them fail either way.
+   */
+  const CLOSED_AT = new Date('2026-09-02T18:00:00Z');
+
+  /**
    * A berry count on a shift. `UQ_cash_counts_shift_book_kind` is partial over
    * `kind <> 'midday'`, so one `opening` and one `closing` per shift, and as
    * many `midday` rows as a scenario wants.
@@ -266,11 +276,14 @@ describe('PointCashService.cashFor (Postgres)', () => {
     const s = await shift(p, '2026-09-02');
     await count(s, 'opening', '0.00', '0.00');
     await transfer(p, { cash: '1000.00' });
+    // Handed back the SAME business day, so it re-enters this shift's drawer.
+    // A return settled on a later day belongs to that later day's shift — see
+    // scenario 11.
     await payoutIn(s, '250.00', {
-      voided_at: new Date('2026-09-03T12:00:00Z'),
+      voided_at: new Date('2026-09-02T10:00:00Z'),
       voided_by_user_id: ownerId,
       void_reason: 'помилка',
-      return_settled_at: new Date('2026-09-04T09:00:00Z'),
+      return_settled_at: new Date('2026-09-02T12:00:00Z'),
       return_settled_by_user_id: ownerId,
     });
     await expect(service.cashFor(p, '2026-09-30')).resolves.toBe('1000.00');
@@ -307,35 +320,43 @@ describe('PointCashService.cashFor (Postgres)', () => {
   });
 
   /**
-   * THIS SCENARIO CHANGED SUBJECT, AND THE OLD SUBJECT NO LONGER EXISTS. It
-   * used to pin the `AT TIME ZONE` cast on `return_settled_at`: a settlement at
-   * 00:30 Kyiv counted on the 5th, not the 4th. The anchored formula has no
-   * date comparison on `return_settled_at` at all — the third term is
-   * SHIFT-bounded like the other two, because a shift's movements are settled
-   * by its own closing count. So the settlement's wall clock stopped mattering
-   * and what has to be pinned instead is that it stopped mattering: a return
-   * booked weeks later still restores cash to the shift its payout belongs to,
-   * and the as-of date no longer moves it.
+   * THE ONE SCENARIO IN THIS FILE WHOSE RESULT DEPENDS ON `APP_TIMEZONE`, which
+   * is what makes the pinned `{ appTimezone: 'Europe/Kyiv' }` above worth
+   * pinning. A returned payout re-enters the drawer on the day it was
+   * physically handed back — in whichever shift was running that day, not the
+   * shift the original payout belonged to — and «that day» is a LOCAL calendar
+   * day matched against `shifts.business_date`.
    *
-   * The timezone is still live in `asOfSql`, which resolves a missing `as_of`
-   * to today in `APP_TIMEZONE` — scenario 12.
+   * 2026-09-04 21:30 UTC is 2026-09-05 00:30 in Kyiv. Read in the session's UTC
+   * it lands on the 4th and credits the day-4 shift; read correctly it lands on
+   * the 5th and credits the day-5 shift. BOTH assertions flip if the
+   * `AT TIME ZONE` cast on `return_settled_at` is dropped — day 4 would read
+   * 1000.00 and day 5 would read 750.00, exactly the reverse of what is
+   * asserted here — so this scenario cannot be made green by a bare `::date`.
    */
-  it('11. a return settled long after the shift still restores that shift, whatever as_of says', async () => {
+  it('11. a return settled just past local midnight lands in the NEXT day’s shift', async () => {
     const p = await newPoint();
-    const s = await shift(p, '2026-09-03');
-    await count(s, 'opening', '0.00', '0.00');
-    await transfer(p, { cash: '1000.00', accepted_date: '2026-09-03' });
-    await payoutIn(s, '250.00', {
-      voided_at: new Date('2026-09-03T12:00:00Z'),
+    const day4 = await shift(p, '2026-09-04');
+    await count(day4, 'opening', '0.00', '0.00');
+    await transfer(p, { cash: '1000.00', accepted_date: '2026-09-04' });
+    await payoutIn(day4, '250.00', {
+      voided_at: new Date('2026-09-04T12:00:00Z'),
       voided_by_user_id: ownerId,
       void_reason: 'помилка',
-      // Weeks after the shift, and after the earlier of the two as-of dates.
-      return_settled_at: new Date('2026-09-28T21:30:00Z'),
+      // 2026-09-05 00:30 Europe/Kyiv.
+      return_settled_at: new Date('2026-09-04T21:30:00Z'),
       return_settled_by_user_id: ownerId,
     });
 
-    await expect(service.cashFor(p, '2026-09-04')).resolves.toBe('1000.00');
-    await expect(service.cashFor(p, '2026-09-30')).resolves.toBe('1000.00');
+    // Day 5 opens on what day 4 closed with, and the cash comes back into it.
+    const day5 = await shift(p, '2026-09-05');
+    await count(day5, 'opening', '750.00', '750.00', new Date('2026-09-05T07:30:00Z'));
+
+    await expect(service.movementsForShift(day4)).resolves.toBe('750.00');
+    await expect(service.movementsForShift(day5)).resolves.toBe('250.00');
+
+    await expect(service.cashFor(p, '2026-09-04')).resolves.toBe('750.00');
+    await expect(service.cashFor(p, '2026-09-05')).resolves.toBe('1000.00');
   });
 
   it('12. defaults as_of to today when it is not given', async () => {
@@ -393,7 +414,7 @@ describe('PointCashService.cashFor (Postgres)', () => {
       const s = await shift(p, '2026-09-02');
       await transfer(p, { cash: '1000.00', accepted_date: '2026-09-02' });
       await count(s, 'opening', '500.00', '500.00');
-      await count(s, 'closing', '1490.00', '1500.00');
+      await count(s, 'closing', '1490.00', '1500.00', CLOSED_AT);
       // 1490 counted, 1500 expected — 10 short, and cash follows the COUNT.
       await expect(service.cashFor(p, '2026-09-30')).resolves.toBe('1490.00');
     });
@@ -423,7 +444,7 @@ describe('PointCashService.cashFor (Postgres)', () => {
       await transfer(p, { cash: '9999.00', accepted_date: '2026-08-01' });
       const s = await shift(p, '2026-09-02');
       await count(s, 'opening', '500.00', '500.00');
-      await count(s, 'closing', '500.00', '500.00');
+      await count(s, 'closing', '500.00', '500.00', CLOSED_AT);
       await expect(service.cashFor(p, '2026-09-30')).resolves.toBe('500.00');
     });
 
@@ -454,6 +475,51 @@ describe('PointCashService.cashFor (Postgres)', () => {
       await expect(service.movementsForShift(s)).resolves.toBe('-250.00');
     });
 
+    /**
+     * THE RETURN TERM NO LONGER JOINS THROUGH `p.shift_id = <shift>`, so its
+     * point-scoping is an explicit condition and this is the only thing that
+     * says so in code. Drop `ps.collection_point_id = s.collection_point_id`
+     * and a return handed back at ONE point credits every other point that had
+     * a shift open that day.
+     */
+    it("a return settled at another point never credits this point's drawer", async () => {
+      const mine = await newPoint();
+      const theirs = await newPoint();
+      const myShift = await shift(mine, '2026-09-02');
+      const theirShift = await shift(theirs, '2026-09-02');
+
+      await payoutIn(theirShift, '250.00', {
+        voided_at: new Date('2026-09-02T10:00:00Z'),
+        voided_by_user_id: ownerId,
+        void_reason: 'помилка',
+        return_settled_at: new Date('2026-09-02T12:00:00Z'),
+        return_settled_by_user_id: ownerId,
+      });
+
+      // Their drawer: paid out and handed back, so it nets to nothing.
+      await expect(service.movementsForShift(theirShift)).resolves.toBe('0.00');
+      // Mine: untouched. Without the point-scoping this reads '250.00'.
+      await expect(service.movementsForShift(myShift)).resolves.toBe('0.00');
+    });
+
+    it('a return settled on a LATER day belongs to that day’s shift, not the payout’s', async () => {
+      const p = await newPoint();
+      const paid = await shift(p, '2026-09-02');
+      const returned = await shift(p, '2026-09-05');
+      await payoutIn(paid, '250.00', {
+        voided_at: new Date('2026-09-02T10:00:00Z'),
+        voided_by_user_id: ownerId,
+        void_reason: 'помилка',
+        return_settled_at: new Date('2026-09-05T09:00:00Z'),
+        return_settled_by_user_id: ownerId,
+      });
+
+      // The 2nd is already closed and counted; the money was not in that
+      // drawer at its closing count and must not be booked back into it.
+      await expect(service.movementsForShift(paid)).resolves.toBe('-250.00');
+      await expect(service.movementsForShift(returned)).resolves.toBe('250.00');
+    });
+
     it('movementsForShift reads 0.00, not 0, for a shift with nothing in it', async () => {
       const p = await newPoint();
       await expect(service.movementsForShift(await shift(p, '2026-09-02'))).resolves.toBe('0.00');
@@ -465,7 +531,7 @@ describe('PointCashService.cashFor (Postgres)', () => {
 
       const s = await shift(p, '2026-09-02');
       await count(s, 'opening', '500.00', '500.00');
-      await count(s, 'closing', '1490.00', '1500.00');
+      await count(s, 'closing', '1490.00', '1500.00', CLOSED_AT);
       await expect(service.expectedForOpening(p)).resolves.toBe('1490.00');
     });
 

@@ -51,6 +51,27 @@ const asOfSql = (asOf: string, tz: string): string =>
  * PAYOUT stays subtracted, because that money physically left the drawer and
  * comes back only when a human returns it — the third term.
  *
+ * THE RETURN IS ATTRIBUTED BY THE DAY IT WAS HANDED BACK, NOT BY THE SHIFT THE
+ * PAYOUT BELONGED TO, and it mirrors the transfer attribution exactly: the
+ * money physically re-enters the drawer on the day a human puts it there, so
+ * it belongs to whichever shift was running at that point on that day. A
+ * payout paid on Tuesday and returned on Friday is Friday's cash, and Friday's
+ * closing count is what settles it. Booking it back into Tuesday's shift would
+ * be wrong twice — Tuesday is already closed and counted, and every as-of read
+ * before Friday would be contaminated by money that was not yet in the drawer.
+ *
+ * `AT TIME ZONE` ON `return_settled_at` IS NOT DECORATION. It is the only
+ * `timestamptz` in this formula and it is matched against a business DATE; a
+ * bare `::date` would take the SESSION timezone and misfile a settlement just
+ * past local midnight onto the previous day's shift. Everything else here is
+ * already `date`-typed. Scenario 11 of the database spec is the one test whose
+ * result depends on `APP_TIMEZONE`, and it exists to fail if this cast goes.
+ *
+ * THE POINT-SCOPING ON THE RETURN IS EXPLICIT (`ps.collection_point_id =
+ * s.collection_point_id`) because the join no longer runs through
+ * `p.shift_id = ${shift}`. Without it a return handed back at one point on a
+ * given day would credit every other point's drawer for that same day.
+ *
  * The transfer void filter sits in the OUTER `WHERE` and not inside the `CASE`
  * on purpose — a transfer can be resolved and LATER voided, and voided must win
  * over resolved. Scenario 13 of the database spec exists to fail if it moves.
@@ -67,14 +88,14 @@ const asOfSql = (asOf: string, tz: string): string =>
  * shift with nothing in it would read `"0"` where every other figure reads to
  * two places. Same literal, same reason, as `supplier-balance`.
  *
- * `shift` is a SQL naming, never a value: the bind placeholder the caller
- * chose, or the anchor row's own `a.shift_id`. Nothing from a request is
- * spliced here.
+ * `shift` and `tz` are SQL namings, never values: the bind placeholders the
+ * caller chose, or the anchor row's own `a.shift_id`. Nothing from a request is
+ * spliced here — `tz` is always the module's own `APP_TIMEZONE` bind.
  *
  * WHAT IS NOT HERE: the crates book (`cash_book = 'crates'`), which needs
  * `crate_issuances` and `crate_returns` and has no formula until they exist.
  */
-const movementsSql = (shift: string): string => `(
+const movementsSql = (shift: string, tz: string): string => `(
     COALESCE((SELECT SUM(CASE
                 WHEN t.status = 'accepted' THEN t.cash
                 WHEN t.status = 'disputed' AND t.resolved_at IS NOT NULL THEN t.resolved_cash
@@ -87,9 +108,13 @@ const movementsSql = (shift: string): string => `(
           AND t.voided_at IS NULL), 0.00)
   - COALESCE((SELECT SUM(p.amount) FROM payouts p
         WHERE p.shift_id = ${shift}), 0.00)
-  + COALESCE((SELECT SUM(p.amount) FROM payouts p
-        WHERE p.shift_id = ${shift}
-          AND p.return_settled_at IS NOT NULL), 0.00)
+  + COALESCE((SELECT SUM(p.amount)
+         FROM payouts p
+         JOIN shifts ps ON ps.id = p.shift_id
+         JOIN shifts s  ON s.id = ${shift}
+        WHERE p.return_settled_at IS NOT NULL
+          AND ps.collection_point_id = s.collection_point_id
+          AND (p.return_settled_at AT TIME ZONE ${tz}::text)::date = s.business_date), 0.00)
 )`;
 
 /**
@@ -179,7 +204,7 @@ export class PointCashService {
     const sql = `
       SELECT COALESCE((
         SELECT (a.counted_amount
-                + CASE WHEN a.kind = 'opening' THEN ${movementsSql('a.shift_id')}
+                + CASE WHEN a.kind = 'opening' THEN ${movementsSql('a.shift_id', '$3')}
                        ELSE 0.00 END)
           FROM ${anchorSql('$1::uuid', asOfSql('$2', '$3'))} a
       ), 0.00)::text AS cash`;
@@ -196,9 +221,10 @@ export class PointCashService {
    */
   async movementsForShift(shiftId: string, manager?: EntityManager): Promise<string> {
     const runner = manager ?? this.dataSource.manager;
-    const [row] = (await runner.query(`SELECT ${movementsSql('$1::uuid')}::text AS movements`, [
-      shiftId,
-    ])) as { movements: string }[];
+    const [row] = (await runner.query(
+      `SELECT ${movementsSql('$1::uuid', '$2')}::text AS movements`,
+      [shiftId, this.tz.appTimezone],
+    )) as { movements: string }[];
     return row.movements;
   }
 
@@ -230,10 +256,10 @@ export class PointCashService {
   async expectedForClosing(shiftId: string, manager?: EntityManager): Promise<string | null> {
     const runner = manager ?? this.dataSource.manager;
     const rows = (await runner.query(
-      `SELECT (c.counted_amount + ${movementsSql('$1::uuid')})::text AS expected
+      `SELECT (c.counted_amount + ${movementsSql('$1::uuid', '$2')})::text AS expected
          FROM cash_counts c
         WHERE c.shift_id = $1::uuid AND c.book = 'berry' AND c.kind = 'opening'`,
-      [shiftId],
+      [shiftId, this.tz.appTimezone],
     )) as { expected: string }[];
     return rows[0]?.expected ?? null;
   }
@@ -279,7 +305,7 @@ export class PointCashService {
          SELECT cp.id, cp.name, cp.target_cash,
                 COALESCE((
                   SELECT (a.counted_amount
-                          + CASE WHEN a.kind = 'opening' THEN ${movementsSql('a.shift_id')}
+                          + CASE WHEN a.kind = 'opening' THEN ${movementsSql('a.shift_id', '$3')}
                                  ELSE 0.00 END)
                     FROM ${anchorSql('cp.id', asOfSql('$2', '$3'))} a
                 ), 0.00) AS cash
