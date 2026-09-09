@@ -25,7 +25,8 @@ jobs:
       - name: Prune GHCR
         env:
           GH_TOKEN: ${{ github.token }}
-          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry-run || 'false' }}
+          # schedule → false; dispatch → the boolean input (true or false) — no &&/|| fallback collision.
+          DRY_RUN: ${{ github.event_name == 'schedule' && 'false' || inputs.dry-run }}
         run: |
           OPEN_PRS=$(gh pr list --repo "$GITHUB_REPOSITORY" --state open --limit 200 --json number --jq '[.[].number] | join(" ")')
           export OPEN_PRS

@@ -33,12 +33,15 @@ if [ "${1:-}" = --select ]; then select_ids; exit 0; fi
 
 for pkg in $PACKAGES; do
   echo "== $pkg"
-  versions=$(gh api --paginate -H "Accept: application/vnd.github+json" \
-    "/orgs/$GHCR_ORG/packages/container/$pkg/versions?per_page=100" | jq -s 'add')
+  if ! versions=$(gh api --paginate -H "Accept: application/vnd.github+json" \
+      "/orgs/$GHCR_ORG/packages/container/$pkg/versions?per_page=100" 2>/dev/null | jq -s 'add // []'); then
+    echo "package not found or not accessible yet; skipping"
+    continue
+  fi
   ids=$(printf '%s' "$versions" | select_ids)
   [ -n "$ids" ] || { echo "nothing to prune"; continue; }
   for id in $ids; do
-    tags=$(printf '%s' "$versions" | jq -r --argjson id "$id" '.[] | select(.id==$id) | .metadata.container.tags | join(",")')
+    tags=$(printf '%s' "$versions" | jq -r --argjson id "$id" '.[] | select(.id==$id) | (.metadata.container.tags // []) | join(",")')
     if [ "$DRY_RUN" = true ]; then echo "would delete $id [$tags]"; else
       gh api -X DELETE "/orgs/$GHCR_ORG/packages/container/$pkg/versions/$id" >/dev/null && echo "deleted $id [$tags]"
     fi
