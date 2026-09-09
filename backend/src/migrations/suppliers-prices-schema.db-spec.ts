@@ -2,6 +2,12 @@ import { randomUUID } from 'crypto';
 import { DataSource } from 'typeorm';
 import { openTestDataSource } from '../testing/db-harness';
 
+/** A unique, CHECK-valid `collection_points.code` per insert. The column became
+ *  NOT NULL + UNIQUE with the intakes & payouts migration; 8 hex characters
+ *  upper-cased satisfies `^[A-Z0-9]{2,8}$` and never collides across runs. */
+const pointCode = (): string => randomUUID().replace(/-/g, '').slice(0, 8).toUpperCase();
+
+
 /**
  * Everything in this slice's schema that exists ONLY in hand-written SQL and
  * is invisible to a mocked repository.
@@ -23,12 +29,12 @@ describe('YagodaSuppliersAndPrices', () => {
 
     const run = randomUUID();
     const [a] = await ds.query(
-      `INSERT INTO collection_points (name, kind) VALUES ($1, 'reception') RETURNING id`,
-      [`Точка А-${run}`],
+      `INSERT INTO collection_points (name, kind, code) VALUES ($1, 'reception', $2) RETURNING id`,
+      [`Точка А-${run}`, pointCode()],
     );
     const [b] = await ds.query(
-      `INSERT INTO collection_points (name, kind) VALUES ($1, 'reception') RETURNING id`,
-      [`Точка Б-${run}`],
+      `INSERT INTO collection_points (name, kind, code) VALUES ($1, 'reception', $2) RETURNING id`,
+      [`Точка Б-${run}`, pointCode()],
     );
     pointA = a.id;
     pointB = b.id;

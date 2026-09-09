@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { NavLink, Outlet, useLocation } from 'react-router';
+import { Link, NavLink, Outlet, useLocation } from 'react-router';
 import { useTranslation } from 'react-i18next';
 import {
   ArrowLeftRight,
@@ -31,6 +31,7 @@ import { useAppTheme } from '@/shared/lib/theme';
 import { persister } from '@/shared/api';
 import { Button } from '@/shared/ui/button';
 import { Toaster } from '@/shared/ui/sonner';
+import { ThemeToggle } from '@/shared/ui/theme-toggle';
 
 /** Routes that render bare, without the app chrome. */
 const CHROMELESS = ['/login'];
@@ -56,26 +57,27 @@ const NAV_GROUPS: NavGroup[] = [
   {
     labelKey: 'nav.group.onPoint',
     items: [
-      { labelKey: 'nav.reception', icon: Scale },
+      { labelKey: 'nav.dashboard', icon: BarChart3, to: '/' },
+      { labelKey: 'nav.reception', icon: Scale, to: '/reception' },
       { labelKey: 'nav.crates', icon: Boxes },
-      { labelKey: 'nav.day', icon: CalendarCheck2 },
+      { labelKey: 'nav.day', icon: CalendarCheck2, to: '/day' },
       { labelKey: 'nav.pointCash', icon: Banknote },
-      { labelKey: 'nav.prices', icon: CircleDollarSign },
+      // Both roles: the owner sets the day's price, the operator sees it locked.
+      { labelKey: 'nav.prices', icon: CircleDollarSign, to: '/prices' },
     ],
   },
   {
     labelKey: 'nav.group.peopleMoney',
     items: [
       { labelKey: 'nav.suppliers', icon: Users, to: '/suppliers' },
-      { labelKey: 'nav.debts', icon: Wallet },
-      { labelKey: 'nav.journal', icon: History, role: 'network_owner' },
+      { labelKey: 'nav.debts', icon: Wallet, to: '/debts' },
+      { labelKey: 'nav.journal', icon: History, to: '/journal', role: 'network_owner' },
     ],
   },
   {
     labelKey: 'nav.group.management',
     role: 'network_owner',
     items: [
-      { labelKey: 'nav.dashboard', icon: BarChart3, to: '/' },
       { labelKey: 'nav.cost', icon: Calculator },
       { labelKey: 'nav.reweigh', icon: Weight },
       { labelKey: 'nav.network', icon: Network },
@@ -97,6 +99,11 @@ function initials(name: string): string {
  * Desktop-first shell in the mock's identity: a dark sidebar (brand + grouped,
  * role-aware nav + signed-in footer) and a top bar (scope + signed-in user).
  * The sidebar collapses into a slide-over below `md`.
+ *
+ * The top bar is PAPER (`bg-background/85` + blur), exactly as the mock's
+ * `Shell.tsx`, not a white surface: the light theme then has two grounds —
+ * dark chrome and paper — with white objects (cards, the scope pill) on the
+ * paper, instead of a white bar stacked over paper over white cards.
  */
 export function AppLayout() {
   const { t } = useTranslation();
@@ -146,7 +153,7 @@ export function AppLayout() {
           menuOpen ? 'translate-x-0' : '-translate-x-full',
         )}
       >
-        <div className="flex items-center gap-2 px-5 pb-2 pt-5">
+        <Link to="/" className="flex items-center gap-2 px-5 pb-2 pt-5">
           <Cherry size={22} className="shrink-0 text-primary" />
           <div className="min-w-0">
             <div className="font-display text-lg font-semibold leading-tight">
@@ -156,7 +163,7 @@ export function AppLayout() {
               {scope} · {t('shell.season')}
             </div>
           </div>
-        </div>
+        </Link>
 
         <div className="flex-1 overflow-y-auto px-3 py-4">
           {groups.map((group) => (
@@ -236,7 +243,7 @@ export function AppLayout() {
 
       {/* Main column */}
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-10 flex h-14 items-center gap-3 border-b border-border bg-surface px-4">
+        <header className="sticky top-0 z-10 flex h-14 items-center gap-3 border-b border-border/70 bg-background/85 px-4 backdrop-blur-md">
           <Button
             variant="ghost"
             size="icon"
@@ -247,7 +254,7 @@ export function AppLayout() {
             {menuOpen ? <X size={18} /> : <Menu size={18} />}
           </Button>
 
-          <span className="rounded-md border border-border px-2.5 py-1 text-sm text-muted-foreground">
+          <span className="rounded-md bg-card px-2.5 py-1 text-sm text-muted-foreground ring-1 ring-foreground/10">
             {scope}
           </span>
 
@@ -260,6 +267,7 @@ export function AppLayout() {
                 </span>
               </span>
             ) : null}
+            <ThemeToggle />
             <Button variant="ghost" size="sm" onClick={signOut}>
               {t('auth.signOut')}
             </Button>

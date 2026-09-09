@@ -35,6 +35,14 @@ export const AUDIT_ACTIONS = [
   'tare-type.updated',
   'supplier.created',
   'supplier.updated',
+  'shift.opened',
+  'shift.closed',
+  'shift.reopened',
+  'intake.created',
+  'intake.voided',
+  'payout.created',
+  'payout.voided',
+  'payout.return-settled',
 ] as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];

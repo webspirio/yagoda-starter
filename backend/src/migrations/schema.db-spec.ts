@@ -1,6 +1,12 @@
 import { randomUUID } from 'crypto';
 import { DataSource } from 'typeorm';
 import { openTestDataSource } from '../testing/db-harness';
+
+/** A unique, CHECK-valid `collection_points.code` per insert. The column became
+ *  NOT NULL + UNIQUE with the intakes & payouts migration; 8 hex characters
+ *  upper-cased satisfies `^[A-Z0-9]{2,8}$` and never collides across runs. */
+const pointCode = (): string => randomUUID().replace(/-/g, '').slice(0, 8).toUpperCase();
+
 import { User } from '../users/user.entity';
 import { UserIdentity } from '../users/user-identity.entity';
 import { CollectionPoint } from '../collection-points/collection-point.entity';
@@ -127,9 +133,10 @@ describe('YagodaFoundation', () => {
   });
 
   const point = async (name: string): Promise<string> => {
-    const [row] = await ds.query(`INSERT INTO collection_points (name) VALUES ($1) RETURNING id`, [
-      name,
-    ]);
+    const [row] = await ds.query(
+      `INSERT INTO collection_points (name, code) VALUES ($1, $2) RETURNING id`,
+      [name, pointCode()],
+    );
     return row.id;
   };
 
@@ -177,7 +184,8 @@ describe('YagodaFoundation', () => {
   ])('rejects a negative %s', async (column, value) => {
     await expect(
       ds.query(
-        `INSERT INTO collection_points (name, ${column}) VALUES ('neg-${column}', ${value})`,
+        `INSERT INTO collection_points (name, code, ${column})
+           VALUES ('neg-${column}', '${pointCode()}', ${value})`,
       ),
     ).rejects.toThrow(/violates check constraint/);
   });
@@ -254,6 +262,7 @@ describe('YagodaFoundation', () => {
     const savedPoint = await pointRepo.save(
       pointRepo.create({
         name: `round-trip-${Date.now()}`,
+        code: pointCode(),
         kind: PointKind.Base,
         target_cash: '1500.00',
         target_crates: 800,
@@ -263,7 +272,7 @@ describe('YagodaFoundation', () => {
     // this test: the assertions below need one point with a target_cash and one
     // without, and `target_cash` cannot be both at once.
     const savedEmptyPoint = await pointRepo.save(
-      pointRepo.create({ name: `round-trip-empty-${Date.now()}` }),
+      pointRepo.create({ name: `round-trip-empty-${Date.now()}`, code: pointCode() }),
     );
     const savedUser = await userRepo.save(
       userRepo.create({

@@ -5,7 +5,7 @@ import reactRefresh from 'eslint-plugin-react-refresh';
 import prettier from 'eslint-config-prettier';
 import globals from 'globals';
 
-// Feature-Sliced Design layer boundaries: shared < entities < features < pages < app.
+// Feature-Sliced Design layer boundaries: shared < entities < features < widgets < pages < app.
 // A layer may import from any layer below it, never from one above. Cross-imports
 // between slices of the *same* layer (e.g. features/auth -> features/other) are
 // intentionally not restricted here — only the layer direction is enforced.
@@ -19,7 +19,7 @@ function forbidLayers(layers) {
         {
           patterns: layers.map((layer) => ({
             group: [`@/${layer}/**`, `**/${layer}/**`],
-            message: `FSD layer violation: this file's layer may not import from ${layer}/ (shared < entities < features < pages < app).`,
+            message: `FSD layer violation: this file's layer may not import from ${layer}/ (shared < entities < features < widgets < pages < app).`,
           })),
         },
       ],
@@ -90,7 +90,12 @@ export default tseslint.config(
     // exception outside it — they are `sr-only` and never focused for typing,
     // so they disable this line with a reason rather than route through
     // `TextInput`.
-    files: ['src/entities/**/*.tsx', 'src/features/**/*.tsx', 'src/pages/**/*.tsx'],
+    files: [
+      'src/entities/**/*.tsx',
+      'src/features/**/*.tsx',
+      'src/widgets/**/*.tsx',
+      'src/pages/**/*.tsx',
+    ],
     rules: {
       'no-restricted-syntax': [
         'error',
@@ -104,14 +109,18 @@ export default tseslint.config(
   },
   {
     files: ['src/shared/**/*.ts', 'src/shared/**/*.tsx'],
-    ...forbidLayers(['entities', 'features', 'pages', 'app']),
+    ...forbidLayers(['entities', 'features', 'widgets', 'pages', 'app']),
   },
   {
     files: ['src/entities/**/*.ts', 'src/entities/**/*.tsx'],
-    ...forbidLayers(['features', 'pages', 'app']),
+    ...forbidLayers(['features', 'widgets', 'pages', 'app']),
   },
   {
     files: ['src/features/**/*.ts', 'src/features/**/*.tsx'],
+    ...forbidLayers(['widgets', 'pages', 'app']),
+  },
+  {
+    files: ['src/widgets/**/*.ts', 'src/widgets/**/*.tsx'],
     ...forbidLayers(['pages', 'app']),
   },
   {

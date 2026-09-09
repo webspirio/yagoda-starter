@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Link } from 'react-router';
 import { useTranslation } from 'react-i18next';
 import { ListPage } from '@/shared/ui/templates/list-page';
 import type { Column } from '@/shared/ui/data-table';
@@ -9,9 +10,9 @@ import { EmptyState } from '@/shared/ui/empty-state';
 import { Spinner } from '@/shared/ui/spinner';
 import { useDebouncedValue } from '@/shared/lib/useDebouncedValue';
 import { usePointOptionsQuery } from '@/entities/collection-point';
-import { useSuppliersQuery } from '../api/suppliers';
+import { useSuppliersQuery } from '@/entities/supplier';
+import type { Supplier } from '@/entities/supplier';
 import { SupplierFormDialog } from './SupplierFormDialog';
-import type { Supplier } from '../model/supplier';
 
 export function SuppliersPage() {
   const { t } = useTranslation();
@@ -67,6 +68,24 @@ export function SuppliersPage() {
         <Badge variant={s.is_active ? 'default' : 'secondary'}>
           {s.is_active ? t('suppliers.active') : t('suppliers.inactive')}
         </Badge>
+      ),
+    },
+    {
+      id: 'card',
+      header: t('suppliers.col.card'),
+      align: 'right',
+      cell: (s) => (
+        <Link
+          to={`/suppliers/${s.id}`}
+          // The row itself opens the edit dialog (`onRowClick` on ListPage) —
+          // without this the link's click would bubble into that handler too,
+          // opening the dialog behind the navigation it just triggered.
+          onClick={(e) => e.stopPropagation()}
+          aria-label={t('suppliers.cardOf', { name: `${s.first_name} ${s.last_name}` })}
+          className="text-primary underline-offset-2 hover:underline"
+        >
+          {t('suppliers.col.card')}
+        </Link>
       ),
     },
   ];

@@ -259,3 +259,256 @@ Do not "fix" these; both are argued for in the spec and commented in the code.
   not in one transaction, so `total` and `data` can disagree under a
   concurrent insert — consistent with `findAndCount` everywhere else in the
   repo, hence recorded rather than fixed.
+
+## New, from the intakes & payouts slice (2026-09-08)
+
+This is the first slice written with `26-rules-by-example.md` actually in the
+repository. The first four items come from reading it; the rest are ordinary
+follow-ups.
+
+- **§4.5's daily price gate is not enforceable, and this slice is where that
+  starts to cost money.** The prices slice removed `grade_prices.business_date`
+  (its §8.1), so a price carries over until changed and
+  `GradePricesService.currentFor` will hand an intake on the 5th the price set
+  on the 4th — silently, and in the buyer's disfavour if the market moved. The
+  client's literal reason for the rule is «щоб ніхто не порахував по
+  вчорашній». **Closing it needs no migration:** refuse a grade whose newest
+  price row predates the shift's `business_date`. Deferred deliberately
+  (owner, 2026-09-08) because the gate means a morning with no prices set is a
+  morning the point cannot trade — which is exactly what §4.5 describes, but is
+  a real change to how the business runs. Recorded on `currentFor` itself so
+  whoever closes it finds the argument.
+
+- **§9.2's warning channel does not exist.** Four checks, all «дозволяємо, але
+  вголос»: kg per crate outside 2…14 («50,8 кг у ящику. Перевірте брутто або
+  кількість тари.»), gross over 750 kg, pallet over 50 % of gross, and an
+  identical line twice inside 60 seconds. The rule is that a warning «називає
+  ЧИСЛО І ПРИЧИНУ, а не "перевірте дані"». A 201 with no advisory field cannot
+  carry any of them. §9.2 itself is unresolved on «на кому відповідальність за
+  валідацію», so the shape of the answer is a product call first.
+
+- **§12.1's payout rounding.** «до цілої гривні, рівно 0,50 йде ВНИЗ» —
+  120,50 → 120, 120,80 → 121 — with the system suggesting the figure. Note it
+  is a DIFFERENT rounding from `common/money.ts`'s half-up at scale 2 on a line
+  amount, not a replacement for it; both can coexist. Filed at the source under
+  «Три місця, де відповіді ще немає» with «→ **Правка:** точно???», so it is
+  unsettled there too.
+
+- **Two contradictions in `26-rules-by-example.md` need the owner's answer.**
+  §9.4 vs §10.2 — whether an operator may void their own intake at all (§9.4's
+  table says yes for their own same-day receipt; §10.2's summary list puts
+  voiding under ТІЛЬКИ КЕРІВНИК). §9.1 vs §9.2 — whether a tare-less line is
+  refused or merely warned. This slice took §9.4 and §9.1; the intakes spec
+  §10.2 records what changes if the other reading was meant. The first is one
+  decorator.
+
+- **`SuppliersService` still has its own private `resolveWritePoint`.** The
+  shared one now lives in `auth/access/point-scope.ts` and the three new
+  services use it. Switching suppliers over is a three-line change covered by
+  its existing spec — left alone here to keep the slice inside its own tables.
+
+- **`collection-points.service.ts` — refuse deactivating a point with an open
+  shift.** The `TODO (when shifts lands)` is now buildable: `shifts` exists and
+  `ShiftsService.findOpenAtPoint` is exported. Left out deliberately as an
+  adjacent fix.
+
+- **Warn when deactivating a supplier who carries non-zero debt.** Parked by the
+  prices slice «when `intakes` and `payouts` exist». They now exist, and
+  `SupplierBalanceService.debtFor` answers it in one call. A WARNING, never a
+  refusal (правка 14, «заблокована кнопка вчить шукати обхід») — and note that
+  "settle up first" is not well defined, since a balance may legitimately be
+  negative.
+
+- **`POST /shifts` is provisional in SHAPE, not only in its close path.** §07:30
+  makes opening a shift «сума вводиться фактично порахована», which the
+  03.09.2026 schema note turns into TWO `cash_counts` records, one per book.
+  Today the route takes no body at all. It grows a DTO with `cash_counts`, at
+  the same time the close path grows §7.7's role split and mandatory
+  `explanation`.
+
+- **The payout ceiling is half a rule.** `min(Разом, каса за ягоду)` (§3.6):
+  the debt half is enforced under a row lock, the cash half needs `transfers`
+  and `cash_counts`. **A payout can currently exceed the cash physically in the
+  drawer and nothing notices.** The lock and the `supplier-balance` seam are
+  already the right shape for the second half.
+
+- **`decimal.js` replaces the internals of `common/money.ts`** when the
+  arithmetic stops being provisional. One file, by construction — that is the
+  reason the seam exists. The eslint rule scoped to the four money modules is
+  what keeps it true in the meantime.
+
+- **`migration:generate` cannot report "no changes" in this repo, and could not
+  before this slice.** It proposes renaming every hand-written foreign-key
+  constraint to a TypeORM-generated hash, including `FK_user_identities_user`,
+  `FK_audit_log_actor` and `UQ_product_grades_product_name_lower` from earlier
+  slices. Hand-written names are this repo's convention. What IS worth checking
+  after a schema change is that no COLUMN, type or constraint-body drift
+  appears — filter the generated file with `grep -v '"FK_'` and read what is
+  left. Verified clean for all five tables in this slice.
+
+- **The foundation spec's §5.2 is stale on one point** — it says `APP_TIMEZONE`
+  «currently defaults to `UTC`». It has defaulted to `Europe/Kyiv` since before
+  this slice, in both `timezone.config.ts` and the Joi schema. One-line
+  correction, worth making so nobody "fixes" a config that is already right.
+
+- **The three earlier specs state that `26-rules-by-example.md` is not in the
+  repository.** It is. Their reasoning was built on second-hand quotation from
+  the DBML's own `Note` blocks and has not been re-checked against the source;
+  the intakes spec §10.5 is the one divergence already known.
+
+- **The db suite is close to the production rate limit.** Every request in an
+  HTTP spec comes from 127.0.0.1, so one run looks like a single abusive
+  client. Measured at `THROTTLE_LIMIT=100` the full suite still PASSES — peak
+  `x-ratelimit-remaining` dips to 79 — so the earlier claim here that it
+  "exceeds" the limit was wrong; the next HTTP spec is roughly where it stops
+  fitting, and the failure would appear as scattered 429s in unrelated specs.
+  `relaxThrottleForTests()` raises `THROTTLE_LIMIT` for the test process only,
+  unconditionally (`db-harness.ts` runs `dotenv` at module load, so a value
+  copied from `.env.example` would otherwise win and re-create the scatter).
+  Worth revisiting if CI ever runs the suites in parallel against one Redis —
+  the counter is shared, so two concurrent runs would re-create the problem at
+  a higher number.
+
+## Raised by the intakes & payouts code review (2026-09-08)
+
+Four Important findings and two Minor ones were fixed in the slice itself.
+These are the rest — each one verified by the reviewer against a live database,
+and each one deliberately left because it belongs to a table this slice does
+not own or to a report nothing calls yet.
+
+- **`intake_items.product_grade_id` is unindexed.** Harmless today: there is no
+  `DELETE` route, and the detail read is already covered because
+  `UQ_intake_items_order (intake_id, item_order)` leads with `intake_id`. But
+  `intake_items` will be the largest table in the schema and the first
+  per-grade report will want this index. Add it with whichever slice writes
+  that report, so the index ships with a query that uses it.
+
+- **`snapshotPrices` runs one query per distinct grade.**
+  `intakes.service.ts` — `Promise.all(gradeIds.map(...))`, bounded by the
+  number of lines on one document, inside the create transaction. Spec §8.7
+  declined `@ArrayMaxSize(5)`, so it is formally unbounded. One
+  `product_grade_id = ANY($2)` with `DISTINCT ON (product_grade_id)` collapses
+  it to a single round trip. Not urgent at real document sizes; worth doing if
+  a bulk-import route ever appears.
+
+- **Two clocks in one slice.** `IntakesService.void` and `PayoutsService`
+  stamp `new Date()`; `ShiftsService` goes through `this.time.now()`. The
+  instants are identical for a `timestamptz`, so nothing is wrong — but
+  `TimeService` is described as *the* seam for timezone-aware time, and this is
+  the slice that wired it. Route the document timestamps through it when the
+  cash slice touches these services anyway.
+
+- **Two comments claim more than their checks do.** `intakes.service.ts` and
+  `payouts.service.ts` label the `shift.closed_at` test «квитанція минулого
+  дня → тільки керівник», but it tests *shift closed*, not *previous day*: an
+  operator who forgot to close Friday can still void a Friday receipt on
+  Saturday morning. Spec §5 deliberately makes the close the freeze line, so
+  the BEHAVIOUR is right and must not be "fixed" — the comments are what needs
+  correcting.
+
+- **The throttler bypasses the config convention.** `app.module.ts` reads
+  `process.env.THROTTLE_*` directly, the only place in the app that skips the
+  typed namespaced factories in `src/config/`. A four-line `throttle.config.ts`
+  would make the rule uniform.
+
+- **Spec §6.3's request annotation contradicts the code, and the code is
+  right.** It says `collection_point_id` is «ignored for an operator» on
+  `POST /intakes`; `resolveWritePoint` 403s instead. Failing closed is the
+  better behaviour — correct the spec and the DTO comment, not the service.
+  (`resolvePointFilter` on the LIST routes really does ignore it, which is now
+  covered by a test.)
+
+- **The `shifts` CHECK constraint diverges from spec §6.1 without being listed
+  in §8.** The spec writes `CHECK (status = 'closed') = (closed_at IS NOT
+  NULL)`; the migration implements `("status" = 'open') = ("closed_at" IS
+  NULL)`. The implemented form is the right one — it keeps
+  `awaiting_explanation` storable alongside a `closed_at` when `cash_counts`
+  lands, avoiding a migration — and it is documented in the entity, the
+  migration and a db-spec. It is simply missing from §8's list of divergences.
+
+- **Consider extending the eslint money ban to `-`.** `'1.00' - '2.00'`
+  coerces through `Number`, which is exactly what §5.1 forbids, and unlike `+`
+  (legitimate for string building) a `-` on a decimal string is never right. It
+  needs an exception for `intake.mapper.ts`'s `a.item_order - b.item_order`,
+  which argues for a small `sortByOrder` helper rather than a disable comment.
+
+- **`supplier-balance.service.spec.ts` asserts against SQL strings.**
+  Reformatting the query reds the tests with no behaviour change. They pair
+  with real coverage in `documents-pipeline.db-spec.ts`, so they could be
+  demoted to one "both `voided_at` filters are present" check and let the
+  db-spec own the behaviour.
+
+## Learned from the demo scaffolding (2026-09-08, since removed)
+
+A seed migration and a throwaway `/dev` page were built to eyeball this slice
+in a browser, then deleted once it had been checked. Two findings outlive them:
+
+- **A dev seed must guard on `NODE_ENV === 'development'`, not on
+  `!== 'production'`.** `SeedDevAdmin` uses the latter, which is right for one
+  account but wrong for anything that inserts domain rows: the `*.db-spec.ts`
+  suites run every migration against `app_test` with `NODE_ENV=test`, so specs
+  asserting what a catalog list contains would fail on rows they never created.
+
+- **`/grade-prices/current` is documented as the intake picker read but
+  returns no labels** — only `product_grade_id`, so a caller needs
+  `/product-grades` and `/products` as well and has to join all three
+  client-side. The real intake screen will want either the product and grade
+  names on that response or a purpose-built picker read. Worth deciding when
+  that slice is specced rather than discovering it in the UI again.
+
+- **The whole slice was exercised by hand and behaved.** §2.4's own worked row
+  (552,30 − 14,30 − 100 × 1,20 = 418,00 × 65,00) produced `27170.00` through
+  the route; a repeated tare type answered `400 TARE_TYPE_DUPLICATED`; a payout
+  one kopiyka over the balance answered `400 PAYOUT_EXCEEDS_DEBT` naming the
+  balance; a second operator voiding a colleague's receipt in the same open
+  shift answered `403 NOT_YOUR_DOCUMENT`; and an operator at the other point
+  saw both journals empty.
+
+## Learned from the day and reception screens (2026-09-08)
+
+Findings from the final review of `feat/yagoda-day-screen` that no plan
+schedules yet — a kit/consistency pass, not a feature:
+
+- **`Badge` has no amber or leaf tone**, so the day feed's «очікує пояснення»
+  badge wears `destructive` where §5.1 wants amber. Add the two tones to
+  `shared/ui/badge.tsx` and switch the callers.
+- **`DateStepper`'s aria-labels are hard-coded Ukrainian** (`shared/ui/date-stepper.tsx`);
+  the English test suite finds the buttons by Ukrainian names. Give it label
+  props with the current strings as defaults and translate at the call site.
+- **`Paginated<T>` is hand-written five times** (intake, payout, catalog, points,
+  users). It is a transport envelope, not a domain type — move it to
+  `shared/api` and delete the copies. The ESLint layer rule only checks
+  direction, so nothing stops a sixth copy today.
+- **`pages/day/api/shiftActions.ts` has no test** for the invalidation trio
+  (`shifts`, `intakes`, `payouts`) that every later screen relies on; ~30 lines
+  with a real `QueryClient` would lock it.
+- **The day page's truncation notice counts the merged feed**, while the cap
+  is 100 per journal — 100 intakes + 5 payouts reads «перші 105 документів».
+- **A refused close banner survives navigation** on the day page (step to another
+  day, switch point); clear it in the date/point setters.
+
+## Learned from the debts and overview screens (2026-09-09)
+
+- **`DataTable`'s `onRowClick` lands on a bare `<tr>`** with no role, no
+  `tabIndex` and no key handler, so a row-click page is unreachable by
+  keyboard — and axe cannot flag it. Six pages do it now (users, catalog,
+  suppliers, points, debts, journal). Fix it once in `shared/ui/data-table.tsx`
+  (a focusable row with Enter/Space) rather than per page; `/debts` and
+  `/suppliers` carry a per-row `Link` as the interim path.
+- **`usePointScope().isLoading` is ignored** by the day, reception and debts
+  pages: an operator's first render fires the read with `pointId: null`, then
+  again under the real point once `me` resolves. Harmless (the server pins the
+  operator) but one wasted request per cold load; gate with `enabled`.
+- **Spec drift recorded, all deliberate:** §5.3's «card list, not accordion»
+  became a `DataTable`; §5.3's supplier kind badge was dropped because
+  `SupplierBalanceRow` carries no `kind`; §5.4's «Показати ще» became a fixed
+  `limit: 100` with a «перші 100» hint; the card's «Здач за сезон» is the
+  envelope `total` (voided included) while «Нараховано» excludes voided.
+- **Operators void from the supplier card far more often against closed
+  shifts** than anywhere else — the `SHIFT_CLOSED` banner is the backstop, but
+  it is a spec question whether the card should hide «Анулювати» on rows from
+  closed shifts for an operator.
+- **The journal's supplier picker** is capped at the entity's `limit: 100`
+  without search, and table names fall back to an 8-char id past the first
+  100 balance rows on «Усі точки». Fine for a season's network; revisit with
+  a server-side name lookup if the directory grows.

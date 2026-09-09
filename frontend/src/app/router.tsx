@@ -8,7 +8,13 @@ import { ProfilePage } from '@/pages/profile';
 import { PointsPage } from '@/pages/points';
 import { UsersPage } from '@/pages/users';
 import { SuppliersPage } from '@/pages/suppliers';
+import { DebtsPage } from '@/pages/debts';
+import { SupplierCardPage } from '@/pages/supplier-card';
 import { CatalogPage } from '@/pages/catalog';
+import { PricesPage } from '@/pages/prices';
+import { DayPage } from '@/pages/day';
+import { ReceptionPage } from '@/pages/reception';
+import { JournalPage } from '@/pages/journal';
 import { NotFoundPage } from '@/pages/not-found';
 import { UiKitPage } from '@/pages/ui-kit';
 
@@ -57,6 +63,46 @@ export const routes: RouteObject[] = [
         ),
       },
       {
+        // Both roles: the operator receives the berries, the owner watches the
+        // same screen on a point they picked. Owner-only actions inside are
+        // gated by `me.role`, not by the route.
+        path: '/reception',
+        element: (
+          <RequireAuth>
+            <ReceptionPage />
+          </RequireAuth>
+        ),
+      },
+      {
+        // Both roles: the API scopes an operator to their point and an owner
+        // to everything, same as /suppliers — no role gate here either.
+        path: '/debts',
+        element: (
+          <RequireAuth>
+            <DebtsPage />
+          </RequireAuth>
+        ),
+      },
+      {
+        // The supplier's card — same point-level scope as the list above, so
+        // it carries the same guard: RequireAuth, no role gate.
+        path: '/suppliers/:id',
+        element: (
+          <RequireAuth>
+            <SupplierCardPage />
+          </RequireAuth>
+        ),
+      },
+      {
+        // Both roles: the operator runs their shift, the owner reads (and reopens).
+        path: '/day',
+        element: (
+          <RequireAuth>
+            <DayPage />
+          </RequireAuth>
+        ),
+      },
+      {
         path: '/points',
         element: (
           <RequireAuth>
@@ -77,6 +123,17 @@ export const routes: RouteObject[] = [
         ),
       },
       {
+        // Both roles: `GET /grade-prices` (current + history) is open to both
+        // server-side, but `POST /grade-prices` is @Auth(NetworkOwner) — the
+        // operator sees the same table LOCKED instead of Change/Set.
+        path: '/prices',
+        element: (
+          <RequireAuth>
+            <PricesPage />
+          </RequireAuth>
+        ),
+      },
+      {
         // The tare & grades catalog is owner-only: GET is open to both roles
         // server-side, but every write here is @Auth(NetworkOwner).
         path: '/catalog',
@@ -84,6 +141,18 @@ export const routes: RouteObject[] = [
           <RequireAuth>
             <RequireRole role="network_owner">
               <CatalogPage />
+            </RequireRole>
+          </RequireAuth>
+        ),
+      },
+      {
+        // The full receipts/payouts register is owner-only — an operator's
+        // view is scoped to their own point's shift already (Каса за день).
+        path: '/journal',
+        element: (
+          <RequireAuth>
+            <RequireRole role="network_owner">
+              <JournalPage />
             </RequireRole>
           </RequireAuth>
         ),

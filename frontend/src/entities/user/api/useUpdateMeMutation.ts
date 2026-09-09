@@ -1,7 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { httpClient } from '@/shared/api';
 import { queryKeys } from '@/shared/api/queryKeys';
-import type { Me } from '../model/types';
+import type { Me } from '../model/user';
 
 /**
  * `display_name` is gone: it is derived server-side and the owner, not the

@@ -33,3 +33,11 @@ describe('apiErrorToFields', () => {
     expect(out.formErrorKey).toBe('points.errors.saveFailed');
   });
 });
+
+it('lands POINT_CODE_TAKEN on the code field', () => {
+  const error = new ApiError(409, 'That code is taken', undefined, 'POINT_CODE_TAKEN');
+  expect(apiErrorToFields(error, ['name', 'code'])).toEqual({
+    fieldErrors: [{ field: 'code', messageKey: 'points.errors.codeTaken' }],
+    formErrorKey: null,
+  });
+});

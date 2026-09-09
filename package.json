@@ -21,6 +21,7 @@
     "test": "turbo test",
     "lint": "turbo lint",
     "format": "prettier --write .",
-    "db:reset": "docker compose down -v && docker compose up -d postgres redis"
+    "db:reset": "docker compose down -v && docker compose up -d postgres redis",
+    "db:seed": "npm run seed:dev -w backend"
   }
 }

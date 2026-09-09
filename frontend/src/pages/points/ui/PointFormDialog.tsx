@@ -1,13 +1,7 @@
 import { useState } from 'react';
 import { Controller, useForm } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/shared/ui/dialog';
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/shared/ui/dialog';
 import { Field } from '@/shared/ui/field';
 import { TextInput } from '@/shared/ui/text-input';
 import { SelectField } from '@/shared/ui/select-field';
@@ -23,11 +17,12 @@ import type { CollectionPoint, CollectionPointFormValues } from '../model/collec
 
 const DECIMAL = /^\d{1,10}(\.\d{1,2})?$/;
 const INTEGER = /^\d+$/;
-const FIELD_NAMES = ['name', 'kind', 'target_cash', 'target_crates', 'is_active'] as const;
+const FIELD_NAMES = ['name', 'kind', 'target_cash', 'target_crates', 'is_active', 'code'] as const;
 
 function toDefaults(point: CollectionPoint | null): CollectionPointFormValues {
   return {
     name: point?.name ?? '',
+    code: point?.code ?? '',
     kind: point?.kind ?? 'reception',
     target_cash: point?.target_cash ?? '',
     target_crates: point?.target_crates == null ? '' : String(point.target_crates),
@@ -77,13 +72,19 @@ export function PointFormDialog({
         await update.mutateAsync({
           id: point.id,
           name: values.name.trim(),
+          code: values.code.trim().toUpperCase(),
           kind: values.kind,
           is_active: values.is_active,
           ...targets,
         });
         toast.success(t('points.toast.updated'));
       } else {
-        await create.mutateAsync({ name: values.name.trim(), kind: values.kind, ...targets });
+        await create.mutateAsync({
+          name: values.name.trim(),
+          code: values.code.trim().toUpperCase(),
+          kind: values.kind,
+          ...targets,
+        });
         toast.success(t('points.toast.created'));
       }
       onClose();
@@ -100,7 +101,9 @@ export function PointFormDialog({
     <Dialog open={open} onOpenChange={(next) => !next && !isSubmitting && onClose()}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>{point ? t('points.form.editTitle') : t('points.form.createTitle')}</DialogTitle>
+          <DialogTitle>
+            {point ? t('points.form.editTitle') : t('points.form.createTitle')}
+          </DialogTitle>
         </DialogHeader>
 
         <form onSubmit={onSubmit} className="flex flex-col gap-4" noValidate>
@@ -113,6 +116,31 @@ export function PointFormDialog({
                   maxLength: { value: 128, message: 'points.errors.nameInvalid' },
                 })}
                 autoFocus
+              />
+            )}
+          </Field>
+
+          {/* The receipt-code prefix. Upper-cased on submit (the server stores it
+              upper-case anyway) so what the operator reads back matches the paper. */}
+          <Field
+            name="code"
+            label={t('points.form.code')}
+            required
+            hint={t('points.form.codeHint')}
+            error={errors.code?.message}
+          >
+            {(a11y) => (
+              <TextInput
+                {...a11y}
+                className="font-mono uppercase"
+                maxLength={8}
+                {...register('code', {
+                  required: 'points.errors.codeFormat',
+                  pattern: {
+                    value: /^\s*[A-Za-z0-9]{2,8}\s*$/,
+                    message: 'points.errors.codeFormat',
+                  },
+                })}
               />
             )}
           </Field>
@@ -173,11 +201,7 @@ export function PointFormDialog({
                   control={control}
                   name="is_active"
                   render={({ field }) => (
-                    <Switch
-                      id={a11y.id}
-                      checked={field.value}
-                      onCheckedChange={field.onChange}
-                    />
+                    <Switch id={a11y.id} checked={field.value} onCheckedChange={field.onChange} />
                   )}
                 />
               )}

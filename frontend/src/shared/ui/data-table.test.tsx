@@ -41,3 +41,16 @@ it('has no axe violations', async () => {
   const { container } = render(<DataTable columns={columns} rows={rows} rowKey={(r) => r.id} />);
   await expectNoAxeViolations(container);
 });
+
+it('sits in the card frame by default, and renders bare with frame={false}', () => {
+  const { container, rerender } = render(
+    <DataTable columns={columns} rows={rows} rowKey={(r) => r.id} />,
+  );
+  const frame = container.querySelector('[data-slot="data-table-frame"]');
+  expect(frame).toHaveClass('bg-card', 'border-line2');
+  expect(frame?.querySelector('table')).not.toBeNull();
+
+  rerender(<DataTable columns={columns} rows={rows} rowKey={(r) => r.id} frame={false} />);
+  expect(container.querySelector('[data-slot="data-table-frame"]')).toBeNull();
+  expect(container.querySelector('table')).not.toBeNull();
+});

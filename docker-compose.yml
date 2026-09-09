@@ -100,6 +100,12 @@ services:
       - "5173:5173"
     volumes:
       - ./frontend/src:/app/frontend/src
+      # index.html and public/ (favicon, static files) are served by Vite
+      # straight from disk — without these two mounts a change to the title,
+      # the favicon or <html lang> is baked into the image and never shows
+      # in the dev stack until the image is rebuilt.
+      - ./frontend/index.html:/app/frontend/index.html
+      - ./frontend/public:/app/frontend/public
     environment:
       VITE_API_URL: ${VITE_API_URL}
     networks:

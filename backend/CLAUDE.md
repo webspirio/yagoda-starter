@@ -56,6 +56,20 @@ up: its `testRegex` (`.*\.spec\.ts$`) does not match `.db-spec.ts`.
   file list and Jest exits 0 having run nothing. A green exit code for zero
   tests is worse than a red one, so the Node crawler is forced on
   unconditionally.
+- **The global rate limiter is per IP, and every db-spec request comes from
+  127.0.0.1 — so one test run looks like a single abusive client.** The
+  production default is 100 req/min, and the current suite fits under it with a
+  thin margin — measured peak `x-ratelimit-remaining` is 79 of 100, so the next
+  HTTP spec is roughly where it stops fitting. Each HTTP spec calls
+  `relaxThrottleForTests()` from `db-harness.ts` BEFORE importing `AppModule`
+  (its decorator runs `ConfigModule.forRoot()` eagerly at import time), which
+  sets `THROTTLE_LIMIT` for the process only — **unconditionally**, because
+  `db-harness.ts` runs `dotenv` at module load, so a `THROTTLE_LIMIT` copied
+  from `.env.example` would otherwise win. Without it the failure is a scatter
+  of `429 Too Many Requests` in whichever spec happens to run past request
+  100 — which reads like a bug in that spec rather than in the shared budget,
+  and moves as specs are added. `THROTTLE_LIMIT` and `THROTTLE_TTL_MS` are
+  unset outside tests and fall back to 100 / 60 000.
 - `docker-compose.yml` publishes Redis on `127.0.0.1:6379` (not just the
   internal `app_net`) because `pipeline.db-spec.ts` boots the full
   `AppModule`, whose global `ThrottlerGuard` needs a reachable Redis. Without
@@ -83,6 +97,10 @@ src/
   tare-types/             # tare catalog — weight_kg and deposit_price, both snapshotted downstream by §2.7
   suppliers/              # point-scoped supplier records — OPERATOR-writable (the only DOMAIN module whose writes are open to both roles; self-service `/me` aside), phone canonicalized to E.164
   grade-prices/           # append-only price journal — current price is the newest row per (point, grade); carries §2.9's max_markup/max_discount
+  shifts/                 # one point's working day — the ONLY home of a document's point and business_date. Open/close are OPERATOR-only (§10.3), reopen is owner-only. No cash: `close` is a timestamp until cash_counts lands
+  intakes/                # the berry receipt — one aggregate, three entities, ONE POST in one transaction. `intake-lines.ts` is pure and holds every computation in the slice. `POST /intakes/preview` (200, both roles) is `create` minus the write — same body without `code`, same snapshots, same refusals — for the reception screen's live numbers
+  payouts/                # cash over the counter — the debt half of §3.6's ceiling behind a supplier row lock; `settle-return` records cash physically coming back after a void
+  supplier-balance/       # owns ONE query: Σ intakes − Σ payouts, with `voided_at IS NULL` on both halves — served per supplier (`GET /suppliers/:id/balance`) and per point (`GET /supplier-balances`, the «Залишки» list: same SQL correlated per row, paginated in Postgres, `include_zero=false` by default but a deactivated supplier with a balance stays listed). Writes nothing, owns no table
   user-admin/             # owner-only POST /users, PATCH /users/:id, PUT /users/:id/password — the only way an account is created
   current-user/          # /me — read, update language_code, avatar upload (the one controller that reads/writes User; identity fields are owner-managed via user-admin)
   audit/                 # append-only audit log (AUDIT_ACTIONS union + AuditService)
@@ -92,7 +110,8 @@ src/
   redis/                 # global RedisModule — shared ioredis client (REDIS_CLIENT token)
   time/                   # TimeService — the one seam for timezone-aware time (APP_TIMEZONE)
   config/                 # typed, namespaced env config factories (app, database, auth, redis, timezone, uploads)
-  migrations/             # InitialSchema, SeedDevAdmin (guarded off in production), YagodaFoundation, BootstrapOwner, IndexUserIdentityUser, YagodaCatalog, YagodaSuppliersAndPrices
+  migrations/             # InitialSchema, SeedDevAdmin (guarded off in production), YagodaFoundation, BootstrapOwner, IndexUserIdentityUser, YagodaCatalog, YagodaSuppliersAndPrices, YagodaIntakesAndPayouts
+  seed/                   # dev-seed — idempotent demo dataset for manual testing (`npm run seed:dev`); NOT a migration, never runs on its own
 ```
 
 ## Key conventions
@@ -107,7 +126,10 @@ src/
 - **Identity seam** — `user_identities(provider, provider_user_id)` (`UNIQUE`, plus a plain index on `user_id` for the per-request auth lookup — see `IndexUserIdentityUser`) is the single login lookup path (`UsersService.findByIdentity`, `findAuthContext`). This starter writes exactly one provider, `'local'` (`LOCAL_PROVIDER` in `user-identity.entity.ts`); adding an OAuth provider means writing a different value there, with no schema change. `AuthService.login` and `UserAdminService` (account creation, login changes) are the reference callers.
 - **Password storage is scrypt, self-describing.** `CredentialsService.set()`/`.verify()` (`src/users/credentials.service.ts`) delegate to `src/users/password-hashing.ts`'s `hashPassword`/`verifyPassword` — the *only* place a password is read, written or compared. `node:crypto` scrypt, `N=16384, r=8, p=1`, a 64-byte derived key and a 16-byte random salt per password. The stored value is `scrypt$<N>$<r>$<p>$<salt b64>$<hash b64>` (`UserCredentials.password_hash`) rather than parameters implied by whatever code happens to be deployed — raising the cost later re-hashes nothing and locks out nobody, because every stored value still carries the parameters it was created with. `verifyPassword` returns `false` rather than throwing for every failure shape (wrong password, malformed value, unknown scheme), so a corrupt row can't be distinguished from a wrong password by an attacker or turned into a 500.
 - **Account-creation vs. login asymmetry is intentional.** `CreateUserDto`/`SetPasswordDto` (`src/user-admin/dto/`) enforce an 8-character minimum on a new password; `LoginDto` (`src/auth/dto/login.dto.ts`) enforces none, only a DoS-guard `@MaxLength`. A length rule on login would lock out credentials that were valid when created, the first time anyone tightens the policy — tighten the account-creation DTOs freely, never add a `@Length` minimum to `LoginDto`.
-- **`numeric` is a string end to end.** Postgres `numeric` columns (`collection_points.target_cash`) are typed `string | null` on the entity, with no TypeORM transformer converting them to `number` — see `CollectionPoint`'s doc comment and the round-trip db-spec asserting `typeof … === 'string'`. Nothing in this slice does arithmetic on money; `decimal.js` is not yet a dependency and arrives with the first module that actually computes something, rather than being pre-installed for a hypothetical one.
+- **`numeric` is a string end to end.** Postgres `numeric` columns are typed `string | null` on the entity, with no TypeORM transformer converting them to `number` — see `CollectionPoint`'s doc comment and the round-trip db-spec asserting `typeof … === 'string'`.
+- **ALL money and weight arithmetic goes through `src/common/money.ts`, and nothing else may do any.** Strings in, strings out, bigint kopiykas inside, half-up at scale 2. **Rounding is applied PER LINE and the rounded values are then summed** — the receipt prints the lines above the total, and `round(Σ)` can differ from `Σ round(each)` by a kopiyka, which the schema treats as no different from 350 ₴. An eslint rule (`eslint.config.mjs`) bans `*`, `/`, `Number()`, `parseFloat` and `toFixed` inside `intakes/`, `payouts/`, `shifts/` and `supplier-balance/`; pagination offsets use `skipOf()` from `common/dto/pagination-query.dto.ts` rather than a disable comment. `decimal.js` is deliberately still not a dependency — when the arithmetic stops being provisional it replaces the internals of that one file.
+- **A document is never edited.** §2.7 freezes `intakes.amount` and §9.3 makes a correction a void plus a NEW document, so there is no `PATCH` and no update method on `IntakesService`/`PayoutsService` — only a `void` that writes the mandatory `void_*` trio. An operator may void only a document they RECORDED THEMSELVES, and only while the shift is open (§9.4 — «чужа квитанція → приймальник НІКОЛИ»); the owner may void anything, anywhere. Voiding a payout does NOT return the cash: that is a separate owner-only `settle-return` (§9.3, «інакше сторно стає способом красти»).
+- **`intakes` and `payouts` store neither the point nor the business date** — both come from `shift_id` (§2.3). Scoping a query to an operator's point is therefore a JOIN on `shifts`, not a `WHERE` on a column that exists on those tables.
 - **A phone number is stored canonical (E.164) and nothing else.** `src/suppliers/phone.ts` is the only place one is normalized, and `CHK_suppliers_phone_e164` is the real guarantee — the function only produces the friendly 400. This DIVERGES from the catalog's "store exactly as typed, compare case-insensitively" rule on purpose: a name's capitalization is content, a phone's dashes are presentation. See the spec's §5.7.
 - Environment variables are managed via `@nestjs/config` with typed namespaced factories in `src/config/`. Use `@Inject(xConfig.KEY)` with `ConfigType<typeof xConfig>` to access config in services. `PORT` (default 3000) sets the listen port; `JWT_SECRET` must be at least 32 characters (Joi-validated at startup, see `app.module.ts`). `DB_SSL` (default `false`) enables TLS on the Postgres connection for managed providers (Neon/RDS/Supabase/…); the bundled compose Postgres doesn't need it.
 - **Media** — one purpose, `MediaPurpose.Avatar` (`src/media/media.constants.ts`), demonstrating the per-purpose directory pattern without importing a domain. Adding a purpose means adding a member to that enum, a subdirectory under `UPLOADS_DIR`, and an `ALTER TYPE` migration for the `media_purpose` Postgres enum. `MEDIA_MAX_BYTES` (10 MB) is the single source of truth for the size cap, enforced by each `FileInterceptor`'s `limits.fileSize` (413 before the buffer lands) and mirrored client-side for UX. Any reverse proxy in front of the app must allow at least ~12 MB request bodies, or an at-the-limit upload 413s before it ever reaches Nest.
@@ -130,9 +152,42 @@ TypeORM migrations run automatically on startup (`migrationsRun: true`). `synchr
 
 **Multi-replica caveat:** `migrationsRun: true` is safe today because the prod stack (`docker-compose.prod.yml`) runs exactly one backend replica and TypeORM's migration runner is idempotent — re-applying an already-applied migration on the next boot is a no-op. It stops being safe the moment more than one replica starts concurrently, since two containers could race to apply the same pending migration. This starter ships no CD pipeline, so there is no automated pre-flight migration step; before scaling the backend past one replica, remove `migrationsRun: true` from `app.module.ts` entirely and run migrations as an explicit, single, one-shot step before the new containers start.
 
+**`migration:generate` cannot report "no changes" in this repo, and never could.** It proposes renaming every hand-written foreign-key constraint to a TypeORM-generated hash — `FK_user_identities_user`, `FK_audit_log_actor`, `UQ_product_grades_product_name_lower` and the rest. Hand-written names are the convention here. What IS worth checking after a schema change is that no COLUMN, type or constraint-body drift appears: generate into a scratch file, `grep -v '"FK_'`, read what is left, then delete it. Note also that generate runs against `DB_NAME` from `.env` (the dev database), so an unmigrated dev database makes it propose creating everything — use `DB_NAME=app_test` if that database is the migrated one.
+
 **`SeedDevAdmin` (…0001) is deliberately not amended** to write `first_name`/`last_name`/`role` — it runs before `YagodaFoundation` (…0002), so a version referencing those columns would fail on every fresh database. `YagodaFoundation` backfills the row it left instead. This is why a migration is layout-frozen once another migration is written to depend on its output: fix forward, don't edit history.
 
 **`BootstrapOwner` (…0003) needs its environment variables set before the FIRST production boot.** It creates the first `network_owner` from `BOOTSTRAP_OWNER_LOGIN`/`BOOTSTRAP_OWNER_PASSWORD` (plus optional first/last name), but only when the `users` table is empty — so it silently no-ops in development (`SeedDevAdmin` already populated a user) and, more importantly, no-ops for good on a production database that first boots without those variables set: a migration runs once, and an unset-variable boot still records itself as applied. Recovery at that point is a manual `INSERT`, not a re-run. See the migration's own doc comment.
+
+## Dev seed
+
+`npm run seed:dev -w backend` (or `npm run db:seed` from the repo root) loads the
+demo dataset from `src/seed/dev-seed.data.ts` — the mock CRM's season reduced to
+the tables that exist: 11 collection points (5 working, the warehouse, 5 in the
+registry), 10 products with 14 grades (2 inactive), 4 tare types, 7 operators
+(one deactivated), 17 suppliers, and a day price for every active grade at every
+working point plus three intraday corrections on Шипинки so the price journal has
+a «latest wins» case — and, once the intakes slice is in, a closed shift yesterday
+and open shifts today on Шипинки / Конищів / Гайове with ten receipts and four
+payouts whose numbers come from the server's own `buildIntake()` and
+`composeDocumentCode()`, so the demo stores exactly what the API would have.
+Points carry real receipt-code prefixes (`SHP`, `KON`, …). Sign in as `admin`/`admin` (owner) or as an operator
+(`oksana`, `maria`, `taras`, `ihor`, `bohdan`, `lesia`) with password `operator`.
+
+It is a SCRIPT, not a migration, on purpose: migrations are frozen once applied,
+the seed is meant to evolve with the screens, and a migration would also run
+inside every `*.db-spec.ts` suite. It is **idempotent** — every row is looked up
+by its natural key and inserted only when missing; existing rows are never
+modified, so hand edits survive a re-run and re-running only restores what was
+deleted. One transaction: a failure leaves the database untouched. The CLI
+refuses under `NODE_ENV=production` and on a database with pending migrations.
+Runs from the host (`.env`'s `DB_HOST=localhost`; compose publishes Postgres on
+5432) or inside the container (`docker compose exec backend npm run seed:dev -w backend`).
+`src/seed/dev-seed.db-spec.ts` proves idempotency and the journal ordering
+against a real Postgres; `dev-seed.spec.ts` checks the dataset's own consistency.
+Because that spec seeds `app_test` and nothing truncates it, the throwaway database
+carries the demo dataset permanently after a `test:db` run — every other db-spec
+already scopes its fixtures by a per-run uuid, and that convention is now load-bearing.
+The CLI also refuses a non-local `DB_HOST` unless `SEED_ALLOW_REMOTE_DB=1`.
 
 **Workflow for schema changes:**
 

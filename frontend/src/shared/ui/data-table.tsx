@@ -1,5 +1,6 @@
 import * as React from 'react';
 import { cn } from '@/shared/lib/cn';
+import { Card } from './card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './table';
 
 /** Generic column descriptor — no domain types; the page owns every cell renderer. */
@@ -23,6 +24,7 @@ export function DataTable<Row>({
   rowKey,
   onRowClick,
   empty,
+  frame = true,
   className,
 }: {
   columns: Column<Row>[];
@@ -30,12 +32,15 @@ export function DataTable<Row>({
   rowKey?: (row: Row, index: number) => React.Key;
   onRowClick?: (row: Row, index: number) => void;
   empty?: React.ReactNode;
+  /** Wrap in the card shell (default). Pass `false` when the table already
+   *  lives inside a card, so it does not draw a card within a card. */
+  frame?: boolean;
   className?: string;
 }) {
   const colClass = (c: Column<Row>) =>
     cn(c.align && ALIGN[c.align], c.hideBelow && HIDE[c.hideBelow], c.className);
 
-  return (
+  const table = (
     <Table className={className}>
       <TableHeader>
         <TableRow>
@@ -69,4 +74,9 @@ export function DataTable<Row>({
       </TableBody>
     </Table>
   );
+
+  if (!frame) return table;
+  // The mock's table shell: every table there sits in a card, never bare on
+  // the paper. `Card` owns the outline so a pane and a table frame match.
+  return <Card data-slot="data-table-frame">{table}</Card>;
 }
