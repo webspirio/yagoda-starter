@@ -35,11 +35,20 @@ export default tseslint.config(
     // globally: `*` and `/` are perfectly ordinary in pagination offsets,
     // image resizing and time arithmetic, and a repo-wide ban would train
     // people to write disable comments.
+    //
+    // `transfers` and `point-cash` join the list with the cash slice. Neither
+    // does arithmetic in JavaScript today — the cash formula and the shortfall
+    // are both computed in Postgres, where `numeric` is exact — and this guard
+    // is what keeps it that way. `shortfall = target_cash - cash` written in
+    // TypeScript is the exact shape §5.1 forbids, and it would look perfectly
+    // reasonable in review.
     files: [
       'src/intakes/**/*.ts',
       'src/payouts/**/*.ts',
       'src/shifts/**/*.ts',
       'src/supplier-balance/**/*.ts',
+      'src/transfers/**/*.ts',
+      'src/point-cash/**/*.ts',
     ],
     ignores: ['**/*.spec.ts', '**/*.db-spec.ts'],
     rules: {
