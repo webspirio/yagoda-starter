@@ -20,6 +20,11 @@ RUN npm run build -w backend
 FROM node:24-alpine AS prod
 WORKDIR /app
 ENV NODE_ENV=production
+# Set by CI (--build-arg APP_COMMIT=<git sha>) and read by GET /health/version.
+# Placed in the final stage only, so it never invalidates the npm ci / dist
+# layers above.
+ARG APP_COMMIT=unknown
+ENV APP_COMMIT=$APP_COMMIT
 COPY package.json package-lock.json ./
 COPY backend/package.json backend/
 RUN npm ci --workspace=backend --omit=dev
