@@ -19,7 +19,8 @@ Design: `docs/superpowers/specs/2026-09-09-coolify-deployment-and-cd-design.md`.
    calls `POST /api/v1/deploy` on Coolify (`scripts/ci/coolify-deploy.sh`).
 3. Coolify checks out the commit, sets `SOURCE_COMMIT`, and runs
    `docker compose up` on `docker-compose.prod.yml`, whose `image:` lines resolve
-   to `sha-${SOURCE_COMMIT}`.
+   to `sha-${SOURCE_COMMIT}` (the `SOURCE_COMMIT` behaviour is confirmed by the
+   spike below before the first real deploy).
 4. The job waits for Coolify, then checks `/api/health/ready`,
    `/api/health/version == sha-<commit>` and (previews) a seeded login, and only
    then comments «Preview ready» / passes.
@@ -28,12 +29,17 @@ Coolify's own auto-deploy is **off**; CI is the only trigger, so Coolify never
 pulls a tag that has not been pushed yet. Previews are removed by Coolify's
 GitHub App webhook when the PR closes.
 
+`deploy-preview` runs `scripts/ci/coolify-deploy.sh` from the PR's own checkout
+with the Coolify token in its environment — acceptable for internal PRs only,
+which is why fork PRs are excluded.
+
 ## One-time server setup (done 2026-09-…; repeat only for a new server)
 
 1. **Hetzner Cloud Firewall** (console): inbound TCP 22, 80, 443 only. Do this
    *before* installing Coolify — Docker publishes ports past UFW, and the panel
    would otherwise sit on `:8000` over plain HTTP.
-2. `scp scripts/vps/bootstrap.sh root@188.245.146.122:/root/ && ssh root@188.245.146.122 bash /root/bootstrap.sh`
+2. `ssh root@188.245.146.122 'apt-get update && apt-get upgrade -y'`, then
+   `scp scripts/vps/bootstrap.sh root@188.245.146.122:/root/ && ssh root@188.245.146.122 bash /root/bootstrap.sh`
    (2 GB swap, `vm.swappiness=10`, `curl git jq`, `/data/backups`).
 3. Coolify, unattended so nobody can grab the first-admin slot:
    ```bash
@@ -74,7 +80,10 @@ GitHub App webhook when the PR closes.
    RSS is measured).
 8. **Backups**: `scp scripts/vps/backup.sh root@…:/usr/local/bin/yagoda-backup.sh`,
    the two unit files to `/etc/systemd/system/`, `yagoda-backup.env.example` → `/etc/yagoda-backup.env`
-   (fill `PG_CONTAINER`, `UPLOADS_VOLUME` from `docker ps` / `docker volume ls`), then
+   (fill `PG_CONTAINER`, `UPLOADS_VOLUME` from `docker ps` / `docker volume ls` — pick
+   the **production** application's container/volume, not a preview's (previews
+   also run a postgres and an uploads volume)), then
+   `chmod +x /usr/local/bin/yagoda-backup.sh`, `chmod 600 /etc/yagoda-backup.env`, then
    `systemctl daemon-reload && systemctl enable --now yagoda-backup.timer && systemctl start yagoda-backup.service`.
    Pairs land in `/data/backups`; restore per `docs/backup-restore.md`.
 
@@ -128,7 +137,8 @@ turns a wrong image into a failed job, not a silent wrong preview.
 | `deploy-*` job: Coolify `failed`, log shows compose error | compose file in that branch is invalid | `docker compose -f docker-compose.prod.yml config` locally |
 | `serves commit 'X', expected 'Y'` | Coolify deployed another commit (fallback misuse, or Auto Deploy got switched on) | Check Auto Deploy is off; re-run the job |
 | `/ready` never 200 | backend crash-loop | Coolify → application → logs; usually a missing env var |
-| «Preview not deployed — limit reached» | `PREVIEW_CAP` live previews (default 6) | close/merge an older PR |
+| «Preview not deployed — limit reached» | `PREVIEW_CAP` live previews (default 6) | close or merge an older PR, or remove its `preview` label |
+| `deploy-preview` shows "cancelled", no comment | another PR took the single pending slot of the `preview-allocation` concurrency group while this one waited | re-run the job |
 | Prod is wrong after a merge | | `git revert <merge>` + push. **This does not revert schema migrations** — see `docs/backup-restore.md` to restore last night's pair if a migration destroyed data. |
 
 ## Leaving Coolify

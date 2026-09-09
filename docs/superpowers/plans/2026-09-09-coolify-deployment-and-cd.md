@@ -476,7 +476,7 @@ services:
     environment:
       SEED_DEV_DATA: ${SEED_DEV_DATA:-}
       NODE_ENV: development
-      NODE_OPTIONS: --max-old-space-size=256
+      NODE_OPTIONS: --max-old-space-size=192
       DB_HOST: postgres
       DB_PORT: 5432
       DB_USER: ${DB_USER:-app}

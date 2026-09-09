@@ -13,6 +13,7 @@
 set -euo pipefail
 
 CONFIG=${CONFIG:-/etc/yagoda-backup.env}
+[ -r "$CONFIG" ] || { echo "missing config $CONFIG" >&2; exit 1; }
 # shellcheck disable=SC1090
 . "$CONFIG"
 : "${PG_CONTAINER:?set in $CONFIG}" "${UPLOADS_VOLUME:?set in $CONFIG}"

@@ -37,7 +37,11 @@ echo "deployment $deployment_uuid queued ($target)"
 deadline=$((SECONDS + DEPLOY_TIMEOUT_SEC))
 status=""
 while [ $SECONDS -lt $deadline ]; do
-  d=$(curl -sS --max-time 30 "${AUTH[@]}" "$COOLIFY_URL/api/v1/deployments/$deployment_uuid")
+  # A transient network/API failure here must not kill the whole script — fall
+  # back to an empty object, which parses to an empty status and just loops
+  # again; the post-loop check below still catches a deployment that never
+  # reaches "finished".
+  d=$(curl -sS --max-time 30 "${AUTH[@]}" "$COOLIFY_URL/api/v1/deployments/$deployment_uuid" || echo '{}')
   status=$(printf '%s' "$d" | jq -r '.status // empty')
   case "$status" in
     finished) break ;;
