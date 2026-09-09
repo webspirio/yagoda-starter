@@ -376,6 +376,32 @@ describe('PointCashService.list (Postgres)', () => {
     expect(without.data[0].latest_transfer).toBeNull();
   });
 
+  it('KEEPS A DEACTIVATED POINT, with its cash — §5.6, deactivation is «не видалення»', async () => {
+    // The failure this pins: a point retired mid-season still holds whatever
+    // was in its drawer. A `cp.is_active = true` filter here would drop both
+    // the row and its money from `total`, while `GET /point-cash/:id` went on
+    // reporting the same cash — the owner would lose sight of real money and
+    // the two reads would disagree. Spec §6.10.
+    const tag = randomUUID().slice(0, 8);
+    const [{ id: retired }] = (await ds.query(
+      `INSERT INTO collection_points (name, code, kind, target_cash, is_active)
+       VALUES ($1, $2, 'reception', NULL, false) RETURNING id`,
+      [`Точка ${tag}`, `D${tag.slice(0, 6).toUpperCase()}`],
+    )) as { id: string }[];
+
+    await ds.query(
+      `INSERT INTO transfers (collection_point_id, cash, crates, carrier, sent_by_user_id,
+                              sent_at, status, accepted_by_user_id, accepted_date, accepted_at)
+       VALUES ($1, '40000.00', 0, 'Іван', $2, '2026-09-01T18:00:00Z', 'accepted',
+               $2, '2026-09-02', '2026-09-02T07:00:00Z')`,
+      [retired, ownerId],
+    );
+
+    const page = await service.list(owner, query({ collection_point_id: retired }) as never);
+    expect(page.total).toBe(1);
+    expect(page.data[0]).toMatchObject({ collection_point_id: retired, cash: '40000.00' });
+  });
+
   it('pins an operator to their own point regardless of the query', async () => {
     const operator: AuthenticatedUser = {
       sub: ownerId,

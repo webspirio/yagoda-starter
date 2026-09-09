@@ -177,6 +177,16 @@ export class PointCashService {
    *
    * THE ORDER IS TOTAL — name, then id. Postgres promises no order among ties,
    * so without the id tiebreaker `LIMIT`/`OFFSET` can serve one row twice.
+   *
+   * A DEACTIVATED POINT KEEPS ITS ROW — there is deliberately no
+   * `cp.is_active = true` here or in the count below, and reinstating one is a
+   * money bug, not a tidy-up. §5.6's deactivation is «не видалення»: it stops
+   * new business and does not abandon open documents (spec §6.10). A point
+   * retired mid-season still holds whatever was in its drawer, and hiding the
+   * row would blind the owner to real money while `GET /point-cash/:id` went on
+   * reporting it — the list and the single read would disagree about cash.
+   * `supplier-balance` made the same call for the same reason: a person must
+   * not vanish from the debts list because their card was retired.
    */
   async list(
     actor: AuthenticatedUser,
@@ -190,8 +200,7 @@ export class PointCashService {
          SELECT cp.id, cp.name, cp.target_cash,
                 ${cashSql('cp.id', asOfSql('$2', '$3'), '$3')} AS cash
            FROM collection_points cp
-          WHERE cp.is_active = true
-            AND ($1::uuid IS NULL OR cp.id = $1::uuid)
+          WHERE ($1::uuid IS NULL OR cp.id = $1::uuid)
        )
        SELECT s.id AS collection_point_id, s.name,
               s.target_cash::text AS target_cash,
@@ -218,7 +227,7 @@ export class PointCashService {
     // disagree about what is listed. It does not need the formula.
     const [{ total }] = (await manager.query(
       `SELECT COUNT(*)::int AS total FROM collection_points cp
-        WHERE cp.is_active = true AND ($1::uuid IS NULL OR cp.id = $1::uuid)`,
+        WHERE ($1::uuid IS NULL OR cp.id = $1::uuid)`,
       [pointId],
     )) as { total: number }[];
 
