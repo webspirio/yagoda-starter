@@ -158,6 +158,8 @@ jobs:
       - run: npm run lint
       - run: npm test
       - run: npm run build
+      # The deploy/cleanup scripts are bash + jq; their suites live outside npm.
+      - run: bash scripts/ci/coolify-deploy.test.sh && bash scripts/ci/ghcr-cleanup.test.sh
 
   db-checks:
     runs-on: ubuntu-latest
@@ -270,7 +272,9 @@ jobs:
         run: |
           set -euo pipefail
           push=false
-          if [ "$BUILD" = true ] && [ "$IS_FORK" != true ]; then push=true; fi
+          # Dependabot PRs build but never push — they would otherwise each hold
+          # a preview slot and their token cannot write packages.
+          if [ "$BUILD" = true ] && [ "$IS_FORK" != true ] && [ "$GITHUB_ACTOR" != 'dependabot[bot]' ]; then push=true; fi
           echo "push=$push" >> "$GITHUB_OUTPUT"
           echo "sha=$SHA" >> "$GITHUB_OUTPUT"
           # Cache scopes: PRs read prod's cache but write only their own, so
