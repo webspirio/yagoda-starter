@@ -20,11 +20,6 @@ RUN npm run build -w backend
 FROM node:24-alpine AS prod
 WORKDIR /app
 ENV NODE_ENV=production
-# Set by CI (--build-arg APP_COMMIT=<git sha>) and read by GET /health/version.
-# Placed in the final stage only, so it never invalidates the npm ci / dist
-# layers above.
-ARG APP_COMMIT=unknown
-ENV APP_COMMIT=$APP_COMMIT
 COPY package.json package-lock.json ./
 COPY backend/package.json backend/
 RUN npm ci --workspace=backend --omit=dev
@@ -33,6 +28,11 @@ COPY --from=build --chown=node:node /app/backend/dist backend/dist
 # /app is root-owned, so pre-create the default location owned by `node` — a
 # fresh named volume mounted here inherits this ownership, keeping it writable.
 RUN mkdir -p /app/uploads && chown node:node /app/uploads
+# Set by CI (--build-arg APP_COMMIT=<git sha>) and read by GET /health/version.
+# Last in the stage on purpose: an ENV whose value changes invalidates every
+# layer after it, so it must come after npm ci and the dist COPY.
+ARG APP_COMMIT=unknown
+ENV APP_COMMIT=$APP_COMMIT
 USER node
 EXPOSE 3000
 CMD ["node", "backend/dist/main.js"]
