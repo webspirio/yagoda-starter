@@ -16,7 +16,7 @@
 - One workflow file `.github/workflows/ci.yml` with `needs`; the only other workflow is the weekly `cleanup-images.yml` (spec §1).
 - Preview deploys only after `checks`, `db-checks` and `docker` are all green (spec §1).
 - `docker-compose.prod.yml` has **no** `networks:` and **no** `ports:`; `docker-compose.standalone.yml` adds the loopback ports back (spec §4.1–4.2).
-- `mem_limit`: backend 384m, postgres 256m, redis 64m, nginx 64m, seed 256m; backend and seed run with `NODE_OPTIONS=--max-old-space-size=256` (spec §4.1).
+- `mem_limit`: backend 384m, postgres 256m, redis 64m, nginx 64m, seed 256m; backend runs with `NODE_OPTIONS=--max-old-space-size=256`, seed with `--max-old-space-size=192` (spec §4.1).
 - Hostnames: `yagoda.webspirio.com` (prod), `coolify.yagoda.webspirio.com` (panel), `pr-<N>.yagoda.webspirio.com` (previews) (spec §1).
 - Preview cap: initial `6`, counted as open PRs labelled `preview`, under `concurrency: preview-allocation`; invariant ≥ 0.8–1.0 GiB free RAM (spec §1, §4.5).
 - Every mutating command on the server (`root@188.245.146.122`) runs only after the owner's explicit go-ahead for that step (spec §5). Secrets never pass through the chat: the owner types them (Coolify UI, `! ssh …`).
