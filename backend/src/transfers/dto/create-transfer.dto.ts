@@ -30,6 +30,7 @@ export class CreateTransferDto {
 
   @IsString()
   @Length(1, 200)
+  @Matches(/\S/, { message: 'carrier must not be blank' })
   carrier: string;
 
   /** §9.3 — a correction is a new document naming the one it corrects. The

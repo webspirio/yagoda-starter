@@ -6,11 +6,13 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, Repository } from 'typeorm';
+import { DataSource, EntityManager, Repository } from 'typeorm';
 import { Transfer } from './transfer.entity';
 import { TransferStatus } from './transfer-status.enum';
 import { CreateTransferDto } from './dto/create-transfer.dto';
 import { DisputeTransferDto } from './dto/dispute-transfer.dto';
+import { ResolveTransferDto } from './dto/resolve-transfer.dto';
+import { VoidDocumentDto } from '../intakes/dto/void-document.dto';
 import { TransferResponse, toTransferResponse } from './transfer.mapper';
 import { AuditService } from '../audit/audit.service';
 import { CollectionPointsService } from '../collection-points/collection-points.service';
@@ -284,6 +286,134 @@ export class TransfersService {
       );
 
       return toTransferResponse(saved);
+    });
+  }
+
+  /**
+   * §7.9 step 4б — the owner's final word on a dispute. OWNER ONLY (§10.2:
+   * corrections belong to the owner).
+   *
+   * THE STATUS IS NOT TOUCHED. See `ResolveTransferDto`'s header and the enum's.
+   *
+   * WHAT THIS IS FOR, under the 09.09.2026 ruling: the point's own figure is
+   * already in the cash formula, so closing the dispute is an ACCOUNTING act,
+   * not a cash movement. It is used when the point miscounted and the missing
+   * money turns up in the bag, or when the owner audits and writes the final
+   * figure. The discrepancy stays visible on the document forever (§7.7).
+   */
+  async resolve(
+    actor: AuthenticatedUser,
+    id: string,
+    dto: ResolveTransferDto,
+  ): Promise<TransferResponse> {
+    return this.ownerAction(actor, id, async (transfer, m) => {
+      if (transfer.status !== TransferStatus.Disputed) {
+        throw new ConflictException({
+          message: 'Only a disputed transfer can be resolved',
+          code: 'TRANSFER_NOT_DISPUTED',
+        });
+      }
+      if (transfer.resolved_at) {
+        throw new ConflictException({
+          message: 'That dispute is already resolved',
+          code: 'TRANSFER_ALREADY_RESOLVED',
+        });
+      }
+
+      transfer.resolved_cash = dto.resolved_cash;
+      transfer.resolved_crates = dto.resolved_crates;
+      transfer.resolved_by_user_id = actor.sub;
+      transfer.resolved_at = this.time.now().toJSDate();
+      const saved = await m.save(Transfer, transfer);
+
+      await this.audit.record(
+        {
+          action: 'transfer.resolved',
+          actor_id: actor.sub,
+          target_type: 'transfer',
+          target_id: saved.id,
+          before: { reported_cash: transfer.reported_cash, reported_crates: transfer.reported_crates },
+          after: { resolved_cash: dto.resolved_cash, resolved_crates: dto.resolved_crates },
+        },
+        m,
+      );
+
+      return saved;
+    });
+  }
+
+  /**
+   * §9.4 — «сторнує переказ ТІЛЬКИ керівник; точка сторнувати не може.»
+   *
+   * LEGAL IN ANY STATE, INCLUDING `accepted`, and that is anticipated rather
+   * than tolerated: the DBML says in as many words that a voided transfer
+   * «лишається зі status = accepted». Voiding an accepted transfer is how a
+   * mistaken «Прийняв» is undone — the owner voids with a reason, issues a
+   * correction naming this document, and the point accepts the correction
+   * (§9.3, spec §6.9).
+   *
+   * THE MONEY LEAVES THE CASH FIGURE IMMEDIATELY, unlike a voided PAYOUT which
+   * stays subtracted until someone physically returns the cash. The asymmetry
+   * is deliberate: a voided transfer says «this delivery never validly
+   * happened», so no document accounts for that money until the correction
+   * lands. If the fix drags on, the resulting discrepancy is an accurate
+   * description of reality.
+   */
+  async void(
+    actor: AuthenticatedUser,
+    id: string,
+    dto: VoidDocumentDto,
+  ): Promise<TransferResponse> {
+    return this.ownerAction(actor, id, async (transfer, m) => {
+      if (transfer.voided_at) {
+        throw new ConflictException({
+          message: 'That transfer is already voided',
+          code: 'ALREADY_VOIDED',
+        });
+      }
+
+      transfer.voided_at = this.time.now().toJSDate();
+      transfer.voided_by_user_id = actor.sub;
+      transfer.void_reason = dto.reason.trim();
+      // `status` IS LEFT ALONE ON PURPOSE. See this method's header.
+      const saved = await m.save(Transfer, transfer);
+
+      await this.audit.record(
+        {
+          action: 'transfer.voided',
+          actor_id: actor.sub,
+          target_type: 'transfer',
+          target_id: saved.id,
+          after: { cash: saved.cash, crates: saved.crates, status: saved.status },
+          note: dto.reason,
+        },
+        m,
+      );
+
+      return saved;
+    });
+  }
+
+  /** The owner's two verbs share their authority check, row lock and 404. */
+  private async ownerAction(
+    actor: AuthenticatedUser,
+    id: string,
+    apply: (transfer: Transfer, m: EntityManager) => Promise<Transfer>,
+  ): Promise<TransferResponse> {
+    if (actor.role !== UserRole.NetworkOwner) {
+      throw new ForbiddenException({
+        message: 'Only the network owner may do that',
+        code: 'OWNER_ONLY',
+      });
+    }
+
+    return this.dataSource.transaction(async (m) => {
+      const transfer = await m.findOne(Transfer, {
+        where: { id },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!transfer) throw new NotFoundException('Transfer not found');
+      return toTransferResponse(await apply(transfer, m));
     });
   }
 }

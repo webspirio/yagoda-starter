@@ -27,5 +27,6 @@ export class DisputeTransferDto {
 
   @IsString()
   @Length(1, 500)
+  @Matches(/\S/, { message: 'dispute_note must not be blank' })
   dispute_note: string;
 }

@@ -4,6 +4,8 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { TransfersService } from './transfers.service';
 import { CreateTransferDto } from './dto/create-transfer.dto';
 import { DisputeTransferDto } from './dto/dispute-transfer.dto';
+import { ResolveTransferDto } from './dto/resolve-transfer.dto';
+import { VoidDocumentDto } from '../intakes/dto/void-document.dto';
 import { UserRole } from '../users/user-role.enum';
 import type { AuthenticatedUser } from '../auth/jwt.strategy';
 
@@ -42,5 +44,25 @@ export class TransfersController {
     @Body() dto: DisputeTransferDto,
   ) {
     return this.transfers.dispute(actor, id, dto);
+  }
+
+  @Post(':id/resolve')
+  @Auth(UserRole.NetworkOwner)
+  resolve(
+    @CurrentUser() actor: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: ResolveTransferDto,
+  ) {
+    return this.transfers.resolve(actor, id, dto);
+  }
+
+  @Post(':id/void')
+  @Auth(UserRole.NetworkOwner)
+  void(
+    @CurrentUser() actor: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: VoidDocumentDto,
+  ) {
+    return this.transfers.void(actor, id, dto);
   }
 }

@@ -227,3 +227,134 @@ describe('TransfersService.accept / dispute', () => {
     );
   });
 });
+
+describe('TransfersService.resolve / void', () => {
+  const disputed = (over: Record<string, unknown> = {}) => ({
+    id: 't-1',
+    collection_point_id: 'point-a',
+    cash: '150000.00',
+    crates: 200,
+    carrier: 'Іван',
+    status: TransferStatus.Disputed,
+    accepted_by_user_id: 'u-op-a',
+    accepted_date: '2026-09-05',
+    accepted_at: new Date(),
+    reported_cash: '140000.00',
+    reported_crates: 195,
+    dispute_note: 'мішок легший',
+    resolved_cash: null,
+    resolved_crates: null,
+    resolved_by_user_id: null,
+    resolved_at: null,
+    correction_of_transfer_id: null,
+    voided_at: null,
+    voided_by_user_id: null,
+    void_reason: null,
+    sent_by_user_id: 'u-owner',
+    sent_at: new Date(),
+    created_at: new Date(),
+    ...over,
+  });
+
+  const build = (row: Record<string, unknown>) => {
+    const saved: Record<string, unknown>[] = [];
+    const manager = {
+      findOne: jest.fn().mockResolvedValue(row),
+      save: jest.fn((_e: unknown, x: Record<string, unknown>) => {
+        saved.push(x);
+        return x;
+      }),
+    };
+    const audit = { record: jest.fn().mockResolvedValue(undefined) };
+    const dataSource = { transaction: jest.fn((cb: (m: unknown) => unknown) => cb(manager)) };
+    const time = { now: () => ({ toISODate: () => '2026-09-09', toJSDate: () => new Date() }) };
+    const service = new TransfersService(
+      {} as never,
+      {} as never,
+      audit as never,
+      time as never,
+      dataSource as never,
+    );
+    return { service, audit, saved };
+  };
+
+  const resolution = { resolved_cash: '140000.00', resolved_crates: 195 };
+
+  it('resolve fills resolved_* and LEAVES THE STATUS disputed', async () => {
+    const { service, saved } = build(disputed());
+    const result = await service.resolve(owner, 't-1', resolution as never);
+
+    expect(saved[0]).toMatchObject({
+      status: TransferStatus.Disputed,
+      resolved_cash: '140000.00',
+      resolved_crates: 195,
+      resolved_by_user_id: 'u-owner',
+    });
+    expect(result.status).toBe(TransferStatus.Disputed);
+  });
+
+  it('resolve refuses an operator', async () => {
+    const { service } = build(disputed());
+    await expect(service.resolve(operatorA, 't-1', resolution as never)).rejects.toThrow(
+      ForbiddenException,
+    );
+  });
+
+  it('resolve refuses a transfer that is not disputed', async () => {
+    const { service } = build(disputed({ status: TransferStatus.Accepted }));
+    await expect(service.resolve(owner, 't-1', resolution as never)).rejects.toThrow(
+      ConflictException,
+    );
+  });
+
+  it('resolve refuses an already-resolved dispute', async () => {
+    const { service } = build(disputed({ resolved_at: new Date() }));
+    await expect(service.resolve(owner, 't-1', resolution as never)).rejects.toThrow(
+      ConflictException,
+    );
+  });
+
+  it('void stamps the trio and LEAVES THE STATUS ALONE', async () => {
+    const { service, saved } = build(disputed({ status: TransferStatus.Accepted }));
+    await service.void(owner, 't-1', { reason: 'дубль' } as never);
+
+    expect(saved[0]).toMatchObject({
+      // The trap in one assertion: a voided transfer is still 'accepted', so
+      // every cash query must filter voided_at itself.
+      status: TransferStatus.Accepted,
+      voided_by_user_id: 'u-owner',
+      void_reason: 'дубль',
+    });
+    expect(saved[0].voided_at).toBeInstanceOf(Date);
+  });
+
+  it('void refuses an operator — §9.4, «точка сторнувати не може»', async () => {
+    const { service } = build(disputed());
+    await expect(service.void(operatorA, 't-1', { reason: 'дубль' } as never)).rejects.toThrow(
+      ForbiddenException,
+    );
+  });
+
+  it('void refuses an already-voided transfer', async () => {
+    const { service } = build(disputed({ voided_at: new Date() }));
+    await expect(service.void(owner, 't-1', { reason: 'дубль' } as never)).rejects.toThrow(
+      ConflictException,
+    );
+  });
+
+  it('writes transfer.resolved and transfer.voided audit entries', async () => {
+    const r = build(disputed());
+    await r.service.resolve(owner, 't-1', resolution as never);
+    expect(r.audit.record).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'transfer.resolved' }),
+      expect.anything(),
+    );
+
+    const v = build(disputed());
+    await v.service.void(owner, 't-1', { reason: 'дубль' } as never);
+    expect(v.audit.record).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'transfer.voided', note: 'дубль' }),
+      expect.anything(),
+    );
+  });
+});
