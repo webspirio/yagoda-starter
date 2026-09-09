@@ -35,14 +35,21 @@ trap 'cleanup_partials; echo "backup $STAMP FAILED" >&2' ERR
 echo "backup $STAMP: database"
 docker exec "$PG_CONTAINER" pg_dump -U "$DB_USER" "$DB_NAME" | gzip > "$DB.partial"
 gzip -t "$DB.partial"
-gunzip -c "$DB.partial" | head -c 4096 | grep -q 'PostgreSQL database dump'
+# Drain gunzip fully instead of letting head close the pipe early: under
+# pipefail an early close hands gunzip SIGPIPE (exit 141) and would fail
+# every backup larger than the pipe buffer.
+gunzip -c "$DB.partial" | { head -c 4096; cat >/dev/null; } | grep -q 'PostgreSQL database dump'
 
 echo "backup $STAMP: uploads"
+# docker run -v auto-creates a missing named volume, which would produce an
+# empty but "valid" archive from a stale name; fail loudly instead.
+docker volume inspect "$UPLOADS_VOLUME" >/dev/null 2>&1 || { echo "uploads volume '$UPLOADS_VOLUME' does not exist" >&2; false; }
 docker run --rm -v "$UPLOADS_VOLUME:/data:ro" alpine tar czf - -C /data . > "$UP.partial"
 tar -tzf "$UP.partial" >/dev/null
 
 mv "$DB.partial" "$DB"
 mv "$UP.partial" "$UP"
+# Retention runs untrapped on purpose: a pruning glitch must not mark the snapshot just taken as FAILED.
 trap - ERR
 echo "backup $STAMP: ok ($(du -h "$DB" | cut -f1) db, $(du -h "$UP" | cut -f1) uploads)"
 
