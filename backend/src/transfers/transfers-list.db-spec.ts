@@ -47,12 +47,17 @@ describe('TransfersService.list date filter (Postgres)', () => {
     service = new TransfersService(
       ds.getRepository(Transfer),
       // `list` reads none of these: no point lookup, no audit entry, no clock,
-      // no transaction. Only the repository and the timezone are live.
+      // no transaction, no shift lookup. Only the repository and the timezone
+      // are live.
       {} as never,
       {} as never,
       {} as never,
       ds,
       { appTimezone: 'Europe/Kyiv' },
+      // `list` never reaches `shifts` — only `accept`/`dispute` do, via
+      // `transition`'s §4.1 check — so a functional stub that always reports
+      // no open shift is honest here without needing a real one.
+      { findOpenAtPoint: async () => null } as never,
     );
 
     const tag = randomUUID().slice(0, 8);
