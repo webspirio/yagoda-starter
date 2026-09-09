@@ -26,17 +26,18 @@ fail() { echo "::error::$*" >&2; exit 1; }
 # --- 1. trigger -------------------------------------------------------------
 deploy_url="$COOLIFY_URL/api/v1/deploy?uuid=$COOLIFY_APP_UUID&force=false"
 [ -n "${PR_NUMBER:-}" ] && deploy_url="$deploy_url&pr=$PR_NUMBER"
-resp=$(curl -sS -X POST "${AUTH[@]}" "$deploy_url")
+resp=$(curl -sS --max-time 30 -X POST "${AUTH[@]}" "$deploy_url")
 deployment_uuid=$(printf '%s' "$resp" | jq -r '.deployments[0].deployment_uuid // empty')
 [ -n "$deployment_uuid" ] || fail "Coolify did not return a deployment_uuid: $resp"
-echo "deployment $deployment_uuid queued (${PR_NUMBER:+preview pr=$PR_NUMBER}${PR_NUMBER:-production})"
+if [ -n "${PR_NUMBER:-}" ]; then target="preview pr=$PR_NUMBER"; else target="production"; fi
+echo "deployment $deployment_uuid queued ($target)"
 [ -n "${GITHUB_OUTPUT:-}" ] && echo "deployment_uuid=$deployment_uuid" >> "$GITHUB_OUTPUT"
 
 # --- 2. wait for Coolify ----------------------------------------------------
 deadline=$((SECONDS + DEPLOY_TIMEOUT_SEC))
 status=""
 while [ $SECONDS -lt $deadline ]; do
-  d=$(curl -sS "${AUTH[@]}" "$COOLIFY_URL/api/v1/deployments/$deployment_uuid")
+  d=$(curl -sS --max-time 30 "${AUTH[@]}" "$COOLIFY_URL/api/v1/deployments/$deployment_uuid")
   status=$(printf '%s' "$d" | jq -r '.status // empty')
   case "$status" in
     finished) break ;;
@@ -70,8 +71,9 @@ served=$(curl -sS --max-time 10 "$BASE_URL/api/health/version" | jq -r '.commit 
 echo "version: $served"
 
 if [ -n "${SEED_USERNAME:-}" ]; then
+  body=$(jq -cn --arg u "$SEED_USERNAME" --arg p "${SEED_PASSWORD:?}" '{username:$u,password:$p}')
   code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 -X POST -H 'content-type: application/json' \
-    -d "{\"username\":\"$SEED_USERNAME\",\"password\":\"${SEED_PASSWORD:?}\"}" "$BASE_URL/api/auth/login")
+    -d "$body" "$BASE_URL/api/auth/login")
   case "$code" in 200|201) echo "seed login: $code" ;; *) fail "login as seeded user '$SEED_USERNAME' returned $code — did the seed run?" ;; esac
 fi
 

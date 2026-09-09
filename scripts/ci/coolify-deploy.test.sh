@@ -1,27 +1,32 @@
 #!/usr/bin/env bash
 # scripts/ci/coolify-deploy.test.sh — run: bash scripts/ci/coolify-deploy.test.sh
 # Needs bash, jq. Locally: docker run --rm -v "$PWD:/w" -w /w alpine sh -c 'apk add -q bash jq curl && bash scripts/ci/coolify-deploy.test.sh'
+# Expected: passed=13 failed=0
 set -euo pipefail
 HERE=$(cd "$(dirname "$0")" && pwd)
 T=$(mktemp -d); trap 'rm -rf "$T"' EXIT
 mkdir -p "$T/bin"
 
 # Fake curl: `-o <file>` and `-w '%{http_code}'` are honoured; the body comes from
-# $T/responses/<key> where key is the first matching substring in URL_KEYS.
+# $T/responses/<key> where key is the first matching substring in URL_KEYS. Each
+# call is logged as "$method $url $data" (method defaults to GET, data may be
+# empty) so tests can assert what was sent, not only where.
 cat > "$T/bin/curl" <<'EOF'
 #!/usr/bin/env bash
-out=/dev/stdout; url=""; write_code=0
+out=/dev/stdout; url=""; write_code=0; method=GET; data=""
 while [ $# -gt 0 ]; do
   case "$1" in
     -o) out=$2; shift 2;;
     -w) write_code=1; shift 2;;
-    -X|-H|-d|--max-time|--retry) shift 2;;
+    -X) method=$2; shift 2;;
+    -d) data=$2; shift 2;;
+    -H|--max-time|--retry) shift 2;;
     -s|-S|-f|-L|--fail) shift;;
     http*) url=$1; shift;;
     *) shift;;
   esac
 done
-echo "$url" >> "$FAKE_CURL_LOG"
+echo "$method $url $data" >> "$FAKE_CURL_LOG"
 key=""
 for k in $URL_KEYS; do case "$url" in *"$k"*) key=$k; break;; esac; done
 body_file="$FAKE_RESPONSES/${key//\//_}"
@@ -61,6 +66,9 @@ canned '/api/auth/login' '{"access_token":"x"}' 200
 check run
 check grep -q 'deploy?uuid=app1&force=false&pr=5' "$FAKE_CURL_LOG"
 check grep -q '^deployment_uuid=dep-1$' "$GITHUB_OUTPUT"
+check grep -q '^POST https://coolify.test/api/v1/deploy?uuid=app1&force=false&pr=5' "$FAKE_CURL_LOG"
+check grep -q '^GET https://coolify.test/api/v1/deployments/dep-1' "$FAKE_CURL_LOG"
+check grep -qF 'POST https://pr-5.test/api/auth/login {"username":"oksana","password":"operator"}' "$FAKE_CURL_LOG"
 
 echo "# 2. Coolify says failed -> exit 1, pull hint when logs mention denied"
 canned '/api/v1/deployments/' '{"status":"failed","logs":"Error response from daemon: pull access denied for ghcr.io/x"}'
