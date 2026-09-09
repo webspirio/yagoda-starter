@@ -243,11 +243,11 @@ export class TransfersService {
     transfer: Transfer,
     actor: AuthenticatedUser,
     now: Date,
-    today: string,
+    businessDate: string,
   ): void {
     transfer.accepted_by_user_id = actor.sub;
     transfer.accepted_at = now;
-    transfer.accepted_date = today;
+    transfer.accepted_date = businessDate;
   }
 
   /**

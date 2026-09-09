@@ -517,9 +517,14 @@ schedules yet — a kit/consistency pass, not a feature:
 
 - **The Friday/Saturday question is slice 2's**, and is stated in spec §12.
   `cashFor`'s `asOf` exists so slice 2 can express either answer.
-- **Go-live needs a ceremony**: one transfer per point for its opening
-  balance, each accepted by its operator (spec §6.6). Belongs in the
-  deployment notes.
+- ~~**Go-live needs a ceremony**: one transfer per point for its opening
+  balance, each accepted by its operator (spec §6.6).~~ **RETIRED 2026-09-09 by
+  the cash counts slice (§3.2). Do not action this at deploy.** A point's
+  opening balance is now its FIRST CASH COUNT: the first count at a point sets
+  `expected = counted`, so the counted figure becomes the starting balance.
+  Sending an opening-balance transfer as well would DOUBLE the money — the
+  count establishes the baseline and the transfer is then added to it as a
+  movement of the shift that accepted it.
 - **`PointKind` is still read by nothing.** Spec §8.3 declines to make this
   slice the first. If a later slice branches on it, §7.3 versus §4.8 must be
   settled with the client first.
@@ -529,12 +534,14 @@ Found by the reviews during that slice's execution, judged and deferred:
 - **`CHK_transfers_no_self_correction` has no test.** The constraint is present
   in both the entity and the migration; nothing watches it reject anything. A
   gap in the plan's spec, not in the implementation.
-- **`VoidDocumentDto` accepts a whitespace-only reason.** `@Length(1, 500)`
-  passes `"   "`, which the service then trims to empty, so §9.3's mandatory
-  reason is not actually enforced. This slice fixed its own two DTOs
-  (`carrier`, `dispute_note`) with `@Matches(/\S/)` and deliberately did NOT
-  touch `VoidDocumentDto`, which `intakes` and `payouts` share. Fixing it means
-  deciding for all three modules at once.
+- ~~**`VoidDocumentDto` accepts a whitespace-only reason.**~~ **FIXED
+  2026-09-09 on the cash counts branch (commit `371680d`).** `@Length(1, 500)`
+  passed `"   "`, which the service then trimmed to empty, so §9.3's mandatory
+  reason was not actually enforced. The transfers slice fixed its own two DTOs
+  (`carrier`, `dispute_note`) with `@Matches(/\S/)` and left `VoidDocumentDto`
+  — shared by `intakes` and `payouts` — for a decision across all three
+  modules. That decision was taken and applied: the shared DTO now carries the
+  same non-whitespace guard.
 - **`transfers` has no CHECK requiring `reported_cash` when `status =
   'disputed'`.** Such a row contributes NULL to the cash formula and vanishes
   from the drawer silently rather than erroring. NOT reachable through the API
@@ -564,3 +571,54 @@ Found by the reviews during that slice's execution, judged and deferred:
   single-point read and the list row now disagree about what fields a point's
   cash carries; worth deciding whether the single read should grow the same
   field before the frontend task builds against it.
+
+## Learned from the cash counts slice (2026-09-09)
+
+Raised by the final whole-branch review and deferred with the fix wave, rather
+than by the slice's own tasks — these are the ones that would otherwise have
+been lost with the working ledger.
+
+- **`settle-return` on a day the point had no shift silently strands the
+  returned cash.** Since the cash counts slice a returned payout is credited to
+  the shift whose `business_date` matches the settlement's local date at that
+  point (cash counts spec §3.3). Settle on a day the point never opened and the
+  money credits NO shift's movements: it is gone from every expectation, and
+  the next count reports a surplus nobody can explain. This is the same class of
+  hole §4.1 closed for transfers, and the symmetric fix — refuse the settlement
+  without an open shift — does not transfer: `POST /payouts/:id/settle-return`
+  is OWNER-only and an owner cannot open a shift (§10.3), so it would make the
+  owner wait for the point to open before handing money back. **Needs a client
+  decision** between that wait, a back-dating field, and accepting the
+  stranding. Meanwhile the cost is one spurious incident per no-shift
+  settlement, re-baselined by the next count.
+
+- **`unexplained_difference` is an all-time sum sitting beside two
+  point-in-time ones.** On a `GET /point-cash` row, `cash` and `shortfall`
+  honour `as_of`; `unexplained_difference` is `Σ (counted − expected)` over
+  every non-midday count the point has ever had, whatever `as_of` says. It is
+  also absent from `GET /point-cash/:pointId`, which still returns a bare
+  `{ cash }` — so the list and the single read disagree about what a point's
+  cash carries. **And the name asserts something it does not check:** an
+  explained incident stays in the sum (deliberately — an explanation changes
+  what is OPEN, never what is TRUE), so «unexplained» is wrong on its face.
+  Renaming it — `accumulated_difference`, or `count_drift` — is cheap now and
+  gets more expensive with every screen built on it. (Supersedes the two
+  narrower notes on the same field in the transfers-slice section above.)
+
+- **The §6.2 gap: the shift-close response does not carry the discrepancy.**
+  Cash counts spec §6.2 said the discrepancy «appears in the response, after the
+  write»; `POST /shifts/:id/close` returns a plain `ShiftResponse` with no
+  `counted_amount`, `expected_amount` or discrepancy, so the frontend makes a
+  second request to learn whether the drawer balanced. The values are already in
+  hand where the count is written — `ShiftsService.close` holds both inside the
+  transaction — so this is a mapper change. **The spec was amended to match the
+  code rather than the other way round**, since a spec promising a behaviour the
+  code lacks is the part that must not ship; growing the response is still the
+  better end state and should be done before another screen works around it.
+
+- **`ShiftsService` injects `CollectionPointsService` and never calls it.**
+  A dead constructor dependency: `grep points shifts.service.ts` finds the
+  import and the parameter and nothing else. Harmless, but it makes
+  `ShiftsModule`'s import of `CollectionPointsModule` look load-bearing when it
+  is not, and `shift-close.db-spec.ts` passes `null` for it with a comment
+  explaining why that is currently safe.

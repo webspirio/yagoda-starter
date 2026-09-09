@@ -96,8 +96,39 @@ depends on the ceremony — it was instructions, not behaviour — but the trans
 ```
 + Σ transfers accepted into this shift    (the effective figure — see §4.2)
 − Σ payouts.amount WHERE shift_id = this shift    -- INCLUDING voided
-+ Σ payouts.amount WHERE shift_id = this shift AND return_settled_at IS NOT NULL
++ Σ payouts.amount WHERE the RETURN was settled into this shift    -- see the amendment below
 ```
+
+> **AMENDED 2026-09-09 during implementation — the return term.** The third line originally read
+> `+ Σ payouts.amount WHERE shift_id = this shift AND return_settled_at IS NOT NULL`, attributing a
+> returned payout to the shift that PAID it. The shipped `movementsSql` attributes it instead to
+> the shift whose `business_date` matches the settlement's LOCAL date, at the same point:
+>
+> ```sql
+> + COALESCE((SELECT SUM(p.amount)
+>        FROM payouts p
+>        JOIN shifts ps ON ps.id = p.shift_id
+>        JOIN shifts s  ON s.id = <this shift>
+>       WHERE p.return_settled_at IS NOT NULL
+>         AND ps.collection_point_id = s.collection_point_id
+>         AND (p.return_settled_at AT TIME ZONE <tz>)::date = s.business_date), 0.00)
+> ```
+>
+> **Why it changed.** The money physically re-enters the drawer on the day a human puts it there.
+> A payout paid on Tuesday and returned on Friday is Friday's cash. Crediting it to Tuesday's shift
+> was wrong twice: Tuesday is already closed and counted, so the credit landed on a shift whose
+> expectation was frozen days ago and could never be settled by any count; and every as-of read
+> before Friday was contaminated by money that was not yet in the drawer. This mirrors the transfer
+> attribution exactly — both bind a movement to the shift that was running when it happened — which
+> is also why the return term is now explicitly point-scoped (`ps.collection_point_id =
+> s.collection_point_id`): the join no longer runs through `p.shift_id`, and without that predicate
+> a return handed back at one point would credit every other point's drawer for the same day.
+>
+> **Cost, named rather than hidden:** a return settled on a day the point had no shift credits no
+> shift at all and is silently stranded. `settle-return` is owner-only and an owner cannot open a
+> shift, so the symmetric fix (refuse without an open shift, as §4.1 does for transfers) would make
+> the owner wait for the point to open. Deferred to a client decision; recorded in
+> `docs/superpowers/2026-09-05-foundation-slice-follow-ups.md`.
 
 **Shift-bounded rather than timestamp-bounded, by the client's decision**, whose reasoning is
 recorded because it outranks the technical argument: «closing the shift is an important part of
@@ -211,6 +242,23 @@ day's payouts, which they witnessed. Building the nudge costs nothing; damaging 
 and §7.10 both argue for, to make it a real control, costs the operator the «не вистачає до
 цільового» line that exists «просто щоб бачили вони».
 
+> **AMENDED 2026-09-09 during implementation — the discrepancy is NOT in the response.** The
+> paragraph above asserts that «the discrepancy appears in the response, after the write», and the
+> shipped code does not do that: `POST /shifts` and `POST /shifts/:id/close` both return
+> `ShiftResponse`, which carries no `counted_amount`, no `expected_amount` and no discrepancy. The
+> figures are in hand at the write — `ShiftsService.close` holds `expected` and `dto.counted_amount`
+> in the same transaction that inserts the count — so adding them would be a mapper change and
+> nothing more; it was simply not built. The frontend reads the discrepancy with a second request
+> (`GET /point-cash/:pointId` or `GET /cash-counts`), which is a round trip and a window in which
+> the two figures can be read from different states.
+>
+> The spec is amended rather than the code, because a spec asserting a behaviour the code lacks is
+> the more dangerous of the two to ship — the next reader builds against the promise. The
+> ENFORCEABLE half of this section still holds and is what §7.6 actually requires: neither route
+> accepts or returns the expectation BEFORE the count is written, so the operator cannot copy the
+> figure they are supposed to produce. Growing the close response is a follow-up, recorded in
+> `docs/superpowers/2026-09-05-foundation-slice-follow-ups.md`.
+
 ### 6.3 Reopening demotes the closing count to `midday`
 
 `POST /shifts/:id/reopen` is shipped, owner-only, and exists for a mistaken close at 11:00 with
@@ -312,9 +360,19 @@ dispute → `resolved_cash`, open dispute → `reported_cash`), the voided-payou
 `0.00` fallback, `::text` on every projection, and the rule that nothing is stored or cached.
 
 What changes: the base is a count rather than zero, and the bounds are shifts rather than dates.
-The `AT TIME ZONE` cast on `return_settled_at` is **no longer needed by this query** — a returned
-payout belongs to its shift, not to a calendar day. `asOfSql` and the timezone injection stay in
-the module for `as_of`, which still names a business date.
+`asOfSql` and the timezone injection stay in the module for `as_of`, which still names a business
+date.
+
+> **AMENDED 2026-09-09 during implementation — the `AT TIME ZONE` cast STAYS, and is load-bearing.**
+> This paragraph originally read «The `AT TIME ZONE` cast on `return_settled_at` is no longer needed
+> by this query — a returned payout belongs to its shift, not to a calendar day.» That followed from
+> attributing the return to the paying shift, which §3.3's amendment reverses: the shipped formula
+> joins the settlement's LOCAL date to `s.business_date`, so the cast is the only thing standing
+> between a settlement made just past local midnight and the previous day's shift. It is the one
+> `timestamptz` in a formula that is otherwise entirely `date`-typed, and scenario 11 of
+> `point-cash.db-spec.ts` exists to go red if it is removed — it is the only scenario in the suite
+> whose result depends on `APP_TIMEZONE`, which is why that spec pins `Europe/Kyiv` by hand instead
+> of inheriting the repo's `.env`.
 
 **A point with no counts reads `0.00` and always has** — its documents are ignored entirely until
 someone counts the drawer. That is correct under §3.2 and it is a visible behaviour change for

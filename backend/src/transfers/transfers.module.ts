@@ -19,9 +19,9 @@ import { timezoneConfig } from '../config/timezone.config';
  *
  * `TransfersModule` importing `ShiftsModule` is safe because `ShiftsModule`
  * imports neither this module nor anything that reaches back to it — its
- * imports are `AuditModule` and `CollectionPointsModule`. A later slice gives
- * `shifts` a dependency on `point-cash` for the movement arithmetic; that
- * stays acyclic too, because `point-cash` imports nothing but `ConfigModule`.
+ * imports are `AuditModule`, `CollectionPointsModule` and, as of this same
+ * slice, `PointCashModule` for the movement arithmetic. That last edge stays
+ * acyclic too, because `point-cash` imports nothing but `ConfigModule`.
  *
  * `ConfigModule.forFeature(timezoneConfig)` IS REQUIRED, not decorative: the
  * list's date filter compares `sent_at` — a `timestamptz` — against a local

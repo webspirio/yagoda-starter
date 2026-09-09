@@ -14,12 +14,15 @@ import { PointCashModule } from '../point-cash/point-cash.module';
  * writer of its own table, and `findOpenAtPoint` accepts an `EntityManager` so
  * a document write reads it inside its own transaction.
  *
- * REGISTERS `CashCount` HERE, NOT IN A `cash-counts` MODULE OF ITS OWN.
- * `cash_counts` has no service and no controller of its own in this slice —
- * §6.1 writes its rows from inside `open` (and Task 6's `close`), and every
- * read of them goes through `PointCashService`'s formulas. A module that owns
- * only an entity for one writer to reach through `forFeature` would be a
- * module in name only.
+ * REGISTERS `CashCount` HERE AS WELL AS IN `CashCountsModule`, and the
+ * duplication is deliberate rather than an oversight. `CashCountsModule` owns
+ * the READ side — `CashCountsService` and its controller serve the owner's
+ * incident list. `shifts` owns the only WRITE path: §6.1 writes the opening
+ * count from inside `open`, `close` writes the closing one, and `reopen`
+ * demotes it to `midday` — all three inside the shift's own transaction, which
+ * is why this module needs the repository registered rather than a service to
+ * call. `forFeature` is per-module metadata, so registering the same entity in
+ * both is how TypeORM expresses «two modules, one table».
  *
  * IMPORTS `PointCashModule` FOR `expectedForOpening`, and it closes no cycle:
  * `point-cash` imports nothing but `ConfigModule`, so this edge is one-way.

@@ -243,6 +243,16 @@ money. It does mean a point's cash can move on a day that has no shift row.
 
 ### 6.5 The formula
 
+> **SUPERSEDED 2026-09-09 by the cash counts slice §8 (bounds and base) and §3.3 (the return
+> term).** A point's cash is no longer summed from the beginning of time against a date: it is
+> anchored on the latest non-midday CASH COUNT, plus that shift's movements when the anchor was an
+> `opening`, and every term is bounded by a SHIFT rather than by `<= D`. The return term in
+> particular now joins the settlement's local date to a shift's `business_date` at the same point,
+> instead of adding every settlement on or before `D`. What survives untouched, and is still argued
+> here: the three-way `CASE` over transfer status, the two opposite readings of `voided_at`, the
+> deliberate `AT TIME ZONE` cast on `return_settled_at` (still load-bearing, for a new reason — see
+> the cash counts slice §8), the `0.00` fallback, and `::text` on every projection.
+
 One SQL expression, one home, `::text` on the way out so no value ever passes through a JS
 number. `D` is the as-of date; `tz` is `APP_TIMEZONE`.
 
