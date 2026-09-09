@@ -337,3 +337,149 @@ jobs:
             type=gha,scope=nginx-main
             type=gha,scope=nginx-${{ steps.meta.outputs.scope }}
           cache-to: type=gha,mode=max,scope=nginx-${{ steps.meta.outputs.scope }}
+
+  # ---------------------------------------------------------------------------
+  # CD. Both jobs deploy through Coolify's API and then verify the application
+  # itself (scripts/ci/coolify-deploy.sh). They are gated on the repository
+  # variable COOLIFY_ENABLED so the workflow is valid before the server exists.
+  # ---------------------------------------------------------------------------
+
+  deploy-preview:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    needs: [checks, db-checks, docker]
+    # Internal PRs only (forks have no secrets), and only when an image for
+    # this head was actually pushed. A preview is "the CI-passed commit": all
+    # three jobs must be green.
+    if: >-
+      github.event_name == 'pull_request'
+      && needs.docker.outputs.pushed == 'true'
+      && vars.COOLIFY_ENABLED == 'true'
+    # One preview allocation at a time across the whole repository, so the
+    # cap check below cannot race another PR's deploy.
+    concurrency:
+      group: preview-allocation
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      pull-requests: write
+    env:
+      # Provisional 6 (spec §1): recalibrated after Coolify's RSS is measured.
+      # The repository variable PREVIEW_CAP overrides it without a commit —
+      # used for recalibration and for testing the limit path.
+      PREVIEW_CAP: ${{ vars.PREVIEW_CAP || 6 }}
+      PR: ${{ github.event.pull_request.number }}
+      HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+      PREVIEW_URL: https://pr-${{ github.event.pull_request.number }}.${{ vars.PREVIEW_DOMAIN }}
+      GH_TOKEN: ${{ github.token }}
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Cap on live previews
+        id: cap
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh label create preview --color 0e8a16 --description "Has a live Coolify preview" --force >/dev/null
+          live=$(gh pr list --repo "$GITHUB_REPOSITORY" --state open --label preview --limit 100 --json number --jq 'length')
+          mine=$(gh pr view "$PR" --repo "$GITHUB_REPOSITORY" --json labels --jq '[.labels[].name] | index("preview") != null')
+          echo "live=$live mine=$mine cap=$PREVIEW_CAP"
+          if [ "$mine" != true ] && [ "$live" -ge "$PREVIEW_CAP" ]; then
+            echo "blocked=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "blocked=false" >> "$GITHUB_OUTPUT"
+          fi
+          echo "live=$live" >> "$GITHUB_OUTPUT"
+
+      - name: Comment — limit reached
+        if: steps.cap.outputs.blocked == 'true'
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          header: yagoda-preview
+          message: |
+            **Preview not deployed — limit reached** (${{ steps.cap.outputs.live }}/${{ env.PREVIEW_CAP }} live previews).
+            Close or merge an older PR with the `preview` label, then re-run this job.
+
+      - name: Deploy preview
+        id: deploy
+        if: steps.cap.outputs.blocked != 'true'
+        uses: ./.github/actions/coolify-deploy
+        with:
+          coolify-url: ${{ secrets.COOLIFY_URL }}
+          coolify-api-token: ${{ secrets.COOLIFY_API_TOKEN }}
+          app-uuid: ${{ secrets.COOLIFY_APP_UUID }}
+          base-url: ${{ env.PREVIEW_URL }}
+          commit: ${{ env.HEAD_SHA }}
+          pr-number: ${{ env.PR }}
+          # Demo credentials from backend/src/seed/dev-seed.data.ts — the seed
+          # refuses NODE_ENV=production, so they never exist on prod.
+          seed-username: oksana
+          seed-password: operator
+
+      - name: Comment — ready
+        if: steps.cap.outputs.blocked != 'true' && success()
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          header: yagoda-preview
+          message: |
+            **Preview ready:** ${{ env.PREVIEW_URL }}
+            Serving `sha-${{ env.HEAD_SHA }}` · sign in as `oksana` / `operator` (seed) · removed when this PR closes.
+
+      - name: Label
+        if: steps.cap.outputs.blocked != 'true' && success()
+        run: gh pr edit "$PR" --repo "$GITHUB_REPOSITORY" --add-label preview
+
+      - name: Comment — failed
+        if: steps.cap.outputs.blocked != 'true' && failure()
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          header: yagoda-preview
+          message: |
+            **Preview deploy failed** for `sha-${{ env.HEAD_SHA }}` — see the `deploy-preview` job log.
+            ${{ env.PREVIEW_URL }} may be serving an older commit.
+
+  preview-note-skipped:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: [docker]
+    # The PR already had a preview (label) but this push changed nothing
+    # deployable: say so instead of leaving a comment that implies the head is live.
+    if: >-
+      github.event_name == 'pull_request'
+      && needs.docker.outputs.pushed == 'false'
+      && contains(github.event.pull_request.labels.*.name, 'preview')
+      && vars.COOLIFY_ENABLED == 'true'
+    permissions:
+      pull-requests: write
+    steps:
+      - uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          header: yagoda-preview
+          message: |
+            **Preview unchanged:** this push (`${{ github.event.pull_request.head.sha }}`) touched no deployable path, so
+            https://pr-${{ github.event.pull_request.number }}.${{ vars.PREVIEW_DOMAIN }} still serves the previous deployed commit.
+
+  deploy-prod:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    needs: [checks, db-checks, docker]
+    if: >-
+      github.event_name == 'push'
+      && github.ref == 'refs/heads/main'
+      && needs.docker.outputs.pushed == 'true'
+      && vars.COOLIFY_ENABLED == 'true'
+    concurrency:
+      group: deploy-prod
+      cancel-in-progress: false
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/coolify-deploy
+        with:
+          coolify-url: ${{ secrets.COOLIFY_URL }}
+          coolify-api-token: ${{ secrets.COOLIFY_API_TOKEN }}
+          app-uuid: ${{ secrets.COOLIFY_APP_UUID }}
+          base-url: ${{ vars.PROD_URL }}
+          commit: ${{ github.sha }}
