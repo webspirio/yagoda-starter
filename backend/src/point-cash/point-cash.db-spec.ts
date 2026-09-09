@@ -718,7 +718,7 @@ describe('PointCashService.list (Postgres)', () => {
   };
   const localCount = (
     shiftId: string,
-    kind: 'opening' | 'closing',
+    kind: 'opening' | 'midday' | 'closing',
     counted: string,
     expected: string,
   ) =>
@@ -748,5 +748,41 @@ describe('PointCashService.list (Postgres)', () => {
     const page = await service.list(owner, query({ collection_point_id: p }) as never);
     // §6.5 — an explanation changes what is OPEN, never what is TRUE.
     expect(page.data[0].unexplained_difference).toBe('-20.00');
+  });
+
+  /**
+   * A REOPEN MUST NOT DOUBLE THE DRIFT, and only the `kind <> 'midday'` filter
+   * stops it. §6.3 demotes a shift's `closing` count to `midday` when the shift
+   * is reopened, and the re-close writes a FRESH closing count against the SAME
+   * unchanged expectation — the expectation is a snapshot and the day's
+   * movements did not change. Summing every kind therefore counts one physical
+   * −100 twice.
+   *
+   * §3.1's «the count chain and the document line differ by the recorded
+   * discrepancies and by nothing else» telescopes over the ANCHORING counts;
+   * demotion is what breaks it, and the demoted row is superseded by the
+   * re-close rather than additional to it. This scenario is red without the
+   * filter (−200.00) and green with it.
+   */
+  it('does NOT double-count a reopen: the demoted midday count is superseded, not additional', async () => {
+    const tag = randomUUID().slice(0, 8);
+    const [{ id: p }] = (await ds.query(
+      `INSERT INTO collection_points (name, code, kind, target_cash, is_active)
+       VALUES ($1, $2, 'reception', NULL, true) RETURNING id`,
+      [`Точка ${tag}`, `R${tag.slice(0, 6).toUpperCase()}`],
+    )) as { id: string }[];
+
+    const s1 = await localShift(p, '2026-09-04');
+    await localCount(s1, 'opening', '1000.00', '1000.00');
+    // The first close: counted 900 against an expected 1000 — the drawer
+    // drifted −100, once.
+    // Then the owner reopens, which rewrites that row's kind to `midday`...
+    await localCount(s1, 'midday', '900.00', '1000.00');
+    // ...and the re-close writes a second closing count against the SAME
+    // expectation, because nothing moved in between.
+    await localCount(s1, 'closing', '900.00', '1000.00');
+
+    const page = await service.list(owner, query({ collection_point_id: p }) as never);
+    expect(page.data[0].unexplained_difference).toBe('-100.00');
   });
 });

@@ -162,10 +162,16 @@ const anchorSql = (point: string, asOf: string): string => `(
  * `cash_counts` Note names `AppConfig.cashBookFrom` as an application
  * parameter; it lives in the prototype and nothing by that name exists here,
  * deliberately. On a fresh installation it would exclude rows that do not
- * exist. A point's day-one drawer is entered as an ORDINARY TRANSFER — the
- * owner creates one per point, the operator signs for it — because §7.3 makes
- * an accepted transfer the only door cash has into a drawer. That is the
- * mechanism working as designed, not a workaround. Spec §6.6.
+ * exist.
+ *
+ * A POINT'S DAY-ONE DRAWER IS ITS FIRST COUNT, and there is no go-live
+ * ceremony. The transfers spec §6.6 had the owner sending each point a
+ * transfer for its opening balance; the cash counts slice §3.2 RETIRES that,
+ * because the first count sets `expected = counted` and therefore BECOMES the
+ * starting balance — a count of the drawer rather than a document about it.
+ * Sending an opening-balance transfer now would double the money: the count
+ * establishes the baseline and the transfer would be added to it as a movement
+ * of the shift that accepted it.
  */
 @Injectable()
 export class PointCashService {
@@ -313,17 +319,35 @@ export class PointCashService {
                 -- IS the divergence. It is free: no second stored line, no
                 -- write path of its own. EXPLAINED INCIDENTS STAY IN IT — an
                 -- explanation changes what is OPEN, never what is TRUE (§7.7).
-                -- EVERY KIND counts, midday included: a midday count never
-                -- ANCHORS the cash figure (§8), but a discrepancy it recorded
-                -- is still a discrepancy that happened. Unlike the anchor
-                -- above, this is NOT only_discrepancies-filtered -- that
-                -- predicate belongs to a different read with a different
-                -- question.
+                --
+                -- MIDDAY IS EXCLUDED, AND WITHOUT THAT FILTER THE HEADLINE
+                -- DOUBLE-COUNTS A REOPEN. §3.1's claim that this sum IS the
+                -- divergence telescopes over the ANCHORING counts only, and
+                -- §6.3's demotion breaks the chain: reopening a shift rewrites
+                -- its closing count's kind to midday, and the re-close then
+                -- writes a FRESH count against the SAME unchanged expectation,
+                -- because the expectation is a snapshot and nothing moved. A
+                -- drawer that opened at 1 000, closed at 900, was reopened and
+                -- closed at 900 again drifted -100 ONCE; summing every kind
+                -- reports -200. The demoted row is SUPERSEDED by the re-close,
+                -- not additional to it.
+                --
+                -- THE LIMIT, because this is not a general truth: a midday row
+                -- can ONLY arise from a reopen today — §7.6's «перерахувати
+                -- можна скільки завгодно разів» has no endpoint, so nothing
+                -- else writes one. If a midday RECOUNT route is ever added,
+                -- its discrepancies are NOT superseded by anything and this
+                -- filter has to be revisited rather than left to drop them.
+                --
+                -- Unlike the anchor above, this is NOT
+                -- only_discrepancies-filtered -- that predicate belongs to a
+                -- different read with a different question.
                 COALESCE((SELECT SUM(c.counted_amount - c.expected_amount)
                             FROM cash_counts c
                             JOIN shifts sh ON sh.id = c.shift_id
                            WHERE sh.collection_point_id = cp.id
-                             AND c.book = 'berry'), 0.00) AS unexplained_difference
+                             AND c.book = 'berry'
+                             AND c.kind <> 'midday'), 0.00) AS unexplained_difference
            FROM collection_points cp
           WHERE ($1::uuid IS NULL OR cp.id = $1::uuid)
        )
