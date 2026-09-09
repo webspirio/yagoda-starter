@@ -11,6 +11,7 @@ import { ShiftStatus } from './shift-status.enum';
 import { OpenShiftDto } from './dto/open-shift.dto';
 import { CloseShiftDto } from './dto/close-shift.dto';
 import { ReopenShiftDto } from './dto/reopen-shift.dto';
+import { SetExplanationDto } from './dto/set-explanation.dto';
 import { ListShiftsQueryDto } from './dto/list-shifts.query';
 import { CurrentShiftQueryDto } from './dto/current-shift.query';
 import { ShiftResponse, toShiftResponse } from './shift.mapper';
@@ -311,6 +312,38 @@ export class ShiftsService {
 
       return toShiftResponse(saved);
     });
+  }
+
+  /**
+   * OWNER ONLY (§10.2 — corrections and judgements belong to the owner).
+   * Idempotent: re-sending replaces the text.
+   */
+  async setExplanation(
+    actor: AuthenticatedUser,
+    id: string,
+    dto: SetExplanationDto,
+  ): Promise<ShiftResponse> {
+    if (actor.role !== UserRole.NetworkOwner) {
+      throw new ForbiddenException({
+        message: 'Only the network owner may explain a discrepancy',
+        code: 'OWNER_ONLY',
+      });
+    }
+    const shift = await this.loadVisible(actor, id);
+    const before = { explanation: shift.explanation };
+    shift.explanation = dto.explanation.trim();
+    const saved = await this.repo.save(shift);
+
+    await this.audit.record({
+      action: 'shift.explained',
+      actor_id: actor.sub,
+      target_type: 'shift',
+      target_id: saved.id,
+      before,
+      after: { explanation: saved.explanation },
+    });
+
+    return toShiftResponse(saved);
   }
 
   async list(

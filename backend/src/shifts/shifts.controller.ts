@@ -1,10 +1,11 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Put, Query } from '@nestjs/common';
 import { Auth } from '../auth/decorators/auth.decorators';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { ShiftsService } from './shifts.service';
 import { OpenShiftDto } from './dto/open-shift.dto';
 import { CloseShiftDto } from './dto/close-shift.dto';
 import { ReopenShiftDto } from './dto/reopen-shift.dto';
+import { SetExplanationDto } from './dto/set-explanation.dto';
 import { ListShiftsQueryDto } from './dto/list-shifts.query';
 import { CurrentShiftQueryDto } from './dto/current-shift.query';
 import { UserRole } from '../users/user-role.enum';
@@ -34,6 +35,9 @@ import type { AuthenticatedUser } from '../auth/jwt.strategy';
  *   reopen        → NetworkOwner ONLY. A correction, and §10.2 puts corrections
  *                   with the owner. It also demotes the shift's `closing` count
  *                   to `midday` (§6.3), so a second close has a free slot.
+ *   explanation   → NetworkOwner ONLY (§10.2). §7.7's surviving half: the
+ *                   ruling removed the GATE, not the explanation — see
+ *                   `SetExplanationDto`. Writing it never moves a number.
  *   reads         → both, scoped by `resolvePointFilter`.
  *
  * `POST /shifts` AND `POST /shifts/:id/close` EACH TAKE ONE FIELD,
@@ -93,5 +97,15 @@ export class ShiftsController {
     @Body() dto: ReopenShiftDto,
   ) {
     return this.shifts.reopen(actor, id, dto);
+  }
+
+  @Put(':id/explanation')
+  @Auth(UserRole.NetworkOwner)
+  setExplanation(
+    @CurrentUser() actor: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: SetExplanationDto,
+  ) {
+    return this.shifts.setExplanation(actor, id, dto);
   }
 }
