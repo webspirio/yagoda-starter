@@ -1,0 +1,150 @@
+import { Inject, Injectable } from '@nestjs/common';
+import { ConfigType } from '@nestjs/config';
+import { DataSource, EntityManager } from 'typeorm';
+import { timezoneConfig } from '../config/timezone.config';
+
+/**
+ * «As of» resolves to TODAY IN `APP_TIMEZONE` when the caller names no date,
+ * and it does so IN SQL rather than in TypeScript for one reason: Postgres's
+ * bare `'today'` and `current_date` both resolve in the SESSION timezone,
+ * which is not necessarily the app's. `now() AT TIME ZONE <tz>` is the same
+ * local calendar day `TimeService.now().toISODate()` would give, computed in
+ * the one place the timezone is already a bind parameter — so this service
+ * needs no clock injected and both database specs can construct it with
+ * nothing but a `DataSource`.
+ */
+const ASOF = `COALESCE($2::date, (now() AT TIME ZONE $3::text)::date)`;
+
+/**
+ * THE BERRY CASH FORMULA, WRITTEN ONCE. `point` is the SQL naming whose drawer
+ * is wanted — the bind placeholder `$1` for one point, the outer row's own
+ * column `cp.id` when correlated down a list. Both call sites pass a code
+ * literal; nothing from a request is ever spliced here.
+ *
+ * Copied from the `cash_counts` Note in `28-db-schema.dbml` as amended on
+ * 09.09.2026, including every filter. FIVE OF THEM ARE LOAD-BEARING AND ONE OF
+ * THEM IS A THEFT PATH IF REMOVED:
+ *
+ * 1. `t.voided_at IS NULL` — voided TRANSFERS drop out. They must be filtered
+ *    BY ROW, not by status: `transfer_status` has no `void` member, so a voided
+ *    transfer keeps `status = 'accepted'` and without this line would go on
+ *    adding money to the drawer forever. The filter sits in the OUTER `WHERE`
+ *    and not inside the `CASE` on purpose — a transfer can be resolved and
+ *    LATER voided, and voided must win over resolved.
+ *
+ * 2. Payouts are summed WITHOUT a `voided_at` filter, ON PURPOSE, and this is
+ *    the exact opposite of the debt formula in `supplier-balance`. §9.3: the
+ *    money physically left the drawer and voiding does not put it back. It
+ *    returns only when a human physically returns it, which is what
+ *    `return_settled_at` stamps — the third term. «Інакше сторно стає способом
+ *    красти.» A reader who harmonises these two queries has opened that path.
+ *
+ * 3. The three-way `CASE` is the 09.09.2026 client ruling, which overrules
+ *    §7.9 step 4б. An unresolved dispute contributes the point's OWN counted
+ *    figure: the money is credited at the amount actually received and the
+ *    shortfall is settled outside the system. Excluding it would leave that
+ *    point's expected cash wrong by the shortfall on every count from then on,
+ *    burying the real discrepancy under a permanent phantom one.
+ *
+ * 4. `sent` transfers need no explicit filter — their `accepted_date` is NULL
+ *    and `accepted_date <= D` already excludes them. §7.9 step 2: «у стані sent
+ *    не рухається НІЧОГО».
+ *
+ * 5. `AT TIME ZONE` on `return_settled_at` is not decoration. It is a
+ *    `timestamptz` compared against a business DATE, and a bare `::date` would
+ *    take the session timezone and misfile a late-evening settlement by a day.
+ *    Everything else in the formula is already `date`-typed.
+ *
+ * THE FALLBACK IS `0.00`, NOT `0`. `SUM` over no rows is NULL, and
+ * `COALESCE(NULL, 0)` is an integer zero that Postgres renders as `'0'` — so a
+ * brand-new point would read `"0"` where every other figure reads to two
+ * places. Same literal, same reason, as `supplier-balance`.
+ *
+ * THERE IS NO TIMESTAMP IN THIS FORMULA AND THERE CANNOT BE ONE. Transfers
+ * contribute by `accepted_date` and payouts by `shifts.business_date`, both
+ * `date`-typed; «cash at 14:00» is not expressible. This is survivable because
+ * a cash count's `expected_amount` is a SNAPSHOT computed at the instant of
+ * counting — a midday count at 14:00 asks for `D = today` and picks up exactly
+ * the payouts written so far. Do not try to add one.
+ *
+ * WHAT IS NOT HERE: the crates book (`cash_book = 'crates'`), which needs
+ * `crate_issuances` and `crate_returns` and has no formula until they exist.
+ */
+const cashSql = (point: string, asOf: string, tz: string): string => `(
+    COALESCE((SELECT SUM(CASE
+                WHEN t.status = 'accepted' THEN t.cash
+                WHEN t.status = 'disputed' AND t.resolved_at IS NOT NULL THEN t.resolved_cash
+                WHEN t.status = 'disputed' THEN t.reported_cash
+              END)
+         FROM transfers t
+        WHERE t.collection_point_id = ${point}
+          AND t.voided_at IS NULL
+          AND t.accepted_date <= ${asOf}), 0.00)
+  - COALESCE((SELECT SUM(p.amount)
+         FROM payouts p JOIN shifts s ON s.id = p.shift_id
+        WHERE s.collection_point_id = ${point}
+          AND s.business_date <= ${asOf}), 0.00)
+  + COALESCE((SELECT SUM(p.amount)
+         FROM payouts p JOIN shifts s ON s.id = p.shift_id
+        WHERE s.collection_point_id = ${point}
+          AND p.return_settled_at IS NOT NULL
+          AND (p.return_settled_at AT TIME ZONE ${tz}::text)::date <= ${asOf}), 0.00)
+)`;
+
+/**
+ * A point's cash, computed and never stored.
+ *
+ * NOTHING IS CACHED AND NO BALANCE IS WRITTEN ANYWHERE. §7.3's list of what
+ * moves cash is closed and the figure is a formula — правка 9, «система рахує
+ * загальну суму в касі за допомогою денних транзакцій». A stored balance is
+ * forbidden for the reason `intakes` has no `remaining` column (§3.2), and the
+ * DBML supplies the field evidence: in the client's own workbook the
+ * hand-copied balance chain is broken in 124 переходах із 1 473.
+ *
+ * THERE IS NO OPENING-BALANCE DOCUMENT AND NO `cashBookFrom` SETTING. The
+ * `cash_counts` Note names `AppConfig.cashBookFrom` as an application
+ * parameter; it lives in the prototype and nothing by that name exists here,
+ * deliberately. On a fresh installation it would exclude rows that do not
+ * exist. A point's day-one drawer is entered as an ORDINARY TRANSFER — the
+ * owner creates one per point, the operator signs for it — because §7.3 makes
+ * an accepted transfer the only door cash has into a drawer. That is the
+ * mechanism working as designed, not a workaround. Spec §6.6.
+ */
+@Injectable()
+export class PointCashService {
+  /**
+   * THE TIMEZONE IS A CONSTRUCTOR ARGUMENT WITH A DEFAULT, and the default is
+   * not laziness. Nest injects the real `timezoneConfig` namespace; the
+   * database spec passes `{ appTimezone: 'Europe/Kyiv' }` by hand, because a
+   * test OF timezone handling must PIN its timezone rather than inherit
+   * whatever `.env` happens to say — this repo's own `.env` sets
+   * `APP_TIMEZONE=UTC`, and a spec that inherited it would prove nothing about
+   * the `AT TIME ZONE` cast it exists to test.
+   */
+  constructor(
+    private readonly dataSource: DataSource,
+    @Inject(timezoneConfig.KEY)
+    private readonly tz: ConfigType<typeof timezoneConfig> = { appTimezone: 'Europe/Kyiv' },
+  ) {}
+
+  /**
+   * One point's berry cash as of `asOf` (default: today), as a decimal STRING.
+   *
+   * Takes an `EntityManager` so slice 2 can compute a cash count's
+   * `expected_amount` inside the same transaction that writes the count —
+   * otherwise the snapshot it stores is already stale.
+   */
+  async cashFor(pointId: string, asOf?: string, manager?: EntityManager): Promise<string> {
+    const runner = manager ?? this.dataSource.manager;
+    // `::text` on the numeric expression so the value never passes through a
+    // JS number on its way out of the driver (foundation §5.1).
+    const sql = `SELECT ${cashSql('$1::uuid', ASOF, '$3')}::text AS cash`;
+    const [row] = (await runner.query(sql, [pointId, asOf ?? null, this.tz.appTimezone])) as {
+      cash: string;
+    }[];
+
+    return row.cash;
+  }
+}
+
+export { cashSql, ASOF };
