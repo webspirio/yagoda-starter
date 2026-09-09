@@ -12,9 +12,9 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
-# CI never pushes, comments, or writes packages (docker builds with push:false;
-# the turbo/buildx caches use the Actions runtime token, not GITHUB_TOKEN), so
-# the job token is dropped to read-only. CD sets its own job-scoped permissions.
+# The default token is read-only. The docker job raises itself to
+# packages: write (it pushes to GHCR); the deploy jobs add pull-requests: write
+# (sticky comment, label). Nothing else needs more than contents: read.
 permissions:
   contents: read
 
@@ -64,9 +64,14 @@ jobs:
         #   - root package manifest + lockfile
         #   - .dockerignore
         #
-        # turbo.json and docker-compose*.yml are intentionally absent: the
-        # Dockerfiles invoke workspace builds directly and CI builds the images
-        # through docker/build-push-action rather than Compose.
+        #   - docker-compose*.yml  Coolify deploys the compose file FROM THE PR
+        #                          BRANCH, so it is a deploy input too
+        #   - .github/workflows/** a workflow change must exercise the build
+        #
+        # turbo.json is intentionally absent: the Dockerfiles invoke workspace
+        # builds directly. The diff is PR-wide (base...head), so once a PR
+        # touches anything in this set, EVERY push to it builds — a later
+        # docs-only commit does not leave a stale preview behind.
         #
         # FAIL CLOSED inside the detector as well: inability to compute the diff
         # means docker=true, never a skipped image build.
@@ -88,7 +93,7 @@ jobs:
 
           is_docker_input() {
             case "$1" in
-              backend/*|frontend/*|nginx/*|Dockerfile|*/Dockerfile|package.json|package-lock.json|.dockerignore)
+              backend/*|frontend/*|nginx/*|Dockerfile|*/Dockerfile|package.json|package-lock.json|.dockerignore|docker-compose*.yml|.github/workflows/*)
                 return 0
                 ;;
               *)
@@ -229,57 +234,106 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
-    # Docker is deliberately independent from `checks`: both required checks can
-    # run in parallel, reducing wall-clock PR feedback time.
-    #
-    # `always()` is important here. Without it, a failed/cancelled `changes` job
-    # would cause this dependent job to be skipped before its own condition was
-    # evaluated. A skipped required check could then hide failure of the path
-    # detector.
+    # Independent from `checks` so both run in parallel. `always()` keeps this
+    # job from being skipped when `changes` fails — a skipped required check
+    # would hide a broken path detector.
     needs: [changes]
-    if: ${{ always() && github.event_name == 'pull_request' }}
+    if: ${{ always() }}
 
-    # This starter ships no CD workflow, so image builds run on PRs only —
-    # they exist to catch Dockerfile breakage before merge.
+    # Pushes the two images to GHCR. sha-<commit> is the ONLY tag ever
+    # deployed (Coolify pulls it, docs/coolify-deploy.md); pr-<N> is a human
+    # convenience alias; there is deliberately no `latest`.
     #
-    # The job itself always runs on PRs. Build steps run when:
-    #   1. changes says a Docker input changed; OR
-    #   2. changes did not finish successfully.
-    #
-    # Case (2) makes gating fail-closed at the job level: detector failure costs
-    # a redundant build rather than silently skipping one.
+    # Build steps run when the PR changed a Docker/deploy input, when the
+    # detector did not finish (fail-closed), or on every push to main.
+    # Fork PRs have no GITHUB_TOKEN write access: they build but do not push.
+    permissions:
+      contents: read
+      packages: write
+
+    outputs:
+      pushed: ${{ steps.meta.outputs.push }}
+
+    env:
+      BUILD: >-
+        ${{ github.event_name == 'push'
+          || needs.changes.result != 'success'
+          || needs.changes.outputs.docker == 'true' }}
+
     steps:
+      - id: meta
+        shell: bash
+        env:
+          IS_FORK: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+          SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          push=false
+          if [ "$BUILD" = true ] && [ "$IS_FORK" != true ]; then push=true; fi
+          echo "push=$push" >> "$GITHUB_OUTPUT"
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+          # Cache scopes: PRs read prod's cache but write only their own, so
+          # preview churn never evicts the seed main relies on.
+          if [ "$GITHUB_EVENT_NAME" = push ]; then
+            echo "scope=main" >> "$GITHUB_OUTPUT"
+          else
+            echo "scope=pr" >> "$GITHUB_OUTPUT"
+          fi
+          {
+            echo "backend_tags<<EOF"
+            echo "ghcr.io/${GITHUB_REPOSITORY,,}-backend:sha-$SHA"
+            [ -n "$PR" ] && echo "ghcr.io/${GITHUB_REPOSITORY,,}-backend:pr-$PR"
+            echo "EOF"
+            echo "nginx_tags<<EOF"
+            echo "ghcr.io/${GITHUB_REPOSITORY,,}-nginx:sha-$SHA"
+            [ -n "$PR" ] && echo "ghcr.io/${GITHUB_REPOSITORY,,}-nginx:pr-$PR"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+          echo "build=$BUILD push=$push scope=$(grep -o 'scope=.*' "$GITHUB_OUTPUT" | tail -1) sha=$SHA"
+
       - uses: actions/checkout@v7
-        if: >-
-          needs.changes.result != 'success' ||
-          needs.changes.outputs.docker == 'true'
+        if: env.BUILD == 'true'
+        with:
+          # Build the PR HEAD, not GitHub's synthetic merge commit: the image
+          # is tagged sha-<head> and Coolify checks out that same head.
+          ref: ${{ steps.meta.outputs.sha }}
 
       - uses: docker/setup-buildx-action@v4
-        if: >-
-          needs.changes.result != 'success' ||
-          needs.changes.outputs.docker == 'true'
+        if: env.BUILD == 'true'
 
-      - name: Build backend image
-        if: >-
-          needs.changes.result != 'success' ||
-          needs.changes.outputs.docker == 'true'
+      - uses: docker/login-action@v4
+        if: steps.meta.outputs.push == 'true'
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build (and push) backend image
+        if: env.BUILD == 'true'
         uses: docker/build-push-action@v7
         with:
           context: .
           file: backend/Dockerfile
           target: prod
-          push: false
-          cache-from: type=gha,scope=backend
-          cache-to: type=gha,mode=max,scope=backend
+          push: ${{ steps.meta.outputs.push == 'true' }}
+          tags: ${{ steps.meta.outputs.backend_tags }}
+          build-args: |
+            APP_COMMIT=${{ steps.meta.outputs.sha }}
+          cache-from: |
+            type=gha,scope=backend-main
+            type=gha,scope=backend-${{ steps.meta.outputs.scope }}
+          cache-to: type=gha,mode=max,scope=backend-${{ steps.meta.outputs.scope }}
 
-      - name: Build nginx image
-        if: >-
-          needs.changes.result != 'success' ||
-          needs.changes.outputs.docker == 'true'
+      - name: Build (and push) nginx image
+        if: env.BUILD == 'true'
         uses: docker/build-push-action@v7
         with:
           context: .
           file: nginx/Dockerfile
-          push: false
-          cache-from: type=gha,scope=nginx
-          cache-to: type=gha,mode=max,scope=nginx
+          push: ${{ steps.meta.outputs.push == 'true' }}
+          tags: ${{ steps.meta.outputs.nginx_tags }}
+          cache-from: |
+            type=gha,scope=nginx-main
+            type=gha,scope=nginx-${{ steps.meta.outputs.scope }}
+          cache-to: type=gha,mode=max,scope=nginx-${{ steps.meta.outputs.scope }}
