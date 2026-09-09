@@ -9,6 +9,7 @@ import { DataSource, EntityManager, IsNull, Repository } from 'typeorm';
 import { Shift } from './shift.entity';
 import { ShiftStatus } from './shift-status.enum';
 import { OpenShiftDto } from './dto/open-shift.dto';
+import { CloseShiftDto } from './dto/close-shift.dto';
 import { ReopenShiftDto } from './dto/reopen-shift.dto';
 import { ListShiftsQueryDto } from './dto/list-shifts.query';
 import { CurrentShiftQueryDto } from './dto/current-shift.query';
@@ -138,23 +139,26 @@ export class ShiftsService {
   }
 
   /**
-   * Operator only, same as `open` (§10.3). `assertOwnsPoint` still runs: the
-   * guard has established the actor is AN operator, not that this is THEIR
-   * point.
+   * OPERATOR ONLY (§10.3), and it STAYS operator-only. §7.7 once made a
+   * discrepancy the owner's business; the client's ruling of 09.09.2026
+   * removed the blocking, and with it the only reason the owner was involved.
    *
-   * DELIBERATELY DOES NOT READ `business_date`. That is what makes the
-   * forgotten-close path work — Friday's shift closed on Saturday morning, no
-   * special case, no stuck point. The only visible oddity is that Friday's
-   * `closed_at` reads Saturday, which is true and is what happened.
+   * A DISCREPANCY NEVER REFUSES. There is no branch here that compares counted
+   * against expected and behaves differently — the comparison is the reader's,
+   * not the writer's. `shift_status.awaiting_explanation` is unreachable BY
+   * DECISION; see the enum's comment.
    *
-   * A DUMB STAMP, and it will be revisited. §7.7 makes closing WITH a
-   * discrepancy the owner's act with a mandatory explanation, but a discrepancy
-   * needs `cash_counts` to exist before anything can detect one. Until then
-   * `awaiting_explanation` is unreachable and `explanation` stays null.
+   * STILL DOES NOT READ `business_date`, which is what makes the forgotten-close
+   * path work: Friday's shift closed on Saturday morning, no special case. The
+   * cost is named in the spec's §9.1 — a transfer accepted into that shift on
+   * Saturday takes Friday's date.
    */
-  async close(actor: AuthenticatedUser, id: string): Promise<ShiftResponse> {
+  async close(
+    actor: AuthenticatedUser,
+    id: string,
+    dto: CloseShiftDto,
+  ): Promise<ShiftResponse> {
     const shift = await this.loadVisible(actor, id);
-
     if (shift.closed_at) {
       throw new ConflictException({
         message: 'That shift is already closed',
@@ -162,20 +166,55 @@ export class ShiftsService {
       });
     }
 
-    shift.closed_at = this.time.now().toJSDate();
-    shift.closed_by_user_id = actor.sub;
-    shift.status = ShiftStatus.Closed;
-    const saved = await this.repo.save(shift);
+    const closedAt = this.time.now().toJSDate();
 
-    await this.audit.record({
-      action: 'shift.closed',
-      actor_id: actor.sub,
-      target_type: 'shift',
-      target_id: saved.id,
-      after: { business_date: saved.business_date },
+    return this.dataSource.transaction(async (m) => {
+      // `null` only if something wrote a shift without going through `open`.
+      const expected = (await this.cash.expectedForClosing(shift.id, m)) ?? dto.counted_amount;
+
+      const countRow = await m.save(CashCount, {
+        shift_id: shift.id,
+        book: CashBook.Berry,
+        kind: CashCountKind.Closing,
+        counted_amount: dto.counted_amount,
+        expected_amount: expected,
+        counted_by_user_id: actor.sub,
+        counted_at: closedAt,
+      });
+
+      shift.closed_at = closedAt;
+      shift.closed_by_user_id = actor.sub;
+      shift.status = ShiftStatus.Closed;
+      const saved = await m.save(Shift, shift);
+
+      await this.audit.record(
+        {
+          action: 'shift.closed',
+          actor_id: actor.sub,
+          target_type: 'shift',
+          target_id: saved.id,
+          after: { business_date: saved.business_date },
+        },
+        m,
+      );
+      await this.audit.record(
+        {
+          action: 'cash-count.recorded',
+          actor_id: actor.sub,
+          target_type: 'cash_count',
+          target_id: countRow.id,
+          after: {
+            shift_id: saved.id,
+            kind: CashCountKind.Closing,
+            counted_amount: dto.counted_amount,
+            expected_amount: expected,
+          },
+        },
+        m,
+      );
+
+      return toShiftResponse(saved);
     });
-
-    return toShiftResponse(saved);
   }
 
   /**
@@ -232,22 +271,46 @@ export class ShiftsService {
     }
 
     const before = { closed_at: shift.closed_at, status: shift.status };
-    shift.closed_at = null;
-    shift.closed_by_user_id = null;
-    shift.status = ShiftStatus.Open;
-    const saved = await this.repo.save(shift);
 
-    await this.audit.record({
-      action: 'shift.reopened',
-      actor_id: actor.sub,
-      target_type: 'shift',
-      target_id: saved.id,
-      before,
-      after: { closed_at: null, status: ShiftStatus.Open },
-      note: dto.reason,
+    return this.dataSource.transaction(async (m) => {
+      // §6.3 — THE CLOSING COUNT BECOMES A MIDDAY COUNT. Reopening needs a free
+      // `closing` slot (UQ_cash_counts_shift_book_kind), and the 11:00 count
+      // was never a close: it was a count, taken at 11:00, which is exactly
+      // what `midday` means and why `midday` sits outside that index.
+      //
+      // This MUTATES a posted row's `kind`, which this codebase otherwise
+      // refuses to do. The defence is the one that lets a shift be reopened
+      // while an intake may only be voided: a count carries no code, no paper
+      // twin and no supplier copy. The alternatives are destroying evidence
+      // (§7.6 forbids it) or making every closing-count lookup an ordering
+      // problem, where a bug returns a wrong cash figure instead of an error.
+      // Everything except `kind` is preserved.
+      await m.update(
+        CashCount,
+        { shift_id: shift.id, kind: CashCountKind.Closing },
+        { kind: CashCountKind.Midday },
+      );
+
+      shift.closed_at = null;
+      shift.closed_by_user_id = null;
+      shift.status = ShiftStatus.Open;
+      const saved = await m.save(Shift, shift);
+
+      await this.audit.record(
+        {
+          action: 'shift.reopened',
+          actor_id: actor.sub,
+          target_type: 'shift',
+          target_id: saved.id,
+          before,
+          after: { closed_at: null, status: ShiftStatus.Open },
+          note: dto.reason,
+        },
+        m,
+      );
+
+      return toShiftResponse(saved);
     });
-
-    return toShiftResponse(saved);
   }
 
   async list(

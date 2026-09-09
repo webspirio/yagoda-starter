@@ -186,9 +186,13 @@ describe('documents pipeline (HTTP)', () => {
     });
 
     it('refuses the operator a reopen, and refuses the owner one with no reason', async () => {
+      // §6.1 — closing now counts the drawer too. A NEUTRAL figure (matching
+      // the opening count above) keeps the discrepancy at zero on purpose, so
+      // a fixture value can never mask a real arithmetic bug later.
       await request(app.getHttpServer())
         .post(`/shifts/${shiftId}/close`)
         .set('Authorization', `Bearer ${operatorToken}`)
+        .send({ counted_amount: '5000.00' })
         .expect(201);
 
       // §10.2 puts corrections with the owner; the operator who closed it
@@ -211,6 +215,7 @@ describe('documents pipeline (HTTP)', () => {
       await request(app.getHttpServer())
         .post(`/shifts/${shiftId}/close`)
         .set('Authorization', `Bearer ${ownerToken}`)
+        .send({ counted_amount: '5000.00' })
         .expect(403);
     });
 
@@ -234,6 +239,7 @@ describe('documents pipeline (HTTP)', () => {
       await request(app.getHttpServer())
         .post(`/shifts/${shiftId}/close`)
         .set('Authorization', `Bearer ${operatorToken}`)
+        .send({ counted_amount: '5000.00' })
         .expect(201);
 
       const res = await request(app.getHttpServer())

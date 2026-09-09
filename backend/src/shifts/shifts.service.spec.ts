@@ -35,9 +35,9 @@ describe('ShiftsService', () => {
     create: jest.Mock;
     createQueryBuilder: jest.Mock;
   };
-  let manager: { save: jest.Mock; getRepository: jest.Mock };
+  let manager: { save: jest.Mock; update: jest.Mock; getRepository: jest.Mock };
   let dataSource: { transaction: jest.Mock };
-  let cash: { expectedForOpening: jest.Mock };
+  let cash: { expectedForOpening: jest.Mock; expectedForClosing: jest.Mock };
   let audit: { record: jest.Mock };
   let time: { now: jest.Mock };
   let service: ShiftsService;
@@ -69,18 +69,22 @@ describe('ShiftsService', () => {
       create: jest.fn().mockImplementation((s) => shift(s)),
       createQueryBuilder: jest.fn(),
     };
-    // `open` now runs inside `this.dataSource.transaction`, writing the shift
-    // and its opening count through the transaction's own `EntityManager`
-    // rather than through `repo` directly — `close` and `reopen` are
-    // unchanged by this task and still go through `repo.save`.
+    // `open`, `close` and `reopen` ALL run inside `this.dataSource.transaction`
+    // now, writing through the transaction's own `EntityManager` rather than
+    // through `repo` directly. `repo` is still used for the pre-transaction
+    // reads (`loadVisible`, `findOpenAtPoint`, the newest-shift check).
     manager = {
       save: jest.fn().mockImplementation((_entityClass: unknown, data: Record<string, unknown>) =>
         Promise.resolve({ id: SHIFT_ID, ...data }),
       ),
+      update: jest.fn().mockResolvedValue({ affected: 1 }),
       getRepository: jest.fn(),
     };
     dataSource = { transaction: jest.fn((cb: (m: unknown) => unknown) => cb(manager)) };
-    cash = { expectedForOpening: jest.fn().mockResolvedValue(null) };
+    cash = {
+      expectedForOpening: jest.fn().mockResolvedValue(null),
+      expectedForClosing: jest.fn().mockResolvedValue(null),
+    };
     audit = { record: jest.fn().mockResolvedValue(undefined) };
     time = {
       now: jest.fn().mockReturnValue(DateTime.fromISO('2026-09-08T07:30', { zone: 'Europe/Kyiv' })),
@@ -167,13 +171,21 @@ describe('ShiftsService', () => {
     });
   });
 
+  // §6.1's closing count, minimal and unused by anything outside the
+  // `ShiftsService.close with a count` describe block below — these tests
+  // (and `reopen`'s) care only that a shift row lands and refuses correctly,
+  // not what the drawer held.
+  const closeDto = { counted_amount: '100.00' } as never;
+
   describe('close', () => {
     it('stamps closed_at, closed_by and status', async () => {
       repo.findOne.mockResolvedValue(shift());
+      cash.expectedForClosing.mockResolvedValue('100.00');
 
-      await service.close(operator, SHIFT_ID);
+      await service.close(operator, SHIFT_ID, closeDto);
 
-      expect(repo.save).toHaveBeenCalledWith(
+      expect(manager.save).toHaveBeenCalledWith(
+        expect.anything(),
         expect.objectContaining({
           closed_by_user_id: 'u-op',
           status: ShiftStatus.Closed,
@@ -186,12 +198,12 @@ describe('ShiftsService', () => {
       // The dead-state guarantee. If this fails, someone wired a discrepancy
       // path in ahead of cash_counts.
       repo.findOne.mockResolvedValue(shift());
+      cash.expectedForClosing.mockResolvedValue('100.00');
 
-      await service.close(operator, SHIFT_ID);
+      const result = await service.close(operator, SHIFT_ID, closeDto);
 
-      const saved = repo.save.mock.calls[0][0] as { status: ShiftStatus; explanation: unknown };
-      expect(saved.status).toBe(ShiftStatus.Closed);
-      expect(saved.explanation).toBeNull();
+      expect(result.status).toBe(ShiftStatus.Closed);
+      expect(result.status).not.toBe(ShiftStatus.AwaitingExplanation);
     });
 
     it('409s an already closed shift', async () => {
@@ -199,13 +211,15 @@ describe('ShiftsService', () => {
         shift({ closed_at: new Date(), closed_by_user_id: 'u-op', status: ShiftStatus.Closed }),
       );
 
-      await expect(service.close(operator, SHIFT_ID)).rejects.toThrow(ConflictException);
+      await expect(service.close(operator, SHIFT_ID, closeDto)).rejects.toThrow(ConflictException);
     });
 
     it('404s another point’s shift', async () => {
       repo.findOne.mockResolvedValue(shift());
 
-      await expect(service.close(otherOperator, SHIFT_ID)).rejects.toThrow(NotFoundException);
+      await expect(service.close(otherOperator, SHIFT_ID, closeDto)).rejects.toThrow(
+        NotFoundException,
+      );
     });
 
     it('closes a stale shift from a previous day without complaint', async () => {
@@ -213,8 +227,9 @@ describe('ShiftsService', () => {
       // `close` must not read business_date at all — that is what makes this
       // work, and it is why the assertion is on the absence of a refusal.
       repo.findOne.mockResolvedValue(shift({ business_date: '2026-09-04' }));
+      cash.expectedForClosing.mockResolvedValue('100.00');
 
-      await expect(service.close(operator, SHIFT_ID)).resolves.toBeDefined();
+      await expect(service.close(operator, SHIFT_ID, closeDto)).resolves.toBeDefined();
     });
   });
 
@@ -283,7 +298,12 @@ describe('ShiftsService', () => {
 
       await service.reopen(owner, SHIFT_ID, { reason: 'закрив помилково' });
 
-      expect(repo.save).toHaveBeenCalledWith(
+      // `reopen` is now transactional — see `ShiftsService.reopen demotes
+      // the closing count` below for the demotion itself. Here it's still
+      // going through `this.dataSource.transaction`, so the shift lands via
+      // `manager.save`, not `repo.save`.
+      expect(manager.save).toHaveBeenCalledWith(
+        expect.anything(),
         expect.objectContaining({
           closed_at: null,
           closed_by_user_id: null,
@@ -292,6 +312,7 @@ describe('ShiftsService', () => {
       );
       expect(audit.record).toHaveBeenCalledWith(
         expect.objectContaining({ action: 'shift.reopened', note: 'закрив помилково' }),
+        expect.anything(),
       );
     });
   });
@@ -388,5 +409,141 @@ describe('ShiftsService.open with a count', () => {
       expect.objectContaining({ action: 'cash-count.recorded' }),
       expect.anything(),
     );
+  });
+});
+
+describe('ShiftsService.close with a count', () => {
+  const build = (opts: { expected?: string | null; shift?: Record<string, unknown> } = {}) => {
+    const saved: Record<string, unknown>[] = [];
+    const shiftRow = {
+      id: 'sh-1',
+      collection_point_id: 'p1',
+      business_date: '2026-09-09',
+      closed_at: null,
+      status: ShiftStatus.Open,
+      created_at: new Date('2026-09-09T04:30:00Z'),
+      ...opts.shift,
+    };
+    const manager = {
+      save: jest.fn((_e: unknown, x: Record<string, unknown>) => {
+        saved.push(x);
+        return { id: 'cc-1', ...x };
+      }),
+      findOne: jest.fn().mockResolvedValue(shiftRow),
+      update: jest.fn().mockResolvedValue({ affected: 1 }),
+    };
+    const dataSource = { transaction: jest.fn((cb: (m: unknown) => unknown) => cb(manager)) };
+    const cash = {
+      expectedForClosing: jest
+        .fn()
+        .mockResolvedValue(opts.expected === undefined ? '15416.10' : opts.expected),
+    };
+    const audit = { record: jest.fn().mockResolvedValue(undefined) };
+    const time = {
+      now: () => ({ toISODate: () => '2026-09-09', toJSDate: () => new Date('2026-09-09T17:55:00Z') }),
+    };
+    const repo = { findOne: jest.fn().mockResolvedValue(shiftRow), create: (x: unknown) => x };
+    const service = new ShiftsService(
+      repo as never,
+      {} as never,
+      audit as never,
+      time as never,
+      dataSource as never,
+      cash as never,
+    );
+    return { service, saved, audit, manager };
+  };
+
+  const operator = {
+    sub: 'u-op',
+    username: 'op',
+    role: UserRole.PointOperator,
+    collection_point_id: 'p1',
+  } as never;
+
+  it('CLOSES DESPITE A DISCREPANCY — the ruling that overrules §7.7', async () => {
+    const { service, saved } = build({ expected: '15416.10' });
+    const result = await service.close(operator, 'sh-1', { counted_amount: '15066.10' } as never);
+
+    expect(result.status).toBe(ShiftStatus.Closed);
+    expect(result.status).not.toBe(ShiftStatus.AwaitingExplanation);
+    const countRow = saved.find((r) => 'counted_amount' in r)!;
+    expect(countRow.counted_amount).toBe('15066.10');
+    expect(countRow.expected_amount).toBe('15416.10');
+    expect(countRow.kind).toBe('closing');
+  });
+
+  it('closes cleanly when the count matches', async () => {
+    const { service, saved } = build({ expected: '15416.10' });
+    const result = await service.close(operator, 'sh-1', { counted_amount: '15416.10' } as never);
+    expect(result.status).toBe(ShiftStatus.Closed);
+    const countRow = saved.find((r) => 'counted_amount' in r)!;
+    expect(countRow.counted_amount).toBe(countRow.expected_amount);
+  });
+
+  it('refuses a shift that is already closed', async () => {
+    const { service } = build({ shift: { closed_at: new Date(), status: ShiftStatus.Closed } });
+    await expect(
+      service.close(operator, 'sh-1', { counted_amount: '1.00' } as never),
+    ).rejects.toThrow(ConflictException);
+  });
+});
+
+describe('ShiftsService.reopen demotes the closing count', () => {
+  it("rewrites the closing count's kind to midday and preserves everything else", async () => {
+    const updates: unknown[][] = [];
+    const shiftRow = {
+      id: 'sh-1',
+      collection_point_id: 'p1',
+      business_date: '2026-09-09',
+      closed_at: new Date(),
+      status: ShiftStatus.Closed,
+      created_at: new Date('2026-09-09T04:30:00Z'),
+    };
+    const manager = {
+      findOne: jest.fn().mockResolvedValue(shiftRow),
+      save: jest.fn((_e: unknown, x: unknown) => x),
+      update: jest.fn((...args: unknown[]) => {
+        updates.push(args);
+        return { affected: 1 };
+      }),
+    };
+    const dataSource = { transaction: jest.fn((cb: (m: unknown) => unknown) => cb(manager)) };
+    // `reopen` calls findOne THREE times with different intents: loadVisible,
+    // findOpenAtPoint (which passes `closed_at: IsNull()`), and the
+    // newest-shift check. A mock that returns the row for all three makes
+    // findOpenAtPoint report an open shift and reopen throws
+    // SHIFT_ALREADY_OPEN before reaching the demotion. Discriminate on the
+    // where clause.
+    const repo = {
+      findOne: jest.fn((opts: { where?: Record<string, unknown> }) =>
+        Promise.resolve(
+          opts?.where && 'closed_at' in opts.where ? null : shiftRow,
+        ),
+      ),
+      create: (x: unknown) => x,
+    };
+    const service = new ShiftsService(
+      repo as never,
+      {} as never,
+      { record: jest.fn() } as never,
+      { now: () => ({ toISODate: () => '2026-09-09', toJSDate: () => new Date() }) } as never,
+      dataSource as never,
+      {} as never,
+    );
+    const owner = {
+      sub: 'u-owner',
+      username: 'owner',
+      role: UserRole.NetworkOwner,
+      collection_point_id: null,
+    } as never;
+
+    await service.reopen(owner, 'sh-1', { reason: 'закрили помилково' } as never);
+
+    // Only `kind` moves — counted_amount, expected_amount, counted_at and
+    // counted_by_user_id are evidence and must survive (§6.3).
+    const [, criteria, patch] = updates[0] as [unknown, unknown, Record<string, unknown>];
+    expect(criteria).toMatchObject({ shift_id: 'sh-1', kind: 'closing' });
+    expect(patch).toEqual({ kind: 'midday' });
   });
 });
