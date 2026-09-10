@@ -66,14 +66,14 @@ src/
   pages/point-cash/              # «Каса точки» — one point's cash-on-hand for a date: the ledger explaining the server's own figure, drawer-count history, incoming transfers — both roles, target-setting owner-only (§10.2)
   pages/transfers/               # «Перекази» — the owner's view of money and crates in flight and what each point is short (§7.9, §7.10) — OWNER-ONLY as a route-level gate, not a hidden button
   shared/
-    api/                       # httpClient (axios instance, env.apiUrl baseURL) + ApiError + attachAuthInterceptors + queryClient + queryKeys + persister
+    api/                       # httpClient (axios instance, env.apiUrl baseURL) + ApiError + attachAuthInterceptors + queryClient + queryKeys + persister + Paginated<T>/isTruncated (shared/api/pagination.ts, the one list-envelope shape every paginated GET returns)
     lib/
       env/                     # Zod-validated import.meta.env → env.apiUrl
       i18n/                    # i18next init + locales/en.json + language-preference (localStorage)
       theme/                   # useThemePreference (system/light/dark, localStorage) + useAppTheme — the single owner of the `.dark` class on <html>
       upload/                  # validateImageFile, resolveUploadUrl, useImageUpload — client-side mirror of the backend's MEDIA_MAX_BYTES cap
-      money/                    # sum / add / sub / cmp / div / isNegative / isZero (decimal-string arithmetic, kopiykas under the hood) + formatUah / formatDecimal / formatKg — the client-side twin of `backend/src/common/money.ts`, used wherever a screen totals or formats a money value
-      date/                     # todayIso / addDaysIso / isIsoDate / isRealIsoDate / formatLongDate / formatWeekday / formatShortDate — business-date (`YYYY-MM-DD`) helpers; pages/day and pages/point-cash each own their own `?date=` — there is no longer a single one in the app
+      money/                    # sum / add / sub / cmp / div / isNegative / isZero (decimal-string arithmetic, kopiykas under the hood) + formatUah / formatDecimal / formatKg — the client-side twin of `backend/src/common/money.ts`, used wherever a screen totals or formats a money value + amountRules / cratesRules — the `required`/`validate` pair every money- or crates-string `register()` field needs, factored out of the six dialogs that used to write it by hand
+      date/                     # todayIso / addDaysIso / isIsoDate / isRealIsoDate / formatLongDate / formatWeekday / formatShortDate — business-date (`YYYY-MM-DD`) helpers; pages/day and pages/point-cash each own their own `?date=` — there is no longer a single one in the app + formatTime / formatDateTime — full-timestamp helpers (a document's `sent_at`), deliberately LOCAL time zone rather than UTC
       error-reporting/         # reportError(error, context) — swap body for Sentry later
       api-error/                # apiErrorToBanner — one machine-`code`-keyed mapping of backend business-rule errors to banner copy, imported directly by nine call sites today: count-shift, void-document, send/receive/resolve-transfer, set-point-target, set-cash-explanation, plus two page-level consumers easy to miss in a list like this one — `pages/day/ui/ReopenShiftDialog.tsx` and `pages/point-cash/ui/IncomingTransfers.tsx`. Grep `from '@/shared/lib/api-error'` before trusting any such list, this one included
       clipboard/, cn.ts, debounce.ts, useDebouncedValue.ts, useIsDesktop.ts — small framework-free utilities
