@@ -152,6 +152,35 @@ describe('buildLedger', () => {
     expect(rows.map((r) => r.value)).toEqual(['0.00', '0.00', '0.00', '0.00', '0.00']);
   });
 
+  describe('truncation — every row says when its own page was capped', () => {
+    const capped = (over: Record<string, boolean>) =>
+      buildLedger({
+        date: '2026-09-10',
+        intakes: [],
+        payouts: [],
+        transfers: [],
+        ...over,
+      })
+        .filter((r) => r.truncated)
+        .map((r) => r.key);
+
+    it('marks the transfers-fed row when the transfers page was capped', () => {
+      expect(capped({ transfersTruncated: true })).toEqual(['cashIn']);
+    });
+
+    it('marks the intakes-fed row when the intakes page was capped', () => {
+      expect(capped({ intakesTruncated: true })).toEqual(['accruedToday']);
+    });
+
+    it("marks both payout-fed rows but not today's — the page is bounded newest-first", () => {
+      expect(capped({ payoutsTruncated: true })).toEqual(['paidPast', 'returnedToday']);
+    });
+
+    it('marks nothing when every page came back whole', () => {
+      expect(capped({})).toEqual([]);
+    });
+  });
+
   describe('returnedToday — the third movementsSql term', () => {
     it('adds back a voided payout once its cash was physically returned', () => {
       const rows = buildLedger({

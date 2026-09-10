@@ -191,6 +191,47 @@ describe('CashLedger', () => {
     );
   });
 
+  it('warns under «received by transfer today» when the transfers read was truncated', () => {
+    render(
+      <CashLedger
+        date="2026-09-10"
+        cash="0.00"
+        intakes={[]}
+        payouts={[]}
+        transfers={[]}
+        transfersTruncated
+      />,
+    );
+
+    const cashInRow = screen.getByText('Received by transfer today').closest('div');
+    expect(cashInRow?.nextElementSibling?.tagName).toBe('P');
+    // Named for what is actually missing: a row fed by the transfers page
+    // must not tell the reader that older PAYOUTS may be missing from it.
+    expect(cashInRow?.nextElementSibling).toHaveTextContent(
+      /Showing recent transfers only — older ones may be missing/,
+    );
+    expect(screen.queryByText(/recent payouts only/)).toBeNull();
+  });
+
+  it('warns under «accrued today» when the intakes read was truncated', () => {
+    render(
+      <CashLedger
+        date="2026-09-10"
+        cash="0.00"
+        intakes={[]}
+        payouts={[]}
+        transfers={[]}
+        intakesTruncated
+      />,
+    );
+
+    const accruedRow = screen.getByText('Accrued today').closest('div');
+    expect(accruedRow?.nextElementSibling?.tagName).toBe('P');
+    expect(accruedRow?.nextElementSibling).toHaveTextContent(
+      /Showing recent receipts only — older ones may be missing/,
+    );
+  });
+
   it('says nothing about truncation when the payouts read came back whole', () => {
     render(
       <CashLedger date="2026-09-10" cash="0.00" intakes={[]} payouts={[]} transfers={[]} />,

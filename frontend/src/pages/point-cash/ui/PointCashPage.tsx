@@ -83,9 +83,9 @@ export function PointCashPage() {
   // this read carries no date bound at all rather than silently excluding a
   // transfer sent before the window but accepted inside it. `intakes`/
   // `payouts` bound cleanly on `business_date` instead. All three cap at the
-  // default `limit: 100`; rule 1 above is exactly why that cap needs no
-  // separate "truncated" banner of its own — the total on screen is never
-  // computed from these anyway.
+  // default `limit: 100`; rule 1 above is why that cap never corrupts the
+  // TOTAL on screen — but it does bound the individual ledger rows, and each
+  // of the three says so under its own row (`*Truncated` below).
   //
   // EACH OF THESE IS GATED ON A POINT, by whichever means its own hook
   // offers: `intakesQueryOptions` and `payoutsQueryOptions` disable
@@ -128,13 +128,20 @@ export function PointCashPage() {
   // on hand.
   const pointName = (points ?? []).find((p) => p.id === pointId)?.name ?? pointRow?.name ?? '';
   const hasTarget = pointRow?.target_cash != null;
-  // Finding 4 (review round 1) — the payouts read is capped at 100 with no
-  // lower date bound, so `CashLedger`'s `paidPast` may cover only recent
-  // history on a point with a long season. `total` beats what was actually
-  // fetched exactly when that happened; `CashLedger` turns this into a
-  // caveat under that one row rather than a number that quietly is not
-  // what its label claims.
-  const payoutsTruncated = payouts.data ? payouts.data.total > payouts.data.data.length : false;
+  // Finding 4 (review round 1) — each of the three reads is capped at 100,
+  // so each can feed a ledger row that covers recent history only: the
+  // payouts read has no lower date bound at all, the transfers read has no
+  // date bound of any kind, and even the one-day intakes read runs out on a
+  // point with more than a hundred receipts in a day. `total` beats what was
+  // actually fetched exactly when that happened; `CashLedger` turns it into a
+  // caveat under the affected row rather than a number that quietly is not
+  // what its label claims — and it was told about payouts alone for a whole
+  // review round.
+  const truncated = (page?: { total: number; data: unknown[] }) =>
+    page ? page.total > page.data.length : false;
+  const intakesTruncated = truncated(intakes.data);
+  const payoutsTruncated = truncated(payouts.data);
+  const transfersTruncated = truncated(ledgerTransfers.data);
   // §7.3 — a point with no counts at all reads `0.00`, correctly, but would
   // look like a regression on deploy without saying so in words.
   const neverCounted = cashCounts.data?.data.length === 0;
@@ -237,7 +244,9 @@ export function PointCashPage() {
             intakes={intakes.data?.data ?? []}
             payouts={payouts.data?.data ?? []}
             transfers={ledgerTransfers.data?.data ?? []}
+            intakesTruncated={intakesTruncated}
             payoutsTruncated={payoutsTruncated}
+            transfersTruncated={transfersTruncated}
           />
           <div className="flex flex-col gap-5">
             <PendingSlice

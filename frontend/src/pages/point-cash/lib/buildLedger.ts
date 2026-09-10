@@ -55,6 +55,14 @@ export interface LedgerRow {
    * component that renders it, not for this function.
    */
   value: string;
+  /**
+   * The page this row was summed from did not carry every record, so the
+   * figure covers recent history only. WHICH ROW READS WHICH PAGE IS THIS
+   * FUNCTION'S KNOWLEDGE, not the renderer's — it is the same mapping the
+   * sums below are built from, and splitting it across two files is how
+   * `returnedToday` went uncaveated for a whole review round.
+   */
+  truncated: boolean;
 }
 
 export interface BuildLedgerInput {
@@ -63,6 +71,15 @@ export interface BuildLedgerInput {
   intakes: LedgerIntake[];
   payouts: LedgerPayout[];
   transfers: LedgerTransfer[];
+  /**
+   * `total > data.length` on each fetched page — every one of these reads is
+   * capped at `limit: 100` (`PointCashPage`), and a row summed from a capped
+   * page is not what its label claims. Default `false`: a caller that does
+   * not know says nothing rather than warning at random.
+   */
+  intakesTruncated?: boolean;
+  payoutsTruncated?: boolean;
+  transfersTruncated?: boolean;
 }
 
 /**
@@ -107,7 +124,15 @@ function localDateOf(iso: string): string {
  * apart from those three.
  */
 export function buildLedger(input: BuildLedgerInput): LedgerRow[] {
-  const { date, intakes, payouts, transfers } = input;
+  const {
+    date,
+    intakes,
+    payouts,
+    transfers,
+    intakesTruncated = false,
+    payoutsTruncated = false,
+    transfersTruncated = false,
+  } = input;
 
   const accruedToday = sum(
     intakes.filter((i) => i.voided_at === null && i.business_date === date).map((i) => i.amount),
@@ -138,10 +163,17 @@ export function buildLedger(input: BuildLedgerInput): LedgerRow[] {
   );
 
   return [
-    { key: 'accruedToday', value: accruedToday },
-    { key: 'paidToday', value: paidToday },
-    { key: 'paidPast', value: paidPast },
-    { key: 'returnedToday', value: returnedToday },
-    { key: 'cashIn', value: cashIn },
+    { key: 'accruedToday', value: accruedToday, truncated: intakesTruncated },
+    // `paidToday` IS THE ONE PAYOUT-FED ROW WITHOUT A CAVEAT. The payouts
+    // read is bounded `to: date` and comes back newest-first
+    // (`payouts.service.ts` orders by `created_at DESC`), so what a capped
+    // page drops is older than `date`, not of it. The exception is a point
+    // that paid out more than a hundred times in this single day — and there
+    // the caveat under `paidPast` is already on screen, from the very same
+    // flag.
+    { key: 'paidToday', value: paidToday, truncated: false },
+    { key: 'paidPast', value: paidPast, truncated: payoutsTruncated },
+    { key: 'returnedToday', value: returnedToday, truncated: payoutsTruncated },
+    { key: 'cashIn', value: cashIn, truncated: transfersTruncated },
   ];
 }

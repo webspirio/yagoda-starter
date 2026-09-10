@@ -3,7 +3,13 @@ import { useTranslation } from 'react-i18next';
 import { SectionCard } from '@/shared/ui/section-card';
 import { LedgerRow as LedgerRowView } from '@/shared/ui/ledger-row';
 import { sub, isNegative, formatUah } from '@/shared/lib/money';
-import { buildLedger, type LedgerIntake, type LedgerPayout, type LedgerTransfer } from '../lib/buildLedger';
+import {
+  buildLedger,
+  type LedgerIntake,
+  type LedgerPayout,
+  type LedgerRowKey,
+  type LedgerTransfer,
+} from '../lib/buildLedger';
 
 /** Rows that read as money OUT get their sign flipped for display —
  *  `buildLedger` itself only ever returns non-negative magnitudes. */
@@ -22,14 +28,17 @@ const OUTFLOW = new Set(['paidToday', 'paidPast']);
 const INFORMATIONAL = new Set(['accruedToday', 'paidPast']);
 
 /**
- * Rows whose figure is drawn from the SAME possibly-truncated `payouts`
- * array (fix round 1, minor finding): `returnedToday` sums
- * `payouts.filter(p => p.return_settled_at !== null && …)` (`buildLedger.ts`)
- * over the identical array `paidPast` reads, so a settled return whose
- * original payout fell outside the fetched page vanishes with no caveat
- * unless this row carries the same warning `paidPast` does.
+ * The caveat a truncated row shows, named for WHAT IS ACTUALLY MISSING from
+ * it. `buildLedger` decides WHETHER a row is truncated (it owns the mapping
+ * from row to source page); this only decides how to say so, and a row fed
+ * by the transfers page must not tell the reader that older payouts may be
+ * missing from it.
  */
-const READS_FROM_PAYOUTS = new Set(['paidPast', 'returnedToday']);
+function truncationKey(key: LedgerRowKey): string {
+  if (key === 'accruedToday') return 'pointCash.ledger.accruedTodayTruncated';
+  if (key === 'cashIn') return 'pointCash.ledger.cashInTruncated';
+  return 'pointCash.ledger.paidPastTruncated';
+}
 
 /**
  * «Звідки взялося це число» — the schedule behind the point's cash figure.
@@ -55,7 +64,9 @@ export function CashLedger({
   intakes,
   payouts,
   transfers,
+  intakesTruncated = false,
   payoutsTruncated = false,
+  transfersTruncated = false,
 }: {
   date: string;
   cash: string;
@@ -63,25 +74,36 @@ export function CashLedger({
   payouts: LedgerPayout[];
   transfers: LedgerTransfer[];
   /**
-   * True when `payouts` is only the most recent page (`total` exceeds what
-   * was actually fetched) — `paidPast` AND `returnedToday` both read that
-   * same array (see `READS_FROM_PAYOUTS`) and so both cover recent history
-   * only, not the whole of it, and both say so rather than reading like a
-   * complete figure (review round 1, finding 4; extended to `returnedToday`
-   * in fix round 1's minor finding).
+   * True when the array beside it is only the most recent page (`total`
+   * exceeds what was actually fetched). EVERY ONE OF THE THREE READS IS
+   * CAPPED AT 100, so every one of them can feed a row that covers recent
+   * history only — the caveat is not a payouts speciality (review round 1,
+   * finding 4 started with `paidPast`; `returnedToday` joined it in fix
+   * round 1, and transfers and intakes here). `buildLedger` maps each flag
+   * onto the rows it actually affects.
    */
+  intakesTruncated?: boolean;
   payoutsTruncated?: boolean;
+  transfersTruncated?: boolean;
 }) {
   const { t, i18n } = useTranslation();
-  const rows = buildLedger({ date, intakes, payouts, transfers });
+  const rows = buildLedger({
+    date,
+    intakes,
+    payouts,
+    transfers,
+    intakesTruncated,
+    payoutsTruncated,
+    transfersTruncated,
+  });
   const locale = i18n.resolvedLanguage;
 
   const informational = rows.filter((r) => INFORMATIONAL.has(r.key));
   const movements = rows.filter((r) => !INFORMATIONAL.has(r.key));
 
-  const truncationCaveat = (key: string) =>
-    READS_FROM_PAYOUTS.has(key) && payoutsTruncated ? (
-      <p className="pb-1 text-xs text-muted-foreground">{t('pointCash.ledger.paidPastTruncated')}</p>
+  const truncationCaveat = (row: { key: LedgerRowKey; truncated: boolean }) =>
+    row.truncated ? (
+      <p className="pb-1 text-xs text-muted-foreground">{t(truncationKey(row.key))}</p>
     ) : null;
 
   return (
@@ -95,7 +117,7 @@ export function CashLedger({
               value={formatUah(OUTFLOW.has(row.key) ? sub('0', row.value) : row.value, locale)}
               className="opacity-70"
             />
-            {truncationCaveat(row.key)}
+            {truncationCaveat(row)}
           </Fragment>
         ))}
         <div className="my-2 border-b border-dashed border-border" />
@@ -107,7 +129,7 @@ export function CashLedger({
               value={formatUah(OUTFLOW.has(row.key) ? sub('0', row.value) : row.value, locale)}
               tone={row.key === 'cashIn' || row.key === 'returnedToday' ? 'leaf' : 'default'}
             />
-            {truncationCaveat(row.key)}
+            {truncationCaveat(row)}
           </Fragment>
         ))}
 

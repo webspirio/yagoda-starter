@@ -205,6 +205,21 @@ describe('PointCashPage — review round 1, finding 4: paidPast truncation', () 
     expect(await screen.findAllByText(/older ones may be missing/i)).toHaveLength(2);
   });
 
+  it('carries the same caveat to the rows fed by transfers and by intakes', () => {
+    const truncated = <T,>(data: T[]) => ({
+      data: { data, total: 250, page: 1, limit: 100 },
+      isPending: false,
+      isError: false,
+    });
+    ledgerTransfersMock.mockReturnValue(truncated([]));
+    intakesMock.mockReturnValue(truncated([]));
+
+    renderPointCash();
+
+    expect(screen.getByText(/Showing recent transfers only/)).toBeInTheDocument();
+    expect(screen.getByText(/Showing recent receipts only/)).toBeInTheDocument();
+  });
+
   it('says nothing when the payouts read came back whole', () => {
     renderPointCash();
     expect(screen.queryByText(/older ones may be missing/i)).toBeNull();

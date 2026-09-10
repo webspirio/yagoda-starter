@@ -529,12 +529,14 @@
       "title": "Where this number comes from",
       "accruedToday": "Accrued today",
       "accruedTodayHint": "does not move cash",
+      "accruedTodayTruncated": "Showing recent receipts only — older ones may be missing from this total.",
       "paidToday": "Paid out today",
       "paidPast": "Paid for past days",
       "paidPastHint": "not part of today's figure",
       "paidPastTruncated": "Showing recent payouts only — older ones may be missing from this total.",
       "returnedToday": "Returned to the drawer",
       "cashIn": "Received by transfer today",
+      "cashInTruncated": "Showing recent transfers only — older ones may be missing from this total.",
       "total": "Berry cash"
     },
     "crates": {
