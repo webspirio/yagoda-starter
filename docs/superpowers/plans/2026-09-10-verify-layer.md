@@ -896,7 +896,7 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 > then confirm it is GREEN on the real tree. A check that has never been seen red
 > has not been shown to check anything.
 
-### Task 6: `testfiles` — three runners, exactly one each
+### Task 6: `testfiles` — four runners, exactly one each
 
 **Files:**
 - Create: `scripts/verify/checks/test-glob-parity.mjs`
