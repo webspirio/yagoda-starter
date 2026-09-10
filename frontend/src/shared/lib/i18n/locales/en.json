@@ -741,7 +741,6 @@
     "errors": {
       "failed": "Could not record the receipt",
       "lineRefused": "The server refused one of the lines — check the rows in the table",
-      "openShiftFailed": "Could not open the shift",
       "codeFormat": "1–16 Latin letters, digits or dashes",
       "codeTaken": "A receipt with this number already exists today",
       "decimalFormat": "Enter a weight like 126.40",
