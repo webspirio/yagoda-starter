@@ -7,8 +7,10 @@ import { CanonicalDecimal } from '../../common/dto/canonical-decimal';
  * and is half of a trip's identity, there being no trip number.
  *
  * `cash` and `crates` may each be zero — a crates-only run and a cash-only run
- * are both ordinary — but not both; `CHK_transfers_not_empty` refuses a
- * document that moves nothing.
+ * are both ordinary — but not both. The PAIR is refused by the service, not
+ * here: a rule about two fields at once has no single-field decorator, and
+ * `CHK_transfers_not_empty` behind it would surface as a 500 rather than a
+ * 400 (no `QueryFailedError` mapping exists in this backend).
  *
  * THE REGEX ADMITS NO SIGN. A transfer that takes money AWAY from a point is
  * not in §7.3's closed list, and a negative `cash` would be a back door to

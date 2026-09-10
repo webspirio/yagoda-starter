@@ -22,6 +22,7 @@ import { CollectionPointsService } from '../collection-points/collection-points.
 import { assertOwnsPoint, resolvePointFilter } from '../auth/access/point-scope';
 import { Paginated } from '../common/dto/paginated';
 import { skipOf } from '../common/dto/pagination-query.dto';
+import { isZero } from '../common/money';
 import { TimeService } from '../time/time.service';
 import { timezoneConfig } from '../config/timezone.config';
 import { UserRole } from '../users/user-role.enum';
@@ -79,6 +80,26 @@ export class TransfersService {
       throw new ForbiddenException({
         message: 'Only the network owner may send a transfer',
         code: 'OWNER_ONLY',
+      });
+    }
+
+    // A DOCUMENT THAT MOVES NOTHING IS NOT A DOCUMENT. Each field may be zero
+    // on its own — a crates-only run and a cash-only run are both ordinary, so
+    // the DTO admits `0` on both and nothing before this line sees the pair.
+    //
+    // `CHK_transfers_not_empty` is the real guarantee; this is here only to
+    // make the refusal a 400 with a sentence rather than a 500, because there
+    // is no `QueryFailedError` mapping anywhere in this backend and a
+    // constraint violation no service pre-check catches reaches the owner as
+    // an opaque server error. Same shape, same reason, as
+    // `PayoutsService.create`'s zero check.
+    //
+    // It runs BEFORE the point is read: the document is empty whoever it was
+    // addressed to, and the cheaper refusal comes first.
+    if (isZero(dto.cash) && dto.crates === 0) {
+      throw new BadRequestException({
+        message: 'A transfer must carry cash, crates, or both',
+        code: 'TRANSFER_EMPTY',
       });
     }
 

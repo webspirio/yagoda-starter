@@ -78,6 +78,26 @@ describe('TransfersService.create', () => {
     await expect(service.create(owner, dto as never)).rejects.toThrow(BadRequestException);
   });
 
+  it('refuses a transfer that moves nothing — no cash AND no crates', async () => {
+    // `CHK_transfers_not_empty` is the real guarantee; this pre-check exists
+    // only so the refusal is a 400 with a sentence rather than a 500. The DTO
+    // admits `0` on both fields by design (a cash-only run and a crates-only
+    // run are both ordinary), so nothing before this line catches the pair,
+    // and no `QueryFailedError` mapping exists anywhere in this backend.
+    // Same shape, same reason, as `PayoutsService.create`'s zero check.
+    const { service, repo } = build();
+    await expect(
+      service.create(owner, { ...dto, cash: '0', crates: 0 } as never),
+    ).rejects.toThrow(BadRequestException);
+    expect(repo.save).not.toHaveBeenCalled();
+  });
+
+  it('allows a crates-only and a cash-only run', async () => {
+    const { service } = build();
+    await expect(service.create(owner, { ...dto, cash: '0.00' } as never)).resolves.toBeDefined();
+    await expect(service.create(owner, { ...dto, crates: 0 } as never)).resolves.toBeDefined();
+  });
+
   it('refuses a correction naming a transfer at another point', async () => {
     const { service } = build({
       repo: {
