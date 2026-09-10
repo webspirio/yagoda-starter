@@ -492,6 +492,22 @@
       "reasonRequired": "Enter a reason"
     }
   },
+  "cash": {
+    "explainDialog": {
+      "title": "Explain the {{amount}} discrepancy",
+      "description": "A discrepancy never blocks closing a shift — the operator already closed it. This explanation does not change the count; it stays in the journal alongside it.",
+      "explanation": "Explanation",
+      "submit": "Save explanation"
+    },
+    "toast": {
+      "explained": "Explanation saved"
+    },
+    "errors": {
+      "explanationRequired": "Enter an explanation",
+      "explanationTooLong": "Explanation — 2000 characters or fewer",
+      "failed": "Could not save the explanation"
+    }
+  },
   "payout": {
     "form": {
       "title": "Pay out the balance — {{name}}",
