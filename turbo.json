@@ -11,6 +11,10 @@
     "lint": {
       "outputs": []
     },
+    "typecheck": {
+      "dependsOn": ["^typecheck"],
+      "outputs": []
+    },
     "dev": {
       "persistent": true,
       "cache": false

@@ -161,20 +161,20 @@ export const CHECKS = [
     cmd: 'npm run lint',
     proves:
       'eslint parsed every file its flat config reaches in both workspaces ' +
-      '(backend/eslint.config.mjs, frontend/eslint.config.mjs) and reported zero errors — ' +
-      'no parse failure and no rule violation at error severity. That includes the ' +
-      'money-arithmetic ban scoped to backend/src/intakes, src/payouts, src/shifts and ' +
-      'src/supplier-balance, which forbids *, /, Number(), toFixed, parseInt and ' +
-      'parseFloat there (test files in those four trees are excluded by the same config).',
+      '(backend/eslint.config.mjs, frontend/eslint.config.mjs) and reported zero findings ' +
+      'at either severity — no parse failure, no rule violation at error severity, and, ' +
+      'because both lint scripts now pass --max-warnings=0, no warning either: ' +
+      'react-hooks/exhaustive-deps and react-refresh/only-export-components, both ' +
+      'configured at warn, are exactly as blocking here as an error-level rule. That ' +
+      'includes the money-arithmetic ban scoped to backend/src/intakes, src/payouts, ' +
+      'src/shifts and src/supplier-balance, which forbids *, /, Number(), toFixed, ' +
+      'parseInt and parseFloat there (test files in those four trees are excluded by the ' +
+      'same config).',
     blindSpot:
-      'A warning currently still exits 0: neither workspace lint script passes ' +
-      '--max-warnings=0 yet, so a warning-level finding — including ' +
-      "react-hooks exhaustive-deps and react-refresh/only-export-components, both of " +
-      'which are configured at warn — is invisible to this row today. Nothing about ' +
-      'behaviour: whether a sum is right, whether a component renders. A rule that is not ' +
-      'enabled does not exist for it, and the money ban covers exactly FOUR backend module ' +
-      'trees — arithmetic on a numeric string anywhere else (every other backend module, ' +
-      'and the whole of frontend/src) is invisible to this row.',
+      'Nothing about behaviour: whether a sum is right, whether a component renders. A ' +
+      'rule that is not enabled does not exist for it, and the money ban covers exactly ' +
+      'FOUR backend module trees — arithmetic on a numeric string anywhere else (every ' +
+      'other backend module, and the whole of frontend/src) is invisible to this row.',
   },
   {
     id: 'typecheck',
