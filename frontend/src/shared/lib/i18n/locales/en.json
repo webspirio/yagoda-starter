@@ -360,7 +360,7 @@
       "openTitle": "Count the drawer",
       "openBody": "How much cash is in the drawer right now. This figure opens the shift and becomes the point's opening balance.",
       "closeTitle": "Count the drawer before closing",
-      "closeBody": "How much is left. A discrepancy will not block the close — the owner sees it afterwards.",
+      "closeBody": "How much is left. A discrepancy will not block the close — the owner sees it afterwards. Once closed, no more receipts or payouts can be booked for this day; only the owner can reopen it.",
       "amount": "In the drawer, ₴",
       "submit": "Record"
     },
