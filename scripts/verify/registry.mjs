@@ -583,6 +583,72 @@ export const CHECKS = [
       'ts.ScriptKind.TS — there are no .tsx files there today, but this row would need ' +
       'revisiting before one outside the four eslint-scoped trees could be trusted.',
   },
+  {
+    id: 'ratchet:persist',
+    tier: 'fast',
+    cmd: 'npm run ratchet:persist',
+    // No `after`: this check never invokes tsc, only `ts.createSourceFile` — a syntax-only
+    // parse, the same access route `seam`, `migrations` and `ratchet:money` already take
+    // (and the same reasoning `ratchet:money`'s own `after` comment states in full: a type
+    // error does not stop a file from parsing, so ordering this after `typecheck` would pair
+    // two rows that do not actually depend on each other).
+    proves:
+      'Every `localStorage`/`sessionStorage` member access under frontend/src — a direct ' +
+      '`localStorage.x`/`sessionStorage.x`, or `window.localStorage.x`/`window.sessionStorage.x` ' +
+      '— sits inside a `try`/`catch`; every value a `getItem()` call on one of those returns ' +
+      'reaches app state only through `typeof`, `Array.isArray`, `in`, `instanceof`, a ' +
+      '`.parse(` call, or a local `x is T` type-predicate function DECLARED IN THE SAME FILE ' +
+      '(never a bare `as`/`<T>` cast, and never left unguarded when the enclosing function\'s ' +
+      'own declared return type is narrower than the `string | null` `getItem()` actually ' +
+      'returns); and the string literals `isPersistableKey` (found anywhere under ' +
+      'frontend/src by name, not hard-coded to one path) checks a key against equal ' +
+      'scripts/verify/baselines/persist-boundary.json\'s entries, key for key, in BOTH ' +
+      'directions — a new key is red, and a baseline entry with no matching literal left in ' +
+      'the tree is red too. A violation of any of the three, anywhere the scan reaches, fails ' +
+      'this exact command. Parsed with the TypeScript compiler API, `.tsx` files under ' +
+      '`ts.ScriptKind.TSX` and `.ts` files under `ts.ScriptKind.TS` — never a regex, and never ' +
+      'the wrong script kind silently mis-parsing JSX. AS A SNAPSHOT, MEASURED 2026-09-10: ' +
+      'frontend/src holds FIVE files that touch storage this way, not the four spec ground ' +
+      'names — entities/user/model/store.ts (the bearer token), shared/api/persister.ts (the ' +
+      'TanStack query cache), shared/lib/form-draft/draftStorage.ts (raw form drafts), ' +
+      'shared/lib/i18n/language-preference.ts and shared/lib/theme/theme-preference.ts (found ' +
+      'by this task\'s own grep, narrowed the identical way language-preference.ts is) — 10 ' +
+      'guarded accesses and 4 getItem() reads (persister.ts\'s own reads are internal to the ' +
+      'TanStack library this file only configures, so it contributes zero directly-visible ' +
+      'getItem calls), and isPersistableKey\'s allowlist holds exactly one key, `me`. ' +
+      'frontend/src/test-setup.ts (vitest\'s global setup file, wired by vite.config.ts\'s ' +
+      'test.setupFiles and imported by nothing else) is excluded from this scan by exact ' +
+      'path: its unguarded `localStorage.clear()`/`sessionStorage.clear()` never ship in the ' +
+      'production bundle and run only under jsdom, which does not exhibit the private-' +
+      'browsing throw this row exists to catch — the same class of file-role scope decision ' +
+      '`ratchet:money` already makes excluding `*.spec.ts`/`*.db-spec.ts`, not a baseline entry ' +
+      'forgiving a violation in one of the five real boundary files. That count and file list ' +
+      'grow or shrink with ordinary feature work, and this row does not track or re-check its ' +
+      'own prose.',
+    blindSpot:
+      'It proves the SHAPE of a guard, never that the guard is correct: `Array.isArray(x)` ' +
+      'satisfies the narrowing rule and says nothing about what is inside the array, and a ' +
+      'value that clears `isSupported(v)` is trusted completely from that point on even if ' +
+      'the predicate itself is wrong. A local type-predicate function must be DECLARED IN THE ' +
+      'SAME FILE as the read it narrows — a predicate imported from elsewhere cannot be ' +
+      'confirmed from the AST at all, so a read narrowed that way reads as UNNARROWED (a real ' +
+      'narrowing reported as absent), never as silently accepted. Rule 1 recognises the ' +
+      'storage object only BY NAME (`localStorage`/`sessionStorage`/`window.localStorage`/' +
+      '`window.sessionStorage`): a reference obtained through an intermediate variable ' +
+      '(`const s = window.localStorage; s.getItem(...)`) is invisible to it in both ' +
+      'directions — neither flagged unguarded nor credited as guarded — which is also, ' +
+      'precisely, why persister.ts\'s own `safeStorage(read: () => Storage)` (whose header ' +
+      'comment states outright that the thunk exists so "the getter access itself happens ' +
+      'inside the try") reports zero access sites here rather than being confirmed safe: its ' +
+      'reads happen through a local `storage` variable this row never resolves back to the ' +
+      'global. Rule 2\'s "opaque passthrough" exemption (a bare, uncast `return x.getItem(...)`, ' +
+      'or a local variable never cast and never used structurally) has no live counterpart in ' +
+      'the current tree failing it, so its coverage rests on this row\'s own fixture tests, ' +
+      'not on a real finding it has caught. And frontend/src/test-setup.ts is excluded by ' +
+      'exact path — a second such test-harness file elsewhere would need its own named ' +
+      'exclusion before this row would stop reporting it, since nothing here recognises "this ' +
+      'is test infrastructure" except that one hard-coded path.',
+  },
 ]
 
 /** @type {Record<Tier, number>} */
