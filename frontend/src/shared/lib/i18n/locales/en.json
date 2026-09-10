@@ -508,6 +508,64 @@
       "failed": "Could not save the explanation"
     }
   },
+  "pointCash": {
+    "eyebrow": "{{point}} · {{weekday}}",
+    "title": "Point cash — {{date}}",
+    "description": "How much cash the point should have on hand right now, and how far that is from its target. Berry cash and crate deposits share the same drawer but are counted separately.",
+    "pickPoint": "Select a point",
+    "today": "Today",
+    "stats": {
+      "target": "Cash target",
+      "targetUnset": "No cash target assigned yet",
+      "cash": "Berry cash",
+      "cashHint": "cash available to pay for berries",
+      "neverCounted": "Never counted yet: the first count when the shift opens sets the opening balance.",
+      "shortfall": "Base owes the point",
+      "shortfallUnset": "No target to compare against",
+      "shortfallOwed": "the base has not transferred it yet",
+      "shortfallSettled": "the target is covered"
+    },
+    "ledger": {
+      "title": "Where this number comes from",
+      "accruedToday": "Accrued today",
+      "paidToday": "Paid for today's berries",
+      "paidPast": "Paid for past days",
+      "cashIn": "Received by transfer today",
+      "total": "Berry cash"
+    },
+    "crates": {
+      "label": "Crate cash",
+      "note": "Crates aren't tracked yet — this space is reserved for a future slice."
+    },
+    "drawer": {
+      "label": "Should be in the drawer",
+      "caption": "Berries only — crates aren't counted yet."
+    },
+    "countHistory": {
+      "title": "Cash counts",
+      "empty": "No cash counts recorded for this point yet.",
+      "columns": {
+        "when": "When",
+        "kind": "Count",
+        "counted": "Counted",
+        "expected": "Expected",
+        "discrepancy": "Discrepancy",
+        "explanation": "Explanation"
+      },
+      "kind": {
+        "opening": "Opening",
+        "midday": "Midday",
+        "closing": "Closing"
+      },
+      "matched": "Matched",
+      "open": "Unexplained",
+      "explain": "Explain"
+    },
+    "target": {
+      "set": "Assign a cash target",
+      "change": "Change the cash target"
+    }
+  },
   "pointTarget": {
     "title": "Change the cash target — {{pointName}}",
     "description": "This becomes the point's new target right away, for every day including past ones (§6.1) — it keeps no history of its own.",
@@ -835,6 +893,14 @@
       "resolvedCrates": "Crates to book",
       "submit": "Resolve",
       "toast": "Dispute resolved"
+    },
+    "incoming": {
+      "inTransit": "In transit: {{uah}} and {{crates}} crates",
+      "meta": "{{carrier}} · sent {{date}}",
+      "pointAccepts": "the point accepts",
+      "accept": "Accept",
+      "dispute": "Doesn't match",
+      "toastAccepted": "Transfer accepted"
     }
   }
 }
