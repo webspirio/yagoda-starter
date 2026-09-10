@@ -46,4 +46,24 @@ describe('useTransfersQuery', () => {
     await waitFor(() => expect(mock.history.get).toHaveLength(1));
     expect(mock.history.get[0].params.include_voided).toBe(false);
   });
+
+  it('reads the whole network when the filter is empty — the owner’s own list', async () => {
+    mock.onGet('/transfers').reply(200, page);
+    const { result } = renderHook(() => useTransfersQuery({}), { wrapper });
+    await waitFor(() => expect(result.current.data).toEqual(page));
+  });
+
+  it('does not fire when the caller opts out', () => {
+    mock.onGet('/transfers').reply(200, page);
+    const { result } = renderHook(() => useTransfersQuery({ enabled: false }), { wrapper });
+    expect(result.current.fetchStatus).toBe('idle');
+    expect(mock.history.get).toHaveLength(0);
+  });
+
+  it('keeps the gate out of the request — `enabled` is not an API param', async () => {
+    mock.onGet('/transfers').reply(200, page);
+    renderHook(() => useTransfersQuery({ pointId: 'p1', enabled: true }), { wrapper });
+    await waitFor(() => expect(mock.history.get).toHaveLength(1));
+    expect(mock.history.get[0].params).not.toHaveProperty('enabled');
+  });
 });

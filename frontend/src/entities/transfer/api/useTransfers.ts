@@ -30,8 +30,14 @@ export function transferParams(f: TransferFilter) {
 
 /**
  * Transfer headers for a point, a status, or a `from`/`to` date range — the
- * owner can also read the whole network unfiltered, so there is no
- * `enabled`-gate here (unlike `payoutsQueryOptions`).
+ * owner can also read the whole network unfiltered (`pages/transfers` does,
+ * deliberately), so an empty filter cannot mean "hold off" here the way it
+ * does in `payoutsQueryOptions`. `enabled` (default `true`) is the caller's
+ * own opt-out instead — `PointCashPage` passes `false` while its owner has
+ * picked no point, rather than firing a network-wide read behind an empty
+ * state. It is a GATE, not a filter: it stays out of the query key and out
+ * of the request params, so a gated read shares the cache entry of the same
+ * read once it opens.
  *
  * No `queryOptions()`/`useTransferQuery` split here (review round 2, minor
  * finding) — both existed with no consumer anywhere in the app: nothing
@@ -39,9 +45,13 @@ export function transferParams(f: TransferFilter) {
  * `useQueries` fan-out the way `intakesQueryOptions`/`payoutsQueryOptions`
  * do for `pages/dashboard`. Re-add them the day a real caller needs either.
  */
-export function useTransfersQuery(filter: TransferFilter) {
+export function useTransfersQuery({
+  enabled = true,
+  ...filter
+}: TransferFilter & { enabled?: boolean }) {
   return useQuery({
     queryKey: [...queryKeys.transfers, filter] as const,
+    enabled,
     queryFn: async (): Promise<Paginated<Transfer>> => {
       const { data } = await httpClient.get<Paginated<Transfer>>('/transfers', {
         params: transferParams(filter),
