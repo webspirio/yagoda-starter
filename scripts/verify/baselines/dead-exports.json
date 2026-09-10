@@ -1,0 +1,967 @@
+{
+  "createdAt": "2026-09-10",
+  "note": "Every knip finding this repo carried on 2026-09-10: 120 entries — 1 dependency, 5 devDependencies, 55 exports, 31 files, 25 types, 3 unlisted. Each reason was written after reading the finding's actual code (grep/read, cited inline), never inferred from the shape of the key. Several are the SAME underlying story recorded at more than one key: a barrel re-export unreachable because every real consumer imports the concrete module directly (shared/api/index.ts's whole surface, features/auth's `login`, settle-payout's and void-document's mutation hooks, shared/lib/theme's ThemePreference type), a vendored shadcn/radix primitive whose file is reachable but one specific sub-export is not (alert-dialog/dialog/table/tabs/badge/button/tooltip/toast), a *.db-spec.ts file (or its db-harness.ts helper) that backend/jest.db.config.js runs directly but knip's Jest plugin cannot see because its default spec/test glob requires a literal dot before 'spec'/'test' and never matches the hyphenated '-db-spec.ts' suffix, a TypeORM migration discovered by the runner via a glob rather than a static import, or an independently-duplicated type/helper (Paginated<T> redeclared in six model files, DocumentFilter in two, UserRole in two, documentParams in two) where only one copy's re-export path is the one real callers actually use. FOURTEEN entries are exactly the documented-deliberate decisions frontend/CLAUDE.md names, in three groups: (1) shared/lib/form-draft's own file finding (1 entry) — 'infrastructure, carried over from the boilerplate ... nothing consumes it yet ... don't delete it as dead code'; (2) the Kit-hygiene note's named starter-UI-primitives list, which accounts for 8 file findings (animated-number, checkbox, drawer, dropdown-menu, filter-section, progress, radio-group, select) plus the vaul dependency finding that traces to drawer.tsx's own import (9 entries) — 'candidates for deletion in a dedicated cleanup, not for silent reuse'; and (3) the Server-state section's note on entities/user's useUpdateMeMutation, 'kept as the pattern reference, not dead code to delete' (4 entries: the function and its UpdateMeInput type, each at both its origin file and its barrel re-export). The remaining 106 entries are genuinely unexplained-elsewhere findings, each read and reasoned individually — not invented deliberate decisions. None of this was deleted: backend/src and frontend/src are out of scope for this task. This ratchet is two-directional: a new finding not listed here fails scripts/verify/ratchets/dead-exports.mjs, and a listed entry knip no longer reports also fails it — this file may only shrink or be re-dated by a reviewed change, never grow by drift.",
+  "configFingerprint": "8d4f902fc61ac61d",
+  "entries": [
+    {
+      "key": "dependency|frontend/package.json|vaul",
+      "kind": "dependency",
+      "file": "frontend/package.json",
+      "name": "vaul",
+      "added": "2026-09-10",
+      "reason": "Real dependency of frontend/src/shared/ui/drawer.tsx (`import { Drawer as DrawerPrimitive } from 'vaul'`), but drawer.tsx is itself one of the starter-kit leftovers frontend/CLAUDE.md's Kit hygiene note names explicitly (\"chip, drawer, segmented, TagPicker, ...\") as imported by no screen and no /ui-kit gallery entry — candidates for a dedicated cleanup, not for silent reuse or deletion. vaul's only importer being unreachable makes vaul itself unreachable by the same knip pass."
+    },
+    {
+      "key": "devDependency|backend/package.json|@types/multer",
+      "kind": "devDependency",
+      "file": "backend/package.json",
+      "name": "@types/multer",
+      "added": "2026-09-10",
+      "reason": "Grep-verified: 'multer' appears exactly once in backend/src, a prose comment in media.service.ts ('Uploaded-file shape we consume (multer memory storage)') — no @UploadedFile()/Express.Multer.File usage and no import anywhere. A genuinely orphaned devDependency, not a knip blind spot."
+    },
+    {
+      "key": "devDependency|backend/package.json|@types/supertest",
+      "kind": "devDependency",
+      "file": "backend/package.json",
+      "name": "@types/supertest",
+      "added": "2026-09-10",
+      "reason": "supertest (and therefore its @types) is imported only from three *.db-spec.ts pipeline files (testing/catalog-pipeline, testing/documents-pipeline, testing/pipeline), each unreachable to knip for the same jest.db.config.js reason recorded on this baseline's file|...db-spec.ts entries — all-exceptions.filter.spec.ts only mentions 'supertest' in a comment, never imports it."
+    },
+    {
+      "key": "devDependency|backend/package.json|pino-pretty",
+      "kind": "devDependency",
+      "file": "backend/package.json",
+      "name": "pino-pretty",
+      "added": "2026-09-10",
+      "reason": "Loaded by name only: app.module.ts's pinoHttp transport config sets `target: 'pino-pretty'` as a plain string, which the `pino` library dynamically requires at runtime in development — there is no static import/require of the 'pino-pretty' module anywhere for knip's import graph to follow."
+    },
+    {
+      "key": "devDependency|backend/package.json|supertest",
+      "kind": "devDependency",
+      "file": "backend/package.json",
+      "name": "supertest",
+      "added": "2026-09-10",
+      "reason": "Imported only from three *.db-spec.ts pipeline files (testing/catalog-pipeline, testing/documents-pipeline, testing/pipeline) that backend/jest.db.config.js runs directly but knip cannot reach — see the file|...db-spec.ts entries' reason for exactly why that config is invisible to it."
+    },
+    {
+      "key": "devDependency|package.json|shadcn",
+      "kind": "devDependency",
+      "file": "package.json",
+      "name": "shadcn",
+      "added": "2026-09-10",
+      "reason": "The shadcn CLI, invoked ad hoc as `npx shadcn add <component>` to vendor a new frontend/src/shared/ui primitive (frontend/components.json configures its aliases); never imported by application code, so knip's static import graph has nothing to find. Kept as a devDependency precisely so `npx shadcn` resolves the pinned local version instead of hitting the network for a fresh one each time."
+    },
+    {
+      "key": "export|backend/src/audit/audit-log.entity.ts|AUDIT_ACTIONS",
+      "kind": "export",
+      "file": "backend/src/audit/audit-log.entity.ts",
+      "name": "AUDIT_ACTIONS",
+      "added": "2026-09-10",
+      "reason": "Grep-verified: no file outside audit-log.entity.ts imports the AUDIT_ACTIONS array itself — only the derived type `AuditAction` (`(typeof AUDIT_ACTIONS)[number]`) is imported elsewhere (audit.service.ts). The value export has no external consumer even though its type is load-bearing."
+    },
+    {
+      "key": "export|backend/src/intakes/intake.mapper.ts|toIntakeItemResponse",
+      "kind": "export",
+      "file": "backend/src/intakes/intake.mapper.ts",
+      "name": "toIntakeItemResponse",
+      "added": "2026-09-10",
+      "reason": "Grep-verified: called only within intake.mapper.ts itself, inside toIntakeDetailResponse's own `.map(toIntakeItemResponse)` on the line right below its definition. No other backend/src file imports it."
+    },
+    {
+      "key": "export|backend/src/users/password-hashing.ts|SCRYPT_N",
+      "kind": "export",
+      "file": "backend/src/users/password-hashing.ts",
+      "name": "SCRYPT_N",
+      "added": "2026-09-10",
+      "reason": "Grep-verified: consumed only inside password-hashing.ts itself (hashPassword's scrypt() call and its own maxmemFor()); password-hashing.spec.ts's only mention of SCRYPT_N is in a prose comment, not an import. Exported for visibility next to the format documentation, not because another module needs it."
+    },
+    {
+      "key": "export|backend/src/users/password-hashing.ts|SCRYPT_P",
+      "kind": "export",
+      "file": "backend/src/users/password-hashing.ts",
+      "name": "SCRYPT_P",
+      "added": "2026-09-10",
+      "reason": "Same as SCRYPT_N on this file: used only inside password-hashing.ts's own hashPassword(); no other backend/src file imports it, grep-verified."
+    },
+    {
+      "key": "export|backend/src/users/password-hashing.ts|SCRYPT_R",
+      "kind": "export",
+      "file": "backend/src/users/password-hashing.ts",
+      "name": "SCRYPT_R",
+      "added": "2026-09-10",
+      "reason": "Same as SCRYPT_N on this file: used only inside password-hashing.ts's own hashPassword() and maxmemFor(); no other backend/src file imports it, grep-verified."
+    },
+    {
+      "key": "export|frontend/src/app/providers/index.ts|ErrorFallback",
+      "kind": "export",
+      "file": "frontend/src/app/providers/index.ts",
+      "name": "ErrorFallback",
+      "added": "2026-09-10",
+      "reason": "The barrel re-export is unreachable even though the component is very much alive: both real importers (ErrorBoundary.tsx and RouteError.tsx) reach it via the concrete relative path `./ErrorFallback`, bypassing this index.ts entirely — only this barrel's sibling `ErrorBoundary` export is actually imported through the barrel (by router.tsx / App.tsx), which is why the file itself is not flagged."
+    },
+    {
+      "key": "export|frontend/src/app/providers/index.ts|RouteError",
+      "kind": "export",
+      "file": "frontend/src/app/providers/index.ts",
+      "name": "RouteError",
+      "added": "2026-09-10",
+      "reason": "Same barrel-bypass pattern as ErrorFallback on this file: router.tsx imports RouteError from the concrete path `./providers/RouteError`, not from this index.ts, so the barrel's re-export of it is never the one actually reached, grep-verified against every RouteError import site."
+    },
+    {
+      "key": "export|frontend/src/entities/intake/api/useIntakes.ts|documentParams",
+      "kind": "export",
+      "file": "frontend/src/entities/intake/api/useIntakes.ts",
+      "name": "documentParams",
+      "added": "2026-09-10",
+      "reason": "entities/payout/api/usePayouts.ts independently defines its OWN `documentParams` — the two are not shared, each is used only inside its own file to build one entity's query params. This file's copy has no importer anywhere else, grep-verified; a real duplication between the two entities, left as-is since frontend/src is out of scope for this task."
+    },
+    {
+      "key": "export|frontend/src/entities/payout/api/usePayouts.ts|documentParams",
+      "kind": "export",
+      "file": "frontend/src/entities/payout/api/usePayouts.ts",
+      "name": "documentParams",
+      "added": "2026-09-10",
+      "reason": "The payout-side twin of entities/intake/api/useIntakes.ts's own `documentParams` — same shape, independently declared, each used only inside its own file. No other file imports this one, grep-verified; recorded rather than merged since frontend/src is out of scope for this task."
+    },
+    {
+      "key": "export|frontend/src/entities/user/api/useUpdateMeMutation.ts|useUpdateMeMutation",
+      "kind": "export",
+      "file": "frontend/src/entities/user/api/useUpdateMeMutation.ts",
+      "name": "useUpdateMeMutation",
+      "added": "2026-09-10",
+      "reason": "Documented in frontend/CLAUDE.md's \"Server state\" section: \"It has had no caller since the profile identity fields became read-only (the owner renames staff over PATCH /users/:id, not /me) — kept as the pattern reference, not dead code to delete.\" Grep-verified: zero call sites anywhere in frontend/src."
+    },
+    {
+      "key": "export|frontend/src/entities/user/index.ts|TOKEN_STORAGE_KEY",
+      "kind": "export",
+      "file": "frontend/src/entities/user/index.ts",
+      "name": "TOKEN_STORAGE_KEY",
+      "added": "2026-09-10",
+      "reason": "Re-exported for completeness, but every real consumer of the session goes through `useSession` — grep-verified, the raw key is referenced only inside its own declaring file, model/store.ts, and imported directly by its own test, model/store.test.ts (bypassing this barrel); no other file, and nothing via this entities/user barrel specifically, reaches it."
+    },
+    {
+      "key": "export|frontend/src/entities/user/index.ts|useUpdateMeMutation",
+      "kind": "export",
+      "file": "frontend/src/entities/user/index.ts",
+      "name": "useUpdateMeMutation",
+      "added": "2026-09-10",
+      "reason": "Same barrel re-export of the pattern-reference hook documented in frontend/CLAUDE.md's \"Server state\" section (see the entities/user/api/useUpdateMeMutation.ts entry on this same finding) — kept intentionally with no caller, not dead code to delete."
+    },
+    {
+      "key": "export|frontend/src/features/auth/index.ts|login",
+      "kind": "export",
+      "file": "frontend/src/features/auth/index.ts",
+      "name": "login",
+      "added": "2026-09-10",
+      "reason": "The barrel's `export { login, logout }` line is only half-reachable: AppLayout.tsx imports `logout` through this barrel (`@/features/auth`), but LoginForm.tsx imports `login` directly from the concrete `../api/authApi` instead, bypassing the barrel for that one name — grep-verified against every login() call site."
+    },
+    {
+      "key": "export|frontend/src/features/settle-payout/index.ts|useCreatePayoutMutation",
+      "kind": "export",
+      "file": "frontend/src/features/settle-payout/index.ts",
+      "name": "useCreatePayoutMutation",
+      "added": "2026-09-10",
+      "reason": "This slice's own PayoutDialog.tsx — the component this barrel exists to expose (ReceiptDialog.tsx imports PayoutDialog through `@/features/settle-payout`) — imports useCreatePayoutMutation directly from `../api/useCreatePayout` instead of through the barrel, grep-verified; no file reaches it via the barrel path."
+    },
+    {
+      "key": "export|frontend/src/features/void-document/index.ts|useVoidDocumentMutation",
+      "kind": "export",
+      "file": "frontend/src/features/void-document/index.ts",
+      "name": "useVoidDocumentMutation",
+      "added": "2026-09-10",
+      "reason": "Same pattern as settle-payout's useCreatePayoutMutation: VoidDocumentDialog.tsx (exposed through this barrel to ReceiptDialog.tsx) imports useVoidDocumentMutation directly from `../api/useVoidDocument`, never through the barrel, grep-verified."
+    },
+    {
+      "key": "export|frontend/src/shared/api/client.ts|extractErrorCode",
+      "kind": "export",
+      "file": "frontend/src/shared/api/client.ts",
+      "name": "extractErrorCode",
+      "added": "2026-09-10",
+      "reason": "Grep-verified: called internally within this same file, at line 164 inside attachAuthInterceptors's response interceptor (`extractErrorCode(error?.response?.data)`, building the rejected ApiError) — the same used-only-within-its-own-file pattern as SCRYPT_N/P/R. Unlike its siblings extractErrorMessage/Details/Reason (each also imported directly by client.test.ts), extractErrorCode has no IMPORT anywhere — not directly, not through the shared/api/index.ts barrel, and not from a test — so the export itself is what's dead, not the function's use."
+    },
+    {
+      "key": "export|frontend/src/shared/api/client.ts|extractErrorPayload",
+      "kind": "export",
+      "file": "frontend/src/shared/api/client.ts",
+      "name": "extractErrorPayload",
+      "added": "2026-09-10",
+      "reason": "Same as its neighbour extractErrorCode on this file: grep-verified called internally at line 165 inside attachAuthInterceptors's response interceptor, but the export itself has no import anywhere — direct, through the barrel, or from a test."
+    },
+    {
+      "key": "export|frontend/src/shared/api/index.ts|extractErrorCode",
+      "kind": "export",
+      "file": "frontend/src/shared/api/index.ts",
+      "name": "extractErrorCode",
+      "added": "2026-09-10",
+      "reason": "Grep-verified: `from '@/shared/api'` appears 64 times across frontend/src (httpClient x37, ApiError x25, attachAuthInterceptors x7, plus one each of queryClient+buildPersistOptions, persister, apiErrorCode, and the AuthHooks type) — the barrel is real and heavily used, just never for this name. extractErrorCode is additionally uncalled at its origin, client.ts (see that file's own entry) — doubly unreachable, not merely barrel-bypassed."
+    },
+    {
+      "key": "export|frontend/src/shared/api/index.ts|extractErrorDetails",
+      "kind": "export",
+      "file": "frontend/src/shared/api/index.ts",
+      "name": "extractErrorDetails",
+      "added": "2026-09-10",
+      "reason": "Grep-verified: `from '@/shared/api'` appears 64 times across frontend/src (httpClient x37, ApiError x25, attachAuthInterceptors x7, plus one each of queryClient+buildPersistOptions, persister, apiErrorCode, and the AuthHooks type) — the barrel is real and heavily used, just never for this name. The underlying extractErrorDetails in client.ts IS used, but only via a direct import from client.test.ts, never through this barrel."
+    },
+    {
+      "key": "export|frontend/src/shared/api/index.ts|extractErrorMessage",
+      "kind": "export",
+      "file": "frontend/src/shared/api/index.ts",
+      "name": "extractErrorMessage",
+      "added": "2026-09-10",
+      "reason": "Grep-verified: `from '@/shared/api'` appears 64 times across frontend/src (httpClient x37, ApiError x25, attachAuthInterceptors x7, plus one each of queryClient+buildPersistOptions, persister, apiErrorCode, and the AuthHooks type) — the barrel is real and heavily used, just never for this name. The underlying extractErrorMessage in client.ts IS used, but only via a direct import from client.test.ts, never through this barrel."
+    },
+    {
+      "key": "export|frontend/src/shared/api/index.ts|extractErrorPayload",
+      "kind": "export",
+      "file": "frontend/src/shared/api/index.ts",
+      "name": "extractErrorPayload",
+      "added": "2026-09-10",
+      "reason": "Grep-verified: `from '@/shared/api'` appears 64 times across frontend/src (httpClient x37, ApiError x25, attachAuthInterceptors x7, plus one each of queryClient+buildPersistOptions, persister, apiErrorCode, and the AuthHooks type) — the barrel is real and heavily used, just never for this name. extractErrorPayload is additionally uncalled at its origin, client.ts (see that file's own entry) — doubly unreachable, not merely barrel-bypassed."
+    },
+    {
+      "key": "export|frontend/src/shared/api/index.ts|extractErrorReason",
+      "kind": "export",
+      "file": "frontend/src/shared/api/index.ts",
+      "name": "extractErrorReason",
+      "added": "2026-09-10",
+      "reason": "Grep-verified: `from '@/shared/api'` appears 64 times across frontend/src (httpClient x37, ApiError x25, attachAuthInterceptors x7, plus one each of queryClient+buildPersistOptions, persister, apiErrorCode, and the AuthHooks type) — the barrel is real and heavily used, just never for this name. The underlying extractErrorReason in client.ts IS used, but only via a direct import from client.test.ts, never through this barrel."
+    },
+    {
+      "key": "export|frontend/src/shared/api/index.ts|queryKeys",
+      "kind": "export",
+      "file": "frontend/src/shared/api/index.ts",
+      "name": "queryKeys",
+      "added": "2026-09-10",
+      "reason": "Grep-verified: `from '@/shared/api'` appears 64 times across frontend/src (httpClient x37, ApiError x25, attachAuthInterceptors x7, plus one each of queryClient+buildPersistOptions, persister, apiErrorCode, and the AuthHooks type) — the barrel is real and heavily used, just never for this name. queryKeys itself is one of the most-used values in the whole frontend, but every real consumer imports it from the concrete `@/shared/api/queryKeys`, never from this barrel — verified across every 'queryKeys.' call site."
+    },
+    {
+      "key": "export|frontend/src/shared/api/index.ts|STALE",
+      "kind": "export",
+      "file": "frontend/src/shared/api/index.ts",
+      "name": "STALE",
+      "added": "2026-09-10",
+      "reason": "Grep-verified: `from '@/shared/api'` appears 64 times across frontend/src (httpClient x37, ApiError x25, attachAuthInterceptors x7, plus one each of queryClient+buildPersistOptions, persister, apiErrorCode, and the AuthHooks type) — the barrel is real and heavily used, just never for this name. STALE is used throughout the app (every list/detail query's staleTime), always imported from the concrete `@/shared/api/queryClient`, never from this barrel."
+    },
+    {
+      "key": "export|frontend/src/shared/lib/date/index.ts|isIsoDate",
+      "kind": "export",
+      "file": "frontend/src/shared/lib/date/index.ts",
+      "name": "isIsoDate",
+      "added": "2026-09-10",
+      "reason": "Used internally within its own origin file (date/iso.ts's own isRealIsoDate calls it), and this barrel re-exports it alongside todayIso/addDaysIso/formatLongDate/etc. — but no other frontend/src file imports `isIsoDate` by name, grep-verified, unlike its actively-consumed barrel siblings."
+    },
+    {
+      "key": "export|frontend/src/shared/lib/motion.ts|fadeSlideUp",
+      "kind": "export",
+      "file": "frontend/src/shared/lib/motion.ts",
+      "name": "fadeSlideUp",
+      "added": "2026-09-10",
+      "reason": "Part of motion.ts's shared animation vocabulary, documented for staggered list entrances — but grep-verified zero importers anywhere in frontend/src. Only `spring` and `useReducedMotionSafe` from this file have a live consumer today (segmented.tsx); the richer stagger/press/refusal presets built alongside them have none yet. Not documented in frontend/CLAUDE.md as a deliberate keep — genuinely unused surface, recorded honestly rather than invented as intentional."
+    },
+    {
+      "key": "export|frontend/src/shared/lib/motion.ts|listStagger",
+      "kind": "export",
+      "file": "frontend/src/shared/lib/motion.ts",
+      "name": "listStagger",
+      "added": "2026-09-10",
+      "reason": "Same as fadeSlideUp on this file: the parent-variant half of the list-stagger pair, grep-verified zero importers anywhere in frontend/src."
+    },
+    {
+      "key": "export|frontend/src/shared/lib/motion.ts|pressScale",
+      "kind": "export",
+      "file": "frontend/src/shared/lib/motion.ts",
+      "name": "pressScale",
+      "added": "2026-09-10",
+      "reason": "Grep-verified zero importers: reducedFade's only real importer (animated-number.tsx) is itself an orphaned file per frontend/CLAUDE.md's Kit hygiene note, so this file's press-tactile preset has never been reached by a live screen either."
+    },
+    {
+      "key": "export|frontend/src/shared/lib/motion.ts|reducedFade",
+      "kind": "export",
+      "file": "frontend/src/shared/lib/motion.ts",
+      "name": "reducedFade",
+      "added": "2026-09-10",
+      "reason": "Its only importer, frontend/src/shared/ui/animated-number.tsx, is itself an unused file (see this baseline's file|...animated-number.tsx entry, one of frontend/CLAUDE.md's named Kit-hygiene leftovers) — unreachable by transitivity, not on its own."
+    },
+    {
+      "key": "export|frontend/src/shared/lib/motion.ts|refusal",
+      "kind": "export",
+      "file": "frontend/src/shared/lib/motion.ts",
+      "name": "refusal",
+      "added": "2026-09-10",
+      "reason": "Every \"refusal\" hit outside this file is the English word in unrelated prose/comments (business-rule refusals, banner copy) — grep-verified zero actual imports of this Transition constant anywhere."
+    },
+    {
+      "key": "export|frontend/src/shared/lib/motion.ts|useFadeSlideUp",
+      "kind": "export",
+      "file": "frontend/src/shared/lib/motion.ts",
+      "name": "useFadeSlideUp",
+      "added": "2026-09-10",
+      "reason": "The reduced-motion-guarded wrapper around this file's own (also-unused) fadeSlideUp — grep-verified zero importers anywhere in frontend/src."
+    },
+    {
+      "key": "export|frontend/src/shared/lib/motion.ts|useListStagger",
+      "kind": "export",
+      "file": "frontend/src/shared/lib/motion.ts",
+      "name": "useListStagger",
+      "added": "2026-09-10",
+      "reason": "The reduced-motion-guarded wrapper around this file's own (also-unused) listStagger — grep-verified zero importers anywhere in frontend/src."
+    },
+    {
+      "key": "export|frontend/src/shared/lib/motion.ts|usePressScale",
+      "kind": "export",
+      "file": "frontend/src/shared/lib/motion.ts",
+      "name": "usePressScale",
+      "added": "2026-09-10",
+      "reason": "The reduced-motion-guarded wrapper around this file's own (also-unused) pressScale — grep-verified zero importers anywhere in frontend/src."
+    },
+    {
+      "key": "export|frontend/src/shared/lib/upload/image.ts|IMAGE_ACCEPT",
+      "kind": "export",
+      "file": "frontend/src/shared/lib/upload/image.ts",
+      "name": "IMAGE_ACCEPT",
+      "added": "2026-09-10",
+      "reason": "Its three siblings from the same file (IMAGE_MAX_BYTES, validateImageFile, resolveUploadUrl) are all imported via the upload barrel by pages/profile/ui/ProfilePage.tsx and its test — but grep-verified, nothing anywhere reads IMAGE_ACCEPT itself (e.g. as an `<input accept=...>` value)."
+    },
+    {
+      "key": "export|frontend/src/shared/lib/upload/index.ts|IMAGE_ACCEPT",
+      "kind": "export",
+      "file": "frontend/src/shared/lib/upload/index.ts",
+      "name": "IMAGE_ACCEPT",
+      "added": "2026-09-10",
+      "reason": "The barrel re-export of the same never-consumed constant as shared/lib/upload/image.ts's own entry — its three sibling re-exports on this identical `export { ... } from './image'` line ARE imported via this barrel by ProfilePage.tsx/ProfilePage.test.tsx, only IMAGE_ACCEPT itself is not, grep-verified."
+    },
+    {
+      "key": "export|frontend/src/shared/lib/url-state/index.ts|keepKnown",
+      "kind": "export",
+      "file": "frontend/src/shared/lib/url-state/index.ts",
+      "name": "keepKnown",
+      "added": "2026-09-10",
+      "reason": "This barrel IS genuinely used (5 real consumers importing useUrlParam/useUrlPatch/keepUuids through it: DayPage, CatalogPage, JournalPage x2 files, usePointScope.ts) — but grep-verified, keepKnown's own co-located test (keepKnown.test.ts) imports it directly from './keepKnown', bypassing this re-export entirely, and nothing else imports it at all. Same barrel-bypass pattern as ErrorFallback/login on other files, not a genuinely-uncalled function."
+    },
+    {
+      "key": "export|frontend/src/shared/lib/url-state/index.ts|useUrlFlag",
+      "kind": "export",
+      "file": "frontend/src/shared/lib/url-state/index.ts",
+      "name": "useUrlFlag",
+      "added": "2026-09-10",
+      "reason": "Same barrel-bypass pattern as keepKnown on this file: grep-verified, useUrlFlag's own co-located test (useUrlFlag.test.tsx) imports it directly from './useUrlFlag', bypassing this re-export; nothing else imports it at all."
+    },
+    {
+      "key": "export|frontend/src/shared/lib/url-state/index.ts|useUrlList",
+      "kind": "export",
+      "file": "frontend/src/shared/lib/url-state/index.ts",
+      "name": "useUrlList",
+      "added": "2026-09-10",
+      "reason": "Same barrel-bypass pattern as keepKnown on this file: grep-verified, useUrlList's own co-located test (useUrlList.test.tsx) imports it directly from './useUrlList', bypassing this re-export; nothing else imports it at all."
+    },
+    {
+      "key": "export|frontend/src/shared/lib/url-state/index.ts|useUrlNumber",
+      "kind": "export",
+      "file": "frontend/src/shared/lib/url-state/index.ts",
+      "name": "useUrlNumber",
+      "added": "2026-09-10",
+      "reason": "Same barrel-bypass pattern as keepKnown on this file: grep-verified, useUrlNumber's own co-located test (useUrlNumber.test.tsx) imports it directly from './useUrlNumber', bypassing this re-export; nothing else imports it at all."
+    },
+    {
+      "key": "export|frontend/src/shared/lib/useDebouncedValue.ts|SEARCH_DEBOUNCE_MS",
+      "kind": "export",
+      "file": "frontend/src/shared/lib/useDebouncedValue.ts",
+      "name": "SEARCH_DEBOUNCE_MS",
+      "added": "2026-09-10",
+      "reason": "Grep-verified: useDebouncedValue itself is used by real screens, but every call site passes its own literal millisecond value rather than importing this named constant — zero importers of SEARCH_DEBOUNCE_MS anywhere in frontend/src."
+    },
+    {
+      "key": "export|frontend/src/shared/ui/alert-dialog.tsx|AlertDialogMedia",
+      "kind": "export",
+      "file": "frontend/src/shared/ui/alert-dialog.tsx",
+      "name": "AlertDialogMedia",
+      "added": "2026-09-10",
+      "reason": "This vendored shadcn/radix alert-dialog primitive IS reachable (confirm-dialog.tsx imports AlertDialog/AlertDialogContent/etc. from it) — but this specific named export, an image/media slot variant, has no importer anywhere, grep-verified."
+    },
+    {
+      "key": "export|frontend/src/shared/ui/alert-dialog.tsx|AlertDialogOverlay",
+      "kind": "export",
+      "file": "frontend/src/shared/ui/alert-dialog.tsx",
+      "name": "AlertDialogOverlay",
+      "added": "2026-09-10",
+      "reason": "Composition-only piece already rendered internally by AlertDialogContent in this same file; screens never need to import it directly, and none do, grep-verified."
+    },
+    {
+      "key": "export|frontend/src/shared/ui/alert-dialog.tsx|AlertDialogPortal",
+      "kind": "export",
+      "file": "frontend/src/shared/ui/alert-dialog.tsx",
+      "name": "AlertDialogPortal",
+      "added": "2026-09-10",
+      "reason": "Composition-only piece already rendered internally by AlertDialogContent in this same file; screens never need to import it directly, and none do, grep-verified."
+    },
+    {
+      "key": "export|frontend/src/shared/ui/alert-dialog.tsx|AlertDialogTrigger",
+      "kind": "export",
+      "file": "frontend/src/shared/ui/alert-dialog.tsx",
+      "name": "AlertDialogTrigger",
+      "added": "2026-09-10",
+      "reason": "Every AlertDialog in this app is opened via a controlled `open` prop from application state, never via Radix's uncontrolled Trigger pattern — grep-verified zero importers of AlertDialogTrigger anywhere."
+    },
+    {
+      "key": "export|frontend/src/shared/ui/badge.tsx|badgeVariants",
+      "kind": "export",
+      "file": "frontend/src/shared/ui/badge.tsx",
+      "name": "badgeVariants",
+      "added": "2026-09-10",
+      "reason": "Screens import and render `Badge` itself (not flagged — real consumers exist), but the raw cva() variants function it is built from is never imported directly by anything else, grep-verified."
+    },
+    {
+      "key": "export|frontend/src/shared/ui/button.tsx|buttonVariants",
+      "kind": "export",
+      "file": "frontend/src/shared/ui/button.tsx",
+      "name": "buttonVariants",
+      "added": "2026-09-10",
+      "reason": "Screens import and render `Button` itself (not flagged), but the raw cva() variants function is never imported directly elsewhere — e.g. to style a non-<button> element as a button link — grep-verified."
+    },
+    {
+      "key": "export|frontend/src/shared/ui/dialog.tsx|DialogClose",
+      "kind": "export",
+      "file": "frontend/src/shared/ui/dialog.tsx",
+      "name": "DialogClose",
+      "added": "2026-09-10",
+      "reason": "Dialogs in this app are closed via their own controlled `open` state (an onOpenChange(false) call from application code), not via Radix's built-in Close button component — grep-verified zero importers."
+    },
+    {
+      "key": "export|frontend/src/shared/ui/dialog.tsx|DialogOverlay",
+      "kind": "export",
+      "file": "frontend/src/shared/ui/dialog.tsx",
+      "name": "DialogOverlay",
+      "added": "2026-09-10",
+      "reason": "Composition-only piece already rendered internally by DialogContent in this same file; no screen needs it directly, grep-verified."
+    },
+    {
+      "key": "export|frontend/src/shared/ui/dialog.tsx|DialogPortal",
+      "kind": "export",
+      "file": "frontend/src/shared/ui/dialog.tsx",
+      "name": "DialogPortal",
+      "added": "2026-09-10",
+      "reason": "Composition-only piece already rendered internally by DialogContent in this same file; no screen needs it directly, grep-verified."
+    },
+    {
+      "key": "export|frontend/src/shared/ui/dialog.tsx|DialogTrigger",
+      "kind": "export",
+      "file": "frontend/src/shared/ui/dialog.tsx",
+      "name": "DialogTrigger",
+      "added": "2026-09-10",
+      "reason": "Every dialog in this app (UserFormDialog, SetPasswordDialog, ReopenShiftDialog, and the rest) is opened via a controlled `open` prop from application state, never Radix's uncontrolled Trigger — grep-verified zero importers."
+    },
+    {
+      "key": "export|frontend/src/shared/ui/table.tsx|TableCaption",
+      "kind": "export",
+      "file": "frontend/src/shared/ui/table.tsx",
+      "name": "TableCaption",
+      "added": "2026-09-10",
+      "reason": "Real screens use Table/TableHeader/TableBody/TableRow/TableCell from this file (not flagged), but none render a `<caption>` via this specific sub-component, grep-verified."
+    },
+    {
+      "key": "export|frontend/src/shared/ui/table.tsx|TableFooter",
+      "kind": "export",
+      "file": "frontend/src/shared/ui/table.tsx",
+      "name": "TableFooter",
+      "added": "2026-09-10",
+      "reason": "Same as TableCaption on this file: the app's tables have no footer row, so TableFooter has no importer, grep-verified."
+    },
+    {
+      "key": "export|frontend/src/shared/ui/tabs.tsx|tabsListVariants",
+      "kind": "export",
+      "file": "frontend/src/shared/ui/tabs.tsx",
+      "name": "tabsListVariants",
+      "added": "2026-09-10",
+      "reason": "Screens import Tabs/TabsList/TabsTrigger/TabsContent from this file (not flagged), but the raw cva() variants function backing TabsList is never imported directly elsewhere, grep-verified."
+    },
+    {
+      "key": "export|frontend/src/shared/ui/toast.ts|toastSuccess",
+      "kind": "export",
+      "file": "frontend/src/shared/ui/toast.ts",
+      "name": "toastSuccess",
+      "added": "2026-09-10",
+      "reason": "This file's `toast` re-export and its sibling `toastError` ARE used (e.g. ProfilePage.tsx calls toastError on a failed mutation) — but grep-verified, nothing in frontend/src calls toastSuccess: no screen currently shows a success toast through this helper."
+    },
+    {
+      "key": "export|frontend/src/shared/ui/tooltip.tsx|TooltipProvider",
+      "kind": "export",
+      "file": "frontend/src/shared/ui/tooltip.tsx",
+      "name": "TooltipProvider",
+      "added": "2026-09-10",
+      "reason": "Tooltip/TooltipTrigger/TooltipContent from this file are used (e.g. SupplierTimeline.tsx, CopyableField.tsx), but nothing wraps the tree in an explicit TooltipProvider — either a default provider is implicit, or no call site needed custom delayDuration — grep-verified zero importers."
+    },
+    {
+      "key": "file|backend/src/migrations/1788600000000-InitialSchema.ts|backend/src/migrations/1788600000000-InitialSchema.ts",
+      "kind": "file",
+      "file": "backend/src/migrations/1788600000000-InitialSchema.ts",
+      "name": "backend/src/migrations/1788600000000-InitialSchema.ts",
+      "added": "2026-09-10",
+      "reason": "A TypeORM migration: discovered and run by the migration runner at startup via the migrations glob in data-source.ts (see root CLAUDE.md: \"migrations run automatically on startup\"), never statically imported by name from any entry point — the same class of framework-invoked file the blindSpot names."
+    },
+    {
+      "key": "file|backend/src/migrations/1788600000001-SeedDevAdmin.ts|backend/src/migrations/1788600000001-SeedDevAdmin.ts",
+      "kind": "file",
+      "file": "backend/src/migrations/1788600000001-SeedDevAdmin.ts",
+      "name": "backend/src/migrations/1788600000001-SeedDevAdmin.ts",
+      "added": "2026-09-10",
+      "reason": "A TypeORM migration: discovered and run by the migration runner at startup via the migrations glob in data-source.ts (see root CLAUDE.md: \"migrations run automatically on startup\"), never statically imported by name from any entry point — the same class of framework-invoked file the blindSpot names."
+    },
+    {
+      "key": "file|backend/src/migrations/1788600000002-YagodaFoundation.ts|backend/src/migrations/1788600000002-YagodaFoundation.ts",
+      "kind": "file",
+      "file": "backend/src/migrations/1788600000002-YagodaFoundation.ts",
+      "name": "backend/src/migrations/1788600000002-YagodaFoundation.ts",
+      "added": "2026-09-10",
+      "reason": "A TypeORM migration: discovered and run by the migration runner at startup via the migrations glob in data-source.ts (see root CLAUDE.md: \"migrations run automatically on startup\"), never statically imported by name from any entry point — the same class of framework-invoked file the blindSpot names."
+    },
+    {
+      "key": "file|backend/src/migrations/1788600000003-BootstrapOwner.ts|backend/src/migrations/1788600000003-BootstrapOwner.ts",
+      "kind": "file",
+      "file": "backend/src/migrations/1788600000003-BootstrapOwner.ts",
+      "name": "backend/src/migrations/1788600000003-BootstrapOwner.ts",
+      "added": "2026-09-10",
+      "reason": "A TypeORM migration: discovered and run by the migration runner at startup via the migrations glob in data-source.ts (see root CLAUDE.md: \"migrations run automatically on startup\"), never statically imported by name from any entry point — the same class of framework-invoked file the blindSpot names."
+    },
+    {
+      "key": "file|backend/src/migrations/1788600000004-IndexUserIdentityUser.ts|backend/src/migrations/1788600000004-IndexUserIdentityUser.ts",
+      "kind": "file",
+      "file": "backend/src/migrations/1788600000004-IndexUserIdentityUser.ts",
+      "name": "backend/src/migrations/1788600000004-IndexUserIdentityUser.ts",
+      "added": "2026-09-10",
+      "reason": "A TypeORM migration: discovered and run by the migration runner at startup via the migrations glob in data-source.ts (see root CLAUDE.md: \"migrations run automatically on startup\"), never statically imported by name from any entry point — the same class of framework-invoked file the blindSpot names."
+    },
+    {
+      "key": "file|backend/src/migrations/1788600000005-YagodaCatalog.ts|backend/src/migrations/1788600000005-YagodaCatalog.ts",
+      "kind": "file",
+      "file": "backend/src/migrations/1788600000005-YagodaCatalog.ts",
+      "name": "backend/src/migrations/1788600000005-YagodaCatalog.ts",
+      "added": "2026-09-10",
+      "reason": "A TypeORM migration: discovered and run by the migration runner at startup via the migrations glob in data-source.ts (see root CLAUDE.md: \"migrations run automatically on startup\"), never statically imported by name from any entry point — the same class of framework-invoked file the blindSpot names."
+    },
+    {
+      "key": "file|backend/src/migrations/1788600000006-YagodaSuppliersAndPrices.ts|backend/src/migrations/1788600000006-YagodaSuppliersAndPrices.ts",
+      "kind": "file",
+      "file": "backend/src/migrations/1788600000006-YagodaSuppliersAndPrices.ts",
+      "name": "backend/src/migrations/1788600000006-YagodaSuppliersAndPrices.ts",
+      "added": "2026-09-10",
+      "reason": "A TypeORM migration: discovered and run by the migration runner at startup via the migrations glob in data-source.ts (see root CLAUDE.md: \"migrations run automatically on startup\"), never statically imported by name from any entry point — the same class of framework-invoked file the blindSpot names."
+    },
+    {
+      "key": "file|backend/src/migrations/1788600000007-YagodaIntakesAndPayouts.ts|backend/src/migrations/1788600000007-YagodaIntakesAndPayouts.ts",
+      "kind": "file",
+      "file": "backend/src/migrations/1788600000007-YagodaIntakesAndPayouts.ts",
+      "name": "backend/src/migrations/1788600000007-YagodaIntakesAndPayouts.ts",
+      "added": "2026-09-10",
+      "reason": "A TypeORM migration: discovered and run by the migration runner at startup via the migrations glob in data-source.ts (see root CLAUDE.md: \"migrations run automatically on startup\"), never statically imported by name from any entry point — the same class of framework-invoked file the blindSpot names."
+    },
+    {
+      "key": "file|backend/src/migrations/bootstrap-owner-create.db-spec.ts|backend/src/migrations/bootstrap-owner-create.db-spec.ts",
+      "kind": "file",
+      "file": "backend/src/migrations/bootstrap-owner-create.db-spec.ts",
+      "name": "backend/src/migrations/bootstrap-owner-create.db-spec.ts",
+      "added": "2026-09-10",
+      "reason": "Executed by backend/jest.db.config.js's own testRegex (.*\\.db-spec\\.ts$ — the unit config's `.*\\.spec\\.ts$` in backend/package.json does not match it, by the config's own comment). knip's Jest plugin found jest.db.config.js but applies its generic spec/test glob to it, which requires a literal dot before 'spec'/'test' (matches foo.spec.ts) and so never matches the hyphenated '-db-spec.ts' suffix — a real test file `npm run test:db` runs directly, invisible to knip's entry inference for this exact non-standard suffix."
+    },
+    {
+      "key": "file|backend/src/migrations/catalog-schema.db-spec.ts|backend/src/migrations/catalog-schema.db-spec.ts",
+      "kind": "file",
+      "file": "backend/src/migrations/catalog-schema.db-spec.ts",
+      "name": "backend/src/migrations/catalog-schema.db-spec.ts",
+      "added": "2026-09-10",
+      "reason": "Executed by backend/jest.db.config.js's own testRegex (.*\\.db-spec\\.ts$ — the unit config's `.*\\.spec\\.ts$` in backend/package.json does not match it, by the config's own comment). knip's Jest plugin found jest.db.config.js but applies its generic spec/test glob to it, which requires a literal dot before 'spec'/'test' (matches foo.spec.ts) and so never matches the hyphenated '-db-spec.ts' suffix — a real test file `npm run test:db` runs directly, invisible to knip's entry inference for this exact non-standard suffix."
+    },
+    {
+      "key": "file|backend/src/migrations/intakes-payouts-schema.db-spec.ts|backend/src/migrations/intakes-payouts-schema.db-spec.ts",
+      "kind": "file",
+      "file": "backend/src/migrations/intakes-payouts-schema.db-spec.ts",
+      "name": "backend/src/migrations/intakes-payouts-schema.db-spec.ts",
+      "added": "2026-09-10",
+      "reason": "Executed by backend/jest.db.config.js's own testRegex (.*\\.db-spec\\.ts$ — the unit config's `.*\\.spec\\.ts$` in backend/package.json does not match it, by the config's own comment). knip's Jest plugin found jest.db.config.js but applies its generic spec/test glob to it, which requires a literal dot before 'spec'/'test' (matches foo.spec.ts) and so never matches the hyphenated '-db-spec.ts' suffix — a real test file `npm run test:db` runs directly, invisible to knip's entry inference for this exact non-standard suffix."
+    },
+    {
+      "key": "file|backend/src/migrations/schema.db-spec.ts|backend/src/migrations/schema.db-spec.ts",
+      "kind": "file",
+      "file": "backend/src/migrations/schema.db-spec.ts",
+      "name": "backend/src/migrations/schema.db-spec.ts",
+      "added": "2026-09-10",
+      "reason": "Executed by backend/jest.db.config.js's own testRegex (.*\\.db-spec\\.ts$ — the unit config's `.*\\.spec\\.ts$` in backend/package.json does not match it, by the config's own comment). knip's Jest plugin found jest.db.config.js but applies its generic spec/test glob to it, which requires a literal dot before 'spec'/'test' (matches foo.spec.ts) and so never matches the hyphenated '-db-spec.ts' suffix — a real test file `npm run test:db` runs directly, invisible to knip's entry inference for this exact non-standard suffix."
+    },
+    {
+      "key": "file|backend/src/migrations/suppliers-prices-schema.db-spec.ts|backend/src/migrations/suppliers-prices-schema.db-spec.ts",
+      "kind": "file",
+      "file": "backend/src/migrations/suppliers-prices-schema.db-spec.ts",
+      "name": "backend/src/migrations/suppliers-prices-schema.db-spec.ts",
+      "added": "2026-09-10",
+      "reason": "Executed by backend/jest.db.config.js's own testRegex (.*\\.db-spec\\.ts$ — the unit config's `.*\\.spec\\.ts$` in backend/package.json does not match it, by the config's own comment). knip's Jest plugin found jest.db.config.js but applies its generic spec/test glob to it, which requires a literal dot before 'spec'/'test' (matches foo.spec.ts) and so never matches the hyphenated '-db-spec.ts' suffix — a real test file `npm run test:db` runs directly, invisible to knip's entry inference for this exact non-standard suffix."
+    },
+    {
+      "key": "file|backend/src/payouts/payout-race.db-spec.ts|backend/src/payouts/payout-race.db-spec.ts",
+      "kind": "file",
+      "file": "backend/src/payouts/payout-race.db-spec.ts",
+      "name": "backend/src/payouts/payout-race.db-spec.ts",
+      "added": "2026-09-10",
+      "reason": "Executed by backend/jest.db.config.js's own testRegex (.*\\.db-spec\\.ts$ — the unit config's `.*\\.spec\\.ts$` in backend/package.json does not match it, by the config's own comment). knip's Jest plugin found jest.db.config.js but applies its generic spec/test glob to it, which requires a literal dot before 'spec'/'test' (matches foo.spec.ts) and so never matches the hyphenated '-db-spec.ts' suffix — a real test file `npm run test:db` runs directly, invisible to knip's entry inference for this exact non-standard suffix."
+    },
+    {
+      "key": "file|backend/src/seed/dev-seed.db-spec.ts|backend/src/seed/dev-seed.db-spec.ts",
+      "kind": "file",
+      "file": "backend/src/seed/dev-seed.db-spec.ts",
+      "name": "backend/src/seed/dev-seed.db-spec.ts",
+      "added": "2026-09-10",
+      "reason": "Executed by backend/jest.db.config.js's own testRegex (.*\\.db-spec\\.ts$ — the unit config's `.*\\.spec\\.ts$` in backend/package.json does not match it, by the config's own comment). knip's Jest plugin found jest.db.config.js but applies its generic spec/test glob to it, which requires a literal dot before 'spec'/'test' (matches foo.spec.ts) and so never matches the hyphenated '-db-spec.ts' suffix — a real test file `npm run test:db` runs directly, invisible to knip's entry inference for this exact non-standard suffix."
+    },
+    {
+      "key": "file|backend/src/supplier-balance/supplier-balance-list.db-spec.ts|backend/src/supplier-balance/supplier-balance-list.db-spec.ts",
+      "kind": "file",
+      "file": "backend/src/supplier-balance/supplier-balance-list.db-spec.ts",
+      "name": "backend/src/supplier-balance/supplier-balance-list.db-spec.ts",
+      "added": "2026-09-10",
+      "reason": "Executed by backend/jest.db.config.js's own testRegex (.*\\.db-spec\\.ts$ — the unit config's `.*\\.spec\\.ts$` in backend/package.json does not match it, by the config's own comment). knip's Jest plugin found jest.db.config.js but applies its generic spec/test glob to it, which requires a literal dot before 'spec'/'test' (matches foo.spec.ts) and so never matches the hyphenated '-db-spec.ts' suffix — a real test file `npm run test:db` runs directly, invisible to knip's entry inference for this exact non-standard suffix."
+    },
+    {
+      "key": "file|backend/src/testing/catalog-pipeline.db-spec.ts|backend/src/testing/catalog-pipeline.db-spec.ts",
+      "kind": "file",
+      "file": "backend/src/testing/catalog-pipeline.db-spec.ts",
+      "name": "backend/src/testing/catalog-pipeline.db-spec.ts",
+      "added": "2026-09-10",
+      "reason": "Executed by backend/jest.db.config.js's own testRegex (.*\\.db-spec\\.ts$ — the unit config's `.*\\.spec\\.ts$` in backend/package.json does not match it, by the config's own comment). knip's Jest plugin found jest.db.config.js but applies its generic spec/test glob to it, which requires a literal dot before 'spec'/'test' (matches foo.spec.ts) and so never matches the hyphenated '-db-spec.ts' suffix — a real test file `npm run test:db` runs directly, invisible to knip's entry inference for this exact non-standard suffix."
+    },
+    {
+      "key": "file|backend/src/testing/db-harness.db-spec.ts|backend/src/testing/db-harness.db-spec.ts",
+      "kind": "file",
+      "file": "backend/src/testing/db-harness.db-spec.ts",
+      "name": "backend/src/testing/db-harness.db-spec.ts",
+      "added": "2026-09-10",
+      "reason": "Executed by backend/jest.db.config.js's own testRegex (.*\\.db-spec\\.ts$ — the unit config's `.*\\.spec\\.ts$` in backend/package.json does not match it, by the config's own comment). knip's Jest plugin found jest.db.config.js but applies its generic spec/test glob to it, which requires a literal dot before 'spec'/'test' (matches foo.spec.ts) and so never matches the hyphenated '-db-spec.ts' suffix — a real test file `npm run test:db` runs directly, invisible to knip's entry inference for this exact non-standard suffix."
+    },
+    {
+      "key": "file|backend/src/testing/db-harness.ts|backend/src/testing/db-harness.ts",
+      "kind": "file",
+      "file": "backend/src/testing/db-harness.ts",
+      "name": "backend/src/testing/db-harness.ts",
+      "added": "2026-09-10",
+      "reason": "Imported only by the *.db-spec.ts files above (e.g. testing/pipeline.db-spec.ts:22), every one of which is itself unreachable to knip for the jest.db.config.js reason recorded on those entries — app.module.ts's only mention of db-harness.ts is a prose comment, not an import. Unreachable by transitivity, not on its own; `npm run test:db` genuinely exercises it."
+    },
+    {
+      "key": "file|backend/src/testing/documents-pipeline.db-spec.ts|backend/src/testing/documents-pipeline.db-spec.ts",
+      "kind": "file",
+      "file": "backend/src/testing/documents-pipeline.db-spec.ts",
+      "name": "backend/src/testing/documents-pipeline.db-spec.ts",
+      "added": "2026-09-10",
+      "reason": "Executed by backend/jest.db.config.js's own testRegex (.*\\.db-spec\\.ts$ — the unit config's `.*\\.spec\\.ts$` in backend/package.json does not match it, by the config's own comment). knip's Jest plugin found jest.db.config.js but applies its generic spec/test glob to it, which requires a literal dot before 'spec'/'test' (matches foo.spec.ts) and so never matches the hyphenated '-db-spec.ts' suffix — a real test file `npm run test:db` runs directly, invisible to knip's entry inference for this exact non-standard suffix."
+    },
+    {
+      "key": "file|backend/src/testing/pipeline.db-spec.ts|backend/src/testing/pipeline.db-spec.ts",
+      "kind": "file",
+      "file": "backend/src/testing/pipeline.db-spec.ts",
+      "name": "backend/src/testing/pipeline.db-spec.ts",
+      "added": "2026-09-10",
+      "reason": "Executed by backend/jest.db.config.js's own testRegex (.*\\.db-spec\\.ts$ — the unit config's `.*\\.spec\\.ts$` in backend/package.json does not match it, by the config's own comment). knip's Jest plugin found jest.db.config.js but applies its generic spec/test glob to it, which requires a literal dot before 'spec'/'test' (matches foo.spec.ts) and so never matches the hyphenated '-db-spec.ts' suffix — a real test file `npm run test:db` runs directly, invisible to knip's entry inference for this exact non-standard suffix."
+    },
+    {
+      "key": "file|frontend/src/shared/lib/form-draft/index.ts|frontend/src/shared/lib/form-draft/index.ts",
+      "kind": "file",
+      "file": "frontend/src/shared/lib/form-draft/index.ts",
+      "name": "frontend/src/shared/lib/form-draft/index.ts",
+      "added": "2026-09-10",
+      "reason": "Documented in frontend/CLAUDE.md: \"shared/lib/form-draft ships as tested, ready-to-use infrastructure carried over from the boilerplate this starter was extracted from, but nothing consumes it yet — there is no form worth drafting. ... Reach for form-draft the moment a real feature needs it; don't delete it as dead code.\" The sibling files draftStorage.ts/useFormDraft.ts are each reachable through their own co-located *.test.ts(x) (knip treats a Vitest test file as an entry point), but nothing imports this barrel itself."
+    },
+    {
+      "key": "file|frontend/src/shared/lib/useIsDesktop.ts|frontend/src/shared/lib/useIsDesktop.ts",
+      "kind": "file",
+      "file": "frontend/src/shared/lib/useIsDesktop.ts",
+      "name": "frontend/src/shared/lib/useIsDesktop.ts",
+      "added": "2026-09-10",
+      "reason": "Not documented in frontend/CLAUDE.md. Grep-verified zero importers and no test file (unlike the shared/ui primitives below, nothing makes it reachable through a co-located test either). Its own doc comment (\"the app's single mobile/desktop switch (bottom sheet vs dialog...)\") names the exact responsive pattern — pairing with the also-unused vaul Drawer — that no screen has adopted yet. Genuinely unused, not an invented deliberate decision."
+    },
+    {
+      "key": "file|frontend/src/shared/ui/animated-number.tsx|frontend/src/shared/ui/animated-number.tsx",
+      "kind": "file",
+      "file": "frontend/src/shared/ui/animated-number.tsx",
+      "name": "frontend/src/shared/ui/animated-number.tsx",
+      "added": "2026-09-10",
+      "reason": "Named explicitly in frontend/CLAUDE.md's Kit hygiene note as a starter primitive \"no screen or the /ui-kit gallery imports\" — \"candidates for deletion in a dedicated cleanup, not for silent reuse.\" No test file either, grep-verified."
+    },
+    {
+      "key": "file|frontend/src/shared/ui/checkbox.tsx|frontend/src/shared/ui/checkbox.tsx",
+      "kind": "file",
+      "file": "frontend/src/shared/ui/checkbox.tsx",
+      "name": "frontend/src/shared/ui/checkbox.tsx",
+      "added": "2026-09-10",
+      "reason": "Named explicitly in frontend/CLAUDE.md's Kit hygiene list of starter primitives no screen or the /ui-kit gallery imports; screens use the native SelectField/checkbox markup instead. No test file, grep-verified."
+    },
+    {
+      "key": "file|frontend/src/shared/ui/drawer.tsx|frontend/src/shared/ui/drawer.tsx",
+      "kind": "file",
+      "file": "frontend/src/shared/ui/drawer.tsx",
+      "name": "frontend/src/shared/ui/drawer.tsx",
+      "added": "2026-09-10",
+      "reason": "Named explicitly in frontend/CLAUDE.md's Kit hygiene list (\"chip, drawer, segmented, TagPicker, ...\") as a starter primitive no screen or the /ui-kit gallery imports — the vaul dependency entry on this same baseline traces back to this exact file. No test file, grep-verified."
+    },
+    {
+      "key": "file|frontend/src/shared/ui/dropdown-menu.tsx|frontend/src/shared/ui/dropdown-menu.tsx",
+      "kind": "file",
+      "file": "frontend/src/shared/ui/dropdown-menu.tsx",
+      "name": "frontend/src/shared/ui/dropdown-menu.tsx",
+      "added": "2026-09-10",
+      "reason": "Named explicitly in frontend/CLAUDE.md's Kit hygiene list of starter primitives no screen or the /ui-kit gallery imports. No test file, grep-verified."
+    },
+    {
+      "key": "file|frontend/src/shared/ui/filter-section.tsx|frontend/src/shared/ui/filter-section.tsx",
+      "kind": "file",
+      "file": "frontend/src/shared/ui/filter-section.tsx",
+      "name": "frontend/src/shared/ui/filter-section.tsx",
+      "added": "2026-09-10",
+      "reason": "Named explicitly in frontend/CLAUDE.md's Kit hygiene list of starter primitives no screen or the /ui-kit gallery imports. No test file, grep-verified — distinct from its sibling filter-button.tsx, which IS reachable through its own co-located test."
+    },
+    {
+      "key": "file|frontend/src/shared/ui/progress.tsx|frontend/src/shared/ui/progress.tsx",
+      "kind": "file",
+      "file": "frontend/src/shared/ui/progress.tsx",
+      "name": "frontend/src/shared/ui/progress.tsx",
+      "added": "2026-09-10",
+      "reason": "Named explicitly in frontend/CLAUDE.md's Kit hygiene list of starter primitives no screen or the /ui-kit gallery imports. No test file, grep-verified."
+    },
+    {
+      "key": "file|frontend/src/shared/ui/radio-group.tsx|frontend/src/shared/ui/radio-group.tsx",
+      "kind": "file",
+      "file": "frontend/src/shared/ui/radio-group.tsx",
+      "name": "frontend/src/shared/ui/radio-group.tsx",
+      "added": "2026-09-10",
+      "reason": "Named explicitly in frontend/CLAUDE.md's Kit hygiene list of starter primitives no screen or the /ui-kit gallery imports. No test file, grep-verified."
+    },
+    {
+      "key": "file|frontend/src/shared/ui/select.tsx|frontend/src/shared/ui/select.tsx",
+      "kind": "file",
+      "file": "frontend/src/shared/ui/select.tsx",
+      "name": "frontend/src/shared/ui/select.tsx",
+      "added": "2026-09-10",
+      "reason": "Named explicitly in frontend/CLAUDE.md's Kit hygiene list — \"select (Radix — screens use the native SelectField)\" states outright what replaced it. No test file, grep-verified."
+    },
+    {
+      "key": "type|backend/src/intakes/intake-lines.ts|BuiltLine",
+      "kind": "type",
+      "file": "backend/src/intakes/intake-lines.ts",
+      "name": "BuiltLine",
+      "added": "2026-09-10",
+      "reason": "Used only within its own file (intake-lines.ts builds and returns it); intake.mapper.ts:125 only mentions \"BuiltLine\" in a prose comment explaining why it maps field-by-field instead of spreading it, never an import. Grep-verified no other backend/src file references it."
+    },
+    {
+      "key": "type|backend/src/intakes/intake.mapper.ts|IntakeItemResponse",
+      "kind": "type",
+      "file": "backend/src/intakes/intake.mapper.ts",
+      "name": "IntakeItemResponse",
+      "added": "2026-09-10",
+      "reason": "Used only inside intake.mapper.ts itself (IntakeDetailResponse.items and toIntakeItemResponse's return type); grep-verified zero imports from any other backend/src file. External consumers only need the aggregate IntakeDetailResponse, not this item-level shape directly."
+    },
+    {
+      "key": "type|backend/src/intakes/intake.mapper.ts|IntakeItemTareResponse",
+      "kind": "type",
+      "file": "backend/src/intakes/intake.mapper.ts",
+      "name": "IntakeItemTareResponse",
+      "added": "2026-09-10",
+      "reason": "Used only inside intake.mapper.ts itself, as a field of the also-internal-only IntakeItemResponse; grep-verified zero imports from any other backend/src file."
+    },
+    {
+      "key": "type|backend/src/intakes/intake.mapper.ts|PreviewIntakeItemResponse",
+      "kind": "type",
+      "file": "backend/src/intakes/intake.mapper.ts",
+      "name": "PreviewIntakeItemResponse",
+      "added": "2026-09-10",
+      "reason": "Defined as `Omit<IntakeItemResponse, 'id'>` and used only inside this file's own preview-response composition; grep-verified zero imports from any other backend/src file."
+    },
+    {
+      "key": "type|backend/src/seed/dev-seed.data.ts|SeedIntakeLine",
+      "kind": "type",
+      "file": "backend/src/seed/dev-seed.data.ts",
+      "name": "SeedIntakeLine",
+      "added": "2026-09-10",
+      "reason": "Used only within dev-seed.data.ts itself, as the element type of a seed fixture's `lines` array; grep-verified zero imports from any other backend/src file — the dev-seed CLI consumes the composed fixture objects, never this element type by name."
+    },
+    {
+      "key": "type|frontend/src/entities/intake/index.ts|IntakeItem",
+      "kind": "type",
+      "file": "frontend/src/entities/intake/index.ts",
+      "name": "IntakeItem",
+      "added": "2026-09-10",
+      "reason": "Grep-verified: no file outside entities/intake imports IntakeItem by name (from this barrel or from the origin model/intake.ts). External consumers work with the aggregate Intake/IntakeDetail shapes."
+    },
+    {
+      "key": "type|frontend/src/entities/intake/index.ts|IntakeItemTare",
+      "kind": "type",
+      "file": "frontend/src/entities/intake/index.ts",
+      "name": "IntakeItemTare",
+      "added": "2026-09-10",
+      "reason": "Same as this barrel's IntakeItem entry: grep-verified zero external importers of IntakeItemTare by name, from this barrel or from the origin model file."
+    },
+    {
+      "key": "type|frontend/src/entities/intake/model/intake.ts|IntakeItem",
+      "kind": "type",
+      "file": "frontend/src/entities/intake/model/intake.ts",
+      "name": "IntakeItem",
+      "added": "2026-09-10",
+      "reason": "Used only within model/intake.ts itself (as IntakeDetail.items' element type) and re-exported by this slice's own barrel (also unused there, see the entities/intake/index.ts entry) — grep-verified zero external importers."
+    },
+    {
+      "key": "type|frontend/src/entities/intake/model/intake.ts|IntakeItemTare",
+      "kind": "type",
+      "file": "frontend/src/entities/intake/model/intake.ts",
+      "name": "IntakeItemTare",
+      "added": "2026-09-10",
+      "reason": "Used only within model/intake.ts itself (as IntakeItem.tare's element type) and re-exported by this slice's own barrel (also unused there) — grep-verified zero external importers."
+    },
+    {
+      "key": "type|frontend/src/entities/payout/index.ts|DocumentFilter",
+      "kind": "type",
+      "file": "frontend/src/entities/payout/index.ts",
+      "name": "DocumentFilter",
+      "added": "2026-09-10",
+      "reason": "entities/intake/model/intake.ts independently declares its OWN identical-shape DocumentFilter — consumers that need it (e.g. JournalPage.tsx) import it from `@/entities/intake`, never from this payout barrel, grep-verified. A real duplication between the two entities, left as-is since frontend/src is out of scope for this task."
+    },
+    {
+      "key": "type|frontend/src/entities/payout/index.ts|Paginated",
+      "kind": "type",
+      "file": "frontend/src/entities/payout/index.ts",
+      "name": "Paginated",
+      "added": "2026-09-10",
+      "reason": "This repo independently redeclares an identical `Paginated<T>` in six different model files (pages/users, pages/catalog, pages/points, entities/payout, entities/supplier, entities/intake) rather than sharing one generic. Every real external consumer of a paginated payout/intake list imports Paginated from `@/entities/intake` instead of from this barrel, grep-verified — this copy is used only within payout's own api/usePayouts.ts, not through this re-export."
+    },
+    {
+      "key": "type|frontend/src/entities/shift/index.ts|ShiftStatus",
+      "kind": "type",
+      "file": "frontend/src/entities/shift/index.ts",
+      "name": "ShiftStatus",
+      "added": "2026-09-10",
+      "reason": "Grep-verified: ShiftStatus is used only within its own origin file, model/shift.ts (typing Shift.status), and re-exported here — no external file imports the union type by name; consumers compare against the literal strings directly."
+    },
+    {
+      "key": "type|frontend/src/entities/shift/model/shift.ts|ShiftStatus",
+      "kind": "type",
+      "file": "frontend/src/entities/shift/model/shift.ts",
+      "name": "ShiftStatus",
+      "added": "2026-09-10",
+      "reason": "Used only within this file itself to type Shift.status; re-exported by this slice's own barrel (also unused there, see the entities/shift/index.ts entry) — grep-verified zero external importers of the type by name."
+    },
+    {
+      "key": "type|frontend/src/entities/supplier/index.ts|Paginated",
+      "kind": "type",
+      "file": "frontend/src/entities/supplier/index.ts",
+      "name": "Paginated",
+      "added": "2026-09-10",
+      "reason": "Same six-way Paginated<T> duplication noted on entities/payout/index.ts's entry: this slice's own copy is used internally by api/useSuppliers.ts/useSupplierBalances.ts, but no external consumer imports Paginated from this barrel, grep-verified — @/entities/intake's copy is the one real cross-slice consumers actually reach."
+    },
+    {
+      "key": "type|frontend/src/entities/user/api/useUpdateMeMutation.ts|UpdateMeInput",
+      "kind": "type",
+      "file": "frontend/src/entities/user/api/useUpdateMeMutation.ts",
+      "name": "UpdateMeInput",
+      "added": "2026-09-10",
+      "reason": "The input type of the pattern-reference mutation documented in frontend/CLAUDE.md's \"Server state\" section (see this file's useUpdateMeMutation entry) — has had no caller since profile identity fields became read-only, kept intentionally, not dead code to delete."
+    },
+    {
+      "key": "type|frontend/src/entities/user/index.ts|UpdateMeInput",
+      "kind": "type",
+      "file": "frontend/src/entities/user/index.ts",
+      "name": "UpdateMeInput",
+      "added": "2026-09-10",
+      "reason": "The barrel re-export of the same pattern-reference mutation's input type documented in frontend/CLAUDE.md's \"Server state\" section — kept intentionally with no caller."
+    },
+    {
+      "key": "type|frontend/src/features/auth/index.ts|Credentials",
+      "kind": "type",
+      "file": "frontend/src/features/auth/index.ts",
+      "name": "Credentials",
+      "added": "2026-09-10",
+      "reason": "Re-exported alongside the also-partially-unused `login`/`logout` line on this same barrel — grep-verified, no call site annotates a variable with Credentials explicitly; LoginForm.tsx's useMutation infers the shape from login()'s own parameter type instead."
+    },
+    {
+      "key": "type|frontend/src/features/auth/index.ts|TokenResponse",
+      "kind": "type",
+      "file": "frontend/src/features/auth/index.ts",
+      "name": "TokenResponse",
+      "added": "2026-09-10",
+      "reason": "Same as Credentials on this barrel: grep-verified no call site imports TokenResponse by name; login()'s return type is consumed through inference (useSession(token) etc.), never an explicit annotation."
+    },
+    {
+      "key": "type|frontend/src/features/settle-payout/index.ts|CreatePayoutInput",
+      "kind": "type",
+      "file": "frontend/src/features/settle-payout/index.ts",
+      "name": "CreatePayoutInput",
+      "added": "2026-09-10",
+      "reason": "The input type of useCreatePayoutMutation, itself re-exported from this same barrel but reached only via a direct import from ../api/useCreatePayout (see this barrel's useCreatePayoutMutation entry) — grep-verified no consumer imports CreatePayoutInput by name from anywhere."
+    },
+    {
+      "key": "type|frontend/src/features/void-document/index.ts|VoidDocumentInput",
+      "kind": "type",
+      "file": "frontend/src/features/void-document/index.ts",
+      "name": "VoidDocumentInput",
+      "added": "2026-09-10",
+      "reason": "The input type of useVoidDocumentMutation, itself re-exported from this same barrel but reached only via a direct import from ../api/useVoidDocument (see this barrel's useVoidDocumentMutation entry) — grep-verified no consumer imports VoidDocumentInput by name from anywhere."
+    },
+    {
+      "key": "type|frontend/src/pages/points/model/collectionPoint.ts|PointKind",
+      "kind": "type",
+      "file": "frontend/src/pages/points/model/collectionPoint.ts",
+      "name": "PointKind",
+      "added": "2026-09-10",
+      "reason": "Used only within this file itself, to type several CollectionPoint-related interfaces' `kind` field; grep-verified zero imports from any other frontend/src file."
+    },
+    {
+      "key": "type|frontend/src/pages/reception/model/intakeForm.ts|PreviewIntakeItemBody",
+      "kind": "type",
+      "file": "frontend/src/pages/reception/model/intakeForm.ts",
+      "name": "PreviewIntakeItemBody",
+      "added": "2026-09-10",
+      "reason": "Used only within this file itself, as the element type of a preview request body's `items` array; grep-verified zero imports from any other frontend/src file."
+    },
+    {
+      "key": "type|frontend/src/pages/users/model/user.ts|UserRole",
+      "kind": "type",
+      "file": "frontend/src/pages/users/model/user.ts",
+      "name": "UserRole",
+      "added": "2026-09-10",
+      "reason": "A SEPARATE, independently declared UserRole with the identical two literal values as entities/user/model/user.ts's own UserRole (the one AppLayout.tsx and RequireRole.tsx actually import from `@/entities/user` — not flagged). This page-local copy is used only inside pages/users' own model file; a real duplication, left as-is since frontend/src is out of scope for this task."
+    },
+    {
+      "key": "type|frontend/src/shared/lib/theme/index.ts|ThemePreference",
+      "kind": "type",
+      "file": "frontend/src/shared/lib/theme/index.ts",
+      "name": "ThemePreference",
+      "added": "2026-09-10",
+      "reason": "useThemePreference (re-exported on the same line) IS genuinely used (theme-toggle.tsx and its test), but every call site relies on its inferred return type rather than importing ThemePreference explicitly — grep-verified zero named imports of the type anywhere."
+    },
+    {
+      "key": "type|frontend/src/shared/lib/url-state/index.ts|UrlPatchValue",
+      "kind": "type",
+      "file": "frontend/src/shared/lib/url-state/index.ts",
+      "name": "UrlPatchValue",
+      "added": "2026-09-10",
+      "reason": "The type parameter of this barrel's actively-used useUrlPatch — grep-verified no call site imports UrlPatchValue explicitly; every consumer lets the hook's own generic inference supply it."
+    },
+    {
+      "key": "unlisted|backend/src/auth/auth.module.ts|ms",
+      "kind": "unlisted",
+      "file": "backend/src/auth/auth.module.ts",
+      "name": "ms",
+      "added": "2026-09-10",
+      "reason": "`import type { StringValue } from 'ms'` is a genuine, real dependency — but only TRANSITIVE, TWO HOPS deep: backend's own direct dependency `@nestjs/jwt` depends on `jsonwebtoken` (confirmed: node_modules/@nestjs/jwt/package.json lists jsonwebtoken, not ms, directly), and `jsonwebtoken` in turn depends on `ms` (confirmed: node_modules/jsonwebtoken/package.json lists `ms: '^2.1.1'`) for its own expiresIn parsing. Hoisted to the root node_modules by npm workspaces, and never declared directly in backend/package.json. A real, legitimate \"add it as an explicit devDependency\" fix, left unaddressed because backend/src is out of scope for this task."
+    },
+    {
+      "key": "unlisted|backend/src/common/filters/all-exceptions.filter.ts|express",
+      "kind": "unlisted",
+      "file": "backend/src/common/filters/all-exceptions.filter.ts",
+      "name": "express",
+      "added": "2026-09-10",
+      "reason": "`import type { Request, Response } from 'express'` is likewise real but only TRANSITIVE (pulled in via @nestjs/platform-express), hoisted to the root node_modules, never declared directly in backend/package.json — same class of finding, and same out-of-scope reasoning, as the `ms` entry above."
+    },
+    {
+      "key": "unlisted|scripts/verify/registry.mjs|@playwright/test",
+      "kind": "unlisted",
+      "file": "scripts/verify/registry.mjs",
+      "name": "@playwright/test",
+      "added": "2026-09-10",
+      "reason": "Already documented at its own use site: registry.mjs's playwright-browser precondition dynamically imports @playwright/test inside a try/catch behind a `// @ts-expect-error` comment that states outright \"It is not yet a dependency of this repo at all — that lands with the Playwright e2e suite.\" Found here because knip's monorepo mode also scans the implicit root (\".\") workspace by default even though this repo's knip.json only configures the backend/frontend workspaces explicitly."
+    }
+  ]
+}

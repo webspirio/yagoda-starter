@@ -649,6 +649,70 @@ export const CHECKS = [
       'exclusion before this row would stop reporting it, since nothing here recognises "this ' +
       'is test infrastructure" except that one hard-coded path.',
   },
+  {
+    id: 'deadcode',
+    tier: 'fast',
+    cmd: 'npm run deadcode',
+    // No `after`: unlike ratchet:money/ratchet:persist/seam/migrations (a syntax-only
+    // ts.createSourceFile parse, unaffected by type errors by construction), knip DOES run
+    // real type-aware analysis internally — so this needed checking empirically, not just
+    // reasoning from the tool's own architecture. Verified 2026-09-10 the same way
+    // `migrations` documents: with a deliberate type error planted in backend/src/app.module.ts
+    // (confirmed to fail `tsc -p backend/tsconfig.json --noEmit` with one TS2322), `knip
+    // --reporter json`'s full output was BYTE-FOR-BYTE IDENTICAL to the clean-tree run —
+    // same 120 findings, same everything. A type error neither hides nor fakes a finding
+    // here, so an `after: ['typecheck']` would order two rows that do not actually depend
+    // on each other.
+    proves:
+      'Every knip finding across this npm-workspaces monorepo — run as `./node_modules/.bin/knip --reporter ' +
+      'json` from the repo root, covering both the backend and frontend workspaces knip.json declares — is ' +
+      'either accounted for by an exact-key entry in scripts/verify/baselines/dead-exports.json or fails this ' +
+      'exact command, in BOTH directions: a new finding is red, and a baseline entry knip no longer reports is ' +
+      'ALSO red, so the stale entry must be deleted rather than left standing (this is the layer\'s second true ' +
+      'ratchet, same discipline as ratchet:lint-exempt). Three things a bare `knip` run cannot enforce are ' +
+      'closed alongside it, each verified against this exact installed knip (6.35.1): (1) knip.json is held to ' +
+      'an ALLOW-LIST of exactly `$schema`/`workspaces` at the top level and `entry`/`project` inside each ' +
+      'workspace — checked directly against node_modules/knip/schema.json, which lists eighteen top-level and ' +
+      'eleven per-workspace keys beyond those (ignore, ignoreDependencies, ignoreExportsUsedInFile, ' +
+      'ignoreBinaries, ignoreWorkspaces among them) — plus a second knip config file (knip.jsonc/.ts/.js/.mjs/' +
+      '.cjs/.knip.json(c), at the root or inside backend/frontend) or a `"knip"` section in any of the three ' +
+      'package.json files knip reads it from; ANY of those fails this command by naming the offending key or ' +
+      'file, before knip is even invoked. (2) knip.json\'s workspaces.*.entry/project glob values are SHA-256 ' +
+      'fingerprinted into the baseline (first 16 hex chars) — changing a glob, including narrowing `project` ' +
+      'or adding a `!` negation, without a matching baseline update fails this command even when every finding ' +
+      'individually still matches, because a narrower glob hides findings with no banned key in sight. (3) a ' +
+      '`@public`/`@internal`/`@alias`/`@beta`/`@alpha` JSDoc tag on an export is scanned for directly (a line-' +
+      'oriented text scan over backend/src and frontend/src, the same idiom lint-exempt.mjs and money-' +
+      'rounding.mjs already use) and fails this command by name — verified empirically that the identical ' +
+      'unused, reachable export produces a finding untagged and NONE at all with `/** @public */` above it, so ' +
+      "trusting knip's own JSON output alone would have missed this exact suppression vector. AS A DATED " +
+      'SNAPSHOT, MEASURED 2026-09-10: the baseline holds all 120 findings knip.json\'s two workspaces produce ' +
+      'today (1 dependency, 5 devDependencies, 55 exports, 31 files, 25 types, 3 unlisted) — this repo\'s dead-' +
+      'code debt on that date, read and reasoned individually rather than bulk-recorded, with 14 of the 120 ' +
+      "tied to decisions frontend/CLAUDE.md names explicitly (shared/lib/form-draft's file finding; the Kit-" +
+      'hygiene note\'s eight named starter-UI-primitive files plus the vaul dependency that traces to one of ' +
+      "them; entities/user's useUpdateMeMutation pattern-reference hook and its input type, at both origin and " +
+      'barrel). That count moves the instant anyone adds, fixes, or clears a finding anywhere knip.json\'s ' +
+      'globs reach, and this row does not track or re-check its own prose.',
+    blindSpot:
+      "knip infers reachability from its own static analysis of the module graph, and CAN BE WRONG IN BOTH " +
+      'DIRECTIONS — particularly around dynamic imports (a bare `require(\'pino-pretty\')` string handed to ' +
+      "a third-party transport, baselined here as unlisted, is invisible to it) and framework-invoked code " +
+      "(a NestJS provider wired only through a decorator and DI, or a *.db-spec.ts file this task's own " +
+      "investigation found `backend/jest.db.config.js` runs directly, that knip's Jest plugin cannot see " +
+      "because its default spec/test glob requires a literal dot before 'spec'/'test' and never matches a " +
+      "hyphenated '-db-spec.ts' suffix — 13 of this baseline's 31 file findings are exactly that one glob " +
+      "mismatch, and a further 8 are TypeORM migrations the runner discovers via a directory glob at startup " +
+      "rather than a static import, the same class of framework-invoked blind spot in a different tool; " +
+      "neither 13 nor 8 is real dead code). A baseline entry means the finding is KNOWN and explained, never that " +
+      "the code it names is ACCEPTABLE to keep as-is — recording backend/src's transitive, undeclared `ms`/" +
+      "`express` imports, or frontend/src's six independently-duplicated `Paginated<T>` interfaces, documents " +
+      "them for a future fix, it does not endorse them, and this task deliberately left every one of them " +
+      "unfixed since backend/src and frontend/src are out of scope for it. And this row says NOTHING about " +
+      "whether the LIVE code — the 99.6% of this codebase knip does NOT flag — is any good: it is silent on " +
+      "correctness, duplication elsewhere, test coverage, or design, exactly as silent as `lint` is on whether " +
+      "a passing type is the RIGHT type.",
+  },
 ]
 
 /** @type {Record<Tier, number>} */
