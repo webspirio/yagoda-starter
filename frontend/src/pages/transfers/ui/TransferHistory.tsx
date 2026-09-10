@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Ban } from 'lucide-react';
 import { DataTable, type Column } from '@/shared/ui/data-table';
@@ -5,6 +6,7 @@ import { Button } from '@/shared/ui/button';
 import { EmptyState } from '@/shared/ui/empty-state';
 import { SectionCard } from '@/shared/ui/section-card';
 import { formatUah } from '@/shared/lib/money';
+import { formatDateTime } from '@/shared/lib/date';
 import type { Transfer } from '@/entities/transfer';
 import { TransferStatusBadge } from './TransferStatusBadge';
 
@@ -35,68 +37,65 @@ export function TransferHistory({
   const { t, i18n } = useTranslation();
   const locale = i18n.language;
 
-  const columns: Column<Transfer>[] = [
-    {
-      id: 'sent',
-      header: t('transfers.history.col.sent'),
-      className: 'font-mono text-xs text-muted-foreground',
-      // `sent_at` is a full timestamp, not a business-date string — it goes
-      // through plain `Date`/`Intl`, not `shared/lib/date`'s `formatShortDate`
-      // (which expects `YYYY-MM-DD` and throws on anything else).
-      cell: (row) =>
-        `${new Date(row.sent_at).toLocaleDateString(locale, {
-          day: '2-digit',
-          month: '2-digit',
-        })} · ${new Date(row.sent_at).toLocaleTimeString(locale, {
-          hour: '2-digit',
-          minute: '2-digit',
-        })}`,
-    },
-    {
-      id: 'point',
-      header: t('transfers.history.col.point'),
-      cell: (row) => pointName(row.collection_point_id),
-    },
-    {
-      id: 'cash',
-      header: t('transfers.history.col.cash'),
-      align: 'right',
-      className: 'font-mono tabular-nums',
-      cell: (row) => formatUah(row.cash, locale),
-    },
-    {
-      id: 'crates',
-      header: t('transfers.history.col.crates'),
-      align: 'right',
-      className: 'font-mono tabular-nums',
-      cell: (row) => row.crates,
-    },
-    {
-      id: 'carrier',
-      header: t('transfers.history.col.carrier'),
-      hideBelow: 'sm',
-      cell: (row) => row.carrier,
-    },
-    {
-      id: 'status',
-      header: t('transfers.history.col.status'),
-      // `row` is the FULL `Transfer` here (unlike `PointDebtTable`'s thin
-      // `latest_transfer`), so this is the one place that can actually tell
-      // a settled dispute from an open one (fix round 1, finding 4).
-      cell: (row) => <TransferStatusBadge status={row.status} resolvedAt={row.resolved_at} />,
-    },
-    {
-      id: 'action',
-      header: <span className="sr-only">{t('transfers.history.col.action')}</span>,
-      align: 'right',
-      cell: (row) => (
-        <Button size="sm" variant="ghost" onClick={() => onVoid(row)}>
-          <Ban className="size-3.5" />
-          {t('transfers.history.void')}
-        </Button>
-      ),
-    },
-  ];
+  const columns: Column<Transfer>[] = useMemo(
+    () => [
+      {
+        id: 'sent',
+        header: t('transfers.history.col.sent'),
+        className: 'font-mono text-xs text-muted-foreground',
+        // `sent_at` is a full timestamp, not a business-date string —
+        // `formatDateTime` goes through plain `Date`/`Intl` in the LOCAL time
+        // zone, not `shared/lib/date`'s business-date helpers (which expect
+        // `YYYY-MM-DD` and force UTC). One parse of `sent_at` per cell.
+        cell: (row) => formatDateTime(row.sent_at, locale),
+      },
+      {
+        id: 'point',
+        header: t('transfers.history.col.point'),
+        cell: (row) => pointName(row.collection_point_id),
+      },
+      {
+        id: 'cash',
+        header: t('transfers.history.col.cash'),
+        align: 'right',
+        className: 'font-mono tabular-nums',
+        cell: (row) => formatUah(row.cash, locale),
+      },
+      {
+        id: 'crates',
+        header: t('transfers.history.col.crates'),
+        align: 'right',
+        className: 'font-mono tabular-nums',
+        cell: (row) => row.crates,
+      },
+      {
+        id: 'carrier',
+        header: t('transfers.history.col.carrier'),
+        hideBelow: 'sm',
+        cell: (row) => row.carrier,
+      },
+      {
+        id: 'status',
+        header: t('transfers.history.col.status'),
+        // `row` is the FULL `Transfer` here (unlike `PointDebtTable`'s thin
+        // `latest_transfer`), so this is the one place that can actually tell
+        // a settled dispute from an open one (fix round 1, finding 4).
+        cell: (row) => <TransferStatusBadge status={row.status} resolvedAt={row.resolved_at} />,
+      },
+      {
+        id: 'action',
+        header: <span className="sr-only">{t('transfers.history.col.action')}</span>,
+        align: 'right',
+        cell: (row) => (
+          <Button size="sm" variant="ghost" onClick={() => onVoid(row)}>
+            <Ban className="size-3.5" />
+            {t('transfers.history.void')}
+          </Button>
+        ),
+      },
+    ],
+    [t, locale, pointName, onVoid],
+  );
 
   return (
     <SectionCard title={t('transfers.history.title')}>

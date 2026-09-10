@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeAll, afterAll } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { expectNoAxeViolations } from '../../../test-axe';
@@ -94,6 +94,30 @@ describe('TransferHistory', () => {
 
     await user.click(screen.getByRole('button', { name: 'Void' }));
     expect(onVoid).toHaveBeenCalledWith(t);
+  });
+
+  describe('the «sent» column — via shared/lib/date, pinned to TZ=UTC for a fixed literal', () => {
+    const originalTz = process.env.TZ;
+    beforeAll(() => {
+      process.env.TZ = 'UTC';
+    });
+    afterAll(() => {
+      process.env.TZ = originalTz;
+    });
+
+    it('shows short day.month then the time, exactly like formatDateTime', () => {
+      render(
+        <TransferHistory
+          transfers={[transfer({ sent_at: '2026-09-10T08:05:00.000Z' })]}
+          pointName={() => 'Shypynky'}
+          onVoid={noop}
+        />,
+      );
+
+      // Test locale is 'en' (test-setup.ts) — month/day order and 12-hour
+      // clock, not the uk `10.09 · 08:05` shown in iso.test.ts.
+      expect(screen.getByText('09/10 · 08:05 AM')).toBeInTheDocument();
+    });
   });
 
   it('has no axe violations', async () => {
