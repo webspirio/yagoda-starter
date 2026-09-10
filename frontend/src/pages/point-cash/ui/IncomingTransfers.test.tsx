@@ -55,7 +55,11 @@ const transfer = (over: Partial<Transfer> = {}): Transfer => ({
   ...over,
 });
 
-const page = (data: Transfer[]) => ({ data: { data, total: data.length, page: 1, limit: 100 } });
+const page = (data: Transfer[]) => ({
+  data: { data, total: data.length, page: 1, limit: 100 },
+  isPending: false,
+  isError: false,
+});
 
 beforeEach(() => {
   transfersMock.mockReset().mockReturnValue(page([]));
@@ -65,6 +69,24 @@ beforeEach(() => {
 describe('IncomingTransfers', () => {
   it('renders nothing when there is nothing in transit', () => {
     const { container } = render(<IncomingTransfers pointId="p1" canAct />);
+    expect(container).toBeEmptyDOMElement();
+  });
+
+  it('says the read failed rather than passing a failure off as «nothing in transit»', () => {
+    transfersMock.mockReturnValue({ data: undefined, isPending: false, isError: true });
+
+    render(<IncomingTransfers pointId="p1" canAct />);
+
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'Could not load the transfers on their way',
+    );
+  });
+
+  it('renders nothing while the read is still in flight', () => {
+    transfersMock.mockReturnValue({ data: undefined, isPending: true, isError: false });
+
+    const { container } = render(<IncomingTransfers pointId="p1" canAct />);
+
     expect(container).toBeEmptyDOMElement();
   });
 

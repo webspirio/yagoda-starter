@@ -29,6 +29,19 @@ export function IncomingTransfers({
   const accept = useAcceptTransferMutation();
   const [disputeTarget, setDisputeTarget] = useState<Transfer | null>(null);
 
+  // A FAILED READ IS NOT «NOTHING IN TRANSIT». Both states used to render
+  // the same `null`, so a point whose read failed went on working as if no
+  // money were on its way to it — and would neither accept nor dispute a
+  // transfer that is already sent (§7.9 step 4). Pending still renders
+  // nothing: absence is what a not-yet-answered read honestly looks like.
+  if (transfers.isError) {
+    return (
+      <p role="alert" className="mb-5 text-sm text-destructive">
+        {t('pointCash.incoming.loadFailed')}
+      </p>
+    );
+  }
+
   const pending = transfers.data?.data ?? [];
   if (pending.length === 0) return null;
 

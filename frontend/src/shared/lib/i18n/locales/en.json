@@ -547,6 +547,9 @@
       "label": "Should be in the drawer",
       "caption": "Berries only — crates aren't counted yet."
     },
+    "incoming": {
+      "loadFailed": "Could not load the transfers on their way"
+    },
     "countHistory": {
       "title": "Cash counts",
       "empty": "No cash counts recorded for this point yet.",
