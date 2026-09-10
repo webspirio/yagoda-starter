@@ -56,6 +56,23 @@ jobs:
   #
   # See docs/superpowers/2026-09-05-foundation-slice-follow-ups.md for the required-
   # status-check rename this deletion still owes repository settings.
+  #
+  # TWO CACHES, TWO DIFFERENT VERDICTS — worth reading side by side so the next person
+  # does not wonder why one survived this rebuild and the other did not:
+  #
+  #   - The Docker `type=gha` buildx cache (old `docker` job) was given up on purpose.
+  #     Keeping it meant CI running `docker/build-push-action` while a laptop runs the
+  #     registry row's plain `docker build` — two different commands building the same
+  #     images, which is exactly the "green there / green here" divergence this whole
+  #     layer exists to remove. The cost is real and accepted: an unchanged Dockerfile
+  #     now rebuilds from scratch on every PR (see `changes` above).
+  #
+  #   - The Turborepo `.turbo` cache (old `checks` job, restored below) is kept, because
+  #     it creates NO such divergence. `npm run lint`/`typecheck`/`test`/`build` are the
+  #     identical commands whether `.turbo` is warm or cold — the cache only changes how
+  #     long they take, never what runs. The reasoning that justified dropping the
+  #     Docker cache does not apply here, so there is nothing to give up.
+
   verify:
     runs-on: ubuntu-latest
     # A full-tier, --no-skip run exercises every row in scripts/verify/registry.mjs,
@@ -125,6 +142,27 @@ jobs:
           cache: npm
 
       - run: npm ci
+
+      # Persist Turborepo's local task cache across CI runs — restored unchanged from
+      # the old `checks` job (see the two-caches note above for why this one, unlike
+      # the Docker buildx cache, survives). `${{ github.job }}` is now `verify` rather
+      # than `checks`, which simply starts a fresh cache lineage under the new job
+      # name; nothing else about the key needs to change.
+      #
+      # Each commit gets an immutable cache key. On an exact-key miss, restore-keys
+      # lets Actions restore the newest cache visible to this ref (including an
+      # eligible cache from main), then Turborepo independently validates every task
+      # by its input hash before replaying it.
+      #
+      # PR-created caches remain scoped by GitHub's cache visibility rules; main acts
+      # as the canonical shared seed for new PRs.
+      - name: Cache turbo
+        uses: actions/cache@v6
+        with:
+          path: .turbo
+          key: turbo-${{ github.job }}-${{ runner.os }}-${{ github.sha }}
+          restore-keys: |
+            turbo-${{ github.job }}-${{ runner.os }}-
 
       # Load-bearing, not a convenience. The `smoke` row declares `needs:
       # ['playwright-browser', 'docker']`; under `--no-skip` a missing precondition
