@@ -88,7 +88,7 @@ export function DisputeTransferDialog({
           <DialogDescription>
             {t('transfer.dispute.sent', {
               uah: formatUah(transfer.cash, i18n.resolvedLanguage),
-              crates: transfer.crates,
+              count: transfer.crates,
             })}
           </DialogDescription>
         </DialogHeader>

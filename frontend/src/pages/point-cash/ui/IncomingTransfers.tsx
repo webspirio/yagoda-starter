@@ -66,7 +66,7 @@ export function IncomingTransfers({
             <div className="font-medium">
               {t('transfer.incoming.inTransit', {
                 uah: formatUah(transfer.cash, i18n.resolvedLanguage),
-                crates: transfer.crates,
+                count: transfer.crates,
               })}
             </div>
             <div className="mt-0.5 text-xs text-muted-foreground">

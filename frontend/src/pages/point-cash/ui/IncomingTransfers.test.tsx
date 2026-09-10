@@ -105,6 +105,20 @@ describe('IncomingTransfers', () => {
     await waitFor(() => expect(acceptMock).toHaveBeenCalledWith('t1'));
   });
 
+  it('shows «1 crate», not «1 crates», when exactly one crate is on the way', () => {
+    transfersMock.mockReturnValue(page([transfer({ crates: 1 })]));
+    render(<IncomingTransfers pointId="p1" canAct />);
+
+    expect(screen.getByText(/1 crate$/)).toBeInTheDocument();
+  });
+
+  it('shows «5 crates» when several are on the way', () => {
+    transfersMock.mockReturnValue(page([transfer({ crates: 5 })]));
+    render(<IncomingTransfers pointId="p1" canAct />);
+
+    expect(screen.getByText(/5 crates$/)).toBeInTheDocument();
+  });
+
   it('opens the dispute dialog for the clicked transfer', async () => {
     const user = userEvent.setup();
     transfersMock.mockReturnValue(page([transfer({ id: 't9' })]));

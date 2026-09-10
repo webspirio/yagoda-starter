@@ -897,7 +897,10 @@
     },
     "dispute": {
       "title": "Не сходиться",
-      "sent": "Відправлено: {{uah}}, {{crates}} ящ.",
+      "sent_one": "Відправлено: {{uah}}, {{count}} ящ.",
+      "sent_few": "Відправлено: {{uah}}, {{count}} ящ.",
+      "sent_many": "Відправлено: {{uah}}, {{count}} ящ.",
+      "sent_other": "Відправлено: {{uah}}, {{count}} ящ.",
       "reportedCash": "Скільки нарахували готівкою",
       "reportedCrates": "Скільки ящиків отримали",
       "note": "Що не сходиться",
@@ -913,7 +916,10 @@
       "toast": "Спір врегульовано"
     },
     "incoming": {
-      "inTransit": "У дорозі: {{uah}} і {{crates}} ящ.",
+      "inTransit_one": "У дорозі: {{uah}} і {{count}} ящ.",
+      "inTransit_few": "У дорозі: {{uah}} і {{count}} ящ.",
+      "inTransit_many": "У дорозі: {{uah}} і {{count}} ящ.",
+      "inTransit_other": "У дорозі: {{uah}} і {{count}} ящ.",
       "meta": "{{carrier}} · відправлено {{date}}",
       "pointAccepts": "приймає точка",
       "accept": "Прийняв",

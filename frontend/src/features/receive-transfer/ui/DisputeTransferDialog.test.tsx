@@ -41,12 +41,12 @@ const SUBMIT = /submit|Надіслати/i;
 let mock: MockAdapter;
 afterEach(() => mock?.restore());
 
-function setup(onClose = () => {}) {
+function setup(onClose = () => {}, transfer: Transfer = sent) {
   mock = new MockAdapter(httpClient);
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(
     <QueryClientProvider client={queryClient}>
-      <DisputeTransferDialog transfer={sent} open onClose={onClose} />
+      <DisputeTransferDialog transfer={transfer} open onClose={onClose} />
     </QueryClientProvider>,
   );
   return { mock, queryClient };
@@ -57,6 +57,16 @@ describe('DisputeTransferDialog', () => {
     setup();
     expect(screen.getByText(new RegExp(formatUah(sent.cash, 'en')))).toBeInTheDocument();
     expect(screen.getByText(/120/)).toBeInTheDocument();
+  });
+
+  it('shows «1 crate», not «1 crates», when exactly one crate was sent', () => {
+    setup(() => {}, { ...sent, crates: 1 });
+    expect(screen.getByText(/1 crate$/)).toBeInTheDocument();
+  });
+
+  it('shows «5 crates» when several were sent', () => {
+    setup(() => {}, { ...sent, crates: 5 });
+    expect(screen.getByText(/5 crates$/)).toBeInTheDocument();
   });
 
   it('requires a note — the discrepancy is what the owner reads', async () => {

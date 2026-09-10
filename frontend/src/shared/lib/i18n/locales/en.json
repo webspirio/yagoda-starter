@@ -887,7 +887,8 @@
     },
     "dispute": {
       "title": "Doesn't match",
-      "sent": "Sent: {{uah}}, {{crates}} crates",
+      "sent_one": "Sent: {{uah}}, {{count}} crate",
+      "sent_other": "Sent: {{uah}}, {{count}} crates",
       "reportedCash": "Reported cash",
       "reportedCrates": "Crates received",
       "note": "Note — what doesn't match",
@@ -903,7 +904,8 @@
       "toast": "Dispute resolved"
     },
     "incoming": {
-      "inTransit": "In transit: {{uah}} and {{crates}} crates",
+      "inTransit_one": "In transit: {{uah}} and {{count}} crate",
+      "inTransit_other": "In transit: {{uah}} and {{count}} crates",
       "meta": "{{carrier}} · sent {{date}}",
       "pointAccepts": "the point accepts",
       "accept": "Accept",
