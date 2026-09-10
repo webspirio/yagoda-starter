@@ -103,9 +103,22 @@
  * money-rounding.mjs makes excluding `*.spec.ts`/`*.db-spec.ts` from a rule about production
  * arithmetic: a stated, file-role-based SCOPE boundary, not a baseline entry forgiving a
  * violation in one of the four real boundary files (none of which this exclusion touches).
+ *
+ * A SCOPE EXCLUSION IS NOT A FREE PASS — IT MUST BE SELF-CANCELLING, same as CLAUDE.md's
+ * rule 3 requires of a baseline exception: listed individually, dated, reasoned, and it fails
+ * the moment its own reason evaporates. An entry in `EXCLUDED_FILES` is design (which files
+ * rule 1 governs at all), never data, so it belongs here rather than in a baseline — but
+ * "belongs in the checker" does not mean "belongs forever." `checkExclusionsAreStillLive()`
+ * below fails this exact command when an excluded path no longer exists in the tree, AND when
+ * it still exists but no longer contains any unguarded storage access — the second case is
+ * the one that matters, because a file can survive a rename-proof path while the reason for
+ * excluding it quietly disappears (someone wraps the `afterEach` in a try/catch, say), leaving
+ * `EXCLUDED_FILES` naming a file that needs no exclusion at all, silently, forever. The next
+ * person who adds an entry here inherits the same obligation: it must go stale and fail loudly
+ * the day it stops doing anything, exactly like every baseline entry in this layer does.
  */
 import { execFileSync } from 'node:child_process'
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import ts from 'typescript'
 
@@ -146,9 +159,14 @@ const MIN_REASON_LENGTH = 30
  * `-c -o --exclude-standard` combination the other ratchets in this layer use, for the same
  * reason: a red-case test that only writes a file must not report a false green.
  *
+ * BEFORE `EXCLUDED_FILES` is applied — `checkExclusionsAreStillLive()` needs this list to
+ * confirm each excluded path still qualifies as a candidate at all (rather than having been
+ * renamed, deleted, or turned into a `.test.` file itself), which `listCandidateFiles()`'s own
+ * filtered result cannot answer, since it has already thrown the excluded paths away.
+ *
  * @returns {string[]} repo-root-relative paths, forward-slash separated, sorted
  */
-function listCandidateFiles() {
+function listAllCandidateFiles() {
   const NUL = String.fromCharCode(0)
   /** @type {Buffer} */
   let raw
@@ -166,8 +184,61 @@ function listCandidateFiles() {
     .filter(Boolean)
     .filter((rel) => rel.endsWith('.ts') || rel.endsWith('.tsx'))
     .filter((rel) => !rel.includes('.test.'))
-    .filter((rel) => !EXCLUDED_FILES.has(rel))
     .sort()
+}
+
+/**
+ * A scope exclusion is design, not data (see the file header) — but it must be
+ * SELF-CANCELLING exactly like a baseline exception: it fails the moment its own reason no
+ * longer holds. Two ways that happens, both checked here:
+ *
+ *   1. The excluded path no longer exists as a candidate file at all (deleted, renamed, or
+ *      turned into a `.test.` file) — `EXCLUDED_FILES` would otherwise keep naming a path
+ *      forever, a silent hole for whatever gets written there next.
+ *   2. The path still exists, but scanning it with rule 1's OWN logic (ignoring the
+ *      exclusion) finds zero unguarded accesses — the exclusion has stopped doing anything,
+ *      because either the storage calls were removed or someone wrapped them in try/catch,
+ *      and the file is now just quietly un-scanned for no reason.
+ *
+ * @param {string[]} allCandidateFiles the PRE-exclusion list from `listAllCandidateFiles()`
+ * @returns {string[]} problems, one per stale exclusion
+ */
+function checkExclusionsAreStillLive(allCandidateFiles) {
+  const present = new Set(allCandidateFiles)
+  /** @type {string[]} */
+  const problems = []
+  for (const excluded of EXCLUDED_FILES) {
+    // `git ls-files -c` (inside listAllCandidateFiles()) lists a TRACKED path even after it
+    // has been deleted from the working tree but not yet from the index — so presence in
+    // `allCandidateFiles` alone cannot prove the file still exists. `existsSync` on the
+    // actual working-tree path is what "deleted" (brief scenario: rm the excluded file) needs
+    // to be caught by, not merely "still in git's index".
+    if (!existsSync(path.join(ROOT, excluded)) || !present.has(excluded)) {
+      problems.push(
+        `SCOPE EXCLUSION STALE: ${excluded} is listed in EXCLUDED_FILES but no longer exists (or no longer ` +
+          'qualifies as a candidate, non-test .ts/.tsx file) in the tree. Delete it from EXCLUDED_FILES — an ' +
+          'exclusion that outlives its file is a silent hole for whatever gets written at that path next.',
+      )
+      continue
+    }
+    const sf = parseFile(excluded)
+    if (!sf) {
+      problems.push(
+        `SCOPE EXCLUSION STALE: ${excluded} is listed in EXCLUDED_FILES but could not be read. Delete it from ` +
+          'EXCLUDED_FILES.',
+      )
+      continue
+    }
+    const { accessFindings } = scanFileForRules1And2(sf, excluded)
+    if (accessFindings.length === 0) {
+      problems.push(
+        `SCOPE EXCLUSION STALE: ${excluded} is listed in EXCLUDED_FILES but no longer contains any unguarded ` +
+          'localStorage/sessionStorage access — the exclusion has stopped doing anything and this is now just ' +
+          'an un-scanned file. Delete it from EXCLUDED_FILES so rule 1 covers it again.',
+      )
+    }
+  }
+  return problems
 }
 
 /** @param {string} rel @returns {ts.ScriptKind} */
@@ -738,14 +809,16 @@ function loadAndValidateBaseline() {
 
 function main() {
   /** @type {string[]} */
-  let files
+  let allFiles
   try {
-    files = listCandidateFiles()
+    allFiles = listAllCandidateFiles()
   } catch (err) {
     process.stderr.write(`persist-boundary: RED\n  ${errMessage(err)}\n`)
     process.exit(1)
     return
   }
+  const excludedFileSet = new Set(EXCLUDED_FILES)
+  const files = allFiles.filter((rel) => !excludedFileSet.has(rel))
 
   /** @type {AccessFinding[]} */
   const accessFindings = []
@@ -781,7 +854,7 @@ function main() {
   const { baseline, problems: baselineProblems } = loadAndValidateBaseline()
 
   /** @type {string[]} */
-  const problems = [...baselineProblems]
+  const problems = [...baselineProblems, ...checkExclusionsAreStillLive(allFiles)]
 
   if (baselineProblems.length === 0) {
     if (!isPersistableKeyFound) {
@@ -833,7 +906,7 @@ function main() {
     `persist-boundary: ${totalAccessCount} localStorage/sessionStorage access(es) across ${filesTouched} file(s), ` +
       `all guarded by try/catch; ${totalGetItemCount} getItem() read(s), all narrowed or opaque; ` +
       `isPersistableKey's allowlist matches ${BASELINE_REL} exactly (${baseline.entries.length} key(s), ` +
-      `${baseline.createdAt})\n`,
+      `${baseline.createdAt}); ${excludedFileSet.size} scope exclusion(s) still live\n`,
   )
 }
 

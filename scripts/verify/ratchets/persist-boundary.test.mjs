@@ -64,6 +64,7 @@ test('the real tree is green — all five localStorage/sessionStorage files stay
   assert.match(res.out, /10 localStorage\/sessionStorage access\(es\) across 4 file\(s\)/)
   assert.match(res.out, /4 getItem\(\) read\(s\), all narrowed or opaque/)
   assert.match(res.out, /isPersistableKey's allowlist matches .* exactly \(1 key\(s\)/)
+  assert.match(res.out, /1 scope exclusion\(s\) still live/)
 })
 
 test('an unguarded localStorage.getItem outside try/catch is RED (brief scenario 2)', () => {
@@ -320,4 +321,58 @@ test('a *.test.ts file is excluded from the scan entirely, even with an unguarde
   } finally {
     cleanup()
   }
+})
+
+// --- SELF-CANCELLING SCOPE EXCLUSION (fix round 1) ---
+//
+// `EXCLUDED_FILES` names `frontend/src/test-setup.ts` as out of rule 1's territory. Per the
+// coordinator's ruling, that exclusion must fail the moment its own reason stops holding —
+// deleted, renamed, or no longer touching storage unguarded — exactly like a baseline entry
+// must. Both directions are proven here by temporarily mutating the real file and restoring
+// it in a `finally`, the same idiom every other test in this suite (and in
+// money-rounding.test.mjs before it) already uses for baseline/fixture mutation — never a
+// change that survives the test.
+
+const TEST_SETUP_ABS = path.join(FRONTEND_SRC, 'test-setup.ts')
+
+test('deleting the excluded file makes its EXCLUDED_FILES entry STALE — there is nothing left to justify excluding', () => {
+  const original = readFileSync(TEST_SETUP_ABS, 'utf8')
+  rmSync(TEST_SETUP_ABS)
+  try {
+    const res = run()
+    assert.equal(res.status, 1, res.out)
+    assert.match(res.out, /SCOPE EXCLUSION STALE/)
+    assert.match(res.out, /frontend\/src\/test-setup\.ts/)
+    assert.match(res.out, /no longer exists/)
+  } finally {
+    writeFileSync(TEST_SETUP_ABS, original)
+  }
+})
+
+test("stripping the excluded file's unguarded storage calls, while leaving the file in place, also makes it STALE", () => {
+  const original = readFileSync(TEST_SETUP_ABS, 'utf8')
+  const unguardedBlock = 'afterEach(() => {\n  localStorage.clear();\n  sessionStorage.clear();\n});\n'
+  assert.ok(
+    original.includes(unguardedBlock),
+    'fixture assumes test-setup.ts still has this exact afterEach block — update the fixture if it changed',
+  )
+  const stripped = original.replace(
+    unguardedBlock,
+    'afterEach(() => {\n  // storage calls removed by persist-boundary.test.mjs — restored in its finally\n});\n',
+  )
+  writeFileSync(TEST_SETUP_ABS, stripped)
+  try {
+    const res = run()
+    assert.equal(res.status, 1, res.out)
+    assert.match(res.out, /SCOPE EXCLUSION STALE/)
+    assert.match(res.out, /no longer contains any unguarded/)
+  } finally {
+    writeFileSync(TEST_SETUP_ABS, original)
+  }
+})
+
+test('the real tree is green again once both stale-exclusion fixtures are restored', () => {
+  const res = run()
+  assert.equal(res.status, 0, res.out)
+  assert.match(res.out, /1 scope exclusion\(s\) still live/)
 })
