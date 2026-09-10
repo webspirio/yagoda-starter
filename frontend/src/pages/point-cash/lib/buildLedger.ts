@@ -95,9 +95,16 @@ function localDateOf(iso: string): string {
  * `paidToday`/`paidPast` until `returnedToday` adds its cash back on the day
  * it was physically handed back.
  *
- * `accruedToday` is informational only — berries received do not move cash,
- * only payouts do — and is not summed into anything; the caller is expected
- * to render it visibly apart from the four rows that actually move cash.
+ * `accruedToday` AND `paidPast` ARE INFORMATIONAL — neither maps onto a term
+ * of `movementsSql` (review round 2, finding 2). `accruedToday` never did:
+ * berries received do not move cash, only payouts do. `paidPast` does not
+ * either: the server's figure is the latest drawer count PLUS that one
+ * shift's own movements, so a payout from an earlier day is already folded
+ * into an earlier count, not into today's math — labelling it as though it
+ * explained today's figure would assert a period this function never
+ * defines. Only `paidToday`, `returnedToday` and `cashIn` actually move
+ * today's cash; the caller is expected to render the other two visibly
+ * apart from those three.
  */
 export function buildLedger(input: BuildLedgerInput): LedgerRow[] {
   const { date, intakes, payouts, transfers } = input;

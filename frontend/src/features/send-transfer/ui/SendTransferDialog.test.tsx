@@ -6,7 +6,11 @@ import MockAdapter from 'axios-mock-adapter';
 import { httpClient } from '@/shared/api';
 import { SendTransferDialog } from './SendTransferDialog';
 
-const SUBMIT = /submit|Відправити/i;
+// The exact English label/button text — not a regex loose enough to also
+// match the raw i18n key (`transfer.send.submit` contains "submit"), which
+// would let this locator survive a missing translation undetected (review
+// round 2, minor finding).
+const SUBMIT = 'Submit transfer';
 
 let mock: MockAdapter;
 afterEach(() => mock?.restore());
@@ -26,7 +30,7 @@ describe('SendTransferDialog', () => {
   it('refuses a transfer that is neither money nor crates', async () => {
     // бекендовий CHK_transfers_not_empty: cash > 0 OR crates > 0
     setup();
-    await userEvent.type(screen.getByLabelText(/перевізник|carrier/i), 'Петро');
+    await userEvent.type(screen.getByLabelText('Carrier'), 'Петро');
     await userEvent.click(screen.getByRole('button', { name: SUBMIT }));
     expect(await screen.findByRole('alert')).toBeInTheDocument();
   });
@@ -42,11 +46,11 @@ describe('SendTransferDialog', () => {
     setup(onClose);
     mock.onPost('/transfers').reply(201, { id: 't1' });
 
-    await userEvent.clear(screen.getByLabelText(/готівка|cash/i));
-    await userEvent.type(screen.getByLabelText(/готівка|cash/i), '50000');
-    await userEvent.clear(screen.getByLabelText(/ящик|crate/i));
-    await userEvent.type(screen.getByLabelText(/ящик|crate/i), '120');
-    await userEvent.type(screen.getByLabelText(/перевізник|carrier/i), 'Петро');
+    await userEvent.clear(screen.getByLabelText('Cash'));
+    await userEvent.type(screen.getByLabelText('Cash'), '50000');
+    await userEvent.clear(screen.getByLabelText('Empty crates'));
+    await userEvent.type(screen.getByLabelText('Empty crates'), '120');
+    await userEvent.type(screen.getByLabelText('Carrier'), 'Петро');
     await userEvent.click(screen.getByRole('button', { name: SUBMIT }));
 
     await waitFor(() => expect(mock.history.post).toHaveLength(1));

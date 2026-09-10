@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createMemoryRouter, RouterProvider } from 'react-router';
 import { expectNoAxeViolations } from '../../../test-axe';
@@ -255,6 +255,73 @@ describe('PointCashPage — honesty rule 3: null target/shortfall render «—»
     pointCashListMock.mockReturnValue(list([pointRow({ shortfall: '250.00' })]));
     renderPointCash();
     expect(tile('Short of target')).toHaveTextContent('250.00 ₴');
+  });
+});
+
+describe('PointCashPage — review round 2, finding 1: not-loaded vs not-assigned', () => {
+  it('shows a loading state, not «—», while the network list is still in flight', () => {
+    meMock.mockReturnValue({ data: OWNER });
+    pointScopeMock.mockReturnValue({
+      pointId: 'p1',
+      canPick: true,
+      setPointId: vi.fn(),
+      isLoading: false,
+    });
+    // `pointCashOne` (the headline `cash`) has already resolved — only the
+    // separate `pointCashList` query (target/shortfall's only source) is
+    // still pending.
+    pointCashListMock.mockReturnValue({ data: undefined, isPending: true, isError: false });
+
+    renderPointCash();
+
+    expect(within(tile('Target')).getByRole('progressbar')).toBeInTheDocument();
+    expect(within(tile('Short of target')).getByRole('progressbar')).toBeInTheDocument();
+    expect(screen.queryByText('—')).toBeNull();
+    // Not just unlabelled — absent, same as for an operator (§10.2's own rule).
+    expect(screen.queryByRole('button', { name: /наділ|target/i })).toBeNull();
+  });
+
+  it('treats a row missing from a TRUNCATED list as unknown, not as "no target"', () => {
+    meMock.mockReturnValue({ data: OWNER });
+    pointScopeMock.mockReturnValue({
+      pointId: 'p1',
+      canPick: true,
+      setPointId: vi.fn(),
+      isLoading: false,
+    });
+    // The point's own row (p1) never made it into this page of 100 — the
+    // list resolved, but it is silent about THIS point, not empty for it.
+    pointCashListMock.mockReturnValue({
+      data: { data: [pointRow({ collection_point_id: 'p2' })], total: 250, page: 1, limit: 100 },
+      isPending: false,
+      isError: false,
+    });
+
+    renderPointCash();
+
+    expect(within(tile('Target')).getByRole('progressbar')).toBeInTheDocument();
+    expect(screen.queryByText('—')).toBeNull();
+    expect(screen.queryByRole('button', { name: /наділ|target/i })).toBeNull();
+  });
+
+  it('still shows «—» and the button for a row genuinely absent from a COMPLETE list', () => {
+    // Sanity check the fix isn't over-broad: an EXHAUSTIVE list
+    // (`total === data.length`) that simply has no row for this point is a
+    // real "nothing to report", not a truncation ambiguity — the tiles and
+    // button must not disappear forever just because a point never got one.
+    meMock.mockReturnValue({ data: OWNER });
+    pointScopeMock.mockReturnValue({
+      pointId: 'p1',
+      canPick: true,
+      setPointId: vi.fn(),
+      isLoading: false,
+    });
+    pointCashListMock.mockReturnValue(list([pointRow({ collection_point_id: 'p2' })]));
+
+    renderPointCash();
+
+    expect(tile('Target')).toHaveTextContent('—');
+    expect(screen.getByRole('button', { name: 'Assign a target' })).toBeInTheDocument();
   });
 });
 

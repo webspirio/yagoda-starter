@@ -4,7 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import MockAdapter from 'axios-mock-adapter';
 import type { ReactNode } from 'react';
 import { httpClient, attachAuthInterceptors } from '@/shared/api';
-import { useTransfersQuery, useTransferQuery } from './useTransfers';
+import { useTransfersQuery } from './useTransfers';
 
 attachAuthInterceptors(httpClient, { getToken: () => null, onUnauthorized: () => {} });
 
@@ -45,12 +45,5 @@ describe('useTransfersQuery', () => {
     renderHook(() => useTransfersQuery({ pointId: 'p1' }), { wrapper });
     await waitFor(() => expect(mock.history.get).toHaveLength(1));
     expect(mock.history.get[0].params.include_voided).toBe(false);
-  });
-});
-
-describe('useTransferQuery', () => {
-  it('does not fire without an id', () => {
-    const { result } = renderHook(() => useTransferQuery(null), { wrapper });
-    expect(result.current.fetchStatus).toBe('idle');
   });
 });

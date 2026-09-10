@@ -55,22 +55,24 @@ describe('ResolveTransferDialog', () => {
     // ЇЇ ВЛАСНЕ число (§7.9, ред. 09.09.2026). Дефолт, що дорівнює
     // відправленому, тихо переписав би цю суму.
     setup();
-    expect(screen.getByLabelText(/resolved|Зараховуємо/i)).toHaveValue('49500.00');
+    expect(screen.getByLabelText('Resolved cash')).toHaveValue('49500.00');
   });
 
   it('defaults the crates field to what the point reported too', () => {
     setup();
-    expect(screen.getByLabelText(/crates|ящик/i)).toHaveValue('118');
+    expect(screen.getByLabelText('Crates to book')).toHaveValue('118');
   });
 
   it('submits the (possibly overridden) figures', async () => {
     setup();
     mock.onPost('/transfers/t1/resolve').reply(200, { ...disputed, resolved_at: 'now' });
 
-    const cashField = screen.getByLabelText(/resolved|Зараховуємо/i);
+    const cashField = screen.getByLabelText('Resolved cash');
     await userEvent.clear(cashField);
     await userEvent.type(cashField, '50000.00');
-    await userEvent.click(screen.getByRole('button', { name: /resolve|save|submit|Врегулювати|Зберегти/i }));
+    // The exact English button text — not a regex loose enough to also
+    // match the raw i18n key (review round 2, minor finding).
+    await userEvent.click(screen.getByRole('button', { name: 'Resolve' }));
 
     await waitFor(() => expect(mock.history.post).toHaveLength(1));
     expect(JSON.parse(mock.history.post[0].data as string)).toEqual({

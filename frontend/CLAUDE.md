@@ -44,13 +44,13 @@ src/
   entities/intake/               # useIntakesQuery / intakesQueryOptions, Intake type — a point's receipts journal, read by pages/day, reception, supplier-card and journal (the queryOptions factory also backs pages/dashboard's useNetworkToday fan-out)
   entities/payout/               # usePayoutsQuery / payoutsQueryOptions, Payout type — a point's payouts journal, read by pages/day, supplier-card and journal (the queryOptions factory also backs pages/dashboard's useNetworkToday fan-out)
   entities/transfer/             # useTransfersQuery / useTransferQuery / transfersQueryOptions, Transfer type — one point-to-point movement of cash and crates (§7), read by pages/point-cash and pages/transfers
-  entities/point-cash/           # usePointCashQuery / usePointCashForPointQuery, PointCashRow/PointCashOne types — a point's cash-on-hand, one server-computed figure never re-summed client-side, read by pages/dashboard, pages/day and pages/point-cash
+  entities/point-cash/           # usePointCashQuery / usePointCashForPointQuery, PointCashRow/PointCashOne types — a point's cash-on-hand, one server-computed figure never re-summed client-side, read by pages/point-cash, pages/transfers and features/set-point-target
   entities/cash-count/           # useCashCountsQuery, CashCount type — a point's drawer-count history (opening/midday/closing; §7.6 one drawer, two books), read by pages/point-cash
   features/auth/                 # login/logout API calls, LoginForm, RequireAuth + RequireRole route guards — no register API
   features/edit-profile/         # useUploadAvatarMutation (single consumer: pages/profile — kept as the upload exemplar)
   features/settle-payout/        # useCreatePayoutMutation, PayoutDialog — records a payout against a supplier's balance, opened from the receipt widget
   features/void-document/        # useVoidDocumentMutation, VoidDocumentDialog — voids an intake, payout or transfer (§9.3: a correction is a void plus a new document), opened from the receipt widget and pages/transfers
-  features/count-shift/          # useOpenShiftMutation / useCloseShiftMutation, CountDrawerDialog — opens or closes a shift against the counted drawer (§10.3), used by pages/day
+  features/count-shift/          # useOpenShiftMutation / useCloseShiftMutation, CountDrawerDialog — opens or closes a shift against the counted drawer (§10.3), used by pages/day AND pages/reception — the reception consumer is the whole reason this lives here rather than inside pages/day
   features/send-transfer/        # useSendTransferMutation, SendTransferDialog — the owner sends money and crates to a point
   features/receive-transfer/     # useAcceptTransferMutation / useDisputeTransferMutation, DisputeTransferDialog — the point accepts an incoming transfer or disputes what actually arrived
   features/resolve-transfer/     # useResolveTransferMutation, ResolveTransferDialog — the owner settles a disputed transfer
@@ -75,7 +75,7 @@ src/
       money/                    # sum / add / sub / cmp / div / isNegative / isZero (decimal-string arithmetic, kopiykas under the hood) + formatUah / formatDecimal / formatKg — the client-side twin of `backend/src/common/money.ts`, used wherever a screen totals or formats a money value
       date/                     # todayIso / addDaysIso / isIsoDate / isRealIsoDate / formatLongDate / formatWeekday / formatShortDate — business-date (`YYYY-MM-DD`) helpers; pages/day owns the one `?date=` in the app
       error-reporting/         # reportError(error, context) — swap body for Sentry later
-      api-error/                # apiErrorToBanner — one machine-`code`-keyed mapping of backend business-rule errors to banner copy, shared by every dialog that can fail on a rule (count-shift, void-document, send/receive/resolve-transfer, set-point-target, set-cash-explanation)
+      api-error/                # apiErrorToBanner — one machine-`code`-keyed mapping of backend business-rule errors to banner copy, imported directly by nine call sites today: count-shift, void-document, send/receive/resolve-transfer, set-point-target, set-cash-explanation, plus two page-level consumers easy to miss in a list like this one — `pages/day/ui/ReopenShiftDialog.tsx` and `pages/point-cash/ui/IncomingTransfers.tsx`. Grep `from '@/shared/lib/api-error'` before trusting any such list, this one included
       clipboard/, cn.ts, debounce.ts, useDebouncedValue.ts, useIsDesktop.ts — small framework-free utilities
       form-draft/               # useFormDraft — localStorage-backed draft persistence; infrastructure, not yet wired into any form
       url-state/                 # useUrlParam / useUrlFlag / useUrlList / useUrlNumber / useUrlPatch — query-string state; pages/catalog uses useUrlParam for ?tab= and ?product=
@@ -153,6 +153,14 @@ To add a locale: create `locales/<code>.json` mirroring `en.json`, add it to the
 `SUPPORTED_LANGUAGES` (`language-preference.ts`) — it becomes selectable once
 something writes that code via `storeLanguage`. `<html lang>` is kept in sync
 with the resolved language automatically.
+
+**A `t('…')` grep does NOT find every key in use.** `react-hook-form`'s
+`register(name, { validate })` returns a bare i18n key string (e.g.
+`'transfer.errors.cashFormat'`) as the error message, which `Field` hands
+straight to `shared/ui/field.tsx`, and THAT is where it is finally resolved
+with `t(error)` — nowhere near the literal key. A key-usage sweep that greps
+only for `t('literal.key')` call sites will walk right past every key that
+reaches a form field this way and delete it as unused.
 
 ## Routing
 

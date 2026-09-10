@@ -1,4 +1,4 @@
-import { queryOptions, useQuery } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { httpClient } from '@/shared/api';
 import { queryKeys } from '@/shared/api/queryKeys';
 import { STALE } from '@/shared/api/queryClient';
@@ -32,9 +32,15 @@ export function transferParams(f: TransferFilter) {
  * Transfer headers for a point, a status, or a `from`/`to` date range — the
  * owner can also read the whole network unfiltered, so there is no
  * `enabled`-gate here (unlike `payoutsQueryOptions`).
+ *
+ * No `queryOptions()`/`useTransferQuery` split here (review round 2, minor
+ * finding) — both existed with no consumer anywhere in the app: nothing
+ * reads one transfer by id, and nothing shares this queryFn with a
+ * `useQueries` fan-out the way `intakesQueryOptions`/`payoutsQueryOptions`
+ * do for `pages/dashboard`. Re-add them the day a real caller needs either.
  */
-export function transfersQueryOptions(filter: TransferFilter) {
-  return queryOptions({
+export function useTransfersQuery(filter: TransferFilter) {
+  return useQuery({
     queryKey: [...queryKeys.transfers, filter] as const,
     queryFn: async (): Promise<Paginated<Transfer>> => {
       const { data } = await httpClient.get<Paginated<Transfer>>('/transfers', {
@@ -43,23 +49,5 @@ export function transfersQueryOptions(filter: TransferFilter) {
       return data;
     },
     staleTime: STALE.list,
-  });
-}
-
-/** Transfers for a point, a status, or a date range — the owner may also ask for the whole network. */
-export function useTransfersQuery(filter: TransferFilter) {
-  return useQuery(transfersQueryOptions(filter));
-}
-
-/** One transfer by id — used by the accept/dispute/resolve/void dialogs. */
-export function useTransferQuery(id: string | null) {
-  return useQuery({
-    queryKey: [...queryKeys.transfers, 'one', id] as const,
-    enabled: id !== null,
-    queryFn: async (): Promise<Transfer> => {
-      const { data } = await httpClient.get<Transfer>(`/transfers/${id}`);
-      return data;
-    },
-    staleTime: STALE.detail,
   });
 }

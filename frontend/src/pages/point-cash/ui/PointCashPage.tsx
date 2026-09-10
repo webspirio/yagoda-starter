@@ -42,7 +42,14 @@ import { CashCountHistory } from './CashCountHistory';
  * 3. `target_cash`/`shortfall` are nullable and mean «not assigned», never
  *    zero (§6.9, §7.10) — both render `—`, never a defaulted `'0.00'`.
  * 4. §10.2 — the target button exists in the tree ONLY for the owner
- *    (`isOwner && pointId`), not merely disabled for anyone else.
+ *    (`isOwner && pointId`), not merely disabled for anyone else — AND only
+ *    once `targetKnown` (review round 2, finding 1): `usePointCashForPointQuery`
+ *    and `usePointCashQuery` are two independent queries, and the first can
+ *    resolve before the second. Rendering the target tiles or the button
+ *    off a still-loading (or possibly-truncated) list would show "not
+ *    assigned" for a point that may already HAVE a target — a claim, not a
+ *    placeholder, and one that also feeds `SetTargetCashDialog` a false
+ *    `currentTarget: null`, which skips the §6.1 reason requirement.
  */
 export function PointCashPage() {
   const { t, i18n } = useTranslation();
@@ -89,6 +96,18 @@ export function PointCashPage() {
 
   const pointName = (points ?? []).find((p) => p.id === pointId)?.name ?? '';
   const hasTarget = pointRow?.target_cash != null;
+  // Review round 2, finding 1 — `pointCashList` is a SEPARATE query from
+  // `pointCashOne`, capped at `limit: 100` with no paging (`usePointCash.ts`).
+  // A point's row can be absent from it for two different reasons: the list
+  // genuinely has no row for this point, or the list is truncated and this
+  // point's row simply did not fit. Only the first means "no target" — the
+  // second means "unknown", and must be told apart from "not assigned"
+  // (§6.9, §7.10's own rule, applied one level up: absence of DATA is not
+  // the same as a null VALUE).
+  const listTruncated = pointCashList.data
+    ? pointCashList.data.total > pointCashList.data.data.length
+    : false;
+  const targetKnown = pointCashList.data !== undefined && (pointRow !== null || !listTruncated);
   // Finding 4 (review round 1) — the payouts read is capped at 100 with no
   // lower date bound, so `CashLedger`'s `paidPast` may cover only recent
   // history on a point with a long season. `total` beats what was actually
@@ -105,8 +124,16 @@ export function PointCashPage() {
     ? [
         {
           label: t('pointCash.stats.target'),
-          value: pointRow?.target_cash == null ? '—' : formatUah(pointRow.target_cash, locale),
-          hint: pointRow?.target_cash == null ? t('pointCash.stats.targetUnset') : undefined,
+          // `targetKnown` false means "still finding out", not "—" — "—" is
+          // a CLAIM (§6.9: no target assigned) this page cannot make yet.
+          value: !targetKnown ? (
+            <Spinner size={20} />
+          ) : pointRow?.target_cash == null ? (
+            '—'
+          ) : (
+            formatUah(pointRow.target_cash, locale)
+          ),
+          hint: targetKnown && pointRow?.target_cash == null ? t('pointCash.stats.targetUnset') : undefined,
         },
         {
           label: t('pointCash.stats.cash'),
@@ -116,11 +143,20 @@ export function PointCashPage() {
         },
         {
           label: t('pointCash.stats.shortfall'),
-          value: pointRow?.shortfall == null ? '—' : formatUah(pointRow.shortfall, locale),
+          value: !targetKnown ? (
+            <Spinner size={20} />
+          ) : pointRow?.shortfall == null ? (
+            '—'
+          ) : (
+            formatUah(pointRow.shortfall, locale)
+          ),
           tone:
-            pointRow?.shortfall != null && cmp(pointRow.shortfall, '0') === 1 ? 'amber' : 'leaf',
-          hint:
-            pointRow?.shortfall == null
+            targetKnown && pointRow?.shortfall != null && cmp(pointRow.shortfall, '0') === 1
+              ? 'amber'
+              : 'leaf',
+          hint: !targetKnown
+            ? undefined
+            : pointRow?.shortfall == null
               ? t('pointCash.stats.shortfallUnset')
               : cmp(pointRow.shortfall, '0') === 1
                 ? t('pointCash.stats.shortfallOwed')
@@ -156,8 +192,13 @@ export function PointCashPage() {
       />
       {/* §10.2 — this button exists in the tree ONLY for the owner, not
           merely disabled for anyone else: a disabled button teaches people to
-          look for a way around it, an absent one teaches nothing. */}
-      {isOwner && pointId ? (
+          look for a way around it, an absent one teaches nothing. It also
+          waits for `targetKnown` (review round 2, finding 1) — showing it
+          off an unresolved/possibly-truncated list risks opening
+          `SetTargetCashDialog` with a `currentTarget` that only LOOKS like
+          "no target yet", which would waive §6.1's reason requirement on a
+          point that already has one. */}
+      {isOwner && pointId && targetKnown ? (
         <Button
           variant="outline"
           size="sm"

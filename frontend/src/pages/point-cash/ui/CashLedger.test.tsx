@@ -5,7 +5,10 @@ import { CashLedger } from './CashLedger';
 
 describe('CashLedger', () => {
   it('shows the backend cash figure as the total, not the sum of the rows', () => {
-    // Rows sum to 900.00 (600 paid − nothing else), but the server says 1000.00.
+    // paidToday alone comes to 600.00 (its business_date matches `date`);
+    // every other row is 0.00. Naively summing buildLedger's own (unsigned)
+    // row values would read 600.00 — a different, and wrong, number from
+    // the server's 1,000.00.
     render(
       <CashLedger
         date="2026-09-10"
@@ -18,9 +21,13 @@ describe('CashLedger', () => {
       />,
     );
 
-    expect(screen.getByText('1,000.00 ₴')).toBeInTheDocument();
-    expect(screen.queryByText('900.00 ₴')).toBeNull();
-    expect(screen.queryByText('-900.00 ₴')).toBeNull();
+    const total = screen.getByText('Berry cash').closest('div');
+    expect(total).toHaveTextContent('1,000.00 ₴');
+    // Never the naive row-sum. 600.00 (unsigned) would only appear if the
+    // total were computed by adding buildLedger's raw magnitudes instead of
+    // reading the `cash` prop — paidToday's own row always shows it signed
+    // (−600.00 ₴), never bare, so a bare "600.00 ₴" anywhere is the tell.
+    expect(screen.queryByText('600.00 ₴')).toBeNull();
   });
 
   it('shows an outflow row with a minus sign', () => {
@@ -36,7 +43,7 @@ describe('CashLedger', () => {
       />,
     );
 
-    expect(screen.getByText("Paid for today's berries")).toBeInTheDocument();
+    expect(screen.getByText('Paid out today')).toBeInTheDocument();
     expect(screen.getByText('−600.00 ₴')).toBeInTheDocument();
   });
 
@@ -121,6 +128,29 @@ describe('CashLedger', () => {
     expect(screen.getByText('does not move cash')).toBeInTheDocument();
     // The distinguishing treatment lives on the row, not just the caption text.
     expect(accruedLabel.closest('div')?.className).toContain('opacity-70');
+  });
+
+  it("sets paid-for-past-days visibly apart too — it explains no term of the server's formula", () => {
+    // review round 2, finding 2: `paidPast` maps onto nothing in
+    // `movementsSql` (an earlier day's payout is already folded into an
+    // earlier drawer count), so it gets the SAME informational treatment
+    // `accruedToday` already has, not the treatment of a row that actually
+    // moves today's cash.
+    render(
+      <CashLedger
+        date="2026-09-10"
+        cash="0.00"
+        intakes={[]}
+        payouts={[
+          { business_date: '2026-09-09', amount: '400.00', voided_at: null, return_settled_at: null },
+        ]}
+        transfers={[]}
+      />,
+    );
+
+    const pastLabel = screen.getByText('Paid for past days');
+    expect(screen.getByText("not part of today's figure")).toBeInTheDocument();
+    expect(pastLabel.closest('div')?.className).toContain('opacity-70');
   });
 
   it('warns under «paid for past days» when the payouts read was truncated', () => {

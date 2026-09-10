@@ -30,12 +30,22 @@ export function usePointCashQuery(opts?: { asOf?: string }): UseQueryResult<Pagi
   });
 }
 
-/** One point's cash figure — `enabled` only with a point, same gate as `useCurrentShiftQuery`. */
+/**
+ * One point's cash figure — `enabled` only with a point, same gate as
+ * `useCurrentShiftQuery`. Typed `PointCashOne`, not `PointCashOne | null`
+ * (review round 2, minor finding, aligned with the opposite ruling on
+ * `useTransferQuery`): `GET /point-cash/:pointId` always returns a real
+ * object — the backend's own `COALESCE(..., 0.00)` means there is no "not
+ * found" shape for a valid point — so `queryFn` never produces `null`, and
+ * `data` is simply `undefined` while disabled or loading, same as any other
+ * query. A `| null` in the type here would invite a check for a value this
+ * hook can never actually hand back.
+ */
 export function usePointCashForPointQuery(
   pointId: string | null,
   asOf?: string,
-): UseQueryResult<PointCashOne | null> {
-  return useQuery<PointCashOne | null>({
+): UseQueryResult<PointCashOne> {
+  return useQuery({
     queryKey: [...queryKeys.pointCash, 'one', pointId, asOf ?? null] as const,
     enabled: pointId !== null,
     queryFn: async (): Promise<PointCashOne> => {

@@ -31,4 +31,22 @@ describe('useCashCountsQuery', () => {
       only_discrepancies: true,
     });
   });
+
+  // Review round 2, minor finding — a caller with no point, shift or date
+  // range must not fire `GET /cash-counts` for the whole network.
+  it('does not fire with no point, shift or date range at all', () => {
+    mock.onGet('/cash-counts').reply(200, page);
+    const { result } = renderHook(() => useCashCountsQuery({}), { wrapper });
+    expect(result.current.fetchStatus).toBe('idle');
+    expect(mock.history.get).toHaveLength(0);
+  });
+
+  it('fires for a from/to range with no point or shift', async () => {
+    mock.onGet('/cash-counts').reply(200, page);
+    renderHook(
+      () => useCashCountsQuery({ from: '2026-09-01', to: '2026-09-10' }),
+      { wrapper },
+    );
+    await waitFor(() => expect(mock.history.get).toHaveLength(1));
+  });
 });
