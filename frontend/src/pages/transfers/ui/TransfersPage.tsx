@@ -151,6 +151,16 @@ export function TransfersPage() {
               label={t('transfers.tiles.totalOwed')}
               value={formatUah(totalOwed, locale)}
               tone="amber"
+              // Same truncation-honesty convention as `DebtsPage`'s own
+              // equivalent tile: `rows` is `pointCash.data.data`, capped at
+              // `limit: 100` with no paging (`usePointCash.ts`). A network
+              // with more than 100 points would otherwise sum only the first
+              // page and print that as if it were the whole network's total.
+              hint={
+                pointCash.data && pointCash.data.total > rows.length
+                  ? t('transfers.tiles.totalOwedHint', { count: rows.length })
+                  : undefined
+              }
             />
           </StatGrid>
         }

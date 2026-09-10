@@ -222,6 +222,29 @@ describe('TransfersPage — honesty rule 1: a point with no target is absent fro
   });
 });
 
+describe('TransfersPage — total owed tile: truncation honesty', () => {
+  it('warns the total is partial when the point-cash read was capped at 100 rows', () => {
+    // Finding: `usePointCashQuery` also caps at `limit: 100` with no paging —
+    // same shape of gap as the transfers read above, but for the OTHER tile.
+    pointCashMock.mockReturnValue({
+      data: { data: [pointRow()], total: 150, page: 1, limit: 100 },
+      isPending: false,
+      isError: false,
+    });
+
+    render(<TransfersPage />);
+
+    expect(tile('Owed to points')).toHaveTextContent(
+      'Showing the first 1 points — the total is partial',
+    );
+  });
+
+  it('says nothing about truncation when the point-cash read came back whole', () => {
+    render(<TransfersPage />);
+    expect(tile('Owed to points')).not.toHaveTextContent('the total is partial');
+  });
+});
+
 describe('TransfersPage — wiring the table to the send dialog', () => {
   it('opens the send dialog for the row that was clicked', async () => {
     const user = userEvent.setup();

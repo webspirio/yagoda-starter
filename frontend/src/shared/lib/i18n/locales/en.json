@@ -913,7 +913,8 @@
     "description": "How much the base still owes each point toward its target, and what is currently on the road. A point with no assigned target does not enter the network total.",
     "truncatedHint": "Showing recent transfers only — an older dispute may not appear below or be resolvable from this table.",
     "tiles": {
-      "totalOwed": "Owed to points"
+      "totalOwed": "Owed to points",
+      "totalOwedHint": "Showing the first {{count}} points — the total is partial"
     },
     "col": {
       "point": "Point",
