@@ -107,7 +107,6 @@ export function PointCashPage() {
 
   const isOperator = me?.role === 'point_operator';
   const isOwner = me?.role === 'network_owner';
-  const isLoading = pointId !== null && pointCash.isPending;
   // A SETTLED READ WITH NO ROW MEANS THE POINT DOES NOT EXIST. The backend
   // selects `FROM collection_points WHERE ($1 IS NULL OR cp.id = $1)` with no
   // active-only filter, so a scoped read answers with this point's row or
@@ -247,7 +246,10 @@ export function PointCashPage() {
       <p role="alert" className="py-6 text-center text-destructive">
         {t('common.somethingWentWrong')}
       </p>
-    ) : isLoading || !shownRow ? (
+    ) : !shownRow ? (
+      // Nothing but "not answered yet" is left: `pointId` is set (so the read
+      // is enabled), a failed one took the branch above, and so did a settled
+      // one that came back without the row.
       <div className="flex justify-center py-12">
         <Spinner />
       </div>

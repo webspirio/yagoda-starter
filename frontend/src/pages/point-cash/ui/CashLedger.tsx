@@ -7,6 +7,7 @@ import {
   buildLedger,
   type LedgerIntake,
   type LedgerPayout,
+  type LedgerRow,
   type LedgerRowKey,
   type LedgerTransfer,
 } from '../lib/buildLedger';
@@ -101,7 +102,7 @@ export function CashLedger({
   const informational = rows.filter((r) => INFORMATIONAL.has(r.key));
   const movements = rows.filter((r) => !INFORMATIONAL.has(r.key));
 
-  const truncationCaveat = (row: { key: LedgerRowKey; truncated: boolean }) =>
+  const truncationCaveat = (row: LedgerRow) =>
     row.truncated ? (
       <p className="pb-1 text-xs text-muted-foreground">{t(truncationKey(row.key))}</p>
     ) : null;
