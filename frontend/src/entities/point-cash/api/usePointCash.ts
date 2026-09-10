@@ -27,16 +27,23 @@ function pointCashParams(opts?: { asOf?: string; pointId?: string }) {
  * `enabled` defaults to `true`; the caller decides when to hold off (an owner
  * who has not picked a point yet), the same opt-out shape
  * `useSupplierBalancesQuery` uses. The gate lives at the caller because
- * `pages/transfers` reads this list unfiltered on purpose.
+ * `pages/transfers` reads this list unfiltered on purpose. It is a GATE, not
+ * a filter — destructured out of `opts` before it reaches the query key, the
+ * same ruling `useTransfersQuery` already follows, so a read gated shut and
+ * the same read opened later share one cache entry instead of forking into
+ * two.
  */
-export function usePointCashQuery(opts?: {
+export function usePointCashQuery({
+  enabled = true,
+  ...opts
+}: {
   asOf?: string;
   pointId?: string;
   enabled?: boolean;
-}): UseQueryResult<Paginated<PointCashRow>> {
+} = {}): UseQueryResult<Paginated<PointCashRow>> {
   return useQuery({
     queryKey: [...queryKeys.pointCash, opts] as const,
-    enabled: opts?.enabled ?? true,
+    enabled,
     queryFn: async (): Promise<Paginated<PointCashRow>> => {
       const { data } = await httpClient.get<Paginated<PointCashRow>>('/point-cash', {
         params: pointCashParams(opts),

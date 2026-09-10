@@ -50,6 +50,33 @@ describe('usePointCashQuery', () => {
     expect(result.current.fetchStatus).toBe('idle');
     expect(mock.history.get).toHaveLength(0);
   });
+
+  it('keeps `enabled` out of the query key — toggling it shares one cache entry', async () => {
+    // `enabled` is a gate, not request identity (the same ruling
+    // `useTransfersQuery` already follows): two reads with the same
+    // `asOf`/`pointId` and different `enabled` must land on the same cache
+    // entry, not fork into two. Before this fix the key was
+    // `[...queryKeys.pointCash, opts]`, and `opts` still carried `enabled`.
+    mock
+      .onGet('/point-cash', { params: { as_of: '2026-09-10', collection_point_id: 'p1', limit: 100 } })
+      .reply(200, page);
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const localWrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    );
+
+    renderHook(
+      () => usePointCashQuery({ asOf: '2026-09-10', pointId: 'p1', enabled: true }),
+      { wrapper: localWrapper },
+    );
+    const disabled = renderHook(
+      () => usePointCashQuery({ asOf: '2026-09-10', pointId: 'p1', enabled: false }),
+      { wrapper: localWrapper },
+    );
+
+    await waitFor(() => expect(disabled.result.current.data).toEqual(page));
+    expect(queryClient.getQueryCache().getAll()).toHaveLength(1);
+  });
 });
 
 describe('usePointCashForPointQuery', () => {
