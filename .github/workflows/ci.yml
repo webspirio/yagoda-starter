@@ -386,7 +386,11 @@ jobs:
     # without the split, every PR would carry a red job for a capability that
     # is not installed. Set this to true once issue #68 is closed.
     if: >-
-      github.event_name == 'pull_request'
+      !cancelled()
+      && needs.checks.result == 'success'
+      && needs.db-checks.result == 'success'
+      && needs.docker.result == 'success'
+      && github.event_name == 'pull_request'
       && needs.docker.outputs.pushed == 'true'
       && vars.COOLIFY_ENABLED == 'true'
       && vars.PREVIEWS_ENABLED == 'true'
@@ -514,29 +518,26 @@ jobs:
             **Preview unchanged:** this push (`${{ github.event.pull_request.head.sha }}`) touched no deployable path, so
             https://pr-${{ github.event.pull_request.number }}.${{ vars.PREVIEW_DOMAIN }} still serves the previous deployed commit.
 
-  gate-debug:
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    needs: [checks, db-checks, docker]
-    if: ${{ always() && github.event_name == 'push' }}
-    steps:
-      - name: What the deploy-prod gate sees
-        run: |
-          echo "event_name=${{ github.event_name }}"
-          echo "ref=${{ github.ref }}"
-          echo "docker.result=${{ needs.docker.result }}"
-          echo "docker.outputs.pushed='${{ needs.docker.outputs.pushed }}'"
-          echo "vars.COOLIFY_ENABLED='${{ vars.COOLIFY_ENABLED }}'"
-          echo "vars.PREVIEWS_ENABLED='${{ vars.PREVIEWS_ENABLED }}'"
-
   deploy-prod:
     runs-on: ubuntu-latest
     timeout-minutes: 25
     needs: [checks, db-checks, docker]
+    # `!cancelled()` is load-bearing, not decoration. A skip propagates DOWN the
+    # needs graph transitively: `changes` skips itself on push, `docker` survives
+    # only via `always()`, and every job downstream of it then inherits that skip
+    # unless its own `if` contains a status function. Without this the gate
+    # evaluated true — event=push, ref=refs/heads/main, docker.result=success,
+    # COOLIFY_ENABLED=true, all printed by a debug job standing beside it — and
+    # the job was skipped anyway, so a merge to main reported success while
+    # production stayed on the previous commit. The needs' results are therefore
+    # asserted explicitly, since `!cancelled()` no longer implies they passed.
     if: >-
-      github.event_name == 'push'
-      && github.ref == 'refs/heads/main'
+      !cancelled()
+      && needs.checks.result == 'success'
+      && needs.db-checks.result == 'success'
       && needs.docker.result == 'success'
+      && github.event_name == 'push'
+      && github.ref == 'refs/heads/main'
       && vars.COOLIFY_ENABLED == 'true'
     concurrency:
       group: deploy-prod
