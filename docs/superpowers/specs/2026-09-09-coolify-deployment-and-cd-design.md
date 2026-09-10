@@ -180,3 +180,36 @@ From `travel-crm`: CI builds → GHCR → Coolify pulls; the wait-for-deployment
 - Deploy on GitHub Release / `v*` tag (trigger change only).
 - Off-box backup copy (Hetzner Storage Box via rclone vs. restic to S3).
 - Monitoring and alerts (Coolify Sentinel + Telegram notifications).
+
+## 10. Amendments (2026-09-10)
+
+Recorded after the Phase A code review and the server resize. The sections above
+are left as written on 2026-09-09; where they disagree with this list, this list
+is what the repository actually does.
+
+1. **The server is 4 vCPU / 7.6 GiB**, not 2 vCPU / 3.7 GiB. Coolify's real
+   resident set was measured at **0.63 GiB** (six containers), below the 0.9 GiB
+   §3 estimated. Recomputed budget: 7.56 − 0.37 OS − 0.63 Coolify − ~1.0
+   production ≈ 5.5 GiB for previews, so the §1 cap rises from 6 to **12**
+   (~3.0 GiB used, ~2.5 GiB free — still past the ≥0.8–1.0 GiB invariant).
+2. **Memory limits are variables, not constants** (`POSTGRES_MEM_LIMIT`,
+   `BACKEND_MEM_LIMIT`, `BACKEND_HEAP_MB`, `SEED_MEM_LIMIT`, `SEED_HEAP_MB`,
+   `REDIS_MEM_LIMIT`, `NGINX_MEM_LIMIT`), defaulting to the preview profile.
+   Coolify deploys the compose file from *each branch*, so a hardcoded limit
+   could only be changed by committing and redeploying every open PR.
+3. **§4.6's dump verification is `gzip -t` plus a header grep, not
+   `pg_restore --list`** — `pg_dump` is invoked without `-F c` here, so it emits
+   plain SQL, which `pg_restore` cannot read. The spec line was wrong, not the
+   implementation.
+4. **This Coolify version has no registry-credential store** (no
+   `docker_registries` table), so the §5 «preferred» path does not exist: the
+   `docker login` on the host *is* the mechanism, and the PAT's expiry is a
+   real operational date to track.
+5. **The preview cap is claimed before deploying, not after verifying.** A
+   preview whose health or login check fails is still running and still holding
+   ~0.25 GiB; labelling only on success let those consume memory while counting
+   as zero, which silently voided the §1 invariant the cap exists to enforce.
+6. **`deploy-prod` skips a commit that `main` has already moved past.** §4.5's
+   `concurrency` serialises prod deploys but does not order them; with stacked
+   PRs merged in quick succession, a slower run for an older commit could deploy
+   after a newer one and leave production behind `main` while staying green.

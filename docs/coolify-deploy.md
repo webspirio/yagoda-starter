@@ -1,6 +1,8 @@
 # Deploying with Coolify (production + PR previews)
 
-The server `188.245.146.122` (Hetzner, 2 vCPU / 3.7 GiB, Ubuntu 26.04) runs
+The server `188.245.146.122` (Hetzner, 4 vCPU / 7.6 GiB, Ubuntu 26.04 — resized
+up from 2 vCPU / 3.7 GiB on 2026-09-10, which is why the spec's sizing
+arithmetic reads smaller than the table below) runs
 Coolify. Coolify does **not** build anything: `.github/workflows/ci.yml`
 builds both images on every commit and pushes them to GHCR as
 `sha-<commit>`; Coolify pulls that tag and runs `docker-compose.prod.yml`.
@@ -33,7 +35,19 @@ GitHub App webhook when the PR closes.
 with the Coolify token in its environment — acceptable for internal PRs only,
 which is why fork PRs are excluded.
 
-## One-time server setup (done 2026-09-…; repeat only for a new server)
+**Previews are on the public internet.** «Nobody knows the hostname» is not a
+control: every Let's Encrypt certificate publishes its hostname to Certificate
+Transparency logs within minutes of issue, so `pr-<N>.yagoda.webspirio.com` is
+discoverable by anyone watching those feeds. A preview carries seeded demo data
+and a `network_owner` account, and its 10 MB upload endpoint writes to a volume
+on the **same 38 GB disk as production** — a preview filled with junk uploads is
+a production outage. Put Traefik basic auth on the preview routers (same place
+as the body-size middleware in step 6):
+`traefik.http.middlewares.yagoda-preview-auth.basicauth.users=<htpasswd line>`,
+added to the preview router's `middlewares=` list. Never reuse a production
+password for the preview owner.
+
+## One-time server setup (steps 1–4, 6–7 done 2026-09-09; repeat only for a new server)
 
 1. **Hetzner Cloud Firewall** (console): inbound TCP 22, 80, 443 only. Do this
    *before* installing Coolify — Docker publishes ports past UFW, and the panel
@@ -76,8 +90,8 @@ which is why fork PRs are excluded.
    variables `COOLIFY_ENABLED=true`, `PROD_URL=https://yagoda.webspirio.com`,
    `PREVIEW_DOMAIN=yagoda.webspirio.com`, `PREVIEW_CAP` (optional; overrides the
    default cap of 6 live previews without a commit — `ci.yml` reads
-   `vars.PREVIEW_CAP || 6`; set by the recalibration step after Coolify's real
-   RSS is measured).
+   `vars.PREVIEW_CAP || 12`; the default was recalibrated on 2026-09-10 against
+   the resized server and Coolify's measured RSS — see «Memory» below).
 8. **Backups**: `scp scripts/vps/backup.sh root@…:/usr/local/bin/yagoda-backup.sh`,
    the two unit files to `/etc/systemd/system/`, `yagoda-backup.env.example` → `/etc/yagoda-backup.env`
    (fill `PG_CONTAINER`, `UPLOADS_VOLUME` from `docker ps` / `docker volume ls` — pick
@@ -94,9 +108,28 @@ which is why fork PRs are excluded.
 | `APP_URL` | `https://yagoda.webspirio.com` | `https://pr-{{pr_id}}.yagoda.webspirio.com`¹ | CORS allowlist |
 | `JWT_SECRET` | 48+ random chars | different 48+ random chars | `openssl rand -base64 48` |
 | `DB_PASSWORD` | random | random | |
-| `BOOTSTRAP_OWNER_LOGIN` / `_PASSWORD` / `_FIRST_NAME` / `_LAST_NAME` | the real owner | `owner` / `preview-owner-1` / `Preview` / `Owner` | read once, on the first boot of an empty DB |
+| `BOOTSTRAP_OWNER_LOGIN` / `_PASSWORD` / `_FIRST_NAME` / `_LAST_NAME` | the real owner | `owner` / *generate one* / `Preview` / `Owner` | read once, on the first boot of an empty DB. Generate the preview password too (`openssl rand -base64 18`) and keep it in Coolify only — a password written into a repo doc is a password on every preview forever |
 | `SEED_DEV_DATA` | *(absent)* | `true` | enables the one-shot `seed` service — **the only thing that keeps demo data out of production; never set it in the production env set** |
 | `IMAGE_TAG` | *(absent)* | *(absent)* | **never set** unless the fallback below is in force |
+| `POSTGRES_MEM_LIMIT` | `768m` | *(absent → 256m)* | see «Memory» below |
+| `BACKEND_MEM_LIMIT` / `BACKEND_HEAP_MB` | `768m` / `576` | *(absent → 384m / 256)* | the heap cap must stay well below the mem_limit, so an OOM is a Node error, not a SIGKILL |
+| `REDIS_MEM_LIMIT` / `NGINX_MEM_LIMIT` | `128m` / `64m` | *(absent → 64m / 64m)* | |
+| `SEED_MEM_LIMIT` / `SEED_HEAP_MB` | *(irrelevant — no seed in prod)* | *(absent → 256m / 192)* | |
+
+### Memory
+
+`docker-compose.prod.yml` is deployed **from each branch**, so a hardcoded
+`mem_limit` could only be changed by committing and then redeploying every open
+PR. Every limit is therefore a variable whose default is the tight preview
+profile; production raises them in its own Coolify env set, and recalibration is
+an env edit, not a commit.
+
+Budget on the resized server (measured 2026-09-10): 7.56 GiB total − 0.37 OS −
+0.63 Coolify − ~1.0 production ≈ **5.5 GiB** for previews. At ~0.25 GiB each,
+the cap of 12 (`PREVIEW_CAP`, `ci.yml`) uses ~3.0 and leaves ~2.5 GiB, well past
+the ≥0.8–1.0 GiB the design requires. Raise the cap with
+`gh variable set PREVIEW_CAP --body <n>` — it takes effect on the next run, with
+no commit.
 
 ¹ Coolify substitutes `{{pr_id}}` in the preview URL template; whether it does so
 inside env values is checked in the spike. If it does not, set the preview
@@ -120,7 +153,9 @@ Coolify altogether, see the last section.
 | Manual «Redeploy» keeps the same SHA | |
 | Preview deleted on PR close with Auto Deploy off | |
 | API lists previews (cap source) | |
-| Coolify holds registry credentials | |
+| Coolify holds registry credentials | ✗ — this version has no registry store; use the `docker login` fallback (step 5) |
+| `docker compose up` does not fail on the one-shot `seed` exiting 0 | |
+| Coolify routes the domain to nginx's port 8080 | |
 
 **Fallback (only if a `SOURCE_COMMIT` gate failed):** CI sets `IMAGE_TAG` in the
 relevant env set via `PATCH /api/v1/applications/<uuid>/envs` right before
@@ -137,8 +172,9 @@ turns a wrong image into a failed job, not a silent wrong preview.
 | `deploy-*` job: Coolify `failed`, log shows compose error | compose file in that branch is invalid | `docker compose -f docker-compose.prod.yml config` locally |
 | `serves commit 'X', expected 'Y'` | Coolify deployed another commit (fallback misuse, or Auto Deploy got switched on) | Check Auto Deploy is off; re-run the job |
 | `/ready` never 200 | backend crash-loop | Coolify → application → logs; usually a missing env var |
-| «Preview not deployed — limit reached» | `PREVIEW_CAP` live previews (default 6) | close or merge an older PR, or remove its `preview` label |
+| «Preview not deployed — limit reached» | `PREVIEW_CAP` live previews (default 12). A PR whose deploy FAILED keeps its `preview` label on purpose — the stack is still running and still holding memory | close or merge an older PR, or remove its `preview` label once you have confirmed Coolify no longer runs that preview |
 | `deploy-preview` shows "cancelled", no comment | another PR took the single pending slot of the `preview-allocation` concurrency group while this one waited | re-run the job |
+| `deploy-prod` skipped with «main is at X, not Y» | correct: a newer merge owns production, and its own run deploys it | nothing — unless that newer run went red, in which case prod is deliberately behind `main` until it is fixed and re-run |
 | Prod is wrong after a merge | | `git revert <merge>` + push. **This does not revert schema migrations** — see `docs/backup-restore.md` to restore last night's pair if a migration destroyed data. |
 
 ## Leaving Coolify
