@@ -537,13 +537,19 @@ async function seedDocuments(
     if (found) continue;
     const accepted = t.status !== 'sent';
     await qr.query(
+      // ALL THREE DISPUTE FIELDS OR NONE. `DisputeTransferDto` makes
+      // `reported_cash`, `reported_crates` and `dispute_note` mandatory
+      // together, so writing only the cash here would store a shape the API
+      // cannot produce — and this file's contract is that the demo stores
+      // exactly what the API would have stored.
       `INSERT INTO transfers
          (collection_point_id, cash, crates, carrier, sent_by_user_id, sent_at, status,
-          accepted_by_user_id, accepted_date, accepted_at, reported_cash)
+          accepted_by_user_id, accepted_date, accepted_at,
+          reported_cash, reported_crates, dispute_note)
        VALUES ($1, $2, $3, $4, $5, ${localTs(6, 7, 12)}, $8::transfer_status,
                $9, CASE WHEN $9::uuid IS NULL THEN NULL ELSE $6::date END,
                CASE WHEN $9::uuid IS NULL THEN NULL ELSE ${localTs(6, 10, 12)} END,
-               $11)`,
+               $11, $13, $14)`,
       [
         pid,
         t.cash,
@@ -557,6 +563,8 @@ async function seedDocuments(
         t.acceptedAt ?? t.sentAt,
         t.reportedCash ?? null,
         tz,
+        t.reportedCrates ?? null,
+        t.disputeNote ?? null,
       ],
     );
     summary.transfers += 1;

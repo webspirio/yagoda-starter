@@ -754,8 +754,18 @@ export interface SeedTransfer {
   /** Who signed for it, and when — required for `accepted` and `disputed`. */
   acceptedBy?: string;
   acceptedAt?: string;
-  /** `disputed` only: what the point says actually arrived (§7.9 step 4). */
+  /**
+   * `disputed` only, and all three together — «Не сходиться» writes the cash
+   * counted, the crates counted AND the comment in one action, and
+   * `DisputeTransferDto` makes every one of them mandatory (§7.9 step 4б).
+   * Seeding a subset would store a row no route can produce: a dispute with a
+   * NULL note is a number the owner cannot act on, and NULL crates make
+   * `crates_discrepancy` come back `null` on the one document whose whole
+   * point is that something did not add up.
+   */
   reportedCash?: string;
+  reportedCrates?: number;
+  disputeNote?: string;
 }
 
 /**
@@ -803,6 +813,10 @@ export const SEED_TRANSFERS: readonly SeedTransfer[] = [
     acceptedBy: 'taras',
     acceptedAt: '08:45',
     reportedCash: '9800.00',
+    // The crates DID add up — only the cash is short, which is what makes the
+    // seeded dispute a one-dimensional case a developer can read at a glance.
+    reportedCrates: 20,
+    disputeNote: 'Перерахували при водієві: 9 800 ₴ замість 10 000. Ящики зійшлися.',
   },
   {
     point: 'Гайове',

@@ -215,6 +215,24 @@ describe('dev seed', () => {
     expect(row.kind).toBe('closing');
   });
 
+  it('the seeded dispute stores all three fields, so it has a real crates_discrepancy', async () => {
+    // The bug this pins was in the INSERT, not in the dataset: the statement
+    // listed `reported_cash` and neither `reported_crates` nor `dispute_note`,
+    // so the row came back with `crates_discrepancy: null` and no note — a
+    // shape `POST /transfers/:id/dispute` cannot produce, against this file's
+    // contract that the demo stores what the API would have stored.
+    const [row] = await ds.query(
+      `SELECT t.reported_cash::text AS reported_cash, t.reported_crates, t.dispute_note, t.crates
+         FROM transfers t
+         JOIN collection_points cp ON cp.id = t.collection_point_id
+        WHERE cp.name = 'Конищів' AND t.status = 'disputed'`,
+    );
+    expect(row).toBeDefined();
+    expect(row.reported_cash).toBe('9800.00');
+    expect(row.reported_crates).toBe(row.crates);
+    expect(row.dispute_note?.trim()).toBeTruthy();
+  });
+
   it('a seeded operator can sign in with the documented password and is pinned to their point', async () => {
     const [row] = await ds.query(
       `SELECT c.password_hash, u.role, cp.name AS point
