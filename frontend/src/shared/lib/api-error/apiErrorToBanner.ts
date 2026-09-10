@@ -70,5 +70,5 @@ const CODE: Readonly<Record<string, string>> = {
  */
 export function apiErrorToBanner(error: unknown, fallback: string): string {
   const code = apiErrorCode(error);
-  return (code && CODE[code]) ?? fallback;
+  return code ? (CODE[code] ?? fallback) : fallback;
 }

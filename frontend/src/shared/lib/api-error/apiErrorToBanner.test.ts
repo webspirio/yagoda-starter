@@ -158,4 +158,14 @@ describe('apiErrorToBanner', () => {
       'transfer.errors.failed',
     );
   });
+
+  it('falls back for an empty-string code rather than returning the empty string itself', () => {
+    // `(code && CODE[code]) ?? fallback` short-circuits on `code: ''` to `''`
+    // itself — `??` only falls back on null/undefined, not on falsy-but-not-
+    // nullish values — so an empty-string code used to render a blank banner
+    // instead of the caller's fallback.
+    expect(apiErrorToBanner(apiError(400, ''), 'transfer.errors.failed')).toBe(
+      'transfer.errors.failed',
+    );
+  });
 });
