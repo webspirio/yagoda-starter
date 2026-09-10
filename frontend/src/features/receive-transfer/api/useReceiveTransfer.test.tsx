@@ -20,7 +20,7 @@ beforeEach(() => {
 afterEach(() => mock.restore());
 
 describe('useAcceptTransferMutation', () => {
-  it('accepting invalidates transfers, point cash and shifts', async () => {
+  it('accepting invalidates transfers and point cash — and NOT shifts', async () => {
     mock.onPost('/transfers/t1/accept').reply(200, { id: 't1', status: 'accepted' });
     const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries');
     const { result } = renderHook(() => useAcceptTransferMutation(), { wrapper });
@@ -34,13 +34,16 @@ describe('useAcceptTransferMutation', () => {
     await waitFor(() => {
       expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: queryKeys.transfers });
       expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: queryKeys.pointCash });
-      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: queryKeys.shifts });
     });
+    // `TransfersService.transition` READS the open shift (§4.1) to stamp the
+    // TRANSFER's `accepted_date`; the shift row itself is never written, so
+    // refetching every shift query would buy nothing.
+    expect(invalidateSpy).not.toHaveBeenCalledWith({ queryKey: queryKeys.shifts });
   });
 });
 
 describe('useDisputeTransferMutation', () => {
-  it('disputing posts the counted figures and note, and invalidates the same three keys', async () => {
+  it('disputing posts the counted figures and note, and invalidates the same two keys', async () => {
     mock.onPost('/transfers/t1/dispute').reply(200, { id: 't1', status: 'disputed' });
     const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries');
     const { result } = renderHook(() => useDisputeTransferMutation(), { wrapper });
@@ -62,7 +65,7 @@ describe('useDisputeTransferMutation', () => {
     await waitFor(() => {
       expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: queryKeys.transfers });
       expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: queryKeys.pointCash });
-      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: queryKeys.shifts });
     });
+    expect(invalidateSpy).not.toHaveBeenCalledWith({ queryKey: queryKeys.shifts });
   });
 });

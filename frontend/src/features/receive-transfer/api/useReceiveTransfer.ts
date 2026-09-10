@@ -5,20 +5,23 @@ import type { Transfer } from '@/entities/transfer';
 
 /**
  * Both point actions — «Прийняв» and «Не сходиться» — invalidate the same
- * three keys. `transfers` because the document itself just changed;
+ * two keys. `transfers` because the document itself just changed;
  * `pointCash` because an accepted transfer moves the point's cash figure
  * immediately, and — under the 09.09.2026 ruling — so does a disputed one:
- * `reported_cash` already counts while the dispute sits open. `shifts`
- * because accepting/disputing requires an OPEN SHIFT and stamps that
- * shift's `accepted_date` (§4.1) — the shift the point is working is part of
- * what a fresh accept/dispute can change.
+ * `reported_cash` already counts while the dispute sits open.
+ *
+ * NOT `shifts`, though §4.1 makes an open shift a precondition.
+ * `TransfersService.transition` READS that shift to learn its business date
+ * and then writes `accepted_date`/`accepted_at` ON THE TRANSFER ROW — the
+ * shift row is never touched (`m.save(Transfer, transfer)` is the only save
+ * in the transaction). Invalidating a key nothing changed just refetches
+ * every shift query on screen.
  */
 function useInvalidateTransferAnswer() {
   const qc = useQueryClient();
   return () => {
     qc.invalidateQueries({ queryKey: queryKeys.transfers });
     qc.invalidateQueries({ queryKey: queryKeys.pointCash });
-    qc.invalidateQueries({ queryKey: queryKeys.shifts });
   };
 }
 
