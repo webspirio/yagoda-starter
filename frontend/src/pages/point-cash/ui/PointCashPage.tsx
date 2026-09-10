@@ -8,6 +8,7 @@ import { SelectField } from '@/shared/ui/select-field';
 import { Button } from '@/shared/ui/button';
 import { EmptyState } from '@/shared/ui/empty-state';
 import { Spinner } from '@/shared/ui/spinner';
+import { isTruncated } from '@/shared/api';
 import { useUrlParam } from '@/shared/lib/url-state';
 import { cmp, isNegative, formatUah } from '@/shared/lib/money';
 import { todayIso, addDaysIso, isRealIsoDate, formatLongDate, formatWeekday, formatShortDate } from '@/shared/lib/date';
@@ -136,11 +137,9 @@ export function PointCashPage() {
   // caveat under the affected row rather than a number that quietly is not
   // what its label claims — and it was told about payouts alone for a whole
   // review round.
-  const truncated = (page?: { total: number; data: unknown[] }) =>
-    page ? page.total > page.data.length : false;
-  const intakesTruncated = truncated(intakes.data);
-  const payoutsTruncated = truncated(payouts.data);
-  const transfersTruncated = truncated(ledgerTransfers.data);
+  const intakesTruncated = isTruncated(intakes.data);
+  const payoutsTruncated = isTruncated(payouts.data);
+  const transfersTruncated = isTruncated(ledgerTransfers.data);
   // §7.3 — a point with no counts at all reads `0.00`, correctly, but would
   // look like a regression on deploy without saying so in words.
   //

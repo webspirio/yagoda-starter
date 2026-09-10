@@ -35,16 +35,8 @@ export interface Transfer {
   created_at: string;
 }
 
-/**
- * Дубльовано з `entities/payout/model/payout.ts`, а не імпортовано — FSD
- * забороняє cross-import у межах шару. Це зафіксована ціна методології.
- */
-export interface Paginated<T> {
-  data: T[];
-  total: number;
-  page: number;
-  limit: number;
-}
+/** Реекспорт для існуючих імпортерів `../model/transfer` — див. `@/shared/api/pagination.ts`. */
+export type { Paginated } from '@/shared/api';
 
 export interface TransferFilter {
   pointId?: string;

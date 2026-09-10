@@ -1,19 +1,8 @@
 import { useQuery } from '@tanstack/react-query';
-import { httpClient } from '@/shared/api';
+import { httpClient, type Paginated } from '@/shared/api';
 import { STALE } from '@/shared/api/queryClient';
 import { queryKeys } from '@/shared/api/queryKeys';
 import type { PointOption } from '../model/collection-point';
-
-/**
- * The paginated envelope the backend returns for the point registry — only the
- * `data` array (and, from each item, `id`/`name`) is read here.
- */
-interface PointListEnvelope {
-  data: Array<{ id: string; name: string }>;
-  total: number;
-  page: number;
-  limit: number;
-}
 
 /**
  * Active-only lookup of collection points for select controls (Users, and
@@ -28,9 +17,10 @@ export function usePointOptionsQuery() {
     // clobber each other's cache despite different params.
     queryKey: [...queryKeys.collectionPoints, 'options'],
     queryFn: async (): Promise<PointOption[]> => {
-      const { data } = await httpClient.get<PointListEnvelope>('/collection-points', {
-        params: { include_inactive: false },
-      });
+      const { data } = await httpClient.get<Paginated<{ id: string; name: string }>>(
+        '/collection-points',
+        { params: { include_inactive: false } },
+      );
       return data.data.map((p) => ({ id: p.id, name: p.name }));
     },
     staleTime: STALE.reference,

@@ -28,13 +28,5 @@ export interface PointCashOne {
   cash: string;
 }
 
-/**
- * Дубльовано з `entities/transfer/model/transfer.ts`, а не імпортовано — FSD
- * забороняє cross-import у межах шару. Це зафіксована ціна методології.
- */
-export interface Paginated<T> {
-  data: T[];
-  total: number;
-  page: number;
-  limit: number;
-}
+/** Реекспорт для існуючих імпортерів `../model/point-cash` — див. `@/shared/api/pagination.ts`. */
+export type { Paginated } from '@/shared/api';

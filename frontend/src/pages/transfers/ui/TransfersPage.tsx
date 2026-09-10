@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { isTruncated } from '@/shared/api';
 import { ListPage } from '@/shared/ui/templates/list-page';
 import { StatGrid } from '@/shared/ui/stat-grid';
 import { StatTile } from '@/shared/ui/stat-tile';
@@ -115,7 +116,7 @@ export function TransfersPage() {
   // names the gap instead of hiding it — deliberately NOT fixed by paging
   // to completion, which would turn one screen's load into an unbounded
   // fetch.
-  const transfersTruncated = transfers.data ? transfers.data.total > transfers.data.data.length : false;
+  const transfersTruncated = isTruncated(transfers.data);
 
   // RULE 1 — a point with no target (`shortfall: null`) is deliberately
   // absent from this sum, not counted as owing 0. A settled/overfunded point
@@ -154,7 +155,7 @@ export function TransfersPage() {
               // with more than 100 points would otherwise sum only the first
               // page and print that as if it were the whole network's total.
               hint={
-                pointCash.data && pointCash.data.total > rows.length
+                isTruncated(pointCash.data)
                   ? t('transfers.tiles.totalOwedHint', { count: rows.length })
                   : undefined
               }

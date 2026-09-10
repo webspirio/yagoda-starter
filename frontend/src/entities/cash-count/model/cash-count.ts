@@ -23,16 +23,8 @@ export interface CashCount {
   explanation: string | null;
 }
 
-/**
- * Дубльовано з `entities/transfer/model/transfer.ts`, а не імпортовано — FSD
- * забороняє cross-import у межах шару. Це зафіксована ціна методології.
- */
-export interface Paginated<T> {
-  data: T[];
-  total: number;
-  page: number;
-  limit: number;
-}
+/** Реекспорт для існуючих імпортерів `../model/cash-count` — див. `@/shared/api/pagination.ts`. */
+export type { Paginated } from '@/shared/api';
 
 export interface CashCountFilter {
   pointId?: string;
