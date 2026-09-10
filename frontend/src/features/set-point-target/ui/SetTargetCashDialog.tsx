@@ -16,7 +16,7 @@ import { Textarea } from '@/shared/ui/textarea';
 import { Button } from '@/shared/ui/button';
 import { toast } from '@/shared/ui/toast';
 import { apiErrorToBanner } from '@/shared/lib/api-error';
-import { DECIMAL_INPUT, normalizeAmount, cmp, formatUah } from '@/shared/lib/money';
+import { DECIMAL_INPUT, normalizeAmount, cmp, formatUah, amountRules } from '@/shared/lib/money';
 import { usePointCashForPointQuery } from '@/entities/point-cash';
 import { useSetPointTargetMutation } from '../api/useSetPointTarget';
 
@@ -117,11 +117,7 @@ export function SetTargetCashDialog({
                 {...a11y}
                 inputMode="decimal"
                 className="font-mono"
-                {...register('target_cash', {
-                  required: 'pointTarget.errors.cashFormat',
-                  validate: (value) =>
-                    DECIMAL_INPUT.test(normalizeAmount(value)) || 'pointTarget.errors.cashFormat',
-                })}
+                {...register('target_cash', amountRules('pointTarget.errors.cashFormat'))}
                 autoFocus
               />
             )}

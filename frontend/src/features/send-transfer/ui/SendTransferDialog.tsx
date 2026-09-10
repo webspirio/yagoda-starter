@@ -14,7 +14,7 @@ import { TextInput } from '@/shared/ui/text-input';
 import { Button } from '@/shared/ui/button';
 import { toast } from '@/shared/ui/toast';
 import { apiErrorToBanner } from '@/shared/lib/api-error';
-import { DECIMAL_INPUT, CRATES_INPUT, normalizeAmount, isZero } from '@/shared/lib/money';
+import { normalizeAmount, isZero, amountRules, cratesRules } from '@/shared/lib/money';
 import { useSendTransferMutation } from '../api/useSendTransfer';
 
 interface SendTransferFormValues {
@@ -92,10 +92,7 @@ export function SendTransferDialog({
                 {...a11y}
                 inputMode="decimal"
                 className="font-mono"
-                {...register('cash', {
-                  validate: (value) =>
-                    DECIMAL_INPUT.test(normalizeAmount(value)) || 'transfer.errors.cashFormat',
-                })}
+                {...register('cash', amountRules('transfer.errors.cashFormat'))}
               />
             )}
           </Field>
@@ -106,10 +103,7 @@ export function SendTransferDialog({
                 {...a11y}
                 inputMode="numeric"
                 className="font-mono"
-                {...register('crates', {
-                  validate: (value) =>
-                    CRATES_INPUT.test(value.trim()) || 'transfer.errors.cratesFormat',
-                })}
+                {...register('crates', cratesRules('transfer.errors.cratesFormat'))}
               />
             )}
           </Field>

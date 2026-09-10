@@ -13,7 +13,7 @@ import { Field } from '@/shared/ui/field';
 import { TextInput } from '@/shared/ui/text-input';
 import { Button } from '@/shared/ui/button';
 import { toast } from '@/shared/ui/toast';
-import { cmp, formatUah, DECIMAL_INPUT, normalizeAmount } from '@/shared/lib/money';
+import { cmp, formatUah, DECIMAL_INPUT, normalizeAmount, amountRules } from '@/shared/lib/money';
 import type { Payout } from '@/entities/payout';
 import { useCreatePayoutMutation } from '../api/useCreatePayout';
 import { apiErrorToFields } from '../lib/apiErrorToFields';
@@ -175,11 +175,7 @@ export function PayoutDialog({
                 {...a11y}
                 inputMode="decimal"
                 className="font-mono"
-                {...register('amount', {
-                  required: 'payout.errors.amountFormat',
-                  validate: (value) =>
-                    DECIMAL_INPUT.test(normalizeAmount(value)) || 'payout.errors.amountFormat',
-                })}
+                {...register('amount', amountRules('payout.errors.amountFormat'))}
               />
             )}
           </Field>

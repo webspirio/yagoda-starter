@@ -14,7 +14,7 @@ import { TextInput } from '@/shared/ui/text-input';
 import { Button } from '@/shared/ui/button';
 import { toast } from '@/shared/ui/toast';
 import { apiErrorToBanner } from '@/shared/lib/api-error';
-import { DECIMAL_INPUT, CRATES_INPUT, normalizeAmount } from '@/shared/lib/money';
+import { normalizeAmount, amountRules, cratesRules } from '@/shared/lib/money';
 import type { Transfer } from '@/entities/transfer';
 import { useResolveTransferMutation } from '../api/useResolveTransfer';
 
@@ -92,11 +92,7 @@ export function ResolveTransferDialog({
                 {...a11y}
                 inputMode="decimal"
                 className="font-mono"
-                {...register('resolved_cash', {
-                  required: 'transfer.errors.cashFormat',
-                  validate: (value) =>
-                    DECIMAL_INPUT.test(normalizeAmount(value)) || 'transfer.errors.cashFormat',
-                })}
+                {...register('resolved_cash', amountRules('transfer.errors.cashFormat'))}
                 autoFocus
               />
             )}
@@ -113,11 +109,7 @@ export function ResolveTransferDialog({
                 {...a11y}
                 inputMode="numeric"
                 className="font-mono"
-                {...register('resolved_crates', {
-                  required: 'transfer.errors.cratesFormat',
-                  validate: (value) =>
-                    CRATES_INPUT.test(value.trim()) || 'transfer.errors.cratesFormat',
-                })}
+                {...register('resolved_crates', cratesRules('transfer.errors.cratesFormat'))}
               />
             )}
           </Field>

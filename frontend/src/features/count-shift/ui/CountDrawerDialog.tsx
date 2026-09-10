@@ -12,7 +12,7 @@ import {
 import { Field } from '@/shared/ui/field';
 import { TextInput } from '@/shared/ui/text-input';
 import { Button } from '@/shared/ui/button';
-import { DECIMAL_INPUT, normalizeAmount } from '@/shared/lib/money';
+import { normalizeAmount, amountRules } from '@/shared/lib/money';
 import { apiErrorToBanner } from '@/shared/lib/api-error';
 
 interface CountFormValues {
@@ -87,11 +87,7 @@ export function CountDrawerDialog({
                 {...a11y}
                 inputMode="decimal"
                 className="font-mono"
-                {...register('amount', {
-                  required: 'day.errors.countFormat',
-                  validate: (value) =>
-                    DECIMAL_INPUT.test(normalizeAmount(value)) || 'day.errors.countFormat',
-                })}
+                {...register('amount', amountRules('day.errors.countFormat'))}
                 autoFocus
               />
             )}

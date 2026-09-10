@@ -15,7 +15,7 @@ import { Textarea } from '@/shared/ui/textarea';
 import { Button } from '@/shared/ui/button';
 import { toast } from '@/shared/ui/toast';
 import { apiErrorToBanner } from '@/shared/lib/api-error';
-import { DECIMAL_INPUT, CRATES_INPUT, normalizeAmount, formatUah } from '@/shared/lib/money';
+import { normalizeAmount, formatUah, amountRules, cratesRules } from '@/shared/lib/money';
 import type { Transfer } from '@/entities/transfer';
 import { useDisputeTransferMutation } from '../api/useReceiveTransfer';
 
@@ -105,11 +105,7 @@ export function DisputeTransferDialog({
                 {...a11y}
                 inputMode="decimal"
                 className="font-mono"
-                {...register('reported_cash', {
-                  required: 'transfer.errors.cashFormat',
-                  validate: (value) =>
-                    DECIMAL_INPUT.test(normalizeAmount(value)) || 'transfer.errors.cashFormat',
-                })}
+                {...register('reported_cash', amountRules('transfer.errors.cashFormat'))}
                 autoFocus
               />
             )}
@@ -126,11 +122,7 @@ export function DisputeTransferDialog({
                 {...a11y}
                 inputMode="numeric"
                 className="font-mono"
-                {...register('reported_crates', {
-                  required: 'transfer.errors.cratesFormat',
-                  validate: (value) =>
-                    CRATES_INPUT.test(value.trim()) || 'transfer.errors.cratesFormat',
-                })}
+                {...register('reported_crates', cratesRules('transfer.errors.cratesFormat'))}
               />
             )}
           </Field>
