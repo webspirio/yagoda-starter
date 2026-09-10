@@ -10,6 +10,13 @@ import type { Shift } from '@/entities/shift';
  * NOT share: reopening is owner-only, takes a reason rather than a count,
  * and has exactly one consumer (`ReopenShiftDialog`), so promoting it
  * alongside open/close would not remove any duplication.
+ *
+ * Reopening also demotes that shift's `closing` cash count to `midday`
+ * (`shifts.service.ts`), and the point-cash SQL anchors on counts where
+ * `kind <> 'midday'` — so a reopen changes the point's computed cash figure
+ * by construction, not just its history. `cashCounts` and `pointCash` are
+ * invalidated alongside shifts/intakes/payouts, or «Каса точки» would show a
+ * stale number right after reopen.
  */
 function useInvalidateDay() {
   const qc = useQueryClient();
@@ -18,6 +25,8 @@ function useInvalidateDay() {
       qc.invalidateQueries({ queryKey: queryKeys.shifts }),
       qc.invalidateQueries({ queryKey: queryKeys.intakes }),
       qc.invalidateQueries({ queryKey: queryKeys.payouts }),
+      qc.invalidateQueries({ queryKey: queryKeys.cashCounts }),
+      qc.invalidateQueries({ queryKey: queryKeys.pointCash }),
     ]);
 }
 
