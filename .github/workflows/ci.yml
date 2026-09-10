@@ -514,6 +514,21 @@ jobs:
             **Preview unchanged:** this push (`${{ github.event.pull_request.head.sha }}`) touched no deployable path, so
             https://pr-${{ github.event.pull_request.number }}.${{ vars.PREVIEW_DOMAIN }} still serves the previous deployed commit.
 
+  gate-debug:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: [checks, db-checks, docker]
+    if: ${{ always() && github.event_name == 'push' }}
+    steps:
+      - name: What the deploy-prod gate sees
+        run: |
+          echo "event_name=${{ github.event_name }}"
+          echo "ref=${{ github.ref }}"
+          echo "docker.result=${{ needs.docker.result }}"
+          echo "docker.outputs.pushed='${{ needs.docker.outputs.pushed }}'"
+          echo "vars.COOLIFY_ENABLED='${{ vars.COOLIFY_ENABLED }}'"
+          echo "vars.PREVIEWS_ENABLED='${{ vars.PREVIEWS_ENABLED }}'"
+
   deploy-prod:
     runs-on: ubuntu-latest
     timeout-minutes: 25
@@ -521,7 +536,7 @@ jobs:
     if: >-
       github.event_name == 'push'
       && github.ref == 'refs/heads/main'
-      && needs.docker.outputs.pushed == 'true'
+      && needs.docker.result == 'success'
       && vars.COOLIFY_ENABLED == 'true'
     concurrency:
       group: deploy-prod
