@@ -218,13 +218,15 @@ function scan() {
     try {
       text = readFileSync(absPath, 'utf8')
     } catch (err) {
-      // ENOENT here is not a finding: this verify layer's own tests write and remove
-      // short-lived fixture files under backend/src while their OWN check runs, and
-      // `node --test` runs different *.test.mjs files concurrently -- so a file this git
-      // listing saw a moment ago (e.g. another check's migrations/ fixture, exercised
-      // concurrently by migration-invariants.test.mjs) can legitimately be gone by the
-      // time it is read here. A file that no longer exists cannot carry a provider literal
-      // or a seed import; any other read failure (permissions, etc.) is still a finding.
+      // Defensive, not a race fix: this check walks a LIVE working tree
+      // (`listBackendSrcTsFiles()` above is a snapshot, not a lock), and a tool that does
+      // that should not crash just because a file it saw a moment ago is gone by the time
+      // it gets read. A file that no longer exists cannot carry a provider literal or a
+      // seed import, so this is a silent skip, not a finding; any other read failure
+      // (permissions, etc.) is still a finding. (This layer's own test suite runs its
+      // check-test FILES serially -- see the root `test:verify` script's
+      // `--test-concurrency=1` -- precisely so that two tests mutating the same shared tree
+      // can never race each other; this guard is not standing in for that.)
       const code = /** @type {{ code?: string }} */ (err).code
       if (code === 'ENOENT') continue
       findings.push(`${relFromRoot}: unreadable: ${errMessage(err)}`)

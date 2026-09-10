@@ -363,9 +363,10 @@ export const CHECKS = [
       '1788600000007), its 5 *.db-spec.ts files excluded from rules 2–4 — (1) every ' +
       '`synchronize` property anywhere under backend/src initialises to the literal ' +
       '`false` (both known sites today, app.module.ts:129 and testing/db-harness.ts:126, ' +
-      'and any new one); (2) no two migration filenames (matching ' +
-      '/^(\\d{13})-([A-Za-z0-9]+)\\.ts$/) capture the same 13-digit timestamp — a ' +
-      'fixed-width prefix, so unique implies strictly ascending; (3) each migration\'s ' +
+      'and any new one); (2) every file in backend/src/migrations/ that is not one of the ' +
+      '5 db-specs matches /^(\\d{13})-([A-Za-z0-9]+)\\.ts$/ — a stray file of neither shape ' +
+      'is itself a finding — and no two migration filenames capture the same 13-digit ' +
+      'timestamp, a fixed-width prefix so unique implies strictly ascending; (3) each migration\'s ' +
       "exported class name equals its filename's name-plus-timestamp (e.g. " +
       '1788600000000-InitialSchema.ts exports InitialSchema1788600000000, confirmed ' +
       'against all 8 files as shipped); and (4), ONLY WHEN origin/main is a resolvable ' +
@@ -388,11 +389,7 @@ export const CHECKS = [
       'does not resolve, rule 4 is SKIPPED (a WARNING line, never a silent pass) and this ' +
       'row proves nothing about already-merged migrations for that run, though rules 1–3 ' +
       'still apply in full. Filename- and class-name-matching are purely lexical: a ' +
-      'correctly named class with a broken body is exactly as green as a correct one. And ' +
-      'a file inside backend/src/migrations/ that is neither *.db-spec.ts nor shaped like ' +
-      '<timestamp>-<Name>.ts is invisible to rules 2 and 3 entirely — deliberately out of ' +
-      "this check's scope (see the check's own file header), so it is neither validated as " +
-      'a migration nor flagged as debris.',
+      'correctly named class with a broken body is exactly as green as a correct one.',
   },
 ]
 

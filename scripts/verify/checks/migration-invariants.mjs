@@ -16,29 +16,19 @@
  *     `testing/db-harness.ts`'s `DataSource` options are each many lines long), and a
  *     regex would ALSO match the same text sitting inside a comment or a string, which
  *     proves nothing about what TypeORM actually receives at runtime.
- *  2. Migration filenames (direct children of `backend/src/migrations/`, its five
- *     `*.db-spec.ts` files excluded -- they are hand-written Jest suites in the same
- *     directory, never migrations TypeORM would load) match
- *     `/^(\d{13})-([A-Za-z0-9]+)\.ts$/`. Because that prefix is a FIXED-WIDTH 13-digit
- *     string, sorting filenames alphabetically and sorting by timestamp value agree
- *     exactly -- so "timestamps are strictly ascending with no duplicates" reduces to one
- *     check: no two files may capture the same 13-digit timestamp. (Two files CAN share a
- *     timestamp on disk -- the name half of the filename still differs -- which is exactly
- *     the case this rule exists to catch: an out-of-order or reused timestamp is a
- *     duplicate the filesystem alone will not stop you from creating.)
- *
- *     SCOPE, stated precisely because it is deliberately narrow: this rule constrains
- *     files that already claim to be migrations (matching the pattern) or that are known
- *     not to be one (`*.db-spec.ts`). A third kind of entry -- some other file sitting in
- *     `backend/src/migrations/` that is neither shape -- is out of scope for rule 2/3
- *     entirely, on purpose: the brief this check implements states what a MIGRATION
- *     filename must look like, not that no other file may ever exist alongside them, and
- *     inventing that second, broader claim is exactly the kind of unrequested strictness
- *     that has no way to distinguish real debris from another tool's legitimate transient
- *     use of the same directory (this verify layer's own `seam` check, for one, exercises
- *     its migrations/-is-exempt rule with a fixture file that lives right here and matches
- *     neither shape). See this row's `blindSpot` in the registry for the honest statement
- *     of what that leaves unguarded.
+ *  2. Migration filenames (direct children of `backend/src/migrations/`) match
+ *     `/^(\d{13})-([A-Za-z0-9]+)\.ts$/`, with its five `*.db-spec.ts` files -- hand-written
+ *     Jest suites in the same directory, never migrations TypeORM would load -- excluded
+ *     from that requirement. ANY OTHER FILE in that directory (neither shape) is a finding:
+ *     `backend/src/migrations/` holds exactly two kinds of thing, and a stray third file is
+ *     worth flagging on its own merits, not waved through. Because the timestamp prefix is
+ *     a FIXED-WIDTH 13-digit string, sorting filenames alphabetically and sorting by
+ *     timestamp value agree exactly -- so "timestamps are strictly ascending with no
+ *     duplicates" reduces to one check: no two files may capture the same 13-digit
+ *     timestamp. (Two files CAN share a timestamp on disk -- the name half of the filename
+ *     still differs -- which is exactly the case this rule exists to catch: an out-of-order
+ *     or reused timestamp is a duplicate the filesystem alone will not stop you from
+ *     creating.)
  *  3. The exported class name equals the filename's name-plus-timestamp, e.g.
  *     `1788600000000-InitialSchema.ts` exports `class InitialSchema1788600000000`. See
  *     the note above `EXPECTED_CLASS_NAME` for why this check uses name+timestamp rather
@@ -259,12 +249,16 @@ function scan() {
     try {
       text = readFileSync(absPath, 'utf8')
     } catch (err) {
-      // ENOENT here is not a finding: this repository's own verify-layer tests write and
-      // remove short-lived fixture files under backend/src while their OWN check runs, and
-      // `node --test` runs different *.test.mjs files concurrently -- so a file this git
-      // listing saw a moment ago can legitimately be gone by the time it is read here. A
-      // file that no longer exists cannot violate `synchronize: false`; any other read
-      // failure (permissions, etc.) is still a real finding.
+      // Defensive, not the fix for any particular race: this check walks a LIVE working
+      // tree (`listBackendSrcTsFiles()` above is a snapshot, not a lock), and any tool that
+      // does that should not crash just because a file it saw a moment ago is gone by the
+      // time it gets read -- a deleted branch switch mid-run, an editor's atomic-save
+      // rename, anything. A file that no longer exists cannot violate `synchronize: false`,
+      // so this is a silent skip, not a finding; any other read failure (permissions, etc.)
+      // is still a real finding. (This layer's own test suite runs its check-test FILES
+      // serially -- see the root `test:verify` script's `--test-concurrency=1` -- precisely
+      // so that two tests mutating the same shared tree can never race each other; this
+      // guard is not standing in for that.)
       const code = /** @type {{ code?: string }} */ (err).code
       if (code === 'ENOENT') continue
       findings.push(`${relPath}: unreadable: ${errMessage(err)}`)
@@ -298,10 +292,14 @@ function scan() {
   for (const file of files) {
     if (DB_SPEC_RE.test(file)) continue // a Jest suite living alongside the migrations, not one
     const m = MIGRATION_FILENAME_RE.exec(file)
-    // A file matching neither shape is out of scope for rules 2/3 -- see the file header's
-    // "SCOPE" note above rule 2 for why this is deliberate rather than an oversight.
-    if (!m) continue
-
+    if (!m) {
+      findings.push(
+        `${MIGRATIONS_REL}/${file}: filename does not match /^(\\d{13})-([A-Za-z0-9]+)\\.ts$/ ` +
+          'and is not a *.db-spec.ts file -- backend/src/migrations/ holds only migrations ' +
+          'and their db-spec suites; nothing else belongs here.',
+      )
+      continue
+    }
     candidates.push({ file, timestamp: m[1], name: m[2] })
   }
 
@@ -334,8 +332,7 @@ function scan() {
     try {
       text = readFileSync(absPath, 'utf8')
     } catch (err) {
-      // Same transient-fixture reasoning as rule 1 above: a candidate the directory
-      // snapshot saw a moment ago can already be gone by the time it is read here.
+      // Same defensive reasoning as rule 1 above -- see that comment.
       const code = /** @type {{ code?: string }} */ (err).code
       if (code === 'ENOENT') continue
       findings.push(`${relPath}: unreadable: ${errMessage(err)}`)
