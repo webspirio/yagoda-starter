@@ -39,7 +39,7 @@ const useColor =
   process.stdout.isTTY === true && !process.env.NO_COLOR && process.env.TERM !== 'dumb'
 
 /** @param {string} code @param {string} s @returns {string} */
-const paint = (code, s) => (useColor ? `[${code}m${s}[0m` : s)
+const paint = (code, s) => (useColor ? `\u001b[${code}m${s}\u001b[0m` : s)
 
 /**
  * Glyph and word both differ per status, so the table stays unambiguous with colour
@@ -406,7 +406,7 @@ function envKey() {
   const names = Object.keys(process.env)
     .filter((k) => /^COVERAGE_/.test(k))
     .sort()
-  return names.map((k) => `${k}=${process.env[k]}`).join(' ')
+  return names.map((k) => `${k}=${process.env[k]}`).join('\u0000')
 }
 
 /** @param {number} ms @returns {string} */

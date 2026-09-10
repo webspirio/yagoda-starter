@@ -1,12 +1,34 @@
-// @ts-nocheck — test-double literals here are intentionally unannotated (`exited`'s `code`
-// param has no default and no type; fixtures like `tier: 'fast'` widen to plain `string`).
-// That is normal, idiomatic test code, not a defect to annotate around. run.mjs itself
-// stays fully checked under tsconfig.scripts.json; only this file opts out.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
 import { classify, isBlocking, parseArgs, reportIsFresh } from './run.mjs'
 
+/**
+ * Shape of the `reportIsFresh` fixtures below, typed locally so the pinned literals (e.g.
+ * `tier: 'fast'`) are checked against the same literal unions run.mjs itself uses, instead
+ * of widening to plain `string`.
+ * @typedef {object} StoredReportFixture
+ * @property {number} schema
+ * @property {string} sourceHash
+ * @property {boolean} ok
+ * @property {'fast'|'full'} tier
+ * @property {boolean} noSkip
+ * @property {string} envKey
+ * @property {{ only: string[] | null, afterDepsFullyEvaluated: boolean }} scope
+ */
+/**
+ * @typedef {object} FreshnessOptsFixture
+ * @property {'fast'|'full'} tier
+ * @property {boolean} noSkip
+ * @property {string[] | null} only
+ */
+
+/**
+ * @param {number} code
+ * @param {string} [out]
+ * @param {string} [err]
+ * @returns {{ outcome: 'exited', code: number, out: string, err: string, ms: number }}
+ */
 const exited = (code, out = '', err = '') => ({ outcome: 'exited', code, out, err, ms: 1 })
 
 test('exit 0 is PASSED', () => {
@@ -75,6 +97,7 @@ test('--only rejects an unknown check id', () => {
 })
 
 test('reuse refuses a stored green that does not cover the request', () => {
+  /** @type {StoredReportFixture} */
   const green = {
     schema: 1,
     sourceHash: 'abc',
@@ -84,6 +107,7 @@ test('reuse refuses a stored green that does not cover the request', () => {
     envKey: '',
     scope: { only: null, afterDepsFullyEvaluated: true },
   }
+  /** @type {FreshnessOptsFixture} */
   const opts = { tier: 'fast', noSkip: false, only: null }
   assert.equal(reportIsFresh(green, 'abc', opts), true)
   assert.equal(reportIsFresh({ ...green, sourceHash: 'zzz' }, 'abc', opts), false, 'different tree')
