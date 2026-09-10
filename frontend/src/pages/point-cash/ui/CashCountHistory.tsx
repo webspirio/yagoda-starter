@@ -5,6 +5,7 @@ import { SectionCard } from '@/shared/ui/section-card';
 import { DataTable, type Column } from '@/shared/ui/data-table';
 import { Button } from '@/shared/ui/button';
 import { EmptyState } from '@/shared/ui/empty-state';
+import { Spinner } from '@/shared/ui/spinner';
 import { cn } from '@/shared/lib/cn';
 import { formatUah } from '@/shared/lib/money';
 import { formatShortDate } from '@/shared/lib/date';
@@ -82,7 +83,15 @@ export function CashCountHistory({
 
   return (
     <SectionCard eyebrow={t('pointCash.countHistory.title')}>
-      {rows.length === 0 ? (
+      {/* «Цю точку ще жодного разу не рахували» is a claim about the point's
+          whole history — an unanswered query is not evidence for it, and a
+          journal that flashes it on every load teaches the reader to
+          distrust it. Wait for the read to settle first. */}
+      {counts.isPending ? (
+        <div className="flex justify-center py-6">
+          <Spinner />
+        </div>
+      ) : rows.length === 0 ? (
         <EmptyState title={t('pointCash.countHistory.empty')} />
       ) : (
         <DataTable columns={columns} rows={rows} rowKey={(row) => row.id} frame={false} />

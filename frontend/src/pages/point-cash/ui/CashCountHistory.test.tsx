@@ -36,7 +36,10 @@ const count = (over: Partial<CashCount> = {}): CashCount => ({
   ...over,
 });
 
-const page = (data: CashCount[]) => ({ data: { data, total: data.length, page: 1, limit: 100 } });
+const page = (data: CashCount[]) => ({
+  data: { data, total: data.length, page: 1, limit: 100 },
+  isPending: false,
+});
 
 beforeEach(() => {
   countsMock.mockReset().mockReturnValue(page([]));
@@ -47,6 +50,18 @@ describe('CashCountHistory', () => {
   it('asks the cash-count entity for this point', () => {
     render(<CashCountHistory pointId="p1" isOwner={false} />);
     expect(countsMock).toHaveBeenCalledWith({ pointId: 'p1' });
+  });
+
+  it('waits for the read before saying the point was never counted', () => {
+    // «Цю точку ще жодного разу не рахували» is a statement about the
+    // point's whole history, and an unanswered query is not evidence for it
+    // — flashing it on every load teaches the reader to distrust it.
+    countsMock.mockReturnValue({ data: undefined, isPending: true });
+
+    render(<CashCountHistory pointId="p1" isOwner={false} />);
+
+    expect(screen.queryByText('No cash counts recorded for this point yet.')).toBeNull();
+    expect(screen.getByRole('progressbar')).toBeInTheDocument();
   });
 
   it('says there is no history yet rather than showing an empty table', () => {
