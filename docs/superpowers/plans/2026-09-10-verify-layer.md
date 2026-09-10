@@ -1137,7 +1137,7 @@ Four rules:
 
 1. `synchronize` is `false` at every occurrence in `backend/src/**` (AST: a property named `synchronize` whose initialiser is not the literal `false` is a finding).
 2. Migration filenames match `/^(\d{13})-([A-Za-z0-9]+)\.ts$/`; timestamps are strictly ascending with no duplicates. `*.db-spec.ts` in that directory is excluded.
-3. The exported class name equals the filename's second capture group.
+3. The exported class name equals the filename's name part **followed by its timestamp** — TypeORM's own convention, e.g. `1788600000005-YagodaCatalog.ts` exports `class YagodaCatalog1788600000005`. (Verified against all eight migrations on 2026-09-10; an earlier draft of this step said "the name part" alone, which no real migration in this repo satisfies.)
 4. **Already-merged migrations are frozen.** For each migration file, if it exists in `origin/main` (`git cat-file -e origin/main:<path>`), its current content must be byte-identical (`git diff --quiet origin/main -- <path>`). If `origin/main` is not fetched, this rule **SKIPS with a printed warning** — and says so — rather than passing silently.
 
 Rule 4's warning line must start with `WARNING` so the runner's `warningLines()` surfaces it even on a green run.
