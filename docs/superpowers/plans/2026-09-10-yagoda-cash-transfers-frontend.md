@@ -179,6 +179,13 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 - Consumes: нічого нового.
 - Produces: `useOpenShiftMutation()` → `mutateAsync({ counted_amount: string })`; `useCloseShiftMutation()` → `mutateAsync({ id: string, counted_amount: string })`. `useReopenShiftMutation` **не змінюється**.
 
+> **Розбіжність із кодом, зафіксовано 2026-09-10.** `useOpenShiftMutation`/`useCloseShiftMutation`
+> дійсно народились у `pages/day/api/shiftActions.ts` за цим планом, але не лишилися там: коли
+> `CountDrawerDialog` (Task 4) отримав другого споживача — `pages/reception` теж дає оператору
+> відкрити зміну (коміт `bb961d8`) — обидві мутації переїхали в
+> `features/count-shift/api/shiftActions.ts` разом з діалогом. `pages/day/api/shiftActions.ts`
+> сьогодні несе лише `useReopenShiftMutation`, яка нікуди не переїжджала.
+
 - [ ] **Step 1: Написати падючий тест**
 
 ```tsx
@@ -308,6 +315,13 @@ export function CountDrawerDialog(props: {
   onConfirm: (countedAmount: string) => Promise<unknown>;
 }): JSX.Element;
 ```
+
+> **Розбіжність із кодом, зафіксовано 2026-09-10.** `CountDrawerDialog` живе не в
+> `pages/day/ui/`, а в `features/count-shift/ui/`: `pages/reception` теж дає оператору
+> відкрити зміну (коміт `bb961d8`), а сторінка не ділиться UI напряму з іншою сторінкою —
+> спільний код піднявся на рівень `features`, де його бачать обидві. `pages/day/ui/DayPage.tsx`
+> і `pages/reception/ui/ReceptionPage.tsx` обидва імпортують готовий `CountDrawerDialog` з
+> `@/features/count-shift`.
 
 - [ ] **Step 1: Написати падючий тест**
 

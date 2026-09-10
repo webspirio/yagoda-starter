@@ -110,6 +110,16 @@ awaiting_explanation | closed`, де `awaiting_explanation` **недосяжни
 бачить очікуване число, вписує його. Очікуване й розбіжність з'являються **після** запису —
 у тості й на «Касі точки».
 
+> **Розбіжність із кодом, зафіксовано 2026-09-10.** Тут спершу стояло, що ремонт додає
+> `pages/day/ui/OpenShiftDialog.tsx`, `CloseShiftDialog.tsx` і що `pages/day/api/shiftActions.ts`
+> несе `useOpenShiftMutation`/`useCloseShiftMutation`. Так і вийшло — доти, доки в цього
+> діалогу не з'явився другий споживач: `pages/reception` теж дає оператору відкрити зміну
+> (коміт `bb961d8`). Сторінка не ділиться UI напряму з іншою сторінкою, тому
+> обидва діалоги об'єдналися в один `CountDrawerDialog` (`features/count-shift/ui/`), а
+> `useOpenShiftMutation`/`useCloseShiftMutation` переїхали в `features/count-shift/api/shiftActions.ts`
+> поруч із ним. `pages/day/api/shiftActions.ts` лишився лише під `useReopenShiftMutation` —
+> вона нікуди не переїжджала, бо лишається owner-only з одним споживачем (`ReopenShiftDialog`).
+
 ## 6. PR-B — entity-зрізи
 
 Три нові зрізи, кожен рівно `model` + `api`, як `entities/shift`:
