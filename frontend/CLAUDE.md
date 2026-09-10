@@ -43,7 +43,7 @@ src/
   entities/shift/                # useShiftOnDateQuery / useCurrentShiftQuery / shiftOnDateQueryOptions, Shift type — one point's working day, read by pages/day and reception (the queryOptions factory also backs pages/dashboard's useNetworkToday fan-out)
   entities/intake/               # useIntakesQuery / intakesQueryOptions, Intake type — a point's receipts journal, read by pages/day, reception, supplier-card and journal (the queryOptions factory also backs pages/dashboard's useNetworkToday fan-out)
   entities/payout/               # usePayoutsQuery / payoutsQueryOptions, Payout type — a point's payouts journal, read by pages/day, supplier-card and journal (the queryOptions factory also backs pages/dashboard's useNetworkToday fan-out)
-  entities/transfer/             # useTransfersQuery / useTransferQuery / transfersQueryOptions, Transfer type — one point-to-point movement of cash and crates (§7), read by pages/point-cash and pages/transfers
+  entities/transfer/             # useTransfersQuery, Transfer type — one point-to-point movement of cash and crates (§7), read by pages/point-cash and pages/transfers
   entities/point-cash/           # usePointCashQuery / usePointCashForPointQuery, PointCashRow/PointCashOne types — a point's cash-on-hand, one server-computed figure never re-summed client-side, read by pages/point-cash, pages/transfers and features/set-point-target
   entities/cash-count/           # useCashCountsQuery, CashCount type — a point's drawer-count history (opening/midday/closing; §7.6 one drawer, two books), read by pages/point-cash
   features/auth/                 # login/logout API calls, LoginForm, RequireAuth + RequireRole route guards — no register API
