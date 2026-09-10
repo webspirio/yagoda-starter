@@ -378,10 +378,18 @@ jobs:
     # Internal PRs only (forks have no secrets), and only when an image for
     # this head was actually pushed. A preview is "the CI-passed commit": all
     # three jobs must be green.
+    # PREVIEWS_ENABLED is a SEPARATE gate from COOLIFY_ENABLED on purpose.
+    # Previews need a Coolify GitHub App: `POST /deploy?pr=<N>` is refused with
+    # «Pull request N not found for this resource» unless Coolify already knows
+    # the PR, and it only ever learns that from the App's webhook. Production
+    # CD needs no PR record, so it stays armed while previews are switched off;
+    # without the split, every PR would carry a red job for a capability that
+    # is not installed. Set this to true once issue #68 is closed.
     if: >-
       github.event_name == 'pull_request'
       && needs.docker.outputs.pushed == 'true'
       && vars.COOLIFY_ENABLED == 'true'
+      && vars.PREVIEWS_ENABLED == 'true'
     # One preview allocation at a time across the whole repository, so the
     # cap check below cannot race another PR's deploy.
     concurrency:
@@ -495,6 +503,7 @@ jobs:
       && needs.docker.outputs.pushed == 'false'
       && contains(github.event.pull_request.labels.*.name, 'preview')
       && vars.COOLIFY_ENABLED == 'true'
+      && vars.PREVIEWS_ENABLED == 'true'
     permissions:
       pull-requests: write
     steps:

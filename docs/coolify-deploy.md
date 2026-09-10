@@ -160,14 +160,23 @@ Coolify altogether, see the last section.
 
 | Gate | Result |
 |---|---|
-| `SOURCE_COMMIT` interpolates in compose | |
-| Preview `SOURCE_COMMIT` == PR head SHA | |
-| Manual «Redeploy» keeps the same SHA | |
-| Preview deleted on PR close with Auto Deploy off | |
-| API lists previews (cap source) | |
+| `SOURCE_COMMIT` interpolates in compose | open — the first production deploy answers it |
+| Preview `SOURCE_COMMIT` == PR head SHA | **blocked** — previews need the GitHub App (#68) |
+| Manual «Redeploy» keeps the same SHA | blocked, same reason |
+| Preview deleted on PR close with Auto Deploy off | blocked, same reason |
+| API lists previews (cap source) | blocked, same reason — `application_previews` is empty |
 | Coolify holds registry credentials | ✗ — this version has no registry store; use the `docker login` fallback (step 5) |
-| `docker compose up` does not fail on the one-shot `seed` exiting 0 | |
-| Coolify routes the domain to nginx's port 8080 | |
+| `docker compose up` does not fail on the one-shot `seed` exiting 0 | open — production exercises the risky case (the seed exits 0 at once there) |
+| Coolify routes the domain to nginx's port 8080 | open — the first production deploy answers it |
+
+**Previews require the GitHub App; a deploy key is not enough.** With the SSH
+deploy key alone, `POST /api/v1/deploy?uuid=<app>&pr=<N>` is refused with
+«Pull request N not found for this resource»: Coolify only learns a PR exists
+from the App's webhook, and `application_previews.pull_request_html_url` is
+`NOT NULL`, so no other path can create the row. Production CD is unaffected —
+`deploy-prod` sends no `&pr=`. That is why the workflow has two gates:
+`COOLIFY_ENABLED` arms production, `PREVIEWS_ENABLED` arms previews and stays
+unset until #68 is closed.
 
 **Fallback (only if a `SOURCE_COMMIT` gate failed):** CI sets `IMAGE_TAG` in the
 relevant env set via `PATCH /api/v1/applications/<uuid>/envs` right before
