@@ -270,35 +270,41 @@ export const CHECKS = [
       '(.env, .env.*, !.env.example) are SHA-256-fingerprinted in ' +
       'scripts/verify/baselines/secret-boundary.json, dated 2026-09-10 — editing, ' +
       'reordering or removing any one of them without a matching baseline update, in the ' +
-      'same reviewed commit, fails this exact command. (3) Every file `git ls-files` tracks ' +
-      '(skipping package-lock.json and the baseline file itself) is scanned line by line for ' +
-      'a PEM BEGIN…PRIVATE KEY block, a JWT-shaped string (eyJ + two more ' +
-      '.-separated base64url segments), and a ≥32-character contiguous alphanumeric run ' +
-      'with Shannon entropy over 3.5 bits/char assigned to a name matching ' +
-      '/secret|password|token|api[_-]?key/i. (4) Every value in .env.example is additionally ' +
-      'held to a placeholder-only standard — empty, a changeme/example/your-/<...>/... ' +
-      'shape, or short and low-entropy on its own merits, regardless of what its key is named — on ' +
-      'top of, not instead of, check (3). A single tracked file failing any of the four ' +
-      'fails this exact command; a real secret is never written into the baseline, which ' +
-      'holds only the gitignore fingerprint.',
+      'same reviewed commit, fails this exact command. (3) Every tracked file, .md and ' +
+      'every other extension alike with no per-file-type exemption (skipping only ' +
+      'package-lock.json, integrity hashes by construction, and the baseline file itself), ' +
+      'is scanned line by line for a PEM BEGIN…PRIVATE KEY block, a JWT-shaped ' +
+      'string (eyJ + two more .-separated base64url segments), and a ≥32-character value ' +
+      'assigned to a name matching /secret|password|token|api[_-]?key/i whose WHOLE-VALUE ' +
+      'Shannon entropy exceeds 3.5 bits/char and which does not match a placeholder shape ' +
+      'named explicitly (changeme, change-me, example, your-, <...>, ...). (4) Every value ' +
+      'in .env.example is additionally held to that same placeholder-only standard ' +
+      'regardless of what its key is named — on top of, not instead of, check (3). A single ' +
+      'tracked file failing any of the four fails this exact command; a real secret is ' +
+      'never written into the baseline, which holds only the gitignore fingerprint.',
     blindSpot:
-      'Shannon entropy is a heuristic wrong in both directions: a dense natural-language ' +
-      'placeholder can cross the threshold (this repo\'s own JWT_SECRET example value scores ' +
-      '3.7 bits/char over its full length, saved only because no single hyphen-free word in ' +
-      'it reaches 32 characters — a deliberate, narrow rule, not a general defence), and a ' +
-      'short or structured real secret can stay under it entirely — nothing below 32 ' +
-      'contiguous letters-and-digits is ever inspected. A secret containing `-` or `_` ' +
-      '(many real API keys and JWTs do) is invisible to the entropy sub-check for the same ' +
-      'reason. Inside a .md file, a match wrapped in a single backtick span is treated as a ' +
-      'quoted example and skipped, so a real secret pasted into a markdown code span would ' +
-      'not be caught. This check also sees only files `git ls-files` tracks RIGHT NOW, at ' +
-      'the CURRENT commit — a credential committed and later deleted is invisible to it, ' +
-      'history is never searched, and rule 1\'s pathspec is root-anchored, not recursive, so ' +
-      'an errant .env committed inside backend/ or frontend/ would not be named by it ' +
-      'either. And it cannot tell a real credential from a convincing fake: this very ' +
-      'check\'s own tests plant a fake PEM header and a JWT built from the literal string ' +
-      '"not-a-real-token", and both are exactly as red as the genuine article — the shape is ' +
-      'all this check ever sees.',
+      'Shannon entropy is measured over the WHOLE value (a run-based measurement was tried ' +
+      'and rejected: it scored a real hyphen-separated credential at 2.00 bits/char, ' +
+      'comfortably invisible), but it remains a heuristic in both directions — a placeholder ' +
+      'shape not yet named in PLACEHOLDER_RE can still false-positive, and any real secret ' +
+      'under 32 characters is never inspected at all, full stop. Only a QUOTED string ' +
+      'literal is a candidate value anywhere in a line; a bare, unquoted one is a candidate ' +
+      'only when it is the entire line, so a real secret assigned without quotes in the ' +
+      'middle of a larger unquoted expression is invisible (this is deliberate — an ' +
+      'unquoted RHS is not valid JS/TS syntax for a literal in the first place, so nothing ' +
+      'a real secret could actually look like in source is lost by it). There is exactly ' +
+      'one exact-value exception (KNOWN_SAFE_VALUES in the check source): one already-' +
+      'audited fake token fixture in frontend/src, pinned by its exact file path AND its ' +
+      'exact string, because this task may not edit frontend/src to reshape it instead — ' +
+      'this pins nothing else, and a different value at that path, or this value anywhere ' +
+      'else, is still caught. This check also sees only files `git ls-files` tracks RIGHT ' +
+      'NOW, at the CURRENT commit — a credential committed and later deleted is invisible ' +
+      "to it, history is never searched, and rule 1's pathspec is root-anchored, not " +
+      'recursive, so an errant .env committed inside backend/ or frontend/ would not be ' +
+      'named by it either. And it cannot tell a real credential from a convincing fake: ' +
+      "this very check's own tests plant a fake PEM header, a JWT built from the literal " +
+      'string "not-a-real-token", and a dash-separated random value, and all three are ' +
+      'exactly as red as the genuine article — the shape is all this check ever sees.',
   },
 ]
 

@@ -216,7 +216,7 @@ jobs:
       - run: npm run test:db -w backend
         env:
           APP_URL: http://localhost:5173
-          JWT_SECRET: ci-only-not-a-secret-0123456789abcdef
+          JWT_SECRET: changeme-ci-only-jwt-secret-0123456789abcdef
           DB_HOST: localhost
           DB_PORT: '5432'
           DB_USER: app

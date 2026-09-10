@@ -36,6 +36,27 @@ function randomHighEntropyValue() {
   return out
 }
 
+/**
+ * Four 8-character alphanumeric chunks joined by hyphens (35 chars total) — the
+ * dash-separated secret shape (an API key, a hex-with-dashes credential) that a
+ * contiguous-run entropy measurement would have missed entirely: the longest unbroken
+ * run here is 8 characters, far under the 32-character floor, while the WHOLE value's
+ * entropy is comfortably over the 3.5 bits/char threshold. Generated at runtime, like
+ * randomHighEntropyValue above, so no literal high-entropy string sits in this file's own
+ * source once it is tracked.
+ *
+ * @returns {string}
+ */
+function randomDashSeparatedHighEntropyValue() {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'
+  const chunk = () => {
+    let out = ''
+    for (let i = 0; i < 8; i += 1) out += chars[Math.floor(Math.random() * chars.length)]
+    return out
+  }
+  return [chunk(), chunk(), chunk(), chunk()].join('-')
+}
+
 test('the real tree is green', () => {
   const res = run()
   assert.equal(res.status, 0, res.out)
@@ -72,9 +93,12 @@ test('a tracked JWT-shaped string is caught', () => {
   const rel = 'docs/zz-secret-fixture-jwt.txt'
   const fixture = path.join(ROOT, rel)
   // Obviously fake: three base64url segments built from the literal string
-  // "not-a-real-token", never a real token.
+  // "not-a-real-token", never a real token. The "eyJ" prefix is joined from parts too,
+  // for the same reason as the PEM header above: this source file is itself tracked, so
+  // a contiguous literal match here would flag this very test suite.
+  const jwtPrefix = ['ey', 'J'].join('')
   const seg = (/** @type {string} */ s) => Buffer.from(s, 'utf8').toString('base64url')
-  const fakeJwt = `eyJ${seg('not-a-real-token-header')}.${seg('not-a-real-token-payload')}.${seg('not-a-real-token-signature')}`
+  const fakeJwt = `${jwtPrefix}${seg('not-a-real-token-header')}.${seg('not-a-real-token-payload')}.${seg('not-a-real-token-signature')}`
   writeFileSync(fixture, `${fakeJwt}\n`)
   try {
     execFileSync('git', ['add', '-N', '--', rel], { cwd: ROOT })
@@ -82,6 +106,27 @@ test('a tracked JWT-shaped string is caught', () => {
     assert.equal(res.status, 1)
     assert.match(res.out, /JWT/)
     assert.match(res.out, /zz-secret-fixture-jwt\.txt/)
+  } finally {
+    try {
+      execFileSync('git', ['rm', '--cached', '--force', '--quiet', '--', rel], { cwd: ROOT })
+    } catch {
+      // See the PEM test above for why this is allowed to fail harmlessly.
+    }
+    rmSync(fixture, { force: true })
+  }
+})
+
+test('a dash-separated high-entropy value is caught (regression: a run-based measurement would miss this)', () => {
+  const rel = 'docs/zz-secret-fixture-dash.txt'
+  const fixture = path.join(ROOT, rel)
+  const value = randomDashSeparatedHighEntropyValue()
+  writeFileSync(fixture, `API_TOKEN=${value}\n`)
+  try {
+    execFileSync('git', ['add', '-N', '--', rel], { cwd: ROOT })
+    const res = run()
+    assert.equal(res.status, 1, res.out)
+    assert.match(res.out, /API_TOKEN/)
+    assert.match(res.out, /zz-secret-fixture-dash\.txt/)
   } finally {
     try {
       execFileSync('git', ['rm', '--cached', '--force', '--quiet', '--', rel], { cwd: ROOT })

@@ -21,31 +21,49 @@
  *     dated reason, so relaxing those three lines is a visible diff in a reviewed file,
  *     not a silent widening of what git will track.
  *  3. No tracked file carries a secret shape: a PEM private-key block, a JWT, or a
- *     ≥32-character high-entropy value assigned to a name matching
- *     /secret|password|token|api[_-]?key/i. package-lock.json (integrity hashes) and this
- *     check's own baseline file are skipped.
- *  4. `.env.example` is placeholder-only: every value is empty, matches a placeholder
- *     shape, or is short/low-entropy on its own merits — regardless of what its key is
- *     named. `.env.example` is not exempt from rule 3 either; this is an ADDITIONAL,
- *     stricter layer on top of it.
+ *     ≥32-character value assigned to a name matching /secret|password|token|api[_-]?key/i
+ *     whose WHOLE-VALUE Shannon entropy exceeds 3.5 bits/char. package-lock.json
+ *     (integrity hashes) and this check's own baseline file are skipped.
+ *  4. `.env.example` is placeholder-only: every value is empty, matches a named
+ *     placeholder shape, or is short/low-entropy on its own merits — regardless of what
+ *     its key is named. `.env.example` is not exempt from rule 3 either; this is an
+ *     ADDITIONAL, stricter layer on top of it.
  *
  * A SECRET IS NEVER BASELINED. The baseline holds only the gitignore fingerprint — if
  * rule 3 or rule 4 finds something, that is a finding to fix, never a value to record.
  *
- * Entropy heuristics have real limits, on both sides: a dense natural-language phrase can
- * cross the threshold (false positive) and a short or structured secret can stay under it
- * (false negative). This check also sees only tracked files at the CURRENT commit — a
- * secret committed and later removed is invisible to it, and it cannot distinguish a real
+ * Entropy is measured over the WHOLE value, not a contiguous run within it — measured
+ * before choosing this: a real base64url token scores 5.25 bits/char and a real
+ * hyphen-separated credential scores 3.89, but restricting the measurement to the longest
+ * `[A-Za-z0-9]` run (an earlier version of this check did exactly that, to keep this
+ * repo's own `.env.example` placeholder green) drops the hyphenated case to 2.00 —
+ * comfortably under the 3.5 threshold, and hyphen/underscore-separated secrets are one of
+ * the most common real shapes. That earlier version optimised the measurement to fit the
+ * tree instead of fixing the tree to fit the measurement — the exact failure mode rule 3
+ * of this check's own contract calls out. The right fix, applied here instead: name the
+ * repository's actual placeholder shapes in PLACEHOLDER_RE (shared by rules 3 and 4) so
+ * they never reach the entropy test at all, and keep the measurement honest for
+ * everything else.
+ *
+ * A bare, unquoted value is only a candidate when it is the WHOLE line — see
+ * BARE_ASSIGNMENT_RE below. Restoring whole-value entropy across every tracked file (not
+ * just .env.example) surfaced a second, unrelated false positive this measurement change
+ * introduced: `const password = process.env.BOOTSTRAP_OWNER_PASSWORD;` — a property access,
+ * not a literal — scored high enough to trip rule 3 on its own RHS. A quoted string literal
+ * is the only thing JS/TS syntax allows a real hardcoded secret to be, so it stays a
+ * candidate anywhere in a line; an unquoted RHS embedded in a statement never is.
+ *
+ * Entropy heuristics still have real limits: a placeholder shape not yet named in
+ * PLACEHOLDER_RE can false-positive, and a short or low-entropy real secret can stay
+ * under the threshold entirely (false negative) — nothing under 32 characters is ever
+ * inspected. This check also sees only tracked files at the CURRENT commit — a secret
+ * committed and later removed is invisible to it, and it cannot distinguish a real
  * credential from a convincing fake. See the registry's `blindSpot` for the full list.
  *
- * One more deliberate exemption: inside a `.md` file, a match fully wrapped in a single
- * pair of backticks (an inline code span, e.g. the literal text of a PEM header quoted as
- * an example) is not reported. Without it, this repository's own planning docs — which
- * quote these exact patterns as illustrations of what the check looks for — would trip the
- * scanner forever. The exemption is scoped to `.md` files only: a `.ts`/`.mjs` file's
- * backticks are template literals, not quotation, and must stay in scope. The blind spot is
- * real and named in the registry: a genuine secret pasted inside a markdown inline-code
- * span is invisible here.
+ * There is no per-file-type or per-directory exemption of any kind — not for `.md`, not
+ * for test files, not for any path. The one KNOWN_SAFE_VALUES entry below is not one
+ * either: it is an exact (file, value) pin, not a shape, and it exists solely because this
+ * task may not edit backend/src or frontend/src — see its own comment for why.
  */
 import { execFileSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
@@ -69,16 +87,54 @@ const GITIGNORE_BOUNDARY_LINES = ['.env', '.env.*', '!.env.example']
 // — a check's own baseline is not "a tracked file" in the sense rule 3 means.
 const RULE3_SKIP = new Set(['package-lock.json', BASELINE_REL])
 
-const PEM_RE = /-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----/g
-const JWT_RE = /eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/g
+// Exact, reviewed exceptions — NOT a shape, NOT a file-type or path carve-out, and never a
+// place to record a real secret. Each entry names one exact tracked-file path AND the one
+// exact value already confirmed to be a deliberately fake fixture in it. Both must match
+// for the exception to apply, so it excludes nothing else — not the file, not nearby
+// values, not this same string appearing anywhere else.
+//
+// This exists only because this task is constrained to never edit backend/src or
+// frontend/src, so "fix the tree" (the right answer for docs/superpowers and
+// .env.example, applied elsewhere in this file and its own history) is not available for
+// this one value. frontend/src/shared/api/persister.test.ts:42 is a regression guard for
+// a real security fix (the raw bearer token must never sit in the persisted cache key) —
+// its fixture is intentionally JWT-shaped so the assertion is meaningful, and it names
+// itself as fake in its own text ("super-secret-session-token"). If this file is ever
+// touched by a change with permission to edit frontend/src, the fixture should be
+// reshaped to not need this entry, and the entry deleted.
+const KNOWN_SAFE_VALUES = new Map([
+  [
+    'frontend/src/shared/api/persister.test.ts',
+    new Set(['eyJhbGciOiJIUzI1NiJ9.super-secret-session-token.sig']),
+  ],
+])
+
+const PEM_RE = /-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----/
+const JWT_RE = /eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/
 const SECRET_NAME_RE = /secret|password|token|api[_-]?key/i
 
-// A placeholder value in .env.example: empty is handled separately before this runs.
-const PLACEHOLDER_RE = /^(changeme|example|your-|<.*>|\.\.\.)/i
+// Every placeholder shape this repository's own config files actually use, named
+// explicitly rather than inferred from a shape test. `change-me` (hyphenated) covers
+// .env.example's JWT_SECRET line (`change-me-to-a-32-character-minimum-secret`) —
+// `changeme` alone does not match it, which is exactly why it used to false-positive.
+const PLACEHOLDER_RE = /^(changeme|change-me|example|your-|<.*>|\.\.\.)/i
 
-// `NAME=value`, `NAME: value`, `NAME: "value"`, `NAME = 'value'` — env files, JSON-ish and
-// JS/TS object literals all read the same way for this purpose.
-const ASSIGNMENT_RE = /([A-Za-z_$][A-Za-z0-9_$]*)\s*[:=]\s*(?:'([^']*)'|"([^"]*)"|([^\s'";,)]+))/g
+// A quoted string literal, anywhere in the line: `NAME = "value"`, `NAME: 'value'`. A real
+// secret hardcoded into source is always a quoted literal — JS/TS has no other syntax for
+// one — so this is unrestricted by position or by what else the statement contains.
+const QUOTED_ASSIGNMENT_RE = /([A-Za-z_$][A-Za-z0-9_$]*)\s*[:=]\s*(?:'([^']*)'|"([^"]*)")/g
+
+// A bare, unquoted value — but ONLY when it is the entire line (trimmed), optionally
+// followed by a `#` comment: `NAME=value` (.env), `NAME: value` (YAML). This is what
+// `.env`, `.env.example` and CI workflow env blocks actually look like, and it is also
+// what deliberately excludes a code statement like `const password =
+// process.env.BOOTSTRAP_OWNER_PASSWORD;` — that RHS is unquoted too, but it is a property
+// access, not a literal, and the line also carries `const `/`;` the value alone cannot
+// swallow, so the whole-line anchor fails to match and it is never a candidate. An
+// unquoted bare token is not even valid JS/TS syntax for a string literal in the first
+// place, so restricting it to whole-line-only loses no real secret a source file could
+// actually contain.
+const BARE_ASSIGNMENT_RE = /^([A-Za-z_$][A-Za-z0-9_$]*)\s*[:=]\s*([^\s'";,)]+?)\s*(?:#.*)?$/
 
 /**
  * Shannon entropy in bits per character.
@@ -99,90 +155,36 @@ function shannonEntropy(s) {
 }
 
 /**
- * A real secret is one unbroken run of characters — a hex digest, a base64 blob, an
- * opaque token. A hyphenated English phrase like "change-me-to-a-32-character-secret" is
- * exactly as long, but no single word in it is: this is what tells a generated secret
- * apart from a placeholder sentence built to *look* like it satisfies a length rule.
- * Restricting to plain alnum (no `-`/`_`) is a deliberate, documented blind spot — see
- * this check's registry `blindSpot` entry.
+ * The one shape test rules 3 and 4 both use: at least 32 characters, whole-value Shannon
+ * entropy over 3.5 bits/char, and not a recognised placeholder shape. Whole-value, not a
+ * contiguous run within it — see the file header for why a run-based measurement was
+ * tried and rejected. A placeholder is excluded BEFORE the entropy test runs, by name
+ * (`PLACEHOLDER_RE`), not by weakening what the test measures.
  *
  * @param {string} value
- * @returns {string} the longest contiguous run of [A-Za-z0-9] in `value`
- */
-function longestAlnumRun(value) {
-  let best = ''
-  for (const run of value.match(/[A-Za-z0-9]+/g) ?? []) {
-    if (run.length > best.length) best = run
-  }
-  return best
-}
-
-/**
- * Rule 3's shape test, on the value alone: a ≥32-character contiguous alnum run whose
- * Shannon entropy exceeds 3.5 bits/char. Whether that run's NAME also looks secret-shaped
- * is decided by the caller — rule 3 requires it, rule 4 (.env.example) deliberately does
- * not, because .env.example must hold no realistic secret under ANY key name.
- *
- * @param {string} value
- * @returns {{ high: boolean, run: string, entropy: number }}
- */
-function highEntropyRun(value) {
-  const run = longestAlnumRun(value)
-  const entropy = shannonEntropy(run)
-  return { high: run.length >= 32 && entropy > 3.5, run, entropy }
-}
-
-/**
- * @param {string} line
- * @returns {{ name: string, value: string, start: number, end: number }[]}
- */
-function extractAssignments(line) {
-  const out = []
-  ASSIGNMENT_RE.lastIndex = 0
-  let m
-  while ((m = ASSIGNMENT_RE.exec(line))) {
-    const name = m[1]
-    const value = m[2] ?? m[3] ?? m[4]
-    if (value) out.push({ name, value, start: m.index, end: m.index + m[0].length })
-  }
-  return out
-}
-
-/**
- * True when `line[start..end)` sits inside a single-line markdown inline-code span —
- * immediately preceded by a backtick and immediately followed by one. Scoped to `.md`
- * files by the caller: elsewhere a backtick is a template-literal delimiter, not quotation.
- *
- * @param {string} line
- * @param {number} start
- * @param {number} end
  * @returns {boolean}
  */
-function isMarkdownInlineCodeQuoted(line, start, end) {
-  return line[start - 1] === '`' && line[end] === '`'
+function isSecretShapedValue(value) {
+  if (!value) return false
+  if (PLACEHOLDER_RE.test(value)) return false
+  return value.length >= 32 && shannonEntropy(value) > 3.5
 }
 
 /**
- * Every non-overlapping match of a global `re` against `line`, as matched text plus its
- * span — with markdown inline-code-quoted occurrences already filtered out when `isMarkdown`.
- *
- * @param {RegExp} re a regexp with the `g` flag
  * @param {string} line
- * @param {boolean} isMarkdown
- * @returns {{ text: string, start: number, end: number }[]}
+ * @returns {{ name: string, value: string }[]}
  */
-function findRealMatches(re, line, isMarkdown) {
+function extractAssignments(line) {
+  /** @type {{ name: string, value: string }[]} */
   const out = []
-  re.lastIndex = 0
+  QUOTED_ASSIGNMENT_RE.lastIndex = 0
   let m
-  while ((m = re.exec(line))) {
-    const start = m.index
-    const end = start + m[0].length
-    if (!(isMarkdown && isMarkdownInlineCodeQuoted(line, start, end))) {
-      out.push({ text: m[0], start, end })
-    }
-    if (m[0].length === 0) re.lastIndex += 1 // defensive: never actually zero-length here
+  while ((m = QUOTED_ASSIGNMENT_RE.exec(line))) {
+    const value = m[2] ?? m[3]
+    if (value) out.push({ name: m[1], value })
   }
+  const bare = BARE_ASSIGNMENT_RE.exec(line.trim())
+  if (bare && bare[2]) out.push({ name: bare[1], value: bare[2] })
   return out
 }
 
@@ -294,7 +296,11 @@ function readTextOrNull(absPath) {
 
 /**
  * Rule 3: scan every tracked file (less the two skips) for a PEM private-key block, a
- * JWT-shaped string, or a high-entropy value assigned to a secret-sounding name.
+ * JWT-shaped string, or a high-entropy value assigned to a secret-sounding name. Applies
+ * uniformly to every tracked file, .md included — there is no per-file-type exemption: a
+ * file that needs to describe one of these patterns must build it at runtime instead of
+ * writing it down (see docs/superpowers/plans/2026-09-10-verify-layer.md and this check's
+ * own test file for examples of doing exactly that).
  *
  * @returns {string[]} findings, empty when clean
  */
@@ -305,27 +311,24 @@ function scanTrackedFilesForSecretShapes() {
     if (RULE3_SKIP.has(rel)) continue
     const text = readTextOrNull(path.join(ROOT, rel))
     if (text === null) continue
-    const isMarkdown = rel.endsWith('.md')
     const lines = text.split('\n')
     for (let i = 0; i < lines.length; i += 1) {
       const line = lines[i]
       const lineNo = i + 1
-      findRealMatches(PEM_RE, line, isMarkdown).forEach(() => {
+      if (PEM_RE.test(line)) {
         findings.push(`${rel}:${lineNo}: contains a PEM private-key block — private keys must never be committed.`)
-      })
-      findRealMatches(JWT_RE, line, isMarkdown).forEach(() => {
+      }
+      if (JWT_RE.test(line)) {
         findings.push(`${rel}:${lineNo}: contains a JWT-shaped string — tokens must never be committed.`)
-      })
-      for (const { name, value, start, end } of extractAssignments(line)) {
+      }
+      for (const { name, value } of extractAssignments(line)) {
         if (!SECRET_NAME_RE.test(name)) continue
-        if (isMarkdown && isMarkdownInlineCodeQuoted(line, start, end)) continue
-        const { high, run, entropy } = highEntropyRun(value)
-        if (high) {
-          findings.push(
-            `${rel}:${lineNo}: ${name} is assigned a high-entropy value (${run.length} contiguous ` +
-              `alnum chars, ${entropy.toFixed(2)} bits/char) — looks like a real secret, not a placeholder.`,
-          )
-        }
+        if (!isSecretShapedValue(value)) continue
+        if (KNOWN_SAFE_VALUES.get(rel)?.has(value)) continue
+        findings.push(
+          `${rel}:${lineNo}: ${name} is assigned a ${value.length}-character high-entropy value ` +
+            `(${shannonEntropy(value).toFixed(2)} bits/char) — looks like a real secret, not a placeholder.`,
+        )
       }
     }
   }
@@ -334,8 +337,9 @@ function scanTrackedFilesForSecretShapes() {
 
 /**
  * Rule 4: `.env.example` is placeholder-only. Every assigned value, regardless of its
- * key's name, must be empty, match the placeholder shape, or fail the high-entropy test on
- * its own merits — a realistic-looking secret must not hide behind an innocuous key name.
+ * key's name, must be empty, match a named placeholder shape, or fail the whole-value
+ * high-entropy test on its own merits — a realistic-looking secret must not hide behind
+ * an innocuous key name.
  *
  * @returns {string[]} findings, empty when clean
  */
@@ -365,16 +369,12 @@ function checkEnvExamplePlaceholderOnly() {
     ) {
       value = value.slice(1, -1)
     }
-    if (!value) continue
-    if (PLACEHOLDER_RE.test(value)) continue
-    const { high, run, entropy } = highEntropyRun(value)
-    if (high) {
-      findings.push(
-        `.env.example:${lineNo}: ${name} holds a ${run.length}-character high-entropy value ` +
-          `(${entropy.toFixed(2)} bits/char) — .env.example must hold only placeholders ` +
-          '(empty, changeme/example/your-/<...>/... , or short and low-entropy).',
-      )
-    }
+    if (!isSecretShapedValue(value)) continue
+    findings.push(
+      `.env.example:${lineNo}: ${name} holds a ${value.length}-character high-entropy value ` +
+        `(${shannonEntropy(value).toFixed(2)} bits/char) — .env.example must hold only placeholders ` +
+        '(empty, changeme/change-me/example/your-/<...>/... , or short and low-entropy).',
+    )
   }
   return findings
 }
