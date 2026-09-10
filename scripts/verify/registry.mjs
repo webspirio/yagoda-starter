@@ -315,6 +315,42 @@ export const CHECKS = [
       'string "not-a-real-token", and a dash-separated random value, and all three are ' +
       'exactly as red as the genuine article — the shape is all this check ever sees.',
   },
+  {
+    id: 'seam',
+    tier: 'fast',
+    cmd: 'npm run seam',
+    proves:
+      "The root CLAUDE.md claim that user_identities(provider, provider_user_id) is the " +
+      'SINGLE login lookup path is mechanically enforced, not just written down, over ' +
+      'every backend/src/**/*.ts file parsed with the TypeScript compiler API (not a ' +
+      'regex — see the check for why that distinction matters). Two rules: (1) a string ' +
+      "literal whose AST text is exactly 'local' is a finding unless the file is under " +
+      'backend/src/migrations/ (a migration is frozen by definition — fix forward, never ' +
+      'edit history), under backend/src/seed/ (the standalone dev-seed CLI, never a ' +
+      'runtime dependency of the app), is a *.spec.ts/*.db-spec.ts file, or is ' +
+      'backend/src/users/user-identity.entity.ts itself — the one file that DECLARES ' +
+      'LOCAL_PROVIDER. (2) any import/require/re-export/dynamic-import whose specifier ' +
+      'resolves inside backend/src/seed/ is a finding unless the importing file is itself ' +
+      'under seed/ or is a spec. A single new occurrence of either shape, anywhere else in ' +
+      'backend/src, fails this exact command.',
+    blindSpot:
+      'Sees only AST string-literal-like nodes: a provider value assembled at runtime ' +
+      '(concatenation, a template literal with a substitution, a value read from an env ' +
+      'var, a config file or a database row) is invisible to it in both directions — ' +
+      'neither flagged as a second literal nor credited as evidence the seam is used ' +
+      'correctly. It does not verify that LOCAL_PROVIDER is actually USED everywhere a ' +
+      'login-provider value is needed — only that the bare literal is not duplicated ' +
+      'elsewhere; a caller that never imports the constant and never spells out the ' +
+      "literal either is unseen by this row. Rule 2's specifier resolution handles only a " +
+      "relative specifier ('./' or '../'), resolved against the importing file's own " +
+      'directory — a bare package specifier is never treated as a path (this repo sets no ' +
+      'tsconfig `paths` aliases, so nothing else could resolve into backend/src at all), ' +
+      'and a specifier built at runtime rather than written as a plain string literal ' +
+      '(a computed require target) is invisible to it, on purpose: nothing here evaluates ' +
+      'code. And this check says nothing about whether the seam is the RIGHT design — only ' +
+      'that today it still has exactly one declared name for the value it stores, and one ' +
+      "reachable path into the seed's own code.",
+  },
 ]
 
 /** @type {Record<Tier, number>} */

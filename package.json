@@ -29,6 +29,7 @@
     "test:files": "node scripts/verify/checks/test-glob-parity.mjs",
     "memo": "node scripts/verify/checks/memo-drift.mjs",
     "secrets": "node scripts/verify/checks/secret-boundary.mjs",
+    "seam": "node scripts/verify/checks/seam-boundary.mjs",
     "verify": "node scripts/verify/run.mjs --tier fast",
     "verify:full": "node scripts/verify/run.mjs --tier full",
     "verify:ci": "node scripts/verify/run.mjs --tier full --no-skip"
