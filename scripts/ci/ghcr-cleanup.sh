@@ -36,13 +36,29 @@ select_ids() {
 
 if [ "${1:-}" = --select ]; then select_ids; exit 0; fi
 
+# A 404 is the one benign failure (CI has not pushed that package yet). Every
+# other failure — expired token, missing `packages` permission, GHCR_ORG not an
+# org — must turn the job red: a cleanup that swallows them reports green
+# forever while GHCR fills up, and nobody looks at a green weekly job.
+failures=0
+
 for pkg in $PACKAGES; do
   echo "== $pkg"
+  err=$(mktemp)
   if ! versions=$(gh api --paginate -H "Accept: application/vnd.github+json" \
-      "/orgs/$GHCR_ORG/packages/container/$pkg/versions?per_page=100" | jq -s 'add // []'); then
-    echo "package not found or not accessible yet; skipping"
+      "/orgs/$GHCR_ORG/packages/container/$pkg/versions?per_page=100" 2>"$err" | jq -s 'add // []'); then
+    if grep -qiE 'not found|HTTP 404' "$err"; then
+      echo "package does not exist yet; skipping"
+      rm -f "$err"
+      continue
+    fi
+    echo "::error::listing versions of $pkg failed:" >&2
+    cat "$err" >&2
+    rm -f "$err"
+    failures=$((failures + 1))
     continue
   fi
+  rm -f "$err"
   ids=$(printf '%s' "$versions" | select_ids)
   [ -n "$ids" ] || { echo "nothing to prune"; continue; }
   for id in $ids; do
@@ -51,8 +67,11 @@ for pkg in $PACKAGES; do
       if gh api -X DELETE "/orgs/$GHCR_ORG/packages/container/$pkg/versions/$id" >/dev/null; then
         echo "deleted $id [$tags]"
       else
-        echo "delete FAILED for $id [$tags]" >&2
+        echo "::error::delete FAILED for $id [$tags]" >&2
+        failures=$((failures + 1))
       fi
     fi
   done
 done
+
+[ "$failures" -eq 0 ] || { echo "::error::$failures GHCR cleanup operation(s) failed" >&2; exit 1; }

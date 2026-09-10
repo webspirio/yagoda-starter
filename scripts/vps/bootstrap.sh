@@ -7,7 +7,7 @@
 set -euo pipefail
 
 SWAP_FILE=/swapfile
-SWAP_SIZE_MB=2048
+SWAP_SIZE_MB=${SWAP_SIZE_MB:-2048}
 
 [ "$(id -u)" -eq 0 ] || { echo "run as root" >&2; exit 1; }
 
@@ -23,6 +23,14 @@ if ! swapon --show=NAME --noheadings | grep -qx "$SWAP_FILE"; then
     mkswap "$SWAP_FILE" >/dev/null
   fi
   swapon "$SWAP_FILE"
+fi
+# Idempotent, but NOT convergent: re-running with a larger SWAP_SIZE_MB after
+# the server is resized cannot grow a file that is already in use. Say so
+# rather than exiting 0 on a size the operator did not ask for.
+have_mb=$(( $(stat -c %s "$SWAP_FILE") / 1024 / 1024 ))
+if [ "$have_mb" -ne "$SWAP_SIZE_MB" ]; then
+  echo "note: ${SWAP_FILE} is ${have_mb} MB, not ${SWAP_SIZE_MB} MB." >&2
+  echo "      to resize: swapoff ${SWAP_FILE} && rm ${SWAP_FILE} && SWAP_SIZE_MB=${SWAP_SIZE_MB} bash $0" >&2
 fi
 grep -q "^${SWAP_FILE} " /etc/fstab || echo "${SWAP_FILE} none swap sw 0 0" >> /etc/fstab
 

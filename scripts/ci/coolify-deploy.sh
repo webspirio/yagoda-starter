@@ -23,6 +23,15 @@ AUTH=(-H "Authorization: Bearer $COOLIFY_API_TOKEN" -H "Accept: application/json
 
 fail() { echo "::error::$*" >&2; exit 1; }
 
+# Coolify's deployment log echoes the stack's own environment, which holds
+# JWT_SECRET and DB_PASSWORD. Those live only in Coolify's env sets — they are
+# NOT GitHub secrets, so Actions' `***` masking does not apply to them and an
+# unredacted tail would publish them to anyone who can read the run log.
+redact() {
+  # The quote may sit on either side of the separator: KEY="v", "KEY": "v".
+  sed -E 's/([A-Za-z_][A-Za-z0-9_]*(SECRET|PASSWORD|TOKEN|KEY))(["'"'"']?[[:space:]]*[=:][[:space:]]*["'"'"']?)[^[:space:]"'"'"',]+/\1\3***/g'
+}
+
 # --- 1. trigger -------------------------------------------------------------
 deploy_url="$COOLIFY_URL/api/v1/deploy?uuid=$COOLIFY_APP_UUID&force=false"
 [ -n "${PR_NUMBER:-}" ] && deploy_url="$deploy_url&pr=$PR_NUMBER"
@@ -50,8 +59,16 @@ while [ $SECONDS -lt $deadline ]; do
       if printf '%s' "$logs" | grep -qiE 'pull access denied|manifest unknown|denied: |unauthorized'; then
         echo "::error::image pull failed — check the GHCR credential on the server (docs/coolify-deploy.md → Registry credentials)" >&2
       fi
-      printf '%s\n' "$logs" | tail -n 40 >&2
+      printf '%s\n' "$logs" | tail -n 40 | redact >&2
       fail "Coolify deployment $deployment_uuid ended with status '$status'"
+      ;;
+    ''|queued|in_progress|running) ;;
+    *)
+      # Not terminal as far as we know, so keep waiting — but say so once,
+      # otherwise an unexpected status is indistinguishable from a hang until
+      # DEPLOY_TIMEOUT_SEC expires.
+      [ "$status" = "${last_reported:-}" ] || echo "Coolify: unrecognised status '$status', still waiting" >&2
+      last_reported=$status
       ;;
   esac
   sleep "$POLL_INTERVAL_SEC"
@@ -60,8 +77,8 @@ done
 echo "Coolify: finished"
 
 # --- 3. the application itself ---------------------------------------------
-probe() { # url -> http code (000 on connection failure)
-  curl -s -o /dev/null -w '%{http_code}' --max-time 10 "$1" || echo 000
+probe() { # url -> http code (curl prints 000 on connection failure)
+  curl -s -o /dev/null -w '%{http_code}' --max-time 10 "$1" || true
 }
 deadline=$((SECONDS + READY_TIMEOUT_SEC))
 until [ "$(probe "$BASE_URL/api/health/ready")" = 200 ]; do
@@ -70,14 +87,27 @@ until [ "$(probe "$BASE_URL/api/health/ready")" = 200 ]; do
 done
 echo "ready: 200"
 
-served=$(curl -sS --max-time 10 "$BASE_URL/api/health/version" | jq -r '.commit // empty')
+# Retry: /ready answering 200 does not guarantee the next connection survives
+# (Traefik reloads routes as containers settle), and under `pipefail` a single
+# transient failure here would exit with no ::error:: line at all.
+served=""
+for attempt in 1 2 3; do
+  served=$(curl -sS --max-time 10 "$BASE_URL/api/health/version" 2>/dev/null | jq -r '.commit // empty' || true)
+  [ -n "$served" ] && break
+  [ "$attempt" = 3 ] || sleep "$POLL_INTERVAL_SEC"
+done
 [ "$served" = "$EXPECTED_COMMIT" ] || fail "$BASE_URL serves commit '$served', expected '$EXPECTED_COMMIT'"
 echo "version: $served"
 
 if [ -n "${SEED_USERNAME:-}" ]; then
   body=$(jq -cn --arg u "$SEED_USERNAME" --arg p "${SEED_PASSWORD:?}" '{username:$u,password:$p}')
-  code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 -X POST -H 'content-type: application/json' \
-    -d "$body" "$BASE_URL/api/auth/login")
+  code=""
+  for attempt in 1 2 3; do
+    code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 -X POST -H 'content-type: application/json' \
+      -d "$body" "$BASE_URL/api/auth/login" || true)
+    case "$code" in 200|201) break ;; esac
+    [ "$attempt" = 3 ] || sleep "$POLL_INTERVAL_SEC"
+  done
   case "$code" in 200|201) echo "seed login: $code" ;; *) fail "login as seeded user '$SEED_USERNAME' returned $code — did the seed run?" ;; esac
 fi
 

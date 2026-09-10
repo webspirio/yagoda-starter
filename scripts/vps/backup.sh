@@ -11,6 +11,10 @@
 #
 # Config: /etc/yagoda-backup.env (see yagoda-backup.env.example).
 set -euo pipefail
+# A dump carries every users row, scrypt password hashes included, and this
+# script also creates BACKUP_DIR when bootstrap.sh's `install -d -m 750` has
+# not run. Default-umask files would land 0644 — world-readable hashes.
+umask 077
 
 CONFIG=${CONFIG:-/etc/yagoda-backup.env}
 [ -r "$CONFIG" ] || { echo "missing config $CONFIG" >&2; exit 1; }
@@ -21,6 +25,12 @@ CONFIG=${CONFIG:-/etc/yagoda-backup.env}
 BACKUP_DIR=${BACKUP_DIR:-/data/backups}
 RETENTION_DAYS=${RETENTION_DAYS:-14}
 LOCK=${LOCK:-/run/lock/yagoda-backup.lock}
+# Tar the uploads volume with an image already on the box — by default the one
+# the Postgres container runs. `alpine` unpinned meant a Docker Hub pull on
+# every nightly run, so an anonymous rate limit could fail the backup.
+# The `|| echo` fallback matters under `set -e`: a missing PG_CONTAINER would
+# otherwise abort here, hiding the real diagnosis that pg_dump reports below.
+TAR_IMAGE=${TAR_IMAGE:-$(docker inspect -f '{{.Config.Image}}' "$PG_CONTAINER" 2>/dev/null || echo alpine:3.20)}
 
 mkdir -p "$BACKUP_DIR" "$(dirname "$LOCK")"
 exec 9>"$LOCK"
@@ -45,7 +55,7 @@ echo "backup $STAMP: uploads"
 # docker run -v auto-creates a missing named volume, which would produce an
 # empty but "valid" archive from a stale name; fail loudly instead.
 docker volume inspect "$UPLOADS_VOLUME" >/dev/null 2>&1 || { echo "uploads volume '$UPLOADS_VOLUME' does not exist" >&2; false; }
-docker run --rm -v "$UPLOADS_VOLUME:/data:ro" alpine tar czf - -C /data . > "$UP.partial"
+docker run --rm -v "$UPLOADS_VOLUME:/data:ro" "$TAR_IMAGE" tar czf - -C /data . > "$UP.partial"
 tar -tzf "$UP.partial" >/dev/null
 
 mv "$DB.partial" "$DB"
@@ -55,8 +65,13 @@ trap - ERR
 echo "backup $STAMP: ok ($(du -h "$DB" | cut -f1) db, $(du -h "$UP" | cut -f1) uploads)"
 
 # Retention by pair: a pair is pruned when its db half is older than the window.
-find "$BACKUP_DIR" -name '*-db.sql.gz' -mtime +"$RETENTION_DAYS" -print0 |
-  while IFS= read -r -d '' old; do
-    rm -f "$old" "${old%-db.sql.gz}-uploads.tar.gz"
-    echo "pruned ${old##*/} and its uploads half"
-  done
+# `|| true` is what actually makes this non-fatal — `trap - ERR` above only
+# drops the message, while `set -e` would still fail the unit and report the
+# snapshot just taken as a failed backup.
+{
+  find "$BACKUP_DIR" -name '*-db.sql.gz' -mtime +"$RETENTION_DAYS" -print0 |
+    while IFS= read -r -d '' old; do
+      rm -f "$old" "${old%-db.sql.gz}-uploads.tar.gz"
+      echo "pruned ${old##*/} and its uploads half"
+    done
+} || echo "retention pass failed; the snapshot itself is fine" >&2

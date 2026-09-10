@@ -31,18 +31,22 @@ T=$(mktemp -d); trap 'rm -rf "$T"' EXIT
 mkdir -p "$T/bin"
 printf '%s' "$fixture" > "$T/present.json"
 
-# Fake gh: only understands the two `gh api` shapes ghcr-cleanup.sh issues. A URL
-# containing /packages/container/missing/ simulates a 404 (package not yet created);
-# .../present/ returns the fixture above; any -X DELETE call is a no-op success
-# (unreachable in this run since DRY_RUN=true, but implemented for completeness).
+# Fake gh: only understands the two `gh api` shapes ghcr-cleanup.sh issues.
+# It reproduces real `gh api` stderr, because the script distinguishes a benign
+# 404 from every other failure by exactly that text:
+#   .../missing/ -> 404, the package CI has not pushed yet (skip, rc 0);
+#   .../broken/  -> 401, an expired or under-scoped token (must turn the run red);
+#   .../present/ -> the fixture above;
+#   any -X DELETE -> no-op success (unreachable while DRY_RUN=true).
 cat > "$T/bin/gh" <<EOF
 #!/usr/bin/env bash
 args="\$*"
 case "\$args" in
   *"-X DELETE"*) exit 0;;
-  *"/packages/container/missing/"*) exit 1;;
+  *"/packages/container/missing/"*) echo "gh: Not Found (HTTP 404)" >&2; exit 1;;
+  *"/packages/container/broken/"*) echo "gh: Bad credentials (HTTP 401)" >&2; exit 1;;
   *"/packages/container/present/"*) cat "$T/present.json"; exit 0;;
-  *) exit 1;;
+  *) echo "gh: unexpected call: \$args" >&2; exit 1;;
 esac
 EOF
 chmod +x "$T/bin/gh"
@@ -60,3 +64,19 @@ if ! printf '%s\n' "$out" | grep -q 'would delete 2 '; then echo "guard: missing
 if ! printf '%s\n' "$out" | grep -q 'would delete 4 '; then echo "guard: missing 'would delete 4 '"; ok=0; fi
 if printf '%s\n' "$out" | grep -q 'would delete 3'; then echo "guard: unexpected 'would delete 3'"; ok=0; fi
 if [ "$ok" -eq 1 ]; then echo "guard: ok"; else echo "$out"; exit 1; fi
+
+# --- scenario 3: a NON-404 failure (expired token, missing permission) must fail
+# the run. Swallowing it is how a weekly cleanup reports green for months while
+# GHCR fills up. `present` still gets pruned — one bad package does not stop the
+# others — but the exit code carries the failure. ------------------------------
+set +e
+out=$(PATH="$T/bin:$PATH" PACKAGES="broken present" OPEN_PRS="8" KEEP_SHA_DAYS=30 DRY_RUN=true bash "$HERE/ghcr-cleanup.sh" 2>&1)
+rc=$?
+set -e
+
+ok=1
+if [ "$rc" -eq 0 ]; then echo "fail-loud: exit 0, want non-zero"; ok=0; fi
+if printf '%s\n' "$out" | grep -q 'skipping'; then echo "fail-loud: a 401 was treated as a missing package"; ok=0; fi
+if ! printf '%s\n' "$out" | grep -q 'Bad credentials'; then echo "fail-loud: gh's own error was not surfaced"; ok=0; fi
+if ! printf '%s\n' "$out" | grep -q 'would delete 1 '; then echo "fail-loud: the healthy package was not pruned"; ok=0; fi
+if [ "$ok" -eq 1 ]; then echo "fail-loud: ok"; else echo "$out"; exit 1; fi
