@@ -48,8 +48,14 @@ export function usePointCashQuery(opts?: {
 }
 
 /**
- * One point's cash figure — `enabled` only with a point, same gate as
- * `useCurrentShiftQuery`. Typed `PointCashOne`, not `PointCashOne | null`
+ * One point's cash figure — never without a point, and never before the
+ * caller wants it: `enabled` (default `true`) is ANDed with that gate so a
+ * component mounted but not shown (`SetTargetCashDialog`, mounted closed for
+ * every owner + point the page offers) costs no request. It is a gate, not a
+ * filter, so it stays out of the query key: the same read, opened later,
+ * lands on the same cache entry.
+ *
+ * Typed `PointCashOne`, not `PointCashOne | null`
  * (review round 2, minor finding, aligned with the opposite ruling on
  * `useTransferQuery`): `GET /point-cash/:pointId` always returns a real
  * object — the backend's own `COALESCE(..., 0.00)` means there is no "not
@@ -61,10 +67,11 @@ export function usePointCashQuery(opts?: {
 export function usePointCashForPointQuery(
   pointId: string | null,
   asOf?: string,
+  enabled = true,
 ): UseQueryResult<PointCashOne> {
   return useQuery({
     queryKey: [...queryKeys.pointCash, 'one', pointId, asOf ?? null] as const,
-    enabled: pointId !== null,
+    enabled: enabled && pointId !== null,
     queryFn: async (): Promise<PointCashOne> => {
       const { data } = await httpClient.get<PointCashOne>(`/point-cash/${pointId}`, {
         params: asOf ? { as_of: asOf } : undefined,

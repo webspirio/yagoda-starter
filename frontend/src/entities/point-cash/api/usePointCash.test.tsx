@@ -61,4 +61,13 @@ describe('usePointCashForPointQuery', () => {
     const { result } = renderHook(() => usePointCashForPointQuery('p1'), { wrapper });
     await waitFor(() => expect(result.current.data?.cash).toBe('0.00'));
   });
+
+  it('does not fire while the caller holds it shut', () => {
+    mock.onGet('/point-cash/p1').reply(200, { collection_point_id: 'p1', cash: '0.00' });
+    const { result } = renderHook(() => usePointCashForPointQuery('p1', undefined, false), {
+      wrapper,
+    });
+    expect(result.current.fetchStatus).toBe('idle');
+    expect(mock.history.get).toHaveLength(0);
+  });
 });

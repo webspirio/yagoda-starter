@@ -15,7 +15,8 @@ vi.mock('../api/useSetPointTarget', () => ({
 }));
 
 vi.mock('@/entities/point-cash', () => ({
-  usePointCashForPointQuery: (pointId: string | null) => pointCashMock(pointId),
+  usePointCashForPointQuery: (pointId: string | null, asOf?: string, enabled?: boolean) =>
+    pointCashMock(pointId, asOf, enabled),
 }));
 
 function renderDialog(onClose = vi.fn(), currentTarget: string | null = '600000.00') {
@@ -45,6 +46,28 @@ beforeEach(() => {
 });
 
 describe('SetTargetCashDialog', () => {
+  it('does not read the point’s cash while it is closed', () => {
+    // The page mounts this dialog closed for every owner + point, so an
+    // ungated read here is one extra request per point the owner picks —
+    // for a warning nobody can see yet.
+    render(
+      <SetTargetCashDialog
+        pointId="p1"
+        pointName="Шипинки"
+        currentTarget="600000.00"
+        open={false}
+        onClose={vi.fn()}
+      />,
+    );
+
+    expect(pointCashMock).toHaveBeenCalledWith('p1', undefined, false);
+  });
+
+  it('reads the point’s cash once it is open — the §6.1 warning needs it', () => {
+    renderDialog();
+    expect(pointCashMock).toHaveBeenCalledWith('p1', undefined, true);
+  });
+
   it('renders the point name in the title', async () => {
     const { container } = renderDialog();
     expect(

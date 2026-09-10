@@ -48,7 +48,10 @@ export function SetTargetCashDialog({
 }) {
   const { t, i18n } = useTranslation();
   const setTarget = useSetPointTargetMutation();
-  const pointCash = usePointCashForPointQuery(pointId);
+  // Gated on `open`: the page mounts this dialog closed for every owner +
+  // point, so an ungated read is one extra request per point picked — for a
+  // warning nobody can see until the dialog opens.
+  const pointCash = usePointCashForPointQuery(pointId, undefined, open);
   const [formError, setFormError] = useState<string | null>(null);
 
   const {
