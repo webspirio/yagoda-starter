@@ -1,7 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { ApiError } from '@/shared/api';
 import { Toaster } from '@/shared/ui/sonner';
 import { expectNoAxeViolations } from '../../../test-axe';
 import { SetTargetCashDialog } from './SetTargetCashDialog';
@@ -129,16 +128,20 @@ describe('SetTargetCashDialog', () => {
     expect(screen.queryByRole('status')).toBeNull();
   });
 
-  it('shows the mapped banner and stays open when the server refuses', async () => {
-    setTargetMock.mockRejectedValue(new ApiError(403, 'nope', undefined, 'OWNER_ONLY'));
+  it('shows the fallback banner and stays open when the server refuses', async () => {
+    // `CollectionPointsService.update` has no assert-level rejection of its
+    // own for this field — a non-owner never reaches it (`@Auth(NetworkOwner)`
+    // refuses first, with `INSUFFICIENT_ROLE`, a code this map does not carry
+    // because the button this dialog belongs to never renders for that actor
+    // in the first place, per §10.2). A network failure is what a REAL caller
+    // of this dialog can actually hit, so that is what this test simulates.
+    setTargetMock.mockRejectedValue(new Error('network down'));
     const { onClose } = renderDialog();
 
     await userEvent.type(screen.getByLabelText('Reason'), 'причина');
     await userEvent.click(screen.getByRole('button', { name: 'Save target' }));
 
-    expect(
-      await screen.findByText('Only the network owner can do this'),
-    ).toBeInTheDocument();
+    expect(await screen.findByText('Could not update the target')).toBeInTheDocument();
     expect(onClose).not.toHaveBeenCalled();
   });
 });
