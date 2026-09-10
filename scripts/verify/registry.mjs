@@ -449,6 +449,49 @@ export const CHECKS = [
       "does not yet have — a future crate_issuances or cash_counts boundary check, say — " +
       'until both that check and its tests exist.',
   },
+  {
+    id: 'ratchet:lint-exempt',
+    tier: 'fast',
+    cmd: 'npm run lint:exempt',
+    // No `after`: this check never invokes eslint (npm run lint) or tsc — it reads
+    // backend/src, frontend/src and the two eslint.config.mjs files itself with a
+    // line-oriented text scan (scripts/verify/ratchets/lint-exempt.mjs), the same
+    // "parse the tree directly, don't shell out to the tool" stance `seam` and
+    // `migrations` already take toward tsc. A red `lint` row changes nothing about what
+    // this row can see: it is exactly as blind to whether a suppressed rule is currently
+    // VIOLATED as it is to whether the rule exists in either config at all — it only
+    // ever asks "is every exemption accounted for," never "is eslint happy."
+    proves:
+      'Measured 2026-09-10: `npm run lint:exempt` finds exactly 13 lint exemptions across ' +
+      'backend/src, frontend/src and the two flat eslint.config.mjs files — 10 ' +
+      'eslint-disable/-disable-line/-disable-next-line/-enable directive comments (9 ' +
+      'disable-type, plus the one eslint-enable that closes test-setup.ts\'s block disable) ' +
+      'and 3 `ignores`-property occurrences bundling 7 individual globs, with zero rules ' +
+      "pinned to 'off' in either config today — and every one matches a dated, " +
+      '≥30-character-reasoned entry in scripts/verify/baselines/lint-exempt.json, key for ' +
+      'key. THIS IS THE FIRST TRUE RATCHET IN THIS LAYER: the comparison runs in both ' +
+      'directions, and both are provable by this exact command failing. A NEW exemption ' +
+      'anywhere in the scan that is not yet in the baseline fails it (`git ls-files -c -o ' +
+      '--exclude-standard` means an untracked, freshly written one counts too). A baseline ' +
+      'entry whose exemption NO LONGER EXISTS in the code or config also fails it — a stale ' +
+      'forgiveness must be deleted, never left standing, or the baseline only ever grows. ' +
+      'And a baseline entry whose `reason` is missing, `TODO`, or under 30 characters after ' +
+      'trimming fails the command on the baseline alone, before either direction of that ' +
+      'comparison ever runs.',
+    blindSpot:
+      'Counts lint suppressions; it does not, and cannot, judge whether any one of them is ' +
+      'justified — a reason that reads as 30-plus characters of plausible prose passes ' +
+      'exactly as well as one that is actually true, because nothing here re-derives WHY a ' +
+      'rule does not apply, only that someone wrote a reason down. A rule that was never ' +
+      'enabled in either flat config needs no exemption and stays invisible here — this row ' +
+      'proves nothing about the coverage of the rule set itself, only about what is exempted ' +
+      'from whatever rules do run today. And because a key embeds the exact line number, an ' +
+      'exemption comment or an `ignores` property that merely MOVES to a different line — a ' +
+      'reformat, an unrelated edit two lines above it — looks to this check exactly like one ' +
+      'exemption removed plus a new one added, even though what it actually suppresses never ' +
+      'changed; the same is true, compounded, of a bundled `ignores` entry, where adding or ' +
+      'removing even ONE glob from a multi-glob line changes the whole line\'s key.',
+  },
 ]
 
 /** @type {Record<Tier, number>} */

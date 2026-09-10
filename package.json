@@ -30,6 +30,7 @@
     "memo": "node scripts/verify/checks/memo-drift.mjs",
     "secrets": "node scripts/verify/checks/secret-boundary.mjs",
     "seam": "node scripts/verify/checks/seam-boundary.mjs",
+    "lint:exempt": "node scripts/verify/ratchets/lint-exempt.mjs",
     "migrations:check": "node scripts/verify/checks/migration-invariants.mjs",
     "verify": "node scripts/verify/run.mjs --tier fast",
     "verify:full": "node scripts/verify/run.mjs --tier full",

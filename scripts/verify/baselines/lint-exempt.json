@@ -1,0 +1,71 @@
+{
+  "createdAt": "2026-09-10",
+  "note": "Every lint exemption this repo carries on 2026-09-10: 10 eslint-disable/-line/-next-line/-enable directive comments across backend/src and frontend/src, plus 3 ignores-glob entries across the two flat eslint.config.mjs files (bundling 7 individual globs), and zero rules pinned to 'off' in either config. Each entry's reason was written after reading the code around its key, not invented. The ratchet is two-directional: a new exemption not listed here fails scripts/verify/ratchets/lint-exempt.mjs, and a listed entry whose exemption no longer exists in the tree fails it too — this file may only shrink or be re-dated by a reviewed change, never grow by drift.",
+  "entries": [
+    {
+      "key": "backend/src/media/image-processing.ts:9:eslint-disable-next-line:@typescript-eslint/no-require-imports",
+      "added": "2026-09-10",
+      "reason": "sharp ships ESM-style type defs (export default) over a CJS runtime whose module.exports IS the factory; with this project's esModuleInterop off, a default import would resolve to undefined at runtime, so the runtime factory is bound via require() instead, typed against sharp's own default export."
+    },
+    {
+      "key": "backend/src/media/image-processing.spec.ts:4:eslint-disable-next-line:@typescript-eslint/no-require-imports",
+      "added": "2026-09-10",
+      "reason": "Mirrors the require() workaround documented in image-processing.ts: sharp's CJS export cannot be default-imported without esModuleInterop, and this spec needs a live sharp instance to synthesize a JPEG fixture carrying EXIF GPS data for the metadata-stripping test."
+    },
+    {
+      "key": "backend/src/media/media.service.spec.ts:10:eslint-disable-next-line:@typescript-eslint/no-require-imports",
+      "added": "2026-09-10",
+      "reason": "Same sharp CJS-vs-ESM require() workaround as image-processing.ts, needed here only to build a JPEG fixture buffer for the media service's own upload tests."
+    },
+    {
+      "key": "backend/src/audit/audit.service.ts:47:eslint-disable-next-line:@typescript-eslint/no-explicit-any",
+      "added": "2026-09-10",
+      "reason": "TypeORM's QueryDeepPartialEntity<T> cannot accept a plain object for the jsonb `before` column, so only this one field is cast through any; casting the whole insert() payload instead would also suppress key-checking on action/actor_id/target_type/target_id, where a typo needs to stay a compile error."
+    },
+    {
+      "key": "backend/src/audit/audit.service.ts:49:eslint-disable-next-line:@typescript-eslint/no-explicit-any",
+      "added": "2026-09-10",
+      "reason": "Same jsonb-cast rationale as line 47, for the `after` column: QueryDeepPartialEntity<T> rejects a plain object there too, and casting only this field keeps the sibling keys in the same insert() call checked against AuditLog's real shape."
+    },
+    {
+      "key": "frontend/src/test-setup.ts:36:eslint-disable:@typescript-eslint/no-unused-vars",
+      "added": "2026-09-10",
+      "reason": "Opens a block-scoped disable for the ResizeObserverStub class immediately below, whose constructor/observe/unobserve parameters are intentionally unused — kept only so the stub's signature mirrors the real ResizeObserver and a caller passing the required arguments still type-checks."
+    },
+    {
+      "key": "frontend/src/test-setup.ts:43:eslint-enable:@typescript-eslint/no-unused-vars",
+      "added": "2026-09-10",
+      "reason": "Closes the block-scoped disable opened at line 36 right after the ResizeObserverStub class, so no-unused-vars is back in force for the rest of this file instead of staying off for every line that follows it."
+    },
+    {
+      "key": "frontend/src/shared/lib/cn.test.ts:6:eslint-disable-next-line:no-constant-binary-expression",
+      "added": "2026-09-10",
+      "reason": "The test writes `false && 'b'` as a literal constant expression on purpose, to prove cn() drops a falsy argument; the rule exists to catch an accidental always-true/false condition, which is exactly what this assertion needs to be for the test to mean anything."
+    },
+    {
+      "key": "frontend/src/shared/lib/form-draft/useFormDraft.ts:126:eslint-disable-next-line:react-hooks/exhaustive-deps",
+      "added": "2026-09-10",
+      "reason": "The restore effect is meant to re-run only when storageKey changes; methods, opts and lastPayloadRef are all read through stable refs (latest.current, lastPayloadRef.current) rather than closed-over values, precisely so they do not belong in the dependency array."
+    },
+    {
+      "key": "frontend/src/shared/ui/image-picker.tsx:56:eslint-disable-next-line:react-hooks/set-state-in-effect",
+      "added": "2026-09-10",
+      "reason": "URL.createObjectURL is an impure, one-shot browser call that must run in an effect, and the setObjectUrl that follows it is a genuine external-system side effect the rule's derived-state heuristic does not fit; image-picker.test.tsx verifies this stays correct under StrictMode's double-invoke."
+    },
+    {
+      "key": "backend/eslint.config.mjs:7:ignores:dist/, node_modules/",
+      "added": "2026-09-10",
+      "reason": "Build output and third-party dependencies must never be linted — dist/ is compiled output regenerated on every build and node_modules/ is vendored code this repo does not own or want flagged."
+    },
+    {
+      "key": "backend/eslint.config.mjs:44:ignores:**/*.spec.ts, **/*.db-spec.ts",
+      "added": "2026-09-10",
+      "reason": "Scopes the money-arithmetic ban (no *, /, Number(), toFixed, parseInt, parseFloat) away from this slice's own test files, which legitimately use plain-number arithmetic to build fixtures and assert on money.ts's rounding rather than reimplementing it."
+    },
+    {
+      "key": "frontend/eslint.config.mjs:31:ignores:dist, node_modules, coverage",
+      "added": "2026-09-10",
+      "reason": "Build output, third-party dependencies and the Vitest coverage report are generated or vendored, never source this repo authors, so there is nothing for the linter to usefully check there."
+    }
+  ]
+}
