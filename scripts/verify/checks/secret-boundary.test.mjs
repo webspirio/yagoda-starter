@@ -45,7 +45,12 @@ test('a tracked PEM private-key block is caught', () => {
   const rel = 'docs/zz-secret-fixture-pem.txt'
   const fixture = path.join(ROOT, rel)
   // Obviously fake: a real PEM header followed by the word FAKE, never real key material.
-  writeFileSync(fixture, '-----BEGIN RSA PRIVATE KEY-----\nFAKE-NOT-A-REAL-KEY-BODY\n-----END RSA PRIVATE KEY-----\n')
+  // Built from parts at runtime, not typed as one contiguous literal: once this test file
+  // itself is committed, it is a tracked file too, and a literal "-----BEGIN RSA PRIVATE
+  // KEY-----" sitting in its own source would make the check flag its own test suite.
+  const pemHeader = ['-----BEGIN', 'RSA', 'PRIVATE', 'KEY-----'].join(' ')
+  const pemFooter = ['-----END', 'RSA', 'PRIVATE', 'KEY-----'].join(' ')
+  writeFileSync(fixture, `${pemHeader}\nFAKE-NOT-A-REAL-KEY-BODY\n${pemFooter}\n`)
   try {
     execFileSync('git', ['add', '-N', '--', rel], { cwd: ROOT })
     const res = run()
