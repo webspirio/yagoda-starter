@@ -16,5 +16,9 @@ export const appConfig = registerAs('app', () => {
     // 0 = trust nothing: req.ip is the socket peer, X-Forwarded-For is ignored.
     trustProxyHops: parseInt(process.env.TRUST_PROXY_HOPS ?? '0', 10),
     corsOrigins,
+    // Full git SHA the image was built from — backend/Dockerfile bakes the
+    // APP_COMMIT build-arg into the prod stage. CI compares this with the
+    // commit it deployed (GET /health/version) before it calls a deploy done.
+    commit: process.env.APP_COMMIT ?? 'unknown',
   };
 });

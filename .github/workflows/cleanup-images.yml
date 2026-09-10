@@ -1,0 +1,37 @@
+# .github/workflows/cleanup-images.yml
+name: Cleanup images
+
+on:
+  schedule:
+    - cron: '17 3 * * 1'   # Mondays 03:17 UTC
+  workflow_dispatch:
+    inputs:
+      dry-run:
+        description: Only list what would be deleted
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+  packages: write
+  pull-requests: read
+
+jobs:
+  prune:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - name: Prune GHCR
+        env:
+          GH_TOKEN: ${{ github.token }}
+          # schedule → false; dispatch → the boolean input (true or false) — no &&/|| fallback collision.
+          DRY_RUN: ${{ github.event_name == 'schedule' && 'false' || inputs.dry-run }}
+        run: |
+          OPEN_PRS=$(gh pr list --repo "$GITHUB_REPOSITORY" --state open --limit 200 --json number --jq '[.[].number] | join(" ")')
+          export OPEN_PRS
+          # Derive org/package names from the repository instead of hard-coding
+          # them; ghcr-cleanup.sh's own defaults stay as a fallback for local runs.
+          export GHCR_ORG="${GITHUB_REPOSITORY_OWNER}"
+          export PACKAGES="${GITHUB_REPOSITORY#*/}-backend ${GITHUB_REPOSITORY#*/}-nginx"
+          bash scripts/ci/ghcr-cleanup.sh

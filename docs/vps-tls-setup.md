@@ -1,11 +1,11 @@
-# VPS TLS termination (host nginx + Certbot)
+# VPS TLS termination without Coolify (host nginx + Certbot)
 
-`docker-compose.prod.yml`'s `nginx` service is an internal-only reverse proxy — it
-binds `127.0.0.1:8080` and does not speak TLS. A host-level terminator has to sit
-in front of it to serve the app over HTTPS. This doc covers that piece: host
-nginx + Certbot (Let's Encrypt) on Ubuntu.
-
-This is a one-time step per VPS, done once before the first deploy.
+**Primary deployment is Coolify** (`docs/coolify-deploy.md`), whose Traefik
+terminates TLS. This doc is the exit path: a plain VPS running
+`docker compose -f docker-compose.prod.yml -f docker-compose.standalone.yml`,
+which publishes the internal nginx on `127.0.0.1:8080`. A host-level terminator
+has to sit in front of it to serve the app over HTTPS. This doc covers that
+piece: host nginx + Certbot (Let's Encrypt) on Ubuntu.
 
 Prerequisites:
 
@@ -37,6 +37,7 @@ sudo ufw status
 ```
 
 Docker-published ports aren't affected by this — `docker-compose.prod.yml`
+itself publishes nothing; on this standalone path `docker-compose.standalone.yml`
 publishes `127.0.0.1:8080` (the internal nginx) and `127.0.0.1:5432`
 (postgres, reachable only via an SSH tunnel from the host itself — see the
 comment on that port in the compose file), both loopback-only, so redis/
@@ -122,7 +123,7 @@ sudo certbot renew --dry-run
 
 ## 6. End-to-end check
 
-Once the prod stack (`docker compose -f docker-compose.prod.yml up -d`) is
+Once the prod stack (`IMAGE_TAG=sha-<commit> docker compose -f docker-compose.prod.yml -f docker-compose.standalone.yml up -d`) is
 running on the box:
 
 ```bash
