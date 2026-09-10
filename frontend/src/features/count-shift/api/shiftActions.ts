@@ -11,6 +11,11 @@ import type { Shift } from '@/entities/shift';
  * `useReopenShiftMutation` keeps its own copy in `pages/day/api/shiftActions.ts`:
  * reopening is owner-only, takes a reason rather than a count, and has one
  * consumer, so promoting it here would not remove any duplication.
+ *
+ * Closing a shift also moves the point's cash figure — the drawer count taken
+ * at close becomes the point's cash — so `cashCounts` and `pointCash` are
+ * invalidated alongside shifts/intakes/payouts, or «Каса точки» would show a
+ * stale number right after close.
  */
 function useInvalidateDay() {
   const qc = useQueryClient();
@@ -19,6 +24,8 @@ function useInvalidateDay() {
       qc.invalidateQueries({ queryKey: queryKeys.shifts }),
       qc.invalidateQueries({ queryKey: queryKeys.intakes }),
       qc.invalidateQueries({ queryKey: queryKeys.payouts }),
+      qc.invalidateQueries({ queryKey: queryKeys.cashCounts }),
+      qc.invalidateQueries({ queryKey: queryKeys.pointCash }),
     ]);
 }
 
