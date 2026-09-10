@@ -861,19 +861,27 @@ export const CHECKS = [
       'in scripts/verify/baselines/bundle-budget.json — the two directions are independent (a raw-only overage ' +
       'fails exactly as hard as a gzip-only one), and the ceiling only ever changes through a separate, ' +
       'deliberate `--write` run plus a reviewed, dated edit to that JSON file, never automatically and never as ' +
-      'a side effect of this command passing or failing. The ceiling itself is the measured total ROUNDED UP — ' +
-      '5 KiB steps for gzip, 20 KiB steps for raw — never pinned to the measurement byte-for-byte: the reference ' +
-      'this check was ported from (webspirio/yagoda-crm) did exactly that once and broke on the very next commit ' +
-      'over an 18-byte gzip increase from one ordinary helper, which is the failure this row\'s rounding rule ' +
-      'exists to prevent; what it must still catch is a REGRESSION — a new dependency pulled in whole, an ' +
-      'accidental whole-package import — measured in tens or hundreds of KiB, not bytes. AS A DATED SNAPSHOT, ' +
-      'MEASURED 2026-09-10: frontend/dist/assets holds exactly two such files, index-Cwd0rvbd.js (871.5 KiB raw ' +
-      '/ 257.7 KiB gzip) and index-DI-2mR6f.css (84.2 KiB raw / 18.6 KiB gzip), summing to 955.7 KiB raw / 276.4 ' +
-      'KiB gzip against a ceiling of 960.0 KiB raw / 280.0 KiB gzip — a headroom of 4.3 KiB raw / 3.6 KiB gzip an ' +
-      'ordinary feature can close quickly. That headroom, not the pass/fail, is what this row is actually for: ' +
-      'it is printed as a line starting with the literal word `WARNING` on EVERY passing run, and the runner\'s ' +
-      'own warningLines() (`/WARNING|\\(!\\)/`, scripts/verify/run.mjs) surfaces it even though the row is ' +
-      "green, so a green `bundle` row can never be read as 'nothing here to watch'.",
+      'a side effect of this command passing or failing. The ceiling itself is `measurement + a MINIMUM ' +
+      'headroom` (25 KiB gzip / 100 KiB raw), THEN rounded up to a cosmetic step (5 KiB gzip / 20 KiB raw) — ' +
+      'never pinned to the measurement byte-for-byte, and never a bare round-up with no minimum either. Both ' +
+      'corrections were learned the hard way, at two different scales: the reference this check was ported ' +
+      'from (webspirio/yagoda-crm) first pinned the ceiling to the exact measured byte count and broke on the ' +
+      'very next commit over an 18-byte gzip increase from one ordinary helper; this port\'s own first version ' +
+      'then "fixed" that with a bare round-up-to-the-next-step and no minimum, and its very first real ' +
+      'measurement landed at 3,719 B of gzip headroom — 1.3% of the bundle — because the measurement happened ' +
+      'to fall just past a step boundary, the SAME failure at a larger scale. What this ceiling exists to catch ' +
+      'is a REGRESSION — a new dependency pulled in whole, an accidental whole-package import — measured in ' +
+      'tens or hundreds of KiB, comfortably outside the minimum headroom; what it now deliberately tolerates is ' +
+      'roughly one ordinary phase of feature work, sized against the reference\'s own measured history of ' +
+      '13-23 KiB gzip per phase. AS A DATED SNAPSHOT, MEASURED 2026-09-10: frontend/dist/assets holds exactly ' +
+      'two such files, index-Cwd0rvbd.js (871.5 KiB raw / 257.7 KiB gzip) and index-DI-2mR6f.css (84.2 KiB raw ' +
+      '/ 18.6 KiB gzip), summing to 955.7 KiB raw / 276.4 KiB gzip against a ceiling of 1060.0 KiB raw / 305.0 ' +
+      'KiB gzip — a headroom of 104.3 KiB raw (10.9%) / 28.6 KiB gzip (10.4%). That headroom, not the pass/fail, ' +
+      'is what this row is actually for: it is printed as a line starting with the literal word `WARNING` on ' +
+      'EVERY passing run, and the runner\'s own warningLines() (`/WARNING|\\(!\\)/`, scripts/verify/run.mjs) ' +
+      "surfaces it even though the row is green, so a green `bundle` row can never be read as 'nothing here to " +
+      "watch' — and a ceiling with single-digit-percent headroom, this row's own history shows, is not a " +
+      'stricter budget, it is one that trains people to raise it on sight.',
     blindSpot:
       'Measures the SUM of frontend/dist/assets, never what a browser actually downloads on first paint — and ' +
       'the two can move in OPPOSITE directions: code splitting turns one large chunk into several smaller ones ' +
@@ -889,7 +897,12 @@ export const CHECKS = [
       "frontend/dist reflects a genuine, complete, current build: `after: ['build']` is what buys that guarantee " +
       'inside `npm run verify:full`, but `npm run bundle` run directly and standalone — exactly as every other ' +
       "check's npm script can also be run — re-verifies none of it, and would measure a stale or hand-edited " +
-      'dist tree exactly as confidently as a fresh one.',
+      'dist tree exactly as confidently as a fresh one. And the 25 KiB / 100 KiB minimum headroom is an ' +
+      "ABSOLUTE floor, not a percentage of the bundle: it is calibrated to today's ~276 KiB gzip bundle and the " +
+      "reference's own historical per-phase growth, not derived from the bundle's own size, so it does not " +
+      'automatically stay proportionate as the bundle grows much larger or a phase turns out unusually large — ' +
+      'nothing here re-derives that minimum on its own; a future re-measurement is what would catch it drifting ' +
+      'out of proportion, not this check running unchanged.',
   },
 ]
 

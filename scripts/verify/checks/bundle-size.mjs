@@ -13,20 +13,36 @@
  * measured and budgeted too, at a separate, wider step, because it is what the phone must
  * parse and compile, which is a real cost on cheap hardware even after the network is done.
  *
- * THE CEILING IS NOT THE MEASUREMENT. This is a correction, not a stylistic choice: the
- * reference this check was ported from (webspirio/yagoda-crm) pinned its budget to the
- * measured byte count exactly, with zero slack, and it broke on the very next commit over
- * an **18-byte** gzip increase from adding one small helper — ordinary work, not a
- * regression. A check that demands a budget edit for 18 bytes teaches people to raise
- * budgets without reading them, which is precisely the failure mode a budget exists to
- * prevent. So `--write` rounds the measured total UP — 5 KiB steps for gzip, 20 KiB steps
- * for raw — and records both the measurement and the resulting ceiling, so a reader can
- * always see which is which and how much slack the rounding bought.
+ * THE CEILING IS NOT THE MEASUREMENT, AND THE HEADROOM IS NOT AN ACCIDENT OF ROUNDING
+ * EITHER. This check went through two corrections to get here, both worth keeping visible
+ * because the same mistake is easy to make twice, at two different scales:
+ *
+ * (1) The reference this check was ported from (webspirio/yagoda-crm) first pinned its
+ *     budget to the measured byte count exactly, with zero slack, and it broke on the very
+ *     next commit over an **18-byte** gzip increase from adding one small helper — ordinary
+ *     work, not a regression.
+ * (2) This port's own first version fixed that by rounding the measurement up to the next
+ *     5 KiB (gzip) / 20 KiB (raw) step and stopping there — which sounds safer, but a
+ *     measurement that happens to fall just past a step boundary rounds up to almost
+ *     nothing: the very first real measurement here landed at 3,719 B of gzip headroom,
+ *     1.3% of the bundle. That is the SAME failure as (1) at a smaller scale: the reference
+ *     itself measured ordinary phase work at 13–23 KiB gzip per phase, so a ceiling with a
+ *     few KiB of slack — or less — still trips on the next ordinary commit, and someone
+ *     raises it without reading, which is exactly the behaviour a budget exists to prevent.
+ *
+ * THE RULE THIS CHECK ACTUALLY USES: `--write` sets the ceiling to the measurement plus a
+ * MINIMUM headroom sized to intent — 25 KiB for gzip, 100 KiB for raw, roughly one
+ * ordinary phase of work by the reference's own numbers — and only THEN rounds that sum up
+ * to the next step (5 KiB / 20 KiB). The step is cosmetic (it keeps the ceiling a round
+ * number); the minimum headroom is what actually does the ratcheting work. A ceiling with
+ * single-digit-percent headroom is not a stricter budget, it is a budget that trains people
+ * to raise it on sight — this rule sizes the slack to what ordinary work costs so ordinary
+ * work does not need a ceiling edit, and a new dependency pulled in whole still does.
  *
  * What must still fail is a REGRESSION: a new dependency pulled in whole, an accidental
  * whole-package import, a chart library added for one small feature. Those are tens or
- * hundreds of KiB, not bytes — comfortably outside the rounding step, and exactly what this
- * check exists to catch.
+ * hundreds of KiB, not bytes — comfortably outside the minimum headroom, and exactly what
+ * this check exists to catch.
  *
  * The headroom is not a secret kept for the day the budget breaks — it is printed, as a
  * line starting with the literal word `WARNING`, on every run that passes. The runner's own
@@ -56,8 +72,15 @@ const ASSETS_REL = path.relative(ROOT, ASSETS)
 const BUDGET_REL = 'scripts/verify/baselines/bundle-budget.json'
 const BUDGET = path.join(ROOT, BUDGET_REL)
 
-// Rounding steps this check's whole ratchet discipline rests on — see the file header for
-// why these are steps up from the measurement, never the measurement itself.
+// The minimum headroom the ceiling must carry — sized to intent, not to a rounding
+// coincidence. See the file header for why this, not the step below, is what actually
+// makes the ratchet meaningful: ~25 KiB gzip / ~100 KiB raw is roughly one ordinary phase
+// of feature work by the reference's own measured history (13-23 KiB gzip per phase).
+const MIN_HEADROOM_GZIP_BYTES = 25 * 1024
+const MIN_HEADROOM_RAW_BYTES = 100 * 1024
+
+// The rounding step applied AFTER the minimum headroom is added — cosmetic (keeps the
+// ceiling a round number), not the source of the ratchet's slack.
 const STEP_GZIP_BYTES = 5 * 1024
 const STEP_RAW_BYTES = 20 * 1024
 
@@ -118,6 +141,10 @@ function measure() {
  * @property {string} measuredAt
  * @property {number} measuredGzipBytes
  * @property {number} measuredRawBytes
+ * @property {number} minHeadroomGzipBytes
+ * @property {number} minHeadroomRawBytes
+ * @property {number} stepGzipBytes
+ * @property {number} stepRawBytes
  * @property {number} maxGzipBytes
  * @property {number} maxRawBytes
  * @property {number} headroomGzipBytes
@@ -126,36 +153,60 @@ function measure() {
  */
 
 /**
+ * The ceiling is `measurement + minimum headroom`, THEN rounded up to the next step — the
+ * minimum headroom is what makes this a ratchet with real teeth; the step only keeps the
+ * result a round number. Recording `minHeadroomGzipBytes`/`minHeadroomRawBytes`/
+ * `stepGzipBytes`/`stepRawBytes` alongside the result means the next person to re-measure
+ * follows this exact arithmetic instead of inventing their own rounding rule (the mistake
+ * this check's own history already made once — see the file header).
+ *
  * @param {number} gzip
  * @param {number} raw
  * @param {string | undefined} previousReason
  * @returns {Budget}
  */
 function buildBudget(gzip, raw, previousReason) {
-  const maxGzipBytes = Math.ceil(gzip / STEP_GZIP_BYTES) * STEP_GZIP_BYTES
-  const maxRawBytes = Math.ceil(raw / STEP_RAW_BYTES) * STEP_RAW_BYTES
+  const maxGzipBytes = Math.ceil((gzip + MIN_HEADROOM_GZIP_BYTES) / STEP_GZIP_BYTES) * STEP_GZIP_BYTES
+  const maxRawBytes = Math.ceil((raw + MIN_HEADROOM_RAW_BYTES) / STEP_RAW_BYTES) * STEP_RAW_BYTES
   return {
     measuredAt: new Date().toISOString().slice(0, 10),
     measuredGzipBytes: gzip,
     measuredRawBytes: raw,
+    minHeadroomGzipBytes: MIN_HEADROOM_GZIP_BYTES,
+    minHeadroomRawBytes: MIN_HEADROOM_RAW_BYTES,
+    stepGzipBytes: STEP_GZIP_BYTES,
+    stepRawBytes: STEP_RAW_BYTES,
     maxGzipBytes,
     maxRawBytes,
     headroomGzipBytes: maxGzipBytes - gzip,
     headroomRawBytes: maxRawBytes - raw,
     reason:
       previousReason ??
-      'The ceiling is the measured total ROUNDED UP — 5 KiB steps for gzip, 20 KiB steps ' +
-        'for raw — never the measurement itself. This is a deliberate correction, not slack ' +
-        'left in by accident: the reference this check was ported from (webspirio/yagoda-crm) ' +
-        'first pinned the ceiling to the exact measured byte count, and it broke on the very ' +
-        'next commit over an 18-byte gzip increase from adding one small helper — ordinary ' +
-        'work, not a regression. A check that demands a budget edit for 18 bytes teaches ' +
-        'people to raise budgets without reading them, which defeats the one thing a budget ' +
-        'is for. What this ceiling exists to catch is a REGRESSION — a new dependency pulled ' +
-        'in whole, an accidental whole-package import — measured in tens or hundreds of KiB, ' +
-        'never bytes. Lowering the ceiling is an ordinary edit. Raising it must be a visible, ' +
-        'reasoned diff to this file, and only after ruling out that the increase is exactly ' +
-        'the kind of regression this row exists to stop.',
+      'The ceiling is `measurement + a MINIMUM headroom`, THEN rounded up to the next step ' +
+        '(minHeadroomGzipBytes/minHeadroomRawBytes are the headroom; stepGzipBytes/' +
+        'stepRawBytes are only cosmetic rounding on top of it) — never the measurement ' +
+        'itself, and never a bare round-up with no minimum either. Both corrections in that ' +
+        'sentence are load-bearing, learned in that order. First: the reference this check ' +
+        'was ported from (webspirio/yagoda-crm) pinned the ceiling to the exact measured ' +
+        'byte count with zero slack, and it broke on the very next commit over an 18-byte ' +
+        'gzip increase from adding one small helper — ordinary work, not a regression. ' +
+        "Second, and this repo's own mistake: this check's first version fixed that by " +
+        'rounding the raw measurement up to the next step and stopping there, with no ' +
+        'minimum — and the very first real measurement here landed at 3,719 B of gzip ' +
+        'headroom, 1.3% of the bundle, because the measurement happened to fall just past a ' +
+        'step boundary. That is the SAME failure as the 18-byte story, just at a larger ' +
+        'scale: the reference itself measured ordinary phase work at 13-23 KiB gzip per ' +
+        'phase, so single-digit-percent headroom does not defend against ordinary growth, ' +
+        'it just delays the next forced, unread ceiling raise by one commit. The fix is ' +
+        'this minimum: 25 KiB gzip / 100 KiB raw, sized to absorb roughly one ordinary ' +
+        "phase of feature work without tripping, while a new dependency pulled in whole — " +
+        'tens or hundreds of KiB, not tens of KiB — still trips it. Lowering the ceiling is ' +
+        'an ordinary edit. Raising it must be a visible, reasoned diff to this file that ' +
+        'states what changed and why it could not fit in the existing headroom — and the ' +
+        'number worth reading on every run is the headroom this check prints as a WARNING ' +
+        'line when it passes, never the pass/fail alone: a ceiling with single-digit-percent ' +
+        'headroom trains people to raise budgets on sight rather than to read them, which is ' +
+        'the one thing this whole check exists to prevent.',
   }
 }
 

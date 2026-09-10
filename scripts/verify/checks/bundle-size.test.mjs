@@ -176,7 +176,7 @@ test('an over-budget run names the fix as a reasoned edit to the budget file, no
   })
 })
 
-test('--write rounds a fresh measurement UP to the documented steps, never pinning the ceiling to the measurement', () => {
+test('--write rounds measurement + a MINIMUM headroom UP to the documented step — never a bare round-up with no minimum', () => {
   const original = readFileSync(BUDGET_PATH, 'utf8')
   try {
     withFixtureDist(
@@ -191,12 +191,19 @@ test('--write rounds a fresh measurement UP to the documented steps, never pinni
         /** @type {any} */
         const written = JSON.parse(readFileSync(BUDGET_PATH, 'utf8'))
         assert.equal(written.measuredRawBytes, 1000)
-        // Ceiling must be a step UP from the measurement, never equal to it (the whole
-        // point of the rounding rule this check exists to enforce on itself).
-        assert.ok(written.maxRawBytes > written.measuredRawBytes)
-        assert.equal(written.maxRawBytes % (20 * 1024), 0)
-        assert.equal(written.maxGzipBytes % (5 * 1024), 0)
-        assert.ok(written.maxGzipBytes > written.measuredGzipBytes)
+        // The whole point of fix round 1: a bare round-up-to-the-next-step can leave as
+        // little as a few bytes of headroom when the measurement lands just past a step
+        // boundary (this repo's own real baseline did exactly that once — 3,719 B of gzip
+        // headroom, 1.3%). The ceiling must clear measurement + the declared MINIMUM
+        // headroom, not merely exceed the measurement itself.
+        assert.ok(written.maxRawBytes >= written.measuredRawBytes + written.minHeadroomRawBytes)
+        assert.ok(written.maxGzipBytes >= written.measuredGzipBytes + written.minHeadroomGzipBytes)
+        assert.equal(written.minHeadroomGzipBytes, 25 * 1024)
+        assert.equal(written.minHeadroomRawBytes, 100 * 1024)
+        // The step is still applied on top of the minimum (cosmetic rounding, not the
+        // source of the slack) — the ceiling still lands on a step boundary.
+        assert.equal(written.maxRawBytes % written.stepRawBytes, 0)
+        assert.equal(written.maxGzipBytes % written.stepGzipBytes, 0)
         assert.equal(written.headroomRawBytes, written.maxRawBytes - written.measuredRawBytes)
         assert.equal(written.headroomGzipBytes, written.maxGzipBytes - written.measuredGzipBytes)
         assert.ok(written.reason && written.reason.length > 30)
