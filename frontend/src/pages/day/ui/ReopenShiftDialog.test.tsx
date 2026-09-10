@@ -20,6 +20,7 @@ const closedShift: Shift = {
   closed_by_user_id: 'u1',
   closed_at: '2026-09-07T18:00:00Z',
   created_at: '2026-09-07T05:00:00Z',
+  explanation: null,
 };
 
 function renderDialog() {

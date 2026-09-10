@@ -100,6 +100,7 @@ const openShift: Shift = {
   closed_by_user_id: null,
   closed_at: null,
   created_at: '2026-09-08T05:00:00Z',
+  explanation: null,
 };
 
 const closedShift: Shift = {

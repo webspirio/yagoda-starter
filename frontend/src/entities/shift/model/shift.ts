@@ -11,4 +11,10 @@ export interface Shift {
   closed_by_user_id: string | null;
   closed_at: string | null;
   created_at: string;
+  /**
+   * Пояснення керівника до розбіжності в підрахунку каси (§7.7 у редакції
+   * 09.09.2026: розбіжність НІКОЛИ не блокує закриття, керівник пояснює
+   * постфактум). `null` — або розбіжності не було, або її ще не пояснили.
+   */
+  explanation: string | null;
 }
