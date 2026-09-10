@@ -22,4 +22,10 @@ export const queryKeys = {
   payouts: ['payouts'] as const,
   /** `/supplier-balances` and `/suppliers/:id/balance` — invalidated together by any document write. */
   supplierBalances: ['supplier-balances'] as const,
+  /** Перекази — префікс для кожного фільтрованого списку; читання дописує свій фільтр. */
+  transfers: ['transfers'] as const,
+  /** Каса точок — префікс і для списку мережі, і для однієї точки. */
+  pointCash: ['point-cash'] as const,
+  /** Підрахунки каси — префікс; читання дописує точку/зміну. */
+  cashCounts: ['cash-counts'] as const,
 };
