@@ -27,3 +27,9 @@ backups/
 
 # Verify runner's report directory.
 .verify/
+
+# Playwright (`smoke` row): run artifacts and the credentials global-setup.ts
+# writes for the specs to read — never committed, regenerated every run.
+test-results/
+playwright-report/
+e2e/.auth/

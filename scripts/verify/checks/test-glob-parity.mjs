@@ -1,13 +1,21 @@
 #!/usr/bin/env node
 /**
  * Every file that looks like a test in this repository must be collected by exactly one
- * of the four test runners -- never zero, never two.
+ * of the five test runners -- never zero, never two.
  *
- * There are FOUR collectors here, and their globs do not overlap by design:
+ * There are FIVE collectors here, and their globs do not overlap by design:
  *   - jest-unit  -- backend/package.json's jest config (testRegex, rootDir: 'src')
  *   - jest-db    -- backend/jest.db.config.js (a separate testRegex, also rootDir: 'src')
  *   - vitest     -- frontend/vite.config.ts, vitest's DEFAULT include (not set explicitly)
  *   - node-test  -- scripts/**\/*.test.mjs, run by `npm run test:verify`
+ *   - playwright -- e2e/**\/*.spec.ts, run by `npm run test:e2e` (playwright.config.ts's
+ *                   `testDir: './e2e'`, Playwright's own DEFAULT `testMatch` -- not set
+ *                   explicitly there either)
+ *
+ * playwright is the fifth collector this check's own registry entry (`testfiles`,
+ * scripts/verify/registry.mjs) already admitted would show up eventually ("a fifth
+ * collector added later is unseen by this row until this row is taught about it") --
+ * Task 17 (`smoke`) is that later, and this file is the teaching.
  *
  * The cheapest way to get a dead test suite is a glob that quietly excludes a whole file:
  * `backend/src/foo.test.ts` matches neither backend testRegex (both require .spec.ts or
@@ -37,6 +45,14 @@ const CANDIDATE_FILE = /\.(test|spec|db-spec)\.[cm]?[jt]sx?$/
 // so this is vitest's built-in default -- not a copy of anything this repo's own config owns --
 // which is why, unlike the two backend regexes below, it is fine to state here directly.
 const VITEST_DEFAULT_INCLUDE = /\.(test|spec)\.[cm]?[jt]sx?$/
+
+// Playwright's own default `testMatch`, read straight off the installed package
+// (node_modules/playwright/lib/common/index.js: `"**/*.@(spec|test).?(c|m)[jt]s?(x)"`) --
+// playwright.config.ts does not set `testMatch` either, so, like vitest's default above,
+// this is a built-in default rather than a copy of anything this repo's own config owns.
+// Same shape as VITEST_DEFAULT_INCLUDE (this repo's one e2e spec is `.spec.ts`, not
+// `.db-spec.ts` -- Playwright's own default never matches that middle segment at all).
+const PLAYWRIGHT_DEFAULT_INCLUDE = /\.(test|spec)\.[cm]?[jt]sx?$/
 
 /**
  * @param {string} file
@@ -103,6 +119,7 @@ function collectorsFor(file, unitRe, dbRe) {
   if (file.startsWith('backend/src/') && dbRe.test(file)) collectors.push('jest-db')
   if (file.startsWith('frontend/') && VITEST_DEFAULT_INCLUDE.test(file)) collectors.push('vitest')
   if (file.startsWith('scripts/') && file.endsWith('.test.mjs')) collectors.push('node-test')
+  if (file.startsWith('e2e/') && PLAYWRIGHT_DEFAULT_INCLUDE.test(file)) collectors.push('playwright')
   return collectors
 }
 
@@ -123,8 +140,8 @@ function main() {
   }
 
   const summary =
-    `test:files: ${files.length} candidate test file(s) checked against 4 collectors ` +
-    '(jest-unit, jest-db, vitest, node-test)'
+    `test:files: ${files.length} candidate test file(s) checked against 5 collectors ` +
+    '(jest-unit, jest-db, vitest, node-test, playwright)'
 
   if (problems.length) {
     process.stderr.write(`${summary}\n`)

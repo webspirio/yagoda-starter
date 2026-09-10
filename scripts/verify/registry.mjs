@@ -94,11 +94,11 @@ export const PRECONDITIONS = {
     probe: async () => {
       try {
         // @playwright/test, not playwright-core: the transitive package is not ours to
-        // depend on directly. It is not yet a dependency of this repo at all — that
-        // lands with the Playwright e2e suite — so this import fails both at runtime
-        // (caught below, correctly reporting "precondition absent") and statically
-        // (no type declarations to resolve), hence the suppression on the next line.
-        // @ts-expect-error — @playwright/test ships with the e2e suite, not yet
+        // depend on directly. It became a real root devDependency with the Playwright
+        // e2e suite (Task 17, `smoke`) — before that this import failed both at runtime
+        // (caught below, correctly reporting "precondition absent") and statically (no
+        // type declarations to resolve), which needed a `@ts-expect-error` suppression
+        // here; that suppression is gone now that the import genuinely resolves.
         const { chromium } = await import('@playwright/test')
         const { existsSync } = await import('node:fs')
         return existsSync(chromium.executablePath())
@@ -243,19 +243,21 @@ export const CHECKS = [
     cmd: 'npm run test:files',
     proves:
       "Every one of this repo's *.{test,spec,db-spec}.[cm]?[jt]sx? files is collected by " +
-      "EXACTLY ONE of this repo's four test runners — jest-unit " +
+      "EXACTLY ONE of this repo's five test runners — jest-unit " +
       "(backend/package.json's testRegex, rootDir src), jest-db (backend/jest.db.config.js's " +
       "separate testRegex, also rootDir src), vitest (frontend's default include, no " +
-      'test.include set) and node-test (scripts/**/*.test.mjs, run by npm run test:verify) ' +
-      '— a file with zero matching collectors, or claimed by two at once, fails this exact ' +
-      'command, no matter how many files exist when it runs. The two backend regexes are ' +
-      'read out of backend/package.json and backend/jest.db.config.js at runtime, not ' +
-      'copied here, so this row also proves those two files still say what the check ' +
-      'assumes. AS A SNAPSHOT, MEASURED 2026-09-10 and re-measured the same day after Task ' +
-      '10 added a ninth node-test file: 160 files currently match that pattern (jest-unit ' +
-      '40, jest-db 12, vitest 99, node-test 9) — up from the 156 (node-test 5) this row ' +
-      'first shipped with. That total grows every time this plan, or any ordinary feature ' +
-      'work, adds a test file, and this row does not track or re-check its own prose count.',
+      'test.include set), node-test (scripts/**/*.test.mjs, run by npm run test:verify) and, ' +
+      'as of Task 17, playwright (e2e/**/*.spec.ts, Playwright\'s own default testMatch, run ' +
+      'by npm run test:e2e) — a file with zero matching collectors, or claimed by two at ' +
+      'once, fails this exact command, no matter how many files exist when it runs. The two ' +
+      'backend regexes are read out of backend/package.json and backend/jest.db.config.js at ' +
+      'runtime, not copied here, so this row also proves those two files still say what the ' +
+      'check assumes. AS A SNAPSHOT, MEASURED 2026-09-10 and re-measured the same day after ' +
+      'Task 17 added the fifth collector and its first file: 166 files currently match that ' +
+      'pattern (jest-unit 40, jest-db 12, vitest 99, node-test 14, playwright 1) — up from ' +
+      'the 160 (four collectors, node-test 9) this row reached after Task 10. That total ' +
+      'grows every time this plan, or any ordinary feature work, adds a test file, and this ' +
+      'row does not track or re-check its own prose count.',
     blindSpot:
       'Nothing about the tests themselves: a file collected by exactly one runner can ' +
       'still assert nothing, or assert the wrong thing — this row only proves each ' +
@@ -263,8 +265,9 @@ export const CHECKS = [
       'collected. Its candidate pattern is *.{test,spec,db-spec}.* in the [cm]?[jt]sx? ' +
       'extensions; a file that looks like a test under any other name is invisible to it ' +
       'on both sides — reported as neither an orphan nor a false double-collection. And ' +
-      'it knows only the four runners this repo has today; a fifth collector added later ' +
-      'is unseen by this row until this row is taught about it.',
+      'it knows only the five runners this repo has today; a sixth collector added later ' +
+      'is unseen by this row until this row is taught about it — precisely how it was ' +
+      'taught about playwright, the fifth, in Task 17.',
   },
   {
     id: 'secrets',
@@ -686,9 +689,11 @@ export const CHECKS = [
       'rounding.mjs already use) and fails this command by name — verified empirically that the identical ' +
       'unused, reachable export produces a finding untagged and NONE at all with `/** @public */` above it, so ' +
       "trusting knip's own JSON output alone would have missed this exact suppression vector. AS A DATED " +
-      'SNAPSHOT, MEASURED 2026-09-10: the baseline holds all 120 findings knip.json\'s two workspaces produce ' +
-      'today (1 dependency, 5 devDependencies, 55 exports, 31 files, 25 types, 3 unlisted) — this repo\'s dead-' +
-      'code debt on that date, read and reasoned individually rather than bulk-recorded, with 14 of the 120 ' +
+      'SNAPSHOT, MEASURED 2026-09-10 and re-measured the same day after Task 17 (`smoke`) made `@playwright/' +
+      'test` a real root devDependency (deleting the one baseline entry that named it as `unlisted`, per this ' +
+      'ratchet\'s own bidirectional rule): the baseline holds all 119 findings knip.json\'s two workspaces ' +
+      'produce today (1 dependency, 5 devDependencies, 55 exports, 31 files, 25 types, 2 unlisted) — this ' +
+      'repo\'s dead-code debt on that date, read and reasoned individually rather than bulk-recorded, with 14 ' +
       "tied to decisions frontend/CLAUDE.md names explicitly (shared/lib/form-draft's file finding; the Kit-" +
       'hygiene note\'s eight named starter-UI-primitive files plus the vaul dependency that traces to one of ' +
       "them; entities/user's useUpdateMeMutation pattern-reference hook and its input type, at both origin and " +
@@ -904,7 +909,19 @@ export const CHECKS = [
       "frontend/dist reflects a genuine, complete, current build: `after: ['build']` is what buys that guarantee " +
       'inside `npm run verify:full`, but `npm run bundle` run directly and standalone — exactly as every other ' +
       "check's npm script can also be run — re-verifies none of it, and would measure a stale or hand-edited " +
-      'dist tree exactly as confidently as a fresh one. And the 25 KiB / 100 KiB minimum headroom is an ' +
+      "dist tree exactly as confidently as a fresh one. TASK 17 FOUND A CONCRETE WAY THIS BITES: `smoke`'s " +
+      "global-setup.ts writes frontend/dist with a direct `npm run build -w frontend` call (needed for its own " +
+      "reasons — see that file), invisible to Turborepo's output cache; a `npm run build` this row's own " +
+      "`after: ['build']` depends on can then satisfy `frontend#build` FROM CACHE without ever running `vite " +
+      "build` again, so its `emptyOutDir` cleanup never fires and the cached files land ALONGSIDE smoke's " +
+      "leftover ones instead of replacing them — measured directly at 534 KiB gzip against this row's own 305 " +
+      "KiB ceiling, roughly double the genuine 276 KiB, immediately after a clean run had reported the correct " +
+      "number. `smoke`'s global-setup.ts and global-teardown.ts both now delete frontend/dist around their own " +
+      "build (belt and suspenders, each covering the other crashing first) specifically so this row never sees " +
+      "that state — but the underlying fact stands: NOTHING in this row, or in `build`, verifies that " +
+      "frontend/dist holds the output of exactly one build rather than two coexisting ones with different " +
+      "content hashes, and any other future consumer that writes to frontend/dist outside of `turbo build` " +
+      "could reopen the identical failure mode. And the 25 KiB / 100 KiB minimum headroom is an " +
       "ABSOLUTE floor, not a percentage of the bundle: it is calibrated to today's ~276 KiB gzip bundle and the " +
       "reference's own historical per-phase growth, not derived from the bundle's own size, so it does not " +
       'automatically stay proportionate as the bundle grows much larger or a phase turns out unusually large — ' +
@@ -1006,6 +1023,86 @@ export const CHECKS = [
       ':verify tag is a fixed name this row, and this row alone, overwrites on every run — it ' +
       'proves nothing about, and is never used by, the images docker-compose.prod.yml actually ' +
       'builds and deploys, which carry no explicit tag of their own at all.',
+  },
+  {
+    id: 'smoke',
+    tier: 'full',
+    cmd: 'npm run test:e2e',
+    needs: ['playwright-browser', 'docker'],
+    after: ['build'],
+    // Not a hard dependency the way `bundle`'s `after: ['build']` is: e2e/global-setup.ts
+    // rebuilds the frontend itself, with an explicit VITE_API_URL, before every run (see its
+    // own doc comment for why `build`'s own `npm run build` invocation cannot be trusted to
+    // leave a dist this row can actually execute) — so this row does not depend on `build`
+    // having passed to produce a CORRECT result. `after` still buys what it buys for `bundle`:
+    // skipping the single heaviest, slowest row in this whole layer — a real browser against a
+    // real Docker Compose stack — when the cheap compiler check already failed is strictly
+    // better than re-discovering the identical compile error a great deal more slowly.
+    proves:
+      "`npm run test:e2e` (`playwright test`, `retries: 0` — a single flaky run is exactly as " +
+      "red as a deterministic one) exits 0 only when ALL THREE of e2e/smoke.spec.ts's " +
+      'assertions hold, in one real Chromium session, against the REAL stack e2e/global-' +
+      "setup.ts brings up — `docker compose up -d --wait postgres redis backend`, gated on the " +
+      "same `/health/ready` healthcheck docker-compose.yml already defines, then `npm run " +
+      "db:seed` (idempotent) — and a real production frontend build (`vite preview` over a " +
+      "fresh `vite build`, never the dev server): (1) the sign-in page renders, and submitting " +
+      "the seeded owner's real credentials (`admin`/`admin`) through the UI form reaches the " +
+      "dashboard; (2) the dashboard's «Квитанцій сьогодні» stat tile renders a positive integer " +
+      "sourced from that seed — not NaN, and not the zero that would be indistinguishable from " +
+      "an empty state; (3) zero `page.on('pageerror')` events and zero `page.on('requestfailed')` " +
+      'events fired anywhere during the run. Four mechanisms outside the brief\'s own 3-step list ' +
+      'make that REAL stack real rather than superficially so, all found empirically while ' +
+      "building this row, all documented in global-setup.ts itself: `APP_URL` is overridden to " +
+      "this preview server's own origin for the one `docker compose up` call (the backend's CORS " +
+      'allowlist otherwise never includes the deliberately-non-5173 preview port, so every ' +
+      'request the browser makes would be rejected before reaching the app); any seeded shift ' +
+      'still open from a previous day is closed in Postgres before `db:seed` runs (`dev-seed.ts` ' +
+      "opens a fresh shift per point for \"today\" but never closes yesterday's, so its own " +
+      'idempotency holds only WITHIN one calendar day — the first `db:seed` on any later day ' +
+      "collides with Postgres's own `UQ_shifts_open_per_point` constraint without this); the " +
+      "frontend is rebuilt with an explicit `VITE_API_URL` every run (Vite bakes that value in at " +
+      "BUILD time, never at `vite preview` time, and this is the first row in the whole verify " +
+      "layer to actually EXECUTE the built frontend rather than merely compile it); and " +
+      "frontend/dist is deleted both immediately before that rebuild and again by global-" +
+      "teardown.ts afterward, because a direct `npm run build -w frontend` call is invisible to " +
+      "Turborepo's output cache and a cache-satisfied `npm run build` (the `build` row `smoke` " +
+      "runs `after`) does not clear the directory first — see `bundle`'s own `blindSpot` for the " +
+      "534-KiB-gzip-against-a-305-KiB-ceiling false failure this produced before the delete was " +
+      "added. `global-teardown.ts` then returns only the services THIS run itself started to " +
+      "`stop`ped — never `down`, never " +
+      "`down -v` — because docker-compose.yml's project name (`web-starter`) is shared across " +
+      'every worktree of this repo and the main checkout, and `-v` would destroy the real ' +
+      "`pg_data`/`uploads_dev` volumes; a service global-setup.ts found already running (another " +
+      "session's) is left running, exactly as found. AS A DATED SNAPSHOT, MEASURED 2026-09-10: a " +
+      'fully cold `npm run test:e2e` (every container starting from stopped) completed in ~22s ' +
+      "wall clock, of which the test itself ran in under a second (~0.8s) — nearly all of the " +
+      "time is `--wait`ing on the backend's healthcheck, `npm run db:seed`, and the frontend " +
+      "rebuild (~0.5s); a warm re-run (Postgres/Redis already up) completed in ~16s. The seeded " +
+      'network showed 10 receipts across its three open-shift points (Шипинки/Конищів/Гайове, ' +
+      "backend/CLAUDE.md's Dev seed section) the day this was measured — a number that moves " +
+      "with the seed data and is not re-verified by this row beyond being positive.",
+    blindSpot:
+      'Exercises exactly ONE path through the app — sign in, land on the dashboard, read one ' +
+      'stat tile — and says nothing about any other screen, role, or flow: reception, day, ' +
+      "debts, suppliers, catalog, prices, users, points, the operator's own dashboard variant, " +
+      'none of it is touched here. It runs entirely against `npm run db:seed`\'s fixed SEEDED ' +
+      'dataset, never real-world data shapes, volumes, or edge cases — a receipts count that ' +
+      "happens to be exactly what the seed always produces proves nothing about a network with " +
+      "a hundred points or a supplier with a decimal balance. And a PASS here means the stack " +
+      'COMPOSES — the frontend, the backend, Postgres, Redis and a real browser all agree on how ' +
+      'to talk to each other, CORS included — never that any business rule, §-numbered or ' +
+      "otherwise, is actually correct: the dashboard could sum receipts wrong by exactly the " +
+      "amount that still clears \"greater than zero\", and this row would stay green. Beyond " +
+      "those three required admissions: only Chromium is launched (`playwright-browser`'s own " +
+      'precondition checks exactly that binary), never Firefox or WebKit, so a browser-specific ' +
+      "regression in either is invisible to this row. `page.on('requestfailed')` fires only for " +
+      'a NETWORK-layer failure (refused connection, aborted, DNS) — a backend that answers with ' +
+      'a well-formed 500 completes the HTTP transaction and is invisible to assertion 3 entirely, ' +
+      'even though the dashboard may then render visibly broken. And this row\'s own global-' +
+      'setup.ts rebuilds frontend/dist on every run (see this row\'s own `proves`) — after this ' +
+      "row runs, whatever `build`, `bundle` or `docker` most recently measured on disk is gone, " +
+      "overwritten by this row's own build, a real side effect worth knowing about before " +
+      'reading `frontend/dist` for anything else in the same session.',
   },
 ]
 
