@@ -201,11 +201,15 @@ export const CHECKS = [
     tier: 'fast',
     cmd: 'npm test',
     proves:
-      'Measured 2026-09-10: backend jest (NODE_OPTIONS=--experimental-vm-modules jest, ' +
-      'testRegex .*\\.spec\\.ts$, rootDir src) ran 40 suites / 511 tests, and frontend ' +
-      'vitest (vitest run) ran 99 files / 592 tests — 139 files and 1103 tests total, all ' +
-      'passing. A single failing assertion anywhere in either workspace turns this exact ' +
-      'command, and this row, red.',
+      'A SNAPSHOT, MEASURED 2026-09-10 (see CLAUDE.md\'s Verification section for the same ' +
+      'discipline applied to cost figures): backend jest (NODE_OPTIONS=--experimental-vm-' +
+      'modules jest, testRegex .*\\.spec\\.ts$, rootDir src) ran 40 suites / 511 tests, and ' +
+      'frontend vitest (vitest run) ran 99 files / 592 tests — 139 files and 1103 tests ' +
+      'total that day, all passing. Those counts grow with ordinary feature work in either ' +
+      'workspace and are not re-verified by this row — they illustrate scale, nothing more. ' +
+      'The INVARIANT this row actually enforces outlives every one of them: a single ' +
+      'failing assertion anywhere in either workspace turns this exact command, and this ' +
+      'row, red, no matter how many tests exist when it runs.',
     blindSpot:
       "The backend testRegex matches only *.spec.ts, so all 12 *.db-spec.ts suites " +
       '(backend/jest.db.config.js, a separate config) are excluded from this row entirely ' +
@@ -238,16 +242,21 @@ export const CHECKS = [
     tier: 'fast',
     cmd: 'npm run test:files',
     proves:
-      'Measured 2026-09-10: every one of the 156 files in this repo whose name matches ' +
-      '*.{test,spec,db-spec}.[cm]?[jt]sx? is collected by exactly one of this repo\'s four ' +
-      'test runners — jest-unit (40 files, backend/package.json\'s testRegex, rootDir ' +
-      'src), jest-db (12 files, backend/jest.db.config.js\'s separate testRegex, also ' +
-      'rootDir src), vitest (99 files, frontend\'s default include, no test.include set) ' +
-      'and node-test (5 files, scripts/**/*.test.mjs, run by npm run test:verify). The two ' +
-      'backend regexes are read out of backend/package.json and backend/jest.db.config.js ' +
-      'at runtime, not copied here, so this row also proves those two files still say what ' +
-      'the check assumes — a file with zero matching collectors, or claimed by two at ' +
-      'once, fails this exact command.',
+      'A SNAPSHOT, MEASURED 2026-09-10 and re-measured the same day after Task 10 added a ' +
+      'ninth node-test file: 160 files in this repo (jest-unit 40, jest-db 12, vitest 99, ' +
+      'node-test 9) currently match *.{test,spec,db-spec}.[cm]?[jt]sx? — up from the 156 ' +
+      '(node-test 5) this row first shipped with. That total grows every time this plan, or ' +
+      'any ordinary feature work, adds a test file, and this row does not track or re-check ' +
+      'its own prose count. The INVARIANT the count only illustrates, and which holds ' +
+      'regardless of how large it grows, is this: every one of those files, however many ' +
+      "there are, is collected by EXACTLY ONE of this repo's four test runners — jest-unit " +
+      "(backend/package.json's testRegex, rootDir src), jest-db (backend/jest.db.config.js's " +
+      "separate testRegex, also rootDir src), vitest (frontend's default include, no " +
+      'test.include set) and node-test (scripts/**/*.test.mjs, run by npm run test:verify). ' +
+      'The two backend regexes are read out of backend/package.json and ' +
+      'backend/jest.db.config.js at runtime, not copied here, so this row also proves those ' +
+      'two files still say what the check assumes — a file with zero matching collectors, ' +
+      'or claimed by two at once, fails this exact command no matter the total.',
     blindSpot:
       'Nothing about the tests themselves: a file collected by exactly one runner can ' +
       'still assert nothing, or assert the wrong thing — this row only proves each ' +
@@ -301,7 +310,9 @@ export const CHECKS = [
       'scripts/verify/baselines/secret-boundary.json\'s confirmedFakeValues array — never ' +
       'in this file\'s source, and re-validated on every run (a stub reason under 30 ' +
       'characters is rejected; an entry whose pinned value no longer appears in its named ' +
-      'file is reported STALE). Today it holds one already-audited fake token fixture in ' +
+      'file is reported STALE). As a snapshot, 2026-09-10, it holds one already-audited ' +
+      'fake token fixture — a count that can only grow by a reviewed, dated addition to ' +
+      "that array, never as an unnoticed side effect — in " +
       'frontend/src/shared/api/persister.test.ts, pinned by its EXACT file path AND its ' +
       'EXACT string — not a shape, not a path, not a file-type carve-out. That exactness ' +
       'cuts both ways: a genuine secret whose literal text happened to equal a pinned ' +
@@ -366,19 +377,22 @@ export const CHECKS = [
     // identical: also `ts.createSourceFile` over backend/src) never declared this `after`
     // in the first place, so only this row needed correcting.
     proves:
-      'Measured 2026-09-10: `npm run migrations:check` parses every backend/src/**/*.ts ' +
-      'file with the TypeScript compiler API and enforces four rules against ' +
-      "backend/src/migrations/'s 8 numbered migrations (timestamps 1788600000000– " +
-      '1788600000007), its 5 *.db-spec.ts files excluded from rules 2–4 — (1) every ' +
+      '`npm run migrations:check` parses every backend/src/**/*.ts file with the ' +
+      'TypeScript compiler API and enforces four rules against every file in ' +
+      "backend/src/migrations/ — AS A SNAPSHOT, MEASURED 2026-09-10, that was 8 numbered " +
+      'migrations (timestamps 1788600000000–1788600000007) and 5 *.db-spec.ts files; both ' +
+      'counts grow with ordinary schema work, unrelated to this table, and this row does ' +
+      'not track or re-check its own prose. Excluding the db-specs, the four rules, stated ' +
+      'so they hold at any count: (1) every ' +
       '`synchronize` property anywhere under backend/src initialises to the literal ' +
       '`false` (both known sites today, app.module.ts:129 and testing/db-harness.ts:126, ' +
-      'and any new one); (2) every file in backend/src/migrations/ that is not one of the ' +
-      '5 db-specs matches /^(\\d{13})-([A-Za-z0-9]+)\\.ts$/ — a stray file of neither shape ' +
+      'and any new one); (2) every non-db-spec file in backend/src/migrations/ matches ' +
+      '/^(\\d{13})-([A-Za-z0-9]+)\\.ts$/ — a stray file of neither shape ' +
       'is itself a finding — and no two migration filenames capture the same 13-digit ' +
       'timestamp, a fixed-width prefix so unique implies strictly ascending; (3) each migration\'s ' +
       "exported class name equals its filename's name-plus-timestamp (e.g. " +
       '1788600000000-InitialSchema.ts exports InitialSchema1788600000000, confirmed ' +
-      'against all 8 files as shipped); and (4), ONLY WHEN origin/main is a resolvable ' +
+      'against every migration that exists when it runs); and (4), ONLY WHEN origin/main is a resolvable ' +
       'ref, every migration file that already exists there (`git cat-file -e ' +
       'origin/main:<path>`) is byte-identical to that copy (`git diff --quiet origin/main ' +
       '-- <path>`) — a migration new since origin/main needs no comparison and stays ' +
@@ -415,17 +429,22 @@ export const CHECKS = [
     // files under backend/src (each wrapped in try/finally) never overlap with another
     // row's own read of that tree.
     proves:
-      "Measured 2026-09-10: `npm run test:verify` (`node --test --test-concurrency=1 " +
-      "'scripts/verify/**/*.test.mjs'`) collects and runs all 70 tests across the verify " +
-      'layer\'s 8 *.test.mjs files — hash.test.mjs (7), registry.test.mjs (8), ' +
+      "AS A SNAPSHOT, MEASURED 2026-09-10 and re-measured the same day after Task 10 added " +
+      "`ratchets/lint-exempt.test.mjs`: `npm run test:verify` (`node --test " +
+      "--test-concurrency=1 'scripts/verify/**/*.test.mjs'`) collects and runs 78 tests " +
+      "across 9 *.test.mjs files — hash.test.mjs (7), registry.test.mjs (8), " +
       'run.test.mjs (14), checks/memo-drift.test.mjs (4), ' +
       'checks/migration-invariants.test.mjs (8), checks/seam-boundary.test.mjs (13), ' +
-      'checks/secret-boundary.test.mjs (13) and checks/test-glob-parity.test.mjs (3), 70 ' +
-      'in total — and every one of them passes. A single failing assertion anywhere in ' +
-      'that suite fails this exact command and turns this row red, which is the whole ' +
+      'checks/secret-boundary.test.mjs (13), checks/test-glob-parity.test.mjs (3) and ' +
+      'ratchets/lint-exempt.test.mjs (8), 78 in total today — up from the 70-across-8-files ' +
+      'this row first shipped with, and due to grow again the next time this plan adds a ' +
+      'check. This row does not track or re-check its own prose count; the INVARIANT it ' +
+      'actually enforces, independent of how many tests exist when it runs, is this: a ' +
+      'single failing assertion anywhere in that suite fails this exact command and turns ' +
+      'this row red, which is the whole ' +
       'point of adding it: before this row existed, `npm run verify` ran eight other rows ' +
       'over the rest of the tree — including `typecheck`, which covers scripts/**/*.mjs ' +
-      'for TYPES, and `testfiles`, which confirms this layer\'s own 8 *.test.mjs files ' +
+      'for TYPES, and `testfiles`, which confirms this layer\'s own *.test.mjs files ' +
       'are COLLECTED, by node-test specifically — and not one of them RAN this suite, so ' +
       'broken logic inside any check (a ratchet that silently stopped ratcheting, a boundary scan that ' +
       'stopped finding boundaries) could stay green in `npm run verify` indefinitely, ' +
@@ -462,14 +481,18 @@ export const CHECKS = [
     // VIOLATED as it is to whether the rule exists in either config at all — it only
     // ever asks "is every exemption accounted for," never "is eslint happy."
     proves:
-      'Measured 2026-09-10: `npm run lint:exempt` finds exactly 13 lint exemptions across ' +
-      'backend/src, frontend/src and the two flat eslint.config.mjs files — 10 ' +
-      'eslint-disable/-disable-line/-disable-next-line/-enable directive comments (9 ' +
-      'disable-type, plus the one eslint-enable that closes test-setup.ts\'s block disable) ' +
-      'and 3 `ignores`-property occurrences bundling 7 individual globs, with zero rules ' +
-      "pinned to 'off' in either config today — and every one matches a dated, " +
-      '≥30-character-reasoned entry in scripts/verify/baselines/lint-exempt.json, key for ' +
-      'key. THIS IS THE FIRST TRUE RATCHET IN THIS LAYER: the comparison runs in both ' +
+      'AS A SNAPSHOT, MEASURED 2026-09-10: `npm run lint:exempt` finds exactly 13 lint ' +
+      'exemptions across backend/src, frontend/src and the two flat eslint.config.mjs ' +
+      'files today — 10 eslint-disable/-disable-line/-disable-next-line/-enable directive ' +
+      'comments (9 disable-type, plus the one eslint-enable that closes ' +
+      'test-setup.ts\'s block disable) and 3 `ignores`-property occurrences bundling 7 ' +
+      "individual globs, with zero rules pinned to 'off' in either config. That count " +
+      'moves the instant anyone adds or removes an exemption anywhere in that scan, and ' +
+      'this row does not track or re-check its own prose. THIS IS THE FIRST TRUE RATCHET ' +
+      'IN THIS LAYER precisely because what it actually enforces does not depend on the ' +
+      "count staying 13: every exemption the scan finds, however many there are, matches a " +
+      'dated, ≥30-character-reasoned entry in scripts/verify/baselines/lint-exempt.json, ' +
+      'key for key. The comparison runs in both ' +
       'directions, and both are provable by this exact command failing. A NEW exemption ' +
       'anywhere in the scan that is not yet in the baseline fails it (`git ls-files -c -o ' +
       '--exclude-standard` means an untracked, freshly written one counts too). A baseline ' +
