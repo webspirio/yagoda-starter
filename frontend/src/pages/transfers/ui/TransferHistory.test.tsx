@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { expectNoAxeViolations } from '../../../test-axe';
@@ -97,15 +97,12 @@ describe('TransferHistory', () => {
   });
 
   describe('the «sent» column — via shared/lib/date, pinned to TZ=UTC for a fixed literal', () => {
-    const originalTz = process.env.TZ;
-    beforeAll(() => {
-      process.env.TZ = 'UTC';
-    });
-    afterAll(() => {
-      process.env.TZ = originalTz;
+    afterEach(() => {
+      vi.unstubAllEnvs();
     });
 
     it('shows short day.month then the time, exactly like formatDateTime', () => {
+      vi.stubEnv('TZ', 'UTC');
       render(
         <TransferHistory
           transfers={[transfer({ sent_at: '2026-09-10T08:05:00.000Z' })]}

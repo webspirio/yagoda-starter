@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import {
   addDaysIso,
   isIsoDate,
@@ -43,20 +43,18 @@ describe('iso dates', () => {
   // existed. Pinned to `TZ=UTC` here so the expectation is a fixed literal
   // regardless of the machine running the suite.
   describe('time formatting (local time zone, on purpose — full timestamps, not business dates)', () => {
-    const originalTz = process.env.TZ;
-    beforeAll(() => {
-      process.env.TZ = 'UTC';
-    });
-    afterAll(() => {
-      process.env.TZ = originalTz;
+    afterEach(() => {
+      vi.unstubAllEnvs();
     });
 
     it('formats a full ISO timestamp as a 2-digit hour:minute', () => {
+      vi.stubEnv('TZ', 'UTC');
       expect(formatTime('2026-09-10T08:05:00.000Z', 'uk')).toBe('08:05');
       expect(formatTime('2026-09-10T21:05:00.000Z', 'uk')).toBe('21:05');
     });
 
     it('formats short day.month, then the time — exactly what TransferHistory renders for sent_at', () => {
+      vi.stubEnv('TZ', 'UTC');
       expect(formatDateTime('2026-09-10T08:05:00.000Z', 'uk')).toBe('10.09 · 08:05');
     });
   });

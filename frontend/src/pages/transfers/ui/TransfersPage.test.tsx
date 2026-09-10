@@ -18,9 +18,17 @@ const { pointCashMock, transfersMock } = vi.hoisted(() => ({
   transfersMock: vi.fn(),
 }));
 
-vi.mock('@/entities/point-cash', () => ({
-  usePointCashQuery: (opts: unknown) => pointCashMock(opts),
-}));
+// `PointDebtTable` (rendered by this page) also imports `shortfallTone`/
+// `formatNullableUah` — real, non-hook exports — from this same module, so
+// the mock keeps them via `importOriginal` rather than replacing the whole
+// module and losing them.
+vi.mock('@/entities/point-cash', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/entities/point-cash')>();
+  return {
+    ...actual,
+    usePointCashQuery: (opts: unknown) => pointCashMock(opts),
+  };
+});
 
 vi.mock('@/entities/transfer', () => ({
   useTransfersQuery: (filter: unknown) => transfersMock(filter),
