@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { isTruncated } from '@/shared/api';
 import { ListPage } from '@/shared/ui/templates/list-page';
@@ -64,27 +64,26 @@ export function TransfersPage() {
 
   // One dialog target for all three actions — never open at once, so one
   // `{ kind, ... }` union replaces three parallel `{ target, open, key }`
-  // triples. `dialogInstance` is the single remount counter (bumped on every
-  // open, same convention as `DebtsPage`/`PointCashPage`'s own single
-  // dialog), and each dialog below is rendered ONLY while its own `kind` is
-  // active — the way `IncomingTransfers.tsx`/`CashCountHistory.tsx`
-  // (`pages/point-cash`) already render their single dialog, rather than
-  // staying mounted-but-closed to play a close animation.
+  // triples. No remount counter: each dialog below is rendered ONLY while
+  // its own `kind` is active — the way `IncomingTransfers.tsx`/
+  // `CashCountHistory.tsx` (`pages/point-cash`) already render their single
+  // dialog — so it unmounts on close, and every open is therefore already a
+  // fresh mount; a bumped `key` would force a second, needless one.
   const [dialogTarget, setDialogTarget] = useState<DialogTarget | null>(null);
-  const [dialogInstance, setDialogInstance] = useState(0);
 
   const openSend = (pointId: string, pointName: string) => {
     setDialogTarget({ kind: 'send', pointId, pointName });
-    setDialogInstance((n) => n + 1);
   };
   const openResolve = (transfer: Transfer) => {
     setDialogTarget({ kind: 'resolve', transfer });
-    setDialogInstance((n) => n + 1);
   };
-  const openVoid = (transfer: Transfer) => {
+  // `useCallback` (empty deps — `setDialogTarget` is a stable setter) so
+  // `TransferHistory`'s own `useMemo`, keyed in part on this `onVoid` prop,
+  // actually memoizes instead of recomputing its columns on every render off
+  // a fresh function identity.
+  const openVoid = useCallback((transfer: Transfer) => {
     setDialogTarget({ kind: 'void', transfer });
-    setDialogInstance((n) => n + 1);
-  };
+  }, []);
   const closeDialog = () => setDialogTarget(null);
 
   const isPending = pointCash.isPending || transfers.isPending;
@@ -105,6 +104,14 @@ export function TransfersPage() {
   const pointName = useMemo(
     () => new Map(rows.map((r) => [r.collection_point_id, r.name])),
     [rows],
+  );
+  // `useCallback`, keyed on the `pointName` map above, so `TransferHistory`'s
+  // own `useMemo` (also keyed in part on this prop) actually memoizes rather
+  // than recomputing its columns on every render off a fresh arrow-function
+  // identity.
+  const lookupPointName = useCallback(
+    (id: string) => pointName.get(id) ?? id,
+    [pointName],
   );
   // Finding 3 — `useTransfersQuery({})` is unscoped across the WHOLE
   // network at its default `limit: 100`, the first such use in this
@@ -184,7 +191,7 @@ export function TransfersPage() {
             />
             <TransferHistory
               transfers={allTransfers}
-              pointName={(id) => pointName.get(id) ?? id}
+              pointName={lookupPointName}
               onVoid={openVoid}
             />
           </div>
@@ -193,7 +200,6 @@ export function TransfersPage() {
 
       {dialogTarget?.kind === 'send' ? (
         <SendTransferDialog
-          key={dialogInstance}
           pointId={dialogTarget.pointId}
           pointName={dialogTarget.pointName}
           open
@@ -203,7 +209,6 @@ export function TransfersPage() {
 
       {dialogTarget?.kind === 'resolve' ? (
         <ResolveTransferDialog
-          key={dialogInstance}
           transfer={dialogTarget.transfer}
           open
           onClose={closeDialog}
@@ -212,7 +217,6 @@ export function TransfersPage() {
 
       {dialogTarget?.kind === 'void' ? (
         <VoidDocumentDialog
-          key={dialogInstance}
           kind="transfer"
           id={dialogTarget.transfer.id}
           code={voidCode(dialogTarget.transfer)}
