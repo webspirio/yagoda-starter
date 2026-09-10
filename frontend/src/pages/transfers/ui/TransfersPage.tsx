@@ -13,6 +13,12 @@ import { VoidDocumentDialog } from '@/features/void-document';
 import { PointDebtTable } from './PointDebtTable';
 import { TransferHistory } from './TransferHistory';
 
+/** This page's three dialogs are never open at once — one target, one kind. */
+type DialogTarget =
+  | { kind: 'send'; pointId: string; pointName: string }
+  | { kind: 'resolve'; transfer: Transfer }
+  | { kind: 'void'; transfer: Transfer };
+
 /**
  * «Перекази» — the owner's view of money in flight and what each point is
  * short (§7.10, §7.9). OWNER-ONLY, and that is a ROUTE-level gate (Task 21's
@@ -55,39 +61,30 @@ export function TransfersPage() {
   const pointCash = usePointCashQuery();
   const transfers = useTransfersQuery({});
 
-  // Each dialog keeps its own {target, open, key} triple — the same shape
-  // `PointCashPage`/`DebtsPage`/`SupplierCardPage` use: `target` stays set
-  // after a close (so the wrapper below never unmounts the dialog once
-  // opened once), `open` toggles it so the Dialog's own close animation gets
-  // to play, and `key` forces a remount on the NEXT open so a different
-  // document's props don't leak in as stale React Hook Form defaults.
-  const [sendTarget, setSendTarget] = useState<{ pointId: string; pointName: string } | null>(null);
-  const [sendOpen, setSendOpen] = useState(false);
-  const [sendKey, setSendKey] = useState(0);
-
-  const [resolveTarget, setResolveTarget] = useState<Transfer | null>(null);
-  const [resolveOpen, setResolveOpen] = useState(false);
-  const [resolveKey, setResolveKey] = useState(0);
-
-  const [voidTarget, setVoidTarget] = useState<Transfer | null>(null);
-  const [voidOpen, setVoidOpen] = useState(false);
-  const [voidKey, setVoidKey] = useState(0);
+  // One dialog target for all three actions — never open at once, so one
+  // `{ kind, ... }` union replaces three parallel `{ target, open, key }`
+  // triples. `dialogInstance` is the single remount counter (bumped on every
+  // open, same convention as `DebtsPage`/`PointCashPage`'s own single
+  // dialog), and each dialog below is rendered ONLY while its own `kind` is
+  // active — the way `IncomingTransfers.tsx`/`CashCountHistory.tsx`
+  // (`pages/point-cash`) already render their single dialog, rather than
+  // staying mounted-but-closed to play a close animation.
+  const [dialogTarget, setDialogTarget] = useState<DialogTarget | null>(null);
+  const [dialogInstance, setDialogInstance] = useState(0);
 
   const openSend = (pointId: string, pointName: string) => {
-    setSendTarget({ pointId, pointName });
-    setSendKey((k) => k + 1);
-    setSendOpen(true);
+    setDialogTarget({ kind: 'send', pointId, pointName });
+    setDialogInstance((n) => n + 1);
   };
   const openResolve = (transfer: Transfer) => {
-    setResolveTarget(transfer);
-    setResolveKey((k) => k + 1);
-    setResolveOpen(true);
+    setDialogTarget({ kind: 'resolve', transfer });
+    setDialogInstance((n) => n + 1);
   };
   const openVoid = (transfer: Transfer) => {
-    setVoidTarget(transfer);
-    setVoidKey((k) => k + 1);
-    setVoidOpen(true);
+    setDialogTarget({ kind: 'void', transfer });
+    setDialogInstance((n) => n + 1);
   };
+  const closeDialog = () => setDialogTarget(null);
 
   const isPending = pointCash.isPending || transfers.isPending;
   const isError = pointCash.isError || transfers.isError;
@@ -193,33 +190,33 @@ export function TransfersPage() {
         )}
       </ListPage>
 
-      {sendTarget ? (
+      {dialogTarget?.kind === 'send' ? (
         <SendTransferDialog
-          key={sendKey}
-          pointId={sendTarget.pointId}
-          pointName={sendTarget.pointName}
-          open={sendOpen}
-          onClose={() => setSendOpen(false)}
+          key={dialogInstance}
+          pointId={dialogTarget.pointId}
+          pointName={dialogTarget.pointName}
+          open
+          onClose={closeDialog}
         />
       ) : null}
 
-      {resolveTarget ? (
+      {dialogTarget?.kind === 'resolve' ? (
         <ResolveTransferDialog
-          key={resolveKey}
-          transfer={resolveTarget}
-          open={resolveOpen}
-          onClose={() => setResolveOpen(false)}
+          key={dialogInstance}
+          transfer={dialogTarget.transfer}
+          open
+          onClose={closeDialog}
         />
       ) : null}
 
-      {voidTarget ? (
+      {dialogTarget?.kind === 'void' ? (
         <VoidDocumentDialog
-          key={voidKey}
+          key={dialogInstance}
           kind="transfer"
-          id={voidTarget.id}
-          code={voidCode(voidTarget)}
-          open={voidOpen}
-          onClose={() => setVoidOpen(false)}
+          id={dialogTarget.transfer.id}
+          code={voidCode(dialogTarget.transfer)}
+          open
+          onClose={closeDialog}
         />
       ) : null}
     </>
