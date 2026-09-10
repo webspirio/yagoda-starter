@@ -49,24 +49,38 @@ npm run db:seed             # idempotent demo dataset for manual testing — see
 
 ## Verification
 
-The gate a turn is checked against — `npm run verify` — runs the **fast tier only**:
-`lint`, `typecheck`, `test`, `memo`. There is no `build`, no `smoke`, and no `coverage` row
-in it, so a turn can end green having never built the app. `typecheck` *is* in the fast
-tier, so a type error is caught; what stays uncovered is exactly what breaks only in a Vite
-production build or only inside the Docker image — `npm run verify:full` is what reaches
-those, once the rows that cover them exist.
+The gate a turn is checked against — `npm run verify` — runs the **fast tier only**. There
+is no `build`, no `smoke`, and no `coverage` row in it, so a turn can end green having never
+built the app. `typecheck` *is* in the fast tier, so a type error is caught; what stays
+uncovered is exactly what breaks only in a Vite production build or only inside the Docker
+image — `npm run verify:full` is what reaches those, once the rows that cover them exist.
+For the exact current list — it grows as rows are added, most recently `selfcheck` — see the
+generated table below rather than a count repeated here, which would only go stale again.
 
-Three commands, with their measured cost on this machine (2026-09-10):
+Three commands. The cost figures below are a SNAPSHOT, MEASURED 2026-09-10 at commit
+`292b99b` (nine fast-tier rows, all of them `tier: 'fast'` — there is no `full` row yet) —
+they will drift as more rows land (four more checks are planned after this one) and MUST be
+re-measured rather than assumed once they look suspicious. To re-measure: edit a file with
+content turbo has never hashed before. Turbo caches by content hash, so re-applying the
+SAME edit text used in an earlier measurement silently replays that run's cached result and
+reports a falsely fast number — this is exactly how the previous version of this snapshot
+(12.7s / 32.3s / 1.1s) understated the true cost, in one case by more than 10x. Use a
+fresh, unique probe (e.g. append a one-off timestamped comment) every time you measure.
 
 ```bash
-npm run verify        # fast tier — lint, typecheck, test, memo. Cold, e.g. right after a
-                       # clone or a turbo-cache wipe: 52.0s — a once-per-clone cost, not a
-                       # per-turn one. The everyday range, one edit then a re-run, is
-                       # 12.7s (backend-only edit) to 32.3s (frontend-only edit); with
-                       # nothing changed since the last run, 1.1s. The frontend half is
-                       # the expensive one: vitest builds 99 jsdom environments per run,
-                       # and that setup dominates. Changing vitest's isolation model to
-                       # cut that cost is deliberately out of scope for this PR.
+npm run verify        # fast tier, all nine rows. MEASURED 2026-09-10 @ 292b99b:
+                       #   cold (clone / cache wipe):  ~52s    — once-per-clone, not per-turn
+                       #   backend-only edit:          ~22.0s  (lint 1.8s / typecheck 1.8s /
+                       #                                test 7.7s / selfcheck 9.5s / rest ~1.2s)
+                       #   frontend-only edit:         ~38.4s  (lint 4.8s / typecheck 4.4s /
+                       #                                test 17.7s / selfcheck 10.2s / rest ~1.3s)
+                       #   warm, nothing changed:      ~11.9s
+                       # The frontend edit is the expensive path: vitest builds 99 jsdom
+                       # environments per run. `selfcheck` (node --test, 70 tests) adds a
+                       # second near-fixed ~9.5-10s on top of that, regardless of what
+                       # changed — visible in every row above, and alone enough to explain
+                       # why "warm, nothing changed" is ~11.9s rather than near-zero. Cutting
+                       # either cost is deliberately out of scope here.
 npm run verify:full   # the fast tier plus everything that needs a build, a browser, a
                        # database or a registry
 npm run verify:ci     # verify:full with --no-skip — a missing precondition is a failure
