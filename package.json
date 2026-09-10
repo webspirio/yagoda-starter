@@ -36,6 +36,8 @@
     "ratchet:persist": "node scripts/verify/ratchets/persist-boundary.mjs",
     "deadcode": "node scripts/verify/ratchets/dead-exports.mjs",
     "migrations:check": "node scripts/verify/checks/migration-invariants.mjs",
+    "audit:check": "node scripts/verify/checks/audit.mjs",
+    "coverage": "turbo coverage",
     "verify": "node scripts/verify/run.mjs --tier fast",
     "verify:full": "node scripts/verify/run.mjs --tier full",
     "verify:ci": "node scripts/verify/run.mjs --tier full --no-skip"

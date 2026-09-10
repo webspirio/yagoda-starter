@@ -8,6 +8,7 @@
     "start:dev": "nest start --watch",
     "start:prod": "node dist/main",
     "test": "NODE_OPTIONS=--experimental-vm-modules jest",
+    "coverage": "NODE_OPTIONS=--experimental-vm-modules jest --coverage",
     "test:watch": "jest --watch",
     "test:db": "NODE_OPTIONS=--experimental-vm-modules jest --config jest.db.config.js",
     "lint": "eslint . --max-warnings=0",

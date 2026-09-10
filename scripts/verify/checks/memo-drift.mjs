@@ -66,7 +66,7 @@ function renderTable() {
   const FIELD_SEP = String.fromCharCode(0)
   const ROW_SEP = String.fromCharCode(1)
   const raw = CHECKS.map((c) =>
-    [c.id, c.tier, c.needs ?? '', (c.after ?? []).join(','), c.proves, c.blindSpot].join(FIELD_SEP),
+    [c.id, c.tier, (c.needs ?? []).join(','), (c.after ?? []).join(','), c.proves, c.blindSpot].join(FIELD_SEP),
   ).join(ROW_SEP)
   lines.push('', `<!-- registry-checksum: ${createHash('sha256').update(raw).digest('hex').slice(0, 32)} -->`)
   lines.push(END)

@@ -8,6 +8,9 @@
     "test": {
       "outputs": []
     },
+    "coverage": {
+      "outputs": ["coverage/**", "src/coverage/**"]
+    },
     "lint": {
       "outputs": []
     },

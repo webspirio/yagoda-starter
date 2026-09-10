@@ -713,6 +713,122 @@ export const CHECKS = [
       "correctness, duplication elsewhere, test coverage, or design, exactly as silent as `lint` is on whether " +
       "a passing type is the RIGHT type.",
   },
+  {
+    id: 'audit',
+    tier: 'full',
+    cmd: 'npm run audit:check',
+    needs: ['npm-registry'],
+    // No `after`: audit.mjs never invokes eslint or tsc, only `npm ls`/`npm audit` — a red
+    // `lint` or `typecheck` row changes nothing about what npm's own advisory database
+    // says. Its ONLY real dependency is the registry being reachable at all, which is
+    // exactly what `needs: ['npm-registry']` (not `after`) exists to express: a missing
+    // precondition SKIPS this row, it does not order it behind another check.
+    proves:
+      'Every advisory `npm audit --json` reports for this npm-workspaces tree (spanning both backend and ' +
+      'frontend) is either reachable ONLY through a dev dependency and recorded in ' +
+      'scripts/verify/baselines/audit.json with a dated, real, >=30-character reason, or this exact command ' +
+      'fails — and an advisory reachable from the PRODUCTION dependency tree, or of CRITICAL severity, fails ' +
+      'UNCONDITIONALLY, regardless of what the baseline says: neither can ever be baselined (see audit.mjs\'s ' +
+      'hard-floor loop, checked against every run independent of the file). The comparison over what remains ' +
+      'is bidirectional like every ratchet in this layer: a new baselineable advisory not yet listed fails it, ' +
+      'and a listed entry npm audit no longer reports fails it too. AS A DATED SNAPSHOT, MEASURED 2026-09-10, ' +
+      'this command is CURRENTLY RED for a real, verified reason, not a hypothetical: npm audit reports 8 ' +
+      'vulnerable package names, all severity high (0 critical, 0 moderate, 0 low, 0 info), every one tracing ' +
+      "to the same root cause — multer@2.2.0's DoS advisories GHSA-wc9g-mqfw-jrwm, GHSA-qfvm-cv95-jqjf and " +
+      "GHSA-535w-7cp7-47q4 — pulled in through @nestjs/platform-express@11.2.3's EXACT pin on multer 2.2.0 " +
+      '(confirmed: `npm view @nestjs/platform-express@11.2.3 dependencies.multer` prints "2.2.0", no range), ' +
+      'fixable only by a NestJS v12 major upgrade (confirmed: `npm view @nestjs/platform-express versions` ' +
+      'shows 11.2.3 as the last 11.x release; `npm audit fix --dry-run` independently confirms "run ... ' +
+      '--force"), out of scope for this task. 7 of the 8 names — multer itself, @nestjs/core, ' +
+      '@nestjs/platform-express, @nestjs/schedule, @nestjs/terminus, @nestjs/typeorm and nestjs-pino — sit in ' +
+      'the production dependency tree (confirmed individually via `npm ls <name> --omit=dev`, each a non-empty ' +
+      'tree) and are therefore blocked by the hard floor; only @nestjs/testing is dev-only (confirmed empty via ' +
+      'the same command) and is the one entry scripts/verify/baselines/audit.json actually records.',
+    blindSpot:
+      "Says nothing about a vulnerability with no advisory published yet, and an advisory's mere presence in " +
+      'this tree says nothing about whether the vulnerable code path is actually reachable from this app — ' +
+      "though for the 7 production-tree names above that reachability is independently confirmed: this repo's " +
+      'own media upload path (backend/src/media) genuinely calls into multer. Package-name granularity, not ' +
+      "GHSA-id granularity: npm audit's own dependency-graph cascade marks every package that merely DEPENDS " +
+      "on a vulnerable one as 'vulnerable' too, with no advisory object of its own (`via` holds plain " +
+      'package-name strings there, not a titled entry) — so a single upstream advisory (multer\'s, here) ' +
+      "inflates into as many baseline-relevant names as there are packages between it and the tree's roots, and " +
+      'this check\'s hard floor treats every one of those cascade names exactly as strictly as it treats multer ' +
+      'itself, even though fixing multer alone would clear all 7 simultaneously — a coarser unit than the ' +
+      "advisory itself. `npm audit`'s own severity classification is trusted as-is: a severity GitHub later " +
+      "reclassifies changes this row's verdict without anything in this repo changing, which is exactly why " +
+      "this row needs `['npm-registry']` and lives in the full tier, never the fast one. And `info`-severity " +
+      'findings are silently dropped before any comparison runs at all, matching npm audit\'s own metadata ' +
+      'semantics but meaning a finding at that severity is invisible to this row twice over.',
+  },
+  {
+    id: 'build',
+    tier: 'full',
+    cmd: 'npm run build',
+    // No `after`: both workspaces' own build commands run their own compiler internally
+    // (backend's `nest build` and frontend's `tsc -b` half of `tsc -b && vite build`), so a
+    // type error is already caught by THIS command without needing `typecheck` to have run
+    // first — ordering this after `typecheck` would pair two rows that each independently
+    // catch the same class of failure, not express a real dependency.
+    proves:
+      "`npm run build` (turbo's `build` task, `dependsOn: ['^build']`) exits 0 only when BOTH workspaces' own " +
+      "build command exits 0: backend's `nest build` (a tsc compile of backend/src to backend/dist) and " +
+      "frontend's `tsc -b && vite build` (a project-reference build across tsconfig.app.json and " +
+      "tsconfig.node.json, THEN Vite's production bundle to frontend/dist) — a compile error or a bundler " +
+      'failure in EITHER workspace fails this exact command. AS A DATED SNAPSHOT, MEASURED 2026-09-10: both ' +
+      "builds together complete in roughly 4.6s wall clock (turbo's own reported time), and frontend's bundle " +
+      "carries Vite's generic \"(!) Some chunks are larger than 500 kB after minification\" warning on its " +
+      'single ~892 kB (266 kB gzip) JS chunk — a warning line, never a failure, and this row does not fail on ' +
+      'it.',
+    blindSpot:
+      'Proves the bundler and compiler succeed, not that the output is correct or that the app runs. Neither ' +
+      'dist directory is executed, started, or even opened by this row: a backend that builds cleanly but ' +
+      "throws on boot (bad DI wiring only Nest's own bootstrap would catch, not tsc), or a frontend bundle " +
+      'that builds but renders a blank page, is exactly as green here as a correct one — a future `smoke` row, ' +
+      "not yet part of this layer, is what would actually launch either. `tsc -b`'s project-reference build can " +
+      'also be satisfied by a STALE `.tsbuildinfo` incremental cache reporting "up to date" without ' +
+      "re-checking every file — a risk `typecheck`'s own `tsc -b` invocation shares — so a rebuild from a warm " +
+      "cache proves less than a clean one; this row does not force a clean build first. And it says nothing " +
+      "about the bundle's SIZE being reasonable beyond Vite's own generic 500 kB chunk warning, which does not " +
+      'fail the command at any size.',
+  },
+  {
+    id: 'coverage',
+    tier: 'full',
+    cmd: 'npm run coverage',
+    // No `after`: this row re-runs the full suite itself (jest --coverage / vitest run
+    // --coverage), so a failing test fails THIS command directly — it does not need `test`
+    // to have already passed, and ordering it behind `test` would only make a red `test`
+    // block a row that would report the identical failure on its own.
+    proves:
+      "Running the full test suite in BOTH workspaces with coverage instrumentation enabled exits 0 exactly " +
+      "when `test` does — backend's jest (`NODE_OPTIONS=--experimental-vm-modules jest --coverage`, the " +
+      "identical *.spec.ts-only testRegex `test` uses) and frontend's vitest (`vitest run --coverage`) — " +
+      'instrumentation itself failing to load, or a test failing under instrumentation that passed without it, ' +
+      'fails this exact command. NO FLOOR IS ENFORCED HERE, in this file, or anywhere else in this repo today ' +
+      "— floors live only in .github/workflows/ci.yml's env: block, written by a later task in this plan, and " +
+      "read as 0 locally — so a coverage PERCENTAGE dropping between two runs changes NOTHING about this row's " +
+      'PASS/FAIL. AS A DATED SNAPSHOT, MEASURED 2026-09-10: backend 80.45% statements / 62.18% branches / ' +
+      '80.83% functions / 84.13% lines (over files actually required by some *.spec.ts — jest\'s default ' +
+      'collectCoverageFrom is unset here, so a file no spec ever imports, such as main.ts or app.module.ts, ' +
+      'does not appear in the report AT ALL, not even at 0%); frontend 82.94% statements / 80.65% branches / ' +
+      '76.14% functions / 83.29% lines under the identical default (main.tsx, App.tsx and router.tsx are ' +
+      'likewise absent from its report today). Both numbers move with ordinary feature work in either ' +
+      'workspace and are not re-verified by this row.',
+    blindSpot:
+      'Measures lines executed, not assertions made — a test that calls a function and checks nothing about ' +
+      'the result counts exactly as fully covered as one that verifies the answer; this row cannot tell the ' +
+      "two apart, in either workspace. Because neither jest's nor vitest's config here sets an explicit " +
+      'include list, a file never required/imported by any test is invisible to the report ENTIRELY rather ' +
+      'than shown at 0% — confirmed empirically for main.ts/app.module.ts (backend) and main.tsx/App.tsx/' +
+      'router.tsx (frontend), all absent from their respective reports as of this snapshot — so this row ' +
+      'cannot even be used to spot untested files by scanning for a 0% line: a genuinely untested file and a ' +
+      'file the report simply never mentions look identical from outside it. Branch coverage sits well below ' +
+      'line coverage in both workspaces (62.18% vs 84.13% backend; 80.65% vs 83.29% frontend), meaning a real ' +
+      'share of conditional paths run zero times under either suite despite the line they sit on reading as ' +
+      'covered. And because no floor exists anywhere this row reads, nothing here stops either percentage from ' +
+      "falling in a future change — that gate, once it exists, is ci.yml's alone, never this row's.",
+  },
 ]
 
 /** @type {Record<Tier, number>} */
