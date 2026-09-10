@@ -18,13 +18,18 @@ npm run test:db # run DB-backed tests (*.db-spec.ts) against a real Postgres
 npm run lint    # ESLint (flat config, eslint.config.mjs)
 ```
 
-**`test:db` prerequisite** — create the throwaway database once:
-`docker compose exec postgres createdb -U app app_test`. The suite connects with
-the usual `DB_HOST`/`DB_PORT`/`DB_USER`/`DB_PASSWORD` but overrides the database
-name with `TEST_DB_NAME` (default `app_test`); `src/testing/db-harness.ts` refuses
-to start if that name equals `DB_NAME` or does not end in `_test`, because these
-specs `TRUNCATE`. They run serially (`jest.db.config.js`, `maxWorkers: 1`) and
-apply migrations on connect. They exist because they verify **Postgres semantics
+**No prerequisite database to create by hand.** The suite connects with the usual
+`DB_HOST`/`DB_PORT`/`DB_USER`/`DB_PASSWORD` but overrides the database name with
+`TEST_DB_NAME` (default `app_test`); `src/testing/db-harness.ts` refuses to start
+if that name equals `DB_NAME` or does not end in `_test`, because these specs
+`TRUNCATE`. Once that name is validated, `openTestDataSource()` DROPs and
+(re)CREATEs it on a maintenance connection to the `postgres` administrative
+database, every time it is called — so `app_test` need not exist beforehand, and
+a database carrying rows from a previous `test:db` run can never make a later
+run's idempotency assertions (`dev-seed.db-spec.ts`'s in particular) pass for the
+wrong reason. They run serially (`jest.db.config.js`, `maxWorkers: 1`) and apply
+migrations on connect, against a database that is empty every time they do.
+They exist because they verify **Postgres semantics
 that a mocked spec cannot reach** — constraints, unique indexes, cascade rules,
 and whether a hand-written statement even parses. `npm test` never picks them
 up: its `testRegex` (`.*\.spec\.ts$`) does not match `.db-spec.ts`.
@@ -184,10 +189,12 @@ Runs from the host (`.env`'s `DB_HOST=localhost`; compose publishes Postgres on
 5432) or inside the container (`docker compose exec backend npm run seed:dev -w backend`).
 `src/seed/dev-seed.db-spec.ts` proves idempotency and the journal ordering
 against a real Postgres; `dev-seed.spec.ts` checks the dataset's own consistency.
-Because that spec seeds `app_test` and nothing truncates it, the throwaway database
-carries the demo dataset permanently after a `test:db` run — every other db-spec
-already scopes its fixtures by a per-run uuid, and that convention is now load-bearing.
-The CLI also refuses a non-local `DB_HOST` unless `SEED_ALLOW_REMOTE_DB=1`.
+`openTestDataSource()` drops and recreates `app_test` on every call (see
+"`test:db` prerequisite" above), so the demo dataset this spec seeds does NOT
+survive a `test:db` run — every other db-spec already scopes its own fixtures by
+a per-run uuid rather than relying on it being there, and that convention is now
+load-bearing regardless of run order. The CLI also refuses a non-local `DB_HOST`
+unless `SEED_ALLOW_REMOTE_DB=1`.
 
 **Workflow for schema changes:**
 

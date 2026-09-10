@@ -39,6 +39,7 @@
     "audit:check": "node scripts/verify/checks/audit.mjs",
     "coverage": "turbo coverage",
     "bundle": "node scripts/verify/checks/bundle-size.mjs",
+    "docker:build": "docker build -f backend/Dockerfile --target prod -t web-starter-backend:verify . && docker build -f nginx/Dockerfile -t web-starter-nginx:verify .",
     "verify": "node scripts/verify/run.mjs --tier fast",
     "verify:full": "node scripts/verify/run.mjs --tier full",
     "verify:ci": "node scripts/verify/run.mjs --tier full --no-skip"

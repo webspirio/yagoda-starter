@@ -911,6 +911,102 @@ export const CHECKS = [
       'nothing here re-derives that minimum on its own; a future re-measurement is what would catch it drifting ' +
       'out of proportion, not this check running unchanged.',
   },
+  {
+    id: 'test:db',
+    tier: 'full',
+    cmd: 'npm run test:db -w backend',
+    needs: ['postgres', 'redis'],
+    proves:
+      "`npm run test:db -w backend` (`NODE_OPTIONS=--experimental-vm-modules jest --config " +
+      'jest.db.config.js`, rootDir src, testRegex `.*\\.db-spec\\.ts$`, maxWorkers 1) exits 0 ' +
+      "only when every one of this repo's *.db-spec.ts suites passes against a REAL Postgres, " +
+      'migrated the same way production is (`ds.runMigrations()`, never `synchronize`) — ' +
+      'constraints, unique indexes, cascade rules, FOR UPDATE SKIP LOCKED row locking and ' +
+      "UNIQUE NULLS NOT DISTINCT behaviour the mocked `test` row cannot reach at all. BEFORE " +
+      'A SINGLE MIGRATION RUNS, `openTestDataSource()` (backend/src/testing/db-harness.ts) ' +
+      'DROPs and (re)CREATEs the TEST_DB_NAME database (default app_test) on a maintenance ' +
+      'connection to the postgres administrative database — so this row\'s PASS is never a ' +
+      'claim about what a previous test:db invocation, or an earlier suite in the same one, ' +
+      'happened to leave behind: a database still carrying old rows can never make an ' +
+      'idempotency assertion (dev-seed.db-spec.ts\'s «is idempotent — a second run inserts ' +
+      'nothing») pass for the wrong reason. A single failing assertion in any suite this glob ' +
+      'matches fails this exact command, independent of file or test count. AS A DATED ' +
+      'SNAPSHOT, MEASURED 2026-09-10: 12 files match *.db-spec.ts today, 174 tests total — ' +
+      'five parse-and-apply migration-schema suites (migrations/{bootstrap-owner-create,' +
+      'catalog-schema,intakes-payouts-schema,schema,suppliers-prices-schema}.db-spec.ts), ' +
+      'THREE that boot the FULL AppModule via Nest\'s Test.createTestingModule and drive it ' +
+      'over real HTTP with supertest (testing/{pipeline,catalog-pipeline,documents-pipeline}.' +
+      'db-spec.ts), and one each for payouts/payout-race.db-spec.ts, seed/dev-seed.db-spec.ts, ' +
+      'supplier-balance/supplier-balance-list.db-spec.ts and the harness\'s own testing/db-' +
+      'harness.db-spec.ts — confirmed by running this exact command twice in a row against the ' +
+      'same already-populated database: both runs reported 12 suites / 174 tests passing, ' +
+      "byte-for-byte identical, because the drop/create above means the second run never saw " +
+      'the first run\'s rows in the first place.',
+    blindSpot:
+      'Exercises the schema and the queries against a real Postgres, and says nothing about ' +
+      'the HTTP layer above them EXCEPT for the three pipeline suites named above — every ' +
+      'other suite talks to a bare DataSource, never a controller, a guard, or an interceptor. ' +
+      'The `postgres`/`redis` preconditions only prove each is REACHABLE (a bare TCP connect — ' +
+      'see PRECONDITIONS.postgres/.redis above), never that DB_USER/DB_PASSWORD are correct or ' +
+      'that DB_USER holds CREATEDB: a reachable Postgres with the wrong password, or a user ' +
+      'without permission to DROP/CREATE DATABASE, makes this row FAIL, not SKIP — no ' +
+      'different from any other command whose precondition is satisfied but whose body still ' +
+      'cannot succeed. The fresh-database fix trades one risk for a narrower one: ' +
+      'resetTestDatabase targets exactly the TEST_DB_NAME this process resolved, and only ever ' +
+      'drops that name (guarded by the same resolveTestDatabaseName checks that already refuse ' +
+      'DB_NAME itself and any name not ending _test), but it is not safe to run two test:db ' +
+      'invocations concurrently against the same database, or to run it while something else ' +
+      '(a developer\'s own psql session, an editor\'s schema browser) is connected to app_test ' +
+      '— WITH (FORCE) disconnects that session mid-drop rather than waiting for it. And Redis ' +
+      "state is untouched by any of this: the global ThrottlerGuard's counters persist across a " +
+      "test:db run exactly as before, which is why db-harness.ts's relaxThrottleForTests() " +
+      'still exists and still matters.',
+  },
+  {
+    id: 'docker',
+    tier: 'full',
+    cmd: 'npm run docker:build',
+    needs: ['docker'],
+    proves:
+      '`npm run docker:build` (`docker build -f backend/Dockerfile --target prod -t web-' +
+      'starter-backend:verify . && docker build -f nginx/Dockerfile -t web-starter-nginx:' +
+      'verify .`, both built from the repo root context, both tagged `:verify` — a fixed tag ' +
+      'this row\'s own build uses and nothing else in this repo reads) exits 0 only when BOTH ' +
+      "multi-stage images build to completion: the backend's `prod` target compiles backend/" +
+      'src with `nest build` inside its own `build` stage (never reusing anything already ' +
+      'sitting in a host backend/dist), then `prod` runs a SEPARATE `npm ci --omit=dev` and ' +
+      "copies only the compiled output across; the nginx image's default target first builds " +
+      'the ENTIRE frontend from source in its own `frontend-builder` stage (`npm run build -w ' +
+      'frontend` — the identical `tsc -b && vite build` the `build` row runs on the host, run ' +
+      'again here from scratch inside the container) before copying frontend/dist onto an ' +
+      'nginx-unprivileged base together with nginx/nginx.conf. A compile error, a failing npm ' +
+      'ci, a COPY naming a path that does not exist in the stage it draws from, or Docker ' +
+      'itself failing to build against the daemon at all, fails this exact command. AS A DATED ' +
+      'SNAPSHOT, MEASURED 2026-09-10: the backend image (22 Dockerfile steps across four ' +
+      'stages) reports 114 MB of content, the nginx image (12 steps across two stages) 26.5 ' +
+      'MB — both built clean, no --no-cache, against docker 29.7.2.',
+    blindSpot:
+      'Proves the images BUILD, not that they RUN correctly, not that the app inside them ' +
+      'WORKS, and not that the compose stack COMPOSES: neither image\'s CMD is ever executed ' +
+      'by this row, so a backend that builds cleanly but crashes on boot (a bad env var, a DI ' +
+      'wiring error only Nest\'s own bootstrap would catch, not `nest build`), or an nginx ' +
+      'image serving a frontend that renders a blank page, is exactly as green here as a ' +
+      'working one. Nothing here starts a container, hits a port, or reads a log line. ' +
+      'docker-compose.prod.yml — the actual place these two images and a real Postgres/Redis ' +
+      'are wired together with env vars, volumes and networks — is never invoked, read, or ' +
+      'validated by this row: an image that builds but a compose file that references the ' +
+      'wrong image name, a missing env var, or an incompatible volume mount is invisible to ' +
+      'it. The two images are also built and judged in complete ISOLATION from one another: ' +
+      'nginx\'s nginx.conf proxying /api/ to a backend that has, say, renamed a route is ' +
+      'invisible here, because neither image is ever started, let alone pointed at the other. ' +
+      "Docker's own layer cache means a build that reuses a stale cached layer can be " +
+      'satisfied by content that was never re-verified against the current source — this row ' +
+      'does not force --no-cache, so a COPY step whose cache key did not change (the same file ' +
+      'path, byte-identical content) is trusted as-is rather than re-executed. And the ' +
+      ':verify tag is a fixed name this row, and this row alone, overwrites on every run — it ' +
+      'proves nothing about, and is never used by, the images docker-compose.prod.yml actually ' +
+      'builds and deploys, which carry no explicit tag of their own at all.',
+  },
 ]
 
 /** @type {Record<Tier, number>} */
