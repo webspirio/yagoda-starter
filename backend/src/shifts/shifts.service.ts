@@ -159,17 +159,26 @@ export class ShiftsService {
     id: string,
     dto: CloseShiftDto,
   ): Promise<ShiftResponse> {
-    const shift = await this.loadVisible(actor, id);
-    if (shift.closed_at) {
-      throw new ConflictException({
-        message: 'That shift is already closed',
-        code: 'SHIFT_ALREADY_CLOSED',
-      });
-    }
-
-    const closedAt = this.time.now().toJSDate();
-
     return this.dataSource.transaction(async (m) => {
+      // UNDER THE ROW LOCK, and the check with it — see `loadVisible`. Read
+      // outside, `closed_at` is a check-then-write: a double-tapped button
+      // sends two closes, both see `null`, and the loser's count INSERT hits
+      // `UQ_cash_counts_shift_book_kind` as a bare 23505 that
+      // `translateUniqueViolation` does not know — a 500 on the flagship money
+      // path. `shift-close-race.db-spec.ts` is that scenario.
+      const shift = await this.loadVisible(actor, id, m);
+      if (shift.closed_at) {
+        throw new ConflictException({
+          message: 'That shift is already closed',
+          code: 'SHIFT_ALREADY_CLOSED',
+        });
+      }
+
+      // AFTER the lock, not before: a request that waited on the winner should
+      // stamp the moment it actually closed the shift, not the moment it
+      // started queuing for the right to.
+      const closedAt = this.time.now().toJSDate();
+
       // `null` only if something wrote a shift without going through `open`.
       const expected = (await this.cash.expectedForClosing(shift.id, m)) ?? dto.counted_amount;
 
@@ -240,40 +249,46 @@ export class ShiftsService {
       });
     }
 
-    const shift = await this.loadVisible(actor, id);
-
-    if (!shift.closed_at) {
-      throw new ConflictException({
-        message: 'That shift is not closed',
-        code: 'SHIFT_NOT_CLOSED',
-      });
-    }
-
-    // Both guards below are also enforced by the partial unique index, but a
-    // 23505 arriving from a REOPEN reads as a mystery — these produce the two
-    // messages that say what to do instead.
-    const openElsewhere = await this.findOpenAtPoint(shift.collection_point_id);
-    if (openElsewhere) {
-      throw new ConflictException({
-        message: 'Another shift is already open at that point — close it first',
-        code: 'SHIFT_ALREADY_OPEN',
-      });
-    }
-
-    const newest = await this.repo.findOne({
-      where: { collection_point_id: shift.collection_point_id },
-      order: { business_date: 'DESC' },
-    });
-    if (newest && newest.id !== shift.id) {
-      throw new ConflictException({
-        message: 'Only the point’s most recent shift can be reopened',
-        code: 'SHIFT_NOT_NEWEST',
-      });
-    }
-
-    const before = { closed_at: shift.closed_at, status: shift.status };
-
     return this.dataSource.transaction(async (m) => {
+      // EVERY GUARD BELOW IS INSIDE THE TRANSACTION, under the row lock, for
+      // the reason `close` states. Two concurrent reopens both read
+      // `closed_at` set, and — unlike `close` — nothing downstream stops the
+      // second: it re-demotes an already-demoted count and writes a SECOND
+      // `shift.reopened` entry, leaving the audit log claiming the shift was
+      // reopened twice by one press. Silent, and therefore worse.
+      const shift = await this.loadVisible(actor, id, m);
+
+      if (!shift.closed_at) {
+        throw new ConflictException({
+          message: 'That shift is not closed',
+          code: 'SHIFT_NOT_CLOSED',
+        });
+      }
+
+      // Both guards below are also enforced by the partial unique index, but a
+      // 23505 arriving from a REOPEN reads as a mystery — these produce the two
+      // messages that say what to do instead.
+      const openElsewhere = await this.findOpenAtPoint(shift.collection_point_id, m);
+      if (openElsewhere) {
+        throw new ConflictException({
+          message: 'Another shift is already open at that point — close it first',
+          code: 'SHIFT_ALREADY_OPEN',
+        });
+      }
+
+      const newest = await m.findOne(Shift, {
+        where: { collection_point_id: shift.collection_point_id },
+        order: { business_date: 'DESC' },
+      });
+      if (newest && newest.id !== shift.id) {
+        throw new ConflictException({
+          message: 'Only the point’s most recent shift can be reopened',
+          code: 'SHIFT_NOT_NEWEST',
+        });
+      }
+
+      const before = { closed_at: shift.closed_at, status: shift.status };
+
       // §6.3 — THE CLOSING COUNT BECOMES A MIDDAY COUNT. Reopening needs a free
       // `closing` slot (UQ_cash_counts_shift_book_kind), and the 11:00 count
       // was never a close: it was a count, taken at 11:00, which is exactly
@@ -409,9 +424,29 @@ export class ShiftsService {
     return repo.findOne({ where: { id } });
   }
 
-  /** 404 — not 403 — for another point's shift, matching `SuppliersService`. */
-  private async loadVisible(actor: AuthenticatedUser, id: string): Promise<Shift> {
-    const shift = await this.repo.findOne({ where: { id } });
+  /**
+   * 404 — not 403 — for another point's shift, matching `SuppliersService`.
+   *
+   * PASSING A MANAGER TAKES `pessimistic_write` ON THE ROW, and every verb
+   * that writes passes one. The lock is not a precaution: `close` and `reopen`
+   * both decide what to do from `closed_at`, and a decision taken on a row
+   * nobody holds is a check-then-write no matter how soon the write follows.
+   * `TransfersService.transition` states the same rule at length — «§6.11's
+   * 409 has to be enforced where the write happens or it is not enforced at
+   * all» — and this is that rule applied to shifts.
+   *
+   * The two READ callers (`findOne`, `setExplanation`'s sibling paths) pass
+   * nothing and take no lock, because a read that locks a row blocks the
+   * operator who is trying to close it.
+   */
+  private async loadVisible(
+    actor: AuthenticatedUser,
+    id: string,
+    m?: EntityManager,
+  ): Promise<Shift> {
+    const shift = m
+      ? await m.findOne(Shift, { where: { id }, lock: { mode: 'pessimistic_write' } })
+      : await this.repo.findOne({ where: { id } });
     if (!shift) throw new NotFoundException('Shift not found');
     if (actor.role !== UserRole.NetworkOwner) {
       if (actor.collection_point_id !== shift.collection_point_id) {

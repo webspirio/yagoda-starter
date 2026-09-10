@@ -35,7 +35,12 @@ describe('ShiftsService', () => {
     create: jest.Mock;
     createQueryBuilder: jest.Mock;
   };
-  let manager: { save: jest.Mock; update: jest.Mock; getRepository: jest.Mock };
+  let manager: {
+    save: jest.Mock;
+    update: jest.Mock;
+    findOne: jest.Mock;
+    getRepository: jest.Mock;
+  };
   let dataSource: { transaction: jest.Mock };
   let cash: { expectedForOpening: jest.Mock; expectedForClosing: jest.Mock };
   let audit: { record: jest.Mock };
@@ -69,16 +74,22 @@ describe('ShiftsService', () => {
       create: jest.fn().mockImplementation((s) => shift(s)),
       createQueryBuilder: jest.fn(),
     };
-    // `open`, `close` and `reopen` ALL run inside `this.dataSource.transaction`
-    // now, writing through the transaction's own `EntityManager` rather than
-    // through `repo` directly. `repo` is still used for the pre-transaction
-    // reads (`loadVisible`, `findOpenAtPoint`, the newest-shift check).
+    // `open`, `close` and `reopen` ALL run inside `this.dataSource.transaction`,
+    // writing through the transaction's own `EntityManager` rather than through
+    // `repo` directly — and since the close/reopen race fix, READING through it
+    // too: `loadVisible`, `findOpenAtPoint` and the newest-shift check all take
+    // the row lock, so they must go through the manager or they are not locked.
+    //
+    // BOTH READ SEAMS DELEGATE TO `repo`, so a test still says what it means by
+    // `repo.findOne.mockResolvedValue(...)` and does not have to know which of
+    // the two the production code reached for.
     manager = {
       save: jest.fn().mockImplementation((_entityClass: unknown, data: Record<string, unknown>) =>
         Promise.resolve({ id: SHIFT_ID, ...data }),
       ),
       update: jest.fn().mockResolvedValue({ affected: 1 }),
-      getRepository: jest.fn(),
+      findOne: jest.fn((_entityClass: unknown, opts: unknown) => repo.findOne(opts)),
+      getRepository: jest.fn(() => repo),
     };
     dataSource = { transaction: jest.fn((cb: (m: unknown) => unknown) => cb(manager)) };
     cash = {
@@ -501,18 +512,23 @@ describe('ShiftsService.reopen demotes the closing count', () => {
       created_at: new Date('2026-09-09T04:30:00Z'),
     };
     const manager = {
+      // loadVisible and the newest-shift check, both of which want the row.
       findOne: jest.fn().mockResolvedValue(shiftRow),
       save: jest.fn((_e: unknown, x: unknown) => x),
       update: jest.fn((...args: unknown[]) => {
         updates.push(args);
         return { affected: 1 };
       }),
+      // findOpenAtPoint reads through the manager's repository so its SELECT
+      // takes part in the same transaction — it must find NO open shift here.
+      getRepository: jest.fn(() => repo),
     };
     const dataSource = { transaction: jest.fn((cb: (m: unknown) => unknown) => cb(manager)) };
-    // `reopen` calls findOne THREE times with different intents: loadVisible,
-    // findOpenAtPoint (which passes `closed_at: IsNull()`), and the
-    // newest-shift check. A mock that returns the row for all three makes
-    // findOpenAtPoint report an open shift and reopen throws
+    // `reopen` reads THREE times with different intents: loadVisible and the
+    // newest-shift check go through `manager.findOne`, while findOpenAtPoint
+    // goes through `manager.getRepository(Shift)` and passes
+    // `closed_at: IsNull()`. A mock that returns the row for that third read
+    // makes findOpenAtPoint report an open shift, and reopen throws
     // SHIFT_ALREADY_OPEN before reaching the demotion. Discriminate on the
     // where clause.
     const repo = {
