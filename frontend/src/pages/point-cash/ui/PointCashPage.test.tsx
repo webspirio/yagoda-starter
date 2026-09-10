@@ -445,6 +445,35 @@ describe('PointCashPage — scope and failure states', () => {
     expect(await screen.findByRole('dialog')).toHaveTextContent('Shypynky');
   });
 
+  it('prefers the cash row’s own name over the active-points list when both know the point', async () => {
+    // When BOTH sources have loaded, the row must win — it is the one
+    // source guaranteed to describe the figures actually on screen. Fix
+    // round: `pointName` used to try the options list first and only fall
+    // back to the row, which the test above ('names a deactivated point…')
+    // never caught because it leaves p1 out of the options list entirely —
+    // this fixture puts p1 in BOTH, under different names.
+    const user = userEvent.setup();
+    meMock.mockReturnValue({ data: OWNER });
+    pointScopeMock.mockReturnValue({
+      pointId: 'p1',
+      canPick: true,
+      setPointId: vi.fn(),
+      isLoading: false,
+    });
+    pointOptionsMock.mockReturnValue({
+      data: [{ id: 'p1', name: 'Stale Picker Name' }],
+      isPending: false,
+      isError: false,
+    });
+    pointCashMock.mockReturnValue(list([pointRow({ name: 'Fresh Row Name' })]));
+
+    renderPointCash();
+
+    expect(screen.getByText(/Fresh Row Name/)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Change the target' }));
+    expect(await screen.findByRole('dialog')).toHaveTextContent('Fresh Row Name');
+  });
+
   it('shows the error state rather than a quiet zero when the cash read fails', () => {
     pointCashMock.mockReturnValue({ data: undefined, isPending: false, isError: true });
 

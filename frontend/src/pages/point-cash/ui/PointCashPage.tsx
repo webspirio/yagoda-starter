@@ -122,11 +122,13 @@ export function PointCashPage() {
     ledgerTransfers.isError ||
     cashCounts.isError;
 
-  // `usePointOptionsQuery` lists ACTIVE points only, so a deactivated point
-  // used to name itself `''` — a hidden eyebrow and a target dialog titled
-  // with a dangling dash. Its cash row carries the same name and is already
-  // on hand.
-  const pointName = (points ?? []).find((p) => p.id === pointId)?.name ?? pointRow?.name ?? '';
+  // THE ROW NAMES THE POINT, NOT THE PICKER — `pointRow` is the one source
+  // guaranteed to describe the figures actually on screen, so it goes
+  // first. `usePointOptionsQuery` (ACTIVE points only) is the fallback for
+  // the moment before that row has loaded: a deactivated point used to name
+  // itself `''` — a hidden eyebrow and a target dialog titled with a
+  // dangling dash — when the picker was tried first and came up empty.
+  const pointName = pointRow?.name ?? (points ?? []).find((p) => p.id === pointId)?.name ?? '';
   const hasTarget = pointRow?.target_cash != null;
   // Finding 4 (review round 1) — each of the three reads is capped at 100,
   // so each can feed a ledger row that covers recent history only: the

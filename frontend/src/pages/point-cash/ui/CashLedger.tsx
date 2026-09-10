@@ -34,12 +34,25 @@ const INFORMATIONAL = new Set(['accruedToday', 'paidPast']);
  * from row to source page); this only decides how to say so, and a row fed
  * by the transfers page must not tell the reader that older payouts may be
  * missing from it.
+ *
+ * AN EXHAUSTIVE `Record`, NOT AN IF-CHAIN WITH A FALLTHROUGH `return`: the
+ * old shape's final `return 'pointCash.ledger.paidPastTruncated'` answered
+ * for any key that was neither `accruedToday` nor `cashIn` — right for the
+ * three payouts-fed rows it was written for (`paidToday`, `paidPast`,
+ * `returnedToday`), but silently right (or silently wrong) for a row nobody
+ * had added yet too. A new `LedgerRowKey` now fails to compile here instead.
  */
-function truncationKey(key: LedgerRowKey): string {
-  if (key === 'accruedToday') return 'pointCash.ledger.accruedTodayTruncated';
-  if (key === 'cashIn') return 'pointCash.ledger.cashInTruncated';
-  return 'pointCash.ledger.paidPastTruncated';
-}
+const TRUNCATION_KEY: Record<LedgerRowKey, string> = {
+  accruedToday: 'pointCash.ledger.accruedTodayTruncated',
+  cashIn: 'pointCash.ledger.cashInTruncated',
+  // paidToday's own row is never actually truncated (`buildLedger` always
+  // hands it `truncated: false`), but it shares payouts' array with
+  // paidPast/returnedToday, so it shares their wording too, matching the
+  // old fallthrough exactly, should that ever change.
+  paidToday: 'pointCash.ledger.paidPastTruncated',
+  paidPast: 'pointCash.ledger.paidPastTruncated',
+  returnedToday: 'pointCash.ledger.paidPastTruncated',
+};
 
 /**
  * «Звідки взялося це число» — the schedule behind the point's cash figure.
@@ -104,7 +117,7 @@ export function CashLedger({
 
   const truncationCaveat = (row: LedgerRow) =>
     row.truncated ? (
-      <p className="pb-1 text-xs text-muted-foreground">{t(truncationKey(row.key))}</p>
+      <p className="pb-1 text-xs text-muted-foreground">{t(TRUNCATION_KEY[row.key])}</p>
     ) : null;
 
   return (
