@@ -144,7 +144,24 @@ export function PointCashPage() {
   const transfersTruncated = truncated(ledgerTransfers.data);
   // §7.3 — a point with no counts at all reads `0.00`, correctly, but would
   // look like a regression on deploy without saying so in words.
-  const neverCounted = cashCounts.data?.data.length === 0;
+  //
+  // AT OR BEFORE `date`, NOT «EVER»: this page reads a past date as readily
+  // as today, and a count taken this morning explains nothing about a drawer
+  // that had never been counted back on the date being read. The rows carry
+  // their shift's `business_date`, which is the same calendar the page's
+  // `date` is on — no timestamp/timezone conversion needed.
+  //
+  // AND ONLY OFF A COMPLETE PAGE: the counts read is capped at 100 and comes
+  // back newest-first (`cash-counts.service.ts` orders by `business_date
+  // DESC`), so on a long-running point the counts that would settle an old
+  // date are exactly the ones that did not fit. «Ще не рахована» is a claim
+  // about the point's whole history; a page that admits it is partial cannot
+  // support it, and the generic cash hint is the honest fallback.
+  const counts = cashCounts.data;
+  const neverCounted =
+    counts !== undefined &&
+    counts.total === counts.data.length &&
+    !counts.data.some((c) => c.business_date <= date);
 
   // Nothing is shown off a page whose reads failed — including the target,
   // whose «—» would otherwise be a claim made on top of an error.

@@ -240,6 +240,33 @@ describe('PointCashPage — honesty rule 2: zero counts read 0.00 and say so', (
     renderPointCash();
     expect(screen.queryByText(/never counted/i)).toBeNull();
   });
+
+  it('says it for a PAST date the point had not been counted on yet', async () => {
+    // The point's first count is today's; on the 1st its drawer had never
+    // been counted, and «0.00» there needs the same words it needs on a
+    // point with no counts at all.
+    cashCountsMock.mockReturnValue(list([cashCount({ business_date: '2026-09-08' })]));
+
+    renderPointCash('/point-cash?date=2026-09-01');
+
+    expect(await screen.findByText(/ще не рахована|never counted/i)).toBeInTheDocument();
+  });
+
+  it('makes no claim about a date older than the counts page it could fetch', () => {
+    // Capped at 100, newest first (`cash-counts.service.ts` orders by
+    // `business_date DESC`) — the counts that would settle a date this old
+    // are exactly the ones that did not fit, so silence is the honest
+    // answer, not «never counted».
+    cashCountsMock.mockReturnValue({
+      data: { data: [cashCount({ business_date: '2026-09-08' })], total: 250, page: 1, limit: 100 },
+      isPending: false,
+      isError: false,
+    });
+
+    renderPointCash('/point-cash?date=2026-09-01');
+
+    expect(screen.queryByText(/ще не рахована|never counted/i)).toBeNull();
+  });
 });
 
 describe('PointCashPage — honesty rule 3: null target/shortfall render «—», never 0', () => {
