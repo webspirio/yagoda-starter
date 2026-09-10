@@ -18,7 +18,7 @@ fixture=$(cat <<EOF
 ]
 EOF
 )
-got=$(printf '%s' "$fixture" | OPEN_PRS="8" KEEP_SHA_DAYS=30 bash "$HERE/ghcr-cleanup.sh" --select | sort -n | tr '\n' ' ')
+got=$(printf '%s' "$fixture" | OPEN_PRS="8" KEEP_SHA_DAYS=30 KEEP_RECENT_SHA=0 bash "$HERE/ghcr-cleanup.sh" --select | sort -n | tr '\n' ' ')
 # 1 untagged; 2 pr-7 closed (pr-only, deleted immediately); 4 old sha only;
 # 8 mixed sha+pr-7 (closed), old -> deleted once past the cutoff.
 # Kept: 3 (open pr), 5 (fresh sha), 6 (carries open pr alias), 7 (foreign tag),
@@ -52,7 +52,7 @@ EOF
 chmod +x "$T/bin/gh"
 
 set +e
-out=$(PATH="$T/bin:$PATH" PACKAGES="missing present" OPEN_PRS="8" KEEP_SHA_DAYS=30 DRY_RUN=true bash "$HERE/ghcr-cleanup.sh")
+out=$(PATH="$T/bin:$PATH" PACKAGES="missing present" OPEN_PRS="8" KEEP_SHA_DAYS=30 KEEP_RECENT_SHA=0 DRY_RUN=true bash "$HERE/ghcr-cleanup.sh")
 rc=$?
 set -e
 
@@ -70,7 +70,7 @@ if [ "$ok" -eq 1 ]; then echo "guard: ok"; else echo "$out"; exit 1; fi
 # GHCR fills up. `present` still gets pruned — one bad package does not stop the
 # others — but the exit code carries the failure. ------------------------------
 set +e
-out=$(PATH="$T/bin:$PATH" PACKAGES="broken present" OPEN_PRS="8" KEEP_SHA_DAYS=30 DRY_RUN=true bash "$HERE/ghcr-cleanup.sh" 2>&1)
+out=$(PATH="$T/bin:$PATH" PACKAGES="broken present" OPEN_PRS="8" KEEP_SHA_DAYS=30 KEEP_RECENT_SHA=0 DRY_RUN=true bash "$HERE/ghcr-cleanup.sh" 2>&1)
 rc=$?
 set -e
 
@@ -80,3 +80,22 @@ if printf '%s\n' "$out" | grep -q 'skipping'; then echo "fail-loud: a 401 was tr
 if ! printf '%s\n' "$out" | grep -q 'Bad credentials'; then echo "fail-loud: gh's own error was not surfaced"; ok=0; fi
 if ! printf '%s\n' "$out" | grep -q 'would delete 1 '; then echo "fail-loud: the healthy package was not pruned"; ok=0; fi
 if [ "$ok" -eq 1 ]; then echo "fail-loud: ok"; else echo "$out"; exit 1; fi
+
+# --- scenario 4: the floor. Production's image carries only sha-<merge commit>,
+# so age alone would delete it once development pauses for KEEP_SHA_DAYS. With
+# the floor at 5, every sha-tagged version in the fixture is protected and only
+# the untagged one and the closed-PR alias remain deletable. ------------------
+got=$(printf '%s' "$fixture" | OPEN_PRS="8" KEEP_SHA_DAYS=30 KEEP_RECENT_SHA=5 bash "$HERE/ghcr-cleanup.sh" --select | sort -n | tr '\n' ' ')
+if [ "$got" = "1 2 " ]; then echo "floor: ok"; else echo "floor: got '$got' want '1 2 ' (ids 4 and 8 must survive on the floor)"; exit 1; fi
+
+# --- scenario 5: every package 404ing means the URL shape is wrong (a personal
+# account is /users/<name>/…, not /orgs/…), not "CI has not pushed yet". A fork
+# would otherwise get a weekly job that is green forever and prunes nothing. ---
+set +e
+out=$(PATH="$T/bin:$PATH" PACKAGES="missing" OPEN_PRS="" KEEP_SHA_DAYS=30 DRY_RUN=true bash "$HERE/ghcr-cleanup.sh" 2>&1)
+rc=$?
+set -e
+ok=1
+if [ "$rc" -eq 0 ]; then echo "all-404: exit 0, want non-zero"; ok=0; fi
+if ! printf '%s\n' "$out" | grep -q 'personal account'; then echo "all-404: no diagnosis of the /orgs vs /users path"; ok=0; fi
+if [ "$ok" -eq 1 ]; then echo "all-404: ok"; else echo "$out"; exit 1; fi

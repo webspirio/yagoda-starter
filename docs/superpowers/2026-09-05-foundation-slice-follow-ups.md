@@ -528,5 +528,23 @@ schedules yet — a kit/consistency pass, not a feature:
   separate ≥ 8 GiB machine (ZFS/LVM pool, ARC capped).
 - **Monitoring** — Coolify Sentinel + Telegram notifications; nothing alerts
   today when prod goes down.
-- **Preview cap is a repo constant** (`PREVIEW_CAP` in `ci.yml`); recheck it
-  against the measured Coolify RSS whenever Coolify is updated.
+- **Preview cap** — `ci.yml` reads the `PREVIEW_CAP` repository *variable* and
+  falls back to a constant default (12 since the 2026-09-10 recalibration), so
+  changing it needs no commit. Recheck it against the measured Coolify RSS
+  whenever Coolify is updated.
+- **Disk, not RAM, is the tighter preview budget.** Memory is planned to two
+  decimals; the 38 GB disk is unbudgeted, and each preview carries a Postgres
+  volume, an uploads volume and its images on the same disk as production.
+  Uploads are capped per request (10 MB) but not per preview. Measure
+  `docker system df` once several previews are live, then decide between a
+  per-preview quota, a `docker image prune` timer, and a bigger disk.
+- **Coolify ships scheduled volume backups as of v4.3.0 (2026-08-12)**, local or
+  S3-compatible, with retention and history. That removes the original reason
+  for rolling our own (`uploads_data` was said to be uncovered). Keep
+  `backup.sh` for the atomic db+uploads *pair* — Coolify would take the two
+  halves ~30 s apart — but an S3 destination for the off-box copy is now a form
+  in the UI rather than a project, and `/data/backups` currently shares the one
+  disk with the data it protects.
+- **A notification channel** (Coolify → Notifications, or `OnFailure=` on the
+  systemd unit). A nightly timer that fails silently for a month is the most
+  likely way this setup actually hurts someone.

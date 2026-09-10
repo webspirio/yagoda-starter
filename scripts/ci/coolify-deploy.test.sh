@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # scripts/ci/coolify-deploy.test.sh — run: bash scripts/ci/coolify-deploy.test.sh
 # Needs bash, jq. Locally: docker run --rm -v "$PWD:/w" -w /w alpine sh -c 'apk add -q bash jq curl && bash scripts/ci/coolify-deploy.test.sh'
-# Expected: passed=13 failed=0
+# Expected: passed=20 failed=0
 set -euo pipefail
 HERE=$(cd "$(dirname "$0")" && pwd)
 T=$(mktemp -d); trap 'rm -rf "$T"' EXIT
@@ -87,5 +87,30 @@ canned '/api/health/version' "{\"commit\":\"$EXPECTED_COMMIT\"}" 200
 check run -u PR_NUMBER -u SEED_USERNAME
 check_fail grep -q '&pr=' "$FAKE_CURL_LOG"
 check_fail grep -q '/api/auth/login' "$FAKE_CURL_LOG"
+
+echo "# 5. a non-JSON poll body (proxy 502) must not kill the script silently"
+# jq exits 5 on HTML. Under `set -euo pipefail` that ended the run with no
+# ::error:: line and a red job for a deployment that was usually fine.
+canned '/api/v1/deploy?uuid' '{"deployments":[{"deployment_uuid":"dep-1"}]}'
+canned '/api/v1/deployments/' '<html><body>502 Bad Gateway</body></html>'
+check_fail run DEPLOY_TIMEOUT_SEC=1 2>"$T/err5"
+check grep -q '::error::' "$T/err5"
+
+echo "# 6. a version mismatch is retried, not asserted once"
+# /ready turning 200 does not mean Traefik finished swinging routes, so the
+# first answer can legitimately be the old commit.
+canned '/api/v1/deployments/' '{"status":"finished","logs":""}'
+canned '/api/health/version' '{"commit":"bbbbbbbb"}' 200
+: > "$FAKE_CURL_LOG"
+check_fail run READY_TIMEOUT_SEC=1
+check test "$(grep -c '/api/health/version' "$FAKE_CURL_LOG")" -ge 2
+
+echo "# 7. a failed deployment links its log, never echoes it"
+# The log carries the stack's own env; JWT_SECRET/DB_PASSWORD are not GitHub
+# secrets, so *** masking does not cover them.
+canned '/api/v1/deployments/' '{"status":"failed","logs":"boot: JWT_SECRET=supersecret DB_PASSWORD=hunter2","deployment_url":"https://coolify.test/deployment/dep-1"}'
+check_fail run 2>"$T/err7"
+check_fail grep -qE 'supersecret|hunter2' "$T/err7"
+check grep -q 'https://coolify.test/deployment/dep-1' "$T/err7"
 
 echo "passed=$pass failed=$fail"; [ "$fail" -eq 0 ]

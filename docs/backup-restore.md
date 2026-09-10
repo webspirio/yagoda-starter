@@ -43,6 +43,14 @@ verified — the directory never holds an unmatched half. `flock` keeps a manual
 (`PG_CONTAINER`, `UPLOADS_VOLUME` — Coolify names them `postgres-<uuid>` and
 `<uuid>_uploads_data`; check with `docker ps` / `docker volume ls`).
 
+> **Renamed on the standalone path.** `docker-compose.prod.yml`'s project name
+> changed from `web-starter-prod` to `yagoda-prod`, and Compose derives volume
+> names from it. A stack started before that change keeps its data in
+> `web-starter-prod_pg_data` / `_uploads_data`, while the new file looks for
+> `yagoda-prod_*` — so it comes up on an empty database rather than failing.
+> Either rename the volumes or restore a backup pair into the new ones.
+> (Coolify is unaffected: it ignores `name:` and uses its own resource UUID.)
+
 Output: `/data/backups/<STAMP>-db.sql.gz` + `/data/backups/<STAMP>-uploads.tar.gz`.
 
 On a VPS without Coolify the same script works with the standalone stack's

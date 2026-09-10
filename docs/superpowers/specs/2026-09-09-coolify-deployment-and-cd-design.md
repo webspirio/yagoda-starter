@@ -209,7 +209,23 @@ is what the repository actually does.
    preview whose health or login check fails is still running and still holding
    ~0.25 GiB; labelling only on success let those consume memory while counting
    as zero, which silently voided the §1 invariant the cap exists to enforce.
-6. **`deploy-prod` skips a commit that `main` has already moved past.** §4.5's
+6. **§1's rationale for «CI builds, Coolify pulls» is stale, the decision is
+   not.** The row justifies it with "the server has 2 vCPU / 3.7 GiB and no
+   swap" — all three parts have changed (4 vCPU / 7.6 GiB, and `bootstrap.sh`
+   adds 2 GB of swap), and Coolify's per-server *concurrent builds* setting
+   means the ~1.5 GiB figure described a default rather than a limit. The
+   decision still stands on reasons that were never written down: pull-only was
+   already the status quo (the compose file read `…backend:${IMAGE_TAG:-latest}`
+   before this branch, and the `docker` job already built with `push: false`),
+   `sha-` artifacts are immutable and outlive Coolify, and build *time* on a box
+   shared with production is the real cost — up to 12 previews × two `npm ci` +
+   Vite + Nest build.
+7. **Disk is unbudgeted and is the tighter constraint.** RAM is planned to two
+   decimals; the 38 GB disk (unchanged by the resize — it added CPU and RAM
+   only) carries production, every preview's Postgres and uploads volumes, and
+   every pulled image. 12 previews of unbounded uploads is a more reachable
+   failure than exhausting 5.5 GiB of RAM. Tracked in the follow-ups.
+8. **`deploy-prod` skips a commit that `main` has already moved past.** §4.5's
    `concurrency` serialises prod deploys but does not order them; with stacked
    PRs merged in quick succession, a slower run for an older commit could deploy
    after a newer one and leave production behind `main` while staying green.

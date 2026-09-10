@@ -44,8 +44,16 @@ on the **same 38 GB disk as production** — a preview filled with junk uploads 
 a production outage. Put Traefik basic auth on the preview routers (same place
 as the body-size middleware in step 6):
 `traefik.http.middlewares.yagoda-preview-auth.basicauth.users=<htpasswd line>`,
-added to the preview router's `middlewares=` list. Never reuse a production
-password for the preview owner.
+added to the preview router's `middlewares=` list.
+
+**If you add that middleware you MUST also set the `PREVIEW_BASIC_AUTH`
+repository secret** to the same `user:pass`. The middleware covers every path,
+so `deploy-preview`'s three assertions (`/api/health/ready`,
+`/api/health/version`, the seeded login) would otherwise all get 401 and every
+preview deploy would fail. `ci.yml` passes the secret to the deploy script,
+which sends it as `curl -u`; unset means no credentials are sent, which is
+correct for previews with no middleware. Never reuse a production password for
+the preview owner or for this middleware.
 
 ## One-time server setup (steps 1–4, 6–7 done 2026-09-09; repeat only for a new server)
 
@@ -89,7 +97,7 @@ password for the preview owner.
    only if the fallback below is in force), `COOLIFY_APP_UUID` (from the application URL);
    variables `COOLIFY_ENABLED=true`, `PROD_URL=https://yagoda.webspirio.com`,
    `PREVIEW_DOMAIN=yagoda.webspirio.com`, `PREVIEW_CAP` (optional; overrides the
-   default cap of 6 live previews without a commit — `ci.yml` reads
+   default cap of 12 live previews without a commit — `ci.yml` reads
    `vars.PREVIEW_CAP || 12`; the default was recalibrated on 2026-09-10 against
    the resized server and Coolify's measured RSS — see «Memory» below).
 8. **Backups**: `scp scripts/vps/backup.sh root@…:/usr/local/bin/yagoda-backup.sh`,
