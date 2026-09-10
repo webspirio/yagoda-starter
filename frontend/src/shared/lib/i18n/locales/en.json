@@ -350,10 +350,6 @@
     "open": "Open shift",
     "close": "Close shift",
     "reopen": "Reopen shift",
-    "confirmClose": {
-      "title": "Close the shift?",
-      "body": "Once it is closed, no more receipts or payouts can be booked for this day. Only the owner can reopen it."
-    },
     "reopenDialog": {
       "title": "Reopen shift",
       "reason": "Reason",

@@ -8,7 +8,6 @@ import { Button } from '@/shared/ui/button';
 import { SelectField } from '@/shared/ui/select-field';
 import { EmptyState } from '@/shared/ui/empty-state';
 import { Spinner } from '@/shared/ui/spinner';
-import { ConfirmDialog } from '@/shared/ui/confirm-dialog';
 import { toast } from '@/shared/ui/toast';
 import { useUrlParam } from '@/shared/lib/url-state';
 import { sum, sub, cmp, formatUah } from '@/shared/lib/money';
@@ -29,8 +28,8 @@ import { usePayoutsQuery, type Payout } from '@/entities/payout';
 import { useSuppliersQuery, supplierName } from '@/entities/supplier';
 import { ReceiptDialog } from '@/widgets/receipt';
 import { useOpenShiftMutation, useCloseShiftMutation } from '../api/shiftActions';
-import { apiErrorToBanner } from '../lib/apiErrorToBanner';
 import { ReopenShiftDialog } from './ReopenShiftDialog';
+import { CountDrawerDialog } from './CountDrawerDialog';
 
 interface FeedRow {
   kind: 'intake' | 'payout';
@@ -77,23 +76,13 @@ export function DayPage() {
 
   const open = useOpenShiftMutation();
   const close = useCloseShiftMutation();
-  const [confirmClose, setConfirmClose] = useState(false);
+  const [countMode, setCountMode] = useState<'open' | 'close' | null>(null);
   const [reopenOpen, setReopenOpen] = useState(false);
   const [receiptId, setReceiptId] = useState<string | null>(null);
   // Bumped on every open so the dialog remounts with fresh RHF defaults and no
   // banner from the refusal before it — the convention SetPriceDialog documents.
   const [reopenInstance, setReopenInstance] = useState(0);
-  const [banner, setBanner] = useState<string | null>(null);
-
-  const run = async (action: () => Promise<unknown>, toastKey: string) => {
-    setBanner(null);
-    try {
-      await action();
-      toast.success(t(toastKey));
-    } catch (error) {
-      setBanner(apiErrorToBanner(error));
-    }
-  };
+  const [countInstance, setCountInstance] = useState(0);
 
   const isOperator = me?.role === 'point_operator';
   const isOwner = me?.role === 'network_owner';
@@ -217,14 +206,23 @@ export function DayPage() {
       status === 'none' &&
       pointId ? (
         <Button
-          onClick={() => void run(() => open.mutateAsync(), 'day.toast.opened')}
+          onClick={() => {
+            setCountInstance((n) => n + 1);
+            setCountMode('open');
+          }}
           disabled={open.isPending}
         >
           {t('day.open')}
         </Button>
       ) : null}
       {!shift.isError && !isLoadingShift && isOperator && status === 'open' ? (
-        <Button variant="outline" onClick={() => setConfirmClose(true)}>
+        <Button
+          variant="outline"
+          onClick={() => {
+            setCountInstance((n) => n + 1);
+            setCountMode('close');
+          }}
+        >
           {t('day.close')}
         </Button>
       ) : null}
@@ -319,9 +317,12 @@ export function DayPage() {
 
   return (
     <>
-      {/* `children` REPLACES `sections` in DashboardPage, and the banner has to
-          sit above the feed rather than inside its card — so the body is
-          composed here from the same SectionCard the template would have used. */}
+      {/* `children` REPLACES `sections` in DashboardPage, and the truncation
+          notice has to sit above the feed rather than inside its card — so
+          the body is composed here from the same SectionCard the template
+          would have used. Every write action now owns its own dialog-scoped
+          error (Field's alert, or the dialog's own banner), so this page
+          keeps no error state of its own. */}
       <DashboardPage
         eyebrow={t('day.eyebrow', {
           point: pointName,
@@ -338,24 +339,25 @@ export function DayPage() {
             {t('day.tiles.truncated', { count: feed.length })}
           </p>
         ) : null}
-        {banner ? (
-          <p role="alert" className="mb-4 text-sm text-destructive">
-            {t(banner)}
-          </p>
-        ) : null}
         <SectionCard eyebrow={t('day.feed.title')}>{feedContent}</SectionCard>
       </DashboardPage>
 
-      <ConfirmDialog
-        open={confirmClose}
-        onOpenChange={setConfirmClose}
-        title={t('day.confirmClose.title')}
-        description={t('day.confirmClose.body')}
-        confirmLabel={t('day.close')}
-        cancelLabel={t('common.cancel')}
-        onConfirm={() => {
-          const id = shift.data?.id;
-          if (id) void run(() => close.mutateAsync(id), 'day.toast.closed');
+      <CountDrawerDialog
+        key={countInstance}
+        mode={countMode ?? 'open'}
+        open={countMode !== null}
+        onClose={() => setCountMode(null)}
+        onConfirm={async (counted_amount) => {
+          if (countMode === 'open') {
+            await open.mutateAsync({ counted_amount });
+            toast.success(t('day.toast.opened'));
+          } else {
+            const id = shift.data?.id;
+            if (!id) return;
+            await close.mutateAsync({ id, counted_amount });
+            toast.success(t('day.toast.closed'));
+          }
+          setCountMode(null);
         }}
       />
       {shift.data ? (

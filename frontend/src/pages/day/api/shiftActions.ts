@@ -17,21 +17,32 @@ function useInvalidateDay() {
     ]);
 }
 
-/** Operator only — the point is the actor's own, derived from the token; no body. */
+/**
+ * Оператор, і лише він (§10.3). Точка береться з токена — тіло несе САМЕ
+ * підрахунок шухляди, і він обов'язковий: перший підрахунок точки ЦЕ і є її
+ * початковий залишок (§7.3), тому «пропустити цього разу» немає чого.
+ */
 export function useOpenShiftMutation() {
   const invalidate = useInvalidateDay();
   return useMutation({
-    mutationFn: async (): Promise<Shift> => (await httpClient.post<Shift>('/shifts')).data,
+    mutationFn: async ({ counted_amount }: { counted_amount: string }): Promise<Shift> =>
+      (await httpClient.post<Shift>('/shifts', { counted_amount })).data,
     onSuccess: invalidate,
   });
 }
 
-/** Operator only — closing is the signature of whoever held the cash (§10.3). */
+/** Оператор, і лише він — закриття це підпис того, хто тримав гроші (§10.3). */
 export function useCloseShiftMutation() {
   const invalidate = useInvalidateDay();
   return useMutation({
-    mutationFn: async (id: string): Promise<Shift> =>
-      (await httpClient.post<Shift>(`/shifts/${id}/close`)).data,
+    mutationFn: async ({
+      id,
+      counted_amount,
+    }: {
+      id: string;
+      counted_amount: string;
+    }): Promise<Shift> =>
+      (await httpClient.post<Shift>(`/shifts/${id}/close`, { counted_amount })).data,
     onSuccess: invalidate,
   });
 }

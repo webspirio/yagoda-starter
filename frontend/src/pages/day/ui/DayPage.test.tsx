@@ -9,6 +9,11 @@ import type { Intake } from '@/entities/intake';
 import type { Payout } from '@/entities/payout';
 import { DayPage } from './DayPage';
 
+// Matches the CountDrawerDialog's submit button whether i18n has resolved it
+// yet (raw key), is showing the Ukrainian copy, or — the state once Task 5's
+// strings land — the English one this suite's locale actually renders.
+const SUBMIT_COUNT = /day\.count\.submit|Записати|Record/i;
+
 const {
   meMock,
   pointScopeMock,
@@ -264,17 +269,19 @@ describe('DayPage — the operator on an open shift', () => {
     expect(screen.queryByText(/Showing the first/)).toBeNull();
   });
 
-  it('closes the shift by its id, but only after the confirmation', async () => {
+  it('closes the shift with the counted drawer amount, but only once it is recorded', async () => {
     const user = userEvent.setup();
     renderDay();
 
     await user.click(screen.getByRole('button', { name: 'Close shift' }));
-    const dialog = await screen.findByRole('alertdialog');
-    expect(within(dialog).getByText('Close the shift?')).toBeInTheDocument();
+    const dialog = await screen.findByRole('dialog');
     expect(closeMock).not.toHaveBeenCalled();
 
-    await user.click(within(dialog).getByRole('button', { name: 'Close shift' }));
-    await waitFor(() => expect(closeMock).toHaveBeenCalledWith('s1'));
+    await user.type(within(dialog).getByRole('textbox'), '980.40');
+    await user.click(within(dialog).getByRole('button', { name: SUBMIT_COUNT }));
+    await waitFor(() =>
+      expect(closeMock).toHaveBeenCalledWith({ id: 's1', counted_amount: '980.40' }),
+    );
   });
 
   it('opens the receipt for an intake row, but a payout row stays non-clickable', async () => {
@@ -310,7 +317,7 @@ describe('DayPage — the operator before the shift is open', () => {
     shiftMock.mockReturnValue({ data: null, isPending: false, isError: false });
   });
 
-  it('says the shift is not opened yet and opens it on demand', async () => {
+  it('says the shift is not opened yet and opens it with the counted drawer amount', async () => {
     const user = userEvent.setup();
     const { container } = renderDay();
 
@@ -319,7 +326,12 @@ describe('DayPage — the operator before the shift is open', () => {
     );
 
     await user.click(screen.getByRole('button', { name: 'Open shift' }));
-    await waitFor(() => expect(openMock).toHaveBeenCalledTimes(1));
+    const dialog = await screen.findByRole('dialog');
+    await user.type(within(dialog).getByRole('textbox'), '1500.00');
+    await user.click(within(dialog).getByRole('button', { name: SUBMIT_COUNT }));
+    await waitFor(() =>
+      expect(openMock).toHaveBeenCalledWith({ counted_amount: '1500.00' }),
+    );
   });
 
   it('offers nothing while the shift query is still in flight', () => {
