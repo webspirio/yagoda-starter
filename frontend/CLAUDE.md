@@ -29,7 +29,7 @@ src/
   main.tsx                    # entry point — wires auth interceptors, initI18n, global error reporting, renders App
   app/
     App.tsx                   # root component: ErrorBoundary > QueryClientProvider > RouterProvider
-    router.tsx                # createBrowserRouter — /login, / (dashboard), /profile, /suppliers, /points, /users, /prices, /catalog, /day, /reception, /debts, /suppliers/:id, /journal, /ui-kit, catch-all 404 — no /register
+    router.tsx                # createBrowserRouter — /login, / (dashboard), /profile, /suppliers, /points, /users, /prices, /catalog, /day, /reception, /debts, /suppliers/:id, /journal, /point-cash, /transfers, /ui-kit, catch-all 404 — no /register
     layouts/AppLayout.tsx      # persistent shell: dark sidebar with role-aware grouped nav + PAPER top bar (mock composition) with scope, ThemeToggle, sign-out; renders auth pages bare
     providers/
       ErrorBoundary.tsx        # React class error boundary → ErrorFallback
@@ -43,10 +43,19 @@ src/
   entities/shift/                # useShiftOnDateQuery / useCurrentShiftQuery / shiftOnDateQueryOptions, Shift type — one point's working day, read by pages/day and reception (the queryOptions factory also backs pages/dashboard's useNetworkToday fan-out)
   entities/intake/               # useIntakesQuery / intakesQueryOptions, Intake type — a point's receipts journal, read by pages/day, reception, supplier-card and journal (the queryOptions factory also backs pages/dashboard's useNetworkToday fan-out)
   entities/payout/               # usePayoutsQuery / payoutsQueryOptions, Payout type — a point's payouts journal, read by pages/day, supplier-card and journal (the queryOptions factory also backs pages/dashboard's useNetworkToday fan-out)
+  entities/transfer/             # useTransfersQuery / useTransferQuery / transfersQueryOptions, Transfer type — one point-to-point movement of cash and crates (§7), read by pages/point-cash and pages/transfers
+  entities/point-cash/           # usePointCashQuery / usePointCashForPointQuery, PointCashRow/PointCashOne types — a point's cash-on-hand, one server-computed figure never re-summed client-side, read by pages/dashboard, pages/day and pages/point-cash
+  entities/cash-count/           # useCashCountsQuery, CashCount type — a point's drawer-count history (opening/midday/closing; §7.6 one drawer, two books), read by pages/point-cash
   features/auth/                 # login/logout API calls, LoginForm, RequireAuth + RequireRole route guards — no register API
   features/edit-profile/         # useUploadAvatarMutation (single consumer: pages/profile — kept as the upload exemplar)
   features/settle-payout/        # useCreatePayoutMutation, PayoutDialog — records a payout against a supplier's balance, opened from the receipt widget
-  features/void-document/        # useVoidDocumentMutation, VoidDocumentDialog — voids an intake or payout (§9.3: a correction is a void plus a new document), opened from the receipt widget
+  features/void-document/        # useVoidDocumentMutation, VoidDocumentDialog — voids an intake, payout or transfer (§9.3: a correction is a void plus a new document), opened from the receipt widget and pages/transfers
+  features/count-shift/          # useOpenShiftMutation / useCloseShiftMutation, CountDrawerDialog — opens or closes a shift against the counted drawer (§10.3), used by pages/day
+  features/send-transfer/        # useSendTransferMutation, SendTransferDialog — the owner sends money and crates to a point
+  features/receive-transfer/     # useAcceptTransferMutation / useDisputeTransferMutation, DisputeTransferDialog — the point accepts an incoming transfer or disputes what actually arrived
+  features/resolve-transfer/     # useResolveTransferMutation, ResolveTransferDialog — the owner settles a disputed transfer
+  features/set-cash-explanation/ # useSetCashExplanationMutation, ExplainDiscrepancyDialog — the owner explains a drawer discrepancy after the fact
+  features/set-point-target/     # useSetPointTargetMutation, SetTargetCashDialog — the owner sets or changes a point's cash target
   widgets/receipt/               # ReceiptDialog — the printable receipt for one intake, opened from reception, day and the supplier card alike
   pages/dashboard/               # «Зведення» — the owner's today-across-the-network overview (open shifts, receipts, cash, the biggest balances) at `/`; the same route shows the operator only their own point's row plus reception/day-cash/balances shortcuts. api/useNetworkToday.ts fans out shift+intake+payout `queryOptions` per point in one `useQueries`
   pages/login/, pages/profile/, pages/not-found/, pages/ui-kit/
@@ -54,6 +63,8 @@ src/
   pages/day/, pages/reception/   # the money screens — «Каса за день» and «Прийомка ягоди» (RHF form + live server preview)
   pages/debts/, pages/supplier-card/   # «Залишки за нами» (balances per point, «Видати без ягоди») and the supplier card (balance, tiles, timeline of receipts and payouts) — both roles
   pages/journal/                 # «Журнал прийомки» — the owner's register of every receipt and payout, filtered by point/month/supplier, server-paginated
+  pages/point-cash/              # «Каса точки» — one point's cash-on-hand for a date: the ledger explaining the server's own figure, drawer-count history, incoming transfers — both roles, target-setting owner-only (§10.2)
+  pages/transfers/               # «Перекази» — the owner's view of money and crates in flight and what each point is short (§7.9, §7.10) — OWNER-ONLY as a route-level gate, not a hidden button
   shared/
     api/                       # httpClient (axios instance, env.apiUrl baseURL) + ApiError + attachAuthInterceptors + queryClient + queryKeys + persister
     lib/
@@ -64,11 +75,12 @@ src/
       money/                    # sum / add / sub / cmp / div / isNegative / isZero (decimal-string arithmetic, kopiykas under the hood) + formatUah / formatDecimal / formatKg — the client-side twin of `backend/src/common/money.ts`, used wherever a screen totals or formats a money value
       date/                     # todayIso / addDaysIso / isIsoDate / isRealIsoDate / formatLongDate / formatWeekday / formatShortDate — business-date (`YYYY-MM-DD`) helpers; pages/day owns the one `?date=` in the app
       error-reporting/         # reportError(error, context) — swap body for Sentry later
+      api-error/                # apiErrorToBanner — one machine-`code`-keyed mapping of backend business-rule errors to banner copy, shared by every dialog that can fail on a rule (count-shift, void-document, send/receive/resolve-transfer, set-point-target, set-cash-explanation)
       clipboard/, cn.ts, debounce.ts, useDebouncedValue.ts, useIsDesktop.ts — small framework-free utilities
       form-draft/               # useFormDraft — localStorage-backed draft persistence; infrastructure, not yet wired into any form
       url-state/                 # useUrlParam / useUrlFlag / useUrlList / useUrlNumber / useUrlPatch — query-string state; pages/catalog uses useUrlParam for ?tab= and ?product=
       motion.ts                 # shared motion/spring presets (used by animated-number.tsx, segmented.tsx)
-    ui/                        # the mock's kit in the starter's layout: primitives (button, badge, dialog, table, tabs, …), signature pieces (eyebrow, page-header, stat-tile, empty-state, sparkline), layout (Card, DataTable, SectionCard, ListPage template), ThemeToggle — plus starter leftovers no screen uses yet (chip, drawer, segmented, TagPicker, …; see the «Kit hygiene» note below)
+    ui/                        # the mock's kit in the starter's layout: primitives (button, badge, dialog, table, tabs, …), signature pieces (eyebrow, page-header, stat-tile, empty-state, sparkline, pending-slice), layout (Card, DataTable, SectionCard, ListPage template), ThemeToggle — plus starter leftovers no screen uses yet (chip, drawer, segmented, TagPicker, …; see the «Kit hygiene» note below)
 ```
 
 FSD layer boundaries (`shared < entities < features < widgets < pages < app`, each layer may
