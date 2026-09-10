@@ -294,6 +294,25 @@ describe('DayPage — the operator on an open shift', () => {
     );
   });
 
+  it('keeps its dialogs on distinct React keys, so a remount never strands the old one', async () => {
+    // Both remount counters start at 0. A bare numeric key on each put two
+    // siblings on key "0" — React reports it, and after the first bump the
+    // closed count dialog was reconciled away without ever being unmounted,
+    // leaving its form and i18n subscriptions alive.
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const user = userEvent.setup();
+    renderDay();
+
+    await user.click(screen.getByRole('button', { name: 'Close shift' }));
+    await screen.findByRole('dialog');
+
+    const duplicateKey = consoleError.mock.calls.filter((call) =>
+      String(call[0]).includes('same key'),
+    );
+    consoleError.mockRestore();
+    expect(duplicateKey).toEqual([]);
+  });
+
   it('opens the receipt for an intake row, but a payout row stays non-clickable', async () => {
     const user = userEvent.setup();
     renderDay();

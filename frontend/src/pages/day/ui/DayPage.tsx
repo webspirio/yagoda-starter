@@ -346,7 +346,7 @@ export function DayPage() {
       </DashboardPage>
 
       <CountDrawerDialog
-        key={countInstance}
+        key={`count-${countInstance}`}
         mode={countMode ?? 'open'}
         open={countMode !== null}
         onClose={() => setCountMode(null)}
@@ -365,7 +365,7 @@ export function DayPage() {
       />
       {shift.data ? (
         <ReopenShiftDialog
-          key={reopenInstance}
+          key={`reopen-${reopenInstance}`}
           shift={shift.data}
           open={reopenOpen}
           onClose={() => setReopenOpen(false)}
