@@ -9,6 +9,18 @@
       "outputs": []
     },
     "coverage": {
+      // COVERAGE_* (COVERAGE_BACKEND_STATEMENTS/BRANCHES/FUNCTIONS/LINES,
+      // COVERAGE_FRONTEND_STATEMENTS/BRANCHES/FUNCTIONS/LINES, and any later addition
+      // matching the same prefix) change what this task CONCLUDES, not what it computes:
+      // jest/vitest report the identical percentages regardless of these values, but
+      // coverageThreshold turns a percentage into pass/fail using them. scripts/verify/
+      // run.mjs's own envKey() already treats them as verdict-changing (a stored green
+      // measured under different floors is refused, never reused) -- Turbo's cache key
+      // must agree, or a floor RAISE with no source change replays a stale cached pass
+      // and the new floor never actually runs. The wildcard covers the whole COVERAGE_
+      // family the same way envKey()'s own regex does, so a ninth variable added later
+      // is caught automatically rather than silently missed by an enumerated list.
+      "env": ["COVERAGE_*"],
       "outputs": ["coverage/**", "src/coverage/**"]
     },
     "lint": {
