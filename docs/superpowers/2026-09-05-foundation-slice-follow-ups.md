@@ -622,3 +622,139 @@ been lost with the working ledger.
   `ShiftsModule`'s import of `CollectionPointsModule` look load-bearing when it
   is not, and `shift-close.db-spec.ts` passes `null` for it with a comment
   explaining why that is currently safe.
+
+## From the code review of the transfers & cash counts branch (10.09.2026)
+
+Two reviewers went over `0b296d2..3cd05da` — one on domain correctness, one on
+architecture and tests. Neither found a Critical issue. What they did find split
+cleanly in two: things inside this branch's own tables, which were **fixed on the
+branch**, and the entries below, which reach into `intakes`, `payouts`, `shifts`'
+neighbours or the test harness and are therefore deferred by the same rule every
+earlier slice followed.
+
+Fixed on the branch, listed only so nobody re-reports them: the unlocked
+check-then-act in `ShiftsService.close`/`reopen`; the `only_discrepancies` list
+double-counting a reopen; the blank-reason hole in `ReopenShiftDto`; six stale
+comments (including one on `point-cash.mapper.ts` that argued at length *for* a
+bug b5952bb had removed, and one in migration `…0008` whose advice would have
+doubled every point's starting cash); the un-anchored formula still standing in
+`28-db-schema.dbml`; and a dev seed that wrote no `cash_counts` and no
+`transfers`.
+
+### Reaches other modules
+
+- **`settle-return` strands cash whenever the day's shift is already closed.**
+  The recorded case was a day with no shift at all; the likelier one is an owner
+  settling at 20:00 against a point that closed at 19:00. `movementsSql` credits
+  the money to that day's shift, whose `expected_amount` is a frozen snapshot,
+  and `cashFor` anchors on that shift's *closing* count — so the money is
+  invisible in the cash figure too. `expectedForOpening` then hands the next
+  shift the previous closing figure and the operator's count reports a surplus
+  nobody can explain. `payouts.service.ts` stamps `new Date()` with no shift
+  check. Needs a client decision, not just code: either `settle-return` requires
+  an open shift the way accepting a transfer now does, or a settlement lands on
+  the next shift to open. **Note the wording of the earlier entry on this: it
+  says «a day with no shift», and that undersells it — most evenings qualify.**
+
+- **The void reason is trimmed by one service out of three.**
+  `TransfersService.void` writes `dto.reason.trim()`; `IntakesService.void` and
+  `PayoutsService.void` write `dto.reason` as it arrived. `VoidDocumentDto`'s
+  `@Matches(/\S/)` now guarantees all three store a reason with something in it,
+  so nothing is broken — but the stored value differs by module, and the DTO's
+  comment had to be corrected because it claimed trimming was a codebase-wide
+  invariant. Make the three agree; it is a three-line change to two services and
+  a fixture or two.
+
+- **`transfers.service.ts` audits the untrimmed reason while storing the
+  trimmed one.** `:430` writes `dto.reason.trim()`, `:441` logs `dto.reason`.
+  Twelve lines above, the dispute path carries an explicit comment for the
+  opposite rule — «the audit log's whole job is to be quotable against the
+  document later». The dispute path's argument is the better one; fold this into
+  the item above.
+
+### Reaches the test harness
+
+- **No transport-level spec exists for any of the eight new endpoints.**
+  `transfers`, `point-cash`, `cash-counts` and `PUT /shifts/:id/explanation` are
+  all proven by constructing the service directly, so the `@Auth` decorators
+  themselves are verified only by reading — a service spec cannot catch a
+  missing decorator. This is a **scheduling** problem rather than a «just add
+  it» one: `backend/CLAUDE.md` measures the throttle headroom at 79 of 100 and
+  warns that the next HTTP spec is roughly where it stops fitting. When that
+  budget is revisited, spend it first on the owner-only routes of a money-moving
+  table (`POST /transfers`, `resolve`, `void`).
+
+- **The dev seed is not idempotent across days.** Keyed on
+  `(point, business_date)`, it inserts today's shift without noticing yesterday's
+  is still open, and collides with `UQ_shifts_open_per_point`. This is what made
+  `dev-seed.db-spec.ts` fail on any `app_test` carrying a previous day's run —
+  both reviewers hit it and both correctly diagnosed it as pre-existing rather
+  than a branch regression. Recreating `app_test` clears it, and the suite is
+  green after that, so this is latent rather than blocking. The seed should
+  either close a stale open shift or adopt the one it finds.
+
+- **Production DI signatures are shaped by positional test construction.**
+  `transfers.service.ts:58-74` documents two constructor parameters as
+  appended-not-inserted «because `transfers.service.spec.ts` constructs this
+  service POSITIONALLY in four blocks; a new argument in the middle would
+  silently re-bind `audit` to a clock». The hazard is real and the constraint is
+  a property of the test, not of Nest. A `buildTransfersService({ … })` helper,
+  or `Test.createTestingModule` with overrides, retires it and lets the
+  constructor be ordered for readers. `shifts.service.spec.ts` and
+  `shift-close.db-spec.ts` have the same shape.
+
+### Smaller, and only worth doing when the file is open anyway
+
+- **`GET /point-cash/:pointId` answers 403 where its siblings answer 404**, and
+  returns `{"cash":"0.00"}` for a point id that does not exist. It also takes
+  `ListPointCashQueryDto`, so a detail route accepts and silently ignores
+  `page`, `limit` and a second `collection_point_id`. The transfers spec §5
+  states the 404 convention in as many words.
+
+- **The cash expression has two hand-maintained copies** inside
+  `point-cash.service.ts` — `:210-215` for the single read and `:311-316`
+  correlated per row for the list — behind a comment promising the list «cannot
+  grow a formula of its own». A `cashSql(point, asOf, tz)` builder alongside the
+  three that already exist would close it; the file's own style has the seam.
+
+- **`cash_counts` is registered in two modules and written from the one that
+  does not own it.** `ShiftsService` calls `m.save(CashCount, …)` directly and
+  both modules `forFeature([CashCount])`. The behaviour is right — a count that
+  can be written alone can be skipped — but a `CashCountsService.record(m, …)`
+  write seam taking the caller's `EntityManager` would express that without the
+  duplicate registration, and would give the reopen demotion an audit entry that
+  the next writer cannot forget.
+
+- **The reopen demotion is the one place this codebase mutates a posted row,
+  and the audit entry does not say so.** `shifts.service.ts` rewrites a closing
+  count's `kind` to `midday`; the `shift.reopened` entry carries the shift's
+  `closed_at` and `status` and never names the count row or the transition.
+  `m.update`'s `affected` is discarded, so how many rows moved is unrecoverable.
+
+- **`ShiftsService.close` absorbs a missing opening count into a fake zero
+  discrepancy.** `expectedForClosing(...) ?? dto.counted_amount` — the method's
+  own doc calls `null` «a signal that something wrote a shift without going
+  through `open`», but it is not a signal, it is silence: `expected = counted`,
+  `d = 0`, and any real drift on that shift leaves `Σ (counted − expected)`
+  forever. A `409 SHIFT_HAS_NO_OPENING_COUNT` is the honest answer. **This only
+  became safe to add once the seed started writing counts (done on this
+  branch)** — before that it would have refused every seeded shift.
+
+- **`ShiftsService` still injects `CollectionPointsService` and never calls
+  it** (already recorded above; re-confirmed by both reviewers).
+
+- **`open` reads the clock twice** — `business_date` and `counted_at` come from
+  separate `this.time.now()` calls, so a shift opened at 23:59:59.9 can take
+  `business_date = N` with `counted_at = N+1`. `transfers.service.spec.ts:177`
+  asserts the single-read discipline for `accepted_at`/`accepted_date`; `open`
+  does not follow it. `close` now reads once, after the lock.
+
+- **`setExplanation` writes its row and its audit entry outside any
+  transaction**, unlike every other verb on `shifts`.
+
+- **`SetExplanationDto` refuses a blank string, so there is no un-explain
+  path.** An owner who explains the wrong shift cannot reopen the incident,
+  since `is_open` keys on a non-empty `explanation`.
+
+- **The reopen demotion does not filter `book`**, so it will demote the crates
+  closing count too once that book exists. Probably intended; nothing says so.
