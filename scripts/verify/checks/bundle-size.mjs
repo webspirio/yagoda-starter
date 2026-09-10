@@ -59,6 +59,17 @@
  * little overhead at each new chunk boundary. So a green row here is not a claim about load
  * time; it is a claim about total shipped bytes. The number worth watching, every run, is
  * the headroom line below — not the pass/fail.
+ *
+ * THAT BLIND SPOT IS CHEAP TO NARROW, EVEN THOUGH IT IS NOT CHEAP TO CLOSE: this repo's
+ * whole JS output today is a SINGLE chunk (no code splitting at all), so the sum this check
+ * gates and what a first visit actually downloads are, right now, almost the same number —
+ * confirmed on every run rather than assumed once. Root CLAUDE.md's "Deployment" audience
+ * (operators at rural collection points, on mobile data) is exactly who pays for that. So a
+ * second line, unconditional like the headroom one, names the single largest `.js` chunk
+ * and its gzip size on EVERY run, passing or not. This is a SIGNAL, not a gate: there is no
+ * agreed ceiling on a single chunk's size in this repo, and this check does not invent one
+ * — inventing a number nobody agreed to would be exactly the kind of unreviewed policy
+ * change this whole layer exists to avoid. It only makes the number impossible to miss.
  */
 import { readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { gzipSync } from 'node:zlib'
@@ -292,6 +303,25 @@ function main() {
       '— this measures the SUM of frontend/dist/assets, not what a browser downloads on first ' +
       'paint, so watch this number every run; it is the point of this row, not the pass/fail.\n',
   )
+
+  // A SECOND unconditional signal, printed on every run regardless of size — not gated
+  // behind a threshold, which would reproduce the exact failure the headroom line above was
+  // fixed to avoid: a number only heard from once it crosses some line is a number nobody
+  // reads until it already broke. This is deliberately not a pass/fail: no chunk-size
+  // ceiling is agreed in this repo, and this check does not invent one — it only makes the
+  // largest single JS chunk (what a first visit largely downloads today, since there is no
+  // code splitting at all) impossible to miss on every green run.
+  const jsFiles = files.filter((f) => f.file.endsWith('.js'))
+  if (jsFiles.length > 0) {
+    const largestJs = jsFiles.reduce((a, b) => (b.gzip > a.gzip ? b : a))
+    const shareOfTotal = ((largestJs.gzip / gzip) * 100).toFixed(1)
+    process.stdout.write(
+      `WARNING: largest JS chunk is ${largestJs.file} at ${kib(largestJs.gzip)} gzip / ` +
+        `${kib(largestJs.raw)} raw — ${shareOfTotal}% of the ${kib(gzip)} gzip total. This is a ` +
+        'signal, not a gate: no chunk-size ceiling exists in this repo today; watch this ' +
+        'number for whether code splitting would help.\n',
+    )
+  }
 }
 
 main()

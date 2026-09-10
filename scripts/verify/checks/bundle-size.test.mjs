@@ -131,6 +131,48 @@ test('an under-budget dist is green and prints the headroom as a WARNING line', 
   )
 })
 
+test('a green run also prints the largest-JS-chunk signal, unconditionally, on a SECOND WARNING line', () => {
+  withFixtureDist(
+    {
+      // Two JS files of clearly different sizes, so "largest" is unambiguous and the
+      // smaller one must NOT be the one named.
+      'small.js': 'x'.repeat(200),
+      'big.js': 'y'.repeat(20_000),
+      'app.css': 'body { color: red; }\n'.repeat(10),
+    },
+    () => {
+      const res = run()
+      assert.equal(res.status, 0, res.out)
+      // Fix round 2: this must fire on EVERY green run, not only once some threshold is
+      // crossed — gating it would reproduce the exact failure fix round 1 corrected for
+      // the headroom line. Both WARNING lines must be present, each starting the line.
+      const warningLines = res.out.split('\n').filter((l) => l.startsWith('WARNING: '))
+      assert.equal(warningLines.length, 2, res.out)
+      assert.match(res.out, /WARNING: headroom is/)
+      assert.match(res.out, /WARNING: largest JS chunk is big\.js/)
+      assert.doesNotMatch(res.out, /WARNING: largest JS chunk is small\.js/)
+      assert.match(res.out, /% of the .* gzip total/)
+      // A signal, never a gate: no ceiling language attached to this line.
+      assert.match(res.out, /signal, not a gate/)
+    },
+  )
+})
+
+test('the largest-JS-chunk signal ignores .css files even when a .css file is larger', () => {
+  withFixtureDist(
+    {
+      'tiny.js': 'x'.repeat(50),
+      'huge.css': 'body{color:red}\n'.repeat(5000),
+    },
+    () => {
+      const res = run()
+      assert.equal(res.status, 0, res.out)
+      assert.match(res.out, /WARNING: largest JS chunk is tiny\.js/)
+      assert.doesNotMatch(res.out, /largest JS chunk is huge\.css/)
+    },
+  )
+})
+
 test('an incompressible over-budget file is RED, naming both the gzip and raw overage', () => {
   /** @type {{maxGzipBytes:number, maxRawBytes:number}} */
   const budget = JSON.parse(readFileSync(BUDGET_PATH, 'utf8'))

@@ -888,7 +888,14 @@ export const CHECKS = [
       'plus a little overhead at every new chunk boundary, so the sum this row checks can GROW at the exact ' +
       "moment a real user's first download SHRINKS. A green row here is therefore a claim about total shipped " +
       'bytes, not about load time, and the number worth reading every run is the headroom line above, never the ' +
-      'pass/fail alone. It also counts only `.js`/`.css` files sitting directly under dist/assets: the 17 font ' +
+      'pass/fail alone. FIX ROUND 2 NARROWS this gap without closing it: a second, equally unconditional WARNING ' +
+      'line now names the single largest `.js` chunk and its gzip size on every run — a real, non-trivial ' +
+      'number today (index-Cwd0rvbd.js at 257.7 KiB gzip, 93.3% of the 276.4 KiB total, because this bundle has ' +
+      'no code splitting at all, so that one chunk is close to the whole first-visit download) — but it is a ' +
+      'SIGNAL, never a gate: no chunk-size ceiling exists in this repo, this row does not invent one, and the ' +
+      'line says nothing about which chunks a GIVEN ROUTE actually pulls once splitting exists — only which ' +
+      'single file is largest across the whole build, still blind to per-route composition. It also counts ' +
+      'only `.js`/`.css` files sitting directly under dist/assets: the 17 font ' +
       'files Vite copies alongside them today, any other static asset, and anything shipped outside dist/assets ' +
       'entirely (an inline index.html script, a public/ passthrough file) are invisible to both totals ' +
       "regardless of size. Gzip is measured at level 9 with Node's own zlib, not brotli and not whatever " +
