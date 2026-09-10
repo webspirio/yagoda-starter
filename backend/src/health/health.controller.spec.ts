@@ -7,6 +7,7 @@ import {
 } from '@nestjs/terminus';
 import { HealthController } from './health.controller';
 import { REDIS_CLIENT } from '../redis/redis.module';
+import { appConfig } from '../config/app.config';
 
 // Runs the indicator functions like terminus would, merging their results.
 const mockCheck = jest.fn(async (indicators: HealthIndicatorFunction[]) => {
@@ -30,6 +31,7 @@ describe('HealthController', () => {
         { provide: HealthCheckService, useValue: { check: mockCheck } },
         { provide: TypeOrmHealthIndicator, useValue: { pingCheck: mockPingCheck } },
         { provide: REDIS_CLIENT, useValue: { ping: mockRedisPing } },
+        { provide: appConfig.KEY, useValue: { commit: 'abc123def' } },
       ],
     }).compile();
 
@@ -61,5 +63,9 @@ describe('HealthController', () => {
       database: { status: 'up' },
       redis: { status: 'down', message: 'connection refused' },
     });
+  });
+
+  it('GET /health/version reports the commit the image was built from', () => {
+    expect(controller.version()).toEqual({ commit: 'abc123def' });
   });
 });

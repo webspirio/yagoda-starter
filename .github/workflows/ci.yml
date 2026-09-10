@@ -12,24 +12,138 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
-# CI never pushes, comments, or writes packages (the registry row's `docker:build`
-# never pushes an image either), so the job token is dropped to read-only. CD sets
-# its own job-scoped permissions.
+# The default token is read-only. The docker job raises itself to
+# packages: write (it pushes to GHCR); the deploy jobs add pull-requests: write
+# (sticky comment, label). Nothing else needs more than contents: read.
 permissions:
   contents: read
 
+
 jobs:
-  # ───────────────────────────────────────────────────────────────────────────────
-  # ONE job. It runs `npm run verify:ci` — the exact command a laptop runs (`npm run
-  # verify:full` with `--no-skip`) — because that is the whole thesis of this layer:
-  # the moment CI has its own command, "green there / green here" drift apart and
-  # neither means anything anymore. There is deliberately no CI-only script.
+  # Determine whether a PR changes anything consumed by the Docker image builds.
   #
-  # This job replaces FOUR jobs the previous version of this file ran. Where each
-  # one's coverage went:
+  # This job only decides whether the expensive build steps may be skipped. The
+  # `docker` job itself always runs on PRs, so it remains safe as a required check.
+  #
+  # Detection is fail-closed:
+  # - if this job succeeds and docker=false, build steps may be skipped;
+  # - if this job fails/cancels/is otherwise non-successful, the docker job builds.
+  changes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    if: github.event_name == 'pull_request'
+
+    outputs:
+      docker: ${{ steps.filter.outputs.docker }}
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # Full history is required so merge-base(BASE, HEAD) is always
+          # available for the three-dot PR diff.
+          fetch-depth: 0
+
+      - id: filter
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        # Use the PR payload SHAs rather than checkout HEAD: pull_request
+        # workflows normally check out GitHub's synthetic merge ref.
+        #
+        # Three-dot diff means "changes introduced by this PR since its merge
+        # base", so unrelated changes that landed on main do not cause a build.
+        #
+        # --name-status -M is intentional: for renames we inspect both the old
+        # and new paths. Moving/deleting something out of a Docker-relevant path
+        # must still trigger a build.
+        #
+        # Trigger set is the audited Docker build-input surface:
+        #   - backend/**          backend image inputs
+        #   - frontend/**         nginx image contains the built frontend
+        #   - nginx/**            nginx image/config inputs
+        #   - every Dockerfile
+        #   - root package manifest + lockfile
+        #   - .dockerignore
+        #
+        #   - docker-compose*.yml  Coolify deploys the compose file FROM THE PR
+        #                          BRANCH, so it is a deploy input too
+        #   - .github/workflows/** a workflow change must exercise the build
+        #
+        # turbo.json is intentionally absent: the Dockerfiles invoke workspace
+        # builds directly. The diff is PR-wide (base...head), so once a PR
+        # touches anything in this set, EVERY push to it builds — a later
+        # docs-only commit does not leave a stale preview behind.
+        #
+        # FAIL CLOSED inside the detector as well: inability to compute the diff
+        # means docker=true, never a skipped image build.
+        shell: bash
+        run: |
+          set -uo pipefail
+
+          if [ -z "${BASE:-}" ] || [ -z "${HEAD:-}" ]; then
+            echo "Missing PR base/head SHA -> build (fail-closed)"
+            echo "docker=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if ! changed="$(git diff --name-status -M "$BASE"..."$HEAD")"; then
+            echo "git diff failed -> build (fail-closed)"
+            echo "docker=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          is_docker_input() {
+            case "$1" in
+              backend/*|frontend/*|nginx/*|Dockerfile|*/Dockerfile|package.json|package-lock.json|.dockerignore|docker-compose*.yml|.github/workflows/*|.github/actions/*|scripts/ci/*)
+                return 0
+                ;;
+              *)
+                return 1
+                ;;
+            esac
+          }
+
+          docker=false
+
+          while IFS=$'\t' read -r status path1 path2; do
+            [ -z "${status:-}" ] && continue
+
+            # For ordinary add/modify/delete entries, path1 is the affected
+            # path. For rename/copy entries, path1 is the old path and path2 is
+            # the new path; either side being Docker-relevant must trigger CI.
+            if [ -n "${path1:-}" ] && is_docker_input "$path1"; then
+              docker=true
+              break
+            fi
+
+            if [ -n "${path2:-}" ] && is_docker_input "$path2"; then
+              docker=true
+              break
+            fi
+          done <<< "$changed"
+
+          echo "docker-relevant change: $docker"
+          echo "docker=$docker" >> "$GITHUB_OUTPUT"
+
+
+  # ───────────────────────────────────────────────────────────────────────────────
+  # ONE job replacing `checks` and `db-checks`. It runs `npm run verify:ci` — the
+  # exact command a laptop runs (`npm run verify:full` with `--no-skip`) — because
+  # that is the whole thesis of this layer: the moment CI has its own command,
+  # "green there / green here" drift apart and neither means anything anymore.
+  # There is deliberately no CI-only script.
+  #
+  # This job replaces TWO of the FOUR jobs the previous version of this file ran
+  # alongside `changes` and `docker`. Where each replaced job's coverage went:
   #
   #   `checks`     -> the `lint` / `typecheck` / `test` / `build` rows (registry.mjs,
-  #                   read out into the generated table in the root CLAUDE.md).
+  #                   read out into the generated table in the root CLAUDE.md), plus
+  #                   the shell-test line `checks` used to run directly (`bash
+  #                   scripts/ci/coolify-deploy.test.sh && bash
+  #                   scripts/ci/ghcr-cleanup.test.sh`) — now the `test:ci-scripts`
+  #                   row (`npm run test:ci-scripts`), so the same two suites keep
+  #                   running, in CI and on a laptop alike, under the exact same
+  #                   command.
   #   `db-checks`  -> the `test:db` row. Its Postgres/Redis fixtures now come from
   #                   `docker compose up -d --wait postgres redis` below instead of
   #                   GitHub Actions' own `services:` block — the same ports and the
@@ -41,46 +155,42 @@ jobs:
   #                   here at all now). `APP_URL`/`JWT_SECRET` have no such default
   #                   (Joi `required()`), so they're still spelled out below, on the
   #                   one step that needs them, same as `db-checks` used to.
-  #   `docker`     -> the `docker` row (`npm run docker:build`, needs: docker).
-  #   `changes`    -> DELETED DELIBERATELY. Every PR now builds both images, every
-  #                   time. What that costs: `changes` fed a Docker path filter into
-  #                   `docker`'s old `docker/build-push-action` steps, which carried a
-  #                   `type=gha` layer cache — a plain `docker build` (what the
-  #                   `docker` registry row runs, so a laptop can run the identical
-  #                   command) has no such cache, so an unchanged Dockerfile now
-  #                   rebuilds from scratch on every PR instead of replaying a cached
-  #                   layer. Accepted because a CI-only buildx invocation, gated by a
-  #                   CI-only path filter, is exactly the kind of divergence this PR
-  #                   exists to remove: this layer's central thesis is that CI runs
-  #                   the same command a laptop runs, full stop.
+  #
+  # `changes` and `docker` (both below, unchanged) are DELIBERATELY UNTOUCHED by this
+  # job — not replaced, not deleted. Both are CD infrastructure, not verification:
+  # `docker` pushes the two GHCR images tagged sha-<commit> — the ONLY tag Coolify
+  # ever deploys — and `changes` decides whether that push may skip a rebuild;
+  # `deploy-preview` and `deploy-prod` consume `docker`'s own `pushed` output
+  # directly, and both now depend on `[verify, docker]`. This branch's OWN `docker`
+  # REGISTRY ROW, run as part of `verify:ci` below (`npm run docker:build` — a plain
+  # `docker build` with no push, proving only that both images still build) shares
+  # a name with, but has no other relationship to, the `docker` WORKFLOW JOB below —
+  # it does not replace it and was never meant to.
   #
   # See docs/superpowers/2026-09-05-foundation-slice-follow-ups.md for the required-
-  # status-check rename this deletion still owes repository settings.
+  # status-check rename this job's introduction still owes repository settings
+  # (`checks`/`db-checks` -> `verify`; `changes`/`docker` keep their names).
   #
-  # TWO CACHES, TWO DIFFERENT VERDICTS — worth reading side by side so the next person
-  # does not wonder why one survived this rebuild and the other did not:
-  #
-  #   - The Docker `type=gha` buildx cache (old `docker` job) was given up on purpose.
-  #     Keeping it meant CI running `docker/build-push-action` while a laptop runs the
-  #     registry row's plain `docker build` — two different commands building the same
-  #     images, which is exactly the "green there / green here" divergence this whole
-  #     layer exists to remove. The cost is real and accepted: an unchanged Dockerfile
-  #     now rebuilds from scratch on every PR (see `changes` above).
-  #
-  #   - The Turborepo `.turbo` cache (old `checks` job, restored below) is kept, because
-  #     it creates NO such divergence. `npm run lint`/`typecheck`/`test`/`build` are the
-  #     identical commands whether `.turbo` is warm or cold — the cache only changes how
-  #     long they take, never what runs. The reasoning that justified dropping the
-  #     Docker cache does not apply here, so there is nothing to give up.
+  # ONE CACHE HERE, NOT TWO. The Turborepo `.turbo` cache below (old `checks` job)
+  # is kept, because reusing it creates NO "green there / green here" divergence:
+  # `npm run lint`/`typecheck`/`test`/`build` are the identical commands whether
+  # `.turbo` is warm or cold — the cache only changes how long they take, never
+  # what runs. `docker` (the workflow job below, unchanged) keeps its own separate
+  # `type=gha` buildx cache exactly as it always had — nothing about that job's
+  # publish path changed here. Only this branch's OWN `docker` registry row runs an
+  # uncached, plain `docker build` (see that row's own entry in
+  # scripts/verify/registry.mjs): it exists so a laptop can run the identical
+  # command, and a CI-only buildx cache would no longer be identical to that.
 
   verify:
     runs-on: ubuntu-latest
     # A full-tier, --no-skip run exercises every row in scripts/verify/registry.mjs,
-    # including the two slowest (`docker` builds two images from scratch with no
-    # cache — see the `changes` note above — and `smoke` drives a real browser
-    # against a real Compose stack). Sized with real headroom above the ~3-4 minute
-    # local run this task measured (see task-20-report.md), for a colder, shared CI
-    # runner plus `npm ci`/`playwright install` network time.
+    # including the two slowest (`docker` — this branch's own registry row, an
+    # uncached `docker build` of two images from scratch, see the note above — and
+    # `smoke`, which drives a real browser against a real Compose stack). Sized
+    # with real headroom above the ~3-4 minute local run this task measured (see
+    # task-20-report.md), for a colder, shared CI runner plus `npm ci`/`playwright
+    # install` network time.
     timeout-minutes: 30
 
     env:
@@ -144,10 +254,11 @@ jobs:
       - run: npm ci
 
       # Persist Turborepo's local task cache across CI runs — restored unchanged from
-      # the old `checks` job (see the two-caches note above for why this one, unlike
-      # the Docker buildx cache, survives). `${{ github.job }}` is now `verify` rather
-      # than `checks`, which simply starts a fresh cache lineage under the new job
-      # name; nothing else about the key needs to change.
+      # the old `checks` job (see the "ONE CACHE HERE" note above for why this one,
+      # unlike `docker`'s own buildx cache, is the only cache this job owns).
+      # `${{ github.job }}` is now `verify` rather than `checks`, which simply starts
+      # a fresh cache lineage under the new job name; nothing else about the key
+      # needs to change.
       #
       # Each commit gets an immutable cache key. On an exact-key miss, restore-keys
       # lets Actions restore the newest cache visible to this ref (including an
@@ -201,3 +312,346 @@ jobs:
           name: verify-report
           path: .verify/last-run.json
           if-no-files-found: warn
+
+  docker:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    # Independent from `checks` so both run in parallel. `always()` keeps this
+    # job from being skipped when `changes` fails — a skipped required check
+    # would hide a broken path detector.
+    needs: [changes]
+    if: ${{ always() }}
+
+    # Pushes the two images to GHCR. sha-<commit> is the ONLY tag ever
+    # deployed (Coolify pulls it, docs/coolify-deploy.md); pr-<N> is a human
+    # convenience alias; there is deliberately no `latest`.
+    #
+    # Build steps run when the PR changed a Docker/deploy input, when the
+    # detector did not finish (fail-closed), or on every push to main.
+    # Fork PRs have no GITHUB_TOKEN write access: they build but do not push.
+    permissions:
+      contents: read
+      packages: write
+
+    outputs:
+      pushed: ${{ steps.meta.outputs.push }}
+
+    env:
+      BUILD: >-
+        ${{ github.event_name == 'push'
+          || needs.changes.result != 'success'
+          || needs.changes.outputs.docker == 'true' }}
+
+    steps:
+      - id: meta
+        shell: bash
+        env:
+          IS_FORK: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+          SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          push=false
+          # Dependabot PRs build but never push — they would otherwise each hold
+          # a preview slot and their token cannot write packages. Scoped to
+          # pull_request on purpose: an auto-merged Dependabot PR arrives on
+          # main as a push by the same actor, and suppressing the image there
+          # would skip deploy-prod with no signal at all.
+          dependabot=false
+          if [ "$GITHUB_EVENT_NAME" = pull_request ] && [ "$GITHUB_ACTOR" = 'dependabot[bot]' ]; then dependabot=true; fi
+          if [ "$BUILD" = true ] && [ "$IS_FORK" != true ] && [ "$dependabot" != true ]; then push=true; fi
+          echo "push=$push" >> "$GITHUB_OUTPUT"
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+          # Cache scopes: PRs read prod's cache but write only their own, so
+          # preview churn never evicts the seed main relies on.
+          if [ "$GITHUB_EVENT_NAME" = push ]; then scope='main'; else scope='pr'; fi
+          echo "scope=$scope" >> "$GITHUB_OUTPUT"
+          {
+            echo "backend_tags<<EOF"
+            echo "ghcr.io/${GITHUB_REPOSITORY,,}-backend:sha-$SHA"
+            [ -n "$PR" ] && echo "ghcr.io/${GITHUB_REPOSITORY,,}-backend:pr-$PR"
+            echo "EOF"
+            echo "nginx_tags<<EOF"
+            echo "ghcr.io/${GITHUB_REPOSITORY,,}-nginx:sha-$SHA"
+            [ -n "$PR" ] && echo "ghcr.io/${GITHUB_REPOSITORY,,}-nginx:pr-$PR"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+          echo "build=$BUILD push=$push scope=$scope sha=$SHA"
+
+      - uses: actions/checkout@v7
+        if: env.BUILD == 'true'
+        with:
+          # Build the PR HEAD, not GitHub's synthetic merge commit: the image
+          # is tagged sha-<head> and Coolify checks out that same head.
+          ref: ${{ steps.meta.outputs.sha }}
+
+      - uses: docker/setup-buildx-action@v4
+        if: env.BUILD == 'true'
+
+      - uses: docker/login-action@v4
+        if: steps.meta.outputs.push == 'true'
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build (and push) backend image
+        if: env.BUILD == 'true'
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: backend/Dockerfile
+          target: prod
+          push: ${{ steps.meta.outputs.push == 'true' }}
+          tags: ${{ steps.meta.outputs.backend_tags }}
+          # Attestation manifests appear in GHCR as UNTAGGED versions, which
+          # scripts/ci/ghcr-cleanup.sh deletes on sight. Adding provenance,
+          # sbom or a second platform later would therefore start deleting
+          # parts of live images; keep the assumption enforced, not implied.
+          provenance: false
+          # image.source is what links the GHCR package to this repository —
+          # without it the repo's GITHUB_TOKEN is not authoritative for the
+          # package, which is what makes both the first push and the weekly
+          # cleanup's deletes fail with «installation not allowed».
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ steps.meta.outputs.sha }}
+          build-args: |
+            APP_COMMIT=${{ steps.meta.outputs.sha }}
+          cache-from: |
+            type=gha,scope=backend-main
+            type=gha,scope=backend-${{ steps.meta.outputs.scope }}
+          cache-to: type=gha,mode=max,scope=backend-${{ steps.meta.outputs.scope }}
+
+      - name: Build (and push) nginx image
+        if: env.BUILD == 'true'
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: nginx/Dockerfile
+          push: ${{ steps.meta.outputs.push == 'true' }}
+          tags: ${{ steps.meta.outputs.nginx_tags }}
+          # Attestation manifests appear in GHCR as UNTAGGED versions, which
+          # scripts/ci/ghcr-cleanup.sh deletes on sight. Adding provenance,
+          # sbom or a second platform later would therefore start deleting
+          # parts of live images; keep the assumption enforced, not implied.
+          provenance: false
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ steps.meta.outputs.sha }}
+          cache-from: |
+            type=gha,scope=nginx-main
+            type=gha,scope=nginx-${{ steps.meta.outputs.scope }}
+          cache-to: type=gha,mode=max,scope=nginx-${{ steps.meta.outputs.scope }}
+
+  # ---------------------------------------------------------------------------
+  # CD. The deploy jobs deploy through Coolify's API and then verify the
+  # application itself (preview-note-skipped only edits a comment)
+  # (scripts/ci/coolify-deploy.sh). They are gated on the repository
+  # variable COOLIFY_ENABLED so the workflow is valid before the server exists.
+  # ---------------------------------------------------------------------------
+
+  deploy-preview:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    needs: [verify, docker]
+    # Internal PRs only (forks have no secrets), and only when an image for
+    # this head was actually pushed. A preview is "the CI-passed commit": both
+    # jobs must be green.
+    # PREVIEWS_ENABLED is a SEPARATE gate from COOLIFY_ENABLED on purpose.
+    # Previews need a Coolify GitHub App: `POST /deploy?pr=<N>` is refused with
+    # «Pull request N not found for this resource» unless Coolify already knows
+    # the PR, and it only ever learns that from the App's webhook. Production
+    # CD needs no PR record, so it stays armed while previews are switched off;
+    # without the split, every PR would carry a red job for a capability that
+    # is not installed. Set this to true once issue #68 is closed.
+    if: >-
+      !cancelled()
+      && needs.verify.result == 'success'
+      && needs.docker.result == 'success'
+      && github.event_name == 'pull_request'
+      && needs.docker.outputs.pushed == 'true'
+      && vars.COOLIFY_ENABLED == 'true'
+      && vars.PREVIEWS_ENABLED == 'true'
+    # One preview allocation at a time across the whole repository, so the
+    # cap check below cannot race another PR's deploy.
+    concurrency:
+      group: preview-allocation
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write # gh label create / gh pr edit --add-label use the Issues API
+    env:
+      # 12, recalibrated 2026-09-10 against the resized server and Coolify's
+      # measured RSS (docs/coolify-deploy.md «Spike results»):
+      #   7.56 total − 0.37 OS − 0.63 Coolify − ~1.0 production ≈ 5.5 GiB free;
+      #   at ~0.25 GiB per preview, 12 previews use ~3.0 and leave ~2.5 GiB,
+      #   comfortably past the ≥0.8–1.0 GiB the spec §1 invariant requires.
+      # The repository variable PREVIEW_CAP overrides it without a commit —
+      # used for recalibration and for testing the limit path.
+      PREVIEW_CAP: ${{ vars.PREVIEW_CAP || 12 }}
+      PR: ${{ github.event.pull_request.number }}
+      HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+      PREVIEW_URL: https://pr-${{ github.event.pull_request.number }}.${{ vars.PREVIEW_DOMAIN }}
+      GH_TOKEN: ${{ github.token }}
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Cap on live previews
+        id: cap
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh label create preview --color 0e8a16 --description "Has a live Coolify preview" --force >/dev/null
+          live=$(gh pr list --repo "$GITHUB_REPOSITORY" --state open --label preview --limit 100 --json number --jq 'length')
+          mine=$(gh pr view "$PR" --repo "$GITHUB_REPOSITORY" --json labels --jq '[.labels[].name] | index("preview") != null')
+          echo "live=$live mine=$mine cap=$PREVIEW_CAP"
+          if [ "$mine" != true ] && [ "$live" -ge "$PREVIEW_CAP" ]; then
+            echo "blocked=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "blocked=false" >> "$GITHUB_OUTPUT"
+          fi
+          echo "live=$live" >> "$GITHUB_OUTPUT"
+
+      - name: Comment — limit reached
+        if: steps.cap.outputs.blocked == 'true'
+        uses: marocchino/sticky-pull-request-comment@773744901bac0e8cbb5a0dc842800d45e9b2b405 # v2
+        with:
+          header: yagoda-preview
+          message: |
+            **Preview not deployed — limit reached** (${{ steps.cap.outputs.live }}/${{ env.PREVIEW_CAP }} live previews).
+            Close or merge an older PR with the `preview` label, then re-run this job.
+
+      # The label is the cap's only data source, so it has to be claimed before
+      # Coolify creates the stack, not after verification: a preview whose
+      # /ready or seeded-login check fails is still RUNNING and still holding
+      # ~0.25 GiB. Labelling afterwards let every failed deploy consume memory
+      # while counting as zero, and the cap is the only enforcement of the
+      # spec §1 free-memory invariant. It is deliberately NOT removed on
+      # failure — «this PR has a stack on the server» stays true either way;
+      # closing the PR (or dropping the label by hand) releases it.
+      - name: Claim a preview slot
+        if: steps.cap.outputs.blocked != 'true'
+        run: gh pr edit "$PR" --repo "$GITHUB_REPOSITORY" --add-label preview
+
+      - name: Deploy preview
+        id: deploy
+        if: steps.cap.outputs.blocked != 'true'
+        uses: ./.github/actions/coolify-deploy
+        with:
+          coolify-url: ${{ secrets.COOLIFY_URL }}
+          coolify-api-token: ${{ secrets.COOLIFY_API_TOKEN }}
+          app-uuid: ${{ secrets.COOLIFY_APP_UUID }}
+          base-url: ${{ env.PREVIEW_URL }}
+          commit: ${{ env.HEAD_SHA }}
+          pr-number: ${{ env.PR }}
+          # Demo credentials from backend/src/seed/dev-seed.data.ts. They exist
+          # only where the preview env set carries SEED_DEV_DATA=true — that
+          # variable must never be set on production (docs/coolify-deploy.md).
+          seed-username: oksana
+          seed-password: operator
+          # Set the PREVIEW_BASIC_AUTH secret (user:pass) if the preview routers
+          # carry a basicAuth middleware; empty means no credentials are sent.
+          basic-auth: ${{ secrets.PREVIEW_BASIC_AUTH }}
+
+      - name: Comment — ready
+        if: steps.cap.outputs.blocked != 'true' && success()
+        uses: marocchino/sticky-pull-request-comment@773744901bac0e8cbb5a0dc842800d45e9b2b405 # v2
+        with:
+          header: yagoda-preview
+          message: |
+            **Preview ready:** ${{ env.PREVIEW_URL }}
+            Serving `sha-${{ env.HEAD_SHA }}` · sign in as `oksana` / `operator` (seed) · removed when this PR closes.
+
+      - name: Comment — failed
+        if: steps.cap.outputs.blocked != 'true' && failure()
+        uses: marocchino/sticky-pull-request-comment@773744901bac0e8cbb5a0dc842800d45e9b2b405 # v2
+        with:
+          header: yagoda-preview
+          message: |
+            **Preview deploy failed** for `sha-${{ env.HEAD_SHA }}` — see the `deploy-preview` job log.
+            ${{ env.PREVIEW_URL }} may be serving an older commit.
+
+
+  preview-note-skipped:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: [docker]
+    # The PR already had a preview (label) but this push changed nothing
+    # deployable: say so instead of leaving a comment that implies the head is live.
+    if: >-
+      github.event_name == 'pull_request'
+      && github.event.pull_request.head.repo.full_name == github.repository
+      && needs.docker.outputs.pushed == 'false'
+      && contains(github.event.pull_request.labels.*.name, 'preview')
+      && vars.COOLIFY_ENABLED == 'true'
+      && vars.PREVIEWS_ENABLED == 'true'
+    permissions:
+      pull-requests: write
+    steps:
+      - uses: marocchino/sticky-pull-request-comment@773744901bac0e8cbb5a0dc842800d45e9b2b405 # v2
+        with:
+          header: yagoda-preview
+          message: |
+            **Preview unchanged:** this push (`${{ github.event.pull_request.head.sha }}`) touched no deployable path, so
+            https://pr-${{ github.event.pull_request.number }}.${{ vars.PREVIEW_DOMAIN }} still serves the previous deployed commit.
+
+
+  deploy-prod:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    needs: [verify, docker]
+    # `!cancelled()` is load-bearing, not decoration. A skip propagates DOWN the
+    # needs graph transitively: `changes` skips itself on push, `docker` survives
+    # only via `always()`, and every job downstream of it then inherits that skip
+    # unless its own `if` contains a status function. Without this the gate
+    # evaluated true — event=push, ref=refs/heads/main, docker.result=success,
+    # COOLIFY_ENABLED=true, all printed by a debug job standing beside it — and
+    # the job was skipped anyway, so a merge to main reported success while
+    # production stayed on the previous commit. The needs' results are therefore
+    # asserted explicitly, since `!cancelled()` no longer implies they passed.
+    if: >-
+      !cancelled()
+      && needs.verify.result == 'success'
+      && needs.docker.result == 'success'
+      && github.event_name == 'push'
+      && github.ref == 'refs/heads/main'
+      && vars.COOLIFY_ENABLED == 'true'
+    concurrency:
+      group: deploy-prod
+      cancel-in-progress: false
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+
+      # `concurrency` serialises prod deploys but does not order them, and this
+      # repo merges stacked PRs forward in quick succession. Without this guard
+      # a slower run for an older commit deploys AFTER the newer one and puts
+      # production behind main — while staying green, because its own
+      # /api/health/version assertion compares against its own SHA.
+      - name: Skip if main has moved on
+        id: tip
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tip=$(gh api "repos/$GITHUB_REPOSITORY/commits/main" --jq .sha)
+          if [ "$tip" = "$GITHUB_SHA" ]; then
+            echo "superseded=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "superseded=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::main is at $tip, not $GITHUB_SHA — its own deploy run owns production; skipping."
+          fi
+
+      - uses: ./.github/actions/coolify-deploy
+        if: steps.tip.outputs.superseded != 'true'
+        with:
+          coolify-url: ${{ secrets.COOLIFY_URL }}
+          coolify-api-token: ${{ secrets.COOLIFY_API_TOKEN }}
+          app-uuid: ${{ secrets.COOLIFY_APP_UUID }}
+          base-url: ${{ vars.PROD_URL }}
+          commit: ${{ github.sha }}

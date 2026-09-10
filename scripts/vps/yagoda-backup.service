@@ -1,0 +1,12 @@
+[Unit]
+Description=yagoda nightly backup (pg_dump + uploads tar, atomic pair)
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+# Type=oneshot disables the start timeout by default, so a wedged pg_dump would
+# hang forever — and every later run would then skip silently via `flock -n`,
+# leaving no backups and no error.
+TimeoutStartSec=3600
+ExecStart=/usr/local/bin/yagoda-backup.sh

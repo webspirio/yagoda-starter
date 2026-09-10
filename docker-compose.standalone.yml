@@ -1,0 +1,16 @@
+# Override for a VPS WITHOUT Coolify (docs/vps-tls-setup.md):
+#   docker compose -f docker-compose.prod.yml -f docker-compose.standalone.yml up -d
+# Re-adds the loopback-only ports the base file deliberately has none of.
+# Bind to 127.0.0.1, never 0.0.0.0 — Docker's published ports bypass the host
+# firewall (UFW/iptables), so a bare "5432:5432" would expose Postgres to the
+# public internet. Postgres stays reachable only through an SSH tunnel:
+# `ssh -N -L 5433:localhost:5432 user@host`, then connect to localhost:5433.
+# Set IMAGE_TAG=sha-<commit> explicitly on this path — there is no Coolify to
+# provide SOURCE_COMMIT.
+services:
+  postgres:
+    ports:
+      - "127.0.0.1:5432:5432"
+  nginx:
+    ports:
+      - "127.0.0.1:8080:8080"
