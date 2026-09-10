@@ -913,18 +913,21 @@ export const CHECKS = [
       'inside `npm run verify:full`, but `npm run bundle` run directly and standalone — exactly as every other ' +
       "check's npm script can also be run — re-verifies none of it, and would measure a stale or hand-edited " +
       "dist tree exactly as confidently as a fresh one. TASK 17 FOUND A CONCRETE WAY THIS BITES: `smoke`'s " +
-      "global-setup.ts writes frontend/dist with a direct `npm run build -w frontend` call (needed for its own " +
-      "reasons — see that file), invisible to Turborepo's output cache; a `npm run build` this row's own " +
-      "`after: ['build']` depends on can then satisfy `frontend#build` FROM CACHE without ever running `vite " +
-      "build` again, so its `emptyOutDir` cleanup never fires and the cached files land ALONGSIDE smoke's " +
-      "leftover ones instead of replacing them — measured directly at 534 KiB gzip against this row's own 305 " +
-      "KiB ceiling, roughly double the genuine 276 KiB, immediately after a clean run had reported the correct " +
-      "number. `smoke`'s global-setup.ts and global-teardown.ts both now delete frontend/dist around their own " +
-      "build (belt and suspenders, each covering the other crashing first) specifically so this row never sees " +
-      "that state — but the underlying fact stands: NOTHING in this row, or in `build`, verifies that " +
-      "frontend/dist holds the output of exactly one build rather than two coexisting ones with different " +
-      "content hashes, and any other future consumer that writes to frontend/dist outside of `turbo build` " +
-      "could reopen the identical failure mode. THE PRACTICAL CONSEQUENCE: this row measures whatever files " +
+      "own `webServer` (playwright.config.ts) writes frontend/dist with a direct `npm run build -w frontend` " +
+      "call — needed so that command is self-sufficient regardless of what ran before it (see " +
+      "playwright.config.ts's own header, FIX ROUND 2) — invisible to Turborepo's output cache; a `npm run " +
+      "build` this row's own `after: ['build']` depends on can then satisfy `frontend#build` FROM CACHE " +
+      "without ever running `vite build` again, so its `emptyOutDir` cleanup never fires and the cached files " +
+      "land ALONGSIDE smoke's leftover ones instead of replacing them — measured directly at 534 KiB gzip " +
+      "against this row's own 305 KiB ceiling, roughly double the genuine 276 KiB, immediately after a clean " +
+      "run had reported the correct number, and REPRODUCED AGAIN in fix round 2 on the very next `npm run " +
+      "verify:full` run after a `smoke` pass, with no manual step in between. An EARLIER version of `smoke` " +
+      "deleted frontend/dist in its own teardown specifically to prevent this — fix round 2 removed that: " +
+      "frontend/dist is this row's output and `bundle`'s input, not `smoke`'s artifact to delete, and deleting " +
+      "it in teardown is what made `smoke`'s own row ORDER load-bearing for its next run (see `smoke`'s " +
+      "`proves`). The net effect: this specific false-RED is now MORE likely to recur than when this " +
+      "paragraph was first written, not less — an accepted, named trade-off, not an oversight. THE PRACTICAL " +
+      "CONSEQUENCE: this row measures whatever files " +
       "are physically sitting under frontend/dist/assets at the moment it runs, nothing more — a stale or " +
       "doubled dist directory left by a mixed build path (any two of `turbo build`, a direct `npm run build " +
       "-w frontend`, or Docker's own image build writing to a different tree entirely) produces a FALSE RED " +
@@ -1040,57 +1043,69 @@ export const CHECKS = [
     cmd: 'npm run test:e2e',
     needs: ['playwright-browser', 'docker'],
     after: ['build'],
-    // Not a hard dependency the way `bundle`'s `after: ['build']` is: e2e/global-setup.ts
-    // rebuilds the frontend itself, with an explicit VITE_API_URL, before every run (see its
-    // own doc comment for why `build`'s own `npm run build` invocation cannot be trusted to
-    // leave a dist this row can actually execute) — so this row does not depend on `build`
-    // having passed to produce a CORRECT result. `after` still buys what it buys for `bundle`:
-    // skipping the single heaviest, slowest row in this whole layer — a real browser against a
-    // real Docker Compose stack — when the cheap compiler check already failed is strictly
-    // better than re-discovering the identical compile error a great deal more slowly.
+    // Not a hard dependency the way `bundle`'s `after: ['build']` is: playwright.config.ts's
+    // `webServer` builds the frontend itself, every run, before serving it — see its own doc
+    // comment (FIX ROUND 2) for why relying on a PRIOR `npm run build` cannot be trusted:
+    // Playwright starts `webServer` BEFORE `global-setup.ts` ever runs, so this row does not
+    // depend on `build` having passed to produce a CORRECT result. `after` still buys what it
+    // buys for `bundle`: skipping the single heaviest, slowest row in this whole layer — a real
+    // browser against a real Docker Compose stack — when the cheap compiler check already
+    // failed is strictly better than re-discovering the identical compile error more slowly.
     proves:
       "`npm run test:e2e` (`playwright test`, `retries: 0` — a single flaky run is exactly as " +
       "red as a deterministic one) exits 0 only when ALL THREE of e2e/smoke.spec.ts's " +
       'assertions hold, in one real Chromium session, against the REAL stack e2e/global-' +
       "setup.ts brings up — `docker compose up -d --wait postgres redis backend`, gated on the " +
       "same `/health/ready` healthcheck docker-compose.yml already defines, then `npm run " +
-      "db:seed` (idempotent) — and a real production frontend build (`vite preview` over a " +
-      "fresh `vite build`, never the dev server): (1) the sign-in page renders, and submitting " +
-      "the seeded owner's real credentials (`admin`/`admin`) through the UI form reaches the " +
-      "dashboard; (2) the dashboard's «Квитанцій сьогодні» stat tile renders a positive integer " +
-      "sourced from that seed — not NaN, and not the zero that would be indistinguishable from " +
-      "an empty state; (3) zero `page.on('pageerror')` events and zero `page.on('requestfailed')` " +
-      'events fired anywhere during the run. Four mechanisms outside the brief\'s own 3-step list ' +
-      'make that REAL stack real rather than superficially so, all found empirically while ' +
-      "building this row, all documented in global-setup.ts itself: `APP_URL` is overridden to " +
-      "this preview server's own origin for the one `docker compose up` call (the backend's CORS " +
-      'allowlist otherwise never includes the deliberately-non-5173 preview port, so every ' +
-      'request the browser makes would be rejected before reaching the app); any seeded shift ' +
-      'still open from a previous day is closed in Postgres before `db:seed` runs (`dev-seed.ts` ' +
-      "opens a fresh shift per point for \"today\" but never closes yesterday's, so its own " +
+      "db:seed` (idempotent) — and a real production frontend build that playwright.config.ts's " +
+      "own `webServer` builds and serves ITSELF, every run (`npm run build -w frontend && npm " +
+      "run preview -w frontend -- --port 4173 --strictPort` — `vite preview`, never the dev " +
+      "server): (1) the sign-in page renders, and submitting the seeded owner's real credentials " +
+      "(`admin`/`admin`) through the UI form reaches the dashboard; (2) the dashboard's «Квитанцій " +
+      "сьогодні» stat tile renders a positive integer sourced from that seed — not NaN, and not " +
+      "the zero that would be indistinguishable from an empty state; (3) zero " +
+      "`page.on('pageerror')` events and zero `page.on('requestfailed')` events fired anywhere " +
+      "during the run. FIX ROUND 2 CORRECTED A REAL BUG IN THIS ROW'S OWN DESIGN, found by " +
+      "review, not by this row's own tests: Playwright starts a `webServer` PLUGIN before " +
+      "`config.globalSetup` ever runs (`createGlobalSetupTasks`, read directly out of the " +
+      "installed `playwright` package) — an earlier version of this row built the frontend " +
+      "inside `global-setup.ts` and pointed `webServer` at a bare `vite preview`, which only " +
+      "ever passed by ACCIDENT OF ROW ORDER inside `npm run verify:full` (the `build` row, " +
+      "earlier in the same array, happened to leave a servable `frontend/dist` behind). Run " +
+      "fully standalone — a fresh checkout, a CI runner, or this row's own immediately-" +
+      "preceding run — it died with `Timed out waiting 60000ms from config.webServer`, with " +
+      "`global-setup.ts` never having executed a single line: no compose, no seed, no " +
+      "credentials, nothing. Fixed by moving the build INTO `webServer.command` itself so it " +
+      "cannot depend on anything having run first; PROVEN by deleting `frontend/dist` and " +
+      "running `npm run test:e2e` completely standalone TWICE IN A ROW with no build in " +
+      "between, both green. Two mechanisms outside the brief's own 3-step list make " +
+      "`global-setup.ts`'s own stack real rather than superficially so, both found " +
+      "empirically, both documented there: `APP_URL` is overridden to the preview server's own " +
+      "origin for the one `docker compose up` call (the backend's CORS allowlist otherwise " +
+      'never includes the deliberately-non-5173 preview port, so every request the browser ' +
+      'makes would be rejected before reaching the app — this also RECREATES the shared ' +
+      "`backend` container, a mutation of state outside this row's own process, non-destructive " +
+      "since the next plain `docker compose up` recreates it back); and any seeded shift still " +
+      "open from a previous day is closed in Postgres before `db:seed` runs (`dev-seed.ts` opens " +
+      "a fresh shift per point for \"today\" but never closes yesterday's, so its own " +
       'idempotency holds only WITHIN one calendar day — the first `db:seed` on any later day ' +
-      "collides with Postgres's own `UQ_shifts_open_per_point` constraint without this); the " +
-      "frontend is rebuilt with an explicit `VITE_API_URL` every run (Vite bakes that value in at " +
-      "BUILD time, never at `vite preview` time, and this is the first row in the whole verify " +
-      "layer to actually EXECUTE the built frontend rather than merely compile it); and " +
-      "frontend/dist is deleted both immediately before that rebuild and again by global-" +
-      "teardown.ts afterward, because a direct `npm run build -w frontend` call is invisible to " +
-      "Turborepo's output cache and a cache-satisfied `npm run build` (the `build` row `smoke` " +
-      "runs `after`) does not clear the directory first — see `bundle`'s own `blindSpot` for the " +
-      "534-KiB-gzip-against-a-305-KiB-ceiling false failure this produced before the delete was " +
-      "added. `global-teardown.ts` then returns only the services THIS run itself started to " +
-      "`stop`ped — never `down`, never " +
-      "`down -v` — because docker-compose.yml's project name (`web-starter`) is shared across " +
-      'every worktree of this repo and the main checkout, and `-v` would destroy the real ' +
-      "`pg_data`/`uploads_dev` volumes; a service global-setup.ts found already running (another " +
-      "session's) is left running, exactly as found. AS A DATED SNAPSHOT, MEASURED 2026-09-10: a " +
-      'fully cold `npm run test:e2e` (every container starting from stopped) completed in ~22s ' +
-      "wall clock, of which the test itself ran in under a second (~0.8s) — nearly all of the " +
-      "time is `--wait`ing on the backend's healthcheck, `npm run db:seed`, and the frontend " +
-      "rebuild (~0.5s); a warm re-run (Postgres/Redis already up) completed in ~16s. The seeded " +
-      'network showed 10 receipts across its three open-shift points (Шипинки/Конищів/Гайове, ' +
-      "backend/CLAUDE.md's Dev seed section) the day this was measured — a number that moves " +
-      "with the seed data and is not re-verified by this row beyond being positive.",
+      "collides with Postgres's own `UQ_shifts_open_per_point` constraint without this). " +
+      "`global-teardown.ts` then returns only the services THIS run itself started to " +
+      "`stop`ped — never `down`, never `down -v` — because docker-compose.yml's project name " +
+      "(`web-starter`) is shared across every worktree of this repo and the main checkout, and " +
+      "`-v` would destroy the real `pg_data`/`uploads_dev` volumes; a service global-setup.ts " +
+      "found already running (another session's) is left running, exactly as found — and, as of " +
+      "fix round 2, teardown no longer deletes `frontend/dist`: that belongs to `build`/`bundle`, " +
+      "not to this row, and deleting it there was the direct cause of the standalone-run bug " +
+      "this paragraph documents. AS A DATED SNAPSHOT, MEASURED 2026-09-10 (fix round 2): two " +
+      "consecutive standalone `npm run test:e2e` runs, `frontend/dist` deleted before the " +
+      "first and not rebuilt in between (each run rebuilds it itself, inside `webServer." +
+      "command`), both completed in ~20.6s wall clock — the frontend build " +
+      "(`tsc -b && vite build`) adds well under a second over the previous design's bare " +
+      "`vite preview` start. The seeded network showed 10 receipts " +
+      'across its three open-shift points (Шипинки/Конищів/Гайове, backend/CLAUDE.md\'s Dev ' +
+      "seed section) the day this was measured — a number that moves with the seed data and is " +
+      'not re-verified by this row beyond being positive.',
     blindSpot:
       'Exercises exactly ONE path through the app — sign in, land on the dashboard, read one ' +
       'stat tile — and says nothing about any other screen, role, or flow: reception, day, ' +
@@ -1108,11 +1123,16 @@ export const CHECKS = [
       "regression in either is invisible to this row. `page.on('requestfailed')` fires only for " +
       'a NETWORK-layer failure (refused connection, aborted, DNS) — a backend that answers with ' +
       'a well-formed 500 completes the HTTP transaction and is invisible to assertion 3 entirely, ' +
-      'even though the dashboard may then render visibly broken. And this row\'s own global-' +
-      'setup.ts rebuilds frontend/dist on every run (see this row\'s own `proves`) — after this ' +
-      "row runs, whatever `build`, `bundle` or `docker` most recently measured on disk is gone, " +
-      "overwritten by this row's own build, a real side effect worth knowing about before " +
-      'reading `frontend/dist` for anything else in the same session.',
+      'even though the dashboard may then render visibly broken. `global-setup.ts`\'s `APP_URL` ' +
+      "override RECREATES the `backend` container docker-compose.yml names for ordinary dev use " +
+      "— shared across every worktree of this repo and the main checkout — so anyone with the " +
+      "dev stack actively running elsewhere on this machine sees their `backend` container " +
+      "restart the moment this row runs; non-destructive, but a real mutation of state this " +
+      "row's own process does not own. And `webServer.command` rebuilds `frontend/dist` on " +
+      "every run (`npm run build -w frontend`, a direct workspace-script call outside Turbo's " +
+      "own cache) — after this row runs, whatever `build`/`bundle`/`docker` most recently " +
+      "measured on disk is gone, overwritten by this row's own build, a real side effect worth " +
+      'knowing about before reading `frontend/dist` for anything else in the same session.',
   },
 ]
 

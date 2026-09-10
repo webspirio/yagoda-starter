@@ -1,11 +1,10 @@
 import { execFileSync } from 'node:child_process';
-import { existsSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 
 const ROOT = path.resolve(__dirname, '..');
 const STATE_FILE = path.join(__dirname, '.auth', 'compose-state.json');
 const SERVICES = ['postgres', 'redis', 'backend'] as const;
-const FRONTEND_DIST = path.join(ROOT, 'frontend', 'dist');
 
 /**
  * Returns the state global-setup.ts recorded for it: the subset of `SERVICES` that
@@ -29,34 +28,6 @@ function alreadyRunningBeforeThisRun(): readonly string[] {
 }
 
 /**
- * Deletes `frontend/dist` — found empirically to be load-bearing, not tidiness.
- * global-setup.ts writes this directory with a direct `npm run build -w frontend`
- * call, which is invisible to Turborepo's own output cache (the `build` verify row's
- * `npm run build` is `turbo build`, tracked by content hash). Reproduced directly: with
- * `frontend/dist` already holding this row's own build (a `VITE_API_URL`-specific
- * content hash Turbo never produced), a plain `npm run build` that Turbo can satisfy
- * from cache does NOT clear the directory first — `vite build`'s own `emptyOutDir`
- * logic only runs when `vite build` actually executes, which a cache HIT skips
- * entirely — so Turbo's cached files land ALONGSIDE this row's leftover ones instead of
- * replacing them. `scripts/verify/checks/bundle-size.mjs` sums every `.js`/`.css` file
- * under `dist/assets`, so two coexisting builds means it measures roughly DOUBLE the
- * real bundle and fails with a false "OVER BUDGET" a great deal larger than any genuine
- * regression would ever produce — confirmed exactly this way, twice, while building
- * this row (534 KiB gzip against a 305 KiB ceiling, immediately after a clean
- * `npm run bundle` had reported the correct 276 KiB moments earlier). Deleting the
- * directory here — after the test has already run, so this never affects the run it
- * belongs to — guarantees the NEXT `build` (this run's own next `npm run test:e2e`, or
- * an unrelated `build`/`bundle`/`docker` row in someone else's run) starts from empty,
- * where a Turbo cache hit was confirmed (same investigation) to restore correctly.
- * global-setup.ts also deletes it before building, for the same reason in the other
- * direction — belt and suspenders, since either the previous run's teardown or this
- * one crashing before reaching here is what the other one covers.
- */
-function removeFrontendDist(): void {
-  rmSync(FRONTEND_DIST, { recursive: true, force: true });
-}
-
-/**
  * Returns this run's stack to exactly the state it found it in — never further than
  * that, and never with `down`/`down -v` (docker-compose.yml's project name, `web-
  * starter`, is SHARED across every worktree of this repo and the main checkout; `-v`
@@ -68,10 +39,23 @@ function removeFrontendDist(): void {
  * Only stops a service this run's OWN global-setup actually started — a service
  * `global-setup.ts` found already running (someone else's session) is left exactly as
  * it was, running, on the way out.
+ *
+ * FIX ROUND 2 — this function no longer touches `frontend/dist`. An earlier version
+ * deleted it here, reasoning that `smoke`'s own direct `npm run build -w frontend` call
+ * was invisible to Turborepo's cache and could leave a stale, doubled `frontend/dist`
+ * for `build`/`bundle` to trip over later. That reasoning was correct, but deleting the
+ * shared artifact in TEARDOWN was the wrong fix: `frontend/dist` is `build`'s output and
+ * `bundle`'s input, not something this row owns, and deleting it here is exactly what
+ * made row ORDER load-bearing for this row's own next run (or a completely unrelated
+ * standalone `npm run test:e2e`) — with `frontend/dist` gone, `webServer` has nothing to
+ * serve, `vite preview` never binds the port, and Playwright times out after 60s having
+ * never reached `global-setup.ts` at all (`webServer` starts before `globalSetup`; see
+ * playwright.config.ts's own header comment). `webServer.command` now builds the
+ * frontend itself before serving it, every run, which is what actually needed fixing —
+ * see playwright.config.ts. Deleting `frontend/dist` in a teardown a build's own
+ * `emptyOutDir` already keeps correct was never the right layer for that fix.
  */
 export default async function globalTeardown(): Promise<void> {
-  removeFrontendDist();
-
   const preexisting = new Set(alreadyRunningBeforeThisRun());
   const toStop = SERVICES.filter((s) => !preexisting.has(s));
   if (toStop.length === 0) {

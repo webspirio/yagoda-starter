@@ -1,22 +1,12 @@
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
+import { PREVIEW_ORIGIN } from './constants';
 
 const ROOT = path.resolve(__dirname, '..');
 const AUTH_DIR = path.join(__dirname, '.auth');
 const COMPOSE_STATE_FILE = path.join(AUTH_DIR, 'compose-state.json');
 const COMPOSE_SERVICES = ['postgres', 'redis', 'backend'];
-const FRONTEND_DIST = path.join(ROOT, 'frontend', 'dist');
-
-// The frontend's production build (`vite preview`, what `playwright.config.ts`'s
-// `webServer` serves) always runs on this fixed, `--strictPort` origin — see
-// playwright.config.ts's own comment for why 4173, not 5173.
-const PREVIEW_ORIGIN = 'http://localhost:4173';
-
-// docker-compose.yml publishes the backend on this host port (`ports: "3000:3000"`),
-// so this is the URL a browser on the HOST reaches it at — not `http://backend:3000`,
-// which only resolves inside the compose network.
-const BACKEND_URL = 'http://localhost:3000';
 
 // Match docker-compose.yml's own hardcoded `POSTGRES_USER: app` / `POSTGRES_DB: app` —
 // not read from .env, the same way the compose file itself doesn't for these two.
@@ -76,11 +66,15 @@ function runningComposeServices(): string[] {
 }
 
 /**
- * Brings up the real stack the `smoke` row exists to prove composes, then hands the
- * specs a fresh, correctly-configured frontend build and the seeded owner's real
- * credentials. Steps 1 and 3 are the brief's own two remaining items (seeding is step
- * 2); steps 0, 1.5 and 3 are additions this task made beyond the brief's literal
- * 3-step list — each documented here, up front, because each is a genuine deviation:
+ * Brings up the real stack the `smoke` row exists to prove composes, seeds it, and hands
+ * the spec the seeded owner's real credentials. Building and serving the FRONTEND is
+ * deliberately NOT this file's job any more — see playwright.config.ts's `webServer` and
+ * its own header comment (FIX ROUND 2) for why: Playwright starts `webServer` BEFORE this
+ * file's `export default` ever runs, so anything this file did to prepare the frontend
+ * would race it and lose.
+ *
+ * Step numbers below match the brief's own list where they overlap; 0 and 1.5 are
+ * additions this task made, each documented because each is a genuine deviation:
  *
  *  0. Records which of postgres/redis/backend are ALREADY running, to
  *     `e2e/.auth/compose-state.json`, BEFORE step 1 touches anything — see
@@ -100,12 +94,28 @@ function runningComposeServices(): string[] {
  *     dev server already running on 5173) is not. Without this override every request
  *     the spec's browser makes would be rejected by CORS before it ever reached the
  *     app — a failure that looks exactly like "the stack doesn't compose" while actually
- *     testing nothing about composition at all. This only ever affects the env of the
- *     one `docker compose up` call below (never this shared compose project's `.env`
- *     file, and never any other worktree's session): the unconditional 5173 entry means
- *     a real dev frontend using this same backend container is unaffected, and the next
- *     plain `docker compose up` (no override) recreates the backend with the ordinary
- *     `APP_URL` from `.env` again.
+ *     testing nothing about composition at all.
+ *
+ *     BLIND SPOT / SHARED-STATE WARNING, worth repeating even though `smoke`'s own
+ *     `blindSpot` in scripts/verify/registry.mjs says it too: an env-var change makes
+ *     Compose RECREATE the `backend` container (a fresh container, not merely a restart),
+ *     even though only THIS one child-process invocation's env differs — this container
+ *     is the SAME one docker-compose.yml names for ordinary dev use, shared across every
+ *     worktree of this repo and the main checkout. Non-destructive (the next plain
+ *     `docker compose up`, with no override, recreates it again with the ordinary
+ *     `APP_URL` from `.env`) but it IS a mutation of shared state, not scoped purely to
+ *     this process the way an env var normally would be — anyone with the dev stack
+ *     actively running elsewhere on this machine will see their `backend` container
+ *     restart when this row runs.
+ *
+ *     TESTING TRAP, for the next person who tries to reproduce the backend-down failure
+ *     this row is supposed to catch: `docker compose stop backend` does NOT work, because
+ *     THIS line's own `--wait ... backend` brings it right back up a moment later, inside
+ *     the very run you are trying to break. The backend has to be missing from the `up`
+ *     call itself — temporarily edit the services array two lines below to
+ *     `['postgres', 'redis']`, run, capture the failure, then revert. Costs about ten
+ *     minutes to rediscover if you don't already know it; this comment is so you don't
+ *     have to.
  *
  *  1.5. Closes any OPEN seeded shift dated before today, straight in Postgres. Found
  *     empirically, not hypothesised: the very first time this file ran against this
@@ -137,35 +147,7 @@ function runningComposeServices(): string[] {
  *     already holds inserts nothing new when the demo dataset for today is already
  *     present, and populates it from empty otherwise.
  *
- *  3. Deletes `frontend/dist`, then rebuilds it with an explicit `VITE_API_URL`. Vite
- *     bakes `VITE_API_URL` into the bundle at BUILD time (`frontend/src/shared/lib/env/
- *     index.ts` reads it off `import.meta.env` at module load), never at `vite preview`
- *     time — so a dist built without that variable set (exactly what plain `npm run
- *     build`, and this repo's own `build` verify row, produce today: neither sets it)
- *     throws "VITE_API_URL is required" the instant the app boots in a real browser.
- *     That is a real bug this task surfaced, not a hypothetical: this row is the first
- *     one in the whole verify layer to actually EXECUTE the built frontend rather than
- *     just compile it. Rebuilding here, every run, with the value that matches step 1's
- *     published port, guarantees the preview server always serves a dist wired to the
- *     real compose backend — regardless of whether `build` ran first, and regardless of
- *     what env it ran with. Deleting first is ALSO load-bearing, not tidiness — a second
- *     real bug this task surfaced, this time affecting `build`/`bundle` on whatever runs
- *     NEXT: `npm run build -w frontend` (a direct workspace script call) is invisible to
- *     Turborepo's own output cache, and a plain `npm run build` (the `build` verify row,
- *     `turbo build`) that Turbo can satisfy from cache does NOT clear `frontend/dist`
- *     first — `vite build`'s own `emptyOutDir` only runs when `vite build` actually
- *     executes, which a Turbo cache HIT skips — so the restored cached files land
- *     ALONGSIDE whatever this step left rather than replacing it, and
- *     scripts/verify/checks/bundle-size.mjs (which sums every `.js`/`.css` file under
- *     `dist/assets`) then measures roughly DOUBLE the real bundle and fails with a false
- *     "OVER BUDGET" nowhere close to any genuine regression. Reproduced directly while
- *     building this row (534 KiB gzip against a 305 KiB ceiling, immediately after a
- *     clean `npm run bundle` had reported the correct 276 KiB). Deleting before AND after
- *     (global-teardown.ts does this too, deleting after the test instead of before it) is
- *     belt and suspenders: whichever one runs is what protects a run that starts from a
- *     crash the other side of it.
- *
- *  4. Writes the seeded owner's credentials to `e2e/.auth/owner.json` (gitignored,
+ *  3. Writes the seeded owner's credentials to `e2e/.auth/owner.json` (gitignored,
  *     regenerated every run) for `smoke.spec.ts` to read. The spec still drives the
  *     real sign-in FORM — this file only supplies the values it types into it, never a
  *     shortcut (a `storageState`, a minted token) around the UI login the brief's first
@@ -200,17 +182,6 @@ export default async function globalSetup(): Promise<void> {
   ]);
 
   runOrExplain('db seed', 'npm', ['run', 'db:seed']);
-
-  // See this function's own doc comment (step 3) for why this delete is load-bearing,
-  // not tidiness: it keeps a stale Turbo-cached `frontend/dist` (from `npm run build`,
-  // the `build` verify row) from landing ALONGSIDE this build's own output.
-  rmSync(FRONTEND_DIST, { recursive: true, force: true });
-  runOrExplain(
-    'frontend build (with VITE_API_URL set for the preview server)',
-    'npm',
-    ['run', 'build', '-w', 'frontend'],
-    { ...process.env, VITE_API_URL: BACKEND_URL },
-  );
 
   writeFileSync(
     path.join(AUTH_DIR, 'owner.json'),
