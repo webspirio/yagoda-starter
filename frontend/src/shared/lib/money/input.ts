@@ -15,5 +15,5 @@ export const CRATES_INPUT = /^\d{1,7}$/;
  * помилка користувача, тому це нормалізація, а не відмова.
  */
 export function normalizeAmount(value: string): string {
-  return value.replace(/\s/g, '').replace(',', '.').trim();
+  return value.replace(/\s/g, '').replace(',', '.');
 }
