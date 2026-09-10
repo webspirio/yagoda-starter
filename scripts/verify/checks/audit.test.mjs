@@ -89,15 +89,6 @@ function makeNpmShim({ lsJson, auditJson }) {
 }
 
 /**
- * The committed baseline carries exactly one entry, `@nestjs/testing` — every fixture
- * below includes it, unchanged, so the real baseline entry never goes STALE underneath an
- * unrelated test. It is deliberately `via: []` (no advisory of its own — real npm audit
- * output for a cascade-only name has no object-shaped `via` entries), matching production.
- */
-const BASELINE_SAFE_AUDIT_JSON = { vulnerabilities: { '@nestjs/testing': { severity: 'high', via: [] } } }
-const EMPTY_LS_JSON = { dependencies: {} }
-
-/**
  * A frozen snapshot of this repo's REAL `npm ls --omit=dev --all --json` / `npm audit
  * --json` output, captured 2026-09-10 (see scripts/verify/baselines/audit.json's own
  * `note` for the commands run to verify every claim below). Frozen rather than live: the
@@ -117,6 +108,7 @@ const REAL_SNAPSHOT_AUDIT_JSON = {
       via: [
         { title: 'multer vulnerable to Denial of Service via crafted multipart field names' },
         { title: 'multer vulnerable to Denial of Service via file descriptor leak on aborted uploads' },
+        { title: 'multer vulnerable to file size limit bypass via async fileFilter race condition' },
         { title: 'multer vulnerable to Denial of Service via oversized array index in field names' },
       ],
     },
@@ -137,52 +129,62 @@ const REAL_SNAPSHOT_LS_JSON = {
 }
 
 /**
+ * The committed baseline now carries all EIGHT real entries (R18), not just
+ * `@nestjs/testing` — every fixture below that is not specifically exercising the
+ * production-tree/productionRisk path reuses this REAL snapshot as its base and adds ONE
+ * fabricated vulnerability on top, so none of the 8 real entries ever goes STALE
+ * underneath an unrelated test. Paired with `EMPTY_LS_JSON` (rather than
+ * `REAL_SNAPSHOT_LS_JSON`) in most of those tests: none of the 8 real names is then
+ * flagged `prod`, so they fall back to the plain `reason` check, which they already pass
+ * — deliberately simpler than reproducing the real production-tree shape in every
+ * unrelated test.
+ */
+const BASELINE_SAFE_AUDIT_JSON = REAL_SNAPSHOT_AUDIT_JSON
+const EMPTY_LS_JSON = { dependencies: {} }
+
+/**
  * Adds one entry to the baseline's `entries` array. Returns the ORIGINAL file content, for
  * restoring in a `finally` — same idiom as money-rounding.test.mjs's addBaselineEntry.
  *
- * @param {{ name: string, severity?: string, added?: string, reason: string }} entry
+ * @param {{ name: string, severity?: string, added?: string, reason: string, productionRisk?: { vulnerability: string, reachability: string, fix: string } }} entry
  * @returns {string}
  */
 function addBaselineEntry(entry) {
   const original = readFileSync(BASELINE, 'utf8')
   const baseline = JSON.parse(original)
-  baseline.entries = [
-    ...baseline.entries,
-    {
-      name: entry.name,
-      severity: entry.severity ?? 'moderate',
-      added: entry.added ?? '2026-09-10',
-      reason: entry.reason,
-    },
-  ]
+  /** @type {any} */
+  const newEntry = {
+    name: entry.name,
+    severity: entry.severity ?? 'moderate',
+    added: entry.added ?? '2026-09-10',
+    reason: entry.reason,
+  }
+  if (entry.productionRisk) newEntry.productionRisk = entry.productionRisk
+  baseline.entries = [...baseline.entries, newEntry]
   writeFileSync(BASELINE, `${JSON.stringify(baseline, null, 2)}\n`)
   return original
 }
 
-test('a REAL snapshot of this repo\'s advisories, captured 2026-09-10, is RED for a real reason — 7 production-tree names cannot be baselined, and only @nestjs/testing (dev-only) is', () => {
+/** A complete, non-stub `productionRisk` object — well over the 30-character floor on
+ * each of its three fields. @type {{ vulnerability: string, reachability: string, fix: string }} */
+const VALID_PRODUCTION_RISK = {
+  vulnerability: 'Test-only fixture standing in for a real GHSA advisory description, well over thirty characters.',
+  reachability: 'Test-only fixture standing in for a real reachability explanation, well over thirty characters.',
+  fix: 'Test-only fixture standing in for a real fix-and-blocker explanation, well over thirty characters.',
+}
+
+test('a REAL snapshot of this repo\'s advisories, captured 2026-09-10, is GREEN (R18) — all 8 names, including the 7 production-tree ones, are RECORDED with a complete productionRisk entry, not fixed', () => {
   const shim = makeNpmShim({ lsJson: REAL_SNAPSHOT_LS_JSON, auditJson: REAL_SNAPSHOT_AUDIT_JSON })
   try {
     const res = run({ env: shim.env })
-    assert.equal(res.status, 1, res.out)
-    assert.match(res.out, /audit: RED/)
-    for (const name of [
-      '@nestjs/core',
-      '@nestjs/platform-express',
-      '@nestjs/schedule',
-      '@nestjs/terminus',
-      '@nestjs/typeorm',
-      'nestjs-pino',
-    ]) {
-      assert.match(res.out, new RegExp(`IN THE PRODUCTION TREE: high ${name.replace(/[/]/g, '\\/')} —`))
-    }
-    assert.match(
-      res.out,
-      /IN THE PRODUCTION TREE: high multer — "multer vulnerable to Denial of Service via crafted multipart field names"/,
-    )
-    // The one legitimately dev-only, baselined name never appears in the failure list.
-    assert.doesNotMatch(res.out, /@nestjs\/testing/)
+    assert.equal(res.status, 0, res.out)
+    assert.match(res.out, /8 advisories \(high: 8\)/)
+    assert.match(res.out, /7 reachable from the production tree, each RECORDED with a complete productionRisk/)
+    assert.doesNotMatch(res.out, /PRODUCTION ADVISORY NOT BASELINED/)
+    assert.doesNotMatch(res.out, /PRODUCTION ENTRY INCOMPLETE/)
     assert.doesNotMatch(res.out, /NEW ADVISORY/)
     assert.doesNotMatch(res.out, /STALE ENTRY/)
+    assert.doesNotMatch(res.out, /CRITICAL/)
   } finally {
     shim.cleanup()
   }
@@ -223,7 +225,7 @@ test('a baseline entry whose advisory no longer appears is a STALE ENTRY, not a 
   }
 })
 
-test('an advisory reachable from the production tree fails outright and is never offered as baselineable', () => {
+test('an unrecorded production-tree advisory is PRODUCTION ADVISORY NOT BASELINED, not a silent pass and not a generic NEW ADVISORY (R18)', () => {
   const shim = makeNpmShim({
     lsJson: { dependencies: { 'zz-audit-fixture-prod-package': {} } },
     auditJson: {
@@ -236,11 +238,122 @@ test('an advisory reachable from the production tree fails outright and is never
   try {
     const res = run({ env: shim.env })
     assert.equal(res.status, 1, res.out)
-    assert.match(res.out, /IN THE PRODUCTION TREE: moderate zz-audit-fixture-prod-package/)
-    // A production-tree name is never a candidate for "add it to the baseline" — the
-    // new-advisory loop skips it entirely, on purpose (see audit.mjs's hard-floor comment).
+    assert.match(res.out, /PRODUCTION ADVISORY NOT BASELINED: moderate zz-audit-fixture-prod-package — "zz fixture prod advisory"/)
+    // A production-tree name gets the MORE SPECIFIC message above, not the generic one —
+    // the new-advisory loop explicitly skips it (see audit.mjs's comment there).
     assert.doesNotMatch(res.out, /NEW ADVISORY/)
   } finally {
+    shim.cleanup()
+  }
+})
+
+test('a production-tree advisory recorded with a COMPLETE productionRisk entry passes (R18 — a production-tree finding is no longer an automatic, unconditional failure)', () => {
+  const shim = makeNpmShim({
+    lsJson: { dependencies: { 'zz-audit-fixture-prod-ok': {} } },
+    auditJson: {
+      vulnerabilities: {
+        ...BASELINE_SAFE_AUDIT_JSON.vulnerabilities,
+        'zz-audit-fixture-prod-ok': { severity: 'moderate', via: [{ title: 'zz fixture prod advisory, recorded' }] },
+      },
+    },
+  })
+  const originalBaseline = addBaselineEntry({
+    name: 'zz-audit-fixture-prod-ok',
+    severity: 'moderate',
+    reason: VALID_TEST_REASON,
+    productionRisk: VALID_PRODUCTION_RISK,
+  })
+  try {
+    const res = run({ env: shim.env })
+    assert.equal(res.status, 0, res.out)
+    assert.doesNotMatch(res.out, /PRODUCTION ADVISORY NOT BASELINED/)
+    assert.doesNotMatch(res.out, /PRODUCTION ENTRY INCOMPLETE/)
+  } finally {
+    writeFileSync(BASELINE, originalBaseline)
+    shim.cleanup()
+  }
+})
+
+test('a production-tree advisory whose baseline entry has NO productionRisk object at all is PRODUCTION ENTRY INCOMPLETE (R18)', () => {
+  const shim = makeNpmShim({
+    lsJson: { dependencies: { 'zz-audit-fixture-prod-missing-risk': {} } },
+    auditJson: {
+      vulnerabilities: {
+        ...BASELINE_SAFE_AUDIT_JSON.vulnerabilities,
+        'zz-audit-fixture-prod-missing-risk': { severity: 'moderate', via: [{ title: 'zz fixture prod advisory' }] },
+      },
+    },
+  })
+  // A plain `reason`, no `productionRisk` — exactly the shape a dev-only entry uses,
+  // which is no longer enough once the name is production-reachable.
+  const originalBaseline = addBaselineEntry({ name: 'zz-audit-fixture-prod-missing-risk', reason: VALID_TEST_REASON })
+  try {
+    const res = run({ env: shim.env })
+    assert.equal(res.status, 1, res.out)
+    assert.match(res.out, /PRODUCTION ENTRY INCOMPLETE: zz-audit-fixture-prod-missing-risk/)
+    assert.match(res.out, /"productionRisk" object.*none is present/)
+    assert.doesNotMatch(res.out, /PRODUCTION ADVISORY NOT BASELINED/)
+  } finally {
+    writeFileSync(BASELINE, originalBaseline)
+    shim.cleanup()
+  }
+})
+
+test('a production-tree advisory whose productionRisk has one stub field is PRODUCTION ENTRY INCOMPLETE, naming that exact field (R18)', () => {
+  const shim = makeNpmShim({
+    lsJson: { dependencies: { 'zz-audit-fixture-prod-stub-field': {} } },
+    auditJson: {
+      vulnerabilities: {
+        ...BASELINE_SAFE_AUDIT_JSON.vulnerabilities,
+        'zz-audit-fixture-prod-stub-field': { severity: 'moderate', via: [{ title: 'zz fixture prod advisory' }] },
+      },
+    },
+  })
+  const originalBaseline = addBaselineEntry({
+    name: 'zz-audit-fixture-prod-stub-field',
+    reason: VALID_TEST_REASON,
+    productionRisk: { ...VALID_PRODUCTION_RISK, fix: 'TODO' },
+  })
+  try {
+    const res = run({ env: shim.env })
+    assert.equal(res.status, 1, res.out)
+    assert.match(res.out, /PRODUCTION ENTRY INCOMPLETE: zz-audit-fixture-prod-stub-field/)
+    assert.match(res.out, /productionRisk\.fix reason is a stub/)
+    // The other two fields are fine — only `fix` should be named.
+    assert.doesNotMatch(res.out, /productionRisk\.vulnerability/)
+    assert.doesNotMatch(res.out, /productionRisk\.reachability/)
+  } finally {
+    writeFileSync(BASELINE, originalBaseline)
+    shim.cleanup()
+  }
+})
+
+test('a CRITICAL advisory is still never baselineable, even with a complete productionRisk — the floor keeps its teeth (R18)', () => {
+  const shim = makeNpmShim({
+    lsJson: { dependencies: { 'zz-audit-fixture-critical-prod': {} } },
+    auditJson: {
+      vulnerabilities: {
+        ...BASELINE_SAFE_AUDIT_JSON.vulnerabilities,
+        'zz-audit-fixture-critical-prod': { severity: 'critical', via: [{ title: 'zz fixture critical prod advisory' }] },
+      },
+    },
+  })
+  const originalBaseline = addBaselineEntry({
+    name: 'zz-audit-fixture-critical-prod',
+    severity: 'critical',
+    reason: VALID_TEST_REASON,
+    productionRisk: VALID_PRODUCTION_RISK,
+  })
+  try {
+    const res = run({ env: shim.env })
+    assert.equal(res.status, 1, res.out)
+    assert.match(res.out, /CRITICAL: zz-audit-fixture-critical-prod — "zz fixture critical prod advisory"/)
+    // A well-formed productionRisk buys nothing for a critical — it never even reaches
+    // that check.
+    assert.doesNotMatch(res.out, /PRODUCTION ADVISORY NOT BASELINED/)
+    assert.doesNotMatch(res.out, /PRODUCTION ENTRY INCOMPLETE/)
+  } finally {
+    writeFileSync(BASELINE, originalBaseline)
     shim.cleanup()
   }
 })

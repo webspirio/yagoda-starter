@@ -8,12 +8,28 @@
  *
  * Two tiers of strictness, deliberately different:
  *
- *   - Anything reachable from the PRODUCTION dependency tree, and anything of CRITICAL
- *     severity, fails outright and CANNOT be baselined. A runtime-reachable advisory is
- *     not something you get to write a reason for — see main()'s hard-floor loop.
- *   - Everything else is enumerated in a dated baseline with a reason, bidirectional as
- *     usual: a new advisory fails, and one that has been fixed (or that npm no longer
- *     reports) must be removed.
+ *   - Anything of CRITICAL severity fails outright and CANNOT be baselined, no matter
+ *     where it sits in the tree — see main()'s hard-floor loop. A critical is not
+ *     something you get to write a reason for.
+ *   - Everything else — INCLUDING an advisory reachable from the PRODUCTION dependency
+ *     tree — is enumerated in a dated baseline with a reason, bidirectional as usual: a
+ *     new advisory fails, and one that has been fixed (or that npm no longer reports)
+ *     must be removed. A PRODUCTION-tree entry is held to a STRICTER bar than a dev-only
+ *     one: its baseline entry must also carry a `productionRisk` object with three
+ *     independently non-stub fields — `vulnerability` (what it is), `reachability`
+ *     (whether/why it is reachable here) and `fix` (what fix exists and what blocks
+ *     applying it) — see `productionRiskProblems()`. A production-tree advisory recorded
+ *     with a missing or vague `productionRisk` fails this check exactly as hard as one
+ *     never recorded at all.
+ *
+ * RULING R18 (2026-09-10, fix round 1): an earlier version of this file made a
+ * production-tree advisory UNCONDITIONALLY unbaselineable. That was overruled: a row that
+ * can never go green once such an advisory exists is not a gate, it is noise that teaches
+ * people to ignore red. The floor keeps its teeth a different way — the advisory is
+ * RECORDED, in the specific detail above, rather than silently forgiven — and whether to
+ * actually FIX it (a nested per-parent `overrides` entry, a NestJS major upgrade, or a
+ * formally accepted risk) is a repository-owner decision this verification layer does not
+ * get to make on its own.
  *
  * This lives in the FULL tier, not the fast one, on purpose. Its verdict depends on the
  * npm registry's advisory database, which changes without anything changing in this repo
@@ -158,7 +174,46 @@ function reasonProblem(reason) {
 }
 
 /**
- * @typedef {{ name: string, severity: string, added: string, reason: string }} BaselineEntry
+ * Required, independently-checked explanation fields for a PRODUCTION-tree baseline
+ * entry (R18). Each is run through the same `reasonProblem()` a plain `reason` gets, so
+ * "not just the generic 30-character rule" becomes THREE independently-enforced,
+ * non-stub fields rather than one free-text blob — a structural (schema-shape) check,
+ * not a keyword search inside prose that could be gamed by stuffing the right words in.
+ *
+ * @typedef {{ vulnerability: string, reachability: string, fix: string }} ProductionRisk
+ */
+const PRODUCTION_RISK_FIELDS = /** @type {const} */ (['vulnerability', 'reachability', 'fix'])
+
+/**
+ * @param {any} entry a baseline entry, already known to name a currently production-tree,
+ *   non-critical advisory
+ * @returns {string[]} problems, or [] when `entry.productionRisk` is complete
+ */
+function productionRiskProblems(entry) {
+  const risk = entry?.productionRisk
+  if (!risk || typeof risk !== 'object') {
+    return [
+      'this advisory is reachable from the PRODUCTION dependency tree, so its baseline entry must carry a ' +
+        '"productionRisk" object with non-stub "vulnerability", "reachability" and "fix" fields (see this ' +
+        "file's header) — none is present.",
+    ]
+  }
+  /** @type {string[]} */
+  const problems = []
+  for (const field of PRODUCTION_RISK_FIELDS) {
+    const problem = reasonProblem(risk[field])
+    if (problem) {
+      problems.push(
+        `productionRisk.${field} ${problem} — a production-tree advisory needs a REAL, specific answer there ` +
+          "(see this file's header for what each field must say), not a placeholder.",
+      )
+    }
+  }
+  return problems
+}
+
+/**
+ * @typedef {{ name: string, severity: string, added: string, reason: string, productionRisk?: ProductionRisk }} BaselineEntry
  * @typedef {{ createdAt: string, note: string, entries: BaselineEntry[] }} Baseline
  */
 
@@ -231,19 +286,25 @@ function main() {
       existingBaseline = { createdAt: new Date().toISOString().slice(0, 10), note: '', entries: [] }
     }
     const existing = new Map(existingBaseline.entries.map((e) => [e.name, e]))
-    // Only names that could ever be exempted are written: a production-tree or critical
-    // name can never be baselined (see main()'s hard-floor loop below), so writing one
-    // here would be dead weight that looks like an exemption but changes nothing.
+    // Only a CRITICAL name is dead weight to write (see main()'s hard-floor loop below —
+    // critical can never be baselined, full stop). A production-tree name IS written now
+    // (R18): it needs a human to fill in `productionRisk`, scaffolded empty below, before
+    // this check will accept it.
     const entries = found
-      .filter((a) => !a.prod && a.severity !== 'critical')
+      .filter((a) => a.severity !== 'critical')
       .map((a) => {
         const prior = existing.get(a.name)
-        return {
+        /** @type {BaselineEntry} */
+        const entry = {
           name: a.name,
           severity: a.severity,
           added: prior?.added ?? new Date().toISOString().slice(0, 10),
           reason: prior?.reason ?? '',
         }
+        if (a.prod) {
+          entry.productionRisk = prior?.productionRisk ?? { vulnerability: '', reachability: '', fix: '' }
+        }
+        return entry
       })
     writeFileSync(
       BASELINE_PATH,
@@ -264,15 +325,9 @@ function main() {
   /** @type {string[]} */
   const problems = []
 
-  // Hard floor: these two classes are not baselinable at all, independent of what the
-  // baseline file says. A baseline entry for one of these names changes nothing here.
+  // Hard floor: CRITICAL is never baselinable, independent of what the baseline file
+  // says — a baseline entry for a critical name changes nothing here.
   for (const a of found) {
-    if (a.prod) {
-      problems.push(
-        `IN THE PRODUCTION TREE: ${a.severity} ${a.name} — "${a.title}". This ships in the bundle served to ` +
-          `users, so there is no exemption for it here: update the dependency (or remove it).`,
-      )
-    }
     if (a.severity === 'critical') {
       problems.push(
         `CRITICAL: ${a.name} — "${a.title}". A critical advisory is never baselined, for any reason: either ` +
@@ -282,6 +337,30 @@ function main() {
   }
 
   const baselineNames = new Set(baseline.entries.map((e) => e.name))
+  const baselineByName = new Map(baseline.entries.map((e) => [e.name, e]))
+
+  // Production-tree, non-critical advisories (R18): not an automatic failure, but held to
+  // the stricter `productionRisk` bar — see this file's header and
+  // `productionRiskProblems()`. Checked before the generic new/stale comparison below,
+  // which explicitly skips these names (they are handled here, with more specific
+  // messaging than a plain "NEW ADVISORY" would give).
+  for (const a of found) {
+    if (!a.prod || a.severity === 'critical') continue
+    const entry = baselineByName.get(a.name)
+    if (!entry) {
+      problems.push(
+        `PRODUCTION ADVISORY NOT BASELINED: ${a.severity} ${a.name} — "${a.title}" is reachable from the ` +
+          `production dependency tree. Add a dated entry to ${BASELINE_REL} with a "productionRisk" object ` +
+          `stating what the vulnerability is, whether/why it is reachable here, and what fix exists and what ` +
+          `blocks applying it.`,
+      )
+      continue
+    }
+    for (const p of productionRiskProblems(entry)) {
+      problems.push(`PRODUCTION ENTRY INCOMPLETE: ${a.name} — ${p}`)
+    }
+  }
+
   for (const a of found) {
     if (a.prod || a.severity === 'critical') continue
     if (!baselineNames.has(a.name)) {
@@ -307,10 +386,15 @@ function main() {
     acc[a.severity] = (acc[a.severity] ?? 0) + 1
     return acc
   }, {})
+  const prodCount = found.filter((a) => a.prod).length
   process.stdout.write(
     `audit: ${found.length} advisor${found.length === 1 ? 'y' : 'ies'} ` +
       `(${Object.entries(bySev).map(([k, v]) => `${k}: ${v}`).join(', ') || 'none'}), all accounted for in ` +
-      `${BASELINE_REL} (${baseline.createdAt}), none in the production tree\n`,
+      `${BASELINE_REL} (${baseline.createdAt})` +
+      (prodCount
+        ? ` — ${prodCount} reachable from the production tree, each RECORDED with a complete productionRisk ` +
+          `entry, not fixed here (see ${BASELINE_REL})\n`
+        : ', none in the production tree\n'),
   )
   process.stdout.write(
     'audit: NOTE — this verdict depends on the npm registry\'s advisory database, which changes without ' +

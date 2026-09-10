@@ -725,37 +725,44 @@ export const CHECKS = [
     // precondition SKIPS this row, it does not order it behind another check.
     proves:
       'Every advisory `npm audit --json` reports for this npm-workspaces tree (spanning both backend and ' +
-      'frontend) is either reachable ONLY through a dev dependency and recorded in ' +
-      'scripts/verify/baselines/audit.json with a dated, real, >=30-character reason, or this exact command ' +
-      'fails — and an advisory reachable from the PRODUCTION dependency tree, or of CRITICAL severity, fails ' +
-      'UNCONDITIONALLY, regardless of what the baseline says: neither can ever be baselined (see audit.mjs\'s ' +
-      'hard-floor loop, checked against every run independent of the file). The comparison over what remains ' +
-      'is bidirectional like every ratchet in this layer: a new baselineable advisory not yet listed fails it, ' +
-      'and a listed entry npm audit no longer reports fails it too. AS A DATED SNAPSHOT, MEASURED 2026-09-10, ' +
-      'this command is CURRENTLY RED for a real, verified reason, not a hypothetical: npm audit reports 8 ' +
-      'vulnerable package names, all severity high (0 critical, 0 moderate, 0 low, 0 info), every one tracing ' +
-      "to the same root cause — multer@2.2.0's DoS advisories GHSA-wc9g-mqfw-jrwm, GHSA-qfvm-cv95-jqjf and " +
-      "GHSA-535w-7cp7-47q4 — pulled in through @nestjs/platform-express@11.2.3's EXACT pin on multer 2.2.0 " +
-      '(confirmed: `npm view @nestjs/platform-express@11.2.3 dependencies.multer` prints "2.2.0", no range), ' +
-      'fixable only by a NestJS v12 major upgrade (confirmed: `npm view @nestjs/platform-express versions` ' +
-      'shows 11.2.3 as the last 11.x release; `npm audit fix --dry-run` independently confirms "run ... ' +
-      '--force"), out of scope for this task. 7 of the 8 names — multer itself, @nestjs/core, ' +
-      '@nestjs/platform-express, @nestjs/schedule, @nestjs/terminus, @nestjs/typeorm and nestjs-pino — sit in ' +
-      'the production dependency tree (confirmed individually via `npm ls <name> --omit=dev`, each a non-empty ' +
-      'tree) and are therefore blocked by the hard floor; only @nestjs/testing is dev-only (confirmed empty via ' +
-      'the same command) and is the one entry scripts/verify/baselines/audit.json actually records.',
+      'frontend) is recorded in scripts/verify/baselines/audit.json with a dated, real, >=30-character reason, ' +
+      'or this exact command fails — CRITICAL severity is the only class that can never be baselined, full ' +
+      'stop (see audit.mjs\'s hard-floor loop). RULING R18 (this row\'s fix round 1, 2026-09-10): an advisory ' +
+      'reachable from the PRODUCTION dependency tree is NOT an automatic failure — it must instead carry a ' +
+      '`productionRisk` object on its entry with three independently non-stub fields (`vulnerability`, ' +
+      '`reachability`, `fix`), checked structurally; a production-tree advisory with a missing or vague ' +
+      '`productionRisk` fails exactly as hard as one never recorded at all. The comparison is bidirectional ' +
+      'like every ratchet in this layer: a new advisory not yet listed fails it, and a listed entry npm audit ' +
+      'no longer reports fails it too. AS A DATED SNAPSHOT, MEASURED 2026-09-10: npm audit reports 8 ' +
+      'vulnerable package names, all severity high (0 critical), ALL RECORDED and this command is GREEN. Every ' +
+      "one traces to the same root cause — multer@2.2.0's DoS/bypass advisories GHSA-wc9g-mqfw-jrwm, " +
+      'GHSA-qfvm-cv95-jqjf, GHSA-535w-7cp7-47q4 and GHSA-qvfw-j98x-7q72 — pulled in through ' +
+      "@nestjs/platform-express@11.2.3's EXACT pin on multer 2.2.0 (confirmed: `npm view " +
+      '@nestjs/platform-express@11.2.3 dependencies.multer` prints "2.2.0", no range). 7 of the 8 names — ' +
+      'multer itself, @nestjs/core, @nestjs/platform-express, @nestjs/schedule, @nestjs/terminus, ' +
+      '@nestjs/typeorm and nestjs-pino — sit in the production dependency tree (confirmed individually via ' +
+      '`npm ls <name> --omit=dev`) and reach this app for real, through image uploads (backend/src/media, up ' +
+      'to 10 MB) via multer\'s FileInterceptor — each carries a complete `productionRisk` recording that fact, ' +
+      'not fixing it: a root `overrides.multer` entry was tried (`npm install`, then `npm install ' +
+      '--package-lock-only`) and does NOT override @nestjs/platform-express\'s exact pin, so a real fix needs ' +
+      'a repository-owner decision (the nested per-parent override form, a NestJS v12 upgrade, or a formally ' +
+      'accepted risk) this verification task does not make on its own. Only @nestjs/testing is dev-only ' +
+      '(confirmed empty via the same `npm ls` command) and needs only the plain `reason` field.',
     blindSpot:
-      "Says nothing about a vulnerability with no advisory published yet, and an advisory's mere presence in " +
-      'this tree says nothing about whether the vulnerable code path is actually reachable from this app — ' +
-      "though for the 7 production-tree names above that reachability is independently confirmed: this repo's " +
-      'own media upload path (backend/src/media) genuinely calls into multer. Package-name granularity, not ' +
-      "GHSA-id granularity: npm audit's own dependency-graph cascade marks every package that merely DEPENDS " +
-      "on a vulnerable one as 'vulnerable' too, with no advisory object of its own (`via` holds plain " +
-      'package-name strings there, not a titled entry) — so a single upstream advisory (multer\'s, here) ' +
-      "inflates into as many baseline-relevant names as there are packages between it and the tree's roots, and " +
-      'this check\'s hard floor treats every one of those cascade names exactly as strictly as it treats multer ' +
-      'itself, even though fixing multer alone would clear all 7 simultaneously — a coarser unit than the ' +
-      "advisory itself. `npm audit`'s own severity classification is trusted as-is: a severity GitHub later " +
+      "Says nothing about a vulnerability with no advisory published yet. And a GREEN row here — including " +
+      'today\'s — can mean either "genuinely no reachable risk" or "a known, reachable, high-severity risk ' +
+      'that is RECORDED but not fixed": this check verifies that a `productionRisk` object\'s three fields ' +
+      'EXIST and are non-stub, never that their CONTENT is true or that the described fix has actually been ' +
+      'applied — a fabricated but plausible-sounding productionRisk entry passes exactly as well as an ' +
+      "accurate one, and nothing here re-derives whether the reachability or fix claims still hold as the " +
+      'tree changes. Reading this row\'s green as "no known production risk" is exactly the misreading R18 ' +
+      'exists to prevent — the risk is in scripts/verify/baselines/audit.json, in detail, for a human to act ' +
+      "on. Package-name granularity, not GHSA-id granularity: npm audit's own dependency-graph cascade marks " +
+      "every package that merely DEPENDS on a vulnerable one as 'vulnerable' too, with no advisory object of " +
+      'its own (`via` holds plain package-name strings there, not a titled entry) — so a single upstream ' +
+      "advisory (multer's, here) inflates into as many baseline-relevant, individually-recorded names as " +
+      "there are packages between it and the tree's roots, even though fixing multer alone would clear all 7 " +
+      "simultaneously. `npm audit`'s own severity classification is trusted as-is: a severity GitHub later " +
       "reclassifies changes this row's verdict without anything in this repo changing, which is exactly why " +
       "this row needs `['npm-registry']` and lives in the full tier, never the fast one. And `info`-severity " +
       'findings are silently dropped before any comparison runs at all, matching npm audit\'s own metadata ' +
