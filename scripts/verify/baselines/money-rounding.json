@@ -1,0 +1,267 @@
+{
+  "createdAt": "2026-09-10",
+  "note": "Every backend/src/**/*.ts arithmetic site this ratchet finds outside the four eslint-scoped modules (src/intakes/, src/payouts/, src/shifts/, src/supplier-balance/) and outside *.spec.ts/*.db-spec.ts, as of 2026-09-10: 29 keys, 32 occurrences. Read individually before writing a reason, not inferred from the shape of the code. Four of the 29 keys are backend/src/common/money.ts's OWN internals (the *, /, and mul()'s two / occurrences on one line) — the money engine works in bigint, not JS number, so it carries none of the float-precision risk this ratchet exists to catch, but the AST heuristic only recognises number-typed or numeric-literal operands, not bigint-safety, so those sites are listed honestly here rather than exempted by widening the rule's path exclusions. Two keys (backend/src/seed/dev-seed.ts:52 and :59) are a genuine concern flagged in this task's report, not a false positive: the dev seed script reimplements money.ts's add() independently, through Number() and plain-number division, to compute real values written into grade_prices.base_price for the seeded demo dataset — a real duplicate of the one authorised rounding seam, left as-is because backend/src is out of scope for this task. Two keys (password-hashing.ts:28's two occurrences) are literal-and-number-typed arithmetic that this rule's single-level operand check cannot prove clear because each is the OUTER multiplication of a left-associative a*b*c chain, whose left operand is itself a BinaryExpression rather than a bare literal or identifier. Every remaining key is one of two shapes: the repeated (page - 1) * limit pagination-offset arithmetic this template's list endpoints all share (10 keys, including pagination-query.dto.ts's own skipOf() helper), or an env-var/config integer parsed with Number()/parseInt() (ports, throttle window/limit) or Math.min() retry-backoff arithmetic that is never a monetary or weight value. None were left unclassified — every entry's reason states what the arithmetic actually is, read at its site. This ratchet is two-directional: a new site not listed here fails scripts/verify/ratchets/money-rounding.mjs, and a listed entry whose site (or exact occurrence count) no longer matches the tree fails it too — this file may only shrink or be re-dated by a reviewed change, never grow by drift.",
+  "entries": [
+    {
+      "key": "backend/src/app.module.ts:97:Number",
+      "file": "backend/src/app.module.ts",
+      "line": 97,
+      "kind": "Number",
+      "occurrences": 1,
+      "added": "2026-09-10",
+      "reason": "ttl: Number(process.env.THROTTLE_TTL_MS ?? 60_000) inside ThrottlerModule.forRootAsync — converts the rate-limiter window (milliseconds) from its env-var string form; the limiter's throttlers[].ttl option requires a plain number, and nothing here is a monetary or weight value."
+    },
+    {
+      "key": "backend/src/app.module.ts:98:Number",
+      "file": "backend/src/app.module.ts",
+      "line": 98,
+      "kind": "Number",
+      "occurrences": 1,
+      "added": "2026-09-10",
+      "reason": "limit: Number(process.env.THROTTLE_LIMIT ?? 100) in the same ThrottlerModule config — the request-count ceiling per window, not money; throttlers[].limit likewise requires a number."
+    },
+    {
+      "key": "backend/src/audit/audit.service.ts:58:*",
+      "file": "backend/src/audit/audit.service.ts",
+      "line": 58,
+      "kind": "*",
+      "occurrences": 1,
+      "added": "2026-09-10",
+      "reason": "skip: (page - 1) * limit inside AuditService.list — the standard pagination-offset arithmetic this template repeats at every list endpoint (see pagination-query.dto.ts doc comment); page and limit are row-count integers, never money."
+    },
+    {
+      "key": "backend/src/collection-points/collection-points.service.ts:54:*",
+      "file": "backend/src/collection-points/collection-points.service.ts",
+      "line": 54,
+      "kind": "*",
+      "occurrences": 1,
+      "added": "2026-09-10",
+      "reason": "skip: (query.page - 1) * query.limit inside CollectionPointsService.list — the same pagination-offset arithmetic as every other list endpoint; page/limit are row counts, not money or weight."
+    },
+    {
+      "key": "backend/src/common/dto/pagination-query.dto.ts:34:*",
+      "file": "backend/src/common/dto/pagination-query.dto.ts",
+      "line": 34,
+      "kind": "*",
+      "occurrences": 1,
+      "added": "2026-09-10",
+      "reason": "skipOf()'s own body, (page - 1) * limit — the canonical pagination-offset helper this template asks every new list endpoint to reuse (see the file's own doc comment). The comment there explains why this is not folded into the four money-banned modules: an unrelated page offset, if banned repo-wide, would just teach people to write disable comments."
+    },
+    {
+      "key": "backend/src/common/money.ts:43:*",
+      "file": "backend/src/common/money.ts",
+      "line": 43,
+      "kind": "*",
+      "occurrences": 1,
+      "added": "2026-09-10",
+      "reason": "money.ts's own parse(): BigInt(whole) * UNIT, scaling the integer part of a decimal string up to kopiykas. This is the one seam §5.1 authorises to take a numeric string apart; it works in bigint, not JS number, so it carries none of the float-precision risk this ratchet exists to catch — but the AST heuristic only recognises number-typed/numeric-literal operands, not bigint-safety, so it is listed honestly here rather than exempted by path."
+    },
+    {
+      "key": "backend/src/common/money.ts:51:/",
+      "file": "backend/src/common/money.ts",
+      "line": 51,
+      "kind": "/",
+      "occurrences": 1,
+      "added": "2026-09-10",
+      "reason": "money.ts's own format(): magnitude / UNIT, recovering the whole-kopiyka part from the internal bigint representation before rendering it back to a decimal string. Same seam, same bigint-not-number reasoning as line 43 above."
+    },
+    {
+      "key": "backend/src/common/money.ts:75:*",
+      "file": "backend/src/common/money.ts",
+      "line": 75,
+      "kind": "*",
+      "occurrences": 1,
+      "added": "2026-09-10",
+      "reason": "money.ts's own mul(): parse(a) * parse(b), the scale-4 bigint product before mul() rounds it back to scale 2 half-up. This IS the rounding engine itself — §2.7's amount calculation runs through exactly this line — audited by money.spec.ts, not by this AST heuristic."
+    },
+    {
+      "key": "backend/src/common/money.ts:78:/",
+      "file": "backend/src/common/money.ts",
+      "line": 78,
+      "kind": "/",
+      "occurrences": 2,
+      "added": "2026-09-10",
+      "reason": "money.ts's own mul(): (magnitude + UNIT / 2n) / UNIT implements half-up-away-from-zero rounding on the bigint product; the two / occurrences on this one line are the inner UNIT / 2n and the outer division by UNIT. Same seam as lines 43/51/75 — bigint arithmetic implementing the one authorised rounding rule, not a bypass of it."
+    },
+    {
+      "key": "backend/src/config/app.config.ts:14:parseInt",
+      "file": "backend/src/config/app.config.ts",
+      "line": 14,
+      "kind": "parseInt",
+      "occurrences": 1,
+      "added": "2026-09-10",
+      "reason": "parseInt(process.env.PORT ?? '3000', 10) — the HTTP listen port, an integer read from an env var; never a monetary or weight value."
+    },
+    {
+      "key": "backend/src/config/app.config.ts:17:parseInt",
+      "file": "backend/src/config/app.config.ts",
+      "line": 17,
+      "kind": "parseInt",
+      "occurrences": 1,
+      "added": "2026-09-10",
+      "reason": "parseInt(process.env.TRUST_PROXY_HOPS ?? '0', 10) — how many reverse-proxy hops to trust for client-IP resolution; a small integer count, not money."
+    },
+    {
+      "key": "backend/src/config/database.defaults.ts:5:parseInt",
+      "file": "backend/src/config/database.defaults.ts",
+      "line": 5,
+      "kind": "parseInt",
+      "occurrences": 1,
+      "added": "2026-09-10",
+      "reason": "parseInt(process.env.DB_PORT ?? '5432', 10) — the Postgres TCP port, an integer read from an env var; not money."
+    },
+    {
+      "key": "backend/src/config/redis.config.ts:6:parseInt",
+      "file": "backend/src/config/redis.config.ts",
+      "line": 6,
+      "kind": "parseInt",
+      "occurrences": 1,
+      "added": "2026-09-10",
+      "reason": "parseInt(process.env.REDIS_PORT ?? '6379', 10) — the Redis TCP port, an integer read from an env var; not money."
+    },
+    {
+      "key": "backend/src/grade-prices/grade-prices.service.ts:121:*",
+      "file": "backend/src/grade-prices/grade-prices.service.ts",
+      "line": 121,
+      "kind": "*",
+      "occurrences": 1,
+      "added": "2026-09-10",
+      "reason": "skip: (query.page - 1) * query.limit inside GradePricesService.list (the raw price-journal listing) — same pagination-offset arithmetic, row counts not money."
+    },
+    {
+      "key": "backend/src/grade-prices/grade-prices.service.ts:90:*",
+      "file": "backend/src/grade-prices/grade-prices.service.ts",
+      "line": 90,
+      "kind": "*",
+      "occurrences": 1,
+      "added": "2026-09-10",
+      "reason": "[...params, query.limit, (query.page - 1) * query.limit] inside the current-prices query — the same pagination-offset arithmetic as every other list endpoint, feeding a raw SQL LIMIT/OFFSET; page/limit are row counts, not money (the price VALUES selected by this same query are plain strings, never touched here)."
+    },
+    {
+      "key": "backend/src/media/media.constants.ts:6:*",
+      "file": "backend/src/media/media.constants.ts",
+      "line": 6,
+      "kind": "*",
+      "occurrences": 1,
+      "added": "2026-09-10",
+      "reason": "MEDIA_MAX_BYTES = 10 * 1024 * 1024 — the upload size cap in bytes (10 MB), a compile-time constant built from literal numbers; an image byte count, not money or weight."
+    },
+    {
+      "key": "backend/src/products/product-grades.service.ts:42:*",
+      "file": "backend/src/products/product-grades.service.ts",
+      "line": 42,
+      "kind": "*",
+      "occurrences": 1,
+      "added": "2026-09-10",
+      "reason": "skip: (query.page - 1) * query.limit inside ProductGradesService.list — same pagination-offset arithmetic as every other list endpoint."
+    },
+    {
+      "key": "backend/src/products/products.service.ts:27:*",
+      "file": "backend/src/products/products.service.ts",
+      "line": 27,
+      "kind": "*",
+      "occurrences": 1,
+      "added": "2026-09-10",
+      "reason": "skip: (query.page - 1) * query.limit inside ProductsService.list — same pagination-offset arithmetic as every other list endpoint."
+    },
+    {
+      "key": "backend/src/redis/redis.module.ts:21:*",
+      "file": "backend/src/redis/redis.module.ts",
+      "line": 21,
+      "kind": "*",
+      "occurrences": 1,
+      "added": "2026-09-10",
+      "reason": "retryStrategy: (times) => Math.min(times * 200, 2000) — ioredis reconnect backoff in milliseconds, capped at 2000ms; times is a reconnect-attempt counter, not money."
+    },
+    {
+      "key": "backend/src/seed/dev-seed.ts:52:/",
+      "file": "backend/src/seed/dev-seed.ts",
+      "line": 52,
+      "kind": "/",
+      "occurrences": 1,
+      "added": "2026-09-10",
+      "reason": "addMoney()'s own body: Math.floor(abs / 100), recovering the whole-currency part after summing two decimal strings as integer cents. This is a SECOND, independent reimplementation of money.ts's add(), inside the dev-only seed script, going through Number()/plain-number division instead of the bigint seam. Left as-is on purpose — backend/src is out of scope for this task — and flagged again in the task report as a real gap worth an owner's attention, not waved through as provably safe."
+    },
+    {
+      "key": "backend/src/seed/dev-seed.ts:59:*",
+      "file": "backend/src/seed/dev-seed.ts",
+      "line": 59,
+      "kind": "*",
+      "occurrences": 1,
+      "added": "2026-09-10",
+      "reason": "toCents()'s own body: Number(whole) * 100 — scales the parsed integer part of a decimal string up to cents using a JS number, not a bigint. Same reimplementation-of-money.ts concern as the / at line 52: addMoney() feeds real values into grade_prices.base_price for the seeded price journal, computed outside the one authorised seam."
+    },
+    {
+      "key": "backend/src/seed/dev-seed.ts:59:Number",
+      "file": "backend/src/seed/dev-seed.ts",
+      "line": 59,
+      "kind": "Number",
+      "occurrences": 2,
+      "added": "2026-09-10",
+      "reason": "toCents()'s own body: Number(whole) and Number(frac.padEnd(2, '0')) — converts a decimal string's parsed integer and fractional parts to JS numbers before summing as cents. This is exactly the class of conversion backend/src/common/money.ts's own header calls out as unsafe for numeric(12,2) values. It is confined to the dev seed script (never a runtime dependency of the app — see the seam check) and today's seed prices are small enough that no precision loss surfaces in practice, but it is a real duplicate of money.ts's add(), not a provably-safe pattern, so it is listed rather than exempted."
+    },
+    {
+      "key": "backend/src/suppliers/suppliers.service.ts:107:*",
+      "file": "backend/src/suppliers/suppliers.service.ts",
+      "line": 107,
+      "kind": "*",
+      "occurrences": 1,
+      "added": "2026-09-10",
+      "reason": "skip: (query.page - 1) * query.limit (via query-builder .skip()) inside SuppliersService.list — same pagination-offset arithmetic as every other list endpoint."
+    },
+    {
+      "key": "backend/src/tare-types/tare-types.service.ts:33:*",
+      "file": "backend/src/tare-types/tare-types.service.ts",
+      "line": 33,
+      "kind": "*",
+      "occurrences": 1,
+      "added": "2026-09-10",
+      "reason": "skip: (query.page - 1) * query.limit inside TareTypesService.list — same pagination-offset arithmetic as every other list endpoint; this entity's own weight_kg/deposit_price columns are untouched here."
+    },
+    {
+      "key": "backend/src/users/password-hashing.ts:28:*",
+      "file": "backend/src/users/password-hashing.ts",
+      "line": 28,
+      "kind": "*",
+      "occurrences": 2,
+      "added": "2026-09-10",
+      "reason": "maxmemFor()'s own body: Math.max(32 * 1024 * 1024, 256 * n * r) computes scrypt's maxmem option in bytes from the cost parameters N and r. Each inner multiplication (32 * 1024, 256 * n) clears on its own since every operand is a number-typed identifier or a numeric literal, but this rule inspects only a BinaryExpression's two immediate operands, so the OUTER multiplication in each left-associative chain ((32 * 1024) * 1024 and (256 * n) * r) sees a nested BinaryExpression as its left operand and is not provably cleared by this single-level heuristic. This is scrypt memory sizing, not money or weight."
+    },
+    {
+      "key": "backend/src/users/password-hashing.ts:68:Number",
+      "file": "backend/src/users/password-hashing.ts",
+      "line": 68,
+      "kind": "Number",
+      "occurrences": 1,
+      "added": "2026-09-10",
+      "reason": "const n = Number(rawN) — parses the scrypt cost parameter N back out of the self-describing stored-hash format (scrypt$N$r$p$salt$hash); a cost parameter, not money."
+    },
+    {
+      "key": "backend/src/users/password-hashing.ts:69:Number",
+      "file": "backend/src/users/password-hashing.ts",
+      "line": 69,
+      "kind": "Number",
+      "occurrences": 1,
+      "added": "2026-09-10",
+      "reason": "const r = Number(rawR) — same stored-hash format, the scrypt cost parameter r; not money."
+    },
+    {
+      "key": "backend/src/users/password-hashing.ts:70:Number",
+      "file": "backend/src/users/password-hashing.ts",
+      "line": 70,
+      "kind": "Number",
+      "occurrences": 1,
+      "added": "2026-09-10",
+      "reason": "const p = Number(rawP) — same stored-hash format, the scrypt cost parameter p; not money."
+    },
+    {
+      "key": "backend/src/users/users.service.ts:184:*",
+      "file": "backend/src/users/users.service.ts",
+      "line": 184,
+      "kind": "*",
+      "occurrences": 1,
+      "added": "2026-09-10",
+      "reason": "skip: (opts.page - 1) * opts.limit inside UsersService's list method — same pagination-offset arithmetic as every other list endpoint."
+    }
+  ]
+}

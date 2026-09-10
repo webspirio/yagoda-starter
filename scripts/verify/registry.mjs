@@ -515,6 +515,74 @@ export const CHECKS = [
       'changed; the same is true, compounded, of a bundled `ignores` entry, where adding or ' +
       'removing even ONE glob from a multi-glob line changes the whole line\'s key.',
   },
+  {
+    id: 'ratchet:money',
+    tier: 'fast',
+    cmd: 'npm run ratchet:money',
+    // No `after`: this check never invokes tsc, only `ts.createSourceFile` — a syntax-only
+    // parse, same access route `seam` and `migrations` already take. Verified empirically
+    // 2026-09-10 the same way `migrations` documents: a fixture combining a genuine type
+    // error (`const notANumber: number = "this is a type error"`) with a genuine arithmetic
+    // finding (`brokenParam * 2`, `brokenParam` a function, not a number) in the same file
+    // made `npx tsc -p backend/tsconfig.json --noEmit` fail with two TS errors while `npm
+    // run ratchet:money` still parsed the file and reported the `*` finding correctly — a
+    // type error neither hides nor fakes a finding here, so an `after: ['typecheck']` would
+    // order two rows that do not actually depend on each other.
+    proves:
+      'Every `*`/`/` BinaryExpression, `Number()`/`parseInt()`/`parseFloat()` call, and ' +
+      '`.toFixed` MemberExpression this scan finds in backend/src/**/*.ts — outside ' +
+      'src/intakes/, src/payouts/, src/shifts/, src/supplier-balance/ (already eslint\'s ' +
+      'territory per the `lint` row) and outside *.spec.ts/*.db-spec.ts — is either ' +
+      'PROVABLY NON-MONETARY (every operand is a numeric literal, or an identifier declared ' +
+      'in the SAME FILE with an explicit `number` type or a numeric-literal initialiser) or ' +
+      'matches a dated, reasoned entry in scripts/verify/baselines/money-rounding.json at ' +
+      'its EXACT occurrence count, key for key (file:line:kind), or this exact command ' +
+      'fails. The comparison runs in both directions, same as ratchet:lint-exempt: a NEW ' +
+      'site not yet in the baseline fails it, and a baseline entry whose exact count no ' +
+      'longer matches the tree — including a count that dropped to zero — fails it too, so ' +
+      'a stale entry must be deleted rather than left standing; a partial fix (two of three ' +
+      'sites cleaned up) is exactly as red as no fix at all. `Number`, `parseInt` and ' +
+      '`parseFloat` are resolved by BINDING, not by name alone: a file that locally ' +
+      'declares or imports something under one of those three exact names is calling that ' +
+      'local, not the global this row bans, and such a call is skipped entirely rather than ' +
+      'mistaken for the real one. AS A SNAPSHOT, MEASURED 2026-09-10: the baseline holds 29 ' +
+      'keys / 32 occurrences — 10 are the repeated `(page - 1) * limit` pagination-offset ' +
+      'arithmetic this template\'s list endpoints share (including ' +
+      'common/dto/pagination-query.dto.ts\'s own skipOf() helper), 4 are ' +
+      'backend/src/common/money.ts\'s OWN bigint internals (the seam itself, audited by ' +
+      'money.spec.ts, not by this AST heuristic), 6 are config/env-var integers (ports, the ' +
+      'throttle window and limit) parsed with parseInt()/Number(), 1 is ' +
+      'redis.module.ts\'s reconnect backoff and 1 is media.constants.ts\'s upload-size ' +
+      'constant, 4 are password-hashing.ts\'s scrypt cost-parameter parsing and memory ' +
+      'sizing, and 3 are backend/src/seed/dev-seed.ts\'s OWN independent reimplementation ' +
+      'of money.ts\'s add() — a real duplicate of the one authorised rounding seam, ' +
+      'confined to the dev-only seed script, left as-is because backend/src was out of ' +
+      'scope for the task that wrote this row. That count moves the instant anyone adds, ' +
+      'removes, or clears an arithmetic site anywhere in the scan, and this row does not ' +
+      'track or re-check its own prose.',
+    blindSpot:
+      'Nothing about whether the arithmetic is RIGHT — money.ts\'s own mul(a, b) and a ' +
+      'hand-rolled a * b elsewhere are scored identically by this row: it checks whether a ' +
+      'value is routed through a shape this heuristic recognises as safe, never whether the ' +
+      'resulting figure is the correct one. Type information comes from the TypeScript ' +
+      'SYNTAX of the single file being parsed (ts.createSourceFile), never from the type ' +
+      'checker: a monetary string arriving through a function parameter or return type ' +
+      'declared in ANOTHER file reads as an untyped identifier here, clears neither cover ' +
+      'rule, and lands in the baseline as a finding rather than being resolved and either ' +
+      'caught or correctly cleared — part of why 10 of the baseline\'s 29 keys are the ' +
+      'ordinary (page - 1) * limit idiom repeated at every list endpoint rather than ' +
+      'something this row could recognise once and ignore everywhere after. And a value ' +
+      'computed into an intermediate variable and only later formatted or multiplied on a ' +
+      'DIFFERENT statement is invisible to the per-node operand check this row runs — it ' +
+      'inspects only the immediate two operands of one BinaryExpression, one call\'s ' +
+      'arguments, or one member access\'s object, never a variable\'s provenance a ' +
+      'statement or a scope away (see password-hashing.ts:28\'s baseline entry, where the ' +
+      'same limitation misses that a chained 32 * 1024 * 1024 is entirely literal, because ' +
+      'the OUTER multiplication\'s left operand is itself a BinaryExpression, not a bare ' +
+      'literal or identifier). And its reach is exactly backend/src\'s *.ts files parsed as ' +
+      'ts.ScriptKind.TS — there are no .tsx files there today, but this row would need ' +
+      'revisiting before one outside the four eslint-scoped trees could be trusted.',
+  },
 ]
 
 /** @type {Record<Tier, number>} */
