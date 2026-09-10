@@ -26,7 +26,7 @@
     "build": "turbo build",
     "test": "turbo test",
     "lint": "turbo lint",
-    "typecheck": "turbo typecheck && tsc -p tsconfig.scripts.json",
+    "typecheck": "turbo typecheck && tsc -p tsconfig.scripts.json && tsc -p tsconfig.e2e.json",
     "format": "prettier --write .",
     "db:reset": "docker compose down -v && docker compose up -d postgres redis",
     "db:seed": "npm run seed:dev -w backend",

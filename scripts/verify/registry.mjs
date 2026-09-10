@@ -185,15 +185,18 @@ export const CHECKS = [
       'backend (tsc -p tsconfig.json --noEmit, strict mode, over everything under ' +
       'backend/src including *.spec.ts and *.db-spec.ts — there are no backend .ts files ' +
       'outside src/), frontend (tsc -b, building tsconfig.app.json over src/ and ' +
-      'tsconfig.node.json over vite.config.ts), and the verify layer itself (tsc -p ' +
-      'tsconfig.scripts.json, checkJs, over scripts/**/*.mjs and .claude/hooks/**/*.mjs). ' +
-      'A type error in any one of those three projects fails this exact command.',
+      'tsconfig.node.json over vite.config.ts), the verify layer itself (tsc -p ' +
+      'tsconfig.scripts.json, checkJs, over scripts/**/*.mjs and .claude/hooks/**/*.mjs), ' +
+      'and, as of Task 17, the Playwright e2e suite (tsc -p tsconfig.e2e.json, strict, over ' +
+      'playwright.config.ts and e2e/**/*.ts — the config that drives `smoke` and the setup/' +
+      'teardown/spec files it loads). A type error in any one of those FOUR projects fails ' +
+      'this exact command.',
     blindSpot:
       'Nothing about runtime data: a field typed as a plain string accepts any string tsc ' +
       'never inspects the value of, and every `as` cast and non-null assertion (`!`) is a ' +
       'hole this row does not look through. JSON parsed from a database row, an HTTP body ' +
       'or a JWT payload is trusted at the type boundary, not verified. And its reach is ' +
-      'exactly the three tsconfig files above: a file none of their include/exclude rules ' +
+      'exactly the four tsconfig files above: a file none of their include/exclude rules ' +
       'reaches is not type-checked by this row at all.',
   },
   {
@@ -921,8 +924,15 @@ export const CHECKS = [
       "that state — but the underlying fact stands: NOTHING in this row, or in `build`, verifies that " +
       "frontend/dist holds the output of exactly one build rather than two coexisting ones with different " +
       "content hashes, and any other future consumer that writes to frontend/dist outside of `turbo build` " +
-      "could reopen the identical failure mode. And the 25 KiB / 100 KiB minimum headroom is an " +
-      "ABSOLUTE floor, not a percentage of the bundle: it is calibrated to today's ~276 KiB gzip bundle and the " +
+      "could reopen the identical failure mode. THE PRACTICAL CONSEQUENCE: this row measures whatever files " +
+      "are physically sitting under frontend/dist/assets at the moment it runs, nothing more — a stale or " +
+      "doubled dist directory left by a mixed build path (any two of `turbo build`, a direct `npm run build " +
+      "-w frontend`, or Docker's own image build writing to a different tree entirely) produces a FALSE RED " +
+      "that has nothing to do with a real bundle-size regression. A RED result here is not self-diagnosing: " +
+      "before trusting it, `rm -rf frontend/dist && npm run build` and re-run this row on that fresh output — " +
+      "only a RED that survives a clean rebuild is a real budget overage. And the 25 KiB / 100 KiB minimum " +
+      "headroom is an ABSOLUTE floor, not a percentage of the bundle: it is calibrated to today's ~276 KiB " +
+      "gzip bundle and the " +
       "reference's own historical per-phase growth, not derived from the bundle's own size, so it does not " +
       'automatically stay proportionate as the bundle grows much larger or a phase turns out unusually large — ' +
       'nothing here re-derives that minimum on its own; a future re-measurement is what would catch it drifting ' +
