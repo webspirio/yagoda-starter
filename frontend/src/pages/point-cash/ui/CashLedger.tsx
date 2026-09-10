@@ -14,7 +14,7 @@ import {
 
 /** Rows that read as money OUT get their sign flipped for display —
  *  `buildLedger` itself only ever returns non-negative magnitudes. */
-const OUTFLOW = new Set(['paidToday', 'paidPast']);
+const OUTFLOW = new Set<LedgerRowKey>(['paidToday', 'paidPast']);
 
 /**
  * Rows that do NOT explain today's cash figure, rendered apart from the
@@ -26,7 +26,7 @@ const OUTFLOW = new Set(['paidToday', 'paidPast']);
  * the explanation would assert a period this ledger never defines. See
  * `buildLedger`'s own comment for the full reasoning.
  */
-const INFORMATIONAL = new Set(['accruedToday', 'paidPast']);
+const INFORMATIONAL = new Set<LedgerRowKey>(['accruedToday', 'paidPast']);
 
 /**
  * The caveat a truncated row shows, named for WHAT IS ACTUALLY MISSING from

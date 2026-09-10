@@ -30,14 +30,22 @@ interface VoidDescriptor {
  * flip side of a voided PAYOUT, which stays subtracted because that money
  * physically left the drawer.
  */
+/** Shared by `intake` and `payout` below — both are journal documents, and
+ *  a void of either changes the supplier's running balance the same way. */
+const DOCUMENT_KEYS: readonly QueryKey[] = [
+  queryKeys.intakes,
+  queryKeys.payouts,
+  queryKeys.supplierBalances,
+];
+
 const DOCUMENTS: Record<VoidDocumentInput['kind'], VoidDescriptor> = {
   intake: {
     path: (id) => `/intakes/${id}/void`,
-    invalidates: [queryKeys.intakes, queryKeys.payouts, queryKeys.supplierBalances],
+    invalidates: DOCUMENT_KEYS,
   },
   payout: {
     path: (id) => `/payouts/${id}/void`,
-    invalidates: [queryKeys.intakes, queryKeys.payouts, queryKeys.supplierBalances],
+    invalidates: DOCUMENT_KEYS,
   },
   transfer: {
     path: (id) => `/transfers/${id}/void`,
