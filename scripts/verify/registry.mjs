@@ -351,6 +351,49 @@ export const CHECKS = [
       'that today it still has exactly one declared name for the value it stores, and one ' +
       "reachable path into the seed's own code.",
   },
+  {
+    id: 'migrations',
+    tier: 'fast',
+    cmd: 'npm run migrations:check',
+    after: ['typecheck'],
+    proves:
+      'Measured 2026-09-10: `npm run migrations:check` parses every backend/src/**/*.ts ' +
+      'file with the TypeScript compiler API and enforces four rules against ' +
+      "backend/src/migrations/'s 8 numbered migrations (timestamps 1788600000000– " +
+      '1788600000007), its 5 *.db-spec.ts files excluded from rules 2–4 — (1) every ' +
+      '`synchronize` property anywhere under backend/src initialises to the literal ' +
+      '`false` (both known sites today, app.module.ts:129 and testing/db-harness.ts:126, ' +
+      'and any new one); (2) no two migration filenames (matching ' +
+      '/^(\\d{13})-([A-Za-z0-9]+)\\.ts$/) capture the same 13-digit timestamp — a ' +
+      'fixed-width prefix, so unique implies strictly ascending; (3) each migration\'s ' +
+      "exported class name equals its filename's name-plus-timestamp (e.g. " +
+      '1788600000000-InitialSchema.ts exports InitialSchema1788600000000, confirmed ' +
+      'against all 8 files as shipped); and (4), ONLY WHEN origin/main is a resolvable ' +
+      'ref, every migration file that already exists there (`git cat-file -e ' +
+      'origin/main:<path>`) is byte-identical to that copy (`git diff --quiet origin/main ' +
+      '-- <path>`) — a migration new since origin/main needs no comparison and stays ' +
+      'green. A violation of 1–3, or of 4 whenever origin/main was reachable, fails this ' +
+      "exact command; this row proves rule 4's guarantee ONLY for a run where origin/main " +
+      'was fetched, and says so with a WARNING line — printed even on a passing run — ' +
+      'whenever it was not.',
+    blindSpot:
+      'Compares TEXT, not schema semantics: two migrations that are each individually ' +
+      "well-formed but logically conflict (an `up()` that doesn't undo cleanly in its own " +
+      "`down()`, two migrations that each assume the other's column) are both green — " +
+      "whether a migration is CORRECT, or even runs, is test:db's job, never this row's. " +
+      'Rule 4 cannot see a migration authored and then edited within the SAME pull request ' +
+      'as its own creation: it only ever compares against whatever origin/main already ' +
+      "has, so anything that happens before that ref updates is invisible to it — and rule " +
+      "4's whole guarantee is only as strong as origin/main being fetched; when that ref " +
+      'does not resolve, rule 4 is SKIPPED (a WARNING line, never a silent pass) and this ' +
+      'row proves nothing about already-merged migrations for that run, though rules 1–3 ' +
+      'still apply in full. Filename- and class-name-matching are purely lexical: a ' +
+      'correctly named class with a broken body is exactly as green as a correct one. And ' +
+      'a file inside backend/src/migrations/ that is neither *.db-spec.ts nor shaped like ' +
+      '<timestamp>-<Name>.ts is invisible to rules 2 and 3 entirely — deliberately out of ' +
+      "this check's scope (see the check's own file header), so it is neither validated as " +
+      'a migration nor flagged as debris.',
+  },
 ]
 
 /** @type {Record<Tier, number>} */

@@ -218,6 +218,15 @@ function scan() {
     try {
       text = readFileSync(absPath, 'utf8')
     } catch (err) {
+      // ENOENT here is not a finding: this verify layer's own tests write and remove
+      // short-lived fixture files under backend/src while their OWN check runs, and
+      // `node --test` runs different *.test.mjs files concurrently -- so a file this git
+      // listing saw a moment ago (e.g. another check's migrations/ fixture, exercised
+      // concurrently by migration-invariants.test.mjs) can legitimately be gone by the
+      // time it is read here. A file that no longer exists cannot carry a provider literal
+      // or a seed import; any other read failure (permissions, etc.) is still a finding.
+      const code = /** @type {{ code?: string }} */ (err).code
+      if (code === 'ENOENT') continue
       findings.push(`${relFromRoot}: unreadable: ${errMessage(err)}`)
       continue
     }
