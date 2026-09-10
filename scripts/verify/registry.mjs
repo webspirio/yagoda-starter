@@ -215,6 +215,24 @@ export const CHECKS = [
       'function and asserts nothing about the result is exactly as green as one that ' +
       'checks the answer.',
   },
+  {
+    id: 'memo',
+    tier: 'fast',
+    // The direct command, not `npm run memo`: this is the one row whose entire job is
+    // catching drift, so it must keep working even if the npm script entry is ever lost.
+    cmd: 'node scripts/verify/checks/memo-drift.mjs',
+    proves:
+      'The generated table region in the root CLAUDE.md, delimited by its verify-table ' +
+      'HTML comment markers, is byte-for-byte identical to what scripts/verify/checks/' +
+      'memo-drift.mjs renders from this exact CHECKS array right now, down to the ' +
+      'trailing registry-checksum comment — a hand edit on either side, in either ' +
+      'direction, fails this exact command.',
+    blindSpot:
+      'Nothing about whether a proves or blindSpot string is itself true of its check — ' +
+      "only that the table quotes the registry's current values verbatim. And its reach is " +
+      'exactly the marked block: prose elsewhere in CLAUDE.md, including the rest of this ' +
+      'Verification section, can drift from reality with this row staying green.',
+  },
 ]
 
 /** @type {Record<Tier, number>} */
