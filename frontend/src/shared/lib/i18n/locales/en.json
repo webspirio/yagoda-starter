@@ -758,5 +758,10 @@
     "label": "Theme",
     "light": "Light",
     "dark": "Dark"
+  },
+  "transfer": {
+    "errors": {
+      "noOpenShift": "No open shift at this point — open one first"
+    }
   }
 }

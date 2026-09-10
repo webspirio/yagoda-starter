@@ -13,7 +13,7 @@ import { Field } from '@/shared/ui/field';
 import { TextInput } from '@/shared/ui/text-input';
 import { Button } from '@/shared/ui/button';
 import { DECIMAL_INPUT, normalizeAmount } from '@/shared/lib/money';
-import { apiErrorToBanner } from '../lib/apiErrorToBanner';
+import { apiErrorToBanner } from '@/shared/lib/api-error';
 
 interface CountFormValues {
   amount: string;
@@ -50,7 +50,7 @@ export function CountDrawerDialog({
     try {
       await onConfirm(normalizeAmount(values.amount));
     } catch (error) {
-      setFormError(apiErrorToBanner(error));
+      setFormError(apiErrorToBanner(error, 'day.errors.failed'));
     }
   };
 
