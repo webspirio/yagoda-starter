@@ -739,3 +739,157 @@ export const SEED_PAYOUTS: readonly SeedPayout[] = [
     amount: '2000.00',
   },
 ];
+
+export interface SeedTransfer {
+  point: string;
+  day: SeedDay;
+  /** Local wall-clock on that business date — also this row's natural key,
+   *  since `transfers` has no `code` and no unique business column. */
+  sentAt: string;
+  cash: string;
+  crates: number;
+  carrier: string;
+  /** `sent` leaves the «Прийняти» button live on the point's screen. */
+  status: 'sent' | 'accepted' | 'disputed';
+  /** Who signed for it, and when — required for `accepted` and `disputed`. */
+  acceptedBy?: string;
+  acceptedAt?: string;
+  /** `disputed` only: what the point says actually arrived (§7.9 step 4). */
+  reportedCash?: string;
+}
+
+/**
+ * The other half of §7.3's closed list — without these, every seeded point
+ * pays out money it never received and reads as deeply negative.
+ *
+ * Шипинки yesterday is sized to fund that day's 15 000 in payouts and leave a
+ * round 10 000 expected at close. One `sent` transfer at Гайове and one
+ * `disputed` at Конищів exist so the two point actions have something to act
+ * on the moment a developer signs in.
+ */
+export const SEED_TRANSFERS: readonly SeedTransfer[] = [
+  {
+    point: 'Шипинки',
+    day: 'yesterday',
+    sentAt: '08:10',
+    cash: '20000.00',
+    crates: 40,
+    carrier: 'Іван, Ducato',
+    status: 'accepted',
+    acceptedBy: 'oksana',
+    acceptedAt: '08:40',
+  },
+  {
+    point: 'Шипинки',
+    day: 'today',
+    sentAt: '08:05',
+    cash: '15000.00',
+    crates: 30,
+    carrier: 'Іван, Ducato',
+    status: 'accepted',
+    acceptedBy: 'oksana',
+    acceptedAt: '08:35',
+  },
+  {
+    point: 'Конищів',
+    day: 'today',
+    sentAt: '08:15',
+    cash: '10000.00',
+    crates: 20,
+    carrier: 'Степан, Sprinter',
+    // «Не сходиться»: 10 000 left the base, 9 800 arrived. Unresolved, so the
+    // cash formula credits the point's OWN figure (client ruling 09.09.2026).
+    status: 'disputed',
+    acceptedBy: 'taras',
+    acceptedAt: '08:45',
+    reportedCash: '9800.00',
+  },
+  {
+    point: 'Гайове',
+    day: 'today',
+    sentAt: '09:00',
+    cash: '8000.00',
+    crates: 15,
+    carrier: 'Степан, Sprinter',
+    // Still in the van — nothing it carries moves any cash (§7.9).
+    status: 'sent',
+  },
+];
+
+export interface SeedCashCount {
+  point: string;
+  day: SeedDay;
+  kind: 'opening' | 'closing';
+  time: string;
+  countedBy: string;
+  /**
+   * A point's FIRST count only. It anchors the chain, so `expected = counted`
+   * by construction and `drift` must be '0.00'.
+   */
+  anchor?: string;
+  /**
+   * Signed distance from the expectation the SERVER computes — the seed never
+   * writes `expected` itself. '0.00' is a drawer that agrees.
+   */
+  drift: string;
+}
+
+/**
+ * Every seeded shift is counted, because after the cash counts slice a shift
+ * without an opening count has no anchor: `GET /point-cash` reports 0.00 and
+ * closing it falls back to «expected = counted», hiding any real drift.
+ *
+ * Шипинки's close is 90 ₴ short ON PURPOSE. It is the only seeded incident,
+ * and it is what makes `GET /cash-counts?only_discrepancies=true` — the
+ * owner's working list — return something on a fresh database.
+ */
+export const SEED_CASH_COUNTS: readonly SeedCashCount[] = [
+  // The network's day one at Шипинки: 5 000 in the drawer, and that figure
+  // BECOMES the starting balance (client ruling 09.09.2026).
+  {
+    point: 'Шипинки',
+    day: 'yesterday',
+    kind: 'opening',
+    time: '07:30',
+    countedBy: 'oksana',
+    anchor: '5000.00',
+    drift: '0.00',
+  },
+  // 5 000 + 20 000 accepted − 15 000 paid out = 10 000 expected; 9 910 counted.
+  {
+    point: 'Шипинки',
+    day: 'yesterday',
+    kind: 'closing',
+    time: '19:10',
+    countedBy: 'oksana',
+    drift: '-90.00',
+  },
+  // Today opens on yesterday's closing figure, and the drawer agrees with it —
+  // §6.1's «має збігатися з залишком минулого закриття».
+  {
+    point: 'Шипинки',
+    day: 'today',
+    kind: 'opening',
+    time: '07:30',
+    countedBy: 'oksana',
+    drift: '0.00',
+  },
+  {
+    point: 'Конищів',
+    day: 'today',
+    kind: 'opening',
+    time: '07:40',
+    countedBy: 'taras',
+    anchor: '3000.00',
+    drift: '0.00',
+  },
+  {
+    point: 'Гайове',
+    day: 'today',
+    kind: 'opening',
+    time: '07:35',
+    countedBy: 'ihor',
+    anchor: '2500.00',
+    drift: '0.00',
+  },
+];
