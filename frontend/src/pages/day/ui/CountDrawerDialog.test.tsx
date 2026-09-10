@@ -14,13 +14,13 @@ describe('CountDrawerDialog', () => {
   it('sends the amount normalised — a comma is how the keyboard types it', async () => {
     const onConfirm = setup();
     await userEvent.type(screen.getByRole('textbox'), '1 500,50');
-    await userEvent.click(screen.getByRole('button', { name: /day\.count\.submit|Записати/i }));
+    await userEvent.click(screen.getByRole('button', { name: /day\.count\.submit|Записати|Record/i }));
     await waitFor(() => expect(onConfirm).toHaveBeenCalledWith('1500.50'));
   });
 
   it('refuses to submit an empty drawer count', async () => {
     const onConfirm = setup();
-    await userEvent.click(screen.getByRole('button', { name: /day\.count\.submit|Записати/i }));
+    await userEvent.click(screen.getByRole('button', { name: /day\.count\.submit|Записати|Record/i }));
     await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument());
     expect(onConfirm).not.toHaveBeenCalled();
   });

@@ -356,6 +356,14 @@
       "reasonHint": "Who asked and why — it stays in the journal",
       "submit": "Reopen"
     },
+    "count": {
+      "openTitle": "Count the drawer",
+      "openBody": "How much cash is in the drawer right now. This figure opens the shift and becomes the point's opening balance.",
+      "closeTitle": "Count the drawer before closing",
+      "closeBody": "How much is left. A discrepancy will not block the close — the owner sees it afterwards.",
+      "amount": "In the drawer, ₴",
+      "submit": "Record"
+    },
     "tiles": {
       "receipts": "Receipts",
       "accrued": "Accrued",
@@ -390,7 +398,8 @@
       "notNewest": "Only the point's most recent shift can be reopened",
       "ownerOnly": "Only the network owner can do this",
       "noPoint": "Your account has no collection point — ask the owner",
-      "reasonRequired": "Give a reason"
+      "reasonRequired": "Give a reason",
+      "countFormat": "Enter an amount — at most two decimals"
     }
   },
   "profile": {
