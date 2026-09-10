@@ -233,6 +233,31 @@ export const CHECKS = [
       'exactly the marked block: prose elsewhere in CLAUDE.md, including the rest of this ' +
       'Verification section, can drift from reality with this row staying green.',
   },
+  {
+    id: 'testfiles',
+    tier: 'fast',
+    cmd: 'npm run test:files',
+    proves:
+      'Measured 2026-09-10: every one of the 156 files in this repo whose name matches ' +
+      '*.{test,spec,db-spec}.[cm]?[jt]sx? is collected by exactly one of this repo\'s four ' +
+      'test runners — jest-unit (40 files, backend/package.json\'s testRegex, rootDir ' +
+      'src), jest-db (12 files, backend/jest.db.config.js\'s separate testRegex, also ' +
+      'rootDir src), vitest (99 files, frontend\'s default include, no test.include set) ' +
+      'and node-test (5 files, scripts/**/*.test.mjs, run by npm run test:verify). The two ' +
+      'backend regexes are read out of backend/package.json and backend/jest.db.config.js ' +
+      'at runtime, not copied here, so this row also proves those two files still say what ' +
+      'the check assumes — a file with zero matching collectors, or claimed by two at ' +
+      'once, fails this exact command.',
+    blindSpot:
+      'Nothing about the tests themselves: a file collected by exactly one runner can ' +
+      'still assert nothing, or assert the wrong thing — this row only proves each ' +
+      'candidate file is picked up once, never that it runs correctly, or at all, once ' +
+      'collected. Its candidate pattern is *.{test,spec,db-spec}.* in the [cm]?[jt]sx? ' +
+      'extensions; a file that looks like a test under any other name is invisible to it ' +
+      'on both sides — reported as neither an orphan nor a false double-collection. And ' +
+      'it knows only the four runners this repo has today; a fifth collector added later ' +
+      'is unseen by this row until this row is taught about it.',
+  },
 ]
 
 /** @type {Record<Tier, number>} */

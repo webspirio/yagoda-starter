@@ -1,0 +1,138 @@
+#!/usr/bin/env node
+/**
+ * Every file that looks like a test in this repository must be collected by exactly one
+ * of the four test runners -- never zero, never two.
+ *
+ * There are FOUR collectors here, and their globs do not overlap by design:
+ *   - jest-unit  -- backend/package.json's jest config (testRegex, rootDir: 'src')
+ *   - jest-db    -- backend/jest.db.config.js (a separate testRegex, also rootDir: 'src')
+ *   - vitest     -- frontend/vite.config.ts, vitest's DEFAULT include (not set explicitly)
+ *   - node-test  -- scripts/**\/*.test.mjs, run by `npm run test:verify`
+ *
+ * The cheapest way to get a dead test suite is a glob that quietly excludes a whole file:
+ * `backend/src/foo.test.ts` matches neither backend testRegex (both require .spec.ts or
+ * .db-spec.ts) nor any other collector's root, so it would sit green forever -- nobody runs
+ * it, and nothing says so. Conversely, if the two backend regexes ever started overlapping,
+ * the same file would run twice under two configs without anyone deciding that on purpose.
+ *
+ * The two backend regexes are read OUT OF backend/package.json and
+ * backend/jest.db.config.js at runtime rather than copied here: a hard-coded copy is a
+ * second source of truth that can drift from the config it claims to describe, which is
+ * exactly the class of bug this check exists to catch.
+ */
+import { execFileSync } from 'node:child_process'
+import { readFileSync } from 'node:fs'
+import { createRequire } from 'node:module'
+import path from 'node:path'
+
+const ROOT = path.resolve(import.meta.dirname, '..', '..', '..')
+const require = createRequire(import.meta.url)
+
+// Candidate test files: anything that looks like a test, spec, or db-spec, in any of the
+// extensions jest/vitest recognise ([cm]?[jt]sx?). Broader than any single collector's
+// pattern on purpose -- a file this misses could never be reported as an orphan.
+const CANDIDATE_FILE = /\.(test|spec|db-spec)\.[cm]?[jt]sx?$/
+
+// vitest's own default `include` pattern. frontend/vite.config.ts does not set `test.include`,
+// so this is vitest's built-in default -- not a copy of anything this repo's own config owns --
+// which is why, unlike the two backend regexes below, it is fine to state here directly.
+const VITEST_DEFAULT_INCLUDE = /\.(test|spec)\.[cm]?[jt]sx?$/
+
+/**
+ * @param {string} file
+ * @param {readonly string[]} args
+ * @returns {string}
+ */
+function run(file, args) {
+  return execFileSync(file, args, { cwd: ROOT, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 })
+}
+
+/** @returns {string[]} every tracked-or-untracked candidate test file, repo-root relative */
+function candidates() {
+  // Built at runtime rather than typed as an escape literal: this environment has a known
+  // failure mode where a typed unicode escape lands as the raw control byte instead, which
+  // would make this very file inconsistent with its own recorded byte-scan.
+  const NUL = String.fromCharCode(0)
+  const raw = run('git', ['ls-files', '-c', '-o', '--exclude-standard', '-z'])
+  return [...new Set(raw.split(NUL).filter((f) => f && CANDIDATE_FILE.test(f)))].sort()
+}
+
+/**
+ * Reads the unit-test regex out of backend/package.json's jest config at runtime -- the
+ * live value jest itself uses, not a copy of it.
+ *
+ * @returns {RegExp}
+ */
+function jestUnitRegex() {
+  const file = path.join(ROOT, 'backend', 'package.json')
+  const pkg = JSON.parse(readFileSync(file, 'utf8'))
+  const src = pkg?.jest?.testRegex
+  if (typeof src !== 'string') {
+    throw new Error(`${path.relative(ROOT, file)}: jest.testRegex not found`)
+  }
+  return new RegExp(src)
+}
+
+/**
+ * Reads the db-spec regex out of backend/jest.db.config.js at runtime, by loading the
+ * actual config module jest itself loads -- not a copy of it.
+ *
+ * @returns {RegExp}
+ */
+function jestDbRegex() {
+  const file = path.join(ROOT, 'backend', 'jest.db.config.js')
+  /** @type {{ testRegex?: unknown }} */
+  const config = require(file)
+  const src = config.testRegex
+  if (typeof src !== 'string') {
+    throw new Error(`${path.relative(ROOT, file)}: testRegex not found`)
+  }
+  return new RegExp(src)
+}
+
+/**
+ * @param {string} file repo-root-relative, posix-separated (as `git ls-files` prints it)
+ * @param {RegExp} unitRe
+ * @param {RegExp} dbRe
+ * @returns {string[]} the collectors that would pick this file up
+ */
+function collectorsFor(file, unitRe, dbRe) {
+  /** @type {string[]} */
+  const collectors = []
+  if (file.startsWith('backend/src/') && unitRe.test(file)) collectors.push('jest-unit')
+  if (file.startsWith('backend/src/') && dbRe.test(file)) collectors.push('jest-db')
+  if (file.startsWith('frontend/') && VITEST_DEFAULT_INCLUDE.test(file)) collectors.push('vitest')
+  if (file.startsWith('scripts/') && file.endsWith('.test.mjs')) collectors.push('node-test')
+  return collectors
+}
+
+function main() {
+  const unitRe = jestUnitRegex()
+  const dbRe = jestDbRegex()
+  const files = candidates()
+
+  /** @type {string[]} */
+  const problems = []
+  for (const file of files) {
+    const collectors = collectorsFor(file, unitRe, dbRe)
+    if (collectors.length === 0) {
+      problems.push(`ORPHAN: ${file} -- no runner collects it (zero collectors matched).`)
+    } else if (collectors.length > 1) {
+      problems.push(`DOUBLE-COLLECTED: ${file} -- claimed by both ${collectors.join(' + ')}.`)
+    }
+  }
+
+  const summary =
+    `test:files: ${files.length} candidate test file(s) checked against 4 collectors ` +
+    '(jest-unit, jest-db, vitest, node-test)'
+
+  if (problems.length) {
+    process.stderr.write(`${summary}\n`)
+    for (const p of problems) process.stderr.write(`  ${p}\n`)
+    process.exit(1)
+  }
+
+  process.stdout.write(`${summary} -- each collected by exactly one runner\n`)
+}
+
+main()
