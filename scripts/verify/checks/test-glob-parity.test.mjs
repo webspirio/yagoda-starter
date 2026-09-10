@@ -58,3 +58,33 @@ test('a .claude/hooks/*.test.mjs file is collected by node-test (Task 19)', () =
     rmSync(ok, { force: true })
   }
 })
+
+test('a scripts/ci/*.test.sh file is collected by shell-test (Task 21)', () => {
+  // Before Task 21 taught both CANDIDATE_FILE's companion SHELL_TEST_FILE net and
+  // collectorsFor() about scripts/ci/, a .sh file was invisible to this check on BOTH
+  // sides — not even a candidate, so it could never be reported as an orphan either. This
+  // is the exact gap a whole-branch review found by hand in origin/main's `checks` job.
+  const ok = path.join(ROOT, 'scripts', 'ci', 'zz-ok.test.sh')
+  writeFileSync(ok, '#!/usr/bin/env bash\necho ok\n')
+  try {
+    assert.equal(run().status, 0)
+  } finally {
+    rmSync(ok, { force: true })
+  }
+})
+
+test('a *.test.sh file outside scripts/ci/ is an orphan — the candidate net is wider than the collector', () => {
+  // SHELL_TEST_FILE (the candidate net) matches *.test.sh anywhere; the shell-test
+  // COLLECTOR only claims scripts/ci/*.test.sh. A .test.sh file elsewhere is therefore a
+  // candidate with zero collectors — an ORPHAN — rather than silently invisible.
+  const orphan = path.join(ROOT, 'scripts', 'zz-orphan.test.sh')
+  writeFileSync(orphan, '#!/usr/bin/env bash\necho never run\n')
+  try {
+    const res = run()
+    assert.equal(res.status, 1)
+    assert.match(res.out, /zz-orphan\.test\.sh/)
+    assert.match(res.out, /no runner|zero/i)
+  } finally {
+    rmSync(orphan, { force: true })
+  }
+})

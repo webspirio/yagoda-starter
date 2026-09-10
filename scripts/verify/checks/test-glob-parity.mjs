@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 /**
  * Every file that looks like a test in this repository must be collected by exactly one
- * of the five test runners -- never zero, never two.
+ * of the six test runners -- never zero, never two.
  *
- * There are FIVE collectors here, and their globs do not overlap by design:
+ * There are SIX collectors here, and their globs do not overlap by design:
  *   - jest-unit  -- backend/jest.config.js (testRegex, rootDir: 'src') -- moved out of
  *                   backend/package.json's "jest" key by Task 20 (verify-layer plan), so
  *                   coverageThreshold there could be computed from process.env; a static
@@ -18,13 +18,26 @@
  *   - playwright -- e2e/**\/*.spec.ts, run by `npm run test:e2e` (playwright.config.ts's
  *                   `testDir: './e2e'`, Playwright's own DEFAULT `testMatch` -- not set
  *                   explicitly there either)
+ *   - shell-test -- scripts/ci/*.test.sh, run by `npm run test:ci-scripts` (see the
+ *                   `test:ci-scripts` row, scripts/verify/registry.mjs). Task 21
+ *                   (verify-layer reconciliation) added this collector after a whole-branch
+ *                   review found, BY HAND, that origin/main's `checks` job ran these two
+ *                   suites with a bare shell line (`bash scripts/ci/coolify-deploy.test.sh
+ *                   && bash scripts/ci/ghcr-cleanup.test.sh`) that this check's own
+ *                   CANDIDATE_FILE regex -- [cm]?[jt]sx? extensions only -- could not see:
+ *                   a `checks` job deleted out from under that line would have stopped it
+ *                   running with NO row here noticing, because a `.sh` file was invisible on
+ *                   both sides of this comparison, not merely uncollected. This collector,
+ *                   and the SHELL_TEST_FILE candidate net below, close that gap mechanically
+ *                   so the same class of miss cannot recur unnoticed.
  *
- * playwright is the fifth collector this check's own registry entry (`testfiles`,
+ * playwright was the fifth collector this check's own registry entry (`testfiles`,
  * scripts/verify/registry.mjs) already admitted would show up eventually ("a fifth
  * collector added later is unseen by this row until this row is taught about it") --
- * Task 17 (`smoke`) is that later, and this file is the teaching. The same admission
- * applies one directory at a time, not just one runner at a time: node-test's OWN reach
- * grew from scripts/ to scripts/ PLUS .claude/hooks/ in Task 19, for the identical reason.
+ * Task 17 (`smoke`) was that later, and this file was the teaching; shell-test is the
+ * sixth, taught the identical way. The same admission applies one directory at a time, not
+ * just one runner at a time: node-test's OWN reach grew from scripts/ to scripts/ PLUS
+ * .claude/hooks/ in Task 19, for the identical reason.
  *
  * The cheapest way to get a dead test suite is a glob that quietly excludes a whole file:
  * `backend/src/foo.test.ts` matches neither backend testRegex (both require .spec.ts or
@@ -48,6 +61,14 @@ const require = createRequire(import.meta.url)
 // extensions jest/vitest recognise ([cm]?[jt]sx?). Broader than any single collector's
 // pattern on purpose -- a file this misses could never be reported as an orphan.
 const CANDIDATE_FILE = /\.(test|spec|db-spec)\.[cm]?[jt]sx?$/
+
+// A second, separate candidate net for shell tests: anything named *.test.sh, ANYWHERE in
+// the repo -- not scoped to scripts/ci/ the way the shell-test COLLECTOR below is. Candidate
+// detection and collection are deliberately two different questions: this net exists so a
+// *.test.sh file written somewhere the shell-test collector does not reach is reported as an
+// ORPHAN (see main()), not silently invisible the way every .sh file was before Task 21 --
+// exactly the gap a whole-branch review found by hand in origin/main's `checks` job.
+const SHELL_TEST_FILE = /\.test\.sh$/
 
 // vitest's own default `include` pattern. frontend/vite.config.ts does not set `test.include`,
 // so this is vitest's built-in default -- not a copy of anything this repo's own config owns --
@@ -78,7 +99,11 @@ function candidates() {
   // would make this very file inconsistent with its own recorded byte-scan.
   const NUL = String.fromCharCode(0)
   const raw = run('git', ['ls-files', '-c', '-o', '--exclude-standard', '-z'])
-  return [...new Set(raw.split(NUL).filter((f) => f && CANDIDATE_FILE.test(f)))].sort()
+  return [
+    ...new Set(
+      raw.split(NUL).filter((f) => f && (CANDIDATE_FILE.test(f) || SHELL_TEST_FILE.test(f))),
+    ),
+  ].sort()
 }
 
 /**
@@ -135,6 +160,11 @@ function collectorsFor(file, unitRe, dbRe) {
   if (file.startsWith('scripts/') && file.endsWith('.test.mjs')) collectors.push('node-test')
   if (file.startsWith('.claude/hooks/') && file.endsWith('.test.mjs')) collectors.push('node-test')
   if (file.startsWith('e2e/') && PLAYWRIGHT_DEFAULT_INCLUDE.test(file)) collectors.push('playwright')
+  // `npm run test:ci-scripts` (package.json) runs exactly these two files by name today,
+  // but this collector matches the whole directory by suffix, not an enumerated list: a
+  // third scripts/ci/*.test.sh file added later is picked up automatically, the same way
+  // node-test's own directory-scoped glob already works above.
+  if (file.startsWith('scripts/ci/') && SHELL_TEST_FILE.test(file)) collectors.push('shell-test')
   return collectors
 }
 
@@ -155,8 +185,8 @@ function main() {
   }
 
   const summary =
-    `test:files: ${files.length} candidate test file(s) checked against 5 collectors ` +
-    '(jest-unit, jest-db, vitest, node-test, playwright)'
+    `test:files: ${files.length} candidate test file(s) checked against 6 collectors ` +
+    '(jest-unit, jest-db, vitest, node-test, playwright, shell-test)'
 
   if (problems.length) {
     process.stderr.write(`${summary}\n`)

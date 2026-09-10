@@ -18,7 +18,7 @@ import net from 'node:net'
 
 /**
  * @typedef {'fast' | 'full'} Tier
- * @typedef {'playwright-browser' | 'npm-registry' | 'docker' | 'postgres' | 'redis'} PreconditionId
+ * @typedef {'playwright-browser' | 'npm-registry' | 'docker' | 'postgres' | 'redis' | 'jq'} PreconditionId
  */
 
 /**
@@ -73,6 +73,22 @@ function canConnect(host, port) {
 function probeDocker() {
   return new Promise((resolve) => {
     execFile('docker', ['info'], { timeout: 4000 }, (err) => resolve(!err))
+  })
+}
+
+/**
+ * `jq --version` exits 0 only when the binary is on PATH — a missing binary is the
+ * only failure mode this probes for, exactly like `probeDocker` above. GitHub's
+ * `ubuntu-latest` runner image ships jq preinstalled, so this precondition is true
+ * in CI unconditionally; it exists for the laptop that has not installed it, where
+ * `test:ci-scripts` must be SKIPPED, never FAILED, for a reason that has nothing to
+ * do with either script's own correctness.
+ *
+ * @returns {Promise<boolean>}
+ */
+function probeJq() {
+  return new Promise((resolve) => {
+    execFile('jq', ['--version'], { timeout: 4000 }, (err) => resolve(!err))
   })
 }
 
@@ -134,6 +150,15 @@ export const PRECONDITIONS = {
       '`docker info` did not exit 0). Under --no-skip this is a failure, not "nothing to ' +
       'report": docker:build and smoke need a real daemon to build and serve the image.',
     probe: probeDocker,
+  },
+  jq: {
+    describe:
+      'jq is not on PATH (`jq --version` did not exit 0). This is a missing precondition, ' +
+      'not "the deploy/cleanup scripts are broken": both scripts/ci/*.sh files this ' +
+      'precondition gates parse Coolify/GHCR JSON with jq directly, so there is nothing to ' +
+      'run without it. Under --no-skip this is a failure — every GitHub-hosted `ubuntu-' +
+      'latest` runner ships jq preinstalled, so CI never SKIPS this row for this reason.',
+    probe: probeJq,
   },
   postgres: {
     describe:
@@ -223,6 +248,65 @@ export const CHECKS = [
       'checks the answer.',
   },
   {
+    id: 'test:ci-scripts',
+    tier: 'fast',
+    cmd: 'npm run test:ci-scripts',
+    needs: ['jq'],
+    // No `after`: neither suite reads any other row's output, and both fake their own
+    // `curl`/PATH fixtures from scratch on every run.
+    proves:
+      '`npm run test:ci-scripts` (`bash scripts/ci/coolify-deploy.test.sh && bash ' +
+      'scripts/ci/ghcr-cleanup.test.sh`) exits 0 only when BOTH suites are fully green — the ' +
+      'exact line the old `checks` job used to run directly (`ci.yml`), which meant it could ' +
+      'only ever be exercised by pushing to CI. coolify-deploy.test.sh fakes `curl` and drives ' +
+      'scripts/ci/coolify-deploy.sh through seven scenarios (a happy-path deploy; a ' +
+      'Coolify-reported failure; a finished deployment serving the wrong commit; a production ' +
+      'deploy with no PR number and so no seed login; a non-JSON 502 poll body that must not ' +
+      'kill the script silently under `set -euo pipefail`; a version mismatch that must be ' +
+      'retried, not asserted once; and a failed deployment whose log is linked, never echoed, ' +
+      'so a secret inside it is never printed) and prints its own `passed=N failed=0` summary, ' +
+      'asserted separately (`[ "$fail" -eq 0 ]`) so a `check` call that silently never ran ' +
+      'cannot still read as green. ghcr-cleanup.test.sh drives scripts/ci/ghcr-cleanup.sh ' +
+      'through five scenarios against a nine-version GHCR fixture — package selection (an ' +
+      'open-PR alias and a fresh sha tag kept, a closed-PR-only version and a stale sha-only ' +
+      'version deleted); a 404ing package skipped rather than aborting the whole run; a ' +
+      'non-404 API failure (an expired token, a missing permission) failing loud instead of ' +
+      'being swallowed like a 404; the `KEEP_RECENT_SHA` floor protecting every sha-tagged ' +
+      'version from age-based deletion; and every package 404ing being diagnosed as the wrong ' +
+      'GHCR URL shape (a personal account is /users/<name>/…, not /orgs/…) rather than a ' +
+      'silent no-op — each printing its own `<name>: ok` line, with the whole script exiting ' +
+      'non-zero the instant any one of the five fails (an explicit `exit 1`, or `set -e` ' +
+      'propagation from a failed assertion). AS A DATED SNAPSHOT, MEASURED 2026-09-11 (run ' +
+      'via the Docker/Alpine one-liner the script\'s own header documents, since this task\'s ' +
+      'own machine has no system jq — see the `jq` precondition below): coolify-deploy.test.sh ' +
+      'reported `passed=20 failed=0` and ghcr-cleanup.test.sh\'s all five scenarios (select, ' +
+      'guard, fail-loud, floor, all-404) printed `: ok`, both suites exiting 0. RULING R16: ' +
+      'the invariant this row enforces is that both suites keep exiting 0 on every run, not ' +
+      'that they hold any particular count of scenarios — the dated snapshot above is scale, ' +
+      'nothing more, and a future scenario added to either suite is not re-verified by this ' +
+      'prose.',
+    blindSpot:
+      "Proves the two suites keep passing; it does not audit whether either suite's OWN " +
+      'coverage is complete — a Coolify or GHCR API behaviour neither suite fakes is exactly ' +
+      'as invisible to this row as it always was under the old `checks` job. Neither suite ' +
+      'ever talks to a real Coolify instance or the real GHCR API: every HTTP call is ' +
+      "intercepted by the fake `curl` binary each suite installs onto its own throwaway PATH, " +
+      'so a real endpoint accepting a spec-shaped-but-untested response, or a real GHCR ' +
+      'pagination edge this row\'s fixture never constructs, is not exercised. This row ' +
+      'requires `jq` on PATH (the `jq` precondition below) but does not separately probe for ' +
+      '`bash` itself — every environment this layer otherwise assumes, this task\'s own ' +
+      'machine and GitHub\'s `ubuntu-latest` runner alike, already ships bash, so a bashless ' +
+      'PATH would fail this row outright rather than SKIP it, a gap this row shares with every ' +
+      'other row in this registry that shells out. A machine with no jq installed — this ' +
+      "task's own machine, until it either installs one or runs the Alpine container the " +
+      "script's own header documents — SKIPS this row rather than running it, so a green `npm " +
+      'run verify` on such a machine proves nothing about either suite there; CI never skips ' +
+      'it, since GitHub\'s `ubuntu-latest` image ships jq preinstalled. And this row proves ' +
+      "only that the two suites PASS — that they are still being COLLECTED and RUN at all, on " +
+      'a future commit that might delete or rename either `.test.sh` file outright, is ' +
+      "testfiles' job (see that row's new shell-test collector), not this one's.",
+  },
+  {
     id: 'memo',
     tier: 'fast',
     // The direct command, not `npm run memo`: this is the one row whose entire job is
@@ -245,38 +329,51 @@ export const CHECKS = [
     tier: 'fast',
     cmd: 'npm run test:files',
     proves:
-      "Every one of this repo's *.{test,spec,db-spec}.[cm]?[jt]sx? files is collected by " +
-      "EXACTLY ONE of this repo's five test runners — jest-unit " +
+      "Every one of this repo's *.{test,spec,db-spec}.[cm]?[jt]sx? files, PLUS every " +
+      '*.test.sh file anywhere in the repo (a second, separate candidate net — see ' +
+      'test-glob-parity.mjs\'s SHELL_TEST_FILE), is collected by EXACTLY ONE of this ' +
+      "repo's six test runners — jest-unit " +
       "(backend/jest.config.js's testRegex, rootDir src — moved out of backend/package.json's " +
       "own \"jest\" key by Task 20 so coverageThreshold there could read process.env, a static " +
       "JSON block cannot), jest-db (backend/jest.db.config.js's " +
       "separate testRegex, also rootDir src), vitest (frontend's default include, no " +
       'test.include set), node-test (scripts/**/*.test.mjs AND, as of Task 19, ' +
-      '.claude/hooks/**/*.test.mjs — two globs, one npm run test:verify command) and, ' +
-      'as of Task 17, playwright (e2e/**/*.spec.ts, Playwright\'s own default testMatch, run ' +
-      'by npm run test:e2e) — a file with zero matching collectors, or claimed by two at ' +
-      'once, fails this exact command, no matter how many files exist when it runs. The two ' +
-      'backend regexes are read out of backend/jest.config.js and backend/jest.db.config.js at ' +
-      'runtime, not copied here, so this row also proves those two files still say what the ' +
-      'check assumes. AS A SNAPSHOT, MEASURED 2026-09-10 and re-measured the same day after ' +
-      'Task 17 added the fifth collector and its first file, then re-measured again the ' +
-      'same day after Task 19 widened node-test\'s OWN reach to a second directory ' +
-      '(.claude/hooks/, alongside scripts/) for stop-gate.mjs\'s colocated stop-gate.test.mjs ' +
-      '— the first file ever collected from outside scripts/: 167 files currently match ' +
-      'that pattern (jest-unit 40, jest-db 12, vitest 99, node-test 15, playwright 1) — up ' +
-      'from the 160 (four collectors, node-test 9) this row reached after Task 10. That ' +
-      'total grows every time this plan, or any ordinary feature work, adds a test file, ' +
-      'and this row does not track or re-check its own prose count.',
+      '.claude/hooks/**/*.test.mjs — two globs, one npm run test:verify command), ' +
+      'playwright (e2e/**/*.spec.ts, Playwright\'s own default testMatch, run ' +
+      'by npm run test:e2e) and, as of Task 21, shell-test (scripts/ci/*.test.sh, run by ' +
+      'npm run test:ci-scripts — see that row) — a file with zero matching collectors, or ' +
+      'claimed by two at once, fails this exact command, no matter how many files exist when ' +
+      'it runs. Task 21 added shell-test after a whole-branch review found, BY HAND, that ' +
+      'this check could not see scripts/ci/*.test.sh files at all: origin/main\'s `checks` job ' +
+      'ran both of them with a bare shell line the old CANDIDATE_FILE regex\'s [cm]?[jt]sx? ' +
+      'extensions could never match, so a `checks` job deleted out from under that line would ' +
+      'have silenced both suites with nothing here noticing. The two backend regexes are read ' +
+      'out of backend/jest.config.js and backend/jest.db.config.js at runtime, not copied ' +
+      'here, so this row also proves those two files still say what the check assumes. AS A ' +
+      'SNAPSHOT, MEASURED 2026-09-11 after Task 21\'s merge of 40 commits from origin/main and ' +
+      'its new shell-test collector (previously MEASURED 2026-09-10, re-measured the same day ' +
+      'after Task 17 added the fifth collector and its first file, then again the same day ' +
+      'after Task 19 widened node-test\'s OWN reach to a second directory — .claude/hooks/, ' +
+      'alongside scripts/ — for stop-gate.mjs\'s colocated stop-gate.test.mjs, the first file ' +
+      'ever collected from outside scripts/): 170 files now match across the two candidate ' +
+      'nets (jest-unit 41, jest-db 12, vitest 99, node-test 15, playwright 1, shell-test 2) — ' +
+      'up from the 167 (five collectors, jest-unit 40) this row reached after Task 19, and from ' +
+      'the 160 (four collectors, node-test 9) it reached after Task 10. That total grows every ' +
+      'time this plan, or any ordinary feature work, adds a test file, and this row does not ' +
+      'track or re-check its own prose count.',
     blindSpot:
       'Nothing about the tests themselves: a file collected by exactly one runner can ' +
       'still assert nothing, or assert the wrong thing — this row only proves each ' +
       'candidate file is picked up once, never that it runs correctly, or at all, once ' +
-      'collected. Its candidate pattern is *.{test,spec,db-spec}.* in the [cm]?[jt]sx? ' +
-      'extensions; a file that looks like a test under any other name is invisible to it ' +
-      'on both sides — reported as neither an orphan nor a false double-collection. And ' +
-      'it knows only the five runners this repo has today; a sixth collector added later ' +
+      'collected. Its candidate patterns are *.{test,spec,db-spec}.* in the [cm]?[jt]sx? ' +
+      'extensions, plus *.test.sh anywhere (the shell-test net Task 21 added); a file that ' +
+      'looks like a test under any OTHER name or extension — a *.test.py, a *_test.go, a ' +
+      'bare test-something.sh with no .test. segment — is invisible to it on both sides, ' +
+      'reported as neither an orphan nor a false double-collection, exactly the same blind ' +
+      'spot Task 21 closed for .test.sh specifically, left open for every other shape. And ' +
+      'it knows only the six runners this repo has today; a seventh collector added later ' +
       'is unseen by this row until this row is taught about it — precisely how it was ' +
-      'taught about playwright, the fifth, in Task 17.',
+      'taught about playwright (the fifth, Task 17) and shell-test (the sixth, Task 21).',
   },
   {
     id: 'secrets',
@@ -305,7 +402,25 @@ export const CHECKS = [
     blindSpot:
       'This check is a heuristic in both directions, not a proof: a placeholder shape not ' +
       'yet named in PLACEHOLDER_RE can still false-positive, and any real secret under 32 ' +
-      'characters is never inspected at all, full stop. Shannon entropy is measured over ' +
+      'characters is never inspected at all, full stop. THE OTHER DIRECTION IS LOAD-BEARING, ' +
+      'not hypothetical: `PLACEHOLDER_RE` (`/^(changeme|change-me|example|your-|<.*>|\\.\\.\\.)' +
+      '/i`) is anchored only at the START — there is no trailing `$` — so it matches as a ' +
+      'PREFIX, not a whole-value shape. A value that merely BEGINS with one of these six ' +
+      'tokens is exempted from the entropy test in its entirety, no matter what real, ' +
+      'high-entropy material follows that prefix — `changeme-<a genuine 40-character ' +
+      'production secret>` is exactly as invisible to rule 3 as a bare `changeme` is, with ' +
+      'no warning printed either way, because this is a false NEGATIVE: the check simply ' +
+      'never flags it, not a wrong classification of something it did look at. This is not ' +
+      'theoretical for this exact repository: the `verify` job in .github/workflows/ci.yml ' +
+      'sets `JWT_SECRET: changeme-ci-only-jwt-secret-0123456789abcdef` — a value this check ' +
+      'never scrutinises past its first eight characters, for precisely this reason. That ' +
+      'specific line is safe only because it genuinely is a throwaway CI fixture nothing ' +
+      'outside that job verifies, not because this check confirmed anything about it; a real ' +
+      'production credential typed with a `changeme-`, `example-`, `your-` or `<...>`-shaped ' +
+      'prefix — whether by a copy-pasted convention or a deliberate attempt to look like a ' +
+      'placeholder — would be silently invisible to rule 3 (and to rule 4\'s identical ' +
+      'placeholder gate over .env.example) in exactly the same way. Shannon entropy is ' +
+      'measured over ' +
       'the WHOLE value — a run-based measurement was tried and rejected, since it scored a ' +
       'real hyphen-separated credential at 2.00 bits/char, comfortably invisible. Only a ' +
       'QUOTED string ' +
@@ -450,16 +565,22 @@ export const CHECKS = [
       'broken logic inside any check (a ratchet that silently stopped ratcheting, a boundary scan that ' +
       'stopped finding boundaries) could stay green in `npm run verify` indefinitely, ' +
       'caught only by someone remembering to run `npm run test:verify` by hand. ' +
-      "AS A SNAPSHOT, MEASURED 2026-09-10 and re-measured the same day after Task 10 added " +
-      "`ratchets/lint-exempt.test.mjs`: `npm run test:verify` (`node --test " +
-      "--test-concurrency=1 'scripts/verify/**/*.test.mjs'`) collects and runs 78 tests " +
-      "across 9 *.test.mjs files today — hash.test.mjs (7), registry.test.mjs (8), " +
-      'run.test.mjs (14), checks/memo-drift.test.mjs (4), ' +
-      'checks/migration-invariants.test.mjs (8), checks/seam-boundary.test.mjs (13), ' +
-      'checks/secret-boundary.test.mjs (13), checks/test-glob-parity.test.mjs (3) and ' +
-      'ratchets/lint-exempt.test.mjs (8) — up from the 70-across-8-files ' +
-      'this row first shipped with, and due to grow again the next time this plan adds a ' +
-      'check. This row does not track or re-check its own prose count.',
+      "AS A SNAPSHOT, MEASURED 2026-09-11 (re-measured repeatedly since first shipping " +
+      "70-across-8-files: 78-across-9 after Task 10 added ratchets/lint-exempt.test.mjs, " +
+      "and several more times since as this plan added rows — see git history for the " +
+      "intermediate counts this row does not itself track): `npm run test:verify` " +
+      "(`node --test --test-concurrency=1 'scripts/verify/**/*.test.mjs' " +
+      "'.claude/hooks/**/*.test.mjs'` — TWO globs since Task 19, not the one this row " +
+      "originally shipped quoting) collects and runs 154 tests across 15 *.test.mjs files " +
+      "today — hash.test.mjs (7), registry.test.mjs (8), run.test.mjs (14), " +
+      'checks/audit.test.mjs (11), checks/bundle-size.test.mjs (10), ' +
+      'checks/memo-drift.test.mjs (4), checks/migration-invariants.test.mjs (8), ' +
+      'checks/seam-boundary.test.mjs (13), checks/secret-boundary.test.mjs (13), ' +
+      'checks/test-glob-parity.test.mjs (6), ratchets/dead-exports.test.mjs (13), ' +
+      'ratchets/lint-exempt.test.mjs (8), ratchets/money-rounding.test.mjs (10), ' +
+      'ratchets/persist-boundary.test.mjs (15) and .claude/hooks/stop-gate.test.mjs (14) ' +
+      '— due to grow again the next time this plan adds a check. This row does not track ' +
+      'or re-check its own prose count.',
     blindSpot:
       "Proves only that each check's tests still agree with that check's code today — " +
       'self-consistency, not correctness of what the check was designed to catch. A ' +
@@ -719,9 +840,18 @@ export const CHECKS = [
       'hook command line invokes it, the same as the two Task 18 hooks. Its colocated stop-gate.test.mjs is ' +
       'NOT a new finding: it is reached through package.json\'s test:verify script, which gained a second ' +
       'glob (\'.claude/hooks/**/*.test.mjs\') for it, and knip DOES resolve a script\'s glob arguments. The ' +
-      'baseline now holds 122 findings (1 dependency, 5 devDependencies, 55 exports, 34 files, 25 types, 2 ' +
-      'unlisted). That count moves the instant anyone adds, fixes, or clears a finding anywhere knip.json\'s ' +
-      'globs reach, and this row does not track or re-check its own prose.',
+      'baseline held 122 findings that day (1 dependency, 5 devDependencies, 55 exports, 34 files, 25 types, ' +
+      '2 unlisted). RE-MEASURED AGAIN on 2026-09-11 after Task 21 merged 40 commits of origin/main and added ' +
+      'the `jq` PRECONDITION below: the merge itself changed nothing knip reports — config/env.schema.ts (the ' +
+      'Joi schema PR #63 lifted out of app.module.ts) is imported by app.module.ts and so is reachable, and ' +
+      'its colocated env.schema.spec.ts is resolved by knip\'s Jest plugin as a test entry, the same as every ' +
+      'other *.spec.ts file — but `execFile(\'jq\', [\'--version\'], ...)`, added to THIS file for the new ' +
+      '`test:ci-scripts` row, is a real, deliberate reference to a system binary this repo declares nowhere ' +
+      'in package.json, and knip\'s binaries plugin reports it as such — the first `binary`-kind finding this ' +
+      'baseline has ever carried. The baseline now holds 123 findings (1 binary, 1 dependency, 5 ' +
+      'devDependencies, 55 exports, 34 files, 25 types, 2 unlisted). That count moves the instant anyone ' +
+      "adds, fixes, or clears a finding anywhere knip.json's globs reach, and this row does not track or " +
+      're-check its own prose.',
     blindSpot:
       "knip infers reachability from its own static analysis of the module graph, and CAN BE WRONG IN BOTH " +
       'DIRECTIONS — particularly around dynamic imports (a bare `require(\'pino-pretty\')` string handed to ' +
@@ -729,13 +859,16 @@ export const CHECKS = [
       "(a NestJS provider wired only through a decorator and DI, or a *.db-spec.ts file this task's own " +
       "investigation found `backend/jest.db.config.js` runs directly, that knip's Jest plugin cannot see " +
       "because its default spec/test glob requires a literal dot before 'spec'/'test' and never matches a " +
-      "hyphenated '-db-spec.ts' suffix — 13 of this baseline's 33 file findings are exactly that one glob " +
-      "mismatch, and a further 8 are TypeORM migrations the runner discovers via a directory glob at startup " +
-      "rather than a static import, the same class of framework-invoked blind spot in a different tool; and 2 " +
-      "more, as of Task 18, are .claude/hooks/*.mjs PostToolUse hooks knip's default root-workspace scan finds " +
-      "but only .claude/settings.json's hook command line ever invokes — a config-driven blind spot again, not " +
-      "real dead code. Neither 13, nor 8, nor those 2 is real dead code). A baseline entry means the finding " +
-      "is KNOWN and explained, never that " +
+      "hyphenated '-db-spec.ts' suffix — 12 of this baseline's 34 file findings are exactly that one glob " +
+      "mismatch (its testing/db-harness.ts helper, run by the same jest.db.config.js but not itself named " +
+      "*.db-spec.ts, is a 13th finding for the identical reason, counted separately here because the glob " +
+      "mismatch this blind spot describes is not what excludes IT), and a further 8 are TypeORM migrations " +
+      "the runner discovers via a directory glob at startup rather than a static import, the same class of " +
+      "framework-invoked blind spot in a different tool; and 3, as of Task 19, are .claude/hooks/*.mjs " +
+      "PostToolUse hooks (edit-lint.mjs and batch-typecheck.mjs from Task 18, stop-gate.mjs from Task 19) " +
+      "knip's default root-workspace scan finds but only .claude/settings.json's hook command line ever " +
+      "invokes — a config-driven blind spot again, not real dead code. None of the 12, the 1 helper, the 8, " +
+      "or the 3 is real dead code). A baseline entry means the finding is KNOWN and explained, never that " +
       "the code it names is ACCEPTABLE to keep as-is — recording backend/src's transitive, undeclared `ms`/" +
       "`express` imports, or frontend/src's six independently-duplicated `Paginated<T>` interfaces, documents " +
       "them for a future fix, it does not endorse them, and this task deliberately left every one of them " +
