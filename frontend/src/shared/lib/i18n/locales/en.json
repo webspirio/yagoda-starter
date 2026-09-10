@@ -579,6 +579,7 @@
     "errors": {
       "cashFormat": "Enter an amount — up to two decimal places",
       "reasonRequired": "Enter a reason",
+      "reasonTooLong": "Reason — 500 characters or fewer",
       "failed": "Could not update the target"
     }
   },

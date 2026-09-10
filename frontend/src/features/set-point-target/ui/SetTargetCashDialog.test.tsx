@@ -63,7 +63,10 @@ describe('SetTargetCashDialog', () => {
     expect(screen.getByLabelText('New target')).toHaveValue('');
   });
 
-  it('refuses a blank reason and does not call the mutation', async () => {
+  it('refuses a blank reason when changing an EXISTING target and does not call the mutation', async () => {
+    // §6.1 — the reason requirement is conditional on a PREVIOUS level having
+    // existed; `currentTarget` here is non-null (the default), so this is the
+    // "changing an existing target" side and a blank reason must still refuse.
     const { onClose } = renderDialog();
 
     await userEvent.click(screen.getByRole('button', { name: 'Save target' }));
@@ -71,6 +74,47 @@ describe('SetTargetCashDialog', () => {
     expect(await screen.findByText('Enter a reason')).toBeInTheDocument();
     expect(setTargetMock).not.toHaveBeenCalled();
     expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it('submits a blank reason when setting a point\'s FIRST-EVER target', async () => {
+    // §6.1: «Для першого цільового значення точки причина не потрібна —
+    // попереднього рівня не існувало» — `currentTarget: null` is the signal.
+    const { onClose } = renderDialog(vi.fn(), null);
+
+    await userEvent.type(screen.getByLabelText('New target'), '145453.00');
+    await userEvent.click(screen.getByRole('button', { name: 'Save target' }));
+
+    expect(screen.queryByText('Enter a reason')).toBeNull();
+    expect(setTargetMock).toHaveBeenCalledWith({
+      pointId: 'p1',
+      target_cash: '145453.00',
+      reason: '',
+    });
+    expect(await screen.findByText('Target updated')).toBeInTheDocument();
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('drops aria-required from the reason field for a point\'s first-ever target', () => {
+    // `Field`'s required marker is a sibling of <label>, outside the
+    // accessible-name chain — `aria-required` on the control itself is the
+    // real, testable half of "the required marker follows the condition".
+    renderDialog(vi.fn(), null);
+    expect(screen.getByLabelText('Reason')).not.toHaveAttribute('aria-required');
+  });
+
+  it('keeps aria-required on the reason field when changing an existing target', () => {
+    renderDialog(vi.fn(), '600000.00');
+    expect(screen.getByLabelText('Reason')).toHaveAttribute('aria-required', 'true');
+  });
+
+  it('refuses a reason over 500 characters', async () => {
+    renderDialog();
+
+    await userEvent.type(screen.getByLabelText('Reason'), 'а'.repeat(501));
+    await userEvent.click(screen.getByRole('button', { name: 'Save target' }));
+
+    expect(await screen.findByText('Reason — 500 characters or fewer')).toBeInTheDocument();
+    expect(setTargetMock).not.toHaveBeenCalled();
   });
 
   it('submits the new target with the reason and closes', async () => {

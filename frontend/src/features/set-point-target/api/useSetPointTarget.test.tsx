@@ -20,7 +20,7 @@ beforeEach(() => {
 afterEach(() => mock.restore());
 
 describe('useSetPointTargetMutation', () => {
-  it('PATCHes the point with a mandatory reason and invalidates point cash', async () => {
+  it('PATCHes the point with the given reason and invalidates point cash', async () => {
     mock.onPatch('/collection-points/p1').reply(200, {});
     const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries');
     const { result } = renderHook(() => useSetPointTargetMutation(), { wrapper });
@@ -45,6 +45,23 @@ describe('useSetPointTargetMutation', () => {
     await waitFor(() => {
       expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: queryKeys.pointCash });
       expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: queryKeys.collectionPoints });
+    });
+  });
+
+  it('omits reason from the request when the caller sends none', async () => {
+    // §6.1: a point's FIRST-EVER target needs no reason — the dialog then
+    // calls this hook with `reason: ''`. The backend DTO's `reason` is
+    // `@IsOptional()`, but that only skips validation when the field is
+    // ABSENT; a PRESENT empty string still hits `@Length(1, 500)` and 400s.
+    // So "no reason" over the wire has to mean "no `reason` key", not
+    // `reason: ''`.
+    mock.onPatch('/collection-points/p1').reply(200, {});
+    const { result } = renderHook(() => useSetPointTargetMutation(), { wrapper });
+
+    await result.current.mutateAsync({ pointId: 'p1', target_cash: '145453.00', reason: '' });
+
+    expect(JSON.parse(mock.history.patch[0].data as string)).toEqual({
+      target_cash: '145453.00',
     });
   });
 });

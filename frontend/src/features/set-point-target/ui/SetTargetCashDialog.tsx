@@ -65,10 +65,19 @@ export function SetTargetCashDialog({
   const typedTarget = useWatch({ control, name: 'target_cash' });
   const normalizedTarget = normalizeAmount(typedTarget);
   const currentCash = pointCash.data?.cash;
+  // Fails open by design while the point's cash figure hasn't loaded yet (or
+  // errored): `currentCash === undefined` here, so no warning renders rather
+  // than a false one — there is nothing yet to compare the typed target to.
   const belowCurrentCash =
     currentCash !== undefined &&
     DECIMAL_INPUT.test(normalizedTarget) &&
     cmp(normalizedTarget, currentCash) === -1;
+
+  // §6.1: «Для першого цільового значення точки причина не потрібна —
+  // попереднього рівня не існувало» — `currentTarget: null` is that signal.
+  // Reaffirmed as still binding after the 03.09.2026 schema amendment
+  // ("Чинним лишається все інше: … перше значення без причини").
+  const isFirstTarget = currentTarget === null;
 
   const onSubmit = handleSubmit(async (values) => {
     setFormError(null);
@@ -127,15 +136,19 @@ export function SetTargetCashDialog({
           <Field
             name="reason"
             label={t('pointTarget.reason')}
-            required
+            required={!isFirstTarget}
             error={errors.reason?.message}
           >
             {(a11y) => (
               <Textarea
                 {...a11y}
                 {...register('reason', {
-                  required: 'pointTarget.errors.reasonRequired',
-                  validate: (value) => value.trim().length > 0 || 'pointTarget.errors.reasonRequired',
+                  required: isFirstTarget ? false : 'pointTarget.errors.reasonRequired',
+                  validate: (value) =>
+                    isFirstTarget ||
+                    value.trim().length > 0 ||
+                    'pointTarget.errors.reasonRequired',
+                  maxLength: { value: 500, message: 'pointTarget.errors.reasonTooLong' },
                 })}
               />
             )}
