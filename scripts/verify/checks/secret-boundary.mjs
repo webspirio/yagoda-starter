@@ -56,14 +56,27 @@
  * Entropy heuristics still have real limits: a placeholder shape not yet named in
  * PLACEHOLDER_RE can false-positive, and a short or low-entropy real secret can stay
  * under the threshold entirely (false negative) — nothing under 32 characters is ever
- * inspected. This check also sees only tracked files at the CURRENT commit — a secret
- * committed and later removed is invisible to it, and it cannot distinguish a real
- * credential from a convincing fake. See the registry's `blindSpot` for the full list.
+ * inspected. Restricting bare values to whole-line-only has its own confirmed cost: a
+ * shell `export NAME=value`, a Dockerfile `ENV NAME=value`, or a docker-compose
+ * `environment:` LIST entry (`- NAME=value`) are real, unquoted, secret-carrying shapes
+ * this now misses — see BARE_ASSIGNMENT_RE below for the measurement. This check also
+ * sees only tracked files at the CURRENT commit — a secret committed and later removed is
+ * invisible to it, and it cannot distinguish a real credential from a convincing fake.
+ * See the registry's `blindSpot` for the full list.
  *
  * There is no per-file-type or per-directory exemption of any kind — not for `.md`, not
- * for test files, not for any path. The one KNOWN_SAFE_VALUES entry below is not one
- * either: it is an exact (file, value) pin, not a shape, and it exists solely because this
- * task may not edit backend/src or frontend/src — see its own comment for why.
+ * for test files, not for any path.
+ *
+ * The one exception this check allows lives in `scripts/verify/baselines/secret-
+ * boundary.json`'s `confirmedFakeValues` array, never in this file's source — the same
+ * discipline `gitignoreSecretBoundary` already follows. Each entry pins one exact
+ * tracked-file path AND one exact value already confirmed to be a deliberately fake
+ * fixture in it; both must match, so it excludes nothing else — not the file, not nearby
+ * values, not this same string appearing anywhere else. It is loaded and validated fresh
+ * on every run, in BOTH directions: a stub or missing `reason` (under 30 characters) is
+ * rejected, and a pinned value that no longer appears in its named file is reported
+ * STALE — a pin that only ever forgives, and never expires, is not a ratchet. See
+ * `loadConfirmedFakeValues` below.
  */
 import { execFileSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
@@ -87,28 +100,6 @@ const GITIGNORE_BOUNDARY_LINES = ['.env', '.env.*', '!.env.example']
 // — a check's own baseline is not "a tracked file" in the sense rule 3 means.
 const RULE3_SKIP = new Set(['package-lock.json', BASELINE_REL])
 
-// Exact, reviewed exceptions — NOT a shape, NOT a file-type or path carve-out, and never a
-// place to record a real secret. Each entry names one exact tracked-file path AND the one
-// exact value already confirmed to be a deliberately fake fixture in it. Both must match
-// for the exception to apply, so it excludes nothing else — not the file, not nearby
-// values, not this same string appearing anywhere else.
-//
-// This exists only because this task is constrained to never edit backend/src or
-// frontend/src, so "fix the tree" (the right answer for docs/superpowers and
-// .env.example, applied elsewhere in this file and its own history) is not available for
-// this one value. frontend/src/shared/api/persister.test.ts:42 is a regression guard for
-// a real security fix (the raw bearer token must never sit in the persisted cache key) —
-// its fixture is intentionally JWT-shaped so the assertion is meaningful, and it names
-// itself as fake in its own text ("super-secret-session-token"). If this file is ever
-// touched by a change with permission to edit frontend/src, the fixture should be
-// reshaped to not need this entry, and the entry deleted.
-const KNOWN_SAFE_VALUES = new Map([
-  [
-    'frontend/src/shared/api/persister.test.ts',
-    new Set(['eyJhbGciOiJIUzI1NiJ9.super-secret-session-token.sig']),
-  ],
-])
-
 const PEM_RE = /-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----/
 const JWT_RE = /eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/
 const SECRET_NAME_RE = /secret|password|token|api[_-]?key/i
@@ -130,10 +121,15 @@ const QUOTED_ASSIGNMENT_RE = /([A-Za-z_$][A-Za-z0-9_$]*)\s*[:=]\s*(?:'([^']*)'|"
 // what deliberately excludes a code statement like `const password =
 // process.env.BOOTSTRAP_OWNER_PASSWORD;` — that RHS is unquoted too, but it is a property
 // access, not a literal, and the line also carries `const `/`;` the value alone cannot
-// swallow, so the whole-line anchor fails to match and it is never a candidate. An
-// unquoted bare token is not even valid JS/TS syntax for a string literal in the first
-// place, so restricting it to whole-line-only loses no real secret a source file could
-// actually contain.
+// swallow, so the whole-line anchor fails to match and it is never a candidate.
+//
+// This is a real, NAMED blind spot, not a free lunch: `export JWT_SECRET=value` (a shell
+// script), `ENV JWT_SECRET=value` (a Dockerfile — this repo's own backend/Dockerfile and
+// nginx/Dockerfile both carry unrelated ENV lines today, so the syntax is not
+// hypothetical), and `- JWT_SECRET=value` (a docker-compose `environment:` list, as
+// opposed to its map form) are all bare, unquoted, real secret-carrying shapes that this
+// same whole-line anchor would ALSO miss, because each has a leading keyword or `-` before
+// the NAME. Measured, not assumed — see this check's registry `blindSpot` entry.
 const BARE_ASSIGNMENT_RE = /^([A-Za-z_$][A-Za-z0-9_$]*)\s*[:=]\s*([^\s'";,)]+?)\s*(?:#.*)?$/
 
 /**
@@ -295,6 +291,89 @@ function readTextOrNull(absPath) {
 }
 
 /**
+ * The check's one allowed exception, loaded fresh from `scripts/verify/baselines/
+ * secret-boundary.json`'s `confirmedFakeValues` array on every run — never from this
+ * file's own source. Held to the SAME standard as `gitignoreSecretBoundary` next to it in
+ * that file: dated, reasoned, and TWO-DIRECTIONAL.
+ *
+ * Forward direction: a pin suppresses rule 3's finding for its exact (file, value) pair,
+ * and nothing else — a different value in the same file, or this same value in a
+ * different file, is untouched.
+ *
+ * Reverse direction, checked here, every run: a `reason` under 30 characters (trimmed) is
+ * rejected as a stub — the same rule this plan's other ratchets apply — and a pinned
+ * value that no longer appears anywhere in its named file is reported STALE. The fixture
+ * it described was edited or deleted, so the entry no longer permits anything real; left
+ * alone it would just sit there looking like a live exception forever. A ratchet that only
+ * ever forgives, never expires, is not a ratchet.
+ *
+ * @returns {{ suppressions: Map<string, Set<string>>, findings: string[] }}
+ */
+function loadConfirmedFakeValues() {
+  /** @type {Map<string, Set<string>>} */
+  const suppressions = new Map()
+  /** @type {string[]} */
+  const findings = []
+
+  /** @type {any} */
+  let baseline
+  try {
+    baseline = JSON.parse(readFileSync(BASELINE_PATH, 'utf8'))
+  } catch {
+    // checkGitignoreFingerprint already reports a missing/unparsable baseline file — this
+    // function does not double-report the same failure.
+    return { suppressions, findings }
+  }
+
+  const raw = baseline?.confirmedFakeValues
+  if (raw === undefined) return { suppressions, findings }
+  if (!Array.isArray(raw)) {
+    findings.push(`${BASELINE_REL}: "confirmedFakeValues" must be an array.`)
+    return { suppressions, findings }
+  }
+
+  raw.forEach((/** @type {any} */ entry, /** @type {number} */ i) => {
+    const label = `${BASELINE_REL} confirmedFakeValues[${i}]`
+    const file = entry?.file
+    const value = entry?.value
+    const recordedAt = entry?.recordedAt
+    const reason = typeof entry?.reason === 'string' ? entry.reason.trim() : ''
+
+    if (typeof file !== 'string' || !file) {
+      findings.push(`${label}: missing a "file" string.`)
+      return
+    }
+    if (typeof value !== 'string' || !value) {
+      findings.push(`${label} (${file}): missing a "value" string.`)
+      return
+    }
+    if (typeof recordedAt !== 'string' || !recordedAt) {
+      findings.push(`${label} (${file}): missing a "recordedAt" date.`)
+    }
+    if (!reason || reason.length < 30) {
+      findings.push(
+        `${label} (${file}): "reason" is missing or shorter than 30 characters — an exact ` +
+          'exception this narrow must explain itself, not merely exist.',
+      )
+    }
+
+    if (!suppressions.has(file)) suppressions.set(file, new Set())
+    const forFile = suppressions.get(file)
+    if (forFile) forFile.add(value)
+
+    const text = readTextOrNull(path.join(ROOT, file))
+    if (text === null || !text.includes(value)) {
+      findings.push(
+        `${label}: STALE — the pinned value no longer appears in ${file}. Delete this entry ` +
+          `from ${BASELINE_REL}: a fixture that no longer exists needs no exception.`,
+      )
+    }
+  })
+
+  return { suppressions, findings }
+}
+
+/**
  * Rule 3: scan every tracked file (less the two skips) for a PEM private-key block, a
  * JWT-shaped string, or a high-entropy value assigned to a secret-sounding name. Applies
  * uniformly to every tracked file, .md included — there is no per-file-type exemption: a
@@ -302,9 +381,10 @@ function readTextOrNull(absPath) {
  * writing it down (see docs/superpowers/plans/2026-09-10-verify-layer.md and this check's
  * own test file for examples of doing exactly that).
  *
+ * @param {Map<string, Set<string>>} suppressions from loadConfirmedFakeValues()
  * @returns {string[]} findings, empty when clean
  */
-function scanTrackedFilesForSecretShapes() {
+function scanTrackedFilesForSecretShapes(suppressions) {
   /** @type {string[]} */
   const findings = []
   for (const rel of listTrackedFiles()) {
@@ -324,7 +404,7 @@ function scanTrackedFilesForSecretShapes() {
       for (const { name, value } of extractAssignments(line)) {
         if (!SECRET_NAME_RE.test(name)) continue
         if (!isSecretShapedValue(value)) continue
-        if (KNOWN_SAFE_VALUES.get(rel)?.has(value)) continue
+        if (suppressions.get(rel)?.has(value)) continue
         findings.push(
           `${rel}:${lineNo}: ${name} is assigned a ${value.length}-character high-entropy value ` +
             `(${shannonEntropy(value).toFixed(2)} bits/char) — looks like a real secret, not a placeholder.`,
@@ -380,11 +460,14 @@ function checkEnvExamplePlaceholderOnly() {
 }
 
 function main() {
+  const { suppressions, findings: confirmedFakeValuesFindings } = loadConfirmedFakeValues()
+
   /** @type {string[]} */
   const findings = [
     ...checkEnvNotTracked(),
     ...checkGitignoreFingerprint(),
-    ...scanTrackedFilesForSecretShapes(),
+    ...confirmedFakeValuesFindings,
+    ...scanTrackedFilesForSecretShapes(suppressions),
     ...checkEnvExamplePlaceholderOnly(),
   ]
 
@@ -397,7 +480,8 @@ function main() {
   process.stdout.write(
     'secrets: boundary intact — .env untracked (only .env.example), gitignore fingerprint ' +
       'matches the baseline, no tracked file carries a PEM/JWT/high-entropy secret shape, ' +
-      'and .env.example is placeholder-only\n',
+      'the confirmed-fake-value baseline is dated/reasoned/fresh, and .env.example is ' +
+      'placeholder-only\n',
   )
 }
 

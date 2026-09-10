@@ -8,6 +8,26 @@ const ROOT = path.resolve(import.meta.dirname, '..', '..', '..')
 const CHECK = path.join(ROOT, 'scripts', 'verify', 'checks', 'secret-boundary.mjs')
 const GITIGNORE = path.join(ROOT, '.gitignore')
 const ENV_EXAMPLE = path.join(ROOT, '.env.example')
+const BASELINE = path.join(ROOT, 'scripts', 'verify', 'baselines', 'secret-boundary.json')
+
+/** A valid, non-stub reason — well over the 30-character floor. @type {string} */
+const VALID_TEST_REASON =
+  'Test-only confirmed-fake pin exercising the two-directional ratchet mechanism itself.'
+
+/**
+ * @param {{ file: string, value: string, reason: string }} entry
+ * @returns {string} the original baseline content, for restoring in a finally
+ */
+function addConfirmedFakeValueEntry(entry) {
+  const original = readFileSync(BASELINE, 'utf8')
+  const baseline = JSON.parse(original)
+  baseline.confirmedFakeValues = [
+    ...(baseline.confirmedFakeValues ?? []),
+    { file: entry.file, value: entry.value, recordedAt: '2026-09-10', reason: entry.reason },
+  ]
+  writeFileSync(BASELINE, `${JSON.stringify(baseline, null, 2)}\n`)
+  return original
+}
 
 /** @returns {{ status: number, out: string }} */
 function run() {
@@ -134,6 +154,67 @@ test('a dash-separated high-entropy value is caught (regression: a run-based mea
       // See the PEM test above for why this is allowed to fail harmlessly.
     }
     rmSync(fixture, { force: true })
+  }
+})
+
+test('a confirmedFakeValues pin is exact: a second, unpinned high-entropy value in the same file is still caught', () => {
+  const rel = 'docs/zz-secret-fixture-confirmed-fake.txt'
+  const fixture = path.join(ROOT, rel)
+  const pinnedValue = randomHighEntropyValue()
+  const unpinnedValue = randomDashSeparatedHighEntropyValue()
+  const originalBaseline = addConfirmedFakeValueEntry({ file: rel, value: pinnedValue, reason: VALID_TEST_REASON })
+  writeFileSync(fixture, `API_KEY=${pinnedValue}\nAPI_TOKEN=${unpinnedValue}\n`)
+  try {
+    execFileSync('git', ['add', '-N', '--', rel], { cwd: ROOT })
+    const res = run()
+    assert.equal(res.status, 1, res.out)
+    // The pinned line must NOT appear as a finding — only the unpinned one.
+    assert.doesNotMatch(res.out, /API_KEY/)
+    assert.match(res.out, /API_TOKEN/)
+    assert.match(res.out, /zz-secret-fixture-confirmed-fake\.txt/)
+  } finally {
+    try {
+      execFileSync('git', ['rm', '--cached', '--force', '--quiet', '--', rel], { cwd: ROOT })
+    } catch {
+      // See the PEM test above for why this is allowed to fail harmlessly.
+    }
+    rmSync(fixture, { force: true })
+    writeFileSync(BASELINE, originalBaseline)
+  }
+})
+
+test('a confirmedFakeValues entry whose pinned value no longer appears in its file is reported STALE', () => {
+  // No fixture file needed: any tracked, existing file that certainly does not contain a
+  // fresh random value stands in for "the fixture was edited/deleted out from under the
+  // pin" — package.json is tracked and unrelated to this check's fixtures.
+  const originalBaseline = addConfirmedFakeValueEntry({
+    file: 'package.json',
+    value: randomHighEntropyValue(),
+    reason: VALID_TEST_REASON,
+  })
+  try {
+    const res = run()
+    assert.equal(res.status, 1, res.out)
+    assert.match(res.out, /STALE/)
+    assert.match(res.out, /package\.json/)
+  } finally {
+    writeFileSync(BASELINE, originalBaseline)
+  }
+})
+
+test('a confirmedFakeValues entry with a stub reason (under 30 characters) is rejected', () => {
+  const originalBaseline = addConfirmedFakeValueEntry({
+    file: 'package.json',
+    value: randomHighEntropyValue(),
+    reason: 'TODO',
+  })
+  try {
+    const res = run()
+    assert.equal(res.status, 1, res.out)
+    assert.match(res.out, /reason/i)
+    assert.match(res.out, /30 characters/)
+  } finally {
+    writeFileSync(BASELINE, originalBaseline)
   }
 })
 

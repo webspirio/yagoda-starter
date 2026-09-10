@@ -289,17 +289,24 @@ export const CHECKS = [
       'shape not yet named in PLACEHOLDER_RE can still false-positive, and any real secret ' +
       'under 32 characters is never inspected at all, full stop. Only a QUOTED string ' +
       'literal is a candidate value anywhere in a line; a bare, unquoted one is a candidate ' +
-      'only when it is the entire line, so a real secret assigned without quotes in the ' +
-      'middle of a larger unquoted expression is invisible (this is deliberate — an ' +
-      'unquoted RHS is not valid JS/TS syntax for a literal in the first place, so nothing ' +
-      'a real secret could actually look like in source is lost by it). There is exactly ' +
-      'one exact-value exception (KNOWN_SAFE_VALUES in the check source): one already-' +
-      'audited fake token fixture in frontend/src, pinned by its exact file path AND its ' +
-      'exact string, because this task may not edit frontend/src to reshape it instead — ' +
-      'this pins nothing else, and a different value at that path, or this value anywhere ' +
-      'else, is still caught. This check also sees only files `git ls-files` tracks RIGHT ' +
-      'NOW, at the CURRENT commit — a credential committed and later deleted is invisible ' +
-      "to it, history is never searched, and rule 1's pathspec is root-anchored, not " +
+      'only when it is the entire line — measured, this is a real hole, not a free lunch: a ' +
+      'shell `export NAME=value`, a Dockerfile `ENV NAME=value` (this repo\'s own ' +
+      'backend/Dockerfile and nginx/Dockerfile both carry unrelated ENV lines today, so the ' +
+      'syntax is live here), and a docker-compose `environment:` LIST entry (`- ' +
+      'NAME=value`) are all real, unquoted, secret-carrying shapes this check would miss, ' +
+      'because each has a leading keyword or `-` before the name that breaks the ' +
+      'whole-line match. This check has exactly one reviewed exception, and it lives in ' +
+      'scripts/verify/baselines/secret-boundary.json\'s confirmedFakeValues array — never ' +
+      'in this file\'s source, and re-validated on every run (a stub reason under 30 ' +
+      'characters is rejected; an entry whose pinned value no longer appears in its named ' +
+      'file is reported STALE). Today it holds one already-audited fake token fixture in ' +
+      'frontend/src/shared/api/persister.test.ts, pinned by its EXACT file path AND its ' +
+      'EXACT string — not a shape, not a path, not a file-type carve-out. That exactness ' +
+      'cuts both ways: a genuine secret whose literal text happened to equal a pinned ' +
+      'value, planted in that same file, would be exactly as invisible to this check as the ' +
+      'confirmed fake is. This check also sees only files `git ls-files` tracks RIGHT NOW, ' +
+      "at the CURRENT commit — a credential committed and later deleted is invisible to " +
+      "it, history is never searched, and rule 1's pathspec is root-anchored, not " +
       'recursive, so an errant .env committed inside backend/ or frontend/ would not be ' +
       'named by it either. And it cannot tell a real credential from a convincing fake: ' +
       "this very check's own tests plant a fake PEM header, a JWT built from the literal " +
