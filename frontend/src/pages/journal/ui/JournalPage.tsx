@@ -5,6 +5,7 @@ import { ListPage } from '@/shared/ui/templates/list-page';
 import { StatGrid } from '@/shared/ui/stat-grid';
 import { StatTile } from '@/shared/ui/stat-tile';
 import { Tabs, TabsContent } from '@/shared/ui/tabs';
+import { isTruncated } from '@/shared/api';
 import { useUrlPatch } from '@/shared/lib/url-state';
 import { sum, formatUah } from '@/shared/lib/money';
 import { usePointOptionsQuery } from '@/entities/collection-point';
@@ -111,7 +112,7 @@ export function JournalPage() {
   // The count tile is always the server's true `total`; only the money sum
   // is a display total over what actually reached the browser, so only IT
   // needs the «на цій сторінці» caveat once a page held back the rest.
-  const pageOnly = activeQuery.data ? activeQuery.data.total > activeQuery.data.data.length : false;
+  const pageOnly = isTruncated<JournalDocument>(activeQuery.data);
 
   const [receiptId, setReceiptId] = useState<string | null>(null);
   const [receiptOpen, setReceiptOpen] = useState(false);

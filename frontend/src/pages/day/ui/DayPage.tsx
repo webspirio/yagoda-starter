@@ -9,6 +9,7 @@ import { SelectField } from '@/shared/ui/select-field';
 import { EmptyState } from '@/shared/ui/empty-state';
 import { Spinner } from '@/shared/ui/spinner';
 import { toast } from '@/shared/ui/toast';
+import { isTruncated } from '@/shared/api';
 import { useUrlParam } from '@/shared/lib/url-state';
 import { sum, sub, cmp, formatUah } from '@/shared/lib/money';
 import {
@@ -175,9 +176,7 @@ export function DayPage() {
   // Both journals are read with the entities' default `limit: 100`. Past that
   // the tiles would quietly under-report a busy day, which is the one thing a
   // cash screen may not do — so say so rather than raise the limit and hope.
-  const truncated =
-    (intakes.data ? intakes.data.total > intakes.data.data.length : false) ||
-    (payouts.data ? payouts.data.total > payouts.data.data.length : false);
+  const truncated = isTruncated(intakes.data) || isTruncated(payouts.data);
 
   const pointName = (points ?? []).find((p) => p.id === pointId)?.name ?? '';
 
