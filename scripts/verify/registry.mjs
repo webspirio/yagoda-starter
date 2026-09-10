@@ -836,6 +836,61 @@ export const CHECKS = [
       'covered. And because no floor exists anywhere this row reads, nothing here stops either percentage from ' +
       "falling in a future change — that gate, once it exists, is ci.yml's alone, never this row's.",
   },
+  {
+    id: 'bundle',
+    tier: 'full',
+    cmd: 'npm run bundle',
+    after: ['build'],
+    // THIS IS THE FIRST REAL `after` IN THIS REGISTRY — every earlier row's own `after`
+    // comment argues why ordering was NOT needed; this one argues the opposite. bundle-
+    // size.mjs reads frontend/dist/assets directly off disk; unlike `coverage` (re-runs the
+    // whole suite itself) or `audit` (shells out to npm's own tooling), it builds nothing.
+    // Without `build` having actually PASSED first, this row runs against whatever happens
+    // to already be sitting in frontend/dist: nothing at all on a fresh checkout (a clear,
+    // named failure — see measure()'s own message), or worse, a STALE tree left over from an
+    // earlier commit or an unrelated manual `npm run build` — silently measuring the wrong
+    // bytes and reporting a false verdict either way. `run.mjs`'s `after` mechanism (generic,
+    // and unrelated to anything in this check's own code) is what turns a `build` that did
+    // not PASS into `bundle` reporting NOT_RUN instead of measuring that stale-or-missing
+    // directory — verified empirically for this task's report: with `build` forced to fail,
+    // `bundle` reported NOT_RUN, naming `build` as the unmet dependency, never FAILED and
+    // never a false PASSED against the tree `build` left behind.
+    proves:
+      '`npm run bundle` (scripts/verify/checks/bundle-size.mjs) fails this exact command whenever the gzip OR ' +
+      'the raw SUM of every `.js`/`.css` file directly under frontend/dist/assets exceeds the ceiling recorded ' +
+      'in scripts/verify/baselines/bundle-budget.json — the two directions are independent (a raw-only overage ' +
+      'fails exactly as hard as a gzip-only one), and the ceiling only ever changes through a separate, ' +
+      'deliberate `--write` run plus a reviewed, dated edit to that JSON file, never automatically and never as ' +
+      'a side effect of this command passing or failing. The ceiling itself is the measured total ROUNDED UP — ' +
+      '5 KiB steps for gzip, 20 KiB steps for raw — never pinned to the measurement byte-for-byte: the reference ' +
+      'this check was ported from (webspirio/yagoda-crm) did exactly that once and broke on the very next commit ' +
+      'over an 18-byte gzip increase from one ordinary helper, which is the failure this row\'s rounding rule ' +
+      'exists to prevent; what it must still catch is a REGRESSION — a new dependency pulled in whole, an ' +
+      'accidental whole-package import — measured in tens or hundreds of KiB, not bytes. AS A DATED SNAPSHOT, ' +
+      'MEASURED 2026-09-10: frontend/dist/assets holds exactly two such files, index-Cwd0rvbd.js (871.5 KiB raw ' +
+      '/ 257.7 KiB gzip) and index-DI-2mR6f.css (84.2 KiB raw / 18.6 KiB gzip), summing to 955.7 KiB raw / 276.4 ' +
+      'KiB gzip against a ceiling of 960.0 KiB raw / 280.0 KiB gzip — a headroom of 4.3 KiB raw / 3.6 KiB gzip an ' +
+      'ordinary feature can close quickly. That headroom, not the pass/fail, is what this row is actually for: ' +
+      'it is printed as a line starting with the literal word `WARNING` on EVERY passing run, and the runner\'s ' +
+      'own warningLines() (`/WARNING|\\(!\\)/`, scripts/verify/run.mjs) surfaces it even though the row is ' +
+      "green, so a green `bundle` row can never be read as 'nothing here to watch'.",
+    blindSpot:
+      'Measures the SUM of frontend/dist/assets, never what a browser actually downloads on first paint — and ' +
+      'the two can move in OPPOSITE directions: code splitting turns one large chunk into several smaller ones ' +
+      'plus a little overhead at every new chunk boundary, so the sum this row checks can GROW at the exact ' +
+      "moment a real user's first download SHRINKS. A green row here is therefore a claim about total shipped " +
+      'bytes, not about load time, and the number worth reading every run is the headroom line above, never the ' +
+      'pass/fail alone. It also counts only `.js`/`.css` files sitting directly under dist/assets: the 17 font ' +
+      'files Vite copies alongside them today, any other static asset, and anything shipped outside dist/assets ' +
+      'entirely (an inline index.html script, a public/ passthrough file) are invisible to both totals ' +
+      "regardless of size. Gzip is measured at level 9 with Node's own zlib, not brotli and not whatever " +
+      'compression level a real production server actually negotiates with a given browser, so the number this ' +
+      "row checks is never the exact number that crosses a real user's wire. And this row trusts that " +
+      "frontend/dist reflects a genuine, complete, current build: `after: ['build']` is what buys that guarantee " +
+      'inside `npm run verify:full`, but `npm run bundle` run directly and standalone — exactly as every other ' +
+      "check's npm script can also be run — re-verifies none of it, and would measure a stale or hand-edited " +
+      'dist tree exactly as confidently as a fresh one.',
+  },
 ]
 
 /** @type {Record<Tier, number>} */

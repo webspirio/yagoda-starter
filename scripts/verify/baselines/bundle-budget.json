@@ -1,0 +1,10 @@
+{
+  "measuredAt": "2026-09-10",
+  "measuredGzipBytes": 283001,
+  "measuredRawBytes": 978636,
+  "maxGzipBytes": 286720,
+  "maxRawBytes": 983040,
+  "headroomGzipBytes": 3719,
+  "headroomRawBytes": 4404,
+  "reason": "The ceiling is the measured total ROUNDED UP — 5 KiB steps for gzip, 20 KiB steps for raw — never the measurement itself. This is a deliberate correction, not slack left in by accident: the reference this check was ported from (webspirio/yagoda-crm) first pinned the ceiling to the exact measured byte count, and it broke on the very next commit over an 18-byte gzip increase from adding one small helper — ordinary work, not a regression. A check that demands a budget edit for 18 bytes teaches people to raise budgets without reading them, which defeats the one thing a budget is for. What this ceiling exists to catch is a REGRESSION — a new dependency pulled in whole, an accidental whole-package import — measured in tens or hundreds of KiB, never bytes. Lowering the ceiling is an ordinary edit. Raising it must be a visible, reasoned diff to this file, and only after ruling out that the increase is exactly the kind of regression this row exists to stop."
+}
