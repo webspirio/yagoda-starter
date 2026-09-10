@@ -61,7 +61,7 @@ const NAV_GROUPS: NavGroup[] = [
       { labelKey: 'nav.reception', icon: Scale, to: '/reception' },
       { labelKey: 'nav.crates', icon: Boxes },
       { labelKey: 'nav.day', icon: CalendarCheck2, to: '/day' },
-      { labelKey: 'nav.pointCash', icon: Banknote },
+      { labelKey: 'nav.pointCash', icon: Banknote, to: '/point-cash' },
       // Both roles: the owner sets the day's price, the operator sees it locked.
       { labelKey: 'nav.prices', icon: CircleDollarSign, to: '/prices' },
     ],
@@ -82,7 +82,7 @@ const NAV_GROUPS: NavGroup[] = [
       { labelKey: 'nav.reweigh', icon: Weight },
       { labelKey: 'nav.network', icon: Network },
       { labelKey: 'nav.sheet', icon: Printer },
-      { labelKey: 'nav.transfers', icon: ArrowLeftRight },
+      { labelKey: 'nav.transfers', icon: ArrowLeftRight, to: '/transfers', role: 'network_owner' },
       { labelKey: 'nav.points', icon: MapPin, to: '/points' },
       { labelKey: 'nav.users', icon: UserCog, to: '/users' },
       { labelKey: 'nav.refs', icon: Package, to: '/catalog' },
