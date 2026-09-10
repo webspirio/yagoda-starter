@@ -1,4 +1,4 @@
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient, type QueryKey } from '@tanstack/react-query';
 import { httpClient } from '@/shared/api';
 import { queryKeys } from '@/shared/api/queryKeys';
 
@@ -8,11 +8,10 @@ export interface VoidDocumentInput {
   reason: string;
 }
 
-const PATHS = {
-  intake: (id: string) => `/intakes/${id}/void`,
-  payout: (id: string) => `/payouts/${id}/void`,
-  transfer: (id: string) => `/transfers/${id}/void`,
-} as const;
+interface VoidDescriptor {
+  path: (id: string) => string;
+  invalidates: readonly QueryKey[];
+}
 
 /**
  * Voids an intake, payout or transfer — `POST /<kind>s/:id/void` with
@@ -31,21 +30,31 @@ const PATHS = {
  * flip side of a voided PAYOUT, which stays subtracted because that money
  * physically left the drawer.
  */
+const DOCUMENTS: Record<VoidDocumentInput['kind'], VoidDescriptor> = {
+  intake: {
+    path: (id) => `/intakes/${id}/void`,
+    invalidates: [queryKeys.intakes, queryKeys.payouts, queryKeys.supplierBalances],
+  },
+  payout: {
+    path: (id) => `/payouts/${id}/void`,
+    invalidates: [queryKeys.intakes, queryKeys.payouts, queryKeys.supplierBalances],
+  },
+  transfer: {
+    path: (id) => `/transfers/${id}/void`,
+    invalidates: [queryKeys.transfers, queryKeys.pointCash],
+  },
+};
+
 export function useVoidDocumentMutation() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async ({ kind, id, reason }: VoidDocumentInput): Promise<void> => {
-      await httpClient.post(PATHS[kind](id), { reason });
+      await httpClient.post(DOCUMENTS[kind].path(id), { reason });
     },
     onSuccess: (_data, { kind }) => {
-      if (kind === 'transfer') {
-        qc.invalidateQueries({ queryKey: queryKeys.transfers });
-        qc.invalidateQueries({ queryKey: queryKeys.pointCash });
-        return;
+      for (const queryKey of DOCUMENTS[kind].invalidates) {
+        qc.invalidateQueries({ queryKey });
       }
-      qc.invalidateQueries({ queryKey: queryKeys.intakes });
-      qc.invalidateQueries({ queryKey: queryKeys.payouts });
-      qc.invalidateQueries({ queryKey: queryKeys.supplierBalances });
     },
   });
 }
