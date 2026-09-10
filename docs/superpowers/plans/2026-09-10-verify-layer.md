@@ -267,7 +267,7 @@ Create `tsconfig.scripts.json` at the repo root:
 Add to the root `package.json` `scripts`:
 
 ```json
-"test:verify": "node --test scripts/verify/"
+"test:verify": "node --test 'scripts/verify/**/*.test.mjs'"
 ```
 
 Append `.verify/` to `.gitignore` under a comment saying it is the verify runner's report directory.
@@ -1671,7 +1671,7 @@ Expected: every row runs; nothing is `SKIPPED` (under `--no-skip` a skip is a fa
 ## Final verification
 
 - [ ] `npm run verify:ci` is green with nothing skipped, and the run is timed.
-- [ ] `node --test scripts/verify/` — every engine and check test passes.
+- [ ] `npm run test:verify` — every engine and check test passes. (Not `node --test scripts/verify/`: on Node 24 a bare directory argument is treated as a test *file* and fails, which is a green-looking red — see ledger ruling R5.)
 - [ ] `npx tsc -p tsconfig.scripts.json` — the verify layer typechecks itself.
 - [ ] `node scripts/verify/checks/memo-drift.mjs` — the table matches the registry.
 - [ ] Every row in the generated table has been **seen red at least once**. List any that have not; a row never seen red has not been shown to check anything.
