@@ -355,7 +355,16 @@ export const CHECKS = [
     id: 'migrations',
     tier: 'fast',
     cmd: 'npm run migrations:check',
-    after: ['typecheck'],
+    // No `after`: this check parses backend/src with `ts.createSourceFile` (syntax only),
+    // never `ts.createProgram` (type-checking) — a type error does not stop a file from
+    // parsing, so an `after: ['typecheck']` here would order two rows that do not
+    // actually depend on each other. Verified empirically: with a deliberate type error
+    // added to backend/src/app.module.ts (confirmed to fail `tsc`), this check still
+    // reported green on the unchanged tree and still correctly caught and located a
+    // `synchronize: true` violation planted in that same file alongside the type error —
+    // proof the type error neither hides nor fakes a finding here. `seam` (structurally
+    // identical: also `ts.createSourceFile` over backend/src) never declared this `after`
+    // in the first place, so only this row needed correcting.
     proves:
       'Measured 2026-09-10: `npm run migrations:check` parses every backend/src/**/*.ts ' +
       'file with the TypeScript compiler API and enforces four rules against ' +
@@ -390,6 +399,55 @@ export const CHECKS = [
       'row proves nothing about already-merged migrations for that run, though rules 1–3 ' +
       'still apply in full. Filename- and class-name-matching are purely lexical: a ' +
       'correctly named class with a broken body is exactly as green as a correct one.',
+  },
+  {
+    id: 'selfcheck',
+    tier: 'fast',
+    cmd: 'npm run test:verify',
+    // No `after`: nothing this suite does depends on another row having passed first.
+    // It runs the layer's own .mjs sources directly under node:test — untranspiled,
+    // untyped at runtime — so a failure or a pass in `typecheck` changes nothing about
+    // whether these tests execute or what they observe; and it does not read `lint`,
+    // `testfiles`, `secrets`, `seam` or `migrations` output, only the source files those
+    // commands also happen to run. `run.mjs` runs every row strictly sequentially (a
+    // `for` loop that `await`s each `runCommand` before starting the next — see
+    // run.mjs's main()), so the handful of these tests that write and delete fixture
+    // files under backend/src (each wrapped in try/finally) never overlap with another
+    // row's own read of that tree.
+    proves:
+      "Measured 2026-09-10: `npm run test:verify` (`node --test --test-concurrency=1 " +
+      "'scripts/verify/**/*.test.mjs'`) collects and runs all 70 tests across the verify " +
+      'layer\'s 8 *.test.mjs files — hash.test.mjs (7), registry.test.mjs (8), ' +
+      'run.test.mjs (14), checks/memo-drift.test.mjs (4), ' +
+      'checks/migration-invariants.test.mjs (8), checks/seam-boundary.test.mjs (13), ' +
+      'checks/secret-boundary.test.mjs (13) and checks/test-glob-parity.test.mjs (3), 70 ' +
+      'in total — and every one of them passes. A single failing assertion anywhere in ' +
+      'that suite fails this exact command and turns this row red, which is the whole ' +
+      'point of adding it: before this row existed, `npm run verify` ran eight other rows ' +
+      'over the rest of the tree — including `typecheck`, which covers scripts/**/*.mjs ' +
+      'for TYPES, and `testfiles`, which confirms this layer\'s own 8 *.test.mjs files ' +
+      'are COLLECTED, by node-test specifically — and not one of them RAN this suite, so ' +
+      'broken logic inside any check (a ratchet that silently stopped ratcheting, a boundary scan that ' +
+      'stopped finding boundaries) could stay green in `npm run verify` indefinitely, ' +
+      'caught only by someone remembering to run `npm run test:verify` by hand.',
+    blindSpot:
+      "Proves only that each check's tests still agree with that check's code today — " +
+      'self-consistency, not correctness of what the check was designed to catch. A ' +
+      "check's tests are written by whoever wrote the check, in the same sitting, so a " +
+      "blind spot baked into the check's own design (a boundary its author never " +
+      'considered, a rule that was always narrower than the prose above it claims) is ' +
+      'exactly as invisible to that check\'s tests as it is to the check itself — this ' +
+      'row cannot distinguish a check that is correct from one that is confidently, ' +
+      'consistently wrong in a way its own author never tested for. It says nothing about ' +
+      'whether any `proves` or `blindSpot` string in this very registry, including this ' +
+      "one, is actually TRUE of its check: a `proves` sentence could overstate what its " +
+      'command establishes, or understate a blind spot, and every test in this row could ' +
+      'still be green, because this row exercises the CODE the other checks run, never ' +
+      "the PROSE describing them — auditing that prose against the registry is `memo`'s " +
+      'job, and `memo` only confirms CLAUDE.md quotes this file verbatim, never that a ' +
+      'quoted claim is honest. And a green here says nothing about a check this layer ' +
+      "does not yet have — a future crate_issuances or cash_counts boundary check, say — " +
+      'until both that check and its tests exist.',
   },
 ]
 
