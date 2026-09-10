@@ -13,10 +13,13 @@ export interface CreatePayoutInput {
 
 /**
  * Records a payout — a standalone document (never a patch on an intake; see
- * `entities/payout`). Invalidates both the payout journal AND
- * `supplierBalances`: a payout is one of the two flows (with intakes) that
- * move a supplier's Σ intakes − Σ payouts number, so both caches go stale
- * together.
+ * `entities/payout`). Invalidates the payout journal, `supplierBalances` AND
+ * `pointCash`: a payout is one of the two flows (with intakes) that move a
+ * supplier's Σ intakes − Σ payouts number, so the first two go stale
+ * together — and it is one of the three terms of `PointCashService`'s drawer
+ * formula (money paid out leaves the drawer), so without the third «Каса
+ * точки» and the owner's «Перекази» table keep showing the pre-payout figure
+ * for `STALE.list` after the operator walks back from «Борги».
  */
 export function useCreatePayoutMutation() {
   const qc = useQueryClient();
@@ -28,6 +31,7 @@ export function useCreatePayoutMutation() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: queryKeys.payouts });
       qc.invalidateQueries({ queryKey: queryKeys.supplierBalances });
+      qc.invalidateQueries({ queryKey: queryKeys.pointCash });
     },
   });
 }
