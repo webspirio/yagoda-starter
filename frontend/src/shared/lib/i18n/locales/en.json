@@ -906,7 +906,7 @@
     "incoming": {
       "inTransit_one": "In transit: {{uah}} and {{count}} crate",
       "inTransit_other": "In transit: {{uah}} and {{count}} crates",
-      "meta": "{{carrier}} · sent {{date}}",
+      "meta": "{{carrier}}, sent {{date}}",
       "pointAccepts": "the point accepts",
       "accept": "Accept",
       "dispute": "Doesn't match",

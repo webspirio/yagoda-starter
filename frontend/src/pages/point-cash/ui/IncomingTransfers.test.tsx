@@ -133,6 +133,16 @@ describe('IncomingTransfers', () => {
       // TransferHistory.test.tsx asserts for the same instant.
       expect(screen.getByText(/09\/10 · 08:05 AM/)).toBeInTheDocument();
     });
+
+    it('joins carrier and timestamp with a comma — formatDateTime already carries its own middot', () => {
+      vi.stubEnv('TZ', 'UTC');
+      transfersMock.mockReturnValue(
+        page([transfer({ carrier: 'Ivan', sent_at: '2026-09-10T08:05:00.000Z' })]),
+      );
+      render(<IncomingTransfers pointId="p1" canAct />);
+
+      expect(screen.getByText('Ivan, sent 09/10 · 08:05 AM')).toBeInTheDocument();
+    });
   });
 
   it('opens the dispute dialog for the clicked transfer', async () => {
