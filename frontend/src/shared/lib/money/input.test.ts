@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { DECIMAL_INPUT, normalizeAmount } from './input';
+import { DECIMAL_INPUT, CRATES_INPUT, normalizeAmount } from './input';
 
 describe('normalizeAmount', () => {
   it('accepts a comma as the decimal separator and trims', () => {
@@ -19,5 +19,14 @@ describe('DECIMAL_INPUT', () => {
   });
   it.each(['', '-1', '1.234', 'abc', '1.'])('rejects %s', (v) => {
     expect(DECIMAL_INPUT.test(v)).toBe(false);
+  });
+});
+
+describe('CRATES_INPUT', () => {
+  it.each(['0', '7', '1234567'])('accepts %s', (v) => {
+    expect(CRATES_INPUT.test(v)).toBe(true);
+  });
+  it.each(['', '-1', '1.5', 'abc', '12345678'])('rejects %s', (v) => {
+    expect(CRATES_INPUT.test(v)).toBe(false);
   });
 });

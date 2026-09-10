@@ -14,12 +14,9 @@ import { TextInput } from '@/shared/ui/text-input';
 import { Button } from '@/shared/ui/button';
 import { toast } from '@/shared/ui/toast';
 import { apiErrorToBanner } from '@/shared/lib/api-error';
-import { DECIMAL_INPUT, normalizeAmount } from '@/shared/lib/money';
+import { DECIMAL_INPUT, CRATES_INPUT, normalizeAmount } from '@/shared/lib/money';
 import type { Transfer } from '@/entities/transfer';
 import { useResolveTransferMutation } from '../api/useResolveTransfer';
-
-/** Ціле число ящиків, 0 або більше — дзеркалить `@IsInt() @Min(0)` DTO. */
-const CRATES_INPUT = /^\d{1,7}$/;
 
 interface ResolveFormValues {
   resolved_cash: string;

@@ -15,12 +15,9 @@ import { Textarea } from '@/shared/ui/textarea';
 import { Button } from '@/shared/ui/button';
 import { toast } from '@/shared/ui/toast';
 import { apiErrorToBanner } from '@/shared/lib/api-error';
-import { DECIMAL_INPUT, normalizeAmount, formatUah } from '@/shared/lib/money';
+import { DECIMAL_INPUT, CRATES_INPUT, normalizeAmount, formatUah } from '@/shared/lib/money';
 import type { Transfer } from '@/entities/transfer';
 import { useDisputeTransferMutation } from '../api/useReceiveTransfer';
-
-/** Ціле число ящиків, 0 або більше — дзеркалить `@IsInt() @Min(0)` DTO. */
-const CRATES_INPUT = /^\d{1,7}$/;
 
 interface DisputeFormValues {
   reported_cash: string;
