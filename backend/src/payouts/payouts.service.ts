@@ -220,9 +220,12 @@ export class PayoutsService {
    * exact loop §9.3 names as «спосіб красти». The person holding the drawer is
    * not the person who attests it was refilled.
    *
-   * NOTHING IN THIS SLICE READS `return_settled_at` — it is consumed by the
-   * cash formula, which needs `transfers` and `cash_counts`. It is written
-   * correctly now so the column ships exercised rather than decorative.
+   * `return_settled_at` IS NOW READ by the cash formula — `movementsSql` in
+   * `point-cash.service.ts` credits a settled return to the shift whose
+   * business date matches the settlement's LOCAL date (§4.2, reversed from the
+   * payout's own day in 7db4619). This comment said «nothing in this slice
+   * reads it» when the column shipped ahead of its consumer; both consumers
+   * now exist.
    */
   async settleReturn(
     actor: AuthenticatedUser,

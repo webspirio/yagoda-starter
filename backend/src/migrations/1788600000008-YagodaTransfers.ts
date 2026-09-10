@@ -17,12 +17,25 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
  *    amended on 09.09.2026, because under the old reading the cash formula's
  *    own `disputed` branch was unreachable.
  * 4. There is NO `shift_id` and there must not be one. Transfers are
- *    point-scoped by design, and accepting one requires no open shift (spec
- *    §6.4).
+ *    point-scoped by design — they carry their own point and their own date.
+ *
+ *    AMENDED 09.09.2026 (cash counts slice §4.1): this item once continued
+ *    «and accepting one requires no open shift (spec §6.4)». That is NO LONGER
+ *    TRUE. Accepting or disputing now REQUIRES an open shift, because cash is
+ *    counted per shift and a transfer accepted outside one enters no shift's
+ *    expectation — it would surface as a discrepancy when nothing went wrong.
+ *    The absence of `shift_id` is unaffected: the shift supplies the date, the
+ *    column would duplicate it. See `TransfersService`'s header.
  * 5. There is NO stored balance, no cash-movement table and no opening-balance
  *    document. §7.3's list of what moves cash is closed and the figure is a
- *    formula (spec §6.5). A point's day-one balance is entered as an ordinary
- *    transfer (spec §6.6).
+ *    formula (spec §6.5).
+ *
+ *    AMENDED 09.09.2026 (cash counts slice): this item once continued «A
+ *    point's day-one balance is entered as an ordinary transfer (spec §6.6).»
+ *    DO NOT DO THIS. The day-one balance is now the point's FIRST OPENING
+ *    COUNT, which sets `expected = counted` and anchors the chain. Entering it
+ *    as a transfer as well would ADD it a second time and double every point's
+ *    starting cash.
  *
  * NO CHECK ENFORCES THE accepted_* / reported_* / resolved_* STATE INVARIANTS,
  * and the DBML says why: «CHECK під це не написаний навмисно, бо стан

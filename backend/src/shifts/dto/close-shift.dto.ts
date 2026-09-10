@@ -10,8 +10,13 @@ import { CanonicalDecimal } from '../../common/dto/canonical-decimal';
  * The shift closes, the discrepancy is recorded, and the owner is told —
  * `shift_status.awaiting_explanation` is never reached.
  *
- * The response carries the expectation and the discrepancy; nothing returns
- * them BEFORE this write (§6.2).
+ * THE RESPONSE IS THE SHIFT, AND CARRIES NEITHER FIGURE. An earlier draft of
+ * §6.2 had it return the expectation and the discrepancy; the spec was amended
+ * to match what ships, because `ShiftResponse` is the shift row and nothing
+ * else. The operator reads the outcome from `GET /cash-counts?shift_id=…`,
+ * which computes the discrepancy in one place for every caller. Nothing
+ * returns either figure BEFORE this write — that much still holds, and it is
+ * what stops a drawer being counted to match a number on screen.
  */
 export class CloseShiftDto {
   @Matches(/^\d{1,10}(\.\d{1,2})?$/, {

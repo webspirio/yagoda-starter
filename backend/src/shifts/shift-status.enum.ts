@@ -9,7 +9,7 @@
  * «якщо каса не сходиться, це не блокує процес» — which overruled §7.7's gate
  * (cash counts spec §6.4 and §11.1). `ShiftsService.close` therefore has no
  * branch comparing counted against expected, and the owner's follow-up is
- * `PATCH /shifts/:id/explanation`, not a state.
+ * `PUT /shifts/:id/explanation`, not a state.
  *
  * DO NOT IMPLEMENT IT AS A GAP. Making a discrepancy move a shift into this
  * status would reinstate the exact blocking the client removed. The value

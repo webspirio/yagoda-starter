@@ -44,9 +44,15 @@ export interface PointCashRowResponse {
    * EXPLAINED INCIDENTS ARE STILL IN IT. An explanation changes what is open,
    * never what is true — §7.7's «розбіжність у документі лишається».
    *
-   * INCLUDES EVERY KIND, `midday` too: a midday count never ANCHORS the cash
-   * figure (§8), but a discrepancy it recorded is still a discrepancy that
-   * happened.
+   * EXCLUDES `midday`, and this comment said the OPPOSITE until 10.09.2026 —
+   * «includes every kind, `midday` too», arguing that a discrepancy a midday
+   * count recorded is still a discrepancy that happened. It reads well and it
+   * is wrong, because a demoted count is not an additional event: §6.3 turns a
+   * shift's `closing` count into a `midday` one on reopen, and the re-close
+   * writes a second. Summing both reports a −90 shortage as −180. b5952bb put
+   * `AND c.kind <> 'midday'` in the SQL; `CashCountsService.list` and
+   * `is_open` in `cash-count.mapper.ts` carry the same filter for the same
+   * reason. All four have to move together or the owner's screens disagree.
    */
   unexplained_difference: string;
   latest_transfer: { status: TransferStatus; sent_at: Date } | null;

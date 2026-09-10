@@ -8,9 +8,12 @@ import { VoidDocumentDto } from './void-document.dto';
  * обов'язковою причиною» is enforced for all of them.
  *
  * The blank case is the one that mattered: `@Length(1, 500)` counts characters,
- * so `"   "` passed validation and every service then trimmed it to `''` before
- * writing — a voided document with no reason, which is exactly what §9.3
- * forbids and what «кнопка неактивна» describes on the client.
+ * so `"   "` passed validation and the document was voided with a reason that
+ * says nothing — exactly what §9.3 forbids and what «кнопка неактивна»
+ * describes on the client. (`TransfersService.void` trims before writing and
+ * would have stored `''`; `IntakesService` and `PayoutsService` write the
+ * string as it arrived and would have stored the spaces. Both are a void with
+ * no reason.)
  */
 const errorsFor = (reason: unknown): string[] => {
   const dto = plainToInstance(VoidDocumentDto, { reason });

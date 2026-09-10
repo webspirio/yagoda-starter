@@ -18,11 +18,16 @@ import { TransferStatus } from './transfer-status.enum';
  * (§7.9). The ONLY thing in §7.3's closed list that puts cash INTO a drawer.
  *
  * IT CARRIES ITS OWN POINT AND ITS OWN DATE, unlike `intakes` and `payouts`,
- * which store neither and learn both from `shift_id`. That is deliberate and
- * this module honours it: accepting a transfer requires NO OPEN SHIFT (spec
- * §6.4). The carrier arrives when they arrive — §7.9 has the point counting in
- * the morning, before the 07:30 shift opens — and forcing a shift open would
- * commit that day's business date merely to sign for a delivery.
+ * which store neither and learn both from `shift_id`. That is still why there
+ * is no `shift_id` column: the shift would only repeat the date this row
+ * already holds.
+ *
+ * ACCEPTING ONE DOES, HOWEVER, REQUIRE AN OPEN SHIFT — reversed 09.09.2026 by
+ * the cash counts slice (§4.1), and this header said the opposite until then,
+ * citing the transfers spec §6.4. The argument that a carrier «arrives when
+ * they arrive» lost to a stronger one: cash is counted per shift, so a
+ * transfer accepted outside a shift enters no expectation and then reads as a
+ * discrepancy nobody can explain. `TransfersService.transition` enforces it.
  *
  * `accepted_date` IS STAMPED BY BOTH POINT ACTIONS, «Прийняв» AND «Не
  * сходиться» (spec §6.2, and the 09.09.2026 amendment to the `transfers` Note
