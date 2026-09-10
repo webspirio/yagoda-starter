@@ -16,7 +16,7 @@ import type { TransferFilter, Transfer, Paginated } from '../model/transfer';
  * який за замовчуванням показував би сторновані перекази, читався б як гроші,
  * що є на точці, — а їх там немає.
  */
-export function transferParams(f: TransferFilter) {
+function transferParams(f: TransferFilter) {
   return {
     ...(f.pointId ? { collection_point_id: f.pointId } : {}),
     ...(f.status ? { status: f.status } : {}),

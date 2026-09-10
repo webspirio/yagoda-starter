@@ -555,7 +555,6 @@
       "empty": "No cash counts recorded for this point yet.",
       "columns": {
         "when": "When",
-        "kind": "Count",
         "counted": "Counted",
         "expected": "Expected",
         "discrepancy": "Discrepancy",
