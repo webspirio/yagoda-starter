@@ -45,6 +45,10 @@ interface FeedRow {
   reason: string | null;
 }
 
+/** What the count dialog is open for: which verb, and — for a close — the
+ *  shift it closes. */
+type CountTarget = { mode: 'open' } | { mode: 'close'; shiftId: string };
+
 /**
  * «Каса за день» — one point, one date, its shift and its documents. The date
  * lives in `?date=` (default today) and the owner's point in `?point=`
@@ -79,26 +83,30 @@ export function DayPage() {
 
   const open = useOpenShiftMutation();
   const close = useCloseShiftMutation();
-  // What the count dialog is open FOR — captured at click time, not read back
-  // off `shift` at submit time. The close click is the one moment the shift
-  // being looked at is unambiguously the shift that closes; reading its id
-  // later (after a mutation or a refetch could have moved `shift.data`) is
-  // how a silent no-op crept in before.
-  const [countTarget, setCountTarget] = useState<
-    { mode: 'open' } | { mode: 'close'; shiftId: string } | null
-  >(null);
-  // The COPY the dialog shows — set on every open click, but never reset on
-  // close. `open={countTarget !== null}` alone drives visibility, so during
-  // the close (exit) animation `countTarget` is already null while the
-  // dialog is still on screen; resetting `countMode` too would flip a
-  // closing close-dialog to the open copy for the ~100ms of that animation.
-  const [countMode, setCountMode] = useState<'open' | 'close'>('open');
   const [reopenOpen, setReopenOpen] = useState(false);
   const [receiptId, setReceiptId] = useState<string | null>(null);
   // Bumped on every open so the dialog remounts with fresh RHF defaults and no
   // banner from the refusal before it — the convention SetPriceDialog documents.
   const [reopenInstance, setReopenInstance] = useState(0);
   const [countInstance, setCountInstance] = useState(0);
+  // What the count dialog is open FOR — captured at click time, not read back
+  // off `shift` at submit time. The close click is the one moment the shift
+  // being looked at is unambiguously the shift that closes; reading its id
+  // later (after a mutation or a refetch could have moved `shift.data`) is
+  // how a silent no-op crept in before.
+  const [countTarget, setCountTarget] = useState<CountTarget | null>(null);
+  // The COPY the dialog shows — set on every open click, but never reset on
+  // close. `open={countTarget !== null}` alone drives visibility, so during
+  // the close (exit) animation `countTarget` is already null while the
+  // dialog is still on screen; resetting `countMode` too would flip a
+  // closing close-dialog to the open copy for the ~100ms of that animation.
+  // (That animation is CSS-driven and untestable under jsdom — no test covers it.)
+  const [countMode, setCountMode] = useState<'open' | 'close'>('open');
+  const openCountDialog = (target: CountTarget) => {
+    setCountInstance((n) => n + 1);
+    setCountMode(target.mode); // copy, kept across the exit animation
+    setCountTarget(target); // what will actually be submitted
+  };
 
   const isOperator = me?.role === 'point_operator';
   const isOwner = me?.role === 'network_owner';
@@ -221,31 +229,15 @@ export function DayPage() {
       isToday &&
       status === 'none' &&
       pointId ? (
-        <Button
-          onClick={() => {
-            setCountInstance((n) => n + 1);
-            setCountMode('open');
-            setCountTarget({ mode: 'open' });
-          }}
-          disabled={open.isPending}
-        >
+        <Button onClick={() => openCountDialog({ mode: 'open' })} disabled={open.isPending}>
           {t('day.open')}
         </Button>
       ) : null}
-      {!shift.isError && !isLoadingShift && isOperator && status === 'open' ? (
-        <Button
-          variant="outline"
-          onClick={() => {
-            // status === 'open' only when `shift.data` (and so `shiftId`) is
-            // that open shift, but TS can't see that link — a missing id
-            // here can't actually happen, so it just skips opening the
-            // dialog rather than opening it with nothing to close.
-            if (!shiftId) return;
-            setCountInstance((n) => n + 1);
-            setCountMode('close');
-            setCountTarget({ mode: 'close', shiftId });
-          }}
-        >
+      {/* `shiftId` in the condition (not just `status === 'open'`) is what lets
+          the branch below narrow it to `string` for the click handler — no
+          separate runtime guard needed for a state that can't happen anyway. */}
+      {!shift.isError && !isLoadingShift && isOperator && status === 'open' && shiftId ? (
+        <Button variant="outline" onClick={() => openCountDialog({ mode: 'close', shiftId })}>
           {t('day.close')}
         </Button>
       ) : null}

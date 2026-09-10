@@ -1,3 +1,4 @@
+import { act } from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -295,13 +296,18 @@ describe('DayPage — the operator on an open shift', () => {
   });
 
   it('opens the close dialog with the close copy', async () => {
+    // CountDrawerDialog.test.tsx already covers the title switching on
+    // `mode`; what belongs to THIS page is that its close click wires the
+    // dialog to close mode at all — proven here by the body sentence that is
+    // unique to close mode (day.count.closeBody), which also covers 1.4's
+    // restored warning that the day locks and only the owner can reopen it.
     const user = userEvent.setup();
     renderDay();
 
     await user.click(screen.getByRole('button', { name: 'Close shift' }));
     const dialog = await screen.findByRole('dialog');
     expect(
-      within(dialog).getByText('Count the drawer before closing'),
+      within(dialog).getByText(/only the owner can reopen it/),
     ).toBeInTheDocument();
   });
 
@@ -314,6 +320,41 @@ describe('DayPage — the operator on an open shift', () => {
     await user.type(within(dialog).getByRole('textbox'), '980.40');
     await user.click(within(dialog).getByRole('button', { name: SUBMIT_COUNT }));
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  });
+
+  it('closes the shift it was opened for, even if the query has since gone empty', async () => {
+    // Pins what ad72a39 actually changed: the close click now captures the
+    // shift id into `countTarget` on click, not read back off `shift.data`
+    // at submit time — so a refetch that lands under the still-open dialog
+    // can't turn its submit into the old `if (!id) return` silent no-op.
+    //
+    // A same-URL `replace` navigation (rather than `rerender`) is what
+    // actually pushes the new mocked shift value down to DayPage here:
+    // react-router's RouterProvider memoizes its rendered route tree on its
+    // own internal `state`, so re-passing the identical `router` object
+    // with an unchanged location is a no-op for it — only a fresh
+    // `state.location` (which `navigate` produces even for a same-path,
+    // `replace: true` call) forces the remount-free re-render this test needs.
+    const user = userEvent.setup();
+    let current: Shift | null = openShift;
+    shiftMock.mockImplementation(() => ({ data: current, isPending: false, isError: false }));
+
+    const { router } = renderDay();
+    await user.click(screen.getByRole('button', { name: 'Close shift' }));
+    const dialog = await screen.findByRole('dialog');
+
+    current = null; // the shift query refetched to nothing
+    await act(async () => {
+      router.navigate(router.state.location.pathname + router.state.location.search, {
+        replace: true,
+      });
+    }); // …and the page re-rendered under the still-open dialog
+
+    await user.type(within(dialog).getByRole('textbox'), '980.40');
+    await user.click(within(dialog).getByRole('button', { name: SUBMIT_COUNT }));
+    await waitFor(() =>
+      expect(closeMock).toHaveBeenCalledWith({ id: 's1', counted_amount: '980.40' }),
+    );
   });
 
   it('keeps its dialogs on distinct React keys, so a remount never strands the old one', async () => {
