@@ -54,6 +54,12 @@ function alreadyRunningBeforeThisRun(): readonly string[] {
  * frontend itself before serving it, every run, which is what actually needed fixing —
  * see playwright.config.ts. Deleting `frontend/dist` in a teardown a build's own
  * `emptyOutDir` already keeps correct was never the right layer for that fix.
+ *
+ * FIX ROUND 3 — moot now, in the best way: `webServer.command` builds and serves from
+ * `E2E_OUT_DIR` (`frontend/dist-e2e`, see `e2e/constants.ts`), never `frontend/dist`, so
+ * this function (and `global-setup.ts`) have nothing of `build`'s or `bundle`'s to
+ * accidentally touch in either direction any more — the paragraph above is kept as the
+ * record of why deleting a SHARED path from here was wrong, not as live guidance.
  */
 export default async function globalTeardown(): Promise<void> {
   const preexisting = new Set(alreadyRunningBeforeThisRun());

@@ -1,5 +1,5 @@
 import { defineConfig } from '@playwright/test';
-import { BACKEND_URL, PREVIEW_ORIGIN } from './e2e/constants';
+import { BACKEND_URL, E2E_OUT_DIR, PREVIEW_ORIGIN } from './e2e/constants';
 
 /**
  * The `smoke` row (root CLAUDE.md's verify table) — the one check in this repo that
@@ -20,7 +20,7 @@ import { BACKEND_URL, PREVIEW_ORIGIN } from './e2e/constants';
  * this row built the frontend inside `global-setup.ts` and pointed `webServer.command` at
  * a bare `vite preview` — which only ever worked because something ELSE (this repo's own
  * `build` verify row, running earlier in the SAME `verify:full` invocation) happened to
- * have already populated `frontend/dist`. Reproduced directly: delete `frontend/dist`,
+ * have already populated `frontend/dist`. Reproduced directly: delete the build output,
  * run `npm run test:e2e` completely on its own (no prior build, the state of a fresh
  * checkout or a CI runner) — `vite preview` has nothing to serve, never binds the port,
  * and the run dies with `Error: Timed out waiting 60000ms from config.webServer` with
@@ -28,13 +28,22 @@ import { BACKEND_URL, PREVIEW_ORIGIN } from './e2e/constants';
  * That is exactly the confusing-months-from-now failure this row exists to not produce.
  *
  * The fix: `webServer.command` builds the frontend itself, every time, before serving it
- * — a single shell pipeline that cannot depend on anything having run first. `vite
- * build`'s own `emptyOutDir` clears `frontend/dist` on every real invocation (confirmed:
- * this is what actually prevents the OTHER bug this task found, a stale Turbo-cached
- * `frontend/dist` coexisting with a fresher build and doubling `bundle`'s measurement —
- * see `bundle`'s own `blindSpot` in scripts/verify/registry.mjs), so nothing here needs to
- * delete the directory first or after. `VITE_API_URL` is supplied via `webServer.env`,
- * not a shell prefix, so it applies regardless of how this command is ever invoked.
+ * — a single shell pipeline that cannot depend on anything having run first. `VITE_API_URL`
+ * is supplied via `webServer.env`, not a shell prefix, so it applies regardless of how this
+ * command is ever invoked.
+ *
+ * FIX ROUND 3 — BUILDS AND SERVES FROM `E2E_OUT_DIR` (`frontend/dist-e2e`), NEVER
+ * `frontend/dist`, via `vite build`/`vite preview`'s own `--outDir` flag. Round 2's fix
+ * made `webServer.command` run a direct `npm run build -w frontend` — correct for
+ * standalone reliability, but it wrote the SAME directory `build`'s own `turbo build`
+ * writes, and reproduced two real problems doing it (see `e2e/constants.ts`'s own comment
+ * on `E2E_OUT_DIR` for the full account): Turbo's cache restore does not clear
+ * `frontend/dist` first, so the two builds' files coexisted and `bundle` measured roughly
+ * double; and this row's own build baked `VITE_API_URL=http://localhost:3000` — smoke's
+ * environment, never a real one — into the exact directory `bundle` measures as the
+ * shipped artifact. A dedicated output directory this row alone ever writes closes both:
+ * `smoke` cannot corrupt `build`'s output or `bundle`'s input in either direction,
+ * regardless of run order, because it never touches the same path.
  *
  * A BUILD failure inside this command is NOT a 60/120s timeout either — read directly out
  * of the installed package (`_waitForProcess`, packages/playwright/lib/runner/index.js):
@@ -64,12 +73,15 @@ export default defineConfig({
   webServer: {
     // Builds THEN serves, every run, self-sufficient regardless of what (if anything) ran
     // before it — see this file's own header comment above for why that is load-bearing.
+    // `--outDir` on BOTH commands routes this row's own build to `E2E_OUT_DIR`
+    // (`frontend/dist-e2e`), never `frontend/dist` — see this file's header (FIX ROUND 3)
+    // and `e2e/constants.ts` for why that separation is load-bearing, not tidiness.
     // `VITE_API_URL` is what frontend/src/shared/lib/env/index.ts reads at module load
     // (baked in at BUILD time, never at `vite preview` time), matching the backend's own
     // host-published port (docker-compose.yml's `ports: "3000:3000"`) so the browser this
     // row drives talks to the real compose backend rather than throwing "VITE_API_URL is
     // required" the instant the app boots.
-    command: `npm run build -w frontend && npm run preview -w frontend -- --port 4173 --strictPort`,
+    command: `npm run build -w frontend -- --outDir ${E2E_OUT_DIR} && npm run preview -w frontend -- --port 4173 --strictPort --outDir ${E2E_OUT_DIR}`,
     env: { VITE_API_URL: BACKEND_URL },
     url: PREVIEW_ORIGIN,
     // strictPort is deliberate: a collision (e.g. something else already bound to 4173)

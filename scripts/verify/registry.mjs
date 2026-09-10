@@ -912,28 +912,28 @@ export const CHECKS = [
       "frontend/dist reflects a genuine, complete, current build: `after: ['build']` is what buys that guarantee " +
       'inside `npm run verify:full`, but `npm run bundle` run directly and standalone — exactly as every other ' +
       "check's npm script can also be run — re-verifies none of it, and would measure a stale or hand-edited " +
-      "dist tree exactly as confidently as a fresh one. TASK 17 FOUND A CONCRETE WAY THIS BITES: `smoke`'s " +
-      "own `webServer` (playwright.config.ts) writes frontend/dist with a direct `npm run build -w frontend` " +
-      "call — needed so that command is self-sufficient regardless of what ran before it (see " +
-      "playwright.config.ts's own header, FIX ROUND 2) — invisible to Turborepo's output cache; a `npm run " +
-      "build` this row's own `after: ['build']` depends on can then satisfy `frontend#build` FROM CACHE " +
-      "without ever running `vite build` again, so its `emptyOutDir` cleanup never fires and the cached files " +
-      "land ALONGSIDE smoke's leftover ones instead of replacing them — measured directly at 534 KiB gzip " +
-      "against this row's own 305 KiB ceiling, roughly double the genuine 276 KiB, immediately after a clean " +
-      "run had reported the correct number, and REPRODUCED AGAIN in fix round 2 on the very next `npm run " +
-      "verify:full` run after a `smoke` pass, with no manual step in between. An EARLIER version of `smoke` " +
-      "deleted frontend/dist in its own teardown specifically to prevent this — fix round 2 removed that: " +
-      "frontend/dist is this row's output and `bundle`'s input, not `smoke`'s artifact to delete, and deleting " +
-      "it in teardown is what made `smoke`'s own row ORDER load-bearing for its next run (see `smoke`'s " +
-      "`proves`). The net effect: this specific false-RED is now MORE likely to recur than when this " +
-      "paragraph was first written, not less — an accepted, named trade-off, not an oversight. THE PRACTICAL " +
-      "CONSEQUENCE: this row measures whatever files " +
-      "are physically sitting under frontend/dist/assets at the moment it runs, nothing more — a stale or " +
-      "doubled dist directory left by a mixed build path (any two of `turbo build`, a direct `npm run build " +
-      "-w frontend`, or Docker's own image build writing to a different tree entirely) produces a FALSE RED " +
-      "that has nothing to do with a real bundle-size regression. A RED result here is not self-diagnosing: " +
-      "before trusting it, `rm -rf frontend/dist && npm run build` and re-run this row on that fresh output — " +
-      "only a RED that survives a clean rebuild is a real budget overage. And the 25 KiB / 100 KiB minimum " +
+      "dist tree exactly as confidently as a fresh one. TASK 17 FOUND, THEN CLOSED, A CONCRETE WAY THIS BIT: " +
+      "an earlier version of `smoke`'s own `webServer` (playwright.config.ts) wrote frontend/dist DIRECTLY " +
+      "(`npm run build -w frontend`, bypassing Turbo entirely) — invisible to Turborepo's output cache, so a " +
+      "`npm run build` this row's own `after: ['build']` depends on could satisfy `frontend#build` FROM CACHE " +
+      "without ever running `vite build` again, landing its cached files ALONGSIDE smoke's leftover ones " +
+      "instead of replacing them. Measured directly at 534 KiB gzip against this row's own 305 KiB ceiling, " +
+      "roughly double the genuine 276 KiB — and, worse than the false RED, `smoke`'s build baked " +
+      "`VITE_API_URL=http://localhost:3000` into the exact bytes this row measures as the shipped artifact, " +
+      "so a run that happened to land GREEN was silently measuring a bundle that could never actually ship. " +
+      "FIX ROUND 3 CLOSED THIS AT THE SOURCE, not by further guarding this row: `smoke` now builds and serves " +
+      "from its own `E2E_OUT_DIR` (`frontend/dist-e2e`, `vite build`/`vite preview`'s own `--outDir`, see " +
+      "e2e/constants.ts) and never reads or writes a single byte of `frontend/dist`. AS THINGS STAND NOW: " +
+      "this repo's ONLY writer of `frontend/dist` is the `build` row, through `turbo build` — `smoke` cannot " +
+      "reach it, in either direction, regardless of run order. THE PRACTICAL CONSEQUENCE THAT REMAINS: this " +
+      "row still measures whatever files are physically sitting under frontend/dist/assets at the moment it " +
+      "runs, nothing more — a stale or doubled dist directory left by someone building BY HAND through a " +
+      "DIFFERENT path than `turbo build` (a direct `npm run build -w frontend` run manually, or Docker's own " +
+      "image build writing to a different tree entirely) would still produce a FALSE RED that has nothing to " +
+      "do with a real bundle-size regression, for the identical underlying reason (Turbo's cache restore does " +
+      "not clear the directory first). A RED result here is still not self-diagnosing: before trusting it, " +
+      "`rm -rf frontend/dist && npm run build` and re-run this row on that fresh output — only a RED that " +
+      "survives a clean rebuild is a real budget overage. And the 25 KiB / 100 KiB minimum " +
       "headroom is an ABSOLUTE floor, not a percentage of the bundle: it is calibrated to today's ~276 KiB " +
       "gzip bundle and the " +
       "reference's own historical per-phase growth, not derived from the bundle's own size, so it does not " +
@@ -1058,9 +1058,11 @@ export const CHECKS = [
       "setup.ts brings up — `docker compose up -d --wait postgres redis backend`, gated on the " +
       "same `/health/ready` healthcheck docker-compose.yml already defines, then `npm run " +
       "db:seed` (idempotent) — and a real production frontend build that playwright.config.ts's " +
-      "own `webServer` builds and serves ITSELF, every run (`npm run build -w frontend && npm " +
-      "run preview -w frontend -- --port 4173 --strictPort` — `vite preview`, never the dev " +
-      "server): (1) the sign-in page renders, and submitting the seeded owner's real credentials " +
+      "own `webServer` builds and serves ITSELF, every run, from its OWN output directory " +
+      "(`npm run build -w frontend -- --outDir dist-e2e && npm run preview -w frontend -- " +
+      "--port 4173 --strictPort --outDir dist-e2e` — `vite preview`, never the dev server, and " +
+      "never `frontend/dist`, `build`'s own output — see e2e/constants.ts's `E2E_OUT_DIR`): " +
+      "(1) the sign-in page renders, and submitting the seeded owner's real credentials " +
       "(`admin`/`admin`) through the UI form reaches the dashboard; (2) the dashboard's «Квитанцій " +
       "сьогодні» stat tile renders a positive integer sourced from that seed — not NaN, and not " +
       "the zero that would be indistinguishable from an empty state; (3) zero " +
@@ -1076,9 +1078,25 @@ export const CHECKS = [
       "preceding run — it died with `Timed out waiting 60000ms from config.webServer`, with " +
       "`global-setup.ts` never having executed a single line: no compose, no seed, no " +
       "credentials, nothing. Fixed by moving the build INTO `webServer.command` itself so it " +
-      "cannot depend on anything having run first; PROVEN by deleting `frontend/dist` and " +
-      "running `npm run test:e2e` completely standalone TWICE IN A ROW with no build in " +
-      "between, both green. Two mechanisms outside the brief's own 3-step list make " +
+      "cannot depend on anything having run first; PROVEN by deleting its build output " +
+      "directory and running `npm run test:e2e` completely standalone TWICE IN A ROW with no " +
+      "build in between, both green (re-proven again after fix round 3 below, against the " +
+      "current output directory). FIX ROUND 3 THEN FOUND, AND CLOSED, A SEPARATE BUG ROUND " +
+      "2's OWN FIX INTRODUCED: building directly into `frontend/dist` (needed for standalone " +
+      "self-sufficiency) put this row's build in the SAME directory `build`'s own `turbo " +
+      "build` writes. Reproduced deterministically: `rm -rf frontend/dist && npm run build` " +
+      "(turbo, one chunk) → a direct `npm run build -w frontend` (also one chunk, a different " +
+      "content hash) → `npm run build` again (`FULL TURBO` cache hit) → `frontend/dist/assets` " +
+      "then held BOTH chunks, because Turbo's cache restore does not clear the directory " +
+      "first. Worse than the false RED this caused in `bundle`: that direct build baked " +
+      "`VITE_API_URL=http://localhost:3000` — this row's own environment, never a real " +
+      "production value — into the exact bytes `bundle` measures as the shipped artifact, so " +
+      "a run that happened to land GREEN was silently measuring a bundle that could never " +
+      "actually ship. Fixed by giving this row its OWN output directory, `dist-e2e` " +
+      "(`E2E_OUT_DIR` in e2e/constants.ts), via `vite build`/`vite preview`'s own `--outDir` " +
+      "flag on both halves of `webServer.command` — this row now never reads or writes a " +
+      "single byte of `frontend/dist`, in either direction, regardless of run order. Two " +
+      "mechanisms outside the brief's own 3-step list make " +
       "`global-setup.ts`'s own stack real rather than superficially so, both found " +
       "empirically, both documented there: `APP_URL` is overridden to the preview server's own " +
       "origin for the one `docker compose up` call (the backend's CORS allowlist otherwise " +
@@ -1094,15 +1112,14 @@ export const CHECKS = [
       "`stop`ped — never `down`, never `down -v` — because docker-compose.yml's project name " +
       "(`web-starter`) is shared across every worktree of this repo and the main checkout, and " +
       "`-v` would destroy the real `pg_data`/`uploads_dev` volumes; a service global-setup.ts " +
-      "found already running (another session's) is left running, exactly as found — and, as of " +
-      "fix round 2, teardown no longer deletes `frontend/dist`: that belongs to `build`/`bundle`, " +
-      "not to this row, and deleting it there was the direct cause of the standalone-run bug " +
-      "this paragraph documents. AS A DATED SNAPSHOT, MEASURED 2026-09-10 (fix round 2): two " +
-      "consecutive standalone `npm run test:e2e` runs, `frontend/dist` deleted before the " +
-      "first and not rebuilt in between (each run rebuilds it itself, inside `webServer." +
-      "command`), both completed in ~20.6s wall clock — the frontend build " +
-      "(`tsc -b && vite build`) adds well under a second over the previous design's bare " +
-      "`vite preview` start. The seeded network showed 10 receipts " +
+      "found already running (another session's) is left running, exactly as found — and " +
+      "neither `global-setup.ts` nor `global-teardown.ts` ever touches `frontend/dist` at " +
+      "all, in any fix round: `build`/`bundle` own that path, this row owns `dist-e2e`, and " +
+      "the two never cross. AS A DATED SNAPSHOT, MEASURED 2026-09-10 (fix round 3): two " +
+      "consecutive standalone `npm run test:e2e` runs, `dist-e2e` deleted before the first " +
+      "and not rebuilt in between (each run rebuilds it itself, inside `webServer.command`), " +
+      "both completed in ~20s wall clock — the frontend build (`tsc -b && vite build`) adds " +
+      "well under a second over a bare `vite preview` start. The seeded network showed 10 receipts " +
       'across its three open-shift points (Шипинки/Конищів/Гайове, backend/CLAUDE.md\'s Dev ' +
       "seed section) the day this was measured — a number that moves with the seed data and is " +
       'not re-verified by this row beyond being positive.',
@@ -1128,11 +1145,12 @@ export const CHECKS = [
       "— shared across every worktree of this repo and the main checkout — so anyone with the " +
       "dev stack actively running elsewhere on this machine sees their `backend` container " +
       "restart the moment this row runs; non-destructive, but a real mutation of state this " +
-      "row's own process does not own. And `webServer.command` rebuilds `frontend/dist` on " +
-      "every run (`npm run build -w frontend`, a direct workspace-script call outside Turbo's " +
-      "own cache) — after this row runs, whatever `build`/`bundle`/`docker` most recently " +
-      "measured on disk is gone, overwritten by this row's own build, a real side effect worth " +
-      'knowing about before reading `frontend/dist` for anything else in the same session.',
+      "row's own process does not own. `webServer.command` rebuilds `frontend/dist-e2e` on " +
+      "every run (`npm run build -w frontend -- --outDir dist-e2e`, a direct workspace-script " +
+      "call outside Turbo's own cache) — as of fix round 3 this is a directory ONLY this row " +
+      "ever writes, gitignored, never `frontend/dist`, so unlike an earlier version of this " +
+      "row it does not affect, and is not affected by, whatever `build`/`bundle`/`docker` most " +
+      'recently measured on disk in the same session.',
   },
 ]
 

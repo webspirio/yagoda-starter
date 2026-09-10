@@ -33,3 +33,7 @@ backups/
 test-results/
 playwright-report/
 e2e/.auth/
+
+# smoke's OWN build output (playwright.config.ts's webServer, --outDir) — deliberately
+# never `frontend/dist` (see e2e/constants.ts's E2E_OUT_DIR), so this needs its own line.
+frontend/dist-e2e/
