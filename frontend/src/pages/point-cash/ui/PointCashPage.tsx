@@ -10,11 +10,11 @@ import { EmptyState } from '@/shared/ui/empty-state';
 import { Spinner } from '@/shared/ui/spinner';
 import { isTruncated } from '@/shared/api';
 import { useUrlParam } from '@/shared/lib/url-state';
-import { cmp, isNegative, formatUah } from '@/shared/lib/money';
+import { isNegative, formatUah } from '@/shared/lib/money';
 import { todayIso, addDaysIso, isRealIsoDate, formatLongDate, formatWeekday, formatShortDate } from '@/shared/lib/date';
 import { useMeQuery, usePointScope } from '@/entities/user';
 import { usePointOptionsQuery } from '@/entities/collection-point';
-import { usePointCashQuery } from '@/entities/point-cash';
+import { usePointCashQuery, shortfallTone, formatNullableUah } from '@/entities/point-cash';
 import { useIntakesQuery } from '@/entities/intake';
 import { usePayoutsQuery } from '@/entities/payout';
 import { useTransfersQuery } from '@/entities/transfer';
@@ -166,11 +166,12 @@ export function PointCashPage() {
   // Nothing is shown off a page whose reads failed — including the target,
   // whose «—» would otherwise be a claim made on top of an error.
   const shownRow = isError ? null : pointRow;
+  const shortfall = shownRow ? shortfallTone(shownRow.shortfall) : null;
   const stats: StatItem[] | undefined = shownRow
     ? [
         {
           label: t('pointCash.stats.target'),
-          value: shownRow.target_cash == null ? '—' : formatUah(shownRow.target_cash, locale),
+          value: formatNullableUah(shownRow.target_cash, locale),
           hint: shownRow.target_cash == null ? t('pointCash.stats.targetUnset') : undefined,
         },
         {
@@ -181,13 +182,12 @@ export function PointCashPage() {
         },
         {
           label: t('pointCash.stats.shortfall'),
-          value: shownRow.shortfall == null ? '—' : formatUah(shownRow.shortfall, locale),
-          tone:
-            shownRow.shortfall != null && cmp(shownRow.shortfall, '0') === 1 ? 'amber' : 'leaf',
+          value: formatNullableUah(shownRow.shortfall, locale),
+          tone: shortfall ?? undefined,
           hint:
-            shownRow.shortfall == null
+            shortfall === null
               ? t('pointCash.stats.shortfallUnset')
-              : cmp(shownRow.shortfall, '0') === 1
+              : shortfall === 'amber'
                 ? t('pointCash.stats.shortfallOwed')
                 : t('pointCash.stats.shortfallSettled'),
         },

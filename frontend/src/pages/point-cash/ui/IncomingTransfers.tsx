@@ -5,6 +5,7 @@ import { Button } from '@/shared/ui/button';
 import { toast } from '@/shared/ui/toast';
 import { apiErrorToBanner } from '@/shared/lib/api-error';
 import { formatUah } from '@/shared/lib/money';
+import { formatDateTime } from '@/shared/lib/date';
 import { useTransfersQuery, type Transfer } from '@/entities/transfer';
 import { useAcceptTransferMutation, DisputeTransferDialog } from '@/features/receive-transfer';
 
@@ -25,6 +26,7 @@ export function IncomingTransfers({
   canAct: boolean;
 }) {
   const { t, i18n } = useTranslation();
+  const locale = i18n.language;
   const transfers = useTransfersQuery({ pointId, status: 'sent' });
   const accept = useAcceptTransferMutation();
   const [disputeTarget, setDisputeTarget] = useState<Transfer | null>(null);
@@ -65,14 +67,14 @@ export function IncomingTransfers({
           <div className="min-w-0 flex-1 text-sm">
             <div className="font-medium">
               {t('transfer.incoming.inTransit', {
-                uah: formatUah(transfer.cash, i18n.resolvedLanguage),
+                uah: formatUah(transfer.cash, locale),
                 count: transfer.crates,
               })}
             </div>
             <div className="mt-0.5 text-xs text-muted-foreground">
               {t('transfer.incoming.meta', {
                 carrier: transfer.carrier,
-                date: new Date(transfer.sent_at).toLocaleDateString(i18n.resolvedLanguage),
+                date: formatDateTime(transfer.sent_at, locale),
               })}
             </div>
           </div>

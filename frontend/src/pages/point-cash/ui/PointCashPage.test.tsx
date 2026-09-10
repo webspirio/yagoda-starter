@@ -37,9 +37,13 @@ vi.mock('@/entities/collection-point', () => ({
   usePointOptionsQuery: () => pointOptionsMock(),
 }));
 
-vi.mock('@/entities/point-cash', () => ({
-  usePointCashQuery: (opts: unknown) => pointCashMock(opts),
-}));
+vi.mock('@/entities/point-cash', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/entities/point-cash')>();
+  return {
+    ...actual,
+    usePointCashQuery: (opts: unknown) => pointCashMock(opts),
+  };
+});
 
 vi.mock('@/entities/intake', () => ({
   useIntakesQuery: (filter: unknown) => intakesMock(filter),

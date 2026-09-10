@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { Transfer } from '@/entities/transfer';
@@ -117,6 +117,22 @@ describe('IncomingTransfers', () => {
     render(<IncomingTransfers pointId="p1" canAct />);
 
     expect(screen.getByText(/5 crates$/)).toBeInTheDocument();
+  });
+
+  describe('the «sent» timestamp — via shared/lib/date, pinned to TZ=UTC for a fixed literal', () => {
+    afterEach(() => {
+      vi.unstubAllEnvs();
+    });
+
+    it('formats sent_at with formatDateTime, exactly like the owner\'s TransferHistory', () => {
+      vi.stubEnv('TZ', 'UTC');
+      transfersMock.mockReturnValue(page([transfer({ sent_at: '2026-09-10T08:05:00.000Z' })]));
+      render(<IncomingTransfers pointId="p1" canAct />);
+
+      // Test locale is 'en' (test-setup.ts) — same fixed literal
+      // TransferHistory.test.tsx asserts for the same instant.
+      expect(screen.getByText(/09\/10 · 08:05 AM/)).toBeInTheDocument();
+    });
   });
 
   it('opens the dispute dialog for the clicked transfer', async () => {
