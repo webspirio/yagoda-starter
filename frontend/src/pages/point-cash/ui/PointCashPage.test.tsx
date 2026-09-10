@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createMemoryRouter, RouterProvider } from 'react-router';
 import { expectNoAxeViolations } from '../../../test-axe';
@@ -151,6 +151,16 @@ function tile(label: string): HTMLElement {
   return el as HTMLElement;
 }
 
+/**
+ * The element carrying a stat tile's printed value — `StatTile` renders tone
+ * (`stat-tile.tsx`) as a CSS class on that node (`text-[var(--leaf)]` /
+ * `text-[var(--amber)]` / `text-foreground`), not as a separate attribute, so
+ * pinning the shortfall tone rule means reading this node's own class list.
+ */
+function tileValue(label: string, valueText: string): HTMLElement {
+  return within(tile(label)).getByText(valueText);
+}
+
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ['Date'], now: new Date('2026-09-08T09:00:00') });
   meMock.mockReset().mockReturnValue({ data: OPERATOR });
@@ -290,6 +300,24 @@ describe('PointCashPage — honesty rule 3: null target/shortfall render «—»
     pointCashMock.mockReturnValue(list([pointRow({ shortfall: '250.00' })]));
     renderPointCash();
     expect(tile('Short of target')).toHaveTextContent('250.00 ₴');
+  });
+
+  // shortfallTone (`entities/point-cash/lib/shortfall.ts`) says a `null`
+  // shortfall gets NO tone at all — «no target assigned» is not a value to
+  // colour-code, amber or leaf alike. Pinned from both sides: absent here,
+  // present on the settled (<= 0) case right below, so a regression back to
+  // defaulting null to 'leaf' (what this tile did before Task 5.7) fails
+  // loudly instead of quietly reading as "on target".
+  it('carries no leaf tone on the shortfall tile when no target is assigned', () => {
+    pointCashMock.mockReturnValue(list([pointRow({ shortfall: null })]));
+    renderPointCash();
+    expect(tileValue('Short of target', '—').className).not.toContain('text-[var(--leaf)]');
+  });
+
+  it('colors the shortfall tile leaf when the point is settled (shortfall <= 0)', () => {
+    pointCashMock.mockReturnValue(list([pointRow({ shortfall: '0.00' })]));
+    renderPointCash();
+    expect(tileValue('Short of target', '0.00 ₴').className).toContain('text-[var(--leaf)]');
   });
 });
 

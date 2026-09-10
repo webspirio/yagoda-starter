@@ -26,7 +26,7 @@ export function IncomingTransfers({
   canAct: boolean;
 }) {
   const { t, i18n } = useTranslation();
-  const locale = i18n.language;
+  const locale = i18n.resolvedLanguage ?? 'uk';
   const transfers = useTransfersQuery({ pointId, status: 'sent' });
   const accept = useAcceptTransferMutation();
   const [disputeTarget, setDisputeTarget] = useState<Transfer | null>(null);
