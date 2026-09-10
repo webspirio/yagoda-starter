@@ -80,7 +80,10 @@ export function TransferHistory({
     {
       id: 'status',
       header: t('transfers.history.col.status'),
-      cell: (row) => <TransferStatusBadge status={row.status} />,
+      // `row` is the FULL `Transfer` here (unlike `PointDebtTable`'s thin
+      // `latest_transfer`), so this is the one place that can actually tell
+      // a settled dispute from an open one (fix round 1, finding 4).
+      cell: (row) => <TransferStatusBadge status={row.status} resolvedAt={row.resolved_at} />,
     },
     {
       id: 'action',

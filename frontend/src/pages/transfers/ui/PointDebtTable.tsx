@@ -23,38 +23,42 @@ import { TransferStatusBadge } from './TransferStatusBadge';
  * and never a bare `0 ящ.`, which would be a claim this backend cannot make
  * (no crate tables exist yet).
  *
- * RULE 3 — «Вирішити» renders only when the point's LATEST transfer is
- * `disputed`. `GET /point-cash` names that transfer only by
- * `{ status, sent_at }` (no id), so resolving it needs the full `Transfer`
- * looked up from `disputedTransfers` — matched by point AND `sent_at`
- * (not merely status) so an OLDER dispute at the same point, left
- * permanently `disputed` because `resolve()` never touches `status`
- * (transfers.service.ts), is never mistaken for the one this row's badge
- * is actually about.
+ * RULE 3 — «Вирішити» renders whenever a point has an unresolved disputed
+ * transfer, full stop. Fix round 1 (finding 4) moved this OFF matching
+ * `GET /point-cash`'s thin `latest_transfer: { status, sent_at }` by
+ * `sent_at` string equality against the full `Transfer` records — that
+ * match was fragile (a cross-endpoint string comparison) AND wrong in a
+ * second way: `resolve()` never touches `status` (transfers.service.ts's
+ * own doc comment: "THE STATUS IS NOT TOUCHED"), so a dispute the owner
+ * already settled stays `status: 'disputed'` forever, and gating on
+ * `latest_transfer.status === 'disputed'` alone would keep offering
+ * «Вирішити» for it with no way to ever clear the button. Gating directly
+ * on the full record's own `resolved_at === null` (done by the page before
+ * this component ever sees `unresolvedDisputes`) fixes both at once, and
+ * as a side effect no longer requires the dispute to also be the point's
+ * literal *latest* transfer — an unresolved dispute stays actionable even
+ * if a later, unrelated transfer has since become "latest" for the badge.
  */
 export function PointDebtTable({
   rows,
-  disputedTransfers,
+  unresolvedDisputes,
   onSend,
   onResolve,
 }: {
   rows: PointCashRow[];
-  /** Non-voided transfers with `status: 'disputed'`, from the SAME
-   *  `useTransfersQuery` read the page also uses for its history —
-   *  never a per-row query (`points.map(useX)` would break rules-of-hooks). */
-  disputedTransfers: Transfer[];
+  /** Disputed, non-voided, NOT YET resolved transfers (`resolved_at ===
+   *  null`) — pre-filtered by the page from the SAME `useTransfersQuery`
+   *  read it also uses for `TransferHistory`, never a per-row query
+   *  (`points.map(useX)` would break rules-of-hooks). */
+  unresolvedDisputes: Transfer[];
   onSend: (pointId: string, pointName: string) => void;
   onResolve: (transfer: Transfer) => void;
 }) {
   const { t, i18n } = useTranslation();
   const locale = i18n.language;
 
-  const findDisputed = (row: PointCashRow): Transfer | undefined =>
-    disputedTransfers.find(
-      (tr) =>
-        tr.collection_point_id === row.collection_point_id &&
-        tr.sent_at === row.latest_transfer?.sent_at,
-    );
+  const findResolvable = (row: PointCashRow): Transfer | undefined =>
+    unresolvedDisputes.find((tr) => tr.collection_point_id === row.collection_point_id);
 
   const columns: Column<PointCashRow>[] = [
     {
@@ -110,12 +114,12 @@ export function PointDebtTable({
       header: t('transfers.col.status'),
       align: 'right',
       cell: (row) => {
-        const disputed = row.latest_transfer?.status === 'disputed' ? findDisputed(row) : undefined;
+        const resolvable = findResolvable(row);
         return (
           <div className="flex items-center justify-end gap-2">
             {row.latest_transfer ? <TransferStatusBadge status={row.latest_transfer.status} /> : null}
-            {disputed ? (
-              <Button size="sm" variant="outline" onClick={() => onResolve(disputed)}>
+            {resolvable ? (
+              <Button size="sm" variant="outline" onClick={() => onResolve(resolvable)}>
                 <HandCoins className="size-3.5" />
                 {t('transfers.resolve')}
               </Button>

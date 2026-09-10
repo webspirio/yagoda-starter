@@ -58,6 +58,34 @@ describe('TransferHistory', () => {
     expect(screen.getByText('Accepted')).toBeInTheDocument();
   });
 
+  it('shows «Resolved», not «Doesn\'t match», for a dispute the owner already settled', () => {
+    // `resolve()` never touches `status` (transfers.service.ts) — this is
+    // the one place the FULL record is available to tell the two apart
+    // (fix round 1, finding 4).
+    render(
+      <TransferHistory
+        transfers={[transfer({ status: 'disputed', resolved_at: '2026-09-11T09:00:00.000Z' })]}
+        pointName={() => 'Shypynky'}
+        onVoid={noop}
+      />,
+    );
+
+    expect(screen.getByText('Resolved')).toBeInTheDocument();
+    expect(screen.queryByText("Doesn't match")).toBeNull();
+  });
+
+  it('still shows «Doesn\'t match» for a dispute nobody has resolved yet', () => {
+    render(
+      <TransferHistory
+        transfers={[transfer({ status: 'disputed', resolved_at: null })]}
+        pointName={() => 'Shypynky'}
+        onVoid={noop}
+      />,
+    );
+
+    expect(screen.getByText("Doesn't match")).toBeInTheDocument();
+  });
+
   it('offers to void every listed transfer', async () => {
     const user = userEvent.setup();
     const onVoid = vi.fn();

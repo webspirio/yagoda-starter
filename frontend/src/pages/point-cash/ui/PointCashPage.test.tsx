@@ -210,7 +210,10 @@ describe('PointCashPage — review round 1, finding 4: paidPast truncation', () 
 
     renderPointCash();
 
-    expect(await screen.findByText(/older ones may be missing/i)).toBeInTheDocument();
+    // Two rows read the same possibly-truncated `payouts` array now
+    // (`paidPast` and `returnedToday` — fix round 1's minor finding), so
+    // the caveat legitimately appears twice.
+    expect(await screen.findAllByText(/older ones may be missing/i)).toHaveLength(2);
   });
 
   it('says nothing when the payouts read came back whole', () => {
@@ -239,19 +242,19 @@ describe('PointCashPage — honesty rule 3: null target/shortfall render «—»
   it('shows «—» for a point with no target', () => {
     pointCashListMock.mockReturnValue(list([pointRow({ target_cash: null })]));
     renderPointCash();
-    expect(tile('Cash target')).toHaveTextContent('—');
+    expect(tile('Target')).toHaveTextContent('—');
   });
 
   it('shows «—» for a point with no shortfall to compare against', () => {
     pointCashListMock.mockReturnValue(list([pointRow({ shortfall: null })]));
     renderPointCash();
-    expect(tile('Base owes the point')).toHaveTextContent('—');
+    expect(tile('Short of target')).toHaveTextContent('—');
   });
 
   it('prints an actual shortfall amount when one exists', () => {
     pointCashListMock.mockReturnValue(list([pointRow({ shortfall: '250.00' })]));
     renderPointCash();
-    expect(tile('Base owes the point')).toHaveTextContent('250.00 ₴');
+    expect(tile('Short of target')).toHaveTextContent('250.00 ₴');
   });
 });
 
@@ -273,7 +276,7 @@ describe('PointCashPage — honesty rule 4: the target button does not exist for
 
     renderPointCash();
 
-    const button = screen.getByRole('button', { name: 'Change the cash target' });
+    const button = screen.getByRole('button', { name: 'Change the target' });
     await user.click(button);
     expect(await screen.findByRole('dialog')).toHaveTextContent('Shypynky');
   });

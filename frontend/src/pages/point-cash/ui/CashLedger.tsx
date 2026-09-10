@@ -10,6 +10,16 @@ import { buildLedger, type LedgerIntake, type LedgerPayout, type LedgerTransfer 
 const OUTFLOW = new Set(['paidToday', 'paidPast']);
 
 /**
+ * Rows whose figure is drawn from the SAME possibly-truncated `payouts`
+ * array `paidPast` reads (fix round 1, minor finding): `returnedToday` sums
+ * `payouts.filter(p => p.return_settled_at !== null && …)` (`buildLedger.ts`)
+ * over that identical array, so a settled return whose original payout fell
+ * outside the fetched page vanishes with no caveat unless this row carries
+ * the same warning `paidPast` does.
+ */
+const READS_FROM_PAYOUTS = new Set(['paidPast', 'returnedToday']);
+
+/**
  * «Звідки взялося це число» — the schedule behind the point's cash figure.
  *
  * THE TOTAL AT THE BOTTOM IS `cash`, THE PROP — NEVER A SUM OF THE ROWS
@@ -42,9 +52,11 @@ export function CashLedger({
   transfers: LedgerTransfer[];
   /**
    * True when `payouts` is only the most recent page (`total` exceeds what
-   * was actually fetched) — `paidPast` then covers recent history only, not
-   * the whole of it, and says so rather than reading like a complete figure
-   * (review round 1, finding 4).
+   * was actually fetched) — `paidPast` AND `returnedToday` both read that
+   * same array (see `READS_FROM_PAYOUTS`) and so both cover recent history
+   * only, not the whole of it, and both say so rather than reading like a
+   * complete figure (review round 1, finding 4; extended to `returnedToday`
+   * in fix round 1's minor finding).
    */
   payoutsTruncated?: boolean;
 }) {
@@ -77,7 +89,7 @@ export function CashLedger({
               value={formatUah(OUTFLOW.has(row.key) ? sub('0', row.value) : row.value, locale)}
               tone={row.key === 'cashIn' || row.key === 'returnedToday' ? 'leaf' : 'default'}
             />
-            {row.key === 'paidPast' && payoutsTruncated ? (
+            {READS_FROM_PAYOUTS.has(row.key) && payoutsTruncated ? (
               <p className="pb-1 text-xs text-muted-foreground">
                 {t('pointCash.ledger.paidPastTruncated')}
               </p>

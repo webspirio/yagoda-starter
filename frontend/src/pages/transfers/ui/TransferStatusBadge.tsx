@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next';
-import { Truck, Check, TriangleAlert } from 'lucide-react';
+import { Truck, Check, TriangleAlert, CircleCheck } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { Badge } from '@/shared/ui/badge';
 import type { TransferStatus } from '@/entities/transfer';
@@ -24,8 +24,34 @@ const TONE: Record<TransferStatus, string> = {
   disputed: 'border-destructive/40 text-destructive',
 };
 
-export function TransferStatusBadge({ status }: { status: TransferStatus }) {
+export function TransferStatusBadge({
+  status,
+  resolvedAt = null,
+}: {
+  status: TransferStatus;
+  /**
+   * `Transfer.resolved_at` (fix round 1, finding 4) — `resolve()` never
+   * touches `status` (transfers.service.ts's own doc comment: "THE STATUS
+   * IS NOT TOUCHED"), so a dispute the owner settled weeks ago still carries
+   * `status: 'disputed'` forever. Without this, the badge would keep
+   * reading «Doesn't match» for a document that is no longer anyone's open
+   * problem, with nothing anywhere saying otherwise. Pass `null`/omit for a
+   * transfer that was never disputed at all — the badge then falls through
+   * to the plain per-status look below.
+   */
+  resolvedAt?: string | null;
+}) {
   const { t } = useTranslation();
+
+  if (status === 'disputed' && resolvedAt != null) {
+    return (
+      <Badge variant="outline" className="border-leaf/40 text-leaf">
+        <CircleCheck />
+        {t('transfers.status.resolved')}
+      </Badge>
+    );
+  }
+
   const Icon = ICON[status];
   return (
     <Badge variant="outline" className={TONE[status]}>

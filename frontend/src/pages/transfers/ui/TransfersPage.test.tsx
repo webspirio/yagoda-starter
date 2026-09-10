@@ -13,10 +13,9 @@ function tile(label: string): HTMLElement {
   return el as HTMLElement;
 }
 
-const { pointCashMock, transfersMock, pointOptionsMock } = vi.hoisted(() => ({
+const { pointCashMock, transfersMock } = vi.hoisted(() => ({
   pointCashMock: vi.fn(),
   transfersMock: vi.fn(),
-  pointOptionsMock: vi.fn(),
 }));
 
 vi.mock('@/entities/point-cash', () => ({
@@ -27,9 +26,11 @@ vi.mock('@/entities/transfer', () => ({
   useTransfersQuery: (filter: unknown) => transfersMock(filter),
 }));
 
-vi.mock('@/entities/collection-point', () => ({
-  usePointOptionsQuery: () => pointOptionsMock(),
-}));
+// No `@/entities/collection-point` mock, deliberately (fix round 1, findings
+// 1+2): the page must not import `usePointOptionsQuery` at all — see
+// `TransfersPage.tsx`'s own doc comment for why. If it were ever
+// reintroduced, this suite would fail with an unmocked-hook error rather
+// than silently reverting to a name source that hides deactivated points.
 
 // The three action dialogs each own a real mutation (`useMutation`, needing a
 // live `QueryClient`) and already have their own test suites — this page's
@@ -114,14 +115,21 @@ const list = <T,>(data: T[]) => ({ data, total: data.length, page: 1, limit: 100
 beforeEach(() => {
   pointCashMock.mockReset().mockReturnValue(single(points([pointRow()])));
   transfersMock.mockReset().mockReturnValue(single(list([])));
-  pointOptionsMock
-    .mockReset()
-    .mockReturnValue({ data: [{ id: 'p1', name: 'Shypynky' }], isPending: false, isError: false });
 });
 
 describe('TransfersPage — loading and error states', () => {
-  it('shows a spinner while either read is in flight', () => {
+  it('shows a spinner while the point-cash read is in flight', () => {
     pointCashMock.mockReturnValue(single(undefined, { isPending: true }));
+    render(<TransfersPage />);
+    expect(screen.queryByRole('table')).toBeNull();
+  });
+
+  it('shows a spinner while the transfers read is in flight too — not just point-cash', () => {
+    // Fix round 1, finding 2: the OLD third query (`usePointOptionsQuery`)
+    // never gated the loading state, so a name could flash as a raw UUID.
+    // That query is gone now, but this still proves BOTH remaining reads
+    // are checked, not just the first one written.
+    transfersMock.mockReturnValue(single(undefined, { isPending: true }));
     render(<TransfersPage />);
     expect(screen.queryByRole('table')).toBeNull();
   });
@@ -130,6 +138,58 @@ describe('TransfersPage — loading and error states', () => {
     transfersMock.mockReturnValue(single(undefined, { isError: true }));
     render(<TransfersPage />);
     expect(screen.getByRole('alert')).toHaveTextContent('Something went wrong');
+  });
+});
+
+describe('TransfersPage — findings 1+2: point names come from GET /point-cash', () => {
+  it("resolves a transfer's point name from point-cash rows, including one a picker would hide", () => {
+    // `usePointOptionsQuery` is `include_inactive: false` — this point
+    // exists ONLY in the point-cash read (as a deactivated point would),
+    // proving the name did not come from anywhere else.
+    pointCashMock.mockReturnValue(
+      single(points([pointRow({ collection_point_id: 'p9', name: 'Retired Point' })])),
+    );
+    transfersMock.mockReturnValue(single(list([transfer({ collection_point_id: 'p9' })])));
+
+    render(<TransfersPage />);
+
+    // Appears twice — once in the debt table's own point column, once in
+    // the history below — both sourced from the same point-cash row.
+    expect(screen.getAllByText('Retired Point')).toHaveLength(2);
+    expect(screen.queryByText('p9')).toBeNull();
+  });
+
+  it('falls back to the raw id only when the point is truly absent from point-cash too', () => {
+    pointCashMock.mockReturnValue(single(points([pointRow({ collection_point_id: 'p1' })])));
+    transfersMock.mockReturnValue(single(list([transfer({ collection_point_id: 'p-unknown' })])));
+
+    render(<TransfersPage />);
+
+    expect(screen.getByText('p-unknown')).toBeInTheDocument();
+  });
+});
+
+describe('TransfersPage — finding 3: the transfers read can be truncated', () => {
+  it('warns when the network-wide read is only a partial page', () => {
+    transfersMock.mockReturnValue({
+      data: { data: [transfer()], total: 250, page: 1, limit: 100 },
+      isPending: false,
+      isError: false,
+    });
+
+    render(<TransfersPage />);
+
+    expect(
+      screen.getByText(/Showing recent transfers only — an older dispute may not appear/),
+    ).toBeInTheDocument();
+  });
+
+  it('says nothing about truncation when the read came back whole', () => {
+    transfersMock.mockReturnValue(single(list([transfer()])));
+
+    render(<TransfersPage />);
+
+    expect(screen.queryByText(/older dispute may not appear/)).toBeNull();
   });
 });
 
@@ -190,6 +250,32 @@ describe('TransfersPage — wiring the table to the resolve dialog', () => {
 
     await user.click(screen.getByRole('button', { name: 'Resolve' }));
     expect(await screen.findByRole('dialog')).toHaveTextContent('t9');
+  });
+
+  it('does not offer to resolve a dispute already settled — status stays disputed forever', () => {
+    // Fix round 1, finding 4: `resolve()` never touches `status`
+    // (transfers.service.ts), so this row's `latest_transfer.status` is
+    // still `disputed` even though the full record is already resolved.
+    // The page must filter it out of `unresolvedDisputes` before
+    // `PointDebtTable` ever sees it.
+    const resolved = transfer({
+      id: 't9',
+      status: 'disputed',
+      sent_at: '2026-09-10T08:00:00.000Z',
+      resolved_at: '2026-09-11T09:00:00.000Z',
+    });
+    pointCashMock.mockReturnValue(
+      single(
+        points([
+          pointRow({ latest_transfer: { status: 'disputed', sent_at: '2026-09-10T08:00:00.000Z' } }),
+        ]),
+      ),
+    );
+    transfersMock.mockReturnValue(single(list([resolved])));
+
+    render(<TransfersPage />);
+
+    expect(screen.queryByRole('button', { name: 'Resolve' })).toBeNull();
   });
 });
 

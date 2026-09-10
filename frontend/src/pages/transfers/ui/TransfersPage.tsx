@@ -7,7 +7,6 @@ import { Spinner } from '@/shared/ui/spinner';
 import { sum, cmp, formatUah } from '@/shared/lib/money';
 import { usePointCashQuery } from '@/entities/point-cash';
 import { useTransfersQuery, type Transfer } from '@/entities/transfer';
-import { usePointOptionsQuery } from '@/entities/collection-point';
 import { SendTransferDialog } from '@/features/send-transfer';
 import { ResolveTransferDialog } from '@/features/resolve-transfer';
 import { VoidDocumentDialog } from '@/features/void-document';
@@ -23,15 +22,31 @@ import { TransferHistory } from './TransferHistory';
  *
  * ONE `useTransfersQuery({})` READ SERVES TWO JOBS, deliberately not two
  * separate calls: `TransferHistory` renders it as the document log, and the
- * same array is filtered client-side to `status === 'disputed'` so
- * `PointDebtTable` can hand `ResolveTransferDialog` a full `Transfer` (id
- * included) for whichever point's `latest_transfer` names a dispute — the
- * `GET /point-cash` row itself carries only `{ status, sent_at }`, no id.
+ * same array is filtered client-side to `status === 'disputed' &&
+ * resolved_at === null` so `PointDebtTable` can hand `ResolveTransferDialog`
+ * a full `Transfer` (id included) for whichever point still has an open
+ * dispute — the `GET /point-cash` row itself carries only
+ * `{ status, sent_at }`, no id and no `resolved_at`.
  *
  * RULE 4 — this read is never given `includeVoided: true`. A voided
  * transfer stopped counting toward any point's cash (§9.3); showing it in
  * the working history or matching it into a resolve action would be the
  * exact quiet-untruth this page's honesty rules exist to prevent.
+ *
+ * POINT NAMES COME FROM `pointCash.data`, NEVER FROM `usePointOptionsQuery`
+ * (fix round 1, findings 1+2). That entity hook is `include_inactive: false`
+ * — right for a picker that must not offer a retired point as a new
+ * assignment, wrong here: `point-cash.service.ts`'s own doc comment says a
+ * deactivated point KEEPS ITS ROW in `GET /point-cash` on purpose ("hiding
+ * the row would blind the owner to real money … a person must not vanish
+ * from the debts list because their card was retired"). Sourcing the name
+ * map from `usePointOptionsQuery` instead would render a raw UUID —
+ * permanently — for any point retired mid-season, in `TransferHistory`'s
+ * point column and in the void dialog's title. It also dropped a whole
+ * query: `pointCash.data` already carries `.name` on every row, so there is
+ * nothing left for `usePointOptionsQuery` to add, and no third `isPending`
+ * to forget gating on (finding 2 — the old third query's loading state was
+ * never checked, so a name could flash as a UUID before it resolved).
  */
 export function TransfersPage() {
   const { t, i18n } = useTranslation();
@@ -39,7 +54,6 @@ export function TransfersPage() {
 
   const pointCash = usePointCashQuery();
   const transfers = useTransfersQuery({});
-  const { data: points } = usePointOptionsQuery();
 
   // Each dialog keeps its own {target, open, key} triple — the same shape
   // `PointCashPage`/`DebtsPage`/`SupplierCardPage` use: `target` stays set
@@ -80,14 +94,31 @@ export function TransfersPage() {
 
   const rows = useMemo(() => pointCash.data?.data ?? [], [pointCash.data]);
   const allTransfers = useMemo(() => transfers.data?.data ?? [], [transfers.data]);
-  const disputedTransfers = useMemo(
-    () => allTransfers.filter((tr) => tr.status === 'disputed'),
+  // Only a dispute nobody has closed yet is actionable — see this
+  // component's own doc comment (fix round 1, finding 4) for why `status`
+  // alone is not enough.
+  const unresolvedDisputes = useMemo(
+    () => allTransfers.filter((tr) => tr.status === 'disputed' && tr.resolved_at === null),
     [allTransfers],
   );
+  // §7.10 — every point in scope, deactivated ones included: see this
+  // component's own doc comment (fix round 1, findings 1+2) for why this is
+  // NOT `usePointOptionsQuery`.
   const pointName = useMemo(
-    () => new Map((points ?? []).map((p) => [p.id, p.name])),
-    [points],
+    () => new Map(rows.map((r) => [r.collection_point_id, r.name])),
+    [rows],
   );
+  // Finding 3 — `useTransfersQuery({})` is unscoped across the WHOLE
+  // network at its default `limit: 100`, the first such use in this
+  // codebase (every other caller scopes by point, where 100 is never
+  // reached). Missing rows here are worse than a short list: an older
+  // still-open dispute at a quieter point can fall outside the top 100 and
+  // silently lose its «Вирішити» button, which reads exactly like "nothing
+  // to resolve". `DebtsPage.tsx`'s own `total > rows.length` convention
+  // names the gap instead of hiding it — deliberately NOT fixed by paging
+  // to completion, which would turn one screen's load into an unbounded
+  // fetch.
+  const transfersTruncated = transfers.data ? transfers.data.total > transfers.data.data.length : false;
 
   // RULE 1 — a point with no target (`shortfall: null`) is deliberately
   // absent from this sum, not counted as owing 0. A settled/overfunded point
@@ -134,9 +165,12 @@ export function TransfersPage() {
           </p>
         ) : (
           <div className="flex flex-col gap-5">
+            {transfersTruncated ? (
+              <p className="text-xs text-muted-foreground">{t('transfers.truncatedHint')}</p>
+            ) : null}
             <PointDebtTable
               rows={rows}
-              disputedTransfers={disputedTransfers}
+              unresolvedDisputes={unresolvedDisputes}
               onSend={openSend}
               onResolve={openResolve}
             />

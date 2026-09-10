@@ -515,12 +515,12 @@
     "pickPoint": "Select a point",
     "today": "Today",
     "stats": {
-      "target": "Cash target",
-      "targetUnset": "No cash target assigned yet",
+      "target": "Target",
+      "targetUnset": "No target assigned yet",
       "cash": "Berry cash",
       "cashHint": "cash available to pay for berries",
       "neverCounted": "Never counted yet: the first count when the shift opens sets the opening balance.",
-      "shortfall": "Base owes the point",
+      "shortfall": "Short of target",
       "shortfallUnset": "No target to compare against",
       "shortfallOwed": "the base has not transferred it yet",
       "shortfallSettled": "the target is covered"
@@ -565,8 +565,8 @@
       "explain": "Explain"
     },
     "target": {
-      "set": "Assign a cash target",
-      "change": "Change the cash target"
+      "set": "Assign a target",
+      "change": "Change the target"
     }
   },
   "pointTarget": {
@@ -910,6 +910,7 @@
     "eyebrow": "For the owner",
     "title": "Transfers",
     "description": "How much the base still owes each point toward its target, and what is currently on the road. A point with no assigned target does not enter the network total.",
+    "truncatedHint": "Showing recent transfers only — an older dispute may not appear below or be resolvable from this table.",
     "tiles": {
       "totalOwed": "Owed to points"
     },
@@ -928,7 +929,8 @@
     "status": {
       "sent": "In transit",
       "accepted": "Accepted",
-      "disputed": "Doesn't match"
+      "disputed": "Doesn't match",
+      "resolved": "Resolved"
     },
     "send": "Send",
     "resolve": "Resolve",

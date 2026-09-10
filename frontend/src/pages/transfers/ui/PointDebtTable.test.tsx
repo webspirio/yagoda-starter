@@ -53,7 +53,7 @@ describe('PointDebtTable — honesty rule: null target/shortfall render «—»,
     render(
       <PointDebtTable
         rows={[row({ target_cash: null, shortfall: null })]}
-        disputedTransfers={[]}
+        unresolvedDisputes={[]}
         onSend={noop}
         onResolve={noop}
       />,
@@ -68,7 +68,7 @@ describe('PointDebtTable — honesty rule: null target/shortfall render «—»,
     render(
       <PointDebtTable
         rows={[row({ target_cash: '5000.00', shortfall: '250.00' })]}
-        disputedTransfers={[]}
+        unresolvedDisputes={[]}
         onSend={noop}
         onResolve={noop}
       />,
@@ -81,7 +81,7 @@ describe('PointDebtTable — honesty rule: null target/shortfall render «—»,
 
 describe('PointDebtTable — the crates column has no backing tables', () => {
   it('puts a labelled placeholder in the crates column, not a zero', async () => {
-    render(<PointDebtTable rows={[row()]} disputedTransfers={[]} onSend={noop} onResolve={noop} />);
+    render(<PointDebtTable rows={[row()]} unresolvedDisputes={[]} onSend={noop} onResolve={noop} />);
 
     const cell = (await screen.findAllByRole('note'))[0];
     expect(cell).toBeInTheDocument();
@@ -98,7 +98,7 @@ describe('PointDebtTable — the status column', () => {
           row({ collection_point_id: 'p1', latest_transfer: { status: 'sent', sent_at: '2026-09-10T08:00:00.000Z' } }),
           row({ collection_point_id: 'p2', name: 'Haiove', latest_transfer: null }),
         ]}
-        disputedTransfers={[]}
+        unresolvedDisputes={[]}
         onSend={noop}
         onResolve={noop}
       />,
@@ -109,11 +109,14 @@ describe('PointDebtTable — the status column', () => {
     expect(screen.queryByText("Doesn't match")).toBeNull();
   });
 
-  it('offers «Вирішити» only on a disputed transfer', () => {
+  it('offers «Вирішити» only when the point has an unresolved dispute', () => {
+    // Gate is on `unresolvedDisputes` matched by point id (fix round 1,
+    // finding 4) — `latest_transfer` here is deliberately left `null` on
+    // every render so this test cannot pass by accident of the badge logic.
     const { rerender } = render(
       <PointDebtTable
-        rows={[row({ latest_transfer: { status: 'sent', sent_at: '2026-09-10T08:00:00.000Z' } })]}
-        disputedTransfers={[]}
+        rows={[row({ collection_point_id: 'p1', latest_transfer: null })]}
+        unresolvedDisputes={[]}
         onSend={noop}
         onResolve={noop}
       />,
@@ -122,8 +125,9 @@ describe('PointDebtTable — the status column', () => {
 
     rerender(
       <PointDebtTable
-        rows={[row({ latest_transfer: { status: 'accepted', sent_at: '2026-09-10T08:00:00.000Z' } })]}
-        disputedTransfers={[]}
+        rows={[row({ collection_point_id: 'p1', latest_transfer: null })]}
+        // A dispute exists, but at a DIFFERENT point — must not leak in.
+        unresolvedDisputes={[transfer({ collection_point_id: 'p2' })]}
         onSend={noop}
         onResolve={noop}
       />,
@@ -132,12 +136,8 @@ describe('PointDebtTable — the status column', () => {
 
     rerender(
       <PointDebtTable
-        rows={[
-          row({
-            latest_transfer: { status: 'disputed', sent_at: '2026-09-10T08:00:00.000Z' },
-          }),
-        ]}
-        disputedTransfers={[transfer({ sent_at: '2026-09-10T08:00:00.000Z' })]}
+        rows={[row({ collection_point_id: 'p1', latest_transfer: null })]}
+        unresolvedDisputes={[transfer({ collection_point_id: 'p1' })]}
         onSend={noop}
         onResolve={noop}
       />,
@@ -145,15 +145,47 @@ describe('PointDebtTable — the status column', () => {
     expect(screen.getByRole('button', { name: 'Resolve' })).toBeInTheDocument();
   });
 
-  it('calls onResolve with the full disputed transfer, matched by point and sent time', async () => {
+  it('does NOT offer «Вирішити» once resolved, even though status stays disputed forever', () => {
+    // `resolve()` never touches `status` (transfers.service.ts) — the badge
+    // can still say «Doesn't match» here (`latest_transfer` has no
+    // `resolved_at` to know better), but the page is expected to have
+    // already dropped this point's transfer out of `unresolvedDisputes`
+    // once it was resolved, and the button must follow that, not the badge.
+    render(
+      <PointDebtTable
+        rows={[
+          row({
+            collection_point_id: 'p1',
+            latest_transfer: { status: 'disputed', sent_at: '2026-09-10T08:00:00.000Z' },
+          }),
+        ]}
+        unresolvedDisputes={[]}
+        onSend={noop}
+        onResolve={noop}
+      />,
+    );
+
+    expect(screen.getByText("Doesn't match")).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Resolve' })).toBeNull();
+  });
+
+  it('calls onResolve with the full disputed transfer, matched by point id alone', async () => {
     const user = userEvent.setup();
     const onResolve = vi.fn();
-    const disputed = transfer({ id: 't9', sent_at: '2026-09-10T08:00:00.000Z' });
+    // `sent_at` deliberately does NOT match the row's `latest_transfer.sent_at`
+    // — proves the match is by `collection_point_id` only, not a cross-endpoint
+    // timestamp comparison.
+    const disputed = transfer({ id: 't9', collection_point_id: 'p1', sent_at: '2026-01-01T00:00:00.000Z' });
 
     render(
       <PointDebtTable
-        rows={[row({ latest_transfer: { status: 'disputed', sent_at: '2026-09-10T08:00:00.000Z' } })]}
-        disputedTransfers={[disputed]}
+        rows={[
+          row({
+            collection_point_id: 'p1',
+            latest_transfer: { status: 'accepted', sent_at: '2026-09-10T08:00:00.000Z' },
+          }),
+        ]}
+        unresolvedDisputes={[disputed]}
         onSend={noop}
         onResolve={onResolve}
       />,
@@ -169,7 +201,7 @@ describe('PointDebtTable — the status column', () => {
     render(
       <PointDebtTable
         rows={[row({ collection_point_id: 'p1', name: 'Shypynky', latest_transfer: null })]}
-        disputedTransfers={[]}
+        unresolvedDisputes={[]}
         onSend={onSend}
         onResolve={noop}
       />,
@@ -187,7 +219,7 @@ describe('PointDebtTable — accessibility', () => {
         rows={[
           row({ latest_transfer: { status: 'disputed', sent_at: '2026-09-10T08:00:00.000Z' } }),
         ]}
-        disputedTransfers={[transfer({ sent_at: '2026-09-10T08:00:00.000Z' })]}
+        unresolvedDisputes={[transfer({ sent_at: '2026-09-10T08:00:00.000Z' })]}
         onSend={noop}
         onResolve={noop}
       />,

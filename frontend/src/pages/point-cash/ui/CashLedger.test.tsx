@@ -135,9 +135,30 @@ describe('CashLedger', () => {
       />,
     );
 
-    expect(
-      screen.getByText(/Showing recent payouts only — older ones may be missing/),
-    ).toBeInTheDocument();
+    const pastRow = screen.getByText('Paid for past days').closest('div');
+    expect(pastRow?.nextElementSibling?.tagName).toBe('P');
+    expect(pastRow?.nextElementSibling).toHaveTextContent(
+      /Showing recent payouts only — older ones may be missing/,
+    );
+  });
+
+  it('warns under «returned to the drawer» too — it reads the same truncated payouts array', () => {
+    // `returnedToday` sums `payouts.filter(p => p.return_settled_at !== null
+    // …)` over the SAME array `paidPast` reads — fix round 1's minor
+    // finding: a settled return whose payout fell outside the fetched page
+    // vanishes with no caveat unless this row carries one too. The row
+    // renders (at 0.00) even with an empty `payouts` array, so this reuses
+    // the exact fixture the sibling «paid for past days» truncation test
+    // uses — the only change is which row's sibling `<p>` is asserted on.
+    render(
+      <CashLedger date="2026-09-10" cash="0.00" intakes={[]} payouts={[]} transfers={[]} payoutsTruncated />,
+    );
+
+    const returnedRow = screen.getByText('Returned to the drawer').closest('div');
+    expect(returnedRow?.nextElementSibling?.tagName).toBe('P');
+    expect(returnedRow?.nextElementSibling).toHaveTextContent(
+      /Showing recent payouts only — older ones may be missing/,
+    );
   });
 
   it('says nothing about truncation when the payouts read came back whole', () => {
