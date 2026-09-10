@@ -903,5 +903,49 @@
       "dispute": "Doesn't match",
       "toastAccepted": "Transfer accepted"
     }
+  },
+  "transfers": {
+    "eyebrow": "For the owner",
+    "title": "Transfers",
+    "description": "How much the base still owes each point toward its target, and what is currently on the road. A point with no assigned target does not enter the network total.",
+    "tiles": {
+      "totalOwed": "Owed to points"
+    },
+    "col": {
+      "point": "Point",
+      "target": "Target",
+      "cash": "In the drawer",
+      "shortfall": "Short by",
+      "crates": "Crates",
+      "status": "Status"
+    },
+    "crates": {
+      "label": "Crates",
+      "note": "not tracked yet"
+    },
+    "status": {
+      "sent": "In transit",
+      "accepted": "Accepted",
+      "disputed": "Doesn't match"
+    },
+    "send": "Send",
+    "resolve": "Resolve",
+    "empty": {
+      "title": "No collection points yet"
+    },
+    "history": {
+      "title": "Transfer history",
+      "empty": "No transfers sent yet.",
+      "col": {
+        "sent": "Sent",
+        "point": "Point",
+        "cash": "Cash",
+        "crates": "Crates",
+        "carrier": "Carrier",
+        "status": "Status",
+        "action": "Action"
+      },
+      "void": "Void"
+    }
   }
 }
