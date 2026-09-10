@@ -218,6 +218,72 @@ test('a confirmedFakeValues entry with a stub reason (under 30 characters) is re
   }
 })
 
+test('a high-entropy value in a Dockerfile ENV line is caught (the closed leading-token list)', () => {
+  const rel = 'docs/zz-secret-fixture-dockerfile-env.txt'
+  const fixture = path.join(ROOT, rel)
+  const value = randomHighEntropyValue()
+  // A real Dockerfile ENV instruction shape — not hypothetical: backend/Dockerfile and
+  // nginx/Dockerfile both carry live ENV lines today (see the check's own header comment).
+  writeFileSync(fixture, `ENV SOME_SECRET=${value}\n`)
+  try {
+    execFileSync('git', ['add', '-N', '--', rel], { cwd: ROOT })
+    const res = run()
+    assert.equal(res.status, 1, res.out)
+    assert.match(res.out, /SOME_SECRET/)
+    assert.match(res.out, /zz-secret-fixture-dockerfile-env\.txt/)
+  } finally {
+    try {
+      execFileSync('git', ['rm', '--cached', '--force', '--quiet', '--', rel], { cwd: ROOT })
+    } catch {
+      // See the PEM test above for why this is allowed to fail harmlessly.
+    }
+    rmSync(fixture, { force: true })
+  }
+})
+
+test('a shell export line with a high-entropy value is caught', () => {
+  const rel = 'docs/zz-secret-fixture-shell-export.txt'
+  const fixture = path.join(ROOT, rel)
+  const value = randomHighEntropyValue()
+  writeFileSync(fixture, `export API_TOKEN=${value}\n`)
+  try {
+    execFileSync('git', ['add', '-N', '--', rel], { cwd: ROOT })
+    const res = run()
+    assert.equal(res.status, 1, res.out)
+    assert.match(res.out, /API_TOKEN/)
+    assert.match(res.out, /zz-secret-fixture-shell-export\.txt/)
+  } finally {
+    try {
+      execFileSync('git', ['rm', '--cached', '--force', '--quiet', '--', rel], { cwd: ROOT })
+    } catch {
+      // See the PEM test above for why this is allowed to fail harmlessly.
+    }
+    rmSync(fixture, { force: true })
+  }
+})
+
+test('process.env.JWT_SECRET in a .ts fixture is still NOT flagged (the closed list did not reopen the process.env hole)', () => {
+  const rel = 'docs/zz-secret-fixture-processenv.ts'
+  const fixture = path.join(ROOT, rel)
+  // Same shape as the real false positive round 1 fixed: an unquoted property access
+  // embedded in a full statement, never a candidate value regardless of the leading-token
+  // list, because the line is not `export`/`ENV`/`ARG`/`- ` followed by the whole rest of
+  // the line being just NAME=value — it is `const NAME = <expression>;`.
+  writeFileSync(fixture, 'const jwtSecret = process.env.JWT_SECRET;\n')
+  try {
+    execFileSync('git', ['add', '-N', '--', rel], { cwd: ROOT })
+    const res = run()
+    assert.equal(res.status, 0, res.out)
+  } finally {
+    try {
+      execFileSync('git', ['rm', '--cached', '--force', '--quiet', '--', rel], { cwd: ROOT })
+    } catch {
+      // See the PEM test above for why this is allowed to fail harmlessly.
+    }
+    rmSync(fixture, { force: true })
+  }
+})
+
 test('removing the .env line from .gitignore is caught, naming the fingerprint mismatch', () => {
   const original = readFileSync(GITIGNORE, 'utf8')
   try {

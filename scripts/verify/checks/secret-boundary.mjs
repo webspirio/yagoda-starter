@@ -47,22 +47,26 @@
  *
  * A bare, unquoted value is only a candidate when it is the WHOLE line — see
  * BARE_ASSIGNMENT_RE below. Restoring whole-value entropy across every tracked file (not
- * just .env.example) surfaced a second, unrelated false positive this measurement change
- * introduced: `const password = process.env.BOOTSTRAP_OWNER_PASSWORD;` — a property access,
- * not a literal — scored high enough to trip rule 3 on its own RHS. A quoted string literal
- * is the only thing JS/TS syntax allows a real hardcoded secret to be, so it stays a
+ * just .env.example) surfaced a false positive this measurement change introduced:
+ * `const password = process.env.BOOTSTRAP_OWNER_PASSWORD;` — a property access, not a
+ * literal — scored high enough to trip rule 3 on its own RHS. A quoted string literal is
+ * the only thing JS/TS syntax allows a real hardcoded secret to be, so it stays a
  * candidate anywhere in a line; an unquoted RHS embedded in a statement never is.
+ *
+ * A first version of that whole-line rule missed real, non-hypothetical secret-carrying
+ * syntax: a shell `export NAME=value`, a Dockerfile `ENV`/`ARG NAME=value` — this repo's
+ * own backend/Dockerfile and nginx/Dockerfile use exactly that syntax today — and a
+ * docker-compose `environment:` LIST entry (`- NAME=value`). BARE_ASSIGNMENT_RE now
+ * allows exactly those four leading tokens, and no others, before the whole-line match;
+ * see its own comment for why the list stays closed rather than becoming "skip any
+ * leading word", which would let `const password = process.env.X` back in.
  *
  * Entropy heuristics still have real limits: a placeholder shape not yet named in
  * PLACEHOLDER_RE can false-positive, and a short or low-entropy real secret can stay
  * under the threshold entirely (false negative) — nothing under 32 characters is ever
- * inspected. Restricting bare values to whole-line-only has its own confirmed cost: a
- * shell `export NAME=value`, a Dockerfile `ENV NAME=value`, or a docker-compose
- * `environment:` LIST entry (`- NAME=value`) are real, unquoted, secret-carrying shapes
- * this now misses — see BARE_ASSIGNMENT_RE below for the measurement. This check also
- * sees only tracked files at the CURRENT commit — a secret committed and later removed is
- * invisible to it, and it cannot distinguish a real credential from a convincing fake.
- * See the registry's `blindSpot` for the full list.
+ * inspected. This check also sees only tracked files at the CURRENT commit — a secret
+ * committed and later removed is invisible to it, and it cannot distinguish a real
+ * credential from a convincing fake. See the registry's `blindSpot` for the full list.
  *
  * There is no per-file-type or per-directory exemption of any kind — not for `.md`, not
  * for test files, not for any path.
@@ -115,22 +119,31 @@ const PLACEHOLDER_RE = /^(changeme|change-me|example|your-|<.*>|\.\.\.)/i
 // one — so this is unrestricted by position or by what else the statement contains.
 const QUOTED_ASSIGNMENT_RE = /([A-Za-z_$][A-Za-z0-9_$]*)\s*[:=]\s*(?:'([^']*)'|"([^"]*)")/g
 
-// A bare, unquoted value — but ONLY when it is the entire line (trimmed), optionally
-// followed by a `#` comment: `NAME=value` (.env), `NAME: value` (YAML). This is what
-// `.env`, `.env.example` and CI workflow env blocks actually look like, and it is also
-// what deliberately excludes a code statement like `const password =
-// process.env.BOOTSTRAP_OWNER_PASSWORD;` — that RHS is unquoted too, but it is a property
-// access, not a literal, and the line also carries `const `/`;` the value alone cannot
-// swallow, so the whole-line anchor fails to match and it is never a candidate.
+// A bare, unquoted value — but ONLY when it is the entire line (trimmed), MODULO one small,
+// CLOSED list of leading tokens real config syntax puts before a bare assignment. Optionally
+// followed by a `#` comment: `NAME=value` (.env), `NAME: value` (YAML).
 //
-// This is a real, NAMED blind spot, not a free lunch: `export JWT_SECRET=value` (a shell
-// script), `ENV JWT_SECRET=value` (a Dockerfile — this repo's own backend/Dockerfile and
-// nginx/Dockerfile both carry unrelated ENV lines today, so the syntax is not
-// hypothetical), and `- JWT_SECRET=value` (a docker-compose `environment:` list, as
-// opposed to its map form) are all bare, unquoted, real secret-carrying shapes that this
-// same whole-line anchor would ALSO miss, because each has a leading keyword or `-` before
-// the NAME. Measured, not assumed — see this check's registry `blindSpot` entry.
-const BARE_ASSIGNMENT_RE = /^([A-Za-z_$][A-Za-z0-9_$]*)\s*[:=]\s*([^\s'";,)]+?)\s*(?:#.*)?$/
+// The closed list, each entry justified — measured against this repository, not assumed:
+//   - `export`  — a shell script's `export NAME=value`.
+//   - `ENV`     — a Dockerfile instruction (`ENV NAME=value`). Live here today:
+//                 backend/Dockerfile:22 `ENV NODE_ENV=production`,
+//                 nginx/Dockerfile:9 `ENV VITE_API_URL=$VITE_API_URL`.
+//   - `ARG`     — a Dockerfile build argument (`ARG NAME=value`), the same instruction
+//                 family as ENV. Live here today: nginx/Dockerfile:8 `ARG VITE_API_URL=/api`.
+//   - `-`       — a YAML sequence item, for docker-compose's LIST form of `environment:`
+//                 (`- NAME=value`), as opposed to its MAPPING form (`NAME: value`), which
+//                 the whole-line match already covers with no prefix at all. This repo's
+//                 own compose files use the mapping form today (`JWT_SECRET:
+//                 ${JWT_SECRET}`), so this alternative is not exercised by the real tree —
+//                 it is here because compose files change, and the list form is exactly as
+//                 valid YAML as the mapping form.
+//
+// This stays a CLOSED list, not a general "skip a leading word" rule: the reason the
+// whole-line anchor exists at all — stopping `const password = process.env.X;` (a property
+// access, not a literal) from scoring as a secret — depends on NOT accepting arbitrary
+// leading text. `const`, `let`, `set` (Windows batch) and anything else outside this list
+// still fail to match, on purpose; see the check's header for the property-access example.
+const BARE_ASSIGNMENT_RE = /^(?:(?:export|ENV|ARG|-)\s+)?([A-Za-z_$][A-Za-z0-9_$]*)\s*[:=]\s*([^\s'";,)]+?)\s*(?:#.*)?$/
 
 /**
  * Shannon entropy in bits per character.

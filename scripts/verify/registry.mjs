@@ -289,13 +289,15 @@ export const CHECKS = [
       'shape not yet named in PLACEHOLDER_RE can still false-positive, and any real secret ' +
       'under 32 characters is never inspected at all, full stop. Only a QUOTED string ' +
       'literal is a candidate value anywhere in a line; a bare, unquoted one is a candidate ' +
-      'only when it is the entire line — measured, this is a real hole, not a free lunch: a ' +
-      'shell `export NAME=value`, a Dockerfile `ENV NAME=value` (this repo\'s own ' +
-      'backend/Dockerfile and nginx/Dockerfile both carry unrelated ENV lines today, so the ' +
-      'syntax is live here), and a docker-compose `environment:` LIST entry (`- ' +
-      'NAME=value`) are all real, unquoted, secret-carrying shapes this check would miss, ' +
-      'because each has a leading keyword or `-` before the name that breaks the ' +
-      'whole-line match. This check has exactly one reviewed exception, and it lives in ' +
+      'only when it is the entire line, optionally preceded by exactly one of a CLOSED set ' +
+      'of four leading tokens (export, ENV, ARG, a YAML `- ` sequence marker) chosen ' +
+      "because this repo's own Dockerfiles use ENV/ARG today and docker-compose's " +
+      '`environment:` block has a list form as well as the mapping form already covered. ' +
+      'Anything outside that closed list — `const`, `let`, Windows `set`, or no leading ' +
+      'token at all when the value is not the whole line — still does not count, on ' +
+      'purpose: that is what keeps `const password = process.env.X;` (a property access, ' +
+      'not a literal) from tripping this check. This check has exactly one reviewed ' +
+      'exception, and it lives in ' +
       'scripts/verify/baselines/secret-boundary.json\'s confirmedFakeValues array — never ' +
       'in this file\'s source, and re-validated on every run (a stub reason under 30 ' +
       'characters is rejected; an entry whose pinned value no longer appears in its named ' +
