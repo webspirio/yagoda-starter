@@ -74,6 +74,8 @@ and failure modes: `docs/coolify-deploy.md`; design: `docs/superpowers/specs/202
 `docker-compose.prod.yml` is the single compose file (no `ports`, no custom
 `networks` — Coolify's Traefik owns TLS and routing). Without Coolify, add
 `docker-compose.standalone.yml` (loopback ports) and terminate TLS per
-`docs/vps-tls-setup.md`. Whatever sits in front must allow request bodies of
-at least ~12 MB: the app accepts image uploads up to 10 MB, and a smaller
-limit returns 413 before the request reaches the app (Traefik: `buffering.maxRequestBodyBytes`; nginx: `client_max_body_size`).
+`docs/vps-tls-setup.md`. On that standalone path whatever terminates TLS must
+allow request bodies of at least ~12 MB — nginx defaults to 1 MB and would
+return 413 before the request reaches the app (`client_max_body_size`). Under
+Coolify there is nothing to set: Traefik has no default body limit, and the
+internal nginx already allows 12 MB against the app's 10 MB upload cap.

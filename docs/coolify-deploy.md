@@ -88,10 +88,14 @@ the preview owner or for this middleware.
      *Preview Deployments*: on, URL template `pr-{{pr_id}}.yagoda.webspirio.com`.
    - *Advanced*: **Include Source Commit** (`SOURCE_COMMIT`) on.
    - *Environment Variables* — production and preview sets below.
-   - Traefik body size: *Custom labels* on `nginx` →
-     `traefik.http.middlewares.yagoda-body.buffering.maxRequestBodyBytes=12582912`
-     and `traefik.http.routers.<router>.middlewares=yagoda-body` (uploads are 10 MB; the
-     internal nginx already allows 12 MB).
+   - Request body size: **nothing to configure.** Traefik imposes no default
+     limit (`buffering.maxRequestBodyBytes` defaults to 0 = unlimited), and the
+     `buffering` middleware is opt-in — adding it would *introduce* a cap and
+     make Traefik buffer whole uploads before forwarding them. The 12 MB rule
+     belongs to the standalone path, where a host **nginx** terminates TLS and
+     its 1 MB default would 413 an upload. Here the path is already clear:
+     Traefik unlimited → internal nginx `client_max_body_size 12m`
+     (`nginx/nginx.conf:24`) → the app's own 10 MB cap (`MEDIA_MAX_BYTES`).
 7. **GitHub repository settings**: secrets `COOLIFY_URL`, `COOLIFY_API_TOKEN`
    (Coolify → *Keys & Tokens → API tokens*, permissions `deploy` + `read`; add `write`
    only if the fallback below is in force), `COOLIFY_APP_UUID` (from the application URL);
