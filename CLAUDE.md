@@ -63,13 +63,22 @@ they will drift as more rows land (four more checks are planned after this one) 
 re-measured rather than assumed once they look suspicious. To re-measure: edit a file with
 content turbo has never hashed before. Turbo caches by content hash, so re-applying the
 SAME edit text used in an earlier measurement silently replays that run's cached result and
-reports a falsely fast number — this is exactly how the previous version of this snapshot
+reports a falsely fast number — this is exactly how an earlier version of this snapshot
 (12.7s / 32.3s / 1.1s) understated the true cost, in one case by more than 10x. Use a
 fresh, unique probe (e.g. append a one-off timestamped comment) every time you measure.
 
+A genuine COLD number (empty turbo cache) is deliberately NOT given below. This worktree's
+turbo cache lives at `/home/dz/work/yagoda-starter/.turbo` — the MAIN checkout's root, not
+this worktree — and is therefore SHARED with every other worktree of this repository,
+several of which hold unrelated open work. Wiping it to get a true cold reading would
+destroy cache state other branches depend on, so don't: measuring "cold" locally in a
+worktree never actually is, and a `rm -rf` there is a shared-state footgun, not a
+measurement technique.
+
 ```bash
 npm run verify        # fast tier, all nine rows. MEASURED 2026-09-10 @ 292b99b:
-                       #   cold (clone / cache wipe):  ~52s    — once-per-clone, not per-turn
+                       #   turbo tasks, cache bypassed (not wiped — see above):
+                       #     `npx turbo lint typecheck test --force`        31.9s
                        #   backend-only edit:          ~22.0s  (lint 1.8s / typecheck 1.8s /
                        #                                test 7.7s / selfcheck 9.5s / rest ~1.2s)
                        #   frontend-only edit:         ~38.4s  (lint 4.8s / typecheck 4.4s /
@@ -80,7 +89,12 @@ npm run verify        # fast tier, all nine rows. MEASURED 2026-09-10 @ 292b99b:
                        # second near-fixed ~9.5-10s on top of that, regardless of what
                        # changed — visible in every row above, and alone enough to explain
                        # why "warm, nothing changed" is ~11.9s rather than near-zero. Cutting
-                       # either cost is deliberately out of scope here.
+                       # either cost is deliberately out of scope here. A truly cold
+                       # `npm run verify` (empty cache) is NOT measured here — see above —
+                       # but ARITHMETIC over two real measurements (31.9s turbo-forced +
+                       # ~9.5-10s selfcheck + ~1.2s for the five remaining non-turbo rows,
+                       # from the backend-only breakdown) puts it in the neighbourhood of
+                       # 42-43s. That is a sum, not a measurement — do not quote it as one.
 npm run verify:full   # the fast tier plus everything that needs a build, a browser, a
                        # database or a registry
 npm run verify:ci     # verify:full with --no-skip — a missing precondition is a failure
@@ -88,8 +102,8 @@ npm run verify:ci     # verify:full with --no-skip — a missing precondition is
 ```
 
 `node scripts/verify/run.mjs --tier fast --reuse-if-fresh` against an already-green report
-for the same source hash costs 0.05s: it prints the same blind-spot footer without
-re-running anything.
+for the same source hash costs about 0.05s (re-measured 2026-09-10 alongside the figures
+above: 0.047s): it prints the same blind-spot footer without re-running anything.
 
 Every one of those checks is an ordinary npm script that runs standalone, unchanged,
 outside the orchestrator: `npm run lint`, `npm run typecheck`, `npm test`, and
