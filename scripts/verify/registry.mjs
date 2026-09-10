@@ -694,14 +694,22 @@ export const CHECKS = [
       "trusting knip's own JSON output alone would have missed this exact suppression vector. AS A DATED " +
       'SNAPSHOT, MEASURED 2026-09-10 and re-measured the same day after Task 17 (`smoke`) made `@playwright/' +
       'test` a real root devDependency (deleting the one baseline entry that named it as `unlisted`, per this ' +
-      'ratchet\'s own bidirectional rule): the baseline holds all 119 findings knip.json\'s two workspaces ' +
-      'produce today (1 dependency, 5 devDependencies, 55 exports, 31 files, 25 types, 2 unlisted) — this ' +
-      'repo\'s dead-code debt on that date, read and reasoned individually rather than bulk-recorded, with 14 ' +
-      "tied to decisions frontend/CLAUDE.md names explicitly (shared/lib/form-draft's file finding; the Kit-" +
-      'hygiene note\'s eight named starter-UI-primitive files plus the vaul dependency that traces to one of ' +
-      "them; entities/user's useUpdateMeMutation pattern-reference hook and its input type, at both origin and " +
-      'barrel). That count moves the instant anyone adds, fixes, or clears a finding anywhere knip.json\'s ' +
-      'globs reach, and this row does not track or re-check its own prose.',
+      'ratchet\'s own bidirectional rule): the baseline held 119 findings knip.json\'s two workspaces produced ' +
+      'that day (1 dependency, 5 devDependencies, 55 exports, 31 files, 25 types, 2 unlisted) — this repo\'s ' +
+      'dead-code debt on that date, read and reasoned individually rather than bulk-recorded, with 14 tied to ' +
+      "decisions frontend/CLAUDE.md names explicitly (shared/lib/form-draft's file finding; the Kit-hygiene " +
+      "note's eight named starter-UI-primitive files plus the vaul dependency that traces to one of them; " +
+      "entities/user's useUpdateMeMutation pattern-reference hook and its input type, at both origin and " +
+      'barrel). RE-MEASURED AGAIN the same day after Task 18 added .claude/hooks/edit-lint.mjs and ' +
+      '.claude/hooks/batch-typecheck.mjs: knip.json\'s two `workspaces` entries cover only backend and ' +
+      'frontend, so an unconfigured root workspace still applies knip\'s own DEFAULT project glob to ' +
+      'everything else the repo tracks — .claude/hooks included — and flagged both new files as unused, ' +
+      'since neither is statically imported nor named in any package.json script; only .claude/settings.json\'s ' +
+      'hook command line invokes them, a config-driven path knip cannot follow, the same class of blind spot ' +
+      'as the migration and db-spec `file` entries already on this baseline. The baseline now holds 121 ' +
+      'findings (1 dependency, 5 devDependencies, 55 exports, 33 files, 25 types, 2 unlisted). That count ' +
+      'moves the instant anyone adds, fixes, or clears a finding anywhere knip.json\'s globs reach, and this ' +
+      'row does not track or re-check its own prose.',
     blindSpot:
       "knip infers reachability from its own static analysis of the module graph, and CAN BE WRONG IN BOTH " +
       'DIRECTIONS — particularly around dynamic imports (a bare `require(\'pino-pretty\')` string handed to ' +
@@ -709,10 +717,13 @@ export const CHECKS = [
       "(a NestJS provider wired only through a decorator and DI, or a *.db-spec.ts file this task's own " +
       "investigation found `backend/jest.db.config.js` runs directly, that knip's Jest plugin cannot see " +
       "because its default spec/test glob requires a literal dot before 'spec'/'test' and never matches a " +
-      "hyphenated '-db-spec.ts' suffix — 13 of this baseline's 31 file findings are exactly that one glob " +
+      "hyphenated '-db-spec.ts' suffix — 13 of this baseline's 33 file findings are exactly that one glob " +
       "mismatch, and a further 8 are TypeORM migrations the runner discovers via a directory glob at startup " +
-      "rather than a static import, the same class of framework-invoked blind spot in a different tool; " +
-      "neither 13 nor 8 is real dead code). A baseline entry means the finding is KNOWN and explained, never that " +
+      "rather than a static import, the same class of framework-invoked blind spot in a different tool; and 2 " +
+      "more, as of Task 18, are .claude/hooks/*.mjs PostToolUse hooks knip's default root-workspace scan finds " +
+      "but only .claude/settings.json's hook command line ever invokes — a config-driven blind spot again, not " +
+      "real dead code. Neither 13, nor 8, nor those 2 is real dead code). A baseline entry means the finding " +
+      "is KNOWN and explained, never that " +
       "the code it names is ACCEPTABLE to keep as-is — recording backend/src's transitive, undeclared `ms`/" +
       "`express` imports, or frontend/src's six independently-duplicated `Paginated<T>` interfaces, documents " +
       "them for a future fix, it does not endorse them, and this task deliberately left every one of them " +

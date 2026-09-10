@@ -70,7 +70,7 @@ function addBaselineEntry(entry) {
 test('the real tree is green against the committed baseline', () => {
   const res = run()
   assert.equal(res.status, 0, res.out)
-  assert.match(res.out, /119 dead-code findings on record/)
+  assert.match(res.out, /121 dead-code findings on record/)
   assert.match(res.out, /knip\.json carries only entry\/project/)
 })
 
