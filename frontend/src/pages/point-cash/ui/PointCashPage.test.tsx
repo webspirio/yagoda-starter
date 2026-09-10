@@ -1,18 +1,18 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createMemoryRouter, RouterProvider } from 'react-router';
 import { expectNoAxeViolations } from '../../../test-axe';
 import type { CashCount } from '@/entities/cash-count';
 import type { Payout } from '@/entities/payout';
-import type { PointCashRow, PointCashOne } from '@/entities/point-cash';
+import type { PointCashRow } from '@/entities/point-cash';
 import { PointCashPage } from './PointCashPage';
 
 const {
   meMock,
   pointScopeMock,
-  pointCashOneMock,
-  pointCashListMock,
+  pointOptionsMock,
+  pointCashMock,
   intakesMock,
   payoutsMock,
   ledgerTransfersMock,
@@ -20,8 +20,8 @@ const {
 } = vi.hoisted(() => ({
   meMock: vi.fn(),
   pointScopeMock: vi.fn(),
-  pointCashOneMock: vi.fn(),
-  pointCashListMock: vi.fn(),
+  pointOptionsMock: vi.fn(),
+  pointCashMock: vi.fn(),
   intakesMock: vi.fn(),
   payoutsMock: vi.fn(),
   ledgerTransfersMock: vi.fn(),
@@ -34,20 +34,11 @@ vi.mock('@/entities/user', () => ({
 }));
 
 vi.mock('@/entities/collection-point', () => ({
-  usePointOptionsQuery: () => ({
-    data: [
-      { id: 'p1', name: 'Shypynky' },
-      { id: 'p2', name: 'Haiove' },
-    ],
-    isPending: false,
-    isError: false,
-  }),
+  usePointOptionsQuery: () => pointOptionsMock(),
 }));
 
 vi.mock('@/entities/point-cash', () => ({
-  usePointCashForPointQuery: (pointId: string | null, asOf?: string) =>
-    pointCashOneMock(pointId, asOf),
-  usePointCashQuery: (opts: unknown) => pointCashListMock(opts),
+  usePointCashQuery: (opts: unknown) => pointCashMock(opts),
 }));
 
 vi.mock('@/entities/intake', () => ({
@@ -96,13 +87,6 @@ const OWNER = {
   role: 'network_owner',
   collection_point_id: null,
 };
-
-const single = (data: PointCashOne | undefined, over: Partial<{ isPending: boolean; isError: boolean }> = {}) => ({
-  data,
-  isPending: false,
-  isError: false,
-  ...over,
-});
 
 const list = <T,>(data: T[]) => ({
   data: { data, total: data.length, page: 1, limit: 100 },
@@ -169,10 +153,15 @@ beforeEach(() => {
   pointScopeMock
     .mockReset()
     .mockReturnValue({ pointId: 'p1', canPick: false, setPointId: vi.fn(), isLoading: false });
-  pointCashOneMock
-    .mockReset()
-    .mockReturnValue(single({ collection_point_id: 'p1', cash: '1000.00' }));
-  pointCashListMock.mockReset().mockReturnValue(list([pointRow()]));
+  pointOptionsMock.mockReset().mockReturnValue({
+    data: [
+      { id: 'p1', name: 'Shypynky' },
+      { id: 'p2', name: 'Haiove' },
+    ],
+    isPending: false,
+    isError: false,
+  });
+  pointCashMock.mockReset().mockReturnValue(list([pointRow()]));
   intakesMock.mockReset().mockReturnValue(list([]));
   payoutsMock.mockReset().mockReturnValue(list([]));
   ledgerTransfersMock.mockReset().mockReturnValue(list([]));
@@ -225,7 +214,7 @@ describe('PointCashPage — review round 1, finding 4: paidPast truncation', () 
 describe('PointCashPage — honesty rule 2: zero counts read 0.00 and say so', () => {
   it('says the drawer was never counted instead of printing a bare 0.00', async () => {
     cashCountsMock.mockReturnValue(list([]));
-    pointCashOneMock.mockReturnValue(single({ collection_point_id: 'p1', cash: '0.00' }));
+    pointCashMock.mockReturnValue(list([pointRow({ cash: '0.00' })]));
 
     renderPointCash();
 
@@ -240,75 +229,50 @@ describe('PointCashPage — honesty rule 2: zero counts read 0.00 and say so', (
 
 describe('PointCashPage — honesty rule 3: null target/shortfall render «—», never 0', () => {
   it('shows «—» for a point with no target', () => {
-    pointCashListMock.mockReturnValue(list([pointRow({ target_cash: null })]));
+    pointCashMock.mockReturnValue(list([pointRow({ target_cash: null })]));
     renderPointCash();
     expect(tile('Target')).toHaveTextContent('—');
   });
 
   it('shows «—» for a point with no shortfall to compare against', () => {
-    pointCashListMock.mockReturnValue(list([pointRow({ shortfall: null })]));
+    pointCashMock.mockReturnValue(list([pointRow({ shortfall: null })]));
     renderPointCash();
     expect(tile('Short of target')).toHaveTextContent('—');
   });
 
   it('prints an actual shortfall amount when one exists', () => {
-    pointCashListMock.mockReturnValue(list([pointRow({ shortfall: '250.00' })]));
+    pointCashMock.mockReturnValue(list([pointRow({ shortfall: '250.00' })]));
     renderPointCash();
     expect(tile('Short of target')).toHaveTextContent('250.00 ₴');
   });
 });
 
-describe('PointCashPage — review round 2, finding 1: not-loaded vs not-assigned', () => {
-  it('shows a loading state, not «—», while the network list is still in flight', () => {
-    meMock.mockReturnValue({ data: OWNER });
-    pointScopeMock.mockReturnValue({
-      pointId: 'p1',
-      canPick: true,
-      setPointId: vi.fn(),
-      isLoading: false,
-    });
-    // `pointCashOne` (the headline `cash`) has already resolved — only the
-    // separate `pointCashList` query (target/shortfall's only source) is
-    // still pending.
-    pointCashListMock.mockReturnValue({ data: undefined, isPending: true, isError: false });
-
+describe('PointCashPage — one scoped read, not the whole network', () => {
+  it('asks for this point’s row only', () => {
     renderPointCash();
-
-    expect(within(tile('Target')).getByRole('progressbar')).toBeInTheDocument();
-    expect(within(tile('Short of target')).getByRole('progressbar')).toBeInTheDocument();
-    expect(screen.queryByText('—')).toBeNull();
-    // Not just unlabelled — absent, same as for an operator (§10.2's own rule).
-    expect(screen.queryByRole('button', { name: /наділ|target/i })).toBeNull();
+    expect(pointCashMock).toHaveBeenCalledWith({
+      asOf: '2026-09-08',
+      pointId: 'p1',
+      enabled: true,
+    });
+    expect(pointCashMock).toHaveBeenCalledTimes(1);
   });
 
-  it('treats a row missing from a TRUNCATED list as unknown, not as "no target"', () => {
-    meMock.mockReturnValue({ data: OWNER });
-    pointScopeMock.mockReturnValue({
-      pointId: 'p1',
-      canPick: true,
-      setPointId: vi.fn(),
-      isLoading: false,
-    });
-    // The point's own row (p1) never made it into this page of 100 — the
-    // list resolved, but it is silent about THIS point, not empty for it.
-    pointCashListMock.mockReturnValue({
-      data: { data: [pointRow({ collection_point_id: 'p2' })], total: 250, page: 1, limit: 100 },
-      isPending: false,
-      isError: false,
-    });
+  it('takes every figure from that one row — target, cash and shortfall alike', () => {
+    pointCashMock.mockReturnValue(
+      list([pointRow({ target_cash: '5000.00', cash: '1234.00', shortfall: '3766.00' })]),
+    );
 
     renderPointCash();
 
-    expect(within(tile('Target')).getByRole('progressbar')).toBeInTheDocument();
-    expect(screen.queryByText('—')).toBeNull();
-    expect(screen.queryByRole('button', { name: /наділ|target/i })).toBeNull();
+    expect(tile('Target')).toHaveTextContent('5,000.00 ₴');
+    expect(tile('Short of target')).toHaveTextContent('3,766.00 ₴');
+    // «Berry cash» labels both the stat tile and the ledger total, and the
+    // row's `cash` is what both of them print.
+    expect(screen.getAllByText('1,234.00 ₴').length).toBeGreaterThan(1);
   });
 
-  it('still shows «—» and the button for a row genuinely absent from a COMPLETE list', () => {
-    // Sanity check the fix isn't over-broad: an EXHAUSTIVE list
-    // (`total === data.length`) that simply has no row for this point is a
-    // real "nothing to report", not a truncation ambiguity — the tiles and
-    // button must not disappear forever just because a point never got one.
+  it('claims nothing about the target while the read is still in flight', () => {
     meMock.mockReturnValue({ data: OWNER });
     pointScopeMock.mockReturnValue({
       pointId: 'p1',
@@ -316,12 +280,27 @@ describe('PointCashPage — review round 2, finding 1: not-loaded vs not-assigne
       setPointId: vi.fn(),
       isLoading: false,
     });
-    pointCashListMock.mockReturnValue(list([pointRow({ collection_point_id: 'p2' })]));
+    pointCashMock.mockReturnValue({ data: undefined, isPending: true, isError: false });
 
     renderPointCash();
 
-    expect(tile('Target')).toHaveTextContent('—');
-    expect(screen.getByRole('button', { name: 'Assign a target' })).toBeInTheDocument();
+    // «—» is a CLAIM (§6.9: no target assigned), not a placeholder — and the
+    // button that opens `SetTargetCashDialog` with `currentTarget` would
+    // waive §6.1's reason requirement if it opened off an unloaded row.
+    expect(screen.queryByText('—')).toBeNull();
+    expect(screen.queryByRole('button', { name: /наділ|target/i })).toBeNull();
+    expect(screen.getByRole('progressbar')).toBeInTheDocument();
+  });
+
+  it('fails loudly when the scoped read comes back with no row for the point', () => {
+    // The backend selects the row `FROM collection_points WHERE id = $1`, so
+    // an empty page means the id names no point at all (a stale `?point=`),
+    // never a truncated list. Leaving a spinner spinning would hide that.
+    pointCashMock.mockReturnValue(list([]));
+
+    renderPointCash();
+
+    expect(screen.getByRole('alert')).toHaveTextContent('Something went wrong');
   });
 });
 
@@ -364,7 +343,7 @@ describe('PointCashPage — the crates half has no backing tables', () => {
 });
 
 describe('PointCashPage — scope and failure states', () => {
-  it('asks the owner to pick a point before reading anything', () => {
+  it('reads NOTHING until the owner picks a point', () => {
     meMock.mockReturnValue({ data: OWNER });
     pointScopeMock.mockReturnValue({
       pointId: null,
@@ -377,11 +356,55 @@ describe('PointCashPage — scope and failure states', () => {
 
     expect(screen.getByLabelText('Select a point')).toBeInTheDocument();
     expect(screen.getByText('Select a point', { selector: 'div' })).toBeInTheDocument();
-    expect(pointCashOneMock).toHaveBeenCalledWith(null, '2026-09-08');
+    // All three reads that would otherwise sweep the WHOLE network behind
+    // this empty state. `payouts` and `cashCounts` gate themselves on scope
+    // inside their own hooks (`payoutsQueryOptions`, `useCashCountsQuery`),
+    // which is why an unscoped filter is all they are asserted on here.
+    expect(pointCashMock).toHaveBeenCalledWith({
+      asOf: '2026-09-08',
+      pointId: undefined,
+      enabled: false,
+    });
+    expect(ledgerTransfersMock).toHaveBeenCalledWith({
+      pointId: undefined,
+      limit: 100,
+      enabled: false,
+    });
+    expect(intakesMock).toHaveBeenCalledWith({});
+    expect(payoutsMock).toHaveBeenCalledWith({
+      pointId: undefined,
+      to: '2026-09-08',
+      limit: 100,
+    });
+    expect(cashCountsMock).toHaveBeenCalledWith({ pointId: undefined });
+  });
+
+  it('names a deactivated point from its own cash row, not from the active-points list', async () => {
+    const user = userEvent.setup();
+    meMock.mockReturnValue({ data: OWNER });
+    pointScopeMock.mockReturnValue({
+      pointId: 'p1',
+      canPick: true,
+      setPointId: vi.fn(),
+      isLoading: false,
+    });
+    // `usePointOptionsQuery` lists ACTIVE points only — p1 has been
+    // deactivated since, and its drawer still holds money.
+    pointOptionsMock.mockReturnValue({
+      data: [{ id: 'p2', name: 'Haiove' }],
+      isPending: false,
+      isError: false,
+    });
+
+    renderPointCash();
+
+    expect(screen.getByText(/Shypynky/)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Change the target' }));
+    expect(await screen.findByRole('dialog')).toHaveTextContent('Shypynky');
   });
 
   it('shows the error state rather than a quiet zero when the cash read fails', () => {
-    pointCashOneMock.mockReturnValue(single(undefined, { isError: true }));
+    pointCashMock.mockReturnValue({ data: undefined, isPending: false, isError: true });
 
     renderPointCash();
 
