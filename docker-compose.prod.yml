@@ -9,6 +9,15 @@
 #   - no `ports:` — Coolify does not strip them, and two previews would fight
 #     over 127.0.0.1:8080. The standalone override adds them back.
 #
+# Memory sizing: every mem_limit and Node heap cap below is a variable with the
+# current preview-sized default. Coolify deploys THIS FILE FROM EACH BRANCH, so
+# a hardcoded limit can only be changed by committing and then redeploying every
+# open PR; as variables they are an env-set edit in Coolify instead. Production
+# overrides them upward (docs/coolify-deploy.md «Environment variables»);
+# previews keep the defaults. Invariant when overriding: the Node heap cap stays
+# comfortably below its service's mem_limit, so an out-of-memory surfaces as a
+# readable Node heap error instead of a SIGKILL from the cgroup.
+#
 # Distinct project name: without it, running this file from the same directory
 # as the dev stack would silently reuse the dev-initialized pg_data volume
 # (and its dev credentials) for production. Coolify ignores `name:` and uses
@@ -37,10 +46,10 @@ services:
       POSTGRES_DB: ${DB_NAME:-app}
     volumes:
       - pg_data:/var/lib/postgresql/data
-    # Verified under migrations + seed + restore (plan Task 3 step 4). The
-    # image's shared_buffers default (128MB) fits; the realistic peaks are
+    # Default verified under migrations + seed + restore (plan Task 3 step 4).
+    # The image's shared_buffers default (128MB) fits; the realistic peaks are
     # the seed's inserts and a pg_restore, not idle.
-    mem_limit: 256m
+    mem_limit: ${POSTGRES_MEM_LIMIT:-256m}
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-app}"]
       interval: 5s
@@ -53,7 +62,7 @@ services:
     command: ["redis-server", "--appendonly", "yes", "--appendfsync", "everysec"]
     volumes:
       - redis_data:/data
-    mem_limit: 64m
+    mem_limit: ${REDIS_MEM_LIMIT:-64m}
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
@@ -71,8 +80,9 @@ services:
     environment:
       NODE_ENV: production
       # Heap cap below mem_limit, so an out-of-memory is a readable Node heap
-      # error in the logs rather than a SIGKILL from the cgroup.
-      NODE_OPTIONS: --max-old-space-size=256
+      # error in the logs rather than a SIGKILL from the cgroup. Raise
+      # BACKEND_MEM_LIMIT first, then this.
+      NODE_OPTIONS: --max-old-space-size=${BACKEND_HEAP_MB:-256}
       APP_URL: ${APP_URL}
       JWT_SECRET: ${JWT_SECRET}
       JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
@@ -112,7 +122,7 @@ services:
       APP_TIMEZONE: ${APP_TIMEZONE:-Europe/Kyiv}
     volumes:
       - uploads_data:/app/uploads
-    mem_limit: 384m
+    mem_limit: ${BACKEND_MEM_LIMIT:-384m}
     healthcheck:
       test: ["CMD-SHELL", "wget -qO/dev/null http://127.0.0.1:3000/health/ready"]
       interval: 10s
@@ -148,14 +158,14 @@ services:
     environment:
       SEED_DEV_DATA: ${SEED_DEV_DATA:-}
       NODE_ENV: production
-      # Heap cap below mem_limit (256m) for the same reason as the backend's.
-      NODE_OPTIONS: --max-old-space-size=192
+      # Heap cap below mem_limit for the same reason as the backend's.
+      NODE_OPTIONS: --max-old-space-size=${SEED_HEAP_MB:-192}
       DB_HOST: postgres
       DB_PORT: 5432
       DB_USER: ${DB_USER:-app}
       DB_PASSWORD: ${DB_PASSWORD}
       DB_NAME: ${DB_NAME:-app}
-    mem_limit: 256m
+    mem_limit: ${SEED_MEM_LIMIT:-256m}
     restart: "no"
     depends_on:
       backend:
@@ -167,7 +177,14 @@ services:
   # allow request bodies of at least 12 MB (uploads are capped at 10 MB).
   nginx:
     image: ghcr.io/${GHCR_REPO:-webspirio/yagoda-starter}-nginx:${IMAGE_TAG:-sha-${SOURCE_COMMIT}}
-    mem_limit: 64m
+    # Coolify's Traefik reads the compose file, not the image metadata, to learn
+    # which port to route a domain to; nginx/nginx.conf listens on 8080 and the
+    # image declares no EXPOSE, so without this the generated route points at 80
+    # and the domain answers 502. `expose` does not publish to the host, so the
+    # «no ports:» rule above still holds.
+    expose:
+      - "8080"
+    mem_limit: ${NGINX_MEM_LIMIT:-64m}
     depends_on:
       backend:
         condition: service_healthy
