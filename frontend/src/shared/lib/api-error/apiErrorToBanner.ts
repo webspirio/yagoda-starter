@@ -28,15 +28,32 @@ const CODE: Readonly<Record<string, string>> = {
   SHIFT_NOT_NEWEST: 'day.errors.notNewest',
   OWNER_ONLY: 'day.errors.ownerOnly',
   NO_COLLECTION_POINT: 'day.errors.noPoint',
-  // Cash & transfers slice (#62). `TransfersService.transition` refuses an
-  // accept/dispute with no open shift at the point: `accepted_date` is taken
-  // from the shift (§4.2), so a transfer accepted outside one belongs to no
-  // shift's arithmetic. OWNER_ONLY above already covers resolving a dispute
-  // (`TransfersService.resolve`, the same shared code) and ALREADY_VOIDED
-  // already covers double-voiding a transfer — voiding an ACCEPTED transfer
-  // is not an error at all (§9.3's correction path: void, then a new
-  // document), so it needs no entry here.
+  // Cash & transfers slice (#62), owned by the send/receive/resolve-transfer
+  // screens (Tasks 12-14). `TransfersService.transition` (accept/dispute,
+  // POINT OPERATOR ONLY — §10.3) refuses:
+  //  · no open shift at the point — `accepted_date` is taken from the shift
+  //    (§4.1), so a transfer accepted outside one belongs to no shift's
+  //    arithmetic;
+  //  · the wrong actor — an owner may not press either button;
+  //  · a voided transfer — voiding cancels the delivery, so there is nothing
+  //    left to sign for;
+  //  · a transfer that already has an answer — one accept-or-dispute per
+  //    delivery, ever.
+  // `TransfersService.resolve` (OWNER ONLY, the same shared `OWNER_ONLY`
+  // above) refuses a transfer that isn't disputed, and a dispute already
+  // resolved. `TransfersService.create` (OWNER ONLY) refuses a deactivated
+  // point and a correction naming a transfer at a DIFFERENT point — the one
+  // cross-point write this table's shape permits and must not permit in
+  // fact. `ALREADY_VOIDED` (double-voiding a transfer, via `void`) already
+  // has an entry above, shared with intakes/payouts.
   NO_OPEN_SHIFT: 'transfer.errors.noOpenShift',
+  POINT_OPERATOR_ONLY: 'transfer.errors.pointOperatorOnly',
+  TRANSFER_VOIDED: 'transfer.errors.voided',
+  TRANSFER_ALREADY_ANSWERED: 'transfer.errors.alreadyAnswered',
+  TRANSFER_NOT_DISPUTED: 'transfer.errors.notDisputed',
+  TRANSFER_ALREADY_RESOLVED: 'transfer.errors.alreadyResolved',
+  POINT_INACTIVE: 'transfer.errors.pointInactive',
+  CORRECTION_POINT_MISMATCH: 'transfer.errors.correctionPointMismatch',
 };
 
 /**

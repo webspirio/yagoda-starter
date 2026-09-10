@@ -761,7 +761,48 @@
   },
   "transfer": {
     "errors": {
-      "noOpenShift": "No open shift at this point — open one first"
+      "noOpenShift": "No open shift at this point — open one first",
+      "failed": "Could not process the transfer",
+      "notEmpty": "A transfer must carry money, crates, or both",
+      "carrierRequired": "Enter the carrier",
+      "carrierTooLong": "Carrier name — 200 characters or fewer",
+      "cashFormat": "Enter an amount — up to two decimal places",
+      "cratesFormat": "Enter a whole number of crates, 0 or more",
+      "noteRequired": "Describe what doesn't match",
+      "noteTooLong": "Note — 500 characters or fewer",
+      "voided": "This transfer has been voided",
+      "alreadyAnswered": "This transfer has already been answered",
+      "pointOperatorOnly": "Only the collection point may accept or dispute a transfer",
+      "notDisputed": "Only a disputed transfer can be resolved",
+      "alreadyResolved": "This dispute has already been resolved",
+      "pointInactive": "This collection point is deactivated",
+      "correctionPointMismatch": "A correction must name a transfer at the same point"
+    },
+    "send": {
+      "title": "Send a transfer — {{pointName}}",
+      "description": "Money and empty crates travel to the point. The point will confirm: accept, or dispute.",
+      "cash": "Cash",
+      "crates": "Empty crates",
+      "carrier": "Carrier",
+      "submit": "Submit transfer",
+      "toast": "Transfer sent"
+    },
+    "dispute": {
+      "title": "Doesn't match",
+      "sent": "Sent: {{uah}}, {{crates}} crates",
+      "reportedCash": "Reported cash",
+      "reportedCrates": "Crates received",
+      "note": "Note — what doesn't match",
+      "submit": "Submit dispute",
+      "toast": "Discrepancy sent to the owner"
+    },
+    "resolve": {
+      "title": "Resolve the dispute",
+      "note": "The point wrote: “{{note}}”",
+      "resolvedCash": "Resolved cash",
+      "resolvedCrates": "Crates to book",
+      "submit": "Resolve",
+      "toast": "Dispute resolved"
     }
   }
 }

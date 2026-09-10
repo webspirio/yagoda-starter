@@ -88,12 +88,58 @@ describe('apiErrorToBanner', () => {
   });
 
   describe('cash & transfers slice (#62)', () => {
+    const FALLBACK = 'transfer.errors.failed';
+
     it('names the missing shift when accepting/disputing a delivery outside one', () => {
       // TransfersService.transition: accepted_date comes from the open shift
       // (§4.2), so an accept/dispute outside one belongs to no shift's
       // arithmetic — it must say so, not "something went wrong".
-      expect(apiErrorToBanner(apiError(409, 'NO_OPEN_SHIFT'), 'transfer.errors.failed')).toBe(
+      expect(apiErrorToBanner(apiError(409, 'NO_OPEN_SHIFT'), FALLBACK)).toBe(
         'transfer.errors.noOpenShift',
+      );
+    });
+
+    it('says only the point may sign for a delivery, never the owner', () => {
+      // TransfersService.transition — §10.3 inverts the usual shape: the
+      // owner may NOT accept or dispute.
+      expect(apiErrorToBanner(apiError(403, 'POINT_OPERATOR_ONLY'), FALLBACK)).toBe(
+        'transfer.errors.pointOperatorOnly',
+      );
+    });
+
+    it('says a voided transfer has nothing left to sign for', () => {
+      expect(apiErrorToBanner(apiError(409, 'TRANSFER_VOIDED'), FALLBACK)).toBe(
+        'transfer.errors.voided',
+      );
+    });
+
+    it('says the transfer already has an answer', () => {
+      expect(apiErrorToBanner(apiError(409, 'TRANSFER_ALREADY_ANSWERED'), FALLBACK)).toBe(
+        'transfer.errors.alreadyAnswered',
+      );
+    });
+
+    it('says only a disputed transfer can be resolved', () => {
+      expect(apiErrorToBanner(apiError(409, 'TRANSFER_NOT_DISPUTED'), FALLBACK)).toBe(
+        'transfer.errors.notDisputed',
+      );
+    });
+
+    it('says the dispute is already resolved', () => {
+      expect(apiErrorToBanner(apiError(409, 'TRANSFER_ALREADY_RESOLVED'), FALLBACK)).toBe(
+        'transfer.errors.alreadyResolved',
+      );
+    });
+
+    it('names the deactivated point that refuses a new transfer', () => {
+      expect(apiErrorToBanner(apiError(400, 'POINT_INACTIVE'), FALLBACK)).toBe(
+        'transfer.errors.pointInactive',
+      );
+    });
+
+    it('says a correction must name a transfer at the same point', () => {
+      expect(apiErrorToBanner(apiError(400, 'CORRECTION_POINT_MISMATCH'), FALLBACK)).toBe(
+        'transfer.errors.correctionPointMismatch',
       );
     });
   });
