@@ -5,8 +5,8 @@ import { Button } from '@/shared/ui/button';
 import { EmptyState } from '@/shared/ui/empty-state';
 import { PendingSlice } from '@/shared/ui/pending-slice';
 import { cn } from '@/shared/lib/cn';
-import { cmp, formatUah } from '@/shared/lib/money';
-import type { PointCashRow } from '@/entities/point-cash';
+import { formatUah } from '@/shared/lib/money';
+import { shortfallTone, formatNullableUah, type PointCashRow } from '@/entities/point-cash';
 import type { Transfer } from '@/entities/transfer';
 import { TransferStatusBadge } from './TransferStatusBadge';
 
@@ -71,7 +71,7 @@ export function PointDebtTable({
       header: t('transfers.col.target'),
       align: 'right',
       className: 'font-mono tabular-nums',
-      cell: (row) => (row.target_cash == null ? '—' : formatUah(row.target_cash, locale)),
+      cell: (row) => formatNullableUah(row.target_cash, locale),
     },
     {
       id: 'cash',
@@ -85,17 +85,19 @@ export function PointDebtTable({
       header: t('transfers.col.shortfall'),
       align: 'right',
       className: 'font-mono font-semibold tabular-nums',
-      // Same tone convention as «Каса точки»'s own shortfall tile: owed
-      // (> 0) reads amber, settled (<= 0) reads leaf — a null stays the
+      // Same tone convention as «Каса точки»'s own shortfall tile (now
+      // shared as `shortfallTone`, `entities/point-cash/lib/shortfall.ts`):
+      // owed (> 0) reads amber, settled (<= 0) reads leaf — a null stays the
       // default text colour, since «—» is not a value to colour-code.
-      cell: (row) =>
-        row.shortfall == null ? (
-          '—'
+      cell: (row) => {
+        const tone = shortfallTone(row.shortfall);
+        const text = formatNullableUah(row.shortfall, locale);
+        return tone ? (
+          <span className={cn(tone === 'amber' ? 'text-amber' : 'text-leaf')}>{text}</span>
         ) : (
-          <span className={cn(cmp(row.shortfall, '0') === 1 ? 'text-amber' : 'text-leaf')}>
-            {formatUah(row.shortfall, locale)}
-          </span>
-        ),
+          text
+        );
+      },
     },
     {
       id: 'crates',
