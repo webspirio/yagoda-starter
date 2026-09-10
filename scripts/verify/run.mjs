@@ -400,9 +400,17 @@ function reportIsFreshOnDisk(hash, opts) {
  * the environment by design, so two runs with the same sourceHash and different floors are
  * genuinely different verdicts — and reuse must not treat them as one.
  *
+ * Exported (not just used internally by {@link reportIsFresh}) so run.test.mjs can build
+ * its `envKey` fixtures from whatever this process's OWN ambient environment actually is,
+ * rather than a hard-coded `''` — the `.github/workflows/ci.yml` `verify` job (Task 20)
+ * sets real `COVERAGE_*` variables for the entire job, and this test suite runs inside
+ * that same job as the `selfcheck` row, so a fixture assuming a bare environment would be
+ * comparing against a value that no longer matches reality the moment CI actually sets
+ * these — exactly the drift this function exists to detect in the first place.
+ *
  * @returns {string}
  */
-function envKey() {
+export function envKey() {
   const names = Object.keys(process.env)
     .filter((k) => /^COVERAGE_/.test(k))
     .sort()

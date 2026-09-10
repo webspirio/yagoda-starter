@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
-import { classify, isBlocking, parseArgs, reportIsFresh } from './run.mjs'
+import { classify, envKey, isBlocking, parseArgs, reportIsFresh } from './run.mjs'
 
 /**
  * Shape of the `reportIsFresh` fixtures below, typed locally so the pinned literals (e.g.
@@ -97,6 +97,11 @@ test('--only rejects an unknown check id', () => {
 })
 
 test('reuse refuses a stored green that does not cover the request', () => {
+  // Built from the REAL envKey() rather than a hard-coded '' -- this suite runs inside
+  // .github/workflows/ci.yml's `verify` job (Task 20), which sets real COVERAGE_* env vars
+  // for the whole job, so a fixture assuming a bare environment would fail the very first
+  // assertion below the moment CI actually sets them. See envKey()'s own doc comment.
+  const currentEnvKey = envKey()
   /** @type {StoredReportFixture} */
   const green = {
     schema: 1,
@@ -104,7 +109,7 @@ test('reuse refuses a stored green that does not cover the request', () => {
     ok: true,
     tier: 'full',
     noSkip: true,
-    envKey: '',
+    envKey: currentEnvKey,
     scope: { only: null, afterDepsFullyEvaluated: true },
   }
   /** @type {FreshnessOptsFixture} */
@@ -121,6 +126,6 @@ test('reuse refuses a stored green that does not cover the request', () => {
     'a green that tolerated skips cannot satisfy --no-skip')
   assert.equal(reportIsFresh({ ...green, scope: { only: null, afterDepsFullyEvaluated: false } }, 'abc', opts),
     false, 'after-deps were never evaluated')
-  assert.equal(reportIsFresh({ ...green, envKey: 'COVERAGE_X=1' }, 'abc', opts), false,
+  assert.equal(reportIsFresh({ ...green, envKey: `${currentEnvKey} COVERAGE_X=1` }, 'abc', opts), false,
     'different coverage floors are a different verdict')
 })

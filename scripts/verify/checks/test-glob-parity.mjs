@@ -4,7 +4,10 @@
  * of the five test runners -- never zero, never two.
  *
  * There are FIVE collectors here, and their globs do not overlap by design:
- *   - jest-unit  -- backend/package.json's jest config (testRegex, rootDir: 'src')
+ *   - jest-unit  -- backend/jest.config.js (testRegex, rootDir: 'src') -- moved out of
+ *                   backend/package.json's "jest" key by Task 20 (verify-layer plan), so
+ *                   coverageThreshold there could be computed from process.env; a static
+ *                   JSON block in package.json cannot do that.
  *   - jest-db    -- backend/jest.db.config.js (a separate testRegex, also rootDir: 'src')
  *   - vitest     -- frontend/vite.config.ts, vitest's DEFAULT include (not set explicitly)
  *   - node-test  -- scripts/**\/*.test.mjs AND .claude/hooks/**\/*.test.mjs, both run by
@@ -29,13 +32,12 @@
  * it, and nothing says so. Conversely, if the two backend regexes ever started overlapping,
  * the same file would run twice under two configs without anyone deciding that on purpose.
  *
- * The two backend regexes are read OUT OF backend/package.json and
+ * The two backend regexes are read OUT OF backend/jest.config.js and
  * backend/jest.db.config.js at runtime rather than copied here: a hard-coded copy is a
  * second source of truth that can drift from the config it claims to describe, which is
  * exactly the class of bug this check exists to catch.
  */
 import { execFileSync } from 'node:child_process'
-import { readFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import path from 'node:path'
 
@@ -80,17 +82,21 @@ function candidates() {
 }
 
 /**
- * Reads the unit-test regex out of backend/package.json's jest config at runtime -- the
- * live value jest itself uses, not a copy of it.
+ * Reads the unit-test regex out of backend/jest.config.js at runtime, by loading the
+ * actual config module jest itself loads -- not a copy of it. Was backend/package.json's
+ * "jest" key until Task 20 (verify-layer plan) moved it into this file so
+ * coverageThreshold could be computed from process.env -- a static JSON block in
+ * package.json cannot do that.
  *
  * @returns {RegExp}
  */
 function jestUnitRegex() {
-  const file = path.join(ROOT, 'backend', 'package.json')
-  const pkg = JSON.parse(readFileSync(file, 'utf8'))
-  const src = pkg?.jest?.testRegex
+  const file = path.join(ROOT, 'backend', 'jest.config.js')
+  /** @type {{ testRegex?: unknown }} */
+  const config = require(file)
+  const src = config.testRegex
   if (typeof src !== 'string') {
-    throw new Error(`${path.relative(ROOT, file)}: jest.testRegex not found`)
+    throw new Error(`${path.relative(ROOT, file)}: testRegex not found`)
   }
   return new RegExp(src)
 }

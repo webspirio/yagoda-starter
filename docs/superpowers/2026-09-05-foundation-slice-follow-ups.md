@@ -512,3 +512,103 @@ schedules yet — a kit/consistency pass, not a feature:
   without search, and table names fall back to an 8-char id past the first
   100 balance rows on «Усі точки». Fine for a season's network; revisit with
   a server-side name lookup if the directory grows.
+
+## New, from the verify layer (2026-09-10)
+
+Task 20 of `docs/superpowers/sdd/2026-09-10-verify-layer/` rebuilt
+`.github/workflows/ci.yml` around `scripts/verify/registry.mjs` — one `verify`
+job running `npm run verify:ci`, the exact command a laptop runs. One
+follow-up is required by that rebuild itself; the other four are unrelated
+findings the layer surfaced while it was being built and verified, all out of
+scope for this task, recorded here so they are not lost.
+
+- **The required status check must be renamed in repository settings —
+  `checks`/`db-checks`/`docker` → `verify`.** The old workflow's three jobs no
+  longer exist; any branch-protection rule still naming them as required
+  guards a PR against a context that can never report again, which is
+  equivalent to no required check at all. Cheap once someone with admin rights
+  runs it:
+
+  ```bash
+  gh api repos/webspirio/yagoda-starter/branches/main/protection/required_status_checks \
+    --method PATCH \
+    -f strict=true \
+    -f 'contexts[]=verify'
+  ```
+
+  This needs **admin rights on the repository** (classic branch protection is
+  an admin-only write). It could not be verified end-to-end from this task:
+  `gh api repos/webspirio/yagoda-starter/branches/main/protection` currently
+  returns `403 Upgrade to GitHub Pro or make this repository public to enable
+  this feature` — this private repo's current plan does not expose branch
+  protection (or the newer rulesets API: `gh api
+  repos/webspirio/yagoda-starter/rulesets` returns the identical 403) at all
+  today, to any token. Whoever runs the rename should confirm first (`gh api
+  repos/webspirio/yagoda-starter/branches/main/protection` returning something
+  other than that 403) that a required check exists to rename; if the plan
+  still blocks it, there is nothing to rename yet, and the `verify` job simply
+  is not a required check until branch protection becomes available and one is
+  configured, naming `verify` from the start.
+
+- **`backend/src/seed/dev-seed.ts` reimplements `money.ts`'s `add()` with a
+  private `addMoney()`/`toCents()` pair built on `Number()`, and writes the
+  result into real `grade_prices.base_price` values.** The root `CLAUDE.md` is
+  unqualified: "every arithmetic operation on a `numeric` value goes through
+  `backend/src/common/money.ts`" — no seed-script carve-out. `ratchet:money`
+  (`scripts/verify/checks/ratchets/money-rounding.mjs` — see
+  `scripts/verify/registry.mjs`'s `ratchet:money` entry) already finds and
+  baselines this exact site (3 of the baseline's 29 keys), so it is a KNOWN,
+  tracked deviation, not a silent one — but it is still a real duplicate of the
+  one authorised rounding seam, in a script whose output lands in a real
+  table. Not cheap to fix blind: `dev-seed.ts` is intentionally decoupled from
+  `backend/src` (the `seam` check's rule 2 treats any import from `seed/` into
+  the rest of `backend/src` as a finding, precisely so the seed stays a
+  standalone CLI), so pulling in the real `add()` needs either lifting
+  `money.ts` outside that boundary or accepting a documented, reviewed
+  exception to it — a real design decision, not a one-line swap.
+
+- **`ms` and `express` are imported in `backend/src`
+  (`auth/auth.module.ts`, `common/filters/all-exceptions.filter.ts`) but
+  declared in neither `backend/package.json`'s `dependencies` nor
+  `devDependencies`** — they resolve today only because `@nestjs/jwt` and
+  `@nestjs/platform-express` pull them in transitively. A future bump of
+  either package that drops or re-versions its own dependency on `ms`/
+  `express` breaks these two backend files with no changed line in either of
+  them, and `npm ls ms`/`npm ls express` already show them un-hoisted-to-root
+  today. Cheap: add both as direct `dependencies` at the versions already
+  resolved (`npm ls ms express` prints the exact installed versions), which
+  changes nothing about behaviour, only about what is declared.
+
+- **The dev seed is NOT idempotent across calendar days, though
+  `backend/CLAUDE.md`'s "Dev seed" section states it is idempotent with no
+  qualification.** `dev-seed.ts` opens a fresh shift per point for "today"
+  (`business_date` = the literal current date) but never closes yesterday's;
+  shifts are keyed `(point, business_date)` under
+  `UQ_shifts_open_per_point`. A `db:seed` run today, followed by a second one
+  tomorrow with yesterday's shift still open, collides on that constraint
+  instead of no-opping. `e2e/global-setup.ts` already works around exactly
+  this (it closes any shift still open from a previous day, in Postgres,
+  before calling `db:seed` — see that file and the `smoke` row's registry
+  entry) — the fix that file applies at the point of use should move into
+  `dev-seed.ts` itself so every caller gets it, and `backend/CLAUDE.md`'s
+  claim should gain the qualification ("idempotent within one calendar day")
+  until it does. Cheap to document, a real design decision to fix at the
+  source (does the seed close yesterday's shift itself, or refuse to run
+  against one).
+
+- **`docker-compose.yml` hardcodes `name: web-starter`, so the Compose project
+  is shared across every git worktree of this repo AND the main checkout.** A
+  bare `docker compose down` (with or without `-v`) run from ANY of them tears
+  down the one shared `postgres`/`redis`/`backend`/`frontend` set of
+  containers — including this task's own `docker compose up -d --wait postgres
+  redis` step, run from inside a worktree. `-v` additionally destroys the
+  shared `pg_data`/`uploads_dev` volumes, which is real data loss for whoever
+  owns the main checkout's dev database. Every command this task and the
+  `smoke` row run against Compose is deliberately `up`/`stop`, never `down`,
+  for exactly this reason — but that discipline lives in doc comments and task
+  instructions, not in anything Compose itself enforces. Cheap fix: a
+  worktree-aware project name (e.g. `COMPOSE_PROJECT_NAME` derived from the
+  worktree path, or `docker compose -p "web-starter-$(git rev-parse
+  --show-toplevel | xargs basename)"`) or, at minimum, a comment on the `name:`
+  line itself warning that `down`/`down -v` here affects every worktree, not
+  just the one it's run from.

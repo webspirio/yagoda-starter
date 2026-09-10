@@ -247,14 +247,16 @@ export const CHECKS = [
     proves:
       "Every one of this repo's *.{test,spec,db-spec}.[cm]?[jt]sx? files is collected by " +
       "EXACTLY ONE of this repo's five test runners — jest-unit " +
-      "(backend/package.json's testRegex, rootDir src), jest-db (backend/jest.db.config.js's " +
+      "(backend/jest.config.js's testRegex, rootDir src — moved out of backend/package.json's " +
+      "own \"jest\" key by Task 20 so coverageThreshold there could read process.env, a static " +
+      "JSON block cannot), jest-db (backend/jest.db.config.js's " +
       "separate testRegex, also rootDir src), vitest (frontend's default include, no " +
       'test.include set), node-test (scripts/**/*.test.mjs AND, as of Task 19, ' +
       '.claude/hooks/**/*.test.mjs — two globs, one npm run test:verify command) and, ' +
       'as of Task 17, playwright (e2e/**/*.spec.ts, Playwright\'s own default testMatch, run ' +
       'by npm run test:e2e) — a file with zero matching collectors, or claimed by two at ' +
       'once, fails this exact command, no matter how many files exist when it runs. The two ' +
-      'backend regexes are read out of backend/package.json and backend/jest.db.config.js at ' +
+      'backend regexes are read out of backend/jest.config.js and backend/jest.db.config.js at ' +
       'runtime, not copied here, so this row also proves those two files still say what the ' +
       'check assumes. AS A SNAPSHOT, MEASURED 2026-09-10 and re-measured the same day after ' +
       'Task 17 added the fifth collector and its first file, then re-measured again the ' +
