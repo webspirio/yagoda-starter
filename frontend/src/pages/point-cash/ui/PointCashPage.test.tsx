@@ -366,15 +366,19 @@ describe('PointCashPage — one scoped read, not the whole network', () => {
     expect(screen.getByRole('progressbar')).toBeInTheDocument();
   });
 
-  it('fails loudly when the scoped read comes back with no row for the point', () => {
+  it('fails loudly, with a specific message, when the scoped read comes back with no row for the point', () => {
     // The backend selects the row `FROM collection_points WHERE id = $1`, so
     // an empty page means the id names no point at all (a stale `?point=`),
-    // never a truncated list. Leaving a spinner spinning would hide that.
+    // never a truncated list. Leaving a spinner spinning would hide that —
+    // and folding it into the generic "something went wrong" banner would
+    // hide WHAT went wrong, when the fix is simply picking a different point.
     pointCashMock.mockReturnValue(list([]));
 
     renderPointCash();
 
-    expect(screen.getByRole('alert')).toHaveTextContent('Something went wrong');
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'This point does not exist — pick another one',
+    );
   });
 });
 

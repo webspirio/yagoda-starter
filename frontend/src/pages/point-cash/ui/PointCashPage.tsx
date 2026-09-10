@@ -245,7 +245,7 @@ export function PointCashPage() {
       <EmptyState title={t('pointCash.pickPoint')} />
     ) : isError ? (
       <p role="alert" className="py-6 text-center text-destructive">
-        {t('common.somethingWentWrong')}
+        {pointMissing ? t('pointCash.errors.pointMissing') : t('common.somethingWentWrong')}
       </p>
     ) : !shownRow ? (
       // Nothing but "not answered yet" is left: `pointId` is set (so the read

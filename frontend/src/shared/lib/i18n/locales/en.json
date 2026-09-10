@@ -514,6 +514,9 @@
     "description": "How much cash the point should have on hand right now, and how far that is from its target. Berry cash and crate deposits share the same drawer but are counted separately.",
     "pickPoint": "Select a point",
     "today": "Today",
+    "errors": {
+      "pointMissing": "This point does not exist — pick another one"
+    },
     "stats": {
       "target": "Target",
       "targetUnset": "No target assigned yet",
