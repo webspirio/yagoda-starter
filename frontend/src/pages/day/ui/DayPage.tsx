@@ -27,9 +27,12 @@ import { useIntakesQuery, type Intake } from '@/entities/intake';
 import { usePayoutsQuery, type Payout } from '@/entities/payout';
 import { useSuppliersQuery, supplierName } from '@/entities/supplier';
 import { ReceiptDialog } from '@/widgets/receipt';
-import { useOpenShiftMutation, useCloseShiftMutation } from '../api/shiftActions';
+import {
+  useOpenShiftMutation,
+  useCloseShiftMutation,
+  CountDrawerDialog,
+} from '@/features/count-shift';
 import { ReopenShiftDialog } from './ReopenShiftDialog';
-import { CountDrawerDialog } from './CountDrawerDialog';
 
 interface FeedRow {
   kind: 'intake' | 'payout';

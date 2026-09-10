@@ -15,8 +15,8 @@ import { Button } from '@/shared/ui/button';
 import { toast } from '@/shared/ui/toast';
 import { formatLongDate } from '@/shared/lib/date';
 import type { Shift } from '@/entities/shift';
+import { apiErrorToBanner } from '@/features/count-shift';
 import { useReopenShiftMutation } from '../api/shiftActions';
-import { apiErrorToBanner } from '../lib/apiErrorToBanner';
 
 interface ReopenFormValues {
   reason: string;

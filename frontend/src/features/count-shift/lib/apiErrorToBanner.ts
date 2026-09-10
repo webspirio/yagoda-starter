@@ -26,7 +26,15 @@ const BY_CODE: Readonly<Record<string, string>> = {
   NO_COLLECTION_POINT: 'day.errors.noPoint',
 };
 
-/** Maps a failed open/close/reopen onto an i18n key for the page's banner. */
+/**
+ * Maps a failed open/close/reopen onto an i18n key for a banner. The keys
+ * stay under the `day.errors.*` namespace (unchanged by this module's move
+ * into `features/count-shift`): the messages are generic shift-domain prose,
+ * not Day-screen-specific, and `CountDrawerDialog` needs no new strings to
+ * show them on `pages/reception` too. `ReopenShiftDialog` (`pages/day`,
+ * reopen has one consumer and stays there) imports this via
+ * `@/features/count-shift`.
+ */
 export function apiErrorToBanner(error: unknown): string {
   const code = apiErrorCode(error);
   return (code && BY_CODE[code]) ?? 'day.errors.failed';

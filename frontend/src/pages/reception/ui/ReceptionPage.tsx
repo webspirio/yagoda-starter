@@ -18,7 +18,8 @@ import { useSupplierBalanceQuery } from '@/entities/supplier';
 import { usePricedGradesQuery } from '@/entities/product-grade';
 import { useTareTypeOptionsQuery } from '@/entities/tare-type';
 import { ReceiptDialog } from '@/widgets/receipt';
-import { useCreateIntakeMutation, useOpenShiftMutation } from '../api/intakes';
+import { useOpenShiftMutation, CountDrawerDialog } from '@/features/count-shift';
+import { useCreateIntakeMutation } from '../api/intakes';
 import { apiErrorToFields, type ApiFieldErrors } from '../lib/apiErrorToFields';
 import { isValidCode } from '../lib/receiptCode';
 import { useIntakePreview } from '../lib/useIntakePreview';
@@ -87,6 +88,11 @@ export function ReceptionPage() {
   }, [defaultTareTypeId, form, setValue]);
 
   const [receiptId, setReceiptId] = useState<string | null>(null);
+  const [openDialogOpen, setOpenDialogOpen] = useState(false);
+  // Bumped on every open so the dialog remounts with fresh RHF defaults and no
+  // banner from the refusal before it — the convention `ReopenShiftDialog`
+  // (pages/day) documents.
+  const [openDialogInstance, setOpenDialogInstance] = useState(0);
   const [submitFailure, setSubmitFailure] = useState<{ at: string; errors: ApiFieldErrors } | null>(
     null,
   );
@@ -188,13 +194,9 @@ export function ReceptionPage() {
     }
   });
 
-  const handleOpenShift = async () => {
-    try {
-      await openShift.mutateAsync();
-      toast.success(t('reception.toast.opened'));
-    } catch {
-      toast.error(t('reception.errors.openShiftFailed'));
-    }
+  const handleOpenShift = () => {
+    setOpenDialogInstance((n) => n + 1);
+    setOpenDialogOpen(true);
   };
 
   const pointName = (points ?? []).find((p) => p.id === pointId)?.name ?? '';
@@ -251,7 +253,7 @@ export function ReceptionPage() {
           <ShiftBanner
             canOpen={me?.role === 'point_operator'}
             isOpening={openShift.isPending}
-            onOpen={() => void handleOpenShift()}
+            onOpen={handleOpenShift}
           />
         ) : null}
 
@@ -322,6 +324,17 @@ export function ReceptionPage() {
         actions={actions}
       />
       {body}
+      <CountDrawerDialog
+        key={openDialogInstance}
+        mode="open"
+        open={openDialogOpen}
+        onClose={() => setOpenDialogOpen(false)}
+        onConfirm={async (counted_amount) => {
+          await openShift.mutateAsync({ counted_amount });
+          toast.success(t('reception.toast.opened'));
+          setOpenDialogOpen(false);
+        }}
+      />
       <ReceiptDialog
         key={receiptId}
         intakeId={receiptId}

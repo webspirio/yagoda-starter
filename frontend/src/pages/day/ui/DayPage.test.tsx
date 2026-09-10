@@ -76,10 +76,20 @@ vi.mock('@/entities/collection-point', () => ({
 }));
 
 vi.mock('../api/shiftActions', () => ({
-  useOpenShiftMutation: () => ({ mutateAsync: openMock, isPending: false }),
-  useCloseShiftMutation: () => ({ mutateAsync: closeMock, isPending: false }),
   useReopenShiftMutation: () => ({ mutateAsync: reopenMock, isPending: false }),
 }));
+
+// Only the two mutation hooks are stubbed — `CountDrawerDialog` (the real
+// component, re-exported by this same module) still renders for real, since
+// the open/close tests below drive it exactly as an operator would.
+vi.mock('@/features/count-shift', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/features/count-shift')>();
+  return {
+    ...actual,
+    useOpenShiftMutation: () => ({ mutateAsync: openMock, isPending: false }),
+    useCloseShiftMutation: () => ({ mutateAsync: closeMock, isPending: false }),
+  };
+});
 
 const OPERATOR = {
   id: 'u1',

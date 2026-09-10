@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createMemoryRouter, RouterProvider } from 'react-router';
+import { ApiError } from '@/shared/api';
 import { expectNoAxeViolations } from '../../../test-axe';
 import type { Shift } from '@/entities/shift';
 import type { Intake, IntakeDetail } from '@/entities/intake';
@@ -10,6 +11,11 @@ import type { PricedGrade } from '@/entities/product-grade';
 import type { TareTypeOption } from '@/entities/tare-type';
 import type { IntakeFormValues, IntakePreview } from '../model/intakeForm';
 import { ReceptionPage } from './ReceptionPage';
+
+// Matches the CountDrawerDialog's submit button whether i18n has resolved it
+// yet (raw key), is showing the Ukrainian copy, or the English one this
+// suite's locale renders.
+const SUBMIT_COUNT = /day\.count\.submit|Записати|Record/i;
 
 const {
   meMock,
@@ -83,8 +89,18 @@ vi.mock('@/widgets/receipt', () => ({
 
 vi.mock('../api/intakes', () => ({
   useCreateIntakeMutation: () => ({ mutateAsync: createMock, isPending: false }),
-  useOpenShiftMutation: () => ({ mutateAsync: openShiftMock, isPending: false }),
 }));
+
+// Only the mutation hook is stubbed — `CountDrawerDialog` (the real
+// component, re-exported by this same module) still renders for real, since
+// the "opens it on demand" test below drives it exactly as an operator would.
+vi.mock('@/features/count-shift', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/features/count-shift')>();
+  return {
+    ...actual,
+    useOpenShiftMutation: () => ({ mutateAsync: openShiftMock, isPending: false }),
+  };
+});
 
 vi.mock('../lib/useIntakePreview', () => ({
   useIntakePreview: (...args: unknown[]) => previewMock(...args),
@@ -314,7 +330,29 @@ describe('ReceptionPage — before the shift is open', () => {
     expect(screen.getByRole('button', { name: 'Accept' })).toBeDisabled();
 
     await user.click(screen.getByRole('button', { name: 'Open shift' }));
-    await waitFor(() => expect(openShiftMock).toHaveBeenCalledTimes(1));
+    const dialog = await screen.findByRole('dialog');
+    await user.type(within(dialog).getByRole('textbox'), '1500.00');
+    await user.click(within(dialog).getByRole('button', { name: SUBMIT_COUNT }));
+    await waitFor(() =>
+      expect(openShiftMock).toHaveBeenCalledWith({ counted_amount: '1500.00' }),
+    );
+  });
+
+  it('shows the refusal in the shared dialog and keeps it open when opening fails', async () => {
+    const user = userEvent.setup();
+    openShiftMock.mockRejectedValue(new ApiError(409, 'nope', undefined, 'SHIFT_ALREADY_OPEN'));
+    renderReception();
+
+    await user.click(screen.getByRole('button', { name: 'Open shift' }));
+    const dialog = await screen.findByRole('dialog');
+    await user.type(within(dialog).getByRole('textbox'), '1500.00');
+    await user.click(within(dialog).getByRole('button', { name: SUBMIT_COUNT }));
+
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent(
+      'A shift is already open at this point',
+    );
+    // Still open: the same dialog, not replaced by a toast.
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
   });
 
   it('says so when the shift could not be read, rather than offering to open one', () => {
