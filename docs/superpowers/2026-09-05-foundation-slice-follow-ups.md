@@ -523,17 +523,26 @@ findings the layer surfaced while it was being built and verified, all out of
 scope for this task, recorded here so they are not lost.
 
 - **The required status check must be renamed in repository settings —
-  `checks`/`db-checks`/`docker` → `verify`.** The old workflow's three jobs no
-  longer exist; any branch-protection rule still naming them as required
+  `checks`/`db-checks` → `verify` — with `docker` kept as its own required
+  check.** Task 21 (the `origin/main` reconciliation, `docs/superpowers/sdd/
+  2026-09-10-verify-layer/task-21-report.md`) settled which of the old
+  workflow's jobs actually stopped existing: only `checks` and `db-checks` are
+  superseded by `verify`. `changes` and `docker` were deliberately KEPT,
+  unchanged, from `origin/main` — `docker` is CD infrastructure, not
+  verification, and pushes the `sha-<commit>` image Coolify deploys, so it must
+  keep gating merges exactly as it already did, under its own name. Any
+  branch-protection rule still naming `checks` or `db-checks` as required
   guards a PR against a context that can never report again, which is
-  equivalent to no required check at all. Cheap once someone with admin rights
-  runs it:
+  equivalent to no required check at all for that half of it; a rule already
+  naming `docker` needs no change there — it still reports. Cheap once someone
+  with admin rights runs it:
 
   ```bash
   gh api repos/webspirio/yagoda-starter/branches/main/protection/required_status_checks \
     --method PATCH \
     -f strict=true \
-    -f 'contexts[]=verify'
+    -f 'contexts[]=verify' \
+    -f 'contexts[]=docker'
   ```
 
   This needs **admin rights on the repository** (classic branch protection is
@@ -546,9 +555,9 @@ scope for this task, recorded here so they are not lost.
   today, to any token. Whoever runs the rename should confirm first (`gh api
   repos/webspirio/yagoda-starter/branches/main/protection` returning something
   other than that 403) that a required check exists to rename; if the plan
-  still blocks it, there is nothing to rename yet, and the `verify` job simply
-  is not a required check until branch protection becomes available and one is
-  configured, naming `verify` from the start.
+  still blocks it, there is nothing to rename yet, and neither `verify` nor
+  `docker` is a required check until branch protection becomes available and
+  one is configured, naming both `verify` and `docker` from the start.
 
 - **`backend/src/seed/dev-seed.ts` reimplements `money.ts`'s `add()` with a
   private `addMoney()`/`toCents()` pair built on `Number()`, and writes the
