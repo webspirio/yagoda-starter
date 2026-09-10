@@ -306,13 +306,14 @@ export class PointCashService {
     const manager = this.dataSource.manager;
 
     const rows = (await manager.query(
-      `WITH scoped AS (
-         SELECT cp.id, cp.name, cp.target_cash,
+      `WITH bounds AS (SELECT ${asOfSql('$2', '$3')} AS as_of),
+       scoped AS (
+         SELECT cp.id, cp.name, cp.target_cash, b.as_of,
                 COALESCE((
                   SELECT (a.counted_amount
                           + CASE WHEN a.kind = 'opening' THEN ${movementsSql('a.shift_id', '$3')}
                                  ELSE 0.00 END)
-                    FROM ${anchorSql('cp.id', asOfSql('$2', '$3'))} a
+                    FROM ${anchorSql('cp.id', 'b.as_of')} a
                 ), 0.00) AS cash,
                 -- §3.1 — the count chain and the document line can differ by
                 -- the recorded discrepancies and by nothing else, so this SUM
@@ -347,8 +348,9 @@ export class PointCashService {
                             JOIN shifts sh ON sh.id = c.shift_id
                            WHERE sh.collection_point_id = cp.id
                              AND c.book = 'berry'
-                             AND c.kind <> 'midday'), 0.00) AS unexplained_difference
-           FROM collection_points cp
+                             AND c.kind <> 'midday'
+                             AND sh.business_date <= b.as_of), 0.00) AS unexplained_difference
+           FROM collection_points cp CROSS JOIN bounds b
           WHERE ($1::uuid IS NULL OR cp.id = $1::uuid)
        )
        SELECT s.id AS collection_point_id, s.name,
@@ -362,10 +364,15 @@ export class PointCashService {
               lt.sent_at AS latest_transfer_sent_at
          FROM scoped s
          LEFT JOIN LATERAL (
-              SELECT t.status, t.sent_at
+              SELECT CASE WHEN t.accepted_date IS NULL OR t.accepted_date > s.as_of
+                          THEN 'sent'::transfer_status
+                          ELSE t.status END AS status,
+                     t.sent_at
                 FROM transfers t
                WHERE t.collection_point_id = s.id
-                 AND t.voided_at IS NULL
+                 AND (t.sent_at AT TIME ZONE $3::text)::date <= s.as_of
+                 AND (t.voided_at IS NULL
+                      OR (t.voided_at AT TIME ZONE $3::text)::date > s.as_of)
                ORDER BY t.sent_at DESC, t.id DESC
                LIMIT 1) lt ON TRUE
         ORDER BY s.name ASC, s.id ASC

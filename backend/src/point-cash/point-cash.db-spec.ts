@@ -785,4 +785,104 @@ describe('PointCashService.list (Postgres)', () => {
     const page = await service.list(owner, query({ collection_point_id: p }) as never);
     expect(page.data[0].unexplained_difference).toBe('-100.00');
   });
+
+  /**
+   * EVERY COLUMN OF THE ROW IS AS OF THE SAME DATE, and these three scenarios
+   * exist because two of them were not. `cash` has been bounded by `as_of`
+   * since the anchor was introduced; `unexplained_difference` and the latest
+   * transfer were computed over ALL of history, so a historical read paired a
+   * September-1 drawer with drift that had not happened yet and with a
+   * transfer sent weeks later. A row that mixes two points in time is worse
+   * than one that is merely late: it reads as a real divergence on a date when
+   * nothing had diverged.
+   */
+  it('bounds unexplained_difference by as_of — a later drift is not yet visible', async () => {
+    const tag = randomUUID().slice(0, 8);
+    const [{ id: p }] = (await ds.query(
+      `INSERT INTO collection_points (name, code, kind, target_cash, is_active)
+       VALUES ($1, $2, 'reception', NULL, true) RETURNING id`,
+      [`Точка ${tag}`, `A${tag.slice(0, 6).toUpperCase()}`],
+    )) as { id: string }[];
+
+    const s1 = await localShift(p, '2026-09-01');
+    await localCount(s1, 'opening', '1000.00', '1000.00');
+    await localCount(s1, 'closing', '990.00', '1000.00'); // −10, on 1 September
+    const s2 = await localShift(p, '2026-09-05');
+    await localCount(s2, 'opening', '990.00', '990.00');
+    await localCount(s2, 'closing', '900.00', '990.00'); // −90, four days later
+
+    const early = await service.list(
+      owner,
+      query({ collection_point_id: p, as_of: '2026-09-02' }) as never,
+    );
+    expect(early.data[0].unexplained_difference).toBe('-10.00');
+
+    const late = await service.list(owner, query({ collection_point_id: p }) as never);
+    expect(late.data[0].unexplained_difference).toBe('-100.00');
+  });
+
+  it('bounds the latest transfer by as_of — a later trip is not yet visible', async () => {
+    const tag = randomUUID().slice(0, 8);
+    const [{ id: p }] = (await ds.query(
+      `INSERT INTO collection_points (name, code, kind, target_cash, is_active)
+       VALUES ($1, $2, 'reception', NULL, true) RETURNING id`,
+      [`Точка ${tag}`, `B${tag.slice(0, 6).toUpperCase()}`],
+    )) as { id: string }[];
+
+    await ds.query(
+      `INSERT INTO transfers (collection_point_id, cash, crates, carrier, sent_by_user_id,
+                              sent_at, status, accepted_by_user_id, accepted_date, accepted_at)
+       VALUES ($1, '100.00', 0, 'Іван', $2, '2026-09-01T06:00:00Z', 'accepted',
+               $2, '2026-09-01', '2026-09-01T07:00:00Z')`,
+      [p, ownerId],
+    );
+    await ds.query(
+      `INSERT INTO transfers (collection_point_id, cash, crates, carrier, sent_by_user_id,
+                              sent_at, status)
+       VALUES ($1, '200.00', 0, 'Степан', $2, '2026-09-20T06:00:00Z', 'sent')`,
+      [p, ownerId],
+    );
+
+    const early = await service.list(
+      owner,
+      query({ collection_point_id: p, as_of: '2026-09-02' }) as never,
+    );
+    expect(early.data[0].latest_transfer?.sent_at.toISOString()).toBe('2026-09-01T06:00:00.000Z');
+
+    const late = await service.list(owner, query({ collection_point_id: p }) as never);
+    expect(late.data[0].latest_transfer?.sent_at.toISOString()).toBe('2026-09-20T06:00:00.000Z');
+  });
+
+  it('reports the status the transfer HAD on as_of, and a later void does not erase it', async () => {
+    const tag = randomUUID().slice(0, 8);
+    const [{ id: p }] = (await ds.query(
+      `INSERT INTO collection_points (name, code, kind, target_cash, is_active)
+       VALUES ($1, $2, 'reception', NULL, true) RETURNING id`,
+      [`Точка ${tag}`, `C${tag.slice(0, 6).toUpperCase()}`],
+    )) as { id: string }[];
+
+    // Sent on 1 September, signed for on the 5th, voided on the 20th. On the
+    // 2nd it was a van on the road and nothing else.
+    await ds.query(
+      `INSERT INTO transfers (collection_point_id, cash, crates, carrier, sent_by_user_id,
+                              sent_at, status, accepted_by_user_id, accepted_date, accepted_at,
+                              voided_at, voided_by_user_id, void_reason)
+       VALUES ($1, '300.00', 0, 'Іван', $2, '2026-09-01T06:00:00Z', 'accepted',
+               $2, '2026-09-05', '2026-09-05T07:00:00Z',
+               '2026-09-20T09:00:00Z', $2, 'помилка')`,
+      [p, ownerId],
+    );
+
+    const early = await service.list(
+      owner,
+      query({ collection_point_id: p, as_of: '2026-09-02' }) as never,
+    );
+    expect(early.data[0].latest_transfer?.status).toBe('sent');
+
+    // By the 30th the void has happened, and a voided transfer is no document
+    // at all — the column goes empty rather than reporting a trip that was
+    // struck out.
+    const late = await service.list(owner, query({ collection_point_id: p }) as never);
+    expect(late.data[0].latest_transfer).toBeNull();
+  });
 });

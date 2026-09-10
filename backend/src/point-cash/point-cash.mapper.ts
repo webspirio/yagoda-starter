@@ -53,8 +53,29 @@ export interface PointCashRowResponse {
    * `AND c.kind <> 'midday'` in the SQL; `CashCountsService.list` and
    * `is_open` in `cash-count.mapper.ts` carry the same filter for the same
    * reason. All four have to move together or the owner's screens disagree.
+   *
+   * BOUNDED BY `as_of`, like `cash` beside it. It was not until 10.09.2026,
+   * and a historical read therefore reported drift that had not happened yet
+   * on the date being read — a September-1 drawer next to every discrepancy
+   * ever recorded. Every column of this row is as of the same date, or the row
+   * describes no moment at all.
    */
   unexplained_difference: string;
+  /**
+   * The point's most recent trip AS OF `as_of`, or `null` when there had been
+   * none — and `status` is the status the transfer HELD on that date, not the
+   * one it holds now.
+   *
+   * THE WHOLE COLUMN IS RECONSTRUCTED RATHER THAN READ, for the same reason
+   * `unexplained_difference` is bounded: a row pairing a past cash figure with
+   * today's newest transfer mixes two points in time and reads as fact. The
+   * reconstruction is exact and needs no history table, because the three
+   * dates a transfer can move on are all stored on it: `sent_at` (it had not
+   * left the base before it), `accepted_date` (still `sent` before it,
+   * whatever the stored status says) and `voided_at` (no document at all after
+   * it). A resolution is deliberately NOT one of them — resolving leaves the
+   * status `disputed`, so it changes nothing this column shows.
+   */
   latest_transfer: { status: TransferStatus; sent_at: Date } | null;
 }
 
