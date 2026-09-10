@@ -79,7 +79,20 @@ export function DayPage() {
 
   const open = useOpenShiftMutation();
   const close = useCloseShiftMutation();
-  const [countMode, setCountMode] = useState<'open' | 'close' | null>(null);
+  // What the count dialog is open FOR — captured at click time, not read back
+  // off `shift` at submit time. The close click is the one moment the shift
+  // being looked at is unambiguously the shift that closes; reading its id
+  // later (after a mutation or a refetch could have moved `shift.data`) is
+  // how a silent no-op crept in before.
+  const [countTarget, setCountTarget] = useState<
+    { mode: 'open' } | { mode: 'close'; shiftId: string } | null
+  >(null);
+  // The COPY the dialog shows — set on every open click, but never reset on
+  // close. `open={countTarget !== null}` alone drives visibility, so during
+  // the close (exit) animation `countTarget` is already null while the
+  // dialog is still on screen; resetting `countMode` too would flip a
+  // closing close-dialog to the open copy for the ~100ms of that animation.
+  const [countMode, setCountMode] = useState<'open' | 'close'>('open');
   const [reopenOpen, setReopenOpen] = useState(false);
   const [receiptId, setReceiptId] = useState<string | null>(null);
   // Bumped on every open so the dialog remounts with fresh RHF defaults and no
@@ -212,6 +225,7 @@ export function DayPage() {
           onClick={() => {
             setCountInstance((n) => n + 1);
             setCountMode('open');
+            setCountTarget({ mode: 'open' });
           }}
           disabled={open.isPending}
         >
@@ -222,8 +236,14 @@ export function DayPage() {
         <Button
           variant="outline"
           onClick={() => {
+            // status === 'open' only when `shift.data` (and so `shiftId`) is
+            // that open shift, but TS can't see that link — a missing id
+            // here can't actually happen, so it just skips opening the
+            // dialog rather than opening it with nothing to close.
+            if (!shiftId) return;
             setCountInstance((n) => n + 1);
             setCountMode('close');
+            setCountTarget({ mode: 'close', shiftId });
           }}
         >
           {t('day.close')}
@@ -347,20 +367,26 @@ export function DayPage() {
 
       <CountDrawerDialog
         key={`count-${countInstance}`}
-        mode={countMode ?? 'open'}
-        open={countMode !== null}
-        onClose={() => setCountMode(null)}
+        mode={countMode}
+        open={countTarget !== null}
+        onClose={() => setCountTarget(null)}
         onConfirm={async (counted_amount) => {
-          if (countMode === 'open') {
+          if (countTarget === null) {
+            // The dialog can only confirm while it is open, and it is only
+            // open when `countTarget` is set — reaching here with no target
+            // is a programming error, not a state a user action can cause.
+            // Throwing lets the dialog's own catch show its fallback banner
+            // instead of a silent no-op that looks like success.
+            throw new Error('count dialog confirmed without a target');
+          }
+          if (countTarget.mode === 'open') {
             await open.mutateAsync({ counted_amount });
             toast.success(t('day.toast.opened'));
           } else {
-            const id = shift.data?.id;
-            if (!id) return;
-            await close.mutateAsync({ id, counted_amount });
+            await close.mutateAsync({ id: countTarget.shiftId, counted_amount });
             toast.success(t('day.toast.closed'));
           }
-          setCountMode(null);
+          setCountTarget(null);
         }}
       />
       {shift.data ? (

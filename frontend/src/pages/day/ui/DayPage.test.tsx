@@ -294,6 +294,28 @@ describe('DayPage — the operator on an open shift', () => {
     );
   });
 
+  it('opens the close dialog with the close copy', async () => {
+    const user = userEvent.setup();
+    renderDay();
+
+    await user.click(screen.getByRole('button', { name: 'Close shift' }));
+    const dialog = await screen.findByRole('dialog');
+    expect(
+      within(dialog).getByText('Count the drawer before closing'),
+    ).toBeInTheDocument();
+  });
+
+  it('closes the count dialog once the close is recorded', async () => {
+    const user = userEvent.setup();
+    renderDay();
+
+    await user.click(screen.getByRole('button', { name: 'Close shift' }));
+    const dialog = await screen.findByRole('dialog');
+    await user.type(within(dialog).getByRole('textbox'), '980.40');
+    await user.click(within(dialog).getByRole('button', { name: SUBMIT_COUNT }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  });
+
   it('keeps its dialogs on distinct React keys, so a remount never strands the old one', async () => {
     // Both remount counters start at 0. A bare numeric key on each put two
     // siblings on key "0" — React reports it, and after the first bump the
@@ -361,6 +383,7 @@ describe('DayPage — the operator before the shift is open', () => {
     await waitFor(() =>
       expect(openMock).toHaveBeenCalledWith({ counted_amount: '1500.00' }),
     );
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
   });
 
   it('offers nothing while the shift query is still in flight', () => {
