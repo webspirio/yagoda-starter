@@ -77,7 +77,11 @@ describe('router', () => {
     // this is a route-level RequireRole gate, so an operator never even
     // mounts TransfersPage; they land back on the dashboard.
     useSession.setState({ token: 'tok' });
-    meMock.mockReturnValue({ data: { role: 'point_operator', display_name: 'Оператор Тест' }, isPending: false, isError: false });
+    meMock.mockReturnValue({
+      data: { role: 'point_operator', display_name: 'Оператор Тест' },
+      isPending: false,
+      isError: false,
+    });
     renderAt('/transfers');
     expect(await screen.findByRole('heading', { name: /summary/i })).toBeInTheDocument();
     expect(screen.queryByText('transfers page')).not.toBeInTheDocument();
@@ -85,7 +89,11 @@ describe('router', () => {
 
   it('lets an owner onto /transfers', async () => {
     useSession.setState({ token: 'tok' });
-    meMock.mockReturnValue({ data: { role: 'network_owner', display_name: 'Керівник Тест' }, isPending: false, isError: false });
+    meMock.mockReturnValue({
+      data: { role: 'network_owner', display_name: 'Керівник Тест' },
+      isPending: false,
+      isError: false,
+    });
     renderAt('/transfers');
     expect(await screen.findByText('transfers page')).toBeInTheDocument();
   });
@@ -94,13 +102,21 @@ describe('router', () => {
     // An operator is pinned to their own point by the token, an owner picks
     // one — either way `/point-cash` is RequireAuth with no role gate.
     useSession.setState({ token: 'tok' });
-    meMock.mockReturnValue({ data: { role: 'point_operator', display_name: 'Оператор Тест' }, isPending: false, isError: false });
+    meMock.mockReturnValue({
+      data: { role: 'point_operator', display_name: 'Оператор Тест' },
+      isPending: false,
+      isError: false,
+    });
     renderAt('/point-cash');
     expect(await screen.findByText('point-cash page')).toBeInTheDocument();
 
     cleanup();
 
-    meMock.mockReturnValue({ data: { role: 'network_owner', display_name: 'Керівник Тест' }, isPending: false, isError: false });
+    meMock.mockReturnValue({
+      data: { role: 'network_owner', display_name: 'Керівник Тест' },
+      isPending: false,
+      isError: false,
+    });
     renderAt('/point-cash');
     expect(await screen.findByText('point-cash page')).toBeInTheDocument();
   });
