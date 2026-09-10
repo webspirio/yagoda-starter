@@ -249,18 +249,22 @@ export const CHECKS = [
       "EXACTLY ONE of this repo's five test runners — jest-unit " +
       "(backend/package.json's testRegex, rootDir src), jest-db (backend/jest.db.config.js's " +
       "separate testRegex, also rootDir src), vitest (frontend's default include, no " +
-      'test.include set), node-test (scripts/**/*.test.mjs, run by npm run test:verify) and, ' +
+      'test.include set), node-test (scripts/**/*.test.mjs AND, as of Task 19, ' +
+      '.claude/hooks/**/*.test.mjs — two globs, one npm run test:verify command) and, ' +
       'as of Task 17, playwright (e2e/**/*.spec.ts, Playwright\'s own default testMatch, run ' +
       'by npm run test:e2e) — a file with zero matching collectors, or claimed by two at ' +
       'once, fails this exact command, no matter how many files exist when it runs. The two ' +
       'backend regexes are read out of backend/package.json and backend/jest.db.config.js at ' +
       'runtime, not copied here, so this row also proves those two files still say what the ' +
       'check assumes. AS A SNAPSHOT, MEASURED 2026-09-10 and re-measured the same day after ' +
-      'Task 17 added the fifth collector and its first file: 166 files currently match that ' +
-      'pattern (jest-unit 40, jest-db 12, vitest 99, node-test 14, playwright 1) — up from ' +
-      'the 160 (four collectors, node-test 9) this row reached after Task 10. That total ' +
-      'grows every time this plan, or any ordinary feature work, adds a test file, and this ' +
-      'row does not track or re-check its own prose count.',
+      'Task 17 added the fifth collector and its first file, then re-measured again the ' +
+      'same day after Task 19 widened node-test\'s OWN reach to a second directory ' +
+      '(.claude/hooks/, alongside scripts/) for stop-gate.mjs\'s colocated stop-gate.test.mjs ' +
+      '— the first file ever collected from outside scripts/: 167 files currently match ' +
+      'that pattern (jest-unit 40, jest-db 12, vitest 99, node-test 15, playwright 1) — up ' +
+      'from the 160 (four collectors, node-test 9) this row reached after Task 10. That ' +
+      'total grows every time this plan, or any ordinary feature work, adds a test file, ' +
+      'and this row does not track or re-check its own prose count.',
     blindSpot:
       'Nothing about the tests themselves: a file collected by exactly one runner can ' +
       'still assert nothing, or assert the wrong thing — this row only proves each ' +
@@ -707,9 +711,15 @@ export const CHECKS = [
       'since neither is statically imported nor named in any package.json script; only .claude/settings.json\'s ' +
       'hook command line invokes them, a config-driven path knip cannot follow, the same class of blind spot ' +
       'as the migration and db-spec `file` entries already on this baseline. The baseline now holds 121 ' +
-      'findings (1 dependency, 5 devDependencies, 55 exports, 33 files, 25 types, 2 unlisted). That count ' +
-      'moves the instant anyone adds, fixes, or clears a finding anywhere knip.json\'s globs reach, and this ' +
-      'row does not track or re-check its own prose.',
+      'findings (1 dependency, 5 devDependencies, 55 exports, 33 files, 25 types, 2 unlisted). RE-MEASURED ' +
+      'AGAIN the same day after Task 19 added .claude/hooks/stop-gate.mjs (the Stop-event blocking hook): ' +
+      'the identical root-workspace blind spot flags it as an unused file too — only .claude/settings.json\'s ' +
+      'hook command line invokes it, the same as the two Task 18 hooks. Its colocated stop-gate.test.mjs is ' +
+      'NOT a new finding: it is reached through package.json\'s test:verify script, which gained a second ' +
+      'glob (\'.claude/hooks/**/*.test.mjs\') for it, and knip DOES resolve a script\'s glob arguments. The ' +
+      'baseline now holds 122 findings (1 dependency, 5 devDependencies, 55 exports, 34 files, 25 types, 2 ' +
+      'unlisted). That count moves the instant anyone adds, fixes, or clears a finding anywhere knip.json\'s ' +
+      'globs reach, and this row does not track or re-check its own prose.',
     blindSpot:
       "knip infers reachability from its own static analysis of the module graph, and CAN BE WRONG IN BOTH " +
       'DIRECTIONS — particularly around dynamic imports (a bare `require(\'pino-pretty\')` string handed to ' +

@@ -7,7 +7,11 @@
  *   - jest-unit  -- backend/package.json's jest config (testRegex, rootDir: 'src')
  *   - jest-db    -- backend/jest.db.config.js (a separate testRegex, also rootDir: 'src')
  *   - vitest     -- frontend/vite.config.ts, vitest's DEFAULT include (not set explicitly)
- *   - node-test  -- scripts/**\/*.test.mjs, run by `npm run test:verify`
+ *   - node-test  -- scripts/**\/*.test.mjs AND .claude/hooks/**\/*.test.mjs, both run by
+ *                   `npm run test:verify` (two globs passed to the same `node --test`
+ *                   invocation -- see package.json). The Stop-hook `stop-gate.mjs` (Task
+ *                   19) is the first file under .claude/hooks/ with a colocated test, and
+ *                   is why this collector covers that directory too, not just scripts/.
  *   - playwright -- e2e/**\/*.spec.ts, run by `npm run test:e2e` (playwright.config.ts's
  *                   `testDir: './e2e'`, Playwright's own DEFAULT `testMatch` -- not set
  *                   explicitly there either)
@@ -15,7 +19,9 @@
  * playwright is the fifth collector this check's own registry entry (`testfiles`,
  * scripts/verify/registry.mjs) already admitted would show up eventually ("a fifth
  * collector added later is unseen by this row until this row is taught about it") --
- * Task 17 (`smoke`) is that later, and this file is the teaching.
+ * Task 17 (`smoke`) is that later, and this file is the teaching. The same admission
+ * applies one directory at a time, not just one runner at a time: node-test's OWN reach
+ * grew from scripts/ to scripts/ PLUS .claude/hooks/ in Task 19, for the identical reason.
  *
  * The cheapest way to get a dead test suite is a glob that quietly excludes a whole file:
  * `backend/src/foo.test.ts` matches neither backend testRegex (both require .spec.ts or
@@ -118,7 +124,10 @@ function collectorsFor(file, unitRe, dbRe) {
   if (file.startsWith('backend/src/') && unitRe.test(file)) collectors.push('jest-unit')
   if (file.startsWith('backend/src/') && dbRe.test(file)) collectors.push('jest-db')
   if (file.startsWith('frontend/') && VITEST_DEFAULT_INCLUDE.test(file)) collectors.push('vitest')
+  // Both globs feed the SAME `node --test` invocation (package.json's test:verify) -- see
+  // this file's header comment for why .claude/hooks/ joined scripts/ here in Task 19.
   if (file.startsWith('scripts/') && file.endsWith('.test.mjs')) collectors.push('node-test')
+  if (file.startsWith('.claude/hooks/') && file.endsWith('.test.mjs')) collectors.push('node-test')
   if (file.startsWith('e2e/') && PLAYWRIGHT_DEFAULT_INCLUDE.test(file)) collectors.push('playwright')
   return collectors
 }

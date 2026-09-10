@@ -45,3 +45,16 @@ test('a frontend *.spec.tsx collected by vitest alone is fine', () => {
     rmSync(ok, { force: true })
   }
 })
+
+test('a .claude/hooks/*.test.mjs file is collected by node-test (Task 19)', () => {
+  // Before Task 19 taught collectorsFor() about .claude/hooks/, a file here matched zero
+  // collectors and would have failed as an ORPHAN — the same failure mode as the backend
+  // *.test.ts fixture above, one directory over.
+  const ok = path.join(ROOT, '.claude', 'hooks', 'zz-ok.test.mjs')
+  writeFileSync(ok, "import { test } from 'node:test'\ntest('runs', () => {})\n")
+  try {
+    assert.equal(run().status, 0)
+  } finally {
+    rmSync(ok, { force: true })
+  }
+})

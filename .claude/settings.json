@@ -18,6 +18,18 @@
           }
         ]
       }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/node.sh \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/stop-gate.mjs",
+            "timeout": 300,
+            "statusMessage": "verify gate — fast tier…"
+          }
+        ]
+      }
     ]
   }
 }
