@@ -229,11 +229,14 @@ export const CHECKS = [
     tier: 'fast',
     cmd: 'npm test',
     proves:
-      'A SNAPSHOT, MEASURED 2026-09-10 (see CLAUDE.md\'s Verification section for the same ' +
-      'discipline applied to cost figures): backend jest (NODE_OPTIONS=--experimental-vm-' +
-      'modules jest, testRegex .*\\.spec\\.ts$, rootDir src) ran 40 suites / 511 tests, and ' +
-      'frontend vitest (vitest run) ran 99 files / 592 tests — 139 files and 1103 tests ' +
-      'total that day, all passing. Those counts grow with ordinary feature work in either ' +
+      'A SNAPSHOT, RE-MEASURED 2026-09-11 on the merged tree (Task 21; previously 40 ' +
+      'suites / 511 tests on 2026-09-10, before origin/main\'s config/env.schema.ts added ' +
+      'its own spec file — see CLAUDE.md\'s Verification section for the same discipline ' +
+      'applied to cost figures): backend jest (NODE_OPTIONS=--experimental-vm-' +
+      'modules jest, testRegex .*\\.spec\\.ts$, rootDir src) ran 41 suites / 516 tests, and ' +
+      'frontend vitest (vitest run) ran 99 files / 592 tests — UNCHANGED, since the merge ' +
+      'touched no frontend/src file — 140 files and 1108 tests ' +
+      'total today, all passing. Those counts grow with ordinary feature work in either ' +
       'workspace and are not re-verified by this row — they illustrate scale, nothing more. ' +
       'The INVARIANT this row actually enforces outlives every one of them: a single ' +
       'failing assertion anywhere in either workspace turns this exact command, and this ' +
@@ -255,10 +258,17 @@ export const CHECKS = [
     // No `after`: neither suite reads any other row's output, and both fake their own
     // `curl`/PATH fixtures from scratch on every run.
     proves:
-      '`npm run test:ci-scripts` (`bash scripts/ci/coolify-deploy.test.sh && bash ' +
-      'scripts/ci/ghcr-cleanup.test.sh`) exits 0 only when BOTH suites are fully green — the ' +
-      'exact line the old `checks` job used to run directly (`ci.yml`), which meant it could ' +
-      'only ever be exercised by pushing to CI. coolify-deploy.test.sh fakes `curl` and drives ' +
+      '`npm run test:ci-scripts` (`for f in scripts/ci/*.test.sh; do bash "$f" || exit 1; ' +
+      'done`) exits 0 only when EVERY `scripts/ci/*.test.sh` file is fully green — a real ' +
+      'shell glob, not an enumerated list of the two filenames that happen to exist today, ' +
+      'and deliberately so: an earlier version of this row named the two suites directly, ' +
+      'which meant a THIRD such file could be reported "collected by exactly one runner" by ' +
+      "`testfiles`' shell-test collector (also `scripts/ci/*.test.sh`) while this row never " +
+      'ran it at all — collector and runner agreeing on the same glob is what makes either ' +
+      "one's claim true; a by-name runner behind a by-suffix collector is exactly the class " +
+      'of gap this whole layer exists to close, one level up from where it was first found. ' +
+      'Today that glob still resolves to the same two files: coolify-deploy.test.sh fakes ' +
+      '`curl` and drives ' +
       'scripts/ci/coolify-deploy.sh through seven scenarios (a happy-path deploy; a ' +
       'Coolify-reported failure; a finished deployment serving the wrong commit; a production ' +
       'deploy with no PR number and so no seed login; a non-JSON 502 poll body that must not ' +
@@ -277,10 +287,15 @@ export const CHECKS = [
       'silent no-op — each printing its own `<name>: ok` line, with the whole script exiting ' +
       'non-zero the instant any one of the five fails (an explicit `exit 1`, or `set -e` ' +
       'propagation from a failed assertion). AS A DATED SNAPSHOT, MEASURED 2026-09-11 (run ' +
-      'via the Docker/Alpine one-liner the script\'s own header documents, since this task\'s ' +
-      'own machine has no system jq — see the `jq` precondition below): coolify-deploy.test.sh ' +
+      'via `npm run test:ci-scripts` with a real `jq` binary placed on PATH for the ' +
+      'measurement — this task\'s own machine has no system-installed jq; the script\'s own ' +
+      'header also documents a Docker/Alpine one-liner as an alternative — see the `jq` ' +
+      'precondition below): coolify-deploy.test.sh ' +
       'reported `passed=20 failed=0` and ghcr-cleanup.test.sh\'s all five scenarios (select, ' +
-      'guard, fail-loud, floor, all-404) printed `: ok`, both suites exiting 0. RULING R16: ' +
+      'guard, fail-loud, floor, all-404) printed `: ok`, both suites exiting 0. The glob ' +
+      'itself was proven too, not just described: a throwaway, deliberately failing ' +
+      'scripts/ci/zz.test.sh made this exact command exit 1 with zz.test.sh\'s own output ' +
+      'printed, then a clean re-run after deleting it exited 0 again. RULING R16: ' +
       'the invariant this row enforces is that both suites keep exiting 0 on every run, not ' +
       'that they hold any particular count of scenarios — the dated snapshot above is scale, ' +
       'nothing more, and a future scenario added to either suite is not re-verified by this ' +
@@ -437,11 +452,14 @@ export const CHECKS = [
       'scripts/verify/baselines/secret-boundary.json\'s confirmedFakeValues array — never ' +
       'in this file\'s source, and re-validated on every run (a stub reason under 30 ' +
       'characters is rejected; an entry whose pinned value no longer appears in its named ' +
-      'file is reported STALE). As a snapshot, 2026-09-10, it holds one already-audited ' +
-      'fake token fixture — a count that can only grow by a reviewed, dated addition to ' +
-      "that array, never as an unnoticed side effect — in " +
-      'frontend/src/shared/api/persister.test.ts, pinned by its EXACT file path AND its ' +
-      'EXACT string — not a shape, not a path, not a file-type carve-out. That exactness ' +
+      'file is reported STALE). As a snapshot, 2026-09-11, it holds TWO already-audited ' +
+      'fake fixtures — a count that can only grow by a reviewed, dated addition to ' +
+      'that array, never as an unnoticed side effect: one in ' +
+      'frontend/src/shared/api/persister.test.ts (a fixture JWT), pinned by its EXACT file ' +
+      'path AND its EXACT string, and one added by Task 21\'s merge of origin/main in ' +
+      'docs/superpowers/plans/2026-09-09-coolify-deployment-and-cd.md (a throwaway ' +
+      '`JWT_SECRET=t3-secret-...` value typed into a documented manual test run), pinned ' +
+      'the identical way. Neither is a shape, a path, or a file-type carve-out. That exactness ' +
       'cuts both ways: a genuine secret whose literal text happened to equal a pinned ' +
       'value, planted in that same file, would be exactly as invisible to this check as the ' +
       'confirmed fake is. This check also sees only files `git ls-files` tracks RIGHT NOW, ' +
@@ -508,7 +526,7 @@ export const CHECKS = [
       'TypeScript compiler API and enforces four rules, stated here so each holds at any ' +
       'count: (1) every ' +
       '`synchronize` property anywhere under backend/src initialises to the literal ' +
-      '`false` (both known sites today, app.module.ts:129 and testing/db-harness.ts:126, ' +
+      '`false` (both known sites today, app.module.ts:98 and testing/db-harness.ts:183, ' +
       'and any new one); (2) every non-db-spec file in backend/src/migrations/ matches ' +
       '/^(\\d{13})-([A-Za-z0-9]+)\\.ts$/ — a stray file of neither shape ' +
       'is itself a finding — and no two migration filenames capture the same 13-digit ' +
@@ -979,12 +997,15 @@ export const CHECKS = [
       'fails this exact command. NO FLOOR IS ENFORCED HERE, in this file, or anywhere else in this repo today ' +
       "— floors live only in .github/workflows/ci.yml's env: block, written by a later task in this plan, and " +
       "read as 0 locally — so a coverage PERCENTAGE dropping between two runs changes NOTHING about this row's " +
-      'PASS/FAIL. AS A DATED SNAPSHOT, MEASURED 2026-09-10: backend 80.45% statements / 62.18% branches / ' +
-      '80.83% functions / 84.13% lines (over files actually required by some *.spec.ts — jest\'s default ' +
+      'PASS/FAIL. AS A DATED SNAPSHOT, RE-MEASURED 2026-09-11 on the merged tree (Task 21; previously ' +
+      '2026-09-10, before origin/main\'s config/env.schema.ts and health.controller.ts moved the backend ' +
+      'number — see ci.yml\'s own re-measurement note): backend 80.28% statements / 61.60% branches / ' +
+      '80.40% functions / 83.95% lines (over files actually required by some *.spec.ts — jest\'s default ' +
       'collectCoverageFrom is unset here, so a file no spec ever imports, such as main.ts or app.module.ts, ' +
       'does not appear in the report AT ALL, not even at 0%); frontend 82.94% statements / 80.65% branches / ' +
       '76.14% functions / 83.29% lines under the identical default (main.tsx, App.tsx and router.tsx are ' +
-      'likewise absent from its report today). Both numbers move with ordinary feature work in either ' +
+      'likewise absent from its report today) — UNCHANGED from 2026-09-10, since the merge touched no ' +
+      'frontend/src file. Both numbers move with ordinary feature work in either ' +
       'workspace and are not re-verified by this row.',
     blindSpot:
       'Measures lines executed, not assertions made — a test that calls a function and checks nothing about ' +
@@ -1168,9 +1189,15 @@ export const CHECKS = [
       'nginx-unprivileged base together with nginx/nginx.conf. A compile error, a failing npm ' +
       'ci, a COPY naming a path that does not exist in the stage it draws from, or Docker ' +
       'itself failing to build against the daemon at all, fails this exact command. AS A DATED ' +
-      'SNAPSHOT, MEASURED 2026-09-10: the backend image (22 Dockerfile steps across four ' +
-      'stages) reports 114 MB of content, the nginx image (12 steps across two stages) 26.5 ' +
-      'MB — both built clean, no --no-cache, against docker 29.7.2.',
+      'SNAPSHOT, RE-MEASURED 2026-09-11 on the merged tree (Task 21; previously 22 steps on ' +
+      '2026-09-10, before origin/main\'s PR #63 added the `ARG APP_COMMIT=unknown` / `ENV ' +
+      "APP_COMMIT=$APP_COMMIT` pair `GET /health/version` reads): the backend image (24 " +
+      'Dockerfile steps across four stages, confirmed against `docker build`\'s own numbered ' +
+      "step output) reports 114 MB of content (`docker inspect --format '{{.Size}}'` — " +
+      'UNCHANGED: both new instructions are 0-byte metadata layers, confirmed against ' +
+      '`docker history`), the nginx image (12 steps across two stages, UNCHANGED — its ' +
+      'Dockerfile was not touched by the merge) 26.5 MB — both built clean, no --no-cache, ' +
+      'against docker 29.7.2.',
     blindSpot:
       'Proves the images BUILD, not that they RUN correctly, not that the app inside them ' +
       'WORKS, and not that the compose stack COMPOSES: neither image\'s CMD is ever executed ' +

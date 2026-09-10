@@ -31,7 +31,7 @@
     "db:reset": "docker compose down -v && docker compose up -d postgres redis",
     "db:seed": "npm run seed:dev -w backend",
     "test:verify": "node --test --test-concurrency=1 'scripts/verify/**/*.test.mjs' '.claude/hooks/**/*.test.mjs'",
-    "test:ci-scripts": "bash scripts/ci/coolify-deploy.test.sh && bash scripts/ci/ghcr-cleanup.test.sh",
+    "test:ci-scripts": "for f in scripts/ci/*.test.sh; do bash \"$f\" || exit 1; done",
     "test:files": "node scripts/verify/checks/test-glob-parity.mjs",
     "memo": "node scripts/verify/checks/memo-drift.mjs",
     "secrets": "node scripts/verify/checks/secret-boundary.mjs",

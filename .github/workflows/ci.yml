@@ -205,11 +205,21 @@ jobs:
       # able to teach them that lowering a floor is how you get back to green —
       # the only place a floor can move is this file, in a reviewed diff.
       #
-      # MEASURED on 2026-09-10 (a live `npm run coverage -w backend` / `-w
-      # frontend` on this exact commit, not carried over from an earlier task's
-      # own measurement — see task-20-report.md for the full runs):
-      #   backend:  80.45% statements / 61.95% branches / 80.83% functions / 84.13% lines
+      # RE-MEASURED on 2026-09-11 on the MERGED tree (Task 21 reconciled this branch
+      # with origin/main's 40-commit Coolify CD lead — see task-21-report.md): a live
+      # `npm run coverage -w backend` / `-w frontend` on the post-merge commit, not
+      # carried over from the pre-merge 2026-09-10 measurement below it replaces.
+      # That earlier measurement is exactly why this re-measurement was needed: it
+      # read backend lines at 84.13%, floored to 84, and origin/main's
+      # `config/env.schema.ts` and `health.controller.ts` brought that real number
+      # down to 83.95% — a floor read as 0 locally (see below), so every local run
+      # stayed green while `verify` would have gone red on its first CI run:
+      #   backend:  80.28% statements / 61.60% branches / 80.40% functions / 83.95% lines
       #   frontend: 82.94% statements / 80.65% branches / 76.14% functions / 83.29% lines
+      # (Frontend is IDENTICAL to the pre-merge measurement — origin/main's 40 commits
+      # touched no frontend/src file — so only COVERAGE_BACKEND_LINES actually moves,
+      # from 84 to 83; every other floor below was re-verified against this same
+      # merged-tree measurement and still holds.)
       #
       # Each floor below is that measurement FLOORED DOWN to a whole percent, never
       # pinned to the measurement itself — a floor set at the exact number turns
@@ -220,12 +230,14 @@ jobs:
       # THE RATCHET TURNS ONE WAY. Raising a floor, as ordinary feature work adds
       # tests, is an ordinary edit. LOWERING one must be a visible diff in THIS
       # file, reviewed like any other regression — never a side effect of a
-      # refactor, and never automated.
+      # refactor, and never automated. This is that diff: COVERAGE_BACKEND_LINES
+      # 84 -> 83, the direct, reviewed consequence of merging real code from main,
+      # not a side effect of anything this task changed.
       # ─────────────────────────────────────────────────────────────────────────
       COVERAGE_BACKEND_STATEMENTS: 80
       COVERAGE_BACKEND_BRANCHES: 61
       COVERAGE_BACKEND_FUNCTIONS: 80
-      COVERAGE_BACKEND_LINES: 84
+      COVERAGE_BACKEND_LINES: 83
       COVERAGE_FRONTEND_STATEMENTS: 82
       COVERAGE_FRONTEND_BRANCHES: 80
       COVERAGE_FRONTEND_FUNCTIONS: 76

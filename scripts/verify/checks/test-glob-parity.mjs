@@ -160,10 +160,17 @@ function collectorsFor(file, unitRe, dbRe) {
   if (file.startsWith('scripts/') && file.endsWith('.test.mjs')) collectors.push('node-test')
   if (file.startsWith('.claude/hooks/') && file.endsWith('.test.mjs')) collectors.push('node-test')
   if (file.startsWith('e2e/') && PLAYWRIGHT_DEFAULT_INCLUDE.test(file)) collectors.push('playwright')
-  // `npm run test:ci-scripts` (package.json) runs exactly these two files by name today,
-  // but this collector matches the whole directory by suffix, not an enumerated list: a
-  // third scripts/ci/*.test.sh file added later is picked up automatically, the same way
-  // node-test's own directory-scoped glob already works above.
+  // `npm run test:ci-scripts` (package.json) is ITSELF a glob over this exact directory
+  // (`for f in scripts/ci/*.test.sh; do bash "$f" || exit 1; done`), not an enumerated
+  // list of filenames -- the runner was deliberately made to match this collector, not
+  // the other way around, after a review proved the earlier by-name version could report
+  // a third scripts/ci/*.test.sh file as "collected by exactly one runner" while nothing
+  // ever actually ran it. Because both sides are the SAME glob today, a third file added
+  // later is both collected here and executed there automatically, the same way
+  // node-test's own directory-scoped glob already works above -- and unlike node-test
+  // (a real Node API, not a shell glob), it is worth remembering this is two independently
+  // written globs that happen to agree, not one shared definition; see this row's own
+  // registry entry (`testfiles`) for why that distinction still matters.
   if (file.startsWith('scripts/ci/') && SHELL_TEST_FILE.test(file)) collectors.push('shell-test')
   return collectors
 }
