@@ -242,21 +242,20 @@ export const CHECKS = [
     tier: 'fast',
     cmd: 'npm run test:files',
     proves:
-      'A SNAPSHOT, MEASURED 2026-09-10 and re-measured the same day after Task 10 added a ' +
-      'ninth node-test file: 160 files in this repo (jest-unit 40, jest-db 12, vitest 99, ' +
-      'node-test 9) currently match *.{test,spec,db-spec}.[cm]?[jt]sx? — up from the 156 ' +
-      '(node-test 5) this row first shipped with. That total grows every time this plan, or ' +
-      'any ordinary feature work, adds a test file, and this row does not track or re-check ' +
-      'its own prose count. The INVARIANT the count only illustrates, and which holds ' +
-      'regardless of how large it grows, is this: every one of those files, however many ' +
-      "there are, is collected by EXACTLY ONE of this repo's four test runners — jest-unit " +
+      "Every one of this repo's *.{test,spec,db-spec}.[cm]?[jt]sx? files is collected by " +
+      "EXACTLY ONE of this repo's four test runners — jest-unit " +
       "(backend/package.json's testRegex, rootDir src), jest-db (backend/jest.db.config.js's " +
       "separate testRegex, also rootDir src), vitest (frontend's default include, no " +
-      'test.include set) and node-test (scripts/**/*.test.mjs, run by npm run test:verify). ' +
-      'The two backend regexes are read out of backend/package.json and ' +
-      'backend/jest.db.config.js at runtime, not copied here, so this row also proves those ' +
-      'two files still say what the check assumes — a file with zero matching collectors, ' +
-      'or claimed by two at once, fails this exact command no matter the total.',
+      'test.include set) and node-test (scripts/**/*.test.mjs, run by npm run test:verify) ' +
+      '— a file with zero matching collectors, or claimed by two at once, fails this exact ' +
+      'command, no matter how many files exist when it runs. The two backend regexes are ' +
+      'read out of backend/package.json and backend/jest.db.config.js at runtime, not ' +
+      'copied here, so this row also proves those two files still say what the check ' +
+      'assumes. AS A SNAPSHOT, MEASURED 2026-09-10 and re-measured the same day after Task ' +
+      '10 added a ninth node-test file: 160 files currently match that pattern (jest-unit ' +
+      '40, jest-db 12, vitest 99, node-test 9) — up from the 156 (node-test 5) this row ' +
+      'first shipped with. That total grows every time this plan, or any ordinary feature ' +
+      'work, adds a test file, and this row does not track or re-check its own prose count.',
     blindSpot:
       'Nothing about the tests themselves: a file collected by exactly one runner can ' +
       'still assert nothing, or assert the wrong thing — this row only proves each ' +
@@ -292,11 +291,12 @@ export const CHECKS = [
       'tracked file failing any of the four fails this exact command; a real secret is ' +
       'never written into the baseline, which holds only the gitignore fingerprint.',
     blindSpot:
-      'Shannon entropy is measured over the WHOLE value (a run-based measurement was tried ' +
-      'and rejected: it scored a real hyphen-separated credential at 2.00 bits/char, ' +
-      'comfortably invisible), but it remains a heuristic in both directions — a placeholder ' +
-      'shape not yet named in PLACEHOLDER_RE can still false-positive, and any real secret ' +
-      'under 32 characters is never inspected at all, full stop. Only a QUOTED string ' +
+      'This check is a heuristic in both directions, not a proof: a placeholder shape not ' +
+      'yet named in PLACEHOLDER_RE can still false-positive, and any real secret under 32 ' +
+      'characters is never inspected at all, full stop. Shannon entropy is measured over ' +
+      'the WHOLE value — a run-based measurement was tried and rejected, since it scored a ' +
+      'real hyphen-separated credential at 2.00 bits/char, comfortably invisible. Only a ' +
+      'QUOTED string ' +
       'literal is a candidate value anywhere in a line; a bare, unquoted one is a candidate ' +
       'only when it is the entire line, optionally preceded by exactly one of a CLOSED set ' +
       'of four leading tokens (export, ENV, ARG, a YAML `- ` sequence marker) chosen ' +
@@ -378,12 +378,8 @@ export const CHECKS = [
     // in the first place, so only this row needed correcting.
     proves:
       '`npm run migrations:check` parses every backend/src/**/*.ts file with the ' +
-      'TypeScript compiler API and enforces four rules against every file in ' +
-      "backend/src/migrations/ — AS A SNAPSHOT, MEASURED 2026-09-10, that was 8 numbered " +
-      'migrations (timestamps 1788600000000–1788600000007) and 5 *.db-spec.ts files; both ' +
-      'counts grow with ordinary schema work, unrelated to this table, and this row does ' +
-      'not track or re-check its own prose. Excluding the db-specs, the four rules, stated ' +
-      'so they hold at any count: (1) every ' +
+      'TypeScript compiler API and enforces four rules, stated here so each holds at any ' +
+      'count: (1) every ' +
       '`synchronize` property anywhere under backend/src initialises to the literal ' +
       '`false` (both known sites today, app.module.ts:129 and testing/db-harness.ts:126, ' +
       'and any new one); (2) every non-db-spec file in backend/src/migrations/ matches ' +
@@ -399,7 +395,10 @@ export const CHECKS = [
       'green. A violation of 1–3, or of 4 whenever origin/main was reachable, fails this ' +
       "exact command; this row proves rule 4's guarantee ONLY for a run where origin/main " +
       'was fetched, and says so with a WARNING line — printed even on a passing run — ' +
-      'whenever it was not.',
+      'whenever it was not. AS A SNAPSHOT, MEASURED 2026-09-10: backend/src/migrations/ ' +
+      'held 8 numbered migrations (timestamps 1788600000000–1788600000007) and 5 ' +
+      '*.db-spec.ts files, excluded from rules 2–4; both counts grow with ordinary schema ' +
+      'work, unrelated to this table, and this row does not track or re-check its own prose.',
     blindSpot:
       'Compares TEXT, not schema semantics: two migrations that are each individually ' +
       "well-formed but logically conflict (an `up()` that doesn't undo cleanly in its own " +
@@ -429,26 +428,26 @@ export const CHECKS = [
     // files under backend/src (each wrapped in try/finally) never overlap with another
     // row's own read of that tree.
     proves:
-      "AS A SNAPSHOT, MEASURED 2026-09-10 and re-measured the same day after Task 10 added " +
-      "`ratchets/lint-exempt.test.mjs`: `npm run test:verify` (`node --test " +
-      "--test-concurrency=1 'scripts/verify/**/*.test.mjs'`) collects and runs 78 tests " +
-      "across 9 *.test.mjs files — hash.test.mjs (7), registry.test.mjs (8), " +
-      'run.test.mjs (14), checks/memo-drift.test.mjs (4), ' +
-      'checks/migration-invariants.test.mjs (8), checks/seam-boundary.test.mjs (13), ' +
-      'checks/secret-boundary.test.mjs (13), checks/test-glob-parity.test.mjs (3) and ' +
-      'ratchets/lint-exempt.test.mjs (8), 78 in total today — up from the 70-across-8-files ' +
-      'this row first shipped with, and due to grow again the next time this plan adds a ' +
-      'check. This row does not track or re-check its own prose count; the INVARIANT it ' +
-      'actually enforces, independent of how many tests exist when it runs, is this: a ' +
-      'single failing assertion anywhere in that suite fails this exact command and turns ' +
-      'this row red, which is the whole ' +
-      'point of adding it: before this row existed, `npm run verify` ran eight other rows ' +
+      "A single failing assertion anywhere in the verify layer's own `*.test.mjs` suite " +
+      'fails this exact command and turns this row red, independent of how many tests ' +
+      'exist when it runs — which is the whole point of adding it: before this row ' +
+      'existed, `npm run verify` ran eight other rows ' +
       'over the rest of the tree — including `typecheck`, which covers scripts/**/*.mjs ' +
       'for TYPES, and `testfiles`, which confirms this layer\'s own *.test.mjs files ' +
       'are COLLECTED, by node-test specifically — and not one of them RAN this suite, so ' +
       'broken logic inside any check (a ratchet that silently stopped ratcheting, a boundary scan that ' +
       'stopped finding boundaries) could stay green in `npm run verify` indefinitely, ' +
-      'caught only by someone remembering to run `npm run test:verify` by hand.',
+      'caught only by someone remembering to run `npm run test:verify` by hand. ' +
+      "AS A SNAPSHOT, MEASURED 2026-09-10 and re-measured the same day after Task 10 added " +
+      "`ratchets/lint-exempt.test.mjs`: `npm run test:verify` (`node --test " +
+      "--test-concurrency=1 'scripts/verify/**/*.test.mjs'`) collects and runs 78 tests " +
+      "across 9 *.test.mjs files today — hash.test.mjs (7), registry.test.mjs (8), " +
+      'run.test.mjs (14), checks/memo-drift.test.mjs (4), ' +
+      'checks/migration-invariants.test.mjs (8), checks/seam-boundary.test.mjs (13), ' +
+      'checks/secret-boundary.test.mjs (13), checks/test-glob-parity.test.mjs (3) and ' +
+      'ratchets/lint-exempt.test.mjs (8) — up from the 70-across-8-files ' +
+      'this row first shipped with, and due to grow again the next time this plan adds a ' +
+      'check. This row does not track or re-check its own prose count.',
     blindSpot:
       "Proves only that each check's tests still agree with that check's code today — " +
       'self-consistency, not correctness of what the check was designed to catch. A ' +
@@ -481,26 +480,27 @@ export const CHECKS = [
     // VIOLATED as it is to whether the rule exists in either config at all — it only
     // ever asks "is every exemption accounted for," never "is eslint happy."
     proves:
-      'AS A SNAPSHOT, MEASURED 2026-09-10: `npm run lint:exempt` finds exactly 13 lint ' +
-      'exemptions across backend/src, frontend/src and the two flat eslint.config.mjs ' +
-      'files today — 10 eslint-disable/-disable-line/-disable-next-line/-enable directive ' +
-      'comments (9 disable-type, plus the one eslint-enable that closes ' +
-      'test-setup.ts\'s block disable) and 3 `ignores`-property occurrences bundling 7 ' +
-      "individual globs, with zero rules pinned to 'off' in either config. That count " +
-      'moves the instant anyone adds or removes an exemption anywhere in that scan, and ' +
-      'this row does not track or re-check its own prose. THIS IS THE FIRST TRUE RATCHET ' +
-      'IN THIS LAYER precisely because what it actually enforces does not depend on the ' +
-      "count staying 13: every exemption the scan finds, however many there are, matches a " +
-      'dated, ≥30-character-reasoned entry in scripts/verify/baselines/lint-exempt.json, ' +
-      'key for key. The comparison runs in both ' +
-      'directions, and both are provable by this exact command failing. A NEW exemption ' +
+      'Every lint exemption this scan finds — an eslint-disable/-disable-line/-disable-' +
+      'next-line/-enable directive comment anywhere in backend/src or frontend/src, or an ' +
+      "`ignores`-property occurrence or a rule pinned to 'off' in either flat " +
+      'eslint.config.mjs — must match a dated, ≥30-character-reasoned entry in ' +
+      'scripts/verify/baselines/lint-exempt.json, key for key, or this exact command fails. ' +
+      'THIS IS THE FIRST TRUE RATCHET IN THIS LAYER: the comparison runs in BOTH ' +
+      'directions, and both are provable by this exact command failing, independent of how ' +
+      'many exemptions exist. A NEW exemption ' +
       'anywhere in the scan that is not yet in the baseline fails it (`git ls-files -c -o ' +
       '--exclude-standard` means an untracked, freshly written one counts too). A baseline ' +
       'entry whose exemption NO LONGER EXISTS in the code or config also fails it — a stale ' +
       'forgiveness must be deleted, never left standing, or the baseline only ever grows. ' +
       'And a baseline entry whose `reason` is missing, `TODO`, or under 30 characters after ' +
       'trimming fails the command on the baseline alone, before either direction of that ' +
-      'comparison ever runs.',
+      'comparison ever runs. AS A SNAPSHOT, MEASURED 2026-09-10: `npm run lint:exempt` ' +
+      'finds exactly 13 lint exemptions today — 10 directive comments (9 disable-type, ' +
+      "plus the one eslint-enable that closes test-setup.ts's block disable) and 3 " +
+      "`ignores`-property occurrences bundling 7 individual globs, with zero rules pinned " +
+      "to 'off' in either config. That count moves the instant anyone adds or removes an " +
+      'exemption anywhere in the scan, and this row does not track or re-check its own ' +
+      'prose.',
     blindSpot:
       'Counts lint suppressions; it does not, and cannot, judge whether any one of them is ' +
       'justified — a reason that reads as 30-plus characters of plausible prose passes ' +
