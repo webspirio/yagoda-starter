@@ -29,7 +29,7 @@ describe('useReopenShiftMutation', () => {
     expect(JSON.parse(mock.history.post[0].data)).toEqual({ reason: 'wrong count' });
   });
 
-  it('invalidates shifts, intakes, payouts, cashCounts and pointCash — reopening demotes the closing count to midday', async () => {
+  it('invalidates on success via the shared useInvalidateDay hook — its full list is covered by features/count-shift', async () => {
     mock.onPost('/shifts/s1/reopen').reply(200, { id: 's1' });
     const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries');
     const { result } = renderHook(() => useReopenShiftMutation(), { wrapper });
@@ -38,10 +38,6 @@ describe('useReopenShiftMutation', () => {
 
     await waitFor(() => {
       expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: queryKeys.shifts });
-      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: queryKeys.intakes });
-      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: queryKeys.payouts });
-      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: queryKeys.cashCounts });
-      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: queryKeys.pointCash });
     });
   });
 });

@@ -4,20 +4,22 @@ import { queryKeys } from '@/shared/api/queryKeys';
 import type { Shift } from '@/entities/shift';
 
 /**
- * Opening and closing both change what «today» means for the documents of
- * that point, so both invalidate shifts AND both journals. Shared by
- * `pages/day` and `pages/reception` — both let an operator open a shift, and
- * their invalidation sets were byte-for-byte identical before this promotion.
- * `useReopenShiftMutation` keeps its own copy in `pages/day/api/shiftActions.ts`:
- * reopening is owner-only, takes a reason rather than a count, and has one
- * consumer, so promoting it here would not remove any duplication.
+ * Opening, closing and reopening a shift all change what «today» means for
+ * the documents of that point, so all three invalidate shifts AND both
+ * journals. Exported for `pages/day/api/shiftActions.ts`'s
+ * `useReopenShiftMutation`, which used to carry a byte-for-byte copy of this
+ * function — reopening is owner-only and takes a reason rather than a count,
+ * but its invalidation set is identical to open/close's, so there was
+ * nothing left to keep separate.
  *
- * Closing a shift also moves the point's cash figure — the drawer count taken
- * at close becomes the point's cash — so `cashCounts` and `pointCash` are
- * invalidated alongside shifts/intakes/payouts, or «Каса точки» would show a
- * stale number right after close.
+ * Closing a shift moves the point's cash figure — the drawer count taken at
+ * close becomes the point's cash — and reopening moves it right back (it
+ * demotes that shift's `closing` cash count to `midday`, `shifts.service.ts`,
+ * and the point-cash SQL anchors on counts where `kind <> 'midday'`), so
+ * `cashCounts` and `pointCash` are invalidated alongside shifts/intakes/payouts,
+ * or «Каса точки» would show a stale number right after any of the three.
  */
-function useInvalidateDay() {
+export function useInvalidateDay() {
   const qc = useQueryClient();
   return () =>
     Promise.all([
