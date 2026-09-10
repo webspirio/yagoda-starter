@@ -19,6 +19,21 @@ import type { AuthenticatedUser } from '../auth/jwt.strategy';
  * THIS IS WHAT «NOTIFY THE OWNER» MEANS in this project: there is no email, no
  * push and no notification centre, so a notification is a read the owner's
  * screen performs. `only_discrepancies=true` is the working list.
+ *
+ * THE WORKING LIST EXCLUDES `midday`, and that is the same filter — and the
+ * same reason — as `point-cash`'s `unexplained_difference`. A reopen demotes
+ * the first closing count to `midday` (§6.3) and the re-close writes a second
+ * one, so ONE physical drift becomes TWO stored rows. Counting both would tell
+ * the owner a −90 shortage is −180 on one screen while the headline figure
+ * says −90 on the other. The demoted row is evidence and keeps its place in
+ * the UNFILTERED list; what it loses is a seat on the list of things still to
+ * be worked.
+ *
+ * ITS LIMIT, named rather than discovered: this reads «midday» as «superseded»,
+ * which holds only while a demotion is the sole way a midday row is created. A
+ * midday-RECOUNT route would make that false, and would have to revisit this
+ * filter, `point-cash.service.ts`'s matching one, and `is_open` in
+ * `cash-count.mapper.ts` together.
  */
 @Injectable()
 export class CashCountsService {
@@ -51,6 +66,7 @@ export class CashCountsService {
          AND ($4::date IS NULL OR s.business_date <= $4::date)
          AND (NOT $5::boolean
               OR (c.counted_amount <> c.expected_amount
+                  AND c.kind <> 'midday'
                   AND (s.explanation IS NULL OR s.explanation = '')))`;
 
     const params = [

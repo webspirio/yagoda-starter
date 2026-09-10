@@ -33,8 +33,20 @@ export interface CashCountRow {
  * naturally in their own screen and neither can be flipped without making the
  * other read backwards.
  *
- * `is_open` — a discrepancy on a shift with no explanation. This is the
- * owner's working list, and it shrinks as it is worked (§6.5).
+ * `is_open` — a discrepancy, on a count that has not been superseded, on a
+ * shift with no explanation. This is the owner's working list, and it shrinks
+ * as it is worked (§6.5).
+ *
+ * `midday` IS NEVER OPEN, matching the SQL filter in `CashCountsService.list`
+ * and `unexplained_difference` in `point-cash.service.ts` — all three exclude
+ * it, and they have to agree or the owner reads one drift as two. A reopen
+ * demotes the first closing count to `midday` (§6.3); the re-close writes the
+ * count that now stands. The demoted row keeps its discrepancy and its place
+ * in the unfiltered list, because §7.6 forbids destroying evidence — it simply
+ * is not the row anyone still has to act on.
+ *
+ * Same limit the service names: this reads «midday» as «superseded», true only
+ * while demotion is the sole source of a midday row.
  */
 export interface CashCountRowResponse {
   id: string;
@@ -64,7 +76,10 @@ export function toCashCountRowResponse(row: CashCountRow): CashCountRowResponse 
     counted_amount: row.counted_amount,
     expected_amount: row.expected_amount,
     discrepancy,
-    is_open: discrepancy !== '0.00' && (row.explanation === null || row.explanation === ''),
+    is_open:
+      discrepancy !== '0.00' &&
+      row.kind !== CashCountKind.Midday &&
+      (row.explanation === null || row.explanation === ''),
     counted_by_user_id: row.counted_by_user_id,
     counted_at: row.counted_at,
     explanation: row.explanation,

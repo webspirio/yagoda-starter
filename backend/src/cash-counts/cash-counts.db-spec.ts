@@ -25,7 +25,9 @@ import type { AuthenticatedUser } from '../auth/jwt.strategy';
  *   2026-09-06  closing MISMATCH, shift EXPLAINED             — closed by explanation, not by the numbers
  *   2026-09-08  a MIDDAY count, mismatched, unexplained       — §6.3's demotion:
  *               reopening a shift turns its `closing` count into a `midday`
- *               one, and the evidence must stay visible and stay OPEN
+ *               one. The evidence stays VISIBLE in the unfiltered list and
+ *               stays OFF the working list — one drift must not be reported
+ *               twice, and `unexplained_difference` already excludes it.
  *
  * Point B holds one mismatched, unexplained count, for the point-scoping test.
  */
@@ -188,10 +190,11 @@ describe('CashCountsService.list (Postgres)', () => {
     );
 
     expect(page.total).toBe(page.data.length);
-    expect(page.total).toBe(2);
-    expect(page.data.map((r) => r.id).sort()).toEqual(
-      [mismatchCountId, middayCountId].sort(),
-    );
+    // ONE row, not two: the demoted `midday` count is excluded. It is a real
+    // discrepancy on an unexplained shift and would otherwise qualify — see
+    // the demotion test below for why it must not.
+    expect(page.total).toBe(1);
+    expect(page.data.map((r) => r.id)).toEqual([mismatchCountId]);
     expect(page.data.every((r) => r.discrepancy !== '0.00')).toBe(true);
     expect(page.data.every((r) => r.is_open)).toBe(true);
   });
@@ -220,14 +223,28 @@ describe('CashCountsService.list (Postgres)', () => {
     expect(page.data.some((r) => r.shift_id === shiftB)).toBe(false);
   });
 
-  it('a demoted midday count still appears — a discrepancy that happened is still a discrepancy that happened', async () => {
-    const page = await service.list(owner, query({ collection_point_id: pointA }));
-    const row = page.data.find((r) => r.id === middayCountId);
+  it('keeps a demoted midday count as evidence but off the working list', async () => {
+    // §7.6 — the row is NOT destroyed and NOT adjusted: the unfiltered list
+    // still carries it, discrepancy intact.
+    const unfiltered = await service.list(owner, query({ collection_point_id: pointA }));
+    const row = unfiltered.data.find((r) => r.id === middayCountId);
 
     expect(row).toBeDefined();
     expect(row?.kind).toBe('midday');
     expect(row?.discrepancy).toBe('-100.00');
-    expect(row?.is_open).toBe(true);
+
+    // WHAT IT IS NOT: something still to be worked. A reopen demotes the first
+    // closing count and the re-close writes a second — one drift, two rows.
+    // Counting both would report −180 to an owner whose point is −90 out, and
+    // would disagree with `unexplained_difference`, which excludes `midday`
+    // for exactly this reason (see b5952bb).
+    expect(row?.is_open).toBe(false);
+
+    const working = await service.list(
+      owner,
+      query({ collection_point_id: pointA, only_discrepancies: true }),
+    );
+    expect(working.data.some((r) => r.id === middayCountId)).toBe(false);
   });
 
   it('binds a shift_id filter, scoping to exactly that shift regardless of point', async () => {
