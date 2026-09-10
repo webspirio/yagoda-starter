@@ -548,7 +548,12 @@ Found by the reviews during that slice's execution, judged and deferred:
   — `DisputeTransferDto` makes the field mandatory — so it needs hand-written
   SQL to occur. Deferred rather than spend a second migration in the slice.
   **Do not "fix" it with a `COALESCE` in the formula**: that would mask the bad
-  row instead of refusing it.
+  row instead of refusing it. **The hand-written SQL turned out to exist:** the
+  dev seed's own `INSERT` wrote a `disputed` row with `reported_cash` but a
+  NULL `reported_crates` and a NULL `dispute_note` (fixed 10.09.2026). The
+  formula was unaffected — it reads only the cash — but it is evidence that
+  «unreachable through the API» is not the same as «never written», and the
+  seed is the one writer that bypasses every DTO.
 - **`.env` sets `APP_TIMEZONE=UTC`** while `.env.example` and the Joi default
   both say `Europe/Kyiv`. `ShiftsService.open`'s own comment warns that under
   UTC an evening shift and every document in it is silently misfiled by a day.
@@ -558,13 +563,11 @@ Found by the reviews during that slice's execution, judged and deferred:
   covers the `COALESCE` (drop it and the result changes) but not the
   `AT TIME ZONE` inside it — any timezone puts "today" past the fixture's date.
   Worth knowing if `asOfSql` is ever refactored.
-- **`unexplained_difference` (task 8) is NOT scoped by `as_of`, unlike the
-  `cash`/`shortfall` columns on the same row.** It is a running total over
-  every count a point has ever had, computed the same way whatever `as_of` the
-  caller passes — deliberately, per the brief and spec §3.1, but it means one
-  row in the list response can mix a point-in-time figure (`cash`) with an
-  all-time one (`unexplained_difference`). Worth a second look if a future
-  screen implies otherwise.
+- **~~`unexplained_difference` (task 8) is NOT scoped by `as_of`~~ — FIXED
+  10.09.2026.** It was a running total over every count a point had ever had,
+  whatever `as_of` the caller passed, so one row mixed a point-in-time figure
+  (`cash`) with an all-time one. The «worth a second look» happened: see the
+  superseding entry in the cash counts section below.
 - **`unexplained_difference` is exposed on `GET /point-cash` (the list) but
   not on `GET /point-cash/:pointId`**, which still returns only `cashFor`'s
   bare `{ cash }`. Not a bug — the brief scoped this task to `list` — but the
@@ -592,18 +595,26 @@ been lost with the working ledger.
   stranding. Meanwhile the cost is one spurious incident per no-shift
   settlement, re-baselined by the next count.
 
-- **`unexplained_difference` is an all-time sum sitting beside two
-  point-in-time ones.** On a `GET /point-cash` row, `cash` and `shortfall`
-  honour `as_of`; `unexplained_difference` is `Σ (counted − expected)` over
-  every non-midday count the point has ever had, whatever `as_of` says. It is
-  also absent from `GET /point-cash/:pointId`, which still returns a bare
-  `{ cash }` — so the list and the single read disagree about what a point's
-  cash carries. **And the name asserts something it does not check:** an
-  explained incident stays in the sum (deliberately — an explanation changes
-  what is OPEN, never what is TRUE), so «unexplained» is wrong on its face.
-  Renaming it — `accumulated_difference`, or `count_drift` — is cheap now and
-  gets more expensive with every screen built on it. (Supersedes the two
-  narrower notes on the same field in the transfers-slice section above.)
+- **~~`unexplained_difference` is an all-time sum sitting beside two
+  point-in-time ones.~~ THE `as_of` HALF IS FIXED (10.09.2026); the rest
+  stands.** A follow-up review put the cost plainly enough to act on:
+  `GET /point-cash?as_of=2026-09-01` returned the drawer as of 1 September
+  next to drift that had not happened yet, and beside a `latest_transfer` that
+  was today's newest trip — a historical row asserting divergence on a date
+  when nothing had diverged. Both columns are now bounded by the same `as_of`
+  the anchor uses, and the transfer's `status` is reconstructed to what it HELD
+  on that date (`sent_at`, `accepted_date` and `voided_at` are all stored, so
+  no history table is needed). Three db-spec scenarios pin it.
+
+  **What is still open on this field.** It is absent from
+  `GET /point-cash/:pointId`, which still returns a bare `{ cash }` — so the
+  list and the single read disagree about what a point's cash carries. **And
+  the name asserts something it does not check:** an explained incident stays
+  in the sum (deliberately — an explanation changes what is OPEN, never what is
+  TRUE), so «unexplained» is wrong on its face. Renaming it —
+  `accumulated_difference`, or `count_drift` — is cheap now and gets more
+  expensive with every screen built on it. (Supersedes the two narrower notes
+  on the same field in the transfers-slice section above.)
 
 - **The §6.2 gap: the shift-close response does not carry the discrepancy.**
   Cash counts spec §6.2 said the discrepancy «appears in the response, after the
