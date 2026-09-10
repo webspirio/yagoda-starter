@@ -1033,7 +1033,7 @@ Verified 2026-09-10, root `.gitignore`:
 Cases, each as its own `node --test` case:
 
 1. The real tree is green.
-2. Writing a tracked file containing `-----BEGIN RSA PRIVATE KEY-----` makes it red. (Create under `docs/`, `git add -N`, assert red, then `git rm --cached` and delete.)
+2. Writing a tracked file containing a PEM private-key header line makes it red. (Create under `docs/`, `git add -N`, assert red, then `git rm --cached` and delete.) **Build that header at runtime by concatenation — never write the literal pattern into a source or plan file.** A document that spells the pattern out becomes a permanent finding for the very check it describes, and the wrong way out of that is an exemption in the checker.
 3. Writing a tracked file containing a JWT-shaped string (`eyJ` + two more base64url segments) makes it red.
 4. Removing the `.env` line from `.gitignore` makes it red, naming the fingerprint mismatch.
 5. Putting a 40-character high-entropy value into `.env.example` makes it red.
