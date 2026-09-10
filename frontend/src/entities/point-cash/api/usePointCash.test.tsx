@@ -27,6 +27,29 @@ describe('usePointCashQuery', () => {
     const { result } = renderHook(() => usePointCashQuery({ asOf: '2026-09-10' }), { wrapper });
     await waitFor(() => expect(result.current.data).toEqual(page));
   });
+
+  it('scopes the read to one point — the whole network is not fetched to find one row', async () => {
+    mock
+      .onGet('/point-cash', {
+        params: { as_of: '2026-09-10', collection_point_id: 'p1', limit: 100 },
+      })
+      .reply(200, page);
+    const { result } = renderHook(
+      () => usePointCashQuery({ asOf: '2026-09-10', pointId: 'p1' }),
+      { wrapper },
+    );
+    await waitFor(() => expect(result.current.data).toEqual(page));
+  });
+
+  it('does not fire when the caller opts out', () => {
+    mock.onGet('/point-cash').reply(200, page);
+    const { result } = renderHook(
+      () => usePointCashQuery({ asOf: '2026-09-10', pointId: 'p1', enabled: false }),
+      { wrapper },
+    );
+    expect(result.current.fetchStatus).toBe('idle');
+    expect(mock.history.get).toHaveLength(0);
+  });
 });
 
 describe('usePointCashForPointQuery', () => {

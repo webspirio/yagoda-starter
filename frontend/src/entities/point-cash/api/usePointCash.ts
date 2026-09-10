@@ -5,9 +5,10 @@ import { STALE } from '@/shared/api/queryClient';
 import type { PointCashRow, PointCashOne, Paginated } from '../model/point-cash';
 
 /** `as_of` only when named — undated means "today", resolved server-side (see the service header). */
-function pointCashParams(opts?: { asOf?: string }) {
+function pointCashParams(opts?: { asOf?: string; pointId?: string }) {
   return {
     ...(opts?.asOf ? { as_of: opts.asOf } : {}),
+    ...(opts?.pointId ? { collection_point_id: opts.pointId } : {}),
     limit: 100,
   };
 }
@@ -16,10 +17,26 @@ function pointCashParams(opts?: { asOf?: string }) {
  * §7.10's table — every point in scope with its cash. Widens by role on the
  * server rather than branching here: an operator gets their own point, the
  * owner the whole network, from the same endpoint.
+ *
+ * `pointId` NARROWS THAT SCOPE TO ONE ROW, and it is safe for both roles:
+ * `resolvePointFilter` gives an operator their OWN point whatever id they
+ * ask for. A one-point screen passes it rather than reading the network and
+ * picking a row out client-side — a read that both costs the whole table and
+ * can miss its own row once the network outgrows one page.
+ *
+ * `enabled` defaults to `true`; the caller decides when to hold off (an owner
+ * who has not picked a point yet), the same opt-out shape
+ * `useSupplierBalancesQuery` uses. The gate lives at the caller because
+ * `pages/transfers` reads this list unfiltered on purpose.
  */
-export function usePointCashQuery(opts?: { asOf?: string }): UseQueryResult<Paginated<PointCashRow>> {
+export function usePointCashQuery(opts?: {
+  asOf?: string;
+  pointId?: string;
+  enabled?: boolean;
+}): UseQueryResult<Paginated<PointCashRow>> {
   return useQuery({
     queryKey: [...queryKeys.pointCash, opts] as const,
+    enabled: opts?.enabled ?? true,
     queryFn: async (): Promise<Paginated<PointCashRow>> => {
       const { data } = await httpClient.get<Paginated<PointCashRow>>('/point-cash', {
         params: pointCashParams(opts),
