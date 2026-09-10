@@ -56,4 +56,31 @@ describe('CountDrawerDialog', () => {
     expect(onClose).not.toHaveBeenCalled();
     expect(screen.getByRole('textbox')).toHaveValue('1500.00');
   });
+
+  it('clears a stale server banner as soon as the next submit is attempted', async () => {
+    const onConfirm = vi
+      .fn()
+      .mockRejectedValue(new ApiError(409, 'nope', undefined, 'SHIFT_ALREADY_OPEN'));
+    render(<CountDrawerDialog mode="open" open onClose={() => {}} onConfirm={onConfirm} />);
+
+    await userEvent.type(screen.getByRole('textbox'), '1500.00');
+    await userEvent.click(screen.getByRole('button', { name: SUBMIT_COUNT }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'A shift is already open at this point',
+    );
+
+    // A later submit that never reaches `onConfirm` — client validation
+    // refuses it first — must not leave the stale server banner standing
+    // alongside the new field error.
+    await userEvent.clear(screen.getByRole('textbox'));
+    await userEvent.type(screen.getByRole('textbox'), '1.234');
+    await userEvent.click(screen.getByRole('button', { name: SUBMIT_COUNT }));
+
+    await waitFor(() =>
+      expect(screen.queryByText('A shift is already open at this point')).toBeNull(),
+    );
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'Enter an amount — at most two decimals',
+    );
+  });
 });

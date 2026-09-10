@@ -46,14 +46,13 @@ export function CountDrawerDialog({
     formState: { errors, isSubmitting },
   } = useForm<CountFormValues>({ defaultValues: { amount: '' } });
 
-  const onSubmit = handleSubmit(async (values) => {
-    setFormError(null);
+  const submit = async (values: CountFormValues) => {
     try {
       await onConfirm(normalizeAmount(values.amount));
     } catch (error) {
       setFormError(apiErrorToBanner(error));
     }
-  });
+  };
 
   return (
     <Dialog open={open} onOpenChange={(next) => !next && !isSubmitting && onClose()}>
@@ -65,7 +64,18 @@ export function CountDrawerDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <form onSubmit={onSubmit} className="flex flex-col gap-4" noValidate>
+        <form
+          onSubmit={(event) => {
+            // Cleared at the START of every attempt — not inside the validated
+            // callback — so a server banner from a refused submit doesn't
+            // survive a later attempt that client validation refuses first
+            // (handleSubmit never calls `submit`, so it would never clear).
+            setFormError(null);
+            void handleSubmit(submit)(event);
+          }}
+          className="flex flex-col gap-4"
+          noValidate
+        >
           <Field
             name="amount"
             label={t('day.count.amount')}
