@@ -528,8 +528,11 @@
     "ledger": {
       "title": "Where this number comes from",
       "accruedToday": "Accrued today",
+      "accruedTodayHint": "does not move cash",
       "paidToday": "Paid for today's berries",
       "paidPast": "Paid for past days",
+      "paidPastTruncated": "Showing recent payouts only — older ones may be missing from this total.",
+      "returnedToday": "Returned to the drawer",
       "cashIn": "Received by transfer today",
       "total": "Berry cash"
     },

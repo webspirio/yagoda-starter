@@ -200,6 +200,25 @@ describe('PointCashPage — honesty rule 1: the total is the server’s, not the
   });
 });
 
+describe('PointCashPage — review round 1, finding 4: paidPast truncation', () => {
+  it('shows the caveat when the payouts read is only a partial page', async () => {
+    payoutsMock.mockReturnValue({
+      data: { data: [payout({ amount: '900.00' })], total: 250, page: 1, limit: 100 },
+      isPending: false,
+      isError: false,
+    });
+
+    renderPointCash();
+
+    expect(await screen.findByText(/older ones may be missing/i)).toBeInTheDocument();
+  });
+
+  it('says nothing when the payouts read came back whole', () => {
+    renderPointCash();
+    expect(screen.queryByText(/older ones may be missing/i)).toBeNull();
+  });
+});
+
 describe('PointCashPage — honesty rule 2: zero counts read 0.00 and say so', () => {
   it('says the drawer was never counted instead of printing a bare 0.00', async () => {
     cashCountsMock.mockReturnValue(list([]));

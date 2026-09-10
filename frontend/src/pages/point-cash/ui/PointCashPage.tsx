@@ -89,6 +89,13 @@ export function PointCashPage() {
 
   const pointName = (points ?? []).find((p) => p.id === pointId)?.name ?? '';
   const hasTarget = pointRow?.target_cash != null;
+  // Finding 4 (review round 1) — the payouts read is capped at 100 with no
+  // lower date bound, so `CashLedger`'s `paidPast` may cover only recent
+  // history on a point with a long season. `total` beats what was actually
+  // fetched exactly when that happened; `CashLedger` turns this into a
+  // caveat under that one row rather than a number that quietly is not
+  // what its label claims.
+  const payoutsTruncated = payouts.data ? payouts.data.total > payouts.data.data.length : false;
   // §7.3 — a point with no counts at all reads `0.00`, correctly, but would
   // look like a regression on deploy without saying so in words.
   const neverCounted = cashCounts.data?.data.length === 0;
@@ -186,6 +193,7 @@ export function PointCashPage() {
             intakes={intakes.data?.data ?? []}
             payouts={payouts.data?.data ?? []}
             transfers={ledgerTransfers.data?.data ?? []}
+            payoutsTruncated={payoutsTruncated}
           />
           <div className="flex flex-col gap-5">
             <PendingSlice
