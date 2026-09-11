@@ -1,5 +1,5 @@
 # Explicit project name keeps dev volumes/networks separate from the prod stack
-# (docker-compose.prod.yml uses web-starter-prod).
+# (docker-compose.prod.yml uses yagoda-prod).
 name: web-starter
 
 networks:

@@ -1,0 +1,36 @@
+# .github/actions/coolify-deploy/action.yml
+name: Deploy via Coolify and verify the application
+description: >-
+  Triggers a Coolify deployment (production, or the preview for pr-number),
+  waits for it, then checks /api/health/ready, /api/health/version == commit,
+  and optionally a seeded login. See scripts/ci/coolify-deploy.sh.
+inputs:
+  coolify-url: { required: true, description: Coolify base URL }
+  coolify-api-token: { required: true, description: API token (deploy + read) }
+  app-uuid: { required: true, description: Coolify application UUID }
+  base-url: { required: true, description: Public URL the deploy must answer on }
+  commit: { required: true, description: Full SHA the deployment must serve }
+  pr-number: { required: false, default: '', description: PR number for a preview deploy }
+  seed-username: { required: false, default: '', description: Seeded login to verify (previews) }
+  seed-password: { required: false, default: '', description: Its password }
+  basic-auth: { required: false, default: '', description: "user:pass for a preview behind Traefik basicAuth" }
+outputs:
+  deployment-uuid:
+    description: Coolify deployment UUID
+    value: ${{ steps.deploy.outputs.deployment_uuid }}
+runs:
+  using: composite
+  steps:
+    - id: deploy
+      shell: bash
+      env:
+        COOLIFY_URL: ${{ inputs.coolify-url }}
+        COOLIFY_API_TOKEN: ${{ inputs.coolify-api-token }}
+        COOLIFY_APP_UUID: ${{ inputs.app-uuid }}
+        BASE_URL: ${{ inputs.base-url }}
+        EXPECTED_COMMIT: ${{ inputs.commit }}
+        PR_NUMBER: ${{ inputs.pr-number }}
+        SEED_USERNAME: ${{ inputs.seed-username }}
+        SEED_PASSWORD: ${{ inputs.seed-password }}
+        BASIC_AUTH: ${{ inputs.basic-auth }}
+      run: bash "$GITHUB_ACTION_PATH/../../../scripts/ci/coolify-deploy.sh"

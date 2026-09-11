@@ -7,7 +7,6 @@ import { ScheduleModule } from '@nestjs/schedule';
 import { ThrottlerStorageRedisService } from '@nest-lab/throttler-storage-redis';
 import { LoggerModule } from 'nestjs-pino';
 import { randomUUID } from 'crypto';
-import * as Joi from 'joi';
 import type { Redis } from 'ioredis';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 import { RedisModule, REDIS_CLIENT } from './redis/redis.module';
@@ -37,44 +36,14 @@ import { authConfig } from './config/auth.config';
 import { redisConfig } from './config/redis.config';
 import { timezoneConfig } from './config/timezone.config';
 import { uploadsConfig } from './config/uploads.config';
+import { envValidationSchema } from './config/env.schema';
 
 @Module({
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
       load: [appConfig, databaseConfig, authConfig, redisConfig, timezoneConfig, uploadsConfig],
-      validationSchema: Joi.object({
-        NODE_ENV: Joi.string().valid('development', 'production', 'test').default('development'),
-        PORT: Joi.number().integer().default(3000),
-        TRUST_PROXY_HOPS: Joi.number().integer().min(0).default(0),
-        // Public origin of the frontend. Drives the CORS allowlist in app.config.
-        APP_URL: Joi.string().uri().required(),
-        JWT_SECRET: Joi.string().min(32).required(),
-        JWT_EXPIRES_IN: Joi.string().default('7d'),
-        DB_HOST: Joi.string().default('localhost'),
-        DB_PORT: Joi.number().integer().default(5432),
-        DB_USER: Joi.string().default('app'),
-        DB_PASSWORD: Joi.string().default('app'),
-        DB_NAME: Joi.string().default('app'),
-        DB_SSL: Joi.boolean().default(false),
-        REDIS_HOST: Joi.string().default('localhost'),
-        REDIS_PORT: Joi.number().integer().default(6379),
-        APP_TIMEZONE: Joi.string().default('Europe/Kyiv'),
-        // Global per-IP rate limit. Configurable ONLY so the DB-backed HTTP
-        // suites can raise it: every request in those specs comes from
-        // 127.0.0.1, so one test run looks like a single abusive client and
-        // trips the production default partway through. See
-        // `src/testing/db-harness.ts`.
-        THROTTLE_TTL_MS: Joi.number().integer().min(1).default(60_000),
-        THROTTLE_LIMIT: Joi.number().integer().min(1).default(100),
-        // Read ONLY by the BootstrapOwner migration, and only when the users
-        // table is empty. Unset in development, where SeedDevAdmin covers it.
-        BOOTSTRAP_OWNER_LOGIN: Joi.string().optional(),
-        BOOTSTRAP_OWNER_PASSWORD: Joi.string().min(8).optional(),
-        BOOTSTRAP_OWNER_FIRST_NAME: Joi.string().optional(),
-        BOOTSTRAP_OWNER_LAST_NAME: Joi.string().optional(),
-        UPLOADS_DIR: Joi.string().optional(),
-      }),
+      validationSchema: envValidationSchema,
     }),
     LoggerModule.forRootAsync({
       inject: [appConfig.KEY],

@@ -33,7 +33,8 @@ Web Starter — a production-ready web application boilerplate with a NestJS bac
 | `frontend/` | React SPA — see `frontend/CLAUDE.md` |
 | `nginx/` | Production reverse proxy (nginx config + Dockerfile) |
 | `docker-compose.yml` | Local dev stack (postgres, redis, backend, frontend) |
-| `docker-compose.prod.yml` | Production stack (postgres, redis, backend, nginx) |
+| `docker-compose.prod.yml` | Production/preview stack for Coolify (postgres, redis, backend, seed, nginx) — no host ports |
+| `docker-compose.standalone.yml` | Override adding loopback ports for a VPS without Coolify |
 | `.env` | Local secrets — not committed; copy from `.env.example` |
 
 ## Commands
@@ -61,4 +62,20 @@ npm run db:seed             # idempotent demo dataset for manual testing — see
 
 ## Deployment
 
-`nginx/` is a pure internal reverse proxy between the frontend static assets and the backend API — it does not terminate TLS. In `docker-compose.prod.yml`, `nginx` listens only on `127.0.0.1:8080` (plain HTTP); it expects a host-level reverse proxy or load balancer that owns the public HTTPS listener and forwards to `127.0.0.1:8080`. That terminator must allow request bodies of at least ~12 MB (`client_max_body_size`; nginx defaults to 1 MB): the app accepts image uploads up to 10 MB, and a smaller limit returns 413 before the request ever reaches the app (see `docs/vps-tls-setup.md`).
+Production and PR previews run on one Hetzner VPS under **Coolify**, which
+pulls images CI built — it never builds. `.github/workflows/ci.yml` pushes
+`ghcr.io/webspirio/yagoda-starter-{backend,nginx}:sha-<commit>` on every PR and
+on `main`; `deploy-prod` (push to `main`) and `deploy-preview` (internal PR,
+all CI jobs green) trigger Coolify through its API and then verify the
+application (`/api/health/ready`, `/api/health/version`, a seeded login for
+previews). `sha-<commit>` is the only tag ever deployed. Runbook, env tables
+and failure modes: `docs/coolify-deploy.md`; design: `docs/superpowers/specs/2026-09-09-coolify-deployment-and-cd-design.md`.
+
+`docker-compose.prod.yml` is the single compose file (no `ports`, no custom
+`networks` — Coolify's Traefik owns TLS and routing). Without Coolify, add
+`docker-compose.standalone.yml` (loopback ports) and terminate TLS per
+`docs/vps-tls-setup.md`. On that standalone path whatever terminates TLS must
+allow request bodies of at least ~12 MB — nginx defaults to 1 MB and would
+return 413 before the request reaches the app (`client_max_body_size`). Under
+Coolify there is nothing to set: Traefik has no default body limit, and the
+internal nginx already allows 12 MB against the app's 10 MB upload cap.
