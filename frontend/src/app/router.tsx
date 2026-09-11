@@ -15,6 +15,8 @@ import { PricesPage } from '@/pages/prices';
 import { DayPage } from '@/pages/day';
 import { ReceptionPage } from '@/pages/reception';
 import { JournalPage } from '@/pages/journal';
+import { PointCashPage } from '@/pages/point-cash';
+import { TransfersPage } from '@/pages/transfers';
 import { NotFoundPage } from '@/pages/not-found';
 import { UiKitPage } from '@/pages/ui-kit';
 
@@ -154,6 +156,28 @@ export const routes: RouteObject[] = [
             <RequireRole role="network_owner">
               <JournalPage />
             </RequireRole>
+          </RequireAuth>
+        ),
+      },
+      {
+        // Лише керівник: заборгованість перед ІНШИМИ точками — не справа
+        // приймальника (§7, G16). Тому роль-гейт маршруту, а не сірі кнопки.
+        path: '/transfers',
+        element: (
+          <RequireAuth>
+            <RequireRole role="network_owner">
+              <TransfersPage />
+            </RequireRole>
+          </RequireAuth>
+        ),
+      },
+      {
+        // Обидві ролі: приймальник прибитий до своєї точки токеном, керівник
+        // обирає точку. Дії всередині гейтяться `me.role`, не маршрутом.
+        path: '/point-cash',
+        element: (
+          <RequireAuth>
+            <PointCashPage />
           </RequireAuth>
         ),
       },

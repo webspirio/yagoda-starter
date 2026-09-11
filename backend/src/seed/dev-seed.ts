@@ -1,5 +1,6 @@
 import { DataSource, QueryRunner } from 'typeorm';
 import { hashPassword } from '../users/password-hashing';
+import { PointCashService } from '../point-cash/point-cash.service';
 import { composeDocumentCode } from '../common/document-code';
 import {
   buildIntake,
@@ -17,9 +18,11 @@ import {
   SEED_PRICE_CHANGES,
   SEED_PRICE_LIMITS,
   SEED_PRODUCTS,
+  SEED_CASH_COUNTS,
   SEED_SHIFTS,
   SEED_SUPPLIERS,
   SEED_TARE_TYPES,
+  SEED_TRANSFERS,
   type SeedDay,
 } from './dev-seed.data';
 
@@ -35,6 +38,8 @@ export interface DevSeedSummary {
   shifts: number;
   intakes: number;
   payouts: number;
+  transfers: number;
+  cashCounts: number;
 }
 
 const MONEY = /^(-)?(\d+)(?:\.(\d{1,2}))?$/;
@@ -94,6 +99,8 @@ export async function seedDev(ds: DataSource): Promise<DevSeedSummary> {
       shifts: 0,
       intakes: 0,
       payouts: 0,
+      transfers: 0,
+      cashCounts: 0,
     };
 
     const ownerId = await resolveOwner(qr, summary);
@@ -299,7 +306,7 @@ export async function seedDev(ds: DataSource): Promise<DevSeedSummary> {
       summary.prices += 1;
     }
 
-    await seedDocuments(qr, summary, pointId, gradeId, gradeKey);
+    await seedDocuments(qr, summary, pointId, gradeId, gradeKey, ds, ownerId);
 
     await qr.commitTransaction();
     return summary;
@@ -312,7 +319,8 @@ export async function seedDev(ds: DataSource): Promise<DevSeedSummary> {
 }
 
 /**
- * Shifts, intakes and payouts. Every intake's numbers come from the server's
+ * Shifts, intakes, payouts, transfers and the cash counts that anchor them.
+ * Every intake's numbers come from the server's
  * own `buildIntake()` over the price and tare snapshots the seed itself wrote,
  * and every document code from `composeDocumentCode()` — the demo stores what
  * the API would have stored. Idempotent by the schema's own keys: a shift by
@@ -327,6 +335,8 @@ async function seedDocuments(
   pointId: Map<string, string>,
   gradeId: Map<string, string>,
   gradeKey: (product: string, grade: string) => string,
+  ds: DataSource,
+  ownerId: string,
 ): Promise<void> {
   const tz = process.env.APP_TIMEZONE ?? 'Europe/Kyiv';
   const days = await one<{ today: string; yesterday: string }>(
@@ -509,6 +519,106 @@ async function seedDocuments(
       ],
     );
     summary.payouts += 1;
+  }
+
+  // TRANSFERS BEFORE COUNTS, and both after the payouts above: a closing
+  // count's expectation is «the opening count plus this shift's movements»,
+  // and the transfers are half of those movements.
+  for (const t of SEED_TRANSFERS) {
+    const pid = pointId.get(t.point)!;
+    const date = dateOf(t.day);
+    // `transfers` has no `code` — (point, sent_at) is the natural key here.
+    const found = await one<{ id: string }>(
+      qr,
+      `SELECT id FROM transfers
+        WHERE collection_point_id = $1 AND sent_at = ${localTs(2, 3, 4)}`,
+      [pid, date, t.sentAt, tz],
+    );
+    if (found) continue;
+    const accepted = t.status !== 'sent';
+    await qr.query(
+      // ALL THREE DISPUTE FIELDS OR NONE. `DisputeTransferDto` makes
+      // `reported_cash`, `reported_crates` and `dispute_note` mandatory
+      // together, so writing only the cash here would store a shape the API
+      // cannot produce — and this file's contract is that the demo stores
+      // exactly what the API would have stored.
+      `INSERT INTO transfers
+         (collection_point_id, cash, crates, carrier, sent_by_user_id, sent_at, status,
+          accepted_by_user_id, accepted_date, accepted_at,
+          reported_cash, reported_crates, dispute_note)
+       VALUES ($1, $2, $3, $4, $5, ${localTs(6, 7, 12)}, $8::transfer_status,
+               $9, CASE WHEN $9::uuid IS NULL THEN NULL ELSE $6::date END,
+               CASE WHEN $9::uuid IS NULL THEN NULL ELSE ${localTs(6, 10, 12)} END,
+               $11, $13, $14)`,
+      [
+        pid,
+        t.cash,
+        t.crates,
+        t.carrier,
+        ownerId,
+        date,
+        t.sentAt,
+        t.status,
+        accepted ? userByLogin.get(t.acceptedBy!)! : null,
+        t.acceptedAt ?? t.sentAt,
+        t.reportedCash ?? null,
+        tz,
+        t.reportedCrates ?? null,
+        t.disputeNote ?? null,
+      ],
+    );
+    summary.transfers += 1;
+  }
+
+  // THE EXPECTATION IS NEVER COMPUTED HERE. `PointCashService` owns the cash
+  // formula and this reuses it through the seed's own transaction, so the demo
+  // dataset cannot drift from the rule the API enforces — and a seed run is
+  // itself a check that the formula still parses against a real schema.
+  //
+  // ORDER IS LOAD-BEARING: `SEED_CASH_COUNTS` is chronological, because each
+  // opening count reads the previous count as its expectation.
+  const cash = new PointCashService(ds, { appTimezone: tz });
+  for (const c of SEED_CASH_COUNTS) {
+    const shift = shiftId.get(`${c.point}/${c.day}`);
+    if (!shift) throw new Error(`Seed cash count has no shift: ${c.point}/${c.day}`);
+    const found = await one<{ id: string }>(
+      qr,
+      `SELECT id FROM cash_counts WHERE shift_id = $1 AND book = 'berry' AND kind = $2::cash_count_kind`,
+      [shift, c.kind],
+    );
+    if (found) continue;
+
+    const pid = pointId.get(c.point)!;
+    const expected =
+      c.anchor ??
+      (c.kind === 'opening'
+        ? await cash.expectedForOpening(pid, qr.manager)
+        : await cash.expectedForClosing(shift, qr.manager));
+    if (expected === null) {
+      throw new Error(
+        `Seed cash count ${c.point}/${c.day}/${c.kind} has no previous count — it needs an \`anchor\``,
+      );
+    }
+    // An anchoring count IS its own expectation: `drift` is '0.00' by the
+    // type's contract, so this stays `expected` either way.
+    const counted = addMoney(expected, c.drift);
+
+    await qr.query(
+      `INSERT INTO cash_counts
+         (shift_id, book, kind, counted_amount, expected_amount, counted_by_user_id, counted_at)
+       VALUES ($1, 'berry', $2::cash_count_kind, $3, $4, $5, ${localTs(6, 7, 8)})`,
+      [
+        shift,
+        c.kind,
+        counted,
+        expected,
+        userByLogin.get(c.countedBy)!,
+        dateOf(c.day),
+        c.time,
+        tz,
+      ],
+    );
+    summary.cashCounts += 1;
   }
 }
 

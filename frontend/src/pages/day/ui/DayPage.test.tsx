@@ -1,3 +1,4 @@
+import { act } from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -8,6 +9,11 @@ import type { Shift } from '@/entities/shift';
 import type { Intake } from '@/entities/intake';
 import type { Payout } from '@/entities/payout';
 import { DayPage } from './DayPage';
+
+// Matches the CountDrawerDialog's submit button whether i18n has resolved it
+// yet (raw key), is showing the Ukrainian copy, or — the state once Task 5's
+// strings land — the English one this suite's locale actually renders.
+const SUBMIT_COUNT = /day\.count\.submit|Записати|Record/i;
 
 const {
   meMock,
@@ -71,10 +77,20 @@ vi.mock('@/entities/collection-point', () => ({
 }));
 
 vi.mock('../api/shiftActions', () => ({
-  useOpenShiftMutation: () => ({ mutateAsync: openMock, isPending: false }),
-  useCloseShiftMutation: () => ({ mutateAsync: closeMock, isPending: false }),
   useReopenShiftMutation: () => ({ mutateAsync: reopenMock, isPending: false }),
 }));
+
+// Only the two mutation hooks are stubbed — `CountDrawerDialog` (the real
+// component, re-exported by this same module) still renders for real, since
+// the open/close tests below drive it exactly as an operator would.
+vi.mock('@/features/count-shift', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/features/count-shift')>();
+  return {
+    ...actual,
+    useOpenShiftMutation: () => ({ mutateAsync: openMock, isPending: false }),
+    useCloseShiftMutation: () => ({ mutateAsync: closeMock, isPending: false }),
+  };
+});
 
 const OPERATOR = {
   id: 'u1',
@@ -100,6 +116,7 @@ const openShift: Shift = {
   closed_by_user_id: null,
   closed_at: null,
   created_at: '2026-09-08T05:00:00Z',
+  explanation: null,
 };
 
 const closedShift: Shift = {
@@ -263,17 +280,100 @@ describe('DayPage — the operator on an open shift', () => {
     expect(screen.queryByText(/Showing the first/)).toBeNull();
   });
 
-  it('closes the shift by its id, but only after the confirmation', async () => {
+  it('closes the shift with the counted drawer amount, but only once it is recorded', async () => {
     const user = userEvent.setup();
     renderDay();
 
     await user.click(screen.getByRole('button', { name: 'Close shift' }));
-    const dialog = await screen.findByRole('alertdialog');
-    expect(within(dialog).getByText('Close the shift?')).toBeInTheDocument();
+    const dialog = await screen.findByRole('dialog');
     expect(closeMock).not.toHaveBeenCalled();
 
-    await user.click(within(dialog).getByRole('button', { name: 'Close shift' }));
-    await waitFor(() => expect(closeMock).toHaveBeenCalledWith('s1'));
+    await user.type(within(dialog).getByRole('textbox'), '980.40');
+    await user.click(within(dialog).getByRole('button', { name: SUBMIT_COUNT }));
+    await waitFor(() =>
+      expect(closeMock).toHaveBeenCalledWith({ id: 's1', counted_amount: '980.40' }),
+    );
+  });
+
+  it('opens the close dialog with the close copy', async () => {
+    // CountDrawerDialog.test.tsx already covers the title switching on
+    // `mode`; what belongs to THIS page is that its close click wires the
+    // dialog to close mode at all — proven here by the body sentence that is
+    // unique to close mode (day.count.closeBody), which also covers 1.4's
+    // restored warning that the day locks and only the owner can reopen it.
+    const user = userEvent.setup();
+    renderDay();
+
+    await user.click(screen.getByRole('button', { name: 'Close shift' }));
+    const dialog = await screen.findByRole('dialog');
+    expect(
+      within(dialog).getByText(/only the owner can reopen it/),
+    ).toBeInTheDocument();
+  });
+
+  it('closes the count dialog once the close is recorded', async () => {
+    const user = userEvent.setup();
+    renderDay();
+
+    await user.click(screen.getByRole('button', { name: 'Close shift' }));
+    const dialog = await screen.findByRole('dialog');
+    await user.type(within(dialog).getByRole('textbox'), '980.40');
+    await user.click(within(dialog).getByRole('button', { name: SUBMIT_COUNT }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  });
+
+  it('closes the shift it was opened for, even if the query has since gone empty', async () => {
+    // Pins what ad72a39 actually changed: the close click now captures the
+    // shift id into `countTarget` on click, not read back off `shift.data`
+    // at submit time — so a refetch that lands under the still-open dialog
+    // can't turn its submit into the old `if (!id) return` silent no-op.
+    //
+    // A same-URL `replace` navigation (rather than `rerender`) is what
+    // actually pushes the new mocked shift value down to DayPage here:
+    // react-router's RouterProvider memoizes its rendered route tree on its
+    // own internal `state`, so re-passing the identical `router` object
+    // with an unchanged location is a no-op for it — only a fresh
+    // `state.location` (which `navigate` produces even for a same-path,
+    // `replace: true` call) forces the remount-free re-render this test needs.
+    const user = userEvent.setup();
+    let current: Shift | null = openShift;
+    shiftMock.mockImplementation(() => ({ data: current, isPending: false, isError: false }));
+
+    const { router } = renderDay();
+    await user.click(screen.getByRole('button', { name: 'Close shift' }));
+    const dialog = await screen.findByRole('dialog');
+
+    current = null; // the shift query refetched to nothing
+    await act(async () => {
+      router.navigate(router.state.location.pathname + router.state.location.search, {
+        replace: true,
+      });
+    }); // …and the page re-rendered under the still-open dialog
+
+    await user.type(within(dialog).getByRole('textbox'), '980.40');
+    await user.click(within(dialog).getByRole('button', { name: SUBMIT_COUNT }));
+    await waitFor(() =>
+      expect(closeMock).toHaveBeenCalledWith({ id: 's1', counted_amount: '980.40' }),
+    );
+  });
+
+  it('keeps its dialogs on distinct React keys, so a remount never strands the old one', async () => {
+    // Both remount counters start at 0. A bare numeric key on each put two
+    // siblings on key "0" — React reports it, and after the first bump the
+    // closed count dialog was reconciled away without ever being unmounted,
+    // leaving its form and i18n subscriptions alive.
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const user = userEvent.setup();
+    renderDay();
+
+    await user.click(screen.getByRole('button', { name: 'Close shift' }));
+    await screen.findByRole('dialog');
+
+    const duplicateKey = consoleError.mock.calls.filter((call) =>
+      String(call[0]).includes('same key'),
+    );
+    consoleError.mockRestore();
+    expect(duplicateKey).toEqual([]);
   });
 
   it('opens the receipt for an intake row, but a payout row stays non-clickable', async () => {
@@ -309,7 +409,7 @@ describe('DayPage — the operator before the shift is open', () => {
     shiftMock.mockReturnValue({ data: null, isPending: false, isError: false });
   });
 
-  it('says the shift is not opened yet and opens it on demand', async () => {
+  it('says the shift is not opened yet and opens it with the counted drawer amount', async () => {
     const user = userEvent.setup();
     const { container } = renderDay();
 
@@ -318,7 +418,13 @@ describe('DayPage — the operator before the shift is open', () => {
     );
 
     await user.click(screen.getByRole('button', { name: 'Open shift' }));
-    await waitFor(() => expect(openMock).toHaveBeenCalledTimes(1));
+    const dialog = await screen.findByRole('dialog');
+    await user.type(within(dialog).getByRole('textbox'), '1500.00');
+    await user.click(within(dialog).getByRole('button', { name: SUBMIT_COUNT }));
+    await waitFor(() =>
+      expect(openMock).toHaveBeenCalledWith({ counted_amount: '1500.00' }),
+    );
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
   });
 
   it('offers nothing while the shift query is still in flight', () => {

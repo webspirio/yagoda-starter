@@ -136,9 +136,13 @@ describe('documents pipeline (HTTP)', () => {
     let shiftId: string;
 
     it('lets the operator open a shift, deriving point and business_date', async () => {
+      // §6.1 — opening now counts the drawer in the same request. This is the
+      // point's FIRST count, so its expected figure is the counted one, with
+      // no discrepancy — nothing this suite asserts on here, only exercised.
       const res = await request(app.getHttpServer())
         .post('/shifts')
         .set('Authorization', `Bearer ${operatorToken}`)
+        .send({ counted_amount: '5000.00' })
         .expect(201);
 
       expect(res.body.collection_point_id).toBe(pointId);
@@ -165,6 +169,7 @@ describe('documents pipeline (HTTP)', () => {
       const res = await request(app.getHttpServer())
         .post('/shifts')
         .set('Authorization', `Bearer ${operatorToken}`)
+        .send({ counted_amount: '5000.00' })
         .expect(409);
       expect(res.body.code ?? res.body.message).toBeDefined();
     });
@@ -181,9 +186,13 @@ describe('documents pipeline (HTTP)', () => {
     });
 
     it('refuses the operator a reopen, and refuses the owner one with no reason', async () => {
+      // §6.1 — closing now counts the drawer too. A NEUTRAL figure (matching
+      // the opening count above) keeps the discrepancy at zero on purpose, so
+      // a fixture value can never mask a real arithmetic bug later.
       await request(app.getHttpServer())
         .post(`/shifts/${shiftId}/close`)
         .set('Authorization', `Bearer ${operatorToken}`)
+        .send({ counted_amount: '5000.00' })
         .expect(201);
 
       // §10.2 puts corrections with the owner; the operator who closed it
@@ -206,6 +215,7 @@ describe('documents pipeline (HTTP)', () => {
       await request(app.getHttpServer())
         .post(`/shifts/${shiftId}/close`)
         .set('Authorization', `Bearer ${ownerToken}`)
+        .send({ counted_amount: '5000.00' })
         .expect(403);
     });
 
@@ -229,11 +239,13 @@ describe('documents pipeline (HTTP)', () => {
       await request(app.getHttpServer())
         .post(`/shifts/${shiftId}/close`)
         .set('Authorization', `Bearer ${operatorToken}`)
+        .send({ counted_amount: '5000.00' })
         .expect(201);
 
       const res = await request(app.getHttpServer())
         .post('/shifts')
         .set('Authorization', `Bearer ${operatorToken}`)
+        .send({ counted_amount: '5000.00' })
         .expect(409);
       expect(res.body.code).toBe('SHIFT_DAY_ALREADY_USED');
 
@@ -330,6 +342,7 @@ describe('documents pipeline (HTTP)', () => {
         await request(app.getHttpServer())
           .post('/shifts')
           .set('Authorization', `Bearer ${operatorToken}`)
+          .send({ counted_amount: '5000.00' })
           .expect(201);
       }
     }, 30_000);
@@ -928,6 +941,7 @@ describe('documents pipeline (HTTP)', () => {
         await request(app.getHttpServer())
           .post('/shifts')
           .set('Authorization', `Bearer ${operatorToken}`)
+          .send({ counted_amount: '5000.00' })
           .expect(201);
       }
 

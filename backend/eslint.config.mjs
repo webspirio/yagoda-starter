@@ -31,15 +31,33 @@ export default tseslint.config(
     // and produces a wrong `amount` that §2.7 then freezes forever on a
     // supplier's printed receipt.
     //
-    // Scoped to the four modules that handle money rather than applied
+    // Scoped to the seven modules that handle money rather than applied
     // globally: `*` and `/` are perfectly ordinary in pagination offsets,
     // image resizing and time arithmetic, and a repo-wide ban would train
     // people to write disable comments.
+    //
+    // `transfers` and `point-cash` join the list with the cash slice. Neither
+    // does arithmetic in JavaScript today — the cash formula and the shortfall
+    // are both computed in Postgres, where `numeric` is exact — and this guard
+    // is what keeps it that way. `shortfall = target_cash - cash` written in
+    // TypeScript is the exact shape §5.1 forbids, and it would look perfectly
+    // reasonable in review.
+    //
+    // `cash-counts` joins with the cash counts slice, and it is the one entry
+    // here that does arithmetic in JavaScript ALREADY: `cash-count.mapper.ts`
+    // computes the discrepancy as `counted − expected` through
+    // `common/money.ts`'s `sub`. `Number(a) - Number(b)` would produce the
+    // same answer on every fixture in the suite and a wrong one on a real
+    // kopiyka, so this guard is not prospective here — it is guarding a live
+    // call site.
     files: [
       'src/intakes/**/*.ts',
       'src/payouts/**/*.ts',
       'src/shifts/**/*.ts',
       'src/supplier-balance/**/*.ts',
+      'src/transfers/**/*.ts',
+      'src/point-cash/**/*.ts',
+      'src/cash-counts/**/*.ts',
     ],
     ignores: ['**/*.spec.ts', '**/*.db-spec.ts'],
     rules: {

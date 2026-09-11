@@ -14,9 +14,9 @@ import { Textarea } from '@/shared/ui/textarea';
 import { Button } from '@/shared/ui/button';
 import { toast } from '@/shared/ui/toast';
 import { formatLongDate } from '@/shared/lib/date';
+import { apiErrorToBanner } from '@/shared/lib/api-error';
 import type { Shift } from '@/entities/shift';
 import { useReopenShiftMutation } from '../api/shiftActions';
-import { apiErrorToBanner } from '../lib/apiErrorToBanner';
 
 interface ReopenFormValues {
   reason: string;
@@ -53,7 +53,7 @@ export function ReopenShiftDialog({
       toast.success(t('day.toast.reopened'));
       onClose();
     } catch (error) {
-      setFormError(apiErrorToBanner(error));
+      setFormError(apiErrorToBanner(error, 'day.errors.failed'));
     }
   });
 

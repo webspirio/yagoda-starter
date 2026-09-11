@@ -55,4 +55,34 @@ describe('useVoidDocumentMutation', () => {
       expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: queryKeys.supplierBalances });
     });
   });
+
+  it('posts to /transfers/:id/void for a transfer', async () => {
+    mock.onPost('/transfers/t1/void').reply(200);
+    const { result } = renderHook(() => useVoidDocumentMutation(), { wrapper });
+
+    await result.current.mutateAsync({ kind: 'transfer', id: 't1', reason: 'sent by mistake' });
+
+    expect(mock.history.post).toHaveLength(1);
+    expect(mock.history.post[0].url).toBe('/transfers/t1/void');
+    expect(JSON.parse(mock.history.post[0].data as string)).toEqual({ reason: 'sent by mistake' });
+  });
+
+  it('voids a transfer and invalidates transfers + point cash, not supplier balances', async () => {
+    mock.onPost('/transfers/t1/void').reply(200);
+    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries');
+    const { result } = renderHook(() => useVoidDocumentMutation(), { wrapper });
+
+    await result.current.mutateAsync({ kind: 'transfer', id: 't1', reason: 'sent by mistake' });
+
+    // A voided transfer stops being added to a point's cash — its invalidation
+    // differs from a document's (§9.3): `transfers`/`pointCash` move, not the
+    // document journals or a supplier's running balance.
+    await waitFor(() => {
+      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: queryKeys.transfers });
+      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: queryKeys.pointCash });
+    });
+    expect(invalidateSpy).not.toHaveBeenCalledWith({ queryKey: queryKeys.supplierBalances });
+    expect(invalidateSpy).not.toHaveBeenCalledWith({ queryKey: queryKeys.intakes });
+    expect(invalidateSpy).not.toHaveBeenCalledWith({ queryKey: queryKeys.payouts });
+  });
 });

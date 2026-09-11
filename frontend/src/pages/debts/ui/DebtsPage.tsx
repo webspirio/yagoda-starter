@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { HandCoins } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { Link, useNavigate } from 'react-router';
+import { isTruncated } from '@/shared/api';
 import { ListPage } from '@/shared/ui/templates/list-page';
 import type { Column } from '@/shared/ui/data-table';
 import { Badge } from '@/shared/ui/badge';
@@ -160,7 +161,7 @@ export function DebtsPage() {
               label={t('debts.tiles.totalOwed')}
               value={formatUah(totalOwed, locale)}
               tone="amber"
-              hint={total > rows.length ? t('debts.tiles.totalOwedHint') : undefined}
+              hint={isTruncated(data) ? t('debts.tiles.totalOwedHint') : undefined}
             />
             <StatTile label={t('debts.tiles.withDebt')} value={total} />
           </StatGrid>
@@ -202,7 +203,7 @@ export function DebtsPage() {
             <EmptyState
               title={t('debts.empty.noMatchTitle')}
               hint={
-                total > rows.length
+                isTruncated(data)
                   ? t('debts.empty.noMatchHint', { count: rows.length })
                   : t('debts.empty.noMatchHintShort')
               }

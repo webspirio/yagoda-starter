@@ -63,3 +63,25 @@ export const formatShortDate = (iso: string, locale = 'uk'): string =>
   new Intl.DateTimeFormat(locale, { day: '2-digit', month: '2-digit', timeZone: 'UTC' }).format(
     toUtcNoon(iso),
   );
+
+const TIME_PARTS: Intl.DateTimeFormatOptions = { hour: '2-digit', minute: '2-digit' };
+const DAY_MONTH_PARTS: Intl.DateTimeFormatOptions = { day: '2-digit', month: '2-digit' };
+
+/**
+ * `iso` here is a full timestamp (a document's `sent_at`), not a business
+ * date — unlike every helper above, this deliberately reads the LOCAL time
+ * zone (no `timeZone: 'UTC'`): a person needs to know what the clock on the
+ * wall said, not what UTC said.
+ */
+export const formatTime = (iso: string, locale: string): string =>
+  new Date(iso).toLocaleTimeString(locale, TIME_PARTS);
+
+/**
+ * What `TransferHistory` rendered for `sent_at` by hand before this existed:
+ * short day.month, then ` · `, then the time. One `Date` parse per call —
+ * not one for the date half and another for the time half.
+ */
+export const formatDateTime = (iso: string, locale: string): string => {
+  const d = new Date(iso);
+  return `${d.toLocaleDateString(locale, DAY_MONTH_PARTS)} · ${d.toLocaleTimeString(locale, TIME_PARTS)}`;
+};

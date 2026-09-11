@@ -12,13 +12,8 @@ export interface Product {
   created_at: string;
 }
 
-/** The API's list envelope, shared by all three catalog resources. */
-export interface Paginated<T> {
-  data: T[];
-  total: number;
-  page: number;
-  limit: number;
-}
+/** Re-exported so existing `../model/product` importers keep working — see `@/shared/api/pagination.ts`. */
+export type { Paginated } from '@/shared/api';
 
 /** POST body — `name` is the only field the create DTO accepts. */
 export interface CreateProductInput {

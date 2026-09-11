@@ -48,12 +48,8 @@ export interface IntakeDetail extends Intake {
   items: IntakeItem[];
 }
 
-export interface Paginated<T> {
-  data: T[];
-  total: number;
-  page: number;
-  limit: number;
-}
+/** Re-exported so existing `../model/intake` importers keep working — see `@/shared/api/pagination.ts`. */
+export type { Paginated } from '@/shared/api';
 
 export interface DocumentFilter {
   shiftId?: string;

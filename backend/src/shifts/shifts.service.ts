@@ -5,10 +5,13 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { EntityManager, IsNull, Repository } from 'typeorm';
+import { DataSource, EntityManager, IsNull, Repository } from 'typeorm';
 import { Shift } from './shift.entity';
 import { ShiftStatus } from './shift-status.enum';
+import { OpenShiftDto } from './dto/open-shift.dto';
+import { CloseShiftDto } from './dto/close-shift.dto';
 import { ReopenShiftDto } from './dto/reopen-shift.dto';
+import { SetExplanationDto } from './dto/set-explanation.dto';
 import { ListShiftsQueryDto } from './dto/list-shifts.query';
 import { CurrentShiftQueryDto } from './dto/current-shift.query';
 import { ShiftResponse, toShiftResponse } from './shift.mapper';
@@ -20,6 +23,10 @@ import { skipOf } from '../common/dto/pagination-query.dto';
 import { TimeService } from '../time/time.service';
 import { UserRole } from '../users/user-role.enum';
 import type { AuthenticatedUser } from '../auth/jwt.strategy';
+import { CashCount } from '../cash-counts/cash-count.entity';
+import { CashBook } from '../cash-counts/cash-book.enum';
+import { CashCountKind } from '../cash-counts/cash-count-kind.enum';
+import { PointCashService } from '../point-cash/point-cash.service';
 
 /** Shape of the driver error TypeORM surfaces for a unique violation. Narrowed
  *  rather than cast, because `constraint` is what tells the two apart. */
@@ -36,26 +43,25 @@ export class ShiftsService {
     private readonly points: CollectionPointsService,
     private readonly audit: AuditService,
     private readonly time: TimeService,
+    private readonly dataSource: DataSource,
+    private readonly cash: PointCashService,
   ) {}
 
   /**
-   * OPERATOR ONLY, and the absence of an owner branch is the rule rather than a
-   * simplification. §10.3 — «Тільки приймальник — і це не помилка»:
+   * OPERATOR ONLY (§10.3) — unchanged. What is new is that opening a shift
+   * COUNTS THE DRAWER, in the same transaction (spec §6.1).
    *
-   *   «Відкрити чужий робочий день і закрити його за людину нема кому, а підпис
-   *    під зведеною касою мусить належати тому, хто цю касу тримав у руках.»
+   * THE FIRST COUNT AT A POINT SETS `expected = counted`, and that is not a
+   * fudge: the client's ruling is that the counted figure BECOMES the starting
+   * balance, so at that instant the expectation genuinely is whatever is in
+   * the drawer. It keeps `Σ (counted − expected)` — the point's accumulated
+   * unexplained difference — correct with no special case, because the first
+   * count contributes zero to it.
    *
-   * So there is no DTO, no body, and no point to resolve: an operator's point
-   * comes from their token and an owner has none. The controller's
-   * `@Auth(UserRole.PointOperator)` is the real gate; the check below is what
-   * happens if `CHK_users_role_point` and the guard both ever fail.
-   *
-   * THE ROUTE IS PROVISIONAL IN SHAPE, not only in its close path. §07:30 makes
-   * opening a shift «сума вводиться фактично порахована», and the 03.09.2026
-   * schema note makes that TWO records, one per cash book. Both arrive with
-   * `cash_counts`, and that is when this grows a DTO.
+   * A DISCREPANCY DOES NOT REFUSE. Client ruling of 09.09.2026, overruling
+   * §7.7: «якщо каса не сходиться, це не блокує процес».
    */
-  async open(actor: AuthenticatedUser): Promise<ShiftResponse> {
+  async open(actor: AuthenticatedUser, dto: OpenShiftDto): Promise<ShiftResponse> {
     const pointId = actor.collection_point_id;
     if (!pointId) {
       throw new ForbiddenException({
@@ -70,71 +76,155 @@ export class ShiftsService {
     // 9th. Under APP_TIMEZONE=UTC this line silently misfiles an evening shift
     // and every document in it.
     const business_date = this.time.now().toISODate()!;
+    const countedAt = this.time.now().toJSDate();
 
-    let shift: Shift;
-    try {
-      shift = await this.repo.save(
-        this.repo.create({
-          collection_point_id: pointId,
-          opened_by_user_id: actor.sub,
-          business_date,
-          status: ShiftStatus.Open,
-        }),
+    return this.dataSource.transaction(async (m) => {
+      let shift: Shift;
+      try {
+        shift = await m.save(
+          Shift,
+          this.repo.create({
+            collection_point_id: pointId,
+            opened_by_user_id: actor.sub,
+            business_date,
+            status: ShiftStatus.Open,
+          }),
+        );
+      } catch (error) {
+        throw this.translateUniqueViolation(error);
+      }
+
+      // `null` means this point has never been counted — see the header.
+      const previous = await this.cash.expectedForOpening(pointId, m);
+      const expected = previous ?? dto.counted_amount;
+
+      const countRow = await m.save(CashCount, {
+        shift_id: shift.id,
+        book: CashBook.Berry,
+        kind: CashCountKind.Opening,
+        counted_amount: dto.counted_amount,
+        expected_amount: expected,
+        // §10.6 — whoever pressed the button, not whoever opened the shift.
+        counted_by_user_id: actor.sub,
+        counted_at: countedAt,
+      });
+
+      await this.audit.record(
+        {
+          action: 'shift.opened',
+          actor_id: actor.sub,
+          target_type: 'shift',
+          target_id: shift.id,
+          after: { collection_point_id: pointId, business_date },
+        },
+        m,
       );
-    } catch (error) {
-      throw this.translateUniqueViolation(error);
-    }
+      await this.audit.record(
+        {
+          action: 'cash-count.recorded',
+          actor_id: actor.sub,
+          target_type: 'cash_count',
+          target_id: countRow.id,
+          after: {
+            shift_id: shift.id,
+            kind: CashCountKind.Opening,
+            counted_amount: dto.counted_amount,
+            expected_amount: expected,
+          },
+        },
+        m,
+      );
 
-    await this.audit.record({
-      action: 'shift.opened',
-      actor_id: actor.sub,
-      target_type: 'shift',
-      target_id: shift.id,
-      after: { collection_point_id: pointId, business_date },
+      return toShiftResponse(shift);
     });
-
-    return toShiftResponse(shift);
   }
 
   /**
-   * Operator only, same as `open` (§10.3). `assertOwnsPoint` still runs: the
-   * guard has established the actor is AN operator, not that this is THEIR
-   * point.
+   * OPERATOR ONLY (§10.3), and it STAYS operator-only. §7.7 once made a
+   * discrepancy the owner's business; the client's ruling of 09.09.2026
+   * removed the blocking, and with it the only reason the owner was involved.
    *
-   * DELIBERATELY DOES NOT READ `business_date`. That is what makes the
-   * forgotten-close path work — Friday's shift closed on Saturday morning, no
-   * special case, no stuck point. The only visible oddity is that Friday's
-   * `closed_at` reads Saturday, which is true and is what happened.
+   * A DISCREPANCY NEVER REFUSES. There is no branch here that compares counted
+   * against expected and behaves differently — the comparison is the reader's,
+   * not the writer's. `shift_status.awaiting_explanation` is unreachable BY
+   * DECISION; see the enum's comment.
    *
-   * A DUMB STAMP, and it will be revisited. §7.7 makes closing WITH a
-   * discrepancy the owner's act with a mandatory explanation, but a discrepancy
-   * needs `cash_counts` to exist before anything can detect one. Until then
-   * `awaiting_explanation` is unreachable and `explanation` stays null.
+   * STILL DOES NOT READ `business_date`, which is what makes the forgotten-close
+   * path work: Friday's shift closed on Saturday morning, no special case. The
+   * cost is named in the spec's §9.1 — a transfer accepted into that shift on
+   * Saturday takes Friday's date.
    */
-  async close(actor: AuthenticatedUser, id: string): Promise<ShiftResponse> {
-    const shift = await this.loadVisible(actor, id);
+  async close(
+    actor: AuthenticatedUser,
+    id: string,
+    dto: CloseShiftDto,
+  ): Promise<ShiftResponse> {
+    return this.dataSource.transaction(async (m) => {
+      // UNDER THE ROW LOCK, and the check with it — see `loadVisible`. Read
+      // outside, `closed_at` is a check-then-write: a double-tapped button
+      // sends two closes, both see `null`, and the loser's count INSERT hits
+      // `UQ_cash_counts_shift_book_kind` as a bare 23505 that
+      // `translateUniqueViolation` does not know — a 500 on the flagship money
+      // path. `shift-close-race.db-spec.ts` is that scenario.
+      const shift = await this.loadVisible(actor, id, m);
+      if (shift.closed_at) {
+        throw new ConflictException({
+          message: 'That shift is already closed',
+          code: 'SHIFT_ALREADY_CLOSED',
+        });
+      }
 
-    if (shift.closed_at) {
-      throw new ConflictException({
-        message: 'That shift is already closed',
-        code: 'SHIFT_ALREADY_CLOSED',
+      // AFTER the lock, not before: a request that waited on the winner should
+      // stamp the moment it actually closed the shift, not the moment it
+      // started queuing for the right to.
+      const closedAt = this.time.now().toJSDate();
+
+      // `null` only if something wrote a shift without going through `open`.
+      const expected = (await this.cash.expectedForClosing(shift.id, m)) ?? dto.counted_amount;
+
+      const countRow = await m.save(CashCount, {
+        shift_id: shift.id,
+        book: CashBook.Berry,
+        kind: CashCountKind.Closing,
+        counted_amount: dto.counted_amount,
+        expected_amount: expected,
+        counted_by_user_id: actor.sub,
+        counted_at: closedAt,
       });
-    }
 
-    shift.closed_at = this.time.now().toJSDate();
-    shift.closed_by_user_id = actor.sub;
-    shift.status = ShiftStatus.Closed;
-    const saved = await this.repo.save(shift);
+      shift.closed_at = closedAt;
+      shift.closed_by_user_id = actor.sub;
+      shift.status = ShiftStatus.Closed;
+      const saved = await m.save(Shift, shift);
 
-    await this.audit.record({
-      action: 'shift.closed',
-      actor_id: actor.sub,
-      target_type: 'shift',
-      target_id: saved.id,
-      after: { business_date: saved.business_date },
+      await this.audit.record(
+        {
+          action: 'shift.closed',
+          actor_id: actor.sub,
+          target_type: 'shift',
+          target_id: saved.id,
+          after: { business_date: saved.business_date },
+        },
+        m,
+      );
+      await this.audit.record(
+        {
+          action: 'cash-count.recorded',
+          actor_id: actor.sub,
+          target_type: 'cash_count',
+          target_id: countRow.id,
+          after: {
+            shift_id: saved.id,
+            kind: CashCountKind.Closing,
+            counted_amount: dto.counted_amount,
+            expected_amount: expected,
+          },
+        },
+        m,
+      );
+
+      return toShiftResponse(saved);
     });
-
-    return toShiftResponse(saved);
   }
 
   /**
@@ -159,51 +249,113 @@ export class ShiftsService {
       });
     }
 
-    const shift = await this.loadVisible(actor, id);
+    return this.dataSource.transaction(async (m) => {
+      // EVERY GUARD BELOW IS INSIDE THE TRANSACTION, under the row lock, for
+      // the reason `close` states. Two concurrent reopens both read
+      // `closed_at` set, and — unlike `close` — nothing downstream stops the
+      // second: it re-demotes an already-demoted count and writes a SECOND
+      // `shift.reopened` entry, leaving the audit log claiming the shift was
+      // reopened twice by one press. Silent, and therefore worse.
+      const shift = await this.loadVisible(actor, id, m);
 
-    if (!shift.closed_at) {
-      throw new ConflictException({
-        message: 'That shift is not closed',
-        code: 'SHIFT_NOT_CLOSED',
+      if (!shift.closed_at) {
+        throw new ConflictException({
+          message: 'That shift is not closed',
+          code: 'SHIFT_NOT_CLOSED',
+        });
+      }
+
+      // Both guards below are also enforced by the partial unique index, but a
+      // 23505 arriving from a REOPEN reads as a mystery — these produce the two
+      // messages that say what to do instead.
+      const openElsewhere = await this.findOpenAtPoint(shift.collection_point_id, m);
+      if (openElsewhere) {
+        throw new ConflictException({
+          message: 'Another shift is already open at that point — close it first',
+          code: 'SHIFT_ALREADY_OPEN',
+        });
+      }
+
+      const newest = await m.findOne(Shift, {
+        where: { collection_point_id: shift.collection_point_id },
+        order: { business_date: 'DESC' },
       });
-    }
+      if (newest && newest.id !== shift.id) {
+        throw new ConflictException({
+          message: 'Only the point’s most recent shift can be reopened',
+          code: 'SHIFT_NOT_NEWEST',
+        });
+      }
 
-    // Both guards below are also enforced by the partial unique index, but a
-    // 23505 arriving from a REOPEN reads as a mystery — these produce the two
-    // messages that say what to do instead.
-    const openElsewhere = await this.findOpenAtPoint(shift.collection_point_id);
-    if (openElsewhere) {
-      throw new ConflictException({
-        message: 'Another shift is already open at that point — close it first',
-        code: 'SHIFT_ALREADY_OPEN',
-      });
-    }
+      const before = { closed_at: shift.closed_at, status: shift.status };
 
-    const newest = await this.repo.findOne({
-      where: { collection_point_id: shift.collection_point_id },
-      order: { business_date: 'DESC' },
+      // §6.3 — THE CLOSING COUNT BECOMES A MIDDAY COUNT. Reopening needs a free
+      // `closing` slot (UQ_cash_counts_shift_book_kind), and the 11:00 count
+      // was never a close: it was a count, taken at 11:00, which is exactly
+      // what `midday` means and why `midday` sits outside that index.
+      //
+      // This MUTATES a posted row's `kind`, which this codebase otherwise
+      // refuses to do. The defence is the one that lets a shift be reopened
+      // while an intake may only be voided: a count carries no code, no paper
+      // twin and no supplier copy. The alternatives are destroying evidence
+      // (§7.6 forbids it) or making every closing-count lookup an ordering
+      // problem, where a bug returns a wrong cash figure instead of an error.
+      // Everything except `kind` is preserved.
+      await m.update(
+        CashCount,
+        { shift_id: shift.id, kind: CashCountKind.Closing },
+        { kind: CashCountKind.Midday },
+      );
+
+      shift.closed_at = null;
+      shift.closed_by_user_id = null;
+      shift.status = ShiftStatus.Open;
+      const saved = await m.save(Shift, shift);
+
+      await this.audit.record(
+        {
+          action: 'shift.reopened',
+          actor_id: actor.sub,
+          target_type: 'shift',
+          target_id: saved.id,
+          before,
+          after: { closed_at: null, status: ShiftStatus.Open },
+          note: dto.reason,
+        },
+        m,
+      );
+
+      return toShiftResponse(saved);
     });
-    if (newest && newest.id !== shift.id) {
-      throw new ConflictException({
-        message: 'Only the point’s most recent shift can be reopened',
-        code: 'SHIFT_NOT_NEWEST',
+  }
+
+  /**
+   * OWNER ONLY (§10.2 — corrections and judgements belong to the owner).
+   * Idempotent: re-sending replaces the text.
+   */
+  async setExplanation(
+    actor: AuthenticatedUser,
+    id: string,
+    dto: SetExplanationDto,
+  ): Promise<ShiftResponse> {
+    if (actor.role !== UserRole.NetworkOwner) {
+      throw new ForbiddenException({
+        message: 'Only the network owner may explain a discrepancy',
+        code: 'OWNER_ONLY',
       });
     }
-
-    const before = { closed_at: shift.closed_at, status: shift.status };
-    shift.closed_at = null;
-    shift.closed_by_user_id = null;
-    shift.status = ShiftStatus.Open;
+    const shift = await this.loadVisible(actor, id);
+    const before = { explanation: shift.explanation };
+    shift.explanation = dto.explanation.trim();
     const saved = await this.repo.save(shift);
 
     await this.audit.record({
-      action: 'shift.reopened',
+      action: 'shift.explained',
       actor_id: actor.sub,
       target_type: 'shift',
       target_id: saved.id,
       before,
-      after: { closed_at: null, status: ShiftStatus.Open },
-      note: dto.reason,
+      after: { explanation: saved.explanation },
     });
 
     return toShiftResponse(saved);
@@ -272,9 +424,29 @@ export class ShiftsService {
     return repo.findOne({ where: { id } });
   }
 
-  /** 404 — not 403 — for another point's shift, matching `SuppliersService`. */
-  private async loadVisible(actor: AuthenticatedUser, id: string): Promise<Shift> {
-    const shift = await this.repo.findOne({ where: { id } });
+  /**
+   * 404 — not 403 — for another point's shift, matching `SuppliersService`.
+   *
+   * PASSING A MANAGER TAKES `pessimistic_write` ON THE ROW, and every verb
+   * that writes passes one. The lock is not a precaution: `close` and `reopen`
+   * both decide what to do from `closed_at`, and a decision taken on a row
+   * nobody holds is a check-then-write no matter how soon the write follows.
+   * `TransfersService.transition` states the same rule at length — «§6.11's
+   * 409 has to be enforced where the write happens or it is not enforced at
+   * all» — and this is that rule applied to shifts.
+   *
+   * The two READ callers (`findOne`, `setExplanation`'s sibling paths) pass
+   * nothing and take no lock, because a read that locks a row blocks the
+   * operator who is trying to close it.
+   */
+  private async loadVisible(
+    actor: AuthenticatedUser,
+    id: string,
+    m?: EntityManager,
+  ): Promise<Shift> {
+    const shift = m
+      ? await m.findOne(Shift, { where: { id }, lock: { mode: 'pessimistic_write' } })
+      : await this.repo.findOne({ where: { id } });
     if (!shift) throw new NotFoundException('Shift not found');
     if (actor.role !== UserRole.NetworkOwner) {
       if (actor.collection_point_id !== shift.collection_point_id) {

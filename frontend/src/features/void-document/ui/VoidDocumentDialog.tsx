@@ -14,7 +14,7 @@ import { Textarea } from '@/shared/ui/textarea';
 import { Button } from '@/shared/ui/button';
 import { toast } from '@/shared/ui/toast';
 import { useVoidDocumentMutation } from '../api/useVoidDocument';
-import { apiErrorToBanner } from '../lib/apiErrorToBanner';
+import { apiErrorToBanner } from '@/shared/lib/api-error';
 
 interface VoidFormValues {
   reason: string;
@@ -36,7 +36,7 @@ export function VoidDocumentDialog({
   onClose,
   onVoided,
 }: {
-  kind: 'intake' | 'payout';
+  kind: 'intake' | 'payout' | 'transfer';
   id: string;
   code: string;
   open: boolean;
@@ -63,7 +63,7 @@ export function VoidDocumentDialog({
       onVoided?.();
       onClose();
     } catch (error) {
-      setFormError(apiErrorToBanner(error));
+      setFormError(apiErrorToBanner(error, 'void.errors.failed'));
     }
   });
 

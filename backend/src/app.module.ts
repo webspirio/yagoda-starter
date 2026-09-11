@@ -21,6 +21,9 @@ import { ShiftsModule } from './shifts/shifts.module';
 import { IntakesModule } from './intakes/intakes.module';
 import { SupplierBalanceModule } from './supplier-balance/supplier-balance.module';
 import { PayoutsModule } from './payouts/payouts.module';
+import { TransfersModule } from './transfers/transfers.module';
+import { PointCashModule } from './point-cash/point-cash.module';
+import { CashCountsModule } from './cash-counts/cash-counts.module';
 import { GradePricesModule } from './grade-prices/grade-prices.module';
 import { AuditModule } from './audit/audit.module';
 import { MediaModule } from './media/media.module';
@@ -114,6 +117,9 @@ import { envValidationSchema } from './config/env.schema';
     IntakesModule,
     SupplierBalanceModule,
     PayoutsModule,
+    TransfersModule,
+    PointCashModule,
+    CashCountsModule,
     GradePricesModule,
     AuditModule,
     MediaModule,

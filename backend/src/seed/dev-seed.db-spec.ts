@@ -1,5 +1,6 @@
 import { DataSource } from 'typeorm';
 import { openTestDataSource } from '../testing/db-harness';
+import { PointCashService } from '../point-cash/point-cash.service';
 import { verifyPassword } from '../users/password-hashing';
 import { seedDev } from './dev-seed';
 import {
@@ -43,6 +44,8 @@ describe('dev seed', () => {
       shifts: 0,
       intakes: 0,
       payouts: 0,
+      transfers: 0,
+      cashCounts: 0,
     });
   });
 
@@ -159,6 +162,75 @@ describe('dev seed', () => {
       [pair.point_id, pair.grade_id],
     );
     await seedDev(ds);
+  });
+
+  /**
+   * THE DEMO DATASET HAS TO BE DEFENSIBLE MONEY, not just rows. After the cash
+   * counts slice a point with no `cash_counts` reads `0.00` no matter how many
+   * documents it has, so a seed that skipped them would hand slice 3 a screen
+   * of zeros and hand `close` a shift with no anchor.
+   *
+   * The figures below are derived, not copied: the seed asks
+   * `PointCashService` for every expectation it writes, so this test failing
+   * means the seed and the formula have diverged — which is exactly what it is
+   * for.
+   */
+  it('seeds a point cash figure the formula agrees with, anchored on a real count', async () => {
+    const cash = new PointCashService(ds, { appTimezone: process.env.APP_TIMEZONE ?? 'Europe/Kyiv' });
+    const idOf = async (name: string): Promise<string> => {
+      const [row] = await ds.query(`SELECT id FROM collection_points WHERE name = $1`, [name]);
+      return row.id as string;
+    };
+
+    // Шипинки: today opens on 9 910 (yesterday's closing count), takes a
+    // 15 000 transfer and pays out 4 000.
+    await expect(cash.cashFor(await idOf('Шипинки'))).resolves.toBe('20910.00');
+
+    // Конищів: anchored at 3 000, plus a DISPUTED and unresolved transfer,
+    // which contributes the point's own reported figure of 9 800 rather than
+    // the 10 000 that left the base (client ruling 09.09.2026).
+    await expect(cash.cashFor(await idOf('Конищів'))).resolves.toBe('12800.00');
+
+    // Гайове: anchored at 2 500, minus 2 000 paid out. Its transfer is still
+    // `sent` and moves nothing (§7.9).
+    await expect(cash.cashFor(await idOf('Гайове'))).resolves.toBe('500.00');
+  });
+
+  it('seeds exactly one open incident, so the owner’s working list is not empty', async () => {
+    const [row] = await ds.query(
+      `SELECT (c.counted_amount - c.expected_amount)::text AS discrepancy, c.kind
+         FROM cash_counts c
+         JOIN shifts s ON s.id = c.shift_id
+         JOIN collection_points cp ON cp.id = s.collection_point_id
+        WHERE cp.name = 'Шипинки'
+          AND c.counted_amount <> c.expected_amount
+          AND c.kind <> 'midday'
+          AND (s.explanation IS NULL OR s.explanation = '')`,
+    );
+    // 90 ₴ short at yesterday's close — the one seeded discrepancy, and what
+    // makes `GET /cash-counts?only_discrepancies=true` return something on a
+    // fresh database.
+    expect(row).toBeDefined();
+    expect(row.discrepancy).toBe('-90.00');
+    expect(row.kind).toBe('closing');
+  });
+
+  it('the seeded dispute stores all three fields, so it has a real crates_discrepancy', async () => {
+    // The bug this pins was in the INSERT, not in the dataset: the statement
+    // listed `reported_cash` and neither `reported_crates` nor `dispute_note`,
+    // so the row came back with `crates_discrepancy: null` and no note — a
+    // shape `POST /transfers/:id/dispute` cannot produce, against this file's
+    // contract that the demo stores what the API would have stored.
+    const [row] = await ds.query(
+      `SELECT t.reported_cash::text AS reported_cash, t.reported_crates, t.dispute_note, t.crates
+         FROM transfers t
+         JOIN collection_points cp ON cp.id = t.collection_point_id
+        WHERE cp.name = 'Конищів' AND t.status = 'disputed'`,
+    );
+    expect(row).toBeDefined();
+    expect(row.reported_cash).toBe('9800.00');
+    expect(row.reported_crates).toBe(row.crates);
+    expect(row.dispute_note?.trim()).toBeTruthy();
   });
 
   it('a seeded operator can sign in with the documented password and is pinned to their point', async () => {
