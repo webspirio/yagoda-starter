@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Injectable,
   NotFoundException,
@@ -10,6 +11,7 @@ import { IntakeTopUp } from './intake-top-up.entity';
 import { CreateIntakeTopUpDto } from './dto/create-intake-top-up.dto';
 import { IntakeTopUpResponse, toIntakeTopUpResponse } from './intake-top-up.mapper';
 import { Intake } from '../intakes/intake.entity';
+import { VoidDocumentDto } from '../intakes/dto/void-document.dto';
 import { AuditService } from '../audit/audit.service';
 import { gt } from '../common/money';
 import { UserRole } from '../users/user-role.enum';
@@ -93,6 +95,73 @@ export class IntakeTopUpsService {
           target_id: saved.id,
           after: { amount: saved.amount, intake_id: intake.id, intake_code: intake.code },
           note: saved.reason,
+        },
+        m,
+      );
+
+      return toIntakeTopUpResponse(saved, intake);
+    });
+  }
+
+  /**
+   * §9.3 — a document is never edited. A wrong amount or a wrong reason is
+   * corrected by voiding this row and writing a new one; there is no PATCH and
+   * there never will be.
+   *
+   * OWNER ONLY, unlike `IntakesService.void`, which lets an operator void
+   * their own receipt in their own open shift (§9.4). The asymmetry is not an
+   * oversight: an operator never creates one of these, so «своя квитанція»
+   * has no meaning here, and there is no shift whose closure could gate it.
+   *
+   * THE LOAD AND THE STATE CHECK ARE INSIDE THE TRANSACTION, under a row lock,
+   * for the reason `IntakesService.void` spells out: reading `voided_at`
+   * before the transaction opens is a check-then-write, and a double-tapped
+   * button would write two audit entries naming possibly different reasons
+   * while `voided_by_user_id` is last-writer-wins.
+   */
+  async void(
+    actor: AuthenticatedUser,
+    id: string,
+    dto: VoidDocumentDto,
+  ): Promise<IntakeTopUpResponse> {
+    if (actor.role !== UserRole.NetworkOwner) {
+      throw new ForbiddenException({
+        message: 'Only the network owner can void a top-up',
+        code: 'OWNER_ONLY',
+      });
+    }
+
+    return this.dataSource.transaction(async (m) => {
+      const topUp = await m.findOne(IntakeTopUp, {
+        where: { id },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!topUp) throw new NotFoundException('Intake top-up not found');
+
+      if (topUp.voided_at) {
+        throw new ConflictException({
+          message: 'That top-up is already voided',
+          code: 'ALREADY_VOIDED',
+        });
+      }
+
+      const intake = await m.findOne(Intake, { where: { id: topUp.intake_id } });
+      if (!intake) throw new NotFoundException('Intake top-up not found');
+
+      topUp.voided_at = new Date();
+      topUp.voided_by_user_id = actor.sub;
+      topUp.void_reason = dto.reason.trim();
+      const saved = await m.save(IntakeTopUp, topUp);
+
+      await this.audit.record(
+        {
+          action: 'intake-top-up.voided',
+          actor_id: actor.sub,
+          target_type: 'intake-top-up',
+          target_id: saved.id,
+          before: { voided_at: null },
+          after: { voided_at: saved.voided_at, amount: saved.amount, intake_id: intake.id },
+          note: saved.void_reason,
         },
         m,
       );
