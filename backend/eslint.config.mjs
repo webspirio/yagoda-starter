@@ -31,7 +31,7 @@ export default tseslint.config(
     // and produces a wrong `amount` that §2.7 then freezes forever on a
     // supplier's printed receipt.
     //
-    // Scoped to the seven modules that handle money rather than applied
+    // Scoped to the eight modules that handle money rather than applied
     // globally: `*` and `/` are perfectly ordinary in pagination offsets,
     // image resizing and time arithmetic, and a repo-wide ban would train
     // people to write disable comments.
@@ -50,6 +50,13 @@ export default tseslint.config(
     // same answer on every fixture in the suite and a wrong one on a real
     // kopiyka, so this guard is not prospective here — it is guarding a live
     // call site.
+    //
+    // `intake-top-ups` joins with the top-ups slice (#61). Like `transfers`
+    // and `point-cash` before it, it does no JavaScript arithmetic today —
+    // the third term of the debt formula is computed in Postgres, and this
+    // module only compares its amount against zero through `money.ts`'s `gt`.
+    // The guard is what keeps a later `debt + top_up` from being written in
+    // TypeScript, where it would look perfectly reasonable in review.
     files: [
       'src/intakes/**/*.ts',
       'src/payouts/**/*.ts',
@@ -58,6 +65,7 @@ export default tseslint.config(
       'src/transfers/**/*.ts',
       'src/point-cash/**/*.ts',
       'src/cash-counts/**/*.ts',
+      'src/intake-top-ups/**/*.ts',
     ],
     ignores: ['**/*.spec.ts', '**/*.db-spec.ts'],
     rules: {
