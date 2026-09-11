@@ -9,6 +9,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
 import { IntakeTopUp } from './intake-top-up.entity';
 import { CreateIntakeTopUpDto } from './dto/create-intake-top-up.dto';
+import { ListIntakeTopUpsQueryDto } from './dto/list-intake-top-ups.query';
 import { IntakeTopUpResponse, toIntakeTopUpResponse } from './intake-top-up.mapper';
 import { Intake } from '../intakes/intake.entity';
 import { VoidDocumentDto } from '../intakes/dto/void-document.dto';
@@ -16,6 +17,26 @@ import { AuditService } from '../audit/audit.service';
 import { gt } from '../common/money';
 import { UserRole } from '../users/user-role.enum';
 import type { AuthenticatedUser } from '../auth/jwt.strategy';
+import { resolvePointFilter } from '../auth/access/point-scope';
+import { Paginated } from '../common/dto/paginated';
+import { skipOf } from '../common/dto/pagination-query.dto';
+
+/** The raw shape `queryBase` projects. Aliased columns, because a raw query is
+ *  the only way to bring the parent's `code` and `voided_at` back in one trip. */
+interface RawTopUpRow {
+  t_id: string;
+  t_intake_id: string;
+  t_amount: string;
+  t_reason: string;
+  t_created_by_user_id: string;
+  t_created_at: Date;
+  t_updated_at: Date;
+  t_voided_at: Date | null;
+  t_voided_by_user_id: string | null;
+  t_void_reason: string | null;
+  i_code: string;
+  i_voided_at: Date | null;
+}
 
 /**
  * «Фантомний залишок» (#61) — the owner's third source of supplier debt.
@@ -168,5 +189,98 @@ export class IntakeTopUpsService {
 
       return toIntakeTopUpResponse(saved, intake);
     });
+  }
+
+  /**
+   * ONE ROW, SCOPED. Another point's top-up is a 404 and never a 403: these
+   * rows carry a supplier's name and a money amount, so their existence must
+   * not be confirmed to someone who may not see them — the same rule
+   * `IntakesService` follows.
+   */
+  async findOne(actor: AuthenticatedUser, id: string): Promise<IntakeTopUpResponse> {
+    const pointId = resolvePointFilter(actor);
+    const row = await this.queryBase(pointId)
+      .andWhere('t.id = :id', { id })
+      .getRawOne<RawTopUpRow>();
+
+    if (!row) throw new NotFoundException('Intake top-up not found');
+    return this.toResponse(row);
+  }
+
+  /**
+   * THE POINT FILTER IS A TWO-HOP JOIN, and there is no shortcut. Neither
+   * `intake_top_ups` nor `intakes` stores a point; the supplier does (§3.9).
+   * Anyone tempted to denormalise a `collection_point_id` onto this table
+   * should read the entity header first — the duplication is the thing the
+   * schema forbids, not the join.
+   */
+  async list(
+    actor: AuthenticatedUser,
+    query: ListIntakeTopUpsQueryDto,
+  ): Promise<Paginated<IntakeTopUpResponse>> {
+    const pointId = resolvePointFilter(actor, query.collection_point_id);
+    const qb = this.queryBase(pointId);
+
+    if (query.supplier_id) qb.andWhere('i.supplier_id = :supplierId', { supplierId: query.supplier_id });
+    if (query.intake_id) qb.andWhere('t.intake_id = :intakeId', { intakeId: query.intake_id });
+    if (!query.include_voided) qb.andWhere('t.voided_at IS NULL');
+
+    const total = await qb.getCount();
+    const rows = await qb
+      .orderBy('t.created_at', 'DESC')
+      .addOrderBy('t.id', 'ASC')
+      .limit(query.limit)
+      .offset(skipOf(query))
+      .getRawMany<RawTopUpRow>();
+
+    return {
+      data: rows.map((row) => this.toResponse(row)),
+      total,
+      page: query.page,
+      limit: query.limit,
+    };
+  }
+
+  /** The join every read shares, so the scope rule is written once. */
+  private queryBase(pointId?: string) {
+    const qb = this.repo
+      .createQueryBuilder('t')
+      .innerJoin(Intake, 'i', 'i.id = t.intake_id')
+      .innerJoin('suppliers', 's', 's.id = i.supplier_id')
+      .select([
+        't.id AS t_id',
+        't.intake_id AS t_intake_id',
+        't.amount AS t_amount',
+        't.reason AS t_reason',
+        't.created_by_user_id AS t_created_by_user_id',
+        't.created_at AS t_created_at',
+        't.updated_at AS t_updated_at',
+        't.voided_at AS t_voided_at',
+        't.voided_by_user_id AS t_voided_by_user_id',
+        't.void_reason AS t_void_reason',
+        'i.code AS i_code',
+        'i.voided_at AS i_voided_at',
+      ]);
+
+    if (pointId) qb.andWhere('s.collection_point_id = :pointId', { pointId });
+    return qb;
+  }
+
+  private toResponse(row: RawTopUpRow): IntakeTopUpResponse {
+    return toIntakeTopUpResponse(
+      {
+        id: row.t_id,
+        intake_id: row.t_intake_id,
+        amount: row.t_amount,
+        reason: row.t_reason,
+        created_by_user_id: row.t_created_by_user_id,
+        created_at: row.t_created_at,
+        updated_at: row.t_updated_at,
+        voided_at: row.t_voided_at,
+        voided_by_user_id: row.t_voided_by_user_id,
+        void_reason: row.t_void_reason,
+      } as IntakeTopUp,
+      { id: row.t_intake_id, code: row.i_code, voided_at: row.i_voided_at },
+    );
   }
 }
