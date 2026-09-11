@@ -167,119 +167,124 @@ function ProductsPanel() {
   ];
 
   return (
-    <AsyncBody
-      isPending={products.isPending || grades.isPending}
-      isError={products.isError || grades.isError}
-      isEmpty={productRows.length === 0}
-      empty={
-        <EmptyState
-          title={t('catalog.products.empty.title')}
-          hint={t('catalog.products.empty.hint')}
-          action={
-            <Button onClick={() => openProduct(null)}>
-              <Plus className="size-4" />
-              {t('catalog.products.new')}
-            </Button>
-          }
-        />
-      }
-    >
-      <div className="grid items-start gap-5 md:grid-cols-[minmax(240px,300px)_1fr]">
-        {/* Master: the product list — one flat, scannable column with a grade count. */}
-        <div className="flex flex-col gap-3">
-          <div className="flex gap-2">
-            <TextInput
-              type="search"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder={t('catalog.products.search')}
-              aria-label={t('catalog.products.search')}
-              className="min-w-0"
-            />
-            <Button className="h-[46px] shrink-0" onClick={() => openProduct(null)}>
-              <Plus className="size-4" />
-              {t('catalog.products.new')}
-            </Button>
-          </div>
-          <Card>
-            <ul aria-label={t('catalog.products.list')} className="divide-y divide-border">
-              {visible.map((p) => {
-                const count = gradesByProduct.get(p.id)?.length ?? 0;
-                const isSelected = selected?.id === p.id;
-                return (
-                  <li key={p.id}>
-                    <button
-                      type="button"
-                      aria-current={isSelected ? 'true' : undefined}
-                      className={cn(
-                        'flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm transition-colors',
-                        'hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:ring-inset',
-                        isSelected &&
-                          'bg-primary/8 font-medium shadow-[inset_3px_0_0_var(--primary)]',
-                        count === 0 && !isSelected && 'text-muted-foreground',
-                      )}
-                      onClick={() => setProductParam(p.id)}
-                    >
-                      <span className="min-w-0 flex-1 truncate">{p.name}</span>
-                      <span className="font-mono text-xs tabular-nums text-muted-foreground">
-                        {count}
-                      </span>
-                    </button>
-                  </li>
-                );
-              })}
-              {visible.length === 0 ? (
-                <li className="px-4 py-6 text-center text-sm text-muted-foreground">
-                  {t('catalog.products.noMatch')}
-                </li>
-              ) : null}
-            </ul>
-          </Card>
-        </div>
-
-        {/* Detail: the chosen product's grades, with the ONE pair of actions in its header. */}
-        {selected ? (
-          <Card aria-labelledby="catalog-product-title" role="region">
-            <div className="flex flex-wrap items-center gap-3 border-b border-border px-5 py-4">
-              <div className="min-w-0">
-                <h2 id="catalog-product-title" className="font-display text-lg font-medium">
-                  {selected.name}
-                </h2>
-                <p className="text-xs text-muted-foreground">
-                  {t('catalog.grades.count', { count: selectedGrades.length })} ·{' '}
-                  {t('catalog.grades.activeCount', { count: activeCount })}
-                </p>
-              </div>
-              <div className="ml-auto flex shrink-0 gap-2">
-                <Button variant="outline" size="sm" onClick={() => openProduct(selected)}>
-                  {t('catalog.products.rename')}
-                </Button>
-                <Button size="sm" onClick={() => openGrade(null)}>
-                  <Plus />
-                  {t('catalog.grades.new')}
-                </Button>
-              </div>
-            </div>
-            {selectedGrades.length === 0 ? (
-              <div className="p-5">
-                <EmptyState
-                  title={t('catalog.grades.empty.title')}
-                  hint={t('catalog.grades.empty.hint')}
-                />
-              </div>
-            ) : (
-              <DataTable<ProductGrade>
-                frame={false}
-                columns={columns}
-                rows={selectedGrades}
-                rowKey={(g) => g.id}
-                onRowClick={(g) => openGrade(g)}
+    <>
+      <AsyncBody
+        isPending={products.isPending || grades.isPending}
+        isError={products.isError || grades.isError}
+        isEmpty={productRows.length === 0}
+        empty={
+          <EmptyState
+            title={t('catalog.products.empty.title')}
+            hint={t('catalog.products.empty.hint')}
+            action={
+              <Button onClick={() => openProduct(null)}>
+                <Plus className="size-4" />
+                {t('catalog.products.new')}
+              </Button>
+            }
+          />
+        }
+      >
+        <div className="grid items-start gap-5 md:grid-cols-[minmax(240px,300px)_1fr]">
+          {/* Master: the product list — one flat, scannable column with a grade count. */}
+          <div className="flex flex-col gap-3">
+            <div className="flex gap-2">
+              <TextInput
+                type="search"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder={t('catalog.products.search')}
+                aria-label={t('catalog.products.search')}
+                className="min-w-0"
               />
-            )}
-          </Card>
-        ) : null}
-      </div>
+              <Button className="h-[46px] shrink-0" onClick={() => openProduct(null)}>
+                <Plus className="size-4" />
+                {t('catalog.products.new')}
+              </Button>
+            </div>
+            <Card>
+              <ul aria-label={t('catalog.products.list')} className="divide-y divide-border">
+                {visible.map((p) => {
+                  const count = gradesByProduct.get(p.id)?.length ?? 0;
+                  const isSelected = selected?.id === p.id;
+                  return (
+                    <li key={p.id}>
+                      <button
+                        type="button"
+                        aria-current={isSelected ? 'true' : undefined}
+                        className={cn(
+                          'flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm transition-colors',
+                          'hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:ring-inset',
+                          isSelected &&
+                            'bg-primary/8 font-medium shadow-[inset_3px_0_0_var(--primary)]',
+                          count === 0 && !isSelected && 'text-muted-foreground',
+                        )}
+                        onClick={() => setProductParam(p.id)}
+                      >
+                        <span className="min-w-0 flex-1 truncate">{p.name}</span>
+                        <span className="font-mono text-xs tabular-nums text-muted-foreground">
+                          {count}
+                        </span>
+                      </button>
+                    </li>
+                  );
+                })}
+                {visible.length === 0 ? (
+                  <li className="px-4 py-6 text-center text-sm text-muted-foreground">
+                    {t('catalog.products.noMatch')}
+                  </li>
+                ) : null}
+              </ul>
+            </Card>
+          </div>
 
+          {/* Detail: the chosen product's grades, with the ONE pair of actions in its header. */}
+          {selected ? (
+            <Card aria-labelledby="catalog-product-title" role="region">
+              <div className="flex flex-wrap items-center gap-3 border-b border-border px-5 py-4">
+                <div className="min-w-0">
+                  <h2 id="catalog-product-title" className="font-display text-lg font-medium">
+                    {selected.name}
+                  </h2>
+                  <p className="text-xs text-muted-foreground">
+                    {t('catalog.grades.count', { count: selectedGrades.length })} ·{' '}
+                    {t('catalog.grades.activeCount', { count: activeCount })}
+                  </p>
+                </div>
+                <div className="ml-auto flex shrink-0 gap-2">
+                  <Button variant="outline" size="sm" onClick={() => openProduct(selected)}>
+                    {t('catalog.products.rename')}
+                  </Button>
+                  <Button size="sm" onClick={() => openGrade(null)}>
+                    <Plus />
+                    {t('catalog.grades.new')}
+                  </Button>
+                </div>
+              </div>
+              {selectedGrades.length === 0 ? (
+                <div className="p-5">
+                  <EmptyState
+                    title={t('catalog.grades.empty.title')}
+                    hint={t('catalog.grades.empty.hint')}
+                  />
+                </div>
+              ) : (
+                <DataTable<ProductGrade>
+                  frame={false}
+                  columns={columns}
+                  rows={selectedGrades}
+                  rowKey={(g) => g.id}
+                  onRowClick={(g) => openGrade(g)}
+                />
+              )}
+            </Card>
+          ) : null}
+        </div>
+      </AsyncBody>
+
+      {/* Outside AsyncBody on purpose: it renders `empty` INSTEAD of its
+          children, so a dialog nested inside could never open from the empty
+          state's own «New product» button. */}
       <ProductDialog
         key={productInstance}
         product={editingProduct}
@@ -294,7 +299,7 @@ function ProductsPanel() {
         open={gradeOpen}
         onClose={() => setGradeOpen(false)}
       />
-    </AsyncBody>
+    </>
   );
 }
 
