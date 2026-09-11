@@ -68,16 +68,27 @@ describe('SupplierBalanceService', () => {
   it('returns 0.00 for a supplier with no documents at all', async () => {
     // «Перший день роботи показує всім нуль — це очікуваний стан, а не втрата
     // даних.» There is no opening-balance mechanism and there will not be one,
-    // which is why COALESCE(..., 0.00) is on both halves.
+    // which is why COALESCE(..., 0.00) is on all three terms.
     query.mockResolvedValue([{ debt: '0.00' }]);
 
     await expect(service.debtFor(SUPPLIER)).resolves.toBe('0.00');
-    expect(sql()).toMatch(/COALESCE[\s\S]*COALESCE/);
+    expect(sql()).toMatch(/COALESCE[\s\S]*COALESCE[\s\S]*COALESCE/);
     // The fallback literal is `0.00`, not `0`: `COALESCE(NULL, 0)` is an
     // integer zero Postgres renders as '0', and a mock cannot see that — so
-    // the literal itself is asserted, once per half. Proven against a real
+    // the literal itself is asserted, once per term. Proven against a real
     // Postgres by supplier-balance-list.db-spec.ts's «Петро».
-    expect(sql().match(/, 0\.00\)/g)).toHaveLength(2);
+    expect(sql().match(/, 0\.00\)/g)).toHaveLength(3);
+  });
+
+  it('correlates top-ups through their parent intake and filters BOTH void columns', async () => {
+    await service.debtFor(SUPPLIER);
+
+    expect(sql()).toContain('FROM intake_top_ups t');
+    expect(sql()).toContain('JOIN intakes ti ON ti.id = t.intake_id');
+    // Regexes, not literals: these assert the two filters exist, not how the
+    // SQL happens to be indented.
+    expect(sql()).toMatch(/ti\.voided_at\s+IS NULL/);
+    expect(sql()).toMatch(/\bt\.voided_at\s+IS NULL/);
   });
 
   it('passes a negative balance through unclamped', async () => {
