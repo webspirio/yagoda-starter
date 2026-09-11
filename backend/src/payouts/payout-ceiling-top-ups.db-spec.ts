@@ -156,6 +156,11 @@ describe('payout ceiling with top-ups (Postgres)', () => {
       amount: '2000.00',
       reason: 'доплата',
     });
+    // Pin the precondition: the debt this attempt is refused AGAINST is
+    // exactly 2000.00. Without this, a top-up that silently failed to apply
+    // would leave the debt at 0.00 and the attempt below would still throw
+    // PAYOUT_EXCEEDS_DEBT — proving nothing about the boundary itself.
+    expect(await balance.debtFor(supplierId)).toBe('2000.00');
 
     await expect(
       payouts.create(owner(), {
@@ -164,7 +169,7 @@ describe('payout ceiling with top-ups (Postgres)', () => {
         supplier_id: supplierId,
         amount: '2000.01',
       }),
-    ).rejects.toBeDefined();
+    ).rejects.toMatchObject({ response: { code: 'PAYOUT_EXCEEDS_DEBT' } });
   });
 
   it('voiding the parent receipt takes the ceiling back down', async () => {
