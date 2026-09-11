@@ -86,28 +86,27 @@ describe('intake_top_ups schema (Postgres)', () => {
     run = randomUUID().slice(0, 8);
 
     const [{ id: pointId }] = await ds.query(
-      `INSERT INTO collection_points (code, name, target_cash, target_crates)
-       VALUES ($1, $2, '0.00', 0) RETURNING id`,
-      [`T${run.slice(0, 5).toUpperCase()}`, `Point ${run}`],
+      `INSERT INTO collection_points (name, kind, code) VALUES ($1, 'reception', $2) RETURNING id`,
+      [`Доплати ${run}`, `T${run.slice(0, 5).toUpperCase()}`],
     );
     [{ id: userId }] = await ds.query(
-      `INSERT INTO users (email, name, role, collection_point_id, is_active)
-       VALUES ($1, $2, 'network_owner', NULL, true) RETURNING id`,
-      [`owner-${run}@example.com`, `Owner ${run}`],
+      `INSERT INTO users (first_name, last_name, role)
+       VALUES ('Власник', $1, 'network_owner') RETURNING id`,
+      [`Тест-${run}`],
     );
     const [{ id: supplierId }] = await ds.query(
-      `INSERT INTO suppliers (collection_point_id, first_name, last_name, kind, is_active)
-       VALUES ($1, 'Іван', $2, 'none', true) RETURNING id`,
+      `INSERT INTO suppliers (collection_point_id, first_name, last_name, is_active)
+       VALUES ($1, 'Іван', $2, true) RETURNING id`,
       [pointId, `Тест-${run}`],
     );
     const [{ id: shiftId }] = await ds.query(
-      `INSERT INTO shifts (collection_point_id, business_date, opened_by_user_id, opened_at, status)
-       VALUES ($1, CURRENT_DATE, $2, now(), 'open') RETURNING id`,
+      `INSERT INTO shifts (collection_point_id, opened_by_user_id, business_date)
+       VALUES ($1, $2, '2026-09-08') RETURNING id`,
       [pointId, userId],
     );
     [{ id: intakeId }] = await ds.query(
-      `INSERT INTO intakes (code, shift_id, supplier_id, amount, received_by_user_id, created_at)
-       VALUES ($1, $2, $3, '100.00', $4, now()) RETURNING id`,
+      `INSERT INTO intakes (code, shift_id, supplier_id, amount, received_by_user_id)
+       VALUES ($1, $2, $3, '100.00', $4) RETURNING id`,
       [`T-IN-${run}`, shiftId, supplierId, userId],
     );
   });
@@ -433,8 +432,8 @@ describe('debt with intake top-ups (Postgres)', () => {
 
   const supplier = async (last: string): Promise<string> => {
     const [row] = await ds.query(
-      `INSERT INTO suppliers (collection_point_id, first_name, last_name, kind, is_active)
-       VALUES ($1, 'Іван', $2, 'none', true) RETURNING id`,
+      `INSERT INTO suppliers (collection_point_id, first_name, last_name, is_active)
+       VALUES ($1, 'Іван', $2, true) RETURNING id`,
       [pointId, `${last}-${run}`],
     );
     return row.id;
@@ -442,9 +441,9 @@ describe('debt with intake top-ups (Postgres)', () => {
 
   const intake = async (supplierId: string, amount: string, voided = false): Promise<string> => {
     const [row] = await ds.query(
-      `INSERT INTO intakes (code, shift_id, supplier_id, amount, received_by_user_id, created_at,
+      `INSERT INTO intakes (code, shift_id, supplier_id, amount, received_by_user_id,
                             voided_at, voided_by_user_id, void_reason)
-       VALUES ($1, $2, $3, $4, $5, now(), $6, $7, $8) RETURNING id`,
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
       [
         `B-IN-${randomUUID().slice(0, 8)}`,
         shiftId,
@@ -461,8 +460,8 @@ describe('debt with intake top-ups (Postgres)', () => {
 
   const payout = async (supplierId: string, amount: string): Promise<void> => {
     await ds.query(
-      `INSERT INTO payouts (code, shift_id, supplier_id, amount, paid_by_user_id, created_at)
-       VALUES ($1, $2, $3, $4, $5, now())`,
+      `INSERT INTO payouts (code, shift_id, supplier_id, amount, paid_by_user_id)
+       VALUES ($1, $2, $3, $4, $5)`,
       [`B-PO-${randomUUID().slice(0, 8)}`, shiftId, supplierId, amount, userId],
     );
   };
@@ -489,20 +488,19 @@ describe('debt with intake top-ups (Postgres)', () => {
     run = randomUUID().slice(0, 8);
 
     const [point] = await ds.query(
-      `INSERT INTO collection_points (code, name, target_cash, target_crates)
-       VALUES ($1, $2, '0.00', 0) RETURNING id`,
-      [`B${run.slice(0, 5).toUpperCase()}`, `Point ${run}`],
+      `INSERT INTO collection_points (name, kind, code) VALUES ($1, 'reception', $2) RETURNING id`,
+      [`Баланс ${run}`, `B${run.slice(0, 5).toUpperCase()}`],
     );
     pointId = point.id;
     const [user] = await ds.query(
-      `INSERT INTO users (email, name, role, collection_point_id, is_active)
-       VALUES ($1, $2, 'network_owner', NULL, true) RETURNING id`,
-      [`bal-${run}@example.com`, `Owner ${run}`],
+      `INSERT INTO users (first_name, last_name, role)
+       VALUES ('Власник', $1, 'network_owner') RETURNING id`,
+      [`Баланс-${run}`],
     );
     userId = user.id;
     const [shift] = await ds.query(
-      `INSERT INTO shifts (collection_point_id, business_date, opened_by_user_id, opened_at, status)
-       VALUES ($1, CURRENT_DATE, $2, now(), 'open') RETURNING id`,
+      `INSERT INTO shifts (collection_point_id, opened_by_user_id, business_date)
+       VALUES ($1, $2, '2026-09-08') RETURNING id`,
       [pointId, userId],
     );
     shiftId = shift.id;
@@ -668,8 +666,10 @@ it('correlates top-ups through their parent intake and filters BOTH void columns
 
   expect(sql).toContain('FROM intake_top_ups t');
   expect(sql).toContain('JOIN intakes ti ON ti.id = t.intake_id');
-  expect(sql).toContain('ti.voided_at IS NULL');
-  expect(sql).toContain('t.voided_at  IS NULL');
+  // Regexes, not literals: these assert the two filters exist, not how the
+  // SQL happens to be indented.
+  expect(sql).toMatch(/ti\.voided_at\s+IS NULL/);
+  expect(sql).toMatch(/\bt\.voided_at\s+IS NULL/);
 });
 ```
 
@@ -979,6 +979,7 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 
 **Files:**
 - Create: `backend/src/intake-top-ups/intake-top-ups.service.ts`
+- Modify: `backend/src/audit/audit-log.entity.ts` (the `AUDIT_ACTIONS` array)
 - Test: `backend/src/intake-top-ups/intake-top-ups.service.spec.ts`
 
 **Interfaces:**
@@ -987,7 +988,18 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 
 Read `backend/src/payouts/payouts.service.ts` before starting — this service is a smaller sibling of it, and the transaction and audit shapes should match.
 
-- [ ] **Step 1: Write the failing create tests**
+- [ ] **Step 1: Add the two audit actions FIRST**
+
+In `backend/src/audit/audit-log.entity.ts`, add to the `AUDIT_ACTIONS` array, after `'payout.return-settled'`:
+
+```ts
+  'intake-top-up.created',
+  'intake-top-up.voided',
+```
+
+This comes before the service because `AuditAction` is a **closed string union** and `ts-jest` type-checks: `action: 'intake-top-up.created'` is a compile error until the union contains it, so the service's own test step cannot pass otherwise. No migration — the union is stored as `varchar` by design, precisely so "adding an action never requires a DB migration".
+
+- [ ] **Step 2: Write the failing create tests**
 
 Create `backend/src/intake-top-ups/intake-top-ups.service.spec.ts`:
 
@@ -1137,7 +1149,7 @@ describe('IntakeTopUpsService.create', () => {
 });
 ```
 
-- [ ] **Step 2: Run and watch it fail**
+- [ ] **Step 3: Run and watch it fail**
 
 ```bash
 cd backend && npm test -- intake-top-ups.service
@@ -1145,7 +1157,7 @@ cd backend && npm test -- intake-top-ups.service
 
 Expected: FAIL — `Cannot find module './intake-top-ups.service'`.
 
-- [ ] **Step 3: Write the service with `create` only**
+- [ ] **Step 4: Write the service with `create` only**
 
 Create `backend/src/intake-top-ups/intake-top-ups.service.ts`:
 
@@ -1257,7 +1269,7 @@ export class IntakeTopUpsService {
 
 Note on `reason.trim()`: `TransfersService` trims and `IntakesService` / `PayoutsService` do not. That disagreement is an existing follow-up. **Do not touch those three services in this slice** — this one simply declines to inherit the ambiguity.
 
-- [ ] **Step 4: Run the tests**
+- [ ] **Step 5: Run the tests**
 
 ```bash
 cd backend && npm test -- intake-top-ups.service
@@ -1265,11 +1277,12 @@ cd backend && npm test -- intake-top-ups.service
 
 Expected: all eight PASS.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 6: Commit**
 
 ```bash
 git add backend/src/intake-top-ups/intake-top-ups.service.ts \
-        backend/src/intake-top-ups/intake-top-ups.service.spec.ts
+        backend/src/intake-top-ups/intake-top-ups.service.spec.ts \
+        backend/src/audit/audit-log.entity.ts
 git commit -m "feat(top-ups): create a top-up (#61)
 
 Owner-only, positive-only, reason trimmed. Deliberately consults no
@@ -1549,9 +1562,8 @@ describe('IntakeTopUpsService.list (Postgres)', () => {
 
   const makePoint = async (label: string): Promise<string> => {
     const [row] = await ds.query(
-      `INSERT INTO collection_points (code, name, target_cash, target_crates)
-       VALUES ($1, $2, '0.00', 0) RETURNING id`,
-      [`${label}${run.slice(0, 4).toUpperCase()}`, `Point ${label} ${run}`],
+      `INSERT INTO collection_points (name, kind, code) VALUES ($1, 'reception', $2) RETURNING id`,
+      [`Список ${label} ${run}`, `${label}${run.slice(0, 4).toUpperCase()}`],
     );
     return row.id;
   };
@@ -1559,18 +1571,18 @@ describe('IntakeTopUpsService.list (Postgres)', () => {
   /** One point's whole chain: supplier → shift → intake → top-up. */
   const world = async (pointId: string, label: string): Promise<string> => {
     const [supplier] = await ds.query(
-      `INSERT INTO suppliers (collection_point_id, first_name, last_name, kind, is_active)
-       VALUES ($1, 'Іван', $2, 'none', true) RETURNING id`,
+      `INSERT INTO suppliers (collection_point_id, first_name, last_name, is_active)
+       VALUES ($1, 'Іван', $2, true) RETURNING id`,
       [pointId, `${label}-${run}`],
     );
     const [shift] = await ds.query(
-      `INSERT INTO shifts (collection_point_id, business_date, opened_by_user_id, opened_at, status)
-       VALUES ($1, CURRENT_DATE, $2, now(), 'open') RETURNING id`,
+      `INSERT INTO shifts (collection_point_id, opened_by_user_id, business_date)
+       VALUES ($1, $2, '2026-09-08') RETURNING id`,
       [pointId, ownerId],
     );
     const [intake] = await ds.query(
-      `INSERT INTO intakes (code, shift_id, supplier_id, amount, received_by_user_id, created_at)
-       VALUES ($1, $2, $3, '100.00', $4, now()) RETURNING id`,
+      `INSERT INTO intakes (code, shift_id, supplier_id, amount, received_by_user_id)
+       VALUES ($1, $2, $3, '100.00', $4) RETURNING id`,
       [`${label}-IN-${run}`, shift.id, supplier.id, ownerId],
     );
     const [topUp] = await ds.query(
@@ -1589,9 +1601,9 @@ describe('IntakeTopUpsService.list (Postgres)', () => {
     run = randomUUID().slice(0, 8);
 
     const [user] = await ds.query(
-      `INSERT INTO users (email, name, role, collection_point_id, is_active)
-       VALUES ($1, $2, 'network_owner', NULL, true) RETURNING id`,
-      [`list-${run}@example.com`, `Owner ${run}`],
+      `INSERT INTO users (first_name, last_name, role)
+       VALUES ('Власник', $1, 'network_owner') RETURNING id`,
+      [`Список-${run}`],
     );
     ownerId = user.id;
 
@@ -1858,7 +1870,6 @@ Everything needed to make the routes reachable. These belong in one task because
 **Files:**
 - Create: `backend/src/intake-top-ups/intake-top-ups.controller.ts`
 - Create: `backend/src/intake-top-ups/intake-top-ups.module.ts`
-- Modify: `backend/src/audit/audit-log.entity.ts` (the `AUDIT_ACTIONS` array)
 - Modify: `backend/src/app.module.ts` (imports list)
 - Modify: `backend/eslint.config.mjs` (the money guard's `files`)
 
@@ -1866,18 +1877,9 @@ Everything needed to make the routes reachable. These belong in one task because
 - Consumes: `IntakeTopUpsService` (Tasks 4–6), `Auth` / `CurrentUser` decorators from `../auth/decorators/`.
 - Produces: `IntakeTopUpsModule`, exporting `IntakeTopUpsService` for the pipeline spec and any later consumer.
 
-- [ ] **Step 1: Add the two audit actions**
+The two `AUDIT_ACTIONS` members were added in Task 4, where the first writer of them lives — `AuditAction` is a closed union and the service could not compile without them. Nothing to do here.
 
-In `backend/src/audit/audit-log.entity.ts`, add to the `AUDIT_ACTIONS` array, after `'payout.return-settled'`:
-
-```ts
-  'intake-top-up.created',
-  'intake-top-up.voided',
-```
-
-No migration: the union is stored as `varchar` by design — "adding an action must never require a DB migration".
-
-- [ ] **Step 2: Write the controller**
+- [ ] **Step 1: Write the controller**
 
 Create `backend/src/intake-top-ups/intake-top-ups.controller.ts`:
 
@@ -1947,7 +1949,7 @@ export class IntakeTopUpsController {
 }
 ```
 
-- [ ] **Step 3: Write the module**
+- [ ] **Step 2: Write the module**
 
 Create `backend/src/intake-top-ups/intake-top-ups.module.ts`:
 
@@ -1977,11 +1979,11 @@ import { AuditModule } from '../audit/audit.module';
 export class IntakeTopUpsModule {}
 ```
 
-- [ ] **Step 4: Register it**
+- [ ] **Step 3: Register it**
 
 In `backend/src/app.module.ts`, add the import statement alongside the others and insert `IntakeTopUpsModule,` into the `imports` array immediately after `PayoutsModule,` — the debt tables stay grouped.
 
-- [ ] **Step 5: Extend the money eslint guard**
+- [ ] **Step 4: Extend the money eslint guard**
 
 In `backend/eslint.config.mjs`, add to the `files` array of the money-arithmetic block:
 
@@ -2000,7 +2002,7 @@ And update the comment above it. Change "Scoped to the seven modules that handle
     // TypeScript, where it would look perfectly reasonable in review.
 ```
 
-- [ ] **Step 6: Lint, build and run everything**
+- [ ] **Step 5: Lint, build and run everything**
 
 ```bash
 cd backend && npm run lint && npm run build && npm test
@@ -2008,7 +2010,7 @@ cd backend && npm run lint && npm run build && npm test
 
 Expected: all PASS. A lint error inside `src/intake-top-ups/` means the new guard is working and something needs `money.ts`.
 
-- [ ] **Step 7: Smoke-test the routes**
+- [ ] **Step 6: Smoke-test the routes**
 
 ```bash
 cd /Users/glebvasilevskiy/Projects/webspirio/yagoda/web-starter && docker compose up -d && sleep 15
@@ -2017,11 +2019,11 @@ curl -s localhost:3000/health/ready
 
 Expected: the app boots with the new module and reports ready. If Nest fails to start, the most likely cause is the `app.module.ts` import.
 
-- [ ] **Step 8: Commit**
+- [ ] **Step 7: Commit**
 
 ```bash
 git add backend/src/intake-top-ups/ backend/src/app.module.ts \
-        backend/src/audit/audit-log.entity.ts backend/eslint.config.mjs
+        backend/eslint.config.mjs
 git commit -m "feat(top-ups): routes, module wiring and the money guard (#61)
 
 A flat /intake-top-ups resource rather than a route under /suppliers/:id,
