@@ -12,6 +12,7 @@ import { CreateIntakeTopUpDto } from './dto/create-intake-top-up.dto';
 import { ListIntakeTopUpsQueryDto } from './dto/list-intake-top-ups.query';
 import { IntakeTopUpResponse, toIntakeTopUpResponse } from './intake-top-up.mapper';
 import { Intake } from '../intakes/intake.entity';
+import { Supplier } from '../suppliers/supplier.entity';
 import { VoidDocumentDto } from '../intakes/dto/void-document.dto';
 import { AuditService } from '../audit/audit.service';
 import { gt } from '../common/money';
@@ -93,6 +94,25 @@ export class IntakeTopUpsService {
     return this.dataSource.transaction(async (m) => {
       const intake = await m.findOne(Intake, { where: { id: dto.intake_id } });
       if (!intake) throw new NotFoundException('Intake not found');
+
+      // A DEACTIVATED SUPPLIER IS REFUSED, and the asymmetry with the voided
+      // parent below is deliberate. `PayoutsService.create` refuses
+      // `SUPPLIER_INACTIVE`, so this row would raise a debt that the counter
+      // cannot settle until someone reactivates the card — a dead end with no
+      // document explaining it. A voided parent, by contrast, is a live rule
+      // of the balance formula and needs no refusal here.
+      //
+      // `supplier` cannot actually be null — `intakes.supplier_id` is a
+      // RESTRICT FK — but the type says it can, and a caller who passed a
+      // top-up's intake id is owed the same 404 the lookup above gives.
+      const supplier = await m.findOne(Supplier, { where: { id: intake.supplier_id } });
+      if (!supplier) throw new NotFoundException('Intake not found');
+      if (!supplier.is_active) {
+        throw new BadRequestException({
+          message: 'That supplier is deactivated',
+          code: 'SUPPLIER_INACTIVE',
+        });
+      }
 
       // NO CHECK ON `intake.voided_at`. Writing against a voided receipt is
       // legal and pointless: the row simply will not count, and the response

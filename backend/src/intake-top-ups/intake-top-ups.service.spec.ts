@@ -1,6 +1,7 @@
 import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import { IntakeTopUpsService } from './intake-top-ups.service';
 import { Intake } from '../intakes/intake.entity';
+import { Supplier } from '../suppliers/supplier.entity';
 import { IntakeTopUp } from './intake-top-up.entity';
 import { UserRole } from '../users/user-role.enum';
 import type { AuthenticatedUser } from '../auth/jwt.strategy';
@@ -20,8 +21,11 @@ const OPERATOR: AuthenticatedUser = {
 const INTAKE = {
   id: 'intake-1',
   code: 'KPG-IN-20260908-04412',
+  supplier_id: 'supplier-1',
   voided_at: null,
 } as Intake;
+
+const SUPPLIER = { id: 'supplier-1', is_active: true } as Supplier;
 
 describe('IntakeTopUpsService.create', () => {
   let service: IntakeTopUpsService;
@@ -31,7 +35,9 @@ describe('IntakeTopUpsService.create', () => {
 
   beforeEach(() => {
     manager = {
-      findOne: jest.fn().mockResolvedValue(INTAKE),
+      findOne: jest.fn().mockImplementation((entity: unknown) =>
+        entity === Supplier ? SUPPLIER : INTAKE,
+      ),
       save: jest.fn().mockImplementation((_entity, row: IntakeTopUp) => ({
         ...row,
         id: 'top-up-1',
@@ -68,10 +74,27 @@ describe('IntakeTopUpsService.create', () => {
   });
 
   it('404s an unknown intake', async () => {
-    manager.findOne.mockResolvedValue(null);
+    manager.findOne.mockImplementation((entity: unknown) =>
+      entity === Supplier ? SUPPLIER : null,
+    );
     await expect(
       service.create(OWNER, { intake_id: 'nope', amount: '10.00', reason: 'x' }),
     ).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it('refuses a DEACTIVATED supplier — the debt would be unpayable', async () => {
+    // `PayoutsService.create` refuses `SUPPLIER_INACTIVE`, so a top-up written
+    // here against a retired card raises a debt the counter cannot settle
+    // until someone reactivates the supplier. Refused at the source, with the
+    // same code the payout route uses, rather than discovered at the counter.
+    manager.findOne.mockImplementation((entity: unknown) =>
+      entity === Supplier ? { ...SUPPLIER, is_active: false } : INTAKE,
+    );
+
+    await expect(
+      service.create(OWNER, { intake_id: 'intake-1', amount: '2000.00', reason: 'доплата' }),
+    ).rejects.toMatchObject({ response: { code: 'SUPPLIER_INACTIVE' } });
+    expect(manager.save).not.toHaveBeenCalled();
   });
 
   it('refuses zero with a sentence, not a constraint violation', async () => {
@@ -104,8 +127,12 @@ describe('IntakeTopUpsService.create', () => {
     await expect(
       service.create(OWNER, { intake_id: 'intake-1', amount: '2000.00', reason: 'доплата' }),
     ).resolves.toBeDefined();
-    expect(manager.findOne).toHaveBeenCalledTimes(1);
     expect(manager.findOne).toHaveBeenCalledWith(Intake, { where: { id: 'intake-1' } });
+    // Exactly two lookups, the intake and its supplier — nothing else, and in
+    // particular no shift. Asserting the SET of entities rather than a count
+    // keeps this test about the shift instead of about how many rows create
+    // happens to read.
+    expect(manager.findOne.mock.calls.map((call) => call[0])).toEqual([Intake, Supplier]);
   });
 
   it('audits inside the same transaction', async () => {
@@ -131,7 +158,9 @@ describe('IntakeTopUpsService.create', () => {
     // Legal but pointless — the row will not count. Refusing it would be a
     // rule the balance formula does not have, and the mapper already tells
     // the caller it counts for nothing.
-    manager.findOne.mockResolvedValue({ ...INTAKE, voided_at: new Date() } as Intake);
+    manager.findOne.mockImplementation((entity: unknown) =>
+      entity === Supplier ? SUPPLIER : ({ ...INTAKE, voided_at: new Date() } as Intake),
+    );
 
     const res = await service.create(OWNER, {
       intake_id: 'intake-1',
