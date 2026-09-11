@@ -991,4 +991,248 @@ describe('documents pipeline (HTTP)', () => {
       expect(balance.body.debt).toBe('215.60');
     });
   });
+
+  /**
+   * §61 — «Фантомний залишок»: the owner adds a fixed, reasoned sum to one
+   * supplier's debt against an existing intake, entirely independent of any
+   * shift (`IntakeTopUpsService` never looks at one). This is the only place
+   * the whole chain — controller, `@Auth` guard, validation pipe, service and
+   * the debt formula's third term — is proven through the real routes.
+   */
+  describe('intake top-ups', () => {
+    let gradeId: string;
+    let crateId: string;
+    let shiftId: string;
+    let supplierId: string;
+    let intakeId: string;
+    let closedShiftIntakeId: string;
+    let topUpId: string;
+    let secondTopUpId: string;
+    let thirdTopUpId: string;
+    const expectedDebtWithTopUp = '3231.20';
+
+    beforeAll(async () => {
+      const productRes = await request(app.getHttpServer())
+        .post('/products')
+        .set('Authorization', `Bearer ${ownerToken}`)
+        .send({ name: `Полуниця-${randomUUID()}` })
+        .expect(201);
+
+      const gradeRes = await request(app.getHttpServer())
+        .post('/product-grades')
+        .set('Authorization', `Bearer ${ownerToken}`)
+        .send({ product_id: productRes.body.id, name: `1 сорт-${randomUUID()}` })
+        .expect(201);
+      gradeId = gradeRes.body.id as string;
+
+      const tareRes = await request(app.getHttpServer())
+        .post('/tare-types')
+        .set('Authorization', `Bearer ${ownerToken}`)
+        .send({ name: `Ящик-${randomUUID()}`, weight_kg: '1.20', deposit_price: '120.00' })
+        .expect(201);
+      crateId = tareRes.body.id as string;
+
+      await request(app.getHttpServer())
+        .post('/grade-prices')
+        .set('Authorization', `Bearer ${ownerToken}`)
+        .send({
+          collection_point_id: pointId,
+          product_grade_id: gradeId,
+          base_price: '57.00',
+          max_markup: '30.00',
+          max_discount: '20.00',
+        })
+        .expect(201);
+
+      // Earlier blocks may have left the point's shift open or closed; make it
+      // explicit rather than depend on ordering, same convention as 'intakes'
+      // and 'two payouts in flight'.
+      const current = await request(app.getHttpServer())
+        .get('/shifts/current')
+        .set('Authorization', `Bearer ${operatorToken}`);
+      if (current.status === 404) {
+        const opened = await request(app.getHttpServer())
+          .post('/shifts')
+          .set('Authorization', `Bearer ${operatorToken}`)
+          .send({ counted_amount: '5000.00' })
+          .expect(201);
+        shiftId = opened.body.id as string;
+      } else {
+        shiftId = current.body.id as string;
+      }
+
+      const supplierRes = await request(app.getHttpServer())
+        .post('/suppliers')
+        .set('Authorization', `Bearer ${operatorToken}`)
+        .send({ first_name: 'Тарас', last_name: `Доплата-${randomUUID()}` })
+        .expect(201);
+      supplierId = supplierRes.body.id as string;
+
+      const items = [
+        {
+          product_grade_id: gradeId,
+          gross_kg: '12.00',
+          tare: [{ tare_type_id: crateId, units: 1 }],
+        },
+      ];
+
+      // (12.00 − 0.00 − 1.20) × 57.00 = 615.60 — one plain receipt for the
+      // negative-case tests (role, blank reason, zero amount), none of which
+      // ever reach the intake lookup.
+      const intakeRes = await request(app.getHttpServer())
+        .post('/intakes')
+        .set('Authorization', `Bearer ${operatorToken}`)
+        .send({ code: 'TU001', supplier_id: supplierId, items })
+        .expect(201);
+      expect(intakeRes.body.amount).toBe('615.60');
+      intakeId = intakeRes.body.id as string;
+
+      // A second receipt for the SAME supplier — this is the one the real
+      // top-up (test below) attaches to, and it is about to be closed out.
+      const closedIntakeRes = await request(app.getHttpServer())
+        .post('/intakes')
+        .set('Authorization', `Bearer ${operatorToken}`)
+        .send({ code: 'TU002', supplier_id: supplierId, items })
+        .expect(201);
+      expect(closedIntakeRes.body.amount).toBe('615.60');
+      closedShiftIntakeId = closedIntakeRes.body.id as string;
+
+      // An UNRELATED supplier/intake, purely so the void tests below have
+      // their own top-up rows without disturbing supplierId's balance, which
+      // the balance test asserts on exactly.
+      const otherSupplierRes = await request(app.getHttpServer())
+        .post('/suppliers')
+        .set('Authorization', `Bearer ${operatorToken}`)
+        .send({ first_name: 'Юрій', last_name: `Сторонній-${randomUUID()}` })
+        .expect(201);
+
+      const otherIntakeRes = await request(app.getHttpServer())
+        .post('/intakes')
+        .set('Authorization', `Bearer ${operatorToken}`)
+        .send({ code: 'TU003', supplier_id: otherSupplierRes.body.id, items })
+        .expect(201);
+      const otherIntakeId = otherIntakeRes.body.id as string;
+
+      // Close the point's shift — the scenario #61 describes: the owner tops
+      // up a receipt «після того, як він уже здав», with nothing open at the
+      // point at all.
+      await request(app.getHttpServer())
+        .post(`/shifts/${shiftId}/close`)
+        .set('Authorization', `Bearer ${operatorToken}`)
+        .send({ counted_amount: '5000.00' })
+        .expect(201);
+
+      const secondRes = await request(app.getHttpServer())
+        .post('/intake-top-ups')
+        .set('Authorization', `Bearer ${ownerToken}`)
+        .send({ intake_id: otherIntakeId, amount: '50.00', reason: 'помилка суми 1' })
+        .expect(201);
+      secondTopUpId = secondRes.body.id as string;
+
+      const thirdRes = await request(app.getHttpServer())
+        .post('/intake-top-ups')
+        .set('Authorization', `Bearer ${ownerToken}`)
+        .send({ intake_id: otherIntakeId, amount: '50.00', reason: 'помилка суми 2' })
+        .expect(201);
+      thirdTopUpId = thirdRes.body.id as string;
+    }, 30_000);
+
+    it('an operator cannot create one', async () => {
+      await request(app.getHttpServer())
+        .post('/intake-top-ups')
+        .set('Authorization', `Bearer ${operatorToken}`)
+        .send({ intake_id: intakeId, amount: '2000.00', reason: 'доплата' })
+        .expect(403);
+    });
+
+    it('the owner creates one against a receipt on a CLOSED shift', async () => {
+      const res = await request(app.getHttpServer())
+        .post('/intake-top-ups')
+        .set('Authorization', `Bearer ${ownerToken}`)
+        .send({ intake_id: closedShiftIntakeId, amount: '2000.00', reason: '  доплата  ' })
+        .expect(201);
+
+      expect(res.body.reason).toBe('доплата');
+      expect(res.body.counts_toward_balance).toBe(true);
+      topUpId = res.body.id;
+    });
+
+    it('a blank reason is a 400', async () => {
+      await request(app.getHttpServer())
+        .post('/intake-top-ups')
+        .set('Authorization', `Bearer ${ownerToken}`)
+        .send({ intake_id: intakeId, amount: '10.00', reason: '   ' })
+        .expect(400);
+    });
+
+    it('zero is a 400 with a sentence, not a 500', async () => {
+      const res = await request(app.getHttpServer())
+        .post('/intake-top-ups')
+        .set('Authorization', `Bearer ${ownerToken}`)
+        .send({ intake_id: intakeId, amount: '0.00', reason: 'x' })
+        .expect(400);
+
+      expect(res.body.code).toBe('TOP_UP_AMOUNT_NOT_POSITIVE');
+    });
+
+    it('the operator at that point reads it, and the balance shows it', async () => {
+      await request(app.getHttpServer())
+        .get(`/intake-top-ups/${topUpId}`)
+        .set('Authorization', `Bearer ${operatorToken}`)
+        .expect(200);
+
+      const balance = await request(app.getHttpServer())
+        .get(`/suppliers/${supplierId}/balance`)
+        .set('Authorization', `Bearer ${operatorToken}`)
+        .expect(200);
+
+      expect(balance.body.debt).toBe(expectedDebtWithTopUp);
+    });
+
+    it('an operator at another point gets 404, not 403', async () => {
+      // `elsewhereToken` is an operator at `otherPointId` (declared in the
+      // outer scope) — the two-hop join through `intakes` → `suppliers` must
+      // hide the ROW, not merely refuse the verb.
+      await request(app.getHttpServer())
+        .get(`/intake-top-ups/${topUpId}`)
+        .set('Authorization', `Bearer ${elsewhereToken}`)
+        .expect(404);
+    });
+
+    it('the operator pays out the raised «Разом»', async () => {
+      // The intake's shift is closed by design (previous test's premise);
+      // `POST /payouts` needs an OPEN shift at the point regardless — top-ups
+      // carry no `shift_id` of their own — so this reopen is plumbing, not
+      // part of the behaviour under test.
+      await request(app.getHttpServer())
+        .post(`/shifts/${shiftId}/reopen`)
+        .set('Authorization', `Bearer ${ownerToken}`)
+        .send({ reason: 'виплата боргу за доплатою' })
+        .expect(201);
+
+      await request(app.getHttpServer())
+        .post('/payouts')
+        .set('Authorization', `Bearer ${operatorToken}`)
+        .send({ code: 'PIPE-TU-1', supplier_id: supplierId, amount: '2000.00' })
+        .expect(201);
+    });
+
+    it('the owner voids a top-up and it stops counting', async () => {
+      const res = await request(app.getHttpServer())
+        .post(`/intake-top-ups/${secondTopUpId}/void`)
+        .set('Authorization', `Bearer ${ownerToken}`)
+        .send({ reason: 'помилка суми' })
+        .expect(201);
+
+      expect(res.body.counts_toward_balance).toBe(false);
+    });
+
+    it('an operator cannot void one', async () => {
+      await request(app.getHttpServer())
+        .post(`/intake-top-ups/${thirdTopUpId}/void`)
+        .set('Authorization', `Bearer ${operatorToken}`)
+        .send({ reason: 'x' })
+        .expect(403);
+    });
+  });
 });
