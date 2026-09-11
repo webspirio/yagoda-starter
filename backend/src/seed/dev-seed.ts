@@ -22,6 +22,7 @@ import {
   SEED_SHIFTS,
   SEED_SUPPLIERS,
   SEED_TARE_TYPES,
+  SEED_TOP_UPS,
   SEED_TRANSFERS,
   type SeedDay,
 } from './dev-seed.data';
@@ -38,6 +39,7 @@ export interface DevSeedSummary {
   shifts: number;
   intakes: number;
   payouts: number;
+  topUps: number;
   transfers: number;
   cashCounts: number;
 }
@@ -99,6 +101,7 @@ export async function seedDev(ds: DataSource): Promise<DevSeedSummary> {
       shifts: 0,
       intakes: 0,
       payouts: 0,
+      topUps: 0,
       transfers: 0,
       cashCounts: 0,
     };
@@ -361,6 +364,10 @@ async function seedDocuments(
     if (row) userByLogin.set(login, row.user_id);
   }
   const pointCode = new Map(SEED_POINTS.map((p) => [p.name, p.code]));
+  // Shared by the intakes loop and the top-ups loop below, so the two can
+  // never disagree about what an intake's code looks like.
+  const intakeCodeFor = (point: string, day: SeedDay, typed: string): string =>
+    composeDocumentCode(pointCode.get(point)!, 'IN', dateOf(day), typed);
 
   const supplierId = new Map<string, string>();
   const supplierFor = async (point: string, fullName: string): Promise<string> => {
@@ -433,7 +440,7 @@ async function seedDocuments(
   }
 
   for (const doc of SEED_INTAKES) {
-    const code = composeDocumentCode(pointCode.get(doc.point)!, 'IN', dateOf(doc.day), doc.typed);
+    const code = intakeCodeFor(doc.point, doc.day, doc.typed);
     const found = await one<{ id: string }>(qr, `SELECT id FROM intakes WHERE code = $1`, [code]);
     if (found) continue;
     const shift = shiftId.get(`${doc.point}/${doc.day}`);
@@ -519,6 +526,31 @@ async function seedDocuments(
       ],
     );
     summary.payouts += 1;
+  }
+
+  // IDEMPOTENT ON (intake id, reason), because `intake_top_ups` has no `code`
+  // — a top-up has no paper twin to carry one. Re-running the seed must not
+  // stack a second 750 ₴ onto the same receipt.
+  for (const row of SEED_TOP_UPS) {
+    const code = intakeCodeFor(row.point, row.day, row.typed);
+    const intake = await one<{ id: string }>(qr, `SELECT id FROM intakes WHERE code = $1`, [
+      code,
+    ]);
+    if (!intake) throw new Error(`Seed top-up has no intake ${code}`);
+
+    const existing = await one<{ id: string }>(
+      qr,
+      `SELECT id FROM intake_top_ups WHERE intake_id = $1 AND reason = $2`,
+      [intake.id, row.reason],
+    );
+    if (existing) continue;
+
+    await qr.query(
+      `INSERT INTO intake_top_ups (intake_id, amount, reason, created_by_user_id)
+       VALUES ($1, $2, $3, $4)`,
+      [intake.id, row.amount, row.reason, ownerId],
+    );
+    summary.topUps += 1;
   }
 
   // TRANSFERS BEFORE COUNTS, and both after the payouts above: a closing

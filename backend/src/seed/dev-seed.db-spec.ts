@@ -44,6 +44,7 @@ describe('dev seed', () => {
       shifts: 0,
       intakes: 0,
       payouts: 0,
+      topUps: 0,
       transfers: 0,
       cashCounts: 0,
     });
