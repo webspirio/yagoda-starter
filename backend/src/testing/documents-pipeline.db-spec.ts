@@ -1199,6 +1199,30 @@ describe('documents pipeline (HTTP)', () => {
         .expect(404);
     });
 
+    it('the list route filters by supplier and returns the paginated envelope', async () => {
+      // The one route the follow-up «картка постачальника» is built on, over
+      // the real two-hop join: `supplier_id` lives on the PARENT intake, so a
+      // filter that reached the wrong table would return the unrelated
+      // supplier's two rows here rather than this supplier's one.
+      const res = await request(app.getHttpServer())
+        .get(`/intake-top-ups?supplier_id=${supplierId}`)
+        .set('Authorization', `Bearer ${operatorToken}`)
+        .expect(200);
+
+      expect(res.body).toMatchObject({ total: 1, page: 1 });
+      expect(res.body.data).toHaveLength(1);
+      expect(res.body.data[0].id).toBe(topUpId);
+
+      // Same filter, an operator at another point: the scope is ANDed with it.
+      const elsewhere = await request(app.getHttpServer())
+        .get(`/intake-top-ups?supplier_id=${supplierId}`)
+        .set('Authorization', `Bearer ${elsewhereToken}`)
+        .expect(200);
+
+      expect(elsewhere.body.data).toEqual([]);
+      expect(elsewhere.body.total).toBe(0);
+    });
+
     it('the operator pays out the raised «Разом»', async () => {
       // The intake's shift is closed by design (previous test's premise);
       // `POST /payouts` needs an OPEN shift at the point regardless — top-ups

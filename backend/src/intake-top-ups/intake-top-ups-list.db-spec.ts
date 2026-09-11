@@ -22,6 +22,12 @@ describe('IntakeTopUpsService.list (Postgres)', () => {
   let pointB: string;
   let ownerId: string;
   let topUpOnA: string;
+  /** Point C exists only for the filter tests: two suppliers, three intakes,
+   *  four top-ups, so `supplier_id` and `intake_id` cannot both be satisfied
+   *  by the same subset and a page can be smaller than the total. */
+  let pointC: string;
+  let supplierC1: string;
+  let intakeC1: string;
 
   const owner = (): AuthenticatedUser =>
     ({ sub: ownerId, role: UserRole.NetworkOwner, collection_point_id: null }) as AuthenticatedUser;
@@ -61,6 +67,52 @@ describe('IntakeTopUpsService.list (Postgres)', () => {
     return topUp.id;
   };
 
+  /** One supplier, one shift, N intakes at `pointC`, each with its own top-ups. */
+  const filterWorld = async (): Promise<void> => {
+    const [shift] = await ds.query(
+      `INSERT INTO shifts (collection_point_id, opened_by_user_id, business_date)
+       VALUES ($1, $2, '2026-09-08') RETURNING id`,
+      [pointC, ownerId],
+    );
+
+    const supplier = async (label: string): Promise<string> => {
+      const [row] = await ds.query(
+        `INSERT INTO suppliers (collection_point_id, first_name, last_name, is_active)
+         VALUES ($1, 'Ольга', $2, true) RETURNING id`,
+        [pointC, `${label}-${run}`],
+      );
+      return row.id;
+    };
+    const intake = async (supplierId: string, label: string): Promise<string> => {
+      const [row] = await ds.query(
+        `INSERT INTO intakes (code, shift_id, supplier_id, amount, received_by_user_id)
+         VALUES ($1, $2, $3, '100.00', $4) RETURNING id`,
+        [`${label}-IN-${run}`, shift.id, supplierId, ownerId],
+      );
+      return row.id;
+    };
+    const topUp = async (intakeId: string, amount: string): Promise<void> => {
+      await ds.query(
+        `INSERT INTO intake_top_ups (intake_id, amount, reason, created_by_user_id)
+         VALUES ($1, $2, 'доплата', $3)`,
+        [intakeId, amount, ownerId],
+      );
+    };
+
+    supplierC1 = await supplier('C1');
+    const supplierC2 = await supplier('C2');
+    intakeC1 = await intake(supplierC1, 'C1a');
+    const intakeC1b = await intake(supplierC1, 'C1b');
+    const intakeC2 = await intake(supplierC2, 'C2');
+
+    // supplierC1: two rows on intakeC1 + one on intakeC1b. supplierC2: one.
+    // So supplier_id → 3, intake_id → 2, neither filter → 4.
+    await topUp(intakeC1, '100.00');
+    await topUp(intakeC1, '200.00');
+    await topUp(intakeC1b, '300.00');
+    await topUp(intakeC2, '400.00');
+  };
+
   beforeAll(async () => {
     ds = await openTestDataSource();
     service = new IntakeTopUpsService(ds.getRepository(IntakeTopUp), ds, {
@@ -79,6 +131,9 @@ describe('IntakeTopUpsService.list (Postgres)', () => {
     pointB = await makePoint('B');
     topUpOnA = await world(pointA, 'A');
     await world(pointB, 'B');
+
+    pointC = await makePoint('C');
+    await filterWorld();
   });
 
   afterAll(async () => {
@@ -163,5 +218,75 @@ describe('IntakeTopUpsService.list (Postgres)', () => {
 
     expect(page.data.map((r) => r.id)).toEqual([topUpOnA]);
     expect(page.data[0].counts_toward_balance).toBe(false);
+  });
+
+  /**
+   * The two filters the «картка постачальника» screen (spec §14) is built on.
+   * They are separate columns on separate tables — `i.supplier_id` lives on the
+   * PARENT, `t.intake_id` on the row itself — so a fixture where both return
+   * the same subset would prove nothing about either.
+   */
+  describe('supplier_id and intake_id', () => {
+    const atPointC = (extra: Record<string, unknown>) =>
+      service.list(owner(), {
+        collection_point_id: pointC,
+        include_voided: true,
+        page: 1,
+        limit: 50,
+        ...extra,
+      } as never);
+
+    it('unfiltered, the point has all four rows', async () => {
+      const page = await atPointC({});
+      expect(page.total).toBe(4);
+      expect(page.data).toHaveLength(4);
+    });
+
+    it('supplier_id narrows to the PARENT intake’s supplier', async () => {
+      const page = await atPointC({ supplier_id: supplierC1 });
+
+      expect(page.total).toBe(3);
+      expect(page.data.map((r) => r.amount).sort()).toEqual(['100.00', '200.00', '300.00']);
+    });
+
+    it('intake_id narrows further, to one receipt', async () => {
+      const page = await atPointC({ intake_id: intakeC1 });
+
+      expect(page.total).toBe(2);
+      expect(page.data.map((r) => r.amount).sort()).toEqual(['100.00', '200.00']);
+      expect(page.data.every((r) => r.intake.code === `C1a-IN-${run}`)).toBe(true);
+    });
+
+    it('a supplier from another point returns nothing, it does not widen the scope', async () => {
+      // `supplier_id` is a filter, never a scope: the point filter is ANDed
+      // with it, so naming someone else's supplier narrows to zero rather
+      // than reaching across points.
+      const page = await service.list(operatorAt(pointC), {
+        supplier_id: (await ds.query(`SELECT id FROM suppliers WHERE collection_point_id = $1`, [
+          pointA,
+        ]))[0].id,
+        include_voided: true,
+        page: 1,
+        limit: 50,
+      } as never);
+
+      expect(page.data).toEqual([]);
+      expect(page.total).toBe(0);
+    });
+
+    it('paginates in Postgres: total counts the filter, not the page', async () => {
+      const first = await atPointC({ supplier_id: supplierC1, limit: 2 });
+      expect(first).toMatchObject({ total: 3, page: 1, limit: 2 });
+      expect(first.data).toHaveLength(2);
+
+      const second = await atPointC({ supplier_id: supplierC1, page: 2, limit: 2 });
+      expect(second).toMatchObject({ total: 3, page: 2, limit: 2 });
+      expect(second.data).toHaveLength(1);
+
+      // The offset must actually move — a page 2 repeating page 1 would still
+      // satisfy every count above.
+      const ids = [...first.data, ...second.data].map((r) => r.id);
+      expect(new Set(ids).size).toBe(3);
+    });
   });
 });
