@@ -48,8 +48,9 @@ const debtSql = (supplier: string): string =>
  * THE ONLY `SUM` OVER ANY OF THE THREE DEBT TABLES IN THE BACKEND.
  *
  * The formula follows the `suppliers` Note in `28-db-schema.dbml`, including
- * ALL THREE `voided_at IS NULL` filters, and that Note explains at length why
- * it may exist in exactly one place:
+ * FOUR `voided_at IS NULL` filters across three terms — the middle term
+ * alone carries two, one for the top-up and one for its parent intake — and
+ * that Note explains at length why they may exist in exactly one place:
  *
  *   «фільтр voided_at IS NULL стоїть на ОБОХ історіях, і забути його на
  *    будь-якій означає або гасити борг грошима, яких не видали, або тримати
