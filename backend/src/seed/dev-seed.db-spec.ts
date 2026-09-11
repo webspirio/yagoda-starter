@@ -80,6 +80,10 @@ describe('dev seed', () => {
     }
 
     // The payout ceiling holds for every seeded supplier: intakes − payouts ≥ 0.
+    // Deliberately two terms, not three: this omits the `intake_top_ups` term
+    // `debtSql` now adds, but the assertion below is only "no supplier is
+    // negative", and top-ups are `CHECK (amount > 0)` — a term that can only
+    // ever raise a debt can be dropped here without the assertion false-failing.
     const balances: { debt: string }[] = await ds.query(
       `SELECT (COALESCE((SELECT SUM(i.amount) FROM intakes i WHERE i.supplier_id = s.id AND i.voided_at IS NULL), 0)
              - COALESCE((SELECT SUM(p.amount) FROM payouts p WHERE p.supplier_id = s.id AND p.voided_at IS NULL), 0))::text AS debt

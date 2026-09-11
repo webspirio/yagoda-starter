@@ -45,7 +45,8 @@ const debtSql = (supplier: string): string =>
                WHERE p.supplier_id = ${supplier} AND p.voided_at IS NULL), 0.00))`;
 
 /**
- * THE ONLY `SUM` OVER ANY OF THE THREE DEBT TABLES IN THE BACKEND.
+ * THE ONLY `SUM` **FOR DEBT** IN THE BACKEND — `point-cash.service.ts` also
+ * sums `payouts`, but for cash, not debt.
  *
  * The formula follows the `suppliers` Note in `28-db-schema.dbml`, including
  * FOUR `voided_at IS NULL` filters across three terms — the middle term
@@ -84,7 +85,7 @@ export class SupplierBalanceService {
   constructor(private readonly dataSource: DataSource) {}
 
   /**
-   * `Σ intakes − Σ payouts` for one supplier, as a decimal STRING.
+   * `Σ intakes + Σ intake_top_ups − Σ payouts` for one supplier, as a decimal STRING.
    *
    * Takes an `EntityManager` so the payout ceiling reads it inside the same
    * transaction that holds the supplier row lock — otherwise the value it

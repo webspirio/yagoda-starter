@@ -24,7 +24,7 @@ import { User } from '../users/user.entity';
  * consequence is the same one `Intake` warns about, one hop longer: SCOPING TO
  * A POINT IS A TWO-HOP JOIN — `intake_top_ups → intakes → suppliers`.
  *
- * THE `NOT NULL` ON `intake_id` IS LOad-BEARING AND NOT A STYLE CHOICE. A
+ * THE `NOT NULL` ON `intake_id` IS LOAD-BEARING AND NOT A STYLE CHOICE. A
  * nullable link would make this table the «вступний залишок» mechanism the
  * owner removed on 04.09.2026 — «борг, набутий до запуску, у систему не
  * заводиться взагалі». Requiring a parent means debt can only be topped up

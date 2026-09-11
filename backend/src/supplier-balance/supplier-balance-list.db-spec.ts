@@ -159,7 +159,7 @@ describe('SupplierBalanceService.list (Postgres)', () => {
 
   const names = (page: { data: { first_name: string }[] }) => page.data.map((r) => r.first_name);
 
-  it('shows Σ intakes − Σ payouts per supplier, with voided rows out of BOTH halves', async () => {
+  it('shows Σ intakes − Σ payouts per supplier, with voided rows out of both halves (the formula\'s third term, intake_top_ups, has no fixture here and is covered separately)', async () => {
     const page = await service.list(owner, query({ collection_point_id: pointA }));
 
     const ivan = page.data.find((r) => r.first_name === 'Іван');

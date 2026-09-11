@@ -96,9 +96,13 @@ the request — the scenario begins «після того, як він уже з
   «Залишок» input field «для ЖОДНОЇ ролі», and the DBML's evidence for why is the client's own
   workbook, where the hand-copied balance chain breaks in «124 переходах із 1 473». A negative
   adjustment is that field wearing a reason text.
-- It would add a second path to a negative balance, where the DBML names exactly one — «сторно
-  КВИТАНЦІЇ ЄДИНИЙ шлях у мінус» — and leans on that uniqueness when it explains how a minus can
-  arise and why it heals itself.
+
+**Withdrawn on review.** A second bullet here used to argue that a negative row "would add a
+second path to a negative balance, where the DBML names exactly one." This slice's own `void`
+verb adds that second path anyway — voiding a top-up that was already paid out drives the debt
+negative — so the argument was false on its own terms (see the DBML's `28-db-schema.dbml`,
+«Мінус», ПРАВКА 11.09.2026). It is dropped rather than kept for the record. The bullet above is
+unaffected and remains the whole reason `amount > 0` is a `CHECK`, not a convention.
 
 **The downward path already exists: §9.3's void-and-reissue.** Void the receipt, write a new one
 at the right price. It costs re-entering the lines and it keeps kg, price and paper in agreement,
@@ -332,6 +336,17 @@ overpayment. Had §3.3 gone the signed way, the same race would let a payout exc
 just shrunk, and this table would have needed the supplier lock. Whoever revisits §3.3 must
 revisit this paragraph in the same change.
 
+This section reasons only about `create` racing a payout, and that is deliberately one-directional
+— `create` only ever grows a debt. `void` is the other verb on this table, and it *shrinks* one; it
+locks only the top-up row, never the supplier row, same as `create`. No lock is needed there
+either, and for the same reason `IntakesService.void` needs none against the supplier row today:
+that method's own comment accepts driving the debt negative outright — «NO BALANCE CHECK HERE,
+DELIBERATELY … a supplier's debt goes negative and it is allowed». A shrinking write racing a
+payout can only make the ceiling stale-*high* for the instant between the two, never let a payout
+exceed a debt that was still there when it read it, so nothing here is unsafe. The point of this
+paragraph is narrower than a proof: §7.2–§7.4 must not be read as saying every write on this table
+only grows a debt, because `void` is a standing counterexample.
+
 ## 8. Which day a top-up falls on
 
 **The day it was created**, in `APP_TIMEZONE` — not the parent intake's business date.
@@ -393,6 +408,14 @@ the ambiguity into a new table.
 
 Four amendments, each written into the source document as a dated addition leaving superseded text
 visible — the convention every previous slice used.
+
+This section enumerates *documents* to amend, not every *statement* of the formula it changes —
+that gap is what let `backend/CLAUDE.md`'s supplier-balance row, `supplier.entity.ts`'s class
+header and `debtSql`'s own `debtFor` docstring ship still saying two terms. Before merging a slice
+that changes a formula or an invariant, grep the repo for every prose restatement of it, not only
+the documents of record: `backend/CLAUDE.md`, entity header comments and the DBML's own conventions
+header (`28-db-schema.dbml`'s file-top comment, separate from the `suppliers` Note this section
+already covers) all restate things a per-file amendment list misses.
 
 ### 12.1 `28-db-schema.dbml` gains a table that was never in it
 
@@ -482,3 +505,9 @@ pays out the raised «Разом», the owner voids the top-up.
 - **The day screen's third term** (§8) — the decision is recorded; the screen does not exist.
 - **An owner-only note field** if the reason text turns out to be too revealing for operators
   (§5.1). The row stays visible either way.
+- **The list response has no supplier identity.** §5.3's shape embeds `intake: { id, code,
+  voided_at }` and nothing else; `intakes.code` names the point and the day but not the person, so
+  `GET /intake-top-ups?collection_point_id=…` with no `supplier_id` returns rows a client cannot
+  render without an N+1 fetch per row. The card slice (§11, §14 above) always filters by
+  `supplier_id`, so it is unaffected. Either the embedded parent should gain a supplier id/name, or
+  `supplier_id` should be documented as effectively mandatory on the unscoped list.

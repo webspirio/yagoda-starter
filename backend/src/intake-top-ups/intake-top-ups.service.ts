@@ -167,6 +167,11 @@ export class IntakeTopUpsService {
       }
 
       const intake = await m.findOne(Intake, { where: { id: topUp.intake_id } });
+      // Names the OUTER resource ('Intake top-up not found'), not 'Intake not
+      // found' — deliberate, matching IntakesService.void and PayoutsService:
+      // the id in the URL is a top-up id, and this branch is unreachable in
+      // practice (the parent is RESTRICT and never deleted) so it is not worth
+      // confirming which row is actually missing.
       if (!intake) throw new NotFoundException('Intake top-up not found');
 
       topUp.voided_at = new Date();
@@ -181,7 +186,12 @@ export class IntakeTopUpsService {
           target_type: 'intake-top-up',
           target_id: saved.id,
           before: { voided_at: null },
-          after: { voided_at: saved.voided_at, amount: saved.amount, intake_id: intake.id },
+          after: {
+            voided_at: saved.voided_at,
+            amount: saved.amount,
+            intake_id: intake.id,
+            intake_code: intake.code,
+          },
           note: saved.void_reason,
         },
         m,
