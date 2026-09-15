@@ -5,6 +5,7 @@ import {
   HISTORY_INTAKES,
   HISTORY_PAYOUTS,
   HISTORY_SHIFTS,
+  HISTORY_TRANSFERS,
 } from './dev-seed.history';
 import { SEED_CASH_COUNTS, SEED_SUPPLIERS, daysBack } from './dev-seed.data';
 
@@ -88,6 +89,23 @@ describe('generated history', () => {
     const shifts = new Set(HISTORY_SHIFTS.map((s) => `${s.point}/${daysBack(s.day)}`));
     for (const d of [...HISTORY_INTAKES, ...HISTORY_PAYOUTS, ...HISTORY_CASH_COUNTS])
       expect(shifts.has(`${d.point}/${daysBack(d.day)}`)).toBe(true);
+  });
+
+  /**
+   * PROPERTY 4 of the file header. A receipt puts no cash in the drawer — the
+   * cash formula is «transfers accepted minus payouts» — so an unfunded payout
+   * walks the drawer straight into `CHK_cash_counts_counted_non_negative`. This
+   * is the test that would have caught that before Postgres did.
+   */
+  it('funds every generated payout with a transfer accepted the same day', () => {
+    const funded = new Map<string, string>();
+    for (const t of HISTORY_TRANSFERS) {
+      expect(t.status).toBe('accepted');
+      funded.set(`${t.point}/${daysBack(t.day)}`, t.cash);
+    }
+    expect(HISTORY_TRANSFERS).toHaveLength(HISTORY_PAYOUTS.length);
+    for (const p of HISTORY_PAYOUTS)
+      expect(funded.get(`${p.point}/${daysBack(p.day)}`)).toBe(p.amount);
   });
 
   /**

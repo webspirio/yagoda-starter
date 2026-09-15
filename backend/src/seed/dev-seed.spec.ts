@@ -1,4 +1,5 @@
 import { addMoney, isoDaysBefore } from './dev-seed';
+import { HISTORY_INTAKES } from './dev-seed.history';
 import {
   SEED_GRADES,
   SEED_INTAKES,
@@ -186,7 +187,13 @@ describe('dev seed documents', () => {
   });
 
   it('every top-up addresses a seeded intake by (point, day, typed) — never a composed code', () => {
-    const intakeKeys = new Set(SEED_INTAKES.map((d) => `${d.point}/${d.day}/${d.typed}`));
+    // BOTH HALVES, exactly as `seedDev` walks them: a top-up may address a
+    // generated receipt as readily as a curated one, and the runner resolves it
+    // the same way. Reading the curated array alone here would reject the very
+    // rows that give the supplier card a timeline worth looking at.
+    const intakeKeys = new Set(
+      [...HISTORY_INTAKES, ...SEED_INTAKES].map((d) => `${d.point}/${d.day}/${d.typed}`),
+    );
     for (const t of SEED_TOP_UPS) {
       expect(intakeKeys.has(`${t.point}/${t.day}/${t.typed}`)).toBe(true);
       expect(t.amount).toMatch(/^\d{1,8}\.\d{2}$/);

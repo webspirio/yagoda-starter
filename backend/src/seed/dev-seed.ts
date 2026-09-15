@@ -27,6 +27,13 @@ import {
   daysBack,
   type SeedDay,
 } from './dev-seed.data';
+import {
+  HISTORY_CASH_COUNTS,
+  HISTORY_INTAKES,
+  HISTORY_PAYOUTS,
+  HISTORY_SHIFTS,
+  HISTORY_TRANSFERS,
+} from './dev-seed.history';
 
 /** Rows INSERTED by one run — every key is 0 on a repeat run. */
 export interface DevSeedSummary {
@@ -376,6 +383,23 @@ async function seedDocuments(
   const localTs = (dateIdx: number, timeIdx: number, tzIdx: number) =>
     `($${dateIdx}::date + $${timeIdx}::time) AT TIME ZONE $${tzIdx}`;
 
+  /*
+   * CURATED DATA AND GENERATED HISTORY, WALKED AS ONE.
+   *
+   * History FIRST in all four, and for two different reasons. For shifts,
+   * receipts and payouts it is presentation: the curated day ends up newest, so
+   * every screen opens on the hand-written rows. For CASH COUNTS it is
+   * correctness — each opening count reads the point's PREVIOUS count as its
+   * expectation, so walking a past day after a later one would anchor the past
+   * off the future. `dev-seed.history.ts` guarantees its own half is
+   * chronological; this is where the two halves meet in the right order.
+   */
+  const allShifts = [...HISTORY_SHIFTS, ...SEED_SHIFTS];
+  const allIntakes = [...HISTORY_INTAKES, ...SEED_INTAKES];
+  const allPayouts = [...HISTORY_PAYOUTS, ...SEED_PAYOUTS];
+  const allCashCounts = [...HISTORY_CASH_COUNTS, ...SEED_CASH_COUNTS];
+  const allTransfers = [...HISTORY_TRANSFERS, ...SEED_TRANSFERS];
+
   const userByLogin = new Map<string, string>();
   for (const login of new Set(SEED_OPERATORS.map((u) => u.login))) {
     const row = await one<{ user_id: string }>(
@@ -432,7 +456,7 @@ async function seedDocuments(
   };
 
   const shiftId = new Map<string, string>();
-  for (const sh of SEED_SHIFTS) {
+  for (const sh of allShifts) {
     const pid = pointId.get(sh.point)!;
     const date = dateOf(sh.day);
     const key = `${sh.point}/${sh.day}`;
@@ -461,7 +485,7 @@ async function seedDocuments(
     summary.shifts += 1;
   }
 
-  for (const doc of SEED_INTAKES) {
+  for (const doc of allIntakes) {
     const code = intakeCodeFor(doc.point, doc.day, doc.typed);
     const found = await one<{ id: string }>(qr, `SELECT id FROM intakes WHERE code = $1`, [code]);
     if (found) continue;
@@ -527,7 +551,7 @@ async function seedDocuments(
     summary.intakes += 1;
   }
 
-  for (const doc of SEED_PAYOUTS) {
+  for (const doc of allPayouts) {
     const code = composeDocumentCode(pointCode.get(doc.point)!, 'PO', dateOf(doc.day), doc.typed);
     const found = await one<{ id: string }>(qr, `SELECT id FROM payouts WHERE code = $1`, [code]);
     if (found) continue;
@@ -578,7 +602,7 @@ async function seedDocuments(
   // TRANSFERS BEFORE COUNTS, and both after the payouts above: a closing
   // count's expectation is «the opening count plus this shift's movements»,
   // and the transfers are half of those movements.
-  for (const t of SEED_TRANSFERS) {
+  for (const t of allTransfers) {
     const pid = pointId.get(t.point)!;
     const date = dateOf(t.day);
     // `transfers` has no `code` — (point, sent_at) is the natural key here.
@@ -632,7 +656,7 @@ async function seedDocuments(
   // ORDER IS LOAD-BEARING: `SEED_CASH_COUNTS` is chronological, because each
   // opening count reads the previous count as its expectation.
   const cash = new PointCashService(ds, { appTimezone: tz });
-  for (const c of SEED_CASH_COUNTS) {
+  for (const c of allCashCounts) {
     const shift = shiftId.get(`${c.point}/${c.day}`);
     if (!shift) throw new Error(`Seed cash count has no shift: ${c.point}/${c.day}`);
     const found = await one<{ id: string }>(

@@ -11,6 +11,10 @@ import {
   SEED_PRICE_CHANGES,
   SEED_SHIFTS,
 } from './dev-seed.data';
+import { HISTORY_SHIFTS } from './dev-seed.history';
+
+/** Curated day and generated season, exactly as `seedDev` walks them. */
+const ALL_SHIFTS = [...HISTORY_SHIFTS, ...SEED_SHIFTS];
 
 /**
  * The seed against a real Postgres: it must be re-runnable, and the price
@@ -56,10 +60,12 @@ describe('dev seed', () => {
               count(*) FILTER (WHERE status = 'closed' AND closed_at IS NOT NULL AND closed_by_user_id IS NOT NULL)::int AS closed
          FROM shifts s JOIN collection_points cp ON cp.id = s.collection_point_id
         WHERE cp.name = ANY($1)`,
-      [SEED_SHIFTS.map((s) => s.point)],
+      [ALL_SHIFTS.map((s) => s.point)],
     );
-    expect(shifts.open).toBe(SEED_SHIFTS.filter((s) => !s.closed).length);
-    expect(shifts.closed).toBe(SEED_SHIFTS.filter((s) => s.closed).length);
+    // Counted over BOTH halves: the generated season is all closed shifts, so
+    // reading these against the curated array alone would under-count by 150.
+    expect(shifts.open).toBe(ALL_SHIFTS.filter((s) => !s.closed).length);
+    expect(shifts.closed).toBe(ALL_SHIFTS.filter((s) => s.closed).length);
 
     // Every seeded intake has its lines and tare rows, and the document
     // amount is the sum of its lines (§2.3 — the number printed on the paper).

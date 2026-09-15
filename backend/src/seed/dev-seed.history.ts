@@ -8,6 +8,7 @@ import {
   type SeedIntakeLine,
   type SeedPayout,
   type SeedShift,
+  type SeedTransfer,
 } from './dev-seed.data';
 
 /**
@@ -41,6 +42,18 @@ import {
  *    generated payout is therefore a QUARTER of what that same supplier has
  *    been received for, tracked as this file generates — never a round number
  *    chosen for looks.
+ *
+ * 4. A DRAWER THAT NEVER GOES NEGATIVE. `CHK_cash_counts_counted_non_negative`
+ *    is a real constraint, and a RECEIPT PUTS NO CASH IN THE DRAWER — the cash
+ *    formula (`point-cash.service.ts`) is «transfers accepted MINUS payouts»,
+ *    with receipts absent from it entirely. `SEED_TRANSFERS`'s own header says
+ *    what happens without the funding side: «without these, every seeded point
+ *    pays out money it never received and reads as deeply negative». So every
+ *    generated payout is funded by a generated transfer of EXACTLY its amount,
+ *    accepted the same business date. The drawer therefore sits at the point's
+ *    anchor for the whole season — which is also what makes property 2 above
+ *    honest rather than a jump: the last generated closing already equals the
+ *    curated anchor before it is forced to.
  *
  * WHAT IS DELIBERATELY NOT GENERATED: `grade_prices`. Prices carry over until
  * changed (spec 2026-09-07 §8.1 removed `business_date`), so the historical
@@ -123,6 +136,7 @@ const shifts: SeedShift[] = [];
 const intakes: SeedIntake[] = [];
 const payouts: SeedPayout[] = [];
 const cashCounts: SeedCashCount[] = [];
+const transfers: SeedTransfer[] = [];
 
 /**
  * Running "owed" per supplier, in kopiykas, as a CEILING rather than a claim.
@@ -212,6 +226,22 @@ for (let day = HISTORY_DAYS + 1; day >= 2; day -= 1) {
         amount: money(amountCents),
       });
       owedCents.set(owed[0], owed[1] - amountCents);
+
+      // The funding side, accepted the SAME business date — `movementsSql`
+      // joins a transfer to a shift on `accepted_date`, so a transfer accepted
+      // any other day would not fund this payout. Exactly the payout's amount:
+      // see property 4 in this file's header for why it is not a penny more.
+      transfers.push({
+        point,
+        day,
+        sentAt: '08:10',
+        cash: money(amountCents),
+        crates: between(10, 40),
+        carrier: 'Іван, Ducato',
+        status: 'accepted',
+        acceptedBy: operator,
+        acceptedAt: '08:40',
+      });
     }
 
     // The LAST generated closing lands on the curated anchor — property 2 in
@@ -232,3 +262,4 @@ export const HISTORY_SHIFTS: readonly SeedShift[] = shifts;
 export const HISTORY_INTAKES: readonly SeedIntake[] = intakes;
 export const HISTORY_PAYOUTS: readonly SeedPayout[] = payouts;
 export const HISTORY_CASH_COUNTS: readonly SeedCashCount[] = cashCounts;
+export const HISTORY_TRANSFERS: readonly SeedTransfer[] = transfers;
