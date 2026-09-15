@@ -240,15 +240,28 @@ jobs:
       #     STATEMENTS 82 -> 85, BRANCHES 80 -> 81, FUNCTIONS 76 -> 79, LINES 83 -> 85.
       #
       #   LOWERED, three backend floors, and this is the part to read rather than wave
-      #   through: STATEMENTS 80 -> 79, FUNCTIONS 80 -> 78, LINES 83 -> 82. Backend
-      #   coverage did not fall because tests were deleted — it fell because this
-      #   `coverage` task measures the UNIT config only (backend/jest.config.js,
-      #   testRegex .*\.spec\.ts$), and the four slices main merged in are covered
-      #   disproportionately by *.db-spec.ts suites against a real Postgres, which
-      #   that config does not run and so cannot credit. The db-spec suites grew from
-      #   12 files to 23 over the same merge and are gated by the `test:db` row, not
-      #   this one. BRANCHES 61 is unchanged: the real number moved 61.60 -> 61.19,
-      #   still above its floor.
+      #   through: STATEMENTS 80 -> 79, FUNCTIONS 80 -> 78, LINES 83 -> 82. The single
+      #   mechanism behind all three is that this `coverage` task measures the UNIT
+      #   config only (backend/jest.config.js, testRegex .*\.spec\.ts$), so code
+      #   covered solely by *.db-spec.ts suites against a real Postgres cannot be
+      #   credited here at all. But the three floors do NOT share a cause, and an
+      #   earlier version of this comment blamed all three on the same thing. Split by
+      #   whether a file existed before the merge (coverage-final.json against
+      #   `git ls-tree 06a38e8`), MEASURED 2026-09-15:
+      #       pre-merge files, today's content : 79.34% stmts / 80.35% funcs
+      #       files NEW in the merge           : 80.65% stmts / 64.79% funcs
+      #   FUNCTIONS 80 -> 78 is the merge: the new slices sit at 64.79% functions
+      #   (point-cash 28.57%) and pull the aggregate down by roughly 2 points.
+      #   STATEMENTS 80 -> 79 and LINES 83 -> 82 are NOT: the new slices measure 80.65%
+      #   statements, ABOVE both the aggregate and the 80.28% this floor was set from —
+      #   they pushed statements UP. That drop is one pre-existing file growing,
+      #   src/seed/dev-seed.ts (557 -> 699 lines, 19 of 239 statements covered, reached
+      #   only by dev-seed.db-spec.ts). Excluding src/seed/ entirely puts backend
+      #   statements at 84.86% instead of 79.52% — that file alone is the whole gap, and
+      #   whether it belongs in this denominator at all is a scope decision nobody has
+      #   made yet, not something to settle inside a red run.
+      #   BRANCHES 61 is unchanged: the real number moved 61.60 -> 61.19, still above
+      #   its floor.
       # ─────────────────────────────────────────────────────────────────────────
       COVERAGE_BACKEND_STATEMENTS: 79
       COVERAGE_BACKEND_BRANCHES: 61

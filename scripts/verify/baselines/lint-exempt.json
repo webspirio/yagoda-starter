@@ -1,6 +1,6 @@
 {
   "createdAt": "2026-09-15",
-  "note": "Every lint exemption this repo carries on 2026-09-15: 10 eslint-disable/-line/-next-line/-enable directive comments across backend/src and frontend/src, plus 3 ignores-glob entries across the two flat eslint.config.mjs files (bundling 8 individual globs after dist-e2e joined frontend's), and zero rules pinned to 'off' in either config. Each entry's reason was written after reading the code around its key, not invented. The ratchet is two-directional: a new exemption not listed here fails scripts/verify/ratchets/lint-exempt.mjs, and a listed entry whose exemption no longer exists in the tree fails it too — this file may only shrink or be re-dated by a reviewed change, never grow by drift. Two entries were RE-KEYED on 2026-09-15 rather than added: both are the same exemptions this file already carried, whose line numbers moved under main's merge.",
+  "note": "Every lint exemption this repo carries on 2026-09-15: 10 eslint-disable/-line/-next-line/-enable directive comments across backend/src and frontend/src, plus 3 ignores-glob entries across the two flat eslint.config.mjs files (bundling 9 individual globs after dist-e2e joined frontend's and coverage/ joined backend's), and zero rules pinned to 'off' in either config. Each entry's reason was written after reading the code around its key, not invented. The ratchet is two-directional: a new exemption not listed here fails scripts/verify/ratchets/lint-exempt.mjs, and a listed entry whose exemption no longer exists in the tree fails it too — this file may only shrink or be re-dated by a reviewed change, never grow by drift. THREE entries changed on 2026-09-15, and they are NOT all the same kind of change, which an earlier version of this note flattened into 're-keyed': backend's spec-file `ignores` moved line only, its value untouched; while BOTH `ignores`-glob entries that list build output had their VALUE WIDENED — frontend's gained `dist-e2e` and backend's gained `coverage/`. A widened ignore glob is a real, reviewed loosening under rule 3, not a bookkeeping re-key, and each of the two says in its own reason exactly what was widened and why.",
   "entries": [
     {
       "key": "backend/src/media/image-processing.ts:9:eslint-disable-next-line:@typescript-eslint/no-require-imports",
@@ -53,14 +53,14 @@
       "reason": "URL.createObjectURL is an impure, one-shot browser call that must run in an effect, and the setObjectUrl that follows it is a genuine external-system side effect the rule's derived-state heuristic does not fit; image-picker.test.tsx verifies this stays correct under StrictMode's double-invoke."
     },
     {
-      "key": "backend/eslint.config.mjs:7:ignores:dist/, node_modules/",
-      "added": "2026-09-10",
-      "reason": "Build output and third-party dependencies must never be linted — dist/ is compiled output regenerated on every build and node_modules/ is vendored code this repo does not own or want flagged."
+      "key": "backend/eslint.config.mjs:13:ignores:dist/, node_modules/, coverage/",
+      "added": "2026-09-15",
+      "reason": "Build output, third-party dependencies and jest's coverage report are generated or vendored, never source this repo authors, so there is nothing for the linter to usefully check there. `coverage/` was ADDED 2026-09-15 and the addition is preventative, not a fix: backend's jest rootDir is `src`, so `npm run coverage` writes backend/src/coverage/lcov-report/*.js INSIDE the linted tree. It lints clean today — but it is the same shape as the frontend dist-e2e defect found the same day, where a full-tier row left generated output on disk and the next fast-tier lint run reported 2116 errors inside it. frontend/eslint.config.mjs has always ignored `coverage`."
     },
     {
-      "key": "backend/eslint.config.mjs:70:ignores:**/*.spec.ts, **/*.db-spec.ts",
+      "key": "backend/eslint.config.mjs:76:ignores:**/*.spec.ts, **/*.db-spec.ts",
       "added": "2026-09-15",
-      "reason": "Scopes the money-arithmetic ban (no *, /, Number(), toFixed, parseInt, parseFloat) away from the money modules' own test files, which legitimately use plain-number arithmetic to build fixtures and assert on money.ts's rounding rather than reimplementing it. Re-keyed 2026-09-15: the exemption itself is unchanged, its LINE moved 44 -> 70 when main's cash, point-cash, cash-counts and intake-top-ups slices grew the `files` list above it from four module globs to eight — exactly the line-number sensitivity this row's own blindSpot names."
+      "reason": "Scopes the money-arithmetic ban (no *, /, Number(), toFixed, parseInt, parseFloat) away from the money modules' own test files, which legitimately use plain-number arithmetic to build fixtures and assert on money.ts's rounding rather than reimplementing it. Re-keyed 2026-09-15: the exemption itself is unchanged, its LINE moved 44 -> 70 when main's cash, point-cash, cash-counts and intake-top-ups slices grew the `files` list above it from four module globs to eight, and then 70 -> 76 when the six-line comment above the `ignores` entry at the top of this same file was added — exactly the line-number sensitivity this row's own blindSpot names."
     },
     {
       "key": "frontend/eslint.config.mjs:37:ignores:dist, dist-e2e, node_modules, coverage",

@@ -164,9 +164,19 @@ test('a genuinely reasoned, dated new baseline entry for a fixture that does not
 test('a new `ignores` glob added to backend/eslint.config.mjs is caught as a NEW EXEMPTION', () => {
   const original = readFileSync(BACKEND_CONFIG, 'utf8')
   try {
-    const marker = "{ ignores: ['dist/', 'node_modules/'] },"
-    assert.match(original, new RegExp(marker.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))
-    const mutated = original.replace(marker, "{ ignores: ['dist/', 'node_modules/', 'zz-fixture/'] },")
+    // The line is FOUND, not hard-coded. This test pinned both the exact glob list
+    // ("{ ignores: ['dist/', 'node_modules/'] },") and the literal line number (:7:) until
+    // 2026-09-15, when adding `coverage/` to that list — and a comment above it — moved it
+    // to line 13 and turned this test red for a reason that had nothing to do with the
+    // ratchet. What the test is actually for is the BEHAVIOUR: widen a bundled `ignores`
+    // and the check must report the old key stale and the new one unrecognised.
+    const lines = original.split('\n')
+    const lineIndex = lines.findIndex((l) => /^\s*\{ ignores: \[/.test(l))
+    assert.notEqual(lineIndex, -1, 'backend/eslint.config.mjs must carry an `ignores` line')
+    const lineNumber = lineIndex + 1
+    const mutated = lines
+      .map((l, i) => (i === lineIndex ? l.replace(/\] \},\s*$/, ", 'zz-fixture/'] },") : l))
+      .join('\n')
     assert.notEqual(mutated, original)
     writeFileSync(BACKEND_CONFIG, mutated)
     const res = run()
@@ -177,7 +187,7 @@ test('a new `ignores` glob added to backend/eslint.config.mjs is caught as a NEW
     // entry removed plus a new, bigger one added.
     assert.match(res.out, /NEW EXEMPTION/)
     assert.match(res.out, /STALE ENTRY/)
-    assert.match(res.out, /backend\/eslint\.config\.mjs:7:ignores/)
+    assert.match(res.out, new RegExp(`backend/eslint\\.config\\.mjs:${lineNumber}:ignores`))
     assert.match(res.out, /zz-fixture\//)
   } finally {
     writeFileSync(BACKEND_CONFIG, original)

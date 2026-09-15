@@ -4,7 +4,13 @@ import globals from 'globals';
 import prettier from 'eslint-config-prettier';
 
 export default tseslint.config(
-  { ignores: ['dist/', 'node_modules/'] },
+  // `coverage` is the `coverage` row's own output. jest's rootDir here is `src`, so
+  // `npm run coverage` writes backend/src/coverage/lcov-report/*.js INSIDE the linted
+  // tree. It lints clean today, which is exactly why this is worth pinning now: it is the
+  // same shape as the frontend dist-e2e bug found on 2026-09-15, where a full-tier row
+  // left generated output on disk and the next fast-tier `lint` run reported 2116 errors
+  // inside it. frontend/eslint.config.mjs has ignored `coverage` all along.
+  { ignores: ['dist/', 'node_modules/', 'coverage/'] },
   eslint.configs.recommended,
   tseslint.configs.recommended,
   {

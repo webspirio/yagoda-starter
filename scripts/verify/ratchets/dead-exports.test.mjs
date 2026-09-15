@@ -70,14 +70,17 @@ function addBaselineEntry(entry) {
 test('the real tree is green against the committed baseline', () => {
   const res = run()
   assert.equal(res.status, 0, res.out)
-  // The COUNT is read from the baseline file rather than frozen as a literal here. It was
-  // frozen at 123 until 2026-09-15, when merging 156 commits of main moved it to 156 and
-  // turned this test red — a red that said nothing about the ratchet and everything about
-  // an ordinary, reviewed baseline edit. The INVARIANT worth asserting is that the number
-  // the check prints is the number of entries the baseline actually holds; a check that
-  // reported a count unrelated to its own baseline would still fail this line.
-  const committed = JSON.parse(readFileSync(BASELINE, 'utf8'))
-  assert.match(res.out, new RegExp(`\\b${committed.entries.length} dead-code findings on record\\b`))
+  // NO COUNT ASSERTION HERE, deliberately. This line was frozen at `123 dead-code findings`
+  // until 2026-09-15, when an ordinary reviewed baseline edit turned it red while saying
+  // nothing about the ratchet. It was then rewritten to read entries.length out of the
+  // baseline — which review correctly called a tautology: dead-exports.mjs prints
+  // `baseline.entries.length` from that same file, so the two cannot disagree, and the
+  // assertion could only ever detect a wording change that `res.status === 0` and the
+  // config line below already cover. The real weight is carried by the two directional
+  // fixture tests further down (a new finding is red, a stale entry is red), which is where
+  // a broken ratchet actually shows up. Counts that CAN be derived independently are pinned
+  // in registry.test.mjs against the filesystem, not against the file that printed them.
+  assert.match(res.out, /dead-code findings on record, all present, none stale/)
   assert.match(res.out, /knip\.json carries only entry\/project/)
 })
 

@@ -35,7 +35,7 @@
  *     section in any of the three `package.json` files knip reads it from. This check reads
  *     only `knip.json`, so any of those is an invisible bypass of everything above.
  *  3. A `@public`/`@internal`/`@alias`/`@beta`/`@alpha` JSDoc tag on an export. Verified
- *     empirically against this exact installed knip (see task-13-report.md): the identical
+ *     empirically against this exact installed knip, by running it both ways: the identical
  *     unused export, reachable from an entry point, produces a finding with no tag and NO
  *     finding at all with `/** @public *\/` above it — a suppression with zero config
  *     change, so it is scanned for directly rather than trusted to stay unused.

@@ -54,8 +54,10 @@ up: its `testRegex` (`.*\.spec\.ts$`) does not match `.db-spec.ts`.
   sole signal. `@nestjs/passport` is imported by `auth.decorators.spec.ts` and
   `jwt.strategy.spec.ts` as well, so it broke the unit suite too. The next
   package to go ESM will land wherever its importers are — check both suites.
-- Both jest configs set `watchman: false` — the unit config (the `"jest"` key
-  in `package.json`) and `jest.db.config.js` — and it is NOT a preference.
+- Both jest configs set `watchman: false` — the unit config (`jest.config.js`;
+  it lived in `package.json`'s `"jest"` key until the verify layer moved it into
+  its own file, so that `coverageThreshold` could read `process.env`, which a
+  static JSON block cannot) and `jest.db.config.js` — and it is NOT a preference.
   When the machine's `watchman` binary is broken (a mismatched Homebrew
   boost/folly is the common cause), Jest's haste-map crawler returns an EMPTY
   file list and Jest exits 0 having run nothing. A green exit code for zero
@@ -204,7 +206,7 @@ Runs from the host (`.env`'s `DB_HOST=localhost`; compose publishes Postgres on
 `src/seed/dev-seed.db-spec.ts` proves idempotency and the journal ordering
 against a real Postgres; `dev-seed.spec.ts` checks the dataset's own consistency.
 `openTestDataSource()` drops and recreates `app_test` on every call (see
-"`test:db` prerequisite" above), so the demo dataset this spec seeds does NOT
+"No prerequisite database to create by hand." above), so the demo dataset this spec seeds does NOT
 survive a `test:db` run — every other db-spec already scopes its own fixtures by
 a per-run uuid rather than relying on it being there, and that convention is now
 load-bearing regardless of run order. The CLI also refuses a non-local `DB_HOST`

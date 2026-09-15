@@ -620,17 +620,19 @@ export const CHECKS = [
       'broken logic inside any check (a ratchet that silently stopped ratcheting, a boundary scan that ' +
       'stopped finding boundaries) could stay green in `npm run verify` indefinitely, ' +
       'caught only by someone remembering to run `npm run test:verify` by hand. ' +
-      'AS A SNAPSHOT, RE-VERIFIED 2026-09-15 on the tree this branch merged 156 commits ' +
-      'of main into and UNCHANGED by it — main touches no file this suite runs, so the ' +
-      'figures below are the 2026-09-11 ones, re-run rather than copied ' +
-      '(first shipped as ' +
+      "AS A SNAPSHOT, MEASURED 2026-09-15. Main's 156 commits touch no file this suite " +
+      "runs, so the merge itself moved nothing here; the three tests that DID arrive on " +
+      "2026-09-15 are this branch's own answers to its first real CI run and to review — " +
+      "a pin on which rows carry a timeout budget, a check that a declared budget is never " +
+      "shortened by --timeout-ms, and the derived-count test described at the end of this " +
+      "row's blind spot (first shipped as " +
       "70-across-8-files: 78-across-9 after Task 10 added ratchets/lint-exempt.test.mjs, " +
       "and several more times since as this plan added rows — see git history for the " +
       "intermediate counts this row does not itself track): `npm run test:verify` " +
       "(`node --test --test-concurrency=1 'scripts/verify/**/*.test.mjs' " +
       "'.claude/hooks/**/*.test.mjs'` — TWO globs since Task 19, not the one this row " +
-      "originally shipped quoting) collects and runs 154 tests across 15 *.test.mjs files " +
-      "today — hash.test.mjs (7), registry.test.mjs (8), run.test.mjs (14), " +
+      "originally shipped quoting) collects and runs 157 tests across 15 *.test.mjs files " +
+      "today — hash.test.mjs (7), registry.test.mjs (10), run.test.mjs (15), " +
       'checks/audit.test.mjs (11), checks/bundle-size.test.mjs (10), ' +
       'checks/memo-drift.test.mjs (4), checks/migration-invariants.test.mjs (8), ' +
       'checks/seam-boundary.test.mjs (13), checks/secret-boundary.test.mjs (13), ' +
@@ -649,6 +651,20 @@ export const CHECKS = [
       'row cannot distinguish a check that is correct from one that is confidently, ' +
       'consistently wrong in a way its own author never tested for. It says nothing about ' +
       'whether any `proves` or `blindSpot` string in this very registry, including this ' +
+      "ONE NARROW EXCEPTION EXISTS AS OF 2026-09-15, and its exact edge is worth knowing: " +
+      "registry.test.mjs now re-derives the handful of counts in this file that a machine " +
+      "CAN check — testfiles' six collector counts and their total, the migration and " +
+      "migration-db-spec counts, the db-spec count quoted by test and test:db, and this " +
+      "row's own *.test.mjs file count — from the same `git ls-files` net the checks " +
+      "themselves use, and fails when a number quoted in a proves/blindSpot string no " +
+      "longer matches the tree. It exists because review found the `coverage` row claiming " +
+      "router.tsx was absent from the frontend report when it never was: false when " +
+      "written, and it survived a deliberate re-measurement pass because nothing could " +
+      "contradict it. That test pins NUMBERS ONLY. Every sentence around them, and every " +
+      "count not derivable that way — coverage percentages, image sizes, timings, even " +
+      "this row's own per-file test counts — is exactly as unchecked as before. " +
+      "It says nothing " +
+      "about whether any `proves` or `blindSpot` string in this very registry, including this " +
       "one, is actually TRUE of its check: a `proves` sentence could overstate what its " +
       'command establishes, or understate a blind spot, and every test in this row could ' +
       'still be green, because this row exercises the CODE the other checks run, never ' +
@@ -950,9 +966,14 @@ export const CHECKS = [
       'Input types across the new transfer/cash feature slices, plus shared/lib/date\'s formatTime, ' +
       'shared/lib/money\'s CRATES_INPUT, entities/cash-count\'s two backend-mirroring unions and ' +
       'entities/point-cash\'s deliberate TransferStatus duplicate — where the SYMBOL is alive, called and ' +
-      'unit-tested through its origin module, and only the one re-export line has no importer (the page ' +
-      'tests reach these by vi.mock()ing the barrel PATH, a module-mock string knip does not resolve to a ' +
-      'named import). And THREE that are real debt rather than a tooling artefact: ' +
+      'unit-tested through its origin module, and only the one re-export line has no importer. Where a page ' +
+      'test is what keeps such a symbol alive it does so by vi.mock()ing a module path, which knip does not ' +
+      'resolve to a named import — but WHICH path differs per slice and is recorded per entry rather than ' +
+      'claimed in general: send-transfer, resolve-transfer and set-point-target are mocked at the BARREL ' +
+      'path, receive-transfer and set-cash-explanation at the ORIGIN module. Three of the fifteen ' +
+      '(entities/cash-count\'s two unions and entities/point-cash\'s TransferStatus duplicate) are not ' +
+      'barrel re-exports at all — they are types used inside their own declaring file and deliberately kept ' +
+      'out of their entity\'s barrel. And THREE that are real debt rather than a tooling artefact: ' +
       'point-cash.service.ts\'s trailing `export { movementsSql, anchorSql, asOfSql }` has had no importer ' +
       'since the module was created — git shows the line written as `export { cashSql, ASOF }` at creation ' +
       'and renamed twice by later refactors, never once consumed. It is recorded so it is visible, not ' +
@@ -1110,13 +1131,20 @@ export const CHECKS = [
       'collectCoverageFrom is unset here, so a file no spec ever imports, such as main.ts or app.module.ts, ' +
       'does not appear in the report AT ALL, not even at 0%); frontend 85.25% statements / 81.59% branches / ' +
       '79.37% functions / 85.66% lines under the identical default (main.tsx, App.tsx and router.tsx are ' +
-      'likewise absent from its report today). THE TWO WORKSPACES MOVED IN OPPOSITE DIRECTIONS and the ' +
+      'likewise absent from its report today; router.tsx IS present, reached by ' +
+      'app/router.test.tsx — this row claimed otherwise until 2026-09-15 and was wrong, ' +
+      'including under a re-measured stamp). THE TWO WORKSPACES MOVED IN OPPOSITE DIRECTIONS and the ' +
       'backend half is the one to read: frontend rose on all four measures because main\'s cash and ' +
-      'transfers screens arrived with their own component tests, while backend FELL on three — not because ' +
-      'tests were deleted, but because this row measures the UNIT config only (testRegex .*\\.spec\\.ts$) ' +
-      'and the four slices main merged in are covered disproportionately by *.db-spec.ts suites against a ' +
-      'real Postgres, which that config does not run and so cannot credit — those grew from 12 files to 23 ' +
-      'over the same merge and are gated by the test:db row, not this one. The CI floors moved with the ' +
+      'transfers screens arrived with their own component tests, while backend FELL on three. The ' +
+      'mechanism is that this row measures the UNIT config only (testRegex .*\\.spec\\.ts$), so code ' +
+      'reached solely by *.db-spec.ts suites cannot be credited here — but the three floors do NOT share a ' +
+      'cause, and saying they did was this row\'s own error until 2026-09-15. Splitting the report by ' +
+      'whether a file predates the merge: pre-merge files measure 79.34% statements / 80.35% functions, ' +
+      'files NEW in the merge 80.65% / 64.79%. FUNCTIONS fell because of the merge (the new slices are at ' +
+      '64.79%, point-cash at 28.57%); STATEMENTS and LINES fell DESPITE it — the new slices are ABOVE the ' +
+      'aggregate on statements — and the whole gap is one pre-existing file growing, seed/dev-seed.ts ' +
+      '(557 -> 699 lines, 19 of 239 statements covered, reached only by dev-seed.db-spec.ts). Excluding ' +
+      'src/seed/ puts backend statements at 84.86% rather than 79.52%. The CI floors moved with the ' +
       'measurement in both directions: four frontend floors RAISED, three backend floors LOWERED, each a ' +
       'visible reviewed diff in ci.yml, which is the only place a floor may move. Both numbers move with ' +
       'ordinary feature work in either workspace and are not re-verified by this row.',
@@ -1125,8 +1153,11 @@ export const CHECKS = [
       'the result counts exactly as fully covered as one that verifies the answer; this row cannot tell the ' +
       "two apart, in either workspace. Because neither jest's nor vitest's config here sets an explicit " +
       'include list, a file never required/imported by any test is invisible to the report ENTIRELY rather ' +
-      'than shown at 0% — confirmed empirically for main.ts/app.module.ts (backend) and main.tsx/App.tsx/' +
-      'router.tsx (frontend), all absent from their respective reports as of this snapshot — so this row ' +
+      'than shown at 0% — confirmed empirically 2026-09-15 for main.ts/app.module.ts (backend) and ' +
+      'main.tsx/App.tsx (frontend), absent from their respective reports. router.tsx was named in that ' +
+      'list until 2026-09-15 and did not belong there: app/router.test.tsx imports it, so it has always ' +
+      'been in the report. The claim was false when first written and survived a deliberate re-measurement ' +
+      'pass, which is the honest illustration of this row\'s last sentence — so this row ' +
       'cannot even be used to spot untested files by scanning for a 0% line: a genuinely untested file and a ' +
       'file the report simply never mentions look identical from outside it. Branch coverage sits well below ' +
       'line coverage in both workspaces (61.19% vs 82.97% backend; 81.59% vs 85.66% frontend), meaning a real ' +
