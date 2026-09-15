@@ -8,6 +8,7 @@ import { resolvePointFilter } from '../auth/access/point-scope';
 import type { AuthenticatedUser } from '../auth/jwt.strategy';
 import { ListPointCashQueryDto } from './dto/list-point-cash.query';
 import { PointCashRow, PointCashRowResponse, toPointCashRowResponse } from './point-cash.mapper';
+import { CRATE_BOOK_SQL } from '../crates/crate-balance.service';
 
 /**
  * «As of» resolves to TODAY IN `APP_TIMEZONE` when the caller names no date,
@@ -91,9 +92,30 @@ const asOfSql = (asOf: string, tz: string): string =>
  * caller chose, or the anchor row's own `a.shift_id`. Nothing from a request is
  * spliced here — `tz` is always the module's own `APP_TIMEZONE` bind.
  *
- * WHAT IS NOT HERE: the crates book (`cash_book = 'crates'`), which needs
- * `crate_issuances` and `crate_returns` and has no formula until they exist.
+ * THE CRATES BOOK IS HERE NOW, AND IT IS A SEPARATE FIELD. §7.6: «фізично
+ * шухляда одна, книг дві». `crate_deposits` is never added to `cash` — a sum
+ * without `GROUP BY book` is exactly what `cash-book.enum.ts` exists to make
+ * impossible to write by accident.
+ *
+ * IT DOES NOT HONOUR `as_of`, AND THAT IS NOT AN OVERSIGHT. §7.5 gives the
+ * crates book no lower bound — «від першої видачі» — and no physical count to
+ * anchor on, because this book is never counted (spec §4.3). It is a
+ * point-lifetime running sum, which is a different shape from the berry book
+ * on the same screen; the field name and this comment are what keep a reader
+ * from "fixing" one into the other.
  */
+/**
+ * `CRATE_BOOK_SQL` NAMES ITS BIND `$1` AND TAKES NO ARGUMENT — see its own
+ * doc comment in `crates/crate-balance.service.ts`. That is exactly right for
+ * `crateDepositsFor` below, where the point id IS `$1`, and exactly wrong for
+ * `list`'s `scoped` CTE, where every row needs its OWN point (`cp.id`), not
+ * one shared bind. `crateBookCorrelatedOn` performs that one textual
+ * substitution so the list still reads the SAME constant — never a
+ * hand-copied second formula — just re-anchored to a column instead of a
+ * parameter.
+ */
+const crateBookCorrelatedOn = (pointColumn: string): string =>
+  CRATE_BOOK_SQL.replace(/\$1/g, pointColumn);
 const movementsSql = (shift: string, tz: string): string => `(
     COALESCE((SELECT SUM(CASE
                 WHEN t.status = 'accepted' THEN t.cash
@@ -218,6 +240,25 @@ export class PointCashService {
     }[];
 
     return row.cash;
+  }
+
+  /**
+   * The point's crate-deposits book, LIFETIME, as a decimal STRING —
+   * `Σ deposit_taken − Σ deposit_refund` (spec §4.3), the SAME formula
+   * `CrateBalanceService.pointDepositBook` reads, imported rather than
+   * re-derived so the crates book has ONE definition.
+   *
+   * NO `asOf` PARAMETER, ON PURPOSE. §7.5 gives this book no lower bound —
+   * «від першої видачі» — and no physical count to anchor it on, so there is
+   * nothing here for a date to bound.
+   */
+  async crateDepositsFor(pointId: string, manager?: EntityManager): Promise<string> {
+    const runner = manager ?? this.dataSource.manager;
+    const [row] = (await runner.query(`SELECT ${CRATE_BOOK_SQL}::text AS crate_deposits`, [
+      pointId,
+    ])) as { crate_deposits: string }[];
+
+    return row.crate_deposits;
   }
 
   /**
@@ -349,7 +390,11 @@ export class PointCashService {
                            WHERE sh.collection_point_id = cp.id
                              AND c.book = 'berry'
                              AND c.kind <> 'midday'
-                             AND sh.business_date <= b.as_of), 0.00) AS unexplained_difference
+                             AND sh.business_date <= b.as_of), 0.00) AS unexplained_difference,
+                -- The crates book, correlated per point — see
+                -- crateBookCorrelatedOn's doc comment above. UNBOUNDED by
+                -- b.as_of, unlike every other column of this row: §7.5.
+                ${crateBookCorrelatedOn('cp.id')} AS crate_deposits
            FROM collection_points cp CROSS JOIN bounds b
           WHERE ($1::uuid IS NULL OR cp.id = $1::uuid)
        )
@@ -360,6 +405,7 @@ export class PointCashService {
               -- with no CASE and no branch to forget.
               (s.target_cash - s.cash)::text AS shortfall,
               s.unexplained_difference::text AS unexplained_difference,
+              s.crate_deposits::text AS crate_deposits,
               lt.status  AS latest_transfer_status,
               lt.sent_at AS latest_transfer_sent_at
          FROM scoped s
