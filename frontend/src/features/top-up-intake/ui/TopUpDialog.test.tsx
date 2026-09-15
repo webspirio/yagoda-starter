@@ -111,7 +111,7 @@ describe('TopUpDialog', () => {
   it('names SUPPLIER_INACTIVE rather than showing a generic failure', async () => {
     const user = userEvent.setup();
     createMock.mockRejectedValue(
-      new ApiError('Supplier is inactive', 400, undefined, 'SUPPLIER_INACTIVE'),
+      new ApiError(400, 'Supplier is inactive', undefined, 'SUPPLIER_INACTIVE'),
     );
     open();
 
@@ -124,7 +124,7 @@ describe('TopUpDialog', () => {
 
   it('falls back to a generic banner for an unmapped failure', async () => {
     const user = userEvent.setup();
-    createMock.mockRejectedValue(new ApiError('boom', 500));
+    createMock.mockRejectedValue(new ApiError(500, 'boom'));
     open();
 
     await fill(user, '750', 'Доплата');
