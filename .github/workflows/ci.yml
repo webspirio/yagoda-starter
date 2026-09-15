@@ -196,14 +196,21 @@ jobs:
     # RED, and instructively so: `test`, `coverage` and `test:db` each died at exactly
     # `timed out after 120.0s`, the runner's inherited per-check default, with nothing
     # actually wrong. They now carry their own `timeoutMs` in scripts/verify/registry.mjs
-    # (600s / 600s / 480s).
+    # (600s / 600s / 1200s).
+    #
+    # UPDATED 2026-09-15 after the run that followed (34998136933): with real budgets the
+    # three finished at test 220.4s and coverage 254.6s — comfortably inside 600s — while
+    # test:db died AGAIN, at its full 480s, the only red row in an otherwise green 21. Its
+    # budget is now 1200s and, unlike every other number here, it is a MEASUREMENT
+    # INSTRUMENT rather than a sized budget: the row has never once run to completion on
+    # CI, so nobody knows what it costs. See its note in scripts/verify/registry.mjs.
     #
     # This number must stay above the SUM of those budgets, or a genuinely hung row gets
     # killed by the job instead of reported as a clean FAILED row by the runner — which is
-    # the difference between "test:db timed out after 480s" and a job log that just stops.
-    # 600 + 600 + 480 = 28 minutes of budget before a single other row runs, so 30 was
-    # already too tight to hold that promise.
-    timeout-minutes: 45
+    # the difference between "test:db timed out after 1200s" and a job log that just stops.
+    # 600 + 600 + 1200 = 40 minutes of budget before a single other row runs; the rows that
+    # do not declare a budget measured ~250s together on that same run.
+    timeout-minutes: 60
 
     env:
       # ─────────────────────────────────────────────────────────────────────────

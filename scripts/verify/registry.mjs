@@ -1278,9 +1278,26 @@ export const CHECKS = [
     tier: 'full',
     cmd: 'npm run test:db -w backend',
     // 286 specs against a real Postgres, maxWorkers 1 by design (every spec truncates the
-    // same tables). ~20s on a warm laptop, well past 120s on a cold two-core CI runner
-    // where ts-jest compiles from scratch.
-    timeoutMs: 480_000,
+    // same tables). ~20s on a warm laptop and MORE THAN 480s on CI — this row blew through
+    // an 8-minute budget on 2026-09-15 (run 34998136933) while every other row passed,
+    // including `test` at 220.4s and `coverage` at 254.6s.
+    //
+    // THIS NUMBER IS A MEASUREMENT INSTRUMENT, NOT A SIZED BUDGET, and it is the only one
+    // in this file that is. The true cost is still unknown: 480s is a floor, not a
+    // reading, because the row was killed before it finished. What IS measured is the
+    // local half — `openTestDataSource()` (DROP DATABASE + CREATE + 12 migrations) costs
+    // 676ms average on a warm laptop and runs once per db-spec FILE, 21 times, so roughly
+    // 14 of the local 20 seconds is setup replayed. Whether that same loop, or cold
+    // ts-jest compilation of 23 suites at maxWorkers 1, dominates on CI is not something
+    // this laptop can answer.
+    //
+    // 1200s buys one complete CI reading. Once that number exists this must be tightened
+    // to it plus headroom, the same way every other budget here was sized — and the real
+    // question the reading will settle is whether to fix the cause instead: 12 migrations
+    // replayed 21 times is 252 migration runs per verify:ci, and the drop/create is
+    // load-bearing (it is what makes dev-seed.db-spec.ts's idempotency assertion mean
+    // anything), so it must not be cheapened without deciding what that costs in proof.
+    timeoutMs: 1_200_000,
     needs: ['postgres', 'redis'],
     proves:
       "`npm run test:db -w backend` (`NODE_OPTIONS=--experimental-vm-modules jest --config " +
