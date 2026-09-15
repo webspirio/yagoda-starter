@@ -5,8 +5,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, In, Repository } from 'typeorm';
+import { DataSource, In } from 'typeorm';
 import { CrateIssuance } from './crate-issuance.entity';
 import { CrateReturn } from './crate-return.entity';
 import { CrateReturnAllocation } from './crate-return-allocation.entity';
@@ -38,8 +37,6 @@ import type { AuthenticatedUser } from '../auth/jwt.strategy';
 @Injectable()
 export class CratesService {
   constructor(
-    @InjectRepository(CrateIssuance)
-    private readonly issuances: Repository<CrateIssuance>,
     private readonly dataSource: DataSource,
     private readonly shifts: ShiftsService,
     private readonly suppliers: SuppliersService,
@@ -282,6 +279,14 @@ export class CratesService {
    * outside a shift would be useless exactly when the operator is deciding
    * whether to open one.
    *
+   * NO `CRATE_CASH_INSUFFICIENT` CHECK EITHER (§6.7, the crates-book guard
+   * `returnCrates` runs before it writes). Harmless today because that check
+   * can never fire under valid documents — FIFO guarantees a refund never
+   * exceeds what the supplier deposited, so the book cannot go negative
+   * through any sequence of real documents; a preview that skips a check
+   * which exists only to catch impossible data loses nothing a supplier or
+   * operator would ever see.
+   *
    * SAME ENRICHED SHAPE AS THE WRITTEN DOCUMENT. The preview IS the screen the
    * operator reads before committing, so «25 за розпискою, без грошей» matters
    * more here than on the receipt afterwards — `joinIssuanceInfo` is the same
@@ -351,6 +356,38 @@ export class CratesService {
     // check-then-write, and two taps produce two audit entries naming possibly
     // different actors while `voided_by_user_id` is last-writer-wins.
     return this.dataSource.transaction(async (m) => {
+      // A cheap, UNLOCKED read, only to learn who the supplier is — 404s
+      // before any lock is taken if the document simply does not exist.
+      const stub = await m.findOne(CrateIssuance, { where: { id } });
+      if (!stub) throw new NotFoundException('Crate issuance not found');
+
+      /**
+       * THE SUPPLIER ROW IS LOCKED FIRST — before this document's own
+       * pessimistic load — and this ordering is the whole fix.
+       *
+       * WHY THE LOCK EXISTS AT ALL: under READ COMMITTED, a void that only
+       * locks the issuance leaves the supplier uncontended. `returnCrates`
+       * can then lock the supplier, read `tranchesFor` on a snapshot where
+       * this issuance still looks live, and allocate against it; its
+       * allocation INSERT needs `FOR KEY SHARE` on the parent issuance and
+       * blocks behind this transaction's issuance lock; this transaction
+       * commits the void; the other transaction's FK re-check sees the row
+       * still EXISTS (voided ≠ deleted) and succeeds. The result is a live
+       * allocation against a voided issuance — `tranchesFor` filters
+       * `voided_at IS NULL` so the capacity silently vanishes, and
+       * `crateBookSql` subtracts the refund it never added the deposit
+       * for, so the point's crates book can go negative.
+       *
+       * WHY IT MUST BE FIRST: `returnCrates` locks the supplier BEFORE its
+       * document-level work. A void that took the issuance lock first and
+       * the supplier lock second would acquire the two locks in the
+       * opposite order from `returnCrates` — a classic lock-order inversion
+       * — and the two can then deadlock on each other instead of one simply
+       * waiting for the other. Acquiring supplier-then-document here, the
+       * same order `returnCrates` uses, is what makes waiting safe.
+       */
+      await m.query('SELECT id FROM suppliers WHERE id = $1 FOR UPDATE', [stub.supplier_id]);
+
       const issuance = await m.findOne(CrateIssuance, {
         where: { id },
         lock: { mode: 'pessimistic_write' },
@@ -419,7 +456,7 @@ export class CratesService {
    * «НАЗАВЖДИ з печаткою» and make the refund unexplainable afterwards.
    *
    * The money leaves the crates book at the same instant, by the same filter in
-   * `CRATE_BOOK_SQL`. Spec §7: cash physically changing hands afterwards is an
+   * `crateBookSql`. Spec §7: cash physically changing hands afterwards is an
    * out-of-system act — правка 11, «система підказує, а керівник вирішує… за
    * межами системи».
    */
@@ -429,6 +466,18 @@ export class CratesService {
     dto: VoidDocumentDto,
   ): Promise<CrateReturnResponse> {
     return this.dataSource.transaction(async (m) => {
+      // A cheap, UNLOCKED read, only to learn who the supplier is — 404s
+      // before any lock is taken if the document simply does not exist.
+      const stub = await m.findOne(CrateReturn, { where: { id } });
+      if (!stub) throw new NotFoundException('Crate return not found');
+
+      // THE SUPPLIER ROW IS LOCKED FIRST, before this document's own
+      // pessimistic load — see `voidIssuance`'s doc comment for the full
+      // interleaving this prevents and why the ordering (supplier, then
+      // document — matching `returnCrates`) is what keeps the two from
+      // deadlocking rather than merely waiting.
+      await m.query('SELECT id FROM suppliers WHERE id = $1 FOR UPDATE', [stub.supplier_id]);
+
       const ret = await m.findOne(CrateReturn, {
         where: { id },
         lock: { mode: 'pessimistic_write' },

@@ -15,7 +15,6 @@ describe('CratesService', () => {
     collection_point_id: POINT_A,
   } as never;
 
-  let repo: { findOne: jest.Mock };
   let manager: {
     query: jest.Mock;
     save: jest.Mock;
@@ -90,7 +89,6 @@ describe('CratesService', () => {
     dataSource = {
       transaction: jest.fn().mockImplementation((cb: (m: unknown) => unknown) => cb(manager)),
     };
-    repo = { findOne: jest.fn().mockResolvedValue(null) };
     shifts = {
       findOpenAtPoint: jest.fn().mockResolvedValue(shift()),
       findOneRaw: jest.fn().mockResolvedValue(shift()),
@@ -112,7 +110,6 @@ describe('CratesService', () => {
     };
 
     service = new CratesService(
-      repo as never,
       dataSource as never,
       shifts as never,
       suppliers as never,
@@ -463,6 +460,54 @@ describe('CratesService', () => {
       shifts.findOneRaw.mockResolvedValue(shift(shiftOver as Record<string, unknown> | undefined));
     };
 
+    /**
+     * The fix-round finding: a void that locks only the document leaves the
+     * supplier row uncontended, so a concurrent `returnCrates` can lock the
+     * supplier, read `tranchesFor` on a snapshot where this issuance still
+     * looks live, and allocate against it before this void commits — a live
+     * allocation against a voided issuance. `returnCrates` locks the
+     * supplier BEFORE its document work, so the fix has to take the SAME
+     * lock, in the SAME order, before its own document load — otherwise the
+     * two acquire their two locks in opposite orders and can deadlock
+     * instead of one simply waiting for the other. `invocationCallOrder` is
+     * what actually proves the ORDER, not merely that both locks were taken
+     * — a count-only assertion would pass code that takes them in the wrong
+     * sequence.
+     */
+    it('locks the supplier row before loading the issuance for write', async () => {
+      loadIssuance({ shift: { collection_point_id: 'point-1', closed_at: null } });
+
+      await service.voidIssuance(voidOperator, 'i-1', { reason: 'x' });
+
+      const forUpdateCallIndex = (manager.query.mock.calls as [string, unknown[]][]).findIndex(
+        ([sql]) => sql.includes('FOR UPDATE'),
+      );
+      expect(forUpdateCallIndex).toBeGreaterThanOrEqual(0);
+      expect(manager.query.mock.calls[forUpdateCallIndex][1]).toEqual([SUPPLIER]);
+
+      const forUpdateOrder = manager.query.mock.invocationCallOrder[forUpdateCallIndex];
+      const [stubLoadOrder, lockedLoadOrder] = manager.findOne.mock.invocationCallOrder;
+      expect(stubLoadOrder).toBeLessThan(forUpdateOrder);
+      expect(forUpdateOrder).toBeLessThan(lockedLoadOrder);
+    });
+
+    it('locks the supplier row before loading the return for write', async () => {
+      loadReturn({ shift: { collection_point_id: 'point-1', closed_at: null } });
+
+      await service.voidReturn(voidOperator, 'r-1', { reason: 'x' });
+
+      const forUpdateCallIndex = (manager.query.mock.calls as [string, unknown[]][]).findIndex(
+        ([sql]) => sql.includes('FOR UPDATE'),
+      );
+      expect(forUpdateCallIndex).toBeGreaterThanOrEqual(0);
+      expect(manager.query.mock.calls[forUpdateCallIndex][1]).toEqual([SUPPLIER]);
+
+      const forUpdateOrder = manager.query.mock.invocationCallOrder[forUpdateCallIndex];
+      const [stubLoadOrder, lockedLoadOrder] = manager.findOne.mock.invocationCallOrder;
+      expect(stubLoadOrder).toBeLessThan(forUpdateOrder);
+      expect(forUpdateOrder).toBeLessThan(lockedLoadOrder);
+    });
+
     it('lets an operator void a COLLEAGUE’s document at their own point', async () => {
       loadIssuance({ issued_by_user_id: 'someone-else', shift: { collection_point_id: 'point-1', closed_at: null } });
 
@@ -562,10 +607,10 @@ describe('CratesService', () => {
     });
 
     /**
-     * Fix-round finding: `voidReturn` has its OWN inline authority check —
-     * not a shared call — so nothing previously exercised the owner path on
-     * a return at all. A copy/paste slip there (inverted condition, wrong
-     * field) would have gone undetected.
+     * Fix-round finding: `voidReturn` now calls the SAME shared
+     * `assertMayVoid` `voidIssuance` does, but nothing previously exercised
+     * the owner path on a return at all. A copy/paste slip in either verb's
+     * wiring to that shared check would have gone undetected.
      */
     it('lets the owner void a return, at their own point, shift open or closed', async () => {
       loadReturn({ shift: { collection_point_id: 'point-1', closed_at: new Date() } });

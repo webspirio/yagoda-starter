@@ -40,36 +40,27 @@ export interface CrateBalanceResponse {
  * berry book, which is anchored on the last physical count and bounded by
  * `as_of`, and the two must not be made to share SQL.
  *
- * PLACEHOLDER-ONLY BY CONSTRUCTION: this is a fragment, not a function of a
- * caller-supplied value — it always names the bind parameter `$1` and takes
- * no argument, so there is nothing for a future caller to interpolate a raw
- * id into. `pointDepositBook` below is the one place it is spliced into a
- * query AS A BIND FRAGMENT, immediately followed by `[pointId]` as the actual
- * bound parameter.
- *
- * IT HAS A SECOND CALLER THAT DOES NOT BIND IT: `point-cash.service.ts`'s
- * `crateBookCorrelatedOn` rewrites every `$1` in this string to a correlated
- * column (`cp.id`) by TEXT SUBSTITUTION, so the list screen can compute this
- * figure once per row inside its own CTE instead of running a query per row.
- * That rewrite trusts the CURRENT SHAPE of this constant exactly: exactly two
- * `$1` occurrences, both genuine binds, none inside a string literal, and no
- * other numbered placeholder. If this constant ever gains a `$2`, a second
- * kind of `$1`-looking text, or a join alias rename, the substitution will
- * not fail loudly — it will silently produce wrong SQL. Check
- * `point-cash.service.spec.ts`'s "crateBookCorrelatedOn" tests (which pin the
- * exact rewritten output and assert no `$1` survives it) before changing this
- * string's bind shape, and update that call site in the same change.
+ * IT IS A FUNCTION OF A POINT EXPRESSION, NOT A FIXED `$1` FRAGMENT — the
+ * ONE definition either caller needs. `pointDepositBook` below calls
+ * `crateBookSql('$1')`, immediately followed by `[pointId]` as the actual
+ * bound parameter; `point-cash.service.ts`'s list CTE calls
+ * `crateBookSql('cp.id')` so the list screen can compute this figure once per
+ * row inside its own CTE instead of running a query per row, correlated
+ * against a column rather than a shared bind. Earlier this was a `$1`-only
+ * string constant that the list caller rewrote by TEXT SUBSTITUTION — real
+ * SQL parameterisation now, not a regex trusting the constant's current
+ * shape.
  */
-export const CRATE_BOOK_SQL = `(
+export const crateBookSql = (pointExpr: string): string => `(
     COALESCE((SELECT SUM(ci.deposit_taken)
          FROM crate_issuances ci
          JOIN shifts cs ON cs.id = ci.shift_id
-        WHERE cs.collection_point_id = $1
+        WHERE cs.collection_point_id = ${pointExpr}
           AND ci.voided_at IS NULL), 0.00)
   - COALESCE((SELECT SUM(cr.deposit_refund)
          FROM crate_returns cr
          JOIN shifts rs ON rs.id = cr.shift_id
-        WHERE rs.collection_point_id = $1
+        WHERE rs.collection_point_id = ${pointExpr}
           AND cr.voided_at IS NULL), 0.00)
 )`;
 
@@ -152,7 +143,7 @@ export class CrateBalanceService {
   async pointDepositBook(pointId: string, manager?: EntityManager): Promise<string> {
     const runner = manager ?? this.dataSource.manager;
     const rows: Array<{ book: string }> = await runner.query(
-      `SELECT ${CRATE_BOOK_SQL} AS book`,
+      `SELECT ${crateBookSql('$1')} AS book`,
       [pointId],
     );
     return rows[0]?.book ?? '0.00';

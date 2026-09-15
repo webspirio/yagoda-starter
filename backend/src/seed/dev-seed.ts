@@ -542,12 +542,17 @@ async function seedDocuments(
   );
   if (!crateType) throw new Error('Seed crates: no tare type is flagged is_crate');
 
-  // §6.5's older tranche needs a price the catalogue does not hold today —
-  // Чешка is pinned at 120,00 ₴ for §6.3's worked example — so the catalogue
-  // row is nudged to this figure for exactly the one issuance that needs it
-  // and put back immediately after, inside this same transaction, so nothing
-  // outside it ever observes the detour.
-  const OLDER_CRATE_DEPOSIT_PRICE = '130.00';
+  // §6.5's worked example reads «120, then 130» — the OLDER tranche cheaper,
+  // the NEWER one dearer — so the demo is nudged to read in the rule's own
+  // direction: the older (yesterday) issuance keeps the catalogue's own
+  // price (Чешка is 120,00 ₴), and it is the NEWER tranche that needs a
+  // price the catalogue does not hold today. That row is nudged to 130,00 ₴
+  // for exactly the one issuance that needs it and put back immediately
+  // after, inside this same transaction, so nothing outside it ever
+  // observes the detour. The partial return (`SEED_CRATE_RETURNS`) still
+  // draws from the OLDER tranche first — that is FIFO, not a hand-picked
+  // price, and is unaffected by which tranche is dearer.
+  const NEWER_CRATE_DEPOSIT_PRICE = '130.00';
 
   for (const [i, iss] of SEED_CRATE_ISSUANCES.entries()) {
     const shift = shiftId.get(`${iss.point}/${iss.day}`);
@@ -562,17 +567,17 @@ async function seedDocuments(
     );
     if (found) continue;
 
-    // The OLDER tranche: a later deposit issuance for the SAME supplier still
-    // lies ahead in the array.
-    const isOlderTranche =
+    // The NEWER tranche: an EARLIER deposit issuance for the SAME supplier
+    // already lies behind in the array.
+    const isNewerTranche =
       iss.mode === 'deposit' &&
-      SEED_CRATE_ISSUANCES.slice(i + 1).some(
-        (later) =>
-          later.point === iss.point && later.supplier === iss.supplier && later.mode === 'deposit',
+      SEED_CRATE_ISSUANCES.slice(0, i).some(
+        (earlier) =>
+          earlier.point === iss.point && earlier.supplier === iss.supplier && earlier.mode === 'deposit',
       );
-    if (isOlderTranche) {
+    if (isNewerTranche) {
       await qr.query(`UPDATE tare_types SET deposit_price = $1 WHERE id = $2`, [
-        OLDER_CRATE_DEPOSIT_PRICE,
+        NEWER_CRATE_DEPOSIT_PRICE,
         crateType.id,
       ]);
     }
@@ -593,14 +598,17 @@ async function seedDocuments(
     const perUnit = iss.mode === 'receipt' ? '0.00' : priced!.deposit_price;
     const taken = iss.mode === 'receipt' ? '0.00' : mul(perUnit, String(iss.units));
 
+    // `created_at` is anchored to the ISSUANCE'S OWN business date — a
+    // yesterday shift's issuance now genuinely shows as created yesterday,
+    // not backdated from `now()` onto today's wall clock — with a
+    // within-day offset by the array's own order (§6.5's FIFO reads oldest
+    // `created_at` first) so two same-day rows never tie. Ordering across
+    // days falls out of the dates themselves and needs no offset at all.
+    const timeOfDay = `09:${String(i * 5).padStart(2, '0')}:00`;
     await qr.query(
-      // `created_at` is backdated from the transaction start by the array's
-      // own order (§6.5's FIFO reads oldest `created_at` first) — the two
-      // seeded days alone would tie every row at the same transaction-start
-      // instant, since `now()` is constant for the whole transaction.
       `INSERT INTO crate_issuances
          (code, shift_id, supplier_id, units, mode, deposit_per_unit, deposit_taken, issued_by_user_id, created_at)
-       VALUES ($1, $2, $3, $4, $5::crate_issuance_mode, $6, $7, $8, now() - interval '2 hours' + $9 * interval '5 minutes')`,
+       VALUES ($1, $2, $3, $4, $5::crate_issuance_mode, $6, $7, $8, ${localTs(9, 10, 11)})`,
       [
         code,
         shift,
@@ -610,11 +618,13 @@ async function seedDocuments(
         perUnit,
         taken,
         userByLogin.get(iss.operator)!,
-        i,
+        dateOf(iss.day),
+        timeOfDay,
+        tz,
       ],
     );
 
-    if (isOlderTranche) {
+    if (isNewerTranche) {
       // Restore the catalogue to the price `SEED_TARE_TYPES` declares.
       const catalog = SEED_TARE_TYPES.find((t) => t.is_crate)!;
       await qr.query(`UPDATE tare_types SET deposit_price = $1 WHERE id = $2`, [

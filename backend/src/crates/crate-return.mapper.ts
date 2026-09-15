@@ -73,7 +73,20 @@ export function joinIssuanceInfo(
       // cover every issuance `allocate()` drew from.
       throw new Error(`joinIssuanceInfo: no issuance info for ${row.issuance_id}`);
     }
-    return { ...row, mode: info.mode, code: info.code };
+    // Field by field, not `...row` — see `point-cash.mapper.ts`'s explicit
+    // discipline. `row` is a clean `CrateAllocationRow` from `returnCrates`
+    // but a `CrateReturnAllocation` ENTITY from `listReturns`/`voidReturn`,
+    // whose `return_id` column would otherwise leak into the response and
+    // make the same document's allocations shaped differently depending on
+    // which route returned them.
+    return {
+      issuance_id: row.issuance_id,
+      units: row.units,
+      per_unit: row.per_unit,
+      amount: row.amount,
+      mode: info.mode,
+      code: info.code,
+    };
   });
 }
 

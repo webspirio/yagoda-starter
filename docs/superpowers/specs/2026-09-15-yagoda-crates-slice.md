@@ -72,7 +72,7 @@ The design tree, resolved. Everything below this section is mechanics.
 | 4 | **The backend ships primitives.** Pairing a return with an intake is client composition — no `intake_id`, no combined endpoint, no shared transaction. The server owns FIFO, so it owes a **preview read**. |
 | 5 | **The crates cash book is derived only**: `Σ deposit_taken − Σ deposit_refund`, point-lifetime, no date floor (§7.5). No `cash_counts` row with `book = 'crates'`. §6.7's block ships as an assertion. |
 | 6 | **No tare type on the crate tables.** One standard crate, network-wide. `is_crate` is exclusive: setting it demotes every other row in the same transaction. `deposit_per_unit` snapshots that row's price. |
-| 7 | **A void drops the deposit from the book immediately** — no settlement trio, unlike `payouts`. Mitigated by the open-shift bound (decision 10) and the owner's voided-deposit list. |
+| 7 | **A void drops the deposit from the book immediately** — no settlement trio, unlike `payouts`. NOT mitigated by the open-shift bound (decision 10) — decision 10 has no author check, so the exposure (take a deposit, pocket it, void the issuance inside the same open shift) is entirely permitted by it. The real mitigation is the owner's voided-deposit list alone; see §11.1. |
 | 8 | `code varchar NOT NULL UNIQUE` on both modes, never client-supplied. Allocated under an advisory transaction lock plus a row count that includes voided rows. |
 | 9 | Create is `@Auth()`, point-scoped, open shift required. Money is server-computed. `mode = 'receipt'` forces zeros by CHECK. §6.2's 50-crate threshold is a client default, never a server rule. |
 | 10 | **Void relaxed from §9.4**: any crate document at the operator's own point while that shift is open; a closed shift is the owner's alone. |
@@ -238,8 +238,8 @@ backend/src/crates/
   crate-issuance.entity.ts · crate-return.entity.ts · crate-return-allocation.entity.ts
   crate-allocation.ts        ← pure FIFO, the whole computation      + crate-allocation.spec.ts
   crate-code.ts              ← the per-(shift, mode) counter
-  crates.service.ts          ← issue · return · void × 2             + crates.service.spec.ts
-  crate-balance.service.ts   ← tranches · balance · preview
+  crates.service.ts          ← issue · return · void × 2 · preview   + crates.service.spec.ts
+  crate-balance.service.ts   ← tranches · balance
   crate-issuances.controller.ts · crate-returns.controller.ts · crate-balance.controller.ts
   dto/ · crate-issuance.mapper.ts · crate-return.mapper.ts · crates.module.ts
 ```
@@ -258,7 +258,7 @@ modules because their queries span tables owned by others. This one reads only c
 | `POST /crate-returns/:id/void` | `@Auth()` | `{ reason }` | Allocations are released by the void filter; no rows are deleted. |
 | `POST /crate-returns/preview` | `@Auth()` | same as create | Create minus the write. Same snapshots, same refusals. |
 | `GET /suppliers/:id/crate-balance` | `@Auth()` | — | Outstanding units, deposit held, open tranches. §6.3's header. |
-| `GET /crate-issuances` | `@Auth()` | `?supplier_id & mode & voided & point_id`, paginated | Journal; #58's «усі розписки постачальника»; the owner's voided-deposit list. |
+| `GET /crate-issuances` | `@Auth()` | `?supplier_id & mode & voided & collection_point_id`, paginated | Journal; #58's «усі розписки постачальника»; the owner's voided-deposit list. |
 | `GET /crate-returns` | `@Auth()` | same shape | |
 
 **No `PATCH`** (§2.7, §9.3 — a correction is a void plus a new document) and **no `DELETE`**
@@ -447,9 +447,15 @@ claim that no deposit has ever been taken.
 Recorded as decisions, not discovered later as surprises.
 
 1. **A taken deposit can be erased with no counterpart record** beyond the audit log and the
-   voided-deposit list, by the same person who took it (decisions 7 and 10). Accepted
-   knowingly. **The trigger to revisit is the day the crate drawer gets counted** — the
-   settlement trio and `book = 'crates'` arrive together.
+   voided-deposit list, by the same person who took it (decisions 7 and 10). **This is NOT
+   mitigated by the open-shift bound (decision 10)** — decision 10 has no author check, so the
+   exposure is fully available to whoever took the deposit in the first place: take it, pocket
+   it, void the issuance, all inside the one open shift that bound permits. **The only real
+   mitigation is the owner's voided-deposit list** (`GET /crate-issuances?voided=true&mode=deposit`),
+   and that list should be surfaced to the owner the way `GET /cash-counts?only_discrepancies=true`
+   is — a working list the owner is shown, not a screen they must remember to open. Accepted
+   knowingly as a residual risk regardless. **The trigger to revisit is the day the crate drawer
+   gets counted** — the settlement trio and `book = 'crates'` arrive together.
 2. **§6.7's block cannot fire** under valid documents. Shipping as an assertion (§4.3).
 3. **Code numbering depends on nothing ever hard-deleting an issuance** (§7.2, property 4).
 4. **The crate deposit price is network-wide.** Per-point pricing would be a new table, not a

@@ -7,8 +7,10 @@ import { CanonicalDecimal } from '../../common/dto/canonical-decimal';
  * would let a shift exist with no opening count, and the closing expectation
  * would then have no anchor.
  *
- * ONE AMOUNT, and `book` is written from a constant. The crates book has no
- * source of money yet, so the whole drawer IS the berry book (spec §7).
+ * ONE AMOUNT, and `book` is written from a constant (`'berry'`). The crates
+ * book is derived only (`point-cash/`'s `crate_deposits`, from
+ * `crates/crate-balance.service.ts`'s `crateBookSql`) — no `cash_counts`
+ * row is ever written with `book = 'crates'` (spec §7).
  *
  * NO EXPECTED FIGURE IS ACCEPTED OR RETURNED BEFORE THE WRITE. §7.6 —
  * «очікувана сума СХОВАНА, поки не введено фактичну».

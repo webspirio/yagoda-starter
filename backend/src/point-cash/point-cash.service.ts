@@ -8,7 +8,7 @@ import { resolvePointFilter } from '../auth/access/point-scope';
 import type { AuthenticatedUser } from '../auth/jwt.strategy';
 import { ListPointCashQueryDto } from './dto/list-point-cash.query';
 import { PointCashRow, PointCashRowResponse, toPointCashRowResponse } from './point-cash.mapper';
-import { CRATE_BOOK_SQL } from '../crates/crate-balance.service';
+import { crateBookSql } from '../crates/crate-balance.service';
 
 /**
  * «As of» resolves to TODAY IN `APP_TIMEZONE` when the caller names no date,
@@ -104,18 +104,6 @@ const asOfSql = (asOf: string, tz: string): string =>
  * on the same screen; the field name and this comment are what keep a reader
  * from "fixing" one into the other.
  */
-/**
- * `CRATE_BOOK_SQL` NAMES ITS BIND `$1` AND TAKES NO ARGUMENT — see its own
- * doc comment in `crates/crate-balance.service.ts`. That is exactly right for
- * `crateDepositsFor` below, where the point id IS `$1`, and exactly wrong for
- * `list`'s `scoped` CTE, where every row needs its OWN point (`cp.id`), not
- * one shared bind. `crateBookCorrelatedOn` performs that one textual
- * substitution so the list still reads the SAME constant — never a
- * hand-copied second formula — just re-anchored to a column instead of a
- * parameter.
- */
-const crateBookCorrelatedOn = (pointColumn: string): string =>
-  CRATE_BOOK_SQL.replace(/\$1/g, pointColumn);
 const movementsSql = (shift: string, tz: string): string => `(
     COALESCE((SELECT SUM(CASE
                 WHEN t.status = 'accepted' THEN t.cash
@@ -254,7 +242,7 @@ export class PointCashService {
    */
   async crateDepositsFor(pointId: string, manager?: EntityManager): Promise<string> {
     const runner = manager ?? this.dataSource.manager;
-    const [row] = (await runner.query(`SELECT ${CRATE_BOOK_SQL}::text AS crate_deposits`, [
+    const [row] = (await runner.query(`SELECT ${crateBookSql('$1')}::text AS crate_deposits`, [
       pointId,
     ])) as { crate_deposits: string }[];
 
@@ -391,10 +379,12 @@ export class PointCashService {
                              AND c.book = 'berry'
                              AND c.kind <> 'midday'
                              AND sh.business_date <= b.as_of), 0.00) AS unexplained_difference,
-                -- The crates book, correlated per point — see
-                -- crateBookCorrelatedOn's doc comment above. UNBOUNDED by
-                -- b.as_of, unlike every other column of this row: §7.5.
-                ${crateBookCorrelatedOn('cp.id')} AS crate_deposits
+                -- The crates book, correlated per point -- crateBookSql
+                -- called with the row's own cp.id rather than a shared
+                -- bind, so every row gets its own figure inside this one
+                -- CTE instead of a query per row. UNBOUNDED by b.as_of,
+                -- unlike every other column of this row: section 7.5.
+                ${crateBookSql('cp.id')} AS crate_deposits
            FROM collection_points cp CROSS JOIN bounds b
           WHERE ($1::uuid IS NULL OR cp.id = $1::uuid)
        )
@@ -443,4 +433,4 @@ export class PointCashService {
   }
 }
 
-export { movementsSql, anchorSql, asOfSql, crateBookCorrelatedOn };
+export { movementsSql, anchorSql, asOfSql };

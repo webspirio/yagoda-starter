@@ -1,44 +1,33 @@
-import { PointCashService, crateBookCorrelatedOn } from './point-cash.service';
-import { CRATE_BOOK_SQL } from '../crates/crate-balance.service';
+import { PointCashService } from './point-cash.service';
+import { crateBookSql } from '../crates/crate-balance.service';
 import { toPointCashRowResponse, PointCashRow } from './point-cash.mapper';
 import { TransferStatus } from '../transfers/transfer-status.enum';
 
 /**
- * THE SUBSTITUTION, PINNED. `crateBookCorrelatedOn` trusts the CURRENT shape
- * of `CRATE_BOOK_SQL` — exactly two `$1` occurrences, both genuine binds, none
- * inside a string literal, no other numbered placeholder — and rewrites them
- * to a correlated column by TEXT SUBSTITUTION rather than a real SQL parser.
- * `CRATE_BOOK_SQL`'s own doc comment names this file as the thing to check
- * before changing its bind shape; this is that check. The assertion that
- * matters most is the last one: if the constant ever gains a bind the rewrite
- * does not understand, a stray `$1` survives into the generated SQL and this
- * fails loudly instead of shipping a query that silently reads the wrong
- * point's crates.
+ * THE FUNCTION, PINNED. `crateBookSql` used to be a `$1`-only string
+ * constant that `point-cash.service.ts` rewrote by TEXT SUBSTITUTION for its
+ * correlated list CTE — real SQL parameterisation now: the caller passes the
+ * point expression it wants (`'$1'` for a bound parameter, `'cp.id'` for a
+ * correlated column) and gets that expression spliced into both predicates.
+ * These tests pin BOTH call shapes' output directly, in place of the old
+ * canary that counted `$1` occurrences in a shared constant — there is no
+ * longer a shared constant whose shape a rewrite could drift out from under.
  */
-describe('crateBookCorrelatedOn — pins the CRATE_BOOK_SQL rewrite', () => {
-  it('replaces every $1 with the given column, on the constant as it stands today', () => {
-    const rewritten = crateBookCorrelatedOn('cp.id');
+describe('crateBookSql — both call shapes', () => {
+  it('produces a bound-parameter predicate for pointDepositBook / crateDepositsFor', () => {
+    const sql = crateBookSql('$1');
 
-    expect(rewritten).toContain('cs.collection_point_id = cp.id');
-    expect(rewritten).toContain('rs.collection_point_id = cp.id');
+    expect(sql).toContain('cs.collection_point_id = $1');
+    expect(sql).toContain('rs.collection_point_id = $1');
+    expect(sql).not.toContain('cp.id');
   });
 
-  it('leaves no literal $1 behind', () => {
-    const rewritten = crateBookCorrelatedOn('cp.id');
+  it('produces a correlated-column predicate for the list CTE', () => {
+    const sql = crateBookSql('cp.id');
 
-    expect(rewritten).not.toMatch(/\$1/);
-  });
-
-  it('replaces exactly as many occurrences as CRATE_BOOK_SQL currently has — a canary for a bind-shape change', () => {
-    const occurrences = (CRATE_BOOK_SQL.match(/\$1/g) ?? []).length;
-    // The rewrite's whole premise is "every $1 in this constant is a genuine,
-    // interchangeable point-id bind". If a future edit adds a $2, or a $1
-    // that means something else, this count — and therefore the premise —
-    // changes, and this assertion is what catches it.
-    expect(occurrences).toBe(2);
-
-    const rewritten = crateBookCorrelatedOn('cp.id');
-    expect(rewritten.match(/cp\.id/g)).toHaveLength(occurrences);
+    expect(sql).toContain('cs.collection_point_id = cp.id');
+    expect(sql).toContain('rs.collection_point_id = cp.id');
+    expect(sql).not.toMatch(/\$1/);
   });
 });
 
@@ -67,7 +56,7 @@ describe('PointCashService — crate deposits book', () => {
       await expect(service.crateDepositsFor('point-1')).resolves.toBe('2400.00');
     });
 
-    it('splices CRATE_BOOK_SQL and binds the point id as $1, nothing else', async () => {
+    it('splices crateBookSql(\'$1\') and binds the point id as $1, nothing else', async () => {
       query.mockResolvedValue([{ crate_deposits: '0.00' }]);
 
       await service.crateDepositsFor('point-1');

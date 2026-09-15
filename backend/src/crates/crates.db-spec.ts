@@ -300,5 +300,22 @@ describe('crates lifecycle (HTTP)', () => {
     // one return is voided) = 0.00. The deposit issuance's 2400.00 no longer
     // counts because IT is now voided too.
     expect(cash.body.crate_deposits).toBe('0.00');
+
+    // SAME FIGURE, THE OTHER SQL PATH. `GET /point-cash/:pointId` binds the
+    // point id as `$1` (`crateBookSql('$1')`); `GET /point-cash` computes the
+    // same column per row of its `scoped` CTE via `crateBookSql('cp.id')` —
+    // a correlated column, not a bind. Nothing above this test exercises
+    // that second path at all, so a regression that broke ONLY the
+    // correlated form (e.g. a future edit to `crateBookSql` that only the
+    // `$1` caller was updated for) would pass every assertion before this
+    // one and still ship.
+    const list = await request(app.getHttpServer())
+      .get('/point-cash')
+      .set('Authorization', `Bearer ${operatorToken}`)
+      .expect(200);
+    const row = (list.body.data as Array<{ collection_point_id: string; crate_deposits: string }>).find(
+      (r) => r.collection_point_id === pointId,
+    );
+    expect(row?.crate_deposits).toBe('0.00');
   });
 });

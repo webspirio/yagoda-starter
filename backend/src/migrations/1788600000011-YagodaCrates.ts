@@ -146,6 +146,14 @@ export class YagodaCrates1788600000011 implements MigrationInterface {
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
+    // NOT A ROUND TRIP, DELIBERATELY. `up()` demotes every flagged `tare_types`
+    // row but the oldest before building the unique index (see point 3 above);
+    // this `down()` drops the index but does not undo that demotion, so
+    // up→down→up leaves the catalogue's `is_crate` flags exactly as `up()`
+    // last set them rather than restoring whatever they were before this
+    // migration first ran. That is fine — the demotion is a deterministic,
+    // idempotent normalisation (keep the oldest flagged row), not data this
+    // migration owns the previous value of.
     await queryRunner.query(`DROP INDEX "UQ_tare_types_single_crate"`);
     await queryRunner.query(`DROP TABLE "crate_return_allocations"`);
     await queryRunner.query(`DROP TABLE "crate_returns"`);

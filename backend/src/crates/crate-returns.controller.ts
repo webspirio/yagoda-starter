@@ -16,8 +16,7 @@ import { CrateBalanceService } from './crate-balance.service';
 import { CreateCrateReturnDto } from './dto/create-crate-return.dto';
 import { ListCrateReturnsQueryDto } from './dto/list-crate-returns.query';
 import { VoidDocumentDto } from '../intakes/dto/void-document.dto';
-import { CrateReturnResponse } from './crate-return.mapper';
-import { CrateAllocationResult } from './crate-allocation';
+import { CrateReturnResponse, CrateReturnPreviewResponse } from './crate-return.mapper';
 import { Paginated } from '../common/dto/paginated';
 import type { AuthenticatedUser } from '../auth/jwt.strategy';
 
@@ -58,7 +57,7 @@ export class CrateReturnsController {
   preview(
     @CurrentUser() actor: AuthenticatedUser,
     @Body() dto: CreateCrateReturnDto,
-  ): Promise<CrateAllocationResult> {
+  ): Promise<CrateReturnPreviewResponse> {
     return this.crates.previewReturn(actor, dto);
   }
 
