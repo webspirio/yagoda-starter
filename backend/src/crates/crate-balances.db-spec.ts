@@ -124,8 +124,19 @@ describe('CrateBalancesService.list (Postgres)', () => {
     );
   };
 
+  /**
+   * ALWAYS SCOPED TO THIS SPEC'S OWN POINT, and that is not tidiness.
+   *
+   * `app_test` is shared by every db-spec and nothing truncates it, so an
+   * unscoped read returns every supplier the whole suite has ever created —
+   * hundreds by the time this file runs in CI. Ordered by
+   * `outstanding_units DESC`, a supplier holding ZERO sorts to the very end and
+   * falls off the page, so `include_zero` looked broken in CI and fine locally,
+   * where this spec had a database to itself. Scoping is what makes the
+   * assertion about the DATA rather than about how many rows happen to exist.
+   */
   const rowFor = async (supplierId: string, over: Record<string, unknown> = {}) => {
-    const page = await list.list(owner(), query(over));
+    const page = await list.list(owner(), query({ collection_point_id: pointA, ...over }));
     return page.data.find((r) => r.supplier_id === supplierId);
   };
 
@@ -240,7 +251,7 @@ describe('CrateBalancesService.list (Postgres)', () => {
   });
 
   it('orders the heaviest holder first', async () => {
-    const page = await list.list(operatorAt(pointA), query());
+    const page = await list.list(operatorAt(pointA), query({ limit: 200 }));
     const units = page.data.map((r) => r.outstanding_units);
     expect([...units].sort((a, b) => b - a)).toEqual(units);
   });
@@ -251,7 +262,7 @@ describe('CrateBalancesService.list (Postgres)', () => {
    * Nothing but this test keeps them equal.
    */
   it('agrees with GET /suppliers/:id/crate-balance, row for row', async () => {
-    const page = await list.list(operatorAt(pointA), query());
+    const page = await list.list(operatorAt(pointA), query({ limit: 200 }));
     expect(page.data.length).toBeGreaterThan(1);
 
     for (const row of page.data) {
