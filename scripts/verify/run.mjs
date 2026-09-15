@@ -342,10 +342,14 @@ export function classify(res) {
 }
 
 /**
+ * Tier/--only/--exclude narrowing, and nothing else. {@link selectChecks} is what the
+ * runner calls; this half is separate so the superseding pass below always sees a list
+ * that scope has already finished with.
+ *
  * @param {Options} opts
  * @returns {import('./registry.mjs').Check[]}
  */
-function selectChecks(opts) {
+function scopeChecks(opts) {
   const inScope = CHECKS.filter((c) => inTier(c.tier, opts.tier))
   if (opts.exclude) {
     const dropped = new Set(opts.exclude)
@@ -357,6 +361,68 @@ function selectChecks(opts) {
   // would make `--only smoke` a full build too; instead the report records that the
   // dependencies were not evaluated, so this green cannot be read as a wider verdict.
   return CHECKS.filter((c) => wanted.has(c.id))
+}
+
+/**
+ * Removes a row whose work another row IN THE SAME RUN already does. One pair exists in
+ * this registry today and the mechanism is written for that shape alone: `coverage` runs
+ * the identical jest/vitest suites `test` runs, under instrumentation, so a run holding
+ * both executes every test in this repo twice. CI measured that at 220.4s + 254.6s on run
+ * 34998136933 — eight of the twenty minutes that run took.
+ *
+ * TWO PROPERTIES MAKE THIS SAFE TO DO AT ALL, and neither is a preference:
+ *
+ * 1. THE SUPERSEDER MUST BE PRESENT. This never consults a tier, a flag or a registry
+ *    field in isolation — only the list actually about to run. `--exclude coverage` (the
+ *    pre-push gate) or a fast-tier run leaves `test` exactly where it was, because the row
+ *    that would have subsumed it is not there. A run can lose a row only to a row standing
+ *    beside it.
+ * 2. IT FAILS OPEN. A self-reference, or two rows each claiming the other, drops NOTHING —
+ *    both run. The failure mode of a mistake here is a slower run, never a green over an
+ *    empty one, and that asymmetry is deliberate.
+ *
+ * What it is NOT is a skip: a SKIPPED row had nowhere to run, and this row had somewhere
+ * and was deliberately not sent there. The caller reports it as its own line for that
+ * reason — see {@link printHuman} — and `scope.superseded` carries it in the JSON report.
+ *
+ * Typed by the two fields it reads rather than by the whole `Check` shape, so a test can
+ * hand it two-field literals without inventing a `proves` string to satisfy the compiler.
+ *
+ * @template {{ id: string, supersedes?: string[] }} T
+ * @param {T[]} checks  already narrowed by tier/--only/--exclude
+ * @returns {{ selected: T[], superseded: { id: string, by: string }[] }}
+ */
+export function dropSuperseded(checks) {
+  /** @type {Map<string, string>} */
+  const by = new Map()
+  for (const c of checks) {
+    for (const id of c.supersedes ?? []) {
+      // A row cannot subsume itself — that reads as "never run me", which is a deletion
+      // dressed up as an optimisation, and this file will not do it quietly.
+      if (id !== c.id) by.set(id, c.id)
+    }
+  }
+  // A row that something else claims is a row that may not be going to run, so it cannot
+  // remove anything itself. The set is SNAPSHOT before any deletion on purpose: resolving
+  // against the shrinking map would make the outcome depend on iteration order, and a
+  // two-row cycle would then delete whichever it reached first instead of neither.
+  const claimed = new Set(by.keys())
+  for (const [id, superseder] of [...by]) if (claimed.has(superseder)) by.delete(id)
+
+  return {
+    selected: checks.filter((c) => !by.has(c.id)),
+    superseded: checks
+      .filter((c) => by.has(c.id))
+      .map((c) => ({ id: c.id, by: /** @type {string} */ (by.get(c.id)) })),
+  }
+}
+
+/**
+ * @param {Options} opts
+ * @returns {{ selected: import('./registry.mjs').Check[], superseded: { id: string, by: string }[] }}
+ */
+export function selectChecks(opts) {
+  return dropSuperseded(scopeChecks(opts))
 }
 
 /**
@@ -519,7 +585,7 @@ async function main() {
     process.exit(0)
   }
 
-  const selected = selectChecks(opts)
+  const { selected, superseded } = selectChecks(opts)
   if (selected.length === 0) fatal('no checks selected — refusing to report a green')
 
   const started = new Date()
@@ -614,6 +680,10 @@ async function main() {
       only: opts.only,
       exclude: opts.exclude,
       checkIds: selected.map((c) => c.id),
+      // Rows another row in this same run subsumed. Recorded rather than dropped silently:
+      // a reader of this JSON must be able to see that `test` did not run without inferring
+      // it from `checkIds`' absences.
+      superseded,
       afterDepsFullyEvaluated,
       argv: process.argv.slice(2),
     },
@@ -726,6 +796,23 @@ function printTable(report, failureDetail) {
     for (const wn of report.warnings) {
       process.stdout.write(`    ${paint('33', wn.id)}: ${wn.text}\n`)
     }
+  }
+
+  const superseded = Array.isArray(report.scope?.superseded) ? report.scope.superseded : []
+  if (superseded.length) {
+    // Said out loud for the same reason a SKIPPED row is. A reader who sees 20 rows where
+    // they expected 21 must be told which one is missing and why, by the run itself —
+    // never left to work it out from the table.
+    process.stdout.write(
+      paint(
+        '90',
+        `\n  SUPERSEDED, not run: ${superseded
+          .map((/** @type {{id:string,by:string}} */ s2) => `${s2.id} (by ${s2.by})`)
+          .join(', ')}. ` +
+          `Read that as "the superseding row ran this row's work", never as "it PASSED" — ` +
+          `what the two commands do NOT share is written on both registry rows.\n`,
+      ),
+    )
   }
 
   const skipped = report.checks.filter((/** @type {{status:string}} */ c) => c.status === SKIPPED)

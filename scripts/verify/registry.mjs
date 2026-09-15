@@ -8,6 +8,11 @@
  *    of `cmd` could make the sentence untrue, it is decoration — delete it.
  *  - `blindSpot` must not be written broader than the command establishes.
  *  - `after` only where the dependency is real, not where the order merely feels tidy.
+ *  - `supersedes` ONLY where one command demonstrably does another's work — never where two
+ *    rows merely overlap, and never to make a slow row go away. It REMOVES a row from the
+ *    run, so the row it names must be one whose every possible failure the superseding
+ *    command reproduces; and because something is always given up, write down what, on
+ *    BOTH rows (see `coverage`/`test`: running without instrumentation).
  *  - `needs` is an ARRAY: a row may depend on more than one precondition at once
  *    (`test:db` needs Postgres AND Redis; `smoke` needs a browser AND Docker), and any
  *    absent one means the whole row is SKIPPED, not FAILED.
@@ -28,6 +33,9 @@ import net from 'node:net'
  * @property {string} cmd              command, run through /bin/sh from the repo root
  * @property {PreconditionId[]} [needs] preconditions; any absent means SKIPPED, not FAILED
  * @property {string[]} [after]        ids that must have PASSED, else NOT_RUN
+ * @property {string[]} [supersedes]   ids whose work this row's own command already does;
+ *                                     dropped only when BOTH are in the same run — see
+ *                                     run.mjs's dropSuperseded for the two safety properties
  * @property {number} [timeoutMs]      this row's own budget; falls back to the runner default
  * @property {string} proves           what a PASSED row establishes
  * @property {string} blindSpot        what it still says nothing about
@@ -274,7 +282,14 @@ export const CHECKS = [
       'the backend has no .tsx files, and only the frontend vitest half of this row ever ' +
       'touches one. And this row cannot see assertion strength: a test that calls a ' +
       'function and asserts nothing about the result is exactly as green as one that ' +
-      'checks the answer.',
+      'checks the answer. AS OF 2026-09-15 THIS ROW DOES NOT RUN AT ALL IN A FULL-TIER RUN: ' +
+      "`coverage` declares `supersedes: ['test']` and runs the identical suites under " +
+      'instrumentation in its place, so `npm run verify:full`, `npm run verify:ci` and CI ' +
+      'never execute this bare command there. `coverage` still catches a test that passes ' +
+      'bare and fails instrumented — its own proves says so — and what nothing catches in ' +
+      'those runs is the OPPOSITE case: a test that would fail bare and passes only because ' +
+      'instrumentation is loaded. `npm run verify` (fast tier) and the pre-push gate, which ' +
+      'excludes `coverage`, are the two places this exact command still runs.',
   },
   {
     id: 'test:ci-scripts',
@@ -1109,6 +1124,14 @@ export const CHECKS = [
     id: 'coverage',
     tier: 'full',
     cmd: 'npm run coverage',
+    // THE SAME SUITES — SO `test` DOES NOT RUN BESIDE IT. The note below already said this
+    // row re-runs the whole suite itself; until 2026-09-15 `test` then ran it a SECOND time
+    // in every full-tier run, and CI measured the pair at 220.4s + 254.6s on run
+    // 34998136933 — eight of that run's twenty minutes spent proving the same thing twice.
+    // The removal is conditional on this row actually being in the run (run.mjs's
+    // dropSuperseded), which is why `--exclude coverage` and the fast tier still run `test`
+    // normally. What it costs is written into both rows' prose rather than left implied.
+    supersedes: ['test'],
     // The same two suites again, under instrumentation, and never served from Turbo's
     // cache on a first run. Budgeted like `test`, for the same reason.
     timeoutMs: 600_000,
@@ -1121,7 +1144,12 @@ export const CHECKS = [
       "when `test` does — backend's jest (`NODE_OPTIONS=--experimental-vm-modules jest --coverage`, the " +
       "identical *.spec.ts-only testRegex `test` uses) and frontend's vitest (`vitest run --coverage`) — " +
       'instrumentation itself failing to load, or a test failing under instrumentation that passed without it, ' +
-      'fails this exact command. NO FLOOR IS ENFORCED HERE, in this file, or anywhere else in this repo today ' +
+      'fails this exact command. IN ANY RUN CONTAINING BOTH, `test` THEREFORE DOES NOT RUN AT ALL (this row ' +
+      "declares `supersedes: ['test']`, 2026-09-15): in the full tier — `verify:full`, `verify:ci`, and CI's " +
+      'own `verify` job — every assertion in both workspaces is executed HERE, once, instrumented, and the one ' +
+      'thing no longer proved anywhere in those runs is that the suites also pass UNINSTRUMENTED. The fast tier ' +
+      'and the pre-push gate (`--exclude coverage`) do not contain this row, so `test` runs itself there exactly ' +
+      'as it always has. NO FLOOR IS ENFORCED HERE, in this file, or anywhere else in this repo today ' +
       "— floors live only in .github/workflows/ci.yml's env: block, written by a later task in this plan, and " +
       "read as 0 locally — so a coverage PERCENTAGE dropping between two runs changes NOTHING about this row's " +
       'PASS/FAIL. AS A DATED SNAPSHOT, RE-MEASURED 2026-09-15 on the tree this branch merged 156 commits of ' +

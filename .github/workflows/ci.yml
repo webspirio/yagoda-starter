@@ -208,8 +208,11 @@ jobs:
     # This number must stay above the SUM of those budgets, or a genuinely hung row gets
     # killed by the job instead of reported as a clean FAILED row by the runner — which is
     # the difference between "test:db timed out after 1200s" and a job log that just stops.
-    # 600 + 600 + 1200 = 40 minutes of budget before a single other row runs; the rows that
-    # do not declare a budget measured ~250s together on that same run.
+    # The sum is now 600 + 1200 = 30 minutes rather than 40: `test` no longer runs in this
+    # job at all, because `coverage` supersedes it (scripts/verify/registry.mjs, and the
+    # SUPERSEDED line the runner prints). 60 stays as it is — the headroom over the sum is
+    # what the rows without a declared budget need, and they measured ~250s together on
+    # that same run.
     timeout-minutes: 60
 
     env:

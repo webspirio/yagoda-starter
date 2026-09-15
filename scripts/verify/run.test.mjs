@@ -1,7 +1,16 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
-import { budgetFor, classify, envKey, isBlocking, parseArgs, reportIsFresh } from './run.mjs'
+import {
+  budgetFor,
+  classify,
+  dropSuperseded,
+  envKey,
+  isBlocking,
+  parseArgs,
+  reportIsFresh,
+  selectChecks,
+} from './run.mjs'
 import { checkById } from './registry.mjs'
 
 /**
@@ -185,4 +194,69 @@ test('--exclude drops rows, --only cannot be combined with it, and a narrowed gr
     }),
     true,
   )
+})
+
+test('dropSuperseded removes a row only when its superseder is standing in the same run', () => {
+  const { selected, superseded } = dropSuperseded([
+    { id: 'test' },
+    { id: 'coverage', supersedes: ['test'] },
+  ])
+  assert.deepEqual(
+    selected.map((c) => c.id),
+    ['coverage'],
+  )
+  assert.deepEqual(superseded, [{ id: 'test', by: 'coverage' }])
+
+  // The superseder absent — narrowed away by --exclude, or simply in a higher tier — and
+  // nothing is dropped. This is the whole safety property: a row can only ever be removed
+  // by a row that is actually going to run beside it.
+  const alone = dropSuperseded([{ id: 'test' }])
+  assert.deepEqual(
+    alone.selected.map((c) => c.id),
+    ['test'],
+  )
+  assert.deepEqual(alone.superseded, [])
+})
+
+test('dropSuperseded fails OPEN: a self-reference or a cycle runs both rows, never neither', () => {
+  const self = dropSuperseded([{ id: 'a', supersedes: ['a'] }])
+  assert.deepEqual(
+    self.selected.map((c) => c.id),
+    ['a'],
+  )
+
+  // Two rows each claiming to subsume the other would otherwise delete the pair and report
+  // a green over an empty run. Running both is the harmless direction, and the only one.
+  const cycle = dropSuperseded([
+    { id: 'a', supersedes: ['b'] },
+    { id: 'b', supersedes: ['a'] },
+  ])
+  assert.deepEqual(
+    cycle.selected.map((c) => c.id),
+    ['a', 'b'],
+  )
+  assert.deepEqual(cycle.superseded, [])
+})
+
+test('a full run drops `test` for `coverage`; fast, --exclude coverage and --only put it back', () => {
+  const idsFor = (/** @type {string[]} */ argv) => selectChecks(parseArgs(argv)).selected.map((c) => c.id)
+
+  // The registry pair this mechanism exists for: `coverage` runs the identical jest/vitest
+  // suites under instrumentation, so a full run that also ran `test` executed every test in
+  // this repo twice — 220.4s + 254.6s on CI run 34998136933.
+  const full = selectChecks(parseArgs(['--tier', 'full']))
+  assert.ok(full.selected.some((c) => c.id === 'coverage'))
+  assert.ok(!full.selected.some((c) => c.id === 'test'))
+  assert.deepEqual(full.superseded, [{ id: 'test', by: 'coverage' }])
+
+  // `coverage` is full-tier, so a fast run never contains it and `test` is the only thing
+  // running the suites at all. Dropping it here would leave the fast tier testing nothing.
+  assert.ok(idsFor(['--tier', 'fast']).includes('test'))
+
+  // verify:prepush's exact flags. It excludes `coverage` (46s locally, floors CI-only), so
+  // this is the case where superseding MUST give way or every push would be gated on a tier
+  // that runs no tests whatsoever.
+  assert.ok(idsFor(['--tier', 'full', '--exclude', 'smoke,docker,coverage,audit']).includes('test'))
+
+  assert.deepEqual(idsFor(['--only', 'test']), ['test'])
 })

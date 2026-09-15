@@ -24,6 +24,25 @@ test('every `after` names a check that exists', () => {
   }
 })
 
+test('every `supersedes` names a real check, in a tier that can actually contain it', () => {
+  const ids = new Set(CHECKS.map((c) => c.id))
+  for (const c of CHECKS) {
+    for (const id of c.supersedes ?? []) {
+      assert.ok(ids.has(id), `${c.id} supersedes unknown ${id}`)
+      assert.notEqual(id, c.id, `${c.id} supersedes itself — that is a deletion, not a subsumption`)
+      // A row can only remove another when both are in the same run, so a superseder in a
+      // HIGHER tier than its target is the only arrangement that ever does anything: the
+      // target keeps running in every tier below. The reverse (a fast row claiming a full
+      // one) would be dead configuration — legal to the runner, but never true of any run.
+      const target = /** @type {import('./registry.mjs').Check} */ (checkById(id))
+      assert.ok(
+        inTier(target.tier, c.tier),
+        `${c.id} (${c.tier}) supersedes ${id} (${target.tier}), a row no run of its own tier contains`,
+      )
+    }
+  }
+})
+
 test('every `needs` names a declared precondition, and needs is an array', () => {
   for (const c of CHECKS) {
     if (c.needs === undefined) continue
