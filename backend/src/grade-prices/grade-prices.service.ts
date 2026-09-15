@@ -5,7 +5,14 @@ import { GradePrice } from './grade-price.entity';
 import { CreateGradePriceDto } from './dto/create-grade-price.dto';
 import { ListGradePricesQueryDto } from './dto/list-grade-prices.query';
 import { CurrentGradePricesQueryDto } from './dto/current-grade-prices.query';
-import { GradePriceResponse, toGradePriceResponse } from './grade-price.mapper';
+import { GradePriceSheetQueryDto } from './dto/grade-price-sheet.query';
+import {
+  GradePriceResponse,
+  GradePriceSheetResponse,
+  SheetCell,
+  SheetPointColumn,
+  toGradePriceResponse,
+} from './grade-price.mapper';
 import { CollectionPointsService } from '../collection-points/collection-points.service';
 import { ProductGradesService } from '../products/product-grades.service';
 import { assertOwnsPoint, resolvePointFilter } from '../auth/access/point-scope';
@@ -33,6 +40,28 @@ import type { AuthenticatedUser } from '../auth/jwt.strategy';
  * with an audit READER that unions this journal; duplicated rows written today
  * could never be un-written.
  */
+/**
+ * THE ONE DEFINITION OF «the current price»: `DISTINCT ON` the pair, newest
+ * first. `IDX_grade_prices_lookup` exists for exactly this shape.
+ *
+ * `current()` (the operator's picker — one point, paginated, `include_inactive`)
+ * and `sheet()` (the owner's grid — every point, unpaginated, active only) are
+ * two READS of one rule. A second copy of this fragment is precisely how they
+ * would come to disagree about which row wins, and nothing would fail loudly
+ * when they did.
+ *
+ * KEYED ON THE PAIR, never the grade alone: a query spanning every point would
+ * otherwise collapse five points' prices into one arbitrary row.
+ */
+function latestPricesSql(where: string): string {
+  return `
+      SELECT DISTINCT ON (gp.collection_point_id, gp.product_grade_id) gp.*
+        FROM grade_prices gp
+        JOIN product_grades pg ON pg.id = gp.product_grade_id
+        ${where}
+       ORDER BY gp.collection_point_id, gp.product_grade_id, gp.created_at DESC, gp.id DESC`;
+}
+
 @Injectable()
 export class GradePricesService {
   constructor(
@@ -69,15 +98,7 @@ export class GradePricesService {
     if (!query.include_inactive) conditions.push(`pg.is_active = true`);
     const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
 
-    // DISTINCT ON must key on the PAIR, not the grade alone: an owner with no
-    // point filter spans every point, and keying on the grade alone would
-    // collapse five points' prices into one arbitrary row.
-    const latest = `
-      SELECT DISTINCT ON (gp.collection_point_id, gp.product_grade_id) gp.*
-        FROM grade_prices gp
-        JOIN product_grades pg ON pg.id = gp.product_grade_id
-        ${where}
-       ORDER BY gp.collection_point_id, gp.product_grade_id, gp.created_at DESC, gp.id DESC`;
+    const latest = latestPricesSql(where);
 
     const [countRow] = await this.repo.manager.query(
       `SELECT count(*)::int AS count FROM (${latest}) t`,
@@ -180,6 +201,102 @@ export class GradePricesService {
     );
     return (row as GradePrice | undefined) ?? null;
   }
+
+  /**
+   * THE OWNER'S GRID — every active grade against every point in scope, which
+   * is #89's «аркуш»: rows are grades, columns are points.
+   *
+   * UNPAGINATED, and that is the reason this route exists at all.
+   * `CurrentGradePricesQueryDto`'s `@Max(100)` is what forced the old screen to
+   * fetch «one point at a time» (its own header says so), and a sheet that
+   * silently dropped a column would be worse than no sheet: a missing column
+   * and an unpriced column look identical to a reader. The result is bounded by
+   * (active grades x points in scope) — both small, both administered.
+   *
+   * SCOPED BY `resolvePointFilter`, so an OPERATOR receives a ONE-COLUMN sheet
+   * of their own point and NO NEW ACCESS RULE IS WRITTEN ANYWHERE. `undefined`
+   * is passed rather than a request value because there is no point parameter
+   * to forge: the owner always gets every active point.
+   *
+   * THE WAREHOUSE IS A COLUMN LIKE ANY OTHER. §4.8 excludes it from the
+   * «поставити всім» GESTURE, not from the screen — it is «звичайний пункт
+   * прийому зі своєю, вищою ціною», and hiding it would lose the higher price
+   * the owner needs to see. `kind` travels so the client can both mark the
+   * column and leave it out of the gesture.
+   *
+   * INACTIVE GRADES ARE ABSENT and there is no `include_inactive` twin: §4.5
+   * makes a retired grade unpriced, and the flag belongs to the picker, where
+   * the owner needs the last price of a grade retired mid-season.
+   */
+  async sheet(
+    actor: AuthenticatedUser,
+    _query: GradePriceSheetQueryDto,
+  ): Promise<GradePriceSheetResponse> {
+    const pointId = resolvePointFilter(actor, undefined);
+
+    const pointParams: unknown[] = [];
+    let pointWhere = `WHERE cp.is_active = true`;
+    if (pointId) {
+      pointParams.push(pointId);
+      pointWhere += ` AND cp.id = $${pointParams.length}`;
+    }
+    // ORDER IS TOTAL — kind, then name, then id. Postgres promises no order
+    // among ties, and a sheet whose columns reshuffled between reads would be
+    // unreadable. `kind` first puts the reception points together and the
+    // warehouse at the end, where the gesture does not reach.
+    const points: SheetPointColumn[] = await this.repo.manager.query(
+      `SELECT cp.id, cp.name, cp.kind FROM collection_points cp ${pointWhere}
+        ORDER BY cp.kind, cp.name, cp.id`,
+      pointParams,
+    );
+
+    const grades: { id: string; grade_name: string; product_name: string }[] =
+      await this.repo.manager.query(
+        `SELECT pg.id, pg.name AS grade_name, p.name AS product_name
+           FROM product_grades pg JOIN products p ON p.id = pg.product_id
+          WHERE pg.is_active = true
+          ORDER BY p.name, pg.name, pg.id`,
+      );
+
+    const ids = points.map((p) => p.id);
+    // `ANY($1::uuid[])` rather than an id list built into the string: the array
+    // is one parameter however many points there are.
+    const cells: GradePrice[] = ids.length
+      ? await this.repo.manager.query(
+          `SELECT * FROM (${latestPricesSql(
+            `WHERE pg.is_active = true AND gp.collection_point_id = ANY($1::uuid[])`,
+          )}) t`,
+          [ids],
+        )
+      : [];
+
+    const byGrade = new Map<string, Record<string, SheetCell>>();
+    for (const c of cells) {
+      const row = byGrade.get(c.product_grade_id) ?? {};
+      // Strings straight through — no arithmetic, no reformatting, no `Number`.
+      row[c.collection_point_id] = {
+        base_price: c.base_price,
+        max_markup: c.max_markup,
+        max_discount: c.max_discount,
+      };
+      byGrade.set(c.product_grade_id, row);
+    }
+
+    return {
+      points,
+      rows: grades.map((g) => ({
+        product_grade_id: g.id,
+        grade_name: g.grade_name,
+        product_name: g.product_name,
+        // AN UNPRICED CELL IS ABSENT, never `null`. §4.5 makes the absence of a
+        // row the disabling mechanism itself, and a `null` on the wire invites
+        // the next reader to render it as «0» — a price of zero is a thing this
+        // schema can legally express, so the two must not look alike.
+        prices: byGrade.get(g.id) ?? {},
+      })),
+    };
+  }
+
 
   async create(actor: AuthenticatedUser, dto: CreateGradePriceDto): Promise<GradePriceResponse> {
     // A no-op for an owner, since they own every point — and the route is

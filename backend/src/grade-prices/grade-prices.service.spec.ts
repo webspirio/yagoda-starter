@@ -58,6 +58,128 @@ describe('GradePricesService', () => {
     service = new GradePricesService(repo as never, points as never, grades as never);
   });
 
+  describe('sheet', () => {
+    const WAREHOUSE = '44444444-4444-4444-4444-444444444444';
+    const GRADE_B = '55555555-5555-5555-5555-555555555555';
+
+    /** points, then grades, then the cells — the order `sheet()` queries in. */
+    const sheetQueries = (
+      points: unknown[],
+      grades: unknown[],
+      cells: unknown[],
+    ): jest.Mock =>
+      jest
+        .fn()
+        .mockResolvedValueOnce(points)
+        .mockResolvedValueOnce(grades)
+        .mockResolvedValueOnce(cells);
+
+    it('pivots the cells onto one row per active grade', async () => {
+      repo.manager.query = sheetQueries(
+        [
+          { id: POINT_A, name: 'Шипинки', kind: 'reception' },
+          { id: WAREHOUSE, name: 'Склад', kind: 'warehouse' },
+        ],
+        [
+          { id: GRADE, grade_name: 'Вищий сорт', product_name: 'Малина' },
+          { id: GRADE_B, grade_name: '1 сорт', product_name: 'Малина' },
+        ],
+        [
+          price({ collection_point_id: POINT_A, product_grade_id: GRADE, base_price: '150.00' }),
+          price({ collection_point_id: WAREHOUSE, product_grade_id: GRADE, base_price: '145.00' }),
+        ],
+      );
+
+      const result = await service.sheet(owner as never, {});
+
+      expect(result.points.map((p) => p.name)).toEqual(['Шипинки', 'Склад']);
+      const row = result.rows.find((r) => r.product_grade_id === GRADE)!;
+      expect(row.prices[POINT_A].base_price).toBe('150.00');
+      expect(row.prices[WAREHOUSE].base_price).toBe('145.00');
+    });
+
+    it('carries all three numbers in a cell, since the dialog edits all three', async () => {
+      repo.manager.query = sheetQueries(
+        [{ id: POINT_A, name: 'Шипинки', kind: 'reception' }],
+        [{ id: GRADE, grade_name: 'Вищий сорт', product_name: 'Малина' }],
+        [price({ base_price: '150.00', max_markup: '30.00', max_discount: '20.00' })],
+      );
+
+      const result = await service.sheet(owner as never, {});
+
+      expect(result.rows[0].prices[POINT_A]).toEqual({
+        base_price: '150.00',
+        max_markup: '30.00',
+        max_discount: '20.00',
+      });
+    });
+
+    /**
+     * §4.5 makes the ABSENCE of a row the disabling mechanism, and a price of
+     * zero is legal, so «unpriced» and «zero» must not look alike on the wire.
+     */
+    it('OMITS an unpriced point rather than sending null', async () => {
+      repo.manager.query = sheetQueries(
+        [
+          { id: POINT_A, name: 'Шипинки', kind: 'reception' },
+          { id: POINT_B, name: 'Конищів', kind: 'reception' },
+        ],
+        [{ id: GRADE, grade_name: 'Вищий сорт', product_name: 'Малина' }],
+        [price({ collection_point_id: POINT_A })],
+      );
+
+      const result = await service.sheet(owner as never, {});
+
+      expect(result.rows[0].prices[POINT_A]).toBeDefined();
+      expect(POINT_B in result.rows[0].prices).toBe(false);
+    });
+
+    it('gives a grade nobody has priced an empty map, not a missing row', async () => {
+      repo.manager.query = sheetQueries(
+        [{ id: POINT_A, name: 'Шипинки', kind: 'reception' }],
+        [{ id: GRADE, grade_name: 'Вищий сорт', product_name: 'Малина' }],
+        [],
+      );
+
+      const result = await service.sheet(owner as never, {});
+
+      expect(result.rows).toHaveLength(1);
+      expect(result.rows[0].prices).toEqual({});
+    });
+
+    /**
+     * The whole access story for this route: no new rule, just the filter every
+     * other scoped read already uses.
+     */
+    it('scopes an operator to their own point — one column', async () => {
+      const query = sheetQueries(
+        [{ id: POINT_A, name: 'Шипинки', kind: 'reception' }],
+        [{ id: GRADE, grade_name: 'Вищий сорт', product_name: 'Малина' }],
+        [price()],
+      );
+      repo.manager.query = query;
+
+      const result = await service.sheet(operator as never, {});
+
+      expect(result.points).toHaveLength(1);
+      expect(result.points[0].id).toBe(POINT_A);
+      // The point filter reached the SQL as a parameter, not as a string splice.
+      expect(query.mock.calls[0][1]).toEqual([POINT_A]);
+    });
+
+    it('asks Postgres for nothing when no point is in scope', async () => {
+      const query = sheetQueries([], [{ id: GRADE, grade_name: 'g', product_name: 'p' }], []);
+      repo.manager.query = query;
+
+      const result = await service.sheet(owner as never, {});
+
+      expect(result.points).toEqual([]);
+      // Two calls, not three: the cell query is skipped entirely.
+      expect(query).toHaveBeenCalledTimes(2);
+      expect(result.rows[0].prices).toEqual({});
+    });
+  });
+
   describe('create', () => {
     it('records the author from the token, never from the body', async () => {
       await service.create(owner, { ...dto } as never);

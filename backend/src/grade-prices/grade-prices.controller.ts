@@ -6,6 +6,7 @@ import { GradePricesService } from './grade-prices.service';
 import { CreateGradePriceDto } from './dto/create-grade-price.dto';
 import { ListGradePricesQueryDto } from './dto/list-grade-prices.query';
 import { CurrentGradePricesQueryDto } from './dto/current-grade-prices.query';
+import { GradePriceSheetQueryDto } from './dto/grade-price-sheet.query';
 import type { AuthenticatedUser } from '../auth/jwt.strategy';
 
 /**
@@ -42,6 +43,14 @@ export class GradePricesController {
   @Auth()
   current(@CurrentUser() actor: AuthenticatedUser, @Query() query: CurrentGradePricesQueryDto) {
     return this.prices.current(actor, query);
+  }
+
+  /** Declared alongside `/current` and BEFORE the bare `@Get()`, for the
+   *  declaration-order reason given above it. */
+  @Get('sheet')
+  @Auth()
+  sheet(@CurrentUser() actor: AuthenticatedUser, @Query() query: GradePriceSheetQueryDto) {
+    return this.prices.sheet(actor, query);
   }
 
   @Get()
