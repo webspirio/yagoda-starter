@@ -21,7 +21,8 @@ import {
   formatShortDate,
 } from '@/shared/lib/date';
 import { cn } from '@/shared/lib/cn';
-import { useMeQuery, usePointScope } from '@/entities/user';
+import { useMeQuery } from '@/entities/user';
+import { useWorkingPoint } from '@/features/point-scope';
 import { usePointOptionsQuery } from '@/entities/collection-point';
 import { useShiftOnDateQuery, type Shift } from '@/entities/shift';
 import { useIntakesQuery, type Intake } from '@/entities/intake';
@@ -62,7 +63,7 @@ type CountTarget = { mode: 'open' } | { mode: 'close'; shiftId: string };
 export function DayPage() {
   const { t, i18n } = useTranslation();
   const { data: me } = useMeQuery();
-  const { pointId, canPick, setPointId } = usePointScope();
+  const { pointId, canPick, setPointId } = useWorkingPoint();
   const { data: points } = usePointOptionsQuery();
   const [dateParam, setDateParam] = useUrlParam('date');
   const today = todayIso();

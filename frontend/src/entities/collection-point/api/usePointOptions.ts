@@ -17,11 +17,12 @@ export function usePointOptionsQuery() {
     // clobber each other's cache despite different params.
     queryKey: [...queryKeys.collectionPoints, 'options'],
     queryFn: async (): Promise<PointOption[]> => {
-      const { data } = await httpClient.get<Paginated<{ id: string; name: string }>>(
-        '/collection-points',
-        { params: { include_inactive: false } },
-      );
-      return data.data.map((p) => ({ id: p.id, name: p.name }));
+      const { data } = await httpClient.get<
+        Paginated<{ id: string; name: string; kind: 'reception' | 'base' }>
+      >('/collection-points', { params: { include_inactive: false } });
+      // `kind` rides along because `GET /collection-points` already returns it
+      // and `features/point-scope` needs to know which point is the склад.
+      return data.data.map((p) => ({ id: p.id, name: p.name, kind: p.kind }));
     },
     staleTime: STALE.reference,
   });

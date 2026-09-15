@@ -14,7 +14,7 @@ import { Spinner } from '@/shared/ui/spinner';
 import { StatGrid } from '@/shared/ui/stat-grid';
 import { StatTile } from '@/shared/ui/stat-tile';
 import { sum, sub, cmp, isNegative, formatUah } from '@/shared/lib/money';
-import { usePointScope } from '@/entities/user';
+import { useWorkingPoint } from '@/features/point-scope';
 import { usePointOptionsQuery } from '@/entities/collection-point';
 import { useSupplierBalancesQuery, supplierName, type SupplierBalanceRow } from '@/entities/supplier';
 import { PayoutDialog } from '@/features/settle-payout';
@@ -40,7 +40,7 @@ export function DebtsPage() {
   const locale = i18n.resolvedLanguage ?? 'uk';
   const navigate = useNavigate();
 
-  const { pointId, canPick, setPointId } = usePointScope();
+  const { pointId, canPick, setPointId } = useWorkingPoint();
   const { data: points } = usePointOptionsQuery();
   const balances = useSupplierBalancesQuery({ pointId });
 

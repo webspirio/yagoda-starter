@@ -12,8 +12,8 @@ const { pointScopeMock, balancesMock, payoutDialogMock } = vi.hoisted(() => ({
   payoutDialogMock: vi.fn(),
 }));
 
-vi.mock('@/entities/user', () => ({
-  usePointScope: () => pointScopeMock(),
+vi.mock('@/features/point-scope', () => ({
+  useWorkingPoint: () => pointScopeMock(),
 }));
 
 vi.mock('@/entities/collection-point', () => ({
