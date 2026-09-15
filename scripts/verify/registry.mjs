@@ -291,13 +291,23 @@ export const CHECKS = [
       'GHCR URL shape (a personal account is /users/<name>/…, not /orgs/…) rather than a ' +
       'silent no-op — each printing its own `<name>: ok` line, with the whole script exiting ' +
       'non-zero the instant any one of the five fails (an explicit `exit 1`, or `set -e` ' +
-      'propagation from a failed assertion). AS A DATED SNAPSHOT, MEASURED 2026-09-11 (run ' +
-      'via `npm run test:ci-scripts` with a real `jq` binary placed on PATH for the ' +
-      'measurement — this task\'s own machine has no system-installed jq; the script\'s own ' +
+      'propagation from a failed assertion). AS A DATED SNAPSHOT, RE-MEASURED 2026-09-15 ' +
+      '(run via `npm run test:ci-scripts` with a real `jq` binary placed on PATH for the ' +
+      'measurement — this machine has no system-installed jq; the script\'s own ' +
       'header also documents a Docker/Alpine one-liner as an alternative — see the `jq` ' +
       'precondition below): coolify-deploy.test.sh ' +
       'reported `passed=20 failed=0` and ghcr-cleanup.test.sh\'s all five scenarios (select, ' +
-      'guard, fail-loud, floor, all-404) printed `: ok`, both suites exiting 0. The glob ' +
+      'guard, fail-loud, floor, all-404) printed `: ok`, both suites exiting 0 — identical ' +
+      'to 2026-09-11, as it must be: main\'s 156 commits touched no file under scripts/ci/. ' +
+      'THE "REAL BINARY" QUALIFIER IS LOAD-BEARING and was demonstrated the same day: the ' +
+      'first attempt used a `docker run --rm -i ghcr.io/jqlang/jq` WRAPPER on PATH, and ' +
+      'coolify-deploy.test.sh reported `passed=19 failed=1` — scenario 6 (a version ' +
+      'mismatch must be RETRIED, not asserted once) saw only one poll instead of two, ' +
+      'because the suite runs the deploy script under READY_TIMEOUT_SEC=5 and a ' +
+      'container-per-call jq burns that budget in a single iteration. Re-run with the jq ' +
+      'binary extracted from that same image onto the host, the identical suite is ' +
+      '20/0. A timing-sensitive scenario like that one does not distinguish a slow ' +
+      'environment from a broken script, and this row cannot either. The glob ' +
       'itself was proven too, not just described: a throwaway, deliberately failing ' +
       'scripts/ci/zz.test.sh made this exact command exit 1 with zz.test.sh\'s own output ' +
       'printed, then a clean re-run after deleting it exited 0 again. RULING R16: ' +

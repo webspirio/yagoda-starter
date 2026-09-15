@@ -772,7 +772,7 @@ doubled every point's starting cash); the un-anchored formula still standing in
 
 ## New, from the verify layer (2026-09-10)
 
-Task 20 of `docs/superpowers/sdd/2026-09-10-verify-layer/` rebuilt
+Task 20 of `docs/superpowers/plans/2026-09-10-verify-layer.md` rebuilt
 `.github/workflows/ci.yml` around `scripts/verify/registry.mjs` — one `verify`
 job running `npm run verify:ci`, the exact command a laptop runs. One
 follow-up is required by that rebuild itself; the other four are unrelated
@@ -781,8 +781,9 @@ scope for this task, recorded here so they are not lost.
 
 - **The required status check must be renamed in repository settings —
   `checks`/`db-checks` → `verify` — with `docker` kept as its own required
-  check.** Task 21 (the `origin/main` reconciliation, `docs/superpowers/sdd/
-  2026-09-10-verify-layer/task-21-report.md`) settled which of the old
+  check.** Task 21 (the `origin/main` reconciliation — see the commits on
+  `feat/verify-layer`, not a report file: the per-task reports this line once
+  cited were never committed) settled which of the old
   workflow's jobs actually stopped existing: only `checks` and `db-checks` are
   superseded by `verify`. `changes` and `docker` were deliberately KEPT,
   unchanged, from `origin/main` — `docker` is CD infrastructure, not

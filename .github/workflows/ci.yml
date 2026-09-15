@@ -188,9 +188,11 @@ jobs:
     # including the two slowest (`docker` — this branch's own registry row, an
     # uncached `docker build` of two images from scratch, see the note above — and
     # `smoke`, which drives a real browser against a real Compose stack). Sized
-    # with real headroom above the ~3-4 minute local run this task measured (see
-    # task-20-report.md), for a colder, shared CI runner plus `npm ci`/`playwright
-    # install` network time.
+    # with real headroom above the local run this exact command was measured at —
+    # 1m23s on 2026-09-15 with every cache warm (`node scripts/verify/run.mjs
+    # --tier full --no-skip`: 21 PASSED, nothing skipped) — for a colder, shared CI
+    # runner that also pays `npm ci`, `playwright install` and an uncached
+    # `docker build` from scratch.
     timeout-minutes: 30
 
     env:
