@@ -469,6 +469,31 @@ async function seedDocuments(
       shiftId.set(key, found.id);
       continue;
     }
+    // A POINT MAY HOLD ONLY ONE OPEN SHIFT (`UQ_shifts_open_per_point`), and a
+    // demo database seeded on an EARLIER DAY still holds that day's open ones.
+    // The lookup above is by `(point, business_date)`, so it does not see them,
+    // and the insert below would be the point's second open shift. Postgres
+    // refuses it — correctly — with a constraint name and a raw uuid, which
+    // tells a developer nothing about what to do next. This is that same
+    // refusal, said as a sentence. It is NOT a fix for the stale state: the
+    // seed's contract is that it never modifies an existing row, and closing
+    // someone else's open shift would break it.
+    if (!sh.closed) {
+      const openElsewhere = await one<{ business_date: string }>(
+        qr,
+        `SELECT business_date::text AS business_date FROM shifts
+          WHERE collection_point_id = $1 AND status = 'open' AND business_date <> $2::date`,
+        [pid, date],
+      );
+      if (openElsewhere) {
+        throw new Error(
+          `${sh.point} still has an OPEN shift on ${openElsewhere.business_date}, so today's ` +
+            `cannot be opened (UQ_shifts_open_per_point). This database was seeded on an ` +
+            `earlier day. Close that shift, or start clean with \`npm run db:reset && npm run db:seed\`.`,
+        );
+      }
+    }
+
     const opener = userByLogin.get(sh.openedBy)!;
     const row = await one<{ id: string }>(
       qr,

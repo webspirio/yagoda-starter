@@ -184,6 +184,37 @@ one inside its own transaction, so the demo cannot drift from the rule the API
 enforces. Шипинки's close is 90 ₴ short **on purpose** — it is the one seeded
 incident, and it is what makes the owner's working list non-empty on a fresh
 database.
+
+**The dataset is in TWO parts, and the split is load-bearing.**
+`src/seed/dev-seed.data.ts` is CURATED and hand-written — today and yesterday,
+carrying every case a screen is read against and every figure
+`dev-seed.db-spec.ts` asserts. `src/seed/dev-seed.history.ts` is GENERATED: a
+further **30 business days** at the five working points (823 receipts, 150
+closed shifts, 141 payouts with a funding transfer each, 300 cash counts),
+produced from a constant PRNG seed so the output is byte-identical on every
+run. That determinism is not a nicety: the receipt code is the natural key
+every insert is looked up by, so a dataset that moved between runs could not be
+idempotent. **No test asserts a generated figure by hand** — the history spec
+asserts the file's PROPERTIES instead, which is what the split buys.
+
+Two properties are worth knowing before touching either file. First, **the
+generated season is invisible to the curated cash chain**: `anchor` overrides a
+computed expectation, and the last closing count the generator writes for each
+point carries that point's curated anchor, so the chain arrives at yesterday
+holding exactly what yesterday expects. That is why the db-spec can still
+assert Шипинки 20 910.00, Конищів 12 800.00 and Гайове 500.00 with a season
+inserted in front of them; if those ever move, the generator stopped landing on
+the anchor — fix the generator, not the assertion. Second, **every generated
+payout is funded by a transfer of exactly its amount**, accepted the same
+business date, because a receipt puts no cash in the drawer (the formula is
+«transfers accepted minus payouts») and `CHK_cash_counts_counted_non_negative`
+is real.
+
+The generator writes **no `grade_prices` rows**. Prices carry over until changed
+(spec `2026-09-07` §8.1 removed `business_date`), so the historical price IS the
+current one, and a row per day would silently re-introduce the daily scheme that
+slice removed.
+
 Points carry real receipt-code prefixes (`SHP`, `KON`, …). Sign in as `admin`/`admin` (owner) or as an operator
 (`oksana`, `maria`, `taras`, `ihor`, `bohdan`, `lesia`) with password `operator`.
 
