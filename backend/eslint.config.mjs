@@ -58,6 +58,12 @@ export default tseslint.config(
       'src/transfers/**/*.ts',
       'src/point-cash/**/*.ts',
       'src/cash-counts/**/*.ts',
+      // crates/: the money files only. `crate-code.ts` converts a row COUNT
+      // with Number() and is deliberately outside this guard — it touches no
+      // currency.
+      'src/crates/crate-allocation.ts',
+      'src/crates/crates.service.ts',
+      'src/crates/crate-balance.service.ts',
     ],
     ignores: ['**/*.spec.ts', '**/*.db-spec.ts'],
     rules: {
