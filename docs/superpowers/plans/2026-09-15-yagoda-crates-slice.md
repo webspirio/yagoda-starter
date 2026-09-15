@@ -1214,21 +1214,36 @@ Expected: FAIL — `service.findCrateType is not a function`, and no demotion qu
 
 In `backend/src/tare-types/tare-types.service.ts`:
 
-Inside `create`'s transaction, immediately before `repo.save(...)`, and inside `update`'s transaction, immediately before `manager.getRepository(TareType).save(tare)`, add the demotion. For `create` there is no id to exclude yet, so demote everything and let the new row carry the flag:
+**Demote BEFORE the save/insert, not after — this order is load-bearing, not
+stylistic.** `UQ_tare_types_single_crate` is a bare (non-deferrable) unique
+index: Postgres checks it at the end of EACH statement, not at commit. If the
+demotion ran after `repo.save(...)` (create) or `manager.getRepository(TareType).save(tare)`
+(update), the save/insert of the row being flagged would itself collide with
+a still-flagged row and abort the transaction with `23505` before the
+demotion line ever executed — the owner would then be permanently unable to
+switch crate types. Demoting first means no second flagged row ever exists,
+even momentarily, inside the transaction.
+
+Extract one private helper, e.g. `demoteOtherCrates(manager: EntityManager, excludeId?: string)`,
+holding the single `UPDATE "tare_types" SET "is_crate" = false WHERE "is_crate"`
+(plus `AND "id" <> $1` when `excludeId` is given), and call it before the
+write in both methods:
 
 ```ts
 // ONE CRATE, NETWORK-WIDE (spec §5.4). Switching the network's crate is ONE
 // owner action, not two: flagging a type clears the flag everywhere else in
 // the same transaction. `UQ_tare_types_single_crate` is the backstop; if the
-// owner ever meets it, this line failed to run.
-if (tare.is_crate) {
-  await manager.query(`UPDATE "tare_types" SET "is_crate" = false WHERE "is_crate" AND "id" <> $1`, [
-    tare.id,
-  ]);
-}
+// owner ever meets it, this method failed to run — or ran too late (see the
+// method's own doc comment on why it must run BEFORE the save/insert).
 ```
 
-For `create`, run the same statement AFTER the insert (the new row needs an id to be excluded), still inside the transaction. For `update`, run it after `save` for the same reason.
+In `create`, call it before the insert when the new row will carry the flag —
+there is no id yet, so no exclusion. In `update`, call it before `save(tare)`
+when `dto.is_crate === true` — `tare.id` is already known, so pass it as the
+exclusion. Gate `update`'s call on `dto.is_crate === true` specifically (not
+on the row's resulting `is_crate` value), so that editing an unrelated field
+on the row that already IS the crate does not re-run the demotion on every
+PATCH.
 
 Then add the lookup method, and replace the TODO comment above `update`:
 

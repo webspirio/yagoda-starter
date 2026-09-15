@@ -62,6 +62,18 @@ export class TareTypesService {
 
     return this.dataSource.transaction(async (manager) => {
       const repo = manager.getRepository(TareType);
+      const willBeCrate = dto.is_crate ?? false;
+
+      // BEFORE the insert. `UQ_tare_types_single_crate` is a bare (non-
+      // deferrable) unique index — Postgres checks it at the end of THIS
+      // statement, not at commit — so the insert itself would 23505 if
+      // another row were still flagged when it runs. Demoting first means no
+      // second flagged row ever exists, even momentarily, inside the
+      // transaction. No exclusion needed: the new row doesn't exist yet.
+      if (willBeCrate) {
+        await this.demoteOtherCrates(manager);
+      }
+
       const tare = await repo.save(
         repo.create({
           name,
@@ -69,21 +81,9 @@ export class TareTypesService {
           // value anywhere in this module.
           weight_kg: dto.weight_kg,
           deposit_price: dto.deposit_price,
-          is_crate: dto.is_crate ?? false,
+          is_crate: willBeCrate,
         }),
       );
-
-      // ONE CRATE, NETWORK-WIDE (spec §5.4). Switching the network's crate is
-      // ONE owner action, not two: flagging a type clears the flag everywhere
-      // else in the same transaction. `UQ_tare_types_single_crate` is the
-      // backstop; if the owner ever meets it, this line failed to run. Runs
-      // AFTER the insert — the new row needs an id to be excluded.
-      if (tare.is_crate) {
-        await manager.query(
-          `UPDATE "tare_types" SET "is_crate" = false WHERE "is_crate" AND "id" <> $1`,
-          [tare.id],
-        );
-      }
 
       await this.audit.record(
         {
@@ -135,24 +135,24 @@ export class TareTypesService {
     if (dto.is_active != null) tare.is_active = dto.is_active;
 
     return this.dataSource.transaction(async (manager) => {
-      const saved = await manager.getRepository(TareType).save(tare);
-
-      // ONE CRATE, NETWORK-WIDE (spec §5.4). Switching the network's crate is
-      // ONE owner action, not two: flagging a type clears the flag everywhere
-      // else in the same transaction. `UQ_tare_types_single_crate` is the
-      // backstop; if the owner ever meets it, this line failed to run. Runs
-      // AFTER `save` — this row's own id has to exist to be excluded.
+      // BEFORE the save. `UQ_tare_types_single_crate` is a bare (non-
+      // deferrable) unique index — Postgres checks it at the end of THIS
+      // statement, not at commit — so saving `tare` with the flag on while
+      // another row is still flagged would 23505 immediately, aborting the
+      // transaction before the demotion line below ever ran. Demoting first
+      // means no second flagged row ever exists, even momentarily, inside the
+      // transaction. `tare.id` is already known (this is an update), so the
+      // exclusion can run before the save that needs it.
       //
-      // Gated on `dto.is_crate === true`, NOT `saved.is_crate` — an edit that
-      // never touches the flag (e.g. a deposit-price change on the row that
-      // already IS the crate) must not re-run this on every unrelated PATCH.
+      // Gated on `dto.is_crate === true`, NOT the row's resulting value — an
+      // edit that never touches the flag (e.g. a deposit-price change on the
+      // row that already IS the crate) must not re-run this on every
+      // unrelated PATCH.
       if (dto.is_crate === true) {
-        await manager.query(
-          `UPDATE "tare_types" SET "is_crate" = false WHERE "is_crate" AND "id" <> $1`,
-          [saved.id],
-        );
+        await this.demoteOtherCrates(manager, tare.id);
       }
 
+      const saved = await manager.getRepository(TareType).save(tare);
       const diff = diffFields(before, this.snapshot(saved), TARE_FIELDS);
 
       // These two numbers keep NO history of their own, and §2.7 snapshots them
@@ -190,6 +190,29 @@ export class TareTypesService {
   async findCrateType(manager?: EntityManager): Promise<TareType | null> {
     const repo = manager ? manager.getRepository(TareType) : this.repo;
     return repo.findOne({ where: { is_crate: true, is_active: true } });
+  }
+
+  /**
+   * ONE CRATE, NETWORK-WIDE (spec §5.4). Clears `is_crate` on every row except
+   * `excludeId` (or every row, when creating: there is no row to exclude yet).
+   *
+   * MUST run before the caller's own insert/save, not after — see the two
+   * call sites. `UQ_tare_types_single_crate` is a bare unique index, which
+   * Postgres checks at the end of EACH statement rather than deferring to
+   * commit; running this after the caller's write would let that write itself
+   * collide with a still-flagged row and 23505 before this line ever executes.
+   * `UQ_tare_types_single_crate` remains the backstop — if the owner ever
+   * meets it, this method failed to run, not merely ran too late.
+   */
+  private async demoteOtherCrates(manager: EntityManager, excludeId?: string): Promise<void> {
+    if (excludeId) {
+      await manager.query(
+        `UPDATE "tare_types" SET "is_crate" = false WHERE "is_crate" AND "id" <> $1`,
+        [excludeId],
+      );
+    } else {
+      await manager.query(`UPDATE "tare_types" SET "is_crate" = false WHERE "is_crate"`);
+    }
   }
 
   private snapshot(tare: TareType): Record<(typeof TARE_FIELDS)[number], unknown> {

@@ -240,17 +240,61 @@ describe('TareTypesService', () => {
         is_crate: true,
       });
 
-      const demotion = (manager.query.mock.calls as [string, unknown[]][]).find(([sql]) =>
+      // Runs BEFORE the insert, so there is no id yet to exclude — every
+      // currently-flagged row is cleared unconditionally.
+      const demotion = (manager.query.mock.calls as [string, unknown[]?][]).find(([sql]) =>
         sql.includes('UPDATE "tare_types"'),
       );
       expect(demotion?.[0]).toContain('SET "is_crate" = false');
-      expect(demotion?.[1]).toEqual(['tare-1']);
+      expect(demotion?.[0]).not.toContain('"id" <>');
+      expect(demotion?.[1]).toBeUndefined();
     });
 
     it('findCrateType returns only an ACTIVE flagged row', async () => {
       repo.findOne.mockResolvedValue(null);
       await expect(service.findCrateType()).resolves.toBeNull();
       expect(repo.findOne).toHaveBeenCalledWith({ where: { is_crate: true, is_active: true } });
+    });
+
+    // Unflagging the current crate leaves the network with none — that is a
+    // valid state (no crate type designated yet, or deliberately retired) and
+    // must NOT trigger a demotion of anyone else, since nobody else is being
+    // promoted.
+    it('unflagging the current crate demotes nothing and leaves no crate type', async () => {
+      repo.findOne.mockResolvedValue(tare({ is_crate: true }));
+      await service.update(owner, 'tare-1', { is_crate: false });
+      expect(manager.query).not.toHaveBeenCalled();
+      expect(txRepo.save).toHaveBeenCalledWith(expect.objectContaining({ is_crate: false }));
+    });
+
+    // `UQ_tare_types_single_crate` is a BARE (non-deferrable) unique index —
+    // Postgres checks it at the end of each statement, not at commit. If the
+    // demotion ran AFTER the save/insert, saving/inserting a second flagged
+    // row while another is still flagged would 23505 immediately, aborting
+    // the transaction before the demotion line ever executed — the owner
+    // could never switch crate types. So the ORDER matters, not merely that
+    // both calls happened; asserting call counts alone would have passed
+    // against that broken implementation.
+    it('demotes BEFORE saving, on update', async () => {
+      repo.findOne.mockResolvedValue(tare({ is_crate: false }));
+      await service.update(owner, 'tare-1', { is_crate: true });
+
+      const queryOrder = manager.query.mock.invocationCallOrder[0];
+      const saveOrder = txRepo.save.mock.invocationCallOrder[0];
+      expect(queryOrder).toBeLessThan(saveOrder);
+    });
+
+    it('demotes BEFORE inserting, on create', async () => {
+      await service.create(owner, {
+        name: 'Ящик',
+        weight_kg: '1.20',
+        deposit_price: '120.00',
+        is_crate: true,
+      });
+
+      const queryOrder = manager.query.mock.invocationCallOrder[0];
+      const saveOrder = txRepo.save.mock.invocationCallOrder[0];
+      expect(queryOrder).toBeLessThan(saveOrder);
     });
   });
 });
