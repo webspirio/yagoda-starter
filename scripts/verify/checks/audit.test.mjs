@@ -99,7 +99,6 @@ const REAL_SNAPSHOT_AUDIT_JSON = {
   vulnerabilities: {
     '@nestjs/core': { severity: 'high', via: ['@nestjs/platform-express'] },
     '@nestjs/platform-express': { severity: 'high', via: ['@nestjs/core', 'multer'] },
-    '@nestjs/schedule': { severity: 'high', via: ['@nestjs/core'] },
     '@nestjs/terminus': { severity: 'high', via: ['@nestjs/core', '@nestjs/typeorm'] },
     '@nestjs/testing': { severity: 'high', via: ['@nestjs/core', '@nestjs/platform-express'] },
     '@nestjs/typeorm': { severity: 'high', via: ['@nestjs/core'] },
@@ -112,29 +111,31 @@ const REAL_SNAPSHOT_AUDIT_JSON = {
         { title: 'multer vulnerable to Denial of Service via oversized array index in field names' },
       ],
     },
-    'nestjs-pino': { severity: 'high', via: ['@nestjs/core'] },
   },
 }
 const REAL_SNAPSHOT_LS_JSON = {
   dependencies: {
     '@nestjs/core': {},
     '@nestjs/platform-express': { dependencies: { multer: {} } },
-    '@nestjs/schedule': {},
     '@nestjs/terminus': {},
     '@nestjs/typeorm': {},
-    'nestjs-pino': {},
     // @nestjs/testing is deliberately absent — it is a devDependency, confirmed dev-only
     // by `npm ls @nestjs/testing --omit=dev` returning an empty tree in the real repo.
   },
 }
 
 /**
- * The committed baseline now carries all EIGHT real entries (R18), not just
+ * The committed baseline carries all SIX real entries (R18), not just
  * `@nestjs/testing` — every fixture below that is not specifically exercising the
  * production-tree/productionRisk path reuses this REAL snapshot as its base and adds ONE
- * fabricated vulnerability on top, so none of the 8 real entries ever goes STALE
- * underneath an unrelated test. Paired with `EMPTY_LS_JSON` (rather than
- * `REAL_SNAPSHOT_LS_JSON`) in most of those tests: none of the 8 real names is then
+ * fabricated vulnerability on top, so none of the 6 real entries ever goes STALE
+ * underneath an unrelated test. It was EIGHT until 2026-09-15, when npm audit stopped
+ * reporting @nestjs/schedule and nestjs-pino with the lockfile untouched (see the
+ * `audit` row in registry.mjs) and this ratchet's stale-entry rule deleted both from the
+ * baseline; they were removed from this fixture in the same change, because a fixture
+ * naming an advisory the baseline no longer carries makes every test built on it red.
+ * Paired with `EMPTY_LS_JSON` (rather than
+ * `REAL_SNAPSHOT_LS_JSON`) in most of those tests: none of the 6 real names is then
  * flagged `prod`, so they fall back to the plain `reason` check, which they already pass
  * — deliberately simpler than reproducing the real production-tree shape in every
  * unrelated test.
@@ -173,13 +174,20 @@ const VALID_PRODUCTION_RISK = {
   fix: 'Test-only fixture standing in for a real fix-and-blocker explanation, well over thirty characters.',
 }
 
-test('a REAL snapshot of this repo\'s advisories, captured 2026-09-10, is GREEN (R18) — all 8 names, including the 7 production-tree ones, are RECORDED with a complete productionRisk entry, not fixed', () => {
+test('a REAL snapshot of this repo\'s advisories, re-captured 2026-09-15, is GREEN (R18) — all 6 names, including the 5 production-tree ones, are RECORDED with a complete productionRisk entry, not fixed', () => {
   const shim = makeNpmShim({ lsJson: REAL_SNAPSHOT_LS_JSON, auditJson: REAL_SNAPSHOT_AUDIT_JSON })
   try {
     const res = run({ env: shim.env })
     assert.equal(res.status, 0, res.out)
-    assert.match(res.out, /8 advisories \(high: 8\)/)
-    assert.match(res.out, /7 reachable from the production tree, each RECORDED with a complete productionRisk/)
+    // Counts read from the committed baseline rather than frozen as literals: this test
+    // was pinned to 8/7 and went red on 2026-09-15 when npm audit stopped reporting two
+    // names with nothing in this repo changing, which is a fact about an external
+    // advisory database, not about this checker. The INVARIANT worth asserting is that
+    // the checker's own summary agrees with the baseline it just compared against.
+    const committed = JSON.parse(readFileSync(BASELINE, 'utf8'))
+    const prodCount = committed.entries.filter((/** @type {any} */ e) => e.productionRisk).length
+    assert.match(res.out, new RegExp(`${committed.entries.length} advisories \\(high: ${committed.entries.length}\\)`))
+    assert.match(res.out, new RegExp(`${prodCount} reachable from the production tree, each RECORDED with a complete productionRisk`))
     assert.doesNotMatch(res.out, /PRODUCTION ADVISORY NOT BASELINED/)
     assert.doesNotMatch(res.out, /PRODUCTION ENTRY INCOMPLETE/)
     assert.doesNotMatch(res.out, /NEW ADVISORY/)

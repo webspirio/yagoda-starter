@@ -191,15 +191,21 @@ export const CHECKS = [
       'because both lint scripts now pass --max-warnings=0, no warning either: ' +
       'react-hooks/exhaustive-deps and react-refresh/only-export-components, both ' +
       'configured at warn, are exactly as blocking here as an error-level rule. That ' +
-      'includes the money-arithmetic ban scoped to backend/src/intakes, src/payouts, ' +
-      'src/shifts and src/supplier-balance, which forbids *, /, Number(), toFixed, ' +
-      'parseInt and parseFloat there (test files in those four trees are excluded by the ' +
-      'same config).',
+      'includes the money-arithmetic ban, whose `files` list names EIGHT backend module ' +
+      'trees as of 2026-09-15 — src/intakes, src/payouts, src/shifts, src/supplier-balance, ' +
+      'src/transfers, src/point-cash, src/cash-counts and src/intake-top-ups — and which ' +
+      'forbids *, /, Number(), toFixed, parseInt and parseFloat there (test files in those ' +
+      'eight trees are excluded by the same config). The four that joined on 2026-09-15 ' +
+      'came in with main\'s cash, transfers, cash-counts and top-ups slices; the list is ' +
+      'read off backend/eslint.config.mjs, not remembered.',
     blindSpot:
       'Nothing about behaviour: whether a sum is right, whether a component renders. A ' +
       'rule that is not enabled does not exist for it, and the money ban covers exactly ' +
-      'FOUR backend module trees — arithmetic on a numeric string anywhere else (every ' +
-      'other backend module, and the whole of frontend/src) is invisible to this row.',
+      'those EIGHT backend module trees — arithmetic on a numeric string in any other ' +
+      'backend module, and in the whole of frontend/src, is invisible to THIS row. Only ' +
+      'backend/src is covered elsewhere: ratchet:money scans all of it, including these ' +
+      'eight trees, since its own carve-out for "eslint\'s territory" was removed on ' +
+      '2026-09-15. frontend/src has no such second net at all.',
   },
   {
     id: 'typecheck',
@@ -229,20 +235,19 @@ export const CHECKS = [
     tier: 'fast',
     cmd: 'npm test',
     proves:
-      'A SNAPSHOT, RE-MEASURED 2026-09-11 on the merged tree (Task 21; previously 40 ' +
-      'suites / 511 tests on 2026-09-10, before origin/main\'s config/env.schema.ts added ' +
-      'its own spec file — see CLAUDE.md\'s Verification section for the same discipline ' +
-      'applied to cost figures): backend jest (NODE_OPTIONS=--experimental-vm-' +
-      'modules jest, testRegex .*\\.spec\\.ts$, rootDir src) ran 41 suites / 516 tests, and ' +
-      'frontend vitest (vitest run) ran 99 files / 592 tests — UNCHANGED, since the merge ' +
-      'touched no frontend/src file — 140 files and 1108 tests ' +
+      'A SNAPSHOT, RE-MEASURED 2026-09-15 on the tree this branch merged 156 commits of ' +
+      'main into (previously 41 suites / 516 tests and 99 files / 592 tests on 2026-09-11 ' +
+      '— see CLAUDE.md\'s Verification section for the same discipline applied to cost ' +
+      'figures): backend jest (NODE_OPTIONS=--experimental-vm-' +
+      'modules jest, testRegex .*\\.spec\\.ts$, rootDir src) ran 48 suites / 606 tests, and ' +
+      'frontend vitest (vitest run) ran 130 files / 839 tests — 178 files and 1445 tests ' +
       'total today, all passing. Those counts grow with ordinary feature work in either ' +
       'workspace and are not re-verified by this row — they illustrate scale, nothing more. ' +
       'The INVARIANT this row actually enforces outlives every one of them: a single ' +
       'failing assertion anywhere in either workspace turns this exact command, and this ' +
       'row, red, no matter how many tests exist when it runs.',
     blindSpot:
-      "The backend testRegex matches only *.spec.ts, so all 12 *.db-spec.ts suites " +
+      'The backend testRegex matches only *.spec.ts, so all 23 *.db-spec.ts suites ' +
       '(backend/jest.db.config.js, a separate config) are excluded from this row entirely ' +
       '— test:db is what covers those. No .tsx file is exercised by the backend suites: ' +
       'the backend has no .tsx files, and only the frontend vitest half of this row ever ' +
@@ -365,17 +370,13 @@ export const CHECKS = [
       'have silenced both suites with nothing here noticing. The two backend regexes are read ' +
       'out of backend/jest.config.js and backend/jest.db.config.js at runtime, not copied ' +
       'here, so this row also proves those two files still say what the check assumes. AS A ' +
-      'SNAPSHOT, MEASURED 2026-09-11 after Task 21\'s merge of 40 commits from origin/main and ' +
-      'its new shell-test collector (previously MEASURED 2026-09-10, re-measured the same day ' +
-      'after Task 17 added the fifth collector and its first file, then again the same day ' +
-      'after Task 19 widened node-test\'s OWN reach to a second directory — .claude/hooks/, ' +
-      'alongside scripts/ — for stop-gate.mjs\'s colocated stop-gate.test.mjs, the first file ' +
-      'ever collected from outside scripts/): 170 files now match across the two candidate ' +
-      'nets (jest-unit 41, jest-db 12, vitest 99, node-test 15, playwright 1, shell-test 2) — ' +
-      'up from the 167 (five collectors, jest-unit 40) this row reached after Task 19, and from ' +
-      'the 160 (four collectors, node-test 9) it reached after Task 10. That total grows every ' +
-      'time this plan, or any ordinary feature work, adds a test file, and this row does not ' +
-      'track or re-check its own prose count.',
+      'SNAPSHOT, RE-MEASURED 2026-09-15 on the tree this branch merged 156 commits of main ' +
+      'into (previously 170 files across the same six collectors on 2026-09-11): 219 files ' +
+      'now match across the two candidate nets (jest-unit 48, jest-db 23, vitest 130, ' +
+      'node-test 15, playwright 1, shell-test 2). Every one of the 49 new files came from ' +
+      'main\'s own feature work — no collector was added or changed by this re-measurement, ' +
+      'and the six are the same six. That total grows every time ordinary feature work adds ' +
+      'a test file, and this row does not track or re-check its own prose count.',
     blindSpot:
       'Nothing about the tests themselves: a file collected by exactly one runner can ' +
       'still assert nothing, or assert the wrong thing — this row only proves each ' +
@@ -526,7 +527,7 @@ export const CHECKS = [
       'TypeScript compiler API and enforces four rules, stated here so each holds at any ' +
       'count: (1) every ' +
       '`synchronize` property anywhere under backend/src initialises to the literal ' +
-      '`false` (both known sites today, app.module.ts:98 and testing/db-harness.ts:183, ' +
+      '`false` (both known sites today, app.module.ts:102 and testing/db-harness.ts:183, ' +
       'and any new one); (2) every non-db-spec file in backend/src/migrations/ matches ' +
       '/^(\\d{13})-([A-Za-z0-9]+)\\.ts$/ — a stray file of neither shape ' +
       'is itself a finding — and no two migration filenames capture the same 13-digit ' +
@@ -540,10 +541,15 @@ export const CHECKS = [
       'green. A violation of 1–3, or of 4 whenever origin/main was reachable, fails this ' +
       "exact command; this row proves rule 4's guarantee ONLY for a run where origin/main " +
       'was fetched, and says so with a WARNING line — printed even on a passing run — ' +
-      'whenever it was not. AS A SNAPSHOT, MEASURED 2026-09-10: backend/src/migrations/ ' +
-      'held 8 numbered migrations (timestamps 1788600000000–1788600000007) and 5 ' +
-      '*.db-spec.ts files, excluded from rules 2–4; both counts grow with ordinary schema ' +
-      'work, unrelated to this table, and this row does not track or re-check its own prose.',
+      'whenever it was not. AS A SNAPSHOT, RE-MEASURED 2026-09-15 on the tree this branch ' +
+      'merged 156 commits of main into (previously 8 migrations and 5 db-specs on ' +
+      '2026-09-10): backend/src/migrations/ holds 12 numbered migrations (timestamps ' +
+      '1788600000000–1788600000011) and 8 *.db-spec.ts files, excluded from rules 2–4. ' +
+      'Rule 4 ran for real on this measurement, not skipped: origin/main resolved, and all ' +
+      'four migrations main merged in (YagodaTransfers, YagodaCashCounts, ' +
+      'DropCashCountExpectedCheck, YagodaIntakeTopUps) compared byte-identical to their ' +
+      'origin/main copies. Both counts grow with ordinary schema work, unrelated to this ' +
+      'table, and this row does not track or re-check its own prose.',
     blindSpot:
       'Compares TEXT, not schema semantics: two migrations that are each individually ' +
       "well-formed but logically conflict (an `up()` that doesn't undo cleanly in its own " +
@@ -583,7 +589,10 @@ export const CHECKS = [
       'broken logic inside any check (a ratchet that silently stopped ratcheting, a boundary scan that ' +
       'stopped finding boundaries) could stay green in `npm run verify` indefinitely, ' +
       'caught only by someone remembering to run `npm run test:verify` by hand. ' +
-      "AS A SNAPSHOT, MEASURED 2026-09-11 (re-measured repeatedly since first shipping " +
+      'AS A SNAPSHOT, RE-VERIFIED 2026-09-15 on the tree this branch merged 156 commits ' +
+      'of main into and UNCHANGED by it — main touches no file this suite runs, so the ' +
+      'figures below are the 2026-09-11 ones, re-run rather than copied ' +
+      '(first shipped as ' +
       "70-across-8-files: 78-across-9 after Task 10 added ratchets/lint-exempt.test.mjs, " +
       "and several more times since as this plan added rows — see git history for the " +
       "intermediate counts this row does not itself track): `npm run test:verify` " +
@@ -645,11 +654,21 @@ export const CHECKS = [
       'forgiveness must be deleted, never left standing, or the baseline only ever grows. ' +
       'And a baseline entry whose `reason` is missing, `TODO`, or under 30 characters after ' +
       'trimming fails the command on the baseline alone, before either direction of that ' +
-      'comparison ever runs. AS A SNAPSHOT, MEASURED 2026-09-10: `npm run lint:exempt` ' +
-      'finds exactly 13 lint exemptions today — 10 directive comments (9 disable-type, ' +
+      'comparison ever runs. AS A SNAPSHOT, RE-MEASURED 2026-09-15 on the tree this ' +
+      'branch merged 156 commits of main into: `npm run lint:exempt` finds exactly 13 ' +
+      'lint exemptions — 10 directive comments (9 disable-type, ' +
       "plus the one eslint-enable that closes test-setup.ts's block disable) and 3 " +
-      "`ignores`-property occurrences bundling 7 individual globs, with zero rules pinned " +
-      "to 'off' in either config. That count moves the instant anyone adds or removes an " +
+      "`ignores`-property occurrences bundling 8 individual globs, with zero rules pinned " +
+      "to 'off' in either config. THE COUNT OF 13 IS UNCHANGED FROM 2026-09-10 AND THAT IS " +
+      'NOT THE SAME AS NOTHING HAVING HAPPENED: two entries were re-keyed on 2026-09-15 ' +
+      'because their LINE moved, which this check reports as one exemption removed plus ' +
+      'one added (see this row\'s own blindSpot) — eslint\'s money-module `files` list grew ' +
+      'from four globs to eight, pushing backend\'s spec-file `ignores` from line 44 to 70, ' +
+      "and frontend's `ignores` gained dist-e2e and moved 31 -> 37. That eighth glob is the " +
+      'one real addition: `smoke` builds into frontend/dist-e2e, which is gitignored but ' +
+      "invisible to eslint's flat config, so without it the first `npm run verify:full` " +
+      'left a minified bundle on disk and the next `npm run verify` reported 2116 lint ' +
+      'errors inside it. That count moves the instant anyone adds or removes an ' +
       'exemption anywhere in the scan, and this row does not track or re-check its own ' +
       'prose.',
     blindSpot:
@@ -681,9 +700,8 @@ export const CHECKS = [
     // order two rows that do not actually depend on each other.
     proves:
       'Every `*`/`/` BinaryExpression, `Number()`/`parseInt()`/`parseFloat()` call, and ' +
-      '`.toFixed` MemberExpression this scan finds in backend/src/**/*.ts — outside ' +
-      'src/intakes/, src/payouts/, src/shifts/, src/supplier-balance/ (already eslint\'s ' +
-      'territory per the `lint` row) and outside *.spec.ts/*.db-spec.ts — is either ' +
+      '`.toFixed` MemberExpression this scan finds in ALL of backend/src/**/*.ts — the ' +
+      'only exclusion left is *.spec.ts/*.db-spec.ts — is either ' +
       'PROVABLY NON-MONETARY (every operand is a numeric literal, or an identifier declared ' +
       'in the SAME FILE with an explicit `number` type or a numeric-literal initialiser) or ' +
       'matches a dated, reasoned entry in scripts/verify/baselines/money-rounding.json at ' +
@@ -696,7 +714,18 @@ export const CHECKS = [
       '`parseFloat` are resolved by BINDING, not by name alone: a file that locally ' +
       'declares or imports something under one of those three exact names is calling that ' +
       'local, not the global this row bans, and such a call is skipped entirely rather than ' +
-      'mistaken for the real one. AS A SNAPSHOT, MEASURED 2026-09-10: the baseline holds 29 ' +
+      'mistaken for the real one. THE SCOPE WIDENED ON 2026-09-15: until then this row ' +
+      'skipped the four module trees backend/eslint.config.mjs policed when it was ' +
+      'written (src/intakes, src/payouts, src/shifts, src/supplier-balance), on the ' +
+      'argument that they were already eslint\'s territory. That argument had quietly ' +
+      'stopped holding: eslint\'s own `files` list had grown to EIGHT trees (see the ' +
+      '`lint` row) while this row\'s hard-coded copy of it still named four, so the two ' +
+      'scopes disagreed — and a tree DELETED from eslint\'s list would then have been ' +
+      'policed by neither. The carve-out was MEASURED before it was removed: scanning the ' +
+      'whole of backend/src adds EXACTLY ZERO findings, because eslint\'s ban is what ' +
+      'keeps those trees clean, so the overlap costs nothing and the gap is closed. AS A ' +
+      'SNAPSHOT, RE-MEASURED 2026-09-15 on the tree this branch merged 156 commits of ' +
+      'main into: the baseline holds 29 ' +
       'keys / 32 occurrences — 10 are the repeated `(page - 1) * limit` pagination-offset ' +
       'arithmetic this template\'s list endpoints share (including ' +
       'common/dto/pagination-query.dto.ts\'s own skipOf() helper), 4 are ' +
@@ -707,8 +736,13 @@ export const CHECKS = [
       'constant, 4 are password-hashing.ts\'s scrypt cost-parameter parsing and memory ' +
       'sizing, and 3 are backend/src/seed/dev-seed.ts\'s OWN independent reimplementation ' +
       'of money.ts\'s add() — a real duplicate of the one authorised rounding seam, ' +
-      'confined to the dev-only seed script, left as-is because backend/src was out of ' +
-      'scope for the task that wrote this row. That count moves the instant anyone adds, ' +
+      'confined to the dev-only seed script, left as-is because backend/src is out of ' +
+      'scope for this layer. THE TOTAL OF 29 IS UNCHANGED FROM 2026-09-10 IN BOTH ' +
+      'DIRECTIONS AT ONCE, which is worth stating rather than reading as quiet: widening ' +
+      'the scan to the four formerly-excluded trees added nothing, and main\'s 156 ' +
+      'commits added nothing either — but FIVE entries were re-keyed, because their line ' +
+      'numbers moved under that merge (app.module.ts\'s two throttle Number() calls by ' +
+      'four lines, dev-seed.ts\'s three by seven). That count moves the instant anyone adds, ' +
       'removes, or clears an arithmetic site anywhere in the scan, and this row does not ' +
       'track or re-check its own prose.',
     blindSpot:
@@ -731,8 +765,13 @@ export const CHECKS = [
       'same limitation misses that a chained 32 * 1024 * 1024 is entirely literal, because ' +
       'the OUTER multiplication\'s left operand is itself a BinaryExpression, not a bare ' +
       'literal or identifier). And its reach is exactly backend/src\'s *.ts files parsed as ' +
-      'ts.ScriptKind.TS — there are no .tsx files there today, but this row would need ' +
-      'revisiting before one outside the four eslint-scoped trees could be trusted.',
+      'ts.ScriptKind.TS — there are no .tsx files there today, and a .tsx file appearing ' +
+      'under backend/src would be parsed with the wrong script kind until this row is ' +
+      'taught about it. And the widened scope buys REACH, not depth: scanning the eight ' +
+      'eslint-covered trees adds a second net over them, but every limitation above — the ' +
+      'syntax-only typing, the single-statement operand check — applies there exactly as ' +
+      'it does everywhere else, so what those trees really rest on is still eslint\'s ban, ' +
+      'with this row as the backstop for the day that ban\'s `files` list shrinks.',
   },
   {
     id: 'ratchet:persist',
@@ -758,22 +797,27 @@ export const CHECKS = [
       'the tree is red too. A violation of any of the three, anywhere the scan reaches, fails ' +
       'this exact command. Parsed with the TypeScript compiler API, `.tsx` files under ' +
       '`ts.ScriptKind.TSX` and `.ts` files under `ts.ScriptKind.TS` — never a regex, and never ' +
-      'the wrong script kind silently mis-parsing JSX. AS A SNAPSHOT, MEASURED 2026-09-10: ' +
-      'frontend/src holds FIVE files that touch storage this way, not the four spec ground ' +
-      'names — entities/user/model/store.ts (the bearer token), shared/api/persister.ts (the ' +
-      'TanStack query cache), shared/lib/form-draft/draftStorage.ts (raw form drafts), ' +
-      'shared/lib/i18n/language-preference.ts and shared/lib/theme/theme-preference.ts (found ' +
-      'by this task\'s own grep, narrowed the identical way language-preference.ts is) — 10 ' +
-      'guarded accesses and 4 getItem() reads (persister.ts\'s own reads are internal to the ' +
-      'TanStack library this file only configures, so it contributes zero directly-visible ' +
-      'getItem calls), and isPersistableKey\'s allowlist holds exactly one key, `me`. ' +
+      'the wrong script kind silently mis-parsing JSX. AS A SNAPSHOT, RE-MEASURED ' +
+      '2026-09-15 on the tree this branch merged 156 commits of main into, and UNCHANGED ' +
+      'by that merge: the check reports 10 guarded accesses across FOUR files and 4 ' +
+      'getItem() reads, with isPersistableKey\'s allowlist holding exactly one key, `me`. ' +
+      'THE FOUR ARE THE NUMBER THE CHECK ITSELF PRINTS, and it corrects a count this row ' +
+      'carried wrongly until 2026-09-15: the prose said FIVE files, counting ' +
+      'shared/api/persister.ts among them because a grep finds the word there. This check ' +
+      'never saw it — persister.ts reaches storage through a `safeStorage(read: () => ' +
+      'Storage)` thunk, and rule 1 recognises the storage object only by name, so it ' +
+      'contributes zero access sites (the blindSpot below already said exactly this; the ' +
+      'proves string above it disagreed). The four the check actually sees are ' +
+      'entities/user/model/store.ts (the bearer token), ' +
+      'shared/lib/form-draft/draftStorage.ts (raw form drafts), ' +
+      'shared/lib/i18n/language-preference.ts and shared/lib/theme/theme-preference.ts. ' +
       'frontend/src/test-setup.ts (vitest\'s global setup file, wired by vite.config.ts\'s ' +
       'test.setupFiles and imported by nothing else) is excluded from this scan by exact ' +
       'path: its unguarded `localStorage.clear()`/`sessionStorage.clear()` never ship in the ' +
       'production bundle and run only under jsdom, which does not exhibit the private-' +
       'browsing throw this row exists to catch — the same class of file-role scope decision ' +
       '`ratchet:money` already makes excluding `*.spec.ts`/`*.db-spec.ts`, not a baseline entry ' +
-      'forgiving a violation in one of the five real boundary files. That count and file list ' +
+      'forgiving a violation in one of the four real boundary files. That count and file list ' +
       'grow or shrink with ordinary feature work, and this row does not track or re-check its ' +
       'own prose.',
     blindSpot:
@@ -866,8 +910,23 @@ export const CHECKS = [
       'other *.spec.ts file — but `execFile(\'jq\', [\'--version\'], ...)`, added to THIS file for the new ' +
       '`test:ci-scripts` row, is a real, deliberate reference to a system binary this repo declares nowhere ' +
       'in package.json, and knip\'s binaries plugin reports it as such — the first `binary`-kind finding this ' +
-      'baseline has ever carried. The baseline now holds 123 findings (1 binary, 1 dependency, 5 ' +
-      'devDependencies, 55 exports, 34 files, 25 types, 2 unlisted). That count moves the instant anyone ' +
+      'baseline has ever carried. RE-MEASURED AGAIN on 2026-09-15, after merging 156 commits of main (the ' +
+      'transfers/point-cash slice, cash counts, intake top-ups #61): 33 new findings, each read at its own ' +
+      'site before a reason was written, none of them deleted — backend/src and frontend/src stay out of ' +
+      'scope for this layer. Four classes, three of them blind spots this baseline already documents. ' +
+      'ELEVEN new *.db-spec.ts files and FOUR new TypeORM migrations: the same Jest-glob and startup-glob ' +
+      'misses described below. FIFTEEN FSD public-API barrel re-exports — five mutation hooks and five ' +
+      'Input types across the new transfer/cash feature slices, plus shared/lib/date\'s formatTime, ' +
+      'shared/lib/money\'s CRATES_INPUT, entities/cash-count\'s two backend-mirroring unions and ' +
+      'entities/point-cash\'s deliberate TransferStatus duplicate — where the SYMBOL is alive, called and ' +
+      'unit-tested through its origin module, and only the one re-export line has no importer (the page ' +
+      'tests reach these by vi.mock()ing the barrel PATH, a module-mock string knip does not resolve to a ' +
+      'named import). And THREE that are real debt rather than a tooling artefact: ' +
+      'point-cash.service.ts\'s trailing `export { movementsSql, anchorSql, asOfSql }` has had no importer ' +
+      'since the module was created — git shows the line written as `export { cashSql, ASOF }` at creation ' +
+      'and renamed twice by later refactors, never once consumed. It is recorded so it is visible, not ' +
+      'endorsed. The baseline now holds 156 findings (1 binary, 1 dependency, 5 ' +
+      'devDependencies, 65 exports, 49 files, 33 types, 2 unlisted). That count moves the instant anyone ' +
       "adds, fixes, or clears a finding anywhere knip.json's globs reach, and this row does not track or " +
       're-check its own prose.',
     blindSpot:
@@ -877,16 +936,17 @@ export const CHECKS = [
       "(a NestJS provider wired only through a decorator and DI, or a *.db-spec.ts file this task's own " +
       "investigation found `backend/jest.db.config.js` runs directly, that knip's Jest plugin cannot see " +
       "because its default spec/test glob requires a literal dot before 'spec'/'test' and never matches a " +
-      "hyphenated '-db-spec.ts' suffix — 12 of this baseline's 34 file findings are exactly that one glob " +
+      "hyphenated '-db-spec.ts' suffix — 23 of this baseline's 49 file findings are exactly that one glob " +
       "mismatch (its testing/db-harness.ts helper, run by the same jest.db.config.js but not itself named " +
-      "*.db-spec.ts, is a 13th finding for the identical reason, counted separately here because the glob " +
-      "mismatch this blind spot describes is not what excludes IT), and a further 8 are TypeORM migrations " +
+      "*.db-spec.ts, is a 24th finding for the identical reason, counted separately here because the glob " +
+      "mismatch this blind spot describes is not what excludes IT), and a further 12 are TypeORM migrations " +
       "the runner discovers via a directory glob at startup rather than a static import, the same class of " +
       "framework-invoked blind spot in a different tool; and 3, as of Task 19, are .claude/hooks/*.mjs " +
       "PostToolUse hooks (edit-lint.mjs and batch-typecheck.mjs from Task 18, stop-gate.mjs from Task 19) " +
       "knip's default root-workspace scan finds but only .claude/settings.json's hook command line ever " +
-      "invokes — a config-driven blind spot again, not real dead code. None of the 12, the 1 helper, the 8, " +
-      "or the 3 is real dead code). A baseline entry means the finding is KNOWN and explained, never that " +
+      "invokes — a config-driven blind spot again, not real dead code. None of the 23, the 1 helper, the " +
+      "12, or the 3 is real dead code — together they are 39 of the 49 file findings, leaving 10 that are " +
+      "ordinary frontend dead files. A baseline entry means the finding is KNOWN and explained, never that " +
       "the code it names is ACCEPTABLE to keep as-is — recording backend/src's transitive, undeclared `ms`/" +
       "`express` imports, or frontend/src's six independently-duplicated `Paginated<T>` interfaces, documents " +
       "them for a future fix, it does not endorse them, and this task deliberately left every one of them " +
@@ -915,14 +975,21 @@ export const CHECKS = [
       '`reachability`, `fix`), checked structurally; a production-tree advisory with a missing or vague ' +
       '`productionRisk` fails exactly as hard as one never recorded at all. The comparison is bidirectional ' +
       'like every ratchet in this layer: a new advisory not yet listed fails it, and a listed entry npm audit ' +
-      'no longer reports fails it too. AS A DATED SNAPSHOT, MEASURED 2026-09-10: npm audit reports 8 ' +
-      'vulnerable package names, all severity high (0 critical), ALL RECORDED and this command is GREEN. Every ' +
-      "one traces to the same root cause — multer@2.2.0's DoS/bypass advisories GHSA-wc9g-mqfw-jrwm, " +
+      'no longer reports fails it too. AS A DATED SNAPSHOT, RE-MEASURED 2026-09-15: npm audit reports 6 ' +
+      'vulnerable package names, all severity high (0 critical), ALL RECORDED and this command is GREEN. ' +
+      'IT REPORTED 8 ON 2026-09-10, AND THE TWO THAT LEFT ARE WORTH READING RATHER THAN CELEBRATING: ' +
+      '@nestjs/schedule and nestjs-pino were deleted from the baseline on 2026-09-15 by this ratchet\'s own ' +
+      'stale-entry rule, and NOTHING IN THIS REPOSITORY CHANGED to earn that — both sit at the identical ' +
+      'versions the pre-merge lockfile pinned (12.0.1 and 5.1.0, verified against `git show ' +
+      '<merge-base>:package-lock.json`), both still peer-depend on @nestjs/core, and multer@2.2.0 is still ' +
+      'pinned exactly where it was. What moved is npm audit\'s own cascade over an advisory database this ' +
+      'repo does not control: a narrower REPORT, not a smaller risk. Every ' +
+      "one of the 6 traces to the same root cause — multer@2.2.0's DoS/bypass advisories GHSA-wc9g-mqfw-jrwm, " +
       'GHSA-qfvm-cv95-jqjf, GHSA-535w-7cp7-47q4 and GHSA-qvfw-j98x-7q72 — pulled in through ' +
       "@nestjs/platform-express@11.2.3's EXACT pin on multer 2.2.0 (confirmed: `npm view " +
-      '@nestjs/platform-express@11.2.3 dependencies.multer` prints "2.2.0", no range). 7 of the 8 names — ' +
-      'multer itself, @nestjs/core, @nestjs/platform-express, @nestjs/schedule, @nestjs/terminus, ' +
-      '@nestjs/typeorm and nestjs-pino — sit in the production dependency tree (confirmed individually via ' +
+      '@nestjs/platform-express@11.2.3 dependencies.multer` prints "2.2.0", no range). 5 of the 6 names — ' +
+      'multer itself, @nestjs/core, @nestjs/platform-express, @nestjs/terminus and ' +
+      '@nestjs/typeorm — sit in the production dependency tree (confirmed individually via ' +
       '`npm ls <name> --omit=dev`) and reach this app for real, through image uploads (backend/src/media, up ' +
       'to 10 MB) via multer\'s FileInterceptor — each carries a complete `productionRisk` recording that fact, ' +
       'not fixing it: a root `overrides.multer` entry was tried (`npm install`, then `npm install ' +
@@ -943,10 +1010,12 @@ export const CHECKS = [
       "every package that merely DEPENDS on a vulnerable one as 'vulnerable' too, with no advisory object of " +
       'its own (`via` holds plain package-name strings there, not a titled entry) — so a single upstream ' +
       "advisory (multer's, here) inflates into as many baseline-relevant, individually-recorded names as " +
-      "there are packages between it and the tree's roots, even though fixing multer alone would clear all 7 " +
+      "there are packages between it and the tree's roots, even though fixing multer alone would clear all 5 " +
       "simultaneously. `npm audit`'s own severity classification is trusted as-is: a severity GitHub later " +
       "reclassifies changes this row's verdict without anything in this repo changing, which is exactly why " +
-      "this row needs `['npm-registry']` and lives in the full tier, never the fast one. And `info`-severity " +
+      "this row needs `['npm-registry']` and lives in the full tier, never the fast one — and on 2026-09-15 " +
+      'that stopped being a hypothetical: two names left this report with the lockfile untouched, which is ' +
+      'the same mechanism running in the harmless direction. And `info`-severity ' +
       'findings are silently dropped before any comparison runs at all, matching npm audit\'s own metadata ' +
       'semantics but meaning a finding at that severity is invisible to this row twice over.',
   },
@@ -964,17 +1033,20 @@ export const CHECKS = [
       "build command exits 0: backend's `nest build` (a tsc compile of backend/src to backend/dist) and " +
       "frontend's `tsc -b && vite build` (a project-reference build across tsconfig.app.json and " +
       "tsconfig.node.json, THEN Vite's production bundle to frontend/dist) — a compile error or a bundler " +
-      'failure in EITHER workspace fails this exact command. AS A DATED SNAPSHOT, MEASURED 2026-09-10: both ' +
-      "builds together complete in roughly 4.6s wall clock (turbo's own reported time), and frontend's bundle " +
+      'failure in EITHER workspace fails this exact command. AS A DATED SNAPSHOT, RE-MEASURED 2026-09-15 on ' +
+      "the tree this branch merged 156 commits of main into: both builds together complete in 4.8s wall " +
+      "clock (turbo's own reported time, cache bypassed), and frontend's bundle still " +
       "carries Vite's generic \"(!) Some chunks are larger than 500 kB after minification\" warning on its " +
-      'single ~892 kB (266 kB gzip) JS chunk — a warning line, never a failure, and this row does not fail on ' +
-      'it.',
+      'single JS chunk, now ~911 kB raw (267 kB gzip) against ~892 kB (266 kB gzip) on 2026-09-10 — a ' +
+      'warning line, never a failure, and this row does not fail on it at any size.',
     blindSpot:
       'Proves the bundler and compiler succeed, not that the output is correct or that the app runs. Neither ' +
       'dist directory is executed, started, or even opened by this row: a backend that builds cleanly but ' +
       "throws on boot (bad DI wiring only Nest's own bootstrap would catch, not tsc), or a frontend bundle " +
-      'that builds but renders a blank page, is exactly as green here as a correct one — a future `smoke` row, ' +
-      "not yet part of this layer, is what would actually launch either. `tsc -b`'s project-reference build can " +
+      'that builds but renders a blank page, is exactly as green here as a correct one. The `smoke` row is ' +
+      'what actually launches either — it exists now, in this same tier, and this sentence said "a future ' +
+      'row, not yet part of this layer" until 2026-09-15, which had been wrong since Task 17 shipped it. ' +
+      "`tsc -b`'s project-reference build can " +
       'also be satisfied by a STALE `.tsbuildinfo` incremental cache reporting "up to date" without ' +
       "re-checking every file — a risk `typecheck`'s own `tsc -b` invocation shares — so a rebuild from a warm " +
       "cache proves less than a clean one; this row does not force a clean build first. And it says nothing " +
@@ -997,16 +1069,23 @@ export const CHECKS = [
       'fails this exact command. NO FLOOR IS ENFORCED HERE, in this file, or anywhere else in this repo today ' +
       "— floors live only in .github/workflows/ci.yml's env: block, written by a later task in this plan, and " +
       "read as 0 locally — so a coverage PERCENTAGE dropping between two runs changes NOTHING about this row's " +
-      'PASS/FAIL. AS A DATED SNAPSHOT, RE-MEASURED 2026-09-11 on the merged tree (Task 21; previously ' +
-      '2026-09-10, before origin/main\'s config/env.schema.ts and health.controller.ts moved the backend ' +
-      'number — see ci.yml\'s own re-measurement note): backend 80.28% statements / 61.60% branches / ' +
-      '80.40% functions / 83.95% lines (over files actually required by some *.spec.ts — jest\'s default ' +
+      'PASS/FAIL. AS A DATED SNAPSHOT, RE-MEASURED 2026-09-15 on the tree this branch merged 156 commits of ' +
+      'main into (`npx turbo coverage --force`, never a cached replay): backend 79.51% statements / 61.19% ' +
+      'branches / 78.24% functions / 82.97% lines (over files actually required by some *.spec.ts — jest\'s ' +
+      'default ' +
       'collectCoverageFrom is unset here, so a file no spec ever imports, such as main.ts or app.module.ts, ' +
-      'does not appear in the report AT ALL, not even at 0%); frontend 82.94% statements / 80.65% branches / ' +
-      '76.14% functions / 83.29% lines under the identical default (main.tsx, App.tsx and router.tsx are ' +
-      'likewise absent from its report today) — UNCHANGED from 2026-09-10, since the merge touched no ' +
-      'frontend/src file. Both numbers move with ordinary feature work in either ' +
-      'workspace and are not re-verified by this row.',
+      'does not appear in the report AT ALL, not even at 0%); frontend 85.25% statements / 81.59% branches / ' +
+      '79.37% functions / 85.66% lines under the identical default (main.tsx, App.tsx and router.tsx are ' +
+      'likewise absent from its report today). THE TWO WORKSPACES MOVED IN OPPOSITE DIRECTIONS and the ' +
+      'backend half is the one to read: frontend rose on all four measures because main\'s cash and ' +
+      'transfers screens arrived with their own component tests, while backend FELL on three — not because ' +
+      'tests were deleted, but because this row measures the UNIT config only (testRegex .*\\.spec\\.ts$) ' +
+      'and the four slices main merged in are covered disproportionately by *.db-spec.ts suites against a ' +
+      'real Postgres, which that config does not run and so cannot credit — those grew from 12 files to 23 ' +
+      'over the same merge and are gated by the test:db row, not this one. The CI floors moved with the ' +
+      'measurement in both directions: four frontend floors RAISED, three backend floors LOWERED, each a ' +
+      'visible reviewed diff in ci.yml, which is the only place a floor may move. Both numbers move with ' +
+      'ordinary feature work in either workspace and are not re-verified by this row.',
     blindSpot:
       'Measures lines executed, not assertions made — a test that calls a function and checks nothing about ' +
       'the result counts exactly as fully covered as one that verifies the answer; this row cannot tell the ' +
@@ -1016,10 +1095,12 @@ export const CHECKS = [
       'router.tsx (frontend), all absent from their respective reports as of this snapshot — so this row ' +
       'cannot even be used to spot untested files by scanning for a 0% line: a genuinely untested file and a ' +
       'file the report simply never mentions look identical from outside it. Branch coverage sits well below ' +
-      'line coverage in both workspaces (62.18% vs 84.13% backend; 80.65% vs 83.29% frontend), meaning a real ' +
+      'line coverage in both workspaces (61.19% vs 82.97% backend; 81.59% vs 85.66% frontend), meaning a real ' +
       'share of conditional paths run zero times under either suite despite the line they sit on reading as ' +
-      'covered. And because no floor exists anywhere this row reads, nothing here stops either percentage from ' +
-      "falling in a future change — that gate, once it exists, is ci.yml's alone, never this row's.",
+      'covered. And because no floor exists anywhere this row reads, nothing here stops either percentage ' +
+      "from falling in a future change — that gate is ci.yml's alone, never this row's, and it is only as " +
+      'strong as someone re-measuring: a floor is FLOORED DOWN to a whole percent, so between 0 and 1 ' +
+      'percentage point of real regression passes CI silently by construction.',
   },
   {
     id: 'bundle',
@@ -1058,10 +1139,19 @@ export const CHECKS = [
       'is a REGRESSION — a new dependency pulled in whole, an accidental whole-package import — measured in ' +
       'tens or hundreds of KiB, comfortably outside the minimum headroom; what it now deliberately tolerates is ' +
       'roughly one ordinary phase of feature work, sized against the reference\'s own measured history of ' +
-      '13-23 KiB gzip per phase. AS A DATED SNAPSHOT, MEASURED 2026-09-10: frontend/dist/assets holds exactly ' +
-      'two such files, index-Cwd0rvbd.js (871.5 KiB raw / 257.7 KiB gzip) and index-DI-2mR6f.css (84.2 KiB raw ' +
-      '/ 18.6 KiB gzip), summing to 955.7 KiB raw / 276.4 KiB gzip against a ceiling of 1060.0 KiB raw / 305.0 ' +
-      'KiB gzip — a headroom of 104.3 KiB raw (10.9%) / 28.6 KiB gzip (10.4%). That headroom, not the pass/fail, ' +
+      '13-23 KiB gzip per phase. AS A DATED SNAPSHOT, RE-MEASURED 2026-09-15 on the tree this branch merged ' +
+      '156 commits of main into: frontend/dist/assets holds exactly ' +
+      'two such files, index-BRwyrRRy.js (911.2 KiB raw / 267.3 KiB gzip) and index-DVIm0xgu.css (85.1 KiB ' +
+      'raw / 18.8 KiB gzip), summing to 996.4 KiB raw / 286.1 KiB gzip against an UNCHANGED ceiling of ' +
+      '1060.0 KiB raw / 305.0 KiB gzip — a headroom of 63.6 KiB raw / 18.9 KiB gzip, down from 104.3 KiB / ' +
+      '28.6 KiB on 2026-09-10. THE CEILING WAS DELIBERATELY NOT RAISED to restore the old margin. Main\'s ' +
+      'four screens cost 9.7 KiB gzip, which is inside the 13-23 KiB-per-phase band this ceiling was sized ' +
+      'for, so the row did exactly what it is for: it absorbed one phase without a red run and printed the ' +
+      'shrinking headroom on every green one. That headroom is now BELOW the 25 KiB gzip minimum the ceiling ' +
+      'was originally built with, which is the honest reading of this number rather than a reason to move ' +
+      'the ceiling — the next phase of comparable size makes this row RED, and that red will be a real ' +
+      'decision (split the bundle, or re-base the ceiling with a reviewed, dated `--write`), not a rubber ' +
+      'stamp. That headroom, not the pass/fail, ' +
       'is what this row is actually for: it is printed as a line starting with the literal word `WARNING` on ' +
       'EVERY passing run, and the runner\'s own warningLines() (`/WARNING|\\(!\\)/`, scripts/verify/run.mjs) ' +
       "surfaces it even though the row is green, so a green `bundle` row can never be read as 'nothing here to " +
@@ -1075,12 +1165,12 @@ export const CHECKS = [
       'bytes, not about load time, and the number worth reading every run is the headroom line above, never the ' +
       'pass/fail alone. FIX ROUND 2 NARROWS this gap without closing it: a second, equally unconditional WARNING ' +
       'line now names the single largest `.js` chunk and its gzip size on every run — a real, non-trivial ' +
-      'number today (index-Cwd0rvbd.js at 257.7 KiB gzip, 93.3% of the 276.4 KiB total, because this bundle has ' +
+      'number today (index-BRwyrRRy.js at 267.3 KiB gzip, 93.4% of the 286.1 KiB total, because this bundle has ' +
       'no code splitting at all, so that one chunk is close to the whole first-visit download) — but it is a ' +
       'SIGNAL, never a gate: no chunk-size ceiling exists in this repo, this row does not invent one, and the ' +
       'line says nothing about which chunks a GIVEN ROUTE actually pulls once splitting exists — only which ' +
       'single file is largest across the whole build, still blind to per-route composition. It also counts ' +
-      'only `.js`/`.css` files sitting directly under dist/assets: the 17 font ' +
+      'only `.js`/`.css` files sitting directly under dist/assets: the 16 font ' +
       'files Vite copies alongside them today, any other static asset, and anything shipped outside dist/assets ' +
       'entirely (an inline index.html script, a public/ passthrough file) are invisible to both totals ' +
       "regardless of size. Gzip is measured at level 9 with Node's own zlib, not brotli and not whatever " +
@@ -1138,17 +1228,21 @@ export const CHECKS = [
       'idempotency assertion (dev-seed.db-spec.ts\'s «is idempotent — a second run inserts ' +
       'nothing») pass for the wrong reason. A single failing assertion in any suite this glob ' +
       'matches fails this exact command, independent of file or test count. AS A DATED ' +
-      'SNAPSHOT, MEASURED 2026-09-10: 12 files match *.db-spec.ts today, 174 tests total — ' +
-      'five parse-and-apply migration-schema suites (migrations/{bootstrap-owner-create,' +
-      'catalog-schema,intakes-payouts-schema,schema,suppliers-prices-schema}.db-spec.ts), ' +
+      'SNAPSHOT, RE-MEASURED 2026-09-15 on the tree this branch merged 156 commits of main ' +
+      'into (previously 12 files / 174 tests on 2026-09-10): 23 files match *.db-spec.ts, ' +
+      '286 tests total — EIGHT parse-and-apply migration-schema suites ' +
+      '(migrations/{bootstrap-owner-create,catalog-schema,cash-counts-schema,' +
+      'intakes-payouts-schema,intake-top-ups-schema,schema,suppliers-prices-schema,' +
+      'transfers-schema}.db-spec.ts), ' +
       'THREE that boot the FULL AppModule via Nest\'s Test.createTestingModule and drive it ' +
       'over real HTTP with supertest (testing/{pipeline,catalog-pipeline,documents-pipeline}.' +
-      'db-spec.ts), and one each for payouts/payout-race.db-spec.ts, seed/dev-seed.db-spec.ts, ' +
-      'supplier-balance/supplier-balance-list.db-spec.ts and the harness\'s own testing/db-' +
-      'harness.db-spec.ts — confirmed by running this exact command twice in a row against the ' +
-      'same already-populated database: both runs reported 12 suites / 174 tests passing, ' +
-      "byte-for-byte identical, because the drop/create above means the second run never saw " +
-      'the first run\'s rows in the first place.',
+      'db-spec.ts), the harness\'s own testing/db-harness.db-spec.ts, and eleven slice ' +
+      'suites — cash-counts, intake-top-ups-list, payout-ceiling-top-ups, payout-race, ' +
+      'point-cash, shift-close, shift-close-race, intake-top-ups-balance, ' +
+      'supplier-balance-list and transfers-list. The drop/create claim was re-confirmed the ' +
+      'same way it was first made: this exact command run twice in a row against the same ' +
+      'already-populated database reported 23 suites / 286 tests passing both times, because ' +
+      'the second run never saw the first run\'s rows in the first place.',
     blindSpot:
       'Exercises the schema and the queries against a real Postgres, and says nothing about ' +
       'the HTTP layer above them EXCEPT for the three pipeline suites named above — every ' +
@@ -1164,7 +1258,19 @@ export const CHECKS = [
       'DB_NAME itself and any name not ending _test), but it is not safe to run two test:db ' +
       'invocations concurrently against the same database, or to run it while something else ' +
       '(a developer\'s own psql session, an editor\'s schema browser) is connected to app_test ' +
-      '— WITH (FORCE) disconnects that session mid-drop rather than waiting for it. And Redis ' +
+      '— WITH (FORCE) disconnects that session mid-drop rather than waiting for it. THAT ' +
+      'HAZARD WAS DEMONSTRATED, NOT ARGUED, ON 2026-09-15: two invocations started four ' +
+      'seconds apart both exited 1, reporting 110 and 200 failed tests out of 286 — each ' +
+      'run dropping the database the other was mid-way through using. THIS ROW IS ALSO KNOWN ' +
+      'TO HAVE GONE RED ONCE WITHOUT THAT EXPLANATION, and it is recorded rather than ' +
+      'rounded off: on the same day, one single (non-concurrent) invocation reported 12 ' +
+      'failed / 274 passed, and SEVEN further runs before and after it — including three ' +
+      'back-to-back immediately afterwards — were all 286/286 green. Its failure output was ' +
+      'not captured, so the cause is unknown; what can be said is that a 12-failure ' +
+      'signature looks nothing like the 110/200 the concurrency hazard produces, and that ' +
+      'this row therefore has an observed, unexplained flake rate on this machine that no ' +
+      'part of this layer currently detects — a retry would hide it, and this registry has ' +
+      'no retries anywhere for exactly that reason. And Redis ' +
       "state is untouched by any of this: the global ThrottlerGuard's counters persist across a " +
       "test:db run exactly as before, which is why db-harness.ts's relaxThrottleForTests() " +
       'still exists and still matters.',
@@ -1189,15 +1295,21 @@ export const CHECKS = [
       'nginx-unprivileged base together with nginx/nginx.conf. A compile error, a failing npm ' +
       'ci, a COPY naming a path that does not exist in the stage it draws from, or Docker ' +
       'itself failing to build against the daemon at all, fails this exact command. AS A DATED ' +
-      'SNAPSHOT, RE-MEASURED 2026-09-11 on the merged tree (Task 21; previously 22 steps on ' +
-      '2026-09-10, before origin/main\'s PR #63 added the `ARG APP_COMMIT=unknown` / `ENV ' +
-      "APP_COMMIT=$APP_COMMIT` pair `GET /health/version` reads): the backend image (24 " +
-      'Dockerfile steps across four stages, confirmed against `docker build`\'s own numbered ' +
-      "step output) reports 114 MB of content (`docker inspect --format '{{.Size}}'` — " +
-      'UNCHANGED: both new instructions are 0-byte metadata layers, confirmed against ' +
-      '`docker history`), the nginx image (12 steps across two stages, UNCHANGED — its ' +
-      'Dockerfile was not touched by the merge) 26.5 MB — both built clean, no --no-cache, ' +
-      'against docker 29.7.2.',
+      'SNAPSHOT, RE-MEASURED 2026-09-15 on the tree this branch merged 156 commits of main ' +
+      'into: the backend image is 24 Dockerfile steps across four stages and the nginx image ' +
+      '12 steps across two — both UNCHANGED, and necessarily so: neither Dockerfile has been ' +
+      'touched since 2026-09-09 (`git log -1 -- backend/Dockerfile` / `nginx/Dockerfile`), ' +
+      'before any measurement this row has ever recorded. THE SIZES, HOWEVER, DO NOT MATCH ' +
+      'WHAT THIS ROW SAID, and the correction belongs here rather than quietly in a diff: ' +
+      "`docker inspect --format '{{.Size}}'` reports 487 MB for the backend image and 93 MB " +
+      'for nginx, against the 114 MB / 26.5 MB this row claimed on 2026-09-11. The new ' +
+      'numbers are the ones that reconcile: `docker history` shows the backend image\'s `npm ' +
+      'ci --omit=dev` layer alone at 199 MB on top of a 230 MB node:24-alpine base, and the ' +
+      'nginx image sits on a 90.8 MB nginxinc/nginx-unprivileged:alpine base (both base ' +
+      'sizes read from `docker images`). With the Dockerfiles provably unchanged across the ' +
+      'whole interval, nothing this branch did can account for the old figures; they were ' +
+      'wrong when they were written, and are corrected rather than explained away. Both ' +
+      'images built clean, no --no-cache, against docker 29.8.0.',
     blindSpot:
       'Proves the images BUILD, not that they RUN correctly, not that the app inside them ' +
       'WORKS, and not that the compose stack COMPOSES: neither image\'s CMD is ever executed ' +
@@ -1298,12 +1410,18 @@ export const CHECKS = [
       "found already running (another session's) is left running, exactly as found — and " +
       "neither `global-setup.ts` nor `global-teardown.ts` ever touches `frontend/dist` at " +
       "all, in any fix round: `build`/`bundle` own that path, this row owns `dist-e2e`, and " +
-      "the two never cross. AS A DATED SNAPSHOT, MEASURED 2026-09-10 (fix round 3): two " +
+      "the two never cross. AS A DATED SNAPSHOT, RE-MEASURED 2026-09-15 on the tree this " +
+      "branch merged 156 commits of main into, the same way it was first measured: two " +
       "consecutive standalone `npm run test:e2e` runs, `dist-e2e` deleted before the first " +
       "and not rebuilt in between (each run rebuilds it itself, inside `webServer.command`), " +
-      "both completed in ~20s wall clock — the frontend build (`tsc -b && vite build`) adds " +
-      "well under a second over a bare `vite preview` start. The seeded network showed 10 receipts " +
-      'across its three open-shift points (Шипинки/Конищів/Гайове, backend/CLAUDE.md\'s Dev ' +
+      "both green, in 11.6s and 10.0s wall clock against the ~20s recorded on 2026-09-10 — " +
+      "the difference is the stack, not the row: both of those runs found postgres, redis " +
+      "and backend ALREADY UP, so `docker compose up -d --wait` returned immediately and " +
+      "global-teardown correctly left every service running, as its own output says. A run " +
+      "that has to start the stack pays that cost on top, and this figure does not include " +
+      "it. The seeded network showed 6 receipts " +
+      'across its three open-shift points (Шипинки 3, Конищів 2, Гайове 1 — counted directly ' +
+      'in Postgres, backend/CLAUDE.md\'s Dev ' +
       "seed section) the day this was measured — a number that moves with the seed data and is " +
       'not re-verified by this row beyond being positive.',
     blindSpot:

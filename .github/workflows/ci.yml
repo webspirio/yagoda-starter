@@ -205,21 +205,12 @@ jobs:
       # able to teach them that lowering a floor is how you get back to green —
       # the only place a floor can move is this file, in a reviewed diff.
       #
-      # RE-MEASURED on 2026-09-11 on the MERGED tree (Task 21 reconciled this branch
-      # with origin/main's 40-commit Coolify CD lead — see task-21-report.md): a live
-      # `npm run coverage -w backend` / `-w frontend` on the post-merge commit, not
-      # carried over from the pre-merge 2026-09-10 measurement below it replaces.
-      # That earlier measurement is exactly why this re-measurement was needed: it
-      # read backend lines at 84.13%, floored to 84, and origin/main's
-      # `config/env.schema.ts` and `health.controller.ts` brought that real number
-      # down to 83.95% — a floor read as 0 locally (see below), so every local run
-      # stayed green while `verify` would have gone red on its first CI run:
-      #   backend:  80.28% statements / 61.60% branches / 80.40% functions / 83.95% lines
-      #   frontend: 82.94% statements / 80.65% branches / 76.14% functions / 83.29% lines
-      # (Frontend is IDENTICAL to the pre-merge measurement — origin/main's 40 commits
-      # touched no frontend/src file — so only COVERAGE_BACKEND_LINES actually moves,
-      # from 84 to 83; every other floor below was re-verified against this same
-      # merged-tree measurement and still holds.)
+      # RE-MEASURED on 2026-09-15 on the tree this branch merged 156 commits of main
+      # into (the transfers/point-cash slice, cash counts, intake top-ups #61), by a
+      # live `npx turbo coverage --force` — never carried over from the 2026-09-11
+      # figures it replaces, and never a cached Turbo replay:
+      #   backend:  79.51% statements / 61.19% branches / 78.24% functions / 82.97% lines
+      #   frontend: 85.25% statements / 81.59% branches / 79.37% functions / 85.66% lines
       #
       # Each floor below is that measurement FLOORED DOWN to a whole percent, never
       # pinned to the measurement itself — a floor set at the exact number turns
@@ -228,20 +219,33 @@ jobs:
       # without reading why.
       #
       # THE RATCHET TURNS ONE WAY. Raising a floor, as ordinary feature work adds
-      # tests, is an ordinary edit. LOWERING one must be a visible diff in THIS
-      # file, reviewed like any other regression — never a side effect of a
-      # refactor, and never automated. This is that diff: COVERAGE_BACKEND_LINES
-      # 84 -> 83, the direct, reviewed consequence of merging real code from main,
-      # not a side effect of anything this task changed.
+      # tests, is an ordinary edit; LOWERING one must be a visible diff in THIS file,
+      # reviewed like any other regression. This diff moves floors in BOTH directions
+      # and each direction has a reason read off the measurement, not guessed:
+      #
+      #   RAISED, all four frontend floors, because main's cash and transfers screens
+      #   arrived with their own component tests and the real numbers went UP:
+      #     STATEMENTS 82 -> 85, BRANCHES 80 -> 81, FUNCTIONS 76 -> 79, LINES 83 -> 85.
+      #
+      #   LOWERED, three backend floors, and this is the part to read rather than wave
+      #   through: STATEMENTS 80 -> 79, FUNCTIONS 80 -> 78, LINES 83 -> 82. Backend
+      #   coverage did not fall because tests were deleted — it fell because this
+      #   `coverage` task measures the UNIT config only (backend/jest.config.js,
+      #   testRegex .*\.spec\.ts$), and the four slices main merged in are covered
+      #   disproportionately by *.db-spec.ts suites against a real Postgres, which
+      #   that config does not run and so cannot credit. The db-spec suites grew from
+      #   12 files to 23 over the same merge and are gated by the `test:db` row, not
+      #   this one. BRANCHES 61 is unchanged: the real number moved 61.60 -> 61.19,
+      #   still above its floor.
       # ─────────────────────────────────────────────────────────────────────────
-      COVERAGE_BACKEND_STATEMENTS: 80
+      COVERAGE_BACKEND_STATEMENTS: 79
       COVERAGE_BACKEND_BRANCHES: 61
-      COVERAGE_BACKEND_FUNCTIONS: 80
-      COVERAGE_BACKEND_LINES: 83
-      COVERAGE_FRONTEND_STATEMENTS: 82
-      COVERAGE_FRONTEND_BRANCHES: 80
-      COVERAGE_FRONTEND_FUNCTIONS: 76
-      COVERAGE_FRONTEND_LINES: 83
+      COVERAGE_BACKEND_FUNCTIONS: 78
+      COVERAGE_BACKEND_LINES: 82
+      COVERAGE_FRONTEND_STATEMENTS: 85
+      COVERAGE_FRONTEND_BRANCHES: 81
+      COVERAGE_FRONTEND_FUNCTIONS: 79
+      COVERAGE_FRONTEND_LINES: 85
 
     steps:
       - uses: actions/checkout@v7
