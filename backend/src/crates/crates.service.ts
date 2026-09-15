@@ -359,13 +359,10 @@ export class CratesService {
 
       const shift = await this.shifts.findOneRaw(issuance.shift_id, m);
       if (!shift) throw new NotFoundException('Crate issuance not found');
-      if (
-        actor.role !== UserRole.NetworkOwner &&
-        actor.collection_point_id !== shift.collection_point_id
-      ) {
-        throw new NotFoundException('Crate issuance not found');
-      }
 
+      // The point-mismatch 404 lives in `assertMayVoid` alone — see its doc
+      // comment. A second copy here would just be a second place to forget
+      // to update.
       this.assertMayVoid(actor, shift);
 
       if (issuance.voided_at) {
@@ -440,13 +437,10 @@ export class CratesService {
 
       const shift = await this.shifts.findOneRaw(ret.shift_id, m);
       if (!shift) throw new NotFoundException('Crate return not found');
-      if (
-        actor.role !== UserRole.NetworkOwner &&
-        actor.collection_point_id !== shift.collection_point_id
-      ) {
-        throw new NotFoundException('Crate return not found');
-      }
 
+      // The point-mismatch 404 lives in `assertMayVoid` alone — see its doc
+      // comment. A second copy here would just be a second place to forget
+      // to update.
       this.assertMayVoid(actor, shift);
 
       if (ret.voided_at) {

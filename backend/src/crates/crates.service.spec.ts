@@ -434,15 +434,18 @@ describe('CratesService', () => {
   });
 
   describe('voids', () => {
-    // These tests intentionally shadow the outer `operator` fixture with a
-    // point id that matches the shift overrides used throughout this block
-    // ('point-1' the operator's own, 'point-2'/'point-9' someone else's).
-    const operator = {
+    // Named distinctly from the file-level `operator` fixture (not
+    // `owner`/`operator`) so a future test added in this block that reaches
+    // for the outer fixture gets a compile error, not a silently wrong actor.
+    // Point id 'point-1' matches the shift overrides used throughout this
+    // block ('point-1' the void-operator's own, 'point-2'/'point-9'
+    // someone else's).
+    const voidOperator = {
       sub: 'op-1',
       role: UserRole.PointOperator,
       collection_point_id: 'point-1',
     } as never;
-    const owner = {
+    const voidOwner = {
       sub: 'owner-1',
       role: UserRole.NetworkOwner,
       collection_point_id: null,
@@ -464,7 +467,7 @@ describe('CratesService', () => {
       loadIssuance({ issued_by_user_id: 'someone-else', shift: { collection_point_id: 'point-1', closed_at: null } });
 
       await expect(
-        service.voidIssuance(operator, 'i-1', { reason: 'помилка вводу' }),
+        service.voidIssuance(voidOperator, 'i-1', { reason: 'помилка вводу' }),
       ).resolves.toBeDefined();
     });
 
@@ -472,7 +475,7 @@ describe('CratesService', () => {
       loadIssuance({ shift: { collection_point_id: 'point-1', closed_at: new Date() } });
 
       await expect(
-        service.voidIssuance(operator, 'i-1', { reason: 'помилка' }),
+        service.voidIssuance(voidOperator, 'i-1', { reason: 'помилка' }),
       ).rejects.toMatchObject({ response: { code: 'SHIFT_CLOSED' } });
     });
 
@@ -480,7 +483,7 @@ describe('CratesService', () => {
       loadIssuance({ shift: { collection_point_id: 'point-9', closed_at: new Date() } });
 
       await expect(
-        service.voidIssuance(owner, 'i-1', { reason: 'перевірка' }),
+        service.voidIssuance(voidOwner, 'i-1', { reason: 'перевірка' }),
       ).resolves.toBeDefined();
     });
 
@@ -488,7 +491,7 @@ describe('CratesService', () => {
       loadIssuance({ shift: { collection_point_id: 'point-2', closed_at: null } });
 
       await expect(
-        service.voidIssuance(operator, 'i-1', { reason: 'x' }),
+        service.voidIssuance(voidOperator, 'i-1', { reason: 'x' }),
       ).rejects.toBeInstanceOf(NotFoundException);
     });
 
@@ -500,7 +503,7 @@ describe('CratesService', () => {
       );
 
       await expect(
-        service.voidIssuance(operator, 'i-1', { reason: 'x' }),
+        service.voidIssuance(voidOperator, 'i-1', { reason: 'x' }),
       ).rejects.toMatchObject({ response: { code: 'ISSUANCE_HAS_RETURNS' } });
     });
 
@@ -508,14 +511,14 @@ describe('CratesService', () => {
       loadIssuance({ voided_at: new Date(), shift: { collection_point_id: 'point-1', closed_at: null } });
 
       await expect(
-        service.voidIssuance(operator, 'i-1', { reason: 'x' }),
+        service.voidIssuance(voidOperator, 'i-1', { reason: 'x' }),
       ).rejects.toMatchObject({ response: { code: 'ALREADY_VOIDED' } });
     });
 
     it('voiding a return does not delete its allocations', async () => {
       loadReturn({ shift: { collection_point_id: 'point-1', closed_at: null } });
 
-      await service.voidReturn(operator, 'r-1', { reason: 'перерахували' });
+      await service.voidReturn(voidOperator, 'r-1', { reason: 'перерахували' });
 
       const deletes = (manager.query.mock.calls as [string][]).filter(([sql]) =>
         sql.includes('DELETE'),
@@ -530,7 +533,7 @@ describe('CratesService', () => {
       loadReturn({ shift: { collection_point_id: 'point-1', closed_at: new Date() } });
 
       await expect(
-        service.voidReturn(operator, 'r-1', { reason: 'x' }),
+        service.voidReturn(voidOperator, 'r-1', { reason: 'x' }),
       ).rejects.toMatchObject({ response: { code: 'SHIFT_CLOSED' } });
     });
 
@@ -538,7 +541,7 @@ describe('CratesService', () => {
       loadReturn({ shift: { collection_point_id: 'point-2', closed_at: null } });
 
       await expect(
-        service.voidReturn(operator, 'r-1', { reason: 'x' }),
+        service.voidReturn(voidOperator, 'r-1', { reason: 'x' }),
       ).rejects.toBeInstanceOf(NotFoundException);
     });
 
@@ -546,7 +549,7 @@ describe('CratesService', () => {
       loadReturn({ voided_at: new Date(), shift: { collection_point_id: 'point-1', closed_at: null } });
 
       await expect(
-        service.voidReturn(operator, 'r-1', { reason: 'x' }),
+        service.voidReturn(voidOperator, 'r-1', { reason: 'x' }),
       ).rejects.toMatchObject({ response: { code: 'ALREADY_VOIDED' } });
     });
 
@@ -554,7 +557,32 @@ describe('CratesService', () => {
       loadIssuance({ shift: { collection_point_id: 'point-2', closed_at: null } });
 
       await expect(
-        service.voidIssuance(owner, 'i-1', { reason: 'перевірка' }),
+        service.voidIssuance(voidOwner, 'i-1', { reason: 'перевірка' }),
+      ).resolves.toBeDefined();
+    });
+
+    /**
+     * Fix-round finding: `voidReturn` has its OWN inline authority check —
+     * not a shared call — so nothing previously exercised the owner path on
+     * a return at all. A copy/paste slip there (inverted condition, wrong
+     * field) would have gone undetected.
+     */
+    it('lets the owner void a return, at their own point, shift open or closed', async () => {
+      loadReturn({ shift: { collection_point_id: 'point-1', closed_at: new Date() } });
+
+      await expect(
+        service.voidReturn(voidOwner, 'r-1', { reason: 'перевірка' }),
+      ).resolves.toBeDefined();
+    });
+
+    /** The case that would actually catch an inverted point-check on the
+     *  return path: the owner voiding a return at a point that is NOT
+     *  theirs must still succeed — owner authority is point-independent. */
+    it('lets the owner void a return at a point that is not theirs', async () => {
+      loadReturn({ shift: { collection_point_id: 'point-9', closed_at: null } });
+
+      await expect(
+        service.voidReturn(voidOwner, 'r-1', { reason: 'перевірка' }),
       ).resolves.toBeDefined();
     });
 
@@ -562,28 +590,60 @@ describe('CratesService', () => {
       loadIssuance({ shift: { collection_point_id: 'point-1', closed_at: null } });
 
       await expect(
-        service.voidIssuance(operator, 'i-1', { reason: 'x' }),
+        service.voidIssuance(voidOperator, 'i-1', { reason: 'x' }),
       ).resolves.toBeDefined();
     });
 
-    it('signs the void with the actor who pressed the button, not the original author', async () => {
+    /**
+     * Fix-round finding: the prior version of this test asserted only two of
+     * the three void columns. `CHK_crate_issuances_void_trio` fails the
+     * database unless all three are non-null together, so a two-field write
+     * would 500 in production while a test checking only two fields stayed
+     * green. Assert all three, and assert the ACTOR's id, not the original
+     * author's.
+     */
+    it('writes the full void trio, signed by the actor who pressed the button — not the original author', async () => {
       loadIssuance({
         issued_by_user_id: 'someone-else',
         shift: { collection_point_id: 'point-1', closed_at: null },
       });
 
-      await service.voidIssuance(operator, 'i-1', { reason: 'помилка вводу' });
+      await service.voidIssuance(voidOperator, 'i-1', { reason: 'помилка вводу' });
 
       expect(manager.save).toHaveBeenCalledWith(
         expect.anything(),
-        expect.objectContaining({ voided_by_user_id: 'op-1', void_reason: 'помилка вводу' }),
+        expect.objectContaining({
+          voided_at: expect.any(Date),
+          voided_by_user_id: 'op-1',
+          void_reason: 'помилка вводу',
+        }),
+      );
+    });
+
+    /** Same trio proof, on the return path — nothing previously inspected
+     *  `manager.save`'s argument for `voidReturn` at all. */
+    it('writes the full void trio on a return, signed by the actor', async () => {
+      loadReturn({
+        accepted_by_user_id: 'someone-else',
+        shift: { collection_point_id: 'point-1', closed_at: null },
+      });
+
+      await service.voidReturn(voidOperator, 'r-1', { reason: 'перерахували' });
+
+      expect(manager.save).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          voided_at: expect.any(Date),
+          voided_by_user_id: 'op-1',
+          void_reason: 'перерахували',
+        }),
       );
     });
 
     it('audits crate-issuance.voided', async () => {
       loadIssuance({ shift: { collection_point_id: 'point-1', closed_at: null } });
 
-      await service.voidIssuance(operator, 'i-1', { reason: 'x' });
+      await service.voidIssuance(voidOperator, 'i-1', { reason: 'x' });
 
       expect(audit.record).toHaveBeenCalledWith(
         expect.objectContaining({ action: 'crate-issuance.voided' }),
@@ -594,7 +654,7 @@ describe('CratesService', () => {
     it('audits crate-return.voided', async () => {
       loadReturn({ shift: { collection_point_id: 'point-1', closed_at: null } });
 
-      await service.voidReturn(operator, 'r-1', { reason: 'x' });
+      await service.voidReturn(voidOperator, 'r-1', { reason: 'x' });
 
       expect(audit.record).toHaveBeenCalledWith(
         expect.objectContaining({ action: 'crate-return.voided' }),
