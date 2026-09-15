@@ -115,21 +115,36 @@ npm run verify:ci     # verify:full with --no-skip — a missing precondition is
 THE LAPTOP NUMBERS ABOVE ARE NOT CI NUMBERS, and on 2026-09-15 that gap was not academic:
 the first real CI run of `npm run verify:ci` came back RED with three rows — `test`,
 `coverage` and `test:db` — each reporting `timed out after 120.0s` against the runner's
-inherited per-check default, with nothing actually wrong in any of them. Locally all three
+inherited per-check default, with nothing actually wrong in two of them. Locally all three
 are seconds, because Turbo serves them from cache and Postgres is already warm, so no
-number measured on this machine could ever have shown it. What CI itself measured, per row,
-on that run (11m10s in total): lint 17.3s, typecheck 17.9s, test:ci-scripts 6.7s,
-selfcheck 69.7s, build 15.6s, docker 63.8s, smoke 41.7s — several times their warm-laptop
-cost. The three slow rows now carry their own `timeoutMs` in `scripts/verify/registry.mjs`
-(600s / 600s / 1200s), sized as HANG DETECTORS rather than performance gates; the
-performance signal is the duration printed beside every row, on green runs as well as red.
+number measured on this machine could ever have shown it.
+
+THE FULL GREEN CI READING, run 35011857830: 20 rows summing to 8m24s, inside a job that
+took 9m35s — the ~71s difference is `npm ci`, `playwright install`, `docker compose up` and
+the artifact upload, none of which is a row. Per row: lint 16.9s, typecheck 16.7s,
+test:ci-scripts 6.7s, selfcheck 67.3s, build 14.6s, coverage 247.2s, test:db 28.9s,
+docker 60.6s, smoke 36.6s; the remaining eleven cost 2.3s (audit) and less, 8.9s together.
+`test` does not appear because it does not run here — `coverage` supersedes it. Two rows carry their own `timeoutMs` in
+`scripts/verify/registry.mjs` (coverage 600s, test:db 300s), sized as HANG DETECTORS rather
+than performance gates; the performance signal is the duration printed beside every row, on
+green runs as well as red.
+
+THE THIRD ROW WAS NOT SLOW, IT WAS BROKEN, and the distinction cost two red runs to see.
+`test:db` blew through 120s, then 480s, then was given 1200s purely to buy a reading. The
+reading was never the problem: three jobs on a throwaway branch (run 35008065574) measured
+the identical command at 31s against an Actions `services:` Postgres and over 21 minutes
+against a Compose one, while direct probes (35010492674) found that Compose Postgres
+perfectly healthy — 0.26ms per round trip, DROP 10ms, CREATE 23ms. The database `app_test`
+simply did not exist there, the three suites that boot the whole AppModule never created it,
+and jest hung after the suites had finished. See `backend/src/testing/db-harness.ts`.
+A budget raised to accommodate a hang is a budget sized from a bug.
 
 ### The pre-push gate
 
 `npm run verify:prepush` — `--tier full --exclude smoke,docker,coverage,audit` — runs from
 `.githooks/pre-push`, wired by `npm install` (`prepare` sets `core.hooksPath`). MEASURED
-2026-09-15: **17 rows in 1m14s**, including `test:db` at 22s — the row that has never once
-finished inside eight minutes on CI.
+2026-09-15: **17 rows in 1m14s**, including `test:db` at 22s — the row that took three CI
+runs to finish once, for a reason that turned out to have nothing to do with speed.
 
 It is a cheaper place to find out, NOT a replacement for the `verify` job. A hook can be
 skipped (`git push --no-verify`, or a clone that never ran `npm install`), so CI keeps

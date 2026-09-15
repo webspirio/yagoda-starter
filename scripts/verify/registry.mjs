@@ -1329,10 +1329,13 @@ export const CHECKS = [
     // failure by dropping the database first. With it, the full suite runs GREEN against a
     // deliberately dropped app_test in 21s on a laptop — the same 20s this row always cost.
     //
-    // The budget stays at 1200s for exactly one more run, for the reason it was raised:
-    // this row has still never completed on CI, so there is still no CI reading to size it
-    // from. Tighten it to that reading plus headroom the moment one exists.
-    timeoutMs: 1_200_000,
+    // THE CI READING NOW EXISTS, and this budget is sized from it rather than from a guess:
+    // run 35011857830, the first ever to carry this row to completion, measured 28.9s —
+    // against 25s as its own job on main and 21s on a laptop with app_test deliberately
+    // dropped. Three machines, one number. 300s is roughly ten times that, which is what a
+    // HANG DETECTOR should be: nothing about a healthy run comes near it, and the next hang
+    // is reported as a clean FAILED row in five minutes instead of twenty.
+    timeoutMs: 300_000,
     needs: ['postgres', 'redis'],
     proves:
       "`npm run test:db -w backend` (`NODE_OPTIONS=--experimental-vm-modules jest --config " +

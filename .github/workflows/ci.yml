@@ -196,23 +196,33 @@ jobs:
     # RED, and instructively so: `test`, `coverage` and `test:db` each died at exactly
     # `timed out after 120.0s`, the runner's inherited per-check default, with nothing
     # actually wrong. They now carry their own `timeoutMs` in scripts/verify/registry.mjs
-    # (600s / 600s / 1200s).
+    # (600s for coverage, 300s for test:db).
     #
-    # UPDATED 2026-09-15 after the run that followed (34998136933): with real budgets the
-    # three finished at test 220.4s and coverage 254.6s — comfortably inside 600s — while
-    # test:db died AGAIN, at its full 480s, the only red row in an otherwise green 21. Its
-    # budget is now 1200s and, unlike every other number here, it is a MEASUREMENT
-    # INSTRUMENT rather than a sized budget: the row has never once run to completion on
-    # CI, so nobody knows what it costs. See its note in scripts/verify/registry.mjs.
+    # UPDATED 2026-09-15, TWICE. First after run 34998136933: with real budgets `test` and
+    # `coverage` finished at 220.4s and 254.6s, while test:db died AGAIN at its full 480s,
+    # the only red row in an otherwise green 21 — and its budget was raised to 1200s purely
+    # to buy one complete reading, since nobody knew what the row cost.
+    #
+    # Then after run 35011857830, WHICH IS THE ONE TO READ: 20 rows, all green, 9m35s for
+    # the whole job. The 1200s was chasing a bug rather than a cost — `app_test` did not
+    # exist on a Compose-provided Postgres and the three suites that boot the AppModule
+    # never created it, so jest hung after finishing (see backend/src/testing/db-harness.ts
+    # and the row's own note in scripts/verify/registry.mjs). Fixed at the source, test:db
+    # measured 28.9s and its budget is now 300s. Per row on that run: lint 16.9s, typecheck
+    # 16.7s, test:ci-scripts 6.7s, selfcheck 67.3s, build 14.6s, coverage 247.2s, test:db
+    # 28.9s, docker 60.6s, smoke 36.6s — with `test` not running at all, superseded by
+    # `coverage`, and the turbo cache still cold on this new key lineage.
     #
     # This number must stay above the SUM of those budgets, or a genuinely hung row gets
     # killed by the job instead of reported as a clean FAILED row by the runner — which is
-    # the difference between "test:db timed out after 1200s" and a job log that just stops.
-    # The sum is now 600 + 1200 = 30 minutes rather than 40: `test` no longer runs in this
-    # job at all, because `coverage` supersedes it (scripts/verify/registry.mjs, and the
-    # SUPERSEDED line the runner prints). 60 stays as it is — the headroom over the sum is
-    # what the rows without a declared budget need, and they measured ~250s together on
-    # that same run.
+    # the difference between "test:db timed out after 300s" and a job log that just stops.
+    # The sum is now 600 + 300 = 15 minutes rather than 40, on two counts: `test` no longer
+    # runs in this job at all (`coverage` supersedes it — scripts/verify/registry.mjs, and
+    # the SUPERSEDED line the runner prints), and test:db's budget is sized from a real
+    # reading. 60 stays as it is rather than being cut to match: the headroom over the sum
+    # is what the rows without a declared budget need, they measured ~220s together on run
+    # 35011857830, and a job-level timeout is the last line of defence — it should be the
+    # one number here that is never tight.
     timeout-minutes: 60
 
     env:
