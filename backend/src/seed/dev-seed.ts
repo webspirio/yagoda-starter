@@ -24,6 +24,7 @@ import {
   SEED_TARE_TYPES,
   SEED_TOP_UPS,
   SEED_TRANSFERS,
+  daysBack,
   type SeedDay,
 } from './dev-seed.data';
 
@@ -322,6 +323,18 @@ export async function seedDev(ds: DataSource): Promise<DevSeedSummary> {
 }
 
 /**
+ * `YYYY-MM-DD`, `n` days before `iso`. UTC arithmetic on a date-only value, so
+ * no local timezone and no DST boundary inside the seeded window can move a
+ * business date by a day — which would change a document code, which is the
+ * natural key the seed's idempotency rests on.
+ */
+export function isoDaysBefore(iso: string, n: number): string {
+  const d = new Date(`${iso}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() - n);
+  return d.toISOString().slice(0, 10);
+}
+
+/**
  * Shifts, intakes, payouts, transfers and the cash counts that anchor them.
  * Every intake's numbers come from the server's
  * own `buildIntake()` over the price and tare snapshots the seed itself wrote,
@@ -342,13 +355,22 @@ async function seedDocuments(
   ownerId: string,
 ): Promise<void> {
   const tz = process.env.APP_TIMEZONE ?? 'Europe/Kyiv';
-  const days = await one<{ today: string; yesterday: string }>(
+  const days = await one<{ today: string }>(
     qr,
-    `SELECT (now() AT TIME ZONE $1)::date::text AS today,
-            ((now() AT TIME ZONE $1)::date - 1)::text AS yesterday`,
+    `SELECT (now() AT TIME ZONE $1)::date::text AS today`,
     [tz],
   );
-  const dateOf = (day: SeedDay) => (day === 'today' ? days!.today : days!.yesterday);
+  // Memoised because `dateOf` is called once per document per loop, and the
+  // generated history turns that from dozens of calls into thousands.
+  const dateCache = new Map<number, string>();
+  const dateOf = (day: SeedDay): string => {
+    const n = daysBack(day);
+    const hit = dateCache.get(n);
+    if (hit !== undefined) return hit;
+    const iso = isoDaysBefore(days!.today, n);
+    dateCache.set(n, iso);
+    return iso;
+  };
   // A local wall-clock instant on a business date, as timestamptz — the
   // placeholders are named by index so a fragment can sit anywhere in a VALUES.
   const localTs = (dateIdx: number, timeIdx: number, tzIdx: number) =>

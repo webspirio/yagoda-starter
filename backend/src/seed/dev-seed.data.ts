@@ -450,7 +450,22 @@ export const SEED_PRICE_CHANGES: readonly SeedPriceChange[] = [
  * weights, so what the demo stores is exactly what the API would have stored.
  * ------------------------------------------------------------------------- */
 
-export type SeedDay = 'today' | 'yesterday';
+/**
+ * A business date, relative to the day the seed runs. `'today'` and
+ * `'yesterday'` name the two CURATED days; a NUMBER is that many days before
+ * today, and is what `dev-seed.history.ts` generates with. The two spellings of
+ * day 1 (`'yesterday'` and `1`) are deliberate: the curated rows keep the word,
+ * so a reader can tell curated data from generated data without opening the
+ * other file.
+ */
+export type SeedDay = 'today' | 'yesterday' | number;
+
+/** `SeedDay` as a count of days before today. The one place the encoding lives. */
+export function daysBack(day: SeedDay): number {
+  if (day === 'today') return 0;
+  if (day === 'yesterday') return 1;
+  return day;
+}
 
 export interface SeedShift {
   point: string;

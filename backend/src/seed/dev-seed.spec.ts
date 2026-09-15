@@ -1,4 +1,4 @@
-import { addMoney } from './dev-seed';
+import { addMoney, isoDaysBefore } from './dev-seed';
 import {
   SEED_GRADES,
   SEED_INTAKES,
@@ -13,6 +13,7 @@ import {
   SEED_TARE_TYPES,
   SEED_TOP_UPS,
   SEED_TRANSFERS,
+  daysBack,
 } from './dev-seed.data';
 
 /**
@@ -210,5 +211,25 @@ describe('addMoney', () => {
   it('rejects anything that is not a plain decimal', () => {
     expect(() => addMoney('1e3', '0')).toThrow(/Not a decimal/);
     expect(() => addMoney('1.005', '0')).toThrow(/Not a decimal/);
+  });
+});
+
+describe('SeedDay', () => {
+  it('maps a numeric day to that many days before today', () => {
+    expect(daysBack('today')).toBe(0);
+    expect(daysBack('yesterday')).toBe(1);
+    expect(daysBack(30)).toBe(30);
+  });
+});
+
+describe('isoDaysBefore', () => {
+  it('walks back across a month boundary', () => {
+    expect(isoDaysBefore('2026-09-15', 0)).toBe('2026-09-15');
+    expect(isoDaysBefore('2026-09-15', 1)).toBe('2026-09-14');
+    expect(isoDaysBefore('2026-09-15', 30)).toBe('2026-08-16');
+  });
+
+  it('walks back across a leap day', () => {
+    expect(isoDaysBefore('2028-03-01', 1)).toBe('2028-02-29');
   });
 });
