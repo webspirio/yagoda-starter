@@ -25,6 +25,7 @@ import { TransfersModule } from './transfers/transfers.module';
 import { PointCashModule } from './point-cash/point-cash.module';
 import { CashCountsModule } from './cash-counts/cash-counts.module';
 import { GradePricesModule } from './grade-prices/grade-prices.module';
+import { CratesModule } from './crates/crates.module';
 import { AuditModule } from './audit/audit.module';
 import { MediaModule } from './media/media.module';
 import { AuthModule } from './auth/auth.module';
@@ -121,6 +122,7 @@ import { envValidationSchema } from './config/env.schema';
     PointCashModule,
     CashCountsModule,
     GradePricesModule,
+    CratesModule,
     AuditModule,
     MediaModule,
     AuthModule,

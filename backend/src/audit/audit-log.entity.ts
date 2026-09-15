@@ -50,6 +50,10 @@ export const AUDIT_ACTIONS = [
   'transfer.voided',
   'cash-count.recorded',
   'shift.explained',
+  'crate-issuance.created',
+  'crate-issuance.voided',
+  'crate-return.created',
+  'crate-return.voided',
 ] as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
