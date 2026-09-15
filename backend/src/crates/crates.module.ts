@@ -7,6 +7,8 @@ import { CratesService } from './crates.service';
 import { CrateBalanceService } from './crate-balance.service';
 import { CrateIssuancesController } from './crate-issuances.controller';
 import { CrateReturnsController } from './crate-returns.controller';
+import { CrateBalancesController } from './crate-balances.controller';
+import { CrateBalancesService } from './crate-balances.service';
 import { CrateBalanceController } from './crate-balance.controller';
 import { ShiftsModule } from '../shifts/shifts.module';
 import { SuppliersModule } from '../suppliers/suppliers.module';
@@ -28,8 +30,13 @@ import { AuditModule } from '../audit/audit.module';
     TareTypesModule,
     AuditModule,
   ],
-  providers: [CratesService, CrateBalanceService],
-  controllers: [CrateIssuancesController, CrateReturnsController, CrateBalanceController],
+  providers: [CratesService, CrateBalanceService, CrateBalancesService],
+  controllers: [
+    CrateIssuancesController,
+    CrateReturnsController,
+    CrateBalanceController,
+    CrateBalancesController,
+  ],
   exports: [CratesService, CrateBalanceService],
 })
 export class CratesModule {}
