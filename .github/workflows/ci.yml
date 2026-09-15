@@ -156,16 +156,32 @@ jobs:
   #                   (Joi `required()`), so they're still spelled out below, on the
   #                   one step that needs them, same as `db-checks` used to.
   #
-  # `changes` and `docker` (both below, unchanged) are DELIBERATELY UNTOUCHED by this
-  # job — not replaced, not deleted. Both are CD infrastructure, not verification:
-  # `docker` pushes the two GHCR images tagged sha-<commit> — the ONLY tag Coolify
-  # ever deploys — and `changes` decides whether that push may skip a rebuild;
+  # `changes` and `docker` (both below) are DELIBERATELY UNTOUCHED by this job — not
+  # replaced, not deleted. Both are CD infrastructure, not verification: `docker`
+  # pushes the two GHCR images tagged sha-<commit> — the ONLY tag Coolify ever
+  # deploys — and `changes` decides whether that push may skip a rebuild;
   # `deploy-preview` and `deploy-prod` consume `docker`'s own `pushed` output
-  # directly, and both now depend on `[verify, docker]`. This branch's OWN `docker`
-  # REGISTRY ROW, run as part of `verify:ci` below (`npm run docker:build` — a plain
-  # `docker build` with no push, proving only that both images still build) shares
-  # a name with, but has no other relationship to, the `docker` WORKFLOW JOB below —
-  # it does not replace it and was never meant to.
+  # directly, and both now depend on `[verify, docker]`.
+  #
+  # THERE USED TO BE A `docker` REGISTRY ROW AS WELL, and it is gone as of
+  # 2026-09-15: `npm run docker:build`, a plain uncached `docker build` of the same
+  # two images with no push, run inside `verify:ci` below. It shared a name with the
+  # job and duplicated its work. The job is the one that survives, because the
+  # asymmetry is not close: the job runs in PARALLEL with this one (~60s against
+  # ~4 minutes, so zero wall clock), imports a warm `type=gha` buildx cache, and has
+  # to build anyway in order to push — while the row sat on the critical path,
+  # uncached, and cost 64s of a 228s warm run, 28% of it, to prove something already
+  # being proved beside it. The job's own header below now carries what that row
+  # knew. `npm run docker:build` survives as a script for a human to run by hand.
+  #
+  # THE JOB'S CONDITIONAL BUILD IS WHAT MAKES THAT SAFE, and it was checked rather
+  # than assumed: `changes`' trigger set is a strict SUPERSET of what the two
+  # Dockerfiles actually COPY (backend/Dockerfile takes package.json,
+  # package-lock.json, backend/package.json and backend/; nginx/Dockerfile takes
+  # those two plus frontend/package.json, frontend/ and nginx/nginx.conf), and no
+  # root tsconfig feeds either — the only `extends` in the repo is
+  # backend/tsconfig.build.json pointing at its own sibling. So when this job skips
+  # its build, no input to either image changed.
   #
   # See docs/superpowers/2026-09-05-foundation-slice-follow-ups.md for the required-
   # status-check rename this job's introduction still owes repository settings
@@ -173,26 +189,23 @@ jobs:
   #
   # ONE CACHE HERE, NOT TWO. The Turborepo `.turbo` cache below (old `checks` job)
   # is kept, because reusing it creates NO "green there / green here" divergence:
-  # `npm run lint`/`typecheck`/`test`/`build` are the identical commands whether
+  # `npm run lint`/`typecheck`/`build`/`coverage` are the identical commands whether
   # `.turbo` is warm or cold — the cache only changes how long they take, never
-  # what runs. `docker` (the workflow job below, unchanged) keeps its own separate
-  # `type=gha` buildx cache exactly as it always had — nothing about that job's
-  # publish path changed here. Only this branch's OWN `docker` registry row runs an
-  # uncached, plain `docker build` (see that row's own entry in
-  # scripts/verify/registry.mjs): it exists so a laptop can run the identical
-  # command, and a CI-only buildx cache would no longer be identical to that.
+  # what runs. `docker` (the workflow job below) keeps its own separate `type=gha`
+  # buildx cache exactly as it always had, and it is now the only thing in this
+  # workflow that builds an image at all.
 
   verify:
     runs-on: ubuntu-latest
-    # A full-tier, --no-skip run exercises every row in scripts/verify/registry.mjs,
-    # including the two slowest (`docker` — this branch's own registry row, an
-    # uncached `docker build` of two images from scratch, see the note above — and
-    # `smoke`, which drives a real browser against a real Compose stack). Sized
-    # sized from what CI ITSELF measured, not from the laptop. The first real run of
-    # this job (2026-09-15, run 34995008671) took 11m10s and reported, per row:
-    # lint 17.3s, typecheck 17.9s, test:ci-scripts 6.7s, selfcheck 69.7s, build 15.6s,
-    # docker 63.8s, smoke 41.7s — every one of them several times its warm-laptop cost
-    # (the same command locally is 1m23s end to end with every cache hot). That run was
+    # A full-tier, --no-skip run exercises every row in scripts/verify/registry.mjs.
+    # The slowest are now `selfcheck` (node --test over the layer's own 163 tests,
+    # which nothing caches, in CI or on a laptop) and `smoke` (a real browser against
+    # a real Compose stack). Sized from what CI ITSELF measured, not from the laptop.
+    # The first real run of this job (2026-09-15, run 34995008671) took 11m10s and
+    # reported, per row: lint 17.3s, typecheck 17.9s, test:ci-scripts 6.7s,
+    # selfcheck 69.7s, build 15.6s, docker 63.8s, smoke 41.7s — every one of them
+    # several times its warm-laptop cost, and the `docker` row in that list no longer
+    # exists (see the note above). That run was
     # RED, and instructively so: `test`, `coverage` and `test:db` each died at exactly
     # `timed out after 120.0s`, the runner's inherited per-check default, with nothing
     # actually wrong. They now carry their own `timeoutMs` in scripts/verify/registry.mjs
@@ -387,7 +400,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
-    # Independent from `checks` so both run in parallel. `always()` keeps this
+    # Independent from `verify` so both run in parallel. `always()` keeps this
     # job from being skipped when `changes` fails — a skipped required check
     # would hide a broken path detector.
     needs: [changes]
@@ -400,6 +413,48 @@ jobs:
     # Build steps run when the PR changed a Docker/deploy input, when the
     # detector did not finish (fail-closed), or on every push to main.
     # Fork PRs have no GITHUB_TOKEN write access: they build but do not push.
+    #
+    # ─────────────────────────────────────────────────────────────────────────
+    # THIS JOB IS ALSO THE ONLY PROOF THAT THE TWO IMAGES BUILD, as of
+    # 2026-09-15, when the `docker` row was deleted from
+    # scripts/verify/registry.mjs for duplicating it (the `verify` job's header
+    # has the reasoning). What that row established, kept here because it is
+    # true of these builds too and would otherwise be lost with it:
+    #
+    # A green build means BOTH multi-stage images build to completion. The
+    # backend's `prod` target compiles backend/src with `nest build` inside its
+    # own `build` stage — never reusing anything sitting in a host
+    # backend/dist — then runs a SEPARATE `npm ci --omit=dev` and copies only
+    # the compiled output across. The nginx image's default target first builds
+    # the ENTIRE frontend from source in its own `frontend-builder` stage
+    # (`npm run build -w frontend`, the identical `tsc -b && vite build` the
+    # `build` row runs on the host, run again from scratch inside the
+    # container) before copying frontend/dist onto an nginx-unprivileged base
+    # together with nginx/nginx.conf. A compile error, a failing npm ci, or a
+    # COPY naming a path absent from the stage it draws from fails this job.
+    # AS A DATED SNAPSHOT, MEASURED 2026-09-15: 24 Dockerfile steps across four
+    # stages for the backend, 12 across two for nginx; 487 MB and 93 MB per
+    # `docker inspect --format '{{.Size}}'`, of which a 230 MB node:24-alpine
+    # base plus a 199 MB `npm ci --omit=dev` layer is most of the backend and a
+    # 90.8 MB nginx-unprivileged base is nearly all of nginx.
+    #
+    # AND WHAT IT DOES NOT PROVE, which matters more now that nothing else
+    # looks at these images at all: that they RUN. Neither image's CMD is ever
+    # executed here, so a backend that builds clean and crashes on boot (a DI
+    # wiring error only Nest's own bootstrap would catch, not `nest build`), or
+    # an nginx image serving a frontend that renders blank, is exactly as green
+    # as a working one. Nothing starts a container, hits a port or reads a log
+    # line — `smoke` is the row that does, and it builds neither image.
+    # docker-compose.prod.yml, where these two and a real Postgres/Redis are
+    # actually wired together with env vars, volumes and networks, is never
+    # invoked or validated: a correct image plus a compose file naming the
+    # wrong one is invisible here. The two are built in complete ISOLATION from
+    # each other, so nginx.conf proxying /api/ to a route the backend renamed
+    # is invisible too. And the `type=gha` cache below means a layer whose
+    # cache key did not change is TRUSTED rather than re-executed — the
+    # deleted row had the identical hole (it never passed --no-cache either),
+    # only with a colder cache.
+    # ─────────────────────────────────────────────────────────────────────────
     permissions:
       contents: read
       packages: write

@@ -1,5 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 
 import {
   budgetFor,
@@ -162,8 +163,8 @@ test("a row's own timeoutMs wins over the run-wide default, and rows without one
 })
 
 test('--exclude drops rows, --only cannot be combined with it, and a narrowed green is never reused', () => {
-  const opts = parseArgs(['--tier', 'full', '--exclude', 'smoke,docker'])
-  assert.deepEqual(opts.exclude, ['smoke', 'docker'])
+  const opts = parseArgs(['--tier', 'full', '--exclude', 'smoke,audit'])
+  assert.deepEqual(opts.exclude, ['smoke', 'audit'])
   assert.equal(opts.only, null)
 
   // Unknown ids are an error in BOTH directions. A typo in --exclude excludes nothing, which
@@ -256,7 +257,31 @@ test('a full run drops `test` for `coverage`; fast, --exclude coverage and --onl
   // verify:prepush's exact flags. It excludes `coverage` (46s locally, floors CI-only), so
   // this is the case where superseding MUST give way or every push would be gated on a tier
   // that runs no tests whatsoever.
-  assert.ok(idsFor(['--tier', 'full', '--exclude', 'smoke,docker,coverage,audit']).includes('test'))
+  assert.ok(idsFor(['--tier', 'full', '--exclude', 'smoke,coverage,audit']).includes('test'))
 
   assert.deepEqual(idsFor(['--only', 'test']), ['test'])
+})
+
+test('the pre-push gate\'s --exclude list agrees across all three places that spell it out', () => {
+  // The list lives in package.json's `verify:prepush` and TWICE in .githooks/pre-push (the
+  // node.sh branch and the bare-node fallback). parseArgs REJECTS an unknown id, so a row
+  // renamed or deleted without updating all three does not quietly widen the gate — it
+  // blocks every push with `unknown check id(s) in --exclude`. That is exactly how deleting
+  // the `docker` row announced itself on 2026-09-15, after the npm script had been updated
+  // and the hook had not, and this test is why it cannot happen a second time silently.
+  const root = new URL('../../', import.meta.url)
+  const script = JSON.parse(readFileSync(new URL('package.json', root), 'utf8')).scripts[
+    'verify:prepush'
+  ]
+  const hook = readFileSync(new URL('.githooks/pre-push', root), 'utf8')
+
+  const lists = [...`${script}\n${hook}`.matchAll(/--exclude\s+(\S+)/g)].map((m) => m[1])
+  assert.equal(lists.length, 3, `expected 3 --exclude occurrences, found ${lists.length}`)
+  assert.equal(new Set(lists).size, 1, `the three lists disagree: ${lists.join(' | ')}`)
+
+  // And every id in it must be a real row, which is the half parseArgs would catch at push
+  // time rather than here.
+  for (const id of lists[0].split(',')) {
+    assert.ok(checkById(id), `${id} is excluded by the pre-push gate but is not a check`)
+  }
 })

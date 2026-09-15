@@ -16,8 +16,6 @@
 #   excluded  smoke     it recreates the shared `backend` container and reseeds the dev
 #                       database (see the row's own blindSpot). Acceptable as a CI step,
 #                       not as a side effect of every `git push`.
-#   excluded  docker    only means something as a cold build; warm it is ~2s and proves
-#                       nothing new, cold it is ~33s and belongs in CI.
 #   excluded  coverage  46s locally and its floors are deliberately CI-only (they read as 0
 #                       here), so locally it can report but never gate.
 #   excluded  audit     depends on an external advisory database that changes with nothing
@@ -25,6 +23,13 @@
 #                       severity an hour ago.
 # Everything else runs. The list is an EXCLUSION on purpose: a check added later joins this
 # gate automatically, so forgetting to update this file makes the gate wider, never narrower.
+# A fourth entry, `docker`, was here until 2026-09-15; that row no longer exists.
+#
+# THIS LIST LIVES IN THREE PLACES — twice below and once in package.json's `verify:prepush`
+# — and `run.mjs` REJECTS an unknown id, so a row renamed or deleted without updating all
+# three does not degrade, it blocks every push with `unknown check id(s) in --exclude`.
+# That is how the `docker` removal announced itself. run.test.mjs now asserts the three
+# agree and that every id in them is a real row.
 #
 # `--no-skip` is deliberately absent. A laptop without Docker or Postgres SKIPS those rows
 # and says so out loud; it does not block the push. CI is where a missing precondition is a
@@ -53,7 +58,7 @@ printf '\npre-push: local verify gate (skip with `git push --no-verify`)\n'
 ROOT=$(git rev-parse --show-toplevel)
 if [ -x "$ROOT/.claude/hooks/node.sh" ]; then
   CLAUDE_PROJECT_DIR="$ROOT" "$ROOT/.claude/hooks/node.sh" \
-    "$ROOT/scripts/verify/run.mjs" --tier full --exclude smoke,docker,coverage,audit
+    "$ROOT/scripts/verify/run.mjs" --tier full --exclude smoke,coverage,audit
 else
-  node "$ROOT/scripts/verify/run.mjs" --tier full --exclude smoke,docker,coverage,audit
+  node "$ROOT/scripts/verify/run.mjs" --tier full --exclude smoke,coverage,audit
 fi

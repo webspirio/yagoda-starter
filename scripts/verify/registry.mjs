@@ -91,8 +91,9 @@ function canConnect(host, port) {
 /**
  * `docker info` exits 0 only when the CLI can reach a running daemon — a missing
  * binary, a daemon that is not started, and a permission error all resolve `false` here,
- * which is exactly right: every one of them means "nothing to run `docker:build` or
- * `smoke` against", not "the check found a problem".
+ * which is exactly right: every one of them means "nothing to run `smoke` against", not
+ * "the check found a problem". It gated the deleted `docker` row too, until 2026-09-15;
+ * `smoke` is the only row that needs a daemon now, for the Compose stack it drives.
  *
  * @returns {Promise<boolean>}
  */
@@ -174,7 +175,7 @@ export const PRECONDITIONS = {
     describe:
       'Docker is not reachable (no CLI, or the CLI cannot reach a running daemon — ' +
       '`docker info` did not exit 0). Under --no-skip this is a failure, not "nothing to ' +
-      'report": docker:build and smoke need a real daemon to build and serve the image.',
+      'report": smoke needs a real daemon to bring up the Compose stack it drives.',
     probe: probeDocker,
   },
   jq: {
@@ -1400,63 +1401,6 @@ export const CHECKS = [
       'still exists and still matters.',
   },
   {
-    id: 'docker',
-    tier: 'full',
-    cmd: 'npm run docker:build',
-    needs: ['docker'],
-    proves:
-      '`npm run docker:build` (`docker build -f backend/Dockerfile --target prod -t web-' +
-      'starter-backend:verify . && docker build -f nginx/Dockerfile -t web-starter-nginx:' +
-      'verify .`, both built from the repo root context, both tagged `:verify` — a fixed tag ' +
-      'this row\'s own build uses and nothing else in this repo reads) exits 0 only when BOTH ' +
-      "multi-stage images build to completion: the backend's `prod` target compiles backend/" +
-      'src with `nest build` inside its own `build` stage (never reusing anything already ' +
-      'sitting in a host backend/dist), then `prod` runs a SEPARATE `npm ci --omit=dev` and ' +
-      "copies only the compiled output across; the nginx image's default target first builds " +
-      'the ENTIRE frontend from source in its own `frontend-builder` stage (`npm run build -w ' +
-      'frontend` — the identical `tsc -b && vite build` the `build` row runs on the host, run ' +
-      'again here from scratch inside the container) before copying frontend/dist onto an ' +
-      'nginx-unprivileged base together with nginx/nginx.conf. A compile error, a failing npm ' +
-      'ci, a COPY naming a path that does not exist in the stage it draws from, or Docker ' +
-      'itself failing to build against the daemon at all, fails this exact command. AS A DATED ' +
-      'SNAPSHOT, RE-MEASURED 2026-09-15 on the tree this branch merged 156 commits of main ' +
-      'into: the backend image is 24 Dockerfile steps across four stages and the nginx image ' +
-      '12 steps across two — both UNCHANGED, and necessarily so: neither Dockerfile has been ' +
-      'touched since 2026-09-09 (`git log -1 -- backend/Dockerfile` / `nginx/Dockerfile`), ' +
-      'before any measurement this row has ever recorded. THE SIZES, HOWEVER, DO NOT MATCH ' +
-      'WHAT THIS ROW SAID, and the correction belongs here rather than quietly in a diff: ' +
-      "`docker inspect --format '{{.Size}}'` reports 487 MB for the backend image and 93 MB " +
-      'for nginx, against the 114 MB / 26.5 MB this row claimed on 2026-09-11. The new ' +
-      'numbers are the ones that reconcile: `docker history` shows the backend image\'s `npm ' +
-      'ci --omit=dev` layer alone at 199 MB on top of a 230 MB node:24-alpine base, and the ' +
-      'nginx image sits on a 90.8 MB nginxinc/nginx-unprivileged:alpine base (both base ' +
-      'sizes read from `docker images`). With the Dockerfiles provably unchanged across the ' +
-      'whole interval, nothing this branch did can account for the old figures; they were ' +
-      'wrong when they were written, and are corrected rather than explained away. Both ' +
-      'images built clean, no --no-cache, against docker 29.8.0.',
-    blindSpot:
-      'Proves the images BUILD, not that they RUN correctly, not that the app inside them ' +
-      'WORKS, and not that the compose stack COMPOSES: neither image\'s CMD is ever executed ' +
-      'by this row, so a backend that builds cleanly but crashes on boot (a bad env var, a DI ' +
-      'wiring error only Nest\'s own bootstrap would catch, not `nest build`), or an nginx ' +
-      'image serving a frontend that renders a blank page, is exactly as green here as a ' +
-      'working one. Nothing here starts a container, hits a port, or reads a log line. ' +
-      'docker-compose.prod.yml — the actual place these two images and a real Postgres/Redis ' +
-      'are wired together with env vars, volumes and networks — is never invoked, read, or ' +
-      'validated by this row: an image that builds but a compose file that references the ' +
-      'wrong image name, a missing env var, or an incompatible volume mount is invisible to ' +
-      'it. The two images are also built and judged in complete ISOLATION from one another: ' +
-      'nginx\'s nginx.conf proxying /api/ to a backend that has, say, renamed a route is ' +
-      'invisible here, because neither image is ever started, let alone pointed at the other. ' +
-      "Docker's own layer cache means a build that reuses a stale cached layer can be " +
-      'satisfied by content that was never re-verified against the current source — this row ' +
-      'does not force --no-cache, so a COPY step whose cache key did not change (the same file ' +
-      'path, byte-identical content) is trusted as-is rather than re-executed. And the ' +
-      ':verify tag is a fixed name this row, and this row alone, overwrites on every run — it ' +
-      'proves nothing about, and is never used by, the images docker-compose.prod.yml actually ' +
-      'builds and deploys, which carry no explicit tag of their own at all.',
-  },
-  {
     id: 'smoke',
     tier: 'full',
     cmd: 'npm run test:e2e',
@@ -1574,7 +1518,7 @@ export const CHECKS = [
       "every run (`npm run build -w frontend -- --outDir dist-e2e`, a direct workspace-script " +
       "call outside Turbo's own cache) — as of fix round 3 this is a directory ONLY this row " +
       "ever writes, gitignored, never `frontend/dist`, so unlike an earlier version of this " +
-      "row it does not affect, and is not affected by, whatever `build`/`bundle`/`docker` most " +
+      "row it does not affect, and is not affected by, whatever `build`/`bundle` most " +
       'recently measured on disk in the same session.',
   },
 ]
