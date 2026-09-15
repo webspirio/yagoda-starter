@@ -842,8 +842,22 @@ Spec: `docs/superpowers/specs/2026-09-15-yagoda-crates-slice.md`, §9 «out of s
   so a batched-but-wrong-ids implementation (right number of queries, wrong rows) would still pass
   it.
 
-**Before merge, these specs must actually run and pass** — they are committed but this
-environment has no database to run them against (see the task-12 brief's Step 6 correction):
-`migrations/crates-schema.db-spec.ts`, `tare-types/tare-types-crate.db-spec.ts`,
-`crates/crates.db-spec.ts`, `crates/crates-race.db-spec.ts`, and the existing
-`point-cash/point-cash.db-spec.ts` (this slice changed its SQL-shape assertions).
+**RESOLVED 15.09.2026 — these specs have now run and pass.** They were written blind (this
+environment had no database; port 5432 was held by an unrelated project whose credentials
+happened to match, so connecting would have migrated the wrong schema) and were verified by CI's
+`db-checks` job on PR #92, not locally: `migrations/crates-schema.db-spec.ts`,
+`tare-types/tare-types-crate.db-spec.ts`, `crates/crates.db-spec.ts`,
+`crates/crates-race.db-spec.ts`, and the existing `point-cash/point-cash.db-spec.ts` (this slice
+changed its SQL-shape assertions). The first run failed 36 tests — see the lesson below.
+
+- **A GLOBAL SINGLETON DEFEATS THE PER-RUN-UUID CONVENTION, AND THIS SLICE INTRODUCED THE FIRST
+  ONE.** Every `*.db-spec.ts` here scopes its fixtures by a per-run uuid, because `app_test` is
+  never truncated. That isolates ROWS. It gives no protection whatsoever against a flag that is
+  unique across the whole table: `tare_types.is_crate`, enforced by `UQ_tare_types_single_crate`,
+  is one bit for the entire catalogue, so a uuid-named row carrying it collides with every other
+  spec just the same. CI's first `db-checks` run found three instances of one bug class — a bare
+  `INSERT` of a flagged row with no demotion first, in `dev-seed.ts`, in
+  `migrations/intakes-payouts-schema.db-spec.ts`, and a spec that moved the flag without
+  restoring it (`tare-types/tare-types-crate.db-spec.ts`) — fixed in `8842dc5` by demoting first
+  everywhere, mirroring `TareTypesService`. **Any future singleton needs the same treatment, and
+  the uuid convention will not warn you.**
