@@ -44,7 +44,21 @@ export interface CrateBalanceResponse {
  * caller-supplied value — it always names the bind parameter `$1` and takes
  * no argument, so there is nothing for a future caller to interpolate a raw
  * id into. `pointDepositBook` below is the one place it is spliced into a
- * query, immediately followed by `[pointId]` as the actual bound parameter.
+ * query AS A BIND FRAGMENT, immediately followed by `[pointId]` as the actual
+ * bound parameter.
+ *
+ * IT HAS A SECOND CALLER THAT DOES NOT BIND IT: `point-cash.service.ts`'s
+ * `crateBookCorrelatedOn` rewrites every `$1` in this string to a correlated
+ * column (`cp.id`) by TEXT SUBSTITUTION, so the list screen can compute this
+ * figure once per row inside its own CTE instead of running a query per row.
+ * That rewrite trusts the CURRENT SHAPE of this constant exactly: exactly two
+ * `$1` occurrences, both genuine binds, none inside a string literal, and no
+ * other numbered placeholder. If this constant ever gains a `$2`, a second
+ * kind of `$1`-looking text, or a join alias rename, the substitution will
+ * not fail loudly — it will silently produce wrong SQL. Check
+ * `point-cash.service.spec.ts`'s "crateBookCorrelatedOn" tests (which pin the
+ * exact rewritten output and assert no `$1` survives it) before changing this
+ * string's bind shape, and update that call site in the same change.
  */
 export const CRATE_BOOK_SQL = `(
     COALESCE((SELECT SUM(ci.deposit_taken)

@@ -443,4 +443,4 @@ export class PointCashService {
   }
 }
 
-export { movementsSql, anchorSql, asOfSql };
+export { movementsSql, anchorSql, asOfSql, crateBookCorrelatedOn };
