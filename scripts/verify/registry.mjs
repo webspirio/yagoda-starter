@@ -28,8 +28,26 @@ import net from 'node:net'
  * @property {string} cmd              command, run through /bin/sh from the repo root
  * @property {PreconditionId[]} [needs] preconditions; any absent means SKIPPED, not FAILED
  * @property {string[]} [after]        ids that must have PASSED, else NOT_RUN
+ * @property {number} [timeoutMs]      this row's own budget; falls back to the runner default
  * @property {string} proves           what a PASSED row establishes
  * @property {string} blindSpot        what it still says nothing about
+ */
+
+/**
+ * A `timeoutMs` is a HANG DETECTOR, not a performance gate. It is sized well above the
+ * row's measured COLD cost on the slowest machine that runs it — a shared CI runner, never
+ * a warm laptop — because the only thing it should ever catch is a command that will never
+ * finish. The performance signal is the duration the runner prints beside every row; if a
+ * row gets slower, that number is what says so, and it says so on a GREEN run.
+ *
+ * WRITTEN BECAUSE THE DEFAULT SILENTLY DID THE OPPOSITE. The runner's 120s default came
+ * from the reference this layer was ported from, whose suites are a fraction of this
+ * repo's. On 2026-09-15 the first CI run of `npm run verify:ci` failed with THREE rows —
+ * `test`, `coverage` and `test:db` — each reporting `timed out after 120.0s`, and every
+ * one of them would have passed given time. Locally all three were seconds, because Turbo
+ * served them from cache and Postgres was already warm: the laptop could not see the
+ * failure at all. A per-row budget puts the number next to the row it governs, so the next
+ * reader sees WHICH rows are slow and WHY they were given room.
  */
 
 /**
@@ -234,6 +252,9 @@ export const CHECKS = [
     id: 'test',
     tier: 'fast',
     cmd: 'npm test',
+    // 1445 tests across two workspaces. Warm on a laptop this is ~27s and CI's first run
+    // of it blew through 120s with an empty Turbo cache — see the timeoutMs note above.
+    timeoutMs: 600_000,
     proves:
       'A SNAPSHOT, RE-MEASURED 2026-09-15 on the tree this branch merged 156 commits of ' +
       'main into (previously 41 suites / 516 tests and 99 files / 592 tests on 2026-09-11 ' +
@@ -1067,6 +1088,9 @@ export const CHECKS = [
     id: 'coverage',
     tier: 'full',
     cmd: 'npm run coverage',
+    // The same two suites again, under instrumentation, and never served from Turbo's
+    // cache on a first run. Budgeted like `test`, for the same reason.
+    timeoutMs: 600_000,
     // No `after`: this row re-runs the full suite itself (jest --coverage / vitest run
     // --coverage), so a failing test fails THIS command directly — it does not need `test`
     // to have already passed, and ordering it behind `test` would only make a red `test`
@@ -1222,6 +1246,10 @@ export const CHECKS = [
     id: 'test:db',
     tier: 'full',
     cmd: 'npm run test:db -w backend',
+    // 286 specs against a real Postgres, maxWorkers 1 by design (every spec truncates the
+    // same tables). ~20s on a warm laptop, well past 120s on a cold two-core CI runner
+    // where ts-jest compiles from scratch.
+    timeoutMs: 480_000,
     needs: ['postgres', 'redis'],
     proves:
       "`npm run test:db -w backend` (`NODE_OPTIONS=--experimental-vm-modules jest --config " +

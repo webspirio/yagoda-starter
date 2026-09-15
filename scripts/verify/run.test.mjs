@@ -1,7 +1,8 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
-import { classify, envKey, isBlocking, parseArgs, reportIsFresh } from './run.mjs'
+import { budgetFor, classify, envKey, isBlocking, parseArgs, reportIsFresh } from './run.mjs'
+import { checkById } from './registry.mjs'
 
 /**
  * Shape of the `reportIsFresh` fixtures below, typed locally so the pinned literals (e.g.
@@ -128,4 +129,25 @@ test('reuse refuses a stored green that does not cover the request', () => {
     false, 'after-deps were never evaluated')
   assert.equal(reportIsFresh({ ...green, envKey: `${currentEnvKey} COVERAGE_X=1` }, 'abc', opts), false,
     'different coverage floors are a different verdict')
+})
+
+test("a row's own timeoutMs wins over the run-wide default, and rows without one keep it", () => {
+  // budgetFor is the whole mechanism: three rows blew through the 120s default on CI's
+  // first real run of verify:ci (2026-09-15) and this is what gives them room without
+  // loosening every other row at the same time.
+  const opts = { timeoutMs: 120_000 }
+  assert.equal(budgetFor({ timeoutMs: 600_000 }, opts), 600_000)
+  assert.equal(budgetFor({}, opts), 120_000)
+  // An explicit --timeout-ms moves the default only; a declared budget is not shortened.
+  assert.equal(budgetFor({ timeoutMs: 600_000 }, { timeoutMs: 5_000 }), 600_000)
+  assert.equal(budgetFor({}, { timeoutMs: 5_000 }), 5_000)
+  // And the three real rows carry a budget the runner will actually reach for.
+  for (const id of ['test', 'coverage', 'test:db']) {
+    const row = checkById(id)
+    assert.ok(row, `${id} must exist in the registry`)
+    assert.ok(
+      budgetFor(row, opts) > 120_000,
+      `${id} must not fall back to the 120s default — that is what CI died on`,
+    )
+  }
 })

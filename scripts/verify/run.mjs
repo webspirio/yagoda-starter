@@ -9,6 +9,8 @@
  *   node scripts/verify/run.mjs [--tier fast|full] [--no-skip] [--only a,b]
  *                               [--reuse-if-fresh] [--json] [--timeout-ms N]
  *
+ * --timeout-ms sets the budget for rows that do not declare their own `timeoutMs`.
+ *
  * Exit codes: 0 = nothing blocking, 1 = something blocking (or the runner itself failed).
  */
 import { spawn, execFileSync } from 'node:child_process'
@@ -421,6 +423,24 @@ export function envKey() {
 const dur = (ms) => (ms >= 1000 ? `${(ms / 1000).toFixed(1)}s` : `${ms}ms`)
 
 /**
+ * A row's own `timeoutMs` wins; otherwise the run-wide default applies. `--timeout-ms`
+ * therefore sets the budget for every row that does NOT declare one, and never silently
+ * shortens a row whose budget was written down deliberately — see registry.mjs's own note
+ * on why three rows needed their own.
+ *
+ * Typed by the two fields it actually reads, not by the whole `Check`/`Options` shapes —
+ * so a test can hand it a two-field literal without inventing a `proves` string to satisfy
+ * the compiler, and so the signature says plainly how little this function looks at.
+ *
+ * @param {{ timeoutMs?: number | undefined }} check
+ * @param {{ timeoutMs: number }} opts
+ * @returns {number}
+ */
+export function budgetFor(check, opts) {
+  return typeof check.timeoutMs === 'number' ? check.timeoutMs : opts.timeoutMs
+}
+
+/**
  * @param {import('./registry.mjs').PreconditionId[]} missing
  * @returns {string}
  */
@@ -520,11 +540,12 @@ async function main() {
         status = SKIPPED
         reason = missingPreconditionsReason(missing)
       } else {
-        const res = await runCommand(check.cmd, opts.timeoutMs)
+        const budget = budgetFor(check, opts)
+        const res = await runCommand(check.cmd, budget)
         status = classify(res)
         ms = res.ms
         exitCode = res.code
-        if (res.outcome === 'timeout') reason = `timed out after ${dur(opts.timeoutMs)}`
+        if (res.outcome === 'timeout') reason = `timed out after ${dur(budget)}`
         if (status === UNRUNNABLE) {
           reason = 'command could not be started (not found on PATH / missing script)'
         }

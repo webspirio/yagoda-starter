@@ -188,12 +188,22 @@ jobs:
     # including the two slowest (`docker` — this branch's own registry row, an
     # uncached `docker build` of two images from scratch, see the note above — and
     # `smoke`, which drives a real browser against a real Compose stack). Sized
-    # with real headroom above the local run this exact command was measured at —
-    # 1m23s on 2026-09-15 with every cache warm (`node scripts/verify/run.mjs
-    # --tier full --no-skip`: 21 PASSED, nothing skipped) — for a colder, shared CI
-    # runner that also pays `npm ci`, `playwright install` and an uncached
-    # `docker build` from scratch.
-    timeout-minutes: 30
+    # sized from what CI ITSELF measured, not from the laptop. The first real run of
+    # this job (2026-09-15, run 34995008671) took 11m10s and reported, per row:
+    # lint 17.3s, typecheck 17.9s, test:ci-scripts 6.7s, selfcheck 69.7s, build 15.6s,
+    # docker 63.8s, smoke 41.7s — every one of them several times its warm-laptop cost
+    # (the same command locally is 1m23s end to end with every cache hot). That run was
+    # RED, and instructively so: `test`, `coverage` and `test:db` each died at exactly
+    # `timed out after 120.0s`, the runner's inherited per-check default, with nothing
+    # actually wrong. They now carry their own `timeoutMs` in scripts/verify/registry.mjs
+    # (600s / 600s / 480s).
+    #
+    # This number must stay above the SUM of those budgets, or a genuinely hung row gets
+    # killed by the job instead of reported as a clean FAILED row by the runner — which is
+    # the difference between "test:db timed out after 480s" and a job log that just stops.
+    # 600 + 600 + 480 = 28 minutes of budget before a single other row runs, so 30 was
+    # already too tight to hold that promise.
+    timeout-minutes: 45
 
     env:
       # ─────────────────────────────────────────────────────────────────────────

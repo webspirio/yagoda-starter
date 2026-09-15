@@ -56,3 +56,28 @@ test('tierCovers: a green recorded at fast says nothing about full', () => {
   assert.equal(tierCovers('full', 'fast'), true)
   assert.equal(tierCovers('fast', 'full'), false)
 })
+
+test('every declared timeoutMs is a positive finite number, and only slow rows declare one', () => {
+  const declared = CHECKS.filter((c) => c.timeoutMs !== undefined)
+  for (const c of declared) {
+    const budget = c.timeoutMs
+    assert.equal(typeof budget, 'number', `${c.id}: timeoutMs must be a number`)
+    assert.ok(
+      Number.isFinite(budget) && Number(budget) > 0,
+      `${c.id}: timeoutMs must be finite and positive, got ${budget}`,
+    )
+    // A budget below the 120s default would SHORTEN a row rather than give it room, which
+    // is not what this field is for — see registry.mjs's note. If one is ever wanted, this
+    // assertion is the place to argue with.
+    assert.ok(
+      Number(budget) > 120_000,
+      `${c.id}: a timeoutMs at or below the runner's own 120s default gives the row nothing`,
+    )
+  }
+  // Pinned so that adding a fourth slow row is a deliberate edit here, not a side effect.
+  assert.deepEqual(
+    declared.map((c) => c.id).sort(),
+    ['coverage', 'test', 'test:db'],
+    'the set of rows with their own timeout budget changed — confirm the new one was measured, not guessed',
+  )
+})

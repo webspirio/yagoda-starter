@@ -105,6 +105,18 @@ npm run verify:ci     # verify:full with --no-skip — a missing precondition is
                        # here, not a quietly narrower green
 ```
 
+THE LAPTOP NUMBERS ABOVE ARE NOT CI NUMBERS, and on 2026-09-15 that gap was not academic:
+the first real CI run of `npm run verify:ci` came back RED with three rows — `test`,
+`coverage` and `test:db` — each reporting `timed out after 120.0s` against the runner's
+inherited per-check default, with nothing actually wrong in any of them. Locally all three
+are seconds, because Turbo serves them from cache and Postgres is already warm, so no
+number measured on this machine could ever have shown it. What CI itself measured, per row,
+on that run (11m10s in total): lint 17.3s, typecheck 17.9s, test:ci-scripts 6.7s,
+selfcheck 69.7s, build 15.6s, docker 63.8s, smoke 41.7s — several times their warm-laptop
+cost. The three slow rows now carry their own `timeoutMs` in `scripts/verify/registry.mjs`
+(600s / 600s / 480s), sized as HANG DETECTORS rather than performance gates; the
+performance signal is the duration printed beside every row, on green runs as well as red.
+
 `node scripts/verify/run.mjs --tier fast --reuse-if-fresh` against an already-green report
 for the same source hash costs about 0.06s (re-measured 2026-09-15 alongside the figures
 above: 0.064s): it prints the same blind-spot footer without re-running anything. That is
