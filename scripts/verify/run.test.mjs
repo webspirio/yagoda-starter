@@ -151,3 +151,38 @@ test("a row's own timeoutMs wins over the run-wide default, and rows without one
     )
   }
 })
+
+test('--exclude drops rows, --only cannot be combined with it, and a narrowed green is never reused', () => {
+  const opts = parseArgs(['--tier', 'full', '--exclude', 'smoke,docker'])
+  assert.deepEqual(opts.exclude, ['smoke', 'docker'])
+  assert.equal(opts.only, null)
+
+  // Unknown ids are an error in BOTH directions. A typo in --exclude excludes nothing, which
+  // is the harmless direction — but it still misreports scope, so it is rejected like any other.
+  assert.throws(() => parseArgs(['--exclude', 'no-such-check']), /unknown check id/)
+  assert.throws(() => parseArgs(['--only', 'lint', '--exclude', 'smoke']), /cannot be combined/)
+
+  // A report that dropped rows is not a verdict about the tree, exactly as a --only report
+  // is not. The pre-push gate runs with --exclude, so without this its green would be
+  // replayed for a later run that asked for everything.
+  /** @type {import('./run.mjs').StoredReport} */
+  const stored = {
+    schema: 1,
+    sourceHash: 'h',
+    ok: true,
+    tier: /** @type {'full'} */ ('full'),
+    noSkip: false,
+    envKey: envKey(),
+    scope: { only: null, exclude: ['smoke'], afterDepsFullyEvaluated: true },
+  }
+  assert.equal(reportIsFresh(stored, 'h', { tier: 'fast', noSkip: false }), false)
+  // The identical report without the exclusion IS reusable — proving the line above is what
+  // refuses it, not some other mismatch in the fixture.
+  assert.equal(
+    reportIsFresh({ ...stored, scope: { ...stored.scope, exclude: null } }, 'h', {
+      tier: 'fast',
+      noSkip: false,
+    }),
+    true,
+  )
+})

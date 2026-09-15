@@ -86,6 +86,7 @@ function argError(msg) {
  * @property {'fast'|'full'} tier
  * @property {boolean} noSkip
  * @property {string[] | null} only
+ * @property {string[] | null} exclude
  * @property {boolean} reuseIfFresh
  * @property {boolean} json
  * @property {number} timeoutMs
@@ -108,6 +109,7 @@ export function parseArgs(argv) {
     tier: 'fast',
     noSkip: false,
     only: null,
+    exclude: null,
     reuseIfFresh: false,
     json: false,
     timeoutMs: 120_000,
@@ -139,6 +141,17 @@ export function parseArgs(argv) {
           .map((s) => s.trim())
           .filter(Boolean)
         break
+      // `--exclude` is the OPPOSITE DEFAULT to `--only`, and that asymmetry is the point.
+      // `--only` names what runs, so a row added later is silently left out of it; `--exclude`
+      // names what does not, so a row added later is included automatically. A local pre-push
+      // gate wants the second: forgetting to add a new check to it should make the gate
+      // WIDER, never quietly narrower.
+      case '--exclude':
+        o.exclude = value()
+          .split(',')
+          .map((str) => str.trim())
+          .filter(Boolean)
+        break
       case '--reuse-if-fresh':
         rejectValue(name, arg, eq)
         o.reuseIfFresh = true
@@ -160,6 +173,15 @@ export function parseArgs(argv) {
   if (o.only) {
     const unknown = o.only.filter((id) => !checkById(id))
     if (unknown.length) argError(`unknown check id(s): ${unknown.join(', ')}`)
+  }
+  if (o.exclude) {
+    // A typo'd id here would silently exclude nothing and read as a wider run than it is —
+    // the harmless direction, but still a lie about scope, so it is an error like any other.
+    const unknown = o.exclude.filter((id) => !checkById(id))
+    if (unknown.length) argError(`unknown check id(s) in --exclude: ${unknown.join(', ')}`)
+  }
+  if (o.only && o.exclude) {
+    argError('--only and --exclude cannot be combined — say what runs, or say what does not')
   }
   return o
 }
@@ -325,6 +347,10 @@ export function classify(res) {
  */
 function selectChecks(opts) {
   const inScope = CHECKS.filter((c) => inTier(c.tier, opts.tier))
+  if (opts.exclude) {
+    const dropped = new Set(opts.exclude)
+    return inScope.filter((c) => !dropped.has(c.id))
+  }
   if (!opts.only) return inScope
   const wanted = new Set(opts.only)
   // A --only run deliberately does NOT pull in `after` dependencies. Doing so silently
@@ -346,7 +372,7 @@ function selectChecks(opts) {
  * @property {'fast'|'full'} tier
  * @property {boolean} noSkip
  * @property {string} envKey
- * @property {{ only?: string[] | null, afterDepsFullyEvaluated?: boolean }} [scope]
+ * @property {{ only?: string[] | null, exclude?: string[] | null, afterDepsFullyEvaluated?: boolean }} [scope]
  */
 
 /**
@@ -368,6 +394,10 @@ export function reportIsFresh(stored, hash, opts) {
   if (!tierCovers(stored.tier, opts.tier)) return false
   // A green from a one-check run is not a verdict on the tree.
   if (stored.scope?.only) return false
+  // Same reasoning one step over: a green that DROPPED rows is not a verdict on the tree
+  // either. The pre-push gate runs with --exclude, so without this line its narrow green
+  // would be replayed by a later --reuse-if-fresh run that asked for the whole thing.
+  if (stored.scope?.exclude) return false
   // A green that tolerated skips cannot satisfy a request that does not.
   if (opts.noSkip && stored.noSkip !== true) return false
   // A green measured against different coverage floors is a different verdict.
@@ -582,6 +612,7 @@ async function main() {
     // Scope travels with the verdict so a narrow green cannot be quoted as a wide one.
     scope: {
       only: opts.only,
+      exclude: opts.exclude,
       checkIds: selected.map((c) => c.id),
       afterDepsFullyEvaluated,
       argv: process.argv.slice(2),

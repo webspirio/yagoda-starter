@@ -631,8 +631,8 @@ export const CHECKS = [
       "intermediate counts this row does not itself track): `npm run test:verify` " +
       "(`node --test --test-concurrency=1 'scripts/verify/**/*.test.mjs' " +
       "'.claude/hooks/**/*.test.mjs'` — TWO globs since Task 19, not the one this row " +
-      "originally shipped quoting) collects and runs 157 tests across 15 *.test.mjs files " +
-      "today — hash.test.mjs (7), registry.test.mjs (10), run.test.mjs (15), " +
+      "originally shipped quoting) collects and runs 158 tests across 15 *.test.mjs files " +
+      "today — hash.test.mjs (7), registry.test.mjs (10), run.test.mjs (16), " +
       'checks/audit.test.mjs (11), checks/bundle-size.test.mjs (10), ' +
       'checks/memo-drift.test.mjs (4), checks/migration-invariants.test.mjs (8), ' +
       'checks/seam-boundary.test.mjs (13), checks/secret-boundary.test.mjs (13), ' +

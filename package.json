@@ -48,6 +48,8 @@
     "test:e2e": "playwright test",
     "verify": "node scripts/verify/run.mjs --tier fast",
     "verify:full": "node scripts/verify/run.mjs --tier full",
-    "verify:ci": "node scripts/verify/run.mjs --tier full --no-skip"
+    "verify:ci": "node scripts/verify/run.mjs --tier full --no-skip",
+    "prepare": "git config core.hooksPath .githooks || true",
+    "verify:prepush": "node scripts/verify/run.mjs --tier full --exclude smoke,docker,coverage,audit"
   }
 }
