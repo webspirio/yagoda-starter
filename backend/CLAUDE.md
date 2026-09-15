@@ -29,7 +29,24 @@ a database carrying rows from a previous `test:db` run can never make a later
 run's idempotency assertions (`dev-seed.db-spec.ts`'s in particular) pass for the
 wrong reason. They run serially (`jest.db.config.js`, `maxWorkers: 1`) and apply
 migrations on connect, against a database that is empty every time they do.
-They exist because they verify **Postgres semantics
+
+**The three suites that boot the whole AppModule get there a different way, and
+until 2026-09-15 they did not get there at all.** `testing/{pipeline,catalog-pipeline,documents-pipeline}.db-spec.ts`
+never open a `DataSource` through `openTestDataSource()` — they point `DB_NAME`
+at the test database and let Nest connect — so nothing in them created it. The
+sentence above was therefore true only of every OTHER suite. It held up anyway
+because the database always happened to be there: created once by hand on a
+laptop and kept by `pg_data`, and on CI because the Actions `services:` block
+set `POSTGRES_DB: app_test`. Neither is true of the Compose Postgres the
+`verify` job now brings up (`POSTGRES_DB: app`), nor of any laptop after
+`docker compose down -v`, and the failure is not a clean error — the app retries
+the missing database every 3s, all 70 tests in those suites die at jest's 30s
+`testTimeout`, their `afterAll` never runs and jest never exits. All three now
+call `ensureTestDatabase()` first: it CREATES and never resets, because those
+suites state outright that `app_test` persists between runs and uuid-scope their
+fixtures for that reason.
+
+These suites exist because they verify **Postgres semantics
 that a mocked spec cannot reach** — constraints, unique indexes, cascade rules,
 and whether a hand-written statement even parses. `npm test` never picks them
 up: its `testRegex` (`.*\.spec\.ts$`) does not match `.db-spec.ts`.

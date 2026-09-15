@@ -1305,26 +1305,33 @@ export const CHECKS = [
     id: 'test:db',
     tier: 'full',
     cmd: 'npm run test:db -w backend',
-    // 286 specs against a real Postgres, maxWorkers 1 by design (every spec truncates the
-    // same tables). ~20s on a warm laptop and MORE THAN 480s on CI — this row blew through
-    // an 8-minute budget on 2026-09-15 (run 34998136933) while every other row passed,
-    // including `test` at 220.4s and `coverage` at 254.6s.
+    // THE 480s AND 1200s BUDGETS THIS ROW CARRIED WERE CHASING A BUG, NOT A COST, and the
+    // record is kept here rather than quietly deleted. This row was killed at 480s on
+    // 2026-09-15 (run 34998136933), the only red row in an otherwise green 21; the budget
+    // was raised to 1200s purely to buy one complete reading, since nobody knew what the
+    // row cost. That framing was wrong. Measured on 2026-09-15 (run 35008065574, three
+    // jobs, and the probes in run 35010492674):
     //
-    // THIS NUMBER IS A MEASUREMENT INSTRUMENT, NOT A SIZED BUDGET, and it is the only one
-    // in this file that is. The true cost is still unknown: 480s is a floor, not a
-    // reading, because the row was killed before it finished. What IS measured is the
-    // local half — `openTestDataSource()` (DROP DATABASE + CREATE + 12 migrations) costs
-    // 676ms average on a warm laptop and runs once per db-spec FILE, 21 times, so roughly
-    // 14 of the local 20 seconds is setup replayed. Whether that same loop, or cold
-    // ts-jest compilation of 23 suites at maxWorkers 1, dominates on CI is not something
-    // this laptop can answer.
+    //   the same command, Actions `services:` Postgres, nothing else run first     31s
+    //   the same command, Compose Postgres, nothing else run first        >21 min, killed
+    //   Compose Postgres itself: 0.26ms per round trip, DROP 10ms, CREATE 23ms
     //
-    // 1200s buys one complete CI reading. Once that number exists this must be tightened
-    // to it plus headroom, the same way every other budget here was sized — and the real
-    // question the reading will settle is whether to fix the cause instead: 12 migrations
-    // replayed 21 times is 252 migration runs per verify:ci, and the drop/create is
-    // load-bearing (it is what makes dev-seed.db-spec.ts's idempotency assertion mean
-    // anything), so it must not be cheapened without deciding what that costs in proof.
+    // A healthy database, and a 40x gap. The cause was `app_test` simply not existing: the
+    // `services:` block set `POSTGRES_DB: app_test` and docker-compose.yml sets
+    // `POSTGRES_DB: app`, and the three suites that boot the whole AppModule never created
+    // it (every other suite does, through `openTestDataSource()`). The app then retried the
+    // missing database every 3s, all 70 of their tests died at jest's 30s testTimeout,
+    // their `afterAll` never ran, and jest — holding the handles teardown would have closed
+    // — never exited. The suites had actually finished after about 100 seconds.
+    //
+    // Fixed at the source: `ensureTestDatabase()` in backend/src/testing/db-harness.ts,
+    // called by all three, with backend/src/testing/db-harness.db-spec.ts reproducing the
+    // failure by dropping the database first. With it, the full suite runs GREEN against a
+    // deliberately dropped app_test in 21s on a laptop — the same 20s this row always cost.
+    //
+    // The budget stays at 1200s for exactly one more run, for the reason it was raised:
+    // this row has still never completed on CI, so there is still no CI reading to size it
+    // from. Tighten it to that reading plus headroom the moment one exists.
     timeoutMs: 1_200_000,
     needs: ['postgres', 'redis'],
     proves:

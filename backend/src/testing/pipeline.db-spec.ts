@@ -19,7 +19,11 @@ import { DataSource } from 'typeorm';
 // CommonJS, so a `config()` call written after these imports would run too
 // late regardless of where it sits in this file — the only lever left is
 // import ORDER, which TypeScript does preserve.
-import { relaxThrottleForTests, resolveTestDatabaseName } from './db-harness';
+import {
+  ensureTestDatabase,
+  relaxThrottleForTests,
+  resolveTestDatabaseName,
+} from './db-harness';
 
 /** A unique, CHECK-valid `collection_points.code`. Required on create since the
  *  intakes & payouts slice — it is the first segment of every receipt code
@@ -66,6 +70,16 @@ describe('auth + me pipeline (HTTP)', () => {
 
   beforeAll(async () => {
     process.env.DB_NAME = resolveTestDatabaseName();
+    // This suite boots the whole AppModule rather than opening a DataSource through
+    // `openTestDataSource()`, so nothing here creates the database the app is about to
+    // connect to — it just expects it to be there. It was, on a laptop (created once by
+    // hand, kept by pg_data) and on the Actions `services:` Postgres (POSTGRES_DB:
+    // app_test), which is why this line was missing for as long as it was. It is NOT
+    // there on the Compose Postgres the `verify` job now brings up, nor on any laptop
+    // after `docker compose down -v`, and the failure is a 3-second retry loop that ends
+    // in every test here timing out and jest never exiting. Creates, never resets: this
+    // file's fixtures are uuid-scoped precisely because app_test persists.
+    await ensureTestDatabase();
     relaxThrottleForTests();
 
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
@@ -392,6 +406,16 @@ describe('suppliers + grade prices (HTTP)', () => {
 
   beforeAll(async () => {
     process.env.DB_NAME = resolveTestDatabaseName();
+    // This suite boots the whole AppModule rather than opening a DataSource through
+    // `openTestDataSource()`, so nothing here creates the database the app is about to
+    // connect to — it just expects it to be there. It was, on a laptop (created once by
+    // hand, kept by pg_data) and on the Actions `services:` Postgres (POSTGRES_DB:
+    // app_test), which is why this line was missing for as long as it was. It is NOT
+    // there on the Compose Postgres the `verify` job now brings up, nor on any laptop
+    // after `docker compose down -v`, and the failure is a 3-second retry loop that ends
+    // in every test here timing out and jest never exiting. Creates, never resets: this
+    // file's fixtures are uuid-scoped precisely because app_test persists.
+    await ensureTestDatabase();
     relaxThrottleForTests();
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
     app = moduleRef.createNestApplication();
