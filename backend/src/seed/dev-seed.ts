@@ -199,6 +199,15 @@ export async function seedDev(ds: DataSource): Promise<DevSeedSummary> {
         [t.name],
       );
       if (found) continue;
+      // `UQ_tare_types_single_crate` is a bare (non-deferrable) unique index —
+      // Postgres checks it at the end of THIS statement, not at commit — so
+      // inserting a flagged row while another is still flagged would 23505.
+      // Demote first, same as `TareTypesService.create`, and only on the
+      // insert path: a row that already exists (the `continue` above) is
+      // never touched, flagged or not.
+      if (t.is_crate) {
+        await qr.query(`UPDATE tare_types SET is_crate = false WHERE is_crate`);
+      }
       await qr.query(
         `INSERT INTO tare_types (name, weight_kg, deposit_price, is_crate) VALUES ($1, $2, $3, $4)`,
         [t.name, t.weight_kg, t.deposit_price, t.is_crate],

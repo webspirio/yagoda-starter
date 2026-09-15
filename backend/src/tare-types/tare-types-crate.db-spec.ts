@@ -31,6 +31,17 @@ import type { AuthenticatedUser } from '../auth/jwt.strategy';
 describe('TareTypesService — one crate type, against a real unique index', () => {
   let ds: DataSource;
   let service: TareTypesService;
+  // `is_crate` is one flag across the WHOLE table — a per-run uuid on a row's
+  // NAME cannot isolate it the way it isolates every other fixture in this
+  // repo. `app_test` is never truncated, so whichever row (if any) was
+  // flagged before this suite ran is state this suite does not own; capture
+  // it here and restore it in `afterAll` rather than clearing every flag and
+  // leaving the table with none — `dev-seed.ts`'s crate step depends on
+  // exactly one row being flagged, and a suite that runs after this one and
+  // relies on that (directly or via a leftover from a previous run) must find
+  // the table exactly as this suite found it.
+  let originalCrateId: string | null;
+  const createdIds: string[] = [];
 
   const owner: AuthenticatedUser = {
     sub: '',
@@ -49,9 +60,21 @@ describe('TareTypesService — one crate type, against a real unique index', () 
 
     const [user] = await ds.query(`SELECT id FROM users WHERE role = 'network_owner' LIMIT 1`);
     owner.sub = user.id;
+
+    const [existing] = await ds.query(`SELECT id FROM tare_types WHERE is_crate = true LIMIT 1`);
+    originalCrateId = existing?.id ?? null;
   });
 
   afterAll(async () => {
+    // Remove only the rows this suite created — never anything it merely
+    // flagged or unflagged — then put the flag back where it was.
+    if (createdIds.length > 0) {
+      await ds.query(`DELETE FROM tare_types WHERE id = ANY($1::uuid[])`, [createdIds]);
+    }
+    await ds.query(`UPDATE tare_types SET is_crate = false WHERE is_crate`);
+    if (originalCrateId) {
+      await ds.query(`UPDATE tare_types SET is_crate = true WHERE id = $1`, [originalCrateId]);
+    }
     await ds?.destroy();
   });
 
@@ -69,6 +92,7 @@ describe('TareTypesService — one crate type, against a real unique index', () 
        VALUES ($1, '2.00', '20.00', false) RETURNING id`,
       [`Чешка ${tag}`],
     );
+    createdIds.push(a.id, b.id);
     return { aId: a.id, bId: b.id };
   };
 
@@ -93,6 +117,7 @@ describe('TareTypesService — one crate type, against a real unique index', () 
        VALUES ($1, '1.20', '120.00', true) RETURNING id`,
       [`Ящик ${tag}`],
     );
+    createdIds.push(existing.id);
 
     const created = await service.create(owner, {
       name: `Новий ящик ${tag}`,
@@ -100,6 +125,7 @@ describe('TareTypesService — one crate type, against a real unique index', () 
       deposit_price: '130.00',
       is_crate: true,
     });
+    createdIds.push(created.id);
 
     const flagged = await ds.query(`SELECT id FROM tare_types WHERE is_crate = true`);
     expect(flagged).toHaveLength(1);
