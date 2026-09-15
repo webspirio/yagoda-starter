@@ -43,6 +43,8 @@ export const AUDIT_ACTIONS = [
   'payout.created',
   'payout.voided',
   'payout.return-settled',
+  'intake-top-up.created',
+  'intake-top-up.voided',
   'transfer.created',
   'transfer.accepted',
   'transfer.disputed',

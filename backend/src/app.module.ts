@@ -21,6 +21,7 @@ import { ShiftsModule } from './shifts/shifts.module';
 import { IntakesModule } from './intakes/intakes.module';
 import { SupplierBalanceModule } from './supplier-balance/supplier-balance.module';
 import { PayoutsModule } from './payouts/payouts.module';
+import { IntakeTopUpsModule } from './intake-top-ups/intake-top-ups.module';
 import { TransfersModule } from './transfers/transfers.module';
 import { PointCashModule } from './point-cash/point-cash.module';
 import { CashCountsModule } from './cash-counts/cash-counts.module';
@@ -117,6 +118,7 @@ import { envValidationSchema } from './config/env.schema';
     IntakesModule,
     SupplierBalanceModule,
     PayoutsModule,
+    IntakeTopUpsModule,
     TransfersModule,
     PointCashModule,
     CashCountsModule,
