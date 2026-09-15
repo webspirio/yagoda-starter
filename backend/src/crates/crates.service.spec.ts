@@ -1,5 +1,6 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { CratesService } from './crates.service';
+import { CrateReturn } from './crate-return.entity';
 import { CrateIssuanceMode } from './crate-issuance-mode.enum';
 import { UserRole } from '../users/user-role.enum';
 
@@ -15,9 +16,16 @@ describe('CratesService', () => {
   } as never;
 
   let repo: { findOne: jest.Mock };
-  let manager: { query: jest.Mock; save: jest.Mock; create: jest.Mock };
+  let manager: {
+    query: jest.Mock;
+    save: jest.Mock;
+    create: jest.Mock;
+    findOne: jest.Mock;
+    find: jest.Mock;
+    delete: jest.Mock;
+  };
   let dataSource: { transaction: jest.Mock };
-  let shifts: { findOpenAtPoint: jest.Mock };
+  let shifts: { findOpenAtPoint: jest.Mock; findOneRaw: jest.Mock };
   let suppliers: { findOne: jest.Mock };
   let points: { findOneRaw: jest.Mock };
   let tareTypes: { findCrateType: jest.Mock };
@@ -51,17 +59,42 @@ describe('CratesService', () => {
     ...over,
   });
 
+  const crateReturn = (over: Record<string, unknown> = {}) => ({
+    id: 'return-1',
+    shift_id: SHIFT_ID,
+    supplier_id: SUPPLIER,
+    units: 10,
+    deposit_refund: '1200.00',
+    accepted_by_user_id: 'op-1',
+    voided_at: null,
+    voided_by_user_id: null,
+    void_reason: null,
+    created_at: new Date('2026-09-15T07:00:00.000Z'),
+    updated_at: new Date('2026-09-15T07:00:00.000Z'),
+    ...over,
+  });
+
   beforeEach(() => {
     manager = {
       query: jest.fn().mockResolvedValue([{ n: 0 }]),
-      save: jest.fn().mockImplementation((_e, v) => Promise.resolve(issuance(v))),
+      save: jest
+        .fn()
+        .mockImplementation((entity, v) =>
+          Promise.resolve(entity === CrateReturn ? crateReturn(v) : issuance(v)),
+        ),
       create: jest.fn().mockImplementation((_e, v) => v),
+      findOne: jest.fn().mockResolvedValue(null),
+      find: jest.fn().mockResolvedValue([]),
+      delete: jest.fn(),
     };
     dataSource = {
       transaction: jest.fn().mockImplementation((cb: (m: unknown) => unknown) => cb(manager)),
     };
     repo = { findOne: jest.fn().mockResolvedValue(null) };
-    shifts = { findOpenAtPoint: jest.fn().mockResolvedValue(shift()) };
+    shifts = {
+      findOpenAtPoint: jest.fn().mockResolvedValue(shift()),
+      findOneRaw: jest.fn().mockResolvedValue(shift()),
+    };
     suppliers = {
       findOne: jest
         .fn()
@@ -397,6 +430,176 @@ describe('CratesService', () => {
 
       expect(preview.shortfall).toBe(5);
       expect(preview.deposit_refund).toBe('2400.00');
+    });
+  });
+
+  describe('voids', () => {
+    // These tests intentionally shadow the outer `operator` fixture with a
+    // point id that matches the shift overrides used throughout this block
+    // ('point-1' the operator's own, 'point-2'/'point-9' someone else's).
+    const operator = {
+      sub: 'op-1',
+      role: UserRole.PointOperator,
+      collection_point_id: 'point-1',
+    } as never;
+    const owner = {
+      sub: 'owner-1',
+      role: UserRole.NetworkOwner,
+      collection_point_id: null,
+    } as never;
+
+    const loadIssuance = (over: Record<string, unknown> = {}) => {
+      const { shift: shiftOver, ...rest } = over;
+      manager.findOne.mockResolvedValue(issuance(rest));
+      shifts.findOneRaw.mockResolvedValue(shift(shiftOver as Record<string, unknown> | undefined));
+    };
+
+    const loadReturn = (over: Record<string, unknown> = {}) => {
+      const { shift: shiftOver, ...rest } = over;
+      manager.findOne.mockResolvedValue(crateReturn(rest));
+      shifts.findOneRaw.mockResolvedValue(shift(shiftOver as Record<string, unknown> | undefined));
+    };
+
+    it('lets an operator void a COLLEAGUE’s document at their own point', async () => {
+      loadIssuance({ issued_by_user_id: 'someone-else', shift: { collection_point_id: 'point-1', closed_at: null } });
+
+      await expect(
+        service.voidIssuance(operator, 'i-1', { reason: 'помилка вводу' }),
+      ).resolves.toBeDefined();
+    });
+
+    it('refuses an operator voiding a CLOSED shift’s document', async () => {
+      loadIssuance({ shift: { collection_point_id: 'point-1', closed_at: new Date() } });
+
+      await expect(
+        service.voidIssuance(operator, 'i-1', { reason: 'помилка' }),
+      ).rejects.toMatchObject({ response: { code: 'SHIFT_CLOSED' } });
+    });
+
+    it('lets the owner void a closed shift’s document', async () => {
+      loadIssuance({ shift: { collection_point_id: 'point-9', closed_at: new Date() } });
+
+      await expect(
+        service.voidIssuance(owner, 'i-1', { reason: 'перевірка' }),
+      ).resolves.toBeDefined();
+    });
+
+    it('404s a document at another point for an operator', async () => {
+      loadIssuance({ shift: { collection_point_id: 'point-2', closed_at: null } });
+
+      await expect(
+        service.voidIssuance(operator, 'i-1', { reason: 'x' }),
+      ).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    /** §9.3 — «видачу, на яку вже лягло повернення, сторнувати не можна». */
+    it('refuses to void an issuance that has live allocations', async () => {
+      loadIssuance({ shift: { collection_point_id: 'point-1', closed_at: null } });
+      manager.query.mockImplementation((sql: string) =>
+        sql.includes('crate_return_allocations') ? Promise.resolve([{ n: 1 }]) : Promise.resolve([]),
+      );
+
+      await expect(
+        service.voidIssuance(operator, 'i-1', { reason: 'x' }),
+      ).rejects.toMatchObject({ response: { code: 'ISSUANCE_HAS_RETURNS' } });
+    });
+
+    it('refuses to void an already-voided document', async () => {
+      loadIssuance({ voided_at: new Date(), shift: { collection_point_id: 'point-1', closed_at: null } });
+
+      await expect(
+        service.voidIssuance(operator, 'i-1', { reason: 'x' }),
+      ).rejects.toMatchObject({ response: { code: 'ALREADY_VOIDED' } });
+    });
+
+    it('voiding a return does not delete its allocations', async () => {
+      loadReturn({ shift: { collection_point_id: 'point-1', closed_at: null } });
+
+      await service.voidReturn(operator, 'r-1', { reason: 'перерахували' });
+
+      const deletes = (manager.query.mock.calls as [string][]).filter(([sql]) =>
+        sql.includes('DELETE'),
+      );
+      expect(deletes).toHaveLength(0);
+      expect(manager.delete).not.toHaveBeenCalled();
+    });
+
+    // Additional authority-matrix cases the brief's list did not spell out.
+
+    it('refuses a closed shift for an operator on a RETURN too, not just an issuance', async () => {
+      loadReturn({ shift: { collection_point_id: 'point-1', closed_at: new Date() } });
+
+      await expect(
+        service.voidReturn(operator, 'r-1', { reason: 'x' }),
+      ).rejects.toMatchObject({ response: { code: 'SHIFT_CLOSED' } });
+    });
+
+    it('404s a return at another point for an operator', async () => {
+      loadReturn({ shift: { collection_point_id: 'point-2', closed_at: null } });
+
+      await expect(
+        service.voidReturn(operator, 'r-1', { reason: 'x' }),
+      ).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    it('refuses to void an already-voided return', async () => {
+      loadReturn({ voided_at: new Date(), shift: { collection_point_id: 'point-1', closed_at: null } });
+
+      await expect(
+        service.voidReturn(operator, 'r-1', { reason: 'x' }),
+      ).rejects.toMatchObject({ response: { code: 'ALREADY_VOIDED' } });
+    });
+
+    it('lets the owner void an issuance at ANY point, open or closed', async () => {
+      loadIssuance({ shift: { collection_point_id: 'point-2', closed_at: null } });
+
+      await expect(
+        service.voidIssuance(owner, 'i-1', { reason: 'перевірка' }),
+      ).resolves.toBeDefined();
+    });
+
+    it('lets an operator void an issuance with no live allocations, at an open shift', async () => {
+      loadIssuance({ shift: { collection_point_id: 'point-1', closed_at: null } });
+
+      await expect(
+        service.voidIssuance(operator, 'i-1', { reason: 'x' }),
+      ).resolves.toBeDefined();
+    });
+
+    it('signs the void with the actor who pressed the button, not the original author', async () => {
+      loadIssuance({
+        issued_by_user_id: 'someone-else',
+        shift: { collection_point_id: 'point-1', closed_at: null },
+      });
+
+      await service.voidIssuance(operator, 'i-1', { reason: 'помилка вводу' });
+
+      expect(manager.save).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ voided_by_user_id: 'op-1', void_reason: 'помилка вводу' }),
+      );
+    });
+
+    it('audits crate-issuance.voided', async () => {
+      loadIssuance({ shift: { collection_point_id: 'point-1', closed_at: null } });
+
+      await service.voidIssuance(operator, 'i-1', { reason: 'x' });
+
+      expect(audit.record).toHaveBeenCalledWith(
+        expect.objectContaining({ action: 'crate-issuance.voided' }),
+        manager,
+      );
+    });
+
+    it('audits crate-return.voided', async () => {
+      loadReturn({ shift: { collection_point_id: 'point-1', closed_at: null } });
+
+      await service.voidReturn(operator, 'r-1', { reason: 'x' });
+
+      expect(audit.record).toHaveBeenCalledWith(
+        expect.objectContaining({ action: 'crate-return.voided' }),
+        manager,
+      );
     });
   });
 });

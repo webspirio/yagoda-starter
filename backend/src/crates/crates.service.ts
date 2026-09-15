@@ -1,11 +1,12 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, Repository } from 'typeorm';
+import { DataSource, In, Repository } from 'typeorm';
 import { CrateIssuance } from './crate-issuance.entity';
 import { CrateReturn } from './crate-return.entity';
 import { CrateReturnAllocation } from './crate-return-allocation.entity';
@@ -16,6 +17,7 @@ import { CrateIssuanceResponse, toCrateIssuanceResponse } from './crate-issuance
 import {
   CrateReturnResponse,
   CrateReturnPreviewResponse,
+  CrateReturnIssuanceInfo,
   toCrateReturnResponse,
   joinIssuanceInfo,
 } from './crate-return.mapper';
@@ -29,6 +31,8 @@ import { TareTypesService } from '../tare-types/tare-types.service';
 import { AuditService } from '../audit/audit.service';
 import { mul, lt } from '../common/money';
 import { resolveWritePoint } from '../auth/access/point-scope';
+import { UserRole } from '../users/user-role.enum';
+import type { VoidDocumentDto } from '../intakes/dto/void-document.dto';
 import type { AuthenticatedUser } from '../auth/jwt.strategy';
 
 @Injectable()
@@ -302,5 +306,190 @@ export class CratesService {
       deposit_refund: result.deposit_refund,
       shortfall: result.shortfall,
     };
+  }
+
+  /**
+   * §9.4 AS AMENDED BY THE CLIENT, 2026-09-15 — and the amendment is the whole
+   * reason this is not `PayoutsService.loadForWrite`.
+   *
+   * The rules table says «ящиковий документ → тільки керівник». The client
+   * relaxed it: an operator may void ANY crate document at their OWN point
+   * while that shift is OPEN. No author check — §10.6's mid-shift cashier swap
+   * routinely leaves the person at the counter holding a colleague's mistake.
+   *
+   * A CLOSED SHIFT IS STILL THE OWNER'S ALONE («квитанція минулого дня → тільки
+   * керівник»), and that bound is load-bearing: spec §7 lets a void drop a
+   * taken deposit straight out of the crates book with no counted figure
+   * anywhere to notice. Today's mistake is the operator's to fix; last week's
+   * is not.
+   */
+  private assertMayVoid(
+    actor: AuthenticatedUser,
+    shift: { collection_point_id: string; closed_at: Date | null },
+  ): void {
+    if (actor.role === UserRole.NetworkOwner) return;
+
+    if (actor.collection_point_id !== shift.collection_point_id) {
+      // 404 upstream, not 403 — see `loadIssuanceForWrite`.
+      throw new NotFoundException('Document not found');
+    }
+    if (shift.closed_at) {
+      throw new ForbiddenException({
+        message: 'That shift is closed — ask the network owner',
+        code: 'SHIFT_CLOSED',
+      });
+    }
+  }
+
+  async voidIssuance(
+    actor: AuthenticatedUser,
+    id: string,
+    dto: VoidDocumentDto,
+  ): Promise<CrateIssuanceResponse> {
+    // THE LOAD AND THE STATE CHECK ARE INSIDE THE TRANSACTION, under the row
+    // lock: checking `voided_at` before the transaction opens is a
+    // check-then-write, and two taps produce two audit entries naming possibly
+    // different actors while `voided_by_user_id` is last-writer-wins.
+    return this.dataSource.transaction(async (m) => {
+      const issuance = await m.findOne(CrateIssuance, {
+        where: { id },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!issuance) throw new NotFoundException('Crate issuance not found');
+
+      const shift = await this.shifts.findOneRaw(issuance.shift_id, m);
+      if (!shift) throw new NotFoundException('Crate issuance not found');
+      if (
+        actor.role !== UserRole.NetworkOwner &&
+        actor.collection_point_id !== shift.collection_point_id
+      ) {
+        throw new NotFoundException('Crate issuance not found');
+      }
+
+      this.assertMayVoid(actor, shift);
+
+      if (issuance.voided_at) {
+        throw new ConflictException({
+          message: 'That issuance is already voided',
+          code: 'ALREADY_VOIDED',
+        });
+      }
+
+      /**
+       * §9.3 — «видачу, на яку вже лягло повернення, сторнувати не можна, поки
+       * не сторновано повернення». Voiding it out from under a live allocation
+       * would refund crates that, on the books, were never issued.
+       */
+      const live: Array<{ n: number }> = await m.query(
+        `SELECT count(*)::int AS n
+           FROM crate_return_allocations a
+           JOIN crate_returns cr ON cr.id = a.return_id
+          WHERE a.issuance_id = $1 AND cr.voided_at IS NULL`,
+        [id],
+      );
+      if (live[0]?.n > 0) {
+        throw new ConflictException({
+          message: 'A return has already been allocated against this issuance — void the return first',
+          code: 'ISSUANCE_HAS_RETURNS',
+        });
+      }
+
+      issuance.voided_at = new Date();
+      issuance.voided_by_user_id = actor.sub;
+      issuance.void_reason = dto.reason;
+      const saved = await m.save(CrateIssuance, issuance);
+
+      await this.audit.record(
+        {
+          action: 'crate-issuance.voided',
+          actor_id: actor.sub,
+          target_type: 'crate_issuance',
+          target_id: saved.id,
+          after: { code: saved.code, units: saved.units, deposit_taken: saved.deposit_taken },
+          note: dto.reason,
+        },
+        m,
+      );
+
+      return toCrateIssuanceResponse(saved, shift);
+    });
+  }
+
+  /**
+   * VOIDING A RETURN RESTORES TRANCHE CAPACITY WITHOUT TOUCHING A SINGLE
+   * ALLOCATION ROW. The capacity comes back through `cr.voided_at IS NULL` in
+   * `tranchesFor`; deleting the rows would destroy the evidence §9.3 keeps
+   * «НАЗАВЖДИ з печаткою» and make the refund unexplainable afterwards.
+   *
+   * The money leaves the crates book at the same instant, by the same filter in
+   * `CRATE_BOOK_SQL`. Spec §7: cash physically changing hands afterwards is an
+   * out-of-system act — правка 11, «система підказує, а керівник вирішує… за
+   * межами системи».
+   */
+  async voidReturn(
+    actor: AuthenticatedUser,
+    id: string,
+    dto: VoidDocumentDto,
+  ): Promise<CrateReturnResponse> {
+    return this.dataSource.transaction(async (m) => {
+      const ret = await m.findOne(CrateReturn, {
+        where: { id },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!ret) throw new NotFoundException('Crate return not found');
+
+      const shift = await this.shifts.findOneRaw(ret.shift_id, m);
+      if (!shift) throw new NotFoundException('Crate return not found');
+      if (
+        actor.role !== UserRole.NetworkOwner &&
+        actor.collection_point_id !== shift.collection_point_id
+      ) {
+        throw new NotFoundException('Crate return not found');
+      }
+
+      this.assertMayVoid(actor, shift);
+
+      if (ret.voided_at) {
+        throw new ConflictException({
+          message: 'That return is already voided',
+          code: 'ALREADY_VOIDED',
+        });
+      }
+
+      ret.voided_at = new Date();
+      ret.voided_by_user_id = actor.sub;
+      ret.void_reason = dto.reason;
+      const saved = await m.save(CrateReturn, ret);
+
+      await this.audit.record(
+        {
+          action: 'crate-return.voided',
+          actor_id: actor.sub,
+          target_type: 'crate_return',
+          target_id: saved.id,
+          after: { units: saved.units, deposit_refund: saved.deposit_refund },
+          note: dto.reason,
+        },
+        m,
+      );
+
+      // NO DELETE. The allocation rows stay exactly as they were — see this
+      // method's doc comment — so the response is rebuilt from them, never
+      // from a re-run of the allocator.
+      const allocations = await m.find(CrateReturnAllocation, {
+        where: { return_id: saved.id },
+      });
+      const issuanceIds = allocations.map((a) => a.issuance_id);
+      const issuances = issuanceIds.length
+        ? await m.find(CrateIssuance, { where: { id: In(issuanceIds) } })
+        : [];
+      const issuanceInfo: CrateReturnIssuanceInfo[] = issuances.map((i) => ({
+        issuance_id: i.id,
+        mode: i.mode,
+        code: i.code,
+      }));
+
+      return toCrateReturnResponse(saved, shift, allocations, issuanceInfo);
+    });
   }
 }
