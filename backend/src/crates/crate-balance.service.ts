@@ -1,8 +1,21 @@
 import { Injectable } from '@nestjs/common';
-import { DataSource, EntityManager } from 'typeorm';
+import { InjectRepository } from '@nestjs/typeorm';
+import { DataSource, EntityManager, In, Repository } from 'typeorm';
 import { CrateIssuanceMode } from './crate-issuance-mode.enum';
 import { CrateTranche } from './crate-allocation';
+import { CrateIssuance } from './crate-issuance.entity';
+import { CrateReturn } from './crate-return.entity';
+import { CrateReturnAllocation } from './crate-return-allocation.entity';
+import { CrateIssuanceResponse, toCrateIssuanceResponse } from './crate-issuance.mapper';
+import { CrateReturnResponse, CrateReturnIssuanceInfo, toCrateReturnResponse } from './crate-return.mapper';
+import { ListCrateIssuancesQueryDto } from './dto/list-crate-issuances.query';
+import { ListCrateReturnsQueryDto } from './dto/list-crate-returns.query';
+import { Shift } from '../shifts/shift.entity';
+import { Paginated } from '../common/dto/paginated';
+import { skipOf } from '../common/dto/pagination-query.dto';
+import { resolvePointFilter } from '../auth/access/point-scope';
 import { mul, sum } from '../common/money';
+import type { AuthenticatedUser } from '../auth/jwt.strategy';
 
 export interface CrateTrancheView extends CrateTranche {
   code: string;
@@ -48,7 +61,15 @@ export const CRATE_BOOK_SQL = `(
 
 @Injectable()
 export class CrateBalanceService {
-  constructor(private readonly dataSource: DataSource) {}
+  constructor(
+    private readonly dataSource: DataSource,
+    @InjectRepository(CrateIssuance)
+    private readonly issuances: Repository<CrateIssuance>,
+    @InjectRepository(CrateReturn)
+    private readonly returns: Repository<CrateReturn>,
+    @InjectRepository(CrateReturnAllocation)
+    private readonly allocations: Repository<CrateReturnAllocation>,
+  ) {}
 
   /**
    * Open tranches, OLDEST FIRST, with `created_at` then `id` as the order —
@@ -121,5 +142,114 @@ export class CrateBalanceService {
       [pointId],
     );
     return rows[0]?.book ?? '0.00';
+  }
+
+  /**
+   * The journal (unfiltered `voided`), ticket #58's supplier-receipts view
+   * (`supplier_id` + `mode`), and the owner's voided-deposit incident list
+   * (`voided: true` + `mode: deposit`) — three consumers, one query shape,
+   * the same JOIN-on-`shifts` `PayoutsService.list` uses because neither
+   * `crate_issuances` nor `crate_returns` stores a point or a business date.
+   */
+  async listIssuances(
+    actor: AuthenticatedUser,
+    query: ListCrateIssuancesQueryDto,
+  ): Promise<Paginated<CrateIssuanceResponse>> {
+    const pointId = resolvePointFilter(actor, query.collection_point_id);
+
+    const qb = this.issuances
+      .createQueryBuilder('i')
+      .innerJoinAndMapOne('i.shift', Shift, 's', 's.id = i.shift_id');
+
+    if (pointId) qb.andWhere('s.collection_point_id = :pointId', { pointId });
+    if (query.supplier_id) qb.andWhere('i.supplier_id = :supplierId', { supplierId: query.supplier_id });
+    if (query.mode) qb.andWhere('i.mode = :mode', { mode: query.mode });
+    if (query.voided === true) qb.andWhere('i.voided_at IS NOT NULL');
+    else if (!query.voided) qb.andWhere('i.voided_at IS NULL');
+
+    const [data, total] = await qb
+      .orderBy('i.created_at', 'DESC')
+      .addOrderBy('i.id', 'ASC')
+      .skip(skipOf(query))
+      .take(query.limit)
+      .getManyAndCount();
+
+    return {
+      data: data.map((issuance) => toCrateIssuanceResponse(issuance, issuance.shift as Shift)),
+      total,
+      page: query.page,
+      limit: query.limit,
+    };
+  }
+
+  /**
+   * Same shape as `listIssuances`, minus `mode` (a return can consume
+   * tranches from both).
+   *
+   * NOT AN N+1: the allocations for the WHOLE PAGE come from one `find`
+   * keyed by the page's return ids, and the issuance info those allocations
+   * need (`mode`, `code`) from one more query keyed by their distinct
+   * issuance ids — never a query per row. See `crate-balance.service.spec.ts`.
+   */
+  async listReturns(
+    actor: AuthenticatedUser,
+    query: ListCrateReturnsQueryDto,
+  ): Promise<Paginated<CrateReturnResponse>> {
+    const pointId = resolvePointFilter(actor, query.collection_point_id);
+
+    const qb = this.returns
+      .createQueryBuilder('r')
+      .innerJoinAndMapOne('r.shift', Shift, 's', 's.id = r.shift_id');
+
+    if (pointId) qb.andWhere('s.collection_point_id = :pointId', { pointId });
+    if (query.supplier_id) qb.andWhere('r.supplier_id = :supplierId', { supplierId: query.supplier_id });
+    if (query.voided === true) qb.andWhere('r.voided_at IS NOT NULL');
+    else if (!query.voided) qb.andWhere('r.voided_at IS NULL');
+
+    const [data, total] = await qb
+      .orderBy('r.created_at', 'DESC')
+      .addOrderBy('r.id', 'ASC')
+      .skip(skipOf(query))
+      .take(query.limit)
+      .getManyAndCount();
+
+    if (data.length === 0) {
+      return { data: [], total, page: query.page, limit: query.limit };
+    }
+
+    const returnIds = data.map((ret) => ret.id);
+    const allocationRows = await this.allocations.find({
+      where: { return_id: In(returnIds) },
+    });
+
+    const issuanceIds = [...new Set(allocationRows.map((row) => row.issuance_id))];
+    const issuanceInfo: CrateReturnIssuanceInfo[] =
+      issuanceIds.length === 0
+        ? []
+        : await this.dataSource.manager.query(
+            `SELECT id AS issuance_id, mode, code FROM crate_issuances WHERE id = ANY($1)`,
+            [issuanceIds],
+          );
+
+    const allocationsByReturn = new Map<string, typeof allocationRows>();
+    for (const row of allocationRows) {
+      const existing = allocationsByReturn.get(row.return_id);
+      if (existing) existing.push(row);
+      else allocationsByReturn.set(row.return_id, [row]);
+    }
+
+    return {
+      data: data.map((ret) =>
+        toCrateReturnResponse(
+          ret,
+          ret.shift as Shift,
+          allocationsByReturn.get(ret.id) ?? [],
+          issuanceInfo,
+        ),
+      ),
+      total,
+      page: query.page,
+      limit: query.limit,
+    };
   }
 }

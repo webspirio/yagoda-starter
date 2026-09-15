@@ -1,11 +1,14 @@
-import { Body, Controller, Param, ParseUUIDPipe, Post } from '@nestjs/common';
+import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Query } from '@nestjs/common';
 import { Auth } from '../auth/decorators/auth.decorators';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { CratesService } from './crates.service';
+import { CrateBalanceService } from './crate-balance.service';
 import { CreateCrateReturnDto } from './dto/create-crate-return.dto';
+import { ListCrateReturnsQueryDto } from './dto/list-crate-returns.query';
 import { VoidDocumentDto } from '../intakes/dto/void-document.dto';
 import { CrateReturnResponse } from './crate-return.mapper';
 import { CrateAllocationResult } from './crate-allocation';
+import { Paginated } from '../common/dto/paginated';
 import type { AuthenticatedUser } from '../auth/jwt.strategy';
 
 /**
@@ -14,7 +17,20 @@ import type { AuthenticatedUser } from '../auth/jwt.strategy';
  */
 @Controller('crate-returns')
 export class CrateReturnsController {
-  constructor(private readonly crates: CratesService) {}
+  constructor(
+    private readonly crates: CratesService,
+    private readonly balance: CrateBalanceService,
+  ) {}
+
+  /** The journal — see `CrateBalanceService.listReturns`. */
+  @Get()
+  @Auth()
+  list(
+    @CurrentUser() actor: AuthenticatedUser,
+    @Query() query: ListCrateReturnsQueryDto,
+  ): Promise<Paginated<CrateReturnResponse>> {
+    return this.balance.listReturns(actor, query);
+  }
 
   @Post()
   @Auth()
