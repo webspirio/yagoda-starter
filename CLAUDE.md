@@ -151,10 +151,18 @@ THE SECOND OF THEM: the `docker` row was an uncached `docker build` of the same 
 the `docker` JOB builds with a warm buildx cache, in parallel, and has to build anyway in
 order to push. The duplication was worth 5% of a twenty-minute run when it was first left
 alone and 28% of a five-minute one by the time anyone looked again, so the row is gone and
-the job is the proof (see the note above, and that job's own header in ci.yml). Expect
-roughly 164s of rows and a ~4-minute job warm from here. `selfcheck` is now the largest
-single row by some distance — `node --test` over this layer's own 163 tests, which nothing
-caches, in CI or on a laptop, exactly as the local figures above already said.
+the job is the proof (see the note above, and that job's own header in ci.yml).
+
+MEASURED AFTER THE REMOVAL, run 35017224544: 19 rows in 2m31s inside a **3m46s** job. The
+ranking is now selfcheck 54.4s (36% of row time), smoke 49.7s (33%), test:db 28.7s (19%) —
+88% in three rows, and every one of them a row nothing can cache. `selfcheck` is `node
+--test` over this layer's own 164 tests, exactly as the local figures above already said,
+and it is the first place to look if this job ever needs to get faster again. That run also
+corrected an expectation worth writing down: its commit changed the root `package.json`,
+which is a `changes` trigger and looks like it should invalidate everything, yet coverage
+replayed in 199ms and build in 180ms. Turbo hashes inputs PER TASK, and that file's
+`scripts` block is not an input to `backend#coverage` — a root-manifest edit is not
+automatically a cold run.
 
 THE THIRD ROW WAS NOT SLOW, IT WAS BROKEN, and the distinction cost two red runs to see.
 `test:db` blew through 120s, then 480s, then was given 1200s purely to buy a reading. The
