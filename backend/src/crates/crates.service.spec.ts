@@ -22,6 +22,7 @@ describe('CratesService.issue', () => {
   let points: { findOneRaw: jest.Mock };
   let tareTypes: { findCrateType: jest.Mock };
   let audit: { record: jest.Mock };
+  let balance: { tranchesFor: jest.Mock; balanceFor: jest.Mock; pointDepositBook: jest.Mock };
   let service: CratesService;
 
   const shift = (over: Record<string, unknown> = {}) => ({
@@ -71,6 +72,11 @@ describe('CratesService.issue', () => {
       findCrateType: jest.fn().mockResolvedValue({ id: 't-1', deposit_price: '120.00' }),
     };
     audit = { record: jest.fn().mockResolvedValue(undefined) };
+    balance = {
+      tranchesFor: jest.fn().mockResolvedValue([]),
+      balanceFor: jest.fn(),
+      pointDepositBook: jest.fn().mockResolvedValue('999999.00'),
+    };
 
     service = new CratesService(
       repo as never,
@@ -80,6 +86,7 @@ describe('CratesService.issue', () => {
       points as never,
       tareTypes as never,
       audit as never,
+      balance as never,
     );
   });
 
@@ -180,5 +187,79 @@ describe('CratesService.issue', () => {
       expect.anything(),
       expect.objectContaining({ issued_by_user_id: 'op-1' }),
     );
+  });
+
+  describe('CratesService.returnCrates', () => {
+    const tranches = [
+      { issuance_id: 'jul18', remaining_units: 20, per_unit: '120.00', mode: CrateIssuanceMode.Deposit },
+      { issuance_id: 'jul28', remaining_units: 20, per_unit: '130.00', mode: CrateIssuanceMode.Deposit },
+    ];
+
+    it('locks the supplier row before reading tranches', async () => {
+      balance.tranchesFor.mockResolvedValue(tranches);
+
+      await service.returnCrates(operator, { supplier_id: 's-1', units: 7 });
+
+      const [firstSql, firstParams] = manager.query.mock.calls[0] as [string, unknown[]];
+      expect(firstSql).toContain('FOR UPDATE');
+      expect(firstParams).toEqual(['s-1']);
+    });
+
+    it('writes the allocation rows and the frozen refund', async () => {
+      balance.tranchesFor.mockResolvedValue(tranches);
+
+      await service.returnCrates(operator, { supplier_id: 's-1', units: 7 });
+
+      expect(manager.create).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ units: 7, deposit_refund: '840.00' }),
+      );
+    });
+
+    /** §6.5 — «повернути більше, ніж узято, не можна… помилка вводу, а не подія». */
+    it('refuses to return more than is outstanding, naming the number', async () => {
+      balance.tranchesFor.mockResolvedValue([tranches[0]]);
+
+      await expect(
+        service.returnCrates(operator, { supplier_id: 's-1', units: 25 }),
+      ).rejects.toMatchObject({ response: { code: 'RETURN_EXCEEDS_OUTSTANDING' } });
+    });
+
+    it('refuses when the point has no open shift', async () => {
+      shifts.findOpenAtPoint.mockResolvedValue(null);
+
+      await expect(
+        service.returnCrates(operator, { supplier_id: 's-1', units: 5 }),
+      ).rejects.toMatchObject({ response: { code: 'NO_OPEN_SHIFT' } });
+    });
+
+    /**
+     * §6.7's assertion. It cannot fire under valid documents — FIFO guarantees a
+     * refund never exceeds what that supplier deposited — so this test drives an
+     * IMPOSSIBLE state deliberately to prove the guard is wired, not decorative.
+     */
+    it('refuses when the crates book would go negative', async () => {
+      balance.tranchesFor.mockResolvedValue(tranches);
+      balance.pointDepositBook.mockResolvedValue('100.00');
+
+      await expect(
+        service.returnCrates(operator, { supplier_id: 's-1', units: 7 }),
+      ).rejects.toMatchObject({ response: { code: 'CRATE_CASH_INSUFFICIENT' } });
+    });
+  });
+
+  describe('CratesService.previewReturn', () => {
+    it('returns the split without writing anything', async () => {
+      balance.tranchesFor.mockResolvedValue([
+        { issuance_id: 'a', remaining_units: 20, per_unit: '120.00', mode: CrateIssuanceMode.Deposit },
+        { issuance_id: 'b', remaining_units: 30, per_unit: '0.00', mode: CrateIssuanceMode.Receipt },
+      ]);
+
+      const preview = await service.previewReturn(operator, { supplier_id: 's-1', units: 45 });
+
+      expect(preview.deposit_refund).toBe('2400.00');
+      expect(preview.allocations).toHaveLength(2);
+      expect(manager.save).not.toHaveBeenCalled();
+    });
   });
 });

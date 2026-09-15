@@ -4,7 +4,10 @@ import { CrateIssuance } from './crate-issuance.entity';
 import { CrateReturn } from './crate-return.entity';
 import { CrateReturnAllocation } from './crate-return-allocation.entity';
 import { CratesService } from './crates.service';
+import { CrateBalanceService } from './crate-balance.service';
 import { CrateIssuancesController } from './crate-issuances.controller';
+import { CrateReturnsController } from './crate-returns.controller';
+import { CrateBalanceController } from './crate-balance.controller';
 import { ShiftsModule } from '../shifts/shifts.module';
 import { SuppliersModule } from '../suppliers/suppliers.module';
 import { CollectionPointsModule } from '../collection-points/collection-points.module';
@@ -25,8 +28,8 @@ import { AuditModule } from '../audit/audit.module';
     TareTypesModule,
     AuditModule,
   ],
-  providers: [CratesService],
-  controllers: [CrateIssuancesController],
-  exports: [CratesService],
+  providers: [CratesService, CrateBalanceService],
+  controllers: [CrateIssuancesController, CrateReturnsController, CrateBalanceController],
+  exports: [CratesService, CrateBalanceService],
 })
 export class CratesModule {}
