@@ -16,18 +16,8 @@ export interface Payout {
   created_at: string;
 }
 
-/**
- * Duplicated from `entities/intake/model/intake.ts` rather than imported —
- * FSD forbids a same-layer cross-import (`entities/payout` -> `entities/intake`).
- * Two small duplicate types are the recorded FSD-correct price; keep them in
- * sync by hand if the shape ever changes.
- */
-export interface Paginated<T> {
-  data: T[];
-  total: number;
-  page: number;
-  limit: number;
-}
+/** Re-exported so existing `../model/payout` importers keep working — see `@/shared/api/pagination.ts`. */
+export type { Paginated } from '@/shared/api';
 
 /** Duplicated from `entities/intake/model/intake.ts` — see `Paginated` above for why. */
 export interface DocumentFilter {

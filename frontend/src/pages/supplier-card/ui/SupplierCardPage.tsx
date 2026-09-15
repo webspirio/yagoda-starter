@@ -7,7 +7,7 @@ import { StatTile } from '@/shared/ui/stat-tile';
 import { SectionCard } from '@/shared/ui/section-card';
 import { Button } from '@/shared/ui/button';
 import { Spinner } from '@/shared/ui/spinner';
-import { ApiError } from '@/shared/api';
+import { ApiError, isTruncated } from '@/shared/api';
 import { sum, cmp, isZero, formatUah } from '@/shared/lib/money';
 import { useSupplierQuery, useSupplierBalanceQuery, supplierName } from '@/entities/supplier';
 import { useIntakesQuery } from '@/entities/intake';
@@ -118,8 +118,8 @@ export function SupplierCardPage() {
   // Both journals are read at a fixed `limit: 100` (spec §5.4) — past that
   // the «Нараховано»/«Видано» tiles would under-report the season, so each
   // says so instead of quietly summing only what happened to load.
-  const truncated = intakes.data ? intakes.data.total > intakes.data.data.length : false;
-  const payoutsTruncated = payouts.data ? payouts.data.total > payouts.data.data.length : false;
+  const truncated = isTruncated(intakes.data);
+  const payoutsTruncated = isTruncated(payouts.data);
 
   return (
     <>

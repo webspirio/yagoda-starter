@@ -13,7 +13,7 @@ import { Field } from '@/shared/ui/field';
 import { TextInput } from '@/shared/ui/text-input';
 import { Button } from '@/shared/ui/button';
 import { toast } from '@/shared/ui/toast';
-import { cmp, formatUah } from '@/shared/lib/money';
+import { cmp, formatUah, DECIMAL_INPUT, normalizeAmount, amountRules } from '@/shared/lib/money';
 import type { Payout } from '@/entities/payout';
 import { useCreatePayoutMutation } from '../api/useCreatePayout';
 import { apiErrorToFields } from '../lib/apiErrorToFields';
@@ -23,16 +23,6 @@ import type { PayoutFormValues } from '../model/payoutForm';
  *  upper-cased, first char alphanumeric so a document can never start with a
  *  bare dash. */
 const CODE = /^[A-Z0-9][A-Z0-9-]{0,15}$/;
-
-/** Mirrors the backend's `@Matches(/^\d{1,10}(\.\d{1,2})?$/)` on `amount`
- *  (kept at 8 integer digits here, same as `prices` — a payout will never
- *  approach a 10-digit balance, and it matches the client's own `cmp`
- *  contract). Client-side UX only; the server re-validates independently. */
-const DECIMAL = /^\d{1,8}(\.\d{1,2})?$/;
-
-function normalizeAmount(value: string): string {
-  return value.trim().replace(',', '.');
-}
 
 /**
  * Payout dialog — records money handed to a supplier as a standalone
@@ -92,7 +82,7 @@ export function PayoutDialog({
   const name = `${supplier.first_name} ${supplier.last_name}`;
 
   const watchedAmount = normalizeAmount(useWatch({ control, name: 'amount' }));
-  const submitAmount = DECIMAL.test(watchedAmount) ? watchedAmount : (defaultAmount ?? debt);
+  const submitAmount = DECIMAL_INPUT.test(watchedAmount) ? watchedAmount : (defaultAmount ?? debt);
 
   const setAll = () => {
     setValue('amount', debt);
@@ -185,11 +175,7 @@ export function PayoutDialog({
                 {...a11y}
                 inputMode="decimal"
                 className="font-mono"
-                {...register('amount', {
-                  required: 'payout.errors.amountFormat',
-                  validate: (value) =>
-                    DECIMAL.test(normalizeAmount(value)) || 'payout.errors.amountFormat',
-                })}
+                {...register('amount', amountRules('payout.errors.amountFormat'))}
               />
             )}
           </Field>

@@ -175,6 +175,18 @@ describe('CatalogPage', () => {
     expect(createProductMock).toHaveBeenCalledWith({ name: 'Blueberry' });
   });
 
+  it('opens the create dialog from the empty state when there are no products yet', async () => {
+    productsQueryMock.mockReturnValue(loaded<Product>([]));
+    gradesQueryMock.mockReturnValue(loaded<ProductGrade>([]));
+    renderPage();
+
+    await userEvent.click(screen.getByRole('button', { name: 'New product' }));
+    await userEvent.type(await screen.findByLabelText('Name'), 'Blueberry');
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(createProductMock).toHaveBeenCalledTimes(1));
+    expect(createProductMock).toHaveBeenCalledWith({ name: 'Blueberry' });
+  });
+
   it('adds a grade to the selected product with that product preselected', async () => {
     renderPage();
     await userEvent.click(within(detail()).getByRole('button', { name: 'New grade' }));

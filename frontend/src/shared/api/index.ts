@@ -13,3 +13,5 @@ export type { AuthHooks } from './client';
 export { queryClient, STALE } from './queryClient';
 export { buildPersistOptions, persister } from './persister';
 export { queryKeys } from './queryKeys';
+export type { Paginated } from './pagination';
+export { isTruncated } from './pagination';

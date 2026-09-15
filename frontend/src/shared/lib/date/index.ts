@@ -6,4 +6,6 @@ export {
   formatLongDate,
   formatWeekday,
   formatShortDate,
+  formatTime,
+  formatDateTime,
 } from './iso';

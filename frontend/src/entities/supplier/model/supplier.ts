@@ -5,13 +5,8 @@
  */
 export type SupplierKind = 'none' | 'wholesale' | 'farmer';
 
-/** Shared list envelope returned by the paginated GET endpoints. */
-export interface Paginated<T> {
-  data: T[];
-  total: number;
-  page: number;
-  limit: number;
-}
+/** Re-exported so existing `../model/supplier` importers keep working — see `@/shared/api/pagination.ts`. */
+export type { Paginated } from '@/shared/api';
 
 /**
  * Mirrors the backend `SupplierResponse`. `collection_point_id` is always a

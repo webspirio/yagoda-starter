@@ -11,6 +11,8 @@ import {
   SEED_SHIFTS,
   SEED_SUPPLIERS,
   SEED_TARE_TYPES,
+  SEED_TOP_UPS,
+  SEED_TRANSFERS,
 } from './dev-seed.data';
 
 /**
@@ -163,9 +165,32 @@ describe('dev seed documents', () => {
     for (const p of SEED_PAYOUTS) expect(p.amount).toMatch(/^\d{1,8}\.\d{2}$/);
   });
 
+  it('a disputed transfer carries everything DisputeTransferDto makes mandatory', () => {
+    // THE SEED STORES WHAT THE API WOULD HAVE STORED, and a dispute is the
+    // three fields «Не сходиться» writes at once: the cash counted, the crates
+    // counted, and the comment that is the entire reason the document reaches
+    // the owner. A row with a NULL note and NULL crates against 20 crates is a
+    // shape no route can produce — `crates_discrepancy` comes back `null` on a
+    // transfer whose whole point is that something did not add up.
+    for (const t of SEED_TRANSFERS.filter((x) => x.status === 'disputed')) {
+      expect(t.reportedCash).toMatch(money);
+      expect(typeof t.reportedCrates).toBe('number');
+      expect(t.disputeNote?.trim()).toBeTruthy();
+    }
+  });
+
   it('every payout goes to a supplier who has a seeded receipt at that point', () => {
     const paid = new Set(SEED_INTAKES.map((d) => `${d.point}/${d.supplier}`));
     for (const p of SEED_PAYOUTS) expect(paid.has(`${p.point}/${p.supplier}`)).toBe(true);
+  });
+
+  it('every top-up addresses a seeded intake by (point, day, typed) — never a composed code', () => {
+    const intakeKeys = new Set(SEED_INTAKES.map((d) => `${d.point}/${d.day}/${d.typed}`));
+    for (const t of SEED_TOP_UPS) {
+      expect(intakeKeys.has(`${t.point}/${t.day}/${t.typed}`)).toBe(true);
+      expect(t.amount).toMatch(/^\d{1,8}\.\d{2}$/);
+      expect(t.reason.trim()).toBeTruthy();
+    }
   });
 });
 

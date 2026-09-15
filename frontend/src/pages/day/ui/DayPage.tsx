@@ -8,8 +8,8 @@ import { Button } from '@/shared/ui/button';
 import { SelectField } from '@/shared/ui/select-field';
 import { EmptyState } from '@/shared/ui/empty-state';
 import { Spinner } from '@/shared/ui/spinner';
-import { ConfirmDialog } from '@/shared/ui/confirm-dialog';
 import { toast } from '@/shared/ui/toast';
+import { isTruncated } from '@/shared/api';
 import { useUrlParam } from '@/shared/lib/url-state';
 import { sum, sub, cmp, formatUah } from '@/shared/lib/money';
 import {
@@ -28,8 +28,11 @@ import { useIntakesQuery, type Intake } from '@/entities/intake';
 import { usePayoutsQuery, type Payout } from '@/entities/payout';
 import { useSuppliersQuery, supplierName } from '@/entities/supplier';
 import { ReceiptDialog } from '@/widgets/receipt';
-import { useOpenShiftMutation, useCloseShiftMutation } from '../api/shiftActions';
-import { apiErrorToBanner } from '../lib/apiErrorToBanner';
+import {
+  useOpenShiftMutation,
+  useCloseShiftMutation,
+  CountDrawerDialog,
+} from '@/features/count-shift';
 import { ReopenShiftDialog } from './ReopenShiftDialog';
 
 interface FeedRow {
@@ -42,6 +45,10 @@ interface FeedRow {
   voided: boolean;
   reason: string | null;
 }
+
+/** What the count dialog is open for: which verb, and — for a close — the
+ *  shift it closes. */
+type CountTarget = { mode: 'open' } | { mode: 'close'; shiftId: string };
 
 /**
  * «Каса за день» — one point, one date, its shift and its documents. The date
@@ -77,22 +84,29 @@ export function DayPage() {
 
   const open = useOpenShiftMutation();
   const close = useCloseShiftMutation();
-  const [confirmClose, setConfirmClose] = useState(false);
   const [reopenOpen, setReopenOpen] = useState(false);
   const [receiptId, setReceiptId] = useState<string | null>(null);
   // Bumped on every open so the dialog remounts with fresh RHF defaults and no
   // banner from the refusal before it — the convention SetPriceDialog documents.
   const [reopenInstance, setReopenInstance] = useState(0);
-  const [banner, setBanner] = useState<string | null>(null);
-
-  const run = async (action: () => Promise<unknown>, toastKey: string) => {
-    setBanner(null);
-    try {
-      await action();
-      toast.success(t(toastKey));
-    } catch (error) {
-      setBanner(apiErrorToBanner(error));
-    }
+  const [countInstance, setCountInstance] = useState(0);
+  // What the count dialog is open FOR — captured at click time, not read back
+  // off `shift` at submit time. The close click is the one moment the shift
+  // being looked at is unambiguously the shift that closes; reading its id
+  // later (after a mutation or a refetch could have moved `shift.data`) is
+  // how a silent no-op crept in before.
+  const [countTarget, setCountTarget] = useState<CountTarget | null>(null);
+  // The COPY the dialog shows — set on every open click, but never reset on
+  // close. `open={countTarget !== null}` alone drives visibility, so during
+  // the close (exit) animation `countTarget` is already null while the
+  // dialog is still on screen; resetting `countMode` too would flip a
+  // closing close-dialog to the open copy for the ~100ms of that animation.
+  // (That animation is CSS-driven and untestable under jsdom — no test covers it.)
+  const [countMode, setCountMode] = useState<'open' | 'close'>('open');
+  const openCountDialog = (target: CountTarget) => {
+    setCountInstance((n) => n + 1);
+    setCountMode(target.mode); // copy, kept across the exit animation
+    setCountTarget(target); // what will actually be submitted
   };
 
   const isOperator = me?.role === 'point_operator';
@@ -162,9 +176,7 @@ export function DayPage() {
   // Both journals are read with the entities' default `limit: 100`. Past that
   // the tiles would quietly under-report a busy day, which is the one thing a
   // cash screen may not do — so say so rather than raise the limit and hope.
-  const truncated =
-    (intakes.data ? intakes.data.total > intakes.data.data.length : false) ||
-    (payouts.data ? payouts.data.total > payouts.data.data.length : false);
+  const truncated = isTruncated(intakes.data) || isTruncated(payouts.data);
 
   const pointName = (points ?? []).find((p) => p.id === pointId)?.name ?? '';
 
@@ -216,15 +228,15 @@ export function DayPage() {
       isToday &&
       status === 'none' &&
       pointId ? (
-        <Button
-          onClick={() => void run(() => open.mutateAsync(), 'day.toast.opened')}
-          disabled={open.isPending}
-        >
+        <Button onClick={() => openCountDialog({ mode: 'open' })} disabled={open.isPending}>
           {t('day.open')}
         </Button>
       ) : null}
-      {!shift.isError && !isLoadingShift && isOperator && status === 'open' ? (
-        <Button variant="outline" onClick={() => setConfirmClose(true)}>
+      {/* `shiftId` in the condition (not just `status === 'open'`) is what lets
+          the branch below narrow it to `string` for the click handler — no
+          separate runtime guard needed for a state that can't happen anyway. */}
+      {!shift.isError && !isLoadingShift && isOperator && status === 'open' && shiftId ? (
+        <Button variant="outline" onClick={() => openCountDialog({ mode: 'close', shiftId })}>
           {t('day.close')}
         </Button>
       ) : null}
@@ -319,9 +331,12 @@ export function DayPage() {
 
   return (
     <>
-      {/* `children` REPLACES `sections` in DashboardPage, and the banner has to
-          sit above the feed rather than inside its card — so the body is
-          composed here from the same SectionCard the template would have used. */}
+      {/* `children` REPLACES `sections` in DashboardPage, and the truncation
+          notice has to sit above the feed rather than inside its card — so
+          the body is composed here from the same SectionCard the template
+          would have used. Every write action now owns its own dialog-scoped
+          error (Field's alert, or the dialog's own banner), so this page
+          keeps no error state of its own. */}
       <DashboardPage
         eyebrow={t('day.eyebrow', {
           point: pointName,
@@ -338,29 +353,36 @@ export function DayPage() {
             {t('day.tiles.truncated', { count: feed.length })}
           </p>
         ) : null}
-        {banner ? (
-          <p role="alert" className="mb-4 text-sm text-destructive">
-            {t(banner)}
-          </p>
-        ) : null}
         <SectionCard eyebrow={t('day.feed.title')}>{feedContent}</SectionCard>
       </DashboardPage>
 
-      <ConfirmDialog
-        open={confirmClose}
-        onOpenChange={setConfirmClose}
-        title={t('day.confirmClose.title')}
-        description={t('day.confirmClose.body')}
-        confirmLabel={t('day.close')}
-        cancelLabel={t('common.cancel')}
-        onConfirm={() => {
-          const id = shift.data?.id;
-          if (id) void run(() => close.mutateAsync(id), 'day.toast.closed');
+      <CountDrawerDialog
+        key={`count-${countInstance}`}
+        mode={countMode}
+        open={countTarget !== null}
+        onClose={() => setCountTarget(null)}
+        onConfirm={async (counted_amount) => {
+          if (countTarget === null) {
+            // The dialog can only confirm while it is open, and it is only
+            // open when `countTarget` is set — reaching here with no target
+            // is a programming error, not a state a user action can cause.
+            // Throwing lets the dialog's own catch show its fallback banner
+            // instead of a silent no-op that looks like success.
+            throw new Error('count dialog confirmed without a target');
+          }
+          if (countTarget.mode === 'open') {
+            await open.mutateAsync({ counted_amount });
+            toast.success(t('day.toast.opened'));
+          } else {
+            await close.mutateAsync({ id: countTarget.shiftId, counted_amount });
+            toast.success(t('day.toast.closed'));
+          }
+          setCountTarget(null);
         }}
       />
       {shift.data ? (
         <ReopenShiftDialog
-          key={reopenInstance}
+          key={`reopen-${reopenInstance}`}
           shift={shift.data}
           open={reopenOpen}
           onClose={() => setReopenOpen(false)}

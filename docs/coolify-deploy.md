@@ -160,14 +160,14 @@ Coolify altogether, see the last section.
 
 | Gate | Result |
 |---|---|
-| `SOURCE_COMMIT` interpolates in compose | open — the first production deploy answers it |
+| `SOURCE_COMMIT` interpolates in compose | ✅ 2026-09-10 — production runs `…-backend:sha-94ea42ee…`, the merge commit, and `/api/health/version` returns it |
 | Preview `SOURCE_COMMIT` == PR head SHA | **blocked** — previews need the GitHub App (#68) |
 | Manual «Redeploy» keeps the same SHA | blocked, same reason |
 | Preview deleted on PR close with Auto Deploy off | blocked, same reason |
 | API lists previews (cap source) | blocked, same reason — `application_previews` is empty |
 | Coolify holds registry credentials | ✗ — this version has no registry store; use the `docker login` fallback (step 5) |
-| `docker compose up` does not fail on the one-shot `seed` exiting 0 | open — production exercises the risky case (the seed exits 0 at once there) |
-| Coolify routes the domain to nginx's port 8080 | open — the first production deploy answers it |
+| `docker compose up` does not fail on the one-shot `seed` exiting 0 | ✅ 2026-09-10 — production is the risky case (no `SEED_DEV_DATA`, so the seed exits 0 immediately) and the deployment still reached `finished` |
+| Coolify routes the domain to nginx's port 8080 | ✅ 2026-09-10 — with `expose: 8080` in the compose and the port set on the domain, `https://yagoda.webspirio.com` answers 200 |
 
 **Previews require the GitHub App; a deploy key is not enough.** With the SSH
 deploy key alone, `POST /api/v1/deploy?uuid=<app>&pr=<N>` is refused with
@@ -185,6 +185,25 @@ preview in the Coolify UI** — it would use whichever PR wrote `IMAGE_TAG` last
 re-run the PR's `deploy-preview` job instead. The `/api/health/version` check
 turns a wrong image into a failed job, not a silent wrong preview.
 
+## First production deploy (2026-09-10)
+
+`94ea42e` — `/api/health/version` returns the merge commit, `/api/health/ready`
+and `/` answer 200 over a valid certificate, and the stack is postgres + redis +
+backend (all healthy) + nginx. Memory: 1.3 GiB of 7.6 used with everything
+running, against a budget that assumed ~1.0 for production alone.
+
+Two CI defects had to be fixed first, and both are worth remembering because
+neither turned anything red:
+
+1. **A skipped job propagates its skip transitively down `needs`.** `changes`
+   skips itself on `push`, `docker` survives on `always()`, and every job below
+   it inherited that skip — so `deploy-prod` was skipped while its own condition
+   evaluated true. Two merges reported success and deployed nothing. Both deploy
+   jobs now start with `!cancelled()` and assert their needs' results.
+2. **A deploy job that is *skipped* is invisible**, unlike one that fails. When
+   «is production actually on `main`?» matters, check
+   `/api/health/version`, not the colour of the run.
+
 ## When a deploy goes wrong
 
 | Symptom | Cause | Fix |
@@ -196,6 +215,7 @@ turns a wrong image into a failed job, not a silent wrong preview.
 | «Preview not deployed — limit reached» | `PREVIEW_CAP` live previews (default 12). A PR whose deploy FAILED keeps its `preview` label on purpose — the stack is still running and still holding memory | close or merge an older PR, or remove its `preview` label once you have confirmed Coolify no longer runs that preview |
 | `deploy-preview` shows "cancelled", no comment | another PR took the single pending slot of the `preview-allocation` concurrency group while this one waited | re-run the job |
 | `deploy-prod` skipped with «main is at X, not Y» | correct: a newer merge owns production, and its own run deploys it | nothing — unless that newer run went red, in which case prod is deliberately behind `main` until it is fixed and re-run |
+| CI green but production still on the old commit | a deploy job was *skipped*, not run — a skip anywhere upstream in `needs` propagates | check the `deploy-prod` job exists in the run at all, then `/api/health/version` |
 | Prod is wrong after a merge | | `git revert <merge>` + push. **This does not revert schema migrations** — see `docs/backup-restore.md` to restore last night's pair if a migration destroyed data. |
 
 ## Leaving Coolify

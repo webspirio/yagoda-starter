@@ -1,12 +1,7 @@
 export type UserRole = 'network_owner' | 'point_operator';
 
-/** Shared list envelope returned by the paginated GET endpoints. */
-export interface Paginated<T> {
-  data: T[];
-  total: number;
-  page: number;
-  limit: number;
-}
+/** Re-exported so existing `../model/user` importers keep working — see `@/shared/api/pagination.ts`. */
+export type { Paginated } from '@/shared/api';
 
 /**
  * Mirrors the backend `UserResponse`. `display_name` is server-derived from

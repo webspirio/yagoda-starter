@@ -43,6 +43,15 @@ export const AUDIT_ACTIONS = [
   'payout.created',
   'payout.voided',
   'payout.return-settled',
+  'intake-top-up.created',
+  'intake-top-up.voided',
+  'transfer.created',
+  'transfer.accepted',
+  'transfer.disputed',
+  'transfer.resolved',
+  'transfer.voided',
+  'cash-count.recorded',
+  'shift.explained',
 ] as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];

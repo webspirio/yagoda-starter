@@ -14,6 +14,9 @@ export interface ShiftResponse {
   closed_by_user_id: string | null;
   closed_at: string | null;
   created_at: string;
+  /** §7.7's surviving half — see `SetExplanationDto`. `null` until the owner
+   *  writes one; writing it never moves a number. */
+  explanation: string | null;
 }
 
 export function toShiftResponse(shift: Shift): ShiftResponse {
@@ -26,5 +29,6 @@ export function toShiftResponse(shift: Shift): ShiftResponse {
     closed_by_user_id: shift.closed_by_user_id,
     closed_at: shift.closed_at ? shift.closed_at.toISOString() : null,
     created_at: shift.created_at.toISOString(),
+    explanation: shift.explanation,
   };
 }

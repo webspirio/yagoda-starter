@@ -1,42 +1,14 @@
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation } from '@tanstack/react-query';
 import { httpClient } from '@/shared/api';
-import { queryKeys } from '@/shared/api/queryKeys';
+import { useInvalidateDay } from '@/features/count-shift';
 import type { Shift } from '@/entities/shift';
 
 /**
- * Opening, closing and reopening all change what «today» means for the
- * documents of that point, so every one invalidates shifts AND both journals.
+ * Owner only — a reason is mandatory (intakes spec §6.1); it lands in the
+ * audit log. Reopening's invalidation set is identical to open/close's (see
+ * `useInvalidateDay` in `@/features/count-shift`), so it shares that hook
+ * rather than carrying its own copy.
  */
-function useInvalidateDay() {
-  const qc = useQueryClient();
-  return () =>
-    Promise.all([
-      qc.invalidateQueries({ queryKey: queryKeys.shifts }),
-      qc.invalidateQueries({ queryKey: queryKeys.intakes }),
-      qc.invalidateQueries({ queryKey: queryKeys.payouts }),
-    ]);
-}
-
-/** Operator only — the point is the actor's own, derived from the token; no body. */
-export function useOpenShiftMutation() {
-  const invalidate = useInvalidateDay();
-  return useMutation({
-    mutationFn: async (): Promise<Shift> => (await httpClient.post<Shift>('/shifts')).data,
-    onSuccess: invalidate,
-  });
-}
-
-/** Operator only — closing is the signature of whoever held the cash (§10.3). */
-export function useCloseShiftMutation() {
-  const invalidate = useInvalidateDay();
-  return useMutation({
-    mutationFn: async (id: string): Promise<Shift> =>
-      (await httpClient.post<Shift>(`/shifts/${id}/close`)).data,
-    onSuccess: invalidate,
-  });
-}
-
-/** Owner only — a reason is mandatory (intakes spec §6.1); it lands in the audit log. */
 export function useReopenShiftMutation() {
   const invalidate = useInvalidateDay();
   return useMutation({

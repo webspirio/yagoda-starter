@@ -350,15 +350,19 @@
     "open": "Open shift",
     "close": "Close shift",
     "reopen": "Reopen shift",
-    "confirmClose": {
-      "title": "Close the shift?",
-      "body": "Once it is closed, no more receipts or payouts can be booked for this day. Only the owner can reopen it."
-    },
     "reopenDialog": {
       "title": "Reopen shift",
       "reason": "Reason",
       "reasonHint": "Who asked and why — it stays in the journal",
       "submit": "Reopen"
+    },
+    "count": {
+      "openTitle": "Count the drawer",
+      "openBody": "How much cash is in the drawer right now. This figure opens the shift and becomes the point's opening balance.",
+      "closeTitle": "Count the drawer before closing",
+      "closeBody": "How much is left. A discrepancy will not block the close — the owner sees it afterwards. Once closed, no more receipts or payouts can be booked for this day; only the owner can reopen it.",
+      "amount": "In the drawer, ₴",
+      "submit": "Record"
     },
     "tiles": {
       "receipts": "Receipts",
@@ -394,7 +398,8 @@
       "notNewest": "Only the point's most recent shift can be reopened",
       "ownerOnly": "Only the network owner can do this",
       "noPoint": "Your account has no collection point — ask the owner",
-      "reasonRequired": "Give a reason"
+      "reasonRequired": "Give a reason",
+      "countFormat": "Enter an amount — at most two decimals"
     }
   },
   "profile": {
@@ -485,6 +490,108 @@
       "alreadyVoided": "Already voided",
       "failed": "Could not void",
       "reasonRequired": "Enter a reason"
+    }
+  },
+  "cash": {
+    "explainDialog": {
+      "title": "Explain the {{amount}} discrepancy",
+      "description": "A discrepancy never blocks closing a shift — the operator already closed it. This explanation does not change the count; it stays in the journal alongside it.",
+      "explanation": "Explanation",
+      "submit": "Save explanation"
+    },
+    "toast": {
+      "explained": "Explanation saved"
+    },
+    "errors": {
+      "explanationRequired": "Enter an explanation",
+      "explanationTooLong": "Explanation — 2000 characters or fewer",
+      "failed": "Could not save the explanation"
+    }
+  },
+  "pointCash": {
+    "eyebrow": "{{point}} · {{weekday}}",
+    "title": "Point cash — {{date}}",
+    "description": "How much cash the point should have on hand right now, and how far that is from its target. Berry cash and crate deposits share the same drawer but are counted separately.",
+    "pickPoint": "Select a point",
+    "today": "Today",
+    "errors": {
+      "pointMissing": "This point does not exist — pick another one"
+    },
+    "stats": {
+      "target": "Target",
+      "targetUnset": "No target assigned yet",
+      "cash": "Berry cash",
+      "cashHint": "cash available to pay for berries",
+      "neverCounted": "Never counted yet: the first count when the shift opens sets the opening balance.",
+      "shortfall": "Short of target",
+      "shortfallUnset": "No target to compare against",
+      "shortfallOwed": "the base has not transferred it yet",
+      "shortfallSettled": "the target is covered"
+    },
+    "ledger": {
+      "title": "Where this number comes from",
+      "accruedToday": "Accrued today",
+      "accruedTodayHint": "does not move cash",
+      "accruedTodayTruncated": "Showing recent receipts only — older ones may be missing from this total.",
+      "paidToday": "Paid out today",
+      "paidPast": "Paid for past days",
+      "paidPastHint": "not part of today's figure",
+      "paidPastTruncated": "Showing recent payouts only — older ones may be missing from this total.",
+      "returnedToday": "Returned to the drawer",
+      "cashIn": "Received by transfer today",
+      "cashInTruncated": "Showing recent transfers only — older ones may be missing from this total.",
+      "total": "Berry cash"
+    },
+    "crates": {
+      "label": "Crate cash",
+      "note": "Crates aren't tracked yet — this space is reserved for a future slice."
+    },
+    "drawer": {
+      "label": "Should be in the drawer",
+      "caption": "Berries only — crates aren't counted yet."
+    },
+    "incoming": {
+      "loadFailed": "Could not load the transfers on their way"
+    },
+    "countHistory": {
+      "title": "Cash counts",
+      "empty": "No cash counts recorded for this point yet.",
+      "columns": {
+        "when": "When",
+        "counted": "Counted",
+        "expected": "Expected",
+        "discrepancy": "Discrepancy",
+        "explanation": "Explanation"
+      },
+      "kind": {
+        "opening": "Opening",
+        "midday": "Midday",
+        "closing": "Closing"
+      },
+      "matched": "Matched",
+      "open": "Unexplained",
+      "explain": "Explain"
+    },
+    "target": {
+      "set": "Assign a target",
+      "change": "Change the target"
+    }
+  },
+  "pointTarget": {
+    "title": "Change the cash target — {{pointName}}",
+    "description": "This becomes the point's new target right away, for every day including past ones — it keeps no history of its own.",
+    "targetCash": "New target",
+    "reason": "Reason",
+    "submit": "Save target",
+    "toast": "Target updated",
+    "warnings": {
+      "belowCash": "This is below the {{amount}} already at the point. Allowed — a target is a management decision — but check with the point first."
+    },
+    "errors": {
+      "cashFormat": "Enter an amount — up to two decimal places",
+      "reasonRequired": "Enter a reason",
+      "reasonTooLong": "Reason — 500 characters or fewer",
+      "failed": "Could not update the target"
     }
   },
   "payout": {
@@ -642,7 +749,6 @@
     "errors": {
       "failed": "Could not record the receipt",
       "lineRefused": "The server refused one of the lines — check the rows in the table",
-      "openShiftFailed": "Could not open the shift",
       "codeFormat": "1–16 Latin letters, digits or dashes",
       "codeTaken": "A receipt with this number already exists today",
       "decimalFormat": "Enter a weight like 126.40",
@@ -753,5 +859,108 @@
     "label": "Theme",
     "light": "Light",
     "dark": "Dark"
+  },
+  "transfer": {
+    "errors": {
+      "noOpenShift": "No open shift at this point — open one first",
+      "failed": "Could not process the transfer",
+      "notEmpty": "A transfer must carry money, crates, or both",
+      "carrierRequired": "Enter the carrier",
+      "carrierTooLong": "Carrier name — 200 characters or fewer",
+      "cashFormat": "Enter an amount — up to two decimal places",
+      "cratesFormat": "Enter a whole number of crates, 0 or more",
+      "noteRequired": "Describe what doesn't match",
+      "noteTooLong": "Note — 500 characters or fewer",
+      "voided": "This transfer has been voided",
+      "alreadyAnswered": "This transfer has already been answered",
+      "pointOperatorOnly": "Only the collection point may accept or dispute a transfer",
+      "notDisputed": "Only a disputed transfer can be resolved",
+      "alreadyResolved": "This dispute has already been resolved",
+      "pointInactive": "This collection point is deactivated",
+      "correctionPointMismatch": "A correction must name a transfer at the same point"
+    },
+    "send": {
+      "title": "Send a transfer — {{pointName}}",
+      "description": "Money and empty crates travel to the point. The point will confirm: accept, or dispute.",
+      "cash": "Cash",
+      "crates": "Empty crates",
+      "carrier": "Carrier",
+      "submit": "Submit transfer",
+      "toast": "Transfer sent"
+    },
+    "dispute": {
+      "title": "Doesn't match",
+      "sent_one": "Sent: {{uah}}, {{count}} crate",
+      "sent_other": "Sent: {{uah}}, {{count}} crates",
+      "reportedCash": "Reported cash",
+      "reportedCrates": "Crates received",
+      "note": "Note — what doesn't match",
+      "submit": "Submit dispute",
+      "toast": "Discrepancy sent to the owner"
+    },
+    "resolve": {
+      "title": "Resolve the dispute",
+      "note": "The point wrote: “{{note}}”",
+      "resolvedCash": "Resolved cash",
+      "resolvedCrates": "Crates to book",
+      "submit": "Resolve",
+      "toast": "Dispute resolved"
+    },
+    "incoming": {
+      "inTransit_one": "In transit: {{uah}} and {{count}} crate",
+      "inTransit_other": "In transit: {{uah}} and {{count}} crates",
+      "meta": "{{carrier}}, sent {{date}}",
+      "pointAccepts": "the point accepts",
+      "accept": "Accept",
+      "dispute": "Doesn't match",
+      "toastAccepted": "Transfer accepted"
+    }
+  },
+  "transfers": {
+    "eyebrow": "For the owner",
+    "title": "Transfers",
+    "description": "How much the base still owes each point toward its target, and what is currently on the road. A point with no assigned target does not enter the network total.",
+    "truncatedHint": "Showing recent transfers only — an older dispute may not appear below or be resolvable from this table.",
+    "tiles": {
+      "totalOwed": "Owed to points",
+      "totalOwedHint": "Showing the first {{count}} points — the total is partial"
+    },
+    "col": {
+      "point": "Point",
+      "target": "Target",
+      "cash": "In the drawer",
+      "shortfall": "Short by",
+      "crates": "Crates",
+      "status": "Status"
+    },
+    "crates": {
+      "label": "Crates",
+      "note": "not tracked yet"
+    },
+    "status": {
+      "sent": "In transit",
+      "accepted": "Accepted",
+      "disputed": "Doesn't match",
+      "resolved": "Resolved"
+    },
+    "send": "Send",
+    "resolve": "Resolve",
+    "empty": {
+      "title": "No collection points yet"
+    },
+    "history": {
+      "title": "Transfer history",
+      "empty": "No transfers sent yet.",
+      "col": {
+        "sent": "Sent",
+        "point": "Point",
+        "cash": "Cash",
+        "crates": "Crates",
+        "carrier": "Carrier",
+        "status": "Status",
+        "action": "Action"
+      },
+      "void": "Void"
+    }
   }
 }

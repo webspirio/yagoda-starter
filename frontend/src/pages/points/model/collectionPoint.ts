@@ -1,12 +1,7 @@
 export type PointKind = 'reception' | 'base';
 
-/** Shared list envelope returned by the paginated GET endpoints. */
-export interface Paginated<T> {
-  data: T[];
-  total: number;
-  page: number;
-  limit: number;
-}
+/** Re-exported so existing `../model/collectionPoint` importers keep working — see `@/shared/api/pagination.ts`. */
+export type { Paginated } from '@/shared/api';
 
 /**
  * Mirrors the backend `CollectionPointResponse`. `target_cash` is a decimal
