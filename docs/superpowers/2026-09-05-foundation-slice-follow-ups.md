@@ -805,3 +805,45 @@ doubled every point's starting cash); the un-anchored formula still standing in
 - **A notification channel** (Coolify → Notifications, or `OnFailure=` on the
   systemd unit). A nightly timer that fails silently for a month is the most
   likely way this setup actually hurts someone.
+
+## Deferred from the crates slice (2026-09-15)
+
+Spec: `docs/superpowers/specs/2026-09-15-yagoda-crates-slice.md`, §9 «out of scope» and §11
+«residual risks». Each item below is deferred, not forgotten — one line of why.
+
+- **`crate_shipments` and §6.8's evening dispatch.** A fourth table with its own lifecycle
+  («кількість "з ягодою" запамʼятовується на момент відправлення»), its own void semantics and a
+  second-shipment-per-day case; none of tickets #57/#58/#60 ask for it.
+- **§6.9's «порожніх» term and the `target_crates` comparison.** «У людей» and «з ягодою» are now
+  computable (the ledger, and `intake_item_tare_types` filtered to `is_crate`), but «порожніх»
+  needs the dispatch table above — the screen shows «—» until then.
+- **A counted crates drawer, together with the settlement trio for voided crate money.** One
+  physical drawer cannot become two counted numbers without either asking the operator to
+  distinguish identical banknotes or deriving one book from the other (which makes it
+  unfalsifiable) — `cash-book.enum.ts`'s `CashBook.Crates` exists but no row is ever written with
+  it. The trigger to build both together is the day someone actually needs to count that drawer
+  (spec §4.3, §11.1).
+- **Ticket #57's reception-screen pairing (the client half).** The backend ships `POST
+  /crate-returns/preview` as the primitive; composing a return with an intake on one screen is
+  client work, not a backend seam — no `intake_id`, no combined endpoint (spec §4, decision 4).
+- **§6.2's threshold (50 crates: deposit below, receipt above) lives only in the client.** It is a
+  UI default with no server rule behind it; two clients would drift, and there is one today, so
+  the drift risk is accepted rather than built against (spec §11.5).
+
+**Came out of the slice's own reviews, not from the brief:**
+
+- **`DevSeedSummary` has no crate counters**, so `seedDev()`'s summary undercounts what it
+  actually inserted (issuances, returns, allocations). Extending it means also updating
+  `dev-seed.db-spec.ts`'s exact `toEqual`, which will need the new fields spelled out.
+- **`crate-balance.service.ts` holds both the balance reads and the paginated list reads under one
+  "balance" name.** Fine at three methods; if more list variants arrive, split the read side out
+  the way `supplier-balance/` and `point-cash/` are already split from writers.
+- **The N+1 guard test for the crate returns list asserts call counts but not call arguments** —
+  so a batched-but-wrong-ids implementation (right number of queries, wrong rows) would still pass
+  it.
+
+**Before merge, these specs must actually run and pass** — they are committed but this
+environment has no database to run them against (see the task-12 brief's Step 6 correction):
+`migrations/crates-schema.db-spec.ts`, `tare-types/tare-types-crate.db-spec.ts`,
+`crates/crates.db-spec.ts`, `crates/crates-race.db-spec.ts`, and the existing
+`point-cash/point-cash.db-spec.ts` (this slice changed its SQL-shape assertions).
