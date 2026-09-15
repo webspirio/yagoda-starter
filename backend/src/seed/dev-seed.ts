@@ -2,16 +2,26 @@ import { DataSource, QueryRunner } from 'typeorm';
 import { hashPassword } from '../users/password-hashing';
 import { PointCashService } from '../point-cash/point-cash.service';
 import { composeDocumentCode } from '../common/document-code';
+import { mul } from '../common/money';
 import {
   buildIntake,
   type IntakeLineInput,
   type PriceSnapshot,
   type TareSnapshot,
 } from '../intakes/intake-lines';
+import { CrateIssuance } from '../crates/crate-issuance.entity';
+import { CrateReturn } from '../crates/crate-return.entity';
+import { CrateReturnAllocation } from '../crates/crate-return-allocation.entity';
+import { CrateBalanceService } from '../crates/crate-balance.service';
+import { allocate } from '../crates/crate-allocation';
+import { nextIssuanceCode } from '../crates/crate-code';
+import { CrateIssuanceMode } from '../crates/crate-issuance-mode.enum';
 import {
   DEV_OPERATOR_PASSWORD,
   SEED_GRADES,
   SEED_INTAKES,
+  SEED_CRATE_ISSUANCES,
+  SEED_CRATE_RETURNS,
   SEED_OPERATORS,
   SEED_PAYOUTS,
   SEED_POINTS,
@@ -519,6 +529,146 @@ async function seedDocuments(
       ],
     );
     summary.payouts += 1;
+  }
+
+  // Crates: §6.5's two-tranches-at-different-prices case and ticket #58's
+  // receipt-mode list, both on Шипинки. THE SEED NEVER HAND-COMPUTES A
+  // BUSINESS NUMBER: `nextIssuanceCode` composes the code exactly as
+  // `CratesService.issue` does, and the deposit per unit is read straight off
+  // `tare_types` at insert time rather than copied from `SEED_TARE_TYPES`.
+  const crateType = await one<{ id: string; deposit_price: string }>(
+    qr,
+    `SELECT id, deposit_price::text AS deposit_price FROM tare_types WHERE is_crate = true LIMIT 1`,
+  );
+  if (!crateType) throw new Error('Seed crates: no tare type is flagged is_crate');
+
+  // §6.5's older tranche needs a price the catalogue does not hold today —
+  // Чешка is pinned at 120,00 ₴ for §6.3's worked example — so the catalogue
+  // row is nudged to this figure for exactly the one issuance that needs it
+  // and put back immediately after, inside this same transaction, so nothing
+  // outside it ever observes the detour.
+  const OLDER_CRATE_DEPOSIT_PRICE = '130.00';
+
+  for (const [i, iss] of SEED_CRATE_ISSUANCES.entries()) {
+    const shift = shiftId.get(`${iss.point}/${iss.day}`);
+    if (!shift) throw new Error(`Seed crate issuance has no shift: ${iss.point}/${iss.day}`);
+    const supplier = await supplierFor(iss.point, iss.supplier);
+
+    const found = await one<{ id: string }>(
+      qr,
+      `SELECT id FROM crate_issuances
+        WHERE shift_id = $1 AND supplier_id = $2 AND mode = $3::crate_issuance_mode AND units = $4`,
+      [shift, supplier, iss.mode, iss.units],
+    );
+    if (found) continue;
+
+    // The OLDER tranche: a later deposit issuance for the SAME supplier still
+    // lies ahead in the array.
+    const isOlderTranche =
+      iss.mode === 'deposit' &&
+      SEED_CRATE_ISSUANCES.slice(i + 1).some(
+        (later) =>
+          later.point === iss.point && later.supplier === iss.supplier && later.mode === 'deposit',
+      );
+    if (isOlderTranche) {
+      await qr.query(`UPDATE tare_types SET deposit_price = $1 WHERE id = $2`, [
+        OLDER_CRATE_DEPOSIT_PRICE,
+        crateType.id,
+      ]);
+    }
+
+    const point = SEED_POINTS.find((p) => p.name === iss.point)!;
+    const code = await nextIssuanceCode(qr.manager, {
+      pointCode: point.code,
+      businessDate: dateOf(iss.day),
+      shiftId: shift,
+      mode: iss.mode as CrateIssuanceMode,
+    });
+
+    const priced = await one<{ deposit_price: string }>(
+      qr,
+      `SELECT deposit_price::text AS deposit_price FROM tare_types WHERE id = $1`,
+      [crateType.id],
+    );
+    const perUnit = iss.mode === 'receipt' ? '0.00' : priced!.deposit_price;
+    const taken = iss.mode === 'receipt' ? '0.00' : mul(perUnit, String(iss.units));
+
+    await qr.query(
+      // `created_at` is backdated from the transaction start by the array's
+      // own order (§6.5's FIFO reads oldest `created_at` first) — the two
+      // seeded days alone would tie every row at the same transaction-start
+      // instant, since `now()` is constant for the whole transaction.
+      `INSERT INTO crate_issuances
+         (code, shift_id, supplier_id, units, mode, deposit_per_unit, deposit_taken, issued_by_user_id, created_at)
+       VALUES ($1, $2, $3, $4, $5::crate_issuance_mode, $6, $7, $8, now() - interval '2 hours' + $9 * interval '5 minutes')`,
+      [
+        code,
+        shift,
+        supplier,
+        iss.units,
+        iss.mode,
+        perUnit,
+        taken,
+        userByLogin.get(iss.operator)!,
+        i,
+      ],
+    );
+
+    if (isOlderTranche) {
+      // Restore the catalogue to the price `SEED_TARE_TYPES` declares.
+      const catalog = SEED_TARE_TYPES.find((t) => t.is_crate)!;
+      await qr.query(`UPDATE tare_types SET deposit_price = $1 WHERE id = $2`, [
+        catalog.deposit_price,
+        crateType.id,
+      ]);
+    }
+  }
+
+  // THE REFUND IS NEVER HAND-COMPUTED EITHER: the supplier's open tranches
+  // are read back from the database, oldest first, and `allocate()` — the
+  // same pure function `CratesService.returnCrates` calls — decides which
+  // one(s) this return draws from and at what price.
+  const crateBalance = new CrateBalanceService(
+    ds,
+    ds.getRepository(CrateIssuance),
+    ds.getRepository(CrateReturn),
+    ds.getRepository(CrateReturnAllocation),
+  );
+  for (const ret of SEED_CRATE_RETURNS) {
+    const shift = shiftId.get(`${ret.point}/${ret.day}`);
+    if (!shift) throw new Error(`Seed crate return has no shift: ${ret.point}/${ret.day}`);
+    const supplier = await supplierFor(ret.point, ret.supplier);
+
+    // `crate_returns` has no `code` — (shift, supplier, units) is its natural
+    // key here, the same reasoning `transfers` uses for (point, sent_at).
+    const found = await one<{ id: string }>(
+      qr,
+      `SELECT id FROM crate_returns WHERE shift_id = $1 AND supplier_id = $2 AND units = $3`,
+      [shift, supplier, ret.units],
+    );
+    if (found) continue;
+
+    const tranches = await crateBalance.tranchesFor(supplier, qr.manager);
+    const result = allocate(tranches, ret.units);
+    if (result.shortfall > 0) {
+      throw new Error(
+        `Seed crate return for ${ret.supplier} at ${ret.point} exceeds outstanding units`,
+      );
+    }
+
+    const savedReturn = await one<{ id: string }>(
+      qr,
+      `INSERT INTO crate_returns (shift_id, supplier_id, units, deposit_refund, accepted_by_user_id)
+       VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+      [shift, supplier, ret.units, result.deposit_refund, userByLogin.get(ret.operator)!],
+    );
+    for (const alloc of result.allocations) {
+      await qr.query(
+        `INSERT INTO crate_return_allocations (return_id, issuance_id, units, per_unit, amount)
+         VALUES ($1, $2, $3, $4, $5)`,
+        [savedReturn!.id, alloc.issuance_id, alloc.units, alloc.per_unit, alloc.amount],
+      );
+    }
   }
 
   // TRANSFERS BEFORE COUNTS, and both after the payouts above: a closing

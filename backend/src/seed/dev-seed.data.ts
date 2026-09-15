@@ -191,7 +191,7 @@ export const SEED_TARE_TYPES: readonly SeedTareType[] = [
   { name: 'Чешка', weight_kg: '1.20', deposit_price: '120.00', is_crate: true },
   { name: 'Лубянка', weight_kg: '0.30', deposit_price: '50.00', is_crate: false },
   { name: 'Мішок', weight_kg: '0.10', deposit_price: '10.00', is_crate: false },
-  { name: 'Ящик', weight_kg: '2.00', deposit_price: '20.00', is_crate: true },
+  { name: 'Ящик', weight_kg: '2.00', deposit_price: '20.00', is_crate: false },
 ];
 
 export interface SeedOperator {
@@ -738,6 +738,41 @@ export const SEED_PAYOUTS: readonly SeedPayout[] = [
     time: '12:00',
     amount: '2000.00',
   },
+];
+
+export interface SeedCrateIssuance {
+  point: string;
+  supplier: string;
+  /** 'yesterday' | 'today' — resolved to that point's seeded shift. */
+  day: 'yesterday' | 'today';
+  units: number;
+  mode: 'deposit' | 'receipt';
+  operator: string;
+}
+
+/**
+ * Василь Яремчук holds TWO deposit tranches at DIFFERENT prices, so §6.5's
+ * rule has a real case on a fresh database: the older one (issued yesterday,
+ * at a price the catalogue no longer shows) is partially returned below and
+ * the refund comes from IT, not from Чешка's current 120,00 ₴. Христина
+ * Каленчук holds a receipt issuance so ticket #58's list is non-empty.
+ */
+export const SEED_CRATE_ISSUANCES: readonly SeedCrateIssuance[] = [
+  { point: 'Шипинки', supplier: 'Василь Яремчук', day: 'yesterday', units: 20, mode: 'deposit', operator: 'oksana' },
+  { point: 'Шипинки', supplier: 'Василь Яремчук', day: 'today', units: 20, mode: 'deposit', operator: 'oksana' },
+  { point: 'Шипинки', supplier: 'Христина Каленчук', day: 'today', units: 200, mode: 'receipt', operator: 'oksana' },
+];
+
+export interface SeedCrateReturn {
+  point: string;
+  supplier: string;
+  day: 'today';
+  units: number;
+  operator: string;
+}
+
+export const SEED_CRATE_RETURNS: readonly SeedCrateReturn[] = [
+  { point: 'Шипинки', supplier: 'Василь Яремчук', day: 'today', units: 7, operator: 'oksana' },
 ];
 
 export interface SeedTransfer {
