@@ -1,6 +1,6 @@
 {
-  "createdAt": "2026-09-10",
-  "note": "Every lint exemption this repo carries on 2026-09-10: 10 eslint-disable/-line/-next-line/-enable directive comments across backend/src and frontend/src, plus 3 ignores-glob entries across the two flat eslint.config.mjs files (bundling 7 individual globs), and zero rules pinned to 'off' in either config. Each entry's reason was written after reading the code around its key, not invented. The ratchet is two-directional: a new exemption not listed here fails scripts/verify/ratchets/lint-exempt.mjs, and a listed entry whose exemption no longer exists in the tree fails it too — this file may only shrink or be re-dated by a reviewed change, never grow by drift.",
+  "createdAt": "2026-09-15",
+  "note": "Every lint exemption this repo carries on 2026-09-15: 10 eslint-disable/-line/-next-line/-enable directive comments across backend/src and frontend/src, plus 3 ignores-glob entries across the two flat eslint.config.mjs files (bundling 8 individual globs after dist-e2e joined frontend's), and zero rules pinned to 'off' in either config. Each entry's reason was written after reading the code around its key, not invented. The ratchet is two-directional: a new exemption not listed here fails scripts/verify/ratchets/lint-exempt.mjs, and a listed entry whose exemption no longer exists in the tree fails it too — this file may only shrink or be re-dated by a reviewed change, never grow by drift. Two entries were RE-KEYED on 2026-09-15 rather than added: both are the same exemptions this file already carried, whose line numbers moved under main's merge.",
   "entries": [
     {
       "key": "backend/src/media/image-processing.ts:9:eslint-disable-next-line:@typescript-eslint/no-require-imports",
@@ -58,14 +58,14 @@
       "reason": "Build output and third-party dependencies must never be linted — dist/ is compiled output regenerated on every build and node_modules/ is vendored code this repo does not own or want flagged."
     },
     {
-      "key": "backend/eslint.config.mjs:44:ignores:**/*.spec.ts, **/*.db-spec.ts",
-      "added": "2026-09-10",
-      "reason": "Scopes the money-arithmetic ban (no *, /, Number(), toFixed, parseInt, parseFloat) away from this slice's own test files, which legitimately use plain-number arithmetic to build fixtures and assert on money.ts's rounding rather than reimplementing it."
+      "key": "backend/eslint.config.mjs:70:ignores:**/*.spec.ts, **/*.db-spec.ts",
+      "added": "2026-09-15",
+      "reason": "Scopes the money-arithmetic ban (no *, /, Number(), toFixed, parseInt, parseFloat) away from the money modules' own test files, which legitimately use plain-number arithmetic to build fixtures and assert on money.ts's rounding rather than reimplementing it. Re-keyed 2026-09-15: the exemption itself is unchanged, its LINE moved 44 -> 70 when main's cash, point-cash, cash-counts and intake-top-ups slices grew the `files` list above it from four module globs to eight — exactly the line-number sensitivity this row's own blindSpot names."
     },
     {
-      "key": "frontend/eslint.config.mjs:31:ignores:dist, node_modules, coverage",
-      "added": "2026-09-10",
-      "reason": "Build output, third-party dependencies and the Vitest coverage report are generated or vendored, never source this repo authors, so there is nothing for the linter to usefully check there."
+      "key": "frontend/eslint.config.mjs:37:ignores:dist, dist-e2e, node_modules, coverage",
+      "added": "2026-09-15",
+      "reason": "Build output, third-party dependencies and the Vitest coverage report are generated or vendored, never source this repo authors, so there is nothing for the linter to usefully check there. `dist-e2e` was ADDED 2026-09-15 and is not cosmetic: it is the `smoke` row's own --outDir (e2e/constants.ts's E2E_OUT_DIR), gitignored but invisible to eslint's flat config, which does not read .gitignore — so the first `npm run verify:full` left a minified bundle on disk and the next `npm run verify` reported 2116 lint errors inside it, a false red measured on exactly that sequence."
     }
   ]
 }

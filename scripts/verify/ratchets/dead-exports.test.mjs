@@ -70,7 +70,14 @@ function addBaselineEntry(entry) {
 test('the real tree is green against the committed baseline', () => {
   const res = run()
   assert.equal(res.status, 0, res.out)
-  assert.match(res.out, /123 dead-code findings on record/)
+  // The COUNT is read from the baseline file rather than frozen as a literal here. It was
+  // frozen at 123 until 2026-09-15, when merging 156 commits of main moved it to 156 and
+  // turned this test red — a red that said nothing about the ratchet and everything about
+  // an ordinary, reviewed baseline edit. The INVARIANT worth asserting is that the number
+  // the check prints is the number of entries the baseline actually holds; a check that
+  // reported a count unrelated to its own baseline would still fail this line.
+  const committed = JSON.parse(readFileSync(BASELINE, 'utf8'))
+  assert.match(res.out, new RegExp(`\\b${committed.entries.length} dead-code findings on record\\b`))
   assert.match(res.out, /knip\.json carries only entry\/project/)
 })
 

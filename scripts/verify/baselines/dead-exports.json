@@ -1,6 +1,6 @@
 {
-  "createdAt": "2026-09-10",
-  "note": "Every knip finding this repo carried on 2026-09-10: 120 entries — 1 dependency, 5 devDependencies, 55 exports, 31 files, 25 types, 3 unlisted. Re-measured the same day when Task 17 (`smoke`) made `@playwright/test` a real root devDependency: the `unlisted|scripts/verify/registry.mjs|@playwright/test` entry is now STALE (knip no longer reports it) and was deleted per this ratchet's own bidirectional rule, leaving 119 entries — 1 dependency, 5 devDependencies, 55 exports, 31 files, 25 types, 2 unlisted. Re-measured again on the same day when Task 18 added .claude/hooks/edit-lint.mjs and .claude/hooks/batch-typecheck.mjs: knip's default root-workspace scan (the two custom `workspaces` entries in knip.json cover only backend/frontend, so an unconfigured root workspace still applies knip's own default project glob to everything else, .claude/hooks included) flags both as unused files, since neither is statically imported or named in any package.json script — only .claude/settings.json's hook command line invokes them, a config-driven path knip cannot follow, the same class of blind spot as the migration and db-spec entries already on this baseline. That is 121 entries — 1 dependency, 5 devDependencies, 55 exports, 33 files, 25 types, 2 unlisted. RE-MEASURED AGAIN the same day when Task 19 added .claude/hooks/stop-gate.mjs (the Stop-event blocking hook): the same knip default-root-workspace blind spot flags it as an unused file too, for the identical reason as edit-lint.mjs and batch-typecheck.mjs — only .claude/settings.json's hook command line invokes it. Its colocated test, stop-gate.test.mjs, is NOT a second finding: package.json's test:verify script gained a second glob for it ('.claude/hooks/**/*.test.mjs'), which knip DOES resolve, so that file is already reachable. That is 122 entries — 1 dependency, 5 devDependencies, 55 exports, 34 files, 25 types, 2 unlisted. Each reason was written after reading the finding's actual code (grep/read, cited inline), never inferred from the shape of the key. Several are the SAME underlying story recorded at more than one key: a barrel re-export unreachable because every real consumer imports the concrete module directly (shared/api/index.ts's whole surface, features/auth's `login`, settle-payout's and void-document's mutation hooks, shared/lib/theme's ThemePreference type), a vendored shadcn/radix primitive whose file is reachable but one specific sub-export is not (alert-dialog/dialog/table/tabs/badge/button/tooltip/toast), a *.db-spec.ts file (or its db-harness.ts helper) that backend/jest.db.config.js runs directly but knip's Jest plugin cannot see because its default spec/test glob requires a literal dot before 'spec'/'test' and never matches the hyphenated '-db-spec.ts' suffix, a TypeORM migration discovered by the runner via a glob rather than a static import, or an independently-duplicated type/helper (Paginated<T> redeclared in six model files, DocumentFilter in two, UserRole in two, documentParams in two) where only one copy's re-export path is the one real callers actually use. FOURTEEN entries are exactly the documented-deliberate decisions frontend/CLAUDE.md names, in three groups: (1) shared/lib/form-draft's own file finding (1 entry) — 'infrastructure, carried over from the boilerplate ... nothing consumes it yet ... don't delete it as dead code'; (2) the Kit-hygiene note's named starter-UI-primitives list, which accounts for 8 file findings (animated-number, checkbox, drawer, dropdown-menu, filter-section, progress, radio-group, select) plus the vaul dependency finding that traces to drawer.tsx's own import (9 entries) — 'candidates for deletion in a dedicated cleanup, not for silent reuse'; and (3) the Server-state section's note on entities/user's useUpdateMeMutation, 'kept as the pattern reference, not dead code to delete' (4 entries: the function and its UpdateMeInput type, each at both its origin file and its barrel re-export). The remaining 106 entries are genuinely unexplained-elsewhere findings, each read and reasoned individually — not invented deliberate decisions. None of this was deleted: backend/src and frontend/src are out of scope for this task. RE-MEASURED on 2026-09-11 (Task 21, the verify-layer/origin-main reconciliation): merging 40 commits of origin/main changed nothing knip reports on its own — config/env.schema.ts (PR #63's Joi schema, lifted out of app.module.ts) is imported and reachable, and its colocated env.schema.spec.ts is resolved as a test entry like every other *.spec.ts file — but this task's own new `jq` PRECONDITION (scripts/verify/registry.mjs, alongside the `test:ci-scripts` row) calls `execFile('jq', ...)` for a real system binary this repo declares nowhere in package.json, which knip's binaries plugin reports as a `binary` finding, the first this baseline has ever carried. That is 123 entries — 1 binary, 1 dependency, 5 devDependencies, 55 exports, 34 files, 25 types, 2 unlisted. This ratchet is two-directional: a new finding not listed here fails scripts/verify/ratchets/dead-exports.mjs, and a listed entry knip no longer reports also fails it — this file may only shrink or be re-dated by a reviewed change, never grow by drift.",
+  "createdAt": "2026-09-15",
+  "note": "Every knip finding this repo carried on 2026-09-10: 120 entries — 1 dependency, 5 devDependencies, 55 exports, 31 files, 25 types, 3 unlisted. Re-measured the same day when Task 17 (`smoke`) made `@playwright/test` a real root devDependency: the `unlisted|scripts/verify/registry.mjs|@playwright/test` entry is now STALE (knip no longer reports it) and was deleted per this ratchet's own bidirectional rule, leaving 119 entries — 1 dependency, 5 devDependencies, 55 exports, 31 files, 25 types, 2 unlisted. Re-measured again on the same day when Task 18 added .claude/hooks/edit-lint.mjs and .claude/hooks/batch-typecheck.mjs: knip's default root-workspace scan (the two custom `workspaces` entries in knip.json cover only backend/frontend, so an unconfigured root workspace still applies knip's own default project glob to everything else, .claude/hooks included) flags both as unused files, since neither is statically imported or named in any package.json script — only .claude/settings.json's hook command line invokes them, a config-driven path knip cannot follow, the same class of blind spot as the migration and db-spec entries already on this baseline. That is 121 entries — 1 dependency, 5 devDependencies, 55 exports, 33 files, 25 types, 2 unlisted. RE-MEASURED AGAIN the same day when Task 19 added .claude/hooks/stop-gate.mjs (the Stop-event blocking hook): the same knip default-root-workspace blind spot flags it as an unused file too, for the identical reason as edit-lint.mjs and batch-typecheck.mjs — only .claude/settings.json's hook command line invokes it. Its colocated test, stop-gate.test.mjs, is NOT a second finding: package.json's test:verify script gained a second glob for it ('.claude/hooks/**/*.test.mjs'), which knip DOES resolve, so that file is already reachable. That is 122 entries — 1 dependency, 5 devDependencies, 55 exports, 34 files, 25 types, 2 unlisted. Each reason was written after reading the finding's actual code (grep/read, cited inline), never inferred from the shape of the key. Several are the SAME underlying story recorded at more than one key: a barrel re-export unreachable because every real consumer imports the concrete module directly (shared/api/index.ts's whole surface, features/auth's `login`, settle-payout's and void-document's mutation hooks, shared/lib/theme's ThemePreference type), a vendored shadcn/radix primitive whose file is reachable but one specific sub-export is not (alert-dialog/dialog/table/tabs/badge/button/tooltip/toast), a *.db-spec.ts file (or its db-harness.ts helper) that backend/jest.db.config.js runs directly but knip's Jest plugin cannot see because its default spec/test glob requires a literal dot before 'spec'/'test' and never matches the hyphenated '-db-spec.ts' suffix, a TypeORM migration discovered by the runner via a glob rather than a static import, or an independently-duplicated type/helper (Paginated<T> redeclared in six model files, DocumentFilter in two, UserRole in two, documentParams in two) where only one copy's re-export path is the one real callers actually use. FOURTEEN entries are exactly the documented-deliberate decisions frontend/CLAUDE.md names, in three groups: (1) shared/lib/form-draft's own file finding (1 entry) — 'infrastructure, carried over from the boilerplate ... nothing consumes it yet ... don't delete it as dead code'; (2) the Kit-hygiene note's named starter-UI-primitives list, which accounts for 8 file findings (animated-number, checkbox, drawer, dropdown-menu, filter-section, progress, radio-group, select) plus the vaul dependency finding that traces to drawer.tsx's own import (9 entries) — 'candidates for deletion in a dedicated cleanup, not for silent reuse'; and (3) the Server-state section's note on entities/user's useUpdateMeMutation, 'kept as the pattern reference, not dead code to delete' (4 entries: the function and its UpdateMeInput type, each at both its origin file and its barrel re-export). The remaining 106 entries are genuinely unexplained-elsewhere findings, each read and reasoned individually — not invented deliberate decisions. None of this was deleted: backend/src and frontend/src are out of scope for this task. RE-MEASURED on 2026-09-11 (Task 21, the verify-layer/origin-main reconciliation): merging 40 commits of origin/main changed nothing knip reports on its own — config/env.schema.ts (PR #63's Joi schema, lifted out of app.module.ts) is imported and reachable, and its colocated env.schema.spec.ts is resolved as a test entry like every other *.spec.ts file — but this task's own new `jq` PRECONDITION (scripts/verify/registry.mjs, alongside the `test:ci-scripts` row) calls `execFile('jq', ...)` for a real system binary this repo declares nowhere in package.json, which knip's binaries plugin reports as a `binary` finding, the first this baseline has ever carried. That is 123 entries — 1 binary, 1 dependency, 5 devDependencies, 55 exports, 34 files, 25 types, 2 unlisted. RE-MEASURED AGAIN on 2026-09-15, after merging 156 commits of main (the transfers/point-cash slice, cash counts, intake top-ups #61): 33 new findings, every one read at its site before a reason was written, and NONE of them deleted — backend/src and frontend/src remain out of scope for this layer. They fall into four classes, three of which are blind spots this baseline already documents. (1) Eleven new *.db-spec.ts files: knip's Jest plugin needs a literal dot before 'spec', so a hyphenated '-db-spec.ts' never matches its glob, though backend/jest.db.config.js runs every one of them. (2) Four new TypeORM migrations, found by data-source.ts's startup glob rather than any static import. (3) Fifteen FSD public-API barrel re-exports (five mutation hooks and five Input types across the five new transfer/cash feature slices, plus shared/lib/date's formatTime, shared/lib/money's CRATES_INPUT, and entities/cash-count's two backend-mirroring unions and entities/point-cash's deliberate TransferStatus duplicate): in each case the SYMBOL is alive, called and unit-tested through its origin module, while the one barrel line re-exporting it has no importer — the page tests reach these through vi.mock() of the barrel PATH, a module-mock string knip does not resolve to a named import. (4) THE ONE CLASS THAT IS REAL DEBT, not a tooling artefact: point-cash.service.ts's trailing `export { movementsSql, anchorSql, asOfSql }` has had no importer since the module was created — git shows the line written as `export { cashSql, ASOF }` at creation and renamed twice by later refactors, never once consumed. It is recorded here so it is visible, not endorsed. That is 156 entries — 1 binary, 1 dependency, 5 devDependencies, 65 exports, 49 files, 33 types, 2 unlisted. This ratchet is two-directional: a new finding not listed here fails scripts/verify/ratchets/dead-exports.mjs, and a listed entry knip no longer reports also fails it — this file may only shrink or be re-dated by a reviewed change, never grow by drift.",
   "configFingerprint": "8d4f902fc61ac61d",
   "entries": [
     {
@@ -74,6 +74,30 @@
       "name": "toIntakeItemResponse",
       "added": "2026-09-10",
       "reason": "Grep-verified: called only within intake.mapper.ts itself, inside toIntakeDetailResponse's own `.map(toIntakeItemResponse)` on the line right below its definition. No other backend/src file imports it."
+    },
+    {
+      "key": "export|backend/src/point-cash/point-cash.service.ts|anchorSql",
+      "kind": "export",
+      "file": "backend/src/point-cash/point-cash.service.ts",
+      "name": "anchorSql",
+      "added": "2026-09-15",
+      "reason": "Named in point-cash.service.ts's own trailing `export { movementsSql, anchorSql, asOfSql }` statement, which has had no importer anywhere in backend/src since the module was written (grep-verified 2026-09-15: every other occurrence is a call inside this same file, or prose in a comment). The export line predates the current names — git shows it as `export { cashSql, ASOF }` at creation, renamed twice by later refactors, never consumed. Recorded as real, currently-callerless export debt, NOT endorsed: the SQL builders themselves are load-bearing inside the file."
+    },
+    {
+      "key": "export|backend/src/point-cash/point-cash.service.ts|asOfSql",
+      "kind": "export",
+      "file": "backend/src/point-cash/point-cash.service.ts",
+      "name": "asOfSql",
+      "added": "2026-09-15",
+      "reason": "Same trailing `export { movementsSql, anchorSql, asOfSql }` statement as the anchorSql entry — no importer anywhere in backend/src; asOfSql is called only from within point-cash.service.ts itself (lines 214 and 309). Real export debt recorded, not endorsed."
+    },
+    {
+      "key": "export|backend/src/point-cash/point-cash.service.ts|movementsSql",
+      "kind": "export",
+      "file": "backend/src/point-cash/point-cash.service.ts",
+      "name": "movementsSql",
+      "added": "2026-09-15",
+      "reason": "Same trailing `export { movementsSql, anchorSql, asOfSql }` statement as the anchorSql entry — no importer anywhere in backend/src; movementsSql is called only from within point-cash.service.ts itself, and every other occurrence of the name in the tree is a comment in payouts.service.ts or a db-spec explaining what the formula does. Real export debt recorded, not endorsed."
     },
     {
       "key": "export|backend/src/users/password-hashing.ts|SCRYPT_N",
@@ -164,6 +188,46 @@
       "reason": "The barrel's `export { login, logout }` line is only half-reachable: AppLayout.tsx imports `logout` through this barrel (`@/features/auth`), but LoginForm.tsx imports `login` directly from the concrete `../api/authApi` instead, bypassing the barrel for that one name — grep-verified against every login() call site."
     },
     {
+      "key": "export|frontend/src/features/receive-transfer/index.ts|useDisputeTransferMutation",
+      "kind": "export",
+      "file": "frontend/src/features/receive-transfer/index.ts",
+      "name": "useDisputeTransferMutation",
+      "added": "2026-09-15",
+      "reason": "useDisputeTransferMutation is re-exported by this FSD public-API barrel, and the barrel export specifically has no importer: every consumer reaches useDisputeTransferMutation through its origin module (./api/useReceiveTransfer) instead — the dialogs import it relatively, and the page tests reach it by vi.mock()ing the barrel PATH, which is a module-mock string knip does not resolve to a named import. The symbol itself is alive and covered by its own unit test; what is unused is this one re-export line. Same shape as the entities/user useUpdateMeMutation barrel entry already on this baseline."
+    },
+    {
+      "key": "export|frontend/src/features/resolve-transfer/index.ts|useResolveTransferMutation",
+      "kind": "export",
+      "file": "frontend/src/features/resolve-transfer/index.ts",
+      "name": "useResolveTransferMutation",
+      "added": "2026-09-15",
+      "reason": "useResolveTransferMutation is re-exported by this FSD public-API barrel, and the barrel export specifically has no importer: every consumer reaches useResolveTransferMutation through its origin module (./api/useResolveTransfer) instead — the dialogs import it relatively, and the page tests reach it by vi.mock()ing the barrel PATH, which is a module-mock string knip does not resolve to a named import. The symbol itself is alive and covered by its own unit test; what is unused is this one re-export line. Same shape as the entities/user useUpdateMeMutation barrel entry already on this baseline."
+    },
+    {
+      "key": "export|frontend/src/features/send-transfer/index.ts|useSendTransferMutation",
+      "kind": "export",
+      "file": "frontend/src/features/send-transfer/index.ts",
+      "name": "useSendTransferMutation",
+      "added": "2026-09-15",
+      "reason": "useSendTransferMutation is re-exported by this FSD public-API barrel, and the barrel export specifically has no importer: every consumer reaches useSendTransferMutation through its origin module (./api/useSendTransfer) instead — the dialogs import it relatively, and the page tests reach it by vi.mock()ing the barrel PATH, which is a module-mock string knip does not resolve to a named import. The symbol itself is alive and covered by its own unit test; what is unused is this one re-export line. Same shape as the entities/user useUpdateMeMutation barrel entry already on this baseline."
+    },
+    {
+      "key": "export|frontend/src/features/set-cash-explanation/index.ts|useSetCashExplanationMutation",
+      "kind": "export",
+      "file": "frontend/src/features/set-cash-explanation/index.ts",
+      "name": "useSetCashExplanationMutation",
+      "added": "2026-09-15",
+      "reason": "useSetCashExplanationMutation is re-exported by this FSD public-API barrel, and the barrel export specifically has no importer: every consumer reaches useSetCashExplanationMutation through its origin module (./api/useSetCashExplanation) instead — the dialogs import it relatively, and the page tests reach it by vi.mock()ing the barrel PATH, which is a module-mock string knip does not resolve to a named import. The symbol itself is alive and covered by its own unit test; what is unused is this one re-export line. Same shape as the entities/user useUpdateMeMutation barrel entry already on this baseline."
+    },
+    {
+      "key": "export|frontend/src/features/set-point-target/index.ts|useSetPointTargetMutation",
+      "kind": "export",
+      "file": "frontend/src/features/set-point-target/index.ts",
+      "name": "useSetPointTargetMutation",
+      "added": "2026-09-15",
+      "reason": "useSetPointTargetMutation is re-exported by this FSD public-API barrel, and the barrel export specifically has no importer: every consumer reaches useSetPointTargetMutation through its origin module (./api/useSetPointTarget) instead — the dialogs import it relatively, and the page tests reach it by vi.mock()ing the barrel PATH, which is a module-mock string knip does not resolve to a named import. The symbol itself is alive and covered by its own unit test; what is unused is this one re-export line. Same shape as the entities/user useUpdateMeMutation barrel entry already on this baseline."
+    },
+    {
       "key": "export|frontend/src/features/settle-payout/index.ts|useCreatePayoutMutation",
       "kind": "export",
       "file": "frontend/src/features/settle-payout/index.ts",
@@ -252,12 +316,28 @@
       "reason": "Grep-verified: `from '@/shared/api'` appears 64 times across frontend/src (httpClient x37, ApiError x25, attachAuthInterceptors x7, plus one each of queryClient+buildPersistOptions, persister, apiErrorCode, and the AuthHooks type) — the barrel is real and heavily used, just never for this name. STALE is used throughout the app (every list/detail query's staleTime), always imported from the concrete `@/shared/api/queryClient`, never from this barrel."
     },
     {
+      "key": "export|frontend/src/shared/lib/date/index.ts|formatTime",
+      "kind": "export",
+      "file": "frontend/src/shared/lib/date/index.ts",
+      "name": "formatTime",
+      "added": "2026-09-15",
+      "reason": "shared/lib/date's barrel re-exports formatTime, but its only consumers import it from the origin module './iso' directly (iso.test.ts does, and TransferHistory reads formatDateTime rather than formatTime). The function itself is alive and unit-tested in iso.test.ts; what has no importer is this one barrel re-export line."
+    },
+    {
       "key": "export|frontend/src/shared/lib/date/index.ts|isIsoDate",
       "kind": "export",
       "file": "frontend/src/shared/lib/date/index.ts",
       "name": "isIsoDate",
       "added": "2026-09-10",
       "reason": "Used internally within its own origin file (date/iso.ts's own isRealIsoDate calls it), and this barrel re-exports it alongside todayIso/addDaysIso/formatLongDate/etc. — but no other frontend/src file imports `isIsoDate` by name, grep-verified, unlike its actively-consumed barrel siblings."
+    },
+    {
+      "key": "export|frontend/src/shared/lib/money/index.ts|CRATES_INPUT",
+      "kind": "export",
+      "file": "frontend/src/shared/lib/money/index.ts",
+      "name": "CRATES_INPUT",
+      "added": "2026-09-15",
+      "reason": "shared/lib/money's barrel re-exports CRATES_INPUT, but its only consumer — rules.ts's cratesRules validator — imports it from './input' directly, as does input.test.ts. The regex itself is alive and covered; what has no importer is this one barrel re-export line."
     },
     {
       "key": "export|frontend/src/shared/lib/motion.ts|fadeSlideUp",
@@ -524,6 +604,22 @@
       "reason": "The Stop-event blocking hook (Task 19), invoked only via the command line .claude/settings.json declares for it (run through .claude/hooks/node.sh) — never statically imported and never named in any package.json script, so knip's import graph has no edge into it, the same class of config-driven, framework-invoked file as edit-lint.mjs and batch-typecheck.mjs above. Its colocated stop-gate.test.mjs is NOT a second such finding: that file is matched by test:verify's '.claude/hooks/**/*.test.mjs' glob in package.json, which knip does resolve, so it is already reachable and correctly absent from this baseline."
     },
     {
+      "key": "file|backend/src/cash-counts/cash-counts.db-spec.ts|backend/src/cash-counts/cash-counts.db-spec.ts",
+      "kind": "file",
+      "file": "backend/src/cash-counts/cash-counts.db-spec.ts",
+      "name": "backend/src/cash-counts/cash-counts.db-spec.ts",
+      "added": "2026-09-15",
+      "reason": "A *.db-spec.ts suite, run by backend/jest.db.config.js (rootDir src, testRegex '.*\\\\.db-spec\\\\.ts$', maxWorkers 1) — the `test:db` row's own command. knip's Jest plugin cannot see it: its default spec/test glob requires a literal dot before 'spec', which a hyphenated '-db-spec.ts' suffix never matches. The same single glob mismatch the blindSpot already names for this baseline's other db-spec file findings; not dead code."
+    },
+    {
+      "key": "file|backend/src/intake-top-ups/intake-top-ups-list.db-spec.ts|backend/src/intake-top-ups/intake-top-ups-list.db-spec.ts",
+      "kind": "file",
+      "file": "backend/src/intake-top-ups/intake-top-ups-list.db-spec.ts",
+      "name": "backend/src/intake-top-ups/intake-top-ups-list.db-spec.ts",
+      "added": "2026-09-15",
+      "reason": "A *.db-spec.ts suite, run by backend/jest.db.config.js (rootDir src, testRegex '.*\\\\.db-spec\\\\.ts$', maxWorkers 1) — the `test:db` row's own command. knip's Jest plugin cannot see it: its default spec/test glob requires a literal dot before 'spec', which a hyphenated '-db-spec.ts' suffix never matches. The same single glob mismatch the blindSpot already names for this baseline's other db-spec file findings; not dead code."
+    },
+    {
       "key": "file|backend/src/migrations/1788600000000-InitialSchema.ts|backend/src/migrations/1788600000000-InitialSchema.ts",
       "kind": "file",
       "file": "backend/src/migrations/1788600000000-InitialSchema.ts",
@@ -588,6 +684,38 @@
       "reason": "A TypeORM migration: discovered and run by the migration runner at startup via the migrations glob in data-source.ts (see root CLAUDE.md: \"migrations run automatically on startup\"), never statically imported by name from any entry point — the same class of framework-invoked file the blindSpot names."
     },
     {
+      "key": "file|backend/src/migrations/1788600000008-YagodaTransfers.ts|backend/src/migrations/1788600000008-YagodaTransfers.ts",
+      "kind": "file",
+      "file": "backend/src/migrations/1788600000008-YagodaTransfers.ts",
+      "name": "backend/src/migrations/1788600000008-YagodaTransfers.ts",
+      "added": "2026-09-15",
+      "reason": "A TypeORM migration: discovered and run by the migration runner at startup via the migrations glob in data-source.ts (migrations: [join(__dirname, 'migrations/[0-9]*{.ts,.js}')]), never statically imported by name from any entry point — the same class of framework-invoked file the blindSpot names."
+    },
+    {
+      "key": "file|backend/src/migrations/1788600000009-YagodaCashCounts.ts|backend/src/migrations/1788600000009-YagodaCashCounts.ts",
+      "kind": "file",
+      "file": "backend/src/migrations/1788600000009-YagodaCashCounts.ts",
+      "name": "backend/src/migrations/1788600000009-YagodaCashCounts.ts",
+      "added": "2026-09-15",
+      "reason": "A TypeORM migration: discovered and run by the migration runner at startup via the migrations glob in data-source.ts (migrations: [join(__dirname, 'migrations/[0-9]*{.ts,.js}')]), never statically imported by name from any entry point — the same class of framework-invoked file the blindSpot names."
+    },
+    {
+      "key": "file|backend/src/migrations/1788600000010-DropCashCountExpectedCheck.ts|backend/src/migrations/1788600000010-DropCashCountExpectedCheck.ts",
+      "kind": "file",
+      "file": "backend/src/migrations/1788600000010-DropCashCountExpectedCheck.ts",
+      "name": "backend/src/migrations/1788600000010-DropCashCountExpectedCheck.ts",
+      "added": "2026-09-15",
+      "reason": "A TypeORM migration: discovered and run by the migration runner at startup via the migrations glob in data-source.ts (migrations: [join(__dirname, 'migrations/[0-9]*{.ts,.js}')]), never statically imported by name from any entry point — the same class of framework-invoked file the blindSpot names."
+    },
+    {
+      "key": "file|backend/src/migrations/1788600000011-YagodaIntakeTopUps.ts|backend/src/migrations/1788600000011-YagodaIntakeTopUps.ts",
+      "kind": "file",
+      "file": "backend/src/migrations/1788600000011-YagodaIntakeTopUps.ts",
+      "name": "backend/src/migrations/1788600000011-YagodaIntakeTopUps.ts",
+      "added": "2026-09-15",
+      "reason": "A TypeORM migration: discovered and run by the migration runner at startup via the migrations glob in data-source.ts (migrations: [join(__dirname, 'migrations/[0-9]*{.ts,.js}')]), never statically imported by name from any entry point — the same class of framework-invoked file the blindSpot names."
+    },
+    {
       "key": "file|backend/src/migrations/bootstrap-owner-create.db-spec.ts|backend/src/migrations/bootstrap-owner-create.db-spec.ts",
       "kind": "file",
       "file": "backend/src/migrations/bootstrap-owner-create.db-spec.ts",
@@ -596,12 +724,28 @@
       "reason": "Executed by backend/jest.db.config.js's own testRegex (.*\\.db-spec\\.ts$ — the unit config's `.*\\.spec\\.ts$` in backend/package.json does not match it, by the config's own comment). knip's Jest plugin found jest.db.config.js but applies its generic spec/test glob to it, which requires a literal dot before 'spec'/'test' (matches foo.spec.ts) and so never matches the hyphenated '-db-spec.ts' suffix — a real test file `npm run test:db` runs directly, invisible to knip's entry inference for this exact non-standard suffix."
     },
     {
+      "key": "file|backend/src/migrations/cash-counts-schema.db-spec.ts|backend/src/migrations/cash-counts-schema.db-spec.ts",
+      "kind": "file",
+      "file": "backend/src/migrations/cash-counts-schema.db-spec.ts",
+      "name": "backend/src/migrations/cash-counts-schema.db-spec.ts",
+      "added": "2026-09-15",
+      "reason": "A *.db-spec.ts suite, run by backend/jest.db.config.js (rootDir src, testRegex '.*\\\\.db-spec\\\\.ts$', maxWorkers 1) — the `test:db` row's own command. knip's Jest plugin cannot see it: its default spec/test glob requires a literal dot before 'spec', which a hyphenated '-db-spec.ts' suffix never matches. The same single glob mismatch the blindSpot already names for this baseline's other db-spec file findings; not dead code."
+    },
+    {
       "key": "file|backend/src/migrations/catalog-schema.db-spec.ts|backend/src/migrations/catalog-schema.db-spec.ts",
       "kind": "file",
       "file": "backend/src/migrations/catalog-schema.db-spec.ts",
       "name": "backend/src/migrations/catalog-schema.db-spec.ts",
       "added": "2026-09-10",
       "reason": "Executed by backend/jest.db.config.js's own testRegex (.*\\.db-spec\\.ts$ — the unit config's `.*\\.spec\\.ts$` in backend/package.json does not match it, by the config's own comment). knip's Jest plugin found jest.db.config.js but applies its generic spec/test glob to it, which requires a literal dot before 'spec'/'test' (matches foo.spec.ts) and so never matches the hyphenated '-db-spec.ts' suffix — a real test file `npm run test:db` runs directly, invisible to knip's entry inference for this exact non-standard suffix."
+    },
+    {
+      "key": "file|backend/src/migrations/intake-top-ups-schema.db-spec.ts|backend/src/migrations/intake-top-ups-schema.db-spec.ts",
+      "kind": "file",
+      "file": "backend/src/migrations/intake-top-ups-schema.db-spec.ts",
+      "name": "backend/src/migrations/intake-top-ups-schema.db-spec.ts",
+      "added": "2026-09-15",
+      "reason": "A *.db-spec.ts suite, run by backend/jest.db.config.js (rootDir src, testRegex '.*\\\\.db-spec\\\\.ts$', maxWorkers 1) — the `test:db` row's own command. knip's Jest plugin cannot see it: its default spec/test glob requires a literal dot before 'spec', which a hyphenated '-db-spec.ts' suffix never matches. The same single glob mismatch the blindSpot already names for this baseline's other db-spec file findings; not dead code."
     },
     {
       "key": "file|backend/src/migrations/intakes-payouts-schema.db-spec.ts|backend/src/migrations/intakes-payouts-schema.db-spec.ts",
@@ -628,6 +772,22 @@
       "reason": "Executed by backend/jest.db.config.js's own testRegex (.*\\.db-spec\\.ts$ — the unit config's `.*\\.spec\\.ts$` in backend/package.json does not match it, by the config's own comment). knip's Jest plugin found jest.db.config.js but applies its generic spec/test glob to it, which requires a literal dot before 'spec'/'test' (matches foo.spec.ts) and so never matches the hyphenated '-db-spec.ts' suffix — a real test file `npm run test:db` runs directly, invisible to knip's entry inference for this exact non-standard suffix."
     },
     {
+      "key": "file|backend/src/migrations/transfers-schema.db-spec.ts|backend/src/migrations/transfers-schema.db-spec.ts",
+      "kind": "file",
+      "file": "backend/src/migrations/transfers-schema.db-spec.ts",
+      "name": "backend/src/migrations/transfers-schema.db-spec.ts",
+      "added": "2026-09-15",
+      "reason": "A *.db-spec.ts suite, run by backend/jest.db.config.js (rootDir src, testRegex '.*\\\\.db-spec\\\\.ts$', maxWorkers 1) — the `test:db` row's own command. knip's Jest plugin cannot see it: its default spec/test glob requires a literal dot before 'spec', which a hyphenated '-db-spec.ts' suffix never matches. The same single glob mismatch the blindSpot already names for this baseline's other db-spec file findings; not dead code."
+    },
+    {
+      "key": "file|backend/src/payouts/payout-ceiling-top-ups.db-spec.ts|backend/src/payouts/payout-ceiling-top-ups.db-spec.ts",
+      "kind": "file",
+      "file": "backend/src/payouts/payout-ceiling-top-ups.db-spec.ts",
+      "name": "backend/src/payouts/payout-ceiling-top-ups.db-spec.ts",
+      "added": "2026-09-15",
+      "reason": "A *.db-spec.ts suite, run by backend/jest.db.config.js (rootDir src, testRegex '.*\\\\.db-spec\\\\.ts$', maxWorkers 1) — the `test:db` row's own command. knip's Jest plugin cannot see it: its default spec/test glob requires a literal dot before 'spec', which a hyphenated '-db-spec.ts' suffix never matches. The same single glob mismatch the blindSpot already names for this baseline's other db-spec file findings; not dead code."
+    },
+    {
       "key": "file|backend/src/payouts/payout-race.db-spec.ts|backend/src/payouts/payout-race.db-spec.ts",
       "kind": "file",
       "file": "backend/src/payouts/payout-race.db-spec.ts",
@@ -636,12 +796,44 @@
       "reason": "Executed by backend/jest.db.config.js's own testRegex (.*\\.db-spec\\.ts$ — the unit config's `.*\\.spec\\.ts$` in backend/package.json does not match it, by the config's own comment). knip's Jest plugin found jest.db.config.js but applies its generic spec/test glob to it, which requires a literal dot before 'spec'/'test' (matches foo.spec.ts) and so never matches the hyphenated '-db-spec.ts' suffix — a real test file `npm run test:db` runs directly, invisible to knip's entry inference for this exact non-standard suffix."
     },
     {
+      "key": "file|backend/src/point-cash/point-cash.db-spec.ts|backend/src/point-cash/point-cash.db-spec.ts",
+      "kind": "file",
+      "file": "backend/src/point-cash/point-cash.db-spec.ts",
+      "name": "backend/src/point-cash/point-cash.db-spec.ts",
+      "added": "2026-09-15",
+      "reason": "A *.db-spec.ts suite, run by backend/jest.db.config.js (rootDir src, testRegex '.*\\\\.db-spec\\\\.ts$', maxWorkers 1) — the `test:db` row's own command. knip's Jest plugin cannot see it: its default spec/test glob requires a literal dot before 'spec', which a hyphenated '-db-spec.ts' suffix never matches. The same single glob mismatch the blindSpot already names for this baseline's other db-spec file findings; not dead code."
+    },
+    {
       "key": "file|backend/src/seed/dev-seed.db-spec.ts|backend/src/seed/dev-seed.db-spec.ts",
       "kind": "file",
       "file": "backend/src/seed/dev-seed.db-spec.ts",
       "name": "backend/src/seed/dev-seed.db-spec.ts",
       "added": "2026-09-10",
       "reason": "Executed by backend/jest.db.config.js's own testRegex (.*\\.db-spec\\.ts$ — the unit config's `.*\\.spec\\.ts$` in backend/package.json does not match it, by the config's own comment). knip's Jest plugin found jest.db.config.js but applies its generic spec/test glob to it, which requires a literal dot before 'spec'/'test' (matches foo.spec.ts) and so never matches the hyphenated '-db-spec.ts' suffix — a real test file `npm run test:db` runs directly, invisible to knip's entry inference for this exact non-standard suffix."
+    },
+    {
+      "key": "file|backend/src/shifts/shift-close-race.db-spec.ts|backend/src/shifts/shift-close-race.db-spec.ts",
+      "kind": "file",
+      "file": "backend/src/shifts/shift-close-race.db-spec.ts",
+      "name": "backend/src/shifts/shift-close-race.db-spec.ts",
+      "added": "2026-09-15",
+      "reason": "A *.db-spec.ts suite, run by backend/jest.db.config.js (rootDir src, testRegex '.*\\\\.db-spec\\\\.ts$', maxWorkers 1) — the `test:db` row's own command. knip's Jest plugin cannot see it: its default spec/test glob requires a literal dot before 'spec', which a hyphenated '-db-spec.ts' suffix never matches. The same single glob mismatch the blindSpot already names for this baseline's other db-spec file findings; not dead code."
+    },
+    {
+      "key": "file|backend/src/shifts/shift-close.db-spec.ts|backend/src/shifts/shift-close.db-spec.ts",
+      "kind": "file",
+      "file": "backend/src/shifts/shift-close.db-spec.ts",
+      "name": "backend/src/shifts/shift-close.db-spec.ts",
+      "added": "2026-09-15",
+      "reason": "A *.db-spec.ts suite, run by backend/jest.db.config.js (rootDir src, testRegex '.*\\\\.db-spec\\\\.ts$', maxWorkers 1) — the `test:db` row's own command. knip's Jest plugin cannot see it: its default spec/test glob requires a literal dot before 'spec', which a hyphenated '-db-spec.ts' suffix never matches. The same single glob mismatch the blindSpot already names for this baseline's other db-spec file findings; not dead code."
+    },
+    {
+      "key": "file|backend/src/supplier-balance/intake-top-ups-balance.db-spec.ts|backend/src/supplier-balance/intake-top-ups-balance.db-spec.ts",
+      "kind": "file",
+      "file": "backend/src/supplier-balance/intake-top-ups-balance.db-spec.ts",
+      "name": "backend/src/supplier-balance/intake-top-ups-balance.db-spec.ts",
+      "added": "2026-09-15",
+      "reason": "A *.db-spec.ts suite, run by backend/jest.db.config.js (rootDir src, testRegex '.*\\\\.db-spec\\\\.ts$', maxWorkers 1) — the `test:db` row's own command. knip's Jest plugin cannot see it: its default spec/test glob requires a literal dot before 'spec', which a hyphenated '-db-spec.ts' suffix never matches. The same single glob mismatch the blindSpot already names for this baseline's other db-spec file findings; not dead code."
     },
     {
       "key": "file|backend/src/supplier-balance/supplier-balance-list.db-spec.ts|backend/src/supplier-balance/supplier-balance-list.db-spec.ts",
@@ -690,6 +882,14 @@
       "name": "backend/src/testing/pipeline.db-spec.ts",
       "added": "2026-09-10",
       "reason": "Executed by backend/jest.db.config.js's own testRegex (.*\\.db-spec\\.ts$ — the unit config's `.*\\.spec\\.ts$` in backend/package.json does not match it, by the config's own comment). knip's Jest plugin found jest.db.config.js but applies its generic spec/test glob to it, which requires a literal dot before 'spec'/'test' (matches foo.spec.ts) and so never matches the hyphenated '-db-spec.ts' suffix — a real test file `npm run test:db` runs directly, invisible to knip's entry inference for this exact non-standard suffix."
+    },
+    {
+      "key": "file|backend/src/transfers/transfers-list.db-spec.ts|backend/src/transfers/transfers-list.db-spec.ts",
+      "kind": "file",
+      "file": "backend/src/transfers/transfers-list.db-spec.ts",
+      "name": "backend/src/transfers/transfers-list.db-spec.ts",
+      "added": "2026-09-15",
+      "reason": "A *.db-spec.ts suite, run by backend/jest.db.config.js (rootDir src, testRegex '.*\\\\.db-spec\\\\.ts$', maxWorkers 1) — the `test:db` row's own command. knip's Jest plugin cannot see it: its default spec/test glob requires a literal dot before 'spec', which a hyphenated '-db-spec.ts' suffix never matches. The same single glob mismatch the blindSpot already names for this baseline's other db-spec file findings; not dead code."
     },
     {
       "key": "file|frontend/src/shared/lib/form-draft/index.ts|frontend/src/shared/lib/form-draft/index.ts",
@@ -812,6 +1012,22 @@
       "reason": "Used only within dev-seed.data.ts itself, as the element type of a seed fixture's `lines` array; grep-verified zero imports from any other backend/src file — the dev-seed CLI consumes the composed fixture objects, never this element type by name."
     },
     {
+      "key": "type|frontend/src/entities/cash-count/model/cash-count.ts|CashBook",
+      "kind": "type",
+      "file": "frontend/src/entities/cash-count/model/cash-count.ts",
+      "name": "CashBook",
+      "added": "2026-09-15",
+      "reason": "A union mirroring the backend's CashBook enum (cash-counts/cash-book.enum.ts, §7.6 — one drawer, two books). It is USED one line below its declaration as the type of CashCount.book, so it is not dead; it is `export`ed rather than local, and nothing imports the name, which is what knip reports. Kept exported deliberately, as the entity's model types are: a consumer that needs to name the union should not have to re-spell the literals."
+    },
+    {
+      "key": "type|frontend/src/entities/cash-count/model/cash-count.ts|CashCountKind",
+      "kind": "type",
+      "file": "frontend/src/entities/cash-count/model/cash-count.ts",
+      "name": "CashCountKind",
+      "added": "2026-09-15",
+      "reason": "A union mirroring the backend's CashCountKind enum (cash-counts/cash-count-kind.enum.ts). Same shape as the CashBook entry above: used as the type of CashCount.kind in its own file, exported so a consumer can name it, with no importer today."
+    },
+    {
       "key": "type|frontend/src/entities/intake/index.ts|IntakeItem",
       "kind": "type",
       "file": "frontend/src/entities/intake/index.ts",
@@ -858,6 +1074,14 @@
       "name": "Paginated",
       "added": "2026-09-10",
       "reason": "This repo independently redeclares an identical `Paginated<T>` in six different model files (pages/users, pages/catalog, pages/points, entities/payout, entities/supplier, entities/intake) rather than sharing one generic. Every real external consumer of a paginated payout/intake list imports Paginated from `@/entities/intake` instead of from this barrel, grep-verified — this copy is used only within payout's own api/usePayouts.ts, not through this re-export."
+    },
+    {
+      "key": "type|frontend/src/entities/point-cash/model/point-cash.ts|TransferStatus",
+      "kind": "type",
+      "file": "frontend/src/entities/point-cash/model/point-cash.ts",
+      "name": "TransferStatus",
+      "added": "2026-09-15",
+      "reason": "A DELIBERATE DUPLICATE, documented in a comment above its own declaration: entities/point-cash may not cross-import entities/transfer (FSD forbids same-layer cross-imports), so it re-declares the three-value union rather than importing it, exactly as entities/payout re-declares Paginated. It is used in this same file as the type of PointCashRow.latest_transfer.status; what has no importer is the exported NAME, which the entity's barrel deliberately does not re-export either."
     },
     {
       "key": "type|frontend/src/entities/shift/index.ts|ShiftStatus",
@@ -914,6 +1138,46 @@
       "name": "TokenResponse",
       "added": "2026-09-10",
       "reason": "Same as Credentials on this barrel: grep-verified no call site imports TokenResponse by name; login()'s return type is consumed through inference (useSession(token) etc.), never an explicit annotation."
+    },
+    {
+      "key": "type|frontend/src/features/receive-transfer/index.ts|DisputeTransferInput",
+      "kind": "type",
+      "file": "frontend/src/features/receive-transfer/index.ts",
+      "name": "DisputeTransferInput",
+      "added": "2026-09-15",
+      "reason": "DisputeTransferInput is re-exported by this FSD public-API barrel, and the barrel export specifically has no importer: every consumer reaches DisputeTransferInput through its origin module (./api/useReceiveTransfer) instead — the dialogs import it relatively, and the page tests reach it by vi.mock()ing the barrel PATH, which is a module-mock string knip does not resolve to a named import. The symbol itself is alive and covered by its own unit test; what is unused is this one re-export line. Same shape as the entities/user useUpdateMeMutation barrel entry already on this baseline."
+    },
+    {
+      "key": "type|frontend/src/features/resolve-transfer/index.ts|ResolveTransferInput",
+      "kind": "type",
+      "file": "frontend/src/features/resolve-transfer/index.ts",
+      "name": "ResolveTransferInput",
+      "added": "2026-09-15",
+      "reason": "ResolveTransferInput is re-exported by this FSD public-API barrel, and the barrel export specifically has no importer: every consumer reaches ResolveTransferInput through its origin module (./api/useResolveTransfer) instead — the dialogs import it relatively, and the page tests reach it by vi.mock()ing the barrel PATH, which is a module-mock string knip does not resolve to a named import. The symbol itself is alive and covered by its own unit test; what is unused is this one re-export line. Same shape as the entities/user useUpdateMeMutation barrel entry already on this baseline."
+    },
+    {
+      "key": "type|frontend/src/features/send-transfer/index.ts|SendTransferInput",
+      "kind": "type",
+      "file": "frontend/src/features/send-transfer/index.ts",
+      "name": "SendTransferInput",
+      "added": "2026-09-15",
+      "reason": "SendTransferInput is re-exported by this FSD public-API barrel, and the barrel export specifically has no importer: every consumer reaches SendTransferInput through its origin module (./api/useSendTransfer) instead — the dialogs import it relatively, and the page tests reach it by vi.mock()ing the barrel PATH, which is a module-mock string knip does not resolve to a named import. The symbol itself is alive and covered by its own unit test; what is unused is this one re-export line. Same shape as the entities/user useUpdateMeMutation barrel entry already on this baseline."
+    },
+    {
+      "key": "type|frontend/src/features/set-cash-explanation/index.ts|SetCashExplanationInput",
+      "kind": "type",
+      "file": "frontend/src/features/set-cash-explanation/index.ts",
+      "name": "SetCashExplanationInput",
+      "added": "2026-09-15",
+      "reason": "SetCashExplanationInput is re-exported by this FSD public-API barrel, and the barrel export specifically has no importer: every consumer reaches SetCashExplanationInput through its origin module (./api/useSetCashExplanation) instead — the dialogs import it relatively, and the page tests reach it by vi.mock()ing the barrel PATH, which is a module-mock string knip does not resolve to a named import. The symbol itself is alive and covered by its own unit test; what is unused is this one re-export line. Same shape as the entities/user useUpdateMeMutation barrel entry already on this baseline."
+    },
+    {
+      "key": "type|frontend/src/features/set-point-target/index.ts|SetPointTargetInput",
+      "kind": "type",
+      "file": "frontend/src/features/set-point-target/index.ts",
+      "name": "SetPointTargetInput",
+      "added": "2026-09-15",
+      "reason": "SetPointTargetInput is re-exported by this FSD public-API barrel, and the barrel export specifically has no importer: every consumer reaches SetPointTargetInput through its origin module (./api/useSetPointTarget) instead — the dialogs import it relatively, and the page tests reach it by vi.mock()ing the barrel PATH, which is a module-mock string knip does not resolve to a named import. The symbol itself is alive and covered by its own unit test; what is unused is this one re-export line. Same shape as the entities/user useUpdateMeMutation barrel entry already on this baseline."
     },
     {
       "key": "type|frontend/src/features/settle-payout/index.ts|CreatePayoutInput",

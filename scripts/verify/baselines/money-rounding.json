@@ -1,24 +1,24 @@
 {
-  "createdAt": "2026-09-10",
-  "note": "Every backend/src/**/*.ts arithmetic site this ratchet finds outside the four eslint-scoped modules (src/intakes/, src/payouts/, src/shifts/, src/supplier-balance/) and outside *.spec.ts/*.db-spec.ts, as of 2026-09-10: 29 keys, 32 occurrences. Read individually before writing a reason, not inferred from the shape of the code. Four of the 29 keys are backend/src/common/money.ts's OWN internals (the *, /, and mul()'s two / occurrences on one line) — the money engine works in bigint, not JS number, so it carries none of the float-precision risk this ratchet exists to catch, but the AST heuristic only recognises number-typed or numeric-literal operands, not bigint-safety, so those sites are listed honestly here rather than exempted by widening the rule's path exclusions. Two keys (backend/src/seed/dev-seed.ts:52 and :59) are a genuine concern flagged in this task's report, not a false positive: the dev seed script reimplements money.ts's add() independently, through Number() and plain-number division, to compute real values written into grade_prices.base_price for the seeded demo dataset — a real duplicate of the one authorised rounding seam, left as-is because backend/src is out of scope for this task. Two keys (password-hashing.ts:28's two occurrences) are literal-and-number-typed arithmetic that this rule's single-level operand check cannot prove clear because each is the OUTER multiplication of a left-associative a*b*c chain, whose left operand is itself a BinaryExpression rather than a bare literal or identifier. Every remaining key is one of two shapes: the repeated (page - 1) * limit pagination-offset arithmetic this template's list endpoints all share (10 keys, including pagination-query.dto.ts's own skipOf() helper), or an env-var/config integer parsed with Number()/parseInt() (ports, throttle window/limit) or Math.min() retry-backoff arithmetic that is never a monetary or weight value. None were left unclassified — every entry's reason states what the arithmetic actually is, read at its site. This ratchet is two-directional: a new site not listed here fails scripts/verify/ratchets/money-rounding.mjs, and a listed entry whose site (or exact occurrence count) no longer matches the tree fails it too — this file may only shrink or be re-dated by a reviewed change, never grow by drift.",
+  "createdAt": "2026-09-15",
+  "note": "Every backend/src/**/*.ts arithmetic site this ratchet finds outside *.spec.ts/*.db-spec.ts, as of 2026-09-15: 29 keys, 32 occurrences. THE SCOPE WIDENED ON 2026-09-15 and the count did not move: until then this ratchet skipped the four module trees backend/eslint.config.mjs policed when it was written (src/intakes/, src/payouts/, src/shifts/, src/supplier-balance/). eslint's own `files` list had since grown to eight trees while this ratchet's hard-coded copy of it had not, so the two scopes silently disagreed — and a tree DELETED from eslint's list would have been policed by neither. Scanning all of backend/src was measured before the carve-out was removed: exactly zero additional findings, because eslint's ban is what keeps those trees clean. Read individually before writing a reason, not inferred from the shape of the code. Four of the 29 keys are backend/src/common/money.ts's OWN internals (the *, /, and mul()'s two / occurrences on one line) — the money engine works in bigint, not JS number, so it carries none of the float-precision risk this ratchet exists to catch, but the AST heuristic only recognises number-typed or numeric-literal operands, not bigint-safety, so those sites are listed honestly here rather than exempted by widening the rule's path exclusions. Three keys (backend/src/seed/dev-seed.ts:59 and :66) are a genuine concern, not a false positive: the dev seed script reimplements money.ts's add() independently, through Number() and plain-number division, to compute real values written into grade_prices.base_price for the seeded demo dataset — a real duplicate of the one authorised rounding seam, left as-is because backend/src is out of scope for the verify layer. Two keys (password-hashing.ts:28's two occurrences) are literal-and-number-typed arithmetic that this rule's single-level operand check cannot prove clear because each is the OUTER multiplication of a left-associative a*b*c chain, whose left operand is itself a BinaryExpression rather than a bare literal or identifier. Every remaining key is one of two shapes: the repeated (page - 1) * limit pagination-offset arithmetic this template's list endpoints all share (10 keys, including pagination-query.dto.ts's own skipOf() helper), or an env-var/config integer parsed with Number()/parseInt() (ports, throttle window/limit) or Math.min() retry-backoff arithmetic that is never a monetary or weight value. None were left unclassified — every entry's reason states what the arithmetic actually is, read at its site. Five entries were RE-KEYED on 2026-09-15 rather than added: all five are sites this file already carried, whose line numbers moved under main's merge. This ratchet is two-directional: a new site not listed here fails scripts/verify/ratchets/money-rounding.mjs, and a listed entry whose site (or exact occurrence count) no longer matches the tree fails it too — this file may only shrink or be re-dated by a reviewed change, never grow by drift.",
   "entries": [
     {
-      "key": "backend/src/app.module.ts:66:Number",
+      "key": "backend/src/app.module.ts:70:Number",
       "file": "backend/src/app.module.ts",
-      "line": 66,
+      "line": 70,
       "kind": "Number",
       "occurrences": 1,
-      "added": "2026-09-11",
-      "reason": "Same site as the 2026-09-10 :97 entry, re-keyed after Task 21's merge of origin/main moved this line: origin/main's PR #63 line lifted the inline Joi validationSchema (31 lines) out of app.module.ts into config/env.schema.ts, shifting everything below it up by 31 lines with no change to this call itself. ttl: Number(process.env.THROTTLE_TTL_MS ?? 60_000) inside ThrottlerModule.forRootAsync — converts the rate-limiter window (milliseconds) from its env-var string form; the limiter's throttlers[].ttl option requires a plain number, and nothing here is a monetary or weight value."
+      "added": "2026-09-15",
+      "reason": "ttl: Number(process.env.THROTTLE_TTL_MS ?? 60_000) inside ThrottlerModule.forRootAsync — converts the rate-limiter window (milliseconds) from its env-var string form; throttlers[].ttl requires a plain number, and nothing here is a monetary or weight value. RE-KEYED 2026-09-15 (:66 -> :70), third time this same call has moved without changing: main's merge added four lines of comment above the ThrottlerModule block. The site itself is byte-identical; only its line number moved."
     },
     {
-      "key": "backend/src/app.module.ts:67:Number",
+      "key": "backend/src/app.module.ts:71:Number",
       "file": "backend/src/app.module.ts",
-      "line": 67,
+      "line": 71,
       "kind": "Number",
       "occurrences": 1,
-      "added": "2026-09-11",
-      "reason": "Same site as the 2026-09-10 :98 entry, re-keyed after Task 21's merge of origin/main moved this line (see the :66 entry above for the exact cause). limit: Number(process.env.THROTTLE_LIMIT ?? 100) in the same ThrottlerModule config — the request-count ceiling per window, not money; throttlers[].limit likewise requires a number."
+      "added": "2026-09-15",
+      "reason": "limit: Number(process.env.THROTTLE_LIMIT ?? 100) in the same ThrottlerModule config — the request-count ceiling per window, not money; throttlers[].limit likewise requires a number. RE-KEYED 2026-09-15 (:67 -> :71) for the same reason as the :70 entry above, and by the same four lines."
     },
     {
       "key": "backend/src/audit/audit.service.ts:58:*",
@@ -120,15 +120,6 @@
       "reason": "parseInt(process.env.REDIS_PORT ?? '6379', 10) — the Redis TCP port, an integer read from an env var; not money."
     },
     {
-      "key": "backend/src/grade-prices/grade-prices.service.ts:121:*",
-      "file": "backend/src/grade-prices/grade-prices.service.ts",
-      "line": 121,
-      "kind": "*",
-      "occurrences": 1,
-      "added": "2026-09-10",
-      "reason": "skip: (query.page - 1) * query.limit inside GradePricesService.list (the raw price-journal listing) — same pagination-offset arithmetic, row counts not money."
-    },
-    {
       "key": "backend/src/grade-prices/grade-prices.service.ts:90:*",
       "file": "backend/src/grade-prices/grade-prices.service.ts",
       "line": 90,
@@ -136,6 +127,15 @@
       "occurrences": 1,
       "added": "2026-09-10",
       "reason": "[...params, query.limit, (query.page - 1) * query.limit] inside the current-prices query — the same pagination-offset arithmetic as every other list endpoint, feeding a raw SQL LIMIT/OFFSET; page/limit are row counts, not money (the price VALUES selected by this same query are plain strings, never touched here)."
+    },
+    {
+      "key": "backend/src/grade-prices/grade-prices.service.ts:121:*",
+      "file": "backend/src/grade-prices/grade-prices.service.ts",
+      "line": 121,
+      "kind": "*",
+      "occurrences": 1,
+      "added": "2026-09-10",
+      "reason": "skip: (query.page - 1) * query.limit inside GradePricesService.list (the raw price-journal listing) — same pagination-offset arithmetic, row counts not money."
     },
     {
       "key": "backend/src/media/media.constants.ts:6:*",
@@ -174,31 +174,31 @@
       "reason": "retryStrategy: (times) => Math.min(times * 200, 2000) — ioredis reconnect backoff in milliseconds, capped at 2000ms; times is a reconnect-attempt counter, not money."
     },
     {
-      "key": "backend/src/seed/dev-seed.ts:52:/",
+      "key": "backend/src/seed/dev-seed.ts:59:/",
       "file": "backend/src/seed/dev-seed.ts",
-      "line": 52,
+      "line": 59,
       "kind": "/",
       "occurrences": 1,
-      "added": "2026-09-10",
-      "reason": "addMoney()'s own body: Math.floor(abs / 100), recovering the whole-currency part after summing two decimal strings as integer cents. This is a SECOND, independent reimplementation of money.ts's add(), inside the dev-only seed script, going through Number()/plain-number division instead of the bigint seam. Left as-is on purpose — backend/src is out of scope for this task — and flagged again in the task report as a real gap worth an owner's attention, not waved through as provably safe."
+      "added": "2026-09-15",
+      "reason": "addMoney()'s own body: Math.floor(abs / 100), recovering the whole-currency part after summing two decimal strings as integer cents. This is a SECOND, independent reimplementation of money.ts's add(), inside the dev-only seed script, going through Number()/plain-number division instead of the bigint seam. Left as-is on purpose — backend/src is out of scope for the verify layer — and recorded as a real gap worth an owner's attention, not waved through as provably safe. RE-KEYED 2026-09-15 (:52 -> :59): main's seed grew topUps/cashCounts/transfers counters above this function, shifting it down seven lines without touching a character of it."
     },
     {
-      "key": "backend/src/seed/dev-seed.ts:59:*",
+      "key": "backend/src/seed/dev-seed.ts:66:*",
       "file": "backend/src/seed/dev-seed.ts",
-      "line": 59,
+      "line": 66,
       "kind": "*",
       "occurrences": 1,
-      "added": "2026-09-10",
-      "reason": "toCents()'s own body: Number(whole) * 100 — scales the parsed integer part of a decimal string up to cents using a JS number, not a bigint. Same reimplementation-of-money.ts concern as the / at line 52: addMoney() feeds real values into grade_prices.base_price for the seeded price journal, computed outside the one authorised seam."
+      "added": "2026-09-15",
+      "reason": "toCents()'s own body: Number(whole) * 100 — scales the parsed integer part of a decimal string up to cents using a JS number, not a bigint. Same reimplementation-of-money.ts concern as the / seven lines above: addMoney() feeds real values into grade_prices.base_price for the seeded price journal, computed outside the one authorised seam. RE-KEYED 2026-09-15 (:59 -> :66), same seven-line shift, same unchanged body."
     },
     {
-      "key": "backend/src/seed/dev-seed.ts:59:Number",
+      "key": "backend/src/seed/dev-seed.ts:66:Number",
       "file": "backend/src/seed/dev-seed.ts",
-      "line": 59,
+      "line": 66,
       "kind": "Number",
       "occurrences": 2,
-      "added": "2026-09-10",
-      "reason": "toCents()'s own body: Number(whole) and Number(frac.padEnd(2, '0')) — converts a decimal string's parsed integer and fractional parts to JS numbers before summing as cents. This is exactly the class of conversion backend/src/common/money.ts's own header calls out as unsafe for numeric(12,2) values. It is confined to the dev seed script (never a runtime dependency of the app — see the seam check) and today's seed prices are small enough that no precision loss surfaces in practice, but it is a real duplicate of money.ts's add(), not a provably-safe pattern, so it is listed rather than exempted."
+      "added": "2026-09-15",
+      "reason": "toCents()'s own body: Number(whole) and Number(frac.padEnd(2, '0')) — converts a decimal string's parsed integer and fractional parts to JS numbers before summing as cents. This is exactly the class of conversion backend/src/common/money.ts's own header calls out as unsafe for numeric(12,2) values. It is confined to the dev seed script (never a runtime dependency of the app — see the seam check) and today's seed prices are small enough that no precision loss surfaces in practice, but it is a real duplicate of money.ts's add(), not a provably-safe pattern, so it is listed rather than exempted. RE-KEYED 2026-09-15 (:59 -> :66), same seven-line shift, same unchanged body."
     },
     {
       "key": "backend/src/suppliers/suppliers.service.ts:107:*",

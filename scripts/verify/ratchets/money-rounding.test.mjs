@@ -126,7 +126,13 @@ test('Number(row.amount) is a NEW FINDING (brief scenario 4)', () => {
   }
 })
 
-test('the identical unsafe pattern inside src/intakes/ stays green — that is eslint\'s territory (brief scenario 5)', () => {
+// REPLACES the original brief scenario 5, which asserted the OPPOSITE: that this fixture
+// stayed green because src/intakes/ was "eslint's territory". That carve-out was removed on
+// 2026-09-15 — eslint's own `files` list had grown from four module trees to eight while
+// this ratchet's copy of it had not, and a module dropped from that list would then have
+// been policed by neither. Scanning all of backend/src was measured first and adds zero
+// findings to the baseline, so the overlap is free and the gap is closed.
+test('the identical unsafe pattern inside src/intakes/ is now a finding too — the eslint carve-out is gone (was brief scenario 5)', () => {
   const rel = 'intakes/zz-money-fixture-eslint-territory.ts'
   const cleanup = writeFixture(
     rel,
@@ -134,7 +140,9 @@ test('the identical unsafe pattern inside src/intakes/ stays green — that is e
   )
   try {
     const res = run()
-    assert.equal(res.status, 0, res.out)
+    assert.equal(res.status, 1, res.out)
+    assert.match(res.out, /NEW FINDING/)
+    assert.match(res.out, /intakes\/zz-money-fixture-eslint-territory\.ts:2 \(\*\)/)
   } finally {
     cleanup()
   }

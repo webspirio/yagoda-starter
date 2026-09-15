@@ -1,19 +1,27 @@
 #!/usr/bin/env node
 /**
- * Money must not leave `backend/src/common/money.ts` unrounded — beyond the four modules
- * `backend/eslint.config.mjs` already polices.
+ * Money must not leave `backend/src/common/money.ts` unrounded, anywhere in `backend/src`.
  *
- * That config bans `*`, `/`, `Number()`, `toFixed`, `parseInt` and `parseFloat` — but ONLY
- * under `src/intakes/`, `src/payouts/`, `src/shifts/` and `src/supplier-balance/`, and it
- * excludes `*.spec.ts` / `*.db-spec.ts` there. That scoping is deliberate and correct (the
- * config says why: a repo-wide ban would train people to write disable comments). This
- * ratchet is the same discipline applied to EVERYWHERE ELSE in `backend/src`: `price * kg`
- * written in some other service compiles, reads fine at a glance, and produces a wrong
- * `amount` that §2.7 then freezes forever on a supplier's printed receipt.
+ * `backend/eslint.config.mjs` bans `*`, `/`, `Number()`, `toFixed`, `parseInt` and
+ * `parseFloat` — but only under the module trees its own `files` list names (eight of them
+ * on 2026-09-15: intakes, payouts, shifts, supplier-balance, transfers, point-cash,
+ * cash-counts, intake-top-ups), and it excludes `*.spec.ts` / `*.db-spec.ts` there. That
+ * scoping is deliberate and correct (the config says why: a repo-wide ban would train
+ * people to write disable comments). This ratchet is the same discipline applied to ALL of
+ * `backend/src`: `price * kg` written in some other service compiles, reads fine at a
+ * glance, and produces a wrong `amount` that §2.7 then freezes forever on a supplier's
+ * printed receipt.
+ *
+ * IT NO LONGER CARVES THOSE MODULES OUT. Until 2026-09-15 it skipped the four trees eslint
+ * covered when it was written, to avoid reporting what eslint already blocked. Two things
+ * made that wrong: eslint's list had since grown to eight and this constant had not, so the
+ * two scopes silently disagreed; and the carve-out meant a module DELETED from eslint's
+ * `files` list would have been policed by neither. Measured before removing it — scanning
+ * the whole of `backend/src` adds exactly ZERO findings, because eslint's ban is what keeps
+ * those trees clean — so the overlap costs nothing and the blind spot is gone.
  *
  * THE RULE, per spec §4.2 — the decidable form, not a broader one. For each file in
- * `backend/src/**\/*.ts` outside the four eslint-scoped trees and outside `*.spec.ts` /
- * `*.db-spec.ts`, collect:
+ * `backend/src/**\/*.ts` outside `*.spec.ts` / `*.db-spec.ts`, collect:
  *
  *   - every `BinaryExpression` with operator `*` or `/`
  *   - every `CallExpression` calling `Number`, `parseInt` or `parseFloat`
@@ -64,11 +72,6 @@ const ROOT = path.resolve(import.meta.dirname, '..', '..', '..')
 const BASELINE_REL = 'scripts/verify/baselines/money-rounding.json'
 const BASELINE_PATH = path.join(ROOT, BASELINE_REL)
 
-/** The four module trees `backend/eslint.config.mjs` already polices — this ratchet's
- *  territory is everywhere else in backend/src. Trailing-slash-anchored so
- *  `src/intakes-summary/` (a hypothetical sibling) is never mistaken for `src/intakes/`. */
-const ESLINT_SCOPED_DIRS = ['intakes/', 'payouts/', 'shifts/', 'supplier-balance/']
-
 const MIN_REASON_LENGTH = 30
 
 const TARGET_GLOBALS = new Set(['Number', 'parseInt', 'parseFloat'])
@@ -117,10 +120,6 @@ function listCandidateFiles() {
     .filter(Boolean)
     .filter((rel) => rel.endsWith('.ts'))
     .filter((rel) => !/\.(spec|db-spec)\.ts$/.test(rel))
-    .filter((rel) => {
-      const underSrc = rel.slice('backend/src/'.length)
-      return !ESLINT_SCOPED_DIRS.some((dir) => underSrc.startsWith(dir))
-    })
     .sort()
 }
 
