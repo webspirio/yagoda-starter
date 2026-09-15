@@ -13,8 +13,13 @@ import { CrateIssuanceMode } from './crate-issuance-mode.enum';
 import { CreateCrateIssuanceDto } from './dto/create-crate-issuance.dto';
 import { CreateCrateReturnDto } from './dto/create-crate-return.dto';
 import { CrateIssuanceResponse, toCrateIssuanceResponse } from './crate-issuance.mapper';
-import { CrateReturnResponse, toCrateReturnResponse } from './crate-return.mapper';
-import { allocate, CrateAllocationResult } from './crate-allocation';
+import {
+  CrateReturnResponse,
+  CrateReturnPreviewResponse,
+  toCrateReturnResponse,
+  joinIssuanceInfo,
+} from './crate-return.mapper';
+import { allocate } from './crate-allocation';
 import { CrateBalanceService } from './crate-balance.service';
 import { nextIssuanceCode } from './crate-code';
 import { ShiftsService } from '../shifts/shifts.service';
@@ -150,7 +155,13 @@ export class CratesService {
    * it: the tranches are a read-then-write over a derived sum, and no CHECK can
    * express «not more than is outstanding». Without the lock two returns in
    * flight both read `remaining = 20`, both allocate it, and the supplier is
-   * refunded twice for one set of crates.
+   * refunded twice for one set of crates. The lock does NOT protect
+   * `pointDepositBook` below — that reads a sum across the WHOLE POINT while
+   * only one supplier row is held, so two returns for different suppliers at
+   * the same point can still race past its check. It stays a same-transaction
+   * read regardless, because it is a guard against a state FIFO already
+   * guarantees cannot occur (§6.7's comment on that call), not a second
+   * invariant this method enforces.
    *
    * OVER-RETURN IS A 400, NEVER A SILENT CLAMP. Правка 15's case — 25 arrive
    * against 20 issued — is resolved at the counter: 20 enter the system and the
@@ -266,11 +277,17 @@ export class CratesService {
    * NO LOCK AND NO SHIFT CHECK: nothing is written, and a preview that refused
    * outside a shift would be useless exactly when the operator is deciding
    * whether to open one.
+   *
+   * SAME ENRICHED SHAPE AS THE WRITTEN DOCUMENT. The preview IS the screen the
+   * operator reads before committing, so «25 за розпискою, без грошей» matters
+   * more here than on the receipt afterwards — `joinIssuanceInfo` is the same
+   * function `toCrateReturnResponse` uses, so the two never disagree about
+   * what an allocation row looks like.
    */
   async previewReturn(
     actor: AuthenticatedUser,
     dto: CreateCrateReturnDto,
-  ): Promise<CrateAllocationResult> {
+  ): Promise<CrateReturnPreviewResponse> {
     const pointId = resolveWritePoint(actor, dto.collection_point_id);
     const supplier = await this.suppliers.findOne(actor, dto.supplier_id);
     if (supplier.collection_point_id !== pointId) {
@@ -278,6 +295,12 @@ export class CratesService {
     }
 
     const tranches = await this.balance.tranchesFor(dto.supplier_id);
-    return allocate(tranches, dto.units);
+    const result = allocate(tranches, dto.units);
+
+    return {
+      allocations: joinIssuanceInfo(result.allocations, tranches),
+      deposit_refund: result.deposit_refund,
+      shortfall: result.shortfall,
+    };
   }
 }

@@ -29,6 +29,14 @@ export interface CrateReturnAllocationView extends CrateAllocationRow {
   code: string;
 }
 
+/** `POST /crate-returns/preview`'s shape — the same enriched allocation rows
+ *  as the written document, plus `shortfall` (see `crate-allocation.ts`). */
+export interface CrateReturnPreviewResponse {
+  allocations: CrateReturnAllocationView[];
+  deposit_refund: string;
+  shortfall: number;
+}
+
 export interface CrateReturnResponse {
   id: string;
   shift_id: string;
@@ -46,14 +54,38 @@ export interface CrateReturnResponse {
 }
 
 /**
+ * The join itself, factored out so BOTH the written document
+ * (`toCrateReturnResponse`) and the preview (`CratesService.previewReturn`)
+ * return the same enriched shape — the reception screen reads «25 за
+ * розпискою, без грошей» off the preview, before anything is committed, so
+ * the preview must not disagree with what the create path later shows.
+ */
+export function joinIssuanceInfo(
+  allocations: CrateAllocationRow[],
+  issuanceInfo: CrateReturnIssuanceInfo[],
+): CrateReturnAllocationView[] {
+  const byIssuance = new Map(issuanceInfo.map((info) => [info.issuance_id, info]));
+
+  return allocations.map((row) => {
+    const info = byIssuance.get(row.issuance_id);
+    if (!info) {
+      // A caller invariant, not a user-facing case: `issuanceInfo` must
+      // cover every issuance `allocate()` drew from.
+      throw new Error(`joinIssuanceInfo: no issuance info for ${row.issuance_id}`);
+    }
+    return { ...row, mode: info.mode, code: info.code };
+  });
+}
+
+/**
  * The allocations travel WITH the document: they are what the operator shows
  * the supplier — «20 × 120,00 ₴», «25 за розпискою, без грошей» — and a total
  * without that split reads as a shortchange (CARRIED FINDING, Task 3 review).
  *
  * `allocate()` stays mode-blind by design (see `crate-allocation.ts`'s doc
- * comment); the join happens HERE, not there, from `issuanceInfo` — a lookup
- * the caller already has (the tranches it allocated from, or a batch load for
- * a list of returns).
+ * comment); the join happens in `joinIssuanceInfo`, not there, from
+ * `issuanceInfo` — a lookup the caller already has (the tranches it allocated
+ * from, or a batch load for a list of returns).
  */
 export function toCrateReturnResponse(
   ret: CrateReturn,
@@ -61,8 +93,6 @@ export function toCrateReturnResponse(
   allocations: CrateAllocationRow[],
   issuanceInfo: CrateReturnIssuanceInfo[],
 ): CrateReturnResponse {
-  const byIssuance = new Map(issuanceInfo.map((info) => [info.issuance_id, info]));
-
   return {
     id: ret.id,
     shift_id: ret.shift_id,
@@ -71,15 +101,7 @@ export function toCrateReturnResponse(
     supplier_id: ret.supplier_id,
     units: ret.units,
     deposit_refund: ret.deposit_refund,
-    allocations: allocations.map((row) => {
-      const info = byIssuance.get(row.issuance_id);
-      if (!info) {
-        // A caller invariant, not a user-facing case: `issuanceInfo` must
-        // cover every issuance `allocate()` drew from.
-        throw new Error(`toCrateReturnResponse: no issuance info for ${row.issuance_id}`);
-      }
-      return { ...row, mode: info.mode, code: info.code };
-    }),
+    allocations: joinIssuanceInfo(allocations, issuanceInfo),
     accepted_by_user_id: ret.accepted_by_user_id,
     voided_at: ret.voided_at ? ret.voided_at.toISOString() : null,
     voided_by_user_id: ret.voided_by_user_id,

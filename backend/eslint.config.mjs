@@ -61,6 +61,15 @@ export default tseslint.config(
       // crates/: the money files only. `crate-code.ts` converts a row COUNT
       // with Number() and is deliberately outside this guard — it touches no
       // currency.
+      //
+      // `crate-balance.service.ts` stays IN the guard despite converting
+      // `remaining_units`, an integer row count, not money: it spells that
+      // conversion `Number.parseInt(String(v), 10)`, not `Number(v)`, because
+      // this rule's `CallExpression[callee.name='Number']` selector matches
+      // the bare global only — `Number.parseInt` is a MemberExpression call
+      // and is the sanctioned spelling here on purpose. Whoever tightens this
+      // selector to also catch `Number.parseInt`/`Number.parseFloat` should
+      // know that closes a gap deliberately left open, not a leftover one.
       'src/crates/crate-allocation.ts',
       'src/crates/crates.service.ts',
       'src/crates/crate-balance.service.ts',

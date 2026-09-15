@@ -26,17 +26,23 @@ export interface CrateBalanceResponse {
  * шухляді в серпні», «від першої видачі». This is a DIFFERENT SHAPE from the
  * berry book, which is anchored on the last physical count and bounded by
  * `as_of`, and the two must not be made to share SQL.
+ *
+ * PLACEHOLDER-ONLY BY CONSTRUCTION: this is a fragment, not a function of a
+ * caller-supplied value — it always names the bind parameter `$1` and takes
+ * no argument, so there is nothing for a future caller to interpolate a raw
+ * id into. `pointDepositBook` below is the one place it is spliced into a
+ * query, immediately followed by `[pointId]` as the actual bound parameter.
  */
-export const CRATE_BOOK_SQL = (point: string): string => `(
+export const CRATE_BOOK_SQL = `(
     COALESCE((SELECT SUM(ci.deposit_taken)
          FROM crate_issuances ci
          JOIN shifts cs ON cs.id = ci.shift_id
-        WHERE cs.collection_point_id = ${point}
+        WHERE cs.collection_point_id = $1
           AND ci.voided_at IS NULL), 0.00)
   - COALESCE((SELECT SUM(cr.deposit_refund)
          FROM crate_returns cr
          JOIN shifts rs ON rs.id = cr.shift_id
-        WHERE rs.collection_point_id = ${point}
+        WHERE rs.collection_point_id = $1
           AND cr.voided_at IS NULL), 0.00)
 )`;
 
@@ -111,7 +117,7 @@ export class CrateBalanceService {
   async pointDepositBook(pointId: string, manager?: EntityManager): Promise<string> {
     const runner = manager ?? this.dataSource.manager;
     const rows: Array<{ book: string }> = await runner.query(
-      `SELECT ${CRATE_BOOK_SQL('$1')} AS book`,
+      `SELECT ${CRATE_BOOK_SQL} AS book`,
       [pointId],
     );
     return rows[0]?.book ?? '0.00';
