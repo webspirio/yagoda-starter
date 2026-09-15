@@ -304,9 +304,17 @@ jobs:
       # Persist Turborepo's local task cache across CI runs — restored unchanged from
       # the old `checks` job (see the "ONE CACHE HERE" note above for why this one,
       # unlike `docker`'s own buildx cache, is the only cache this job owns).
-      # `${{ github.job }}` is now `verify` rather than `checks`, which simply starts
-      # a fresh cache lineage under the new job name; nothing else about the key
-      # needs to change.
+      #
+      # THE KEY DELIBERATELY DOES NOT NAME THE JOB. It read
+      # `turbo-${{ github.job }}-...` until 2026-09-15, so renaming `checks` ->
+      # `verify` invalidated every cache that existed: `restore-keys:
+      # turbo-verify-<os>-` matched nothing at all, and lint/typecheck/test/build ran
+      # cold on every run of this branch. Run 34998136933 measured `test` at 220.4s
+      # and `coverage` at 254.6s against an empty `.turbo` — roughly eight times
+      # their warm cost — while this step's own log line said `0s`, which is what a
+      # total miss looks like when nobody reads it. This workflow has exactly ONE job
+      # that caches `.turbo`, so the job name buys nothing in the key and costs a
+      # cold lineage every time that job is renamed.
       #
       # Each commit gets an immutable cache key. On an exact-key miss, restore-keys
       # lets Actions restore the newest cache visible to this ref (including an
@@ -314,14 +322,15 @@ jobs:
       # by its input hash before replaying it.
       #
       # PR-created caches remain scoped by GitHub's cache visibility rules; main acts
-      # as the canonical shared seed for new PRs.
+      # as the canonical shared seed for new PRs — which also means this new lineage
+      # stays cold on PRs until main's own run seeds it once.
       - name: Cache turbo
         uses: actions/cache@v6
         with:
           path: .turbo
-          key: turbo-${{ github.job }}-${{ runner.os }}-${{ github.sha }}
+          key: turbo-${{ runner.os }}-${{ github.sha }}
           restore-keys: |
-            turbo-${{ github.job }}-${{ runner.os }}-
+            turbo-${{ runner.os }}-
 
       # Load-bearing, not a convenience. The `smoke` row declares `needs:
       # ['playwright-browser', 'docker']`; under `--no-skip` a missing precondition
