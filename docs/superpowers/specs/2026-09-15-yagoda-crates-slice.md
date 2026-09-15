@@ -208,8 +208,12 @@ never vanish from under rows that point at it.
 ### 5.4 On `tare_types`
 
 ```sql
-CREATE UNIQUE INDEX "UQ_tare_types_single_crate" ON tare_types ((true)) WHERE is_crate;
+CREATE UNIQUE INDEX "UQ_tare_types_single_crate" ON tare_types ("is_crate") WHERE "is_crate";
 ```
+
+A unique index on a column that is `true` for every row it covers admits exactly one such row.
+The column form is used rather than `((true))` because TypeORM can declare it on the entity, so
+`migration:generate` does not propose dropping it on every future run.
 
 One crate type network-wide. `TareTypesService.create`/`update` demote every other row in the
 same transaction when `is_crate` is set, so the owner switches the network's crate in one
@@ -369,8 +373,13 @@ that quietly wrote 20 when asked for 25 would be editing a document.
 
 **Unit — `crate-allocation.spec.ts` carries the weight.** §6.5's literal case (20 @ 120 then
 20 @ 130, return 7 → 840,00 ₴ off the older tranche, 33 left); §4.1's mixed-mode case; exact
-boundary consumption; a return spanning three tranches; one-unit returns; a request exceeding
-outstanding; and a case where `round(Σ) ≠ Σ round(each)`.
+boundary consumption; a return spanning three tranches; one-unit returns; and a request exceeding
+outstanding.
+
+**No `round(Σ) ≠ Σ round(each)` case exists here, unlike in `intakes`.** A scale-2 price times an
+integer unit count is exact, so the two can never disagree for crates. The per-row discipline is
+kept in the implementation anyway — the rows are what the supplier checks — but the test asserts
+exactness rather than inventing a divergence the domain cannot produce.
 
 **Unit — `crates.service.spec.ts`:** every row in §7.5, plus receipt mode carrying money and an
 operator voiding a closed shift's document.
