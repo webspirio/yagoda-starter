@@ -54,6 +54,11 @@ const CODE: Readonly<Record<string, string>> = {
   TRANSFER_ALREADY_RESOLVED: 'transfer.errors.alreadyResolved',
   POINT_INACTIVE: 'transfer.errors.pointInactive',
   CORRECTION_POINT_MISMATCH: 'transfer.errors.correctionPointMismatch',
+  // features/top-up-intake (#61). A top-up against a DEACTIVATED supplier is
+  // refused at the source — it would otherwise raise a debt that
+  // `POST /payouts` then refuses to settle, leaving money owed that nobody can
+  // hand over. The refusal carries the same code the payout route uses.
+  SUPPLIER_INACTIVE: 'topUp.errors.supplierInactive',
 };
 
 /**

@@ -36,7 +36,7 @@ export function VoidDocumentDialog({
   onClose,
   onVoided,
 }: {
-  kind: 'intake' | 'payout' | 'transfer';
+  kind: 'intake' | 'payout' | 'transfer' | 'topUp';
   id: string;
   code: string;
   open: boolean;

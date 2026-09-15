@@ -10,12 +10,14 @@ import { Spinner } from '@/shared/ui/spinner';
 import { ApiError, isTruncated } from '@/shared/api';
 import { sum, cmp, isZero, formatUah } from '@/shared/lib/money';
 import { useSupplierQuery, useSupplierBalanceQuery, supplierName } from '@/entities/supplier';
-import { useIntakesQuery } from '@/entities/intake';
+import { useIntakesQuery, type Intake } from '@/entities/intake';
 import { usePayoutsQuery, type Payout } from '@/entities/payout';
+import { useIntakeTopUpsQuery, type IntakeTopUp } from '@/entities/intake-top-up';
 import { useMeQuery } from '@/entities/user';
 import { usePointOptionsQuery } from '@/entities/collection-point';
 import { PayoutDialog } from '@/features/settle-payout';
 import { VoidDocumentDialog } from '@/features/void-document';
+import { TopUpDialog } from '@/features/top-up-intake';
 import { ReceiptDialog } from '@/widgets/receipt';
 import { SupplierTimeline } from './SupplierTimeline';
 
@@ -34,6 +36,7 @@ export function SupplierCardPage() {
   const balance = useSupplierBalanceQuery(id ?? null);
   const intakes = useIntakesQuery({ supplierId: id, limit: 100 });
   const payouts = usePayoutsQuery({ supplierId: id, limit: 100 });
+  const topUps = useIntakeTopUpsQuery({ supplierId: id, limit: 100 });
   const me = useMeQuery();
   const points = usePointOptionsQuery();
 
@@ -41,9 +44,17 @@ export function SupplierCardPage() {
   const [payoutKey, setPayoutKey] = useState(0);
   const [receiptId, setReceiptId] = useState<string | null>(null);
   const [receiptOpen, setReceiptOpen] = useState(false);
-  const [voidTarget, setVoidTarget] = useState<Payout | null>(null);
+  // ONE void dialog for both kinds. `features/void-document` grew a fourth
+  // `kind` rather than this page growing a second dialog — a top-up is voided
+  // by the same §9.3 rule, with the same required reason.
+  const [voidTarget, setVoidTarget] = useState<
+    { kind: 'payout' | 'topUp'; id: string; code: string } | null
+  >(null);
   const [voidOpen, setVoidOpen] = useState(false);
   const [voidKey, setVoidKey] = useState(0);
+  const [topUpTarget, setTopUpTarget] = useState<Intake | null>(null);
+  const [topUpOpen, setTopUpOpen] = useState(false);
+  const [topUpKey, setTopUpKey] = useState(0);
 
   const openPayout = () => {
     setPayoutKey((k) => k + 1);
@@ -53,10 +64,22 @@ export function SupplierCardPage() {
     setReceiptId(intakeId);
     setReceiptOpen(true);
   };
-  const openVoid = (target: Payout) => {
-    setVoidTarget(target);
+  const openVoidPayout = (target: Payout) => {
+    setVoidTarget({ kind: 'payout', id: target.id, code: target.code });
     setVoidKey((k) => k + 1);
     setVoidOpen(true);
+  };
+  // A top-up has no code of its own, so the dialog is titled with its PARENT
+  // receipt's — that is what the owner recognises.
+  const openVoidTopUp = (target: IntakeTopUp) => {
+    setVoidTarget({ kind: 'topUp', id: target.id, code: target.intake.code });
+    setVoidKey((k) => k + 1);
+    setVoidOpen(true);
+  };
+  const openTopUp = (intake: Intake) => {
+    setTopUpTarget(intake);
+    setTopUpKey((k) => k + 1);
+    setTopUpOpen(true);
   };
 
   // §3: 404 is the one case with its own page — a supplier that never
@@ -77,7 +100,7 @@ export function SupplierCardPage() {
     );
   }
 
-  if (supplier.isError || balance.isError || intakes.isError || payouts.isError) {
+  if (supplier.isError || balance.isError || intakes.isError || payouts.isError || topUps.isError) {
     return (
       <div className="flex flex-col items-center gap-3 py-6 text-center">
         <p role="alert" className="text-destructive">
@@ -95,6 +118,7 @@ export function SupplierCardPage() {
     balance.isPending ||
     intakes.isPending ||
     payouts.isPending ||
+    topUps.isPending ||
     !supplier.data ||
     !balance.data
   ) {
@@ -111,14 +135,22 @@ export function SupplierCardPage() {
 
   const intakeRows = intakes.data?.data ?? [];
   const payoutRows = payouts.data?.data ?? [];
+  const topUpRows = topUps.data?.data ?? [];
   const liveIntakes = intakeRows.filter((i) => i.voided_at === null);
   const livePayouts = payoutRows.filter((p) => p.voided_at === null);
-  const accrued = sum(liveIntakes.map((i) => i.amount));
+  // `counts_toward_balance`, NOT `voided_at`: it folds in the PARENT receipt's
+  // void too, and a top-up on a voided receipt counts for nothing.
+  const liveTopUps = topUpRows.filter((u) => u.counts_toward_balance);
+  // THE MIDDLE TERM OF THE BALANCE. `debt` is «Σ intakes + Σ top-ups − Σ
+  // payouts»; a «Нараховано» tile that summed only receipts would visibly
+  // disagree with the balance tile beside it, and the owner would have no way
+  // to tell which one was wrong.
+  const accrued = sum([...liveIntakes.map((i) => i.amount), ...liveTopUps.map((u) => u.amount)]);
   const paid = sum(livePayouts.map((p) => p.amount));
   // Both journals are read at a fixed `limit: 100` (spec §5.4) — past that
   // the «Нараховано»/«Видано» tiles would under-report the season, so each
   // says so instead of quietly summing only what happened to load.
-  const truncated = isTruncated(intakes.data);
+  const truncated = isTruncated(intakes.data) || isTruncated(topUps.data);
   const payoutsTruncated = isTruncated(payouts.data);
 
   return (
@@ -178,9 +210,12 @@ export function SupplierCardPage() {
         <SupplierTimeline
           intakes={intakeRows}
           payouts={payoutRows}
+          topUps={topUpRows}
           me={me.data}
           onOpenReceipt={openReceipt}
-          onVoidPayout={openVoid}
+          onVoidPayout={openVoidPayout}
+          onAddTopUp={openTopUp}
+          onVoidTopUp={openVoidTopUp}
         />
         {truncated || payoutsTruncated ? (
           <p className="mt-3 text-xs text-muted-foreground">
@@ -199,11 +234,21 @@ export function SupplierCardPage() {
       {voidTarget ? (
         <VoidDocumentDialog
           key={voidKey}
-          kind="payout"
+          kind={voidTarget.kind}
           id={voidTarget.id}
           code={voidTarget.code}
           open={voidOpen}
           onClose={() => setVoidOpen(false)}
+        />
+      ) : null}
+
+      {topUpTarget ? (
+        <TopUpDialog
+          key={topUpKey}
+          intake={{ id: topUpTarget.id, code: topUpTarget.code }}
+          supplierName={supplierName(s)}
+          open={topUpOpen}
+          onClose={() => setTopUpOpen(false)}
         />
       ) : null}
 

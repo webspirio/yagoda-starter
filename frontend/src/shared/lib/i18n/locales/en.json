@@ -838,7 +838,11 @@
       "intake": "Receipt",
       "payout": "Payout",
       "void": "Void",
-      "truncated": "Showing the first 100 receipts and payouts"
+      "truncated": "Showing the first 100 receipts and payouts",
+      "topUp": "Balance",
+      "addTopUp": "Add a balance",
+      "againstReceipt": "against {{code}}",
+      "parentVoided": "the receipt was voided — counts for nothing"
     }
   },
   "journal": {
@@ -985,6 +989,24 @@
         "action": "Action"
       },
       "void": "Void"
+    }
+  },
+  "topUp": {
+    "title": "Add a balance",
+    "description": "Receipt {{code}} · {{supplier}}. The debt goes up by this amount; no cash moves until a payout.",
+    "amount": "Amount, UAH",
+    "reason": "Why (required)",
+    "submit": "Add",
+    "toast": {
+      "created": "Balance added"
+    },
+    "errors": {
+      "failed": "Could not add the balance",
+      "amountFormat": "Enter an amount like 500 or 500.00",
+      "amountPositive": "The amount must be above zero",
+      "reasonRequired": "Say why — this is what explains the debt later",
+      "reasonTooLong": "At most 500 characters",
+      "supplierInactive": "This supplier is deactivated, so a debt raised now could never be paid out"
     }
   }
 }
