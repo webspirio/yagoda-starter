@@ -1,4 +1,14 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Query } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Param,
+  ParseUUIDPipe,
+  Post,
+  Query,
+} from '@nestjs/common';
 import { Auth } from '../auth/decorators/auth.decorators';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { CratesService } from './crates.service';
@@ -43,6 +53,7 @@ export class CrateReturnsController {
 
   /** Create minus the write — the reception screen's live split before commit. */
   @Post('preview')
+  @HttpCode(HttpStatus.OK)
   @Auth()
   preview(
     @CurrentUser() actor: AuthenticatedUser,

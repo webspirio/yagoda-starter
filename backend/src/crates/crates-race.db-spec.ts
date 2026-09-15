@@ -95,7 +95,10 @@ describe('crates concurrency (HTTP)', () => {
     operatorToken = tokenFor(operator.id);
 
     // Exactly one crate type must exist — `CratesService.issue` 409s
-    // `NO_CRATE_TYPE` without it.
+    // `NO_CRATE_TYPE` without it. Safe even if `app_test` already carries a
+    // flagged row from an earlier run (it is never truncated):
+    // `TareTypesService.create` unconditionally demotes every other flagged
+    // row BEFORE inserting this one, in the same transaction.
     await request(app.getHttpServer())
       .post('/tare-types')
       .set('Authorization', `Bearer ${ownerToken}`)

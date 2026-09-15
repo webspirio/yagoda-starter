@@ -102,8 +102,11 @@ describe('crates lifecycle (HTTP)', () => {
     operatorToken = tokenFor(operator.id);
 
     // Exactly one crate type — `UQ_tare_types_single_crate` (bare, not
-    // deferrable) tolerates only one flagged row at a time; a fresh database
-    // has none, so this insert alone is fine.
+    // deferrable) tolerates only one flagged row at a time. This is safe even
+    // though `app_test` is never truncated and may already carry a flagged
+    // row (e.g. from `dev-seed.db-spec.ts`): `TareTypesService.create`
+    // unconditionally demotes every other flagged row BEFORE inserting this
+    // one, in the same transaction — see that service's own doc comment.
     await request(app.getHttpServer())
       .post('/tare-types')
       .set('Authorization', `Bearer ${ownerToken}`)
@@ -187,7 +190,7 @@ describe('crates lifecycle (HTTP)', () => {
       .post('/crate-returns/preview')
       .set('Authorization', `Bearer ${operatorToken}`)
       .send({ supplier_id: supplierId, units: 210 })
-      .expect(201);
+      .expect(200);
 
     expect(res.body.allocations).toEqual([
       expect.objectContaining({
