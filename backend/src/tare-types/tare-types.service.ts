@@ -73,6 +73,18 @@ export class TareTypesService {
         }),
       );
 
+      // ONE CRATE, NETWORK-WIDE (spec §5.4). Switching the network's crate is
+      // ONE owner action, not two: flagging a type clears the flag everywhere
+      // else in the same transaction. `UQ_tare_types_single_crate` is the
+      // backstop; if the owner ever meets it, this line failed to run. Runs
+      // AFTER the insert — the new row needs an id to be excluded.
+      if (tare.is_crate) {
+        await manager.query(
+          `UPDATE "tare_types" SET "is_crate" = false WHERE "is_crate" AND "id" <> $1`,
+          [tare.id],
+        );
+      }
+
       await this.audit.record(
         {
           action: 'tare-type.created',
@@ -94,10 +106,11 @@ export class TareTypesService {
   }
 
   /**
-   * TODO (when `crate_issuances` lands): decide whether deactivating a tare
-   * type with outstanding deposits deserves a WARNING. Never a refusal — the
-   * schema's stance throughout is that a management decision gets a warning and
-   * not a locked button (§6.1, правка 14).
+   * THE DEACTIVATION RULE: deactivating a crate type with outstanding
+   * deposits is a WARNING on the client, never a refusal. §6.1 and правка 14
+   * — a management decision gets a warning, not a locked button, and the
+   * schema's stance throughout is that a blocked button teaches people to
+   * look for a way around it.
    */
   async update(
     actor: AuthenticatedUser,
@@ -123,6 +136,23 @@ export class TareTypesService {
 
     return this.dataSource.transaction(async (manager) => {
       const saved = await manager.getRepository(TareType).save(tare);
+
+      // ONE CRATE, NETWORK-WIDE (spec §5.4). Switching the network's crate is
+      // ONE owner action, not two: flagging a type clears the flag everywhere
+      // else in the same transaction. `UQ_tare_types_single_crate` is the
+      // backstop; if the owner ever meets it, this line failed to run. Runs
+      // AFTER `save` — this row's own id has to exist to be excluded.
+      //
+      // Gated on `dto.is_crate === true`, NOT `saved.is_crate` — an edit that
+      // never touches the flag (e.g. a deposit-price change on the row that
+      // already IS the crate) must not re-run this on every unrelated PATCH.
+      if (dto.is_crate === true) {
+        await manager.query(
+          `UPDATE "tare_types" SET "is_crate" = false WHERE "is_crate" AND "id" <> $1`,
+          [saved.id],
+        );
+      }
+
       const diff = diffFields(before, this.snapshot(saved), TARE_FIELDS);
 
       // These two numbers keep NO history of their own, and §2.7 snapshots them
@@ -144,6 +174,22 @@ export class TareTypesService {
 
       return toTareTypeResponse(saved);
     });
+  }
+
+  /**
+   * The catalogue row that IS the rented crate, or `null`.
+   *
+   * ACTIVE ONLY. `crate_issuances.deposit_per_unit` is snapshotted from this
+   * row, so a retired crate type must stop new issuances — but it must NOT
+   * stop returns, which read the frozen price off the issuance and never come
+   * here.
+   *
+   * Takes an `EntityManager` so a caller mid-transaction (issuance/return
+   * creation) reads inside itself.
+   */
+  async findCrateType(manager?: EntityManager): Promise<TareType | null> {
+    const repo = manager ? manager.getRepository(TareType) : this.repo;
+    return repo.findOne({ where: { is_crate: true, is_active: true } });
   }
 
   private snapshot(tare: TareType): Record<(typeof TARE_FIELDS)[number], unknown> {

@@ -26,7 +26,7 @@ describe('TareTypesService', () => {
   // identical and the suite would pass regardless. Keeping them apart is what
   // lets the assertions below actually prove which repo a save went through.
   let txRepo: { create: jest.Mock; save: jest.Mock };
-  let manager: { getRepository: () => typeof txRepo };
+  let manager: { getRepository: () => typeof txRepo; query: jest.Mock };
   let audit: { record: jest.Mock };
   let dataSource: { transaction: jest.Mock };
   let service: TareTypesService;
@@ -63,7 +63,7 @@ describe('TareTypesService', () => {
       create: jest.fn().mockImplementation((t) => tare(t)),
       save: jest.fn().mockImplementation((t) => Promise.resolve(t)),
     };
-    manager = { getRepository: () => txRepo };
+    manager = { getRepository: () => txRepo, query: jest.fn().mockResolvedValue([]) };
     audit = { record: jest.fn().mockResolvedValue(undefined) };
     // Resolve the callback against `manager`, which hands back `txRepo` — NOT
     // `repo`. A transactional write and a plain read must go through
@@ -213,4 +213,44 @@ describe('TareTypesService', () => {
     });
   });
 
+  describe('the single crate type', () => {
+    it('demotes every other row when a type is marked as the crate', async () => {
+      repo.findOne.mockResolvedValue(tare({ is_crate: false }));
+
+      await service.update(owner, 'tare-1', { is_crate: true });
+
+      const demotion = (manager.query.mock.calls as [string, unknown[]][]).find(([sql]) =>
+        sql.includes('UPDATE "tare_types"'),
+      );
+      expect(demotion?.[0]).toContain('SET "is_crate" = false');
+      expect(demotion?.[1]).toEqual(['tare-1']);
+    });
+
+    it('does not demote anything when the flag is untouched', async () => {
+      repo.findOne.mockResolvedValue(tare());
+      await service.update(owner, 'tare-1', { deposit_price: '130.00' });
+      expect(manager.query).not.toHaveBeenCalled();
+    });
+
+    it('demotes every other row on create when the new type is the crate', async () => {
+      await service.create(owner, {
+        name: 'Ящик',
+        weight_kg: '1.20',
+        deposit_price: '120.00',
+        is_crate: true,
+      });
+
+      const demotion = (manager.query.mock.calls as [string, unknown[]][]).find(([sql]) =>
+        sql.includes('UPDATE "tare_types"'),
+      );
+      expect(demotion?.[0]).toContain('SET "is_crate" = false');
+      expect(demotion?.[1]).toEqual(['tare-1']);
+    });
+
+    it('findCrateType returns only an ACTIVE flagged row', async () => {
+      repo.findOne.mockResolvedValue(null);
+      await expect(service.findCrateType()).resolves.toBeNull();
+      expect(repo.findOne).toHaveBeenCalledWith({ where: { is_crate: true, is_active: true } });
+    });
+  });
 });
