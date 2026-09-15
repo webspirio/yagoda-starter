@@ -14,7 +14,7 @@ describe('GradePricesService', () => {
     findAndCount: jest.Mock;
     save: jest.Mock;
     create: jest.Mock;
-    manager: { query: jest.Mock };
+    manager: { query: jest.Mock; transaction: jest.Mock };
   };
   let points: { findOneRaw: jest.Mock };
   let grades: { findOneRaw: jest.Mock };
@@ -51,6 +51,7 @@ describe('GradePricesService', () => {
           .fn()
           .mockResolvedValueOnce([{ count: 1 }])
           .mockResolvedValueOnce([price()]),
+        transaction: jest.fn(),
       },
     };
     points = { findOneRaw: jest.fn().mockResolvedValue({ id: POINT_A, is_active: true }) };
@@ -177,6 +178,123 @@ describe('GradePricesService', () => {
       // Two calls, not three: the cell query is skipped entirely.
       expect(query).toHaveBeenCalledTimes(2);
       expect(result.rows[0].prices).toEqual({});
+    });
+  });
+
+  describe('bulk', () => {
+    const bulkDto = {
+      product_grade_id: GRADE,
+      collection_point_ids: [POINT_A, POINT_B],
+      base_price: '150.00',
+      max_markup: '30.00',
+      max_discount: '20.00',
+    };
+
+    beforeEach(() => {
+      repo.manager.transaction = jest.fn(async (cb: (m: unknown) => unknown) =>
+        cb({ create: (_e: unknown, p: unknown) => p, save: jest.fn().mockResolvedValue([]) }),
+      );
+      points.findOneRaw = jest.fn().mockResolvedValue({ id: POINT_A, is_active: true });
+    });
+
+    it('writes one row per named point', async () => {
+      await expect(service.bulk(owner as never, { ...bulkDto } as never)).resolves.toEqual({
+        created: 2,
+      });
+    });
+
+    it('records the author from the token, never from the body', async () => {
+      let saved: { created_by_user_id: string }[] = [];
+      repo.manager.transaction = jest.fn(async (cb: (m: unknown) => unknown) =>
+        cb({
+          create: (_e: unknown, p: unknown) => p,
+          save: jest.fn().mockImplementation((rows) => {
+            saved = rows;
+            return Promise.resolve(rows);
+          }),
+        }),
+      );
+
+      await service.bulk(owner as never, { ...bulkDto } as never);
+
+      expect(saved).toHaveLength(2);
+      for (const row of saved) expect(row.created_by_user_id).toBe('u-owner');
+    });
+
+    it('stores the three numbers as the strings it was given', async () => {
+      let saved: Record<string, string>[] = [];
+      repo.manager.transaction = jest.fn(async (cb: (m: unknown) => unknown) =>
+        cb({
+          create: (_e: unknown, p: unknown) => p,
+          save: jest.fn().mockImplementation((rows) => {
+            saved = rows;
+            return Promise.resolve(rows);
+          }),
+        }),
+      );
+
+      await service.bulk(owner as never, { ...bulkDto } as never);
+
+      for (const row of saved) {
+        expect(row.base_price).toBe('150.00');
+        expect(row.max_markup).toBe('30.00');
+        expect(row.max_discount).toBe('20.00');
+      }
+    });
+
+    /**
+     * THE POINT OF THE ROUTE: every refusal happens BEFORE the transaction
+     * opens, so a rejected batch is not rolled back — it is never begun.
+     */
+    it('never opens a transaction when a named point does not exist', async () => {
+      points.findOneRaw = jest
+        .fn()
+        .mockResolvedValueOnce({ id: POINT_A, is_active: true })
+        .mockResolvedValueOnce(null);
+
+      await expect(service.bulk(owner as never, { ...bulkDto } as never)).rejects.toThrow(
+        NotFoundException,
+      );
+      expect(repo.manager.transaction).not.toHaveBeenCalled();
+    });
+
+    it('never opens a transaction for an inactive grade', async () => {
+      grades.findOneRaw = jest.fn().mockResolvedValue({ id: GRADE, is_active: false });
+
+      await expect(service.bulk(owner as never, { ...bulkDto } as never)).rejects.toMatchObject({
+        response: { code: 'PRODUCT_GRADE_INACTIVE' },
+      });
+      expect(repo.manager.transaction).not.toHaveBeenCalled();
+    });
+
+    it('never opens a transaction for a missing grade', async () => {
+      grades.findOneRaw = jest.fn().mockResolvedValue(null);
+
+      await expect(service.bulk(owner as never, { ...bulkDto } as never)).rejects.toThrow(
+        NotFoundException,
+      );
+      expect(repo.manager.transaction).not.toHaveBeenCalled();
+    });
+
+    /**
+     * Refused, not deduplicated: §4.2's journal would otherwise carry two rows
+     * for one gesture, and `created` would stop matching what was asked for.
+     */
+    it('refuses the same point named twice', async () => {
+      await expect(
+        service.bulk(owner as never, {
+          ...bulkDto,
+          collection_point_ids: [POINT_A, POINT_A],
+        } as never),
+      ).rejects.toMatchObject({ response: { code: 'DUPLICATE_COLLECTION_POINT' } });
+      expect(repo.manager.transaction).not.toHaveBeenCalled();
+    });
+
+    it('refuses an operator a point that is not theirs', async () => {
+      await expect(
+        service.bulk(operator as never, { ...bulkDto, collection_point_ids: [POINT_B] } as never),
+      ).rejects.toThrow(ForbiddenException);
+      expect(repo.manager.transaction).not.toHaveBeenCalled();
     });
   });
 

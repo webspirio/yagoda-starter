@@ -6,6 +6,7 @@ import { CreateGradePriceDto } from './dto/create-grade-price.dto';
 import { ListGradePricesQueryDto } from './dto/list-grade-prices.query';
 import { CurrentGradePricesQueryDto } from './dto/current-grade-prices.query';
 import { GradePriceSheetQueryDto } from './dto/grade-price-sheet.query';
+import { BulkGradePriceDto } from './dto/bulk-grade-price.dto';
 import {
   GradePriceResponse,
   GradePriceSheetResponse,
@@ -297,6 +298,72 @@ export class GradePricesService {
     };
   }
 
+
+  /**
+   * «Поставити всім» — one grade, one set of numbers, every NAMED point, in ONE
+   * TRANSACTION.
+   *
+   * THE TRANSACTION IS THE WHOLE POINT OF THE ROUTE, and spec `2026-09-07` §8.1
+   * asked for it by name when it removed `business_date`: «Carry this into
+   * §4.8's bulk route when it is built — that route must be ONE transaction».
+   * The argument is about what a HALF-APPLIED write looks like on screen. A
+   * client-side loop of N POSTs that fails on the third leaves three points at
+   * 150 and two at 145 — which the sheet renders as «різні · 145–150», exactly
+   * the same as prices the owner set differently ON PURPOSE. The screen would
+   * be lying about the state of the network, and nothing would be visibly
+   * broken.
+   *
+   * EVERY VALIDATION RUNS BEFORE THE TRANSACTION OPENS, so a refusal is not a
+   * rollback: the write is never begun. That also keeps the failure modes
+   * identical to `create()`'s, one point at a time.
+   *
+   * A DUPLICATE POINT ID IS REFUSED rather than deduplicated. §4.2 makes this
+   * table an append-only journal, so writing the same point twice would put two
+   * rows in the history for one gesture — harmless to «latest wins» and a lie
+   * to anyone reading the journal. Silently collapsing it would instead make
+   * `created` disagree with what was asked for.
+   */
+  async bulk(actor: AuthenticatedUser, dto: BulkGradePriceDto): Promise<{ created: number }> {
+    if (new Set(dto.collection_point_ids).size !== dto.collection_point_ids.length) {
+      throw new BadRequestException({
+        message: 'The same collection point was named twice',
+        code: 'DUPLICATE_COLLECTION_POINT',
+      });
+    }
+
+    const grade = await this.grades.findOneRaw(dto.product_grade_id);
+    if (!grade) throw new NotFoundException('Product grade not found');
+    // REJECTED, never silently skipped: a dropped grade looks like success.
+    if (!grade.is_active) {
+      throw new BadRequestException({
+        message: 'That grade is inactive and cannot be priced',
+        code: 'PRODUCT_GRADE_INACTIVE',
+      });
+    }
+
+    for (const id of dto.collection_point_ids) {
+      assertOwnsPoint(actor, id);
+      const point = await this.points.findOneRaw(id);
+      if (!point) throw new NotFoundException('Collection point not found');
+    }
+
+    return this.repo.manager.transaction(async (manager: EntityManager) => {
+      const rows = dto.collection_point_ids.map((id) =>
+        manager.create(GradePrice, {
+          collection_point_id: id,
+          product_grade_id: dto.product_grade_id,
+          // Stored verbatim as strings. No arithmetic anywhere in this module.
+          base_price: dto.base_price,
+          max_markup: dto.max_markup,
+          max_discount: dto.max_discount,
+          created_by_user_id: actor.sub,
+          reason: dto.reason ?? null,
+        }),
+      );
+      await manager.save(rows);
+      return { created: rows.length };
+    });
+  }
 
   async create(actor: AuthenticatedUser, dto: CreateGradePriceDto): Promise<GradePriceResponse> {
     // A no-op for an owner, since they own every point — and the route is
