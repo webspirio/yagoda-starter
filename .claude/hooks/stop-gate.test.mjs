@@ -92,6 +92,18 @@ function report(checks) {
  */
 
 /**
+ * The child's environment with every GIT_* variable removed. A hook inherits GIT_DIR from
+ * git, and GIT_DIR beats `cwd`: a child that shells out to git would then act on the real
+ * repository instead of this test's fixture root. See hash.test.mjs's NO_GIT_ENV for the
+ * commit that taught this layer the lesson.
+ *
+ * @returns {NodeJS.ProcessEnv}
+ */
+function noGitEnv() {
+  return Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith('GIT_')))
+}
+
+/**
  * Runs the REAL `.claude/hooks/stop-gate.mjs` as its own process: synthetic stdin in,
  * exit code / stdout / stderr out. This is the exact mechanism Claude Code invokes.
  *
@@ -113,7 +125,7 @@ function runGate({ root, input, stdin, stubStatus = 0, stubStdout = '', stubStdo
     input: stdinText,
     encoding: 'utf8',
     env: {
-      ...process.env,
+      ...noGitEnv(),
       CLAUDE_PROJECT_DIR: root,
       STUB_STATUS: String(stubStatus),
       STUB_STDOUT: stubStdout,
@@ -382,7 +394,7 @@ test('stdin that never closes within 5s is NOT treated as empty input — takes 
       const child = spawn(process.execPath, [GATE], {
         cwd: root,
         stdio: ['pipe', 'pipe', 'pipe'],
-        env: { ...process.env, CLAUDE_PROJECT_DIR: root, VERIFY_HOOK_WARN: '' },
+        env: { ...noGitEnv(), CLAUDE_PROJECT_DIR: root, VERIFY_HOOK_WARN: '' },
       })
       let stdout = ''
       let stderr = ''

@@ -31,6 +31,20 @@
 # failure.
 set -eu
 
+# SCRUB GIT_* BEFORE RUNNING ANYTHING. Git exports GIT_DIR (and GIT_INDEX_FILE, and more)
+# into every hook, and `GIT_DIR` DOES NOT LOSE TO `cwd` — with it set, git ignores the
+# working directory entirely and operates on the repository the variable names. Half this
+# layer shells out to `git ls-files`, and `selfcheck` runs fixtures that build throwaway
+# repositories in a temp directory; inherited, that variable points every one of them back
+# here.
+#
+# This is not hypothetical. The first push through this hook, on 2026-09-15, ran
+# hash.test.mjs's fixture with GIT_DIR inherited: its `git add -A` and `git commit` wrote
+# to the REAL repository, committing the fixture's three files as the entire tree and
+# deleting 894 real ones. The working tree survived, HEAD did not. The fixture now scrubs
+# these too — two locks, because a hook is not the only thing that can export GIT_DIR.
+for _v in $(env | sed -n 's/^\(GIT_[A-Za-z0-9_]*\)=.*/\1/p'); do unset "$_v" || true; done
+
 printf '\npre-push: local verify gate (skip with `git push --no-verify`)\n'
 
 # The hook must not depend on the caller's shell: `node` may come from nvm/fnm and not be on

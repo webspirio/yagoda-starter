@@ -61,6 +61,26 @@ function isHashed(rel) {
 }
 
 /**
+ * The environment for a child `git`, with every GIT_* variable removed.
+ *
+ * `cwd` DOES NOT WIN OVER `GIT_DIR`. With that variable set, git ignores the working
+ * directory entirely and operates on the repository it names — so `sourceHash(root)` would
+ * silently hash a DIFFERENT repository than the one its own argument asks for. Git exports
+ * GIT_DIR (and GIT_INDEX_FILE) into every hook it runs, and .githooks/pre-push runs this
+ * layer, so the variable is present on exactly the path a local gate takes.
+ *
+ * Learned on 2026-09-15, expensively: the same inheritance let hash.test.mjs's fixture
+ * commit into the real repository, replacing its tree with three fixture files. The hook
+ * scrubs these as well; this is the lock that makes the function honour its own parameter
+ * no matter who calls it.
+ *
+ * @returns {NodeJS.ProcessEnv}
+ */
+function gitEnv() {
+  return Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith('GIT_')))
+}
+
+/**
  * @param {unknown} err
  * @returns {string}
  */
@@ -82,6 +102,7 @@ function listHashedFiles(root) {
   try {
     raw = execFileSync('git', ['ls-files', '-c', '-o', '--exclude-standard', '-z'], {
       cwd: root,
+      env: gitEnv(),
       maxBuffer: 128 * 1024 * 1024,
     })
   } catch (err) {
