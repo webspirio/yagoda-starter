@@ -129,6 +129,26 @@ docker 60.6s, smoke 36.6s; the remaining eleven cost 2.3s (audit) and less, 8.9s
 than performance gates; the performance signal is the duration printed beside every row, on
 green runs as well as red.
 
+THAT READING WAS COLD — the Turbo key lineage was new and had nothing to restore — and the
+run straight after it is the other half of the picture. Run 35013872995: the same 20 rows
+green in **5m00s** (rows 3m48s), differing from the run above only in a commit that touched
+no workspace, so every Turbo task replayed. coverage 247.2s -> 254ms, lint 16.9s -> 210ms,
+build 14.6s -> 229ms. `typecheck` only falls 16.7s -> 4.1s, because `npm run typecheck` is
+`turbo typecheck && tsc -p tsconfig.scripts.json && tsc -p tsconfig.e2e.json` and the last
+two live outside Turbo, so they run in full every time. FIVE MINUTES IS THE BEST CASE, not
+the figure to quote for a feature PR: a change under backend/ or frontend/ re-runs that
+workspace's `coverage`, the single dominant row when cold.
+
+WHICH ROWS COST THE MOST INVERTS COMPLETELY BETWEEN THOSE TWO RUNS, and the warm ranking is
+the one to read, because it is the one CI will normally be in: selfcheck 69.2s (30% of all
+row time), docker 64.0s (28%), smoke 44.3s (19%), test:db 29.6s (13%) — 90% in four rows,
+not one of which Turbo can cache. `selfcheck` is `node --test` over this layer's own 163
+tests and nothing caches it, in CI or on a laptop, which is the same thing the local figures
+above already said. The `docker` row is an uncached `docker build` of both images,
+deliberately left duplicating what the `docker` JOB builds with a warm buildx cache: that
+was 5% of a twenty-minute run when the decision was made and is 28% of a five-minute one
+now, so it is a decision worth revisiting rather than a settled one.
+
 THE THIRD ROW WAS NOT SLOW, IT WAS BROKEN, and the distinction cost two red runs to see.
 `test:db` blew through 120s, then 480s, then was given 1200s purely to buy a reading. The
 reading was never the problem: three jobs on a throwaway branch (run 35008065574) measured
