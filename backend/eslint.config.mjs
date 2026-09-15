@@ -109,6 +109,8 @@ export default tseslint.config(
       'src/testing/pipeline.db-spec.ts',
       'src/testing/catalog-pipeline.db-spec.ts',
       'src/testing/documents-pipeline.db-spec.ts',
+      'src/crates/crates.db-spec.ts',
+      'src/crates/crates-race.db-spec.ts',
     ],
     rules: {
       '@typescript-eslint/no-require-imports': ['error', { allowAsImport: true }],
