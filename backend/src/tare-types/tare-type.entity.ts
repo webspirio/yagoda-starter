@@ -3,6 +3,7 @@ import {
   Column,
   CreateDateColumn,
   Entity,
+  Index,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
@@ -40,6 +41,18 @@ import {
 @Entity('tare_types')
 @Check('CHK_tare_types_weight_kg', `"weight_kg" >= 0`)
 @Check('CHK_tare_types_deposit_price', `"deposit_price" >= 0`)
+/**
+ * ONE CRATE, NETWORK-WIDE (spec §5.4). A unique index on a column that is
+ * `true` for every row it covers admits exactly one such row. `is_crate` is
+ * what `crate_issuances.deposit_per_unit` is snapshotted from, so two flagged
+ * rows would make «the price of a crate» ambiguous — which is what the seeded
+ * catalogue was until this slice.
+ *
+ * The owner never meets this index: `TareTypesService` demotes every other row
+ * in the same transaction when the flag is set. It is the backstop, not the
+ * error path.
+ */
+@Index('UQ_tare_types_single_crate', ['is_crate'], { unique: true, where: '"is_crate"' })
 export class TareType {
   @PrimaryGeneratedColumn('uuid')
   id: string;
