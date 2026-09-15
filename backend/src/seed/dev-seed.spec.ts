@@ -13,6 +13,7 @@ import {
   SEED_SHIFTS,
   SEED_SUPPLIERS,
   SEED_TARE_TYPES,
+  SEED_TOP_UPS,
   SEED_TRANSFERS,
 } from './dev-seed.data';
 
@@ -196,6 +197,15 @@ describe('dev seed documents', () => {
   it('every payout goes to a supplier who has a seeded receipt at that point', () => {
     const paid = new Set(SEED_INTAKES.map((d) => `${d.point}/${d.supplier}`));
     for (const p of SEED_PAYOUTS) expect(paid.has(`${p.point}/${p.supplier}`)).toBe(true);
+  });
+
+  it('every top-up addresses a seeded intake by (point, day, typed) — never a composed code', () => {
+    const intakeKeys = new Set(SEED_INTAKES.map((d) => `${d.point}/${d.day}/${d.typed}`));
+    for (const t of SEED_TOP_UPS) {
+      expect(intakeKeys.has(`${t.point}/${t.day}/${t.typed}`)).toBe(true);
+      expect(t.amount).toMatch(/^\d{1,8}\.\d{2}$/);
+      expect(t.reason.trim()).toBeTruthy();
+    }
   });
 });
 

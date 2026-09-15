@@ -23,8 +23,10 @@ import { SupplierKind } from './supplier-kind.enum';
  * another's, with no document changing and no trail explaining it.
  *
  * DEBT IS NOT A COLUMN HERE AND MUST NEVER BECOME ONE. It is the difference of
- * two histories, `Σ intakes − Σ payouts` filtered by `supplier_id` alone, with
- * `voided_at IS NULL` on BOTH sides. The `suppliers` Note is emphatic: «полів
+ * three histories, `Σ intakes + Σ intake_top_ups − Σ payouts`, filtered by
+ * `supplier_id` alone (the middle term through `intake_id`), with
+ * `voided_at IS NULL` on ALL FOUR — the middle term carries two, one for the
+ * top-up and one for its parent intake. The `suppliers` Note is emphatic: «полів
  * paid / debt / balance немає ані тут, ані в intakes, і додавати їх не можна» —
  * a stored cache is exactly where the client's own working book broke, 124
  * breaks out of 1473.

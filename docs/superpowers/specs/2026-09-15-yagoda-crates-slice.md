@@ -151,7 +151,7 @@ of the shared drawer — is physical and invisible to a system that does not cou
 
 ## 5. Tables
 
-Migration `1788600000011-YagodaCrates.ts`, following the constraint conventions of
+Migration `1788600000012-YagodaCrates.ts`, following the constraint conventions of
 `…0007-YagodaIntakesAndPayouts`.
 
 ### 5.1 `crate_issuances`

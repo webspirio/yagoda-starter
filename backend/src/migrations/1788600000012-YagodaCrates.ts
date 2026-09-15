@@ -21,8 +21,8 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
  *    where `\d` collapses to a bare `d`. There is no regex here today; if one
  *    is added, use bracket expressions. Same warning as `…0006` and `…0007`.
  */
-export class YagodaCrates1788600000011 implements MigrationInterface {
-  name = 'YagodaCrates1788600000011';
+export class YagodaCrates1788600000012 implements MigrationInterface {
+  name = 'YagodaCrates1788600000012';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`CREATE TYPE "crate_issuance_mode" AS ENUM ('deposit', 'receipt')`);

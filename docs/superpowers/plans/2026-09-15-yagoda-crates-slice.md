@@ -31,7 +31,7 @@
 - Create: `backend/src/crates/crate-return.entity.ts`
 - Create: `backend/src/crates/crate-return-allocation.entity.ts`
 - Create: `backend/src/crates/crate-issuance-mode.enum.ts`
-- Create: `backend/src/migrations/1788600000011-YagodaCrates.ts`
+- Create: `backend/src/migrations/1788600000012-YagodaCrates.ts`
 - Modify: `backend/src/tare-types/tare-type.entity.ts` (add the partial unique index)
 - Test: `backend/src/migrations/crates-schema.db-spec.ts`
 
@@ -498,7 +498,7 @@ In `backend/src/tare-types/tare-type.entity.ts`, add to the imports from `typeor
 
 - [ ] **Step 6: Write the migration**
 
-Create `backend/src/migrations/1788600000011-YagodaCrates.ts`:
+Create `backend/src/migrations/1788600000012-YagodaCrates.ts`:
 
 ```ts
 import { MigrationInterface, QueryRunner } from 'typeorm';
@@ -524,8 +524,8 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
  *    where `\d` collapses to a bare `d`. There is no regex here today; if one
  *    is added, use bracket expressions. Same warning as `…0006` and `…0007`.
  */
-export class YagodaCrates1788600000011 implements MigrationInterface {
-  name = 'YagodaCrates1788600000011';
+export class YagodaCrates1788600000012 implements MigrationInterface {
+  name = 'YagodaCrates1788600000012';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`CREATE TYPE "crate_issuance_mode" AS ENUM ('deposit', 'receipt')`);

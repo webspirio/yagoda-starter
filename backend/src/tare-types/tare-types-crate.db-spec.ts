@@ -15,7 +15,7 @@ import type { AuthenticatedUser } from '../auth/jwt.strategy';
  * pass before this slice merges.
  *
  * THE REGRESSION THIS FILE GUARDS: `UQ_tare_types_single_crate`
- * (`1788600000011-YagodaCrates.ts`) is a BARE unique index — Postgres checks
+ * (`1788600000012-YagodaCrates.ts`) is a BARE unique index — Postgres checks
  * it at the end of each statement, not at commit, because it carries no
  * `DEFERRABLE INITIALLY DEFERRED`. `TareTypesService.update`/`.create`
  * therefore MUST demote every other flagged row BEFORE they save/insert the

@@ -22,23 +22,44 @@ import type { AuthenticatedUser } from '../auth/jwt.strategy';
  * a supplier with no documents at all read `"0"` where every other balance
  * reads to two places. The DBML writes `0`; the wire contract (every numeric a
  * scale-2 string) is why this diverges from it by a literal.
+ *
+ * THE MIDDLE TERM IS THE ONE THAT REACHES ITS SUPPLIER THROUGH A JOIN.
+ * `intake_top_ups` stores no `supplier_id` — it derives one from its parent
+ * receipt — so the correlation runs `intake_top_ups → intakes` and filters
+ * `ti.voided_at IS NULL` there. That filter is what makes a voided receipt
+ * neutralise its own top-ups WITHOUT any cascading write: the money for
+ * berries that were never taken stops counting the moment the receipt is
+ * stamped СТОРНОВАНО. `t.voided_at IS NULL` is a SEPARATE filter guarding a
+ * separate mistake — a top-up voided on its own merits — and deleting either
+ * one is invisible to a test that only exercises the other.
  */
 const debtSql = (supplier: string): string =>
   `(COALESCE((SELECT SUM(i.amount) FROM intakes i
                WHERE i.supplier_id = ${supplier} AND i.voided_at IS NULL), 0.00)
+  + COALESCE((SELECT SUM(t.amount) FROM intake_top_ups t
+                JOIN intakes ti ON ti.id = t.intake_id
+               WHERE ti.supplier_id = ${supplier}
+                 AND ti.voided_at IS NULL
+                 AND t.voided_at  IS NULL), 0.00)
   - COALESCE((SELECT SUM(p.amount) FROM payouts p
                WHERE p.supplier_id = ${supplier} AND p.voided_at IS NULL), 0.00))`;
 
 /**
- * THE ONLY `SUM` OVER EITHER DOCUMENT TABLE IN THE BACKEND.
+ * THE ONLY `SUM` **FOR DEBT** IN THE BACKEND — `point-cash.service.ts` also
+ * sums `payouts`, but for cash, not debt.
  *
- * The formula is copied verbatim from the `suppliers` Note in
- * `28-db-schema.dbml`, including BOTH `voided_at IS NULL` filters, and that
- * Note explains at length why it may exist in exactly one place:
+ * The formula follows the `suppliers` Note in `28-db-schema.dbml`, including
+ * FOUR `voided_at IS NULL` filters across three terms — the middle term
+ * alone carries two, one for the top-up and one for its parent intake — and
+ * that Note explains at length why they may exist in exactly one place:
  *
  *   «фільтр voided_at IS NULL стоїть на ОБОХ історіях, і забути його на
  *    будь-якій означає або гасити борг грошима, яких не видали, або тримати
  *    борг за ягоду, якої не брали»
+ *
+ * THE THIRD TERM ARRIVED WITH THE INTAKE TOP-UPS SLICE (#61) and the Note was
+ * amended in the same change — «обидві історії» is now three. See
+ * `docs/superpowers/specs/2026-09-11-yagoda-intake-top-ups-slice.md`.
  *
  * NOTE THE ASYMMETRY WITH CASH, which lands with `cash_counts`: the debt
  * formula filters voided payouts OUT, the cash formula counts them IN, because
@@ -64,7 +85,7 @@ export class SupplierBalanceService {
   constructor(private readonly dataSource: DataSource) {}
 
   /**
-   * `Σ intakes − Σ payouts` for one supplier, as a decimal STRING.
+   * `Σ intakes + Σ intake_top_ups − Σ payouts` for one supplier, as a decimal STRING.
    *
    * Takes an `EntityManager` so the payout ceiling reads it inside the same
    * transaction that holds the supplier row lock — otherwise the value it

@@ -743,8 +743,8 @@ export const SEED_PAYOUTS: readonly SeedPayout[] = [
 export interface SeedCrateIssuance {
   point: string;
   supplier: string;
-  /** 'yesterday' | 'today' — resolved to that point's seeded shift. */
-  day: 'yesterday' | 'today';
+  /** Resolved to that point's seeded shift. */
+  day: SeedDay;
   units: number;
   mode: 'deposit' | 'receipt';
   operator: string;
@@ -773,6 +773,31 @@ export interface SeedCrateReturn {
 
 export const SEED_CRATE_RETURNS: readonly SeedCrateReturn[] = [
   { point: 'Шипинки', supplier: 'Василь Яремчук', day: 'today', units: 7, operator: 'oksana' },
+];
+
+export interface SeedTopUp {
+  /** Addresses the parent exactly as `SEED_INTAKES` identifies itself. */
+  point: string;
+  day: SeedDay;
+  typed: string;
+  amount: string;
+  reason: string;
+}
+
+/**
+ * ONE TOP-UP, on YESTERDAY's Шипинки receipt — whose shift is CLOSED. That is
+ * the #61 scenario exactly: the owner renegotiated after the fact, and by then
+ * the shift was long shut. The card work that follows this slice needs a row
+ * exercising the normal case, not an edge one.
+ */
+export const SEED_TOP_UPS: readonly SeedTopUp[] = [
+  {
+    point: 'Шипинки',
+    day: 'yesterday',
+    typed: '00412',
+    amount: '750.00',
+    reason: 'Домовились про 48 ₴/кг замість 45 ₴/кг після здачі',
+  },
 ];
 
 export interface SeedTransfer {
