@@ -34,8 +34,16 @@ import {
   SEED_TARE_TYPES,
   SEED_TOP_UPS,
   SEED_TRANSFERS,
+  daysBack,
   type SeedDay,
 } from './dev-seed.data';
+import {
+  HISTORY_CASH_COUNTS,
+  HISTORY_INTAKES,
+  HISTORY_PAYOUTS,
+  HISTORY_SHIFTS,
+  HISTORY_TRANSFERS,
+} from './dev-seed.history';
 
 /** Rows INSERTED by one run — every key is 0 on a repeat run. */
 export interface DevSeedSummary {
@@ -341,6 +349,18 @@ export async function seedDev(ds: DataSource): Promise<DevSeedSummary> {
 }
 
 /**
+ * `YYYY-MM-DD`, `n` days before `iso`. UTC arithmetic on a date-only value, so
+ * no local timezone and no DST boundary inside the seeded window can move a
+ * business date by a day — which would change a document code, which is the
+ * natural key the seed's idempotency rests on.
+ */
+export function isoDaysBefore(iso: string, n: number): string {
+  const d = new Date(`${iso}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() - n);
+  return d.toISOString().slice(0, 10);
+}
+
+/**
  * Shifts, intakes, payouts, transfers and the cash counts that anchor them.
  * Every intake's numbers come from the server's
  * own `buildIntake()` over the price and tare snapshots the seed itself wrote,
@@ -361,17 +381,43 @@ async function seedDocuments(
   ownerId: string,
 ): Promise<void> {
   const tz = process.env.APP_TIMEZONE ?? 'Europe/Kyiv';
-  const days = await one<{ today: string; yesterday: string }>(
+  const days = await one<{ today: string }>(
     qr,
-    `SELECT (now() AT TIME ZONE $1)::date::text AS today,
-            ((now() AT TIME ZONE $1)::date - 1)::text AS yesterday`,
+    `SELECT (now() AT TIME ZONE $1)::date::text AS today`,
     [tz],
   );
-  const dateOf = (day: SeedDay) => (day === 'today' ? days!.today : days!.yesterday);
+  // Memoised because `dateOf` is called once per document per loop, and the
+  // generated history turns that from dozens of calls into thousands.
+  const dateCache = new Map<number, string>();
+  const dateOf = (day: SeedDay): string => {
+    const n = daysBack(day);
+    const hit = dateCache.get(n);
+    if (hit !== undefined) return hit;
+    const iso = isoDaysBefore(days!.today, n);
+    dateCache.set(n, iso);
+    return iso;
+  };
   // A local wall-clock instant on a business date, as timestamptz — the
   // placeholders are named by index so a fragment can sit anywhere in a VALUES.
   const localTs = (dateIdx: number, timeIdx: number, tzIdx: number) =>
     `($${dateIdx}::date + $${timeIdx}::time) AT TIME ZONE $${tzIdx}`;
+
+  /*
+   * CURATED DATA AND GENERATED HISTORY, WALKED AS ONE.
+   *
+   * History FIRST in all four, and for two different reasons. For shifts,
+   * receipts and payouts it is presentation: the curated day ends up newest, so
+   * every screen opens on the hand-written rows. For CASH COUNTS it is
+   * correctness — each opening count reads the point's PREVIOUS count as its
+   * expectation, so walking a past day after a later one would anchor the past
+   * off the future. `dev-seed.history.ts` guarantees its own half is
+   * chronological; this is where the two halves meet in the right order.
+   */
+  const allShifts = [...HISTORY_SHIFTS, ...SEED_SHIFTS];
+  const allIntakes = [...HISTORY_INTAKES, ...SEED_INTAKES];
+  const allPayouts = [...HISTORY_PAYOUTS, ...SEED_PAYOUTS];
+  const allCashCounts = [...HISTORY_CASH_COUNTS, ...SEED_CASH_COUNTS];
+  const allTransfers = [...HISTORY_TRANSFERS, ...SEED_TRANSFERS];
 
   const userByLogin = new Map<string, string>();
   for (const login of new Set(SEED_OPERATORS.map((u) => u.login))) {
@@ -429,7 +475,7 @@ async function seedDocuments(
   };
 
   const shiftId = new Map<string, string>();
-  for (const sh of SEED_SHIFTS) {
+  for (const sh of allShifts) {
     const pid = pointId.get(sh.point)!;
     const date = dateOf(sh.day);
     const key = `${sh.point}/${sh.day}`;
@@ -442,6 +488,31 @@ async function seedDocuments(
       shiftId.set(key, found.id);
       continue;
     }
+    // A POINT MAY HOLD ONLY ONE OPEN SHIFT (`UQ_shifts_open_per_point`), and a
+    // demo database seeded on an EARLIER DAY still holds that day's open ones.
+    // The lookup above is by `(point, business_date)`, so it does not see them,
+    // and the insert below would be the point's second open shift. Postgres
+    // refuses it — correctly — with a constraint name and a raw uuid, which
+    // tells a developer nothing about what to do next. This is that same
+    // refusal, said as a sentence. It is NOT a fix for the stale state: the
+    // seed's contract is that it never modifies an existing row, and closing
+    // someone else's open shift would break it.
+    if (!sh.closed) {
+      const openElsewhere = await one<{ business_date: string }>(
+        qr,
+        `SELECT business_date::text AS business_date FROM shifts
+          WHERE collection_point_id = $1 AND status = 'open' AND business_date <> $2::date`,
+        [pid, date],
+      );
+      if (openElsewhere) {
+        throw new Error(
+          `${sh.point} still has an OPEN shift on ${openElsewhere.business_date}, so today's ` +
+            `cannot be opened (UQ_shifts_open_per_point). This database was seeded on an ` +
+            `earlier day. Close that shift, or start clean with \`npm run db:reset && npm run db:seed\`.`,
+        );
+      }
+    }
+
     const opener = userByLogin.get(sh.openedBy)!;
     const row = await one<{ id: string }>(
       qr,
@@ -458,7 +529,7 @@ async function seedDocuments(
     summary.shifts += 1;
   }
 
-  for (const doc of SEED_INTAKES) {
+  for (const doc of allIntakes) {
     const code = intakeCodeFor(doc.point, doc.day, doc.typed);
     const found = await one<{ id: string }>(qr, `SELECT id FROM intakes WHERE code = $1`, [code]);
     if (found) continue;
@@ -524,7 +595,7 @@ async function seedDocuments(
     summary.intakes += 1;
   }
 
-  for (const doc of SEED_PAYOUTS) {
+  for (const doc of allPayouts) {
     const code = composeDocumentCode(pointCode.get(doc.point)!, 'PO', dateOf(doc.day), doc.typed);
     const found = await one<{ id: string }>(qr, `SELECT id FROM payouts WHERE code = $1`, [code]);
     if (found) continue;
@@ -725,7 +796,7 @@ async function seedDocuments(
   // TRANSFERS BEFORE COUNTS, and both after the payouts above: a closing
   // count's expectation is «the opening count plus this shift's movements»,
   // and the transfers are half of those movements.
-  for (const t of SEED_TRANSFERS) {
+  for (const t of allTransfers) {
     const pid = pointId.get(t.point)!;
     const date = dateOf(t.day);
     // `transfers` has no `code` — (point, sent_at) is the natural key here.
@@ -779,7 +850,7 @@ async function seedDocuments(
   // ORDER IS LOAD-BEARING: `SEED_CASH_COUNTS` is chronological, because each
   // opening count reads the previous count as its expectation.
   const cash = new PointCashService(ds, { appTimezone: tz });
-  for (const c of SEED_CASH_COUNTS) {
+  for (const c of allCashCounts) {
     const shift = shiftId.get(`${c.point}/${c.day}`);
     if (!shift) throw new Error(`Seed cash count has no shift: ${c.point}/${c.day}`);
     const found = await one<{ id: string }>(

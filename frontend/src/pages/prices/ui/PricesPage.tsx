@@ -1,209 +1,168 @@
 import { useState } from 'react';
-import { History, Lock, Pencil } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import { ListPage } from '@/shared/ui/templates/list-page';
-import type { Column } from '@/shared/ui/data-table';
-import { Button } from '@/shared/ui/button';
-import { SelectField } from '@/shared/ui/select-field';
+import { PageHeader } from '@/shared/ui/page-header';
 import { EmptyState } from '@/shared/ui/empty-state';
 import { Spinner } from '@/shared/ui/spinner';
-import { usePointOptionsQuery } from '@/entities/collection-point';
-import { useGradeCatalogQuery, type GradeCatalogItem } from '@/entities/product-grade';
-import { useMeQuery, usePointScope } from '@/entities/user';
-import { useCurrentPricesQuery } from '../api/gradePrices';
+import { useMeQuery } from '@/entities/user';
+import type { GradeCatalogItem } from '@/entities/product-grade';
+import { usePriceSheetQuery } from '../api/priceSheet';
+import { PriceSheet } from './PriceSheet';
 import { SetPriceDialog } from './SetPriceDialog';
 import { PriceHistoryDialog } from './PriceHistoryDialog';
+import type { SheetPoint, SheetRow } from '../model/gradePrice';
 
-/** The mock's `PriceMissing` for a reader: a muted dash, never a bare "—" in ink. */
-function Missing() {
-  return <span className="text-muted-foreground">—</span>;
+/** What the open dialog is about: which grade, which points, prefilled with what. */
+interface Editing {
+  grade: GradeCatalogItem;
+  pointIds: string[];
+  pointName: string;
+  current: { base_price: string; max_markup: string; max_discount: string } | null;
 }
 
 /**
- * "Day prices": pick a point, see the current buy price per grade. The owner
- * sets it (a price correction is a fresh POST — the latest row wins, read
- * back by the `/current` picker one point at a time); an operator sees the
- * same table LOCKED (mock §5.4: a hidden field breeds suspicion, a locked one
- * with a caption teaches the rule) — pinned to their own point, no picker.
- * Every priced row also offers «Історія», a read-only journal of every price
- * the grade has ever had at that point, open to both roles.
+ * «ЦІНИ ДНЯ» AS A SHEET (#89) — rows are grades, columns are points, with a
+ * «Ціна дня загальна» column carrying the «встановити всім» gesture.
  *
- * Money is rendered RAW — the values are decimal strings straight off the wire,
- * never through `toFixed`/`Number`, so nothing passes through a binary float.
- * The unit (₴/kg) lives in the column header, as the catalog does for deposits.
+ * THIS REPLACED A POINT PICKER, and the reason is in the server's own DTO:
+ * `CurrentGradePricesQueryDto` caps at 100 rows and its header says «the
+ * owner's price screen must therefore fetch one point at a time». That is why
+ * the old screen made the owner choose a point before seeing anything — a
+ * limitation, read by everyone as a feature. `GET /grade-prices/sheet` removes
+ * it, and the whole network fits on one screen.
+ *
+ * THERE IS NO DATE PICKER, AND THAT IS NOT AN OMISSION. #89 states the rule as
+ * the trio «день + точка + сорт», but this implementation deliberately has no
+ * `business_date` on `grade_prices` — prices carry over until changed (owner's
+ * decision 2026-09-07, cost recorded in spec `2026-09-07` §8.1). The sheet
+ * therefore shows CURRENT prices and must not promise a date it cannot honour.
+ * Restoring the daily key is a separate slice, not something to smuggle in
+ * behind a date control that would silently read the wrong rows.
+ *
+ * THE OPERATOR IS SCOPED BY THE SERVER, not by this component: the sheet route
+ * runs `resolvePointFilter`, so their response has one column. Nothing here
+ * filters by role except the WRITE affordances.
  */
 export function PricesPage() {
   const { t } = useTranslation();
   const { data: me } = useMeQuery();
-  const { pointId, canPick, setPointId } = usePointScope();
-  const { data: points } = usePointOptionsQuery();
-  const isOperator = me?.role === 'point_operator';
+  const sheet = usePriceSheetQuery();
 
-  const pointName = (points ?? []).find((p) => p.id === pointId)?.name ?? '';
+  const canEdit = me?.role === 'network_owner';
 
-  const grades = useGradeCatalogQuery();
-  const prices = useCurrentPricesQuery(pointId);
-  const priceMap = prices.data ?? {};
-
-  const [editing, setEditing] = useState<GradeCatalogItem | null>(null);
+  const [editing, setEditing] = useState<Editing | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   // Bumped on every open so the dialog remounts with fresh RHF defaults.
   const [dialogInstance, setDialogInstance] = useState(0);
 
-  const openSetPrice = (grade: GradeCatalogItem) => {
-    setEditing(grade);
-    setDialogInstance((n) => n + 1);
-    setDialogOpen(true);
-  };
-
-  const [historyGrade, setHistoryGrade] = useState<GradeCatalogItem | null>(null);
+  /** §4.2's journal for one (point, grade). Reachable by BOTH roles: the owner
+   *  from inside the set-price dialog, the operator by clicking a locked cell. */
+  const [history, setHistory] = useState<{ pointId: string; grade: GradeCatalogItem } | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [historyInstance, setHistoryInstance] = useState(0);
 
-  const openHistory = (grade: GradeCatalogItem) => {
-    setHistoryGrade(grade);
+  const openHistory = (pointId: string, grade: GradeCatalogItem) => {
+    setHistory({ pointId, grade });
     setHistoryInstance((n) => n + 1);
     setHistoryOpen(true);
   };
 
-  const columns: Column<GradeCatalogItem>[] = [
-    {
-      id: 'grade',
-      header: t('prices.col.grade'),
-      cell: (g) => (
-        <span className="font-medium">
-          {g.productName} · {g.name}
-        </span>
-      ),
-    },
-    {
-      id: 'base',
-      header: t('prices.col.base'),
-      align: 'right',
-      className: 'font-mono tabular-nums font-medium',
-      cell: (g) => priceMap[g.id]?.base_price ?? <Missing />,
-    },
-    {
-      id: 'markup',
-      header: t('prices.col.markup'),
-      align: 'right',
-      className: 'font-mono tabular-nums',
-      hideBelow: 'sm',
-      cell: (g) => priceMap[g.id]?.max_markup ?? <Missing />,
-    },
-    {
-      id: 'discount',
-      header: t('prices.col.discount'),
-      align: 'right',
-      className: 'font-mono tabular-nums',
-      hideBelow: 'sm',
-      cell: (g) => priceMap[g.id]?.max_discount ?? <Missing />,
-    },
-    {
-      id: 'action',
-      // Visually hidden so the column has an accessible name without a visible
-      // header over a button cell.
-      header: <span className="sr-only">{t('prices.col.action')}</span>,
-      align: 'right',
-      cell: (g) => {
-        const priced = priceMap[g.id] != null;
-        return (
-          <div className="flex items-center justify-end gap-2">
-            {priced ? (
-              <Button size="sm" variant="ghost" onClick={() => openHistory(g)}>
-                <History className="size-3.5" />
-                {t('prices.history.button')}
-              </Button>
-            ) : null}
-            {isOperator ? (
-              <span
-                role="img"
-                aria-label={t('prices.readOnly')}
-                className="inline-flex items-center justify-center px-1 text-muted-foreground"
-              >
-                <Lock className="size-3.5" aria-hidden="true" />
-              </span>
-            ) : (
-              // The mock's verb pair: a priced grade is CHANGED (pencil), an
-              // unpriced one is SET — the invitation, not the correction.
-              <Button size="sm" variant="outline" onClick={() => openSetPrice(g)}>
-                <Pencil className="size-3.5" />
-                {priced ? t('prices.change') : t('prices.set')}
-              </Button>
-            )}
-          </div>
-        );
-      },
-    },
-  ];
+  const openDialog = (next: Editing) => {
+    setEditing(next);
+    setDialogInstance((n) => n + 1);
+    setDialogOpen(true);
+  };
 
-  // `prices` is disabled (and so reports isPending) until a point is picked, but
-  // the EmptyState branch fires first in that case, so this only gates a live read.
-  const isPending = grades.isPending || prices.isPending;
-  const isError = grades.isError || prices.isError;
+  /** `SheetRow` carries the grade's names; `GradeCatalogItem` is what the dialog
+   *  takes. The two describe the same grade, so this is a rename, not a lookup. */
+  const asCatalogItem = (row: SheetRow): GradeCatalogItem =>
+    ({
+      id: row.product_grade_id,
+      name: row.grade_name,
+      productName: row.product_name,
+    }) as GradeCatalogItem;
+
+  const editCell = (row: SheetRow, point: SheetPoint) =>
+    openDialog({
+      grade: asCatalogItem(row),
+      pointIds: [point.id],
+      pointName: point.name,
+      current: row.prices[point.id] ?? null,
+    });
+
+  const setEverywhere = (row: SheetRow, pointIds: string[]) => {
+    // Prefilled from a point that HAS a price, so the owner nudges the common
+    // number rather than retyping it. Which one is immaterial — if they
+    // disagree, the owner is about to overwrite all of them anyway.
+    const seeded = pointIds.map((id) => row.prices[id]).find((cell) => cell !== undefined) ?? null;
+    openDialog({
+      grade: asCatalogItem(row),
+      pointIds,
+      pointName: t('prices.sheet.allPoints', { count: pointIds.length }),
+      current: seeded,
+    });
+  };
 
   return (
     <>
-      <ListPage<GradeCatalogItem>
-        eyebrow={t('prices.eyebrow')}
-        title={t('prices.title')}
-        description={t('prices.description')}
-        toolbar={
-          canPick ? (
-            <div className="w-full max-w-xs">
-              <SelectField
-                aria-label={t('prices.pickPoint')}
-                value={pointId ?? ''}
-                onChange={(e) => setPointId(e.target.value || null)}
-              >
-                <option value="">{t('prices.pickPoint')}</option>
-                {(points ?? []).map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
-                  </option>
-                ))}
-              </SelectField>
-            </div>
-          ) : isOperator ? (
-            <p className="rounded-md bg-muted/60 px-3 py-2 text-sm text-muted-foreground">
-              {t('prices.banner')}
-            </p>
-          ) : null
-        }
-        columns={columns}
-        rows={grades.data}
-        rowKey={(g) => g.id}
-        isEmpty={pointId === null}
-        empty={<EmptyState title={t('prices.empty.title')} hint={t('prices.empty.hint')} />}
-      >
-        {isPending ? (
+      <div className="mx-auto flex w-full max-w-7xl flex-col gap-6 px-4 py-6">
+        <PageHeader
+          eyebrow={t('prices.eyebrow')}
+          title={t('prices.title')}
+          description={t('prices.description')}
+        />
+
+        {canEdit ? null : (
+          <p className="rounded-md bg-muted/60 px-3 py-2 text-sm text-muted-foreground">
+            {t('prices.banner')}
+          </p>
+        )}
+
+        {sheet.isPending ? (
           <div className="flex justify-center py-12">
             <Spinner />
           </div>
-        ) : isError ? (
+        ) : sheet.isError ? (
           <p role="alert" className="py-6 text-center text-destructive">
             {t('common.somethingWentWrong')}
           </p>
-        ) : undefined}
-      </ListPage>
+        ) : sheet.data && sheet.data.rows.length > 0 && sheet.data.points.length > 0 ? (
+          <PriceSheet
+            sheet={sheet.data}
+            canEdit={canEdit}
+            onEditCell={editCell}
+            onSetEverywhere={setEverywhere}
+            onShowHistory={(row, point) => openHistory(point.id, asCatalogItem(row))}
+          />
+        ) : (
+          <EmptyState title={t('prices.empty.title')} hint={t('prices.empty.hint')} />
+        )}
+      </div>
 
-      {editing && pointId !== null ? (
+      {editing ? (
         <SetPriceDialog
           key={dialogInstance}
-          pointId={pointId}
-          pointName={pointName}
-          grade={editing}
-          current={priceMap[editing.id] ?? null}
+          pointIds={editing.pointIds}
+          pointName={editing.pointName}
+          grade={editing.grade}
+          current={editing.current}
           open={dialogOpen}
           onClose={() => setDialogOpen(false)}
+          onShowHistory={
+            editing.pointIds.length === 1
+              ? () => {
+                  setDialogOpen(false);
+                  openHistory(editing.pointIds[0], editing.grade);
+                }
+              : undefined
+          }
         />
       ) : null}
 
-      {historyGrade && pointId !== null ? (
+      {history ? (
         <PriceHistoryDialog
           key={historyInstance}
-          pointId={pointId}
-          grade={historyGrade}
+          pointId={history.pointId}
+          grade={history.grade}
           open={historyOpen}
           onClose={() => setHistoryOpen(false)}
         />

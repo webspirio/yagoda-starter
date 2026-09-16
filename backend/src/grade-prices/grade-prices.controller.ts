@@ -4,8 +4,10 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { UserRole } from '../users/user-role.enum';
 import { GradePricesService } from './grade-prices.service';
 import { CreateGradePriceDto } from './dto/create-grade-price.dto';
+import { BulkGradePriceDto } from './dto/bulk-grade-price.dto';
 import { ListGradePricesQueryDto } from './dto/list-grade-prices.query';
 import { CurrentGradePricesQueryDto } from './dto/current-grade-prices.query';
+import { GradePriceSheetQueryDto } from './dto/grade-price-sheet.query';
 import type { AuthenticatedUser } from '../auth/jwt.strategy';
 
 /**
@@ -44,10 +46,26 @@ export class GradePricesController {
     return this.prices.current(actor, query);
   }
 
+  /** Declared alongside `/current` and BEFORE the bare `@Get()`, for the
+   *  declaration-order reason given above it. */
+  @Get('sheet')
+  @Auth()
+  sheet(@CurrentUser() actor: AuthenticatedUser, @Query() query: GradePriceSheetQueryDto) {
+    return this.prices.sheet(actor, query);
+  }
+
   @Get()
   @Auth()
   list(@CurrentUser() actor: AuthenticatedUser, @Query() query: ListGradePricesQueryDto) {
     return this.prices.list(actor, query);
+  }
+
+  /** Declared BEFORE the bare `@Post()` for the same declaration-order reason
+   *  `/current` is declared before the bare `@Get()`. */
+  @Post('bulk')
+  @Auth(UserRole.NetworkOwner)
+  bulk(@CurrentUser() actor: AuthenticatedUser, @Body() dto: BulkGradePriceDto) {
+    return this.prices.bulk(actor, dto);
   }
 
   @Post()

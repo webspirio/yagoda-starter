@@ -305,31 +305,27 @@
   "prices": {
     "eyebrow": "Pricing",
     "title": "Day prices",
-    "description": "The current buy price per grade at a point. Setting a price adds a new row — the latest one wins.",
-    "pickPoint": "Select a point",
+    "description": "Grades by points. «Common day price» sets every reception point at once — the warehouse keeps its own.",
     "empty": {
-      "title": "No point selected",
-      "hint": "Choose a point to see and set its grade prices."
+      "title": "Nothing to price yet",
+      "hint": "Add a product grade in the catalogue, and it will appear here with a column per point."
     },
     "col": {
-      "grade": "Grade",
-      "base": "Base price, ₴/kg",
-      "markup": "Max markup, ₴/kg",
-      "discount": "Max discount, ₴/kg",
-      "action": "Action"
+      "grade": "Grade"
     },
-    "set": "Set price",
-    "change": "Change",
     "form": {
       "title": "Set price · {{grade}}",
       "description": "{{point}} · the new price applies to the next receipts; earlier ones keep theirs.",
       "base": "Base price, ₴/kg",
       "markup": "Max markup, ₴/kg",
       "discount": "Max discount, ₴/kg",
-      "reason": "Reason (optional)"
+      "reason": "Reason (optional)",
+      "descriptionAll": "{{points}} — the warehouse is NOT among them: it keeps its own, higher price."
     },
     "toast": {
-      "set": "Price set"
+      "set": "Price set",
+      "setAll_one": "Price set at {{count}} point",
+      "setAll_other": "Price set at {{count}} points"
     },
     "errors": {
       "saveFailed": "Could not save",
@@ -349,6 +345,16 @@
         "reason": "Reason"
       },
       "empty": "The price has not changed yet."
+    },
+    "sheet": {
+      "common": "Common day price",
+      "mixed": "mixed",
+      "setAll": "Set for all",
+      "ownPrice": "· own price",
+      "editCell": "{{grade}} at {{point}}",
+      "allPoints_one": "all reception points ({{count}})",
+      "allPoints_other": "all reception points ({{count}})",
+      "historyCell": "{{grade}} at {{point}} — price history"
     }
   },
   "day": {
