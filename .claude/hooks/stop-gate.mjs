@@ -267,10 +267,21 @@ async function main() {
   // prompt_id means no cap is possible, which the no-id branch below handles honestly.
   const id = safeId(input.prompt_id)
 
+  // 150s, and this is the ONE budget here that is deliberately not cut close. The other
+  // two hooks wrap a single measured command; this one wraps the whole fast tier, whose
+  // cost is dominated by `selfcheck` — 36s of `node --test` that nothing caches and that
+  // grows with every test this layer adds. A warm fast run is ~41s and a cold one is
+  // around 77s BY ARITHMETIC over two measurements rather than by measurement (CLAUDE.md
+  // says why a true cold reading is not available in a worktree), so the margin has to
+  // absorb growth and an unmeasured number, not just variance. 240s was the previous
+  // value and had no reasoning attached; 150s is ~2x the cold estimate.
+  //
+  // Most turns never approach it: --reuse-if-fresh replays an already-green report for
+  // the same source hash in about 0.06s.
   const run = spawnSync(
     process.execPath,
     [path.join(ROOT, 'scripts', 'verify', 'run.mjs'), '--tier', 'fast', '--reuse-if-fresh', '--json'],
-    { cwd: ROOT, encoding: 'utf8', timeout: 240_000, env: process.env },
+    { cwd: ROOT, encoding: 'utf8', timeout: 150_000, env: process.env },
   )
 
   // --- the gate's own failure: open, and loud -------------------------------------

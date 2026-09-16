@@ -108,10 +108,13 @@ function modifiedFiles() {
   const NUL = String.fromCharCode(0)
   // -z gives NUL-delimited, unquoted paths. Without it a path with a space or Cyrillic
   // characters comes back quoted and every comparison below silently misses.
+  // 5s. One `git status` over this repo is milliseconds; 15s was a number nobody had
+  // measured. It counts against the same harness budget the tsc runs below share, so
+  // every second reserved here is a second they cannot use.
   const res = spawnSync('git', ['status', '--porcelain', '-z', '--untracked-files=all'], {
     cwd: ROOT,
     encoding: 'buffer',
-    timeout: 15_000,
+    timeout: 5_000,
   })
   if (res.status !== 0 || !res.stdout) return out
   const fields = res.stdout.toString('utf8').split(NUL).filter(Boolean)
@@ -188,11 +191,22 @@ function tsErrorLines(output) {
   return output.split('\n').filter((l) => /\.tsx?\(\d+,\d+\): error TS/.test(l))
 }
 
+// 20s PER PROJECT, and the per-project part is why this number matters more than it
+// looks. Measured on this machine: backend 1.4s, frontend 4.9s (with --force, so a cold
+// cache changes little), scripts 1.1s, e2e 0.8s — 7.8s for all four. 20s is roughly 4x
+// the slowest single project.
+//
+// THE OLD 120s WAS NOT MERELY GENEROUS, IT CONTRADICTED THE HARNESS. These run in
+// sequence, so four projects at 120s plus the 15s git call was a 495s worst case sitting
+// under a 180s harness `timeout` in .claude/settings.json. The harness would have killed
+// a run this hook still considered healthy, and the third and fourth project's budgets
+// could never apply at all. 20s x 4 + 5s = 85s, comfortably inside the 90s that file now
+// allows, so the two levels finally agree about what "too long" means.
 const results = projectsToRun.map((project) => {
   const res = spawnSync('npx', project.args, {
     cwd: project.cwd,
     encoding: 'utf8',
-    timeout: 120_000,
+    timeout: 20_000,
     env: process.env,
   })
   return { project, res }

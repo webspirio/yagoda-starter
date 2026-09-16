@@ -99,10 +99,18 @@ if (!workspace) process.exit(0)
 const workspaceRoot = path.join(ROOT, workspace)
 const relToWorkspace = path.relative(workspaceRoot, path.join(ROOT, rel))
 
+// 8s, sized from measurement: eslint on ONE file costs 0.84s (backend) to 0.97s
+// (frontend) on this machine, so this is roughly 8x the real cost. It was 30s, which is
+// not a budget but an absence of one — and it mattered, because THIS number is the one
+// that fires: .claude/settings.json's own `timeout` for this hook wraps it, so whichever
+// is smaller decides. A 30s inner under a 60s outer meant the outer could never fire at
+// all. Both are now sized, and this one stays the smaller of the two on purpose: a
+// timeout reported by the hook says WHICH file went unchecked, one reported by the
+// harness says nothing.
 const res = spawnSync('npx', ['eslint', '--max-warnings=0', relToWorkspace], {
   cwd: workspaceRoot,
   encoding: 'utf8',
-  timeout: 30_000,
+  timeout: 8_000,
   env: process.env,
 })
 

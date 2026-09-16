@@ -232,11 +232,17 @@ jobs:
     # The sum is now 600 + 300 = 15 minutes rather than 40, on two counts: `test` no longer
     # runs in this job at all (`coverage` supersedes it — scripts/verify/registry.mjs, and
     # the SUPERSEDED line the runner prints), and test:db's budget is sized from a real
-    # reading. 60 stays as it is rather than being cut to match: the headroom over the sum
-    # is what the rows without a declared budget need, they measured ~220s together on run
-    # 35011857830, and a job-level timeout is the last line of defence — it should be the
-    # one number here that is never tight.
-    timeout-minutes: 60
+    # reading.
+    #
+    # 30 rather than 60, from 2026-09-16. The job measures 3m46s warm and 9m35s cold (runs
+    # 35017224544 and 35011857830), so 60 was four times the worst real reading and six
+    # times the normal one. 30 keeps 2x over the 15 minutes of row budget, which is the
+    # only quantity this number actually has to clear: the headroom above that sum is for
+    # the seventeen rows which declare no budget of their own, and they measured 122s
+    # together on 35017224544 — almost all of it `selfcheck` (54.4s) and `smoke` (49.7s). It stays the loosest number in this file on purpose — a job-level
+    # timeout is the last line of defence, and the failure it causes (a log that simply
+    # stops) is strictly less useful than the one it would pre-empt.
+    timeout-minutes: 30
 
     env:
       # ─────────────────────────────────────────────────────────────────────────
