@@ -8,6 +8,7 @@ export interface PointCashRow {
   cash: string;
   shortfall: string | null;
   unexplained_difference: string;
+  crate_deposits: string;
   latest_transfer_status: TransferStatus | null;
   latest_transfer_sent_at: Date | null;
 }
@@ -62,6 +63,17 @@ export interface PointCashRowResponse {
    */
   unexplained_difference: string;
   /**
+   * §7.6: «фізично шухляда одна, книг дві». `Σ deposit_taken − Σ deposit_refund`
+   * over the point's WHOLE LIFETIME (spec §4.3) — NEVER folded into `cash`,
+   * and NEVER bounded by `as_of` the way every other column on this row is:
+   * §7.5 gives it no lower bound («від першої видачі») and there is no
+   * physical count to anchor it on, because this book is never counted. A
+   * sum across the two books would need no `GROUP BY book` to write by
+   * accident — `cash-book.enum.ts` exists precisely so that mistake cannot
+   * happen silently.
+   */
+  crate_deposits: string;
+  /**
    * The point's most recent trip AS OF `as_of`, or `null` when there had been
    * none — and `status` is the status the transfer HELD on that date, not the
    * one it holds now.
@@ -89,6 +101,7 @@ export function toPointCashRowResponse(row: PointCashRow): PointCashRowResponse 
     cash: row.cash,
     shortfall: row.shortfall,
     unexplained_difference: row.unexplained_difference,
+    crate_deposits: row.crate_deposits,
     latest_transfer:
       row.latest_transfer_status && row.latest_transfer_sent_at
         ? { status: row.latest_transfer_status, sent_at: row.latest_transfer_sent_at }

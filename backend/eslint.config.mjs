@@ -31,7 +31,7 @@ export default tseslint.config(
     // and produces a wrong `amount` that §2.7 then freezes forever on a
     // supplier's printed receipt.
     //
-    // Scoped to the eight modules that handle money rather than applied
+    // Scoped to the nine modules that handle money rather than applied
     // globally: `*` and `/` are perfectly ordinary in pagination offsets,
     // image resizing and time arithmetic, and a repo-wide ban would train
     // people to write disable comments.
@@ -65,6 +65,21 @@ export default tseslint.config(
       'src/transfers/**/*.ts',
       'src/point-cash/**/*.ts',
       'src/cash-counts/**/*.ts',
+      // crates/: the money files only. `crate-code.ts` converts a row COUNT
+      // with Number() and is deliberately outside this guard — it touches no
+      // currency.
+      //
+      // `crate-balance.service.ts` stays IN the guard despite converting
+      // `remaining_units`, an integer row count, not money: it spells that
+      // conversion `Number.parseInt(String(v), 10)`, not `Number(v)`, because
+      // this rule's `CallExpression[callee.name='Number']` selector matches
+      // the bare global only — `Number.parseInt` is a MemberExpression call
+      // and is the sanctioned spelling here on purpose. Whoever tightens this
+      // selector to also catch `Number.parseInt`/`Number.parseFloat` should
+      // know that closes a gap deliberately left open, not a leftover one.
+      'src/crates/crate-allocation.ts',
+      'src/crates/crates.service.ts',
+      'src/crates/crate-balance.service.ts',
       'src/intake-top-ups/**/*.ts',
     ],
     ignores: ['**/*.spec.ts', '**/*.db-spec.ts'],
@@ -102,6 +117,8 @@ export default tseslint.config(
       'src/testing/pipeline.db-spec.ts',
       'src/testing/catalog-pipeline.db-spec.ts',
       'src/testing/documents-pipeline.db-spec.ts',
+      'src/crates/crates.db-spec.ts',
+      'src/crates/crates-race.db-spec.ts',
     ],
     rules: {
       '@typescript-eslint/no-require-imports': ['error', { allowAsImport: true }],

@@ -32,6 +32,14 @@ export const queryKeys = {
   transfers: ['transfers'] as const,
   /** Каса точок — префікс і для списку мережі, і для однієї точки. */
   pointCash: ['point-cash'] as const,
+  /** Ящики — префікс для видач і повернень; читання дописує свій фільтр. */
+  crates: ['crates'] as const,
+  /**
+   * Залишки ящиків — і список точки (`/crate-balances`), і баланс однієї
+   * людини (`/suppliers/:id/crate-balance`). Спільний префікс навмисно: будь-яка
+   * видача чи повернення рухає обидва читання.
+   */
+  crateBalances: ['crate-balances'] as const,
   /** Підрахунки каси — префікс; читання дописує точку/зміну. */
   cashCounts: ['cash-counts'] as const,
 };

@@ -3,6 +3,8 @@ import { HISTORY_INTAKES } from './dev-seed.history';
 import {
   SEED_GRADES,
   SEED_INTAKES,
+  SEED_CRATE_ISSUANCES,
+  SEED_CRATE_RETURNS,
   SEED_OPERATORS,
   SEED_PAYOUTS,
   SEED_POINTS,
@@ -100,6 +102,19 @@ describe('dev seed dataset', () => {
       expect(gradeKeys.has(`${c.product}/${c.grade}`)).toBe(true);
       const grade = SEED_GRADES.find((g) => g.product === c.product && g.name === c.grade);
       expect(grade?.is_active).toBe(true);
+    }
+  });
+
+  it('flags exactly one tare type as the crate', () => {
+    expect(SEED_TARE_TYPES.filter((t) => t.is_crate)).toHaveLength(1);
+  });
+
+  it('never returns more crates than a supplier was issued', () => {
+    for (const ret of SEED_CRATE_RETURNS) {
+      const issued = SEED_CRATE_ISSUANCES
+        .filter((i) => i.supplier === ret.supplier && i.point === ret.point)
+        .reduce((n, i) => n + i.units, 0);
+      expect(ret.units).toBeLessThanOrEqual(issued);
     }
   });
 });

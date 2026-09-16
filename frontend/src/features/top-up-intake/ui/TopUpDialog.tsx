@@ -78,7 +78,12 @@ export function TopUpDialog({
       toast.success(t('topUp.toast.created'));
       onClose();
     } catch (error) {
-      setFormError(apiErrorToBanner(error, 'topUp.errors.failed'));
+      setFormError(
+        apiErrorToBanner(error, 'topUp.errors.failed', {
+          // Shared code, screen-specific consequence — see `apiErrorToBanner`.
+          SUPPLIER_INACTIVE: 'topUp.errors.supplierInactive',
+        }),
+      );
     }
   });
 

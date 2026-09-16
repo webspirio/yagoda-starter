@@ -159,6 +159,39 @@ describe('apiErrorToBanner', () => {
     );
   });
 
+  describe('overrides — one code whose sentence depends on the endpoint', () => {
+    // SUPPLIER_INACTIVE is refused by `POST /intake-top-ups` and
+    // `POST /crate-issuances` alike, but «a debt nobody could pay out» and
+    // «crates cannot be issued to them» are different consequences, so the
+    // shared map holds neither and each screen passes its own.
+    const TOP_UP = { SUPPLIER_INACTIVE: 'topUp.errors.supplierInactive' };
+    const CRATES = { SUPPLIER_INACTIVE: 'crates.errors.supplierInactive' };
+
+    it('gives each screen its own sentence for the same code', () => {
+      const error = apiError(400, 'SUPPLIER_INACTIVE');
+      expect(apiErrorToBanner(error, 'topUp.errors.failed', TOP_UP)).toBe(
+        'topUp.errors.supplierInactive',
+      );
+      expect(apiErrorToBanner(error, 'crates.errors.issueFailed', CRATES)).toBe(
+        'crates.errors.supplierInactive',
+      );
+    });
+
+    it('falls back rather than borrowing the other screen’s sentence', () => {
+      // A screen that passes no override must not inherit one — the whole
+      // reason this code is absent from the shared map.
+      expect(apiErrorToBanner(apiError(400, 'SUPPLIER_INACTIVE'), 'void.errors.failed')).toBe(
+        'void.errors.failed',
+      );
+    });
+
+    it('leaves every other code to the shared map', () => {
+      expect(apiErrorToBanner(apiError(403, 'OWNER_ONLY'), 'topUp.errors.failed', TOP_UP)).toBe(
+        'day.errors.ownerOnly',
+      );
+    });
+  });
+
   it('falls back for an empty-string code rather than returning the empty string itself', () => {
     // `(code && CODE[code]) ?? fallback` short-circuits on `code: ''` to `''`
     // itself — `??` only falls back on null/undefined, not on falsy-but-not-

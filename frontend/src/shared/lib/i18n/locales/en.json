@@ -1008,5 +1008,79 @@
       "reasonTooLong": "At most 500 characters",
       "supplierInactive": "This supplier is deactivated, so a debt raised now could never be paid out"
     }
+  },
+  "crates": {
+    "eyebrow": "At the point",
+    "title": "Crates",
+    "description": "Who is still holding crates, and on what terms.",
+    "pickPoint": "Select a point",
+    "empty": {
+      "title": "No point selected",
+      "hint": "Crates sit at a point. Choose one to see what is out."
+    },
+    "standing": {
+      "allotment": "Allotment",
+      "inField": "Out with people",
+      "overAllotment": "{{over}} more crates are out than the allotment — a target is a guide, not a limit."
+    },
+    "field": {
+      "supplier": "Person",
+      "supplierPlaceholder": "Choose a person",
+      "units": "Crates",
+      "mode": "Taken as"
+    },
+    "mode": {
+      "deposit": "Deposit",
+      "receipt": "Receipt",
+      "depositHint": "Money is taken now, at the crate price from the catalogue, and goes into the point crate drawer.",
+      "receiptHint": "A paper receipt is signed. NO money changes hands, so these crates are out with no cash cover at all.",
+      "mixed": "Deposit + receipt"
+    },
+    "issue": {
+      "title": "Issue crates",
+      "description": "Crates go home with a person. Both modes put the same crates on the same balance — the difference is only in the money.",
+      "submit": "Issue",
+      "toast": "Crates issued"
+    },
+    "return": {
+      "title": "Accept crates",
+      "description": "Returns consume the oldest issuances first and refund each at the price it was taken at.",
+      "submit": "Accept",
+      "toast": "Crates accepted",
+      "splitTitle": "How the refund is made up",
+      "splitIdle": "Choose a person and a number to see the split.",
+      "splitFailed": "Could not work out the split",
+      "byDeposit": "at {{price}}",
+      "byReceipt": "on a receipt, no money",
+      "refund": "Refund",
+      "shortfall_one": "{{count}} crate more than this person ever took — recount before accepting.",
+      "shortfall_other": "{{count}} crates more than this person ever took — recount before accepting."
+    },
+    "inField": {
+      "title": "Out with people",
+      "col.person": "Person",
+      "col.units": "Crates",
+      "col.how": "Taken as",
+      "col.deposit": "Deposit",
+      "total": "TOTAL",
+      "inactive": "deactivated",
+      "empty.title": "Nobody is holding crates",
+      "empty.hint": "Everything issued here has come back."
+    },
+    "note": {
+      "receiptVsDeposit": "Crates taken on a receipt have no cash cover at all — their deposit column reads «—», not zero. That is why «crates out» and «deposits held» are two different numbers.",
+      "notTracked": "Empty crates on hand, crates here with berries in them, and shipments are not tracked yet — there is no table for them, so this screen shows nothing rather than a number it cannot stand behind."
+    },
+    "errors": {
+      "supplierRequired": "Pick who is taking the crates",
+      "unitsFormat": "Enter a whole number of crates",
+      "issueFailed": "Could not issue the crates",
+      "returnFailed": "Could not accept the crates",
+      "noCrateType": "No tare type is marked as the crate — set one in the catalogue first",
+      "returnExceeds": "That is more crates than this person is holding",
+      "cashInsufficient": "The crate deposits drawer holds less than this refund needs",
+      "hasReturns": "A return has already been allocated against this issuance — void the return first",
+      "supplierInactive": "This person is deactivated, so crates cannot be issued to them"
+    }
   }
 }

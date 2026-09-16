@@ -20,8 +20,23 @@ CONFIG=${CONFIG:-/etc/yagoda-backup.env}
 [ -r "$CONFIG" ] || { echo "missing config $CONFIG" >&2; exit 1; }
 # shellcheck disable=SC1090
 . "$CONFIG"
-: "${PG_CONTAINER:?set in $CONFIG}" "${UPLOADS_VOLUME:?set in $CONFIG}"
+# Coolify names containers <service>-<app uuid>-<timestamp> and the timestamp
+# changes on EVERY deploy, so a literal PG_CONTAINER goes stale the next time
+# anyone merges. Resolve it from the compose labels instead, which are stable:
+# the project label is the application's UUID. UPLOADS_VOLUME is derived from
+# the same project name. Either may still be set literally to override.
+if [ -z "${PG_CONTAINER:-}" ] || [ -z "${UPLOADS_VOLUME:-}" ]; then
+  : "${COMPOSE_PROJECT:?set COMPOSE_PROJECT (or both PG_CONTAINER and UPLOADS_VOLUME) in $CONFIG}"
+fi
+if [ -z "${PG_CONTAINER:-}" ]; then
+  PG_CONTAINER=$(docker ps --filter "label=com.docker.compose.project=$COMPOSE_PROJECT" \
+                           --filter "label=com.docker.compose.service=postgres" \
+                           --format '{{.Names}}' | head -1)
+  [ -n "$PG_CONTAINER" ] || { echo "no running postgres container for project '$COMPOSE_PROJECT'" >&2; exit 1; }
+fi
+UPLOADS_VOLUME=${UPLOADS_VOLUME:-${COMPOSE_PROJECT}_uploads-data}
 : "${DB_USER:?set in $CONFIG}" "${DB_NAME:?set in $CONFIG}"
+echo "backup target: container=$PG_CONTAINER volume=$UPLOADS_VOLUME"
 BACKUP_DIR=${BACKUP_DIR:-/data/backups}
 RETENTION_DAYS=${RETENTION_DAYS:-14}
 LOCK=${LOCK:-/run/lock/yagoda-backup.lock}

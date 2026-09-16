@@ -15,6 +15,7 @@ import { PricesPage } from '@/pages/prices';
 import { DayPage } from '@/pages/day';
 import { ReceptionPage } from '@/pages/reception';
 import { JournalPage } from '@/pages/journal';
+import { CratesPage } from '@/pages/crates';
 import { PointCashPage } from '@/pages/point-cash';
 import { TransfersPage } from '@/pages/transfers';
 import { NotFoundPage } from '@/pages/not-found';
@@ -101,6 +102,17 @@ export const routes: RouteObject[] = [
         element: (
           <RequireAuth>
             <DayPage />
+          </RequireAuth>
+        ),
+      },
+      {
+        // Both roles: the OPERATOR is the one standing at the table handing
+        // crates over, so there is no role gate here. §10.2 gates only the
+        // ALLOTMENT, which lives on the points screen.
+        path: '/crates',
+        element: (
+          <RequireAuth>
+            <CratesPage />
           </RequireAuth>
         ),
       },

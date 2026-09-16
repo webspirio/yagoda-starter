@@ -3,7 +3,7 @@ import { httpClient } from '@/shared/api';
 import { queryKeys } from '@/shared/api/queryKeys';
 
 export interface VoidDocumentInput {
-  kind: 'intake' | 'payout' | 'transfer' | 'topUp';
+  kind: 'intake' | 'payout' | 'transfer' | 'topUp' | 'crateIssuance' | 'crateReturn';
   id: string;
   reason: string;
 }
@@ -59,6 +59,19 @@ const DOCUMENTS: Record<VoidDocumentInput['kind'], VoidDescriptor> = {
   topUp: {
     path: (id) => `/intake-top-ups/${id}/void`,
     invalidates: [queryKeys.intakeTopUps, queryKeys.supplierBalances],
+  },
+  // CRATES ARE NOT MONEY OWED FOR BERRIES, so neither of these touches
+  // `supplierBalances` — a person can owe twenty crates and be owed nothing for
+  // berries, or the reverse. They DO touch `pointCash`: a deposit issuance
+  // moves cash into the point's crates book, and voiding it moves that cash
+  // back out.
+  crateIssuance: {
+    path: (id) => `/crate-issuances/${id}/void`,
+    invalidates: [queryKeys.crates, queryKeys.crateBalances, queryKeys.pointCash],
+  },
+  crateReturn: {
+    path: (id) => `/crate-returns/${id}/void`,
+    invalidates: [queryKeys.crates, queryKeys.crateBalances, queryKeys.pointCash],
   },
 };
 
