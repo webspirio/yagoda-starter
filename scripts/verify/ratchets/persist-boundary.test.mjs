@@ -61,8 +61,12 @@ const VALID_TEST_REASON = 'Test-only baseline entry exercising the ratchet mecha
 test('the real tree is green — all five localStorage/sessionStorage files stay guarded, narrowed, and match the allowlist', () => {
   const res = run()
   assert.equal(res.status, 0, res.out)
-  assert.match(res.out, /10 localStorage\/sessionStorage access\(es\) across 4 file\(s\)/)
-  assert.match(res.out, /4 getItem\(\) read\(s\), all narrowed or opaque/)
+  // RE-MEASURED 2026-09-16: 10 accesses across 4 files -> 13 across 5, and 4 getItem reads
+  // -> 5. The fifth file is shared/lib/point-preference/index.ts, which arrived with main's
+  // sticky-point-scope work (PR #107) already guarded and narrowed — this test going red is
+  // what proved it had been looked at rather than assumed.
+  assert.match(res.out, /13 localStorage\/sessionStorage access\(es\) across 5 file\(s\)/)
+  assert.match(res.out, /5 getItem\(\) read\(s\), all narrowed or opaque/)
   assert.match(res.out, /isPersistableKey's allowlist matches .* exactly \(1 key\(s\)/)
   assert.match(res.out, /1 scope exclusion\(s\) still live/)
 })

@@ -268,19 +268,19 @@ export const CHECKS = [
     // of it blew through 120s with an empty Turbo cache — see the timeoutMs note above.
     timeoutMs: 600_000,
     proves:
-      'A SNAPSHOT, RE-MEASURED 2026-09-15 on the tree this branch merged 156 commits of ' +
-      'main into (previously 41 suites / 516 tests and 99 files / 592 tests on 2026-09-11 ' +
+      'A SNAPSHOT, RE-MEASURED 2026-09-16 on the tree this branch merged a further 43 commits ' +
+      'of main into (178 files / 1445 tests on 2026-09-15, 99 files / 592 tests on 2026-09-11 ' +
       '— see CLAUDE.md\'s Verification section for the same discipline applied to cost ' +
       'figures): backend jest (NODE_OPTIONS=--experimental-vm-' +
-      'modules jest, testRegex .*\\.spec\\.ts$, rootDir src) ran 48 suites / 606 tests, and ' +
-      'frontend vitest (vitest run) ran 130 files / 839 tests — 178 files and 1445 tests ' +
+      'modules jest, testRegex .*\\.spec\\.ts$, rootDir src) ran 55 suites / 727 tests, and ' +
+      'frontend vitest (vitest run) ran 137 files / 930 tests — 192 files and 1657 tests ' +
       'total today, all passing. Those counts grow with ordinary feature work in either ' +
       'workspace and are not re-verified by this row — they illustrate scale, nothing more. ' +
       'The INVARIANT this row actually enforces outlives every one of them: a single ' +
       'failing assertion anywhere in either workspace turns this exact command, and this ' +
       'row, red, no matter how many tests exist when it runs.',
     blindSpot:
-      'The backend testRegex matches only *.spec.ts, so all 23 *.db-spec.ts suites ' +
+      'The backend testRegex matches only *.spec.ts, so all 29 *.db-spec.ts suites ' +
       '(backend/jest.db.config.js, a separate config) are excluded from this row entirely ' +
       '— test:db is what covers those. No .tsx file is exercised by the backend suites: ' +
       'the backend has no .tsx files, and only the frontend vitest half of this row ever ' +
@@ -429,11 +429,12 @@ export const CHECKS = [
       'have silenced both suites with nothing here noticing. The two backend regexes are read ' +
       'out of backend/jest.config.js and backend/jest.db.config.js at runtime, not copied ' +
       'here, so this row also proves those two files still say what the check assumes. AS A ' +
-      'SNAPSHOT, RE-MEASURED 2026-09-15 on the tree this branch merged 156 commits of main ' +
-      'into (previously 170 files across the same six collectors on 2026-09-11): 219 files ' +
-      'now match across the two candidate nets (jest-unit 48, jest-db 23, vitest 130, ' +
-      'node-test 15, playwright 1, shell-test 2). Every one of the 49 new files came from ' +
-      'main\'s own feature work — no collector was added or changed by this re-measurement, ' +
+      'SNAPSHOT, RE-MEASURED 2026-09-16 on the tree this branch merged a further 43 commits ' +
+      'of main into (219 files on 2026-09-15, 170 on 2026-09-11): 239 files ' +
+      'now match across the two candidate nets (jest-unit 55, jest-db 29, vitest 137, ' +
+      'node-test 15, playwright 1, shell-test 2). All 20 new files came from ' +
+      "main's own feature work — the crates slice, bulk grade prices and the sticky point " +
+      'scope — no collector was added or changed by this re-measurement, ' +
       'and the six are the same six. That total grows every time ordinary feature work adds ' +
       'a test file, and this row does not track or re-check its own prose count.',
     blindSpot:
@@ -601,11 +602,11 @@ export const CHECKS = [
       "exact command; this row proves rule 4's guarantee ONLY for a run where origin/main " +
       'was fetched, and says so with a WARNING line — printed even on a passing run — ' +
       'whenever it was not. AS A SNAPSHOT, RE-MEASURED 2026-09-15 on the tree this branch ' +
-      'merged 156 commits of main into (previously 8 migrations and 5 db-specs on ' +
-      '2026-09-10): backend/src/migrations/ holds 12 numbered migrations (timestamps ' +
-      '1788600000000–1788600000011) and 8 *.db-spec.ts files, excluded from rules 2–4. ' +
+      'merged a further 43 commits of main into (12 migrations and 8 db-specs on ' +
+      '2026-09-15, 8 and 5 on 2026-09-10): backend/src/migrations/ holds 13 numbered migrations (timestamps ' +
+      '1788600000000–1788600000012) and 9 *.db-spec.ts files, excluded from rules 2–4. ' +
       'Rule 4 ran for real on this measurement, not skipped: origin/main resolved, and all ' +
-      'four migrations main merged in (YagodaTransfers, YagodaCashCounts, ' +
+      'five migrations main has merged in (YagodaCrates, YagodaTransfers, YagodaCashCounts, ' +
       'DropCashCountExpectedCheck, YagodaIntakeTopUps) compared byte-identical to their ' +
       'origin/main copies. Both counts grow with ordinary schema work, unrelated to this ' +
       'table, and this row does not track or re-check its own prose.',
@@ -1268,12 +1269,15 @@ export const CHECKS = [
       'is a REGRESSION — a new dependency pulled in whole, an accidental whole-package import — measured in ' +
       'tens or hundreds of KiB, comfortably outside the minimum headroom; what it now deliberately tolerates is ' +
       'roughly one ordinary phase of feature work, sized against the reference\'s own measured history of ' +
-      '13-23 KiB gzip per phase. AS A DATED SNAPSHOT, RE-MEASURED 2026-09-15 on the tree this branch merged ' +
-      '156 commits of main into: frontend/dist/assets holds exactly ' +
-      'two such files, index-BRwyrRRy.js (911.2 KiB raw / 267.3 KiB gzip) and index-DVIm0xgu.css (85.1 KiB ' +
-      'raw / 18.8 KiB gzip), summing to 996.4 KiB raw / 286.1 KiB gzip against an UNCHANGED ceiling of ' +
-      '1060.0 KiB raw / 305.0 KiB gzip — a headroom of 63.6 KiB raw / 18.9 KiB gzip, down from 104.3 KiB / ' +
-      '28.6 KiB on 2026-09-10. THE CEILING WAS DELIBERATELY NOT RAISED to restore the old margin. Main\'s ' +
+      '13-23 KiB gzip per phase. AS A DATED SNAPSHOT, RE-MEASURED 2026-09-16 on the tree this branch merged ' +
+      'a further 43 commits of main into (the crates slice, the price sheet, the sticky point scope): ' +
+      'frontend/dist/assets holds exactly two such files, summing to 1028.9 KiB raw / 293.9 KiB gzip ' +
+      'against an UNCHANGED ceiling of 1060.0 KiB raw / 305.0 KiB gzip — a headroom of 31.1 KiB raw / ' +
+      '11.1 KiB gzip, down from 63.6 / 18.9 on 2026-09-15 and 104.3 / 28.6 on 2026-09-10. THREE READINGS, ' +
+      'ONE DIRECTION: the gzip headroom is now UNDER HALF the 25 KiB minimum this ceiling was built with, ' +
+      'so at the 13-23 KiB-per-phase rate it was sized against, the NEXT phase of feature work makes this ' +
+      'row RED. That red is a real decision — split the bundle, or re-base the ceiling with a reviewed, ' +
+      'dated `--write` — and it is now one phase away rather than hypothetical. THE CEILING WAS DELIBERATELY NOT RAISED to restore the old margin. Main\'s ' +
       'four screens cost 9.7 KiB gzip, which is inside the 13-23 KiB-per-phase band this ceiling was sized ' +
       'for, so the row did exactly what it is for: it absorbed one phase without a red run and printed the ' +
       'shrinking headroom on every green one. That headroom is now BELOW the 25 KiB gzip minimum the ceiling ' +
@@ -1389,7 +1393,7 @@ export const CHECKS = [
       'nothing») pass for the wrong reason. A single failing assertion in any suite this glob ' +
       'matches fails this exact command, independent of file or test count. AS A DATED ' +
       'SNAPSHOT, RE-MEASURED 2026-09-15 on the tree this branch merged 156 commits of main ' +
-      'into (previously 12 files / 174 tests on 2026-09-10): 23 files match *.db-spec.ts, ' +
+      'into (12 files / 174 tests on 2026-09-10, 23 files on 2026-09-15): 29 files match *.db-spec.ts, ' +
       '286 tests total — EIGHT parse-and-apply migration-schema suites ' +
       '(migrations/{bootstrap-owner-create,catalog-schema,cash-counts-schema,' +
       'intakes-payouts-schema,intake-top-ups-schema,schema,suppliers-prices-schema,' +

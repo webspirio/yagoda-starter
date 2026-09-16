@@ -100,6 +100,30 @@
       "reason": "Same trailing `export { movementsSql, anchorSql, asOfSql }` statement as the anchorSql entry — no importer anywhere in backend/src; movementsSql is called only from within point-cash.service.ts itself, and every other occurrence of the name in the tree is a comment in payouts.service.ts or a db-spec explaining what the formula does. Real export debt recorded, not endorsed."
     },
     {
+      "key": "export|backend/src/testing/db-harness.ts|openTestDataSource",
+      "kind": "export",
+      "file": "backend/src/testing/db-harness.ts",
+      "name": "openTestDataSource",
+      "added": "2026-09-16",
+      "reason": "An export of the db-spec harness with no importer knip can see. Its real callers are the *.db-spec.ts suites, which knip's Jest plugin cannot resolve at all — its default spec/test glob requires a literal dot before 'spec' and never matches the hyphenated '-db-spec.ts' suffix, the blind spot this baseline already records for all 29 of those files.\n\nWHY THIS REPLACED A `file` ENTRY ON 2026-09-16: db-harness.ts itself used to be reported as an unused FILE, because nothing knip could follow imported it. Adding backend/src/testing/db-global-setup.ts — wired as jest.db.config.js's `globalSetup`, which knip's Jest plugin DOES read as an entry — made the file reachable through `ensureTestDatabase`, so the finding moved down a level to the three exports that entry does not itself use. Strictly better visibility than before: one opaque file finding became three named ones, and `ensureTestDatabase` correctly dropped off the list entirely."
+    },
+    {
+      "key": "export|backend/src/testing/db-harness.ts|relaxThrottleForTests",
+      "kind": "export",
+      "file": "backend/src/testing/db-harness.ts",
+      "name": "relaxThrottleForTests",
+      "added": "2026-09-16",
+      "reason": "An export of the db-spec harness with no importer knip can see. Its real callers are the *.db-spec.ts suites, which knip's Jest plugin cannot resolve at all — its default spec/test glob requires a literal dot before 'spec' and never matches the hyphenated '-db-spec.ts' suffix, the blind spot this baseline already records for all 29 of those files.\n\nWHY THIS REPLACED A `file` ENTRY ON 2026-09-16: db-harness.ts itself used to be reported as an unused FILE, because nothing knip could follow imported it. Adding backend/src/testing/db-global-setup.ts — wired as jest.db.config.js's `globalSetup`, which knip's Jest plugin DOES read as an entry — made the file reachable through `ensureTestDatabase`, so the finding moved down a level to the three exports that entry does not itself use. Strictly better visibility than before: one opaque file finding became three named ones, and `ensureTestDatabase` correctly dropped off the list entirely."
+    },
+    {
+      "key": "export|backend/src/testing/db-harness.ts|resolveTestDatabaseName",
+      "kind": "export",
+      "file": "backend/src/testing/db-harness.ts",
+      "name": "resolveTestDatabaseName",
+      "added": "2026-09-16",
+      "reason": "An export of the db-spec harness with no importer knip can see. Its real callers are the *.db-spec.ts suites, which knip's Jest plugin cannot resolve at all — its default spec/test glob requires a literal dot before 'spec' and never matches the hyphenated '-db-spec.ts' suffix, the blind spot this baseline already records for all 29 of those files.\n\nWHY THIS REPLACED A `file` ENTRY ON 2026-09-16: db-harness.ts itself used to be reported as an unused FILE, because nothing knip could follow imported it. Adding backend/src/testing/db-global-setup.ts — wired as jest.db.config.js's `globalSetup`, which knip's Jest plugin DOES read as an entry — made the file reachable through `ensureTestDatabase`, so the finding moved down a level to the three exports that entry does not itself use. Strictly better visibility than before: one opaque file finding became three named ones, and `ensureTestDatabase` correctly dropped off the list entirely."
+    },
+    {
       "key": "export|backend/src/users/password-hashing.ts|SCRYPT_N",
       "kind": "export",
       "file": "backend/src/users/password-hashing.ts",
@@ -138,6 +162,54 @@
       "name": "RouteError",
       "added": "2026-09-10",
       "reason": "Same barrel-bypass pattern as ErrorFallback on this file: router.tsx imports RouteError from the concrete path `./providers/RouteError`, not from this index.ts, so the barrel's re-export of it is never the one actually reached, grep-verified against every RouteError import site."
+    },
+    {
+      "key": "export|frontend/src/entities/crate/api/useCrates.ts|useCrateBalanceQuery",
+      "kind": "export",
+      "file": "frontend/src/entities/crate/api/useCrates.ts",
+      "name": "useCrateBalanceQuery",
+      "added": "2026-09-16",
+      "reason": "REAL DEAD CODE, and recorded as such rather than explained away. knip reports this hook at BOTH its origin module and the barrel, which is the signature of a symbol nothing imports anywhere — unlike the barrel-only findings beside it. Verified by hand: a grep over all of frontend/src finds no reference outside its own declaration and re-export, and pages/crates/ui/CratesPage.tsx imports only `useCrateBalancesQuery` (PLURAL, the balances list) from '@/entities/crate'. These three singular/document hooks are API surface the crates slice shipped without a screen that consumes them. Left in place because backend/src and frontend/src are out of scope for the verify layer's own refactors. Recorded 2026-09-16."
+    },
+    {
+      "key": "export|frontend/src/entities/crate/api/useCrates.ts|useCrateIssuancesQuery",
+      "kind": "export",
+      "file": "frontend/src/entities/crate/api/useCrates.ts",
+      "name": "useCrateIssuancesQuery",
+      "added": "2026-09-16",
+      "reason": "REAL DEAD CODE, and recorded as such rather than explained away. knip reports this hook at BOTH its origin module and the barrel, which is the signature of a symbol nothing imports anywhere — unlike the barrel-only findings beside it. Verified by hand: a grep over all of frontend/src finds no reference outside its own declaration and re-export, and pages/crates/ui/CratesPage.tsx imports only `useCrateBalancesQuery` (PLURAL, the balances list) from '@/entities/crate'. These three singular/document hooks are API surface the crates slice shipped without a screen that consumes them. Left in place because backend/src and frontend/src are out of scope for the verify layer's own refactors. Recorded 2026-09-16."
+    },
+    {
+      "key": "export|frontend/src/entities/crate/api/useCrates.ts|useCrateReturnsQuery",
+      "kind": "export",
+      "file": "frontend/src/entities/crate/api/useCrates.ts",
+      "name": "useCrateReturnsQuery",
+      "added": "2026-09-16",
+      "reason": "REAL DEAD CODE, and recorded as such rather than explained away. knip reports this hook at BOTH its origin module and the barrel, which is the signature of a symbol nothing imports anywhere — unlike the barrel-only findings beside it. Verified by hand: a grep over all of frontend/src finds no reference outside its own declaration and re-export, and pages/crates/ui/CratesPage.tsx imports only `useCrateBalancesQuery` (PLURAL, the balances list) from '@/entities/crate'. These three singular/document hooks are API surface the crates slice shipped without a screen that consumes them. Left in place because backend/src and frontend/src are out of scope for the verify layer's own refactors. Recorded 2026-09-16."
+    },
+    {
+      "key": "export|frontend/src/entities/crate/index.ts|useCrateBalanceQuery",
+      "kind": "export",
+      "file": "frontend/src/entities/crate/index.ts",
+      "name": "useCrateBalanceQuery",
+      "added": "2026-09-16",
+      "reason": "REAL DEAD CODE, and recorded as such rather than explained away. knip reports this hook at BOTH its origin module and the barrel, which is the signature of a symbol nothing imports anywhere — unlike the barrel-only findings beside it. Verified by hand: a grep over all of frontend/src finds no reference outside its own declaration and re-export, and pages/crates/ui/CratesPage.tsx imports only `useCrateBalancesQuery` (PLURAL, the balances list) from '@/entities/crate'. These three singular/document hooks are API surface the crates slice shipped without a screen that consumes them. Left in place because backend/src and frontend/src are out of scope for the verify layer's own refactors. Recorded 2026-09-16."
+    },
+    {
+      "key": "export|frontend/src/entities/crate/index.ts|useCrateIssuancesQuery",
+      "kind": "export",
+      "file": "frontend/src/entities/crate/index.ts",
+      "name": "useCrateIssuancesQuery",
+      "added": "2026-09-16",
+      "reason": "REAL DEAD CODE, and recorded as such rather than explained away. knip reports this hook at BOTH its origin module and the barrel, which is the signature of a symbol nothing imports anywhere — unlike the barrel-only findings beside it. Verified by hand: a grep over all of frontend/src finds no reference outside its own declaration and re-export, and pages/crates/ui/CratesPage.tsx imports only `useCrateBalancesQuery` (PLURAL, the balances list) from '@/entities/crate'. These three singular/document hooks are API surface the crates slice shipped without a screen that consumes them. Left in place because backend/src and frontend/src are out of scope for the verify layer's own refactors. Recorded 2026-09-16."
+    },
+    {
+      "key": "export|frontend/src/entities/crate/index.ts|useCrateReturnsQuery",
+      "kind": "export",
+      "file": "frontend/src/entities/crate/index.ts",
+      "name": "useCrateReturnsQuery",
+      "added": "2026-09-16",
+      "reason": "REAL DEAD CODE, and recorded as such rather than explained away. knip reports this hook at BOTH its origin module and the barrel, which is the signature of a symbol nothing imports anywhere — unlike the barrel-only findings beside it. Verified by hand: a grep over all of frontend/src finds no reference outside its own declaration and re-export, and pages/crates/ui/CratesPage.tsx imports only `useCrateBalancesQuery` (PLURAL, the balances list) from '@/entities/crate'. These three singular/document hooks are API surface the crates slice shipped without a screen that consumes them. Left in place because backend/src and frontend/src are out of scope for the verify layer's own refactors. Recorded 2026-09-16."
     },
     {
       "key": "export|frontend/src/entities/intake/api/useIntakes.ts|documentParams",
@@ -188,6 +260,14 @@
       "reason": "The barrel's `export { login, logout }` line is only half-reachable: AppLayout.tsx imports `logout` through this barrel (`@/features/auth`), but LoginForm.tsx imports `login` directly from the concrete `../api/authApi` instead, bypassing the barrel for that one name — grep-verified against every login() call site."
     },
     {
+      "key": "export|frontend/src/features/issue-crates/index.ts|useIssueCratesMutation",
+      "kind": "export",
+      "file": "frontend/src/features/issue-crates/index.ts",
+      "name": "useIssueCratesMutation",
+      "added": "2026-09-16",
+      "reason": "An FSD public-API re-export with no importer. The SYMBOL is alive: IssueCratesDialog in the same slice imports it from its origin module, which is why knip reports only this barrel line and not the origin — the distinction this baseline learned to state per entry rather than in general, after a review found four reasons citing the wrong side of it. The page test (pages/crates/ui/CratesPage.test.tsx, or the top-up equivalent) additionally vi.mock()s THIS BARREL PATH, which knip does not resolve to a named import either. Recorded 2026-09-16."
+    },
+    {
       "key": "export|frontend/src/features/receive-transfer/index.ts|useDisputeTransferMutation",
       "kind": "export",
       "file": "frontend/src/features/receive-transfer/index.ts",
@@ -202,6 +282,22 @@
       "name": "useResolveTransferMutation",
       "added": "2026-09-15",
       "reason": "useResolveTransferMutation is re-exported by this FSD public-API barrel, and the barrel export specifically has no importer: every consumer reaches useResolveTransferMutation through its origin module (./api/useResolveTransfer) instead — the dialogs import it relatively, and the page tests reach it by vi.mock()ing the barrel PATH, which is a module-mock string knip does not resolve to a named import. The symbol itself is alive and covered by its own unit test; what is unused is this one re-export line. Same shape as the entities/user useUpdateMeMutation barrel entry already on this baseline."
+    },
+    {
+      "key": "export|frontend/src/features/return-crates/index.ts|useReturnCratesMutation",
+      "kind": "export",
+      "file": "frontend/src/features/return-crates/index.ts",
+      "name": "useReturnCratesMutation",
+      "added": "2026-09-16",
+      "reason": "An FSD public-API re-export with no importer. The SYMBOL is alive: ReturnCratesDialog in the same slice imports it from its origin module, which is why knip reports only this barrel line and not the origin — the distinction this baseline learned to state per entry rather than in general, after a review found four reasons citing the wrong side of it. The page test (pages/crates/ui/CratesPage.test.tsx, or the top-up equivalent) additionally vi.mock()s THIS BARREL PATH, which knip does not resolve to a named import either. Recorded 2026-09-16."
+    },
+    {
+      "key": "export|frontend/src/features/return-crates/index.ts|useReturnPreviewQuery",
+      "kind": "export",
+      "file": "frontend/src/features/return-crates/index.ts",
+      "name": "useReturnPreviewQuery",
+      "added": "2026-09-16",
+      "reason": "An FSD public-API re-export with no importer. The SYMBOL is alive: ReturnCratesDialog in the same slice imports it from its origin module, which is why knip reports only this barrel line and not the origin — the distinction this baseline learned to state per entry rather than in general, after a review found four reasons citing the wrong side of it. The page test (pages/crates/ui/CratesPage.test.tsx, or the top-up equivalent) additionally vi.mock()s THIS BARREL PATH, which knip does not resolve to a named import either. Recorded 2026-09-16."
     },
     {
       "key": "export|frontend/src/features/send-transfer/index.ts|useSendTransferMutation",
@@ -236,6 +332,14 @@
       "reason": "This slice's own PayoutDialog.tsx — the component this barrel exists to expose (ReceiptDialog.tsx imports PayoutDialog through `@/features/settle-payout`) — imports useCreatePayoutMutation directly from `../api/useCreatePayout` instead of through the barrel, grep-verified; no file reaches it via the barrel path."
     },
     {
+      "key": "export|frontend/src/features/top-up-intake/index.ts|useCreateTopUpMutation",
+      "kind": "export",
+      "file": "frontend/src/features/top-up-intake/index.ts",
+      "name": "useCreateTopUpMutation",
+      "added": "2026-09-16",
+      "reason": "An FSD public-API re-export with no importer. The SYMBOL is alive: TopUpDialog in the same slice imports it from its origin module, which is why knip reports only this barrel line and not the origin — the distinction this baseline learned to state per entry rather than in general, after a review found four reasons citing the wrong side of it. The page test (pages/crates/ui/CratesPage.test.tsx, or the top-up equivalent) additionally vi.mock()s THIS BARREL PATH, which knip does not resolve to a named import either. Recorded 2026-09-16."
+    },
+    {
       "key": "export|frontend/src/features/void-document/index.ts|useVoidDocumentMutation",
       "kind": "export",
       "file": "frontend/src/features/void-document/index.ts",
@@ -258,6 +362,14 @@
       "name": "extractErrorPayload",
       "added": "2026-09-10",
       "reason": "Same as its neighbour extractErrorCode on this file: grep-verified called internally at line 165 inside attachAuthInterceptors's response interceptor, but the export itself has no import anywhere — direct, through the barrel, or from a test."
+    },
+    {
+      "key": "export|frontend/src/shared/api/index.ts|STALE",
+      "kind": "export",
+      "file": "frontend/src/shared/api/index.ts",
+      "name": "STALE",
+      "added": "2026-09-10",
+      "reason": "Grep-verified: `from '@/shared/api'` appears 64 times across frontend/src (httpClient x37, ApiError x25, attachAuthInterceptors x7, plus one each of queryClient+buildPersistOptions, persister, apiErrorCode, and the AuthHooks type) — the barrel is real and heavily used, just never for this name. STALE is used throughout the app (every list/detail query's staleTime), always imported from the concrete `@/shared/api/queryClient`, never from this barrel."
     },
     {
       "key": "export|frontend/src/shared/api/index.ts|extractErrorCode",
@@ -306,14 +418,6 @@
       "name": "queryKeys",
       "added": "2026-09-10",
       "reason": "Grep-verified: `from '@/shared/api'` appears 64 times across frontend/src (httpClient x37, ApiError x25, attachAuthInterceptors x7, plus one each of queryClient+buildPersistOptions, persister, apiErrorCode, and the AuthHooks type) — the barrel is real and heavily used, just never for this name. queryKeys itself is one of the most-used values in the whole frontend, but every real consumer imports it from the concrete `@/shared/api/queryKeys`, never from this barrel — verified across every 'queryKeys.' call site."
-    },
-    {
-      "key": "export|frontend/src/shared/api/index.ts|STALE",
-      "kind": "export",
-      "file": "frontend/src/shared/api/index.ts",
-      "name": "STALE",
-      "added": "2026-09-10",
-      "reason": "Grep-verified: `from '@/shared/api'` appears 64 times across frontend/src (httpClient x37, ApiError x25, attachAuthInterceptors x7, plus one each of queryClient+buildPersistOptions, persister, apiErrorCode, and the AuthHooks type) — the barrel is real and heavily used, just never for this name. STALE is used throughout the app (every list/detail query's staleTime), always imported from the concrete `@/shared/api/queryClient`, never from this barrel."
     },
     {
       "key": "export|frontend/src/shared/lib/date/index.ts|formatTime",
@@ -612,6 +716,38 @@
       "reason": "A *.db-spec.ts suite, run by backend/jest.db.config.js (rootDir src, testRegex '.*\\\\.db-spec\\\\.ts$', maxWorkers 1) — the `test:db` row's own command. knip's Jest plugin cannot see it: its default spec/test glob requires a literal dot before 'spec', which a hyphenated '-db-spec.ts' suffix never matches. The same single glob mismatch the blindSpot already names for this baseline's other db-spec file findings; not dead code."
     },
     {
+      "key": "file|backend/src/crates/crate-balances.db-spec.ts|backend/src/crates/crate-balances.db-spec.ts",
+      "kind": "file",
+      "file": "backend/src/crates/crate-balances.db-spec.ts",
+      "name": "backend/src/crates/crate-balances.db-spec.ts",
+      "added": "2026-09-16",
+      "reason": "knip's Jest plugin cannot see this file: its default spec/test glob requires a literal dot before 'spec', so a hyphenated '-db-spec.ts' suffix never matches. backend/jest.db.config.js runs it directly by its own testRegex, and `testfiles` proves it is collected by exactly one runner. NOT dead code — the same tooling blind spot this baseline already records for every other *.db-spec.ts file. Arrived 2026-09-16 with main's 43-commit merge (the crates slice, PR #92)."
+    },
+    {
+      "key": "file|backend/src/crates/crates-race.db-spec.ts|backend/src/crates/crates-race.db-spec.ts",
+      "kind": "file",
+      "file": "backend/src/crates/crates-race.db-spec.ts",
+      "name": "backend/src/crates/crates-race.db-spec.ts",
+      "added": "2026-09-16",
+      "reason": "knip's Jest plugin cannot see this file: its default spec/test glob requires a literal dot before 'spec', so a hyphenated '-db-spec.ts' suffix never matches. backend/jest.db.config.js runs it directly by its own testRegex, and `testfiles` proves it is collected by exactly one runner. NOT dead code — the same tooling blind spot this baseline already records for every other *.db-spec.ts file. Arrived 2026-09-16 with main's 43-commit merge (the crates slice, PR #92)."
+    },
+    {
+      "key": "file|backend/src/crates/crates.db-spec.ts|backend/src/crates/crates.db-spec.ts",
+      "kind": "file",
+      "file": "backend/src/crates/crates.db-spec.ts",
+      "name": "backend/src/crates/crates.db-spec.ts",
+      "added": "2026-09-16",
+      "reason": "knip's Jest plugin cannot see this file: its default spec/test glob requires a literal dot before 'spec', so a hyphenated '-db-spec.ts' suffix never matches. backend/jest.db.config.js runs it directly by its own testRegex, and `testfiles` proves it is collected by exactly one runner. NOT dead code — the same tooling blind spot this baseline already records for every other *.db-spec.ts file. Arrived 2026-09-16 with main's 43-commit merge (the crates slice, PR #92)."
+    },
+    {
+      "key": "file|backend/src/grade-prices/grade-prices-bulk.db-spec.ts|backend/src/grade-prices/grade-prices-bulk.db-spec.ts",
+      "kind": "file",
+      "file": "backend/src/grade-prices/grade-prices-bulk.db-spec.ts",
+      "name": "backend/src/grade-prices/grade-prices-bulk.db-spec.ts",
+      "added": "2026-09-16",
+      "reason": "knip's Jest plugin cannot see this file: its default spec/test glob requires a literal dot before 'spec', so a hyphenated '-db-spec.ts' suffix never matches. backend/jest.db.config.js runs it directly by its own testRegex, and `testfiles` proves it is collected by exactly one runner. NOT dead code — the same tooling blind spot this baseline already records for every other *.db-spec.ts file. Arrived 2026-09-16 with main's 43-commit merge (the crates slice, PR #92)."
+    },
+    {
       "key": "file|backend/src/intake-top-ups/intake-top-ups-list.db-spec.ts|backend/src/intake-top-ups/intake-top-ups-list.db-spec.ts",
       "kind": "file",
       "file": "backend/src/intake-top-ups/intake-top-ups-list.db-spec.ts",
@@ -716,6 +852,14 @@
       "reason": "A TypeORM migration: discovered and run by the migration runner at startup via the migrations glob in data-source.ts (migrations: [join(__dirname, 'migrations/[0-9]*{.ts,.js}')]), never statically imported by name from any entry point — the same class of framework-invoked file the blindSpot names."
     },
     {
+      "key": "file|backend/src/migrations/1788600000012-YagodaCrates.ts|backend/src/migrations/1788600000012-YagodaCrates.ts",
+      "kind": "file",
+      "file": "backend/src/migrations/1788600000012-YagodaCrates.ts",
+      "name": "backend/src/migrations/1788600000012-YagodaCrates.ts",
+      "added": "2026-09-16",
+      "reason": "A TypeORM migration. The runner discovers migrations through a directory glob at startup rather than a static import, so knip cannot follow the reference — the same framework-invoked blind spot this baseline records for the twelve migrations already on it. `migrations` proves this file's name and class agree. Arrived 2026-09-16 with main's crates slice."
+    },
+    {
       "key": "file|backend/src/migrations/bootstrap-owner-create.db-spec.ts|backend/src/migrations/bootstrap-owner-create.db-spec.ts",
       "kind": "file",
       "file": "backend/src/migrations/bootstrap-owner-create.db-spec.ts",
@@ -738,6 +882,14 @@
       "name": "backend/src/migrations/catalog-schema.db-spec.ts",
       "added": "2026-09-10",
       "reason": "Executed by backend/jest.db.config.js's own testRegex (.*\\.db-spec\\.ts$ — the unit config's `.*\\.spec\\.ts$` in backend/package.json does not match it, by the config's own comment). knip's Jest plugin found jest.db.config.js but applies its generic spec/test glob to it, which requires a literal dot before 'spec'/'test' (matches foo.spec.ts) and so never matches the hyphenated '-db-spec.ts' suffix — a real test file `npm run test:db` runs directly, invisible to knip's entry inference for this exact non-standard suffix."
+    },
+    {
+      "key": "file|backend/src/migrations/crates-schema.db-spec.ts|backend/src/migrations/crates-schema.db-spec.ts",
+      "kind": "file",
+      "file": "backend/src/migrations/crates-schema.db-spec.ts",
+      "name": "backend/src/migrations/crates-schema.db-spec.ts",
+      "added": "2026-09-16",
+      "reason": "knip's Jest plugin cannot see this file: its default spec/test glob requires a literal dot before 'spec', so a hyphenated '-db-spec.ts' suffix never matches. backend/jest.db.config.js runs it directly by its own testRegex, and `testfiles` proves it is collected by exactly one runner. NOT dead code — the same tooling blind spot this baseline already records for every other *.db-spec.ts file. Arrived 2026-09-16 with main's 43-commit merge (the crates slice, PR #92)."
     },
     {
       "key": "file|backend/src/migrations/intake-top-ups-schema.db-spec.ts|backend/src/migrations/intake-top-ups-schema.db-spec.ts",
@@ -844,6 +996,14 @@
       "reason": "Executed by backend/jest.db.config.js's own testRegex (.*\\.db-spec\\.ts$ — the unit config's `.*\\.spec\\.ts$` in backend/package.json does not match it, by the config's own comment). knip's Jest plugin found jest.db.config.js but applies its generic spec/test glob to it, which requires a literal dot before 'spec'/'test' (matches foo.spec.ts) and so never matches the hyphenated '-db-spec.ts' suffix — a real test file `npm run test:db` runs directly, invisible to knip's entry inference for this exact non-standard suffix."
     },
     {
+      "key": "file|backend/src/tare-types/tare-types-crate.db-spec.ts|backend/src/tare-types/tare-types-crate.db-spec.ts",
+      "kind": "file",
+      "file": "backend/src/tare-types/tare-types-crate.db-spec.ts",
+      "name": "backend/src/tare-types/tare-types-crate.db-spec.ts",
+      "added": "2026-09-16",
+      "reason": "knip's Jest plugin cannot see this file: its default spec/test glob requires a literal dot before 'spec', so a hyphenated '-db-spec.ts' suffix never matches. backend/jest.db.config.js runs it directly by its own testRegex, and `testfiles` proves it is collected by exactly one runner. NOT dead code — the same tooling blind spot this baseline already records for every other *.db-spec.ts file. Arrived 2026-09-16 with main's 43-commit merge (the crates slice, PR #92)."
+    },
+    {
       "key": "file|backend/src/testing/catalog-pipeline.db-spec.ts|backend/src/testing/catalog-pipeline.db-spec.ts",
       "kind": "file",
       "file": "backend/src/testing/catalog-pipeline.db-spec.ts",
@@ -858,14 +1018,6 @@
       "name": "backend/src/testing/db-harness.db-spec.ts",
       "added": "2026-09-10",
       "reason": "Executed by backend/jest.db.config.js's own testRegex (.*\\.db-spec\\.ts$ — the unit config's `.*\\.spec\\.ts$` in backend/package.json does not match it, by the config's own comment). knip's Jest plugin found jest.db.config.js but applies its generic spec/test glob to it, which requires a literal dot before 'spec'/'test' (matches foo.spec.ts) and so never matches the hyphenated '-db-spec.ts' suffix — a real test file `npm run test:db` runs directly, invisible to knip's entry inference for this exact non-standard suffix."
-    },
-    {
-      "key": "file|backend/src/testing/db-harness.ts|backend/src/testing/db-harness.ts",
-      "kind": "file",
-      "file": "backend/src/testing/db-harness.ts",
-      "name": "backend/src/testing/db-harness.ts",
-      "added": "2026-09-10",
-      "reason": "Imported only by the *.db-spec.ts files above (e.g. testing/pipeline.db-spec.ts:22), every one of which is itself unreachable to knip for the jest.db.config.js reason recorded on those entries — app.module.ts's only mention of db-harness.ts is a prose comment, not an import. Unreachable by transitivity, not on its own; `npm run test:db` genuinely exercises it."
     },
     {
       "key": "file|backend/src/testing/documents-pipeline.db-spec.ts|backend/src/testing/documents-pipeline.db-spec.ts",
@@ -972,6 +1124,14 @@
       "reason": "Named explicitly in frontend/CLAUDE.md's Kit hygiene list — \"select (Radix — screens use the native SelectField)\" states outright what replaced it. No test file, grep-verified."
     },
     {
+      "key": "type|backend/src/grade-prices/grade-price.mapper.ts|SheetRow",
+      "kind": "type",
+      "file": "backend/src/grade-prices/grade-price.mapper.ts",
+      "name": "SheetRow",
+      "added": "2026-09-16",
+      "reason": "An exported type used only INSIDE its own declaring file, so what knip reports is the `export` keyword rather than the symbol. Verified by reading the file: every reference is local to it. The same shape as the three entity unions this baseline already records for exactly this reason. Recorded 2026-09-16 with main's merge."
+    },
+    {
       "key": "type|backend/src/intakes/intake-lines.ts|BuiltLine",
       "kind": "type",
       "file": "backend/src/intakes/intake-lines.ts",
@@ -1004,14 +1164,6 @@
       "reason": "Defined as `Omit<IntakeItemResponse, 'id'>` and used only inside this file's own preview-response composition; grep-verified zero imports from any other backend/src file."
     },
     {
-      "key": "type|backend/src/seed/dev-seed.data.ts|SeedIntakeLine",
-      "kind": "type",
-      "file": "backend/src/seed/dev-seed.data.ts",
-      "name": "SeedIntakeLine",
-      "added": "2026-09-10",
-      "reason": "Used only within dev-seed.data.ts itself, as the element type of a seed fixture's `lines` array; grep-verified zero imports from any other backend/src file — the dev-seed CLI consumes the composed fixture objects, never this element type by name."
-    },
-    {
       "key": "type|frontend/src/entities/cash-count/model/cash-count.ts|CashBook",
       "kind": "type",
       "file": "frontend/src/entities/cash-count/model/cash-count.ts",
@@ -1026,6 +1178,62 @@
       "name": "CashCountKind",
       "added": "2026-09-15",
       "reason": "A union mirroring the backend's CashCountKind enum (cash-counts/cash-count-kind.enum.ts). Same shape as the CashBook entry above: used as the type of CashCount.kind in its own file, exported so a consumer can name it, with no importer today."
+    },
+    {
+      "key": "type|frontend/src/entities/crate/index.ts|CrateAllocation",
+      "kind": "type",
+      "file": "frontend/src/entities/crate/index.ts",
+      "name": "CrateAllocation",
+      "added": "2026-09-16",
+      "reason": "A type re-exported from an FSD public API with no importer. Its origin declaration is consumed — by the slice's own hook or by a neighbouring interface in the same file — so only this barrel line is unreferenced, the same class as the fifteen barrel re-exports this baseline already carries. Recorded 2026-09-16 with main's merge."
+    },
+    {
+      "key": "type|frontend/src/entities/crate/index.ts|CrateBalance",
+      "kind": "type",
+      "file": "frontend/src/entities/crate/index.ts",
+      "name": "CrateBalance",
+      "added": "2026-09-16",
+      "reason": "A type re-exported from an FSD public API with no importer. Its origin declaration is consumed — by the slice's own hook or by a neighbouring interface in the same file — so only this barrel line is unreferenced, the same class as the fifteen barrel re-exports this baseline already carries. Recorded 2026-09-16 with main's merge."
+    },
+    {
+      "key": "type|frontend/src/entities/crate/index.ts|CrateDocumentFilter",
+      "kind": "type",
+      "file": "frontend/src/entities/crate/index.ts",
+      "name": "CrateDocumentFilter",
+      "added": "2026-09-16",
+      "reason": "A type re-exported from an FSD public API with no importer. Its origin declaration is consumed — by the slice's own hook or by a neighbouring interface in the same file — so only this barrel line is unreferenced, the same class as the fifteen barrel re-exports this baseline already carries. Recorded 2026-09-16 with main's merge."
+    },
+    {
+      "key": "type|frontend/src/entities/crate/index.ts|CrateTranche",
+      "kind": "type",
+      "file": "frontend/src/entities/crate/index.ts",
+      "name": "CrateTranche",
+      "added": "2026-09-16",
+      "reason": "A type re-exported from an FSD public API with no importer. Its origin declaration is consumed — by the slice's own hook or by a neighbouring interface in the same file — so only this barrel line is unreferenced, the same class as the fifteen barrel re-exports this baseline already carries. Recorded 2026-09-16 with main's merge."
+    },
+    {
+      "key": "type|frontend/src/entities/crate/model/crate.ts|CrateAllocation",
+      "kind": "type",
+      "file": "frontend/src/entities/crate/model/crate.ts",
+      "name": "CrateAllocation",
+      "added": "2026-09-16",
+      "reason": "An exported type used only INSIDE its own declaring file, so what knip reports is the `export` keyword rather than the symbol. Verified by reading the file: every reference is local to it. The same shape as the three entity unions this baseline already records for exactly this reason. Recorded 2026-09-16 with main's merge."
+    },
+    {
+      "key": "type|frontend/src/entities/crate/model/crate.ts|CrateTranche",
+      "kind": "type",
+      "file": "frontend/src/entities/crate/model/crate.ts",
+      "name": "CrateTranche",
+      "added": "2026-09-16",
+      "reason": "An exported type used only INSIDE its own declaring file, so what knip reports is the `export` keyword rather than the symbol. Verified by reading the file: every reference is local to it. The same shape as the three entity unions this baseline already records for exactly this reason. Recorded 2026-09-16 with main's merge."
+    },
+    {
+      "key": "type|frontend/src/entities/intake-top-up/index.ts|TopUpFilter",
+      "kind": "type",
+      "file": "frontend/src/entities/intake-top-up/index.ts",
+      "name": "TopUpFilter",
+      "added": "2026-09-16",
+      "reason": "A type re-exported from an FSD public API with no importer. Its origin declaration is consumed — by the slice's own hook or by a neighbouring interface in the same file — so only this barrel line is unreferenced, the same class as the fifteen barrel re-exports this baseline already carries. Recorded 2026-09-16 with main's merge."
     },
     {
       "key": "type|frontend/src/entities/intake/index.ts|IntakeItem",
@@ -1140,6 +1348,14 @@
       "reason": "Same as Credentials on this barrel: grep-verified no call site imports TokenResponse by name; login()'s return type is consumed through inference (useSession(token) etc.), never an explicit annotation."
     },
     {
+      "key": "type|frontend/src/features/issue-crates/index.ts|IssueCratesInput",
+      "kind": "type",
+      "file": "frontend/src/features/issue-crates/index.ts",
+      "name": "IssueCratesInput",
+      "added": "2026-09-16",
+      "reason": "A type re-exported from an FSD public API with no importer. Its origin declaration is consumed — by the slice's own hook or by a neighbouring interface in the same file — so only this barrel line is unreferenced, the same class as the fifteen barrel re-exports this baseline already carries. Recorded 2026-09-16 with main's merge."
+    },
+    {
       "key": "type|frontend/src/features/receive-transfer/index.ts|DisputeTransferInput",
       "kind": "type",
       "file": "frontend/src/features/receive-transfer/index.ts",
@@ -1154,6 +1370,14 @@
       "name": "ResolveTransferInput",
       "added": "2026-09-15",
       "reason": "ResolveTransferInput is re-exported by this FSD public-API barrel, and the barrel export specifically has no importer: every consumer reaches ResolveTransferInput through its origin module (./api/useResolveTransfer) instead — the dialogs import it relatively, and the page tests reach it by vi.mock()ing the barrel PATH, which is a module-mock string knip does not resolve to a named import. The symbol itself is alive and covered by its own unit test; what is unused is this one re-export line. Same shape as the entities/user useUpdateMeMutation barrel entry already on this baseline."
+    },
+    {
+      "key": "type|frontend/src/features/return-crates/index.ts|ReturnCratesInput",
+      "kind": "type",
+      "file": "frontend/src/features/return-crates/index.ts",
+      "name": "ReturnCratesInput",
+      "added": "2026-09-16",
+      "reason": "A type re-exported from an FSD public API with no importer. Its origin declaration is consumed — by the slice's own hook or by a neighbouring interface in the same file — so only this barrel line is unreferenced, the same class as the fifteen barrel re-exports this baseline already carries. Recorded 2026-09-16 with main's merge."
     },
     {
       "key": "type|frontend/src/features/send-transfer/index.ts|SendTransferInput",
@@ -1188,6 +1412,14 @@
       "reason": "The input type of useCreatePayoutMutation, itself re-exported from this same barrel but reached only via a direct import from ../api/useCreatePayout (see this barrel's useCreatePayoutMutation entry) — grep-verified no consumer imports CreatePayoutInput by name from anywhere."
     },
     {
+      "key": "type|frontend/src/features/top-up-intake/index.ts|CreateTopUpInput",
+      "kind": "type",
+      "file": "frontend/src/features/top-up-intake/index.ts",
+      "name": "CreateTopUpInput",
+      "added": "2026-09-16",
+      "reason": "A type re-exported from an FSD public API with no importer. Its origin declaration is consumed — by the slice's own hook or by a neighbouring interface in the same file — so only this barrel line is unreferenced, the same class as the fifteen barrel re-exports this baseline already carries. Recorded 2026-09-16 with main's merge."
+    },
+    {
       "key": "type|frontend/src/features/void-document/index.ts|VoidDocumentInput",
       "kind": "type",
       "file": "frontend/src/features/void-document/index.ts",
@@ -1202,6 +1434,14 @@
       "name": "PointKind",
       "added": "2026-09-10",
       "reason": "Used only within this file itself, to type several CollectionPoint-related interfaces' `kind` field; grep-verified zero imports from any other frontend/src file."
+    },
+    {
+      "key": "type|frontend/src/pages/prices/model/gradePrice.ts|CurrentPriceMap",
+      "kind": "type",
+      "file": "frontend/src/pages/prices/model/gradePrice.ts",
+      "name": "CurrentPriceMap",
+      "added": "2026-09-16",
+      "reason": "Unused export, and the interesting one of this batch: an IDENTICALLY NAMED type is declared LOCALLY in frontend/src/entities/product-grade/api/usePricedGrades.ts (`type CurrentPriceMap = Record<...>`, not an import), and that local one is what the three live references resolve to. So this is a duplicated shape rather than an unreferenced name — a seventh instance of the independently-duplicated-interface pattern this baseline already documents for `Paginated<T>`. Recorded 2026-09-16, not endorsed: consolidating it is frontend/src's own work."
     },
     {
       "key": "type|frontend/src/pages/reception/model/intakeForm.ts|PreviewIntakeItemBody",

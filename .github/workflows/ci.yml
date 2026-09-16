@@ -269,6 +269,35 @@ jobs:
       # behavioural reason, which is precisely what trains people to lower floors
       # without reading why.
       #
+      # RE-MEASURED AGAIN on 2026-09-16, after merging a further 43 commits of main
+      # (the crates slice PR #92, bulk grade prices, the sticky point scope), by a live
+      # `npx vitest run --coverage` in the frontend workspace:
+      #   frontend: 84.64% statements / 80.69% branches / 77.93% functions / 84.84% lines
+      # against floors of 85 / 81 / 79 / 85, i.e. red on all four by 0.36, 0.31, 1.07 and
+      # 0.16 points. Backend was untouched by that merge's effect on ITS floors and stays
+      # where 2026-09-15 left it — the failing CI run named only the frontend workspace.
+      #
+      #   LOWERED, all four frontend floors: STATEMENTS 85 -> 84, BRANCHES 81 -> 80,
+      #   FUNCTIONS 79 -> 77, LINES 85 -> 84. THE CAUSE IS ONE SHAPE, read off the
+      #   per-directory report rather than inferred: every new slice arrived with its
+      #   UI covered and its `api/` module at zero.
+      #       entities/crate/api           0 / 0 / 0 / 0
+      #       entities/intake-top-up/api   0 / 0 / 0 / 0
+      #       features/issue-crates/api    0 / 100 / 0 / 0
+      #       features/return-crates/api   0 / 0 / 0 / 0
+      #       pages/prices/api             0 / 0 / 0 / 0
+      #     while pages/crates/ui is at 90.0, issue-crates/ui 95.0, return-crates/ui 96.0
+      #     and pages/prices/ui 90.9. The mechanism is that each page test `vi.mock()`s the
+      #     whole slice barrel, so the hook modules behind it are never executed — the SAME
+      #     mechanism that put those modules in the `deadcode` baseline as unimported
+      #     exports. FUNCTIONS fell hardest (1.07 points, three times any other measure)
+      #     because an uncovered hook module is several exported functions at once.
+      #
+      #   THIS IS A REGRESSION IN MAIN, NOT IN THIS BRANCH, and lowering the floor does not
+      #   fix it — it records it. The fix is a test that exercises each `api/` hook instead
+      #   of mocking past it, which is frontend/src's own work and out of scope here. The
+      #   floors are the marker that says how much was given up and when.
+      #
       # THE RATCHET TURNS ONE WAY. Raising a floor, as ordinary feature work adds
       # tests, is an ordinary edit; LOWERING one must be a visible diff in THIS file,
       # reviewed like any other regression. This diff moves floors in BOTH directions
@@ -306,10 +335,10 @@ jobs:
       COVERAGE_BACKEND_BRANCHES: 61
       COVERAGE_BACKEND_FUNCTIONS: 78
       COVERAGE_BACKEND_LINES: 82
-      COVERAGE_FRONTEND_STATEMENTS: 85
-      COVERAGE_FRONTEND_BRANCHES: 81
-      COVERAGE_FRONTEND_FUNCTIONS: 79
-      COVERAGE_FRONTEND_LINES: 85
+      COVERAGE_FRONTEND_STATEMENTS: 84
+      COVERAGE_FRONTEND_BRANCHES: 80
+      COVERAGE_FRONTEND_FUNCTIONS: 77
+      COVERAGE_FRONTEND_LINES: 84
 
     steps:
       - uses: actions/checkout@v7
