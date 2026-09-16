@@ -191,7 +191,7 @@ export const SEED_TARE_TYPES: readonly SeedTareType[] = [
   { name: 'Чешка', weight_kg: '1.20', deposit_price: '120.00', is_crate: true },
   { name: 'Лубянка', weight_kg: '0.30', deposit_price: '50.00', is_crate: false },
   { name: 'Мішок', weight_kg: '0.10', deposit_price: '10.00', is_crate: false },
-  { name: 'Ящик', weight_kg: '2.00', deposit_price: '20.00', is_crate: true },
+  { name: 'Ящик', weight_kg: '2.00', deposit_price: '20.00', is_crate: false },
 ];
 
 export interface SeedOperator {
@@ -437,6 +437,58 @@ export const SEED_PRICE_CHANGES: readonly SeedPriceChange[] = [
     base_price: '47.00',
     reason: 'Ціна від переробника з обіду',
   },
+  /*
+   * «ПОСТАВИТИ ВСІМ», ALREADY PRESSED — the state #89's sheet renders as a BARE
+   * NUMBER in «Ціна дня загальна» rather than a range.
+   *
+   * Every other grade already disagrees across the network for free, because
+   * each point carries a `price_offset` and the base seeding applies it: Малина
+   * 1 сорт reads 124–135 with nothing added here. So the range branch was never
+   * the gap — the AGREEMENT branch was, and no seeded grade could reach it.
+   *
+   * 150.00 is written ABSOLUTE at each of the five reception points (a change
+   * row ignores `price_offset`, unlike the base row it corrects), so they agree
+   * exactly. СКЛАД IS DELIBERATELY ABSENT: §4.8 — «склад це звичайний пункт
+   * прийому зі своєю, вищою ціною, якого жест "поставити всім" НЕ чіпає». It
+   * keeps its own 145.00 (140 base + its +5 offset), so the screen shows the
+   * common price and the warehouse's separate one side by side, which is the
+   * whole rule in one row.
+   */
+  {
+    point: 'Шипинки',
+    product: 'Малина',
+    grade: 'Вищий сорт',
+    base_price: '150.00',
+    reason: 'Ціна дня загальна',
+  },
+  {
+    point: 'Конищів',
+    product: 'Малина',
+    grade: 'Вищий сорт',
+    base_price: '150.00',
+    reason: 'Ціна дня загальна',
+  },
+  {
+    point: 'Гайове',
+    product: 'Малина',
+    grade: 'Вищий сорт',
+    base_price: '150.00',
+    reason: 'Ціна дня загальна',
+  },
+  {
+    point: 'Попівці',
+    product: 'Малина',
+    grade: 'Вищий сорт',
+    base_price: '150.00',
+    reason: 'Ціна дня загальна',
+  },
+  {
+    point: 'Михайлівці',
+    product: 'Малина',
+    grade: 'Вищий сорт',
+    base_price: '150.00',
+    reason: 'Ціна дня загальна',
+  },
 ];
 
 /* ------------------------------------------------------------------------- *
@@ -450,7 +502,22 @@ export const SEED_PRICE_CHANGES: readonly SeedPriceChange[] = [
  * weights, so what the demo stores is exactly what the API would have stored.
  * ------------------------------------------------------------------------- */
 
-export type SeedDay = 'today' | 'yesterday';
+/**
+ * A business date, relative to the day the seed runs. `'today'` and
+ * `'yesterday'` name the two CURATED days; a NUMBER is that many days before
+ * today, and is what `dev-seed.history.ts` generates with. The two spellings of
+ * day 1 (`'yesterday'` and `1`) are deliberate: the curated rows keep the word,
+ * so a reader can tell curated data from generated data without opening the
+ * other file.
+ */
+export type SeedDay = 'today' | 'yesterday' | number;
+
+/** `SeedDay` as a count of days before today. The one place the encoding lives. */
+export function daysBack(day: SeedDay): number {
+  if (day === 'today') return 0;
+  if (day === 'yesterday') return 1;
+  return day;
+}
 
 export interface SeedShift {
   point: string;
@@ -740,6 +807,41 @@ export const SEED_PAYOUTS: readonly SeedPayout[] = [
   },
 ];
 
+export interface SeedCrateIssuance {
+  point: string;
+  supplier: string;
+  /** Resolved to that point's seeded shift. */
+  day: SeedDay;
+  units: number;
+  mode: 'deposit' | 'receipt';
+  operator: string;
+}
+
+/**
+ * Василь Яремчук holds TWO deposit tranches at DIFFERENT prices, so §6.5's
+ * rule has a real case on a fresh database: the older one (issued yesterday,
+ * at a price the catalogue no longer shows) is partially returned below and
+ * the refund comes from IT, not from Чешка's current 120,00 ₴. Христина
+ * Каленчук holds a receipt issuance so ticket #58's list is non-empty.
+ */
+export const SEED_CRATE_ISSUANCES: readonly SeedCrateIssuance[] = [
+  { point: 'Шипинки', supplier: 'Василь Яремчук', day: 'yesterday', units: 20, mode: 'deposit', operator: 'oksana' },
+  { point: 'Шипинки', supplier: 'Василь Яремчук', day: 'today', units: 20, mode: 'deposit', operator: 'oksana' },
+  { point: 'Шипинки', supplier: 'Христина Каленчук', day: 'today', units: 200, mode: 'receipt', operator: 'oksana' },
+];
+
+export interface SeedCrateReturn {
+  point: string;
+  supplier: string;
+  day: 'today';
+  units: number;
+  operator: string;
+}
+
+export const SEED_CRATE_RETURNS: readonly SeedCrateReturn[] = [
+  { point: 'Шипинки', supplier: 'Василь Яремчук', day: 'today', units: 7, operator: 'oksana' },
+];
+
 export interface SeedTopUp {
   /** Addresses the parent exactly as `SEED_INTAKES` identifies itself. */
   point: string;
@@ -762,6 +864,36 @@ export const SEED_TOP_UPS: readonly SeedTopUp[] = [
     typed: '00412',
     amount: '750.00',
     reason: 'Домовились про 48 ₴/кг замість 45 ₴/кг після здачі',
+  },
+  /*
+   * THREE MORE, ON RECEIPTS FROM THE GENERATED SEASON. One top-up proves the
+   * mechanism; a supplier card whose timeline shows a SINGLE entry proves
+   * nothing about how the screen reads when the owner has been renegotiating
+   * all month. These address generated receipts by their generated codes, which
+   * are stable across runs precisely because `dev-seed.history.ts` is
+   * deterministic — if that ever stops being true, these stop resolving and the
+   * seed throws «Seed top-up has no intake», which is the failure you want.
+   */
+  {
+    point: 'Шипинки',
+    day: 4,
+    typed: 'H0400',
+    amount: '1200.00',
+    reason: 'Перерахували за домовленістю після здачі',
+  },
+  {
+    point: 'Конищів',
+    day: 6,
+    typed: 'H0601',
+    amount: '480.00',
+    reason: 'Ціну підняли заднім числом, ягода пішла на переробку',
+  },
+  {
+    point: 'Гайове',
+    day: 9,
+    typed: 'H0900',
+    amount: '2000.00',
+    reason: 'Домовились про доплату за обсяг',
   },
 ];
 

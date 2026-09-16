@@ -34,11 +34,13 @@ type CurrentPriceMap = Record<
  * price appear, since an unpriced grade cannot be received (§2.4 needs a
  * base_price to compute a line).
  *
- * SAME QUERY KEY AND PARAMS as `pages/prices/api/gradePrices.ts`'s
- * `useCurrentPricesQuery` (`[...queryKeys.gradePrices, pointId]`,
- * `GET /grade-prices/current?collection_point_id=`) so the prices screen and
- * this reception read share one cache entry — deliberately copied rather than
- * imported, since an entity may not import from `pages`.
+ * THE LAST READER OF `GET /grade-prices/current`. It used to share a cache
+ * entry with the prices screen, which made the same call under the same key;
+ * since #89 that screen reads `GET /grade-prices/sheet` instead, and its
+ * `useCurrentPricesQuery` twin was removed rather than left behind as an
+ * exported hook nothing calls. The key (`[...queryKeys.gradePrices, pointId]`)
+ * still sits under the `gradePrices` PREFIX, so a price write on the sheet —
+ * which invalidates that whole prefix — still refreshes this reception read.
  */
 export function usePricedGradesQuery(pointId: string | null): {
   data: PricedGrade[];

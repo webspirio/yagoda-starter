@@ -2,16 +2,26 @@ import { DataSource, QueryRunner } from 'typeorm';
 import { hashPassword } from '../users/password-hashing';
 import { PointCashService } from '../point-cash/point-cash.service';
 import { composeDocumentCode } from '../common/document-code';
+import { mul } from '../common/money';
 import {
   buildIntake,
   type IntakeLineInput,
   type PriceSnapshot,
   type TareSnapshot,
 } from '../intakes/intake-lines';
+import { CrateIssuance } from '../crates/crate-issuance.entity';
+import { CrateReturn } from '../crates/crate-return.entity';
+import { CrateReturnAllocation } from '../crates/crate-return-allocation.entity';
+import { CrateBalanceService } from '../crates/crate-balance.service';
+import { allocate } from '../crates/crate-allocation';
+import { nextIssuanceCode } from '../crates/crate-code';
+import { CrateIssuanceMode } from '../crates/crate-issuance-mode.enum';
 import {
   DEV_OPERATOR_PASSWORD,
   SEED_GRADES,
   SEED_INTAKES,
+  SEED_CRATE_ISSUANCES,
+  SEED_CRATE_RETURNS,
   SEED_OPERATORS,
   SEED_PAYOUTS,
   SEED_POINTS,
@@ -24,8 +34,16 @@ import {
   SEED_TARE_TYPES,
   SEED_TOP_UPS,
   SEED_TRANSFERS,
+  daysBack,
   type SeedDay,
 } from './dev-seed.data';
+import {
+  HISTORY_CASH_COUNTS,
+  HISTORY_INTAKES,
+  HISTORY_PAYOUTS,
+  HISTORY_SHIFTS,
+  HISTORY_TRANSFERS,
+} from './dev-seed.history';
 
 /** Rows INSERTED by one run — every key is 0 on a repeat run. */
 export interface DevSeedSummary {
@@ -189,6 +207,15 @@ export async function seedDev(ds: DataSource): Promise<DevSeedSummary> {
         [t.name],
       );
       if (found) continue;
+      // `UQ_tare_types_single_crate` is a bare (non-deferrable) unique index —
+      // Postgres checks it at the end of THIS statement, not at commit — so
+      // inserting a flagged row while another is still flagged would 23505.
+      // Demote first, same as `TareTypesService.create`, and only on the
+      // insert path: a row that already exists (the `continue` above) is
+      // never touched, flagged or not.
+      if (t.is_crate) {
+        await qr.query(`UPDATE tare_types SET is_crate = false WHERE is_crate`);
+      }
       await qr.query(
         `INSERT INTO tare_types (name, weight_kg, deposit_price, is_crate) VALUES ($1, $2, $3, $4)`,
         [t.name, t.weight_kg, t.deposit_price, t.is_crate],
@@ -322,6 +349,18 @@ export async function seedDev(ds: DataSource): Promise<DevSeedSummary> {
 }
 
 /**
+ * `YYYY-MM-DD`, `n` days before `iso`. UTC arithmetic on a date-only value, so
+ * no local timezone and no DST boundary inside the seeded window can move a
+ * business date by a day — which would change a document code, which is the
+ * natural key the seed's idempotency rests on.
+ */
+export function isoDaysBefore(iso: string, n: number): string {
+  const d = new Date(`${iso}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() - n);
+  return d.toISOString().slice(0, 10);
+}
+
+/**
  * Shifts, intakes, payouts, transfers and the cash counts that anchor them.
  * Every intake's numbers come from the server's
  * own `buildIntake()` over the price and tare snapshots the seed itself wrote,
@@ -342,17 +381,43 @@ async function seedDocuments(
   ownerId: string,
 ): Promise<void> {
   const tz = process.env.APP_TIMEZONE ?? 'Europe/Kyiv';
-  const days = await one<{ today: string; yesterday: string }>(
+  const days = await one<{ today: string }>(
     qr,
-    `SELECT (now() AT TIME ZONE $1)::date::text AS today,
-            ((now() AT TIME ZONE $1)::date - 1)::text AS yesterday`,
+    `SELECT (now() AT TIME ZONE $1)::date::text AS today`,
     [tz],
   );
-  const dateOf = (day: SeedDay) => (day === 'today' ? days!.today : days!.yesterday);
+  // Memoised because `dateOf` is called once per document per loop, and the
+  // generated history turns that from dozens of calls into thousands.
+  const dateCache = new Map<number, string>();
+  const dateOf = (day: SeedDay): string => {
+    const n = daysBack(day);
+    const hit = dateCache.get(n);
+    if (hit !== undefined) return hit;
+    const iso = isoDaysBefore(days!.today, n);
+    dateCache.set(n, iso);
+    return iso;
+  };
   // A local wall-clock instant on a business date, as timestamptz — the
   // placeholders are named by index so a fragment can sit anywhere in a VALUES.
   const localTs = (dateIdx: number, timeIdx: number, tzIdx: number) =>
     `($${dateIdx}::date + $${timeIdx}::time) AT TIME ZONE $${tzIdx}`;
+
+  /*
+   * CURATED DATA AND GENERATED HISTORY, WALKED AS ONE.
+   *
+   * History FIRST in all four, and for two different reasons. For shifts,
+   * receipts and payouts it is presentation: the curated day ends up newest, so
+   * every screen opens on the hand-written rows. For CASH COUNTS it is
+   * correctness — each opening count reads the point's PREVIOUS count as its
+   * expectation, so walking a past day after a later one would anchor the past
+   * off the future. `dev-seed.history.ts` guarantees its own half is
+   * chronological; this is where the two halves meet in the right order.
+   */
+  const allShifts = [...HISTORY_SHIFTS, ...SEED_SHIFTS];
+  const allIntakes = [...HISTORY_INTAKES, ...SEED_INTAKES];
+  const allPayouts = [...HISTORY_PAYOUTS, ...SEED_PAYOUTS];
+  const allCashCounts = [...HISTORY_CASH_COUNTS, ...SEED_CASH_COUNTS];
+  const allTransfers = [...HISTORY_TRANSFERS, ...SEED_TRANSFERS];
 
   const userByLogin = new Map<string, string>();
   for (const login of new Set(SEED_OPERATORS.map((u) => u.login))) {
@@ -410,7 +475,7 @@ async function seedDocuments(
   };
 
   const shiftId = new Map<string, string>();
-  for (const sh of SEED_SHIFTS) {
+  for (const sh of allShifts) {
     const pid = pointId.get(sh.point)!;
     const date = dateOf(sh.day);
     const key = `${sh.point}/${sh.day}`;
@@ -423,6 +488,31 @@ async function seedDocuments(
       shiftId.set(key, found.id);
       continue;
     }
+    // A POINT MAY HOLD ONLY ONE OPEN SHIFT (`UQ_shifts_open_per_point`), and a
+    // demo database seeded on an EARLIER DAY still holds that day's open ones.
+    // The lookup above is by `(point, business_date)`, so it does not see them,
+    // and the insert below would be the point's second open shift. Postgres
+    // refuses it — correctly — with a constraint name and a raw uuid, which
+    // tells a developer nothing about what to do next. This is that same
+    // refusal, said as a sentence. It is NOT a fix for the stale state: the
+    // seed's contract is that it never modifies an existing row, and closing
+    // someone else's open shift would break it.
+    if (!sh.closed) {
+      const openElsewhere = await one<{ business_date: string }>(
+        qr,
+        `SELECT business_date::text AS business_date FROM shifts
+          WHERE collection_point_id = $1 AND status = 'open' AND business_date <> $2::date`,
+        [pid, date],
+      );
+      if (openElsewhere) {
+        throw new Error(
+          `${sh.point} still has an OPEN shift on ${openElsewhere.business_date}, so today's ` +
+            `cannot be opened (UQ_shifts_open_per_point). This database was seeded on an ` +
+            `earlier day. Close that shift, or start clean with \`npm run db:reset && npm run db:seed\`.`,
+        );
+      }
+    }
+
     const opener = userByLogin.get(sh.openedBy)!;
     const row = await one<{ id: string }>(
       qr,
@@ -439,7 +529,7 @@ async function seedDocuments(
     summary.shifts += 1;
   }
 
-  for (const doc of SEED_INTAKES) {
+  for (const doc of allIntakes) {
     const code = intakeCodeFor(doc.point, doc.day, doc.typed);
     const found = await one<{ id: string }>(qr, `SELECT id FROM intakes WHERE code = $1`, [code]);
     if (found) continue;
@@ -505,7 +595,7 @@ async function seedDocuments(
     summary.intakes += 1;
   }
 
-  for (const doc of SEED_PAYOUTS) {
+  for (const doc of allPayouts) {
     const code = composeDocumentCode(pointCode.get(doc.point)!, 'PO', dateOf(doc.day), doc.typed);
     const found = await one<{ id: string }>(qr, `SELECT id FROM payouts WHERE code = $1`, [code]);
     if (found) continue;
@@ -526,6 +616,156 @@ async function seedDocuments(
       ],
     );
     summary.payouts += 1;
+  }
+
+  // Crates: §6.5's two-tranches-at-different-prices case and ticket #58's
+  // receipt-mode list, both on Шипинки. THE SEED NEVER HAND-COMPUTES A
+  // BUSINESS NUMBER: `nextIssuanceCode` composes the code exactly as
+  // `CratesService.issue` does, and the deposit per unit is read straight off
+  // `tare_types` at insert time rather than copied from `SEED_TARE_TYPES`.
+  const crateType = await one<{ id: string; deposit_price: string }>(
+    qr,
+    `SELECT id, deposit_price::text AS deposit_price FROM tare_types WHERE is_crate = true LIMIT 1`,
+  );
+  if (!crateType) throw new Error('Seed crates: no tare type is flagged is_crate');
+
+  // §6.5's worked example reads «120, then 130» — the OLDER tranche cheaper,
+  // the NEWER one dearer — so the demo is nudged to read in the rule's own
+  // direction: the older (yesterday) issuance keeps the catalogue's own
+  // price (Чешка is 120,00 ₴), and it is the NEWER tranche that needs a
+  // price the catalogue does not hold today. That row is nudged to 130,00 ₴
+  // for exactly the one issuance that needs it and put back immediately
+  // after, inside this same transaction, so nothing outside it ever
+  // observes the detour. The partial return (`SEED_CRATE_RETURNS`) still
+  // draws from the OLDER tranche first — that is FIFO, not a hand-picked
+  // price, and is unaffected by which tranche is dearer.
+  const NEWER_CRATE_DEPOSIT_PRICE = '130.00';
+
+  for (const [i, iss] of SEED_CRATE_ISSUANCES.entries()) {
+    const shift = shiftId.get(`${iss.point}/${iss.day}`);
+    if (!shift) throw new Error(`Seed crate issuance has no shift: ${iss.point}/${iss.day}`);
+    const supplier = await supplierFor(iss.point, iss.supplier);
+
+    const found = await one<{ id: string }>(
+      qr,
+      `SELECT id FROM crate_issuances
+        WHERE shift_id = $1 AND supplier_id = $2 AND mode = $3::crate_issuance_mode AND units = $4`,
+      [shift, supplier, iss.mode, iss.units],
+    );
+    if (found) continue;
+
+    // The NEWER tranche: an EARLIER deposit issuance for the SAME supplier
+    // already lies behind in the array.
+    const isNewerTranche =
+      iss.mode === 'deposit' &&
+      SEED_CRATE_ISSUANCES.slice(0, i).some(
+        (earlier) =>
+          earlier.point === iss.point && earlier.supplier === iss.supplier && earlier.mode === 'deposit',
+      );
+    if (isNewerTranche) {
+      await qr.query(`UPDATE tare_types SET deposit_price = $1 WHERE id = $2`, [
+        NEWER_CRATE_DEPOSIT_PRICE,
+        crateType.id,
+      ]);
+    }
+
+    const point = SEED_POINTS.find((p) => p.name === iss.point)!;
+    const code = await nextIssuanceCode(qr.manager, {
+      pointCode: point.code,
+      businessDate: dateOf(iss.day),
+      shiftId: shift,
+      mode: iss.mode as CrateIssuanceMode,
+    });
+
+    const priced = await one<{ deposit_price: string }>(
+      qr,
+      `SELECT deposit_price::text AS deposit_price FROM tare_types WHERE id = $1`,
+      [crateType.id],
+    );
+    const perUnit = iss.mode === 'receipt' ? '0.00' : priced!.deposit_price;
+    const taken = iss.mode === 'receipt' ? '0.00' : mul(perUnit, String(iss.units));
+
+    // `created_at` is anchored to the ISSUANCE'S OWN business date — a
+    // yesterday shift's issuance now genuinely shows as created yesterday,
+    // not backdated from `now()` onto today's wall clock — with a
+    // within-day offset by the array's own order (§6.5's FIFO reads oldest
+    // `created_at` first) so two same-day rows never tie. Ordering across
+    // days falls out of the dates themselves and needs no offset at all.
+    const timeOfDay = `09:${String(i * 5).padStart(2, '0')}:00`;
+    await qr.query(
+      `INSERT INTO crate_issuances
+         (code, shift_id, supplier_id, units, mode, deposit_per_unit, deposit_taken, issued_by_user_id, created_at)
+       VALUES ($1, $2, $3, $4, $5::crate_issuance_mode, $6, $7, $8, ${localTs(9, 10, 11)})`,
+      [
+        code,
+        shift,
+        supplier,
+        iss.units,
+        iss.mode,
+        perUnit,
+        taken,
+        userByLogin.get(iss.operator)!,
+        dateOf(iss.day),
+        timeOfDay,
+        tz,
+      ],
+    );
+
+    if (isNewerTranche) {
+      // Restore the catalogue to the price `SEED_TARE_TYPES` declares.
+      const catalog = SEED_TARE_TYPES.find((t) => t.is_crate)!;
+      await qr.query(`UPDATE tare_types SET deposit_price = $1 WHERE id = $2`, [
+        catalog.deposit_price,
+        crateType.id,
+      ]);
+    }
+  }
+
+  // THE REFUND IS NEVER HAND-COMPUTED EITHER: the supplier's open tranches
+  // are read back from the database, oldest first, and `allocate()` — the
+  // same pure function `CratesService.returnCrates` calls — decides which
+  // one(s) this return draws from and at what price.
+  const crateBalance = new CrateBalanceService(
+    ds,
+    ds.getRepository(CrateIssuance),
+    ds.getRepository(CrateReturn),
+    ds.getRepository(CrateReturnAllocation),
+  );
+  for (const ret of SEED_CRATE_RETURNS) {
+    const shift = shiftId.get(`${ret.point}/${ret.day}`);
+    if (!shift) throw new Error(`Seed crate return has no shift: ${ret.point}/${ret.day}`);
+    const supplier = await supplierFor(ret.point, ret.supplier);
+
+    // `crate_returns` has no `code` — (shift, supplier, units) is its natural
+    // key here, the same reasoning `transfers` uses for (point, sent_at).
+    const found = await one<{ id: string }>(
+      qr,
+      `SELECT id FROM crate_returns WHERE shift_id = $1 AND supplier_id = $2 AND units = $3`,
+      [shift, supplier, ret.units],
+    );
+    if (found) continue;
+
+    const tranches = await crateBalance.tranchesFor(supplier, qr.manager);
+    const result = allocate(tranches, ret.units);
+    if (result.shortfall > 0) {
+      throw new Error(
+        `Seed crate return for ${ret.supplier} at ${ret.point} exceeds outstanding units`,
+      );
+    }
+
+    const savedReturn = await one<{ id: string }>(
+      qr,
+      `INSERT INTO crate_returns (shift_id, supplier_id, units, deposit_refund, accepted_by_user_id)
+       VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+      [shift, supplier, ret.units, result.deposit_refund, userByLogin.get(ret.operator)!],
+    );
+    for (const alloc of result.allocations) {
+      await qr.query(
+        `INSERT INTO crate_return_allocations (return_id, issuance_id, units, per_unit, amount)
+         VALUES ($1, $2, $3, $4, $5)`,
+        [savedReturn!.id, alloc.issuance_id, alloc.units, alloc.per_unit, alloc.amount],
+      );
+    }
   }
 
   // IDEMPOTENT ON (intake id, reason), because `intake_top_ups` has no `code`
@@ -556,7 +796,7 @@ async function seedDocuments(
   // TRANSFERS BEFORE COUNTS, and both after the payouts above: a closing
   // count's expectation is «the opening count plus this shift's movements»,
   // and the transfers are half of those movements.
-  for (const t of SEED_TRANSFERS) {
+  for (const t of allTransfers) {
     const pid = pointId.get(t.point)!;
     const date = dateOf(t.day);
     // `transfers` has no `code` — (point, sent_at) is the natural key here.
@@ -610,7 +850,7 @@ async function seedDocuments(
   // ORDER IS LOAD-BEARING: `SEED_CASH_COUNTS` is chronological, because each
   // opening count reads the previous count as its expectation.
   const cash = new PointCashService(ds, { appTimezone: tz });
-  for (const c of SEED_CASH_COUNTS) {
+  for (const c of allCashCounts) {
     const shift = shiftId.get(`${c.point}/${c.day}`);
     if (!shift) throw new Error(`Seed cash count has no shift: ${c.point}/${c.day}`);
     const found = await one<{ id: string }>(

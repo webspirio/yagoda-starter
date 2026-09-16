@@ -103,8 +103,9 @@ src/
   intake-top-ups/         # the owner's third source of supplier debt (#61 «фантомний залишок») — a fixed amount added against an already-recorded receipt when a price is renegotiated after the fact. No `shift_id`/`collection_point_id`/date of its own — both come through `intake_id`, two hops to `suppliers`. Owner-only create and void; both roles read. `amount > 0` only — a negative row would reduce a debt without cash leaving the drawer, so the downward path is §9.3's void-and-reissue of the receipt. Voiding the parent intake neutralises its top-ups WITHOUT a cascading write (`ti.voided_at IS NULL` in `supplier-balance`'s `debtSql`); voiding the top-up itself is a second, equally legal way to drive a supplier's debt negative
   transfers/              # money and empty crates travelling from the base to a point (§7.9), the only thing that puts cash INTO a point's drawer. Five verbs: create/resolve/void are owner-only, accept and dispute are the POINT's alone and refused to the owner (§10.3). Carries its own `collection_point_id`, but `accepted_date` now comes from the OPEN SHIFT accept runs inside (§4.1) rather than from `today` — accepting requires an open shift and takes that shift's `business_date`, so a transfer accepted after midnight still lands on the shift that was open when it happened. A voided transfer keeps `status = 'accepted'`, so every cash query filters `voided_at IS NULL` itself
   supplier-balance/       # owns ONE query: Σ intakes + Σ intake_top_ups − Σ payouts, with `voided_at IS NULL` on all four (the top-ups term carries two — itself and its parent intake) — served per supplier (`GET /suppliers/:id/balance`) and per point (`GET /supplier-balances`, the «Залишки» list: same SQL correlated per row, paginated in Postgres, `include_zero=false` by default but a deactivated supplier with a balance stays listed). Writes nothing, owns no table
-  point-cash/              # owns ONE query: accepted transfers in, payouts out, settled returns back, as of a date. Writes nothing, owns no table, same shape as `supplier-balance/`. Serves `GET /point-cash` (the one screen both roles open, §7.10) and `GET /point-cash/:pointId`. Voided PAYOUTS stay subtracted while voided TRANSFERS stop being added — the same column read two opposite ways, §9.3. EVERY COLUMN OF A LIST ROW HONOURS `as_of`, not just `cash`: `unexplained_difference` is bounded by the count's `business_date` and `latest_transfer` is reconstructed to the status it HELD on that date, because a row pairing a September-1 drawer with today's newest trip reads as fact and is not one
-  cash-counts/            # the drawer, counted by a human (§7.6) — READ ONLY here; counts are WRITTEN inside the shift open/close transactions, because a count that can be written on its own can be skipped. `GET /cash-counts?only_discrepancies=true` is the owner's incident list, which is what «notify the owner» means in a project with no email and no push. That list EXCLUDES `midday`, as do `is_open` and `point-cash`'s `unexplained_difference`: a reopen leaves two rows for one physical drift (the demoted closing count and the re-close), and counting both reports −180 where the drawer is −90 out. The demoted row keeps its place in the UNFILTERED list — evidence is never destroyed (§7.6), it just stops being work
+  point-cash/              # owns ONE query: accepted transfers in, payouts out, settled returns back, as of a date. Writes nothing, owns no table, same shape as `supplier-balance/`. Serves `GET /point-cash` (the one screen both roles open, §7.10) and `GET /point-cash/:pointId`. Voided PAYOUTS stay subtracted while voided TRANSFERS stop being added — the same column read two opposite ways, §9.3. EVERY COLUMN OF A LIST ROW HONOURS `as_of`, not just `cash`: `unexplained_difference` is bounded by the count's `business_date` and `latest_transfer` is reconstructed to the status it HELD on that date, because a row pairing a September-1 drawer with today's newest trip reads as fact and is not one. Also serves `crate_deposits` — the crates book (`Σ deposit_taken − Σ deposit_refund`, from `crates/crate-balance.service.ts`'s `CRATE_BOOK_SQL`), a SEPARATE field never summed with `cash` and never bounded by `as_of` (§7.5 — «від першої видачі», no date floor at all)
+  cash-counts/            # the drawer, counted by a human (§7.6) — READ ONLY here; counts are WRITTEN inside the shift open/close transactions, because a count that can be written on its own can be skipped. `GET /cash-counts?only_discrepancies=true` is the owner's incident list, which is what «notify the owner» means in a project with no email and no push. That list EXCLUDES `midday`, as do `is_open` and `point-cash`'s `unexplained_difference`: a reopen leaves two rows for one physical drift (the demoted closing count and the re-close), and counting both reports −180 where the drawer is −90 out. The demoted row keeps its place in the UNFILTERED list — evidence is never destroyed (§7.6), it just stops being work. `CashBook` (`cash-book.enum.ts`) now has a real `crates` member, but no row is ever written with it: the crates book is DERIVED ONLY (`point-cash/`), because one physical drawer cannot become two counted numbers without either asking the operator to distinguish identical banknotes or making one book unfalsifiable — see the settlement-trio follow-up
+  crates/                 # the rented-crate ledger — `crate_issuances` (deposit or receipt, one `code` either way), `crate_returns`, `crate_return_allocations` (the FIFO trail). Two services because the write and read paths share only the allocator: `crates.service.ts` (issue · return · void × 2, under a `SELECT … FOR UPDATE` on the supplier row, §7.3) and `crate-balance.service.ts` (tranches · balance · preview, and `CRATE_BOOK_SQL`, the crates book's one definition — `point-cash/` reads it rather than re-deriving the filter). Three controllers because `/suppliers/:id/crate-balance` cannot live on a `/crate-issuances` prefix. `crate-allocation.ts` is the pure FIFO walk, no Nest, no database, ordered `created_at` then `id`; `mode` is display-only, the money follows `per_unit`, which a receipt-mode issuance carries as 0 by CHECK — so the allocator never branches on mode (§4.1 of the slice spec, which also overrules §6.6's «не змішуються»). `crate-code.ts` allocates `code` inside the write transaction (`pg_advisory_xact_lock` on `hashtext(shift_id || ':' || mode)`, then a row count that INCLUDES voided rows — a number is never reissued). No `tare_type_id` on either table: one standard crate network-wide, `is_crate` exclusive on `tare_types` (`UQ_tare_types_single_crate`, demotes-on-set in `tare-types.service.ts`). No `PATCH`, no `DELETE`, no `crate_shipments` — ledger only, see the slice spec's §9 and the follow-ups doc
   user-admin/             # owner-only POST /users, PATCH /users/:id, PUT /users/:id/password — the only way an account is created
   current-user/          # /me — read, update language_code, avatar upload (the one controller that reads/writes User; identity fields are owner-managed via user-admin)
   audit/                 # append-only audit log (AUDIT_ACTIONS union + AuditService)
@@ -114,7 +115,7 @@ src/
   redis/                 # global RedisModule — shared ioredis client (REDIS_CLIENT token)
   time/                   # TimeService — the one seam for timezone-aware time (APP_TIMEZONE)
   config/                 # typed, namespaced env config factories (app, database, auth, redis, timezone, uploads)
-  migrations/             # InitialSchema, SeedDevAdmin (guarded off in production), YagodaFoundation, BootstrapOwner, IndexUserIdentityUser, YagodaCatalog, YagodaSuppliersAndPrices, YagodaIntakesAndPayouts, YagodaTransfers, YagodaCashCounts, DropCashCountExpectedCheck, YagodaIntakeTopUps
+  migrations/             # InitialSchema, SeedDevAdmin (guarded off in production), YagodaFoundation, BootstrapOwner, IndexUserIdentityUser, YagodaCatalog, YagodaSuppliersAndPrices, YagodaIntakesAndPayouts, YagodaTransfers, YagodaCashCounts, DropCashCountExpectedCheck, YagodaIntakeTopUps, YagodaCrates
   seed/                   # dev-seed — idempotent demo dataset for manual testing (`npm run seed:dev`); NOT a migration, never runs on its own
 ```
 
@@ -184,6 +185,37 @@ one inside its own transaction, so the demo cannot drift from the rule the API
 enforces. Шипинки's close is 90 ₴ short **on purpose** — it is the one seeded
 incident, and it is what makes the owner's working list non-empty on a fresh
 database.
+
+**The dataset is in TWO parts, and the split is load-bearing.**
+`src/seed/dev-seed.data.ts` is CURATED and hand-written — today and yesterday,
+carrying every case a screen is read against and every figure
+`dev-seed.db-spec.ts` asserts. `src/seed/dev-seed.history.ts` is GENERATED: a
+further **30 business days** at the five working points (823 receipts, 150
+closed shifts, 141 payouts with a funding transfer each, 300 cash counts),
+produced from a constant PRNG seed so the output is byte-identical on every
+run. That determinism is not a nicety: the receipt code is the natural key
+every insert is looked up by, so a dataset that moved between runs could not be
+idempotent. **No test asserts a generated figure by hand** — the history spec
+asserts the file's PROPERTIES instead, which is what the split buys.
+
+Two properties are worth knowing before touching either file. First, **the
+generated season is invisible to the curated cash chain**: `anchor` overrides a
+computed expectation, and the last closing count the generator writes for each
+point carries that point's curated anchor, so the chain arrives at yesterday
+holding exactly what yesterday expects. That is why the db-spec can still
+assert Шипинки 20 910.00, Конищів 12 800.00 and Гайове 500.00 with a season
+inserted in front of them; if those ever move, the generator stopped landing on
+the anchor — fix the generator, not the assertion. Second, **every generated
+payout is funded by a transfer of exactly its amount**, accepted the same
+business date, because a receipt puts no cash in the drawer (the formula is
+«transfers accepted minus payouts») and `CHK_cash_counts_counted_non_negative`
+is real.
+
+The generator writes **no `grade_prices` rows**. Prices carry over until changed
+(spec `2026-09-07` §8.1 removed `business_date`), so the historical price IS the
+current one, and a row per day would silently re-introduce the daily scheme that
+slice removed.
+
 Points carry real receipt-code prefixes (`SHP`, `KON`, …). Sign in as `admin`/`admin` (owner) or as an operator
 (`oksana`, `maria`, `taras`, `ihor`, `bohdan`, `lesia`) with password `operator`.
 

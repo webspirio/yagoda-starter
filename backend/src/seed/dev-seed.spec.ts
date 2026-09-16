@@ -1,7 +1,10 @@
-import { addMoney } from './dev-seed';
+import { addMoney, isoDaysBefore } from './dev-seed';
+import { HISTORY_INTAKES } from './dev-seed.history';
 import {
   SEED_GRADES,
   SEED_INTAKES,
+  SEED_CRATE_ISSUANCES,
+  SEED_CRATE_RETURNS,
   SEED_OPERATORS,
   SEED_PAYOUTS,
   SEED_POINTS,
@@ -13,6 +16,7 @@ import {
   SEED_TARE_TYPES,
   SEED_TOP_UPS,
   SEED_TRANSFERS,
+  daysBack,
 } from './dev-seed.data';
 
 /**
@@ -100,6 +104,19 @@ describe('dev seed dataset', () => {
       expect(grade?.is_active).toBe(true);
     }
   });
+
+  it('flags exactly one tare type as the crate', () => {
+    expect(SEED_TARE_TYPES.filter((t) => t.is_crate)).toHaveLength(1);
+  });
+
+  it('never returns more crates than a supplier was issued', () => {
+    for (const ret of SEED_CRATE_RETURNS) {
+      const issued = SEED_CRATE_ISSUANCES
+        .filter((i) => i.supplier === ret.supplier && i.point === ret.point)
+        .reduce((n, i) => n + i.units, 0);
+      expect(ret.units).toBeLessThanOrEqual(issued);
+    }
+  });
 });
 
 describe('dev seed documents', () => {
@@ -185,7 +202,13 @@ describe('dev seed documents', () => {
   });
 
   it('every top-up addresses a seeded intake by (point, day, typed) — never a composed code', () => {
-    const intakeKeys = new Set(SEED_INTAKES.map((d) => `${d.point}/${d.day}/${d.typed}`));
+    // BOTH HALVES, exactly as `seedDev` walks them: a top-up may address a
+    // generated receipt as readily as a curated one, and the runner resolves it
+    // the same way. Reading the curated array alone here would reject the very
+    // rows that give the supplier card a timeline worth looking at.
+    const intakeKeys = new Set(
+      [...HISTORY_INTAKES, ...SEED_INTAKES].map((d) => `${d.point}/${d.day}/${d.typed}`),
+    );
     for (const t of SEED_TOP_UPS) {
       expect(intakeKeys.has(`${t.point}/${t.day}/${t.typed}`)).toBe(true);
       expect(t.amount).toMatch(/^\d{1,8}\.\d{2}$/);
@@ -210,5 +233,25 @@ describe('addMoney', () => {
   it('rejects anything that is not a plain decimal', () => {
     expect(() => addMoney('1e3', '0')).toThrow(/Not a decimal/);
     expect(() => addMoney('1.005', '0')).toThrow(/Not a decimal/);
+  });
+});
+
+describe('SeedDay', () => {
+  it('maps a numeric day to that many days before today', () => {
+    expect(daysBack('today')).toBe(0);
+    expect(daysBack('yesterday')).toBe(1);
+    expect(daysBack(30)).toBe(30);
+  });
+});
+
+describe('isoDaysBefore', () => {
+  it('walks back across a month boundary', () => {
+    expect(isoDaysBefore('2026-09-15', 0)).toBe('2026-09-15');
+    expect(isoDaysBefore('2026-09-15', 1)).toBe('2026-09-14');
+    expect(isoDaysBefore('2026-09-15', 30)).toBe('2026-08-16');
+  });
+
+  it('walks back across a leap day', () => {
+    expect(isoDaysBefore('2028-03-01', 1)).toBe('2028-02-29');
   });
 });

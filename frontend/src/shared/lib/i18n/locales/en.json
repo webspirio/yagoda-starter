@@ -65,7 +65,10 @@
       "targetCrates": "Crate target",
       "status": "Status"
     },
-    "kind": { "reception": "Reception", "base": "Base" },
+    "kind": {
+      "reception": "Reception",
+      "base": "Base"
+    },
     "active": "Active",
     "inactive": "Inactive",
     "empty": {
@@ -84,7 +87,10 @@
       "targetHint": "Leave empty if not set",
       "active": "Active"
     },
-    "toast": { "created": "Point created", "updated": "Point updated" },
+    "toast": {
+      "created": "Point created",
+      "updated": "Point updated"
+    },
     "errors": {
       "saveFailed": "Could not save the point",
       "nameTaken": "A point with this name already exists",
@@ -221,7 +227,10 @@
         "editTitle": "Edit product",
         "name": "Name"
       },
-      "toast": { "created": "Product created", "updated": "Product updated" }
+      "toast": {
+        "created": "Product created",
+        "updated": "Product updated"
+      }
     },
     "grades": {
       "new": "New grade",
@@ -231,7 +240,10 @@
       "activeCount_other": "{{count}} active",
       "active": "Active",
       "inactive": "Inactive",
-      "col": { "name": "Grade", "status": "Status" },
+      "col": {
+        "name": "Grade",
+        "status": "Status"
+      },
       "empty": {
         "title": "No grades yet",
         "hint": "Add a grade so the product appears on intake."
@@ -243,7 +255,10 @@
         "product": "Product",
         "active": "Active"
       },
-      "toast": { "created": "Grade created", "updated": "Grade updated" }
+      "toast": {
+        "created": "Grade created",
+        "updated": "Grade updated"
+      }
     },
     "tareTypes": {
       "new": "New tare type",
@@ -271,7 +286,10 @@
         "isCrate": "Returnable crate",
         "active": "Active"
       },
-      "toast": { "created": "Tare type created", "updated": "Tare type updated" }
+      "toast": {
+        "created": "Tare type created",
+        "updated": "Tare type updated"
+      }
     },
     "errors": {
       "saveFailed": "Could not save",
@@ -287,31 +305,27 @@
   "prices": {
     "eyebrow": "Pricing",
     "title": "Day prices",
-    "description": "The current buy price per grade at a point. Setting a price adds a new row — the latest one wins.",
-    "pickPoint": "Select a point",
+    "description": "Grades by points. «Common day price» sets every reception point at once — the warehouse keeps its own.",
     "empty": {
-      "title": "No point selected",
-      "hint": "Choose a point to see and set its grade prices."
+      "title": "Nothing to price yet",
+      "hint": "Add a product grade in the catalogue, and it will appear here with a column per point."
     },
     "col": {
-      "grade": "Grade",
-      "base": "Base price, ₴/kg",
-      "markup": "Max markup, ₴/kg",
-      "discount": "Max discount, ₴/kg",
-      "action": "Action"
+      "grade": "Grade"
     },
-    "set": "Set price",
-    "change": "Change",
     "form": {
       "title": "Set price · {{grade}}",
       "description": "{{point}} · the new price applies to the next receipts; earlier ones keep theirs.",
       "base": "Base price, ₴/kg",
       "markup": "Max markup, ₴/kg",
       "discount": "Max discount, ₴/kg",
-      "reason": "Reason (optional)"
+      "reason": "Reason (optional)",
+      "descriptionAll": "{{points}} — the warehouse is NOT among them: it keeps its own, higher price."
     },
     "toast": {
-      "set": "Price set"
+      "set": "Price set",
+      "setAll_one": "Price set at {{count}} point",
+      "setAll_other": "Price set at {{count}} points"
     },
     "errors": {
       "saveFailed": "Could not save",
@@ -331,6 +345,16 @@
         "reason": "Reason"
       },
       "empty": "The price has not changed yet."
+    },
+    "sheet": {
+      "common": "Common day price",
+      "mixed": "mixed",
+      "setAll": "Set for all",
+      "ownPrice": "· own price",
+      "editCell": "{{grade}} at {{point}}",
+      "allPoints_one": "all reception points ({{count}})",
+      "allPoints_other": "all reception points ({{count}})",
+      "historyCell": "{{grade}} at {{point}} — price history"
     }
   },
   "day": {
@@ -961,6 +985,80 @@
         "action": "Action"
       },
       "void": "Void"
+    }
+  },
+  "crates": {
+    "eyebrow": "At the point",
+    "title": "Crates",
+    "description": "Who is still holding crates, and on what terms.",
+    "pickPoint": "Select a point",
+    "empty": {
+      "title": "No point selected",
+      "hint": "Crates sit at a point. Choose one to see what is out."
+    },
+    "standing": {
+      "allotment": "Allotment",
+      "inField": "Out with people",
+      "overAllotment": "{{over}} more crates are out than the allotment — a target is a guide, not a limit."
+    },
+    "field": {
+      "supplier": "Person",
+      "supplierPlaceholder": "Choose a person",
+      "units": "Crates",
+      "mode": "Taken as"
+    },
+    "mode": {
+      "deposit": "Deposit",
+      "receipt": "Receipt",
+      "depositHint": "Money is taken now, at the crate price from the catalogue, and goes into the point crate drawer.",
+      "receiptHint": "A paper receipt is signed. NO money changes hands, so these crates are out with no cash cover at all.",
+      "mixed": "Deposit + receipt"
+    },
+    "issue": {
+      "title": "Issue crates",
+      "description": "Crates go home with a person. Both modes put the same crates on the same balance — the difference is only in the money.",
+      "submit": "Issue",
+      "toast": "Crates issued"
+    },
+    "return": {
+      "title": "Accept crates",
+      "description": "Returns consume the oldest issuances first and refund each at the price it was taken at.",
+      "submit": "Accept",
+      "toast": "Crates accepted",
+      "splitTitle": "How the refund is made up",
+      "splitIdle": "Choose a person and a number to see the split.",
+      "splitFailed": "Could not work out the split",
+      "byDeposit": "at {{price}}",
+      "byReceipt": "on a receipt, no money",
+      "refund": "Refund",
+      "shortfall_one": "{{count}} crate more than this person ever took — recount before accepting.",
+      "shortfall_other": "{{count}} crates more than this person ever took — recount before accepting."
+    },
+    "inField": {
+      "title": "Out with people",
+      "col.person": "Person",
+      "col.units": "Crates",
+      "col.how": "Taken as",
+      "col.deposit": "Deposit",
+      "total": "TOTAL",
+      "inactive": "deactivated",
+      "empty.title": "Nobody is holding crates",
+      "empty.hint": "Everything issued here has come back."
+    },
+    "note": {
+      "receiptVsDeposit": "Crates taken on a receipt have no cash cover at all — their deposit column reads «—», not zero. That is why «crates out» and «deposits held» are two different numbers.",
+      "notTracked": "Empty crates on hand, crates here with berries in them, and shipments are not tracked yet — there is no table for them, so this screen shows nothing rather than a number it cannot stand behind."
+    },
+    "errors": {
+      "supplierRequired": "Pick who is taking the crates",
+      "unitsFormat": "Enter a whole number of crates",
+      "issueFailed": "Could not issue the crates",
+      "returnFailed": "Could not accept the crates",
+      "noCrateType": "No tare type is marked as the crate — set one in the catalogue first",
+      "returnExceeds": "That is more crates than this person is holding",
+      "cashInsufficient": "The crate deposits drawer holds less than this refund needs",
+      "hasReturns": "A return has already been allocated against this issuance — void the return first",
+      "supplierInactive": "This person is deactivated, so crates cannot be issued to them"
     }
   }
 }
