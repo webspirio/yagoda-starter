@@ -74,5 +74,10 @@ export function useRevealPasswordMutation() {
       const { data } = await httpClient.get<RevealedPassword>(`/users/${id}/password`);
       return data;
     },
+    // No retention window: react-query keeps a settled mutation (and its
+    // `data` — here, a plaintext password) for `gcTime`, five minutes by
+    // default. The caller calls `reset()` when the row closes; this makes the
+    // unobserved case forget too.
+    gcTime: 0,
   });
 }

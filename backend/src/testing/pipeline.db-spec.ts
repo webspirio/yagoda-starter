@@ -314,6 +314,15 @@ describe('auth + me pipeline (HTTP)', () => {
       .get('/users')
       .set('Authorization', `Bearer ${hiredToken}`)
       .expect(403);
+    // The one route that returns a plaintext password gets its own assertion
+    // rather than leaning on the class-level role, because THIS is the request
+    // whose 200 would be a leak — an operator must never read a colleague's
+    // (or their own) password back. Checked while this account is still an
+    // operator; it is promoted further down.
+    await request(app.getHttpServer())
+      .get(`/users/${hiredId}/password`)
+      .set('Authorization', `Bearer ${hiredToken}`)
+      .expect(403);
     await request(app.getHttpServer())
       .get('/users')
       .set('Authorization', `Bearer ${bossToken}`)
@@ -375,6 +384,10 @@ describe('auth + me pipeline (HTTP)', () => {
       .set('Authorization', `Bearer ${bossToken}`)
       .expect(200);
     expect(revealed.body).toEqual({ password: 'nova-parolya', vault_enabled: true });
+    // Plaintext must not be storable: without this the body lands in the
+    // browser's on-disk HTTP cache and outlives the sign-out that clears the
+    // token. Express stamps an ETag on it either way.
+    expect(revealed.headers['cache-control']).toBe('no-store');
     expect(createRes.body.password).toBeUndefined();
     expect(renamed.body.password).toBeUndefined();
 

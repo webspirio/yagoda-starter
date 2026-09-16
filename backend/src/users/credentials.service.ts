@@ -21,7 +21,8 @@ export class CredentialsService {
   /**
    * Read once at construction, not per call: the key never changes within a
    * process, and `readVaultKey` returning null here is the single switch that
-   * turns the readable copy off everywhere below.
+   * turns the readable copy off everywhere below. A key that is SET but
+   * unusable throws from here, which fails the boot — see `readVaultKey`.
    */
   private readonly vaultKey: Buffer | null;
 
@@ -44,7 +45,7 @@ export class CredentialsService {
     // with a key that may since have been rotated or removed — a reissued
     // password with yesterday's readable copy still beside it. Null here is an
     // erasure, and it is the reason this is one statement rather than two.
-    const password_enc = this.vaultKey ? encryptSecret(password, this.vaultKey) : null;
+    const password_enc = this.vaultKey ? encryptSecret(password, this.vaultKey, userId) : null;
     await repo.upsert(
       { user_id: userId, password_hash, password_enc },
       { conflictPaths: ['user_id'] },
@@ -80,7 +81,9 @@ export class CredentialsService {
     if (!this.vaultKey) return null;
     const row = await this.repo.findOne({ where: { user_id: userId } });
     if (!row?.password_enc) return null;
-    return decryptSecret(row.password_enc, this.vaultKey);
+    // Same `userId` as the seal: a copy that belongs to another row will not
+    // open, and reads as «nothing stored» rather than as someone else's password.
+    return decryptSecret(row.password_enc, this.vaultKey, userId);
   }
 
   /** Whether a readable copy can exist at all — i.e. whether a key is set. */

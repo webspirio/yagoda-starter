@@ -5,20 +5,28 @@ import { expectNoAxeViolations } from '../../../test-axe';
 import { UsersPage } from './UsersPage';
 import type { AdminUser } from '../model/user';
 
-const { queryMock, createMock, updateMock, setPasswordMock, revealMock } = vi.hoisted(() => ({
-  queryMock: vi.fn(),
-  createMock: vi.fn(),
-  updateMock: vi.fn(),
-  setPasswordMock: vi.fn(),
-  revealMock: vi.fn(),
-}));
+const { queryMock, createMock, updateMock, setPasswordMock, revealMock, revealResetMock } =
+  vi.hoisted(() => ({
+    queryMock: vi.fn(),
+    createMock: vi.fn(),
+    updateMock: vi.fn(),
+    setPasswordMock: vi.fn(),
+    revealMock: vi.fn(),
+    revealResetMock: vi.fn(),
+  }));
 
 vi.mock('../api/users', () => ({
   useUsersQuery: () => queryMock(),
   useCreateUserMutation: () => ({ mutateAsync: createMock }),
   useUpdateUserMutation: () => ({ mutateAsync: updateMock }),
   useSetPasswordMutation: () => ({ mutateAsync: setPasswordMock }),
-  useRevealPasswordMutation: () => ({ mutateAsync: revealMock }),
+  // Mirrors the real mutation's surface: the cell calls `reset()` when its
+  // row closes, which is how the plaintext leaves the mutation cache.
+  useRevealPasswordMutation: () => ({
+    mutateAsync: revealMock,
+    reset: revealResetMock,
+    isPending: false,
+  }),
 }));
 
 vi.mock('@/entities/collection-point', () => ({
@@ -70,6 +78,7 @@ beforeEach(() => {
   updateMock.mockReset().mockResolvedValue(operator);
   setPasswordMock.mockReset().mockResolvedValue(undefined);
   revealMock.mockReset().mockResolvedValue({ password: 'operator', vault_enabled: true });
+  revealResetMock.mockReset();
 });
 
 describe('UsersPage', () => {
@@ -150,6 +159,24 @@ describe('reading a password back', () => {
 
     await userEvent.click(within(row).getByRole('button', { name: 'Hide password' }));
     expect(within(row).queryByText('operator')).toBeNull();
+
+    // Closed means FORGOTTEN, not hidden: re-opening asks the server again,
+    // which is also what keeps every reading in the audit log.
+    await userEvent.click(eyeIn(row));
+    expect(revealMock).toHaveBeenCalledTimes(2);
+  });
+
+  // A failed read belongs to the press that failed. Without the reset it stays
+  // beside a CLOSED eye — and beside the wrong row once another is opened.
+  it('clears a failed read when the row is closed', async () => {
+    revealMock.mockRejectedValue(new Error('offline'));
+    const row = await rowFor('maria');
+
+    await userEvent.click(eyeIn(row));
+    expect(await within(row).findByText('Could not read the password')).toBeInTheDocument();
+
+    await userEvent.click(within(row).getByRole('button', { name: 'Hide password' }));
+    expect(within(row).queryByText('Could not read the password')).toBeNull();
   });
 
   it('shows one password at a time — revealing another row hides the first', async () => {

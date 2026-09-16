@@ -37,21 +37,41 @@ const SCHEME = 'a256gcm';
 /**
  * Turn `PASSWORD_VAULT_KEY` into a key, or null when the vault is off.
  *
- * Null is not an error path: unset is how a deployment says "do not keep
- * readable passwords", and `env.schema.ts` already rejects a key that is
- * present but malformed, so a typo fails at boot rather than silently
- * disabling the feature here.
+ * Null ONLY for an absent key: unset is how a deployment says "do not keep
+ * readable passwords", and that is the default.
+ *
+ * A key that is PRESENT and unusable THROWS, and the throw is the point. The
+ * alternative — returning null — is a clean boot in which every row reads
+ * «перевидайте пароль» forever and reissuing does not help, because nothing
+ * is ever sealed. `env.schema.ts` catches the same mistake earlier, at boot,
+ * with the same byte-length rule; this is the check that cannot be bypassed by
+ * a caller that reads `process.env` directly (the dev seed does).
  */
 export function readVaultKey(raw: string | undefined | null): Buffer | null {
   const trimmed = raw?.trim();
   if (!trimmed) return null;
   const key = Buffer.from(trimmed, 'base64');
-  return key.length === VAULT_KEY_BYTES ? key : null;
+  if (key.length !== VAULT_KEY_BYTES) {
+    throw new Error(
+      `PASSWORD_VAULT_KEY must be ${VAULT_KEY_BYTES} bytes in base64 ` +
+        `(openssl rand -base64 32); got ${key.length}`,
+    );
+  }
+  return key;
 }
 
-export function encryptSecret(plain: string, key: Buffer): string {
+/**
+ * `aad` — additional authenticated data — is NOT encrypted; it is mixed into
+ * the tag, so opening a value with a different `aad` fails. Callers pass the
+ * user id, which binds each sealed password to its row: a `password_enc`
+ * copied from one user to another (a partial restore, a hand-edited table)
+ * then fails to open instead of showing the owner A's password as B's, which
+ * would have them read out a password that cannot log B in.
+ */
+export function encryptSecret(plain: string, key: Buffer, aad: string): string {
   const iv = randomBytes(IV_BYTES);
   const cipher = createCipheriv('aes-256-gcm', key, iv);
+  cipher.setAAD(Buffer.from(aad, 'utf8'));
   const ciphertext = Buffer.concat([cipher.update(plain, 'utf8'), cipher.final()]);
   return [
     SCHEME,
@@ -63,11 +83,12 @@ export function encryptSecret(plain: string, key: Buffer): string {
 
 /**
  * Null — never a throw — for every failure: a rotated key, a value written by
- * a scheme this build does not know, a hand-edited row. The caller shows
- * "перевидайте пароль", which is the honest answer in all three cases, and a
+ * a scheme this build does not know, a hand-edited row, a value that belongs
+ * to a different user (see `aad` on `encryptSecret`). The caller shows
+ * "перевидайте пароль", which is the honest answer in all of them, and a
  * corrupt row can never turn the owner's registry into a 500.
  */
-export function decryptSecret(stored: string, key: Buffer): string | null {
+export function decryptSecret(stored: string, key: Buffer, aad: string): string | null {
   const parts = stored.split('$');
   if (parts.length !== 4) return null;
 
@@ -80,6 +101,7 @@ export function decryptSecret(stored: string, key: Buffer): string | null {
 
   try {
     const decipher = createDecipheriv('aes-256-gcm', key, iv);
+    decipher.setAAD(Buffer.from(aad, 'utf8'));
     decipher.setAuthTag(tag);
     // `final()` is what verifies the tag — dropping it would hand back
     // unauthenticated plaintext, which is the whole point of using GCM.

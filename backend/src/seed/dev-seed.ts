@@ -53,10 +53,20 @@ import {
  * «перевидайте пароль» on the «Користувачі» screen and the feature looks
  * broken on a fresh database. Null when no key is configured, which is exactly
  * what `CredentialsService.set` would write.
+ *
+ * READ PER RUN, NOT AT MODULE LOAD. `dotenv` runs when `dev-seed.cli.ts`
+ * imports `../data-source`, so a module-level read would depend on this file
+ * being imported after that one — which an import reorder, or a lint rule that
+ * sorts imports, would quietly break. The symptom would be seeded accounts
+ * with no readable copy and nothing in the output to say why.
+ *
+ * The user id is the AAD, matching `CredentialsService.set` exactly: a sealed
+ * value belongs to one row and does not open against another.
  */
-const vaultKey = readVaultKey(process.env.PASSWORD_VAULT_KEY);
-const vaultCopy = (password: string): string | null =>
-  vaultKey ? encryptSecret(password, vaultKey) : null;
+const vaultCopyFor = (): ((userId: string, password: string) => string | null) => {
+  const key = readVaultKey(process.env.PASSWORD_VAULT_KEY);
+  return (userId, password) => (key ? encryptSecret(password, key, userId) : null);
+};
 
 /** Rows INSERTED by one run — every key is 0 on a repeat run. */
 export interface DevSeedSummary {
@@ -117,6 +127,7 @@ function toCents(value: string): number {
  * can exercise it under Jest.
  */
 export async function seedDev(ds: DataSource): Promise<DevSeedSummary> {
+  const vaultCopy = vaultCopyFor();
   const qr = ds.createQueryRunner();
   await qr.connect();
   await qr.startTransaction();
@@ -255,7 +266,11 @@ export async function seedDev(ds: DataSource): Promise<DevSeedSummary> {
       );
       await qr.query(
         `INSERT INTO user_credentials (user_id, password_hash, password_enc) VALUES ($1, $2, $3)`,
-        [row!.id, await hashPassword(DEV_OPERATOR_PASSWORD), vaultCopy(DEV_OPERATOR_PASSWORD)],
+        [
+          row!.id,
+          await hashPassword(DEV_OPERATOR_PASSWORD),
+          vaultCopy(row!.id, DEV_OPERATOR_PASSWORD),
+        ],
       );
       summary.users += 1;
     }
@@ -914,6 +929,7 @@ async function seedDocuments(
  * the seed is usable on a database that has had its users truncated.
  */
 async function resolveOwner(qr: QueryRunner, summary: DevSeedSummary): Promise<string> {
+  const vaultCopy = vaultCopyFor();
   const admin = await one<{ user_id: string }>(
     qr,
     `SELECT i.user_id FROM user_identities i
@@ -940,7 +956,7 @@ async function resolveOwner(qr: QueryRunner, summary: DevSeedSummary): Promise<s
   );
   await qr.query(
     `INSERT INTO user_credentials (user_id, password_hash, password_enc) VALUES ($1, $2, $3)`,
-    [created!.id, await hashPassword('admin'), vaultCopy('admin')],
+    [created!.id, await hashPassword('admin'), vaultCopy(created!.id, 'admin')],
   );
   summary.users += 1;
   return created!.id;

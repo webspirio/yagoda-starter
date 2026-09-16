@@ -54,6 +54,12 @@ describe('envValidationSchema', () => {
     expect(
       validate({ PASSWORD_VAULT_KEY: Buffer.alloc(16, 7).toString('base64') }).error?.message,
     ).toContain('PASSWORD_VAULT_KEY');
+    // 33 bytes is ALSO 44 base64 characters. A character-count rule accepts
+    // this one, boot succeeds, and nothing is ever sealed — the exact silent
+    // failure the byte-length check exists to prevent.
+    expect(
+      validate({ PASSWORD_VAULT_KEY: Buffer.alloc(33, 7).toString('base64') }).error?.message,
+    ).toContain('PASSWORD_VAULT_KEY');
   });
 
   it('still requires APP_URL and a 32-character JWT_SECRET', () => {

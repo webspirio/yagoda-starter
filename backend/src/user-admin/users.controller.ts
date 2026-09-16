@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Get,
+  Header,
   HttpCode,
   HttpStatus,
   Param,
@@ -63,6 +64,11 @@ export class UsersController {
    * that no list or detail response can ever carry a password by accident.
    */
   @Get(':id/password')
+  // The ONE response in the app with a plaintext credential in it. Express
+  // stamps an ETag, helmet sets no cache policy and neither does nginx, so
+  // without this the body is storable: it lands in the browser's on-disk cache
+  // and survives the sign-out that clears the token.
+  @Header('Cache-Control', 'no-store')
   revealPassword(@CurrentUser() actor: AuthenticatedUser, @Param('id', ParseUUIDPipe) id: string) {
     return this.admin.revealPassword(actor, id);
   }

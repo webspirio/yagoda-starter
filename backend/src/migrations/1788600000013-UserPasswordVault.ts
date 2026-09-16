@@ -31,9 +31,7 @@ export class UserPasswordVault1788600000013 implements MigrationInterface {
   name = 'UserPasswordVault1788600000013';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
-    await queryRunner.query(
-      `ALTER TABLE "user_credentials" ADD "password_enc" character varying`,
-    );
+    await queryRunner.query(`ALTER TABLE "user_credentials" ADD "password_enc" character varying`);
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
