@@ -4,6 +4,7 @@ import { execFileSync } from 'node:child_process'
 import path from 'node:path'
 
 import { CHECKS, PRECONDITIONS, checkById, inTier, tierCovers } from './registry.mjs'
+import { DEFAULT_TIMEOUT_MS } from './run.mjs'
 
 test('every check id is unique', () => {
   const ids = CHECKS.map((c) => c.id)
@@ -87,18 +88,24 @@ test('every declared timeoutMs is a positive finite number, and only slow rows d
       Number.isFinite(budget) && Number(budget) > 0,
       `${c.id}: timeoutMs must be finite and positive, got ${budget}`,
     )
-    // A budget below the 120s default would SHORTEN a row rather than give it room, which
-    // is not what this field is for — see registry.mjs's note. If one is ever wanted, this
-    // assertion is the place to argue with.
+    // A budget at or below the runner's own default would SHORTEN a row rather than give it
+    // room, which is not what this field is for — see registry.mjs's note. Compared against
+    // the IMPORTED default rather than a copy of the number: this assertion used to spell
+    // out 120_000 by hand, so lowering the default to 60s would have left it silently
+    // asserting against a value the runner no longer used.
     assert.ok(
-      Number(budget) > 120_000,
-      `${c.id}: a timeoutMs at or below the runner's own 120s default gives the row nothing`,
+      Number(budget) > DEFAULT_TIMEOUT_MS,
+      `${c.id}: a timeoutMs at or below the runner's own ${DEFAULT_TIMEOUT_MS / 1000}s default gives the row nothing`,
     )
   }
-  // Pinned so that adding a fourth slow row is a deliberate edit here, not a side effect.
+  // Pinned so that adding a seventh is a deliberate edit here, not a side effect. Three
+  // joined on 2026-09-16, when the default dropped 120s -> 60s: selfcheck and smoke because
+  // neither fitted under it any more (selfcheck had in fact never fitted under the OLD one
+  // either, at 67.3s against 120s, which is what prompted the whole re-measure), and audit
+  // because its cost is the npm registry's rather than ours — see that row's own note.
   assert.deepEqual(
     declared.map((c) => c.id).sort(),
-    ['coverage', 'test', 'test:db'],
+    ['audit', 'coverage', 'selfcheck', 'smoke', 'test', 'test:db'],
     'the set of rows with their own timeout budget changed — confirm the new one was measured, not guessed',
   )
 })
@@ -177,4 +184,55 @@ test('every mechanically derivable count quoted in a proves/blindSpot string sti
         `row's proves/blindSpot. Re-measure and update the string; do not edit this test to match it.`,
     )
   }
+})
+
+test('the runner default still clears every row that inherits it, and that set is pinned', () => {
+  // THE PROPERTY THE OTHER TEST CANNOT HOLD. Once both sides import DEFAULT_TIMEOUT_MS,
+  // "a declared budget must exceed the default" compares the constant against itself and
+  // can no longer notice the default drifting away from what the inheriting rows actually
+  // cost. Raised by review of that very change, 2026-09-16.
+  //
+  // Cold CI readings, run 35011857830 — the coldest full run on record, with an empty
+  // Turbo cache. Recorded as DATA, so raising the default without re-measuring is a
+  // visible edit to this table rather than a one-character change somewhere else.
+  const COLD_MS = {
+    lint: 16_900,
+    typecheck: 16_700,
+    build: 14_600,
+    'test:ci-scripts': 6_700,
+    deadcode: 2_100,
+    migrations: 968,
+    seam: 885,
+    'ratchet:money': 808,
+    'ratchet:persist': 802,
+    secrets: 424,
+    'ratchet:lint-exempt': 216,
+    bundle: 188,
+    testfiles: 158,
+    memo: 50,
+  }
+
+  const inheriting = CHECKS.filter((c) => c.timeoutMs === undefined).map((c) => c.id)
+
+  // A row added later inherits this budget silently. Pinning the set is what forces
+  // whoever adds it to measure it first — the same discipline the declared budgets get.
+  assert.deepEqual(
+    inheriting.slice().sort(),
+    Object.keys(COLD_MS).sort(),
+    'a row started or stopped inheriting the runner default — measure it cold on CI and record it here',
+  )
+
+  const slowest = Math.max(...Object.values(COLD_MS))
+  assert.ok(
+    DEFAULT_TIMEOUT_MS > slowest * 2,
+    `the default (${DEFAULT_TIMEOUT_MS / 1000}s) must clear the slowest inheriting row ` +
+      `(${slowest / 1000}s) with real headroom — it is a hang detector, not a performance gate`,
+  )
+  // And the other direction, which is the one review actually asked for: a default raised
+  // far past its own basis stops detecting anything. 10x the worst reading is the line.
+  assert.ok(
+    DEFAULT_TIMEOUT_MS < slowest * 10,
+    `the default (${DEFAULT_TIMEOUT_MS / 1000}s) is more than 10x the slowest row that ` +
+      `relies on it (${slowest / 1000}s) — re-measure, or give the slow rows their own budget`,
+  )
 })

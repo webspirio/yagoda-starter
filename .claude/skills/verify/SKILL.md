@@ -101,10 +101,19 @@ took 9m35s — the ~71s difference is `npm ci`, `playwright install`, `docker co
 the artifact upload, none of which is a row. Per row: lint 16.9s, typecheck 16.7s,
 test:ci-scripts 6.7s, selfcheck 67.3s, build 14.6s, coverage 247.2s, test:db 28.9s,
 docker 60.6s, smoke 36.6s; the remaining eleven cost 2.3s (audit) and less, 8.9s together.
-`test` does not appear because it does not run here — `coverage` supersedes it. Two rows carry their own `timeoutMs` in
-`scripts/verify/registry.mjs` (coverage 600s, test:db 300s), sized as HANG DETECTORS rather
-than performance gates; the performance signal is the duration printed beside every row, on
-green runs as well as red.
+`test` does not appear because it does not run here — `coverage` supersedes it.
+
+SIX ROWS CARRY THEIR OWN `timeoutMs` in `scripts/verify/registry.mjs` as of 2026-09-16 —
+`test` 600s, `coverage` 600s, `selfcheck` 240s, `smoke` 180s, `audit` 120s, `test:db` 300s
+— and the other fourteen inherit the runner's `DEFAULT_TIMEOUT_MS`, which dropped from an
+inherited 120s to a measured 60s the same day. Every one of them is a HANG DETECTOR sized
+above a cold CI reading, never a performance gate: the performance signal is the duration
+printed beside every row, on green runs as well as red. Two are worth knowing about
+specifically. `selfcheck` is the row that forced the re-measure — it cost 67.3s cold under
+a 120s default nobody had checked it against, and it grows with every test the layer adds.
+`audit` is loose against its own 2.3s reading on purpose, because `needs: ['npm-registry']`
+means its duration belongs to a server nobody here operates, and a tight budget would
+report someone else's slow day as this tree's defect.
 
 THAT READING WAS COLD — the Turbo key lineage was new and had nothing to restore — and the
 run straight after it is the other half of the picture. Run 35013872995: the same 20 rows

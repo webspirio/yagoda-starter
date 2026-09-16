@@ -93,6 +93,35 @@ function argError(msg) {
  */
 
 /**
+ * The budget a row gets when it declares no `timeoutMs` of its own — and, via
+ * `--timeout-ms`, the only one a caller can change.
+ *
+ * 60s, MEASURED AGAINST EVERY ROW THAT INHERITS IT rather than against a few of them. It
+ * was 120s, which came from the reference this layer was ported from, whose suites are a
+ * fraction of this repo's, and which nobody had ever checked against a row that relies on
+ * it. Cold CI readings for all fourteen inheriting rows (run 35011857830, the coldest full
+ * run on record): lint 16.9s, typecheck 16.7s, build 14.6s, test:ci-scripts 6.7s,
+ * deadcode 2.1s, seam 0.9s, migrations 1.0s, ratchet:money 0.8s, ratchet:persist 0.8s,
+ * secrets 0.4s, ratchet:lint-exempt 0.2s, bundle 0.2s, testfiles 0.2s, memo 0.05s. The
+ * worst is 16.9s, so this clears the slowest of them by 3.5x and every other by far more.
+ * registry.test.mjs pins that list, so a row added later cannot inherit this number
+ * without someone measuring it first.
+ *
+ * LOWERING IT IS WHAT MADE THE REAL PROBLEM VISIBLE, and it was none of those rows:
+ * `selfcheck` costs 67.3s cold and never fitted under the OLD 120s either, at 1.8x, on the
+ * one row that grows with every test this layer adds — it was around 36s when the 120s
+ * arrived. It now declares 240s of its own, as do `smoke` (180s) and `audit` (120s).
+ * `audit` is the interesting one: its duration is a property of the npm registry rather
+ * than of this repo, so no reading here bounds a slow-registry day, and a shared default
+ * tight enough to be useful elsewhere would turn someone else's outage into a red row on a
+ * green tree. That argument is on the row, not here.
+ *
+ * Exported so scripts/verify/registry.test.mjs can assert every declared budget actually
+ * EXCEEDS it, instead of comparing against a second hand-written copy of this number.
+ */
+export const DEFAULT_TIMEOUT_MS = 60_000
+
+/**
  * Strict parsing: an unknown flag is an error, never a silent no-op. A typo in
  * `--no-skip` that quietly disabled it would be invisible for as long as nobody looked.
  *
@@ -112,7 +141,7 @@ export function parseArgs(argv) {
     exclude: null,
     reuseIfFresh: false,
     json: false,
-    timeoutMs: 120_000,
+    timeoutMs: DEFAULT_TIMEOUT_MS,
   }
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i]

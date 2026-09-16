@@ -48,9 +48,12 @@ import net from 'node:net'
  * finish. The performance signal is the duration the runner prints beside every row; if a
  * row gets slower, that number is what says so, and it says so on a GREEN run.
  *
- * WRITTEN BECAUSE THE DEFAULT SILENTLY DID THE OPPOSITE. The runner's 120s default came
- * from the reference this layer was ported from, whose suites are a fraction of this
- * repo's. On 2026-09-15 the first CI run of `npm run verify:ci` failed with THREE rows —
+ * WRITTEN BECAUSE THE DEFAULT SILENTLY DID THE OPPOSITE. The runner's default came from
+ * the reference this layer was ported from, whose suites are a fraction of this repo's —
+ * 120s, inherited and never checked against a row that relies on it. It is now 60s and
+ * measured against all fourteen rows that inherit it (run.mjs's DEFAULT_TIMEOUT_MS lists
+ * every reading), which is what exposed `selfcheck` sitting at 67.3s under it. On
+ * 2026-09-15 the first CI run of `npm run verify:ci` failed with THREE rows —
  * `test`, `coverage` and `test:db` — each reporting `timed out after 120.0s`, and every
  * one of them would have passed given time. Locally all three were seconds, because Turbo
  * served them from cache and Postgres was already warm: the laptop could not see the
@@ -624,6 +627,16 @@ export const CHECKS = [
     id: 'selfcheck',
     tier: 'fast',
     cmd: 'npm run test:verify',
+    // 240s, and this row is the reason the runner's default was re-examined at all. It
+    // costs 67.3s cold on CI (run 35011857830) and 54.4s warm (35017224544) — against an
+    // inherited 120s default nobody had ever checked it against, i.e. 1.8x, on the ONE row
+    // in this registry that grows with every test the layer adds. It was around 36s when
+    // that default arrived. Nothing caches `node --test`, so the number only goes up: at
+    // 166 tests today it is already the largest single row in a warm CI run.
+    //
+    // 240s is ~3.5x the cold reading, which buys room for the growth rather than for a
+    // hang. A hang here would be a test that never returns, and that is what this catches.
+    timeoutMs: 240_000,
     // No `after`: nothing this suite does depends on another row having passed first.
     // It runs the layer's own .mjs sources directly under node:test — untranspiled,
     // untyped at runtime — so a failure or a pass in `typecheck` changes nothing about
@@ -1036,6 +1049,19 @@ export const CHECKS = [
     id: 'audit',
     tier: 'full',
     cmd: 'npm run audit:check',
+    // 120s, and this row declares one for a reason none of the others share: ITS DURATION
+    // IS NOT A PROPERTY OF THIS REPOSITORY. `needs: ['npm-registry']` is the whole point —
+    // the command talks to a server nobody here operates, so the 2.3s it measured cold on
+    // CI (run 35011857830) bounds a good day and says nothing whatever about a slow one.
+    // Every other row's cost is our own code and scales with our own tree.
+    //
+    // Under a shared default tight enough to be useful for rows like `lint`, a slow
+    // registry becomes a RED row on a green tree — a hang detector reporting someone
+    // else's outage as our defect, which is precisely the false signal this field exists
+    // to avoid. 120s is deliberately loose against the measurement for that reason, not
+    // because the row is slow. Raised as a point by a review of the default's own
+    // reasoning, 2026-09-16, rather than by a failure.
+    timeoutMs: 120_000,
     needs: ['npm-registry'],
     // No `after`: audit.mjs never invokes eslint or tsc, only `npm ls`/`npm audit` — a red
     // `lint` or `typecheck` row changes nothing about what npm's own advisory database
@@ -1413,6 +1439,16 @@ export const CHECKS = [
     id: 'smoke',
     tier: 'full',
     cmd: 'npm run test:e2e',
+    // 180s. Measured 36.6s cold and 49.7s warm on CI (runs 35011857830 and 35017224544) —
+    // warm is the SLOWER of the two here, which is itself worth knowing: this row's cost is
+    // a frontend build plus a Compose stack coming up, neither of which Turbo caches, so
+    // the variance is the runner's rather than the cache's. It relied on the runner default
+    // until 2026-09-16 and no longer fits under the 60s that default now is.
+    //
+    // 180s is ~3.6x the worst reading. The hang it exists to catch is real and named in
+    // this row's own proves: an earlier version of it died on `Timed out waiting 60000ms
+    // from config.webServer` with global-setup.ts never having run a line.
+    timeoutMs: 180_000,
     needs: ['playwright-browser', 'docker'],
     after: ['build'],
     // Not a hard dependency the way `bundle`'s `after: ['build']` is: playwright.config.ts's
