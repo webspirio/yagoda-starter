@@ -54,16 +54,17 @@ const CODE: Readonly<Record<string, string>> = {
   TRANSFER_ALREADY_RESOLVED: 'transfer.errors.alreadyResolved',
   POINT_INACTIVE: 'transfer.errors.pointInactive',
   CORRECTION_POINT_MISMATCH: 'transfer.errors.correctionPointMismatch',
-  // Crates (#57-#60; backend in the slice this branch sits on). `SHIFT_CLOSED`,
-  // `NO_OPEN_SHIFT` and `ALREADY_VOIDED` already have entries above and are
-  // shared verbatim — a crate document is refused by the same §9.4 rules as any
-  // other, and a second wording for one code is exactly what this module exists
-  // to prevent.
+  // Crates (#57-#60). `SHIFT_CLOSED`, `NO_OPEN_SHIFT` and `ALREADY_VOIDED`
+  // already have entries above and are shared verbatim — a crate document is
+  // refused by the same §9.4 rules as any other, and a second wording for one
+  // code is exactly what this module exists to prevent.
   NO_CRATE_TYPE: 'crates.errors.noCrateType',
   RETURN_EXCEEDS_OUTSTANDING: 'crates.errors.returnExceeds',
   CRATE_CASH_INSUFFICIENT: 'crates.errors.cashInsufficient',
   ISSUANCE_HAS_RETURNS: 'crates.errors.hasReturns',
-  SUPPLIER_INACTIVE: 'crates.errors.supplierInactive',
+  // SUPPLIER_INACTIVE IS DELIBERATELY ABSENT — it is the one code whose
+  // sentence depends on which endpoint refused, so each caller passes its own
+  // via `overrides` below. See that argument's doc.
 };
 
 /**
@@ -77,8 +78,24 @@ const CODE: Readonly<Record<string, string>> = {
  * sentences even when neither has a more specific cause to report, and the
  * whole point of this helper is to explain the cause rather than fall back
  * to something as generic as `common.somethingWentWrong`.
+ *
+ * `overrides` is for a code whose SENTENCE, not whose meaning, depends on the
+ * endpoint that refused. `SUPPLIER_INACTIVE` is the only one today: the
+ * backend refuses a top-up and a crate issuance against a deactivated supplier
+ * with the same code, but «борг не було б кому виплатити» and «видавати їй
+ * ящики не можна» are two different consequences, and a screen that states the
+ * other one is worse than one that stays generic. The per-screen
+ * `apiErrorToFields` maps in reception and settle-payout already word this
+ * same code their own way, so the split is the established answer here, not a
+ * new idea. A code that means the same thing everywhere belongs in `CODE`
+ * above — this argument is the exception, not a way around the rule.
  */
-export function apiErrorToBanner(error: unknown, fallback: string): string {
+export function apiErrorToBanner(
+  error: unknown,
+  fallback: string,
+  overrides?: Readonly<Record<string, string>>,
+): string {
   const code = apiErrorCode(error);
-  return code ? (CODE[code] ?? fallback) : fallback;
+  if (!code) return fallback;
+  return overrides?.[code] ?? CODE[code] ?? fallback;
 }

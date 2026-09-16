@@ -82,7 +82,12 @@ export function IssueCratesDialog({
       toast.success(t('crates.issue.toast'));
       onClose();
     } catch (error) {
-      setFormError(apiErrorToBanner(error, 'crates.errors.issueFailed'));
+      setFormError(
+        apiErrorToBanner(error, 'crates.errors.issueFailed', {
+          // Shared code, screen-specific consequence — see `apiErrorToBanner`.
+          SUPPLIER_INACTIVE: 'crates.errors.supplierInactive',
+        }),
+      );
     }
   });
 
