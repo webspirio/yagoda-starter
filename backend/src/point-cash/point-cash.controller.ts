@@ -38,6 +38,8 @@ export class PointCashController {
     return {
       collection_point_id: pointId,
       cash: await this.cash.cashFor(pointId, query.as_of),
+      // Never bounded by `as_of` — see `crateDepositsFor`'s doc comment.
+      crate_deposits: await this.cash.crateDepositsFor(pointId),
     };
   }
 }

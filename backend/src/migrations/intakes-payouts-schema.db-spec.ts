@@ -110,6 +110,12 @@ describe('YagodaIntakesAndPayouts', () => {
     );
     gradeId = grade.id;
 
+    // `UQ_tare_types_single_crate` is a bare (non-deferrable) unique index, so
+    // a flagged row inserted while another is still flagged 23505s. `app_test`
+    // is never truncated and other specs legitimately leave a flagged row
+    // behind (they insert through `TareTypesService`, which demotes first) —
+    // demote here too, same convention, before this raw-SQL insert.
+    await ds.query(`UPDATE tare_types SET is_crate = false WHERE is_crate`);
     const [tare] = await ds.query(
       `INSERT INTO tare_types (name, weight_kg, deposit_price, is_crate)
        VALUES ($1, '1.20', '0.00', true) RETURNING id`,
