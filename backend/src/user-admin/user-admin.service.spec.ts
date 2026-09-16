@@ -1,4 +1,9 @@
-import { BadRequestException, ConflictException, ForbiddenException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  NotFoundException,
+} from '@nestjs/common';
 import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
 import { UserRole } from '../users/user-role.enum';
@@ -43,7 +48,11 @@ describe('UserAdminService', () => {
       setLogin: jest.fn(),
       list: jest.fn().mockResolvedValue([[target()], 1]),
     };
-    credentials = { set: jest.fn() };
+    credentials = {
+      set: jest.fn(),
+      reveal: jest.fn().mockResolvedValue('nova-parolya'),
+      vaultEnabled: true as never,
+    };
     points = { findOneRaw: jest.fn().mockResolvedValue({ id: 'p-1', is_active: true }) };
     audit = { record: jest.fn() };
     service = new UserAdminService(
@@ -319,6 +328,59 @@ describe('UserAdminService', () => {
       expect(entry.before).toBeUndefined();
       expect(entry.after).toBeUndefined();
       expect(JSON.stringify(entry)).not.toContain('nova-parolya');
+    });
+  });
+
+  /**
+   * Issue #11 asks the owner to SEE an operator's password, not just reissue
+   * it. The value comes from the vault (`CredentialsService.reveal`), never
+   * from the hash, and the reading is audited — the one control that remains
+   * once a password is readable at all.
+   */
+  describe('revealPassword', () => {
+    it('returns the stored password and audits the reading, not the value', async () => {
+      await expect(service.revealPassword(owner, 'u-target')).resolves.toEqual({
+        password: 'nova-parolya',
+        vault_enabled: true,
+      });
+
+      const entry = audit.record.mock.calls[0][0];
+      expect(entry.action).toBe('user.password-viewed');
+      expect(entry.target_id).toBe('u-target');
+      expect(entry.actor_id).toBe('u-owner');
+      expect(entry.after).toEqual({ revealed: true });
+      expect(JSON.stringify(entry)).not.toContain('nova-parolya');
+    });
+
+    it('reports nothing to show for a password issued before the vault', async () => {
+      credentials.reveal.mockResolvedValue(null);
+
+      await expect(service.revealPassword(owner, 'u-target')).resolves.toEqual({
+        password: null,
+        vault_enabled: true,
+      });
+      expect(audit.record.mock.calls[0][0].after).toEqual({ revealed: false });
+    });
+
+    // Told apart from the case above so the registry can say WHY: a
+    // deployment with no key needs an operator to set one, a null copy needs
+    // the owner to reissue that one password.
+    it('reports the vault as off when no key is configured', async () => {
+      credentials.vaultEnabled = false as never;
+      credentials.reveal.mockResolvedValue(null);
+
+      await expect(service.revealPassword(owner, 'u-target')).resolves.toEqual({
+        password: null,
+        vault_enabled: false,
+      });
+    });
+
+    it('goes through findById, so an unknown user is a 404 and is never audited', async () => {
+      users.findById.mockRejectedValue(new NotFoundException('User not found'));
+
+      await expect(service.revealPassword(owner, 'u-missing')).rejects.toThrow(NotFoundException);
+      expect(credentials.reveal).not.toHaveBeenCalled();
+      expect(audit.record).not.toHaveBeenCalled();
     });
   });
 

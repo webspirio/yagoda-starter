@@ -28,6 +28,20 @@ export class UserCredentials {
   @Column({ type: 'varchar' })
   password_hash: string;
 
+  /**
+   * The SAME password, encrypted rather than hashed, so the network owner can
+   * read it back (issue #11). Null whenever `PASSWORD_VAULT_KEY` is unset, and
+   * for every credential issued before the vault existed — null means "nothing
+   * to show, reissue the password", never "no password".
+   *
+   * Nothing on the login path reads this column: `verify()` checks
+   * `password_hash` and would keep working if every value here were deleted.
+   * `secret-box.ts` holds the format and the reasoning.
+   */
+  @Exclude()
+  @Column({ type: 'varchar', nullable: true })
+  password_enc: string | null;
+
   @UpdateDateColumn({ type: 'timestamptz' })
   updated_at: Date;
 }

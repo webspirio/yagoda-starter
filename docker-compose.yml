@@ -78,6 +78,9 @@ services:
       REDIS_HOST: redis
       REDIS_PORT: 6379
       APP_TIMEZONE: ${APP_TIMEZONE:-Europe/Kyiv}
+      # Owner-readable passwords (GET /users/:id/password). Empty = off, which
+      # env.schema.ts treats as unset.
+      PASSWORD_VAULT_KEY: ${PASSWORD_VAULT_KEY:-}
     healthcheck:
       test: ["CMD-SHELL", "wget -qO/dev/null http://127.0.0.1:3000/health/ready"]
       interval: 10s

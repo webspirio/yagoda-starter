@@ -42,6 +42,13 @@ export const envValidationSchema = Joi.object({
   BOOTSTRAP_OWNER_PASSWORD: Joi.string().empty('').min(8).optional(),
   BOOTSTRAP_OWNER_FIRST_NAME: Joi.string().empty('').optional(),
   BOOTSTRAP_OWNER_LAST_NAME: Joi.string().empty('').optional(),
+  // Makes an issued password readable back to the network owner (issue #11).
+  // 32 random bytes in base64 — `openssl rand -base64 32` — which is 44
+  // characters with padding; the length rule is what turns a truncated or
+  // pasted-wrong key into a BOOT failure rather than a column of values that
+  // can never be opened again. Unset (or '', the ${VAR:-} case described
+  // above) means the vault is off: passwords are hashed and nothing more.
+  PASSWORD_VAULT_KEY: Joi.string().empty('').base64().length(44).optional(),
   UPLOADS_DIR: Joi.string().optional(),
   // Baked into the image by backend/Dockerfile (ARG APP_COMMIT); read by
   // GET /health/version. Absent in dev, hence optional.

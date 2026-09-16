@@ -1,5 +1,6 @@
 import { DataSource, QueryRunner } from 'typeorm';
 import { hashPassword } from '../users/password-hashing';
+import { encryptSecret, readVaultKey } from '../users/secret-box';
 import { PointCashService } from '../point-cash/point-cash.service';
 import { composeDocumentCode } from '../common/document-code';
 import { mul } from '../common/money';
@@ -17,6 +18,7 @@ import { allocate } from '../crates/crate-allocation';
 import { nextIssuanceCode } from '../crates/crate-code';
 import { CrateIssuanceMode } from '../crates/crate-issuance-mode.enum';
 import {
+
   DEV_OPERATOR_PASSWORD,
   SEED_GRADES,
   SEED_INTAKES,
@@ -44,6 +46,17 @@ import {
   HISTORY_SHIFTS,
   HISTORY_TRANSFERS,
 } from './dev-seed.history';
+
+/**
+ * The demo dataset writes the owner-readable copy of each password too,
+ * whenever `PASSWORD_VAULT_KEY` is set — without it every seeded account shows
+ * «перевидайте пароль» on the «Користувачі» screen and the feature looks
+ * broken on a fresh database. Null when no key is configured, which is exactly
+ * what `CredentialsService.set` would write.
+ */
+const vaultKey = readVaultKey(process.env.PASSWORD_VAULT_KEY);
+const vaultCopy = (password: string): string | null =>
+  vaultKey ? encryptSecret(password, vaultKey) : null;
 
 /** Rows INSERTED by one run — every key is 0 on a repeat run. */
 export interface DevSeedSummary {
@@ -240,10 +253,10 @@ export async function seedDev(ds: DataSource): Promise<DevSeedSummary> {
         `INSERT INTO user_identities (provider, provider_user_id, user_id) VALUES ('local', $1, $2)`,
         [u.login, row!.id],
       );
-      await qr.query(`INSERT INTO user_credentials (user_id, password_hash) VALUES ($1, $2)`, [
-        row!.id,
-        await hashPassword(DEV_OPERATOR_PASSWORD),
-      ]);
+      await qr.query(
+        `INSERT INTO user_credentials (user_id, password_hash, password_enc) VALUES ($1, $2, $3)`,
+        [row!.id, await hashPassword(DEV_OPERATOR_PASSWORD), vaultCopy(DEV_OPERATOR_PASSWORD)],
+      );
       summary.users += 1;
     }
 
@@ -925,10 +938,10 @@ async function resolveOwner(qr: QueryRunner, summary: DevSeedSummary): Promise<s
     `INSERT INTO user_identities (provider, provider_user_id, user_id) VALUES ('local', 'admin', $1)`,
     [created!.id],
   );
-  await qr.query(`INSERT INTO user_credentials (user_id, password_hash) VALUES ($1, $2)`, [
-    created!.id,
-    await hashPassword('admin'),
-  ]);
+  await qr.query(
+    `INSERT INTO user_credentials (user_id, password_hash, password_enc) VALUES ($1, $2, $3)`,
+    [created!.id, await hashPassword('admin'), vaultCopy('admin')],
+  );
   summary.users += 1;
   return created!.id;
 }

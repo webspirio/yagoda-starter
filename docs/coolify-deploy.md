@@ -121,6 +121,7 @@ the preview owner or for this middleware.
 | `JWT_SECRET` | 48+ random chars | different 48+ random chars | `openssl rand -base64 48` |
 | `DB_PASSWORD` | random | random | |
 | `BOOTSTRAP_OWNER_LOGIN` / `_PASSWORD` / `_FIRST_NAME` / `_LAST_NAME` | the real owner | `owner` / *generate one* / `Preview` / `Owner` | read once, on the first boot of an empty DB. Generate the preview password too (`openssl rand -base64 18`) and keep it in Coolify only — a password written into a repo doc is a password on every preview forever |
+| `PASSWORD_VAULT_KEY` | *(set it, or leave the feature off)* | *(optional)* | `openssl rand -base64 32`. Lets the owner READ an issued password back on «Користувачі» (issue #11). Absent = the feature is off and passwords are hashed only. **Never change it after passwords have been issued** — the existing copies stop opening (logins keep working; each password has to be reissued to become readable again) |
 | `SEED_DEV_DATA` | *(absent)* | `true` | enables the one-shot `seed` service — **the only thing that keeps demo data out of production; never set it in the production env set** |
 | `IMAGE_TAG` | *(absent)* | *(absent)* | **never set** unless the fallback below is in force |
 | `POSTGRES_MEM_LIMIT` | `768m` | *(absent → 256m)* | see «Memory» below |

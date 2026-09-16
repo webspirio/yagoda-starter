@@ -56,6 +56,17 @@ export class UsersController {
     return this.admin.update(actor, id, dto);
   }
 
+  /**
+   * Reads a password back for the owner (issue #11). A GET rather than a POST
+   * because it changes nothing — the audit entry it writes is a record of the
+   * read, not a state change — and it is deliberately a route of its own, so
+   * that no list or detail response can ever carry a password by accident.
+   */
+  @Get(':id/password')
+  revealPassword(@CurrentUser() actor: AuthenticatedUser, @Param('id', ParseUUIDPipe) id: string) {
+    return this.admin.revealPassword(actor, id);
+  }
+
   @Put(':id/password')
   @HttpCode(HttpStatus.NO_CONTENT)
   setPassword(

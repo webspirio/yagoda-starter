@@ -120,6 +120,12 @@ services:
       BOOTSTRAP_OWNER_FIRST_NAME: ${BOOTSTRAP_OWNER_FIRST_NAME:-}
       BOOTSTRAP_OWNER_LAST_NAME: ${BOOTSTRAP_OWNER_LAST_NAME:-}
       APP_TIMEZONE: ${APP_TIMEZONE:-Europe/Kyiv}
+      # Owner-readable passwords (issue #11). Forwarded explicitly for the same
+      # reason as BOOTSTRAP_OWNER_* above — compose's .env does not reach the
+      # container. Empty is a supported value and means the feature is off; a
+      # key CHANGED after passwords were issued makes the existing copies
+      # unreadable, so treat it as a permanent per-environment secret.
+      PASSWORD_VAULT_KEY: ${PASSWORD_VAULT_KEY:-}
     volumes:
       - uploads_data:/app/uploads
     mem_limit: ${BACKEND_MEM_LIMIT:-384m}
