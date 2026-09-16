@@ -10,6 +10,7 @@ import { usePointOptionsQuery } from '@/entities/collection-point';
 import { useUsersQuery } from '../api/users';
 import { UserFormDialog } from './UserFormDialog';
 import { SetPasswordDialog } from './SetPasswordDialog';
+import { PasswordCell } from './PasswordCell';
 import type { AdminUser } from '../model/user';
 
 export function UsersPage() {
@@ -18,6 +19,8 @@ export function UsersPage() {
   const { data: points } = usePointOptionsQuery();
 
   const [editing, setEditing] = useState<AdminUser | null>(null);
+  // One password on screen at a time — the id of the row whose eye is open.
+  const [showingPasswordFor, setShowingPasswordFor] = useState<string | null>(null);
   const [formOpen, setFormOpen] = useState(false);
   const [passwordOpen, setPasswordOpen] = useState(false);
   // Bumped on every open so each dialog remounts with fresh RHF defaults.
@@ -50,6 +53,19 @@ export function UsersPage() {
       cell: (u) => <span className="font-medium">{u.display_name}</span>,
     },
     { id: 'login', header: t('users.col.login'), cell: (u) => u.login },
+    {
+      id: 'password',
+      header: t('users.col.password'),
+      // Fetched per press, never carried by the list response.
+      cell: (u) => (
+        <PasswordCell
+          user={u}
+          isOpen={showingPasswordFor === u.id}
+          onOpen={setShowingPasswordFor}
+          onClose={() => setShowingPasswordFor(null)}
+        />
+      ),
+    },
     { id: 'role', header: t('users.col.role'), cell: (u) => t(`users.roleLabel.${u.role}`) },
     {
       id: 'point',

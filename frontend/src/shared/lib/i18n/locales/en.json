@@ -7,7 +7,9 @@
     "retry": "Retry",
     "somethingWentWrong": "Something went wrong",
     "copy": "Copy",
-    "copied": "Copied"
+    "copied": "Copied",
+    "showPassword": "Show password",
+    "hidePassword": "Hide password"
   },
   "auth": {
     "signIn": "Sign in",
@@ -112,9 +114,15 @@
     "col": {
       "name": "Name",
       "login": "Login",
+      "password": "Password",
       "role": "Role",
       "point": "Point",
       "status": "Status"
+    },
+    "password": {
+      "reissue": "Reissue to see it",
+      "vaultOff": "Viewing is off",
+      "failed": "Could not read the password"
     },
     "roleLabel": {
       "network_owner": "Network owner",

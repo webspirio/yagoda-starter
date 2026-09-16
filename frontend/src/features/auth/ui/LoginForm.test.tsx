@@ -43,7 +43,7 @@ describe('LoginForm', () => {
     renderForm();
 
     await userEvent.type(screen.getByLabelText(/username/i), 'alice');
-    await userEvent.type(screen.getByLabelText(/password/i), 'hunter2!!');
+    await userEvent.type(screen.getByLabelText('Password'), 'hunter2!!');
     await userEvent.click(screen.getByRole('button', { name: /sign in/i }));
 
     expect(await screen.findByText('dashboard')).toBeInTheDocument();
@@ -55,7 +55,7 @@ describe('LoginForm', () => {
     renderForm();
 
     await userEvent.type(screen.getByLabelText(/username/i), 'alice');
-    await userEvent.type(screen.getByLabelText(/password/i), 'wrongpass');
+    await userEvent.type(screen.getByLabelText('Password'), 'wrongpass');
     await userEvent.click(screen.getByRole('button', { name: /sign in/i }));
 
     expect(await screen.findByRole('alert')).toHaveTextContent(/invalid username or password/i);
@@ -67,7 +67,7 @@ describe('LoginForm', () => {
     renderForm();
 
     await userEvent.type(screen.getByLabelText(/username/i), 'alice');
-    await userEvent.type(screen.getByLabelText(/password/i), 'wrongpass');
+    await userEvent.type(screen.getByLabelText('Password'), 'wrongpass');
     await userEvent.click(screen.getByRole('button', { name: /sign in/i }));
 
     expect(await screen.findByRole('alert')).toHaveTextContent(/invalid username or password/i);
@@ -77,5 +77,22 @@ describe('LoginForm', () => {
     renderForm();
     await userEvent.click(screen.getByRole('button', { name: /sign in/i }));
     expect(mock.history.post).toHaveLength(0);
+  });
+
+  // Issue #11's «око» on the sign-in screen: someone typing a password an
+  // owner read out to them must be able to check it before submitting.
+  it('unmasks the typed password on the eye, and re-masks it', async () => {
+    renderForm();
+    const password = screen.getByLabelText('Password');
+    await userEvent.type(password, 'hunter2!!');
+
+    expect(password).toHaveAttribute('type', 'password');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Show password' }));
+    expect(password).toHaveAttribute('type', 'text');
+    expect(password).toHaveValue('hunter2!!');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Hide password' }));
+    expect(password).toHaveAttribute('type', 'password');
   });
 });

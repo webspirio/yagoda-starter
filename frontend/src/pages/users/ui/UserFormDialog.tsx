@@ -10,6 +10,7 @@ import {
 } from '@/shared/ui/dialog';
 import { Field } from '@/shared/ui/field';
 import { TextInput } from '@/shared/ui/text-input';
+import { PasswordInput } from '@/shared/ui/password-input';
 import { SelectField } from '@/shared/ui/select-field';
 import { Switch } from '@/shared/ui/switch';
 import { Button } from '@/shared/ui/button';
@@ -226,9 +227,8 @@ export function UserFormDialog({
               error={errors.password?.message}
             >
               {(a11y) => (
-                <TextInput
+                <PasswordInput
                   {...a11y}
-                  type="password"
                   autoComplete="new-password"
                   {...register('password', {
                     required: 'users.errors.passwordShort',

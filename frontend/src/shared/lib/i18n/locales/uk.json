@@ -7,7 +7,9 @@
     "retry": "Повторити",
     "somethingWentWrong": "Щось пішло не так",
     "copy": "Копіювати",
-    "copied": "Скопійовано"
+    "copied": "Скопійовано",
+    "showPassword": "Показати пароль",
+    "hidePassword": "Сховати пароль"
   },
   "auth": {
     "signIn": "Увійти",
@@ -112,9 +114,15 @@
     "col": {
       "name": "Ім'я",
       "login": "Логін",
+      "password": "Пароль",
       "role": "Роль",
       "point": "Точка",
       "status": "Стан"
+    },
+    "password": {
+      "reissue": "Перевидайте, щоб побачити",
+      "vaultOff": "Перегляд вимкнено",
+      "failed": "Не вдалося прочитати пароль"
     },
     "roleLabel": {
       "network_owner": "Керівник мережі",
