@@ -380,16 +380,25 @@ export const CHECKS = [
     // catching drift, so it must keep working even if the npm script entry is ever lost.
     cmd: 'node scripts/verify/checks/memo-drift.mjs',
     proves:
-      'The generated table region in the root CLAUDE.md, delimited by its verify-table ' +
-      'HTML comment markers, is byte-for-byte identical to what scripts/verify/checks/' +
-      'memo-drift.mjs renders from this exact CHECKS array right now, down to the ' +
-      'trailing registry-checksum comment — a hand edit on either side, in either ' +
-      'direction, fails this exact command.',
+      'The generated table region in .claude/skills/verify/SKILL.md, delimited by its ' +
+      'verify-table HTML comment markers, is byte-for-byte identical to what ' +
+      'scripts/verify/checks/memo-drift.mjs renders from this exact CHECKS array right ' +
+      'now, down to the trailing registry-checksum comment — a hand edit on either side, ' +
+      'in either direction, fails this exact command. THE TARGET MOVED ON 2026-09-16: it ' +
+      'was the root CLAUDE.md until PR review asked for the verify reference out of the ' +
+      'file every session loads, where the table and its surrounding prose were 102,387 of ' +
+      "109,587 characters. The guarantee is unchanged, because it never depended on WHICH " +
+      'file held the markers — only on the markers being compared against this array.',
     blindSpot:
       'Nothing about whether a proves or blindSpot string is itself true of its check — ' +
       "only that the table quotes the registry's current values verbatim. And its reach is " +
-      'exactly the marked block: prose elsewhere in CLAUDE.md, including the rest of this ' +
-      'Verification section, can drift from reality with this row staying green.',
+      'exactly the marked block: every word of the skill file AROUND those markers — the ' +
+      'costs, the CI readings, the pre-push table, the status table — can drift from ' +
+      'reality with this row green, exactly as the same prose could when it lived in ' +
+      'CLAUDE.md. That is also why moving it cost no coverage: there was none to lose. ' +
+      'THE MOVE ADDED ONE NEW WAY TO GO STALE that CLAUDE.md did not have: a skill is ' +
+      'loaded on demand rather than every session, so prose here can be wrong for longer ' +
+      'before anyone reads it — and this row will not say so.',
   },
   {
     id: 'testfiles',

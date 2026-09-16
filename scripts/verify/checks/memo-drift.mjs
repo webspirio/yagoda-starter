@@ -3,11 +3,19 @@
  * The memo's proves/does-not-prove table must match the registry exactly.
  *
  * Drift between those two artifacts is a defect in the one pair whose entire job is
- * honesty: if CLAUDE.md claims a check proves something it no longer proves, the memo has
- * become the false-confidence artifact it was written to remove. So the table is
- * generated, not written, and this check compares it byte for byte.
+ * honesty: if the memo claims a check proves something it no longer proves, it has become
+ * the false-confidence artifact it was written to remove. So the table is generated, not
+ * written, and this check compares it byte for byte.
  *
- * `--write` regenerates the region between the markers in CLAUDE.md.
+ * THE MEMO MOVED ON 2026-09-16, from the root CLAUDE.md to .claude/skills/verify/SKILL.md.
+ * The table and its surrounding reference prose were 93% of CLAUDE.md — 102,387 of 109,587
+ * characters, loaded into every session — and PR review asked for them out. Nothing about
+ * this check changes except where it looks: the guarantee is that the marked region
+ * matches the registry, and it is worth exactly as much in a skill file as it was in
+ * CLAUDE.md. What it is NOT is a guarantee about the prose AROUND the markers, in either
+ * file, which is why moving that prose costs no coverage — there was none.
+ *
+ * `--write` regenerates the region between the markers.
  */
 import { readFileSync, writeFileSync } from 'node:fs'
 import { createHash } from 'node:crypto'
@@ -16,7 +24,7 @@ import path from 'node:path'
 import { CHECKS } from '../registry.mjs'
 
 const ROOT = path.resolve(import.meta.dirname, '..', '..', '..')
-const MEMO = path.join(ROOT, 'CLAUDE.md')
+const MEMO = path.join(ROOT, '.claude', 'skills', 'verify', 'SKILL.md')
 
 const BEGIN = '<!-- BEGIN:verify-table -->'
 const END = '<!-- END:verify-table -->'
@@ -87,7 +95,7 @@ function main() {
   const end = memo.indexOf(END)
   if (start === -1 || end === -1 || end < start) {
     process.stderr.write(
-      `memo: RED\n  CLAUDE.md has no ${BEGIN} … ${END} markers.\n` +
+      `memo: RED\n  ${path.relative(ROOT, MEMO)} has no ${BEGIN} … ${END} markers.\n` +
         `  Without them the table cannot be generated, and so cannot fail to match the registry.\n`,
     )
     process.exit(1)
@@ -114,9 +122,10 @@ function main() {
     while (i < Math.max(a.length, b.length) && a[i] === b[i]) i += 1
     process.stderr.write(
       `memo: RED\n` +
-        `  The table in CLAUDE.md has drifted from scripts/verify/registry.mjs (line ${i + 1}).\n` +
-        `  CLAUDE.md has: ${a[i] ?? '(no line)'}\n` +
-        `  registry has:  ${b[i] ?? '(no line)'}\n` +
+        `  The table in ${path.relative(ROOT, MEMO)} has drifted from ` +
+        `scripts/verify/registry.mjs (line ${i + 1}).\n` +
+        `  the memo has: ${a[i] ?? '(no line)'}\n` +
+        `  registry has: ${b[i] ?? '(no line)'}\n` +
         `  Fix: node scripts/verify/checks/memo-drift.mjs --write\n`,
     )
     process.exit(1)

@@ -5,7 +5,11 @@ import { readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 
 const ROOT = path.resolve(import.meta.dirname, '..', '..', '..')
-const MEMO = path.join(ROOT, 'CLAUDE.md')
+// The memo moved out of the root CLAUDE.md on 2026-09-16 (see memo-drift.mjs's header).
+// This is a SECOND copy of that path — memo-drift.mjs calls main() unconditionally, so it
+// cannot be imported for its constant without running the check — and the test below
+// asserts the two copies still name the same file rather than trusting them to.
+const MEMO = path.join(ROOT, '.claude', 'skills', 'verify', 'SKILL.md')
 const CHECK = path.join(ROOT, 'scripts', 'verify', 'checks', 'memo-drift.mjs')
 
 /** @param {string[]} [args] @returns {{ status: number, out: string }} */
@@ -54,4 +58,18 @@ test('--write regenerates and then the check is green', () => {
   } finally {
     writeFileSync(MEMO, original)
   }
+})
+
+test('this suite and memo-drift.mjs still point at the same memo file', () => {
+  // Every fixture above edits MEMO in place and restores it. Pointed at the wrong file,
+  // they would tamper with a file the check never reads, and then assert it caught
+  // something — passing for a reason that has nothing to do with the check. That is not
+  // hypothetical: moving the memo out of CLAUDE.md turned two of them red immediately,
+  // which is the only reason this drift was visible at all.
+  const source = readFileSync(CHECK, 'utf8')
+  const wanted = "path.join(ROOT, '.claude', 'skills', 'verify', 'SKILL.md')"
+  assert.ok(
+    source.includes(wanted),
+    `memo-drift.mjs no longer defines MEMO as ${wanted} — update this suite's own copy to match`,
+  )
 })
