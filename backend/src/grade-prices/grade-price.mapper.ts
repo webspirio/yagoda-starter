@@ -34,3 +34,40 @@ export function toGradePriceResponse(price: GradePrice): GradePriceResponse {
     created_at: price.created_at.toISOString(),
   };
 }
+
+/**
+ * THE SHEET — #89's «аркуш»: rows are grades, columns are points.
+ *
+ * Shaped as `points` plus `rows` rather than a flat list, because the SCREEN is
+ * a grid and a flat list would make every client rebuild the same pivot. The
+ * column order is the server's and is total, so two reads cannot reshuffle it.
+ */
+export interface SheetPointColumn {
+  id: string;
+  name: string;
+  /** `'reception'` or `'warehouse'` — §4.8's «поставити всім» skips the
+   *  warehouse, and the client cannot apply that rule without knowing which is
+   *  which. */
+  kind: string;
+}
+
+/** All three numbers, because a cell's dialog edits all three. */
+export interface SheetCell {
+  base_price: string;
+  max_markup: string;
+  max_discount: string;
+}
+
+export interface SheetRow {
+  product_grade_id: string;
+  grade_name: string;
+  product_name: string;
+  /** Keyed by `collection_point_id`. A point with NO price is ABSENT from this
+   *  map — never present with a `null`, which would read as «0». */
+  prices: Record<string, SheetCell>;
+}
+
+export interface GradePriceSheetResponse {
+  points: SheetPointColumn[];
+  rows: SheetRow[];
+}

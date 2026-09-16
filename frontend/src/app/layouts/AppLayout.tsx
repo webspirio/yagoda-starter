@@ -59,7 +59,7 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { labelKey: 'nav.dashboard', icon: BarChart3, to: '/' },
       { labelKey: 'nav.reception', icon: Scale, to: '/reception' },
-      { labelKey: 'nav.crates', icon: Boxes },
+      { labelKey: 'nav.crates', icon: Boxes, to: '/crates' },
       { labelKey: 'nav.day', icon: CalendarCheck2, to: '/day' },
       { labelKey: 'nav.pointCash', icon: Banknote, to: '/point-cash' },
       // Both roles: the owner sets the day's price, the operator sees it locked.

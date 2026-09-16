@@ -48,3 +48,56 @@ export interface PriceFormValues {
   max_discount: string;
   reason: string;
 }
+
+/* ------------------------------------------------------------------------- *
+ * THE SHEET — #89's «аркуш»: rows are grades, columns are points.
+ * ------------------------------------------------------------------------- */
+
+/** Mirrors the backend `SheetPointColumn`. */
+export interface SheetPoint {
+  id: string;
+  name: string;
+  /**
+   * `'reception'` or `'base'`. THE ENUM SPELLS THE WAREHOUSE `base`, because
+   * §8.1 also re-weighs there — reading it as `'warehouse'` finds nothing and
+   * silently treats the warehouse as an ordinary point, which would put it
+   * inside «встановити всім» against §4.8.
+   */
+  kind: 'reception' | 'base';
+}
+
+/** One point's price for one grade. All three numbers, because the cell's
+ *  dialog edits all three. */
+export interface SheetCell {
+  base_price: string;
+  max_markup: string;
+  max_discount: string;
+}
+
+/** One grade's row. A point with NO price is ABSENT from `prices` — never
+ *  present holding `null`, which a renderer would show as «0». */
+export interface SheetRow {
+  product_grade_id: string;
+  grade_name: string;
+  product_name: string;
+  prices: Record<string, SheetCell>;
+}
+
+export interface PriceSheet {
+  points: SheetPoint[];
+  rows: SheetRow[];
+}
+
+/**
+ * POST body for `/grade-prices/bulk` — «поставити всім». The points are NAMED
+ * by this client rather than computed by the server, so §4.8's warehouse
+ * exclusion is visible on the screen that performs the gesture.
+ */
+export interface BulkPriceInput {
+  product_grade_id: string;
+  collection_point_ids: string[];
+  base_price: string;
+  max_markup: string;
+  max_discount: string;
+  reason?: string;
+}

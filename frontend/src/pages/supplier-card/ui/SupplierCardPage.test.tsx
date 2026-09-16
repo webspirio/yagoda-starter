@@ -7,6 +7,7 @@ import { expectNoAxeViolations } from '../../../test-axe';
 import type { Supplier } from '@/entities/supplier';
 import type { Intake } from '@/entities/intake';
 import type { Payout } from '@/entities/payout';
+import type { IntakeTopUp } from '@/entities/intake-top-up';
 import type { Me } from '@/entities/user';
 import { SupplierCardPage } from './SupplierCardPage';
 
@@ -15,21 +16,25 @@ const {
   balanceMock,
   intakesMock,
   payoutsMock,
+  topUpsMock,
   meMock,
   pointsMock,
   receiptDialogMock,
   voidDialogMock,
   payoutDialogMock,
+  topUpDialogMock,
 } = vi.hoisted(() => ({
   supplierMock: vi.fn(),
   balanceMock: vi.fn(),
   intakesMock: vi.fn(),
   payoutsMock: vi.fn(),
+  topUpsMock: vi.fn(),
   meMock: vi.fn(),
   pointsMock: vi.fn(),
   receiptDialogMock: vi.fn(),
   voidDialogMock: vi.fn(),
   payoutDialogMock: vi.fn(),
+  topUpDialogMock: vi.fn(),
 }));
 
 vi.mock('@/entities/supplier', () => ({
@@ -45,6 +50,10 @@ vi.mock('@/entities/intake', () => ({
 
 vi.mock('@/entities/payout', () => ({
   usePayoutsQuery: (filter: unknown) => payoutsMock(filter),
+}));
+
+vi.mock('@/entities/intake-top-up', () => ({
+  useIntakeTopUpsQuery: (filter: unknown) => topUpsMock(filter),
 }));
 
 vi.mock('@/entities/user', () => ({
@@ -66,6 +75,13 @@ vi.mock('@/features/void-document', () => ({
   VoidDocumentDialog: (props: Record<string, unknown>) => {
     voidDialogMock(props);
     return props.open ? <div data-testid="void-dialog-mock" /> : null;
+  },
+}));
+
+vi.mock('@/features/top-up-intake', () => ({
+  TopUpDialog: (props: Record<string, unknown>) => {
+    topUpDialogMock(props);
+    return props.open ? <div data-testid="top-up-dialog-mock" /> : null;
   },
 }));
 
@@ -139,6 +155,24 @@ const payout = (
   ...over,
 });
 
+/**
+ * A top-up as the API returns it. `counts_toward_balance` is the field the
+ * screen actually reads — `voided_at` alone cannot tell you whether the row
+ * counts, because the PARENT receipt's void makes it worthless too.
+ */
+const topUp = (
+  over: Partial<IntakeTopUp> &
+    Pick<IntakeTopUp, 'id' | 'amount' | 'reason' | 'created_at'>,
+): IntakeTopUp => ({
+  counts_toward_balance: true,
+  intake: { id: 'i1', code: 'KV-0001', voided_at: null },
+  created_by_user_id: 'u9',
+  voided_at: null,
+  voided_by_user_id: null,
+  void_reason: null,
+  ...over,
+});
+
 const page = <T,>(data: T[], total = data.length) => ({
   data: { data, total, page: 1, limit: 100 },
   isPending: false,
@@ -169,6 +203,7 @@ beforeEach(() => {
     });
   intakesMock.mockReset().mockReturnValue(page<Intake>([]));
   payoutsMock.mockReset().mockReturnValue(page<Payout>([]));
+  topUpsMock.mockReset().mockReturnValue(page<IntakeTopUp>([]));
   meMock.mockReset().mockReturnValue({ data: OPERATOR, isPending: false, isError: false });
   pointsMock.mockReset().mockReturnValue({
     data: [{ id: 'p1', name: 'Shypynky' }],
@@ -178,6 +213,7 @@ beforeEach(() => {
   receiptDialogMock.mockReset();
   voidDialogMock.mockReset();
   payoutDialogMock.mockReset();
+  topUpDialogMock.mockReset();
 });
 
 describe('SupplierCardPage', () => {
@@ -410,5 +446,185 @@ describe('SupplierCardPage', () => {
     expect(screen.getByRole('progressbar', { name: 'loading' })).toBeInTheDocument();
     expect(screen.queryByText('Accrued')).toBeNull();
     expect(screen.queryByRole('heading', { level: 1, name: 'Ivan Koval' })).toBeNull();
+  });
+});
+
+/**
+ * #61 — «фантомний залишок». `GET /suppliers/:id/balance` returns ONE `debt`
+ * string with no breakdown, so this timeline is the only place the owner can
+ * learn why the balance is what it is. Everything below is about that.
+ */
+describe('SupplierCardPage — top-ups', () => {
+  beforeEach(() => {
+    meMock.mockReturnValue({ data: OWNER, isPending: false, isError: false });
+    intakesMock.mockReturnValue(
+      page<Intake>([
+        intake({ id: 'i1', code: 'KV-0001', amount: '1000.00', created_at: '2026-09-08T07:10:00Z' }),
+      ]),
+    );
+  });
+
+  it('lists a top-up with its reason and the receipt it is against', () => {
+    topUpsMock.mockReturnValue(
+      page<IntakeTopUp>([
+        topUp({
+          id: 't1',
+          amount: '750.00',
+          reason: 'Домовились про 48 замість 45 після здачі',
+          created_at: '2026-09-09T10:00:00Z',
+        }),
+      ]),
+    );
+
+    renderCard();
+
+    expect(screen.getByText('Домовились про 48 замість 45 після здачі')).toBeInTheDocument();
+    expect(screen.getByText('against KV-0001')).toBeInTheDocument();
+  });
+
+  /**
+   * THE ASYMMETRY THAT MATTERS. A row whose PARENT was voided is still live —
+   * it simply counts for nothing — and hiding it is the silence
+   * `counts_toward_balance` exists to prevent.
+   */
+  it('still lists a top-up whose PARENT receipt was voided, and says so', () => {
+    topUpsMock.mockReturnValue(
+      page<IntakeTopUp>([
+        topUp({
+          id: 't1',
+          amount: '750.00',
+          reason: 'Доплата',
+          created_at: '2026-09-09T10:00:00Z',
+          counts_toward_balance: false,
+          intake: { id: 'i1', code: 'KV-0001', voided_at: '2026-09-10T09:00:00Z' },
+        }),
+      ]),
+    );
+
+    renderCard();
+
+    expect(screen.getByText('Доплата')).toBeInTheDocument();
+    expect(screen.getByText(/the receipt was voided/i)).toBeInTheDocument();
+  });
+
+  it('distinguishes a top-up the owner voided from one whose parent was voided', () => {
+    topUpsMock.mockReturnValue(
+      page<IntakeTopUp>([
+        topUp({
+          id: 't1',
+          amount: '750.00',
+          reason: 'Доплата',
+          created_at: '2026-09-09T10:00:00Z',
+          counts_toward_balance: false,
+          voided_at: '2026-09-11T09:00:00Z',
+          void_reason: 'Помилка в сумі',
+        }),
+      ]),
+    );
+
+    renderCard();
+
+    expect(screen.getByText('Помилка в сумі')).toBeInTheDocument();
+    expect(screen.queryByText(/the receipt was voided/i)).not.toBeInTheDocument();
+  });
+
+  /**
+   * The balance is `Σ intakes + Σ top-ups − Σ payouts`. A «Нараховано» tile
+   * that summed only receipts would visibly disagree with the balance tile
+   * beside it, and nothing on screen would say which one to believe.
+   */
+  it('adds LIVE top-ups to «Нараховано» so it agrees with the balance', () => {
+    topUpsMock.mockReturnValue(
+      page<IntakeTopUp>([
+        topUp({ id: 't1', amount: '750.00', reason: 'r', created_at: '2026-09-09T10:00:00Z' }),
+        topUp({
+          id: 't2',
+          amount: '999.00',
+          reason: 'r',
+          created_at: '2026-09-09T11:00:00Z',
+          counts_toward_balance: false,
+        }),
+      ]),
+    );
+
+    renderCard();
+
+    // 1 000 receipt + 750 live top-up. The 999 counts for nothing and is excluded.
+    // The en locale groups thousands with a comma, so match the digits loosely
+    // rather than pinning a separator this assertion is not about.
+    expect(within(tile('Accrued')).getByText(/1[,\s]?750\.00/)).toBeInTheDocument();
+  });
+
+  it('opens the top-up dialog for the receipt the owner clicked', async () => {
+    const user = userEvent.setup();
+    renderCard();
+
+    await user.click(screen.getByRole('button', { name: /add a balance/i }));
+
+    expect(screen.getByTestId('top-up-dialog-mock')).toBeInTheDocument();
+    expect(topUpDialogMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({ intake: { id: 'i1', code: 'KV-0001' }, supplierName: 'Ivan Koval' }),
+    );
+  });
+
+  /**
+   * §10.2 — a whole ACTION is ABSENT for the operator, never disabled:
+   * «заблокована кнопка вчить шукати обхід, відсутня не вчить нічого».
+   */
+  it('never offers «Додати залишок» to an operator', () => {
+    meMock.mockReturnValue({ data: OPERATOR, isPending: false, isError: false });
+    renderCard();
+    expect(screen.queryByRole('button', { name: /add a balance/i })).not.toBeInTheDocument();
+  });
+
+  it('offers no top-up on a VOIDED receipt — it would count for nothing', () => {
+    intakesMock.mockReturnValue(
+      page<Intake>([
+        intake({
+          id: 'i1',
+          code: 'KV-0001',
+          amount: '1000.00',
+          created_at: '2026-09-08T07:10:00Z',
+          voided_at: '2026-09-09T09:00:00Z',
+          void_reason: 'Помилка',
+        }),
+      ]),
+    );
+
+    renderCard();
+
+    expect(screen.queryByRole('button', { name: /add a balance/i })).not.toBeInTheDocument();
+  });
+
+  it('voids a top-up through the shared dialog, titled with the PARENT code', async () => {
+    const user = userEvent.setup();
+    topUpsMock.mockReturnValue(
+      page<IntakeTopUp>([
+        topUp({ id: 't1', amount: '750.00', reason: 'Доплата', created_at: '2026-09-09T10:00:00Z' }),
+      ]),
+    );
+
+    renderCard();
+
+    const row = screen.getByText('Доплата').closest('li')!;
+    await user.click(within(row).getByRole('button', { name: /void/i }));
+
+    expect(voidDialogMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({ kind: 'topUp', id: 't1', code: 'KV-0001' }),
+    );
+  });
+
+  it('offers an operator no way to void a top-up', () => {
+    meMock.mockReturnValue({ data: OPERATOR, isPending: false, isError: false });
+    topUpsMock.mockReturnValue(
+      page<IntakeTopUp>([
+        topUp({ id: 't1', amount: '750.00', reason: 'Доплата', created_at: '2026-09-09T10:00:00Z' }),
+      ]),
+    );
+
+    renderCard();
+
+    const row = screen.getByText('Доплата').closest('li')!;
+    expect(within(row).queryByRole('button', { name: /void/i })).not.toBeInTheDocument();
   });
 });

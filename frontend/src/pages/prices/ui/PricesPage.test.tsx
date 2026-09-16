@@ -1,225 +1,249 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { expectNoAxeViolations } from '../../../test-axe';
 import { PricesPage } from './PricesPage';
-import type { GradeCatalogItem } from '@/entities/product-grade';
-import type { CurrentPriceMap } from '../model/gradePrice';
+import type { PriceSheet } from '../model/gradePrice';
 
-const {
-  gradeCatalogMock,
-  currentPricesMock,
-  setPriceMock,
-  historyMock,
-  meMock,
-  pointScopeMock,
-} = vi.hoisted(() => ({
-  gradeCatalogMock: vi.fn(),
-  currentPricesMock: vi.fn(),
+const { sheetMock, setPriceMock, bulkMock, meMock } = vi.hoisted(() => ({
+  sheetMock: vi.fn(),
   setPriceMock: vi.fn(),
-  historyMock: vi.fn(),
+  bulkMock: vi.fn(),
   meMock: vi.fn(),
-  pointScopeMock: vi.fn(),
+}));
+
+vi.mock('../api/priceSheet', () => ({
+  usePriceSheetQuery: () => sheetMock(),
+  useBulkSetPriceMutation: () => ({ mutateAsync: bulkMock }),
 }));
 
 vi.mock('../api/gradePrices', () => ({
-  useCurrentPricesQuery: (pointId: string | null) => currentPricesMock(pointId),
   useSetPriceMutation: () => ({ mutateAsync: setPriceMock }),
-  usePriceHistoryQuery: (pointId: string | null, gradeId: string | null) =>
-    historyMock(pointId, gradeId),
-}));
-
-vi.mock('@/entities/product-grade', () => ({
-  useGradeCatalogQuery: () => gradeCatalogMock(),
-}));
-
-vi.mock('@/entities/collection-point', () => ({
-  usePointOptionsQuery: () => ({
-    data: [
-      { id: 'p1', name: 'Shypynky' },
-      { id: 'p2', name: 'Haiove' },
-    ],
-    isPending: false,
-    isError: false,
-  }),
+  usePriceHistoryQuery: () => ({ data: [], isPending: false, isError: false }),
 }));
 
 vi.mock('@/entities/user', () => ({
   useMeQuery: () => meMock(),
-  usePointScope: () => pointScopeMock(),
 }));
 
-const OWNER = {
-  id: 'u1',
-  username: 'owner',
-  display_name: 'Petro',
-  role: 'network_owner',
-  collection_point_id: null,
-};
-const OPERATOR = {
-  id: 'u2',
-  username: 'operator',
-  display_name: 'Olha',
-  role: 'point_operator',
-  collection_point_id: 'p1',
+const OWNER = { id: 'u1', role: 'network_owner', collection_point_id: null };
+const OPERATOR = { id: 'u2', role: 'point_operator', collection_point_id: 'p1' };
+
+const cell = (base_price: string) => ({
+  base_price,
+  max_markup: '30.00',
+  max_discount: '20.00',
+});
+
+/**
+ * Two reception points and the warehouse. «Вищий сорт» is the AGREEMENT case —
+ * both reception points at 150, the warehouse on its own 145. «1 сорт» is the
+ * disagreement. «2 сорт» has no price anywhere.
+ */
+const SHEET: PriceSheet = {
+  points: [
+    { id: 'p1', name: 'Шипинки', kind: 'reception' },
+    { id: 'p2', name: 'Гайове', kind: 'reception' },
+    { id: 'w1', name: 'Склад', kind: 'base' },
+  ],
+  rows: [
+    {
+      product_grade_id: 'g1',
+      grade_name: 'Вищий сорт',
+      product_name: 'Малина',
+      prices: { p1: cell('150.00'), p2: cell('150.00'), w1: cell('145.00') },
+    },
+    {
+      product_grade_id: 'g2',
+      grade_name: '1 сорт',
+      product_name: 'Малина',
+      prices: { p1: cell('135.00'), p2: cell('127.00') },
+    },
+    { product_grade_id: 'g3', grade_name: '2 сорт', product_name: 'Малина', prices: {} },
+  ],
 };
 
-const g1: GradeCatalogItem = {
-  id: 'g1',
-  name: 'Grade 1',
-  productId: 'pr1',
-  productName: 'Raspberry',
-};
-const g2: GradeCatalogItem = {
-  id: 'g2',
-  name: 'Grade 2',
-  productId: 'pr1',
-  productName: 'Raspberry',
-};
-
-// Only g1 is priced; g2 must render "—" across all three money columns.
-const priceMap: CurrentPriceMap = {
-  g1: { base_price: '50.00', max_markup: '5.00', max_discount: '3.00' },
-};
+/**
+ * The suite runs in ENGLISH (`test-setup.ts` calls `changeLanguage('en')`), so
+ * every matcher here reads the en.json string. Matching Ukrainian would pass
+ * only by accident, on keys that happen to be untranslated.
+ */
+const rowFor = (name: string) =>
+  screen.getByRole('row', { name: new RegExp(name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')) });
 
 beforeEach(() => {
-  gradeCatalogMock
-    .mockReset()
-    .mockReturnValue({ data: [g1, g2], isPending: false, isError: false });
-  currentPricesMock
-    .mockReset()
-    .mockReturnValue({ data: priceMap, isPending: false, isError: false });
-  setPriceMock.mockReset().mockResolvedValue({ id: 'gp1' });
-  historyMock.mockReset().mockReturnValue({ data: undefined, isPending: false, isError: false });
-  meMock.mockReset().mockReturnValue({ data: OWNER });
-  pointScopeMock
-    .mockReset()
-    .mockReturnValue({ pointId: null, canPick: true, setPointId: vi.fn(), isLoading: false });
+  vi.clearAllMocks();
+  meMock.mockReturnValue({ data: OWNER });
+  sheetMock.mockReturnValue({ data: SHEET, isPending: false, isError: false });
+  setPriceMock.mockResolvedValue({});
+  bulkMock.mockResolvedValue({ created: 2 });
 });
 
-describe('PricesPage — the owner (unchanged behaviour)', () => {
-  it('shows the pick-a-point prompt and no table before a point is chosen', async () => {
-    const { container } = render(<PricesPage />);
-    expect(screen.getByRole('heading', { level: 1, name: 'Day prices' })).toBeInTheDocument();
-    expect(screen.getByText('No point selected')).toBeInTheDocument();
-    expect(screen.queryByRole('table')).toBeNull();
-    await expectNoAxeViolations(container);
+describe('PricesPage — the sheet', () => {
+  it('renders a column per point, warehouse included', () => {
+    render(<PricesPage />);
+    for (const name of ['Шипинки', 'Гайове', 'Склад']) {
+      expect(screen.getByRole('columnheader', { name: new RegExp(name) })).toBeInTheDocument();
+    }
   });
 
-  it('renders grade rows with the current price, and "—" for unpriced grades', async () => {
-    pointScopeMock.mockReturnValue({
-      pointId: 'p1',
-      canPick: true,
-      setPointId: vi.fn(),
-      isLoading: false,
-    });
-    const { container } = render(<PricesPage />);
-
-    expect(await screen.findByRole('table')).toBeInTheDocument();
-    expect(screen.getByText('Raspberry · Grade 1')).toBeInTheDocument();
-    expect(screen.getByText('Raspberry · Grade 2')).toBeInTheDocument();
-    // g1's price is shown…
-    expect(screen.getByText('50.00')).toBeInTheDocument();
-    expect(screen.getByText('5.00')).toBeInTheDocument();
-    expect(screen.getByText('3.00')).toBeInTheDocument();
-    // …and g2 is unpriced across all three money columns.
-    expect(screen.getAllByText('—')).toHaveLength(3);
-    // The verb tells the two apart: a priced grade is changed, an unpriced one set.
-    expect(screen.getByRole('button', { name: 'Change' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Set price' })).toBeInTheDocument();
-    // No lock, and the operator banner never renders for the owner.
-    expect(screen.queryByRole('img', { name: 'view only' })).toBeNull();
-    expect(screen.queryByText(/owner sets the day's price/i)).toBeNull();
-    // The table sits in the card frame, like every table in the mock.
-    expect(container.querySelector('[data-slot="data-table-frame"] table')).not.toBeNull();
-    await expectNoAxeViolations(container);
+  it('shows a bare number in «загальна» when every reception point agrees', () => {
+    render(<PricesPage />);
+    const row = rowFor('Вищий сорт');
+    // 150.00 appears in both reception cells AND in the common column.
+    expect(within(row).getAllByText('150.00').length).toBeGreaterThanOrEqual(3);
+    expect(within(row).queryByText('mixed')).not.toBeInTheDocument();
   });
 
-  it('opens the dialog and sets a price with the point + grade + money payload', async () => {
-    pointScopeMock.mockReturnValue({
-      pointId: 'p1',
-      canPick: true,
-      setPointId: vi.fn(),
-      isLoading: false,
-    });
+  it('shows «mixed» with the span when the points disagree', () => {
+    render(<PricesPage />);
+    const row = rowFor('1 сорт');
+    expect(within(row).getByText('mixed')).toBeInTheDocument();
+    // The two ends are separate text nodes, so this reads the cell's whole text.
+    expect(row.textContent).toContain('127.00');
+    expect(row.textContent).toContain('135.00');
+  });
+
+  /**
+   * §4.8 — the warehouse's dearer price must not drag the common column, or
+   * every row would read «різні» for the one reason that is never news.
+   */
+  it('keeps the warehouse OUT of «загальна» even though it is a column', () => {
+    render(<PricesPage />);
+    const row = rowFor('Вищий сорт');
+    expect(within(row).getByText('145.00')).toBeInTheDocument();
+    expect(within(row).queryByText('mixed')).not.toBeInTheDocument();
+  });
+
+  it('shows a dash, never a zero, for a grade nobody has priced', () => {
+    render(<PricesPage />);
+    const row = rowFor('2 сорт');
+    expect(within(row).queryByText('0.00')).not.toBeInTheDocument();
+    expect(within(row).getAllByText('—').length).toBeGreaterThan(0);
+  });
+
+  it('sends ONLY the reception points to the bulk write', async () => {
+    const user = userEvent.setup();
     render(<PricesPage />);
 
-    await userEvent.click(screen.getByRole('button', { name: 'Change' }));
+    const row = rowFor('Вищий сорт');
+    await user.click(within(row).getByRole('button', { name: /set for all/i }));
 
-    // Dialog is open, names the point, and is prefilled from g1's current price.
-    expect(await screen.findByLabelText('Base price, ₴/kg')).toHaveValue('50.00');
-    expect(screen.getByText(/^Shypynky · /)).toBeInTheDocument();
+    const dialog = await screen.findByRole('dialog');
+    const base = within(dialog).getByLabelText(/base price/i);
+    await user.clear(base);
+    await user.type(base, '160.00');
+    await user.click(within(dialog).getByRole('button', { name: /^save$/i }));
 
-    await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(bulkMock).toHaveBeenCalledTimes(1));
+    expect(bulkMock.mock.calls[0][0].collection_point_ids).toEqual(['p1', 'p2']);
+    expect(bulkMock.mock.calls[0][0].collection_point_ids).not.toContain('w1');
+  });
+
+  it('writes ONE point when a cell is edited', async () => {
+    const user = userEvent.setup();
+    render(<PricesPage />);
+
+    const row = rowFor('Вищий сорт');
+    await user.click(within(row).getByRole('button', { name: /Малина · Вищий сорт.*Гайове/i }));
+
+    const dialog = await screen.findByRole('dialog');
+    await user.click(within(dialog).getByRole('button', { name: /^save$/i }));
+
     await waitFor(() => expect(setPriceMock).toHaveBeenCalledTimes(1));
-    expect(setPriceMock).toHaveBeenCalledWith({
-      collection_point_id: 'p1',
-      product_grade_id: 'g1',
-      base_price: '50.00',
-      max_markup: '5.00',
-      max_discount: '3.00',
-    });
+    expect(setPriceMock.mock.calls[0][0].collection_point_id).toBe('p2');
+    expect(bulkMock).not.toHaveBeenCalled();
   });
 
-  it('opens an empty dialog for an unpriced grade', async () => {
-    pointScopeMock.mockReturnValue({
-      pointId: 'p1',
-      canPick: true,
-      setPointId: vi.fn(),
-      isLoading: false,
-    });
+  it('has no date control — this sheet shows current prices, not a day', () => {
     render(<PricesPage />);
-    await userEvent.click(screen.getByRole('button', { name: 'Set price' }));
-    expect(await screen.findByLabelText('Base price, ₴/kg')).toHaveValue('');
+    expect(screen.queryByLabelText(/дата|date/i)).not.toBeInTheDocument();
   });
 
-  it('offers a History button only for the priced grade, and opens it', async () => {
-    pointScopeMock.mockReturnValue({
-      pointId: 'p1',
-      canPick: true,
-      setPointId: vi.fn(),
-      isLoading: false,
-    });
-    render(<PricesPage />);
-
-    const historyButtons = screen.getAllByRole('button', { name: 'History' });
-    expect(historyButtons).toHaveLength(1);
-
-    await userEvent.click(historyButtons[0]);
-    expect(await screen.findByRole('dialog')).toBeInTheDocument();
-    expect(screen.getByText('Raspberry · Grade 1 · history')).toBeInTheDocument();
+  it('is accessible', async () => {
+    const { container } = render(<PricesPage />);
+    await expectNoAxeViolations(container);
   });
 });
 
-describe('PricesPage — the operator (read-only)', () => {
+describe('PricesPage — the operator', () => {
   beforeEach(() => {
     meMock.mockReturnValue({ data: OPERATOR });
-    pointScopeMock.mockReturnValue({
-      pointId: 'p1',
-      canPick: false,
-      setPointId: vi.fn(),
-      isLoading: false,
+    sheetMock.mockReturnValue({
+      // The SERVER scopes them; this is the one-column response it returns.
+      data: { points: [SHEET.points[0]], rows: SHEET.rows },
+      isPending: false,
+      isError: false,
     });
   });
 
-  it('shows a lock and the read-only banner instead of Change/Set, and hides the point picker', async () => {
-    const { container } = render(<PricesPage />);
+  /**
+   * §10.2 — a whole ACTION is ABSENT for the operator, never disabled:
+   * «заблокована кнопка вчить шукати обхід, відсутня не вчить нічого».
+   */
+  it('is never offered «встановити всім»', () => {
+    render(<PricesPage />);
+    expect(screen.queryByRole('button', { name: /set for all/i })).not.toBeInTheDocument();
+  });
 
-    expect(await screen.findByRole('table')).toBeInTheDocument();
-    // No point picker — the operator is pinned to their own point.
-    expect(screen.queryByLabelText('Select a point')).toBeNull();
-    // The one-line banner explaining the lock.
+  /**
+   * Mock §5.4 — a FIELD read-only through role stays on screen with a lock and
+   * a caption: «приховане поле породжує підозру й дзвінки; заблоковане з
+   * підписом вчить правилу».
+   */
+  it('still SEES the price, with a lock and the caption', () => {
+    render(<PricesPage />);
+    expect(screen.getAllByText('150.00').length).toBeGreaterThan(0);
+    expect(screen.getAllByRole('img', { name: /view only/i }).length).toBeGreaterThan(0);
+    expect(screen.getByText(/the owner sets the day/i)).toBeInTheDocument();
+  });
+
+  /**
+   * The cell is a BUTTON for the operator too, and that is not a leak: it opens
+   * §4.2's journal, which is open to both roles. What must never appear is the
+   * set-price form. «Read-only» and «opaque» are different things.
+   */
+  it('opens the price JOURNAL from a cell, never the set-price form', async () => {
+    const user = userEvent.setup();
+    render(<PricesPage />);
+
     expect(
-      screen.getByText(
-        "The owner sets the day's price — this view only shows it. Every change leaves a trace: who, when and why.",
-      ),
-    ).toBeInTheDocument();
-    // No Change/Set buttons anywhere — a lock icon with an accessible name instead.
-    expect(screen.queryByRole('button', { name: 'Change' })).toBeNull();
-    expect(screen.queryByRole('button', { name: 'Set price' })).toBeNull();
-    expect(screen.getAllByRole('img', { name: 'view only' })).toHaveLength(2);
-    // History is still offered for the priced grade.
-    expect(screen.getByRole('button', { name: 'History' })).toBeInTheDocument();
-    await expectNoAxeViolations(container);
+      screen.queryByRole('button', { name: /Малина · Вищий сорт at Шипинки$/i }),
+    ).not.toBeInTheDocument();
+
+    await user.click(
+      screen.getByRole('button', { name: 'Малина · Вищий сорт at Шипинки — price history' }),
+    );
+
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).queryByLabelText(/base price/i)).not.toBeInTheDocument();
+    expect(within(dialog).queryByRole('button', { name: /^save$/i })).not.toBeInTheDocument();
+  });
+});
+
+describe('PricesPage — states', () => {
+  it('shows a spinner while the sheet loads', () => {
+    meMock.mockReturnValue({ data: OWNER });
+    sheetMock.mockReturnValue({ data: undefined, isPending: true, isError: false });
+    render(<PricesPage />);
+    expect(screen.getByRole('progressbar')).toBeInTheDocument();
+  });
+
+  it('reports a failed read rather than rendering an empty sheet', () => {
+    meMock.mockReturnValue({ data: OWNER });
+    sheetMock.mockReturnValue({ data: undefined, isPending: false, isError: true });
+    render(<PricesPage />);
+    expect(screen.getByRole('alert')).toBeInTheDocument();
+  });
+
+  it('shows an empty state when the catalogue has no grades', () => {
+    meMock.mockReturnValue({ data: OWNER });
+    sheetMock.mockReturnValue({
+      data: { points: SHEET.points, rows: [] },
+      isPending: false,
+      isError: false,
+    });
+    render(<PricesPage />);
+    expect(screen.getByText(/nothing to price/i)).toBeInTheDocument();
   });
 });

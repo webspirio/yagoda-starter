@@ -20,12 +20,26 @@ export const queryKeys = {
   /** Document journals — prefix for every filtered list; a read appends its filter object. */
   intakes: ['intakes'] as const,
   payouts: ['payouts'] as const,
+  /**
+   * Доплати до квитанції (#61) — префікс; читання дописує свій фільтр.
+   * A top-up moves a supplier's debt without touching a shift, so a write here
+   * invalidates `supplierBalances` but NOT `intakes`/`payouts`.
+   */
+  intakeTopUps: ['intake-top-ups'] as const,
   /** `/supplier-balances` and `/suppliers/:id/balance` — invalidated together by any document write. */
   supplierBalances: ['supplier-balances'] as const,
   /** Перекази — префікс для кожного фільтрованого списку; читання дописує свій фільтр. */
   transfers: ['transfers'] as const,
   /** Каса точок — префікс і для списку мережі, і для однієї точки. */
   pointCash: ['point-cash'] as const,
+  /** Ящики — префікс для видач і повернень; читання дописує свій фільтр. */
+  crates: ['crates'] as const,
+  /**
+   * Залишки ящиків — і список точки (`/crate-balances`), і баланс однієї
+   * людини (`/suppliers/:id/crate-balance`). Спільний префікс навмисно: будь-яка
+   * видача чи повернення рухає обидва читання.
+   */
+  crateBalances: ['crate-balances'] as const,
   /** Підрахунки каси — префікс; читання дописує точку/зміну. */
   cashCounts: ['cash-counts'] as const,
 };
