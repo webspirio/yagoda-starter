@@ -18,15 +18,23 @@ export function usePointOptionsQuery() {
     queryKey: [...queryKeys.collectionPoints, 'options'],
     queryFn: async (): Promise<PointOption[]> => {
       const { data } = await httpClient.get<
-        Paginated<{ id: string; name: string; target_crates: number | null }>
+        Paginated<{
+          id: string;
+          name: string;
+          kind: 'reception' | 'base';
+          target_crates: number | null;
+        }>
       >('/collection-points', { params: { include_inactive: false } });
-      // `target_crates` rides along because `GET /collection-points` already
-      // returns it and «Ящики» needs it beside the name; nothing else reads it,
-      // and a `null` stays `null` rather than being defaulted to 0 here — see
-      // `PointOption`'s doc for why that distinction is load-bearing.
+      // `kind` and `target_crates` ride along because `GET /collection-points`
+      // already returns both: `features/point-scope` needs to know which point
+      // is the склад, and «Ящики» needs the allotment beside the name. Nothing
+      // else reads them, and a `null` target stays `null` rather than being
+      // defaulted to 0 here — see `PointOption`'s doc for why that distinction
+      // is load-bearing.
       return data.data.map((p) => ({
         id: p.id,
         name: p.name,
+        kind: p.kind,
         target_crates: p.target_crates ?? null,
       }));
     },

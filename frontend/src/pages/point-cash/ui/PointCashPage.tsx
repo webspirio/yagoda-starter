@@ -12,7 +12,8 @@ import { isTruncated } from '@/shared/api';
 import { useUrlParam } from '@/shared/lib/url-state';
 import { isNegative, formatUah } from '@/shared/lib/money';
 import { todayIso, addDaysIso, isRealIsoDate, formatLongDate, formatWeekday, formatShortDate } from '@/shared/lib/date';
-import { useMeQuery, usePointScope } from '@/entities/user';
+import { useMeQuery } from '@/entities/user';
+import { useWorkingPoint } from '@/features/point-scope';
 import { usePointOptionsQuery } from '@/entities/collection-point';
 import { usePointCashQuery, shortfallTone, formatNullableUah } from '@/entities/point-cash';
 import { useIntakesQuery } from '@/entities/intake';
@@ -60,7 +61,7 @@ export function PointCashPage() {
   const { t, i18n } = useTranslation();
   const locale = i18n.language;
   const { data: me } = useMeQuery();
-  const { pointId, canPick, setPointId } = usePointScope();
+  const { pointId, canPick, setPointId } = useWorkingPoint();
   const { data: points } = usePointOptionsQuery();
   const [dateParam, setDateParam] = useUrlParam('date');
   const today = todayIso();

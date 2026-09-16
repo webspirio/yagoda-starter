@@ -30,7 +30,10 @@ const {
 
 vi.mock('@/entities/user', () => ({
   useMeQuery: () => meMock(),
-  usePointScope: () => pointScopeMock(),
+}));
+
+vi.mock('@/features/point-scope', () => ({
+  useWorkingPoint: () => pointScopeMock(),
 }));
 
 vi.mock('@/entities/collection-point', () => ({

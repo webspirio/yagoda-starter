@@ -11,7 +11,8 @@ import { Spinner } from '@/shared/ui/spinner';
 import { toast } from '@/shared/ui/toast';
 import { formatKg, formatUah, sum } from '@/shared/lib/money';
 import { formatLongDate, todayIso } from '@/shared/lib/date';
-import { useMeQuery, usePointScope } from '@/entities/user';
+import { useMeQuery } from '@/entities/user';
+import { useWorkingPoint } from '@/features/point-scope';
 import { usePointOptionsQuery } from '@/entities/collection-point';
 import { useCurrentShiftQuery } from '@/entities/shift';
 import { useSupplierBalanceQuery } from '@/entities/supplier';
@@ -51,7 +52,7 @@ export function ReceptionPage() {
   const { t, i18n } = useTranslation();
   const locale = i18n.resolvedLanguage ?? 'uk';
   const { data: me } = useMeQuery();
-  const { pointId, canPick, setPointId } = usePointScope();
+  const { pointId, canPick, setPointId } = useWorkingPoint();
   const { data: points } = usePointOptionsQuery();
 
   const shift = useCurrentShiftQuery(pointId);
