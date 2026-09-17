@@ -971,3 +971,43 @@ changed its SQL-shape assertions). The first run failed 36 tests — see the les
   restoring it (`tare-types/tare-types-crate.db-spec.ts`) — fixed in `8842dc5` by demoting first
   everywhere, mirroring `TareTypesService`. **Any future singleton needs the same treatment, and
   the uuid convention will not warn you.**
+
+## Deferred from the reweigh & cost-of-day slice (2026-09-17)
+
+Spec: `docs/superpowers/specs/2026-09-17-yagoda-reweigh-slice.md`, §3 (decisions) and §7 (out of
+scope). Each item below is deferred, not forgotten.
+
+- **§8.5 strategies ② «по сумі закупки» and ③ «усе на один товар».** Only `by_weight` is built
+  (spec §3.7); a per-request parameter was rejected because a stored column with one legal value
+  is state pretending to be a decision. Strategy ③ specifically **cannot become a request
+  parameter on its own** — it must also say *which* berry the whole basket lands on, and that is
+  per-day data, not a request-time choice. Closing it means the columnless `reweighs` header
+  finally earns two columns: `expense_allocation` and `allocation_product_id`. Blocked on the
+  rules file's own open question at the source — «→ Правка: узнать як вони це роблять» — so there
+  is nothing to build against yet.
+- **Per-grade attribution of a доплата.** `intake_top_ups` carries no `product_grade_id` (spec
+  §3.13), so a top-up is split pro-rata across a receipt's lines by `amount` even when only ONE
+  grade's price was actually renegotiated. Pro-rata is the right default with no grade named; a
+  `product_grade_id` column is the right answer the day the price-revision conversation names one.
+- **Operator read access to the недостача claimed against his own point.** Spec §3.10: the whole
+  §8 surface, reads included, is owner-only today — «переважує і сторнує тільки керівник» settles
+  the writes, but nothing settles whether the operator who ACCEPTED the berries may see what the
+  base later claims went missing. An open client question, not an oversight.
+- **A visible history for a собівартість that moved.** Spec §3.12: cost-of-day is computed live
+  with no posting moment and no snapshot (§3.3), so a late top-up or a late reweigh line changes
+  an already-closed day's number with no journal entry saying why — the screen carries a marker
+  («включно з доплатами, останню внесено …»), not a before/after. Building the history needs a
+  decision this slice deliberately did not make: WHAT gets snapshotted, and when, for a number that
+  is defined to never stop moving.
+- **Test-coverage gaps carried out of review**, so they are not lost:
+  - Several refusal tests assert only the exception class, not the `code` payload —
+    `GRADE_NOT_ACCEPTED` and `NET_NOT_POSITIVE` are both a `BadRequestException`, and
+    `ALREADY_VOIDED` is asserted the same loose way.
+  - No test asserts `price_by_our_weight === null` in the no-reweigh case (§5.5's `на кілограм`
+    is `null` when `переважено(day) = 0`).
+  - `IDX_reweigh_items_reweigh` duplicates the left prefix of `UQ_reweigh_items_order (reweigh_id,
+    item_order)` and is redundant — the unique index already serves any query keyed on
+    `reweigh_id` alone.
+  - `network-average.db-spec.ts` never exercises a NONZERO shortfall or an actual `intake_top_ups`
+    row, so §8.6's `сума(point, product) = нараховано − недостача` is proven only on the branch
+    where both subtrahends are zero.
