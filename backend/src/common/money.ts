@@ -116,8 +116,11 @@ export function div(a: string, b: string): string {
   const ub = parse(b);
   if (ub === 0n) throw new Error('money: divide by zero');
 
-  // Scale the dividend by UNIT twice: once to undo the divisor's scale, once
-  // to reach the scale-2 answer, plus one more digit to round on.
+  // Scale the dividend by UNIT once, plus one more digit to round on. Once
+  // is enough because both operands carry the same scale-2 factor and it
+  // cancels in the ratio: what is left to supply is the ANSWER's own scale,
+  // which is one UNIT, and the `10n` is the guard digit `rounded` below
+  // consumes to round half-up.
   const negative = ua < 0n !== ub < 0n;
   const magnitude = (ua < 0n ? -ua : ua) * UNIT * 10n;
   const divisor = ub < 0n ? -ub : ub;
