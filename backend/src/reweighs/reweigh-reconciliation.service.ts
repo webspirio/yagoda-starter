@@ -1,6 +1,8 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { DataSource, EntityManager } from 'typeorm';
+import { DataSource, EntityManager, IsNull } from 'typeorm';
 import { ShiftsService } from '../shifts/shifts.service';
+import { ReweighItem } from './reweigh-item.entity';
+import { toReweighItemResponse, ReweighItemResponse } from './reweigh-item.mapper';
 import { div, mul, sub, sum, isZero } from '../common/money';
 import type { AuthenticatedUser } from '../auth/jwt.strategy';
 
@@ -61,6 +63,21 @@ export async function gradeTotals(
   ) as Promise<GradeTotalsRow[]>;
 }
 
+/**
+ * §3.15's PARTIAL-WEIGHING RULE, in one place.
+ *
+ * A product weighed in one grade but not another is «не перезважено» at the
+ * PRODUCT level, «because the shortfall on the unweighed grade would
+ * otherwise read as real». Both readers of `gradeTotals` need this — the
+ * reconciliation screen to pick the state, `productCostRows` to keep an
+ * unconfirmed shortfall out of the day's basket and out of §8.6's network
+ * average — and two hand-written copies of `every(...)` is exactly how the
+ * two screens drifted apart in the first place.
+ */
+export function weighedInFull(grades: Pick<GradeTotalsRow, 'reweigh_net_kg'>[]): boolean {
+  return grades.every((g) => g.reweigh_net_kg !== null);
+}
+
 export interface ReconciliationProduct {
   product_id: string;
   product_name: string;
@@ -75,6 +92,16 @@ export interface ReconciliationResponse {
   shift_id: string;
   closed_at: string | null;
   accepted_anything: boolean;
+  /**
+   * §5.3 — THE NON-VOIDED LINES, NEWEST FIRST.
+   *
+   * Functional, not decorative: `POST /reweigh-items/:id/void` is addressed
+   * by LINE id, and the only other place a line id is ever returned is the
+   * response to the POST that created it. Without this list §8.7's storno is
+   * unreachable from a fresh page load — the owner can see a 10 кг недостача
+   * and have no way to name the mis-weighed pallet behind it.
+   */
+  items: ReweighItemResponse[];
   products: ReconciliationProduct[];
 }
 
@@ -108,6 +135,18 @@ export class ReweighReconciliationService {
     const rows = await gradeTotals(this.dataSource, shiftId);
     const open = shift.closed_at === null;
 
+    // The RELATIONS the mapper reads are loaded here on purpose: without
+    // them `product_name`, `product_grade_name` and every `tare_type_name`
+    // come back `undefined`, which is a silently half-empty screen rather
+    // than an error. `created_at` DESC is §5.3's «newest first»;
+    // `item_order` breaks the tie for two lines saved in the same
+    // transaction, which `created_at` alone cannot.
+    const items = await this.dataSource.getRepository(ReweighItem).find({
+      where: { reweigh: { shift_id: shiftId }, voided_at: IsNull() },
+      relations: { product_grade: { product: true }, tare: { tare_type: true } },
+      order: { created_at: 'DESC', item_order: 'DESC' },
+    });
+
     const byProduct = new Map<string, GradeTotalsRow[]>();
     for (const row of rows) {
       const list = byProduct.get(row.product_id) ?? [];
@@ -122,7 +161,7 @@ export class ReweighReconciliationService {
 
       // §3.15 — one unweighed grade makes the whole product «не перезважено»,
       // because the shortfall on that grade would otherwise read as real.
-      const complete = grades.every((g) => g.reweigh_net_kg !== null);
+      const complete = weighedInFull(grades);
 
       if (!complete || open) {
         products.push({
@@ -160,6 +199,7 @@ export class ReweighReconciliationService {
       shift_id: shiftId,
       closed_at: shift.closed_at ? shift.closed_at.toISOString() : null,
       accepted_anything: rows.length > 0,
+      items: items.map(toReweighItemResponse),
       products,
     };
   }

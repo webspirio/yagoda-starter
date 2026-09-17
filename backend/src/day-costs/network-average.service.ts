@@ -7,9 +7,11 @@ import type { AuthenticatedUser } from '../auth/jwt.strategy';
 export interface NetworkAveragePointRow {
   point_id: string;
   point_name: string;
-  /** `null` — not '0.00' — when this point either did not accept this
-   *  product that day or accepted it but has not weighed it yet. §8.6:
-   *  «Порожня клітинка … це не нуль» — it enters neither sum below. */
+  /** `null` — not '0.00' — when this point did not accept this product that
+   *  day, accepted it but has not weighed it, OR weighed it in one grade and
+   *  not another (§3.15 — half a product is not the «both intake and
+   *  reweigh» case this sum filters for). §8.6: «Порожня клітинка … це не
+   *  нуль» — it enters neither sum below. */
   weight_kg: string | null;
   /** сума(point, product) = нараховано − недостача, i.e. the value of what
    *  actually ARRIVED at the base. `null` exactly when `weight_kg` is. */
@@ -23,7 +25,8 @@ export interface NetworkAverageProduct {
    *  not. A point with NO intake for this product never appears here at
    *  all — not even as a `null` row. */
   points: NetworkAveragePointRow[];
-  /** Σ weight_kg over points that have BOTH intake and reweigh. */
+  /** Σ weight_kg over points that accepted this product and weighed EVERY
+   *  grade of it (§3.15). */
   total_kg: string;
   /** Σ amount over the same points. */
   total_amount: string;
@@ -92,8 +95,10 @@ export class NetworkAverageService {
 
     const products: NetworkAverageProduct[] = [];
     for (const [productId, entry] of byProduct) {
-      // Only points with BOTH intake and reweigh contribute — an absent cell
-      // enters neither sum, exactly per §8.6.
+      // Only points that weighed the product IN FULL contribute — an absent
+      // cell enters neither sum, exactly per §8.6, and `productCostRows`
+      // has already nulled out a partially weighed product (§3.15) so that
+      // its unweighed grade's kilograms cannot skew the network figure.
       const weighed = entry.points.filter(
         (p): p is NetworkAveragePointRow & { weight_kg: string; amount: string } =>
           p.weight_kg !== null,

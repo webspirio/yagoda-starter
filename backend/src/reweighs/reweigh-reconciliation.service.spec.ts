@@ -7,7 +7,15 @@ const owner = { sub: 'u-owner', role: UserRole.NetworkOwner, collection_point_id
 
 describe('ReweighReconciliationService.forShift', () => {
   const build = (shift: Record<string, unknown>, rows: Record<string, unknown>[]) => {
-    const dataSource = { query: jest.fn(async () => rows) };
+    // `items` (§5.3) is read through the repository, not through `query`;
+    // the empty list keeps these cases about the PRODUCT arithmetic, which
+    // is all this spec ever asserted. `reweigh-reconciliation.db-spec.ts`
+    // is where the item list is proven, because what matters there is that
+    // the relations are really loaded.
+    const dataSource = {
+      query: jest.fn(async () => rows),
+      getRepository: jest.fn(() => ({ find: jest.fn(async () => []) })),
+    };
     const shifts = { findOneRaw: jest.fn(async () => shift) };
     return new ReweighReconciliationService(dataSource as never, shifts as never);
   };

@@ -76,6 +76,67 @@ describe('NetworkAverageService.forDate (DB)', () => {
     return { productId: product.id, gradeId: grade.id };
   };
 
+  const seedSecondGrade = async (productId: string): Promise<string> => {
+    const [grade] = await ds.query(
+      `INSERT INTO product_grades (product_id, name) VALUES ($1, 'Сорт 2') RETURNING id`,
+      [productId],
+    );
+    return grade.id;
+  };
+
+  /** A point that accepted the SAME product in two grades and put only the
+   *  first of them on the scale — §3.15's partial weighing, which is neither
+   *  «weighed» nor «never touched». */
+  const seedPartiallyWeighedPoint = async (
+    businessDate: string,
+    pointName: string,
+    gradeA: string,
+    gradeB: string,
+  ): Promise<{ pointId: string }> => {
+    const short = randomUUID().replace(/-/g, '').slice(0, 8).toUpperCase();
+
+    const [point] = await ds.query(
+      `INSERT INTO collection_points (name, code, kind) VALUES ($1, $2, 'reception') RETURNING id`,
+      [pointName, pointCode()],
+    );
+    const [shift] = await ds.query(
+      `INSERT INTO shifts (collection_point_id, business_date, status, opened_by_user_id, closed_at, closed_by_user_id)
+       VALUES ($1, $2, 'closed', $3, now(), $3) RETURNING id`,
+      [point.id, businessDate, ownerId],
+    );
+    const [supplier] = await ds.query(
+      `INSERT INTO suppliers (collection_point_id, first_name, last_name)
+       VALUES ($1, 'Іван', $2) RETURNING id`,
+      [point.id, `Постачальник-${short}`],
+    );
+    const [intake] = await ds.query(
+      `INSERT INTO intakes (code, shift_id, supplier_id, amount, received_by_user_id)
+       VALUES ($1, $2, $3, '18000.00', $4) RETURNING id`,
+      [`${short}-IN-1`, shift.id, supplier.id, ownerId],
+    );
+    await ds.query(
+      `INSERT INTO intake_items (intake_id, item_order, product_grade_id,
+           gross_kg, pallet_kg, tare_weight_kg, net_kg, price, bonus, amount)
+       VALUES ($1, 1, $2, '100.00', '0.00', '0.00', '100.00', '100.00', '0.00', '10000.00'),
+              ($1, 2, $3, '100.00', '0.00', '0.00', '100.00', '80.00', '0.00', '8000.00')`,
+      [intake.id, gradeA, gradeB],
+    );
+
+    // Only сорт 1 reaches the scale, and it is 5 кг light.
+    const [reweighHeader] = await ds.query(
+      `INSERT INTO reweighs (shift_id) VALUES ($1) RETURNING id`,
+      [shift.id],
+    );
+    await ds.query(
+      `INSERT INTO reweigh_items (reweigh_id, item_order, product_grade_id,
+           gross_kg, pallet_kg, tare_weight_kg, net_kg, weighed_by_user_id)
+       VALUES ($1, 1, $2, '95.00', '0.00', '0.00', '95.00', $3)`,
+      [reweighHeader.id, gradeA, ownerId],
+    );
+
+    return { pointId: point.id };
+  };
+
   /** One point's shift with a single receipt against `gradeId`, reweighed in
    *  full (so сума = accrued exactly, no shortfall) — the simplest fixture
    *  that still exercises the real query end to end. Pass `reweigh: false`
@@ -192,6 +253,39 @@ describe('NetworkAverageService.forDate (DB)', () => {
 
     // The sums are UNCHANGED by the unweighed point's presence — it entered
     // neither sum.
+    expect(raspberry!.total_kg).toBe('1000.00');
+    expect(raspberry!.total_amount).toBe('158950.00');
+    expect(raspberry!.average_price).toBe('158.95');
+  });
+
+  /**
+   * §3.15 + §8.6 — the partial weighing is the trap this spec exists to
+   * close. Before the fix, the third point contributed `95 кг / 17 500,00`
+   * (сорт 2's hundred unweighed kilograms booked as a 500,00 shortfall and
+   * its weight silently dropped), which dragged the network figure off
+   * 158,95. «Порожня клітинка … це не нуль» — and half a product is not the
+   * «both intake and reweigh» case this sum filters for.
+   */
+  it('excludes a point that weighed ONE grade of a product but not the other — §3.15', async () => {
+    const tag = randomUUID();
+    const businessDate = businessDateFor(tag, '2020-03-');
+    const { productId, gradeId } = await seedProduct(`Малина ${tag}`);
+    const gradeTwo = await seedSecondGrade(productId);
+
+    await seedPoint(`${tag}-shp`, businessDate, `Шипинки ${tag}`, gradeId, '790.00', '126400.00', true);
+    await seedPoint(`${tag}-hai`, businessDate, `Гайове ${tag}`, gradeId, '210.00', '32550.00', true);
+    await seedPartiallyWeighedPoint(businessDate, `Половина ${tag}`, gradeId, gradeTwo);
+
+    const out = await service.forDate(actor(), businessDate);
+    const raspberry = out.products.find((p) => p.product_name === `Малина ${tag}`);
+    expect(raspberry).toBeDefined();
+
+    const cell = raspberry!.points.find((p) => p.point_name === `Половина ${tag}`);
+    expect(cell).toBeDefined();
+    expect(cell?.weight_kg).toBeNull();
+    expect(cell?.amount).toBeNull();
+
+    // Untouched by the partially weighed point — no 95 кг, no 17 500,00.
     expect(raspberry!.total_kg).toBe('1000.00');
     expect(raspberry!.total_amount).toBe('158950.00');
     expect(raspberry!.average_price).toBe('158.95');

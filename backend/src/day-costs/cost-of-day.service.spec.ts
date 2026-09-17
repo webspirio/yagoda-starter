@@ -45,6 +45,7 @@ const build = (
   expenses = '3800.00',
   receipts: unknown[] = [],
   latestTopUpAt: Date | null = null,
+  closedAt: Date | null = new Date('2026-09-17T18:00:00Z'),
 ) => {
   const dataSource = {
     query: jest.fn(async (sql: string) => {
@@ -55,7 +56,7 @@ const build = (
       throw new Error(`unexpected query: ${sql}`);
     }),
   };
-  const shifts = { findOneRaw: jest.fn(async () => ({ id: 's-1', closed_at: new Date() })) };
+  const shifts = { findOneRaw: jest.fn(async () => ({ id: 's-1', closed_at: closedAt })) };
   return new CostOfDayService(dataSource as never, shifts as never);
 };
 
@@ -74,6 +75,34 @@ const svcWithTopUp = build(
   new Date('2026-09-10T09:00:00Z'),
 );
 const svcWithSurplus = build([{ ...DAY[0], reweigh_net_kg: '805.00' }, DAY[1]]);
+
+/**
+ * §3.15's partial weighing, priced: ONE product, two grades, only the first
+ * of them on the scale. The reconciliation already calls this product «не
+ * перезважено»; this fixture is what proves cost-of-day says the same thing
+ * rather than booking сорт 2's hundred kilograms as a shortfall nobody has
+ * confirmed yet.
+ */
+const PARTIAL: GradeTotalsRow[] = [
+  {
+    product_id: 'p-rasp',
+    product_name: 'Малина',
+    product_grade_id: 'g-rasp-1',
+    intake_net_kg: '100.00',
+    intake_amount: '10000.00',
+    reweigh_net_kg: '95.00',
+  },
+  {
+    product_id: 'p-rasp',
+    product_name: 'Малина',
+    product_grade_id: 'g-rasp-2',
+    intake_net_kg: '100.00',
+    intake_amount: '8000.00',
+    reweigh_net_kg: null,
+  },
+];
+const svcPartial = build(PARTIAL, '0.00');
+const svcOpenShift = build(DAY, '3800.00', [], null, null);
 
 describe('CostOfDayService.forShift', () => {
   // §8.4's worked day, reduced to the two products it implies:
@@ -127,5 +156,51 @@ describe('CostOfDayService.forShift', () => {
   it('clamps a SURPLUS out of the basket so it can never lower the day cost — §8.2', async () => {
     const out = await svcWithSurplus.forShift(owner, 's-1');
     expect(gte(out.shortfall_amount, '0.00')).toBe(true);
+  });
+
+  /**
+   * §3.15 — a product weighed in one grade but not another is «не
+   * перезважено» AT THE PRODUCT LEVEL, and this screen has to agree with the
+   * reconciliation screen reading the same shift. All three figures move
+   * together: the unweighed grade's shortfall is not real yet, so it is not
+   * in the basket; and the weighed grade's kilograms are not a weighing of
+   * this product, so they are not in the denominator either.
+   */
+  describe('a partially weighed product — spec §3.15', () => {
+    it('books NO shortfall for it: the unweighed grade’s недостача is not real yet', async () => {
+      const out = await svcPartial.forShift(owner, 's-1');
+      expect(out.shortfall_amount).toBe('0.00');
+      expect(out.basket).toBe('0.00');
+    });
+
+    it('keeps its kilograms OUT of переважено — half a weighing is not a weighing', async () => {
+      const out = await svcPartial.forShift(owner, 's-1');
+      expect(out.reweighed_kg).toBe('0.00');
+      expect(out.per_kg).toBeNull();
+    });
+
+    it('returns a null «наша вага» price, never 18 000 ÷ 95 — §8.6 «Це не нуль»', async () => {
+      const p = (await svcPartial.forShift(owner, 's-1')).products[0];
+      expect(p.price_was).toBe('90.00');
+      expect(p.price_by_our_weight).toBeNull();
+    });
+  });
+
+  /**
+   * §3.9 — while the shift is open the недостача is not a claim yet, and the
+   * reconciliation says so with a dash. Cost-of-day still shows the day
+   * taking shape (§5.5: no gate), but it must SAY that the figure is
+   * provisional, or the two §8 screens contradict each other mid-day.
+   */
+  it('marks an OPEN shift’s figures provisional and carries closed_at — §3.9', async () => {
+    const out = await svcOpenShift.forShift(owner, 's-1');
+    expect(out.closed_at).toBeNull();
+    expect(out.provisional).toBe(true);
+  });
+
+  it('is not provisional once the shift is closed', async () => {
+    const out = await svc.forShift(owner, 's-1');
+    expect(out.closed_at).toBe('2026-09-17T18:00:00.000Z');
+    expect(out.provisional).toBe(false);
   });
 });

@@ -18,6 +18,15 @@ export interface CostOfDayProduct {
 
 export interface CostOfDayResponse {
   shift_id: string;
+  /** `null` while the shift is still open. Mirrors `ReconciliationResponse`
+   *  so the two §8 screens can be read side by side. */
+  closed_at: string | null;
+  /** `closed_at === null`. §3.9: while the shift is open the недостача is
+   *  not a claim yet — the reconciliation renders it as «—» — so every
+   *  figure below that depends on a shortfall is still moving. §5.5 puts NO
+   *  gate here: the owner watches the day take shape. This flag is how the
+   *  screen says so instead of contradicting the reconciliation in silence. */
+  provisional: boolean;
   /** Σ intake_items.amount + allocated top-ups, non-voided, over every grade the shift accepted. */
   accrued: string;
   reweighed_kg: string;
@@ -89,6 +98,8 @@ export class CostOfDayService {
 
     return {
       shift_id: shiftId,
+      closed_at: shift.closed_at ? shift.closed_at.toISOString() : null,
+      provisional: shift.closed_at === null,
       accrued,
       reweighed_kg: reweighedKg,
       shortfall_amount: shortfallAmount,

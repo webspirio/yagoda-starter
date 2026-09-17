@@ -1,7 +1,7 @@
 import { DataSource } from 'typeorm';
-import { gradeTotals } from '../reweighs/reweigh-reconciliation.service';
+import { gradeTotals, weighedInFull } from '../reweighs/reweigh-reconciliation.service';
 import { allocateTopUps, ReceiptForAllocation } from './top-up-allocation';
-import { add, div, gt, isZero, mul, sub, sum } from '../common/money';
+import { add, div, gt, mul, sub, sum } from '../common/money';
 
 interface ReceiptRow {
   intake_id: string;
@@ -18,14 +18,20 @@ export interface ProductCostRow {
   intake_net_kg: string;
   /** «недостача» — Σ per-grade shortfall, already clamped so a surplus on one
    *  grade never lowers it (§8.2's clamp — see `cost-of-day.service.ts`).
-   *  '0.00' both when nothing is missing AND when nothing was weighed; the
-   *  latter case is what `reweigh_net_kg === null` exists to distinguish. */
+   *  '0.00' both when nothing is missing AND when this product is not
+   *  `complete`; the latter case is what `reweigh_net_kg === null` exists to
+   *  distinguish. */
   shortfall: string;
   /** Σ reweigh net_kg across this product's grades. `null` — not '0.00' —
-   *  when NOTHING was weighed for this product this shift (§8.6: «Це не
-   *  нуль», the same rule `CostOfDayService.buildProducts` already applies
-   *  to `price_by_our_weight`). */
+   *  whenever `complete` is false, which covers both «nothing weighed at
+   *  all» and «weighed in one grade but not another» (§8.6: «Це не нуль»,
+   *  the same rule `CostOfDayService.buildProducts` already applies to
+   *  `price_by_our_weight`). */
   reweigh_net_kg: string | null;
+  /** §3.15 — EVERY grade this product had in this shift is on the scale.
+   *  Exactly `reweigh_net_kg !== null`, named so callers can read the rule
+   *  rather than infer it from a null. */
+  complete: boolean;
 }
 
 /**
@@ -101,14 +107,23 @@ export async function productCostRows(
 
   const rows: ProductCostRow[] = [];
   for (const [productId, list] of byProduct) {
-    const reweighNetRaw = sum(list.map((g) => g.reweigh_net_kg ?? '0.00'));
+    // §3.15, THE SAME RULE THE RECONCILIATION APPLIES, from the same helper:
+    // one unweighed grade makes the whole product «не перезважено». A
+    // partially weighed product therefore contributes NOTHING anywhere —
+    // no kilograms to `переважено`, no недостача to the basket, no cell to
+    // §8.6's network average — rather than contributing the weighed grade's
+    // kilograms while the unweighed grade's kilograms silently read as a
+    // shortfall that nobody has confirmed. «Contributes nothing — not a
+    // zero», and half a weighing is not a weighing.
+    const complete = weighedInFull(list);
     rows.push({
       product_id: productId,
       product_name: list[0].product_name,
       accrued: sum(list.map((g) => g.accrued)),
       intake_net_kg: sum(list.map((g) => g.intake_net_kg)),
-      shortfall: sum(list.map((g) => g.shortfall)),
-      reweigh_net_kg: isZero(reweighNetRaw) ? null : reweighNetRaw,
+      shortfall: complete ? sum(list.map((g) => g.shortfall)) : '0.00',
+      reweigh_net_kg: complete ? sum(list.map((g) => g.reweigh_net_kg ?? '0.00')) : null,
+      complete,
     });
   }
   return rows;
