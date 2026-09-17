@@ -62,6 +62,9 @@ export const AUDIT_ACTIONS = [
   'crate-return.voided',
   'reweigh-item.created',
   'reweigh-item.voided',
+  'day-expense.created',
+  'day-expense.updated',
+  'day-expense.deleted',
 ] as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];

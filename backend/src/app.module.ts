@@ -28,6 +28,7 @@ import { CashCountsModule } from './cash-counts/cash-counts.module';
 import { GradePricesModule } from './grade-prices/grade-prices.module';
 import { CratesModule } from './crates/crates.module';
 import { ReweighsModule } from './reweighs/reweighs.module';
+import { DayCostsModule } from './day-costs/day-costs.module';
 import { AuditModule } from './audit/audit.module';
 import { MediaModule } from './media/media.module';
 import { AuthModule } from './auth/auth.module';
@@ -127,6 +128,7 @@ import { envValidationSchema } from './config/env.schema';
     GradePricesModule,
     CratesModule,
     ReweighsModule,
+    DayCostsModule,
     AuditModule,
     MediaModule,
     AuthModule,

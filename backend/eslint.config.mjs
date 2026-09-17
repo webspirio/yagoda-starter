@@ -68,6 +68,15 @@ export default tseslint.config(
     // `(gross − pallet) − tare` — and it is the first module in the guard
     // whose arithmetic is on WEIGHTS rather than on money, which is the same
     // rule (foundation §5.1) and the easier one to forget.
+    //
+    // `day-costs` joins with §8.3's day expenses. It does no arithmetic in
+    // TypeScript today — `create`/`update`/`remove` only store and compare the
+    // amount string — but this is exactly the module a later собівартість
+    // screen (§8.6, «скільки коштував кілограм ягоди цього дня») would reach
+    // into for `Σ day_expenses.amount`, and `total / net_kg` written in
+    // TypeScript is precisely the shape §5.1 forbids. The guard is what keeps
+    // that sum in `common/money.ts` when that screen is built, not a
+    // retrofit after the first wrong кілограма.
     files: [
       'src/intakes/**/*.ts',
       'src/payouts/**/*.ts',
@@ -93,6 +102,7 @@ export default tseslint.config(
       'src/crates/crate-balance.service.ts',
       'src/intake-top-ups/**/*.ts',
       'src/reweighs/**/*.ts',
+      'src/day-costs/**/*.ts',
     ],
     ignores: ['**/*.spec.ts', '**/*.db-spec.ts'],
     rules: {
