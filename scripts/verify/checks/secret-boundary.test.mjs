@@ -1,0 +1,331 @@
+import { test } from 'node:test'
+import assert from 'node:assert/strict'
+import { execFileSync } from 'node:child_process'
+import { readFileSync, writeFileSync, rmSync } from 'node:fs'
+import path from 'node:path'
+
+const ROOT = path.resolve(import.meta.dirname, '..', '..', '..')
+const CHECK = path.join(ROOT, 'scripts', 'verify', 'checks', 'secret-boundary.mjs')
+const GITIGNORE = path.join(ROOT, '.gitignore')
+const ENV_EXAMPLE = path.join(ROOT, '.env.example')
+const BASELINE = path.join(ROOT, 'scripts', 'verify', 'baselines', 'secret-boundary.json')
+
+/** A valid, non-stub reason — well over the 30-character floor. @type {string} */
+const VALID_TEST_REASON =
+  'Test-only confirmed-fake pin exercising the two-directional ratchet mechanism itself.'
+
+/**
+ * @param {{ file: string, value: string, reason: string }} entry
+ * @returns {string} the original baseline content, for restoring in a finally
+ */
+function addConfirmedFakeValueEntry(entry) {
+  const original = readFileSync(BASELINE, 'utf8')
+  const baseline = JSON.parse(original)
+  baseline.confirmedFakeValues = [
+    ...(baseline.confirmedFakeValues ?? []),
+    { file: entry.file, value: entry.value, recordedAt: '2026-09-10', reason: entry.reason },
+  ]
+  writeFileSync(BASELINE, `${JSON.stringify(baseline, null, 2)}\n`)
+  return original
+}
+
+/** @returns {{ status: number, out: string }} */
+function run() {
+  try {
+    return { status: 0, out: execFileSync(process.execPath, [CHECK], { encoding: 'utf8' }) }
+  } catch (err) {
+    // Cast is needed for `npx tsc -p tsconfig.scripts.json` (strict + checkJs types catch
+    // variables as `unknown`) — same idiom as memo-drift.test.mjs's run() helper.
+    const e = /** @type {any} */ (err)
+    return { status: e.status ?? 1, out: `${e.stdout ?? ''}${e.stderr ?? ''}` }
+  }
+}
+
+/**
+ * A 40-character run over a 62-symbol alphabet: Shannon entropy for this is comfortably
+ * above the check's 3.5 bits/char threshold (measured minimum over 2000 trials: 4.24), so
+ * this fixture is not a source of test flakiness the way a smaller alphabet (e.g. hex,
+ * 16 symbols) would be.
+ *
+ * @returns {string}
+ */
+function randomHighEntropyValue() {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'
+  let out = ''
+  for (let i = 0; i < 40; i += 1) out += chars[Math.floor(Math.random() * chars.length)]
+  return out
+}
+
+/**
+ * Four 8-character alphanumeric chunks joined by hyphens (35 chars total) — the
+ * dash-separated secret shape (an API key, a hex-with-dashes credential) that a
+ * contiguous-run entropy measurement would have missed entirely: the longest unbroken
+ * run here is 8 characters, far under the 32-character floor, while the WHOLE value's
+ * entropy is comfortably over the 3.5 bits/char threshold. Generated at runtime, like
+ * randomHighEntropyValue above, so no literal high-entropy string sits in this file's own
+ * source once it is tracked.
+ *
+ * @returns {string}
+ */
+function randomDashSeparatedHighEntropyValue() {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'
+  const chunk = () => {
+    let out = ''
+    for (let i = 0; i < 8; i += 1) out += chars[Math.floor(Math.random() * chars.length)]
+    return out
+  }
+  return [chunk(), chunk(), chunk(), chunk()].join('-')
+}
+
+test('the real tree is green', () => {
+  const res = run()
+  assert.equal(res.status, 0, res.out)
+})
+
+test('a tracked PEM private-key block is caught', () => {
+  const rel = 'docs/zz-secret-fixture-pem.txt'
+  const fixture = path.join(ROOT, rel)
+  // Obviously fake: a real PEM header followed by the word FAKE, never real key material.
+  // Built from parts at runtime, not typed as one contiguous literal: once this test file
+  // itself is committed, it is a tracked file too, and a literal "-----BEGIN RSA PRIVATE
+  // KEY-----" sitting in its own source would make the check flag its own test suite.
+  const pemHeader = ['-----BEGIN', 'RSA', 'PRIVATE', 'KEY-----'].join(' ')
+  const pemFooter = ['-----END', 'RSA', 'PRIVATE', 'KEY-----'].join(' ')
+  writeFileSync(fixture, `${pemHeader}\nFAKE-NOT-A-REAL-KEY-BODY\n${pemFooter}\n`)
+  try {
+    execFileSync('git', ['add', '-N', '--', rel], { cwd: ROOT })
+    const res = run()
+    assert.equal(res.status, 1)
+    assert.match(res.out, /PEM private-key block/i)
+    assert.match(res.out, /zz-secret-fixture-pem\.txt/)
+  } finally {
+    try {
+      execFileSync('git', ['rm', '--cached', '--force', '--quiet', '--', rel], { cwd: ROOT })
+    } catch {
+      // Not staged (e.g. an earlier failure never reached `git add -N`) — fine, the
+      // rmSync below still removes the working-tree file either way.
+    }
+    rmSync(fixture, { force: true })
+  }
+})
+
+test('a tracked JWT-shaped string is caught', () => {
+  const rel = 'docs/zz-secret-fixture-jwt.txt'
+  const fixture = path.join(ROOT, rel)
+  // Obviously fake: three base64url segments built from the literal string
+  // "not-a-real-token", never a real token. The "eyJ" prefix is joined from parts too,
+  // for the same reason as the PEM header above: this source file is itself tracked, so
+  // a contiguous literal match here would flag this very test suite.
+  const jwtPrefix = ['ey', 'J'].join('')
+  const seg = (/** @type {string} */ s) => Buffer.from(s, 'utf8').toString('base64url')
+  const fakeJwt = `${jwtPrefix}${seg('not-a-real-token-header')}.${seg('not-a-real-token-payload')}.${seg('not-a-real-token-signature')}`
+  writeFileSync(fixture, `${fakeJwt}\n`)
+  try {
+    execFileSync('git', ['add', '-N', '--', rel], { cwd: ROOT })
+    const res = run()
+    assert.equal(res.status, 1)
+    assert.match(res.out, /JWT/)
+    assert.match(res.out, /zz-secret-fixture-jwt\.txt/)
+  } finally {
+    try {
+      execFileSync('git', ['rm', '--cached', '--force', '--quiet', '--', rel], { cwd: ROOT })
+    } catch {
+      // See the PEM test above for why this is allowed to fail harmlessly.
+    }
+    rmSync(fixture, { force: true })
+  }
+})
+
+test('a dash-separated high-entropy value is caught (regression: a run-based measurement would miss this)', () => {
+  const rel = 'docs/zz-secret-fixture-dash.txt'
+  const fixture = path.join(ROOT, rel)
+  const value = randomDashSeparatedHighEntropyValue()
+  writeFileSync(fixture, `API_TOKEN=${value}\n`)
+  try {
+    execFileSync('git', ['add', '-N', '--', rel], { cwd: ROOT })
+    const res = run()
+    assert.equal(res.status, 1, res.out)
+    assert.match(res.out, /API_TOKEN/)
+    assert.match(res.out, /zz-secret-fixture-dash\.txt/)
+  } finally {
+    try {
+      execFileSync('git', ['rm', '--cached', '--force', '--quiet', '--', rel], { cwd: ROOT })
+    } catch {
+      // See the PEM test above for why this is allowed to fail harmlessly.
+    }
+    rmSync(fixture, { force: true })
+  }
+})
+
+test('a confirmedFakeValues pin is exact: a second, unpinned high-entropy value in the same file is still caught', () => {
+  const rel = 'docs/zz-secret-fixture-confirmed-fake.txt'
+  const fixture = path.join(ROOT, rel)
+  const pinnedValue = randomHighEntropyValue()
+  const unpinnedValue = randomDashSeparatedHighEntropyValue()
+  const originalBaseline = addConfirmedFakeValueEntry({ file: rel, value: pinnedValue, reason: VALID_TEST_REASON })
+  writeFileSync(fixture, `API_KEY=${pinnedValue}\nAPI_TOKEN=${unpinnedValue}\n`)
+  try {
+    execFileSync('git', ['add', '-N', '--', rel], { cwd: ROOT })
+    const res = run()
+    assert.equal(res.status, 1, res.out)
+    // The pinned line must NOT appear as a finding — only the unpinned one.
+    assert.doesNotMatch(res.out, /API_KEY/)
+    assert.match(res.out, /API_TOKEN/)
+    assert.match(res.out, /zz-secret-fixture-confirmed-fake\.txt/)
+  } finally {
+    try {
+      execFileSync('git', ['rm', '--cached', '--force', '--quiet', '--', rel], { cwd: ROOT })
+    } catch {
+      // See the PEM test above for why this is allowed to fail harmlessly.
+    }
+    rmSync(fixture, { force: true })
+    writeFileSync(BASELINE, originalBaseline)
+  }
+})
+
+test('a confirmedFakeValues entry whose pinned value no longer appears in its file is reported STALE', () => {
+  // No fixture file needed: any tracked, existing file that certainly does not contain a
+  // fresh random value stands in for "the fixture was edited/deleted out from under the
+  // pin" — package.json is tracked and unrelated to this check's fixtures.
+  const originalBaseline = addConfirmedFakeValueEntry({
+    file: 'package.json',
+    value: randomHighEntropyValue(),
+    reason: VALID_TEST_REASON,
+  })
+  try {
+    const res = run()
+    assert.equal(res.status, 1, res.out)
+    assert.match(res.out, /STALE/)
+    assert.match(res.out, /package\.json/)
+  } finally {
+    writeFileSync(BASELINE, originalBaseline)
+  }
+})
+
+test('a confirmedFakeValues entry with a stub reason (under 30 characters) is rejected', () => {
+  const originalBaseline = addConfirmedFakeValueEntry({
+    file: 'package.json',
+    value: randomHighEntropyValue(),
+    reason: 'TODO',
+  })
+  try {
+    const res = run()
+    assert.equal(res.status, 1, res.out)
+    assert.match(res.out, /reason/i)
+    assert.match(res.out, /30 characters/)
+  } finally {
+    writeFileSync(BASELINE, originalBaseline)
+  }
+})
+
+test('a high-entropy value in a Dockerfile ENV line is caught (the closed leading-token list)', () => {
+  const rel = 'docs/zz-secret-fixture-dockerfile-env.txt'
+  const fixture = path.join(ROOT, rel)
+  const value = randomHighEntropyValue()
+  // A real Dockerfile ENV instruction shape — not hypothetical: backend/Dockerfile and
+  // nginx/Dockerfile both carry live ENV lines today (see the check's own header comment).
+  writeFileSync(fixture, `ENV SOME_SECRET=${value}\n`)
+  try {
+    execFileSync('git', ['add', '-N', '--', rel], { cwd: ROOT })
+    const res = run()
+    assert.equal(res.status, 1, res.out)
+    assert.match(res.out, /SOME_SECRET/)
+    assert.match(res.out, /zz-secret-fixture-dockerfile-env\.txt/)
+  } finally {
+    try {
+      execFileSync('git', ['rm', '--cached', '--force', '--quiet', '--', rel], { cwd: ROOT })
+    } catch {
+      // See the PEM test above for why this is allowed to fail harmlessly.
+    }
+    rmSync(fixture, { force: true })
+  }
+})
+
+test('a shell export line with a high-entropy value is caught', () => {
+  const rel = 'docs/zz-secret-fixture-shell-export.txt'
+  const fixture = path.join(ROOT, rel)
+  const value = randomHighEntropyValue()
+  writeFileSync(fixture, `export API_TOKEN=${value}\n`)
+  try {
+    execFileSync('git', ['add', '-N', '--', rel], { cwd: ROOT })
+    const res = run()
+    assert.equal(res.status, 1, res.out)
+    assert.match(res.out, /API_TOKEN/)
+    assert.match(res.out, /zz-secret-fixture-shell-export\.txt/)
+  } finally {
+    try {
+      execFileSync('git', ['rm', '--cached', '--force', '--quiet', '--', rel], { cwd: ROOT })
+    } catch {
+      // See the PEM test above for why this is allowed to fail harmlessly.
+    }
+    rmSync(fixture, { force: true })
+  }
+})
+
+test('process.env.JWT_SECRET in a .ts fixture is still NOT flagged (the closed list did not reopen the process.env hole)', () => {
+  const rel = 'docs/zz-secret-fixture-processenv.ts'
+  const fixture = path.join(ROOT, rel)
+  // Same shape as the real false positive round 1 fixed: an unquoted property access
+  // embedded in a full statement, never a candidate value regardless of the leading-token
+  // list, because the line is not `export`/`ENV`/`ARG`/`- ` followed by the whole rest of
+  // the line being just NAME=value — it is `const NAME = <expression>;`.
+  writeFileSync(fixture, 'const jwtSecret = process.env.JWT_SECRET;\n')
+  try {
+    execFileSync('git', ['add', '-N', '--', rel], { cwd: ROOT })
+    const res = run()
+    assert.equal(res.status, 0, res.out)
+  } finally {
+    try {
+      execFileSync('git', ['rm', '--cached', '--force', '--quiet', '--', rel], { cwd: ROOT })
+    } catch {
+      // See the PEM test above for why this is allowed to fail harmlessly.
+    }
+    rmSync(fixture, { force: true })
+  }
+})
+
+test('removing the .env line from .gitignore is caught, naming the fingerprint mismatch', () => {
+  const original = readFileSync(GITIGNORE, 'utf8')
+  try {
+    const mutated = original
+      .split('\n')
+      .filter((line) => line !== '.env')
+      .join('\n')
+    assert.notEqual(mutated, original, 'fixture assumes .gitignore currently has a bare .env line')
+    writeFileSync(GITIGNORE, mutated)
+    const res = run()
+    assert.equal(res.status, 1)
+    assert.match(res.out, /fingerprint mismatch/i)
+  } finally {
+    writeFileSync(GITIGNORE, original)
+  }
+})
+
+test('a 40-character high-entropy value in .env.example is caught', () => {
+  const original = readFileSync(ENV_EXAMPLE, 'utf8')
+  try {
+    const marker = 'JWT_SECRET=change-me-to-a-32-character-minimum-secret'
+    assert.match(original, new RegExp(marker.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))
+    const mutated = original.replace(marker, `JWT_SECRET=${randomHighEntropyValue()}`)
+    writeFileSync(ENV_EXAMPLE, mutated)
+    const res = run()
+    assert.equal(res.status, 1)
+    assert.match(res.out, /\.env\.example/)
+  } finally {
+    writeFileSync(ENV_EXAMPLE, original)
+  }
+})
+
+test('.env.example keeping its placeholder values stays green', () => {
+  const original = readFileSync(ENV_EXAMPLE, 'utf8')
+  try {
+    // Not a real mutation — rewritten byte-for-byte identical — but exercised through the
+    // same write/restore path as every other case, so this control case proves the
+    // placeholder values actually shipped in .env.example pass rule 4 on their own merits.
+    writeFileSync(ENV_EXAMPLE, original)
+    const res = run()
+    assert.equal(res.status, 0, res.out)
+  } finally {
+    writeFileSync(ENV_EXAMPLE, original)
+  }
+})

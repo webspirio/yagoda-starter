@@ -92,9 +92,133 @@ export const relaxThrottleForTests = (): void => {
 };
 
 /**
+ * DROP + CREATE `database` on a MAINTENANCE connection, so every `openTestDataSource()`
+ * call starts from a database with no rows in it — including its migrations table —
+ * before a single migration runs.
+ *
+ * This exists because idempotency is only provable from a known starting state:
+ * `dev-seed.db-spec.ts`'s "is idempotent — a second run inserts nothing" assertion
+ * means what it says only when the FIRST `seedDev()` call in that file ran against an
+ * empty database. Without this, a database still carrying rows from a PREVIOUS
+ * `test:db` invocation (nothing here ever truncates `app_test` on its own — see
+ * backend/CLAUDE.md's "Dev seed" section) can make that assertion pass locally for the
+ * wrong reason and fail the first time it runs against a genuinely clean database, e.g.
+ * in CI.
+ *
+ * The maintenance connection targets the `postgres` administrative database — never
+ * `database` itself, which is exactly the one being dropped — and Postgres always
+ * provisions `postgres` alongside whatever `POSTGRES_DB` names (confirmed against this
+ * repo's own `docker-compose.yml`, which sets `POSTGRES_DB: app`, yet `\l` still lists
+ * `postgres` as a fifth database owned by the same `app` user). `WITH (FORCE)` (Postgres
+ * 13+; this repo runs postgres:16-alpine) drops any lingering session on `database`
+ * first, so a prior suite's `DataSource` that failed to `destroy()` in its own
+ * `afterAll` fails this with a clear next `DROP DATABASE` retry rather than the opaque
+ * "database is being accessed by other users" error a plain `DROP DATABASE` would raise.
+ *
+ * Called from `openTestDataSource()` ONLY after `resolveTestDatabaseName()` has already
+ * validated `database` — every one of that function's guards (must end in `_test`, must
+ * not equal `DB_NAME`) still runs, and still throws, before this function is ever
+ * reached, so `db-harness.db-spec.ts`'s two safety-guard tests are untouched by this.
+ *
+ * @param {string} database — already validated by `resolveTestDatabaseName()`
+ * @param {ReturnType<typeof databaseEnv>} db
+ * @returns {Promise<void>}
+ */
+const resetTestDatabase = async (
+  database: string,
+  db: ReturnType<typeof databaseEnv>,
+): Promise<void> => {
+  const maintenance = new DataSource({
+    type: 'postgres',
+    host: db.host,
+    port: db.port,
+    username: db.username,
+    password: db.password,
+    database: 'postgres',
+  });
+  await maintenance.initialize();
+  try {
+    await maintenance.query(`DROP DATABASE IF EXISTS "${database}" WITH (FORCE)`);
+    await maintenance.query(`CREATE DATABASE "${database}"`);
+  } finally {
+    await maintenance.destroy();
+  }
+};
+
+/**
+ * Creates the test database if it is not there, and does NOTHING if it is. The one
+ * precondition the three pipeline suites need and none of them used to establish.
+ *
+ * Every suite that opens a bare `DataSource` goes through `openTestDataSource()` below,
+ * which DROPs and CREATEs the database itself — those have always been self-sufficient.
+ * The pipeline suites (testing/{pipeline,catalog-pipeline,documents-pipeline}.db-spec.ts)
+ * do not: they point `DB_NAME` at the test database and boot the whole AppModule, whose
+ * own TypeORM connection then expects it to already exist.
+ *
+ * IT ALWAYS DID, FOR TWO REASONS THAT BOTH STOPPED HOLDING AT ONCE. On a laptop the
+ * database is created by hand once — the message `resolveTestDatabaseName` prints says
+ * exactly how — and the `pg_data` volume keeps it for good. On the CI this repo ran until
+ * 2026-09-15 it existed because the Actions `services:` block set `POSTGRES_DB: app_test`
+ * on the container. A Compose-provided Postgres sets `POSTGRES_DB: app` instead
+ * (docker-compose.yml), so on the `verify` job's stack the database was simply absent —
+ * and so it is on any laptop the moment someone runs `docker compose down -v`.
+ *
+ * THE FAILURE IS NOT A CLEAN ERROR, which is why this function exists rather than a line
+ * of documentation: the app retries the missing database every 3 seconds, all 70 tests in
+ * the two boot-the-app suites die at jest's 30s `testTimeout`, their `afterAll` therefore
+ * never runs, and jest — holding the open handles that teardown would have closed — never
+ * exits at all. CI run 34998136933 was killed at its 480s budget having actually finished
+ * testing after about 100 seconds.
+ *
+ * CREATE, NEVER RESET. `resetTestDatabase` above drops first, on purpose, because the
+ * suites it serves must not see a previous run's rows. These three say the opposite in
+ * their own comments — app_test persists between runs and is never truncated, which is why
+ * they name their fixtures with a per-run uuid — so recreating it here would break them in
+ * a way no assertion would catch.
+ *
+ * Guarded exactly as `openTestDataSource` is: `resolveTestDatabaseName()` runs first, so
+ * every refusal (the app's own DB_NAME, a name not ending in `_test`) applies to a
+ * function that CREATES a database just as it does to one that drops it.
+ *
+ * @returns {Promise<void>}
+ */
+export const ensureTestDatabase = async (): Promise<void> => {
+  const database = resolveTestDatabaseName();
+  const db = databaseEnv();
+
+  const maintenance = new DataSource({
+    type: 'postgres',
+    host: db.host,
+    port: db.port,
+    username: db.username,
+    password: db.password,
+    database: 'postgres',
+  });
+  await maintenance.initialize();
+  try {
+    const existing: unknown[] = await maintenance.query(
+      'SELECT 1 FROM pg_database WHERE datname = $1',
+      [database],
+    );
+    if (existing.length > 0) return;
+    try {
+      await maintenance.query(`CREATE DATABASE "${database}"`);
+    } catch (err) {
+      // 42P04 is duplicate_database. Postgres has no CREATE DATABASE IF NOT EXISTS, so the
+      // check above is a read followed by a write and another process can land between the
+      // two. Losing that race means the database exists, which is the whole goal.
+      if ((err as { code?: string }).code !== '42P04') throw err;
+    }
+  } finally {
+    await maintenance.destroy();
+  }
+};
+
+/**
  * The data source for `*.db-spec.ts` suites — the ONLY tests here that touch a real
- * Postgres. Create the database once with
- * `docker compose exec postgres createdb -U app app_test`.
+ * Postgres. No prerequisite database to create by hand: `resetTestDatabase` above drops
+ * and recreates `database` on every call, before migrations run, so there is nothing to
+ * carry over between one call and the next, in this file or the next `test:db` invocation.
  *
  * Migrations are RUN, not synchronized — the point is to test the schema the
  * migration actually produces, including constraints TypeORM cannot express.
@@ -102,6 +226,8 @@ export const relaxThrottleForTests = (): void => {
 export const openTestDataSource = async (): Promise<DataSource> => {
   const db = databaseEnv();
   const database = resolveTestDatabaseName();
+
+  await resetTestDatabase(database, db);
 
   const ds = new DataSource({
     type: 'postgres',

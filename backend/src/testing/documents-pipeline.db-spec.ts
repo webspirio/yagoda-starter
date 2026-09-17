@@ -8,7 +8,11 @@ import { ClassSerializerInterceptor, INestApplication, ValidationPipe } from '@n
 import { Reflector } from '@nestjs/core';
 // MUST be imported before `../app.module` — it loads `.env` as a side effect,
 // and AppModule's decorator runs ConfigModule.forRoot() eagerly at import time.
-import { relaxThrottleForTests, resolveTestDatabaseName } from './db-harness';
+import {
+  ensureTestDatabase,
+  relaxThrottleForTests,
+  resolveTestDatabaseName,
+} from './db-harness';
 
 import { AppModule } from '../app.module';
 import { UsersService } from '../users/users.service';
@@ -40,6 +44,16 @@ describe('documents pipeline (HTTP)', () => {
 
   beforeAll(async () => {
     process.env.DB_NAME = resolveTestDatabaseName();
+    // This suite boots the whole AppModule rather than opening a DataSource through
+    // `openTestDataSource()`, so nothing here creates the database the app is about to
+    // connect to — it just expects it to be there. It was, on a laptop (created once by
+    // hand, kept by pg_data) and on the Actions `services:` Postgres (POSTGRES_DB:
+    // app_test), which is why this line was missing for as long as it was. It is NOT
+    // there on the Compose Postgres the `verify` job now brings up, nor on any laptop
+    // after `docker compose down -v`, and the failure is a 3-second retry loop that ends
+    // in every test here timing out and jest never exiting. Creates, never resets: this
+    // file's fixtures are uuid-scoped precisely because app_test persists.
+    await ensureTestDatabase();
     relaxThrottleForTests();
 
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();

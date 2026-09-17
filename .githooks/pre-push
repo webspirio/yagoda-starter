@@ -1,0 +1,64 @@
+#!/bin/sh
+# Local pre-push gate. NOT a replacement for CI — a cheaper place to find out.
+#
+# WHY THIS EXISTS, in one measurement: on 2026-09-15 the `verify` job took 11-20+ minutes
+# per run, and the same rows on a laptop take seconds. `lint` is 0.13s here and 18.0s there;
+# `test:db` is 20s here and MORE THAN 8 MINUTES there. Discovering a red row after a
+# twenty-minute round trip, when forty seconds locally would have said the same thing, is
+# the waste this hook removes.
+#
+# WHAT IT DOES NOT DO is replace the `verify` job. A hook can be skipped — `git push
+# --no-verify` does it, and so does a fresh clone that never ran `npm install` — so CI stays
+# the authoritative gate and keeps running EVERYTHING. That duplication is deliberate and is
+# the standard answer to this problem: local runs for speed of feedback, CI runs for proof.
+#
+# WHICH ROWS, and why these:
+#   excluded  smoke     it recreates the shared `backend` container and reseeds the dev
+#                       database (see the row's own blindSpot). Acceptable as a CI step,
+#                       not as a side effect of every `git push`.
+#   excluded  coverage  46s locally and its floors are deliberately CI-only (they read as 0
+#                       here), so locally it can report but never gate.
+#   excluded  audit     depends on an external advisory database that changes with nothing
+#                       in this repo. A push must not fail because GitHub reclassified a
+#                       severity an hour ago.
+# Everything else runs. The list is an EXCLUSION on purpose: a check added later joins this
+# gate automatically, so forgetting to update this file makes the gate wider, never narrower.
+# A fourth entry, `docker`, was here until 2026-09-15; that row no longer exists.
+#
+# THIS LIST LIVES IN THREE PLACES — twice below and once in package.json's `verify:prepush`
+# — and `run.mjs` REJECTS an unknown id, so a row renamed or deleted without updating all
+# three does not degrade, it blocks every push with `unknown check id(s) in --exclude`.
+# That is how the `docker` removal announced itself. run.test.mjs now asserts the three
+# agree and that every id in them is a real row.
+#
+# `--no-skip` is deliberately absent. A laptop without Docker or Postgres SKIPS those rows
+# and says so out loud; it does not block the push. CI is where a missing precondition is a
+# failure.
+set -eu
+
+# SCRUB GIT_* BEFORE RUNNING ANYTHING. Git exports GIT_DIR (and GIT_INDEX_FILE, and more)
+# into every hook, and `GIT_DIR` DOES NOT LOSE TO `cwd` — with it set, git ignores the
+# working directory entirely and operates on the repository the variable names. Half this
+# layer shells out to `git ls-files`, and `selfcheck` runs fixtures that build throwaway
+# repositories in a temp directory; inherited, that variable points every one of them back
+# here.
+#
+# This is not hypothetical. The first push through this hook, on 2026-09-15, ran
+# hash.test.mjs's fixture with GIT_DIR inherited: its `git add -A` and `git commit` wrote
+# to the REAL repository, committing the fixture's three files as the entire tree and
+# deleting 894 real ones. The working tree survived, HEAD did not. The fixture now scrubs
+# these too — two locks, because a hook is not the only thing that can export GIT_DIR.
+for _v in $(env | sed -n 's/^\(GIT_[A-Za-z0-9_]*\)=.*/\1/p'); do unset "$_v" || true; done
+
+printf '\npre-push: local verify gate (skip with `git push --no-verify`)\n'
+
+# The hook must not depend on the caller's shell: `node` may come from nvm/fnm and not be on
+# a hook's PATH at all. .claude/hooks/node.sh already solves exactly this, using only shell
+# built-ins, and pins the major from .nvmrc — so reuse it rather than growing a second copy.
+ROOT=$(git rev-parse --show-toplevel)
+if [ -x "$ROOT/.claude/hooks/node.sh" ]; then
+  CLAUDE_PROJECT_DIR="$ROOT" "$ROOT/.claude/hooks/node.sh" \
+    "$ROOT/scripts/verify/run.mjs" --tier full --exclude smoke,coverage,audit
+else
+  node "$ROOT/scripts/verify/run.mjs" --tier full --exclude smoke,coverage,audit
+fi

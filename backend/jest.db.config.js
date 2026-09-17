@@ -17,4 +17,11 @@ module.exports = {
   watchman: false,
   maxWorkers: 1,
   testTimeout: 30000,
+  // Creates TEST_DB_NAME once, before any suite, so the suites that boot the whole
+  // AppModule (rather than opening a DataSource through openTestDataSource, which creates
+  // it themselves) cannot depend on some other suite having run first. See the file's own
+  // header for why this is a runner concern and not a per-suite one — it was the latter
+  // until main merged a fourth AppModule suite without the call and nine tests died on
+  // `database "app_test" does not exist`, taking jest's exit with them.
+  globalSetup: '<rootDir>/testing/db-global-setup.ts',
 };

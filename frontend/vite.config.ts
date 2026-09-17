@@ -25,5 +25,18 @@ export default defineConfig({
     env: {
       VITE_API_URL: 'http://localhost:3000',
     },
+    // Thresholds read from the SAME COVERAGE_FRONTEND_* variables
+    // .github/workflows/ci.yml's `verify` job sets in its `env:` block — see that
+    // file's header comment for why they live there and nowhere else. Every one of
+    // them defaults to 0 here, so a plain `npm run coverage` on a laptop reports the
+    // percentage without ever failing on it; only CI sets these above zero.
+    coverage: {
+      thresholds: {
+        statements: Number(process.env.COVERAGE_FRONTEND_STATEMENTS ?? 0),
+        branches: Number(process.env.COVERAGE_FRONTEND_BRANCHES ?? 0),
+        functions: Number(process.env.COVERAGE_FRONTEND_FUNCTIONS ?? 0),
+        lines: Number(process.env.COVERAGE_FRONTEND_LINES ?? 0),
+      },
+    },
   },
 });

@@ -1,0 +1,12 @@
+{
+  "workspaces": {
+    "backend": {
+      "entry": ["src/main.ts", "src/data-source.ts", "src/seed/dev-seed.cli.ts"],
+      "project": ["src/**/*.ts"]
+    },
+    "frontend": {
+      "entry": ["src/main.tsx", "vite.config.ts"],
+      "project": ["src/**/*.{ts,tsx}"]
+    }
+  }
+}

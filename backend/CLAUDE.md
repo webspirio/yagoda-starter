@@ -18,13 +18,35 @@ npm run test:db # run DB-backed tests (*.db-spec.ts) against a real Postgres
 npm run lint    # ESLint (flat config, eslint.config.mjs)
 ```
 
-**`test:db` prerequisite** — create the throwaway database once:
-`docker compose exec postgres createdb -U app app_test`. The suite connects with
-the usual `DB_HOST`/`DB_PORT`/`DB_USER`/`DB_PASSWORD` but overrides the database
-name with `TEST_DB_NAME` (default `app_test`); `src/testing/db-harness.ts` refuses
-to start if that name equals `DB_NAME` or does not end in `_test`, because these
-specs `TRUNCATE`. They run serially (`jest.db.config.js`, `maxWorkers: 1`) and
-apply migrations on connect. They exist because they verify **Postgres semantics
+**No prerequisite database to create by hand.** The suite connects with the usual
+`DB_HOST`/`DB_PORT`/`DB_USER`/`DB_PASSWORD` but overrides the database name with
+`TEST_DB_NAME` (default `app_test`); `src/testing/db-harness.ts` refuses to start
+if that name equals `DB_NAME` or does not end in `_test`, because these specs
+`TRUNCATE`. Once that name is validated, `openTestDataSource()` DROPs and
+(re)CREATEs it on a maintenance connection to the `postgres` administrative
+database, every time it is called — so `app_test` need not exist beforehand, and
+a database carrying rows from a previous `test:db` run can never make a later
+run's idempotency assertions (`dev-seed.db-spec.ts`'s in particular) pass for the
+wrong reason. They run serially (`jest.db.config.js`, `maxWorkers: 1`) and apply
+migrations on connect, against a database that is empty every time they do.
+
+**The three suites that boot the whole AppModule get there a different way, and
+until 2026-09-15 they did not get there at all.** `testing/{pipeline,catalog-pipeline,documents-pipeline}.db-spec.ts`
+never open a `DataSource` through `openTestDataSource()` — they point `DB_NAME`
+at the test database and let Nest connect — so nothing in them created it. The
+sentence above was therefore true only of every OTHER suite. It held up anyway
+because the database always happened to be there: created once by hand on a
+laptop and kept by `pg_data`, and on CI because the Actions `services:` block
+set `POSTGRES_DB: app_test`. Neither is true of the Compose Postgres the
+`verify` job now brings up (`POSTGRES_DB: app`), nor of any laptop after
+`docker compose down -v`, and the failure is not a clean error — the app retries
+the missing database every 3s, all 70 tests in those suites die at jest's 30s
+`testTimeout`, their `afterAll` never runs and jest never exits. All three now
+call `ensureTestDatabase()` first: it CREATES and never resets, because those
+suites state outright that `app_test` persists between runs and uuid-scope their
+fixtures for that reason.
+
+These suites exist because they verify **Postgres semantics
 that a mocked spec cannot reach** — constraints, unique indexes, cascade rules,
 and whether a hand-written statement even parses. `npm test` never picks them
 up: its `testRegex` (`.*\.spec\.ts$`) does not match `.db-spec.ts`.
@@ -49,8 +71,10 @@ up: its `testRegex` (`.*\.spec\.ts$`) does not match `.db-spec.ts`.
   sole signal. `@nestjs/passport` is imported by `auth.decorators.spec.ts` and
   `jwt.strategy.spec.ts` as well, so it broke the unit suite too. The next
   package to go ESM will land wherever its importers are — check both suites.
-- Both jest configs set `watchman: false` — the unit config (the `"jest"` key
-  in `package.json`) and `jest.db.config.js` — and it is NOT a preference.
+- Both jest configs set `watchman: false` — the unit config (`jest.config.js`;
+  it lived in `package.json`'s `"jest"` key until the verify layer moved it into
+  its own file, so that `coverageThreshold` could read `process.env`, which a
+  static JSON block cannot) and `jest.db.config.js` — and it is NOT a preference.
   When the machine's `watchman` binary is broken (a mismatched Homebrew
   boost/folly is the common cause), Jest's haste-map crawler returns an EMPTY
   file list and Jest exits 0 having run nothing. A green exit code for zero
@@ -231,10 +255,12 @@ Runs from the host (`.env`'s `DB_HOST=localhost`; compose publishes Postgres on
 5432) or inside the container (`docker compose exec backend npm run seed:dev -w backend`).
 `src/seed/dev-seed.db-spec.ts` proves idempotency and the journal ordering
 against a real Postgres; `dev-seed.spec.ts` checks the dataset's own consistency.
-Because that spec seeds `app_test` and nothing truncates it, the throwaway database
-carries the demo dataset permanently after a `test:db` run — every other db-spec
-already scopes its fixtures by a per-run uuid, and that convention is now load-bearing.
-The CLI also refuses a non-local `DB_HOST` unless `SEED_ALLOW_REMOTE_DB=1`.
+`openTestDataSource()` drops and recreates `app_test` on every call (see
+"No prerequisite database to create by hand." above), so the demo dataset this spec seeds does NOT
+survive a `test:db` run — every other db-spec already scopes its own fixtures by
+a per-run uuid rather than relying on it being there, and that convention is now
+load-bearing regardless of run order. The CLI also refuses a non-local `DB_HOST`
+unless `SEED_ALLOW_REMOTE_DB=1`.
 
 **Workflow for schema changes:**
 

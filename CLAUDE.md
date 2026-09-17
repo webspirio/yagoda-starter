@@ -48,6 +48,46 @@ npm run build
 npm run db:seed             # idempotent demo dataset for manual testing — see backend/CLAUDE.md «Dev seed»
 ```
 
+## Verification
+
+The gate a turn is checked against — `npm run verify` — runs the **fast tier only**: 14 of
+the registry's 20 rows. There is no `build`, no `smoke`, no `test:db` and no `coverage` row
+in it, so a turn can end green having never built the app, never started a container and
+never touched a database. `npm run verify:full` is what reaches those six, and
+`npm run verify:ci` is that with `--no-skip`, where a missing precondition is a failure
+rather than a quietly narrower green.
+
+**Everything else about using the layer is the `verify` skill** — per-tier costs measured on
+a laptop and in CI, the pre-push gate and why three rows sit outside it, what each of the
+five row statuses means and which block, and the generated table of what all 20 rows prove
+and stay blind to. Read `.claude/skills/verify/SKILL.md` (or invoke the skill) rather than
+duplicating any of it here: this section is deliberately short, because it loads into every
+session and the reference does not need to.
+
+Three rules govern how a turn reports its own verification, and they stay here because they
+bind every turn whether or not anyone opened the skill:
+
+1. **Evidence under the claim.** What changed decides what must be run, not habit:
+
+   | change | run |
+   | --- | --- |
+   | anything in `backend/src` or `frontend/src` | `npm run verify` |
+   | anything touching money | `npm run verify`, and name the coverage number |
+   | `package.json` or the lockfile | `npm run verify:full` — that is where `audit` and `bundle` live |
+   | a migration | `npm run verify:full` — that is where `test:db` lives |
+   | `scripts/verify/` or `.claude/hooks/` | `npm run verify` — that code is under `tsconfig.scripts.json` too |
+   | the registry (`scripts/verify/registry.mjs`) | `node scripts/verify/checks/memo-drift.mjs --write`, or `memo` goes red |
+
+2. **Skips are spoken aloud.** "The fast tier is green; `smoke` was skipped, no daemon" —
+   never "all green". A `SKIPPED` row is a row nobody ran, not a row that passed.
+
+3. **Ratchets turn one way.** Widening a baseline, relaxing a rule, adding a knip
+   suppression key, or lowering a coverage floor **is not turning green** — it is the
+   cheapest available response to a red check, and it is exactly what this layer exists to
+   catch. An exception is allowed only when it is listed individually, dated, carries a
+   reason checked against the source, and cancels itself the moment the finding it excuses
+   disappears.
+
 ## Architecture
 
 - **API:** frontend → nginx `location /api/` (prefix stripped via `proxy_pass` trailing slash) → backend on port 3000. In dev the frontend calls the backend directly (`VITE_API_URL`); there is no Nest global prefix.

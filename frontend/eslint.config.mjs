@@ -28,7 +28,13 @@ function forbidLayers(layers) {
 }
 
 export default tseslint.config(
-  { ignores: ['dist', 'node_modules', 'coverage'] },
+  // `dist-e2e` is the `smoke` row's OWN build output (playwright.config.ts's webServer,
+  // --outDir — see e2e/constants.ts's E2E_OUT_DIR). It is gitignored, but eslint's flat
+  // config does not read .gitignore, so without this line the first `npm run verify:full`
+  // leaves a minified bundle on disk and the NEXT `npm run verify` reports 2116 lint
+  // errors inside it — a false red with nothing wrong in the source tree. Measured
+  // 2026-09-15 on exactly that sequence.
+  { ignores: ['dist', 'dist-e2e', 'node_modules', 'coverage'] },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   reactHooks.configs.flat['recommended-latest'],
