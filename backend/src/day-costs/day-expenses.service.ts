@@ -84,18 +84,32 @@ export class DayExpensesService {
     id: string,
     dto: UpdateDayExpenseDto,
   ): Promise<DayExpense> {
-    const expense = await this.repo.findOne({ where: { id } });
-    if (!expense) throw new NotFoundException('Day expense not found');
-
-    const before = this.snapshot(expense);
-
-    if (dto.label != null) expense.label = this.assertLabel(dto.label);
-    if (dto.amount != null) {
-      this.assertPositive(dto.amount);
-      expense.amount = dto.amount;
-    }
+    // Validate the SHAPE of the request before opening a transaction — these
+    // throw on the DTO alone and hold no row while they do it.
+    const label = dto.label != null ? this.assertLabel(dto.label) : null;
+    if (dto.amount != null) this.assertPositive(dto.amount);
 
     return this.dataSource.transaction(async (m) => {
+      // READ INSIDE THE TRANSACTION, UNDER `pessimistic_write` — the idiom
+      // `ShiftsService.findOneRaw` documents («a decision taken on a row
+      // nobody holds is a check-then-write no matter how soon the write
+      // follows»), and here it protects the audit trail specifically. Read
+      // outside, two concurrent PATCHes both see `1000.00`, and the log ends
+      // up with two entries each claiming `before: '1000.00'` — one of them a
+      // transition that never happened. An audit entry is the ONLY compensating
+      // control this table has for being mutable, so a `before` it cannot
+      // vouch for is worse than none.
+      const expense = await m.findOne(DayExpense, {
+        where: { id },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!expense) throw new NotFoundException('Day expense not found');
+
+      const before = this.snapshot(expense);
+
+      if (label != null) expense.label = label;
+      if (dto.amount != null) expense.amount = dto.amount;
+
       const saved = await m.save(DayExpense, expense);
       const diff = diffFields(before, this.snapshot(saved), DAY_EXPENSE_FIELDS);
 
@@ -118,10 +132,17 @@ export class DayExpensesService {
   }
 
   async remove(actor: AuthenticatedUser, id: string): Promise<void> {
-    const expense = await this.repo.findOne({ where: { id } });
-    if (!expense) throw new NotFoundException('Day expense not found');
-
     await this.dataSource.transaction(async (m) => {
+      // Same lock, same reason as `update` — and it additionally makes the
+      // delete exactly-once: without it two concurrent removes both find the
+      // row and both write a `day-expense.deleted` entry, the second for a row
+      // that was already gone.
+      const expense = await m.findOne(DayExpense, {
+        where: { id },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!expense) throw new NotFoundException('Day expense not found');
+
       await m.delete(DayExpense, id);
 
       await this.audit.record(

@@ -8,8 +8,9 @@ describe('DayExpensesService', () => {
   const build = () => {
     const manager = {
       // Same shape as the real `EntityManager` calls the service makes —
-      // `save`/`delete` take the entity class first, matching
-      // `m.save(DayExpense, …)`/`m.delete(DayExpense, id)`.
+      // `save`/`delete`/`findOne` take the entity class first, matching
+      // `m.save(DayExpense, …)`/`m.delete(DayExpense, id)`/
+      // `m.findOne(DayExpense, …)`.
       save: jest.fn(async (_e: unknown, row: Record<string, unknown>) => ({
         id: 'e-1',
         created_at: new Date(),
@@ -17,16 +18,21 @@ describe('DayExpensesService', () => {
         ...row,
       })),
       delete: jest.fn(async () => ({ affected: 1 })),
-    };
-    const repo = {
+      // `update`/`remove` read the row through the TRANSACTION's manager, not
+      // the bare repository, and under `pessimistic_write` — see the service.
       findOne: jest.fn(
-        async (): Promise<{ id: string; shift_id: string; label: string; amount: string } | null> => ({
+        async (
+          _e: unknown,
+          _opts: unknown,
+        ): Promise<{ id: string; shift_id: string; label: string; amount: string } | null> => ({
           id: 'e-1',
           shift_id: 's-1',
           label: 'пальне',
           amount: '1000.00',
         }),
       ),
+    };
+    const repo = {
       find: jest.fn(async () => []),
     };
     // Real `DataSource.transaction` runs the callback against one EntityManager
@@ -100,11 +106,50 @@ describe('DayExpensesService', () => {
   });
 
   it('404s an unknown expense', async () => {
-    const { service, repo } = build();
-    repo.findOne = jest.fn(async () => null);
+    const { service, manager } = build();
+    manager.findOne = jest.fn(async (_e: unknown, _opts: unknown) => null);
     await expect(service.update(owner, 'nope', { amount: '1.00' })).rejects.toBeInstanceOf(
       NotFoundException,
     );
+  });
+
+  /**
+   * The audit entry is this table's ONLY compensating control for being
+   * mutable, and a `before` read off an unlocked row is one another writer may
+   * already have moved: two concurrent PATCHes would each log
+   * `before: '1000.00'` and one of those transitions never happened. So the
+   * read happens inside the transaction AND takes the row lock.
+   */
+  it('reads the row under a write lock, inside the transaction — the before/after is a claim', async () => {
+    const { service, manager, dataSource } = build();
+    await service.update(owner, 'e-1', { amount: '1200.00' });
+
+    expect(manager.findOne).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ lock: { mode: 'pessimistic_write' } }),
+    );
+    // Ordering, not just presence: the lock is worthless if the row is read
+    // before the transaction that will write it has even opened.
+    expect(dataSource.transaction).toHaveBeenCalled();
+    expect(manager.findOne.mock.invocationCallOrder[0]).toBeGreaterThan(
+      dataSource.transaction.mock.invocationCallOrder[0],
+    );
+  });
+
+  it('takes the same lock before deleting — the delete is exactly-once', async () => {
+    const { service, manager } = build();
+    await service.remove(owner, 'e-1');
+    expect(manager.findOne).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ lock: { mode: 'pessimistic_write' } }),
+    );
+  });
+
+  it('404s an unknown expense on DELETE rather than logging a phantom removal', async () => {
+    const { service, manager, audit } = build();
+    manager.findOne = jest.fn(async (_e: unknown, _opts: unknown) => null);
+    await expect(service.remove(owner, 'nope')).rejects.toBeInstanceOf(NotFoundException);
+    expect(audit.record).not.toHaveBeenCalled();
   });
 
   /**
