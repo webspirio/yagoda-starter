@@ -27,8 +27,8 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
  * line is frozen with its parent, while a reweigh line is written and voided on
  * its own, days after its header.
  */
-export class YagodaReweigh1788600000013 implements MigrationInterface {
-  name = 'YagodaReweigh1788600000013';
+export class YagodaReweigh1788600000014 implements MigrationInterface {
+  name = 'YagodaReweigh1788600000014';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`
