@@ -63,6 +63,11 @@ export default tseslint.config(
     // module only compares its amount against zero through `money.ts`'s `gt`.
     // The guard is what keeps a later `debt + top_up` from being written in
     // TypeScript, where it would look perfectly reasonable in review.
+    //
+    // `reweighs` joins because §8.1's net weight is computed in TypeScript —
+    // `(gross − pallet) − tare` — and it is the first module in the guard
+    // whose arithmetic is on WEIGHTS rather than on money, which is the same
+    // rule (foundation §5.1) and the easier one to forget.
     files: [
       'src/intakes/**/*.ts',
       'src/payouts/**/*.ts',
@@ -87,6 +92,7 @@ export default tseslint.config(
       'src/crates/crates.service.ts',
       'src/crates/crate-balance.service.ts',
       'src/intake-top-ups/**/*.ts',
+      'src/reweighs/**/*.ts',
     ],
     ignores: ['**/*.spec.ts', '**/*.db-spec.ts'],
     rules: {
