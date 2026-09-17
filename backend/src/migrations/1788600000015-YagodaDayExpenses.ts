@@ -26,8 +26,8 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
  * рядка пише керівник». `label` is free text on purpose; an enum here would be
  * the restriction the client explicitly does not have.
  */
-export class YagodaDayExpenses1788600000014 implements MigrationInterface {
-  name = 'YagodaDayExpenses1788600000014';
+export class YagodaDayExpenses1788600000015 implements MigrationInterface {
+  name = 'YagodaDayExpenses1788600000015';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`
