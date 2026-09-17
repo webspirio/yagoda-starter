@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { DataSource, Repository } from 'typeorm';
 import { DayExpense } from './day-expense.entity';
 import { CreateDayExpenseDto } from './dto/create-day-expense.dto';
 import { UpdateDayExpenseDto } from './dto/update-day-expense.dto';
@@ -21,12 +21,21 @@ const DAY_EXPENSE_FIELDS = ['label', 'amount'] as const;
  * for why. The cost of that choice is that a past day's собівартість can move
  * with no journal trace, which is exactly what every write here answers by
  * recording an audit entry with before/after.
+ *
+ * `create`/`update`/`remove` EACH RUN IN A TRANSACTION, row write and audit
+ * entry together, with the entry written through THAT transaction's manager
+ * — never a bare `undefined`. The audit entry is this table's compensating
+ * control for being mutable at all; one that could commit independently of
+ * the write it describes could also go missing independently of it (the row
+ * write commits, the audit insert then fails), leaving exactly the untracked
+ * drift the mutability argument assumes cannot happen.
  */
 @Injectable()
 export class DayExpensesService {
   constructor(
     @InjectRepository(DayExpense)
     private readonly repo: Repository<DayExpense>,
+    private readonly dataSource: DataSource,
     private readonly shifts: ShiftsService,
     private readonly audit: AuditService,
   ) {}
@@ -41,25 +50,27 @@ export class DayExpensesService {
 
     const label = this.assertLabel(dto.label);
 
-    const saved = await this.repo.save({
-      shift_id: shiftId,
-      label,
-      amount: dto.amount,
-      created_by_user_id: actor.sub,
+    return this.dataSource.transaction(async (m) => {
+      const saved = await m.save(DayExpense, {
+        shift_id: shiftId,
+        label,
+        amount: dto.amount,
+        created_by_user_id: actor.sub,
+      });
+
+      await this.audit.record(
+        {
+          action: 'day-expense.created',
+          actor_id: actor.sub,
+          target_type: 'day_expense',
+          target_id: saved.id,
+          after: { shift_id: saved.shift_id, label: saved.label, amount: saved.amount },
+        },
+        m,
+      );
+
+      return saved;
     });
-
-    await this.audit.record(
-      {
-        action: 'day-expense.created',
-        actor_id: actor.sub,
-        target_type: 'day_expense',
-        target_id: saved.id,
-        after: { shift_id: saved.shift_id, label: saved.label, amount: saved.amount },
-      },
-      undefined,
-    );
-
-    return saved;
   }
 
   async listForShift(shiftId: string): Promise<DayExpense[]> {
@@ -79,42 +90,46 @@ export class DayExpensesService {
     if (dto.label != null) expense.label = this.assertLabel(dto.label);
     if (dto.amount != null) expense.amount = dto.amount;
 
-    const saved = await this.repo.save(expense);
-    const diff = diffFields(before, this.snapshot(saved), DAY_EXPENSE_FIELDS);
+    return this.dataSource.transaction(async (m) => {
+      const saved = await m.save(DayExpense, expense);
+      const diff = diffFields(before, this.snapshot(saved), DAY_EXPENSE_FIELDS);
 
-    if (diff) {
-      await this.audit.record(
-        {
-          action: 'day-expense.updated',
-          actor_id: actor.sub,
-          target_type: 'day_expense',
-          target_id: saved.id,
-          before: diff.before,
-          after: diff.after,
-        },
-        undefined,
-      );
-    }
+      if (diff) {
+        await this.audit.record(
+          {
+            action: 'day-expense.updated',
+            actor_id: actor.sub,
+            target_type: 'day_expense',
+            target_id: saved.id,
+            before: diff.before,
+            after: diff.after,
+          },
+          m,
+        );
+      }
 
-    return saved;
+      return saved;
+    });
   }
 
   async remove(actor: AuthenticatedUser, id: string): Promise<void> {
     const expense = await this.repo.findOne({ where: { id } });
     if (!expense) throw new NotFoundException('Day expense not found');
 
-    await this.repo.delete(id);
+    await this.dataSource.transaction(async (m) => {
+      await m.delete(DayExpense, id);
 
-    await this.audit.record(
-      {
-        action: 'day-expense.deleted',
-        actor_id: actor.sub,
-        target_type: 'day_expense',
-        target_id: expense.id,
-        before: { shift_id: expense.shift_id, label: expense.label, amount: expense.amount },
-      },
-      undefined,
-    );
+      await this.audit.record(
+        {
+          action: 'day-expense.deleted',
+          actor_id: actor.sub,
+          target_type: 'day_expense',
+          target_id: expense.id,
+          before: { shift_id: expense.shift_id, label: expense.label, amount: expense.amount },
+        },
+        m,
+      );
+    });
   }
 
   /** A blank trimmed label is `LABEL_EMPTY`, same shape `CHK_day_expenses_label` guards in the DB. */
