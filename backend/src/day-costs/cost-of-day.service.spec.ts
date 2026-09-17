@@ -102,6 +102,31 @@ const PARTIAL: GradeTotalsRow[] = [
   },
 ];
 const svcPartial = build(PARTIAL, '0.00');
+
+/**
+ * THE CASE THE `PARTIAL` FIXTURE ALONE CANNOT REACH: a day holding one fully
+ * weighed product AND one partially weighed one. With only the partial
+ * product present, `per_kg` is `null` and every consequence of it is
+ * invisible — so this fixture is what shows whether «contributes nothing»
+ * really means nothing, in both directions.
+ *
+ *   Ожина  — 100 кг in, 100 кг weighed, 10 000,00 → complete
+ *   Малина — сорт 1: 100 кг in / 95 кг weighed / 10 000,00
+ *            сорт 2: 100 кг in / not weighed    /  8 000,00 → NOT complete
+ *   витрати 1 000,00
+ */
+const MIXED: GradeTotalsRow[] = [
+  {
+    product_id: 'p-black',
+    product_name: 'Ожина',
+    product_grade_id: 'g-black',
+    intake_net_kg: '100.00',
+    intake_amount: '10000.00',
+    reweigh_net_kg: '100.00',
+  },
+  ...PARTIAL,
+];
+const svcMixed = build(MIXED, '1000.00');
 const svcOpenShift = build(DAY, '3800.00', [], null, null);
 
 describe('CostOfDayService.forShift', () => {
@@ -183,6 +208,40 @@ describe('CostOfDayService.forShift', () => {
       const p = (await svcPartial.forShift(owner, 's-1')).products[0];
       expect(p.price_was).toBe('90.00');
       expect(p.price_by_our_weight).toBeNull();
+    });
+
+    /**
+     * The rule has to hold in BOTH directions on a day that also has a fully
+     * weighed product. Left out of the denominator but still handed a share
+     * of it, малина would price at 90,00 + 10,00 = 100,00 — a собівартість
+     * derived from a divisor its own 95 kilograms were deliberately excluded
+     * from, on a screen whose whole claim is «жодна гривня не загубилася».
+     */
+    it('does not COLLECT a basket share either, on a day that also has a complete product', async () => {
+      const out = await svcMixed.forShift(owner, 's-1');
+
+      // The complete product alone sets the denominator and the share.
+      expect(out.reweighed_kg).toBe('100.00');
+      expect(out.basket).toBe('1000.00');
+      expect(out.per_kg).toBe('10.00');
+
+      const blackberry = out.products.find((p) => p.product_name === 'Ожина')!;
+      expect(blackberry.complete).toBe(true);
+      expect(blackberry.price_was).toBe('100.00');
+      expect(blackberry.price_cost).toBe('110.00');
+
+      const raspberry = out.products.find((p) => p.product_name === 'Малина')!;
+      expect(raspberry.complete).toBe(false);
+      expect(raspberry.price_was).toBe('90.00');
+      // NOT '100.00' — the number a `perKg`-only guard would have printed.
+      expect(raspberry.price_cost).toBeNull();
+      expect(raspberry.price_by_our_weight).toBeNull();
+    });
+
+    it('still books no shortfall for the partial product when the day is mixed', async () => {
+      const out = await svcMixed.forShift(owner, 's-1');
+      expect(out.shortfall_amount).toBe('0.00');
+      expect(out.accrued).toBe('28000.00');
     });
   });
 

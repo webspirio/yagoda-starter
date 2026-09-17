@@ -54,7 +54,12 @@ export async function productCostRows(
     `SELECT i.id AS intake_id,
             COALESCE(tu.total, '0.00') AS top_up_total,
             COALESCE(
-              (SELECT json_agg(json_build_object('product_grade_id', ii.product_grade_id, 'amount', ii.amount::text))
+              -- ORDERED: allocate() settles a tie in remainders by position,
+              -- so an unordered json_agg would let the leftover kopiyka land
+              -- on a different grade between two reads of the same day. No
+              -- money is lost either way, but a собівартість that flickers by
+              -- a kopiyka on refresh is a bug report.
+              (SELECT json_agg(json_build_object('product_grade_id', ii.product_grade_id, 'amount', ii.amount::text) ORDER BY ii.item_order)
                  FROM intake_items ii WHERE ii.intake_id = i.id),
               '[]'::json
             ) AS lines

@@ -10,10 +10,20 @@ export interface CostOfDayProduct {
   product_name: string;
   /** «було» — the price the day's intake actually paid, per kilogram taken in. */
   price_was: string;
-  /** «собівартість» — `price_was` plus the day's per-kilogram basket share. `null` when nothing was weighed (§8.6). */
+  /** «собівартість» — `price_was` plus the day's per-kilogram basket share.
+   *  `null` when the day's `per_kg` is itself a dash (nothing weighed at all),
+   *  AND `null` for a product that is not `complete`: §3.15 keeps a partially
+   *  weighed product out of `переважено` and its недостача out of the basket,
+   *  so charging it a share of a denominator its own kilograms were excluded
+   *  from would be arithmetic pointing two ways at once. «Contributes nothing»
+   *  has to mean it collects nothing either. */
   price_cost: string | null;
   /** «нараховане ÷ НАША вага» — priced against the BASE's weight, not the receiver's. `null` when nothing was weighed. */
   price_by_our_weight: string | null;
+  /** §3.15 — every grade this product had in this shift is on the scale.
+   *  `false` is what makes the two nulls above a «не перезважено» dash rather
+   *  than a zero, so the screen can say which of the two it is. */
+  complete: boolean;
 }
 
 export interface CostOfDayResponse {
@@ -116,7 +126,13 @@ export class CostOfDayService {
   private buildProducts(rows: ProductCostRow[], perKg: string | null): CostOfDayProduct[] {
     return rows.map((r) => {
       const priceWas = div(r.accrued, r.intake_net_kg);
-      const priceCost = perKg === null ? null : add(priceWas, perKg);
+      // §3.15 — `r.complete`, not just `perKg`. A partially weighed product
+      // contributed no kilograms to `reweighedKg` and no недостача to the
+      // basket, so it does not collect a share of either. Without the
+      // `r.complete` guard such a product still read `price_was + per_kg` on
+      // a day that also had a fully weighed product — a price derived from a
+      // divisor it was deliberately left out of.
+      const priceCost = perKg === null || !r.complete ? null : add(priceWas, perKg);
       const priceByOurWeight = r.reweigh_net_kg === null ? null : div(r.accrued, r.reweigh_net_kg);
 
       return {
@@ -125,6 +141,7 @@ export class CostOfDayService {
         price_was: priceWas,
         price_cost: priceCost,
         price_by_our_weight: priceByOurWeight,
+        complete: r.complete,
       };
     });
   }
