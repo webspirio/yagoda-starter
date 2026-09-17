@@ -1,5 +1,6 @@
 import { IsNotEmpty, IsString, Matches, MaxLength, ValidateIf } from 'class-validator';
 import { Transform } from 'class-transformer';
+import { CanonicalDecimal } from '../../common/dto/canonical-decimal';
 
 /**
  * The one `PATCH` DTO in this slice that patches a real, standing row — every
@@ -22,7 +23,20 @@ export class UpdateDayExpenseDto {
   @MaxLength(120)
   label?: string;
 
+  /**
+   * `@CanonicalDecimal()` MATTERS MOST HERE, and this is the one table in
+   * the schema where it does. `PATCH {"amount":"1000"}` against a row
+   * already holding `1000.00` is a no-op, but `diffFields` compares with
+   * `!==`, so without canonicalisation it records a `day-expense.updated`
+   * entry reading `before "1000.00"` / `after "1000"` for a change that
+   * never happened — and then persists the uncanonical string. §3.8 makes
+   * that audit trail the SOLE compensating control for this table being
+   * mutable at all; a trail with invented entries in it is not one.
+   */
   @ValidateIf((o: UpdateDayExpenseDto) => o.amount !== undefined)
-  @Matches(/^\d+(\.\d{1,2})?$/, { message: 'amount must be a decimal with at most 2 places' })
+  @Matches(/^\d{1,10}(\.\d{1,2})?$/, {
+    message: 'amount must be a decimal string with at most 2 decimal places',
+  })
+  @CanonicalDecimal()
   amount?: string;
 }

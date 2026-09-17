@@ -5,21 +5,40 @@ import {
   IsArray,
   IsInt,
   IsOptional,
-  IsPositive,
   IsUUID,
   Matches,
+  Max,
+  Min,
   ValidateNested,
 } from 'class-validator';
+import { CanonicalDecimal } from '../../common/dto/canonical-decimal';
 
-/** A decimal string with at most two places — the only shape `money.ts` accepts. */
-const DECIMAL = /^\d+(\.\d{1,2})?$/;
+/**
+ * A weight that `numeric(10,2)` can actually hold: at most 8 integer digits
+ * and 2 places, DIGIT-BOUNDED — the same shape and the same bound as
+ * `CreateIntakeItemDto`'s `WEIGHT`. An unbounded `\d+` is not merely
+ * untidy: this backend maps no `QueryFailedError`
+ * (`common/filters/all-exceptions.filter.ts`), so an over-long value
+ * reaches Postgres and comes back as an opaque 500 where a 400 belongs.
+ */
+const WEIGHT = /^\d{1,8}(\.\d{1,2})?$/;
 
 export class ReweighTareLineDto {
   @IsUUID()
   tare_type_id: string;
 
+  /**
+   * `@Min(1)` rather than `@IsPositive()`, matching `CreateIntakeTareDto`,
+   * and with the UPPER bound that DTO does not need because nothing
+   * downstream of it builds a decimal string out of the count.
+   * `Number.isInteger(1e21)` is `true`, so `@IsInt()` waves `1e21` through;
+   * `ReweighsService` then builds `` `${units}.00` `` and hands
+   * `'1e+21.00'` to `money.parse`, which throws — a 500 from a value the
+   * edge should have refused.
+   */
   @IsInt()
-  @IsPositive()
+  @Min(1)
+  @Max(100_000)
   units: number;
 }
 
@@ -27,11 +46,13 @@ export class CreateReweighItemDto {
   @IsUUID()
   product_grade_id: string;
 
-  @Matches(DECIMAL, { message: 'gross_kg must be a decimal with at most 2 places' })
+  @Matches(WEIGHT, { message: 'gross_kg must be a decimal with at most 2 places' })
+  @CanonicalDecimal()
   gross_kg: string;
 
   @IsOptional()
-  @Matches(DECIMAL, { message: 'pallet_kg must be a decimal with at most 2 places' })
+  @Matches(WEIGHT, { message: 'pallet_kg must be a decimal with at most 2 places' })
+  @CanonicalDecimal()
   pallet_kg?: string;
 
   /**

@@ -106,4 +106,38 @@ describe('DayExpensesService', () => {
       NotFoundException,
     );
   });
+
+  /**
+   * `CHK_day_expenses_amount` is `amount > 0`, and nothing in this backend
+   * maps a `QueryFailedError`, so a '0.00' that reaches Postgres comes back
+   * as a 500. `IntakeTopUpsService` answers the identical case with a 400 and
+   * a `code`; so does this one, and for the same reason.
+   */
+  it('REFUSES a zero amount with a code, not an opaque 500 — CHK_day_expenses_amount', async () => {
+    const { service, manager } = build();
+    await expect(service.create(owner, 's-1', { label: 'пальне', amount: '0.00' })).rejects.toThrow(
+      BadRequestException,
+    );
+    await expect(
+      service.create(owner, 's-1', { label: 'пальне', amount: '0.00' }),
+    ).rejects.toMatchObject({ response: { code: 'EXPENSE_AMOUNT_NOT_POSITIVE' } });
+    expect(manager.save).not.toHaveBeenCalled();
+  });
+
+  it('REFUSES a zero amount on PATCH too — the row is mutable, the CHECK is not', async () => {
+    const { service, manager } = build();
+    await expect(service.update(owner, 'e-1', { amount: '0.00' })).rejects.toMatchObject({
+      response: { code: 'EXPENSE_AMOUNT_NOT_POSITIVE' },
+    });
+    expect(manager.save).not.toHaveBeenCalled();
+  });
+
+  it('writes NO audit entry for a PATCH that changes nothing', async () => {
+    const { service, audit } = build();
+    // The repo stub holds `amount: '1000.00'`; `@CanonicalDecimal()` has
+    // already turned the caller's '1000' into '1000.00' by the time it
+    // arrives, so `diffFields` sees no change at all.
+    await service.update(owner, 'e-1', { amount: '1000.00' });
+    expect(audit.record).not.toHaveBeenCalled();
+  });
 });

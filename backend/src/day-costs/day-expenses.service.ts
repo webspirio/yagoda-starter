@@ -7,6 +7,7 @@ import { UpdateDayExpenseDto } from './dto/update-day-expense.dto';
 import { ShiftsService } from '../shifts/shifts.service';
 import { AuditService } from '../audit/audit.service';
 import { diffFields } from '../common/diff-fields';
+import { gt } from '../common/money';
 import type { AuthenticatedUser } from '../auth/jwt.strategy';
 
 const DAY_EXPENSE_FIELDS = ['label', 'amount'] as const;
@@ -49,6 +50,7 @@ export class DayExpensesService {
     if (!shift) throw new NotFoundException('Shift not found');
 
     const label = this.assertLabel(dto.label);
+    this.assertPositive(dto.amount);
 
     return this.dataSource.transaction(async (m) => {
       const saved = await m.save(DayExpense, {
@@ -88,7 +90,10 @@ export class DayExpensesService {
     const before = this.snapshot(expense);
 
     if (dto.label != null) expense.label = this.assertLabel(dto.label);
-    if (dto.amount != null) expense.amount = dto.amount;
+    if (dto.amount != null) {
+      this.assertPositive(dto.amount);
+      expense.amount = dto.amount;
+    }
 
     return this.dataSource.transaction(async (m) => {
       const saved = await m.save(DayExpense, expense);
@@ -139,6 +144,25 @@ export class DayExpensesService {
       throw new BadRequestException({ message: 'label must not be empty', code: 'LABEL_EMPTY' });
     }
     return trimmed;
+  }
+
+  /**
+   * `CHK_day_expenses_amount` is `amount > 0`. The CHECK is the real
+   * guarantee; this pre-check only keeps the refusal a 400 with a `code`
+   * instead of the opaque 500 a `QueryFailedError` becomes, since nothing in
+   * this backend maps one. Same shape and same reasoning as
+   * `IntakeTopUpsService`'s `TOP_UP_AMOUNT_NOT_POSITIVE`.
+   *
+   * `gt`, never `>`: `amount` is a decimal STRING and JS string comparison
+   * would make '9.00' greater than '10.00' (foundation §5.1).
+   */
+  private assertPositive(amount: string): void {
+    if (!gt(amount, '0')) {
+      throw new BadRequestException({
+        message: 'An expense must cost something',
+        code: 'EXPENSE_AMOUNT_NOT_POSITIVE',
+      });
+    }
   }
 
   private snapshot(expense: DayExpense): Record<(typeof DAY_EXPENSE_FIELDS)[number], unknown> {
