@@ -48,8 +48,6 @@ export class ReweighsService {
     const shift = await this.shifts.findOneRaw(shiftId);
     if (!shift) throw new NotFoundException('Shift not found');
 
-    const tareWeight = await this.resolveTareWeight(dto);
-
     return this.dataSource.transaction(async (m) => {
       const reweigh = await this.ensureHeader(m, shiftId);
 
@@ -66,6 +64,15 @@ export class ReweighsService {
           code: 'GRADE_NOT_ACCEPTED',
         });
       }
+
+      // Spec §5.1 orders the checks 1-5 with tare at 4, and the order is the
+      // message the client asked for: «Того дня тут нічого не приймали» has to
+      // win over an unknown tare type, or §8.1's own example is reachable only
+      // once everything else about the request is already valid. Resolved
+      // INSIDE the transaction (and through `m`) for the same reason
+      // `IntakesService.snapshotTare` is — the snapshot and the line it is
+      // snapshotted onto are one atomic read-then-write, not two.
+      const tareWeight = await this.resolveTareWeight(dto, m);
 
       const pallet = dto.pallet_kg ?? '0.00';
       // §8.1 — pallet FIRST, tare second. Never a human's number.
@@ -106,6 +113,20 @@ export class ReweighsService {
 
       const saved = await m.save(ReweighItem, item);
 
+      // RE-READ WITH RELATIONS. `m.save` returns the entity it was handed, and
+      // that one carries `product_grade_id`/`tare_type_id` but no loaded
+      // `product_grade` or `tare_type` — so `toReweighItemResponse` would fill
+      // `product_grade_name`, `product_id`, `product_name` and every
+      // `tare[].tare_type_name` with `undefined`. `voidItem` reads its row
+      // WITH those relations and returns them, so without this the same
+      // TypeScript type came back in two different shapes depending on which
+      // verb produced it, and the create response — the one the reception
+      // screen renders immediately — was the impoverished one.
+      const withRelations = await m.findOneOrFail(ReweighItem, {
+        where: { id: saved.id },
+        relations: { product_grade: { product: true }, tare: { tare_type: true } },
+      });
+
       await this.audit.record(
         {
           action: 'reweigh-item.created',
@@ -117,7 +138,7 @@ export class ReweighsService {
         m,
       );
 
-      return toReweighItemResponse(saved);
+      return toReweighItemResponse(withRelations);
     });
   }
 
@@ -128,18 +149,44 @@ export class ReweighsService {
    * report time instead would let a change to «Чешка» rewrite last week's net
    * weight, and the недостача with it.
    */
-  private async resolveTareWeight(dto: CreateReweighItemDto): Promise<string> {
+  private async resolveTareWeight(dto: CreateReweighItemDto, m: EntityManager): Promise<string> {
     if (dto.tare.length === 0) return '0.00';
+
+    // THE SAME REFUSAL `intake-lines.ts` MAKES, for the same reason: both
+    // entries would resolve against the map below and be summed, double-
+    // counting the units into `tare_weight_kg`, and the cascade insert would
+    // then die on `PK_reweigh_item_tare_types` — a 23505 no `QueryFailedError`
+    // mapping in this backend catches, so an ordinary typo would surface as a
+    // generic 500 instead of a message naming the tare type.
+    const seen = new Set<string>();
+    for (const t of dto.tare) {
+      if (seen.has(t.tare_type_id)) {
+        throw new BadRequestException({
+          message: `tare type ${t.tare_type_id} is listed twice on one line — record it once with the total units`,
+          code: 'TARE_TYPE_DUPLICATED',
+        });
+      }
+      seen.add(t.tare_type_id);
+    }
 
     // `findManyRaw`, not a lookup per line: the tare breakdown is up to ten
     // rows and a loop of awaits here is an N+1 on the hottest write in §8.
     const ids = dto.tare.map((t) => t.tare_type_id);
-    const types = await this.tareTypes.findManyRaw(ids);
+    const types = await this.tareTypes.findManyRaw(ids, m);
     const byId = new Map(types.map((t) => [t.id, t]));
 
     const parts = dto.tare.map((line) => {
       const type = byId.get(line.tare_type_id);
-      if (!type) throw new NotFoundException('Tare type not found');
+      // `findManyRaw` filters `is_active`, so a DEACTIVATED type lands here
+      // too — which is why this says «unknown or inactive» and matches
+      // `intakes`' `TARE_TYPE_UNKNOWN` rather than reading as a bare 404 that
+      // blames the id.
+      if (!type) {
+        throw new BadRequestException({
+          message: `Unknown or inactive tare type ${line.tare_type_id}`,
+          code: 'TARE_TYPE_UNKNOWN',
+        });
+      }
       // `units` is a COUNT, so it is widened to a scale-2 string rather than
       // multiplied as a number — foundation §5.1 binds weights too.
       return mul(type.weight_kg, `${line.units}.00`);
@@ -172,6 +219,11 @@ export class ReweighsService {
     )) as {
       id: string;
     }[];
+    // Unreachable under READ COMMITTED — the upsert above either inserted the
+    // row or blocked on the transaction that did, and nothing deletes a
+    // `reweighs` header. Spelled out anyway so a future delete path fails as a
+    // named error rather than as `Cannot read properties of undefined`.
+    if (!rows[0]) throw new ConflictException('Reweigh header vanished while being created');
     return { id: rows[0].id, shift_id: shiftId } as Reweigh;
   }
 

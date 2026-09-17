@@ -120,6 +120,63 @@ describe('ReweighsService.addItem (DB)', () => {
     return { shiftId: shift.id as string, gradeId: grade.id as string, tareId: tare.id as string };
   };
 
+  /**
+   * `POST` and `POST …/void` share one `ReweighItemResponse` type, so they must
+   * share one SHAPE. `m.save()` hands back the entity it was given, relations
+   * unloaded, and the mapper then reads `product_grade.name` off `undefined`
+   * — the void path, which re-reads with relations, filled these in while the
+   * create path returned nulls for all of them.
+   */
+  it('returns the grade, product and tare NAMES from create — the same shape void returns', async () => {
+    const { shiftId, gradeId, tareId } = await fixture();
+
+    const created = await service.addItem(actor(), shiftId, {
+      product_grade_id: gradeId,
+      gross_kg: '100.00',
+      tare: [{ tare_type_id: tareId, units: 5 }],
+    });
+
+    expect(created.product_grade_name).toBeTruthy();
+    expect(created.product_id).toBeTruthy();
+    expect(created.product_name).toBeTruthy();
+    expect(created.tare[0].tare_type_name).toBeTruthy();
+
+    const voided = await service.voidItem(actor(), created.id, {
+      reason: 'переважили не ту партію',
+    });
+    expect(Object.keys(created).sort()).toEqual(Object.keys(voided).sort());
+    expect(voided.product_grade_name).toBe(created.product_grade_name);
+    expect(voided.tare[0].tare_type_name).toBe(created.tare[0].tare_type_name);
+  });
+
+  /**
+   * The same tare type twice on one line would be summed into
+   * `tare_weight_kg` and then die on `PK_reweigh_item_tare_types` — a 23505
+   * nothing here maps, so a generic 500. `intakes` refuses it by name; so
+   * does this.
+   */
+  it('REFUSES the same tare type listed twice on one line, with a code', async () => {
+    const { shiftId, gradeId, tareId } = await fixture();
+
+    await expect(
+      service.addItem(actor(), shiftId, {
+        product_grade_id: gradeId,
+        gross_kg: '100.00',
+        tare: [
+          { tare_type_id: tareId, units: 5 },
+          { tare_type_id: tareId, units: 3 },
+        ],
+      }),
+    ).rejects.toMatchObject({ response: { code: 'TARE_TYPE_DUPLICATED' } });
+
+    const rows = await ds.query(
+      `SELECT count(*)::int AS n FROM reweigh_items ri
+         JOIN reweighs r ON r.id = ri.reweigh_id WHERE r.shift_id = $1`,
+      [shiftId],
+    );
+    expect(rows[0].n).toBe(0);
+  });
+
   it('creates exactly ONE header for two concurrent first lines', async () => {
     const { shiftId, gradeId } = await fixture();
     const addLine = (gross: string) =>

@@ -7,16 +7,26 @@ import { UserRole } from '../users/user-role.enum';
 const owner = { sub: 'u-owner', role: UserRole.NetworkOwner, collection_point_id: null } as never;
 
 const build = (overrides: Record<string, unknown> = {}) => {
+    let lastSaved: Record<string, unknown> = {};
     const manager = {
       query: jest.fn(),
       findOne: jest.fn(),
       // Real TypeORM populates `id`/`created_at` from the DB response after an
       // insert — this mock does the same, since the mapper reads both.
-      save: jest.fn(async (_e: unknown, row: Record<string, unknown>) => ({
-        id: 'ri-1',
-        created_at: new Date('2026-09-17T07:00:00.000Z'),
-        ...row,
-      })),
+      save: jest.fn(async (_e: unknown, row: Record<string, unknown>) => {
+        lastSaved = {
+          id: 'ri-1',
+          created_at: new Date('2026-09-17T07:00:00.000Z'),
+          ...row,
+        };
+        return lastSaved;
+      }),
+      // `addItem` RE-READS the saved line with its `product_grade`/`tare_type`
+      // relations before mapping, so the create response carries the same
+      // names the void response does. This stub echoes whatever `save`
+      // produced — the relation-loading itself is proven in
+      // `reweighs.db-spec.ts`, where the relations are real.
+      findOneOrFail: jest.fn(async () => lastSaved),
       getRepository: jest.fn(),
       create: jest.fn((_e: unknown, row: unknown) => row),
     };
