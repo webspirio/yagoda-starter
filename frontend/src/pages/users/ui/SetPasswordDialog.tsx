@@ -9,7 +9,7 @@ import {
   DialogTitle,
 } from '@/shared/ui/dialog';
 import { Field } from '@/shared/ui/field';
-import { TextInput } from '@/shared/ui/text-input';
+import { PasswordInput } from '@/shared/ui/password-input';
 import { Button } from '@/shared/ui/button';
 import { toast } from '@/shared/ui/toast';
 import { useSetPasswordMutation } from '../api/users';
@@ -77,9 +77,8 @@ export function SetPasswordDialog({
             error={errors.password?.message}
           >
             {(a11y) => (
-              <TextInput
+              <PasswordInput
                 {...a11y}
-                type="password"
                 autoComplete="new-password"
                 {...register('password', {
                   required: 'users.errors.passwordShort',

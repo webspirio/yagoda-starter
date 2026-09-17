@@ -275,6 +275,41 @@ export class UserAdminService {
     });
   }
 
+  /**
+   * The password itself, back to the owner who administers the account — issue
+   * #11: «Я також хочу бачити логін та пароль кожного користувача». This is
+   * the ONLY reader of the vault, and the reason it can exist at all is that
+   * this route is owner-only and audited.
+   *
+   * `password: null` is an ordinary answer, not an error, and the two reasons
+   * for it are told apart by `vault_enabled` so the registry can say what to
+   * do: no key configured (the deployment has the feature off) versus a
+   * credential issued before the vault, which the owner fixes by reissuing
+   * that one password.
+   */
+  async revealPassword(
+    actor: AuthenticatedUser,
+    userId: string,
+  ): Promise<{ password: string | null; vault_enabled: boolean }> {
+    // Before the reveal: an unknown id must 404 rather than quietly audit a
+    // reading of nothing.
+    await this.users.findById(userId);
+    const password = await this.credentials.reveal(userId);
+
+    // THE FACT, NEVER THE VALUE — same rule as `user.password-changed` above.
+    // `revealed` distinguishes an owner who now knows the password from one
+    // who was told there was nothing stored; both are worth keeping.
+    await this.audit.record({
+      action: 'user.password-viewed',
+      actor_id: actor.sub,
+      target_type: 'user',
+      target_id: userId,
+      after: { revealed: password !== null },
+    });
+
+    return { password, vault_enabled: this.credentials.vaultEnabled };
+  }
+
   private assertRolePointCoherent(role: UserRole, pointId: string | null): void {
     if (role === UserRole.PointOperator && !pointId) {
       throw new BadRequestException({

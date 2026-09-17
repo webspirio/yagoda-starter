@@ -34,6 +34,34 @@ describe('envValidationSchema', () => {
     expect(error).toBeUndefined();
   });
 
+  // The vault key is optional, but a WRONG one must fail at boot rather than
+  // quietly writing copies nobody can ever open again.
+  it('accepts a 32-byte base64 PASSWORD_VAULT_KEY', () => {
+    const { error } = validate({ PASSWORD_VAULT_KEY: Buffer.alloc(32, 7).toString('base64') });
+    expect(error).toBeUndefined();
+  });
+
+  it('treats an empty PASSWORD_VAULT_KEY as unset — the vault is off by default', () => {
+    const { error, value } = validate({ PASSWORD_VAULT_KEY: '' });
+    expect(error).toBeUndefined();
+    expect(value.PASSWORD_VAULT_KEY).toBeUndefined();
+  });
+
+  it('rejects a PASSWORD_VAULT_KEY that is not 32 bytes of base64', () => {
+    expect(validate({ PASSWORD_VAULT_KEY: 'not base64!!' }).error?.message).toContain(
+      'PASSWORD_VAULT_KEY',
+    );
+    expect(
+      validate({ PASSWORD_VAULT_KEY: Buffer.alloc(16, 7).toString('base64') }).error?.message,
+    ).toContain('PASSWORD_VAULT_KEY');
+    // 33 bytes is ALSO 44 base64 characters. A character-count rule accepts
+    // this one, boot succeeds, and nothing is ever sealed — the exact silent
+    // failure the byte-length check exists to prevent.
+    expect(
+      validate({ PASSWORD_VAULT_KEY: Buffer.alloc(33, 7).toString('base64') }).error?.message,
+    ).toContain('PASSWORD_VAULT_KEY');
+  });
+
   it('still requires APP_URL and a 32-character JWT_SECRET', () => {
     const { error } = envValidationSchema.validate({}, { allowUnknown: true, abortEarly: false });
     expect(error?.message).toContain('APP_URL');

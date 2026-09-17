@@ -7,6 +7,7 @@ import { useSession } from '@/entities/user';
 import { Button } from '@/shared/ui/button';
 import { Field } from '@/shared/ui/field';
 import { TextInput } from '@/shared/ui/text-input';
+import { PasswordInput } from '@/shared/ui/password-input';
 import { login } from '../api/authApi';
 
 export function LoginForm() {
@@ -63,9 +64,8 @@ export function LoginForm() {
 
       <Field name="password" label={t('auth.password')}>
         {(a11y) => (
-          <TextInput
+          <PasswordInput
             {...a11y}
-            type="password"
             autoComplete="current-password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}

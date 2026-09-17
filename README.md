@@ -146,6 +146,13 @@ environment variables so the network has an owner able to sign in at all
   account) and optionally `BOOTSTRAP_OWNER_FIRST_NAME`,
   `BOOTSTRAP_OWNER_LAST_NAME`.
 
+Optionally set `PASSWORD_VAULT_KEY` (`openssl rand -base64 32`) as well. It
+turns on the owner-only, audited `GET /users/:id/password`, which is what puts
+the eye beside each row on «Користувачі»: alongside the scrypt hash the app
+then keeps an AES-256-GCM copy of every password it issues, decryptable only
+with that key. Leaving it unset is the safer default and the login path is
+identical either way — see `backend/src/users/secret-box.ts` for the trade.
+
 They are read exactly once, by the `BootstrapOwner` migration, and only when
 the `users` table is empty — harmless to leave set afterward, but pointless,
 since the migration has already run and will not run again. Unset in

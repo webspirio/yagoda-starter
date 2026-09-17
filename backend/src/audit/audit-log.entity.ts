@@ -24,6 +24,10 @@ export const AUDIT_ACTIONS = [
   'user.avatar-changed',
   'user.created',
   'user.password-changed',
+  // The owner READING a password back (issue #11). A reversible copy is only
+  // as safe as the record of who opened it, so the reading is audited exactly
+  // like the writing.
+  'user.password-viewed',
   'point.created',
   'point.updated',
   'point.target-changed',

@@ -67,6 +67,11 @@ describe('auth + me pipeline (HTTP)', () => {
   beforeAll(async () => {
     process.env.DB_NAME = resolveTestDatabaseName();
     relaxThrottleForTests();
+    // The owner-readable password vault, ON for this process regardless of
+    // what `.env` holds — `db-harness.ts` loads it, so leaving this to the
+    // developer's own file would make the reveal test pass locally and fail in
+    // CI. 32 bytes, base64, exactly what env.schema.ts demands.
+    process.env.PASSWORD_VAULT_KEY = Buffer.alloc(32, 11).toString('base64');
 
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
     app = moduleRef.createNestApplication();
@@ -309,6 +314,15 @@ describe('auth + me pipeline (HTTP)', () => {
       .get('/users')
       .set('Authorization', `Bearer ${hiredToken}`)
       .expect(403);
+    // The one route that returns a plaintext password gets its own assertion
+    // rather than leaning on the class-level role, because THIS is the request
+    // whose 200 would be a leak — an operator must never read a colleague's
+    // (or their own) password back. Checked while this account is still an
+    // operator; it is promoted further down.
+    await request(app.getHttpServer())
+      .get(`/users/${hiredId}/password`)
+      .set('Authorization', `Bearer ${hiredToken}`)
+      .expect(403);
     await request(app.getHttpServer())
       .get('/users')
       .set('Authorization', `Bearer ${bossToken}`)
@@ -358,6 +372,24 @@ describe('auth + me pipeline (HTTP)', () => {
       .send({ password: 'nova-parolya' })
       .expect(204);
     expect(await credentials.verify(hiredId, 'nova-parolya')).toBe(true);
+
+    // …AND THE OWNER CAN READ IT BACK (issue #11). The value never rides along
+    // on a user response — `createRes` above has no `password` key — it comes
+    // only from this route, which is owner-only and audited. `vault_enabled`
+    // is true because this spec sets PASSWORD_VAULT_KEY for its own process;
+    // without a key the same call answers `{ password: null, vault_enabled:
+    // false }` and nothing else changes.
+    const revealed = await request(app.getHttpServer())
+      .get(`/users/${hiredId}/password`)
+      .set('Authorization', `Bearer ${bossToken}`)
+      .expect(200);
+    expect(revealed.body).toEqual({ password: 'nova-parolya', vault_enabled: true });
+    // Plaintext must not be storable: without this the body lands in the
+    // browser's on-disk HTTP cache and outlives the sign-out that clears the
+    // token. Express stamps an ETag on it either way.
+    expect(revealed.headers['cache-control']).toBe('no-store');
+    expect(createRes.body.password).toBeUndefined();
+    expect(renamed.body.password).toBeUndefined();
 
     // Self-lockout, refused outright — there are plenty of other active owners
     // in this database, and it is still refused.

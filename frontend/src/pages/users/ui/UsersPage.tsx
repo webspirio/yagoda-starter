@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ListPage } from '@/shared/ui/templates/list-page';
 import type { Column } from '@/shared/ui/data-table';
@@ -7,10 +7,11 @@ import { Badge } from '@/shared/ui/badge';
 import { EmptyState } from '@/shared/ui/empty-state';
 import { Spinner } from '@/shared/ui/spinner';
 import { usePointOptionsQuery } from '@/entities/collection-point';
-import { useUsersQuery } from '../api/users';
+import { useRevealPasswordMutation, useUsersQuery } from '../api/users';
 import { UserFormDialog } from './UserFormDialog';
 import { SetPasswordDialog } from './SetPasswordDialog';
-import type { AdminUser } from '../model/user';
+import { PasswordCell } from './PasswordCell';
+import type { AdminUser, RevealedPassword } from '../model/user';
 
 export function UsersPage() {
   const { t } = useTranslation();
@@ -18,6 +19,41 @@ export function UsersPage() {
   const { data: points } = usePointOptionsQuery();
 
   const [editing, setEditing] = useState<AdminUser | null>(null);
+
+  /**
+   * THE PASSWORD THE OWNER IS LOOKING AT, and there is only ever one. Held
+   * here rather than per row (issue #11): the page is what decides which row
+   * is open, so closing a row and forgetting its password are the same event.
+   * A `PasswordCell` keeping its own copy would still be holding one after the
+   * page had handed the open row to a different cell.
+   */
+  const reveal = useRevealPasswordMutation();
+  const [openPasswordFor, setOpenPasswordFor] = useState<string | null>(null);
+  const [password, setPassword] = useState<RevealedPassword | null>(null);
+  const [failedPasswordFor, setFailedPasswordFor] = useState<string | null>(null);
+  // Which press a resolving request belongs to. Open row A, then row B before
+  // A answers, and without this A's password lands in B's cell — the owner
+  // then reads out a password that cannot sign that person in.
+  const pressSeq = useRef(0);
+
+  const togglePassword = async (id: string) => {
+    const press = ++pressSeq.current;
+    const closing = openPasswordFor === id;
+    setPassword(null);
+    setFailedPasswordFor(null);
+    setOpenPasswordFor(closing ? null : id);
+    // `reset()` so the plaintext leaves the mutation cache with the row, not
+    // at some later garbage collection.
+    reveal.reset();
+    if (closing) return;
+
+    try {
+      const result = await reveal.mutateAsync(id);
+      if (pressSeq.current === press) setPassword(result);
+    } catch {
+      if (pressSeq.current === press) setFailedPasswordFor(id);
+    }
+  };
   const [formOpen, setFormOpen] = useState(false);
   const [passwordOpen, setPasswordOpen] = useState(false);
   // Bumped on every open so each dialog remounts with fresh RHF defaults.
@@ -50,6 +86,20 @@ export function UsersPage() {
       cell: (u) => <span className="font-medium">{u.display_name}</span>,
     },
     { id: 'login', header: t('users.col.login'), cell: (u) => u.login },
+    {
+      id: 'password',
+      header: t('users.col.password'),
+      // Fetched per press, never carried by the list response.
+      cell: (u) => (
+        <PasswordCell
+          isOpen={openPasswordFor === u.id}
+          isPending={openPasswordFor === u.id && reveal.isPending}
+          value={openPasswordFor === u.id ? password : null}
+          hasFailed={failedPasswordFor === u.id}
+          onToggle={() => void togglePassword(u.id)}
+        />
+      ),
+    },
     { id: 'role', header: t('users.col.role'), cell: (u) => t(`users.roleLabel.${u.role}`) },
     {
       id: 'point',

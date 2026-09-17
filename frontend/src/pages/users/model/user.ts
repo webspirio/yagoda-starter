@@ -58,6 +58,18 @@ export interface SetPasswordInput {
 }
 
 /**
+ * `GET /users/:id/password`. `password` is null whenever there is nothing to
+ * show, and `vault_enabled` says WHY: false means the deployment has no
+ * `PASSWORD_VAULT_KEY` (nothing the owner can do in the UI), true means this
+ * particular password was issued before the vault and reissuing it makes it
+ * readable.
+ */
+export interface RevealedPassword {
+  password: string | null;
+  vault_enabled: boolean;
+}
+
+/**
  * Form values — all strings/booleans for the controls. `collection_point_id`
  * is '' when unset; `role` defaults to `point_operator` (the common case).
  */

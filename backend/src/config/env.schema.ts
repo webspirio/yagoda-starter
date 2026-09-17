@@ -42,6 +42,24 @@ export const envValidationSchema = Joi.object({
   BOOTSTRAP_OWNER_PASSWORD: Joi.string().empty('').min(8).optional(),
   BOOTSTRAP_OWNER_FIRST_NAME: Joi.string().empty('').optional(),
   BOOTSTRAP_OWNER_LAST_NAME: Joi.string().empty('').optional(),
+  // Makes an issued password readable back to the network owner (issue #11).
+  // 32 random bytes in base64 — `openssl rand -base64 32`.
+  //
+  // THE RULE IS ON THE DECODED BYTES, NOT THE CHARACTERS, and that is not
+  // pedantry: 33 bytes also encodes to 44 base64 characters, so a
+  // character-count rule waves through a key `createCipheriv` cannot use.
+  // Boot would then succeed, nothing would ever be sealed, and every row would
+  // read «перевидайте пароль» forever — with reissuing no help. Unset (or '',
+  // the ${VAR:-} case described above) means the vault is off: passwords are
+  // hashed and nothing more.
+  PASSWORD_VAULT_KEY: Joi.string()
+    .empty('')
+    .base64()
+    .custom((value: string, helpers) =>
+      Buffer.from(value, 'base64').length === 32 ? value : helpers.error('any.invalid'),
+    )
+    .optional()
+    .messages({ 'any.invalid': 'PASSWORD_VAULT_KEY must decode to exactly 32 bytes' }),
   UPLOADS_DIR: Joi.string().optional(),
   // Baked into the image by backend/Dockerfile (ARG APP_COMMIT); read by
   // GET /health/version. Absent in dev, hence optional.
