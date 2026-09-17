@@ -1,4 +1,4 @@
-import { Body, Controller, Param, ParseUUIDPipe, Post } from '@nestjs/common';
+import { Body, Controller, Get, Param, ParseUUIDPipe, Post } from '@nestjs/common';
 import { Auth } from '../auth/decorators/auth.decorators';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { UserRole } from '../users/user-role.enum';
@@ -6,6 +6,7 @@ import { ReweighsService } from './reweighs.service';
 import { CreateReweighItemDto } from './dto/create-reweigh-item.dto';
 import { VoidDocumentDto } from '../intakes/dto/void-document.dto';
 import { ReweighItemResponse } from './reweigh-item.mapper';
+import { ReweighReconciliationService, ReconciliationResponse } from './reweigh-reconciliation.service';
 import type { AuthenticatedUser } from '../auth/jwt.strategy';
 
 /**
@@ -16,7 +17,18 @@ import type { AuthenticatedUser } from '../auth/jwt.strategy';
 @Controller()
 @Auth(UserRole.NetworkOwner)
 export class ReweighsController {
-  constructor(private readonly reweighs: ReweighsService) {}
+  constructor(
+    private readonly reweighs: ReweighsService,
+    private readonly reconciliation_: ReweighReconciliationService,
+  ) {}
+
+  @Get('shifts/:shiftId/reweigh')
+  reconciliation(
+    @CurrentUser() actor: AuthenticatedUser,
+    @Param('shiftId', ParseUUIDPipe) shiftId: string,
+  ): Promise<ReconciliationResponse> {
+    return this.reconciliation_.forShift(actor, shiftId);
+  }
 
   @Post('shifts/:shiftId/reweigh-items')
   addItem(
