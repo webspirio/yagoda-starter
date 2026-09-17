@@ -4,6 +4,7 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { UserRole } from '../users/user-role.enum';
 import { ReweighsService } from './reweighs.service';
 import { CreateReweighItemDto } from './dto/create-reweigh-item.dto';
+import { VoidDocumentDto } from '../intakes/dto/void-document.dto';
 import { ReweighItemResponse } from './reweigh-item.mapper';
 import type { AuthenticatedUser } from '../auth/jwt.strategy';
 
@@ -24,5 +25,14 @@ export class ReweighsController {
     @Body() dto: CreateReweighItemDto,
   ): Promise<ReweighItemResponse> {
     return this.reweighs.addItem(actor, shiftId, dto);
+  }
+
+  @Post('reweigh-items/:id/void')
+  voidItem(
+    @CurrentUser() actor: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: VoidDocumentDto,
+  ): Promise<ReweighItemResponse> {
+    return this.reweighs.voidItem(actor, id, dto);
   }
 }

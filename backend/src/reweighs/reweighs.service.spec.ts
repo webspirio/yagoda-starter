@@ -6,8 +6,7 @@ import { UserRole } from '../users/user-role.enum';
 // (`auth/jwt.strategy.ts`), which every other service's `actor.sub` reads.
 const owner = { sub: 'u-owner', role: UserRole.NetworkOwner, collection_point_id: null } as never;
 
-describe('ReweighsService.addItem', () => {
-  const build = (overrides: Record<string, unknown> = {}) => {
+const build = (overrides: Record<string, unknown> = {}) => {
     const manager = {
       query: jest.fn(),
       findOne: jest.fn(),
@@ -40,6 +39,7 @@ describe('ReweighsService.addItem', () => {
     return { service, manager, shifts, tareTypes, audit };
   };
 
+describe('ReweighsService.addItem', () => {
   it('subtracts the pallet first and the tare second — §8.1', async () => {
     const { service, manager } = build();
     // ensureHeader() issues two query calls (upsert, then read); then the
@@ -130,5 +130,51 @@ describe('ReweighsService.addItem', () => {
       tare: [],
     });
     expect(saved.item_order).toBe(3);
+  });
+});
+
+describe('ReweighsService.voidItem', () => {
+  it('stamps the trio and keeps the row — §8.7', async () => {
+    const { service, manager, audit } = build();
+    manager.findOne = jest.fn(async () => ({
+      id: 'i-1',
+      reweigh_id: 'rw-1',
+      item_order: 1,
+      voided_at: null,
+      created_at: new Date(),
+      net_kg: '545.50',
+      gross_kg: '701.50',
+      pallet_kg: '18.00',
+      tare_weight_kg: '138.00',
+      product_grade_id: 'g-1',
+      weighed_by_user_id: 'u-owner',
+      voided_by_user_id: null,
+      void_reason: null,
+    }));
+
+    const out = await service.voidItem(owner, 'i-1', { reason: 'переважили не ту партію' });
+
+    expect(out.voided_at).not.toBeNull();
+    expect(out.void_reason).toBe('переважили не ту партію');
+    expect(audit.record).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'reweigh-item.voided' }),
+      expect.anything(),
+    );
+  });
+
+  it('refuses to void twice', async () => {
+    const { service, manager } = build();
+    manager.findOne = jest.fn(async () => ({ id: 'i-1', voided_at: new Date() }));
+    await expect(service.voidItem(owner, 'i-1', { reason: 'ще раз' })).rejects.toBeInstanceOf(
+      ConflictException,
+    );
+  });
+
+  it('404s an unknown line', async () => {
+    const { service, manager } = build();
+    manager.findOne = jest.fn(async () => null);
+    await expect(service.voidItem(owner, 'nope', { reason: 'x' })).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
   });
 });

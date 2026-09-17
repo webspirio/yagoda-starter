@@ -9,6 +9,7 @@ import { Reweigh } from './reweigh.entity';
 import { ReweighItem } from './reweigh-item.entity';
 import { ReweighItemTareType } from './reweigh-item-tare-type.entity';
 import { CreateReweighItemDto } from './dto/create-reweigh-item.dto';
+import { VoidDocumentDto } from '../intakes/dto/void-document.dto';
 import { ReweighItemResponse, toReweighItemResponse } from './reweigh-item.mapper';
 import { ShiftsService } from '../shifts/shifts.service';
 import { TareTypesService } from '../tare-types/tare-types.service';
@@ -184,5 +185,56 @@ export class ReweighsService {
       [shiftId],
     )) as { product_grade_id: string }[];
     return rows.map((r) => r.product_grade_id);
+  }
+
+  /**
+   * §8.7 — the storno of a weighing.
+   *
+   * NO AUTHOR CHECK AND NO SHIFT-STATUS CHECK, and neither is an omission.
+   * §9.4's «свій документ, своя відкрита зміна» governs the OPERATOR's
+   * documents; §8.7 gives both weighing and voiding to the owner outright, and
+   * the controller's class-level `@Auth(UserRole.NetworkOwner)` is the whole
+   * rule. There is nobody left for a row-level check to exclude.
+   *
+   * THE ROW STAYS. «документ НЕ зникає: лишається з позначкою "сторновано",
+   * часом, автором і причиною» — which is the trio, not a DELETE and not a
+   * status.
+   */
+  async voidItem(
+    actor: AuthenticatedUser,
+    id: string,
+    dto: VoidDocumentDto,
+  ): Promise<ReweighItemResponse> {
+    return this.dataSource.transaction(async (m) => {
+      const item = await m.findOne(ReweighItem, {
+        where: { id },
+        relations: { product_grade: { product: true }, tare: { tare_type: true } },
+      });
+      if (!item) throw new NotFoundException('Reweigh line not found');
+      if (item.voided_at) {
+        throw new ConflictException({
+          message: 'That line is already voided',
+          code: 'ALREADY_VOIDED',
+        });
+      }
+
+      item.voided_at = new Date();
+      item.voided_by_user_id = actor.sub;
+      item.void_reason = dto.reason;
+      const saved = await m.save(ReweighItem, item);
+
+      await this.audit.record(
+        {
+          action: 'reweigh-item.voided',
+          actor_id: actor.sub,
+          target_type: 'reweigh_item',
+          target_id: saved.id,
+          note: dto.reason,
+        },
+        m,
+      );
+
+      return toReweighItemResponse(saved);
+    });
   }
 }
