@@ -137,10 +137,12 @@ describe('NetworkAverageService.forDate (DB)', () => {
     return { pointId: point.id };
   };
 
-  /** One point's shift with a single receipt against `gradeId`, reweighed in
-   *  full (so сума = accrued exactly, no shortfall) — the simplest fixture
-   *  that still exercises the real query end to end. Pass `reweigh: false`
-   *  to leave the intake unweighed. */
+  /** One point's shift with a single receipt against `gradeId`. `reweighKg`
+   *  defaults to `netKg` — reweighed in full, so сума = accrued exactly and
+   *  there is no shortfall. Pass a SMALLER `reweighKg` to seed a real
+   *  недостача, which is what makes §8.6's «нараховано − недостача»
+   *  observable rather than assumed; pass `reweigh: false` to leave the
+   *  intake unweighed. */
   const seedPoint = async (
     tag: string,
     businessDate: string,
@@ -149,6 +151,7 @@ describe('NetworkAverageService.forDate (DB)', () => {
     netKg: string,
     amount: string,
     reweigh: boolean,
+    reweighKg: string = netKg,
   ): Promise<{ pointId: string; shiftId: string }> => {
     // A fresh UUID per call, not derived from `tag` — two points seeded off
     // the same `tag` would otherwise share their first 8 characters and
@@ -192,7 +195,7 @@ describe('NetworkAverageService.forDate (DB)', () => {
         `INSERT INTO reweigh_items (reweigh_id, item_order, product_grade_id,
              gross_kg, pallet_kg, tare_weight_kg, net_kg, weighed_by_user_id)
          VALUES ($1, 1, $2, $3, '0.00', '0.00', $3, $4)`,
-        [reweighHeader.id, gradeId, netKg, ownerId],
+        [reweighHeader.id, gradeId, reweighKg, ownerId],
       );
     }
 
@@ -204,7 +207,20 @@ describe('NetworkAverageService.forDate (DB)', () => {
     const businessDate = businessDateFor(tag, '2020-01-');
     const { gradeId } = await seedProduct(`Малина ${tag}`);
 
-    await seedPoint(`${tag}-shp`, businessDate, `Шипинки ${tag}`, gradeId, '790.00', '126400.00', true);
+    await seedPoint(
+      `${tag}-shp`,
+      businessDate,
+      `Шипинки ${tag}`,
+      gradeId,
+      // 800 кг accrued at 160,00, 790 кг arrived — §8.2's own worked numbers.
+      // Its cell's 126 400,00 is therefore 128 000,00 − 1 600,00, computed;
+      // seeding 126 400,00 against a full reweigh (as this fixture used to)
+      // left `sub` unproven — `add`, or no term at all, stayed green.
+      '800.00',
+      '128000.00',
+      true,
+      '790.00',
+    );
     await seedPoint(`${tag}-hai`, businessDate, `Гайове ${tag}`, gradeId, '210.00', '32550.00', true);
 
     const out = await service.forDate(actor(), businessDate);
@@ -228,7 +244,20 @@ describe('NetworkAverageService.forDate (DB)', () => {
     const businessDate = businessDateFor(tag, '2020-02-');
     const { gradeId } = await seedProduct(`Малина ${tag}`);
 
-    await seedPoint(`${tag}-shp`, businessDate, `Шипинки ${tag}`, gradeId, '790.00', '126400.00', true);
+    await seedPoint(
+      `${tag}-shp`,
+      businessDate,
+      `Шипинки ${tag}`,
+      gradeId,
+      // 800 кг accrued at 160,00, 790 кг arrived — §8.2's own worked numbers.
+      // Its cell's 126 400,00 is therefore 128 000,00 − 1 600,00, computed;
+      // seeding 126 400,00 against a full reweigh (as this fixture used to)
+      // left `sub` unproven — `add`, or no term at all, stayed green.
+      '800.00',
+      '128000.00',
+      true,
+      '790.00',
+    );
     await seedPoint(`${tag}-hai`, businessDate, `Гайове ${tag}`, gradeId, '210.00', '32550.00', true);
     await seedPoint(
       `${tag}-un`,
@@ -272,7 +301,20 @@ describe('NetworkAverageService.forDate (DB)', () => {
     const { productId, gradeId } = await seedProduct(`Малина ${tag}`);
     const gradeTwo = await seedSecondGrade(productId);
 
-    await seedPoint(`${tag}-shp`, businessDate, `Шипинки ${tag}`, gradeId, '790.00', '126400.00', true);
+    await seedPoint(
+      `${tag}-shp`,
+      businessDate,
+      `Шипинки ${tag}`,
+      gradeId,
+      // 800 кг accrued at 160,00, 790 кг arrived — §8.2's own worked numbers.
+      // Its cell's 126 400,00 is therefore 128 000,00 − 1 600,00, computed;
+      // seeding 126 400,00 against a full reweigh (as this fixture used to)
+      // left `sub` unproven — `add`, or no term at all, stayed green.
+      '800.00',
+      '128000.00',
+      true,
+      '790.00',
+    );
     await seedPoint(`${tag}-hai`, businessDate, `Гайове ${tag}`, gradeId, '210.00', '32550.00', true);
     await seedPartiallyWeighedPoint(businessDate, `Половина ${tag}`, gradeId, gradeTwo);
 
