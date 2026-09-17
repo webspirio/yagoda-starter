@@ -97,3 +97,78 @@ export const lt = (a: string, b: string): boolean => cmp(a, b) === -1;
 export const lte = (a: string, b: string): boolean => cmp(a, b) <= 0;
 export const isNegative = (value: string): boolean => parse(value) < 0n;
 export const isZero = (value: string): boolean => parse(value) === 0n;
+
+/**
+ * Scale-2 quotient, HALF-UP AWAY FROM ZERO — the same policy `mul` uses, for
+ * the same reason (foundation §5.1, «applied where paper shows a number»).
+ *
+ * THROWS ON ZERO rather than returning '0.00'. §8.6 is explicit that a day
+ * with no weight is «—» and «Це не нуль», and a function that quietly answers
+ * zero is how that distinction gets lost three call sites later. Every caller
+ * checks the empty case first and renders the dash itself.
+ *
+ * §8.5's paper arithmetic prints `166,9114` at scale 4. That belongs to the
+ * «усе на один товар» strategy this slice does not implement; §8.4's own
+ * numbers are scale 2, and so is this.
+ */
+export function div(a: string, b: string): string {
+  const ua = parse(a);
+  const ub = parse(b);
+  if (ub === 0n) throw new Error('money: divide by zero');
+
+  // Scale the dividend by UNIT twice: once to undo the divisor's scale, once
+  // to reach the scale-2 answer, plus one more digit to round on.
+  const negative = ua < 0n !== ub < 0n;
+  const magnitude = (ua < 0n ? -ua : ua) * UNIT * 10n;
+  const divisor = ub < 0n ? -ub : ub;
+  const scaled = magnitude / divisor; // scale 3
+  const rounded = (scaled + 5n) / 10n; // +0.0005, floor -> half-up
+  return format(negative ? -rounded : rounded);
+}
+
+/**
+ * Split `total` across `weights` pro-rata, LARGEST REMAINDER.
+ *
+ * The parts sum exactly to the total — that is the whole point, and it is what
+ * §8.4's звірка checks on screen: «жодна гривня не загубилася і не з'явилася з
+ * нічого». Multiplying each weight by a rounded ratio drifts by a kopiyka per
+ * line, which is invisible on a fixture and wrong on a real day.
+ *
+ * All-zero weights split EVENLY rather than throwing: a доплата against a
+ * receipt whose lines are all free (bonus −price) is degenerate but real, and
+ * refusing to allocate it would lose the money entirely.
+ */
+export function allocate(total: string, weights: string[]): string[] {
+  if (weights.length === 0) return [];
+
+  const target = parse(total);
+  const negative = target < 0n;
+  const magnitude = negative ? -target : target;
+
+  const parsed = weights.map((w) => {
+    const u = parse(w);
+    return u < 0n ? -u : u;
+  });
+  const totalWeight = parsed.reduce((acc, w) => acc + w, 0n);
+
+  // Even split when there is nothing to be proportional to.
+  const basis = totalWeight === 0n ? parsed.map(() => 1n) : parsed;
+  const basisTotal = basis.reduce((acc, w) => acc + w, 0n);
+
+  const floors = basis.map((w) => (magnitude * w) / basisTotal);
+  const remainders = basis.map((w) => (magnitude * w) % basisTotal);
+
+  let left = magnitude - floors.reduce((acc, f) => acc + f, 0n);
+  const order = remainders
+    .map((r, i) => ({ r, i }))
+    .sort((x, y) => (y.r === x.r ? x.i - y.i : y.r > x.r ? 1 : -1));
+
+  const result = [...floors];
+  for (const { i } of order) {
+    if (left <= 0n) break;
+    result[i] += 1n;
+    left -= 1n;
+  }
+
+  return result.map((u) => format(negative ? -u : u));
+}
