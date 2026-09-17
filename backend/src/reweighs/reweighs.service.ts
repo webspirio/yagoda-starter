@@ -146,12 +146,29 @@ export class ReweighsService {
     return sum(parts);
   }
 
+  /**
+   * `FOR UPDATE` on the read is not about the upsert — the upsert is already
+   * safe on its own via `UQ_reweighs_shift`. It is what makes THIS ROW the
+   * serialization point for `item_order` (spec §5.1: «`item_order` is
+   * `MAX(item_order) + 1` within the header, taken under `SELECT … FOR
+   * UPDATE` on the header row»). Once a header already exists, `ON CONFLICT
+   * DO NOTHING` no-ops immediately WITHOUT blocking — it only protects
+   * against two inserts, not two readers. Without the lock here, two
+   * concurrent lines later in the same shift's day could both read the same
+   * `MAX(item_order)`, both attempt the same value, and `UQ_reweigh_items_order`
+   * would turn an ordinary second pallet into a raw 500 for the loser instead
+   * of a clean sequential 1, 2, 3. The lock is held until the transaction
+   * commits or rolls back, so the loser simply queues behind the winner.
+   */
   private async ensureHeader(m: EntityManager, shiftId: string): Promise<Reweigh> {
     await m.query(
       `INSERT INTO reweighs (shift_id) VALUES ($1) ON CONFLICT (shift_id) DO NOTHING`,
       [shiftId],
     );
-    const rows = (await m.query(`SELECT id FROM reweighs WHERE shift_id = $1`, [shiftId])) as {
+    const rows = (await m.query(
+      `SELECT id FROM reweighs WHERE shift_id = $1 FOR UPDATE`,
+      [shiftId],
+    )) as {
       id: string;
     }[];
     return { id: rows[0].id, shift_id: shiftId } as Reweigh;

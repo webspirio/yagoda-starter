@@ -159,4 +159,35 @@ describe('ReweighsService.addItem (DB)', () => {
     await addLine('100.00');
     await expect(addLine('120.00')).resolves.toBeDefined();
   });
+
+  /**
+   * THE NON-FIRST-LINE CASE — what the first concurrency test above does NOT
+   * cover. Once a header already exists, `ensureHeader`'s `ON CONFLICT DO
+   * NOTHING` no-ops immediately without blocking, so the ONLY thing standing
+   * between two concurrent later lines and a raw `23505` on
+   * `UQ_reweigh_items_order` is the `FOR UPDATE` on the header read. This is
+   * exactly the case the fix-round finding was about: two pallets weighed in
+   * close succession, later in an ordinary shift.
+   */
+  it('numbers two CONCURRENT non-first lines 2 and 3, with no gaps or duplicates', async () => {
+    const { shiftId, gradeId } = await fixture();
+    const addLine = (gross: string) =>
+      service.addItem(actor(), shiftId, { product_grade_id: gradeId, gross_kg: gross, tare: [] });
+
+    // Line 1 — commits and establishes the header before the race starts.
+    await addLine('50.00');
+
+    const [b, c] = await Promise.all([addLine('60.00'), addLine('70.00')]);
+
+    expect(new Set([b.item_order, c.item_order]).size).toBe(2);
+    expect([b.item_order, c.item_order].sort()).toEqual([2, 3]);
+
+    const rows = (await ds.query(
+      `SELECT item_order FROM reweigh_items WHERE reweigh_id = (
+         SELECT id FROM reweighs WHERE shift_id = $1
+       ) ORDER BY item_order`,
+      [shiftId],
+    )) as { item_order: number }[];
+    expect(rows.map((r) => r.item_order)).toEqual([1, 2, 3]);
+  });
 });
