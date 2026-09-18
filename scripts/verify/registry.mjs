@@ -638,7 +638,24 @@ export const CHECKS = [
   },
   {
     id: 'selfcheck',
-    tier: 'fast',
+    // FULL, NOT FAST, since 2026-09-18, and this is containment rather than a preference.
+    // This suite WRITES THE REAL WORKING TREE: it plants fixtures under backend/src and
+    // frontend/src, rewrites .gitignore, .env.example, knip.json, backend/package.json and
+    // both eslint.config.mjs files, stages seven paths into the real git index, edits an
+    // already-merged migration, and rmSync's two TRACKED source files
+    // (frontend/src/shared/lib/useIsDesktop.ts, frontend/src/test-setup.ts). Every restore
+    // lives in a `finally` and nothing anywhere takes a lock.
+    //
+    // The Stop hook runs the fast tier after EVERY turn (.claude/hooks/stop-gate.mjs), with
+    // a 150s spawnSync timeout that kills the process group — and a killed process runs no
+    // `finally`. So two overlapping runs were the normal case, not an edge case, and an
+    // interrupted one could leave a merged migration modified: precisely the divergence
+    // rule 4 of `migrations` exists to catch.
+    //
+    // It is also 78% of the fast tier's wall time on its own, measured from a recorded run.
+    // `.githooks/pre-push` excludes only smoke/coverage/audit, so a full-tier row JOINS the
+    // push gate rather than leaving the layer, and CI's verify:ci runs the full tier.
+    tier: 'full',
     cmd: 'npm run test:verify',
     // 240s, and this row is the reason the runner's default was re-examined at all. It
     // costs 67.3s cold on CI (run 35011857830) and 54.4s warm (35017224544) — against an
