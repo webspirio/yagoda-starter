@@ -232,10 +232,18 @@ export const CHECKS = [
       'Nothing about behaviour: whether a sum is right, whether a component renders. A ' +
       'rule that is not enabled does not exist for it, and the money ban covers exactly ' +
       'those EIGHT backend module trees — arithmetic on a numeric string in any other ' +
-      'backend module, and in the whole of frontend/src, is invisible to THIS row. Only ' +
-      'backend/src is covered elsewhere: ratchet:money scans all of it, including these ' +
-      'eight trees, since its own carve-out for "eslint\'s territory" was removed on ' +
-      '2026-09-15. frontend/src has no such second net at all.',
+      'backend module, and in the whole of frontend/src, is invisible to THIS row. AS OF ' +
+      '2026-09-18 THIS ROW IS THE ONLY NET LEFT, and the change is worth stating plainly ' +
+      'because it narrows what a green `verify` means about money: until that date ' +
+      '`ratchet:money` scanned ALL of backend/src as a second, overlapping net, so a tree ' +
+      'DELETED from the eslint `files` list above was still policed. That row was removed ' +
+      'from the registry on 2026-09-18 at the user\'s request. The practical consequence is ' +
+      'that the eslint `files` list is now load-bearing on its own: arithmetic in ' +
+      'backend/src OUTSIDE those eight trees — config/, users/password-hashing.ts, ' +
+      'media.constants.ts, and both seed modules, which between them hold a real ' +
+      'independent reimplementation of money.ts\'s add() — is now checked by NOTHING in ' +
+      'this layer, and a tree quietly dropped from that list would be checked by nothing ' +
+      'either. frontend/src never had a second net and still does not.',
   },
   {
     id: 'typecheck',
@@ -268,19 +276,20 @@ export const CHECKS = [
     // of it blew through 120s with an empty Turbo cache — see the timeoutMs note above.
     timeoutMs: 600_000,
     proves:
-      'A SNAPSHOT, RE-MEASURED 2026-09-16 on the tree this branch merged a further 43 commits ' +
-      'of main into (178 files / 1445 tests on 2026-09-15, 99 files / 592 tests on 2026-09-11 ' +
+      'A SNAPSHOT, RE-MEASURED 2026-09-18 on main after PR #111 (the #11 password vault) ' +
+      'landed alongside the verify layer (192 files / 1657 tests on 2026-09-16, 178 files / ' +
+      '1445 tests on 2026-09-15, 99 files / 592 tests on 2026-09-11 ' +
       '— see CLAUDE.md\'s Verification section for the same discipline applied to cost ' +
       'figures): backend jest (NODE_OPTIONS=--experimental-vm-' +
-      'modules jest, testRegex .*\\.spec\\.ts$, rootDir src) ran 55 suites / 727 tests, and ' +
-      'frontend vitest (vitest run) ran 137 files / 930 tests — 192 files and 1657 tests ' +
+      'modules jest, testRegex .*\\.spec\\.ts$, rootDir src) ran 56 suites / 754 tests, and ' +
+      'frontend vitest (vitest run) ran 138 files / 941 tests — 194 files and 1695 tests ' +
       'total today, all passing. Those counts grow with ordinary feature work in either ' +
       'workspace and are not re-verified by this row — they illustrate scale, nothing more. ' +
       'The INVARIANT this row actually enforces outlives every one of them: a single ' +
       'failing assertion anywhere in either workspace turns this exact command, and this ' +
       'row, red, no matter how many tests exist when it runs.',
     blindSpot:
-      'The backend testRegex matches only *.spec.ts, so all 29 *.db-spec.ts suites ' +
+      'The backend testRegex matches only *.spec.ts, so all 30 *.db-spec.ts suites ' +
       '(backend/jest.db.config.js, a separate config) are excluded from this row entirely ' +
       '— test:db is what covers those. No .tsx file is exercised by the backend suites: ' +
       'the backend has no .tsx files, and only the frontend vitest half of this row ever ' +
@@ -429,12 +438,14 @@ export const CHECKS = [
       'have silenced both suites with nothing here noticing. The two backend regexes are read ' +
       'out of backend/jest.config.js and backend/jest.db.config.js at runtime, not copied ' +
       'here, so this row also proves those two files still say what the check assumes. AS A ' +
-      'SNAPSHOT, RE-MEASURED 2026-09-16 on the tree this branch merged a further 43 commits ' +
-      'of main into (219 files on 2026-09-15, 170 on 2026-09-11): 239 files ' +
-      'now match across the two candidate nets (jest-unit 55, jest-db 29, vitest 137, ' +
-      'node-test 15, playwright 1, shell-test 2). All 20 new files came from ' +
-      "main's own feature work — the crates slice, bulk grade prices and the sticky point " +
-      'scope — no collector was added or changed by this re-measurement, ' +
+      'SNAPSHOT, RE-MEASURED 2026-09-18 on main after PR #111 (the #11 password vault) ' +
+      'landed alongside the verify layer (239 files on 2026-09-16, 219 on 2026-09-15, 170 ' +
+      'on 2026-09-11): 242 files ' +
+      'now match across the two candidate nets (jest-unit 56, jest-db 30, vitest 138, ' +
+      'node-test 15, playwright 1, shell-test 2). All 3 new files came from that one PR — ' +
+      'users/secret-box.spec.ts, migrations/user-password-vault.db-spec.ts and ' +
+      'shared/ui/password-input.test.tsx, one per collector across all three workspaces — ' +
+      'no collector was added or changed by this re-measurement, ' +
       'and the six are the same six. That total grows every time ordinary feature work adds ' +
       'a test file, and this row does not track or re-check its own prose count.',
     blindSpot:
@@ -601,14 +612,15 @@ export const CHECKS = [
       'green. A violation of 1–3, or of 4 whenever origin/main was reachable, fails this ' +
       "exact command; this row proves rule 4's guarantee ONLY for a run where origin/main " +
       'was fetched, and says so with a WARNING line — printed even on a passing run — ' +
-      'whenever it was not. AS A SNAPSHOT, RE-MEASURED 2026-09-15 on the tree this branch ' +
-      'merged a further 43 commits of main into (12 migrations and 8 db-specs on ' +
-      '2026-09-15, 8 and 5 on 2026-09-10): backend/src/migrations/ holds 13 numbered migrations (timestamps ' +
-      '1788600000000–1788600000012) and 9 *.db-spec.ts files, excluded from rules 2–4. ' +
-      'Rule 4 ran for real on this measurement, not skipped: origin/main resolved, and all ' +
-      'five migrations main has merged in (YagodaCrates, YagodaTransfers, YagodaCashCounts, ' +
-      'DropCashCountExpectedCheck, YagodaIntakeTopUps) compared byte-identical to their ' +
-      'origin/main copies. Both counts grow with ordinary schema work, unrelated to this ' +
+      'whenever it was not. AS A SNAPSHOT, RE-MEASURED 2026-09-18 on main after PR #111 ' +
+      '(the #11 password vault) landed alongside the verify layer (13 migrations and 9 ' +
+      'db-specs on 2026-09-15, 12 and 8 before it, 8 and 5 on ' +
+      '2026-09-10): backend/src/migrations/ holds 14 numbered migrations (timestamps ' +
+      '1788600000000–1788600000013) and 10 *.db-spec.ts files, excluded from rules 2–4. ' +
+      'Rule 4 ran for real on this measurement, not skipped: origin/main resolved (to ' +
+      'a5afee04, which is also HEAD here, so the new UserPasswordVault migration is itself ' +
+      'already-merged and was compared rather than exempted as new), and every migration ' +
+      'it names compared byte-identical to its origin/main copy. Both counts grow with ordinary schema work, unrelated to this ' +
       'table, and this row does not track or re-check its own prose.',
     blindSpot:
       'Compares TEXT, not schema semantics: two migrations that are each individually ' +
@@ -670,10 +682,11 @@ export const CHECKS = [
       "intermediate counts this row does not itself track): `npm run test:verify` " +
       "(`node --test --test-concurrency=1 'scripts/verify/**/*.test.mjs' " +
       "'.claude/hooks/**/*.test.mjs'` — TWO globs since Task 19, not the one this row " +
-      "originally shipped quoting) collects and runs 159 tests across 15 *.test.mjs files " +
-      "today — hash.test.mjs (8), registry.test.mjs (10), run.test.mjs (16), " +
+      "originally shipped quoting) collects and runs 166 tests across 15 *.test.mjs files " +
+      "today, re-measured per file 2026-09-18 — hash.test.mjs (8), registry.test.mjs (12), " +
+      "run.test.mjs (20), " +
       'checks/audit.test.mjs (11), checks/bundle-size.test.mjs (10), ' +
-      'checks/memo-drift.test.mjs (4), checks/migration-invariants.test.mjs (8), ' +
+      'checks/memo-drift.test.mjs (5), checks/migration-invariants.test.mjs (8), ' +
       'checks/seam-boundary.test.mjs (13), checks/secret-boundary.test.mjs (13), ' +
       'checks/test-glob-parity.test.mjs (6), ratchets/dead-exports.test.mjs (13), ' +
       'ratchets/lint-exempt.test.mjs (8), ratchets/money-rounding.test.mjs (10), ' +
@@ -772,102 +785,15 @@ export const CHECKS = [
       'removing even ONE glob from a multi-glob line changes the whole line\'s key.',
   },
   {
-    id: 'ratchet:money',
-    tier: 'fast',
-    cmd: 'npm run ratchet:money',
-    // No `after`: this check never invokes tsc, only `ts.createSourceFile` — a syntax-only
-    // parse, same access route `seam` and `migrations` already take. Verified empirically
-    // 2026-09-10 the same way `migrations` documents: a fixture combining a genuine type
-    // error (`const notANumber: number = "this is a type error"`) with a genuine arithmetic
-    // finding (`brokenParam * 2`, `brokenParam` a function, not a number) in the same file
-    // made `npx tsc -p backend/tsconfig.json --noEmit` fail with two TS errors while `npm
-    // run ratchet:money` still parsed the file and reported the `*` finding correctly — a
-    // type error neither hides nor fakes a finding here, so an `after: ['typecheck']` would
-    // order two rows that do not actually depend on each other.
-    proves:
-      'Every `*`/`/` BinaryExpression, `Number()`/`parseInt()`/`parseFloat()` call, and ' +
-      '`.toFixed` MemberExpression this scan finds in ALL of backend/src/**/*.ts — the ' +
-      'only exclusion left is *.spec.ts/*.db-spec.ts — is either ' +
-      'PROVABLY NON-MONETARY (every operand is a numeric literal, or an identifier declared ' +
-      'in the SAME FILE with an explicit `number` type or a numeric-literal initialiser) or ' +
-      'matches a dated, reasoned entry in scripts/verify/baselines/money-rounding.json at ' +
-      'its EXACT occurrence count, key for key (file:line:kind), or this exact command ' +
-      'fails. The comparison runs in both directions, same as ratchet:lint-exempt: a NEW ' +
-      'site not yet in the baseline fails it, and a baseline entry whose exact count no ' +
-      'longer matches the tree — including a count that dropped to zero — fails it too, so ' +
-      'a stale entry must be deleted rather than left standing; a partial fix (two of three ' +
-      'sites cleaned up) is exactly as red as no fix at all. `Number`, `parseInt` and ' +
-      '`parseFloat` are resolved by BINDING, not by name alone: a file that locally ' +
-      'declares or imports something under one of those three exact names is calling that ' +
-      'local, not the global this row bans, and such a call is skipped entirely rather than ' +
-      'mistaken for the real one. THE SCOPE WIDENED ON 2026-09-15: until then this row ' +
-      'skipped the four module trees backend/eslint.config.mjs policed when it was ' +
-      'written (src/intakes, src/payouts, src/shifts, src/supplier-balance), on the ' +
-      'argument that they were already eslint\'s territory. That argument had quietly ' +
-      'stopped holding: eslint\'s own `files` list had grown to EIGHT trees (see the ' +
-      '`lint` row) while this row\'s hard-coded copy of it still named four, so the two ' +
-      'scopes disagreed — and a tree DELETED from eslint\'s list would then have been ' +
-      'policed by neither. The carve-out was MEASURED before it was removed: scanning the ' +
-      'whole of backend/src adds EXACTLY ZERO findings, because eslint\'s ban is what ' +
-      'keeps those trees clean, so the overlap costs nothing and the gap is closed. AS A ' +
-      'SNAPSHOT, RE-MEASURED 2026-09-15 on the tree this branch merged 156 commits of ' +
-      'main into: the baseline holds 29 ' +
-      'keys / 32 occurrences — 10 are the repeated `(page - 1) * limit` pagination-offset ' +
-      'arithmetic this template\'s list endpoints share (including ' +
-      'common/dto/pagination-query.dto.ts\'s own skipOf() helper), 4 are ' +
-      'backend/src/common/money.ts\'s OWN bigint internals (the seam itself, audited by ' +
-      'money.spec.ts, not by this AST heuristic), 6 are config/env-var integers (ports, the ' +
-      'throttle window and limit) parsed with parseInt()/Number(), 1 is ' +
-      'redis.module.ts\'s reconnect backoff and 1 is media.constants.ts\'s upload-size ' +
-      'constant, 4 are password-hashing.ts\'s scrypt cost-parameter parsing and memory ' +
-      'sizing, and 3 are backend/src/seed/dev-seed.ts\'s OWN independent reimplementation ' +
-      'of money.ts\'s add() — a real duplicate of the one authorised rounding seam, ' +
-      'confined to the dev-only seed script, left as-is because backend/src is out of ' +
-      'scope for this layer. THE TOTAL OF 29 IS UNCHANGED FROM 2026-09-10 IN BOTH ' +
-      'DIRECTIONS AT ONCE, which is worth stating rather than reading as quiet: widening ' +
-      'the scan to the four formerly-excluded trees added nothing, and main\'s 156 ' +
-      'commits added nothing either — but FIVE entries were re-keyed, because their line ' +
-      'numbers moved under that merge (app.module.ts\'s two throttle Number() calls by ' +
-      'four lines, dev-seed.ts\'s three by seven). That count moves the instant anyone adds, ' +
-      'removes, or clears an arithmetic site anywhere in the scan, and this row does not ' +
-      'track or re-check its own prose.',
-    blindSpot:
-      'Nothing about whether the arithmetic is RIGHT — money.ts\'s own mul(a, b) and a ' +
-      'hand-rolled a * b elsewhere are scored identically by this row: it checks whether a ' +
-      'value is routed through a shape this heuristic recognises as safe, never whether the ' +
-      'resulting figure is the correct one. Type information comes from the TypeScript ' +
-      'SYNTAX of the single file being parsed (ts.createSourceFile), never from the type ' +
-      'checker: a monetary string arriving through a function parameter or return type ' +
-      'declared in ANOTHER file reads as an untyped identifier here, clears neither cover ' +
-      'rule, and lands in the baseline as a finding rather than being resolved and either ' +
-      'caught or correctly cleared — part of why 10 of the baseline\'s 29 keys are the ' +
-      'ordinary (page - 1) * limit idiom repeated at every list endpoint rather than ' +
-      'something this row could recognise once and ignore everywhere after. And a value ' +
-      'computed into an intermediate variable and only later formatted or multiplied on a ' +
-      'DIFFERENT statement is invisible to the per-node operand check this row runs — it ' +
-      'inspects only the immediate two operands of one BinaryExpression, one call\'s ' +
-      'arguments, or one member access\'s object, never a variable\'s provenance a ' +
-      'statement or a scope away (see password-hashing.ts:28\'s baseline entry, where the ' +
-      'same limitation misses that a chained 32 * 1024 * 1024 is entirely literal, because ' +
-      'the OUTER multiplication\'s left operand is itself a BinaryExpression, not a bare ' +
-      'literal or identifier). And its reach is exactly backend/src\'s *.ts files parsed as ' +
-      'ts.ScriptKind.TS — there are no .tsx files there today, and a .tsx file appearing ' +
-      'under backend/src would be parsed with the wrong script kind until this row is ' +
-      'taught about it. And the widened scope buys REACH, not depth: scanning the eight ' +
-      'eslint-covered trees adds a second net over them, but every limitation above — the ' +
-      'syntax-only typing, the single-statement operand check — applies there exactly as ' +
-      'it does everywhere else, so what those trees really rest on is still eslint\'s ban, ' +
-      'with this row as the backstop for the day that ban\'s `files` list shrinks.',
-  },
-  {
     id: 'ratchet:persist',
     tier: 'fast',
     cmd: 'npm run ratchet:persist',
     // No `after`: this check never invokes tsc, only `ts.createSourceFile` — a syntax-only
-    // parse, the same access route `seam`, `migrations` and `ratchet:money` already take
-    // (and the same reasoning `ratchet:money`'s own `after` comment states in full: a type
-    // error does not stop a file from parsing, so ordering this after `typecheck` would pair
-    // two rows that do not actually depend on each other).
+    // parse, the same access route `seam` and `migrations` already take (`ratchet:money`
+    // took it too and stated the reasoning in full, until that row was removed on
+    // 2026-09-18 — see git history for it). A type error does not stop a file from
+    // parsing, so ordering this after `typecheck` would pair two rows that do not
+    // actually depend on each other.
     proves:
       'Every `localStorage`/`sessionStorage` member access under frontend/src — a direct ' +
       '`localStorage.x`/`sessionStorage.x`, or `window.localStorage.x`/`window.sessionStorage.x` ' +
@@ -902,7 +828,7 @@ export const CHECKS = [
       'path: its unguarded `localStorage.clear()`/`sessionStorage.clear()` never ship in the ' +
       'production bundle and run only under jsdom, which does not exhibit the private-' +
       'browsing throw this row exists to catch — the same class of file-role scope decision ' +
-      '`ratchet:money` already makes excluding `*.spec.ts`/`*.db-spec.ts`, not a baseline entry ' +
+      'the removed `ratchet:money` row also made, excluding `*.spec.ts`/`*.db-spec.ts`, not a baseline entry ' +
       'forgiving a violation in one of the four real boundary files. That count and file list ' +
       'grow or shrink with ordinary feature work, and this row does not track or re-check its ' +
       'own prose.',
@@ -934,7 +860,7 @@ export const CHECKS = [
     id: 'deadcode',
     tier: 'fast',
     cmd: 'npm run deadcode',
-    // No `after`: unlike ratchet:money/ratchet:persist/seam/migrations (a syntax-only
+    // No `after`: unlike ratchet:persist/seam/migrations (a syntax-only
     // ts.createSourceFile parse, unaffected by type errors by construction), knip DOES run
     // real type-aware analysis internally — so this needed checking empirically, not just
     // reasoning from the tool's own architecture. Verified 2026-09-10 the same way
@@ -1016,8 +942,14 @@ export const CHECKS = [
       'point-cash.service.ts\'s trailing `export { movementsSql, anchorSql, asOfSql }` has had no importer ' +
       'since the module was created — git shows the line written as `export { cashSql, ASOF }` at creation ' +
       'and renamed twice by later refactors, never once consumed. It is recorded so it is visible, not ' +
-      'endorsed. The baseline now holds 156 findings (1 binary, 1 dependency, 5 ' +
-      'devDependencies, 65 exports, 49 files, 33 types, 2 unlisted). That count moves the instant anyone ' +
+      'endorsed. RE-MEASURED 2026-09-18, the count read straight off the check\'s own output: the baseline ' +
+      'holds 188 findings (1 binary, 1 dependency, 5 ' +
+      'devDependencies, 78 exports, 57 files, 44 types, 2 unlisted), where this row said 156 from ' +
+      '2026-09-15 until 2026-09-18. TWO of the 32 added in between are this pass\'s own, both from PR #111 ' +
+      "(the #11 password vault, merged into main independently of the verify layer): that migration's file " +
+      'and its *.db-spec.ts, the 14th and 30th members of two classes the blindSpot below already explains ' +
+      'as framework-invoked rather than dead. The other 30 predate this pass and are NOT re-audited here — ' +
+      'each still stands on its own entry\'s date and reason. That count moves the instant anyone ' +
       "adds, fixes, or clears a finding anywhere knip.json's globs reach, and this row does not track or " +
       're-check its own prose.',
     blindSpot:
@@ -1392,12 +1324,17 @@ export const CHECKS = [
       'idempotency assertion (dev-seed.db-spec.ts\'s «is idempotent — a second run inserts ' +
       'nothing») pass for the wrong reason. A single failing assertion in any suite this glob ' +
       'matches fails this exact command, independent of file or test count. AS A DATED ' +
-      'SNAPSHOT, RE-MEASURED 2026-09-15 on the tree this branch merged 156 commits of main ' +
-      'into (12 files / 174 tests on 2026-09-10, 23 files on 2026-09-15): 29 files match *.db-spec.ts, ' +
-      '286 tests total — EIGHT parse-and-apply migration-schema suites ' +
-      '(migrations/{bootstrap-owner-create,catalog-schema,cash-counts-schema,' +
-      'intakes-payouts-schema,intake-top-ups-schema,schema,suppliers-prices-schema,' +
-      'transfers-schema}.db-spec.ts), ' +
+      'SNAPSHOT, FILE COUNTS RE-MEASURED 2026-09-18 on main after PR #111 (the #11 password ' +
+      'vault) landed alongside the verify layer (29 files on 2026-09-15, 23 before it, 12 ' +
+      'files / 174 tests on 2026-09-10): 30 files match *.db-spec.ts, ' +
+      'of which TEN are parse-and-apply migration-schema suites ' +
+      '(migrations/{bootstrap-owner-create,cash-counts-schema,catalog-schema,crates-schema,' +
+      'intake-top-ups-schema,intakes-payouts-schema,schema,suppliers-prices-schema,' +
+      'transfers-schema,user-password-vault}.db-spec.ts — read off `git ls-files`, and note ' +
+      'that the list this row carried until 2026-09-18 named only EIGHT, having silently ' +
+      'missed crates-schema since main merged it: the file COUNT was pinned by ' +
+      'registry.test.mjs and stayed honest, this hand-written enumeration beside it was not, ' +
+      'which is exactly the split that test exists to expose), ' +
       'THREE that boot the FULL AppModule via Nest\'s Test.createTestingModule and drive it ' +
       'over real HTTP with supertest (testing/{pipeline,catalog-pipeline,documents-pipeline}.' +
       'db-spec.ts), the harness\'s own testing/db-harness.db-spec.ts, and eleven slice ' +
@@ -1406,7 +1343,13 @@ export const CHECKS = [
       'supplier-balance-list and transfers-list. The drop/create claim was re-confirmed the ' +
       'same way it was first made: this exact command run twice in a row against the same ' +
       'already-populated database reported 23 suites / 286 tests passing both times, because ' +
-      'the second run never saw the first run\'s rows in the first place.',
+      'the second run never saw the first run\'s rows in the first place. THAT LAST FIGURE IS ' +
+      'THE 2026-09-15 READING AND WAS DELIBERATELY NOT RESTATED FOR 2026-09-18: the ' +
+      'file counts above are derived from `git ls-files`, but the suite and test TOTALS need ' +
+      'this command actually run, and the 2026-09-18 pass re-measured only the fast tier ' +
+      'plus build/bundle/audit — no Postgres was started, so this row did not execute. A ' +
+      'test total carried forward under a fresh date would be exactly the router.tsx mistake ' +
+      'registry.test.mjs was written to stop.',
     blindSpot:
       'Exercises the schema and the queries against a real Postgres, and says nothing about ' +
       'the HTTP layer above them EXCEPT for the three pipeline suites named above — every ' +

@@ -50,8 +50,8 @@ npm run db:seed             # idempotent demo dataset for manual testing — see
 
 ## Verification
 
-The gate a turn is checked against — `npm run verify` — runs the **fast tier only**: 14 of
-the registry's 20 rows. There is no `build`, no `smoke`, no `test:db` and no `coverage` row
+The gate a turn is checked against — `npm run verify` — runs the **fast tier only**: 13 of
+the registry's 19 rows. There is no `build`, no `smoke`, no `test:db` and no `coverage` row
 in it, so a turn can end green having never built the app, never started a container and
 never touched a database. `npm run verify:full` is what reaches those six, and
 `npm run verify:ci` is that with `--no-skip`, where a missing precondition is a failure
@@ -59,7 +59,7 @@ rather than a quietly narrower green.
 
 **Everything else about using the layer is the `verify` skill** — per-tier costs measured on
 a laptop and in CI, the pre-push gate and why three rows sit outside it, what each of the
-five row statuses means and which block, and the generated table of what all 20 rows prove
+five row statuses means and which block, and the generated table of what all 19 rows prove
 and stay blind to. Read `.claude/skills/verify/SKILL.md` (or invoke the skill) rather than
 duplicating any of it here: this section is deliberately short, because it loads into every
 session and the reference does not need to.

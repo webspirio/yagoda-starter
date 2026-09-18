@@ -203,7 +203,10 @@ test('the runner default still clears every row that inherits it, and that set i
     deadcode: 2_100,
     migrations: 968,
     seam: 885,
-    'ratchet:money': 808,
+    // 'ratchet:money': 808 -- row removed 2026-09-18 at the user's request; see the note
+    // in scripts/verify/baselines/money-rounding.json. The 808ms reading stays in git
+    // history rather than here, because a budget for a row that no longer runs would fail
+    // the deepEqual below on every run.
     'ratchet:persist': 802,
     secrets: 424,
     'ratchet:lint-exempt': 216,
