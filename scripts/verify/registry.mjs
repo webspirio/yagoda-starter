@@ -959,17 +959,26 @@ export const CHECKS = [
       "(a NestJS provider wired only through a decorator and DI, or a *.db-spec.ts file this task's own " +
       "investigation found `backend/jest.db.config.js` runs directly, that knip's Jest plugin cannot see " +
       "because its default spec/test glob requires a literal dot before 'spec'/'test' and never matches a " +
-      "hyphenated '-db-spec.ts' suffix — 23 of this baseline's 49 file findings are exactly that one glob " +
-      "mismatch (its testing/db-harness.ts helper, run by the same jest.db.config.js but not itself named " +
-      "*.db-spec.ts, is a 24th finding for the identical reason, counted separately here because the glob " +
-      "mismatch this blind spot describes is not what excludes IT), and a further 12 are TypeORM migrations " +
+      "hyphenated '-db-spec.ts' suffix — 30 of this baseline's 57 file findings are exactly that one glob " +
+      "mismatch, and a further 14 are TypeORM migrations " +
       "the runner discovers via a directory glob at startup rather than a static import, the same class of " +
       "framework-invoked blind spot in a different tool; and 3, as of Task 19, are .claude/hooks/*.mjs " +
       "PostToolUse hooks (edit-lint.mjs and batch-typecheck.mjs from Task 18, stop-gate.mjs from Task 19) " +
       "knip's default root-workspace scan finds but only .claude/settings.json's hook command line ever " +
-      "invokes — a config-driven blind spot again, not real dead code. None of the 23, the 1 helper, the " +
-      "12, or the 3 is real dead code — together they are 39 of the 49 file findings, leaving 10 that are " +
-      "ordinary frontend dead files. A baseline entry means the finding is KNOWN and explained, never that " +
+      "invokes — a config-driven blind spot again, not real dead code. None of the 30, the " +
+      "14, or the 3 is real dead code — together they are 47 of the 57 file findings, leaving 10 that are " +
+      "ordinary frontend dead files. THESE COUNTS WERE SELF-CONTRADICTORY ON 2026-09-18 AND WERE RECOUNTED " +
+      "THE SAME DAY; the mechanism matters more than the correction. The commit that re-measured this " +
+      "row's \`proves\` (156 -> 188 findings, 49 -> 57 files) did not touch this blindSpot, so the row " +
+      "contradicted ITSELF — proves saying 57 files while this sentence still said 49 and derived '39 of " +
+      "the 49, leaving 10' from that stale figure. \`memo\` stayed GREEN throughout, because memo only " +
+      "proves SKILL.md quotes this string byte-for-byte, wrong arithmetic included, and registry.test.mjs " +
+      "pins only counts derivable from \`git ls-files\` — which these per-kind baseline counts are not. " +
+      "Recounted directly off baselines/dead-exports.json: 57 file findings = 30 db-spec + 14 migrations " +
+      "+ 3 hooks + 10 ordinary frontend dead files. The old text also called testing/db-harness.ts a 24th " +
+      "finding of the same class; it is no longer a \`file\` finding at all (only three \`export\` findings " +
+      "remain on it), so that clause is deleted rather than renumbered. A baseline entry means the " +
+      "finding is KNOWN and explained, never that " +
       "the code it names is ACCEPTABLE to keep as-is — recording backend/src's transitive, undeclared `ms`/" +
       "`express` imports, or frontend/src's six independently-duplicated `Paginated<T>` interfaces, documents " +
       "them for a future fix, it does not endorse them, and this task deliberately left every one of them " +
