@@ -401,45 +401,50 @@ export const CHECKS = [
   },
   {
     id: 'selfcheck',
-    // FULL, NOT FAST, since 2026-09-18, and this is containment rather than a preference.
-    // This suite WRITES THE REAL WORKING TREE: it plants fixtures under backend/src and
-    // frontend/src, rewrites .gitignore, .env.example, knip.json, backend/package.json and
-    // both eslint.config.mjs files, stages seven paths into the real git index, edits an
-    // already-merged migration, and rmSync's two TRACKED source files
-    // (frontend/src/shared/lib/useIsDesktop.ts, frontend/src/test-setup.ts). Every restore
-    // lives in a `finally` and nothing anywhere takes a lock.
+    // FULL, NOT FAST, and the reason CHANGED — which is worth stating, because a stale
+    // justification for a correct decision is how the next person gets talked into
+    // reversing it for the wrong reason.
     //
-    // The Stop hook runs the fast tier after EVERY turn (.claude/hooks/stop-gate.mjs), with
-    // a 150s spawnSync timeout that kills the process group — and a killed process runs no
-    // `finally`. So two overlapping runs were the normal case, not an edge case, and an
-    // interrupted one could leave a merged migration modified: precisely the divergence
-    // rule 4 of `migrations` exists to catch.
+    // It moved out of the fast tier because this suite WROTE THE REAL WORKING TREE: it
+    // planted fixtures under backend/src and frontend/src, rewrote several configs, staged
+    // paths into the real git index, and deleted tracked source files, all restored in
+    // `finally` blocks that a killed process never runs. That is fixed. Every check takes a
+    // scan root, every fixture is a mkdtemp directory, and nothing here touches the tree or
+    // the index any more — which is also why the suite no longer needs
+    // `--test-concurrency=1` and got several times faster when that came off.
     //
-    // It is also 78% of the fast tier's wall time on its own, measured from a recorded run.
+    // It stays in the full tier now purely on cost, measured rather than assumed: this row
+    // is comparable to the ENTIRE rest of the fast tier put together, so moving it back
+    // would roughly double what runs after every turn. The Stop hook pays that on every
+    // turn; a gate people route around is worse than no gate.
+    //
+    // Deliberately NOT split into a cheap fast half and an expensive full half. There is no
+    // mechanical rule for which half a new test file belongs in, so the split would be a
+    // judgement call on every test added — recurring maintenance, to buy back seconds on
+    // rows that mostly re-assert things the fast tier's own rows already fail on directly.
     // `.githooks/pre-push` excludes only smoke/coverage/audit, so a full-tier row JOINS the
     // push gate rather than leaving the layer, and CI's verify:ci runs the full tier.
     tier: 'full',
     cmd: 'npm run test:verify',
-    // 240s, and this row is the reason the runner's default was re-examined at all. It
-    // costs 67.3s cold on CI (run 35011857830) and 54.4s warm (35017224544) — against an
-    // inherited 120s default nobody had ever checked it against, i.e. 1.8x, on the ONE row
-    // in this registry that grows with every test the layer adds. It was around 36s when
-    // that default arrived. Nothing caches `node --test`, so the number only goes up: at
-    // 166 tests today it is already the largest single row in a warm CI run.
+    // 240s. The CI readings behind this number (67.3s cold, run 35011857830; 54.4s warm,
+    // 35017224544) were taken while the suite still ran its files SERIALLY, so they are
+    // upper bounds on what it costs now, not current measurements — left as the basis for
+    // the budget precisely because a timeout should be generous against the worst reading,
+    // never tuned to the best one.
     //
-    // 240s is ~3.5x the cold reading, which buys room for the growth rather than for a
-    // hang. A hang here would be a test that never returns, and that is what this catches.
+    // This is still the one row that grows with every test the layer adds, and nothing
+    // caches `node --test`. The margin buys room for that growth rather than for a hang. A
+    // hang here would be a test that never returns, and that is what this catches.
     timeoutMs: 240_000,
     // No `after`: nothing this suite does depends on another row having passed first.
     // It runs the layer's own .mjs sources directly under node:test — untranspiled,
     // untyped at runtime — so a failure or a pass in `typecheck` changes nothing about
     // whether these tests execute or what they observe; and it does not read `lint`,
-    // `testfiles`, `secrets`, `seam` or `migrations` output, only the source files those
+    // `testfiles`, `secrets` or `migrations` output, only the source files those
     // commands also happen to run. `run.mjs` runs every row strictly sequentially (a
     // `for` loop that `await`s each `runCommand` before starting the next — see
-    // run.mjs's main()), so the handful of these tests that write and delete fixture
-    // files under backend/src (each wrapped in try/finally) never overlap with another
-    // row's own read of that tree.
+    // run.mjs's main()), and no test here writes a tree any other row reads, so there is
+    // nothing for an ordering constraint to protect.
     proves:
       'Every test the verify layer has for itself ran and passed: the runner\'s status and ' +
       'freshness logic, the hash surface in both directions, the Stop gate\'s four failure ' +

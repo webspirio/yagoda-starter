@@ -199,10 +199,6 @@ const CHECK_DIRS = ['checks', 'ratchets']
  */
 const NOT_CONTENT = [
   {
-    rel: 'node_modules/.bin/knip',
-    why: 'a tool binary, not scanned content — its version is proxied by package-lock.json, which IS hashed',
-  },
-  {
     rel: 'frontend/dist/assets',
     why: 'build output, gitignored — derived from frontend/src, which IS hashed, and ordered behind `build` by `after`',
   },
