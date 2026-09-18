@@ -37,7 +37,7 @@ export default tseslint.config(
     // and produces a wrong `amount` that §2.7 then freezes forever on a
     // supplier's printed receipt.
     //
-    // Scoped to the nine modules that handle money rather than applied
+    // Scoped to the modules that handle money rather than applied
     // globally: `*` and `/` are perfectly ordinary in pagination offsets,
     // image resizing and time arithmetic, and a repo-wide ban would train
     // people to write disable comments.
@@ -87,6 +87,18 @@ export default tseslint.config(
       'src/crates/crates.service.ts',
       'src/crates/crate-balance.service.ts',
       'src/intake-top-ups/**/*.ts',
+      // ADDED 2026-09-18, and this is the list's most important property, not an
+      // afterthought: EVERY module that owns a money or weight `numeric` column
+      // must be in it. These three own six of them between them, and none was
+      // guarded — `grade_prices.base_price` is the price that multiplies into
+      // every intake `amount`, plus `max_markup` and `max_discount`;
+      // `tare_types.weight_kg` and `deposit_price`; `collection_points.target_cash`.
+      // They were reachable only by the separate money ratchet, which scanned all
+      // of backend/src and is deleted a commit later. Widening first is what makes
+      // that deletion a handover rather than a hole.
+      'src/grade-prices/**/*.ts',
+      'src/tare-types/**/*.ts',
+      'src/collection-points/**/*.ts',
     ],
     ignores: ['**/*.spec.ts', '**/*.db-spec.ts'],
     rules: {
@@ -99,6 +111,16 @@ export default tseslint.config(
         'error',
         {
           selector: "BinaryExpression[operator=/^[*/]$/]",
+          message: 'Money and weight arithmetic belongs in src/common/money.ts (foundation §5.1).',
+        },
+        {
+          // `total *= rate` is the same operator with a different token kind, and
+          // BOTH nets missed it: eslint's selector above is anchored, and the AST
+          // ratchet compared against ts.SyntaxKind.AsteriskToken, which is not
+          // AsteriskEqualsToken. Free to add — a full AST scan of backend/src and
+          // frontend/src found zero occurrences, so this is a prospective guard
+          // with no migration behind it.
+          selector: "AssignmentExpression[operator=/^[*/]=$/]",
           message: 'Money and weight arithmetic belongs in src/common/money.ts (foundation §5.1).',
         },
         {

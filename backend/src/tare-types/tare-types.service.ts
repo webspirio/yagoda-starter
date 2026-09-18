@@ -6,6 +6,7 @@ import { CreateTareTypeDto } from './dto/create-tare-type.dto';
 import { UpdateTareTypeDto } from './dto/update-tare-type.dto';
 import { ListTareTypesQueryDto } from './dto/list-tare-types.query';
 import { TareTypeResponse, toTareTypeResponse } from './tare-type.mapper';
+import { skipOf } from '../common/dto/pagination-query.dto';
 import { AuditService } from '../audit/audit.service';
 import { assertTrimmedName } from '../common/trimmed-name';
 import { diffFields } from '../common/diff-fields';
@@ -30,7 +31,7 @@ export class TareTypesService {
     const [data, total] = await this.repo.findAndCount({
       where,
       order: { name: 'ASC' },
-      skip: (query.page - 1) * query.limit,
+      skip: skipOf(query),
       take: query.limit,
     });
 
