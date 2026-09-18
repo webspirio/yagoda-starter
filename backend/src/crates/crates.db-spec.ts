@@ -16,6 +16,8 @@ import { UsersService } from '../users/users.service';
 import { CredentialsService } from '../users/credentials.service';
 import { LOCAL_PROVIDER } from '../users/user-identity.entity';
 import { UserRole } from '../users/user-role.enum';
+import { CrateDispatchService } from './crate-dispatch.service';
+import type { AuthenticatedUser } from '../auth/jwt.strategy';
 
 /**
  * UNVERIFIED AT WRITE TIME. This spec has never been run — no Postgres was
@@ -48,6 +50,15 @@ describe('crates lifecycle (HTTP)', () => {
   let operatorToken: string;
   let pointId: string;
   let supplierId: string;
+  // §6.8's dispatch line (#110) — this file already owns a point, an open
+  // shift and the network's one crate tare type, which is everything that
+  // query needs besides a receipt to count.
+  let dispatch: CrateDispatchService;
+  let ownerActor: AuthenticatedUser;
+  let shiftId: string;
+  let crateTareId: string;
+  let boxTareId: string;
+  let gradeId: string;
 
   const pointCode = (): string => randomUUID().replace(/-/g, '').slice(0, 8).toUpperCase();
 
@@ -80,6 +91,13 @@ describe('crates lifecycle (HTTP)', () => {
       async (created, manager) => credentials.set(created.id, 'hunter2!!', manager),
     );
     ownerToken = tokenFor(owner.id);
+    ownerActor = {
+      sub: owner.id,
+      username: 'crates-owner',
+      role: UserRole.NetworkOwner,
+      collection_point_id: null,
+    };
+    dispatch = app.get(CrateDispatchService);
 
     const pointRes = await request(app.getHttpServer())
       .post('/collection-points')
@@ -116,7 +134,31 @@ describe('crates lifecycle (HTTP)', () => {
         deposit_price: '120.00',
         is_crate: true,
       })
+      .expect(201)
+      .then((res) => {
+        crateTareId = res.body.id as string;
+      });
+
+    // A SECOND tare type, deliberately NOT a crate — «Чешка» on the same
+    // receipt is what makes `tt.is_crate` in the dispatch query falsifiable.
+    const boxRes = await request(app.getHttpServer())
+      .post('/tare-types')
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .send({ name: `Чешка-${randomUUID()}`, weight_kg: '0.40', deposit_price: '0.00' })
       .expect(201);
+    boxTareId = boxRes.body.id as string;
+
+    const productRes = await request(app.getHttpServer())
+      .post('/products')
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .send({ name: `Малина-${randomUUID()}` })
+      .expect(201);
+    const gradeRes = await request(app.getHttpServer())
+      .post('/product-grades')
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .send({ product_id: productRes.body.id as string, name: `Перший-${randomUUID()}` })
+      .expect(201);
+    gradeId = gradeRes.body.id as string;
 
     const supplierRes = await request(app.getHttpServer())
       .post('/suppliers')
@@ -125,11 +167,12 @@ describe('crates lifecycle (HTTP)', () => {
       .expect(201);
     supplierId = supplierRes.body.id as string;
 
-    await request(app.getHttpServer())
+    const shiftRes = await request(app.getHttpServer())
       .post('/shifts')
       .set('Authorization', `Bearer ${operatorToken}`)
       .send({ counted_amount: '0.00' })
       .expect(201);
+    shiftId = shiftRes.body.id as string;
   }, 30_000);
 
   afterAll(async () => {
@@ -317,5 +360,40 @@ describe('crates lifecycle (HTTP)', () => {
       (r) => r.collection_point_id === pointId,
     );
     expect(row?.crate_deposits).toBe('0.00');
+  });
+
+  it('counts only crate tare on live intakes', async () => {
+    // A receipt with 12 crates and 8 Чешка: only the crates count. Written
+    // straight to SQL rather than over `POST /intakes` — a real receipt would
+    // need a grade price and a supplier debt, none of which this query reads.
+    const [{ id: intakeId }] = (await ds.query(
+      `INSERT INTO intakes (code, shift_id, supplier_id, amount, received_by_user_id)
+       VALUES ($1, $2, $3, '4280.00', $4) RETURNING id`,
+      [`DISP-${randomUUID().slice(0, 8)}`, shiftId, supplierId, ownerActor.sub],
+    )) as Array<{ id: string }>;
+    const [{ id: itemId }] = (await ds.query(
+      `INSERT INTO intake_items
+         (intake_id, item_order, product_grade_id, gross_kg, tare_weight_kg, net_kg, price, amount)
+       VALUES ($1, 1, $2, '100.00', '14.40', '85.60', '50.00', '4280.00') RETURNING id`,
+      [intakeId, gradeId],
+    )) as Array<{ id: string }>;
+    await ds.query(
+      `INSERT INTO intake_item_tare_types (item_id, tare_type_id, units)
+       VALUES ($1, $2, 12), ($1, $3, 8)`,
+      [itemId, crateTareId, boxTareId],
+    );
+
+    await expect(dispatch.forShift(ownerActor, shiftId)).resolves.toMatchObject({ with_berry: 12 });
+
+    // The whole trio, or CHK_intakes_void_trio refuses the row — §9.3 does not
+    // let a document be voided without saying who did it and why.
+    await ds.query(
+      `UPDATE intakes
+          SET voided_at = now(), voided_by_user_id = $2, void_reason = 'перерахунок'
+        WHERE id = $1`,
+      [intakeId, ownerActor.sub],
+    );
+    // A voided receipt's crates never left the point.
+    await expect(dispatch.forShift(ownerActor, shiftId)).resolves.toMatchObject({ with_berry: 0 });
   });
 });
