@@ -77,9 +77,15 @@ test('the real tree is green against the committed baseline', () => {
   assert.equal(res.status, 0, res.out)
   // RE-MEASURED 2026-09-16: 29 -> 40 after main's 43-commit merge brought the crates slice
   // and a second seed module (dev-seed.history.ts) that does its own kopiyka arithmetic.
-  // The number stays pinned rather than loosened — going red here is how the merge
-  // announced that eleven new arithmetic sites needed reading.
-  assert.match(res.out, /40 baselined money\/weight-arithmetic sites/)
+  // RE-MEASURED 2026-09-18: 40 -> 46 for the §8.1–8.2 reweigh slice, which added div() and
+  // allocate() to common/money.ts itself — six new bigint sites inside the one module this
+  // ratchet's own entries call «the rounding engine, not a bypass of it». The seventh
+  // finding that run reported was not new at all: ThrottlerModule's two Number() calls each
+  // shifted down a line, and the surviving key matched the WRONG one of the pair, exactly as
+  // those two entries had already warned it would.
+  // The number stays pinned rather than loosened — going red here is how a change
+  // announces that new arithmetic sites need reading.
+  assert.match(res.out, /46 baselined money\/weight-arithmetic sites/)
 })
 
 test('a * between two untyped function parameters is a NEW FINDING (brief scenario 2)', () => {
