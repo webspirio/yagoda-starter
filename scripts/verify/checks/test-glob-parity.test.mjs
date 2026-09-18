@@ -7,6 +7,9 @@ import path from 'node:path'
 const ROOT = path.resolve(import.meta.dirname, '..', '..', '..')
 const CHECK = path.join(ROOT, 'scripts', 'verify', 'checks', 'test-glob-parity.mjs')
 
+// Safe: the check guards main() behind its own argv, so importing it runs no scan.
+const { collectorsFor, nodeTestGlobs, shellTestGlobs } = await import(CHECK)
+
 function run() {
   try {
     return { status: 0, out: execFileSync(process.execPath, [CHECK], { encoding: 'utf8' }) }
@@ -87,4 +90,63 @@ test('a *.test.sh file outside scripts/ci/ is an orphan — the candidate net is
   } finally {
     rmSync(orphan, { force: true })
   }
+})
+
+/**
+ * THE TWO TESTS THAT WOULD HAVE CAUGHT THE DEFECT.
+ *
+ * This check used to hand-write `startsWith('scripts/')` against a runner whose glob is
+ * `scripts/verify/**`, and `startsWith('scripts/ci/')` — which recurses — against a POSIX
+ * `*`, which does not. Both were WIDER than the command they modelled, so a test file in
+ * the gap read as "collected by exactly one runner" and was never executed by anything.
+ *
+ * `collectorsFor` is now pure and exported, and these run in-process against string
+ * literals: no subprocess, no git, and nothing written to the real working tree.
+ */
+const NOOP_RE = /$^/
+
+test('a .test.mjs outside the runner glob is collected by NOBODY', () => {
+  const nodeGlobs = ['scripts/verify/**/*.test.mjs', '.claude/hooks/**/*.test.mjs']
+  const shellGlobs = ['scripts/ci/*.test.sh']
+
+  // The discriminator: the same call must SEE the files that really are collected, or this
+  // test passes against a matcher that matches nothing at all.
+  assert.deepEqual(
+    collectorsFor('scripts/verify/hash.test.mjs', NOOP_RE, NOOP_RE, nodeGlobs, shellGlobs),
+    ['node-test'],
+  )
+  assert.deepEqual(
+    collectorsFor('.claude/hooks/stop-gate.test.mjs', NOOP_RE, NOOP_RE, nodeGlobs, shellGlobs),
+    ['node-test'],
+  )
+  assert.deepEqual(
+    collectorsFor('scripts/ci/coolify-deploy.test.sh', NOOP_RE, NOOP_RE, nodeGlobs, shellGlobs),
+    ['shell-test'],
+  )
+
+  // And the two shapes that used to read as collected:
+  assert.deepEqual(
+    collectorsFor('scripts/ci/x.test.mjs', NOOP_RE, NOOP_RE, nodeGlobs, shellGlobs),
+    [],
+    'scripts/ci/x.test.mjs is not matched by scripts/verify/**/*.test.mjs — nothing runs it',
+  )
+  assert.deepEqual(
+    collectorsFor('scripts/vps/y.test.mjs', NOOP_RE, NOOP_RE, nodeGlobs, shellGlobs),
+    [],
+  )
+  assert.deepEqual(
+    collectorsFor('scripts/ci/nested/z.test.sh', NOOP_RE, NOOP_RE, nodeGlobs, shellGlobs),
+    [],
+    'a POSIX * never crosses a /, so `for f in scripts/ci/*.test.sh` never reaches nested/',
+  )
+})
+
+test('the derived globs ARE the runner argv, character for character', () => {
+  // This is the half that ties the model to the command. If package.json's test:verify or
+  // test:ci-scripts is rewritten, this fails rather than the model quietly drifting.
+  assert.deepEqual(nodeTestGlobs(), [
+    'scripts/verify/**/*.test.mjs',
+    '.claude/hooks/**/*.test.mjs',
+  ])
+  assert.deepEqual(shellTestGlobs(), ['scripts/ci/*.test.sh'])
 })

@@ -425,11 +425,14 @@ export const CHECKS = [
       "own \"jest\" key by Task 20 so coverageThreshold there could read process.env, a static " +
       "JSON block cannot), jest-db (backend/jest.db.config.js's " +
       "separate testRegex, also rootDir src), vitest (frontend's default include, no " +
-      'test.include set), node-test (scripts/**/*.test.mjs AND, as of Task 19, ' +
-      '.claude/hooks/**/*.test.mjs — two globs, one npm run test:verify command), ' +
+      "test.include set), node-test (the positional globs of package.json's own " +
+      'test:verify script, READ AT RUNTIME rather than copied — it used to say ' +
+      'scripts/**/*.test.mjs, which is wider than the runner and let a .test.mjs under ' +
+      'scripts/ci/ read as collected while nothing ran it), ' +
       'playwright (e2e/**/*.spec.ts, Playwright\'s own default testMatch, run ' +
-      'by npm run test:e2e) and, as of Task 21, shell-test (scripts/ci/*.test.sh, run by ' +
-      'npm run test:ci-scripts — see that row) — a file with zero matching collectors, or ' +
+      "by npm run test:e2e) and, as of Task 21, shell-test (the iteration globs of " +
+      "package.json's test:ci-scripts, also read at runtime — the prefix test it replaces " +
+      'recursed where a POSIX * does not) — a file with zero matching collectors, or ' +
       'claimed by two at once, fails this exact command, no matter how many files exist when ' +
       'it runs. Task 21 added shell-test after a whole-branch review found, BY HAND, that ' +
       'this check could not see scripts/ci/*.test.sh files at all: origin/main\'s `checks` job ' +
@@ -699,7 +702,7 @@ export const CHECKS = [
       "intermediate counts this row does not itself track): `npm run test:verify` " +
       "(`node --test --test-concurrency=1 'scripts/verify/**/*.test.mjs' " +
       "'.claude/hooks/**/*.test.mjs'` — TWO globs since Task 19, not the one this row " +
-      "originally shipped quoting) collects and runs 171 tests across 16 *.test.mjs files " +
+      "originally shipped quoting) collects and runs 173 tests across 16 *.test.mjs files " +
       "today, re-measured per file 2026-09-18 — hash.test.mjs (8), registry.test.mjs (12), " +
       "run.test.mjs (20), " +
       'checks/audit.test.mjs (11), checks/bundle-size.test.mjs (10), ' +
