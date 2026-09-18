@@ -48,6 +48,10 @@ describe('crates lifecycle (HTTP)', () => {
   let ds: DataSource;
   let ownerToken: string;
   let operatorToken: string;
+  // An operator at a DIFFERENT point — the falsifier for the dispatch route's
+  // point scoping. Without a second point, a 404 could never be told apart
+  // from a route that simply refuses everyone.
+  let foreignOperatorToken: string;
   let pointId: string;
   let supplierId: string;
   // §6.8's dispatch line (#110) — this file already owns a point, an open
@@ -118,6 +122,24 @@ describe('crates lifecycle (HTTP)', () => {
       async (created, manager) => credentials.set(created.id, 'hunter2!!', manager),
     );
     operatorToken = tokenFor(operator.id);
+
+    const foreignPointRes = await request(app.getHttpServer())
+      .post('/collection-points')
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .send({ name: `crates-foreign-${randomUUID()}`, code: pointCode() })
+      .expect(201);
+    const { user: foreignOperator } = await users.createWithIdentity(
+      {
+        provider: LOCAL_PROVIDER,
+        providerUserId: `crates-foreign-op-${randomUUID()}`,
+        first_name: 'Леся',
+        last_name: 'Чужа',
+        role: UserRole.PointOperator,
+        collection_point_id: foreignPointRes.body.id as string,
+      },
+      async (created, manager) => credentials.set(created.id, 'hunter2!!', manager),
+    );
+    foreignOperatorToken = tokenFor(foreignOperator.id);
 
     // Exactly one crate type — `UQ_tare_types_single_crate` (bare, not
     // deferrable) tolerates only one flagged row at a time. This is safe even
@@ -395,5 +417,52 @@ describe('crates lifecycle (HTTP)', () => {
     );
     // A voided receipt's crates never left the point.
     await expect(dispatch.forShift(ownerActor, shiftId)).resolves.toMatchObject({ with_berry: 0 });
+  });
+
+  // Everything above this point calls `CrateDispatchService.forShift` DIRECTLY
+  // with a hand-built actor, which proves the SQL and nothing about the route.
+  // These four go over HTTP, because that is where `@Auth()`, `ParseUUIDPipe`
+  // and — the one that matters — the point scoping actually live. Without the
+  // 404 case, spec §4.2's «point-scoped through the shift» is an unverified
+  // claim: the service would happily answer for any shift id it is handed.
+  describe('GET /shifts/:id/crates', () => {
+    it('serves the open shift to its own operator, with broken still «не записано»', async () => {
+      const res = await request(app.getHttpServer())
+        .get(`/shifts/${shiftId}/crates`)
+        .set('Authorization', `Bearer ${operatorToken}`)
+        .expect(200);
+
+      // The receipt above was voided, so nothing is with berry any more.
+      expect(res.body.with_berry).toBe(0);
+      // The shift is open: `broken` is NULL and `dispatched` follows it there,
+      // rather than reporting 0 — «не записано» is not «нічого не побилось».
+      expect(res.body.broken).toBeNull();
+      expect(res.body.dispatched).toBeNull();
+    });
+
+    it('serves the owner too — §6.10 is a read both roles get', async () => {
+      await request(app.getHttpServer())
+        .get(`/shifts/${shiftId}/crates`)
+        .set('Authorization', `Bearer ${ownerToken}`)
+        .expect(200);
+    });
+
+    it('404s an operator at another point', async () => {
+      // 404 and NOT 403: `loadVisible` refuses to confirm that a shift the
+      // caller cannot see exists at all. This is the assertion that makes the
+      // route's point scoping falsifiable — it fails the moment someone
+      // "simplifies" `forShift` into reading the shift row directly.
+      await request(app.getHttpServer())
+        .get(`/shifts/${shiftId}/crates`)
+        .set('Authorization', `Bearer ${foreignOperatorToken}`)
+        .expect(404);
+    });
+
+    it('400s a shift id that is not a uuid', async () => {
+      await request(app.getHttpServer())
+        .get('/shifts/not-a-uuid/crates')
+        .set('Authorization', `Bearer ${operatorToken}`)
+        .expect(400);
+    });
   });
 });

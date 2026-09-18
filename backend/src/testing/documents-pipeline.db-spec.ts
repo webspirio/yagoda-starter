@@ -6,6 +6,7 @@ import { Test } from '@nestjs/testing';
 import { JwtService } from '@nestjs/jwt';
 import { ClassSerializerInterceptor, INestApplication, ValidationPipe } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
+import { DataSource } from 'typeorm';
 // MUST be imported before `../app.module` — it loads `.env` as a side effect,
 // and AppModule's decorator runs ConfigModule.forRoot() eagerly at import time.
 import {
@@ -297,6 +298,26 @@ describe('documents pipeline (HTTP)', () => {
         .expect(201);
       // 0 survives as 0 — it is not null, and it is not dropped as falsy.
       expect(reclosed.body.broken_crates).toBe(0);
+
+      // THE 3 IS STILL READABLE. This is the whole reason overwriting the
+      // column is acceptable (spec decision 3): `shifts.broken_crates` now
+      // holds 0 and the audit log is the ONLY place the operator's first
+      // answer still exists. Asserted against real rows rather than against
+      // `audit.record` having been called — a mock cannot prove the write
+      // committed inside the close transaction.
+      const closes = (await app.get(DataSource).query(
+        `SELECT after FROM audit_log
+          WHERE action = 'shift.closed' AND target_id = $1
+          ORDER BY at ASC`,
+        [shiftId],
+      )) as Array<{ after: { broken_crates: number | null } }>;
+      const recorded = closes.map((r) => r.after.broken_crates);
+      // Asserted as a TAIL, not a whole-array equality: the owner's 403 close
+      // writes no row but two earlier tests do, and pinning the full sequence
+      // would break this test the next time a close is added above it. The
+      // claim is only about the overwrite — 3 was recorded, then 0 replaced it
+      // on the row, and the 3 is still here.
+      expect(recorded.slice(-2)).toEqual([3, 0]);
 
       // Leave the shift open for the document blocks that follow.
       await request(app.getHttpServer())
