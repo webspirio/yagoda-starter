@@ -8,10 +8,10 @@ const apiError = (init: { status: number; message?: string; code?: string; detai
   new ApiError(init.status, init.message ?? 'Request failed', init.details, init.code);
 
 describe('apiErrorToFields', () => {
-  it('maps INTAKE_CODE_TAKEN onto the code field', () => {
+  it('INTAKE_CODE_TAKEN has no field left to land on, so it banners', () => {
     const out = apiErrorToFields(apiError({ status: 409, code: 'INTAKE_CODE_TAKEN' }), 1);
-    expect(out.fieldErrors).toEqual([{ field: 'code', messageKey: 'reception.errors.codeTaken' }]);
-    expect(out.formErrorKey).toBeNull();
+    expect(out.fieldErrors).toEqual([]);
+    expect(out.formErrorKey).toBe('reception.errors.failed');
   });
 
   it('maps GRADE_NOT_PRICED onto the last line’s product_grade_id', () => {

@@ -69,14 +69,14 @@ describe('generated history', () => {
       }
   });
 
-  it('gives every generated document a code the schema accepts', () => {
+  it('gives every generated document a handle the schema would accept as a code', () => {
     const code = /^[A-Z0-9][A-Z0-9-]{0,15}$/;
     for (const i of HISTORY_INTAKES) expect(i.typed).toMatch(code);
     for (const p of HISTORY_PAYOUTS) expect(p.typed).toMatch(code);
     for (const i of HISTORY_INTAKES) expect(i.time).toMatch(/^\d{2}:\d{2}$/);
   });
 
-  it('gives every generated receipt a code unique within its point and day', () => {
+  it('gives every generated receipt a handle unique within its point and day', () => {
     const seen = new Set<string>();
     for (const i of HISTORY_INTAKES) {
       const key = `${i.point}/${daysBack(i.day)}/${i.typed}`;

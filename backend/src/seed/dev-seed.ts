@@ -2,7 +2,7 @@ import { DataSource, QueryRunner } from 'typeorm';
 import { hashPassword } from '../users/password-hashing';
 import { encryptSecret, readVaultKey } from '../users/secret-box';
 import { PointCashService } from '../point-cash/point-cash.service';
-import { composeDocumentCode } from '../common/document-code';
+import { composeDocumentCode, padSequence } from '../common/document-code';
 import { mul } from '../common/money';
 import {
   buildIntake,
@@ -392,7 +392,7 @@ export function isoDaysBefore(iso: string, n: number): string {
  * Shifts, intakes, payouts, transfers and the cash counts that anchor them.
  * Every intake's numbers come from the server's
  * own `buildIntake()` over the price and tare snapshots the seed itself wrote,
- * and every document code from `composeDocumentCode()` — the demo stores what
+ * and every document code numbered as the server numbers one — the demo stores what
  * the API would have stored. Idempotent by the schema's own keys: a shift by
  * `(point, business_date)`, a document by its UNIQUE `code`.
  *
@@ -457,10 +457,42 @@ async function seedDocuments(
     if (row) userByLogin.set(login, row.user_id);
   }
   const pointCode = new Map(SEED_POINTS.map((p) => [p.name, p.code]));
-  // Shared by the intakes loop and the top-ups loop below, so the two can
-  // never disagree about what an intake's code looks like.
-  const intakeCodeFor = (point: string, day: SeedDay, typed: string): string =>
-    composeDocumentCode(pointCode.get(point)!, 'IN', dateOf(day), typed);
+
+  /**
+   * THE SEED NUMBERS DOCUMENTS THE WAY THE SERVER DOES — 001, 002, … per
+   * shift, per kind — because since 2026-09-18 that is the only way a code is
+   * ever written. Before then the dataset carried the number off the paper
+   * book in `typed` and composed the code from it directly.
+   *
+   * `typed` SURVIVES AS THE DATASET'S HANDLE, not as a stored value: it is how
+   * `SEED_TOP_UPS` names the receipt it tops up, and how the generated season
+   * keeps its rows distinct while it is being built. Nothing reads it out of
+   * the database, because nothing puts it there any more.
+   *
+   * DETERMINISTIC, AND THAT IS LOAD-BEARING. The code is this seed's natural
+   * key, so a number that moved between runs would break idempotency. It
+   * cannot move: the counter is driven by position in `allIntakes` /
+   * `allPayouts`, both of which are fixed arrays, and a document that is
+   * SKIPPED because it is already in the database still consumes its number —
+   * the counter advances before the existence check, not after it.
+   */
+  const sequence = new Map<string, number>();
+  const codeOf = new Map<string, string>();
+  const nextSeedCode = (kind: 'IN' | 'PO', point: string, day: SeedDay, typed: string): string => {
+    const book = `${kind}/${point}/${String(day)}`;
+    const n = (sequence.get(book) ?? 0) + 1;
+    sequence.set(book, n);
+    const code = composeDocumentCode(pointCode.get(point)!, kind, dateOf(day), padSequence(n));
+    codeOf.set(`${book}/${typed}`, code);
+    return code;
+  };
+  /** The intakes loop's answer, replayed for the top-ups loop below, so the two
+   *  can never disagree about what an intake's code turned out to be. */
+  const intakeCodeFor = (point: string, day: SeedDay, typed: string): string => {
+    const code = codeOf.get(`IN/${point}/${String(day)}/${typed}`);
+    if (!code) throw new Error(`Seed top-up names an intake the seed never wrote: ${typed}`);
+    return code;
+  };
 
   const supplierId = new Map<string, string>();
   const supplierFor = async (point: string, fullName: string): Promise<string> => {
@@ -558,7 +590,7 @@ async function seedDocuments(
   }
 
   for (const doc of allIntakes) {
-    const code = intakeCodeFor(doc.point, doc.day, doc.typed);
+    const code = nextSeedCode('IN', doc.point, doc.day, doc.typed);
     const found = await one<{ id: string }>(qr, `SELECT id FROM intakes WHERE code = $1`, [code]);
     if (found) continue;
     const shift = shiftId.get(`${doc.point}/${doc.day}`);
@@ -624,7 +656,7 @@ async function seedDocuments(
   }
 
   for (const doc of allPayouts) {
-    const code = composeDocumentCode(pointCode.get(doc.point)!, 'PO', dateOf(doc.day), doc.typed);
+    const code = nextSeedCode('PO', doc.point, doc.day, doc.typed);
     const found = await one<{ id: string }>(qr, `SELECT id FROM payouts WHERE code = $1`, [code]);
     if (found) continue;
     const shift = shiftId.get(`${doc.point}/${doc.day}`);

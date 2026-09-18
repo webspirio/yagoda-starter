@@ -16,10 +16,9 @@ describe('apiErrorToFields', () => {
     expect(out.formErrorKey).toBeNull();
   });
 
-  it('PAYOUT_CODE_TAKEN lands on code', () => {
+  it('PAYOUT_CODE_TAKEN has no field left to land on, so it banners', () => {
     const out = apiErrorToFields(apiError({ status: 409, code: 'PAYOUT_CODE_TAKEN' }));
-    expect(out.fieldErrors).toEqual([{ field: 'code', messageKey: 'payout.errors.codeTaken' }]);
-    expect(out.formErrorKey).toBeNull();
+    expect(out).toEqual({ fieldErrors: [], formErrorKey: 'payout.errors.failed' });
   });
 
   it('PAYOUT_AMOUNT_ZERO lands on amount', () => {

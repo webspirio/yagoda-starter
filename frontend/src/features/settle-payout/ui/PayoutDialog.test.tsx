@@ -37,7 +37,6 @@ describe('PayoutDialog', () => {
     expect(
       screen.getByRole('heading', { name: 'Pay out the balance — Ivan Petrenko' }),
     ).toBeInTheDocument();
-    expect(screen.getByLabelText('Receipt no.')).toHaveValue('');
     expect(screen.getByLabelText('Amount')).toHaveValue('10944.00');
 
     await expectNoAxeViolations(container);
@@ -48,7 +47,6 @@ describe('PayoutDialog', () => {
       <PayoutDialog supplier={supplier} pointId="p1" debt="10944.00" open onClose={vi.fn()} />,
     );
 
-    await userEvent.type(screen.getByLabelText('Receipt no.'), '00091');
     const amountField = screen.getByLabelText('Amount');
     await userEvent.clear(amountField);
     await userEvent.type(amountField, '20000');
@@ -75,7 +73,6 @@ describe('PayoutDialog', () => {
       />,
     );
 
-    await userEvent.type(screen.getByLabelText('Receipt no.'), '00091');
     const amountField = screen.getByLabelText('Amount');
     await userEvent.clear(amountField);
     await userEvent.type(amountField, '4000');
@@ -84,7 +81,6 @@ describe('PayoutDialog', () => {
 
     await waitFor(() => expect(createPayoutMock).toHaveBeenCalledTimes(1));
     expect(createPayoutMock).toHaveBeenCalledWith({
-      code: '00091',
       supplier_id: 's1',
       amount: '4000',
       collection_point_id: 'p1',
@@ -98,15 +94,25 @@ describe('PayoutDialog', () => {
     expect(toastSuccessMock).toHaveBeenCalledWith('Paid out 4,000.00 ₴');
   });
 
+  it('asks for no receipt number — the server numbers the payout', async () => {
+    render(<PayoutDialog supplier={supplier} debt="10944.00" open onClose={vi.fn()} />);
+
+    expect(screen.queryByLabelText('Receipt no.')).not.toBeInTheDocument();
+  });
+
+  it('puts the cursor in the amount, the only thing left to type', async () => {
+    render(<PayoutDialog supplier={supplier} debt="10944.00" open onClose={vi.fn()} />);
+
+    expect(screen.getByLabelText('Amount')).toHaveFocus();
+  });
+
   it('does not send collection_point_id when no point is given (operator flow)', async () => {
     render(<PayoutDialog supplier={supplier} debt="10944.00" open onClose={vi.fn()} />);
 
-    await userEvent.type(screen.getByLabelText('Receipt no.'), '00091');
     await userEvent.click(screen.getByRole('button', { name: /Pay out/ }));
 
     await waitFor(() => expect(createPayoutMock).toHaveBeenCalledTimes(1));
     expect(createPayoutMock).toHaveBeenCalledWith({
-      code: '00091',
       supplier_id: 's1',
       amount: '10944.00',
     });
@@ -141,14 +147,6 @@ describe('PayoutDialog', () => {
     expect(screen.getByRole('button', { name: 'Pay out 4,000.00 ₴' })).toBeInTheDocument();
   });
 
-  it('upper-cases the typed receipt number', async () => {
-    render(
-      <PayoutDialog supplier={supplier} pointId="p1" debt="10944.00" open onClose={vi.fn()} />,
-    );
-    await userEvent.type(screen.getByLabelText('Receipt no.'), 'abc12');
-    expect(screen.getByLabelText('Receipt no.')).toHaveValue('ABC12');
-  });
-
   it('shows a banner for a shift-level server refusal', async () => {
     const { ApiError } = await import('@/shared/api');
     createPayoutMock.mockRejectedValueOnce(
@@ -158,7 +156,6 @@ describe('PayoutDialog', () => {
       <PayoutDialog supplier={supplier} pointId="p1" debt="10944.00" open onClose={vi.fn()} />,
     );
 
-    await userEvent.type(screen.getByLabelText('Receipt no.'), '00091');
     await userEvent.click(screen.getByRole('button', { name: /Pay out/ }));
 
     expect(

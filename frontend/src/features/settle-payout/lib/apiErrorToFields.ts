@@ -22,7 +22,6 @@ const FORM_LEVEL = 'payout.errors.failed';
  */
 const CODE_FIELD: Readonly<Record<string, { field: string; messageKey: string }>> = {
   PAYOUT_EXCEEDS_DEBT: { field: 'amount', messageKey: 'payout.errors.exceedsDebtServer' },
-  PAYOUT_CODE_TAKEN: { field: 'code', messageKey: 'payout.errors.codeTaken' },
   PAYOUT_AMOUNT_ZERO: { field: 'amount', messageKey: 'payout.errors.amountZero' },
 };
 
@@ -36,10 +35,17 @@ const CODE_BANNER: Readonly<Record<string, string>> = {
  * Maps a failed create-payout mutation onto RHF field errors (i18n keys) + an
  * optional form-level banner. Server `code`s are checked first, since each
  * names exactly one outcome; a code-less 400 falls back to class-validator
- * `details` — today only `amount`'s `@Matches` can fail that way (`code` has
- * no server-side pattern: the server only prefixes the typed part, it never
- * rejects its shape beyond `@IsString()`). Anything else, including a
- * non-ApiError (network, etc.), is a form-level failure.
+ * `details` — today only `amount`'s `@Matches` can fail that way, since it is
+ * the only field the request still carries.
+ *
+ * `PAYOUT_CODE_TAKEN` IS DELIBERATELY UNMAPPED. The server can still raise it,
+ * but only against a shift numbered by hand before 2026-09-18, and there is no
+ * longer a `code` field to hang the message on — nor anything the operator
+ * could change to get past it. It falls through to the banner below, which is
+ * the honest outcome: the receipt did not go through, go and find someone.
+ *
+ * Anything else, including a non-ApiError (network, etc.), is a form-level
+ * failure.
  */
 export function apiErrorToFields(error: unknown): ApiFieldErrors {
   if (!(error instanceof ApiError)) return { fieldErrors: [], formErrorKey: FORM_LEVEL };

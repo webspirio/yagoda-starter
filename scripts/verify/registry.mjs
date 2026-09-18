@@ -439,11 +439,18 @@ export const CHECKS = [
       'out of backend/jest.config.js and backend/jest.db.config.js at runtime, not copied ' +
       'here, so this row also proves those two files still say what the check assumes. AS A ' +
       'SNAPSHOT, RE-MEASURED 2026-09-18 on the §8.3–8.6 cost-of-day slice, stacked on the ' +
-      'reweigh one (247 files there, 242 on main the same day, 239 on 2026-09-16, 219 on ' +
+      'reweigh one (257 files on the cost-of-day slice, 247 on the reweigh one, 242 on main ' +
+      'the same day, 239 on 2026-09-16, 219 on ' +
       '2026-09-15, 170 ' +
-      'on 2026-09-11): 257 files ' +
-      'now match across the two candidate nets (jest-unit 64, jest-db 37, vitest 138, ' +
-      'node-test 15, playwright 1, shell-test 2). All 10 new files came from this slice — ' +
+      'on 2026-09-11): 256 files ' +
+      'now match across the two candidate nets (jest-unit 64, jest-db 37, vitest 137, ' +
+      'node-test 15, playwright 1, shell-test 2). THE TOTAL WENT DOWN, which is rare enough ' +
+      'to name: the server-generated-document-codes branch deleted ' +
+      'frontend/src/pages/reception/lib/receiptCode.test.ts along with the module it tested, ' +
+      'because the client-side receipt-number format rule it guarded has no field left to ' +
+      'guard. One file off the vitest net, nothing moved between nets. The cost-of-day ' +
+      'slice\'s own note, which this sentence replaces the tail of, read: all 10 new files ' +
+      'came from that slice — ' +
       'six on the jest-unit net (day-costs/{cost-of-day,day-expenses,network-average}.' +
       'service.spec.ts, day-costs/top-up-allocation.spec.ts and two dto specs) and four on ' +
       'the jest-db one (day-costs/{cost-of-day,day-expenses,network-average}.db-spec.ts and ' +

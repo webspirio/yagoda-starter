@@ -547,7 +547,11 @@ export interface SeedIntakeLine {
 export interface SeedIntake {
   point: string;
   day: SeedDay;
-  /** What the operator typed from the paper book; the server prefixes it. */
+  /** THE DATASET'S HANDLE FOR THIS DOCUMENT, not a stored value. It used to be
+   *  the number the operator copied off the paper book, which the seed then
+   *  prefixed into `code`; since 2026-09-18 the server numbers each shift
+   *  itself and the seed does the same, so this survives only to let
+   *  `SEED_TOP_UPS` name the receipt it tops up. */
   typed: string;
   /** `first_name last_name` of a seeded supplier at that point. */
   supplier: string;

@@ -137,7 +137,6 @@ describe('payout ceiling with top-ups (Postgres)', () => {
     expect(await balance.debtFor(supplierId)).toBe('2000.00');
 
     const paid = await payouts.create(owner(), {
-      code: `CEIL-${run}`,
       collection_point_id: pointId,
       supplier_id: supplierId,
       amount: '2000.00',
@@ -164,7 +163,6 @@ describe('payout ceiling with top-ups (Postgres)', () => {
 
     await expect(
       payouts.create(owner(), {
-        code: `CEIL2-${run}`,
         collection_point_id: pointId,
         supplier_id: supplierId,
         amount: '2000.01',

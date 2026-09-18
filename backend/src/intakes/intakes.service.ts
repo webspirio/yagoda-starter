@@ -37,7 +37,7 @@ import { TareTypesService } from '../tare-types/tare-types.service';
 import { CollectionPointsService } from '../collection-points/collection-points.service';
 import type { CollectionPoint } from '../collection-points/collection-point.entity';
 import { AuditService } from '../audit/audit.service';
-import { composeDocumentCode } from '../common/document-code';
+import { nextDocumentCode } from '../common/document-code';
 import { resolveWritePoint, resolvePointFilter } from '../auth/access/point-scope';
 import { Paginated } from '../common/dto/paginated';
 import { skipOf } from '../common/dto/pagination-query.dto';
@@ -92,7 +92,13 @@ export class IntakesService {
     return this.dataSource.transaction(async (m) => {
       const { shift, built } = await this.compute(pointId, dto, m);
 
-      const code = composeDocumentCode(point.code, 'IN', shift.business_date, dto.code);
+      const code = await nextDocumentCode(m, {
+        pointCode: point.code,
+        businessDate: shift.business_date,
+        kind: 'IN',
+        shiftId: shift.id,
+        table: 'intakes',
+      });
 
       try {
         const intake = await m.save(
@@ -140,7 +146,7 @@ export class IntakesService {
 
         return toIntakeDetailResponse(intake, shift, intake.items ?? []);
       } catch (error) {
-        throw this.translateDuplicateCode(error, dto.code, shift.business_date);
+        throw this.translateDuplicateCode(error, code);
       }
     });
   }
@@ -435,16 +441,24 @@ export class IntakesService {
   }
 
   /**
-   * The composed code collides ONLY on same point + same day + same typed
-   * number, which is a genuine duplicate entry — so the message must say that.
-   * A generic «duplicate key» invites the operator to retype the identical
-   * number and be refused again.
+   * UNREACHABLE BY ANY ORDINARY PATH, AND KEPT ANYWAY.
+   *
+   * The code is generated under an advisory lock from a count of this shift's
+   * intakes, so two concurrent receipts cannot compose the same number. What
+   * CAN still collide is a generated `…-004` meeting a row written before
+   * 2026-09-18, when the number came off the paper book and an operator was
+   * free to type `004` by hand. That is a legacy shift only, it does not clear
+   * itself on a retry, and the operator cannot fix it — so the message names
+   * the code and the 409 is the signal to go look, not a prompt to try again.
+   *
+   * Without this, a 23505 would reach the client as an opaque 500: there is no
+   * QueryFailedError mapping anywhere in this backend.
    */
-  private translateDuplicateCode(error: unknown, typed: string, businessDate: string): unknown {
+  private translateDuplicateCode(error: unknown, code: string): unknown {
     const violation = error as UniqueViolation;
     if (violation?.code === '23505' && violation.constraint === 'UQ_intakes_code') {
       return new ConflictException({
-        message: `Receipt ${typed} has already been recorded at this point on ${businessDate}`,
+        message: `Receipt ${code} already exists — this shift was numbered by hand before the server took it over`,
         code: 'INTAKE_CODE_TAKEN',
       });
     }

@@ -1,6 +1,6 @@
 {
   "createdAt": "2026-09-15",
-  "note": "Every backend/src/**/*.ts arithmetic site this ratchet finds outside *.spec.ts/*.db-spec.ts. AS OF 2026-09-18: 40 keys, 44 occurrences — a COUNT CORRECTION, not a re-audit. This header said \"29 keys, 32 occurrences\" from 2026-09-15 until 2026-09-18 while the file itself grew past it (dev-seed.history.ts's nine entries and crate-code.ts's arrived in between), because nothing pins this sentence: the ratchet compares the ENTRIES against the tree and never reads this note, and registry.test.mjs pins counts in registry.mjs, not here. The 2026-09-18 pass re-keyed four dev-seed.ts entries for line drift and corrected this number; it did NOT re-read all 40 reasons at their sites, so every reason below still carries its own original date and stands on that reading, not on this one. THE SCOPE WIDENED ON 2026-09-15 and the count did not move: until then this ratchet skipped the four module trees backend/eslint.config.mjs policed when it was written (src/intakes/, src/payouts/, src/shifts/, src/supplier-balance/). eslint's own `files` list had since grown to eight trees while this ratchet's hard-coded copy of it had not, so the two scopes silently disagreed — and a tree DELETED from eslint's list would have been policed by neither. Scanning all of backend/src was measured before the carve-out was removed: exactly zero additional findings, because eslint's ban is what keeps those trees clean. Read individually before writing a reason, not inferred from the shape of the code. Four of the 29 keys are backend/src/common/money.ts's OWN internals (the *, /, and mul()'s two / occurrences on one line) — the money engine works in bigint, not JS number, so it carries none of the float-precision risk this ratchet exists to catch, but the AST heuristic only recognises number-typed or numeric-literal operands, not bigint-safety, so those sites are listed honestly here rather than exempted by widening the rule's path exclusions. Three keys (backend/src/seed/dev-seed.ts:59 and :66) are a genuine concern, not a false positive: the dev seed script reimplements money.ts's add() independently, through Number() and plain-number division, to compute real values written into grade_prices.base_price for the seeded demo dataset — a real duplicate of the one authorised rounding seam, left as-is because backend/src is out of scope for the verify layer. Two keys (password-hashing.ts:28's two occurrences) are literal-and-number-typed arithmetic that this rule's single-level operand check cannot prove clear because each is the OUTER multiplication of a left-associative a*b*c chain, whose left operand is itself a BinaryExpression rather than a bare literal or identifier. Every remaining key is one of two shapes: the repeated (page - 1) * limit pagination-offset arithmetic this template's list endpoints all share (10 keys, including pagination-query.dto.ts's own skipOf() helper), or an env-var/config integer parsed with Number()/parseInt() (ports, throttle window/limit) or Math.min() retry-backoff arithmetic that is never a monetary or weight value. None were left unclassified — every entry's reason states what the arithmetic actually is, read at its site. Five entries were RE-KEYED on 2026-09-15 rather than added: all five are sites this file already carried, whose line numbers moved under main's merge. This ratchet is two-directional: a new site not listed here fails scripts/verify/ratchets/money-rounding.mjs, and a listed entry whose site (or exact occurrence count) no longer matches the tree fails it too — this file may only shrink or be re-dated by a reviewed change, never grow by drift.",
+  "note": "Every backend/src/**/*.ts arithmetic site this ratchet finds outside *.spec.ts/*.db-spec.ts. AS OF 2026-09-18: 46 keys, 51 occurrences — a COUNT CORRECTION, not a re-audit. (The same sentence read \"40 keys, 44 occurrences\" earlier the same day and was already wrong when written: the file held 46/51 at that commit. Counted from the entries this time, not carried over.) This header said \"29 keys, 32 occurrences\" from 2026-09-15 until 2026-09-18 while the file itself grew past it (dev-seed.history.ts's nine entries and crate-code.ts's arrived in between), because nothing pins this sentence: the ratchet compares the ENTRIES against the tree and never reads this note, and registry.test.mjs pins counts in registry.mjs, not here. The 2026-09-18 pass re-keyed four dev-seed.ts entries for line drift and corrected this number; it did NOT re-read all 40 reasons at their sites, so every reason below still carries its own original date and stands on that reading, not on this one. THE SCOPE WIDENED ON 2026-09-15 and the count did not move: until then this ratchet skipped the four module trees backend/eslint.config.mjs policed when it was written (src/intakes/, src/payouts/, src/shifts/, src/supplier-balance/). eslint's own `files` list had since grown to eight trees while this ratchet's hard-coded copy of it had not, so the two scopes silently disagreed — and a tree DELETED from eslint's list would have been policed by neither. Scanning all of backend/src was measured before the carve-out was removed: exactly zero additional findings, because eslint's ban is what keeps those trees clean. Read individually before writing a reason, not inferred from the shape of the code. Four of the 29 keys are backend/src/common/money.ts's OWN internals (the *, /, and mul()'s two / occurrences on one line) — the money engine works in bigint, not JS number, so it carries none of the float-precision risk this ratchet exists to catch, but the AST heuristic only recognises number-typed or numeric-literal operands, not bigint-safety, so those sites are listed honestly here rather than exempted by widening the rule's path exclusions. Three keys (backend/src/seed/dev-seed.ts:59 and :66) are a genuine concern, not a false positive: the dev seed script reimplements money.ts's add() independently, through Number() and plain-number division, to compute real values written into grade_prices.base_price for the seeded demo dataset — a real duplicate of the one authorised rounding seam, left as-is because backend/src is out of scope for the verify layer. Two keys (password-hashing.ts:28's two occurrences) are literal-and-number-typed arithmetic that this rule's single-level operand check cannot prove clear because each is the OUTER multiplication of a left-associative a*b*c chain, whose left operand is itself a BinaryExpression rather than a bare literal or identifier. Every remaining key is one of two shapes: the repeated (page - 1) * limit pagination-offset arithmetic this template's list endpoints all share (10 keys, including pagination-query.dto.ts's own skipOf() helper), or an env-var/config integer parsed with Number()/parseInt() (ports, throttle window/limit) or Math.min() retry-backoff arithmetic that is never a monetary or weight value. None were left unclassified — every entry's reason states what the arithmetic actually is, read at its site. Five entries were RE-KEYED on 2026-09-15 rather than added: all five are sites this file already carried, whose line numbers moved under main's merge. This ratchet is two-directional: a new site not listed here fails scripts/verify/ratchets/money-rounding.mjs, and a listed entry whose site (or exact occurrence count) no longer matches the tree fails it too — this file may only shrink or be re-dated by a reviewed change, never grow by drift. THE 2026-09-18 DOCUMENT-CODE PASS re-keyed seven entries and added none: six for pure line drift in the two seed modules, and crate-code.ts:56 -> common/document-code.ts:131, where the crate counter moved when intakes and payouts started sharing it. No new arithmetic entered the tree — every \"new finding\" that pass produced was one of those seven at its new address.",
   "entries": [
     {
       "key": "backend/src/app.module.ts:77:Number",
@@ -37,6 +37,15 @@
       "occurrences": 1,
       "added": "2026-09-10",
       "reason": "skip: (query.page - 1) * query.limit inside CollectionPointsService.list — the same pagination-offset arithmetic as every other list endpoint; page/limit are row counts, not money or weight."
+    },
+    {
+      "key": "backend/src/common/document-code.ts:131:Number",
+      "file": "backend/src/common/document-code.ts",
+      "line": 131,
+      "kind": "Number",
+      "occurrences": 1,
+      "added": "2026-09-16",
+      "reason": "`Number(rows[0]?.n ?? 0)` — reads a Postgres `count(*)::int` back as a JS number to count the documents already recorded in this shift, so the next document code can be composed. A SEQUENCE COUNTER, not a monetary or weight value: nothing downstream of it is an amount, and the query it parses cannot return a fractional value. Arrived with main's crates slice (PR #92). RE-KEYED 2026-09-18 (crates/crate-code.ts:56 -> common/document-code.ts:131): the counter moved file when intakes and payouts started sharing it, and its reason widened from 'crate issuances' to 'documents' with the same standing."
     },
     {
       "key": "backend/src/common/dto/pagination-query.dto.ts:34:*",
@@ -174,15 +183,6 @@
       "reason": "parseInt(process.env.REDIS_PORT ?? '6379', 10) — the Redis TCP port, an integer read from an env var; not money."
     },
     {
-      "key": "backend/src/crates/crate-code.ts:56:Number",
-      "file": "backend/src/crates/crate-code.ts",
-      "line": 56,
-      "kind": "Number",
-      "occurrences": 1,
-      "added": "2026-09-16",
-      "reason": "`Number(rows[0]?.n ?? 0)` — reads a Postgres `count(*)::int` back as a JS number to count crate issuances already recorded in this shift, so the next document code can be composed. A SEQUENCE COUNTER, not a monetary or weight value: nothing downstream of it is an amount, and the query it parses cannot return a fractional value. Arrived with main's crates slice (PR #92)."
-    },
-    {
       "key": "backend/src/grade-prices/grade-prices.service.ts:112:*",
       "file": "backend/src/grade-prices/grade-prices.service.ts",
       "line": 112,
@@ -264,49 +264,49 @@
       "reason": "`between(-10, 10) * 100` — generates a demo bonus line as a whole number of hryvni converted to kopiykas. Monetary, dev-seed only, same standing as the :116 entry: the figure is invented demo data, so no rule about rounding real money applies to it."
     },
     {
-      "key": "backend/src/seed/dev-seed.history.ts:207:Number",
+      "key": "backend/src/seed/dev-seed.history.ts:208:Number",
       "file": "backend/src/seed/dev-seed.history.ts",
-      "line": 207,
+      "line": 208,
       "kind": "Number",
       "occurrences": 1,
       "added": "2026-09-16",
-      "reason": "`Number(grade.base_price.slice(0, grade.base_price.indexOf('.')))` — takes the whole-hryvnia part of a `numeric` price string to derive a plausible demo payout rate. It DISCARDS the kopiyka part by construction, which is exactly the kind of silent precision loss money.ts exists to prevent — harmless only because the output is invented seed data and never an amount the app computed."
+      "reason": "`Number(grade.base_price.slice(0, grade.base_price.indexOf('.')))` — takes the whole-hryvnia part of a `numeric` price string to derive a plausible demo payout rate. It DISCARDS the kopiyka part by construction, which is exactly the kind of silent precision loss money.ts exists to prevent — harmless only because the output is invented seed data and never an amount the app computed. RE-KEYED 2026-09-18 for line drift only (the document-code change above it); the site and its reading are unchanged."
     },
     {
-      "key": "backend/src/seed/dev-seed.history.ts:208:*",
+      "key": "backend/src/seed/dev-seed.history.ts:209:*",
       "file": "backend/src/seed/dev-seed.history.ts",
-      "line": 208,
+      "line": 209,
       "kind": "*",
       "occurrences": 1,
       "added": "2026-09-16",
-      "reason": "`grossCents * rate` in `Math.floor((grossCents * rate) / 100)` — accumulates what a demo supplier is owed, in kopiykas. Real money arithmetic outside money.ts, dev-seed only; see the :116 entry for the full standing of this module."
+      "reason": "`grossCents * rate` in `Math.floor((grossCents * rate) / 100)` — accumulates what a demo supplier is owed, in kopiykas. Real money arithmetic outside money.ts, dev-seed only; see the :116 entry for the full standing of this module. RE-KEYED 2026-09-18 for line drift only (the document-code change above it); the site and its reading are unchanged."
     },
     {
-      "key": "backend/src/seed/dev-seed.history.ts:208:/",
+      "key": "backend/src/seed/dev-seed.history.ts:209:/",
       "file": "backend/src/seed/dev-seed.history.ts",
-      "line": 208,
+      "line": 209,
       "kind": "/",
       "occurrences": 1,
       "added": "2026-09-16",
-      "reason": "`(grossCents * rate) / 100` — the division half of the same accumulation, on the same line. Recorded separately because this ratchet keys by file:line:kind and the two operators are independently findable."
+      "reason": "`(grossCents * rate) / 100` — the division half of the same accumulation, on the same line. Recorded separately because this ratchet keys by file:line:kind and the two operators are independently findable. RE-KEYED 2026-09-18 for line drift only (the document-code change above it); the site and its reading are unchanged."
     },
     {
-      "key": "backend/src/seed/dev-seed.history.ts:218:*",
+      "key": "backend/src/seed/dev-seed.history.ts:219:*",
       "file": "backend/src/seed/dev-seed.history.ts",
-      "line": 218,
+      "line": 219,
       "kind": "*",
       "occurrences": 1,
       "added": "2026-09-16",
-      "reason": "`Math.floor(owed[1] / 4 / 100) * 100` — pays a demo supplier roughly a quarter of what they are owed, rounded down to whole hryvni. Money arithmetic, dev-seed only, same standing as :116."
+      "reason": "`Math.floor(owed[1] / 4 / 100) * 100` — pays a demo supplier roughly a quarter of what they are owed, rounded down to whole hryvni. Money arithmetic, dev-seed only, same standing as :116. RE-KEYED 2026-09-18 for line drift only (the document-code change above it); the site and its reading are unchanged."
     },
     {
-      "key": "backend/src/seed/dev-seed.history.ts:218:/",
+      "key": "backend/src/seed/dev-seed.history.ts:219:/",
       "file": "backend/src/seed/dev-seed.history.ts",
-      "line": 218,
+      "line": 219,
       "kind": "/",
       "occurrences": 2,
       "added": "2026-09-16",
-      "reason": "`owed[1] / 4 / 100` — TWO divisions on one line, which is why this entry's count is 2 where every other on this file is 1: the quarter-share and the kopiyka-to-hryvnia step are separate operators the scan finds separately. Money arithmetic, dev-seed only, same standing as :116."
+      "reason": "`owed[1] / 4 / 100` — TWO divisions on one line, which is why this entry's count is 2 where every other on this file is 1: the quarter-share and the kopiyka-to-hryvnia step are separate operators the scan finds separately. Money arithmetic, dev-seed only, same standing as :116. RE-KEYED 2026-09-18 for line drift only (the document-code change above it); the site and its reading are unchanged."
     },
     {
       "key": "backend/src/seed/dev-seed.history.ts:98:/",
@@ -345,13 +345,13 @@
       "reason": "toCents()'s own body: Number(whole) and Number(frac.padEnd(2, '0')) — converts a decimal string's parsed integer and fractional parts to JS numbers before summing as cents. This is exactly the class of conversion backend/src/common/money.ts's own header calls out as unsafe for numeric(12,2) values. It is confined to the dev seed script (never a runtime dependency of the app — see the seam check) and today's seed prices are small enough that no precision loss surfaces in practice, but it is a real duplicate of money.ts's add(), not a provably-safe pattern, so it is listed rather than exempted. RE-KEYED 2026-09-15 (:59 -> :66), same seven-line shift, same unchanged body. RE-KEYED 2026-09-16 (:66 -> :84), same cause; this and the `*` share the one line. RE-KEYED 2026-09-18 (:84 -> :107) by PR #111, same cause and same shared line as the `*` entry above — both occurrences are still on the one statement, so this entry's count stays 2."
     },
     {
-      "key": "backend/src/seed/dev-seed.ts:722:*",
+      "key": "backend/src/seed/dev-seed.ts:754:*",
       "file": "backend/src/seed/dev-seed.ts",
-      "line": 722,
+      "line": 754,
       "kind": "*",
       "occurrences": 1,
       "added": "2026-09-16",
-      "reason": "`String(i * 5)` building a `09:MM:00` time-of-day string for the i-th seeded document. A CLOCK OFFSET IN MINUTES, provably non-monetary, and it is only a finding at all because `i` is a loop index this file-local heuristic cannot type. New in main's seed growth. RE-KEYED 2026-09-18 (:694 -> :722) by PR #111's 28 cumulative lines above it; line 722 still reads `String(i * 5)`, unchanged."
+      "reason": "`String(i * 5)` building a `09:MM:00` time-of-day string for the i-th seeded document. A CLOCK OFFSET IN MINUTES, provably non-monetary, and it is only a finding at all because `i` is a loop index this file-local heuristic cannot type. New in main's seed growth. RE-KEYED 2026-09-18 (:694 -> :722) by PR #111's 28 cumulative lines above it; line 722 still reads `String(i * 5)`, unchanged. RE-KEYED 2026-09-18 for line drift only (the document-code change above it); the site and its reading are unchanged."
     },
     {
       "key": "backend/src/suppliers/suppliers.service.ts:107:*",
