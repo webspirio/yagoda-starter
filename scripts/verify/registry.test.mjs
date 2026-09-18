@@ -152,8 +152,6 @@ test('every mechanically derivable count quoted in a proves/blindSpot string sti
   const playwright = count(/^e2e\/.*\.spec\.ts$/)
   const shellTest = count(/^scripts\/ci\/.*\.test\.sh$/)
   const collected = jestUnit + jestDb + vitest + nodeTest + playwright + shellTest
-  const migrations = count(/^backend\/src\/migrations\/\d/)
-  const migrationDbSpecs = count(/^backend\/src\/migrations\/.*\.db-spec\.ts$/)
 
   /** @param {string} id @returns {string} */
   const textOf = (id) => {
@@ -171,8 +169,10 @@ test('every mechanically derivable count quoted in a proves/blindSpot string sti
         `playwright ${playwright}, shell-test ${shellTest}`,
       'the per-collector breakdown',
     ],
-    ['migrations', `holds ${migrations} numbered migrations`, 'the migration count'],
-    ['migrations', `and ${migrationDbSpecs} *.db-spec.ts files`, "migrations/'s own db-spec count"],
+    // The two `migrations` pins are gone: that row's prose no longer quotes a count at
+    // all. A number that is not written cannot be stale, which is the direction every one
+    // of these pins is heading — they are replaced wholesale by a class invariant (no
+    // hand-written measurement in any prose string) once every row has been rewritten.
     ['test:db', `${jestDb} files match *.db-spec.ts`, 'the db-spec file count'],
     ['test', `all ${jestDb} *.db-spec.ts suites`, 'the db-spec count this row excludes'],
     ['selfcheck', `across ${nodeTest} *.test.mjs files`, "the layer's own test-file count"],

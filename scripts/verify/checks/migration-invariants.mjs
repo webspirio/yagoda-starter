@@ -53,8 +53,16 @@ import path from 'node:path'
 import ts from 'typescript'
 
 import { errMessage } from '../hash.mjs'
+import { gitEnv, refuseEmptyScan, scanRoot } from '../scan-root.mjs'
 
-const ROOT = path.resolve(import.meta.dirname, '..', '..', '..')
+/**
+ * The tree this check scans. Overridable with `--root <dir>` / VERIFY_SCAN_ROOT so this
+ * check's own fixture tests run against a mkdtempSync directory instead of planting
+ * migrations in the real backend/src — including, until this commit, an in-place edit to an
+ * already-merged migration, restored only in a `finally`. That is precisely the divergence
+ * rule 4 exists to catch, caused by the test for rule 4.
+ */
+const ROOT = scanRoot()
 const BACKEND_SRC = path.join(ROOT, 'backend', 'src')
 const MIGRATIONS_DIR = path.join(BACKEND_SRC, 'migrations')
 const MIGRATIONS_REL = path.relative(ROOT, MIGRATIONS_DIR)
@@ -90,13 +98,14 @@ function expectedClassName(name, timestamp) {
  *
  * @returns {string[]} absolute paths, sorted
  */
-function listBackendSrcTsFiles() {
+function listBackendSrcFiles() {
   const NUL = String.fromCharCode(0)
   /** @type {Buffer} */
   let raw
   try {
     raw = execFileSync('git', ['ls-files', '-c', '-o', '--exclude-standard', '-z', '--', 'backend/src'], {
       cwd: ROOT,
+      env: gitEnv(),
       maxBuffer: 64 * 1024 * 1024,
     })
   } catch (err) {
@@ -105,9 +114,18 @@ function listBackendSrcTsFiles() {
   return raw
     .toString('utf8')
     .split(NUL)
-    .filter((rel) => rel.endsWith('.ts'))
+    .filter(Boolean)
     .map((rel) => path.join(ROOT, rel))
     .sort()
+}
+
+/**
+ * The `.ts` subset, which is what rule 1 parses.
+ *
+ * @returns {string[]} absolute paths, sorted
+ */
+function listBackendSrcTsFiles() {
+  return listBackendSrcFiles().filter((abs) => abs.endsWith('.ts'))
 }
 
 /**
@@ -179,6 +197,7 @@ function originMainIsResolvable() {
   try {
     execFileSync('git', ['rev-parse', '--verify', '-q', 'origin/main'], {
       cwd: ROOT,
+      env: gitEnv(),
       stdio: ['ignore', 'ignore', 'ignore'],
     })
     return true
@@ -195,6 +214,7 @@ function existsInOriginMain(relPath) {
   try {
     execFileSync('git', ['cat-file', '-e', `origin/main:${relPath}`], {
       cwd: ROOT,
+      env: gitEnv(),
       stdio: ['ignore', 'ignore', 'ignore'],
     })
     return true
@@ -215,6 +235,7 @@ function unchangedFromOriginMain(relPath) {
   try {
     execFileSync('git', ['diff', '--quiet', 'origin/main', '--', relPath], {
       cwd: ROOT,
+      env: gitEnv(),
       stdio: ['ignore', 'ignore', 'pipe'],
     })
     return true
@@ -223,6 +244,60 @@ function unchangedFromOriginMain(relPath) {
     if (e.status === 1) return false
     throw new Error(`migrations: git diff against origin/main failed for ${relPath}: ${errMessage(err)}`)
   }
+}
+
+/**
+ * Rule 4b's baseline ref: the COMMON ANCESTOR of this tree and origin/main, never
+ * origin/main itself.
+ *
+ * A tree that is merely BEHIND — the normal state of a feature branch, and of this repo's
+ * own main on the day this was written, where origin/main carried two migrations HEAD had
+ * never seen — legitimately lacks migrations origin/main already has. Keying 4b on
+ * origin/main would report "a merged migration was deleted" on every branch one pull
+ * behind, which is a red fast tier for a correct tree.
+ *
+ * @returns {string|null} a commit SHA, or null when there is no reachable merge-base
+ *   (a shallow clone, or unrelated histories)
+ */
+function mergeBaseWithOriginMain() {
+  try {
+    return execFileSync('git', ['merge-base', 'HEAD', 'origin/main'], {
+      cwd: ROOT,
+      env: gitEnv(),
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    }).trim()
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Every MIGRATION path present at `ref`. `*.db-spec.ts` files are deliberately excluded:
+ * they are ordinary Jest suites and deleting one is legitimate work, not divergence.
+ *
+ * @param {string} ref
+ * @returns {string[]} repo-root-relative, forward-slash, sorted
+ */
+function migrationsAtRef(ref) {
+  const NUL = String.fromCharCode(0)
+  /** @type {Buffer} */
+  let raw
+  try {
+    raw = execFileSync('git', ['ls-tree', '-r', '-z', '--name-only', ref, '--', `${MIGRATIONS_REL}/`], {
+      cwd: ROOT,
+      env: gitEnv(),
+      maxBuffer: 16 * 1024 * 1024,
+    })
+  } catch (err) {
+    throw new Error(`migrations: git ls-tree ${ref} failed: ${errMessage(err)}`)
+  }
+  return raw
+    .toString('utf8')
+    .split(NUL)
+    .filter(Boolean)
+    .filter((rel) => MIGRATION_FILENAME_RE.test(path.basename(rel)))
+    .sort()
 }
 
 /**
@@ -242,7 +317,9 @@ function scan() {
   const warnings = []
 
   // Rule 1: synchronize is false everywhere under backend/src.
-  for (const absPath of listBackendSrcTsFiles()) {
+  const backendTsFiles = listBackendSrcTsFiles()
+  refuseEmptyScan('migrations', backendTsFiles.length, 'backend/src .ts files', ROOT)
+  for (const absPath of backendTsFiles) {
     const relPath = path.relative(ROOT, absPath)
     /** @type {string} */
     let text
@@ -282,9 +359,24 @@ function scan() {
   } catch (err) {
     throw new Error(`migrations: could not read ${MIGRATIONS_REL}: ${errMessage(err)}`)
   }
+  // INTERSECTED WITH GIT'S VIEW, because the two halves of this check disagreed about what
+  // "a file in this repo" means: rule 1 enumerates with `git ls-files --exclude-standard`,
+  // rules 2/3 with readdirSync. A gitignored `.DS_Store` in this directory is invisible to
+  // the first and a FINDING to the second — so opening backend/src/migrations/ in Finder
+  // turned the fast tier red. Same for *.orig, *.rej and editor swap files.
+  //
+  // Narrowing note: a stray file that is ALSO gitignored is no longer flagged. That is the
+  // right trade — git's ignore list is the repo's own statement about what is not part of
+  // it, and this check has no business overruling it.
+  const tracked = new Set(
+    listBackendSrcFiles()
+      .filter((abs) => path.dirname(abs) === MIGRATIONS_DIR)
+      .map((abs) => path.basename(abs)),
+  )
   const files = entries
     .filter((e) => e.isFile())
     .map((e) => e.name)
+    .filter((name) => tracked.has(name))
     .sort()
 
   /** @type {Candidate[]} */
@@ -359,6 +451,7 @@ function scan() {
         'edited; fetch origin/main and re-run to restore that guarantee.',
     )
   } else {
+    // 4a -- the CONTENT of what is on disk.
     for (const c of candidates) {
       const relPath = path.join(MIGRATIONS_REL, c.file)
       // git wants a forward-slash path regardless of OS; MIGRATIONS_REL/path.join above
@@ -370,6 +463,42 @@ function scan() {
           `${relPath}: differs from its origin/main copy -- this migration already exists ` +
             'on origin/main and must be byte-identical there. Fix forward: write a new ' +
             'migration instead of editing this one.',
+        )
+      }
+    }
+
+    // 4b -- the EXISTENCE of what was merged. `candidates` above is built from the on-disk
+    // directory, so a DELETED or RENAMED merged migration is invisible to 4a by
+    // construction: the path is never enumerated, so it is never compared. `rm` one and
+    // this check reported "intact". A rename is worse — the old path vanishes and the new
+    // one has no origin/main counterpart, so `continue` swallows both halves and the run is
+    // fully green.
+    //
+    // Keyed on the MERGE-BASE, not origin/main: see mergeBaseWithOriginMain.
+    const base = mergeBaseWithOriginMain()
+    if (!base) {
+      warnings.push(
+        'WARNING: origin/main resolves but has no merge-base with HEAD (a shallow clone, ' +
+          'or unrelated histories) -- rule 4b (an already-merged migration must not be ' +
+          'deleted or renamed) was SKIPPED for this run. Rules 1-3 and 4a still applied. ' +
+          'Fetch full history and re-run to restore that guarantee.',
+      )
+    } else {
+      const byTimestampOnDisk = new Map(candidates.map((c) => [c.timestamp, c.file]))
+      const onDisk = new Set(candidates.map((c) => c.file))
+      for (const rel of migrationsAtRef(base)) {
+        const file = path.basename(rel)
+        if (onDisk.has(file)) continue
+        const m = MIGRATION_FILENAME_RE.exec(file)
+        const renamedTo = m ? byTimestampOnDisk.get(m[1]) : undefined
+        findings.push(
+          `${rel}: was already merged (present at ${base.slice(0, 12)}, the merge-base with ` +
+            'origin/main) and is GONE from the working tree' +
+            (renamedTo ? ` -- it appears to have been RENAMED to ${renamedTo}.` : '.') +
+            ' TypeORM records a migration by CLASS NAME in the `migrations` table of every ' +
+            'database that ran it, so deleting or renaming the file makes migration:revert ' +
+            'impossible and lets a fresh database diverge from every existing one. Fix ' +
+            'forward: restore the file and write a NEW migration.',
         )
       }
     }

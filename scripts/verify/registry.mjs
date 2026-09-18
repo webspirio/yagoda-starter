@@ -555,47 +555,19 @@ export const CHECKS = [
     // identical: also `ts.createSourceFile` over backend/src) never declared this `after`
     // in the first place, so only this row needed correcting.
     proves:
-      '`npm run migrations:check` parses every backend/src/**/*.ts file with the ' +
-      'TypeScript compiler API and enforces four rules, stated here so each holds at any ' +
-      'count: (1) every ' +
-      '`synchronize` property anywhere under backend/src initialises to the literal ' +
-      '`false` (both known sites today, app.module.ts:102 and testing/db-harness.ts:183, ' +
-      'and any new one); (2) every non-db-spec file in backend/src/migrations/ matches ' +
-      '/^(\\d{13})-([A-Za-z0-9]+)\\.ts$/ — a stray file of neither shape ' +
-      'is itself a finding — and no two migration filenames capture the same 13-digit ' +
-      'timestamp, a fixed-width prefix so unique implies strictly ascending; (3) each migration\'s ' +
-      "exported class name equals its filename's name-plus-timestamp (e.g. " +
-      '1788600000000-InitialSchema.ts exports InitialSchema1788600000000, confirmed ' +
-      'against every migration that exists when it runs); and (4), ONLY WHEN origin/main is a resolvable ' +
-      'ref, every migration file that already exists there (`git cat-file -e ' +
-      'origin/main:<path>`) is byte-identical to that copy (`git diff --quiet origin/main ' +
-      '-- <path>`) — a migration new since origin/main needs no comparison and stays ' +
-      'green. A violation of 1–3, or of 4 whenever origin/main was reachable, fails this ' +
-      "exact command; this row proves rule 4's guarantee ONLY for a run where origin/main " +
-      'was fetched, and says so with a WARNING line — printed even on a passing run — ' +
-      'whenever it was not. AS A SNAPSHOT, RE-MEASURED 2026-09-18 on main after PR #111 ' +
-      '(the #11 password vault) landed alongside the verify layer (13 migrations and 9 ' +
-      'db-specs on 2026-09-15, 12 and 8 before it, 8 and 5 on ' +
-      '2026-09-10): backend/src/migrations/ holds 14 numbered migrations (timestamps ' +
-      '1788600000000–1788600000013) and 10 *.db-spec.ts files, excluded from rules 2–4. ' +
-      'Rule 4 ran for real on this measurement, not skipped: origin/main resolved (to ' +
-      'a5afee04, which is also HEAD here, so the new UserPasswordVault migration is itself ' +
-      'already-merged and was compared rather than exempted as new), and every migration ' +
-      'it names compared byte-identical to its origin/main copy. Both counts grow with ordinary schema work, unrelated to this ' +
-      'table, and this row does not track or re-check its own prose.',
+      '`npm run migrations:check` parses every backend/src `.ts` file with the TypeScript ' +
+      'compiler API and fails on: a `synchronize` property not initialised to the literal ' +
+      '`false`; a tracked file in backend/src/migrations/ that is neither ' +
+      '`<13-digit>-Name.ts` nor `*.db-spec.ts`; two migrations sharing a timestamp; an ' +
+      'exported class name that is not filename-name-plus-timestamp; and any already-merged ' +
+      'migration that differs from its origin/main copy or has VANISHED since the merge-base.',
     blindSpot:
-      'Compares TEXT, not schema semantics: two migrations that are each individually ' +
-      "well-formed but logically conflict (an `up()` that doesn't undo cleanly in its own " +
-      "`down()`, two migrations that each assume the other's column) are both green — " +
-      "whether a migration is CORRECT, or even runs, is test:db's job, never this row's. " +
-      'Rule 4 cannot see a migration authored and then edited within the SAME pull request ' +
-      'as its own creation: it only ever compares against whatever origin/main already ' +
-      "has, so anything that happens before that ref updates is invisible to it — and rule " +
-      "4's whole guarantee is only as strong as origin/main being fetched; when that ref " +
-      'does not resolve, rule 4 is SKIPPED (a WARNING line, never a silent pass) and this ' +
-      'row proves nothing about already-merged migrations for that run, though rules 1–3 ' +
-      'still apply in full. Filename- and class-name-matching are purely lexical: a ' +
-      'correctly named class with a broken body is exactly as green as a correct one.',
+      'Text, not semantics: a well-formed migration whose SQL is wrong, whose `down()` does ' +
+      "not undo its `up()`, or that conflicts with another, is green — correctness is " +
+      "`test:db`'s job. Rule 4a compares against origin/main and 4b against the merge-base " +
+      'with it, so an edit made inside the pull request that created a migration is ' +
+      'invisible, and when either ref is unreachable that rule SKIPS with a WARNING while ' +
+      'the rest still apply.',
   },
   {
     id: 'selfcheck',
@@ -660,7 +632,7 @@ export const CHECKS = [
       "intermediate counts this row does not itself track): `npm run test:verify` " +
       "(`node --test --test-concurrency=1 'scripts/verify/**/*.test.mjs' " +
       "'.claude/hooks/**/*.test.mjs'` — TWO globs since Task 19, not the one this row " +
-      "originally shipped quoting) collects and runs 161 tests across 14 *.test.mjs files " +
+      "originally shipped quoting) collects and runs 168 tests across 14 *.test.mjs files " +
       "today, re-measured per file 2026-09-18 — hash.test.mjs (8), registry.test.mjs (12), " +
       "run.test.mjs (20), run.report.test.mjs (3), " +
       'checks/audit.test.mjs (11), checks/bundle-size.test.mjs (10), ' +
