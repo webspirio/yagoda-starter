@@ -77,6 +77,17 @@ import { ShiftStatus } from './shift-status.enum';
   unique: true,
   where: 'closed_at IS NULL',
 })
+// #110 / §6.8 — «бій вписує приймальник руками; нуль — нормальне значення».
+@Check('CHK_shifts_broken_crates_non_negative', `"broken_crates" >= 0`)
+// ONE-SIDED ON PURPOSE. The symmetrical form —
+// ("closed_at" IS NULL) = ("broken_crates" IS NULL) — would force this
+// migration to backfill a number onto every already-closed shift, and the only
+// available number is 0, which asserts «нічого не побилось» about days nobody
+// was asked about. That is the same lie `collection_points.target_crates` is
+// nullable to avoid: «нуль стверджував би, що ящиків немає, тоді як ми просто
+// не знаємо». The half that IS true forever is «a number never sits on an open
+// shift», and it survives both the history and the reopen-to-NULL rule.
+@Check('CHK_shifts_broken_crates_closed', `"closed_at" IS NOT NULL OR "broken_crates" IS NULL`)
 export class Shift {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -123,6 +134,23 @@ export class Shift {
    *  is TRUE: an explained discrepancy stays in `Σ (counted − expected)`. */
   @Column({ type: 'text', nullable: true })
   explanation: string | null;
+
+  /**
+   * §6.8's «бій» — crates that broke during the shift and travel to the base
+   * with the full ones. Written by `ShiftsService.close`, cleared to `null` by
+   * `ShiftsService.reopen`, and never touched anywhere else.
+   *
+   * `null` MEANS «НЕ ЗАПИСАНО», NOT ZERO. An open shift has `null` because the
+   * day is not over; a shift closed before this column existed has `null`
+   * because nobody was asked. `0` is a positive claim that nothing broke, and
+   * `#110` says it is a normal value. Never coalesce one into the other.
+   *
+   * A re-close OVERWRITES it and the previous value survives only in the
+   * `shift.closed` audit entry — accepted, because no rule in §6 asks what the
+   * breakage figure was before a correction.
+   */
+  @Column({ type: 'int', nullable: true })
+  broken_crates: number | null;
 
   /** The open instant. There is no `opened_at` — see absence 2. */
   @CreateDateColumn({ type: 'timestamptz' })
