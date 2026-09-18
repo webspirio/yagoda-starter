@@ -1,4 +1,4 @@
-import { add, cmp, gt, gte, isNegative, mul, sub, sum } from './money';
+import { add, allocate, cmp, div, gt, gte, isNegative, mul, sub, sum } from './money';
 
 /**
  * THIS FILE IS THE GUARANTEE. Every amount the system will ever print on a
@@ -120,6 +120,66 @@ describe('money', () => {
       expect(gte('380.00', '380.00')).toBe(true);
       expect(isNegative('-0.01')).toBe(true);
       expect(isNegative('0.00')).toBe(false);
+    });
+  });
+
+  describe('div', () => {
+    it('rounds the quotient half-up away from zero at scale 2', () => {
+      // §8.4's own numbers: 5 460,00 ÷ 854 кг = 6,3934… → 6,39
+      expect(div('5460.00', '854.00')).toBe('6.39');
+      expect(div('128000.00', '800.00')).toBe('160.00');
+      // 162,0253… → 162,03 (half-up, not half-even)
+      expect(div('128000.00', '790.00')).toBe('162.03');
+    });
+
+    it('mirrors a negative dividend rather than rounding toward -Infinity', () => {
+      // Half-up AWAY FROM ZERO, so the negative is the exact mirror of the
+      // positive — the same policy `mul` documents for a negative `bonus`.
+      expect(div('-5460.00', '854.00')).toBe('-6.39');
+      expect(div('5460.00', '-854.00')).toBe('-6.39');
+      expect(div('-5460.00', '-854.00')).toBe('6.39');
+      // 0,125 → 0,13 up; −0,125 → −0,13 down. Half-to-even would give 0,12.
+      expect(div('1.00', '8.00')).toBe('0.13');
+      expect(div('-1.00', '8.00')).toBe('-0.13');
+    });
+
+    it('throws on a zero divisor rather than returning a placeholder', () => {
+      expect(() => div('100.00', '0.00')).toThrow(/divide by zero/i);
+    });
+  });
+
+  describe('allocate', () => {
+    it('splits pro-rata and the parts sum EXACTLY to the total', () => {
+      const parts = allocate('100.00', ['1.00', '1.00', '1.00']);
+      expect(sum(parts)).toBe('100.00');
+      // largest-remainder: the kopiyka goes to the first largest weight
+      expect(parts).toEqual(['33.34', '33.33', '33.33']);
+    });
+
+    it('splits by weight, not evenly', () => {
+      expect(allocate('2000.00', ['128000.00', '32000.00'])).toEqual(['1600.00', '400.00']);
+    });
+
+    it('gives the whole total to a single line', () => {
+      expect(allocate('2000.00', ['128000.00'])).toEqual(['2000.00']);
+    });
+
+    it('splits evenly when every weight is zero', () => {
+      const parts = allocate('10.00', ['0.00', '0.00', '0.00', '0.00']);
+      expect(sum(parts)).toBe('10.00');
+      expect(parts).toEqual(['2.50', '2.50', '2.50', '2.50']);
+    });
+
+    it('mirrors a negative total', () => {
+      expect(allocate('-100.00', ['1.00', '1.00', '1.00'])).toEqual([
+        '-33.34',
+        '-33.33',
+        '-33.33',
+      ]);
+    });
+
+    it('returns an empty array for no weights', () => {
+      expect(allocate('100.00', [])).toEqual([]);
     });
   });
 });

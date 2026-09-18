@@ -364,14 +364,6 @@
       "reason": "Same as its neighbour extractErrorCode on this file: grep-verified called internally at line 165 inside attachAuthInterceptors's response interceptor, but the export itself has no import anywhere — direct, through the barrel, or from a test."
     },
     {
-      "key": "export|frontend/src/shared/api/index.ts|STALE",
-      "kind": "export",
-      "file": "frontend/src/shared/api/index.ts",
-      "name": "STALE",
-      "added": "2026-09-10",
-      "reason": "Grep-verified: `from '@/shared/api'` appears 64 times across frontend/src (httpClient x37, ApiError x25, attachAuthInterceptors x7, plus one each of queryClient+buildPersistOptions, persister, apiErrorCode, and the AuthHooks type) — the barrel is real and heavily used, just never for this name. STALE is used throughout the app (every list/detail query's staleTime), always imported from the concrete `@/shared/api/queryClient`, never from this barrel."
-    },
-    {
       "key": "export|frontend/src/shared/api/index.ts|extractErrorCode",
       "kind": "export",
       "file": "frontend/src/shared/api/index.ts",
@@ -418,6 +410,14 @@
       "name": "queryKeys",
       "added": "2026-09-10",
       "reason": "Grep-verified: `from '@/shared/api'` appears 64 times across frontend/src (httpClient x37, ApiError x25, attachAuthInterceptors x7, plus one each of queryClient+buildPersistOptions, persister, apiErrorCode, and the AuthHooks type) — the barrel is real and heavily used, just never for this name. queryKeys itself is one of the most-used values in the whole frontend, but every real consumer imports it from the concrete `@/shared/api/queryKeys`, never from this barrel — verified across every 'queryKeys.' call site."
+    },
+    {
+      "key": "export|frontend/src/shared/api/index.ts|STALE",
+      "kind": "export",
+      "file": "frontend/src/shared/api/index.ts",
+      "name": "STALE",
+      "added": "2026-09-10",
+      "reason": "Grep-verified: `from '@/shared/api'` appears 64 times across frontend/src (httpClient x37, ApiError x25, attachAuthInterceptors x7, plus one each of queryClient+buildPersistOptions, persister, apiErrorCode, and the AuthHooks type) — the barrel is real and heavily used, just never for this name. STALE is used throughout the app (every list/detail query's staleTime), always imported from the concrete `@/shared/api/queryClient`, never from this barrel."
     },
     {
       "key": "export|frontend/src/shared/lib/date/index.ts|formatTime",
@@ -740,6 +740,30 @@
       "reason": "knip's Jest plugin cannot see this file: its default spec/test glob requires a literal dot before 'spec', so a hyphenated '-db-spec.ts' suffix never matches. backend/jest.db.config.js runs it directly by its own testRegex, and `testfiles` proves it is collected by exactly one runner. NOT dead code — the same tooling blind spot this baseline already records for every other *.db-spec.ts file. Arrived 2026-09-16 with main's 43-commit merge (the crates slice, PR #92)."
     },
     {
+      "key": "file|backend/src/day-costs/cost-of-day.db-spec.ts|backend/src/day-costs/cost-of-day.db-spec.ts",
+      "kind": "file",
+      "file": "backend/src/day-costs/cost-of-day.db-spec.ts",
+      "name": "backend/src/day-costs/cost-of-day.db-spec.ts",
+      "added": "2026-09-18",
+      "reason": "knip's Jest plugin cannot see this file: its default spec/test glob requires a literal dot before 'spec', so a hyphenated '-db-spec.ts' suffix never matches. backend/jest.db.config.js runs it directly by its own testRegex, and `testfiles` proves it is collected by exactly one runner. NOT dead code — the same tooling blind spot this baseline already records for every other *.db-spec.ts file. Arrived 2026-09-18 with the §8.3–8.6 cost-of-day slice (PR #122)."
+    },
+    {
+      "key": "file|backend/src/day-costs/day-expenses.db-spec.ts|backend/src/day-costs/day-expenses.db-spec.ts",
+      "kind": "file",
+      "file": "backend/src/day-costs/day-expenses.db-spec.ts",
+      "name": "backend/src/day-costs/day-expenses.db-spec.ts",
+      "added": "2026-09-18",
+      "reason": "knip's Jest plugin cannot see this file: its default spec/test glob requires a literal dot before 'spec', so a hyphenated '-db-spec.ts' suffix never matches. backend/jest.db.config.js runs it directly by its own testRegex, and `testfiles` proves it is collected by exactly one runner. NOT dead code — the same tooling blind spot this baseline already records for every other *.db-spec.ts file. Arrived 2026-09-18 with the §8.3–8.6 cost-of-day slice (PR #122)."
+    },
+    {
+      "key": "file|backend/src/day-costs/network-average.db-spec.ts|backend/src/day-costs/network-average.db-spec.ts",
+      "kind": "file",
+      "file": "backend/src/day-costs/network-average.db-spec.ts",
+      "name": "backend/src/day-costs/network-average.db-spec.ts",
+      "added": "2026-09-18",
+      "reason": "knip's Jest plugin cannot see this file: its default spec/test glob requires a literal dot before 'spec', so a hyphenated '-db-spec.ts' suffix never matches. backend/jest.db.config.js runs it directly by its own testRegex, and `testfiles` proves it is collected by exactly one runner. NOT dead code — the same tooling blind spot this baseline already records for every other *.db-spec.ts file. Arrived 2026-09-18 with the §8.3–8.6 cost-of-day slice (PR #122)."
+    },
+    {
       "key": "file|backend/src/grade-prices/grade-prices-bulk.db-spec.ts|backend/src/grade-prices/grade-prices-bulk.db-spec.ts",
       "kind": "file",
       "file": "backend/src/grade-prices/grade-prices-bulk.db-spec.ts",
@@ -868,6 +892,22 @@
       "reason": "A TypeORM migration: discovered and run by the migration runner at startup via the migrations glob (app.module.ts:100 and testing/db-harness.ts:250 both spell it `migrations/[0-9]*{.ts,.js}`), never statically imported by name from any entry point — the same framework-invoked class the blindSpot names, and the 14th such entry on this baseline. Verified at the site 2026-09-18: `export class UserPasswordVault1788600000013` has no importer anywhere in backend/src; the one other mention of that name is a doc comment inside its own db-spec, not an import. Arrived with PR #111 (the #11 password vault), which merged into main independently of the verify layer, so no PR CI run ever saw the two together."
     },
     {
+      "key": "file|backend/src/migrations/1788600000014-YagodaReweigh.ts|backend/src/migrations/1788600000014-YagodaReweigh.ts",
+      "kind": "file",
+      "file": "backend/src/migrations/1788600000014-YagodaReweigh.ts",
+      "name": "backend/src/migrations/1788600000014-YagodaReweigh.ts",
+      "added": "2026-09-18",
+      "reason": "A TypeORM migration: discovered and run by the migration runner at startup via the migrations glob (app.module.ts and testing/db-harness.ts both spell it `migrations/[0-9]*{.ts,.js}`), never statically imported by name from any entry point — the same framework-invoked class the blindSpot names, and the 15th such entry on this baseline. Verified at the site 2026-09-18: `export class YagodaReweigh1788600000014` has no importer anywhere in backend/src. Arrived with the §8.1–8.2 reweigh slice (PR #121)."
+    },
+    {
+      "key": "file|backend/src/migrations/1788600000015-YagodaDayExpenses.ts|backend/src/migrations/1788600000015-YagodaDayExpenses.ts",
+      "kind": "file",
+      "file": "backend/src/migrations/1788600000015-YagodaDayExpenses.ts",
+      "name": "backend/src/migrations/1788600000015-YagodaDayExpenses.ts",
+      "added": "2026-09-18",
+      "reason": "A TypeORM migration: discovered and run by the migration runner at startup via the migrations glob (app.module.ts and testing/db-harness.ts both spell it `migrations/[0-9]*{.ts,.js}`), never statically imported by name from any entry point — the same framework-invoked class the blindSpot names, and the 16th such entry on this baseline. Verified at the site 2026-09-18: `export class YagodaDayExpenses1788600000015` has no importer anywhere in backend/src. Arrived with the §8.3–8.6 cost-of-day slice (PR #122)."
+    },
+    {
       "key": "file|backend/src/migrations/bootstrap-owner-create.db-spec.ts|backend/src/migrations/bootstrap-owner-create.db-spec.ts",
       "kind": "file",
       "file": "backend/src/migrations/bootstrap-owner-create.db-spec.ts",
@@ -900,6 +940,14 @@
       "reason": "knip's Jest plugin cannot see this file: its default spec/test glob requires a literal dot before 'spec', so a hyphenated '-db-spec.ts' suffix never matches. backend/jest.db.config.js runs it directly by its own testRegex, and `testfiles` proves it is collected by exactly one runner. NOT dead code — the same tooling blind spot this baseline already records for every other *.db-spec.ts file. Arrived 2026-09-16 with main's 43-commit merge (the crates slice, PR #92)."
     },
     {
+      "key": "file|backend/src/migrations/day-expenses-schema.db-spec.ts|backend/src/migrations/day-expenses-schema.db-spec.ts",
+      "kind": "file",
+      "file": "backend/src/migrations/day-expenses-schema.db-spec.ts",
+      "name": "backend/src/migrations/day-expenses-schema.db-spec.ts",
+      "added": "2026-09-18",
+      "reason": "knip's Jest plugin cannot see this file: its default spec/test glob requires a literal dot before 'spec', so a hyphenated '-db-spec.ts' suffix never matches. backend/jest.db.config.js runs it directly by its own testRegex, and `testfiles` proves it is collected by exactly one runner. NOT dead code — the same tooling blind spot this baseline already records for every other *.db-spec.ts file. Arrived 2026-09-18 with the §8.3–8.6 cost-of-day slice (PR #122)."
+    },
+    {
       "key": "file|backend/src/migrations/intake-top-ups-schema.db-spec.ts|backend/src/migrations/intake-top-ups-schema.db-spec.ts",
       "kind": "file",
       "file": "backend/src/migrations/intake-top-ups-schema.db-spec.ts",
@@ -914,6 +962,14 @@
       "name": "backend/src/migrations/intakes-payouts-schema.db-spec.ts",
       "added": "2026-09-10",
       "reason": "Executed by backend/jest.db.config.js's own testRegex (.*\\.db-spec\\.ts$ — the unit config's `.*\\.spec\\.ts$` in backend/package.json does not match it, by the config's own comment). knip's Jest plugin found jest.db.config.js but applies its generic spec/test glob to it, which requires a literal dot before 'spec'/'test' (matches foo.spec.ts) and so never matches the hyphenated '-db-spec.ts' suffix — a real test file `npm run test:db` runs directly, invisible to knip's entry inference for this exact non-standard suffix."
+    },
+    {
+      "key": "file|backend/src/migrations/reweigh-schema.db-spec.ts|backend/src/migrations/reweigh-schema.db-spec.ts",
+      "kind": "file",
+      "file": "backend/src/migrations/reweigh-schema.db-spec.ts",
+      "name": "backend/src/migrations/reweigh-schema.db-spec.ts",
+      "added": "2026-09-18",
+      "reason": "knip's Jest plugin cannot see this file: its default spec/test glob requires a literal dot before 'spec', so a hyphenated '-db-spec.ts' suffix never matches. backend/jest.db.config.js runs it directly by its own testRegex, and `testfiles` proves it is collected by exactly one runner. NOT dead code — the same tooling blind spot this baseline already records for every other *.db-spec.ts file. Arrived 2026-09-18 with the §8.1–8.2 reweigh slice (PR #121)."
     },
     {
       "key": "file|backend/src/migrations/schema.db-spec.ts|backend/src/migrations/schema.db-spec.ts",
@@ -970,6 +1026,22 @@
       "name": "backend/src/point-cash/point-cash.db-spec.ts",
       "added": "2026-09-15",
       "reason": "A *.db-spec.ts suite, run by backend/jest.db.config.js (rootDir src, testRegex '.*\\\\.db-spec\\\\.ts$', maxWorkers 1) — the `test:db` row's own command. knip's Jest plugin cannot see it: its default spec/test glob requires a literal dot before 'spec', which a hyphenated '-db-spec.ts' suffix never matches. The same single glob mismatch the blindSpot already names for this baseline's other db-spec file findings; not dead code."
+    },
+    {
+      "key": "file|backend/src/reweighs/reweigh-reconciliation.db-spec.ts|backend/src/reweighs/reweigh-reconciliation.db-spec.ts",
+      "kind": "file",
+      "file": "backend/src/reweighs/reweigh-reconciliation.db-spec.ts",
+      "name": "backend/src/reweighs/reweigh-reconciliation.db-spec.ts",
+      "added": "2026-09-18",
+      "reason": "knip's Jest plugin cannot see this file: its default spec/test glob requires a literal dot before 'spec', so a hyphenated '-db-spec.ts' suffix never matches. backend/jest.db.config.js runs it directly by its own testRegex, and `testfiles` proves it is collected by exactly one runner. NOT dead code — the same tooling blind spot this baseline already records for every other *.db-spec.ts file. Arrived 2026-09-18 with the §8.1–8.2 reweigh slice (PR #121)."
+    },
+    {
+      "key": "file|backend/src/reweighs/reweighs.db-spec.ts|backend/src/reweighs/reweighs.db-spec.ts",
+      "kind": "file",
+      "file": "backend/src/reweighs/reweighs.db-spec.ts",
+      "name": "backend/src/reweighs/reweighs.db-spec.ts",
+      "added": "2026-09-18",
+      "reason": "knip's Jest plugin cannot see this file: its default spec/test glob requires a literal dot before 'spec', so a hyphenated '-db-spec.ts' suffix never matches. backend/jest.db.config.js runs it directly by its own testRegex, and `testfiles` proves it is collected by exactly one runner. NOT dead code — the same tooling blind spot this baseline already records for every other *.db-spec.ts file. Arrived 2026-09-18 with the §8.1–8.2 reweigh slice (PR #121)."
     },
     {
       "key": "file|backend/src/seed/dev-seed.db-spec.ts|backend/src/seed/dev-seed.db-spec.ts",
@@ -1140,6 +1212,30 @@
       "reason": "Named explicitly in frontend/CLAUDE.md's Kit hygiene list — \"select (Radix — screens use the native SelectField)\" states outright what replaced it. No test file, grep-verified."
     },
     {
+      "key": "type|backend/src/day-costs/network-average.service.ts|NetworkAveragePointRow",
+      "kind": "type",
+      "file": "backend/src/day-costs/network-average.service.ts",
+      "name": "NetworkAveragePointRow",
+      "added": "2026-09-18",
+      "reason": "Used only inside network-average.service.ts itself — as the element type of NetworkAverageProduct's `points` field (line 27), of the grouping Map at line 79 and of the type predicate at line 103; grep-verified zero imports from any other backend/src file. External consumers need the aggregate response, not this per-point row. The same shape this baseline already records for intakes/intake.mapper.ts's IntakeItemResponse and reweighs' ReconciliationProduct."
+    },
+    {
+      "key": "type|backend/src/day-costs/network-average.service.ts|NetworkAverageProduct",
+      "kind": "type",
+      "file": "backend/src/day-costs/network-average.service.ts",
+      "name": "NetworkAverageProduct",
+      "added": "2026-09-18",
+      "reason": "The element type of the exported response's `products` field (line 42), used only inside network-average.service.ts itself along with the local array at line 96; grep-verified zero imports from any other backend/src file. Kept exported so the item-level type stays nameable beside the aggregate that carries it — the same decision recorded for intake.mapper.ts's item types since 2026-09-10."
+    },
+    {
+      "key": "type|backend/src/day-costs/top-up-allocation.ts|ReceiptLineForAllocation",
+      "kind": "type",
+      "file": "backend/src/day-costs/top-up-allocation.ts",
+      "name": "ReceiptLineForAllocation",
+      "added": "2026-09-18",
+      "reason": "Used only inside top-up-allocation.ts itself, as the element type of the `lines` field on the input shape declared directly below it (line 11); grep-verified zero imports from any other backend/src file. Same nested-input-type shape as the response types this baseline already carries for intakes and reweighs."
+    },
+    {
       "key": "type|backend/src/grade-prices/grade-price.mapper.ts|SheetRow",
       "kind": "type",
       "file": "backend/src/grade-prices/grade-price.mapper.ts",
@@ -1178,6 +1274,22 @@
       "name": "PreviewIntakeItemResponse",
       "added": "2026-09-10",
       "reason": "Defined as `Omit<IntakeItemResponse, 'id'>` and used only inside this file's own preview-response composition; grep-verified zero imports from any other backend/src file."
+    },
+    {
+      "key": "type|backend/src/reweighs/reweigh-item.mapper.ts|ReweighItemTareResponse",
+      "kind": "type",
+      "file": "backend/src/reweighs/reweigh-item.mapper.ts",
+      "name": "ReweighItemTareResponse",
+      "added": "2026-09-18",
+      "reason": "Used only inside reweigh-item.mapper.ts itself, as a field of ReweighItemResponse (line 21), which IS imported by reweighs.controller.ts and reweighs.service.ts; grep-verified zero imports of this nested type from anywhere else. It is the exact mirror of intakes/intake.mapper.ts's IntakeItemTareResponse, already on this baseline since 2026-09-10 with the same reasoning — the reweigh slice models its mapper on the intakes one, so it inherits the pattern and the finding together."
+    },
+    {
+      "key": "type|backend/src/reweighs/reweigh-reconciliation.service.ts|ReconciliationProduct",
+      "kind": "type",
+      "file": "backend/src/reweighs/reweigh-reconciliation.service.ts",
+      "name": "ReconciliationProduct",
+      "added": "2026-09-18",
+      "reason": "Used only inside reweigh-reconciliation.service.ts itself — as the element type of the exported ReconciliationResponse's `products` field (line 78) and of the local array at line 118; grep-verified zero imports from any other backend/src file, and none in PR #122 either. External consumers only need the aggregate ReconciliationResponse, which the controller does import. Exactly the shape this baseline already records for intakes/intake.mapper.ts's IntakeItemResponse, and kept exported for the same reason: the item-level type stays nameable beside the aggregate that carries it."
     },
     {
       "key": "type|frontend/src/entities/cash-count/model/cash-count.ts|CashBook",

@@ -289,7 +289,7 @@ export const CHECKS = [
       'failing assertion anywhere in either workspace turns this exact command, and this ' +
       'row, red, no matter how many tests exist when it runs.',
     blindSpot:
-      'The backend testRegex matches only *.spec.ts, so all 30 *.db-spec.ts suites ' +
+      'The backend testRegex matches only *.spec.ts, so all 37 *.db-spec.ts suites ' +
       '(backend/jest.db.config.js, a separate config) are excluded from this row entirely ' +
       '— test:db is what covers those. No .tsx file is exercised by the backend suites: ' +
       'the backend has no .tsx files, and only the frontend vitest half of this row ever ' +
@@ -438,14 +438,17 @@ export const CHECKS = [
       'have silenced both suites with nothing here noticing. The two backend regexes are read ' +
       'out of backend/jest.config.js and backend/jest.db.config.js at runtime, not copied ' +
       'here, so this row also proves those two files still say what the check assumes. AS A ' +
-      'SNAPSHOT, RE-MEASURED 2026-09-18 on main after PR #111 (the #11 password vault) ' +
-      'landed alongside the verify layer (239 files on 2026-09-16, 219 on 2026-09-15, 170 ' +
-      'on 2026-09-11): 242 files ' +
-      'now match across the two candidate nets (jest-unit 56, jest-db 30, vitest 138, ' +
-      'node-test 15, playwright 1, shell-test 2). All 3 new files came from that one PR — ' +
-      'users/secret-box.spec.ts, migrations/user-password-vault.db-spec.ts and ' +
-      'shared/ui/password-input.test.tsx, one per collector across all three workspaces — ' +
-      'no collector was added or changed by this re-measurement, ' +
+      'SNAPSHOT, RE-MEASURED 2026-09-18 on the §8.3–8.6 cost-of-day slice, stacked on the ' +
+      'reweigh one (247 files there, 242 on main the same day, 239 on 2026-09-16, 219 on ' +
+      '2026-09-15, 170 ' +
+      'on 2026-09-11): 257 files ' +
+      'now match across the two candidate nets (jest-unit 64, jest-db 37, vitest 138, ' +
+      'node-test 15, playwright 1, shell-test 2). All 10 new files came from this slice — ' +
+      'six on the jest-unit net (day-costs/{cost-of-day,day-expenses,network-average}.' +
+      'service.spec.ts, day-costs/top-up-allocation.spec.ts and two dto specs) and four on ' +
+      'the jest-db one (day-costs/{cost-of-day,day-expenses,network-average}.db-spec.ts and ' +
+      'migrations/day-expenses-schema.db-spec.ts) — the same two collectors moved, the ' +
+      'other four did not, ' +
       'and the six are the same six. That total grows every time ordinary feature work adds ' +
       'a test file, and this row does not track or re-check its own prose count.',
     blindSpot:
@@ -612,15 +615,16 @@ export const CHECKS = [
       'green. A violation of 1–3, or of 4 whenever origin/main was reachable, fails this ' +
       "exact command; this row proves rule 4's guarantee ONLY for a run where origin/main " +
       'was fetched, and says so with a WARNING line — printed even on a passing run — ' +
-      'whenever it was not. AS A SNAPSHOT, RE-MEASURED 2026-09-18 on main after PR #111 ' +
-      '(the #11 password vault) landed alongside the verify layer (13 migrations and 9 ' +
-      'db-specs on 2026-09-15, 12 and 8 before it, 8 and 5 on ' +
-      '2026-09-10): backend/src/migrations/ holds 14 numbered migrations (timestamps ' +
-      '1788600000000–1788600000013) and 10 *.db-spec.ts files, excluded from rules 2–4. ' +
-      'Rule 4 ran for real on this measurement, not skipped: origin/main resolved (to ' +
-      'a5afee04, which is also HEAD here, so the new UserPasswordVault migration is itself ' +
-      'already-merged and was compared rather than exempted as new), and every migration ' +
-      'it names compared byte-identical to its origin/main copy. Both counts grow with ordinary schema work, unrelated to this ' +
+      'whenever it was not. AS A SNAPSHOT, RE-MEASURED 2026-09-18 on the §8.3–8.6 cost-of-day ' +
+      'slice, stacked on the reweigh one (15 and 11 there, 14 and 10 on main the same day, 13 and 9 ' +
+      'on 2026-09-15, 12 and 8 before it, 8 and 5 on ' +
+      '2026-09-10): backend/src/migrations/ holds 16 numbered migrations (timestamps ' +
+      '1788600000000–1788600000015) and 12 *.db-spec.ts files, excluded from rules 2–4. ' +
+      'Rule 4 ran for real on this measurement, not skipped: origin/main resolved, and ' +
+      'every migration it names compared byte-identical to its origin/main copy — this ' +
+      "slice's own 1788600000015-YagodaDayExpenses.ts, and the reweigh one below it, are new since " +
+      'that ref and so were ' +
+      'correctly exempted from rule 4 rather than compared. Both counts grow with ordinary schema work, unrelated to this ' +
       'table, and this row does not track or re-check its own prose.',
     blindSpot:
       'Compares TEXT, not schema semantics: two migrations that are each individually ' +
@@ -943,13 +947,19 @@ export const CHECKS = [
       'since the module was created — git shows the line written as `export { cashSql, ASOF }` at creation ' +
       'and renamed twice by later refactors, never once consumed. It is recorded so it is visible, not ' +
       'endorsed. RE-MEASURED 2026-09-18, the count read straight off the check\'s own output: the baseline ' +
-      'holds 188 findings (1 binary, 1 dependency, 5 ' +
-      'devDependencies, 78 exports, 57 files, 44 types, 2 unlisted), where this row said 156 from ' +
-      '2026-09-15 until 2026-09-18. TWO of the 32 added in between are this pass\'s own, both from PR #111 ' +
-      "(the #11 password vault, merged into main independently of the verify layer): that migration's file " +
-      'and its *.db-spec.ts, the 14th and 30th members of two classes the blindSpot below already explains ' +
-      'as framework-invoked rather than dead. The other 30 predate this pass and are NOT re-audited here — ' +
-      'each still stands on its own entry\'s date and reason. That count moves the instant anyone ' +
+      'holds 202 findings (1 binary, 1 dependency, 5 ' +
+      'devDependencies, 78 exports, 66 files, 49 types, 2 unlisted), where this row said 196 on the reweigh ' +
+      'slice, 188 on main and ' +
+      '156 from 2026-09-15. EIGHT were added here and TWO were DELETED, which is the more interesting half: ' +
+      'the added eight are the §8.3–8.6 cost-of-day slice\'s own, read at their sites ' +
+      'before a reason was written — five are the two classes the blindSpot below already explains as ' +
+      "framework-invoked rather than dead (the slice's migration, and four *.db-spec.ts files knip's Jest " +
+      'plugin cannot glob), and three are nested response types alive only inside their own declaring file. ' +
+      'THE TWO DELETIONS ARE THE RATCHET CLOSING A PREDICTION IT WAS TOLD TO EXPECT: gradeTotals and ' +
+      'GradeTotalsRow were baselined one commit earlier as dead-in-that-PR-only, with the entry saying in ' +
+      'so many words that day-costs/ would import them here. It does, so knip stops reporting them, so the ' +
+      'bidirectional rule deleted both rather than leaving a forgiveness standing. The other 194 predate this pass and are NOT ' +
+      're-audited here — each still stands on its own entry\'s date and reason. That count moves the instant anyone ' +
       "adds, fixes, or clears a finding anywhere knip.json's globs reach, and this row does not track or " +
       're-check its own prose.',
     blindSpot:
@@ -1324,23 +1334,30 @@ export const CHECKS = [
       'idempotency assertion (dev-seed.db-spec.ts\'s «is idempotent — a second run inserts ' +
       'nothing») pass for the wrong reason. A single failing assertion in any suite this glob ' +
       'matches fails this exact command, independent of file or test count. AS A DATED ' +
-      'SNAPSHOT, FILE COUNTS RE-MEASURED 2026-09-18 on main after PR #111 (the #11 password ' +
-      'vault) landed alongside the verify layer (29 files on 2026-09-15, 23 before it, 12 ' +
-      'files / 174 tests on 2026-09-10): 30 files match *.db-spec.ts, ' +
-      'of which TEN are parse-and-apply migration-schema suites ' +
+      'SNAPSHOT, FILE COUNTS RE-MEASURED 2026-09-18 on the §8.3–8.6 cost-of-day slice, stacked on the ' +
+      'reweigh one (33 files there, 30 on main the same day, 29 on 2026-09-15, 23 before it, 12 ' +
+      'files / 174 tests on 2026-09-10): 37 files match *.db-spec.ts, ' +
+      'of which TWELVE are parse-and-apply migration-schema suites ' +
       '(migrations/{bootstrap-owner-create,cash-counts-schema,catalog-schema,crates-schema,' +
-      'intake-top-ups-schema,intakes-payouts-schema,schema,suppliers-prices-schema,' +
-      'transfers-schema,user-password-vault}.db-spec.ts — read off `git ls-files`, and note ' +
-      'that the list this row carried until 2026-09-18 named only EIGHT, having silently ' +
-      'missed crates-schema since main merged it: the file COUNT was pinned by ' +
-      'registry.test.mjs and stayed honest, this hand-written enumeration beside it was not, ' +
-      'which is exactly the split that test exists to expose), ' +
+      'day-expenses-schema,intake-top-ups-schema,intakes-payouts-schema,reweigh-schema,schema,' +
+      'suppliers-prices-schema,transfers-schema,user-password-vault}.db-spec.ts — read off ' +
+      '`git ls-files`, and note that the list this row carried until 2026-09-18 named only ' +
+      'EIGHT, having silently missed crates-schema since main merged it: the file COUNT was ' +
+      'pinned by registry.test.mjs and stayed honest, this hand-written enumeration beside ' +
+      'it was not, which is exactly the split that test exists to expose), ' +
       'THREE that boot the FULL AppModule via Nest\'s Test.createTestingModule and drive it ' +
       'over real HTTP with supertest (testing/{pipeline,catalog-pipeline,documents-pipeline}.' +
-      'db-spec.ts), the harness\'s own testing/db-harness.db-spec.ts, and eleven slice ' +
-      'suites — cash-counts, intake-top-ups-list, payout-ceiling-top-ups, payout-race, ' +
-      'point-cash, shift-close, shift-close-race, intake-top-ups-balance, ' +
-      'supplier-balance-list and transfers-list. The drop/create claim was re-confirmed the ' +
+      'db-spec.ts), the harness\'s own testing/db-harness.db-spec.ts, and TWENTY-ONE slice ' +
+      'suites — cash-counts, cost-of-day, crate-balances, crates, crates-race, day-expenses, ' +
+      'dev-seed, grade-prices-bulk, intake-top-ups-list, network-average, ' +
+      'payout-ceiling-top-ups, payout-race, ' +
+      'point-cash, reweigh-reconciliation, reweighs, shift-close, shift-close-race, ' +
+      'intake-top-ups-balance, supplier-balance-list, tare-types-crate and transfers-list. ' +
+      'THAT LAST COUNT IS ALSO A CORRECTION, found the same way crates-schema was: this row ' +
+      'said «eleven slice suites» while listing ten, when the arithmetic on its own ' +
+      'then-current total left sixteen — the enumeration had drifted twice over, in the ' +
+      'count AND in the list, with only the pinned file total holding it to account. ' +
+      'The drop/create claim was re-confirmed the ' +
       'same way it was first made: this exact command run twice in a row against the same ' +
       'already-populated database reported 23 suites / 286 tests passing both times, because ' +
       'the second run never saw the first run\'s rows in the first place. THAT LAST FIGURE IS ' +
