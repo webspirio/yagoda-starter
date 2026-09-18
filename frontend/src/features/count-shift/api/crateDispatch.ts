@@ -26,5 +26,13 @@ export function useCrateDispatchQuery(shiftId: string | null) {
     queryFn: async (): Promise<CrateDispatch> =>
       (await httpClient.get<CrateDispatch>(`/shifts/${shiftId}/crates`)).data,
     enabled: shiftId !== null,
+    // НЕ успадковувати 30-секундний `staleTime` клієнта. Це число операторка
+    // диктує на базу (§6.8), а НІЩО його не інвалідовує: `useInvalidateDay`
+    // скидає shifts/intakes/payouts/cashCounts/pointCash, і жодна мутація
+    // квитанції не чіпає `queryKeys.crates`. Без цього рядка сценарій
+    // «відкрив діалог → скасував → провів ще одну квитанцію → відкрив знову»
+    // протягом 30 с показує старе «з ягодою». Нуль означає: кожне відкриття
+    // діалогу — свіжий запит.
+    staleTime: 0,
   });
 }
