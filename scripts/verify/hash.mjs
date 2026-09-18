@@ -9,7 +9,18 @@ import { execFileSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
 
-/** Directory prefixes whose contents feed at least one check. */
+/**
+ * Directory prefixes whose contents feed at least one check.
+ *
+ * `e2e/` is here for `typecheck`, not only for `smoke`: tsconfig.e2e.json includes
+ * `e2e/**` and `playwright.config.ts`, and package.json's typecheck script ends
+ * `&& tsc -p tsconfig.e2e.json` — a FAST-tier row. A type error in e2e/ used to leave the
+ * digest unchanged, so `--reuse-if-fresh` replayed a green over a red tree.
+ *
+ * `.githooks/` is here because run.test.mjs reads .githooks/pre-push as a test input and
+ * asserts its `--exclude` list matches package.json's. Editing the hook without hashing it
+ * is the same false green on the gate's own path.
+ */
 const HASHED_PREFIXES = [
   'backend/',
   'frontend/',
@@ -17,19 +28,27 @@ const HASHED_PREFIXES = [
   'scripts/',
   '.claude/',
   '.github/workflows/',
+  '.githooks/',
+  'e2e/',
 ]
 
 /**
  * Exact paths outside those directories.
  *
- * CLAUDE.md is here because it is the ENTIRE INPUT to the `memo` check. Leaving it out
- * means a hand-edited table does not change the hash, `--reuse-if-fresh` serves a cached
- * green, and the one check whose whole job is catching that drift can never run.
+ * EVERY ENTRY HERE IS A FILE SOME CHECK READS. That is the only admission criterion, and
+ * the inverse — a file a check reads that is NOT in the surface — is a false green: the
+ * digest does not move, `--reuse-if-fresh` replays the stored verdict, and the check that
+ * would have caught the change never runs. `.env.example` and `knip.json` were both
+ * missing, and both were reproduced end to end as replayed greens over red checks.
  *
- * .gitignore is here because the `secrets` check's whole subject is which lines of it keep
- * .env out of the repository. A change to that boundary must never be cache-invisible.
+ * .gitignore and .env.example are `secrets`' inputs; .env.example is what rule 4 scans for
+ * a real value in a placeholder file. knip.json is `deadcode`'s entire exemption surface.
+ * 28-db-schema.dbml is the schema of record and the input to the `schema` conformance row.
+ * The compose files and .dockerignore are here because `smoke` builds from them.
  *
- * The compose files and .dockerignore are here because `docker` and `smoke` build from them.
+ * `CLAUDE.md` is deliberately NOT justified as "the memo check's input" any more — memo
+ * reads .claude/skills/verify/SKILL.md (memo-drift.mjs), and has since 2026-09-16. It stays
+ * only until the row set is final and the surface is derived from the registry.
  */
 const HASHED_EXACT = new Set([
   'package.json',
@@ -40,8 +59,24 @@ const HASHED_EXACT = new Set([
   '.dockerignore',
   '.nvmrc',
   '.gitignore',
+  '.env.example',
+  'knip.json',
+  '28-db-schema.dbml',
   'CLAUDE.md',
 ])
+
+/**
+ * Path-shaped inputs no exact name can enumerate.
+ *
+ * The knip alternative-basenames pattern exists because `deadcode` treats the mere
+ * EXISTENCE of a second root config as a finding — so creating `knip.ts` changes that
+ * check's verdict while changing no file the surface would otherwise see.
+ */
+const HASHED_MATCH = [
+  /^tsconfig[^/]*\.json$/,
+  /^playwright\.config\.[cm]?[jt]s$/,
+  /^\.?knip\.(json|jsonc|ts|js|mjs|cjs)$/,
+]
 
 /**
  * A NUL byte cannot occur in a POSIX path, so it is the only safe field delimiter.
@@ -51,12 +86,18 @@ const HASHED_EXACT = new Set([
 const NUL = Buffer.from([0])
 
 /**
+ * Is this repo-relative path inside the freshness surface?
+ *
+ * Exported because the only honest test of the surface is one that asks it directly about
+ * a path a check declares it reads. hash.test.mjs asserts BOTH directions: a file outside
+ * does not move the digest, and every declared input does.
+ *
  * @param {string} rel
  * @returns {boolean}
  */
-function isHashed(rel) {
+export function isHashed(rel) {
   if (HASHED_EXACT.has(rel)) return true
-  if (/^tsconfig[^/]*\.json$/.test(rel)) return true
+  if (HASHED_MATCH.some((re) => re.test(rel))) return true
   return HASHED_PREFIXES.some((prefix) => rel.startsWith(prefix))
 }
 

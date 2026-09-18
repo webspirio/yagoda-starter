@@ -1,11 +1,11 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs'
+import { appendFileSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, writeFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 
-import { sourceHash, errMessage } from './hash.mjs'
+import { sourceHash, errMessage, isHashed } from './hash.mjs'
 
 /**
  * Every GIT_* variable stripped from the environment handed to a child `git`.
@@ -172,5 +172,155 @@ test('sourceHash honours its root argument even when GIT_DIR points somewhere el
   } finally {
     rmSync(a, { recursive: true, force: true })
     rmSync(b, { recursive: true, force: true })
+  }
+})
+
+/**
+ * THE DUAL OF 'a file outside the hashed surface does NOT change the hash'.
+ *
+ * That test alone is why .env.example and knip.json sat outside the surface for as long as
+ * they did: it only ever asserted the OUTWARD direction. A surface can be arbitrarily
+ * narrow and still pass it. What was never asserted is the direction that matters — that
+ * every file a check actually reads IS inside, so editing one invalidates the cached
+ * report instead of being replayed over.
+ *
+ * The declared-input list is NOT written here. It is extracted from the check sources, so
+ * this test has no second copy to drift from: add `path.join(ROOT, 'newthing.json')` to a
+ * check and this test fails until the surface covers it. That is invariant #5 — a check's
+ * declared scope tied mechanically to its actual scope — applied to the surface itself.
+ */
+const CHECK_DIRS = ['checks', 'ratchets']
+
+/**
+ * Paths a check resolves against ROOT that are deliberately NOT hashed. Every entry is a
+ * reason, and an entry that stops matching is a stale exception, so the test says so.
+ *
+ * @type {{ rel: string, why: string }[]}
+ */
+const NOT_CONTENT = [
+  {
+    rel: 'node_modules/.bin/knip',
+    why: 'a tool binary, not scanned content — its version is proxied by package-lock.json, which IS hashed',
+  },
+  {
+    rel: 'frontend/dist/assets',
+    why: 'build output, gitignored — derived from frontend/src, which IS hashed, and ordered behind `build` by `after`',
+  },
+]
+
+/**
+ * Every repo-root-relative path literal a check module resolves against ROOT.
+ *
+ * Two shapes cover all of them, and the check modules are written in only these two:
+ *   path.join(ROOT, 'a', 'b')         — a file or directory the check reads
+ *   ['ls-files', …, '--', 'a/b']      — a git pathspec the check enumerates
+ * A module-level `const NAME_REL = 'a/b'` indirection is resolved first, because several
+ * checks name their baseline that way.
+ *
+ * @returns {{ rel: string, at: string }[]}
+ */
+function declaredInputs() {
+  /** @type {{ rel: string, at: string }[]} */
+  const out = []
+  for (const dir of CHECK_DIRS) {
+    const abs = path.join(import.meta.dirname, dir)
+    for (const file of readdirSync(abs)) {
+      if (!file.endsWith('.mjs') || file.endsWith('.test.mjs')) continue
+      const src = readFileSync(path.join(abs, file), 'utf8')
+      const where = `scripts/verify/${dir}/${file}`
+
+      /** `const X = 'a/b'` — only plain single-quoted literals, which is all these files use. */
+      const consts = new Map()
+      for (const m of src.matchAll(/^const ([A-Z][A-Z0-9_]*) = '([^']+)'$/gm)) {
+        consts.set(m[1], m[2])
+      }
+
+      for (const m of src.matchAll(/path\.join\(ROOT,\s*([^)]*)\)/g)) {
+        const args = m[1].split(',').map((s) => s.trim()).filter(Boolean)
+        if (!args.length) continue
+        const parts = args.map((a) => {
+          const lit = /^'([^']*)'$/.exec(a)
+          if (lit) return lit[1]
+          return consts.get(a) ?? null
+        })
+        if (parts.some((p) => p === null)) continue // a runtime value; nothing to assert
+        out.push({ rel: parts.join('/'), at: where })
+      }
+
+      for (const m of src.matchAll(/'--',\s*'([^']+)'/g)) {
+        if (m[1].startsWith('.env')) continue // a pathspec pattern, not a path
+        out.push({ rel: m[1], at: where })
+      }
+    }
+  }
+  return out
+}
+
+test('EVERY path a check resolves against ROOT is inside the hash surface', () => {
+  const seenExceptions = new Set()
+  const missing = []
+  for (const { rel, at } of declaredInputs()) {
+    const exception = NOT_CONTENT.find((e) => e.rel === rel)
+    if (exception) {
+      seenExceptions.add(rel)
+      continue
+    }
+    if (!isHashed(rel)) missing.push(`${at} reads ${rel}`)
+  }
+  assert.deepEqual(
+    missing,
+    [],
+    'these paths feed a check and are OUTSIDE the freshness surface, so editing one leaves ' +
+      'sourceHash unchanged and `--reuse-if-fresh` replays the stored verdict over it — a ' +
+      'false green on the Stop gate\'s own path. Add them to hash.mjs, or add a reasoned ' +
+      `entry to NOT_CONTENT here:\n  ${missing.join('\n  ')}`,
+  )
+
+  const stale = NOT_CONTENT.filter((e) => !seenExceptions.has(e.rel)).map((e) => e.rel)
+  assert.deepEqual(
+    stale,
+    [],
+    'these NOT_CONTENT exceptions no longer match anything a check reads. An exception that ' +
+      'has outlived its finding is exactly what this layer refuses to carry — delete them.',
+  )
+})
+
+test('editing any declared input actually moves the digest', () => {
+  // isHashed() alone is a statement about a predicate. This runs the REAL sourceHash over a
+  // real git tree and asserts the digest moves for every declared input, so the test cannot
+  // pass because the predicate and the scan disagree.
+  const root = mkdtempSync(path.join(tmpdir(), 'verify-inputs-'))
+  try {
+    execFileSync('git', ['init', '-q'], { cwd: root, env: NO_GIT_ENV })
+    const rels = [...new Set(declaredInputs().map((d) => d.rel))]
+      .filter((rel) => !NOT_CONTENT.some((e) => e.rel === rel))
+      // A directory needs a witness file inside it; a file is written as itself. A
+      // basename with no dot at all is the directory case — `.gitignore` and
+      // `.env.example` are files despite path.extname() disagreeing about the first.
+      .map((rel) => (path.basename(rel).includes('.') ? rel : `${rel}/zz-witness.ts`))
+    assert.ok(rels.length > 0, 'extracted no declared inputs at all — the extractor stopped matching')
+
+    for (const rel of rels) {
+      mkdirSync(path.join(root, path.dirname(rel)), { recursive: true })
+      writeFileSync(path.join(root, rel), 'seed\n')
+    }
+    execFileSync('git', ['add', '-A'], { cwd: root, env: NO_GIT_ENV })
+    execFileSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-qm', 'init'], {
+      cwd: root,
+      env: NO_GIT_ENV,
+    })
+
+    for (const rel of rels) {
+      const before = sourceHash(root).hash
+      appendFileSync(path.join(root, rel), 'touched\n')
+      assert.notEqual(
+        sourceHash(root).hash,
+        before,
+        `editing ${rel} did not change sourceHash, but a check reads it — ` +
+          '`--reuse-if-fresh` would replay a green over that change',
+      )
+    }
+  } finally {
+    rmSync(root, { recursive: true, force: true })
   }
 })
