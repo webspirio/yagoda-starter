@@ -3,22 +3,22 @@
   "note": "Every backend/src/**/*.ts arithmetic site this ratchet finds outside *.spec.ts/*.db-spec.ts. AS OF 2026-09-18: 40 keys, 44 occurrences — a COUNT CORRECTION, not a re-audit. This header said \"29 keys, 32 occurrences\" from 2026-09-15 until 2026-09-18 while the file itself grew past it (dev-seed.history.ts's nine entries and crate-code.ts's arrived in between), because nothing pins this sentence: the ratchet compares the ENTRIES against the tree and never reads this note, and registry.test.mjs pins counts in registry.mjs, not here. The 2026-09-18 pass re-keyed four dev-seed.ts entries for line drift and corrected this number; it did NOT re-read all 40 reasons at their sites, so every reason below still carries its own original date and stands on that reading, not on this one. THE SCOPE WIDENED ON 2026-09-15 and the count did not move: until then this ratchet skipped the four module trees backend/eslint.config.mjs policed when it was written (src/intakes/, src/payouts/, src/shifts/, src/supplier-balance/). eslint's own `files` list had since grown to eight trees while this ratchet's hard-coded copy of it had not, so the two scopes silently disagreed — and a tree DELETED from eslint's list would have been policed by neither. Scanning all of backend/src was measured before the carve-out was removed: exactly zero additional findings, because eslint's ban is what keeps those trees clean. Read individually before writing a reason, not inferred from the shape of the code. Four of the 29 keys are backend/src/common/money.ts's OWN internals (the *, /, and mul()'s two / occurrences on one line) — the money engine works in bigint, not JS number, so it carries none of the float-precision risk this ratchet exists to catch, but the AST heuristic only recognises number-typed or numeric-literal operands, not bigint-safety, so those sites are listed honestly here rather than exempted by widening the rule's path exclusions. Three keys (backend/src/seed/dev-seed.ts:59 and :66) are a genuine concern, not a false positive: the dev seed script reimplements money.ts's add() independently, through Number() and plain-number division, to compute real values written into grade_prices.base_price for the seeded demo dataset — a real duplicate of the one authorised rounding seam, left as-is because backend/src is out of scope for the verify layer. Two keys (password-hashing.ts:28's two occurrences) are literal-and-number-typed arithmetic that this rule's single-level operand check cannot prove clear because each is the OUTER multiplication of a left-associative a*b*c chain, whose left operand is itself a BinaryExpression rather than a bare literal or identifier. Every remaining key is one of two shapes: the repeated (page - 1) * limit pagination-offset arithmetic this template's list endpoints all share (10 keys, including pagination-query.dto.ts's own skipOf() helper), or an env-var/config integer parsed with Number()/parseInt() (ports, throttle window/limit) or Math.min() retry-backoff arithmetic that is never a monetary or weight value. None were left unclassified — every entry's reason states what the arithmetic actually is, read at its site. Five entries were RE-KEYED on 2026-09-15 rather than added: all five are sites this file already carried, whose line numbers moved under main's merge. This ratchet is two-directional: a new site not listed here fails scripts/verify/ratchets/money-rounding.mjs, and a listed entry whose site (or exact occurrence count) no longer matches the tree fails it too — this file may only shrink or be re-dated by a reviewed change, never grow by drift.",
   "entries": [
     {
-      "key": "backend/src/app.module.ts:72:Number",
-      "file": "backend/src/app.module.ts",
-      "line": 72,
-      "kind": "Number",
-      "occurrences": 1,
-      "added": "2026-09-15",
-      "reason": "ttl: Number(process.env.THROTTLE_TTL_MS ?? 60_000) inside ThrottlerModule.forRootAsync — converts the rate-limiter window (milliseconds) from its env-var string form; throttlers[].ttl requires a plain number, and nothing here is a monetary or weight value. RE-KEYED 2026-09-15 (:66 -> :70), third time this same call has moved without changing: main's merge added four lines of comment above the ThrottlerModule block. The site itself is byte-identical; only its line number moved. RE-KEYED 2026-09-16 (:70 -> :71), fourth move for a byte-identical call; see the :72 entry for why this pair had to be re-keyed together. RE-KEYED 2026-09-18 (:71 -> :72) by the §8.1–8.2 reweigh slice, which added ReweighsModule's import and registration to this file and pushed the whole ThrottlerModule block down one line. The call is byte-identical. BOTH throttler entries had to move together again, for exactly the reason the pair recorded in 2026-09-16: shifted down one, the old :72 key still MATCHED — against the ttl site, not the limit one — so --write carried the limit reason onto the ttl entry and it was put back by hand. A surviving match is not a correct match."
-    },
-    {
       "key": "backend/src/app.module.ts:73:Number",
       "file": "backend/src/app.module.ts",
       "line": 73,
       "kind": "Number",
       "occurrences": 1,
       "added": "2026-09-15",
-      "reason": "limit: Number(process.env.THROTTLE_LIMIT ?? 100) in the same ThrottlerModule config — the request-count ceiling per window, not money; throttlers[].limit likewise requires a number. RE-KEYED 2026-09-15 (:67 -> :71) for the same reason as the :70 entry above, and by the same four lines. RE-KEYED 2026-09-16 (:71 -> :72) by main's 43-commit merge. WORTH READING TWICE: both throttler entries moved down exactly one line, so before this correction the :71 key still MATCHED — against the ttl site, not this one. The ratchet reported one stale and one new key and could not see that the surviving match was on the wrong expression, which is this baseline's line-number keying showing its edge rather than a defect in the finding. RE-KEYED 2026-09-18 (:72 -> :73) by the §8.1–8.2 reweigh slice, which added ReweighsModule's import and registration to this file and pushed the whole ThrottlerModule block down one line. The call is byte-identical. BOTH throttler entries had to move together again, for exactly the reason the pair recorded in 2026-09-16: shifted down one, the old :72 key still MATCHED — against the ttl site, not the limit one — so --write carried the limit reason onto the ttl entry and it was put back by hand. A surviving match is not a correct match."
+      "reason": "ttl: Number(process.env.THROTTLE_TTL_MS ?? 60_000) inside ThrottlerModule.forRootAsync — converts the rate-limiter window (milliseconds) from its env-var string form; throttlers[].ttl requires a plain number, and nothing here is a monetary or weight value. RE-KEYED 2026-09-15 (:66 -> :70), third time this same call has moved without changing: main's merge added four lines of comment above the ThrottlerModule block. The site itself is byte-identical; only its line number moved. RE-KEYED 2026-09-16 (:70 -> :71), fourth move for a byte-identical call; see the :72 entry for why this pair had to be re-keyed together. RE-KEYED 2026-09-18 (:71 -> :72) by the §8.1–8.2 reweigh slice, which added ReweighsModule's import and registration to this file and pushed the whole ThrottlerModule block down one line. The call is byte-identical. BOTH throttler entries had to move together again, for exactly the reason the pair recorded in 2026-09-16: shifted down one, the old :72 key still MATCHED — against the ttl site, not the limit one — so --write carried the limit reason onto the ttl entry and it was put back by hand. A surviving match is not a correct match. RE-KEYED 2026-09-18 (:72 -> :73) by the §8.3–8.6 cost-of-day slice stacked on the reweigh one: DayCostsModule's import and registration pushed the ThrottlerModule block down one more line. The expression is byte-identical."
+    },
+    {
+      "key": "backend/src/app.module.ts:74:Number",
+      "file": "backend/src/app.module.ts",
+      "line": 74,
+      "kind": "Number",
+      "occurrences": 1,
+      "added": "2026-09-15",
+      "reason": "limit: Number(process.env.THROTTLE_LIMIT ?? 100) in the same ThrottlerModule config — the request-count ceiling per window, not money; throttlers[].limit likewise requires a number. RE-KEYED 2026-09-15 (:67 -> :71) for the same reason as the :70 entry above, and by the same four lines. RE-KEYED 2026-09-16 (:71 -> :72) by main's 43-commit merge. WORTH READING TWICE: both throttler entries moved down exactly one line, so before this correction the :71 key still MATCHED — against the ttl site, not this one. The ratchet reported one stale and one new key and could not see that the surviving match was on the wrong expression, which is this baseline's line-number keying showing its edge rather than a defect in the finding. RE-KEYED 2026-09-18 (:72 -> :73) by the §8.1–8.2 reweigh slice, which added ReweighsModule's import and registration to this file and pushed the whole ThrottlerModule block down one line. The call is byte-identical. BOTH throttler entries had to move together again, for exactly the reason the pair recorded in 2026-09-16: shifted down one, the old :72 key still MATCHED — against the ttl site, not the limit one — so --write carried the limit reason onto the ttl entry and it was put back by hand. A surviving match is not a correct match. RE-KEYED 2026-09-18 (:73 -> :74) by the §8.3–8.6 cost-of-day slice stacked on the reweigh one: DayCostsModule's import and registration pushed the ThrottlerModule block down one more line. The ttl/limit pair shifted together AGAIN, so the old :73 key again matched the WRONG half and --write again carried the limit reason onto the ttl entry; put back by hand for the third time. The expression is byte-identical."
     },
     {
       "key": "backend/src/audit/audit.service.ts:58:*",
@@ -48,58 +48,58 @@
       "reason": "skipOf()'s own body, (page - 1) * limit — the canonical pagination-offset helper this template asks every new list endpoint to reuse (see the file's own doc comment). The comment there explains why this is not folded into the four money-banned modules: an unrelated page offset, if banned repo-wide, would just teach people to write disable comments."
     },
     {
-      "key": "backend/src/common/money.ts:122:*",
+      "key": "backend/src/common/money.ts:125:*",
       "file": "backend/src/common/money.ts",
-      "line": 122,
+      "line": 125,
       "kind": "*",
       "occurrences": 2,
       "added": "2026-09-18",
-      "reason": "money.ts's own div(): (ua < 0n ? -ua : ua) * UNIT * 10n — the two * occurrences on this one line scale the dividend up twice, once to undo the divisor's own scale and once to reach the scale-2 answer, plus one extra digit to round on. Same seam and the same bigint-not-number reasoning as lines 43/51/75/78 above: this is the rounding engine, not a bypass of it. Added 2026-09-18 with the §8.1–8.2 reweigh slice, which needed a half-up quotient for §8.6's cost per kilogram; audited by money.spec.ts."
+      "reason": "money.ts's own div(): (ua < 0n ? -ua : ua) * UNIT * 10n — the two * occurrences on this one line scale the dividend up twice, once to undo the divisor's own scale and once to reach the scale-2 answer, plus one extra digit to round on. Same seam and the same bigint-not-number reasoning as lines 43/51/75/78 above: this is the rounding engine, not a bypass of it. Added 2026-09-18 with the §8.1–8.2 reweigh slice, which needed a half-up quotient for §8.6's cost per kilogram; audited by money.spec.ts. RE-KEYED 2026-09-18 (:122 -> :125) by the §8.3–8.6 cost-of-day slice stacked on the reweigh one: div()'s scaling comment was corrected from «by UNIT twice» to «once», three lines longer. The expression is byte-identical."
     },
     {
-      "key": "backend/src/common/money.ts:124:/",
+      "key": "backend/src/common/money.ts:127:/",
       "file": "backend/src/common/money.ts",
-      "line": 124,
+      "line": 127,
       "kind": "/",
       "occurrences": 1,
       "added": "2026-09-18",
-      "reason": "money.ts's own div(): magnitude / divisor, the scale-3 bigint quotient before the half-up step on the line below rounds it back to scale 2. Bigint throughout, so none of the float-precision risk this ratchet exists to catch applies; the AST heuristic cannot see bigint-safety, so it is listed honestly rather than exempted by path. Added 2026-09-18 with the reweigh slice."
+      "reason": "money.ts's own div(): magnitude / divisor, the scale-3 bigint quotient before the half-up step on the line below rounds it back to scale 2. Bigint throughout, so none of the float-precision risk this ratchet exists to catch applies; the AST heuristic cannot see bigint-safety, so it is listed honestly rather than exempted by path. Added 2026-09-18 with the reweigh slice. RE-KEYED 2026-09-18 (:124 -> :127) by the §8.3–8.6 cost-of-day slice stacked on the reweigh one: Same three-line comment correction in div(). The expression is byte-identical."
     },
     {
-      "key": "backend/src/common/money.ts:125:/",
+      "key": "backend/src/common/money.ts:128:/",
       "file": "backend/src/common/money.ts",
-      "line": 125,
+      "line": 128,
       "kind": "/",
       "occurrences": 1,
       "added": "2026-09-18",
-      "reason": "money.ts's own div(): (scaled + 5n) / 10n — adds half a unit at scale 3 and floors, which is half-up away from zero, the identical policy mul() implements on line 78 and the one foundation §5.1 authorises. This IS the rounding rule for division, audited by money.spec.ts rather than by this AST heuristic. Added 2026-09-18 with the reweigh slice."
+      "reason": "money.ts's own div(): (scaled + 5n) / 10n — adds half a unit at scale 3 and floors, which is half-up away from zero, the identical policy mul() implements on line 78 and the one foundation §5.1 authorises. This IS the rounding rule for division, audited by money.spec.ts rather than by this AST heuristic. Added 2026-09-18 with the reweigh slice. RE-KEYED 2026-09-18 (:125 -> :128) by the §8.3–8.6 cost-of-day slice stacked on the reweigh one: Same three-line comment correction in div(). The expression is byte-identical."
     },
     {
-      "key": "backend/src/common/money.ts:158:*",
+      "key": "backend/src/common/money.ts:161:*",
       "file": "backend/src/common/money.ts",
-      "line": 158,
+      "line": 161,
       "kind": "*",
       "occurrences": 1,
       "added": "2026-09-18",
-      "reason": "money.ts's own allocate(): (magnitude * w) inside the per-line floor of a largest-remainder split. Bigint kopiykas times a bigint weight, never a JS number. The whole point of allocate() is that the parts sum EXACTLY to the total — §8.4's звірка checks precisely that on screen — which is why the split is done here rather than by multiplying each line by a pre-rounded ratio, the approach that drifts a kopiyka per line. Added 2026-09-18 with the reweigh slice."
+      "reason": "money.ts's own allocate(): (magnitude * w) inside the per-line floor of a largest-remainder split. Bigint kopiykas times a bigint weight, never a JS number. The whole point of allocate() is that the parts sum EXACTLY to the total — §8.4's звірка checks precisely that on screen — which is why the split is done here rather than by multiplying each line by a pre-rounded ratio, the approach that drifts a kopiyka per line. Added 2026-09-18 with the reweigh slice. RE-KEYED 2026-09-18 (:158 -> :161) by the §8.3–8.6 cost-of-day slice stacked on the reweigh one: Same three-line comment correction in div() above allocate(). The expression is byte-identical."
     },
     {
-      "key": "backend/src/common/money.ts:158:/",
+      "key": "backend/src/common/money.ts:161:/",
       "file": "backend/src/common/money.ts",
-      "line": 158,
+      "line": 161,
       "kind": "/",
       "occurrences": 1,
       "added": "2026-09-18",
-      "reason": "money.ts's own allocate(): (magnitude * w) / basisTotal, the floor of each line's pro-rata share. Bigint division truncates, which is deliberate here — the truncated remainders are what the largest-remainder loop below then distributes, so nothing is lost and nothing is invented. Added 2026-09-18 with the reweigh slice."
+      "reason": "money.ts's own allocate(): (magnitude * w) / basisTotal, the floor of each line's pro-rata share. Bigint division truncates, which is deliberate here — the truncated remainders are what the largest-remainder loop below then distributes, so nothing is lost and nothing is invented. Added 2026-09-18 with the reweigh slice. RE-KEYED 2026-09-18 (:158 -> :161) by the §8.3–8.6 cost-of-day slice stacked on the reweigh one: Same three-line comment correction in div() above allocate(). The expression is byte-identical."
     },
     {
-      "key": "backend/src/common/money.ts:159:*",
+      "key": "backend/src/common/money.ts:162:*",
       "file": "backend/src/common/money.ts",
-      "line": 159,
+      "line": 162,
       "kind": "*",
       "occurrences": 1,
       "added": "2026-09-18",
-      "reason": "money.ts's own allocate(): (magnitude * w) % basisTotal — the same bigint product as line 158, taken modulo the basis to rank each line's remainder for the largest-remainder pass. The * is the product; the % itself is not a kind this ratchet tracks. Added 2026-09-18 with the reweigh slice."
+      "reason": "money.ts's own allocate(): (magnitude * w) % basisTotal — the same bigint product as line 158, taken modulo the basis to rank each line's remainder for the largest-remainder pass. The * is the product; the % itself is not a kind this ratchet tracks. Added 2026-09-18 with the reweigh slice. RE-KEYED 2026-09-18 (:159 -> :162) by the §8.3–8.6 cost-of-day slice stacked on the reweigh one: Same three-line comment correction in div() above allocate(). The expression is byte-identical."
     },
     {
       "key": "backend/src/common/money.ts:43:*",
