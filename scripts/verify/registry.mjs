@@ -523,12 +523,11 @@ export const CHECKS = [
     // exactly what `needs: ['npm-registry']` (not `after`) exists to express: a missing
     // precondition SKIPS this row, it does not order it behind another check.
     proves:
-      'npm audit ran against the live advisory database and every advisory it reports is ' +
-      'listed in scripts/verify/baselines/audit.json with a date and a reason, in BOTH ' +
-      'directions — an unlisted advisory fails, and so does a listed one npm no longer ' +
-      'reports. A CRITICAL can never be listed at all. Anything reachable from the ' +
-      'production tree must additionally carry a structured risk entry rather than a ' +
-      'sentence.',
+      'Every GHSA advisory npm reports is accepted by id in audit.mjs, with an expiry date ' +
+      'and a reason, in BOTH directions: an unaccepted advisory fails, an accepted one npm ' +
+      'has stopped reporting fails, and so does one whose date has passed. A critical ' +
+      'reachable from the production tree can never be accepted. Reachability is read from ' +
+      'npm, not declared.',
     blindSpot:
       'Only what npm knows today. An unpublished vulnerability, one in code this repo ' +
       'vendors rather than installs, and one in a base image are all invisible. Its ' +

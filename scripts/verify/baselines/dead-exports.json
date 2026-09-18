@@ -28,28 +28,12 @@
       "reason": "Grep-verified: 'multer' appears exactly once in backend/src, a prose comment in media.service.ts ('Uploaded-file shape we consume (multer memory storage)') — no @UploadedFile()/Express.Multer.File usage and no import anywhere. A genuinely orphaned devDependency, not a knip blind spot."
     },
     {
-      "key": "devDependency|backend/package.json|@types/supertest",
-      "kind": "devDependency",
-      "file": "backend/package.json",
-      "name": "@types/supertest",
-      "added": "2026-09-10",
-      "reason": "supertest (and therefore its @types) is imported only from three *.db-spec.ts pipeline files (testing/catalog-pipeline, testing/documents-pipeline, testing/pipeline), each unreachable to knip for the same jest.db.config.js reason recorded on this baseline's file|...db-spec.ts entries — all-exceptions.filter.spec.ts only mentions 'supertest' in a comment, never imports it."
-    },
-    {
       "key": "devDependency|backend/package.json|pino-pretty",
       "kind": "devDependency",
       "file": "backend/package.json",
       "name": "pino-pretty",
       "added": "2026-09-10",
       "reason": "Loaded by name only: app.module.ts's pinoHttp transport config sets `target: 'pino-pretty'` as a plain string, which the `pino` library dynamically requires at runtime in development — there is no static import/require of the 'pino-pretty' module anywhere for knip's import graph to follow."
-    },
-    {
-      "key": "devDependency|backend/package.json|supertest",
-      "kind": "devDependency",
-      "file": "backend/package.json",
-      "name": "supertest",
-      "added": "2026-09-10",
-      "reason": "Imported only from three *.db-spec.ts pipeline files (testing/catalog-pipeline, testing/documents-pipeline, testing/pipeline) that backend/jest.db.config.js runs directly but knip cannot reach — see the file|...db-spec.ts entries' reason for exactly why that config is invisible to it."
     },
     {
       "key": "devDependency|package.json|shadcn",
