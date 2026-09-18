@@ -245,7 +245,6 @@ test('the runner default still clears every row that inherits it, and that set i
     'test:ci-scripts': 6_700,
     deadcode: 2_100,
     migrations: 968,
-    seam: 885,
     // 'ratchet:money': 808 -- row removed 2026-09-18 at the user's request; see the note
     // in scripts/verify/baselines/money-rounding.json. The 808ms reading stays in git
     // history rather than here, because a budget for a row that no longer runs would fail
@@ -254,10 +253,10 @@ test('the runner default still clears every row that inherits it, and that set i
     // LOCAL readings, not CI ones: both rows were added after run 35011857830 and have
     // never run on a CI runner, so there is no cold CI number to record yet. Measured
     // with `/usr/bin/time -p npm run <script>`, slowest of ten consecutive runs on the
-    // laptop. For calibration on the same laptop and the same day, `seam` read 440ms
-    // against its 885ms CI entry and `migrations` read 1020ms against its 968ms one, so a
-    // CI reading for these two is unlikely to be more than about twice what is recorded
-    // here. Replace both with the real cold numbers after the first full CI run.
+    // laptop. For calibration on the same laptop and the same day, `migrations` read
+    // 1020ms against its 968ms CI entry, so a CI reading for these is unlikely to be more
+    // than about twice what is recorded here. Replace them with the real cold numbers
+    // after the first full CI run.
     documents: 360,
     schema: 350,
     bundle: 188,

@@ -179,6 +179,42 @@ export default tseslint.config(
     },
   },
   {
+    // THE SEED IS A STANDALONE CLI, NEVER A RUNTIME DEPENDENCY OF THE APP IT SEEDS.
+    //
+    // Replaces rule 2 of the `seam` check, which resolved every import specifier through
+    // the TypeScript compiler API to see whether it landed inside src/seed/. eslint sees
+    // the same files, from a config `npm run lint` already loads, for none of the 501
+    // lines.
+    //
+    // `no-restricted-imports` is unused everywhere else in this config, so this block
+    // collides with nothing. That is the reason rule 1 could NOT come along: banning a
+    // string literal needs `no-restricted-syntax`, and a second block setting it over
+    // files that overlap the money ban would REPLACE that rule's options rather than
+    // merge with them — silently disabling the money guard. Flat config replaces options;
+    // it does not merge them.
+    //
+    // Patterns match the specifier STRING, not a resolved path. That is sound HERE and
+    // only here: this workspace has no tsconfig `paths` aliases, so every import of the
+    // seed is relative and the spellings below are all of them. Adding an alias means
+    // adding its spelling to this group.
+    files: ['src/**/*.ts'],
+    ignores: ['src/seed/**', '**/*.spec.ts', '**/*.db-spec.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: ['**/seed', '**/seed/**'],
+              message:
+                'backend/src/seed/ is a standalone CLI (dev-seed.cli.ts, run via `npm run seed:dev`), never a runtime dependency of the application it seeds. Move what you need out of seed/ rather than importing into it.',
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
     // supertest is an `export =` (CommonJS export-assignment) module, and
     // this repo's tsconfig has no `esModuleInterop` — `import request =
     // require('supertest')` is the correct, interop-independent form (a

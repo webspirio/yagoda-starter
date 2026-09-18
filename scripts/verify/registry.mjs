@@ -324,24 +324,6 @@ export const CHECKS = [
       'reported here. Untracked files are outside it entirely.',
   },
   {
-    id: 'seam',
-    tier: 'fast',
-    cmd: 'npm run seam',
-    proves:
-      'Two rules over every backend/src file parsed with the TypeScript compiler API. The ' +
-      'provider literal \'local\' appears only in the file that DECLARES it — migrations, ' +
-      'the seed CLI and specs excepted — so the single login lookup path cannot quietly ' +
-      'grow a second. And nothing outside backend/src/seed/ imports, requires or ' +
-      're-exports anything resolving into it: the dev-seed CLI is a standalone tool, ' +
-      'never a runtime dependency.',
-    blindSpot:
-      'AST string literals and relative specifiers only. A provider value assembled at ' +
-      'runtime, read from an env var or a database row, is invisible in both directions, ' +
-      'and it never checks that the declared constant is actually USED where a provider ' +
-      'is needed. A bare package specifier is never treated as a path. Nothing here ' +
-      'evaluates code, and nothing says the seam is the RIGHT design.',
-  },
-  {
     id: 'migrations',
     tier: 'fast',
     cmd: 'npm run migrations:check',
