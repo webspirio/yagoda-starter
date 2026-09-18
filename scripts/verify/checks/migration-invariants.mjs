@@ -332,10 +332,10 @@ function scan() {
       // time it gets read -- a deleted branch switch mid-run, an editor's atomic-save
       // rename, anything. A file that no longer exists cannot violate `synchronize: false`,
       // so this is a silent skip, not a finding; any other read failure (permissions, etc.)
-      // is still a real finding. (This layer's own test suite runs its check-test FILES
-      // serially -- see the root `test:verify` script's `--test-concurrency=1` -- precisely
-      // so that two tests mutating the same shared tree can never race each other; this
-      // guard is not standing in for that.)
+      // is still a real finding. (It is not standing in for test isolation either: every
+      // check now takes a scan root and every fixture is a mkdtemp directory, so no two
+      // tests share a tree to race over. That is why `test:verify` no longer passes
+      // `--test-concurrency=1`.)
       const code = /** @type {{ code?: string }} */ (err).code
       if (code === 'ENOENT') continue
       findings.push(`${relPath}: unreadable: ${errMessage(err)}`)

@@ -54,7 +54,9 @@ import { execFileSync } from 'node:child_process'
 import { createRequire } from 'node:module'
 import path from 'node:path'
 
-const ROOT = path.resolve(import.meta.dirname, '..', '..', '..')
+import { gitEnv, scanRoot } from '../scan-root.mjs'
+
+const ROOT = scanRoot()
 const require = createRequire(import.meta.url)
 
 /**
@@ -88,6 +90,21 @@ const CANDIDATE_FILE = /\.(test|spec|db-spec)\.[cm]?[jt]sx?$/
 // possible at all.
 const SHELL_TEST_FILE = /\.test\.sh$/
 
+/**
+ * Is this path a candidate at all — i.e. can it ever be REPORTED as an orphan?
+ *
+ * Exported because the candidate net and the collector net are two different questions and
+ * a narrowing of THIS one is invisible to any test of `collectorsFor`: a file the net
+ * misses is never asked about, so it cannot be reported as an orphan. That is precisely
+ * how every *.sh file stayed invisible before the shell net existed.
+ *
+ * @param {string} rel repo-root-relative path
+ * @returns {boolean}
+ */
+export function isCandidate(rel) {
+  return CANDIDATE_FILE.test(rel) || SHELL_TEST_FILE.test(rel)
+}
+
 // vitest's own default `include` pattern. frontend/vite.config.ts does not set `test.include`,
 // so this is vitest's built-in default -- not a copy of anything this repo's own config owns --
 // which is why, unlike the two backend regexes below, it is fine to state here directly.
@@ -107,7 +124,12 @@ const PLAYWRIGHT_DEFAULT_INCLUDE = /\.(test|spec)\.[cm]?[jt]sx?$/
  * @returns {string}
  */
 function run(file, args) {
-  return execFileSync(file, args, { cwd: ROOT, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 })
+  return execFileSync(file, args, {
+    cwd: ROOT,
+    env: gitEnv(),
+    encoding: 'utf8',
+    maxBuffer: 64 * 1024 * 1024,
+  })
 }
 
 /** @returns {string[]} every tracked-or-untracked candidate test file, repo-root relative */
@@ -133,7 +155,7 @@ function candidates() {
  *
  * @returns {RegExp}
  */
-function jestUnitRegex() {
+export function jestUnitRegex() {
   const file = path.join(ROOT, 'backend', 'jest.config.js')
   /** @type {{ testRegex?: unknown }} */
   const config = require(file)
@@ -150,7 +172,7 @@ function jestUnitRegex() {
  *
  * @returns {RegExp}
  */
-function jestDbRegex() {
+export function jestDbRegex() {
   const file = path.join(ROOT, 'backend', 'jest.db.config.js')
   /** @type {{ testRegex?: unknown }} */
   const config = require(file)

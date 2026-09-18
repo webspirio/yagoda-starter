@@ -1,94 +1,122 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
-import { writeFileSync, rmSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import path from 'node:path'
 
 const ROOT = path.resolve(import.meta.dirname, '..', '..', '..')
 const CHECK = path.join(ROOT, 'scripts', 'verify', 'checks', 'test-glob-parity.mjs')
 
 // Safe: the check guards main() behind its own argv, so importing it runs no scan.
-const { collectorsFor, nodeTestGlobs, shellTestGlobs } = await import(CHECK)
+const { collectorsFor, isCandidate, jestDbRegex, jestUnitRegex, nodeTestGlobs, shellTestGlobs } =
+  await import(CHECK)
 
-function run() {
+/**
+ * NOTHING BELOW WRITES THE REAL WORKING TREE.
+ *
+ * Five of these tests used to plant a fixture file under backend/src, frontend/src,
+ * .claude/hooks/ or scripts/ci/, spawn the whole check, and delete the file in a `finally`.
+ * The Stop hook runs the fast tier after every turn under a timeout that kills the process
+ * group, and a killed process runs no `finally` — so those fixtures could survive as
+ * untracked files in the tree they were asserting about. Every one of them asked a question
+ * `collectorsFor` answers directly, in-process, from a string.
+ *
+ * @param {string[]} [args]
+ * @param {Record<string, string>} [env]
+ */
+function run(args = [], env = {}) {
   try {
-    return { status: 0, out: execFileSync(process.execPath, [CHECK], { encoding: 'utf8' }) }
+    return {
+      status: 0,
+      out: execFileSync(process.execPath, [CHECK, ...args], {
+        encoding: 'utf8',
+        env: { ...process.env, ...env },
+      }),
+    }
   } catch (err) {
     // Cast is needed for `npx tsc -p tsconfig.scripts.json` (strict + checkJs types catch
-    // variables as `unknown`) — same idiom as memo-drift.test.mjs's run() helper. Runtime
-    // behaviour is unchanged from the brief's verbatim version.
+    // variables as `unknown`) — same idiom as the other check suites' run() helpers.
     const e = /** @type {any} */ (err)
     return { status: e.status ?? 1, out: `${e.stdout ?? ''}${e.stderr ?? ''}` }
   }
 }
 
+/** The real nets, read from the configs that own them — not copies. */
+const UNIT = jestUnitRegex()
+const DB = jestDbRegex()
+const NODE_GLOBS = nodeTestGlobs()
+const SHELL_GLOBS = shellTestGlobs()
+
+/** @param {string} rel @returns {string[]} */
+const collectors = (rel) => collectorsFor(rel, UNIT, DB, NODE_GLOBS, SHELL_GLOBS)
+
 test('the real tree is green', () => {
   assert.equal(run().status, 0)
 })
 
-test('a backend *.test.ts is caught — no runner collects it', () => {
-  const orphan = path.join(ROOT, 'backend', 'src', 'zz-orphan.test.ts')
-  writeFileSync(orphan, 'it("never runs", () => {})\n')
-  try {
-    const res = run()
-    assert.equal(res.status, 1)
-    assert.match(res.out, /zz-orphan\.test\.ts/)
-    assert.match(res.out, /no runner|zero/i)
-  } finally {
-    rmSync(orphan, { force: true })
+test('every shape the old fixture files tested, asked directly', () => {
+  // One table, replacing five tests that each wrote a file into the real tree and spawned
+  // the check. Left column is the path; right column is who runs it. An empty list is an
+  // ORPHAN — a file nobody executes and nothing reports.
+  /** @type {[string, string[]][]} */
+  const cases = [
+    // The cheapest way to get a dead suite: .test.ts matches neither backend regex.
+    ['backend/src/zz-orphan.test.ts', []],
+    ['backend/src/users/users.service.spec.ts', ['jest-unit']],
+    ['backend/src/crates/crates.db-spec.ts', ['jest-db']],
+    ['frontend/src/zz-ok.spec.tsx', ['vitest']],
+    ['.claude/hooks/zz-ok.test.mjs', ['node-test']],
+    ['scripts/verify/hash.test.mjs', ['node-test']],
+    ['scripts/ci/zz-ok.test.sh', ['shell-test']],
+    ['e2e/smoke.spec.ts', ['playwright']],
+    // The candidate net is WIDER than the shell collector on purpose: a *.test.sh outside
+    // scripts/ci/ is an orphan rather than invisible.
+    ['scripts/zz-orphan.test.sh', []],
+  ]
+  for (const [rel, expected] of cases) {
+    assert.deepEqual(collectors(rel), expected, rel)
   }
 })
 
-test('a frontend *.spec.tsx collected by vitest alone is fine', () => {
-  const ok = path.join(ROOT, 'frontend', 'src', 'zz-ok.spec.tsx')
-  writeFileSync(ok, 'it("runs", () => {})\n')
-  try {
-    assert.equal(run().status, 0)
-  } finally {
-    rmSync(ok, { force: true })
+test('every orphan shape is a CANDIDATE, or it could never be reported as one', () => {
+  // THE OTHER HALF, and the half a collectorsFor test cannot see. A file the candidate net
+  // misses is never asked about, so it reads as green no matter what collectorsFor would
+  // have said. That is exactly how every *.sh file in the repo stayed invisible.
+  for (const rel of ['backend/src/zz-orphan.test.ts', 'scripts/zz-orphan.test.sh']) {
+    assert.equal(isCandidate(rel), true, rel)
+  }
+  // And the net is not simply true for everything:
+  for (const rel of ['backend/src/users/users.service.ts', 'scripts/verify/run.mjs', 'README.md']) {
+    assert.equal(isCandidate(rel), false, rel)
   }
 })
 
-test('a .claude/hooks/*.test.mjs file is collected by node-test (Task 19)', () => {
-  // Before Task 19 taught collectorsFor() about .claude/hooks/, a file here matched zero
-  // collectors and would have failed as an ORPHAN — the same failure mode as the backend
-  // *.test.ts fixture above, one directory over.
-  const ok = path.join(ROOT, '.claude', 'hooks', 'zz-ok.test.mjs')
-  writeFileSync(ok, "import { test } from 'node:test'\ntest('runs', () => {})\n")
+test('a root with no test files refuses a verdict instead of printing a green one', () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'glob-parity-'))
   try {
-    assert.equal(run().status, 0)
-  } finally {
-    rmSync(ok, { force: true })
-  }
-})
+    // The minimum a run needs before it can even ask the question: the two npm scripts the
+    // runner globs are derived from, and the two jest configs the backend regexes are read
+    // out of. Copied in shape only — no test file anywhere.
+    writeFileSync(
+      path.join(root, 'package.json'),
+      JSON.stringify({
+        scripts: {
+          'test:verify': "node --test 'scripts/verify/**/*.test.mjs' '.claude/hooks/**/*.test.mjs'",
+          'test:ci-scripts': 'for f in scripts/ci/*.test.sh; do bash "$f"; done',
+        },
+      }),
+    )
+    mkdirSync(path.join(root, 'backend'), { recursive: true })
+    writeFileSync(path.join(root, 'backend', 'jest.config.js'), "module.exports = { testRegex: '.*\\.spec\\.ts$' }\n")
+    writeFileSync(path.join(root, 'backend', 'jest.db.config.js'), "module.exports = { testRegex: '.*\\.db-spec\\.ts$' }\n")
+    execFileSync('git', ['init', '-q'], { cwd: root })
 
-test('a scripts/ci/*.test.sh file is collected by shell-test (Task 21)', () => {
-  // Before Task 21 taught both CANDIDATE_FILE's companion SHELL_TEST_FILE net and
-  // collectorsFor() about scripts/ci/, a .sh file was invisible to this check on BOTH
-  // sides — not even a candidate, so it could never be reported as an orphan either. This
-  // is the exact gap a whole-branch review found by hand in origin/main's `checks` job.
-  const ok = path.join(ROOT, 'scripts', 'ci', 'zz-ok.test.sh')
-  writeFileSync(ok, '#!/usr/bin/env bash\necho ok\n')
-  try {
-    assert.equal(run().status, 0)
+    const res = run([], { VERIFY_SCAN_ROOT: root })
+    assert.equal(res.status, 1, res.out)
+    assert.match(res.out, /ZERO candidate test files/)
   } finally {
-    rmSync(ok, { force: true })
-  }
-})
-
-test('a *.test.sh file outside scripts/ci/ is an orphan — the candidate net is wider than the collector', () => {
-  // SHELL_TEST_FILE (the candidate net) matches *.test.sh anywhere; the shell-test
-  // COLLECTOR only claims scripts/ci/*.test.sh. A .test.sh file elsewhere is therefore a
-  // candidate with zero collectors — an ORPHAN — rather than silently invisible.
-  const orphan = path.join(ROOT, 'scripts', 'zz-orphan.test.sh')
-  writeFileSync(orphan, '#!/usr/bin/env bash\necho never run\n')
-  try {
-    const res = run()
-    assert.equal(res.status, 1)
-    assert.match(res.out, /zz-orphan\.test\.sh/)
-    assert.match(res.out, /no runner|zero/i)
-  } finally {
-    rmSync(orphan, { force: true })
+    rmSync(root, { recursive: true, force: true })
   }
 })
 
