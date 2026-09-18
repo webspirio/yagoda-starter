@@ -10,6 +10,8 @@ import { CrateReturnsController } from './crate-returns.controller';
 import { CrateBalancesController } from './crate-balances.controller';
 import { CrateBalancesService } from './crate-balances.service';
 import { CrateBalanceController } from './crate-balance.controller';
+import { CrateDispatchService } from './crate-dispatch.service';
+import { CrateDispatchController } from './crate-dispatch.controller';
 import { ShiftsModule } from '../shifts/shifts.module';
 import { SuppliersModule } from '../suppliers/suppliers.module';
 import { CollectionPointsModule } from '../collection-points/collection-points.module';
@@ -30,12 +32,13 @@ import { AuditModule } from '../audit/audit.module';
     TareTypesModule,
     AuditModule,
   ],
-  providers: [CratesService, CrateBalanceService, CrateBalancesService],
+  providers: [CratesService, CrateBalanceService, CrateBalancesService, CrateDispatchService],
   controllers: [
     CrateIssuancesController,
     CrateReturnsController,
     CrateBalanceController,
     CrateBalancesController,
+    CrateDispatchController,
   ],
   exports: [CratesService, CrateBalanceService],
 })
