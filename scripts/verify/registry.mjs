@@ -442,13 +442,15 @@ export const CHECKS = [
       'on the §8.3–8.6 cost-of-day one (257 files there, 247 on the reweigh slice, 242 on ' +
       'main the same day, 239 on 2026-09-16, 219 on ' +
       '2026-09-15, 170 ' +
-      'on 2026-09-11): 260 files ' +
-      'now match across the two candidate nets (jest-unit 66, jest-db 38, vitest 138, ' +
-      'node-test 15, playwright 1, shell-test 2). All 3 new files came from this slice — ' +
+      'on 2026-09-11): 261 files ' +
+      'now match across the two candidate nets (jest-unit 66, jest-db 38, vitest 139, ' +
+      'node-test 15, playwright 1, shell-test 2). All 4 new files came from this slice — ' +
       'two on the jest-unit net (shifts/dto/close-shift.dto.spec.ts and ' +
-      'crates/crate-dispatch.service.spec.ts) and one on the jest-db one ' +
-      '(migrations/shift-broken-crates-schema.db-spec.ts) — the same two collectors moved, ' +
-      'the other four did not. ' +
+      'crates/crate-dispatch.service.spec.ts), one on the jest-db one ' +
+      '(migrations/shift-broken-crates-schema.db-spec.ts), and one on the vitest net when ' +
+      'the frontend caught up with the now-required field ' +
+      '(features/count-shift/api/crateDispatch.test.tsx) — three collectors moved, ' +
+      'the other three did not. ' +
       'That total grows every time ordinary feature work adds ' +
       'a test file, and this row does not track or re-check its own prose count.',
     blindSpot:
