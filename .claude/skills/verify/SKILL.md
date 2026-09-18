@@ -108,10 +108,19 @@ hid three CI timeouts.
    check that compared two copies of it was green over all of them.
 6. **A check's declared scope must be mechanically tied to its actual scope.** Read globs
    from the config that owns them; never keep a second copy. Every Critical this layer has
-   had was a glob, regex or hash surface narrower than the sentence describing it.
+   had was a glob, regex or hash surface narrower than the sentence describing it. When the
+   honest answer to "what does this read?" is "everything", say that rather than enumerate:
+   the freshness surface was a hand-kept list of prefixes four times too narrow, and the
+   fourth time was a check whose input is every tracked file, which no list could express.
 7. **A ratchet is justified only when its finding set is genuinely stable.** Prefer fixing
-   the finding, or the tool's native ignore, over a reasoned suppression. For a team this
-   size a large bidirectional baseline is ceremony that gets bypassed one row at a time.
+   the finding over recording it. For a team this size a large bidirectional baseline is
+   ceremony that gets bypassed one row at a time, and a rule enforcing a reason by LENGTH
+   teaches people to write that many characters.
+   **Tell the tool the truth before you suppress anything.** knip reported 57 dead FILES
+   that jest, TypeORM and Claude Code invoke — declaring them `entry` removed 47 of them
+   AND three false positives, because the alternative, `ignore`, blinds the tool to those
+   files' imports and manufactures findings. Measured, both configs, same tree: 136 findings
+   against 139. An ignore list is the last instrument to reach for, not the first.
 8. **The layer's own rows stay cheap.** The fast tier runs on every turn; above a few
    seconds people route around it, and a gate that is routed around is worse than no gate.
    `lint`, `typecheck` and `test` are not the layer's to control — after a frontend edit

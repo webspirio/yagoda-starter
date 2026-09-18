@@ -126,3 +126,83 @@ deletion carries its `registry.test.mjs` edit.
 
 Between C4 and C17 `npm run verify` does not run the layer's own tests, so every commit in C5–C16
 is additionally verified with an explicit `npm run test:verify`.
+
+---
+
+## What actually shipped (completed 2026-09-19)
+
+23 commits on `refactor/verify-layer-simplification`. Measured at the end:
+
+| | baseline | now |
+| --- | ---: | ---: |
+| fast tier | 61.7 s, 13 rows | **9.4 s, 10 rows** |
+| layer (`scripts/verify` + `.claude/hooks`) | 14,487 | **10,259** |
+| layer ÷ app (non-test) | 34 % | **25 %** |
+| `test:verify` | 34.1 s serial | **7.3 s** parallel |
+| line-keyed baselines | 4 | **0** |
+| registry prose | 13,314 words | 2,255 |
+
+### The five remaining items, and what happened to each
+
+**`audit` — resolved upstream instead.** The brief's replacement was impossible and
+NestJS 12 turned out to be unnecessary. All six advisories cascaded from one exact pin,
+`@nestjs/platform-express` → `multer@2.2.0`; a one-line root `overrides.multer` clears
+them. The baseline's recorded claim that this "does NOT take" came from a real
+observation — `npm install` leaves the tree at 2.2.0 and exits 0 — but npm *accepts* the
+override and declines to re-resolve an already-satisfied nested dep. `npm update multer`
+does. `audit.mjs`+test+baseline went 896 → 343 lines, keyed on GHSA id rather than package
+name, with a mandatory `until` date, and the acceptance list ships empty.
+
+**Scan roots — done, and one more was hiding.** `test-glob-parity` and `bundle-size` were
+converted; `dead-exports` was missed by the earlier sweep because it lives in `ratchets/`,
+not `checks/`, and its suite was deleting a tracked source file. All three now run against
+`mkdtemp` roots, `--test-concurrency=1` is gone, and two concurrent `npm run verify` runs
+leave the tree byte-identical.
+
+**`selfcheck` — measured, and deliberately NOT returned to the fast tier.** It is now 9.4 s
+rather than 42 s, but the fast tier is also 9.4 s, so moving it back would double what runs
+after every turn. Not split either: there is no mechanical rule for which half a new test
+file belongs in, so a split is a judgement call on every test added. Its registry comment
+previously justified the full tier by tree-mutation, which had stopped being true — that
+was corrected, because a stale justification for a correct decision is how it gets reversed
+for the wrong reason.
+
+**`deadcode` — as planned, 1,511 → 143 lines, 186 → 136 findings.** The `entry`-vs-`ignore`
+claim was measured rather than asserted: 136 findings against 139, the three extra being
+`db-harness.ts` exports that `ignore` makes look unused. The hand-written kind map was also
+hiding a whole finding class — `duplicates` items are arrays, so every duplicate export in
+the repo read as nameless and was skipped.
+
+**`run.mjs` — the `inputs` refactor was NOT done, and should not be.** Its purpose was to
+tie the hash surface to the rows mechanically. But `secrets` rule 3 scans *every tracked
+file*, so the honest declaration is "everything", which no per-row list expresses. The
+surface is now `git ls-files` directly, which deleted the whole apparatus (hash.mjs 194 →
+155) and fixed a live false green: a secret written into `docs/` moved no digest, so
+`--reuse-if-fresh` replayed a green without running the check that scans it. 920 of 977
+tracked files were covered.
+
+`run.mjs` itself was not slimmed to ~650 lines. What was cut is what had gone wrong:
+`--timeout-ms` (no caller ever passed it) and a prose copy of `registry.test.mjs`'s COLD_MS
+table that was still quoting five deleted rows. The rest is the five-status machinery, the
+report contract and the reuse path — the code every other row's correctness rests on. Line
+count is not a reason to touch it.
+
+### Also fixed, not in the brief
+
+- **`seam` deleted entirely.** Rule 2 (seed isolation) moved to eslint
+  `no-restricted-imports`, verified spelling by spelling. Rule 1 (the `'local'` literal) was
+  deleted outright — it needed four exemption categories, guarded design intent rather than
+  a defect, and never caught anything. It could not move to eslint: that needs
+  `no-restricted-syntax`, and a second block over files overlapping the money ban would
+  have replaced that rule's options and silently disabled the money guard.
+- **`bundle` gained the warning it was missing.** Headroom had drifted to 10.0 KiB gzip
+  against the 25 KiB minimum the budget was designed with — green, and one ordinary commit
+  from red, with nothing saying so.
+- **`origin/main` and the merge-base are in the digest.** `migrations` compares against
+  both; `git fetch` moved them without touching a tracked byte.
+
+### Known, recorded, not fixed
+
+`test:ci-scripts` is 4.0 s of a 9.4 s fast tier — the largest single row. It was left in
+place: the brief classified it neither KEEP nor CUT, and demoting it trades per-turn speed
+for coverage of the CI scripts, which is a judgement the numbers alone do not settle.
