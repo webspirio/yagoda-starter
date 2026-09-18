@@ -215,35 +215,20 @@ export const CHECKS = [
     tier: 'fast',
     cmd: 'npm run lint',
     proves:
-      'eslint parsed every file its flat config reaches in both workspaces ' +
-      '(backend/eslint.config.mjs, frontend/eslint.config.mjs) and reported zero findings ' +
-      'at either severity — no parse failure, no rule violation at error severity, and, ' +
-      'because both lint scripts now pass --max-warnings=0, no warning either: ' +
-      'react-hooks/exhaustive-deps and react-refresh/only-export-components, both ' +
-      'configured at warn, are exactly as blocking here as an error-level rule. That ' +
-      'includes the money-arithmetic ban, whose `files` list names EIGHT backend module ' +
-      'trees as of 2026-09-15 — src/intakes, src/payouts, src/shifts, src/supplier-balance, ' +
-      'src/transfers, src/point-cash, src/cash-counts and src/intake-top-ups — and which ' +
-      'forbids *, /, Number(), toFixed, parseInt and parseFloat there (test files in those ' +
-      'eight trees are excluded by the same config). The four that joined on 2026-09-15 ' +
-      'came in with main\'s cash, transfers, cash-counts and top-ups slices; the list is ' +
-      'read off backend/eslint.config.mjs, not remembered.',
+      'eslint parsed every file its flat config reaches in both workspaces and reported ' +
+      'zero findings at either severity — no parse failure, no error and, because both ' +
+      'lint scripts pass --max-warnings=0, no warning either. That includes the money ' +
+      'ban, which forbids `*`, `/`, `*=`, `/=`, `Number()`, `toFixed`, `parseInt` and ' +
+      "`parseFloat` in the module trees backend/eslint.config.mjs's own `files` list " +
+      'names. registry.test.mjs derives that list from the config, so a module owning a ' +
+      'money column cannot quietly fall outside it.',
     blindSpot:
-      'Nothing about behaviour: whether a sum is right, whether a component renders. A ' +
-      'rule that is not enabled does not exist for it, and the money ban covers exactly ' +
-      'those EIGHT backend module trees — arithmetic on a numeric string in any other ' +
-      'backend module, and in the whole of frontend/src, is invisible to THIS row. AS OF ' +
-      '2026-09-18 THIS ROW IS THE ONLY NET LEFT, and the change is worth stating plainly ' +
-      'because it narrows what a green `verify` means about money: until that date ' +
-      '`ratchet:money` scanned ALL of backend/src as a second, overlapping net, so a tree ' +
-      'DELETED from the eslint `files` list above was still policed. That row was removed ' +
-      'from the registry on 2026-09-18 at the user\'s request. The practical consequence is ' +
-      'that the eslint `files` list is now load-bearing on its own: arithmetic in ' +
-      'backend/src OUTSIDE those eight trees — config/, users/password-hashing.ts, ' +
-      'media.constants.ts, and both seed modules, which between them hold a real ' +
-      'independent reimplementation of money.ts\'s add() — is now checked by NOTHING in ' +
-      'this layer, and a tree quietly dropped from that list would be checked by nothing ' +
-      'either. frontend/src never had a second net and still does not.',
+      'Nothing about behaviour, and nothing a disabled rule would catch. The money ban ' +
+      "reaches only the trees that `files` list names, so arithmetic elsewhere in " +
+      'backend/src — config/, users/password-hashing.ts, and both seed modules, which ' +
+      "reimplement money.ts's format() and round by truncation — is invisible here, as is " +
+      'all of frontend/src including its own shared/lib/money seam. Inside the guarded ' +
+      'trees it still misses `Number.parseInt`, `Math.round`, `%` and unary `+`.',
   },
   {
     id: 'typecheck',
@@ -416,9 +401,9 @@ export const CHECKS = [
       'here, so this row also proves those two files still say what the check assumes. AS A ' +
       'SNAPSHOT, RE-MEASURED 2026-09-18 on main after PR #111 (the #11 password vault) ' +
       'landed alongside the verify layer (239 files on 2026-09-16, 219 on 2026-09-15, 170 ' +
-      'on 2026-09-11): 243 files ' +
+      'on 2026-09-11): 242 files ' +
       'now match across the two candidate nets (jest-unit 57, jest-db 30, vitest 138, ' +
-      'node-test 15, playwright 1, shell-test 2). All 3 new files came from that one PR — ' +
+      'node-test 14, playwright 1, shell-test 2). All 3 new files came from that one PR — ' +
       'users/secret-box.spec.ts, migrations/user-password-vault.db-spec.ts and ' +
       'shared/ui/password-input.test.tsx, one per collector across all three workspaces — ' +
       'no collector was added or changed by this re-measurement, ' +
@@ -675,14 +660,14 @@ export const CHECKS = [
       "intermediate counts this row does not itself track): `npm run test:verify` " +
       "(`node --test --test-concurrency=1 'scripts/verify/**/*.test.mjs' " +
       "'.claude/hooks/**/*.test.mjs'` — TWO globs since Task 19, not the one this row " +
-      "originally shipped quoting) collects and runs 168 tests across 15 *.test.mjs files " +
+      "originally shipped quoting) collects and runs 161 tests across 14 *.test.mjs files " +
       "today, re-measured per file 2026-09-18 — hash.test.mjs (8), registry.test.mjs (12), " +
       "run.test.mjs (20), run.report.test.mjs (3), " +
       'checks/audit.test.mjs (11), checks/bundle-size.test.mjs (10), ' +
       'checks/migration-invariants.test.mjs (8), ' +
       'checks/seam-boundary.test.mjs (13), checks/secret-boundary.test.mjs (13), ' +
       'checks/test-glob-parity.test.mjs (8), ratchets/dead-exports.test.mjs (13), ' +
-      'ratchets/lint-exempt.test.mjs (8), ratchets/money-rounding.test.mjs (10), ' +
+      'ratchets/lint-exempt.test.mjs (8), ' +
       'ratchets/persist-boundary.test.mjs (15) and .claude/hooks/stop-gate.test.mjs (14) ' +
       '— due to grow again the next time this plan adds a check. This row does not track ' +
       'or re-check its own prose count.',

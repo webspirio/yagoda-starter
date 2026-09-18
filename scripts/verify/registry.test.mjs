@@ -1,6 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
+import { readFileSync } from 'node:fs'
 import path from 'node:path'
 
 import { CHECKS, PRECONDITIONS, checkById, inTier, tierCovers } from './registry.mjs'
@@ -237,4 +238,95 @@ test('the runner default still clears every row that inherits it, and that set i
     `the default (${DEFAULT_TIMEOUT_MS / 1000}s) is more than 10x the slowest row that ` +
       `relies on it (${slowest / 1000}s) — re-measure, or give the slow rows their own budget`,
   )
+})
+
+/**
+ * THE ASSERTION THAT REPLACES `ratchet:money`.
+ *
+ * With the money scanner gone, backend/eslint.config.mjs's `files` array is the ONLY net
+ * standing between a `price * kg` and a frozen receipt. A hand-maintained list is exactly
+ * the artefact this layer refuses to trust — so it is not read, it is CHECKED, against the
+ * entities that declare which modules own money.
+ *
+ * Both sides are derived. Nothing here names a module, so nothing here can go stale.
+ */
+const backendFile = (/** @type {string} */ rel) =>
+  readFileSync(path.resolve(import.meta.dirname, '..', '..', rel), 'utf8')
+
+/** Module directories under backend/src whose entity declares a `numeric` column. */
+function modulesOwningMoneyColumns() {
+  const files = execFileSync('git', ['ls-files', 'backend/src'], {
+    cwd: path.resolve(import.meta.dirname, '..', '..'),
+    encoding: 'utf8',
+  })
+    .split('\n')
+    .filter((f) => f.endsWith('.entity.ts'))
+  /** @type {Set<string>} */
+  const mods = new Set()
+  for (const f of files) {
+    if (/type:\s*'numeric'/.test(backendFile(f))) mods.add(f.split('/')[2])
+  }
+  return mods
+}
+
+/** The module directories backend/eslint.config.mjs's money `files` array reaches. */
+async function modulesUnderTheMoneyBan() {
+  const cfg = (await import('../../backend/eslint.config.mjs')).default
+  const block = cfg.find(
+    (/** @type {any} */ b) => b?.rules?.['no-restricted-syntax'] && Array.isArray(b.files),
+  )
+  assert.ok(block, 'backend/eslint.config.mjs no longer has a no-restricted-syntax block with `files`')
+  /** @type {string[]} */
+  const entries = /** @type {any} */ (block).files
+  return { entries, dirs: new Set(entries.map((f) => f.split('/')[1])) }
+}
+
+test('every backend module owning a money column is inside the eslint money ban', async () => {
+  const owning = modulesOwningMoneyColumns()
+  const { dirs } = await modulesUnderTheMoneyBan()
+  const unguarded = [...owning].filter((m) => !dirs.has(m)).sort()
+  assert.deepEqual(
+    unguarded,
+    [],
+    `these backend modules declare a \`numeric\` column and are OUTSIDE the money ban in ` +
+      `backend/eslint.config.mjs: ${unguarded.join(', ')}. Since ratchet:money was deleted ` +
+      'that list is the only net over money arithmetic, so a module outside it is a column ' +
+      'guarded by nothing. Add it to `files` — do not delete this test.',
+  )
+  assert.ok(owning.size > 0, 'derived ZERO modules owning a numeric column — the derivation broke')
+})
+
+test('no entry in the money ban matches nothing — a dead glob is a silent hole', async () => {
+  const { entries } = await modulesUnderTheMoneyBan()
+  const tracked = execFileSync('git', ['ls-files', 'backend/src'], {
+    cwd: path.resolve(import.meta.dirname, '..', '..'),
+    encoding: 'utf8',
+  })
+    .split('\n')
+    .filter(Boolean)
+    .map((f) => f.replace(/^backend\//, ''))
+  const dead = entries.filter((g) => !tracked.some((f) => path.matchesGlob(f, g)))
+  assert.deepEqual(
+    dead,
+    [],
+    `these money-ban globs match no tracked file: ${dead.join(', ')}. A renamed or deleted ` +
+      'module leaves its glob behind, and the ban then silently covers nothing.',
+  )
+})
+
+test('every workspace defines lint, typecheck and test — turbo skips a workspace that does not', () => {
+  // `turbo lint` reports "Tasks: 1 successful, 1 total" and EXITS 0 when a workspace has no
+  // lint script. So the `lint` row can be green having linted one workspace — and `lint` is
+  // now the only money net, which makes that a money problem rather than hygiene.
+  const root = JSON.parse(backendFile('package.json'))
+  for (const ws of root.workspaces) {
+    const pkg = JSON.parse(backendFile(`${ws}/package.json`))
+    for (const task of ['lint', 'typecheck', 'test']) {
+      assert.ok(
+        pkg.scripts?.[task],
+        `${ws}/package.json has no "${task}" script — \`turbo ${task}\` will skip that ` +
+          'workspace silently and the row will still be green',
+      )
+    }
+  }
 })
