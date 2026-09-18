@@ -50,42 +50,40 @@ npm run db:seed             # idempotent demo dataset for manual testing — see
 
 ## Verification
 
-The gate a turn is checked against — `npm run verify` — runs the **fast tier only**: 13 of
-the registry's 19 rows. There is no `build`, no `smoke`, no `test:db` and no `coverage` row
-in it, so a turn can end green having never built the app, never started a container and
-never touched a database. `npm run verify:full` is what reaches those six, and
-`npm run verify:ci` is that with `--no-skip`, where a missing precondition is a failure
-rather than a quietly narrower green.
+`npm run verify` is the gate a turn is checked against: the **fast tier**, which does not
+build the app, start a container or touch a database. `npm run verify:full` adds the rows
+that do. `npm run verify:ci` is `verify:full` with `--no-skip`, where a missing precondition
+is a failure rather than a quietly narrower green.
 
-**Everything else about using the layer is the `verify` skill** — per-tier costs measured on
-a laptop and in CI, the pre-push gate and why three rows sit outside it, what each of the
-five row statuses means and which block, and the generated table of what all 19 rows prove
-and stay blind to. Read `.claude/skills/verify/SKILL.md` (or invoke the skill) rather than
-duplicating any of it here: this section is deliberately short, because it loads into every
-session and the reference does not need to.
+**Everything else about using the layer is the `verify` skill** — which rows sit in which
+tier, what each proves and stays blind to, the pre-push gate, the five row statuses, and the
+rules for adding a row. Read `.claude/skills/verify/SKILL.md` (or invoke the skill) rather
+than duplicating any of it here: this section loads into every session and the reference
+does not need to. It carries no row list and no row count on purpose — the runner prints
+both, and every copy of them has gone stale.
 
-Three rules govern how a turn reports its own verification, and they stay here because they
-bind every turn whether or not anyone opened the skill:
+Three rules bind every turn, whether or not anyone opened the skill:
 
-1. **Evidence under the claim.** What changed decides what must be run, not habit:
-
-   | change | run |
-   | --- | --- |
-   | anything in `backend/src` or `frontend/src` | `npm run verify` |
-   | anything touching money | `npm run verify`, and name the coverage number |
-   | `package.json` or the lockfile | `npm run verify:full` — that is where `audit` and `bundle` live |
-   | a migration | `npm run verify:full` — that is where `test:db` lives |
-   | `scripts/verify/` or `.claude/hooks/` | `npm run verify` — that code is under `tsconfig.scripts.json` too |
+1. **Evidence under the claim.** Name the command you ran and paste its verdict line. What
+   changed decides the tier, not habit. A change confined to application code needs
+   `npm run verify`. A change whose proof lives in a production build, a browser, a real
+   database, the npm registry or a coverage floor needs `npm run verify:full` — the fast
+   tier cannot see any of them, and a migration or a lockfile edit is always that kind.
+   **Money code is that kind too:** the arithmetic seam is `backend/src/common/money.ts`,
+   the module list is the money `files` array in `backend/eslint.config.mjs`, and the SQL
+   formulas behind both are exercised only against a real Postgres. Quote `coverage`'s own
+   percentages if you quote anything — never a floor: the floors live in
+   `.github/workflows/ci.yml`'s `COVERAGE_*` block and read zero locally, so a green local
+   `coverage` is a measurement, never a verdict.
 
 2. **Skips are spoken aloud.** "The fast tier is green; `smoke` was skipped, no daemon" —
    never "all green". A `SKIPPED` row is a row nobody ran, not a row that passed.
 
-3. **Ratchets turn one way.** Widening a baseline, relaxing a rule, adding a knip
-   suppression key, or lowering a coverage floor **is not turning green** — it is the
-   cheapest available response to a red check, and it is exactly what this layer exists to
-   catch. An exception is allowed only when it is listed individually, dated, carries a
-   reason checked against the source, and cancels itself the moment the finding it excuses
-   disappears.
+3. **Ratchets turn one way.** Widening a baseline, relaxing a rule, adding a suppression, or
+   lowering a floor **is not turning green** — it is the cheapest available response to a
+   red check, and it is exactly what this layer exists to catch. An exception is allowed
+   only when it is listed individually, dated, carries a reason checked against the source,
+   and cancels itself the moment the finding it excuses disappears.
 
 ## Architecture
 
