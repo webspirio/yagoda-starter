@@ -204,19 +204,28 @@ This matches how the module already works: `point-cash/` reads `CRATE_BOOK_SQL` 
 three controllers because *«`/suppliers/:id/crate-balance` cannot live on a `/crate-issuances`
 prefix»*. A shift-prefixed route in `crates/` is that same established shape.
 
-### 5.3 Why the read cannot live in `shifts/`
+### 5.3 Why the read lives in `crates/`
 
-`SUM(units)` comes back from Postgres as a **string**. Turning it into an integer needs `Number()`
-or `parseInt`, and `backend/eslint.config.mjs` bans both across `src/shifts/**/*.ts`.
+**An earlier draft of this spec said the money-arithmetic eslint rule FORCED this, and that was
+wrong.** It is recorded rather than deleted, because the next reader will reach for the same
+argument. Two things defeat it, both checked against the source:
 
-Widening that glob to admit an exception is refused on CLAUDE.md's rule 3 — relaxing a rule is
-not turning green.
+1. `no-restricted-globals` catches the bare global `parseInt`. `Number.parseInt(...)` is a
+   `MemberExpression` and passes, and `CallExpression[callee.name='Number']` does not match it
+   either. `crate-balance.service.ts` — a file that IS on the banned list — already uses
+   `Number.parseInt` with a comment saying «A row COUNT, not money». The same escape is available
+   inside `src/shifts/**`.
+2. No conversion is needed at all. `COALESCE(SUM(...), 0)::int` returns Postgres `int4`, which
+   node-postgres parses to a JS **number**; only an uncast `SUM()` (`int8`) arrives as a string.
 
-`crates/` is banned **file by file**, not module-wide: only `crate-allocation.ts`,
-`crates.service.ts` and `crate-balance.service.ts` are listed. The config says why in its own
-comment — `crate-code.ts` already converts a row count, and a crate count is an integer rather
-than money. A **new** file in `crates/` is therefore inside the boundary as drawn, not an
-exception carved into it.
+So placement is a **module-boundary decision, not a lint consequence**, and it stands on its own:
+`crates/` owns crate counting, exactly as `point-cash/` reads `CRATE_BOOK_SQL` out of
+`crates/crate-balance.service.ts` rather than re-deriving the filter. Putting a crate query in
+`shifts/` would make `shifts/` the second module that knows how `is_crate` selects a tare type.
+
+The `::int` cast is still required, for the reason in (2) — an uncast `SUM()` would hand a string
+to a field typed `number`, which TypeScript would not catch, because `runner.query` returns
+`any`. Type the row shape explicitly, as `crate-balance.service.ts` does.
 
 The one arithmetic operation in this slice, `with_berry + broken`, is integer addition. `+` is
 not among the banned operators anywhere in the repo, and `money.ts` is not involved at any point.
