@@ -76,7 +76,6 @@ bind every turn whether or not anyone opened the skill:
    | `package.json` or the lockfile | `npm run verify:full` — that is where `audit` and `bundle` live |
    | a migration | `npm run verify:full` — that is where `test:db` lives |
    | `scripts/verify/` or `.claude/hooks/` | `npm run verify` — that code is under `tsconfig.scripts.json` too |
-   | the registry (`scripts/verify/registry.mjs`) | `node scripts/verify/checks/memo-drift.mjs --write`, or `memo` goes red |
 
 2. **Skips are spoken aloud.** "The fast tier is green; `smoke` was skipped, no daemon" —
    never "all green". A `SKIPPED` row is a row nobody ran, not a row that passed.

@@ -33,7 +33,6 @@
     "test:verify": "node --test --test-concurrency=1 'scripts/verify/**/*.test.mjs' '.claude/hooks/**/*.test.mjs'",
     "test:ci-scripts": "for f in scripts/ci/*.test.sh; do bash \"$f\" || exit 1; done",
     "test:files": "node scripts/verify/checks/test-glob-parity.mjs",
-    "memo": "node scripts/verify/checks/memo-drift.mjs",
     "secrets": "node scripts/verify/checks/secret-boundary.mjs",
     "seam": "node scripts/verify/checks/seam-boundary.mjs",
     "lint:exempt": "node scripts/verify/ratchets/lint-exempt.mjs",

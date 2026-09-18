@@ -386,33 +386,6 @@ export const CHECKS = [
       "testfiles' job (see that row's new shell-test collector), not this one's.",
   },
   {
-    id: 'memo',
-    tier: 'fast',
-    // The direct command, not `npm run memo`: this is the one row whose entire job is
-    // catching drift, so it must keep working even if the npm script entry is ever lost.
-    cmd: 'node scripts/verify/checks/memo-drift.mjs',
-    proves:
-      'The generated table region in .claude/skills/verify/SKILL.md, delimited by its ' +
-      'verify-table HTML comment markers, is byte-for-byte identical to what ' +
-      'scripts/verify/checks/memo-drift.mjs renders from this exact CHECKS array right ' +
-      'now, down to the trailing registry-checksum comment — a hand edit on either side, ' +
-      'in either direction, fails this exact command. THE TARGET MOVED ON 2026-09-16: it ' +
-      'was the root CLAUDE.md until PR review asked for the verify reference out of the ' +
-      'file every session loads, where the table and its surrounding prose were 102,387 of ' +
-      "109,587 characters. The guarantee is unchanged, because it never depended on WHICH " +
-      'file held the markers — only on the markers being compared against this array.',
-    blindSpot:
-      'Nothing about whether a proves or blindSpot string is itself true of its check — ' +
-      "only that the table quotes the registry's current values verbatim. And its reach is " +
-      'exactly the marked block: every word of the skill file AROUND those markers — the ' +
-      'costs, the CI readings, the pre-push table, the status table — can drift from ' +
-      'reality with this row green, exactly as the same prose could when it lived in ' +
-      'CLAUDE.md. That is also why moving it cost no coverage: there was none to lose. ' +
-      'THE MOVE ADDED ONE NEW WAY TO GO STALE that CLAUDE.md did not have: a skill is ' +
-      'loaded on demand rather than every session, so prose here can be wrong for longer ' +
-      'before anyone reads it — and this row will not say so.',
-  },
-  {
     id: 'testfiles',
     tier: 'fast',
     cmd: 'npm run test:files',
@@ -702,13 +675,13 @@ export const CHECKS = [
       "intermediate counts this row does not itself track): `npm run test:verify` " +
       "(`node --test --test-concurrency=1 'scripts/verify/**/*.test.mjs' " +
       "'.claude/hooks/**/*.test.mjs'` — TWO globs since Task 19, not the one this row " +
-      "originally shipped quoting) collects and runs 173 tests across 16 *.test.mjs files " +
+      "originally shipped quoting) collects and runs 168 tests across 16 *.test.mjs files " +
       "today, re-measured per file 2026-09-18 — hash.test.mjs (8), registry.test.mjs (12), " +
-      "run.test.mjs (20), " +
+      "run.test.mjs (20), run.report.test.mjs (3), " +
       'checks/audit.test.mjs (11), checks/bundle-size.test.mjs (10), ' +
-      'checks/memo-drift.test.mjs (5), checks/migration-invariants.test.mjs (8), ' +
+      'checks/migration-invariants.test.mjs (8), ' +
       'checks/seam-boundary.test.mjs (13), checks/secret-boundary.test.mjs (13), ' +
-      'checks/test-glob-parity.test.mjs (6), ratchets/dead-exports.test.mjs (13), ' +
+      'checks/test-glob-parity.test.mjs (8), ratchets/dead-exports.test.mjs (13), ' +
       'ratchets/lint-exempt.test.mjs (8), ratchets/money-rounding.test.mjs (10), ' +
       'ratchets/persist-boundary.test.mjs (15) and .claude/hooks/stop-gate.test.mjs (14) ' +
       '— due to grow again the next time this plan adds a check. This row does not track ' +

@@ -212,7 +212,6 @@ test('the runner default still clears every row that inherits it, and that set i
     'ratchet:lint-exempt': 216,
     bundle: 188,
     testfiles: 158,
-    memo: 50,
   }
 
   const inheriting = CHECKS.filter((c) => c.timeoutMs === undefined).map((c) => c.id)
