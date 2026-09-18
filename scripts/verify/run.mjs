@@ -21,9 +21,74 @@ import { CHECKS, PRECONDITIONS, checkById, inTier, tierCovers } from './registry
 import { sourceHash, errMessage } from './hash.mjs'
 
 const ROOT = path.resolve(import.meta.dirname, '..', '..')
-const REPORT_DIR = path.join(ROOT, '.verify')
+
+/**
+ * Where the report lands. Overridable ONLY so a test that spawns this runner does not
+ * clobber the real `.verify/last-run.json` the Stop gate replays. `.verify/` is gitignored,
+ * so that clobbering leaves `git status` clean — it would break the "no test writes the
+ * real working tree" rule invisibly, and pass the checkbox that is supposed to catch it.
+ * `.claude/hooks/stop-gate.mjs` honours the same variable, so production stays one path.
+ */
+const REPORT_DIR = process.env.VERIFY_REPORT_DIR
+  ? path.resolve(process.env.VERIFY_REPORT_DIR)
+  : path.join(ROOT, '.verify')
 const REPORT_PATH = path.join(REPORT_DIR, 'last-run.json')
+
+/** The report's SHAPE VERSION. Not to be confused with {@link REPORT_KEYS}, its key list. */
 const REPORT_SCHEMA = 1
+
+/**
+ * The report's key names, as data.
+ *
+ * THREE CONSUMERS READ THIS JSON, and two of them across a process boundary:
+ * printTable/printBlindSpots here, {@link reportIsFresh} here but against a file an EARLIER
+ * process wrote, and `.claude/hooks/stop-gate.mjs` across a process AND a directory
+ * boundary. Not one of them was asserted against a report this runner actually produced —
+ * the gate's suite built its fixture by hand and run.test.mjs never spawned the CLI. So
+ * renaming `checks` left all 166 tests green while the only blocking gate in this repo
+ * exited 0 on a red tree, permanently. Proved by experiment before this was written.
+ *
+ * The names are therefore exported and enforced where the object is BUILT, not only where
+ * it is read: a test only fails once someone runs it, `withKeys` fails on the first run.
+ */
+export const REPORT_KEYS = Object.freeze({
+  top: Object.freeze([
+    'schema', 'timestamp', 'head', 'tier', 'noSkip', 'timeoutMs', 'scope',
+    'sourceHash', 'hashedFileCount', 'envKey', 'ok', 'warnings', 'checks',
+  ]),
+  scope: Object.freeze([
+    'only', 'exclude', 'checkIds', 'superseded', 'afterDepsFullyEvaluated', 'argv',
+  ]),
+  check: Object.freeze([
+    'id', 'status', 'blocking', 'ms', 'exitCode', 'reason', 'proves', 'blindSpot',
+  ]),
+  warning: Object.freeze(['id', 'text']),
+  superseded: Object.freeze(['id', 'by']),
+})
+
+/**
+ * Key-set equality, checked where the object is built. Returns its argument so it wraps an
+ * object literal in place.
+ *
+ * @template {Record<string, unknown>} T
+ * @param {T} obj
+ * @param {readonly string[]} keys
+ * @param {string} what
+ * @returns {T}
+ */
+function withKeys(obj, keys, what) {
+  const actual = Object.keys(obj)
+  const missing = keys.filter((k) => !actual.includes(k))
+  const extra = actual.filter((k) => !keys.includes(k))
+  if (missing.length || extra.length) {
+    throw new Error(
+      `verify: ${what} drifted from REPORT_KEYS — missing [${missing}], unexpected [${extra}]. ` +
+        'Update REPORT_KEYS and EVERY consumer: .claude/hooks/stop-gate.mjs, reportIsFresh ' +
+        'and printBlindSpots all read this shape.',
+    )
+  }
+  return obj
+}
 
 /**
  * Five statuses. Do not collapse them: reporting "lint FAILED" when the linter was
@@ -468,6 +533,7 @@ export function selectChecks(opts) {
  * @property {'fast'|'full'} tier
  * @property {boolean} noSkip
  * @property {string} envKey
+ * @property {{ status: string }[]} [checks]
  * @property {{ only?: string[] | null, exclude?: string[] | null, afterDepsFullyEvaluated?: boolean }} [scope]
  */
 
@@ -488,18 +554,32 @@ export function reportIsFresh(stored, hash, opts) {
   if (stored.ok !== true) return false
   // A green recorded at `fast` says nothing about `full`.
   if (!tierCovers(stored.tier, opts.tier)) return false
-  // A green from a one-check run is not a verdict on the tree.
-  if (stored.scope?.only) return false
-  // Same reasoning one step over: a green that DROPPED rows is not a verdict on the tree
-  // either. The pre-push gate runs with --exclude, so without this line its narrow green
-  // would be replayed by a later --reuse-if-fresh run that asked for the whole thing.
-  if (stored.scope?.exclude) return false
+  // A green from a one-check run is not a verdict on the tree, and a green that DROPPED
+  // rows is not one either — the pre-push gate runs with --exclude, so without this its
+  // narrow green would be replayed by a later --reuse-if-fresh run asking for everything.
+  //
+  // REQUIRE THE KEYS, do not merely test them for truthiness. `if (stored.scope?.only)`
+  // treats an ABSENT key as "not narrow", so a report whose `scope.only` this reader can no
+  // longer see — a rename applied to the writer and missed here, or a hand-built payload —
+  // is declared fresh. Ten of the eleven freshness reads fail CLOSED; these two were the
+  // exceptions, and they fail open into exactly the verdict the field exists to prevent.
+  if (!stored.scope || !('only' in stored.scope) || !('exclude' in stored.scope)) return false
+  if (stored.scope.only) return false
+  if (stored.scope.exclude) return false
   // A green that tolerated skips cannot satisfy a request that does not.
   if (opts.noSkip && stored.noSkip !== true) return false
   // A green measured against different coverage floors is a different verdict.
   if (stored.envKey !== envKey()) return false
   // A green whose `after` dependencies were never evaluated is not a tree verdict.
-  if (stored.scope?.afterDepsFullyEvaluated !== true) return false
+  if (stored.scope.afterDepsFullyEvaluated !== true) return false
+  // NOR IS A GREEN THAT SKIPPED A ROW. `ok` stays true through a SKIPPED row — that is the
+  // whole point of the status, and `--no-skip` is the flag that changes it. But replay is a
+  // different question from blocking: a report recorded on a laptop with Docker down says
+  // nothing about the row that needed it, and replaying it forever means the row never runs
+  // again at that sourceHash. Fails in the safe direction — a missing precondition costs a
+  // full re-run rather than an eternal cached green.
+  if (!Array.isArray(stored.checks)) return false
+  if (stored.checks.some((c) => c.status !== 'PASSED')) return false
   return true
 }
 
@@ -608,8 +688,15 @@ async function main() {
       try {
         const stored = JSON.parse(readFileSync(REPORT_PATH, 'utf8'))
         printBlindSpots(stored, `reused green report for ${hash.slice(0, 12)}`)
-      } catch {
-        /* the report was readable a moment ago in reportIsFreshOnDisk; nothing to add */
+      } catch (err) {
+        // NOT a bare catch. The file was readable a moment ago in reportIsFreshOnDisk, so
+        // the realistic failure here is a SHAPE one — printBlindSpots iterates
+        // `report.checks`, and a rename makes that a TypeError. Swallowing it deletes the
+        // blind-spot footer with no output at all, which is the one thing the footer's
+        // whole existence forbids.
+        process.stderr.write(
+          `verify: reused a green report but could not print its blind spots: ${errMessage(err)}\n`,
+        )
       }
     }
     process.exit(0)
@@ -681,49 +768,63 @@ async function main() {
     }
 
     statusById.set(check.id, status)
-    rows.push({
-      id: check.id,
-      status,
-      // The cause stays in `status`; the consequence lives in `blocking`. Keeping both
-      // means the CI table can be unambiguous without collapsing five states into two.
-      blocking: isBlocking(status, opts.noSkip),
-      ms,
-      exitCode,
-      reason,
-      proves: check.proves,
-      blindSpot: check.blindSpot,
-    })
+    rows.push(
+      withKeys(
+        {
+          id: check.id,
+          status,
+          // The cause stays in `status`; the consequence lives in `blocking`. Keeping both
+          // means the CI table can be unambiguous without collapsing five states into two.
+          blocking: isBlocking(status, opts.noSkip),
+          ms,
+          exitCode,
+          reason,
+          proves: check.proves,
+          blindSpot: check.blindSpot,
+        },
+        REPORT_KEYS.check,
+        'a check row',
+      ),
+    )
   }
 
   const blocking = rows.filter((r) => isBlocking(/** @type {Status} */ (r.status), opts.noSkip))
   const ok = blocking.length === 0
 
-  const report = {
-    schema: REPORT_SCHEMA,
-    timestamp: started.toISOString(),
-    head: gitHead(),
-    tier: opts.tier,
-    noSkip: opts.noSkip,
-    timeoutMs: opts.timeoutMs,
-    // Scope travels with the verdict so a narrow green cannot be quoted as a wide one.
-    scope: {
-      only: opts.only,
-      exclude: opts.exclude,
-      checkIds: selected.map((c) => c.id),
-      // Rows another row in this same run subsumed. Recorded rather than dropped silently:
-      // a reader of this JSON must be able to see that `test` did not run without inferring
-      // it from `checkIds`' absences.
-      superseded,
-      afterDepsFullyEvaluated,
-      argv: process.argv.slice(2),
+  const report = withKeys(
+    {
+      schema: REPORT_SCHEMA,
+      timestamp: started.toISOString(),
+      head: gitHead(),
+      tier: opts.tier,
+      noSkip: opts.noSkip,
+      timeoutMs: opts.timeoutMs,
+      // Scope travels with the verdict so a narrow green cannot be quoted as a wide one.
+      scope: withKeys(
+        {
+          only: opts.only,
+          exclude: opts.exclude,
+          checkIds: selected.map((c) => c.id),
+          // Rows another row in this same run subsumed. Recorded rather than dropped
+          // silently: a reader of this JSON must be able to see that `test` did not run
+          // without inferring it from `checkIds`' absences.
+          superseded,
+          afterDepsFullyEvaluated,
+          argv: process.argv.slice(2),
+        },
+        REPORT_KEYS.scope,
+        'report.scope',
+      ),
+      sourceHash: hash,
+      hashedFileCount,
+      envKey: envKey(),
+      ok,
+      warnings,
+      checks: rows,
     },
-    sourceHash: hash,
-    hashedFileCount,
-    envKey: envKey(),
-    ok,
-    warnings,
-    checks: rows,
-  }
+    REPORT_KEYS.top,
+    'the report',
+  )
 
   try {
     mkdirSync(REPORT_DIR, { recursive: true })

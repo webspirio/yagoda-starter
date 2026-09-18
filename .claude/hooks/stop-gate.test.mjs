@@ -18,6 +18,10 @@ import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 
+// Safe under `node --test`: run.mjs guards its CLI behind a `process.argv[1]` check, so
+// importing it runs no checks. run.test.mjs already relies on the same guard.
+import { REPORT_KEYS } from '../../scripts/verify/run.mjs'
+
 const ROOT = path.resolve(import.meta.dirname, '..', '..')
 const GATE = path.join(ROOT, '.claude', 'hooks', 'stop-gate.mjs')
 
@@ -68,18 +72,86 @@ function withRoot(fn) {
 }
 
 /**
- * @typedef {{id: string, status: string, reason?: string}} StubCheckRow
+ * A row as a SCENARIO writes it. Everything else in run.mjs's row shape comes from
+ * ROW_DEFAULTS below, and `report()` asserts the union is exactly REPORT_KEYS.check.
+ *
+ * @typedef {object} StubCheckRow
+ * @property {string} id
+ * @property {string} status
+ * @property {string | null} [reason]
+ * @property {boolean} [blocking]
+ * @property {number} [ms]
+ * @property {number | null} [exitCode]
+ * @property {string} [proves]
+ * @property {string} [blindSpot]
  */
 
-/** A fast-tier `--json` report shaped like the real run.mjs's output. @param {StubCheckRow[]} checks @returns {string} */
+/**
+ * Row fields a scenario does not care about. Every key in REPORT_KEYS.check must appear
+ * here or in the caller's object, or the assertion in `report()` fails.
+ */
+const ROW_DEFAULTS = {
+  blocking: false,
+  ms: 1,
+  exitCode: 0,
+  reason: null,
+  proves: 'fixture row: proves nothing',
+  blindSpot: 'fixture row: blind to everything',
+}
+
+/**
+ * A fast-tier `--json` report carrying EXACTLY the keys run.mjs emits.
+ *
+ * IT USED TO BE FIVE OF THIRTEEN TOP-LEVEL KEYS AND THREE OF EIGHT ROW KEYS, held to the
+ * real shape by nothing but the words "shaped like the real run.mjs's output" in a comment.
+ * That is why renaming `checks` in run.mjs left this whole suite green while the gate
+ * stopped blocking: both sides of the contract were invented here. The shape is now
+ * asserted against the runner's own exported key list, and run.report.test.mjs asserts that
+ * list against a report the runner really wrote.
+ *
+ * @param {StubCheckRow[]} checks
+ * @returns {string}
+ */
 function report(checks) {
-  return JSON.stringify({
-    schema: 1,
-    tier: 'fast',
-    sourceHash: 'deadbeefcafefeed0000000000000000000000000000000000000000000000',
-    ok: checks.every((c) => c.status !== 'FAILED'),
-    checks,
+  const rows = checks.map((c) => {
+    const row = { ...ROW_DEFAULTS, ...c }
+    assert.deepEqual(
+      Object.keys(row).sort(),
+      [...REPORT_KEYS.check].sort(),
+      "a fixture row must carry exactly run.mjs's row keys — no more, no fewer",
+    )
+    return row
   })
+  const scope = {
+    only: null,
+    exclude: null,
+    checkIds: rows.map((r) => r.id),
+    superseded: [],
+    afterDepsFullyEvaluated: true,
+    argv: ['--tier', 'fast'],
+  }
+  assert.deepEqual(Object.keys(scope).sort(), [...REPORT_KEYS.scope].sort())
+  const body = {
+    schema: 1,
+    timestamp: new Date(0).toISOString(),
+    head: '0'.repeat(40),
+    tier: 'fast',
+    noSkip: false,
+    timeoutMs: 60_000,
+    scope,
+    sourceHash: 'deadbeefcafefeed0000000000000000000000000000000000000000000000',
+    hashedFileCount: 1,
+    envKey: '',
+    ok: rows.every((r) => r.status === 'PASSED'),
+    warnings: [],
+    checks: rows,
+  }
+  assert.deepEqual(
+    Object.keys(body).sort(),
+    [...REPORT_KEYS.top].sort(),
+    'the gate fixture must be the real report shape, not a subset of it',
+  )
+  return JSON.stringify(body)
 }
 
 /**

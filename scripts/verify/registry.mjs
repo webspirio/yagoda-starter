@@ -440,9 +440,9 @@ export const CHECKS = [
       'here, so this row also proves those two files still say what the check assumes. AS A ' +
       'SNAPSHOT, RE-MEASURED 2026-09-18 on main after PR #111 (the #11 password vault) ' +
       'landed alongside the verify layer (239 files on 2026-09-16, 219 on 2026-09-15, 170 ' +
-      'on 2026-09-11): 242 files ' +
+      'on 2026-09-11): 243 files ' +
       'now match across the two candidate nets (jest-unit 56, jest-db 30, vitest 138, ' +
-      'node-test 15, playwright 1, shell-test 2). All 3 new files came from that one PR — ' +
+      'node-test 16, playwright 1, shell-test 2). All 3 new files came from that one PR — ' +
       'users/secret-box.spec.ts, migrations/user-password-vault.db-spec.ts and ' +
       'shared/ui/password-input.test.tsx, one per collector across all three workspaces — ' +
       'no collector was added or changed by this re-measurement, ' +
@@ -699,7 +699,7 @@ export const CHECKS = [
       "intermediate counts this row does not itself track): `npm run test:verify` " +
       "(`node --test --test-concurrency=1 'scripts/verify/**/*.test.mjs' " +
       "'.claude/hooks/**/*.test.mjs'` — TWO globs since Task 19, not the one this row " +
-      "originally shipped quoting) collects and runs 166 tests across 15 *.test.mjs files " +
+      "originally shipped quoting) collects and runs 171 tests across 16 *.test.mjs files " +
       "today, re-measured per file 2026-09-18 — hash.test.mjs (8), registry.test.mjs (12), " +
       "run.test.mjs (20), " +
       'checks/audit.test.mjs (11), checks/bundle-size.test.mjs (10), ' +
