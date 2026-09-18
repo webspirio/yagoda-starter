@@ -12,71 +12,29 @@ import path from 'node:path'
 /**
  * Directory prefixes whose contents feed at least one check.
  *
- * `e2e/` is here for `typecheck`, not only for `smoke`: tsconfig.e2e.json includes
- * `e2e/**` and `playwright.config.ts`, and package.json's typecheck script ends
- * `&& tsc -p tsconfig.e2e.json` — a FAST-tier row. A type error in e2e/ used to leave the
- * digest unchanged, so `--reuse-if-fresh` replayed a green over a red tree.
+ * THE SURFACE IS EVERY FILE GIT TRACKS OR WOULD TRACK, and there is no list of directories
+ * here any more. There was: eight prefixes, twelve exact filenames and three regexes, each
+ * admitted because "some check reads this". The rule is right; maintaining the list by hand
+ * is what failed, four times. `.env.example` and `knip.json` were both missing and both
+ * were reproduced end to end as replayed greens over red checks; `e2e/` and `.githooks/`
+ * were found the same way.
  *
- * `.githooks/` is here because run.test.mjs reads .githooks/pre-push as a test input and
- * asserts its `--exclude` list matches package.json's. Editing the hook without hashing it
- * is the same false green on the gate's own path.
+ * The fourth is why the list is gone rather than extended. `secrets` rule 3 scans EVERY
+ * TRACKED FILE — `git ls-files -z`, no pathspec — looking for a credential pasted into
+ * prose. The surface covered 920 of this repository's 977 tracked files, so a secret
+ * written into docs/, README.md or any root markdown file left the digest unchanged, and
+ * `--reuse-if-fresh` replayed a green without ever running the check that scans it.
+ * Reproduced directly: writing an AWS-key-shaped line into docs/ and re-hashing returns the
+ * identical digest.
+ *
+ * No list of paths could have been kept correct here, because the declared input of one
+ * check is "all of them". So the surface is now git's own answer, and the maintenance
+ * question — "is this new file an input?" — cannot be got wrong because it is not asked.
+ *
+ * The cost is stated rather than hidden: editing any tracked file, a document included,
+ * stops a cached green from replaying. That is the correct behaviour when a check reads
+ * documents, and the fast tier it re-runs is seconds.
  */
-const HASHED_PREFIXES = [
-  'backend/',
-  'frontend/',
-  'nginx/',
-  'scripts/',
-  '.claude/',
-  '.github/workflows/',
-  '.githooks/',
-  'e2e/',
-]
-
-/**
- * Exact paths outside those directories.
- *
- * EVERY ENTRY HERE IS A FILE SOME CHECK READS. That is the only admission criterion, and
- * the inverse — a file a check reads that is NOT in the surface — is a false green: the
- * digest does not move, `--reuse-if-fresh` replays the stored verdict, and the check that
- * would have caught the change never runs. `.env.example` and `knip.json` were both
- * missing, and both were reproduced end to end as replayed greens over red checks.
- *
- * .gitignore and .env.example are `secrets`' inputs; .env.example is what rule 4 scans for
- * a real value in a placeholder file. knip.json is `deadcode`'s entire exemption surface.
- * 28-db-schema.dbml is the schema of record and the input to the `schema` conformance row.
- * The compose files and .dockerignore are here because `smoke` builds from them.
- *
- * `CLAUDE.md` is deliberately NOT justified as "the memo check's input" any more — memo
- * reads .claude/skills/verify/SKILL.md (memo-drift.mjs), and has since 2026-09-16. It stays
- * only until the row set is final and the surface is derived from the registry.
- */
-const HASHED_EXACT = new Set([
-  'package.json',
-  'package-lock.json',
-  'turbo.json',
-  'docker-compose.yml',
-  'docker-compose.prod.yml',
-  '.dockerignore',
-  '.nvmrc',
-  '.gitignore',
-  '.env.example',
-  'knip.json',
-  '28-db-schema.dbml',
-  'CLAUDE.md',
-])
-
-/**
- * Path-shaped inputs no exact name can enumerate.
- *
- * The knip alternative-basenames pattern exists because `deadcode` treats the mere
- * EXISTENCE of a second root config as a finding — so creating `knip.ts` changes that
- * check's verdict while changing no file the surface would otherwise see.
- */
-const HASHED_MATCH = [
-  /^tsconfig[^/]*\.json$/,
-  /^playwright\.config\.[cm]?[jt]s$/,
-  /^\.?knip\.(json|jsonc|ts|js|mjs|cjs)$/,
-]
 
 /**
  * A NUL byte cannot occur in a POSIX path, so it is the only safe field delimiter.
@@ -85,21 +43,6 @@ const HASHED_MATCH = [
  */
 const NUL = Buffer.from([0])
 
-/**
- * Is this repo-relative path inside the freshness surface?
- *
- * Exported because the only honest test of the surface is one that asks it directly about
- * a path a check declares it reads. hash.test.mjs asserts BOTH directions: a file outside
- * does not move the digest, and every declared input does.
- *
- * @param {string} rel
- * @returns {boolean}
- */
-export function isHashed(rel) {
-  if (HASHED_EXACT.has(rel)) return true
-  if (HASHED_MATCH.some((re) => re.test(rel))) return true
-  return HASHED_PREFIXES.some((prefix) => rel.startsWith(prefix))
-}
 
 /**
  * The environment for a child `git`, with every GIT_* variable removed.
@@ -135,10 +78,13 @@ export function errMessage(err) {
  * freshly written failing test would not change the hash, and a stale green would be
  * served over it.
  *
+ * Exported so the surface can be asked directly what it contains — hash.test.mjs uses it
+ * to prove every path a check reads is in there.
+ *
  * @param {string} root
  * @returns {string[]}
  */
-function listHashedFiles(root) {
+export function listHashedFiles(root) {
   let raw
   try {
     raw = execFileSync('git', ['ls-files', '-c', '-o', '--exclude-standard', '-z'], {
@@ -150,11 +96,41 @@ function listHashedFiles(root) {
     throw new Error(`sourceHash: git could not enumerate files: ${errMessage(err)}`)
   }
   // `-c` and `-o` can both name the same path in some states; dedupe before hashing so
-  // the digest depends on the set of files, not on git's listing order.
-  const seen = new Set(
-    raw.toString('utf8').split('\u0000').filter(Boolean).filter(isHashed),
-  )
+  // the digest depends on the set of files, not on git's listing order. `--exclude-standard`
+  // is the only filter, and it is git's, not ours: node_modules, dist and every other
+  // gitignored artifact is out, everything a person could commit is in.
+  const seen = new Set(raw.toString('utf8').split('\u0000').filter(Boolean))
   return [...seen].sort()
+}
+
+/**
+ * The commits `migrations` compares against, folded into the digest.
+ *
+ * NOT A FILE, AND THEREFORE INVISIBLE TO EVERY FILE-BASED SURFACE — which is the point.
+ * `migrations` rule 4a compares this branch against origin/main and rule 4b against the
+ * merge-base with it. A `git fetch` moves origin/main without touching one tracked byte, so
+ * the comparison basis changes while the digest does not, and `--reuse-if-fresh` replays a
+ * verdict that was reached against a different main. That is the same false green as an
+ * unhashed input file, in the one shape no list of paths can cover.
+ *
+ * Unreachable refs record as ABSENT rather than throwing: a worktree with no origin is a
+ * state `migrations` itself handles by SKIPPING the rule with a warning, and the digest
+ * should describe that state, not refuse to be computed in it.
+ *
+ * @param {string} root
+ * @returns {string}
+ */
+function refState(root) {
+  const read = (/** @type {string[]} */ args) => {
+    try {
+      return execFileSync('git', args, { cwd: root, env: gitEnv(), encoding: 'utf8' }).trim()
+    } catch {
+      return 'ABSENT'
+    }
+  }
+  const origin = read(['rev-parse', '--verify', '--quiet', 'refs/remotes/origin/main'])
+  const base = origin === 'ABSENT' ? 'ABSENT' : read(['merge-base', 'HEAD', 'refs/remotes/origin/main'])
+  return `origin/main=${origin};merge-base=${base}`
 }
 
 /**
@@ -177,6 +153,8 @@ export function sourceHash(root) {
     outer.update(digest, 'utf8')
     outer.update(NUL)
   }
+  outer.update(refState(root), 'utf8')
+  outer.update(NUL)
   return { hash: outer.digest('hex'), fileCount: files.length }
 }
 

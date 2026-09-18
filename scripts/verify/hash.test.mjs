@@ -5,7 +5,9 @@ import { appendFileSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, writ
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 
-import { sourceHash, errMessage, isHashed } from './hash.mjs'
+import { sourceHash, errMessage, listHashedFiles } from './hash.mjs'
+
+const REPO_ROOT = path.resolve(import.meta.dirname, '..', '..')
 
 /**
  * Every GIT_* variable stripped from the environment handed to a child `git`.
@@ -87,13 +89,56 @@ test('a gitignored file does NOT change the hash', () => {
   }
 })
 
-test('a file outside the hashed surface does NOT change the hash', () => {
+test('a document anywhere in the tree DOES change the hash — the surface is not a subset', () => {
+  // THE EXACT DEFECT THIS REPLACED, and the assertion is inverted from what it used to be.
+  // This test previously proved that writing docs/notes.md left the digest unchanged, and
+  // it was correct about the code: the surface was eight directory prefixes plus a list of
+  // filenames, and docs/ was in none of them.
+  //
+  // But `secrets` rule 3 scans every tracked file — `git ls-files -z`, no pathspec — for a
+  // credential pasted into prose. So a secret written into docs/, README.md or any root
+  // markdown file moved no digest, and `--reuse-if-fresh` replayed a green without ever
+  // running the check that reads it. Measured on the real tree at the time: 920 files
+  // hashed, 977 tracked.
+  //
+  // No hand-kept list could have been right, because one check's declared input is "every
+  // file". git's own answer is the surface now, so this direction has to flip.
   const root = fixture()
   try {
     const before = sourceHash(root).hash
     mkdirSync(path.join(root, 'docs'), { recursive: true })
-    writeFileSync(path.join(root, 'docs', 'notes.md'), 'hello\n')
-    assert.equal(sourceHash(root).hash, before)
+    writeFileSync(path.join(root, 'docs', 'notes.md'), 'AWS_SECRET_ACCESS_KEY=AKIAIOSFODNN7EXAMPLE\n')
+    assert.notEqual(sourceHash(root).hash, before)
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('moving origin/main changes the hash although no file changed', () => {
+  // THE ONE INPUT NO FILE LIST CAN COVER. `migrations` rule 4a compares this branch against
+  // origin/main and 4b against the merge-base, so a `git fetch` changes what those rules
+  // compare against without touching a single tracked byte. Before the refs were folded in,
+  // the digest was identical across that change and `--reuse-if-fresh` replayed a verdict
+  // reached against a different main.
+  const root = fixture()
+  try {
+    const git = (/** @type {string[]} */ args) =>
+      execFileSync('git', args, { cwd: root, env: NO_GIT_ENV, encoding: 'utf8' })
+    git(['update-ref', 'refs/remotes/origin/main', 'HEAD'])
+    const before = sourceHash(root).hash
+
+    // A second commit, then point origin/main at it. The WORKTREE is byte-identical to
+    // where it was a moment ago — only the ref moved.
+    writeFileSync(path.join(root, 'backend', 'src', 'b.ts'), 'export const b = 2\n')
+    git(['add', '-A'])
+    git(['commit', '-q', '-m', 'second'])
+    const moved = git(['rev-parse', 'HEAD']).trim()
+    git(['reset', '-q', '--hard', 'HEAD~1'])
+    const afterWorktreeRestored = sourceHash(root).hash
+    assert.equal(afterWorktreeRestored, before, 'precondition: the worktree is back to where it started')
+
+    git(['update-ref', 'refs/remotes/origin/main', moved])
+    assert.notEqual(sourceHash(root).hash, before)
   } finally {
     rmSync(root, { recursive: true, force: true })
   }
@@ -176,7 +221,7 @@ test('sourceHash honours its root argument even when GIT_DIR points somewhere el
 })
 
 /**
- * THE DUAL OF 'a file outside the hashed surface does NOT change the hash'.
+ * THE DUAL OF 'a document anywhere in the tree DOES change the hash'.
  *
  * That test alone is why .env.example and knip.json sat outside the surface for as long as
  * they did: it only ever asserted the OUTWARD direction. A surface can be arbitrarily
@@ -253,6 +298,16 @@ function declaredInputs() {
 }
 
 test('EVERY path a check resolves against ROOT is inside the hash surface', () => {
+  // The surface is now git's own file list rather than a hand-kept set of prefixes, so the
+  // only way to be outside it is to be GITIGNORED. That is still worth asserting: a check
+  // reading a build artifact is reading something no edit to the source tree can invalidate
+  // a cached verdict over, which is the same false green in a different disguise — and it
+  // is why the one remaining exception is ordered behind the row that produces it.
+  const surface = listHashedFiles(REPO_ROOT)
+  /** @param {string} rel */
+  const inSurface = (rel) =>
+    surface.includes(rel) || surface.some((f) => f.startsWith(`${rel}/`))
+
   const seenExceptions = new Set()
   const missing = []
   for (const { rel, at } of declaredInputs()) {
@@ -261,15 +316,16 @@ test('EVERY path a check resolves against ROOT is inside the hash surface', () =
       seenExceptions.add(rel)
       continue
     }
-    if (!isHashed(rel)) missing.push(`${at} reads ${rel}`)
+    if (!inSurface(rel)) missing.push(`${at} reads ${rel}`)
   }
   assert.deepEqual(
     missing,
     [],
     'these paths feed a check and are OUTSIDE the freshness surface, so editing one leaves ' +
       'sourceHash unchanged and `--reuse-if-fresh` replays the stored verdict over it — a ' +
-      'false green on the Stop gate\'s own path. Add them to hash.mjs, or add a reasoned ' +
-      `entry to NOT_CONTENT here:\n  ${missing.join('\n  ')}`,
+      'false green on the Stop gate\'s own path. Either the path is gitignored and should ' +
+      'not be a check input, or it needs a reasoned NOT_CONTENT entry here:' +
+      `\n  ${missing.join('\n  ')}`,
   )
 
   const stale = NOT_CONTENT.filter((e) => !seenExceptions.has(e.rel)).map((e) => e.rel)
@@ -282,9 +338,9 @@ test('EVERY path a check resolves against ROOT is inside the hash surface', () =
 })
 
 test('editing any declared input actually moves the digest', () => {
-  // isHashed() alone is a statement about a predicate. This runs the REAL sourceHash over a
-  // real git tree and asserts the digest moves for every declared input, so the test cannot
-  // pass because the predicate and the scan disagree.
+  // Membership in a file list is a statement about a list. This runs the REAL sourceHash
+  // over a real git tree and asserts the digest moves for every declared input, so the test
+  // cannot pass because the list and the scan disagree.
   const root = mkdtempSync(path.join(tmpdir(), 'verify-inputs-'))
   try {
     execFileSync('git', ['init', '-q'], { cwd: root, env: NO_GIT_ENV })

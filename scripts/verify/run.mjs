@@ -7,9 +7,7 @@
  *
  * Usage:
  *   node scripts/verify/run.mjs [--tier fast|full] [--no-skip] [--only a,b]
- *                               [--reuse-if-fresh] [--json] [--timeout-ms N]
- *
- * --timeout-ms sets the budget for rows that do not declare their own `timeoutMs`.
+ *                               [--reuse-if-fresh] [--json] [--root DIR]
  *
  * Exit codes: 0 = nothing blocking, 1 = something blocking (or the runner itself failed).
  */
@@ -158,20 +156,18 @@ function argError(msg) {
  */
 
 /**
- * The budget a row gets when it declares no `timeoutMs` of its own — and, via
- * `--timeout-ms`, the only one a caller can change.
+ * The budget a row gets when it declares no `timeoutMs` of its own.
  *
  * 60s, MEASURED AGAINST EVERY ROW THAT INHERITS IT rather than against a few of them. It
  * was 120s, which came from the reference this layer was ported from, whose suites are a
  * fraction of this repo's, and which nobody had ever checked against a row that relies on
- * it. Cold CI readings for the then-fourteen inheriting rows (run 35011857830, the coldest full
- * run on record): lint 16.9s, typecheck 16.7s, build 14.6s, test:ci-scripts 6.7s,
- * deadcode 2.1s, seam 0.9s, migrations 1.0s, ratchet:persist 0.8s,
- * (ratchet:money 0.8s, row removed 2026-09-18 -- thirteen inherit the default now)
- * secrets 0.4s, ratchet:lint-exempt 0.2s, bundle 0.2s, testfiles 0.2s, memo 0.05s. The
- * worst is 16.9s, so this clears the slowest of them by 3.5x and every other by far more.
- * registry.test.mjs pins that list, so a row added later cannot inherit this number
- * without someone measuring it first.
+ * it.
+ *
+ * The readings are NOT repeated here. `registry.test.mjs`'s COLD_MS table is the one copy,
+ * it is asserted against the registry's actual row set, and a row added later cannot
+ * inherit this number without someone measuring it first. The prose copy that used to live
+ * on this line went stale the way every such copy in this layer has: it was still quoting
+ * five rows that no longer exist.
  *
  * LOWERING IT IS WHAT MADE THE REAL PROBLEM VISIBLE, and it was none of those rows:
  * `selfcheck` costs 67.3s cold and never fitted under the OLD 120s either, at 1.8x, on the
@@ -255,12 +251,6 @@ export function parseArgs(argv) {
         rejectValue(name, arg, eq)
         o.json = true
         break
-      case '--timeout-ms': {
-        const n = Number(value())
-        if (!Number.isFinite(n) || n <= 0) argError(`--timeout-ms must be a positive number`)
-        o.timeoutMs = n
-        break
-      }
       default:
         argError(`unknown flag ${name}`)
     }
@@ -629,10 +619,10 @@ export function envKey() {
 const dur = (ms) => (ms >= 1000 ? `${(ms / 1000).toFixed(1)}s` : `${ms}ms`)
 
 /**
- * A row's own `timeoutMs` wins; otherwise the run-wide default applies. `--timeout-ms`
- * therefore sets the budget for every row that does NOT declare one, and never silently
- * shortens a row whose budget was written down deliberately — see registry.mjs's own note
- * on why three rows needed their own.
+ * A row's own `timeoutMs` wins; otherwise DEFAULT_TIMEOUT_MS applies. There is no flag for
+ * this any more: nothing in package.json, .githooks/ or .github/workflows/ ever passed one,
+ * and a budget that can be raised from a command line is one a red row can be argued out of
+ * — see registry.mjs's own note on why three rows needed their own.
  *
  * Typed by the two fields it actually reads, not by the whole `Check`/`Options` shapes —
  * so a test can hand it a two-field literal without inventing a `proves` string to satisfy
