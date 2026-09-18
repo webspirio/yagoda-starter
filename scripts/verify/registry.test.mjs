@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 
 import { CHECKS, PRECONDITIONS, checkById, inTier, tierCovers } from './registry.mjs'
@@ -14,8 +14,10 @@ test('every check id is unique', () => {
 
 test('every check has a falsifiable-looking proves and a blindSpot', () => {
   for (const c of CHECKS) {
-    assert.ok(c.proves && c.proves.length > 30, `${c.id}: proves too thin to be falsifiable`)
-    assert.ok(c.blindSpot && c.blindSpot.length > 30, `${c.id}: blindSpot too thin`)
+    // The 40-word FLOOR below subsumes the character floor this used to carry; what stays
+    // here is only that both fields exist at all.
+    assert.ok(typeof c.proves === 'string', `${c.id}: proves is missing`)
+    assert.ok(typeof c.blindSpot === 'string', `${c.id}: blindSpot is missing`)
   }
 })
 
@@ -112,79 +114,119 @@ test('every declared timeoutMs is a positive finite number, and only slow rows d
 })
 
 /**
- * THE GAP THIS CLOSES, named by review on 2026-09-15 and worth stating plainly: every row
- * in this registry ends with some version of "this row does not track or re-check its own
- * prose", and until now nothing anywhere in the layer could make a stale NUMBER in a
- * `proves` string red. That is not hypothetical — the `coverage` row claimed router.tsx was
- * absent from the frontend report, which was false when written and survived a deliberate
- * re-measurement pass under a fresh "confirmed empirically" stamp, because no mechanism
- * existed to contradict it.
+ * THE FOUR CLASS INVARIANTS THAT REPLACE SEVEN PINNED COUNTS.
  *
- * Most claims in this file are prose a machine cannot check. A handful are not: they are
- * counts derivable from the filesystem by the same `git ls-files` net the checks themselves
- * use. Those are pinned here. A tree change that moves one of them now turns THIS test red
- * and forces a re-measurement, instead of quietly aging inside a sentence.
+ * The test this replaces derived seven numbers from `git ls-files` and asserted each still
+ * appeared in some row's prose. That was the right MECHANISM aimed at the wrong TARGET: it
+ * pinned the seven figures that happened to be stale the day it was written, out of roughly
+ * 230 in the file, and it made every ordinary commit that adds a test file a re-measurement
+ * edit to this registry. Two counts that were wrong for far longer — a baseline's finding
+ * total, and a per-kind breakdown a row derived from a stale figure — were outside it by
+ * construction, because they came from a baseline rather than from the filesystem.
  *
- * Scope, stated so nobody reads more into a green run than it earns: this proves the
- * QUOTED number matches today's tree. It proves nothing about the sentence around it.
+ * A class invariant cannot be out of date, because it never names a number.
  */
-const trackedFiles = () =>
-  execFileSync('git', ['ls-files', '-c', '-o', '--exclude-standard'], {
-    cwd: path.resolve(import.meta.dirname, '..', '..'),
-    encoding: 'utf8',
-    maxBuffer: 64 * 1024 * 1024,
-  })
-    .split('\n')
-    .filter(Boolean)
+const WORDS = (/** @type {string} */ s) => s.trim().split(/\s+/).filter(Boolean)
 
-test('every mechanically derivable count quoted in a proves/blindSpot string still matches the tree', () => {
-  const files = trackedFiles()
-  const count = (/** @type {RegExp} */ re) => files.filter((f) => re.test(f)).length
+/** Drop `code spans`: a command, a glob or a regex written as a literal may contain digits. */
+const prose = (/** @type {string} */ s) => s.replace(/`[^`]*`/g, ' ')
 
-  // `.db-spec.ts` ends in `-spec.ts`, not `.spec.ts`, so the two nets are already
-  // disjoint — exactly as backend/jest.config.js's own testRegex relies on. Subtracting
-  // one from the other (the first version of this line did) double-counts the gap and
-  // undercounts the total by the number of db-specs.
-  const jestUnit = count(/^backend\/src\/.*\.spec\.ts$/)
-  const jestDb = count(/^backend\/src\/.*\.db-spec\.ts$/)
-  const vitest = count(/^frontend\/src\/.*\.(test|spec)\.(ts|tsx)$/)
-  const nodeTest = count(/^(scripts|\.claude\/hooks)\/.*\.test\.mjs$/)
-  const playwright = count(/^e2e\/.*\.spec\.ts$/)
-  const shellTest = count(/^scripts\/ci\/.*\.test\.sh$/)
-  const collected = jestUnit + jestDb + vitest + nodeTest + playwright + shellTest
+/** @type {readonly ['proves', 'blindSpot']} */
+const FIELDS = ['proves', 'blindSpot']
 
-  /** @param {string} id @returns {string} */
-  const textOf = (id) => {
-    const row = checkById(id)
-    assert.ok(row, `${id} must exist in the registry`)
-    return `${row.proves}\n${row.blindSpot}`
+test('every proves and blindSpot answers one question, in 40-80 words', () => {
+  for (const c of CHECKS) {
+    for (const field of FIELDS) {
+      const n = WORDS(c[field]).length
+      assert.ok(n >= 40, `${c.id}.${field}: ${n} words — under the floor; too thin to falsify`)
+      assert.ok(
+        n <= 80,
+        `${c.id}.${field}: ${n} words — over the cap. This string prints in the blind-spot ` +
+          'footer of EVERY green run; at this length nobody reads it, so the mechanism that ' +
+          'exists to state what a green does NOT cover is functionally deleted by its own ' +
+          'length. Answer only "does a green run cover the change I just made?" — history, ' +
+          'dates and measurements belong in the commit message, where they cannot rot into ' +
+          'a green check.',
+      )
+    }
+  }
+})
+
+/**
+ * A digit is allowed only where it is part of an IDENTIFIER, never a measurement: an issue
+ * reference, a rule enumerator, a spec section, a semver, an advisory id, or a bare 0/1
+ * ("exits 0", "collected by exactly one runner"). A file count, a test count, a percentage,
+ * a duration or a size is banned outright.
+ */
+const IDENTIFIER_DIGIT = /^(#\d+|\(\d\)|§[\d.]+|\d+\.\d+\.\d+|GHSA-\S+|0|1)$/
+const MEASUREMENT = /^\d[\d,_]*(\.\d+)?(%|s|ms|x|st|nd|rd|th|k|ki?b|mb)?$/i
+
+test('no proves or blindSpot contains a hand-written measurement', () => {
+  for (const c of CHECKS) {
+    for (const field of FIELDS) {
+      const hits = WORDS(prose(c[field]))
+        .map((t) => t.replace(/^[^#(§0-9A-Za-z]+/, '').replace(/[^0-9A-Za-z%)]+$/, ''))
+        .filter((t) => /\d/.test(t) && !IDENTIFIER_DIGIT.test(t) && MEASUREMENT.test(t))
+      assert.deepEqual(
+        hits,
+        [],
+        `${c.id}.${field}: hand-written measurement(s) ${hits.join(', ')}. Nothing can keep a ` +
+          'number in prose true — no type checks it, no lint sees it, and the check that used ' +
+          'to compare two copies of it was green over a row whose own arithmetic contradicted ' +
+          'itself. Derive it at runtime and print it, or delete the sentence.',
+      )
+    }
+  }
+})
+
+test('no proves or blindSpot carries a dated snapshot', () => {
+  for (const c of CHECKS) {
+    for (const field of FIELDS) {
+      const dates = prose(c[field]).match(/\b\d{4}-\d{2}-\d{2}\b/g) ?? []
+      assert.deepEqual(
+        dates,
+        [],
+        `${c.id}.${field}: dated note ${dates.join(', ')}. A dated re-measurement is a ` +
+          'commit-message fact; in this file it reads as current forever.',
+      )
+    }
+  }
+})
+
+test("every row's cmd is runnable, and no verify-layer script is orphaned", () => {
+  const pkg = JSON.parse(backendFile('package.json'))
+  for (const c of CHECKS) {
+    const script = /^npm (?:run )?([\w:-]+)(?:\s+-w\s+([\w-]+))?$/.exec(c.cmd)
+    if (script) {
+      const [, name, workspace] = script
+      const manifest = workspace ? JSON.parse(backendFile(`${workspace}/package.json`)) : pkg
+      assert.ok(
+        manifest.scripts?.[name],
+        `${c.id}: cmd is \`${c.cmd}\` but ${workspace ?? 'the root'} package.json has no ` +
+          `"${name}" script — this row would report UNRUNNABLE on every run`,
+      )
+      continue
+    }
+    const direct = /^node (\S+)/.exec(c.cmd)
+    assert.ok(direct, `${c.id}: cmd \`${c.cmd}\` is neither an npm script nor a node invocation`)
+    assert.ok(existsSync(path.resolve(import.meta.dirname, '..', '..', direct[1])), `${c.id}: ${direct[1]} does not exist`)
   }
 
-  /** @type {[string, string, string][]} */
-  const pinned = [
-    ['testfiles', `${collected} files`, 'the total across both candidate nets'],
-    [
-      'testfiles',
-      `jest-unit ${jestUnit}, jest-db ${jestDb}, vitest ${vitest}, node-test ${nodeTest}, ` +
-        `playwright ${playwright}, shell-test ${shellTest}`,
-      'the per-collector breakdown',
-    ],
-    // The two `migrations` pins are gone: that row's prose no longer quotes a count at
-    // all. A number that is not written cannot be stale, which is the direction every one
-    // of these pins is heading — they are replaced wholesale by a class invariant (no
-    // hand-written measurement in any prose string) once every row has been rewritten.
-    ['test:db', `${jestDb} files match *.db-spec.ts`, 'the db-spec file count'],
-    ['test', `all ${jestDb} *.db-spec.ts suites`, 'the db-spec count this row excludes'],
-    ['selfcheck', `across ${nodeTest} *.test.mjs files`, "the layer's own test-file count"],
-  ]
-
-  for (const [id, quoted, what] of pinned) {
-    assert.ok(
-      textOf(id).includes(quoted),
-      `${id}: ${what} is stale — the tree says "${quoted}", which no longer appears in that ` +
-        `row's proves/blindSpot. Re-measure and update the string; do not edit this test to match it.`,
-    )
-  }
+  // THE INVERSE, and the one that catches a deleted row leaving its check behind:
+  // `ratchet:money` was removed from this registry and its script, its 502-line ratchet and
+  // its 366-line baseline stayed — still enforced through `selfcheck`, where no row, no
+  // table and no blind-spot footer could see it.
+  const RUNNER = new Set(['verify', 'verify:full', 'verify:ci', 'verify:prepush'])
+  const orphans = Object.entries(pkg.scripts)
+    .filter(([name, cmd]) => String(cmd).includes('scripts/verify/') && !RUNNER.has(name))
+    .map(([name]) => name)
+    .filter((name) => !CHECKS.some((c) => c.cmd === `npm run ${name}` || c.cmd === `node ${String(pkg.scripts[name]).replace(/^node /, '')}`))
+  assert.deepEqual(
+    orphans,
+    [],
+    `these scripts invoke the verify layer but no registry row runs them: ${orphans.join(', ')}. ` +
+      'Give each a row, or delete the script, its check and its baseline together.',
+  )
 })
 
 test('the runner default still clears every row that inherits it, and that set is pinned', () => {
