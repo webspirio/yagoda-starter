@@ -1618,6 +1618,22 @@
       "name": "express",
       "added": "2026-09-10",
       "reason": "`import type { Request, Response } from 'express'` is likewise real but only TRANSITIVE (pulled in via @nestjs/platform-express), hoisted to the root node_modules, never declared directly in backend/package.json — same class of finding, and same out-of-scope reasoning, as the `ms` entry above."
+    },
+    {
+      "key": "file|backend/src/migrations/1788600000016-ShiftBrokenCrates.ts|backend/src/migrations/1788600000016-ShiftBrokenCrates.ts",
+      "kind": "file",
+      "file": "backend/src/migrations/1788600000016-ShiftBrokenCrates.ts",
+      "name": "backend/src/migrations/1788600000016-ShiftBrokenCrates.ts",
+      "added": "2026-09-18",
+      "reason": "A TypeORM migration (#110, shifts.broken_crates and its two CHECKs): discovered and run by the migration runner at startup via the migrations glob in data-source.ts, never statically imported by name from any entry point — the same framework-invoked path as every other migration already on this baseline. Read the file before writing this: it is a real up/down pair, and `npm run test:db` proves it applies."
+    },
+    {
+      "key": "file|backend/src/migrations/shift-broken-crates-schema.db-spec.ts|backend/src/migrations/shift-broken-crates-schema.db-spec.ts",
+      "kind": "file",
+      "file": "backend/src/migrations/shift-broken-crates-schema.db-spec.ts",
+      "name": "backend/src/migrations/shift-broken-crates-schema.db-spec.ts",
+      "added": "2026-09-18",
+      "reason": "A *.db-spec.ts suite (#110), run by backend/jest.db.config.js (rootDir src, testRegex '.*\\\\.db-spec\\\\.ts$', maxWorkers 1) — the `test:db` row's own command, where it passes 5/5. knip's Jest plugin cannot see it: its default spec/test glob requires a literal dot before 'spec', which a hyphenated '-db-spec.ts' suffix never matches. The same single glob mismatch this baseline already records for every other db-spec file; not dead code."
     }
   ]
 }

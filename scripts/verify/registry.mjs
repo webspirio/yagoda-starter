@@ -289,7 +289,7 @@ export const CHECKS = [
       'failing assertion anywhere in either workspace turns this exact command, and this ' +
       'row, red, no matter how many tests exist when it runs.',
     blindSpot:
-      'The backend testRegex matches only *.spec.ts, so all 37 *.db-spec.ts suites ' +
+      'The backend testRegex matches only *.spec.ts, so all 38 *.db-spec.ts suites ' +
       '(backend/jest.db.config.js, a separate config) are excluded from this row entirely ' +
       '— test:db is what covers those. No .tsx file is exercised by the backend suites: ' +
       'the backend has no .tsx files, and only the frontend vitest half of this row ever ' +
@@ -438,18 +438,18 @@ export const CHECKS = [
       'have silenced both suites with nothing here noticing. The two backend regexes are read ' +
       'out of backend/jest.config.js and backend/jest.db.config.js at runtime, not copied ' +
       'here, so this row also proves those two files still say what the check assumes. AS A ' +
-      'SNAPSHOT, RE-MEASURED 2026-09-18 on the §8.3–8.6 cost-of-day slice, stacked on the ' +
-      'reweigh one (247 files there, 242 on main the same day, 239 on 2026-09-16, 219 on ' +
+      'SNAPSHOT, RE-MEASURED 2026-09-18 on the #110 broken-crates-at-close slice, stacked ' +
+      'on the §8.3–8.6 cost-of-day one (257 files there, 247 on the reweigh slice, 242 on ' +
+      'main the same day, 239 on 2026-09-16, 219 on ' +
       '2026-09-15, 170 ' +
-      'on 2026-09-11): 257 files ' +
-      'now match across the two candidate nets (jest-unit 64, jest-db 37, vitest 138, ' +
-      'node-test 15, playwright 1, shell-test 2). All 10 new files came from this slice — ' +
-      'six on the jest-unit net (day-costs/{cost-of-day,day-expenses,network-average}.' +
-      'service.spec.ts, day-costs/top-up-allocation.spec.ts and two dto specs) and four on ' +
-      'the jest-db one (day-costs/{cost-of-day,day-expenses,network-average}.db-spec.ts and ' +
-      'migrations/day-expenses-schema.db-spec.ts) — the same two collectors moved, the ' +
-      'other four did not, ' +
-      'and the six are the same six. That total grows every time ordinary feature work adds ' +
+      'on 2026-09-11): 260 files ' +
+      'now match across the two candidate nets (jest-unit 66, jest-db 38, vitest 138, ' +
+      'node-test 15, playwright 1, shell-test 2). All 3 new files came from this slice — ' +
+      'two on the jest-unit net (shifts/dto/close-shift.dto.spec.ts and ' +
+      'crates/crate-dispatch.service.spec.ts) and one on the jest-db one ' +
+      '(migrations/shift-broken-crates-schema.db-spec.ts) — the same two collectors moved, ' +
+      'the other four did not. ' +
+      'That total grows every time ordinary feature work adds ' +
       'a test file, and this row does not track or re-check its own prose count.',
     blindSpot:
       'Nothing about the tests themselves: a file collected by exactly one runner can ' +
@@ -615,14 +615,16 @@ export const CHECKS = [
       'green. A violation of 1–3, or of 4 whenever origin/main was reachable, fails this ' +
       "exact command; this row proves rule 4's guarantee ONLY for a run where origin/main " +
       'was fetched, and says so with a WARNING line — printed even on a passing run — ' +
-      'whenever it was not. AS A SNAPSHOT, RE-MEASURED 2026-09-18 on the §8.3–8.6 cost-of-day ' +
-      'slice, stacked on the reweigh one (15 and 11 there, 14 and 10 on main the same day, 13 and 9 ' +
+      'whenever it was not. AS A SNAPSHOT, RE-MEASURED 2026-09-18 on the #110 ' +
+      'broken-crates-at-close slice, stacked on the §8.3–8.6 cost-of-day one (16 and 12 ' +
+      'there, 15 and 11 on the reweigh slice, 14 and 10 on main the same day, 13 and 9 ' +
       'on 2026-09-15, 12 and 8 before it, 8 and 5 on ' +
-      '2026-09-10): backend/src/migrations/ holds 16 numbered migrations (timestamps ' +
-      '1788600000000–1788600000015) and 12 *.db-spec.ts files, excluded from rules 2–4. ' +
+      '2026-09-10): backend/src/migrations/ holds 17 numbered migrations (timestamps ' +
+      '1788600000000–1788600000016) and 13 *.db-spec.ts files, excluded from rules 2–4. ' +
       'Rule 4 ran for real on this measurement, not skipped: origin/main resolved, and ' +
       'every migration it names compared byte-identical to its origin/main copy — this ' +
-      "slice's own 1788600000015-YagodaDayExpenses.ts, and the reweigh one below it, are new since " +
+      "slice's own 1788600000016-ShiftBrokenCrates.ts, and the cost-of-day and reweigh ones " +
+      'below it, are new since ' +
       'that ref and so were ' +
       'correctly exempted from rule 4 rather than compared. Both counts grow with ordinary schema work, unrelated to this ' +
       'table, and this row does not track or re-check its own prose.',
@@ -1334,12 +1336,14 @@ export const CHECKS = [
       'idempotency assertion (dev-seed.db-spec.ts\'s «is idempotent — a second run inserts ' +
       'nothing») pass for the wrong reason. A single failing assertion in any suite this glob ' +
       'matches fails this exact command, independent of file or test count. AS A DATED ' +
-      'SNAPSHOT, FILE COUNTS RE-MEASURED 2026-09-18 on the §8.3–8.6 cost-of-day slice, stacked on the ' +
-      'reweigh one (33 files there, 30 on main the same day, 29 on 2026-09-15, 23 before it, 12 ' +
-      'files / 174 tests on 2026-09-10): 37 files match *.db-spec.ts, ' +
-      'of which TWELVE are parse-and-apply migration-schema suites ' +
+      'SNAPSHOT, FILE COUNTS RE-MEASURED 2026-09-18 on the #110 broken-crates-at-close slice, ' +
+      'stacked on the §8.3–8.6 cost-of-day one (37 files there, 33 on the reweigh slice, ' +
+      '30 on main the same day, 29 on 2026-09-15, 23 before it, 12 ' +
+      'files / 174 tests on 2026-09-10): 38 files match *.db-spec.ts, ' +
+      'of which THIRTEEN are parse-and-apply migration-schema suites ' +
       '(migrations/{bootstrap-owner-create,cash-counts-schema,catalog-schema,crates-schema,' +
       'day-expenses-schema,intake-top-ups-schema,intakes-payouts-schema,reweigh-schema,schema,' +
+      'shift-broken-crates-schema,' +
       'suppliers-prices-schema,transfers-schema,user-password-vault}.db-spec.ts — read off ' +
       '`git ls-files`, and note that the list this row carried until 2026-09-18 named only ' +
       'EIGHT, having silently missed crates-schema since main merged it: the file COUNT was ' +
