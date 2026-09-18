@@ -56,7 +56,7 @@ describe('PayoutsService', () => {
 
   const payout = (over: Record<string, unknown> = {}) => ({
     id: PAYOUT_ID,
-    code: 'KPG-PO-20260908-00031',
+    code: 'KPG-PO-20260908-003',
     shift_id: SHIFT_ID,
     supplier_id: SUPPLIER,
     amount: '1000.00',
@@ -73,7 +73,6 @@ describe('PayoutsService', () => {
   });
 
   const dto = (over: Record<string, unknown> = {}) => ({
-    code: '00031',
     supplier_id: SUPPLIER,
     amount: '380.00',
     ...over,
@@ -81,7 +80,12 @@ describe('PayoutsService', () => {
 
   beforeEach(() => {
     manager = {
-      query: jest.fn().mockResolvedValue([]),
+      // Three queries run through here: the supplier row lock, then
+      // `nextDocumentCode`'s advisory lock and its count. Two payouts already
+      // in this shift, so the next one is 003.
+      query: jest.fn().mockImplementation((sql: string) =>
+        Promise.resolve(sql.includes('count(*)') ? [{ n: 2 }] : []),
+      ),
       findOne: jest.fn().mockResolvedValue(null),
       save: jest.fn().mockImplementation((_e, v) => Promise.resolve(payout(v))),
       create: jest.fn().mockImplementation((_e, v) => v),
@@ -185,7 +189,24 @@ describe('PayoutsService', () => {
     it('composes the code with PO, not IN', async () => {
       await service.create(oksana, dto());
 
-      expect(saved().code).toBe('KPG-PO-20260908-00031');
+      expect(saved().code).toBe('KPG-PO-20260908-003');
+    });
+
+    it('numbers payouts from the payouts table, on their own counter', async () => {
+      await service.create(oksana, dto());
+
+      const counting = (manager.query.mock.calls as [string][]).find(([sql]) =>
+        sql.includes('count(*)'),
+      );
+      expect(counting?.[0]).toContain('FROM payouts');
+    });
+
+    it('takes the supplier row lock BEFORE numbering, so the debt read is the locked one', async () => {
+      await service.create(oksana, dto());
+
+      const sqls = (manager.query.mock.calls as [string][]).map(([sql]) => sql);
+      expect(sqls[0]).toMatch(/FOR UPDATE/);
+      expect(sqls.findIndex((sql) => sql.includes('count(*)'))).toBeGreaterThan(0);
     });
 
     it('409s when no shift is open', async () => {

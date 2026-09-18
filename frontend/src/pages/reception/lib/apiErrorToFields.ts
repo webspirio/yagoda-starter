@@ -39,11 +39,6 @@ const LINE_FIELD: Readonly<Record<string, { suffix: string; messageKey: string }
   RATE_NEGATIVE: { suffix: 'bonus', messageKey: 'reception.errors.rateNegative' },
 };
 
-/** Codes that name a top-level (non-line) form field. */
-const TOP_FIELD: Readonly<Record<string, string>> = {
-  INTAKE_CODE_TAKEN: 'reception.errors.codeTaken',
-};
-
 /** Codes that are refusals of the whole request, not one field. */
 const BANNER: Readonly<Record<string, string>> = {
   NO_OPEN_SHIFT: 'reception.errors.noOpenShift',
@@ -80,9 +75,12 @@ export function apiErrorToFields(error: unknown, lineCount: number): ApiFieldErr
   if (!(error instanceof ApiError)) return { fieldErrors: [], formErrorKey: FORM_LEVEL };
 
   if (error.code) {
-    const topKey = TOP_FIELD[error.code];
-    if (topKey) return { fieldErrors: [{ field: 'code', messageKey: topKey }], formErrorKey: null };
-
+    // NOTHING MAPS TO A TOP-LEVEL FIELD ANY MORE. `INTAKE_CODE_TAKEN` used to,
+    // onto the typed receipt number; that field is gone (2026-09-18 — the
+    // server numbers each shift itself) and the code now means a generated
+    // number met a row this shift was given by hand before the change. There
+    // is nothing the operator can retype to get past it, so it falls through
+    // to the banner at the bottom, which says the receipt did not go through.
     const line = LINE_FIELD[error.code];
     if (line) {
       const lastLine = Math.max(lineCount - 1, 0);

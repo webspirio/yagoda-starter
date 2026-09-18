@@ -449,7 +449,6 @@ describe('ReceptionPage — a one-line receipt', () => {
     renderReception();
 
     await user.click(screen.getByRole('button', { name: /Mariia Kovalchuk/ }));
-    await user.type(screen.getByLabelText('Receipt no.'), '00412');
     await fillDraft(user);
 
     // Net weight and the amount are the SERVER's, never computed here.
@@ -462,7 +461,6 @@ describe('ReceptionPage — a one-line receipt', () => {
 
     await waitFor(() =>
       expect(createMock).toHaveBeenCalledWith({
-        code: '00412',
         supplier_id: 's1',
         items: [
           {
@@ -478,7 +476,6 @@ describe('ReceptionPage — a one-line receipt', () => {
 
     expect(await screen.findByText('Receipt for i-new')).toBeInTheDocument();
     // A saved document leaves a clean form behind — the next supplier is next.
-    expect(screen.getByLabelText('Receipt no.')).toHaveValue('');
     expect(screen.getByLabelText('Last name or phone…')).toBeInTheDocument();
   });
 
@@ -495,7 +492,6 @@ describe('ReceptionPage — a one-line receipt', () => {
     renderReception();
 
     await user.click(screen.getByRole('button', { name: /Mariia Kovalchuk/ }));
-    await user.type(screen.getByLabelText('Receipt no.'), '00412');
     await fillDraft(user);
     await user.click(screen.getByRole('button', { name: 'Accept 120.40 kg' }));
 
@@ -517,7 +513,6 @@ describe('ReceptionPage — a one-line receipt', () => {
     renderReception();
 
     await user.click(screen.getByRole('button', { name: /Mariia Kovalchuk/ }));
-    await user.type(screen.getByLabelText('Receipt no.'), '00412');
     await fillDraft(user);
 
     // No weight on the button and no total: those numbers are not this form's.
@@ -527,16 +522,16 @@ describe('ReceptionPage — a one-line receipt', () => {
     expect(screen.getByRole('button', { name: 'Add line' })).toBeDisabled();
   });
 
-  it('will not submit a receipt number the paper book could not carry', async () => {
+  it('asks for no receipt number — the server numbers the receipt', async () => {
     const user = userEvent.setup();
     renderReception();
 
     await user.click(screen.getByRole('button', { name: /Mariia Kovalchuk/ }));
     await fillDraft(user);
-    await user.type(screen.getByLabelText('Receipt no.'), '-12');
 
-    expect(screen.getByRole('button', { name: 'Accept 120.40 kg' })).toBeDisabled();
-    expect(screen.getByText('1–16 Latin letters, digits or dashes')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Receipt no.')).not.toBeInTheDocument();
+    // And nothing is standing between a complete line and the submit.
+    expect(screen.getByRole('button', { name: 'Accept 120.40 kg' })).toBeEnabled();
   });
 });
 
@@ -605,7 +600,9 @@ describe('ReceptionPage — several lines', () => {
     // The operator closed the shift in the other tab; the receipt cannot be
     // written any more, so it cannot be edited any more either.
     shiftMock.mockReturnValue({ data: null, isPending: false, isError: false });
-    await user.type(screen.getByLabelText('Receipt no.'), 'A');
+    // Any keystroke will do — this one just has to re-render the screen with
+    // the mock above in place.
+    await user.type(screen.getByLabelText('Gross — berries including tare'), '1');
 
     expect(rowTrash()).toBeDisabled();
   });
@@ -626,7 +623,6 @@ describe('ReceptionPage — an accidental extra line', () => {
 
     renderReception();
     await user.click(screen.getByRole('button', { name: /Mariia Kovalchuk/ }));
-    await user.type(screen.getByLabelText('Receipt no.'), '00412');
     await fillDraft(user);
 
     await user.click(screen.getByRole('button', { name: 'Add line' }));
@@ -797,7 +793,6 @@ describe('ReceptionPage — a refusal from the server', () => {
     renderReception();
 
     await user.click(screen.getByRole('button', { name: /Mariia Kovalchuk/ }));
-    await user.type(screen.getByLabelText('Receipt no.'), '00412');
     await fillDraft(user);
 
     const gross = screen.getByLabelText('Gross — berries including tare');
@@ -858,7 +853,9 @@ describe('ReceptionPage — a refusal from the server', () => {
         },
       }),
     );
-    await user.type(screen.getByLabelText('Receipt no.'), 'A');
+    // Any keystroke will do — this one just has to re-render the screen with
+    // the mock above in place.
+    await user.type(screen.getByLabelText('Gross — berries including tare'), '1');
 
     expect(
       screen.getByText('The server refused one of the lines — check the rows in the table'),

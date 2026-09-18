@@ -1,5 +1,3 @@
-import { normalizeCode } from '../lib/receiptCode';
-
 /** One tare row on the draft line, while the operator is still typing.
  *  `units` is a STRING here (an editable input value) — parsed to an integer
  *  count only when the line crosses the wire; see `toPreviewBody`. */
@@ -15,7 +13,6 @@ export interface IntakeLineValues {
  *  the operator typed — nothing here is ever computed client-side (§2.4,
  *  §2.8, §2.9 reserve net weight, price and amount to the server). */
 export interface IntakeFormValues {
-  code: string;
   supplier_id: string;
   items: IntakeLineValues[];
 }
@@ -45,7 +42,7 @@ export interface PreviewIntakeItemBody {
   tare: { tare_type_id: string; units: number }[];
 }
 
-/** `POST /intakes/preview` body — `CreateIntakeBody` minus `code`. */
+/** `POST /intakes/preview` body. */
 export interface PreviewIntakeBody {
   /** Owner only — an operator's point is resolved server-side from their
    *  token, so this is omitted (not sent as `undefined`) for an operator. */
@@ -54,11 +51,12 @@ export interface PreviewIntakeBody {
   items: PreviewIntakeItemBody[];
 }
 
-/** `POST /intakes` body — the preview body plus the typed, normalized
- *  receipt number. */
-export interface CreateIntakeBody extends PreviewIntakeBody {
-  code: string;
-}
+/** `POST /intakes` body. IDENTICAL to the preview body since 2026-09-18, when
+ *  the receipt number stopped being typed: the server numbers each shift
+ *  itself, so recording a document now asks for nothing that computing one
+ *  did not already need. Kept as a named alias because the two requests still
+ *  mean different things at the call site. */
+export type CreateIntakeBody = PreviewIntakeBody;
 
 /** One line of `POST /intakes/preview`'s answer — mirrors the backend's
  *  `PreviewIntakeItemResponse`. Every money/weight field is a STRING; `tare`
@@ -124,7 +122,7 @@ export function toPreviewBody(values: IntakeFormValues, pointId: string | null):
   };
 }
 
-/** `toPreviewBody` plus the typed, normalized receipt number. */
+/** What `POST /intakes` sends — the same body a preview asks about. */
 export function toCreateBody(values: IntakeFormValues, pointId: string | null): CreateIntakeBody {
-  return { code: normalizeCode(values.code), ...toPreviewBody(values, pointId) };
+  return toPreviewBody(values, pointId);
 }

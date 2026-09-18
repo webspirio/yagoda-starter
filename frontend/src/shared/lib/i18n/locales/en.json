@@ -630,8 +630,6 @@
     "form": {
       "title": "Pay out the balance — {{name}}",
       "description": "Cash leaves the till today; the berries stay dated when they were received. Both dates stay in the books, so the daily reconciliation adds up.",
-      "code": "Receipt no.",
-      "codeHint": "The number from the paper payout book — the system adds the point and date",
       "amount": "Amount"
     },
     "allButton": "All — {{uah}}",
@@ -640,9 +638,6 @@
       "paid": "Paid out {{uah}}"
     },
     "errors": {
-      "codeRequired": "Enter the receipt number",
-      "codeFormat": "1–16 Latin letters, digits or dashes",
-      "codeTaken": "A payout with this number already exists today",
       "amountFormat": "Enter an amount like 4000 or 4000.50",
       "amountZero": "The amount must be above zero",
       "exceedsDebt": "Cannot pay more than the balance — balance {{debt}}",
@@ -704,10 +699,6 @@
       "history": "Intake history",
       "card": "Supplier card",
       "historyEmpty": "No intakes yet — this will be the first."
-    },
-    "code": {
-      "label": "Receipt no.",
-      "hint": "The number from the paper book — the system adds the point and date"
     },
     "weight": {
       "eyebrow": "2 · Weight with tare",
@@ -781,8 +772,6 @@
     "errors": {
       "failed": "Could not record the receipt",
       "lineRefused": "The server refused one of the lines — check the rows in the table",
-      "codeFormat": "1–16 Latin letters, digits or dashes",
-      "codeTaken": "A receipt with this number already exists today",
       "decimalFormat": "Enter a weight like 126.40",
       "gradeNotPriced": "This grade has no price for today — set it in Day prices",
       "tareRequired": "Add the tare — without it the whole gross weight would count as net",

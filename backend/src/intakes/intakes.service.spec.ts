@@ -40,7 +40,13 @@ const elsewhere = {
 describe('IntakesService', () => {
   let repo: { findOne: jest.Mock; createQueryBuilder: jest.Mock };
   let itemRepo: { find: jest.Mock };
-  let manager: { getRepository: jest.Mock; save: jest.Mock; create: jest.Mock; findOne: jest.Mock };
+  let manager: {
+    getRepository: jest.Mock;
+    save: jest.Mock;
+    create: jest.Mock;
+    findOne: jest.Mock;
+    query: jest.Mock;
+  };
   /** `dataSource.manager` — the NON-transactional manager `preview` reads
    *  through. A separate object from `manager` so a test can tell which of
    *  the two a snapshot read went through. */
@@ -65,7 +71,7 @@ describe('IntakesService', () => {
 
   const intake = (over: Record<string, unknown> = {}) => ({
     id: INTAKE_ID,
-    code: 'KPG-IN-20260908-04412',
+    code: 'KPG-IN-20260908-004',
     shift_id: SHIFT_ID,
     supplier_id: SUPPLIER,
     amount: '2103.30',
@@ -79,7 +85,6 @@ describe('IntakesService', () => {
   });
 
   const dto = (over: Record<string, unknown> = {}) => ({
-    code: '04412',
     supplier_id: SUPPLIER,
     items: [
       {
@@ -97,6 +102,11 @@ describe('IntakesService', () => {
     itemRepo = { find: jest.fn().mockResolvedValue([]) };
     manager = {
       getRepository: jest.fn().mockReturnValue(itemRepo),
+      // `nextDocumentCode` locks, then counts the documents already in this
+      // shift. Three of them, so the next receipt is 004.
+      query: jest.fn().mockImplementation((sql: string) =>
+        Promise.resolve(sql.includes('pg_advisory_xact_lock') ? [{}] : [{ n: 3 }]),
+      ),
       findOne: jest.fn().mockResolvedValue(null),
       save: jest.fn().mockImplementation((_e, v) => Promise.resolve(intake(v))),
       create: jest.fn().mockImplementation((_e, v) => v),
@@ -167,10 +177,29 @@ describe('IntakesService', () => {
       });
     });
 
-    it('composes the code from point code, IN, the SHIFT business date and the typed number', async () => {
+    it('composes the code from point code, IN, the SHIFT business date and the sequence', async () => {
       await service.create(oksana, dto());
 
-      expect(savedIntake().code).toBe('KPG-IN-20260908-04412');
+      expect(savedIntake().code).toBe('KPG-IN-20260908-004');
+    });
+
+    it('numbers from the documents already in THIS shift, not from anything sent', async () => {
+      manager.query.mockImplementation((sql: string) =>
+        Promise.resolve(sql.includes('pg_advisory_xact_lock') ? [{}] : [{ n: 0 }]),
+      );
+
+      await service.create(oksana, dto());
+
+      expect(savedIntake().code).toBe('KPG-IN-20260908-001');
+    });
+
+    it('counts intakes, not every document in the shift', async () => {
+      await service.create(oksana, dto());
+
+      const counting = (manager.query.mock.calls as [string][]).find(([sql]) =>
+        sql.includes('count(*)'),
+      );
+      expect(counting?.[0]).toContain('FROM intakes');
     });
 
     it('uses the SHIFT business date, not today', async () => {
@@ -179,7 +208,7 @@ describe('IntakesService', () => {
 
       await service.create(oksana, dto());
 
-      expect(savedIntake().code).toBe('KPG-IN-20260904-04412');
+      expect(savedIntake().code).toBe('KPG-IN-20260904-004');
     });
 
     it('404s a supplier belonging to another point', async () => {
@@ -256,7 +285,7 @@ describe('IntakesService', () => {
       expect(dataSource.transaction).toHaveBeenCalledTimes(1);
     });
 
-    it('translates a duplicate code into a 409 naming the day', async () => {
+    it('translates a duplicate code into a 409 naming the code', async () => {
       manager.save.mockRejectedValue({ code: '23505', constraint: 'UQ_intakes_code' });
 
       await expect(service.create(oksana, dto())).rejects.toMatchObject({
@@ -271,7 +300,7 @@ describe('IntakesService', () => {
         expect.objectContaining({
           action: 'intake.created',
           actor_id: 'u-oksana',
-          after: expect.objectContaining({ code: 'KPG-IN-20260908-04412' }),
+          after: expect.objectContaining({ code: 'KPG-IN-20260908-004' }),
         }),
         manager,
       );
