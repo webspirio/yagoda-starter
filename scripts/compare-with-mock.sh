@@ -6,7 +6,11 @@ set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 STARTER_URL="${STARTER_URL:-http://localhost:5173}"
-MOCK_DIR="${YAGODA_MOCK_DIR:-$(cd "$HERE/.." && pwd)/yagoda-crm}"
+# The left window shows the MAIN worktree's checkout even when this script runs from a
+# linked worktree, so label it from there.
+MAIN_WORKTREE="$(dirname "$(git -C "$HERE" rev-parse --path-format=absolute --git-common-dir 2>/dev/null || echo "$HERE/.git")")"
+# The mock lives next to the MAIN worktree, not next to a linked one.
+MOCK_DIR="${YAGODA_MOCK_DIR:-$(dirname "$MAIN_WORKTREE")/yagoda-crm}"
 MOCK_PORT="${MOCK_PORT:-5174}"
 MOCK_URL="http://localhost:${MOCK_PORT}"
 PROFILES="${XDG_STATE_HOME:-$HOME/.local/state}/yagoda-compare"
@@ -14,9 +18,6 @@ PROFILES="${XDG_STATE_HOME:-$HOME/.local/state}/yagoda-compare"
 # the two windows with the WM (Super+Left / Super+Right) if they land on top of each other.
 W="${COMPARE_WIDTH:-960}"
 H="${COMPARE_HEIGHT:-1040}"
-# The left window shows the MAIN worktree's checkout even when this script runs from a
-# linked worktree, so label it from there.
-MAIN_WORKTREE="$(dirname "$(git -C "$HERE" rev-parse --path-format=absolute --git-common-dir 2>/dev/null || echo "$HERE/.git")")"
 
 up() { curl -fsS -o /dev/null --max-time 2 "$1" 2>/dev/null; }
 
