@@ -99,9 +99,10 @@ function argError(msg) {
  * 60s, MEASURED AGAINST EVERY ROW THAT INHERITS IT rather than against a few of them. It
  * was 120s, which came from the reference this layer was ported from, whose suites are a
  * fraction of this repo's, and which nobody had ever checked against a row that relies on
- * it. Cold CI readings for all fourteen inheriting rows (run 35011857830, the coldest full
+ * it. Cold CI readings for the then-fourteen inheriting rows (run 35011857830, the coldest full
  * run on record): lint 16.9s, typecheck 16.7s, build 14.6s, test:ci-scripts 6.7s,
- * deadcode 2.1s, seam 0.9s, migrations 1.0s, ratchet:money 0.8s, ratchet:persist 0.8s,
+ * deadcode 2.1s, seam 0.9s, migrations 1.0s, ratchet:persist 0.8s,
+ * (ratchet:money 0.8s, row removed 2026-09-18 -- thirteen inherit the default now)
  * secrets 0.4s, ratchet:lint-exempt 0.2s, bundle 0.2s, testfiles 0.2s, memo 0.05s. The
  * worst is 16.9s, so this clears the slowest of them by 3.5x and every other by far more.
  * registry.test.mjs pins that list, so a row added later cannot inherit this number
