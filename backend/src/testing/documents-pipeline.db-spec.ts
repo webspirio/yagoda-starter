@@ -206,7 +206,7 @@ describe('documents pipeline (HTTP)', () => {
       await request(app.getHttpServer())
         .post(`/shifts/${shiftId}/close`)
         .set('Authorization', `Bearer ${operatorToken}`)
-        .send({ counted_amount: '5000.00' })
+        .send({ counted_amount: '5000.00', broken_crates: 0 })
         .expect(201);
 
       // §10.2 puts corrections with the owner; the operator who closed it
@@ -229,7 +229,7 @@ describe('documents pipeline (HTTP)', () => {
       await request(app.getHttpServer())
         .post(`/shifts/${shiftId}/close`)
         .set('Authorization', `Bearer ${ownerToken}`)
-        .send({ counted_amount: '5000.00' })
+        .send({ counted_amount: '5000.00', broken_crates: 0 })
         .expect(403);
     });
 
@@ -253,7 +253,7 @@ describe('documents pipeline (HTTP)', () => {
       await request(app.getHttpServer())
         .post(`/shifts/${shiftId}/close`)
         .set('Authorization', `Bearer ${operatorToken}`)
-        .send({ counted_amount: '5000.00' })
+        .send({ counted_amount: '5000.00', broken_crates: 0 })
         .expect(201);
 
       const res = await request(app.getHttpServer())
@@ -262,6 +262,41 @@ describe('documents pipeline (HTTP)', () => {
         .send({ counted_amount: '5000.00' })
         .expect(409);
       expect(res.body.code).toBe('SHIFT_DAY_ALREADY_USED');
+
+      // Leave the shift open for the document blocks that follow.
+      await request(app.getHttpServer())
+        .post(`/shifts/${shiftId}/reopen`)
+        .set('Authorization', `Bearer ${ownerToken}`)
+        .send({ reason: 'далі по тестах' })
+        .expect(201);
+    });
+
+    it('carries the breakage through close, reopen and re-close', async () => {
+      await request(app.getHttpServer())
+        .post(`/shifts/${shiftId}/close`)
+        .set('Authorization', `Bearer ${operatorToken}`)
+        .send({ counted_amount: '5000.00', broken_crates: 3 })
+        .expect(201);
+
+      await request(app.getHttpServer())
+        .post(`/shifts/${shiftId}/reopen`)
+        .set('Authorization', `Bearer ${ownerToken}`)
+        .send({ reason: 'перерахунок' })
+        .expect(201);
+
+      const reopened = await request(app.getHttpServer())
+        .get(`/shifts/${shiftId}`)
+        .set('Authorization', `Bearer ${ownerToken}`)
+        .expect(200);
+      expect(reopened.body.broken_crates).toBeNull();
+
+      const reclosed = await request(app.getHttpServer())
+        .post(`/shifts/${shiftId}/close`)
+        .set('Authorization', `Bearer ${operatorToken}`)
+        .send({ counted_amount: '5000.00', broken_crates: 0 })
+        .expect(201);
+      // 0 survives as 0 — it is not null, and it is not dropped as falsy.
+      expect(reclosed.body.broken_crates).toBe(0);
 
       // Leave the shift open for the document blocks that follow.
       await request(app.getHttpServer())
@@ -1133,7 +1168,7 @@ describe('documents pipeline (HTTP)', () => {
       await request(app.getHttpServer())
         .post(`/shifts/${shiftId}/close`)
         .set('Authorization', `Bearer ${operatorToken}`)
-        .send({ counted_amount: '5000.00' })
+        .send({ counted_amount: '5000.00', broken_crates: 0 })
         .expect(201);
 
       const secondRes = await request(app.getHttpServer())
