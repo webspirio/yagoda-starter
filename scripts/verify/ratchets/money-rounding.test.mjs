@@ -79,7 +79,7 @@ test('the real tree is green against the committed baseline', () => {
   // and a second seed module (dev-seed.history.ts) that does its own kopiyka arithmetic.
   // The number stays pinned rather than loosened — going red here is how the merge
   // announced that eleven new arithmetic sites needed reading.
-  assert.match(res.out, /40 baselined money\/weight-arithmetic sites/)
+  assert.match(res.out, /36 baselined money\/weight-arithmetic sites/)
 })
 
 test('a * between two untyped function parameters is a NEW FINDING (brief scenario 2)', () => {

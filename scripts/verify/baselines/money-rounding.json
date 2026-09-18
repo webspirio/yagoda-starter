@@ -30,15 +30,6 @@
       "reason": "skip: (page - 1) * limit inside AuditService.list — the standard pagination-offset arithmetic this template repeats at every list endpoint (see pagination-query.dto.ts doc comment); page and limit are row-count integers, never money."
     },
     {
-      "key": "backend/src/collection-points/collection-points.service.ts:54:*",
-      "file": "backend/src/collection-points/collection-points.service.ts",
-      "line": 54,
-      "kind": "*",
-      "occurrences": 1,
-      "added": "2026-09-10",
-      "reason": "skip: (query.page - 1) * query.limit inside CollectionPointsService.list — the same pagination-offset arithmetic as every other list endpoint; page/limit are row counts, not money or weight."
-    },
-    {
       "key": "backend/src/common/dto/pagination-query.dto.ts:34:*",
       "file": "backend/src/common/dto/pagination-query.dto.ts",
       "line": 34,
@@ -127,24 +118,6 @@
       "occurrences": 1,
       "added": "2026-09-16",
       "reason": "`Number(rows[0]?.n ?? 0)` — reads a Postgres `count(*)::int` back as a JS number to count crate issuances already recorded in this shift, so the next document code can be composed. A SEQUENCE COUNTER, not a monetary or weight value: nothing downstream of it is an amount, and the query it parses cannot return a fractional value. Arrived with main's crates slice (PR #92)."
-    },
-    {
-      "key": "backend/src/grade-prices/grade-prices.service.ts:112:*",
-      "file": "backend/src/grade-prices/grade-prices.service.ts",
-      "line": 112,
-      "kind": "*",
-      "occurrences": 1,
-      "added": "2026-09-10",
-      "reason": "[...params, query.limit, (query.page - 1) * query.limit] inside the current-prices query — the same pagination-offset arithmetic as every other list endpoint, feeding a raw SQL LIMIT/OFFSET; page/limit are row counts, not money (the price VALUES selected by this same query are plain strings, never touched here). RE-KEYED 2026-09-16 (:90 -> :112) — main's price-sheet/bulk work added methods above it. The expression is the same `(query.page - 1) * query.limit` offset idiom."
-    },
-    {
-      "key": "backend/src/grade-prices/grade-prices.service.ts:143:*",
-      "file": "backend/src/grade-prices/grade-prices.service.ts",
-      "line": 143,
-      "kind": "*",
-      "occurrences": 1,
-      "added": "2026-09-10",
-      "reason": "skip: (query.page - 1) * query.limit inside GradePricesService.list (the raw price-journal listing) — same pagination-offset arithmetic, row counts not money. RE-KEYED 2026-09-16 (:121 -> :143), same cause and same idiom as the :112 entry."
     },
     {
       "key": "backend/src/media/media.constants.ts:6:*",
@@ -307,15 +280,6 @@
       "occurrences": 1,
       "added": "2026-09-10",
       "reason": "skip: (query.page - 1) * query.limit (via query-builder .skip()) inside SuppliersService.list — same pagination-offset arithmetic as every other list endpoint."
-    },
-    {
-      "key": "backend/src/tare-types/tare-types.service.ts:33:*",
-      "file": "backend/src/tare-types/tare-types.service.ts",
-      "line": 33,
-      "kind": "*",
-      "occurrences": 1,
-      "added": "2026-09-10",
-      "reason": "skip: (query.page - 1) * query.limit inside TareTypesService.list — same pagination-offset arithmetic as every other list endpoint; this entity's own weight_kg/deposit_price columns are untouched here."
     },
     {
       "key": "backend/src/users/password-hashing.ts:28:*",
