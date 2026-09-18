@@ -8,6 +8,7 @@ import {
   hashToken,
   PERSIST_VERSION,
 } from './persister';
+import { queryKeys } from './queryKeys';
 
 describe('isPersistableKey', () => {
   it('allows the signed-in user profile key', () => {
@@ -17,6 +18,22 @@ describe('isPersistableKey', () => {
   it('denies anything else', () => {
     expect(isPersistableKey(['other'])).toBe(false);
     expect(isPersistableKey([])).toBe(false);
+  });
+
+  /**
+   * THE DEFAULT-DENY GATE, ASSERTED EXHAUSTIVELY. Replaces `ratchet:persist`'s rule 3, a
+   * bidirectional baseline of the literals `isPersistableKey` compares against.
+   *
+   * The three assertions above do not replace it: adding `|| head === 'shifts'` to
+   * `isPersistableKey` keeps all three green. This one enumerates every key the app
+   * actually uses, so a second persistable key has to change THIS LIST to pass — and
+   * anything persisted sits in localStorage in plaintext for up to buildPersistOptions()'s
+   * maxAge, on a device an operator may share.
+   */
+  it('persists exactly one query key, and it is the caller\'s own profile', () => {
+    const heads = Object.values(queryKeys).map((k) => (typeof k === 'function' ? k()[0] : k[0]));
+    expect(heads.length).toBeGreaterThan(1); // the derivation saw the object, not an empty one
+    expect(heads.filter((h) => isPersistableKey([h]))).toEqual(['me']);
   });
 });
 

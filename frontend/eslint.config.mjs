@@ -5,6 +5,13 @@ import reactRefresh from 'eslint-plugin-react-refresh';
 import prettier from 'eslint-config-prettier';
 import globals from 'globals';
 
+const STORAGE_MESSAGE =
+  'Web storage belongs in one of the reviewed shared/lib storage modules. Reading ' +
+  '`localStorage` AT ALL throws in a private window, and this module graph is imported at ' +
+  'bootstrap, so an unguarded access is a blank page rather than a degraded feature. Those ' +
+  'modules wrap every call in try/catch and narrow what comes back — import from them ' +
+  'instead of touching storage directly.';
+
 // Feature-Sliced Design layer boundaries: shared < entities < features < widgets < pages < app.
 // A layer may import from any layer below it, never from one above. Cross-imports
 // between slices of the *same* layer (e.g. features/auth -> features/other) are
@@ -132,6 +139,49 @@ export default tseslint.config(
   {
     files: ['src/pages/**/*.ts', 'src/pages/**/*.tsx'],
     ...forbidLayers(['app']),
+  },
+  {
+    // WEB STORAGE IS CONFINED TO SIX REVIEWED MODULES, AND THIS IS WHAT KEEPS IT THERE.
+    //
+    // Replaces `ratchet:persist`, a 913-line AST scanner. Note what changed and what did
+    // not: the ratchet required every access to sit inside a try/catch ANYWHERE in
+    // frontend/src, which is weaker outside these six files than forbidding the access
+    // outright, and stronger inside them. `ignores` is the reviewed list; adding to it is
+    // the decision, and it is one line in a diff rather than an entry in a baseline.
+    //
+    // NOT `no-restricted-syntax`: esquery has no ancestor axis, so it cannot express "not
+    // inside a try block" at all — and a second `no-restricted-syntax` block overlapping
+    // the raw-<input> paths above would silently REPLACE that rule's options rather than
+    // merge with them (flat config, see the note above). `no-restricted-globals` and
+    // `no-restricted-properties` are unused in this config, so they collide with nothing.
+    //
+    // Paths are workspace-relative because eslint runs with cwd = frontend/.
+    files: ['src/**/*.ts', 'src/**/*.tsx'],
+    ignores: [
+      'src/entities/user/model/store.ts',
+      'src/shared/api/persister.ts',
+      'src/shared/lib/form-draft/draftStorage.ts',
+      'src/shared/lib/i18n/language-preference.ts',
+      'src/shared/lib/point-preference/index.ts',
+      'src/shared/lib/theme/theme-preference.ts',
+      'src/test-setup.ts',
+      'src/**/*.test.ts',
+      'src/**/*.test.tsx',
+    ],
+    rules: {
+      'no-restricted-globals': [
+        'error',
+        { name: 'localStorage', message: STORAGE_MESSAGE },
+        { name: 'sessionStorage', message: STORAGE_MESSAGE },
+        { name: 'indexedDB', message: STORAGE_MESSAGE },
+      ],
+      'no-restricted-properties': [
+        'error',
+        { object: 'window', property: 'localStorage', message: STORAGE_MESSAGE },
+        { object: 'window', property: 'sessionStorage', message: STORAGE_MESSAGE },
+        { object: 'window', property: 'indexedDB', message: STORAGE_MESSAGE },
+      ],
+    },
   },
   // Last: disable stylistic rules that would fight Prettier.
   prettier,
