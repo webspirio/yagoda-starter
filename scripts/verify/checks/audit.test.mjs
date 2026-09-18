@@ -96,49 +96,39 @@ function makeNpmShim({ lsJson, auditJson }) {
  * be exactly the flakiness `needs: ['npm-registry']` exists to keep out of the FAST tier.
  */
 const REAL_SNAPSHOT_AUDIT_JSON = {
-  vulnerabilities: {
-    '@nestjs/core': { severity: 'high', via: ['@nestjs/platform-express'] },
-    '@nestjs/platform-express': { severity: 'high', via: ['@nestjs/core', 'multer'] },
-    '@nestjs/terminus': { severity: 'high', via: ['@nestjs/core', '@nestjs/typeorm'] },
-    '@nestjs/testing': { severity: 'high', via: ['@nestjs/core', '@nestjs/platform-express'] },
-    '@nestjs/typeorm': { severity: 'high', via: ['@nestjs/core'] },
-    multer: {
-      severity: 'high',
-      via: [
-        { title: 'multer vulnerable to Denial of Service via crafted multipart field names' },
-        { title: 'multer vulnerable to Denial of Service via file descriptor leak on aborted uploads' },
-        { title: 'multer vulnerable to file size limit bypass via async fileFilter race condition' },
-        { title: 'multer vulnerable to Denial of Service via oversized array index in field names' },
-      ],
-    },
-  },
+  // EMPTY as of 2026-09-18, and the emptiness is the snapshot, not a stub. This object
+  // held six names — multer plus the five @nestjs/* that cascaded from it — until the
+  // NestJS 12 upgrade moved @nestjs/platform-express to 12.0.3, which pins multer 2.4.0
+  // instead of 11.2.3's exact 2.2.0. That is past the 2.3.0 that fixed all four multer
+  // advisories, so `npm audit` reports nothing for this tree and the committed baseline
+  // carries zero entries. They were removed from this fixture in the SAME change that
+  // emptied the baseline, for the reason the block below already gave when two names left
+  // on 2026-09-15: a fixture naming an advisory the baseline no longer carries makes every
+  // test built on it red.
+  vulnerabilities: {},
 }
 const REAL_SNAPSHOT_LS_JSON = {
-  dependencies: {
-    '@nestjs/core': {},
-    '@nestjs/platform-express': { dependencies: { multer: {} } },
-    '@nestjs/terminus': {},
-    '@nestjs/typeorm': {},
-    // @nestjs/testing is deliberately absent — it is a devDependency, confirmed dev-only
-    // by `npm ls @nestjs/testing --omit=dev` returning an empty tree in the real repo.
-  },
+  // Empty for the same reason: with no advisory in the audit snapshot there is no name for
+  // a production-tree lookup to mark `prod`, so listing real dependencies here would prove
+  // nothing this file does not already cover with a fabricated entry.
+  dependencies: {},
 }
 
 /**
- * The committed baseline carries all SIX real entries (R18), not just
- * `@nestjs/testing` — every fixture below that is not specifically exercising the
- * production-tree/productionRisk path reuses this REAL snapshot as its base and adds ONE
- * fabricated vulnerability on top, so none of the 6 real entries ever goes STALE
- * underneath an unrelated test. It was EIGHT until 2026-09-15, when npm audit stopped
- * reporting @nestjs/schedule and nestjs-pino with the lockfile untouched (see the
- * `audit` row in registry.mjs) and this ratchet's stale-entry rule deleted both from the
- * baseline; they were removed from this fixture in the same change, because a fixture
- * naming an advisory the baseline no longer carries makes every test built on it red.
- * Paired with `EMPTY_LS_JSON` (rather than
- * `REAL_SNAPSHOT_LS_JSON`) in most of those tests: none of the 6 real names is then
- * flagged `prod`, so they fall back to the plain `reason` check, which they already pass
- * — deliberately simpler than reproducing the real production-tree shape in every
- * unrelated test.
+ * The base every fixture below starts from: a snapshot that is GREEN against the committed
+ * baseline, so a test can add ONE fabricated vulnerability on top and assert on that alone
+ * without an unrelated real entry going STALE underneath it.
+ *
+ * That base is now EMPTY, and the history is worth keeping because it ran in both
+ * directions. It carried EIGHT names until 2026-09-15, when npm audit stopped reporting
+ * @nestjs/schedule and nestjs-pino with the lockfile untouched — an external advisory
+ * database narrowing, not a fix — and SIX until 2026-09-18, when the NestJS 12 upgrade
+ * removed multer@2.2.0 from the tree outright and the remaining six went with it. Each
+ * time, the names were deleted from this fixture in the same change that deleted them from
+ * the baseline, because a fixture naming an advisory the baseline no longer carries makes
+ * every test built on it red. An empty base also makes `EMPTY_LS_JSON` redundant for the
+ * tests that pair with it — kept, because those tests assert about a fabricated entry's
+ * `prod` flag and reading `{ dependencies: {} }` at the call site says so locally.
  */
 const BASELINE_SAFE_AUDIT_JSON = REAL_SNAPSHOT_AUDIT_JSON
 const EMPTY_LS_JSON = { dependencies: {} }
@@ -174,20 +164,33 @@ const VALID_PRODUCTION_RISK = {
   fix: 'Test-only fixture standing in for a real fix-and-blocker explanation, well over thirty characters.',
 }
 
-test('a REAL snapshot of this repo\'s advisories, re-captured 2026-09-15, is GREEN (R18) — all 6 names, including the 5 production-tree ones, are RECORDED with a complete productionRisk entry, not fixed', () => {
+test("a REAL snapshot of this repo's advisories, re-captured 2026-09-18, is GREEN — and is now EMPTY, because the NestJS 12 upgrade removed multer@2.2.0 rather than recording it (R18)", () => {
   const shim = makeNpmShim({ lsJson: REAL_SNAPSHOT_LS_JSON, auditJson: REAL_SNAPSHOT_AUDIT_JSON })
   try {
     const res = run({ env: shim.env })
     assert.equal(res.status, 0, res.out)
-    // Counts read from the committed baseline rather than frozen as literals: this test
-    // was pinned to 8/7 and went red on 2026-09-15 when npm audit stopped reporting two
-    // names with nothing in this repo changing, which is a fact about an external
-    // advisory database, not about this checker. The INVARIANT worth asserting is that
-    // the checker's own summary agrees with the baseline it just compared against.
+    // Counts read from the committed baseline rather than frozen as literals: this test was
+    // pinned to 8/7 and went red on 2026-09-15 when npm audit stopped reporting two names
+    // with nothing in this repo changing, which is a fact about an external advisory
+    // database, not about this checker. The INVARIANT worth asserting is that the checker's
+    // own summary agrees with the baseline it just compared against — so the expected
+    // wording is DERIVED here, including for the zero case the summary phrases differently
+    // ("(none)" rather than "(high: N)", ", none in the production tree" rather than the
+    // productionRisk clause). Pinning the six-entry wording is exactly what would have to
+    // be rewritten again the next time this count moves.
     const committed = JSON.parse(readFileSync(BASELINE, 'utf8'))
+    const n = committed.entries.length
     const prodCount = committed.entries.filter((/** @type {any} */ e) => e.productionRisk).length
-    assert.match(res.out, new RegExp(`${committed.entries.length} advisories \\(high: ${committed.entries.length}\\)`))
-    assert.match(res.out, new RegExp(`${prodCount} reachable from the production tree, each RECORDED with a complete productionRisk`))
+    assert.match(
+      res.out,
+      new RegExp(`audit: ${n} advisor(?:y|ies) \\(${n ? `high: ${n}` : 'none'}\\)`),
+    )
+    assert.match(
+      res.out,
+      prodCount
+        ? new RegExp(`${prodCount} reachable from the production tree, each RECORDED with a complete productionRisk`)
+        : /, none in the production tree/,
+    )
     assert.doesNotMatch(res.out, /PRODUCTION ADVISORY NOT BASELINED/)
     assert.doesNotMatch(res.out, /PRODUCTION ENTRY INCOMPLETE/)
     assert.doesNotMatch(res.out, /NEW ADVISORY/)

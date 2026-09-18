@@ -26,6 +26,15 @@ AUTH=(-H "Authorization: Bearer $COOLIFY_API_TOKEN" -H "Accept: application/json
 # verification have to know about each other.
 APP=()
 [ -n "${BASIC_AUTH:-}" ] && APP=(-u "$BASIC_AUTH")
+# Expanded as ${APP[@]+"${APP[@]}"} at every use below, never as a bare
+# "${APP[@]}". APP is empty whenever BASIC_AUTH is unset — production always, and
+# every local run — and bash treats "${empty_array[@]}" under `set -u` as an
+# UNBOUND VARIABLE until 4.4. CI's bash 5 expands it to nothing and is fine;
+# macOS ships bash 3.2, where the bare form aborts the script at the first curl
+# with `APP[@]: unbound variable`, so scripts/ci/coolify-deploy.test.sh failed 5
+# of its 7 scenarios on any developer machine while passing in CI. The ${x+y}
+# form expands to nothing when unset and to the quoted elements otherwise, on
+# both.
 
 fail() { echo "::error::$*" >&2; exit 1; }
 
@@ -89,7 +98,7 @@ echo "Coolify: finished"
 
 # --- 3. the application itself ---------------------------------------------
 probe() { # url -> http code (curl prints 000 on connection failure)
-  curl -s -o /dev/null -w '%{http_code}' --max-time 10 "${APP[@]}" "$1" || true
+  curl -s -o /dev/null -w '%{http_code}' --max-time 10 ${APP[@]+"${APP[@]}"} "$1" || true
 }
 deadline=$((SECONDS + READY_TIMEOUT_SEC))
 until [ "$(probe "$BASE_URL/api/health/ready")" = 200 ]; do
@@ -105,7 +114,7 @@ echo "ready: 200"
 served=""
 deadline=$((SECONDS + READY_TIMEOUT_SEC))
 while :; do
-  served=$(curl -sS --max-time 10 "${APP[@]}" "$BASE_URL/api/health/version" 2>/dev/null | jqr '.commit // empty')
+  served=$(curl -sS --max-time 10 ${APP[@]+"${APP[@]}"} "$BASE_URL/api/health/version" 2>/dev/null | jqr '.commit // empty')
   [ "$served" = "$EXPECTED_COMMIT" ] && break
   [ $SECONDS -lt $deadline ] || fail "$BASE_URL serves commit '$served', expected '$EXPECTED_COMMIT'"
   sleep "$POLL_INTERVAL_SEC"
@@ -120,7 +129,7 @@ if [ -n "${SEED_USERNAME:-}" ]; then
   code=""
   deadline=$((SECONDS + READY_TIMEOUT_SEC))
   while :; do
-    code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "${APP[@]}" -X POST -H 'content-type: application/json' \
+    code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 ${APP[@]+"${APP[@]}"} -X POST -H 'content-type: application/json' \
       -d "$body" "$BASE_URL/api/auth/login" || true)
     case "$code" in 200|201) break ;; esac
     [ $SECONDS -lt $deadline ] || fail "login as seeded user '$SEED_USERNAME' returned $code — did the seed run?"
