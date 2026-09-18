@@ -401,9 +401,9 @@ export const CHECKS = [
       'here, so this row also proves those two files still say what the check assumes. AS A ' +
       'SNAPSHOT, RE-MEASURED 2026-09-18 on main after PR #111 (the #11 password vault) ' +
       'landed alongside the verify layer (239 files on 2026-09-16, 219 on 2026-09-15, 170 ' +
-      'on 2026-09-11): 242 files ' +
+      'on 2026-09-11): 244 files ' +
       'now match across the two candidate nets (jest-unit 57, jest-db 30, vitest 138, ' +
-      'node-test 14, playwright 1, shell-test 2). All 3 new files came from that one PR — ' +
+      'node-test 16, playwright 1, shell-test 2). All 3 new files came from that one PR — ' +
       'users/secret-box.spec.ts, migrations/user-password-vault.db-spec.ts and ' +
       'shared/ui/password-input.test.tsx, one per collector across all three workspaces — ' +
       'no collector was added or changed by this re-measurement, ' +
@@ -570,6 +570,53 @@ export const CHECKS = [
       'the rest still apply.',
   },
   {
+    id: 'schema',
+    tier: 'fast',
+    // No `after`, for the reason spelled out on `migrations` above: this check parses
+    // backend/src with `ts.createSourceFile` (syntax only), never `ts.createProgram`, so a
+    // type error neither hides nor fakes a finding here and ordering it behind `typecheck`
+    // would declare a dependency that does not exist.
+    //
+    // 28-db-schema.dbml is this row's second input, and it is in hash.mjs's HASHED_EXACT —
+    // without that, editing the schema of record would leave sourceHash unchanged and
+    // `--reuse-if-fresh` would replay a green that never ran this check over it.
+    cmd: 'npm run schema:check',
+    proves:
+      'Every numeric column 28-db-schema.dbml declares matches its TypeORM @Column and its ' +
+      'CREATE TABLE SQL on precision, scale, nullability and default, and its TypeScript ' +
+      'property type is string, never number. The reverse fails too: a numeric column in an ' +
+      'entity or migration the DBML omits. So does anything unmappable — a DBML table with no ' +
+      '@Entity, an unparsed Table line, an @Column({ name }), a namingStrategy, or a numeric ' +
+      'token outside a CREATE TABLE column.',
+    blindSpot:
+      'Numeric columns only, and only as written in source. It never opens a database, so a ' +
+      'live schema that drifted from its migrations is invisible. It models CREATE TABLE and ' +
+      'reports anything else as unmodellable rather than comparing it. Varchar lengths, enums, ' +
+      'indexes, CHECK constraints, FK actions and every non-numeric column lie outside it. It ' +
+      'proves a property is typed string, not that any caller treats it as one.',
+  },
+  {
+    id: 'documents',
+    tier: 'fast',
+    // Same reasoning as `schema` and `migrations` for the absent `after`. This row and
+    // `schema` share scripts/verify/lib/schema-map.mjs, so they read the same DBML the same
+    // way — which is the point: one parser, two questions asked of it.
+    cmd: 'npm run documents',
+    proves:
+      'The scope is derived in three mechanical hops — a voided_at column in 28-db-schema.dbml ' +
+      'marks a voidable document, @Entity(table) maps that table to a directory, and every ' +
+      '*.controller.ts there is in scope — then parsed with the TypeScript compiler API, ' +
+      'failing on any @Patch, @Put or @Delete. §2.7 freezes a recorded document and §9.3 makes ' +
+      'a correction a void plus a new one, so an in-place edit verb here is the rule breaking. ' +
+      'An empty derivation refuses a verdict.',
+    blindSpot:
+      'Route decorators only. A service method that overwrites a frozen column, a repository ' +
+      'update(), or raw SQL is invisible: this row reads HTTP verbs, not writes. A document ' +
+      'table with no voided_at column in the DBML — cash_counts — is outside the derived scope, ' +
+      'as is any controller living outside its entity directory. It cannot tell a legitimate ' +
+      'void route from an edit disguised as one.',
+  },
+  {
     id: 'selfcheck',
     // FULL, NOT FAST, since 2026-09-18, and this is containment rather than a preference.
     // This suite WRITES THE REAL WORKING TREE: it plants fixtures under backend/src and
@@ -632,7 +679,7 @@ export const CHECKS = [
       "intermediate counts this row does not itself track): `npm run test:verify` " +
       "(`node --test --test-concurrency=1 'scripts/verify/**/*.test.mjs' " +
       "'.claude/hooks/**/*.test.mjs'` — TWO globs since Task 19, not the one this row " +
-      "originally shipped quoting) collects and runs 168 tests across 14 *.test.mjs files " +
+      "originally shipped quoting) collects and runs 197 tests across 16 *.test.mjs files " +
       "today, re-measured per file 2026-09-18 — hash.test.mjs (8), registry.test.mjs (12), " +
       "run.test.mjs (20), run.report.test.mjs (3), " +
       'checks/audit.test.mjs (11), checks/bundle-size.test.mjs (10), ' +

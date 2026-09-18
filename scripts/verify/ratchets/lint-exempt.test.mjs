@@ -63,7 +63,7 @@ function addBaselineEntry(entry) {
 test('the real tree is green against the committed baseline', () => {
   const res = run()
   assert.equal(res.status, 0, res.out)
-  assert.match(res.out, /13 lint exemptions on record/)
+  assert.match(res.out, /14 lint exemptions on record/)
 })
 
 test('a new eslint-disable-next-line anywhere in backend/src is caught as a NEW EXEMPTION', () => {
