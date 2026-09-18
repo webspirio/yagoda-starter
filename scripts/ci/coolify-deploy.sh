@@ -24,6 +24,16 @@ AUTH=(-H "Authorization: Bearer $COOLIFY_API_TOKEN" -H "Accept: application/json
 # That middleware covers every path, so without credentials all three checks
 # below get 401 and every preview deploy fails — the hardening and the
 # verification have to know about each other.
+#
+# APP IS USUALLY EMPTY — BASIC_AUTH is set only for previews behind the
+# middleware — WHICH IS WHY ITS THREE USES BELOW ARE SPELLED
+# `${APP[@]+"${APP[@]}"}` AND NOT THE OBVIOUS `"${APP[@]}"`. Under `set -u`,
+# bash 3.2 treats an empty array's `[@]` expansion as an UNBOUND VARIABLE and
+# kills the script; bash 4.4+ expands it to nothing, as intended. CI is
+# ubuntu/bash 5, so the naive form is correct there and fatal on a Mac, where
+# /bin/bash is still 3.2 — and it went unseen because without `jq` the
+# `test:ci-scripts` row SKIPS rather than running. `AUTH` above needs no guard:
+# it is never empty. Do not "simplify" these three back.
 APP=()
 [ -n "${BASIC_AUTH:-}" ] && APP=(-u "$BASIC_AUTH")
 
@@ -89,7 +99,7 @@ echo "Coolify: finished"
 
 # --- 3. the application itself ---------------------------------------------
 probe() { # url -> http code (curl prints 000 on connection failure)
-  curl -s -o /dev/null -w '%{http_code}' --max-time 10 "${APP[@]}" "$1" || true
+  curl -s -o /dev/null -w '%{http_code}' --max-time 10 ${APP[@]+"${APP[@]}"} "$1" || true
 }
 deadline=$((SECONDS + READY_TIMEOUT_SEC))
 until [ "$(probe "$BASE_URL/api/health/ready")" = 200 ]; do
@@ -105,7 +115,7 @@ echo "ready: 200"
 served=""
 deadline=$((SECONDS + READY_TIMEOUT_SEC))
 while :; do
-  served=$(curl -sS --max-time 10 "${APP[@]}" "$BASE_URL/api/health/version" 2>/dev/null | jqr '.commit // empty')
+  served=$(curl -sS --max-time 10 ${APP[@]+"${APP[@]}"} "$BASE_URL/api/health/version" 2>/dev/null | jqr '.commit // empty')
   [ "$served" = "$EXPECTED_COMMIT" ] && break
   [ $SECONDS -lt $deadline ] || fail "$BASE_URL serves commit '$served', expected '$EXPECTED_COMMIT'"
   sleep "$POLL_INTERVAL_SEC"
@@ -120,7 +130,7 @@ if [ -n "${SEED_USERNAME:-}" ]; then
   code=""
   deadline=$((SECONDS + READY_TIMEOUT_SEC))
   while :; do
-    code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "${APP[@]}" -X POST -H 'content-type: application/json' \
+    code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 ${APP[@]+"${APP[@]}"} -X POST -H 'content-type: application/json' \
       -d "$body" "$BASE_URL/api/auth/login" || true)
     case "$code" in 200|201) break ;; esac
     [ $SECONDS -lt $deadline ] || fail "login as seeded user '$SEED_USERNAME' returned $code — did the seed run?"
