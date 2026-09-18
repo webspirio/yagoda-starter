@@ -66,6 +66,10 @@ import { envValidationSchema } from './config/env.schema';
     // survive restarts (in-memory counters silently reset and multiply by
     // instance count the moment the backend scales past one).
     ThrottlerModule.forRootAsync({
+      // imports is required by ThrottlerAsyncOptions' `Pick<ModuleMetadata, 'imports'>`
+      // under Nest 12's ESM-first typings. Empty is correct: RedisModule is @Global()
+      // and exports REDIS_CLIENT, so nothing needs importing to inject it.
+      imports: [],
       inject: [REDIS_CLIENT],
       useFactory: (redis: Redis) => ({
         throttlers: [

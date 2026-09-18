@@ -10,9 +10,15 @@ import { REDIS_CLIENT } from '../redis/redis.module';
 import { appConfig } from '../config/app.config';
 
 // Runs the indicator functions like terminus would, merging their results.
+// terminus 12 widened HealthIndicatorFunction to a union: a member is either a
+// function returning a result or a HealthCheckAttempt, or a bare
+// HealthCheckAttempt, which is awaitable but not callable. Awaiting covers all
+// three — an attempt resolves to the same HealthIndicatorResult.
 const mockCheck = jest.fn(async (indicators: HealthIndicatorFunction[]) => {
   const details: Record<string, unknown> = {};
-  for (const indicator of indicators) Object.assign(details, await indicator());
+  for (const indicator of indicators) {
+    Object.assign(details, await (typeof indicator === 'function' ? indicator() : indicator));
+  }
   return { status: 'ok', details };
 });
 const mockPingCheck = jest.fn().mockResolvedValue({ database: { status: 'up' } });
