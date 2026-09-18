@@ -2,6 +2,7 @@ import eslint from '@eslint/js';
 import tseslint from 'typescript-eslint';
 import globals from 'globals';
 import prettier from 'eslint-config-prettier';
+import comments from '@eslint-community/eslint-plugin-eslint-comments/configs';
 
 export default tseslint.config(
   // `coverage` is the `coverage` row's own output. jest's rootDir here is `src`, so
@@ -10,7 +11,14 @@ export default tseslint.config(
   // same shape as the frontend dist-e2e bug found on 2026-09-15, where a full-tier row
   // left generated output on disk and the next fast-tier `lint` run reported 2116 errors
   // inside it. frontend/eslint.config.mjs has ignored `coverage` all along.
-  { ignores: ['dist/', 'node_modules/', 'coverage/'] },
+  // `**/coverage/`, not `coverage/`: jest's coverageDirectory defaults to
+  // `<rootDir>/coverage` and rootDir is `src`, so the output actually lands in
+  // `src/coverage/` — while a flat-config ignore is anchored to this file's directory and
+  // only ever matched `backend/coverage/`. The two never agreed. It went unnoticed because
+  // no rule fired on generated lcov HTML until eslint-comments arrived, at which point three
+  // vendored report scripts each produced three errors. `.gitignore`'s bare `coverage/`
+  // matches at any depth, which is why git has always hidden this and eslint never did.
+  { ignores: ['dist/', 'node_modules/', '**/coverage/'] },
   eslint.configs.recommended,
   tseslint.configs.recommended,
   {
@@ -26,6 +34,42 @@ export default tseslint.config(
       '@typescript-eslint/no-unused-vars': [
         'error',
         { argsIgnorePattern: '^_', varsIgnorePattern: '^_', caughtErrorsIgnorePattern: '^_' },
+      ],
+    },
+  },
+  comments.recommended,
+  {
+    // EVERY SUPPRESSION MUST SAY WHY, IN THE CODE, NEXT TO THE THING IT EXCUSES.
+    //
+    // Replaces `ratchet:lint-exempt` — 371 impl + 213 test + 71 baseline lines that kept
+    // the same reasons in a JSON file keyed BY LINE NUMBER, which moved four times in eight
+    // days without ever finding a defect. `require-description` puts each reason where the
+    // next reader is already looking.
+    //
+    // `no-use` with this `allow` list is the part the ratchet could not do at all. It was
+    // blind to FOUR comment shapes, not one: `/* eslint rule: "off" */` (the inline-config
+    // form — its regex demanded the `eslint-` hyphen), `/* eslint-env */`, `/* global */`
+    // and `/* exported */`. Allowing only the four disable/enable directives bans all four.
+    // eslint's own `linterOptions.noInlineConfig` would also close it, and would ban the
+    // ten legitimate disable comments with it; this is the precise instrument.
+    //
+    // NOT claimed as new coverage: `reportUnusedDisableDirectives`. ESLint 10 defaults it to
+    // `warn` and both lint scripts run `--max-warnings=0`, so a suppression that has stopped
+    // suppressing anything is ALREADY fatal here. It is set explicitly only to make the
+    // guarantee legible rather than inherited.
+    linterOptions: { reportUnusedDisableDirectives: 'error' },
+    rules: {
+      '@eslint-community/eslint-comments/require-description': ['error', { ignore: [] }],
+      '@eslint-community/eslint-comments/no-use': [
+        'error',
+        {
+          allow: [
+            'eslint-disable',
+            'eslint-disable-line',
+            'eslint-disable-next-line',
+            'eslint-enable',
+          ],
+        },
       ],
     },
   },

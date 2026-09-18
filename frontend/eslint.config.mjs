@@ -3,6 +3,7 @@ import tseslint from 'typescript-eslint';
 import reactHooks from 'eslint-plugin-react-hooks';
 import reactRefresh from 'eslint-plugin-react-refresh';
 import prettier from 'eslint-config-prettier';
+import comments from '@eslint-community/eslint-plugin-eslint-comments/configs';
 import globals from 'globals';
 
 const STORAGE_MESSAGE =
@@ -45,6 +46,42 @@ export default tseslint.config(
   js.configs.recommended,
   ...tseslint.configs.recommended,
   reactHooks.configs.flat['recommended-latest'],
+  comments.recommended,
+  {
+    // EVERY SUPPRESSION MUST SAY WHY, IN THE CODE, NEXT TO THE THING IT EXCUSES.
+    //
+    // Replaces `ratchet:lint-exempt` — 371 impl + 213 test + 71 baseline lines that kept
+    // the same reasons in a JSON file keyed BY LINE NUMBER, which moved four times in eight
+    // days without ever finding a defect. `require-description` puts each reason where the
+    // next reader is already looking.
+    //
+    // `no-use` with this `allow` list is the part the ratchet could not do at all. It was
+    // blind to FOUR comment shapes, not one: `/* eslint rule: "off" */` (the inline-config
+    // form — its regex demanded the `eslint-` hyphen), `/* eslint-env */`, `/* global */`
+    // and `/* exported */`. Allowing only the four disable/enable directives bans all four.
+    // eslint's own `linterOptions.noInlineConfig` would also close it, and would ban the
+    // ten legitimate disable comments with it; this is the precise instrument.
+    //
+    // NOT claimed as new coverage: `reportUnusedDisableDirectives`. ESLint 10 defaults it to
+    // `warn` and both lint scripts run `--max-warnings=0`, so a suppression that has stopped
+    // suppressing anything is ALREADY fatal here. It is set explicitly only to make the
+    // guarantee legible rather than inherited.
+    linterOptions: { reportUnusedDisableDirectives: 'error' },
+    rules: {
+      '@eslint-community/eslint-comments/require-description': ['error', { ignore: [] }],
+      '@eslint-community/eslint-comments/no-use': [
+        'error',
+        {
+          allow: [
+            'eslint-disable',
+            'eslint-disable-line',
+            'eslint-disable-next-line',
+            'eslint-enable',
+          ],
+        },
+      ],
+    },
+  },
   {
     plugins: { 'react-refresh': reactRefresh },
     rules: {

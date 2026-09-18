@@ -35,8 +35,6 @@
     "test:files": "node scripts/verify/checks/test-glob-parity.mjs",
     "secrets": "node scripts/verify/checks/secret-boundary.mjs",
     "seam": "node scripts/verify/checks/seam-boundary.mjs",
-    "lint:exempt": "node scripts/verify/ratchets/lint-exempt.mjs",
-    "ratchet:persist": "node scripts/verify/ratchets/persist-boundary.mjs",
     "deadcode": "node scripts/verify/ratchets/dead-exports.mjs",
     "migrations:check": "node scripts/verify/checks/migration-invariants.mjs",
     "schema:check": "node scripts/verify/checks/schema-conformance.mjs",

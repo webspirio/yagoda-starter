@@ -208,7 +208,6 @@ test('the runner default still clears every row that inherits it, and that set i
     // in scripts/verify/baselines/money-rounding.json. The 808ms reading stays in git
     // history rather than here, because a budget for a row that no longer runs would fail
     // the deepEqual below on every run.
-    'ratchet:persist': 802,
     secrets: 424,
     // LOCAL readings, not CI ones: both rows were added after run 35011857830 and have
     // never run on a CI runner, so there is no cold CI number to record yet. Measured
@@ -219,7 +218,6 @@ test('the runner default still clears every row that inherits it, and that set i
     // here. Replace both with the real cold numbers after the first full CI run.
     documents: 360,
     schema: 350,
-    'ratchet:lint-exempt': 216,
     bundle: 188,
     testfiles: 158,
   }
@@ -337,5 +335,62 @@ test('every workspace defines lint, typecheck and test — turbo skips a workspa
           'workspace silently and the row will still be green',
       )
     }
+  }
+})
+
+/**
+ * THE ONE THING ESLINT CANNOT POLICE ABOUT ITSELF: ITS OWN CONFIG.
+ *
+ * `ratchet:lint-exempt` covered three shapes eslint has no rule for — a widened top-level
+ * `ignores` glob, a rule pinned to `'off'`, and the money block's `files` list shrinking.
+ * `eslint-comments` sees comments in source and nothing else, so deleting that ratchet
+ * without this leaves the config unwatched in the same branch that makes `lint` the only
+ * money net. These assertions are ~25 lines against 655, and unlike the baseline they are
+ * keyed on CONTENT rather than on a line number that moved four times in eight days.
+ */
+const eslintConfig = async (/** @type {string} */ ws) =>
+  /** @type {any[]} */ ((await import(`../../${ws}/eslint.config.mjs`)).default)
+
+test('the money ban still bans what it claims to ban', async () => {
+  const cfg = await eslintConfig('backend')
+  const block = cfg.find((b) => b?.rules?.['no-restricted-syntax'] && Array.isArray(b.files))
+  assert.ok(block, 'the money block is gone from backend/eslint.config.mjs')
+  const selectors = block.rules['no-restricted-syntax']
+    .filter((/** @type {unknown} */ r) => typeof r === 'object')
+    .map((/** @type {{selector: string}} */ r) => r.selector)
+  for (const required of [
+    'BinaryExpression[operator=/^[*/]$/]',
+    'AssignmentExpression[operator=/^[*/]=$/]',
+    "CallExpression[callee.name='Number']",
+    "MemberExpression[property.name='toFixed']",
+  ]) {
+    assert.ok(
+      selectors.includes(required),
+      `the money ban no longer carries ${required}. Since ratchet:money was deleted this ` +
+        'block is the only net over money arithmetic; removing a selector silently narrows it.',
+    )
+  }
+  const globals = block.rules['no-restricted-globals'] ?? []
+  const names = globals.filter((/** @type {unknown} */ g) => typeof g === 'object').map((/** @type {{name:string}} */ g) => g.name)
+  assert.deepEqual(names.sort(), ['parseFloat', 'parseInt'])
+})
+
+test('neither config pins a rule off in its own source', () => {
+  // Read the SOURCE, not the resolved config: `tseslint.configs.recommended` legitimately
+  // turns `constructor-super` off, and a preset's decisions are not this repo's
+  // suppressions. What this catches is a rule pinned off IN THESE TWO FILES — a suppression
+  // with no comment, no reason and no location, invisible to every eslint-comments rule
+  // because there is no comment to inspect. This is `ratchet:lint-exempt`'s RULE_OFF_RE,
+  // kept as ten lines rather than 371 plus a line-keyed baseline.
+  const RULE_OFF = /(['"])([\w@/-]+)\1\s*:\s*(?:(['"])off\3|0)\s*[,}]/g
+  for (const ws of ['backend', 'frontend']) {
+    const src = backendFile(`${ws}/eslint.config.mjs`)
+    const hits = [...src.matchAll(RULE_OFF)].map((m) => m[2])
+    assert.deepEqual(
+      hits,
+      [],
+      `${ws}/eslint.config.mjs pins ${hits.join(', ')} to 'off'. Delete the rule, or scope ` +
+        'the block with `files`, so the decision is where a reader can see it.',
+    )
   }
 })

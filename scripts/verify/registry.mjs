@@ -401,9 +401,9 @@ export const CHECKS = [
       'here, so this row also proves those two files still say what the check assumes. AS A ' +
       'SNAPSHOT, RE-MEASURED 2026-09-18 on main after PR #111 (the #11 password vault) ' +
       'landed alongside the verify layer (239 files on 2026-09-16, 219 on 2026-09-15, 170 ' +
-      'on 2026-09-11): 244 files ' +
+      'on 2026-09-11): 242 files ' +
       'now match across the two candidate nets (jest-unit 57, jest-db 30, vitest 138, ' +
-      'node-test 16, playwright 1, shell-test 2). All 3 new files came from that one PR — ' +
+      'node-test 14, playwright 1, shell-test 2). All 3 new files came from that one PR — ' +
       'users/secret-box.spec.ts, migrations/user-password-vault.db-spec.ts and ' +
       'shared/ui/password-input.test.tsx, one per collector across all three workspaces — ' +
       'no collector was added or changed by this re-measurement, ' +
@@ -679,15 +679,15 @@ export const CHECKS = [
       "intermediate counts this row does not itself track): `npm run test:verify` " +
       "(`node --test --test-concurrency=1 'scripts/verify/**/*.test.mjs' " +
       "'.claude/hooks/**/*.test.mjs'` — TWO globs since Task 19, not the one this row " +
-      "originally shipped quoting) collects and runs 197 tests across 16 *.test.mjs files " +
+      "originally shipped quoting) collects and runs 176 tests across 14 *.test.mjs files " +
       "today, re-measured per file 2026-09-18 — hash.test.mjs (8), registry.test.mjs (12), " +
       "run.test.mjs (20), run.report.test.mjs (3), " +
       'checks/audit.test.mjs (11), checks/bundle-size.test.mjs (10), ' +
       'checks/migration-invariants.test.mjs (8), ' +
       'checks/seam-boundary.test.mjs (13), checks/secret-boundary.test.mjs (13), ' +
       'checks/test-glob-parity.test.mjs (8), ratchets/dead-exports.test.mjs (13), ' +
-      'ratchets/lint-exempt.test.mjs (8), ' +
-      'ratchets/persist-boundary.test.mjs (15) and .claude/hooks/stop-gate.test.mjs (14) ' +
+      
+      'and .claude/hooks/stop-gate.test.mjs (14) ' +
       '— due to grow again the next time this plan adds a check. This row does not track ' +
       'or re-check its own prose count.',
     blindSpot:
@@ -722,136 +722,6 @@ export const CHECKS = [
       'quoted claim is honest. And a green here says nothing about a check this layer ' +
       "does not yet have — a future crate_issuances or cash_counts boundary check, say — " +
       'until both that check and its tests exist.',
-  },
-  {
-    id: 'ratchet:lint-exempt',
-    tier: 'fast',
-    cmd: 'npm run lint:exempt',
-    // No `after`: this check never invokes eslint (npm run lint) or tsc — it reads
-    // backend/src, frontend/src and the two eslint.config.mjs files itself with a
-    // line-oriented text scan (scripts/verify/ratchets/lint-exempt.mjs), the same
-    // "parse the tree directly, don't shell out to the tool" stance `seam` and
-    // `migrations` already take toward tsc. A red `lint` row changes nothing about what
-    // this row can see: it is exactly as blind to whether a suppressed rule is currently
-    // VIOLATED as it is to whether the rule exists in either config at all — it only
-    // ever asks "is every exemption accounted for," never "is eslint happy."
-    proves:
-      'Every lint exemption this scan finds — an eslint-disable/-disable-line/-disable-' +
-      'next-line/-enable directive comment anywhere in backend/src or frontend/src, or an ' +
-      "`ignores`-property occurrence or a rule pinned to 'off' in either flat " +
-      'eslint.config.mjs — must match a dated, ≥30-character-reasoned entry in ' +
-      'scripts/verify/baselines/lint-exempt.json, key for key, or this exact command fails. ' +
-      'THIS IS THE FIRST TRUE RATCHET IN THIS LAYER: the comparison runs in BOTH ' +
-      'directions, and both are provable by this exact command failing, independent of how ' +
-      'many exemptions exist. A NEW exemption ' +
-      'anywhere in the scan that is not yet in the baseline fails it (`git ls-files -c -o ' +
-      '--exclude-standard` means an untracked, freshly written one counts too). A baseline ' +
-      'entry whose exemption NO LONGER EXISTS in the code or config also fails it — a stale ' +
-      'forgiveness must be deleted, never left standing, or the baseline only ever grows. ' +
-      'And a baseline entry whose `reason` is missing, `TODO`, or under 30 characters after ' +
-      'trimming fails the command on the baseline alone, before either direction of that ' +
-      'comparison ever runs. AS A SNAPSHOT, RE-MEASURED 2026-09-15 on the tree this ' +
-      'branch merged 156 commits of main into: `npm run lint:exempt` finds exactly 13 ' +
-      'lint exemptions — 10 directive comments (9 disable-type, ' +
-      "plus the one eslint-enable that closes test-setup.ts's block disable) and 3 " +
-      "`ignores`-property occurrences bundling 8 individual globs, with zero rules pinned " +
-      "to 'off' in either config. THE COUNT OF 13 IS UNCHANGED FROM 2026-09-10 AND THAT IS " +
-      'NOT THE SAME AS NOTHING HAVING HAPPENED: two entries were re-keyed on 2026-09-15 ' +
-      'because their LINE moved, which this check reports as one exemption removed plus ' +
-      'one added (see this row\'s own blindSpot) — eslint\'s money-module `files` list grew ' +
-      'from four globs to eight, pushing backend\'s spec-file `ignores` from line 44 to 70, ' +
-      "and frontend's `ignores` gained dist-e2e and moved 31 -> 37. That eighth glob is the " +
-      'one real addition: `smoke` builds into frontend/dist-e2e, which is gitignored but ' +
-      "invisible to eslint's flat config, so without it the first `npm run verify:full` " +
-      'left a minified bundle on disk and the next `npm run verify` reported 2116 lint ' +
-      'errors inside it. That count moves the instant anyone adds or removes an ' +
-      'exemption anywhere in the scan, and this row does not track or re-check its own ' +
-      'prose.',
-    blindSpot:
-      'Counts lint suppressions; it does not, and cannot, judge whether any one of them is ' +
-      'justified — a reason that reads as 30-plus characters of plausible prose passes ' +
-      'exactly as well as one that is actually true, because nothing here re-derives WHY a ' +
-      'rule does not apply, only that someone wrote a reason down. A rule that was never ' +
-      'enabled in either flat config needs no exemption and stays invisible here — this row ' +
-      'proves nothing about the coverage of the rule set itself, only about what is exempted ' +
-      'from whatever rules do run today. And because a key embeds the exact line number, an ' +
-      'exemption comment or an `ignores` property that merely MOVES to a different line — a ' +
-      'reformat, an unrelated edit two lines above it — looks to this check exactly like one ' +
-      'exemption removed plus a new one added, even though what it actually suppresses never ' +
-      'changed; the same is true, compounded, of a bundled `ignores` entry, where adding or ' +
-      'removing even ONE glob from a multi-glob line changes the whole line\'s key.',
-  },
-  {
-    id: 'ratchet:persist',
-    tier: 'fast',
-    cmd: 'npm run ratchet:persist',
-    // No `after`: this check never invokes tsc, only `ts.createSourceFile` — a syntax-only
-    // parse, the same access route `seam` and `migrations` already take (`ratchet:money`
-    // took it too and stated the reasoning in full, until that row was removed on
-    // 2026-09-18 — see git history for it). A type error does not stop a file from
-    // parsing, so ordering this after `typecheck` would pair two rows that do not
-    // actually depend on each other.
-    proves:
-      'Every `localStorage`/`sessionStorage` member access under frontend/src — a direct ' +
-      '`localStorage.x`/`sessionStorage.x`, or `window.localStorage.x`/`window.sessionStorage.x` ' +
-      '— sits inside a `try`/`catch`; every value a `getItem()` call on one of those returns ' +
-      'reaches app state only through `typeof`, `Array.isArray`, `in`, `instanceof`, a ' +
-      '`.parse(` call, or a local `x is T` type-predicate function DECLARED IN THE SAME FILE ' +
-      '(never a bare `as`/`<T>` cast, and never left unguarded when the enclosing function\'s ' +
-      'own declared return type is narrower than the `string | null` `getItem()` actually ' +
-      'returns); and the string literals `isPersistableKey` (found anywhere under ' +
-      'frontend/src by name, not hard-coded to one path) checks a key against equal ' +
-      'scripts/verify/baselines/persist-boundary.json\'s entries, key for key, in BOTH ' +
-      'directions — a new key is red, and a baseline entry with no matching literal left in ' +
-      'the tree is red too. A violation of any of the three, anywhere the scan reaches, fails ' +
-      'this exact command. Parsed with the TypeScript compiler API, `.tsx` files under ' +
-      '`ts.ScriptKind.TSX` and `.ts` files under `ts.ScriptKind.TS` — never a regex, and never ' +
-      'the wrong script kind silently mis-parsing JSX. AS A SNAPSHOT, RE-MEASURED ' +
-      '2026-09-15 on the tree this branch merged 156 commits of main into, and UNCHANGED ' +
-      'by that merge: the check reports 10 guarded accesses across FOUR files and 4 ' +
-      'getItem() reads, with isPersistableKey\'s allowlist holding exactly one key, `me`. ' +
-      'THE FOUR ARE THE NUMBER THE CHECK ITSELF PRINTS, and it corrects a count this row ' +
-      'carried wrongly until 2026-09-15: the prose said FIVE files, counting ' +
-      'shared/api/persister.ts among them because a grep finds the word there. This check ' +
-      'never saw it — persister.ts reaches storage through a `safeStorage(read: () => ' +
-      'Storage)` thunk, and rule 1 recognises the storage object only by name, so it ' +
-      'contributes zero access sites (the blindSpot below already said exactly this; the ' +
-      'proves string above it disagreed). The four the check actually sees are ' +
-      'entities/user/model/store.ts (the bearer token), ' +
-      'shared/lib/form-draft/draftStorage.ts (raw form drafts), ' +
-      'shared/lib/i18n/language-preference.ts and shared/lib/theme/theme-preference.ts. ' +
-      'frontend/src/test-setup.ts (vitest\'s global setup file, wired by vite.config.ts\'s ' +
-      'test.setupFiles and imported by nothing else) is excluded from this scan by exact ' +
-      'path: its unguarded `localStorage.clear()`/`sessionStorage.clear()` never ship in the ' +
-      'production bundle and run only under jsdom, which does not exhibit the private-' +
-      'browsing throw this row exists to catch — the same class of file-role scope decision ' +
-      'the removed `ratchet:money` row also made, excluding `*.spec.ts`/`*.db-spec.ts`, not a baseline entry ' +
-      'forgiving a violation in one of the four real boundary files. That count and file list ' +
-      'grow or shrink with ordinary feature work, and this row does not track or re-check its ' +
-      'own prose.',
-    blindSpot:
-      'It proves the SHAPE of a guard, never that the guard is correct: `Array.isArray(x)` ' +
-      'satisfies the narrowing rule and says nothing about what is inside the array, and a ' +
-      'value that clears `isSupported(v)` is trusted completely from that point on even if ' +
-      'the predicate itself is wrong. A local type-predicate function must be DECLARED IN THE ' +
-      'SAME FILE as the read it narrows — a predicate imported from elsewhere cannot be ' +
-      'confirmed from the AST at all, so a read narrowed that way reads as UNNARROWED (a real ' +
-      'narrowing reported as absent), never as silently accepted. Rule 1 recognises the ' +
-      'storage object only BY NAME (`localStorage`/`sessionStorage`/`window.localStorage`/' +
-      '`window.sessionStorage`): a reference obtained through an intermediate variable ' +
-      '(`const s = window.localStorage; s.getItem(...)`) is invisible to it in both ' +
-      'directions — neither flagged unguarded nor credited as guarded — which is also, ' +
-      'precisely, why persister.ts\'s own `safeStorage(read: () => Storage)` (whose header ' +
-      'comment states outright that the thunk exists so "the getter access itself happens ' +
-      'inside the try") reports zero access sites here rather than being confirmed safe: its ' +
-      'reads happen through a local `storage` variable this row never resolves back to the ' +
-      'global. Rule 2\'s "opaque passthrough" exemption (a bare, uncast `return x.getItem(...)`, ' +
-      'or a local variable never cast and never used structurally) has no live counterpart in ' +
-      'the current tree failing it, so its coverage rests on this row\'s own fixture tests, ' +
-      'not on a real finding it has caught. And frontend/src/test-setup.ts is excluded by ' +
-      'exact path — a second such test-harness file elsewhere would need its own named ' +
-      'exclusion before this row would stop reporting it, since nothing here recognises "this ' +
-      'is test infrastructure" except that one hard-coded path.',
   },
   {
     id: 'deadcode',

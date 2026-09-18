@@ -33,14 +33,14 @@ void i18n.changeLanguage('en');
 // shape and static analysis doesn't flag them as passing a superfluous
 // argument. The params are intentionally unused: the stub stays a no-op
 // (invoking the callback could re-enter Radix's measure loop).
-/* eslint-disable @typescript-eslint/no-unused-vars */
+/* eslint-disable @typescript-eslint/no-unused-vars -- ResizeObserverStub's constructor and method parameters are unused deliberately, so its signature mirrors the real ResizeObserver */
 class ResizeObserverStub {
   constructor(_callback: ResizeObserverCallback) {}
   observe(_target: Element) {}
   unobserve(_target: Element) {}
   disconnect() {}
 }
-/* eslint-enable @typescript-eslint/no-unused-vars */
+/* eslint-enable @typescript-eslint/no-unused-vars -- closes the block opened above, so the rule is back in force for the rest of this file rather than off to the end */
 globalThis.ResizeObserver = ResizeObserverStub;
 
 // jsdom doesn't implement pointer capture; vaul (the bottom-sheet drawer)
