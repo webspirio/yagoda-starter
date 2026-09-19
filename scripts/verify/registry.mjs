@@ -460,7 +460,19 @@ export const CHECKS = [
   },
   {
     id: 'deadcode',
-    tier: 'fast',
+    // FULL, NOT FAST, and the reason is the ordinary way people write frontend code: you
+    // create a component, and you wire it up in the next edit. Between those two moments
+    // the file is imported by nothing, which is exactly what knip reports — correctly. The
+    // Stop hook runs the fast tier after EVERY turn, so a fast-tier `deadcode` turns that
+    // completely normal intermediate state into a red gate, and the only ways out are to
+    // baseline a file you are about to wire up anyway or to stop reading the gate. Both are
+    // worse than waiting.
+    //
+    // Nothing is given up by waiting: `.githooks/pre-push` excludes only smoke/coverage/
+    // audit, so this still blocks every push, and CI's verify:ci runs the full tier. Dead
+    // code is not a correctness defect that gets harder to find later — it is still there
+    // at push time, which is the first moment the answer is even meaningful.
+    tier: 'full',
     cmd: 'npm run deadcode',
     // No `after`: unlike ratchet:persist/seam/migrations (a syntax-only
     // ts.createSourceFile parse, unaffected by type errors by construction), knip DOES run
