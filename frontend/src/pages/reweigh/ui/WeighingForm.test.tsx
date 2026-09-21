@@ -1,6 +1,7 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { i18n } from '@/shared/lib/i18n';
 import { WeighingForm } from './WeighingForm';
 
 const { tareMock } = vi.hoisted(() => ({
@@ -41,10 +42,23 @@ const base = {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // TWO tare types, `t1` first (the default `effectiveTareId` falls back to)
+  // — this is what lets "hands up a complete draft" prove `handleAdd` KEEPS
+  // a non-default selection rather than merely never having touched it.
   tareMock.mockReturnValue({
-    data: [{ id: 't1', name: 'Ящик', weight_kg: '1.20' }],
+    data: [
+      { id: 't1', name: 'Ящик', weight_kg: '1.20' },
+      { id: 't2', name: 'Диб', weight_kg: '2.50' },
+    ],
     isPending: false,
   });
+});
+
+// The locale test below switches to `uk` — reset unconditionally (even on a
+// failed assertion) so it never leaks into a later file's "runs in ENGLISH"
+// assumption. Mirrors `shared/lib/i18n/i18n.test.ts`'s own convention.
+afterEach(async () => {
+  await i18n.changeLanguage('en');
 });
 
 describe('WeighingForm', () => {
@@ -83,10 +97,17 @@ describe('WeighingForm', () => {
     expect(screen.getByRole('button', { name: /another position|ще позиція/i })).toBeEnabled();
   });
 
-  it('hands up a complete draft and clears itself', async () => {
+  it('hands up a complete draft, clears the fields, and KEEPS a non-default tare type', async () => {
     const onAdd = vi.fn();
     render(<WeighingForm {...base} onAdd={onAdd} />);
+    // Pick the NON-default tare type first — if `handleAdd` reset `tareId` to
+    // the catalogue's first entry (the bug the requirement guards against),
+    // asserting against the default `t1` would pass either way.
+    await userEvent.selectOptions(screen.getByLabelText(/tare type|тип тари/i), 't2');
     await userEvent.type(screen.getByLabelText(/gross|вага з ягодою/i), '120.50');
+    await userEvent.type(screen.getByLabelText(/pallet|піддон/i), '20');
+    await userEvent.clear(screen.getByLabelText(/crates|кількість ящиків/i));
+    await userEvent.type(screen.getByLabelText(/crates|кількість ящиків/i), '5');
     await userEvent.selectOptions(screen.getByLabelText(/grade|сорт/i), 'g1');
     await userEvent.click(screen.getByRole('button', { name: /another position|ще позиція/i }));
 
@@ -96,11 +117,19 @@ describe('WeighingForm', () => {
         product_grade_name: 'Малина 1',
         product_id: 'p1',
         gross_kg: '120.50',
-        pallet_kg: '0.00',
-        net_kg: '120.50',
+        pallet_kg: '20',
+        tare: [{ tare_type_id: 't2', units: 5 }],
       }),
     );
+
+    // The five facts requirement 4 names: gross, pallet, crate count and
+    // grade reset — but the crate TYPE does not, because it does not change
+    // between pallets.
     expect(screen.getByLabelText(/gross|вага з ягодою/i)).toHaveValue('');
+    expect(screen.getByLabelText(/pallet|піддон/i)).toHaveValue('');
+    expect(screen.getByLabelText(/crates|кількість ящиків/i)).toHaveValue('0');
+    expect(screen.getByLabelText(/grade|сорт/i)).toHaveValue('');
+    expect(screen.getByLabelText(/tare type|тип тари/i)).toHaveValue('t2');
   });
 
   it('never sends a computed tare weight as if it were typed', async () => {
@@ -111,5 +140,18 @@ describe('WeighingForm', () => {
     await userEvent.selectOptions(screen.getByLabelText(/grade|сорт/i), 'g1');
     await userEvent.click(screen.getByRole('button', { name: /another position|ще позиція/i }));
     expect(onAdd.mock.calls[0][0].tare).toEqual([]);
+  });
+
+  /**
+   * `uk` is this app's DEFAULT locale (`test-setup.ts` only switches to `en`
+   * for the suite's own assertions) — every other number on this screen
+   * localizes its separator, and the catalogue weight in the tare-type
+   * option must too, or it is the one stray period on an otherwise
+   * Ukrainian-formatted screen.
+   */
+  it("formats the tare type's catalogue weight for the active locale, not a raw decimal string", async () => {
+    await i18n.changeLanguage('uk');
+    render(<WeighingForm {...base} />);
+    expect(screen.getByText('Ящик 1,20 кг')).toBeInTheDocument();
   });
 });

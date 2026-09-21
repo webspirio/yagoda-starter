@@ -6,7 +6,7 @@ import { Eyebrow } from '@/shared/ui/eyebrow';
 import { Field } from '@/shared/ui/field';
 import { SelectField } from '@/shared/ui/select-field';
 import { TextInput } from '@/shared/ui/text-input';
-import { DECIMAL_INPUT, cmp, formatKg, normalizeAmount } from '@/shared/lib/money';
+import { DECIMAL_INPUT, cmp, formatDecimal, formatKg, normalizeAmount } from '@/shared/lib/money';
 import { formatShortDate } from '@/shared/lib/date';
 import { useTareTypeOptionsQuery } from '@/entities/tare-type';
 import type { ReconciliationGrade } from '@/entities/reweigh';
@@ -255,7 +255,7 @@ export function WeighingForm({
           >
             {(tareTypes.data ?? []).map((tt) => (
               <option key={tt.id} value={tt.id}>
-                {t('reweigh.tareOption', { name: tt.name, weight: tt.weight_kg })}
+                {t('reweigh.tareOption', { name: tt.name, weight: formatDecimal(tt.weight_kg, locale) })}
               </option>
             ))}
           </SelectField>
