@@ -77,15 +77,19 @@ export function ReceptionPage() {
   // React Compiler cannot memoize safely (it bails out of the whole component).
   const values = useWatch({ control, defaultValue: form.getValues() }) as IntakeFormValues;
 
-  // The tare registry is a network read, so the first draft is built before its
-  // default is knowable; seed it the moment it arrives. Every LATER line gets
-  // the id passed to `emptyLine` directly.
+  // The tare registry and the priced grades are both network reads, so the
+  // first draft is built before either default is knowable; seed them the
+  // moment each arrives. Every LATER line keeps `''` for its grade (the mock
+  // pre-selects only the first) and gets its tare default from `emptyLine`
+  // directly.
   useEffect(() => {
-    if (defaultTareTypeId === '') return;
-    if (form.getValues('items.0.tare.0.tare_type_id') === '') {
+    if (defaultTareTypeId !== '' && form.getValues('items.0.tare.0.tare_type_id') === '') {
       setValue('items.0.tare.0.tare_type_id', defaultTareTypeId);
     }
-  }, [defaultTareTypeId, form, setValue]);
+    if (grades.data.length > 0 && form.getValues('items.0.product_grade_id') === '') {
+      setValue('items.0.product_grade_id', grades.data[0].id);
+    }
+  }, [defaultTareTypeId, form, setValue, grades.data]);
 
   // The picker hands over the whole row when it is chosen; the form only
   // ever carries the id (`supplier_id`) that the document needs, so the two
@@ -169,8 +173,7 @@ export function ReceptionPage() {
   const accrued = settled?.amount ?? null;
   const netKg = settled ? sum(settled.items.map((i) => i.net_kg)) : null;
   const isPreviewing = !preview.isSettled && (preview.isPending || preview.preview !== null);
-  const canSubmit =
-    shiftOpen && values.supplier_id !== '' && settled !== null && !hasServerError;
+  const canSubmit = shiftOpen && values.supplier_id !== '' && settled !== null && !hasServerError;
 
   const onSubmit = handleSubmit(async (formValues) => {
     setSubmitFailure(null);

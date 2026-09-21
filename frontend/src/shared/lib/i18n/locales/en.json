@@ -726,7 +726,8 @@
       "fewer": "One fewer {{n}}",
       "more": "One more {{n}}",
       "removeTare": "Remove tare row",
-      "otherTare": "Other tare"
+      "otherTare": "Other tare",
+      "rowWeight": "{{kg}}"
     },
     "grade": {
       "eyebrow": "3 · Product, grade and day price",
@@ -737,13 +738,13 @@
       "gradeOption": "{{name}} · {{price}} ₴/kg",
       "bonus": "Extra price — for this line, ₴/kg",
       "bonusDown": "Extra price down",
-      "bonusUp": "Extra price up",
-      "bounds": "limits: −{{discount}} … +{{markup}} ₴/kg",
-      "outOfRange": "out of range"
+      "bonusUp": "Extra price up"
     },
     "line": {
       "preview": "tare {{tare}} · net {{net}} · {{price}}{{bonus}} → {{amount}}",
       "pending": "…",
+      "tareMissing": "Enter the tare quantity — without it the gross weight would count entirely as net.",
+      "gradeMissing": "Choose a grade for this line — otherwise it won't make it into the receipt.",
       "grossWarning": "{{gross}} kg — more than the largest line of the season (701.5 kg). Check the gross weight.",
       "perCrateWarning": "{{kg}} kg per crate. Check the gross weight or the tare count."
     },

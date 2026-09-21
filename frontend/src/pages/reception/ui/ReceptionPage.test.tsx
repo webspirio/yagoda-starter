@@ -282,7 +282,10 @@ const page = <T,>(data: T[]) => ({
 
 interface PreviewState {
   preview: IntakePreview | null;
-  error: { fieldErrors: { field: string; messageKey: string }[]; formErrorKey: string | null } | null;
+  error: {
+    fieldErrors: { field: string; messageKey: string }[];
+    formErrorKey: string | null;
+  } | null;
   isPending: boolean;
   isSettled: boolean;
 }
@@ -331,9 +334,7 @@ beforeEach(() => {
   balanceMock.mockReset().mockReturnValue({ data: undefined, isPending: false, isError: false });
   intakesMock.mockReset().mockReturnValue(page<Intake>([]));
   gradesMock.mockReset().mockReturnValue({ data: GRADES, isPending: false, isError: false });
-  tareTypesMock
-    .mockReset()
-    .mockReturnValue({ data: TARE_TYPES, isPending: false, isError: false });
+  tareTypesMock.mockReset().mockReturnValue({ data: TARE_TYPES, isPending: false, isError: false });
   previewMock.mockReset().mockReturnValue(previewState());
   createMock.mockReset().mockResolvedValue(CREATED);
   openShiftMock.mockReset().mockResolvedValue(openShift);
@@ -355,9 +356,7 @@ describe('ReceptionPage — before the shift is open', () => {
     const dialog = await screen.findByRole('dialog');
     await user.type(within(dialog).getByRole('textbox'), '1500.00');
     await user.click(within(dialog).getByRole('button', { name: SUBMIT_COUNT }));
-    await waitFor(() =>
-      expect(openShiftMock).toHaveBeenCalledWith({ counted_amount: '1500.00' }),
-    );
+    await waitFor(() => expect(openShiftMock).toHaveBeenCalledWith({ counted_amount: '1500.00' }));
   });
 
   it('shows the refusal in the shared dialog and keeps it open when opening fails', async () => {
@@ -883,6 +882,82 @@ describe('ReceptionPage — a refusal from the server', () => {
       screen.getByText('The server refused one of the lines — check the rows in the table'),
     ).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Accept' })).toBeDisabled();
+  });
+});
+
+describe('ReceptionPage — line editor ergonomics (#117)', () => {
+  it('masks the gross weight while typing and never shows the surcharge bounds', async () => {
+    const user = userEvent.setup();
+    renderReception();
+    await user.click(screen.getByRole('button', { name: 'pick-nina' }));
+
+    const gross = screen.getByLabelText('Gross — berries including tare');
+    await user.type(gross, '12a,3x45');
+    expect(gross).toHaveValue('12.34');
+
+    // §2.10 / ticket #117 — a bound is a limit, never a number shown to the
+    // operator, whichever grade is selected.
+    expect(screen.queryByText(/limits:/i)).not.toBeInTheDocument();
+    expect(screen.queryByText('out of range')).not.toBeInTheDocument();
+  });
+
+  it("clamps the surcharge to the grade's bounds on blur and by the stepper", async () => {
+    const user = userEvent.setup();
+    renderReception();
+
+    // Line 0 is pre-selected onto the fixture's first grade (g1: max_markup
+    // 3.00, max_discount 2.00) — see the "pre-selects" test below.
+    await waitFor(() => {
+      expect(screen.getByLabelText('Grade and day price')).toHaveValue('g1');
+    });
+    const bonus = screen.getByLabelText('Extra price — for this line, ₴/kg');
+    await user.clear(bonus);
+    await user.type(bonus, '5');
+    await user.tab();
+    expect(bonus).toHaveValue('3.00');
+
+    await user.click(screen.getByRole('button', { name: 'Extra price up' }));
+    expect(bonus).toHaveValue('3.00');
+  });
+
+  it('reveals the pallet field on its own at twenty crates', async () => {
+    const user = userEvent.setup();
+    renderReception();
+
+    expect(screen.queryByLabelText('Pallet')).not.toBeInTheDocument();
+    const units = screen.getByLabelText('Tare units 1');
+    await user.clear(units);
+    await user.type(units, '20');
+
+    expect(screen.getByLabelText('Pallet')).toBeInTheDocument();
+  });
+
+  it('shows the row weight beside the tare stepper and warns at zero units', async () => {
+    const user = userEvent.setup();
+    renderReception();
+
+    // The default line starts on one Czech crate (0.50 kg) at a count of 1.
+    expect(screen.getByText('0.50 kg')).toBeInTheDocument();
+
+    const gross = screen.getByLabelText('Gross — berries including tare');
+    await user.type(gross, '10');
+    const units = screen.getByLabelText('Tare units 1');
+    await user.clear(units);
+    await user.type(units, '0');
+
+    expect(
+      screen.getByText(
+        'Enter the tare quantity — without it the gross weight would count entirely as net.',
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('pre-selects the first priced grade on the first line', async () => {
+    renderReception();
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('Grade and day price')).toHaveValue('g1');
+    });
   });
 });
 
