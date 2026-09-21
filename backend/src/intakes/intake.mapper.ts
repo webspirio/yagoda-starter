@@ -52,14 +52,14 @@ export interface IntakeItemResponse {
   tare: IntakeItemTareResponse[];
 }
 
-export interface IntakePayoutResponse {
+interface IntakePayoutResponse {
   id: string;
   code: string;
   amount: string;
   voided_at: string | null;
 }
 
-export function toIntakePayoutResponse(payout: Payout): IntakePayoutResponse {
+function toIntakePayoutResponse(payout: Payout): IntakePayoutResponse {
   return {
     id: payout.id,
     code: payout.code,

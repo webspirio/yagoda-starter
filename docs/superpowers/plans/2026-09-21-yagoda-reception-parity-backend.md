@@ -907,7 +907,7 @@ export function rowExtrasSelects(
 ): ReadonlyArray<{ sql: string; alias: keyof IntakeRowExtras }> {
   return [
     {
-      sql: `(SELECT COALESCE(SUM(ii.net_kg), 0)::text FROM intake_items ii WHERE ii.intake_id = ${alias}.id)`,
+      sql: `(SELECT COALESCE(SUM(ii.net_kg)::text, '0.00') FROM intake_items ii WHERE ii.intake_id = ${alias}.id)`,
       alias: 'net_kg',
     },
     {
@@ -917,7 +917,7 @@ export function rowExtrasSelects(
     {
       // Live payouts only: a voided payout was never really paid (the DEBT
       // reading of `voided_at`, same as `supplier-balance`).
-      sql: `(SELECT COALESCE(SUM(p.amount), 0)::text FROM payouts p WHERE p.intake_id = ${alias}.id AND p.voided_at IS NULL)`,
+      sql: `(SELECT COALESCE(SUM(p.amount)::text, '0.00') FROM payouts p WHERE p.intake_id = ${alias}.id AND p.voided_at IS NULL)`,
       alias: 'paid_amount',
     },
     {
