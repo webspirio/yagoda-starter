@@ -1135,3 +1135,19 @@ decision rather than guessing whether something was missed.
   Query dedupes the two calls to one request, so nothing is wrong today, but it is forced by the
   current prop signatures rather than chosen — worth revisiting if either component is ever
   reshaped.
+
+**Came out of Task 15's gate, and is the one item here with a date on it:**
+
+- **The frontend's first-load headroom is below the minimum the budget was designed with** —
+  19.9 KiB gzip against 25.0, 75.8 KiB raw against 100.0, measured 2026-09-21. `bundle` prints
+  this as a WARNING on every green run rather than hiding it, and the ceiling was deliberately
+  NOT raised to make it go away (`b40e5c4`). The practical meaning: the next commit that adds
+  much to the eager graph turns the row red, and the intended response is to defer more code
+  behind a lazy route — `/`, `/reception`, `/day`, `/point-cash`, `/crates`, `/prices`,
+  `/suppliers` and `/debts` are all still eager, and the operator does not open all of them
+  every shift either. Raising `maxGzipBytes`/`maxRawBytes` is the move that file exists to make
+  somebody justify in writing.
+- **Nothing budgets the deferred bytes at all.** `owner-pages` is 20.4 KiB gzip today and could
+  become 200 with this row staying green, because the gate is the first-load set by design. A
+  per-chunk ceiling is the obvious next instrument; none is agreed, and `bundle` deliberately
+  does not invent one.

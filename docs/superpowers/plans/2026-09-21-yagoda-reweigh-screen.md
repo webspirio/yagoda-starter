@@ -2638,6 +2638,30 @@ number that matters, the first chunk is.
 
 Two commits: the split, then the re-measured budget with its reasoning in the body.
 
+> **OUTCOME, 2026-09-21 — Step 5's premise was wrong, and the row is green without a
+> ceiling raise.** "Re-measure and LOWER the budget" assumed the `bundle` row gates what
+> the operator downloads. It gates the SUM of `frontend/dist/assets`, and the sum GREW:
+> splitting one chunk into two costs gzip, because two chunks compress worse than one.
+> Measured after the split — first load 291,949 gzip / 1,007,840 raw (down 17,893 gzip),
+> owner chunk 20,842 gzip, sum 312,791 gzip against a 312,320 ceiling. Red by 471 B, on
+> the commit that made the download smaller. Requirement 5's escape hatch ("if the
+> measurement somehow comes out ABOVE today's ceiling, stop and report") did not cover
+> this, because the measurement that mattered came out BELOW and the one being gated came
+> out above.
+>
+> Three options were put to the user — raise the ceiling per the file's own arithmetic
+> (+30 KiB gzip), gate first load instead, or gate both. **The user chose to gate first
+> load, ceiling untouched.** Done in `69ee4b5` (the check reads the first-load set from
+> `dist/index.html` — entry script, stylesheets, and every modulepreload, so a split that
+> hoists shared code into eagerly-preloaded chunks is still caught) and `b40e5c4` (the
+> baseline re-records the measured quantity; `maxGzipBytes`/`maxRawBytes` are byte-for-byte
+> unchanged). Three commits in the end, not two. `npm run verify:full`: 16 PASSED, 0
+> SKIPPED.
+>
+> The standing consequence is in the follow-ups file: first-load headroom is now 19.9 KiB
+> gzip / 75.8 KiB raw against designed minimums of 25.0 / 100.0, so the check warns on
+> every green run and the next ordinary commit trips it.
+
 ---
 
 ### Task 16: Name the product, not only the grade, in the day table
