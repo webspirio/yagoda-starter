@@ -120,6 +120,7 @@ const payout = (over: Partial<Payout> & Pick<Payout, 'amount'>): Payout => ({
   business_date: '2026-09-08',
   supplier_id: 'sup1',
   paid_by_user_id: 'u1',
+  intake_id: null,
   voided_at: null,
   voided_by_user_id: null,
   void_reason: null,

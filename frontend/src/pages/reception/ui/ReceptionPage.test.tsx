@@ -221,6 +221,12 @@ const CREATED: IntakeDetail = {
   voided_by_user_id: null,
   void_reason: null,
   created_at: '2026-09-08T09:15:00Z',
+  net_kg: '36.90',
+  lines_count: 2,
+  supplier_name: 'Ніна Ільчук',
+  paid_amount: '0.00',
+  payouts: [],
+  received_by_name: 'Оксана Гнатюк',
   items: [
     {
       id: 'it1',
@@ -248,6 +254,10 @@ const intake = (over: Partial<Intake> & Pick<Intake, 'id' | 'code' | 'amount'>):
   voided_by_user_id: null,
   void_reason: null,
   created_at: '2026-09-08T07:10:00Z',
+  net_kg: '36.90',
+  lines_count: 2,
+  supplier_name: 'Ніна Ільчук',
+  paid_amount: '0.00',
   ...over,
 });
 

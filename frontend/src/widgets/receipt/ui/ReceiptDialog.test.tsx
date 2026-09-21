@@ -120,6 +120,12 @@ function buildIntake(overrides: Partial<IntakeDetail> = {}): IntakeDetail {
     voided_by_user_id: null,
     void_reason: null,
     created_at: '2026-09-08T08:20:00.000Z',
+    net_kg: '36.90',
+    lines_count: 2,
+    supplier_name: 'Ніна Ільчук',
+    paid_amount: '0.00',
+    payouts: [],
+    received_by_name: 'Оксана Гнатюк',
     items: [
       {
         id: 'item-1',
