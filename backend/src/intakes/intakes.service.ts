@@ -441,6 +441,7 @@ export class IntakesService {
    *  wrote) and `void` all go through here. */
   private async extrasFor(intakeId: string, m: EntityManager): Promise<IntakeRowExtras> {
     const [row] = (await m.query(ROW_EXTRAS_SQL, [intakeId])) as IntakeRowExtras[];
+    if (!row) throw new Error('intake row extras missing for ' + intakeId);
     return row;
   }
 

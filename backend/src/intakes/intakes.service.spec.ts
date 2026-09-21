@@ -360,6 +360,29 @@ describe('IntakesService', () => {
         manager,
       );
     });
+
+    it('throws if the row-extras read comes back empty — `list`’s guard, mirrored', async () => {
+      // Same shape as `list`'s `if (!row) throw new Error(...)` guard over its
+      // `byId` map — `extrasFor`'s own signature promises a non-null
+      // `IntakeRowExtras`, and until this guard existed a missing row (the
+      // insert committed but `ROW_EXTRAS_SQL` found nothing for its id — a
+      // read-your-own-write bug, not a real-world case) would have handed
+      // `undefined` to `toIntakeDetailResponse` and failed far from here with
+      // no clue which intake was involved.
+      manager.query.mockImplementation((sql: string) =>
+        Promise.resolve(
+          sql.includes('pg_advisory_xact_lock')
+            ? [{}]
+            : sql.includes('AS net_kg')
+              ? []
+              : [{ n: 3 }],
+        ),
+      );
+
+      await expect(service.create(oksana, dto())).rejects.toThrow(
+        /intake row extras missing for/,
+      );
+    });
   });
 
   describe('paid at reception (§2.1 ⑥, §3.1)', () => {

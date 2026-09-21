@@ -406,14 +406,26 @@ describe('PayoutsService', () => {
       });
     });
 
-    it('reads the cash INSIDE the transaction, after the debt, under the supplier lock', async () => {
+    it('reads the cash INSIDE the transaction, after the debt AND after the PO advisory lock, under the supplier lock', async () => {
+      // Moved 2026-09-21 (PR #137 review): the cash read has to happen under
+      // the lock that actually serialises two payouts at one POINT — the
+      // supplier row is a per-supplier mutex, so it alone leaves two payouts
+      // to two DIFFERENT suppliers free to both read the same drawer. Asserts
+      // the FULL new order — supplier lock → debt → `nextDocumentCode`'s
+      // advisory lock → cash — not just "cash is somewhere after debt", so a
+      // regression back to reading cash before the advisory lock fails here.
       pointCash.cashFor.mockResolvedValue('380.00');
       await service.create(oksana, dto());
       const lockCall = manager.query.mock.invocationCallOrder[0];
       const debtCall = balance.debtFor.mock.invocationCallOrder[0];
+      const sqls = (manager.query.mock.calls as [string][]).map(([sql]) => sql);
+      const advisoryIndex = sqls.findIndex((sql) => sql.includes('pg_advisory_xact_lock'));
+      expect(advisoryIndex).toBeGreaterThanOrEqual(0);
+      const advisoryCall = manager.query.mock.invocationCallOrder[advisoryIndex];
       const cashCall = pointCash.cashFor.mock.invocationCallOrder[0];
       expect(lockCall).toBeLessThan(debtCall);
-      expect(debtCall).toBeLessThan(cashCall);
+      expect(debtCall).toBeLessThan(advisoryCall);
+      expect(advisoryCall).toBeLessThan(cashCall);
       expect(pointCash.cashFor).toHaveBeenCalledWith(POINT_A, undefined, manager);
     });
 
