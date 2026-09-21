@@ -46,6 +46,7 @@ describe('useReweighQuery', () => {
     renderHook(() => useReweighQuery('s1', { includeVoided: true }), { wrapper });
 
     await waitFor(() => expect(mock.history.get).toHaveLength(1));
+    expect(mock.history.get[0].params).toEqual({ include_voided: true });
   });
 
   it('does not fire without a shift — «no shift» is a state, not a request', () => {
