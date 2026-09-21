@@ -74,12 +74,51 @@
 
 **Design:**
 - `measure()` keeps reading every `.js`/`.css` under `dist/assets` (the SUM) and additionally reads `dist/.vite/manifest.json`. First paint = the manifest entry (`isEntry: true`) plus the transitive closure of its `imports` (static) — NOT `dynamicImports` — plus every `css` those chunks list. Resolve manifest `file` values (relative to `dist/`) to the measured asset records; a manifest that names a file the directory does not contain, or a missing manifest, is a FAIL with a named reason (a stale or partial build is not "zero bytes, budget met").
-- The budget file gains the first-paint pair alongside the existing sum pair: `measuredFirstPaintGzipBytes`, `measuredFirstPaintRawBytes`, `maxFirstPaintGzipBytes`, `maxFirstPaintRawBytes`, `headroomFirstPaint*`, same `minHeadroom*`/`step*` rule. **The gate is first paint.** The sum keeps its measured/max fields but its ceiling no longer fails the row: it prints as the second unconditional WARNING line (the largest-chunk line becomes the third), so a whole-package regression still shows on every run. Rationale for the demotion goes in the budget `reason` and the check header: the sum is what the CDN stores, first paint is what the operator pays.
+- The budget file gains the first-paint pair: `measuredFirstPaintGzipBytes`, `measuredFirstPaintRawBytes`, `maxFirstPaintGzipBytes`, `maxFirstPaintRawBytes`, `headroomFirstPaint*`, same `minHeadroom*`/`step*` rule. **The gate is first paint** (this task; a second gate, lazy, joined it later — see «Deviations, recorded» below, this was NOT part of Task 2). The sum stays measured and printed on every run as an unconditional WARNING line, so a whole-package regression still shows; its own ceiling no longer fails the row. Rationale for the demotion goes in the budget `reason` and the check header: the sum is what the CDN stores, first paint is what the operator pays. (As planned here the sum was meant to keep its `measured*`/`max*` fields in the budget file, just unenforced — «Deviations, recorded» below says why that changed too.)
 - `--write` sets BOTH pairs from the measurement with the existing min-headroom-then-round rule. Run it ONCE in this task to establish the first-paint baseline — this is the first measurement of a new metric, not a raise of an old one; say so in the `reason` and in the commit message, and paste the printed line in the report. Do not hand-edit numbers.
 - Prose: the check's `WARNING` lines and the registry row's `proves` derive every number at runtime; no count, KiB or date typed into a string.
 
 **Tests (`bundle-size.test.mjs`)** — extend the fixture builder to write a `dist/.vite/manifest.json` and assert: (1) first paint = entry + static imports + their css, EXCLUDING a chunk reachable only through `dynamicImports` (the discriminator: the same fixture with the lazy chunk listed as a static import must measure larger); (2) the row FAILS when the first-paint pair exceeds its ceiling while the sum is under its own, and PASSES in the opposite case (sum over, first paint under) with the sum WARNING printed; (3) a manifest naming a file absent from `assets/` fails with the named reason; (4) a missing manifest fails, not passes; (5) `--write` writes both pairs with the headroom rule. Keep every existing test that still describes true behaviour; rewrite the ones whose premise (sum is the gate) changed, do not delete them silently — say which in the report.
 
-**Verification:** `node --test scripts/verify/checks/bundle-size.test.mjs` (or the repo's runner for `scripts/verify` tests — see `package.json`), `node scripts/verify/registry.test.mjs` if prose changed, then `npm run verify:full` from the worktree root; paste the `bundle` row's three printed lines (first paint, sum, largest chunk) and the verdict line.
+**Verification:** `node --test scripts/verify/checks/bundle-size.test.mjs` (or the repo's runner for `scripts/verify` tests — see `package.json`), `node scripts/verify/registry.test.mjs` if prose changed, then `npm run verify:full` from the worktree root; paste the `bundle` row's printed lines (first paint, sum, largest chunk — three as of this task; four once lazy joined as a second gate, see «Deviations, recorded» below) and the verdict line.
+
+---
+
+## Deviations, recorded (2026-09-21, PR #140 round-2 review)
+
+This plan covered Tasks 1–2 only; everything below happened in later commits on the same
+branch, after this document was last edited as a plan. Recorded here rather than silently
+left for the diff to explain, per the review that found the paragraphs above stale:
+
+- **Task 2's demotion of the sum became its removal.** Task 2 planned for the sum to keep its
+  `measured*`/`max*` fields in `scripts/verify/baselines/bundle-budget.json`, just unenforced
+  (a ceiling that stops failing the row, not a ceiling that stops existing). What actually
+  shipped, once lazy became a second gate (next bullet), drops those fields from the budget
+  file entirely — `bundle-size.mjs`'s own header states why: first paint and lazy between
+  them already cover every manifest-listed byte, so a third, overlapping figure with its own
+  `max*` would only double-book bytes the other two already price. The sum is still measured
+  and printed as an unconditional WARNING line every run; it just records nothing in the
+  budget file any more.
+- **A lazy closure was added as the second gate** (`f2df27d`), closing a gap Task 2 left open:
+  the old sum ceiling had been kept as a frozen, printed-only figure, so the five split-off
+  owner screens — everything reachable from the entry only through a `dynamicImports` edge —
+  had no ceiling of its own at all. Lazy now ratchets on every `--write` exactly like first
+  paint, sharing the same `MIN_HEADROOM`/`STEP` pair; neither metric is ever frozen.
+- **The manifest is stripped from the production image** (this round, PR #140's second review
+  pass): `build.manifest: true` (added by Task 2) writes `dist/.vite/manifest.json`, which
+  `nginx/Dockerfile` was copying verbatim into the image and `nginx/nginx.conf` was serving at
+  `/.vite/manifest.json`. It is a local input to `bundle-size.mjs`, never a deployable — the
+  Dockerfile now `rm -rf`s it in the builder stage, and `nginx.conf` 404s any dotfile request
+  as defense in depth.
+- **The typed-owner-URL cost gained a redeploy failure mode.** Global Constraints above
+  accepted that an operator who types an owner URL still fetches that group's `lazy` chunk
+  before `RequireRole` redirects them. A later commit (`fe98267`) extended that acceptance:
+  an ordinary redeploy retires old hashed chunks, so a session holding a stale `index.html`
+  can have one of those five `lazy()` imports reject outright. The owner-only group route now
+  carries its own `errorElement` (`<RouteError fullHeight={false} />`) so a rejected fetch
+  replaces only that group's own content instead of bubbling up and unmounting `AppLayout`'s
+  whole shell — and, as of this same round-2 pass, that fallback renders at pane height
+  (`min-h-[50vh]`, via `ErrorFallback`'s new `fullHeight` prop) rather than whole-page height,
+  since it now renders inside `AppLayout`'s `<main>` alongside a sidebar that survives.
 
 **Commit:** `feat(verify): the bundle budget gates first paint from the Vite manifest and reports the sum`.

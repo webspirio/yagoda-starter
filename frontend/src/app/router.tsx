@@ -154,7 +154,10 @@ export const routes: RouteObject[] = [
         // errorElement on THIS route, react-router bubbles the error to the nearest
         // ancestor that has one — AppLayout — unmounting the sidebar and nav along with
         // the failed page. Declaring it here instead means only this group's own content
-        // (the Outlet above) is replaced; the shell survives.
+        // (the Outlet above) is replaced; the shell survives — which is also why
+        // `fullHeight={false}` matters here and nowhere else: this fallback renders INSIDE
+        // AppLayout's `<main>`, in the pane the sidebar leaves for it, not as the whole
+        // page the way AppLayout's own errorElement (above) or /ui-kit's is.
         element: (
           <RequireAuth>
             <RequireRole role="network_owner">
@@ -162,7 +165,7 @@ export const routes: RouteObject[] = [
             </RequireRole>
           </RequireAuth>
         ),
-        errorElement: <RouteError />,
+        errorElement: <RouteError fullHeight={false} />,
         children: [
           {
             path: '/points',
