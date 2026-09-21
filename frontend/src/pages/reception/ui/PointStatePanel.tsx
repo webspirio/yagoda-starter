@@ -139,7 +139,7 @@ function Tile({
 }: {
   label: string;
   value: string;
-  tone?: 'amber' | 'bad';
+  tone?: 'amber';
 }) {
   return (
     <div className="min-w-0">
@@ -148,7 +148,6 @@ function Tile({
         className={cn(
           'mt-1 truncate font-mono text-xl leading-none font-semibold tracking-tight',
           tone === 'amber' && 'text-amber',
-          tone === 'bad' && 'text-destructive',
         )}
       >
         {value}

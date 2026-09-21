@@ -248,10 +248,14 @@ is derivable without allocations, which the §3.3 correction cancelled. It print
 «Нараховано», «Видано готівкою» and «Залишок у цьому пункті» instead, plus one muted
 «виплату {{code}} анульовано» line per voided linked payout.
 
-**Three deviations, recorded:**
+**Four deviations, recorded:**
 
 1. The receipt prints «Нараховано», «Видано готівкою» and «Залишок у цьому пункті», never
    «Попередній залишок»/«РАЗОМ» — see the receipt deviation above.
 2. The settled-state figure prints «0,00 ₴», not the mock's «0 ₴» — consistency with every
    other money figure on the screen, all of which carry two decimals.
 3. «Стан точки» has no proportion bar (D-3).
+4. «Enter advances in the §2.1 order» (§3's own layout intro, above) was not ported — only
+   «submits only when ready» shipped (`ReceptionPage`'s Enter guard). Tab already advances
+   through the fields, and a field-advance on Enter would conflict with the supplier
+   picker's own Enter (which picks the highlighted row) — final-fix-wave finding M11.

@@ -302,11 +302,11 @@ describe('ReceiptDialog', () => {
     });
   });
 
-  it('keeps the singular title for a single-line intake', () => {
+  it('counts the single line too — «· 1 line», not the bare code (M4)', () => {
     setUp();
     render(<ReceiptDialog intakeId="intake-1" open onClose={vi.fn()} />);
 
-    expect(screen.getByText('Receipt SHP-IN-20260908-00412')).toBeInTheDocument();
+    expect(screen.getByText('Receipt SHP-IN-20260908-00412 · 1 line')).toBeInTheDocument();
   });
 
   it('shows the plural title when the intake has more than one line', () => {

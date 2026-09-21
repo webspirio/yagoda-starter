@@ -127,10 +127,10 @@ export function ReceiptDialog({
     const receivedBy = intake.received_by_name ?? '—';
     const voided = Boolean(intake.voided_at);
 
-    title =
-      intake.items.length > 1
-        ? t('receipt.titleLines', { code: intake.code, count: intake.items.length })
-        : t('receipt.title', { code: intake.code });
+    // §3 quotes «· 1 позиція» — the count rides on every receipt, not only
+    // once there is more than one line; `titleLines_one` carries the singular
+    // form (M4).
+    title = t('receipt.titleLines', { code: intake.code, count: intake.items.length });
 
     const lines: ReceiptSheetLine[] = intake.items.map((item) => {
       const grade = gradeById.get(item.product_grade_id);

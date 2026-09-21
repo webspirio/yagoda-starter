@@ -109,4 +109,17 @@ describe('SupplierPicker', () => {
     await userEvent.click(screen.getByRole('combobox'));
     await expectNoAxeViolations(container);
   });
+
+  it('has no axe violations open in OWNER mode, with the grouped listbox rendered (M8)', async () => {
+    // The owner's own tree is a step deeper than the plain listbox above:
+    // `ul[role=listbox] > li[role=presentation] > ul[role=group] > li[role=option]`
+    // — worth its own axe pass rather than assuming the flat tree's result
+    // covers it.
+    const { container } = render(
+      <SupplierPicker pointId="p1" ownerMode value={null} onChange={vi.fn()} />,
+    );
+    await userEvent.click(screen.getByRole('combobox'));
+    expect(screen.getByRole('group', { name: /Наша точка|Our point/ })).toBeInTheDocument();
+    await expectNoAxeViolations(container);
+  });
 });
