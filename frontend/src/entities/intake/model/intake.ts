@@ -50,8 +50,9 @@ export interface IntakeItem {
 }
 
 /** One payout handed over with a receipt, as listed on its detail view —
- *  voided ones are INCLUDED so the page can show them struck through. */
-export interface IntakePayout {
+ *  voided ones are INCLUDED so the page can show them struck through. Not
+ *  exported: only `IntakeDetail.payouts` (below, same file) names it. */
+interface IntakePayout {
   id: string;
   code: string;
   amount: string;

@@ -2,7 +2,6 @@ export type {
   Intake,
   IntakeItemTare,
   IntakeItem,
-  IntakePayout,
   IntakeDetail,
   Paginated,
   DocumentFilter,
