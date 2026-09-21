@@ -1143,6 +1143,23 @@
       "grossSuffix": "gross",
       "palletPrefix": "pallet",
       "tareFallback": "tare"
+    },
+    "check": {
+      "title": "Reconciliation with the point",
+      "byProduct": "by product, not by grade",
+      "product": "Product",
+      "point": "Point",
+      "ours": "Ours",
+      "diff": "Difference",
+      "money": "In money",
+      "notReweighed": "not reweighed ⚠",
+      "nothingAccepted": "Nothing was accepted at {{point}} that day — there is nothing to compare.",
+      "shortfallTotal": "Total shortfall",
+      "surplusTotal": "Total surplus",
+      "shiftOpen": "The shift is still open — the shortfall will be counted once the shift closes.",
+      "notWeighed": "Products without a line: {{count}}. This guards against “forgot to weigh the currants”, not a mistake — but while ⚠ stands, the shortfall for this product does not count at all.",
+      "drafted": "Unposted positions: +{{kg}} — not recorded yet, and “Ours” does not include them.",
+      "note": "“Ours” is the positions posted today for this point, exactly what the day summary will see. The money is the shortfall × what was actually accrued for those kilograms; it never touches the supplier's receipt."
     }
   }
 }
