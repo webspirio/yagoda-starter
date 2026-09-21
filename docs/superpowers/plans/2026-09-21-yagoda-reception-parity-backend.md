@@ -67,10 +67,11 @@ describe('payouts.intake_id schema (Postgres)', () => {
       `INSERT INTO collection_points (name, kind, code) VALUES ($1, 'reception', $2) RETURNING id`,
       [`Виплата-при-прийомці ${run}`, `P${run.slice(0, 5).toUpperCase()}`],
     );
+    // `CHK_users_role_point`: an operator row must name its point.
     [{ id: userId }] = await ds.query(
-      `INSERT INTO users (first_name, last_name, role)
-       VALUES ('Оксана', $1, 'point_operator') RETURNING id`,
-      [`Тест-${run}`],
+      `INSERT INTO users (first_name, last_name, role, collection_point_id)
+       VALUES ('Оксана', $1, 'point_operator', $2) RETURNING id`,
+      [`Тест-${run}`, pointId],
     );
     [{ id: supplierId }] = await ds.query(
       `INSERT INTO suppliers (collection_point_id, first_name, last_name, is_active)
@@ -250,13 +251,15 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 ```ts
 // backend/src/intakes/dto/create-intake.dto.spec.ts
 import 'reflect-metadata';
+import { randomUUID } from 'crypto';
 import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
 import { CreateIntakeDto } from './create-intake.dto';
 
-const GRADE = '55555555-5555-5555-5555-555555555555';
-const CRATE = '66666666-6666-6666-6666-666666666666';
-const SUPPLIER = '44444444-4444-4444-4444-444444444444';
+// Real UUIDs: `@IsUUID()` rejects a hand-written `4444…` (its variant nibble is not 8/9/a/b).
+const GRADE = randomUUID();
+const CRATE = randomUUID();
+const SUPPLIER = randomUUID();
 
 const body = (over: Record<string, unknown> = {}) => ({
   supplier_id: SUPPLIER,
