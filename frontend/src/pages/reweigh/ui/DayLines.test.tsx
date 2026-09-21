@@ -18,6 +18,16 @@ vi.mock('@/entities/user', () => ({
   useStaffQuery: () => staffMock(),
 }));
 
+/** Once the reason row opens, two buttons share the void/сторнувати accessible
+ *  name (the row's own opener, still on screen, and the reason row's confirm
+ *  button, rendered after it in DOM order) — this grabs the LAST one, i.e.
+ *  the confirm button, without relying on `Array.prototype.at` (unavailable
+ *  under this project's ES2020 `lib` target). */
+function lastButton(name: RegExp): HTMLElement {
+  const matches = screen.getAllByRole('button', { name });
+  return matches[matches.length - 1];
+}
+
 const line = (over = {}): DayLine => ({
   pointId: 'p1',
   pointName: 'Шипинки',
@@ -60,7 +70,7 @@ describe('DayLines', () => {
     render(<DayLines lines={[line()]} isPending={false} date="2026-09-21" />);
     await userEvent.click(screen.getByRole('button', { name: /void|сторнувати/i }));
 
-    const confirm = screen.getAllByRole('button', { name: /void|сторнувати/i }).at(-1)!;
+    const confirm = lastButton(/void|сторнувати/i);
     expect(confirm).toBeDisabled();
     await userEvent.type(screen.getByLabelText(/reason|причина/i), 'двічі ввели ту саму машину');
     expect(confirm).toBeEnabled();
@@ -71,7 +81,7 @@ describe('DayLines', () => {
     render(<DayLines lines={[line()]} isPending={false} date="2026-09-21" />);
     await userEvent.click(screen.getByRole('button', { name: /void|сторнувати/i }));
     await userEvent.type(screen.getByLabelText(/reason|причина/i), 'двічі ввели ту саму машину');
-    await userEvent.click(screen.getAllByRole('button', { name: /void|сторнувати/i }).at(-1)!);
+    await userEvent.click(lastButton(/void|сторнувати/i));
 
     expect(voidMock).toHaveBeenCalledWith({ id: 'ri1', reason: 'двічі ввели ту саму машину' });
   });
@@ -109,7 +119,7 @@ describe('DayLines', () => {
     render(<DayLines lines={[line()]} isPending={false} date="2026-09-21" />);
     await userEvent.click(screen.getByRole('button', { name: /void|сторнувати/i }));
     await userEvent.type(screen.getByLabelText(/reason|причина/i), 'x');
-    await userEvent.click(screen.getAllByRole('button', { name: /void|сторнувати/i }).at(-1)!);
+    await userEvent.click(lastButton(/void|сторнувати/i));
 
     await waitFor(() => expect(screen.getByText(/already voided|вже сторновано/i)).toBeInTheDocument());
   });
