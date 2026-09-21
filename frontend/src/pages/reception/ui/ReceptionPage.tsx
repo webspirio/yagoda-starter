@@ -31,6 +31,7 @@ import { LineEditor } from './LineEditor';
 import { LinesTable, type CommittedLine } from './LinesTable';
 import { TotalsSection } from './TotalsSection';
 import { TodayReceipts } from './TodayReceipts';
+import { PointStatePanel } from './PointStatePanel';
 import { ShiftBanner } from './ShiftBanner';
 
 /** §3 — a UI cap that matches the paper book (4 committed + the draft). */
@@ -53,6 +54,7 @@ export function ReceptionPage() {
   const { t, i18n } = useTranslation();
   const locale = i18n.resolvedLanguage ?? 'uk';
   const { data: me } = useMeQuery();
+  const isOwner = me?.role === 'network_owner';
   const { pointId, canPick, setPointId } = useWorkingPoint();
   const { data: points } = usePointOptionsQuery();
 
@@ -255,6 +257,10 @@ export function ReceptionPage() {
   };
 
   const pointName = (points ?? []).find((p) => p.id === pointId)?.name ?? '';
+  // «Наділ» for `PointStatePanel`'s crates block — read off the same
+  // `usePointOptionsQuery()` list `pages/crates` resolves it from, rather
+  // than a second network read for one field.
+  const targetCrates = (points ?? []).find((p) => p.id === pointId)?.target_crates ?? null;
   const actions = (
     <>
       {canPick ? (
@@ -272,11 +278,11 @@ export function ReceptionPage() {
           ))}
         </SelectField>
       ) : null}
-      {me?.role === 'network_owner' ? (
-        <Button variant="outline" asChild>
-          <Link to="/prices">{t('reception.toPrices')}</Link>
-        </Button>
-      ) : null}
+      {/* Both roles: an operator's /prices is read-only (no role gate on the
+          route), so «Ціни дня» is a look, not just a set. */}
+      <Button variant="outline" asChild>
+        <Link to="/prices">{t('reception.toPrices')}</Link>
+      </Button>
       <Button variant="secondary" asChild>
         <Link to="/day">{t('reception.toDay')}</Link>
       </Button>
@@ -294,7 +300,20 @@ export function ReceptionPage() {
         <Spinner />
       </div>
     ) : grades.data.length === 0 ? (
-      <EmptyState title={t('reception.noPrices.title')} hint={t('reception.noPrices.hint')} />
+      <EmptyState
+        title={t('reception.noPrices.title')}
+        hint={t('reception.noPrices.hint')}
+        action={
+          // Only the owner can actually set a price on the next screen — an
+          // operator's own `/prices` is read-only, so this call to action is
+          // theirs alone.
+          isOwner ? (
+            <Button asChild>
+              <Link to="/prices">{t('reception.noPrices.action')}</Link>
+            </Button>
+          ) : undefined
+        }
+      />
     ) : (
       <>
         {/* A failed read and «no shift» are the same `null` in the data, and an
@@ -312,12 +331,12 @@ export function ReceptionPage() {
           />
         ) : null}
 
-        <div className="grid gap-5 xl:grid-cols-[minmax(0,1.35fr)_minmax(320px,1fr)]">
+        <div className="grid gap-5 lg:grid-cols-[minmax(0,1.35fr)_minmax(320px,1fr)]">
           <form onSubmit={(e) => void onSubmit(e)} noValidate>
             <Card>
               <SupplierSection
                 pointId={pointId}
-                ownerMode={me?.role === 'network_owner'}
+                ownerMode={isOwner}
                 supplier={supplier}
                 onChange={(s) => {
                   // Lines belong to the SUPPLIER who brought them — switching
@@ -388,7 +407,15 @@ export function ReceptionPage() {
             </Card>
           </form>
 
-          <TodayReceipts shiftId={shift.data?.id} onOpen={setReceiptId} />
+          <div className="flex flex-col gap-4">
+            <PointStatePanel
+              pointId={pointId}
+              shiftId={shift.data?.id}
+              isOwner={isOwner}
+              targetCrates={targetCrates}
+            />
+            <TodayReceipts shiftId={shift.data?.id} onOpen={setReceiptId} />
+          </div>
         </div>
       </>
     );

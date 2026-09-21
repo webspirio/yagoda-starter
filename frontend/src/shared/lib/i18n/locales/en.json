@@ -703,7 +703,8 @@
     "noPoint": "Select a point to receive berries",
     "noPrices": {
       "title": "No prices set for today",
-      "hint": "Until the day price is set, intake is blocked — so nobody counts by yesterday's."
+      "hint": "Until the day price is set, intake is blocked — so nobody counts by yesterday's.",
+      "action": "Set today's prices"
     },
     "supplier": {
       "eyebrow": "1 · Supplier",
@@ -792,10 +793,27 @@
     "submitPay": "Accept {{lines}}{{kg}} · pay out {{uah}}",
     "linesPart_one": "{{count}} line · ",
     "linesPart_other": "{{count}} lines · ",
+    "state": {
+      "cashTitle": "Point cash",
+      "cratesTitle": "Crates",
+      "open": "Open",
+      "openingCash": "Counted this morning",
+      "currentCash": "In the berry drawer now",
+      "paidOut": "Paid out for berries",
+      "newDebt": "New balance created",
+      "allotment": "Allotment",
+      "allotmentValue_one": "{{count}} crate",
+      "allotmentValue_other": "{{count}} crates",
+      "allotmentUnset": "no allotment set for this point yet",
+      "inField": "Out with people"
+    },
     "today": {
       "title": "Today's receipts",
       "empty": "Nothing received yet. The first receipt will appear here.",
-      "voided": "voided"
+      "voided": "voided",
+      "positions_one": "{{count}} position",
+      "positions_other": "{{count}} positions",
+      "remainder": "remainder {{uah}}"
     },
     "toast": {
       "opened": "Shift opened",

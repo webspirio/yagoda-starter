@@ -713,7 +713,8 @@
     "noPoint": "Оберіть точку, щоб приймати ягоду",
     "noPrices": {
       "title": "На сьогодні ще не виставлені ціни",
-      "hint": "Поки ціна дня не встановлена, прийомка заблокована — щоб ніхто не порахував по вчорашній."
+      "hint": "Поки ціна дня не встановлена, прийомка заблокована — щоб ніхто не порахував по вчорашній.",
+      "action": "Встановити ціни"
     },
     "supplier": {
       "eyebrow": "1 · Постачальник",
@@ -810,10 +811,31 @@
     "linesPart_few": "{{count}} позиції · ",
     "linesPart_many": "{{count}} позицій · ",
     "linesPart_other": "{{count}} позицій · ",
+    "state": {
+      "cashTitle": "Каса точки",
+      "cratesTitle": "Ящики",
+      "open": "Відкрити",
+      "openingCash": "На ранок порахували",
+      "currentCash": "У касі за ягоду зараз",
+      "paidOut": "Видано за ягоду",
+      "newDebt": "Залишків створено",
+      "allotment": "Наділ",
+      "allotmentValue_one": "{{count}} ящик",
+      "allotmentValue_few": "{{count}} ящики",
+      "allotmentValue_many": "{{count}} ящиків",
+      "allotmentValue_other": "{{count}} ящиків",
+      "allotmentUnset": "наділу цій точці ще не призначали",
+      "inField": "У людей"
+    },
     "today": {
       "title": "Сьогоднішні квитанції",
       "empty": "Ще нічого не прийнято. Перша квитанція зʼявиться тут.",
-      "voided": "анульовано"
+      "voided": "анульовано",
+      "positions_one": "{{count}} позиція",
+      "positions_few": "{{count}} позиції",
+      "positions_many": "{{count}} позицій",
+      "positions_other": "{{count}} позицій",
+      "remainder": "залишок {{uah}}"
     },
     "toast": {
       "opened": "Зміну відкрито",

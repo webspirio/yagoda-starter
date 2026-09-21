@@ -75,6 +75,22 @@ vi.mock('@/entities/point-cash', () => ({
     pointCashMock(pointId, asOf, enabled),
 }));
 
+// `PointStatePanel`'s own three reads — this file's job is the FORM and the
+// header actions, so these are static "not fetched yet" stand-ins rather
+// than another set of per-test hoisted mocks; `PointStatePanel.test.tsx` is
+// where each of the six figures is actually exercised.
+vi.mock('@/entities/cash-count', () => ({
+  useCashCountsQuery: () => ({ data: undefined, isPending: true, isError: false }),
+}));
+
+vi.mock('@/entities/payout', () => ({
+  usePayoutsQuery: () => ({ data: undefined, isPending: true, isError: false }),
+}));
+
+vi.mock('@/entities/crate', () => ({
+  useCrateBalancesQuery: () => ({ data: undefined, isPending: true, isError: false }),
+}));
+
 vi.mock('@/entities/user', () => ({
   useMeQuery: () => meMock(),
   usePointScope: () => pointScopeMock(),
@@ -836,10 +852,25 @@ describe("ReceptionPage — the supplier's history and today's badge", () => {
 
     renderReception();
 
-    expect(screen.getByText('SHP-IN-1')).toBeInTheDocument();
-    expect(screen.getByText('SHP-IN-2')).toBeInTheDocument();
+    // Scoped to the receipts card itself: `PointStatePanel` reads the SAME
+    // `useIntakesQuery({ shiftId })` for its own «Залишків створено» figure,
+    // and this fixture's live receipt (200.00 − 0.00 paid) prints the same
+    // «200.00 ₴» there too.
+    const card = screen.getByText("Today's receipts").closest('[data-slot="card"]');
+    const scoped = within(card as HTMLElement);
+
+    // No code any more — the rows are found by their amount, same as the
+    // supplier-history test above.
+    const voidedRow = scoped.getByText('100.00 ₴').closest('button');
+    expect(voidedRow).toHaveClass('line-through');
+    const liveRow = scoped.getByText('200.00 ₴').closest('button');
+    expect(liveRow).not.toHaveClass('line-through');
+
     const badgeArea = screen.getByText("Today's receipts").parentElement;
     expect(within(badgeArea!).getByText('1')).toBeInTheDocument();
+    // Only the live receipt's kilos count toward the header tonnage — the
+    // voided one (same 36.90 kg fixture default) does not double it up.
+    expect(within(badgeArea!).getByText('36.90 kg')).toBeInTheDocument();
   });
 });
 
