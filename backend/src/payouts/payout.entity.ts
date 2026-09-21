@@ -63,7 +63,9 @@ export class Payout {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  /** `{POINT}-PO-{YYYYMMDD}-{typed}` — see `common/document-code.ts`. */
+  /** `{POINT}-PO-{YYYYMMDD}-{NNN}`, composed AND numbered server-side since
+   *  2026-09-18 — see `common/document-code.ts`, and `intakes.code`'s twin of
+   *  this comment. */
   @Column({ type: 'varchar' })
   code: string;
 
