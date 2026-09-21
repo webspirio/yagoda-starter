@@ -37,7 +37,10 @@ import { TareTypesService } from '../tare-types/tare-types.service';
 import { CollectionPointsService } from '../collection-points/collection-points.service';
 import type { CollectionPoint } from '../collection-points/collection-point.entity';
 import { AuditService } from '../audit/audit.service';
+import { PayoutsService } from '../payouts/payouts.service';
+import { Payout } from '../payouts/payout.entity';
 import { nextDocumentCode } from '../common/document-code';
+import { isZero } from '../common/money';
 import { resolveWritePoint, resolvePointFilter } from '../auth/access/point-scope';
 import { Paginated } from '../common/dto/paginated';
 import { skipOf } from '../common/dto/pagination-query.dto';
@@ -69,6 +72,7 @@ export class IntakesService {
     private readonly tare: TareTypesService,
     private readonly points: CollectionPointsService,
     private readonly audit: AuditService,
+    private readonly payouts: PayoutsService,
   ) {}
 
   /**
@@ -85,6 +89,10 @@ export class IntakesService {
    * and supplier outside the transaction, the shift, snapshots and rules
    * inside it — so a preview and the document that follows it are the same
    * reads in the same order, and the only thing this method adds is the write.
+   *
+   * Since 2026-09-21 the same transaction may also write the payout handed
+   * over with the receipt (`paid_amount`, §2.1 ⑥) — see
+   * `PayoutsService.writePayout`, which owns both ceilings.
    */
   async create(actor: AuthenticatedUser, dto: CreateIntakeDto): Promise<IntakeDetailResponse> {
     const { pointId, point, supplier } = await this.resolveTarget(actor, dto);
@@ -144,7 +152,26 @@ export class IntakesService {
           m,
         );
 
-        return toIntakeDetailResponse(intake, shift, intake.items ?? []);
+        // §2.1 ⑥ — the cash for THIS visit leaves the drawer in the same
+        // transaction as the receipt. The debt `writePayout` checks already
+        // includes the intake saved above (same transaction), so «Разом» is
+        // the ceiling as §3.1 defines it. A refusal throws, and the intake is
+        // rolled back with it: a receipt without its «видано» would not match
+        // the paper in the supplier's hand.
+        const paid: Payout[] = [];
+        if (dto.paid_amount !== undefined && !isZero(dto.paid_amount)) {
+          const { payout } = await this.payouts.writePayout(m, {
+            actor,
+            pointId,
+            pointCode: point.code,
+            supplierId: supplier.id,
+            amount: dto.paid_amount,
+            intakeId: intake.id,
+          });
+          paid.push(payout);
+        }
+
+        return toIntakeDetailResponse(intake, shift, intake.items ?? [], paid);
       } catch (error) {
         throw this.translateDuplicateCode(error, code);
       }
@@ -336,7 +363,12 @@ export class IntakesService {
       relations: { tare: true },
     });
 
-    return toIntakeDetailResponse(intake, shift, items);
+    const payouts = await this.repo.manager.find(Payout, {
+      where: { intake_id: intake.id },
+      order: { created_at: 'ASC' },
+    });
+
+    return toIntakeDetailResponse(intake, shift, items, payouts);
   }
 
   /**

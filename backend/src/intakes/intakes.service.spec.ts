@@ -58,6 +58,7 @@ describe('IntakesService', () => {
   let tare: { findManyRaw: jest.Mock };
   let points: { findOneRaw: jest.Mock };
   let audit: { record: jest.Mock };
+  let payouts: { writePayout: jest.Mock };
   let service: IntakesService;
 
   const shift = (over: Record<string, unknown> = {}) => ({
@@ -137,6 +138,20 @@ describe('IntakesService', () => {
     tare = { findManyRaw: jest.fn().mockResolvedValue([{ id: CRATE, weight_kg: '1.20' }]) };
     points = { findOneRaw: jest.fn().mockResolvedValue({ id: POINT_A, code: 'KPG' }) };
     audit = { record: jest.fn().mockResolvedValue(undefined) };
+    payouts = {
+      writePayout: jest.fn().mockImplementation((_m, input: { amount: string; intakeId: string }) =>
+        Promise.resolve({
+          payout: {
+            id: 'po-1',
+            code: 'KPG-PO-20260908-001',
+            amount: input.amount,
+            intake_id: input.intakeId,
+            voided_at: null,
+          },
+          shift: shift(),
+        }),
+      ),
+    };
 
     service = new IntakesService(
       repo as never,
@@ -147,6 +162,7 @@ describe('IntakesService', () => {
       tare as never,
       points as never,
       audit as never,
+      payouts as never,
     );
   });
 
@@ -304,6 +320,49 @@ describe('IntakesService', () => {
         }),
         manager,
       );
+    });
+  });
+
+  describe('paid at reception (§2.1 ⑥, §3.1)', () => {
+    it('writes no payout when paid_amount is absent', async () => {
+      const res = await service.create(oksana, dto() as never);
+      expect(payouts.writePayout).not.toHaveBeenCalled();
+      expect(res.payouts).toEqual([]);
+    });
+
+    it('writes no payout for 0.00 — «видано 0,00» is an intake with no payout', async () => {
+      await service.create(oksana, dto({ paid_amount: '0.00' }) as never);
+      expect(payouts.writePayout).not.toHaveBeenCalled();
+    });
+
+    it('hands the cash to writePayout AFTER the intake is saved, stamped with its id', async () => {
+      const res = await service.create(oksana, dto({ paid_amount: '380.00' }) as never);
+      expect(manager.save.mock.invocationCallOrder[0]).toBeLessThan(
+        payouts.writePayout.mock.invocationCallOrder[0],
+      );
+      expect(payouts.writePayout).toHaveBeenCalledWith(
+        manager,
+        expect.objectContaining({
+          actor: oksana,
+          pointId: POINT_A,
+          pointCode: 'KPG',
+          supplierId: SUPPLIER,
+          amount: '380.00',
+          intakeId: INTAKE_ID,
+        }),
+      );
+      expect(res.payouts).toEqual([
+        { id: 'po-1', code: 'KPG-PO-20260908-001', amount: '380.00', voided_at: null },
+      ]);
+    });
+
+    it('lets a ceiling refusal roll the whole transaction back', async () => {
+      payouts.writePayout.mockRejectedValue(new Error('PAYOUT_EXCEEDS_CASH'));
+      await expect(service.create(oksana, dto({ paid_amount: '380.00' }) as never)).rejects.toThrow(
+        'PAYOUT_EXCEEDS_CASH',
+      );
+      // The mock `transaction` just runs the callback; the real one rolls back
+      // on a throw. What this asserts is that the throw is not swallowed.
     });
   });
 

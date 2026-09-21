@@ -2,6 +2,7 @@ import { Intake } from './intake.entity';
 import { IntakeItem } from './intake-item.entity';
 import type { BuiltIntake } from './intake-lines';
 import { Shift } from '../shifts/shift.entity';
+import type { Payout } from '../payouts/payout.entity';
 
 /**
  * `collection_point_id` and `business_date` are JOINED IN from the shift and
@@ -43,8 +44,27 @@ export interface IntakeItemResponse {
   tare: IntakeItemTareResponse[];
 }
 
+export interface IntakePayoutResponse {
+  id: string;
+  code: string;
+  amount: string;
+  voided_at: string | null;
+}
+
+export function toIntakePayoutResponse(payout: Payout): IntakePayoutResponse {
+  return {
+    id: payout.id,
+    code: payout.code,
+    amount: payout.amount,
+    voided_at: payout.voided_at ? payout.voided_at.toISOString() : null,
+  };
+}
+
 export interface IntakeDetailResponse extends IntakeResponse {
   items: IntakeItemResponse[];
+  /** Payouts handed over WITH this receipt (§2.1 ⑥) — `intake_id` = this id,
+   *  voided ones included so the receipt can say a payout was cancelled. */
+  payouts: IntakePayoutResponse[];
 }
 
 export function toIntakeResponse(intake: Intake, shift: Shift): IntakeResponse {
@@ -84,12 +104,16 @@ export function toIntakeDetailResponse(
   intake: Intake,
   shift: Shift,
   items: IntakeItem[],
+  payouts: Payout[] = [],
 ): IntakeDetailResponse {
   return {
     ...toIntakeResponse(intake, shift),
     // Ordered by `item_order` so the response reads like the paper, whatever
     // order the database returned the rows in.
     items: [...items].sort((a, b) => a.item_order - b.item_order).map(toIntakeItemResponse),
+    payouts: [...payouts]
+      .sort((a, b) => a.created_at.getTime() - b.created_at.getTime())
+      .map(toIntakePayoutResponse),
   };
 }
 
