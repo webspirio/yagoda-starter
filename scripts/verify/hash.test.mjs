@@ -232,6 +232,10 @@ const NOT_CONTENT = [
     rel: 'frontend/dist/assets',
     why: 'build output, gitignored — derived from frontend/src, which IS hashed, and ordered behind `build` by `after`',
   },
+  {
+    rel: 'frontend/dist/index.html',
+    why: 'build output, gitignored — Vite writes it from frontend/index.html and frontend/src, both of which ARE hashed, and it is ordered behind `build` by `after`. It is what names the first-load set the bundle budget gates, so bundle-size.mjs refuses a verdict when it disagrees with dist/assets rather than measuring the smaller number it could still see',
+  },
 ]
 
 /**

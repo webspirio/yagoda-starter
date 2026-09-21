@@ -593,8 +593,12 @@ export const CHECKS = [
     after: ['build'],
     // THIS IS THE FIRST REAL `after` IN THIS REGISTRY — every earlier row's own `after`
     // comment argues why ordering was NOT needed; this one argues the opposite. bundle-
-    // size.mjs reads frontend/dist/assets directly off disk; unlike `coverage` (re-runs the
-    // whole suite itself) or `audit` (shells out to npm's own tooling), it builds nothing.
+    // size.mjs reads frontend/dist/index.html and frontend/dist/assets directly off disk;
+    // unlike `coverage` (re-runs the whole suite itself) or `audit` (shells out to npm's own
+    // tooling), it builds nothing. Reading index.html makes a stale tree MORE dangerous, not
+    // less: an index.html left by an earlier commit names chunk hashes a fresh assets
+    // directory does not contain, which the check now refuses outright rather than measuring
+    // the smaller first load it could still see.
     // Without `build` having actually PASSED first, this row runs against whatever happens
     // to already be sitting in frontend/dist: nothing at all on a fresh checkout (a clear,
     // named failure — see measure()'s own message), or worse, a STALE tree left over from an
@@ -606,16 +610,18 @@ export const CHECKS = [
     // `bundle` reported NOT_RUN, naming `build` as the unmet dependency, never FAILED and
     // never a false PASSED against the tree `build` left behind.
     proves:
-      'The sum of frontend/dist/assets is inside the recorded ceiling, gzip and raw. The ' +
-      'ceiling is derived, not chosen: measurement plus a minimum headroom, rounded up to ' +
-      'a step, written only by an explicit --write. Two WARNING lines print on every ' +
-      'PASSING run — the headroom left, and the largest JS chunk as a share of the total ' +
-      '— because those numbers, not the verdict, are the point.',
+      'The first-load set named by frontend/dist/index.html — the entry script, its ' +
+      'stylesheets and every modulepreloaded chunk — is inside the recorded ceiling, gzip ' +
+      'and raw. The ceiling is derived, not chosen: measurement plus a minimum headroom, ' +
+      'rounded to a step, written only by an explicit --write. WARNING lines print the ' +
+      'headroom left, the total shipped and how much of it is deferred, and the largest ' +
+      'JS chunk, on every PASSING run — those numbers, not the verdict, are the point.',
     blindSpot:
-      'A sum of built files, not what a browser downloads on first paint: code splitting, ' +
-      'lazy routes and caching all change the real number and none of them is visible ' +
-      'here. No per-chunk ceiling exists, so one file may grow to the whole budget. It ' +
-      'measures the output of the last `build`, so a stale dist gives a stale verdict.',
+      'Bytes, never load time, and caching is invisible: a returning visitor pays less ' +
+      'than anything printed here. The deferred chunks carry no ceiling at all, so a lazy ' +
+      'route may grow without limit and this row stays green. No per-chunk ceiling ' +
+      'either, so one eager file may fill the whole budget. It measures the last ' +
+      '`build`\'s output, so a stale dist gives a stale verdict.',
   },
   {
     id: 'test:db',

@@ -52,24 +52,37 @@
  * when it breaks is a budget nobody watches, and the point of this row is the number, not
  * the colour.
  *
- * BLIND SPOT, stated here because it drove the design and belongs next to the number it
- * qualifies: this measures the SUM of frontend/dist/assets, not what a browser actually
- * downloads on first paint. The sum can GROW while the user's real download SHRINKS — code
- * splitting does exactly that, by turning one large chunk into several smaller ones plus a
- * little overhead at each new chunk boundary. So a green row here is not a claim about load
- * time; it is a claim about total shipped bytes. The number worth watching, every run, is
- * the headroom line below — not the pass/fail.
+ * WHAT THIS GATES IS THE FIRST-LOAD SET, NOT THE SUM OF dist/assets, and that is a third
+ * correction, learned the same way as the two above. This check gated the sum until
+ * 2026-09-21, on a premise its own header stated out loud: the app's JS output was a SINGLE
+ * chunk, no code splitting at all, so the sum and what a first visit downloads were very
+ * nearly the same number. Splitting the owner-only routes out of the operator's bundle
+ * falsified that premise — and turned this row RED while making the operator's real
+ * download 17.9 KiB gzip SMALLER, because two chunks compress worse than one does. A budget
+ * that goes red exactly when the thing it exists to protect improves is not a strict budget,
+ * it is a broken one. The cheap answer was to raise the ceiling; it was refused, and the
+ * ceiling has not moved.
  *
- * THAT BLIND SPOT IS CHEAP TO NARROW, EVEN THOUGH IT IS NOT CHEAP TO CLOSE: this repo's
- * whole JS output today is a SINGLE chunk (no code splitting at all), so the sum this check
- * gates and what a first visit actually downloads are, right now, almost the same number —
- * confirmed on every run rather than assumed once. Root CLAUDE.md's "Deployment" audience
- * (operators at rural collection points, on mobile data) is exactly who pays for that. So a
- * second line, unconditional like the headroom one, names the single largest `.js` chunk
- * and its gzip size on EVERY run, passing or not. This is a SIGNAL, not a gate: there is no
- * agreed ceiling on a single chunk's size in this repo, and this check does not invent one
- * — inventing a number nobody agreed to would be exactly the kind of unreviewed policy
- * change this whole layer exists to avoid. It only makes the number impossible to miss.
+ * THE FIRST-LOAD SET IS READ FROM frontend/dist/index.html, never pattern-matched off
+ * filenames: the entry `<script type="module">`, every `<link rel="stylesheet">`, and every
+ * `<link rel="modulepreload">`. That last one is what keeps this a gate rather than an
+ * accounting trick. Vite emits a modulepreload for any chunk the entry statically needs, so
+ * a split that hoists shared code into new eagerly-preloaded chunks lands back INSIDE the
+ * budget and is caught — measured on this repo, six lazy entry points produced seven such
+ * chunks and GREW the first load rather than shrinking it. Only genuinely deferred code
+ * escapes the ceiling, and it escapes by being deferred, which is the whole point.
+ *
+ * THE SUM IS STILL MEASURED AND STILL PRINTED, as an unconditional WARNING line on every
+ * run, alongside how much of it is deferred. It is what the CDN stores and what somebody
+ * who opens every screen eventually pays, so dropping it would trade one blind spot for
+ * another. It simply is not the gate any more.
+ *
+ * WHAT REMAINS INVISIBLE HERE, stated next to the number it qualifies: caching, so a
+ * returning visitor's real cost is smaller than anything printed; the deferred bytes, which
+ * carry no ceiling at all, so a lazy route may grow without limit and this row stays green;
+ * per-chunk size, so one eager file may grow to the whole budget on its own; and the
+ * build's freshness, since this measures whatever the last `build` left on disk. A green
+ * row is a claim about bytes, never about load time.
  */
 import { readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { gzipSync } from 'node:zlib'
@@ -81,6 +94,8 @@ import { scanRoot } from '../scan-root.mjs'
 const ROOT = scanRoot()
 const ASSETS = path.join(ROOT, 'frontend', 'dist', 'assets')
 const ASSETS_REL = path.relative(ROOT, ASSETS)
+const INDEX_HTML = path.join(ROOT, 'frontend', 'dist', 'index.html')
+const INDEX_REL = path.relative(ROOT, INDEX_HTML)
 const BUDGET_REL = 'scripts/verify/baselines/bundle-budget.json'
 const BUDGET = path.join(ROOT, BUDGET_REL)
 
@@ -146,6 +161,79 @@ function measure() {
     fail([`${ASSETS_REL} has no .js or .css file in it — is the build actually producing output?`])
   }
   return files
+}
+
+/**
+ * The first-load set: every asset the browser fetches before it can paint, read from
+ * index.html rather than guessed from filenames. Vite writes three tag shapes that mean
+ * "fetch this now" — the entry `<script type="module">`, `<link rel="stylesheet">` and
+ * `<link rel="modulepreload">` — and reading the markup means this stays correct through
+ * any future change to chunk naming or splitting strategy without anyone editing a regex.
+ *
+ * Both failure modes below exist because the dangerous outcome here is not a red row, it is
+ * a green one measured over less than the truth: a stale index.html naming a file that is
+ * gone, or one naming nothing at all, would both otherwise report a comfortably small first
+ * load and pass. See `refuseEmptyScan`'s rationale in the verify skill — a check that
+ * scanned nothing must refuse a verdict.
+ *
+ * @param {AssetFile[]} files
+ * @returns {AssetFile[]}
+ */
+function firstLoad(files) {
+  /** @type {string} */
+  let html
+  try {
+    html = readFileSync(INDEX_HTML, 'utf8')
+  } catch {
+    fail([
+      `${INDEX_REL} does not exist — build the frontend first (npm run build).`,
+      'It is what names the first-load set, so without it that set is UNKNOWN, which ' +
+        'cannot be read as "nothing loads": a ceiling met by measuring nothing is not a ' +
+        'budget, it is a check that did not run.',
+    ])
+  }
+
+  /** @type {string[]} */
+  const refs = []
+  for (const m of html.matchAll(/<script\b[^>]*\bsrc=["']([^"']+)["']/gi)) refs.push(m[1])
+  for (const m of html.matchAll(/<link\b[^>]*>/gi)) {
+    const rel = /\brel=["']?([a-z-]+)/i.exec(m[0])?.[1]?.toLowerCase()
+    if (rel !== 'stylesheet' && rel !== 'modulepreload') continue
+    const href = /\bhref=["']([^"']+)["']/i.exec(m[0])?.[1]
+    if (href) refs.push(href)
+  }
+
+  const byName = new Map(files.map((f) => [f.file, f]))
+  /** @type {AssetFile[]} */
+  const set = []
+  /** @type {string[]} */
+  const missing = []
+  const seen = new Set()
+  for (const ref of refs) {
+    const name = ref.split('/').pop() ?? ''
+    if (!/\.(js|css)$/.test(name) || seen.has(name)) continue
+    seen.add(name)
+    const f = byName.get(name)
+    if (f) set.push(f)
+    else missing.push(name)
+  }
+
+  if (missing.length > 0) {
+    fail([
+      `${INDEX_REL} references ${missing.join(', ')}, which ${ASSETS_REL} does not contain.`,
+      'That is a stale or half-written build. Measuring only the referenced files that ' +
+        'happen to be present would report a SMALLER first load than the truth and pass, ' +
+        'and under-measuring is the one outcome worse than a red row here — rebuild.',
+    ])
+  }
+  if (set.length === 0) {
+    fail([
+      `${INDEX_REL} names no script or stylesheet under ${ASSETS_REL}.`,
+      'Nothing was measured, so there is no verdict to give: reporting zero bytes against ' +
+        'a ceiling and calling it a pass is the failure this refusal exists to prevent.',
+    ])
+  }
+  return set
 }
 
 /**
@@ -236,7 +324,12 @@ function totals(files) {
 function main() {
   const write = process.argv.includes('--write')
   const files = measure()
-  const { gzip, raw } = totals(files)
+  // The gate is the first-load set; the sum is a signal printed beside it. Both are
+  // measured on every run, including under --write, so the baseline can never be written
+  // from one quantity and compared against the other.
+  const entry = firstLoad(files)
+  const { gzip, raw } = totals(entry)
+  const shipped = totals(files)
 
   if (write) {
     /** @type {string | undefined} */
@@ -269,29 +362,38 @@ function main() {
   if (gzip > budget.maxGzipBytes) {
     problems.push(
       `GZIP OVER BUDGET: ${kib(gzip)} against a ceiling of ${kib(budget.maxGzipBytes)} ` +
-        `(+${kib(gzip - budget.maxGzipBytes)}). This is what actually crosses the network.`,
+        `(+${kib(gzip - budget.maxGzipBytes)}). This is what crosses the network before ` +
+        'the app can paint.',
     )
   }
   if (raw > budget.maxRawBytes) {
     problems.push(
       `RAW OVER BUDGET: ${kib(raw)} against a ceiling of ${kib(budget.maxRawBytes)} ` +
-        `(+${kib(raw - budget.maxRawBytes)}). This is what the browser must parse and compile.`,
+        `(+${kib(raw - budget.maxRawBytes)}). This is what the browser must parse and ` +
+        'compile before the app can paint.',
     )
   }
   if (problems.length) {
     problems.push(
       `Raising the ceiling is a visible, reasoned edit to ${BUDGET_REL} — it never widens on ` +
-        'its own. Lowering it is ordinary; look for a new or oversized dependency first.',
+        'its own. Lowering it is ordinary; look for a new or oversized dependency first, ' +
+        'then for eager code that could be deferred behind a lazy route.',
     )
     fail(problems)
   }
 
+  // Every file, deferred ones included, each marked with which side of the gate it is on —
+  // so the listing answers "why is the ceiling not the total?" without anyone reading this
+  // file to find out.
+  const inEntry = new Set(entry.map((f) => f.file))
   for (const f of [...files].sort((a, b) => b.gzip - a.gzip)) {
-    process.stdout.write(`bundle:   ${f.file}  ${kib(f.raw)} raw / ${kib(f.gzip)} gzip\n`)
+    const side = inEntry.has(f.file) ? 'first load' : 'deferred  '
+    process.stdout.write(`bundle:   ${side}  ${f.file}  ${kib(f.raw)} raw / ${kib(f.gzip)} gzip\n`)
   }
   process.stdout.write(
-    `bundle: total ${kib(gzip)} gzip / ${kib(raw)} raw — within the budget measured ` +
-      `${budget.measuredAt} (ceiling ${kib(budget.maxGzipBytes)} gzip / ${kib(budget.maxRawBytes)} raw)\n`,
+    `bundle: first load ${kib(gzip)} gzip / ${kib(raw)} raw across ${entry.length} of ` +
+      `${files.length} files — within the budget measured ${budget.measuredAt} ` +
+      `(ceiling ${kib(budget.maxGzipBytes)} gzip / ${kib(budget.maxRawBytes)} raw)\n`,
   )
   // Printed on every PASSING run, not only once the budget is nearly gone: a number only
   // heard from when it breaks is a number nobody is actually watching. See the file header
@@ -301,8 +403,9 @@ function main() {
   process.stdout.write(
     `WARNING: headroom is ${kib(headroomGzip)} gzip / ${kib(headroomRaw)} raw before the ` +
       `ceiling measured ${budget.measuredAt} (${kib(budget.maxGzipBytes)} gzip / ${kib(budget.maxRawBytes)} raw) ` +
-      '— this measures the SUM of frontend/dist/assets, not what a browser downloads on first ' +
-      'paint, so watch this number every run; it is the point of this row, not the pass/fail.\n',
+      `— this budgets the first-load set named by ${INDEX_REL}, not the sum of ` +
+      `${ASSETS_REL} and not load time, so watch this number every run; it is the point of ` +
+      'this row, not the pass/fail.\n',
   )
 
   // THE HEADROOM CAN FALL BELOW THE DESIGN MINIMUM WITHOUT ANY ROW CHANGING COLOUR, and
@@ -333,22 +436,35 @@ function main() {
     )
   }
 
-  // A SECOND unconditional signal, printed on every run regardless of size — not gated
-  // behind a threshold, which would reproduce the exact failure the headroom line above was
-  // fixed to avoid: a number only heard from once it crosses some line is a number nobody
-  // reads until it already broke. This is deliberately not a pass/fail: no chunk-size
-  // ceiling is agreed in this repo, and this check does not invent one — it only makes the
-  // largest single JS chunk (what a first visit largely downloads today, since there is no
-  // code splitting at all) impossible to miss on every green run.
+  // THE SUM, WHICH THIS ROW USED TO GATE AND NOW ONLY REPORTS. Unconditional, like the
+  // headroom line and for the same reason: a number heard from only once it crosses some
+  // line is a number nobody reads until it already broke. Dropping it when the gate moved
+  // would have traded one blind spot for another — it is still what the CDN stores, and
+  // the deferred half of it carries no ceiling whatsoever, which this line has to say out
+  // loud precisely because the gate above cannot see it.
+  const deferredGzip = shipped.gzip - gzip
+  const deferredRaw = shipped.raw - raw
+  process.stdout.write(
+    `WARNING: total shipped ${kib(shipped.gzip)} gzip / ${kib(shipped.raw)} raw, of which ` +
+      `${kib(deferredGzip)} gzip / ${kib(deferredRaw)} raw is deferred and therefore OUTSIDE ` +
+      'the ceiling above. Nothing budgets the deferred bytes: a lazy route can grow without ' +
+      'limit and this row stays green. A signal, not a gate.\n',
+  )
+
+  // A THIRD unconditional signal, on the same principle. Deliberately not a pass/fail: no
+  // chunk-size ceiling is agreed in this repo, and this check does not invent one —
+  // inventing a number nobody agreed to would be the unreviewed policy change this layer
+  // exists to avoid. It only makes the largest single JS chunk impossible to miss, since
+  // the gate above budgets a SET and says nothing about how it is distributed inside it.
   const jsFiles = files.filter((f) => f.file.endsWith('.js'))
   if (jsFiles.length > 0) {
     const largestJs = jsFiles.reduce((a, b) => (b.gzip > a.gzip ? b : a))
-    const shareOfTotal = ((largestJs.gzip / gzip) * 100).toFixed(1)
+    const shareOfShipped = ((largestJs.gzip / shipped.gzip) * 100).toFixed(1)
     process.stdout.write(
       `WARNING: largest JS chunk is ${largestJs.file} at ${kib(largestJs.gzip)} gzip / ` +
-        `${kib(largestJs.raw)} raw — ${shareOfTotal}% of the ${kib(gzip)} gzip total. This is a ` +
-        'signal, not a gate: no chunk-size ceiling exists in this repo today; watch this ' +
-        'number for whether code splitting would help.\n',
+        `${kib(largestJs.raw)} raw — ${shareOfShipped}% of the ${kib(shipped.gzip)} gzip ` +
+        'shipped. This is a signal, not a gate: no chunk-size ceiling exists in this repo ' +
+        'today; watch this number for whether a further split would help.\n',
     )
   }
 }

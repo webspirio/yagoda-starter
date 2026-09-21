@@ -49,19 +49,49 @@ function budgetFile(over) {
 }
 
 /**
- * Builds a throwaway root with `frontend/dist/assets/<files>` and a budget file, runs the
- * check against it via VERIFY_SCAN_ROOT, and returns what it printed.
+ * `index.html` as Vite writes it: the entry as a module `<script>`, CSS as a
+ * `<link rel="stylesheet">`, and any chunk the entry statically needs as a
+ * `<link rel="modulepreload">`. This markup IS the first-load set, which is why the check
+ * reads it rather than pattern-matching filenames.
  *
- * @param {{ files?: Record<string, Buffer | string> | null, budget?: object | null, args?: string[] }} opts
+ * @param {(string | { name: string, rel: string })[]} named
+ * @returns {string}
+ */
+function indexHtml(named) {
+  const tags = named.map((n) => {
+    const name = typeof n === 'string' ? n : n.name
+    const rel = typeof n === 'string' ? (name.endsWith('.css') ? 'stylesheet' : null) : n.rel
+    if (rel === null) return `    <script type="module" crossorigin src="/assets/${name}"></script>`
+    return `    <link rel="${rel}" crossorigin href="/assets/${name}">`
+  })
+  return `<!doctype html>\n<html>\n  <head>\n    <link rel="icon" href="/favicon.svg" />\n${tags.join('\n')}\n  </head>\n  <body><div id="root"></div></body>\n</html>\n`
+}
+
+/**
+ * Builds a throwaway root with `frontend/dist/assets/<files>`, a `frontend/dist/index.html`
+ * and a budget file, runs the check against it via VERIFY_SCAN_ROOT, and returns what it
+ * printed.
+ *
+ * `entry` names the first-load set. Omitted, it defaults to every `.js`/`.css` fixture
+ * file, so a test with nothing to say about code splitting reads exactly as it did while
+ * the gate was the sum — first load and sum are then the same number. `entry: null` writes
+ * no index.html at all.
+ *
+ * @param {{ files?: Record<string, Buffer | string> | null, entry?: (string | { name: string, rel: string })[] | null, budget?: object | null, args?: string[] }} opts
  * @returns {{ status: number, out: string, root: string, readBudget: () => any }}
  */
-function runIn({ files, budget, args = [] }) {
+function runIn({ files, entry, budget, args = [] }) {
   const root = mkdtempSync(path.join(os.tmpdir(), 'bundle-size-'))
   if (files) {
-    const assets = path.join(root, 'frontend', 'dist', 'assets')
+    const dist = path.join(root, 'frontend', 'dist')
+    const assets = path.join(dist, 'assets')
     mkdirSync(assets, { recursive: true })
     for (const [name, content] of Object.entries(files)) {
       writeFileSync(path.join(assets, name), content)
+    }
+    if (entry !== null) {
+      const named = entry ?? Object.keys(files).filter((n) => /\.(js|css)$/.test(n))
+      writeFileSync(path.join(dist, 'index.html'), indexHtml(named))
     }
   }
   const budgetPath = path.join(root, 'scripts', 'verify', 'baselines', 'bundle-budget.json')
@@ -241,8 +271,130 @@ test('non-.js/.css files under dist/assets are excluded from both totals', () =>
     budget: budgetFile({ maxGzipBytes: 1e9, maxRawBytes: 1e9 }),
   })
   /** @param {string} out */
-  const total = (out) => /total (\S+ KiB) gzip \/ (\S+ KiB) raw/.exec(out)?.slice(1, 3)
+  const total = (out) => /total shipped (\S+ KiB) gzip \/ (\S+ KiB) raw/.exec(out)?.slice(1, 3)
   assert.deepEqual(total(withFont.out), total(without.out))
   rmSync(withFont.root, { recursive: true, force: true })
   rmSync(without.root, { recursive: true, force: true })
+})
+
+// --- The gate is the FIRST-LOAD set, not the sum -------------------------------------
+//
+// These six are the whole argument for reading index.html. The two that matter most are
+// the first two: identical bytes on disk, one `<link>` apart, opposite verdicts. Without
+// that pair, "a lazy chunk is outside the gate" could be satisfied by a check that had
+// simply stopped measuring the second file for any reason at all.
+
+test('a chunk index.html does not name is outside the gate, and is still counted in the printed sum', () => {
+  const eager = noise(10 * KIB)
+  const lazy = noise(60 * KIB)
+  const r = runIn({
+    files: { 'index.js': eager, 'owner-pages.js': lazy },
+    entry: ['index.js'],
+    budget: budgetFile({
+      maxGzipBytes: gzipSync(eager, { level: 9 }).length + KIB,
+      maxRawBytes: eager.length + KIB,
+    }),
+  })
+  assert.equal(r.status, 0, r.out)
+  // The sum is far over that ceiling. Being green is the claim.
+  assert.match(r.out, /first load /)
+  // And the bytes nobody downloads on first paint are still reported, not hidden.
+  assert.match(r.out, /WARNING: total shipped /)
+  assert.match(r.out, /owner-pages\.js/)
+  rmSync(r.root, { recursive: true, force: true })
+})
+
+test('a chunk index.html modulepreloads IS inside the gate — the same bytes, one link away', () => {
+  // DISCRIMINATOR for the test above, and the regression Task 15 measured for real: six
+  // lazy entry points made rolldown hoist shared code into chunks Vite then modulepreloads
+  // from index.html, and the operator's first load GREW. A gate that read only the
+  // `<script>` tag would have called that green.
+  const eager = noise(10 * KIB)
+  const lazy = noise(60 * KIB)
+  const files = { 'index.js': eager, 'shared.js': lazy }
+  const budget = budgetFile({
+    maxGzipBytes: gzipSync(eager, { level: 9 }).length + KIB,
+    maxRawBytes: eager.length + KIB,
+  })
+  const r = runIn({
+    files,
+    entry: ['index.js', { name: 'shared.js', rel: 'modulepreload' }],
+    budget,
+  })
+  assert.equal(r.status, 1, r.out)
+  assert.match(r.out, /GZIP OVER BUDGET/)
+  assert.match(r.out, /RAW OVER BUDGET/)
+  rmSync(r.root, { recursive: true, force: true })
+})
+
+test('a stylesheet index.html links counts toward first load; one it does not link does not', () => {
+  const js = noise(4 * KIB)
+  const css = noise(40 * KIB)
+  const budget = budgetFile({
+    maxGzipBytes: gzipSync(js, { level: 9 }).length + KIB,
+    maxRawBytes: js.length + KIB,
+  })
+  const linked = runIn({ files: { 'index.js': js, 'index.css': css }, budget })
+  assert.equal(linked.status, 1, linked.out)
+  const unlinked = runIn({
+    files: { 'index.js': js, 'index.css': css },
+    entry: ['index.js'],
+    budget,
+  })
+  assert.equal(unlinked.status, 0, unlinked.out)
+  rmSync(linked.root, { recursive: true, force: true })
+  rmSync(unlinked.root, { recursive: true, force: true })
+})
+
+test('a missing frontend/dist/index.html fails clearly: the first-load set is unknown, not empty', () => {
+  const r = runIn({
+    files: { 'index.js': noise(4 * KIB) },
+    entry: null,
+    budget: budgetFile({ maxGzipBytes: 1e9, maxRawBytes: 1e9 }),
+  })
+  assert.equal(r.status, 1)
+  assert.match(r.out, /index\.html/)
+  assert.match(r.out, /cannot be read as "nothing loads"/)
+  rmSync(r.root, { recursive: true, force: true })
+})
+
+test('index.html naming an asset that is not on disk is a failure, not a quieter measurement', () => {
+  // A stale index.html against a fresh assets directory measures a SMALLER first load than
+  // the truth and passes. Silently under-measuring is the one outcome worse than red here.
+  const r = runIn({
+    files: { 'index.js': noise(4 * KIB) },
+    entry: ['index.js', { name: 'gone.js', rel: 'modulepreload' }],
+    budget: budgetFile({ maxGzipBytes: 1e9, maxRawBytes: 1e9 }),
+  })
+  assert.equal(r.status, 1)
+  assert.match(r.out, /gone\.js/)
+  assert.match(r.out, /stale/)
+  rmSync(r.root, { recursive: true, force: true })
+})
+
+test('an index.html that names no script refuses a verdict rather than passing on zero bytes', () => {
+  const r = runIn({
+    files: { 'index.js': noise(4 * KIB) },
+    entry: [],
+    budget: budgetFile({ maxGzipBytes: 1e9, maxRawBytes: 1e9 }),
+  })
+  assert.equal(r.status, 1)
+  assert.match(r.out, /no script/)
+  rmSync(r.root, { recursive: true, force: true })
+})
+
+test('--write records the first-load measurement, not the sum of dist/assets', () => {
+  const eager = noise(30 * KIB)
+  const lazy = noise(90 * KIB)
+  const r = runIn({
+    files: { 'index.js': eager, 'owner-pages.js': lazy },
+    entry: ['index.js'],
+    budget: null,
+    args: ['--write'],
+  })
+  assert.equal(r.status, 0, r.out)
+  const written = r.readBudget()
+  assert.equal(written.measuredRawBytes, eager.length)
+  assert.equal(written.measuredGzipBytes, gzipSync(eager, { level: 9 }).length)
+  rmSync(r.root, { recursive: true, force: true })
 })
