@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router';
 import { useTranslation } from 'react-i18next';
 import { useFieldArray, useForm, useWatch } from 'react-hook-form';
@@ -21,6 +21,7 @@ import { useTareTypeOptionsQuery } from '@/entities/tare-type';
 import { usePointCashForPointQuery } from '@/entities/point-cash';
 import { ReceiptDialog } from '@/widgets/receipt';
 import { useOpenShiftMutation, CountDrawerDialog } from '@/features/count-shift';
+import type { SupplierPickerHandle } from '@/features/pick-supplier';
 import { useCreateIntakeMutation } from '../api/intakes';
 import { apiErrorToFields, type ApiFieldErrors } from '../lib/apiErrorToFields';
 import { useIntakePreview } from '../lib/useIntakePreview';
@@ -99,6 +100,9 @@ export function ReceptionPage() {
   // ever carries the id (`supplier_id`) that the document needs, so the two
   // are kept in sync from here rather than the picker re-reading by id.
   const [supplier, setSupplier] = useState<Supplier | null>(null);
+  // Read only inside event handlers (the Enter guard below, and after a
+  // successful submit) — never during render, which the React Compiler bans.
+  const pickerRef = useRef<SupplierPickerHandle>(null);
   const [receiptId, setReceiptId] = useState<string | null>(null);
   const [openDialogOpen, setOpenDialogOpen] = useState(false);
   // Bumped on every open so the dialog remounts with fresh RHF defaults and no
@@ -217,7 +221,12 @@ export function ReceptionPage() {
     setValue('paid_amount', v, { shouldDirty: true });
   };
 
-  const onSubmit = handleSubmit(async (formValues) => {
+  // A plain closure, not wrapped in `handleSubmit()` here: `handleSubmit`
+  // is called instead from inside the `<form>`'s own `onSubmit` prop below,
+  // so `pickerRef.current` is only ever read from inside an actual event
+  // handler — never eagerly, while the component renders (React Compiler
+  // lint bans a ref read reachable during render).
+  const submitIntake = async (formValues: IntakeFormValues) => {
     setSubmitFailure(null);
     // Captured BEFORE the write: a successful create invalidates
     // `supplierBalances`, which can refetch before the toast below reads
@@ -246,13 +255,16 @@ export function ReceptionPage() {
       reset({ supplier_id: '', items: [emptyLine(defaultTareTypeId)], paid_amount: '' });
       setSupplier(null);
       setPaidTouched(false);
+      // The next person in the queue starts where the operator's hands
+      // already are — back on the supplier picker, not the mouse.
+      pickerRef.current?.focus();
     } catch (error) {
       setSubmitFailure({
         at: snapshot,
         errors: apiErrorToFields(error, formValues.items.length),
       });
     }
-  });
+  };
 
   const handleOpenShift = () => {
     setOpenDialogInstance((n) => n + 1);
@@ -335,12 +347,26 @@ export function ReceptionPage() {
         ) : null}
 
         <div className="grid gap-5 lg:grid-cols-[minmax(0,1.35fr)_minmax(320px,1fr)]">
-          <form onSubmit={(e) => void onSubmit(e)} noValidate>
+          <form
+            onSubmit={(e) => void handleSubmit(submitIntake)(e)}
+            // Enter is how an operator moves between fields on the scale's
+            // numeric pad; it must never fire a submit the form isn't ready
+            // for. Scoped to text inputs only, so it never swallows Enter
+            // inside the grade `<select>` or on a button.
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && (e.target as HTMLElement).tagName === 'INPUT' && !canSubmit) {
+                e.preventDefault();
+              }
+            }}
+            noValidate
+          >
             <Card>
               <SupplierSection
                 pointId={pointId}
                 ownerMode={isOwner}
                 supplier={supplier}
+                pickerRef={pickerRef}
+                autoFocus={supplier === null}
                 onChange={(s) => {
                   // Lines belong to the SUPPLIER who brought them — switching
                   // mid-visit (an operator picked the wrong row) leaves the

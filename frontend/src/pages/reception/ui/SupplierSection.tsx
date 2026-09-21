@@ -32,6 +32,7 @@ export function SupplierSection({
   debt,
   disabled,
   pickerRef,
+  autoFocus,
 }: {
   pointId: string | null;
   ownerMode: boolean;
@@ -41,6 +42,10 @@ export function SupplierSection({
   debt: string | null;
   disabled: boolean;
   pickerRef?: Ref<SupplierPickerHandle>;
+  /** Autofocus the picker's trigger — the page passes this only while no
+   *  supplier is chosen yet, so returning to this screen (or resetting after
+   *  a submit) doesn't steal focus back from whatever the operator is doing. */
+  autoFocus?: boolean;
 }) {
   const { t, i18n } = useTranslation();
   const locale = i18n.resolvedLanguage ?? 'uk';
@@ -60,6 +65,7 @@ export function SupplierSection({
         value={supplier}
         onChange={onChange}
         disabled={disabled}
+        autoFocus={autoFocus}
       />
 
       {supplier && debt !== null && cmp(debt, '0') === 1 ? (

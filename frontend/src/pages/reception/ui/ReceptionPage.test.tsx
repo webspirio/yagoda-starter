@@ -1,6 +1,6 @@
-import { forwardRef } from 'react';
+import { forwardRef, useImperativeHandle, useRef } from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { render, screen, waitFor, within, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createMemoryRouter, RouterProvider } from 'react-router';
 import { ApiError } from '@/shared/api';
@@ -119,16 +119,20 @@ vi.mock('@/entities/supplier', () => ({
 // own concern — tested in `features/pick-supplier/ui/SupplierPicker.test.tsx`.
 // Here it is a single button that always hands back the fixed `nina` row, so
 // every test below can get a supplier onto the form without driving a
-// combobox. `forwardRef` mirrors the real component, since the page may pass
-// a ref through (a later task's autofocus wiring).
+// combobox. `forwardRef` mirrors the real component: the page reads
+// `pickerRef.current?.focus()` after a successful submit, and this stub wires
+// that imperative handle onto its own button so the focus test can assert
+// against a real DOM element. `autoFocus` is accepted (and ignored) so the
+// page can pass it without the stub choking on an unknown prop.
 vi.mock('@/features/pick-supplier', () => ({
-  SupplierPicker: forwardRef(function SupplierPicker({
-    onChange,
-  }: {
-    onChange: (s: Supplier) => void;
-  }) {
+  SupplierPicker: forwardRef(function SupplierPicker(
+    { onChange }: { onChange: (s: Supplier) => void; autoFocus?: boolean },
+    ref,
+  ) {
+    const buttonRef = useRef<HTMLButtonElement>(null);
+    useImperativeHandle(ref, () => ({ focus: () => buttonRef.current?.focus() }));
     return (
-      <button type="button" onClick={() => onChange(nina)}>
+      <button ref={buttonRef} type="button" onClick={() => onChange(nina)}>
         pick-nina
       </button>
     );
@@ -1074,6 +1078,58 @@ describe('ReceptionPage — switching supplier mid-visit', () => {
     await user.click(screen.getByRole('button', { name: 'pick-nina' }));
 
     expect(toastMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('ReceptionPage — Enter never submits a half-typed receipt', () => {
+  it('swallows Enter in the gross field while the form is not ready, and leaves it alone once it is', async () => {
+    const user = userEvent.setup();
+    renderReception();
+
+    const grossInput = screen.getByLabelText('Gross — berries including tare');
+
+    // Not ready: no supplier chosen yet, so `canSubmit` is false — Enter must
+    // not reach the browser's own (nonexistent in jsdom) implicit submit.
+    const notReadyEvent = new KeyboardEvent('keydown', {
+      key: 'Enter',
+      bubbles: true,
+      cancelable: true,
+    });
+    // `dispatchEvent` returns false exactly when some listener called
+    // `preventDefault()` — the direct proof the guard fired.
+    expect(grossInput.dispatchEvent(notReadyEvent)).toBe(false);
+    fireEvent.keyDown(grossInput, { key: 'Enter' });
+    expect(createMock).not.toHaveBeenCalled();
+
+    // Ready: supplier picked, the one line filled, the preview settled.
+    previewMock.mockReturnValue(SETTLED);
+    await user.click(screen.getByRole('button', { name: 'pick-nina' }));
+    await fillDraft(user);
+
+    const readyEvent = new KeyboardEvent('keydown', {
+      key: 'Enter',
+      bubbles: true,
+      cancelable: true,
+    });
+    expect(grossInput.dispatchEvent(readyEvent)).toBe(true);
+  });
+});
+
+describe('ReceptionPage — focus returns to the supplier picker', () => {
+  beforeEach(() => {
+    previewMock.mockReturnValue(SETTLED);
+  });
+
+  it('focuses the supplier combobox again once a receipt is recorded', async () => {
+    const user = userEvent.setup();
+    renderReception();
+
+    await user.click(screen.getByRole('button', { name: 'pick-nina' }));
+    await fillDraft(user);
+    await user.click(screen.getByRole('button', { name: 'Accept 120.40 kg' }));
+
+    expect(await screen.findByText('Receipt for i-new')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'pick-nina' })).toHaveFocus();
   });
 });
 

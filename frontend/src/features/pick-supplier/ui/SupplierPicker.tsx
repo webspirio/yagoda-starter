@@ -43,8 +43,11 @@ export const SupplierPicker = forwardRef<
     value: Supplier | null;
     onChange: (supplier: Supplier) => void;
     disabled?: boolean;
+    /** Autofocus the TRIGGER on mount — the caller's call, made only while no
+     *  supplier is chosen yet (see `SupplierSection`). */
+    autoFocus?: boolean;
   }
->(function SupplierPicker({ pointId, ownerMode, value, onChange, disabled }, ref) {
+>(function SupplierPicker({ pointId, ownerMode, value, onChange, disabled, autoFocus }, ref) {
   const { t, i18n } = useTranslation();
   const locale = i18n.resolvedLanguage ?? 'uk';
   const id = useId();
@@ -169,6 +172,7 @@ export const SupplierPicker = forwardRef<
         ref={triggerRef}
         type="button"
         role="combobox"
+        autoFocus={autoFocus}
         aria-expanded={open}
         aria-haspopup="listbox"
         aria-controls={`${id}-list`}
