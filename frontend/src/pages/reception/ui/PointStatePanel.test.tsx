@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router';
+import type { Intake } from '@/entities/intake';
 import { PointStatePanel } from './PointStatePanel';
 
 const { pointCashMock, cashCountsMock, payoutsMock, intakesMock, crateBalancesMock } = vi.hoisted(
@@ -73,9 +74,41 @@ const PAYOUTS = [
   { id: 'po2', amount: '500.00', voided_at: '2026-09-21T10:00:00Z' },
 ];
 
-const INTAKES = [
-  { id: 'i1', amount: '1204.00', paid_amount: '204.00', voided_at: null },
-  { id: 'i2', amount: '5000.00', paid_amount: '0.00', voided_at: '2026-09-21T10:00:00Z' },
+// A full `Intake` per literal — `PointStatePanel` reads only `amount`,
+// `paid_amount` and `voided_at`, but a partial/`Pick`-typed fixture would
+// hide a real `Intake` from ever being tested here (the project's own rule:
+// any `Intake` literal carries `net_kg`, `lines_count`, `supplier_name` and
+// `paid_amount`, not just the fields one caller happens to read).
+const intake = (over: Partial<Intake> & Pick<Intake, 'id'>): Intake => ({
+  code: 'SHP-IN-20260921-00001',
+  shift_id: 's1',
+  collection_point_id: 'p1',
+  business_date: '2026-09-21',
+  supplier_id: 's1',
+  received_by_user_id: 'u1',
+  voided_at: null,
+  voided_by_user_id: null,
+  void_reason: null,
+  created_at: '2026-09-21T09:00:00Z',
+  net_kg: '120.40',
+  lines_count: 1,
+  supplier_name: 'Ніна Ільчук',
+  amount: '0.00',
+  paid_amount: '0.00',
+  ...over,
+});
+
+const INTAKES: Intake[] = [
+  intake({ id: 'i1', amount: '1204.00', paid_amount: '204.00', voided_at: null }),
+  intake({
+    id: 'i2',
+    supplier_name: 'Petro Kotyk',
+    net_kg: '250.00',
+    lines_count: 3,
+    amount: '5000.00',
+    paid_amount: '0.00',
+    voided_at: '2026-09-21T10:00:00Z',
+  }),
 ];
 
 const BALANCES = [

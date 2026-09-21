@@ -65,6 +65,20 @@ const OLEH = intake({
   paid_amount: '500.00',
 });
 
+// Voided, but would owe a «залишок» if it were live (100.00 amount, nothing
+// paid) — proves the amber badge is gated on `voided_at === null`, not just
+// on the arithmetic.
+const VOIDED_WITH_GAP = intake({
+  id: 'i4',
+  created_at: '2026-09-21T06:00:00Z',
+  supplier_name: 'Iryna Sokil',
+  net_kg: '5.00',
+  lines_count: 1,
+  amount: '100.00',
+  paid_amount: '0.00',
+  voided_at: '2026-09-21T11:00:00Z',
+});
+
 const page = (data: Intake[]) => ({
   data: { data, total: data.length, page: 1, limit: 100 },
   isPending: false,
@@ -110,6 +124,19 @@ describe('TodayReceipts — a row reads like the mock', () => {
     expect(screen.getByText('2')).toBeInTheDocument();
     // Live tonnage: 36.90 + 10.10 = 47.00 kg — the voided 20.00 excluded.
     expect(screen.getByText(formatKg('47.00', 'en'))).toBeInTheDocument();
+  });
+
+  it('never shows the amber remainder on a voided receipt, even when the amount was never paid', () => {
+    intakesMock.mockReturnValue(page([NINA, VOIDED_WITH_GAP]));
+    render(<TodayReceipts shiftId="s1" onOpen={vi.fn()} />);
+
+    // The live row (Ніна) still reads its remainder…
+    expect(screen.getByText('remainder ' + formatUah('5000.00', 'en'))).toBeInTheDocument();
+    // …but the voided row's own would-be remainder (100.00 − 0.00) does not.
+    expect(screen.getByText('Iryna Sokil')).toBeInTheDocument();
+    expect(
+      screen.queryByText('remainder ' + formatUah('100.00', 'en')),
+    ).not.toBeInTheDocument();
   });
 
   it('scrolls a tall list instead of growing the page', () => {

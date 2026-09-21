@@ -59,7 +59,11 @@ export function TodayReceipts({
         <ul className="max-h-[560px] divide-y divide-border overflow-y-auto">
           {rows.map((row) => {
             const remainder = sub(row.amount, row.paid_amount);
-            const hasRemainder = cmp(remainder, '0') === 1;
+            // A VOIDED receipt never owes anything — the amber badge is for
+            // a live document still short of its own amount, matching
+            // `PointStatePanel`'s «Залишків створено», which filters
+            // `voided_at === null` before summing the same subtraction.
+            const hasRemainder = row.voided_at === null && cmp(remainder, '0') === 1;
             return (
               <li key={row.id}>
                 <button

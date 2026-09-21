@@ -120,7 +120,10 @@ export function ReceptionPage() {
   // The drawer for berries — only read once a shift is open, same gate the
   // preview itself uses; `pointId` (not `bodyPointId`) because an operator's
   // OWN point still has cash to read even though their token, not this id,
-  // is what the intake body sends.
+  // is what the intake body sends. `PointStatePanel` reads this SAME query
+  // key ungated, so the shared cache may end up populated even while this
+  // gate is closed — harmless, since every consumer of `cash` below is
+  // itself disabled while the shift is closed.
   const pointCash = usePointCashForPointQuery(pointId, undefined, shiftOpen);
   const cash = pointCash.data?.cash ?? null;
 
