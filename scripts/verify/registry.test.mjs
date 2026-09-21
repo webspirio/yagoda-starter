@@ -6,6 +6,7 @@ import path from 'node:path'
 
 import { CHECKS, PRECONDITIONS, checkById, inTier, tierCovers } from './registry.mjs'
 import { DEFAULT_TIMEOUT_MS } from './run.mjs'
+import { gitEnv } from './scan-root.mjs'
 
 test('every check id is unique', () => {
   const ids = CHECKS.map((c) => c.id)
@@ -304,6 +305,7 @@ const backendFile = (/** @type {string} */ rel) =>
 /** Module directories under backend/src whose entity declares a `numeric` column. */
 function modulesOwningMoneyColumns() {
   const files = execFileSync('git', ['ls-files', 'backend/src'], {
+    env: gitEnv(),
     cwd: path.resolve(import.meta.dirname, '..', '..'),
     encoding: 'utf8',
   })
@@ -347,6 +349,7 @@ test('every backend module owning a money column is inside the eslint money ban'
 test('no entry in the money ban matches nothing — a dead glob is a silent hole', async () => {
   const { entries } = await modulesUnderTheMoneyBan()
   const tracked = execFileSync('git', ['ls-files', 'backend/src'], {
+    env: gitEnv(),
     cwd: path.resolve(import.meta.dirname, '..', '..'),
     encoding: 'utf8',
   })

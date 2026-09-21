@@ -4,6 +4,7 @@ import { execFileSync } from 'node:child_process'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
+import { fixtureGitEnv } from '../scan-root.mjs'
 
 const ROOT = path.resolve(import.meta.dirname, '..', '..', '..')
 const CHECK = path.join(ROOT, 'scripts', 'verify', 'checks', 'test-glob-parity.mjs')
@@ -110,7 +111,7 @@ test('a root with no test files refuses a verdict instead of printing a green on
     mkdirSync(path.join(root, 'backend'), { recursive: true })
     writeFileSync(path.join(root, 'backend', 'jest.config.js'), "module.exports = { testRegex: '.*\\.spec\\.ts$' }\n")
     writeFileSync(path.join(root, 'backend', 'jest.db.config.js'), "module.exports = { testRegex: '.*\\.db-spec\\.ts$' }\n")
-    execFileSync('git', ['init', '-q'], { cwd: root })
+    execFileSync('git', ['init', '-q'], { cwd: root, env: fixtureGitEnv() })
 
     const res = run([], { VERIFY_SCAN_ROOT: root })
     assert.equal(res.status, 1, res.out)

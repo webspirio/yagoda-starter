@@ -82,3 +82,30 @@ export function refuseEmptyScan(id, count, what, root) {
   )
   process.exit(1)
 }
+
+/**
+ * The environment a FIXTURE's git runs in: {@link gitEnv}, plus an identity.
+ *
+ * WHY THIS EXISTS AS ONE FUNCTION. Four test files had grown their own `NO_GIT_ENV`
+ * constant, none of them the same, and the fixtures that needed to commit passed
+ * `-c user.email=… -c user.name=…` by hand at each call site. One call site was added
+ * without them and went green on three developers' machines and red on CI, because macOS
+ * derives an identity from the OS account's full name while a Linux runner's `runner`
+ * account has an empty one — `fatal: empty ident name`. That is a test asserting something
+ * about the HOST, which is what this layer refuses to do everywhere else.
+ *
+ * `gitEnv()` alone is not enough here: it neutralises the global and system config, which is
+ * what REMOVES any identity the host might have supplied. Scrubbing without replacing is
+ * what makes a commit impossible rather than deterministic, so the two belong together.
+ *
+ * @returns {NodeJS.ProcessEnv}
+ */
+export function fixtureGitEnv() {
+  return {
+    ...gitEnv(),
+    GIT_AUTHOR_NAME: 'verify fixture',
+    GIT_AUTHOR_EMAIL: 'fixture@verify.invalid',
+    GIT_COMMITTER_NAME: 'verify fixture',
+    GIT_COMMITTER_EMAIL: 'fixture@verify.invalid',
+  }
+}

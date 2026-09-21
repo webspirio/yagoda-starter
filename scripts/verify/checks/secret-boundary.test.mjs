@@ -19,19 +19,17 @@ import { execFileSync } from 'node:child_process'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+import { fixtureGitEnv } from '../scan-root.mjs'
+
+/** Hermetic: no host gitconfig, no inherited GIT_*, and an identity so commits work. */
+const FIXTURE_GIT_ENV = fixtureGitEnv()
 
 const REPO = path.resolve(import.meta.dirname, '..', '..', '..')
 const CHECK = path.join(REPO, 'scripts', 'verify', 'checks', 'secret-boundary.mjs')
 const BASELINE_REL = 'scripts/verify/baselines/secret-boundary.json'
 
-const NO_GIT_ENV = {
-  ...Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith('GIT_'))),
-  GIT_CONFIG_GLOBAL: '/dev/null',
-  GIT_CONFIG_SYSTEM: '/dev/null',
-}
-
 /** @param {string} cwd @param {string[]} args */
-const git = (cwd, args) => execFileSync('git', args, { cwd, env: NO_GIT_ENV, stdio: 'pipe' })
+const git = (cwd, args) => execFileSync('git', args, { cwd, env: FIXTURE_GIT_ENV, stdio: 'pipe' })
 
 /** A valid, non-stub reason — well over the 30-character floor. @type {string} */
 const VALID_TEST_REASON =
@@ -175,7 +173,7 @@ test('the fixture is green before anything is planted', () => {
 test('an empty root REFUSES a verdict rather than reporting one', () => {
   const root = mkdtempSync(path.join(os.tmpdir(), 'verify-secrets-empty-'))
   try {
-    execFileSync('git', ['init', '-q'], { cwd: root, env: NO_GIT_ENV })
+    execFileSync('git', ['init', '-q'], { cwd: root, env: FIXTURE_GIT_ENV })
     let out = ''
     let status = 0
     try {

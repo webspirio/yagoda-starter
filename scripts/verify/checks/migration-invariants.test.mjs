@@ -11,7 +11,7 @@
  * `refs/remotes/origin/main`. Building one costs ~250ms once per file; running the check
  * against three files instead of 318 saves an order of magnitude more than that.
  *
- * NO_GIT_ENV is not optional. `cwd` does not win over `GIT_DIR`, git exports it into every
+ * FIXTURE_GIT_ENV is not optional. `cwd` does not win over `GIT_DIR`, git exports it into every
  * hook, and without the scrub a fixture's `git commit` retargets whatever repository that
  * variable names — which is how this repo once lost its HEAD.
  */
@@ -21,18 +21,16 @@ import { execFileSync } from 'node:child_process'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+import { fixtureGitEnv } from '../scan-root.mjs'
+
+/** Hermetic: no host gitconfig, no inherited GIT_*, and an identity so commits work. */
+const FIXTURE_GIT_ENV = fixtureGitEnv()
 
 const ROOT = path.resolve(import.meta.dirname, '..', '..', '..')
 const CHECK = path.join(ROOT, 'scripts', 'verify', 'checks', 'migration-invariants.mjs')
 
-const NO_GIT_ENV = {
-  ...Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith('GIT_'))),
-  GIT_CONFIG_GLOBAL: '/dev/null',
-  GIT_CONFIG_SYSTEM: '/dev/null',
-}
-
 /** @param {string} cwd @param {string[]} args */
-const git = (cwd, args) => execFileSync('git', args, { cwd, env: NO_GIT_ENV, stdio: 'pipe' })
+const git = (cwd, args) => execFileSync('git', args, { cwd, env: FIXTURE_GIT_ENV, stdio: 'pipe' })
 
 /**
  * @param {string} [root] when omitted, the check runs against the real repository
@@ -73,7 +71,7 @@ function fixtureRepo(opts = {}) {
     'export class Second1700000000001 {}\n',
   )
   git(root, ['add', '-A'])
-  git(root, ['-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-qm', 'init'])
+  git(root, ['commit', '-qm', 'init'])
   if (opts.originMain !== false) git(root, ['update-ref', 'refs/remotes/origin/main', 'HEAD'])
   return { root, cleanup: () => rmSync(root, { recursive: true, force: true }) }
 }
@@ -231,7 +229,7 @@ test('rule 4b: a tree BEHIND origin/main stays green', () => {
   withFixture((root) => {
     write(root, 'backend/src/migrations/1700000000002-Ahead.ts', 'export class Ahead1700000000002 {}\n')
     git(root, ['add', '-A'])
-    git(root, ['-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-qm', 'ahead'])
+    git(root, ['commit', '-qm', 'ahead'])
     git(root, ['update-ref', 'refs/remotes/origin/main', 'HEAD'])
     git(root, ['reset', '-q', '--hard', 'HEAD~1'])
     const res = run(root)

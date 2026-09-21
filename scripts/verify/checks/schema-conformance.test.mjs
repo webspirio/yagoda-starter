@@ -22,16 +22,13 @@ import os from 'node:os'
 import path from 'node:path'
 
 import { scan } from './schema-conformance.mjs'
+import { fixtureGitEnv } from '../scan-root.mjs'
+
+/** Hermetic: no host gitconfig, no inherited GIT_*, and an identity so commits work. */
+const FIXTURE_GIT_ENV = fixtureGitEnv()
 
 const ROOT = path.resolve(import.meta.dirname, '..', '..', '..')
 const CHECK = path.join(ROOT, 'scripts', 'verify', 'checks', 'schema-conformance.mjs')
-
-/** `cwd` does not win over `GIT_DIR`; without the scrub a fixture's git reads another repo. */
-const NO_GIT_ENV = {
-  ...Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith('GIT_'))),
-  GIT_CONFIG_GLOBAL: '/dev/null',
-  GIT_CONFIG_SYSTEM: '/dev/null',
-}
 
 /**
  * @param {string} [root] when omitted, the check runs against the real repository
@@ -129,7 +126,7 @@ function write(root, rel, content) {
  */
 function fixtureRepo() {
   const root = mkdtempSync(path.join(os.tmpdir(), 'verify-schema-'))
-  execFileSync('git', ['init', '-q'], { cwd: root, env: NO_GIT_ENV, stdio: 'pipe' })
+  execFileSync('git', ['init', '-q'], { cwd: root, env: FIXTURE_GIT_ENV, stdio: 'pipe' })
   write(root, '28-db-schema.dbml', DBML)
   write(root, 'backend/src/demo/demo.entity.ts', ENTITY)
   write(root, 'backend/src/plain/plain.entity.ts', PLAIN_ENTITY)
@@ -325,7 +322,7 @@ test('a configured namingStrategy is red', () => {
 test('a DBML with no tables REFUSES a verdict rather than reporting one', () => {
   const root = mkdtempSync(path.join(os.tmpdir(), 'verify-schema-empty-'))
   try {
-    execFileSync('git', ['init', '-q'], { cwd: root, env: NO_GIT_ENV, stdio: 'pipe' })
+    execFileSync('git', ['init', '-q'], { cwd: root, env: FIXTURE_GIT_ENV, stdio: 'pipe' })
     write(root, '28-db-schema.dbml', '// нічого, крім коментаря\n')
     const res = run(root)
     assert.equal(res.status, 1, res.out)
@@ -340,7 +337,7 @@ test('a tree with no @Entity at all REFUSES a verdict rather than reporting one'
   // directory and it agrees with you.
   const root = mkdtempSync(path.join(os.tmpdir(), 'verify-schema-noentity-'))
   try {
-    execFileSync('git', ['init', '-q'], { cwd: root, env: NO_GIT_ENV, stdio: 'pipe' })
+    execFileSync('git', ['init', '-q'], { cwd: root, env: FIXTURE_GIT_ENV, stdio: 'pipe' })
     write(root, '28-db-schema.dbml', DBML)
     const res = run(root)
     assert.equal(res.status, 1, res.out)
@@ -353,7 +350,7 @@ test('a tree with no @Entity at all REFUSES a verdict rather than reporting one'
 test('a missing schema of record is an error, not a green', () => {
   const root = mkdtempSync(path.join(os.tmpdir(), 'verify-schema-nodbml-'))
   try {
-    execFileSync('git', ['init', '-q'], { cwd: root, env: NO_GIT_ENV, stdio: 'pipe' })
+    execFileSync('git', ['init', '-q'], { cwd: root, env: FIXTURE_GIT_ENV, stdio: 'pipe' })
     const res = run(root)
     assert.equal(res.status, 1, res.out)
     assert.match(res.out, /could not read 28-db-schema\.dbml/)

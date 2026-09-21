@@ -6,43 +6,28 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 
 import { sourceHash, errMessage, listHashedFiles } from './hash.mjs'
+import { fixtureGitEnv, gitEnv } from './scan-root.mjs'
+
+/** Hermetic: no host gitconfig, no inherited GIT_*, and an identity so commits work. */
+const FIXTURE_GIT_ENV = fixtureGitEnv()
 
 const REPO_ROOT = path.resolve(import.meta.dirname, '..', '..')
 
-/**
- * Every GIT_* variable stripped from the environment handed to a child `git`.
- *
- * NOT paranoia — this destroyed a real commit on 2026-09-15. `cwd` DOES NOT WIN over
- * `GIT_DIR`: with GIT_DIR set, git ignores the working directory entirely and operates on
- * the repository that variable names. Git EXPORTS GIT_DIR (and GIT_INDEX_FILE) to every
- * hook it runs, so the moment this suite ran from inside a pre-push hook — through
- * `selfcheck`, which is what a pre-push gate is for — this fixture's `git add -A` and
- * `git commit` stopped touching its own throwaway repo and wrote to the REAL one instead,
- * committing the three fixture files as the whole tree and deleting 894 real ones. The
- * working tree survived; HEAD did not.
- *
- * The hook scrubs these too (.githooks/pre-push), so this is the second of two locks. One
- * is not enough: a hook is not the only thing that can export GIT_DIR, and this fixture
- * must be safe wherever it runs.
- */
-const NO_GIT_ENV = Object.fromEntries(
-  Object.entries(process.env).filter(([k]) => !k.startsWith('GIT_')),
-)
 
 /** A throwaway git repo shaped like this one, so `git ls-files` has something to list. */
 function fixture() {
   const root = mkdtempSync(path.join(tmpdir(), 'verify-hash-'))
-  execFileSync('git', ['init', '-q'], { cwd: root, env: NO_GIT_ENV })
+  execFileSync('git', ['init', '-q'], { cwd: root, env: FIXTURE_GIT_ENV })
   mkdirSync(path.join(root, 'backend', 'src'), { recursive: true })
   writeFileSync(path.join(root, 'backend', 'src', 'a.ts'), 'export const a = 1\n')
   writeFileSync(path.join(root, 'package.json'), '{"name":"x"}\n')
   writeFileSync(path.join(root, '.gitignore'), 'ignored/\n')
   mkdirSync(path.join(root, 'ignored'), { recursive: true })
   writeFileSync(path.join(root, 'ignored', 'junk.ts'), 'export const junk = 1\n')
-  execFileSync('git', ['add', '-A'], { cwd: root, env: NO_GIT_ENV })
-  execFileSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-qm', 'init'], {
+  execFileSync('git', ['add', '-A'], { cwd: root, env: FIXTURE_GIT_ENV })
+  execFileSync('git', ['commit', '-qm', 'init'], {
     cwd: root,
-    env: NO_GIT_ENV,
+    env: FIXTURE_GIT_ENV,
   })
   return root
 }
@@ -123,7 +108,7 @@ test('moving origin/main changes the hash although no file changed', () => {
   const root = fixture()
   try {
     const git = (/** @type {string[]} */ args) =>
-      execFileSync('git', args, { cwd: root, env: NO_GIT_ENV, encoding: 'utf8' })
+      execFileSync('git', args, { cwd: root, env: FIXTURE_GIT_ENV, encoding: 'utf8' })
     git(['update-ref', 'refs/remotes/origin/main', 'HEAD'])
     const before = sourceHash(root).hash
 
@@ -180,15 +165,15 @@ test('sourceHash honours its root argument even when GIT_DIR points somewhere el
   const b = fixture()
   try {
     writeFileSync(path.join(a, 'backend', 'src', 'zz-leak.ts'), 'export const leak = 1\n')
-    execFileSync('git', ['add', '-A'], { cwd: a, env: NO_GIT_ENV })
-    execFileSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-qm', 'leak'], {
+    execFileSync('git', ['add', '-A'], { cwd: a, env: FIXTURE_GIT_ENV })
+    execFileSync('git', ['commit', '-qm', 'leak'], {
       cwd: a,
-      env: NO_GIT_ENV,
+      env: FIXTURE_GIT_ENV,
     })
 
     const gitDirOfA = execFileSync('git', ['rev-parse', '--absolute-git-dir'], {
       cwd: a,
-      env: NO_GIT_ENV,
+      env: FIXTURE_GIT_ENV,
       encoding: 'utf8',
     }).trim()
 
@@ -343,7 +328,7 @@ test('editing any declared input actually moves the digest', () => {
   // cannot pass because the list and the scan disagree.
   const root = mkdtempSync(path.join(tmpdir(), 'verify-inputs-'))
   try {
-    execFileSync('git', ['init', '-q'], { cwd: root, env: NO_GIT_ENV })
+    execFileSync('git', ['init', '-q'], { cwd: root, env: FIXTURE_GIT_ENV })
     const rels = [...new Set(declaredInputs().map((d) => d.rel))]
       .filter((rel) => !NOT_CONTENT.some((e) => e.rel === rel))
       // A directory needs a witness file inside it; a file is written as itself. A
@@ -356,10 +341,10 @@ test('editing any declared input actually moves the digest', () => {
       mkdirSync(path.join(root, path.dirname(rel)), { recursive: true })
       writeFileSync(path.join(root, rel), 'seed\n')
     }
-    execFileSync('git', ['add', '-A'], { cwd: root, env: NO_GIT_ENV })
-    execFileSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-qm', 'init'], {
+    execFileSync('git', ['add', '-A'], { cwd: root, env: FIXTURE_GIT_ENV })
+    execFileSync('git', ['commit', '-qm', 'init'], {
       cwd: root,
-      env: NO_GIT_ENV,
+      env: FIXTURE_GIT_ENV,
     })
 
     for (const rel of rels) {
@@ -372,6 +357,71 @@ test('editing any declared input actually moves the digest', () => {
           '`--reuse-if-fresh` would replay a green over that change',
       )
     }
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test("every git a layer test spawns gets the hermetic environment, and no file rolls its own", () => {
+  // THE GUARD ON THE BUG THAT SHIPPED. A fixture that commits without an identity is green
+  // on macOS, which derives one from the OS account's full name, and red on a Linux CI
+  // runner, whose `runner` account has an empty one: `fatal: empty ident name`. It passed
+  // three local runs and failed the first cold one.
+  //
+  // Asserting the ENV at each call site is what generalises: the same options object is
+  // what keeps an inherited GIT_DIR from pointing a fixture at the real repository, and two
+  // fixtures were spawning `git init` with no env at all. Four files had also grown their
+  // own NO_GIT_ENV constant, none identical — the second-copy problem this layer bans
+  // everywhere else.
+  const dirs = ['.', 'checks', 'ratchets']
+  /** @type {string[]} */
+  const problems = []
+  for (const dir of dirs) {
+    const abs = path.join(import.meta.dirname, dir)
+    for (const name of readdirSync(abs)) {
+      if (!name.endsWith('.test.mjs')) continue
+      const rel = path.join('scripts/verify', dir === '.' ? '' : dir, name)
+      const src = readFileSync(path.join(abs, name), 'utf8')
+
+      if (/const\s+NO_GIT_ENV\s*=/.test(src)) {
+        problems.push(`${rel}: defines its own NO_GIT_ENV — import fixtureGitEnv() instead`)
+      }
+      // Each spawn of git, up to its options object. The pattern is ASSEMBLED rather than
+      // written as one literal because this file is one of the files being scanned: a
+      // literal would match its own source and report this test as the violation.
+      const spawnsGit = new RegExp(
+        `(?:execFileSync|spawnSync)\\(\\s*['"]g` + `it['"]\\s*,[\\s\\S]{0,400}?\\{([\\s\\S]{0,200}?)\\}`,
+        'g',
+      )
+      for (const m of src.matchAll(spawnsGit)) {
+        if (!/\benv\s*[:,}]/.test(m[1])) {
+          problems.push(`${rel}: spawns git without an env — an inherited GIT_DIR points it at the real repo`)
+        }
+      }
+    }
+  }
+  assert.deepEqual(problems, [])
+})
+
+test("fixtureGitEnv's identity is load-bearing, not decoration", () => {
+  // The DISCRIMINATOR for the test above: proves a commit really does fail without the
+  // identity, on this machine, rather than trusting a CI log. `user.useConfigOnly` turns off
+  // the derivation-from-the-OS-account that hides the problem on macOS — which is exactly
+  // what a Linux runner's empty gecos field does by accident.
+  const root = mkdtempSync(path.join(tmpdir(), 'verify-ident-'))
+  try {
+    const run = (/** @type {string[]} */ args, /** @type {NodeJS.ProcessEnv} */ env) =>
+      execFileSync('git', args, { cwd: root, env, encoding: 'utf8', stdio: 'pipe' })
+    run(['init', '-q'], fixtureGitEnv())
+    writeFileSync(path.join(root, 'a.txt'), 'x\n')
+    run(['add', '-A'], fixtureGitEnv())
+
+    assert.throws(
+      () => run(['-c', 'user.useConfigOnly=true', 'commit', '-qm', 'no identity'], gitEnv()),
+      /identity|ident/i,
+      'gitEnv() alone must NOT be able to commit — it strips the config that carries an identity',
+    )
+    assert.doesNotThrow(() => run(['commit', '-qm', 'with identity'], fixtureGitEnv()))
   } finally {
     rmSync(root, { recursive: true, force: true })
   }

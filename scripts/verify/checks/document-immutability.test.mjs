@@ -28,16 +28,13 @@ import os from 'node:os'
 import path from 'node:path'
 
 import { scan } from './document-immutability.mjs'
+import { fixtureGitEnv } from '../scan-root.mjs'
+
+/** Hermetic: no host gitconfig, no inherited GIT_*, and an identity so commits work. */
+const FIXTURE_GIT_ENV = fixtureGitEnv()
 
 const ROOT = path.resolve(import.meta.dirname, '..', '..', '..')
 const CHECK = path.join(ROOT, 'scripts', 'verify', 'checks', 'document-immutability.mjs')
-
-/** `cwd` does not win over `GIT_DIR`; without the scrub a fixture's git reads another repo. */
-const NO_GIT_ENV = {
-  ...Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith('GIT_'))),
-  GIT_CONFIG_GLOBAL: '/dev/null',
-  GIT_CONFIG_SYSTEM: '/dev/null',
-}
 
 /**
  * @param {string} [root] when omitted, the check runs against the real repository
@@ -138,7 +135,7 @@ function write(root, rel, content) {
 /** @returns {{ root: string, cleanup: () => void }} */
 function fixtureRepo() {
   const root = mkdtempSync(path.join(os.tmpdir(), 'verify-documents-'))
-  execFileSync('git', ['init', '-q'], { cwd: root, env: NO_GIT_ENV, stdio: 'pipe' })
+  execFileSync('git', ['init', '-q'], { cwd: root, env: FIXTURE_GIT_ENV, stdio: 'pipe' })
   write(root, '28-db-schema.dbml', DBML)
   for (const table of ['doc', 'ledger', 'catalog']) {
     write(root, `backend/src/${table}/${table}.entity.ts`, entity(table))
@@ -298,7 +295,7 @@ test('a derivation that reaches no controller REFUSES a verdict rather than repo
 test('a missing schema of record is an error, not a green', () => {
   const root = mkdtempSync(path.join(os.tmpdir(), 'verify-documents-nodbml-'))
   try {
-    execFileSync('git', ['init', '-q'], { cwd: root, env: NO_GIT_ENV, stdio: 'pipe' })
+    execFileSync('git', ['init', '-q'], { cwd: root, env: FIXTURE_GIT_ENV, stdio: 'pipe' })
     const res = run(root)
     assert.equal(res.status, 1, res.out)
     assert.match(res.out, /could not read 28-db-schema\.dbml/)
