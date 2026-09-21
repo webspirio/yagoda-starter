@@ -12,7 +12,7 @@
 
 ## Global Constraints
 - No new npm dependency. FSD import direction only (`app` may import every `pages/*`).
-- Guards stay EAGER and OUTSIDE the lazy boundary: an owner-only page's module must not be requested for an operator (the guard redirects first).
+- Guards stay EAGER and OUTSIDE the lazy boundary. React Router resolves `lazy` for every matched route before it renders, so an operator who TYPES an owner URL still fetches that chunk before the guard redirects — accepted (ruling 2026-09-21): the operator's own navigation never links an owner URL, and a session check inside `lazy()` would couple the router to the query client for no operator-visible gain. Document it; do not build around it.
 - `frontend/src/app/router.test.tsx` drives `createMemoryRouter(routes)`; lazy routes resolve asynchronously, so assertions on lazy pages use `await screen.findBy…`.
 - Commit per task with `Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>`; no push (the controller pushes).
 
