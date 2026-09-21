@@ -56,3 +56,7 @@ export function div(a: string, by: number): string {
 
 export const isNegative = (v: string): boolean => toKopiykas(v) < 0n;
 export const isZero = (v: string): boolean => toKopiykas(v) === 0n;
+
+/** decimal × integer count, exact in kopiykas: `mulInt('1.20', 3) === '3.60'`. */
+export const mulInt = (value: string, n: number): string =>
+  fromKopiykas(toKopiykas(value) * BigInt(Math.trunc(n)));

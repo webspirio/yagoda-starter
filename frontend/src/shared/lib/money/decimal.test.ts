@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { add, sub, sum, cmp, div, isNegative, isZero } from './decimal';
+import { add, sub, sum, cmp, div, isNegative, isZero, mulInt } from './decimal';
 
 describe('decimal-string arithmetic (integer kopiykas, never floats)', () => {
   it('adds and subtracts at scale 2', () => {
@@ -54,5 +54,13 @@ describe('div — a decimal string split over a whole count (per-crate weights)'
   });
   it('still rejects a value that is not a plain decimal', () => {
     expect(() => div('1e3', 2)).toThrow(/decimal/);
+  });
+});
+
+describe('mulInt', () => {
+  it('multiplies by an integer count without a float', () => {
+    expect(mulInt('1.20', 3)).toBe('3.60');
+    expect(mulInt('0.30', 7)).toBe('2.10');
+    expect(mulInt('1.20', 0)).toBe('0.00');
   });
 });
