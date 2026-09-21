@@ -1101,3 +1101,37 @@ because it is either a client question or a change that reaches beyond the two s
   React — the one thing `money.ts` exists to prevent. Two more `div` calls behind the same
   `isZero` guard. Spec §5.5's formula list omits them too, so this is a gap in the plan as much as
   in the code.
+
+## Deferred from the reweigh screen (2026-09-21)
+
+Plan: `docs/superpowers/sdd/2026-09-21-yagoda-reweigh-screen/`. Each item below is a deliberate
+omission, not an oversight — the contract it would need is given so the next person reads a
+decision rather than guessing whether something was missed.
+
+- **`reweighs.at_point_id`** — the mock's «База» selector records WHERE a load was weighed. No
+  column, nothing downstream reads one, so the selector was omitted rather than rendered as a
+  control that looks recorded and is not. The contract if it is ever wanted: nullable FK to
+  `collection_points`, set on the header, first line wins.
+- **An atomic batch post** (`POST /shifts/:id/reweigh` with `lines[]`) — the screen posts N lines
+  and stops at the first refusal, so a rejection in the middle leaves the earlier lines written.
+  One transaction would make «Провести переважування» mean what the mock's button means.
+- **A day-wide `GET /reweigh-items?date=`** — `pages/reweigh/api/useDayReweighs.ts` fans out ~2×P
+  requests to build the «по всіх пунктах» table. Fine at five working points, not at thirty.
+- **Operator read access to §8.2** (§3.10 of the reweigh slice spec) — whether the point may see
+  the недостача claimed against it is a question the client has not answered.
+- **Re-weighing a day at a since-deactivated point** — the picker lists active reception points
+  only, so a past day at a closed point is unreachable from this screen.
+- **§8.4 «Собівартість дня»** — `GET /shifts/:shiftId/cost-of-day` already serves it and no screen
+  reads it.
+
+**Came out of the slice's own reviews, not from the plan:**
+
+- **`pages/users/api/users.ts` still hand-rolls its own `GET /users` read**, duplicating what
+  `entities/user`'s new `useStaffQuery` now does. The two should converge onto one hook once
+  `pages/users` is next open — today they are two separate readers of the same endpoint, kept
+  apart only because `entities/` may not import from `pages/` and nothing forced the older one to
+  move first.
+- **`DraftLines` calls `useTareTypeOptionsQuery()` independently of `WeighingForm`.** TanStack
+  Query dedupes the two calls to one request, so nothing is wrong today, but it is forced by the
+  current prop signatures rather than chosen — worth revisiting if either component is ever
+  reshaped.
