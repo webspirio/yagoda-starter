@@ -61,13 +61,20 @@ export const SupplierPicker = forwardRef<
   const debounced = useDebouncedValue(search);
 
   const suppliers = useSuppliersQuery(debounced, ownerMode ? null : pointId);
-  const balances = useSupplierBalancesQuery({ pointId, includeZero: false });
+  // An owner with no point chosen yet must not fetch an unscoped (network-wide)
+  // balances list just to populate a picker nobody can use yet.
+  const balances = useSupplierBalancesQuery({
+    pointId,
+    includeZero: false,
+    enabled: pointId !== null,
+  });
   const owed = new Map((balances.data?.data ?? []).map((row) => [row.supplier_id, row.debt]));
 
   const rows = (suppliers.data?.data ?? []).filter((s) => s.is_active);
   const home = ownerMode ? rows.filter((s) => s.collection_point_id === pointId) : rows;
   const others = ownerMode ? rows.filter((s) => s.collection_point_id !== pointId) : [];
   const flat = [...home, ...others];
+  const activeId = flat[active]?.id;
 
   useEffect(() => {
     if (!open) return;
@@ -78,11 +85,27 @@ export const SupplierPicker = forwardRef<
     return () => document.removeEventListener('mousedown', onDown);
   }, [open]);
 
-  const pick = (s: Supplier) => {
+  // Keeps the highlighted row inside the scrollable listbox as ArrowDown/Up
+  // move `active` past what is currently visible — up to 100 rows can be
+  // loaded against ~6 visible at a time. `scrollIntoView` isn't implemented
+  // in jsdom, hence the typeof guard.
+  useEffect(() => {
+    if (!open || activeId === undefined) return;
+    const el = document.getElementById(`${id}-opt-${activeId}`);
+    if (el && typeof el.scrollIntoView === 'function') {
+      el.scrollIntoView({ block: 'nearest' });
+    }
+  }, [active, open, activeId, id]);
+
+  const selectSupplier = (s: Supplier) => {
     onChange(s);
     setOpen(false);
     setSearch('');
     setActive(-1);
+  };
+
+  const pick = (s: Supplier) => {
+    selectSupplier(s);
     triggerRef.current?.focus();
   };
 
@@ -92,7 +115,10 @@ export const SupplierPicker = forwardRef<
       setActive((a) => Math.min(a + 1, flat.length - 1));
     } else if (e.key === 'ArrowUp') {
       e.preventDefault();
-      setActive((a) => Math.max(a - 1, 0));
+      // From "nothing highlighted" ArrowUp wraps to the LAST option (as if
+      // approaching the list from the bottom), rather than landing on the
+      // first the way a fresh ArrowDown would.
+      setActive((a) => (a === -1 ? flat.length - 1 : Math.max(a - 1, 0)));
     } else if (e.key === 'Enter') {
       e.preventDefault();
       if (flat[active]) pick(flat[active]);
@@ -206,28 +232,43 @@ export const SupplierPicker = forwardRef<
           </div>
           <ul id={`${id}-list`} role="listbox" className="max-h-[320px] overflow-y-auto py-1">
             {flat.length === 0 ? (
-              <li role="presentation" className="px-3 py-4 text-center text-sm text-muted-foreground">
+              // A non-presentational role so the listbox still satisfies "at least
+              // one option/group child" (aria-required-children) even with zero
+              // results — a disabled, unpickable option rather than plain text.
+              <li
+                role="option"
+                aria-disabled="true"
+                className="px-3 py-4 text-center text-sm text-muted-foreground"
+              >
                 {t('pickSupplier.empty')}
               </li>
             ) : null}
-            {ownerMode && home.length ? (
-              <li
-                role="presentation"
-                className="px-3 pt-2 pb-1 text-[10px] font-medium tracking-[0.12em] text-muted-foreground uppercase"
-              >
-                {t('pickSupplier.ourPoint')}
-              </li>
-            ) : null}
-            {home.map((s, i) => renderRow(s, i))}
-            {ownerMode && others.length ? (
-              <li
-                role="presentation"
-                className="px-3 pt-2 pb-1 text-[10px] font-medium tracking-[0.12em] text-muted-foreground uppercase"
-              >
-                {t('pickSupplier.otherPoints')}
-              </li>
-            ) : null}
-            {others.map((s, i) => renderRow(s, home.length + i))}
+            {ownerMode ? (
+              <>
+                {home.length ? (
+                  <li role="presentation">
+                    <span className="block px-3 pt-2 pb-1 text-[10px] font-medium tracking-[0.12em] text-muted-foreground uppercase">
+                      {t('pickSupplier.ourPoint')}
+                    </span>
+                    <ul role="group" aria-label={t('pickSupplier.ourPoint')}>
+                      {home.map((s, i) => renderRow(s, i))}
+                    </ul>
+                  </li>
+                ) : null}
+                {others.length ? (
+                  <li role="presentation">
+                    <span className="block px-3 pt-2 pb-1 text-[10px] font-medium tracking-[0.12em] text-muted-foreground uppercase">
+                      {t('pickSupplier.otherPoints')}
+                    </span>
+                    <ul role="group" aria-label={t('pickSupplier.otherPoints')}>
+                      {others.map((s, i) => renderRow(s, home.length + i))}
+                    </ul>
+                  </li>
+                ) : null}
+              </>
+            ) : (
+              home.map((s, i) => renderRow(s, i))
+            )}
           </ul>
           <div className="border-t border-border p-1.5">
             <Button
@@ -250,9 +291,16 @@ export const SupplierPicker = forwardRef<
         key={String(addOpen)}
         supplier={null}
         open={addOpen}
-        onClose={() => setAddOpen(false)}
+        // Radix's own focus-restore (on unmount) would otherwise try to return
+        // focus to the now-unmounted "Add a new" footer button and fall back to
+        // document.body. Focusing the trigger HERE, after the dialog is told to
+        // close, wins that race instead of racing it from inside `onCreated`.
+        onClose={() => {
+          setAddOpen(false);
+          triggerRef.current?.focus();
+        }}
         defaultPointId={pointId ?? undefined}
-        onCreated={(created) => pick(created)}
+        onCreated={(created) => selectSupplier(created)}
       />
     </div>
   );

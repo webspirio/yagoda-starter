@@ -12,8 +12,28 @@ vi.mock('@/entities/supplier', async (importOriginal) => ({
   useSupplierBalancesQuery: () => balancesMock(),
 }));
 vi.mock('@/features/edit-supplier', () => ({
-  SupplierFormDialog: ({ open, onCreated }: { open: boolean; onCreated?: (s: unknown) => void }) =>
-    open ? <button onClick={() => onCreated?.(nina)}>create-nina</button> : null,
+  // Mirrors the real SupplierFormDialog's submit handler: onCreated fires,
+  // THEN onClose — so a test can exercise the focus-restore wiring that
+  // depends on the create path reaching onClose too.
+  SupplierFormDialog: ({
+    open,
+    onCreated,
+    onClose,
+  }: {
+    open: boolean;
+    onCreated?: (s: unknown) => void;
+    onClose?: () => void;
+  }) =>
+    open ? (
+      <button
+        onClick={() => {
+          onCreated?.(nina);
+          onClose?.();
+        }}
+      >
+        create-nina
+      </button>
+    ) : null,
 }));
 
 const nina: Supplier = { id: 's1', collection_point_id: 'p1', first_name: 'Ніна', last_name: 'Ільчук', phone: '+380671000003', note: null, kind: 'wholesale', is_active: true, created_at: '' };
@@ -42,8 +62,11 @@ describe('SupplierPicker', () => {
   });
 
   it('filters by the search box and shows the empty row', async () => {
+    suppliersMock.mockReturnValue({ data: { data: [], total: 0 }, isPending: false });
     render(<SupplierPicker pointId="p1" ownerMode={false} value={null} onChange={vi.fn()} />);
     await userEvent.click(screen.getByRole('combobox'));
+    const list = screen.getByRole('listbox');
+    expect(within(list).getByText(/Нікого не знайшли|Nobody found/)).toBeInTheDocument();
     await userEvent.type(screen.getByRole('searchbox'), 'zzz');
     // useSuppliersQuery is called with the DEBOUNCED search value (useDebouncedValue's
     // default delay), so the last call only settles after that timer fires.
@@ -55,8 +78,10 @@ describe('SupplierPicker', () => {
   it('groups by point for the owner', async () => {
     render(<SupplierPicker pointId="p1" ownerMode value={null} onChange={vi.fn()} />);
     await userEvent.click(screen.getByRole('combobox'));
-    expect(screen.getByText(/Наша точка|Our point/)).toBeInTheDocument();
-    expect(screen.getByText(/Інші точки|Other points/)).toBeInTheDocument();
+    const ourPoint = screen.getByRole('group', { name: /Наша точка|Our point/ });
+    const otherPoints = screen.getByRole('group', { name: /Інші точки|Other points/ });
+    expect(within(ourPoint).getByText('Ніна Ільчук')).toBeInTheDocument();
+    expect(within(otherPoints).getByText('Василь Яремчук')).toBeInTheDocument();
   });
 
   it('shows the §2.11 hint for a wholesaler, without any bounds', () => {
@@ -72,6 +97,11 @@ describe('SupplierPicker', () => {
     await userEvent.click(screen.getByRole('button', { name: /Додати нового|Add a new/ }));
     await userEvent.click(screen.getByText('create-nina'));
     expect(onChange).toHaveBeenCalledWith(nina);
+    // The dialog's own focus-restore (onClose) must not leave focus stranded
+    // on document.body — the trigger gets it back.
+    await waitFor(() => {
+      expect(screen.getByRole('combobox')).toHaveFocus();
+    });
   });
 
   it('has no axe violations open', async () => {
