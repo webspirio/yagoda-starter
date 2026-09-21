@@ -43,6 +43,7 @@ describe('PayoutsService', () => {
   let balance: { debtFor: jest.Mock };
   let points: { findOneRaw: jest.Mock };
   let audit: { record: jest.Mock };
+  let pointCash: { cashFor: jest.Mock };
   let service: PayoutsService;
 
   const shift = (over: Record<string, unknown> = {}) => ({
@@ -106,6 +107,7 @@ describe('PayoutsService', () => {
     balance = { debtFor: jest.fn().mockResolvedValue('380.00') };
     points = { findOneRaw: jest.fn().mockResolvedValue({ id: POINT_A, code: 'KPG' }) };
     audit = { record: jest.fn().mockResolvedValue(undefined) };
+    pointCash = { cashFor: jest.fn().mockResolvedValue('10000.00') };
 
     service = new PayoutsService(
       repo as never,
@@ -115,6 +117,7 @@ describe('PayoutsService', () => {
       balance as never,
       points as never,
       audit as never,
+      pointCash as never,
     );
   });
 
@@ -383,6 +386,69 @@ describe('PayoutsService', () => {
 
       expect(saved()).not.toHaveProperty('return_amount');
       expect(saved().return_note).toBeNull();
+    });
+  });
+
+  describe('the cash half of §3.6', () => {
+    it('refuses a payout above the cash for berries, NAMING the code', async () => {
+      // Debt admits 380, the drawer holds 300: min(Разом, каса) = 300.
+      pointCash.cashFor.mockResolvedValue('300.00');
+      await expect(service.create(oksana, dto({ amount: '380.00' }))).rejects.toMatchObject({
+        response: { code: 'PAYOUT_EXCEEDS_CASH' },
+      });
+      expect(manager.save).not.toHaveBeenCalled();
+    });
+
+    it('allows a payout equal to the cash', async () => {
+      pointCash.cashFor.mockResolvedValue('380.00');
+      await expect(service.create(oksana, dto({ amount: '380.00' }))).resolves.toMatchObject({
+        amount: '380.00',
+      });
+    });
+
+    it('reads the cash INSIDE the transaction, after the debt, under the supplier lock', async () => {
+      pointCash.cashFor.mockResolvedValue('380.00');
+      await service.create(oksana, dto());
+      const lockCall = manager.query.mock.invocationCallOrder[0];
+      const debtCall = balance.debtFor.mock.invocationCallOrder[0];
+      const cashCall = pointCash.cashFor.mock.invocationCallOrder[0];
+      expect(lockCall).toBeLessThan(debtCall);
+      expect(debtCall).toBeLessThan(cashCall);
+      expect(pointCash.cashFor).toHaveBeenCalledWith(POINT_A, undefined, manager);
+    });
+
+    it('a negative drawer admits nothing — the reception still proceeds without a payout', async () => {
+      pointCash.cashFor.mockResolvedValue('-51130.18');
+      await expect(service.create(oksana, dto({ amount: '1.00' }))).rejects.toMatchObject({
+        response: { code: 'PAYOUT_EXCEEDS_CASH' },
+      });
+    });
+  });
+
+  describe('writePayout (the shared writer)', () => {
+    it('stamps intake_id when handed one, and leaves it null otherwise', async () => {
+      const INTAKE = '88888888-8888-8888-8888-888888888888';
+      await dataSource.transaction(async (m: never) => {
+        await service.writePayout(m, {
+          actor: oksana,
+          pointId: POINT_A,
+          pointCode: 'KPG',
+          supplierId: SUPPLIER,
+          amount: '380.00',
+          intakeId: INTAKE,
+        });
+      });
+      expect(manager.create).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ intake_id: INTAKE, amount: '380.00', paid_by_user_id: 'u-oksana' }),
+      );
+      expect(audit.record).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: 'payout.created',
+          after: expect.objectContaining({ intake_id: INTAKE }),
+        }),
+        manager,
+      );
     });
   });
 });
