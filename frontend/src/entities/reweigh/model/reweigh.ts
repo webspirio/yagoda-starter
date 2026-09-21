@@ -1,5 +1,5 @@
 /** One tare line on a reweigh line — a tare type and how many units of it. */
-export interface ReweighItemTare {
+interface ReweighItemTare {
   tare_type_id: string;
   tare_type_name?: string;
   units: number;

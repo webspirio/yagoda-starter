@@ -6,4 +6,3 @@ export { usePointScope } from './model/usePointScope';
 export { useUpdateMeMutation } from './api/useUpdateMeMutation';
 export type { UpdateMeInput } from './api/useUpdateMeMutation';
 export { useStaffQuery } from './api/useStaff';
-export type { StaffMember } from './api/useStaff';

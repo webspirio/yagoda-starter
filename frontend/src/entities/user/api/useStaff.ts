@@ -13,7 +13,7 @@ import { STALE } from '@/shared/api/queryClient';
  * `UserResponse` DTO), so they arrive as `string`, never `null` — an unfilled
  * name is `''`, not `null`.
  */
-export interface StaffMember {
+interface StaffMember {
   id: string;
   first_name: string;
   last_name: string;
