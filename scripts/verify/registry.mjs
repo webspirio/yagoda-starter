@@ -613,12 +613,12 @@ export const CHECKS = [
       'by an explicit `--write`. Three WARNING lines print on every passing run: ' +
       'first-paint headroom, the sum against its own ceiling, and the largest JS chunk.',
     blindSpot:
-      'Reads whatever the LAST `build` wrote — an internally consistent but stale ' +
-      'dist/manifest pair, nothing rebuilt since a dependency changed, still gives a ' +
-      "stale, passing verdict. It trusts the manifest's own static-versus-dynamic split, " +
-      'and models a cold download only — no HTTP cache, no repeat visit. No per-chunk ' +
-      'ceiling exists, and the sum, no longer gating, can grow unnoticed between reads of ' +
-      'its own WARNING line.',
+      'Reads whatever the LAST `build` wrote — a stale-but-consistent dist/manifest pair ' +
+      "still gives a stale, passing verdict. It trusts the manifest's own " +
+      'static-versus-dynamic split, models a cold download only — no HTTP cache, no ' +
+      "repeat visit — and counts neither figure's own webfonts, which the entry's css " +
+      'pulls in but this check never opens. No per-chunk ceiling exists, and the sum, no ' +
+      'longer gating, can grow unnoticed between reads of its own WARNING line.',
   },
   {
     id: 'test:db',

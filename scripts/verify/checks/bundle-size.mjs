@@ -68,19 +68,47 @@
  * (`build: { manifest: true }` in vite.config.ts) closes that gap: first paint is the
  * manifest's entry chunk (`isEntry: true`) plus the transitive closure of its STATIC
  * `imports`, and every `css` file those chunks list — never a `dynamicImports` chunk, which
- * is precisely the code a route nobody has opened yet ships behind. THE SUM IS WHAT THE CDN
- * STORES; FIRST PAINT IS WHAT THE OPERATOR PAYS — the sum stays measured and printed, as the
- * SECOND unconditional WARNING line below, purely so a whole-package regression is still
- * visible on every run even though it no longer fails the row by itself.
+ * is precisely the code a route nobody has opened yet ships behind. A manifest with MORE
+ * THAN ONE `isEntry: true` chunk (a multi-page app) sums all of them into first paint; this
+ * app has exactly one. THE SUM IS WHAT THE CDN STORES; FIRST PAINT IS WHAT THE OPERATOR PAYS
+ * — the sum stays measured and printed, as the SECOND unconditional WARNING line below,
+ * purely so a whole-package regression is still visible on every run even though it no
+ * longer fails the row by itself.
+ *
+ * WHAT THE OPERATOR ACTUALLY GAINED FROM THE SPLIT THAT PROMPTED THIS CHECK: on `main`,
+ * before the split, first paint WAS the whole bundle — there was nothing else to measure —
+ * at 295.5 KiB gzip / 1034.7 KiB raw. After splitting, first paint is 281.7 KiB gzip /
+ * 962.3 KiB raw: -13.8 KiB gzip (-4.7%), -72.4 KiB raw (-7.0%). Real, but nowhere near the
+ * -43% the largest-chunk WARNING line alone would suggest (276.4 KiB gzip down to
+ * 157.7 KiB): `dialog-*.js` (101.3 KiB gzip / 323.8 KiB raw) is a STATIC import of the
+ * entry, so splitting it out RELOCATED it into its own chunk file rather than UNLOADING it
+ * from first paint. The largest-chunk line answers "how big is the single biggest file"; it
+ * does not answer "how much smaller is what a first visit downloads" — only the first-paint
+ * figure above answers that, which is exactly why it is the gate rather than a WARNING.
+ *
+ * THE SUM'S CEILING DOES NOT MOVE WITH `--write`, ON PURPOSE. The sum no longer fails this
+ * row, but its ceiling is FROZEN at the last value that ever gated anything — 312320 gzip
+ * bytes / 1085440 raw bytes (305.0 KiB / 1060.0 KiB) — and stays there until a deliberate
+ * hand edit to this file, with its own stated reason, moves it: exactly what raising any
+ * ceiling always required before first paint existed. `buildBudget()` computes the sum's
+ * ceiling fresh only the very first time this file is created; every `--write` after that
+ * carries the previous `maxGzipBytes`/`maxRawBytes` forward untouched and refreshes only the
+ * measured/headroom fields. Letting `--write` also ratchet the sum ceiling forward on every
+ * ordinary run — the way it correctly does for first paint, the metric that actually gates —
+ * would silently widen a number nobody is required to look at any more, which is exactly the
+ * unreviewed drift this whole layer exists to catch, just applied to this row's quieter half.
  *
  * RESIDUAL BLIND SPOTS, narrower now but not zero: this reads whatever the LAST `build` and
  * its manifest wrote, so a stale or partial pair — a manifest naming a file the assets
  * directory does not contain — is a refused verdict, not "zero bytes, budget met" (see
  * `firstPaintFiles()`). It trusts Vite's own static/dynamic classification in the manifest;
  * a chunk reachable through some other eager mechanism the manifest does not record as a
- * static `imports` edge would slip through uncounted. And it measures a cold download — no
- * HTTP cache, no repeat visit — because that is the worst case the rural-operator audience
- * this check exists for actually faces on a first load.
+ * static `imports` edge would slip through uncounted. It measures a cold download — no HTTP
+ * cache, no repeat visit — because that is the worst case the rural-operator audience this
+ * check exists for actually faces on a first load. And it counts neither figure's webfonts:
+ * the entry's own css `@font-face`s pull in `.woff2` files this check never opens, because
+ * `measure()` only reads `.js`/`.css` under dist/assets — real bytes a first paint may block
+ * on, invisible to both the sum and first paint alike.
  *
  * A THIRD unconditional line, like the two above, names the single largest `.js` chunk and
  * its gzip size on EVERY run, passing or not. This is a SIGNAL, not a gate: there is no
@@ -321,7 +349,23 @@ const DEFAULT_REASON =
   'and printed as an unconditional WARNING on every run instead, because code splitting ' +
   'can grow the sum while shrinking what a first visit actually downloads, and a ' +
   'whole-package regression should stay visible even though it no longer fails the row ' +
-  'by itself. Same minimum-headroom-then-step rule, run twice, once per metric.'
+  'by itself. Same minimum-headroom-then-step rule, run twice, once per metric — for ' +
+  "first paint, on EVERY --write; for the sum, ONLY the first time this file is written. " +
+  "THE SUM'S CEILING IS FROZEN, not re-measured: it stays at 312320 gzip bytes / " +
+  '1085440 raw bytes (305.0 KiB / 1060.0 KiB), the last value that ever gated anything, ' +
+  'restored here to that value after a bug in the 2026-09-21 commit that added first ' +
+  'paint let `--write` also raise it to 337920 / 1167360 bytes (330.0 / 1140.0 KiB) as an ' +
+  'undocumented side effect — exactly the unreviewed widening this whole check exists to ' +
+  'catch, just missed once on its own quieter half. Moving the sum ceiling from here on is ' +
+  'a deliberate hand edit with its own reason, exactly like raising any ceiling always ' +
+  'required before first paint existed; `--write` will not do it again. ' +
+  'WHAT THE OPERATOR ACTUALLY GAINED from the split that prompted first paint to be added: ' +
+  'on `main`, first paint WAS the whole bundle, 295.5 KiB gzip / 1034.7 KiB raw; after ' +
+  'splitting it is 281.7 KiB gzip / 962.3 KiB raw — -13.8 KiB gzip (-4.7%), -72.4 KiB raw ' +
+  '(-7.0%), real but far short of the -43% the largest-chunk WARNING line alone would ' +
+  'suggest, because the biggest relocated chunk (`dialog-*.js`, 101.3 KiB gzip / 323.8 KiB ' +
+  'raw) is a STATIC import of the entry — moved into its own chunk file, not unloaded from ' +
+  'first paint.'
 
 /**
  * The ceiling for one measured metric is `measurement + minimum headroom`, THEN rounded up
@@ -338,22 +382,45 @@ function ceilingFor(measured, minHeadroom, step) {
 }
 
 /**
- * Builds the full budget record from BOTH measured metrics — the sum and first paint —
- * using the identical minimum-headroom-then-step rule for each. Recording
+ * @param {number | undefined} n
+ * @returns {number | undefined} `n` itself when it is a real, finite number — `undefined`
+ *   otherwise (missing key, `null`, or anything else JSON can hand back from an old or
+ *   hand-edited file).
+ */
+function finiteOrUndefined(n) {
+  return typeof n === 'number' && Number.isFinite(n) ? n : undefined
+}
+
+/**
+ * Builds the full budget record from BOTH measured metrics — the sum and first paint.
+ * First paint gets the identical minimum-headroom-then-step rule on every call, because it
+ * is the metric that gates and this is meant to ratchet. THE SUM'S CEILING DOES NOT: once a
+ * previous budget already carries a finite `maxGzipBytes`/`maxRawBytes`, those exact values
+ * are carried forward untouched — only its `measured*`/`headroom*` fields are refreshed —
+ * and `ceilingFor` runs for the sum only the very first time this file is created. See the
+ * file header and `DEFAULT_REASON` for why: the sum no longer gates, so `--write` moving its
+ * ceiling on every ordinary run would be exactly the unreviewed widening this whole layer
+ * exists to catch, just applied to the row's own quieter half. Recording
  * `minHeadroomGzipBytes`/`minHeadroomRawBytes`/`stepGzipBytes`/`stepRawBytes` alongside the
  * result means the next person to re-measure follows this exact arithmetic instead of
  * inventing their own rounding rule (the mistake this check's own history already made
  * once — see the file header).
  *
  * @param {{ sumGzip: number, sumRaw: number, firstPaintGzip: number, firstPaintRaw: number }} measured
- * @param {string | undefined} previousReason
+ * @param {Partial<Budget> | undefined} previous
  * @returns {Budget}
  */
-function buildBudget(measured, previousReason) {
-  const sumGzip = ceilingFor(measured.sumGzip, MIN_HEADROOM_GZIP_BYTES, STEP_GZIP_BYTES)
-  const sumRaw = ceilingFor(measured.sumRaw, MIN_HEADROOM_RAW_BYTES, STEP_RAW_BYTES)
+function buildBudget(measured, previous) {
   const fpGzip = ceilingFor(measured.firstPaintGzip, MIN_HEADROOM_GZIP_BYTES, STEP_GZIP_BYTES)
   const fpRaw = ceilingFor(measured.firstPaintRaw, MIN_HEADROOM_RAW_BYTES, STEP_RAW_BYTES)
+
+  const frozenSumMaxGzip = finiteOrUndefined(previous?.maxGzipBytes)
+  const frozenSumMaxRaw = finiteOrUndefined(previous?.maxRawBytes)
+  const sumMaxGzip =
+    frozenSumMaxGzip ?? ceilingFor(measured.sumGzip, MIN_HEADROOM_GZIP_BYTES, STEP_GZIP_BYTES).max
+  const sumMaxRaw =
+    frozenSumMaxRaw ?? ceilingFor(measured.sumRaw, MIN_HEADROOM_RAW_BYTES, STEP_RAW_BYTES).max
+
   return {
     measuredAt: new Date().toISOString().slice(0, 10),
     measuredGzipBytes: measured.sumGzip,
@@ -364,15 +431,15 @@ function buildBudget(measured, previousReason) {
     minHeadroomRawBytes: MIN_HEADROOM_RAW_BYTES,
     stepGzipBytes: STEP_GZIP_BYTES,
     stepRawBytes: STEP_RAW_BYTES,
-    maxGzipBytes: sumGzip.max,
-    maxRawBytes: sumRaw.max,
-    headroomGzipBytes: sumGzip.headroom,
-    headroomRawBytes: sumRaw.headroom,
+    maxGzipBytes: sumMaxGzip,
+    maxRawBytes: sumMaxRaw,
+    headroomGzipBytes: sumMaxGzip - measured.sumGzip,
+    headroomRawBytes: sumMaxRaw - measured.sumRaw,
     maxFirstPaintGzipBytes: fpGzip.max,
     maxFirstPaintRawBytes: fpRaw.max,
     headroomFirstPaintGzipBytes: fpGzip.headroom,
     headroomFirstPaintRawBytes: fpRaw.headroom,
-    reason: previousReason ?? DEFAULT_REASON,
+    reason: previous?.reason ?? DEFAULT_REASON,
   }
 }
 
@@ -398,16 +465,17 @@ function main() {
   const fp = totals(firstPaint)
 
   if (write) {
-    /** @type {string | undefined} */
-    let previousReason
+    /** @type {Partial<Budget> | undefined} */
+    let previous
     try {
-      previousReason = JSON.parse(readFileSync(BUDGET, 'utf8'))?.reason
+      previous = JSON.parse(readFileSync(BUDGET, 'utf8'))
     } catch {
-      /* first write — no previous reason to carry forward */
+      /* first write — nothing to carry forward, and the sum ceiling gets its one-time
+       * fresh computation from buildBudget() instead of being frozen at a previous value */
     }
     const budget = buildBudget(
       { sumGzip: sum.gzip, sumRaw: sum.raw, firstPaintGzip: fp.gzip, firstPaintRaw: fp.raw },
-      previousReason,
+      previous,
     )
     writeFileSync(BUDGET, `${JSON.stringify(budget, null, 2)}\n`)
     process.stdout.write(
@@ -415,7 +483,7 @@ function main() {
         `(ceiling ${kib(budget.maxFirstPaintGzipBytes)} gzip / ${kib(budget.maxFirstPaintRawBytes)} raw, ` +
         `headroom ${kib(budget.headroomFirstPaintGzipBytes)} gzip / ${kib(budget.headroomFirstPaintRawBytes)} raw), ` +
         `sum ${kib(sum.gzip)} gzip / ${kib(sum.raw)} raw ` +
-        `(ceiling ${kib(budget.maxGzipBytes)} gzip / ${kib(budget.maxRawBytes)} raw, ` +
+        `(frozen ceiling ${kib(budget.maxGzipBytes)} gzip / ${kib(budget.maxRawBytes)} raw, ` +
         `headroom ${kib(budget.headroomGzipBytes)} gzip / ${kib(budget.headroomRawBytes)} raw)\n`,
     )
     return
@@ -427,6 +495,31 @@ function main() {
     budget = JSON.parse(readFileSync(BUDGET, 'utf8'))
   } catch (err) {
     fail([`${BUDGET_REL} is missing or is not valid JSON (${errMessage(err)}) — create it with --write.`])
+  }
+
+  // AN OLD-SHAPED BUDGET FILE MUST NOT SILENTLY GATE NOTHING. Before first paint existed,
+  // this file had no maxFirstPaintGzipBytes/maxFirstPaintRawBytes at all — a merge that
+  // resolves toward that old side, or this check cherry-picked ahead of its own baseline,
+  // leaves those fields `undefined`. Every comparison below is a `>` against that
+  // `undefined`, which JavaScript quietly coerces to `false`: the row would print
+  // `ceiling NaN KiB`, exit 0, and gate nothing at all — the exact false green this whole
+  // layer exists to refuse. Checked explicitly, by name, rather than trusted to `fail()`'s
+  // own arithmetic to notice.
+  /** @type {[string, number][]} */
+  const requiredMaxFields = [
+    ['maxFirstPaintGzipBytes', budget.maxFirstPaintGzipBytes],
+    ['maxFirstPaintRawBytes', budget.maxFirstPaintRawBytes],
+    ['maxGzipBytes', budget.maxGzipBytes],
+    ['maxRawBytes', budget.maxRawBytes],
+  ]
+  const missingMax = requiredMaxFields.filter(([, v]) => !Number.isFinite(v)).map(([name]) => name)
+  if (missingMax.length > 0) {
+    fail([
+      `${BUDGET_REL} has a missing or non-numeric ${missingMax.join(', ')} — this is an ` +
+        'old-shaped budget file (from before first paint was measured, or a merge that ' +
+        'resolved toward the old side) and would otherwise gate NOTHING silently rather ' +
+        `than failing loudly. Regenerate it with --write.`,
+    ])
   }
 
   // THE GATE IS FIRST PAINT, NOT THE SUM. See the file header for why: the sum is what the
@@ -510,21 +603,37 @@ function main() {
 
   // SECOND unconditional WARNING line: the sum no longer gates this row, but a
   // whole-package regression should still be visible on every run — see the file header's
-  // "FIRST PAINT IS THE GATE; THE SUM IS PRINTED, NEVER GATED".
+  // "FIRST PAINT IS THE GATE; THE SUM IS PRINTED, NEVER GATED". Its ceiling is FROZEN (see
+  // buildBudget()), so this line carries BOTH the headroom figure AND, when it applies, the
+  // same "fallen BELOW the minimum" clause first paint's headroom line carries above —
+  // that clause is not first paint's alone; retargeting the gate away from the sum must not
+  // silently drop the one piece of information that told anyone the sum was thin on room.
   const sumOverGzip = sum.gzip > budget.maxGzipBytes
   const sumOverRaw = sum.raw > budget.maxRawBytes
-  const sumStatus =
-    sumOverGzip || sumOverRaw
-      ? `OVER its own ceiling (gzip +${kib(Math.max(0, sum.gzip - budget.maxGzipBytes))}, ` +
-        `raw +${kib(Math.max(0, sum.raw - budget.maxRawBytes))})`
-      : `within its own ceiling (headroom ${kib(budget.maxGzipBytes - sum.gzip)} gzip / ` +
-        `${kib(budget.maxRawBytes - sum.raw)} raw)`
+  let sumStatus
+  if (sumOverGzip || sumOverRaw) {
+    sumStatus =
+      `OVER its own frozen ceiling (gzip +${kib(Math.max(0, sum.gzip - budget.maxGzipBytes))}, ` +
+      `raw +${kib(Math.max(0, sum.raw - budget.maxRawBytes))})`
+  } else {
+    const sumHeadroomGzip = budget.maxGzipBytes - sum.gzip
+    const sumHeadroomRaw = budget.maxRawBytes - sum.raw
+    sumStatus =
+      `within its own frozen ceiling (headroom ${kib(sumHeadroomGzip)} gzip / ${kib(sumHeadroomRaw)} raw)`
+    if (sumHeadroomGzip < minGzip || sumHeadroomRaw < minRaw) {
+      const sumShort = []
+      if (sumHeadroomGzip < minGzip) sumShort.push(`gzip ${kib(sumHeadroomGzip)} against ${kib(minGzip)}`)
+      if (sumHeadroomRaw < minRaw) sumShort.push(`raw ${kib(sumHeadroomRaw)} against ${kib(minRaw)}`)
+      sumStatus +=
+        `, headroom has fallen BELOW the minimum this budget was designed with (${sumShort.join(', ')})`
+    }
+  }
   process.stdout.write(
     `WARNING: sum of ${ASSETS_REL} is ${kib(sum.gzip)} gzip / ${kib(sum.raw)} raw against its own ` +
-      `ceiling of ${kib(budget.maxGzipBytes)} gzip / ${kib(budget.maxRawBytes)} raw — ${sumStatus}. ` +
-      'The sum no longer gates this row; first paint does. The sum is what the CDN stores, first ' +
-      'paint is what the operator pays — code splitting can grow this number while shrinking that ' +
-      'one.\n',
+      `frozen ceiling of ${kib(budget.maxGzipBytes)} gzip / ${kib(budget.maxRawBytes)} raw — ${sumStatus}. ` +
+      'The sum no longer gates this row; first paint does, and only a hand edit with a reason moves ' +
+      'this ceiling now — `--write` never touches it once set. The sum is what the CDN stores, first ' +
+      'paint is what the operator pays.\n',
   )
 
   // THIRD unconditional WARNING line, printed on every run regardless of size — not gated
