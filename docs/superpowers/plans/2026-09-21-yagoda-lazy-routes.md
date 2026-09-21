@@ -59,3 +59,27 @@
 **Verification:** from `frontend/`: `npm test`, `npm run lint`, `npx tsc -b`. Then from the worktree root `npm run verify:full` — paste the `bundle` row's printed lines (sum gzip/raw, headroom, largest chunk) and ALSO the same lines from a build of the base commit for comparison (`git stash` is forbidden: build the base in a throwaway worktree `git worktree add /tmp/lazy-base <base-sha>` + `npm ci` + `npm run build -w frontend`, then `node scripts/verify/checks/bundle-size.mjs` from there, then `git worktree remove /tmp/lazy-base`). List `frontend/dist/assets/*.js` after the build and confirm no `ui-kit` chunk exists. Do NOT run `bundle-size.mjs --write`.
 
 **Commit:** `perf(router): owner screens and the catalog load on demand; the kit gallery is dev-only`.
+
+---
+
+### Task 2: The budget measures first paint, and reports the sum
+
+**Why (measured in Task 1):** splitting cut the largest chunk 276.4 → 157.7 KiB gzip but the SUM the check budgets rose 295.5 → 302.6 KiB (each chunk carries its own wrapper and shared modules get their own files). Under a sum budget, code splitting can never pay for itself, and a chart library for an owner-only screen (programme slice 12) would trip the gate although no operator ever downloads it. The check's own header names the audience — operators on mobile data — and names this blind spot. Task 2 makes the budgeted number the one that audience pays: the bytes a first visit must download before the app can paint.
+
+**Files:**
+- Modify `frontend/vite.config.ts` — `build: { manifest: true }` (Vite writes `frontend/dist/.vite/manifest.json`; nothing else changes).
+- Modify `scripts/verify/checks/bundle-size.mjs`, `scripts/verify/checks/bundle-size.test.mjs`, `scripts/verify/baselines/bundle-budget.json`; `scripts/verify/registry.mjs` (the `bundle` row's `proves`/`blindSpot` prose); `.claude/skills/verify/SKILL.md` only if it describes the bundle row's metric.
+
+**Read first:** `.claude/skills/verify/SKILL.md` «Rules for adding or editing a row» (no hand-written numbers in prose — derive and print; every positive test carries a discriminator; tests write only `mkdtempSync` roots via `--root`/`VERIFY_SCAN_ROOT`; a check that scanned nothing refuses a verdict) and the whole header of `bundle-size.mjs` (its two corrections stay true and stay in the file).
+
+**Design:**
+- `measure()` keeps reading every `.js`/`.css` under `dist/assets` (the SUM) and additionally reads `dist/.vite/manifest.json`. First paint = the manifest entry (`isEntry: true`) plus the transitive closure of its `imports` (static) — NOT `dynamicImports` — plus every `css` those chunks list. Resolve manifest `file` values (relative to `dist/`) to the measured asset records; a manifest that names a file the directory does not contain, or a missing manifest, is a FAIL with a named reason (a stale or partial build is not "zero bytes, budget met").
+- The budget file gains the first-paint pair alongside the existing sum pair: `measuredFirstPaintGzipBytes`, `measuredFirstPaintRawBytes`, `maxFirstPaintGzipBytes`, `maxFirstPaintRawBytes`, `headroomFirstPaint*`, same `minHeadroom*`/`step*` rule. **The gate is first paint.** The sum keeps its measured/max fields but its ceiling no longer fails the row: it prints as the second unconditional WARNING line (the largest-chunk line becomes the third), so a whole-package regression still shows on every run. Rationale for the demotion goes in the budget `reason` and the check header: the sum is what the CDN stores, first paint is what the operator pays.
+- `--write` sets BOTH pairs from the measurement with the existing min-headroom-then-round rule. Run it ONCE in this task to establish the first-paint baseline — this is the first measurement of a new metric, not a raise of an old one; say so in the `reason` and in the commit message, and paste the printed line in the report. Do not hand-edit numbers.
+- Prose: the check's `WARNING` lines and the registry row's `proves` derive every number at runtime; no count, KiB or date typed into a string.
+
+**Tests (`bundle-size.test.mjs`)** — extend the fixture builder to write a `dist/.vite/manifest.json` and assert: (1) first paint = entry + static imports + their css, EXCLUDING a chunk reachable only through `dynamicImports` (the discriminator: the same fixture with the lazy chunk listed as a static import must measure larger); (2) the row FAILS when the first-paint pair exceeds its ceiling while the sum is under its own, and PASSES in the opposite case (sum over, first paint under) with the sum WARNING printed; (3) a manifest naming a file absent from `assets/` fails with the named reason; (4) a missing manifest fails, not passes; (5) `--write` writes both pairs with the headroom rule. Keep every existing test that still describes true behaviour; rewrite the ones whose premise (sum is the gate) changed, do not delete them silently — say which in the report.
+
+**Verification:** `node --test scripts/verify/checks/bundle-size.test.mjs` (or the repo's runner for `scripts/verify` tests — see `package.json`), `node scripts/verify/registry.test.mjs` if prose changed, then `npm run verify:full` from the worktree root; paste the `bundle` row's three printed lines (first paint, sum, largest chunk) and the verdict line.
+
+**Commit:** `feat(verify): the bundle budget gates first paint from the Vite manifest and reports the sum`.
