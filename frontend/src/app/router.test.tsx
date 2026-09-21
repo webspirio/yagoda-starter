@@ -47,6 +47,35 @@ function renderAt(path: string) {
   );
 }
 
+/**
+ * `createMemoryRouter(routes, { initialEntries: [path] })` is exactly a
+ * DIRECT load — a fresh router with no prior in-app navigation — which is
+ * the one case where React Router needs a `hydrateFallbackElement`/
+ * `HydrateFallback` somewhere in the matched chain: without one, it warns
+ * "No `HydrateFallback` element provided to render during initial
+ * hydration" (`console.warn`, via react-router's `warningOnce`) and renders
+ * nothing while the route's `lazy` resolves. Spies on both `console.warn`
+ * and `console.error` since that's the surface a regression here would show
+ * up on; callers must restore the spies themselves.
+ */
+function watchForHydrateFallbackWarning() {
+  const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+  const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+  return {
+    assertNone() {
+      for (const spy of [warn, error]) {
+        for (const call of spy.mock.calls) {
+          expect(call.join(' ')).not.toContain('HydrateFallback');
+        }
+      }
+    },
+    restore() {
+      warn.mockRestore();
+      error.mockRestore();
+    },
+  };
+}
+
 describe('router', () => {
   beforeEach(() => {
     useSession.setState({ token: null });
@@ -174,7 +203,7 @@ describe('router', () => {
     expect(await screen.findByText('point-cash page')).toBeInTheDocument();
   });
 
-  it('serves the ui-kit gallery at /ui-kit, no auth required', async () => {
+  it('serves the ui-kit gallery at /ui-kit, no auth required, without a HydrateFallback warning', async () => {
     // `import.meta.env.DEV` is `true` for every Vitest run (mode defaults to
     // "test", never "production"), and it is read once when router.tsx's
     // module-level `routes` array is built — `vi.stubEnv('DEV', ...)` cannot
@@ -182,7 +211,34 @@ describe('router', () => {
     // route exists and renders unauthenticated. The production branch (the
     // route entry not existing at all) is asserted by the bundle build
     // itself having no `ui-kit` chunk, not by a test here.
+    //
+    // `/ui-kit` sits OUTSIDE `AppLayout`, so it has no ancestor to inherit a
+    // `hydrateFallbackElement` from — it needs its own on this exact route
+    // object, or a direct load like this one warns and renders nothing
+    // until the module resolves.
+    const warning = watchForHydrateFallbackWarning();
     renderAt('/ui-kit');
     expect(await screen.findByRole('heading', { name: /ui kit/i })).toBeInTheDocument();
+    warning.assertNone();
+    warning.restore();
+  });
+
+  it('loads /journal directly without a HydrateFallback warning', async () => {
+    // Unlike /ui-kit, /journal is nested under AppLayout, which carries the
+    // shared `hydrateFallbackElement` — this is the regression guard proving
+    // that ancestor fallback still covers a directly-loaded lazy route
+    // nested several layers down (AppLayout > the owner-only guard layout >
+    // /journal itself).
+    useSession.setState({ token: 'tok' });
+    meMock.mockReturnValue({
+      data: { role: 'network_owner', display_name: 'Керівник Тест' },
+      isPending: false,
+      isError: false,
+    });
+    const warning = watchForHydrateFallbackWarning();
+    renderAt('/journal');
+    expect(await screen.findByText('journal page')).toBeInTheDocument();
+    warning.assertNone();
+    warning.restore();
   });
 });

@@ -42,6 +42,10 @@ export const routes: RouteObject[] = [
           path: '/ui-kit',
           lazy: () => import('@/pages/ui-kit').then((m) => ({ Component: m.UiKitPage })),
           errorElement: <RouteError />,
+          // Outside AppLayout, so no ancestor route supplies a fallback for a
+          // direct load — without its own, React Router warns "No
+          // HydrateFallback element provided" and renders nothing meanwhile.
+          hydrateFallbackElement: <HydrateFallback />,
         } satisfies RouteObject,
       ]
     : []),
@@ -139,6 +143,9 @@ export const routes: RouteObject[] = [
         // actually run — which is why RequireAuth/RequireRole live here, on
         // a pathless parent, and each lazy child below is nothing but a path
         // and an import.
+        //
+        // A typed owner URL still fetches this group's `lazy` chunk before
+        // RequireRole redirects — accepted 2026-09-21; document it, don't build around it.
         element: (
           <RequireAuth>
             <RequireRole role="network_owner">
