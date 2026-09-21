@@ -19,6 +19,7 @@ import { randomBytes } from 'node:crypto'
 import { gzipSync } from 'node:zlib'
 import os from 'node:os'
 import path from 'node:path'
+import { pathToFileURL } from 'node:url'
 
 const ROOT = path.resolve(import.meta.dirname, '..', '..', '..')
 const CHECK = path.join(ROOT, 'scripts', 'verify', 'checks', 'bundle-size.mjs')
@@ -26,6 +27,20 @@ const CHECK = path.join(ROOT, 'scripts', 'verify', 'checks', 'bundle-size.mjs')
 const KIB = 1024
 const MIN_GZIP = 25 * KIB
 const MIN_RAW = 100 * KIB
+const STEP_GZIP = 5 * KIB
+const STEP_RAW = 20 * KIB
+
+/**
+ * Mirrors `ceilingFor()` in bundle-size.mjs exactly (same formula, same constants under
+ * test) so a fixture can predict — or deliberately plant — the precise ceiling a fresh
+ * `--write` would compute, without depending on the check's internals.
+ *
+ * @param {number} measured @param {number} minHeadroom @param {number} step
+ */
+function ceilingForTest(measured, minHeadroom, step) {
+  const max = Math.ceil((measured + minHeadroom) / step) * step
+  return { max, headroom: max - measured }
+}
 
 /**
  * A budget file with explicit ceilings for BOTH gated pairs (first paint, lazy), so no
@@ -205,6 +220,45 @@ test('a manifest containing the dev-only ui-kit gallery fails, naming the key �
   assert.equal(r.status, 1)
   assert.match(r.out, /src\/pages\/ui-kit\/index\.ts/)
   rmSync(r.root, { recursive: true, force: true })
+})
+
+test('the file-name half derives its dev-only substring from DEV_ONLY_SOURCE_PREFIXES, not a hard-coded "ui-kit"', () => {
+  // DEV_ONLY_SOURCE_PREFIXES has exactly one real entry today (ui-kit), and its derived last
+  // path segment happens to equal the old hard-coded literal — so proving this actually
+  // READS the array, rather than still being hard-coded, needs a SECOND prefix. Importing
+  // the real check module directly (instead of spawning it, the way every other test here
+  // does) and pushing onto the exported, un-frozen array is what gets one without inventing
+  // a second real dev-only route just for this test. This runs in its OWN subprocess (a
+  // helper file, executed with node) because a caught chunk calls fail() -> process.exit(1)
+  // — calling assertNoDevOnlyChunksShipped() in-process would kill the test runner itself.
+  const root = mkdtempSync(path.join(os.tmpdir(), 'bundle-size-devonly-'))
+  const helper = path.join(root, 'helper.mjs')
+  writeFileSync(
+    helper,
+    [
+      `import { assertNoDevOnlyChunksShipped, DEV_ONLY_SOURCE_PREFIXES } from ${JSON.stringify(pathToFileURL(CHECK).href)}`,
+      `DEV_ONLY_SOURCE_PREFIXES.push('src/pages/second-dev-only/')`,
+      'assertNoDevOnlyChunksShipped({',
+      '  // Key deliberately does NOT start with any DEV_ONLY_SOURCE_PREFIXES entry — only the',
+      "  // FILE-NAME half can catch this, isolating exactly the bug the 'ui-kit' literal",
+      '  // caused: a second prefix with a different last segment went unchecked by file name.',
+      "  'some/unrelated/key': { file: 'assets/second-dev-only-XYZ.js' },",
+      '})',
+    ].join('\n'),
+  )
+  let status = 0
+  let out = ''
+  try {
+    out = execFileSync(process.execPath, [helper], { encoding: 'utf8' })
+  } catch (err) {
+    const e = /** @type {any} */ (err)
+    status = e.status ?? 1
+    out = `${e.stdout ?? ''}${e.stderr ?? ''}`
+  }
+  assert.notEqual(status, 0, out)
+  assert.match(out, /second-dev-only-XYZ\.js/)
+  assert.match(out, /"second-dev-only"/)
+  rmSync(root, { recursive: true, force: true })
 })
 
 test('a manifest chunk reachable through neither static nor dynamic imports trips the closure invariant, not a silent pass', () => {
@@ -666,6 +720,215 @@ test('--write preserves an existing reason rather than overwriting it with the d
   })
   assert.equal(r.status, 0, r.out)
   assert.equal(r.readBudget().reason, custom)
+  rmSync(r.root, { recursive: true, force: true })
+})
+
+test('--write=first-paint writes only the first-paint pair; lazy\'s max* is untouched, its measured/headroom still refresh', () => {
+  const entryJs = noise(30 * KIB)
+  const lazyJs = noise(5 * KIB) // deliberately NOT what the "previous" lazy ceiling below assumed
+  const gzEntry = gzipSync(entryJs, { level: 9 }).length
+  const gzLazy = gzipSync(lazyJs, { level: 9 }).length
+
+  const prevLazyGzip = ceilingForTest(50 * KIB, MIN_GZIP, STEP_GZIP)
+  const prevLazyRaw = ceilingForTest(150 * KIB, MIN_RAW, STEP_RAW)
+  const previous = budgetFile({
+    // Deliberately absurd — must NOT survive into the written file, proving first paint was
+    // actually re-baselined rather than also left untouched.
+    maxFirstPaintGzipBytes: 1,
+    maxFirstPaintRawBytes: 1,
+    maxLazyGzipBytes: prevLazyGzip.max,
+    maxLazyRawBytes: prevLazyRaw.max,
+  })
+
+  const r = runIn({
+    files: { 'index-A.js': entryJs, 'lazy-C.js': lazyJs },
+    manifest: {
+      'index.html': { file: 'assets/index-A.js', isEntry: true, dynamicImports: ['lazy-chunk'] },
+      'lazy-chunk': { file: 'assets/lazy-C.js' },
+    },
+    budget: previous,
+    args: ['--write=first-paint'],
+  })
+  assert.equal(r.status, 0, r.out)
+  const written = r.readBudget()
+
+  // First paint: fully re-baselined off THIS measurement, not the absurd previous value.
+  assert.equal(written.measuredFirstPaintGzipBytes, gzEntry)
+  assert.notEqual(written.maxFirstPaintGzipBytes, 1)
+  assert.ok(written.maxFirstPaintGzipBytes >= gzEntry + MIN_GZIP)
+
+  // Lazy: measured/headroom refreshed to the NEW bytes, but max* is the OLD ceiling,
+  // carried forward untouched — this is the actual bug fix under test.
+  assert.equal(written.measuredLazyGzipBytes, gzLazy)
+  assert.equal(written.measuredLazyRawBytes, lazyJs.length)
+  assert.equal(written.maxLazyGzipBytes, prevLazyGzip.max)
+  assert.equal(written.maxLazyRawBytes, prevLazyRaw.max)
+  assert.equal(written.headroomLazyGzipBytes, prevLazyGzip.max - gzLazy)
+  assert.equal(written.headroomLazyRawBytes, prevLazyRaw.max - lazyJs.length)
+
+  assert.match(r.out, /bundle: first-paint baseline written/)
+  assert.match(r.out, /lazy's ceiling is untouched/)
+  rmSync(r.root, { recursive: true, force: true })
+})
+
+test('--write=lazy writes only the lazy pair; first paint\'s max* is untouched, its measured/headroom still refresh', () => {
+  const entryJs = noise(8 * KIB) // deliberately NOT what the "previous" first-paint ceiling below assumed
+  const lazyJs = noise(40 * KIB)
+  const gzEntry = gzipSync(entryJs, { level: 9 }).length
+  const gzLazy = gzipSync(lazyJs, { level: 9 }).length
+
+  const prevFpGzip = ceilingForTest(60 * KIB, MIN_GZIP, STEP_GZIP)
+  const prevFpRaw = ceilingForTest(200 * KIB, MIN_RAW, STEP_RAW)
+  const previous = budgetFile({
+    maxFirstPaintGzipBytes: prevFpGzip.max,
+    maxFirstPaintRawBytes: prevFpRaw.max,
+    // Deliberately absurd — must NOT survive, proving lazy was actually re-baselined.
+    maxLazyGzipBytes: 1,
+    maxLazyRawBytes: 1,
+  })
+
+  const r = runIn({
+    files: { 'index-A.js': entryJs, 'lazy-C.js': lazyJs },
+    manifest: {
+      'index.html': { file: 'assets/index-A.js', isEntry: true, dynamicImports: ['lazy-chunk'] },
+      'lazy-chunk': { file: 'assets/lazy-C.js' },
+    },
+    budget: previous,
+    args: ['--write=lazy'],
+  })
+  assert.equal(r.status, 0, r.out)
+  const written = r.readBudget()
+
+  assert.equal(written.measuredLazyGzipBytes, gzLazy)
+  assert.notEqual(written.maxLazyGzipBytes, 1)
+  assert.ok(written.maxLazyGzipBytes >= gzLazy + MIN_GZIP)
+
+  assert.equal(written.measuredFirstPaintGzipBytes, gzEntry)
+  assert.equal(written.measuredFirstPaintRawBytes, entryJs.length)
+  assert.equal(written.maxFirstPaintGzipBytes, prevFpGzip.max)
+  assert.equal(written.maxFirstPaintRawBytes, prevFpRaw.max)
+  assert.equal(written.headroomFirstPaintGzipBytes, prevFpGzip.max - gzEntry)
+  assert.equal(written.headroomFirstPaintRawBytes, prevFpRaw.max - entryJs.length)
+
+  assert.match(r.out, /bundle: lazy baseline written/)
+  assert.match(r.out, /first paint's ceiling is untouched/)
+  rmSync(r.root, { recursive: true, force: true })
+})
+
+test('--write=first-paint refuses when there is no previous lazy ceiling to leave untouched', () => {
+  const r = runIn({
+    files: { 'index-A.js': noise(4 * KIB) },
+    manifest: { 'index.html': { file: 'assets/index-A.js', isEntry: true } },
+    budget: null, // no previous budget file at all — nothing for lazy's max* to carry forward
+    args: ['--write=first-paint'],
+  })
+  assert.equal(r.status, 1)
+  assert.match(r.out, /maxLazyGzipBytes/)
+  assert.match(r.out, /run a plain --write once first/)
+  rmSync(r.root, { recursive: true, force: true })
+})
+
+test('--write=lazy refuses against an old-shaped budget missing the first-paint ceiling it would need to leave untouched', () => {
+  const root = mkdtempSync(path.join(os.tmpdir(), 'bundle-size-'))
+  const assets = path.join(root, 'frontend', 'dist', 'assets')
+  mkdirSync(assets, { recursive: true })
+  writeFileSync(path.join(assets, 'index-A.js'), noise(4 * KIB))
+  const manifestPath = path.join(root, 'frontend', 'dist', '.vite', 'manifest.json')
+  mkdirSync(path.dirname(manifestPath), { recursive: true })
+  writeFileSync(manifestPath, JSON.stringify({ 'index.html': { file: 'assets/index-A.js', isEntry: true } }))
+  const budgetPath = path.join(root, 'scripts', 'verify', 'baselines', 'bundle-budget.json')
+  mkdirSync(path.dirname(budgetPath), { recursive: true })
+  // maxFirstPaintGzipBytes/RawBytes deliberately absent — the pre-first-paint shape.
+  writeFileSync(
+    budgetPath,
+    JSON.stringify({ maxLazyGzipBytes: 1e9, maxLazyRawBytes: 1e9, reason: 'old-shaped fixture' }),
+  )
+  let status = 0
+  let out = ''
+  try {
+    out = execFileSync(process.execPath, [CHECK, '--write=lazy'], {
+      encoding: 'utf8',
+      env: { ...process.env, VERIFY_SCAN_ROOT: root },
+    })
+  } catch (err) {
+    const e = /** @type {any} */ (err)
+    status = e.status ?? 1
+    out = `${e.stdout ?? ''}${e.stderr ?? ''}`
+  }
+  assert.notEqual(status, 0, out)
+  assert.match(out, /maxFirstPaintGzipBytes/)
+  rmSync(root, { recursive: true, force: true })
+})
+
+test('--write=bogus fails naming the unrecognised metric rather than silently falling through to the read-and-gate path', () => {
+  const r = runIn({
+    files: { 'index-A.js': noise(4 * KIB) },
+    manifest: { 'index.html': { file: 'assets/index-A.js', isEntry: true } },
+    budget: budgetFile(AMPLE),
+    args: ['--write=bogus'],
+  })
+  assert.equal(r.status, 1)
+  assert.match(r.out, /--write=bogus is not a recognised metric/)
+  rmSync(r.root, { recursive: true, force: true })
+})
+
+test('a plain --write prints "also re-baselined" for a pair that was NOT over budget but still moved, and stays silent for the pair that actually triggered the write', () => {
+  const entryJs = noise(10 * KIB)
+  const lazyJs = noise(10 * KIB)
+  const gzFp = gzipSync(entryJs, { level: 9 }).length
+  const gzLazy = gzipSync(lazyJs, { level: 9 }).length
+
+  const previous = budgetFile({
+    // First paint: comfortably ABOVE the fresh measurement (not over budget) but a whole
+    // step above what ceilingFor would compute fresh, so the ceiling still MOVES (down).
+    maxFirstPaintGzipBytes: gzFp + MIN_GZIP + STEP_GZIP,
+    maxFirstPaintRawBytes: entryJs.length + MIN_RAW + STEP_RAW,
+    // Lazy: BELOW the fresh measurement — genuinely over budget, the reason this --write ran.
+    maxLazyGzipBytes: gzLazy - 1,
+    maxLazyRawBytes: lazyJs.length - 1,
+  })
+
+  const r = runIn({
+    files: { 'index-A.js': entryJs, 'lazy-C.js': lazyJs },
+    manifest: {
+      'index.html': { file: 'assets/index-A.js', isEntry: true, dynamicImports: ['lazy-chunk'] },
+      'lazy-chunk': { file: 'assets/lazy-C.js' },
+    },
+    budget: previous,
+    args: ['--write'],
+  })
+  assert.equal(r.status, 0, r.out)
+  assert.match(r.out, /^bundle: first paint also re-baselined: /m)
+  assert.doesNotMatch(r.out, /lazy also re-baselined/)
+  rmSync(r.root, { recursive: true, force: true })
+})
+
+test('a plain --write prints no "also re-baselined" line when neither ceiling actually moved', () => {
+  const entryJs = noise(10 * KIB)
+  const gzFp = gzipSync(entryJs, { level: 9 }).length
+  const fpGzip = ceilingForTest(gzFp, MIN_GZIP, STEP_GZIP)
+  const fpRaw = ceilingForTest(entryJs.length, MIN_RAW, STEP_RAW)
+  // No lazy chunk in this fixture, so lazy measures 0 either way — its "previous" ceiling
+  // is set to exactly what a fresh --write of an empty lazy closure computes too, so lazy
+  // doesn't move either and can't leak a false positive into this assertion.
+  const lazyGzip = ceilingForTest(0, MIN_GZIP, STEP_GZIP)
+  const lazyRaw = ceilingForTest(0, MIN_RAW, STEP_RAW)
+
+  const previous = budgetFile({
+    maxFirstPaintGzipBytes: fpGzip.max,
+    maxFirstPaintRawBytes: fpRaw.max,
+    maxLazyGzipBytes: lazyGzip.max,
+    maxLazyRawBytes: lazyRaw.max,
+  })
+
+  const r = runIn({
+    files: { 'index-A.js': entryJs },
+    manifest: { 'index.html': { file: 'assets/index-A.js', isEntry: true } },
+    budget: previous,
+    args: ['--write'],
+  })
+  assert.equal(r.status, 0, r.out)
+  assert.doesNotMatch(r.out, /also re-baselined/)
   rmSync(r.root, { recursive: true, force: true })
 })
 

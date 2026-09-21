@@ -34,16 +34,23 @@
  *     few KiB of slack — or less — still trips on the next ordinary commit, and someone
  *     raises it without reading, which is exactly the behaviour a budget exists to prevent.
  *
- * THE RULE THIS CHECK ACTUALLY USES: `--write` sets the ceiling to the measurement plus a
- * MINIMUM headroom sized to intent — 25 KiB for gzip, 100 KiB for raw, roughly one
- * ordinary phase of work by the reference's own numbers — and only THEN rounds that sum up
- * to the next step (5 KiB / 20 KiB). The step is cosmetic (it keeps the ceiling a round
- * number); the minimum headroom is what actually does the ratcheting work. A ceiling with
+ * HOW TO CHANGE THIS FILE: `--write` sets the ceiling to the measurement plus a MINIMUM
+ * headroom sized to intent — 25 KiB for gzip, 100 KiB for raw, roughly one ordinary phase
+ * of work by the reference's own numbers — and only THEN rounds that sum up to the next
+ * step (5 KiB / 20 KiB). The step is cosmetic (it keeps the ceiling a round number); the
+ * minimum headroom is what actually does the ratcheting work. A ceiling with
  * single-digit-percent headroom is not a stricter budget, it is a budget that trains people
  * to raise it on sight — this rule sizes the slack to what ordinary work costs so ordinary
  * work does not need a ceiling edit, and a new dependency pulled in whole still does. This
- * SAME rule runs on EVERY `--write`, for BOTH gated metrics, off one shared MIN_HEADROOM/
- * STEP pair; neither metric is ever frozen or treated as a one-time computation.
+ * SAME rule runs on EVERY `--write`, off one shared MIN_HEADROOM/STEP pair; neither metric
+ * is ever frozen or treated as a one-time computation. Bare `--write` re-baselines BOTH
+ * gated pairs at once, same as it always has; `--write=first-paint` or `--write=lazy`
+ * re-baselines ONLY that pair, leaving the other pair's ceiling exactly where it was
+ * (`measured*`/`headroom*` still refresh for both, because those describe the build, not a
+ * decision) — reach for the per-metric form when only one metric's ceiling actually needs
+ * to move and the other's should stay reviewable on its own. A bare `--write` still moves
+ * both regardless of which one was actually over budget; when it moves a pair that was not,
+ * it says so on its own printed line rather than leaving that a silent side effect.
  *
  * What must still fail is a REGRESSION: a new dependency pulled in whole, an accidental
  * whole-package import, a chart library added for one small feature. Those are tens or
@@ -108,6 +115,22 @@
  * `--write` exactly like first paint's, never frozen — closes that gap: splitting code
  * between first paint and lazy now moves bytes between two BUDGETS, not out of every budget
  * that exists.
+ *
+ * CONCEDED: THE SAME ABSOLUTE MINIMUM READS AS A LOT MORE HEADROOM ON LAZY THAN ON FIRST
+ * PAINT — kept anyway, deliberately. MIN_HEADROOM_GZIP_BYTES/MIN_HEADROOM_RAW_BYTES stay one
+ * absolute pair shared by both metrics (see the rule above): ordinary work costs the same
+ * absolute KiB whichever closure it lands in, so the minimum that absorbs it is the same
+ * absolute number either way — that argument does not weaken just because lazy's own
+ * baseline is small. But it does mean lazy's ceiling, at its first measurement, carries
+ * roughly 139% headroom over lazy's own measured bytes, where the identical constant reads
+ * as a low double-digit percentage against first paint's much larger baseline — a number
+ * that would look alarming taken alone. It is not a standing gap: `--write` re-tightens
+ * EVERY pair to measurement + minimum on every run it touches, so that headroom never
+ * accumulates across ordinary work the way a frozen ceiling would, and the "fallen BELOW the
+ * minimum" WARNING two sections down fires the moment lazy's own headroom erodes toward the
+ * same absolute minimum — long before lazy's ceiling itself would ever trip. So the large
+ * relative number at day one is a property of lazy starting small, not of the gate being
+ * loose.
  *
  * RESIDUAL BLIND SPOTS, narrower now but not zero: this reads whatever the LAST `build` and
  * its manifest wrote, so a stale or partial pair — a manifest naming a file the assets
@@ -267,9 +290,26 @@ function readManifest() {
  * leaked chunk would be lazy (see the file header), no other check in this file would ever
  * notice on its own.
  *
+ * The file-name half is DERIVED from {@link DEV_ONLY_SOURCE_PREFIXES}, not a second,
+ * hand-typed copy of today's one entry: each prefix's last non-empty path segment
+ * (`'src/pages/ui-kit/'` → `'ui-kit'`) becomes a substring `chunk.file` is checked against.
+ * DEV_ONLY_SOURCE_PREFIXES is documented as the ONE place this check's scope is declared —
+ * a literal `'ui-kit'` here used to make that false: a second prefix added to the array
+ * would have silently gone unchecked by file name (though still caught by key, since that
+ * half already read the array). Recomputed on every call, not cached at module load, so a
+ * prefix appended to the array after this module has already been imported — which is
+ * exactly how this file's own tests reach a second prefix without a second real dev-only
+ * route — is still honoured.
+ *
  * @param {Manifest} manifest
  */
-function assertNoDevOnlyChunksShipped(manifest) {
+export function assertNoDevOnlyChunksShipped(manifest) {
+  // Each prefix ends in '/' and names at least one real segment, so `.pop()` here never
+  // actually returns undefined — the cast is only to satisfy the type checker's general
+  // Array#pop() signature, not a runtime assumption this file doesn't already make.
+  const fileSubstrings = /** @type {string[]} */ (
+    DEV_ONLY_SOURCE_PREFIXES.map((prefix) => prefix.split('/').filter(Boolean).pop())
+  )
   /** @type {string[]} */
   const problems = []
   for (const [key, chunk] of Object.entries(manifest)) {
@@ -280,10 +320,12 @@ function assertNoDevOnlyChunksShipped(manifest) {
           'failed or was bypassed, and it would otherwise ship silently inside the lazy figure.',
       )
     }
-    if (typeof chunk?.file === 'string' && chunk.file.includes('ui-kit')) {
+    const matchedSubstring =
+      typeof chunk?.file === 'string' ? fileSubstrings.find((substr) => chunk.file.includes(substr)) : undefined
+    if (matchedSubstring) {
       problems.push(
-        `${MANIFEST_REL}'s ${key} names a file (${chunk.file}) containing "ui-kit" — a dev-only ` +
-          'chunk must never reach a production build.',
+        `${MANIFEST_REL}'s ${key} names a file (${chunk.file}) containing "${matchedSubstring}" — a ` +
+          'dev-only chunk must never reach a production build.',
       )
     }
   }
@@ -543,10 +585,22 @@ function ceilingFor(measured, minHeadroom, step) {
 }
 
 /**
- * Builds the full budget record from BOTH gated metrics — first paint and lazy. Both get
- * the identical minimum-headroom-then-step rule on EVERY call: unlike the old sum ceiling
- * this file used to freeze after its first computation, neither pair is ever carried
- * forward untouched — `--write` always re-baselines both from a fresh measurement. Recording
+ * Builds the full budget record. `measured*` fields are ALWAYS refreshed for BOTH metrics,
+ * because they describe the current build, not a decision anyone made. `target` controls
+ * which pair's `max*` (and therefore `headroom*`, which is derived from whichever `max*` is
+ * in effect) actually MOVES on this write:
+ *
+ * - `'both'` (the plain `--write`, unchanged behaviour): both ceilings are recomputed from a
+ *   fresh measurement, same as always — neither pair is ever carried forward untouched the
+ *   way the old, frozen sum ceiling once was.
+ * - `'first-paint'` / `'lazy'` (the `--write=<metric>` forms): ONLY that pair's ceiling is
+ *   recomputed; the OTHER pair's `max*` is carried forward from `previous` untouched, and
+ *   its `headroom*` is recomputed against that untouched `max*` and the fresh measurement —
+ *   so a per-metric write still tells you the truth about the pair it didn't touch, it just
+ *   doesn't move that pair's ceiling.
+ *
+ * `previous` must supply the untouched pair's `max*` for a per-metric write — {@link main}
+ * refuses the write before calling this when it can't. Recording
  * `minHeadroomGzipBytes`/`minHeadroomRawBytes`/`stepGzipBytes`/`stepRawBytes` alongside the
  * result means the next person to re-measure follows this exact arithmetic instead of
  * inventing their own rounding rule (the mistake this check's own history already made
@@ -554,13 +608,26 @@ function ceilingFor(measured, minHeadroom, step) {
  *
  * @param {{ firstPaintGzip: number, firstPaintRaw: number, lazyGzip: number, lazyRaw: number }} measured
  * @param {Partial<Budget> | undefined} previous
+ * @param {'both' | 'first-paint' | 'lazy'} target
  * @returns {Budget}
  */
-function buildBudget(measured, previous) {
+function buildBudget(measured, previous, target) {
   const fpGzip = ceilingFor(measured.firstPaintGzip, MIN_HEADROOM_GZIP_BYTES, STEP_GZIP_BYTES)
   const fpRaw = ceilingFor(measured.firstPaintRaw, MIN_HEADROOM_RAW_BYTES, STEP_RAW_BYTES)
   const lazyGzip = ceilingFor(measured.lazyGzip, MIN_HEADROOM_GZIP_BYTES, STEP_GZIP_BYTES)
   const lazyRaw = ceilingFor(measured.lazyRaw, MIN_HEADROOM_RAW_BYTES, STEP_RAW_BYTES)
+
+  const writeFirstPaint = target === 'both' || target === 'first-paint'
+  const writeLazy = target === 'both' || target === 'lazy'
+
+  const maxFirstPaintGzipBytes = writeFirstPaint
+    ? fpGzip.max
+    : /** @type {number} */ (previous?.maxFirstPaintGzipBytes)
+  const maxFirstPaintRawBytes = writeFirstPaint
+    ? fpRaw.max
+    : /** @type {number} */ (previous?.maxFirstPaintRawBytes)
+  const maxLazyGzipBytes = writeLazy ? lazyGzip.max : /** @type {number} */ (previous?.maxLazyGzipBytes)
+  const maxLazyRawBytes = writeLazy ? lazyRaw.max : /** @type {number} */ (previous?.maxLazyRawBytes)
 
   return {
     measuredAt: new Date().toISOString().slice(0, 10),
@@ -572,14 +639,14 @@ function buildBudget(measured, previous) {
     minHeadroomRawBytes: MIN_HEADROOM_RAW_BYTES,
     stepGzipBytes: STEP_GZIP_BYTES,
     stepRawBytes: STEP_RAW_BYTES,
-    maxFirstPaintGzipBytes: fpGzip.max,
-    maxFirstPaintRawBytes: fpRaw.max,
-    headroomFirstPaintGzipBytes: fpGzip.headroom,
-    headroomFirstPaintRawBytes: fpRaw.headroom,
-    maxLazyGzipBytes: lazyGzip.max,
-    maxLazyRawBytes: lazyRaw.max,
-    headroomLazyGzipBytes: lazyGzip.headroom,
-    headroomLazyRawBytes: lazyRaw.headroom,
+    maxFirstPaintGzipBytes,
+    maxFirstPaintRawBytes,
+    headroomFirstPaintGzipBytes: maxFirstPaintGzipBytes - measured.firstPaintGzip,
+    headroomFirstPaintRawBytes: maxFirstPaintRawBytes - measured.firstPaintRaw,
+    maxLazyGzipBytes,
+    maxLazyRawBytes,
+    headroomLazyGzipBytes: maxLazyGzipBytes - measured.lazyGzip,
+    headroomLazyRawBytes: maxLazyRawBytes - measured.lazyRaw,
     reason: previous?.reason ?? DEFAULT_REASON,
   }
 }
@@ -595,8 +662,38 @@ function totals(files) {
   }
 }
 
+/** Recognised `--write=<metric>` suffixes; bare `--write` means 'both', same as before. */
+const WRITE_TARGETS = /** @type {const} */ (['first-paint', 'lazy'])
+
+/**
+ * Reads `--write` / `--write=first-paint` / `--write=lazy` off argv. `null` means neither
+ * flag is present (the read-and-gate path runs). An unrecognised `--write=<x>` FAILs by
+ * name, immediately — falling through to the read path instead would make a metric-name
+ * typo look like "the budget file is missing" one error message later, which is a worse
+ * failure to debug than the actual mistake.
+ *
+ * @param {string[]} argv
+ * @returns {'both' | 'first-paint' | 'lazy' | null}
+ */
+function parseWriteTarget(argv) {
+  for (const a of argv) {
+    if (a === '--write') return 'both'
+    if (a.startsWith('--write=')) {
+      const target = a.slice('--write='.length)
+      if (!WRITE_TARGETS.includes(/** @type {any} */ (target))) {
+        fail([
+          `--write=${target} is not a recognised metric — use --write (both pairs, as ` +
+            'always), --write=first-paint or --write=lazy.',
+        ])
+      }
+      return /** @type {'first-paint' | 'lazy'} */ (target)
+    }
+  }
+  return null
+}
+
 function main() {
-  const write = process.argv.includes('--write')
+  const writeTarget = parseWriteTarget(process.argv)
   const files = measure()
   /** @type {Map<string, AssetFile>} */
   const byName = new Map(files.map((f) => [f.file, f]))
@@ -611,7 +708,7 @@ function main() {
   const fp = totals(firstPaint)
   const lz = totals(lazy)
 
-  if (write) {
+  if (writeTarget) {
     /** @type {Partial<Budget> | undefined} */
     let previous
     try {
@@ -619,11 +716,54 @@ function main() {
     } catch {
       /* first write — nothing to carry forward except the default reason */
     }
+
+    // A per-metric write leaves the OTHER pair's max* untouched — carried forward from
+    // `previous`. If that pair has no usable value to carry (no budget file yet, or an
+    // old-shaped one missing it), there is nothing to leave untouched: refuse rather than
+    // write NaN/undefined into the file, same principle as the old-shaped-budget guard below.
+    if (writeTarget !== 'both') {
+      const untouchedFields =
+        writeTarget === 'first-paint'
+          ? /** @type {const} */ (['maxLazyGzipBytes', 'maxLazyRawBytes'])
+          : /** @type {const} */ (['maxFirstPaintGzipBytes', 'maxFirstPaintRawBytes'])
+      const missing = untouchedFields.filter((f) => !Number.isFinite(previous?.[f]))
+      if (missing.length > 0) {
+        fail([
+          `--write=${writeTarget} leaves ${untouchedFields.join(', ')} untouched, but ` +
+            `${BUDGET_REL} has no usable ${missing.join(', ')} to carry forward — run a plain ` +
+            '--write once first to establish both pairs, then use --write=<metric> after that.',
+        ])
+      }
+    }
+
     const budget = buildBudget(
       { firstPaintGzip: fp.gzip, firstPaintRaw: fp.raw, lazyGzip: lz.gzip, lazyRaw: lz.raw },
       previous,
+      writeTarget,
     )
     writeFileSync(BUDGET, `${JSON.stringify(budget, null, 2)}\n`)
+
+    if (writeTarget === 'first-paint') {
+      process.stdout.write(
+        `bundle: first-paint baseline written — first paint ${kib(fp.gzip)} gzip / ${kib(fp.raw)} raw ` +
+          `(ceiling ${kib(budget.maxFirstPaintGzipBytes)} gzip / ${kib(budget.maxFirstPaintRawBytes)} raw, ` +
+          `headroom ${kib(budget.headroomFirstPaintGzipBytes)} gzip / ${kib(budget.headroomFirstPaintRawBytes)} raw); ` +
+          `lazy's ceiling is untouched (measured/headroom refreshed: ${kib(lz.gzip)} gzip / ${kib(lz.raw)} raw, ` +
+          `headroom ${kib(budget.headroomLazyGzipBytes)} gzip / ${kib(budget.headroomLazyRawBytes)} raw)\n`,
+      )
+      return
+    }
+    if (writeTarget === 'lazy') {
+      process.stdout.write(
+        `bundle: lazy baseline written — lazy ${kib(lz.gzip)} gzip / ${kib(lz.raw)} raw ` +
+          `(ceiling ${kib(budget.maxLazyGzipBytes)} gzip / ${kib(budget.maxLazyRawBytes)} raw, ` +
+          `headroom ${kib(budget.headroomLazyGzipBytes)} gzip / ${kib(budget.headroomLazyRawBytes)} raw); ` +
+          `first paint's ceiling is untouched (measured/headroom refreshed: ${kib(fp.gzip)} gzip / ${kib(fp.raw)} raw, ` +
+          `headroom ${kib(budget.headroomFirstPaintGzipBytes)} gzip / ${kib(budget.headroomFirstPaintRawBytes)} raw)\n`,
+      )
+      return
+    }
+
     process.stdout.write(
       `bundle: baseline written — first paint ${kib(fp.gzip)} gzip / ${kib(fp.raw)} raw ` +
         `(ceiling ${kib(budget.maxFirstPaintGzipBytes)} gzip / ${kib(budget.maxFirstPaintRawBytes)} raw, ` +
@@ -633,6 +773,49 @@ function main() {
         `headroom ${kib(budget.headroomLazyGzipBytes)} gzip / ${kib(budget.headroomLazyRawBytes)} raw), ` +
         `sum ${kib(sum.gzip)} gzip / ${kib(sum.raw)} raw (informational only, no ceiling)\n`,
     )
+
+    // A plain --write (both) always re-baselines BOTH pairs, even a pair that was NOT
+    // actually over its OLD ceiling — the pair somebody ran --write to fix is not
+    // necessarily the only one whose ceiling just moved. Named here, unconditionally, so
+    // that side effect is never a silent one: printed only when it actually happened
+    // (previous existed, had a usable old max for this pair, and the new max differs) AND
+    // this pair was not the reason the write was needed.
+    if (previous) {
+      const fpHadOldMax = Number.isFinite(previous.maxFirstPaintGzipBytes) && Number.isFinite(previous.maxFirstPaintRawBytes)
+      const fpWasOverBudget =
+        fpHadOldMax &&
+        (fp.gzip > /** @type {number} */ (previous.maxFirstPaintGzipBytes) ||
+          fp.raw > /** @type {number} */ (previous.maxFirstPaintRawBytes))
+      const fpMoved =
+        fpHadOldMax &&
+        (budget.maxFirstPaintGzipBytes !== previous.maxFirstPaintGzipBytes ||
+          budget.maxFirstPaintRawBytes !== previous.maxFirstPaintRawBytes)
+      if (fpMoved && !fpWasOverBudget) {
+        process.stdout.write(
+          `bundle: first paint also re-baselined: ${kib(/** @type {number} */ (previous.maxFirstPaintGzipBytes))} → ` +
+            `${kib(budget.maxFirstPaintGzipBytes)} gzip / ${kib(/** @type {number} */ (previous.maxFirstPaintRawBytes))} → ` +
+            `${kib(budget.maxFirstPaintRawBytes)} raw — it was not over its old ceiling; a plain --write moves ` +
+            'both pairs regardless of which one needed it.\n',
+        )
+      }
+
+      const lazyHadOldMax = Number.isFinite(previous.maxLazyGzipBytes) && Number.isFinite(previous.maxLazyRawBytes)
+      const lazyWasOverBudget =
+        lazyHadOldMax &&
+        (lz.gzip > /** @type {number} */ (previous.maxLazyGzipBytes) ||
+          lz.raw > /** @type {number} */ (previous.maxLazyRawBytes))
+      const lazyMoved =
+        lazyHadOldMax &&
+        (budget.maxLazyGzipBytes !== previous.maxLazyGzipBytes || budget.maxLazyRawBytes !== previous.maxLazyRawBytes)
+      if (lazyMoved && !lazyWasOverBudget) {
+        process.stdout.write(
+          `bundle: lazy also re-baselined: ${kib(/** @type {number} */ (previous.maxLazyGzipBytes))} → ` +
+            `${kib(budget.maxLazyGzipBytes)} gzip / ${kib(/** @type {number} */ (previous.maxLazyRawBytes))} → ` +
+            `${kib(budget.maxLazyRawBytes)} raw — it was not over its old ceiling; a plain --write moves ` +
+            'both pairs regardless of which one needed it.\n',
+        )
+      }
+    }
     return
   }
 
