@@ -287,4 +287,93 @@ describe('ReweighReconciliationService.forShift (DB)', () => {
     expect(res.grades.map((g) => g.product_grade_name)).toEqual(['Малина 1', 'Малина 3']);
     expect(res.grades.every((g) => g.product_id === product.id)).toBe(true);
   });
+
+  /**
+   * The mocked unit spec can only assert the `where` object literal handed
+   * to `itemRepo.find` — it cannot show that TypeORM's nested
+   * `where: { reweigh: { shift_id } }`, with `voided_at` omitted, actually
+   * returns a voided row from real Postgres, or that `voided_at: IsNull()`
+   * actually withholds one. This is that proof, plus the requirement the
+   * whole task exists for: a voided line must never move `products[]`,
+   * whichever way the flag is set.
+   */
+  it('surfaces a voided line in items[] only when asked, and never moves products[]', async () => {
+    const tag = randomUUID();
+    const short = tag.slice(0, 8).toUpperCase();
+
+    const [point] = await ds.query(
+      `INSERT INTO collection_points (name, code, kind) VALUES ($1, $2, 'reception') RETURNING id`,
+      [`Точка ${tag}`, pointCode()],
+    );
+    const [shift] = await ds.query(
+      `INSERT INTO shifts (collection_point_id, business_date, status, opened_by_user_id, closed_at, closed_by_user_id)
+       VALUES ($1, CURRENT_DATE, 'closed', $2, now(), $2) RETURNING id`,
+      [point.id, ownerId],
+    );
+    const [supplier] = await ds.query(
+      `INSERT INTO suppliers (collection_point_id, first_name, last_name)
+       VALUES ($1, 'Іван', $2) RETURNING id`,
+      [point.id, `Постачальник-${tag}`],
+    );
+    const [product] = await ds.query(`INSERT INTO products (name) VALUES ($1) RETURNING id`, [
+      `Малина ${tag}`,
+    ]);
+    const [grade] = await ds.query(
+      `INSERT INTO product_grades (product_id, name) VALUES ($1, $2) RETURNING id`,
+      [product.id, `Сорт ${tag}`],
+    );
+
+    const [intake] = await ds.query(
+      `INSERT INTO intakes (code, shift_id, supplier_id, amount, received_by_user_id)
+       VALUES ($1, $2, $3, '200.00', $4) RETURNING id`,
+      [`${short}-IV-1`, shift.id, supplier.id, ownerId],
+    );
+    await ds.query(
+      `INSERT INTO intake_items (intake_id, item_order, product_grade_id,
+           gross_kg, pallet_kg, tare_weight_kg, net_kg, price, bonus, amount)
+       VALUES ($1, 1, $2, '100.00', '0.00', '0.00', '100.00', '2.00', '0.00', '200.00')`,
+      [intake.id, grade.id],
+    );
+
+    const [reweigh] = await ds.query(`INSERT INTO reweighs (shift_id) VALUES ($1) RETURNING id`, [
+      shift.id,
+    ]);
+    const [live] = await ds.query(
+      `INSERT INTO reweigh_items (reweigh_id, item_order, product_grade_id,
+           gross_kg, pallet_kg, tare_weight_kg, net_kg, weighed_by_user_id)
+       VALUES ($1, 1, $2, '95.00', '0.00', '0.00', '95.00', $3) RETURNING id`,
+      [reweigh.id, grade.id, ownerId],
+    );
+    const [voided] = await ds.query(
+      `INSERT INTO reweigh_items (reweigh_id, item_order, product_grade_id,
+           gross_kg, pallet_kg, tare_weight_kg, net_kg, weighed_by_user_id,
+           voided_at, voided_by_user_id, void_reason)
+       VALUES ($1, 2, $2, '9.00', '0.00', '0.00', '9.00', $3, now(), $3, 'зважили не той сорт')
+       RETURNING id`,
+      [reweigh.id, grade.id, ownerId],
+    );
+
+    const withVoided = await service.forShift(actor(), shift.id, true);
+    const withoutVoided = await service.forShift(actor(), shift.id, false);
+    const defaulted = await service.forShift(actor(), shift.id);
+
+    // §8.7 — the voided row APPEARS, with its reason and author, when asked.
+    expect(withVoided.items.map((i) => i.id).sort()).toEqual([live.id, voided.id].sort());
+    const voidedResponse = withVoided.items.find((i) => i.id === voided.id);
+    expect(voidedResponse?.voided_at).not.toBeNull();
+    expect(voidedResponse?.void_reason).toBe('зважили не той сорт');
+
+    // Omitted and explicit-false both hide it, same as before this task.
+    expect(withoutVoided.items.map((i) => i.id)).toEqual([live.id]);
+    expect(defaulted.items.map((i) => i.id)).toEqual([live.id]);
+
+    // §3.6/§8.2 — the flag governs items[] alone. products[] is built by
+    // `gradeTotals`, which filters `ri.voided_at IS NULL` itself, so the
+    // voided 9.00 кг line must never appear in any of these three figures.
+    const productRow = (out: typeof withVoided) =>
+      out.products.find((row) => row.product_id === product.id);
+    expect(productRow(withVoided)).toBeDefined();
+    expect(productRow(withVoided)).toEqual(productRow(withoutVoided));
+    expect(productRow(withVoided)).toEqual(productRow(defaulted));
+  });
 });
