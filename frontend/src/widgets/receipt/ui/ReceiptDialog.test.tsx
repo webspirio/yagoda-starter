@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { expectNoAxeViolations } from '../../../test-axe';
@@ -13,7 +13,6 @@ const {
   tareTypesMock,
   pointsMock,
   meMock,
-  payoutDialogMock,
   voidDialogMock,
 } = vi.hoisted(() => ({
   intakeMock: vi.fn(),
@@ -23,7 +22,6 @@ const {
   tareTypesMock: vi.fn(),
   pointsMock: vi.fn(),
   meMock: vi.fn(),
-  payoutDialogMock: vi.fn(),
   voidDialogMock: vi.fn(),
 }));
 
@@ -51,13 +49,6 @@ vi.mock('@/entities/collection-point', () => ({
 
 vi.mock('@/entities/user', () => ({
   useMeQuery: () => meMock(),
-}));
-
-vi.mock('@/features/settle-payout', () => ({
-  PayoutDialog: (props: Record<string, unknown>) => {
-    payoutDialogMock(props);
-    return props.open ? <div data-testid="payout-dialog-mock" /> : null;
-  },
 }));
 
 vi.mock('@/features/void-document', () => ({
@@ -186,7 +177,6 @@ function setUp({
 }
 
 beforeEach(() => {
-  payoutDialogMock.mockReset();
   voidDialogMock.mockReset();
 });
 
@@ -201,19 +191,141 @@ describe('ReceiptDialog', () => {
     expect(screen.getByText('Галина Кушнірук')).toBeInTheDocument();
     expect(screen.getByText('Малина · 1 сорт')).toBeInTheDocument();
     expect(screen.getByText('112.00 kg')).toBeInTheDocument();
-    expect(screen.getByText(/135\.00/)).toBeInTheDocument();
     expect(screen.getAllByText('14,560.00 ₴').length).toBeGreaterThan(0);
-    // received by a different operator than the one logged in — dash
-    expect(screen.getByText('—')).toBeInTheDocument();
+    // received_by_name from the fixture, independent of who is logged in
+    expect(screen.getByText('Оксана Гнатюк')).toBeInTheDocument();
 
     await expectNoAxeViolations(container);
   });
 
-  it('shows the receiving operator\'s own name when they are the one logged in', () => {
+  it('shows price − bonus = total for a per-kilogram discount', () => {
+    setUp();
+    render(<ReceiptDialog intakeId="intake-1" open onClose={vi.fn()} />);
+
+    expect(screen.getByText('135.00 ₴ − 5.00 ₴ = 130.00 ₴')).toBeInTheDocument();
+  });
+
+  it('shows price + bonus = total for a per-kilogram markup', () => {
+    setUp({
+      intake: buildIntake({
+        items: [
+          {
+            id: 'item-1',
+            item_order: 1,
+            product_grade_id: 'grade-1',
+            gross_kg: '126.40',
+            pallet_kg: '0.00',
+            tare_weight_kg: '14.40',
+            net_kg: '112.00',
+            price: '135.00',
+            bonus: '5.00',
+            amount: '15680.00',
+            tare: [{ tare_type_id: 'tare-1', units: 12 }],
+          },
+        ],
+      }),
+    });
+    render(<ReceiptDialog intakeId="intake-1" open onClose={vi.fn()} />);
+
+    expect(screen.getByText('135.00 ₴ + 5.00 ₴ = 140.00 ₴')).toBeInTheDocument();
+  });
+
+  it("shows who received the document from received_by_name, regardless of who is logged in", () => {
     setUp({ me: OPERATOR_AUTHOR });
     render(<ReceiptDialog intakeId="intake-1" open onClose={vi.fn()} />);
 
-    expect(screen.getByText('Оксана Приймальник')).toBeInTheDocument();
+    expect(screen.getByText('Оксана Гнатюк')).toBeInTheDocument();
+    expect(screen.queryByText('Оксана Приймальник')).not.toBeInTheDocument();
+  });
+
+  it('falls back to a dash when received_by_name is null', () => {
+    setUp({ intake: buildIntake({ received_by_name: null }) });
+    render(<ReceiptDialog intakeId="intake-1" open onClose={vi.fn()} />);
+
+    expect(screen.getByText('—')).toBeInTheDocument();
+  });
+
+  it('prints what was paid out, with the amount and the live payout codes in muted text', () => {
+    setUp({
+      intake: buildIntake({
+        paid_amount: '10000.00',
+        payouts: [
+          { id: 'payout-1', code: 'SHP-PO-20260908-00031', amount: '10000.00', voided_at: null },
+        ],
+      }),
+    });
+    render(<ReceiptDialog intakeId="intake-1" open onClose={vi.fn()} />);
+
+    expect(screen.getByText('Paid out in cash')).toBeInTheDocument();
+    expect(screen.getByText('10,000.00 ₴')).toBeInTheDocument();
+    const codes = screen.getByText('SHP-PO-20260908-00031');
+    expect(codes).toHaveClass('text-neutral-500');
+  });
+
+  it('hides the paid row when nothing has been paid out yet', () => {
+    setUp();
+    render(<ReceiptDialog intakeId="intake-1" open onClose={vi.fn()} />);
+
+    expect(screen.queryByText('Paid out in cash')).not.toBeInTheDocument();
+  });
+
+  it('renders a voided linked payout as a muted annulment line', () => {
+    setUp({
+      intake: buildIntake({
+        payouts: [
+          {
+            id: 'payout-1',
+            code: 'SHP-PO-20260907-00020',
+            amount: '5000.00',
+            voided_at: '2026-09-07T12:00:00.000Z',
+          },
+        ],
+      }),
+    });
+    render(<ReceiptDialog intakeId="intake-1" open onClose={vi.fn()} />);
+
+    const line = screen.getByText('payout SHP-PO-20260907-00020 voided');
+    expect(line).toHaveClass('text-neutral-500');
+  });
+
+  describe('the date — formatDateTime, pinned to TZ=UTC for a fixed literal', () => {
+    afterEach(() => {
+      vi.unstubAllEnvs();
+    });
+
+    it('shows the day.month and the time from created_at', () => {
+      vi.stubEnv('TZ', 'UTC');
+      setUp();
+      render(<ReceiptDialog intakeId="intake-1" open onClose={vi.fn()} />);
+
+      expect(screen.getByText('09/08 · 08:20 AM')).toBeInTheDocument();
+    });
+  });
+
+  it('keeps the singular title for a single-line intake', () => {
+    setUp();
+    render(<ReceiptDialog intakeId="intake-1" open onClose={vi.fn()} />);
+
+    expect(screen.getByText('Receipt SHP-IN-20260908-00412')).toBeInTheDocument();
+  });
+
+  it('shows the plural title when the intake has more than one line', () => {
+    const base = buildIntake();
+    setUp({
+      intake: buildIntake({
+        items: [base.items[0], { ...base.items[0], id: 'item-2' }],
+      }),
+    });
+    render(<ReceiptDialog intakeId="intake-1" open onClose={vi.fn()} />);
+
+    expect(screen.getByText('Receipt SHP-IN-20260908-00412 · 2 lines')).toBeInTheDocument();
+  });
+
+  it('has no Pay out button — the payout now happens from the reception screen (#116)', () => {
+    setUp();
+    render(<ReceiptDialog intakeId="intake-1" open onClose={vi.fn()} />);
+
+    expect(screen.queryByRole('button', { name: 'Pay out in cash' })).not.toBeInTheDocument();
   });
 
   it('renders nothing while intakeId is null', () => {
@@ -227,7 +339,6 @@ describe('ReceiptDialog', () => {
     render(<ReceiptDialog intakeId="intake-1" open onClose={vi.fn()} />);
 
     expect(screen.getByText('Loading…')).toBeInTheDocument();
-    expect(screen.queryByText('Pay out in cash')).not.toBeInTheDocument();
   });
 
   it('keeps Close reachable while the intake query is pending', () => {
@@ -244,45 +355,9 @@ describe('ReceiptDialog', () => {
 
     expect(screen.getByRole('alert')).toHaveTextContent('Something went wrong');
     expect(screen.queryByText('Loading…')).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Pay out in cash' })).not.toBeInTheDocument();
 
     await userEvent.click(screen.getByRole('button', { name: 'Close' }));
     expect(onClose).toHaveBeenCalledTimes(1);
-  });
-
-  it('opens the payout dialog prefilled with min(amount, debt) when the debt is the smaller figure', async () => {
-    setUp({ debt: '9000.00' });
-    render(<ReceiptDialog intakeId="intake-1" open onClose={vi.fn()} />);
-
-    await userEvent.click(screen.getByRole('button', { name: 'Pay out in cash' }));
-
-    expect(payoutDialogMock).toHaveBeenLastCalledWith(
-      expect.objectContaining({
-        open: true,
-        debt: '9000.00',
-        defaultAmount: '9000.00',
-        supplier: { id: 'supplier-1', first_name: 'Галина', last_name: 'Кушнірук' },
-        pointId: 'point-1',
-      }),
-    );
-  });
-
-  it('prefills the payout with the full amount when it is smaller than the debt', async () => {
-    setUp({ debt: '99999.00' });
-    render(<ReceiptDialog intakeId="intake-1" open onClose={vi.fn()} />);
-
-    await userEvent.click(screen.getByRole('button', { name: 'Pay out in cash' }));
-
-    expect(payoutDialogMock).toHaveBeenLastCalledWith(
-      expect.objectContaining({ defaultAmount: '14560.00' }),
-    );
-  });
-
-  it('hides Pay out when the balance is not positive', () => {
-    setUp({ debt: '0.00' });
-    render(<ReceiptDialog intakeId="intake-1" open onClose={vi.fn()} />);
-
-    expect(screen.queryByRole('button', { name: 'Pay out in cash' })).not.toBeInTheDocument();
   });
 
   it('hides Void for a non-author operator', () => {
@@ -315,7 +390,7 @@ describe('ReceiptDialog', () => {
     );
   });
 
-  it('shows the voided stamp and reason, and hides Pay out and Void', () => {
+  it('shows the voided stamp and reason, and hides Void', () => {
     setUp({
       intake: buildIntake({
         voided_at: '2026-09-08T10:00:00.000Z',
@@ -328,7 +403,6 @@ describe('ReceiptDialog', () => {
 
     expect(screen.getByText('VOIDED')).toBeInTheDocument();
     expect(screen.getByText(/Помилка ваги/)).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Pay out in cash' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Void' })).not.toBeInTheDocument();
   });
 
