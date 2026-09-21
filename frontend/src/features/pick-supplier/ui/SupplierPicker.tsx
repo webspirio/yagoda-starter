@@ -1,4 +1,12 @@
-import { forwardRef, useEffect, useId, useImperativeHandle, useRef, useState } from 'react';
+import {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useId,
+  useImperativeHandle,
+  useRef,
+  useState,
+} from 'react';
 import { ChevronsUpDown, Plus, TriangleAlert, UserRound } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/shared/ui/button';
@@ -60,6 +68,12 @@ export const SupplierPicker = forwardRef<
   // -1 = nothing highlighted yet. The panel opens with no option pre-selected;
   // the first ArrowDown lands on index 0 rather than skipping past it.
   const [active, setActive] = useState(-1);
+  // Set only by a closed-trigger ArrowUp, which wants the LAST row highlighted
+  // but can't read `flat.length` at keydown time — for up to 300ms after a
+  // reset, `flat` is still whatever the debounce hasn't caught up to yet
+  // (filtered, even empty). Resolved at render time instead (see `activeIndex`
+  // below) and cleared by `close()` or the next key/hover/pick.
+  const [pendingEdge, setPendingEdge] = useState<'last' | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const debounced = useDebouncedValue(search);
 
@@ -77,22 +91,36 @@ export const SupplierPicker = forwardRef<
   const home = ownerMode ? rows.filter((s) => s.collection_point_id === pointId) : rows;
   const others = ownerMode ? rows.filter((s) => s.collection_point_id !== pointId) : [];
   const flat = [...home, ...others];
-  const activeId = flat[active]?.id;
+  // Re-resolves every render rather than once at keydown time, so it lands
+  // on the last row the moment `flat` actually has one, however long the
+  // debounce takes to get there.
+  const activeIndex = pendingEdge === 'last' && flat.length > 0 ? flat.length - 1 : active;
+  const activeId = flat[activeIndex]?.id;
+
+  // The one place `open`/`search`/`active` reset together — every path that
+  // closes the picker without necessarily picking (outside-click, Escape,
+  // the «Додати нового постачальника» footer) must leave nothing stale
+  // behind for the next open; `selectSupplier` below composes this in too.
+  // `useCallback` (empty deps — every setter it calls is stable) keeps this
+  // referentially stable so the outside-click effect below still only
+  // re-subscribes when `open` itself changes.
+  const close = useCallback(() => {
+    setOpen(false);
+    setSearch('');
+    setActive(-1);
+    setPendingEdge(null);
+  }, []);
 
   useEffect(() => {
     if (!open) return;
     const onDown = (e: MouseEvent) => {
       if (rootRef.current && !rootRef.current.contains(e.target as Node)) {
-        setOpen(false);
-        // Same reset `pick` already does — closing without picking must not
-        // leave a stale search/highlight behind for the next open.
-        setSearch('');
-        setActive(-1);
+        close();
       }
     };
     document.addEventListener('mousedown', onDown);
     return () => document.removeEventListener('mousedown', onDown);
-  }, [open]);
+  }, [open, close]);
 
   // Keeps the highlighted row inside the scrollable listbox as ArrowDown/Up
   // move `active` past what is currently visible — up to 100 rows can be
@@ -104,13 +132,11 @@ export const SupplierPicker = forwardRef<
     if (el && typeof el.scrollIntoView === 'function') {
       el.scrollIntoView({ block: 'nearest' });
     }
-  }, [active, open, activeId, id]);
+  }, [activeIndex, open, activeId, id]);
 
   const selectSupplier = (s: Supplier) => {
     onChange(s);
-    setOpen(false);
-    setSearch('');
-    setActive(-1);
+    close();
   };
 
   const pick = (s: Supplier) => {
@@ -121,21 +147,21 @@ export const SupplierPicker = forwardRef<
   const onKey = (e: React.KeyboardEvent) => {
     if (e.key === 'ArrowDown') {
       e.preventDefault();
-      setActive((a) => Math.min(a + 1, flat.length - 1));
+      setPendingEdge(null);
+      setActive(Math.min(activeIndex + 1, flat.length - 1));
     } else if (e.key === 'ArrowUp') {
       e.preventDefault();
       // From "nothing highlighted" ArrowUp wraps to the LAST option (as if
       // approaching the list from the bottom), rather than landing on the
       // first the way a fresh ArrowDown would.
-      setActive((a) => (a === -1 ? flat.length - 1 : Math.max(a - 1, 0)));
+      setPendingEdge(null);
+      setActive(activeIndex === -1 ? flat.length - 1 : Math.max(activeIndex - 1, 0));
     } else if (e.key === 'Enter') {
       e.preventDefault();
-      if (flat[active]) pick(flat[active]);
+      if (flat[activeIndex]) pick(flat[activeIndex]);
     } else if (e.key === 'Escape') {
       e.preventDefault();
-      setOpen(false);
-      setSearch('');
-      setActive(-1);
+      close();
       triggerRef.current?.focus();
     }
   };
@@ -152,7 +178,12 @@ export const SupplierPicker = forwardRef<
     } else if (e.key === 'ArrowUp') {
       e.preventDefault();
       setOpen(true);
-      setActive(flat.length - 1);
+      // `flat` here may still be stale for up to 300ms (a filtered, even
+      // empty, list left over from before the reset) — `pendingEdge` defers
+      // "highlight the last row" to render time instead of reading
+      // `flat.length` now (see `activeIndex` above).
+      setActive(-1);
+      setPendingEdge('last');
     }
   };
 
@@ -168,9 +199,12 @@ export const SupplierPicker = forwardRef<
         aria-selected={value?.id === s.id}
         className={cn(
           'flex cursor-pointer items-center gap-2 px-3 py-2 text-sm',
-          index === active && 'bg-muted',
+          index === activeIndex && 'bg-muted',
         )}
-        onMouseEnter={() => setActive(index)}
+        onMouseEnter={() => {
+          setPendingEdge(null);
+          setActive(index);
+        }}
         onMouseDown={(e) => e.preventDefault()}
         onClick={() => pick(s)}
       >
@@ -252,11 +286,12 @@ export const SupplierPicker = forwardRef<
               onChange={(e) => {
                 setSearch(e.target.value);
                 setActive(-1);
+                setPendingEdge(null);
               }}
               placeholder={t('pickSupplier.search')}
               aria-label={t('pickSupplier.search')}
               aria-controls={`${id}-list`}
-              aria-activedescendant={flat[active] ? `${id}-opt-${flat[active].id}` : undefined}
+              aria-activedescendant={activeId ? `${id}-opt-${activeId}` : undefined}
             />
           </div>
           <ul id={`${id}-list`} role="listbox" className="max-h-[320px] overflow-y-auto py-1">
@@ -305,7 +340,7 @@ export const SupplierPicker = forwardRef<
               variant="ghost"
               className="h-9 w-full justify-start"
               onClick={() => {
-                setOpen(false);
+                close();
                 setAddOpen(true);
               }}
             >

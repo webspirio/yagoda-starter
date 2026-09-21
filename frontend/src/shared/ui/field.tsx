@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { AlertTriangle } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { cn, focusRing } from '@/shared/lib/cn';
 
@@ -137,9 +138,15 @@ export function Field({
           id={hintId}
           className={cn(
             'mt-1.5 text-xs leading-snug',
-            hintTone === 'warning' ? 'text-amber' : 'text-muted-foreground',
+            hintTone === 'warning'
+              ? 'inline-flex items-center gap-1.5 text-amber'
+              : 'text-muted-foreground',
           )}
         >
+          {/* Colour alone isn't a reliable channel for "notice this" — the
+           *  icon carries the same signal as the sibling warnings on this
+           *  screen (e.g. LineEditor's grossWarning). */}
+          {hintTone === 'warning' && <AlertTriangle className="size-3.5 shrink-0" aria-hidden />}
           {hint}
         </p>
       )}
