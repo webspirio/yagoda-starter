@@ -115,10 +115,10 @@ export function DayLines({
                       {formatKg(item.net_kg, locale)}
                     </TableCell>
                     <TableCell>
-                      {voided ? (
+                      {item.voided_at !== null ? (
                         <span className="flex flex-wrap items-center gap-1.5 text-xs">
                           <Badge variant="outline">{t('reweigh.day.voided')}</Badge>
-                          <span className="font-mono">{formatTime(item.voided_at as string, locale)}</span>
+                          <span className="font-mono">{formatTime(item.voided_at, locale)}</span>
                           <span>· {authorName} ·</span>
                           <span className="italic">«{item.void_reason}»</span>
                         </span>
