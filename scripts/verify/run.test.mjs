@@ -25,7 +25,8 @@ import { checkById } from './registry.mjs'
  * @property {'fast'|'full'} tier
  * @property {boolean} noSkip
  * @property {string} envKey
- * @property {{ only: string[] | null, afterDepsFullyEvaluated: boolean }} scope
+ * @property {{ only?: string[] | null, exclude?: string[] | null, afterDepsFullyEvaluated?: boolean }} scope
+ * @property {{ status: string }[]} [checks]
  */
 /**
  * @typedef {object} FreshnessOptsFixture
@@ -121,7 +122,12 @@ test('reuse refuses a stored green that does not cover the request', () => {
     tier: 'full',
     noSkip: true,
     envKey: currentEnvKey,
-    scope: { only: null, afterDepsFullyEvaluated: true },
+    // `only` and `exclude` are both PRESENT and null, and `checks` is present at all,
+    // because reportIsFresh now REQUIRES them rather than testing them for truthiness. An
+    // absent key used to read as "not narrow" and fail open into precisely the verdict the
+    // field exists to prevent.
+    scope: { only: null, exclude: null, afterDepsFullyEvaluated: true },
+    checks: [{ status: 'PASSED' }],
   }
   /** @type {FreshnessOptsFixture} */
   const opts = { tier: 'fast', noSkip: false, only: null }
@@ -131,14 +137,37 @@ test('reuse refuses a stored green that does not cover the request', () => {
   assert.equal(reportIsFresh({ ...green, schema: 0 }, 'abc', opts), false, 'older schema')
   assert.equal(reportIsFresh({ ...green, tier: 'fast' }, 'abc', { ...opts, tier: 'full' }), false,
     'a fast green says nothing about full')
-  assert.equal(reportIsFresh({ ...green, scope: { only: ['lint'], afterDepsFullyEvaluated: true } }, 'abc', opts),
+  assert.equal(
+    reportIsFresh({ ...green, scope: { ...green.scope, only: ['lint'] } }, 'abc', opts),
     false, 'a one-check green is not a tree verdict')
   assert.equal(reportIsFresh({ ...green, noSkip: false }, 'abc', { ...opts, noSkip: true }), false,
     'a green that tolerated skips cannot satisfy --no-skip')
-  assert.equal(reportIsFresh({ ...green, scope: { only: null, afterDepsFullyEvaluated: false } }, 'abc', opts),
+  assert.equal(
+    reportIsFresh({ ...green, scope: { ...green.scope, afterDepsFullyEvaluated: false } }, 'abc', opts),
     false, 'after-deps were never evaluated')
   assert.equal(reportIsFresh({ ...green, envKey: `${currentEnvKey} COVERAGE_X=1` }, 'abc', opts), false,
     'different coverage floors are a different verdict')
+
+  // THE TWO GUARDS THAT USED TO FAIL OPEN. An absent key is falsy, so `if (stored.scope?.only)`
+  // declared a report fresh precisely when it could no longer SEE how narrow that report was —
+  // a rename applied to the writer and missed here, or any hand-built payload. The writer and
+  // the reader live in the same file, so sourceHash does not mask it.
+  assert.equal(
+    reportIsFresh({ ...green, scope: { afterDepsFullyEvaluated: true } }, 'abc', opts),
+    false, 'a scope that cannot say whether it was narrowed is not a tree verdict')
+  assert.equal(
+    reportIsFresh({ ...green, scope: { only: null, afterDepsFullyEvaluated: true } }, 'abc', opts),
+    false, 'an absent `exclude` is not the same as an exclusion of nothing')
+
+  // A SKIPPED row keeps `ok` true — that is what the status is for — but replay is a
+  // different question from blocking. A green recorded on a laptop with Docker down must not
+  // be served forever at that sourceHash, or the row never runs again.
+  assert.equal(
+    reportIsFresh({ ...green, checks: [{ status: 'PASSED' }, { status: 'SKIPPED' }] }, 'abc', opts),
+    false, 'a green that skipped a row is not a verdict about that row')
+  assert.equal(
+    reportIsFresh({ ...green, checks: undefined }, 'abc', opts),
+    false, 'a report with no row list cannot be shown to have run anything')
 })
 
 test("a row's own timeoutMs wins over the run-wide default, and rows without one keep it", () => {
@@ -184,6 +213,7 @@ test('--exclude drops rows, --only cannot be combined with it, and a narrowed gr
     noSkip: false,
     envKey: envKey(),
     scope: { only: null, exclude: ['smoke'], afterDepsFullyEvaluated: true },
+    checks: [{ status: 'PASSED' }],
   }
   assert.equal(reportIsFresh(stored, 'h', { tier: 'fast', noSkip: false }), false)
   // The identical report without the exclusion IS reusable — proving the line above is what

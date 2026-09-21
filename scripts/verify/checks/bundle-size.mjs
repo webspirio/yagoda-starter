@@ -76,8 +76,9 @@ import { gzipSync } from 'node:zlib'
 import path from 'node:path'
 
 import { errMessage } from '../hash.mjs'
+import { scanRoot } from '../scan-root.mjs'
 
-const ROOT = path.resolve(import.meta.dirname, '..', '..', '..')
+const ROOT = scanRoot()
 const ASSETS = path.join(ROOT, 'frontend', 'dist', 'assets')
 const ASSETS_REL = path.relative(ROOT, ASSETS)
 const BUDGET_REL = 'scripts/verify/baselines/bundle-budget.json'
@@ -303,6 +304,34 @@ function main() {
       '— this measures the SUM of frontend/dist/assets, not what a browser downloads on first ' +
       'paint, so watch this number every run; it is the point of this row, not the pass/fail.\n',
   )
+
+  // THE HEADROOM CAN FALL BELOW THE DESIGN MINIMUM WITHOUT ANY ROW CHANGING COLOUR, and
+  // that is the regime this check's whole header argues is the dangerous one. `--write`
+  // sets the ceiling to the measurement plus MIN_HEADROOM_GZIP_BYTES precisely so ordinary
+  // work does not force a ceiling edit — but the bundle then grows under a fixed ceiling,
+  // and nothing was comparing what is left against what was intended. A budget in that
+  // state still passes, and still trains exactly the behaviour the minimum exists to
+  // prevent: the next ordinary commit trips it, and somebody raises the ceiling on sight.
+  //
+  // Derived from the budget file's own recorded minimum, not from a second copy of the
+  // constant, and self-cancelling: it stops printing the moment the bundle shrinks or the
+  // ceiling is legitimately re-measured. It is a WARNING, never a failure — passing is
+  // still the correct verdict, and inventing a new gate here would be the unreviewed
+  // policy change this layer exists to avoid.
+  const minGzip = budget.minHeadroomGzipBytes ?? MIN_HEADROOM_GZIP_BYTES
+  const minRaw = budget.minHeadroomRawBytes ?? MIN_HEADROOM_RAW_BYTES
+  if (headroomGzip < minGzip || headroomRaw < minRaw) {
+    const short = []
+    if (headroomGzip < minGzip) short.push(`gzip ${kib(headroomGzip)} against ${kib(minGzip)}`)
+    if (headroomRaw < minRaw) short.push(`raw ${kib(headroomRaw)} against ${kib(minRaw)}`)
+    process.stdout.write(
+      `WARNING: headroom has fallen BELOW the minimum this budget was designed with ` +
+        `(${short.join(', ')}). The ceiling was set to absorb roughly one ordinary phase of ` +
+        'work; there is now less than that left, so the next ordinary commit trips a red ' +
+        '`bundle` row. The intended response is to reduce the bundle — raising the ceiling ' +
+        `is the move ${BUDGET_REL} exists to make somebody justify in writing.\n`,
+    )
+  }
 
   // A SECOND unconditional signal, printed on every run regardless of size — not gated
   // behind a threshold, which would reproduce the exact failure the headroom line above was

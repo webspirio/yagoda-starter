@@ -6,7 +6,7 @@ import type { ImageKind } from './image-signature';
 // project's esModuleInterop off, a default import emits an undefined `.default`
 // call at runtime and import-equals binds the non-callable namespace type. Bind
 // the runtime factory via require, typed as sharp's default export.
-// eslint-disable-next-line @typescript-eslint/no-require-imports
+// eslint-disable-next-line @typescript-eslint/no-require-imports -- sharp's CJS export cannot be default-imported without esModuleInterop, which this tsconfig does not set
 const sharp: typeof import('sharp').default = require('sharp');
 
 /**

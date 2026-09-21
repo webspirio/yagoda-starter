@@ -27,6 +27,18 @@ import { mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync, 
 import path from 'node:path'
 
 const ROOT = process.env.CLAUDE_PROJECT_DIR ?? process.cwd()
+/**
+ * Where run.mjs puts its report. The override exists so a test that spawns the runner does
+ * not clobber the real one this gate replays; production never sets it, so this is the same
+ * path run.mjs computes. Kept in step with scripts/verify/run.mjs's REPORT_DIR.
+ */
+const REPORT_DIR = process.env.VERIFY_REPORT_DIR
+  ? path.resolve(process.env.VERIFY_REPORT_DIR)
+  : path.join(ROOT, '.verify')
+
+// The block counter is the GATE's own state, not the runner's, so it deliberately does NOT
+// follow VERIFY_REPORT_DIR: a test pointing the report elsewhere must not also relocate the
+// counter that caps how many times a turn can be blocked.
 const COUNTER_DIR = path.join(ROOT, '.verify', 'gate-counter')
 const MAX_BLOCKS = 2
 
@@ -189,7 +201,7 @@ function skippedRows(stdout) {
     report = JSON.parse(stdout || '')
   } catch {
     try {
-      report = JSON.parse(readFileSync(path.join(ROOT, '.verify', 'last-run.json'), 'utf8'))
+      report = JSON.parse(readFileSync(path.join(REPORT_DIR, 'last-run.json'), 'utf8'))
     } catch {
       return []
     }

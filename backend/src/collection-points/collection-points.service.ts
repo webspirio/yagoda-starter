@@ -6,6 +6,7 @@ import { CreateCollectionPointDto } from './dto/create-collection-point.dto';
 import { UpdateCollectionPointDto } from './dto/update-collection-point.dto';
 import { ListCollectionPointsQueryDto } from './dto/list-collection-points.query';
 import { CollectionPointResponse, toCollectionPointResponse } from './collection-point.mapper';
+import { skipOf } from '../common/dto/pagination-query.dto';
 import { UsersService } from '../users/users.service';
 import { displayNameOf } from '../users/display-name';
 import { AuditService } from '../audit/audit.service';
@@ -51,7 +52,7 @@ export class CollectionPointsService {
     const [data, total] = await this.repo.findAndCount({
       where,
       order: { name: 'ASC' },
-      skip: (query.page - 1) * query.limit,
+      skip: skipOf(query),
       take: query.limit,
     });
 

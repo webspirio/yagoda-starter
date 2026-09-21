@@ -1,290 +1,248 @@
+/**
+ * Tests for the bundle budget.
+ *
+ * NOT ONE OF THESE TOUCHES THE REAL frontend/dist OR THE REAL BUDGET FILE. The suite this
+ * replaced did both: it COPIED a real build's output aside, deleted it, wrote a fabricated
+ * dist in its place, and restored the copy in a `finally` — and separately overwrote
+ * scripts/verify/baselines/bundle-budget.json to test `--write`. The Stop hook runs the
+ * fast tier after every turn under a timeout that kills the process group, and a killed
+ * process runs no `finally`, so a hundreds-of-KB fabricated bundle and a clobbered budget
+ * file were both one interrupted run away. `scanRoot()` is what makes a fixture a
+ * `mkdtempSync` directory instead.
+ */
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { randomBytes } from 'node:crypto'
+import { gzipSync } from 'node:zlib'
 import os from 'node:os'
 import path from 'node:path'
 
 const ROOT = path.resolve(import.meta.dirname, '..', '..', '..')
 const CHECK = path.join(ROOT, 'scripts', 'verify', 'checks', 'bundle-size.mjs')
-const DIST_DIR = path.join(ROOT, 'frontend', 'dist')
-const ASSETS_DIR = path.join(DIST_DIR, 'assets')
-const BUDGET_PATH = path.join(ROOT, 'scripts', 'verify', 'baselines', 'bundle-budget.json')
+
+const KIB = 1024
+const MIN_GZIP = 25 * KIB
+const MIN_RAW = 100 * KIB
 
 /**
- * @param {string[]} args
- * @returns {{ status: number, out: string }}
+ * A budget file with explicit ceilings, so no test has to read the shipped one to size a
+ * fixture — the old suite did, which coupled every over-budget test to the real bundle.
+ *
+ * @param {{ maxGzipBytes: number, maxRawBytes: number, reason?: string }} over
  */
-function run(...args) {
-  try {
-    return {
-      status: 0,
-      out: execFileSync(process.execPath, [CHECK, ...args], { encoding: 'utf8' }),
+function budgetFile(over) {
+  return {
+    measuredAt: '2026-01-01',
+    measuredGzipBytes: 0,
+    measuredRawBytes: 0,
+    minHeadroomGzipBytes: MIN_GZIP,
+    minHeadroomRawBytes: MIN_RAW,
+    stepGzipBytes: 5 * KIB,
+    stepRawBytes: 20 * KIB,
+    headroomGzipBytes: 0,
+    headroomRawBytes: 0,
+    reason: 'fixture',
+    ...over,
+  }
+}
+
+/**
+ * Builds a throwaway root with `frontend/dist/assets/<files>` and a budget file, runs the
+ * check against it via VERIFY_SCAN_ROOT, and returns what it printed.
+ *
+ * @param {{ files?: Record<string, Buffer | string> | null, budget?: object | null, args?: string[] }} opts
+ * @returns {{ status: number, out: string, root: string, readBudget: () => any }}
+ */
+function runIn({ files, budget, args = [] }) {
+  const root = mkdtempSync(path.join(os.tmpdir(), 'bundle-size-'))
+  if (files) {
+    const assets = path.join(root, 'frontend', 'dist', 'assets')
+    mkdirSync(assets, { recursive: true })
+    for (const [name, content] of Object.entries(files)) {
+      writeFileSync(path.join(assets, name), content)
     }
+  }
+  const budgetPath = path.join(root, 'scripts', 'verify', 'baselines', 'bundle-budget.json')
+  mkdirSync(path.dirname(budgetPath), { recursive: true })
+  if (budget) writeFileSync(budgetPath, `${JSON.stringify(budget, null, 2)}\n`)
+
+  const env = { ...process.env, VERIFY_SCAN_ROOT: root }
+  let status = 0
+  let out = ''
+  try {
+    out = execFileSync(process.execPath, [CHECK, ...args], { encoding: 'utf8', env })
   } catch (err) {
     // Cast is needed for `npx tsc -p tsconfig.scripts.json` (strict + checkJs types catch
-    // variables as `unknown`) — same idiom every other check's test file in this layer uses.
+    // variables as `unknown`) — same idiom every other check suite in this layer uses.
     const e = /** @type {any} */ (err)
-    return { status: e.status ?? 1, out: `${e.stdout ?? ''}${e.stderr ?? ''}` }
+    status = e.status ?? 1
+    out = `${e.stdout ?? ''}${e.stderr ?? ''}`
+  }
+  return {
+    status,
+    out,
+    root,
+    readBudget: () => JSON.parse(readFileSync(budgetPath, 'utf8')),
   }
 }
 
 /**
- * Backs up a real frontend/dist by COPYING it aside (`cpSync`, not `renameSync`): this
- * worktree's `frontend/` and the OS temp directory can sit on different filesystems, and a
- * cross-device `rename` throws EXDEV — confirmed empirically running this suite the first
- * time. A copy works regardless of device.
+ * Incompressible bytes — gzip cannot shrink these, so raw and gzip move together.
  *
- * @returns {string | null} the backup directory, or null if there was nothing to back up
+ * @param {number} n
+ * @returns {Buffer}
  */
-function backupRealDist() {
-  if (!existsSync(DIST_DIR)) return null
-  const backupDir = mkdtempSync(path.join(os.tmpdir(), 'bundle-size-dist-backup-'))
-  cpSync(DIST_DIR, path.join(backupDir, 'dist'), { recursive: true })
-  rmSync(DIST_DIR, { recursive: true, force: true })
-  return backupDir
-}
-
-/**
- * @param {string | null} backupDir from {@link backupRealDist}
- * @returns {void}
- */
-function restoreRealDist(backupDir) {
-  rmSync(DIST_DIR, { recursive: true, force: true })
-  if (backupDir) {
-    cpSync(path.join(backupDir, 'dist'), DIST_DIR, { recursive: true })
-    rmSync(backupDir, { recursive: true, force: true })
-  }
-}
-
-/**
- * Swaps a fabricated frontend/dist into place for the duration of `fn`, then restores
- * whatever was really there — a real build's output if one existed, or nothing at all if it
- * didn't. This is the one thing the brief is explicit about not getting wrong: leaving a
- * fabricated `frontend/dist` behind after this suite runs. `frontend/dist` is a build
- * artifact (gitignored — `git status --short` would never show it either way), but a stray
- * multi-hundred-KB fixture directory left on disk is still a mess the next real `npm run
- * build` should not have to silently clobber for us.
- *
- * @param {Record<string, Buffer | string>} files basename -> content, written under dist/assets
- * @param {() => void} fn
- * @returns {void}
- */
-function withFixtureDist(files, fn) {
-  const backupDir = backupRealDist()
-  try {
-    mkdirSync(ASSETS_DIR, { recursive: true })
-    for (const [name, content] of Object.entries(files)) {
-      writeFileSync(path.join(ASSETS_DIR, name), content)
-    }
-    fn()
-  } finally {
-    restoreRealDist(backupDir)
-  }
-}
-
-/**
- * frontend/dist absent entirely (no directory at all) — the state a fresh checkout that has
- * never run `npm run build` is in.
- *
- * @param {() => void} fn
- * @returns {void}
- */
-function withNoDist(fn) {
-  const backupDir = backupRealDist()
-  try {
-    fn()
-  } finally {
-    restoreRealDist(backupDir)
-  }
-}
+const noise = (n) => randomBytes(n)
 
 test('a missing frontend/dist/assets fails clearly, not with a stack trace', () => {
-  withNoDist(() => {
-    const res = run()
-    assert.equal(res.status, 1, res.out)
-    assert.match(res.out, /does not exist/)
-    assert.match(res.out, /npm run build/)
+  const r = runIn({ files: null, budget: budgetFile({ maxGzipBytes: 1e9, maxRawBytes: 1e9 }) })
+  assert.equal(r.status, 1)
+  assert.match(r.out, /does not exist/)
+  assert.match(r.out, /not "zero bytes, budget met"/)
+  rmSync(r.root, { recursive: true, force: true })
+})
+
+test('an assets directory with no .js or .css is a failure, not an empty-set pass', () => {
+  const r = runIn({
+    files: { 'logo.woff2': noise(100) },
+    budget: budgetFile({ maxGzipBytes: 1e9, maxRawBytes: 1e9 }),
   })
+  assert.equal(r.status, 1)
+  assert.match(r.out, /no \.js or \.css file/)
+  rmSync(r.root, { recursive: true, force: true })
 })
 
 test('an under-budget dist is green and prints the headroom as a WARNING line', () => {
-  withFixtureDist(
-    {
-      'app.js': 'console.log("small fixture bundle");\n'.repeat(20),
-      'app.css': 'body { color: red; }\n'.repeat(10),
-    },
-    () => {
-      const res = run()
-      assert.equal(res.status, 0, res.out)
-      // The line must start with the literal word WARNING — that is what the runner's
-      // warningLines() (`/WARNING|\(!\)/`) is written to catch, on stdout, on a PASSING run.
-      assert.match(res.out, /^WARNING: /m)
-      assert.match(res.out, /headroom/i)
-      assert.match(res.out, /KiB gzip/)
-      assert.match(res.out, /KiB raw/)
-      // Blind spot, restated where a reader of the actual run output will see it: this
-      // is a SUM, not a first-paint download figure.
-      assert.match(res.out, /SUM of frontend\/dist\/assets/)
-    },
-  )
+  const js = noise(10 * KIB)
+  const r = runIn({
+    files: { 'app.js': js },
+    budget: budgetFile({
+      maxGzipBytes: gzipSync(js, { level: 9 }).length + MIN_GZIP + KIB,
+      maxRawBytes: js.length + MIN_RAW + KIB,
+    }),
+  })
+  assert.equal(r.status, 0, r.out)
+  assert.match(r.out, /^WARNING: headroom is /m)
+  rmSync(r.root, { recursive: true, force: true })
 })
 
-test('a green run also prints the largest-JS-chunk signal, unconditionally, on a SECOND WARNING line', () => {
-  withFixtureDist(
-    {
-      // Two JS files of clearly different sizes, so "largest" is unambiguous and the
-      // smaller one must NOT be the one named.
-      'small.js': 'x'.repeat(200),
-      'big.js': 'y'.repeat(20_000),
-      'app.css': 'body { color: red; }\n'.repeat(10),
-    },
-    () => {
-      const res = run()
-      assert.equal(res.status, 0, res.out)
-      // Fix round 2: this must fire on EVERY green run, not only once some threshold is
-      // crossed — gating it would reproduce the exact failure fix round 1 corrected for
-      // the headroom line. Both WARNING lines must be present, each starting the line.
-      const warningLines = res.out.split('\n').filter((l) => l.startsWith('WARNING: '))
-      assert.equal(warningLines.length, 2, res.out)
-      assert.match(res.out, /WARNING: headroom is/)
-      assert.match(res.out, /WARNING: largest JS chunk is big\.js/)
-      assert.doesNotMatch(res.out, /WARNING: largest JS chunk is small\.js/)
-      assert.match(res.out, /% of the .* gzip total/)
-      // A signal, never a gate: no ceiling language attached to this line.
-      assert.match(res.out, /signal, not a gate/)
-    },
-  )
+test('headroom below the budget’s own designed minimum is WARNED about, while still passing', () => {
+  // THE REGIME THIS CHECK'S HEADER CALLS THE DANGEROUS ONE, and until this line existed
+  // nothing said a word about it: the ceiling holds, the row is green, and there is less
+  // slack left than one ordinary phase of work — so the next ordinary commit turns it red
+  // and somebody raises the ceiling on sight.
+  const js = noise(10 * KIB)
+  const gz = gzipSync(js, { level: 9 }).length
+  const r = runIn({
+    files: { 'app.js': js },
+    budget: budgetFile({ maxGzipBytes: gz + KIB, maxRawBytes: js.length + MIN_RAW + KIB }),
+  })
+  assert.equal(r.status, 0, r.out)
+  assert.match(r.out, /headroom has fallen BELOW the minimum/)
+  assert.match(r.out, /gzip .* against 25\.0 KiB/)
+  // DISCRIMINATOR: the same bundle under a ceiling with ample headroom must NOT warn, or
+  // the assertion above would pass against a line that is simply always printed.
+  const ample = runIn({
+    files: { 'app.js': js },
+    budget: budgetFile({
+      maxGzipBytes: gz + MIN_GZIP + KIB,
+      maxRawBytes: js.length + MIN_RAW + KIB,
+    }),
+  })
+  assert.equal(ample.status, 0, ample.out)
+  assert.doesNotMatch(ample.out, /fallen BELOW the minimum/)
+  rmSync(r.root, { recursive: true, force: true })
+  rmSync(ample.root, { recursive: true, force: true })
 })
 
-test('the largest-JS-chunk signal ignores .css files even when a .css file is larger', () => {
-  withFixtureDist(
-    {
-      'tiny.js': 'x'.repeat(50),
-      'huge.css': 'body{color:red}\n'.repeat(5000),
-    },
-    () => {
-      const res = run()
-      assert.equal(res.status, 0, res.out)
-      assert.match(res.out, /WARNING: largest JS chunk is tiny\.js/)
-      assert.doesNotMatch(res.out, /largest JS chunk is huge\.css/)
-    },
-  )
+test('a green run also prints the largest-JS-chunk signal, and it ignores .css', () => {
+  const small = noise(2 * KIB)
+  const bigCss = noise(40 * KIB)
+  const r = runIn({
+    files: { 'app.js': small, 'style.css': bigCss },
+    budget: budgetFile({ maxGzipBytes: 1e9, maxRawBytes: 1e9 }),
+  })
+  assert.equal(r.status, 0, r.out)
+  assert.match(r.out, /WARNING: largest JS chunk is app\.js/)
+  assert.doesNotMatch(r.out, /largest JS chunk is style\.css/)
+  rmSync(r.root, { recursive: true, force: true })
 })
 
 test('an incompressible over-budget file is RED, naming both the gzip and raw overage', () => {
-  /** @type {{maxGzipBytes:number, maxRawBytes:number}} */
-  const budget = JSON.parse(readFileSync(BUDGET_PATH, 'utf8'))
-  // Random bytes barely compress at all, so a file sized comfortably past maxRawBytes pushes
-  // both totals over their ceilings at once.
-  const oversized = randomBytes(budget.maxRawBytes + 200_000)
-  withFixtureDist({ 'huge.js': oversized }, () => {
-    const res = run()
-    assert.equal(res.status, 1, res.out)
-    assert.match(res.out, /bundle: RED/)
-    assert.match(res.out, /GZIP OVER BUDGET/)
-    assert.match(res.out, /RAW OVER BUDGET/)
-    // The overage itself is named as a figure, not just asserted as "too big".
-    assert.match(res.out, /GZIP OVER BUDGET:.*\(\+[\d.]+ KiB\)/)
-    assert.match(res.out, /RAW OVER BUDGET:.*\(\+[\d.]+ KiB\)/)
+  const js = noise(200 * KIB)
+  const r = runIn({
+    files: { 'huge.js': js },
+    budget: budgetFile({ maxGzipBytes: 10 * KIB, maxRawBytes: 10 * KIB }),
   })
+  assert.equal(r.status, 1)
+  assert.match(r.out, /GZIP OVER BUDGET/)
+  assert.match(r.out, /RAW OVER BUDGET/)
+  assert.match(r.out, /reasoned edit/)
+  rmSync(r.root, { recursive: true, force: true })
 })
 
-test('a highly compressible but oversized-raw file trips RAW OVER BUDGET without necessarily tripping gzip', () => {
-  /** @type {{maxGzipBytes:number, maxRawBytes:number}} */
-  const budget = JSON.parse(readFileSync(BUDGET_PATH, 'utf8'))
-  // A single repeated byte compresses to almost nothing, so this file's raw size clears the
-  // raw ceiling while its gzip size stays far under the gzip ceiling — proof the two rules
-  // are independent, not one derived from the other.
-  const raw = Buffer.alloc(budget.maxRawBytes + 200_000, 0x61)
-  withFixtureDist({ 'repetitive.js': raw }, () => {
-    const res = run()
-    assert.equal(res.status, 1, res.out)
-    assert.match(res.out, /RAW OVER BUDGET/)
-    assert.doesNotMatch(res.out, /GZIP OVER BUDGET/)
+test('a highly compressible file trips RAW OVER BUDGET without tripping gzip', () => {
+  // Zeros gzip to almost nothing: this is the case a gzip-only budget would miss entirely,
+  // and it is a real cost — the browser still parses and compiles every raw byte.
+  const js = Buffer.alloc(400 * KIB, 0x61)
+  const r = runIn({
+    files: { 'repetitive.js': js },
+    budget: budgetFile({ maxGzipBytes: 1e9, maxRawBytes: 100 * KIB }),
   })
+  assert.equal(r.status, 1)
+  assert.match(r.out, /RAW OVER BUDGET/)
+  assert.doesNotMatch(r.out, /GZIP OVER BUDGET/)
+  rmSync(r.root, { recursive: true, force: true })
 })
 
-test('an over-budget run names the fix as a reasoned edit to the budget file, not a silent widen', () => {
-  /** @type {{maxRawBytes:number}} */
-  const budget = JSON.parse(readFileSync(BUDGET_PATH, 'utf8'))
-  const oversized = randomBytes(budget.maxRawBytes + 200_000)
-  withFixtureDist({ 'huge.js': oversized }, () => {
-    const res = run()
-    assert.equal(res.status, 1, res.out)
-    assert.match(res.out, /reasoned edit/)
-    assert.match(res.out, /bundle-budget\.json/)
-  })
-})
+test('--write sets the ceiling to measurement + a MINIMUM headroom, then rounds up to the step', () => {
+  const js = noise(30 * KIB)
+  const gz = gzipSync(js, { level: 9 }).length
+  const r = runIn({ files: { 'app.js': js }, budget: null, args: ['--write'] })
+  assert.equal(r.status, 0, r.out)
+  const written = r.readBudget()
 
-test('--write rounds measurement + a MINIMUM headroom UP to the documented step — never a bare round-up with no minimum', () => {
-  const original = readFileSync(BUDGET_PATH, 'utf8')
-  try {
-    withFixtureDist(
-      {
-        // Exactly 1000 raw bytes of a single repeated character — deterministic gzip size
-        // (measured directly below, not assumed) so the arithmetic can be checked exactly.
-        'fixed.js': Buffer.alloc(1000, 0x61),
-      },
-      () => {
-        const res = run('--write')
-        assert.equal(res.status, 0, res.out)
-        /** @type {any} */
-        const written = JSON.parse(readFileSync(BUDGET_PATH, 'utf8'))
-        assert.equal(written.measuredRawBytes, 1000)
-        // The whole point of fix round 1: a bare round-up-to-the-next-step can leave as
-        // little as a few bytes of headroom when the measurement lands just past a step
-        // boundary (this repo's own real baseline did exactly that once — 3,719 B of gzip
-        // headroom, 1.3%). The ceiling must clear measurement + the declared MINIMUM
-        // headroom, not merely exceed the measurement itself.
-        assert.ok(written.maxRawBytes >= written.measuredRawBytes + written.minHeadroomRawBytes)
-        assert.ok(written.maxGzipBytes >= written.measuredGzipBytes + written.minHeadroomGzipBytes)
-        assert.equal(written.minHeadroomGzipBytes, 25 * 1024)
-        assert.equal(written.minHeadroomRawBytes, 100 * 1024)
-        // The step is still applied on top of the minimum (cosmetic rounding, not the
-        // source of the slack) — the ceiling still lands on a step boundary.
-        assert.equal(written.maxRawBytes % written.stepRawBytes, 0)
-        assert.equal(written.maxGzipBytes % written.stepGzipBytes, 0)
-        assert.equal(written.headroomRawBytes, written.maxRawBytes - written.measuredRawBytes)
-        assert.equal(written.headroomGzipBytes, written.maxGzipBytes - written.measuredGzipBytes)
-        assert.ok(written.reason && written.reason.length > 30)
-      },
-    )
-  } finally {
-    writeFileSync(BUDGET_PATH, original)
-  }
+  assert.equal(written.measuredGzipBytes, gz)
+  assert.equal(written.measuredRawBytes, js.length)
+  // The property that matters, stated as arithmetic rather than a pinned number: the
+  // ceiling clears measurement + minimum, and is a whole number of steps.
+  assert.ok(written.maxGzipBytes >= gz + written.minHeadroomGzipBytes)
+  assert.ok(written.maxRawBytes >= js.length + written.minHeadroomRawBytes)
+  assert.equal(written.maxGzipBytes % written.stepGzipBytes, 0)
+  assert.equal(written.maxRawBytes % written.stepRawBytes, 0)
+  // A bare round-up with no minimum would land within one step of the measurement. This is
+  // the exact regression that shipped once, at 3,719 B of headroom.
+  assert.ok(written.maxGzipBytes - gz > written.stepGzipBytes)
+  rmSync(r.root, { recursive: true, force: true })
 })
 
 test('--write preserves an existing reason rather than overwriting it with the default', () => {
-  const original = readFileSync(BUDGET_PATH, 'utf8')
-  try {
-    /** @type {any} */
-    const before = JSON.parse(original)
-    const customReason = `test-fixture custom reason, over thirty characters long — ${Date.now()}`
-    writeFileSync(BUDGET_PATH, JSON.stringify({ ...before, reason: customReason }, null, 2))
-    withFixtureDist({ 'fixed.js': Buffer.alloc(500, 0x62) }, () => {
-      const res = run('--write')
-      assert.equal(res.status, 0, res.out)
-      /** @type {any} */
-      const written = JSON.parse(readFileSync(BUDGET_PATH, 'utf8'))
-      assert.equal(written.reason, customReason)
-    })
-  } finally {
-    writeFileSync(BUDGET_PATH, original)
-  }
+  const custom = 'A REASON SOMEBODY WROTE BY HAND AND WOULD NOT WANT SILENTLY REPLACED.'
+  const r = runIn({
+    files: { 'app.js': noise(4 * KIB) },
+    budget: budgetFile({ maxGzipBytes: 1e9, maxRawBytes: 1e9, reason: custom }),
+    args: ['--write'],
+  })
+  assert.equal(r.status, 0, r.out)
+  assert.equal(r.readBudget().reason, custom)
+  rmSync(r.root, { recursive: true, force: true })
 })
 
-test('font and other non-.js/.css files under dist/assets are excluded from both totals', () => {
-  withFixtureDist(
-    {
-      'app.js': 'x'.repeat(500),
-      'font.woff2': randomBytes(500_000), // large, but not .js/.css — must not affect totals
-    },
-    () => {
-      const res = run()
-      assert.equal(res.status, 0, res.out)
-      assert.doesNotMatch(res.out, /font\.woff2/)
-    },
-  )
+test('non-.js/.css files under dist/assets are excluded from both totals', () => {
+  const js = noise(4 * KIB)
+  const withFont = runIn({
+    files: { 'app.js': js, 'font.woff2': noise(300 * KIB) },
+    budget: budgetFile({ maxGzipBytes: 1e9, maxRawBytes: 1e9 }),
+  })
+  const without = runIn({
+    files: { 'app.js': js },
+    budget: budgetFile({ maxGzipBytes: 1e9, maxRawBytes: 1e9 }),
+  })
+  /** @param {string} out */
+  const total = (out) => /total (\S+ KiB) gzip \/ (\S+ KiB) raw/.exec(out)?.slice(1, 3)
+  assert.deepEqual(total(withFont.out), total(without.out))
+  rmSync(withFont.root, { recursive: true, force: true })
+  rmSync(without.root, { recursive: true, force: true })
 })

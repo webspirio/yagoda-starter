@@ -1,7 +1,7 @@
 import { BadRequestException } from '@nestjs/common';
 import { processImage } from './image-processing';
 // See image-processing.ts for why sharp is required this way, not default-imported.
-// eslint-disable-next-line @typescript-eslint/no-require-imports
+// eslint-disable-next-line @typescript-eslint/no-require-imports -- same sharp CJS require() workaround as image-processing.ts; this spec needs a live sharp to synthesize a fixture
 const sharp: typeof import('sharp').default = require('sharp');
 
 async function jpegWithGpsExif(): Promise<Buffer> {
