@@ -175,3 +175,83 @@ out-of-range bonus and price without it» behaviour (#117 says clamp).
 - Reviewed by a fresh-context subagent before each PR opens.
 - The branch is checked out in the main worktree for the owner's side-by-side review
   (`scripts/compare-with-mock.sh`) before PR 2 leaves draft.
+
+## 5. Audit marks
+
+Audit 1 — «Прийомка» (items 1–56); 57–91 belong to «Ящики» and are untouched here.
+One line per number, no folding. Absent numbers (4, 8, 13, 15, 18, 21, 23, 26–29, 32,
+44, 47–49, 56 — the audit extract never gives them their own line) are marked
+«already at parity (audit)» by default, per the audit's own header note that a gap not
+called out was already at parity or was a sub-point of a neighbour.
+
+| # | Mark | Reason |
+|---|---|---|
+| 1 | not ported (needs-api) | eyebrow reads `{point} · {longDate}`; no `village` on the wire (programme 5.0/5.6) |
+| 2 | deferred → programme 5.0 | owner keeps the inline point select; the amber scope chip is the shell slice's job |
+| 3 | ported | «Ціни дня» renders for both roles now, not owner-only |
+| 4 | already at parity (audit) | — |
+| 5 | ported (kept) | shift gate is a starter-only addition, kept per §3 «Kept» |
+| 6 | ported | typed «№ квитанції» already gone — delivered by PR #131 (#112), confirmed absent from this screen too |
+| 7 | ported | no-prices `EmptyState` gained the owner-only «Встановити ціни» action |
+| 8 | already at parity (audit) | — |
+| 9 | ported | Popover combobox + owner-only «Наша точка»/«Інші точки» groups (`features/pick-supplier`); operator's cross-point group not ported (R2), `village` stays needs-api |
+| 10 | ported | `KindBadge` renders nothing for «Звичайний» |
+| 11 | ported | §2.11 hint line shows (`kindHintKey`); the bounds line does not (rule §2.10/#117) |
+| 12 | ported | inline «Додати нового постачальника» opens `features/edit-supplier`, both roles; «Село» stays needs-api |
+| 13 | already at parity (audit) | — |
+| 14 | ported | balance strip «Попередній залишок X» ships without the «з дат» clause (§3.3 correction cancels it) |
+| 15 | already at parity (audit) | — |
+| 16 | ported | switching supplier with committed lines clears them + toasts |
+| 17 | deferred → programme 5.6 | season totals («{N} здач · {kg} · {uah}») wait for the summary read; per-row history (date · kg · amount) ships this slice |
+| 18 | already at parity (audit) | — |
+| 19 | ported | decimal input mask (comma or dot, 2 places) |
+| 20 | ported | «Піддон» auto-reveals at ≥ 20 tare units |
+| 21 | already at parity (audit) | — |
+| 22 | ported | instant client hints alongside the server-preview errors |
+| 23 | already at parity (audit) | — |
+| 24 | ported | tare stepper floors at 0, not 1 |
+| 25 | ported | per-tare-row weight «{w × n} кг» (`mulInt`) |
+| 26 | already at parity (audit) | — |
+| 27 | already at parity (audit) | — |
+| 28 | already at parity (audit) | — |
+| 29 | already at parity (audit) | — |
+| 30 | ported | first line pre-selects the first priced product and grade |
+| 31 | ported | surcharge clamps to the grade's bounds on step and on blur, bounds never shown — the mock's keep-and-warn behaviour is intentionally not ported (rule #117: clamp instead) |
+| 32 | already at parity (audit) | — |
+| 33 | ported | line counter «{N} позицій · {kg}» on the «Ще позиція» row |
+| 34 | already at parity (audit) | «Ще позиція»'s enable rule (draft must preview clean) predates this slice, untouched by any of its tasks |
+| 35 | ported | «Тара» as a unit count, signed amber «+N»/«−N» «Ціна»; «Сорт» already read the grade's short name |
+| 36 | ported | «Нараховано сьогодні · N позицій» |
+| 37 | not ported (rule §3.3 / D-1) | the previous balance is always part of «Разом» — no «Враховувати залишок» switch, no dates |
+| 38 | ported | «РАЗОМ ДО ВИДАЧІ» as the 34px mono figure |
+| 39 | ported | «Видано готівкою» written in the same «Прийняти» action, one transaction (§2.1 ⑥/§3.1/§3.6); the FIFO-dates preview is not ported (D-1 cancels the rule it previewed) |
+| 40 | ported | submit label «Прийняти {N позицій ·} {kg} · видати {uah}» |
+| 41 | ported | success toast reads the remainder/settled state |
+| 42 | not ported | no dedicated pre-submit warning toast built this slice — the submit button is disabled instead |
+| 43 | ported | «Стан точки»: cash tiles + the crates standing bar (`PointStatePanel`) — no proportion bar (D-3, see deviations below) |
+| 44 | already at parity (audit) | — |
+| 45 | ported | today-receipts header gained the live tonnage badge |
+| 46 | ported | receipt rows read `HH:MM · supplier name · N positions · kg · amber remainder · amount · icon` |
+| 47 | already at parity (audit) | — |
+| 48 | already at parity (audit) | — |
+| 49 | already at parity (audit) | — |
+| 50 | ported | receipt «Дата» now shows the time, not just the business date |
+| 51 | not ported (needs-api) | no `village` on the wire (programme 5.0/5.6) |
+| 52 | ported | per-line «Ціна за кг {price} + {bonus} = {eff} ₴» |
+| 53 | ported (partial) | «Видано готівкою» + linked payout codes print (#116); «Попередній залишок»/«РАЗОМ»/«з них на попередні залишки» are not ported — not derivable without allocations (§3.3/§3.4 correction; see the receipt deviation below) |
+| 54 | ported | «Приймав: {received_by_name}» |
+| 55 | ported (partial) | «Анулювати» and the voided banner are kept; «Видати готівкою» is intentionally removed from the receipt — the payout now happens from reception's own «Прийняти» action (#116) |
+| 56 | already at parity (audit) | — |
+
+**Receipt deviation.** The receipt does NOT print «Попередній залишок» or «РАЗОМ» — neither
+is derivable without allocations, which the §3.3 correction cancelled. It prints
+«Нараховано», «Видано готівкою» and «Залишок у цьому пункті» instead, plus one muted
+«виплату {{code}} анульовано» line per voided linked payout.
+
+**Three deviations, recorded:**
+
+1. The receipt prints «Нараховано», «Видано готівкою» and «Залишок у цьому пункті», never
+   «Попередній залишок»/«РАЗОМ» — see the receipt deviation above.
+2. The settled-state figure prints «0,00 ₴», not the mock's «0 ₴» — consistency with every
+   other money figure on the screen, all of which carry two decimals.
+3. «Стан точки» has no proportion bar (D-3).
