@@ -21,7 +21,10 @@ export function rowExtrasSelects(
 ): ReadonlyArray<{ sql: string; alias: keyof IntakeRowExtras }> {
   return [
     {
-      sql: `(SELECT COALESCE(SUM(ii.net_kg), 0)::text FROM intake_items ii WHERE ii.intake_id = ${alias}.id)`,
+      // COALESCE must wrap the ::text cast, not the number — COALESCE(SUM(x),
+      // 0) makes an integer zero, which Postgres renders '0', not '0.00'
+      // (the trap `supplier-balance.service.ts` already documents).
+      sql: `(SELECT COALESCE(SUM(ii.net_kg)::text, '0.00') FROM intake_items ii WHERE ii.intake_id = ${alias}.id)`,
       alias: 'net_kg',
     },
     {
@@ -30,8 +33,9 @@ export function rowExtrasSelects(
     },
     {
       // Live payouts only: a voided payout was never really paid (the DEBT
-      // reading of `voided_at`, same as `supplier-balance`).
-      sql: `(SELECT COALESCE(SUM(p.amount), 0)::text FROM payouts p WHERE p.intake_id = ${alias}.id AND p.voided_at IS NULL)`,
+      // reading of `voided_at`, same as `supplier-balance`). COALESCE wraps
+      // the ::text cast — see the `net_kg` comment above.
+      sql: `(SELECT COALESCE(SUM(p.amount)::text, '0.00') FROM payouts p WHERE p.intake_id = ${alias}.id AND p.voided_at IS NULL)`,
       alias: 'paid_amount',
     },
     {
