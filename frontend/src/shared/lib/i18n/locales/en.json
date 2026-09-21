@@ -220,6 +220,15 @@
       "pointRequired": "Choose a collection point"
     }
   },
+  "pickSupplier": {
+    "placeholder": "Pick a supplier",
+    "search": "Last name or phone…",
+    "empty": "Nobody found.",
+    "noPhone": "no phone",
+    "ourPoint": "Our point",
+    "otherPoints": "Other points",
+    "addNew": "Add a new supplier"
+  },
   "catalog": {
     "eyebrow": "Directory",
     "title": "Tare & grades",
