@@ -2,6 +2,7 @@ import { Check } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/shared/ui/button';
 import { Eyebrow } from '@/shared/ui/eyebrow';
+import { Field } from '@/shared/ui/field';
 import { TextInput } from '@/shared/ui/text-input';
 import { cn } from '@/shared/lib/cn';
 import {
@@ -82,6 +83,10 @@ export function TotalsSection({
   const owed = remainder !== null && cmp(remainder, '0') === 1;
   const overCap = cap !== null && paidValid && cmp(paidValue, cap) === 1;
   const limitedByCash = total !== null && cmp(total, drawer) === 1;
+  // The mock's «Більше за РАЗОМ…» copy only makes sense when the cap IS the
+  // total; once the drawer is what actually limits the payout, the clamp note
+  // has to say so instead (M2).
+  const overCapKey = limitedByCash ? 'reception.totals.overCash' : 'reception.totals.overCap';
   const settle = (v: string) => onPaidChange(v);
 
   const label =
@@ -137,66 +142,88 @@ export function TotalsSection({
             </span>
           </div>
 
-          <div className="mt-2 grid gap-1.5">
-            <span className="text-xs text-muted-foreground">{t('reception.totals.paid')}</span>
-            <div className="relative">
-              <TextInput
-                inputMode="decimal"
-                className="h-12 pr-9 font-mono text-xl font-semibold"
-                value={paid}
-                onChange={(e) => onPaidChange(maskDecimalInput(e.target.value))}
-                onBlur={() => {
-                  if (cap !== null && paidValid) onPaidChange(clampDecimal(paidValue, '0.00', cap));
-                }}
-                aria-label={t('reception.totals.paid')}
-              />
-              <span className="pointer-events-none absolute top-1/2 right-3.5 -translate-y-1/2 font-mono text-sm text-muted-foreground">
-                ₴
-              </span>
-            </div>
-            <div className="flex flex-wrap gap-1.5 pt-0.5">
-              <Button type="button" variant="outline" size="sm" onClick={() => settle(cap ?? '0')}>
-                {t('reception.totals.all')}
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                disabled={cap === null || cmp(cap, '100') === -1}
-                onClick={() => settle(floorToHundreds(cap ?? '0'))}
-              >
-                {t('reception.totals.toHundreds')}
-              </Button>
-              <Button type="button" variant="outline" size="sm" onClick={() => settle('0')}>
-                {t('reception.totals.allToBalance')}
-              </Button>
-            </div>
-            {overCap ? (
-              <p className="text-xs text-amber">
-                {t('reception.totals.overCap', { uah: formatUah(cap ?? '0', locale) })}
-              </p>
-            ) : null}
-            {paidError ? (
-              <p role="alert" className="text-sm text-destructive">
-                {t(paidError)}
-              </p>
-            ) : null}
-          </div>
+          <Field
+            name="paid_amount"
+            label={t('reception.totals.paid')}
+            error={paidError ?? undefined}
+            hint={overCap ? t(overCapKey, { uah: formatUah(cap ?? '0', locale) }) : undefined}
+            className="mt-2"
+          >
+            {(a11y) => (
+              <>
+                <div className="relative">
+                  <TextInput
+                    {...a11y}
+                    inputMode="decimal"
+                    className="h-12 pr-9 font-mono text-xl font-semibold"
+                    value={paid}
+                    onChange={(e) => onPaidChange(maskDecimalInput(e.target.value))}
+                    onBlur={() => {
+                      if (cap === null) return;
+                      // I5: canonicalise BEFORE validity — a trailing
+                      // separator («1200,») is not yet a well-formed decimal,
+                      // but it IS one with that one character stripped.
+                      const stripped = normalizeAmount(paid).replace(/\.$/, '');
+                      if (!DECIMAL_INPUT.test(stripped)) return; // leave the text as typed
+                      const canonical = clampDecimal(stripped, '0.00', cap);
+                      // I4: idempotent — tabbing through an already-canonical
+                      // value must not latch `paidTouched` on the caller's
+                      // side by calling back with the same string.
+                      if (canonical !== paid) onPaidChange(canonical);
+                    }}
+                  />
+                  <span className="pointer-events-none absolute top-1/2 right-3.5 -translate-y-1/2 font-mono text-sm text-muted-foreground">
+                    ₴
+                  </span>
+                </div>
+                <div className="mt-1.5 flex flex-wrap gap-1.5">
+                  <Button type="button" variant="outline" size="sm" onClick={() => settle(cap ?? '0')}>
+                    {t('reception.totals.all')}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={cap === null || cmp(cap, '100') === -1}
+                    onClick={() => settle(floorToHundreds(cap ?? '0'))}
+                  >
+                    {t('reception.totals.toHundreds')}
+                  </Button>
+                  <Button type="button" variant="outline" size="sm" onClick={() => settle('0')}>
+                    {t('reception.totals.allToBalance')}
+                  </Button>
+                </div>
+              </>
+            )}
+          </Field>
         </div>
 
         <div
           className={cn(
             'flex flex-col justify-center rounded-lg px-4 py-3',
-            owed ? 'bg-amber/10' : 'bg-leaf/10',
+            total === null ? 'bg-muted/50' : owed ? 'bg-amber/10' : 'bg-leaf/10',
           )}
         >
-          <Eyebrow>{owed ? t('reception.totals.remainder') : t('reception.totals.settled')}</Eyebrow>
-          <div className={cn('mt-1 font-mono text-2xl font-semibold', owed ? 'text-amber' : 'text-leaf')}>
-            {owed && remainder !== null ? formatUah(remainder, locale) : formatUah('0.00', locale)}
-          </div>
-          <div className="mt-1 text-xs text-muted-foreground">
-            {owed ? t('reception.totals.remainderHint') : t('reception.totals.settledHint')}
-          </div>
+          {total === null ? (
+            // M1: neither «Розраховано повністю» nor a remainder claims
+            // anything about a total that has not settled yet.
+            <>
+              <Eyebrow>{t('reception.totals.total')}</Eyebrow>
+              <div className="mt-1 font-mono text-2xl font-semibold text-muted-foreground">—</div>
+            </>
+          ) : (
+            <>
+              <Eyebrow>{owed ? t('reception.totals.remainder') : t('reception.totals.settled')}</Eyebrow>
+              <div
+                className={cn('mt-1 font-mono text-2xl font-semibold', owed ? 'text-amber' : 'text-leaf')}
+              >
+                {owed && remainder !== null ? formatUah(remainder, locale) : formatUah('0.00', locale)}
+              </div>
+              <div className="mt-1 text-xs text-muted-foreground">
+                {owed ? t('reception.totals.remainderHint') : t('reception.totals.settledHint')}
+              </div>
+            </>
+          )}
         </div>
       </div>
 

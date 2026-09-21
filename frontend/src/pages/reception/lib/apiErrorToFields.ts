@@ -49,10 +49,14 @@ const BANNER: Readonly<Record<string, string>> = {
 /**
  * `POST /intakes`'s payout half (§2.1 ⑥, §3.1, §3.6) refuses the WHOLE write
  * on any of these — the intake is never created — so every one of them names
- * exactly the field the operator typed: `paid_amount`. `PAYOUT_AMOUNT_ZERO`
- * cannot reach this client (a zero `paid_amount` is never sent — see
- * `toCreateBody`), but it costs one line to keep mapped rather than fall
- * through to the generic banner if that ever stops being true.
+ * exactly the field the operator typed: `paid_amount`. `formErrorKey` stays
+ * `null` for `PAYOUT_EXCEEDS_CASH`/`PAYOUT_EXCEEDS_DEBT`: the field copy
+ * itself ("Квитанцію не проведено: …") already states the whole outcome —
+ * the receipt was NOT recorded — so a second, form-level banner would only
+ * repeat it. `PAYOUT_AMOUNT_ZERO` cannot reach this client (a zero
+ * `paid_amount` is never sent — see `toCreateBody`), but it costs one line to
+ * keep mapped rather than fall through to the generic banner if that ever
+ * stops being true.
  */
 const PAID_FIELD: Readonly<Record<string, string>> = {
   PAYOUT_EXCEEDS_CASH: 'reception.errors.paidExceedsCash',

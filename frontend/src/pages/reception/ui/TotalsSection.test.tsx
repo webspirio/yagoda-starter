@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { ComponentProps } from 'react';
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { TotalsSection } from './TotalsSection';
@@ -100,22 +100,88 @@ describe('TotalsSection — the remainder panel', () => {
     expect(screen.getByText('Settled in full')).toBeInTheDocument();
     expect(screen.queryByText('Owed by us')).toBeNull();
   });
+
+  it('shows a neutral dash instead of a false «Settled in full» before anything has settled (M1)', () => {
+    render(<Harness accrued={null} netKg={null} />);
+    expect(screen.queryByText('Settled in full')).toBeNull();
+    expect(screen.queryByText('Owed by us')).toBeNull();
+    // The right panel now echoes the SAME «Total to pay out» eyebrow the left
+    // column shows, instead of claiming settlement over a total that isn't
+    // there yet.
+    expect(screen.getAllByText('Total to pay out')).toHaveLength(2);
+  });
 });
 
 describe('TotalsSection — the cap and the clamp', () => {
-  it('clamps an over-cap figure on blur, showing the clamp note meanwhile', async () => {
+  it('clamps an over-cap figure on blur, naming the DRAWER when that is what limits it (M2)', async () => {
     const user = userEvent.setup();
+    // The default fixture's cap is the cash drawer (1616.10), not the total
+    // (5497.37) — so the note has to say "the berry drawer", not "the total".
     render(<Harness />);
     const input = screen.getByLabelText('Paid in cash');
 
     await user.type(input, '9999');
     expect(input).toHaveValue('9999');
     expect(
-      screen.getByText('Cannot pay out more than the total — using 1,616.10 ₴'),
+      screen.getByText('Cannot pay out more than is in the berry drawer — using 1,616.10 ₴'),
     ).toBeInTheDocument();
 
     await user.tab();
     expect(input).toHaveValue('1616.10');
+  });
+
+  it('names the TOTAL instead once cash is ample enough that the cap IS the total (M2)', async () => {
+    const user = userEvent.setup();
+    render(<Harness cash="9000.00" />);
+    const input = screen.getByLabelText('Paid in cash');
+
+    await user.type(input, '9999');
+    expect(
+      screen.getByText('Cannot pay out more than the total — using 5,497.37 ₴'),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/is in the berry drawer/)).toBeNull();
+  });
+
+  it('does not touch «Видано готівкою» on a blur that changes nothing (I4)', async () => {
+    const user = userEvent.setup();
+    const onPaidChange = vi.fn();
+    // The suggested/cash-capped value is ALREADY canonical — tabbing through
+    // without typing anything must be a no-op, not a `paidTouched` latch on
+    // the caller's side.
+    render(
+      <TotalsSection
+        accrued="5460.00"
+        netKg="39.00"
+        lineCount={1}
+        debt="37.37"
+        cash="1616.10"
+        paid="1616.10"
+        onPaidChange={onPaidChange}
+        paidError={null}
+        disabled={false}
+        isPreviewing={false}
+        isSubmitting={false}
+        formErrorKey={null}
+        showDraftHint={false}
+      />,
+    );
+
+    await user.click(screen.getByLabelText('Paid in cash'));
+    await user.tab();
+
+    expect(onPaidChange).not.toHaveBeenCalled();
+  });
+
+  it('canonicalises a trailing separator on blur (I5)', async () => {
+    const user = userEvent.setup();
+    render(<Harness />);
+    const input = screen.getByLabelText('Paid in cash');
+
+    await user.type(input, '1200,');
+    expect(input).toHaveValue('1200.');
+
+    await user.tab();
+    expect(input).toHaveValue('1200.00');
   });
 });
 
@@ -142,7 +208,7 @@ describe('TotalsSection — refusal and hints', () => {
   it('renders a server refusal on «Видано готівкою» as an alert', () => {
     render(<Harness paidError="reception.errors.paidExceedsCash" />);
     expect(screen.getByRole('alert')).toHaveTextContent(
-      "There's less in the berry drawer — the server capped the payout; reduce the amount",
+      'The receipt was not recorded: the berry cash drawer holds less. Lower the amount and try again.',
     );
   });
 

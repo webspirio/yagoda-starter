@@ -240,7 +240,11 @@ export function ReceptionPage() {
       const remainderOf = sub(add(created.amount, carriedIn), created.paid_amount);
       toastSuccess(
         t('reception.toast.accepted', {
-          kg: formatKg(sum(created.items.map((item) => item.net_kg)), locale),
+          // The server ships the sum already (`net_kg` on the document
+          // header) — TodayReceipts' own header comment says a row is READ,
+          // not recomputed; re-summing `items[].net_kg` here duplicated that
+          // arithmetic client-side for no reason (M3).
+          kg: formatKg(created.net_kg, locale),
           uah: formatUah(created.amount, locale),
         }),
         {

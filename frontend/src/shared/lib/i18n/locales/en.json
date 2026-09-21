@@ -784,6 +784,7 @@
       "toHundreds": "Round to 100",
       "allToBalance": "All to balance",
       "overCap": "Cannot pay out more than the total — using {{uah}}",
+      "overCash": "Cannot pay out more than is in the berry drawer — using {{uah}}",
       "cashNote": "Only {{uah}} is in the berry drawer — nothing more to pay out right now. The difference is added to the supplier's balance; a transfer from the owner restocks it.",
       "remainder": "Owed by us",
       "settled": "Settled in full",
@@ -840,8 +841,8 @@
       "noOpenShift": "No open shift — open one in Cash for the day",
       "supplierInactive": "The supplier is deactivated",
       "shiftClosed": "The shift is already closed",
-      "paidExceedsCash": "There's less in the berry drawer — the server capped the payout; reduce the amount",
-      "paidExceedsDebt": "Cannot pay out more than the total",
+      "paidExceedsCash": "The receipt was not recorded: the berry cash drawer holds less. Lower the amount and try again.",
+      "paidExceedsDebt": "The receipt was not recorded: you cannot pay out more than the total.",
       "paidFormat": "Enter an amount, e.g. 4000 or 4000.50"
     }
   },

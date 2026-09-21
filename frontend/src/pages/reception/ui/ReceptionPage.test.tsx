@@ -287,8 +287,10 @@ const CREATED: IntakeDetail = {
   voided_by_user_id: null,
   void_reason: null,
   created_at: '2026-09-08T09:15:00Z',
-  net_kg: '36.90',
-  lines_count: 2,
+  // Agrees with the ONE item below (120.40 kg net) — the toast now reads
+  // this header field directly rather than re-summing `items[]` (M3/M9).
+  net_kg: '120.40',
+  lines_count: 1,
   supplier_name: 'Ніна Ільчук',
   paid_amount: '0.00',
   payouts: [],
@@ -320,8 +322,10 @@ const intake = (over: Partial<Intake> & Pick<Intake, 'id' | 'code' | 'amount'>):
   voided_by_user_id: null,
   void_reason: null,
   created_at: '2026-09-08T07:10:00Z',
-  net_kg: '36.90',
-  lines_count: 2,
+  // Same one-line 120.40 kg default as `CREATED` above — one canonical
+  // example receipt throughout this file (M3/M9).
+  net_kg: '120.40',
+  lines_count: 1,
   supplier_name: 'Ніна Ільчук',
   paid_amount: '0.00',
   ...over,
@@ -491,7 +495,7 @@ describe('ReceptionPage — choosing the supplier', () => {
     expect(screen.getByText('added to “Total” below')).toBeInTheDocument();
     expect(screen.getByText('Intake history')).toBeInTheDocument();
     // Both mocked rows share the fixture's default net weight.
-    expect(screen.getAllByText('36.90 kg')).toHaveLength(2);
+    expect(screen.getAllByText('120.40 kg')).toHaveLength(2);
     expect(screen.getByText('820.50 ₴')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Supplier card' })).toHaveAttribute(
       'href',
@@ -836,7 +840,7 @@ describe("ReceptionPage — the supplier's history and today's badge", () => {
 
     const liveRow = screen.getByText('200.00 ₴').closest('li');
     expect(liveRow).not.toHaveClass('line-through');
-    expect(within(liveRow!).getByText('36.90 kg')).toBeInTheDocument();
+    expect(within(liveRow!).getByText('120.40 kg')).toBeInTheDocument();
   });
 
   it("counts only live receipts in today's badge, though a voided one stays listed", async () => {
@@ -873,8 +877,8 @@ describe("ReceptionPage — the supplier's history and today's badge", () => {
     const badgeArea = screen.getByText("Today's receipts").parentElement;
     expect(within(badgeArea!).getByText('1')).toBeInTheDocument();
     // Only the live receipt's kilos count toward the header tonnage — the
-    // voided one (same 36.90 kg fixture default) does not double it up.
-    expect(within(badgeArea!).getByText('36.90 kg')).toBeInTheDocument();
+    // voided one (same 120.40 kg fixture default) does not double it up.
+    expect(within(badgeArea!).getByText('120.40 kg')).toBeInTheDocument();
   });
 });
 
@@ -1007,8 +1011,13 @@ describe('ReceptionPage — «Видано готівкою» rides along with �
     );
   });
 
-  it('sends the auto-suggested, cash-capped payout as paid_amount', async () => {
+  it('sends the auto-suggested, cash-capped payout as paid_amount, and the toast reads what is still owed (I6)', async () => {
     const user = userEvent.setup();
+    // The server's OWN record of what it actually wrote: amount matches the
+    // on-screen accrual (5460.00), paid_amount matches what was sent
+    // (1616.10) — carrying the 37.37 balance in makes 5497.37 − 1616.10 =
+    // 3881.27 still owed.
+    createMock.mockResolvedValueOnce({ ...CREATED, amount: '5460.00', paid_amount: '1616.10' });
     renderReception();
 
     await user.click(screen.getByRole('button', { name: 'pick-nina' }));
@@ -1023,6 +1032,27 @@ describe('ReceptionPage — «Видано готівкою» rides along with �
         expect.objectContaining({ supplier_id: 's1', paid_amount: '1616.10' }),
       ),
     );
+    expect(toastSuccessMock).toHaveBeenCalledWith('Accepted 120.40 kg — 5,460.00 ₴', {
+      description: 'Owed by us: 3,881.27 ₴',
+    });
+  });
+
+  it('reads the settled toast once the created receipt is paid out in full (I6)', async () => {
+    const user = userEvent.setup();
+    // Same 37.37 carried-in balance, but this time the server's own record
+    // shows the WHOLE total (5460.00 + 37.37 = 5497.37) paid out.
+    createMock.mockResolvedValueOnce({ ...CREATED, amount: '5460.00', paid_amount: '5497.37' });
+    renderReception();
+
+    await user.click(screen.getByRole('button', { name: 'pick-nina' }));
+    await fillDraft(user);
+    await user.click(screen.getByRole('button', { name: 'Accept 120.40 kg · pay out 1,616.10 ₴' }));
+
+    await waitFor(() =>
+      expect(toastSuccessMock).toHaveBeenCalledWith('Accepted 120.40 kg — 5,460.00 ₴', {
+        description: 'Settled in full',
+      }),
+    );
   });
 
   it('lands a PAYOUT_EXCEEDS_CASH refusal on «Видано готівкою» and does not reset the form', async () => {
@@ -1035,7 +1065,7 @@ describe('ReceptionPage — «Видано готівкою» rides along with �
     await user.click(screen.getByRole('button', { name: 'Accept 120.40 kg · pay out 1,616.10 ₴' }));
 
     expect(await screen.findByRole('alert')).toHaveTextContent(
-      "There's less in the berry drawer — the server capped the payout; reduce the amount",
+      'The receipt was not recorded: the berry cash drawer holds less. Lower the amount and try again.',
     );
     // The WHOLE write rolled back server-side (the intake was never created)
     // — the draft the operator was completing is still exactly what they
