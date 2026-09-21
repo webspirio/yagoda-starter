@@ -2453,3 +2453,107 @@ EOF
 **Type consistency:** `Reweigh`/`ReweighItem`/`ReconciliationProduct`/`ReconciliationGrade` are defined once in Task 3 and consumed unchanged in Tasks 4, 8, 10, 11. `Draft`/`DraftTare` are defined in Task 5 and consumed in Tasks 9, 10, 12. `BlockReason`'s five codes match the five `reweigh.block.*` keys added in Task 9. `AddReweighItemInput`'s field names match the DTO (`product_grade_id`, `gross_kg`, `pallet_kg`, `tare[].tare_type_id`, `tare[].units`). `mul(value, by)` in Task 5 matches its only caller, `tareWeightOf`.
 
 **Known soft spot:** Task 8's `useQueries` dependency arrays are written defensively with `eslint-disable` lines and the task says to prefer `useNetworkToday`'s shape over suppressing. If that file solved it differently, follow it and drop the suppressions.
+
+---
+
+### Task 14: Cut the screen's explanatory prose down to what a user acts on
+
+> **ADDED 2026-09-21, after Tasks 1-13, at the user's request.** The screen carries
+> the mock's full didactic copy — paragraphs explaining business-date semantics, why
+> чиста вага has no input, what storno does to the day's summary. The instruction:
+> remove the unnecessary hints, keep the warnings that matter to the workflow, and make
+> sure a data-entry error still tells the user what they are doing wrong. Cut depth
+> agreed as **moderate** (the user chose it from three options; conservative and
+> aggressive were the alternatives).
+
+**Files:**
+- Modify: `frontend/src/shared/lib/i18n/locales/uk.json` and `en.json`
+- Modify: `frontend/src/pages/reweigh/ui/ReweighPage.tsx` (`berryDayNote`)
+- Modify: `frontend/src/pages/reweigh/ui/WeighingForm.tsx` (`netNote`, `gradeNote`, both warning texts)
+- Modify: `frontend/src/pages/reweigh/ui/DraftLines.tsx` (`drafts.empty`)
+- Modify: `frontend/src/pages/reweigh/ui/Reconciliation.tsx` (`check.note`)
+- Modify: `frontend/src/pages/reweigh/ui/DayLines.tsx` (`day.note`)
+- Tests: the corresponding `*.test.tsx` files, where they assert removed copy
+
+**Interfaces:** no exported signature changes. This task changes rendered copy only.
+
+#### What is CUT — both the render and the i18n key, in both locales
+
+| Key | Why it goes |
+|---|---|
+| `berryDayNote` | a paragraph on business-date semantics above a header already labelled «ягода за» |
+| `netNote` | «Полем вводу вона не є нікому» — the readout is visibly not an input |
+| `gradeNote` | the picker already shows only that day's grades; the sentence explains a rule the control enforces |
+| `check.note` | a footnote deriving «Наша» and the money column |
+| `day.note` | a paragraph on what storno does to the day's summary |
+
+`drafts.empty` is SHORTENED, not removed, to «Позицій ще немає.» (en: «No positions yet.»).
+
+#### What is TRIMMED — the two suspicion warnings keep their teeth, lose their trivia
+
+- `warn.gross`: → «{{value}} — перевірте вагу.» (en: «{{value}} — check the weight.»)
+- `warn.tareTooMany`: → «{{units}} ящиків — перевірте кількість.» (en: «{{units}} crates — check the count.»)
+
+Both **drop the `{{limit}}` interpolation and the season-record sentence**. Update the
+call sites so no unused interpolation is passed. **`GROSS_SUSPECT_KG` and
+`TARE_SUSPECT_UNITS` in `lib/hints.ts` do NOT change** — the thresholds are unchanged,
+only the sentence is shorter. Do not touch `hints.ts` at all.
+
+#### What STAYS, and must not be "tidied" while nearby
+
+- All five `block.*` reasons. These ARE the "user understands what they are doing wrong"
+  requirement; the ladder and its order are covered by `lib/hints.test.ts`.
+- `warn.tareNone` — forgetting the tare silently inflates чиста вага. That is a data-entry
+  error, not an explanation.
+- `check.shiftOpen` — without it the «—» in Різниця is unexplained.
+- `check.drafted` — tells the owner their unposted lines are not in «Наша».
+- `check.notWeighed`, `check.notReweighed` — state markers.
+- `postNote` — non-atomic posting is a consequence worth knowing BEFORE pressing the
+  button, not only from the failure toast afterwards.
+- Every toast, every field label, every table header.
+
+#### Steps
+
+- [ ] **Step 1: Find every render site and every test that asserts the removed copy**
+
+Run: `grep -rn "berryDayNote\|netNote\|gradeNote\|check.note\|day.note\|drafts.empty\|warn.gross\|warn.tareTooMany" frontend/src`
+Write the list into the report before changing anything. A key removed from the locales
+while a `t()` call survives renders the RAW KEY on screen, and nothing in the fast tier
+catches that — `typecheck` cannot see i18n keys.
+
+- [ ] **Step 2: Update the tests first, and RUN them to see them fail**
+
+A test that asserted a cut paragraph's presence is deleted with it. A test that used that
+paragraph as an ANCHOR to reach something else must be re-anchored to a string that
+survives — do not delete such a test, and say in the report which ones you re-anchored.
+
+Run: `npm test -w frontend -- reweigh`
+Expected: FAIL, naming the copy assertions you changed.
+
+- [ ] **Step 3: Cut the renders, then the keys, in both locales**
+
+Remove the render first, then the key from `uk.json` AND `en.json`. If removing
+`berryDayNote` leaves the `<Trans>` import unused in `ReweighPage.tsx`, remove the import —
+lint runs `--max-warnings=0` and will fail on it, which is the check working.
+
+- [ ] **Step 4: Trim the two warnings and their call sites**
+
+- [ ] **Step 5: Run the tests to verify they pass**
+
+Run: `npm test -w frontend -- reweigh`
+Expected: PASS.
+
+- [ ] **Step 6: Prove no key was orphaned in either direction**
+
+Two failure modes, and neither is caught by `typecheck`:
+- a `t('reweigh.x')` whose key was deleted → renders `reweigh.x` on screen;
+- a key left in `uk.json` but deleted from `en.json` (or vice versa) → renders the raw key
+  in one language only, and the suite runs in English so the Ukrainian side is unwatched.
+
+Assert both: grep the `reweigh.*` keys still referenced in `pages/reweigh` against the keys
+present in each locale file, and paste the comparison into the report.
+
+- [ ] **Step 7: Commit, then run the gate**
+
+`npm run verify` after committing, so the HEAD matches. Paste the verdict line and name any
+SKIPPED row.
