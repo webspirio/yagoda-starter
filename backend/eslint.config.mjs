@@ -107,6 +107,20 @@ export default tseslint.config(
     // module only compares its amount against zero through `money.ts`'s `gt`.
     // The guard is what keeps a later `debt + top_up` from being written in
     // TypeScript, where it would look perfectly reasonable in review.
+    //
+    // `reweighs` joins because §8.1's net weight is computed in TypeScript —
+    // `(gross − pallet) − tare` — and it is the first module in the guard
+    // whose arithmetic is on WEIGHTS rather than on money, which is the same
+    // rule (foundation §5.1) and the easier one to forget.
+    //
+    // `day-costs` joins with §8.3's day expenses. It does no arithmetic in
+    // TypeScript today — `create`/`update`/`remove` only store and compare the
+    // amount string — but this is exactly the module a later собівартість
+    // screen (§8.6, «скільки коштував кілограм ягоди цього дня») would reach
+    // into for `Σ day_expenses.amount`, and `total / net_kg` written in
+    // TypeScript is precisely the shape §5.1 forbids. The guard is what keeps
+    // that sum in `common/money.ts` when that screen is built, not a
+    // retrofit after the first wrong кілограма.
     files: [
       'src/intakes/**/*.ts',
       'src/payouts/**/*.ts',
@@ -131,18 +145,23 @@ export default tseslint.config(
       'src/crates/crates.service.ts',
       'src/crates/crate-balance.service.ts',
       'src/intake-top-ups/**/*.ts',
-      // ADDED 2026-09-18, and this is the list's most important property, not an
-      // afterthought: EVERY module that owns a money or weight `numeric` column
-      // must be in it. These three own six of them between them, and none was
-      // guarded — `grade_prices.base_price` is the price that multiplies into
-      // every intake `amount`, plus `max_markup` and `max_discount`;
-      // `tare_types.weight_kg` and `deposit_price`; `collection_points.target_cash`.
-      // They were reachable only by the separate money ratchet, which scanned all
-      // of backend/src and is deleted a commit later. Widening first is what makes
-      // that deletion a handover rather than a hole.
+      // THE LIST'S MOST IMPORTANT PROPERTY, not an afterthought: EVERY module that
+      // owns a money or weight `numeric` column is in it. registry.test.mjs derives
+      // that set from 28-db-schema.dbml and fails if one is missing, so this is a
+      // machine-checked claim rather than a promise.
+      //
+      // grade-prices, tare-types and collection-points own six of them between them
+      // — `grade_prices.base_price` multiplies into every intake `amount`, plus
+      // `max_markup` and `max_discount`; `tare_types.weight_kg` and `deposit_price`;
+      // `collection_points.target_cash` — and none was guarded until 2026-09-18.
+      // They were reachable only by the separate money ratchet, which scanned all of
+      // backend/src and is now deleted; widening first is what made that deletion a
+      // handover rather than a hole.
       'src/grade-prices/**/*.ts',
       'src/tare-types/**/*.ts',
       'src/collection-points/**/*.ts',
+      'src/reweighs/**/*.ts',
+      'src/day-costs/**/*.ts',
     ],
     ignores: ['**/*.spec.ts', '**/*.db-spec.ts'],
     rules: {

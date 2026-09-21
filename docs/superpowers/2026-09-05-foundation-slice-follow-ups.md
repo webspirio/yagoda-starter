@@ -971,3 +971,114 @@ changed its SQL-shape assertions). The first run failed 36 tests — see the les
   restoring it (`tare-types/tare-types-crate.db-spec.ts`) — fixed in `8842dc5` by demoting first
   everywhere, mirroring `TareTypesService`. **Any future singleton needs the same treatment, and
   the uuid convention will not warn you.**
+
+## Deferred from the reweigh & cost-of-day slice (2026-09-17)
+
+Spec: `docs/superpowers/specs/2026-09-17-yagoda-reweigh-slice.md`, §3 (decisions) and §7 (out of
+scope). Each item below is deferred, not forgotten.
+
+- **§8.5 strategies ② «по сумі закупки» and ③ «усе на один товар».** Only `by_weight` is built
+  (spec §3.7); a per-request parameter was rejected because a stored column with one legal value
+  is state pretending to be a decision. Strategy ③ specifically **cannot become a request
+  parameter on its own** — it must also say *which* berry the whole basket lands on, and that is
+  per-day data, not a request-time choice. Closing it means the columnless `reweighs` header
+  finally earns two columns: `expense_allocation` and `allocation_product_id`. Blocked on the
+  rules file's own open question at the source — «→ Правка: узнать як вони це роблять» — so there
+  is nothing to build against yet.
+- **Per-grade attribution of a доплата.** `intake_top_ups` carries no `product_grade_id` (spec
+  §3.13), so a top-up is split pro-rata across a receipt's lines by `amount` even when only ONE
+  grade's price was actually renegotiated. Pro-rata is the right default with no grade named; a
+  `product_grade_id` column is the right answer the day the price-revision conversation names one.
+- **Operator read access to the недостача claimed against his own point.** Spec §3.10: the whole
+  §8 surface, reads included, is owner-only today — «переважує і сторнує тільки керівник» settles
+  the writes, but nothing settles whether the operator who ACCEPTED the berries may see what the
+  base later claims went missing. An open client question, not an oversight.
+- **A visible history for a собівартість that moved.** Spec §3.12: cost-of-day is computed live
+  with no posting moment and no snapshot (§3.3), so a late top-up or a late reweigh line changes
+  an already-closed day's number with no journal entry saying why — the screen carries a marker
+  («включно з доплатами, останню внесено …»), not a before/after. Building the history needs a
+  decision this slice deliberately did not make: WHAT gets snapshotted, and when, for a number that
+  is defined to never stop moving.
+- **Test-coverage gaps carried out of review**, so they are not lost:
+  - Several refusal tests assert only the exception class, not the `code` payload —
+    `GRADE_NOT_ACCEPTED` and `NET_NOT_POSITIVE` are both a `BadRequestException`, and
+    `ALREADY_VOIDED` is asserted the same loose way.
+  - No test asserts `price_by_our_weight === null` in the no-reweigh case (§5.5's `на кілограм`
+    is `null` when `переважено(day) = 0`).
+  - `IDX_reweigh_items_reweigh` duplicates the left prefix of `UQ_reweigh_items_order (reweigh_id,
+    item_order)` and is redundant — the unique index already serves any query keyed on
+    `reweigh_id` alone.
+  - ~~`network-average.db-spec.ts` never exercises a NONZERO shortfall~~ — CLOSED in review: both
+    the unit spec and the db-spec now seed Шипинки as 800 кг / 128 000,00 against a 790 кг
+    reweigh, so its 126 400,00 cell ARISES as `128 000 − 1 600` and `sub` is load-bearing.
+    The `intake_top_ups` half of that gap is still open: no db-spec drives a real top-up row
+    through §8.6, so the allocation is proven only through `cost-of-day.db-spec.ts`.
+
+## Carried out of the #121/#122 code review (2026-09-17)
+
+Found by review of the reweigh (#121) and cost-of-day (#122) branches. The correctness and
+authorization findings were fixed on the branches; these are the ones deliberately left, each
+because it is either a client question or a change that reaches beyond the two slices' own tables.
+
+- **Voiding an intake orphans reweigh weight that was already on the scale.** `gradeTotals`'
+  `FROM` is `intake_items` inner-joined to non-voided `intakes`, and the reweigh side hangs off
+  that as a LEFT JOIN. `GRADE_NOT_ACCEPTED` is enforced at write time but nothing freezes it
+  afterwards, and §9.4 lets an operator void their own intake while the shift is open — the same
+  window §8.3's mid-day trip is being weighed in. Void that intake and the grade leaves the query
+  entirely: its `reweigh_items` rows still exist, still carry net weight, and become invisible;
+  `accepted_anything` can even flip to `false` while lines exist. Closing it means a union of both
+  sides (or a `FULL OUTER JOIN`) plus a FOURTH state — «weighed at the base, no longer accepted at
+  the point» — which is exactly what a dispute screen should show. Left out here because it
+  changes the reconciliation's state machine, which §8.2's client conversation has not settled.
+- **Two different numbers both called недостача.** `reweigh-reconciliation.service.ts` computes
+  `нараховано` from `intake_items.amount` ALONE, deliberately (a доплата the operator cannot see
+  would move the dispute number). Spec §5.5 defines `нараховано` for cost-of-day as
+  `Σ intake_items.amount + Σ allocated top-ups`. So §8.2's dispute screen and §8.4's basket can
+  print different недостача for the same grade on the same day, and §8.4's whole claim is «жодна
+  гривня не загубилася». Both readings are defensible; the client has to pick one. **Raise before
+  either screen is built.**
+- **Is §8.2's звірка meant to be visible while the shift is still OPEN?** The rule says it is
+  «видна до проведення документа — поки ягоду ще можна перевірити на вагах». Spec §3.9 reads that
+  as "null until `closed_at`", which makes the numbers unavailable during precisely the window the
+  sentence describes. §3.9's own argument is sound (an open shift means incomplete intake weight,
+  so недостача would read falsely huge), but the conclusion may be the inverse of the intent. A
+  middle path exists and is already half-built: return the signed difference with the
+  `provisional: true` flag cost-of-day now carries. **Client question.**
+- **The per-kilogram price is rounded before it is multiplied.**
+  `reweigh-reconciliation.service.ts` computes `mul(missing, div(amount, net_kg))`. With 790 кг
+  accruing 128 000,00 and 10 кг missing that is `162.03 × 10 = 1620.30`, where exact is 1620.25 —
+  up to `0.005 × missing_kg` of drift from an intermediate rounding the response never shows.
+  `div(mul(amount, missing), net_kg)` avoids it. §8.2's own worked example (128 000 ÷ 800 = 160,00
+  exactly) hides the difference, and the spec does define the rounded-price form, so this is a
+  deliberate-but-questionable choice rather than a defect — but "round per line, then sum" would
+  call the grade's недостача the line, not the price.
+- **`переважено(day)` is summed over a smaller denominator than spec §5.5 literally defines.** A
+  partially weighed product contributes no kilograms (§3.15), so the day's витрати are spread over
+  fewer kilograms and `per_kg` is overstated for everyone else. Review confirmed the related
+  arithmetic inconsistency — such a product was also COLLECTING a share of that denominator — and
+  that half is fixed (`price_cost` is now `null` for an incomplete product). What remains is the
+  denominator itself, where the alternative understates instead. Reasoning is at
+  `product-cost-rows.ts`; closing it properly needs the client to say whether a half-weighed
+  product's confirmed kilograms should dilute the basket.
+- **An empty `tare` array is accepted on a reweigh line.** `@ArrayMinSize(0)` is a no-op and the
+  service has no `TARE_REQUIRED`, while `intakes` enforces both. §9.1 lists «позиція без тари»
+  among the things the system «не дає провести взагалі», and its reason — «без неї брутто пішло б
+  у чисту вагу цілком» — is just as true on the base's scale. The spec permits it (§4:
+  `tare_weight_kg >= 0`), so this is a **client question**, not a defect.
+- **`NetworkAverageQueryDto` validates the SHAPE of a date, not the calendar.** `'2026-13-45'`
+  passes, reaches `WHERE s.business_date = $1`, and Postgres raises a range error that
+  `AllExceptionsFilter` maps to an opaque 500. Consistent with the pre-existing
+  `ListShiftsQueryDto`, which the DTO's comment cites, so it is a repo-wide convention rather than
+  a new deviation — worth one shared calendar-aware validator someday, for every list endpoint at
+  once.
+- **`NetworkAverageService.forDate` issues two queries per shift on the date.** At 20–30 points
+  that is 40–60 round trips for one report. Fine at this scale, and reusing `productCostRows`
+  rather than re-deriving the SQL is the right trade. Related: `WHERE s.business_date = $1` has no
+  usable index — `UQ_shifts_point_business_date` leads with `collection_point_id` — so it is a seq
+  scan on `shifts`, the one query here that grows with calendar time rather than with the network.
+- **§8.4's «з них недостача 1,94 / з них витрати 4,45» split is not in the response.**
+  `CostOfDayResponse` carries `shortfall_amount`, `expenses_amount` and `per_kg` but not the two
+  per-kilogram components the client's screen prints, so a frontend would have to divide money in
+  React — the one thing `money.ts` exists to prevent. Two more `div` calls behind the same
+  `isZero` guard. Spec §5.5's formula list omits them too, so this is a gap in the plan as much as
+  in the code.

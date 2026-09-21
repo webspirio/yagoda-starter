@@ -2,7 +2,7 @@ import { Decimal } from 'decimal.js';
 import * as fc from 'fast-check';
 
 import * as moneyModule from './money';
-import { add, mul, sub, sum, lt, lte, isZero } from './money';
+import { add, allocate, div, mul, sub, sum, lt, lte, isZero } from './money';
 import { canonicalizeDecimalString } from './dto/canonical-decimal';
 
 /**
@@ -178,6 +178,76 @@ describe('money — properties', () => {
     );
   });
 
+  it('div agrees with the oracle, rounding half-up away from zero at scale 2', () => {
+    // Added for §8.4 cost-per-kilogram. money.ts divides on the MAGNITUDE and reapplies the
+    // sign, so -0.005 must round to -0.01, not to 0.00 — the direction an oracle with the
+    // wrong mode would silently disagree about in exactly half the cases.
+    const nonZero = amount.filter((a) => !isZero(a));
+    fc.assert(
+      fc.property(amount, nonZero, (a, b) => {
+        expect(div(a, b)).toBe(
+          new D(a).div(b).toDecimalPlaces(2, Decimal.ROUND_HALF_UP).toFixed(2),
+        );
+      }),
+      RUNS,
+    );
+  });
+
+  it('div by zero throws rather than returning anything', () => {
+    fc.assert(
+      fc.property(amount, (a) => {
+        expect(() => div(a, '0.00')).toThrow(/divide by zero/);
+      }),
+      RUNS,
+    );
+  });
+
+  it('allocate parts ALWAYS sum back to the total, exactly', () => {
+    // THE INVARIANT THE WHOLE FUNCTION EXISTS FOR. A proportional split that loses or gains
+    // a kopiyka is how a §8.5 top-up stops reconciling, and the failure is one kopiyka on
+    // some inputs and not others — the shape an example table finds by luck and an oracle
+    // finds by construction.
+    fc.assert(
+      fc.property(amount, fc.array(amount, { minLength: 1, maxLength: 12 }), (total, ws) => {
+        const parts = allocate(total, ws);
+        expect(parts).toHaveLength(ws.length);
+        expect(sum(parts)).toBe(total);
+      }),
+      RUNS,
+    );
+  });
+
+  it('allocate gives each part its proportional share, to within one kopiyka', () => {
+    // Sum-to-total alone is satisfied by "give it all to the first part", so this is the
+    // discriminator: largest-remainder means nobody is off by more than one unit.
+    const positive = amount.filter((a) => !isZero(a) && a[0] !== '-');
+    fc.assert(
+      fc.property(positive, fc.array(positive, { minLength: 1, maxLength: 12 }), (total, ws) => {
+        const parts = allocate(total, ws);
+        const weightTotal = sum(ws);
+        for (let i = 0; i < ws.length; i += 1) {
+          const exact = new D(total).times(ws[i]).div(weightTotal);
+          expect(new D(parts[i]).minus(exact).abs().lessThanOrEqualTo('0.01')).toBe(true);
+        }
+      }),
+      RUNS,
+    );
+  });
+
+  it('allocate splits evenly when every weight is zero, and still sums to the total', () => {
+    fc.assert(
+      fc.property(amount, fc.integer({ min: 1, max: 12 }), (total, n) => {
+        const parts = allocate(total, Array.from({ length: n }, () => '0.00'));
+        expect(sum(parts)).toBe(total);
+        const spread = parts.map((p) => new D(p));
+        const min = spread.reduce((a, b) => (a.lessThan(b) ? a : b));
+        const max = spread.reduce((a, b) => (a.greaterThan(b) ? a : b));
+        expect(max.minus(min).lessThanOrEqualTo('0.01')).toBe(true);
+      }),
+      RUNS,
+    );
+  });
+
   it('does NOT implement §12.1 payout rounding, and pins the surface that would carry it', () => {
     // §12.1 defines a SECOND rounding — to whole hryvnia, with exactly 0.50 going DOWN —
     // unresolved at the source («-> Правка: точно???») and deliberately absent here. It is
@@ -187,7 +257,9 @@ describe('money — properties', () => {
     expect(mul('120.50', '1.00')).toBe('120.50');
     expect(Object.keys(moneyModule).sort()).toEqual([
       'add',
+      'allocate',
       'cmp',
+      'div',
       'gt',
       'gte',
       'isNegative',

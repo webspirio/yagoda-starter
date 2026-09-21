@@ -1273,4 +1273,126 @@ describe('documents pipeline (HTTP)', () => {
         .expect(403);
     });
   });
+
+  /**
+   * §8's ROUTE MATRIX, asserted over HTTP rather than trusted to a decorator.
+   *
+   * Every §8 surface is owner-only (spec §3.10), and that is a CONTESTED
+   * decision — §3.10 itself records «may an operator see their own point's
+   * недостача?» as an open client question. So the day it changes, it should
+   * change here, deliberately, and not by someone relaxing a class-level
+   * `@Auth(UserRole.NetworkOwner)` while nothing goes red.
+   *
+   * The 403/404 pair is what makes each assertion mean something: the
+   * operator's 403 says the guard refused them, and the owner's 404 on the
+   * SAME path says the route exists and the owner reached the handler. A
+   * route that simply did not exist would answer 404 to both.
+   */
+  describe('§8 reweigh and cost-of-day route matrix', () => {
+    const ghostShift = randomUUID();
+    const ghostItem = randomUUID();
+    const ghostExpense = randomUUID();
+
+    const bearer = (t: string) => ({ Authorization: `Bearer ${t}` });
+
+    it('refuses the operator every reweigh route — §8.7 puts the second weighing in the owner’s hands', async () => {
+      await request(app.getHttpServer())
+        .get(`/shifts/${ghostShift}/reweigh`)
+        .set(bearer(operatorToken))
+        .expect(403);
+
+      await request(app.getHttpServer())
+        .post(`/shifts/${ghostShift}/reweigh-items`)
+        .set(bearer(operatorToken))
+        .send({ product_grade_id: randomUUID(), gross_kg: '10.00', tare: [] })
+        .expect(403);
+
+      await request(app.getHttpServer())
+        .post(`/reweigh-items/${ghostItem}/void`)
+        .set(bearer(operatorToken))
+        .send({ reason: 'переважили не ту партію' })
+        .expect(403);
+    });
+
+    it('lets the OWNER reach those same handlers — the 403 above is the guard, not a missing route', async () => {
+      await request(app.getHttpServer())
+        .get(`/shifts/${ghostShift}/reweigh`)
+        .set(bearer(ownerToken))
+        .expect(404);
+
+      await request(app.getHttpServer())
+        .post(`/reweigh-items/${ghostItem}/void`)
+        .set(bearer(ownerToken))
+        .send({ reason: 'переважили не ту партію' })
+        .expect(404);
+    });
+
+    it('has no PATCH and no DELETE on a reweigh line — §3.4, a line is voided, never edited', async () => {
+      await request(app.getHttpServer())
+        .patch(`/reweigh-items/${ghostItem}`)
+        .set(bearer(ownerToken))
+        .send({ gross_kg: '1.00' })
+        .expect(404);
+
+      await request(app.getHttpServer())
+        .delete(`/reweigh-items/${ghostItem}`)
+        .set(bearer(ownerToken))
+        .expect(404);
+    });
+
+    it('refuses the operator the cost-of-day and network-average reports — §8.4, §8.6', async () => {
+      await request(app.getHttpServer())
+        .get(`/shifts/${ghostShift}/cost-of-day`)
+        .set(bearer(operatorToken))
+        .expect(403);
+
+      await request(app.getHttpServer())
+        .get('/reports/network-average?date=2026-08-04')
+        .set(bearer(operatorToken))
+        .expect(403);
+    });
+
+    it('refuses the operator every day-expense verb — §8.3 is the owner’s scratchpad', async () => {
+      await request(app.getHttpServer())
+        .get(`/shifts/${ghostShift}/expenses`)
+        .set(bearer(operatorToken))
+        .expect(403);
+
+      await request(app.getHttpServer())
+        .post(`/shifts/${ghostShift}/expenses`)
+        .set(bearer(operatorToken))
+        .send({ label: 'пальне', amount: '1000.00' })
+        .expect(403);
+
+      await request(app.getHttpServer())
+        .patch(`/expenses/${ghostExpense}`)
+        .set(bearer(operatorToken))
+        .send({ amount: '1200.00' })
+        .expect(403);
+
+      await request(app.getHttpServer())
+        .delete(`/expenses/${ghostExpense}`)
+        .set(bearer(operatorToken))
+        .expect(403);
+    });
+
+    /**
+     * `day_expenses` is the ONE money table in this schema that a PATCH and a
+     * DELETE are supposed to reach (§3.8). Asserting that here, next to the
+     * neighbours that answer 404 to both, is what keeps the exception
+     * legible: it exists on purpose, for the owner, and nowhere else.
+     */
+    it('DOES give the owner a PATCH and a DELETE on an expense — the schema’s one mutable money table', async () => {
+      await request(app.getHttpServer())
+        .patch(`/expenses/${ghostExpense}`)
+        .set(bearer(ownerToken))
+        .send({ amount: '1200.00' })
+        .expect(404);
+
+      await request(app.getHttpServer())
+        .delete(`/expenses/${ghostExpense}`)
+        .set(bearer(ownerToken))
+        .expect(404);
+    });
+  });
 });

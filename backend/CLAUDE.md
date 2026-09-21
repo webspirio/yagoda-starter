@@ -54,9 +54,13 @@ up: its `testRegex` (`.*\.spec\.ts$`) does not match `.db-spec.ts`.
 **Testing gotchas worth knowing before you distrust a green run:**
 - **BOTH** `test` and `test:db` run Jest under
   `NODE_OPTIONS=--experimental-vm-modules`, and it is load-bearing on each, not
-  leftover debris. Several Nest packages are now pure ESM (`"type": "module"`)
-  — `@nestjs/schedule` v12 and `@nestjs/passport` v12 so far — so any spec that
-  loads one `require()`s an ES module. Jest 30 *can* do that natively, but it
+  leftover debris. **As of the NestJS 12 upgrade (2026-09-18) the ENTIRE Nest
+  core is pure ESM (`"type": "module"`)** — `@nestjs/common`, `core`,
+  `platform-express`, `testing`, `terminus`, `typeorm`, `jwt` and `config`, on
+  top of `@nestjs/schedule` and `@nestjs/passport`, which went ESM at v12 first
+  and are what this note used to name as the only two. So it is no longer "a
+  spec that happens to import one": every spec that touches Nest at all
+  `require()`s an ES module, and the flag is what makes any of them run. Jest 30 *can* do that natively, but it
   gates the capability on
   `typeof vm.SourceTextModule?.prototype.hasAsyncGraph === 'function'`, and
   `vm.SourceTextModule` only exists under that flag. Jest's own error message

@@ -5,20 +5,23 @@ import request from 'supertest';
 import { MEDIA_MAX_BYTES } from './media.constants';
 import type { UploadedImage } from './media.service';
 
-/** THIS IS THE GUARD ON THE `multer` OVERRIDE, and it is the only test in this repo
- *  that drives a real multipart request through `FileInterceptor`.
+/** THE ONLY TEST IN THIS REPO THAT DRIVES A REAL MULTIPART REQUEST THROUGH FileInterceptor.
  *
- *  The root `overrides.multer` entry ships a multer version that
- *  `@nestjs/platform-express` never declared compatible with — it pins the exact string
- *  `2.2.0`. That pin is the whole reason the override exists (the pinned version carries
- *  four published advisories), and it is also the reason nothing upstream is testing this
- *  combination for us. Two behaviours are what `me.controller.ts` actually relies on, and
- *  a multer upgrade is exactly the kind of change that could break either one silently:
- *  a file arrives whole in memory, and `limits.fileSize` rejects an oversized body rather
- *  than truncating it. Both are asserted below against a real HTTP request.
+ *  It was written to guard a root `overrides.multer` entry that forced a patched multer past
+ *  `@nestjs/platform-express@11`'s exact `2.2.0` pin, which carried four published
+ *  advisories. That override is gone: platform-express 12 depends on multer 2.4.0 directly,
+ *  so the pin it worked around no longer exists.
  *
- *  If this ever goes red, do not widen it — drop the override and take the advisories,
- *  or move to a platform-express whose own pin is clean. */
+ *  The test stays, and the reason it stays is the reason it was worth writing. Nothing else
+ *  here exercises the interceptor — media.service.spec.ts consumes the uploaded-file SHAPE
+ *  and never the upload — so before this file, a change to the upload seam could only be
+ *  caught in production. That seam now spans a major version of Nest AND of Express, which
+ *  is more movement under it, not less.
+ *
+ *  Two behaviours, both of which me.controller.ts relies on and neither of which is ours:
+ *  the body arrives whole in memory, and `limits.fileSize` REJECTS an oversized upload
+ *  rather than silently truncating it. Verified as a discriminator: raising the limit makes
+ *  the 413 assertion fail. */
 @Controller('probe')
 class ProbeController {
   @Post()

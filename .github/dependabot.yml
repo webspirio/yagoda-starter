@@ -6,11 +6,26 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+    # Default is 5. The NestJS 12 majors hit that ceiling in September 2026 and
+    # @nestjs/core's own PR was silently never opened, so merging every PR that
+    # WAS open would still have left a mixed v11/v12 tree.
+    open-pull-requests-limit: 10
     groups:
       minor-and-patch:
         update-types:
           - "minor"
           - "patch"
+      # @nestjs/* is released in lockstep and peer-depends on itself at the same
+      # major, so a one-package-per-PR major is unmergeable BY CONSTRUCTION: each
+      # PR alone produces a duplicate tree (v12 nested under backend/ beside a
+      # hoisted v11) and fails with TS2322 on two copies of the same interface,
+      # or a missing @nestjs/common/internal. PRs #84/#86/#87 were each red for
+      # exactly that reason. Group the majors so the family moves in one commit.
+      nestjs-major:
+        patterns:
+          - "@nestjs/*"
+        update-types:
+          - "major"
     ignore:
       # Pinned to the Node LTS major (see Dockerfiles) — bump by hand when
       # adopting the next LTS, don't let Dependabot chase Current releases.
