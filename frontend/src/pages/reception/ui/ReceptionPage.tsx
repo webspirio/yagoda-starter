@@ -15,7 +15,7 @@ import { useMeQuery } from '@/entities/user';
 import { useWorkingPoint } from '@/features/point-scope';
 import { usePointOptionsQuery } from '@/entities/collection-point';
 import { useCurrentShiftQuery } from '@/entities/shift';
-import { useSupplierBalanceQuery } from '@/entities/supplier';
+import { useSupplierBalanceQuery, type Supplier } from '@/entities/supplier';
 import { usePricedGradesQuery } from '@/entities/product-grade';
 import { useTareTypeOptionsQuery } from '@/entities/tare-type';
 import { ReceiptDialog } from '@/widgets/receipt';
@@ -87,6 +87,10 @@ export function ReceptionPage() {
     }
   }, [defaultTareTypeId, form, setValue]);
 
+  // The picker hands over the whole row when it is chosen; the form only
+  // ever carries the id (`supplier_id`) that the document needs, so the two
+  // are kept in sync from here rather than the picker re-reading by id.
+  const [supplier, setSupplier] = useState<Supplier | null>(null);
   const [receiptId, setReceiptId] = useState<string | null>(null);
   const [openDialogOpen, setOpenDialogOpen] = useState(false);
   // Bumped on every open so the dialog remounts with fresh RHF defaults and no
@@ -182,6 +186,7 @@ export function ReceptionPage() {
       // The mock resets everything, supplier included: the next person in the
       // queue is a new visit, not an edit of this one.
       reset({ supplier_id: '', items: [emptyLine(defaultTareTypeId)] });
+      setSupplier(null);
     } catch (error) {
       setSubmitFailure({
         at: snapshot,
@@ -258,8 +263,12 @@ export function ReceptionPage() {
             <Card>
               <SupplierSection
                 pointId={pointId}
-                value={values.supplier_id}
-                onChange={(id) => setValue('supplier_id', id, { shouldDirty: true })}
+                ownerMode={me?.role === 'network_owner'}
+                supplier={supplier}
+                onChange={(s) => {
+                  setSupplier(s);
+                  setValue('supplier_id', s.id, { shouldDirty: true });
+                }}
                 debt={debt}
                 disabled={!shiftOpen}
               />

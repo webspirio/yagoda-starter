@@ -1,3 +1,4 @@
+import { forwardRef } from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -21,7 +22,6 @@ const {
   meMock,
   pointScopeMock,
   shiftMock,
-  suppliersMock,
   balanceMock,
   intakesMock,
   gradesMock,
@@ -33,7 +33,6 @@ const {
   meMock: vi.fn(),
   pointScopeMock: vi.fn(),
   shiftMock: vi.fn(),
-  suppliersMock: vi.fn(),
   balanceMock: vi.fn(),
   intakesMock: vi.fn(),
   gradesMock: vi.fn(),
@@ -64,10 +63,27 @@ vi.mock('@/entities/shift', () => ({
 }));
 
 vi.mock('@/entities/supplier', () => ({
-  useSuppliersQuery: (search: string, pointId: string | null) => suppliersMock(search, pointId),
   useSupplierBalanceQuery: (id: string | null) => balanceMock(id),
-  supplierName: (s: { first_name: string; last_name: string }) =>
-    `${s.first_name} ${s.last_name}`,
+}));
+
+// The picker itself (search, grouping, inline creation) is `SupplierPicker`'s
+// own concern — tested in `features/pick-supplier/ui/SupplierPicker.test.tsx`.
+// Here it is a single button that always hands back the fixed `nina` row, so
+// every test below can get a supplier onto the form without driving a
+// combobox. `forwardRef` mirrors the real component, since the page may pass
+// a ref through (a later task's autofocus wiring).
+vi.mock('@/features/pick-supplier', () => ({
+  SupplierPicker: forwardRef(function SupplierPicker({
+    onChange,
+  }: {
+    onChange: (s: Supplier) => void;
+  }) {
+    return (
+      <button type="button" onClick={() => onChange(nina)}>
+        pick-nina
+      </button>
+    );
+  }),
 }));
 
 vi.mock('@/entities/intake', () => ({
@@ -133,23 +149,20 @@ const openShift: Shift = {
   explanation: null,
 };
 
-const supplier = (over: Partial<Supplier> & Pick<Supplier, 'id'>): Supplier => ({
+// The single row the `pick-supplier` stub always hands back — its id lines
+// up with `PREVIEW`, `CREATED` and the default `intake()` fixture below,
+// which all describe supplier `s1`.
+const nina: Supplier = {
+  id: 's1',
   collection_point_id: 'p1',
-  first_name: 'Mariia',
-  last_name: 'Kovalchuk',
+  first_name: 'Ніна',
+  last_name: 'Ільчук',
   phone: '+380671112233',
   note: null,
   kind: 'none',
   is_active: true,
   created_at: '2026-05-01T08:00:00Z',
-  ...over,
-});
-
-const SUPPLIERS: Supplier[] = [
-  supplier({ id: 's1' }),
-  supplier({ id: 's2', first_name: 'Petro', last_name: 'Bondar', kind: 'farmer', phone: null }),
-  supplier({ id: 's3', first_name: 'Retired', last_name: 'Person', is_active: false }),
-];
+};
 
 const GRADES: PricedGrade[] = [
   {
@@ -315,7 +328,6 @@ beforeEach(() => {
     .mockReset()
     .mockReturnValue({ pointId: 'p1', canPick: false, setPointId: vi.fn(), isLoading: false });
   shiftMock.mockReset().mockReturnValue({ data: openShift, isPending: false, isError: false });
-  suppliersMock.mockReset().mockReturnValue(page(SUPPLIERS));
   balanceMock.mockReset().mockReturnValue({ data: undefined, isPending: false, isError: false });
   intakesMock.mockReset().mockReturnValue(page<Intake>([]));
   gradesMock.mockReset().mockReturnValue({ data: GRADES, isPending: false, isError: false });
@@ -394,10 +406,10 @@ describe('ReceptionPage — before the shift is open', () => {
 });
 
 describe('ReceptionPage — choosing the supplier', () => {
-  it('searches, picks a supplier, then shows their balance and last receipts', async () => {
+  it('picks a supplier from the picker, then shows their balance note and last receipts', async () => {
     const user = userEvent.setup();
     balanceMock.mockReturnValue({
-      data: { supplier_id: 's1', debt: '4000.00' },
+      data: { supplier_id: 's1', debt: '10944.00' },
       isPending: false,
       isError: false,
     });
@@ -411,26 +423,19 @@ describe('ReceptionPage — choosing the supplier', () => {
     );
 
     renderReception();
+    await user.click(screen.getByRole('button', { name: 'pick-nina' }));
 
-    // A deactivated supplier is never offered on a new receipt.
-    expect(screen.queryByRole('button', { name: /Retired Person/ })).toBeNull();
-
-    await user.type(screen.getByLabelText('Last name or phone…'), 'Kova');
-    await waitFor(() => expect(suppliersMock).toHaveBeenCalledWith('Kova', 'p1'));
-
-    await user.click(screen.getByRole('button', { name: /Mariia Kovalchuk/ }));
-
-    expect(screen.getByText('Previous balance 4,000.00 ₴')).toBeInTheDocument();
+    expect(screen.getByText('Previous balance 10,944.00 ₴')).toBeInTheDocument();
+    // The note that the debt is not a separate payout — it lands in «Total».
+    expect(screen.getByText('added to “Total” below')).toBeInTheDocument();
     expect(screen.getByText('Intake history')).toBeInTheDocument();
-    expect(screen.getByText('SHP-IN-20260907-00007')).toBeInTheDocument();
+    // Both mocked rows share the fixture's default net weight.
+    expect(screen.getAllByText('36.90 kg')).toHaveLength(2);
+    expect(screen.getByText('820.50 ₴')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Supplier card' })).toHaveAttribute(
       'href',
       '/suppliers/s1',
     );
-
-    // The chip replaces the list until «Change» is pressed.
-    expect(screen.getByRole('button', { name: 'Change' })).toBeInTheDocument();
-    expect(screen.queryByLabelText('Last name or phone…')).toBeNull();
   });
 
   it('reads a negative balance as money owed to the supplier, not by them', async () => {
@@ -442,7 +447,7 @@ describe('ReceptionPage — choosing the supplier', () => {
     });
 
     renderReception();
-    await user.click(screen.getByRole('button', { name: /Mariia Kovalchuk/ }));
+    await user.click(screen.getByRole('button', { name: 'pick-nina' }));
 
     expect(screen.getByText('Overpaid by us 250.00 ₴')).toBeInTheDocument();
     expect(screen.queryByText(/Previous balance/)).toBeNull();
@@ -458,7 +463,9 @@ describe('ReceptionPage — a one-line receipt', () => {
     const user = userEvent.setup();
     renderReception();
 
-    await user.click(screen.getByRole('button', { name: /Mariia Kovalchuk/ }));
+    await user.click(screen.getByRole('button', { name: 'pick-nina' }));
+    // The history panel only renders while a supplier is chosen.
+    expect(screen.getByText('Intake history')).toBeInTheDocument();
     await fillDraft(user);
 
     // Net weight and the amount are the SERVER's, never computed here.
@@ -485,8 +492,10 @@ describe('ReceptionPage — a one-line receipt', () => {
     );
 
     expect(await screen.findByText('Receipt for i-new')).toBeInTheDocument();
-    // A saved document leaves a clean form behind — the next supplier is next.
-    expect(screen.getByLabelText('Last name or phone…')).toBeInTheDocument();
+    // A saved document leaves a clean form behind — the next supplier is next,
+    // so the page's own `supplier` state (not just the RHF field) resets to
+    // `null` too, which collapses the history panel again.
+    expect(screen.queryByText('Intake history')).toBeNull();
   });
 
   it('sends the owner’s picked point, which an operator’s token supplies instead', async () => {
@@ -501,7 +510,7 @@ describe('ReceptionPage — a one-line receipt', () => {
 
     renderReception();
 
-    await user.click(screen.getByRole('button', { name: /Mariia Kovalchuk/ }));
+    await user.click(screen.getByRole('button', { name: 'pick-nina' }));
     await fillDraft(user);
     await user.click(screen.getByRole('button', { name: 'Accept 120.40 kg' }));
 
@@ -522,7 +531,7 @@ describe('ReceptionPage — a one-line receipt', () => {
 
     renderReception();
 
-    await user.click(screen.getByRole('button', { name: /Mariia Kovalchuk/ }));
+    await user.click(screen.getByRole('button', { name: 'pick-nina' }));
     await fillDraft(user);
 
     // No weight on the button and no total: those numbers are not this form's.
@@ -536,7 +545,7 @@ describe('ReceptionPage — a one-line receipt', () => {
     const user = userEvent.setup();
     renderReception();
 
-    await user.click(screen.getByRole('button', { name: /Mariia Kovalchuk/ }));
+    await user.click(screen.getByRole('button', { name: 'pick-nina' }));
     await fillDraft(user);
 
     expect(screen.queryByLabelText('Receipt no.')).not.toBeInTheDocument();
@@ -564,7 +573,7 @@ describe('ReceptionPage — several lines', () => {
     const user = userEvent.setup();
     renderReception();
 
-    await user.click(screen.getByRole('button', { name: /Mariia Kovalchuk/ }));
+    await user.click(screen.getByRole('button', { name: 'pick-nina' }));
 
     const add = () => screen.getByRole('button', { name: 'Add line' });
     // An untouched draft is not a line — nothing to commit yet.
@@ -598,7 +607,7 @@ describe('ReceptionPage — several lines', () => {
     const user = userEvent.setup();
     renderReception();
 
-    await user.click(screen.getByRole('button', { name: /Mariia Kovalchuk/ }));
+    await user.click(screen.getByRole('button', { name: 'pick-nina' }));
     await fillDraft(user);
     await user.click(screen.getByRole('button', { name: 'Add line' }));
     // Scoped to the table: the draft now also offers its own «Remove line»
@@ -632,7 +641,7 @@ describe('ReceptionPage — an accidental extra line', () => {
     });
 
     renderReception();
-    await user.click(screen.getByRole('button', { name: /Mariia Kovalchuk/ }));
+    await user.click(screen.getByRole('button', { name: 'pick-nina' }));
     await fillDraft(user);
 
     await user.click(screen.getByRole('button', { name: 'Add line' }));
@@ -662,7 +671,7 @@ describe('ReceptionPage — the committed table while the preview catches up', (
     previewMock.mockReturnValue(SETTLED);
 
     renderReception();
-    await user.click(screen.getByRole('button', { name: /Mariia Kovalchuk/ }));
+    await user.click(screen.getByRole('button', { name: 'pick-nina' }));
     await fillDraft(user);
     await user.click(screen.getByRole('button', { name: 'Add line' }));
 
@@ -705,7 +714,7 @@ describe('ReceptionPage — the draft line preview', () => {
     );
 
     renderReception();
-    await user.click(screen.getByRole('button', { name: /Mariia Kovalchuk/ }));
+    await user.click(screen.getByRole('button', { name: 'pick-nina' }));
     await fillDraft(user);
 
     expect(screen.getByText(/10\.00−5\.00/)).toBeInTheDocument();
@@ -731,14 +740,17 @@ describe("ReceptionPage — the supplier's history and today's badge", () => {
     );
 
     renderReception();
-    await user.click(screen.getByRole('button', { name: /Mariia Kovalchuk/ }));
+    await user.click(screen.getByRole('button', { name: 'pick-nina' }));
 
-    const voidedRow = screen.getByText('SHP-IN-1').closest('li');
+    // The history row shows date · net weight (or «voided») · amount — no
+    // code any more, so the rows are found by their amount instead.
+    const voidedRow = screen.getByText('100.00 ₴').closest('li');
     expect(voidedRow).toHaveClass('line-through');
     expect(within(voidedRow!).getByText('voided')).toBeInTheDocument();
 
-    const liveRow = screen.getByText('SHP-IN-2').closest('li');
+    const liveRow = screen.getByText('200.00 ₴').closest('li');
     expect(liveRow).not.toHaveClass('line-through');
+    expect(within(liveRow!).getByText('36.90 kg')).toBeInTheDocument();
   });
 
   it("counts only live receipts in today's badge, though a voided one stays listed", async () => {
@@ -802,7 +814,7 @@ describe('ReceptionPage — a refusal from the server', () => {
 
     renderReception();
 
-    await user.click(screen.getByRole('button', { name: /Mariia Kovalchuk/ }));
+    await user.click(screen.getByRole('button', { name: 'pick-nina' }));
     await fillDraft(user);
 
     const gross = screen.getByLabelText('Gross — berries including tare');
@@ -832,7 +844,7 @@ describe('ReceptionPage — a refusal from the server', () => {
     );
 
     renderReception();
-    await user.click(screen.getByRole('button', { name: /Mariia Kovalchuk/ }));
+    await user.click(screen.getByRole('button', { name: 'pick-nina' }));
 
     const pallet = screen.getByLabelText('Pallet');
     expect(pallet).toHaveAttribute('aria-invalid', 'true');
@@ -845,7 +857,7 @@ describe('ReceptionPage — a refusal from the server', () => {
     previewMock.mockReturnValue(SETTLED);
 
     renderReception();
-    await user.click(screen.getByRole('button', { name: /Mariia Kovalchuk/ }));
+    await user.click(screen.getByRole('button', { name: 'pick-nina' }));
     await fillDraft(user);
     await user.click(screen.getByRole('button', { name: 'Add line' }));
 
@@ -890,7 +902,7 @@ describe('ReceptionPage — accessibility', () => {
     });
 
     const { container } = renderReception();
-    await user.click(screen.getByRole('button', { name: /Mariia Kovalchuk/ }));
+    await user.click(screen.getByRole('button', { name: 'pick-nina' }));
     await fillDraft(user);
 
     await expectNoAxeViolations(container);

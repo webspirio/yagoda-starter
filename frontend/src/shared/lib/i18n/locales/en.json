@@ -707,11 +707,8 @@
     },
     "supplier": {
       "eyebrow": "1 · Supplier",
-      "search": "Last name or phone…",
-      "noPhone": "no phone",
-      "change": "Change",
-      "empty": "Nobody found — check the name or add the person in Suppliers.",
       "debt": "Previous balance {{uah}}",
+      "debtNote": "added to “Total” below",
       "credit": "Overpaid by us {{uah}}",
       "history": "Intake history",
       "card": "Supplier card",
