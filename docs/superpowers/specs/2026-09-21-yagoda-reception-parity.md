@@ -235,7 +235,7 @@ called out was already at parity or was a sub-point of a neighbour.
 | 47 | already at parity (audit) | — |
 | 48 | already at parity (audit) | — |
 | 49 | already at parity (audit) | — |
-| 50 | ported | receipt «Дата» now shows the time, not just the business date |
+| 50 | ported | receipt «Дата» now shows the business date · time (`formatLongDate(business_date)` · `formatTime(created_at)`), not `created_at`'s own calendar day (PR #137 review — the earlier `formatDateTime(created_at)` read a date that could disagree with the shift just past local midnight) |
 | 51 | not ported (needs-api) | no `village` on the wire (programme 5.0/5.6) |
 | 52 | ported | per-line «Ціна за кг {price} + {bonus} = {eff} ₴» |
 | 53 | ported (partial) | «Видано готівкою» + linked payout codes print (#116); «Попередній залишок»/«РАЗОМ»/«з них на попередні залишки» are not ported — not derivable without allocations (§3.3/§3.4 correction; see the receipt deviation below) |

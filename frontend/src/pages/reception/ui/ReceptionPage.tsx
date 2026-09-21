@@ -441,6 +441,7 @@ export function ReceptionPage() {
                 lineCount={settled?.items.length ?? lines.fields.length}
                 debt={debt}
                 cash={cash}
+                cashUnavailable={pointCash.isError}
                 paid={paidShown}
                 onPaidChange={onPaidChange}
                 paidError={errorAt('paid_amount')}

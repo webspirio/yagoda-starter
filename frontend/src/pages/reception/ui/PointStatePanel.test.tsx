@@ -182,6 +182,42 @@ describe('PointStatePanel — the six figures', () => {
   });
 });
 
+describe('PointStatePanel — a truncated page (100+ documents in one shift)', () => {
+  it('captions «Paid out for berries» with «first 100 documents» when the payouts page is truncated', () => {
+    payoutsMock.mockReturnValue({
+      data: { data: PAYOUTS, total: PAYOUTS.length + 50, page: 1, limit: 100 },
+      isPending: false,
+      isError: false,
+    });
+    renderPanel();
+
+    // Scoped to the tile: an unscoped `getByText` would be ambiguous the
+    // moment a SECOND tile also carries the caption.
+    const tile = screen.getByText('Paid out for berries').parentElement;
+    expect(tile).toHaveTextContent('first 100 documents');
+  });
+
+  it('captions «New balance created» when only the intakes page is truncated, and leaves «Paid out for berries» alone', () => {
+    intakesMock.mockReturnValue({
+      data: { data: INTAKES, total: INTAKES.length + 50, page: 1, limit: 100 },
+      isPending: false,
+      isError: false,
+    });
+    renderPanel();
+
+    expect(screen.getAllByText('first 100 documents')).toHaveLength(1);
+    const newDebtTile = screen.getByText('New balance created').parentElement;
+    expect(newDebtTile).toHaveTextContent('first 100 documents');
+    const paidOutTile = screen.getByText('Paid out for berries').parentElement;
+    expect(paidOutTile).not.toHaveTextContent('first 100 documents');
+  });
+
+  it('shows no caption at all when neither page is truncated', () => {
+    renderPanel();
+    expect(screen.queryByText('first 100 documents')).toBeNull();
+  });
+});
+
 describe('PointStatePanel — the two «Open» links', () => {
   it('points at /point-cash and /crates for an operator, with no ?point=', () => {
     renderPanel({ isOwner: false });

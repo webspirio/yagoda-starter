@@ -10,7 +10,7 @@ import {
 } from '@/shared/ui/dialog';
 import { Button } from '@/shared/ui/button';
 import { add, cmp, formatKg, formatUah, isNegative } from '@/shared/lib/money';
-import { formatDateTime } from '@/shared/lib/date';
+import { formatLongDate, formatTime } from '@/shared/lib/date';
 import { useIntakeQuery } from '@/entities/intake';
 import { useSupplierBalanceQuery, useSupplierQuery, supplierName } from '@/entities/supplier';
 import { useGradeCatalogQuery } from '@/entities/product-grade';
@@ -168,7 +168,12 @@ export function ReceiptDialog({
     content = (
       <ReceiptSheet
         code={intake.code}
-        date={formatDateTime(intake.created_at, locale)}
+        // §5 row 50 — the BUSINESS date (from the shift, §2.3), not the
+        // calendar day `created_at` happens to carry: a receipt written just
+        // past local midnight is still that shift's day, and printing
+        // `created_at`'s own date could show one day while `business_date`
+        // (and every other document on this receipt's shift) says another.
+        date={`${formatLongDate(intake.business_date, locale)} · ${formatTime(intake.created_at, locale)}`}
         pointName={pointName}
         supplierName={supplierName(supplier)}
         lines={lines}

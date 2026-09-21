@@ -288,17 +288,33 @@ describe('ReceiptDialog', () => {
     expect(line).toHaveClass('text-neutral-500');
   });
 
-  describe('the date — formatDateTime, pinned to TZ=UTC for a fixed literal', () => {
+  describe('the date — the BUSINESS date plus the time, pinned to TZ=UTC for a fixed literal', () => {
     afterEach(() => {
       vi.unstubAllEnvs();
     });
 
-    it('shows the day.month and the time from created_at', () => {
+    it('shows the shift’s business_date (formatLongDate), not created_at’s own calendar day, plus the time from created_at', () => {
       vi.stubEnv('TZ', 'UTC');
       setUp();
       render(<ReceiptDialog intakeId="intake-1" open onClose={vi.fn()} />);
 
-      expect(screen.getByText('09/08 · 08:20 AM')).toBeInTheDocument();
+      expect(screen.getByText('September 8, 2026 · 08:20 AM')).toBeInTheDocument();
+    });
+
+    it('reads business_date even when it differs from created_at’s own calendar day', () => {
+      // A receipt written just past local midnight: `created_at` is already
+      // the 9th, but the shift — and everything else on it — is still the
+      // 8th. The printed date must follow the shift, not the raw timestamp.
+      vi.stubEnv('TZ', 'UTC');
+      setUp({
+        intake: buildIntake({
+          business_date: '2026-09-08',
+          created_at: '2026-09-09T00:20:00.000Z',
+        }),
+      });
+      render(<ReceiptDialog intakeId="intake-1" open onClose={vi.fn()} />);
+
+      expect(screen.getByText('September 8, 2026 · 12:20 AM')).toBeInTheDocument();
     });
   });
 

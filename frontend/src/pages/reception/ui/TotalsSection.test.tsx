@@ -27,6 +27,7 @@ function Harness({
       lineCount={1}
       debt="37.37"
       cash="1616.10"
+      cashUnavailable={false}
       paidError={null}
       disabled={false}
       isPreviewing={false}
@@ -142,6 +143,32 @@ describe('TotalsSection — the cap and the clamp', () => {
     expect(screen.queryByText(/is in the berry drawer/)).toBeNull();
   });
 
+  it('a null (unread) drawer clamps to the TOTAL on blur, not to zero, and shows no cash note (review finding 2)', async () => {
+    const user = userEvent.setup();
+    // `cash === null` must never read as an empty drawer: the cap is the
+    // uncapped total (`suggestedPaid`), so typing above it clamps to
+    // 5497.37, never to 0.00, and neither cash-related note (the amber
+    // over-cash chip note nor the below-form cash note) renders.
+    render(<Harness cash={null} />);
+    const input = screen.getByLabelText('Paid in cash');
+
+    await user.type(input, '9999');
+    expect(input).toHaveValue('9999');
+
+    await user.tab();
+    expect(input).toHaveValue('5497.37');
+    expect(screen.queryByText(/berry drawer/)).toBeNull();
+  });
+
+  it('cashUnavailable renders a muted note instead, and it does not depend on typing anything', () => {
+    render(<Harness cash={null} cashUnavailable />);
+    expect(
+      screen.getByText(
+        'The berry cash drawer could not be read — the server will check the amount when the receipt is recorded',
+      ),
+    ).toBeInTheDocument();
+  });
+
   it('does not touch «Видано готівкою» on a blur that changes nothing (I4)', async () => {
     const user = userEvent.setup();
     const onPaidChange = vi.fn();
@@ -155,6 +182,7 @@ describe('TotalsSection — the cap and the clamp', () => {
         lineCount={1}
         debt="37.37"
         cash="1616.10"
+        cashUnavailable={false}
         paid="1616.10"
         onPaidChange={onPaidChange}
         paidError={null}

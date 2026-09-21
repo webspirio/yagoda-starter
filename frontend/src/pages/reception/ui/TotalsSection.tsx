@@ -35,6 +35,7 @@ export function TotalsSection({
   lineCount,
   debt,
   cash,
+  cashUnavailable,
   paid,
   onPaidChange,
   paidError,
@@ -50,8 +51,14 @@ export function TotalsSection({
   lineCount: number;
   /** Supplier balance — only a POSITIVE one is carried into the total. */
   debt: string | null;
-  /** `GET /point-cash/:id`'s `.cash` — the drawer for berries. */
+  /** `GET /point-cash/:id`'s `.cash` — the drawer for berries. `null` means
+   *  UNKNOWN (still loading OR errored), never an empty drawer. */
   cash: string | null;
+  /** True only once the point-cash query has ERRORED — not while it is
+   *  merely loading. Caps `paid` at the total instead of the drawer, drops
+   *  the cash note, and shows a muted hint that the server still checks the
+   *  real ceiling when the receipt is recorded. */
+  cashUnavailable: boolean;
   /** The value shown in «Видано готівкою» — the caller owns it (controlled). */
   paid: string;
   onPaidChange: (v: string) => void;
@@ -82,12 +89,24 @@ export function TotalsSection({
   const remainder = total === null ? null : sub(total, paidValue);
   const owed = remainder !== null && cmp(remainder, '0') === 1;
   const overCap = cap !== null && paidValid && cmp(paidValue, cap) === 1;
-  const limitedByCash = total !== null && cmp(total, drawer) === 1;
+  // `cash === null` means the cap is the TOTAL (see `suggestedPaid`), not the
+  // drawer — nothing here is "limited by cash" when there is no cash figure
+  // to limit by.
+  const limitedByCash = cash !== null && total !== null && cmp(total, drawer) === 1;
   // The mock's «Більше за РАЗОМ…» copy only makes sense when the cap IS the
   // total; once the drawer is what actually limits the payout, the clamp note
   // has to say so instead (M2).
   const overCapKey = limitedByCash ? 'reception.totals.overCash' : 'reception.totals.overCap';
   const settle = (v: string) => onPaidChange(v);
+  // The unavailable-drawer note takes the Field hint slot over the over-cap
+  // one — a failed read is the more important thing to say, and `overCap`
+  // can't itself be about cash while `cashUnavailable` holds (the cap is the
+  // total, per `suggestedPaid`).
+  const fieldHint = cashUnavailable
+    ? t('reception.totals.cashUnavailable')
+    : overCap
+      ? t(overCapKey, { uah: formatUah(cap ?? '0', locale) })
+      : undefined;
 
   const label =
     netKg !== null && paidValid && cmp(paidValue, '0') === 1
@@ -146,7 +165,7 @@ export function TotalsSection({
             name="paid_amount"
             label={t('reception.totals.paid')}
             error={paidError ?? undefined}
-            hint={overCap ? t(overCapKey, { uah: formatUah(cap ?? '0', locale) }) : undefined}
+            hint={fieldHint}
             className="mt-2"
           >
             {(a11y) => (
