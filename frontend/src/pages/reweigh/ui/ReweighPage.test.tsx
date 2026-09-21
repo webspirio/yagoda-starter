@@ -22,6 +22,7 @@ const {
   setDateMock,
   setPointMock,
   initialPointIdRef,
+  toastErrorMock,
 } = vi.hoisted(() => ({
   workingPointMock: vi.fn(),
   pointsMock: vi.fn(),
@@ -41,6 +42,19 @@ const {
   // `useState` initializer below — changing it mid-test does nothing, same
   // as the real hook.
   initialPointIdRef: { current: 'p1' as string | null },
+  toastErrorMock: vi.fn(),
+}));
+
+// The post's failure toast is the ONLY place the refusal's cause reaches the
+// owner — sonner renders into a portal no `<Toaster />` in this file mounts,
+// so the sentence is unobservable unless the module is spied on.
+vi.mock('@/shared/ui/toast', () => ({
+  toast: {
+    error: (message: unknown, options?: { description?: string }) =>
+      toastErrorMock(message, options),
+    success: vi.fn(),
+    info: vi.fn(),
+  },
 }));
 
 // A REAL `useState`, not a static return: test 5 needs the picked point to
@@ -198,7 +212,7 @@ beforeEach(() => {
     isPending: false,
   });
   staffMock.mockReturnValue({ data: new Map(), isPending: false, isError: false });
-  dayReweighsMock.mockReturnValue({ lines: [], isPending: false });
+  dayReweighsMock.mockReturnValue({ lines: [], isPending: false, isError: false });
 });
 
 afterEach(() => {
@@ -211,6 +225,55 @@ describe('ReweighPage', () => {
     render(<ReweighPage />);
     expect(screen.getByText(/never opened|не відкривали/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /another position|ще позиція/i })).toBeDisabled();
+  });
+
+  /**
+   * THE READ-FAILURE SPLIT. `shift.data` and `accepted_anything` are equally
+   * undefined whether the server said "no shift" or never answered at all —
+   * so before this branch existed, a 500 was reported to the owner as a
+   * business fact about their own day: «зміну не відкривали», or «нічого не
+   * приймали. Перевірте пункт і дату» — the screen telling them to check a
+   * point and a date that were never the problem. `pages/day`, `pages/crates`
+   * and `useNetworkToday` all already draw this line; the reweigh screen
+   * dropped it in the port.
+   */
+  it('reports a failed shift read as a failure, not as a shift nobody opened', () => {
+    shiftMock.mockReturnValue({ data: undefined, isPending: false, isError: true });
+    render(<ReweighPage />);
+    expect(screen.getByRole('alert')).toBeInTheDocument();
+    expect(screen.queryByText(/never opened|не відкривали/i)).not.toBeInTheDocument();
+  });
+
+  it('reports a failed reconciliation read as a failure, not as a day nobody bought on', () => {
+    reweighMock.mockReturnValue({ data: undefined, isPending: false, isError: true });
+    render(<ReweighPage />);
+    expect(screen.getByRole('alert')).toBeInTheDocument();
+    expect(screen.queryByText(/nothing was accepted|нічого не приймали/i)).not.toBeInTheDocument();
+  });
+
+  /**
+   * The same conflation one step earlier: on first paint the shift read is
+   * still in flight, and «зміну не відкривали» is an answer the server has
+   * not given yet.
+   */
+  it('waits for the shift read rather than answering §6.1 from an empty cache', () => {
+    shiftMock.mockReturnValue({ data: undefined, isPending: true, isError: false });
+    render(<ReweighPage />);
+    expect(screen.queryByText(/never opened|не відкривали/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  /**
+   * A DISABLED query reports `isPending: true` forever in TanStack — the
+   * reconciliation read is `enabled: shiftId !== undefined`. Gating the
+   * screen on it bare would park the genuine "no shift" case on a spinner
+   * that never resolves, hiding §6.1's copy behind a permanent load.
+   */
+  it('still answers §6.1 when there is no shift, though the disabled read never settles', () => {
+    shiftMock.mockReturnValue({ data: null, isPending: false, isError: false });
+    reweighMock.mockReturnValue({ data: undefined, isPending: true, isError: false });
+    render(<ReweighPage />);
+    expect(screen.getByText(/never opened|не відкривали/i)).toBeInTheDocument();
   });
 
   it('posts each draft as its own line, in the order they were entered', async () => {
@@ -267,6 +330,28 @@ describe('ReweighPage', () => {
     // plus the "our total" row DraftLines always appends.
     const draftList = screen.getByRole('list');
     expect(within(draftList).getAllByRole('listitem')).toHaveLength(2 + 1);
+  });
+
+  /**
+   * §6.4 promises the toast carries the backend's OWN code. Before the five
+   * reweigh codes reached `CODE`, every refusal fell through to the post
+   * path's then-fallback `reweigh.day.errors.failed` — «Позицію не
+   * сторновано», *the line was not voided*: a failed WRITE described to the
+   * owner as a failed STORNO, with no cause named. This matters most in the
+   * §3.1 case the screen accepts the cost of — a refusal partway through a
+   * batch — where the owner has to know WHICH rule refused before deciding
+   * what to do with the lines still on screen.
+   */
+  it('names the rule that refused the post, and never calls it a failed storno', async () => {
+    addMock.mockRejectedValueOnce(new ApiError(400, 'no', undefined, 'GRADE_NOT_ACCEPTED'));
+    render(<ReweighPage />);
+    await addDraft({ gross: '100', grade: 'g1' });
+    await userEvent.click(screen.getByRole('button', { name: /post|провести/i }));
+
+    await waitFor(() => expect(toastErrorMock).toHaveBeenCalled());
+    const description = toastErrorMock.mock.calls[0][1]?.description as string;
+    expect(description).toMatch(/not accepted|не приймали/i);
+    expect(description).not.toMatch(/сторновано|was not voided/i);
   });
 
   it('clears the drafts when the point changes — they belonged to another day', async () => {
@@ -332,4 +417,3 @@ describe('ReweighPage', () => {
     ).toEqual([]);
   });
 });
-

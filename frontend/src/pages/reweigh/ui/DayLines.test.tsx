@@ -61,7 +61,7 @@ beforeEach(() => {
 
 describe('DayLines', () => {
   it('lists a line with its point, time and net weight', () => {
-    render(<DayLines lines={[line()]} isPending={false} date="2026-09-21" />);
+    render(<DayLines lines={[line()]} isPending={false} isError={false} date="2026-09-21" />);
     const row = screen.getByRole('row', { name: /Шипинки/ });
     expect(within(row).getByText('108.50 kg')).toBeInTheDocument();
   });
@@ -73,14 +73,14 @@ describe('DayLines', () => {
    * tell which berry was on the scale.
    */
   it('renders product and grade together', () => {
-    render(<DayLines lines={[line()]} isPending={false} date="2026-09-21" />);
+    render(<DayLines lines={[line()]} isPending={false} isError={false} date="2026-09-21" />);
     const row = screen.getByRole('row', { name: /Шипинки/ });
     expect(within(row).getByText('Малина — Малина 1')).toBeInTheDocument();
   });
 
   it('renders the grade alone when the product relation is missing — no dangling separator', () => {
     render(
-      <DayLines lines={[line({ product_name: undefined })]} isPending={false} date="2026-09-21" />,
+      <DayLines lines={[line({ product_name: undefined })]} isPending={false} isError={false} date="2026-09-21" />,
     );
     const row = screen.getByRole('row', { name: /Шипинки/ });
     expect(within(row).getByText('Малина 1')).toBeInTheDocument();
@@ -89,7 +89,7 @@ describe('DayLines', () => {
 
   it('renders the product alone when the grade relation is missing — no dangling separator', () => {
     render(
-      <DayLines lines={[line({ product_grade_name: undefined })]} isPending={false} date="2026-09-21" />,
+      <DayLines lines={[line({ product_grade_name: undefined })]} isPending={false} isError={false} date="2026-09-21" />,
     );
     const row = screen.getByRole('row', { name: /Шипинки/ });
     expect(within(row).getByText('Малина')).toBeInTheDocument();
@@ -100,7 +100,7 @@ describe('DayLines', () => {
     render(
       <DayLines
         lines={[line({ product_name: undefined, product_grade_name: undefined })]}
-        isPending={false}
+        isPending={false} isError={false}
         date="2026-09-21"
       />,
     );
@@ -122,7 +122,7 @@ describe('DayLines', () => {
       pointId: 'p2',
       pointName: 'Гайове',
     };
-    render(<DayLines lines={[strawberry, currant]} isPending={false} date="2026-09-21" />);
+    render(<DayLines lines={[strawberry, currant]} isPending={false} isError={false} date="2026-09-21" />);
 
     const row1 = screen.getByRole('row', { name: /Шипинки/ });
     const row2 = screen.getByRole('row', { name: /Гайове/ });
@@ -135,7 +135,7 @@ describe('DayLines', () => {
   });
 
   it('asks for a reason and keeps the button inactive until one is typed', async () => {
-    render(<DayLines lines={[line()]} isPending={false} date="2026-09-21" />);
+    render(<DayLines lines={[line()]} isPending={false} isError={false} date="2026-09-21" />);
     await userEvent.click(screen.getByRole('button', { name: /void|сторнувати/i }));
 
     const confirm = lastButton(/void|сторнувати/i);
@@ -146,7 +146,7 @@ describe('DayLines', () => {
 
   it('voids by LINE id with the typed reason', async () => {
     voidMock.mockResolvedValue({});
-    render(<DayLines lines={[line()]} isPending={false} date="2026-09-21" />);
+    render(<DayLines lines={[line()]} isPending={false} isError={false} date="2026-09-21" />);
     await userEvent.click(screen.getByRole('button', { name: /void|сторнувати/i }));
     await userEvent.type(screen.getByLabelText(/reason|причина/i), 'двічі ввели ту саму машину');
     await userEvent.click(lastButton(/void|сторнувати/i));
@@ -159,7 +159,7 @@ describe('DayLines', () => {
     render(
       <DayLines
         lines={[line({ voided_at: '2026-09-21T12:00:00.000Z', voided_by_user_id: 'u9', void_reason: 'двічі ввели' })]}
-        isPending={false}
+        isPending={false} isError={false}
         date="2026-09-21"
       />,
     );
@@ -171,7 +171,7 @@ describe('DayLines', () => {
 
   it('offers no storno on an already-voided line', () => {
     render(
-      <DayLines lines={[line({ voided_at: '2026-09-21T12:00:00.000Z', voided_by_user_id: 'u9', void_reason: 'x' })]} isPending={false} date="2026-09-21" />,
+      <DayLines lines={[line({ voided_at: '2026-09-21T12:00:00.000Z', voided_by_user_id: 'u9', void_reason: 'x' })]} isPending={false} isError={false} date="2026-09-21" />,
     );
     const row = screen.getByRole('row', { name: /Шипинки/ });
     expect(within(row).queryByRole('button', { name: /void|сторнувати/i })).not.toBeInTheDocument();
@@ -192,7 +192,7 @@ describe('DayLines', () => {
       pointId: 'p2',
       pointName: 'Гайове',
     };
-    render(<DayLines lines={[shypynky, haiove]} isPending={false} date="2026-09-21" />);
+    render(<DayLines lines={[shypynky, haiove]} isPending={false} isError={false} date="2026-09-21" />);
 
     const buttons = screen.getAllByRole('button', { name: /void/i });
     expect(buttons).toHaveLength(2);
@@ -203,13 +203,26 @@ describe('DayLines', () => {
   });
 
   it('says nothing happened that day rather than showing an empty frame', () => {
-    render(<DayLines lines={[]} isPending={false} date="2026-09-21" />);
+    render(<DayLines lines={[]} isPending={false} isError={false} date="2026-09-21" />);
     expect(screen.getByText(/no reweighing|переважувань ще немає/i)).toBeInTheDocument();
+  });
+
+  /**
+   * A fan-out that lost a point renders SHORT, not empty — `useDayReweighs`
+   * drops a failed point's lines and carries on. Captioned «по всіх пунктах»,
+   * a short table is a weighing that reads as a weighing nobody recorded, and
+   * this is the only surface a storno reaches from. So a failed read must say
+   * so rather than borrow the empty state's sentence.
+   */
+  it('reports a failed read instead of an empty day', () => {
+    render(<DayLines lines={[]} isPending={false} isError date="2026-09-21" />);
+    expect(screen.getByRole('alert')).toBeInTheDocument();
+    expect(screen.queryByText(/ще немає|no reweighs/i)).not.toBeInTheDocument();
   });
 
   it("surfaces the server's own refusal", async () => {
     voidMock.mockRejectedValue(new ApiError(409, 'Already voided', undefined, 'ALREADY_VOIDED'));
-    render(<DayLines lines={[line()]} isPending={false} date="2026-09-21" />);
+    render(<DayLines lines={[line()]} isPending={false} isError={false} date="2026-09-21" />);
     await userEvent.click(screen.getByRole('button', { name: /void|сторнувати/i }));
     await userEvent.type(screen.getByLabelText(/reason|причина/i), 'x');
     await userEvent.click(lastButton(/void|сторнувати/i));

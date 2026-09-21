@@ -1184,6 +1184,14 @@
     "noShift": "The shift for {{date}} at {{point}} was never opened — there is nothing to reweigh.",
     "posted": "Reweighing posted · {{kg}}",
     "postFailed": "The position “{{grade}}” was not posted",
+    "errors": {
+      "postFailed": "The position was not posted",
+      "nothingAccepted": "Nothing was accepted at this point that day — there is nothing to reweigh",
+      "gradeNotAccepted": "That grade was not accepted on this shift. Reload the page — the grade list is stale",
+      "netNotPositive": "The pallet and tare consume the whole gross weight — no net weight is left",
+      "tareDuplicated": "One tare type is listed twice on a single position — record it once with the total count",
+      "tareUnknown": "That tare type is unknown or deactivated"
+    },
     "draftsCleared": "Positions cleared — they belonged to a different day or point"
   }
 }

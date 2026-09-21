@@ -34,10 +34,12 @@ const COLUMN_COUNT = 6;
 export function DayLines({
   lines,
   isPending,
+  isError,
   date,
 }: {
   lines: DayLine[];
   isPending: boolean;
+  isError: boolean;
   date: string;
 }) {
   const { t, i18n } = useTranslation();
@@ -100,6 +102,14 @@ export function DayLines({
                 <div className="flex justify-center py-6">
                   <Spinner />
                 </div>
+              </TableCell>
+            </TableRow>
+          ) : isError ? (
+            <TableRow>
+              <TableCell colSpan={COLUMN_COUNT}>
+                <p role="alert" className="py-6 text-center text-destructive">
+                  {t('common.somethingWentWrong')}
+                </p>
               </TableCell>
             </TableRow>
           ) : lines.length ? (

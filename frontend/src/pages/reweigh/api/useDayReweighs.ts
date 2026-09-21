@@ -14,6 +14,12 @@ export interface DayLine {
 export interface DayReweighsResult {
   lines: DayLine[];
   isPending: boolean;
+  /** TRUE if ANY point's shift or reconciliation read failed. A failed read
+   *  drops that point's lines out of `lines` silently, so without this flag
+   *  the table renders short while still captioned «по всіх пунктах» — a
+   *  missing weighing that reads as a weighing nobody recorded. Same
+   *  aggregation `useNetworkToday` does over its own fan-out. */
+  isError: boolean;
 }
 
 interface PointWithShift {
@@ -46,7 +52,11 @@ interface PointWithShift {
  * no `useMemo`, no `eslint-disable`, anywhere in this file.
  */
 export function useDayReweighs(points: PointOption[], date: string): DayReweighsResult {
-  const { withShift, isPending: shiftsPending } = useQueries({
+  const {
+    withShift,
+    isPending: shiftsPending,
+    isError: shiftsError,
+  } = useQueries({
     queries: points.map((point) => shiftOnDateQueryOptions(point.id, date)),
     combine: (results) => ({
       // Points WITH a resolved shift, paired with that shift's id. A point
@@ -58,6 +68,7 @@ export function useDayReweighs(points: PointOption[], date: string): DayReweighs
         return shiftId !== undefined ? [{ point, shiftId }] : [];
       }),
       isPending: results.some((r) => r.isPending),
+      isError: results.some((r) => r.isError),
     }),
   });
 
@@ -77,6 +88,7 @@ export function useDayReweighs(points: PointOption[], date: string): DayReweighs
       return {
         lines,
         isPending: shiftsPending || results.some((r) => r.isPending),
+        isError: shiftsError || results.some((r) => r.isError),
       };
     },
   });

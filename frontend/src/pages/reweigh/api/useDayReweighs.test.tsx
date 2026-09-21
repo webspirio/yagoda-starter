@@ -118,6 +118,55 @@ describe('useDayReweighs', () => {
     expect(result.current.lines.map((l) => l.pointId)).toEqual(['p2', 'p1']);
   });
 
+  /**
+   * THE SHORT TABLE. A point whose shift or reconciliation read fails simply
+   * drops out of `withShift`/`lines` — there is no other way for this shape
+   * to carry on — so `lines` stays a VALID list that is quietly missing a
+   * point's weighings, under a caption that says «по всіх пунктах». Only
+   * `isError` tells the table apart from a genuinely quiet day, which is why
+   * `useNetworkToday` aggregates the same flag over its own fan-out.
+   */
+  it('reports a failed reconciliation read rather than silently dropping that point', async () => {
+    mockShift('p1', '2026-09-21', shift('s1', 'p1'));
+    mockShift('p2', '2026-09-21', shift('s2', 'p2'));
+    mockReweigh('s1', [item({ id: 'i1', created_at: '2026-09-21T10:00:00Z' })]);
+    mock.onGet('/shifts/s2/reweigh', { params: { include_voided: true } }).reply(500);
+
+    const { result } = renderHook(() => useDayReweighs(POINTS, '2026-09-21'), { wrapper });
+
+    await waitFor(() => expect(result.current.isPending).toBe(false));
+    expect(result.current.isError).toBe(true);
+    // p1's line still arrives — the flag reports the gap, it does not blank
+    // the table that the surviving point's storno is reached from.
+    expect(result.current.lines).toHaveLength(1);
+  });
+
+  it('reports a failed SHIFT read too — that point never even reaches the second wave', async () => {
+    mockShift('p1', '2026-09-21', shift('s1', 'p1'));
+    mock
+      .onGet('/shifts', {
+        params: { collection_point_id: 'p2', from: '2026-09-21', to: '2026-09-21', limit: 1 },
+      })
+      .reply(500);
+    mockReweigh('s1', []);
+
+    const { result } = renderHook(() => useDayReweighs(POINTS, '2026-09-21'), { wrapper });
+
+    await waitFor(() => expect(result.current.isPending).toBe(false));
+    expect(result.current.isError).toBe(true);
+  });
+
+  it('stays clear of the error flag on a day every point answered', async () => {
+    mockShift('p1', '2026-09-21', shift('s1', 'p1'));
+    mockShift('p2', '2026-09-21', null);
+    mockReweigh('s1', []);
+
+    const { result } = renderHook(() => useDayReweighs(POINTS, '2026-09-21'), { wrapper });
+
+    await waitFor(() => expect(result.current.isPending).toBe(false));
+    expect(result.current.isError).toBe(false);
+  });
+
   it('requests the voided lines too — a storno must stay visible', async () => {
     mockShift('p1', '2026-09-21', shift('s1', 'p1'));
     mockShift('p2', '2026-09-21', null);

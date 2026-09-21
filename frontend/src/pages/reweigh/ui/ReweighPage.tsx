@@ -4,6 +4,7 @@ import { PageHeader } from '@/shared/ui/page-header';
 import { SelectField } from '@/shared/ui/select-field';
 import { DateStepper } from '@/shared/ui/date-stepper';
 import { Button } from '@/shared/ui/button';
+import { Spinner } from '@/shared/ui/spinner';
 import { toast } from '@/shared/ui/toast';
 import { useUrlParam } from '@/shared/lib/url-state';
 import { todayIso, addDaysIso, isRealIsoDate, formatShortDate } from '@/shared/lib/date';
@@ -87,7 +88,20 @@ export function ReweighPage() {
   const shiftId = shift.data?.id;
   const reweigh = useReweighQuery(shiftId);
   const addLine = useAddReweighItemMutation();
-  const dayReweighs = useDayReweighs(points ?? [], date);
+  const dayReweighs = useDayReweighs(receptionPoints, date);
+
+  // THREE states, not two. A failed read leaves `shift.data` and
+  // `accepted_anything` undefined, which is indistinguishable from the
+  // genuine §6.1 answers («зміну не відкривали», «нічого не приймали») — so
+  // without this split a 500 is reported to the owner as a business fact
+  // about their own shift. `pointId !== null` / `shiftId !== undefined`
+  // guard the DISABLED queries: TanStack reports `isPending` on a query it
+  // never ran, and gating on it bare would park the screen on a spinner
+  // whenever there is legitimately no point or no shift. Same shape as
+  // `pages/day`'s `isLoadingShift`.
+  const readsPending =
+    (pointId !== null && shift.isPending) || (shiftId !== undefined && reweigh.isPending);
+  const readsFailed = shift.isError || reweigh.isError;
 
   const hasShift = shift.data != null;
   const shiftClosed = shift.data?.status === 'closed';
@@ -158,7 +172,12 @@ export function ReweighPage() {
       } catch (error) {
         setDrafts(remaining);
         toast.error(t('reweigh.postFailed', { grade: draft.product_grade_name }), {
-          description: t(apiErrorToBanner(error, 'reweigh.day.errors.failed')),
+          // The POST path's own fallback, NOT the day table's
+          // `reweigh.day.errors.failed` («Позицію не сторновано») — that
+          // sentence describes a failed STORNO and would report the wrong
+          // operation entirely. §6.4 wants the backend's own code named,
+          // which `CODE` now carries for all five this endpoint throws.
+          description: t(apiErrorToBanner(error, 'reweigh.errors.postFailed')),
         });
         return;
       }
@@ -209,50 +228,65 @@ export function ReweighPage() {
         actions={actions}
       />
 
-      <div className="grid gap-5 xl:grid-cols-[minmax(0,1.15fr)_minmax(340px,1fr)]">
-        <div className="flex flex-col gap-5">
-          <WeighingForm
-            grades={grades}
-            hasShift={hasShift}
-            acceptedAnything={acceptedAnything}
-            pointName={pointName}
-            date={date}
-            onAdd={addDraft}
-          />
-          <DraftLines drafts={drafts} onRemove={removeDraft} />
+      {readsFailed ? (
+        <p role="alert" className="py-6 text-center text-destructive">
+          {t('common.somethingWentWrong')}
+        </p>
+      ) : readsPending ? (
+        <div className="flex justify-center py-12">
+          <Spinner />
         </div>
+      ) : (
+        <div className="grid gap-5 xl:grid-cols-[minmax(0,1.15fr)_minmax(340px,1fr)]">
+          <div className="flex flex-col gap-5">
+            <WeighingForm
+              grades={grades}
+              hasShift={hasShift}
+              acceptedAnything={acceptedAnything}
+              pointName={pointName}
+              date={date}
+              onAdd={addDraft}
+            />
+            <DraftLines drafts={drafts} onRemove={removeDraft} />
+          </div>
 
-        <div className="flex flex-col gap-5">
-          <Reconciliation
-            products={products}
-            drafts={drafts}
-            shiftClosed={shiftClosed}
-            acceptedAnything={acceptedAnything}
-            pointName={pointName}
-          />
+          <div className="flex flex-col gap-5">
+            <Reconciliation
+              products={products}
+              drafts={drafts}
+              shiftClosed={shiftClosed}
+              acceptedAnything={acceptedAnything}
+              pointName={pointName}
+            />
 
-          <div className="rounded-xl bg-card p-4 ring-1 ring-foreground/10">
-            <Button
-              size="lg"
-              className="w-full"
-              onClick={post}
-              disabled={!shiftId || drafts.length === 0 || addLine.isPending}
-            >
-              {t('reweigh.post', { kg: formatKg(draftsTotal, locale) })}
-            </Button>
-            <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
-              {t('reweigh.postNote')}
-            </p>
-            {!hasShift ? (
-              <p className="mt-2 text-xs leading-relaxed text-[var(--amber)]">
-                {t('reweigh.noShift', { date: formatShortDate(date, locale), point: pointName })}
+            <div className="rounded-xl bg-card p-4 ring-1 ring-foreground/10">
+              <Button
+                size="lg"
+                className="w-full"
+                onClick={post}
+                disabled={!shiftId || drafts.length === 0 || addLine.isPending}
+              >
+                {t('reweigh.post', { kg: formatKg(draftsTotal, locale) })}
+              </Button>
+              <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
+                {t('reweigh.postNote')}
               </p>
-            ) : null}
+              {!hasShift ? (
+                <p className="mt-2 text-xs leading-relaxed text-[var(--amber)]">
+                  {t('reweigh.noShift', { date: formatShortDate(date, locale), point: pointName })}
+                </p>
+              ) : null}
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
-      <DayLines lines={dayReweighs.lines} isPending={dayReweighs.isPending} date={date} />
+      <DayLines
+        lines={dayReweighs.lines}
+        isPending={dayReweighs.isPending}
+        isError={dayReweighs.isError}
+        date={date}
+      />
     </div>
   );
 }
