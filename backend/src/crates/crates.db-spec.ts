@@ -16,6 +16,8 @@ import { UsersService } from '../users/users.service';
 import { CredentialsService } from '../users/credentials.service';
 import { LOCAL_PROVIDER } from '../users/user-identity.entity';
 import { UserRole } from '../users/user-role.enum';
+import { CrateDispatchService } from './crate-dispatch.service';
+import type { AuthenticatedUser } from '../auth/jwt.strategy';
 
 /**
  * UNVERIFIED AT WRITE TIME. This spec has never been run — no Postgres was
@@ -46,8 +48,21 @@ describe('crates lifecycle (HTTP)', () => {
   let ds: DataSource;
   let ownerToken: string;
   let operatorToken: string;
+  // An operator at a DIFFERENT point — the falsifier for the dispatch route's
+  // point scoping. Without a second point, a 404 could never be told apart
+  // from a route that simply refuses everyone.
+  let foreignOperatorToken: string;
   let pointId: string;
   let supplierId: string;
+  // §6.8's dispatch line (#110) — this file already owns a point, an open
+  // shift and the network's one crate tare type, which is everything that
+  // query needs besides a receipt to count.
+  let dispatch: CrateDispatchService;
+  let ownerActor: AuthenticatedUser;
+  let shiftId: string;
+  let crateTareId: string;
+  let boxTareId: string;
+  let gradeId: string;
 
   const pointCode = (): string => randomUUID().replace(/-/g, '').slice(0, 8).toUpperCase();
 
@@ -80,6 +95,13 @@ describe('crates lifecycle (HTTP)', () => {
       async (created, manager) => credentials.set(created.id, 'hunter2!!', manager),
     );
     ownerToken = tokenFor(owner.id);
+    ownerActor = {
+      sub: owner.id,
+      username: 'crates-owner',
+      role: UserRole.NetworkOwner,
+      collection_point_id: null,
+    };
+    dispatch = app.get(CrateDispatchService);
 
     const pointRes = await request(app.getHttpServer())
       .post('/collection-points')
@@ -101,6 +123,24 @@ describe('crates lifecycle (HTTP)', () => {
     );
     operatorToken = tokenFor(operator.id);
 
+    const foreignPointRes = await request(app.getHttpServer())
+      .post('/collection-points')
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .send({ name: `crates-foreign-${randomUUID()}`, code: pointCode() })
+      .expect(201);
+    const { user: foreignOperator } = await users.createWithIdentity(
+      {
+        provider: LOCAL_PROVIDER,
+        providerUserId: `crates-foreign-op-${randomUUID()}`,
+        first_name: 'Леся',
+        last_name: 'Чужа',
+        role: UserRole.PointOperator,
+        collection_point_id: foreignPointRes.body.id as string,
+      },
+      async (created, manager) => credentials.set(created.id, 'hunter2!!', manager),
+    );
+    foreignOperatorToken = tokenFor(foreignOperator.id);
+
     // Exactly one crate type — `UQ_tare_types_single_crate` (bare, not
     // deferrable) tolerates only one flagged row at a time. This is safe even
     // though `app_test` is never truncated and may already carry a flagged
@@ -116,7 +156,31 @@ describe('crates lifecycle (HTTP)', () => {
         deposit_price: '120.00',
         is_crate: true,
       })
+      .expect(201)
+      .then((res) => {
+        crateTareId = res.body.id as string;
+      });
+
+    // A SECOND tare type, deliberately NOT a crate — «Чешка» on the same
+    // receipt is what makes `tt.is_crate` in the dispatch query falsifiable.
+    const boxRes = await request(app.getHttpServer())
+      .post('/tare-types')
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .send({ name: `Чешка-${randomUUID()}`, weight_kg: '0.40', deposit_price: '0.00' })
       .expect(201);
+    boxTareId = boxRes.body.id as string;
+
+    const productRes = await request(app.getHttpServer())
+      .post('/products')
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .send({ name: `Малина-${randomUUID()}` })
+      .expect(201);
+    const gradeRes = await request(app.getHttpServer())
+      .post('/product-grades')
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .send({ product_id: productRes.body.id as string, name: `Перший-${randomUUID()}` })
+      .expect(201);
+    gradeId = gradeRes.body.id as string;
 
     const supplierRes = await request(app.getHttpServer())
       .post('/suppliers')
@@ -125,11 +189,12 @@ describe('crates lifecycle (HTTP)', () => {
       .expect(201);
     supplierId = supplierRes.body.id as string;
 
-    await request(app.getHttpServer())
+    const shiftRes = await request(app.getHttpServer())
       .post('/shifts')
       .set('Authorization', `Bearer ${operatorToken}`)
       .send({ counted_amount: '0.00' })
       .expect(201);
+    shiftId = shiftRes.body.id as string;
   }, 30_000);
 
   afterAll(async () => {
@@ -317,5 +382,87 @@ describe('crates lifecycle (HTTP)', () => {
       (r) => r.collection_point_id === pointId,
     );
     expect(row?.crate_deposits).toBe('0.00');
+  });
+
+  it('counts only crate tare on live intakes', async () => {
+    // A receipt with 12 crates and 8 Чешка: only the crates count. Written
+    // straight to SQL rather than over `POST /intakes` — a real receipt would
+    // need a grade price and a supplier debt, none of which this query reads.
+    const [{ id: intakeId }] = (await ds.query(
+      `INSERT INTO intakes (code, shift_id, supplier_id, amount, received_by_user_id)
+       VALUES ($1, $2, $3, '4280.00', $4) RETURNING id`,
+      [`DISP-${randomUUID().slice(0, 8)}`, shiftId, supplierId, ownerActor.sub],
+    )) as Array<{ id: string }>;
+    const [{ id: itemId }] = (await ds.query(
+      `INSERT INTO intake_items
+         (intake_id, item_order, product_grade_id, gross_kg, tare_weight_kg, net_kg, price, amount)
+       VALUES ($1, 1, $2, '100.00', '14.40', '85.60', '50.00', '4280.00') RETURNING id`,
+      [intakeId, gradeId],
+    )) as Array<{ id: string }>;
+    await ds.query(
+      `INSERT INTO intake_item_tare_types (item_id, tare_type_id, units)
+       VALUES ($1, $2, 12), ($1, $3, 8)`,
+      [itemId, crateTareId, boxTareId],
+    );
+
+    await expect(dispatch.forShift(ownerActor, shiftId)).resolves.toMatchObject({ with_berry: 12 });
+
+    // The whole trio, or CHK_intakes_void_trio refuses the row — §9.3 does not
+    // let a document be voided without saying who did it and why.
+    await ds.query(
+      `UPDATE intakes
+          SET voided_at = now(), voided_by_user_id = $2, void_reason = 'перерахунок'
+        WHERE id = $1`,
+      [intakeId, ownerActor.sub],
+    );
+    // A voided receipt's crates never left the point.
+    await expect(dispatch.forShift(ownerActor, shiftId)).resolves.toMatchObject({ with_berry: 0 });
+  });
+
+  // Everything above this point calls `CrateDispatchService.forShift` DIRECTLY
+  // with a hand-built actor, which proves the SQL and nothing about the route.
+  // These four go over HTTP, because that is where `@Auth()`, `ParseUUIDPipe`
+  // and — the one that matters — the point scoping actually live. Without the
+  // 404 case, spec §4.2's «point-scoped through the shift» is an unverified
+  // claim: the service would happily answer for any shift id it is handed.
+  describe('GET /shifts/:id/crates', () => {
+    it('serves the open shift to its own operator, with broken still «не записано»', async () => {
+      const res = await request(app.getHttpServer())
+        .get(`/shifts/${shiftId}/crates`)
+        .set('Authorization', `Bearer ${operatorToken}`)
+        .expect(200);
+
+      // The receipt above was voided, so nothing is with berry any more.
+      expect(res.body.with_berry).toBe(0);
+      // The shift is open: `broken` is NULL and `dispatched` follows it there,
+      // rather than reporting 0 — «не записано» is not «нічого не побилось».
+      expect(res.body.broken).toBeNull();
+      expect(res.body.dispatched).toBeNull();
+    });
+
+    it('serves the owner too — §6.10 is a read both roles get', async () => {
+      await request(app.getHttpServer())
+        .get(`/shifts/${shiftId}/crates`)
+        .set('Authorization', `Bearer ${ownerToken}`)
+        .expect(200);
+    });
+
+    it('404s an operator at another point', async () => {
+      // 404 and NOT 403: `loadVisible` refuses to confirm that a shift the
+      // caller cannot see exists at all. This is the assertion that makes the
+      // route's point scoping falsifiable — it fails the moment someone
+      // "simplifies" `forShift` into reading the shift row directly.
+      await request(app.getHttpServer())
+        .get(`/shifts/${shiftId}/crates`)
+        .set('Authorization', `Bearer ${foreignOperatorToken}`)
+        .expect(404);
+    });
+
+    it('400s a shift id that is not a uuid', async () => {
+      await request(app.getHttpServer())
+        .get('/shifts/not-a-uuid/crates')
+        .set('Authorization', `Bearer ${operatorToken}`)
+        .expect(400);
+    });
   });
 });

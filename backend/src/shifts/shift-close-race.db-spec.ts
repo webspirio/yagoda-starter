@@ -99,8 +99,8 @@ describe('ShiftsService close/reopen under concurrency (Postgres)', () => {
     // Both promises are created before either is awaited, so the two
     // `close` calls are genuinely in flight together.
     const results = await Promise.allSettled([
-      service.close(operator, shift.id, { counted_amount: '1000.00' }),
-      service.close(operator, shift.id, { counted_amount: '1000.00' }),
+      service.close(operator, shift.id, { counted_amount: '1000.00', broken_crates: 0 }),
+      service.close(operator, shift.id, { counted_amount: '1000.00', broken_crates: 0 }),
     ]);
 
     const fulfilled = results.filter((r) => r.status === 'fulfilled');
@@ -139,7 +139,7 @@ describe('ShiftsService close/reopen under concurrency (Postgres)', () => {
     const secondOperator: AuthenticatedUser = { ...operator, collection_point_id: secondPoint };
 
     const shift = await service.open(secondOperator, { counted_amount: '500.00' });
-    await service.close(secondOperator, shift.id, { counted_amount: '500.00' });
+    await service.close(secondOperator, shift.id, { counted_amount: '500.00', broken_crates: 0 });
 
     const results = await Promise.allSettled([
       service.reopen(owner, shift.id, { reason: 'Помилково закрито' }),

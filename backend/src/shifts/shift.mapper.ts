@@ -17,6 +17,9 @@ export interface ShiftResponse {
   /** §7.7's surviving half — see `SetExplanationDto`. `null` until the owner
    *  writes one; writing it never moves a number. */
   explanation: string | null;
+  /** §6.8's «бій» (#110). `null` means «не записано» — an open shift, or one
+   *  closed before the column existed. `0` means nothing broke. */
+  broken_crates: number | null;
 }
 
 export function toShiftResponse(shift: Shift): ShiftResponse {
@@ -30,5 +33,6 @@ export function toShiftResponse(shift: Shift): ShiftResponse {
     closed_at: shift.closed_at ? shift.closed_at.toISOString() : null,
     created_at: shift.created_at.toISOString(),
     explanation: shift.explanation,
+    broken_crates: shift.broken_crates,
   };
 }

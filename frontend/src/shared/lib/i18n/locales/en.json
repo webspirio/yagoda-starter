@@ -411,7 +411,11 @@
       "closeTitle": "Count the drawer before closing",
       "closeBody": "How much is left. A discrepancy will not block the close — the owner sees it afterwards. Once closed, no more receipts or payouts can be booked for this day; only the owner can reopen it.",
       "amount": "In the drawer, ₴",
-      "submit": "Record"
+      "submit": "Record",
+      "broken": "Broken crates",
+      "withBerry": "With berry",
+      "brokenSummary": "Broken",
+      "dispatched": "Dispatched"
     },
     "tiles": {
       "receipts": "Receipts",
@@ -448,7 +452,8 @@
       "ownerOnly": "Only the network owner can do this",
       "noPoint": "Your account has no collection point — ask the owner",
       "reasonRequired": "Give a reason",
-      "countFormat": "Enter an amount — at most two decimals"
+      "countFormat": "Enter an amount — at most two decimals",
+      "brokenFormat": "Enter the breakage — a whole number, 0 if nothing broke"
     }
   },
   "profile": {

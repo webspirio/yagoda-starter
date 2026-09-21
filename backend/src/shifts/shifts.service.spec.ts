@@ -233,6 +233,53 @@ describe('ShiftsService', () => {
       );
     });
 
+    it('stores broken_crates on the closed shift', async () => {
+      // §6.8's «бій» — the operator's count of what broke, written inside the
+      // same transaction as the close.
+      repo.findOne.mockResolvedValue(shift());
+      cash.expectedForClosing.mockResolvedValue('100.00');
+
+      const saved = await service.close(operator, SHIFT_ID, {
+        counted_amount: '100.00',
+        broken_crates: 3,
+      } as never);
+
+      expect(saved.broken_crates).toBe(3);
+    });
+
+    it('stores a zero — «нуль це нормальне значення»', async () => {
+      // Zero is a positive claim that nothing broke. It must survive as 0, not
+      // become null, and not be dropped as falsy.
+      repo.findOne.mockResolvedValue(shift());
+      cash.expectedForClosing.mockResolvedValue('100.00');
+
+      const saved = await service.close(operator, SHIFT_ID, {
+        counted_amount: '100.00',
+        broken_crates: 0,
+      } as never);
+
+      expect(saved.broken_crates).toBe(0);
+    });
+
+    it('records the breakage in the shift.closed audit entry', async () => {
+      // The overwritten value survives ONLY here — see the entity's doc comment.
+      repo.findOne.mockResolvedValue(shift());
+      cash.expectedForClosing.mockResolvedValue('100.00');
+
+      await service.close(operator, SHIFT_ID, {
+        counted_amount: '100.00',
+        broken_crates: 3,
+      } as never);
+
+      expect(audit.record).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: 'shift.closed',
+          after: expect.objectContaining({ broken_crates: 3 }),
+        }),
+        expect.anything(),
+      );
+    });
+
     it('closes a stale shift from a previous day without complaint', async () => {
       // The forgotten-close path: Friday's shift closed on Saturday morning.
       // `close` must not read business_date at all — that is what makes this
@@ -325,6 +372,26 @@ describe('ShiftsService', () => {
         expect.objectContaining({ action: 'shift.reopened', note: 'закрив помилково' }),
         expect.anything(),
       );
+    });
+
+    it('clears broken_crates when the owner reopens', async () => {
+      // CHK_shifts_broken_crates_closed forbids a count on an open shift, and
+      // the re-close will ask the operator again — back to «не записано».
+      repo.findOne
+        .mockResolvedValueOnce(
+          shift({
+            closed_at: new Date(),
+            closed_by_user_id: 'u-op',
+            status: ShiftStatus.Closed,
+            broken_crates: 3,
+          }),
+        )
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(shift({ id: SHIFT_ID }));
+
+      const reopened = await service.reopen(owner, SHIFT_ID, { reason: 'помилка' });
+
+      expect(reopened.broken_crates).toBeNull();
     });
   });
 
