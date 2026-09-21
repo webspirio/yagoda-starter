@@ -1,10 +1,12 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
+import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 
 import { CHECKS, PRECONDITIONS, checkById, inTier, tierCovers } from './registry.mjs'
 import { DEFAULT_TIMEOUT_MS } from './run.mjs'
+import { gitEnv } from './scan-root.mjs'
 
 test('every check id is unique', () => {
   const ids = CHECKS.map((c) => c.id)
@@ -13,8 +15,10 @@ test('every check id is unique', () => {
 
 test('every check has a falsifiable-looking proves and a blindSpot', () => {
   for (const c of CHECKS) {
-    assert.ok(c.proves && c.proves.length > 30, `${c.id}: proves too thin to be falsifiable`)
-    assert.ok(c.blindSpot && c.blindSpot.length > 30, `${c.id}: blindSpot too thin`)
+    // The 40-word FLOOR below subsumes the character floor this used to carry; what stays
+    // here is only that both fields exist at all.
+    assert.ok(typeof c.proves === 'string', `${c.id}: proves is missing`)
+    assert.ok(typeof c.blindSpot === 'string', `${c.id}: blindSpot is missing`)
   }
 })
 
@@ -111,79 +115,119 @@ test('every declared timeoutMs is a positive finite number, and only slow rows d
 })
 
 /**
- * THE GAP THIS CLOSES, named by review on 2026-09-15 and worth stating plainly: every row
- * in this registry ends with some version of "this row does not track or re-check its own
- * prose", and until now nothing anywhere in the layer could make a stale NUMBER in a
- * `proves` string red. That is not hypothetical — the `coverage` row claimed router.tsx was
- * absent from the frontend report, which was false when written and survived a deliberate
- * re-measurement pass under a fresh "confirmed empirically" stamp, because no mechanism
- * existed to contradict it.
+ * THE FOUR CLASS INVARIANTS THAT REPLACE SEVEN PINNED COUNTS.
  *
- * Most claims in this file are prose a machine cannot check. A handful are not: they are
- * counts derivable from the filesystem by the same `git ls-files` net the checks themselves
- * use. Those are pinned here. A tree change that moves one of them now turns THIS test red
- * and forces a re-measurement, instead of quietly aging inside a sentence.
+ * The test this replaces derived seven numbers from `git ls-files` and asserted each still
+ * appeared in some row's prose. That was the right MECHANISM aimed at the wrong TARGET: it
+ * pinned the seven figures that happened to be stale the day it was written, out of roughly
+ * 230 in the file, and it made every ordinary commit that adds a test file a re-measurement
+ * edit to this registry. Two counts that were wrong for far longer — a baseline's finding
+ * total, and a per-kind breakdown a row derived from a stale figure — were outside it by
+ * construction, because they came from a baseline rather than from the filesystem.
  *
- * Scope, stated so nobody reads more into a green run than it earns: this proves the
- * QUOTED number matches today's tree. It proves nothing about the sentence around it.
+ * A class invariant cannot be out of date, because it never names a number.
  */
-const trackedFiles = () =>
-  execFileSync('git', ['ls-files', '-c', '-o', '--exclude-standard'], {
-    cwd: path.resolve(import.meta.dirname, '..', '..'),
-    encoding: 'utf8',
-    maxBuffer: 64 * 1024 * 1024,
-  })
-    .split('\n')
-    .filter(Boolean)
+const WORDS = (/** @type {string} */ s) => s.trim().split(/\s+/).filter(Boolean)
 
-test('every mechanically derivable count quoted in a proves/blindSpot string still matches the tree', () => {
-  const files = trackedFiles()
-  const count = (/** @type {RegExp} */ re) => files.filter((f) => re.test(f)).length
+/** Drop `code spans`: a command, a glob or a regex written as a literal may contain digits. */
+const prose = (/** @type {string} */ s) => s.replace(/`[^`]*`/g, ' ')
 
-  // `.db-spec.ts` ends in `-spec.ts`, not `.spec.ts`, so the two nets are already
-  // disjoint — exactly as backend/jest.config.js's own testRegex relies on. Subtracting
-  // one from the other (the first version of this line did) double-counts the gap and
-  // undercounts the total by the number of db-specs.
-  const jestUnit = count(/^backend\/src\/.*\.spec\.ts$/)
-  const jestDb = count(/^backend\/src\/.*\.db-spec\.ts$/)
-  const vitest = count(/^frontend\/src\/.*\.(test|spec)\.(ts|tsx)$/)
-  const nodeTest = count(/^(scripts|\.claude\/hooks)\/.*\.test\.mjs$/)
-  const playwright = count(/^e2e\/.*\.spec\.ts$/)
-  const shellTest = count(/^scripts\/ci\/.*\.test\.sh$/)
-  const collected = jestUnit + jestDb + vitest + nodeTest + playwright + shellTest
-  const migrations = count(/^backend\/src\/migrations\/\d/)
-  const migrationDbSpecs = count(/^backend\/src\/migrations\/.*\.db-spec\.ts$/)
+/** @type {readonly ['proves', 'blindSpot']} */
+const FIELDS = ['proves', 'blindSpot']
 
-  /** @param {string} id @returns {string} */
-  const textOf = (id) => {
-    const row = checkById(id)
-    assert.ok(row, `${id} must exist in the registry`)
-    return `${row.proves}\n${row.blindSpot}`
+test('every proves and blindSpot answers one question, in 40-80 words', () => {
+  for (const c of CHECKS) {
+    for (const field of FIELDS) {
+      const n = WORDS(c[field]).length
+      assert.ok(n >= 40, `${c.id}.${field}: ${n} words — under the floor; too thin to falsify`)
+      assert.ok(
+        n <= 80,
+        `${c.id}.${field}: ${n} words — over the cap. This string prints in the blind-spot ` +
+          'footer of EVERY green run; at this length nobody reads it, so the mechanism that ' +
+          'exists to state what a green does NOT cover is functionally deleted by its own ' +
+          'length. Answer only "does a green run cover the change I just made?" — history, ' +
+          'dates and measurements belong in the commit message, where they cannot rot into ' +
+          'a green check.',
+      )
+    }
+  }
+})
+
+/**
+ * A digit is allowed only where it is part of an IDENTIFIER, never a measurement: an issue
+ * reference, a rule enumerator, a spec section, a semver, an advisory id, or a bare 0/1
+ * ("exits 0", "collected by exactly one runner"). A file count, a test count, a percentage,
+ * a duration or a size is banned outright.
+ */
+const IDENTIFIER_DIGIT = /^(#\d+|\(\d\)|§[\d.]+|\d+\.\d+\.\d+|GHSA-\S+|0|1)$/
+const MEASUREMENT = /^\d[\d,_]*(\.\d+)?(%|s|ms|x|st|nd|rd|th|k|ki?b|mb)?$/i
+
+test('no proves or blindSpot contains a hand-written measurement', () => {
+  for (const c of CHECKS) {
+    for (const field of FIELDS) {
+      const hits = WORDS(prose(c[field]))
+        .map((t) => t.replace(/^[^#(§0-9A-Za-z]+/, '').replace(/[^0-9A-Za-z%)]+$/, ''))
+        .filter((t) => /\d/.test(t) && !IDENTIFIER_DIGIT.test(t) && MEASUREMENT.test(t))
+      assert.deepEqual(
+        hits,
+        [],
+        `${c.id}.${field}: hand-written measurement(s) ${hits.join(', ')}. Nothing can keep a ` +
+          'number in prose true — no type checks it, no lint sees it, and the check that used ' +
+          'to compare two copies of it was green over a row whose own arithmetic contradicted ' +
+          'itself. Derive it at runtime and print it, or delete the sentence.',
+      )
+    }
+  }
+})
+
+test('no proves or blindSpot carries a dated snapshot', () => {
+  for (const c of CHECKS) {
+    for (const field of FIELDS) {
+      const dates = prose(c[field]).match(/\b\d{4}-\d{2}-\d{2}\b/g) ?? []
+      assert.deepEqual(
+        dates,
+        [],
+        `${c.id}.${field}: dated note ${dates.join(', ')}. A dated re-measurement is a ` +
+          'commit-message fact; in this file it reads as current forever.',
+      )
+    }
+  }
+})
+
+test("every row's cmd is runnable, and no verify-layer script is orphaned", () => {
+  const pkg = JSON.parse(backendFile('package.json'))
+  for (const c of CHECKS) {
+    const script = /^npm (?:run )?([\w:-]+)(?:\s+-w\s+([\w-]+))?$/.exec(c.cmd)
+    if (script) {
+      const [, name, workspace] = script
+      const manifest = workspace ? JSON.parse(backendFile(`${workspace}/package.json`)) : pkg
+      assert.ok(
+        manifest.scripts?.[name],
+        `${c.id}: cmd is \`${c.cmd}\` but ${workspace ?? 'the root'} package.json has no ` +
+          `"${name}" script — this row would report UNRUNNABLE on every run`,
+      )
+      continue
+    }
+    const direct = /^node (\S+)/.exec(c.cmd)
+    assert.ok(direct, `${c.id}: cmd \`${c.cmd}\` is neither an npm script nor a node invocation`)
+    assert.ok(existsSync(path.resolve(import.meta.dirname, '..', '..', direct[1])), `${c.id}: ${direct[1]} does not exist`)
   }
 
-  /** @type {[string, string, string][]} */
-  const pinned = [
-    ['testfiles', `${collected} files`, 'the total across both candidate nets'],
-    [
-      'testfiles',
-      `jest-unit ${jestUnit}, jest-db ${jestDb}, vitest ${vitest}, node-test ${nodeTest}, ` +
-        `playwright ${playwright}, shell-test ${shellTest}`,
-      'the per-collector breakdown',
-    ],
-    ['migrations', `holds ${migrations} numbered migrations`, 'the migration count'],
-    ['migrations', `and ${migrationDbSpecs} *.db-spec.ts files`, "migrations/'s own db-spec count"],
-    ['test:db', `${jestDb} files match *.db-spec.ts`, 'the db-spec file count'],
-    ['test', `all ${jestDb} *.db-spec.ts suites`, 'the db-spec count this row excludes'],
-    ['selfcheck', `across ${nodeTest} *.test.mjs files`, "the layer's own test-file count"],
-  ]
-
-  for (const [id, quoted, what] of pinned) {
-    assert.ok(
-      textOf(id).includes(quoted),
-      `${id}: ${what} is stale — the tree says "${quoted}", which no longer appears in that ` +
-        `row's proves/blindSpot. Re-measure and update the string; do not edit this test to match it.`,
-    )
-  }
+  // THE INVERSE, and the one that catches a deleted row leaving its check behind:
+  // `ratchet:money` was removed from this registry and its script, its 502-line ratchet and
+  // its 366-line baseline stayed — still enforced through `selfcheck`, where no row, no
+  // table and no blind-spot footer could see it.
+  const RUNNER = new Set(['verify', 'verify:full', 'verify:ci', 'verify:prepush'])
+  const orphans = Object.entries(pkg.scripts)
+    .filter(([name, cmd]) => String(cmd).includes('scripts/verify/') && !RUNNER.has(name))
+    .map(([name]) => name)
+    .filter((name) => !CHECKS.some((c) => c.cmd === `npm run ${name}` || c.cmd === `node ${String(pkg.scripts[name]).replace(/^node /, '')}`))
+  assert.deepEqual(
+    orphans,
+    [],
+    `these scripts invoke the verify layer but no registry row runs them: ${orphans.join(', ')}. ` +
+      'Give each a row, or delete the script, its check and its baseline together.',
+  )
 })
 
 test('the runner default still clears every row that inherits it, and that set is pinned', () => {
@@ -202,17 +246,22 @@ test('the runner default still clears every row that inherits it, and that set i
     'test:ci-scripts': 6_700,
     deadcode: 2_100,
     migrations: 968,
-    seam: 885,
     // 'ratchet:money': 808 -- row removed 2026-09-18 at the user's request; see the note
     // in scripts/verify/baselines/money-rounding.json. The 808ms reading stays in git
     // history rather than here, because a budget for a row that no longer runs would fail
     // the deepEqual below on every run.
-    'ratchet:persist': 802,
     secrets: 424,
-    'ratchet:lint-exempt': 216,
+    // LOCAL readings, not CI ones: both rows were added after run 35011857830 and have
+    // never run on a CI runner, so there is no cold CI number to record yet. Measured
+    // with `/usr/bin/time -p npm run <script>`, slowest of ten consecutive runs on the
+    // laptop. For calibration on the same laptop and the same day, `migrations` read
+    // 1020ms against its 968ms CI entry, so a CI reading for these is unlikely to be more
+    // than about twice what is recorded here. Replace them with the real cold numbers
+    // after the first full CI run.
+    documents: 360,
+    schema: 350,
     bundle: 188,
     testfiles: 158,
-    memo: 50,
   }
 
   const inheriting = CHECKS.filter((c) => c.timeoutMs === undefined).map((c) => c.id)
@@ -238,4 +287,154 @@ test('the runner default still clears every row that inherits it, and that set i
     `the default (${DEFAULT_TIMEOUT_MS / 1000}s) is more than 10x the slowest row that ` +
       `relies on it (${slowest / 1000}s) — re-measure, or give the slow rows their own budget`,
   )
+})
+
+/**
+ * THE ASSERTION THAT REPLACES `ratchet:money`.
+ *
+ * With the money scanner gone, backend/eslint.config.mjs's `files` array is the ONLY net
+ * standing between a `price * kg` and a frozen receipt. A hand-maintained list is exactly
+ * the artefact this layer refuses to trust — so it is not read, it is CHECKED, against the
+ * entities that declare which modules own money.
+ *
+ * Both sides are derived. Nothing here names a module, so nothing here can go stale.
+ */
+const backendFile = (/** @type {string} */ rel) =>
+  readFileSync(path.resolve(import.meta.dirname, '..', '..', rel), 'utf8')
+
+/** Module directories under backend/src whose entity declares a `numeric` column. */
+function modulesOwningMoneyColumns() {
+  const files = execFileSync('git', ['ls-files', 'backend/src'], {
+    env: gitEnv(),
+    cwd: path.resolve(import.meta.dirname, '..', '..'),
+    encoding: 'utf8',
+  })
+    .split('\n')
+    .filter((f) => f.endsWith('.entity.ts'))
+  /** @type {Set<string>} */
+  const mods = new Set()
+  for (const f of files) {
+    if (/type:\s*'numeric'/.test(backendFile(f))) mods.add(f.split('/')[2])
+  }
+  return mods
+}
+
+/** The module directories backend/eslint.config.mjs's money `files` array reaches. */
+async function modulesUnderTheMoneyBan() {
+  const cfg = (await import('../../backend/eslint.config.mjs')).default
+  const block = cfg.find(
+    (/** @type {any} */ b) => b?.rules?.['no-restricted-syntax'] && Array.isArray(b.files),
+  )
+  assert.ok(block, 'backend/eslint.config.mjs no longer has a no-restricted-syntax block with `files`')
+  /** @type {string[]} */
+  const entries = /** @type {any} */ (block).files
+  return { entries, dirs: new Set(entries.map((f) => f.split('/')[1])) }
+}
+
+test('every backend module owning a money column is inside the eslint money ban', async () => {
+  const owning = modulesOwningMoneyColumns()
+  const { dirs } = await modulesUnderTheMoneyBan()
+  const unguarded = [...owning].filter((m) => !dirs.has(m)).sort()
+  assert.deepEqual(
+    unguarded,
+    [],
+    `these backend modules declare a \`numeric\` column and are OUTSIDE the money ban in ` +
+      `backend/eslint.config.mjs: ${unguarded.join(', ')}. Since ratchet:money was deleted ` +
+      'that list is the only net over money arithmetic, so a module outside it is a column ' +
+      'guarded by nothing. Add it to `files` — do not delete this test.',
+  )
+  assert.ok(owning.size > 0, 'derived ZERO modules owning a numeric column — the derivation broke')
+})
+
+test('no entry in the money ban matches nothing — a dead glob is a silent hole', async () => {
+  const { entries } = await modulesUnderTheMoneyBan()
+  const tracked = execFileSync('git', ['ls-files', 'backend/src'], {
+    env: gitEnv(),
+    cwd: path.resolve(import.meta.dirname, '..', '..'),
+    encoding: 'utf8',
+  })
+    .split('\n')
+    .filter(Boolean)
+    .map((f) => f.replace(/^backend\//, ''))
+  const dead = entries.filter((g) => !tracked.some((f) => path.matchesGlob(f, g)))
+  assert.deepEqual(
+    dead,
+    [],
+    `these money-ban globs match no tracked file: ${dead.join(', ')}. A renamed or deleted ` +
+      'module leaves its glob behind, and the ban then silently covers nothing.',
+  )
+})
+
+test('every workspace defines lint, typecheck and test — turbo skips a workspace that does not', () => {
+  // `turbo lint` reports "Tasks: 1 successful, 1 total" and EXITS 0 when a workspace has no
+  // lint script. So the `lint` row can be green having linted one workspace — and `lint` is
+  // now the only money net, which makes that a money problem rather than hygiene.
+  const root = JSON.parse(backendFile('package.json'))
+  for (const ws of root.workspaces) {
+    const pkg = JSON.parse(backendFile(`${ws}/package.json`))
+    for (const task of ['lint', 'typecheck', 'test']) {
+      assert.ok(
+        pkg.scripts?.[task],
+        `${ws}/package.json has no "${task}" script — \`turbo ${task}\` will skip that ` +
+          'workspace silently and the row will still be green',
+      )
+    }
+  }
+})
+
+/**
+ * THE ONE THING ESLINT CANNOT POLICE ABOUT ITSELF: ITS OWN CONFIG.
+ *
+ * `ratchet:lint-exempt` covered three shapes eslint has no rule for — a widened top-level
+ * `ignores` glob, a rule pinned to `'off'`, and the money block's `files` list shrinking.
+ * `eslint-comments` sees comments in source and nothing else, so deleting that ratchet
+ * without this leaves the config unwatched in the same branch that makes `lint` the only
+ * money net. These assertions are ~25 lines against 655, and unlike the baseline they are
+ * keyed on CONTENT rather than on a line number that moved four times in eight days.
+ */
+const eslintConfig = async (/** @type {string} */ ws) =>
+  /** @type {any[]} */ ((await import(`../../${ws}/eslint.config.mjs`)).default)
+
+test('the money ban still bans what it claims to ban', async () => {
+  const cfg = await eslintConfig('backend')
+  const block = cfg.find((b) => b?.rules?.['no-restricted-syntax'] && Array.isArray(b.files))
+  assert.ok(block, 'the money block is gone from backend/eslint.config.mjs')
+  const selectors = block.rules['no-restricted-syntax']
+    .filter((/** @type {unknown} */ r) => typeof r === 'object')
+    .map((/** @type {{selector: string}} */ r) => r.selector)
+  for (const required of [
+    'BinaryExpression[operator=/^[*/]$/]',
+    'AssignmentExpression[operator=/^[*/]=$/]',
+    "CallExpression[callee.name='Number']",
+    "MemberExpression[property.name='toFixed']",
+  ]) {
+    assert.ok(
+      selectors.includes(required),
+      `the money ban no longer carries ${required}. Since ratchet:money was deleted this ` +
+        'block is the only net over money arithmetic; removing a selector silently narrows it.',
+    )
+  }
+  const globals = block.rules['no-restricted-globals'] ?? []
+  const names = globals.filter((/** @type {unknown} */ g) => typeof g === 'object').map((/** @type {{name:string}} */ g) => g.name)
+  assert.deepEqual(names.sort(), ['parseFloat', 'parseInt'])
+})
+
+test('neither config pins a rule off in its own source', () => {
+  // Read the SOURCE, not the resolved config: `tseslint.configs.recommended` legitimately
+  // turns `constructor-super` off, and a preset's decisions are not this repo's
+  // suppressions. What this catches is a rule pinned off IN THESE TWO FILES — a suppression
+  // with no comment, no reason and no location, invisible to every eslint-comments rule
+  // because there is no comment to inspect. This is `ratchet:lint-exempt`'s RULE_OFF_RE,
+  // kept as ten lines rather than 371 plus a line-keyed baseline.
+  const RULE_OFF = /(['"])([\w@/-]+)\1\s*:\s*(?:(['"])off\3|0)\s*[,}]/g
+  for (const ws of ['backend', 'frontend']) {
+    const src = backendFile(`${ws}/eslint.config.mjs`)
+    const hits = [...src.matchAll(RULE_OFF)].map((m) => m[2])
+    assert.deepEqual(
+      hits,
+      [],
+      `${ws}/eslint.config.mjs pins ${hits.join(', ')} to 'off'. Delete the rule, or scope ` +
+        'the block with `files`, so the decision is where a reader can see it.',
+    )
+  }
 })

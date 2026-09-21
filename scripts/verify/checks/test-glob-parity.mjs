@@ -54,8 +54,26 @@ import { execFileSync } from 'node:child_process'
 import { createRequire } from 'node:module'
 import path from 'node:path'
 
-const ROOT = path.resolve(import.meta.dirname, '..', '..', '..')
+import { gitEnv, scanRoot } from '../scan-root.mjs'
+
+const ROOT = scanRoot()
 const require = createRequire(import.meta.url)
+
+/**
+ * Exit loud, never fall back.
+ *
+ * A derivation that cannot read the runner it models has learned something real: "I can no
+ * longer tell what runs" and "something does not run" deserve the same red. Falling back to
+ * a hard-coded glob would recreate the exact defect this derivation exists to remove — a
+ * second source of truth that looks green while the runner has moved.
+ *
+ * @param {string} message
+ * @returns {never}
+ */
+function fail(message) {
+  process.stderr.write(`test:files: CANNOT DERIVE RUNNER GLOBS -- ${message}\n`)
+  process.exit(1)
+}
 
 // Candidate test files: anything that looks like a test, spec, or db-spec, in any of the
 // extensions jest/vitest recognise ([cm]?[jt]sx?). Broader than any single collector's
@@ -68,7 +86,24 @@ const CANDIDATE_FILE = /\.(test|spec|db-spec)\.[cm]?[jt]sx?$/
 // *.test.sh file written somewhere the shell-test collector does not reach is reported as an
 // ORPHAN (see main()), not silently invisible the way every .sh file was before Task 21 --
 // exactly the gap a whole-branch review found by hand in origin/main's `checks` job.
+// It stays WIDER than the collector on purpose; that is what makes the ORPHAN report
+// possible at all.
 const SHELL_TEST_FILE = /\.test\.sh$/
+
+/**
+ * Is this path a candidate at all — i.e. can it ever be REPORTED as an orphan?
+ *
+ * Exported because the candidate net and the collector net are two different questions and
+ * a narrowing of THIS one is invisible to any test of `collectorsFor`: a file the net
+ * misses is never asked about, so it cannot be reported as an orphan. That is precisely
+ * how every *.sh file stayed invisible before the shell net existed.
+ *
+ * @param {string} rel repo-root-relative path
+ * @returns {boolean}
+ */
+export function isCandidate(rel) {
+  return CANDIDATE_FILE.test(rel) || SHELL_TEST_FILE.test(rel)
+}
 
 // vitest's own default `include` pattern. frontend/vite.config.ts does not set `test.include`,
 // so this is vitest's built-in default -- not a copy of anything this repo's own config owns --
@@ -89,7 +124,12 @@ const PLAYWRIGHT_DEFAULT_INCLUDE = /\.(test|spec)\.[cm]?[jt]sx?$/
  * @returns {string}
  */
 function run(file, args) {
-  return execFileSync(file, args, { cwd: ROOT, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 })
+  return execFileSync(file, args, {
+    cwd: ROOT,
+    env: gitEnv(),
+    encoding: 'utf8',
+    maxBuffer: 64 * 1024 * 1024,
+  })
 }
 
 /** @returns {string[]} every tracked-or-untracked candidate test file, repo-root relative */
@@ -115,7 +155,7 @@ function candidates() {
  *
  * @returns {RegExp}
  */
-function jestUnitRegex() {
+export function jestUnitRegex() {
   const file = path.join(ROOT, 'backend', 'jest.config.js')
   /** @type {{ testRegex?: unknown }} */
   const config = require(file)
@@ -132,7 +172,7 @@ function jestUnitRegex() {
  *
  * @returns {RegExp}
  */
-function jestDbRegex() {
+export function jestDbRegex() {
   const file = path.join(ROOT, 'backend', 'jest.db.config.js')
   /** @type {{ testRegex?: unknown }} */
   const config = require(file)
@@ -144,46 +184,135 @@ function jestDbRegex() {
 }
 
 /**
+ * A shell one-liner split into tokens, honouring single and double quotes. Enough for the
+ * two npm scripts below and deliberately no more — anything it cannot parse is an error,
+ * never a fallback.
+ *
+ * @param {string} src
+ * @returns {string[]}
+ */
+function tokenize(src) {
+  return (src.match(/'[^']*'|"[^"]*"|\S+/g) ?? []).map((t) =>
+    /^['"]/.test(t) ? t.slice(1, -1) : t,
+  )
+}
+
+/**
+ * @param {string} id
+ * @returns {string}
+ */
+function scriptSource(id) {
+  /** @type {{ scripts?: Record<string, string> }} */
+  const pkg = require(path.join(ROOT, 'package.json'))
+  const src = pkg.scripts?.[id]
+  if (typeof src !== 'string') {
+    fail(`package.json has no "${id}" script — this check models a runner that does not exist`)
+  }
+  return src
+}
+
+/**
+ * THE GLOBS `npm run test:verify` ACTUALLY PASSES TO `node --test`, read at runtime.
+ *
+ * `node --test 'a/**' 'b/**'` — the positionals are the surface. A hard-coded copy is a
+ * second source of truth, and the copy this replaced was wider than the runner, which is
+ * how a `.test.mjs` under scripts/ci/ could read as collected and never run.
+ *
+ * @returns {string[]}
+ */
+export function nodeTestGlobs() {
+  const src = scriptSource('test:verify')
+  const tokens = tokenize(src)
+  if (tokens[0] !== 'node' || !tokens.includes('--test')) {
+    fail(`package.json scripts["test:verify"] is no longer a bare \`node --test …\` command: ${src}`)
+  }
+  if (tokens.some((t) => t === '&&' || t === '||' || t === ';' || t === '|')) {
+    fail(`package.json scripts["test:verify"] is a compound shell command this check cannot parse: ${src}`)
+  }
+  const globs = tokens.slice(1).filter((t) => !t.startsWith('-'))
+  if (!globs.length) fail(`package.json scripts["test:verify"] passes no positional test globs: ${src}`)
+  return globs
+}
+
+/**
+ * THE GLOBS `npm run test:ci-scripts` ACTUALLY ITERATES, read at runtime.
+ *
+ * `for f in scripts/ci/*.test.sh; do …; done`. A POSIX `*` never crosses a `/`, which the
+ * hand-written `startsWith('scripts/ci/')` prefix test it replaces did.
+ *
+ * @returns {string[]}
+ */
+export function shellTestGlobs() {
+  const src = scriptSource('test:ci-scripts')
+  const m = /^\s*for\s+[A-Za-z_][A-Za-z0-9_]*\s+in\s+([^;]+);\s*do\b/.exec(src)
+  if (!m) {
+    fail(
+      'package.json scripts["test:ci-scripts"] is not the expected ' +
+        `\`for VAR in <globs>; do … done\` form: ${src}`,
+    )
+  }
+  const globs = tokenize(m[1])
+  if (!globs.length) fail(`package.json scripts["test:ci-scripts"] iterates over nothing: ${src}`)
+  return globs
+}
+
+/**
  * @param {string} file repo-root-relative, posix-separated (as `git ls-files` prints it)
  * @param {RegExp} unitRe
  * @param {RegExp} dbRe
+ * @param {string[]} nodeGlobs positionals of package.json's `test:verify`
+ * @param {string[]} shellGlobs the iteration globs of package.json's `test:ci-scripts`
  * @returns {string[]} the collectors that would pick this file up
  */
-function collectorsFor(file, unitRe, dbRe) {
+export function collectorsFor(file, unitRe, dbRe, nodeGlobs, shellGlobs) {
   /** @type {string[]} */
   const collectors = []
   if (file.startsWith('backend/src/') && unitRe.test(file)) collectors.push('jest-unit')
   if (file.startsWith('backend/src/') && dbRe.test(file)) collectors.push('jest-db')
   if (file.startsWith('frontend/') && VITEST_DEFAULT_INCLUDE.test(file)) collectors.push('vitest')
-  // Both globs feed the SAME `node --test` invocation (package.json's test:verify) -- see
-  // this file's header comment for why .claude/hooks/ joined scripts/ here in Task 19.
-  if (file.startsWith('scripts/') && file.endsWith('.test.mjs')) collectors.push('node-test')
-  if (file.startsWith('.claude/hooks/') && file.endsWith('.test.mjs')) collectors.push('node-test')
+  // BOTH of these are the runner's OWN globs, read out of package.json at startup and
+  // matched with the same glob semantics node itself applies. They used to be hand-written
+  // prefix tests, and both were wider than the command they modelled:
+  //
+  //   node-test    modelled `scripts/` + endsWith('.test.mjs'); the runner's glob is
+  //                `scripts/verify/**/*.test.mjs`. So scripts/ci/x.test.mjs — or anything
+  //                under scripts/vps/ — read as "collected by exactly one runner" and was
+  //                never executed by anything. A dead suite, green forever.
+  //   shell-test   modelled a `scripts/ci/` PREFIX, which recurses; the runner is
+  //                `for f in scripts/ci/*.test.sh`, and a POSIX `*` never crosses a `/`.
+  //                So scripts/ci/nested/y.test.sh had the same defect.
+  //
+  // The file's own comment claimed "both sides are the SAME glob today". They were not,
+  // and that sentence is why nobody looked. Deriving them is invariant #5 — read globs
+  // from the config that owns them, never keep a second copy.
+  if (nodeGlobs.some((g) => path.matchesGlob(file, g))) collectors.push('node-test')
   if (file.startsWith('e2e/') && PLAYWRIGHT_DEFAULT_INCLUDE.test(file)) collectors.push('playwright')
-  // `npm run test:ci-scripts` (package.json) is ITSELF a glob over this exact directory
-  // (`for f in scripts/ci/*.test.sh; do bash "$f" || exit 1; done`), not an enumerated
-  // list of filenames -- the runner was deliberately made to match this collector, not
-  // the other way around, after a review proved the earlier by-name version could report
-  // a third scripts/ci/*.test.sh file as "collected by exactly one runner" while nothing
-  // ever actually ran it. Because both sides are the SAME glob today, a third file added
-  // later is both collected here and executed there automatically, the same way
-  // node-test's own directory-scoped glob already works above -- and unlike node-test
-  // (a real Node API, not a shell glob), it is worth remembering this is two independently
-  // written globs that happen to agree, not one shared definition; see this row's own
-  // registry entry (`testfiles`) for why that distinction still matters.
-  if (file.startsWith('scripts/ci/') && SHELL_TEST_FILE.test(file)) collectors.push('shell-test')
+  if (shellGlobs.some((g) => path.matchesGlob(file, g))) collectors.push('shell-test')
   return collectors
 }
 
 function main() {
   const unitRe = jestUnitRegex()
   const dbRe = jestDbRegex()
+  const nodeGlobs = nodeTestGlobs()
+  const shellGlobs = shellTestGlobs()
   const files = candidates()
+
+  // A scan that matched nothing must never print a positive claim. Without this the check
+  // reports "each collected by exactly one runner" over an empty list and exits 0 — the
+  // exact shape of false green this whole layer exists to refuse.
+  if (files.length === 0) {
+    process.stderr.write(
+      'test:files: found ZERO candidate test files under this root — refusing to report a ' +
+        'verdict. Either the enumeration broke or the root is wrong.\n',
+    )
+    process.exit(1)
+  }
 
   /** @type {string[]} */
   const problems = []
   for (const file of files) {
-    const collectors = collectorsFor(file, unitRe, dbRe)
+    const collectors = collectorsFor(file, unitRe, dbRe, nodeGlobs, shellGlobs)
     if (collectors.length === 0) {
       problems.push(`ORPHAN: ${file} -- no runner collects it (zero collectors matched).`)
     } else if (collectors.length > 1) {
@@ -204,4 +333,8 @@ function main() {
   process.stdout.write(`${summary} -- each collected by exactly one runner\n`)
 }
 
-main()
+// GUARDED, so a test can import `collectorsFor` without running the scan. Every module in
+// this layer used to call main() at load; that makes the pure, cheap, fixture-free unit
+// test of a finding-producer impossible to write, and — worse — an ORPHAN in the tree would
+// `process.exit(1)` out of the importing test process.
+if (process.argv[1] && process.argv[1].endsWith('test-glob-parity.mjs')) main()

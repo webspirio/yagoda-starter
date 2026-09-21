@@ -62,14 +62,16 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 
 import { errMessage } from '../hash.mjs'
+import { scanRoot } from '../scan-root.mjs'
 
-const ROOT = path.resolve(import.meta.dirname, '..', '..', '..')
+const ROOT = scanRoot()
 const KNIP_CONFIG = path.join(ROOT, 'knip.json')
-const KNIP_BIN = path.join(ROOT, 'node_modules', '.bin', 'knip')
+// Resolved from THIS file's location, never from the scan root: a fixture root has no
+// node_modules, and the binary being tested is always this repository's.
+const KNIP_BIN = path.resolve(import.meta.dirname, '..', '..', '..', 'node_modules', '.bin', 'knip')
 const BASELINE_REL = 'scripts/verify/baselines/dead-exports.json'
 const BASELINE_PATH = path.join(ROOT, BASELINE_REL)
 
-const MIN_REASON_LENGTH = 30
 
 /** knip.json: only these keys, at the top level and inside each workspace, respectively. */
 const ALLOWED_TOP_LEVEL_KEYS = new Set(['$schema', 'workspaces'])
@@ -85,20 +87,33 @@ const PACKAGE_JSON_FILES = ['package.json', 'backend/package.json', 'frontend/pa
 const KNIP_SUPPRESSION_TAG_RE = /@(public|internal|alias|beta|alpha)\b/
 const SRC_ROOTS = ['backend/src', 'frontend/src']
 
-/** knip's issue-array names, mapped to the `kind` this check records. */
-const KINDS = {
-  files: 'file',
-  exports: 'export',
-  types: 'type',
-  dependencies: 'dependency',
-  devDependencies: 'devDependency',
-  unlisted: 'unlisted',
-  unresolved: 'unresolved',
-  duplicates: 'duplicate',
-  binaries: 'binary',
-  enumMembers: 'enumMember',
-  namespaceMembers: 'namespaceMember',
-  optionalPeerDependencies: 'optionalPeerDependency',
+/**
+ * knip's report is one row per file, and every FINDING on that row is an array property.
+ * There is no list of those property names here on purpose.
+ *
+ * There used to be: a hand-written map from knip's array name to a singular `kind`. It had
+ * two failure modes and shipped with both. A key knip added that the map did not name was
+ * silently dropped — findings this check would never see and never report. And `duplicates`
+ * WAS named but structurally unreadable: its items are arrays of exports, not strings or
+ * {name} objects, so every duplicate export in the repository read as nameless and was
+ * skipped. Deriving the kind from the property name means a new knip finding class shows up
+ * as a NEW FINDING, which is a red row somebody reads, rather than as nothing at all.
+ */
+
+/** Skipped because it is the row's identity, not a finding on it. */
+const ROW_IDENTITY_KEY = 'file'
+
+/**
+ * A finding's name, whatever shape knip used for it.
+ *
+ * @param {unknown} item
+ * @returns {string}
+ */
+export function nameOf(item) {
+  if (typeof item === 'string') return item
+  if (Array.isArray(item)) return item.map(nameOf).filter(Boolean).join(' + ')
+  const name = /** @type {{ name?: unknown }} */ (item)?.name
+  return typeof name === 'string' ? name : ''
 }
 
 /**
@@ -113,17 +128,6 @@ function keyOf(f) {
   return `${f.kind}|${f.file}|${f.name}`
 }
 
-const PLACEHOLDER = /^(todo|fixme|tbd|n\/?a|xxx|\?+|-+|—+|wip|later|see above|same as above|as above|ok|fine|dead)\.?$/i
-
-/** @param {unknown} reason @returns {string | null} the problem, or null when acceptable */
-function reasonProblem(reason) {
-  if (typeof reason !== 'string') return 'is missing'
-  const t = reason.trim()
-  if (!t) return 'is empty'
-  if (PLACEHOLDER.test(t)) return `is a stub (${JSON.stringify(t)})`
-  if (t.length < MIN_REASON_LENGTH) return `is shorter than ${MIN_REASON_LENGTH} characters (${t.length})`
-  return null
-}
 
 /**
  * Validates `knip.json` against the allow-list and checks for a second place to configure
@@ -317,14 +321,15 @@ function knipFindings() {
   /** @type {Finding[]} */
   const out = []
   for (const issue of parsed.issues ?? []) {
-    const file = /** @type {string} */ (issue.file)
-    for (const [arrayName, kind] of Object.entries(KINDS)) {
-      const arr = issue[arrayName]
-      if (!Array.isArray(arr)) continue
-      for (const item of arr) {
-        const name = typeof item === 'string' ? item : /** @type {{ name?: string }} */ (item)?.name
-        if (!name) continue
-        out.push({ kind, file, name })
+    const file = typeof issue.file === 'string' ? issue.file : '(no file)'
+    for (const [arrayName, value] of Object.entries(issue)) {
+      if (arrayName === ROW_IDENTITY_KEY || !Array.isArray(value)) continue
+      for (const item of value) {
+        const name = nameOf(item)
+        // A finding knip reported but this check cannot name is NOT dropped: it would be a
+        // finding nobody can baseline and nobody can see. It is recorded under a name that
+        // says so, which makes it a NEW FINDING and therefore a red row.
+        out.push({ kind: arrayName, file, name: name || '(unnamed)' })
       }
     }
   }
@@ -333,14 +338,24 @@ function knipFindings() {
 }
 
 /**
- * @typedef {{ key: string, kind: string, file: string, name: string, added: string, reason: string }} BaselineEntry
- * @typedef {{ createdAt: string, note: string, configFingerprint?: string, entries: BaselineEntry[] }} Baseline
+ * @typedef {{ createdAt: string, note: string, configFingerprint?: string, entries: string[] }} Baseline
  */
 
 /**
- * Loads and structurally validates the baseline BEFORE any comparison against the current
- * tree runs — a stub `reason` is a failure of the baseline file itself, exactly like
- * lint-exempt.mjs's and money-rounding.mjs's `loadAndValidateBaseline()`.
+ * Loads and structurally validates the baseline before any comparison runs.
+ *
+ * ONE STRING PER FINDING, `kind|file|name`, and nothing else. This file used to carry an
+ * object per finding with a date and a hand-written reason of at least 30 characters, which
+ * came to 1,511 lines for 186 findings. Two things were wrong with that. Most of those
+ * findings are not exemptions anybody reasoned about — they are a starter template's
+ * deliberately unused API surface, and writing 186 individual justifications for one fact
+ * produces text nobody reads and a file nobody opens. And the reasons were enforced by
+ * LENGTH, so the rule they actually taught was to write thirty characters.
+ *
+ * What the ratchet does has not changed, and it is the part that was ever load-bearing: it
+ * is still bidirectional. A finding not on this list fails, and a listed finding knip no
+ * longer reports fails too, so the list only shrinks. The `note` explains the class once,
+ * at the top, where it can be read.
  *
  * @returns {{ baseline: Baseline, problems: string[] }}
  */
@@ -365,30 +380,86 @@ function loadAndValidateBaseline() {
 
   /** @type {string[]} */
   const problems = []
-  const seenKeys = new Set()
-  parsed.entries.forEach((/** @type {any} */ entry, /** @type {number} */ i) => {
+  const seen = new Set()
+  parsed.entries.forEach((/** @type {unknown} */ entry, /** @type {number} */ i) => {
     const label = `${BASELINE_REL} entries[${i}]`
-    const key = entry?.key
-    if (typeof key !== 'string' || !key) {
-      problems.push(`${label}: missing a "key" string.`)
+    if (typeof entry !== 'string' || entry.split('|').length !== 3) {
+      problems.push(`${label}: every entry must be a "kind|file|name" string, got ${JSON.stringify(entry)}.`)
       return
     }
-    if (seenKeys.has(key)) problems.push(`${label} (${key}): duplicate key in the baseline.`)
-    seenKeys.add(key)
-
-    if (typeof entry?.added !== 'string' || !entry.added) {
-      problems.push(`${label} (${key}): missing an "added" date.`)
-    }
-    const problem = reasonProblem(entry?.reason)
-    if (problem) {
-      problems.push(
-        `${label} (${key}): "reason" ${problem} — a stub reason is not an exemption, it is a hole. Read the ` +
-          'finding this key names and write a real one.',
-      )
-    }
+    if (seen.has(entry)) problems.push(`${label} (${entry}): duplicate entry.`)
+    seen.add(entry)
   })
+  if (parsed.entries.some((/** @type {unknown} */ e) => typeof e === 'string') && !isSorted(parsed.entries)) {
+    problems.push(
+      `${BASELINE_REL}: entries must be sorted, so a diff shows what changed rather than where it moved. ` +
+        'Rerun with --write.',
+    )
+  }
 
   return { baseline: parsed, problems }
+}
+
+/** @param {unknown[]} entries @returns {boolean} */
+function isSorted(entries) {
+  for (let i = 1; i < entries.length; i += 1) {
+    if (String(entries[i - 1]).localeCompare(String(entries[i])) > 0) return false
+  }
+  return true
+}
+
+/**
+ * THE WHOLE VERDICT, as a pure function of what knip found and what the baseline records.
+ *
+ * Pure so its tests need neither knip nor the real working tree. The suite this replaced
+ * appended an export to frontend/src/shared/lib/cn.ts, DELETED
+ * frontend/src/shared/lib/useIsDesktop.ts, rewrote knip.json and overwrote the real
+ * baseline, restoring each in a `finally` — and the Stop hook runs the fast tier after every
+ * turn under a timeout that kills the process group, which runs no `finally`. A tracked
+ * source file was one interrupted run away from staying deleted.
+ *
+ * @param {{ found: Finding[], baseline: Baseline, fingerprint: string | null, tagged: string[] }} input
+ * @returns {string[]}
+ */
+export function compare({ found, baseline, fingerprint, tagged }) {
+  /** @type {string[]} */
+  const problems = []
+
+  if (baseline.configFingerprint !== fingerprint) {
+    problems.push(
+      `GLOBS CHANGED: knip.json's entry/project values differ from what ${BASELINE_REL} recorded ` +
+        `(${baseline.configFingerprint ?? 'none'} -> ${fingerprint}). Narrowing what knip can see is exactly as ` +
+        'much a suppression as a banned config key. If the change is deliberate, rerun with --write and read ' +
+        'every finding it adds or removes before committing.',
+    )
+  }
+
+  for (const t of tagged) {
+    problems.push(
+      `SUPPRESSION TAG: ${t} — knip honours @public/@internal/@alias/@beta/@alpha by default, so this export ` +
+        'disappears from the findings with no config change at all.',
+    )
+  }
+
+  const foundKeys = new Set(found.map(keyOf))
+  const baselineKeys = new Set(baseline.entries)
+  for (const f of found) {
+    if (!baselineKeys.has(keyOf(f))) {
+      problems.push(
+        `NEW FINDING: ${f.kind} ${f.name} in ${f.file} — not in ${BASELINE_REL}. Delete the code, or, if it has ` +
+          `to stay, add the line "${keyOf(f)}" there and say why in this commit's message.`,
+      )
+    }
+  }
+  for (const key of baseline.entries) {
+    if (!foundKeys.has(key)) {
+      problems.push(
+        `STALE ENTRY: ${key} — knip no longer reports this. Delete the line: this ratchet only shrinks, and a ` +
+          'baseline that only ever forgives is not one.',
+      )
+    }
+  }
+  return problems
 }
 
 function main() {
@@ -416,7 +487,6 @@ function main() {
     return
   }
 
-  const foundByKey = new Map(found.map((f) => [keyOf(f), f]))
 
   if (write) {
     /** @type {Baseline} */
@@ -426,21 +496,7 @@ function main() {
     } catch {
       existing = { createdAt: today, note: '', entries: [] }
     }
-    const priorByKey = new Map(existing.entries.map((e) => [e.key, e]))
-    const entries = found
-      .map((f) => {
-        const key = keyOf(f)
-        const prior = priorByKey.get(key)
-        return {
-          key,
-          kind: f.kind,
-          file: f.file,
-          name: f.name,
-          added: prior?.added ?? today,
-          reason: prior?.reason ?? '',
-        }
-      })
-      .sort((a, b) => a.key.localeCompare(b.key))
+    const entries = [...new Set(found.map(keyOf))].sort((a, b) => a.localeCompare(b))
     writeFileSync(
       BASELINE_PATH,
       `${JSON.stringify(
@@ -449,8 +505,7 @@ function main() {
         2,
       )}\n`,
     )
-    const missing = entries.filter((e) => reasonProblem(e.reason)).length
-    process.stdout.write(`deadcode: baseline rewritten — ${entries.length} entries, ${missing} without a usable reason\n`)
+    process.stdout.write(`deadcode: baseline rewritten — ${entries.length} entries\n`)
     return
   }
 
@@ -465,40 +520,7 @@ function main() {
   /** @type {string[]} */
   const problems = []
 
-  if (baseline.configFingerprint !== fingerprint) {
-    problems.push(
-      `GLOBS CHANGED: knip.json's entry/project values differ from what ${BASELINE_REL} recorded ` +
-        `(${baseline.configFingerprint ?? 'none'} -> ${fingerprint}). Narrowing what knip can see is exactly as ` +
-        'much a suppression as a banned config key. If the change is deliberate, rerun with --write and read ' +
-        'every finding it adds or removes before committing.',
-    )
-  }
-
-  for (const t of tagged) {
-    problems.push(
-      `SUPPRESSION TAG: ${t} — knip honours @public/@internal/@alias/@beta/@alpha by default, so this export ` +
-        'disappears from the findings with no config change at all.',
-    )
-  }
-
-  const baselineByKey = new Map(baseline.entries.map((e) => [e.key, e]))
-  for (const f of found) {
-    if (!baselineByKey.has(keyOf(f))) {
-      problems.push(
-        `NEW FINDING: ${f.kind} ${f.name} in ${f.file} — not in ${BASELINE_REL}. A new dead-code finding needs ` +
-          `a dated entry there with a real, >=${MIN_REASON_LENGTH}-character reason — read the finding before ` +
-          'writing one — before this check can pass.',
-      )
-    }
-  }
-  for (const e of baseline.entries) {
-    if (!foundByKey.has(e.key)) {
-      problems.push(
-        `STALE ENTRY: ${e.kind} ${e.name} in ${e.file} — knip no longer reports this. Delete the entry: this ` +
-          'ratchet only shrinks, and a baseline that only ever forgives is not one.',
-      )
-    }
-  }
+  problems.push(...compare({ found, baseline, fingerprint, tagged }))
 
   if (problems.length) {
     process.stderr.write('deadcode: RED\n')
@@ -509,14 +531,17 @@ function main() {
 
   /** @type {Record<string, number>} */
   const byKind = {}
-  for (const e of baseline.entries) byKind[e.kind] = (byKind[e.kind] ?? 0) + 1
+  for (const key of baseline.entries) {
+    const kind = key.split('|')[0]
+    byKind[kind] = (byKind[kind] ?? 0) + 1
+  }
   const breakdown = Object.entries(byKind)
     .sort()
     .map(([k, v]) => `${k}: ${v}`)
     .join(', ')
   process.stdout.write(
-    `deadcode: ${baseline.entries.length} dead-code findings on record, all present, none stale, every reason ` +
-      `>=${MIN_REASON_LENGTH} characters — matches ${BASELINE_REL} (${baseline.createdAt}) exactly (${breakdown})\n`,
+    `deadcode: ${baseline.entries.length} dead-code findings on record, all present, none stale — matches ` +
+      `${BASELINE_REL} (${baseline.createdAt}) exactly (${breakdown})\n`,
   )
   process.stdout.write(
     `deadcode: knip.json carries only entry/project (fingerprint ${fingerprint}), no other knip config file ` +
@@ -524,4 +549,7 @@ function main() {
   )
 }
 
-main()
+// GUARDED, so a test can import `compare` and `nameOf` without running knip or exiting the
+// importing process. Every module in this layer used to call main() at load, which makes a
+// pure, fixture-free unit test of a finding-producer impossible to write.
+if (process.argv[1]?.endsWith('dead-exports.mjs')) main()

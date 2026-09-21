@@ -6,6 +6,7 @@ import { CreateGradePriceDto } from './dto/create-grade-price.dto';
 import { ListGradePricesQueryDto } from './dto/list-grade-prices.query';
 import { CurrentGradePricesQueryDto } from './dto/current-grade-prices.query';
 import { GradePriceSheetQueryDto } from './dto/grade-price-sheet.query';
+import { skipOf } from '../common/dto/pagination-query.dto';
 import { BulkGradePriceDto } from './dto/bulk-grade-price.dto';
 import {
   GradePriceResponse,
@@ -109,7 +110,7 @@ export class GradePricesService {
       `SELECT * FROM (${latest}) t
         ORDER BY t.collection_point_id, t.product_grade_id
         LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
-      [...params, query.limit, (query.page - 1) * query.limit],
+      [...params, query.limit, skipOf(query)],
     );
 
     return {
@@ -140,7 +141,7 @@ export class GradePricesService {
       // timestamp. `id` is a random uuid: this buys DETERMINISM across pages,
       // not «the later one».
       order: { created_at: 'DESC', id: 'DESC' },
-      skip: (query.page - 1) * query.limit,
+      skip: skipOf(query),
       take: query.limit,
     });
 

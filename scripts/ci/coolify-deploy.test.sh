@@ -47,7 +47,13 @@ export COOLIFY_URL=https://coolify.test COOLIFY_API_TOKEN=t COOLIFY_APP_UUID=app
 # shellcheck disable=SC2155 # test fixture only; command-substitution exit status is irrelevant here
 export EXPECTED_COMMIT=$(printf 'a%.0s' {1..40}) BASE_URL=https://pr-5.test PR_NUMBER=5
 export SEED_USERNAME=oksana SEED_PASSWORD=operator
-export POLL_INTERVAL_SEC=0 DEPLOY_TIMEOUT_SEC=5 READY_TIMEOUT_SEC=5
+# The two deadlines are 1s, not 5s, and POLL_INTERVAL_SEC=0 means the poll loops spin
+# rather than sleep — so a scenario that is SUPPOSED to time out burns one second of wall
+# clock instead of five. Eighteen of the twenty cases never reach a deadline at all (canned
+# responses answer in milliseconds); the two that do (#5, #6) override it themselves anyway.
+# Worth the line: this suite is the largest row in the fast tier, which runs on every turn,
+# and three of its seconds were pure deadline burn.
+export POLL_INTERVAL_SEC=0 DEPLOY_TIMEOUT_SEC=1 READY_TIMEOUT_SEC=1
 export GITHUB_OUTPUT="$T/gh_out"
 
 pass=0; fail=0

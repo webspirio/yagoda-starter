@@ -1,277 +1,191 @@
+/**
+ * Tests for the dead-code ratchet.
+ *
+ * NOTHING HERE EDITS THE REAL WORKING TREE. The suite this replaced appended an export to
+ * frontend/src/shared/lib/cn.ts, DELETED frontend/src/shared/lib/useIsDesktop.ts, rewrote
+ * the real knip.json and overwrote the real baseline — each restored in a `finally`. The
+ * Stop hook runs the fast tier after every turn under a timeout that kills the process
+ * group, and a killed process runs no `finally`, so a tracked source file was one
+ * interrupted run away from staying deleted.
+ *
+ * The verdict is now a pure function of (found, baseline, fingerprint, tagged), so both
+ * ratchet directions are asserted in-process. The config rules still run the real check,
+ * but against a mkdtemp root — they reject the config before knip is ever invoked, which is
+ * why those cases need no node_modules.
+ */
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
-import { readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import path from 'node:path'
 
 const ROOT = path.resolve(import.meta.dirname, '..', '..', '..')
 const CHECK = path.join(ROOT, 'scripts', 'verify', 'ratchets', 'dead-exports.mjs')
-const BASELINE = path.join(ROOT, 'scripts', 'verify', 'baselines', 'dead-exports.json')
-const KNIP_CONFIG = path.join(ROOT, 'knip.json')
-const CN_TS = path.join(ROOT, 'frontend', 'src', 'shared', 'lib', 'cn.ts')
-const USE_IS_DESKTOP = path.join(ROOT, 'frontend', 'src', 'shared', 'lib', 'useIsDesktop.ts')
 
-/** A valid, non-stub reason — well over the 30-character floor. @type {string} */
-const VALID_TEST_REASON = 'Test-only baseline entry exercising the ratchet mechanism itself, not a real finding.'
+const { compare, nameOf } = await import(CHECK)
 
-/** @returns {{ status: number, out: string }} */
-function run() {
+const FINGERPRINT = 'abc123'
+/** @param {string[]} entries */
+const baselineOf = (entries) => ({
+  createdAt: '2026-01-01',
+  note: '',
+  configFingerprint: FINGERPRINT,
+  entries,
+})
+/** @param {string} kind @param {string} file @param {string} name */
+const finding = (kind, file, name) => ({ kind, file, name })
+
+/**
+ * Runs the real check against a throwaway root.
+ *
+ * @param {(root: string) => void} build
+ * @returns {{ status: number, out: string }}
+ */
+function runInRoot(build) {
+  const root = mkdtempSync(path.join(tmpdir(), 'deadcode-'))
   try {
-    return { status: 0, out: execFileSync(process.execPath, [CHECK], { encoding: 'utf8', cwd: ROOT }) }
-  } catch (err) {
-    // Cast is needed for `npx tsc -p tsconfig.scripts.json` (strict + checkJs types catch
-    // variables as `unknown`) — same idiom as money-rounding.test.mjs's run() helper.
-    const e = /** @type {any} */ (err)
-    return { status: e.status ?? 1, out: `${e.stdout ?? ''}${e.stderr ?? ''}` }
+    build(root)
+    try {
+      return {
+        status: 0,
+        out: execFileSync(process.execPath, [CHECK], {
+          encoding: 'utf8',
+          env: { ...process.env, VERIFY_SCAN_ROOT: root },
+        }),
+      }
+    } catch (err) {
+      // Cast is needed for `npx tsc -p tsconfig.scripts.json` (strict + checkJs types catch
+      // variables as `unknown`) — same idiom every other check suite in this layer uses.
+      const e = /** @type {any} */ (err)
+      return { status: e.status ?? 1, out: `${e.stdout ?? ''}${e.stderr ?? ''}` }
+    }
+  } finally {
+    rmSync(root, { recursive: true, force: true })
   }
 }
 
-/**
- * Reads knip.json, applies `mutate` to the parsed object, writes it back, and returns the
- * ORIGINAL text for restoring in a `finally` — same idiom lint-exempt.test.mjs and
- * money-rounding.test.mjs use for mutating a real config/source file in place.
- *
- * @param {(cfg: any) => void} mutate
- * @returns {string}
- */
-function mutateKnipConfig(mutate) {
-  const original = readFileSync(KNIP_CONFIG, 'utf8')
-  const cfg = JSON.parse(original)
-  mutate(cfg)
-  writeFileSync(KNIP_CONFIG, `${JSON.stringify(cfg, null, 2)}\n`)
-  return original
-}
-
-/**
- * Adds one entry to the baseline's `entries` array and returns the ORIGINAL file content,
- * for restoring in a `finally` — same idiom as lint-exempt.test.mjs's addBaselineEntry.
- *
- * @param {{ key: string, kind: string, file: string, name: string, added?: string, reason: string }} entry
- * @returns {string}
- */
-function addBaselineEntry(entry) {
-  const original = readFileSync(BASELINE, 'utf8')
-  const baseline = JSON.parse(original)
-  baseline.entries = [
-    ...baseline.entries,
-    {
-      key: entry.key,
-      kind: entry.kind,
-      file: entry.file,
-      name: entry.name,
-      added: entry.added ?? '2026-09-10',
-      reason: entry.reason,
-    },
-  ]
-  writeFileSync(BASELINE, `${JSON.stringify(baseline, null, 2)}\n`)
-  return original
+/** @param {string} root @param {object} cfg */
+function writeKnip(root, cfg) {
+  writeFileSync(path.join(root, 'knip.json'), `${JSON.stringify(cfg, null, 2)}\n`)
 }
 
 test('the real tree is green against the committed baseline', () => {
-  const res = run()
-  assert.equal(res.status, 0, res.out)
-  // NO COUNT ASSERTION HERE, deliberately. This line was frozen at `123 dead-code findings`
-  // until 2026-09-15, when an ordinary reviewed baseline edit turned it red while saying
-  // nothing about the ratchet. It was then rewritten to read entries.length out of the
-  // baseline — which review correctly called a tautology: dead-exports.mjs prints
-  // `baseline.entries.length` from that same file, so the two cannot disagree, and the
-  // assertion could only ever detect a wording change that `res.status === 0` and the
-  // config line below already cover. The real weight is carried by the two directional
-  // fixture tests further down (a new finding is red, a stale entry is red), which is where
-  // a broken ratchet actually shows up. Counts that CAN be derived independently are pinned
-  // in registry.test.mjs against the filesystem, not against the file that printed them.
-  assert.match(res.out, /dead-code findings on record, all present, none stale/)
-  assert.match(res.out, /knip\.json carries only entry\/project/)
+  const out = execFileSync(process.execPath, [CHECK], { encoding: 'utf8' })
+  assert.match(out, /dead-code findings on record, all present, none stale/)
 })
 
-test('DIRECTION 1: a new unused export is a NEW FINDING', () => {
-  const original = readFileSync(CN_TS, 'utf8')
-  try {
-    writeFileSync(CN_TS, `${original}\nexport function zzDeadExportsFixtureUnused() {\n  return 1;\n}\n`)
-    const res = run()
-    assert.equal(res.status, 1, res.out)
-    assert.match(res.out, /NEW FINDING/)
-    assert.match(res.out, /export zzDeadExportsFixtureUnused in frontend\/src\/shared\/lib\/cn\.ts/)
-  } finally {
-    writeFileSync(CN_TS, original)
-  }
-})
-
-test('DIRECTION 2: deleting a file the baseline lists is a STALE ENTRY, not a silent pass', () => {
-  const original = readFileSync(USE_IS_DESKTOP, 'utf8')
-  try {
-    rmSync(USE_IS_DESKTOP)
-    const res = run()
-    assert.equal(res.status, 1, res.out)
-    assert.match(res.out, /STALE ENTRY/)
-    assert.match(res.out, /file frontend\/src\/shared\/lib\/useIsDesktop\.ts/)
-  } finally {
-    writeFileSync(USE_IS_DESKTOP, original)
-  }
-})
-
-test('DIRECTION 3: a top-level suppression key added to knip.json is RED, naming the banned key', () => {
-  const original = mutateKnipConfig((cfg) => {
-    cfg.ignore = ['src/foo.ts']
+test('DIRECTION 1: a finding the baseline does not list is a NEW FINDING', () => {
+  const problems = compare({
+    found: [finding('exports', 'frontend/src/a.ts', 'zzUnused')],
+    baseline: baselineOf([]),
+    fingerprint: FINGERPRINT,
+    tagged: [],
   })
-  try {
-    const res = run()
-    assert.equal(res.status, 1, res.out)
-    assert.match(res.out, /knip\.json is not compliant/)
-    assert.match(res.out, /outside the allowed set at its top level: ignore/)
-    // The stub-reason / new-finding machinery must never even run once the config itself
-    // is non-compliant.
-    assert.doesNotMatch(res.out, /NEW FINDING/)
-  } finally {
-    writeFileSync(KNIP_CONFIG, original)
-  }
+  assert.equal(problems.length, 1)
+  assert.match(problems[0], /NEW FINDING: exports zzUnused in frontend\/src\/a\.ts/)
+  // It names the exact line to add, so nobody has to guess the key format.
+  assert.match(problems[0], /"exports\|frontend\/src\/a\.ts\|zzUnused"/)
 })
 
-test('DIRECTION 3b: a suppression key nested inside one workspace is caught too, not just at the top level', () => {
-  const original = mutateKnipConfig((cfg) => {
-    cfg.workspaces.backend.ignoreDependencies = ['left-pad']
+test('DIRECTION 2: a listed finding knip no longer reports is a STALE ENTRY', () => {
+  const problems = compare({
+    found: [],
+    baseline: baselineOf(['files|frontend/src/gone.ts|frontend/src/gone.ts']),
+    fingerprint: FINGERPRINT,
+    tagged: [],
   })
-  try {
-    const res = run()
-    assert.equal(res.status, 1, res.out)
-    assert.match(res.out, /workspaces\.backend has keys outside the allowed set: ignoreDependencies/)
-  } finally {
-    writeFileSync(KNIP_CONFIG, original)
-  }
+  assert.equal(problems.length, 1)
+  assert.match(problems[0], /STALE ENTRY: files\|frontend\/src\/gone\.ts/)
+  assert.match(problems[0], /only shrinks/)
 })
 
-test('DIRECTION 4: changing a project glob without updating the baseline fingerprint is RED', () => {
-  const original = mutateKnipConfig((cfg) => {
-    cfg.workspaces.frontend.project = ['src/**/*.ts']
+test('both directions are silent when the sets match exactly — the discriminator', () => {
+  // Without this, the two tests above would pass against a compare() that flagged
+  // everything unconditionally.
+  const key = 'exports|frontend/src/a.ts|zzUnused'
+  assert.deepEqual(
+    compare({
+      found: [finding('exports', 'frontend/src/a.ts', 'zzUnused')],
+      baseline: baselineOf([key]),
+      fingerprint: FINGERPRINT,
+      tagged: [],
+    }),
+    [],
+  )
+})
+
+test('a fingerprint that does not match the recorded one is RED on its own', () => {
+  const problems = compare({
+    found: [],
+    baseline: baselineOf([]),
+    fingerprint: 'somethingelse',
+    tagged: [],
   })
-  try {
-    const res = run()
-    assert.equal(res.status, 1, res.out)
-    assert.match(res.out, /GLOBS CHANGED/)
-  } finally {
-    writeFileSync(KNIP_CONFIG, original)
-  }
+  assert.equal(problems.length, 1)
+  assert.match(problems[0], /GLOBS CHANGED/)
+  assert.match(problems[0], /abc123 -> somethingelse/)
 })
 
-test('a second knip config file at the repo root (knip.jsonc) is RED — an invisible bypass', () => {
-  const shadowConfig = path.join(ROOT, 'knip.jsonc')
-  writeFileSync(shadowConfig, '{}\n')
-  try {
-    const res = run()
-    assert.equal(res.status, 1, res.out)
-    assert.match(res.out, /additional knip config file\(s\) at the repo root: knip\.jsonc/)
-  } finally {
-    rmSync(shadowConfig, { force: true })
-  }
-})
-
-test('a "knip" section in backend/package.json is RED — knip would read it, this check would not', () => {
-  const pkgPath = path.join(ROOT, 'backend', 'package.json')
-  const original = readFileSync(pkgPath, 'utf8')
-  try {
-    const pkg = JSON.parse(original)
-    pkg.knip = { ignore: ['src/foo.ts'] }
-    writeFileSync(pkgPath, `${JSON.stringify(pkg, null, 2)}\n`)
-    const res = run()
-    assert.equal(res.status, 1, res.out)
-    assert.match(res.out, /backend\/package\.json has a "knip" section/)
-  } finally {
-    writeFileSync(pkgPath, original)
-  }
-})
-
-test('an @public JSDoc tag on an export is a SUPPRESSION TAG, not a silent pass', () => {
-  const original = readFileSync(CN_TS, 'utf8')
-  try {
-    // Reachable (imported by main.ts transitively through the app) yet the tagged export
-    // itself has no real caller — knip honours @public by default and would otherwise
-    // simply omit the finding, which is exactly the invisible suppression this scans for.
-    writeFileSync(CN_TS, `${original}\n/** @public */\nexport function zzDeadExportsFixtureTagged() {\n  return 1;\n}\n`)
-    const res = run()
-    assert.equal(res.status, 1, res.out)
-    assert.match(res.out, /SUPPRESSION TAG/)
-    assert.match(res.out, /frontend\/src\/shared\/lib\/cn\.ts/)
-    assert.match(res.out, /@public/)
-    // knip really did stay silent about the tagged export itself — proving this check adds
-    // something a bare `knip` run would not have caught.
-    assert.doesNotMatch(res.out, /zzDeadExportsFixtureTagged/)
-  } finally {
-    writeFileSync(CN_TS, original)
-  }
-})
-
-test('a baseline entry whose reason is a stub makes the checker itself exit red, before any comparison', () => {
-  const original = addBaselineEntry({
-    key: 'export|zz-fixture-file.ts|zzFixtureExport',
-    kind: 'export',
-    file: 'zz-fixture-file.ts',
-    name: 'zzFixtureExport',
-    reason: 'TODO',
+test('a suppression tag is RED even when the finding sets agree perfectly', () => {
+  const problems = compare({
+    found: [],
+    baseline: baselineOf([]),
+    fingerprint: FINGERPRINT,
+    tagged: ['frontend/src/a.ts:12 zzThing'],
   })
-  try {
-    const res = run()
-    assert.equal(res.status, 1, res.out)
-    assert.match(res.out, /baseline itself is invalid/)
-    assert.match(res.out, /"reason" is a stub \("TODO"\)/)
-    // The stub-reason gate runs BEFORE the new/stale comparison.
-    assert.doesNotMatch(res.out, /NEW FINDING/)
-    assert.doesNotMatch(res.out, /STALE ENTRY/)
-  } finally {
-    writeFileSync(BASELINE, original)
-  }
+  assert.equal(problems.length, 1)
+  assert.match(problems[0], /SUPPRESSION TAG/)
 })
 
-test('a baseline entry whose reason is shorter than 30 characters is rejected', () => {
-  const shortReason = 'x'.repeat(29) // deliberately one character under the 30-character floor
-  assert.equal(shortReason.length, 29)
-  const original = addBaselineEntry({
-    key: 'export|zz-fixture-file.ts|zzFixtureExport',
-    kind: 'export',
-    file: 'zz-fixture-file.ts',
-    name: 'zzFixtureExport',
-    reason: shortReason,
+test('a duplicates finding is NAMEABLE — the shape the old KINDS map silently dropped', () => {
+  // knip reports duplicates as an ARRAY of exports, not a string or a {name} object. The
+  // hand-written kind map named `duplicates` but the extractor only understood the other
+  // two shapes, so every duplicate export in the repository read as nameless and was
+  // skipped — a whole finding class that could never be reported.
+  assert.equal(nameOf([{ name: 'foo' }, { name: 'bar' }]), 'foo + bar')
+  assert.equal(nameOf(['foo', 'bar']), 'foo + bar')
+  assert.equal(nameOf({ name: 'solo' }), 'solo')
+  assert.equal(nameOf('solo'), 'solo')
+  assert.equal(nameOf({ line: 3 }), '')
+})
+
+test('a top-level suppression key in knip.json is RED, naming the banned key', () => {
+  const res = runInRoot((root) => {
+    writeKnip(root, { ignore: ['src/**'], workspaces: { backend: { entry: ['src/main.ts'], project: ['src/**'] } } })
   })
-  try {
-    const res = run()
-    assert.equal(res.status, 1, res.out)
-    assert.match(res.out, /baseline itself is invalid/)
-    assert.match(res.out, /30 characters/)
-  } finally {
-    writeFileSync(BASELINE, original)
-  }
+  assert.equal(res.status, 1)
+  assert.match(res.out, /keys outside the allowed set at its top level: ignore/)
 })
 
-test('a duplicate key in the baseline is rejected', () => {
-  const original = readFileSync(BASELINE, 'utf8')
-  try {
-    const baseline = JSON.parse(original)
-    const dupe = baseline.entries[0]
-    baseline.entries = [...baseline.entries, { ...dupe }]
-    writeFileSync(BASELINE, `${JSON.stringify(baseline, null, 2)}\n`)
-    const res = run()
-    assert.equal(res.status, 1, res.out)
-    assert.match(res.out, /duplicate key in the baseline/)
-  } finally {
-    writeFileSync(BASELINE, original)
-  }
-})
-
-test('a well-formed but fabricated baseline entry is reported STALE, not accepted on faith', () => {
-  // Proves this does not just check "is the reason long enough" and stop there — an entry
-  // can be perfectly well-formed and still wrong, because nothing on disk produces it.
-  const original = addBaselineEntry({
-    key: 'export|zz-fixture-file-that-does-not-exist.ts|zzNoSuchExport',
-    kind: 'export',
-    file: 'zz-fixture-file-that-does-not-exist.ts',
-    name: 'zzNoSuchExport',
-    reason: VALID_TEST_REASON,
+test('a suppression key nested inside one workspace is caught too', () => {
+  const res = runInRoot((root) => {
+    writeKnip(root, {
+      workspaces: { backend: { entry: ['src/main.ts'], project: ['src/**'], ignore: ['src/x.ts'] } },
+    })
   })
-  try {
-    const res = run()
-    assert.equal(res.status, 1, res.out)
-    assert.match(res.out, /STALE ENTRY/)
-    assert.match(res.out, /zz-fixture-file-that-does-not-exist\.ts/)
-  } finally {
-    writeFileSync(BASELINE, original)
-  }
+  assert.equal(res.status, 1)
+  assert.match(res.out, /workspaces\.backend has keys outside the allowed set: ignore/)
+})
+
+test('a second knip config file is RED — an invisible bypass', () => {
+  const res = runInRoot((root) => {
+    writeKnip(root, { workspaces: { backend: { entry: ['src/main.ts'], project: ['src/**'] } } })
+    writeFileSync(path.join(root, 'knip.jsonc'), '{}\n')
+  })
+  assert.equal(res.status, 1)
+  assert.match(res.out, /additional knip config file\(s\) at the repo root: knip\.jsonc/)
+})
+
+test('a "knip" section in a workspace package.json is RED — knip reads it, this check does not', () => {
+  const res = runInRoot((root) => {
+    writeKnip(root, { workspaces: { backend: { entry: ['src/main.ts'], project: ['src/**'] } } })
+    mkdirSync(path.join(root, 'backend'), { recursive: true })
+    writeFileSync(
+      path.join(root, 'backend', 'package.json'),
+      JSON.stringify({ name: 'backend', knip: { ignore: ['src/**'] } }),
+    )
+  })
+  assert.equal(res.status, 1)
+  assert.match(res.out, /backend\/package\.json has a "knip" section/)
 })

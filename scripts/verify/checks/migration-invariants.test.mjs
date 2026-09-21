@@ -1,25 +1,45 @@
+/**
+ * EVERY FIXTURE HERE IS A THROWAWAY GIT REPOSITORY, not the real working tree.
+ *
+ * It used to plant migrations under the real backend/src and — worse — write an in-place
+ * edit to `1788600000004-IndexUserIdentityUser.ts`, an ALREADY-MERGED migration, restored
+ * only in a `finally`. The Stop hook ran this suite after every turn under a 150s timeout
+ * that kills the process group, and a killed process runs no `finally`. So the test for
+ * rule 4 could produce exactly the divergence rule 4 exists to catch.
+ *
+ * The check takes `--root <dir>`, so a fixture is a `mkdtempSync` repo with its own
+ * `refs/remotes/origin/main`. Building one costs ~250ms once per file; running the check
+ * against three files instead of 318 saves an order of magnitude more than that.
+ *
+ * FIXTURE_GIT_ENV is not optional. `cwd` does not win over `GIT_DIR`, git exports it into every
+ * hook, and without the scrub a fixture's `git commit` retargets whatever repository that
+ * variable names — which is how this repo once lost its HEAD.
+ */
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync, chmodSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+import { fixtureGitEnv } from '../scan-root.mjs'
+
+/** Hermetic: no host gitconfig, no inherited GIT_*, and an identity so commits work. */
+const FIXTURE_GIT_ENV = fixtureGitEnv()
 
 const ROOT = path.resolve(import.meta.dirname, '..', '..', '..')
 const CHECK = path.join(ROOT, 'scripts', 'verify', 'checks', 'migration-invariants.mjs')
-const BACKEND_SRC = path.join(ROOT, 'backend', 'src')
-const MIGRATIONS_DIR = path.join(BACKEND_SRC, 'migrations')
+
+/** @param {string} cwd @param {string[]} args */
+const git = (cwd, args) => execFileSync('git', args, { cwd, env: FIXTURE_GIT_ENV, stdio: 'pipe' })
 
 /**
- * @param {{ env?: NodeJS.ProcessEnv }} [opts]
+ * @param {string} [root] when omitted, the check runs against the real repository
  * @returns {{ status: number, out: string }}
  */
-function run(opts = {}) {
+function run(root) {
+  const args = root ? [CHECK, '--root', root] : [CHECK]
   try {
-    return {
-      status: 0,
-      out: execFileSync(process.execPath, [CHECK], { encoding: 'utf8', env: opts.env ?? process.env }),
-    }
+    return { status: 0, out: execFileSync(process.execPath, args, { encoding: 'utf8' }) }
   } catch (err) {
     // Cast is needed for `npx tsc -p tsconfig.scripts.json` (strict + checkJs types catch
     // variables as `unknown`) — same idiom as secret-boundary.test.mjs's run() helper.
@@ -29,172 +49,210 @@ function run(opts = {}) {
 }
 
 /**
- * Writes a fixture file under backend/src and returns a cleanup function. The check reads
- * `git ls-files -c -o --exclude-standard` for rule 1, and plain `readdirSync` for rules 2/3
- * — either way an untracked-but-not-ignored file is seen without ever being `git add`ed, so
- * cleanup is a plain `rmSync`.
+ * A throwaway repository shaped like this one, with a fake `origin/main`.
  *
- * @param {string} relFromBackendSrc
- * @param {string} content
- * @returns {() => void}
+ * @param {{ originMain?: boolean }} [opts]
+ * @returns {{ root: string, cleanup: () => void }}
  */
-function writeFixture(relFromBackendSrc, content) {
-  const abs = path.join(BACKEND_SRC, relFromBackendSrc)
+function fixtureRepo(opts = {}) {
+  const root = mkdtempSync(path.join(os.tmpdir(), 'verify-migrations-'))
+  git(root, ['init', '-q'])
+  mkdirSync(path.join(root, 'backend', 'src', 'migrations'), { recursive: true })
+  writeFileSync(
+    path.join(root, 'backend', 'src', 'app.module.ts'),
+    'export const opts = { synchronize: false };\n',
+  )
+  writeFileSync(
+    path.join(root, 'backend', 'src', 'migrations', '1700000000000-Base.ts'),
+    'export class Base1700000000000 {}\n',
+  )
+  writeFileSync(
+    path.join(root, 'backend', 'src', 'migrations', '1700000000001-Second.ts'),
+    'export class Second1700000000001 {}\n',
+  )
+  git(root, ['add', '-A'])
+  git(root, ['commit', '-qm', 'init'])
+  if (opts.originMain !== false) git(root, ['update-ref', 'refs/remotes/origin/main', 'HEAD'])
+  return { root, cleanup: () => rmSync(root, { recursive: true, force: true }) }
+}
+
+/** @param {string} root @param {string} rel @param {string} content */
+function write(root, rel, content) {
+  const abs = path.join(root, rel)
   mkdirSync(path.dirname(abs), { recursive: true })
   writeFileSync(abs, content)
-  return () => rmSync(abs, { force: true })
 }
 
 /**
- * A `git` shim directory: everything except one exact `rev-parse --verify -q origin/main`
- * invocation is passed straight through to the real `git` on PATH, so rule 1's `git
- * ls-files` and rule 4's `git cat-file`/`git diff` calls (never reached once rule 4 skips,
- * but this keeps the shim honest about what it changes) behave exactly as normal. This
- * simulates "origin/main not fetched" WITHOUT touching this worktree's real
- * `refs/remotes/origin/main` — that ref is shared git state (worktrees share refs), and
- * mutating or deleting it here could affect this repository's other worktrees and any
- * concurrent session.
- *
- * @returns {{ dir: string, cleanup: () => void }}
+ * @param {(root: string) => void} fn
+ * @param {{ originMain?: boolean }} [opts]
  */
-function makeOriginMainUnresolvableShim() {
-  const realGit = execFileSync('/bin/sh', ['-c', 'command -v git'], { encoding: 'utf8' }).trim()
-  const dir = mkdtempSync(path.join(os.tmpdir(), 'migrations-check-git-shim-'))
-  const shimPath = path.join(dir, 'git')
-  writeFileSync(
-    shimPath,
-    [
-      '#!/bin/sh',
-      'if [ "$1" = "rev-parse" ] && [ "$2" = "--verify" ] && [ "$3" = "-q" ] && [ "$4" = "origin/main" ]; then',
-      '  exit 1',
-      'fi',
-      `exec "${realGit}" "$@"`,
-      '',
-    ].join('\n'),
-  )
-  chmodSync(shimPath, 0o755)
-  return { dir, cleanup: () => rmSync(dir, { recursive: true, force: true }) }
+function withFixture(fn, opts) {
+  const { root, cleanup } = fixtureRepo(opts)
+  try {
+    fn(root)
+  } finally {
+    cleanup()
+  }
 }
 
 test('the real tree is green', () => {
+  // THE ONE permitted whole-repository assertion in this file (invariant #2). Its
+  // discriminator is the summary line: a scanner that saw nothing cannot produce it,
+  // because a zero-file scan now exits 1 by construction.
   const res = run()
   assert.equal(res.status, 0, res.out)
+  assert.match(res.out, /synchronize is false everywhere in backend\/src/)
 })
 
-test('adding a migration whose timestamp duplicates an existing one is red, naming the timestamp', () => {
-  // "Lower than an existing one" (the brief's phrasing) and "a duplicate" are the same
-  // event here: the 8 real timestamps are consecutive integers with no gap, so any new
-  // timestamp that is not a new maximum reuses one already on disk. 1788600000003 already
-  // names BootstrapOwner.
-  const rel = 'migrations/1788600000003-ZzFixtureDuplicate.ts'
-  const cleanup = writeFixture(rel, ['export class ZzFixtureDuplicate1788600000003 {}', ''].join('\n'))
+test('a clean fixture is green', () => {
+  withFixture((root) => {
+    const res = run(root)
+    assert.equal(res.status, 0, res.out)
+  })
+})
+
+test('an empty root REFUSES a verdict rather than reporting one', () => {
+  // The failure mode a --root argument makes more likely, not less: point a check at the
+  // wrong directory and it agrees with you. Reproduced against the old code, which printed
+  // "migrations: intact" over an empty backend/src and exited 0.
+  const root = mkdtempSync(path.join(os.tmpdir(), 'verify-migrations-empty-'))
   try {
-    const res = run()
+    git(root, ['init', '-q'])
+    const res = run(root)
     assert.equal(res.status, 1, res.out)
-    assert.match(res.out, /duplicate timestamp 1788600000003/)
-    assert.match(res.out, /BootstrapOwner/)
-    assert.match(res.out, /ZzFixtureDuplicate/)
+    assert.match(res.out, /scanned ZERO/)
   } finally {
-    cleanup()
+    rmSync(root, { recursive: true, force: true })
   }
 })
 
-test('adding a migration whose exported class name does not match its filename is red', () => {
-  const rel = 'migrations/1788600099001-ZzFixtureBadClass.ts'
-  const cleanup = writeFixture(rel, ['export class TotallyWrongName {}', ''].join('\n'))
-  try {
-    const res = run()
+test('rule 1: synchronize not literally false is red', () => {
+  withFixture((root) => {
+    write(root, 'backend/src/zz-sync.ts', 'export const o = { synchronize: true };\n')
+    const res = run(root)
     assert.equal(res.status, 1, res.out)
-    assert.match(res.out, /1788600099001-ZzFixtureBadClass\.ts/)
-    assert.match(res.out, /ZzFixtureBadClass1788600099001/)
-    assert.match(res.out, /TotallyWrongName/)
-  } finally {
-    cleanup()
-  }
+    assert.match(res.out, /zz-sync\.ts/)
+    assert.match(res.out, /synchronize/)
+  })
 })
 
-test('setting synchronize: true in a copy of app.module.ts is red', () => {
-  const rel = 'zz-migrations-fixture-synchronize.ts'
-  const cleanup = writeFixture(
-    rel,
-    [
-      "import { TypeOrmModule } from '@nestjs/typeorm';",
-      '',
-      'export const Fixture = TypeOrmModule.forRootAsync({',
-      '  useFactory: () => ({',
-      "    type: 'postgres',",
-      '    synchronize: true,',
-      '  }),',
-      '});',
-      '',
-    ].join('\n'),
+test('rule 2: two migrations sharing a timestamp are red', () => {
+  withFixture((root) => {
+    write(root, 'backend/src/migrations/1700000000000-Duplicate.ts', 'export class Duplicate1700000000000 {}\n')
+    const res = run(root)
+    assert.equal(res.status, 1, res.out)
+    assert.match(res.out, /1700000000000/)
+  })
+})
+
+test('rule 2: a file that is neither a migration nor a db-spec is red', () => {
+  withFixture((root) => {
+    write(root, 'backend/src/migrations/notes.txt', 'hello\n')
+    const res = run(root)
+    assert.equal(res.status, 1, res.out)
+    assert.match(res.out, /notes\.txt/)
+  })
+})
+
+test('rule 2: a GITIGNORED stray file is NOT red', () => {
+  // `.DS_Store` in this directory used to turn the fast tier red — i.e. the check went red
+  // when someone opened a folder in Finder. Rule 1 enumerated with `git ls-files
+  // --exclude-standard` and rules 2/3 with `readdirSync`, so the two halves disagreed about
+  // what "a file in this repo" means.
+  withFixture((root) => {
+    write(root, '.gitignore', '.DS_Store\n')
+    write(root, 'backend/src/migrations/.DS_Store', '\0\0\n')
+    const res = run(root)
+    assert.equal(res.status, 0, res.out)
+  })
+})
+
+test('rule 3: a class name that is not name+timestamp is red', () => {
+  withFixture((root) => {
+    write(root, 'backend/src/migrations/1700000000009-Fresh.ts', 'export class WrongName1700000000009 {}\n')
+    const res = run(root)
+    assert.equal(res.status, 1, res.out)
+    assert.match(res.out, /1700000000009-Fresh\.ts/)
+  })
+})
+
+test('rule 3: a correctly named NEW migration stays green', () => {
+  withFixture((root) => {
+    write(root, 'backend/src/migrations/1700000000009-Fresh.ts', 'export class Fresh1700000000009 {}\n')
+    const res = run(root)
+    // The discriminator: not merely "green", but green while the scanner demonstrably SAW
+    // the file — the previous test uses the same path and is red.
+    assert.equal(res.status, 0, res.out)
+  })
+})
+
+test('rule 4a: editing an already-merged migration is red', () => {
+  withFixture((root) => {
+    write(root, 'backend/src/migrations/1700000000000-Base.ts', 'export class Base1700000000000 {}\n// edited\n')
+    const res = run(root)
+    assert.equal(res.status, 1, res.out)
+    assert.match(res.out, /differs from its origin\/main copy/)
+  })
+})
+
+test('rule 4b: DELETING an already-merged migration is red, naming the file', () => {
+  // THE HOLE THIS COMMIT CLOSES. `candidates` is built from the on-disk directory, so a
+  // path that is gone is never enumerated and therefore never compared: `rm` a merged
+  // migration and the check reported "intact".
+  withFixture((root) => {
+    rmSync(path.join(root, 'backend/src/migrations/1700000000000-Base.ts'))
+    const res = run(root)
+    assert.equal(res.status, 1, res.out)
+    assert.match(res.out, /1700000000000-Base\.ts/)
+    assert.match(res.out, /GONE from the working tree/)
+  })
+})
+
+test('rule 4b: RENAMING an already-merged migration is red, naming the new file', () => {
+  // Worse than a deletion: the old path vanishes (invisible to 4a) and the new one has no
+  // origin/main counterpart (skipped by 4a), so the run used to be FULLY green.
+  withFixture((root) => {
+    const dir = path.join(root, 'backend/src/migrations')
+    rmSync(path.join(dir, '1700000000000-Base.ts'))
+    writeFileSync(path.join(dir, '1700000000000-Renamed.ts'), 'export class Renamed1700000000000 {}\n')
+    const res = run(root)
+    assert.equal(res.status, 1, res.out)
+    assert.match(res.out, /RENAMED to 1700000000000-Renamed\.ts/)
+  })
+})
+
+test('rule 4b: a tree BEHIND origin/main stays green', () => {
+  // THE REGRESSION A CARELESS IMPLEMENTATION FAILS. Keying 4b on origin/main rather than
+  // the merge-base reports "a merged migration was deleted" for every branch that is one
+  // pull behind — which this repository's own main was on the day this was written.
+  withFixture((root) => {
+    write(root, 'backend/src/migrations/1700000000002-Ahead.ts', 'export class Ahead1700000000002 {}\n')
+    git(root, ['add', '-A'])
+    git(root, ['commit', '-qm', 'ahead'])
+    git(root, ['update-ref', 'refs/remotes/origin/main', 'HEAD'])
+    git(root, ['reset', '-q', '--hard', 'HEAD~1'])
+    const res = run(root)
+    assert.equal(res.status, 0, res.out)
+  })
+})
+
+test('rule 4 SKIPS with a WARNING when origin/main does not resolve, and the run stays green', () => {
+  withFixture(
+    (root) => {
+      const res = run(root)
+      assert.equal(res.status, 0, res.out)
+      assert.match(res.out, /WARNING/)
+      assert.match(res.out, /SKIPPED/)
+    },
+    { originMain: false },
   )
-  try {
-    const res = run()
-    assert.equal(res.status, 1, res.out)
-    assert.match(res.out, /zz-migrations-fixture-synchronize\.ts:6/)
-    assert.match(res.out, /synchronize is 'true'/)
-  } finally {
-    cleanup()
-  }
 })
 
-test('modifying a migration that is an ancestor of origin/main is red, naming the file', () => {
-  const target = path.join(MIGRATIONS_DIR, '1788600000004-IndexUserIdentityUser.ts')
-  const original = readFileSync(target, 'utf8')
-  try {
-    execFileSync('git', ['rev-parse', '--verify', '-q', 'origin/main'], { cwd: ROOT, stdio: 'ignore' })
-  } catch {
-    assert.fail(
-      'this test requires origin/main to be a resolvable ref in this worktree — it was not; ' +
-        'fetch origin/main and re-run (a separate test below covers the case where it is absent)',
-    )
-  }
-  try {
-    writeFileSync(target, `${original}\n// zz-migrations-fixture: frozen-migration mutation test\n`)
-    const res = run()
-    assert.equal(res.status, 1, res.out)
-    assert.match(res.out, /1788600000004-IndexUserIdentityUser\.ts/)
-    assert.match(res.out, /origin\/main/)
-    assert.match(res.out, /Fix forward/)
-  } finally {
-    writeFileSync(target, original)
-  }
-})
-
-test('adding a new migration with the highest timestamp stays green', () => {
-  const rel = 'migrations/1788600099002-ZzFixtureNewest.ts'
-  const cleanup = writeFixture(rel, ['export class ZzFixtureNewest1788600099002 {}', ''].join('\n'))
-  try {
-    const res = run()
+test('a *.db-spec.ts file beside the migrations is not mistaken for one', () => {
+  withFixture((root) => {
+    write(root, 'backend/src/migrations/schema.db-spec.ts', "it('x', () => {});\n")
+    const res = run(root)
     assert.equal(res.status, 0, res.out)
-  } finally {
-    cleanup()
-  }
-})
-
-test('a *.db-spec.ts file in the migrations directory is excluded from rules 2 and 3', () => {
-  const rel = 'migrations/zz-migrations-fixture.db-spec.ts'
-  // Not 13-digits-dash-name, and no exported class matching anything — if this were
-  // treated as a migration candidate it would fail both rule 2 (bad filename) and rule 3
-  // (no matching class). It must be invisible to both.
-  const cleanup = writeFixture(rel, ["test('placeholder', () => {});", ''].join('\n'))
-  try {
-    const res = run()
-    assert.equal(res.status, 0, res.out)
-  } finally {
-    cleanup()
-  }
-})
-
-test('when origin/main is not resolvable, rule 4 SKIPS with a WARNING and the run stays green', () => {
-  const shim = makeOriginMainUnresolvableShim()
-  try {
-    const res = run({ env: { ...process.env, PATH: `${shim.dir}:${process.env.PATH}` } })
-    assert.equal(res.status, 0, res.out)
-    assert.match(res.out, /WARNING: origin\/main is not a resolvable ref/)
-    assert.match(res.out, /SKIPPED/)
-  } finally {
-    shim.cleanup()
-  }
+  })
 })

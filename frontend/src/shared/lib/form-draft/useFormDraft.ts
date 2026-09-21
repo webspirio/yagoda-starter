@@ -123,7 +123,7 @@ export function useFormDraft<TValues extends FieldValues, TMeta = undefined>({
       // server-side) — sweep the stored copy so it can't be restored later.
       removeLocal(storageKey);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- the restore effect must re-run only on storageKey; everything else is read through stable refs, on purpose
   }, [storageKey]);
 
   // Debounced persist (created in an effect so `Date.now()` is legitimately

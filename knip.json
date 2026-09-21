@@ -1,11 +1,28 @@
 {
   "workspaces": {
+    ".": {
+      "entry": [".claude/hooks/*.mjs", "scripts/**/*.mjs"],
+      "project": [".claude/hooks/*.mjs", "scripts/**/*.mjs"]
+    },
     "backend": {
-      "entry": ["src/main.ts", "src/data-source.ts", "src/seed/dev-seed.cli.ts"],
+      "entry": [
+        "src/main.ts",
+        "src/data-source.ts",
+        "src/seed/dev-seed.cli.ts",
+        "src/migrations/*.ts",
+        "src/**/*.spec.ts",
+        "src/**/*.db-spec.ts"
+      ],
       "project": ["src/**/*.ts"]
     },
     "frontend": {
-      "entry": ["src/main.tsx", "vite.config.ts"],
+      "entry": [
+        "src/main.tsx",
+        "vite.config.ts",
+        "src/test-setup.ts",
+        "src/**/*.test.ts",
+        "src/**/*.test.tsx"
+      ],
       "project": ["src/**/*.{ts,tsx}"]
     }
   }

@@ -88,8 +88,17 @@ import { createHash } from 'node:crypto'
 import path from 'node:path'
 
 import { errMessage } from '../hash.mjs'
+import { gitEnv, refuseEmptyScan, scanRoot } from '../scan-root.mjs'
 
-const ROOT = path.resolve(import.meta.dirname, '..', '..', '..')
+/**
+ * The tree this check scans. Overridable with `--root <dir>` / VERIFY_SCAN_ROOT so this
+ * check's own fixtures stop being written into the REAL repository — this suite planted
+ * seven files under docs/, rewrote .gitignore and .env.example, and `git add -N`'d each
+ * fixture into the REAL GIT INDEX, because rule 3 enumerates tracked files only and an
+ * untracked fixture is invisible to it. Inside a fixture repo that staging is free and
+ * correct.
+ */
+const ROOT = scanRoot()
 const GITIGNORE_PATH = path.join(ROOT, '.gitignore')
 const ENV_EXAMPLE_PATH = path.join(ROOT, '.env.example')
 const BASELINE_REL = 'scripts/verify/baselines/secret-boundary.json'
@@ -207,7 +216,11 @@ function checkEnvNotTracked() {
   /** @type {string} */
   let out
   try {
-    out = execFileSync('git', ['ls-files', '--', '.env', '.env.*'], { cwd: ROOT, encoding: 'utf8' })
+    out = execFileSync('git', ['ls-files', '--', '.env', '.env.*'], {
+      cwd: ROOT,
+      env: gitEnv(),
+      encoding: 'utf8',
+    })
   } catch (err) {
     return [`could not list tracked .env files: ${errMessage(err)}`]
   }
@@ -280,7 +293,11 @@ function listTrackedFiles() {
   const NUL = String.fromCharCode(0)
   let raw
   try {
-    raw = execFileSync('git', ['ls-files', '-z'], { cwd: ROOT, maxBuffer: 128 * 1024 * 1024 })
+    raw = execFileSync('git', ['ls-files', '-z'], {
+      cwd: ROOT,
+      env: gitEnv(),
+      maxBuffer: 128 * 1024 * 1024,
+    })
   } catch (err) {
     throw new Error(`secret-boundary: git could not enumerate tracked files: ${errMessage(err)}`)
   }
@@ -400,7 +417,9 @@ function loadConfirmedFakeValues() {
 function scanTrackedFilesForSecretShapes(suppressions) {
   /** @type {string[]} */
   const findings = []
-  for (const rel of listTrackedFiles()) {
+  const trackedFiles = listTrackedFiles()
+  refuseEmptyScan('secrets', trackedFiles.length, 'tracked files', ROOT)
+  for (const rel of trackedFiles) {
     if (RULE3_SKIP.has(rel)) continue
     const text = readTextOrNull(path.join(ROOT, rel))
     if (text === null) continue
@@ -498,4 +517,4 @@ function main() {
   )
 }
 
-main()
+if (process.argv[1] && process.argv[1].endsWith('secret-boundary.mjs')) main()

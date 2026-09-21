@@ -3,7 +3,7 @@ import { cn } from './cn';
 
 describe('cn', () => {
   it('joins truthy class names and drops falsy ones', () => {
-    // eslint-disable-next-line no-constant-binary-expression
+    // eslint-disable-next-line no-constant-binary-expression -- the constant expression IS the assertion: it proves cn() drops a falsy argument
     expect(cn('a', false && 'b', undefined, 'c')).toBe('a c');
   });
 
