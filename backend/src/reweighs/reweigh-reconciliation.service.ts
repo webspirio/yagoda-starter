@@ -156,6 +156,7 @@ export class ReweighReconciliationService {
   async forShift(
     _actor: AuthenticatedUser,
     shiftId: string,
+    includeVoided = false,
   ): Promise<ReconciliationResponse> {
     const shift = await this.shifts.findOneRaw(shiftId);
     if (!shift) throw new NotFoundException('Shift not found');
@@ -169,8 +170,18 @@ export class ReweighReconciliationService {
     // than an error. `created_at` DESC is §5.3's «newest first»;
     // `item_order` breaks the tie for two lines saved in the same
     // transaction, which `created_at` alone cannot.
+    //
+    // §8.7's storno leaves the row: «документ НЕ зникає». Filtering voided
+    // lines out of `items[]` made that promise false on screen — the line
+    // the owner had just voided vanished on the next refetch, taking its
+    // reason and its author with it. The flag governs THIS LIST ONLY:
+    // `products[]` comes from `gradeTotals`, whose own SQL filters
+    // `ri.voided_at IS NULL`, so a voided line can never be counted
+    // whatever is passed here.
     const items = await this.dataSource.getRepository(ReweighItem).find({
-      where: { reweigh: { shift_id: shiftId }, voided_at: IsNull() },
+      where: includeVoided
+        ? { reweigh: { shift_id: shiftId } }
+        : { reweigh: { shift_id: shiftId }, voided_at: IsNull() },
       relations: { product_grade: { product: true }, tare: { tare_type: true } },
       order: { created_at: 'DESC', item_order: 'DESC' },
     });

@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Post } from '@nestjs/common';
+import { Body, Controller, Get, Param, ParseBoolPipe, ParseUUIDPipe, Post, Query } from '@nestjs/common';
 import { Auth } from '../auth/decorators/auth.decorators';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { UserRole } from '../users/user-role.enum';
@@ -26,8 +26,9 @@ export class ReweighsController {
   reconciliation(
     @CurrentUser() actor: AuthenticatedUser,
     @Param('shiftId', ParseUUIDPipe) shiftId: string,
+    @Query('include_voided', new ParseBoolPipe({ optional: true })) includeVoided?: boolean,
   ): Promise<ReconciliationResponse> {
-    return this.reconciliation_.forShift(actor, shiftId);
+    return this.reconciliation_.forShift(actor, shiftId, includeVoided ?? false);
   }
 
   @Post('shifts/:shiftId/reweigh-items')

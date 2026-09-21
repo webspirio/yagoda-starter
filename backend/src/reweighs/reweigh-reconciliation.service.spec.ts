@@ -1,3 +1,4 @@
+import { IsNull } from 'typeorm';
 import { ReweighReconciliationService } from './reweigh-reconciliation.service';
 import type { GradeTotalsRow } from './reweigh-reconciliation.service';
 import { UserRole } from '../users/user-role.enum';
@@ -171,5 +172,53 @@ describe('grades[]', () => {
     const res = await service.forShift(actor, 'shift-1');
     expect(res.grades).toEqual([]);
     expect(res.accepted_anything).toBe(false);
+  });
+});
+
+describe('include_voided', () => {
+  let rows: GradeTotalsRow[];
+  let service: ReweighReconciliationService;
+  let itemRepo: { find: jest.Mock };
+  const actor = owner;
+
+  beforeEach(() => {
+    rows = [];
+    itemRepo = { find: jest.fn(async () => []) };
+    const dataSource = {
+      query: jest.fn(async () => rows),
+      getRepository: jest.fn(() => itemRepo),
+    };
+    const shifts = { findOneRaw: jest.fn(async () => ({ id: 'shift-1', closed_at: new Date() })) };
+    service = new ReweighReconciliationService(dataSource as never, shifts as never);
+  });
+
+  it('omits voided lines by default', async () => {
+    await service.forShift(actor, 'shift-1');
+    expect(itemRepo.find).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { reweigh: { shift_id: 'shift-1' }, voided_at: IsNull() },
+      }),
+    );
+  });
+
+  it('asks for every line, voided included, when told to', async () => {
+    await service.forShift(actor, 'shift-1', true);
+    expect(itemRepo.find).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { reweigh: { shift_id: 'shift-1' } } }),
+    );
+  });
+
+  it('never lets a voided line move a products[] figure', async () => {
+    // `products[]` comes from gradeTotals' SQL, which filters ri.voided_at IS NULL
+    // itself — the flag must not reach it.
+    rows = [
+      gradeRow({
+        product_grade_id: 'g-1',
+        intake_net_kg: '200.00', intake_amount: '20000.00', reweigh_net_kg: '190.00',
+      }),
+    ];
+    const withVoided = await service.forShift(actor, 'shift-1', true);
+    const without = await service.forShift(actor, 'shift-1', false);
+    expect(withVoided.products).toEqual(without.products);
   });
 });
