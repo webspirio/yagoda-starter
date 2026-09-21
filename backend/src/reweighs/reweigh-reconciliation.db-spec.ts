@@ -217,8 +217,17 @@ describe('ReweighReconciliationService.forShift (DB)', () => {
    * the kind of thing a mocked `dataSource.query` cannot see. Two grades of
    * one product, both accepted: `grades[]` must name both, distinctly, all
    * pointing at the same product.
+   *
+   * The ids are DELIBERATELY INVERTED relative to the names: 'Малина 1' (the
+   * alphabetically first name) gets the LARGER uuid, 'Малина 3' the smaller
+   * one. `ORDER BY p.name, pg.name` therefore prints ['Малина 1', 'Малина 3']
+   * while the old `ORDER BY p.name, pg.id` would deterministically print the
+   * reverse — a plain `.sort()`-before-compare (or an unsorted assertion with
+   * randomly generated ids) cannot tell the two orderings apart, since id
+   * order is random relative to name order about half the time. Do not
+   * "simplify" this back to random ids; that reintroduces the flake.
    */
-  it('returns one grade row per accepted grade, named', async () => {
+  it('returns one grade row per accepted grade, named, in NAME order', async () => {
     const tag = randomUUID();
     const short = tag.slice(0, 8).toUpperCase();
 
@@ -239,13 +248,19 @@ describe('ReweighReconciliationService.forShift (DB)', () => {
     const [product] = await ds.query(`INSERT INTO products (name) VALUES ($1) RETURNING id`, [
       `Малина ${tag}`,
     ]);
+
+    // Larger id → 'Малина 1' (alphabetically first), smaller id → 'Малина 3'.
+    // See the doc comment above for why this inversion is the point.
+    const idOne = randomUUID();
+    const idTwo = randomUUID();
+    const [biggerId, smallerId] = idOne > idTwo ? [idOne, idTwo] : [idTwo, idOne];
     const [gradeA] = await ds.query(
-      `INSERT INTO product_grades (product_id, name) VALUES ($1, 'Малина 1') RETURNING id`,
-      [product.id],
+      `INSERT INTO product_grades (id, product_id, name) VALUES ($1, $2, 'Малина 1') RETURNING id`,
+      [biggerId, product.id],
     );
     const [gradeB] = await ds.query(
-      `INSERT INTO product_grades (product_id, name) VALUES ($1, 'Малина 3') RETURNING id`,
-      [product.id],
+      `INSERT INTO product_grades (id, product_id, name) VALUES ($1, $2, 'Малина 3') RETURNING id`,
+      [smallerId, product.id],
     );
 
     const [intake] = await ds.query(
@@ -268,7 +283,8 @@ describe('ReweighReconciliationService.forShift (DB)', () => {
 
     const res = await service.forShift(actor(), shift.id);
 
-    expect(res.grades.map((g) => g.product_grade_name).sort()).toEqual(['Малина 1', 'Малина 3']);
+    // Order-sensitive: proves `ORDER BY p.name, pg.name`, not `pg.id`.
+    expect(res.grades.map((g) => g.product_grade_name)).toEqual(['Малина 1', 'Малина 3']);
     expect(res.grades.every((g) => g.product_id === product.id)).toBe(true);
   });
 });

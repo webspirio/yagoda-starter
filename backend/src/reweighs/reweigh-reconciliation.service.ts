@@ -192,18 +192,18 @@ export class ReweighReconciliationService {
     }
 
     const products: ReconciliationProduct[] = [];
-    for (const [productId, grades] of byProduct) {
-      const intakeNet = sum(grades.map((g) => g.intake_net_kg));
-      const reweighNet = sum(grades.map((g) => g.reweigh_net_kg ?? '0.00'));
+    for (const [productId, productGrades] of byProduct) {
+      const intakeNet = sum(productGrades.map((g) => g.intake_net_kg));
+      const reweighNet = sum(productGrades.map((g) => g.reweigh_net_kg ?? '0.00'));
 
       // §3.15 — one unweighed grade makes the whole product «не перезважено»,
       // because the shortfall on that grade would otherwise read as real.
-      const complete = weighedInFull(grades);
+      const complete = weighedInFull(productGrades);
 
       if (!complete || open) {
         products.push({
           product_id: productId,
-          product_name: grades[0].product_name,
+          product_name: productGrades[0].product_name,
           intake_net_kg: intakeNet,
           reweigh_net_kg: reweighNet,
           state: complete ? 'weighed' : 'not_reweighed',
@@ -215,7 +215,7 @@ export class ReweighReconciliationService {
 
       // §3.6 — per GRADE, at the weighted average actually accrued (bonuses
       // included, because it is already paid), then summed for display.
-      const amounts = grades.map((g) => {
+      const amounts = productGrades.map((g) => {
         const missing = sub(g.intake_net_kg, g.reweigh_net_kg as string);
         if (isZero(g.intake_net_kg)) return '0.00';
         return mul(missing, div(g.intake_amount, g.intake_net_kg));
@@ -223,7 +223,7 @@ export class ReweighReconciliationService {
 
       products.push({
         product_id: productId,
-        product_name: grades[0].product_name,
+        product_name: productGrades[0].product_name,
         intake_net_kg: intakeNet,
         reweigh_net_kg: reweighNet,
         state: 'weighed',
