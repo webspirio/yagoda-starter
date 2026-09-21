@@ -147,6 +147,7 @@ export function TotalsSection({
             label={t('reception.totals.paid')}
             error={paidError ?? undefined}
             hint={overCap ? t(overCapKey, { uah: formatUah(cap ?? '0', locale) }) : undefined}
+            hintTone={overCap ? 'warning' : undefined}
             className="mt-2"
           >
             {(a11y) => (

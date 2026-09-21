@@ -69,6 +69,9 @@ interface FieldProps {
   required?: boolean;
   /** Muted helper text shown under the control. */
   hint?: string;
+  /** `'warning'` renders the hint amber instead of muted — a note the operator
+   *  should actually notice (e.g. a clamp), not routine helper text. */
+  hintTone?: 'muted' | 'warning';
   /** i18n key of a validation error (resolved here). Rendered under the hint. */
   error?: string;
   children: (a11y: FieldA11y) => ReactNode;
@@ -83,7 +86,16 @@ interface FieldProps {
  * props must reach the *actual* control: for tag/choice fields the direct child
  * is RHF's `<Controller>`, which would swallow anything injected by cloning.
  */
-export function Field({ name, label, required, hint, error, children, className }: FieldProps) {
+export function Field({
+  name,
+  label,
+  required,
+  hint,
+  hintTone = 'muted',
+  error,
+  children,
+  className,
+}: FieldProps) {
   const { t } = useTranslation();
   const labelId = `${name}-label`;
   const hintId = `${name}-hint`;
@@ -121,7 +133,13 @@ export function Field({ name, label, required, hint, error, children, className 
         'aria-required': required ? true : undefined,
       })}
       {hint && (
-        <p id={hintId} className="mt-1.5 text-xs leading-snug text-muted-foreground">
+        <p
+          id={hintId}
+          className={cn(
+            'mt-1.5 text-xs leading-snug',
+            hintTone === 'warning' ? 'text-amber' : 'text-muted-foreground',
+          )}
+        >
           {hint}
         </p>
       )}

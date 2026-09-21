@@ -142,6 +142,20 @@ describe('TotalsSection — the cap and the clamp', () => {
     expect(screen.queryByText(/is in the berry drawer/)).toBeNull();
   });
 
+  it('gives the clamp note a warning tone, and leaves the plain state muted', async () => {
+    const user = userEvent.setup();
+    render(<Harness />);
+    const input = screen.getByLabelText('Paid in cash');
+
+    // Plain state: no clamp note yet, so the (absent) hint has nothing to warn about.
+    expect(screen.queryByText(/Cannot pay out more than/)).toBeNull();
+
+    await user.type(input, '9999');
+    expect(
+      screen.getByText('Cannot pay out more than is in the berry drawer — using 1,616.10 ₴'),
+    ).toHaveClass('text-amber');
+  });
+
   it('does not touch «Видано готівкою» on a blur that changes nothing (I4)', async () => {
     const user = userEvent.setup();
     const onPaidChange = vi.fn();
