@@ -31,7 +31,11 @@ import {
 import { Shift } from '../shifts/shift.entity';
 import { ShiftsService } from '../shifts/shifts.service';
 import { SuppliersService } from '../suppliers/suppliers.service';
+import { Supplier } from '../suppliers/supplier.entity';
 import type { SupplierResponse } from '../suppliers/supplier.mapper';
+import { User } from '../users/user.entity';
+import { displayNameOf } from '../users/display-name';
+import { ROW_EXTRAS_SQL, rowExtrasSelects, type IntakeRowExtras } from './intake-row-extras';
 import { GradePricesService } from '../grade-prices/grade-prices.service';
 import { TareTypesService } from '../tare-types/tare-types.service';
 import { CollectionPointsService } from '../collection-points/collection-points.service';
@@ -171,7 +175,14 @@ export class IntakesService {
           paid.push(payout);
         }
 
-        return toIntakeDetailResponse(intake, shift, intake.items ?? [], paid);
+        return toIntakeDetailResponse(
+          intake,
+          shift,
+          intake.items ?? [],
+          await this.extrasFor(intake.id, m),
+          paid,
+          await this.nameOf(actor.sub, m),
+        );
       } catch (error) {
         throw this.translateDuplicateCode(error, code);
       }
@@ -294,7 +305,7 @@ export class IntakesService {
         m,
       );
 
-      return toIntakeResponse(saved, shift);
+      return toIntakeResponse(saved, shift, await this.extrasFor(saved.id, m));
     });
   }
 
@@ -315,7 +326,9 @@ export class IntakesService {
 
     const qb = this.repo
       .createQueryBuilder('i')
-      .innerJoinAndMapOne('i.shift', Shift, 's', 's.id = i.shift_id');
+      .innerJoinAndMapOne('i.shift', Shift, 's', 's.id = i.shift_id')
+      .innerJoin(Supplier, 'sup', 'sup.id = i.supplier_id');
+    for (const { sql, alias } of rowExtrasSelects('i', 'sup')) qb.addSelect(sql, alias);
 
     if (pointId) qb.andWhere('s.collection_point_id = :pointId', { pointId });
     if (query.shift_id) qb.andWhere('i.shift_id = :shiftId', { shiftId: query.shift_id });
@@ -326,18 +339,28 @@ export class IntakesService {
     if (query.to) qb.andWhere('s.business_date <= :to', { to: query.to });
     if (!query.include_voided) qb.andWhere('i.voided_at IS NULL');
 
-    const [data, total] = await qb
-      .orderBy('i.created_at', 'DESC')
+    qb.orderBy('i.created_at', 'DESC')
       // Tiebreaker: two receipts punched in the same millisecond are ordinary
       // at a busy point, and Postgres promises no order among ties — without
       // this, paging could repeat or drop one.
       .addOrderBy('i.id', 'ASC')
       .skip(skipOf(query))
-      .take(query.limit)
-      .getManyAndCount();
+      .take(query.limit);
+
+    // `getManyAndCount` cannot carry raw selects; `getRawAndEntities` keeps
+    // `raw[n]` aligned with `entities[n]` (one row per intake — both joins are
+    // to-one), and the count runs over the same filtered builder.
+    const [{ entities, raw }, total] = await Promise.all([qb.getRawAndEntities(), qb.getCount()]);
 
     return {
-      data: data.map((i) => toIntakeResponse(i, i.shift as Shift)),
+      data: entities.map((i, n) =>
+        toIntakeResponse(i, i.shift as Shift, {
+          net_kg: raw[n].net_kg,
+          lines_count: raw[n].lines_count,
+          supplier_name: raw[n].supplier_name,
+          paid_amount: raw[n].paid_amount,
+        }),
+      ),
       total,
       page: query.page,
       limit: query.limit,
@@ -358,17 +381,39 @@ export class IntakesService {
       throw new NotFoundException('Intake not found');
     }
 
-    const items = await this.repo.manager.find(IntakeItem, {
+    const m = this.repo.manager;
+
+    const items = await m.find(IntakeItem, {
       where: { intake_id: intake.id },
       relations: { tare: true },
     });
 
-    const payouts = await this.repo.manager.find(Payout, {
+    const payouts = await m.find(Payout, {
       where: { intake_id: intake.id },
       order: { created_at: 'ASC' },
     });
 
-    return toIntakeDetailResponse(intake, shift, items, payouts);
+    return toIntakeDetailResponse(
+      intake,
+      shift,
+      items,
+      await this.extrasFor(intake.id, m),
+      payouts,
+      await this.nameOf(intake.received_by_user_id, m),
+    );
+  }
+
+  /** The four derived columns for ONE document, read by id — `findOne`,
+   *  `create` (after the insert, so `paid_amount` sees the payout it just
+   *  wrote) and `void` all go through here. */
+  private async extrasFor(intakeId: string, m: EntityManager): Promise<IntakeRowExtras> {
+    const [row] = (await m.query(ROW_EXTRAS_SQL, [intakeId])) as IntakeRowExtras[];
+    return row;
+  }
+
+  private async nameOf(userId: string, m: EntityManager): Promise<string | null> {
+    const user = await m.findOne(User, { where: { id: userId } });
+    return user ? displayNameOf(user) : null;
   }
 
   /**

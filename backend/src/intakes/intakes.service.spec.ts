@@ -38,7 +38,7 @@ const elsewhere = {
 };
 
 describe('IntakesService', () => {
-  let repo: { findOne: jest.Mock; createQueryBuilder: jest.Mock };
+  let repo: { findOne: jest.Mock; createQueryBuilder: jest.Mock; manager: unknown };
   let itemRepo: { find: jest.Mock };
   let manager: {
     getRepository: jest.Mock;
@@ -48,9 +48,17 @@ describe('IntakesService', () => {
     query: jest.Mock;
   };
   /** `dataSource.manager` — the NON-transactional manager `preview` reads
-   *  through. A separate object from `manager` so a test can tell which of
-   *  the two a snapshot read went through. */
-  let plainManager: { getRepository: jest.Mock };
+   *  through, and the same object `this.repo.manager` resolves to (a
+   *  repository's manager IS the data source's manager outside a
+   *  transaction) — so `findOne` reads its extras and receiver name through
+   *  this one too. A separate object from `manager` so a test can tell which
+   *  of the two a snapshot read went through. */
+  let plainManager: {
+    getRepository: jest.Mock;
+    query: jest.Mock;
+    findOne: jest.Mock;
+    find: jest.Mock;
+  };
   let dataSource: { transaction: jest.Mock; manager: typeof plainManager };
   let shifts: { findOpenAtPoint: jest.Mock; findOneRaw: jest.Mock };
   let suppliers: { findOne: jest.Mock };
@@ -101,23 +109,54 @@ describe('IntakesService', () => {
 
   beforeEach(() => {
     itemRepo = { find: jest.fn().mockResolvedValue([]) };
+    // Shared by `manager` and `plainManager`: `extrasFor` reads `ROW_EXTRAS_SQL`
+    // (contains `AS net_kg`) and `nextDocumentCode`'s count reads everything
+    // else, so branching on the SQL text is what lets one mock answer both.
+    const queryExtrasOrCount = (sql: string) =>
+      Promise.resolve(
+        sql.includes('pg_advisory_xact_lock')
+          ? [{}]
+          : sql.includes('AS net_kg')
+            ? [
+                {
+                  net_kg: '36.90',
+                  lines_count: 2,
+                  supplier_name: 'Іван Коваль',
+                  paid_amount: '0.00',
+                },
+              ]
+            : // `nextDocumentCode` locks, then counts the documents already in
+              // this shift. Three of them, so the next receipt is 004.
+              [{ n: 3 }],
+      );
+    // `nameOf` reads `User` by id; branch on the entity CLASS's `.name` so
+    // every other `findOne(Entity, …)` call keeps its own mock untouched.
+    const findOneUserOrNull = (entity: { name?: string }) =>
+      Promise.resolve(
+        entity?.name === 'User' ? { first_name: 'Оксана', last_name: 'Гнатюк' } : null,
+      );
     manager = {
       getRepository: jest.fn().mockReturnValue(itemRepo),
-      // `nextDocumentCode` locks, then counts the documents already in this
-      // shift. Three of them, so the next receipt is 004.
-      query: jest.fn().mockImplementation((sql: string) =>
-        Promise.resolve(sql.includes('pg_advisory_xact_lock') ? [{}] : [{ n: 3 }]),
-      ),
-      findOne: jest.fn().mockResolvedValue(null),
+      query: jest.fn().mockImplementation(queryExtrasOrCount),
+      findOne: jest.fn().mockImplementation(findOneUserOrNull),
       save: jest.fn().mockImplementation((_e, v) => Promise.resolve(intake(v))),
       create: jest.fn().mockImplementation((_e, v) => v),
     };
-    plainManager = { getRepository: jest.fn().mockReturnValue(itemRepo) };
+    plainManager = {
+      getRepository: jest.fn().mockReturnValue(itemRepo),
+      query: jest.fn().mockImplementation(queryExtrasOrCount),
+      findOne: jest.fn().mockImplementation(findOneUserOrNull),
+      find: jest.fn().mockResolvedValue([]),
+    };
     dataSource = {
       transaction: jest.fn().mockImplementation((cb: (m: unknown) => unknown) => cb(manager)),
       manager: plainManager,
     };
-    repo = { findOne: jest.fn().mockResolvedValue(null), createQueryBuilder: jest.fn() };
+    repo = {
+      findOne: jest.fn().mockResolvedValue(null),
+      createQueryBuilder: jest.fn(),
+      manager: plainManager,
+    };
     shifts = {
       findOpenAtPoint: jest.fn().mockResolvedValue(shift()),
       findOneRaw: jest.fn().mockResolvedValue(shift()),
@@ -592,6 +631,114 @@ describe('IntakesService', () => {
       // There is no balance lookup in this path at all, and adding a floor check
       // would contradict «інваріанта борг >= 0 в цій схемі теж немає».
       await expect(service.void(owner, INTAKE_ID, { reason: 'сторно' })).resolves.toBeDefined();
+    });
+  });
+
+  /**
+   * §11.5 — the journal every row of which now carries the four columns
+   * `intake-row-extras.ts` defines ONCE. `getRawAndEntities` is the seam:
+   * TypeORM keeps `raw[n]` aligned with `entities[n]` for a to-one join, so
+   * the mock's single row proves the wiring — the alignment claim itself is
+   * proven against real Postgres by the Task 6 db-spec, not here.
+   */
+  describe('list', () => {
+    let qb: {
+      innerJoinAndMapOne: jest.Mock;
+      innerJoin: jest.Mock;
+      addSelect: jest.Mock;
+      andWhere: jest.Mock;
+      orderBy: jest.Mock;
+      addOrderBy: jest.Mock;
+      skip: jest.Mock;
+      take: jest.Mock;
+      getRawAndEntities: jest.Mock;
+      getCount: jest.Mock;
+    };
+
+    const listQuery = (over: Record<string, unknown> = {}) => ({
+      page: 1,
+      limit: 20,
+      include_voided: true,
+      ...over,
+    });
+
+    beforeEach(() => {
+      qb = {
+        innerJoinAndMapOne: jest.fn().mockReturnThis(),
+        innerJoin: jest.fn().mockReturnThis(),
+        addSelect: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        addOrderBy: jest.fn().mockReturnThis(),
+        skip: jest.fn().mockReturnThis(),
+        take: jest.fn().mockReturnThis(),
+        getRawAndEntities: jest.fn().mockResolvedValue({
+          entities: [{ ...intake(), shift: shift() }],
+          raw: [
+            {
+              i_id: INTAKE_ID,
+              net_kg: '36.90',
+              lines_count: 2,
+              supplier_name: 'Іван Коваль',
+              paid_amount: '0.00',
+            },
+          ],
+        }),
+        getCount: jest.fn().mockResolvedValue(1),
+      };
+      repo.createQueryBuilder.mockReturnValue(qb);
+    });
+
+    it('carries net_kg, lines_count, supplier_name and paid_amount on every row', async () => {
+      const result = await service.list(oksana, listQuery() as never);
+
+      expect(result.data).toHaveLength(1);
+      expect(result.data[0]).toMatchObject({
+        net_kg: '36.90',
+        lines_count: 2,
+        supplier_name: 'Іван Коваль',
+        paid_amount: '0.00',
+      });
+      expect(result.total).toBe(1);
+    });
+
+    it('joins suppliers and adds the four extras selects, once each', async () => {
+      await service.list(oksana, listQuery() as never);
+
+      expect(qb.innerJoin).toHaveBeenCalledWith(expect.anything(), 'sup', 'sup.id = i.supplier_id');
+      expect(qb.addSelect).toHaveBeenCalledTimes(4);
+    });
+  });
+
+  describe('findOne', () => {
+    beforeEach(() => {
+      repo.findOne.mockResolvedValue(intake());
+      shifts.findOneRaw.mockResolvedValue(shift());
+    });
+
+    it('404s when the intake does not exist', async () => {
+      repo.findOne.mockResolvedValue(null);
+
+      await expect(service.findOne(oksana, INTAKE_ID)).rejects.toThrow(NotFoundException);
+    });
+
+    it('404s an intake at another point for an operator', async () => {
+      await expect(service.findOne(elsewhere, INTAKE_ID)).rejects.toThrow(NotFoundException);
+    });
+
+    it('carries the four row extras alongside the items and payouts', async () => {
+      const result = await service.findOne(oksana, INTAKE_ID);
+
+      expect(result.net_kg).toBe('36.90');
+      expect(result.lines_count).toBe(2);
+      expect(result.supplier_name).toBe('Іван Коваль');
+      expect(result.paid_amount).toBe('0.00');
+    });
+
+    it('names the receiver on the detail', async () => {
+      const result = await service.findOne(oksana, INTAKE_ID);
+
+      expect(result.received_by_name).toBe('Оксана Гнатюк');
     });
   });
 

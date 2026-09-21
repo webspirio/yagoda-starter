@@ -1,6 +1,7 @@
 import { Intake } from './intake.entity';
 import { IntakeItem } from './intake-item.entity';
 import type { BuiltIntake } from './intake-lines';
+import type { IntakeRowExtras } from './intake-row-extras';
 import { Shift } from '../shifts/shift.entity';
 import type { Payout } from '../payouts/payout.entity';
 
@@ -23,6 +24,13 @@ export interface IntakeResponse {
   voided_by_user_id: string | null;
   void_reason: string | null;
   created_at: string;
+  /** Σ items.net_kg — kilograms on the list row (programme §6). */
+  net_kg: string;
+  lines_count: number;
+  /** «first last», trimmed; present even for a deactivated supplier. */
+  supplier_name: string;
+  /** Σ live payouts handed over with this receipt (`payouts.intake_id`); '0.00' when none. */
+  paid_amount: string;
 }
 
 export interface IntakeItemTareResponse {
@@ -65,9 +73,15 @@ export interface IntakeDetailResponse extends IntakeResponse {
   /** Payouts handed over WITH this receipt (§2.1 ⑥) — `intake_id` = this id,
    *  voided ones included so the receipt can say a payout was cancelled. */
   payouts: IntakePayoutResponse[];
+  /** «Приймав» on the printed receipt. `null` only if the user row is gone. */
+  received_by_name: string | null;
 }
 
-export function toIntakeResponse(intake: Intake, shift: Shift): IntakeResponse {
+export function toIntakeResponse(
+  intake: Intake,
+  shift: Shift,
+  extras: IntakeRowExtras,
+): IntakeResponse {
   return {
     id: intake.id,
     code: intake.code,
@@ -81,6 +95,10 @@ export function toIntakeResponse(intake: Intake, shift: Shift): IntakeResponse {
     voided_by_user_id: intake.voided_by_user_id,
     void_reason: intake.void_reason,
     created_at: intake.created_at.toISOString(),
+    net_kg: extras.net_kg,
+    lines_count: extras.lines_count,
+    supplier_name: extras.supplier_name,
+    paid_amount: extras.paid_amount,
   };
 }
 
@@ -104,16 +122,19 @@ export function toIntakeDetailResponse(
   intake: Intake,
   shift: Shift,
   items: IntakeItem[],
-  payouts: Payout[] = [],
+  extras: IntakeRowExtras,
+  payouts: Payout[],
+  receivedByName: string | null,
 ): IntakeDetailResponse {
   return {
-    ...toIntakeResponse(intake, shift),
+    ...toIntakeResponse(intake, shift, extras),
     // Ordered by `item_order` so the response reads like the paper, whatever
     // order the database returned the rows in.
     items: [...items].sort((a, b) => a.item_order - b.item_order).map(toIntakeItemResponse),
     payouts: [...payouts]
       .sort((a, b) => a.created_at.getTime() - b.created_at.getTime())
       .map(toIntakePayoutResponse),
+    received_by_name: receivedByName,
   };
 }
 
