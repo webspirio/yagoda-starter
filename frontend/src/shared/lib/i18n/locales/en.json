@@ -182,6 +182,14 @@
       "wholesale": "Wholesale",
       "farmer": "Farmer"
     },
+    "kindBadge": {
+      "wholesale": "WHOLESALE",
+      "farmer": "Farmer"
+    },
+    "kindHint": {
+      "wholesale": "A wholesaler — add an extra price.",
+      "farmer": "A farmer — add an extra price."
+    },
     "active": "Active",
     "inactive": "Inactive",
     "empty": {

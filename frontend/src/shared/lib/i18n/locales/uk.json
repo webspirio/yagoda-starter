@@ -182,6 +182,14 @@
       "wholesale": "Опт",
       "farmer": "Фермер"
     },
+    "kindBadge": {
+      "wholesale": "ОПТ",
+      "farmer": "Фермер"
+    },
+    "kindHint": {
+      "wholesale": "Це оптовик. Додайте додаткову ціну.",
+      "farmer": "Це фермер. Додайте додаткову ціну."
+    },
     "active": "Активний",
     "inactive": "Неактивний",
     "empty": {
