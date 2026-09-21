@@ -109,6 +109,31 @@ describe('DayLines', () => {
     expect(within(row).queryByRole('button', { name: /void|сторнувати/i })).not.toBeInTheDocument();
   });
 
+  /**
+   * This table can carry every weighing recorded NETWORK-WIDE for the day —
+   * far more than a handful of rows — and the action column's header carries
+   * no visible text (Finding 2), so a screen-reader user has only the
+   * button's OWN accessible name to tell one row's storno button from
+   * another's. The visible label stays the shared "Void"/«Сторнувати» text;
+   * only the accessible name is per-row.
+   */
+  it("gives each row's storno button its own accessible name — point and time, not a repeated \"Void\"", () => {
+    const shypynky = line();
+    const haiove = {
+      ...line({ id: 'ri2', created_at: '2026-09-21T11:30:00.000Z' }),
+      pointId: 'p2',
+      pointName: 'Гайове',
+    };
+    render(<DayLines lines={[shypynky, haiove]} isPending={false} date="2026-09-21" />);
+
+    const buttons = screen.getAllByRole('button', { name: /void/i });
+    expect(buttons).toHaveLength(2);
+    const [firstName, secondName] = buttons.map((b) => b.getAttribute('aria-label'));
+    expect(firstName).not.toBe(secondName);
+    expect(firstName).toMatch(/Шипинки/);
+    expect(secondName).toMatch(/Гайове/);
+  });
+
   it('says nothing happened that day rather than showing an empty frame', () => {
     render(<DayLines lines={[]} isPending={false} date="2026-09-21" />);
     expect(screen.getByText(/no reweighing|переважувань ще немає/i)).toBeInTheDocument();

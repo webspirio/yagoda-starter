@@ -88,7 +88,9 @@ export function DayLines({
               {t('reweigh.day.ours')}
             </TableHead>
             <TableHead scope="col">{t('reweigh.day.status')}</TableHead>
-            <TableHead scope="col" />
+            <TableHead scope="col">
+              <span className="sr-only">{t('reweigh.day.actionHeader')}</span>
+            </TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -105,6 +107,18 @@ export function DayLines({
               const voided = item.voided_at !== null;
               const authorName =
                 item.voided_by_user_id !== null ? (staff.data?.get(item.voided_by_user_id) ?? '') : '';
+              // The visible button text is the same «Сторнувати»/"Void" on
+              // every row — this table can carry every weighing recorded
+              // NETWORK-WIDE for the day, so a screen reader landing on one
+              // of N identical "Void" buttons (with an EMPTY action-column
+              // header to fall back on, until the fix just above) has no way
+              // to tell which line it is about to storno. The accessible
+              // name, not the visible one, carries the point and the time —
+              // see `reweigh.day.voidLine`.
+              const voidLabel = t('reweigh.day.voidLine', {
+                point: pointName,
+                time: formatTime(item.created_at, locale),
+              });
               return (
                 <Fragment key={item.id}>
                   <TableRow className={voided ? 'text-muted-foreground' : undefined}>
@@ -128,7 +142,12 @@ export function DayLines({
                     </TableCell>
                     <TableCell className="text-right">
                       {voided ? null : (
-                        <Button variant="ghost" size="sm" onClick={() => startVoid(item.id)}>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          aria-label={voidLabel}
+                          onClick={() => startVoid(item.id)}
+                        >
                           {t('reweigh.day.void')}
                         </Button>
                       )}
@@ -156,6 +175,7 @@ export function DayLines({
                           </Field>
                           <Button
                             variant="destructive"
+                            aria-label={voidLabel}
                             disabled={!reason.trim() || voidItem.isPending}
                             onClick={() => confirmVoid(item.id)}
                           >

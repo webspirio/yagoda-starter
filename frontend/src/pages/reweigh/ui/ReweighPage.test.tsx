@@ -267,40 +267,25 @@ describe('ReweighPage', () => {
 
   /**
    * NOT `expectNoAxeViolations` (the usual helper, `CratesPage.test.tsx`'s
-   * pattern) — axe over the fully composed page surfaces ONE real violation
-   * that pre-dates this task: `DayLines.tsx` (Task 11, reviewed and on this
-   * branch already, out of this task's file list) renders an empty
-   * `<TableHead scope="col" />` for its void-button column, and
-   * `empty-table-header` (minor) fires on it regardless of anything this
-   * page itself does. This task's brief is explicit that a violation
-   * originating in an earlier task's component gets REPORTED, not silently
-   * fixed here — so this test names the one known node instead of either
-   * hiding it (a blanket rule-disable) or leaving the whole suite red for a
-   * component this task does not own.
+   * pattern) — kept as a local, explicit axe call rather than switching
+   * helpers in a fix round whose only authorised edit is this assertion.
    *
-   * The carve-out is NARROW and self-cancelling: it accepts exactly one
-   * `empty-table-header` violation, on exactly one node. If DayLines gains a
-   * label for that column, `known` becomes `[]` and `toHaveLength(1)` below
-   * fails — forcing this comment and the filter to be deleted, not left to
-   * rot. If a SECOND empty header appears anywhere else on the page, the
-   * same assertion fails just as loudly. Every other rule, and every other
-   * node, is held to zero violations exactly as `expectNoAxeViolations`
-   * would. Recorded 2026-09-21.
+   * Previously carved out exactly one `empty-table-header` violation:
+   * `DayLines.tsx`'s void-button column header rendered empty. Task 11's fix
+   * round gave that header an `sr-only` label (`reweigh.day.actionHeader`),
+   * so the carve-out's own condition — "if DayLines gains a label for that
+   * column" — is now true, and the assertion tightens to zero violations,
+   * exactly what `expectNoAxeViolations` would require. Recorded 2026-09-21.
    */
-  it('has no accessibility violations beyond the one already on DayLines (Task 11)', async () => {
+  it('has no accessibility violations', async () => {
     const { container } = render(<ReweighPage />);
     const results = (await axe(container, {
       rules: { 'color-contrast': { enabled: false } },
     })) as AxeResults;
 
-    const known = results.violations.filter((v) => v.id === 'empty-table-header');
-    const other = results.violations.filter((v) => v.id !== 'empty-table-header');
-
-    expect(known).toHaveLength(1);
-    expect(known[0]?.nodes).toHaveLength(1);
     expect(
-      other,
-      other.map((v) => `[${v.impact}] ${v.id}: ${v.help}`).join('\n'),
+      results.violations,
+      results.violations.map((v) => `[${v.impact}] ${v.id}: ${v.help}`).join('\n'),
     ).toEqual([]);
   });
 });
