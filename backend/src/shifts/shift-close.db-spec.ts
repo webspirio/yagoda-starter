@@ -137,7 +137,7 @@ describe('ShiftsService.close with negative expected movements (Postgres)', () =
     // THE ASSERTION THIS FILE EXISTS FOR. Against `1788600000009`'s
     // `CHK_cash_counts_expected_non_negative` this line throws a
     // QueryFailedError and the point is stranded.
-    const closed = await service.close(operator, shift.id, { counted_amount: '0.00' });
+    const closed = await service.close(operator, shift.id, { counted_amount: '0.00', broken_crates: 0 });
     expect(closed.status).toBe('closed');
 
     const [row] = (await ds.query(

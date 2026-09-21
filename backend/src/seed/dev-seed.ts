@@ -577,13 +577,16 @@ async function seedDocuments(
     const row = await one<{ id: string }>(
       qr,
       `INSERT INTO shifts
-         (collection_point_id, opened_by_user_id, business_date, status, closed_at, closed_by_user_id, created_at)
+         (collection_point_id, opened_by_user_id, business_date, status, closed_at, closed_by_user_id, created_at, broken_crates)
        VALUES ($1, $2, $3::date, $4::shift_status,
                CASE WHEN $5::boolean THEN ${localTs(3, 6, 8)} ELSE NULL END,
                CASE WHEN $5::boolean THEN $2::uuid ELSE NULL END,
-               ${localTs(3, 7, 8)})
+               ${localTs(3, 7, 8)},
+               -- §6.8's «бій» (#110). NULL on an open shift, or
+               -- CHK_shifts_broken_crates_closed refuses the row.
+               CASE WHEN $5::boolean THEN $9::int ELSE NULL END)
        RETURNING id`,
-      [pid, opener, date, sh.closed ? 'closed' : 'open', sh.closed, '19:10', '07:30', tz],
+      [pid, opener, date, sh.closed ? 'closed' : 'open', sh.closed, '19:10', '07:30', tz, sh.broken ?? 0],
     );
     shiftId.set(key, row!.id);
     summary.shifts += 1;

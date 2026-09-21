@@ -257,4 +257,22 @@ describe('dev seed', () => {
     expect(row.point).toBe('Шипинки');
     await expect(verifyPassword(DEV_OPERATOR_PASSWORD, row.password_hash)).resolves.toBe(true);
   });
+
+  it('gives the demo both breakage cases', async () => {
+    const rows = await ds.query(
+      `SELECT broken_crates FROM shifts WHERE closed_at IS NOT NULL AND broken_crates IS NOT NULL`,
+    );
+    // Both cases must exist on a fresh database, or the close screen is only
+    // ever read against one of them.
+    expect(rows.some((r: { broken_crates: number }) => r.broken_crates > 0)).toBe(true);
+    expect(rows.some((r: { broken_crates: number }) => r.broken_crates === 0)).toBe(true);
+  });
+
+  it('never writes a breakage onto an open shift', async () => {
+    const [{ count }] = await ds.query(
+      `SELECT COUNT(*)::int AS count FROM shifts
+        WHERE closed_at IS NULL AND broken_crates IS NOT NULL`,
+    );
+    expect(count).toBe(0);
+  });
 });

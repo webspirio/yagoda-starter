@@ -322,6 +322,9 @@ export function ReceptionPage() {
       <CountDrawerDialog
         key={openDialogInstance}
         mode="open"
+        // Відкриття, а не закриття — §6.8's бій тут не питають, і читати
+        // «з ягодою» нема для якої зміни.
+        shiftId={null}
         open={openDialogOpen}
         onClose={() => setOpenDialogOpen(false)}
         onConfirm={async (counted_amount) => {

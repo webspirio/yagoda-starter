@@ -1,4 +1,4 @@
-import { Matches } from 'class-validator';
+import { IsInt, Matches, Max, Min } from 'class-validator';
 import { CanonicalDecimal } from '../../common/dto/canonical-decimal';
 
 /**
@@ -24,4 +24,21 @@ export class CloseShiftDto {
   })
   @CanonicalDecimal()
   counted_amount: string;
+
+  /**
+   * §6.8's «бій» — crates that broke during the shift (#110).
+   *
+   * REQUIRED, not optional, for the reason the cash count is written inside
+   * this same transaction rather than beside it: a number that can be skipped
+   * gets skipped. ZERO IS A NORMAL VALUE (#110, literally: «нуль — нормальне
+   * значення»), so there is no `@IsOptional()` and no default — `null` means
+   * «не записано» and is unreachable through this DTO.
+   *
+   * `@Max` is a typo guard, not a business rule — #110's own example is 3.
+   * Same ceiling as `CreateCrateIssuanceDto.units`.
+   */
+  @IsInt()
+  @Min(0)
+  @Max(10000)
+  broken_crates: number;
 }

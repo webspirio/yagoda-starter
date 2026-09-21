@@ -924,9 +924,28 @@ Spec: `docs/superpowers/specs/2026-09-15-yagoda-crates-slice.md`, §9 «out of s
 - **`crate_shipments` and §6.8's evening dispatch.** A fourth table with its own lifecycle
   («кількість "з ягодою" запамʼятовується на момент відправлення»), its own void semantics and a
   second-shipment-per-day case; none of tickets #57/#58/#60 ask for it.
-- **§6.9's «порожніх» term and the `target_crates` comparison.** «У людей» and «з ягодою» are now
-  computable (the ledger, and `intake_item_tare_types` filtered to `is_crate`), but «порожніх»
-  needs the dispatch table above — the screen shows «—» until then.
+- **§6.9's end-of-day panel — UNBLOCKED 2026-09-18 by #110, still not built.** The original
+  entry here said «порожніх» needed the dispatch table above. That stopped being true with
+  `shifts.broken_crates` (spec `docs/superpowers/specs/2026-09-18-yagoda-crate-dispatch-slice.md`,
+  §7): every term is computable today, and what is left is the screen.
+
+  ```
+  поїхало на базу (день)   = with_berry + broken_crates, per shift
+  поїхало на базу (всього) = Σ of that over the point's shifts
+  у людей                  = crates/crate-balance.service.ts
+  порожніх на точці        = target_crates − у людей − Σ поїхали      ← RESIDUAL
+  ```
+
+  **Use §6.9's residual form, not #110's movement chain.** The ticket writes it as
+  `було порожніх 496 − видано 20 + повернуто 7 − поїхало 142 = 341`, which needs a stored opening
+  stock of empty crates that no table holds and that could disagree with the ledger. §6.9 derives
+  the same 341 as `800 − 195 − 264` with no new state. Both reach 341 in the worked example, which
+  is why the ticket's arithmetic does not settle it — the schema's own «два примірники одного
+  факту» does.
+
+  Display rules come with it: a negative residual is shown red and does NOT block («система
+  показує факт, а не спиняє день заднім числом»), and a point with no `target_crates` shows «—»,
+  never `0`.
 - **A counted crates drawer, together with the settlement trio for voided crate money.** One
   physical drawer cannot become two counted numbers without either asking the operator to
   distinguish identical banknotes or deriving one book from the other (which makes it

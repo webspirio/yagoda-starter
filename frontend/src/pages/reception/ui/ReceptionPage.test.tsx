@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createMemoryRouter, RouterProvider } from 'react-router';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ApiError } from '@/shared/api';
 import { expectNoAxeViolations } from '../../../test-axe';
 import type { Shift } from '@/entities/shift';
@@ -131,6 +132,7 @@ const openShift: Shift = {
   closed_at: null,
   created_at: '2026-09-08T05:00:00Z',
   explanation: null,
+  broken_crates: null,
 };
 
 const supplier = (over: Partial<Supplier> & Pick<Supplier, 'id'>): Supplier => ({
@@ -285,7 +287,17 @@ function renderReception() {
     ],
     { initialEntries: ['/reception'] },
   );
-  return { ...render(<RouterProvider router={router} />), router };
+  // `CountDrawerDialog` is real here too. In open mode its crate read is
+  // DISABLED (`shiftId={null}`), but `useQuery` still needs a client in scope.
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return {
+    ...render(
+      <QueryClientProvider client={client}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>,
+    ),
+    router,
+  };
 }
 
 /** Fills the draft line so the «Add line» gate opens: gross, tare units, grade. */

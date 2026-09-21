@@ -6,6 +6,7 @@ import { Test } from '@nestjs/testing';
 import { JwtService } from '@nestjs/jwt';
 import { ClassSerializerInterceptor, INestApplication, ValidationPipe } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
+import { DataSource } from 'typeorm';
 // MUST be imported before `../app.module` — it loads `.env` as a side effect,
 // and AppModule's decorator runs ConfigModule.forRoot() eagerly at import time.
 import {
@@ -206,7 +207,7 @@ describe('documents pipeline (HTTP)', () => {
       await request(app.getHttpServer())
         .post(`/shifts/${shiftId}/close`)
         .set('Authorization', `Bearer ${operatorToken}`)
-        .send({ counted_amount: '5000.00' })
+        .send({ counted_amount: '5000.00', broken_crates: 0 })
         .expect(201);
 
       // §10.2 puts corrections with the owner; the operator who closed it
@@ -229,7 +230,7 @@ describe('documents pipeline (HTTP)', () => {
       await request(app.getHttpServer())
         .post(`/shifts/${shiftId}/close`)
         .set('Authorization', `Bearer ${ownerToken}`)
-        .send({ counted_amount: '5000.00' })
+        .send({ counted_amount: '5000.00', broken_crates: 0 })
         .expect(403);
     });
 
@@ -253,7 +254,7 @@ describe('documents pipeline (HTTP)', () => {
       await request(app.getHttpServer())
         .post(`/shifts/${shiftId}/close`)
         .set('Authorization', `Bearer ${operatorToken}`)
-        .send({ counted_amount: '5000.00' })
+        .send({ counted_amount: '5000.00', broken_crates: 0 })
         .expect(201);
 
       const res = await request(app.getHttpServer())
@@ -262,6 +263,61 @@ describe('documents pipeline (HTTP)', () => {
         .send({ counted_amount: '5000.00' })
         .expect(409);
       expect(res.body.code).toBe('SHIFT_DAY_ALREADY_USED');
+
+      // Leave the shift open for the document blocks that follow.
+      await request(app.getHttpServer())
+        .post(`/shifts/${shiftId}/reopen`)
+        .set('Authorization', `Bearer ${ownerToken}`)
+        .send({ reason: 'далі по тестах' })
+        .expect(201);
+    });
+
+    it('carries the breakage through close, reopen and re-close', async () => {
+      await request(app.getHttpServer())
+        .post(`/shifts/${shiftId}/close`)
+        .set('Authorization', `Bearer ${operatorToken}`)
+        .send({ counted_amount: '5000.00', broken_crates: 3 })
+        .expect(201);
+
+      await request(app.getHttpServer())
+        .post(`/shifts/${shiftId}/reopen`)
+        .set('Authorization', `Bearer ${ownerToken}`)
+        .send({ reason: 'перерахунок' })
+        .expect(201);
+
+      const reopened = await request(app.getHttpServer())
+        .get(`/shifts/${shiftId}`)
+        .set('Authorization', `Bearer ${ownerToken}`)
+        .expect(200);
+      expect(reopened.body.broken_crates).toBeNull();
+
+      const reclosed = await request(app.getHttpServer())
+        .post(`/shifts/${shiftId}/close`)
+        .set('Authorization', `Bearer ${operatorToken}`)
+        .send({ counted_amount: '5000.00', broken_crates: 0 })
+        .expect(201);
+      // 0 survives as 0 — it is not null, and it is not dropped as falsy.
+      expect(reclosed.body.broken_crates).toBe(0);
+
+      // THE 3 IS STILL READABLE. This is the whole reason overwriting the
+      // column is acceptable (spec decision 3): `shifts.broken_crates` now
+      // holds 0 and the audit log is the ONLY place the operator's first
+      // answer still exists. Asserted against real rows rather than against
+      // `audit.record` having been called — a mock cannot prove the write
+      // committed inside the close transaction.
+      const closes = (await app.get(DataSource).query(
+        `SELECT after FROM audit_log
+          WHERE action = 'shift.closed' AND target_id = $1
+          ORDER BY at ASC`,
+        [shiftId],
+      )) as Array<{ after: { broken_crates: number | null } }>;
+      const recorded = closes.map((r) => r.after.broken_crates);
+      // Asserted as a TAIL, not a whole-array equality: the owner's 403 close
+      // writes no row but two earlier tests do, and pinning the full sequence
+      // would break this test the next time a close is added above it. The
+      // claim is only about the overwrite — 3 was recorded, then 0 replaced it
+      // on the row, and the 3 is still here.
+      expect(recorded.slice(-2)).toEqual([3, 0]);
 
       // Leave the shift open for the document blocks that follow.
       await request(app.getHttpServer())
@@ -1140,7 +1196,7 @@ describe('documents pipeline (HTTP)', () => {
       await request(app.getHttpServer())
         .post(`/shifts/${shiftId}/close`)
         .set('Authorization', `Bearer ${operatorToken}`)
-        .send({ counted_amount: '5000.00' })
+        .send({ counted_amount: '5000.00', broken_crates: 0 })
         .expect(201);
 
       const secondRes = await request(app.getHttpServer())
