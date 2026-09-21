@@ -24,6 +24,7 @@ import { useOpenShiftMutation, CountDrawerDialog } from '@/features/count-shift'
 import type { SupplierPickerHandle } from '@/features/pick-supplier';
 import { useCreateIntakeMutation } from '../api/intakes';
 import { apiErrorToFields, type ApiFieldErrors } from '../lib/apiErrorToFields';
+import { isOwnFormEvent } from '../lib/formEventGuards';
 import { useIntakePreview } from '../lib/useIntakePreview';
 import { suggestedPaid } from '../lib/suggestedPaid';
 import { emptyLine, toCreateBody, type IntakeFormValues } from '../model/intakeForm';
@@ -348,12 +349,24 @@ export function ReceptionPage() {
 
         <div className="grid gap-5 lg:grid-cols-[minmax(0,1.35fr)_minmax(320px,1fr)]">
           <form
-            onSubmit={(e) => void handleSubmit(submitIntake)(e)}
+            onSubmit={(e) => {
+              // React bubbles `submit` along the fiber tree, not the DOM: the
+              // inline supplier dialog (`SupplierPicker` → `SupplierFormDialog`)
+              // is portaled to `document.body` by `shared/ui/dialog.tsx`, but
+              // is still a REACT descendant of this form, so without this
+              // guard its own submit would reach `handleSubmit(submitIntake)`
+              // — a real `POST /intakes` nobody pressed «Прийняти» for.
+              if (!isOwnFormEvent(e)) return;
+              void handleSubmit(submitIntake)(e);
+            }}
             // Enter is how an operator moves between fields on the scale's
             // numeric pad; it must never fire a submit the form isn't ready
             // for. Scoped to text inputs only, so it never swallows Enter
-            // inside the grade `<select>` or on a button.
+            // inside the grade `<select>` or on a button. Same portal guard as
+            // `onSubmit` above — the dialog's own Enter keystrokes must not be
+            // swallowed by a guard meant for THIS form.
             onKeyDown={(e) => {
+              if (!isOwnFormEvent(e)) return;
               if (e.key === 'Enter' && (e.target as HTMLElement).tagName === 'INPUT' && !canSubmit) {
                 e.preventDefault();
               }
