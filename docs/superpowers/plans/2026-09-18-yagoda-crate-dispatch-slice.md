@@ -870,6 +870,12 @@ git commit -m "feat(seed): seed §6.8's breakage and record it in the schema of 
 ## Self-review notes
 
 - **Spec coverage.** §2 decisions 1–4 → Task 1 + Task 2; decision 5 (`crate_shipments` deferred) → nothing built, restated in Task 3's service doc comment; decision 6 → Task 3; decision 7 → nothing built, restated in Task 4's DBML note. §3 → Task 1. §4.1 → Task 2. §4.2 → Task 3. §4.3 → Task 3's doc comment. §5 → Tasks 2 and 3. §6 → each task's tests. §7 → Task 4 step 5.
-- **Not covered by any task, deliberately:** all frontend, and §6.9's panel. Both are listed out of scope in the spec's §7.
+- **Not covered by any task, deliberately:** §6.9's panel, listed out of scope in the spec's §7.
+  **This line also said «all frontend», and that was a PLAN DEFECT — recorded rather than deleted,
+  because the next plan will reach for the same checklist.** The «Known risk» note below enumerated
+  only the backend specs that call `close`, and missed that `POST /shifts/:id/close` is a live route
+  the shipped SPA calls. Making `broken_crates` required therefore made a frontend task MANDATORY,
+  and this four-task plan had no fifth task for it — it shipped as `8efe669`, outside the plan. Any
+  new required DTO field is a breaking change for every live client, frontend included.
 - **Type consistency.** `broken_crates` is the column and DTO name throughout; the response field is `broken`, and that rename happens in exactly one place (`CrateDispatchService.forShift`) and nowhere else. `with_berry`/`dispatched` appear only in `CrateDispatchResponse`.
 - **Known risk at Task 2 step 6.** Making `broken_crates` required will break every existing spec that calls `close`. The fix is to add `broken_crates: 0` at those call sites, never to make the field optional — that would reintroduce the skippable number the spec's §4.1 argues against.

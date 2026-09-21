@@ -273,8 +273,16 @@ not among the banned operators anywhere in the repo, and `money.ts` is not invol
   Also carry §6.9's display rules: negative is shown red and does not block (*«система показує
   факт, а не спиняє день заднім числом»*), and a point with no `target_crates` shows «—», never
   `0`.
-- **§6.10's «підсумок ящиків, а не ягоди» at close.** What the operator is shown on the close
-  screen is frontend, and this slice ships no frontend.
+- **§6.10's «підсумок ящиків, а не ягоди» at close. THIS SHIPPED — the claim that follows was
+  wrong, and is recorded rather than deleted for the same reason as §5.3.** It said that what the
+  operator sees at close is frontend and that this slice ships none. Making `broken_crates`
+  required on `CloseShiftDto` (§4.1) removed that choice: `POST /shifts/:id/close` is a live route
+  the shipped SPA already calls, so a required field turns every close in the product into a 400
+  until the form carries it. The frontend was therefore MANDATORY, not deferrable scope, and the
+  close drawer ships the breakage input together with §6.10's three numbers — «з ягодою», «бій»
+  and «Відвантажено» — in `features/count-shift/ui/CountDrawerDialog.tsx`.
 - **A `cash_counts` row with `book = 'crates'`.** Untouched by this slice and still paired with
   the settlement trio: both arrive together or not at all.
-- **All frontend.**
+- **All frontend — RETRACTED, see §6.10 above.** What is genuinely still out of scope is the
+  frontend for §6.9's panel. The close screen is not, and was never optional once §4.1 made the
+  field required.
