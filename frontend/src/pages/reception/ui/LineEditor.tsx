@@ -319,9 +319,7 @@ export function LineEditor({
                 </div>
                 {rowTareType ? (
                   <span className="w-16 shrink-0 text-right font-mono text-xs text-muted-foreground">
-                    {t('reception.weight.rowWeight', {
-                      kg: formatKg(mulInt(rowTareType.weight_kg, rowUnits), locale),
-                    })}
+                    {formatKg(mulInt(rowTareType.weight_kg, rowUnits), locale)}
                   </span>
                 ) : null}
                 {tare.fields.length > 1 ? (

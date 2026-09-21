@@ -153,6 +153,43 @@ describe('SupplierPicker', () => {
     expect(screen.getByRole('searchbox')).toHaveValue('');
   });
 
+  it('Escape closes the list and restores focus to the trigger (M10)', async () => {
+    const user = userEvent.setup();
+    render(<SupplierPicker pointId="p1" ownerMode={false} value={null} onChange={vi.fn()} />);
+    await user.click(screen.getByRole('combobox'));
+    expect(screen.getByRole('listbox')).toBeInTheDocument();
+
+    await user.keyboard('{Escape}');
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+    expect(screen.getByRole('combobox')).toHaveFocus();
+  });
+
+  it('a click outside closes the list without picking anything (M10)', async () => {
+    const onChange = vi.fn();
+    render(
+      <div>
+        <SupplierPicker pointId="p1" ownerMode={false} value={null} onChange={onChange} />
+        <button type="button">outside</button>
+      </div>,
+    );
+    await userEvent.click(screen.getByRole('combobox'));
+    expect(screen.getByRole('listbox')).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'outside' }));
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it('owner mode: ArrowDown walks across the group boundary and Enter picks from the second group (M10)', async () => {
+    const onChange = vi.fn();
+    render(<SupplierPicker pointId="p1" ownerMode value={null} onChange={onChange} />);
+    await userEvent.click(screen.getByRole('combobox'));
+    // home = [nina] (1 row), others = [vasyl] — the SECOND ArrowDown must
+    // cross the group boundary onto `others[0]` (flat index home.length + 0).
+    await userEvent.keyboard('{ArrowDown}{ArrowDown}{Enter}');
+    expect(onChange).toHaveBeenCalledWith(vasyl);
+  });
+
   it('has no axe violations open', async () => {
     const { container } = render(<SupplierPicker pointId="p1" ownerMode={false} value={null} onChange={vi.fn()} />);
     await userEvent.click(screen.getByRole('combobox'));
