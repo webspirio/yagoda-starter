@@ -785,6 +785,7 @@
       "overCap": "Cannot pay out more than the total — using {{uah}}",
       "overCash": "Cannot pay out more than is in the berry drawer — using {{uah}}",
       "cashNote": "Only {{uah}} is in the berry drawer — nothing more to pay out right now. The difference is added to the supplier's balance; a transfer from the owner restocks it.",
+      "cashUnavailable": "The berry cash drawer could not be read — the server will check the amount when the receipt is recorded",
       "remainder": "Owed by us",
       "settled": "Settled in full",
       "remainderHint": "Added to the supplier's balance — dated today",
@@ -809,7 +810,8 @@
       "allotmentValue_one": "{{count}} crate",
       "allotmentValue_other": "{{count}} crates",
       "allotmentUnset": "no allotment set for this point yet",
-      "inField": "Out with people"
+      "inField": "Out with people",
+      "truncatedCaption": "first 100 documents"
     },
     "today": {
       "title": "Today's receipts",

@@ -118,10 +118,10 @@ export class PayoutsService {
    * receipt, §2.1 ⑥), so the two ceilings and the numbering have exactly one
    * implementation.
    *
-   * LOCK ORDER IS THE CONTRACT: supplier row → open shift → debt → cash →
-   * `nextDocumentCode`'s advisory lock → insert. The reception path holds the
-   * `intakes` advisory lock BEFORE calling this and never after, so the two
-   * paths cannot form a cycle. (See the block comment below on why the
+   * LOCK ORDER IS THE CONTRACT: supplier row → open shift → debt →
+   * `nextDocumentCode`'s advisory lock → cash → insert. The reception path
+   * holds the `intakes` advisory lock BEFORE calling this and never after, so
+   * the two paths cannot form a cycle. (See the block comment below on why the
    * supplier row is a mutex and why SERIALIZABLE was rejected.)
    *
    * On the reception path the caller has already inserted the intake, which
@@ -183,18 +183,6 @@ export class PayoutsService {
       });
     }
 
-    // The other half of §3.6: «у поле підставляється 1 616,10 ₴, а не 5 497,37».
-    // A negative drawer (reachable — the owner may lower a target after the
-    // fact) admits nothing, and that is correct: the berries are taken, the
-    // money lands in the supplier's balance, and a transfer restores the cash.
-    const cash = await this.pointCash.cashFor(pointId, undefined, m);
-    if (gt(amount, cash)) {
-      throw new BadRequestException({
-        message: `Payout of ${amount} exceeds the cash for berries at this point (${cash})`,
-        code: 'PAYOUT_EXCEEDS_CASH',
-      });
-    }
-
     const code = await nextDocumentCode(m, {
       pointCode,
       businessDate: shift.business_date,
@@ -202,6 +190,34 @@ export class PayoutsService {
       shiftId: shift.id,
       table: 'payouts',
     });
+
+    // The other half of §3.6: «у поле підставляється 1 616,10 ₴, а не 5 497,37».
+    // A negative drawer (reachable — the owner may lower a target after the
+    // fact) admits nothing, and that is correct: the berries are taken, the
+    // money lands in the supplier's balance, and a transfer restores the cash.
+    //
+    // READ HERE, AFTER `nextDocumentCode`, NOT BEFORE IT (moved 2026-09-21,
+    // PR #137 review). The debt check above is protected by the SUPPLIER row
+    // lock taken at the top of this method, and that lock is a fine mutex for
+    // it — contention is per supplier. But the cash ceiling is a fact about
+    // the whole SHIFT (one point's one business date): two payouts to two
+    // DIFFERENT suppliers at one point take their own, different supplier
+    // locks and never block each other, so reading the drawer under only the
+    // supplier lock let both read the same cash, both pass, both commit —
+    // drawer negative. `nextDocumentCode`'s advisory lock, keyed on `(payouts,
+    // shift, 'PO')` and held to commit, IS the shift-wide mutex this route
+    // has, so the read moves to right after it: authoritative only once that
+    // lock is held, and, like `nextDocumentCode`'s own count, it relies on
+    // READ COMMITTED giving each statement a fresh snapshot — the second lock
+    // holder's read sees the first's committed payout. LOCK ORDER IS
+    // UNCHANGED (supplier row → PO advisory); only the read moved under it.
+    const cash = await this.pointCash.cashFor(pointId, undefined, m);
+    if (gt(amount, cash)) {
+      throw new BadRequestException({
+        message: `Payout of ${amount} exceeds the cash for berries at this point (${cash})`,
+        code: 'PAYOUT_EXCEEDS_CASH',
+      });
+    }
 
     try {
       const payout = await m.save(

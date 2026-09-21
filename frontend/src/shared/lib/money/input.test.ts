@@ -66,4 +66,13 @@ describe('floorToHundreds', () => {
   it('refuses a negative amount', () => {
     expect(() => floorToHundreds('-1.00')).toThrow(/non-negative/);
   });
+  it('refuses a non-canonical leading zero instead of silently re-canonicalising it', () => {
+    // Before the guard, this fell through the string slicing to '100.00' —
+    // the RIGHT-looking answer for the wrong reason, since nothing here is
+    // meant to re-canonicalise a caller's already-formatted cap.
+    expect(() => floorToHundreds('0100.00')).toThrow(/canonical/);
+  });
+  it('refuses garbage instead of splicing letters into a money-shaped string', () => {
+    expect(() => floorToHundreds('abc')).toThrow();
+  });
 });

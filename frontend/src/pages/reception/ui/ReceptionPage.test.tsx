@@ -395,11 +395,20 @@ beforeEach(() => {
   previewMock.mockReset().mockReturnValue(previewState());
   createMock.mockReset().mockResolvedValue(CREATED);
   openShiftMock.mockReset().mockResolvedValue(openShift);
-  // Unread by default (`isPending`, no `data`) — `cash` resolves to `null`,
-  // so the auto-suggested «Видано готівкою» is '0.00' and every pre-existing
-  // «Accept N kg» assertion below keeps reading the submit label it always
-  // has. Tests that care about a real payout set this explicitly.
-  pointCashMock.mockReset().mockReturnValue({ data: undefined, isPending: true, isError: false });
+  // A genuinely-read, EMPTY drawer by default — NOT `isPending`/`undefined`.
+  // `cash === null` (still loading, or the read errored) is UNKNOWN, not
+  // empty (review finding 2), and now suggests the UNCAPPED total rather
+  // than '0.00' — a settled preview with `isPending` cash here would put a
+  // «pay out …» clause on every generic «Accept N kg» assertion below, which
+  // has nothing to do with what those tests cover. A real `cash: '0.00'`
+  // keeps the old, unambiguous default: nothing to suggest paying out.
+  // Tests that care about a real payout, or about an unread/errored drawer,
+  // set this explicitly.
+  pointCashMock.mockReset().mockReturnValue({
+    data: { collection_point_id: 'p1', cash: '0.00' },
+    isPending: false,
+    isError: false,
+  });
   toastMock.mockReset();
   toastMock.success.mockReset();
   toastMock.error.mockReset();
@@ -1072,6 +1081,40 @@ describe('ReceptionPage — «Видано готівкою» rides along with �
     // typed, not a fresh blank form.
     expect(screen.getByLabelText('Gross — berries including tare')).toHaveValue('126.40');
     expect(screen.queryByText('Receipt for i-new')).toBeNull();
+  });
+
+  it('a failed point-cash read does not zero out a typed «Видано готівкою», and the body still carries paid_amount (review finding 2)', async () => {
+    const user = userEvent.setup();
+    // ERRORED, not merely loading — `cashUnavailable` is `pointCash.isError`
+    // on the page, and `cash` itself resolves to `null` either way.
+    pointCashMock.mockReturnValue({ data: undefined, isPending: false, isError: true });
+    renderReception();
+
+    await user.click(screen.getByRole('button', { name: 'pick-nina' }));
+    await fillDraft(user);
+
+    expect(
+      screen.getByText(
+        'The berry cash drawer could not be read — the server will check the amount when the receipt is recorded',
+      ),
+    ).toBeInTheDocument();
+
+    const paidInput = screen.getByLabelText('Paid in cash');
+    await user.clear(paidInput);
+    await user.type(paidInput, '1000');
+    await user.tab();
+    // Before the fix, `cash === null` suggested/clamped to '0.00' — a blur
+    // here would have wiped the typed figure back to zero instead of merely
+    // canonicalising it.
+    expect(paidInput).toHaveValue('1000.00');
+
+    await user.click(screen.getByRole('button', { name: /Accept 120\.40 kg/ }));
+
+    await waitFor(() =>
+      expect(createMock).toHaveBeenCalledWith(
+        expect.objectContaining({ supplier_id: 's1', paid_amount: '1000.00' }),
+      ),
+    );
   });
 });
 

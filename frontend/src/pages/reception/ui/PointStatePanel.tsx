@@ -4,6 +4,7 @@ import { Card } from '@/shared/ui/card';
 import { Eyebrow } from '@/shared/ui/eyebrow';
 import { cn } from '@/shared/lib/cn';
 import { cmp, formatUah, sub, sum } from '@/shared/lib/money';
+import { isTruncated } from '@/shared/api';
 import { usePointCashForPointQuery } from '@/entities/point-cash';
 import { useCashCountsQuery } from '@/entities/cash-count';
 import { usePayoutsQuery } from '@/entities/payout';
@@ -58,6 +59,12 @@ export function PointStatePanel({
       .filter((row) => row.voided_at === null)
       .map((row) => sub(row.amount, row.paid_amount)),
   );
+  // Both sums above run over `page.data` — capped at 100 rows, server-side
+  // (`Paginated<T>`'s `limit`) — never the whole shift. A busy point can
+  // legitimately clear 100 receipts or payouts before close, and without
+  // this caption the tile would silently read as the day's true total.
+  const paidOutTruncated = isTruncated(payouts.data);
+  const newDebtTruncated = isTruncated(intakes.data);
   // A row COUNT, never money — see `entities/crate`'s header for why the two
   // must not mix.
   const outstanding = (balances.data?.data ?? []).reduce(
@@ -77,7 +84,11 @@ export function PointStatePanel({
             label={t('reception.state.openingCash')}
             value={openingBerry ? formatUah(openingBerry.counted_amount, locale) : '—'}
           />
-          <Tile label={t('reception.state.paidOut')} value={formatUah(paidOut, locale)} />
+          <Tile
+            label={t('reception.state.paidOut')}
+            value={formatUah(paidOut, locale)}
+            caption={paidOutTruncated ? t('reception.state.truncatedCaption') : undefined}
+          />
           <Tile
             label={t('reception.state.currentCash')}
             value={cash.data ? formatUah(cash.data.cash, locale) : '…'}
@@ -86,6 +97,7 @@ export function PointStatePanel({
             label={t('reception.state.newDebt')}
             value={formatUah(newDebt, locale)}
             tone={cmp(newDebt, '0') === 1 ? 'amber' : undefined}
+            caption={newDebtTruncated ? t('reception.state.truncatedCaption') : undefined}
           />
         </div>
       </section>
@@ -136,10 +148,14 @@ function Tile({
   label,
   value,
   tone,
+  caption,
 }: {
   label: string;
   value: string;
   tone?: 'amber';
+  /** Muted note under the value — today only «перші 100 документів» when the
+   *  sum behind `value` is over a truncated page. */
+  caption?: string;
 }) {
   return (
     <div className="min-w-0">
@@ -152,6 +168,7 @@ function Tile({
       >
         {value}
       </div>
+      {caption ? <div className="mt-0.5 truncate text-[10px] text-muted-foreground">{caption}</div> : null}
     </div>
   );
 }

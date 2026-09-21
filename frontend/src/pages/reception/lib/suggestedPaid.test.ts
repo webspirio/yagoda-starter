@@ -37,11 +37,11 @@ describe('suggestedPaid', () => {
     expect(suggestedPaid('5460.00', '37.37', '1616.10')).toBe('1616.10');
   });
 
-  it('is zero when cash is null (not read yet) and the total is positive', () => {
-    expect(suggestedPaid('5460.00', '37.37', null)).toBe('0.00');
+  it('is the UNCAPPED total when cash is null (unread or errored), not zero — the server checks the real ceiling', () => {
+    expect(suggestedPaid('5460.00', '37.37', null)).toBe('5497.37');
   });
 
-  it('is zero when cash is exactly zero and the total is positive', () => {
+  it('is zero when cash is a GENUINE zero drawer and the total is positive', () => {
     expect(suggestedPaid('5460.00', '37.37', '0.00')).toBe('0.00');
   });
 

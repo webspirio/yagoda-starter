@@ -60,11 +60,23 @@ export function clampDecimal(value: string, min: string, max: string): string {
  * only planned caller is the «До сотні» chip over a non-negative cap, so a
  * negative amount here is a caller bug, refused the way `div` refuses its own
  * invalid input, rather than silently losing the sign.
+ *
+ * `value` must also be CANONICAL (`add(value, '0') === value`) — a leading
+ * zero (`'0100.00'`) or garbage (`'abc'`) used to fall through the string
+ * slicing below into a value that merely LOOKED like money (`'100.00'` for
+ * the former; letters spliced into the hundreds place for the latter,
+ * `add('abc', '0')` itself throws before this check would even run). Every
+ * planned caller already hands this a canonical cap (`suggestedPaid`'s
+ * output, or `'0'` normalized through `clampDecimal`), so this is a caller
+ * bug the same way negative is.
  */
 export function floorToHundreds(value: string): string {
   const normalized = normalizeAmount(value);
   if (normalized.startsWith('-')) {
     throw new Error('money: floorToHundreds needs a non-negative amount');
+  }
+  if (add(normalized, '0') !== normalized) {
+    throw new Error('money: floorToHundreds needs a canonical amount');
   }
   const int = normalized.split('.')[0];
   const hundreds = int.length > 2 ? `${int.slice(0, -2)}00` : '0';
