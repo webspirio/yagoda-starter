@@ -45,18 +45,27 @@ export function useOpenShiftMutation() {
   });
 }
 
-/** Оператор, і лише він — закриття це підпис того, хто тримав гроші (§10.3). */
+/**
+ * Оператор, і лише він — закриття це підпис того, хто тримав гроші (§10.3).
+ *
+ * `broken_crates` ОБОВ'ЯЗКОВЕ, як і на боці сервера (`CloseShiftDto` не має
+ * `@IsOptional()`): §6.8 «бій вписує приймальник». `0` — нормальне значення і
+ * їде як `0`; воно НЕ може бути відкинуте як хибне, інакше єдиний день, коли
+ * нічого не побилось, повертає 400.
+ */
 export function useCloseShiftMutation() {
   const invalidate = useInvalidateDay();
   return useMutation({
     mutationFn: async ({
       id,
       counted_amount,
+      broken_crates,
     }: {
       id: string;
       counted_amount: string;
+      broken_crates: number;
     }): Promise<Shift> =>
-      (await httpClient.post<Shift>(`/shifts/${id}/close`, { counted_amount })).data,
+      (await httpClient.post<Shift>(`/shifts/${id}/close`, { counted_amount, broken_crates })).data,
     onSuccess: invalidate,
   });
 }

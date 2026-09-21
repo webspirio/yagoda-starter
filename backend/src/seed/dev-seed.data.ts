@@ -525,10 +525,17 @@ export interface SeedShift {
   /** Operator login who opened it (and closed it, when `closed`). */
   openedBy: string;
   closed: boolean;
+  /**
+   * §6.8's «бій» (#110), written only when `closed` — an open shift must keep
+   * `null` or CHK_shifts_broken_crates_closed refuses the row. Absent means
+   * `0`: «нічого не побилось» is the ordinary day, and `null` («не записано»)
+   * is reachable only by leaving the shift open.
+   */
+  broken?: number;
 }
 
 export const SEED_SHIFTS: readonly SeedShift[] = [
-  { point: 'Шипинки', day: 'yesterday', openedBy: 'oksana', closed: true },
+  { point: 'Шипинки', day: 'yesterday', openedBy: 'oksana', closed: true, broken: 3 },
   { point: 'Шипинки', day: 'today', openedBy: 'oksana', closed: false },
   { point: 'Конищів', day: 'today', openedBy: 'taras', closed: false },
   { point: 'Гайове', day: 'today', openedBy: 'ihor', closed: false },
