@@ -765,6 +765,10 @@
       "remove": "Прибрати позицію",
       "draftHint": "Заповніть цю позицію або приберіть її",
       "title": "Позиції квитанції",
+      "counter_one": "{{count}} позиція · {{kg}}",
+      "counter_few": "{{count}} позиції · {{kg}}",
+      "counter_many": "{{count}} позицій · {{kg}}",
+      "counter_other": "{{count}} позицій · {{kg}}",
       "col": {
         "grade": "Сорт",
         "gross": "Брутто",

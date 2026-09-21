@@ -298,6 +298,8 @@ export function ReceptionPage() {
                 canAdd={draftReady && !atCap && shiftOpen && settled !== null && !hasServerError}
                 atCap={atCap}
                 disabled={!shiftOpen}
+                lineCount={settled?.items.length ?? lines.fields.length}
+                netKg={netKg}
                 onAdd={() => lines.append(emptyLine(defaultTareTypeId))}
                 onRemove={(index) => lines.remove(index)}
               />

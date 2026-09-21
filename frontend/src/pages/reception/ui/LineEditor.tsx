@@ -28,6 +28,7 @@ import {
 } from '@/shared/lib/money';
 import type { PricedGrade } from '@/entities/product-grade';
 import type { TareTypeOption } from '@/entities/tare-type';
+import { formatBonusSign } from '../lib/formatBonusSign';
 import type { IntakeFormValues, IntakePreviewItem } from '../model/intakeForm';
 
 /** §5.2 — the largest line of the season was 701,5 kg; above this we ask. */
@@ -46,21 +47,6 @@ function compare(a: string, b: string): -1 | 0 | 1 | null {
   } catch {
     return null;
   }
-}
-
-/**
- * The bonus half of the draft's preview line: a leading `+` unless the bonus
- * is already negative, in which case `formatDecimal`'s own typographic minus
- * (U+2212) is the only sign a literal `+` glued in front of it used to render
- * as `+−5,00`. Kept as `+`-for-non-negative rather than mirroring
- * `widgets/receipt`'s `formatBonus` exactly (`+` only when strictly
- * positive): that dialog OMITS a zero bonus row outright, which reads fine
- * there, but this line concatenates price and bonus with no separator of its
- * own — dropping the `+` for zero would glue them into one unreadable number.
- */
-function formatBonusSign(bonus: string, locale: string): string {
-  const formatted = formatDecimal(bonus, locale);
-  return cmp(bonus, '0') === -1 ? formatted : `+${formatted}`;
 }
 
 /**

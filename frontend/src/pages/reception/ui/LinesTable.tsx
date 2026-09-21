@@ -1,7 +1,8 @@
 import { Plus, Trash2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/shared/ui/button';
-import { formatDecimal } from '@/shared/lib/money';
+import { cmp, formatDecimal, formatKg } from '@/shared/lib/money';
+import { formatBonusSign } from '../lib/formatBonusSign';
 import type { IntakePreviewItem } from '../model/intakeForm';
 
 export interface CommittedLine {
@@ -27,6 +28,8 @@ export function LinesTable({
   canAdd,
   atCap,
   disabled,
+  lineCount,
+  netKg,
   onAdd,
   onRemove,
 }: {
@@ -35,6 +38,12 @@ export function LinesTable({
   atCap: boolean;
   /** No shift, no document — a committed line cannot be dropped either. */
   disabled: boolean;
+  /** `TotalsSection`'s own count — `settled?.items.length ?? lines.fields.length`
+   *  from `ReceptionPage` — kept in step with the submit button's own label. */
+  lineCount: number;
+  /** `null` unless the preview has SETTLED on the form as it stands now — the
+   *  counter is withheld rather than built from a stale or half-typed total. */
+  netKg: string | null;
   onAdd: () => void;
   onRemove: (index: number) => void;
 }) {
@@ -51,6 +60,11 @@ export function LinesTable({
         <span className="text-xs text-muted-foreground">
           {atCap ? t('reception.lines.capHint') : t('reception.lines.hint')}
         </span>
+        {netKg !== null ? (
+          <span className="ml-auto font-mono text-xs text-muted-foreground">
+            {t('reception.lines.counter', { count: lineCount, kg: formatKg(netKg, locale) })}
+          </span>
+        ) : null}
       </div>
 
       {rows.length > 0 ? (
@@ -96,13 +110,28 @@ export function LinesTable({
                     {row.item ? formatDecimal(row.item.pallet_kg, locale) : <Pending />}
                   </td>
                   <td className="px-2 py-1.5 text-right text-muted-foreground">
-                    {row.item ? formatDecimal(row.item.tare_weight_kg, locale) : <Pending />}
+                    {row.item ? (
+                      row.item.tare.reduce((n, tareRow) => n + tareRow.units, 0)
+                    ) : (
+                      <Pending />
+                    )}
                   </td>
                   <td className="px-2 py-1.5 text-right font-semibold">
                     {row.item ? formatDecimal(row.item.net_kg, locale) : <Pending />}
                   </td>
                   <td className="px-2 py-1.5 text-right">
-                    {row.item ? formatDecimal(row.item.price, locale) : <Pending />}
+                    {row.item ? (
+                      <>
+                        {formatDecimal(row.item.price, locale)}
+                        {cmp(row.item.bonus, '0') !== 0 ? (
+                          <span className="ml-1 text-amber">
+                            {formatBonusSign(row.item.bonus, locale)}
+                          </span>
+                        ) : null}
+                      </>
+                    ) : (
+                      <Pending />
+                    )}
                   </td>
                   <td className="px-2 py-1.5 text-right font-semibold">
                     {row.item ? formatDecimal(row.item.amount, locale) : <Pending />}

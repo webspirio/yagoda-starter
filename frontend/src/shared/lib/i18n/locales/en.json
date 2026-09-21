@@ -755,6 +755,8 @@
       "remove": "Remove line",
       "draftHint": "Finish this line or remove it",
       "title": "Receipt lines",
+      "counter_one": "{{count}} line · {{kg}}",
+      "counter_other": "{{count}} lines · {{kg}}",
       "col": {
         "grade": "Grade",
         "gross": "Gross",
