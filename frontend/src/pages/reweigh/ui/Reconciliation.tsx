@@ -111,7 +111,6 @@ export function Reconciliation({
             {t('reweigh.check.drafted', { kg: formatKg(draftedKg, locale) })}
           </p>
         ) : null}
-        <p className="mt-2 text-xs leading-relaxed text-muted-foreground">{t('reweigh.check.note')}</p>
       </div>
     </div>
   );

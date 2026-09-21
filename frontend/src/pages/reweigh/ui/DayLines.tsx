@@ -205,9 +205,6 @@ export function DayLines({
           )}
         </TableBody>
       </Table>
-      <p className="border-t border-border/70 px-4 py-3 text-xs leading-relaxed text-muted-foreground">
-        {t('reweigh.day.note')}
-      </p>
     </div>
   );
 }

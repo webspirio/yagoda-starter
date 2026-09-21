@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Trans, useTranslation } from 'react-i18next';
+import { useTranslation } from 'react-i18next';
 import { PageHeader } from '@/shared/ui/page-header';
 import { SelectField } from '@/shared/ui/select-field';
 import { DateStepper } from '@/shared/ui/date-stepper';
@@ -208,14 +208,6 @@ export function ReweighPage() {
         description={t('reweigh.description')}
         actions={actions}
       />
-
-      <p className="rounded-lg bg-muted/50 px-3 py-2 text-xs leading-relaxed text-muted-foreground">
-        <Trans
-          i18nKey="reweigh.berryDayNote"
-          values={{ date: formatShortDate(date, locale) }}
-          components={{ 1: <b className="font-medium text-foreground" /> }}
-        />
-      </p>
 
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1.15fr)_minmax(340px,1fr)]">
         <div className="flex flex-col gap-5">

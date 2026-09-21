@@ -11,13 +11,7 @@ import { formatShortDate } from '@/shared/lib/date';
 import { useTareTypeOptionsQuery } from '@/entities/tare-type';
 import type { ReconciliationGrade } from '@/entities/reweigh';
 import { netOf, newDraftKey, tareWeightOf, type Draft } from '../model/draft';
-import {
-  GROSS_SUSPECT_KG,
-  TARE_SUSPECT_UNITS,
-  addBlockReason,
-  grossHint,
-  tareHint,
-} from '../lib/hints';
+import { addBlockReason, grossHint, tareHint } from '../lib/hints';
 import { FieldWarning } from './FieldWarning';
 
 /**
@@ -150,19 +144,18 @@ export function WeighingForm({
               : null;
 
   const grossWarningText = grossHint(grossForCalc)
-    ? t('reweigh.warn.gross', { value: formatKg(grossForCalc, locale), limit: GROSS_SUSPECT_KG })
+    ? t('reweigh.warn.gross', { value: formatKg(grossForCalc, locale) })
     : null;
 
   const tareHintReason = tareHint(tareCount, grossForCalc);
   const tareWarningText =
     tareHintReason === 'tooMany'
-      ? t('reweigh.warn.tareTooMany', { units: tareCount, limit: TARE_SUSPECT_UNITS })
+      ? t('reweigh.warn.tareTooMany', { units: tareCount })
       : tareHintReason === 'none'
         ? t('reweigh.warn.tareNone')
         : null;
 
   const productGroups = useMemo(() => groupByProduct(grades), [grades]);
-  const dayProducts = useMemo(() => [...new Set(grades.map((g) => g.product_name))], [grades]);
 
   function handleAdd() {
     const grade = grades.find((g) => g.product_grade_id === gradeId);
@@ -326,9 +319,6 @@ export function WeighingForm({
             </optgroup>
           ))}
         </SelectField>
-        <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
-          {t('reweigh.gradeNote', { point: pointName, products: dayProducts.join(', ') || '—' })}
-        </p>
       </div>
 
       <div className="flex flex-wrap items-end justify-between gap-3 p-4">
@@ -340,7 +330,6 @@ export function WeighingForm({
           >
             {formatKg(netForDisplay, locale)}
           </div>
-          <p className="mt-1.5 text-xs text-muted-foreground">{t('reweigh.netNote')}</p>
         </div>
         <div className="flex flex-col items-end gap-1.5">
           <Button type="button" size="lg" onClick={handleAdd} disabled={Boolean(block)}>
