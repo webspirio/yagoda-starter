@@ -12,6 +12,8 @@
  * Gzip is the number with a budget, because gzip is what actually crosses the wire. Raw is
  * measured and budgeted too, at a separate, wider step, because it is what the phone must
  * parse and compile, which is a real cost on cheap hardware even after the network is done.
+ * Both are measured for TWO metrics now — first paint (the gate) and the sum (a printed
+ * warning, never a gate) — by the exact same rule below, applied twice.
  *
  * THE CEILING IS NOT THE MEASUREMENT, AND THE HEADROOM IS NOT AN ACCIDENT OF ROUNDING
  * EITHER. This check went through two corrections to get here, both worth keeping visible
@@ -37,7 +39,9 @@
  * number); the minimum headroom is what actually does the ratcheting work. A ceiling with
  * single-digit-percent headroom is not a stricter budget, it is a budget that trains people
  * to raise it on sight — this rule sizes the slack to what ordinary work costs so ordinary
- * work does not need a ceiling edit, and a new dependency pulled in whole still does.
+ * work does not need a ceiling edit, and a new dependency pulled in whole still does. This
+ * SAME rule now runs twice — once for first paint, once for the sum — off one shared
+ * MIN_HEADROOM/STEP pair; there is no separate, looser rule for either.
  *
  * What must still fail is a REGRESSION: a new dependency pulled in whole, an accidental
  * whole-package import, a chart library added for one small feature. Those are tens or
@@ -52,21 +56,34 @@
  * when it breaks is a budget nobody watches, and the point of this row is the number, not
  * the colour.
  *
- * BLIND SPOT, stated here because it drove the design and belongs next to the number it
- * qualifies: this measures the SUM of frontend/dist/assets, not what a browser actually
- * downloads on first paint. The sum can GROW while the user's real download SHRINKS — code
- * splitting does exactly that, by turning one large chunk into several smaller ones plus a
- * little overhead at each new chunk boundary. So a green row here is not a claim about load
- * time; it is a claim about total shipped bytes. The number worth watching, every run, is
- * the headroom line below — not the pass/fail.
+ * FIRST PAINT IS THE GATE; THE SUM IS PRINTED, NEVER GATED. This check used to measure and
+ * budget only the SUM of frontend/dist/assets — a number a browser's first visit does NOT
+ * actually download, because code splitting turns one large chunk into several smaller ones
+ * plus a little overhead at each new chunk boundary, so the sum can GROW while the real
+ * download SHRINKS. That is exactly what this repo's own lazy-routes work demonstrated:
+ * splitting the owner-only screens into their own chunks cut the largest chunk down while
+ * the sum this row used to gate went UP — under a sum budget, code splitting can never pay
+ * for itself, and a chart library added for one owner-only screen would trip the gate
+ * although no operator ever downloads it. Reading `frontend/dist/.vite/manifest.json`
+ * (`build: { manifest: true }` in vite.config.ts) closes that gap: first paint is the
+ * manifest's entry chunk (`isEntry: true`) plus the transitive closure of its STATIC
+ * `imports`, and every `css` file those chunks list — never a `dynamicImports` chunk, which
+ * is precisely the code a route nobody has opened yet ships behind. THE SUM IS WHAT THE CDN
+ * STORES; FIRST PAINT IS WHAT THE OPERATOR PAYS — the sum stays measured and printed, as the
+ * SECOND unconditional WARNING line below, purely so a whole-package regression is still
+ * visible on every run even though it no longer fails the row by itself.
  *
- * THAT BLIND SPOT IS CHEAP TO NARROW, EVEN THOUGH IT IS NOT CHEAP TO CLOSE: this repo's
- * whole JS output today is a SINGLE chunk (no code splitting at all), so the sum this check
- * gates and what a first visit actually downloads are, right now, almost the same number —
- * confirmed on every run rather than assumed once. Root CLAUDE.md's "Deployment" audience
- * (operators at rural collection points, on mobile data) is exactly who pays for that. So a
- * second line, unconditional like the headroom one, names the single largest `.js` chunk
- * and its gzip size on EVERY run, passing or not. This is a SIGNAL, not a gate: there is no
+ * RESIDUAL BLIND SPOTS, narrower now but not zero: this reads whatever the LAST `build` and
+ * its manifest wrote, so a stale or partial pair — a manifest naming a file the assets
+ * directory does not contain — is a refused verdict, not "zero bytes, budget met" (see
+ * `firstPaintFiles()`). It trusts Vite's own static/dynamic classification in the manifest;
+ * a chunk reachable through some other eager mechanism the manifest does not record as a
+ * static `imports` edge would slip through uncounted. And it measures a cold download — no
+ * HTTP cache, no repeat visit — because that is the worst case the rural-operator audience
+ * this check exists for actually faces on a first load.
+ *
+ * A THIRD unconditional line, like the two above, names the single largest `.js` chunk and
+ * its gzip size on EVERY run, passing or not. This is a SIGNAL, not a gate: there is no
  * agreed ceiling on a single chunk's size in this repo, and this check does not invent one
  * — inventing a number nobody agreed to would be exactly the kind of unreviewed policy
  * change this whole layer exists to avoid. It only makes the number impossible to miss.
@@ -81,13 +98,16 @@ import { scanRoot } from '../scan-root.mjs'
 const ROOT = scanRoot()
 const ASSETS = path.join(ROOT, 'frontend', 'dist', 'assets')
 const ASSETS_REL = path.relative(ROOT, ASSETS)
+const MANIFEST = path.join(ROOT, 'frontend', 'dist', '.vite', 'manifest.json')
+const MANIFEST_REL = path.relative(ROOT, MANIFEST)
 const BUDGET_REL = 'scripts/verify/baselines/bundle-budget.json'
 const BUDGET = path.join(ROOT, BUDGET_REL)
 
 // The minimum headroom the ceiling must carry — sized to intent, not to a rounding
 // coincidence. See the file header for why this, not the step below, is what actually
 // makes the ratchet meaningful: ~25 KiB gzip / ~100 KiB raw is roughly one ordinary phase
-// of feature work by the reference's own measured history (13-23 KiB gzip per phase).
+// of feature work by the reference's own measured history (13-23 KiB gzip per phase). The
+// same pair backs BOTH the first-paint ceiling and the sum ceiling.
 const MIN_HEADROOM_GZIP_BYTES = 25 * 1024
 const MIN_HEADROOM_RAW_BYTES = 100 * 1024
 
@@ -149,10 +169,111 @@ function measure() {
 }
 
 /**
+ * @typedef {object} ManifestChunk
+ * @property {string} file
+ * @property {boolean} [isEntry]
+ * @property {string[]} [imports]
+ * @property {string[]} [dynamicImports]
+ * @property {string[]} [css]
+ */
+
+/** @typedef {Record<string, ManifestChunk>} Manifest */
+
+/**
+ * Reads frontend/dist/.vite/manifest.json (written by Vite when `build.manifest: true`).
+ * Missing or unparsable is a FAIL, never an empty first paint: without it there is nothing
+ * to compute first paint FROM, which is a failure to check, not a pass.
+ *
+ * @returns {Manifest}
+ */
+function readManifest() {
+  /** @type {string} */
+  let raw
+  try {
+    raw = readFileSync(MANIFEST, 'utf8')
+  } catch {
+    fail([
+      `${MANIFEST_REL} does not exist — build the frontend with the manifest enabled ` +
+        '(vite.config.ts build.manifest, then npm run build) before running this check.',
+      'A missing manifest is not "zero bytes, budget met": first paint cannot be computed ' +
+        'without it, which is a failure to check, not a pass.',
+    ])
+  }
+  /** @type {Manifest} */
+  let manifest
+  try {
+    manifest = JSON.parse(raw)
+  } catch (err) {
+    fail([`${MANIFEST_REL} is not valid JSON (${errMessage(err)}) — rebuild the frontend.`])
+  }
+  return manifest
+}
+
+/**
+ * First paint = the manifest's entry chunk(s) (`isEntry: true`) plus the transitive closure
+ * of their STATIC `imports` — never `dynamicImports`, which is exactly the code a route the
+ * user has not opened yet ships behind — plus every `css` file each of those chunks lists.
+ *
+ * A manifest entry naming a `file`/`css` value `${ASSETS_REL}` does not contain is a stale
+ * or partial build, not "zero bytes, budget met": FAIL with the exact missing name so the
+ * next run knows what to rebuild.
+ *
+ * @param {Manifest} manifest
+ * @param {Map<string, AssetFile>} byName
+ * @returns {AssetFile[]}
+ */
+function firstPaintFiles(manifest, byName) {
+  const entryKeys = Object.keys(manifest).filter((k) => manifest[k]?.isEntry)
+  if (entryKeys.length === 0) {
+    fail([
+      `${MANIFEST_REL} has no chunk with isEntry: true — is build.manifest actually wired ` +
+        'to the real Vite entry, or is this a stale or hand-edited manifest?',
+    ])
+  }
+
+  const visited = new Set()
+  /** @type {Set<string>} manifest-relative paths, e.g. "assets/index-abc.js" */
+  const wanted = new Set()
+
+  /** @param {string} key */
+  function visit(key) {
+    if (visited.has(key)) return
+    visited.add(key)
+    const chunk = manifest[key]
+    if (!chunk) return
+    wanted.add(chunk.file)
+    for (const c of chunk.css ?? []) wanted.add(c)
+    for (const imp of chunk.imports ?? []) visit(imp)
+  }
+  for (const key of entryKeys) visit(key)
+
+  /** @type {AssetFile[]} */
+  const resolved = []
+  const seen = new Set()
+  for (const rel of wanted) {
+    const name = path.basename(rel)
+    if (seen.has(name)) continue
+    const asset = byName.get(name)
+    if (!asset) {
+      fail([
+        `${MANIFEST_REL} names ${rel} as part of first paint but ${ASSETS_REL} does not ` +
+          `contain ${name} — the build and the manifest are out of sync (a stale or ` +
+          'partial build is not "zero bytes, budget met").',
+      ])
+    }
+    seen.add(name)
+    resolved.push(asset)
+  }
+  return resolved
+}
+
+/**
  * @typedef {object} Budget
  * @property {string} measuredAt
  * @property {number} measuredGzipBytes
  * @property {number} measuredRawBytes
+ * @property {number} measuredFirstPaintGzipBytes
+ * @property {number} measuredFirstPaintRawBytes
  * @property {number} minHeadroomGzipBytes
  * @property {number} minHeadroomRawBytes
  * @property {number} stepGzipBytes
@@ -161,64 +282,97 @@ function measure() {
  * @property {number} maxRawBytes
  * @property {number} headroomGzipBytes
  * @property {number} headroomRawBytes
+ * @property {number} maxFirstPaintGzipBytes
+ * @property {number} maxFirstPaintRawBytes
+ * @property {number} headroomFirstPaintGzipBytes
+ * @property {number} headroomFirstPaintRawBytes
  * @property {string} reason
  */
 
+const DEFAULT_REASON =
+  'The ceiling is `measurement + a MINIMUM headroom`, THEN rounded up to the next step ' +
+  '(minHeadroomGzipBytes/minHeadroomRawBytes are the headroom; stepGzipBytes/' +
+  'stepRawBytes are only cosmetic rounding on top of it) — never the measurement ' +
+  'itself, and never a bare round-up with no minimum either. Both corrections in that ' +
+  'sentence are load-bearing, learned in that order. First: the reference this check ' +
+  'was ported from (webspirio/yagoda-crm) pinned the ceiling to the exact measured ' +
+  'byte count with zero slack, and it broke on the very next commit over an 18-byte ' +
+  'gzip increase from adding one small helper — ordinary work, not a regression. ' +
+  "Second, and this repo's own mistake: this check's first version fixed that by " +
+  'rounding the raw measurement up to the next step and stopping there, with no ' +
+  'minimum — and the very first real measurement here landed at 3,719 B of gzip ' +
+  'headroom, 1.3% of the bundle, because the measurement happened to fall just past a ' +
+  'step boundary. That is the SAME failure as the 18-byte story, just at a larger ' +
+  "scale: the reference itself measured ordinary phase work at 13-23 KiB gzip per " +
+  'phase, so single-digit-percent headroom does not defend against ordinary growth, ' +
+  'it just delays the next forced, unread ceiling raise by one commit. The fix is ' +
+  'this minimum: 25 KiB gzip / 100 KiB raw, sized to absorb roughly one ordinary ' +
+  "phase of feature work without tripping, while a new dependency pulled in whole — " +
+  'tens or hundreds of KiB, not tens of KiB — still trips it. Lowering the ceiling is ' +
+  'an ordinary edit. Raising it must be a visible, reasoned diff to this file that ' +
+  'states what changed and why it could not fit in the existing headroom — and the ' +
+  'number worth reading on every run is the headroom this check prints as a WARNING ' +
+  'line when it passes, never the pass/fail alone: a ceiling with single-digit-percent ' +
+  'headroom trains people to raise budgets on sight rather than to read them, which is ' +
+  'the one thing this whole check exists to prevent. ' +
+  'FIRST PAINT ADDED 2026-09-21: this is the FIRST measurement of a new metric — the Vite ' +
+  "manifest's entry chunk plus its static import closure and their css — not a raise of " +
+  'an existing ceiling. It, not the sum above, now gates this row; the sum pair is kept ' +
+  'and printed as an unconditional WARNING on every run instead, because code splitting ' +
+  'can grow the sum while shrinking what a first visit actually downloads, and a ' +
+  'whole-package regression should stay visible even though it no longer fails the row ' +
+  'by itself. Same minimum-headroom-then-step rule, run twice, once per metric.'
+
 /**
- * The ceiling is `measurement + minimum headroom`, THEN rounded up to the next step — the
- * minimum headroom is what makes this a ratchet with real teeth; the step only keeps the
- * result a round number. Recording `minHeadroomGzipBytes`/`minHeadroomRawBytes`/
- * `stepGzipBytes`/`stepRawBytes` alongside the result means the next person to re-measure
- * follows this exact arithmetic instead of inventing their own rounding rule (the mistake
- * this check's own history already made once — see the file header).
+ * The ceiling for one measured metric is `measurement + minimum headroom`, THEN rounded up
+ * to the next step. See {@link DEFAULT_REASON} and the file header for why, in that order.
  *
- * @param {number} gzip
- * @param {number} raw
+ * @param {number} measured
+ * @param {number} minHeadroom
+ * @param {number} step
+ * @returns {{ max: number, headroom: number }}
+ */
+function ceilingFor(measured, minHeadroom, step) {
+  const max = Math.ceil((measured + minHeadroom) / step) * step
+  return { max, headroom: max - measured }
+}
+
+/**
+ * Builds the full budget record from BOTH measured metrics — the sum and first paint —
+ * using the identical minimum-headroom-then-step rule for each. Recording
+ * `minHeadroomGzipBytes`/`minHeadroomRawBytes`/`stepGzipBytes`/`stepRawBytes` alongside the
+ * result means the next person to re-measure follows this exact arithmetic instead of
+ * inventing their own rounding rule (the mistake this check's own history already made
+ * once — see the file header).
+ *
+ * @param {{ sumGzip: number, sumRaw: number, firstPaintGzip: number, firstPaintRaw: number }} measured
  * @param {string | undefined} previousReason
  * @returns {Budget}
  */
-function buildBudget(gzip, raw, previousReason) {
-  const maxGzipBytes = Math.ceil((gzip + MIN_HEADROOM_GZIP_BYTES) / STEP_GZIP_BYTES) * STEP_GZIP_BYTES
-  const maxRawBytes = Math.ceil((raw + MIN_HEADROOM_RAW_BYTES) / STEP_RAW_BYTES) * STEP_RAW_BYTES
+function buildBudget(measured, previousReason) {
+  const sumGzip = ceilingFor(measured.sumGzip, MIN_HEADROOM_GZIP_BYTES, STEP_GZIP_BYTES)
+  const sumRaw = ceilingFor(measured.sumRaw, MIN_HEADROOM_RAW_BYTES, STEP_RAW_BYTES)
+  const fpGzip = ceilingFor(measured.firstPaintGzip, MIN_HEADROOM_GZIP_BYTES, STEP_GZIP_BYTES)
+  const fpRaw = ceilingFor(measured.firstPaintRaw, MIN_HEADROOM_RAW_BYTES, STEP_RAW_BYTES)
   return {
     measuredAt: new Date().toISOString().slice(0, 10),
-    measuredGzipBytes: gzip,
-    measuredRawBytes: raw,
+    measuredGzipBytes: measured.sumGzip,
+    measuredRawBytes: measured.sumRaw,
+    measuredFirstPaintGzipBytes: measured.firstPaintGzip,
+    measuredFirstPaintRawBytes: measured.firstPaintRaw,
     minHeadroomGzipBytes: MIN_HEADROOM_GZIP_BYTES,
     minHeadroomRawBytes: MIN_HEADROOM_RAW_BYTES,
     stepGzipBytes: STEP_GZIP_BYTES,
     stepRawBytes: STEP_RAW_BYTES,
-    maxGzipBytes,
-    maxRawBytes,
-    headroomGzipBytes: maxGzipBytes - gzip,
-    headroomRawBytes: maxRawBytes - raw,
-    reason:
-      previousReason ??
-      'The ceiling is `measurement + a MINIMUM headroom`, THEN rounded up to the next step ' +
-        '(minHeadroomGzipBytes/minHeadroomRawBytes are the headroom; stepGzipBytes/' +
-        'stepRawBytes are only cosmetic rounding on top of it) — never the measurement ' +
-        'itself, and never a bare round-up with no minimum either. Both corrections in that ' +
-        'sentence are load-bearing, learned in that order. First: the reference this check ' +
-        'was ported from (webspirio/yagoda-crm) pinned the ceiling to the exact measured ' +
-        'byte count with zero slack, and it broke on the very next commit over an 18-byte ' +
-        'gzip increase from adding one small helper — ordinary work, not a regression. ' +
-        "Second, and this repo's own mistake: this check's first version fixed that by " +
-        'rounding the raw measurement up to the next step and stopping there, with no ' +
-        'minimum — and the very first real measurement here landed at 3,719 B of gzip ' +
-        'headroom, 1.3% of the bundle, because the measurement happened to fall just past a ' +
-        'step boundary. That is the SAME failure as the 18-byte story, just at a larger ' +
-        'scale: the reference itself measured ordinary phase work at 13-23 KiB gzip per ' +
-        'phase, so single-digit-percent headroom does not defend against ordinary growth, ' +
-        'it just delays the next forced, unread ceiling raise by one commit. The fix is ' +
-        'this minimum: 25 KiB gzip / 100 KiB raw, sized to absorb roughly one ordinary ' +
-        "phase of feature work without tripping, while a new dependency pulled in whole — " +
-        'tens or hundreds of KiB, not tens of KiB — still trips it. Lowering the ceiling is ' +
-        'an ordinary edit. Raising it must be a visible, reasoned diff to this file that ' +
-        'states what changed and why it could not fit in the existing headroom — and the ' +
-        'number worth reading on every run is the headroom this check prints as a WARNING ' +
-        'line when it passes, never the pass/fail alone: a ceiling with single-digit-percent ' +
-        'headroom trains people to raise budgets on sight rather than to read them, which is ' +
-        'the one thing this whole check exists to prevent.',
+    maxGzipBytes: sumGzip.max,
+    maxRawBytes: sumRaw.max,
+    headroomGzipBytes: sumGzip.headroom,
+    headroomRawBytes: sumRaw.headroom,
+    maxFirstPaintGzipBytes: fpGzip.max,
+    maxFirstPaintRawBytes: fpRaw.max,
+    headroomFirstPaintGzipBytes: fpGzip.headroom,
+    headroomFirstPaintRawBytes: fpRaw.headroom,
+    reason: previousReason ?? DEFAULT_REASON,
   }
 }
 
@@ -236,7 +390,12 @@ function totals(files) {
 function main() {
   const write = process.argv.includes('--write')
   const files = measure()
-  const { gzip, raw } = totals(files)
+  /** @type {Map<string, AssetFile>} */
+  const byName = new Map(files.map((f) => [f.file, f]))
+  const manifest = readManifest()
+  const firstPaint = firstPaintFiles(manifest, byName)
+  const sum = totals(files)
+  const fp = totals(firstPaint)
 
   if (write) {
     /** @type {string | undefined} */
@@ -246,12 +405,18 @@ function main() {
     } catch {
       /* first write — no previous reason to carry forward */
     }
-    const budget = buildBudget(gzip, raw, previousReason)
+    const budget = buildBudget(
+      { sumGzip: sum.gzip, sumRaw: sum.raw, firstPaintGzip: fp.gzip, firstPaintRaw: fp.raw },
+      previousReason,
+    )
     writeFileSync(BUDGET, `${JSON.stringify(budget, null, 2)}\n`)
     process.stdout.write(
-      `bundle: baseline written — measured ${kib(gzip)} gzip / ${kib(raw)} raw, ceiling set to ` +
-        `${kib(budget.maxGzipBytes)} gzip / ${kib(budget.maxRawBytes)} raw ` +
-        `(headroom ${kib(budget.headroomGzipBytes)} gzip / ${kib(budget.headroomRawBytes)} raw)\n`,
+      `bundle: baseline written — first paint ${kib(fp.gzip)} gzip / ${kib(fp.raw)} raw ` +
+        `(ceiling ${kib(budget.maxFirstPaintGzipBytes)} gzip / ${kib(budget.maxFirstPaintRawBytes)} raw, ` +
+        `headroom ${kib(budget.headroomFirstPaintGzipBytes)} gzip / ${kib(budget.headroomFirstPaintRawBytes)} raw), ` +
+        `sum ${kib(sum.gzip)} gzip / ${kib(sum.raw)} raw ` +
+        `(ceiling ${kib(budget.maxGzipBytes)} gzip / ${kib(budget.maxRawBytes)} raw, ` +
+        `headroom ${kib(budget.headroomGzipBytes)} gzip / ${kib(budget.headroomRawBytes)} raw)\n`,
     )
     return
   }
@@ -264,24 +429,30 @@ function main() {
     fail([`${BUDGET_REL} is missing or is not valid JSON (${errMessage(err)}) — create it with --write.`])
   }
 
+  // THE GATE IS FIRST PAINT, NOT THE SUM. See the file header for why: the sum is what the
+  // CDN stores, first paint is what the operator pays, and code splitting can grow one while
+  // shrinking the other.
   /** @type {string[]} */
   const problems = []
-  if (gzip > budget.maxGzipBytes) {
+  if (fp.gzip > budget.maxFirstPaintGzipBytes) {
     problems.push(
-      `GZIP OVER BUDGET: ${kib(gzip)} against a ceiling of ${kib(budget.maxGzipBytes)} ` +
-        `(+${kib(gzip - budget.maxGzipBytes)}). This is what actually crosses the network.`,
+      `FIRST PAINT GZIP OVER BUDGET: ${kib(fp.gzip)} against a ceiling of ${kib(budget.maxFirstPaintGzipBytes)} ` +
+        `(+${kib(fp.gzip - budget.maxFirstPaintGzipBytes)}). This is what a first visit must ` +
+        'download before the app can paint.',
     )
   }
-  if (raw > budget.maxRawBytes) {
+  if (fp.raw > budget.maxFirstPaintRawBytes) {
     problems.push(
-      `RAW OVER BUDGET: ${kib(raw)} against a ceiling of ${kib(budget.maxRawBytes)} ` +
-        `(+${kib(raw - budget.maxRawBytes)}). This is what the browser must parse and compile.`,
+      `FIRST PAINT RAW OVER BUDGET: ${kib(fp.raw)} against a ceiling of ${kib(budget.maxFirstPaintRawBytes)} ` +
+        `(+${kib(fp.raw - budget.maxFirstPaintRawBytes)}). This is what the browser must parse ` +
+        'and compile before the app can paint.',
     )
   }
   if (problems.length) {
     problems.push(
       `Raising the ceiling is a visible, reasoned edit to ${BUDGET_REL} — it never widens on ` +
-        'its own. Lowering it is ordinary; look for a new or oversized dependency first.',
+        'its own. Lowering it is ordinary; look for a new or oversized dependency, or a chunk ' +
+        'that should stay behind a dynamic import instead of a static one, first.',
     )
     fail(problems)
   }
@@ -290,63 +461,85 @@ function main() {
     process.stdout.write(`bundle:   ${f.file}  ${kib(f.raw)} raw / ${kib(f.gzip)} gzip\n`)
   }
   process.stdout.write(
-    `bundle: total ${kib(gzip)} gzip / ${kib(raw)} raw — within the budget measured ` +
-      `${budget.measuredAt} (ceiling ${kib(budget.maxGzipBytes)} gzip / ${kib(budget.maxRawBytes)} raw)\n`,
+    `bundle: first paint ${kib(fp.gzip)} gzip / ${kib(fp.raw)} raw — within the budget measured ` +
+      `${budget.measuredAt} (ceiling ${kib(budget.maxFirstPaintGzipBytes)} gzip / ` +
+      `${kib(budget.maxFirstPaintRawBytes)} raw)\n`,
   )
+
   // Printed on every PASSING run, not only once the budget is nearly gone: a number only
   // heard from when it breaks is a number nobody is actually watching. See the file header
-  // for why this, not the pass/fail, is the thing to read.
-  const headroomGzip = budget.maxGzipBytes - gzip
-  const headroomRaw = budget.maxRawBytes - raw
+  // for why this, not the pass/fail, is the thing to read. FIRST of the three unconditional
+  // WARNING lines.
+  const headroomFpGzip = budget.maxFirstPaintGzipBytes - fp.gzip
+  const headroomFpRaw = budget.maxFirstPaintRawBytes - fp.raw
   process.stdout.write(
-    `WARNING: headroom is ${kib(headroomGzip)} gzip / ${kib(headroomRaw)} raw before the ` +
-      `ceiling measured ${budget.measuredAt} (${kib(budget.maxGzipBytes)} gzip / ${kib(budget.maxRawBytes)} raw) ` +
-      '— this measures the SUM of frontend/dist/assets, not what a browser downloads on first ' +
-      'paint, so watch this number every run; it is the point of this row, not the pass/fail.\n',
+    `WARNING: first paint headroom is ${kib(headroomFpGzip)} gzip / ${kib(headroomFpRaw)} raw ` +
+      `before the ceiling measured ${budget.measuredAt} (${kib(budget.maxFirstPaintGzipBytes)} gzip / ` +
+      `${kib(budget.maxFirstPaintRawBytes)} raw) — first paint is the manifest's entry chunk plus its ` +
+      'static import closure and their css, never a dynamicImports chunk; watch this number every ' +
+      'run, it is the point of this row, not the pass/fail.\n',
   )
 
   // THE HEADROOM CAN FALL BELOW THE DESIGN MINIMUM WITHOUT ANY ROW CHANGING COLOUR, and
   // that is the regime this check's whole header argues is the dangerous one. `--write`
   // sets the ceiling to the measurement plus MIN_HEADROOM_GZIP_BYTES precisely so ordinary
-  // work does not force a ceiling edit — but the bundle then grows under a fixed ceiling,
+  // work does not force a ceiling edit — but first paint then grows under a fixed ceiling,
   // and nothing was comparing what is left against what was intended. A budget in that
   // state still passes, and still trains exactly the behaviour the minimum exists to
   // prevent: the next ordinary commit trips it, and somebody raises the ceiling on sight.
   //
   // Derived from the budget file's own recorded minimum, not from a second copy of the
-  // constant, and self-cancelling: it stops printing the moment the bundle shrinks or the
+  // constant, and self-cancelling: it stops printing the moment first paint shrinks or the
   // ceiling is legitimately re-measured. It is a WARNING, never a failure — passing is
   // still the correct verdict, and inventing a new gate here would be the unreviewed
   // policy change this layer exists to avoid.
   const minGzip = budget.minHeadroomGzipBytes ?? MIN_HEADROOM_GZIP_BYTES
   const minRaw = budget.minHeadroomRawBytes ?? MIN_HEADROOM_RAW_BYTES
-  if (headroomGzip < minGzip || headroomRaw < minRaw) {
+  if (headroomFpGzip < minGzip || headroomFpRaw < minRaw) {
     const short = []
-    if (headroomGzip < minGzip) short.push(`gzip ${kib(headroomGzip)} against ${kib(minGzip)}`)
-    if (headroomRaw < minRaw) short.push(`raw ${kib(headroomRaw)} against ${kib(minRaw)}`)
+    if (headroomFpGzip < minGzip) short.push(`gzip ${kib(headroomFpGzip)} against ${kib(minGzip)}`)
+    if (headroomFpRaw < minRaw) short.push(`raw ${kib(headroomFpRaw)} against ${kib(minRaw)}`)
     process.stdout.write(
-      `WARNING: headroom has fallen BELOW the minimum this budget was designed with ` +
-        `(${short.join(', ')}). The ceiling was set to absorb roughly one ordinary phase of ` +
-        'work; there is now less than that left, so the next ordinary commit trips a red ' +
-        '`bundle` row. The intended response is to reduce the bundle — raising the ceiling ' +
+      `WARNING: first paint headroom has fallen BELOW the minimum this budget was designed ` +
+        `with (${short.join(', ')}). The ceiling was set to absorb roughly one ordinary phase ` +
+        'of work; there is now less than that left, so the next ordinary commit trips a red ' +
+        '`bundle` row. The intended response is to reduce first paint — raising the ceiling ' +
         `is the move ${BUDGET_REL} exists to make somebody justify in writing.\n`,
     )
   }
 
-  // A SECOND unconditional signal, printed on every run regardless of size — not gated
+  // SECOND unconditional WARNING line: the sum no longer gates this row, but a
+  // whole-package regression should still be visible on every run — see the file header's
+  // "FIRST PAINT IS THE GATE; THE SUM IS PRINTED, NEVER GATED".
+  const sumOverGzip = sum.gzip > budget.maxGzipBytes
+  const sumOverRaw = sum.raw > budget.maxRawBytes
+  const sumStatus =
+    sumOverGzip || sumOverRaw
+      ? `OVER its own ceiling (gzip +${kib(Math.max(0, sum.gzip - budget.maxGzipBytes))}, ` +
+        `raw +${kib(Math.max(0, sum.raw - budget.maxRawBytes))})`
+      : `within its own ceiling (headroom ${kib(budget.maxGzipBytes - sum.gzip)} gzip / ` +
+        `${kib(budget.maxRawBytes - sum.raw)} raw)`
+  process.stdout.write(
+    `WARNING: sum of ${ASSETS_REL} is ${kib(sum.gzip)} gzip / ${kib(sum.raw)} raw against its own ` +
+      `ceiling of ${kib(budget.maxGzipBytes)} gzip / ${kib(budget.maxRawBytes)} raw — ${sumStatus}. ` +
+      'The sum no longer gates this row; first paint does. The sum is what the CDN stores, first ' +
+      'paint is what the operator pays — code splitting can grow this number while shrinking that ' +
+      'one.\n',
+  )
+
+  // THIRD unconditional WARNING line, printed on every run regardless of size — not gated
   // behind a threshold, which would reproduce the exact failure the headroom line above was
   // fixed to avoid: a number only heard from once it crosses some line is a number nobody
   // reads until it already broke. This is deliberately not a pass/fail: no chunk-size
   // ceiling is agreed in this repo, and this check does not invent one — it only makes the
-  // largest single JS chunk (what a first visit largely downloads today, since there is no
-  // code splitting at all) impossible to miss on every green run.
+  // largest single JS chunk impossible to miss on every green run.
   const jsFiles = files.filter((f) => f.file.endsWith('.js'))
   if (jsFiles.length > 0) {
     const largestJs = jsFiles.reduce((a, b) => (b.gzip > a.gzip ? b : a))
-    const shareOfTotal = ((largestJs.gzip / gzip) * 100).toFixed(1)
+    const shareOfTotal = ((largestJs.gzip / sum.gzip) * 100).toFixed(1)
     process.stdout.write(
       `WARNING: largest JS chunk is ${largestJs.file} at ${kib(largestJs.gzip)} gzip / ` +
-        `${kib(largestJs.raw)} raw — ${shareOfTotal}% of the ${kib(gzip)} gzip total. This is a ` +
+        `${kib(largestJs.raw)} raw — ${shareOfTotal}% of the ${kib(sum.gzip)} gzip total. This is a ` +
         'signal, not a gate: no chunk-size ceiling exists in this repo today; watch this ' +
         'number for whether code splitting would help.\n',
     )

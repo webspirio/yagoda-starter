@@ -232,6 +232,10 @@ const NOT_CONTENT = [
     rel: 'frontend/dist/assets',
     why: 'build output, gitignored — derived from frontend/src, which IS hashed, and ordered behind `build` by `after`',
   },
+  {
+    rel: 'frontend/dist/.vite/manifest.json',
+    why: 'build output, gitignored — derived from frontend/src, which IS hashed, and ordered behind `build` by `after`; read for first paint alongside frontend/dist/assets above',
+  },
 ]
 
 /**

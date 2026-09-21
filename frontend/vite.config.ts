@@ -13,6 +13,13 @@ export default defineConfig({
   server: {
     host: true,
   },
+  build: {
+    // Machine-readable map of every chunk Vite writes, keyed by source path, at
+    // dist/.vite/manifest.json. The `bundle` verify row (scripts/verify/checks/bundle-size.mjs)
+    // reads it to compute first paint — the entry chunk plus the transitive closure of its
+    // static `imports`, excluding `dynamicImports` — which is now what that row gates.
+    manifest: true,
+  },
   test: {
     environment: 'jsdom',
     globals: true,
