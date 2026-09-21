@@ -198,6 +198,19 @@ describe('SupplierPicker', () => {
     expect(screen.getByRole('searchbox')).toHaveValue('');
   });
 
+  it('clicking the open trigger closes the list and forgets the search, like every other close path', async () => {
+    const user = userEvent.setup();
+    render(<SupplierPicker pointId="p1" ownerMode={false} value={null} onChange={vi.fn()} />);
+    await user.click(screen.getByRole('combobox'));
+    await user.type(screen.getByRole('searchbox'), 'Пет');
+
+    await user.click(screen.getByRole('combobox'));
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('combobox'));
+    expect(screen.getByRole('searchbox')).toHaveValue('');
+  });
+
   it('Escape closes the list and restores focus to the trigger (M10)', async () => {
     const user = userEvent.setup();
     render(<SupplierPicker pointId="p1" ownerMode={false} value={null} onChange={vi.fn()} />);

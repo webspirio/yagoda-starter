@@ -244,7 +244,9 @@ export const SupplierPicker = forwardRef<
             : t('pickSupplier.placeholder')
         }
         disabled={disabled}
-        onClick={() => setOpen((o) => !o)}
+        // The fifth close path: clicking the trigger while open closes THROUGH
+        // `close()` too, so a stale search never survives a toggle.
+        onClick={() => (open ? close() : setOpen(true))}
         onKeyDown={onTriggerKey}
         className="flex h-12 w-full items-center justify-between gap-2 rounded-lg border border-input bg-background px-3 text-left text-base disabled:opacity-50"
       >
