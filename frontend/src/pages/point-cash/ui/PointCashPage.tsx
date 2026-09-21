@@ -286,8 +286,12 @@ export function PointCashPage() {
               tone={isNegative(shownRow.cash) ? 'amber' : 'berry'}
               hint={t('pointCash.drawer.caption')}
             />
-            <CashCountHistory pointId={pointId} isOwner={isOwner} />
           </div>
+        </div>
+        {/* Full width, below the ledger/right-column grid — the journal is a
+            wide table, and the 320px column it used to sit in truncated it. */}
+        <div className="mt-5">
+          <CashCountHistory pointId={pointId} isOwner={isOwner} />
         </div>
       </>
     );
