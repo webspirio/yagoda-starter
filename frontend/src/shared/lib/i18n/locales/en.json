@@ -1160,6 +1160,26 @@
       "notWeighed": "Products without a line: {{count}}. This guards against “forgot to weigh the currants”, not a mistake — but while ⚠ stands, the shortfall for this product does not count at all.",
       "drafted": "Unposted positions: +{{kg}} — not recorded yet, and “Ours” does not include them.",
       "note": "“Ours” is the positions posted today for this point, exactly what the day summary will see. The money is the shortfall × what was actually accrued for those kilograms; it never touches the supplier's receipt."
+    },
+    "day": {
+      "title": "Reweighings recorded for {{date}}",
+      "allPoints": "across every point",
+      "point": "From point",
+      "time": "Time",
+      "what": "Product",
+      "ours": "Our weight",
+      "status": "Status",
+      "posted": "posted",
+      "voided": "voided",
+      "void": "Void",
+      "cancel": "Cancel",
+      "reason": "Reason — required",
+      "reasonPlaceholder": "e.g. entered the same truck twice",
+      "empty": "No reweighing has been recorded for this day yet.",
+      "note": "A voided line does not count, but it does not disappear either: the position stays in the list with its time, author and reason. A void recalculates the day summary — “Cost of day” will show this as a warning, not silently.",
+      "errors": {
+        "failed": "Could not void the line"
+      }
     }
   }
 }
