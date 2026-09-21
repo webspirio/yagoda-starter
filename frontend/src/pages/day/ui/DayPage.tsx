@@ -223,6 +223,17 @@ export function DayPage() {
           ? t('day.status.loading')
           : t(`day.status.${status === 'none' && isToday ? 'noneToday' : status}`)}
       </Badge>
+      {/* §6.8's «бій», read back after the close. `=== null`, never `??` or a
+          falsy test: `0` is «нічого не побилось» — a number the operator typed
+          — and «—» is «не записано», which is every shift closed before this
+          column existed. Gated on `closed` because the CHECK allows a number
+          nowhere else, and a reopen clears it back to `null`. */}
+      {!shift.isError && !isLoadingShift && status === 'closed' && shift.data ? (
+        <Badge variant="outline">
+          {t('day.count.brokenSummary')}:{' '}
+          {shift.data.broken_crates === null ? '—' : shift.data.broken_crates}
+        </Badge>
+      ) : null}
       {!shift.isError &&
       !isLoadingShift &&
       isOperator &&

@@ -620,3 +620,51 @@ describe('DayPage — the owner', () => {
     expect(screen.queryByText(banner)).toBeNull();
   });
 });
+
+// §6.8's «бій» is recorded at close and, until #110, was readable nowhere in the
+// product — a mistyped 30-for-3 survived only in audit_log. These four pin the
+// NULL/0 distinction on the READ side, where it is easiest to lose: `??` or a
+// falsy check here would render «нічого не побилось» as «не записано».
+describe("DayPage — §6.8's recorded breakage on a closed shift", () => {
+  it('shows the number that was recorded at close', () => {
+    shiftMock.mockReturnValue({
+      data: { ...closedShift, broken_crates: 3 },
+      isPending: false,
+      isError: false,
+    });
+
+    renderDay('/day?point=p1&date=2026-09-07');
+
+    expect(screen.getByText('Broken: 3')).toBeInTheDocument();
+  });
+
+  it('shows a recorded 0 as 0, never as a dash', () => {
+    shiftMock.mockReturnValue({
+      data: { ...closedShift, broken_crates: 0 },
+      isPending: false,
+      isError: false,
+    });
+
+    renderDay('/day?point=p1&date=2026-09-07');
+
+    expect(screen.getByText('Broken: 0')).toBeInTheDocument();
+  });
+
+  it('shows a dash when the close predates the column', () => {
+    shiftMock.mockReturnValue({
+      data: { ...closedShift, broken_crates: null },
+      isPending: false,
+      isError: false,
+    });
+
+    renderDay('/day?point=p1&date=2026-09-07');
+
+    expect(screen.getByText('Broken: —')).toBeInTheDocument();
+  });
+
+  it('shows nothing while the shift is still open', () => {
+    renderDay('/day?point=p1');
+
+    expect(screen.queryByText(/^Broken:/)).toBeNull();
+  });
+});
