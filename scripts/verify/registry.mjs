@@ -606,19 +606,19 @@ export const CHECKS = [
     // `bundle` reported NOT_RUN, naming `build` as the unmet dependency, never FAILED and
     // never a false PASSED against the tree `build` left behind.
     proves:
-      "First paint — the Vite manifest's entry chunk plus the transitive closure of its " +
-      'static `imports`, and every `css` those chunks list, never a `dynamicImports` ' +
-      'chunk — sits inside its own recorded ceiling, gzip and raw. The ceiling is derived, ' +
-      'never chosen: measurement plus a minimum headroom, rounded to a step, written only ' +
-      'by an explicit `--write`. Three WARNING lines print on every passing run: ' +
-      'first-paint headroom, the sum against its own ceiling, and the largest JS chunk.',
+      "First paint — the Vite manifest's entry chunk plus the closure of its static " +
+      "`imports` and their `css` — and lazy — every other chunk reached only through a " +
+      '`dynamicImports` edge — each sit inside their own recorded ceiling, gzip and raw, ' +
+      'covering every manifest-listed chunk with no gap and no overlap. Splitting code ' +
+      'moves bytes between the two ceilings, never out of both. Each is derived, never ' +
+      'chosen, and re-baselined on every explicit `--write`.',
     blindSpot:
       'Reads whatever the LAST `build` wrote — a stale-but-consistent dist/manifest pair ' +
       "still gives a stale, passing verdict. It trusts the manifest's own " +
       'static-versus-dynamic split, models a cold download only — no HTTP cache, no ' +
       "repeat visit — and counts neither figure's own webfonts, which the entry's css " +
-      'pulls in but this check never opens. No per-chunk ceiling exists, and the sum, no ' +
-      'longer gating, can grow unnoticed between reads of its own WARNING line.',
+      'pulls in but this check never opens. No per-chunk ceiling exists, and the sum it ' +
+      'also prints carries no ceiling of its own at all.',
   },
   {
     id: 'test:db',

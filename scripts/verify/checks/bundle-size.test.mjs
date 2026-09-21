@@ -9,7 +9,7 @@
  * process runs no `finally`, so a hundreds-of-KB fabricated bundle and a clobbered budget
  * file were both one interrupted run away. `scanRoot()` is what makes a fixture a
  * `mkdtempSync` directory instead — including its `frontend/dist/.vite/manifest.json` now
- * that first paint is read from the manifest too.
+ * that first paint AND lazy are both read from the manifest.
  */
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
@@ -28,33 +28,42 @@ const MIN_GZIP = 25 * KIB
 const MIN_RAW = 100 * KIB
 
 /**
- * A budget file with explicit ceilings, so no test has to read the shipped one to size a
- * fixture — the old suite did, which coupled every over-budget test to the real bundle.
+ * A budget file with explicit ceilings for BOTH gated pairs (first paint, lazy), so no
+ * test has to read the shipped one to size a fixture — the old suite did, which coupled
+ * every over-budget test to the real bundle.
  *
  * @param {{
- *   maxGzipBytes?: number, maxRawBytes?: number,
  *   maxFirstPaintGzipBytes?: number, maxFirstPaintRawBytes?: number,
+ *   maxLazyGzipBytes?: number, maxLazyRawBytes?: number,
  *   reason?: string,
  * }} over
  */
 function budgetFile(over) {
   return {
     measuredAt: '2026-01-01',
-    measuredGzipBytes: 0,
-    measuredRawBytes: 0,
     measuredFirstPaintGzipBytes: 0,
     measuredFirstPaintRawBytes: 0,
+    measuredLazyGzipBytes: 0,
+    measuredLazyRawBytes: 0,
     minHeadroomGzipBytes: MIN_GZIP,
     minHeadroomRawBytes: MIN_RAW,
     stepGzipBytes: 5 * KIB,
     stepRawBytes: 20 * KIB,
-    headroomGzipBytes: 0,
-    headroomRawBytes: 0,
     headroomFirstPaintGzipBytes: 0,
     headroomFirstPaintRawBytes: 0,
+    headroomLazyGzipBytes: 0,
+    headroomLazyRawBytes: 0,
     reason: 'fixture',
     ...over,
   }
+}
+
+/** A budgetFile() with every ceiling wide open — for tests that don't care about either gate. */
+const AMPLE = {
+  maxFirstPaintGzipBytes: 1e9,
+  maxFirstPaintRawBytes: 1e9,
+  maxLazyGzipBytes: 1e9,
+  maxLazyRawBytes: 1e9,
 }
 
 /**
@@ -120,7 +129,7 @@ function runIn({ files, manifest, budget, args = [] }) {
 const noise = (n) => randomBytes(n)
 
 test('a missing frontend/dist/assets fails clearly, not with a stack trace', () => {
-  const r = runIn({ files: null, budget: budgetFile({ maxGzipBytes: 1e9, maxRawBytes: 1e9 }) })
+  const r = runIn({ files: null, budget: budgetFile(AMPLE) })
   assert.equal(r.status, 1)
   assert.match(r.out, /does not exist/)
   assert.match(r.out, /not "zero bytes, budget met"/)
@@ -130,7 +139,7 @@ test('a missing frontend/dist/assets fails clearly, not with a stack trace', () 
 test('an assets directory with no .js or .css is a failure, not an empty-set pass', () => {
   const r = runIn({
     files: { 'logo.woff2': noise(100) },
-    budget: budgetFile({ maxGzipBytes: 1e9, maxRawBytes: 1e9 }),
+    budget: budgetFile(AMPLE),
   })
   assert.equal(r.status, 1)
   assert.match(r.out, /no \.js or \.css file/)
@@ -141,12 +150,7 @@ test('a missing manifest fails, not passes, even with a perfectly good dist/asse
   const r = runIn({
     files: { 'app.js': noise(4 * KIB) },
     manifest: null,
-    budget: budgetFile({
-      maxGzipBytes: 1e9,
-      maxRawBytes: 1e9,
-      maxFirstPaintGzipBytes: 1e9,
-      maxFirstPaintRawBytes: 1e9,
-    }),
+    budget: budgetFile(AMPLE),
   })
   assert.equal(r.status, 1)
   assert.match(r.out, /manifest\.json/)
@@ -161,16 +165,62 @@ test('a manifest naming a file absent from dist/assets fails with the named reas
       'index.html': { file: 'assets/index-A.js', isEntry: true, imports: ['ghost'] },
       ghost: { file: 'assets/ghost-DOESNOTEXIST.js' },
     },
-    budget: budgetFile({
-      maxGzipBytes: 1e9,
-      maxRawBytes: 1e9,
-      maxFirstPaintGzipBytes: 1e9,
-      maxFirstPaintRawBytes: 1e9,
-    }),
+    budget: budgetFile(AMPLE),
   })
   assert.equal(r.status, 1)
   assert.match(r.out, /ghost-DOESNOTEXIST\.js/)
   assert.match(r.out, /out of sync|does not contain/)
+  rmSync(r.root, { recursive: true, force: true })
+})
+
+test('a manifest whose entry statically imports a key the manifest does not contain fails naming the dangling key, not a silent skip', () => {
+  // Not "points at a missing FILE" (the test above) — the KEY 'ghost-missing-key' does not
+  // exist in the manifest at all. The traversal this replaced used `if (!chunk) return`
+  // here, silently dropping the reference from first paint instead of failing.
+  const r = runIn({
+    files: { 'index-A.js': noise(4 * KIB) },
+    manifest: {
+      'index.html': { file: 'assets/index-A.js', isEntry: true, imports: ['ghost-missing-key'] },
+    },
+    budget: budgetFile(AMPLE),
+  })
+  assert.equal(r.status, 1)
+  assert.match(r.out, /ghost-missing-key/)
+  rmSync(r.root, { recursive: true, force: true })
+})
+
+test('a manifest containing the dev-only ui-kit gallery fails, naming the key — production must never ship it', () => {
+  const r = runIn({
+    files: { 'index-A.js': noise(4 * KIB), 'ui-kit-B.js': noise(4 * KIB) },
+    manifest: {
+      'index.html': {
+        file: 'assets/index-A.js',
+        isEntry: true,
+        dynamicImports: ['src/pages/ui-kit/index.ts'],
+      },
+      'src/pages/ui-kit/index.ts': { file: 'assets/ui-kit-B.js' },
+    },
+    budget: budgetFile(AMPLE),
+  })
+  assert.equal(r.status, 1)
+  assert.match(r.out, /src\/pages\/ui-kit\/index\.ts/)
+  rmSync(r.root, { recursive: true, force: true })
+})
+
+test('a manifest chunk reachable through neither static nor dynamic imports trips the closure invariant, not a silent pass', () => {
+  const r = runIn({
+    files: { 'index-A.js': noise(4 * KIB), 'orphan-B.js': noise(4 * KIB) },
+    manifest: {
+      'index.html': { file: 'assets/index-A.js', isEntry: true },
+      // Present in the manifest, but reachable from NOTHING — not in the entry's imports,
+      // not in anyone's dynamicImports. A real Vite build should never emit this; this
+      // fixture exists to prove the invariant, not to model how the bug would arise.
+      orphan: { file: 'assets/orphan-B.js' },
+    },
+    budget: budgetFile(AMPLE),
+  })
+  assert.equal(r.status, 1)
+  assert.match(r.out, /orphan-B\.js/)
   rmSync(r.root, { recursive: true, force: true })
 })
 
@@ -194,10 +244,10 @@ test('excluding the dynamicImports-only chunk is the difference between passing 
   const ceilingBetween = excludingLazyGzip + Math.floor((includingLazyGzip - excludingLazyGzip) / 2)
 
   const budget = budgetFile({
-    maxGzipBytes: 1e9,
-    maxRawBytes: 1e9,
     maxFirstPaintGzipBytes: ceilingBetween,
     maxFirstPaintRawBytes: 1e9, // raw stays ample: this test isolates the gzip dimension
+    maxLazyGzipBytes: 1e9,
+    maxLazyRawBytes: 1e9,
   })
 
   const excludingLazy = runIn({
@@ -240,17 +290,79 @@ test('excluding the dynamicImports-only chunk is the difference between passing 
   rmSync(includingLazy.root, { recursive: true, force: true })
 })
 
-test('first paint over its own ceiling fails the row even while the sum is comfortably under its own', () => {
+test('splitting a chunk behind a dynamic import moves its weight from first paint into lazy — the two totals stay equal either way', () => {
+  const files = {
+    'index-A.js': noise(5 * KIB),
+    'shared-B.js': noise(3 * KIB),
+    'lazy-C.js': noise(50 * KIB), // large, so the swap is unmistakable
+  }
+  /** @param {string} out */
+  const parseFigures = (out) => {
+    const m = /first paint (\S+) KiB gzip \/ \S+ KiB raw, lazy (\S+) KiB gzip/.exec(out)
+    assert.ok(m, `no first-paint/lazy summary line in:\n${out}`)
+    return { fp: Number(m[1]), lazy: Number(m[2]) }
+  }
+
+  const staticVariant = runIn({
+    files,
+    manifest: {
+      'index.html': {
+        file: 'assets/index-A.js',
+        isEntry: true,
+        imports: ['shared-chunk', 'lazy-chunk'],
+      },
+      'shared-chunk': { file: 'assets/shared-B.js' },
+      'lazy-chunk': { file: 'assets/lazy-C.js' },
+    },
+    budget: budgetFile(AMPLE),
+  })
+  assert.equal(staticVariant.status, 0, staticVariant.out)
+  const staticFigures = parseFigures(staticVariant.out)
+
+  const dynamicVariant = runIn({
+    files,
+    manifest: {
+      'index.html': {
+        file: 'assets/index-A.js',
+        isEntry: true,
+        imports: ['shared-chunk'],
+        dynamicImports: ['lazy-chunk'],
+      },
+      'shared-chunk': { file: 'assets/shared-B.js' },
+      'lazy-chunk': { file: 'assets/lazy-C.js' },
+    },
+    budget: budgetFile(AMPLE),
+  })
+  assert.equal(dynamicVariant.status, 0, dynamicVariant.out)
+  const dynamicFigures = parseFigures(dynamicVariant.out)
+
+  assert.ok(
+    dynamicFigures.fp < staticFigures.fp,
+    `first paint should shrink once lazy-C.js goes dynamic: ${JSON.stringify({ dynamicFigures, staticFigures })}`,
+  )
+  assert.ok(
+    dynamicFigures.lazy > staticFigures.lazy,
+    `lazy should grow once lazy-C.js goes dynamic: ${JSON.stringify({ dynamicFigures, staticFigures })}`,
+  )
+  assert.ok(
+    Math.abs(dynamicFigures.fp + dynamicFigures.lazy - (staticFigures.fp + staticFigures.lazy)) < 0.2,
+    'moving a chunk behind a dynamic import must relocate its bytes, not create or destroy any',
+  )
+  rmSync(staticVariant.root, { recursive: true, force: true })
+  rmSync(dynamicVariant.root, { recursive: true, force: true })
+})
+
+test('first paint over its own ceiling fails the row even while lazy is comfortably under its own', () => {
   const entryJs = noise(80 * KIB)
   const gz = gzipSync(entryJs, { level: 9 }).length
   const r = runIn({
     files: { 'index-A.js': entryJs },
     manifest: { 'index.html': { file: 'assets/index-A.js', isEntry: true } },
     budget: budgetFile({
-      maxGzipBytes: 1e9,
-      maxRawBytes: 1e9,
       maxFirstPaintGzipBytes: gz - 1,
       maxFirstPaintRawBytes: 1e9,
+      maxLazyGzipBytes: 1e9,
+      maxLazyRawBytes: 1e9,
     }),
   })
   assert.equal(r.status, 1)
@@ -258,57 +370,67 @@ test('first paint over its own ceiling fails the row even while the sum is comfo
   rmSync(r.root, { recursive: true, force: true })
 })
 
-test('sum over its own ceiling does not fail the row when first paint is under, and prints as a WARNING', () => {
-  const entryJs = noise(80 * KIB)
-  const gz = gzipSync(entryJs, { level: 9 }).length
+test('lazy over its own ceiling fails the row, independently of first paint', () => {
+  const entryJs = noise(4 * KIB)
+  const lazyJs = noise(80 * KIB)
+  const gzLazy = gzipSync(lazyJs, { level: 9 }).length
   const r = runIn({
-    files: { 'index-A.js': entryJs },
-    manifest: { 'index.html': { file: 'assets/index-A.js', isEntry: true } },
+    files: { 'index-A.js': entryJs, 'lazy-C.js': lazyJs },
+    manifest: {
+      'index.html': { file: 'assets/index-A.js', isEntry: true, dynamicImports: ['lazy-chunk'] },
+      'lazy-chunk': { file: 'assets/lazy-C.js' },
+    },
     budget: budgetFile({
-      maxGzipBytes: gz - 1,
-      maxRawBytes: 1e9,
       maxFirstPaintGzipBytes: 1e9,
       maxFirstPaintRawBytes: 1e9,
+      maxLazyGzipBytes: gzLazy - 1,
+      maxLazyRawBytes: 1e9,
     }),
   })
-  assert.equal(r.status, 0, r.out)
-  assert.match(r.out, /WARNING: sum of frontend\/dist\/assets .* OVER its own frozen ceiling/)
+  assert.equal(r.status, 1)
+  assert.match(r.out, /LAZY GZIP OVER BUDGET/)
   rmSync(r.root, { recursive: true, force: true })
 })
 
-test('the sum’s WARNING line carries its own "fallen BELOW the minimum" clause too, not just first paint’s', () => {
-  // Retargeting the gate to first paint must not silently drop the one piece of
-  // information that used to tell anyone the SUM was thin on room — that clause belongs to
-  // whichever metric is short, not to "the gate" specifically.
-  const js = noise(10 * KIB)
-  const gz = gzipSync(js, { level: 9 }).length
+test('lazy’s WARNING line carries its own "fallen BELOW the minimum" clause too, not just first paint’s', () => {
+  const entryJs = noise(4 * KIB)
+  const lazyJs = noise(10 * KIB)
+  const gzFp = gzipSync(entryJs, { level: 9 }).length
+  const gzLazy = gzipSync(lazyJs, { level: 9 }).length
+  const manifest = {
+    'index.html': { file: 'assets/index-A.js', isEntry: true, dynamicImports: ['lazy-chunk'] },
+    'lazy-chunk': { file: 'assets/lazy-C.js' },
+  }
+  const files = { 'index-A.js': entryJs, 'lazy-C.js': lazyJs }
+
   const r = runIn({
-    files: { 'app.js': js },
-    manifest: { 'index.html': { file: 'assets/app.js', isEntry: true } },
+    files,
+    manifest,
     budget: budgetFile({
-      maxGzipBytes: gz + KIB, // sum: thin, under the 25 KiB design minimum
-      maxRawBytes: js.length + MIN_RAW + KIB,
-      maxFirstPaintGzipBytes: gz + MIN_GZIP + KIB, // first paint: ample, so only the sum warns
-      maxFirstPaintRawBytes: js.length + MIN_RAW + KIB,
+      maxFirstPaintGzipBytes: gzFp + MIN_GZIP + KIB, // ample: only lazy is under test
+      maxFirstPaintRawBytes: entryJs.length + MIN_RAW + KIB,
+      maxLazyGzipBytes: gzLazy + KIB, // thin, under the 25 KiB design minimum
+      maxLazyRawBytes: lazyJs.length + MIN_RAW + KIB,
     }),
   })
   assert.equal(r.status, 0, r.out)
-  assert.match(r.out, /WARNING: sum of frontend\/dist\/assets .* within its own frozen ceiling/)
-  assert.match(r.out, /WARNING: sum of frontend\/dist\/assets .*fallen BELOW the minimum/)
-  // DISCRIMINATOR: the same bundle under a sum ceiling with ample headroom must NOT carry
+  assert.match(r.out, /^WARNING: lazy headroom is /m)
+  assert.match(r.out, /lazy headroom has fallen BELOW the minimum/)
+
+  // DISCRIMINATOR: the same bundle under a lazy ceiling with ample headroom must NOT carry
   // that clause, or the assertion above would pass against text that is simply always there.
   const ample = runIn({
-    files: { 'app.js': js },
-    manifest: { 'index.html': { file: 'assets/app.js', isEntry: true } },
+    files,
+    manifest,
     budget: budgetFile({
-      maxGzipBytes: gz + MIN_GZIP + KIB,
-      maxRawBytes: js.length + MIN_RAW + KIB,
-      maxFirstPaintGzipBytes: gz + MIN_GZIP + KIB,
-      maxFirstPaintRawBytes: js.length + MIN_RAW + KIB,
+      maxFirstPaintGzipBytes: gzFp + MIN_GZIP + KIB,
+      maxFirstPaintRawBytes: entryJs.length + MIN_RAW + KIB,
+      maxLazyGzipBytes: gzLazy + MIN_GZIP + KIB,
+      maxLazyRawBytes: lazyJs.length + MIN_RAW + KIB,
     }),
   })
   assert.equal(ample.status, 0, ample.out)
-  assert.doesNotMatch(ample.out, /sum of frontend\/dist\/assets .*fallen BELOW the minimum/)
+  assert.doesNotMatch(ample.out, /lazy headroom has fallen BELOW the minimum/)
   rmSync(r.root, { recursive: true, force: true })
   rmSync(ample.root, { recursive: true, force: true })
 })
@@ -320,10 +442,10 @@ test('an under-budget dist is green and prints the first-paint headroom as a WAR
     files: { 'app.js': js },
     manifest: { 'index.html': { file: 'assets/app.js', isEntry: true } },
     budget: budgetFile({
-      maxGzipBytes: gz + MIN_GZIP + KIB,
-      maxRawBytes: js.length + MIN_RAW + KIB,
       maxFirstPaintGzipBytes: gz + MIN_GZIP + KIB,
       maxFirstPaintRawBytes: js.length + MIN_RAW + KIB,
+      maxLazyGzipBytes: 1e9,
+      maxLazyRawBytes: 1e9,
     }),
   })
   assert.equal(r.status, 0, r.out)
@@ -335,8 +457,7 @@ test('first-paint headroom below the budget’s own designed minimum is WARNED a
   // THE REGIME THIS CHECK'S HEADER CALLS THE DANGEROUS ONE, and until this line existed
   // nothing said a word about it: the ceiling holds, the row is green, and there is less
   // slack left than one ordinary phase of work — so the next ordinary commit turns it red
-  // and somebody raises the ceiling on sight. This now watches FIRST PAINT's headroom,
-  // because first paint is the gate.
+  // and somebody raises the ceiling on sight.
   const js = noise(10 * KIB)
   const gz = gzipSync(js, { level: 9 }).length
   const manifest = { 'index.html': { file: 'assets/app.js', isEntry: true } }
@@ -344,10 +465,10 @@ test('first-paint headroom below the budget’s own designed minimum is WARNED a
     files: { 'app.js': js },
     manifest,
     budget: budgetFile({
-      maxGzipBytes: gz + MIN_GZIP + KIB,
-      maxRawBytes: js.length + MIN_RAW + KIB,
       maxFirstPaintGzipBytes: gz + KIB,
       maxFirstPaintRawBytes: js.length + MIN_RAW + KIB,
+      maxLazyGzipBytes: 1e9,
+      maxLazyRawBytes: 1e9,
     }),
   })
   assert.equal(r.status, 0, r.out)
@@ -359,10 +480,10 @@ test('first-paint headroom below the budget’s own designed minimum is WARNED a
     files: { 'app.js': js },
     manifest,
     budget: budgetFile({
-      maxGzipBytes: gz + MIN_GZIP + KIB,
-      maxRawBytes: js.length + MIN_RAW + KIB,
       maxFirstPaintGzipBytes: gz + MIN_GZIP + KIB,
       maxFirstPaintRawBytes: js.length + MIN_RAW + KIB,
+      maxLazyGzipBytes: 1e9,
+      maxLazyRawBytes: 1e9,
     }),
   })
   assert.equal(ample.status, 0, ample.out)
@@ -377,12 +498,7 @@ test('a green run also prints the largest-JS-chunk signal, and it ignores .css',
   const r = runIn({
     files: { 'app.js': small, 'style.css': bigCss },
     manifest: { 'index.html': { file: 'assets/app.js', css: ['assets/style.css'], isEntry: true } },
-    budget: budgetFile({
-      maxGzipBytes: 1e9,
-      maxRawBytes: 1e9,
-      maxFirstPaintGzipBytes: 1e9,
-      maxFirstPaintRawBytes: 1e9,
-    }),
+    budget: budgetFile(AMPLE),
   })
   assert.equal(r.status, 0, r.out)
   assert.match(r.out, /WARNING: largest JS chunk is app\.js/)
@@ -396,10 +512,10 @@ test('an incompressible over-first-paint-budget file is RED, naming both the gzi
     files: { 'huge.js': js },
     manifest: { 'index.html': { file: 'assets/huge.js', isEntry: true } },
     budget: budgetFile({
-      maxGzipBytes: 1e9,
-      maxRawBytes: 1e9,
       maxFirstPaintGzipBytes: 10 * KIB,
       maxFirstPaintRawBytes: 10 * KIB,
+      maxLazyGzipBytes: 1e9,
+      maxLazyRawBytes: 1e9,
     }),
   })
   assert.equal(r.status, 1)
@@ -417,10 +533,10 @@ test('a highly compressible file trips FIRST PAINT RAW OVER BUDGET without tripp
     files: { 'repetitive.js': js },
     manifest: { 'index.html': { file: 'assets/repetitive.js', isEntry: true } },
     budget: budgetFile({
-      maxGzipBytes: 1e9,
-      maxRawBytes: 1e9,
       maxFirstPaintGzipBytes: 1e9,
       maxFirstPaintRawBytes: 100 * KIB,
+      maxLazyGzipBytes: 1e9,
+      maxLazyRawBytes: 1e9,
     }),
   })
   assert.equal(r.status, 1)
@@ -429,10 +545,10 @@ test('a highly compressible file trips FIRST PAINT RAW OVER BUDGET without tripp
   rmSync(r.root, { recursive: true, force: true })
 })
 
-test('--write sets BOTH pairs (first paint and sum) to measurement + a MINIMUM headroom, then rounds to the step', () => {
+test('--write sets BOTH gated pairs (first paint and lazy) to measurement + a MINIMUM headroom, then rounds to the step', () => {
   const entryJs = noise(30 * KIB)
   const sharedJs = noise(10 * KIB)
-  const lazyJs = noise(20 * KIB) // reachable only through dynamicImports: in the sum, not first paint
+  const lazyJs = noise(20 * KIB) // reachable only through dynamicImports: lazy, not first paint
   const gzEntry = gzipSync(entryJs, { level: 9 }).length
   const gzShared = gzipSync(sharedJs, { level: 9 }).length
   const gzLazy = gzipSync(lazyJs, { level: 9 }).length
@@ -455,63 +571,89 @@ test('--write sets BOTH pairs (first paint and sum) to measurement + a MINIMUM h
   assert.equal(r.status, 0, r.out)
   const written = r.readBudget()
 
-  const sumGzip = gzEntry + gzShared + gzLazy
-  const sumRaw = entryJs.length + sharedJs.length + lazyJs.length
   const fpGzip = gzEntry + gzShared
   const fpRaw = entryJs.length + sharedJs.length
 
-  assert.equal(written.measuredGzipBytes, sumGzip)
-  assert.equal(written.measuredRawBytes, sumRaw)
   assert.equal(written.measuredFirstPaintGzipBytes, fpGzip)
   assert.equal(written.measuredFirstPaintRawBytes, fpRaw)
+  assert.equal(written.measuredLazyGzipBytes, gzLazy)
+  assert.equal(written.measuredLazyRawBytes, lazyJs.length)
   // The lazy chunk is real weight, so the two pairs must genuinely differ — this is what
-  // proves --write actually consulted the manifest rather than writing the sum twice.
-  assert.ok(written.measuredFirstPaintGzipBytes < written.measuredGzipBytes)
-  assert.ok(written.measuredFirstPaintRawBytes < written.measuredRawBytes)
+  // proves --write actually consulted the manifest's dynamicImports rather than writing the
+  // same figure into both pairs.
+  assert.ok(written.measuredLazyGzipBytes > 0)
+  assert.notEqual(written.measuredFirstPaintGzipBytes, written.measuredLazyGzipBytes)
 
   // The property that matters, stated as arithmetic rather than a pinned number: each
   // ceiling clears its own measurement + minimum, and is a whole number of steps.
-  assert.ok(written.maxGzipBytes >= sumGzip + written.minHeadroomGzipBytes)
-  assert.ok(written.maxRawBytes >= sumRaw + written.minHeadroomRawBytes)
   assert.ok(written.maxFirstPaintGzipBytes >= fpGzip + written.minHeadroomGzipBytes)
   assert.ok(written.maxFirstPaintRawBytes >= fpRaw + written.minHeadroomRawBytes)
-  assert.equal(written.maxGzipBytes % written.stepGzipBytes, 0)
-  assert.equal(written.maxRawBytes % written.stepRawBytes, 0)
+  assert.ok(written.maxLazyGzipBytes >= gzLazy + written.minHeadroomGzipBytes)
+  assert.ok(written.maxLazyRawBytes >= lazyJs.length + written.minHeadroomRawBytes)
   assert.equal(written.maxFirstPaintGzipBytes % written.stepGzipBytes, 0)
   assert.equal(written.maxFirstPaintRawBytes % written.stepRawBytes, 0)
+  assert.equal(written.maxLazyGzipBytes % written.stepGzipBytes, 0)
+  assert.equal(written.maxLazyRawBytes % written.stepRawBytes, 0)
   // A bare round-up with no minimum would land within one step of the measurement. This is
-  // the exact regression that shipped once, at 3,719 B of headroom.
+  // the exact regression that shipped once, at a few thousand bytes of headroom.
   assert.ok(written.maxFirstPaintGzipBytes - fpGzip > written.stepGzipBytes)
+  assert.ok(written.maxLazyGzipBytes - gzLazy > written.stepGzipBytes)
   rmSync(r.root, { recursive: true, force: true })
 })
 
-test('--write over a budget with an existing sum pair keeps maxGzipBytes/maxRawBytes byte-identical — the sum ceiling is frozen, not re-measured', () => {
-  const js = noise(30 * KIB)
-  const frozenMaxGzip = 999_999 // deliberately NOT what ceilingFor(measured, …) would compute,
-  const frozenMaxRaw = 8_888_888 // so a re-measure would be caught by simple inequality, not luck
-  const r = runIn({
-    files: { 'app.js': js },
-    manifest: { 'index.html': { file: 'assets/app.js', isEntry: true } },
-    budget: budgetFile({
-      maxGzipBytes: frozenMaxGzip,
-      maxRawBytes: frozenMaxRaw,
-      maxFirstPaintGzipBytes: 1,
-      maxFirstPaintRawBytes: 1,
+test('--write always re-baselines both gated pairs — neither first paint nor lazy is ever frozen across writes', () => {
+  // The old sum ceiling used to be carried forward untouched after its first computation.
+  // Neither gated pair works that way: this proves a second --write moves BOTH ceilings off
+  // a deliberately wrong placeholder value planted directly into the budget file, rather
+  // than preserving it the way the old frozen sum ceiling once did.
+  const root = mkdtempSync(path.join(os.tmpdir(), 'bundle-size-'))
+  const assets = path.join(root, 'frontend', 'dist', 'assets')
+  mkdirSync(assets, { recursive: true })
+  const entryJs = noise(30 * KIB)
+  const lazyJs = noise(10 * KIB)
+  writeFileSync(path.join(assets, 'index-A.js'), entryJs)
+  writeFileSync(path.join(assets, 'lazy-C.js'), lazyJs)
+  const manifestPath = path.join(root, 'frontend', 'dist', '.vite', 'manifest.json')
+  mkdirSync(path.dirname(manifestPath), { recursive: true })
+  writeFileSync(
+    manifestPath,
+    JSON.stringify({
+      'index.html': { file: 'assets/index-A.js', isEntry: true, dynamicImports: ['lazy-chunk'] },
+      'lazy-chunk': { file: 'assets/lazy-C.js' },
     }),
-    args: ['--write'],
-  })
-  assert.equal(r.status, 0, r.out)
-  const written = r.readBudget()
-  assert.equal(written.maxGzipBytes, frozenMaxGzip)
-  assert.equal(written.maxRawBytes, frozenMaxRaw)
-  // measured/headroom still refresh against the frozen ceiling — only max* is frozen.
-  assert.equal(written.measuredGzipBytes, gzipSync(js, { level: 9 }).length)
-  assert.equal(written.headroomGzipBytes, frozenMaxGzip - written.measuredGzipBytes)
-  assert.equal(written.headroomRawBytes, frozenMaxRaw - written.measuredRawBytes)
-  // The first-paint pair is NOT frozen — --write still recomputes it fresh every time,
-  // so its ceiling must have moved off the old-shaped placeholder value above.
-  assert.notEqual(written.maxFirstPaintGzipBytes, 1)
-  rmSync(r.root, { recursive: true, force: true })
+  )
+  const budgetPath = path.join(root, 'scripts', 'verify', 'baselines', 'bundle-budget.json')
+  mkdirSync(path.dirname(budgetPath), { recursive: true })
+
+  const env = { ...process.env, VERIFY_SCAN_ROOT: root }
+  /** @param {string[]} args */
+  const run = (args) => {
+    try {
+      return execFileSync(process.execPath, [CHECK, ...args], { encoding: 'utf8', env })
+    } catch (err) {
+      const e = /** @type {any} */ (err)
+      return `${e.stdout ?? ''}${e.stderr ?? ''}`
+    }
+  }
+
+  run(['--write'])
+  const firstWritten = JSON.parse(readFileSync(budgetPath, 'utf8'))
+
+  // A deliberately wrong placeholder that ceilingFor(measured, …) would never itself
+  // compute — if lazy or first paint were ever frozen the way the sum used to be, this
+  // exact value would survive the next --write untouched.
+  writeFileSync(
+    budgetPath,
+    `${JSON.stringify({ ...firstWritten, maxLazyGzipBytes: 999_999, maxFirstPaintGzipBytes: 999_998 }, null, 2)}\n`,
+  )
+  run(['--write'])
+  const secondWritten = JSON.parse(readFileSync(budgetPath, 'utf8'))
+
+  assert.notEqual(secondWritten.maxLazyGzipBytes, 999_999)
+  assert.notEqual(secondWritten.maxFirstPaintGzipBytes, 999_998)
+  assert.equal(secondWritten.maxLazyGzipBytes, firstWritten.maxLazyGzipBytes)
+  assert.equal(secondWritten.maxFirstPaintGzipBytes, firstWritten.maxFirstPaintGzipBytes)
+  rmSync(root, { recursive: true, force: true })
 })
 
 test('--write preserves an existing reason rather than overwriting it with the default', () => {
@@ -519,13 +661,7 @@ test('--write preserves an existing reason rather than overwriting it with the d
   const r = runIn({
     files: { 'index-A.js': noise(4 * KIB) },
     manifest: { 'index.html': { file: 'assets/index-A.js', isEntry: true } },
-    budget: budgetFile({
-      maxGzipBytes: 1e9,
-      maxRawBytes: 1e9,
-      maxFirstPaintGzipBytes: 1e9,
-      maxFirstPaintRawBytes: 1e9,
-      reason: custom,
-    }),
+    budget: budgetFile({ ...AMPLE, reason: custom }),
     args: ['--write'],
   })
   assert.equal(r.status, 0, r.out)
@@ -536,12 +672,7 @@ test('--write preserves an existing reason rather than overwriting it with the d
 test('non-.js/.css files under dist/assets are excluded from both totals', () => {
   const js = noise(4 * KIB)
   const manifest = { 'index.html': { file: 'assets/app.js', isEntry: true } }
-  const budget = budgetFile({
-    maxGzipBytes: 1e9,
-    maxRawBytes: 1e9,
-    maxFirstPaintGzipBytes: 1e9,
-    maxFirstPaintRawBytes: 1e9,
-  })
+  const budget = budgetFile(AMPLE)
   const withFont = runIn({
     files: { 'app.js': js, 'font.woff2': noise(300 * KIB) },
     manifest,
@@ -555,11 +686,9 @@ test('non-.js/.css files under dist/assets are excluded from both totals', () =>
   rmSync(without.root, { recursive: true, force: true })
 })
 
-test('an old-shaped budget file (sum pair only, no first-paint fields) fails loudly instead of gating nothing', () => {
-  // Exactly the shape this file had before first paint existed — a merge that resolves
-  // toward that old side, or this check cherry-picked ahead of its own baseline, produces
-  // the same thing. Without an explicit guard, `fp.gzip > undefined` is `false` in
-  // JavaScript, so this would otherwise print "ceiling NaN KiB" and exit 0.
+test('an old-shaped budget file (first paint only, no lazy fields — the shape this file had before lazy was measured) fails loudly instead of gating nothing', () => {
+  // Without an explicit guard, `lz.gzip > undefined` is `false` in JavaScript, so this
+  // would otherwise print "ceiling NaN KiB" and exit 0.
   const root = mkdtempSync(path.join(os.tmpdir(), 'bundle-size-'))
   const assets = path.join(root, 'frontend', 'dist', 'assets')
   mkdirSync(assets, { recursive: true })
@@ -576,18 +705,22 @@ test('an old-shaped budget file (sum pair only, no first-paint fields) fails lou
     budgetPath,
     JSON.stringify({
       measuredAt: '2026-01-01',
-      measuredGzipBytes: 0,
-      measuredRawBytes: 0,
+      measuredFirstPaintGzipBytes: 0,
+      measuredFirstPaintRawBytes: 0,
       minHeadroomGzipBytes: MIN_GZIP,
       minHeadroomRawBytes: MIN_RAW,
       stepGzipBytes: 5 * KIB,
       stepRawBytes: 20 * KIB,
+      // The shape this file actually had at the previous commit: an old sum ceiling
+      // (maxGzipBytes/maxRawBytes) alongside a first-paint pair, but no lazy fields yet.
       maxGzipBytes: 1e9,
       maxRawBytes: 1e9,
-      headroomGzipBytes: 0,
-      headroomRawBytes: 0,
-      reason: 'old-shaped fixture — no first-paint fields at all',
-      // maxFirstPaintGzipBytes / maxFirstPaintRawBytes deliberately absent
+      maxFirstPaintGzipBytes: 1e9,
+      maxFirstPaintRawBytes: 1e9,
+      headroomFirstPaintGzipBytes: 0,
+      headroomFirstPaintRawBytes: 0,
+      reason: 'old-shaped fixture — first paint only, no lazy fields at all',
+      // maxLazyGzipBytes / maxLazyRawBytes deliberately absent
     }),
   )
   let status = 0
@@ -604,8 +737,8 @@ test('an old-shaped budget file (sum pair only, no first-paint fields) fails lou
   }
   assert.notEqual(status, 0, out)
   assert.doesNotMatch(out, /NaN/)
-  assert.match(out, /maxFirstPaintGzipBytes/)
-  assert.match(out, /maxFirstPaintRawBytes/)
+  assert.match(out, /maxLazyGzipBytes/)
+  assert.match(out, /maxLazyRawBytes/)
   assert.match(out, /--write/)
   rmSync(root, { recursive: true, force: true })
 })
@@ -616,12 +749,7 @@ test('a manifest with no isEntry:true chunk fails, not a false pass', () => {
     manifest: {
       'index.html': { file: 'assets/index-A.js' }, // no isEntry anywhere in this manifest
     },
-    budget: budgetFile({
-      maxGzipBytes: 1e9,
-      maxRawBytes: 1e9,
-      maxFirstPaintGzipBytes: 1e9,
-      maxFirstPaintRawBytes: 1e9,
-    }),
+    budget: budgetFile(AMPLE),
   })
   assert.equal(r.status, 1)
   assert.match(r.out, /isEntry/)
@@ -632,12 +760,7 @@ test('an unparsable manifest fails, not passes', () => {
   const r = runIn({
     files: { 'index-A.js': noise(4 * KIB) },
     manifest: '{ this is not valid JSON',
-    budget: budgetFile({
-      maxGzipBytes: 1e9,
-      maxRawBytes: 1e9,
-      maxFirstPaintGzipBytes: 1e9,
-      maxFirstPaintRawBytes: 1e9,
-    }),
+    budget: budgetFile(AMPLE),
   })
   assert.equal(r.status, 1)
   assert.match(r.out, /manifest\.json/)
@@ -657,12 +780,7 @@ test('css listed on a chunk reachable only through dynamicImports never enters f
   const r = runIn({
     files,
     manifest,
-    budget: budgetFile({
-      maxGzipBytes: 1e9,
-      maxRawBytes: 1e9,
-      maxFirstPaintGzipBytes: 1e9,
-      maxFirstPaintRawBytes: 1e9,
-    }),
+    budget: budgetFile(AMPLE),
   })
   assert.equal(r.status, 0, r.out)
   // First paint is the entry alone — neither the lazy chunk's own JS nor its css.
@@ -671,7 +789,7 @@ test('css listed on a chunk reachable only through dynamicImports never enters f
   rmSync(r.root, { recursive: true, force: true })
 })
 
-test('a .js under dist/assets the manifest never mentions counts toward the sum but not first paint', () => {
+test('a .js under dist/assets the manifest never mentions counts toward the sum but not first paint or lazy', () => {
   const entryJs = noise(5 * KIB)
   const orphanJs = noise(10 * KIB) // a real file, present on disk, absent from the manifest entirely
   const files = { 'index-A.js': entryJs, 'orphan.js': orphanJs }
@@ -679,12 +797,7 @@ test('a .js under dist/assets the manifest never mentions counts toward the sum 
   const r = runIn({
     files,
     manifest,
-    budget: budgetFile({
-      maxGzipBytes: 1e9,
-      maxRawBytes: 1e9,
-      maxFirstPaintGzipBytes: 1e9,
-      maxFirstPaintRawBytes: 1e9,
-    }),
+    budget: budgetFile(AMPLE),
   })
   assert.equal(r.status, 0, r.out)
   const expectedFpGzipKib = `${(gzipSync(entryJs, { level: 9 }).length / KIB).toFixed(1)} KiB`
