@@ -112,8 +112,16 @@ export class IntakesService {
         table: 'intakes',
       });
 
+      // NARROW ON PURPOSE — only the insert that can hit `UQ_intakes_code`
+      // belongs inside this catch. The audit write, the payout write and the
+      // response building below throw their own, unrelated errors, and
+      // wrapping them too used to route every one of them through
+      // `translateDuplicateCode`, which recognises exactly one violation and
+      // rethrows anything else unchanged anyway — the narrower scope just
+      // says so.
+      let intake: Intake;
       try {
-        const intake = await m.save(
+        intake = await m.save(
           Intake,
           m.create(Intake, {
             code,
@@ -144,48 +152,53 @@ export class IntakesService {
             ),
           }),
         );
-
-        await this.audit.record(
-          {
-            action: 'intake.created',
-            actor_id: actor.sub,
-            target_type: 'intake',
-            target_id: intake.id,
-            after: { code, amount: built.amount, supplier_id: supplier.id },
-          },
-          m,
-        );
-
-        // §2.1 ⑥ — the cash for THIS visit leaves the drawer in the same
-        // transaction as the receipt. The debt `writePayout` checks already
-        // includes the intake saved above (same transaction), so «Разом» is
-        // the ceiling as §3.1 defines it. A refusal throws, and the intake is
-        // rolled back with it: a receipt without its «видано» would not match
-        // the paper in the supplier's hand.
-        const paid: Payout[] = [];
-        if (dto.paid_amount !== undefined && !isZero(dto.paid_amount)) {
-          const { payout } = await this.payouts.writePayout(m, {
-            actor,
-            pointId,
-            pointCode: point.code,
-            supplierId: supplier.id,
-            amount: dto.paid_amount,
-            intakeId: intake.id,
-          });
-          paid.push(payout);
-        }
-
-        return toIntakeDetailResponse(
-          intake,
-          shift,
-          intake.items ?? [],
-          await this.extrasFor(intake.id, m),
-          paid,
-          await this.nameOf(actor.sub, m),
-        );
       } catch (error) {
         throw this.translateDuplicateCode(error, code);
       }
+
+      await this.audit.record(
+        {
+          action: 'intake.created',
+          actor_id: actor.sub,
+          target_type: 'intake',
+          target_id: intake.id,
+          after: { code, amount: built.amount, supplier_id: supplier.id },
+        },
+        m,
+      );
+
+      // §2.1 ⑥ — the cash for THIS visit leaves the drawer in the same
+      // transaction as the receipt. The debt `writePayout` checks already
+      // includes the intake saved above (same transaction), so «Разом» is
+      // the ceiling as §3.1 defines it. A refusal throws, and the intake is
+      // rolled back with it: a receipt without its «видано» would not match
+      // the paper in the supplier's hand.
+      //
+      // TRUTHINESS, not `!== undefined`: `null`, `undefined` and `''` all
+      // mean «no payout» here — an omitted field, a JSON `null` and an empty
+      // string all describe the same «нічого не видано» (§3.7). `'0.00'` is
+      // truthy and `isZero` catches it below.
+      const paid: Payout[] = [];
+      if (dto.paid_amount && !isZero(dto.paid_amount)) {
+        const { payout } = await this.payouts.writePayout(m, {
+          actor,
+          pointId,
+          pointCode: point.code,
+          supplierId: supplier.id,
+          amount: dto.paid_amount,
+          intakeId: intake.id,
+        });
+        paid.push(payout);
+      }
+
+      return toIntakeDetailResponse(
+        intake,
+        shift,
+        intake.items ?? [],
+        await this.extrasFor(intake.id, m),
+        paid,
+        await this.nameOf(actor.sub, m),
+      );
     });
   }
 
@@ -348,19 +361,37 @@ export class IntakesService {
       .take(query.limit);
 
     // `getManyAndCount` cannot carry raw selects; `getRawAndEntities` keeps
-    // `raw[n]` aligned with `entities[n]` (one row per intake — both joins are
-    // to-one), and the count runs over the same filtered builder.
-    const [{ entities, raw }, total] = await Promise.all([qb.getRawAndEntities(), qb.getCount()]);
+    // `raw[n]` aligned with `entities[n]` for a to-one join, but the count
+    // below deliberately does NOT rely on that positional alignment (see the
+    // `byId` map). `qb.clone()` — NOT `qb` — for the count: `getCount()`
+    // flips `expressionMap.queryEntity` on the builder it runs on, and
+    // running it on the same builder `getRawAndEntities()` is still using
+    // would have the two in-flight calls fight over one mutable query.
+    const [{ entities, raw }, total] = await Promise.all([
+      qb.getRawAndEntities(),
+      qb.clone().getCount(),
+    ]);
+
+    // Map raw rows BY ID, not by array position. `getRawAndEntities` documents
+    // `raw[n]`/`entities[n]` alignment for a to-one join, but the position is
+    // exactly the kind of implicit contract that doesn't survive a future
+    // join added above without a note here — a mismatch would hand one
+    // intake's `net_kg`/`paid_amount` to another intake's row, silently.
+    // TypeORM prefixes a raw column with `<alias>_<column>`, so the intakes
+    // alias `i` makes the primary key `i_id`.
+    const byId = new Map(raw.map((r) => [r.i_id as string, r]));
 
     return {
-      data: entities.map((i, n) =>
-        toIntakeResponse(i, i.shift as Shift, {
-          net_kg: raw[n].net_kg,
-          lines_count: raw[n].lines_count,
-          supplier_name: raw[n].supplier_name,
-          paid_amount: raw[n].paid_amount,
-        }),
-      ),
+      data: entities.map((i) => {
+        const row = byId.get(i.id);
+        if (!row) throw new Error('intake row extras missing for ' + i.id);
+        return toIntakeResponse(i, i.shift as Shift, {
+          net_kg: row.net_kg,
+          lines_count: row.lines_count,
+          supplier_name: row.supplier_name,
+          paid_amount: row.paid_amount,
+        });
+      }),
       total,
       page: query.page,
       limit: query.limit,
@@ -390,7 +421,9 @@ export class IntakesService {
 
     const payouts = await m.find(Payout, {
       where: { intake_id: intake.id },
-      order: { created_at: 'ASC' },
+      // Tiebreaker, like `list` — two payouts written in the same millisecond
+      // are ordinary, and Postgres promises no order among ties.
+      order: { created_at: 'ASC', id: 'ASC' },
     });
 
     return toIntakeDetailResponse(
@@ -411,6 +444,8 @@ export class IntakesService {
     return row;
   }
 
+  /** The receiver's display name for the printed receipt — `displayNameOf`,
+   *  the ONE definition of a user's name. */
   private async nameOf(userId: string, m: EntityManager): Promise<string | null> {
     const user = await m.findOne(User, { where: { id: userId } });
     return user ? displayNameOf(user) : null;

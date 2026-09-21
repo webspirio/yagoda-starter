@@ -450,5 +450,22 @@ describe('PayoutsService', () => {
         manager,
       );
     });
+
+    it('leaves intake_id null for a standalone payout — «Видати без ягоди»', async () => {
+      await dataSource.transaction(async (m: never) => {
+        await service.writePayout(m, {
+          actor: oksana,
+          pointId: POINT_A,
+          pointCode: 'KPG',
+          supplierId: SUPPLIER,
+          amount: '380.00',
+          intakeId: null,
+        });
+      });
+      expect(manager.create).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ intake_id: null, amount: '380.00', paid_by_user_id: 'u-oksana' }),
+      );
+    });
   });
 });

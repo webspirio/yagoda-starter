@@ -14,7 +14,10 @@ export interface IntakeRowExtras {
   paid_amount: string;
 }
 
-/** `alias` is the intakes alias, `supplierAlias` the joined suppliers row. */
+/** `alias` is the intakes alias, `supplierAlias` the joined suppliers row.
+ *  `alias`/`supplierAlias` are code literals at both call sites — never
+ *  request input — so interpolating them straight into the SQL text is
+ *  safe. */
 export function rowExtrasSelects(
   alias: string,
   supplierAlias: string,
@@ -48,9 +51,9 @@ export function rowExtrasSelects(
 /** One document's extras, by id — `$1` is the intake id. */
 export const ROW_EXTRAS_SQL = `
   SELECT
-    ${rowExtrasSelects('i', 's')
+    ${rowExtrasSelects('i', 'sup')
       .map((s) => `${s.sql} AS ${s.alias}`)
       .join(',\n    ')}
   FROM intakes i
-  JOIN suppliers s ON s.id = i.supplier_id
+  JOIN suppliers sup ON sup.id = i.supplier_id
   WHERE i.id = $1`;

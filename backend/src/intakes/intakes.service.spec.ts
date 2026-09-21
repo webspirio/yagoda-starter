@@ -374,6 +374,12 @@ describe('IntakesService', () => {
       expect(payouts.writePayout).not.toHaveBeenCalled();
     });
 
+    it('writes no payout for an explicit null — truthiness, not `!== undefined`', async () => {
+      const res = await service.create(oksana, dto({ paid_amount: null }) as never);
+      expect(payouts.writePayout).not.toHaveBeenCalled();
+      expect(res.payouts).toEqual([]);
+    });
+
     it('hands the cash to writePayout AFTER the intake is saved, stamped with its id', async () => {
       const res = await service.create(oksana, dto({ paid_amount: '380.00' }) as never);
       expect(manager.save.mock.invocationCallOrder[0]).toBeLessThan(
@@ -653,6 +659,7 @@ describe('IntakesService', () => {
       take: jest.Mock;
       getRawAndEntities: jest.Mock;
       getCount: jest.Mock;
+      clone: jest.Mock;
     };
 
     const listQuery = (over: Record<string, unknown> = {}) => ({
@@ -685,6 +692,12 @@ describe('IntakesService', () => {
           ],
         }),
         getCount: jest.fn().mockResolvedValue(1),
+        // `clone()` returns THIS SAME mock object by default (`qb.clone()`
+        // called as a method binds `this` to `qb`), so its `getCount` is the
+        // one already stocked above — the dedicated clone test below
+        // overrides this to prove the real builder is never asked for a
+        // count directly.
+        clone: jest.fn().mockReturnThis(),
       };
       repo.createQueryBuilder.mockReturnValue(qb);
     });
@@ -707,6 +720,77 @@ describe('IntakesService', () => {
 
       expect(qb.innerJoin).toHaveBeenCalledWith(expect.anything(), 'sup', 'sup.id = i.supplier_id');
       expect(qb.addSelect).toHaveBeenCalledTimes(4);
+    });
+
+    it('maps each raw row to its OWN entity BY ID, not by array position', async () => {
+      // Two intakes with different extras, and the raw rows handed back in
+      // the OPPOSITE order from the entities — a positional `raw[n]` read
+      // would hand intake TWO's numbers to intake ONE's row (or vice versa)
+      // and this test would not notice unless the values actually differ.
+      const OTHER_ID = '99999999-9999-9999-9999-999999999999';
+      qb.getRawAndEntities.mockResolvedValue({
+        entities: [
+          { ...intake({ id: INTAKE_ID }), shift: shift() },
+          { ...intake({ id: OTHER_ID }), shift: shift() },
+        ],
+        raw: [
+          {
+            i_id: OTHER_ID,
+            net_kg: '5.00',
+            lines_count: 1,
+            supplier_name: 'Петро Мельник',
+            paid_amount: '100.00',
+          },
+          {
+            i_id: INTAKE_ID,
+            net_kg: '36.90',
+            lines_count: 2,
+            supplier_name: 'Іван Коваль',
+            paid_amount: '0.00',
+          },
+        ],
+      });
+      qb.getCount.mockResolvedValue(2);
+
+      const result = await service.list(oksana, listQuery() as never);
+
+      expect(result.data).toHaveLength(2);
+      expect(result.data.find((r) => r.id === INTAKE_ID)).toMatchObject({
+        net_kg: '36.90',
+        lines_count: 2,
+        supplier_name: 'Іван Коваль',
+        paid_amount: '0.00',
+      });
+      expect(result.data.find((r) => r.id === OTHER_ID)).toMatchObject({
+        net_kg: '5.00',
+        lines_count: 1,
+        supplier_name: 'Петро Мельник',
+        paid_amount: '100.00',
+      });
+    });
+
+    it('runs the count on a CLONE of the builder, not the builder itself', async () => {
+      // `getCount()` flips `expressionMap.queryEntity` on the builder it
+      // runs on; sharing one builder between the two in-flight calls would
+      // make them fight over that map.
+      const clone = { getCount: jest.fn().mockResolvedValue(1) };
+      qb.clone = jest.fn().mockReturnValue(clone);
+
+      await service.list(oksana, listQuery() as never);
+
+      expect(qb.clone).toHaveBeenCalled();
+      expect(clone.getCount).toHaveBeenCalled();
+    });
+
+    it('throws a programming error, not a 400, when a raw row is missing for an entity', async () => {
+      qb.getRawAndEntities.mockResolvedValue({
+        entities: [{ ...intake(), shift: shift() }],
+        raw: [],
+      });
+
+      await expect(service.list(oksana, listQuery() as never)).rejects.toThrow(
+        `intake row extras missing for ${INTAKE_ID}`,
+      );
     });
   });
 

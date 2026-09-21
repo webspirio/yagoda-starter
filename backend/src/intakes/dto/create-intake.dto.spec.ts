@@ -28,6 +28,12 @@ describe('CreateIntakeDto.paid_amount', () => {
     expect(dto.paid_amount).toBeUndefined();
   });
 
+  it('accepts an explicit null — «no payout» sent as JSON null, not just omitted', async () => {
+    const { dto, errors } = await check(body({ paid_amount: null }));
+    expect(errors).toHaveLength(0);
+    expect(dto.paid_amount).toBeNull();
+  });
+
   it('canonicalises to two decimals, like every other money field', async () => {
     const { dto, errors } = await check(body({ paid_amount: '500' }));
     expect(errors).toHaveLength(0);

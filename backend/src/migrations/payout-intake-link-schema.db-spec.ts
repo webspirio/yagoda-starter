@@ -78,4 +78,12 @@ describe('payouts.intake_id schema (Postgres)', () => {
       { code: '23503' },
     );
   });
+
+  it('the intake_id index is partial — a standalone payout has nothing to be looked up by', async () => {
+    const rows = await ds.query(
+      `SELECT indexdef FROM pg_indexes WHERE indexname = 'IDX_payouts_intake'`,
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0].indexdef).toContain('WHERE (intake_id IS NOT NULL)');
+  });
 });
