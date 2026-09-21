@@ -79,7 +79,7 @@ const NAV_GROUPS: NavGroup[] = [
     role: 'network_owner',
     items: [
       { labelKey: 'nav.cost', icon: Calculator },
-      { labelKey: 'nav.reweigh', icon: Weight },
+      { labelKey: 'nav.reweigh', icon: Weight, to: '/reweigh' },
       { labelKey: 'nav.network', icon: Network },
       { labelKey: 'nav.sheet', icon: Printer },
       { labelKey: 'nav.transfers', icon: ArrowLeftRight, to: '/transfers', role: 'network_owner' },

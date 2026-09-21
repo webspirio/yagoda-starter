@@ -1180,6 +1180,12 @@
       "errors": {
         "failed": "Could not void the line"
       }
-    }
+    },
+    "post": "Post reweighing · {{kg}}",
+    "postNote": "Positions are written one at a time: if the server refuses the third, the first two are already recorded, and the rest stay on screen.",
+    "noShift": "The shift for {{date}} at {{point}} was never opened — there is nothing to reweigh.",
+    "posted": "Reweighing posted · {{kg}}",
+    "postFailed": "The position “{{grade}}” was not posted",
+    "draftsCleared": "Positions cleared — they belonged to a different day or point"
   }
 }

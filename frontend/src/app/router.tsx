@@ -18,6 +18,7 @@ import { JournalPage } from '@/pages/journal';
 import { CratesPage } from '@/pages/crates';
 import { PointCashPage } from '@/pages/point-cash';
 import { TransfersPage } from '@/pages/transfers';
+import { ReweighPage } from '@/pages/reweigh';
 import { NotFoundPage } from '@/pages/not-found';
 import { UiKitPage } from '@/pages/ui-kit';
 
@@ -179,6 +180,18 @@ export const routes: RouteObject[] = [
           <RequireAuth>
             <RequireRole role="network_owner">
               <TransfersPage />
+            </RequireRole>
+          </RequireAuth>
+        ),
+      },
+      {
+        // Owner-only: this is the screen at the scale, at the base — not a
+        // point-level document any operator could write.
+        path: '/reweigh',
+        element: (
+          <RequireAuth>
+            <RequireRole role="network_owner">
+              <ReweighPage />
             </RequireRole>
           </RequireAuth>
         ),
