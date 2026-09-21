@@ -624,6 +624,31 @@ describe('ReceptionPage — several lines', () => {
 
     expect(rowTrash()).toBeDisabled();
   });
+
+  it("counts only committed rows in the table's own counter, not the trailing draft", async () => {
+    const user = userEvent.setup();
+    renderReception();
+
+    await user.click(screen.getByRole('button', { name: 'pick-nina' }));
+    await fillDraft(user);
+    await user.click(screen.getByRole('button', { name: 'Add line' }));
+    // The fresh draft is filled too — a real preview would settle over BOTH
+    // lines at this point, so the table's counter (unlike the submit
+    // button's own draft-inclusive count) must still describe only the ONE
+    // committed row the table actually shows.
+    await fillDraft(user);
+
+    const table = screen.getByRole('table');
+    expect(within(table).getAllByRole('row')).toHaveLength(2); // header + one committed line
+
+    // Scoped to the «Add line» row itself — the submit button below
+    // legitimately reads «Accept 2 lines · 240.80 kg» (TotalsSection's own,
+    // draft-inclusive count), which a bare `screen.queryByText` would also
+    // match and turn a real bug into a false pass.
+    const addLineRow = screen.getByRole('button', { name: 'Add line' }).parentElement!;
+    expect(within(addLineRow).getByText('1 line · 120.40 kg')).toBeInTheDocument();
+    expect(within(addLineRow).queryByText(/2 lines/)).not.toBeInTheDocument();
+  });
 });
 
 describe('ReceptionPage — an accidental extra line', () => {

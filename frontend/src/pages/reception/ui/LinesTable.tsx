@@ -38,11 +38,14 @@ export function LinesTable({
   atCap: boolean;
   /** No shift, no document — a committed line cannot be dropped either. */
   disabled: boolean;
-  /** `TotalsSection`'s own count — `settled?.items.length ?? lines.fields.length`
-   *  from `ReceptionPage` — kept in step with the submit button's own label. */
+  /** The number of COMMITTED rows — `rows.length`, i.e. the trailing draft
+   *  (never in `rows`) is never counted here. `TotalsSection`'s own count
+   *  includes the draft, since it describes what the submit button is about
+   *  to send; this one describes only what the table above it shows. */
   lineCount: number;
-  /** `null` unless the preview has SETTLED on the form as it stands now — the
-   *  counter is withheld rather than built from a stale or half-typed total. */
+  /** The committed rows' net weight, or `null` when there are none yet, or
+   *  the preview covering them has not settled — the counter is withheld
+   *  rather than built from a stale or half-typed total. */
   netKg: string | null;
   onAdd: () => void;
   onRemove: (index: number) => void;

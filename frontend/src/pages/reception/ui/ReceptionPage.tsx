@@ -172,6 +172,16 @@ export function ReceptionPage() {
   const settled = preview.isSettled ? preview.preview : null;
   const accrued = settled?.amount ?? null;
   const netKg = settled ? sum(settled.items.map((i) => i.net_kg)) : null;
+  // `netKg`/`lineCount` above describe the WHOLE form, draft included — right
+  // for `TotalsSection`'s submit button, wrong for the table's own counter,
+  // which sits over `committed` rows only (`rows.length` there). Summed off
+  // `rowsPreview` (already scoped to the draft-excluded slice `committed`
+  // reads from) rather than `settled`, so the counter stays in step with the
+  // same rows the table renders even in the debounce window `isSettled`
+  // excludes.
+  const committedNetKg = rowsPreview
+    ? sum(rowsPreview.items.slice(0, draftIndex).map((i) => i.net_kg))
+    : null;
   const isPreviewing = !preview.isSettled && (preview.isPending || preview.preview !== null);
   const canSubmit = shiftOpen && values.supplier_id !== '' && settled !== null && !hasServerError;
 
@@ -298,8 +308,8 @@ export function ReceptionPage() {
                 canAdd={draftReady && !atCap && shiftOpen && settled !== null && !hasServerError}
                 atCap={atCap}
                 disabled={!shiftOpen}
-                lineCount={settled?.items.length ?? lines.fields.length}
-                netKg={netKg}
+                lineCount={committed.length}
+                netKg={committed.length > 0 ? committedNetKg : null}
                 onAdd={() => lines.append(emptyLine(defaultTareTypeId))}
                 onRemove={(index) => lines.remove(index)}
               />
