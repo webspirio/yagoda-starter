@@ -75,10 +75,12 @@ marker must prompt for a surcharge as in the mock; «прийомка — сто
    intake), a race spec for two reception writes on one supplier, migration schema spec,
    mapper spec for the new fields. `npm run verify:full` (migration + money code).
 
-Delivered 2026-09-21 on `feat/reception-parity` (backend PR half). Two spec deviations
+Delivered 2026-09-21 on `feat/reception-parity` (backend PR half). Three spec deviations
 recorded: the receipt prints «Нараховано», «Видано готівкою» and «Залишок у цьому пункті»
 but NOT «Попередній залишок»/«РАЗОМ» (not derivable without allocations); `net_kg`/`paid_amount`
-fall back to `'0.00'` via `COALESCE(SUM(x)::text, '0.00')`.
+fall back to `'0.00'` via `COALESCE(SUM(x)::text, '0.00')`; `supplier_name` is `first last`
+(matches `displayNameOf` and the frontend's `supplierName`), not the `last_name first_name`
+§2.4 wrote.
 
 ## 3. Frontend — PR 2 (`feat(reception): the mock's reception, laptop-first`)
 
