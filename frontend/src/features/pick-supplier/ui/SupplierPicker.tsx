@@ -82,7 +82,13 @@ export const SupplierPicker = forwardRef<
   useEffect(() => {
     if (!open) return;
     const onDown = (e: MouseEvent) => {
-      if (rootRef.current && !rootRef.current.contains(e.target as Node)) setOpen(false);
+      if (rootRef.current && !rootRef.current.contains(e.target as Node)) {
+        setOpen(false);
+        // Same reset `pick` already does — closing without picking must not
+        // leave a stale search/highlight behind for the next open.
+        setSearch('');
+        setActive(-1);
+      }
     };
     document.addEventListener('mousedown', onDown);
     return () => document.removeEventListener('mousedown', onDown);
@@ -128,7 +134,25 @@ export const SupplierPicker = forwardRef<
     } else if (e.key === 'Escape') {
       e.preventDefault();
       setOpen(false);
+      setSearch('');
+      setActive(-1);
       triggerRef.current?.focus();
+    }
+  };
+
+  // ArrowDown/ArrowUp on the CLOSED trigger open the list and highlight the
+  // first/last option, same as a native <select> — Enter/Space are left
+  // alone so the button's native toggle still fires.
+  const onTriggerKey = (e: React.KeyboardEvent) => {
+    if (open) return;
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setOpen(true);
+      setActive(0);
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setOpen(true);
+      setActive(flat.length - 1);
     }
   };
 
@@ -175,7 +199,7 @@ export const SupplierPicker = forwardRef<
         autoFocus={autoFocus}
         aria-expanded={open}
         aria-haspopup="listbox"
-        aria-controls={`${id}-list`}
+        aria-controls={open ? `${id}-list` : undefined}
         // role="combobox" takes its accessible name "from author" only (per the ARIA
         // name-computation spec, unlike a plain button it does NOT take a name from its
         // visible content), so axe's button-name check sees the icon-plus-text children
@@ -187,6 +211,7 @@ export const SupplierPicker = forwardRef<
         }
         disabled={disabled}
         onClick={() => setOpen((o) => !o)}
+        onKeyDown={onTriggerKey}
         className="flex h-12 w-full items-center justify-between gap-2 rounded-lg border border-input bg-background px-3 text-left text-base disabled:opacity-50"
       >
         {value ? (

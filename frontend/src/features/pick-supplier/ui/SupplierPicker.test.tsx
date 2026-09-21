@@ -104,6 +104,55 @@ describe('SupplierPicker', () => {
     });
   });
 
+  it('aria-controls is present only while the listbox is mounted (M7)', async () => {
+    render(<SupplierPicker pointId="p1" ownerMode={false} value={null} onChange={vi.fn()} />);
+    const trigger = screen.getByRole('combobox');
+    expect(trigger).not.toHaveAttribute('aria-controls');
+
+    await userEvent.click(trigger);
+    expect(trigger).toHaveAttribute('aria-controls', screen.getByRole('listbox').id);
+
+    await userEvent.click(trigger);
+    expect(trigger).not.toHaveAttribute('aria-controls');
+  });
+
+  it('ArrowDown on the closed trigger opens the list and highlights the first option (M7)', async () => {
+    const user = userEvent.setup();
+    render(<SupplierPicker pointId="p1" ownerMode={false} value={null} onChange={vi.fn()} />);
+    screen.getByRole('combobox').focus();
+    await user.keyboard('{ArrowDown}');
+
+    expect(screen.getByRole('combobox')).toHaveAttribute('aria-expanded', 'true');
+    const firstOption = within(screen.getByRole('listbox')).getAllByRole('option')[0];
+    expect(screen.getByRole('searchbox')).toHaveAttribute('aria-activedescendant', firstOption.id);
+  });
+
+  it('ArrowUp on the closed trigger opens the list and highlights the last option (M7)', async () => {
+    const user = userEvent.setup();
+    render(<SupplierPicker pointId="p1" ownerMode={false} value={null} onChange={vi.fn()} />);
+    screen.getByRole('combobox').focus();
+    await user.keyboard('{ArrowUp}');
+
+    expect(screen.getByRole('combobox')).toHaveAttribute('aria-expanded', 'true');
+    const options = within(screen.getByRole('listbox')).getAllByRole('option');
+    expect(screen.getByRole('searchbox')).toHaveAttribute(
+      'aria-activedescendant',
+      options[options.length - 1].id,
+    );
+  });
+
+  it('closing forgets the search — Escape resets it so a reopen starts clean (M7)', async () => {
+    const user = userEvent.setup();
+    render(<SupplierPicker pointId="p1" ownerMode={false} value={null} onChange={vi.fn()} />);
+    await user.click(screen.getByRole('combobox'));
+    await user.type(screen.getByRole('searchbox'), 'zzz');
+    expect(screen.getByRole('searchbox')).toHaveValue('zzz');
+
+    await user.keyboard('{Escape}');
+    await user.click(screen.getByRole('combobox'));
+    expect(screen.getByRole('searchbox')).toHaveValue('');
+  });
+
   it('has no axe violations open', async () => {
     const { container } = render(<SupplierPicker pointId="p1" ownerMode={false} value={null} onChange={vi.fn()} />);
     await userEvent.click(screen.getByRole('combobox'));
