@@ -146,6 +146,15 @@ export const routes: RouteObject[] = [
         //
         // A typed owner URL still fetches this group's `lazy` chunk before
         // RequireRole redirects — accepted 2026-09-21; document it, don't build around it.
+        //
+        // errorElement here (rather than relying on AppLayout's own, above) stops a
+        // rejected `lazy()` fetch from bubbling all the way up and replacing the WHOLE
+        // shell: an ordinary redeploy retires old hashed chunks, so a session that still
+        // holds a stale index.html can have one of these five imports reject. Without an
+        // errorElement on THIS route, react-router bubbles the error to the nearest
+        // ancestor that has one — AppLayout — unmounting the sidebar and nav along with
+        // the failed page. Declaring it here instead means only this group's own content
+        // (the Outlet above) is replaced; the shell survives.
         element: (
           <RequireAuth>
             <RequireRole role="network_owner">
@@ -153,6 +162,7 @@ export const routes: RouteObject[] = [
             </RequireRole>
           </RequireAuth>
         ),
+        errorElement: <RouteError />,
         children: [
           {
             path: '/points',
