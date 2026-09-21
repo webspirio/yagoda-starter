@@ -331,20 +331,48 @@ In `forShift`, add the parameter and build the `where` conditionally:
     });
 ```
 
-In `reweighs.controller.ts`, read the param. `ParseBoolPipe` with `optional: true` accepts `'true'`/`'false'` and leaves an absent param `undefined`:
+> **CORRECTED 2026-09-21, during execution.** This step originally specified
+> `@Query('include_voided', new ParseBoolPipe({ optional: true }))`. That was a plan
+> defect and was replaced during Task 2's fix round 1 (commit `3204c40`). The reasons,
+> checked against source: `backend/src/common/dto/boolean-query-param.ts` exists to be
+> "the one answer to 'is this query flag on?'"; **nine** DTOs use `BooleanQueryParam()`,
+> and `backend/src/intake-top-ups/dto/list-intake-top-ups.query.ts` already carries the
+> literal `include_voided` flag. `ParseBoolPipe` would have been the only use of that pipe
+> in `backend/src`, and it disagrees with the established decorator on the same parameter
+> name — `?include_voided=1` is accepted by one and rejected by the other, `?include_voided=`
+> throws because the pipe's optional check is `value === undefined` rather than empty, and
+> both failures bypass the global `ValidationPipe`'s 400 shape so the caller gets no field
+> name. Do not restore the pipe. What follows is what was actually built.
+
+Add a query DTO beside the module, following `backend/src/intake-top-ups/dto/list-intake-top-ups.query.ts`
+for shape and naming — `backend/src/reweighs/dto/reweigh-reconciliation.query.ts`:
 
 ```ts
-import { Body, Controller, Get, Param, ParseBoolPipe, ParseUUIDPipe, Post, Query } from '@nestjs/common';
+import { BooleanQueryParam } from '../../common/dto/boolean-query-param';
+
+export class ReweighReconciliationQueryDto {
+  /**
+   * Left OPTIONAL with no DTO-level default on purpose. The default lives on
+   * `forShift(…, includeVoided = false)`; a second one here would make one of
+   * the two dead, and the dead one is the one a reader would trust.
+   */
+  @BooleanQueryParam()
+  include_voided?: boolean;
+}
 ```
+
+Then in `reweighs.controller.ts` take the DTO whole. `query.include_voided` is `undefined`
+when the param is absent, which fires `forShift`'s own default; an explicit `false` is
+passed through unchanged, so the default does not fire for it. No `?? false`:
 
 ```ts
   @Get('shifts/:shiftId/reweigh')
   reconciliation(
     @CurrentUser() actor: AuthenticatedUser,
     @Param('shiftId', ParseUUIDPipe) shiftId: string,
-    @Query('include_voided', new ParseBoolPipe({ optional: true })) includeVoided?: boolean,
+    @Query() query: ReweighReconciliationQueryDto,
   ): Promise<ReconciliationResponse> {
-    return this.reconciliation_.forShift(actor, shiftId, includeVoided ?? false);
+    return this.reconciliation_.forShift(actor, shiftId, query.include_voided);
   }
 ```
 
@@ -352,6 +380,29 @@ import { Body, Controller, Get, Param, ParseBoolPipe, ParseUUIDPipe, Post, Query
 
 Run: `npm test -w backend -- reweigh-reconciliation.service`
 Expected: PASS.
+
+- [ ] **Step 4b: Prove it against a real Postgres**
+
+> **ADDED 2026-09-21, during execution.** The three unit tests above assert the `where`
+> object literal handed to a mocked `itemRepo.find` — that restates the implementation and
+> cannot show that TypeORM's nested `where: { reweigh: { shift_id } }`, with the
+> `voided_at` key omitted, actually returns voided rows. `backend/CLAUDE.md` is explicit
+> that db-specs exist for "Postgres semantics that a mocked spec cannot reach", and
+> `backend/src/intake-top-ups/intake-top-ups-list.db-spec.ts` already tests this exact flag
+> that way. Landed in commit `3204c40`.
+
+Add to `backend/src/reweighs/reweigh-reconciliation.db-spec.ts`, following that file's
+existing uuid-scoped fixture conventions, a case that inserts one live and one voided
+`reweigh_items` row (all three void columns — the entity's CHECK is `num_nulls(...) IN (0,3)`)
+and then calls `forShift` three ways, asserting:
+
+- with `true`, the voided line APPEARS in `items[]`, carrying its `voided_at` and `void_reason`;
+- with `false`, and with the argument OMITTED, it is ABSENT;
+- `products[]` is identical across all three calls — a voided line must never move a number,
+  which is the requirement the whole task exists for.
+
+Run: `npm run test:db -w backend -- reweigh-reconciliation`
+Expected: PASS. (`docker compose up -d postgres redis` first if Postgres is not up.)
 
 - [ ] **Step 5: Run the money gate**
 
