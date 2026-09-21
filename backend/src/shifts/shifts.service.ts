@@ -195,6 +195,8 @@ export class ShiftsService {
       shift.closed_at = closedAt;
       shift.closed_by_user_id = actor.sub;
       shift.status = ShiftStatus.Closed;
+      // §6.8 — «бій вписує приймальник». The ONLY write of this column.
+      shift.broken_crates = dto.broken_crates;
       const saved = await m.save(Shift, shift);
 
       await this.audit.record(
@@ -203,7 +205,7 @@ export class ShiftsService {
           actor_id: actor.sub,
           target_type: 'shift',
           target_id: saved.id,
-          after: { business_date: saved.business_date },
+          after: { business_date: saved.business_date, broken_crates: saved.broken_crates },
         },
         m,
       );
@@ -287,7 +289,11 @@ export class ShiftsService {
         });
       }
 
-      const before = { closed_at: shift.closed_at, status: shift.status };
+      const before = {
+        closed_at: shift.closed_at,
+        status: shift.status,
+        broken_crates: shift.broken_crates,
+      };
 
       // §6.3 — THE CLOSING COUNT BECOMES A MIDDAY COUNT. Reopening needs a free
       // `closing` slot (UQ_cash_counts_shift_book_kind), and the 11:00 count
@@ -310,6 +316,9 @@ export class ShiftsService {
       shift.closed_at = null;
       shift.closed_by_user_id = null;
       shift.status = ShiftStatus.Open;
+      // Back to «не записано»: CHK_shifts_broken_crates_closed forbids a count
+      // on an open shift, and the re-close will ask the operator again.
+      shift.broken_crates = null;
       const saved = await m.save(Shift, shift);
 
       await this.audit.record(
@@ -319,7 +328,7 @@ export class ShiftsService {
           target_type: 'shift',
           target_id: saved.id,
           before,
-          after: { closed_at: null, status: ShiftStatus.Open },
+          after: { closed_at: null, status: ShiftStatus.Open, broken_crates: null },
           note: dto.reason,
         },
         m,

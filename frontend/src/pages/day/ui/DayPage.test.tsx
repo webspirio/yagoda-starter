@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createMemoryRouter, RouterProvider } from 'react-router';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ApiError } from '@/shared/api';
 import { expectNoAxeViolations } from '../../../test-axe';
 import type { Shift } from '@/entities/shift';
@@ -120,6 +121,7 @@ const openShift: Shift = {
   closed_at: null,
   created_at: '2026-09-08T05:00:00Z',
   explanation: null,
+  broken_crates: null,
 };
 
 const closedShift: Shift = {
@@ -182,11 +184,30 @@ function tile(label: string): HTMLElement {
   return el as HTMLElement;
 }
 
+/** The close dialog's two fields. `getByRole('textbox')` is ambiguous there
+ *  since #110 added §6.8's breakage beside the drawer count. */
+const drawerBox = (dialog: HTMLElement) =>
+  within(dialog).getByRole('textbox', { name: /drawer|amount/i });
+const breakageBox = (dialog: HTMLElement) =>
+  within(dialog).getByRole('textbox', { name: /broken/i });
+
 function renderDay(entry = '/day') {
   const router = createMemoryRouter([{ path: '/day', element: <DayPage /> }], {
     initialEntries: [entry],
   });
-  return { ...render(<RouterProvider router={router} />), router };
+  // The real `CountDrawerDialog` renders here (see the mock note above), and
+  // since #110 it reads §6.8's «з ягодою» through TanStack Query. No adapter is
+  // installed, so that read FAILS — deliberately: these tests assert the close
+  // still works when it does.
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return {
+    ...render(
+      <QueryClientProvider client={client}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>,
+    ),
+    router,
+  };
 }
 
 beforeEach(() => {
@@ -296,10 +317,15 @@ describe('DayPage — the operator on an open shift', () => {
     const dialog = await screen.findByRole('dialog');
     expect(closeMock).not.toHaveBeenCalled();
 
-    await user.type(within(dialog).getByRole('textbox'), '980.40');
+    await user.type(drawerBox(dialog), '980.40');
+    await user.type(breakageBox(dialog), '3');
     await user.click(within(dialog).getByRole('button', { name: SUBMIT_COUNT }));
     await waitFor(() =>
-      expect(closeMock).toHaveBeenCalledWith({ id: 's1', counted_amount: '980.40' }),
+      expect(closeMock).toHaveBeenCalledWith({
+        id: 's1',
+        counted_amount: '980.40',
+        broken_crates: 3,
+      }),
     );
   });
 
@@ -325,7 +351,8 @@ describe('DayPage — the operator on an open shift', () => {
 
     await user.click(screen.getByRole('button', { name: 'Close shift' }));
     const dialog = await screen.findByRole('dialog');
-    await user.type(within(dialog).getByRole('textbox'), '980.40');
+    await user.type(drawerBox(dialog), '980.40');
+    await user.type(breakageBox(dialog), '0');
     await user.click(within(dialog).getByRole('button', { name: SUBMIT_COUNT }));
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
   });
@@ -358,10 +385,15 @@ describe('DayPage — the operator on an open shift', () => {
       });
     }); // …and the page re-rendered under the still-open dialog
 
-    await user.type(within(dialog).getByRole('textbox'), '980.40');
+    await user.type(drawerBox(dialog), '980.40');
+    await user.type(breakageBox(dialog), '0');
     await user.click(within(dialog).getByRole('button', { name: SUBMIT_COUNT }));
     await waitFor(() =>
-      expect(closeMock).toHaveBeenCalledWith({ id: 's1', counted_amount: '980.40' }),
+      expect(closeMock).toHaveBeenCalledWith({
+        id: 's1',
+        counted_amount: '980.40',
+        broken_crates: 0,
+      }),
     );
   });
 
@@ -591,5 +623,53 @@ describe('DayPage — the owner', () => {
     await user.click(screen.getByRole('button', { name: 'Reopen shift' }));
     expect(await screen.findByLabelText('Reason')).toHaveValue('');
     expect(screen.queryByText(banner)).toBeNull();
+  });
+});
+
+// §6.8's «бій» is recorded at close and, until #110, was readable nowhere in the
+// product — a mistyped 30-for-3 survived only in audit_log. These four pin the
+// NULL/0 distinction on the READ side, where it is easiest to lose: `??` or a
+// falsy check here would render «нічого не побилось» as «не записано».
+describe("DayPage — §6.8's recorded breakage on a closed shift", () => {
+  it('shows the number that was recorded at close', () => {
+    shiftMock.mockReturnValue({
+      data: { ...closedShift, broken_crates: 3 },
+      isPending: false,
+      isError: false,
+    });
+
+    renderDay('/day?point=p1&date=2026-09-07');
+
+    expect(screen.getByText('Broken: 3')).toBeInTheDocument();
+  });
+
+  it('shows a recorded 0 as 0, never as a dash', () => {
+    shiftMock.mockReturnValue({
+      data: { ...closedShift, broken_crates: 0 },
+      isPending: false,
+      isError: false,
+    });
+
+    renderDay('/day?point=p1&date=2026-09-07');
+
+    expect(screen.getByText('Broken: 0')).toBeInTheDocument();
+  });
+
+  it('shows a dash when the close predates the column', () => {
+    shiftMock.mockReturnValue({
+      data: { ...closedShift, broken_crates: null },
+      isPending: false,
+      isError: false,
+    });
+
+    renderDay('/day?point=p1&date=2026-09-07');
+
+    expect(screen.getByText('Broken: —')).toBeInTheDocument();
+  });
+
+  it('shows nothing while the shift is still open', () => {
+    renderDay('/day?point=p1');
+
+    expect(screen.queryByText(/^Broken:/)).toBeNull();
   });
 });

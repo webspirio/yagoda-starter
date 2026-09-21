@@ -223,6 +223,17 @@ export function DayPage() {
           ? t('day.status.loading')
           : t(`day.status.${status === 'none' && isToday ? 'noneToday' : status}`)}
       </Badge>
+      {/* §6.8's «бій», read back after the close. `=== null`, never `??` or a
+          falsy test: `0` is «нічого не побилось» — a number the operator typed
+          — and «—» is «не записано», which is every shift closed before this
+          column existed. Gated on `closed` because the CHECK allows a number
+          nowhere else, and a reopen clears it back to `null`. */}
+      {!shift.isError && !isLoadingShift && status === 'closed' && shift.data ? (
+        <Badge variant="outline">
+          {t('day.count.brokenSummary')}:{' '}
+          {shift.data.broken_crates === null ? '—' : shift.data.broken_crates}
+        </Badge>
+      ) : null}
       {!shift.isError &&
       !isLoadingShift &&
       isOperator &&
@@ -360,9 +371,12 @@ export function DayPage() {
       <CountDrawerDialog
         key={`count-${countInstance}`}
         mode={countMode}
+        // Той самий id, що й ціль підрахунку — «з ягодою» читається саме для
+        // зміни, яку зараз закривають, а не для тієї, що на екрані.
+        shiftId={countTarget?.mode === 'close' ? countTarget.shiftId : null}
         open={countTarget !== null}
         onClose={() => setCountTarget(null)}
-        onConfirm={async (counted_amount) => {
+        onConfirm={async (counted_amount, broken_crates) => {
           if (countTarget === null) {
             // The dialog can only confirm while it is open, and it is only
             // open when `countTarget` is set — reaching here with no target
@@ -375,7 +389,13 @@ export function DayPage() {
             await open.mutateAsync({ counted_amount });
             toast.success(t('day.toast.opened'));
           } else {
-            await close.mutateAsync({ id: countTarget.shiftId, counted_amount });
+            if (broken_crates === null) {
+              // Діалог у режимі закриття завжди дає число (поле обов'язкове,
+              // `0` включно). `null` тут означає, що режим і колбек розійшлись —
+              // це помилка коду, а не дія користувача.
+              throw new Error('close confirmed without a breakage count');
+            }
+            await close.mutateAsync({ id: countTarget.shiftId, counted_amount, broken_crates });
             toast.success(t('day.toast.closed'));
           }
           setCountTarget(null);

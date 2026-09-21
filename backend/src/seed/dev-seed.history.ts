@@ -162,6 +162,10 @@ for (let day = HISTORY_DAYS + 1; day >= 2; day -= 1) {
     const roster = suppliersAt.get(point) ?? [];
     if (!operator || roster.length === 0) continue;
 
+    // NO `broken` (#110) — absent means 0, and that is deliberate. A
+    // PRNG-driven breakage would put a moving number in a file whose whole
+    // point is that it is byte-identical on every run; the curated dataset
+    // carries the non-zero case instead.
     shifts.push({ point, day, openedBy: operator, closed: true });
 
     // The point's FIRST generated count anchors its whole chain; every later
