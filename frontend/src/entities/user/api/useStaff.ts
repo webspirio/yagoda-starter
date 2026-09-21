@@ -42,13 +42,23 @@ export function useStaffQuery(enabled: boolean) {
     queryKey: [...queryKeys.users, 'directory'] as const,
     enabled,
     queryFn: async (): Promise<Map<string, string>> => {
+      // include_inactive: users are never deleted, only deactivated, and this
+      // hook exists to name the author of a HISTORICAL or voided document —
+      // omitting it (service default: false) would drop anyone who has since
+      // left from the Map entirely, leaving a storno with no author at all
+      // (§8.7 forbids exactly that). Mirrors pages/users/api/users.ts's own
+      // "Owner-facing registry, so inactive users are asked for too."
       const { data } = await httpClient.get<Paginated<StaffMember>>('/users', {
-        params: { limit: 100 },
+        params: { limit: 100, include_inactive: true },
       });
       return new Map(
         data.data.map((u) => [
           u.id,
-          [u.first_name, u.last_name].filter(Boolean).join(' ') || u.login,
+          // .trim() before .filter(Boolean): NOT NULL doesn't mean non-empty,
+          // and a whitespace-only name is truthy — without the trim it would
+          // survive the filter and print a blank author beside a storno
+          // reason, the exact failure the `|| login` fallback exists to stop.
+          [u.first_name.trim(), u.last_name.trim()].filter(Boolean).join(' ') || u.login,
         ]),
       );
     },
