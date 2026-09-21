@@ -120,5 +120,11 @@ describe('Reconciliation', () => {
       />,
     );
     expect(screen.getByText(/surplus|надлишок/i)).toBeInTheDocument();
+    // Row-level: the SIGNED Diff cell itself must read as a surplus (a
+    // leading `+` on the absolute value), never as a bare minus in front of
+    // what would look like a shortfall — the totals-row label alone does not
+    // cover this cell.
+    const row = screen.getByRole('row', { name: /Малина/ });
+    expect(within(row).getByText('+4.00 kg')).toBeInTheDocument();
   });
 });
