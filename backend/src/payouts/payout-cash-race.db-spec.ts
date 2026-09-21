@@ -241,6 +241,11 @@ describe('payout cash race: two suppliers, one drawer (HTTP, Postgres)', () => {
   }
 
   it('two standalone payouts for two suppliers against one drawer: exactly one is paid, the drawer lands at 500.00', async () => {
+    // A PASS does not by itself prove the two requests overlapped: if they ran
+    // one after the other, the second reads the first's committed payout and is
+    // refused for the same reason — same statuses, same drawer. Only the RED run
+    // recorded before the fix (both 201, drawer -500.00) shows the race was real.
+
     const { operatorToken, pointId, supplierAId, supplierBId } = await setUpPointWithTwoDebtors();
     const agent = await racingAgent(operatorToken, pointId);
 
@@ -270,6 +275,11 @@ describe('payout cash race: two suppliers, one drawer (HTTP, Postgres)', () => {
   });
 
   it('a paid reception for one supplier and a standalone payout for another, in flight together: exactly one wins, the drawer lands at 500.00', async () => {
+    // A PASS does not by itself prove the two requests overlapped: if they ran
+    // one after the other, the second reads the first's committed payout and is
+    // refused for the same reason — same statuses, same drawer. Only the RED run
+    // recorded before the fix (both 201, drawer -500.00) shows the race was real.
+
     const { operatorToken, pointId, shiftId, supplierAId, supplierBId } =
       await setUpPointWithTwoDebtors();
     const agent = await racingAgent(operatorToken, pointId);

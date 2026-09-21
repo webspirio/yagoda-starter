@@ -130,7 +130,11 @@ export function ReceptionPage() {
   // gate is closed — harmless, since every consumer of `cash` below is
   // itself disabled while the shift is closed.
   const pointCash = usePointCashForPointQuery(pointId, undefined, shiftOpen);
-  const cash = pointCash.data?.cash ?? null;
+  // ONE derived value, not two independent reads: TanStack keeps the last
+  // successful `data` when a REFETCH fails (typically right after a submit
+  // invalidates this key), so `data` and `isError` can both be set. The
+  // disclaimer wins — a figure known to be stale is not a cap.
+  const cash = pointCash.isError ? null : (pointCash.data?.cash ?? null);
 
   // A refusal from `POST /intakes` stands only while the form still says what it
   // said when the server refused — the next keystroke hands the question back to
