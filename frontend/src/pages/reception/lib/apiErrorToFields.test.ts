@@ -144,4 +144,42 @@ describe('apiErrorToFields', () => {
     expect(out.fieldErrors).toEqual([]);
     expect(out.formErrorKey).toBe('reception.errors.failed');
   });
+
+  it('maps PAYOUT_EXCEEDS_CASH onto paid_amount, not a line', () => {
+    const out = apiErrorToFields(apiError({ status: 400, code: 'PAYOUT_EXCEEDS_CASH' }), 2);
+    expect(out.fieldErrors).toEqual([
+      { field: 'paid_amount', messageKey: 'reception.errors.paidExceedsCash' },
+    ]);
+    expect(out.formErrorKey).toBeNull();
+  });
+
+  it('maps PAYOUT_EXCEEDS_DEBT onto paid_amount', () => {
+    const out = apiErrorToFields(apiError({ status: 400, code: 'PAYOUT_EXCEEDS_DEBT' }), 1);
+    expect(out.fieldErrors).toEqual([
+      { field: 'paid_amount', messageKey: 'reception.errors.paidExceedsDebt' },
+    ]);
+    expect(out.formErrorKey).toBeNull();
+  });
+
+  it('maps PAYOUT_AMOUNT_ZERO onto paid_amount — unreachable from this client, mapped anyway', () => {
+    const out = apiErrorToFields(apiError({ status: 400, code: 'PAYOUT_AMOUNT_ZERO' }), 1);
+    expect(out.fieldErrors).toEqual([
+      { field: 'paid_amount', messageKey: 'reception.errors.paidFormat' },
+    ]);
+    expect(out.formErrorKey).toBeNull();
+  });
+
+  it('maps a class-validator detail on paid_amount to paidFormat, not decimalFormat', () => {
+    const out = apiErrorToFields(
+      apiError({
+        status: 400,
+        details: ['paid_amount must match /^\\d{1,10}(\\.\\d{1,2})?$/'],
+      }),
+      1,
+    );
+    expect(out.fieldErrors).toEqual([
+      { field: 'paid_amount', messageKey: 'reception.errors.paidFormat' },
+    ]);
+    expect(out.formErrorKey).toBeNull();
+  });
 });

@@ -29,17 +29,50 @@ const {
   previewMock,
   createMock,
   openShiftMock,
-} = vi.hoisted(() => ({
-  meMock: vi.fn(),
-  pointScopeMock: vi.fn(),
-  shiftMock: vi.fn(),
-  balanceMock: vi.fn(),
-  intakesMock: vi.fn(),
-  gradesMock: vi.fn(),
-  tareTypesMock: vi.fn(),
-  previewMock: vi.fn(),
-  createMock: vi.fn(),
-  openShiftMock: vi.fn(),
+  pointCashMock,
+  toastMock,
+  toastSuccessMock,
+} = vi.hoisted(() => {
+  type ToastMock = ReturnType<typeof vi.fn> & {
+    success: ReturnType<typeof vi.fn>;
+    error: ReturnType<typeof vi.fn>;
+  };
+  // `toast` (sonner) is itself callable (the bare «lines cleared» notice) AND
+  // carries `.success`/`.error` methods (the shift-open toast) — the mock
+  // has to be both, unlike `PayoutDialog.test.tsx`'s plain-object `toast`.
+  const toastMock = vi.fn() as unknown as ToastMock;
+  toastMock.success = vi.fn();
+  toastMock.error = vi.fn();
+  return {
+    meMock: vi.fn(),
+    pointScopeMock: vi.fn(),
+    shiftMock: vi.fn(),
+    balanceMock: vi.fn(),
+    intakesMock: vi.fn(),
+    gradesMock: vi.fn(),
+    tareTypesMock: vi.fn(),
+    previewMock: vi.fn(),
+    createMock: vi.fn(),
+    openShiftMock: vi.fn(),
+    pointCashMock: vi.fn(),
+    toastMock,
+    toastSuccessMock: vi.fn(),
+  };
+});
+
+// The real sonner-backed module — mocked so a bare `toast(...)` call (the
+// «lines cleared» notice) and `toastSuccess(...)` (the accepted receipt) are
+// both observable without a `<Toaster/>` mounted, same shape
+// `PayoutDialog.test.tsx` uses for `toast.success`.
+vi.mock('@/shared/ui/toast', () => ({
+  toast: toastMock,
+  toastSuccess: toastSuccessMock,
+  toastError: vi.fn(),
+}));
+
+vi.mock('@/entities/point-cash', () => ({
+  usePointCashForPointQuery: (pointId: string | null, asOf?: string, enabled?: boolean) =>
+    pointCashMock(pointId, asOf, enabled),
 }));
 
 vi.mock('@/entities/user', () => ({
@@ -338,6 +371,15 @@ beforeEach(() => {
   previewMock.mockReset().mockReturnValue(previewState());
   createMock.mockReset().mockResolvedValue(CREATED);
   openShiftMock.mockReset().mockResolvedValue(openShift);
+  // Unread by default (`isPending`, no `data`) — `cash` resolves to `null`,
+  // so the auto-suggested «Видано готівкою» is '0.00' and every pre-existing
+  // «Accept N kg» assertion below keeps reading the submit label it always
+  // has. Tests that care about a real payout set this explicitly.
+  pointCashMock.mockReset().mockReturnValue({ data: undefined, isPending: true, isError: false });
+  toastMock.mockReset();
+  toastMock.success.mockReset();
+  toastMock.error.mockReset();
+  toastSuccessMock.mockReset();
 });
 
 describe('ReceptionPage — before the shift is open', () => {
@@ -469,7 +511,7 @@ describe('ReceptionPage — a one-line receipt', () => {
 
     // Net weight and the amount are the SERVER's, never computed here.
     expect(screen.getByText(/net 120\.40 kg/)).toBeInTheDocument();
-    expect(screen.getByText('Accrued').closest('div')).toHaveTextContent('1,204.00 ₴');
+    expect(screen.getByText('Accrued today').closest('div')).toHaveTextContent('1,204.00 ₴');
 
     const submit = screen.getByRole('button', { name: 'Accept 120.40 kg' });
     expect(submit).toBeEnabled();
@@ -536,7 +578,7 @@ describe('ReceptionPage — a one-line receipt', () => {
     // No weight on the button and no total: those numbers are not this form's.
     expect(screen.getByRole('button', { name: 'Accept' })).toBeDisabled();
     expect(screen.queryByRole('button', { name: /Accept 120.40 kg/ })).toBeNull();
-    expect(screen.getByText('Accrued').closest('div')).toHaveTextContent('…');
+    expect(screen.getByText('Accrued today').closest('div')).toHaveTextContent('…');
     expect(screen.getByRole('button', { name: 'Add line' })).toBeDisabled();
   });
 
@@ -907,6 +949,100 @@ describe('ReceptionPage — a refusal from the server', () => {
       screen.getByText('The server refused one of the lines — check the rows in the table'),
     ).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Accept' })).toBeDisabled();
+  });
+});
+
+describe('ReceptionPage — «Видано готівкою» rides along with «Прийняти» (§2.1 ⑥, §3.1, §3.6)', () => {
+  beforeEach(() => {
+    balanceMock.mockReturnValue({
+      data: { supplier_id: 's1', debt: '37.37' },
+      isPending: false,
+      isError: false,
+    });
+    pointCashMock.mockReturnValue({
+      data: { collection_point_id: 'p1', cash: '1616.10' },
+      isPending: false,
+      isError: false,
+    });
+    // accrued 5460.00 + the 37.37 balance = 5497.37 total, capped by the
+    // 1616.10 in the drawer — the auto-suggested payout the operator never
+    // has to type for either case below.
+    previewMock.mockReturnValue(
+      previewState({ preview: { ...PREVIEW, amount: '5460.00' }, isSettled: true }),
+    );
+  });
+
+  it('sends the auto-suggested, cash-capped payout as paid_amount', async () => {
+    const user = userEvent.setup();
+    renderReception();
+
+    await user.click(screen.getByRole('button', { name: 'pick-nina' }));
+    await fillDraft(user);
+
+    const submit = screen.getByRole('button', { name: 'Accept 120.40 kg · pay out 1,616.10 ₴' });
+    expect(submit).toBeEnabled();
+    await user.click(submit);
+
+    await waitFor(() =>
+      expect(createMock).toHaveBeenCalledWith(
+        expect.objectContaining({ supplier_id: 's1', paid_amount: '1616.10' }),
+      ),
+    );
+  });
+
+  it('lands a PAYOUT_EXCEEDS_CASH refusal on «Видано готівкою» and does not reset the form', async () => {
+    const user = userEvent.setup();
+    createMock.mockRejectedValueOnce(new ApiError(400, 'nope', undefined, 'PAYOUT_EXCEEDS_CASH'));
+    renderReception();
+
+    await user.click(screen.getByRole('button', { name: 'pick-nina' }));
+    await fillDraft(user);
+    await user.click(screen.getByRole('button', { name: 'Accept 120.40 kg · pay out 1,616.10 ₴' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      "There's less in the berry drawer — the server capped the payout; reduce the amount",
+    );
+    // The WHOLE write rolled back server-side (the intake was never created)
+    // — the draft the operator was completing is still exactly what they
+    // typed, not a fresh blank form.
+    expect(screen.getByLabelText('Gross — berries including tare')).toHaveValue('126.40');
+    expect(screen.queryByText('Receipt for i-new')).toBeNull();
+  });
+});
+
+describe('ReceptionPage — switching supplier mid-visit', () => {
+  it('clears committed lines and warns when a new supplier is picked with something already committed', async () => {
+    const user = userEvent.setup();
+    previewMock.mockImplementation((values: IntakeFormValues) =>
+      previewState({
+        preview: { ...PREVIEW, items: values.items.map(() => PREVIEW.items[0]) },
+        isSettled: true,
+      }),
+    );
+
+    renderReception();
+    await user.click(screen.getByRole('button', { name: 'pick-nina' }));
+    await fillDraft(user);
+    await user.click(screen.getByRole('button', { name: 'Add line' }));
+    expect(screen.getByRole('table')).toBeInTheDocument();
+
+    // Picking again simulates a switch — the stub always hands back the same
+    // row, but the PAGE doesn't know that, and reacts to there being
+    // something committed already.
+    await user.click(screen.getByRole('button', { name: 'pick-nina' }));
+
+    expect(screen.queryByRole('table')).toBeNull();
+    expect(screen.getByLabelText('Gross — berries including tare')).toHaveValue('');
+    expect(toastMock).toHaveBeenCalledWith('Lines cleared — they belonged to the previous supplier');
+  });
+
+  it('neither clears anything nor warns on a plain first pick — nothing was committed yet', async () => {
+    const user = userEvent.setup();
+    renderReception();
+
+    await user.click(screen.getByRole('button', { name: 'pick-nina' }));
+
+    expect(toastMock).not.toHaveBeenCalled();
   });
 });
 

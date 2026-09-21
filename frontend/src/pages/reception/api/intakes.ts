@@ -6,10 +6,13 @@ import type { CreateIntakeBody, IntakePreview, PreviewIntakeBody } from '../mode
 
 /**
  * Records the receipt — `POST /intakes` writes the whole document in one
- * transaction (§2.3). Invalidates both the intake journal AND
- * `supplierBalances`: an intake is one of the two flows (with payouts) that
- * move a supplier's Σ intakes − Σ payouts number, so both caches go stale
- * together — same shape as `features/settle-payout`'s `useCreatePayoutMutation`.
+ * transaction (§2.3), now with an OPTIONAL payout in the same write (§2.1 ⑥,
+ * §3.1, §3.6). Invalidates the intake journal, `supplierBalances` (an intake
+ * is one of the two flows, with payouts, that move a supplier's Σ intakes −
+ * Σ payouts number), and — since a payout may have ridden along — `payouts`
+ * and `pointCash` too: the SAME write can move the point's drawer, exactly
+ * as `features/settle-payout`'s `useCreatePayoutMutation` already invalidates
+ * for a payout recorded on its own.
  */
 export function useCreateIntakeMutation() {
   const qc = useQueryClient();
@@ -20,6 +23,8 @@ export function useCreateIntakeMutation() {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: queryKeys.intakes });
+      qc.invalidateQueries({ queryKey: queryKeys.payouts });
+      qc.invalidateQueries({ queryKey: queryKeys.pointCash });
       qc.invalidateQueries({ queryKey: queryKeys.supplierBalances });
     },
   });

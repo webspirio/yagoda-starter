@@ -47,6 +47,20 @@ const BANNER: Readonly<Record<string, string>> = {
 };
 
 /**
+ * `POST /intakes`'s payout half (§2.1 ⑥, §3.1, §3.6) refuses the WHOLE write
+ * on any of these — the intake is never created — so every one of them names
+ * exactly the field the operator typed: `paid_amount`. `PAYOUT_AMOUNT_ZERO`
+ * cannot reach this client (a zero `paid_amount` is never sent — see
+ * `toCreateBody`), but it costs one line to keep mapped rather than fall
+ * through to the generic banner if that ever stops being true.
+ */
+const PAID_FIELD: Readonly<Record<string, string>> = {
+  PAYOUT_EXCEEDS_CASH: 'reception.errors.paidExceedsCash',
+  PAYOUT_EXCEEDS_DEBT: 'reception.errors.paidExceedsDebt',
+  PAYOUT_AMOUNT_ZERO: 'reception.errors.paidFormat',
+};
+
+/**
  * class-validator emits `"<property> <complaint>"` for `CreateIntakeDto`'s
  * nested items — `items.0.gross_kg must be …`, `items.0.tare.1.units must
  * not be less than 1`. The PROPERTY (first token) IS the RHF field path
@@ -60,6 +74,7 @@ const BANNER: Readonly<Record<string, string>> = {
  */
 function fieldFromDetail(detail: string): string | null {
   const prop = detail.split(' ')[0];
+  if (prop === 'paid_amount') return prop;
   return prop.startsWith('items.') ? prop : null;
 }
 
@@ -75,12 +90,16 @@ export function apiErrorToFields(error: unknown, lineCount: number): ApiFieldErr
   if (!(error instanceof ApiError)) return { fieldErrors: [], formErrorKey: FORM_LEVEL };
 
   if (error.code) {
-    // NOTHING MAPS TO A TOP-LEVEL FIELD ANY MORE. `INTAKE_CODE_TAKEN` used to,
-    // onto the typed receipt number; that field is gone (2026-09-18 — the
-    // server numbers each shift itself) and the code now means a generated
-    // number met a row this shift was given by hand before the change. There
-    // is nothing the operator can retype to get past it, so it falls through
-    // to the banner at the bottom, which says the receipt did not go through.
+    const paid = PAID_FIELD[error.code];
+    if (paid) return { fieldErrors: [{ field: 'paid_amount', messageKey: paid }], formErrorKey: null };
+
+    // NOTHING ELSE MAPS TO A TOP-LEVEL FIELD ANY MORE. `INTAKE_CODE_TAKEN`
+    // used to, onto the typed receipt number; that field is gone
+    // (2026-09-18 — the server numbers each shift itself) and the code now
+    // means a generated number met a row this shift was given by hand before
+    // the change. There is nothing the operator can retype to get past it,
+    // so it falls through to the banner at the bottom, which says the
+    // receipt did not go through.
     const line = LINE_FIELD[error.code];
     if (line) {
       const lastLine = Math.max(lineCount - 1, 0);
@@ -100,8 +119,13 @@ export function apiErrorToFields(error: unknown, lineCount: number): ApiFieldErr
   let unattributed = false;
   for (const detail of error.details ?? []) {
     const field = fieldFromDetail(detail);
-    if (field) fieldErrors.push({ field, messageKey: 'reception.errors.decimalFormat' });
-    else unattributed = true;
+    if (field) {
+      fieldErrors.push({
+        field,
+        messageKey:
+          field === 'paid_amount' ? 'reception.errors.paidFormat' : 'reception.errors.decimalFormat',
+      });
+    } else unattributed = true;
   }
   if (fieldErrors.length > 0) {
     return { fieldErrors, formErrorKey: unattributed ? FORM_LEVEL : null };

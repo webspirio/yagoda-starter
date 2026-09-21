@@ -8,8 +8,8 @@ import { Button } from '@/shared/ui/button';
 import { SelectField } from '@/shared/ui/select-field';
 import { EmptyState } from '@/shared/ui/empty-state';
 import { Spinner } from '@/shared/ui/spinner';
-import { toast } from '@/shared/ui/toast';
-import { formatKg, formatUah, sum } from '@/shared/lib/money';
+import { toast, toastSuccess } from '@/shared/ui/toast';
+import { add, cmp, formatKg, formatUah, sub, sum } from '@/shared/lib/money';
 import { formatLongDate, todayIso } from '@/shared/lib/date';
 import { useMeQuery } from '@/entities/user';
 import { useWorkingPoint } from '@/features/point-scope';
@@ -18,11 +18,13 @@ import { useCurrentShiftQuery } from '@/entities/shift';
 import { useSupplierBalanceQuery, type Supplier } from '@/entities/supplier';
 import { usePricedGradesQuery } from '@/entities/product-grade';
 import { useTareTypeOptionsQuery } from '@/entities/tare-type';
+import { usePointCashForPointQuery } from '@/entities/point-cash';
 import { ReceiptDialog } from '@/widgets/receipt';
 import { useOpenShiftMutation, CountDrawerDialog } from '@/features/count-shift';
 import { useCreateIntakeMutation } from '../api/intakes';
 import { apiErrorToFields, type ApiFieldErrors } from '../lib/apiErrorToFields';
 import { useIntakePreview } from '../lib/useIntakePreview';
+import { suggestedPaid } from '../lib/suggestedPaid';
 import { emptyLine, toCreateBody, type IntakeFormValues } from '../model/intakeForm';
 import { SupplierSection } from './SupplierSection';
 import { LineEditor } from './LineEditor';
@@ -69,7 +71,7 @@ export function ReceptionPage() {
     (tareTypes.data ?? []).find((type) => type.is_crate)?.id ?? tareTypes.data?.[0]?.id ?? '';
 
   const form = useForm<IntakeFormValues>({
-    defaultValues: { supplier_id: '', items: [emptyLine('')] },
+    defaultValues: { supplier_id: '', items: [emptyLine('')], paid_amount: '' },
   });
   const { control, register, setValue, handleSubmit, reset } = form;
   const lines = useFieldArray({ control, name: 'items' });
@@ -104,11 +106,21 @@ export function ReceptionPage() {
   const [submitFailure, setSubmitFailure] = useState<{ at: string; errors: ApiFieldErrors } | null>(
     null,
   );
+  // «Видано готівкою» AUTO-SUGGESTS the cash-capped total until the operator
+  // types in it themselves (`suggestedPaid`, below) — this is the only thing
+  // that switches it over to what RHF actually holds.
+  const [paidTouched, setPaidTouched] = useState(false);
 
   const shiftOpen = shift.data != null;
   const balance = useSupplierBalanceQuery(values.supplier_id || null);
   const debt = balance.data?.debt ?? null;
   const preview = useIntakePreview(values, bodyPointId, { enabled: shiftOpen });
+  // The drawer for berries — only read once a shift is open, same gate the
+  // preview itself uses; `pointId` (not `bodyPointId`) because an operator's
+  // OWN point still has cash to read even though their token, not this id,
+  // is what the intake body sends.
+  const pointCash = usePointCashForPointQuery(pointId, undefined, shiftOpen);
+  const cash = pointCash.data?.cash ?? null;
 
   // A refusal from `POST /intakes` stands only while the form still says what it
   // said when the server refused — the next keystroke hands the question back to
@@ -127,6 +139,9 @@ export function ReceptionPage() {
   // draft field nothing draws — would otherwise disable the submit in silence.
   const draftPrefix = `items.${draftIndex}.`;
   const isFieldRendered = (field: string) => {
+    // «Видано готівкою» — always on screen once the form is, unlike a draft
+    // line's fields (only the trailing one is ever editable).
+    if (field === 'paid_amount') return true;
     if (!field.startsWith(draftPrefix)) return false;
     const suffix = field.slice(draftPrefix.length);
     return DRAFT_FIELDS.has(suffix) || suffix.startsWith('tare.');
@@ -185,21 +200,47 @@ export function ReceptionPage() {
   const isPreviewing = !preview.isSettled && (preview.isPending || preview.preview !== null);
   const canSubmit = shiftOpen && values.supplier_id !== '' && settled !== null && !hasServerError;
 
+  // «Видано готівкою» auto-suggests the cash-capped total (§2.1 ⑥) until the
+  // operator types into it themselves — `paidTouched` is the one switch, and
+  // this is derived fresh every render rather than pushed into RHF by an
+  // effect (no `setState` during render, no stale suggestion one tick behind
+  // a fresh preview).
+  const suggested = suggestedPaid(accrued, debt, cash);
+  const paidShown = paidTouched ? values.paid_amount : suggested;
+  const onPaidChange = (v: string) => {
+    setPaidTouched(true);
+    setValue('paid_amount', v, { shouldDirty: true });
+  };
+
   const onSubmit = handleSubmit(async (formValues) => {
     setSubmitFailure(null);
+    // Captured BEFORE the write: a successful create invalidates
+    // `supplierBalances`, which can refetch before the toast below reads
+    // `debt` — this is what the supplier owed WALKING IN, not after.
+    const carriedIn = debt !== null && cmp(debt, '0') === 1 ? debt : '0.00';
     try {
-      const created = await create.mutateAsync(toCreateBody(formValues, bodyPointId));
-      toast.success(
+      const created = await create.mutateAsync(
+        toCreateBody({ ...formValues, paid_amount: paidShown }, bodyPointId),
+      );
+      const remainderOf = sub(add(created.amount, carriedIn), created.paid_amount);
+      toastSuccess(
         t('reception.toast.accepted', {
           kg: formatKg(sum(created.items.map((item) => item.net_kg)), locale),
           uah: formatUah(created.amount, locale),
         }),
+        {
+          description:
+            cmp(remainderOf, '0') === 1
+              ? t('reception.toast.remainder', { uah: formatUah(remainderOf, locale) })
+              : t('reception.toast.settled'),
+        },
       );
       setReceiptId(created.id);
       // The mock resets everything, supplier included: the next person in the
       // queue is a new visit, not an edit of this one.
-      reset({ supplier_id: '', items: [emptyLine(defaultTareTypeId)] });
+      reset({ supplier_id: '', items: [emptyLine(defaultTareTypeId)], paid_amount: '' });
       setSupplier(null);
+      setPaidTouched(false);
     } catch (error) {
       setSubmitFailure({
         at: snapshot,
@@ -279,8 +320,24 @@ export function ReceptionPage() {
                 ownerMode={me?.role === 'network_owner'}
                 supplier={supplier}
                 onChange={(s) => {
+                  // Lines belong to the SUPPLIER who brought them — switching
+                  // mid-visit (an operator picked the wrong row) leaves the
+                  // committed lines behind rather than filing them under
+                  // whoever is picked next. A draft-only form (one empty
+                  // line, nothing committed) has nothing to lose, so it is
+                  // left alone.
+                  if (lines.fields.length > 1) {
+                    reset({
+                      supplier_id: s.id,
+                      items: [emptyLine(defaultTareTypeId)],
+                      paid_amount: '',
+                    });
+                    toast(t('reception.toast.linesCleared'));
+                  } else {
+                    setValue('supplier_id', s.id, { shouldDirty: true });
+                  }
                   setSupplier(s);
-                  setValue('supplier_id', s.id, { shouldDirty: true });
+                  setPaidTouched(false);
                 }}
                 debt={debt}
                 disabled={!shiftOpen}
@@ -318,6 +375,10 @@ export function ReceptionPage() {
                 netKg={netKg}
                 lineCount={settled?.items.length ?? lines.fields.length}
                 debt={debt}
+                cash={cash}
+                paid={paidShown}
+                onPaidChange={onPaidChange}
+                paidError={errorAt('paid_amount')}
                 disabled={!canSubmit}
                 isPreviewing={isPreviewing}
                 isSubmitting={create.isPending}

@@ -769,14 +769,29 @@
     },
     "totals": {
       "eyebrow": "4 · Settlement",
-      "accrued": "Accrued",
+      "accruedToday": "Accrued today",
+      "linesSuffix_one": " · {{count}} line",
+      "linesSuffix_other": " · {{count}} lines",
       "debt": "Previous balance",
-      "total": "Total to pay out"
+      "total": "Total to pay out",
+      "paid": "Paid in cash",
+      "all": "Full amount",
+      "toHundreds": "Round to 100",
+      "allToBalance": "All to balance",
+      "overCap": "Cannot pay out more than the total — using {{uah}}",
+      "cashNote": "Only {{uah}} is in the berry drawer — nothing more to pay out right now. The difference is added to the supplier's balance; a transfer from the owner restocks it.",
+      "remainder": "Owed by us",
+      "settled": "Settled in full",
+      "remainderHint": "Added to the supplier's balance — dated today",
+      "settledHint": "Nothing is left hanging on the balance"
     },
     "submit": "Accept",
     "submitKg": "Accept {{kg}}",
     "submitLines_one": "Accept {{count}} line · {{kg}}",
     "submitLines_other": "Accept {{count}} lines · {{kg}}",
+    "submitPay": "Accept {{lines}}{{kg}} · pay out {{uah}}",
+    "linesPart_one": "{{count}} line · ",
+    "linesPart_other": "{{count}} lines · ",
     "today": {
       "title": "Today's receipts",
       "empty": "Nothing received yet. The first receipt will appear here.",
@@ -784,7 +799,10 @@
     },
     "toast": {
       "opened": "Shift opened",
-      "accepted": "Accepted {{kg}} — {{uah}}"
+      "accepted": "Accepted {{kg}} — {{uah}}",
+      "remainder": "Owed by us: {{uah}}",
+      "settled": "Settled in full",
+      "linesCleared": "Lines cleared — they belonged to the previous supplier"
     },
     "errors": {
       "failed": "Could not record the receipt",
@@ -799,7 +817,10 @@
       "rateNegative": "Price plus extra price cannot be negative",
       "noOpenShift": "No open shift — open one in Cash for the day",
       "supplierInactive": "The supplier is deactivated",
-      "shiftClosed": "The shift is already closed"
+      "shiftClosed": "The shift is already closed",
+      "paidExceedsCash": "There's less in the berry drawer — the server capped the payout; reduce the amount",
+      "paidExceedsDebt": "Cannot pay out more than the total",
+      "paidFormat": "Enter an amount, e.g. 4000 or 4000.50"
     }
   },
   "debts": {
