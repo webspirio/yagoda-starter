@@ -42,6 +42,18 @@ import { DayLines } from './DayLines';
  * 'reception'`. `shiftId` is that point's shift for the date, and every
  * write here (`POST .../reweigh-items`) is scoped to it.
  *
+ * `useWorkingPoint()`'s own default (§4.8's склад, or the first active point)
+ * is the right first-visit answer for a MONEY screen in general, but on a
+ * genuinely fresh owner session it can resolve to the BASE — a point this
+ * screen's own picker never offers, since only a reception point sends
+ * berries to be reweighed. Left uncorrected, that leaves a blank `<select>`
+ * beside a banner still naming the base (resolved off the unfiltered list).
+ * Rather than patch the shared hook — it serves other screens whose pickers
+ * are not reception-only — a resolved id absent from `receptionPoints` is
+ * treated as unset HERE, falling back to the network's first reception
+ * point, so the picker and every reading below it (the shift, the banner,
+ * the звірка) always agree on the same point.
+ *
  * DRAFTS live only in this component's state — there is no document until a
  * line posts (Task 5's `model/draft.ts`). They are cleared, with a toast,
  * the moment `(date, pointId)` changes: a draft typed against one point's
@@ -53,8 +65,18 @@ export function ReweighPage() {
   const { t, i18n } = useTranslation();
   const locale = i18n.resolvedLanguage ?? 'uk';
 
-  const { pointId, canPick, setPointId } = useWorkingPoint();
+  const { pointId: resolvedPointId, canPick, setPointId } = useWorkingPoint();
   const { data: points } = usePointOptionsQuery();
+  const receptionPoints = (points ?? []).filter((p) => p.kind === 'reception');
+  // `useWorkingPoint()` can hand back a point this screen's own picker never
+  // offers (the base — see the header doc above). Anything not in
+  // `receptionPoints` is treated as unset and corrected to the network's
+  // first reception point, so `pointId` below is always one the `<select>`
+  // actually lists.
+  const pointId =
+    resolvedPointId !== null && receptionPoints.some((p) => p.id === resolvedPointId)
+      ? resolvedPointId
+      : (receptionPoints[0]?.id ?? null);
   const [dateParam, setDateParam] = useUrlParam('date');
   const today = todayIso();
   // A hand-edited (or stale-link) date is clamped rather than sent on — same
@@ -73,7 +95,6 @@ export function ReweighPage() {
   const grades = reweigh.data?.grades ?? [];
   const products = reweigh.data?.products ?? [];
 
-  const receptionPoints = (points ?? []).filter((p) => p.kind === 'reception');
   const pointName = (points ?? []).find((p) => p.id === pointId)?.name ?? '';
 
   const [drafts, setDrafts] = useState<Draft[]>([]);

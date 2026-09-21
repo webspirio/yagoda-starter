@@ -21,6 +21,7 @@ const {
   dayReweighsMock,
   setDateMock,
   setPointMock,
+  initialPointIdRef,
 } = vi.hoisted(() => ({
   workingPointMock: vi.fn(),
   pointsMock: vi.fn(),
@@ -33,6 +34,13 @@ const {
   dayReweighsMock: vi.fn(),
   setDateMock: vi.fn(),
   setPointMock: vi.fn(),
+  // What `useWorkingPoint()` resolves to on a component's FIRST render, as
+  // if nothing had ever been picked or remembered — `'p1'` (a reception
+  // point) by default, overridden per-test (e.g. to a base point's id) to
+  // simulate a genuinely fresh owner session. Read once, at mount, by the
+  // `useState` initializer below — changing it mid-test does nothing, same
+  // as the real hook.
+  initialPointIdRef: { current: 'p1' as string | null },
 }));
 
 // A REAL `useState`, not a static return: test 5 needs the picked point to
@@ -42,7 +50,7 @@ const {
 vi.mock('@/features/point-scope', () => ({
   useWorkingPoint: () => {
     workingPointMock();
-    const [pointId, setPointIdState] = useState<string | null>('p1');
+    const [pointId, setPointIdState] = useState<string | null>(initialPointIdRef.current);
     return {
       pointId,
       canPick: true,
@@ -89,6 +97,16 @@ const POINTS: PointOption[] = [
   { id: 'p1', name: 'Шипинки', kind: 'reception', target_crates: null },
   { id: 'p2', name: 'Гайове', kind: 'reception', target_crates: null },
 ];
+
+// §4.8's склад — `useWorkingPoint()`'s own first-visit default for a money
+// screen in general, and NOT an option this screen's reception-only picker
+// ever lists.
+const BASE_POINT: PointOption = {
+  id: 'base1',
+  name: 'Байківці (база)',
+  kind: 'base',
+  target_crates: null,
+};
 
 const GRADES: ReconciliationGrade[] = [
   {
@@ -154,6 +172,7 @@ async function addDraft({
 beforeEach(() => {
   vi.clearAllMocks();
   vi.useFakeTimers({ toFake: ['Date'], now: new Date('2026-09-21T09:00:00') });
+  initialPointIdRef.current = 'p1';
 
   pointsMock.mockReturnValue({ data: POINTS, isPending: false, isError: false });
   shiftMock.mockReturnValue({ data: OPEN_SHIFT, isPending: false, isError: false });
@@ -255,6 +274,30 @@ describe('ReweighPage', () => {
     await addDraft({ gross: '100', grade: 'g1' });
     await userEvent.selectOptions(screen.getByLabelText(/point|пункт/i), 'p2');
     expect(screen.getByText(/no positions yet|позицій ще немає/i)).toBeInTheDocument();
+  });
+
+  /**
+   * §4.8 — `useWorkingPoint()`'s own default prefers the BASE, and it is the
+   * first-visit answer, not an edge case: a genuinely fresh owner session
+   * (no `?point=`, nothing remembered) lands there. This screen's picker
+   * lists reception points only, so left uncorrected the `<select>` would
+   * show no matching option while the shift/banner still read off the base
+   * — a blank picker beside a status message naming a point the dropdown
+   * never offered. `pointId` in `ReweighPage` corrects a resolved id absent
+   * from `receptionPoints` to the network's first reception point instead.
+   */
+  it('falls back to a reception point when the default lands on the base', () => {
+    initialPointIdRef.current = BASE_POINT.id;
+    pointsMock.mockReturnValue({ data: [BASE_POINT, ...POINTS], isPending: false, isError: false });
+
+    render(<ReweighPage />);
+
+    expect(screen.queryByText(BASE_POINT.name)).not.toBeInTheDocument();
+    expect(screen.getByLabelText(/point|пункт/i)).toHaveValue('p1');
+    // The shift query itself follows the correction — not just the label —
+    // so the screen never fetches "the base's shift for today" behind a
+    // picker that shows a reception point.
+    expect(shiftMock).toHaveBeenCalledWith('p1', '2026-09-21');
   });
 
   it('keeps the date out of everyone else’s working day', async () => {
