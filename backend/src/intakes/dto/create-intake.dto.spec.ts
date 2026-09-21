@@ -1,11 +1,12 @@
 import 'reflect-metadata';
+import { randomUUID } from 'crypto';
 import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
 import { CreateIntakeDto } from './create-intake.dto';
 
-const GRADE = '55555555-5555-5555-5555-555555555555';
-const CRATE = '66666666-6666-6666-6666-666666666666';
-const SUPPLIER = '44444444-4444-4444-4444-444444444444';
+const GRADE = randomUUID();
+const CRATE = randomUUID();
+const SUPPLIER = randomUUID();
 
 const body = (over: Record<string, unknown> = {}) => ({
   supplier_id: SUPPLIER,
