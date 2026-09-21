@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { Suspense, useState } from 'react';
 import { Link, NavLink, Outlet, useLocation } from 'react-router';
 import { useTranslation } from 'react-i18next';
 import {
@@ -32,6 +32,7 @@ import { persister } from '@/shared/api';
 import { Button } from '@/shared/ui/button';
 import { Toaster } from '@/shared/ui/sonner';
 import { ThemeToggle } from '@/shared/ui/theme-toggle';
+import { RouteFallback } from './RouteFallback';
 
 /** Routes that render bare, without the app chrome. */
 const CHROMELESS = ['/login'];
@@ -274,8 +275,30 @@ export function AppLayout() {
           </div>
         </header>
 
+        {/*
+          THE APP'S ONE SUSPENSE BOUNDARY, and it is inside the shell on
+          purpose. The owner-only routes are React.lazy (see router.tsx), so
+          something has to hold the frame while their chunk downloads. Put
+          that boundary above this layout — in App.tsx, or around the whole
+          <div> below — and the sidebar, the top bar and the active nav item
+          all unmount for the duration: the user clicks «Переважування» and
+          the application vanishes. Here, only the main column swaps, the
+          chrome never re-renders, and the nav item they just clicked stays
+          highlighted while its screen arrives.
+
+          ONE boundary, not one per route: a lazy route inherits the nearest
+          boundary above it, so every future split lands here for free and
+          nobody has to remember to add another.
+
+          The CHROMELESS branch above needs none. Every lazy route is wrapped
+          in RequireAuth, which redirects to /login while the token is null —
+          and a null token is exactly what puts the layout on that branch —
+          so no lazy element is ever rendered there.
+        */}
         <main className="min-w-0 flex-1 p-6">
-          <Outlet />
+          <Suspense fallback={<RouteFallback />}>
+            <Outlet />
+          </Suspense>
         </main>
       </div>
 

@@ -2,25 +2,42 @@ import { createBrowserRouter, type RouteObject } from 'react-router';
 import { AppLayout } from './layouts/AppLayout';
 import { RouteError } from './providers/RouteError';
 import { RequireAuth, RequireRole } from '@/features/auth';
+
+// EAGER — the screens an operator opens every shift, plus the two auth-shaped
+// ones. These stay in the entry chunk deliberately: a chunk request costs a
+// round trip on the mobile data an operator is standing in the field with, and
+// paying it for /reception or /day would make the daily path slower to save
+// bytes the daily path was already going to need.
 import { LoginPage } from '@/pages/login';
 import { DashboardPage } from '@/pages/dashboard';
 import { ProfilePage } from '@/pages/profile';
-import { PointsPage } from '@/pages/points';
-import { UsersPage } from '@/pages/users';
 import { SuppliersPage } from '@/pages/suppliers';
 import { DebtsPage } from '@/pages/debts';
 import { SupplierCardPage } from '@/pages/supplier-card';
-import { CatalogPage } from '@/pages/catalog';
 import { PricesPage } from '@/pages/prices';
 import { DayPage } from '@/pages/day';
 import { ReceptionPage } from '@/pages/reception';
-import { JournalPage } from '@/pages/journal';
 import { CratesPage } from '@/pages/crates';
 import { PointCashPage } from '@/pages/point-cash';
-import { TransfersPage } from '@/pages/transfers';
-import { ReweighPage } from '@/pages/reweigh';
 import { NotFoundPage } from '@/pages/not-found';
 import { UiKitPage } from '@/pages/ui-kit';
+
+// LAZY — the owner-only group, in ONE chunk fetched the first time an owner
+// opens any of these six screens. They live in their own module because a
+// file that DEFINES components and also exports plain values (`routes`,
+// `router`) is not a Fast Refresh boundary — eslint-plugin-react-refresh
+// says so, and this repo's eslint config answers that by extracting rather
+// than whitelisting. `./lazy-routes` carries the measurements behind the
+// one-chunk choice and the guard-before-chunk ordering the routes below
+// depend on; read it before adding a seventh.
+import {
+  CatalogPage,
+  JournalPage,
+  PointsPage,
+  ReweighPage,
+  TransfersPage,
+  UsersPage,
+} from './lazy-routes';
 
 /**
  * `routes` is exported separately from `router` so tests can drive the same
