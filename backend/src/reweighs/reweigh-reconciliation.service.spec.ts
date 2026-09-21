@@ -1,4 +1,5 @@
 import { ReweighReconciliationService } from './reweigh-reconciliation.service';
+import type { GradeTotalsRow } from './reweigh-reconciliation.service';
 import { UserRole } from '../users/user-role.enum';
 
 // `sub`, not `id` — matches the real `AuthenticatedUser` shape
@@ -91,5 +92,84 @@ describe('ReweighReconciliationService.forShift', () => {
     const out = await svc.forShift(owner, 's-1');
     expect(out.accepted_anything).toBe(false);
     expect(out.products).toEqual([]);
+  });
+});
+
+const gradeRow = (over: Partial<GradeTotalsRow> & Pick<GradeTotalsRow, 'product_grade_id'>): GradeTotalsRow => ({
+  product_id: 'prod-1',
+  product_name: 'Малина',
+  product_grade_name: 'Малина 1',
+  intake_net_kg: '100.00',
+  intake_amount: '10000.00',
+  reweigh_net_kg: null,
+  ...over,
+});
+
+describe('grades[]', () => {
+  let rows: GradeTotalsRow[];
+  let service: ReweighReconciliationService;
+  const actor = owner;
+
+  beforeEach(() => {
+    rows = [];
+    const dataSource = {
+      query: jest.fn(async () => rows),
+      getRepository: jest.fn(() => ({ find: jest.fn(async () => []) })),
+    };
+    const shifts = { findOneRaw: jest.fn(async () => ({ id: 'shift-1', closed_at: new Date() })) };
+    service = new ReweighReconciliationService(dataSource as never, shifts as never);
+  });
+
+  it('lists one row per accepted grade, with its product', async () => {
+    rows = [
+      gradeRow({
+        product_id: 'prod-1', product_name: 'Малина',
+        product_grade_id: 'g-1', product_grade_name: 'Малина 1',
+        intake_net_kg: '200.00', intake_amount: '20000.00', reweigh_net_kg: '190.00',
+      }),
+      gradeRow({
+        product_id: 'prod-1', product_name: 'Малина',
+        product_grade_id: 'g-2', product_grade_name: 'Малина 3',
+        intake_net_kg: '100.00', intake_amount: '7000.00', reweigh_net_kg: null,
+      }),
+    ];
+
+    const res = await service.forShift(actor, 'shift-1');
+
+    expect(res.grades).toEqual([
+      {
+        product_grade_id: 'g-1', product_grade_name: 'Малина 1',
+        product_id: 'prod-1', product_name: 'Малина',
+        intake_net_kg: '200.00', reweigh_net_kg: '190.00',
+      },
+      {
+        product_grade_id: 'g-2', product_grade_name: 'Малина 3',
+        product_id: 'prod-1', product_name: 'Малина',
+        intake_net_kg: '100.00', reweigh_net_kg: '0.00',
+      },
+    ]);
+  });
+
+  it('reports an unweighed grade as 0.00 while still marking the PRODUCT not_reweighed', async () => {
+    rows = [
+      gradeRow({
+        product_id: 'prod-1', product_name: 'Малина',
+        product_grade_id: 'g-2', product_grade_name: 'Малина 3',
+        intake_net_kg: '100.00', intake_amount: '7000.00', reweigh_net_kg: null,
+      }),
+    ];
+
+    const res = await service.forShift(actor, 'shift-1');
+
+    expect(res.grades[0].reweigh_net_kg).toBe('0.00');
+    expect(res.products[0].state).toBe('not_reweighed');
+    expect(res.products[0].missing_kg).toBeNull();
+  });
+
+  it('is empty when the shift accepted nothing', async () => {
+    rows = [];
+    const res = await service.forShift(actor, 'shift-1');
+    expect(res.grades).toEqual([]);
+    expect(res.accepted_anything).toBe(false);
   });
 });

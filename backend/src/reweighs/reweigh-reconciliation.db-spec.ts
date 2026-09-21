@@ -211,4 +211,64 @@ describe('ReweighReconciliationService.forShift (DB)', () => {
       { tare_type_id: tareType.id, tare_type_name: `Чешка ${tag}`, units: 1 },
     ]);
   });
+
+  /**
+   * `gradeTotals`'s `GROUP BY`/`SELECT` changed to carry `pg.name` — exactly
+   * the kind of thing a mocked `dataSource.query` cannot see. Two grades of
+   * one product, both accepted: `grades[]` must name both, distinctly, all
+   * pointing at the same product.
+   */
+  it('returns one grade row per accepted grade, named', async () => {
+    const tag = randomUUID();
+    const short = tag.slice(0, 8).toUpperCase();
+
+    const [point] = await ds.query(
+      `INSERT INTO collection_points (name, code, kind) VALUES ($1, $2, 'reception') RETURNING id`,
+      [`Точка ${tag}`, pointCode()],
+    );
+    const [shift] = await ds.query(
+      `INSERT INTO shifts (collection_point_id, business_date, status, opened_by_user_id, closed_at, closed_by_user_id)
+       VALUES ($1, CURRENT_DATE, 'closed', $2, now(), $2) RETURNING id`,
+      [point.id, ownerId],
+    );
+    const [supplier] = await ds.query(
+      `INSERT INTO suppliers (collection_point_id, first_name, last_name)
+       VALUES ($1, 'Іван', $2) RETURNING id`,
+      [point.id, `Постачальник-${tag}`],
+    );
+    const [product] = await ds.query(`INSERT INTO products (name) VALUES ($1) RETURNING id`, [
+      `Малина ${tag}`,
+    ]);
+    const [gradeA] = await ds.query(
+      `INSERT INTO product_grades (product_id, name) VALUES ($1, 'Малина 1') RETURNING id`,
+      [product.id],
+    );
+    const [gradeB] = await ds.query(
+      `INSERT INTO product_grades (product_id, name) VALUES ($1, 'Малина 3') RETURNING id`,
+      [product.id],
+    );
+
+    const [intake] = await ds.query(
+      `INSERT INTO intakes (code, shift_id, supplier_id, amount, received_by_user_id)
+       VALUES ($1, $2, $3, '300.00', $4) RETURNING id`,
+      [`${short}-GR-1`, shift.id, supplier.id, ownerId],
+    );
+    await ds.query(
+      `INSERT INTO intake_items (intake_id, item_order, product_grade_id,
+           gross_kg, pallet_kg, tare_weight_kg, net_kg, price, bonus, amount)
+       VALUES ($1, 1, $2, '100.00', '0.00', '0.00', '100.00', '2.00', '0.00', '200.00')`,
+      [intake.id, gradeA.id],
+    );
+    await ds.query(
+      `INSERT INTO intake_items (intake_id, item_order, product_grade_id,
+           gross_kg, pallet_kg, tare_weight_kg, net_kg, price, bonus, amount)
+       VALUES ($1, 2, $2, '50.00', '0.00', '0.00', '50.00', '2.00', '0.00', '100.00')`,
+      [intake.id, gradeB.id],
+    );
+
+    const res = await service.forShift(actor(), shift.id);
+
+    expect(res.grades.map((g) => g.product_grade_name).sort()).toEqual(['Малина 1', 'Малина 3']);
+    expect(res.grades.every((g) => g.product_id === product.id)).toBe(true);
+  });
 });
