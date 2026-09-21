@@ -63,4 +63,7 @@ describe('floorToHundreds', () => {
     expect(floorToHundreds('100.00')).toBe('100.00');
     expect(floorToHundreds('87.50')).toBe('0.00');
   });
+  it('refuses a negative amount', () => {
+    expect(() => floorToHundreds('-1.00')).toThrow(/non-negative/);
+  });
 });

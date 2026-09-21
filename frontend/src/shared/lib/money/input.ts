@@ -55,9 +55,18 @@ export function clampDecimal(value: string, min: string, max: string): string {
   return canonical;
 }
 
-/** '5497.37' → '5400.00'; '87.50' → '0.00'. */
+/**
+ * '5497.37' → '5400.00'; '87.50' → '0.00'. `value` must be non-negative — its
+ * only planned caller is the «До сотні» chip over a non-negative cap, so a
+ * negative amount here is a caller bug, refused the way `div` refuses its own
+ * invalid input, rather than silently losing the sign.
+ */
 export function floorToHundreds(value: string): string {
-  const int = normalizeAmount(value).split('.')[0].replace(/^-/, '');
+  const normalized = normalizeAmount(value);
+  if (normalized.startsWith('-')) {
+    throw new Error('money: floorToHundreds needs a non-negative amount');
+  }
+  const int = normalized.split('.')[0];
   const hundreds = int.length > 2 ? `${int.slice(0, -2)}00` : '0';
   return `${hundreds}.00`;
 }
