@@ -2557,3 +2557,141 @@ present in each locale file, and paste the comparison into the report.
 
 `npm run verify` after committing, so the HEAD matches. Paste the verdict line and name any
 SKIPPED row.
+
+---
+
+### Task 15: Lazy-load the owner-only routes
+
+> **ADDED 2026-09-21, after Task 13's gate came back red on `bundle`.** The branch
+> exceeded the ceiling by 2.4 KiB gzip / 17.8 KiB raw — pure application code, zero new
+> dependencies (`git diff main...HEAD -- frontend/package.json` is empty). The budget's
+> own note permits a reasoned ceiling raise; the user chose the real fix instead:
+> split the owner-only routes so an operator never downloads them.
+
+**Why this is the better answer, not merely the more expensive one:** the app eagerly
+imports every page today. An operator on a phone at a collection point downloads the
+owner's management screens — reweigh, transfers, journal, users, points, catalog — and
+opens none of them. Raising the ceiling would have recorded that as acceptable.
+
+**Files:**
+- Modify: `frontend/src/app/router.tsx` (the route definitions)
+- Modify: `frontend/src/app/App.tsx` or the layout, wherever the `Suspense` boundary belongs
+- Modify: `scripts/verify/baselines/bundle-budget.json` — **LOWERING only**, re-measured
+- Test: existing route/page tests must keep passing; add one for the loading state
+
+**This introduces the app's FIRST `React.lazy` boundary.** There is none today — verified
+by grep. So this is a pattern change, and the pattern it sets will be copied.
+
+#### Requirements
+
+1. **Split the owner-only group**: `/reweigh`, `/transfers`, `/journal`, `/users`,
+   `/points`, `/catalog`. Leave the operator's daily screens eager — `/`, `/reception`,
+   `/day`, `/point-cash`, `/crates`, `/prices`, `/suppliers`, `/debts`. An operator must
+   not pay a chunk request for a screen they use every shift.
+2. **One `Suspense` boundary**, placed so a lazy route's fallback does not blank the app
+   shell — the sidebar and top bar must stay rendered while a chunk loads. Read
+   `AppLayout.tsx` and decide where; say in the report where you put it and why.
+3. **The fallback must not be a bare spinner in an empty page.** This repo has
+   `shared/ui/pending-slice.tsx` and `shared/ui/skeleton.tsx` — use what exists.
+4. **Route guards still run before the chunk loads.** `RequireAuth` / `RequireRole` wrap
+   the element; confirm an unauthorised user is redirected WITHOUT downloading the
+   owner chunk. That is a real property worth a test: it is the difference between
+   code-splitting and accidental authorisation-by-download.
+5. **Re-measure and LOWER the budget.** After splitting, run `npm run build` and the
+   `bundle` row, then set `maxGzipBytes`/`maxRawBytes` to the new measurement plus the
+   file's own `minHeadroom*`, rounded up by `step*`. Update `measuredAt`,
+   `measuredGzipBytes`, `measuredRawBytes`, `headroom*`. **Lowering is an ordinary
+   edit** by the note's own words. If the measurement somehow comes out ABOVE today's
+   ceiling, stop and report — do not raise it.
+
+#### Steps
+
+- [ ] **Step 1: Record the before-measurement**
+
+Run `npm run build` then the `bundle` row. Paste the current gzip/raw totals and, if the
+row prints per-chunk figures, the chunk list. You need the before to prove the after.
+
+- [ ] **Step 2: Write the guard test first, and run it to see it fail**
+
+A test that an operator hitting `/reweigh` is redirected by `RequireRole` without the
+reweigh chunk being requested. Express it however the harness allows (a `vi.mock` on the
+lazy factory asserting it was never called is the most direct).
+
+- [ ] **Step 3: Convert the six routes and add the Suspense boundary**
+
+- [ ] **Step 4: Run the full route and page suites**
+
+Run: `npm test -w frontend`
+Expected: PASS. A page test that rendered a route synchronously may now need `findBy*`
+instead of `getBy*`; fix the test, do not un-split the route.
+
+- [ ] **Step 5: Re-measure, lower the budget, prove the win**
+
+Run: `npm run verify:full` (ALONE — this branch has seen `coverage` fail purely from CPU
+contention, and two concurrent `tsc -b` runs race on `.tsbuildinfo` and surface as
+`UNRUNNABLE`). Paste the `bundle` row's verdict and the new headroom it prints.
+
+State in the report what an OPERATOR now downloads versus before — the sum is not the
+number that matters, the first chunk is.
+
+- [ ] **Step 6: Commit**
+
+Two commits: the split, then the re-measured budget with its reasoning in the body.
+
+---
+
+### Task 16: Name the product, not only the grade, in the day table
+
+> **ADDED 2026-09-21 at the user's request.** «Товар» in «Проведені переважування»
+> renders `product_grade_name` alone (`DayLines.tsx:127`). Checked against the seed:
+> grade names are «Вищий сорт», «1 сорт», «2 сорт», «3 сорт», «Стандарт», «Нестандарт»,
+> «Дрібна» — they do NOT embed the product. **Eight products** (Суниця, Вишня, Порічка,
+> Смородина, Ожина, Бузина, Шипшина, Аронія) each have a grade named exactly
+> «Стандарт», so the column currently prints «Стандарт» for eight different berries and
+> the owner cannot tell which was weighed.
+
+**Files:**
+- Modify: `frontend/src/pages/reweigh/ui/DayLines.tsx`
+- Modify: `frontend/src/pages/reweigh/ui/DraftLines.tsx` (same defect — see below)
+- Modify: `frontend/src/shared/lib/i18n/locales/uk.json`, `en.json`
+- Test: `DayLines.test.tsx`, `DraftLines`' coverage in `WeighingForm.test.tsx`
+
+#### Requirements
+
+1. **Render «product — grade»**: «Малина — 1 сорт», «Порічка — Стандарт». Put the
+   separator in an i18n key (`reweigh.productGrade`, `{{product}} — {{grade}}`) rather
+   than hard-coding a dash, so a locale can order or punctuate it differently.
+2. **Degrade honestly.** `product_name` and `product_grade_name` are BOTH optional on
+   `ReweighItem` (they come from loaded relations). If the product is missing, render the
+   grade alone; if the grade is missing, render the product alone; if both are missing,
+   render what the current code renders. Do NOT print a dangling «— 1 сорт».
+3. **`DraftLines.tsx:55` has the same defect** and is on the same screen — a draft line
+   reading «Стандарт» is exactly as ambiguous. It is included deliberately; the user
+   asked about "the table", and this is the same fix one element away. If it turns out
+   the draft strip cannot reach `product_name`, report rather than inventing a lookup.
+4. **`Reconciliation.tsx:133` must NOT change.** Its «Товар» column is product-level BY
+   DESIGN — the звірка compares by product, not by grade, because a grade that shifted in
+   transit is not a loss. Adding a grade there would contradict the column's whole point.
+
+#### Steps
+
+- [ ] **Step 1: Write the failing tests**
+
+For `DayLines`: a row whose item carries product «Малина» and grade «1 сорт» renders
+«Малина — 1 сорт». Plus the three degradation cases from requirement 2.
+Run them; expected FAIL.
+
+- [ ] **Step 2: Implement, in both components, via the shared i18n key**
+
+- [ ] **Step 3: Run the tests**
+
+Run: `npm test -w frontend -- DayLines WeighingForm`
+Expected: PASS.
+
+- [ ] **Step 4: Prove the ambiguity is gone**
+
+Render two rows from DIFFERENT products that share the grade name «Стандарт» and assert
+their «Товар» cells differ. Today that assertion fails; after the fix it passes. Paste
+both runs — this is the finding in one test.
+
+- [ ] **Step 5: Commit, then run `npm run verify`**
