@@ -29,7 +29,7 @@ src/
   main.tsx                    # entry point — wires auth interceptors, initI18n, global error reporting, renders App
   app/
     App.tsx                   # root component: ErrorBoundary > QueryClientProvider > RouterProvider
-    router.tsx                # createBrowserRouter — /login, / (dashboard), /profile, /suppliers, /points, /users, /prices, /catalog, /day, /reception, /debts, /suppliers/:id, /journal, /point-cash, /transfers, /ui-kit, catch-all 404 — no /register
+    router.tsx                # createBrowserRouter — eager: /login, / (dashboard), /profile, /suppliers, /reception, /debts, /suppliers/:id, /day, /crates, /prices, /point-cash, catch-all 404; `lazy`: /points, /users, /catalog, /journal, /transfers (one shared owner-only RequireRole layout route) and /ui-kit (dev-only, `import.meta.env.DEV` — the route entry itself is absent from the production bundle) — no /register
     layouts/AppLayout.tsx      # persistent shell: dark sidebar with role-aware grouped nav + PAPER top bar (mock composition) with scope, ThemeToggle, sign-out; renders auth pages bare
     providers/
       ErrorBoundary.tsx        # React class error boundary → ErrorFallback
@@ -58,7 +58,7 @@ src/
   features/set-point-target/     # useSetPointTargetMutation, SetTargetCashDialog — the owner sets or changes a point's cash target
   widgets/receipt/               # ReceiptDialog — the printable receipt for one intake, opened from reception, day and the supplier card alike
   pages/dashboard/               # «Зведення» — the owner's today-across-the-network overview (open shifts, receipts, cash, the biggest balances) at `/`; the same route shows the operator only their own point's row plus reception/day-cash/balances shortcuts. api/useNetworkToday.ts fans out shift+intake+payout `queryOptions` per point in one `useQueries`
-  pages/login/, pages/profile/, pages/not-found/, pages/ui-kit/
+  pages/login/, pages/profile/, pages/not-found/, pages/ui-kit/   # ui-kit: dev-only gallery — `lazy` AND route-absent in production (see «Routing»)
   pages/points/, pages/users/, pages/suppliers/, pages/catalog/, pages/prices/   # each: api/ (TanStack hooks) · model/ (wire types + form values) · lib/apiErrorToFields · ui/ (page + dialogs + tests)
   pages/day/, pages/reception/   # the money screens — «Каса за день» and «Прийомка ягоди» (RHF form + live server preview)
   pages/debts/, pages/supplier-card/   # «Залишки за нами» (balances per point, «Видати без ягоди») and the supplier card (balance, tiles, timeline of receipts and payouts) — both roles
@@ -167,6 +167,10 @@ reaches a form field this way and delete it as unused.
 `createBrowserRouter` (BrowserRouter) works because nginx SPA-fallbacks unknown paths to `index.html` (`try_files $uri $uri/ /index.html`); use HashRouter only for static hosting without rewrites.
 
 `/login` is the only public route (`router.tsx`) — there is no `/register`; `/`, `/profile`, and the catch-all 404 are each individually wrapped in `RequireAuth` rather than guarding the whole layout, so `AppLayout` can render the auth screen bare (see its `CHROMELESS` list).
+
+Owner-only pages (`/points`, `/users`, `/catalog`, `/journal`, `/transfers`) are grouped under ONE pathless layout route — `<RequireAuth><RequireRole role="network_owner"><Outlet /></RequireRole></RequireAuth>` — nested inside `AppLayout`'s children, with each of the five declared `lazy` instead of a static `element`. This leans on a react-router v8 rule: a route's own STATIC properties win over its `lazy` ones, so a guard declared on the lazy route itself would never run — the guard has to live on a parent, and each lazy child holds nothing but `path` + `lazy`. `/catalog` sits in this group rather than getting its own "both roles" layout because it is `RequireRole`-gated too (its GET is open to both roles server-side, but every write is `@Auth(NetworkOwner)` — see its route comment). `AppLayout` carries `hydrateFallbackElement` (`app/providers/HydrateFallback.tsx`) for the one case the split doesn't cover for free: a direct/hard-reload load of a lazy URL, where React Router has nothing to render until the module resolves. Ordinary in-app navigation to a lazy route has no such flash — a data router waits for `lazy` before rendering the match at all.
+
+`/ui-kit` is `lazy` and exists only when `import.meta.env.DEV` is true, spread conditionally into the top-level `routes` array — the production bundle never contains the route entry, let alone the gallery's module. It stays outside `AppLayout` (no shell, no auth), same as before.
 
 ## Server state
 

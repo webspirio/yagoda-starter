@@ -1,25 +1,20 @@
-import { createBrowserRouter, type RouteObject } from 'react-router';
+import { createBrowserRouter, Outlet, type RouteObject } from 'react-router';
 import { AppLayout } from './layouts/AppLayout';
 import { RouteError } from './providers/RouteError';
+import { HydrateFallback } from './providers/HydrateFallback';
 import { RequireAuth, RequireRole } from '@/features/auth';
 import { LoginPage } from '@/pages/login';
 import { DashboardPage } from '@/pages/dashboard';
 import { ProfilePage } from '@/pages/profile';
-import { PointsPage } from '@/pages/points';
-import { UsersPage } from '@/pages/users';
 import { SuppliersPage } from '@/pages/suppliers';
 import { DebtsPage } from '@/pages/debts';
 import { SupplierCardPage } from '@/pages/supplier-card';
-import { CatalogPage } from '@/pages/catalog';
 import { PricesPage } from '@/pages/prices';
 import { DayPage } from '@/pages/day';
 import { ReceptionPage } from '@/pages/reception';
-import { JournalPage } from '@/pages/journal';
 import { CratesPage } from '@/pages/crates';
 import { PointCashPage } from '@/pages/point-cash';
-import { TransfersPage } from '@/pages/transfers';
 import { NotFoundPage } from '@/pages/not-found';
-import { UiKitPage } from '@/pages/ui-kit';
 
 /**
  * `routes` is exported separately from `router` so tests can drive the same
@@ -28,14 +23,32 @@ import { UiKitPage } from '@/pages/ui-kit';
  * `/login` is the only public route. Everything else is wrapped in
  * RequireAuth individually rather than guarding the layout, so the layout can
  * render the auth screens bare (see AppLayout's CHROMELESS list).
+ *
+ * Every eager route below imports its page statically, so it ships in the
+ * app's one entry chunk. Owner-only pages (`/catalog` included — see its
+ * comment below) are `lazy` instead, grouped under the one pathless guard
+ * layout further down, so their code only downloads on first navigation to
+ * one of them.
  */
 export const routes: RouteObject[] = [
   // Standalone dev gallery of the shared/ui kit — no AppLayout shell, no auth,
-  // so it opens directly at /ui-kit for visual review.
-  { path: '/ui-kit', element: <UiKitPage />, errorElement: <RouteError /> },
+  // so it opens directly at /ui-kit for visual review. Dev-only: a developer
+  // tool, not something production ships. `import.meta.env.DEV` is baked in
+  // at build time, so the production bundle never even contains this array
+  // entry, let alone the lazily-imported page module.
+  ...(import.meta.env.DEV
+    ? [
+        {
+          path: '/ui-kit',
+          lazy: () => import('@/pages/ui-kit').then((m) => ({ Component: m.UiKitPage })),
+          errorElement: <RouteError />,
+        } satisfies RouteObject,
+      ]
+    : []),
   {
     element: <AppLayout />,
     errorElement: <RouteError />,
+    hydrateFallbackElement: <HydrateFallback />,
     children: [
       { path: '/login', element: <LoginPage /> },
       {
@@ -117,24 +130,50 @@ export const routes: RouteObject[] = [
         ),
       },
       {
-        path: '/points',
+        // Owner-only pages, grouped under ONE guard layout so the shell
+        // (AppLayout, above) and both guards stay eager while only the
+        // matched page's own module is deferred (`lazy` resolves on first
+        // match). A lazy route's own entry may hold only `path` + `lazy` —
+        // react-router lets STATIC properties on a route win over `lazy`
+        // ones, so a guard declared on the lazy route itself would never
+        // actually run — which is why RequireAuth/RequireRole live here, on
+        // a pathless parent, and each lazy child below is nothing but a path
+        // and an import.
         element: (
           <RequireAuth>
             <RequireRole role="network_owner">
-              <PointsPage />
+              <Outlet />
             </RequireRole>
           </RequireAuth>
         ),
-      },
-      {
-        path: '/users',
-        element: (
-          <RequireAuth>
-            <RequireRole role="network_owner">
-              <UsersPage />
-            </RequireRole>
-          </RequireAuth>
-        ),
+        children: [
+          {
+            path: '/points',
+            lazy: () => import('@/pages/points').then((m) => ({ Component: m.PointsPage })),
+          },
+          {
+            path: '/users',
+            lazy: () => import('@/pages/users').then((m) => ({ Component: m.UsersPage })),
+          },
+          {
+            // The tare & grades catalog is owner-only: GET is open to both
+            // roles server-side, but every write here is @Auth(NetworkOwner).
+            path: '/catalog',
+            lazy: () => import('@/pages/catalog').then((m) => ({ Component: m.CatalogPage })),
+          },
+          {
+            // The full receipts/payouts register is owner-only — an operator's
+            // view is scoped to their own point's shift already (Каса за день).
+            path: '/journal',
+            lazy: () => import('@/pages/journal').then((m) => ({ Component: m.JournalPage })),
+          },
+          {
+            // Лише керівник: заборгованість перед ІНШИМИ точками — не справа
+            // приймальника (§7, G16). Тому роль-гейт маршруту, а не сірі кнопки.
+            path: '/transfers',
+            lazy: () => import('@/pages/transfers').then((m) => ({ Component: m.TransfersPage })),
+          },
+        ],
       },
       {
         // Both roles: `GET /grade-prices` (current + history) is open to both
@@ -144,42 +183,6 @@ export const routes: RouteObject[] = [
         element: (
           <RequireAuth>
             <PricesPage />
-          </RequireAuth>
-        ),
-      },
-      {
-        // The tare & grades catalog is owner-only: GET is open to both roles
-        // server-side, but every write here is @Auth(NetworkOwner).
-        path: '/catalog',
-        element: (
-          <RequireAuth>
-            <RequireRole role="network_owner">
-              <CatalogPage />
-            </RequireRole>
-          </RequireAuth>
-        ),
-      },
-      {
-        // The full receipts/payouts register is owner-only — an operator's
-        // view is scoped to their own point's shift already (Каса за день).
-        path: '/journal',
-        element: (
-          <RequireAuth>
-            <RequireRole role="network_owner">
-              <JournalPage />
-            </RequireRole>
-          </RequireAuth>
-        ),
-      },
-      {
-        // Лише керівник: заборгованість перед ІНШИМИ точками — не справа
-        // приймальника (§7, G16). Тому роль-гейт маршруту, а не сірі кнопки.
-        path: '/transfers',
-        element: (
-          <RequireAuth>
-            <RequireRole role="network_owner">
-              <TransfersPage />
-            </RequireRole>
           </RequireAuth>
         ),
       },

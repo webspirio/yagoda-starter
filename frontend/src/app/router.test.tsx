@@ -21,6 +21,21 @@ vi.mock('@/pages/transfers', () => ({
 vi.mock('@/pages/point-cash', () => ({
   PointCashPage: () => <p>point-cash page</p>,
 }));
+// The rest of the owner-only group (§router.tsx's pathless RequireRole
+// layout) — stubbed the same way so mounting one on `lazy` resolution
+// doesn't drag in every query those real pages read.
+vi.mock('@/pages/points', () => ({
+  PointsPage: () => <p>points page</p>,
+}));
+vi.mock('@/pages/users', () => ({
+  UsersPage: () => <p>users page</p>,
+}));
+vi.mock('@/pages/catalog', () => ({
+  CatalogPage: () => <p>catalog page</p>,
+}));
+vi.mock('@/pages/journal', () => ({
+  JournalPage: () => <p>journal page</p>,
+}));
 
 function renderAt(path: string) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -98,6 +113,44 @@ describe('router', () => {
     expect(await screen.findByText('transfers page')).toBeInTheDocument();
   });
 
+  // /points, /users, /catalog and /journal share /transfers' guard — one
+  // pathless `RequireAuth` + `RequireRole` layout wrapping four `lazy`
+  // children (router.tsx) — so each pair below is the same assertion shape
+  // as the two /transfers tests above, proving the `lazy` module only
+  // mounts once the guard actually passes.
+  it.each([
+    ['/points', 'points page'],
+    ['/users', 'users page'],
+    ['/catalog', 'catalog page'],
+    ['/journal', 'journal page'],
+  ] as const)('keeps %s away from an operator', async (path, text) => {
+    useSession.setState({ token: 'tok' });
+    meMock.mockReturnValue({
+      data: { role: 'point_operator', display_name: 'Оператор Тест' },
+      isPending: false,
+      isError: false,
+    });
+    renderAt(path);
+    expect(await screen.findByRole('heading', { name: /summary/i })).toBeInTheDocument();
+    expect(screen.queryByText(text)).not.toBeInTheDocument();
+  });
+
+  it.each([
+    ['/points', 'points page'],
+    ['/users', 'users page'],
+    ['/catalog', 'catalog page'],
+    ['/journal', 'journal page'],
+  ] as const)('lets an owner onto %s', async (path, text) => {
+    useSession.setState({ token: 'tok' });
+    meMock.mockReturnValue({
+      data: { role: 'network_owner', display_name: 'Керівник Тест' },
+      isPending: false,
+      isError: false,
+    });
+    renderAt(path);
+    expect(await screen.findByText(text)).toBeInTheDocument();
+  });
+
   it('lets both roles onto /point-cash', async () => {
     // An operator is pinned to their own point by the token, an owner picks
     // one — either way `/point-cash` is RequireAuth with no role gate.
@@ -119,5 +172,17 @@ describe('router', () => {
     });
     renderAt('/point-cash');
     expect(await screen.findByText('point-cash page')).toBeInTheDocument();
+  });
+
+  it('serves the ui-kit gallery at /ui-kit, no auth required', async () => {
+    // `import.meta.env.DEV` is `true` for every Vitest run (mode defaults to
+    // "test", never "production"), and it is read once when router.tsx's
+    // module-level `routes` array is built — `vi.stubEnv('DEV', ...)` cannot
+    // flip it after that, so this only proves today's (dev) behaviour: the
+    // route exists and renders unauthenticated. The production branch (the
+    // route entry not existing at all) is asserted by the bundle build
+    // itself having no `ui-kit` chunk, not by a test here.
+    renderAt('/ui-kit');
+    expect(await screen.findByRole('heading', { name: /ui kit/i })).toBeInTheDocument();
   });
 });
