@@ -66,6 +66,74 @@ describe('DayLines', () => {
     expect(within(row).getByText('108.50 kg')).toBeInTheDocument();
   });
 
+  /**
+   * «Товар» has to name the product, not only the grade — «Стандарт» alone
+   * is the grade of eight different products in the seed catalogue (see
+   * `dev-seed.data.ts`), so a bare grade name leaves the owner unable to
+   * tell which berry was on the scale.
+   */
+  it('renders product and grade together', () => {
+    render(<DayLines lines={[line()]} isPending={false} date="2026-09-21" />);
+    const row = screen.getByRole('row', { name: /Шипинки/ });
+    expect(within(row).getByText('Малина — Малина 1')).toBeInTheDocument();
+  });
+
+  it('renders the grade alone when the product relation is missing — no dangling separator', () => {
+    render(
+      <DayLines lines={[line({ product_name: undefined })]} isPending={false} date="2026-09-21" />,
+    );
+    const row = screen.getByRole('row', { name: /Шипинки/ });
+    expect(within(row).getByText('Малина 1')).toBeInTheDocument();
+    expect(within(row).queryByText(/—/)).not.toBeInTheDocument();
+  });
+
+  it('renders the product alone when the grade relation is missing — no dangling separator', () => {
+    render(
+      <DayLines lines={[line({ product_grade_name: undefined })]} isPending={false} date="2026-09-21" />,
+    );
+    const row = screen.getByRole('row', { name: /Шипинки/ });
+    expect(within(row).getByText('Малина')).toBeInTheDocument();
+    expect(within(row).queryByText(/—/)).not.toBeInTheDocument();
+  });
+
+  it('renders nothing in the cell when both product and grade are missing', () => {
+    render(
+      <DayLines
+        lines={[line({ product_name: undefined, product_grade_name: undefined })]}
+        isPending={false}
+        date="2026-09-21"
+      />,
+    );
+    const row = screen.getByRole('row', { name: /Шипинки/ });
+    const whatCell = within(row).getAllByRole('cell')[2];
+    expect(whatCell.textContent).toBe('');
+  });
+
+  /**
+   * The finding in one assertion: two rows from DIFFERENT products that
+   * happen to share the grade name «Стандарт» must read differently in the
+   * «Товар» column. Before the fix both cells print «Стандарт» and this
+   * assertion fails.
+   */
+  it('tells apart two products that share the same grade name', () => {
+    const strawberry = line({ product_id: 'p1', product_name: 'Полуниця', product_grade_name: 'Стандарт' });
+    const currant = {
+      ...line({ id: 'ri2', product_id: 'p2', product_name: 'Порічка', product_grade_name: 'Стандарт' }),
+      pointId: 'p2',
+      pointName: 'Гайове',
+    };
+    render(<DayLines lines={[strawberry, currant]} isPending={false} date="2026-09-21" />);
+
+    const row1 = screen.getByRole('row', { name: /Шипинки/ });
+    const row2 = screen.getByRole('row', { name: /Гайове/ });
+    const whatCell1 = within(row1).getAllByRole('cell')[2];
+    const whatCell2 = within(row2).getAllByRole('cell')[2];
+
+    expect(whatCell1.textContent).not.toBe(whatCell2.textContent);
+    expect(whatCell1.textContent).toBe('Полуниця — Стандарт');
+    expect(whatCell2.textContent).toBe('Порічка — Стандарт');
+  });
+
   it('asks for a reason and keeps the button inactive until one is typed', async () => {
     render(<DayLines lines={[line()]} isPending={false} date="2026-09-21" />);
     await userEvent.click(screen.getByRole('button', { name: /void|сторнувати/i }));

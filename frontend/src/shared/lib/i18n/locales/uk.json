@@ -1133,6 +1133,7 @@
     "grade": "Сорт",
     "gradePlaceholder": "Оберіть сорт",
     "gradeEmpty": "Того дня тут нічого не приймали",
+    "productGrade": "{{product}} — {{grade}}",
     "tareOption": "{{name}} {{weight}} кг",
     "crateFewer": "Менше на один ящик",
     "crateMore": "Більше на один ящик",

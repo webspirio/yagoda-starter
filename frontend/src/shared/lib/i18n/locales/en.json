@@ -1113,6 +1113,7 @@
     "grade": "Grade",
     "gradePlaceholder": "Choose a grade",
     "gradeEmpty": "Nothing was accepted here that day",
+    "productGrade": "{{product}} — {{grade}}",
     "tareOption": "{{name}} {{weight}} kg",
     "crateFewer": "Remove one crate",
     "crateMore": "Add one crate",

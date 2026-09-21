@@ -119,12 +119,22 @@ export function DayLines({
                 point: pointName,
                 time: formatTime(item.created_at, locale),
               });
+              // A grade name alone is ambiguous — «Стандарт» is the grade
+              // of eight different products in this catalogue (see the
+              // seed data), so «Товар» has to carry the product too. Either
+              // half can be missing (both come from loaded relations); a
+              // dangling separator when only one half is there would be
+              // worse than the ambiguity this fixes.
+              const product = item.product_name ?? '';
+              const grade = item.product_grade_name ?? '';
+              const productGrade =
+                product && grade ? t('reweigh.productGrade', { product, grade }) : product || grade;
               return (
                 <Fragment key={item.id}>
                   <TableRow className={voided ? 'text-muted-foreground' : undefined}>
                     <TableCell className="font-medium">{pointName}</TableCell>
                     <TableCell className="font-mono text-xs">{formatTime(item.created_at, locale)}</TableCell>
-                    <TableCell>{item.product_grade_name ?? item.product_name ?? ''}</TableCell>
+                    <TableCell>{productGrade}</TableCell>
                     <TableCell className="text-right font-mono tabular-nums">
                       {formatKg(item.net_kg, locale)}
                     </TableCell>

@@ -46,13 +46,21 @@ export function DraftLines({
         <ul className="divide-y divide-border/60">
           {drafts.map((draft) => {
             const firstTare = draft.tare[0];
+            // Same ambiguity as the day table (`DayLines.tsx`): «Стандарт»
+            // alone doesn't say which of eight products it is. `Draft`
+            // carries both names as plain strings, so no fallback is needed
+            // here the way `DayLines` needs one for an optional relation.
+            const productGrade = t('reweigh.productGrade', {
+              product: draft.product_name,
+              grade: draft.product_grade_name,
+            });
             return (
               <li
                 key={draft.key}
                 className="flex flex-wrap items-center gap-x-2.5 gap-y-1 px-4 py-2.5 text-sm"
               >
                 <span className="text-muted-foreground">▪</span>
-                <span className="font-medium">{draft.product_grade_name}</span>
+                <span className="font-medium">{productGrade}</span>
                 <span className="font-mono text-xs text-muted-foreground">
                   {formatDecimal(draft.gross_kg, locale)} {t('reweigh.drafts.grossSuffix')}
                 </span>
