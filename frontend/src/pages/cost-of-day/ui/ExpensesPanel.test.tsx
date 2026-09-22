@@ -62,9 +62,7 @@ const lines: DayExpense[] = [
 ];
 
 const renderPanel = (over: Partial<CostOfDay> = {}, rows = lines) =>
-  render(
-    <ExpensesPanel day={{ ...day, ...over }} expenses={rows} shiftId="s1" locale="uk" />,
-  );
+  render(<ExpensesPanel day={{ ...day, ...over }} expenses={rows} shiftId="s1" locale="uk" />);
 
 beforeEach(() => {
   createMock.mockReset().mockResolvedValue(undefined);
@@ -146,9 +144,7 @@ describe('ExpensesPanel', () => {
     // ONLY compensating control on this one mutable money table, so an
     // unchanged `amount` tagging along here would record a transition that
     // never happened.
-    await waitFor(() =>
-      expect(updateMock).toHaveBeenCalledWith({ id: 'e1', label: 'дизель' }),
-    );
+    await waitFor(() => expect(updateMock).toHaveBeenCalledWith({ id: 'e1', label: 'дизель' }));
   });
 
   it('calls no mutation and closes the editor when nothing moved', async () => {
@@ -167,6 +163,38 @@ describe('ExpensesPanel', () => {
     await waitFor(() =>
       expect(screen.getByRole('button', { name: 'Змінити «пальне»' })).toBeInTheDocument(),
     );
+    expect(updateMock).not.toHaveBeenCalled();
+  });
+
+  it('refuses an in-progress amount instead of letting the server 400', async () => {
+    const user = userEvent.setup();
+    renderPanel();
+
+    await user.type(screen.getByLabelText('Підпис витрати'), 'водій');
+    // `maskDecimalInput` is a TYPING mask, not a validator: it lets '12.'
+    // stand mid-keystroke, and `CreateDayExpenseDto`'s `@Matches` refuses it.
+    // The refusal belongs on this side as a disabled button — a round trip
+    // that comes back «щось пішло не так» says nothing about the field.
+    await user.type(screen.getByLabelText('₴'), '12.');
+
+    expect(screen.getByRole('button', { name: 'ще рядок' })).toBeDisabled();
+    await user.click(screen.getByRole('button', { name: 'ще рядок' }));
+    expect(createMock).not.toHaveBeenCalled();
+  });
+
+  it('refuses an in-progress amount in the inline editor too', async () => {
+    const user = userEvent.setup();
+    renderPanel();
+
+    await user.click(screen.getByRole('button', { name: 'Змінити «пальне»' }));
+    const amount = screen.getByDisplayValue('1000.00');
+    await user.clear(amount);
+    await user.type(amount, '13.');
+
+    // Without the gate this took the `draftAmount !== '' ` branch and sent
+    // '13.' — or, worse, dropped it silently and closed the editor on a value
+    // the person had every reason to think was saved.
+    expect(screen.getByRole('button', { name: 'Зберегти' })).toBeDisabled();
     expect(updateMock).not.toHaveBeenCalled();
   });
 
