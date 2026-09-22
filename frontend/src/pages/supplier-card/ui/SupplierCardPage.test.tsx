@@ -352,6 +352,8 @@ describe('SupplierCardPage', () => {
     expect(await screen.findByText('91')).toBeInTheDocument();
     expect(tile('Accrued')).toHaveTextContent('10,000.00 ₴');
     expect(tile('Accrued')).not.toHaveTextContent('1,000.00 ₴');
+    // Kilograms diverge the same way: the one loaded row weighs 10.00.
+    expect(tile('Berries handed over')).toHaveTextContent('2,500.50 kg');
   });
 
   it('strikes the voided row through and shows the reason', () => {
