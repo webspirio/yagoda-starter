@@ -376,4 +376,88 @@ describe('ReweighReconciliationService.forShift (DB)', () => {
     expect(productRow(withVoided)).toEqual(productRow(withoutVoided));
     expect(productRow(withVoided)).toEqual(productRow(defaulted));
   });
+
+  /**
+   * §3.4's actual promise: the picker offers exactly what the API enforces.
+   *
+   * `ReweighsService.acceptedGrades` — the source of `GRADE_NOT_ACCEPTED` — is
+   * DERIVED from `gradeTotals`, the same statement behind `grades[]`, so this
+   * one assertion covers both halves of that promise. Before they were unified
+   * they were two independent statements that agreed only by coincidence; this
+   * case is the coincidence made falsifiable.
+   *
+   * The fixture is the case most likely to break first, and the one a mocked
+   * spec cannot reach at all, because it turns on `i.voided_at IS NULL` being
+   * evaluated by Postgres: a grade whose ONLY receipt was voided. It was
+   * accepted, then it was not. It must vanish from the picker — an owner
+   * offered it would be refused at the POST with a rule they were just invited
+   * to break.
+   */
+  it('drops a grade from grades[] once its only intake is voided — the picker and the refusal agree', async () => {
+    const tag = randomUUID();
+    const short = tag.slice(0, 8).toUpperCase();
+
+    const [point] = await ds.query(
+      `INSERT INTO collection_points (name, code, kind) VALUES ($1, $2, 'reception') RETURNING id`,
+      [`Точка ${tag}`, pointCode()],
+    );
+    const [shift] = await ds.query(
+      `INSERT INTO shifts (collection_point_id, business_date, status, opened_by_user_id, closed_at, closed_by_user_id)
+       VALUES ($1, CURRENT_DATE, 'closed', $2, now(), $2) RETURNING id`,
+      [point.id, ownerId],
+    );
+    const [supplier] = await ds.query(
+      `INSERT INTO suppliers (collection_point_id, first_name, last_name)
+       VALUES ($1, 'Іван', $2) RETURNING id`,
+      [point.id, `Постачальник-${tag}`],
+    );
+    const [product] = await ds.query(`INSERT INTO products (name) VALUES ($1) RETURNING id`, [
+      `Малина ${tag}`,
+    ]);
+    const [kept] = await ds.query(
+      `INSERT INTO product_grades (product_id, name) VALUES ($1, $2) RETURNING id`,
+      [product.id, `Сорт живий ${tag}`],
+    );
+    const [orphaned] = await ds.query(
+      `INSERT INTO product_grades (product_id, name) VALUES ($1, $2) RETURNING id`,
+      [product.id, `Сорт сторнований ${tag}`],
+    );
+
+    // One live receipt, for `kept`.
+    const [live] = await ds.query(
+      `INSERT INTO intakes (code, shift_id, supplier_id, amount, received_by_user_id)
+       VALUES ($1, $2, $3, '200.00', $4) RETURNING id`,
+      [`${short}-AC-1`, shift.id, supplier.id, ownerId],
+    );
+    await ds.query(
+      `INSERT INTO intake_items (intake_id, item_order, product_grade_id,
+           gross_kg, pallet_kg, tare_weight_kg, net_kg, price, bonus, amount)
+       VALUES ($1, 1, $2, '100.00', '0.00', '0.00', '100.00', '2.00', '0.00', '200.00')`,
+      [live.id, kept.id],
+    );
+
+    // One VOIDED receipt, and it is the only place `orphaned` was ever accepted.
+    const [voided] = await ds.query(
+      `INSERT INTO intakes (code, shift_id, supplier_id, amount, received_by_user_id,
+           voided_at, voided_by_user_id, void_reason)
+       VALUES ($1, $2, $3, '100.00', $4, now(), $4, 'помилково') RETURNING id`,
+      [`${short}-AC-2`, shift.id, supplier.id, ownerId],
+    );
+    await ds.query(
+      `INSERT INTO intake_items (intake_id, item_order, product_grade_id,
+           gross_kg, pallet_kg, tare_weight_kg, net_kg, price, bonus, amount)
+       VALUES ($1, 1, $2, '50.00', '0.00', '0.00', '50.00', '2.00', '0.00', '100.00')`,
+      [voided.id, orphaned.id],
+    );
+
+    const res = await service.forShift(actor(), shift.id);
+    const offered = res.grades.map((g) => g.product_grade_id);
+
+    expect(offered).toContain(kept.id);
+    expect(offered).not.toContain(orphaned.id);
+    // And the grade that survived is the ONLY one — a `grades[]` that leaked
+    // the voided receipt's grade would still contain `kept`, so the negative
+    // assertion above is the one carrying the weight, and this pins the size.
+    expect(offered).toHaveLength(1);
+  });
 });
