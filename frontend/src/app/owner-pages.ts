@@ -6,7 +6,7 @@
  *
  * Adding an owner-only screen? Re-export it here and wrap it in
  * `lazy-routes.ts`. Do NOT import this module anywhere else: a single static
- * import from the eager graph pulls all six screens straight back into the
+ * import from the eager graph pulls every one of these screens back into the
  * entry chunk and silently undoes the split.
  */
 export { PointsPage } from '@/pages/points';

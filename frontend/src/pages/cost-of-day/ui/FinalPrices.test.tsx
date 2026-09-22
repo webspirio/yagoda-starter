@@ -111,7 +111,14 @@ describe('FinalPrices', () => {
     const partial: CostOfDay = {
       ...day,
       products: [
-        { ...day.products[0], reweigh_net_kg: null, basket_share: null, price_cost: null, price_by_our_weight: null, complete: false },
+        {
+          ...day.products[0],
+          reweigh_net_kg: null,
+          basket_share: null,
+          price_cost: null,
+          price_by_our_weight: null,
+          complete: false,
+        },
       ],
     };
     render(<FinalPrices day={partial} locale="uk" />);

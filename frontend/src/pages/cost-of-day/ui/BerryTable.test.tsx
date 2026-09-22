@@ -44,9 +44,7 @@ const unweighed: CostOfDayProduct = {
 };
 
 const renderTable = (products: CostOfDayProduct[]) =>
-  render(
-    <BerryTable products={products} reweighedKg="790.00" accrued="128000.00" locale="uk" />,
-  );
+  render(<BerryTable products={products} reweighedKg="790.00" accrued="128000.00" locale="uk" />);
 
 describe('BerryTable', () => {
   it("prints the point's weight, its rate and what it accrued", () => {

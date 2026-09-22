@@ -16,15 +16,16 @@ afterAll(async () => {
   await i18n.changeLanguage('en');
 });
 
-const { workingPointMock, pointsMock, shiftMock, dayMock, expensesMock, setDateMock } =
-  vi.hoisted(() => ({
+const { workingPointMock, pointsMock, shiftMock, dayMock, expensesMock, setDateMock } = vi.hoisted(
+  () => ({
     workingPointMock: vi.fn(),
     pointsMock: vi.fn(),
     shiftMock: vi.fn(),
     dayMock: vi.fn(),
     expensesMock: vi.fn(),
     setDateMock: vi.fn(),
-  }));
+  }),
+);
 
 // `useUrlParam` reads react-router's search params, so without this stub the
 // page cannot mount outside a Router at all. `null` means «no ?date=», which

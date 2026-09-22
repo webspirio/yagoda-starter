@@ -35,9 +35,7 @@ import type { CostOfDay } from '@/entities/cost-of-day';
 export function FinalPrices({ day, locale }: { day: CostOfDay; locale: string }) {
   const { t } = useTranslation();
 
-  const shares = day.products
-    .map((p) => p.basket_share)
-    .filter((s): s is string => s !== null);
+  const shares = day.products.map((p) => p.basket_share).filter((s): s is string => s !== null);
   const sharesTotal = shares.length > 0 ? sum(shares) : '0.00';
   const sharesMatch = cmp(sharesTotal, day.basket) === 0;
 
@@ -72,12 +70,24 @@ export function FinalPrices({ day, locale }: { day: CostOfDay; locale: string })
           <TableHeader>
             <TableRow>
               <TableHead scope="col">{t('costOfDay.final.product')}</TableHead>
-              <TableHead scope="col" className="text-right">{t('costOfDay.final.ourWeight')}</TableHead>
-              <TableHead scope="col" className="text-right">{t('costOfDay.final.fromBasket')}</TableHead>
-              <TableHead scope="col" className="text-right">{t('costOfDay.final.together')}</TableHead>
-              <TableHead scope="col" className="text-right">{t('costOfDay.final.cost')}</TableHead>
-              <TableHead scope="col" className="text-right">{t('costOfDay.final.was')}</TableHead>
-              <TableHead scope="col" className="text-right">{t('costOfDay.final.byOurWeight')}</TableHead>
+              <TableHead scope="col" className="text-right">
+                {t('costOfDay.final.ourWeight')}
+              </TableHead>
+              <TableHead scope="col" className="text-right">
+                {t('costOfDay.final.fromBasket')}
+              </TableHead>
+              <TableHead scope="col" className="text-right">
+                {t('costOfDay.final.together')}
+              </TableHead>
+              <TableHead scope="col" className="text-right">
+                {t('costOfDay.final.cost')}
+              </TableHead>
+              <TableHead scope="col" className="text-right">
+                {t('costOfDay.final.was')}
+              </TableHead>
+              <TableHead scope="col" className="text-right">
+                {t('costOfDay.final.byOurWeight')}
+              </TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>

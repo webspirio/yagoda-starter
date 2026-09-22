@@ -1157,3 +1157,14 @@ decision rather than guessing whether something was missed.
   prints «із пулу» and checks «Σ із пулу = КОШИК» in front of the owner, and `per_kg × kg` per
   row fails that check by 2,94 ₴ on §8.4's own numbers. If the rules file is ever revised, §5.5
   should gain the formula rather than the code losing it.
+
+**Came out of this slice's own review, not from the plan:**
+
+- **A remembered point that has since been deactivated shows one point and reads another.**
+  `usePointScope` UUID-shape-checks the remembered/`?point=` id and nothing more, so when that
+  point is no longer in `usePointOptionsQuery`'s list the `<select>` displays the FIRST active
+  option while every query stays scoped to the remembered id, and the printed point name falls
+  back to «—». `pages/reweigh` corrects this for its own filtering reason
+  (`ReweighPage.tsx:83-86`); `pages/cost-of-day`, `pages/point-cash` and `pages/transfers` do
+  not. This is a shared gap in `entities/user`'s scope hook rather than anything the cost-of-day
+  screen introduced, and the fix belongs there — one place, not four.
