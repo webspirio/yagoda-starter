@@ -606,16 +606,19 @@ export const CHECKS = [
     // `bundle` reported NOT_RUN, naming `build` as the unmet dependency, never FAILED and
     // never a false PASSED against the tree `build` left behind.
     proves:
-      'The sum of frontend/dist/assets is inside the recorded ceiling, gzip and raw. The ' +
-      'ceiling is derived, not chosen: measurement plus a minimum headroom, rounded up to ' +
-      'a step, written only by an explicit --write. Two WARNING lines print on every ' +
-      'PASSING run — the headroom left, and the largest JS chunk as a share of the total ' +
-      '— because those numbers, not the verdict, are the point.',
+      "First paint — the Vite manifest's entry chunk plus the closure of its static " +
+      "`imports` and their `css` — and lazy — every other chunk reached only through a " +
+      '`dynamicImports` edge — each sit inside their own recorded ceiling, gzip and raw, ' +
+      'covering every manifest-listed chunk with no gap and no overlap. Splitting code ' +
+      'moves bytes between the two ceilings, never out of both. Each is derived, never ' +
+      'chosen, and re-baselined on every explicit `--write`.',
     blindSpot:
-      'A sum of built files, not what a browser downloads on first paint: code splitting, ' +
-      'lazy routes and caching all change the real number and none of them is visible ' +
-      'here. No per-chunk ceiling exists, so one file may grow to the whole budget. It ' +
-      'measures the output of the last `build`, so a stale dist gives a stale verdict.',
+      'Reads whatever the LAST `build` wrote — a stale-but-consistent dist/manifest pair ' +
+      "still gives a stale, passing verdict. It trusts the manifest's own " +
+      'static-versus-dynamic split, models a cold download only — no HTTP cache, no ' +
+      "repeat visit — and counts neither figure's own webfonts, which the entry's css " +
+      'pulls in but this check never opens. No per-chunk ceiling exists, and the sum it ' +
+      'also prints carries no ceiling of its own at all.',
   },
   {
     id: 'test:db',
