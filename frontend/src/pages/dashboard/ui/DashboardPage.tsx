@@ -66,14 +66,17 @@ export function DashboardPage() {
   // точка виглядає в ньому як «Зміну ще не відкрито».
   const staleShifts = useStaleOpenShiftsQuery({ enabled: isOwner });
 
+  // `staleShifts` серед цих термів НЕМАЄ свідомо: секція «Незакриті зміни» —
+  // це додаткове попередження, воно має право приїхати пізніше, а не тримати
+  // весь екран за спінером щоранку. Відсутність терма ще й закриває пастку
+  // `enabled: false` структурно, а не пам'яттю про обхід: вимкнений запит
+  // лишається `pending` НАЗАВЖДИ, тож кожен такий терм мусить нести поруч
+  // `isOwner &&` — а терм, якого немає, забути цього не може.
   const isPending =
     meIsPending ||
     (isOwner && pointsIsPending) ||
     network.isPending ||
-    (isOwner && balances.isPending) ||
-    // `enabled: false` тримає запит у `pending` НАЗАВЖДИ, тому без `isOwner`
-    // оператор дивився б на спінер до кінця зміни.
-    (isOwner && staleShifts.isPending);
+    (isOwner && balances.isPending);
   const isError = network.isError || (isOwner && (pointsIsError || balances.isError));
 
   const pointName = (id: string) => activePoints.find((p) => p.id === id)?.name ?? '';
@@ -85,8 +88,17 @@ export function DashboardPage() {
 
   // НЕ входить в `isError`: сьогоднішні цифри від падіння цього читання не
   // стали неправдою, і міняти весь екран на «Щось пішло не так» через
-  // додаткове попередження — гірше, ніж не показати саме попередження.
-  const staleRows = staleShifts.data?.data ?? [];
+  // додаткове попередження — гірше, ніж сказати про невдачу одним рядком у
+  // самій секції (див. `staleShiftsSection` нижче).
+  //
+  // Сортування тут — рішення ПОКАЗУ, а не недовіра до сервера: `ShiftsService.list`
+  // віддає `business_date DESC` (свіже першим), а в цьому списку читають не
+  // «що сталось останнім», а «що застрягло найдовше», тож першою має стояти
+  // найстаріша. Сорт стабільний, тому серверний `id ASC` у межах однієї дати
+  // лишається як був.
+  const staleRows = [...(staleShifts.data?.data ?? [])].sort((a, b) =>
+    a.business_date < b.business_date ? -1 : a.business_date > b.business_date ? 1 : 0,
+  );
 
   const balanceRows = balances.data?.data ?? [];
   const positiveDebt = sum(balanceRows.filter((b) => cmp(b.debt, '0') === 1).map((b) => b.debt));
@@ -172,38 +184,53 @@ export function DashboardPage() {
    *
    * Порожньо — не рендериться НІЧОГО: картка «незакритих змін немає» на
    * екрані, який має лишатись оглядовим, — це шум щодня заради рідкого дня.
+   *
+   * А ось ПОМИЛКА читання рендериться рядком, бо мовчання тут — це вже
+   * відповідь: секція каже рівно «ці точки не закрились», тож її відсутність
+   * читається як «жодна». Приглушено, а не тривожно: цифри поруч від
+   * невдалого читання не стали неправдою, і кричати тут немає про що.
    */
-  const staleShiftsSection =
-    staleRows.length === 0 ? null : (
-      <Card className="border-amber/40 p-4">
-        <div className="flex items-center gap-2">
-          <AlertTriangle className="size-4 shrink-0 text-amber" />
-          <p className="text-sm font-medium">{t('dashboard.staleShifts.title')}</p>
-        </div>
-        <p className="mt-1 text-xs text-muted-foreground">{t('dashboard.staleShifts.hint')}</p>
-        <ul className="mt-2 divide-y divide-border">
-          {staleRows.map((shift) => (
-            <li key={shift.id}>
-              <Link
-                to={`/day?point=${shift.collection_point_id}&date=${shift.business_date}`}
-                className="flex items-center justify-between gap-3 py-2.5 text-sm transition-colors hover:bg-muted/60"
-              >
-                <span className="min-w-0 truncate">{pointName(shift.collection_point_id)}</span>
-                <span className="ml-auto shrink-0 tabular-nums text-muted-foreground">
-                  {formatLongDate(shift.business_date, i18n.language)}
-                </span>
-              </Link>
-            </li>
-          ))}
-        </ul>
-        {/* Те саме «перші 100», що й у плитці залишків: фраза про стелю
-            читання, а не про те, ЩО саме читали — тому ключ один на двох
-            (див. #77 про дублікати в i18n). */}
-        {isTruncated(staleShifts.data) ? (
-          <p className="mt-2 text-xs text-muted-foreground">{t('dashboard.tiles.balancesHint')}</p>
-        ) : null}
-      </Card>
-    );
+  const staleShiftsSection = staleShifts.isError ? (
+    <p className="text-xs text-muted-foreground">{t('dashboard.staleShifts.loadFailed')}</p>
+  ) : staleRows.length === 0 ? null : (
+    <Card className="border-amber/40 p-4">
+      <div className="flex items-center gap-2">
+        <AlertTriangle className="size-4 shrink-0 text-amber" />
+        <p className="text-sm font-medium">{t('dashboard.staleShifts.title')}</p>
+      </div>
+      <p className="mt-1 text-xs text-muted-foreground">{t('dashboard.staleShifts.hint')}</p>
+      <ul className="mt-2 divide-y divide-border">
+        {staleRows.map((shift) => (
+          <li key={shift.id}>
+            <Link
+              to={`/day?point=${shift.collection_point_id}&date=${shift.business_date}`}
+              className="flex items-center justify-between gap-3 py-2.5 text-sm transition-colors hover:bg-muted/60"
+            >
+              {/* `pointName` читає лише АКТИВНІ точки, а точку виводять з
+                  роботи саме тоді, коли на ній перестали працювати — тією ж
+                  подією, що лишила її останню зміну відкритою. Тут це не
+                  рідкісний край, а звичайний випадок, і порожня назва була б
+                  усім, що керівник побачить. UUID замість неї не допомагає:
+                  його ніде в застосунку не показують, а сама точка вже є в
+                  посиланні поруч. */}
+              <span className="min-w-0 truncate">
+                {pointName(shift.collection_point_id) || t('dashboard.staleShifts.inactivePoint')}
+              </span>
+              <span className="ml-auto shrink-0 tabular-nums text-muted-foreground">
+                {formatLongDate(shift.business_date, i18n.language)}
+              </span>
+            </Link>
+          </li>
+        ))}
+      </ul>
+      {/* Те саме «перші 100», що й у плитці залишків: фраза про стелю
+          читання, а не про те, ЩО саме читали — тому ключ один на двох
+          (див. #77 про дублікати в i18n). */}
+      {isTruncated(staleShifts.data) ? (
+        <p className="mt-2 text-xs text-muted-foreground">{t('dashboard.tiles.balancesHint')}</p>
+      ) : null}
+    </Card>
+  );
 
   const body = isError ? (
     <p role="alert" className="py-6 text-center text-destructive">

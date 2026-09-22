@@ -238,11 +238,13 @@ describe('DashboardPage — the owner', () => {
     await expectNoAxeViolations(container);
   });
 
-  it('gives every stranded point its own row', () => {
+  it('gives every stranded point its own row, oldest first', () => {
     staleShiftsMock.mockReturnValue({
+      // AS THE SERVER SENDS THEM: `ShiftsService.list` orders `business_date
+      // DESC`, so the newest stranded shift arrives first.
       data: shiftsPage([
-        staleShift,
         { ...staleShift, id: 's8', collection_point_id: 'p1', business_date: '2026-09-06' },
+        staleShift,
       ]),
       isPending: false,
       isError: false,
@@ -253,7 +255,45 @@ describe('DashboardPage — the owner', () => {
     const section = screen.getByText('Unclosed shifts').closest('[data-slot="card"]') as HTMLElement;
     const links = within(section).getAllByRole('link');
     expect(links).toHaveLength(2);
+    // Read in the other direction: the shift stranded longest is the urgent
+    // one, so it leads.
+    expect(links[0]).toHaveAttribute('href', '/day?point=p2&date=2026-09-05');
     expect(links[1]).toHaveAttribute('href', '/day?point=p1&date=2026-09-06');
+  });
+
+  it('shows today’s points and tiles while the stale-shift read is still in flight', () => {
+    // The section is allowed to arrive late — it is not allowed to hold the
+    // screen. Everything else on this dashboard has already answered.
+    staleShiftsMock.mockReturnValue({ data: undefined, isPending: true, isError: false });
+
+    renderDashboard();
+
+    expect(screen.getByText('Shypynky')).toBeInTheDocument();
+    expect(screen.getByText('Points today')).toBeInTheDocument();
+    expect(screen.getByText('Points open').closest('[data-slot="stat-tile"]')).toHaveTextContent(
+      '1 / 2',
+    );
+    expect(screen.queryByText('Unclosed shifts')).toBeNull();
+  });
+
+  it('still names a stranded shift whose point has since been deactivated', () => {
+    // The likely case, not a contrived one: a point is retired exactly when it
+    // stops being worked — the same event that left its last shift open. It is
+    // absent from `usePointOptionsQuery` (active only), so the row used to be a
+    // bare date beside a blank label.
+    staleShiftsMock.mockReturnValue({
+      data: shiftsPage([{ ...staleShift, collection_point_id: 'p9' }]),
+      isPending: false,
+      isError: false,
+    });
+
+    renderDashboard();
+
+    const section = screen.getByText('Unclosed shifts').closest('[data-slot="card"]') as HTMLElement;
+    const link = within(section).getByRole('link');
+    expect(link).toHaveTextContent('Inactive point');
+    expect(link).toHaveTextContent('September 5, 2026');
+    expect(link).toHaveAttribute('href', '/day?point=p9&date=2026-09-05');
   });
 
   it('renders no section at all when nothing was left open', () => {
@@ -341,14 +381,19 @@ describe('DashboardPage — the operator', () => {
 });
 
 describe('DashboardPage — a failed read', () => {
-  it('keeps today’s overview when only the stale-shift read fails', () => {
+  it('says so quietly when only the stale-shift read fails, and keeps today’s overview', () => {
     staleShiftsMock.mockReturnValue({ data: undefined, isPending: false, isError: true });
 
     renderDashboard();
 
+    // Rendering nothing would be byte-for-byte «nothing is stranded» — the
+    // answer the owner comes to this section FOR.
+    expect(screen.getByText('Could not check for unclosed shifts')).toBeInTheDocument();
+    // A note, not the section itself, and not the screen's error state either:
+    // today's numbers are still true and must not be replaced by a red page.
     expect(screen.queryByRole('alert')).toBeNull();
-    expect(screen.getByText('Shypynky')).toBeInTheDocument();
     expect(screen.queryByText('Unclosed shifts')).toBeNull();
+    expect(screen.getByText('Shypynky')).toBeInTheDocument();
   });
 
   it('shows the error state', () => {

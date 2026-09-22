@@ -820,4 +820,20 @@ describe('DayPage — an open shift left behind on another day (#114)', () => {
 
     expect(screen.queryByRole('button', { name: 'Open shift' })).toBeNull();
   });
+
+  it('offers no open action when the read of what is open FAILED either', () => {
+    // A read that FAILED is the same unknown as one still in flight — but it
+    // is the more dangerous one: `isPending` has already fallen back to false,
+    // so a gate that watches only the flight lets the button return over a
+    // shift the server never denied. The day's own read succeeded here and
+    // says «nothing today», which is exactly what makes the button look safe.
+    currentShiftMock.mockReturnValue({ data: undefined, isPending: false, isError: true });
+
+    const { container } = renderDay();
+
+    expect(container.querySelector('[data-slot="badge"]')).toHaveTextContent(
+      'Shift not opened yet',
+    );
+    expect(screen.queryByRole('button', { name: 'Open shift' })).toBeNull();
+  });
 });

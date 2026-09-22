@@ -133,9 +133,12 @@ export function DayPage() {
   // only about a shift left behind on an EARLIER day; the server refuses a
   // second shift regardless, so the button must go away for all of them,
   // including one dated today that `shift` above has not caught up with yet.
-  // While the read is in flight the answer is unknown, which is not the same
-  // as «none» — the toolbar waits, exactly as it does for `isLoadingShift`.
-  const mayOpenShift = current.data == null && !current.isPending;
+  // A read still IN FLIGHT and a read that FAILED are the same unknown, and
+  // neither of them is «none»: `isPending` goes back to false the moment the
+  // request errors, so watching it alone would hand the button back over a
+  // shift the server never denied. The toolbar waits for both — the same rule
+  // `pages/reception` applies to its own banner.
+  const mayOpenShift = current.data == null && !current.isPending && !current.isError;
 
   const liveIntakes = (intakes.data?.data ?? []).filter((i) => i.voided_at === null);
   const livePayouts = (payouts.data?.data ?? []).filter((p) => p.voided_at === null);
