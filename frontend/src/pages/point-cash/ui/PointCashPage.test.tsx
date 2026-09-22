@@ -109,6 +109,8 @@ const pointRow = (over: Partial<PointCashRow> = {}): PointCashRow => ({
   shortfall: null,
   unexplained_difference: '0.00',
   latest_transfer: null,
+  crate_deposits: '0.00',
+  crate_deposit_units: 0,
   ...over,
 });
 
@@ -142,6 +144,7 @@ const cashCount = (over: Partial<CashCount> = {}): CashCount => ({
   discrepancy: '0.00',
   is_open: false,
   counted_by_user_id: 'u1',
+  counted_by_name: 'Olha',
   counted_at: '2026-09-08T07:00:00Z',
   explanation: null,
   ...over,

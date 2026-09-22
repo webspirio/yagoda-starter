@@ -31,6 +31,7 @@ const count = (over: Partial<CashCount> = {}): CashCount => ({
   discrepancy: '0.00',
   is_open: false,
   counted_by_user_id: 'u1',
+  counted_by_name: 'Olha',
   counted_at: '2026-09-10T07:00:00Z',
   explanation: null,
   ...over,
