@@ -191,10 +191,21 @@ export class IntakesService {
         paid.push(payout);
       }
 
+      // NOT `intake.items` — the cascade save above only ever populated
+      // `product_grade_id`, never the relation, so the mapper's `?? ''`
+      // fallback would fire for both names on every line of a freshly
+      // created receipt. Re-reading inside the SAME transaction is what
+      // `findOne` already does for the same fields, just against a row that
+      // has since committed elsewhere.
+      const items = await m.find(IntakeItem, {
+        where: { intake_id: intake.id },
+        relations: { tare: true, product_grade: { product: true } },
+      });
+
       return toIntakeDetailResponse(
         intake,
         shift,
-        intake.items ?? [],
+        items,
         await this.extrasFor(intake.id, m),
         paid,
         await this.nameOf(actor.sub, m),
@@ -411,7 +422,11 @@ export class IntakesService {
             supplier_name: row.supplier_name,
             paid_amount: row.paid_amount,
           },
-          itemsByIntake.get(i.id),
+          // `undefined` when nobody asked (mapper omits `items` entirely);
+          // `[]` — not `undefined` — when they asked and this row's bucket
+          // stayed empty, so «asked, found none» stays distinguishable from
+          // «not asked» even though no intake reaches zero lines today.
+          itemsByIntake.get(i.id) ?? (query.expand === 'items' ? [] : undefined),
         );
       }),
       total,

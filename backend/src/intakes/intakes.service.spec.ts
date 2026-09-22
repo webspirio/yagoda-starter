@@ -48,6 +48,7 @@ describe('IntakesService', () => {
     create: jest.Mock;
     findOne: jest.Mock;
     query: jest.Mock;
+    find: jest.Mock;
   };
   /** `dataSource.manager` — the NON-transactional manager `preview` reads
    *  through, and the same object `this.repo.manager` resolves to (a
@@ -143,6 +144,11 @@ describe('IntakesService', () => {
       findOne: jest.fn().mockImplementation(findOneUserOrNull),
       save: jest.fn().mockImplementation((_e, v) => Promise.resolve(intake(v))),
       create: jest.fn().mockImplementation((_e, v) => v),
+      // `create`'s response items are RE-READ, not taken from the cascade
+      // save — the saved `IntakeItem`s never carry `product_grade`, so
+      // reusing them would silently answer `product_name: ''`. Empty by
+      // default; the test below stocks a real row to prove the names flow.
+      find: jest.fn().mockResolvedValue([]),
     };
     plainManager = {
       getRepository: jest.fn().mockReturnValue(itemRepo),
@@ -318,6 +324,40 @@ describe('IntakesService', () => {
       expect(saved.items.map((i) => i.item_order)).toEqual([1, 2]);
       expect(saved.items[0].net_kg).toBe('36.90');
       expect(saved.items[0].tare).toHaveLength(1);
+    });
+
+    it('carries product_name/grade_name on the response by RE-READING the items, not from the cascade save', async () => {
+      // The cascade-saved `IntakeItem`s (what `manager.save` echoes back) never
+      // load `product_grade` — only a fresh `find` does, which is exactly the
+      // gap review round 1 found: `intake.items ?? []` answered '' for both
+      // names on every line of a freshly created receipt.
+      manager.find.mockResolvedValue([
+        {
+          id: 'ii-1',
+          item_order: 1,
+          product_grade_id: GRADE,
+          gross_kg: '42.00',
+          pallet_kg: '1.50',
+          tare_weight_kg: '3.60',
+          net_kg: '36.90',
+          price: '57.00',
+          bonus: '0.00',
+          amount: '2103.30',
+          tare: [{ tare_type_id: CRATE, units: 3 }],
+          product_grade: { name: 'Альба', product: { name: 'Полуниця' } },
+        },
+      ]);
+
+      const res = await service.create(oksana, dto());
+
+      expect(manager.find).toHaveBeenCalledWith(expect.anything(), {
+        where: { intake_id: INTAKE_ID },
+        relations: { tare: true, product_grade: { product: true } },
+      });
+      expect(res.items[0]).toMatchObject({
+        product_name: 'Полуниця',
+        grade_name: 'Альба',
+      });
     });
 
     it('stores amount as Σ of the line amounts', async () => {

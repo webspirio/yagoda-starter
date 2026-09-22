@@ -96,6 +96,7 @@ describe('GET /intakes?expand=items (HTTP, Postgres)', () => {
   let gradeId: string;
   let secondGradeId: string;
   let tareId: string;
+  let createResponse: { body: { items: { product_name: string; grade_name: string }[] } };
 
   beforeAll(async () => {
     // The catalog this suite's receipt is built from. Names carry a per-run
@@ -157,7 +158,7 @@ describe('GET /intakes?expand=items (HTTP, Postgres)', () => {
     // Two lines, so the assertions below can check BOTH the count and the
     // ordering `item_order` promises — a single-line receipt would pass a
     // broken sort just as easily as a correct one.
-    await request(app.getHttpServer())
+    createResponse = await request(app.getHttpServer())
       .post('/intakes')
       .set('Authorization', `Bearer ${operatorToken}`)
       .send({
@@ -181,6 +182,22 @@ describe('GET /intakes?expand=items (HTTP, Postgres)', () => {
       })
       .expect(201);
   }, 30_000);
+
+  // Review round 1 (#148): `create`'s response used to take its `items` from
+  // the cascade save, which never loads `product_grade` — every line named
+  // '' for both fields while `GET /intakes/:id` on the SAME receipt, a
+  // moment later, returned the real names. Pins the fix at its source rather
+  // than only downstream on `GET /intakes`.
+  it('POST /intakes itself names each line — not just a later read of it', () => {
+    expect(createResponse.body.items[0]).toMatchObject({
+      product_name: expect.stringMatching(/^Полуниця-/),
+      grade_name: expect.stringMatching(/^Альба-/),
+    });
+    expect(createResponse.body.items[1]).toMatchObject({
+      product_name: expect.stringMatching(/^Полуниця-/),
+      grade_name: expect.stringMatching(/^Хоней-/),
+    });
+  });
 
   it('nests the lines, ordered like the paper, when asked', async () => {
     const { body } = await request(app.getHttpServer())
