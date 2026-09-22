@@ -1,9 +1,10 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Post } from '@nestjs/common';
+import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Query } from '@nestjs/common';
 import { Auth } from '../auth/decorators/auth.decorators';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { UserRole } from '../users/user-role.enum';
 import { ReweighsService } from './reweighs.service';
 import { CreateReweighItemDto } from './dto/create-reweigh-item.dto';
+import { ReweighReconciliationQueryDto } from './dto/reweigh-reconciliation.query';
 import { VoidDocumentDto } from '../intakes/dto/void-document.dto';
 import { ReweighItemResponse } from './reweigh-item.mapper';
 import { ReweighReconciliationService, ReconciliationResponse } from './reweigh-reconciliation.service';
@@ -26,8 +27,9 @@ export class ReweighsController {
   reconciliation(
     @CurrentUser() actor: AuthenticatedUser,
     @Param('shiftId', ParseUUIDPipe) shiftId: string,
+    @Query() query: ReweighReconciliationQueryDto,
   ): Promise<ReconciliationResponse> {
-    return this.reconciliation_.forShift(actor, shiftId);
+    return this.reconciliation_.forShift(actor, shiftId, query.include_voided);
   }
 
   @Post('shifts/:shiftId/reweigh-items')

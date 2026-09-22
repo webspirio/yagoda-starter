@@ -30,7 +30,7 @@ const FIELD_NAMES = [
   'is_active',
 ] as const;
 
-function toDefaults(supplier: Supplier | null): SupplierFormValues {
+function toDefaults(supplier: Supplier | null, defaultPointId?: string): SupplierFormValues {
   return {
     first_name: supplier?.first_name ?? '',
     last_name: supplier?.last_name ?? '',
@@ -39,7 +39,7 @@ function toDefaults(supplier: Supplier | null): SupplierFormValues {
     hasNoPhone: supplier ? supplier.phone === null : false,
     kind: supplier?.kind ?? 'none',
     note: supplier?.note ?? '',
-    collection_point_id: supplier?.collection_point_id ?? '',
+    collection_point_id: supplier?.collection_point_id ?? defaultPointId ?? '',
     is_active: supplier?.is_active ?? true,
   };
 }
@@ -55,15 +55,25 @@ function toDefaults(supplier: Supplier | null): SupplierFormValues {
  * is omitted, and no one can re-point an existing supplier (§3.9), so the
  * select is absent on edit. The active switch shows only on edit. The PATCH
  * carries a field only when it actually changed.
+ *
+ * Also opened inline from `features/pick-supplier`'s combobox (reception):
+ * `defaultPointId` pre-selects the owner's point select on create (the
+ * reception screen already knows the point), and `onCreated` hands the newly
+ * created supplier back to that caller — fired after a successful CREATE
+ * (never an edit), before `onClose`.
  */
 export function SupplierFormDialog({
   supplier,
   open,
   onClose,
+  onCreated,
+  defaultPointId,
 }: {
   supplier: Supplier | null;
   open: boolean;
   onClose: () => void;
+  onCreated?: (created: Supplier) => void;
+  defaultPointId?: string;
 }) {
   const { t } = useTranslation();
   const create = useCreateSupplierMutation();
@@ -79,7 +89,7 @@ export function SupplierFormDialog({
     setError,
     setValue,
     formState: { errors, isSubmitting },
-  } = useForm<SupplierFormValues>({ defaultValues: toDefaults(supplier) });
+  } = useForm<SupplierFormValues>({ defaultValues: toDefaults(supplier, defaultPointId) });
 
   const [formError, setFormError] = useState<string | null>(null);
   const hasNoPhone = useWatch({ control, name: 'hasNoPhone' });
@@ -118,7 +128,8 @@ export function SupplierFormDialog({
         };
         // Owner sends the chosen point; operator omits it (server derives it).
         if (isOwner) input.collection_point_id = values.collection_point_id;
-        await create.mutateAsync(input);
+        const created = await create.mutateAsync(input);
+        onCreated?.(created);
         toast.success(t('suppliers.toast.created'));
       }
       onClose();

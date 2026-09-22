@@ -468,7 +468,7 @@ describe('documents pipeline (HTTP)', () => {
       const stored = await request(app.getHttpServer())
         .post('/intakes')
         .set('Authorization', `Bearer ${operatorToken}`)
-        .send({ code: '04411', supplier_id: supplierId, items })
+        .send({ supplier_id: supplierId, items })
         .expect(201);
 
       const numbers = (i: { net_kg: string; amount: string }) => ({
@@ -484,7 +484,6 @@ describe('documents pipeline (HTTP)', () => {
         .post('/intakes')
         .set('Authorization', `Bearer ${operatorToken}`)
         .send({
-          code: '04412',
           supplier_id: supplierId,
           items: [
             {
@@ -503,7 +502,7 @@ describe('documents pipeline (HTTP)', () => {
         })
         .expect(201);
 
-      expect(res.body.code).toMatch(/^[A-Z0-9]{2,8}-IN-\d{8}-04412$/);
+      expect(res.body.code).toMatch(/^[A-Z0-9]{2,8}-IN-\d{8}-\d{3}$/);
       // (42.00 − 1.50 − 3.60) × 57.00 = 2103.30
       // (20.00 − 0.00 − 1.20) × 55.00 = 1034.00
       expect(res.body.amount).toBe('3137.30');
@@ -518,24 +517,35 @@ describe('documents pipeline (HTTP)', () => {
       intakeId = res.body.id as string;
     });
 
-    it('refuses the same typed code twice on the same day at the same point', async () => {
-      const res = await request(app.getHttpServer())
-        .post('/intakes')
-        .set('Authorization', `Bearer ${operatorToken}`)
-        .send({
-          code: '04412',
-          supplier_id: supplierId,
-          items: [
-            {
-              product_grade_id: gradeId,
-              gross_kg: '10.00',
-              tare: [{ tare_type_id: crateId, units: 1 }],
-            },
-          ],
-        })
-        .expect(409);
+    it('numbers consecutive receipts consecutively, with nothing sent to number them', async () => {
+      // What replaced «refuses the same typed code twice»: with the field gone
+      // from the request there is no typed code to duplicate, and the property
+      // worth proving over HTTP is that the server's own counter advances by
+      // one and stays inside this shift. Two receipts in a row, end to end.
+      const record = async () =>
+        request(app.getHttpServer())
+          .post('/intakes')
+          .set('Authorization', `Bearer ${operatorToken}`)
+          .send({
+            supplier_id: supplierId,
+            items: [
+              {
+                product_grade_id: gradeId,
+                gross_kg: '10.00',
+                tare: [{ tare_type_id: crateId, units: 1 }],
+              },
+            ],
+          })
+          .expect(201);
 
-      expect(res.body.code).toBe('INTAKE_CODE_TAKEN');
+      const first = await record();
+      const second = await record();
+
+      const seq = (code: string) => Number(code.slice(code.lastIndexOf('-') + 1));
+      expect(seq(second.body.code)).toBe(seq(first.body.code) + 1);
+      // Same point, same business date — only the last segment moved.
+      const head = (code: string) => code.slice(0, code.lastIndexOf('-'));
+      expect(head(second.body.code)).toBe(head(first.body.code));
     });
 
     it('refuses a line with no tare', async () => {
@@ -546,7 +556,6 @@ describe('documents pipeline (HTTP)', () => {
         .post('/intakes')
         .set('Authorization', `Bearer ${operatorToken}`)
         .send({
-          code: '04413',
           supplier_id: supplierId,
           items: [{ product_grade_id: gradeId, gross_kg: '10.00', tare: [] }],
         })
@@ -562,7 +571,6 @@ describe('documents pipeline (HTTP)', () => {
         .post('/intakes')
         .set('Authorization', `Bearer ${operatorToken}`)
         .send({
-          code: '04414',
           supplier_id: supplierId,
           items: [
             {
@@ -717,7 +725,6 @@ describe('documents pipeline (HTTP)', () => {
         .post('/intakes')
         .set('Authorization', `Bearer ${operatorToken}`)
         .send({
-          code: '05000',
           supplier_id: supplierId,
           items: [
             {
@@ -741,7 +748,7 @@ describe('documents pipeline (HTTP)', () => {
       const res = await request(app.getHttpServer())
         .post('/payouts')
         .set('Authorization', `Bearer ${operatorToken}`)
-        .send({ code: '00031', supplier_id: supplierId, amount: '615.61' })
+        .send({ supplier_id: supplierId, amount: '615.61' })
         .expect(400);
 
       expect(res.body.code).toBe('PAYOUT_EXCEEDS_DEBT');
@@ -752,10 +759,10 @@ describe('documents pipeline (HTTP)', () => {
       const res = await request(app.getHttpServer())
         .post('/payouts')
         .set('Authorization', `Bearer ${operatorToken}`)
-        .send({ code: '00031', supplier_id: supplierId, amount: '600.00' })
+        .send({ supplier_id: supplierId, amount: '600.00' })
         .expect(201);
 
-      expect(res.body.code).toMatch(/^[A-Z0-9]{2,8}-PO-\d{8}-00031$/);
+      expect(res.body.code).toMatch(/^[A-Z0-9]{2,8}-PO-\d{8}-\d{3}$/);
       payoutId = res.body.id as string;
       expect(await balanceOf(operatorToken)).toBe('15.60');
     });
@@ -768,13 +775,13 @@ describe('documents pipeline (HTTP)', () => {
       await request(app.getHttpServer())
         .post('/payouts')
         .set('Authorization', `Bearer ${operatorToken}`)
-        .send({ code: '00032', supplier_id: supplierId, amount: '15.61' })
+        .send({ supplier_id: supplierId, amount: '15.61' })
         .expect(400);
 
       await request(app.getHttpServer())
         .post('/payouts')
         .set('Authorization', `Bearer ${operatorToken}`)
-        .send({ code: '00032', supplier_id: supplierId, amount: '15.60' })
+        .send({ supplier_id: supplierId, amount: '15.60' })
         .expect(201);
 
       expect(await balanceOf(operatorToken)).toBe('0.00');
@@ -785,7 +792,7 @@ describe('documents pipeline (HTTP)', () => {
       await request(app.getHttpServer())
         .post('/payouts')
         .set('Authorization', `Bearer ${operatorToken}`)
-        .send({ code: '00033', supplier_id: supplierId, amount: '0.00' })
+        .send({ supplier_id: supplierId, amount: '0.00' })
         .expect(400);
     });
 
@@ -959,7 +966,7 @@ describe('documents pipeline (HTTP)', () => {
    * about Postgres. This shows the thing that actually matters: two payouts in
    * flight together against a debt that admits only one, and the second is
    * REFUSED. Spec §11 asked for «blocks and then fails»; the second half is
-   * this test. Delete the `FOR UPDATE` from `PayoutsService.create` and both
+   * this test. Delete the `FOR UPDATE` from `PayoutsService.writePayout` and both
    * requests read the same debt, both clear the ceiling, and 800,00 ₴ leaves
    * the drawer against a 615,60 ₴ debt with nothing downstream to notice.
    */
@@ -1019,7 +1026,6 @@ describe('documents pipeline (HTTP)', () => {
         .post('/intakes')
         .set('Authorization', `Bearer ${operatorToken}`)
         .send({
-          code: '09100',
           supplier_id: supplierId,
           items: [
             {
@@ -1037,15 +1043,16 @@ describe('documents pipeline (HTTP)', () => {
     it('lets exactly ONE of two simultaneous payouts through', async () => {
       // 400 + 400 = 800 > 615.60, but EITHER one alone clears the ceiling — so
       // a serial pair of checks passes both and only the lock stops it. The
-      // typed codes differ, so the unique index on `(shift, code)` is not what
-      // is doing the refusing.
-      const attempt = (code: string) =>
+      // refusal is the CEILING, not the unique index on `code`: the loser is
+      // turned away at the debt check, which `create` reaches before it numbers
+      // anything, so it never composes a code to collide with.
+      const attempt = () =>
         request(app.getHttpServer())
           .post('/payouts')
           .set('Authorization', `Bearer ${operatorToken}`)
-          .send({ code, supplier_id: supplierId, amount: '400.00' });
+          .send({ supplier_id: supplierId, amount: '400.00' });
 
-      const results = await Promise.all([attempt('09101'), attempt('09102')]);
+      const results = await Promise.all([attempt(), attempt()]);
       const statuses = results.map((r) => r.status).sort();
 
       expect(statuses).toEqual([201, 400]);
@@ -1152,7 +1159,7 @@ describe('documents pipeline (HTTP)', () => {
       const intakeRes = await request(app.getHttpServer())
         .post('/intakes')
         .set('Authorization', `Bearer ${operatorToken}`)
-        .send({ code: 'TU001', supplier_id: supplierId, items })
+        .send({ supplier_id: supplierId, items })
         .expect(201);
       expect(intakeRes.body.amount).toBe('615.60');
       intakeId = intakeRes.body.id as string;
@@ -1162,7 +1169,7 @@ describe('documents pipeline (HTTP)', () => {
       const closedIntakeRes = await request(app.getHttpServer())
         .post('/intakes')
         .set('Authorization', `Bearer ${operatorToken}`)
-        .send({ code: 'TU002', supplier_id: supplierId, items })
+        .send({ supplier_id: supplierId, items })
         .expect(201);
       expect(closedIntakeRes.body.amount).toBe('615.60');
       closedShiftIntakeId = closedIntakeRes.body.id as string;
@@ -1179,7 +1186,7 @@ describe('documents pipeline (HTTP)', () => {
       const otherIntakeRes = await request(app.getHttpServer())
         .post('/intakes')
         .set('Authorization', `Bearer ${operatorToken}`)
-        .send({ code: 'TU003', supplier_id: otherSupplierRes.body.id, items })
+        .send({ supplier_id: otherSupplierRes.body.id, items })
         .expect(201);
       const otherIntakeId = otherIntakeRes.body.id as string;
 
@@ -1307,7 +1314,7 @@ describe('documents pipeline (HTTP)', () => {
       await request(app.getHttpServer())
         .post('/payouts')
         .set('Authorization', `Bearer ${operatorToken}`)
-        .send({ code: 'PIPE-TU-1', supplier_id: supplierId, amount: '2000.00' })
+        .send({ supplier_id: supplierId, amount: '2000.00' })
         .expect(201);
     });
 

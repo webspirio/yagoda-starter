@@ -182,6 +182,14 @@
       "wholesale": "Wholesale",
       "farmer": "Farmer"
     },
+    "kindBadge": {
+      "wholesale": "WHOLESALE",
+      "farmer": "Farmer"
+    },
+    "kindHint": {
+      "wholesale": "A wholesaler — add an extra price.",
+      "farmer": "A farmer — add an extra price."
+    },
     "active": "Active",
     "inactive": "Inactive",
     "empty": {
@@ -211,6 +219,15 @@
       "nameRequired": "Enter a name",
       "pointRequired": "Choose a collection point"
     }
+  },
+  "pickSupplier": {
+    "placeholder": "Pick a supplier",
+    "search": "Last name or phone…",
+    "empty": "Nobody found.",
+    "noPhone": "no phone",
+    "ourPoint": "Our point",
+    "otherPoints": "Other points",
+    "addNew": "Add a new supplier"
   },
   "catalog": {
     "eyebrow": "Directory",
@@ -710,8 +727,6 @@
     "form": {
       "title": "Pay out the balance — {{name}}",
       "description": "Cash leaves the till today; the berries stay dated when they were received. Both dates stay in the books, so the daily reconciliation adds up.",
-      "code": "Receipt no.",
-      "codeHint": "The number from the paper payout book — the system adds the point and date",
       "amount": "Amount"
     },
     "allButton": "All — {{uah}}",
@@ -720,13 +735,11 @@
       "paid": "Paid out {{uah}}"
     },
     "errors": {
-      "codeRequired": "Enter the receipt number",
-      "codeFormat": "1–16 Latin letters, digits or dashes",
-      "codeTaken": "A payout with this number already exists today",
       "amountFormat": "Enter an amount like 4000 or 4000.50",
       "amountZero": "The amount must be above zero",
       "exceedsDebt": "Cannot pay more than the balance — balance {{debt}}",
       "exceedsDebtServer": "Refused: the amount exceeds the balance",
+      "exceedsCash": "There isn't enough cash for berries at the till — nothing to pay this amount out of right now",
       "noOpenShift": "No open shift — open one in Cash for the day",
       "supplierInactive": "The supplier is deactivated",
       "shiftClosed": "The shift is already closed",
@@ -735,7 +748,9 @@
   },
   "receipt": {
     "title": "Receipt {{code}}",
-    "description": "Printable receipt — pay out cash or void the document from here.",
+    "titleLines_one": "Receipt {{code}} · {{count}} line",
+    "titleLines_other": "Receipt {{code}} · {{count}} lines",
+    "description": "Printable receipt — void the document from here.",
     "heading": "BERRY INTAKE",
     "code": "Receipt",
     "date": "Date",
@@ -747,13 +762,14 @@
     "pricePerKg": "Price per kg",
     "amount": "Amount",
     "accrued": "Accrued",
+    "paid": "Paid out in cash",
+    "payoutVoided": "payout {{code}} voided",
     "balanceAtPoint": "Balance at this point now",
     "receivedBy": "Received by",
     "footer": "The receipt is saved in the system. A duplicate can be printed anytime.",
     "voided": "VOIDED",
     "voidReason": "Reason: {{reason}}",
     "print": "Print",
-    "payOut": "Pay out in cash",
     "void": "Void"
   },
   "reception": {
@@ -771,23 +787,17 @@
     "noPoint": "Select a point to receive berries",
     "noPrices": {
       "title": "No prices set for today",
-      "hint": "Until the day price is set, intake is blocked — so nobody counts by yesterday's."
+      "hint": "Until the day price is set, intake is blocked — so nobody counts by yesterday's.",
+      "action": "Set today's prices"
     },
     "supplier": {
       "eyebrow": "1 · Supplier",
-      "search": "Last name or phone…",
-      "noPhone": "no phone",
-      "change": "Change",
-      "empty": "Nobody found — check the name or add the person in Suppliers.",
       "debt": "Previous balance {{uah}}",
+      "debtNote": "added to “Total” below",
       "credit": "Overpaid by us {{uah}}",
       "history": "Intake history",
       "card": "Supplier card",
       "historyEmpty": "No intakes yet — this will be the first."
-    },
-    "code": {
-      "label": "Receipt no.",
-      "hint": "The number from the paper book — the system adds the point and date"
     },
     "weight": {
       "eyebrow": "2 · Weight with tare",
@@ -812,13 +822,13 @@
       "gradeOption": "{{name}} · {{price}} ₴/kg",
       "bonus": "Extra price — for this line, ₴/kg",
       "bonusDown": "Extra price down",
-      "bonusUp": "Extra price up",
-      "bounds": "limits: −{{discount}} … +{{markup}} ₴/kg",
-      "outOfRange": "out of range"
+      "bonusUp": "Extra price up"
     },
     "line": {
       "preview": "tare {{tare}} · net {{net}} · {{price}}{{bonus}} → {{amount}}",
       "pending": "…",
+      "tareMissing": "Enter the tare quantity — without it the gross weight would count entirely as net.",
+      "gradeMissing": "Choose a grade for this line — otherwise it won't make it into the receipt.",
       "grossWarning": "{{gross}} kg — more than the largest line of the season (701.5 kg). Check the gross weight.",
       "perCrateWarning": "{{kg}} kg per crate. Check the gross weight or the tare count."
     },
@@ -829,6 +839,8 @@
       "remove": "Remove line",
       "draftHint": "Finish this line or remove it",
       "title": "Receipt lines",
+      "counter_one": "{{count}} line · {{kg}}",
+      "counter_other": "{{count}} lines · {{kg}}",
       "col": {
         "grade": "Grade",
         "gross": "Gross",
@@ -841,28 +853,64 @@
     },
     "totals": {
       "eyebrow": "4 · Settlement",
-      "accrued": "Accrued",
+      "accruedToday": "Accrued today",
+      "linesSuffix_one": " · {{count}} line",
+      "linesSuffix_other": " · {{count}} lines",
       "debt": "Previous balance",
-      "total": "Total to pay out"
+      "total": "Total to pay out",
+      "paid": "Paid in cash",
+      "all": "Full amount",
+      "toHundreds": "Round to 100",
+      "allToBalance": "All to balance",
+      "overCap": "Cannot pay out more than the total — using {{uah}}",
+      "overCash": "Cannot pay out more than is in the berry drawer — using {{uah}}",
+      "cashNote": "Only {{uah}} is in the berry drawer — nothing more to pay out right now. The difference is added to the supplier's balance; a transfer from the owner restocks it.",
+      "cashUnavailable": "The berry cash drawer could not be read — the server will check the amount when the receipt is recorded",
+      "remainder": "Owed by us",
+      "settled": "Settled in full",
+      "remainderHint": "Added to the supplier's balance — dated today",
+      "settledHint": "Nothing is left hanging on the balance"
     },
     "submit": "Accept",
     "submitKg": "Accept {{kg}}",
     "submitLines_one": "Accept {{count}} line · {{kg}}",
     "submitLines_other": "Accept {{count}} lines · {{kg}}",
+    "submitPay": "Accept {{lines}}{{kg}} · pay out {{uah}}",
+    "linesPart_one": "{{count}} line · ",
+    "linesPart_other": "{{count}} lines · ",
+    "state": {
+      "cashTitle": "Point cash",
+      "cratesTitle": "Crates",
+      "open": "Open",
+      "openingCash": "Counted this morning",
+      "currentCash": "In the berry drawer now",
+      "paidOut": "Paid out for berries",
+      "newDebt": "New balance created",
+      "allotment": "Allotment",
+      "allotmentValue_one": "{{count}} crate",
+      "allotmentValue_other": "{{count}} crates",
+      "allotmentUnset": "no allotment set for this point yet",
+      "inField": "Out with people",
+      "truncatedCaption": "first 100 documents"
+    },
     "today": {
       "title": "Today's receipts",
       "empty": "Nothing received yet. The first receipt will appear here.",
-      "voided": "voided"
+      "voided": "voided",
+      "positions_one": "{{count}} position",
+      "positions_other": "{{count}} positions",
+      "remainder": "remainder {{uah}}"
     },
     "toast": {
       "opened": "Shift opened",
-      "accepted": "Accepted {{kg}} — {{uah}}"
+      "accepted": "Accepted {{kg}} — {{uah}}",
+      "remainder": "Owed by us: {{uah}}",
+      "settled": "Settled in full",
+      "linesCleared": "Lines cleared — they belonged to the previous supplier"
     },
     "errors": {
       "failed": "Could not record the receipt",
       "lineRefused": "The server refused one of the lines — check the rows in the table",
-      "codeFormat": "1–16 Latin letters, digits or dashes",
-      "codeTaken": "A receipt with this number already exists today",
       "decimalFormat": "Enter a weight like 126.40",
       "gradeNotPriced": "This grade has no price for today — set it in Day prices",
       "tareRequired": "Add the tare — without it the whole gross weight would count as net",
@@ -873,7 +921,10 @@
       "rateNegative": "Price plus extra price cannot be negative",
       "noOpenShift": "No open shift — open one in Cash for the day",
       "supplierInactive": "The supplier is deactivated",
-      "shiftClosed": "The shift is already closed"
+      "shiftClosed": "The shift is already closed",
+      "paidExceedsCash": "The receipt was not recorded: the berry cash drawer holds less. Lower the amount and try again.",
+      "paidExceedsDebt": "The receipt was not recorded: you cannot pay out more than the total.",
+      "paidFormat": "Enter an amount, e.g. 4000 or 4000.50"
     }
   },
   "debts": {
@@ -1181,5 +1232,104 @@
       "hasReturns": "A return has already been allocated against this issuance — void the return first",
       "supplierInactive": "This person is deactivated, so crates cannot be issued to them"
     }
+  },
+  "reweigh": {
+    "title": "Reweighing",
+    "eyebrow": "For the owner · work at the scale",
+    "description": "The berries arrived at the base from the point: we reweigh them and see any shortfall before the truck is unloaded. Nothing prints from here — this is the screen at the scale, not paper.",
+    "fromPoint": "from the point",
+    "berryOn": "berries for",
+    "step1": "1 · Gross weight with berries and pallet",
+    "step2": "2 · Number of crates",
+    "step3": "3 · Grade",
+    "gross": "Gross weight with berries",
+    "pallet": "Pallet",
+    "crateCount": "Number of crates",
+    "tareType": "Tare type",
+    "unit": "kg",
+    "grade": "Grade",
+    "gradePlaceholder": "Choose a grade",
+    "gradeEmpty": "Nothing was accepted here that day",
+    "productGrade": "{{product}} — {{grade}}",
+    "tareOption": "{{name}} {{weight}} kg",
+    "crateFewer": "Remove one crate",
+    "crateMore": "Add one crate",
+    "crateQuick": "+{{n}} cr.",
+    "netEyebrow": "Net weight · calculated by the system",
+    "addLine": "another position",
+    "block": {
+      "noShift": "The shift for this day at this point was not opened",
+      "nothingAccepted": "Nothing was accepted at {{point}} on {{date}}. Check the point and the date",
+      "noGrade": "Choose a grade — without one the line will not go into the document",
+      "noGross": "Enter the gross weight",
+      "noNet": "The net weight comes out at zero: the pallet and tare eat up the whole gross weight"
+    },
+    "warn": {
+      "gross": "{{value}} — check the weight.",
+      "tareTooMany": "{{units}} crates — check the count.",
+      "tareNone": "No tare was added — the gross weight would go straight into the net weight untouched."
+    },
+    "drafts": {
+      "title": "Positions entered",
+      "hint": "(kept in the page's memory — there is no document yet)",
+      "empty": "No positions yet.",
+      "total": "Our total weight",
+      "remove": "Remove position",
+      "grossSuffix": "gross",
+      "palletPrefix": "pallet",
+      "tareFallback": "tare"
+    },
+    "check": {
+      "title": "Reconciliation with the point",
+      "byProduct": "by product, not by grade",
+      "product": "Product",
+      "point": "Point",
+      "ours": "Ours",
+      "diff": "Difference",
+      "money": "In money",
+      "notReweighed": "not reweighed ⚠",
+      "nothingAccepted": "Nothing was accepted at {{point}} that day — there is nothing to compare.",
+      "shortfallTotal": "Total shortfall",
+      "surplusTotal": "Total surplus",
+      "shiftOpen": "The shift is still open — the shortfall will be counted once the shift closes.",
+      "notWeighed": "Products without a line: {{count}}. This guards against “forgot to weigh the currants”, not a mistake — but while ⚠ stands, the shortfall for this product does not count at all.",
+      "drafted": "Unposted positions: +{{kg}} — not recorded yet, and “Ours” does not include them."
+    },
+    "day": {
+      "title": "Reweighings recorded for {{date}}",
+      "allPoints": "across every point",
+      "point": "From point",
+      "time": "Time",
+      "what": "Product",
+      "ours": "Our weight",
+      "status": "Status",
+      "actionHeader": "Action",
+      "posted": "posted",
+      "voided": "voided",
+      "void": "Void",
+      "voidLine": "Void the {{time}} line from {{point}}",
+      "confirmVoidLine": "Confirm voiding the {{time}} line from {{point}}",
+      "cancel": "Cancel",
+      "reason": "Reason — required",
+      "reasonPlaceholder": "e.g. entered the same truck twice",
+      "empty": "No reweighing has been recorded for this day yet.",
+      "errors": {
+        "failed": "Could not void the line"
+      }
+    },
+    "post": "Post reweighing · {{kg}}",
+    "postNote": "Positions are written one at a time: if the server refuses the third, the first two are already recorded, and the rest stay on screen.",
+    "noShift": "The shift for {{date}} at {{point}} was never opened — there is nothing to reweigh.",
+    "posted": "Reweighing posted · {{kg}}",
+    "postFailed": "The position “{{grade}}” was not posted",
+    "errors": {
+      "postFailed": "The position was not posted",
+      "nothingAccepted": "Nothing was accepted at this point that day — there is nothing to reweigh",
+      "gradeNotAccepted": "That grade was not accepted on this shift. Reload the page — the grade list is stale",
+      "netNotPositive": "The pallet and tare consume the whole gross weight — no net weight is left",
+      "tareDuplicated": "One tare type is listed twice on a single position — record it once with the total count",
+      "tareUnknown": "That tare type is unknown or deactivated"
+    },
+    "draftsCleared": "Positions cleared — they belonged to a different day or point"
   }
 }

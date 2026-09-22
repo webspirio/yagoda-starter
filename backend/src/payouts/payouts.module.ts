@@ -8,6 +8,7 @@ import { SuppliersModule } from '../suppliers/suppliers.module';
 import { SupplierBalanceModule } from '../supplier-balance/supplier-balance.module';
 import { CollectionPointsModule } from '../collection-points/collection-points.module';
 import { AuditModule } from '../audit/audit.module';
+import { PointCashModule } from '../point-cash/point-cash.module';
 
 /**
  * Imports `SupplierBalanceModule` for the §3.6 ceiling — the debt formula lives
@@ -17,6 +18,9 @@ import { AuditModule } from '../audit/audit.module';
  * It does NOT import `IntakesModule`, even though a payout is checked against a
  * sum over `intakes`: that sum belongs to `supplier-balance`, and reaching for
  * the intakes service here would put half the formula in a second home.
+ *
+ * Imports `PointCashModule` for the cash half of §3.6 (2026-09-21): the drawer
+ * formula lives in exactly one place too.
  */
 @Module({
   imports: [
@@ -26,6 +30,7 @@ import { AuditModule } from '../audit/audit.module';
     SupplierBalanceModule,
     CollectionPointsModule,
     AuditModule,
+    PointCashModule,
   ],
   providers: [PayoutsService],
   controllers: [PayoutsController],

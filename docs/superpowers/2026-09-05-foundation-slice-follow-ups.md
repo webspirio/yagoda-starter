@@ -1101,3 +1101,53 @@ because it is either a client question or a change that reaches beyond the two s
   React — the one thing `money.ts` exists to prevent. Two more `div` calls behind the same
   `isZero` guard. Spec §5.5's formula list omits them too, so this is a gap in the plan as much as
   in the code.
+
+## Deferred from the reweigh screen (2026-09-21)
+
+Plan: `docs/superpowers/plans/2026-09-21-yagoda-reweigh-screen.md`. Each item below is a deliberate
+omission, not an oversight — the contract it would need is given so the next person reads a
+decision rather than guessing whether something was missed.
+
+- **`reweighs.at_point_id`** — the mock's «База» selector records WHERE a load was weighed. No
+  column, nothing downstream reads one, so the selector was omitted rather than rendered as a
+  control that looks recorded and is not. The contract if it is ever wanted: nullable FK to
+  `collection_points`, set on the header, first line wins.
+- **An atomic batch post** (`POST /shifts/:id/reweigh` with `lines[]`) — the screen posts N lines
+  and stops at the first refusal, so a rejection in the middle leaves the earlier lines written.
+  One transaction would make «Провести переважування» mean what the mock's button means.
+- **A day-wide `GET /reweigh-items?date=`** — `pages/reweigh/api/useDayReweighs.ts` fans out ~2×P
+  requests to build the «по всіх пунктах» table. Fine at five working points, not at thirty.
+- **Operator read access to §8.2** (§3.10 of the reweigh slice spec) — whether the point may see
+  the недостача claimed against it is a question the client has not answered.
+- **Re-weighing a day at a since-deactivated point** — the picker lists active reception points
+  only, so a past day at a closed point is unreachable from this screen.
+- **§8.4 «Собівартість дня»** — `GET /shifts/:shiftId/cost-of-day` already serves it and no screen
+  reads it.
+
+**Came out of the slice's own reviews, not from the plan:**
+
+- **`pages/users/api/users.ts` still hand-rolls its own `GET /users` read**, duplicating what
+  `entities/user`'s new `useStaffQuery` now does. The two should converge onto one hook once
+  `pages/users` is next open — today they are two separate readers of the same endpoint, kept
+  apart only because `entities/` may not import from `pages/` and nothing forced the older one to
+  move first.
+- **`DraftLines` calls `useTareTypeOptionsQuery()` independently of `WeighingForm`.** TanStack
+  Query dedupes the two calls to one request, so nothing is wrong today, but it is forced by the
+  current prop signatures rather than chosen — worth revisiting if either component is ever
+  reshaped.
+
+**Came out of Task 15's gate, and is the one item here with a date on it:**
+
+- **The frontend's first-load headroom is below the minimum the budget was designed with** —
+  19.9 KiB gzip against 25.0, 75.8 KiB raw against 100.0, measured 2026-09-21. `bundle` prints
+  this as a WARNING on every green run rather than hiding it, and the ceiling was deliberately
+  NOT raised to make it go away (`b40e5c4`). The practical meaning: the next commit that adds
+  much to the eager graph turns the row red, and the intended response is to defer more code
+  behind a lazy route — `/`, `/reception`, `/day`, `/point-cash`, `/crates`, `/prices`,
+  `/suppliers` and `/debts` are all still eager, and the operator does not open all of them
+  every shift either. Raising `maxGzipBytes`/`maxRawBytes` is the move that file exists to make
+  somebody justify in writing.
+- **Nothing budgets the deferred bytes at all.** `owner-pages` is 20.4 KiB gzip today and could
+  become 200 with this row staying green, because the gate is the first-load set by design. A
+  per-chunk ceiling is the obvious next instrument; none is agreed, and `bundle` deliberately
+  does not invent one.

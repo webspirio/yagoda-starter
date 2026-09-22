@@ -31,7 +31,15 @@ export interface ReceiptSheetProps {
   lines: ReceiptSheetLine[];
   accrued: string;
   balance: string;
-  /** The current user's name when they received this document, else «—». */
+  /** `null` when nothing has been paid out yet (`paid_amount` is `'0.00'`) —
+   *  the row and its muted list of payout codes are both hidden then.
+   *  `codes` are the LIVE (non-voided) linked payouts' codes. */
+  paid: { amount: string; codes: string[] } | null;
+  /** Codes of linked payouts that were voided after the fact — printed as a
+   *  muted annulment line each, so the paper slip doesn't silently disagree
+   *  with the register. */
+  voidedPayouts: string[];
+  /** Who received this document (`received_by_name`), or «—» when unknown. */
   receivedBy: string;
   voided: { reason: string } | null;
 }
@@ -69,6 +77,8 @@ export function ReceiptSheet({
   lines,
   accrued,
   balance,
+  paid,
+  voidedPayouts,
   receivedBy,
   voided,
 }: ReceiptSheetProps) {
@@ -121,6 +131,15 @@ export function ReceiptSheet({
       <div className="my-3 border-t border-dashed border-neutral-300" />
 
       <Row label={t('receipt.accrued')} value={accrued} strong />
+      {paid ? <Row label={t('receipt.paid')} value={paid.amount} /> : null}
+      {paid ? (
+        <div className="text-[10px] text-neutral-500">{paid.codes.join(', ')}</div>
+      ) : null}
+      {voidedPayouts.map((code) => (
+        <div key={code} className="text-[10px] text-neutral-500">
+          {t('receipt.payoutVoided', { code })}
+        </div>
+      ))}
       <Row label={t('receipt.balanceAtPoint')} value={balance} />
       <Row label={t('receipt.receivedBy')} value={receivedBy} muted />
 

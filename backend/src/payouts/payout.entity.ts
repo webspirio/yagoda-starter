@@ -10,6 +10,7 @@ import {
   Unique,
   UpdateDateColumn,
 } from 'typeorm';
+import { Intake } from '../intakes/intake.entity';
 import { Shift } from '../shifts/shift.entity';
 import { Supplier } from '../suppliers/supplier.entity';
 import { User } from '../users/user.entity';
@@ -59,11 +60,14 @@ import { User } from '../users/user.entity';
 @Check('CHK_payouts_amount', `"amount" > 0`)
 @Index('IDX_payouts_supplier_created', ['supplier_id', 'created_at'])
 @Index('IDX_payouts_shift', ['shift_id'])
+@Index('IDX_payouts_intake', ['intake_id'], { where: '"intake_id" IS NOT NULL' })
 export class Payout {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  /** `{POINT}-PO-{YYYYMMDD}-{typed}` — see `common/document-code.ts`. */
+  /** `{POINT}-PO-{YYYYMMDD}-{NNN}`, composed AND numbered server-side since
+   *  2026-09-18 — see `common/document-code.ts`, and `intakes.code`'s twin of
+   *  this comment. */
   @Column({ type: 'varchar' })
   code: string;
 
@@ -80,6 +84,19 @@ export class Payout {
   @ManyToOne(() => Supplier, { onDelete: 'RESTRICT' })
   @JoinColumn({ name: 'supplier_id' })
   supplier?: Supplier;
+
+  /**
+   * The receipt this cash was handed over with (§2.1 ⑥), or NULL for a
+   * standalone «Видати без ягоди». A SIGNATURE, not an allocation — the
+   * correction to §3.3 cancelled «яку дату закриває виплата», and this column
+   * never says which debt the money settled. See migration …0017.
+   */
+  @Column({ type: 'uuid', nullable: true })
+  intake_id: string | null;
+
+  @ManyToOne(() => Intake, { onDelete: 'RESTRICT', nullable: true })
+  @JoinColumn({ name: 'intake_id' })
+  intake?: Intake | null;
 
   /** `numeric` — a STRING, never a number. */
   @Column({ type: 'numeric', precision: 12, scale: 2 })

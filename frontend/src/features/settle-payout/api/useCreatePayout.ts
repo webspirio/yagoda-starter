@@ -4,7 +4,6 @@ import { queryKeys } from '@/shared/api/queryKeys';
 import type { Payout } from '@/entities/payout';
 
 export interface CreatePayoutInput {
-  code: string;
   supplier_id: string;
   amount: string;
   /** Owner only — an operator's point is resolved server-side from their token. */

@@ -32,7 +32,7 @@ vi.mock('@/entities/supplier', () => ({
   useSuppliersQuery: () => queryMock(),
 }));
 
-vi.mock('../api/suppliers', () => ({
+vi.mock('@/features/edit-supplier/api/suppliers', () => ({
   useCreateSupplierMutation: () => ({ mutateAsync: createMock }),
   useUpdateSupplierMutation: () => ({ mutateAsync: updateMock }),
 }));

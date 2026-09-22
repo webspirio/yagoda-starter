@@ -10,7 +10,7 @@ const pointCode = (): string => randomUUID().replace(/-/g, '').slice(0, 8).toUpp
  *
  * Nothing here calls `PayoutsService`: these two tests issue the `SELECT … FOR
  * UPDATE` by hand on two real connections, so what they establish is that the
- * statement `PayoutsService.create` relies on blocks, that it is HELD rather
+ * statement `PayoutsService.writePayout` relies on blocks, that it is HELD rather
  * than merely requested, and that contention is per supplier rather than
  * table-wide. Delete the `FOR UPDATE` from the service and this file stays
  * green — it is a test of Postgres semantics and of the shape of the lock, not

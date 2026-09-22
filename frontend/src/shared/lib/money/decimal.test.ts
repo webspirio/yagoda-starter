@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { add, sub, sum, cmp, div, isNegative, isZero } from './decimal';
+import { add, sub, sum, cmp, div, mul, isNegative, isZero } from './decimal';
 
 describe('decimal-string arithmetic (integer kopiykas, never floats)', () => {
   it('adds and subtracts at scale 2', () => {
@@ -54,5 +54,27 @@ describe('div — a decimal string split over a whole count (per-crate weights)'
   });
   it('still rejects a value that is not a plain decimal', () => {
     expect(() => div('1e3', 2)).toThrow(/decimal/);
+  });
+});
+
+describe('mul', () => {
+  it('multiplies a decimal string by a whole count, exactly', () => {
+    expect(mul('1.20', 10)).toBe('12.00');
+    expect(mul('0.35', 3)).toBe('1.05');
+    expect(mul('12.34', 0)).toBe('0.00');
+  });
+
+  it('holds a value a float would drift on', () => {
+    // 0.07 * 3 === 0.21000000000000002 in binary floating point
+    expect(mul('0.07', 3)).toBe('0.21');
+  });
+
+  it('keeps the sign', () => {
+    expect(mul('-2.50', 4)).toBe('-10.00');
+  });
+
+  it('refuses a non-whole multiplier — that is a caller bug, not a value to round', () => {
+    expect(() => mul('1.00', 1.5)).toThrow();
+    expect(() => mul('1.00', -1)).toThrow();
   });
 });

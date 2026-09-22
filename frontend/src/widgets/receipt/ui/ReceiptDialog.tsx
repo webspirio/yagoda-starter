@@ -9,42 +9,45 @@ import {
   DialogTitle,
 } from '@/shared/ui/dialog';
 import { Button } from '@/shared/ui/button';
-import { cmp, formatKg, formatUah } from '@/shared/lib/money';
-import { formatLongDate } from '@/shared/lib/date';
+import { add, cmp, formatKg, formatUah, isNegative } from '@/shared/lib/money';
+import { formatLongDate, formatTime } from '@/shared/lib/date';
 import { useIntakeQuery } from '@/entities/intake';
 import { useSupplierBalanceQuery, useSupplierQuery, supplierName } from '@/entities/supplier';
 import { useGradeCatalogQuery } from '@/entities/product-grade';
 import { useTareTypeOptionsQuery } from '@/entities/tare-type';
 import { usePointOptionsQuery } from '@/entities/collection-point';
 import { useMeQuery } from '@/entities/user';
-import { PayoutDialog } from '@/features/settle-payout';
 import { VoidDocumentDialog } from '@/features/void-document';
 import { ReceiptSheet, type ReceiptSheetLine } from './ReceiptSheet';
 
-/** Formats a bonus for the «Ціна за кг» row: `null` when it is 0.00 (the row
- *  then shows the bare price), a leading `+` for a markup — `formatUah`
- *  already carries the typographic minus for a discount, so a negative bonus
- *  needs nothing added. */
-function formatBonus(bonus: string, locale: string): string | null {
-  const sign = cmp(bonus, '0');
-  if (sign === 0) return null;
-  const formatted = formatUah(bonus, locale);
-  return sign === 1 ? `+${formatted}` : formatted;
+/** Formats the «Ціна за кг» row's right side when a per-kilogram bonus/markup
+ *  applies: `+ 5.00 ₴ = 140.00 ₴` for a markup, `− 5.00 ₴ = 130.00 ₴` for a
+ *  discount. The operator itself carries the sign, so only the MAGNITUDE of
+ *  the bonus is formatted (never a second `−` from `formatUah`) — `null`
+ *  when the bonus is 0.00, so the row falls back to the bare price. */
+function formatBonus(price: string, bonus: string, locale: string): string | null {
+  if (cmp(bonus, '0') === 0) return null;
+  const magnitude = isNegative(bonus) ? bonus.slice(1) : bonus;
+  const operator = isNegative(bonus) ? '−' : '+';
+  return `${operator} ${formatUah(magnitude, locale)} = ${formatUah(add(price, bonus), locale)}`;
 }
 
 /**
  * The receipt for one intake — `GET /intakes/:id` composed with the names a
- * bare id doesn't carry (grade, product, tare type, supplier, point) and the
- * two actions the mock's Ф2 flow opens from here: settle the supplier's
- * balance in cash, or void the document. First widget in the app (spec
+ * bare id doesn't carry (grade, product, tare type, supplier, point). Since
+ * #116 the payout itself is recorded from the reception screen's own action
+ * («Видано готівкою» alongside «Прийняти»), so this dialog no longer opens a
+ * `PayoutDialog` — it PRINTS what was paid (the live total plus each linked
+ * payout's code, and any voided one as an annulment line) and keeps the one
+ * action still local to it: void the document. First widget in the app (spec
  * §"Structure"): the reception, day and supplier-card screens each open the
  * same receipt on the same document, so it lives above `features` and below
  * `pages` rather than inside any one of them.
  *
- * `payoutOpen`/`voidOpen` are local state, so if a caller keeps this dialog
- * mounted (`open` staying `true`) while swapping `intakeId` to a different
- * document, that state would carry over from the previous receipt — remount
- * with `key={intakeId}` when doing that.
+ * `voidOpen` is local state, so if a caller keeps this dialog mounted (`open`
+ * staying `true`) while swapping `intakeId` to a different document, that
+ * state would carry over from the previous receipt — remount with
+ * `key={intakeId}` when doing that.
  */
 export function ReceiptDialog({
   intakeId,
@@ -86,20 +89,13 @@ export function ReceiptDialog({
     pointsQuery.isError ||
     meQuery.isError;
 
-  const [payoutOpen, setPayoutOpen] = useState(false);
-  const [payoutKey, setPayoutKey] = useState(0);
   const [voidOpen, setVoidOpen] = useState(false);
   const [voidKey, setVoidKey] = useState(0);
 
-  // PayoutDialog/VoidDocumentDialog keep their form state for their lifetime
-  // (react-hook-form's `defaultValues` only apply on mount, and both stay
-  // mounted here so `open` alone controls their visibility) — bumping the key
-  // on every open forces a fresh instance instead of reopening a stale,
-  // half-filled form.
-  const openPayout = () => {
-    setPayoutKey((k) => k + 1);
-    setPayoutOpen(true);
-  };
+  // VoidDocumentDialog keeps its form state for its lifetime (react-hook-form's
+  // `defaultValues` only apply on mount, and it stays mounted here so `open`
+  // alone controls its visibility) — bumping the key on every open forces a
+  // fresh instance instead of reopening a stale, half-filled form.
   const openVoid = () => {
     setVoidKey((k) => k + 1);
     setVoidOpen(true);
@@ -116,6 +112,7 @@ export function ReceiptDialog({
   // the receipt actually resolved.
   let actions: ReactNode = null;
   let dialogs: ReactNode = null;
+  let title = t('receipt.title', { code: intake?.code ?? '' });
 
   if (isError) {
     content = (
@@ -127,8 +124,13 @@ export function ReceiptDialog({
     const gradeById = new Map(gradeCatalog.data.map((g) => [g.id, g]));
     const tareById = new Map(tareTypes.map((tt) => [tt.id, tt]));
     const pointName = points.find((p) => p.id === intake.collection_point_id)?.name ?? '—';
-    const receivedBy = me.id === intake.received_by_user_id ? me.display_name : '—';
+    const receivedBy = intake.received_by_name ?? '—';
     const voided = Boolean(intake.voided_at);
+
+    // §3 quotes «· 1 позиція» — the count rides on every receipt, not only
+    // once there is more than one line; `titleLines_one` carries the singular
+    // form (M4).
+    title = t('receipt.titleLines', { code: intake.code, count: intake.items.length });
 
     const lines: ReceiptSheetLine[] = intake.items.map((item) => {
       const grade = gradeById.get(item.product_grade_id);
@@ -144,26 +146,41 @@ export function ReceiptDialog({
         tareWeight: formatKg(item.tare_weight_kg, locale),
         net: formatKg(item.net_kg, locale),
         price: formatUah(item.price, locale),
-        bonus: formatBonus(item.bonus, locale),
+        bonus: formatBonus(item.price, item.bonus, locale),
         amount: formatUah(item.amount, locale),
       };
     });
 
-    const defaultPayoutAmount =
-      cmp(intake.amount, balance.debt) === 1 ? balance.debt : intake.amount;
-    const showPayout = !voided && cmp(balance.debt, '0') === 1;
+    const paid =
+      cmp(intake.paid_amount, '0') === 0
+        ? null
+        : {
+            amount: formatUah(intake.paid_amount, locale),
+            codes: intake.payouts.filter((p) => p.voided_at === null).map((p) => p.code),
+          };
+    const voidedPayouts = intake.payouts
+      .filter((p) => p.voided_at !== null)
+      .map((p) => p.code);
+
     const showVoid =
       !voided && (me.role === 'network_owner' || me.id === intake.received_by_user_id);
 
     content = (
       <ReceiptSheet
         code={intake.code}
-        date={formatLongDate(intake.business_date, locale)}
+        // §5 row 50 — the BUSINESS date (from the shift, §2.3), not the
+        // calendar day `created_at` happens to carry: a receipt written just
+        // past local midnight is still that shift's day, and printing
+        // `created_at`'s own date could show one day while `business_date`
+        // (and every other document on this receipt's shift) says another.
+        date={`${formatLongDate(intake.business_date, locale)} · ${formatTime(intake.created_at, locale)}`}
         pointName={pointName}
         supplierName={supplierName(supplier)}
         lines={lines}
         accrued={formatUah(intake.amount, locale)}
         balance={formatUah(balance.debt, locale)}
+        paid={paid}
+        voidedPayouts={voidedPayouts}
         receivedBy={receivedBy}
         voided={voided ? { reason: intake.void_reason ?? '' } : null}
       />
@@ -176,11 +193,6 @@ export function ReceiptDialog({
             {t('receipt.void')}
           </Button>
         ) : null}
-        {showPayout ? (
-          <Button type="button" variant="outline" onClick={openPayout}>
-            {t('receipt.payOut')}
-          </Button>
-        ) : null}
         <Button type="button" onClick={() => window.print()}>
           {t('receipt.print')}
         </Button>
@@ -188,33 +200,14 @@ export function ReceiptDialog({
     );
 
     dialogs = (
-      <>
-        <PayoutDialog
-          key={payoutKey}
-          supplier={{
-            id: supplier.id,
-            first_name: supplier.first_name,
-            last_name: supplier.last_name,
-          }}
-          // Always known here (the intake's own point) — unlike a debts-list
-          // caller, this dialog never needs to fall back to the operator's
-          // token-derived point.
-          pointId={intake.collection_point_id}
-          debt={balance.debt}
-          defaultAmount={defaultPayoutAmount}
-          open={payoutOpen}
-          onClose={() => setPayoutOpen(false)}
-        />
-
-        <VoidDocumentDialog
-          key={voidKey}
-          kind="intake"
-          id={intake.id}
-          code={intake.code}
-          open={voidOpen}
-          onClose={() => setVoidOpen(false)}
-        />
-      </>
+      <VoidDocumentDialog
+        key={voidKey}
+        kind="intake"
+        id={intake.id}
+        code={intake.code}
+        open={voidOpen}
+        onClose={() => setVoidOpen(false)}
+      />
     );
   }
 
@@ -222,7 +215,7 @@ export function ReceiptDialog({
     <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
       <DialogContent className="sm:max-w-[420px]" showCloseButton={false}>
         <DialogHeader>
-          <DialogTitle>{t('receipt.title', { code: intake?.code ?? '' })}</DialogTitle>
+          <DialogTitle>{title}</DialogTitle>
           <DialogDescription>{t('receipt.description')}</DialogDescription>
         </DialogHeader>
 
