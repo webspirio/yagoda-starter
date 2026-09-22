@@ -67,7 +67,14 @@ export function ReweighPage() {
   const locale = i18n.resolvedLanguage ?? 'uk';
 
   const { pointId: resolvedPointId, canPick, setPointId } = useWorkingPoint();
-  const { data: points } = usePointOptionsQuery();
+  // The QUERY, not just its data: a failed or in-flight points read leaves
+  // `receptionPoints` empty, which drives `pointId` to null, which DISABLES
+  // both reads below — so without folding this query into the split at
+  // `readsPending`/`readsFailed`, a dead `/collection-points` reports itself
+  // to the owner as «зміну не відкривали», permanently and about a point it
+  // cannot even name.
+  const pointsQuery = usePointOptionsQuery();
+  const points = pointsQuery.data;
   const receptionPoints = (points ?? []).filter((p) => p.kind === 'reception');
   // `useWorkingPoint()` can hand back a point this screen's own picker never
   // offers (the base — see the header doc above). Anything not in
@@ -99,9 +106,13 @@ export function ReweighPage() {
   // never ran, and gating on it bare would park the screen on a spinner
   // whenever there is legitimately no point or no shift. Same shape as
   // `pages/day`'s `isLoadingShift`.
+  // `pointsQuery` is gated by nothing and is never disabled, so unlike the two
+  // below it needs no `enabled`-guard companion — its own flags are honest.
   const readsPending =
-    (pointId !== null && shift.isPending) || (shiftId !== undefined && reweigh.isPending);
-  const readsFailed = shift.isError || reweigh.isError;
+    pointsQuery.isPending ||
+    (pointId !== null && shift.isPending) ||
+    (shiftId !== undefined && reweigh.isPending);
+  const readsFailed = pointsQuery.isError || shift.isError || reweigh.isError;
 
   const hasShift = shift.data != null;
   const shiftClosed = shift.data?.status === 'closed';
@@ -281,10 +292,16 @@ export function ReweighPage() {
         </div>
       )}
 
+      {/* The day table sits OUTSIDE the `readsFailed` branch above, so it
+          needs the points read folded in on its own account: `useDayReweighs`
+          called with an empty `points` array fans out to nothing and reports
+          `isPending: false, isError: false`, which renders «Переважувань за
+          цей день ще немає» — the empty-day sentence that must never stand in
+          for a read that failed. */}
       <DayLines
         lines={dayReweighs.lines}
-        isPending={dayReweighs.isPending}
-        isError={dayReweighs.isError}
+        isPending={pointsQuery.isPending || dayReweighs.isPending}
+        isError={pointsQuery.isError || dayReweighs.isError}
         date={date}
       />
     </div>

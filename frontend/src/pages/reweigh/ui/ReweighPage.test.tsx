@@ -252,6 +252,39 @@ describe('ReweighPage', () => {
   });
 
   /**
+   * The same conflation one query EARLIER, and the nastiest of the set: the
+   * points read feeds `pointId`, and a failed read leaves it `null`, which
+   * DISABLES both reads below it. So `shift` and `reweigh` never run, never
+   * error, and the screen answers §6.1 about a point it cannot even name —
+   * «Зміну за 21.09.2026 на **** не відкривали» — permanently, because a
+   * failed query does not retry itself into existence.
+   */
+  it('reports a failed points read as a failure, not as a shift nobody opened', () => {
+    pointsMock.mockReturnValue({ data: undefined, isPending: false, isError: true });
+    render(<ReweighPage />);
+    // `getAllBy`, not `getBy`: the main grid and the day table each own their
+    // own alert and BOTH are meant to fire here — the table sits outside the
+    // grid's failure branch, so a single-alert assertion would quietly pass
+    // if only one of the two ever learned about the failure.
+    expect(screen.getAllByRole('alert').length).toBeGreaterThan(0);
+    expect(screen.queryByText(/never opened|не відкривали/i)).not.toBeInTheDocument();
+  });
+
+  /**
+   * And the day table, which sits outside the main grid's failure branch and
+   * so has to be told separately. `useDayReweighs([])` fans out to no queries
+   * at all and honestly reports "not pending, not failed, no lines" — which
+   * `DayLines` renders as the empty-day sentence unless the points read's own
+   * failure is passed down.
+   */
+  it('does not tell the owner the day was empty when the points read failed', () => {
+    pointsMock.mockReturnValue({ data: undefined, isPending: false, isError: true });
+    dayReweighsMock.mockReturnValue({ lines: [], isPending: false, isError: false });
+    render(<ReweighPage />);
+    expect(screen.queryByText(/no reweighs|переважувань за цей день ще немає/i)).not.toBeInTheDocument();
+  });
+
+  /**
    * The same conflation one step earlier: on first paint the shift read is
    * still in flight, and «зміну не відкривали» is an answer the server has
    * not given yet.
