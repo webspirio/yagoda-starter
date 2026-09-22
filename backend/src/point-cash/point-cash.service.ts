@@ -362,12 +362,17 @@ export class PointCashService {
                 -- reports -200. The demoted row is SUPERSEDED by the re-close,
                 -- not additional to it.
                 --
-                -- THE LIMIT, because this is not a general truth: a midday row
-                -- can ONLY arise from a reopen today — §7.6's «перерахувати
-                -- можна скільки завгодно разів» has no endpoint, so nothing
-                -- else writes one. If a midday RECOUNT route is ever added,
-                -- its discrepancies are NOT superseded by anything and this
-                -- filter has to be revisited rather than left to drop them.
+                -- THE LIMIT NAMED HERE IS NOW RESOLVED, not open: a midday
+                -- RECOUNT route has existed since 2026-09-22 (R2), and its
+                -- rows are kind = 'midday' too, exactly like a demoted
+                -- closing count. This filter was RE-CHECKED against that —
+                -- see CashCountsService's own doc comment for the same check
+                -- against its only_discrepancies filter and
+                -- cash-count.mapper.ts's is_open — and it still excludes
+                -- midday UNCONDITIONALLY, on purpose: a recount's
+                -- discrepancy is not superseded by anything, but §7.6 makes a
+                -- recount a WITNESS, never an incident, so it was never meant
+                -- to add to this sum in the first place.
                 --
                 -- Unlike the anchor above, this is NOT
                 -- only_discrepancies-filtered -- that predicate belongs to a

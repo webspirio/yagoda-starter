@@ -21,33 +21,45 @@ const row = (over: Partial<CashCountRow> = {}): CashCountRow => ({
   ...over,
 });
 
+const NO_NAMES = new Map<string, string>();
+
 describe('toCashCountRowResponse', () => {
   it('a shortage is NEGATIVE — the opposite of a transfer discrepancy, deliberately', () => {
-    expect(toCashCountRowResponse(row()).discrepancy).toBe('-350.00');
+    expect(toCashCountRowResponse(row(), NO_NAMES).discrepancy).toBe('-350.00');
   });
 
   it('a surplus is positive', () => {
     expect(
-      toCashCountRowResponse(row({ counted_amount: '15766.10' })).discrepancy,
+      toCashCountRowResponse(row({ counted_amount: '15766.10' }), NO_NAMES).discrepancy,
     ).toBe('350.00');
   });
 
   it('a matching count reads 0.00 and is not open', () => {
-    const r = toCashCountRowResponse(row({ counted_amount: '15416.10' }));
+    const r = toCashCountRowResponse(row({ counted_amount: '15416.10' }), NO_NAMES);
     expect(r.discrepancy).toBe('0.00');
     expect(r.is_open).toBe(false);
   });
 
   it('a discrepancy with no explanation is OPEN', () => {
-    expect(toCashCountRowResponse(row()).is_open).toBe(true);
+    expect(toCashCountRowResponse(row(), NO_NAMES).is_open).toBe(true);
   });
 
   it('an explained discrepancy is closed, and its numbers do not move', () => {
-    const r = toCashCountRowResponse(row({ explanation: 'касир помилився решткою' }));
+    const r = toCashCountRowResponse(row({ explanation: 'касир помилився решткою' }), NO_NAMES);
     expect(r.is_open).toBe(false);
     // §7.7 — «розбіжність у документі лишається, її не підганяють».
     expect(r.discrepancy).toBe('-350.00');
     expect(r.counted_amount).toBe('15066.10');
+  });
+
+  // D-8 — `counted_by_name` is a pure map read: the mapper does no I/O.
+  it('reads counted_by_name from the caller’s map', () => {
+    const names = new Map([['u-op', 'Оксана Ткач']]);
+    expect(toCashCountRowResponse(row(), names).counted_by_name).toBe('Оксана Ткач');
+  });
+
+  it('reads null when the counting user is not in the map', () => {
+    expect(toCashCountRowResponse(row(), NO_NAMES).counted_by_name).toBeNull();
   });
 });
 
@@ -83,7 +95,7 @@ describe('CashCountsService.recount', () => {
     ...over,
   });
 
-  let manager: { save: jest.Mock };
+  let manager: { save: jest.Mock; find: jest.Mock };
   let dataSource: { transaction: jest.Mock };
   let shifts: { findOpenAtPoint: jest.Mock };
   let cash: { cashFor: jest.Mock };
@@ -97,6 +109,10 @@ describe('CashCountsService.recount', () => {
         .mockImplementation((_entity: unknown, v: Record<string, unknown>) =>
           Promise.resolve({ id: COUNT_ID, ...v }),
         ),
+      // D-8's `loadDisplayNames` — the fixture user behind `operator.sub`.
+      find: jest.fn().mockResolvedValue([
+        { id: 'u-oksana', first_name: 'Оксана', last_name: 'Ткач' },
+      ]),
     };
     dataSource = {
       transaction: jest.fn().mockImplementation((cb: (m: unknown) => unknown) => cb(manager)),
@@ -180,5 +196,19 @@ describe('CashCountsService.recount', () => {
     expect(row.kind).toBe(CashCountKind.Midday);
     expect(row.discrepancy).toBe('-100.00');
     expect(row.is_open).toBe(false);
+  });
+
+  it('resolves counted_by_name for the recording operator (D-8)', async () => {
+    const row = await service.recount(operator, dto());
+
+    expect(row.counted_by_name).toBe('Оксана Ткач');
+  });
+
+  it('reads counted_by_name as null when the id is not in the loaded map', async () => {
+    manager.find.mockResolvedValue([]);
+
+    const row = await service.recount(operator, dto());
+
+    expect(row.counted_by_name).toBeNull();
   });
 });

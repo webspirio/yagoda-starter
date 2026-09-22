@@ -16,6 +16,7 @@ import { AuditService } from '../audit/audit.service';
 import { resolvePointFilter } from '../auth/access/point-scope';
 import { Paginated } from '../common/dto/paginated';
 import { skipOf } from '../common/dto/pagination-query.dto';
+import { loadDisplayNames } from '../users/display-names';
 import type { AuthenticatedUser } from '../auth/jwt.strategy';
 
 /**
@@ -114,7 +115,12 @@ export class CashCountsService {
 
       // The drawer at THIS instant, under no lock of its own — a recount is a
       // read of a moving figure, not a claim that nothing else may write
-      // between the read and the insert (§7.6 names no such guarantee).
+      // between the read and the insert (§7.6 names no such guarantee). A
+      // concurrent payout or a concurrent close changes nothing about the
+      // witness this writes: the row records what the drawer held at its own
+      // instant, `close()` never reads a midday row back, and `reopen()`
+      // demotes only `closing` — so there is nothing here for a lock to
+      // protect against.
       const expected = await this.cash.cashFor(pointId, undefined, m);
       const countedAt = new Date();
 
@@ -146,22 +152,26 @@ export class CashCountsService {
         m,
       );
 
-      return toCashCountRowResponse({
-        id: saved.id,
-        shift_id: saved.shift_id,
-        collection_point_id: shift.collection_point_id,
-        business_date: shift.business_date,
-        book: saved.book,
-        kind: saved.kind,
-        counted_amount: saved.counted_amount,
-        expected_amount: saved.expected_amount,
-        counted_by_user_id: saved.counted_by_user_id,
-        counted_at: saved.counted_at,
-        // A fresh count carries whatever explanation is already on the
-        // shift — the same column `list`'s SQL joins in — never a value of
-        // its own; a count has no `explanation` column (see the entity).
-        explanation: shift.explanation ?? null,
-      });
+      const names = await loadDisplayNames(m, [saved.counted_by_user_id]);
+      return toCashCountRowResponse(
+        {
+          id: saved.id,
+          shift_id: saved.shift_id,
+          collection_point_id: shift.collection_point_id,
+          business_date: shift.business_date,
+          book: saved.book,
+          kind: saved.kind,
+          counted_amount: saved.counted_amount,
+          expected_amount: saved.expected_amount,
+          counted_by_user_id: saved.counted_by_user_id,
+          counted_at: saved.counted_at,
+          // A fresh count carries whatever explanation is already on the
+          // shift — the same column `list`'s SQL joins in — never a value of
+          // its own; a count has no `explanation` column (see the entity).
+          explanation: shift.explanation ?? null,
+        },
+        names,
+      );
     });
   }
 
@@ -220,8 +230,15 @@ export class CashCountsService {
       params,
     )) as { total: number }[];
 
+    // ONE map for the whole page (D-8) — never one `loadDisplayNames` call
+    // per row.
+    const names = await loadDisplayNames(
+      m,
+      rows.map((r) => r.counted_by_user_id),
+    );
+
     return {
-      data: rows.map(toCashCountRowResponse),
+      data: rows.map((r) => toCashCountRowResponse(r, names)),
       total,
       page: query.page,
       limit: query.limit,

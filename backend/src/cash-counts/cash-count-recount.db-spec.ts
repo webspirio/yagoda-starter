@@ -176,6 +176,9 @@ describe('POST /cash-counts — midday recount (HTTP)', () => {
       expected_amount: '1100.00',
       discrepancy: '0.00',
       is_open: false,
+      // D-8 — displayNameOf the operator who pressed the button (§10.6):
+      // "Оксана Каса", the fixture's own first/last name.
+      counted_by_name: 'Оксана Каса',
     });
   });
 
