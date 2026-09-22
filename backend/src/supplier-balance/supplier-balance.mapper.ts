@@ -1,15 +1,30 @@
-/** «Разом» — §3.1's one number. A decimal STRING, and legitimately negative
- *  after a voided receipt that had already been paid for. */
-export interface SupplierBalanceResponse {
-  supplier_id: string;
+/** The three terms of `Σ intakes + Σ top-ups − Σ payouts` (#103), plus the
+ *  season counters the card's tiles read instead of summing a page that
+ *  truncates past 100 documents. Every money and weight field is a decimal
+ *  STRING (`::text` in `SupplierBalanceService.breakdownFor`'s SQL) — `debt`
+ *  is legitimately negative after a voided receipt that had already been
+ *  paid for; the DBML's «інваріанта борг >= 0 в цій схемі немає». */
+export interface SupplierBalanceBreakdown {
   debt: string;
+  intakes_total: string;
+  top_ups_total: string;
+  payouts_total: string;
+  intakes_count: number;
+  kg_total: string;
+  /** Business date of the most recent LIVE receipt; `null` when there is none. */
+  last_intake_date: string | null;
+}
+
+/** «Разом» — §3.1's one number, now WITH what it is made of (#103). */
+export interface SupplierBalanceResponse extends SupplierBalanceBreakdown {
+  supplier_id: string;
 }
 
 export function toSupplierBalanceResponse(
   supplier_id: string,
-  debt: string,
+  breakdown: SupplierBalanceBreakdown,
 ): SupplierBalanceResponse {
-  return { supplier_id, debt };
+  return { supplier_id, ...breakdown };
 }
 
 /** The row `SupplierBalanceService.list` projects — `debt` already `::text`. */

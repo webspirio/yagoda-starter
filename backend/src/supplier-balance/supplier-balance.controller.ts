@@ -35,6 +35,6 @@ export class SupplierBalanceController {
     @Param('id', ParseUUIDPipe) id: string,
   ) {
     const supplier = await this.suppliers.findOne(actor, id);
-    return toSupplierBalanceResponse(supplier.id, await this.balance.debtFor(supplier.id));
+    return toSupplierBalanceResponse(supplier.id, await this.balance.breakdownFor(supplier.id));
   }
 }

@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { DataSource, EntityManager } from 'typeorm';
 import { ListSupplierBalancesQueryDto } from './dto/list-supplier-balances.query';
 import {
+  SupplierBalanceBreakdown,
   SupplierBalanceRow,
   SupplierBalanceRowResponse,
   toSupplierBalanceRowResponse,
@@ -33,16 +34,30 @@ import type { AuthenticatedUser } from '../auth/jwt.strategy';
  * separate mistake — a top-up voided on its own merits — and deleting either
  * one is invisible to a test that only exercises the other.
  */
+const intakesTermSql = (supplier: string): string =>
+  `COALESCE((SELECT SUM(i.amount) FROM intakes i
+              WHERE i.supplier_id = ${supplier} AND i.voided_at IS NULL), 0.00)`;
+
+const topUpsTermSql = (supplier: string): string =>
+  `COALESCE((SELECT SUM(t.amount) FROM intake_top_ups t
+               JOIN intakes ti ON ti.id = t.intake_id
+              WHERE ti.supplier_id = ${supplier}
+                AND ti.voided_at IS NULL
+                AND t.voided_at  IS NULL), 0.00)`;
+
+const payoutsTermSql = (supplier: string): string =>
+  `COALESCE((SELECT SUM(p.amount) FROM payouts p
+              WHERE p.supplier_id = ${supplier} AND p.voided_at IS NULL), 0.00)`;
+
+/**
+ * THE TOTAL, COMPOSED FROM THE THREE TERMS ABOVE rather than written again — a
+ * breakdown that restated the formula could drift from the number it is
+ * supposed to explain; this one cannot, because it IS the same SQL. The terms
+ * were split out (#103) so `breakdownFor` below can project each one on its
+ * own alongside the total it already was.
+ */
 const debtSql = (supplier: string): string =>
-  `(COALESCE((SELECT SUM(i.amount) FROM intakes i
-               WHERE i.supplier_id = ${supplier} AND i.voided_at IS NULL), 0.00)
-  + COALESCE((SELECT SUM(t.amount) FROM intake_top_ups t
-                JOIN intakes ti ON ti.id = t.intake_id
-               WHERE ti.supplier_id = ${supplier}
-                 AND ti.voided_at IS NULL
-                 AND t.voided_at  IS NULL), 0.00)
-  - COALESCE((SELECT SUM(p.amount) FROM payouts p
-               WHERE p.supplier_id = ${supplier} AND p.voided_at IS NULL), 0.00))`;
+  `(${intakesTermSql(supplier)} + ${topUpsTermSql(supplier)} - ${payoutsTermSql(supplier)})`;
 
 /**
  * THE ONLY `SUM` **FOR DEBT** IN THE BACKEND — `point-cash.service.ts` also
@@ -99,6 +114,48 @@ export class SupplierBalanceService {
     const [row] = (await runner.query(sql, [supplierId])) as { debt: string }[];
 
     return row.debt;
+  }
+
+  /**
+   * The balance AND what it is made of, in one read. `GET /suppliers/:id/balance`
+   * used to answer one number, so the card rebuilt the explanation from three
+   * paginated reads and its tiles were wrong past 100 documents (#103).
+   *
+   * The three season counters (`intakes_count`, `kg_total`, `last_intake_date`)
+   * ride here rather than in a separate summary endpoint because the
+   * «Залишки» row and the owner's top-suppliers table want the same numbers,
+   * and the programme's register forbids a second query for numbers that
+   * already have one.
+   *
+   * NO `manager` PARAMETER, UNLIKE `debtFor`. Nothing inside a locked
+   * transaction needs the breakdown — only the bare total, for the payout
+   * ceiling — so this always reads through `this.dataSource.manager` and the
+   * signature stays uncomplicated for its one caller, the controller.
+   */
+  async breakdownFor(supplierId: string): Promise<SupplierBalanceBreakdown> {
+    const sql = `SELECT
+      ${debtSql('$1')}::text          AS debt,
+      ${intakesTermSql('$1')}::text   AS intakes_total,
+      ${topUpsTermSql('$1')}::text    AS top_ups_total,
+      ${payoutsTermSql('$1')}::text   AS payouts_total,
+      (SELECT COUNT(i.id)::int FROM intakes i
+        WHERE i.supplier_id = $1 AND i.voided_at IS NULL) AS intakes_count,
+      (SELECT COALESCE(SUM(ii.net_kg)::text, '0.00') FROM intake_items ii
+         JOIN intakes i ON i.id = ii.intake_id
+        WHERE i.supplier_id = $1 AND i.voided_at IS NULL) AS kg_total,
+      -- ::text, like every other raw-query date in this codebase
+      -- (cash-counts.service.ts, seed/dev-seed.ts): the pg driver hands a
+      -- bare date column back as a JS Date, and JSON.stringify would then
+      -- widen 'YYYY-MM-DD' to a full UTC-midnight timestamp on the wire.
+      (SELECT MAX(s.business_date)::text FROM intakes i
+         JOIN shifts s ON s.id = i.shift_id
+        WHERE i.supplier_id = $1 AND i.voided_at IS NULL) AS last_intake_date`;
+
+    const [row] = (await this.dataSource.manager.query(sql, [
+      supplierId,
+    ])) as SupplierBalanceBreakdown[];
+
+    return row;
   }
 
   /**
