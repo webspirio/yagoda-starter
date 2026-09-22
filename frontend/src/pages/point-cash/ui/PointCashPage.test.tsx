@@ -340,6 +340,14 @@ describe('PointCashPage — Task 2: header, hints and the amber cash tile', () =
     expect(screen.getByText('Shypynky · September 8, 2026, Tuesday')).toBeInTheDocument();
   });
 
+  // Folded in from the Task 2 review — the date now lives in the eyebrow
+  // alone; the title is the bare «Каса точки» / "Point cash", with no
+  // `{{date}}` interpolation left in either locale.
+  it('titles the page with the bare «Point cash» — the date lives in the eyebrow only', () => {
+    renderPointCash();
+    expect(screen.getByRole('heading', { name: 'Point cash' })).toBeInTheDocument();
+  });
+
   it('prints the mock’s description', () => {
     renderPointCash();
     expect(
@@ -438,6 +446,37 @@ describe('PointCashPage — Task 2: the owner’s grouped point select', () => {
     renderPointCash();
     expect(screen.queryByLabelText('Select a point')).toBeNull();
   });
+
+  // Folded in from the Task 2 review — the grouped select intersects the
+  // unscoped `/point-cash` rows with `usePointOptionsQuery()`'s ACTIVE
+  // points; a point absent from that active list (deactivated since) is not
+  // listed in either optgroup, even though it still has a cash row. It stays
+  // reachable via `?point=` — see «names a deactivated point…» below.
+  it('leaves an unscoped row for a point outside the active options out of both optgroups', () => {
+    meMock.mockReturnValue({ data: OWNER });
+    pointScopeMock.mockReturnValue({
+      pointId: 'p1',
+      canPick: true,
+      setPointId: vi.fn(),
+      isLoading: false,
+    });
+    // `pointOptionsMock` (beforeEach) lists only p1/p2 as active — p3 has a
+    // cash row but is not among them.
+    pointCashMock.mockImplementation((opts: { asOf?: string }) =>
+      'asOf' in opts
+        ? list([pointRow()])
+        : list([
+            pointRow({ collection_point_id: 'p1', name: 'Shypynky', target_cash: '5000.00' }),
+            pointRow({ collection_point_id: 'p3', name: 'Zombie Point', target_cash: null }),
+          ]),
+    );
+
+    renderPointCash();
+
+    const select = screen.getByLabelText('Select a point');
+    expect(within(select).queryByText('Zombie Point')).toBeNull();
+    expect(within(select).getByText('Shypynky')).toBeInTheDocument();
+  });
 });
 
 describe('PointCashPage — one scoped read, not the whole network', () => {
@@ -529,17 +568,36 @@ describe('PointCashPage — honesty rule 4: the target button does not exist for
   });
 });
 
-describe('PointCashPage — the crates half has no backing tables', () => {
-  it('reserves the crates section with a labelled placeholder', async () => {
+describe('PointCashPage — R1: the crates book beside the berry book, never a combined figure', () => {
+  it('shows the crates book from the row', () => {
+    pointCashMock.mockImplementation((opts: { asOf?: string } = {}) =>
+      'asOf' in opts
+        ? list([pointRow({ crate_deposits: '250.00', crate_deposit_units: 3 })])
+        : list([]),
+    );
+
     renderPointCash();
-    expect(await screen.findByRole('note')).toBeInTheDocument();
+
+    expect(screen.getByText('Crate cash')).toBeInTheDocument();
+    expect(screen.getByText('250.00 ₴')).toBeInTheDocument();
+    expect(screen.getByText('deposits for 3 crates')).toBeInTheDocument();
   });
 
-  it('shows the drawer tile as berry cash alone, captioned, never berry + an unknown crate figure', () => {
+  it('never shows a combined drawer figure — the mock’s dark block is not ported', () => {
+    // Berry cash 1,000.00 + crate deposits 250.00 = 1,250.00 — that sum must
+    // never appear anywhere on the page. The client's «Правка» says the two
+    // books do not lie in one drawer, and `point-cash.service.ts` already
+    // refuses to add them.
+    pointCashMock.mockImplementation((opts: { asOf?: string } = {}) =>
+      'asOf' in opts
+        ? list([pointRow({ cash: '1000.00', crate_deposits: '250.00', crate_deposit_units: 3 })])
+        : list([]),
+    );
+
     renderPointCash();
-    const drawer = screen.getByText('Should be in the drawer').closest('[data-slot="stat-tile"]');
-    expect(drawer).toHaveTextContent('1,000.00 ₴');
-    expect(drawer).toHaveTextContent(/berries only/i);
+
+    expect(screen.queryByText('Should be in the drawer')).toBeNull();
+    expect(screen.queryByText(/1,250\.00/)).toBeNull();
   });
 });
 

@@ -1,8 +1,6 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { DashboardPage, type StatItem } from '@/shared/ui/templates/dashboard-page';
-import { StatTile } from '@/shared/ui/stat-tile';
-import { PendingSlice } from '@/shared/ui/pending-slice';
 import { DateStepper } from '@/shared/ui/date-stepper';
 import { SelectField } from '@/shared/ui/select-field';
 import { Button } from '@/shared/ui/button';
@@ -22,6 +20,7 @@ import { useTransfersQuery } from '@/entities/transfer';
 import { useCashCountsQuery } from '@/entities/cash-count';
 import { SetTargetCashDialog } from '@/features/set-point-target';
 import { CashLedger } from './CashLedger';
+import { CratesBookCard } from './CratesBookCard';
 import { IncomingTransfers } from './IncomingTransfers';
 import { CashCountHistory } from './CashCountHistory';
 
@@ -88,10 +87,21 @@ export function PointCashPage() {
   // of Hooks forbid skipping this call for an operator, so it always mounts —
   // `enabled: isOwner` is what keeps it from ever actually fetching for one.
   const pointCashAll = usePointCashQuery({ enabled: isOwner });
+  // ACTIVE POINTS ONLY (folded in from the Task 2 review) — `points` is
+  // `usePointOptionsQuery()`'s active-only list, read at the top of this
+  // component already. A deactivated point can still carry an unscoped
+  // `/point-cash` row (it may still owe or hold money), but it belongs in
+  // neither optgroup: it stays reachable only via `?point=`, where
+  // `pointName`'s own fallback (below) still names it from `pointRow` alone.
+  const activePointIds = new Set((points ?? []).map((p) => p.id));
   const groupedPoints = pointCashAll.data
     ? {
-        withTarget: pointCashAll.data.data.filter((row) => row.target_cash != null),
-        withoutTarget: pointCashAll.data.data.filter((row) => row.target_cash == null),
+        withTarget: pointCashAll.data.data.filter(
+          (row) => activePointIds.has(row.collection_point_id) && row.target_cash != null,
+        ),
+        withoutTarget: pointCashAll.data.data.filter(
+          (row) => activePointIds.has(row.collection_point_id) && row.target_cash == null,
+        ),
       }
     : null;
 
@@ -319,21 +329,16 @@ export function PointCashPage() {
             transfersTruncated={transfersTruncated}
           />
           <div className="flex flex-col gap-5">
-            <PendingSlice
-              label={t('pointCash.crates.label')}
-              note={t('pointCash.crates.note')}
-              variant="block"
-            />
-            {/* «У шухляді має бути» — the mock adds berry cash to crate
-                deposits here; crates have no source in this backend (§3), so
-                this tile shows `cash` ALONE with a caption saying so. Adding
-                a known figure to an unknown one would print a wrong number
-                with a confident face. */}
-            <StatTile
-              label={t('pointCash.drawer.label')}
-              value={formatUah(shownRow.cash, locale)}
-              tone={isNegative(shownRow.cash) ? 'amber' : 'berry'}
-              hint={t('pointCash.drawer.caption')}
+            {/* R1 — no combined «У шухляді має бути» figure here: the
+                client's «Правка» says berry cash and crate deposits do not
+                lie in one drawer, and `point-cash.service.ts` already
+                refuses to add the two books. `CratesBookCard` shows the
+                crates figure alone, with a muted two-books line that prints
+                both figures side by side and never their sum. */}
+            <CratesBookCard
+              crateDeposits={shownRow.crate_deposits}
+              crateDepositUnits={shownRow.crate_deposit_units}
+              berryCash={shownRow.cash}
             />
           </div>
         </div>
@@ -357,7 +362,7 @@ export function PointCashPage() {
               })
             : undefined
         }
-        title={t('pointCash.title', { date: formatLongDate(date, locale) })}
+        title={t('pointCash.title')}
         description={t('pointCash.description')}
         actions={actions}
         stats={stats}

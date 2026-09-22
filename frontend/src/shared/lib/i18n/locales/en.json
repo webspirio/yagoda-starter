@@ -547,7 +547,7 @@
   },
   "pointCash": {
     "eyebrow": "{{point}} · {{date}}, {{weekday}}",
-    "title": "Point cash — {{date}}",
+    "title": "Point cash",
     "description": "How much cash the point should have on hand right now, and how much is missing from its target. Berry cash and crate deposits are two separate books — neither borrows from the other.",
     "pickPoint": "Select a point",
     "today": "Today",
@@ -585,12 +585,12 @@
       "total": "Berry cash"
     },
     "crates": {
-      "label": "Crate cash",
-      "note": "Crates aren't tracked yet — this space is reserved for a future slice."
-    },
-    "drawer": {
-      "label": "Should be in the drawer",
-      "caption": "Berries only — crates aren't counted yet."
+      "title": "Crate cash",
+      "caption_one": "deposits for {{count}} crate",
+      "caption_other": "deposits for {{count}} crates",
+      "captionZero": "no crate deposits held",
+      "footnote": "This money sits apart from the berry cash: we pay someone for their crates even if the berry drawer is empty. No deposit was taken against a signed receipt — those crates are not counted here.",
+      "twoBooks": "Two books: berries {{berry}} · crates {{crates}}"
     },
     "incoming": {
       "loadFailed": "Could not load the transfers on their way"
