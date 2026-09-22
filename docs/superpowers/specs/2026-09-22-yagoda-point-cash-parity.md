@@ -1,6 +1,6 @@
 # «Каса точки» parity slice — spec (programme slice 2, 2026-09-22)
 
-Programme: `docs/superpowers/specs/2026-09-17-yagoda-mock-parity-programme.md` §5.2 (charter), audit items 25–65 in `…-mock-parity-audit.md`. Rules: `26-rules-by-example.md` §7.1–7.10, §10.3, §10.6, the 20:50 story and its «Правка». Mock: `~/work/yagoda-crm/src/pages/PointCashPage.tsx` + `components/cash/*`. Two PRs, backend first, both from `main` (the reception stack is independent).
+Programme: `docs/superpowers/specs/2026-09-17-yagoda-mock-parity-programme.md` §5.2 (charter), audit items 25–65 in `…-mock-parity-audit.md`. Rules: `26-rules-by-example.md` §7.1–7.10, §10.3, §10.6, the 20:50 story and its «Правка». Mock: `~/work/yagoda-crm/src/pages/PointCashPage.tsx` + `components/cash/*`. One branch from `main` (`feat/point-cash-parity`, independent of the reception stack), backend tasks first, then the screen — one PR, as the reception slice shipped.
 
 ## 1. Rulings (the grilling, answered from the documents)
 
