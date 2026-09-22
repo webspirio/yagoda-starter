@@ -1095,12 +1095,6 @@ because it is either a client question or a change that reaches beyond the two s
   rather than re-deriving the SQL is the right trade. Related: `WHERE s.business_date = $1` has no
   usable index — `UQ_shifts_point_business_date` leads with `collection_point_id` — so it is a seq
   scan on `shifts`, the one query here that grows with calendar time rather than with the network.
-- **§8.4's «з них недостача 1,94 / з них витрати 4,45» split is not in the response.**
-  `CostOfDayResponse` carries `shortfall_amount`, `expenses_amount` and `per_kg` but not the two
-  per-kilogram components the client's screen prints, so a frontend would have to divide money in
-  React — the one thing `money.ts` exists to prevent. Two more `div` calls behind the same
-  `isZero` guard. Spec §5.5's formula list omits them too, so this is a gap in the plan as much as
-  in the code.
 
 ## Deferred from the reweigh screen (2026-09-21)
 
@@ -1121,8 +1115,6 @@ decision rather than guessing whether something was missed.
   the недостача claimed against it is a question the client has not answered.
 - **Re-weighing a day at a since-deactivated point** — the picker lists active reception points
   only, so a past day at a closed point is unreachable from this screen.
-- **§8.4 «Собівартість дня»** — `GET /shifts/:shiftId/cost-of-day` already serves it and no screen
-  reads it.
 
 **Came out of the slice's own reviews, not from the plan:**
 
@@ -1151,3 +1143,17 @@ decision rather than guessing whether something was missed.
   become 200 with this row staying green, because the gate is the first-load set by design. A
   per-chunk ceiling is the obvious next instrument; none is agreed, and `bundle` deliberately
   does not invent one.
+
+## Deferred from the cost-of-day screen (2026-09-22)
+
+- **§8.6 «Середня ціна по мережі».** `GET /reports/network-average?date=` is served, tested and
+  read by no screen — exactly where §8.4 stood before this branch. `nav.network` is the next
+  disabled placeholder in the management group.
+- **«Аркуш керівника»** (`nav.sheet`) — a placeholder with no endpoint behind it at all.
+- **§8.5's allocation-policy selector.** Still blocked on the rules file's own open question
+  («узнать як вони це роблять»); ③ additionally needs `expense_allocation` and
+  `allocation_product_id` on the columnless `reweighs` header.
+- **`basket_share` is not in spec §5.5's formula list.** It was added because §8.4's screen
+  prints «із пулу» and checks «Σ із пулу = КОШИК» in front of the owner, and `per_kg × kg` per
+  row fails that check by 2,94 ₴ on §8.4's own numbers. If the rules file is ever revised, §5.5
+  should gain the formula rather than the code losing it.

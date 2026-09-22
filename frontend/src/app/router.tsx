@@ -32,6 +32,7 @@ import { UiKitPage } from '@/pages/ui-kit';
 // depend on; read it before adding a seventh.
 import {
   CatalogPage,
+  CostOfDayPage,
   JournalPage,
   PointsPage,
   ReweighPage,
@@ -209,6 +210,18 @@ export const routes: RouteObject[] = [
           <RequireAuth>
             <RequireRole role="network_owner">
               <ReweighPage />
+            </RequireRole>
+          </RequireAuth>
+        ),
+      },
+      {
+        // Owner-only, like /reweigh: §8's reads as well as its writes are the
+        // base's view of a point, not something the point sees about itself.
+        path: '/cost-of-day',
+        element: (
+          <RequireAuth>
+            <RequireRole role="network_owner">
+              <CostOfDayPage />
             </RequireRole>
           </RequireAuth>
         ),

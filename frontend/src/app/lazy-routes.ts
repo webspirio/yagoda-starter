@@ -52,3 +52,6 @@ export const CatalogPage = lazy(() => ownerPages().then((m) => ({ default: m.Cat
 export const JournalPage = lazy(() => ownerPages().then((m) => ({ default: m.JournalPage })));
 export const TransfersPage = lazy(() => ownerPages().then((m) => ({ default: m.TransfersPage })));
 export const ReweighPage = lazy(() => ownerPages().then((m) => ({ default: m.ReweighPage })));
+export const CostOfDayPage = lazy(() =>
+  ownerPages().then((m) => ({ default: m.CostOfDayPage })),
+);
