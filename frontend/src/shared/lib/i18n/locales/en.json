@@ -671,7 +671,7 @@
       "discrepancy": "Discrepancy",
       "closedBy": "closed by {{name}}",
       "explanation": "“{{text}}”",
-      "recountAt": "Recounted at {{time}}",
+      "countAt": "Count at {{time}}",
       "matched": "✓ matched",
       "mismatched": "⚠ did not match",
       "recountsEmpty": "The drawer has not been recounted today.",

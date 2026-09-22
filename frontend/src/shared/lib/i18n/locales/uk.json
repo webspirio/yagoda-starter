@@ -683,7 +683,7 @@
       "discrepancy": "Розбіжність",
       "closedBy": "закрив {{name}}",
       "explanation": "«{{text}}»",
-      "recountAt": "Перерахунок о {{time}}",
+      "countAt": "Підрахунок о {{time}}",
       "matched": "✓ зійшлося",
       "mismatched": "⚠ не зійшлося",
       "recountsEmpty": "Цього дня касу ще не перераховували.",

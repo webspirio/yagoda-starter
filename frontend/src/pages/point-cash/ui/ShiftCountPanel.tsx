@@ -238,7 +238,16 @@ export function ShiftCountPanel({
                 <div key={c.id} className="flex items-baseline justify-between gap-4 text-sm">
                   <span className="flex items-baseline gap-1.5 text-muted-foreground">
                     <span>
-                      {t('pointCash.panel.recountAt', { time: formatTime(c.counted_at, locale) })}
+                      {/* Neutral on purpose — a `midday` row is EITHER an
+                          operator's own recount (§7.6) OR a closing count a
+                          reopen demoted back to `midday` (`cash-counts.service.ts`'s
+                          own doc comment: one physical drift, two stored
+                          rows). Nothing on the wire tells the two apart, so
+                          this label claims only what is true of both: SOME
+                          count happened at this time. It must never say
+                          «Перерахунок»/"Recounted" — that claims an
+                          operator's action nobody necessarily took. */}
+                      {t('pointCash.panel.countAt', { time: formatTime(c.counted_at, locale) })}
                     </span>
                     <span aria-hidden="true">·</span>
                     <span

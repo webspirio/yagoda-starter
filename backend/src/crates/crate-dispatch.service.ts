@@ -16,7 +16,7 @@ export interface CrateDispatchResponse {
 
 /**
  * WHY THIS LIVES IN `crates/` AND NOT IN `shifts/`. `crates/` owns crate
- * counting, exactly as `point-cash/` reads `CRATE_BOOK_SQL` out of
+ * counting, exactly as `point-cash/` reads `crateBookSql` out of
  * `crate-balance.service.ts` rather than re-deriving the filter. Putting this
  * query in `shifts/` would make `shifts/` the second module that knows how
  * `is_crate` selects a tare type. (An earlier draft of the spec claimed the

@@ -413,7 +413,7 @@ describe('ShiftCountPanel — the day’s recounts', () => {
       />,
     );
 
-    expect(screen.getByText('Recounted at 10:00 AM')).toBeInTheDocument();
+    expect(screen.getByText('Count at 10:00 AM')).toBeInTheDocument();
     expect(screen.getByText('✓ matched')).toBeInTheDocument();
     expect(screen.getByText('1,200.00 ₴')).toBeInTheDocument();
     expect(screen.queryByText('999.00 ₴')).toBeNull();
@@ -456,9 +456,41 @@ describe('ShiftCountPanel — the day’s recounts', () => {
       />,
     );
 
-    const times = screen.getAllByText(/^Recounted at/).map((el) => el.textContent);
-    expect(times).toEqual(['Recounted at 09:00 AM', 'Recounted at 02:00 PM']);
+    const times = screen.getAllByText(/^Count at/).map((el) => el.textContent);
+    expect(times).toEqual(['Count at 09:00 AM', 'Count at 02:00 PM']);
     vi.unstubAllEnvs();
+  });
+
+  it('labels a midday row neutrally — a reopen’s demoted closing count looks identical to an operator’s recount on the wire', () => {
+    // Reopen-shaped fixture: the SHIFT is still open (a reopen re-opens it),
+    // and the `midday` row carries a real discrepancy timestamped in the
+    // evening — exactly what a demoted closing count looks like
+    // (`cash-counts.service.ts`'s doc comment: one physical drift, two
+    // stored rows). Nothing on the wire distinguishes it from an operator's
+    // own recount, so the panel must not claim «Перерахунок»/"Recounted".
+    render(
+      <ShiftCountPanel
+        shift={shift({ status: 'open' })}
+        isShiftLoading={false}
+        isShiftError={false}
+        counts={[
+          count({
+            id: 'demoted',
+            kind: 'midday',
+            discrepancy: '-90.00',
+            counted_at: '2026-09-22T19:00:00.000Z',
+          }),
+        ]}
+        isOperator={false}
+        isToday
+        onOpenShift={noop}
+        onCloseShift={noop}
+      />,
+    );
+
+    expect(screen.getByText(/^Count at/)).toBeInTheDocument();
+    expect(screen.getByText('⚠ did not match')).toBeInTheDocument();
+    expect(screen.queryByText(/Recounted/)).toBeNull();
   });
 });
 

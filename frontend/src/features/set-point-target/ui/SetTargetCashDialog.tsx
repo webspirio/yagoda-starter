@@ -16,7 +16,15 @@ import { Textarea } from '@/shared/ui/textarea';
 import { Button } from '@/shared/ui/button';
 import { toast } from '@/shared/ui/toast';
 import { apiErrorToBanner } from '@/shared/lib/api-error';
-import { DECIMAL_INPUT, normalizeAmount, cmp, sub, formatUah, amountRules } from '@/shared/lib/money';
+import {
+  DECIMAL_INPUT,
+  normalizeAmount,
+  cmp,
+  sub,
+  formatUah,
+  amountRules,
+  maskDecimalInput,
+} from '@/shared/lib/money';
 import { usePointCashForPointQuery } from '@/entities/point-cash';
 import { useSetPointTargetMutation } from '../api/useSetPointTarget';
 
@@ -71,6 +79,13 @@ export function SetTargetCashDialog({
   } = useForm<SetTargetFormValues>({
     defaultValues: { target_cash: currentTarget ?? '', reason: '' },
   });
+
+  // Masked the same way `TotalsSection`'s «Видано готівкою» field is
+  // (comma or dot, two decimals, no letters) — wrapped around RHF's own
+  // `onChange` rather than replacing it, since this field stays an
+  // uncontrolled `register()` input; on-submit validation (`amountRules`)
+  // is unchanged.
+  const targetCashField = register('target_cash', amountRules('pointTarget.errors.cashFormat'));
 
   // `useWatch` rather than `form.watch()`: the latter returns a function the
   // React Compiler cannot memoize safely (see `pages/reception`'s own note).
@@ -136,7 +151,11 @@ export function SetTargetCashDialog({
                 {...a11y}
                 inputMode="decimal"
                 className="font-mono"
-                {...register('target_cash', amountRules('pointTarget.errors.cashFormat'))}
+                {...targetCashField}
+                onChange={(e) => {
+                  e.target.value = maskDecimalInput(e.target.value);
+                  void targetCashField.onChange(e);
+                }}
                 autoFocus
               />
             )}

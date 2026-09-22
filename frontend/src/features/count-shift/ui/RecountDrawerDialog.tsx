@@ -12,7 +12,7 @@ import {
 import { Field } from '@/shared/ui/field';
 import { TextInput } from '@/shared/ui/text-input';
 import { Button } from '@/shared/ui/button';
-import { amountRules, normalizeAmount, isZero } from '@/shared/lib/money';
+import { amountRules, maskDecimalInput, normalizeAmount, isZero } from '@/shared/lib/money';
 import { apiErrorToBanner } from '@/shared/lib/api-error';
 import type { CashCount } from '@/entities/cash-count';
 import { useRecountMutation } from '../api/recount';
@@ -63,6 +63,13 @@ export function RecountDrawerDialog({ open, onClose }: { open: boolean; onClose:
     handleSubmit,
     formState: { errors, isSubmitting },
   } = useForm<RecountFormValues>({ defaultValues: { amount: '' } });
+
+  // Masked the same way `TotalsSection`'s «Видано готівкою» field is
+  // (comma or dot, two decimals, no letters) — wrapped around RHF's own
+  // `onChange` rather than replacing it, since this field stays an
+  // uncontrolled `register()` input; on-submit validation (`amountRules`)
+  // is unchanged.
+  const amountField = register('amount', amountRules('recount.errors.amount'));
 
   const submit = async (values: RecountFormValues) => {
     try {
@@ -135,7 +142,11 @@ export function RecountDrawerDialog({ open, onClose }: { open: boolean; onClose:
                     {...a11y}
                     inputMode="decimal"
                     className="font-mono"
-                    {...register('amount', amountRules('recount.errors.amount'))}
+                    {...amountField}
+                    onChange={(e) => {
+                      e.target.value = maskDecimalInput(e.target.value);
+                      void amountField.onChange(e);
+                    }}
                     autoFocus
                   />
                 )}
