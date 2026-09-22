@@ -32,3 +32,61 @@ Copy in `uk.json` verbatim from the mock where quoted here; `en.json` twins. Tes
 
 ## 4. Definition of done
 Backend: `npm test`, `npm run test:db`, `verify:full`. Frontend: suite, lint, tsc, `verify:full`; the two-window comparison at `/point-cash` for both roles. §5 audit marks appended by the last frontend task.
+
+## 5. Audit marks — «Каса точки» (items 25–65)
+
+Source: `docs/superpowers/specs/2026-09-17-yagoda-mock-parity-audit.md`, Audit 2, «Каса точки» (items 25–65 — item numbers are continuous within Audit 2, not reset per screen). Every number in the range gets its own mark, even where the audit folds several numbers into one bullet. Marks: `ported` (shipped, task cited), `not ported (rule)` (an explicit ruling says so), `deferred → D-n` (needs a domain decision this slice did not make), `already at parity (audit)` (the audit itself records no gap — a starter-only addition, or a pre-existing accepted difference this slice did not revisit).
+
+- **25** ported — bare title «Каса точки» (Task 3, folded-in 1: dropped the date suffix once the eyebrow carried it).
+- **26** ported — eyebrow «{point} · {longDate}, {weekday}» and the description copy (Task 2).
+- **27** already at parity (audit) — the date stepper is starter-only; the mock has nothing to port it from.
+- **28** not ported (rule) — R6: the owner's select groups points «З наділом» / «Без наділу» instead of filtering to only points with a float, and still shows cash for any point.
+- **29** ported — the button copy («Change the target» / «Assign a target») matches the mock's intent; the Wallet icon was not carried over (decorative, and absent from the spec's own §3 composition text).
+- **30** ported — empty-state copy covers the same ground (`pointCash.stats.neverCounted`, `pointCash.panel.recountsEmpty`, `pointCash.panel.actions.noShiftNote`, `pointCash.countHistory.empty`), worded to this codebase's own convention rather than the mock's literal string.
+- **31** not ported (rule) — R9: «Касову книгу ведемо з {date}» has no book-opening date anywhere in the schema.
+- **32** not ported (rule) — R9: the «Наділ» stat's «з DD.MM» needs target history, which §6.1's 03.09.2026 decision rules out (a target is a plain column, not a history).
+- **33** folded into 32 — same «Наділ»-hint cluster; no separate sub-point survives in the audit's own bullet text.
+- **34** ported — Task 2's `shortfallOver` hint branch («у касі більше, ніж наділ»).
+- **35** ported — R5 (Task 4): a second `status: 'disputed'` read renders the red card, filtered to unresolved disputes.
+- **36** ported — Task 4 rewrote the in-transit caption («{{carrier}} · sent {{date}} at {{time}} · …»).
+- **37** ported — Task 4's accept-toast detail line (`toastAcceptedDetail`).
+- **38** folded into 39 — same dispute-dialog cluster; no separate sub-point survives.
+- **39** already at parity (audit) — the prefilled-cash-vs-blank divergence is recorded in the audit itself as an already-accepted, pre-existing difference; R5's scope was the card and its footer, not the dispute dialog's own copy.
+- **40** folded into 39 — same dispute-dialog cluster.
+- **41** ported — R6 (Task 5): the «на початок дня» row from the day's opening berry count; its hint captions the target alone — the mock's «− борг бази» subtraction is not derivable from anything this page reads (`buildLedger`'s own comment) and was not attempted.
+- **42** deferred → D-1 — the «за сьогоднішню ягоду» / «за ягоду інших днів» split by allocation origin needs `payout_allocations` (FIFO per receipt); the starter still splits by a payout's own `business_date`.
+- **43** deferred → D-1 — «погашено сьогоднішній залишок» needs the same allocations table D-1 defers.
+- **44** already at parity (audit) — `accruedToday`/`returnedToday` are starter-only rows with nothing in the mock to port.
+- **45** ported — R6 (Task 5): the negative-cash notice and a two-rows footnote rewritten without the mock's demo numbers.
+- **46** ported — the total row is bold (`strong`) and right-aligned mono, reading as the mock's emphasis intends; not literally indented/uppercase — a cosmetic simplification (`LedgerRow` already carries an unused `indent` prop for a future pass).
+- **47** ported — R1/R8 (Task 3 + the backend PR): `crate_deposit_units` on the row, the card's «завдатків за N ящиків» caption.
+- **48** not ported (rule) — R1: no combined «У шухляді має бути» figure; the two books sit side by side and are never summed.
+- **49** ported — R4 (Task 6): the shift line, opening/closing counts, discrepancy pill, `closed_by_name` (R3/D-8), and the explanation line.
+- **50** not ported (rule) — R9: `awaiting_explanation` is unreachable under the 09.09 rule, so there is no state left for an owner settle box to render; the day page's own «Пояснити» flow is untouched by this slice.
+- **51** not ported (rule) — R9: same 09.09 rule — there is no "sent to the manager" state to notify the operator about; the closing result's own sentence supersedes it (deviations, below).
+- **52** ported — R4 (Task 6): a day-scoped «Перерахунок о HH:MM ✓/⚠» list inside the panel, alongside the pre-existing whole-history table (now behind R10's toggle).
+- **53** ported — R2/D-6 (backend PR 1): `POST /cash-counts` + `RecountDrawerDialog`.
+- **54** ported — R4 (Task 6): open/close live on this page via the shared `CountDrawerDialog`, with the panel's own captions and footnote.
+- **55** ported — R4 (Task 6): `CountResultView` shows the counted figure and a discrepancy pill; the mock's «Очікує пояснення» branch does not exist (09.09 rule — deviations, below).
+- **56** ported — R4 (Task 6): `RecountDrawerDialog`.
+- **57** ported — reuses the existing `CountDrawerDialog` open-mode copy.
+- **58** ported — `>0` / `≥0` validation (`recount.errors.amount`, the existing close-count rules).
+- **59** not ported (rule) — R9: the mock's history-framed title has no target history to title itself with.
+- **60** not ported (rule) — R9: «Діючий: X з {date} · {setBy}» — only «Діючий: X» ported (Task 7); the date/author half needs target history, which is ruled out.
+- **61** not ported (rule) — R9: «Діє з» field — explicitly ruled out (§6.1, 03.09.2026: a target is a plain column).
+- **62** ported — Task 7: field label «Скільки грошей, ₴» / "How much money, ₴".
+- **63** ported — Task 7: the live preview («У касі за ягоду зараз X» / «Не хвататиме до наділу Y»).
+- **64** ported — Task 7: the over-target sentence, replacing the old amber warning.
+- **65** ported — Task 7: the two-part toast (title + description).
+
+### Deviations from the mock
+
+1. **R1 — no combined drawer.** The mock's «У шухляді має бути» dark block (berry + crates summed) is not ported. `CratesBookCard`'s «Дві книги» line prints both figures but never their sum — `point-cash.service.ts` already refuses to add the two books, and the client's «Правка» under the 20:50 story is why.
+2. **R4's closing copy under the 09.09 rule.** A non-zero closing discrepancy reads «Зміна закрита. Розбіжність X — керівник побачить її у своєму списку» (`pointCash.result.closedDiscrepancy`), not the mock's «…Очікує пояснення»: nothing blocks the close, and `awaiting_explanation` never occurs in production.
+3. **R5's footer.** The disputed-transfer red card's footer reads «Каса не змінилася ні на копійку. Керівник врегулює переказ — на точці цю цифру не правлять» (`transfer.incoming.disputed.footer`), not the mock's void-and-resend flow — the starter's own remedy for a disputed transfer is the owner's `resolve`, not a void plus a resend.
+4. **The error code `NO_OPEN_SHIFT`.** A midday recount against a closed or nonexistent shift refuses with `NO_OPEN_SHIFT` / 409 (aligned with intakes, payouts, transfers and crates), surfaced by `RecountDrawerDialog` through `apiErrorToBanner`'s per-call override (`recount.errors.amount`) rather than the shared `transfer.errors.noOpenShift` wording — a starter-only refusal with no mock equivalent, since the mock imposes no shift-status gate on «Перерахувати касу».
+5. **The units caption.** The crates card's unit count reads «завдатків за N ящиків» (deposit-covered units specifically, `pointCash.crates.caption`), not the mock's generic «за N ящиків»: R8 counts only issuances whose deposit is still held, not every crate at the point — D-3's fuller crate-shipments picture is still open.
+
+### Note — the backend plan's recount refusal code was superseded
+
+The backend plan (`docs/superpowers/plans/2026-09-22-yagoda-point-cash-backend.md`, Task 1) originally specified `SHIFT_NOT_OPEN` / 400 for a midday recount against a shift that is not open. The shipped code is `NO_OPEN_SHIFT` / 409 instead, aligned with every other document's refusal in this backend (intakes, payouts, transfers, crates) — recorded on the plan itself as «Deviation, recorded (2026-09-22, final review)». The frontend's `RecountDrawerDialog` (deviation 4, above) was built against the shipped code, not the plan's original text.

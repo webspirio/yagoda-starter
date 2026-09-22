@@ -122,8 +122,11 @@ vi.mock('@/features/count-shift', async (importOriginal) => {
 // `useQueryClient()` for real — `IncomingTransfers` already has its own full
 // suite (`IncomingTransfers.test.tsx`), so this page's suite stubs it rather
 // than wiring up a QueryClientProvider it does not otherwise need.
+// R10 — the marker element (rather than `null`) is what lets the composition-
+// order tests below locate this section in the DOM without re-testing its
+// own content (`IncomingTransfers.test.tsx` already does that).
 vi.mock('./IncomingTransfers', () => ({
-  IncomingTransfers: () => null,
+  IncomingTransfers: () => <div data-testid="incoming-transfers-stub" />,
 }));
 
 // Same reasoning as above — `useSetPointTargetMutation` needs a real
@@ -727,6 +730,73 @@ describe('PointCashPage — R1: the crates book beside the berry book, never a c
 
     expect(screen.queryByText('Should be in the drawer')).toBeNull();
     expect(screen.queryByText(/1,250\.00/)).toBeNull();
+  });
+});
+
+describe('PointCashPage — R10: composition order', () => {
+  /** `a` comes before `b` in document order — the same test either role's
+   *  markup must pass, since R10 asks for one order, not a per-role one. */
+  function precedes(a: Element, b: Element): void {
+    const position = a.compareDocumentPosition(b);
+    expect(position & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
+  }
+
+  /**
+   * Stats → `IncomingTransfers` (full width) → the grid (`CashLedger` left,
+   * right column `CratesBookCard` then `ShiftCountPanel`) → the history
+   * toggle. Asserted on DOM order alone — the grid's `lg:grid-cols-[…]`
+   * class only ever adds COLUMNS at that breakpoint; nothing here reorders
+   * children, so this same order is what renders in one column below `lg`
+   * (the brief's "DOM order = mobile order").
+   */
+  function assertCompositionOrder() {
+    const targetTile = tile('Target');
+    const transfers = screen.getByTestId('incoming-transfers-stub');
+    const ledgerCard = screen.getByText('Where this number comes from').closest('.rounded-xl');
+    if (!ledgerCard) throw new Error('CashLedger’s SectionCard root not found');
+    const cratesEyebrow = screen.getByText('Crate cash');
+    const panelEyebrow = screen.getByText('Shift and recount');
+    const historyToggle = screen.getByRole('button', { name: 'Full recount history' });
+
+    precedes(targetTile, transfers);
+    precedes(transfers, ledgerCard);
+    precedes(ledgerCard, cratesEyebrow);
+    precedes(cratesEyebrow, panelEyebrow);
+    precedes(panelEyebrow, historyToggle);
+
+    // The grid itself: `CashLedger`'s card is the FIRST child (left column);
+    // `CratesBookCard` and `ShiftCountPanel` both live inside the SECOND
+    // child (the right column) — so below `lg`, where the grid falls back
+    // to a single column, the right column still renders after the ledger
+    // because nothing reorders it, not because of any breakpoint-specific
+    // class.
+    const grid = ledgerCard.parentElement;
+    if (!grid) throw new Error('grid container not found');
+    expect(grid.className).toContain('lg:grid-cols-[minmax(0,1fr)_minmax(320px,0.8fr)]');
+    expect(grid.className).not.toMatch(/\border-/); // no order-* utility undoing source order
+    expect(grid.children[0]).toBe(ledgerCard);
+    const rightColumn = grid.children[1];
+    if (!rightColumn) throw new Error('right column not found');
+    expect(rightColumn).toContainElement(cratesEyebrow);
+    expect(rightColumn).toContainElement(panelEyebrow);
+  }
+
+  it('stats → transfers → ledger|[crates, panel] → history toggle, for an operator', () => {
+    renderPointCash();
+    assertCompositionOrder();
+  });
+
+  it('keeps the same composition order for the owner', () => {
+    meMock.mockReturnValue({ data: OWNER });
+    pointScopeMock.mockReturnValue({
+      pointId: 'p1',
+      canPick: true,
+      setPointId: vi.fn(),
+      isLoading: false,
+    });
+
+    renderPointCash();
+    assertCompositionOrder();
   });
 });
 
