@@ -160,7 +160,51 @@ function measure() {
   if (files.length === 0) {
     fail([`${ASSETS_REL} has no .js or .css file in it — is the build actually producing output?`])
   }
+  assertProductionBuild(files)
   return files
+}
+
+/**
+ * React's development runtime, shipped to users, is a bug this check can actually see —
+ * and the only one it can, because the output is still MINIFIED and therefore looks
+ * entirely normal. It cost ~291 KiB raw / ~82 KiB gzip here and, worse, swaps React for
+ * its slow path with DevTools hooks and warning machinery attached.
+ *
+ * How it happened, so the next person recognises it: the repo keeps ONE `.env` at the
+ * root because docker compose reads it, and it carries `NODE_ENV=development` for the
+ * backend. Any arrangement that lets Vite's env machinery see that file — `envDir: '..'`
+ * is the obvious one, `loadEnv('..', 'VITE_')` is the one that looks safe and is not —
+ * makes Vite honour that NODE_ENV and build in development mode. Nothing warns. The
+ * build succeeds, the bundle is minified, and the only symptom is a bigger number on a
+ * row somebody has to be reading.
+ *
+ * These marker strings are dev-only React branches that survive minification because
+ * they are string literals. Checked against the first-load JS only: a dev-mode build
+ * puts them in the entry chunk, and scanning every asset would make this O(bundle) for
+ * no extra signal.
+ *
+ * @param {AssetFile[]} files
+ */
+function assertProductionBuild(files) {
+  const markers = ['Each child in a list should have a unique', 'Invalid hook call']
+  for (const f of files) {
+    if (!f.file.endsWith('.js')) continue
+    const text = readFileSync(path.join(ASSETS, f.file), 'utf8')
+    const hit = markers.find((m) => text.includes(m))
+    if (hit === undefined) continue
+    fail([
+      `${ASSETS_REL}/${f.file} contains React's DEVELOPMENT runtime (matched ${JSON.stringify(hit)}).`,
+      'This build shipped dev-only React to users: warning machinery, DevTools hooks and the',
+      'slow render path, for roughly 291 KiB raw / 82 KiB gzip of dead weight. It is still',
+      'minified, so nothing else about the output looks wrong and no other row here catches it.',
+      '',
+      'Almost always the cause is Vite reading the repo-root .env, which carries',
+      'NODE_ENV=development for the backend and compose. See frontend/vite.config.ts: the root',
+      "file's VITE_ keys are read by hand precisely so Vite's env machinery never sees",
+      'NODE_ENV. `envDir: \'..\'` and `loadEnv(mode, \'..\', \'VITE_\')` both reintroduce it —',
+      'the prefix argument filters what loadEnv RETURNS, not what it reads.',
+    ])
+  }
 }
 
 /**
@@ -260,14 +304,31 @@ function firstLoad(files) {
  * follows this exact arithmetic instead of inventing their own rounding rule (the mistake
  * this check's own history already made once — see the file header).
  *
+ * THE RATCHET IS ARITHMETIC HERE, NOT PROSE IN THE BASELINE. The derived ceiling is
+ * clamped to any ceiling already recorded, so `--write` can only ever LOWER a ceiling;
+ * raising one takes `--raise` and is announced. Without that clamp, `--write` is a
+ * one-command widening that produces a diff reading like a routine re-measurement —
+ * which is precisely what every paragraph of `reason` exists to prevent, and it became
+ * reachable the moment the recorded ceiling stopped equalling this function's own output
+ * (2026-09-21: the ceiling was held while the measured quantity was corrected, so the
+ * file is now deliberately tighter than the arithmetic below would derive).
+ *
  * @param {number} gzip
  * @param {number} raw
  * @param {string | undefined} previousReason
+ * @param {{ maxGzipBytes?: number, maxRawBytes?: number } | undefined} [previous] existing baseline, whose ceiling caps the result
+ * @param {boolean} [allowRaise] explicit `--raise`: permit a ceiling above `previous`
  * @returns {Budget}
  */
-function buildBudget(gzip, raw, previousReason) {
-  const maxGzipBytes = Math.ceil((gzip + MIN_HEADROOM_GZIP_BYTES) / STEP_GZIP_BYTES) * STEP_GZIP_BYTES
-  const maxRawBytes = Math.ceil((raw + MIN_HEADROOM_RAW_BYTES) / STEP_RAW_BYTES) * STEP_RAW_BYTES
+function buildBudget(gzip, raw, previousReason, previous, allowRaise = false) {
+  const derivedGzip = Math.ceil((gzip + MIN_HEADROOM_GZIP_BYTES) / STEP_GZIP_BYTES) * STEP_GZIP_BYTES
+  const derivedRaw = Math.ceil((raw + MIN_HEADROOM_RAW_BYTES) / STEP_RAW_BYTES) * STEP_RAW_BYTES
+  const prevGzip = typeof previous?.maxGzipBytes === 'number' ? previous.maxGzipBytes : undefined
+  const prevRaw = typeof previous?.maxRawBytes === 'number' ? previous.maxRawBytes : undefined
+  const maxGzipBytes =
+    !allowRaise && prevGzip !== undefined ? Math.min(derivedGzip, prevGzip) : derivedGzip
+  const maxRawBytes =
+    !allowRaise && prevRaw !== undefined ? Math.min(derivedRaw, prevRaw) : derivedRaw
   return {
     measuredAt: new Date().toISOString().slice(0, 10),
     measuredGzipBytes: gzip,
@@ -332,20 +393,48 @@ function main() {
   const shipped = totals(files)
 
   if (write) {
-    /** @type {string | undefined} */
-    let previousReason
+    const raise = process.argv.includes('--raise')
+    /** @type {Budget | undefined} */
+    let previous
     try {
-      previousReason = JSON.parse(readFileSync(BUDGET, 'utf8'))?.reason
+      previous = JSON.parse(readFileSync(BUDGET, 'utf8'))
     } catch {
-      /* first write — no previous reason to carry forward */
+      /* first write — no previous baseline to carry forward or clamp against */
     }
-    const budget = buildBudget(gzip, raw, previousReason)
+    const budget = buildBudget(gzip, raw, previous?.reason, previous, raise)
     writeFileSync(BUDGET, `${JSON.stringify(budget, null, 2)}\n`)
     process.stdout.write(
       `bundle: baseline written — measured ${kib(gzip)} gzip / ${kib(raw)} raw, ceiling set to ` +
         `${kib(budget.maxGzipBytes)} gzip / ${kib(budget.maxRawBytes)} raw ` +
         `(headroom ${kib(budget.headroomGzipBytes)} gzip / ${kib(budget.headroomRawBytes)} raw)\n`,
     )
+    // A refused raise is ANNOUNCED, never silent: the writer asked to re-record a
+    // baseline and got a tighter one than the arithmetic derives, and the whole value of
+    // the clamp is that they find out here rather than discovering a red `bundle` row
+    // later and assuming the check is broken.
+    const heldGzip = previous?.maxGzipBytes !== undefined && budget.maxGzipBytes < gzip + MIN_HEADROOM_GZIP_BYTES
+    const heldRaw = previous?.maxRawBytes !== undefined && budget.maxRawBytes < raw + MIN_HEADROOM_RAW_BYTES
+    if (!raise && (heldGzip || heldRaw)) {
+      process.stdout.write(
+        `WARNING: the recorded ceiling was HELD, not re-derived — this measurement wants ` +
+          `${kib(Math.ceil((gzip + MIN_HEADROOM_GZIP_BYTES) / STEP_GZIP_BYTES) * STEP_GZIP_BYTES)} gzip / ` +
+          `${kib(Math.ceil((raw + MIN_HEADROOM_RAW_BYTES) / STEP_RAW_BYTES) * STEP_RAW_BYTES)} raw to keep the ` +
+          `designed minimum headroom, which is ABOVE the ceiling already on file. --write can only ever ` +
+          `lower a ceiling; the headroom written above is therefore below the minimum and the check will say ` +
+          `so on every run. The intended response is to make the bundle smaller. If the ceiling genuinely has ` +
+          `to rise, re-run with --raise and say in ${BUDGET_REL}'s reason what changed and why it could not ` +
+          `fit in the existing headroom.\n`,
+      )
+    }
+    if (raise && previous !== undefined) {
+      process.stdout.write(
+        `WARNING: --raise was given, so the ceiling was re-derived from the measurement rather than clamped ` +
+          `to the ${kib(previous.maxGzipBytes)} gzip / ${kib(previous.maxRawBytes)} raw already on file. ` +
+          `This WIDENS the budget. The diff must carry a reason stating what changed and why it could not fit ` +
+          `in the existing headroom — a ceiling raised without one is the unread ratchet this check exists to ` +
+          `prevent.\n`,
+      )
+    }
     return
   }
 

@@ -260,6 +260,108 @@ test('--write preserves an existing reason rather than overwriting it with the d
   rmSync(r.root, { recursive: true, force: true })
 })
 
+/**
+ * THE RATCHET, AS ARITHMETIC RATHER THAN PROSE.
+ *
+ * On 2026-09-21 the recorded ceiling stopped equalling what `buildBudget()` derives: the
+ * measured quantity was corrected from the sum of dist/assets to the first-load set while
+ * the ceiling itself was deliberately HELD, which left the file tighter than the formula.
+ * From that moment a bare `--write` — the one command the baseline's own `reason` tells
+ * people to use — would have silently re-derived and WIDENED both ceilings, producing a
+ * diff that reads like a routine re-measurement. That is exactly the unread ceiling raise
+ * every paragraph of that `reason` exists to prevent, so the guarantee cannot live in the
+ * prose it is a guarantee about.
+ *
+ * The fixture is that situation exactly: a ceiling far below what this measurement would
+ * derive. Before the clamp, `maxGzipBytes` comes back above 1 KiB and this fails.
+ */
+test('--write can only LOWER an existing ceiling, never raise it', () => {
+  const js = noise(40 * KIB)
+  const r = runIn({
+    files: { 'app.js': js },
+    // Absurdly tight on purpose: any re-derivation from a 40 KiB measurement must exceed it.
+    budget: budgetFile({ maxGzipBytes: KIB, maxRawBytes: 4 * KIB }),
+    args: ['--write'],
+  })
+  assert.equal(r.status, 0, r.out)
+  const written = r.readBudget()
+
+  assert.equal(written.maxGzipBytes, KIB, 'the recorded gzip ceiling must be held, not re-derived')
+  assert.equal(written.maxRawBytes, 4 * KIB, 'the recorded raw ceiling must be held, not re-derived')
+  // Held rather than re-derived means the headroom it writes is NEGATIVE, and the writer
+  // has to be told so — a silent clamp would just move the surprise to the next run.
+  assert.ok(written.headroomGzipBytes < 0)
+  assert.match(r.out, /WARNING: the recorded ceiling was HELD/)
+  assert.match(r.out, /--raise/)
+  rmSync(r.root, { recursive: true, force: true })
+})
+
+test('--write --raise re-derives the ceiling and says out loud that it widened it', () => {
+  const js = noise(40 * KIB)
+  const gz = gzipSync(js, { level: 9 }).length
+  const r = runIn({
+    files: { 'app.js': js },
+    budget: budgetFile({ maxGzipBytes: KIB, maxRawBytes: 4 * KIB }),
+    args: ['--write', '--raise'],
+  })
+  assert.equal(r.status, 0, r.out)
+  const written = r.readBudget()
+
+  // The escape hatch genuinely works — the ratchet is one-way, not welded shut.
+  assert.ok(written.maxGzipBytes > KIB)
+  assert.ok(written.maxGzipBytes >= gz + written.minHeadroomGzipBytes)
+  assert.match(r.out, /WARNING: --raise was given/)
+  assert.match(r.out, /WIDENS/)
+  rmSync(r.root, { recursive: true, force: true })
+})
+
+/**
+ * The clamp must not turn the ordinary case — a bundle that genuinely SHRANK — into a
+ * frozen ceiling that can never come back down. Lowering is the whole point of re-recording.
+ */
+test('--write still lowers the ceiling when the bundle shrank', () => {
+  const r = runIn({
+    files: { 'app.js': noise(4 * KIB) },
+    budget: budgetFile({ maxGzipBytes: 500 * KIB, maxRawBytes: 2000 * KIB }),
+    args: ['--write'],
+  })
+  assert.equal(r.status, 0, r.out)
+  const written = r.readBudget()
+
+  assert.ok(written.maxGzipBytes < 500 * KIB, 'a shrunk bundle must still tighten the ceiling')
+  assert.ok(written.maxRawBytes < 2000 * KIB)
+  assert.doesNotMatch(r.out, /WARNING: the recorded ceiling was HELD/)
+  rmSync(r.root, { recursive: true, force: true })
+})
+
+/**
+ * The dev-runtime guard, in the shape the real failure had: a MINIFIED bundle that is
+ * nonetheless React's development build. Size alone cannot catch it — a dev build that
+ * still fits under the ceiling passes every other assertion in this file — so the marker
+ * is the only signal, and this is the test that keeps it wired up.
+ */
+test('a first-load chunk carrying React’s development runtime is RED, however small', () => {
+  const r = runIn({
+    // Deliberately tiny: this must fail on the MARKER, not on the byte count.
+    files: { 'app.js': Buffer.from('var a=1;/*Each child in a list should have a unique key*/') },
+    budget: budgetFile({ maxGzipBytes: 1e9, maxRawBytes: 1e9 }),
+  })
+  assert.equal(r.status, 1, r.out)
+  assert.match(r.out, /DEVELOPMENT runtime/)
+  assert.match(r.out, /envDir/)
+  rmSync(r.root, { recursive: true, force: true })
+})
+
+test('an ordinary production chunk is not mistaken for a development one', () => {
+  const r = runIn({
+    files: { 'app.js': noise(8 * KIB) },
+    budget: budgetFile({ maxGzipBytes: 1e9, maxRawBytes: 1e9 }),
+  })
+  assert.equal(r.status, 0, r.out)
+  assert.doesNotMatch(r.out, /DEVELOPMENT runtime/)
+  rmSync(r.root, { recursive: true, force: true })
+})
+
 test('non-.js/.css files under dist/assets are excluded from both totals', () => {
   const js = noise(4 * KIB)
   const withFont = runIn({
