@@ -19,7 +19,7 @@ import { SuppliersService } from '../suppliers/suppliers.service';
 import { SupplierBalanceService } from '../supplier-balance/supplier-balance.service';
 import { CollectionPointsService } from '../collection-points/collection-points.service';
 import { AuditService } from '../audit/audit.service';
-import { composeDocumentCode } from '../common/document-code';
+import { nextDocumentCode } from '../common/document-code';
 import { gt, isZero } from '../common/money';
 import { resolveWritePoint, resolvePointFilter } from '../auth/access/point-scope';
 import { Paginated } from '../common/dto/paginated';
@@ -131,7 +131,13 @@ export class PayoutsService {
         });
       }
 
-      const code = composeDocumentCode(point.code, 'PO', shift.business_date, dto.code);
+      const code = await nextDocumentCode(m, {
+        pointCode: point.code,
+        businessDate: shift.business_date,
+        kind: 'PO',
+        shiftId: shift.id,
+        table: 'payouts',
+      });
 
       try {
         const payout = await m.save(
@@ -158,7 +164,7 @@ export class PayoutsService {
 
         return toPayoutResponse(payout, shift);
       } catch (error) {
-        throw this.translateDuplicateCode(error, dto.code, shift.business_date);
+        throw this.translateDuplicateCode(error, code);
       }
     });
   }
@@ -384,11 +390,15 @@ export class PayoutsService {
     return { payout, shift };
   }
 
-  private translateDuplicateCode(error: unknown, typed: string, businessDate: string): unknown {
+  /** The payout twin of `IntakesService.translateDuplicateCode` — unreachable
+   *  now that the number is generated under a lock, and kept for the one case
+   *  that survives it: a shift numbered by hand before 2026-09-18 that already
+   *  holds the code this count composes. See that method for the full reasoning. */
+  private translateDuplicateCode(error: unknown, code: string): unknown {
     const violation = error as UniqueViolation;
     if (violation?.code === '23505' && violation.constraint === 'UQ_payouts_code') {
       return new ConflictException({
-        message: `Payout ${typed} has already been recorded at this point on ${businessDate}`,
+        message: `Payout ${code} already exists — this shift was numbered by hand before the server took it over`,
         code: 'PAYOUT_CODE_TAKEN',
       });
     }

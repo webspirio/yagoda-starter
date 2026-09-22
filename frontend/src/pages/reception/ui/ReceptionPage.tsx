@@ -22,7 +22,6 @@ import { ReceiptDialog } from '@/widgets/receipt';
 import { useOpenShiftMutation, CountDrawerDialog } from '@/features/count-shift';
 import { useCreateIntakeMutation } from '../api/intakes';
 import { apiErrorToFields, type ApiFieldErrors } from '../lib/apiErrorToFields';
-import { isValidCode } from '../lib/receiptCode';
 import { useIntakePreview } from '../lib/useIntakePreview';
 import { emptyLine, toCreateBody, type IntakeFormValues } from '../model/intakeForm';
 import { SupplierSection } from './SupplierSection';
@@ -70,7 +69,7 @@ export function ReceptionPage() {
     (tareTypes.data ?? []).find((type) => type.is_crate)?.id ?? tareTypes.data?.[0]?.id ?? '';
 
   const form = useForm<IntakeFormValues>({
-    defaultValues: { code: '', supplier_id: '', items: [emptyLine('')] },
+    defaultValues: { supplier_id: '', items: [emptyLine('')] },
   });
   const { control, register, setValue, handleSubmit, reset } = form;
   const lines = useFieldArray({ control, name: 'items' });
@@ -120,7 +119,6 @@ export function ReceptionPage() {
   // draft field nothing draws — would otherwise disable the submit in silence.
   const draftPrefix = `items.${draftIndex}.`;
   const isFieldRendered = (field: string) => {
-    if (field === 'code') return true;
     if (!field.startsWith(draftPrefix)) return false;
     const suffix = field.slice(draftPrefix.length);
     return DRAFT_FIELDS.has(suffix) || suffix.startsWith('tare.');
@@ -167,11 +165,8 @@ export function ReceptionPage() {
   const accrued = settled?.amount ?? null;
   const netKg = settled ? sum(settled.items.map((i) => i.net_kg)) : null;
   const isPreviewing = !preview.isSettled && (preview.isPending || preview.preview !== null);
-  const codeError =
-    errorAt('code') ??
-    (values.code !== '' && !isValidCode(values.code) ? 'reception.errors.codeFormat' : null);
   const canSubmit =
-    shiftOpen && values.supplier_id !== '' && isValidCode(values.code) && settled !== null && !hasServerError;
+    shiftOpen && values.supplier_id !== '' && settled !== null && !hasServerError;
 
   const onSubmit = handleSubmit(async (formValues) => {
     setSubmitFailure(null);
@@ -186,7 +181,7 @@ export function ReceptionPage() {
       setReceiptId(created.id);
       // The mock resets everything, supplier included: the next person in the
       // queue is a new visit, not an edit of this one.
-      reset({ code: '', supplier_id: '', items: [emptyLine(defaultTareTypeId)] });
+      reset({ supplier_id: '', items: [emptyLine(defaultTareTypeId)] });
     } catch (error) {
       setSubmitFailure({
         at: snapshot,
@@ -278,7 +273,6 @@ export function ReceptionPage() {
                 tareTypes={tareTypes.data ?? []}
                 previewItem={preview.preview?.items[draftIndex] ?? null}
                 isPreviewPending={!preview.isSettled}
-                codeError={codeError}
                 errorAt={errorAt}
                 disabled={!shiftOpen}
                 onRemoveDraft={() => lines.remove(draftIndex)}

@@ -71,7 +71,6 @@ export function LineEditor({
   tareTypes,
   previewItem,
   isPreviewPending,
-  codeError,
   errorAt,
   disabled,
   onRemoveDraft,
@@ -85,7 +84,6 @@ export function LineEditor({
   /** This line's row of the server preview, or null while there is none yet. */
   previewItem: IntakePreviewItem | null;
   isPreviewPending: boolean;
-  codeError: string | null;
   errorAt: (field: string) => string | null;
   disabled: boolean;
   /** Removes THIS draft from the field array — the escape hatch «Ще позиція»
@@ -177,27 +175,6 @@ export function LineEditor({
 
   return (
     <>
-      <div className="border-t border-border p-4">
-        <Field
-          name="code"
-          label={t('reception.code.label')}
-          required
-          hint={t('reception.code.hint')}
-          error={codeError ?? undefined}
-          className="max-w-xs"
-        >
-          {(a11y) => (
-            <TextInput
-              {...a11y}
-              {...register('code')}
-              disabled={disabled}
-              autoComplete="off"
-              className="font-mono uppercase"
-            />
-          )}
-        </Field>
-      </div>
-
       <div className="border-t border-border p-4">
         <Eyebrow className="mb-2">{t('reception.weight.eyebrow')}</Eyebrow>
 
