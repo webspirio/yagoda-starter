@@ -100,6 +100,7 @@
     "types|backend/src/intakes/intake.mapper.ts|IntakeItemTareResponse",
     "types|backend/src/intakes/intake.mapper.ts|PreviewIntakeItemResponse",
     "types|backend/src/reweighs/reweigh-item.mapper.ts|ReweighItemTareResponse",
+    "types|backend/src/reweighs/reweigh-reconciliation.service.ts|ReconciliationGrade",
     "types|backend/src/reweighs/reweigh-reconciliation.service.ts|ReconciliationProduct",
     "types|frontend/src/entities/cash-count/model/cash-count.ts|CashBook",
     "types|frontend/src/entities/cash-count/model/cash-count.ts|CashCountKind",

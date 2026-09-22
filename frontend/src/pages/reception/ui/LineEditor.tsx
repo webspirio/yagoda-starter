@@ -23,7 +23,7 @@ import {
   formatKg,
   formatUah,
   maskDecimalInput,
-  mulInt,
+  mul,
   sub,
 } from '@/shared/lib/money';
 import type { PricedGrade } from '@/entities/product-grade';
@@ -266,7 +266,7 @@ export function LineEditor({
             const rowTareType = tareTypes.find(
               (type) => type.id === tareRows[rowIndex]?.tare_type_id,
             );
-            const rowUnits = Number.parseInt(tareRows[rowIndex]?.units ?? '', 10) || 0;
+            const rowUnits = Math.max(0, Number.parseInt(tareRows[rowIndex]?.units ?? '', 10) || 0);
             return (
               <div key={row.id} className="flex items-center gap-2">
                 <div className="min-w-0 flex-1">
@@ -320,7 +320,7 @@ export function LineEditor({
                 {rowTareType ? (
                   <span className="w-16 shrink-0 text-right font-mono text-xs text-muted-foreground">
                     {t('reception.weight.rowWeight', {
-                      kg: formatKg(mulInt(rowTareType.weight_kg, rowUnits), locale),
+                      kg: formatKg(mul(rowTareType.weight_kg, rowUnits), locale),
                     })}
                   </span>
                 ) : null}

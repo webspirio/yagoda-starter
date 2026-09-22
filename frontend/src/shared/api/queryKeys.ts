@@ -34,6 +34,8 @@ export const queryKeys = {
   pointCash: ['point-cash'] as const,
   /** Ящики — префікс для видач і повернень; читання дописує свій фільтр. */
   crates: ['crates'] as const,
+  /** Переважування — префікс; читання дописує зміну і прапорець сторнованих. */
+  reweighs: ['reweighs'] as const,
   /**
    * Залишки ящиків — і список точки (`/crate-balances`), і баланс однієї
    * людини (`/suppliers/:id/crate-balance`). Спільний префікс навмисно: будь-яка

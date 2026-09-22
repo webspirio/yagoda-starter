@@ -1147,5 +1147,104 @@
       "hasReturns": "A return has already been allocated against this issuance — void the return first",
       "supplierInactive": "This person is deactivated, so crates cannot be issued to them"
     }
+  },
+  "reweigh": {
+    "title": "Reweighing",
+    "eyebrow": "For the owner · work at the scale",
+    "description": "The berries arrived at the base from the point: we reweigh them and see any shortfall before the truck is unloaded. Nothing prints from here — this is the screen at the scale, not paper.",
+    "fromPoint": "from the point",
+    "berryOn": "berries for",
+    "step1": "1 · Gross weight with berries and pallet",
+    "step2": "2 · Number of crates",
+    "step3": "3 · Grade",
+    "gross": "Gross weight with berries",
+    "pallet": "Pallet",
+    "crateCount": "Number of crates",
+    "tareType": "Tare type",
+    "unit": "kg",
+    "grade": "Grade",
+    "gradePlaceholder": "Choose a grade",
+    "gradeEmpty": "Nothing was accepted here that day",
+    "productGrade": "{{product}} — {{grade}}",
+    "tareOption": "{{name}} {{weight}} kg",
+    "crateFewer": "Remove one crate",
+    "crateMore": "Add one crate",
+    "crateQuick": "+{{n}} cr.",
+    "netEyebrow": "Net weight · calculated by the system",
+    "addLine": "another position",
+    "block": {
+      "noShift": "The shift for this day at this point was not opened",
+      "nothingAccepted": "Nothing was accepted at {{point}} on {{date}}. Check the point and the date",
+      "noGrade": "Choose a grade — without one the line will not go into the document",
+      "noGross": "Enter the gross weight",
+      "noNet": "The net weight comes out at zero: the pallet and tare eat up the whole gross weight"
+    },
+    "warn": {
+      "gross": "{{value}} — check the weight.",
+      "tareTooMany": "{{units}} crates — check the count.",
+      "tareNone": "No tare was added — the gross weight would go straight into the net weight untouched."
+    },
+    "drafts": {
+      "title": "Positions entered",
+      "hint": "(kept in the page's memory — there is no document yet)",
+      "empty": "No positions yet.",
+      "total": "Our total weight",
+      "remove": "Remove position",
+      "grossSuffix": "gross",
+      "palletPrefix": "pallet",
+      "tareFallback": "tare"
+    },
+    "check": {
+      "title": "Reconciliation with the point",
+      "byProduct": "by product, not by grade",
+      "product": "Product",
+      "point": "Point",
+      "ours": "Ours",
+      "diff": "Difference",
+      "money": "In money",
+      "notReweighed": "not reweighed ⚠",
+      "nothingAccepted": "Nothing was accepted at {{point}} that day — there is nothing to compare.",
+      "shortfallTotal": "Total shortfall",
+      "surplusTotal": "Total surplus",
+      "shiftOpen": "The shift is still open — the shortfall will be counted once the shift closes.",
+      "notWeighed": "Products without a line: {{count}}. This guards against “forgot to weigh the currants”, not a mistake — but while ⚠ stands, the shortfall for this product does not count at all.",
+      "drafted": "Unposted positions: +{{kg}} — not recorded yet, and “Ours” does not include them."
+    },
+    "day": {
+      "title": "Reweighings recorded for {{date}}",
+      "allPoints": "across every point",
+      "point": "From point",
+      "time": "Time",
+      "what": "Product",
+      "ours": "Our weight",
+      "status": "Status",
+      "actionHeader": "Action",
+      "posted": "posted",
+      "voided": "voided",
+      "void": "Void",
+      "voidLine": "Void the {{time}} line from {{point}}",
+      "confirmVoidLine": "Confirm voiding the {{time}} line from {{point}}",
+      "cancel": "Cancel",
+      "reason": "Reason — required",
+      "reasonPlaceholder": "e.g. entered the same truck twice",
+      "empty": "No reweighing has been recorded for this day yet.",
+      "errors": {
+        "failed": "Could not void the line"
+      }
+    },
+    "post": "Post reweighing · {{kg}}",
+    "postNote": "Positions are written one at a time: if the server refuses the third, the first two are already recorded, and the rest stay on screen.",
+    "noShift": "The shift for {{date}} at {{point}} was never opened — there is nothing to reweigh.",
+    "posted": "Reweighing posted · {{kg}}",
+    "postFailed": "The position “{{grade}}” was not posted",
+    "errors": {
+      "postFailed": "The position was not posted",
+      "nothingAccepted": "Nothing was accepted at this point that day — there is nothing to reweigh",
+      "gradeNotAccepted": "That grade was not accepted on this shift. Reload the page — the grade list is stale",
+      "netNotPositive": "The pallet and tare consume the whole gross weight — no net weight is left",
+      "tareDuplicated": "One tare type is listed twice on a single position — record it once with the total count",
+      "tareUnknown": "That tare type is unknown or deactivated"
+    },
+    "draftsCleared": "Positions cleared — they belonged to a different day or point"
   }
 }
