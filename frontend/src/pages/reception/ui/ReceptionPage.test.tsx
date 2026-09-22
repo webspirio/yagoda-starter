@@ -5,6 +5,7 @@ import userEvent from '@testing-library/user-event';
 import { createMemoryRouter, RouterProvider } from 'react-router';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ApiError } from '@/shared/api';
+import { todayIso, addDaysIso, formatLongDate } from '@/shared/lib/date';
 import { expectNoAxeViolations } from '../../../test-axe';
 import type { Shift } from '@/entities/shift';
 import type { Intake, IntakeDetail } from '@/entities/intake';
@@ -30,6 +31,7 @@ const {
   previewMock,
   createMock,
   openShiftMock,
+  closeShiftMock,
   pointCashMock,
   toastMock,
   toastSuccessMock,
@@ -55,6 +57,7 @@ const {
     previewMock: vi.fn(),
     createMock: vi.fn(),
     openShiftMock: vi.fn(),
+    closeShiftMock: vi.fn(),
     pointCashMock: vi.fn(),
     toastMock,
     toastSuccessMock: vi.fn(),
@@ -161,14 +164,18 @@ vi.mock('../api/intakes', () => ({
   useCreateIntakeMutation: () => ({ mutateAsync: createMock, isPending: false }),
 }));
 
-// Only the mutation hook is stubbed — `CountDrawerDialog` (the real
-// component, re-exported by this same module) still renders for real, since
-// the "opens it on demand" test below drives it exactly as an operator would.
-vi.mock('@/features/count-shift', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@/features/count-shift')>();
+// Only the mutation hooks are stubbed — `CountDrawerDialog` and
+// `OpenShiftAlert` (real components from the same slice) still render for
+// real, since the tests below drive them exactly as an operator would. Mocked
+// at the SLICE-INTERNAL module rather than at the barrel: `OpenShiftAlert`
+// imports these by relative path (a slice may not import its own public API),
+// so a barrel-level mock would leave its close unstubbed.
+vi.mock('@/features/count-shift/api/shiftActions', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/features/count-shift/api/shiftActions')>();
   return {
     ...actual,
     useOpenShiftMutation: () => ({ mutateAsync: openShiftMock, isPending: false }),
+    useCloseShiftMutation: () => ({ mutateAsync: closeShiftMock, isPending: false }),
   };
 });
 
@@ -194,7 +201,11 @@ const OWNER = {
 const openShift: Shift = {
   id: 's-open',
   collection_point_id: 'p1',
-  business_date: '2026-09-08',
+  // TODAY's, not a fixed date: this screen is always about today, and since
+  // #114 an open shift dated in the past is a DIFFERENT state (the stale-shift
+  // alert), not the ordinary one every test below assumes. The suite runs on
+  // real timers, so there is no fake «today» to pin this to.
+  business_date: todayIso(),
   status: 'open',
   opened_by_user_id: 'u1',
   closed_by_user_id: null,
@@ -367,6 +378,7 @@ function renderReception() {
     [
       { path: '/reception', element: <ReceptionPage /> },
       { path: '/suppliers/:id', element: <div>Supplier card</div> },
+      { path: '/day', element: <div>Day screen</div> },
     ],
     { initialEntries: ['/reception'] },
   );
@@ -407,6 +419,7 @@ beforeEach(() => {
   previewMock.mockReset().mockReturnValue(previewState());
   createMock.mockReset().mockResolvedValue(CREATED);
   openShiftMock.mockReset().mockResolvedValue(openShift);
+  closeShiftMock.mockReset().mockResolvedValue({ ...openShift, status: 'closed' });
   // A genuinely-read, EMPTY drawer by default — NOT `isPending`/`undefined`.
   // `cash === null` (still loading, or the read errored) is UNKNOWN, not
   // empty (review finding 2), and now suggests the UNCAPPED total rather
@@ -1314,5 +1327,133 @@ describe('ReceptionPage — accessibility', () => {
     await fillDraft(user);
 
     await expectNoAxeViolations(container);
+  });
+});
+
+/**
+ * #114 — the shift open at this point belongs to an earlier day. The intake
+ * form stays ENABLED (`shiftOpen` is unchanged: there IS an open shift, and
+ * whether a document may be booked against a stale one is a separate
+ * decision); the screen only stops pretending the day is clean.
+ */
+describe('ReceptionPage — an open shift left behind on another day (#114)', () => {
+  // DERIVED FROM TODAY, never a literal: the rule is «earlier than today», and
+  // this suite runs on real timers, so a hard-coded date would stop testing
+  // that rule the moment the calendar moved past it.
+  const STRANDED_DATE = addDaysIso(todayIso(), -5);
+  const STRANDED_TITLE = `The shift for ${formatLongDate(STRANDED_DATE, 'en')} is not closed yet`;
+  const strandedShift: Shift = {
+    ...openShift,
+    id: 's-stranded',
+    business_date: STRANDED_DATE,
+    created_at: `${STRANDED_DATE}T05:00:00Z`,
+  };
+
+  beforeEach(() => {
+    shiftMock.mockReturnValue({ data: strandedShift, isPending: false, isError: false });
+  });
+
+  it('names the stranded shift without taking the form away', () => {
+    renderReception();
+
+    expect(screen.getByText(STRANDED_TITLE)).toBeInTheDocument();
+    // Unchanged on purpose: «Accept» is disabled here only because nothing is
+    // drafted yet, never because the open shift is yesterday's.
+    expect(screen.getByLabelText('Gross — berries including tare')).toBeEnabled();
+  });
+
+  it('closes it from reception, sending the counted drawer to that shift', async () => {
+    const user = userEvent.setup();
+    renderReception();
+
+    await user.click(screen.getByRole('button', { name: 'Close shift' }));
+    const dialog = await screen.findByRole('dialog');
+    await user.type(within(dialog).getByRole('textbox', { name: /drawer|amount/i }), '1500.00');
+    await user.type(within(dialog).getByRole('textbox', { name: /broken/i }), '0');
+    await user.click(within(dialog).getByRole('button', { name: SUBMIT_COUNT }));
+
+    await waitFor(() =>
+      expect(closeShiftMock).toHaveBeenCalledWith({
+        id: 's-stranded',
+        counted_amount: '1500.00',
+        broken_crates: 0,
+      }),
+    );
+  });
+
+  it('never books a receipt on the way — the dialog’s submit is not the form’s', async () => {
+    // React bubbles `submit` along the FIBER tree, and a portaled dialog is
+    // still a React descendant of whatever rendered it. The alert sits beside
+    // the intake `<form>`, not inside it, and `isOwnFormEvent` guards the form
+    // besides — this pins BOTH, with a form that would otherwise be ready to
+    // post (`SETTLED` preview, a chosen supplier).
+    const user = userEvent.setup();
+    previewMock.mockReturnValue(SETTLED);
+    renderReception();
+
+    await user.click(screen.getByRole('button', { name: 'pick-nina' }));
+    await fillDraft(user);
+    await user.click(screen.getByRole('button', { name: 'Close shift' }));
+    const dialog = await screen.findByRole('dialog');
+    await user.type(within(dialog).getByRole('textbox', { name: /drawer|amount/i }), '1500.00');
+    await user.type(within(dialog).getByRole('textbox', { name: /broken/i }), '0');
+    await user.click(within(dialog).getByRole('button', { name: SUBMIT_COUNT }));
+
+    await waitFor(() => expect(closeShiftMock).toHaveBeenCalled());
+    expect(createMock).not.toHaveBeenCalled();
+  });
+
+  it('can hand the operator over to that day’s cash screen instead', async () => {
+    const user = userEvent.setup();
+    const { router } = renderReception();
+
+    await user.click(screen.getByRole('button', { name: 'Go to that day' }));
+    await waitFor(() => expect(router.state.location.pathname).toBe('/day'));
+    expect(new URLSearchParams(router.state.location.search).get('date')).toBe(STRANDED_DATE);
+  });
+
+  it('carries the owner’s chosen point along to that day', async () => {
+    const user = userEvent.setup();
+    meMock.mockReturnValue({ data: OWNER });
+    pointScopeMock.mockReturnValue({
+      pointId: 'p1',
+      canPick: true,
+      setPointId: vi.fn(),
+      isLoading: false,
+    });
+
+    const { router } = renderReception();
+
+    await user.click(screen.getByRole('button', { name: 'Go to that day' }));
+    await waitFor(() => expect(router.state.location.pathname).toBe('/day'));
+    // An operator's point comes from their token; only the owner's has to ride
+    // in the link, or «Каса за день» opens on whichever point it remembers.
+    expect(new URLSearchParams(router.state.location.search).get('point')).toBe('p1');
+  });
+
+  it('says nothing while the shift open at this point is today’s', () => {
+    // The default fixture — the ordinary state every other test here assumes.
+    // This screen is ALWAYS about today, so «today's shift» is precisely the
+    // boundary «earlier than today» draws.
+    shiftMock.mockReturnValue({ data: openShift, isPending: false, isError: false });
+
+    renderReception();
+
+    expect(screen.queryByText(/is not closed yet/)).toBeNull();
+  });
+
+  it('speaks for a shift one single day behind — the rule is earlier, not much earlier', () => {
+    const yesterday = addDaysIso(todayIso(), -1);
+    shiftMock.mockReturnValue({
+      data: { ...strandedShift, business_date: yesterday },
+      isPending: false,
+      isError: false,
+    });
+
+    renderReception();
+
+    expect(
+      screen.getByText(`The shift for ${formatLongDate(yesterday, 'en')} is not closed yet`),
+    ).toBeInTheDocument();
   });
 });

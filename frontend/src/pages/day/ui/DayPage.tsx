@@ -24,7 +24,7 @@ import { cn } from '@/shared/lib/cn';
 import { useMeQuery } from '@/entities/user';
 import { useWorkingPoint } from '@/features/point-scope';
 import { usePointOptionsQuery } from '@/entities/collection-point';
-import { useShiftOnDateQuery, type Shift } from '@/entities/shift';
+import { useShiftOnDateQuery, useCurrentShiftQuery, type Shift } from '@/entities/shift';
 import { useIntakesQuery, type Intake } from '@/entities/intake';
 import { usePayoutsQuery, type Payout } from '@/entities/payout';
 import { useSuppliersQuery, supplierName } from '@/entities/supplier';
@@ -33,6 +33,7 @@ import {
   useOpenShiftMutation,
   useCloseShiftMutation,
   CountDrawerDialog,
+  OpenShiftAlert,
 } from '@/features/count-shift';
 import { ReopenShiftDialog } from './ReopenShiftDialog';
 
@@ -73,6 +74,11 @@ export function DayPage() {
 
   const shift = useShiftOnDateQuery(pointId, date);
   const shiftId = shift.data?.id;
+  // The point's open shift WHATEVER its date (#114). `shift` above only ever
+  // answers about the date on screen, so a shift left open on an earlier day
+  // is invisible to it — and «Відкрити зміну» offered on top of one is the
+  // refusal (SHIFT_ALREADY_OPEN) recorded in #113.
+  const current = useCurrentShiftQuery(pointId);
   const intakes = useIntakesQuery({ shiftId });
   const payouts = usePayoutsQuery({ shiftId });
   // §5.1 — every feed row (intake AND payout) carries the supplier's name; the
@@ -122,6 +128,14 @@ export function DayPage() {
   // 0,00 ₴ tiles or an «Open shift» button over a shift the server never
   // confirmed either way are both worse than saying so.
   const isError = shift.isError || intakes.isError || payouts.isError;
+  // ANY open shift at the point, whatever day it belongs to — deliberately a
+  // WIDER question than the one `OpenShiftAlert` asks itself. The alert warns
+  // only about a shift left behind on an EARLIER day; the server refuses a
+  // second shift regardless, so the button must go away for all of them,
+  // including one dated today that `shift` above has not caught up with yet.
+  // While the read is in flight the answer is unknown, which is not the same
+  // as «none» — the toolbar waits, exactly as it does for `isLoadingShift`.
+  const mayOpenShift = current.data == null && !current.isPending;
 
   const liveIntakes = (intakes.data?.data ?? []).filter((i) => i.voided_at === null);
   const livePayouts = (payouts.data?.data ?? []).filter((p) => p.voided_at === null);
@@ -239,6 +253,7 @@ export function DayPage() {
       isOperator &&
       isToday &&
       status === 'none' &&
+      mayOpenShift &&
       pointId ? (
         <Button onClick={() => openCountDialog({ mode: 'open' })} disabled={open.isPending}>
           {t('day.open')}
@@ -360,6 +375,12 @@ export function DayPage() {
         stats={pointId && status !== 'none' && !isError ? stats : undefined}
         statColumns={4}
       >
+        <OpenShiftAlert
+          pointId={pointId}
+          viewedDate={date}
+          // Нікуди не йдемо — це та сама сторінка, змінюється лише дата в URL.
+          onGoToDate={setDateParam}
+        />
         {truncated ? (
           <p className="-mt-2 mb-4 text-xs text-muted-foreground">
             {t('day.tiles.truncated', { count: feed.length })}

@@ -398,6 +398,12 @@
     },
     "open": "Open shift",
     "close": "Close shift",
+    "staleShift": {
+      "title": "The shift for {{date}} is not closed yet",
+      "hint": "No new shift can be opened until it is closed.",
+      "hintOwner": "No new shift can be opened until it is closed — and the operator is the one who closes it.",
+      "goToDay": "Go to that day"
+    },
     "reopen": "Reopen shift",
     "reopenDialog": {
       "title": "Reopen shift",

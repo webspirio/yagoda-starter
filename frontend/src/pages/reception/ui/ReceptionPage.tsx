@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Link } from 'react-router';
+import { Link, useNavigate } from 'react-router';
 import { useTranslation } from 'react-i18next';
 import { useFieldArray, useForm, useWatch } from 'react-hook-form';
 import { PageHeader } from '@/shared/ui/page-header';
@@ -20,7 +20,7 @@ import { usePricedGradesQuery } from '@/entities/product-grade';
 import { useTareTypeOptionsQuery } from '@/entities/tare-type';
 import { usePointCashForPointQuery } from '@/entities/point-cash';
 import { ReceiptDialog } from '@/widgets/receipt';
-import { useOpenShiftMutation, CountDrawerDialog } from '@/features/count-shift';
+import { useOpenShiftMutation, CountDrawerDialog, OpenShiftAlert } from '@/features/count-shift';
 import type { SupplierPickerHandle } from '@/features/pick-supplier';
 import { useCreateIntakeMutation } from '../api/intakes';
 import { apiErrorToFields, type ApiFieldErrors } from '../lib/apiErrorToFields';
@@ -54,6 +54,7 @@ const DRAFT_FIELDS = new Set(['gross_kg', 'pallet_kg', 'bonus', 'product_grade_i
  */
 export function ReceptionPage() {
   const { t, i18n } = useTranslation();
+  const navigate = useNavigate();
   const locale = i18n.resolvedLanguage ?? 'uk';
   const { data: me } = useMeQuery();
   const isOwner = me?.role === 'network_owner';
@@ -275,6 +276,15 @@ export function ReceptionPage() {
     }
   };
 
+  // #114 — «Каса за день» for the day a shift was left open on. An operator's
+  // point comes from their token, so only the owner's has to ride in the link
+  // or that screen opens on whichever point it remembers.
+  const goToDay = (businessDate: string) => {
+    const params = new URLSearchParams({ date: businessDate });
+    if (canPick && pointId !== null) params.set('point', pointId);
+    void navigate(`/day?${params.toString()}`);
+  };
+
   const handleOpenShift = () => {
     setOpenDialogInstance((n) => n + 1);
     setOpenDialogOpen(true);
@@ -354,6 +364,15 @@ export function ReceptionPage() {
             onOpen={handleOpenShift}
           />
         ) : null}
+
+        {/* An open shift that is NOT today's (#114). A SIBLING of the intake
+            form, never a child: its count dialog is portaled but stays a REACT
+            descendant of whatever renders it, and React bubbles `submit` along
+            the fiber tree — inside the form, confirming a close would also
+            post the receipt. Whether the form should be blocked while the open
+            shift is stale is a separate question this deliberately leaves
+            alone: there IS an open shift, so `shiftOpen` is unchanged. */}
+        <OpenShiftAlert pointId={pointId} viewedDate={todayIso()} onGoToDate={goToDay} />
 
         <div className="grid gap-5 lg:grid-cols-[minmax(0,1.35fr)_minmax(320px,1fr)]">
           <form

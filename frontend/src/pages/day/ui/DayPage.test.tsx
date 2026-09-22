@@ -20,6 +20,7 @@ const {
   meMock,
   pointScopeMock,
   shiftMock,
+  currentShiftMock,
   intakesMock,
   payoutsMock,
   suppliersMock,
@@ -30,6 +31,7 @@ const {
   meMock: vi.fn(),
   pointScopeMock: vi.fn(),
   shiftMock: vi.fn(),
+  currentShiftMock: vi.fn(),
   intakesMock: vi.fn(),
   payoutsMock: vi.fn(),
   suppliersMock: vi.fn(),
@@ -48,6 +50,10 @@ vi.mock('@/features/point-scope', () => ({
 
 vi.mock('@/entities/shift', () => ({
   useShiftOnDateQuery: (pointId: string | null, date: string) => shiftMock(pointId, date),
+  // `GET /shifts/current` — the point's open shift whatever its date. Read by
+  // the page (to hide «Open shift» while one is already open elsewhere) AND by
+  // `OpenShiftAlert`, which renders for real below.
+  useCurrentShiftQuery: (pointId: string | null) => currentShiftMock(pointId),
 }));
 
 vi.mock('@/entities/intake', () => ({
@@ -84,11 +90,14 @@ vi.mock('../api/shiftActions', () => ({
   useReopenShiftMutation: () => ({ mutateAsync: reopenMock, isPending: false }),
 }));
 
-// Only the two mutation hooks are stubbed — `CountDrawerDialog` (the real
-// component, re-exported by this same module) still renders for real, since
-// the open/close tests below drive it exactly as an operator would.
-vi.mock('@/features/count-shift', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@/features/count-shift')>();
+// Only the two mutation hooks are stubbed — `CountDrawerDialog` and
+// `OpenShiftAlert` (real components from the same slice) still render for
+// real, since the open/close tests below drive them exactly as an operator
+// would. Mocked at the SLICE-INTERNAL module rather than at the barrel:
+// `OpenShiftAlert` imports these by relative path (a slice may not import its
+// own public API), so a barrel-level mock would leave its close unstubbed.
+vi.mock('@/features/count-shift/api/shiftActions', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/features/count-shift/api/shiftActions')>();
   return {
     ...actual,
     useOpenShiftMutation: () => ({ mutateAsync: openMock, isPending: false }),
@@ -219,6 +228,10 @@ beforeEach(() => {
     .mockReset()
     .mockReturnValue({ pointId: 'p1', canPick: false, setPointId: vi.fn(), isLoading: false });
   shiftMock.mockReset().mockReturnValue({ data: openShift, isPending: false, isError: false });
+  // The same world `shiftMock` describes by default: one shift, open, today.
+  currentShiftMock
+    .mockReset()
+    .mockReturnValue({ data: openShift, isPending: false, isError: false });
   intakesMock.mockReset().mockReturnValue(page<Intake>([]));
   payoutsMock.mockReset().mockReturnValue(page<Payout>([]));
   suppliersMock.mockReset().mockReturnValue({
@@ -447,6 +460,9 @@ describe('DayPage — the operator on an open shift', () => {
 describe('DayPage — the operator before the shift is open', () => {
   beforeEach(() => {
     shiftMock.mockReturnValue({ data: null, isPending: false, isError: false });
+    // Nothing open on this day AND nothing open anywhere else — otherwise the
+    // «Open shift» button is (rightly) withheld, which is #114's own subject.
+    currentShiftMock.mockReturnValue({ data: null, isPending: false, isError: false });
   });
 
   it('says the shift is not opened yet and opens it with the counted drawer amount', async () => {
@@ -671,5 +687,137 @@ describe("DayPage — §6.8's recorded breakage on a closed shift", () => {
     renderDay('/day?point=p1');
 
     expect(screen.queryByText(/^Broken:/)).toBeNull();
+  });
+});
+
+/**
+ * #114 — an open shift left behind on an earlier day. `useShiftOnDateQuery`
+ * only ever answers about the date on screen, so the shift was unreachable
+ * without stepping the date back one day at a time, and «Open shift» sat
+ * there offering an action the server refuses with SHIFT_ALREADY_OPEN (#113).
+ */
+describe('DayPage — an open shift left behind on another day (#114)', () => {
+  /** Opened five days ago and never closed; today's own query has nothing. */
+  const strandedShift: Shift = {
+    ...openShift,
+    id: 's-stranded',
+    business_date: '2026-09-03',
+    created_at: '2026-09-03T05:00:00Z',
+  };
+
+  beforeEach(() => {
+    shiftMock.mockReturnValue({ data: null, isPending: false, isError: false });
+    currentShiftMock.mockReturnValue({
+      data: strandedShift,
+      isPending: false,
+      isError: false,
+    });
+  });
+
+  it('names the stranded shift and withholds the open action the server would refuse', () => {
+    renderDay();
+
+    expect(
+      screen.getByText('The shift for September 3, 2026 is not closed yet'),
+    ).toBeInTheDocument();
+    // Both affordances, on today's screen: close it here, or go and look.
+    expect(screen.getByRole('button', { name: 'Close shift' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Go to that day' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Open shift' })).toBeNull();
+  });
+
+  it('says nothing about today’s own open shift while an earlier day is on screen', () => {
+    // Browsing back through the week is not a problem to warn about. The first
+    // cut of this rule («any day but the one on screen») nagged here, on a
+    // shift that is open exactly where it should be.
+    currentShiftMock.mockReturnValue({ data: openShift, isPending: false, isError: false });
+
+    renderDay('/day?date=2026-09-07');
+
+    expect(screen.queryByText(/is not closed yet/)).toBeNull();
+  });
+
+  it('steps aside on the stale shift’s own day — the toolbar’s Close is the affordance there', () => {
+    // Viewing 2026-09-03 itself: the day read finds the shift, so the toolbar
+    // already offers «Close shift». A second copy of that button in an alert
+    // above the feed is two affordances for one action.
+    shiftMock.mockReturnValue({ data: strandedShift, isPending: false, isError: false });
+
+    renderDay('/day?date=2026-09-03');
+
+    expect(screen.queryByText(/is not closed yet/)).toBeNull();
+    expect(screen.getByRole('button', { name: 'Close shift' })).toBeInTheDocument();
+  });
+
+  it('withholds the open action for ANY open shift, including one dated today', () => {
+    // The GATE must not narrow with the alert. `useShiftOnDateQuery` can be
+    // holding a cached «no shift today» (one opened in another tab) while
+    // `/shifts/current` already answers with it — and the server refuses a
+    // second shift whichever day the open one belongs to. Nothing is stale
+    // here, so the alert is rightly silent; the button must still stay away.
+    currentShiftMock.mockReturnValue({ data: openShift, isPending: false, isError: false });
+
+    renderDay();
+
+    expect(screen.queryByText(/is not closed yet/)).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Open shift' })).toBeNull();
+  });
+
+  it('closes that shift from where the operator already is, without changing the day', async () => {
+    const user = userEvent.setup();
+    const { router } = renderDay();
+
+    await user.click(screen.getByRole('button', { name: 'Close shift' }));
+    const dialog = await screen.findByRole('dialog');
+    await user.type(drawerBox(dialog), '980.40');
+    await user.type(breakageBox(dialog), '2');
+    await user.click(within(dialog).getByRole('button', { name: SUBMIT_COUNT }));
+
+    await waitFor(() =>
+      expect(closeMock).toHaveBeenCalledWith({
+        id: 's-stranded',
+        counted_amount: '980.40',
+        broken_crates: 2,
+      }),
+    );
+    // In place: the close is the whole point, not a detour to another date.
+    expect(new URLSearchParams(router.state.location.search).get('date')).toBeNull();
+  });
+
+  it('can also step the day screen onto that shift’s own date', async () => {
+    const user = userEvent.setup();
+    const { router } = renderDay();
+
+    await user.click(screen.getByRole('button', { name: 'Go to that day' }));
+    await waitFor(() =>
+      expect(new URLSearchParams(router.state.location.search).get('date')).toBe('2026-09-03'),
+    );
+  });
+
+  it('tells the owner about it but leaves the closing to the operator (§10.3)', () => {
+    meMock.mockReturnValue({ data: OWNER });
+    pointScopeMock.mockReturnValue({
+      pointId: 'p1',
+      canPick: true,
+      setPointId: vi.fn(),
+      isLoading: false,
+    });
+
+    renderDay('/day?point=p1');
+
+    expect(
+      screen.getByText('The shift for September 3, 2026 is not closed yet'),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Close shift' })).toBeNull();
+  });
+
+  it('offers no open action while it is still unknown whether a shift is open elsewhere', () => {
+    // The #113 window: «nothing open anywhere» and «not asked yet» are the same
+    // `undefined`, and guessing the first one puts the refused button back.
+    currentShiftMock.mockReturnValue({ data: undefined, isPending: true, isError: false });
+
+    renderDay();
+
+    expect(screen.queryByRole('button', { name: 'Open shift' })).toBeNull();
   });
 });
