@@ -146,4 +146,25 @@ describe('CostOfDayPage', () => {
     // the same day two different ways on two screens.
     expect(screen.getByRole('option', { name: 'Склад' })).toBeInTheDocument();
   });
+
+  // FinalPrices casts `day.per_kg as string` and sums `basket_share` into its
+  // «Σ із пулу» check — on a day where nothing was weighed, every share is
+  // null and that sum would print 0,00 ₴, a basket total no kilogram backs.
+  // CostOfDayPage's `per_kg === null` gate is the component's whole safety
+  // contract, and nothing else enforces it — pin it here.
+  it('never mounts FinalPrices when per_kg is null, and shows the awaiting-reweigh panel instead', () => {
+    dayMock.mockReturnValue(
+      ok({
+        ...day,
+        per_kg: null,
+        shortfall_per_kg: null,
+        expenses_per_kg: null,
+        products: day.products.map((p) => ({ ...p, basket_share: null })),
+      }),
+    );
+    render(<CostOfDayPage />);
+
+    expect(screen.queryByText('Середня ціна після витрат')).not.toBeInTheDocument();
+    expect(screen.getByText('Очікує переважування')).toBeInTheDocument();
+  });
 });
