@@ -38,6 +38,15 @@ export function CashCountHistory({
         `${formatShortDate(row.business_date, i18n.resolvedLanguage)} · ${t(`pointCash.countHistory.kind.${row.kind}`)}`,
     },
     {
+      id: 'countedBy',
+      header: t('pointCash.countHistory.columns.countedBy'),
+      // `displayNameOf` — `null` only for a row recorded before this field
+      // existed (`CashCount.counted_by_name`'s own doc comment), same
+      // fallback `IncomingTransfers`/`CountDrawerDialog` use for a nullable
+      // display name.
+      cell: (row) => row.counted_by_name ?? '—',
+    },
+    {
       id: 'counted',
       header: t('pointCash.countHistory.columns.counted'),
       align: 'right',

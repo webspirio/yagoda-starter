@@ -18,11 +18,21 @@ import { useIntakesQuery } from '@/entities/intake';
 import { usePayoutsQuery } from '@/entities/payout';
 import { useTransfersQuery } from '@/entities/transfer';
 import { useCashCountsQuery } from '@/entities/cash-count';
+import { useShiftOnDateQuery } from '@/entities/shift';
 import { SetTargetCashDialog } from '@/features/set-point-target';
+import { useOpenShiftMutation, useCloseShiftMutation, CountDrawerDialog } from '@/features/count-shift';
 import { CashLedger } from './CashLedger';
 import { CratesBookCard } from './CratesBookCard';
 import { IncomingTransfers } from './IncomingTransfers';
 import { CashCountHistory } from './CashCountHistory';
+import { ShiftCountPanel } from './ShiftCountPanel';
+import { CountResultView } from './CountResultView';
+
+/** What the shift-count dialog is open for: which verb, and — for a close —
+ *  the shift it closes. Same shape `pages/day/ui/DayPage.tsx` keeps locally;
+ *  not shared, because the two pages' surrounding wiring (toolbar vs panel)
+ *  differs enough that a shared type would buy nothing but an import. */
+type CountTarget = { mode: 'open' } | { mode: 'close'; shiftId: string };
 
 /**
  * «Каса точки» — one point, one date, the drawer it should hold right now.
@@ -139,6 +149,49 @@ export function PointCashPage() {
   // `useCashCountsQuery`'s own `isScoped` would otherwise treat `from`/`to`
   // alone as scope enough.
   const openingCashCounts = useCashCountsQuery(pointId ? { pointId, from: date, to: date } : {});
+
+  // R4 — «Зміна і перерахунок каси». `useShiftOnDateQuery` already gates
+  // itself on `pointId !== null` (`shiftOnDateQueryOptions`), same as every
+  // other read on this page. The panel's own counts read is scoped to the
+  // shift alone (not point+date) — a closed shift's opening/closing/midday
+  // rows stay THAT shift's, whatever `date` does later.
+  const shift = useShiftOnDateQuery(pointId, date);
+  const shiftCashCounts = useCashCountsQuery({ shiftId: shift.data?.id });
+  const panelCounts = shiftCashCounts.data?.data ?? [];
+  // §7.6 — the panel's own result-view lookup needs the SAME berry-only
+  // narrowing `ShiftCountPanel` applies to its own copy of this array; kept
+  // separate rather than threading derived rows down as props, so a test
+  // that renders `ShiftCountPanel` alone can hand it a raw, unfiltered page
+  // (see that component's own doc comment).
+  const panelBerryCounts = panelCounts.filter((c) => c.book === 'berry');
+  const openingCountRow = panelBerryCounts.find((c) => c.kind === 'opening') ?? null;
+  const closingCountRow = panelBerryCounts.find((c) => c.kind === 'closing') ?? null;
+
+  const openShift = useOpenShiftMutation();
+  const closeShift = useCloseShiftMutation();
+  const [countTarget, setCountTarget] = useState<CountTarget | null>(null);
+  // The COPY the dialog shows — same split from `countTarget` (and the same
+  // reason) `DayPage` documents: `open={countTarget !== null}` alone drives
+  // visibility, so `countMode` must survive the close (exit) animation after
+  // `countTarget` is already cleared.
+  const [countMode, setCountMode] = useState<'open' | 'close'>('open');
+  const [countInstance, setCountInstance] = useState(0);
+  const openCountDialog = (target: CountTarget) => {
+    setCountInstance((n) => n + 1);
+    setCountMode(target.mode);
+    setCountTarget(target);
+  };
+  // R4 — the result view after an open/close, read back from
+  // `panelBerryCounts` above rather than from the mutation's own response:
+  // `useInvalidateDay` (both mutations' `onSuccess`) refetches `shifts` AND
+  // `cashCounts`, and THAT refetch — not a value stashed off the response —
+  // is what `CountResultView` waits for (its own doc comment). No effect
+  // needed: `resultFor` is set once, synchronously, in the confirm handler
+  // below, and the row it names is whatever the counts query says right now.
+  const [resultFor, setResultFor] = useState<'open' | 'close' | null>(null);
+  const resultRow = resultFor === 'open' ? openingCountRow : resultFor === 'close' ? closingCountRow : null;
+
+  const [showCountHistory, setShowCountHistory] = useState(false);
 
   const [targetOpen, setTargetOpen] = useState(false);
   const [targetInstance, setTargetInstance] = useState(0);
@@ -363,12 +416,37 @@ export function PointCashPage() {
               crateDepositUnits={shownRow.crate_deposit_units}
               berryCash={shownRow.cash}
             />
+            <ShiftCountPanel
+              shift={shift.data ?? null}
+              isShiftLoading={shift.isPending}
+              counts={panelCounts}
+              isOperator={isOperator}
+              isToday={isToday}
+              onOpenShift={() => openCountDialog({ mode: 'open' })}
+              onCloseShift={(shiftId) => openCountDialog({ mode: 'close', shiftId })}
+            />
           </div>
         </div>
         {/* Full width, below the ledger/right-column grid — the journal is a
-            wide table, and the 320px column it used to sit in truncated it. */}
+            wide table, and the 320px column it used to sit in truncated it.
+            Behind a toggle: the whole-point history is a long table nobody
+            reads on every visit, and `CashCountHistory` owns its own
+            unbounded `useCashCountsQuery({ pointId })` read, which now stays
+            off the network entirely until asked for. */}
         <div className="mt-5">
-          <CashCountHistory pointId={pointId} isOwner={isOwner} />
+          <Button
+            variant="outline"
+            size="sm"
+            aria-expanded={showCountHistory}
+            onClick={() => setShowCountHistory((v) => !v)}
+          >
+            {t('pointCash.countHistory.toggle')}
+          </Button>
+          {showCountHistory ? (
+            <div className="mt-3">
+              <CashCountHistory pointId={pointId} isOwner={isOwner} />
+            </div>
+          ) : null}
         </div>
       </>
     );
@@ -404,6 +482,45 @@ export function PointCashPage() {
           onClose={() => setTargetOpen(false)}
         />
       ) : null}
+
+      <CountDrawerDialog
+        key={`count-${countInstance}`}
+        mode={countMode}
+        shiftId={countTarget?.mode === 'close' ? countTarget.shiftId : null}
+        open={countTarget !== null}
+        onClose={() => setCountTarget(null)}
+        onConfirm={async (counted_amount, broken_crates) => {
+          if (countTarget === null) {
+            // Only reachable while the dialog is open, which only happens
+            // with a target set — same guard `DayPage` keeps for the same
+            // reason: a programming error here must not look like a silent
+            // no-op success.
+            throw new Error('count dialog confirmed without a target');
+          }
+          if (countTarget.mode === 'open') {
+            await openShift.mutateAsync({ counted_amount });
+            setResultFor('open');
+          } else {
+            if (broken_crates === null) {
+              throw new Error('close confirmed without a breakage count');
+            }
+            await closeShift.mutateAsync({ id: countTarget.shiftId, counted_amount, broken_crates });
+            setResultFor('close');
+          }
+          setCountTarget(null);
+        }}
+      />
+
+      <CountResultView
+        // Waits for `resultRow`, not merely for `resultFor` — see this
+        // state's own doc comment above: the mutation's invalidation is what
+        // eventually lands the new row in `panelBerryCounts`, and the dialog
+        // has nothing honest to show before that happens.
+        open={resultFor !== null && resultRow !== null}
+        mode={resultFor}
+        row={resultRow}
+        onClose={() => setResultFor(null)}
+      />
     </>
   );
 }

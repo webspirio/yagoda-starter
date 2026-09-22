@@ -78,6 +78,18 @@ describe('CashCountHistory', () => {
     expect(screen.getByText('0.00 ₴')).toBeInTheDocument();
   });
 
+  it('names who counted', () => {
+    countsMock.mockReturnValue(page([count({ counted_by_name: 'Olha' })]));
+    render(<CashCountHistory pointId="p1" isOwner={false} />);
+    expect(screen.getByText('Olha')).toBeInTheDocument();
+  });
+
+  it('shows a dash for a row recorded before names were tracked', () => {
+    countsMock.mockReturnValue(page([count({ counted_by_name: null })]));
+    render(<CashCountHistory pointId="p1" isOwner={false} />);
+    expect(screen.getByText('—')).toBeInTheDocument();
+  });
+
   it('offers «Explain» only to the owner, only on an open discrepancy', () => {
     countsMock.mockReturnValue(page([count({ is_open: true, discrepancy: '-40.00' })]));
     const { rerender } = render(<CashCountHistory pointId="p1" isOwner={false} />);

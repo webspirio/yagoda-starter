@@ -3,9 +3,11 @@ import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createMemoryRouter, RouterProvider } from 'react-router';
 import { expectNoAxeViolations } from '../../../test-axe';
+import { formatUah } from '@/shared/lib/money';
 import type { CashCount } from '@/entities/cash-count';
 import type { Payout } from '@/entities/payout';
 import type { PointCashRow } from '@/entities/point-cash';
+import type { Shift } from '@/entities/shift';
 import { PointCashPage } from './PointCashPage';
 
 const {
@@ -17,6 +19,9 @@ const {
   payoutsMock,
   ledgerTransfersMock,
   cashCountsMock,
+  shiftMock,
+  openShiftMock,
+  closeShiftMock,
 } = vi.hoisted(() => ({
   meMock: vi.fn(),
   pointScopeMock: vi.fn(),
@@ -26,6 +31,9 @@ const {
   payoutsMock: vi.fn(),
   ledgerTransfersMock: vi.fn(),
   cashCountsMock: vi.fn(),
+  shiftMock: vi.fn(),
+  openShiftMock: vi.fn(),
+  closeShiftMock: vi.fn(),
 }));
 
 vi.mock('@/entities/user', () => ({
@@ -62,6 +70,42 @@ vi.mock('@/entities/transfer', () => ({
 
 vi.mock('@/entities/cash-count', () => ({
   useCashCountsQuery: (filter: unknown) => cashCountsMock(filter),
+}));
+
+vi.mock('@/entities/shift', () => ({
+  useShiftOnDateQuery: (pointId: string | null, date: string) => shiftMock(pointId, date),
+}));
+
+// `CountDrawerDialog`/`RecountDrawerDialog` each have their own full suite
+// already (`CountDrawerDialog.test.tsx`, `RecountDrawerDialog.test.tsx`);
+// `RecountDrawerDialog` additionally needs a real `QueryClient`
+// (`useRecountMutation`) that this page's test has no other reason to wire
+// up — same reasoning as the `SetTargetCashDialog` stub below. The
+// `CountDrawerDialog` stub exposes a «Confirm» button that calls `onConfirm`
+// with a fixed amount, so a test can drive this page's OWN result-view
+// wiring (`resultFor`) without re-testing the dialog's own form.
+vi.mock('@/features/count-shift', () => ({
+  useOpenShiftMutation: () => ({ mutateAsync: openShiftMock, isPending: false }),
+  useCloseShiftMutation: () => ({ mutateAsync: closeShiftMock, isPending: false }),
+  CountDrawerDialog: ({
+    open,
+    mode,
+    onConfirm,
+  }: {
+    open: boolean;
+    mode: 'open' | 'close';
+    onConfirm: (amount: string, broken: number | null) => Promise<unknown>;
+  }) =>
+    open ? (
+      <div role="dialog">
+        Count dialog — {mode}
+        <button onClick={() => onConfirm('1000.00', mode === 'close' ? 0 : null)}>
+          Confirm {mode}
+        </button>
+      </div>
+    ) : null,
+  RecountDrawerDialog: ({ open }: { open: boolean }) =>
+    open ? <div role="dialog">Recount dialog</div> : null,
 }));
 
 // «Прийняв»/«Не сходиться» pull in `useAcceptTransferMutation`, which calls
@@ -150,6 +194,22 @@ const cashCount = (over: Partial<CashCount> = {}): CashCount => ({
   ...over,
 });
 
+const shift = (over: Partial<Shift> = {}): Shift => ({
+  id: 's1',
+  collection_point_id: 'p1',
+  business_date: '2026-09-08',
+  status: 'open',
+  opened_by_user_id: 'u1',
+  opened_by_name: 'Olha',
+  closed_by_user_id: null,
+  closed_by_name: null,
+  closed_at: null,
+  created_at: '2026-09-08T07:00:00Z',
+  explanation: null,
+  broken_crates: null,
+  ...over,
+});
+
 /** The StatTile that carries `label` — same helper `DayPage.test.tsx` uses. */
 function tile(label: string): HTMLElement {
   const el = screen.getByText(label).closest('[data-slot="stat-tile"]');
@@ -193,6 +253,9 @@ beforeEach(() => {
   payoutsMock.mockReset().mockReturnValue(list([]));
   ledgerTransfersMock.mockReset().mockReturnValue(list([]));
   cashCountsMock.mockReset().mockReturnValue(list([cashCount()]));
+  shiftMock.mockReset().mockReturnValue({ data: null, isPending: false, isError: false });
+  openShiftMock.mockReset().mockResolvedValue({});
+  closeShiftMock.mockReset().mockResolvedValue({});
 });
 
 afterEach(() => vi.useRealTimers());
@@ -771,5 +834,129 @@ describe('PointCashPage — scope and failure states', () => {
   it('has no axe violations', async () => {
     const { container } = renderPointCash();
     await expectNoAxeViolations(container);
+  });
+});
+
+describe('PointCashPage — R4: the count history toggle', () => {
+  it('keeps the whole-point history off the screen until the toggle is pressed', async () => {
+    const user = userEvent.setup();
+    renderPointCash();
+
+    // `CashCountHistory` is not even mounted yet — not merely hidden — so
+    // its own eyebrow title cannot be on screen.
+    expect(screen.queryByText('Cash counts')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Full recount history' })).toHaveAttribute(
+      'aria-expanded',
+      'false',
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Full recount history' }));
+
+    expect(screen.getByText('Cash counts')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Full recount history' })).toHaveAttribute(
+      'aria-expanded',
+      'true',
+    );
+  });
+
+  it('hides the history again on a second press of the same toggle', async () => {
+    const user = userEvent.setup();
+    renderPointCash();
+
+    const toggle = screen.getByRole('button', { name: 'Full recount history' });
+    await user.click(toggle);
+    expect(screen.getByText('Cash counts')).toBeInTheDocument();
+
+    await user.click(toggle);
+    expect(screen.queryByText('Cash counts')).toBeNull();
+  });
+});
+
+describe('PointCashPage — R4: the open/close result view', () => {
+  it('shows «Shift opened» and the counted figure after Open shift is confirmed', async () => {
+    const user = userEvent.setup();
+    shiftMock.mockReturnValue({ data: null, isPending: false, isError: false });
+    cashCountsMock.mockImplementation((filter: { shiftId?: string }) =>
+      'shiftId' in filter
+        ? list([cashCount({ kind: 'opening', counted_amount: '2500.00' })])
+        : list([cashCount()]),
+    );
+
+    renderPointCash();
+
+    await user.click(screen.getByRole('button', { name: 'Open shift' }));
+    expect(await screen.findByRole('dialog')).toHaveTextContent('Count dialog — open');
+    await user.click(screen.getByRole('button', { name: 'Confirm open' }));
+
+    expect(openShiftMock).toHaveBeenCalledWith({ counted_amount: '1000.00' });
+    expect(await screen.findByRole('heading', { name: 'Shift opened' })).toBeInTheDocument();
+    expect(screen.getByText('2,500.00 ₴')).toBeInTheDocument();
+    // Opening never carries a discrepancy pill (§7.3 — nothing to compare
+    // the first count against yet).
+    expect(screen.queryByText('Discrepancy')).toBeNull();
+  });
+
+  it('shows «The day matched» and a leaf pill after Close shift is confirmed with no discrepancy', async () => {
+    const user = userEvent.setup();
+    shiftMock.mockReturnValue({
+      data: shift({ id: 's5', status: 'open' }),
+      isPending: false,
+      isError: false,
+    });
+    cashCountsMock.mockImplementation((filter: { shiftId?: string }) =>
+      'shiftId' in filter
+        ? list([
+            cashCount({
+              id: 'cl',
+              kind: 'closing',
+              counted_amount: '3000.00',
+              discrepancy: '0.00',
+            }),
+          ])
+        : list([cashCount()]),
+    );
+
+    renderPointCash();
+
+    await user.click(screen.getByRole('button', { name: 'Close shift' }));
+    await user.click(await screen.findByRole('button', { name: 'Confirm close' }));
+
+    expect(closeShiftMock).toHaveBeenCalledWith({
+      id: 's5',
+      counted_amount: '1000.00',
+      broken_crates: 0,
+    });
+    expect(
+      await screen.findByRole('heading', { name: 'Shift closed. The day matched.' }),
+    ).toBeInTheDocument();
+  });
+
+  it('names the discrepancy and warns the owner will see it, after a Close shift that does not match', async () => {
+    const user = userEvent.setup();
+    shiftMock.mockReturnValue({
+      data: shift({ id: 's5', status: 'open' }),
+      isPending: false,
+      isError: false,
+    });
+    cashCountsMock.mockImplementation((filter: { shiftId?: string }) =>
+      'shiftId' in filter
+        ? list([
+            cashCount({
+              id: 'cl',
+              kind: 'closing',
+              counted_amount: '2950.00',
+              discrepancy: '-50.00',
+            }),
+          ])
+        : list([cashCount()]),
+    );
+
+    renderPointCash();
+
+    await user.click(screen.getByRole('button', { name: 'Close shift' }));
+    await user.click(await screen.findByRole('button', { name: 'Confirm close' }));
+
+    const title = `Shift closed. Discrepancy ${formatUah('-50.00', 'en')} — the owner will see it on their own list.`;
+    expect(await screen.findByRole('heading', { name: title })).toBeInTheDocument();
   });
 });

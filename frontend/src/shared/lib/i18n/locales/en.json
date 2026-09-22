@@ -545,6 +545,23 @@
       "failed": "Could not save the explanation"
     }
   },
+  "recount": {
+    "title": "Cash recount",
+    "body": "Count the cash in the drawer and enter the amount. What it should be stays hidden until you enter it — otherwise this would not be a recount.",
+    "amount": "How much is in the drawer, ₴",
+    "submit": "Recorded the count",
+    "done": "Done",
+    "result": {
+      "expected": "Expected",
+      "counted": "Counted",
+      "discrepancy": "Discrepancy",
+      "note": "This figure cannot be changed in the app. Call the base — the owner will find where it went off."
+    },
+    "errors": {
+      "amount": "Enter an amount greater than zero — and only while the shift is open: a closed shift takes no recount.",
+      "failed": "Could not record the recount"
+    }
+  },
   "pointCash": {
     "eyebrow": "{{point}} · {{date}}, {{weekday}}",
     "title": "Point cash",
@@ -601,13 +618,15 @@
     },
     "countHistory": {
       "title": "Cash counts",
+      "toggle": "Full recount history",
       "empty": "No cash counts recorded for this point yet.",
       "columns": {
         "when": "When",
         "counted": "Counted",
         "expected": "Expected",
         "discrepancy": "Discrepancy",
-        "explanation": "Explanation"
+        "explanation": "Explanation",
+        "countedBy": "Counted by"
       },
       "kind": {
         "opening": "Opening",
@@ -617,6 +636,41 @@
       "matched": "Matched",
       "open": "Unexplained",
       "explain": "Explain"
+    },
+    "panel": {
+      "title": "Shift and recount",
+      "status": {
+        "open": "Shift open",
+        "closed": "Shift closed"
+      },
+      "since": "since {{from}}",
+      "sinceUntil": "{{from}} to {{to}}",
+      "opening": "Counted this morning",
+      "closing": "Counted at close",
+      "discrepancy": "Discrepancy",
+      "closedBy": "closed by {{name}}",
+      "explanation": "“{{text}}”",
+      "recountAt": "Recounted at {{time}}",
+      "matched": "✓ matched",
+      "mismatched": "⚠ did not match",
+      "recountsEmpty": "The drawer has not been recounted today.",
+      "actions": {
+        "recount": "Recount the drawer",
+        "close": "Close shift",
+        "open": "Open shift",
+        "openCaption": "a recount attaches to an open shift",
+        "closedNote": "This day's shift is already settled. A second book is never opened for the same drawer, and a recount does not attach to a closed shift.",
+        "noShiftNote": "There is no shift for this day — there is nothing for a recount to attach to."
+      },
+      "footnote": "The drawer can be recounted as many times a day as needed — every recount stays its own record and corrects nothing."
+    },
+    "result": {
+      "counted": "Counted",
+      "opened": "Shift opened",
+      "discrepancy": "Discrepancy",
+      "closedSettled": "Shift closed. The day matched.",
+      "closedDiscrepancy": "Shift closed. Discrepancy {{amount}} — the owner will see it on their own list.",
+      "done": "Done"
     },
     "target": {
       "set": "Assign a target",
