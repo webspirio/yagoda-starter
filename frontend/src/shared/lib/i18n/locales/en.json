@@ -1245,5 +1245,68 @@
       "tareUnknown": "That tare type is unknown or deactivated"
     },
     "draftsCleared": "Positions cleared — they belonged to a different day or point"
+  },
+  "costOfDay": {
+    "eyebrow": "Management",
+    "title": "Cost of day",
+    "description": "The day's shortfall and expenses, spread over every kilogram of berries. The left half only reads; the right is the only place anything is entered.",
+    "point": "Point",
+    "print": "Print",
+    "provisional": "The shift is still open — these figures are still moving",
+    "topUps": "Includes price top-ups, the latest entered {{at}}",
+    "noShift": "No shift was opened at «{{point}}» on {{date}}.",
+    "noIntake": "Nothing was taken in at this point on this day.",
+    "sheetTitle": "Cost of day for {{date}} · {{point}}",
+    "berry": {
+      "title": "Berries",
+      "product": "product",
+      "weight": "weight",
+      "perKg": "₴/kg",
+      "accrued": "accrued",
+      "ourWeight": "our weight",
+      "shortfall": "shortfall",
+      "total": "TOTAL at the point",
+      "totalOurWeight": "our weight, total",
+      "notReweighed": "not re-weighed",
+      "note": "«Accrued» is the purchase accrued, not cash out of the drawer: debts exist, so the cash that left the drawer that day is a different number and does not affect the cost of day."
+    },
+    "expenses": {
+      "title": "Expenses for the day",
+      "empty": "No expenses have been entered for this day yet.",
+      "labelField": "Expense label",
+      "amountField": "₴",
+      "add": "another line",
+      "edit": "Edit «{{label}}»",
+      "save": "Save",
+      "cancel": "Cancel",
+      "remove": "Remove «{{label}}»",
+      "shortfallRow": "Shortfall in berries",
+      "expensesRow": "Day expenses",
+      "basket": "Shared basket",
+      "perKg": "per kilogram",
+      "split": "of which shortfall {{shortfall}} · of which expenses {{expenses}}",
+      "awaiting": "Awaiting re-weighing",
+      "awaitingAmount": "{{amount}} not spread",
+      "awaitingNote": "Until the load is weighed at the base there is no shortfall yet — the day's expenses have landed nowhere.",
+      "addFailed": "Line not added",
+      "updateFailed": "Line not changed",
+      "removeFailed": "Line not removed"
+    },
+    "final": {
+      "title": "Average price after expenses",
+      "basis": "spread: by weight",
+      "rate": "≈ {{rate}} ₴/kg on everything",
+      "product": "Product",
+      "ourWeight": "our weight",
+      "fromBasket": "from basket",
+      "together": "together",
+      "cost": "cost",
+      "was": "was",
+      "byOurWeight": "accrued ÷ our weight",
+      "total": "TOTAL",
+      "summary": "The day's expenses together with the shortfall — {{basket}} over {{kg}} — come to {{rate}} ₴ on every kilogram of any berry.",
+      "checkShare": "Σ from basket {{shares}} = basket {{basket}}",
+      "checkTotal": "{{total}} = accrued {{accrued}} + expenses {{expenses}}"
+    }
   }
 }
