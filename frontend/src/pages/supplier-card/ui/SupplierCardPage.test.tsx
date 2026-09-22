@@ -639,6 +639,74 @@ describe('SupplierCardPage — receipt lines (uk locale)', () => {
   });
 
   /**
+   * Review round 1 (#148): the weights line omitted `pallet_kg`, so
+   * `{gross} брутто − {tare} тара` did not reconcile with `net_kg` printed
+   * directly above it whenever a receipt used a pallet — the backend's own
+   * formula is `net = (gross − pallet) − tare` (`intake-lines.ts:149`). This
+   * pins the case that broke: gross 42,00 − pallet 1,50 − tare 3,60 = net
+   * 36,90, asserted alongside the `net_kg` line above it so the test
+   * documents the real arithmetic, not just the string.
+   */
+  it('adds the pallet term when it is non-zero, reconciling with the net kg above it', async () => {
+    renderCard({
+      intakes: [
+        {
+          ...intakeFixture,
+          items: [
+            {
+              ...itemFixture,
+              product_name: 'Малина',
+              grade_name: '1 сорт',
+              gross_kg: '42.00',
+              pallet_kg: '1.50',
+              tare_weight_kg: '3.60',
+              net_kg: '36.90',
+              price: '100.00',
+              bonus: '0.00',
+            },
+          ],
+        },
+      ],
+    });
+
+    expect(await screen.findByText(/Малина «1 сорт» · 36,90 кг/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/42,00 брутто − 1,50 піддон − 3,60 тара · 100,00 ₴\/кг/),
+    ).toBeInTheDocument();
+  });
+
+  /**
+   * The common single-crate row (no pallet) must stay byte-identical to
+   * what it rendered before this fix, so the mock's row still matches.
+   */
+  it('keeps the two-term weights line when pallet is zero', async () => {
+    renderCard({
+      intakes: [
+        {
+          ...intakeFixture,
+          items: [
+            {
+              ...itemFixture,
+              pallet_kg: '0.00',
+              gross_kg: '86.50',
+              tare_weight_kg: '2.50',
+              net_kg: '84.00',
+              price: '120.00',
+              bonus: '0.00',
+            },
+          ],
+        },
+      ],
+    });
+
+    expect(
+      await screen.findByText(/86,50 брутто − 2,50 тара · 120,00 ₴\/кг/),
+    ).toBeInTheDocument();
+    // Not the three-term form — «піддон» must not appear anywhere on this row.
+    expect(screen.queryByText(/піддон/)).not.toBeInTheDocument();
+  });
+
+  /**
    * A receipt row grew a whole block of new content; the СТОРНОВАНО
    * treatment sits on the `<li>` it grew inside, so the lines must ride
    * along with it rather than escape the struck-through row.

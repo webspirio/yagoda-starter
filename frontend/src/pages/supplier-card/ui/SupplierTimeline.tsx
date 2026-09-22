@@ -5,7 +5,7 @@ import { Button } from '@/shared/ui/button';
 import { EmptyState } from '@/shared/ui/empty-state';
 import { cn } from '@/shared/lib/cn';
 import { formatShortDate } from '@/shared/lib/date';
-import { formatUah, formatKg, formatDecimal, add } from '@/shared/lib/money';
+import { formatUah, formatKg, formatDecimal, add, cmp } from '@/shared/lib/money';
 import type { Intake } from '@/entities/intake';
 import type { Payout } from '@/entities/payout';
 import type { IntakeTopUp } from '@/entities/intake-top-up';
@@ -189,15 +189,29 @@ export function SupplierTimeline({
                         {' · '}
                         {formatKg(item.net_kg, locale)}
                       </span>
-                      {/* `formatDecimal`, NOT `formatKg`, for gross/tare — the
-                          key already supplies «брутто»/«тара»; `formatKg`
-                          here would double the unit («86,50 кг брутто»). */}
+                      {/* `formatDecimal`, NOT `formatKg`, for gross/pallet/tare
+                          — the key already supplies «брутто»/«піддон»/«тара»;
+                          `formatKg` here would double the unit («86,50 кг
+                          брутто»). Review round 1 (#148): net_kg is
+                          `(gross − pallet) − tare` (`intake-lines.ts:149`),
+                          so a line that dropped the pallet term did not
+                          reconcile with the кг printed just above it — the
+                          pallet term is conditional, same check
+                          `ReceiptDialog.tsx` already uses, and the common
+                          zero-pallet row stays byte-identical. */}
                       <span className="block text-xs text-muted-foreground">
-                        {t('supplierCard.line.weights', {
-                          gross: formatDecimal(item.gross_kg, locale),
-                          tare: formatDecimal(item.tare_weight_kg, locale),
-                          price: formatDecimal(add(item.price, item.bonus), locale),
-                        })}
+                        {cmp(item.pallet_kg, '0') !== 0
+                          ? t('supplierCard.line.weightsWithPallet', {
+                              gross: formatDecimal(item.gross_kg, locale),
+                              pallet: formatDecimal(item.pallet_kg, locale),
+                              tare: formatDecimal(item.tare_weight_kg, locale),
+                              price: formatDecimal(add(item.price, item.bonus), locale),
+                            })
+                          : t('supplierCard.line.weights', {
+                              gross: formatDecimal(item.gross_kg, locale),
+                              tare: formatDecimal(item.tare_weight_kg, locale),
+                              price: formatDecimal(add(item.price, item.bonus), locale),
+                            })}
                       </span>
                     </span>
                   ))}

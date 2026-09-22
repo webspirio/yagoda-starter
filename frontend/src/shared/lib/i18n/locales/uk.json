@@ -923,7 +923,8 @@
     },
     "line": {
       "what": "{{product}} «{{grade}}»",
-      "weights": "{{gross}} брутто − {{tare}} тара · {{price}} ₴/кг"
+      "weights": "{{gross}} брутто − {{tare}} тара · {{price}} ₴/кг",
+      "weightsWithPallet": "{{gross}} брутто − {{pallet}} піддон − {{tare}} тара · {{price}} ₴/кг"
     },
     "breakdown": "{{intakes}} + {{topUps}} − {{payouts}}",
     "timeline": {
