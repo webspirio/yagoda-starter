@@ -65,10 +65,16 @@ type CountTarget = { mode: 'open' } | { mode: 'close'; shiftId: string };
  *    scoped read is what makes that a single `if`: the row and the cash
  *    figure now arrive together, so neither can be ahead of the other.
  *
- * THE PAGE READS NOTHING BEFORE A POINT IS PICKED. An owner lands here with
- * `pointId === null` and sees one empty state; every read below is gated so
- * that state costs no network-wide sweep of transfers, intakes, payouts,
- * cash counts or point cash.
+ * THE PAGE READS NOTHING ABOUT THE PICKED POINT BEFORE ONE IS PICKED. An
+ * owner lands here with `pointId === null` and sees one empty state; every
+ * read below that would name a figure — transfers, intakes, payouts, cash
+ * counts, point cash — is gated so that state costs no network-wide sweep.
+ * ONE EXCEPTION (review, minor 8): `pointCashAll` below, the owner's OWN
+ * unscoped `/point-cash` read that feeds the picker's «З наділом»/«Без
+ * наділу» grouping, fires on `isOwner` alone, not on `pointId` — it has to,
+ * since picking the point is exactly what it exists to help with. It never
+ * names a figure FOR the picked point (every stat still comes from `pointRow`
+ * alone), so it does not undermine the claim above.
  */
 export function PointCashPage() {
   const { t, i18n } = useTranslation();
@@ -101,23 +107,32 @@ export function PointCashPage() {
   // of Hooks forbid skipping this call for an operator, so it always mounts —
   // `enabled: isOwner` is what keeps it from ever actually fetching for one.
   const pointCashAll = usePointCashQuery({ enabled: isOwner });
-  // ACTIVE POINTS ONLY (folded in from the Task 2 review) — `points` is
-  // `usePointOptionsQuery()`'s active-only list, read at the top of this
-  // component already. A deactivated point can still carry an unscoped
-  // `/point-cash` row (it may still owe or hold money), but it belongs in
-  // neither optgroup: it stays reachable only via `?point=`, where
-  // `pointName`'s own fallback (below) still names it from `pointRow` alone.
-  const activePointIds = new Set((points ?? []).map((p) => p.id));
-  const groupedPoints = pointCashAll.data
-    ? {
-        withTarget: pointCashAll.data.data.filter(
-          (row) => activePointIds.has(row.collection_point_id) && row.target_cash != null,
-        ),
-        withoutTarget: pointCashAll.data.data.filter(
-          (row) => activePointIds.has(row.collection_point_id) && row.target_cash == null,
-        ),
-      }
-    : null;
+  // BUILT FROM `points` (folded in from a later review round), not from
+  // `pointCashAll`'s own rows — `points` is `usePointOptionsQuery()`'s
+  // active-only list, read at the top of this component already. Filtering
+  // `pointCashAll.data.data` down to the active ones (the old shape) dropped
+  // an active point ENTIRELY the moment its row fell outside that read's own
+  // page (the default `limit`), not merely its target — a point that
+  // legitimately exists and can be picked would silently vanish from both
+  // optgroups. Iterating `points` instead and looking each one up in a `Map`
+  // of the unscoped rows means every active point is always offered; one
+  // whose row is unknown here reads as «Без наділу»/"No target" — the same
+  // honest default a point that genuinely has none gets, not a third group
+  // for "we don't know" (this screen has no other use for that distinction).
+  // A DEACTIVATED point can still carry an unscoped `/point-cash` row (it may
+  // still owe or hold money), but it belongs in neither optgroup either way:
+  // it stays reachable only via `?point=`, where `pointName`'s own fallback
+  // (below) still names it from `pointRow` alone.
+  const pointCashByPointId = new Map(
+    (pointCashAll.data?.data ?? []).map((row) => [row.collection_point_id, row]),
+  );
+  const groupedPoints =
+    pointCashAll.data && points
+      ? {
+          withTarget: points.filter((p) => pointCashByPointId.get(p.id)?.target_cash != null),
+          withoutTarget: points.filter((p) => pointCashByPointId.get(p.id)?.target_cash == null),
+        }
+      : null;
 
   // §7.9's cash counts as what was CREDITED (`resolved_cash ?? reported_cash
   // ?? cash`, `buildLedger`'s job), not what was SENT — `from`/`to` on
@@ -385,14 +400,14 @@ export function PointCashPage() {
                   with the points the owner actually has to fund today. */}
               <optgroup label={t('pointCash.pick.withTarget')}>
                 {groupedPoints.withTarget.map((p) => (
-                  <option key={p.collection_point_id} value={p.collection_point_id}>
+                  <option key={p.id} value={p.id}>
                     {p.name}
                   </option>
                 ))}
               </optgroup>
               <optgroup label={t('pointCash.pick.withoutTarget')}>
                 {groupedPoints.withoutTarget.map((p) => (
-                  <option key={p.collection_point_id} value={p.collection_point_id}>
+                  <option key={p.id} value={p.id}>
                     {p.name}
                   </option>
                 ))}

@@ -183,7 +183,7 @@ export function ShiftCountPanel({
         // ("no shift today", "you've never recounted") are ones a failed
         // read can honestly make.
         <p role="alert" className="text-sm text-destructive">
-          {t('pointCash.shiftPanel.readFailed')}
+          {t('pointCash.panel.readFailed')}
         </p>
       ) : (
         <>

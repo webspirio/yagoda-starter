@@ -667,15 +667,13 @@
         "openPastDayNote": "The shift is still open, but it is not today's — its actions live on its own day",
         "noShiftNote": "There is no shift for this day — there is nothing for a recount to attach to."
       },
-      "footnote": "The drawer can be recounted as many times a day as needed — every recount stays its own record and corrects nothing."
+      "footnote": "The drawer can be recounted as many times a day as needed — every recount stays its own record and corrects nothing.",
+      "readFailed": "The shift could not be read — reload the page"
     },
     "result": {
       "opened": "Shift opened",
       "closedSettled": "Shift closed. The day matched.",
       "closedDiscrepancy": "Shift closed. Discrepancy {{amount}} — the owner will see it on their own list."
-    },
-    "shiftPanel": {
-      "readFailed": "The shift could not be read — reload the page"
     },
     "target": {
       "set": "Assign a target",

@@ -553,6 +553,36 @@ describe('PointCashPage — Task 2: the owner’s grouped point select', () => {
     expect(within(select).queryByText('Zombie Point')).toBeNull();
     expect(within(select).getByText('Shypynky')).toBeInTheDocument();
   });
+
+  // Review, minor 7 — the old shape filtered `pointCashAll`'s own (capped)
+  // page down to the active points, which dropped an active point ENTIRELY
+  // the moment its row fell outside that page, not merely its target. Now
+  // the select is built FROM the active `points` list, so a point still
+  // offered here but missing a row reads as «Без наділу»/"No target" — the
+  // same honest default a point that genuinely has no target gets.
+  it('still offers an active point whose row is missing from the unscoped page, under «No target»', () => {
+    meMock.mockReturnValue({ data: OWNER });
+    pointScopeMock.mockReturnValue({
+      pointId: 'p1',
+      canPick: true,
+      setPointId: vi.fn(),
+      isLoading: false,
+    });
+    // `pointOptionsMock` (beforeEach) lists p1 AND p2 as active — the
+    // unscoped grouping read here carries only p1's row.
+    pointCashMock.mockImplementation((opts: { asOf?: string }) =>
+      'asOf' in opts
+        ? list([pointRow()])
+        : list([pointRow({ collection_point_id: 'p1', name: 'Shypynky', target_cash: '5000.00' })]),
+    );
+
+    renderPointCash();
+
+    const select = screen.getByLabelText('Select a point');
+    const withoutTarget = select.querySelector('optgroup[label="No target"]');
+    expect(withoutTarget).not.toBeNull();
+    expect(within(withoutTarget as HTMLElement).getByText('Haiove')).toBeInTheDocument();
+  });
 });
 
 describe('PointCashPage — one scoped read, not the whole network', () => {
@@ -801,7 +831,7 @@ describe('PointCashPage — R10: composition order', () => {
 });
 
 describe('PointCashPage — scope and failure states', () => {
-  it('reads NOTHING until the owner picks a point', () => {
+  it('reads nothing about the PICKED point until the owner picks one — the unscoped grouping read is the one exception', () => {
     meMock.mockReturnValue({ data: OWNER });
     pointScopeMock.mockReturnValue({
       pointId: null,
@@ -840,6 +870,13 @@ describe('PointCashPage — scope and failure states', () => {
     // point, which `useCashCountsQuery`'s own `isScoped` would treat as
     // scope enough to fire network-wide.
     expect(cashCountsMock).toHaveBeenCalledWith({});
+    // THE EXCEPTION (review, minor 8): the owner's OWN unscoped `/point-cash`
+    // read (Task 2 — the grouping for this very `<select>`) is not gated on
+    // `pointId` at all, only on `isOwner` — it has to fire before a point is
+    // picked, since picking the point is exactly what it exists to inform.
+    // It never names figures for the picked point, so it does not violate
+    // this test's own claim about that.
+    expect(pointCashMock).toHaveBeenCalledWith({ enabled: true });
   });
 
   it('names a deactivated point from its own cash row, not from the active-points list', async () => {
