@@ -44,6 +44,8 @@
 - [ ] **Step 3: Implement** DTO, service, controller, module wiring, audit action. Run unit + db specs green. `npm run lint` in `backend/`.
 - [ ] **Step 4: Commit** `feat(cash-counts): a midday recount is a witness — POST /cash-counts (§7.6, D-6)`.
 
+> **Deviation, recorded (2026-09-22, final review):** the no-open-shift refusal is `NO_OPEN_SHIFT` / 409 (`ConflictException`), aligned with intakes, payouts, transfers and crates — not the `SHIFT_NOT_OPEN` / 400 this task first specified. The audit action is the existing `cash-count.recorded`; an operator without a point gets the existing `NO_COLLECTION_POINT` 403.
+
 ### Task 2: Display names on shift and cash-count responses (R3)
 
 **Files:**

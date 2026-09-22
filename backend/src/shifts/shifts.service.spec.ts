@@ -39,6 +39,7 @@ describe('ShiftsService', () => {
     save: jest.Mock;
     update: jest.Mock;
     findOne: jest.Mock;
+    find: jest.Mock;
     getRepository: jest.Mock;
   };
   let dataSource: { transaction: jest.Mock };
@@ -89,6 +90,9 @@ describe('ShiftsService', () => {
       ),
       update: jest.fn().mockResolvedValue({ affected: 1 }),
       findOne: jest.fn((_entityClass: unknown, opts: unknown) => repo.findOne(opts)),
+      // D-8's `loadDisplayNames` — no test in this file asserts a name, so an
+      // empty result (every name reads `null`) is enough.
+      find: jest.fn().mockResolvedValue([]),
       getRepository: jest.fn(() => repo),
     };
     dataSource = { transaction: jest.fn((cb: (m: unknown) => unknown) => cb(manager)) };
@@ -414,6 +418,9 @@ describe('ShiftsService.open with a count', () => {
         saved.push(x);
         return { id: 'sh-1', created_at: new Date(), ...x };
       }),
+      // D-8's `loadDisplayNames` — no test in this describe block asserts a
+      // name, so an empty result (every name reads `null`) is enough.
+      find: jest.fn().mockResolvedValue([]),
       getRepository: jest.fn(),
     };
     const dataSource = { transaction: jest.fn((cb: (m: unknown) => unknown) => cb(manager)) };
@@ -509,6 +516,9 @@ describe('ShiftsService.close with a count', () => {
       }),
       findOne: jest.fn().mockResolvedValue(shiftRow),
       update: jest.fn().mockResolvedValue({ affected: 1 }),
+      // D-8's `loadDisplayNames` — no test in this describe block asserts a
+      // name, so an empty result (every name reads `null`) is enough.
+      find: jest.fn().mockResolvedValue([]),
     };
     const dataSource = { transaction: jest.fn((cb: (m: unknown) => unknown) => cb(manager)) };
     const cash = {
@@ -589,6 +599,9 @@ describe('ShiftsService.reopen demotes the closing count', () => {
       // findOpenAtPoint reads through the manager's repository so its SELECT
       // takes part in the same transaction — it must find NO open shift here.
       getRepository: jest.fn(() => repo),
+      // D-8's `loadDisplayNames` — this test asserts only the demotion, not a
+      // name, so an empty result (every name reads `null`) is enough.
+      find: jest.fn().mockResolvedValue([]),
     };
     const dataSource = { transaction: jest.fn((cb: (m: unknown) => unknown) => cb(manager)) };
     // `reopen` reads THREE times with different intents: loadVisible and the

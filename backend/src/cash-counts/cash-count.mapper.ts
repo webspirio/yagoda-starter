@@ -45,8 +45,15 @@ export interface CashCountRow {
  * in the unfiltered list, because §7.6 forbids destroying evidence — it simply
  * is not the row anyone still has to act on.
  *
- * Same limit the service names: this reads «midday» as «superseded», true only
- * while demotion is the sole source of a midday row.
+ * TWO SOURCES WRITE `midday` NOW, not one: a demoted closing count (§6.3) and
+ * a recount's own row (R2, since 2026-09-22). Both are excluded from
+ * `is_open` by the same line below, and by design rather than by accident —
+ * a demoted row is superseded evidence, a recount's row was never an
+ * incident to begin with (§7.6 — «перерахунок — це свідчення, а не
+ * коригування»), and either way `midday` never belongs on the owner's
+ * working list. See `CashCountsService`'s own doc comment for the same check
+ * against `only_discrepancies` and `point-cash.service.ts`'s
+ * `unexplained_difference`.
  */
 export interface CashCountRowResponse {
   id: string;
@@ -60,11 +67,21 @@ export interface CashCountRowResponse {
   discrepancy: string;
   is_open: boolean;
   counted_by_user_id: string;
+  /** D-8 — `displayNameOf` on `counted_by_user_id`, via `loadDisplayNames`.
+   *  `null` only if the caller's map has no entry for that id. */
+  counted_by_name: string | null;
   counted_at: Date;
   explanation: string | null;
 }
 
-export function toCashCountRowResponse(row: CashCountRow): CashCountRowResponse {
+/**
+ * `names` is loaded by the caller, ONCE per page — see `loadDisplayNames`.
+ * This function does no I/O of its own; it only reads the map.
+ */
+export function toCashCountRowResponse(
+  row: CashCountRow,
+  names: ReadonlyMap<string, string>,
+): CashCountRowResponse {
   const discrepancy = sub(row.counted_amount, row.expected_amount);
   return {
     id: row.id,
@@ -81,6 +98,7 @@ export function toCashCountRowResponse(row: CashCountRow): CashCountRowResponse 
       row.kind !== CashCountKind.Midday &&
       (row.explanation === null || row.explanation === ''),
     counted_by_user_id: row.counted_by_user_id,
+    counted_by_name: names.get(row.counted_by_user_id) ?? null,
     counted_at: row.counted_at,
     explanation: row.explanation,
   };

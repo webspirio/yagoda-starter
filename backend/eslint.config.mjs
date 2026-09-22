@@ -246,6 +246,7 @@ export default tseslint.config(
       'src/testing/documents-pipeline.db-spec.ts',
       'src/crates/crates.db-spec.ts',
       'src/crates/crates-race.db-spec.ts',
+      'src/cash-counts/cash-count-recount.db-spec.ts',
     ],
     rules: {
       '@typescript-eslint/no-require-imports': ['error', { allowAsImport: true }],
