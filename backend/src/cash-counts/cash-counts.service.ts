@@ -1,4 +1,4 @@
-import { BadRequestException, ForbiddenException, Injectable } from '@nestjs/common';
+import { ConflictException, ForbiddenException, Injectable } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { ListCashCountsQueryDto } from './dto/list-cash-counts.query';
 import { CreateCashCountDto } from './dto/create-cash-count.dto';
@@ -17,6 +17,7 @@ import { resolvePointFilter } from '../auth/access/point-scope';
 import { Paginated } from '../common/dto/paginated';
 import { skipOf } from '../common/dto/pagination-query.dto';
 import { loadDisplayNames } from '../users/display-names';
+import { TimeService } from '../time/time.service';
 import type { AuthenticatedUser } from '../auth/jwt.strategy';
 
 /**
@@ -60,6 +61,7 @@ export class CashCountsService {
     private readonly shifts: ShiftsService,
     private readonly cash: PointCashService,
     private readonly audit: AuditService,
+    private readonly time: TimeService,
   ) {}
 
   /**
@@ -107,9 +109,14 @@ export class CashCountsService {
     return this.dataSource.transaction(async (m) => {
       const shift = await this.shifts.findOpenAtPoint(pointId, m);
       if (!shift) {
-        throw new BadRequestException({
+        // Aligned with `intakes`/`payouts`/`transfers`/`crates` (`payouts
+        // .service.ts:117`): the identical fact — no open shift at the
+        // actor's point — is a `ConflictException`/`NO_OPEN_SHIFT`/409
+        // everywhere else in this backend, and a recount is not a reason to
+        // diverge.
+        throw new ConflictException({
           message: 'Перерахунок чіпляється лише до відкритої зміни',
-          code: 'SHIFT_NOT_OPEN',
+          code: 'NO_OPEN_SHIFT',
         });
       }
 
@@ -121,8 +128,19 @@ export class CashCountsService {
       // instant, `close()` never reads a midday row back, and `reopen()`
       // demotes only `closing` — so there is nothing here for a lock to
       // protect against.
+      //
+      // UNDER READ COMMITTED, `findOpenAtPoint` above and this read are two
+      // separate statements — a recount can therefore land on a shift that
+      // closed microseconds earlier, between them, with no lock taken on
+      // purpose (see immediately above). Nothing moves when that happens:
+      // every consumer of a `midday` row (`list`'s `only_discrepancies`,
+      // `is_open`, `point-cash`'s `unexplained_difference`) already excludes
+      // `kind = 'midday'` unconditionally. The only residue is a `midday`
+      // row timestamped after the shift's `closed_at`, which the point-cash
+      // panel then renders under a shift it shows as closed — evidence of a
+      // race that settled itself, not a bug to guard against here.
       const expected = await this.cash.cashFor(pointId, undefined, m);
-      const countedAt = new Date();
+      const countedAt = this.time.now().toJSDate();
 
       const saved = await m.save(CashCount, {
         shift_id: shift.id,

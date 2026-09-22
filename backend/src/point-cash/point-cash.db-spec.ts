@@ -967,7 +967,19 @@ describe('PointCashService.crateUnitsFor (Postgres)', () => {
    *  smallest fixture that still exercises the allocation JOIN, since
    *  `crateUnitsSql`'s second term sums `crate_return_allocations.units`,
    *  never `crate_returns.units` (the latter can span more than one
-   *  issuance, and only the allocation rows say which one). */
+   *  issuance, and only the allocation rows say which one).
+   *
+   *  `deposit_refund`/`amount` ARE REAL MONEY, NOT A PLACEHOLDER: the ONE
+   *  caller below (7 units, `crateIssuance`'s `deposit_per_unit` of
+   *  `'120.00'`) refunds `7 × 120.00 = 840.00` — the only shape
+   *  `CratesService`'s own allocator would ever write. `crateUnitsSql` never
+   *  reads either column (see the doc comment above), so this was free to be
+   *  `'0.00'` and still pass every test in this file; it is corrected here
+   *  because a self-contradictory row (7 units at 120.00/unit refunding
+   *  0.00) is a bad fixture to leave lying around for the next reader or the
+   *  next test that DOES read money off it. No test in this file currently
+   *  asserts `crate_deposits`/`deposit_refund`, so nothing else needed to
+   *  change to keep this file green. */
   const returnAgainst = async (
     shiftId: string,
     supplierId: string,
@@ -976,12 +988,12 @@ describe('PointCashService.crateUnitsFor (Postgres)', () => {
   ): Promise<void> => {
     const [{ id: returnId }] = (await ds.query(
       `INSERT INTO crate_returns (shift_id, supplier_id, units, deposit_refund, accepted_by_user_id)
-       VALUES ($1, $2, $3, '0.00', $4) RETURNING id`,
+       VALUES ($1, $2, $3, '840.00', $4) RETURNING id`,
       [shiftId, supplierId, units, ownerId],
     )) as { id: string }[];
     await ds.query(
       `INSERT INTO crate_return_allocations (return_id, issuance_id, units, per_unit, amount)
-       VALUES ($1, $2, $3, '120.00', '0.00')`,
+       VALUES ($1, $2, $3, '120.00', '840.00')`,
       [returnId, issuanceId, units],
     );
   };

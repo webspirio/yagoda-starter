@@ -100,10 +100,10 @@ describe('CashCountsService.list (Postgres)', () => {
   beforeAll(async () => {
     ds = await openTestDataSource();
     // `list` (the only method this file exercises) never touches
-    // `shifts`/`cash`/`audit` — those three back `recount` alone, which has
-    // its own db-spec (`cash-count-recount.db-spec.ts`) wired through real
+    // `shifts`/`cash`/`audit`/`time` — those four back `recount` alone, which
+    // has its own db-spec (`cash-count-recount.db-spec.ts`) wired through real
     // Nest DI. Stubbing them here keeps this file's fixture unchanged.
-    service = new CashCountsService(ds, {} as never, {} as never, {} as never);
+    service = new CashCountsService(ds, {} as never, {} as never, {} as never, {} as never);
     const run = randomUUID();
     const short = run.slice(0, 4).toUpperCase();
 

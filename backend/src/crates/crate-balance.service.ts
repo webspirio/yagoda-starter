@@ -102,6 +102,21 @@ export const crateBookSql = (pointExpr: string): string => `(
  * exactly that conversion in this file's directory; casting in SQL is the
  * side of the line this belongs on, and it is why `point-cash.service.ts`
  * never calls `Number()`/`parseInt` on this column.
+ *
+ * ONE ASYMMETRY WITH `crateBookSql`, NOTED RATHER THAN FIXED: the SUBTRACTION
+ * term here scopes by `ci.mode = 'deposit' AND cs.collection_point_id =
+ * ${pointExpr}` — the ISSUANCE's point, reached through `ci`'s own shift —
+ * while `crateBookSql`'s refund term scopes by the RETURN's point, through
+ * `rs`/`cr.shift_id`. The two happen to agree today because a supplier's
+ * `collection_point_id` is immutable (§3.9 — `update-supplier.dto.ts` carries
+ * no such field) and a return only ever allocates against ITS OWN supplier's
+ * issuances (`crate-allocation.ts`), so an issuance and every return drawn
+ * against it are always the same point. This form — scoping by the
+ * issuance's point on both terms — is the more ROBUST of the two, because it
+ * stays correct even if a return's own shift could someday sit at a
+ * different point than the issuance it draws down. A future supplier-transfer
+ * feature (a supplier reassigned to another point mid-tranche) would have to
+ * revisit BOTH functions, not just this one.
  */
 export const crateUnitsSql = (pointExpr: string): string => `(
     COALESCE((SELECT SUM(ci.units)

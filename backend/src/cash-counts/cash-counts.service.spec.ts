@@ -1,3 +1,4 @@
+import { DateTime } from 'luxon';
 import { toCashCountRowResponse, type CashCountRow } from './cash-count.mapper';
 import { CashBook } from './cash-book.enum';
 import { CashCountKind } from './cash-count-kind.enum';
@@ -100,6 +101,7 @@ describe('CashCountsService.recount', () => {
   let shifts: { findOpenAtPoint: jest.Mock };
   let cash: { cashFor: jest.Mock };
   let audit: { record: jest.Mock };
+  let time: { now: jest.Mock };
   let service: CashCountsService;
 
   beforeEach(() => {
@@ -120,12 +122,18 @@ describe('CashCountsService.recount', () => {
     shifts = { findOpenAtPoint: jest.fn().mockResolvedValue(openShift) };
     cash = { cashFor: jest.fn().mockResolvedValue('1100.00') };
     audit = { record: jest.fn().mockResolvedValue(undefined) };
+    // `shifts.service.spec.ts`'s own pattern: a real Luxon `DateTime` so
+    // `.toJSDate()` behaves exactly as it does in production.
+    time = {
+      now: jest.fn().mockReturnValue(DateTime.fromISO('2026-09-22T09:00', { zone: 'Europe/Kyiv' })),
+    };
 
     service = new CashCountsService(
       dataSource as never,
       shifts as never,
       cash as never,
       audit as never,
+      time as never,
     );
   });
 
@@ -141,8 +149,12 @@ describe('CashCountsService.recount', () => {
   it('refuses when no shift is open at the point (§7.6 — a recount clings to an open shift)', async () => {
     shifts.findOpenAtPoint.mockResolvedValue(null);
 
+    // Aligned with `intakes`/`payouts`/`transfers`/`crates` — the same fact
+    // is a `ConflictException`/`NO_OPEN_SHIFT` everywhere else in this
+    // backend (`payouts.service.ts:117`).
     await expect(service.recount(operator, dto())).rejects.toMatchObject({
-      response: { code: 'SHIFT_NOT_OPEN' },
+      status: 409,
+      response: { code: 'NO_OPEN_SHIFT' },
     });
     expect(manager.save).not.toHaveBeenCalled();
   });
@@ -157,6 +169,15 @@ describe('CashCountsService.recount', () => {
     await service.recount(operator, dto());
 
     expect(cash.cashFor).toHaveBeenCalledWith(POINT, undefined, manager);
+  });
+
+  it('stamps counted_at from TimeService, not a bare `new Date()` (shifts.service.ts’s own pattern)', async () => {
+    await service.recount(operator, dto());
+
+    expect(time.now).toHaveBeenCalled();
+    expect(saved().counted_at).toEqual(
+      DateTime.fromISO('2026-09-22T09:00', { zone: 'Europe/Kyiv' }).toJSDate(),
+    );
   });
 
   it('saves a midday berry count, expected_amount from cashFor, signed by whoever pressed the button', async () => {

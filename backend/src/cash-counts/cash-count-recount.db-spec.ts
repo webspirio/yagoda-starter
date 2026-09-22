@@ -48,8 +48,10 @@ describe('POST /cash-counts — midday recount (HTTP)', () => {
   let operatorToken: string;
   // A DIFFERENT point's operator — the falsifier for "the point is the
   // actor's, never the request's": their own point has no open shift, so a
-  // recount from them must refuse SHIFT_NOT_OPEN even though point A's shift
-  // is wide open.
+  // recount from them must refuse NO_OPEN_SHIFT even though point A's shift
+  // is wide open. Test (d) below runs BEFORE (e) closes point A's shift,
+  // specifically so that this is still true when it runs — see (d)'s own
+  // comment.
   let foreignOperatorToken: string;
   let pointId: string;
   let shiftId: string;
@@ -208,10 +210,54 @@ describe('POST /cash-counts — midday recount (HTTP)', () => {
       .set('Authorization', `Bearer ${operatorToken}`)
       .expect(200);
 
-    expect(res.body.data[0]).toMatchObject({ collection_point_id: pointId, cash: '1100.00' });
+    expect(res.body.data[0]).toMatchObject({
+      collection_point_id: pointId,
+      cash: '1100.00',
+      // (b)'s −100.00 discrepancy is a MIDDAY row — excluded from
+      // `unexplained_difference` unconditionally, the same filter
+      // `only_discrepancies` applies below (`CashCountsService.list`'s own
+      // header, and `PointCashRowResponse.unexplained_difference`'s).
+      unexplained_difference: '0.00',
+    });
+
+    const discrepancies = await request(app.getHttpServer())
+      .get('/cash-counts')
+      .query({ only_discrepancies: true, collection_point_id: pointId })
+      .set('Authorization', `Bearer ${operatorToken}`)
+      .expect(200);
+
+    // §7.6 — a recount is a witness, never an incident: however far off it
+    // reads, it never lands on the owner's working list.
+    expect(discrepancies.body.total).toBe(0);
   });
 
-  it('(d) refuses once the shift is closed', async () => {
+  it('(d) a foreign operator cannot touch this point — their OWN point has no open shift', async () => {
+    const before = (await ds.query('SELECT COUNT(*)::int AS n FROM cash_counts WHERE shift_id = $1', [
+      shiftId,
+    ])) as { n: number }[];
+
+    const res = await request(app.getHttpServer())
+      .post('/cash-counts')
+      .set('Authorization', `Bearer ${foreignOperatorToken}`)
+      .send({ book: 'berry', counted_amount: '1100.00' })
+      .expect(409);
+
+    expect(res.body.code).toBe('NO_OPEN_SHIFT');
+
+    const after = (await ds.query('SELECT COUNT(*)::int AS n FROM cash_counts WHERE shift_id = $1', [
+      shiftId,
+    ])) as { n: number }[];
+    // No row landed at point A's shift — the DTO carries no point field to
+    // forge, so the foreign operator's own (shiftless) point is all they ever
+    // reach. THIS RUNS BEFORE (e) CLOSES POINT A's SHIFT, ON PURPOSE: point
+    // A's shift is still wide open here, so the 409 above is proven to come
+    // from the foreign operator's OWN point having no open shift, never from
+    // point A's — moved above the close (was originally last in the file,
+    // where it proved nothing).
+    expect(after[0].n).toBe(before[0].n);
+  });
+
+  it('(e) refuses once the shift is closed', async () => {
     await request(app.getHttpServer())
       .post(`/shifts/${shiftId}/close`)
       .set('Authorization', `Bearer ${operatorToken}`)
@@ -222,38 +268,16 @@ describe('POST /cash-counts — midday recount (HTTP)', () => {
       .post('/cash-counts')
       .set('Authorization', `Bearer ${operatorToken}`)
       .send({ book: 'berry', counted_amount: '1100.00' })
-      .expect(400);
+      .expect(409);
 
-    expect(res.body.code).toBe('SHIFT_NOT_OPEN');
+    expect(res.body.code).toBe('NO_OPEN_SHIFT');
   });
 
-  it('(e) refuses the owner — @Auth(UserRole.PointOperator) only', async () => {
+  it('(f) refuses the owner — @Auth(UserRole.PointOperator) only', async () => {
     await request(app.getHttpServer())
       .post('/cash-counts')
       .set('Authorization', `Bearer ${ownerToken}`)
       .send({ book: 'berry', counted_amount: '1100.00' })
       .expect(403);
-  });
-
-  it('(f) a foreign operator cannot touch this point — their OWN point has no open shift', async () => {
-    const before = (await ds.query('SELECT COUNT(*)::int AS n FROM cash_counts WHERE shift_id = $1', [
-      shiftId,
-    ])) as { n: number }[];
-
-    const res = await request(app.getHttpServer())
-      .post('/cash-counts')
-      .set('Authorization', `Bearer ${foreignOperatorToken}`)
-      .send({ book: 'berry', counted_amount: '1100.00' })
-      .expect(400);
-
-    expect(res.body.code).toBe('SHIFT_NOT_OPEN');
-
-    const after = (await ds.query('SELECT COUNT(*)::int AS n FROM cash_counts WHERE shift_id = $1', [
-      shiftId,
-    ])) as { n: number }[];
-    // No row landed at point A's shift — the DTO carries no point field to
-    // forge, so the foreign operator's own (shiftless) point is all they ever
-    // reach.
-    expect(after[0].n).toBe(before[0].n);
   });
 });
