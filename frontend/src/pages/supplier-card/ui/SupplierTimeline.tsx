@@ -5,7 +5,7 @@ import { Button } from '@/shared/ui/button';
 import { EmptyState } from '@/shared/ui/empty-state';
 import { cn } from '@/shared/lib/cn';
 import { formatShortDate } from '@/shared/lib/date';
-import { formatUah } from '@/shared/lib/money';
+import { formatUah, formatKg, formatDecimal, add } from '@/shared/lib/money';
 import type { Intake } from '@/entities/intake';
 import type { Payout } from '@/entities/payout';
 import type { IntakeTopUp } from '@/entities/intake-top-up';
@@ -33,17 +33,22 @@ type TimelineRow =
 
 /**
  * intakes + payouts + TOP-UPS of one supplier, merged newest-first by
- * `created_at` (spec §5.4) — the season's whole history, no per-receipt balance
- * breakdown (§3: a balance is ONE number). Voided rows are struck through
- * with the reason shown, not just hinted at in a tooltip; a payout carries
- * its own «Анулювати» when the viewer is allowed to void it — an intake's
- * void action lives inside the receipt widget it opens, not here.
+ * `created_at` (spec §5.4) — the season's whole history, no per-receipt
+ * balance breakdown (D-1, 2026-09-22: no «у залишок», no allocation of a
+ * payout to a receipt — this system does not keep that). Voided rows are
+ * struck through with the reason shown, not just hinted at in a tooltip; a
+ * payout carries its own «Анулювати» when the viewer is allowed to void it —
+ * an intake's void action lives inside the receipt widget it opens, not here.
  *
- * THIS IS THE ONLY PLACE THE BALANCE IS EXPLAINED. `GET /suppliers/:id/balance`
- * returns a single `debt` string with no breakdown, so the three terms of
- * `Σ intakes + Σ top-ups − Σ payouts` meet on screen here and nowhere else.
- * That is why a top-up must be visible even when it counts for nothing: a
- * reader comparing this list against the balance tile has no other source.
+ * `GET /suppliers/:id/balance` now returns the three terms of `Σ intakes +
+ * Σ top-ups − Σ payouts` alongside `debt` itself (#103) — `SupplierCardPage`
+ * reads those directly for its tiles and breakdown line, so a top-up must
+ * still be visible here even when it counts for nothing: this is where the
+ * owner sees WHICH document explains a season figure, not just the total.
+ *
+ * §148: a receipt row also carries what was actually handed over — every
+ * item, in `item_order`, beneath the header line — so settling an argument
+ * with a supplier no longer means opening each receipt one at a time.
  */
 export function SupplierTimeline({
   intakes,
@@ -147,23 +152,55 @@ export function SupplierTimeline({
               <button
                 type="button"
                 onClick={() => onOpenReceipt(row.id)}
-                className="flex flex-1 items-center gap-3 text-left"
+                className="flex flex-1 flex-col items-stretch gap-1.5 text-left"
               >
-                <span className="font-mono text-xs text-muted-foreground">
-                  {formatShortDate(row.businessDate, locale)}
+                <span className="flex items-center gap-3">
+                  <span className="font-mono text-xs text-muted-foreground">
+                    {formatShortDate(row.businessDate, locale)}
+                  </span>
+                  <span className="font-mono text-xs text-muted-foreground">
+                    {new Date(row.createdAt).toLocaleTimeString(locale, {
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    })}
+                  </span>
+                  <span className="font-mono">{row.code}</span>
+                  <Badge variant="secondary">{t('supplierCard.timeline.intake')}</Badge>
+                  {row.voided ? <span className="text-xs">{row.reason}</span> : null}
+                  <span className="ml-auto font-mono tabular-nums">
+                    {formatUah(row.amount, locale)}
+                  </span>
                 </span>
-                <span className="font-mono text-xs text-muted-foreground">
-                  {new Date(row.createdAt).toLocaleTimeString(locale, {
-                    hour: '2-digit',
-                    minute: '2-digit',
-                  })}
-                </span>
-                <span className="font-mono">{row.code}</span>
-                <Badge variant="secondary">{t('supplierCard.timeline.intake')}</Badge>
-                {row.voided ? <span className="text-xs">{row.reason}</span> : null}
-                <span className="ml-auto font-mono tabular-nums">
-                  {formatUah(row.amount, locale)}
-                </span>
+                {/* §148: what was actually handed over, without a click — every
+                    item, `item_order` first (same order as the paper). `items`
+                    is ABSENT (not `[]`) for a row this page didn't ask
+                    `expand=items` for; there is no such row here, since
+                    `SupplierCardPage` always asks, but `?? []` keeps this
+                    block safe regardless. */}
+                {[...(row.intake.items ?? [])]
+                  .sort((a, b) => a.item_order - b.item_order)
+                  .map((item) => (
+                    <span key={item.id} className="flex flex-col">
+                      <span className="block text-sm">
+                        {t('supplierCard.line.what', {
+                          product: item.product_name,
+                          grade: item.grade_name,
+                        })}
+                        {' · '}
+                        {formatKg(item.net_kg, locale)}
+                      </span>
+                      {/* `formatDecimal`, NOT `formatKg`, for gross/tare — the
+                          key already supplies «брутто»/«тара»; `formatKg`
+                          here would double the unit («86,50 кг брутто»). */}
+                      <span className="block text-xs text-muted-foreground">
+                        {t('supplierCard.line.weights', {
+                          gross: formatDecimal(item.gross_kg, locale),
+                          tare: formatDecimal(item.tare_weight_kg, locale),
+                          price: formatDecimal(add(item.price, item.bonus), locale),
+                        })}
+                      </span>
+                    </span>
+                  ))}
               </button>
               {/* NOT OFFERED ON A VOIDED RECEIPT: `counts_toward_balance` folds
                   in the parent's void, so a top-up written here would count for
