@@ -955,11 +955,22 @@
     "incoming": {
       "inTransit_one": "In transit: {{uah}} and {{count}} crate",
       "inTransit_other": "In transit: {{uah}} and {{count}} crates",
-      "meta": "{{carrier}}, sent {{date}}",
+      "meta": "{{carrier}} · sent {{date}} at {{time}} · until you press \"Accept\", the cash and the target don't move",
       "pointAccepts": "the point accepts",
       "accept": "Accept",
       "dispute": "Doesn't match",
-      "toastAccepted": "Transfer accepted"
+      "toastAccepted": "Transfer accepted",
+      "toastAcceptedDetail_one": "{{uah}} and {{count}} crate joined the cash and the target.",
+      "toastAcceptedDetail_other": "{{uah}} and {{count}} crates joined the cash and the target.",
+      "disputed": {
+        "header": "Flagged \"doesn't match\" — transfer from {{date}}",
+        "sent_one": "Sent {{uah}} and {{count}} crate",
+        "sent_other": "Sent {{uah}} and {{count}} crates",
+        "reported_one": "you counted {{uah}} and {{count}} crate",
+        "reported_other": "you counted {{uah}} and {{count}} crates",
+        "note": "\"{{note}}\"",
+        "footer": "The cash hasn't moved by a single kopiyka. The owner will resolve the transfer — the point doesn't touch this figure."
+      }
     }
   },
   "transfers": {

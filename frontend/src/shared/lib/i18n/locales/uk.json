@@ -975,11 +975,28 @@
       "inTransit_few": "У дорозі: {{uah}} і {{count}} ящ.",
       "inTransit_many": "У дорозі: {{uah}} і {{count}} ящ.",
       "inTransit_other": "У дорозі: {{uah}} і {{count}} ящ.",
-      "meta": "{{carrier}}, відправлено {{date}}",
+      "meta": "{{carrier}} · відправлено {{date}} о {{time}} · поки не натиснете «Прийняв», каса й наділ не рухаються",
       "pointAccepts": "приймає точка",
       "accept": "Прийняв",
       "dispute": "Не сходиться",
-      "toastAccepted": "Переказ прийнято"
+      "toastAccepted": "Переказ прийнято",
+      "toastAcceptedDetail_one": "{{uah}} і {{count}} ящ. зайшли в касу й у наділ.",
+      "toastAcceptedDetail_few": "{{uah}} і {{count}} ящ. зайшли в касу й у наділ.",
+      "toastAcceptedDetail_many": "{{uah}} і {{count}} ящ. зайшли в касу й у наділ.",
+      "toastAcceptedDetail_other": "{{uah}} і {{count}} ящ. зайшли в касу й у наділ.",
+      "disputed": {
+        "header": "Заявлено «не сходиться» — переказ від {{date}}",
+        "sent_one": "Відправлено {{uah}} і {{count}} ящ.",
+        "sent_few": "Відправлено {{uah}} і {{count}} ящ.",
+        "sent_many": "Відправлено {{uah}} і {{count}} ящ.",
+        "sent_other": "Відправлено {{uah}} і {{count}} ящ.",
+        "reported_one": "ви нарахували {{uah}} і {{count}} ящ.",
+        "reported_few": "ви нарахували {{uah}} і {{count}} ящ.",
+        "reported_many": "ви нарахували {{uah}} і {{count}} ящ.",
+        "reported_other": "ви нарахували {{uah}} і {{count}} ящ.",
+        "note": "«{{note}}»",
+        "footer": "Каса не змінилася ні на копійку. Керівник врегулює переказ — на точці цю цифру не правлять."
+      }
     }
   },
   "transfers": {

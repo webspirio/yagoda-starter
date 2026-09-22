@@ -4,14 +4,19 @@ import userEvent from '@testing-library/user-event';
 import type { Transfer } from '@/entities/transfer';
 import { IncomingTransfers } from './IncomingTransfers';
 
-const { transfersMock, acceptMock, disputeMock } = vi.hoisted(() => ({
+const { transfersMock, acceptMock, disputeMock, toastSuccessMock } = vi.hoisted(() => ({
   transfersMock: vi.fn(),
   acceptMock: vi.fn(),
   disputeMock: vi.fn(),
+  toastSuccessMock: vi.fn(),
 }));
 
 vi.mock('@/entities/transfer', () => ({
   useTransfersQuery: (filter: unknown) => transfersMock(filter),
+}));
+
+vi.mock('@/shared/ui/toast', () => ({
+  toast: { success: toastSuccessMock, error: vi.fn() },
 }));
 
 // `DisputeTransferDialog` (imported for real, through the untouched
@@ -55,19 +60,51 @@ const transfer = (over: Partial<Transfer> = {}): Transfer => ({
   ...over,
 });
 
+/** A disputed transfer always carries the point's counted figures (§7.9 step 4б). */
+const disputedTransfer = (over: Partial<Transfer> = {}): Transfer =>
+  transfer({
+    id: 'd1',
+    status: 'disputed',
+    cash: '50000.00',
+    crates: 120,
+    reported_cash: '48000.00',
+    reported_crates: 118,
+    dispute_note: 'Two crates cracked on the road',
+    resolved_at: null,
+    ...over,
+  });
+
 const page = (data: Transfer[]) => ({
   data: { data, total: data.length, page: 1, limit: 100 },
   isPending: false,
   isError: false,
 });
 
+/**
+ * `useTransfersQuery` is called TWICE now — `status: 'sent'` and
+ * `status: 'disputed'` — so a plain `transfersMock.mockReturnValue(...)`
+ * would hand the SAME rows to both calls, bleeding «sent» fixtures into the
+ * disputed card (and vice versa). This keeps each status its own list, the
+ * way the real backend filter does.
+ */
+function mockTransfers({
+  sent = [],
+  disputed = [],
+}: { sent?: Transfer[]; disputed?: Transfer[] } = {}) {
+  transfersMock.mockImplementation((filter: { status?: string }) =>
+    page(filter.status === 'disputed' ? disputed : sent),
+  );
+}
+
 beforeEach(() => {
-  transfersMock.mockReset().mockReturnValue(page([]));
+  transfersMock.mockReset();
+  mockTransfers();
   acceptMock.mockReset().mockResolvedValue(transfer());
+  toastSuccessMock.mockReset();
 });
 
 describe('IncomingTransfers', () => {
-  it('renders nothing when there is nothing in transit', () => {
+  it('renders nothing when both the in-transit and disputed lists are empty', () => {
     const { container } = render(<IncomingTransfers pointId="p1" canAct />);
     expect(container).toBeEmptyDOMElement();
   });
@@ -90,14 +127,15 @@ describe('IncomingTransfers', () => {
     expect(container).toBeEmptyDOMElement();
   });
 
-  it('asks the transfers entity for sent transfers at this point', () => {
+  it('asks the transfers entity for sent AND disputed transfers at this point', () => {
     render(<IncomingTransfers pointId="p1" canAct />);
     expect(transfersMock).toHaveBeenCalledWith({ pointId: 'p1', status: 'sent' });
+    expect(transfersMock).toHaveBeenCalledWith({ pointId: 'p1', status: 'disputed' });
   });
 
-  it("shows the operator both actions and accepts on click", async () => {
+  it('shows the operator both actions and accepts on click', async () => {
     const user = userEvent.setup();
-    transfersMock.mockReturnValue(page([transfer()]));
+    mockTransfers({ sent: [transfer()] });
     render(<IncomingTransfers pointId="p1" canAct />);
 
     expect(screen.getByText(/50,000.00/)).toBeInTheDocument();
@@ -105,49 +143,65 @@ describe('IncomingTransfers', () => {
     await waitFor(() => expect(acceptMock).toHaveBeenCalledWith('t1'));
   });
 
+  it('toasts the accepted title plus the figures that joined the cash and the target', async () => {
+    const user = userEvent.setup();
+    mockTransfers({ sent: [transfer()] });
+    render(<IncomingTransfers pointId="p1" canAct />);
+
+    await user.click(screen.getByRole('button', { name: 'Accept' }));
+    await waitFor(() =>
+      expect(toastSuccessMock).toHaveBeenCalledWith('Transfer accepted', {
+        description: '50,000.00 ₴ and 120 crates joined the cash and the target.',
+      }),
+    );
+  });
+
   it('shows «1 crate», not «1 crates», when exactly one crate is on the way', () => {
-    transfersMock.mockReturnValue(page([transfer({ crates: 1 })]));
+    mockTransfers({ sent: [transfer({ crates: 1 })] });
     render(<IncomingTransfers pointId="p1" canAct />);
 
     expect(screen.getByText(/1 crate$/)).toBeInTheDocument();
   });
 
   it('shows «5 crates» when several are on the way', () => {
-    transfersMock.mockReturnValue(page([transfer({ crates: 5 })]));
+    mockTransfers({ sent: [transfer({ crates: 5 })] });
     render(<IncomingTransfers pointId="p1" canAct />);
 
     expect(screen.getByText(/5 crates$/)).toBeInTheDocument();
   });
 
-  describe('the «sent» timestamp — via shared/lib/date, pinned to TZ=UTC for a fixed literal', () => {
+  describe('the in-transit caption — via shared/lib/date, pinned to TZ=UTC for a fixed literal', () => {
     afterEach(() => {
       vi.unstubAllEnvs();
     });
 
-    it('formats sent_at with formatDateTime, exactly like the owner\'s TransferHistory', () => {
+    it('formats the sent date and time separately with formatShortDate and formatTime', () => {
       vi.stubEnv('TZ', 'UTC');
-      transfersMock.mockReturnValue(page([transfer({ sent_at: '2026-09-10T08:05:00.000Z' })]));
+      mockTransfers({ sent: [transfer({ sent_at: '2026-09-10T08:05:00.000Z' })] });
       render(<IncomingTransfers pointId="p1" canAct />);
 
       // Test locale is 'en' (test-setup.ts) — same fixed literal
       // TransferHistory.test.tsx asserts for the same instant.
-      expect(screen.getByText(/09\/10 · 08:05 AM/)).toBeInTheDocument();
+      expect(screen.getByText(/sent 09\/10 at 08:05 AM/)).toBeInTheDocument();
     });
 
-    it('joins carrier and timestamp with a comma — formatDateTime already carries its own middot', () => {
+    it("joins carrier, date, time and the «don't move» reminder with middots", () => {
       vi.stubEnv('TZ', 'UTC');
-      transfersMock.mockReturnValue(
-        page([transfer({ carrier: 'Ivan', sent_at: '2026-09-10T08:05:00.000Z' })]),
-      );
+      mockTransfers({
+        sent: [transfer({ carrier: 'Ivan', sent_at: '2026-09-10T08:05:00.000Z' })],
+      });
       render(<IncomingTransfers pointId="p1" canAct />);
 
-      expect(screen.getByText('Ivan, sent 09/10 · 08:05 AM')).toBeInTheDocument();
+      expect(
+        screen.getByText(/^Ivan · sent 09\/10 at 08:05 AM · until you press/),
+      ).toBeInTheDocument();
+      expect(screen.getByText(/the cash and the target don't move$/)).toBeInTheDocument();
     });
   });
 
   it('opens the dispute dialog for the clicked transfer', async () => {
     const user = userEvent.setup();
-    transfersMock.mockReturnValue(page([transfer({ id: 't9' })]));
+    mockTransfers({ sent: [transfer({ id: 't9' })] });
     render(<IncomingTransfers pointId="p1" canAct />);
 
     await user.click(screen.getByRole('button', { name: "Doesn't match" }));
@@ -155,11 +209,75 @@ describe('IncomingTransfers', () => {
   });
 
   it('hides both actions from someone who cannot act — §10.3', () => {
-    transfersMock.mockReturnValue(page([transfer()]));
+    mockTransfers({ sent: [transfer()] });
     render(<IncomingTransfers pointId="p1" canAct={false} />);
 
     expect(screen.queryByRole('button', { name: 'Accept' })).toBeNull();
     expect(screen.queryByRole('button', { name: "Doesn't match" })).toBeNull();
     expect(screen.getByText('the point accepts')).toBeInTheDocument();
+  });
+
+  describe('a disputed transfer — the red card (R5)', () => {
+    it('renders the header, the sent figures and what the point counted', () => {
+      mockTransfers({ disputed: [disputedTransfer({ sent_at: '2026-09-10T08:00:00Z' })] });
+      render(<IncomingTransfers pointId="p1" canAct />);
+
+      expect(screen.getByText(/Flagged .doesn't match./)).toBeInTheDocument();
+      expect(screen.getByText(/transfer from 09\/10/)).toBeInTheDocument();
+      expect(screen.getByText(/Sent 50,000.00 ₴ and 120 crates/)).toBeInTheDocument();
+      expect(screen.getByText(/you counted 48,000.00 ₴ and 118 crates/)).toBeInTheDocument();
+    });
+
+    it('shows the dispute note, italicised, in guillemets', () => {
+      mockTransfers({
+        disputed: [disputedTransfer({ dispute_note: 'Two crates cracked on the road' })],
+      });
+      render(<IncomingTransfers pointId="p1" canAct />);
+
+      const note = screen.getByText('"Two crates cracked on the road"');
+      expect(note).toBeInTheDocument();
+      expect(note).toHaveClass('italic');
+    });
+
+    it('omits the note line when there is no dispute note', () => {
+      mockTransfers({ disputed: [disputedTransfer({ dispute_note: null })] });
+      const { container } = render(<IncomingTransfers pointId="p1" canAct />);
+
+      expect(container.querySelector('.italic')).toBeNull();
+    });
+
+    it("shows the starter's footer — the owner resolves it, the point does not touch the figure", () => {
+      mockTransfers({ disputed: [disputedTransfer()] });
+      render(<IncomingTransfers pointId="p1" canAct />);
+
+      expect(screen.getByText(/The cash hasn't moved by a single kopiyka/)).toBeInTheDocument();
+      expect(screen.getByText(/the point doesn't touch this figure/)).toBeInTheDocument();
+    });
+
+    it('renders the red card for the owner too — it is informational, not an action', () => {
+      mockTransfers({ disputed: [disputedTransfer()] });
+      render(<IncomingTransfers pointId="p1" canAct={false} />);
+
+      expect(screen.getByText(/Flagged .doesn't match./)).toBeInTheDocument();
+    });
+
+    it('does not render a disputed transfer the owner has already resolved', () => {
+      mockTransfers({ disputed: [disputedTransfer({ resolved_at: '2026-09-11T09:00:00Z' })] });
+      const { container } = render(<IncomingTransfers pointId="p1" canAct />);
+
+      expect(container).toBeEmptyDOMElement();
+    });
+
+    it('renders both the in-transit and the disputed card together without mixing their figures', () => {
+      mockTransfers({
+        sent: [transfer({ id: 's1', crates: 7 })],
+        disputed: [disputedTransfer({ id: 'd1', crates: 3, reported_crates: 2 })],
+      });
+      render(<IncomingTransfers pointId="p1" canAct />);
+
+      expect(screen.getByText(/In transit: .* 7 crates/)).toBeInTheDocument();
+      expect(screen.getByText(/Sent .* 3 crates/)).toBeInTheDocument();
+      expect(screen.getByText(/you counted .* 2 crates/)).toBeInTheDocument();
+    });
   });
 });
