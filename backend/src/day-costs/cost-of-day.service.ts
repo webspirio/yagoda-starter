@@ -60,6 +60,18 @@ export interface CostOfDayResponse {
   basket: string;
   /** basket ÷ reweighed_kg — the same figure added to every product's price. `null` when nothing was weighed. */
   per_kg: string | null;
+  /** §8.4's «з них недостача 1,94» — `shortfall_amount ÷ reweighed_kg`.
+   *  `null` under the same condition as `per_kg`. */
+  shortfall_per_kg: string | null;
+  /** §8.4's «з них витрати 4,45» — `expenses_amount ÷ reweighed_kg`.
+   *
+   *  THIS PAIR IS A BREAKDOWN, NOT AN ADDITION. Each rounds half-up on its
+   *  own, so the two can sit a kopiyka away from `per_kg`; `per_kg` stays
+   *  `basket ÷ reweighed_kg`, because that is the figure actually added to
+   *  every product's price. §8.4's own numbers (1,94 + 4,45 = 6,39) land
+   *  exactly — arithmetic luck, not a guarantee — and the screen prints the
+   *  two under «з них» so nothing on it ever reads as a sum that fails. */
+  expenses_per_kg: string | null;
   /** accrued + expenses_amount — the client's own звірка check. */
   total_check: string;
   /** §3.12 — a late top-up may still move a closed day; the screen marks that with this pair. */
@@ -117,7 +129,10 @@ export class CostOfDayService {
     const shortfallAmount = sum(rows.map((r) => r.shortfall));
     const basket = add(shortfallAmount, expenses);
     // §8.6 «Це не нуль» — a day with nothing weighed gets a dash, not '0.00'.
-    const perKg = isZero(reweighedKg) ? null : div(basket, reweighedKg);
+    const weighedNothing = isZero(reweighedKg);
+    const perKg = weighedNothing ? null : div(basket, reweighedKg);
+    const shortfallPerKg = weighedNothing ? null : div(shortfallAmount, reweighedKg);
+    const expensesPerKg = weighedNothing ? null : div(expenses, reweighedKg);
 
     return {
       shift_id: shiftId,
@@ -129,6 +144,8 @@ export class CostOfDayService {
       expenses_amount: expenses,
       basket,
       per_kg: perKg,
+      shortfall_per_kg: shortfallPerKg,
+      expenses_per_kg: expensesPerKg,
       total_check: add(accrued, expenses),
       top_ups_included: true,
       top_ups_latest_at: topUpsLatestAt,

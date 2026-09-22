@@ -293,3 +293,27 @@ describe('CostOfDayProduct carries the figures it was built from (§8.4 left hal
     expect(res.products.map((p) => p.shortfall)).toEqual(['0.00', '0.00']);
   });
 });
+
+describe('на кілограм splits into its two halves (§8.4)', () => {
+  it('prints з них недостача 1,94 and з них витрати 4,45 on §8.4 own numbers', async () => {
+    const res = await svc.forShift(owner, 's-1');
+
+    // КОШИК 5 460,00 over 854 кг. The three divisions are independent, which
+    // is why they are asserted as three facts and not as an addition.
+    expect(res.basket).toBe('5460.00');
+    expect(res.reweighed_kg).toBe('854.00');
+    expect(res.per_kg).toBe('6.39');
+    expect(res.shortfall_per_kg).toBe('1.94');
+    expect(res.expenses_per_kg).toBe('4.45');
+  });
+
+  it('dashes both halves on a day with nothing on the scale', async () => {
+    const res = await svcWithNoReweigh.forShift(owner, 's-1');
+
+    // Same guard as `per_kg`: `div` throws on a zero divisor by design, and
+    // «нічого не важили» is a dash, never a zero.
+    expect(res.per_kg).toBeNull();
+    expect(res.shortfall_per_kg).toBeNull();
+    expect(res.expenses_per_kg).toBeNull();
+  });
+});
