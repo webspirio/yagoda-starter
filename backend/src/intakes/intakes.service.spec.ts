@@ -2,6 +2,8 @@ import { ConflictException, NotFoundException } from '@nestjs/common';
 import { UserRole } from '../users/user-role.enum';
 import { IntakesService } from './intakes.service';
 import { ShiftStatus } from '../shifts/shift-status.enum';
+import { toIntakeItemResponse } from './intake.mapper';
+import { IntakeItem } from './intake-item.entity';
 
 const POINT_A = '11111111-1111-1111-1111-111111111111';
 const POINT_B = '22222222-2222-2222-2222-222222222222';
@@ -846,6 +848,30 @@ describe('IntakesService', () => {
       const result = await service.findOne(oksana, INTAKE_ID);
 
       expect(result.received_by_name).toBe('Оксана Гнатюк');
+    });
+  });
+
+  describe('intake item names', () => {
+    it('carries the product and grade names so a list row can be read without a catalog lookup', () => {
+      const item = {
+        id: 'ii-1',
+        item_order: 1,
+        product_grade_id: 'g-1',
+        gross_kg: '86.50',
+        pallet_kg: '0.00',
+        tare_weight_kg: '2.50',
+        net_kg: '84.00',
+        price: '120.00',
+        bonus: '0.00',
+        amount: '10080.00',
+        tare: [],
+        product_grade: { name: 'Альба', product: { name: 'Полуниця' } },
+      } as unknown as IntakeItem;
+
+      expect(toIntakeItemResponse(item)).toMatchObject({
+        product_name: 'Полуниця',
+        grade_name: 'Альба',
+      });
     });
   });
 

@@ -6,7 +6,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, EntityManager, Repository } from 'typeorm';
+import { DataSource, EntityManager, In, Repository } from 'typeorm';
 import { Intake } from './intake.entity';
 import { IntakeItem } from './intake-item.entity';
 import { IntakeItemTareType } from './intake-item-tare-type.entity';
@@ -381,16 +381,38 @@ export class IntakesService {
     // alias `i` makes the primary key `i_id`.
     const byId = new Map(raw.map((r) => [r.i_id as string, r]));
 
+    // ONE query for every row's lines, not one per row. `In` over the page's
+    // ids keeps this at two round trips whatever the page size; a relation on
+    // the main builder would instead multiply the joined rows by the lines and
+    // break `skip`/`take`.
+    const itemsByIntake = new Map<string, IntakeItem[]>();
+    if (query.expand === 'items' && entities.length > 0) {
+      const lines = await this.dataSource.manager.find(IntakeItem, {
+        where: { intake_id: In(entities.map((i) => i.id)) },
+        relations: { tare: true, product_grade: { product: true } },
+      });
+      for (const line of lines) {
+        const bucket = itemsByIntake.get(line.intake_id);
+        if (bucket) bucket.push(line);
+        else itemsByIntake.set(line.intake_id, [line]);
+      }
+    }
+
     return {
       data: entities.map((i) => {
         const row = byId.get(i.id);
         if (!row) throw new Error('intake row extras missing for ' + i.id);
-        return toIntakeResponse(i, i.shift as Shift, {
-          net_kg: row.net_kg,
-          lines_count: row.lines_count,
-          supplier_name: row.supplier_name,
-          paid_amount: row.paid_amount,
-        });
+        return toIntakeResponse(
+          i,
+          i.shift as Shift,
+          {
+            net_kg: row.net_kg,
+            lines_count: row.lines_count,
+            supplier_name: row.supplier_name,
+            paid_amount: row.paid_amount,
+          },
+          itemsByIntake.get(i.id),
+        );
       }),
       total,
       page: query.page,
@@ -416,7 +438,7 @@ export class IntakesService {
 
     const items = await m.find(IntakeItem, {
       where: { intake_id: intake.id },
-      relations: { tare: true },
+      relations: { tare: true, product_grade: { product: true } },
     });
 
     const payouts = await m.find(Payout, {
