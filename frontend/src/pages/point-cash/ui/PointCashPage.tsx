@@ -129,6 +129,16 @@ export function PointCashPage() {
     enabled: pointId !== null,
   });
   const cashCounts = useCashCountsQuery({ pointId: pointId ?? undefined });
+  // R6 — the ledger's «на початок дня» row needs exactly ONE count: THIS
+  // date's opening berry count. `cashCounts` above is unbounded and
+  // newest-first, so on a long-running point today's opening count is
+  // exactly the kind of row a capped page could drop — a date-scoped read
+  // of its own can never lose it to that cap. Gated the same way
+  // `intakes` is just above (an empty object rather than a bare date
+  // range) so it never fires network-wide before a point is picked —
+  // `useCashCountsQuery`'s own `isScoped` would otherwise treat `from`/`to`
+  // alone as scope enough.
+  const openingCashCounts = useCashCountsQuery(pointId ? { pointId, from: date, to: date } : {});
 
   const [targetOpen, setTargetOpen] = useState(false);
   const [targetInstance, setTargetInstance] = useState(0);
@@ -145,7 +155,8 @@ export function PointCashPage() {
     intakes.isError ||
     payouts.isError ||
     ledgerTransfers.isError ||
-    cashCounts.isError;
+    cashCounts.isError ||
+    openingCashCounts.isError;
 
   // THE ROW NAMES THE POINT, NOT THE PICKER — `pointRow` is the one source
   // guaranteed to describe the figures actually on screen, so it goes
@@ -187,6 +198,16 @@ export function PointCashPage() {
     counts !== undefined &&
     counts.total === counts.data.length &&
     !counts.data.some((c) => c.business_date <= date);
+
+  // R6 — the ledger's opening row, from `openingCashCounts` alone (never
+  // from `counts` above — that read is unbounded and can drop THIS date's
+  // row on a long-running point, exactly the failure mode `neverCounted`'s
+  // own comment names). §7.6: one drawer, two books — `book === 'berry'`
+  // picks the book this page's ledger explains, leaving the crates count
+  // (if any) for `CratesBookCard` to worry about, not this row.
+  const openingCount =
+    openingCashCounts.data?.data.find((c) => c.kind === 'opening' && c.book === 'berry')
+      ?.counted_amount ?? null;
 
   // Nothing is shown off a page whose reads failed — including the target,
   // whose «—» would otherwise be a claim made on top of an error.
@@ -327,6 +348,8 @@ export function PointCashPage() {
             intakesTruncated={intakesTruncated}
             payoutsTruncated={payoutsTruncated}
             transfersTruncated={transfersTruncated}
+            openingCount={openingCount}
+            target={shownRow.target_cash}
           />
           <div className="flex flex-col gap-5">
             {/* R1 — no combined «У шухляді має бути» figure here: the

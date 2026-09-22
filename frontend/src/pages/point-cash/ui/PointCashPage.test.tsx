@@ -544,6 +544,62 @@ describe('PointCashPage — one scoped read, not the whole network', () => {
   });
 });
 
+describe('PointCashPage — R6: the ledger’s opening row', () => {
+  it('asks for THIS point’s THIS date’s opening count, separately from the unbounded history read', () => {
+    renderPointCash();
+
+    expect(cashCountsMock).toHaveBeenCalledWith({
+      pointId: 'p1',
+      from: '2026-09-08',
+      to: '2026-09-08',
+    });
+  });
+
+  it('picks the opening BERRY count out of a mixed day, ignoring midday and crates rows', () => {
+    // `cashCountsMock` backs three different call sites in this render
+    // (this page's own unbounded `neverCounted` read, the R6 day-scoped
+    // read, and `CashCountHistory`'s own read) — distinguish the day-scoped
+    // one by shape, the way `pointCashMock` above already distinguishes its
+    // two call sites by `'asOf' in opts`.
+    cashCountsMock.mockImplementation((filter: { from?: string }) =>
+      'from' in filter
+        ? list([
+            cashCount({ kind: 'midday', book: 'berry', counted_amount: '400.00' }),
+            cashCount({ kind: 'opening', book: 'crates', counted_amount: '999.00' }),
+            cashCount({ kind: 'opening', book: 'berry', counted_amount: '750.00' }),
+          ])
+        : list([cashCount()]),
+    );
+
+    renderPointCash();
+
+    expect(screen.getByText('Opening count')).toBeInTheDocument();
+    expect(screen.getByText('750.00 ₴')).toBeInTheDocument();
+    expect(screen.queryByText('999.00 ₴')).toBeNull();
+    expect(screen.queryByText('400.00 ₴')).toBeNull();
+  });
+
+  it('shows no opening row when this date has no opening count yet, even with older history elsewhere', () => {
+    cashCountsMock.mockImplementation((filter: { from?: string }) =>
+      'from' in filter ? list([]) : list([cashCount()]),
+    );
+
+    renderPointCash();
+
+    expect(screen.queryByText('Opening count')).toBeNull();
+  });
+
+  it('captions the opening row with the point’s target — read from the same scoped `point-cash` row as every other figure', () => {
+    pointCashMock.mockImplementation((opts: { asOf?: string } = {}) =>
+      'asOf' in opts ? list([pointRow({ target_cash: '5000.00' })]) : list([]),
+    );
+
+    renderPointCash();
+
+    expect(screen.getByText('target 5,000.00 ₴')).toBeInTheDocument();
+  });
+});
+
 describe('PointCashPage — honesty rule 4: the target button does not exist for an operator', () => {
   it('does not render the target button for an operator AT ALL (§10.2)', () => {
     renderPointCash();
@@ -636,6 +692,11 @@ describe('PointCashPage — scope and failure states', () => {
       limit: 100,
     });
     expect(cashCountsMock).toHaveBeenCalledWith({ pointId: undefined });
+    // R6's day-scoped opening-count read gates the same way `intakes` does
+    // just above — an empty object, not `{ from: date, to: date }` with no
+    // point, which `useCashCountsQuery`'s own `isScoped` would treat as
+    // scope enough to fire network-wide.
+    expect(cashCountsMock).toHaveBeenCalledWith({});
   });
 
   it('names a deactivated point from its own cash row, not from the active-points list', async () => {

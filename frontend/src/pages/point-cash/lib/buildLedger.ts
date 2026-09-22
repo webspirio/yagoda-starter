@@ -45,7 +45,13 @@ export interface LedgerTransfer {
   resolved_cash: string | null;
 }
 
-export type LedgerRowKey = 'accruedToday' | 'paidToday' | 'paidPast' | 'returnedToday' | 'cashIn';
+export type LedgerRowKey =
+  | 'opening'
+  | 'accruedToday'
+  | 'paidToday'
+  | 'paidPast'
+  | 'returnedToday'
+  | 'cashIn';
 
 export interface LedgerRow {
   key: LedgerRowKey;
@@ -63,6 +69,16 @@ export interface LedgerRow {
    * `returnedToday` went uncaveated for a whole review round.
    */
   truncated: boolean;
+  /**
+   * Row-specific data for a hint the renderer cannot spell out as a fixed
+   * translation key, because whether it appears — and what it says — depends
+   * on a value only this function was handed. Today only `opening`'s row
+   * uses it, carrying the point's assigned target-cash figure so the
+   * renderer can interpolate «наділ {{target}}» once a target actually
+   * exists (R6). Every other row still gets its hint from a fixed
+   * `${key}Hint` translation key, unconditionally.
+   */
+  hint?: string;
 }
 
 export interface BuildLedgerInput {
@@ -80,6 +96,28 @@ export interface BuildLedgerInput {
   intakesTruncated?: boolean;
   payoutsTruncated?: boolean;
   transfersTruncated?: boolean;
+  /**
+   * The day's OPENING BERRY COUNT — `counted_amount` of the `cash_counts`
+   * row with `kind === 'opening' && book === 'berry'` for this date
+   * (§7.6). `PointCashPage` reads it with its own date-scoped
+   * `useCashCountsQuery`, separate from the unbounded one that feeds
+   * `neverCounted` and `CashCountHistory`, so a busy point's older counts
+   * can never push this specific day's opening row out of a capped page.
+   * `null` (the default) — no count taken yet for this date — emits no row
+   * at all; there is nothing to caveat as truncated, since a single
+   * date+kind+book read is never a partial page the way the other three
+   * reads can be.
+   */
+  openingCount?: string | null;
+  /**
+   * The point's currently assigned cash target (`target_cash`), read ONLY
+   * to caption the opening row: «наділ {{target}}» when one exists. The
+   * mock's caption also subtracted «борг бази» (what the base still owes
+   * the point) — that figure is not derivable from anything this function
+   * receives (no running base-owes-point ledger exists among
+   * intakes/payouts/transfers), so it is left out rather than guessed at.
+   */
+  target?: string | null;
 }
 
 /**
@@ -112,16 +150,18 @@ function localDateOf(iso: string): string {
  * `paidToday`/`paidPast` until `returnedToday` adds its cash back on the day
  * it was physically handed back.
  *
- * `accruedToday` AND `paidPast` ARE INFORMATIONAL — neither maps onto a term
- * of `movementsSql` (review round 2, finding 2). `accruedToday` never did:
- * berries received do not move cash, only payouts do. `paidPast` does not
- * either: the server's figure is the latest drawer count PLUS that one
- * shift's own movements, so a payout from an earlier day is already folded
- * into an earlier count, not into today's math — labelling it as though it
- * explained today's figure would assert a period this function never
- * defines. Only `paidToday`, `returnedToday` and `cashIn` actually move
- * today's cash; the caller is expected to render the other two visibly
- * apart from those three.
+ * `opening`, `accruedToday` AND `paidPast` ARE INFORMATIONAL — none of the
+ * three maps onto a term of `movementsSql` (review round 2, finding 2;
+ * `opening` joined them in R6). `accruedToday` never did: berries received
+ * do not move cash, only payouts do. `paidPast` does not either: the
+ * server's figure is the latest drawer count PLUS that one shift's own
+ * movements, so a payout from an earlier day is already folded into an
+ * earlier count, not into today's math. `opening` is the count that math
+ * STARTS FROM, not a movement within today either — labelling any of the
+ * three as though it explained today's figure would assert a period this
+ * function never defines. Only `paidToday`, `returnedToday` and `cashIn`
+ * actually move today's cash; the caller is expected to render the other
+ * three visibly apart from those three.
  */
 export function buildLedger(input: BuildLedgerInput): LedgerRow[] {
   const {
@@ -132,6 +172,8 @@ export function buildLedger(input: BuildLedgerInput): LedgerRow[] {
     intakesTruncated = false,
     payoutsTruncated = false,
     transfersTruncated = false,
+    openingCount = null,
+    target = null,
   } = input;
 
   const accruedToday = sum(
@@ -162,7 +204,27 @@ export function buildLedger(input: BuildLedgerInput): LedgerRow[] {
       .map((t) => t.resolved_cash ?? t.reported_cash ?? t.cash),
   );
 
-  return [
+  const rows: LedgerRow[] = [];
+
+  // R6 — the day's opening count, when one has been taken (§7.6). ALWAYS
+  // FIRST: it is the balance every other row's movement is measured
+  // against, so it reads first or not at all. `truncated` is always
+  // `false` here — unlike the other four reads, this one is scoped to a
+  // single date + kind + book, so there is no "older rows fell off a
+  // capped page" story to caveat.
+  if (openingCount !== null) {
+    rows.push({
+      key: 'opening',
+      value: openingCount,
+      truncated: false,
+      // `?? undefined`, not `?? null` — `LedgerRow.hint` is `string |
+      // undefined`, and the renderer treats "no hint" as "show nothing",
+      // never as "show a hint that says null".
+      hint: target ?? undefined,
+    });
+  }
+
+  rows.push(
     { key: 'accruedToday', value: accruedToday, truncated: intakesTruncated },
     // `paidToday` IS THE ONE PAYOUT-FED ROW WITHOUT A CAVEAT. The payouts
     // read is bounded `to: date` and comes back newest-first
@@ -175,5 +237,7 @@ export function buildLedger(input: BuildLedgerInput): LedgerRow[] {
     { key: 'paidPast', value: paidPast, truncated: payoutsTruncated },
     { key: 'returnedToday', value: returnedToday, truncated: payoutsTruncated },
     { key: 'cashIn', value: cashIn, truncated: transfersTruncated },
-  ];
+  );
+
+  return rows;
 }

@@ -572,6 +572,8 @@
     },
     "ledger": {
       "title": "Where this number comes from",
+      "opening": "Opening count",
+      "openingHint": "target {{target}}",
       "accruedToday": "Accrued today",
       "accruedTodayHint": "does not move cash",
       "accruedTodayTruncated": "Showing recent receipts only — older ones may be missing from this total.",
@@ -582,7 +584,9 @@
       "returnedToday": "Returned to the drawer",
       "cashIn": "Received by transfer today",
       "cashInTruncated": "Showing recent transfers only — older ones may be missing from this total.",
-      "total": "Berry cash"
+      "total": "Berry cash",
+      "negative": "Berry cash has gone negative: the target does not cover this day. This is not a data-entry mistake — it means more was paid out than the point had in berry cash.",
+      "twoRowsNote": "Payouts show as two rows on purpose: a day can pay out more than it earned, because old balances get settled too — one \"paid out\" figure would not explain that."
     },
     "crates": {
       "title": "Crate cash",
