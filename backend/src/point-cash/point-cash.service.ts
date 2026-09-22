@@ -8,7 +8,7 @@ import { resolvePointFilter } from '../auth/access/point-scope';
 import type { AuthenticatedUser } from '../auth/jwt.strategy';
 import { ListPointCashQueryDto } from './dto/list-point-cash.query';
 import { PointCashRow, PointCashRowResponse, toPointCashRowResponse } from './point-cash.mapper';
-import { crateBookSql } from '../crates/crate-balance.service';
+import { crateBookSql, crateUnitsSql } from '../crates/crate-balance.service';
 
 /**
  * «As of» resolves to TODAY IN `APP_TIMEZONE` when the caller names no date,
@@ -103,6 +103,12 @@ const asOfSql = (asOf: string, tz: string): string =>
  * point-lifetime running sum, which is a different shape from the berry book
  * on the same screen; the field name and this comment are what keep a reader
  * from "fixing" one into the other.
+ *
+ * `crate_deposit_units` (R8) SITS RIGHT BESIDE IT, SAME EXEMPTIONS. §7.5's
+ * card names both — money held AND units still out — and `crateUnitsSql`
+ * shares `crateBookSql`'s scope exactly: point-lifetime, no `as_of`, no
+ * supplier filter. It is a COUNT, not money, so it crosses the driver
+ * boundary as a JS `number` (SQL casts it `::int`), never a `::text` string.
  */
 const movementsSql = (shift: string, tz: string): string => `(
     COALESCE((SELECT SUM(CASE
@@ -250,6 +256,27 @@ export class PointCashService {
   }
 
   /**
+   * The point's deposit-covered crate units, LIFETIME, as an integer — §7.5's
+   * card, «завдатків за N ящиків». Same shape and same reasoning as
+   * `crateDepositsFor` right above it: no `asOf`, because the units book has
+   * no lower bound and no physical count either.
+   *
+   * `crateUnitsSql` already casts to `::int` in SQL, so the row this returns
+   * IS a JS `number` off the driver — there is no `Number()`/`parseInt` here
+   * to ban in the first place (foundation §5.1's conversion never happens on
+   * the TypeScript side of this boundary).
+   */
+  async crateUnitsFor(pointId: string, manager?: EntityManager): Promise<number> {
+    const runner = manager ?? this.dataSource.manager;
+    const [row] = (await runner.query(
+      `SELECT ${crateUnitsSql('$1')} AS crate_deposit_units`,
+      [pointId],
+    )) as { crate_deposit_units: number }[];
+
+    return row.crate_deposit_units;
+  }
+
+  /**
    * The signed movements of one shift, as a decimal STRING. A shift with
    * nothing in it reads `'0.00'`.
    */
@@ -389,7 +416,10 @@ export class PointCashService {
                 -- bind, so every row gets its own figure inside this one
                 -- CTE instead of a query per row. UNBOUNDED by b.as_of,
                 -- unlike every other column of this row: section 7.5.
-                ${crateBookSql('cp.id')} AS crate_deposits
+                ${crateBookSql('cp.id')} AS crate_deposits,
+                -- The SAME book in units rather than money (R8) -- same
+                -- correlated-column call shape, same unbounded lifetime.
+                ${crateUnitsSql('cp.id')} AS crate_deposit_units
            FROM collection_points cp CROSS JOIN bounds b
           WHERE ($1::uuid IS NULL OR cp.id = $1::uuid)
        )
@@ -401,6 +431,7 @@ export class PointCashService {
               (s.target_cash - s.cash)::text AS shortfall,
               s.unexplained_difference::text AS unexplained_difference,
               s.crate_deposits::text AS crate_deposits,
+              s.crate_deposit_units AS crate_deposit_units,
               lt.status  AS latest_transfer_status,
               lt.sent_at AS latest_transfer_sent_at
          FROM scoped s

@@ -40,6 +40,8 @@ export class PointCashController {
       cash: await this.cash.cashFor(pointId, query.as_of),
       // Never bounded by `as_of` — see `crateDepositsFor`'s doc comment.
       crate_deposits: await this.cash.crateDepositsFor(pointId),
+      // Same exemption, same shape, in units rather than money (R8).
+      crate_deposit_units: await this.cash.crateUnitsFor(pointId),
     };
   }
 }
