@@ -252,7 +252,7 @@ it('nests the lines, ordered like the paper, when asked', async () => {
   expect(body.data[0].items[0]).toMatchObject({
     product_name: 'Полуниця',
     grade_name: 'Альба',
-    net_kg: '84.000',
+    net_kg: '84.00',
     price: '120.00',
   });
 });
@@ -314,7 +314,7 @@ describe('breakdownFor', () => {
       top_ups_total: '200.00',
       payouts_total: '6000.00',
       intakes_count: 3,
-      kg_total: '250.500',
+      kg_total: '250.50',
       last_intake_date: '2026-09-20',
     };
     const query = jest.fn().mockResolvedValue([row]);
@@ -595,7 +595,7 @@ it('reads the breakdown, not just the total', async () => {
   mock.onGet('/suppliers/s1/balance').reply(200, {
     supplier_id: 's1', debt: '4200.00',
     intakes_total: '10000.00', top_ups_total: '200.00', payouts_total: '6000.00',
-    intakes_count: 3, kg_total: '250.500', last_intake_date: '2026-09-20',
+    intakes_count: 3, kg_total: '250.50', last_intake_date: '2026-09-20',
   });
   const { result } = renderHook(() => useSupplierBalanceQuery('s1'), { wrapper });
   await waitFor(() => expect(result.current.data?.intakes_total).toBe('10000.00'));
@@ -648,12 +648,12 @@ it('shows what the person handed over without opening anything', async () => {
         items: [
           {
             ...itemFixture, item_order: 1, product_name: 'Полуниця', grade_name: 'Альба',
-            gross_kg: '86.50', tare_weight_kg: '2.50', net_kg: '84.000',
+            gross_kg: '86.50', tare_weight_kg: '2.50', net_kg: '84.00',
             price: '120.00', bonus: '0.00',
           },
           {
             ...itemFixture, item_order: 2, product_name: 'Малина', grade_name: 'Полка',
-            gross_kg: '60.00', tare_weight_kg: '2.00', net_kg: '58.000',
+            gross_kg: '60.00', tare_weight_kg: '2.00', net_kg: '58.00',
             price: '95.00', bonus: '0.00',
           },
         ],
@@ -747,11 +747,11 @@ and the English mirror in `en.json`. Note the minus sign is U+2212 «−», not 
 it('reads its tiles from the breakdown, not from the page it happened to load', async () => {
   renderCard({
     // One loaded receipt worth 1 000, but the season had ninety more.
-    intakes: [{ ...intakeFixture, amount: '1000.00', net_kg: '10.000' }],
+    intakes: [{ ...intakeFixture, amount: '1000.00', net_kg: '10.00' }],
     balance: {
       supplier_id: 's1', debt: '4200.00',
       intakes_total: '10000.00', top_ups_total: '200.00', payouts_total: '6000.00',
-      intakes_count: 91, kg_total: '2500.500', last_intake_date: '2026-09-20',
+      intakes_count: 91, kg_total: '2500.50', last_intake_date: '2026-09-20',
     },
   });
 
