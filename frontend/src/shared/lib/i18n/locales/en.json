@@ -736,8 +736,7 @@
       "fewer": "One fewer {{n}}",
       "more": "One more {{n}}",
       "removeTare": "Remove tare row",
-      "otherTare": "Other tare",
-      "rowWeight": "{{kg}}"
+      "otherTare": "Other tare"
     },
     "grade": {
       "eyebrow": "3 · Product, grade and day price",

@@ -166,6 +166,7 @@ export function TotalsSection({
             label={t('reception.totals.paid')}
             error={paidError ?? undefined}
             hint={fieldHint}
+            hintTone={overCap && !cashUnavailable ? 'warning' : undefined}
             className="mt-2"
           >
             {(a11y) => (

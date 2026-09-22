@@ -12,9 +12,11 @@ vi.mock('@/entities/supplier', async (importOriginal) => ({
   useSupplierBalancesQuery: () => balancesMock(),
 }));
 vi.mock('@/features/edit-supplier', () => ({
-  // Mirrors the real SupplierFormDialog's submit handler: onCreated fires,
-  // THEN onClose — so a test can exercise the focus-restore wiring that
-  // depends on the create path reaching onClose too.
+  // Mirrors the real SupplierFormDialog's two exits: submitting fires
+  // onCreated THEN onClose (so a test can exercise the focus-restore wiring
+  // that depends on the create path reaching onClose too), while Cancel
+  // fires ONLY onClose — the path review finding 2 needs to reach the
+  // footer's own close without ever picking a supplier.
   SupplierFormDialog: ({
     open,
     onCreated,
@@ -25,14 +27,17 @@ vi.mock('@/features/edit-supplier', () => ({
     onClose?: () => void;
   }) =>
     open ? (
-      <button
-        onClick={() => {
-          onCreated?.(nina);
-          onClose?.();
-        }}
-      >
-        create-nina
-      </button>
+      <>
+        <button
+          onClick={() => {
+            onCreated?.(nina);
+            onClose?.();
+          }}
+        >
+          create-nina
+        </button>
+        <button onClick={() => onClose?.()}>cancel-dialog</button>
+      </>
     ) : null,
 }));
 
@@ -102,6 +107,164 @@ describe('SupplierPicker', () => {
     await waitFor(() => {
       expect(screen.getByRole('combobox')).toHaveFocus();
     });
+  });
+
+  it('the footer button resets search too — search, open the dialog, cancel, reopen shows an empty search', async () => {
+    const user = userEvent.setup();
+    render(<SupplierPicker pointId="p1" ownerMode={false} value={null} onChange={vi.fn()} />);
+    await user.click(screen.getByRole('combobox'));
+    await user.type(screen.getByRole('searchbox'), 'Пет');
+    await user.click(screen.getByRole('button', { name: /Додати нового|Add a new/ }));
+    // The real SupplierFormDialog is mocked in this file — trigger its
+    // onClose (Cancel), not onCreated, so nothing is picked.
+    await user.click(screen.getByText('cancel-dialog'));
+
+    await user.click(screen.getByRole('combobox'));
+    expect(screen.getByRole('searchbox')).toHaveValue('');
+  });
+
+  it('aria-controls is present only while the listbox is mounted (M7)', async () => {
+    render(<SupplierPicker pointId="p1" ownerMode={false} value={null} onChange={vi.fn()} />);
+    const trigger = screen.getByRole('combobox');
+    expect(trigger).not.toHaveAttribute('aria-controls');
+
+    await userEvent.click(trigger);
+    expect(trigger).toHaveAttribute('aria-controls', screen.getByRole('listbox').id);
+
+    await userEvent.click(trigger);
+    expect(trigger).not.toHaveAttribute('aria-controls');
+  });
+
+  it('ArrowDown on the closed trigger opens the list and highlights the first option (M7)', async () => {
+    const user = userEvent.setup();
+    render(<SupplierPicker pointId="p1" ownerMode={false} value={null} onChange={vi.fn()} />);
+    screen.getByRole('combobox').focus();
+    await user.keyboard('{ArrowDown}');
+
+    expect(screen.getByRole('combobox')).toHaveAttribute('aria-expanded', 'true');
+    const firstOption = within(screen.getByRole('listbox')).getAllByRole('option')[0];
+    expect(screen.getByRole('searchbox')).toHaveAttribute('aria-activedescendant', firstOption.id);
+  });
+
+  it('ArrowUp on the closed trigger opens the list and highlights the last option (M7)', async () => {
+    const user = userEvent.setup();
+    render(<SupplierPicker pointId="p1" ownerMode={false} value={null} onChange={vi.fn()} />);
+    screen.getByRole('combobox').focus();
+    await user.keyboard('{ArrowUp}');
+
+    expect(screen.getByRole('combobox')).toHaveAttribute('aria-expanded', 'true');
+    const options = within(screen.getByRole('listbox')).getAllByRole('option');
+    expect(screen.getByRole('searchbox')).toHaveAttribute(
+      'aria-activedescendant',
+      options[options.length - 1].id,
+    );
+  });
+
+  it('ArrowUp on the closed trigger resolves to the last row once the list actually arrives, even if it was still empty at keydown (review finding 3)', async () => {
+    const user = userEvent.setup();
+    // Simulates the up-to-300ms window where `flat` is still empty — e.g. a
+    // debounce that hasn't caught up to a just-reset search — at the moment
+    // ArrowUp is pressed. The highlight must resolve once real rows exist,
+    // not stay pinned (or blank) at whatever `flat.length` was at keydown.
+    suppliersMock.mockReturnValue({ data: { data: [], total: 0 }, isPending: true });
+    const { rerender } = render(
+      <SupplierPicker pointId="p1" ownerMode={false} value={null} onChange={vi.fn()} />,
+    );
+    screen.getByRole('combobox').focus();
+    await user.keyboard('{ArrowUp}');
+    expect(screen.getByRole('combobox')).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByRole('searchbox')).not.toHaveAttribute('aria-activedescendant');
+
+    // The debounce catches up and the real list lands.
+    suppliersMock.mockReturnValue({ data: { data: [nina, vasyl], total: 2 }, isPending: false });
+    rerender(<SupplierPicker pointId="p1" ownerMode={false} value={null} onChange={vi.fn()} />);
+
+    const options = within(screen.getByRole('listbox')).getAllByRole('option');
+    expect(screen.getByRole('searchbox')).toHaveAttribute(
+      'aria-activedescendant',
+      options[options.length - 1].id,
+    );
+  });
+
+  it('closing forgets the search — Escape resets it so a reopen starts clean (M7)', async () => {
+    const user = userEvent.setup();
+    render(<SupplierPicker pointId="p1" ownerMode={false} value={null} onChange={vi.fn()} />);
+    await user.click(screen.getByRole('combobox'));
+    await user.type(screen.getByRole('searchbox'), 'zzz');
+    expect(screen.getByRole('searchbox')).toHaveValue('zzz');
+
+    await user.keyboard('{Escape}');
+    await user.click(screen.getByRole('combobox'));
+    expect(screen.getByRole('searchbox')).toHaveValue('');
+  });
+
+  it('clicking the open trigger closes the list and forgets the search, like every other close path', async () => {
+    const user = userEvent.setup();
+    render(<SupplierPicker pointId="p1" ownerMode={false} value={null} onChange={vi.fn()} />);
+    await user.click(screen.getByRole('combobox'));
+    await user.type(screen.getByRole('searchbox'), 'Пет');
+
+    await user.click(screen.getByRole('combobox'));
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('combobox'));
+    expect(screen.getByRole('searchbox')).toHaveValue('');
+  });
+
+  it('Escape closes the list and restores focus to the trigger (M10)', async () => {
+    const user = userEvent.setup();
+    render(<SupplierPicker pointId="p1" ownerMode={false} value={null} onChange={vi.fn()} />);
+    await user.click(screen.getByRole('combobox'));
+    expect(screen.getByRole('listbox')).toBeInTheDocument();
+
+    await user.keyboard('{Escape}');
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+    expect(screen.getByRole('combobox')).toHaveFocus();
+  });
+
+  it('a click outside closes the list without picking anything (M10)', async () => {
+    const onChange = vi.fn();
+    render(
+      <div>
+        <SupplierPicker pointId="p1" ownerMode={false} value={null} onChange={onChange} />
+        <button type="button">outside</button>
+      </div>,
+    );
+    await userEvent.click(screen.getByRole('combobox'));
+    expect(screen.getByRole('listbox')).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'outside' }));
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it('owner mode: ArrowDown walks across the group boundary and Enter picks from the second group (M10)', async () => {
+    const onChange = vi.fn();
+    render(<SupplierPicker pointId="p1" ownerMode value={null} onChange={onChange} />);
+    await userEvent.click(screen.getByRole('combobox'));
+    // home = [nina] (1 row), others = [vasyl] — the SECOND ArrowDown must
+    // cross the group boundary onto `others[0]` (flat index home.length + 0).
+    // `onChange` alone doesn't travel through the `home.length + i` offset —
+    // it only proves Enter picks whatever IS highlighted, not that the
+    // highlight itself landed on the right row. So pin the VISIBLE cursor
+    // (the `bg-muted` class) and `aria-activedescendant` together at each
+    // step, across the group boundary.
+    const ninaOption = screen.getByRole('option', { name: /Ніна/ });
+    const vasylOption = screen.getByRole('option', { name: /Василь/ });
+    const searchbox = screen.getByRole('searchbox');
+
+    await userEvent.keyboard('{ArrowDown}');
+    expect(ninaOption).toHaveClass('bg-muted');
+    expect(vasylOption).not.toHaveClass('bg-muted');
+    expect(searchbox).toHaveAttribute('aria-activedescendant', ninaOption.id);
+
+    await userEvent.keyboard('{ArrowDown}');
+    expect(vasylOption).toHaveClass('bg-muted');
+    expect(ninaOption).not.toHaveClass('bg-muted');
+    expect(searchbox).toHaveAttribute('aria-activedescendant', vasylOption.id);
+
+    await userEvent.keyboard('{Enter}');
+    expect(onChange).toHaveBeenCalledWith(vasyl);
   });
 
   it('has no axe violations open', async () => {
