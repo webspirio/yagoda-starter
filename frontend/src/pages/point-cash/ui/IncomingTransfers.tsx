@@ -5,7 +5,7 @@ import { Button } from '@/shared/ui/button';
 import { toast } from '@/shared/ui/toast';
 import { apiErrorToBanner } from '@/shared/lib/api-error';
 import { formatUah } from '@/shared/lib/money';
-import { formatShortDate, formatTime } from '@/shared/lib/date';
+import { formatShortDate, formatTime, toLocalIsoDate } from '@/shared/lib/date';
 import { useTransfersQuery, type Transfer } from '@/entities/transfer';
 import { useAcceptTransferMutation, DisputeTransferDialog } from '@/features/receive-transfer';
 
@@ -89,11 +89,11 @@ export function IncomingTransfers({ pointId, canAct }: { pointId: string; canAct
               {t('transfer.incoming.meta', {
                 carrier: transfer.carrier,
                 // `formatShortDate` wants a `YYYY-MM-DD` business date, not a
-                // full timestamp — passing `sent_at` whole would concat its
-                // own `T12:00:00Z` onto an already-full ISO string and throw
-                // (`Invalid time value`). Slicing to the date is safe here:
-                // only the calendar day is shown, never the offset.
-                date: formatShortDate(transfer.sent_at.slice(0, 10), locale),
+                // full timestamp, AND it is UTC-only — `toLocalIsoDate` gives
+                // it the viewer's own local day (matching `formatTime`'s
+                // local hour right beside it), not the UTC day a plain
+                // `.slice(0, 10)` would read.
+                date: formatShortDate(toLocalIsoDate(transfer.sent_at), locale),
                 time: formatTime(transfer.sent_at, locale),
               })}
             </div>
@@ -126,7 +126,7 @@ export function IncomingTransfers({ pointId, canAct }: { pointId: string; canAct
             <div className="min-w-0 flex-1 text-sm">
               <div className="font-medium text-destructive">
                 {t('transfer.incoming.disputed.header', {
-                  date: formatShortDate(transfer.sent_at.slice(0, 10), locale),
+                  date: formatShortDate(toLocalIsoDate(transfer.sent_at), locale),
                 })}
               </div>
               <div className="mt-0.5 text-xs text-muted-foreground">

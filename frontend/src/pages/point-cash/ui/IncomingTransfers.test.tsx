@@ -228,6 +228,22 @@ describe('IncomingTransfers', () => {
       expect(screen.getByText(/you counted 48,000.00 ₴ and 118 crates/)).toBeInTheDocument();
     });
 
+    describe('the header date is the LOCAL day, not the UTC one', () => {
+      afterEach(() => {
+        vi.unstubAllEnvs();
+      });
+
+      it('shows the 11th for a 22:00Z instant in Europe/Kyiv, which is already tomorrow there', () => {
+        vi.stubEnv('TZ', 'Europe/Kyiv');
+        mockTransfers({
+          disputed: [disputedTransfer({ sent_at: '2026-09-10T22:00:00.000Z' })],
+        });
+        render(<IncomingTransfers pointId="p1" canAct />);
+
+        expect(screen.getByText(/transfer from 09\/11/)).toBeInTheDocument();
+      });
+    });
+
     it('shows the dispute note, italicised, in guillemets', () => {
       mockTransfers({
         disputed: [disputedTransfer({ dispute_note: 'Two crates cracked on the road' })],

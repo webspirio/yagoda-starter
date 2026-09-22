@@ -40,6 +40,23 @@ export function todayIso(): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
+/**
+ * The LOCAL `YYYY-MM-DD` of a full timestamp (a document's `sent_at`) — built
+ * the exact same way `todayIso()` builds today's date, from local `Date`
+ * getters, zero-padded. Exists because `formatShortDate` is UTC-only by
+ * design (a business date is a calendar day, deliberately immune to DST —
+ * see the file doc comment), but `sent_at` is a real instant and a business
+ * day HERE is the viewer's own local day: a transfer sent at 22:00 UTC is
+ * already tomorrow in Kyiv (UTC+2/+3). Slicing `sent_at` to its first ten
+ * characters and handing that to `formatShortDate` reads the UTC day
+ * instead, which can print a date one day behind the LOCAL time shown next
+ * to it. Use this first, then `formatShortDate(toLocalIsoDate(iso), locale)`.
+ */
+export function toLocalIsoDate(iso: string): string {
+  const d = new Date(iso);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
 export function addDaysIso(iso: string, days: number): string {
   const d = toUtcNoon(iso);
   d.setUTCDate(d.getUTCDate() + days);
