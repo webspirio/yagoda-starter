@@ -1,4 +1,7 @@
-/** Mirrors the backend's `IntakeResponse` (header only — `GET /intakes` never nests items). */
+/** Mirrors the backend's `IntakeResponse` — the header, plus the lines when
+ *  the caller asked for them (`expand=items`, #148: a screen that shows what a
+ *  receipt contained reads the list it already has, not one detail request per
+ *  row). `items` stays optional here because the flag is opt-in. */
 export interface Intake {
   id: string;
   code: string;
@@ -66,7 +69,10 @@ interface IntakePayout {
 }
 
 /** `GET /intakes/:id` — the header (`Intake`) plus its lines, ordered like the
- *  paper. `GET /intakes` (the list) never nests items; only the detail read does. */
+ *  paper. The list can nest lines too (`expand=items`); the difference is the
+ *  GUARANTEE — here `items` is always there, which is why this type requires
+ *  what `Intake` leaves optional, and the receipt can name a line without a
+ *  catalog lookup. */
 export interface IntakeDetail extends Intake {
   items: IntakeItem[];
   payouts: IntakePayout[];
