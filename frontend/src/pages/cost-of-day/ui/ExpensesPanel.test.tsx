@@ -106,8 +106,12 @@ describe('ExpensesPanel', () => {
 
     // A line that vanishes without a word is worse than one that refuses out
     // loud: the собівартість would then be computed without it, silently.
+    // Both fields are cleared by the same `try` block, so pin BOTH — an
+    // amount-only clearing regression would still pass if only `label` were
+    // checked here.
     await waitFor(() => expect(createMock).toHaveBeenCalled());
     expect(screen.getByPlaceholderText('Підпис витрати')).toHaveValue('водій');
+    expect(screen.getByPlaceholderText('₴')).toHaveValue('500');
   });
 
   it('patches only the field that actually moved', async () => {
@@ -124,6 +128,46 @@ describe('ExpensesPanel', () => {
     // sending an unchanged `label` would put a no-op in the one trail this
     // mutable table has.
     await waitFor(() => expect(updateMock).toHaveBeenCalledWith({ id: 'e1', amount: '1300' }));
+  });
+
+  it('patches only the label when only the label moved', async () => {
+    const user = userEvent.setup();
+    renderPanel();
+
+    await user.click(screen.getByRole('button', { name: 'Змінити «пальне»' }));
+    // Leave the amount input untouched at '1000.00' — only the label field
+    // is edited below.
+    const labelInput = screen.getByDisplayValue('пальне');
+    await user.clear(labelInput);
+    await user.type(labelInput, 'дизель');
+    await user.click(screen.getByRole('button', { name: 'Зберегти' }));
+
+    // Exact body (not `objectContaining`) on purpose: the audit trail is the
+    // ONLY compensating control on this one mutable money table, so an
+    // unchanged `amount` tagging along here would record a transition that
+    // never happened.
+    await waitFor(() =>
+      expect(updateMock).toHaveBeenCalledWith({ id: 'e1', label: 'дизель' }),
+    );
+  });
+
+  it('calls no mutation and closes the editor when nothing moved', async () => {
+    const user = userEvent.setup();
+    renderPanel();
+
+    await user.click(screen.getByRole('button', { name: 'Змінити «пальне»' }));
+    // Neither field is touched — save as-is.
+    await user.click(screen.getByRole('button', { name: 'Зберегти' }));
+
+    // Same reasoning as the two tests above: a no-op save must never reach
+    // the mutation, since the server records an audit entry on every write —
+    // a call here would be a phantom entry, not a missing one. Assert the
+    // editor closed too (the edit button is back), so this pins the whole
+    // no-op path rather than only the mutation's silence.
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Змінити «пальне»' })).toBeInTheDocument(),
+    );
+    expect(updateMock).not.toHaveBeenCalled();
   });
 
   it('removes a line', async () => {
