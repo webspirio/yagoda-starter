@@ -1170,7 +1170,7 @@
     "crateMore": "Add one crate",
     "crateQuick": "+{{n}} cr.",
     "netEyebrow": "Net weight · calculated by the system",
-    "addLine": "another position",
+    "addLine": "Add position",
     "block": {
       "noShift": "The shift for this day at this point was not opened",
       "nothingAccepted": "Nothing was accepted at {{point}} on {{date}}. Check the point and the date",
@@ -1275,7 +1275,7 @@
       "empty": "No expenses have been entered for this day yet.",
       "labelField": "Expense label",
       "amountField": "₴",
-      "add": "another line",
+      "add": "Add",
       "edit": "Edit «{{label}}»",
       "save": "Save",
       "cancel": "Cancel",

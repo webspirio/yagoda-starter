@@ -85,7 +85,7 @@ describe('ExpensesPanel', () => {
 
     await user.type(screen.getByPlaceholderText('Підпис витрати'), 'водій');
     await user.type(screen.getByPlaceholderText('₴'), '500');
-    await user.click(screen.getByRole('button', { name: 'ще рядок' }));
+    await user.click(screen.getByRole('button', { name: 'Додати' }));
 
     await waitFor(() =>
       expect(createMock).toHaveBeenCalledWith({ shiftId: 's1', label: 'водій', amount: '500' }),
@@ -100,7 +100,7 @@ describe('ExpensesPanel', () => {
 
     await user.type(screen.getByPlaceholderText('Підпис витрати'), 'водій');
     await user.type(screen.getByPlaceholderText('₴'), '500');
-    await user.click(screen.getByRole('button', { name: 'ще рядок' }));
+    await user.click(screen.getByRole('button', { name: 'Додати' }));
 
     // A line that vanishes without a word is worse than one that refuses out
     // loud: the собівартість would then be computed without it, silently.
@@ -177,8 +177,8 @@ describe('ExpensesPanel', () => {
     // that comes back «щось пішло не так» says nothing about the field.
     await user.type(screen.getByLabelText('₴'), '12.');
 
-    expect(screen.getByRole('button', { name: 'ще рядок' })).toBeDisabled();
-    await user.click(screen.getByRole('button', { name: 'ще рядок' }));
+    expect(screen.getByRole('button', { name: 'Додати' })).toBeDisabled();
+    await user.click(screen.getByRole('button', { name: 'Додати' }));
     expect(createMock).not.toHaveBeenCalled();
   });
 
