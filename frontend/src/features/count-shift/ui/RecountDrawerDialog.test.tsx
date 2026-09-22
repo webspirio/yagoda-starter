@@ -1,6 +1,8 @@
+import { useState } from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ApiError } from '@/shared/api';
 import { expectNoAxeViolations } from '../../../test-axe';
 import { RecountDrawerDialog } from './RecountDrawerDialog';
@@ -82,6 +84,9 @@ describe('RecountDrawerDialog', () => {
     expect(screen.queryByText(/cannot be changed/i)).toBeNull();
     // The amount field is gone — only the result and its «Done» button remain.
     expect(screen.queryByRole('textbox')).toBeNull();
+    // ONE dialog, whose body swapped — never a second one briefly coexisting
+    // with the first mid-animation (review round 3, minor 4).
+    expect(screen.getAllByRole('dialog')).toHaveLength(1);
   });
 
   it('shows the discrepancy note when the recount does not match', async () => {
@@ -119,10 +124,14 @@ describe('RecountDrawerDialog', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Recorded the count' }));
 
     expect(await screen.findByRole('alert')).toHaveTextContent(
-      'Enter an amount greater than zero — and only while the shift is open: a closed shift takes no recount.',
+      'A recount does not attach to a closed shift — you can only count while the shift is open.',
     );
-    // Never the shared transfer-side wording for the same code.
+    // Never the shared transfer-side wording for the same code, and never
+    // the (client-side validation, unrelated) amount-format message either.
     expect(screen.queryByText('No open shift at this point — open one first')).toBeNull();
+    expect(
+      screen.queryByText('Enter the amount you counted in the drawer — a number, not less than zero.'),
+    ).toBeNull();
   });
 
   it('falls back to the generic recount failure for an unmapped error', async () => {
@@ -145,5 +154,47 @@ describe('RecountDrawerDialog', () => {
     await screen.findByRole('alert');
     expect(onClose).not.toHaveBeenCalled();
     expect(screen.getByRole('textbox')).toHaveValue('1500.00');
+  });
+});
+
+/**
+ * A tiny parent that owns `open`/`key` itself — the same shape
+ * `ShiftCountPanel` wires up for its own `recountInstance` (bump the key,
+ * THEN open): a real `QueryClientProvider` in the tree, since that is how
+ * this dialog is always mounted outside a test, and `Reopen` bumps `key`
+ * so the second recount of the day gets a genuinely fresh mount rather than
+ * `open` alone flipping false→true on the SAME instance (which would leave
+ * last time's `result`/form state sitting in place).
+ */
+function RecountHarness() {
+  const [client] = useState(() => new QueryClient());
+  const [instance, setInstance] = useState(0);
+  const [open, setOpen] = useState(true);
+  const reopen = () => {
+    setInstance((n) => n + 1);
+    setOpen(true);
+  };
+  return (
+    <QueryClientProvider client={client}>
+      <button onClick={reopen}>Reopen</button>
+      <RecountDrawerDialog key={`recount-${instance}`} open={open} onClose={() => setOpen(false)} />
+    </QueryClientProvider>
+  );
+}
+
+describe('RecountDrawerDialog — the second recount of the day starts blank (Important 3)', () => {
+  it('shows an empty amount field and no stale result after a submit, a close and a re-open', async () => {
+    render(<RecountHarness />);
+
+    await userEvent.type(screen.getByRole('textbox'), '1500.00');
+    await userEvent.click(screen.getByRole('button', { name: 'Recorded the count' }));
+    expect(await screen.findByText('Expected')).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Done' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Reopen' }));
+
+    expect(screen.getByRole('textbox')).toHaveValue('');
+    expect(screen.queryByText('Expected')).toBeNull();
+    expect(screen.queryByRole('alert')).toBeNull();
   });
 });

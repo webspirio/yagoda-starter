@@ -16,7 +16,7 @@ import { amountRules, normalizeAmount, isZero } from '@/shared/lib/money';
 import { apiErrorToBanner } from '@/shared/lib/api-error';
 import type { CashCount } from '@/entities/cash-count';
 import { useRecountMutation } from '../api/recount';
-import { CountResultView } from './CountResultView';
+import { CountResultBody } from './CountResultView';
 
 interface RecountFormValues {
   amount: string;
@@ -34,14 +34,19 @@ interface RecountFormValues {
  * нічого понад «записати підрахунок і показати, що повернулось», тож
  * підіймати цю логіку на рівень сторінки нема сенсу.
  *
- * Two SEPARATE `Dialog`s, not one that swaps its body: the result is
- * `CountResultView` — the SAME component `PointCashPage` renders for the
- * open/close result (review round 1 folded what used to be two near-copies
- * into one, feature-owned component; a `features/*` module cannot import
- * from `pages/*`, so this is the one place both callers can share it from).
- * The form dialog closes exactly when the result dialog opens
- * (`open={open && result === null}` / `open={open && result !== null}`), so
- * from the outside it still reads as one dialog changing its content.
+ * ONE `Dialog`, whose `DialogContent` swaps its body between the form and
+ * the result (review round 3 — TWO sibling `Dialog`s, open/closed in
+ * lockstep via `open={open && result === null}` / `open={open && result !==
+ * null}`, briefly put TWO `role="dialog"` elements in the DOM at once: the
+ * first one keeps rendering through its own exit animation
+ * (`shared/ui/dialog.tsx`'s `data-[state=closed]` transition) at the exact
+ * moment the second one mounts already `data-state="open"`). The result
+ * body is `CountResultBody` — the SAME markup `CountResultView`
+ * (`pages/point-cash`'s open/close result) wraps in its own `Dialog` (review
+ * round 1 folded what used to be two near-copies into one, feature-owned
+ * component; a `features/*` module cannot import from `pages/*`, so this is
+ * the one place both callers can share it from) — rendered directly inside
+ * THIS dialog's own `DialogContent` rather than in a second `Dialog`.
  *
  * `result`/`formError` — internal state; the caller resets them by
  * remounting this component via `key` on every new open, the same
@@ -66,10 +71,17 @@ export function RecountDrawerDialog({ open, onClose }: { open: boolean; onClose:
     } catch (error) {
       // NO_OPEN_SHIFT — the contract this dialog refuses on (409, aligned
       // with intakes/payouts/transfers/crates) — gets the recount's OWN
-      // sentence here, not the shared `transfer.errors.noOpenShift` wording
-      // `apiErrorToBanner`'s CODE map answers with at every other call site.
+      // sentence here (`recount.errors.noOpenShift`), not the shared
+      // `transfer.errors.noOpenShift` wording `apiErrorToBanner`'s CODE map
+      // answers with at every other call site, and not `recount.errors.amount`
+      // either (review, minor 11): that key is the client-side VALIDATION
+      // message for the amount field, and doubling it as the server refusal
+      // banner too was itself a wrong claim — `0` is a legal count, so
+      // "enter an amount greater than zero" was never the actual rule.
       setFormError(
-        apiErrorToBanner(error, 'recount.errors.failed', { NO_OPEN_SHIFT: 'recount.errors.amount' }),
+        apiErrorToBanner(error, 'recount.errors.failed', {
+          NO_OPEN_SHIFT: 'recount.errors.noOpenShift',
+        }),
       );
     }
   };
@@ -80,77 +92,73 @@ export function RecountDrawerDialog({ open, onClose }: { open: boolean; onClose:
   };
 
   return (
-    <>
-      <Dialog
-        open={open && result === null}
-        onOpenChange={(next) => !next && handleClose()}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{t('recount.title')}</DialogTitle>
-            <DialogDescription>{t('recount.body')}</DialogDescription>
-          </DialogHeader>
+    <Dialog open={open} onOpenChange={(next) => !next && handleClose()}>
+      <DialogContent>
+        {result ? (
+          <CountResultBody
+            title={t('recount.title')}
+            expected={result.expected_amount}
+            counted={result.counted_amount}
+            discrepancy={result.discrepancy}
+            // §7.7 — a discrepancy never blocks anything; it only means this
+            // figure cannot be edited here, and the owner sees it explained
+            // on their own list, not that something needs fixing NOW.
+            note={!isZero(result.discrepancy) ? t('recount.result.note') : null}
+            onClose={handleClose}
+          />
+        ) : (
+          <>
+            <DialogHeader>
+              <DialogTitle>{t('recount.title')}</DialogTitle>
+              <DialogDescription>{t('recount.body')}</DialogDescription>
+            </DialogHeader>
 
-          <form
-            onSubmit={(event) => {
-              // Cleared at the START of every attempt, same convention
-              // `CountDrawerDialog` documents — a stale server banner must
-              // not survive a later attempt client validation refuses first.
-              setFormError(null);
-              void handleSubmit(submit)(event);
-            }}
-            className="flex flex-col gap-4"
-            noValidate
-          >
-            <Field
-              name="amount"
-              label={t('recount.amount')}
-              required
-              error={errors.amount?.message}
+            <form
+              onSubmit={(event) => {
+                // Cleared at the START of every attempt, same convention
+                // `CountDrawerDialog` documents — a stale server banner must
+                // not survive a later attempt client validation refuses first.
+                setFormError(null);
+                void handleSubmit(submit)(event);
+              }}
+              className="flex flex-col gap-4"
+              noValidate
             >
-              {(a11y) => (
-                <TextInput
-                  {...a11y}
-                  inputMode="decimal"
-                  className="font-mono"
-                  {...register('amount', amountRules('recount.errors.amount'))}
-                  autoFocus
-                />
-              )}
-            </Field>
+              <Field
+                name="amount"
+                label={t('recount.amount')}
+                required
+                error={errors.amount?.message}
+              >
+                {(a11y) => (
+                  <TextInput
+                    {...a11y}
+                    inputMode="decimal"
+                    className="font-mono"
+                    {...register('amount', amountRules('recount.errors.amount'))}
+                    autoFocus
+                  />
+                )}
+              </Field>
 
-            {formError ? (
-              <p role="alert" className="text-sm text-destructive">
-                {t(formError)}
-              </p>
-            ) : null}
+              {formError ? (
+                <p role="alert" className="text-sm text-destructive">
+                  {t(formError)}
+                </p>
+              ) : null}
 
-            <DialogFooter>
-              <Button type="button" variant="ghost" disabled={isSubmitting} onClick={handleClose}>
-                {t('common.cancel')}
-              </Button>
-              <Button type="submit" disabled={isSubmitting}>
-                {t('recount.submit')}
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
-
-      {result ? (
-        <CountResultView
-          open={open}
-          title={t('recount.title')}
-          expected={result.expected_amount}
-          counted={result.counted_amount}
-          discrepancy={result.discrepancy}
-          // §7.7 — a discrepancy never blocks anything; it only means this
-          // figure cannot be edited here, and the owner sees it explained on
-          // their own list, not that something needs fixing NOW.
-          note={!isZero(result.discrepancy) ? t('recount.result.note') : null}
-          onClose={handleClose}
-        />
-      ) : null}
-    </>
+              <DialogFooter>
+                <Button type="button" variant="ghost" disabled={isSubmitting} onClick={handleClose}>
+                  {t('common.cancel')}
+                </Button>
+                <Button type="submit" disabled={isSubmitting}>
+                  {t('recount.submit')}
+                </Button>
+              </DialogFooter>
+            </form>
+          </>
+        )}
+      </DialogContent>
+    </Dialog>
   );
 }

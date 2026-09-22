@@ -554,7 +554,8 @@
       "note": "This figure cannot be changed in the app. Call the base — the owner will find where it went off."
     },
     "errors": {
-      "amount": "Enter an amount greater than zero — and only while the shift is open: a closed shift takes no recount.",
+      "amount": "Enter the amount you counted in the drawer — a number, not less than zero.",
+      "noOpenShift": "A recount does not attach to a closed shift — you can only count while the shift is open.",
       "failed": "Could not record the recount"
     }
   },

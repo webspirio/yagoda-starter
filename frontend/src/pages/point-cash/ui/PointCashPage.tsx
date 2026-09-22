@@ -218,6 +218,46 @@ export function PointCashPage() {
         ? openingCountRow
         : closingCountRow;
 
+  // Minor 14 (review) — the CONTENT for the close (exit) animation.
+  // `CountResultView` used to be wrapped in `resultFor !== null && resultRow
+  // !== null ? (…) : null`, which unmounted the whole dialog the INSTANT
+  // either went null — a hard pop, unlike every other dialog on this page,
+  // which stays mounted and lets `open` alone drive visibility. Latched here
+  // so the LAST real content survives dismissal (`resultFor` clears
+  // immediately; this does not) — set during render, not an effect: React's
+  // own documented technique for storing derived info from a previous render
+  // (`useState`'s reference doc, "storing information from previous
+  // renders"). An effect would run one tick AFTER the render that needs it,
+  // which is exactly the render the very first count of the day has to show.
+  const [resultView, setResultView] = useState<{
+    mode: 'open' | 'close';
+    title: string;
+    counted: string;
+    discrepancy: string | null;
+  } | null>(null);
+  if (resultFor !== null && resultRow !== null) {
+    const title =
+      resultFor.mode === 'open'
+        ? t('pointCash.result.opened')
+        : isZero(resultRow.discrepancy)
+          ? t('pointCash.result.closedSettled')
+          : t('pointCash.result.closedDiscrepancy', {
+              amount: formatUah(resultRow.discrepancy, locale),
+            });
+    // Opening carries no discrepancy — §7.3, the first count IS the opening
+    // balance, nothing to compare it against yet.
+    const discrepancy = resultFor.mode === 'close' ? resultRow.discrepancy : null;
+    if (
+      resultView === null ||
+      resultView.mode !== resultFor.mode ||
+      resultView.title !== title ||
+      resultView.counted !== resultRow.counted_amount ||
+      resultView.discrepancy !== discrepancy
+    ) {
+      setResultView({ mode: resultFor.mode, title, counted: resultRow.counted_amount, discrepancy });
+    }
+  }
+
   const [showCountHistory, setShowCountHistory] = useState(false);
 
   const [targetOpen, setTargetOpen] = useState(false);
@@ -548,32 +588,24 @@ export function PointCashPage() {
         }}
       />
 
-      {/* Mounted only once `resultRow` exists — see that state's own doc
-          comment above: the mutation's invalidation is what eventually lands
-          the new row in `panelBerryCounts`, and there is nothing honest to
-          show before that happens. `CountResultView` is the SAME component
-          `RecountDrawerDialog` (features/count-shift) renders for its own
-          result — a `pages/*` module reaching down into `features/*` is the
-          allowed direction, so this is the one place the two callers share it. */}
-      {resultFor !== null && resultRow !== null ? (
-        <CountResultView
-          open
-          title={
-            resultFor.mode === 'open'
-              ? t('pointCash.result.opened')
-              : isZero(resultRow.discrepancy)
-                ? t('pointCash.result.closedSettled')
-                : t('pointCash.result.closedDiscrepancy', {
-                    amount: formatUah(resultRow.discrepancy, locale),
-                  })
-          }
-          counted={resultRow.counted_amount}
-          // Opening carries no discrepancy — §7.3, the first count IS the
-          // opening balance, nothing to compare it against yet.
-          discrepancy={resultFor.mode === 'close' ? resultRow.discrepancy : null}
-          onClose={() => setResultFor(null)}
-        />
-      ) : null}
+      {/* ALWAYS mounted (minor 14, review) — `open` alone drives visibility,
+          same as `CountDrawerDialog`/`SetTargetCashDialog` above, so a
+          dismiss animates closed instead of hard-popping out of the DOM.
+          There is nothing to show before the very first count of the day
+          ever lands (`resultView` stays `null`, `open` stays `false`) —
+          `resultView`'s own doc comment above is what keeps this rendering
+          the LAST real content while it fades, not a blank flash. This is
+          the SAME component `RecountDrawerDialog` (features/count-shift)
+          renders for its own result — a `pages/*` module reaching down into
+          `features/*` is the allowed direction, so this is the one place the
+          two callers share it. */}
+      <CountResultView
+        open={resultFor !== null && resultRow !== null}
+        title={resultView?.title ?? ''}
+        counted={resultView?.counted ?? '0.00'}
+        discrepancy={resultView?.discrepancy ?? null}
+        onClose={() => setResultFor(null)}
+      />
     </>
   );
 }

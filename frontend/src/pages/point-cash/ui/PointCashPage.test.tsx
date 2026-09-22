@@ -976,6 +976,30 @@ describe('PointCashPage — R4: the open/close result view', () => {
     expect(screen.queryByText('Discrepancy')).toBeNull();
   });
 
+  it('dismisses via «Done» rather than hard-popping, without leaking stale content into the next result (minor 14)', async () => {
+    // The result dialog is now ALWAYS mounted, with `open` the only gate
+    // (review) — a dismiss animates closed like every other dialog instead
+    // of the whole component vanishing from the tree the instant `resultFor`
+    // clears. Nothing to show before the first count of the day ever lands.
+    const user = userEvent.setup();
+    shiftMock.mockReturnValue({ data: null, isPending: false, isError: false });
+    cashCountsMock.mockImplementation((filter: { shiftId?: string }) =>
+      'shiftId' in filter
+        ? list([cashCount({ kind: 'opening', counted_amount: '2500.00' })])
+        : list([cashCount()]),
+    );
+
+    renderPointCash();
+    expect(screen.queryByRole('heading', { name: 'Shift opened' })).toBeNull();
+
+    await user.click(screen.getByRole('button', { name: 'Open shift' }));
+    await user.click(screen.getByRole('button', { name: 'Confirm open' }));
+    expect(await screen.findByRole('heading', { name: 'Shift opened' })).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Done' }));
+    expect(screen.queryByRole('heading', { name: 'Shift opened' })).toBeNull();
+  });
+
   it('shows «The day matched» and a leaf pill after Close shift is confirmed with no discrepancy', async () => {
     const user = userEvent.setup();
     shiftMock.mockReturnValue({
