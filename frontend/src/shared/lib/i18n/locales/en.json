@@ -503,6 +503,10 @@
       "dayCash": "Cash for the day",
       "reception": "Intake"
     },
+    "staleShifts": {
+      "title": "Unclosed shifts",
+      "hint": "These shifts were left open on earlier days — a point cannot open a new one until its shift is closed, and the operator is the one who closes it."
+    },
     "topBalances": {
       "title": "Biggest balances",
       "empty": "No balances owed"

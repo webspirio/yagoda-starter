@@ -1,5 +1,6 @@
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router';
+import { AlertTriangle } from 'lucide-react';
 import { DashboardPage as DashboardTemplate, type StatItem } from '@/shared/ui/templates/dashboard-page';
 import { SectionCard } from '@/shared/ui/section-card';
 import { Card } from '@/shared/ui/card';
@@ -7,12 +8,13 @@ import { Badge } from '@/shared/ui/badge';
 import { Button } from '@/shared/ui/button';
 import { EmptyState } from '@/shared/ui/empty-state';
 import { Spinner } from '@/shared/ui/spinner';
+import { isTruncated } from '@/shared/api';
 import { sum, cmp, formatUah } from '@/shared/lib/money';
-import { todayIso, formatWeekday } from '@/shared/lib/date';
+import { todayIso, formatWeekday, formatLongDate } from '@/shared/lib/date';
 import { useMeQuery } from '@/entities/user';
 import { usePointOptionsQuery } from '@/entities/collection-point';
 import { useSupplierBalancesQuery, supplierName } from '@/entities/supplier';
-import type { Shift } from '@/entities/shift';
+import { useStaleOpenShiftsQuery, type Shift } from '@/entities/shift';
 import { useNetworkToday, type PointToday } from '../api/useNetworkToday';
 
 /** Shift `Badge` variant for a point's row — open and "needs an explanation"
@@ -56,9 +58,22 @@ export function DashboardPage() {
   // The balances read is network-wide and owner-only — an operator never
   // fires it at all (`enabled: false`), not merely discards its result.
   const balances = useSupplierBalancesQuery({ includeZero: false, enabled: isOwner });
+  // Зміни, що лишились відкритими з ПОПЕРЕДНІХ днів (#114). Оператор його не
+  // питає взагалі — і не тому, що йому не можна, а тому, що його власну
+  // незакриту зміну йому й так показує `OpenShiftAlert` просто там, де він
+  // працює, разом із кнопкою «Закрити». Керівникові ж точка, що забула
+  // закритись, не видна НІДЕ: `useNetworkToday` читає лише сьогодні, і така
+  // точка виглядає в ньому як «Зміну ще не відкрито».
+  const staleShifts = useStaleOpenShiftsQuery({ enabled: isOwner });
 
   const isPending =
-    meIsPending || (isOwner && pointsIsPending) || network.isPending || (isOwner && balances.isPending);
+    meIsPending ||
+    (isOwner && pointsIsPending) ||
+    network.isPending ||
+    (isOwner && balances.isPending) ||
+    // `enabled: false` тримає запит у `pending` НАЗАВЖДИ, тому без `isOwner`
+    // оператор дивився б на спінер до кінця зміни.
+    (isOwner && staleShifts.isPending);
   const isError = network.isError || (isOwner && (pointsIsError || balances.isError));
 
   const pointName = (id: string) => activePoints.find((p) => p.id === id)?.name ?? '';
@@ -67,6 +82,11 @@ export function DashboardPage() {
   const totalReceipts = network.rows.reduce((n, r) => n + r.receipts, 0);
   const totalAccrued = sum(network.rows.map((r) => r.accrued));
   const totalPaid = sum(network.rows.map((r) => r.paid));
+
+  // НЕ входить в `isError`: сьогоднішні цифри від падіння цього читання не
+  // стали неправдою, і міняти весь екран на «Щось пішло не так» через
+  // додаткове попередження — гірше, ніж не показати саме попередження.
+  const staleRows = staleShifts.data?.data ?? [];
 
   const balanceRows = balances.data?.data ?? [];
   const positiveDebt = sum(balanceRows.filter((b) => cmp(b.debt, '0') === 1).map((b) => b.debt));
@@ -136,6 +156,55 @@ export function DashboardPage() {
     );
   };
 
+  /**
+   * «Незакриті зміни» — точки, що забули закритись у попередні дні (#114).
+   *
+   * ЧОМУ ТУТ І ЧОМУ ВИЩЕ ЗА «Точки сьогодні». Зміна, залишена відкритою, не
+   * дає точці відкрити нову — тобто завтрашня прийомка на ній не почнеться,
+   * — а сьогоднішнє зведення показує таку точку як «Зміну ще не відкрито»,
+   * рівно як і ту, що просто ще не починала. Застрягла точка важливіша за
+   * сьогоднішні числа, тому вона стоїть над ними.
+   *
+   * СПИСОК ІЗ ПОСИЛАННЯМИ, А НЕ `OpenShiftAlert`: закриває зміну лише
+   * приймальник (§10.3), тому кнопки тут немає — робота керівника побачити й
+   * перейти. Посилання несе І точку, І дату, бо «Каса за день» читає обидві з
+   * query-рядка: керівник потрапляє одразу на той день, без крокування.
+   *
+   * Порожньо — не рендериться НІЧОГО: картка «незакритих змін немає» на
+   * екрані, який має лишатись оглядовим, — це шум щодня заради рідкого дня.
+   */
+  const staleShiftsSection =
+    staleRows.length === 0 ? null : (
+      <Card className="border-amber/40 p-4">
+        <div className="flex items-center gap-2">
+          <AlertTriangle className="size-4 shrink-0 text-amber" />
+          <p className="text-sm font-medium">{t('dashboard.staleShifts.title')}</p>
+        </div>
+        <p className="mt-1 text-xs text-muted-foreground">{t('dashboard.staleShifts.hint')}</p>
+        <ul className="mt-2 divide-y divide-border">
+          {staleRows.map((shift) => (
+            <li key={shift.id}>
+              <Link
+                to={`/day?point=${shift.collection_point_id}&date=${shift.business_date}`}
+                className="flex items-center justify-between gap-3 py-2.5 text-sm transition-colors hover:bg-muted/60"
+              >
+                <span className="min-w-0 truncate">{pointName(shift.collection_point_id)}</span>
+                <span className="ml-auto shrink-0 tabular-nums text-muted-foreground">
+                  {formatLongDate(shift.business_date, i18n.language)}
+                </span>
+              </Link>
+            </li>
+          ))}
+        </ul>
+        {/* Те саме «перші 100», що й у плитці залишків: фраза про стелю
+            читання, а не про те, ЩО саме читали — тому ключ один на двох
+            (див. #77 про дублікати в i18n). */}
+        {isTruncated(staleShifts.data) ? (
+          <p className="mt-2 text-xs text-muted-foreground">{t('dashboard.tiles.balancesHint')}</p>
+        ) : null}
+      </Card>
+    );
+
   const body = isError ? (
     <p role="alert" className="py-6 text-center text-destructive">
       {t('common.somethingWentWrong')}
@@ -145,37 +214,40 @@ export function DashboardPage() {
       <Spinner />
     </div>
   ) : isOwner ? (
-    <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1.5fr)_minmax(300px,1fr)]">
-      <SectionCard eyebrow={t('dashboard.points.title')}>
-        {network.rows.length === 0 ? (
-          <EmptyState title={t('dashboard.points.empty')} />
-        ) : (
-          <div className="space-y-3">{network.rows.map((row) => pointRow(row, true))}</div>
-        )}
-      </SectionCard>
-      <SectionCard eyebrow={t('dashboard.topBalances.title')}>
-        {topBalances.length === 0 ? (
-          <EmptyState title={t('dashboard.topBalances.empty')} />
-        ) : (
-          <ul className="divide-y divide-border">
-            {topBalances.map((b) => (
-              <li key={b.supplier_id}>
-                <Link
-                  to={`/debts?point=${b.collection_point_id}`}
-                  className="flex items-center justify-between gap-3 py-2.5 text-sm transition-colors hover:bg-muted/60"
-                >
-                  <span className="min-w-0 truncate">
-                    {supplierName(b)} · {pointName(b.collection_point_id)}
-                  </span>
-                  <span className="ml-auto shrink-0 font-mono tabular-nums">
-                    {formatUah(b.debt, i18n.language)}
-                  </span>
-                </Link>
-              </li>
-            ))}
-          </ul>
-        )}
-      </SectionCard>
+    <div className="space-y-4">
+      {staleShiftsSection}
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1.5fr)_minmax(300px,1fr)]">
+        <SectionCard eyebrow={t('dashboard.points.title')}>
+          {network.rows.length === 0 ? (
+            <EmptyState title={t('dashboard.points.empty')} />
+          ) : (
+            <div className="space-y-3">{network.rows.map((row) => pointRow(row, true))}</div>
+          )}
+        </SectionCard>
+        <SectionCard eyebrow={t('dashboard.topBalances.title')}>
+          {topBalances.length === 0 ? (
+            <EmptyState title={t('dashboard.topBalances.empty')} />
+          ) : (
+            <ul className="divide-y divide-border">
+              {topBalances.map((b) => (
+                <li key={b.supplier_id}>
+                  <Link
+                    to={`/debts?point=${b.collection_point_id}`}
+                    className="flex items-center justify-between gap-3 py-2.5 text-sm transition-colors hover:bg-muted/60"
+                  >
+                    <span className="min-w-0 truncate">
+                      {supplierName(b)} · {pointName(b.collection_point_id)}
+                    </span>
+                    <span className="ml-auto shrink-0 font-mono tabular-nums">
+                      {formatUah(b.debt, i18n.language)}
+                    </span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          )}
+        </SectionCard>
+      </div>
     </div>
   ) : (
     <div className="space-y-4">

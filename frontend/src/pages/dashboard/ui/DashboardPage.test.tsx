@@ -5,15 +5,22 @@ import { expectNoAxeViolations } from '../../../test-axe';
 import type { Shift } from '@/entities/shift';
 import { DashboardPage } from './DashboardPage';
 
-const { meMock, pointOptionsMock, networkTodayMock, balancesMock } = vi.hoisted(() => ({
-  meMock: vi.fn(),
-  pointOptionsMock: vi.fn(),
-  networkTodayMock: vi.fn(),
-  balancesMock: vi.fn(),
-}));
+const { meMock, pointOptionsMock, networkTodayMock, balancesMock, staleShiftsMock } = vi.hoisted(
+  () => ({
+    meMock: vi.fn(),
+    pointOptionsMock: vi.fn(),
+    networkTodayMock: vi.fn(),
+    balancesMock: vi.fn(),
+    staleShiftsMock: vi.fn(),
+  }),
+);
 
 vi.mock('@/entities/user', () => ({
   useMeQuery: () => meMock(),
+}));
+
+vi.mock('@/entities/shift', () => ({
+  useStaleOpenShiftsQuery: (options: unknown) => staleShiftsMock(options),
 }));
 
 vi.mock('@/entities/collection-point', () => ({
@@ -62,6 +69,21 @@ const openShift: Shift = {
   broken_crates: null,
 };
 
+/** A shift still open on a day before the one the page is about. */
+const staleShift: Shift = {
+  ...openShift,
+  id: 's7',
+  collection_point_id: 'p2',
+  business_date: '2026-09-05',
+};
+
+const shiftsPage = (data: Shift[], total = data.length) => ({
+  data,
+  total,
+  page: 1,
+  limit: 100,
+});
+
 const balanceRow = (over: Partial<{
   supplier_id: string;
   first_name: string;
@@ -98,6 +120,11 @@ beforeEach(() => {
     isPending: false,
     isError: false,
     anyTruncated: false,
+  });
+  staleShiftsMock.mockReset().mockReturnValue({
+    data: shiftsPage([]),
+    isPending: false,
+    isError: false,
   });
   balancesMock.mockReset().mockReturnValue({
     data: { data: [balanceRow(), balanceRow({ supplier_id: 'sup2', first_name: 'Olena', last_name: 'Bila', collection_point_id: 'p2', debt: '5.00' })], total: 2, page: 1, limit: 100 },
@@ -191,6 +218,62 @@ describe('DashboardPage — the owner', () => {
     expect(within(p2Row).queryByText('first 100 per point')).toBeNull();
   });
 
+  it('lists a shift left open on an earlier day, above today’s points, linking to that day', async () => {
+    staleShiftsMock.mockReturnValue({ data: shiftsPage([staleShift]), isPending: false, isError: false });
+
+    const { container } = renderDashboard();
+
+    const section = screen.getByText('Unclosed shifts').closest('[data-slot="card"]') as HTMLElement;
+    const link = within(section).getByRole('link');
+    expect(link).toHaveAttribute('href', '/day?point=p2&date=2026-09-05');
+    expect(link).toHaveTextContent('Haiove');
+    expect(link).toHaveTextContent('September 5, 2026');
+
+    // A stranded point outranks today's numbers.
+    expect(
+      section.compareDocumentPosition(screen.getByText('Points today')) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+
+    await expectNoAxeViolations(container);
+  });
+
+  it('gives every stranded point its own row', () => {
+    staleShiftsMock.mockReturnValue({
+      data: shiftsPage([
+        staleShift,
+        { ...staleShift, id: 's8', collection_point_id: 'p1', business_date: '2026-09-06' },
+      ]),
+      isPending: false,
+      isError: false,
+    });
+
+    renderDashboard();
+
+    const section = screen.getByText('Unclosed shifts').closest('[data-slot="card"]') as HTMLElement;
+    const links = within(section).getAllByRole('link');
+    expect(links).toHaveLength(2);
+    expect(links[1]).toHaveAttribute('href', '/day?point=p1&date=2026-09-06');
+  });
+
+  it('renders no section at all when nothing was left open', () => {
+    renderDashboard();
+
+    expect(screen.queryByText('Unclosed shifts')).toBeNull();
+  });
+
+  it('hints that the list stops at 100 once the server has more', () => {
+    staleShiftsMock.mockReturnValue({
+      data: shiftsPage([staleShift], 150),
+      isPending: false,
+      isError: false,
+    });
+
+    renderDashboard();
+
+    expect(screen.getByText('first 100')).toBeInTheDocument();
+  });
+
   it('flags a point whose shift awaits an explanation', () => {
     networkTodayMock.mockReturnValue({
       rows: [
@@ -218,6 +301,8 @@ describe('DashboardPage — the owner', () => {
 describe('DashboardPage — the operator', () => {
   beforeEach(() => {
     meMock.mockReturnValue({ data: OPERATOR, isPending: false });
+    // What a DISABLED query actually looks like: pending forever, no data.
+    staleShiftsMock.mockReturnValue({ data: undefined, isPending: true, isError: false });
     networkTodayMock.mockReturnValue({
       rows: [
         { pointId: 'p1', shift: openShift, receipts: 1, accrued: '10.00', paid: '0.00', truncated: false },
@@ -239,6 +324,8 @@ describe('DashboardPage — the operator', () => {
     expect(balancesMock).toHaveBeenCalledWith(
       expect.objectContaining({ enabled: false }),
     );
+    expect(staleShiftsMock).toHaveBeenCalledWith(expect.objectContaining({ enabled: false }));
+    expect(screen.queryByText('Unclosed shifts')).toBeNull();
     expect(networkTodayMock).toHaveBeenCalledWith(['p1']);
 
     await expectNoAxeViolations(container);
@@ -254,6 +341,16 @@ describe('DashboardPage — the operator', () => {
 });
 
 describe('DashboardPage — a failed read', () => {
+  it('keeps today’s overview when only the stale-shift read fails', () => {
+    staleShiftsMock.mockReturnValue({ data: undefined, isPending: false, isError: true });
+
+    renderDashboard();
+
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(screen.getByText('Shypynky')).toBeInTheDocument();
+    expect(screen.queryByText('Unclosed shifts')).toBeNull();
+  });
+
   it('shows the error state', () => {
     networkTodayMock.mockReturnValue({ rows: [], isPending: false, isError: true });
 
