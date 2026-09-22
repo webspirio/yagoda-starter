@@ -109,4 +109,22 @@ export class CreateIntakeDto {
   @ValidateNested({ each: true })
   @Type(() => CreateIntakeItemDto)
   items: CreateIntakeItemDto[];
+
+  /**
+   * §2.1 step ⑥ and §3.1 — «Видано готівкою», the cash handed over in THIS
+   * visit, written as a payout in the same transaction as the receipt (spec
+   * 2026-09-21 §2.1). Absent or `0.00` writes no payout document at all:
+   * §3.7's «видано 0,00 ₴» is an intake with no payout, not a payout of zero
+   * (spec §8.6).
+   *
+   * UNSIGNED, and the ceiling is not checked here: `min(Разом, каса за ягоду)`
+   * (§3.6) needs the debt and the drawer, which only the service can read,
+   * under a lock. `PreviewIntakeDto` is this same class and simply ignores it.
+   */
+  @IsOptional()
+  @Matches(/^\d{1,10}(\.\d{1,2})?$/, {
+    message: 'paid_amount must be a decimal string with at most 2 decimal places',
+  })
+  @CanonicalDecimal()
+  paid_amount?: string;
 }

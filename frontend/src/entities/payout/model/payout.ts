@@ -7,6 +7,8 @@ export interface Payout {
   supplier_id: string;
   amount: string;
   paid_by_user_id: string;
+  /** The receipt this payout was handed over with, if any — §-linked at the DB, not always present. */
+  intake_id: string | null;
   voided_at: string | null;
   voided_by_user_id: string | null;
   void_reason: string | null;

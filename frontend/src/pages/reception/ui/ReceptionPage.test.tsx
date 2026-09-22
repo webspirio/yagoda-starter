@@ -1,5 +1,6 @@
+import { forwardRef, useImperativeHandle, useRef } from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { render, screen, waitFor, within, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createMemoryRouter, RouterProvider } from 'react-router';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -22,7 +23,6 @@ const {
   meMock,
   pointScopeMock,
   shiftMock,
-  suppliersMock,
   balanceMock,
   intakesMock,
   gradesMock,
@@ -30,18 +30,66 @@ const {
   previewMock,
   createMock,
   openShiftMock,
-} = vi.hoisted(() => ({
-  meMock: vi.fn(),
-  pointScopeMock: vi.fn(),
-  shiftMock: vi.fn(),
-  suppliersMock: vi.fn(),
-  balanceMock: vi.fn(),
-  intakesMock: vi.fn(),
-  gradesMock: vi.fn(),
-  tareTypesMock: vi.fn(),
-  previewMock: vi.fn(),
-  createMock: vi.fn(),
-  openShiftMock: vi.fn(),
+  pointCashMock,
+  toastMock,
+  toastSuccessMock,
+} = vi.hoisted(() => {
+  type ToastMock = ReturnType<typeof vi.fn> & {
+    success: ReturnType<typeof vi.fn>;
+    error: ReturnType<typeof vi.fn>;
+  };
+  // `toast` (sonner) is itself callable (the bare «lines cleared» notice) AND
+  // carries `.success`/`.error` methods (the shift-open toast) — the mock
+  // has to be both, unlike `PayoutDialog.test.tsx`'s plain-object `toast`.
+  const toastMock = vi.fn() as unknown as ToastMock;
+  toastMock.success = vi.fn();
+  toastMock.error = vi.fn();
+  return {
+    meMock: vi.fn(),
+    pointScopeMock: vi.fn(),
+    shiftMock: vi.fn(),
+    balanceMock: vi.fn(),
+    intakesMock: vi.fn(),
+    gradesMock: vi.fn(),
+    tareTypesMock: vi.fn(),
+    previewMock: vi.fn(),
+    createMock: vi.fn(),
+    openShiftMock: vi.fn(),
+    pointCashMock: vi.fn(),
+    toastMock,
+    toastSuccessMock: vi.fn(),
+  };
+});
+
+// The real sonner-backed module — mocked so a bare `toast(...)` call (the
+// «lines cleared» notice) and `toastSuccess(...)` (the accepted receipt) are
+// both observable without a `<Toaster/>` mounted, same shape
+// `PayoutDialog.test.tsx` uses for `toast.success`.
+vi.mock('@/shared/ui/toast', () => ({
+  toast: toastMock,
+  toastSuccess: toastSuccessMock,
+  toastError: vi.fn(),
+}));
+
+vi.mock('@/entities/point-cash', () => ({
+  usePointCashForPointQuery: (pointId: string | null, asOf?: string, enabled?: boolean) =>
+    pointCashMock(pointId, asOf, enabled),
+}));
+
+// `PointStatePanel`'s own three reads — this file's job is the FORM and the
+// header actions, so these are static "not fetched yet" stand-ins rather
+// than another set of per-test hoisted mocks; `PointStatePanel.test.tsx` is
+// where each of the six figures is actually exercised.
+vi.mock('@/entities/cash-count', () => ({
+  useCashCountsQuery: () => ({ data: undefined, isPending: true, isError: false }),
+}));
+
+vi.mock('@/entities/payout', () => ({
+  usePayoutsQuery: () => ({ data: undefined, isPending: true, isError: false }),
+}));
+
+vi.mock('@/entities/crate', () => ({
+  useCrateBalancesQuery: () => ({ data: undefined, isPending: true, isError: false }),
 }));
 
 vi.mock('@/entities/user', () => ({
@@ -65,10 +113,31 @@ vi.mock('@/entities/shift', () => ({
 }));
 
 vi.mock('@/entities/supplier', () => ({
-  useSuppliersQuery: (search: string, pointId: string | null) => suppliersMock(search, pointId),
   useSupplierBalanceQuery: (id: string | null) => balanceMock(id),
-  supplierName: (s: { first_name: string; last_name: string }) =>
-    `${s.first_name} ${s.last_name}`,
+}));
+
+// The picker itself (search, grouping, inline creation) is `SupplierPicker`'s
+// own concern — tested in `features/pick-supplier/ui/SupplierPicker.test.tsx`.
+// Here it is a single button that always hands back the fixed `nina` row, so
+// every test below can get a supplier onto the form without driving a
+// combobox. `forwardRef` mirrors the real component: the page reads
+// `pickerRef.current?.focus()` after a successful submit, and this stub wires
+// that imperative handle onto its own button so the focus test can assert
+// against a real DOM element. `autoFocus` is accepted (and ignored) so the
+// page can pass it without the stub choking on an unknown prop.
+vi.mock('@/features/pick-supplier', () => ({
+  SupplierPicker: forwardRef(function SupplierPicker(
+    { onChange }: { onChange: (s: Supplier) => void; autoFocus?: boolean },
+    ref,
+  ) {
+    const buttonRef = useRef<HTMLButtonElement>(null);
+    useImperativeHandle(ref, () => ({ focus: () => buttonRef.current?.focus() }));
+    return (
+      <button ref={buttonRef} type="button" onClick={() => onChange(nina)}>
+        pick-nina
+      </button>
+    );
+  }),
 }));
 
 vi.mock('@/entities/intake', () => ({
@@ -135,23 +204,20 @@ const openShift: Shift = {
   broken_crates: null,
 };
 
-const supplier = (over: Partial<Supplier> & Pick<Supplier, 'id'>): Supplier => ({
+// The single row the `pick-supplier` stub always hands back — its id lines
+// up with `PREVIEW`, `CREATED` and the default `intake()` fixture below,
+// which all describe supplier `s1`.
+const nina: Supplier = {
+  id: 's1',
   collection_point_id: 'p1',
-  first_name: 'Mariia',
-  last_name: 'Kovalchuk',
+  first_name: 'Ніна',
+  last_name: 'Ільчук',
   phone: '+380671112233',
   note: null,
   kind: 'none',
   is_active: true,
   created_at: '2026-05-01T08:00:00Z',
-  ...over,
-});
-
-const SUPPLIERS: Supplier[] = [
-  supplier({ id: 's1' }),
-  supplier({ id: 's2', first_name: 'Petro', last_name: 'Bondar', kind: 'farmer', phone: null }),
-  supplier({ id: 's3', first_name: 'Retired', last_name: 'Person', is_active: false }),
-];
+};
 
 const GRADES: PricedGrade[] = [
   {
@@ -223,6 +289,14 @@ const CREATED: IntakeDetail = {
   voided_by_user_id: null,
   void_reason: null,
   created_at: '2026-09-08T09:15:00Z',
+  // Agrees with the ONE item below (120.40 kg net) — the toast now reads
+  // this header field directly rather than re-summing `items[]` (M3/M9).
+  net_kg: '120.40',
+  lines_count: 1,
+  supplier_name: 'Ніна Ільчук',
+  paid_amount: '0.00',
+  payouts: [],
+  received_by_name: 'Оксана Гнатюк',
   items: [
     {
       id: 'it1',
@@ -250,6 +324,12 @@ const intake = (over: Partial<Intake> & Pick<Intake, 'id' | 'code' | 'amount'>):
   voided_by_user_id: null,
   void_reason: null,
   created_at: '2026-09-08T07:10:00Z',
+  // Same one-line 120.40 kg default as `CREATED` above — one canonical
+  // example receipt throughout this file (M3/M9).
+  net_kg: '120.40',
+  lines_count: 1,
+  supplier_name: 'Ніна Ільчук',
+  paid_amount: '0.00',
   ...over,
 });
 
@@ -261,7 +341,10 @@ const page = <T,>(data: T[]) => ({
 
 interface PreviewState {
   preview: IntakePreview | null;
-  error: { fieldErrors: { field: string; messageKey: string }[]; formErrorKey: string | null } | null;
+  error: {
+    fieldErrors: { field: string; messageKey: string }[];
+    formErrorKey: string | null;
+  } | null;
   isPending: boolean;
   isSettled: boolean;
 }
@@ -317,16 +400,31 @@ beforeEach(() => {
     .mockReset()
     .mockReturnValue({ pointId: 'p1', canPick: false, setPointId: vi.fn(), isLoading: false });
   shiftMock.mockReset().mockReturnValue({ data: openShift, isPending: false, isError: false });
-  suppliersMock.mockReset().mockReturnValue(page(SUPPLIERS));
   balanceMock.mockReset().mockReturnValue({ data: undefined, isPending: false, isError: false });
   intakesMock.mockReset().mockReturnValue(page<Intake>([]));
   gradesMock.mockReset().mockReturnValue({ data: GRADES, isPending: false, isError: false });
-  tareTypesMock
-    .mockReset()
-    .mockReturnValue({ data: TARE_TYPES, isPending: false, isError: false });
+  tareTypesMock.mockReset().mockReturnValue({ data: TARE_TYPES, isPending: false, isError: false });
   previewMock.mockReset().mockReturnValue(previewState());
   createMock.mockReset().mockResolvedValue(CREATED);
   openShiftMock.mockReset().mockResolvedValue(openShift);
+  // A genuinely-read, EMPTY drawer by default — NOT `isPending`/`undefined`.
+  // `cash === null` (still loading, or the read errored) is UNKNOWN, not
+  // empty (review finding 2), and now suggests the UNCAPPED total rather
+  // than '0.00' — a settled preview with `isPending` cash here would put a
+  // «pay out …» clause on every generic «Accept N kg» assertion below, which
+  // has nothing to do with what those tests cover. A real `cash: '0.00'`
+  // keeps the old, unambiguous default: nothing to suggest paying out.
+  // Tests that care about a real payout, or about an unread/errored drawer,
+  // set this explicitly.
+  pointCashMock.mockReset().mockReturnValue({
+    data: { collection_point_id: 'p1', cash: '0.00' },
+    isPending: false,
+    isError: false,
+  });
+  toastMock.mockReset();
+  toastMock.success.mockReset();
+  toastMock.error.mockReset();
+  toastSuccessMock.mockReset();
 });
 
 describe('ReceptionPage — before the shift is open', () => {
@@ -345,9 +443,7 @@ describe('ReceptionPage — before the shift is open', () => {
     const dialog = await screen.findByRole('dialog');
     await user.type(within(dialog).getByRole('textbox'), '1500.00');
     await user.click(within(dialog).getByRole('button', { name: SUBMIT_COUNT }));
-    await waitFor(() =>
-      expect(openShiftMock).toHaveBeenCalledWith({ counted_amount: '1500.00' }),
-    );
+    await waitFor(() => expect(openShiftMock).toHaveBeenCalledWith({ counted_amount: '1500.00' }));
   });
 
   it('shows the refusal in the shared dialog and keeps it open when opening fails', async () => {
@@ -396,10 +492,10 @@ describe('ReceptionPage — before the shift is open', () => {
 });
 
 describe('ReceptionPage — choosing the supplier', () => {
-  it('searches, picks a supplier, then shows their balance and last receipts', async () => {
+  it('picks a supplier from the picker, then shows their balance note and last receipts', async () => {
     const user = userEvent.setup();
     balanceMock.mockReturnValue({
-      data: { supplier_id: 's1', debt: '4000.00' },
+      data: { supplier_id: 's1', debt: '10944.00' },
       isPending: false,
       isError: false,
     });
@@ -413,26 +509,19 @@ describe('ReceptionPage — choosing the supplier', () => {
     );
 
     renderReception();
+    await user.click(screen.getByRole('button', { name: 'pick-nina' }));
 
-    // A deactivated supplier is never offered on a new receipt.
-    expect(screen.queryByRole('button', { name: /Retired Person/ })).toBeNull();
-
-    await user.type(screen.getByLabelText('Last name or phone…'), 'Kova');
-    await waitFor(() => expect(suppliersMock).toHaveBeenCalledWith('Kova', 'p1'));
-
-    await user.click(screen.getByRole('button', { name: /Mariia Kovalchuk/ }));
-
-    expect(screen.getByText('Previous balance 4,000.00 ₴')).toBeInTheDocument();
+    expect(screen.getByText('Previous balance 10,944.00 ₴')).toBeInTheDocument();
+    // The note that the debt is not a separate payout — it lands in «Total».
+    expect(screen.getByText('added to “Total” below')).toBeInTheDocument();
     expect(screen.getByText('Intake history')).toBeInTheDocument();
-    expect(screen.getByText('SHP-IN-20260907-00007')).toBeInTheDocument();
+    // Both mocked rows share the fixture's default net weight.
+    expect(screen.getAllByText('120.40 kg')).toHaveLength(2);
+    expect(screen.getByText('820.50 ₴')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Supplier card' })).toHaveAttribute(
       'href',
       '/suppliers/s1',
     );
-
-    // The chip replaces the list until «Change» is pressed.
-    expect(screen.getByRole('button', { name: 'Change' })).toBeInTheDocument();
-    expect(screen.queryByLabelText('Last name or phone…')).toBeNull();
   });
 
   it('reads a negative balance as money owed to the supplier, not by them', async () => {
@@ -444,7 +533,7 @@ describe('ReceptionPage — choosing the supplier', () => {
     });
 
     renderReception();
-    await user.click(screen.getByRole('button', { name: /Mariia Kovalchuk/ }));
+    await user.click(screen.getByRole('button', { name: 'pick-nina' }));
 
     expect(screen.getByText('Overpaid by us 250.00 ₴')).toBeInTheDocument();
     expect(screen.queryByText(/Previous balance/)).toBeNull();
@@ -460,12 +549,14 @@ describe('ReceptionPage — a one-line receipt', () => {
     const user = userEvent.setup();
     renderReception();
 
-    await user.click(screen.getByRole('button', { name: /Mariia Kovalchuk/ }));
+    await user.click(screen.getByRole('button', { name: 'pick-nina' }));
+    // The history panel only renders while a supplier is chosen.
+    expect(screen.getByText('Intake history')).toBeInTheDocument();
     await fillDraft(user);
 
     // Net weight and the amount are the SERVER's, never computed here.
     expect(screen.getByText(/net 120\.40 kg/)).toBeInTheDocument();
-    expect(screen.getByText('Accrued').closest('div')).toHaveTextContent('1,204.00 ₴');
+    expect(screen.getByText('Accrued today').closest('div')).toHaveTextContent('1,204.00 ₴');
 
     const submit = screen.getByRole('button', { name: 'Accept 120.40 kg' });
     expect(submit).toBeEnabled();
@@ -487,8 +578,10 @@ describe('ReceptionPage — a one-line receipt', () => {
     );
 
     expect(await screen.findByText('Receipt for i-new')).toBeInTheDocument();
-    // A saved document leaves a clean form behind — the next supplier is next.
-    expect(screen.getByLabelText('Last name or phone…')).toBeInTheDocument();
+    // A saved document leaves a clean form behind — the next supplier is next,
+    // so the page's own `supplier` state (not just the RHF field) resets to
+    // `null` too, which collapses the history panel again.
+    expect(screen.queryByText('Intake history')).toBeNull();
   });
 
   it('sends the owner’s picked point, which an operator’s token supplies instead', async () => {
@@ -503,7 +596,7 @@ describe('ReceptionPage — a one-line receipt', () => {
 
     renderReception();
 
-    await user.click(screen.getByRole('button', { name: /Mariia Kovalchuk/ }));
+    await user.click(screen.getByRole('button', { name: 'pick-nina' }));
     await fillDraft(user);
     await user.click(screen.getByRole('button', { name: 'Accept 120.40 kg' }));
 
@@ -524,13 +617,13 @@ describe('ReceptionPage — a one-line receipt', () => {
 
     renderReception();
 
-    await user.click(screen.getByRole('button', { name: /Mariia Kovalchuk/ }));
+    await user.click(screen.getByRole('button', { name: 'pick-nina' }));
     await fillDraft(user);
 
     // No weight on the button and no total: those numbers are not this form's.
     expect(screen.getByRole('button', { name: 'Accept' })).toBeDisabled();
     expect(screen.queryByRole('button', { name: /Accept 120.40 kg/ })).toBeNull();
-    expect(screen.getByText('Accrued').closest('div')).toHaveTextContent('…');
+    expect(screen.getByText('Accrued today').closest('div')).toHaveTextContent('…');
     expect(screen.getByRole('button', { name: 'Add line' })).toBeDisabled();
   });
 
@@ -538,7 +631,7 @@ describe('ReceptionPage — a one-line receipt', () => {
     const user = userEvent.setup();
     renderReception();
 
-    await user.click(screen.getByRole('button', { name: /Mariia Kovalchuk/ }));
+    await user.click(screen.getByRole('button', { name: 'pick-nina' }));
     await fillDraft(user);
 
     expect(screen.queryByLabelText('Receipt no.')).not.toBeInTheDocument();
@@ -566,7 +659,7 @@ describe('ReceptionPage — several lines', () => {
     const user = userEvent.setup();
     renderReception();
 
-    await user.click(screen.getByRole('button', { name: /Mariia Kovalchuk/ }));
+    await user.click(screen.getByRole('button', { name: 'pick-nina' }));
 
     const add = () => screen.getByRole('button', { name: 'Add line' });
     // An untouched draft is not a line — nothing to commit yet.
@@ -600,7 +693,7 @@ describe('ReceptionPage — several lines', () => {
     const user = userEvent.setup();
     renderReception();
 
-    await user.click(screen.getByRole('button', { name: /Mariia Kovalchuk/ }));
+    await user.click(screen.getByRole('button', { name: 'pick-nina' }));
     await fillDraft(user);
     await user.click(screen.getByRole('button', { name: 'Add line' }));
     // Scoped to the table: the draft now also offers its own «Remove line»
@@ -618,6 +711,31 @@ describe('ReceptionPage — several lines', () => {
 
     expect(rowTrash()).toBeDisabled();
   });
+
+  it("counts only committed rows in the table's own counter, not the trailing draft", async () => {
+    const user = userEvent.setup();
+    renderReception();
+
+    await user.click(screen.getByRole('button', { name: 'pick-nina' }));
+    await fillDraft(user);
+    await user.click(screen.getByRole('button', { name: 'Add line' }));
+    // The fresh draft is filled too — a real preview would settle over BOTH
+    // lines at this point, so the table's counter (unlike the submit
+    // button's own draft-inclusive count) must still describe only the ONE
+    // committed row the table actually shows.
+    await fillDraft(user);
+
+    const table = screen.getByRole('table');
+    expect(within(table).getAllByRole('row')).toHaveLength(2); // header + one committed line
+
+    // Scoped to the «Add line» row itself — the submit button below
+    // legitimately reads «Accept 2 lines · 240.80 kg» (TotalsSection's own,
+    // draft-inclusive count), which a bare `screen.queryByText` would also
+    // match and turn a real bug into a false pass.
+    const addLineRow = screen.getByRole('button', { name: 'Add line' }).parentElement!;
+    expect(within(addLineRow).getByText('1 line · 120.40 kg')).toBeInTheDocument();
+    expect(within(addLineRow).queryByText(/2 lines/)).not.toBeInTheDocument();
+  });
 });
 
 describe('ReceptionPage — an accidental extra line', () => {
@@ -634,7 +752,7 @@ describe('ReceptionPage — an accidental extra line', () => {
     });
 
     renderReception();
-    await user.click(screen.getByRole('button', { name: /Mariia Kovalchuk/ }));
+    await user.click(screen.getByRole('button', { name: 'pick-nina' }));
     await fillDraft(user);
 
     await user.click(screen.getByRole('button', { name: 'Add line' }));
@@ -664,7 +782,7 @@ describe('ReceptionPage — the committed table while the preview catches up', (
     previewMock.mockReturnValue(SETTLED);
 
     renderReception();
-    await user.click(screen.getByRole('button', { name: /Mariia Kovalchuk/ }));
+    await user.click(screen.getByRole('button', { name: 'pick-nina' }));
     await fillDraft(user);
     await user.click(screen.getByRole('button', { name: 'Add line' }));
 
@@ -707,7 +825,7 @@ describe('ReceptionPage — the draft line preview', () => {
     );
 
     renderReception();
-    await user.click(screen.getByRole('button', { name: /Mariia Kovalchuk/ }));
+    await user.click(screen.getByRole('button', { name: 'pick-nina' }));
     await fillDraft(user);
 
     expect(screen.getByText(/10\.00−5\.00/)).toBeInTheDocument();
@@ -733,14 +851,17 @@ describe("ReceptionPage — the supplier's history and today's badge", () => {
     );
 
     renderReception();
-    await user.click(screen.getByRole('button', { name: /Mariia Kovalchuk/ }));
+    await user.click(screen.getByRole('button', { name: 'pick-nina' }));
 
-    const voidedRow = screen.getByText('SHP-IN-1').closest('li');
+    // The history row shows date · net weight (or «voided») · amount — no
+    // code any more, so the rows are found by their amount instead.
+    const voidedRow = screen.getByText('100.00 ₴').closest('li');
     expect(voidedRow).toHaveClass('line-through');
     expect(within(voidedRow!).getByText('voided')).toBeInTheDocument();
 
-    const liveRow = screen.getByText('SHP-IN-2').closest('li');
+    const liveRow = screen.getByText('200.00 ₴').closest('li');
     expect(liveRow).not.toHaveClass('line-through');
+    expect(within(liveRow!).getByText('120.40 kg')).toBeInTheDocument();
   });
 
   it("counts only live receipts in today's badge, though a voided one stays listed", async () => {
@@ -760,10 +881,25 @@ describe("ReceptionPage — the supplier's history and today's badge", () => {
 
     renderReception();
 
-    expect(screen.getByText('SHP-IN-1')).toBeInTheDocument();
-    expect(screen.getByText('SHP-IN-2')).toBeInTheDocument();
+    // Scoped to the receipts card itself: `PointStatePanel` reads the SAME
+    // `useIntakesQuery({ shiftId })` for its own «Залишків створено» figure,
+    // and this fixture's live receipt (200.00 − 0.00 paid) prints the same
+    // «200.00 ₴» there too.
+    const card = screen.getByText("Today's receipts").closest('[data-slot="card"]');
+    const scoped = within(card as HTMLElement);
+
+    // No code any more — the rows are found by their amount, same as the
+    // supplier-history test above.
+    const voidedRow = scoped.getByText('100.00 ₴').closest('button');
+    expect(voidedRow).toHaveClass('line-through');
+    const liveRow = scoped.getByText('200.00 ₴').closest('button');
+    expect(liveRow).not.toHaveClass('line-through');
+
     const badgeArea = screen.getByText("Today's receipts").parentElement;
     expect(within(badgeArea!).getByText('1')).toBeInTheDocument();
+    // Only the live receipt's kilos count toward the header tonnage — the
+    // voided one (same 120.40 kg fixture default) does not double it up.
+    expect(within(badgeArea!).getByText('120.40 kg')).toBeInTheDocument();
   });
 });
 
@@ -804,7 +940,7 @@ describe('ReceptionPage — a refusal from the server', () => {
 
     renderReception();
 
-    await user.click(screen.getByRole('button', { name: /Mariia Kovalchuk/ }));
+    await user.click(screen.getByRole('button', { name: 'pick-nina' }));
     await fillDraft(user);
 
     const gross = screen.getByLabelText('Gross — berries including tare');
@@ -834,7 +970,7 @@ describe('ReceptionPage — a refusal from the server', () => {
     );
 
     renderReception();
-    await user.click(screen.getByRole('button', { name: /Mariia Kovalchuk/ }));
+    await user.click(screen.getByRole('button', { name: 'pick-nina' }));
 
     const pallet = screen.getByLabelText('Pallet');
     expect(pallet).toHaveAttribute('aria-invalid', 'true');
@@ -847,7 +983,7 @@ describe('ReceptionPage — a refusal from the server', () => {
     previewMock.mockReturnValue(SETTLED);
 
     renderReception();
-    await user.click(screen.getByRole('button', { name: /Mariia Kovalchuk/ }));
+    await user.click(screen.getByRole('button', { name: 'pick-nina' }));
     await fillDraft(user);
     await user.click(screen.getByRole('button', { name: 'Add line' }));
 
@@ -876,6 +1012,288 @@ describe('ReceptionPage — a refusal from the server', () => {
   });
 });
 
+describe('ReceptionPage — «Видано готівкою» rides along with «Прийняти» (§2.1 ⑥, §3.1, §3.6)', () => {
+  beforeEach(() => {
+    balanceMock.mockReturnValue({
+      data: { supplier_id: 's1', debt: '37.37' },
+      isPending: false,
+      isError: false,
+    });
+    pointCashMock.mockReturnValue({
+      data: { collection_point_id: 'p1', cash: '1616.10' },
+      isPending: false,
+      isError: false,
+    });
+    // accrued 5460.00 + the 37.37 balance = 5497.37 total, capped by the
+    // 1616.10 in the drawer — the auto-suggested payout the operator never
+    // has to type for either case below.
+    previewMock.mockReturnValue(
+      previewState({ preview: { ...PREVIEW, amount: '5460.00' }, isSettled: true }),
+    );
+  });
+
+  it('sends the auto-suggested, cash-capped payout as paid_amount, and the toast reads what is still owed (I6)', async () => {
+    const user = userEvent.setup();
+    // The server's OWN record of what it actually wrote: amount matches the
+    // on-screen accrual (5460.00), paid_amount matches what was sent
+    // (1616.10) — carrying the 37.37 balance in makes 5497.37 − 1616.10 =
+    // 3881.27 still owed.
+    createMock.mockResolvedValueOnce({ ...CREATED, amount: '5460.00', paid_amount: '1616.10' });
+    renderReception();
+
+    await user.click(screen.getByRole('button', { name: 'pick-nina' }));
+    await fillDraft(user);
+
+    const submit = screen.getByRole('button', { name: 'Accept 120.40 kg · pay out 1,616.10 ₴' });
+    expect(submit).toBeEnabled();
+    await user.click(submit);
+
+    await waitFor(() =>
+      expect(createMock).toHaveBeenCalledWith(
+        expect.objectContaining({ supplier_id: 's1', paid_amount: '1616.10' }),
+      ),
+    );
+    expect(toastSuccessMock).toHaveBeenCalledWith('Accepted 120.40 kg — 5,460.00 ₴', {
+      description: 'Owed by us: 3,881.27 ₴',
+    });
+  });
+
+  it('reads the settled toast once the created receipt is paid out in full (I6)', async () => {
+    const user = userEvent.setup();
+    // Same 37.37 carried-in balance, but this time the server's own record
+    // shows the WHOLE total (5460.00 + 37.37 = 5497.37) paid out.
+    createMock.mockResolvedValueOnce({ ...CREATED, amount: '5460.00', paid_amount: '5497.37' });
+    renderReception();
+
+    await user.click(screen.getByRole('button', { name: 'pick-nina' }));
+    await fillDraft(user);
+    await user.click(screen.getByRole('button', { name: 'Accept 120.40 kg · pay out 1,616.10 ₴' }));
+
+    await waitFor(() =>
+      expect(toastSuccessMock).toHaveBeenCalledWith('Accepted 120.40 kg — 5,460.00 ₴', {
+        description: 'Settled in full',
+      }),
+    );
+  });
+
+  it('lands a PAYOUT_EXCEEDS_CASH refusal on «Видано готівкою» and does not reset the form', async () => {
+    const user = userEvent.setup();
+    createMock.mockRejectedValueOnce(new ApiError(400, 'nope', undefined, 'PAYOUT_EXCEEDS_CASH'));
+    renderReception();
+
+    await user.click(screen.getByRole('button', { name: 'pick-nina' }));
+    await fillDraft(user);
+    await user.click(screen.getByRole('button', { name: 'Accept 120.40 kg · pay out 1,616.10 ₴' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'The receipt was not recorded: the berry cash drawer holds less. Lower the amount and try again.',
+    );
+    // The WHOLE write rolled back server-side (the intake was never created)
+    // — the draft the operator was completing is still exactly what they
+    // typed, not a fresh blank form.
+    expect(screen.getByLabelText('Gross — berries including tare')).toHaveValue('126.40');
+    expect(screen.queryByText('Receipt for i-new')).toBeNull();
+  });
+
+  it('a failed point-cash read does not zero out a typed «Видано готівкою», and the body still carries paid_amount (review finding 2)', async () => {
+    const user = userEvent.setup();
+    // ERRORED, not merely loading — `cashUnavailable` is `pointCash.isError`
+    // on the page, and `cash` itself resolves to `null` either way.
+    pointCashMock.mockReturnValue({ data: undefined, isPending: false, isError: true });
+    renderReception();
+
+    await user.click(screen.getByRole('button', { name: 'pick-nina' }));
+    await fillDraft(user);
+
+    expect(
+      screen.getByText(
+        'The berry cash drawer could not be read — the server will check the amount when the receipt is recorded',
+      ),
+    ).toBeInTheDocument();
+
+    const paidInput = screen.getByLabelText('Paid in cash');
+    await user.clear(paidInput);
+    await user.type(paidInput, '1000');
+    await user.tab();
+    // Before the fix, `cash === null` suggested/clamped to '0.00' — a blur
+    // here would have wiped the typed figure back to zero instead of merely
+    // canonicalising it.
+    expect(paidInput).toHaveValue('1000.00');
+
+    await user.click(screen.getByRole('button', { name: /Accept 120\.40 kg/ }));
+
+    await waitFor(() =>
+      expect(createMock).toHaveBeenCalledWith(
+        expect.objectContaining({ supplier_id: 's1', paid_amount: '1000.00' }),
+      ),
+    );
+  });
+});
+
+describe('ReceptionPage — switching supplier mid-visit', () => {
+  it('clears committed lines and warns when a new supplier is picked with something already committed', async () => {
+    const user = userEvent.setup();
+    previewMock.mockImplementation((values: IntakeFormValues) =>
+      previewState({
+        preview: { ...PREVIEW, items: values.items.map(() => PREVIEW.items[0]) },
+        isSettled: true,
+      }),
+    );
+
+    renderReception();
+    await user.click(screen.getByRole('button', { name: 'pick-nina' }));
+    await fillDraft(user);
+    await user.click(screen.getByRole('button', { name: 'Add line' }));
+    expect(screen.getByRole('table')).toBeInTheDocument();
+
+    // Picking again simulates a switch — the stub always hands back the same
+    // row, but the PAGE doesn't know that, and reacts to there being
+    // something committed already.
+    await user.click(screen.getByRole('button', { name: 'pick-nina' }));
+
+    expect(screen.queryByRole('table')).toBeNull();
+    expect(screen.getByLabelText('Gross — berries including tare')).toHaveValue('');
+    expect(toastMock).toHaveBeenCalledWith('Lines cleared — they belonged to the previous supplier');
+  });
+
+  it('neither clears anything nor warns on a plain first pick — nothing was committed yet', async () => {
+    const user = userEvent.setup();
+    renderReception();
+
+    await user.click(screen.getByRole('button', { name: 'pick-nina' }));
+
+    expect(toastMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('ReceptionPage — Enter never submits a half-typed receipt', () => {
+  it('swallows Enter in the gross field while the form is not ready, and leaves it alone once it is', async () => {
+    const user = userEvent.setup();
+    renderReception();
+
+    const grossInput = screen.getByLabelText('Gross — berries including tare');
+
+    // Not ready: no supplier chosen yet, so `canSubmit` is false — Enter must
+    // not reach the browser's own (nonexistent in jsdom) implicit submit.
+    const notReadyEvent = new KeyboardEvent('keydown', {
+      key: 'Enter',
+      bubbles: true,
+      cancelable: true,
+    });
+    // `dispatchEvent` returns false exactly when some listener called
+    // `preventDefault()` — the direct proof the guard fired.
+    expect(grossInput.dispatchEvent(notReadyEvent)).toBe(false);
+    fireEvent.keyDown(grossInput, { key: 'Enter' });
+    expect(createMock).not.toHaveBeenCalled();
+
+    // Ready: supplier picked, the one line filled, the preview settled.
+    previewMock.mockReturnValue(SETTLED);
+    await user.click(screen.getByRole('button', { name: 'pick-nina' }));
+    await fillDraft(user);
+
+    const readyEvent = new KeyboardEvent('keydown', {
+      key: 'Enter',
+      bubbles: true,
+      cancelable: true,
+    });
+    expect(grossInput.dispatchEvent(readyEvent)).toBe(true);
+  });
+});
+
+describe('ReceptionPage — focus returns to the supplier picker', () => {
+  beforeEach(() => {
+    previewMock.mockReturnValue(SETTLED);
+  });
+
+  it('focuses the supplier combobox again once a receipt is recorded', async () => {
+    const user = userEvent.setup();
+    renderReception();
+
+    await user.click(screen.getByRole('button', { name: 'pick-nina' }));
+    await fillDraft(user);
+    await user.click(screen.getByRole('button', { name: 'Accept 120.40 kg' }));
+
+    expect(await screen.findByText('Receipt for i-new')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'pick-nina' })).toHaveFocus();
+  });
+});
+
+describe('ReceptionPage — line editor ergonomics (#117)', () => {
+  it('masks the gross weight while typing and never shows the surcharge bounds', async () => {
+    const user = userEvent.setup();
+    renderReception();
+    await user.click(screen.getByRole('button', { name: 'pick-nina' }));
+
+    const gross = screen.getByLabelText('Gross — berries including tare');
+    await user.type(gross, '12a,3x45');
+    expect(gross).toHaveValue('12.34');
+
+    // §2.10 / ticket #117 — a bound is a limit, never a number shown to the
+    // operator, whichever grade is selected.
+    expect(screen.queryByText(/limits:/i)).not.toBeInTheDocument();
+    expect(screen.queryByText('out of range')).not.toBeInTheDocument();
+  });
+
+  it("clamps the surcharge to the grade's bounds on blur and by the stepper", async () => {
+    const user = userEvent.setup();
+    renderReception();
+
+    // Line 0 is pre-selected onto the fixture's first grade (g1: max_markup
+    // 3.00, max_discount 2.00) — see the "pre-selects" test below.
+    await waitFor(() => {
+      expect(screen.getByLabelText('Grade and day price')).toHaveValue('g1');
+    });
+    const bonus = screen.getByLabelText('Extra price — for this line, ₴/kg');
+    await user.clear(bonus);
+    await user.type(bonus, '5');
+    await user.tab();
+    expect(bonus).toHaveValue('3.00');
+
+    await user.click(screen.getByRole('button', { name: 'Extra price up' }));
+    expect(bonus).toHaveValue('3.00');
+  });
+
+  it('reveals the pallet field on its own at twenty crates', async () => {
+    const user = userEvent.setup();
+    renderReception();
+
+    expect(screen.queryByLabelText('Pallet')).not.toBeInTheDocument();
+    const units = screen.getByLabelText('Tare units 1');
+    await user.clear(units);
+    await user.type(units, '20');
+
+    expect(screen.getByLabelText('Pallet')).toBeInTheDocument();
+  });
+
+  it('shows the row weight beside the tare stepper and warns at zero units', async () => {
+    const user = userEvent.setup();
+    renderReception();
+
+    // The default line starts on one Czech crate (0.50 kg) at a count of 1.
+    expect(screen.getByText('0.50 kg')).toBeInTheDocument();
+
+    const gross = screen.getByLabelText('Gross — berries including tare');
+    await user.type(gross, '10');
+    const units = screen.getByLabelText('Tare units 1');
+    await user.clear(units);
+    await user.type(units, '0');
+
+    expect(
+      screen.getByText(
+        'Enter the tare quantity — without it the gross weight would count entirely as net.',
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('pre-selects the first priced grade on the first line', async () => {
+    renderReception();
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('Grade and day price')).toHaveValue('g1');
+    });
+  });
+});
+
 describe('ReceptionPage — accessibility', () => {
   it('has no axe violations at rest', async () => {
     const { container } = renderReception();
@@ -892,7 +1310,7 @@ describe('ReceptionPage — accessibility', () => {
     });
 
     const { container } = renderReception();
-    await user.click(screen.getByRole('button', { name: /Mariia Kovalchuk/ }));
+    await user.click(screen.getByRole('button', { name: 'pick-nina' }));
     await fillDraft(user);
 
     await expectNoAxeViolations(container);

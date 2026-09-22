@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router';
 import { useTranslation } from 'react-i18next';
 import { useFieldArray, useForm, useWatch } from 'react-hook-form';
@@ -8,27 +8,32 @@ import { Button } from '@/shared/ui/button';
 import { SelectField } from '@/shared/ui/select-field';
 import { EmptyState } from '@/shared/ui/empty-state';
 import { Spinner } from '@/shared/ui/spinner';
-import { toast } from '@/shared/ui/toast';
-import { formatKg, formatUah, sum } from '@/shared/lib/money';
+import { toast, toastSuccess } from '@/shared/ui/toast';
+import { add, cmp, formatKg, formatUah, sub, sum } from '@/shared/lib/money';
 import { formatLongDate, todayIso } from '@/shared/lib/date';
 import { useMeQuery } from '@/entities/user';
 import { useWorkingPoint } from '@/features/point-scope';
 import { usePointOptionsQuery } from '@/entities/collection-point';
 import { useCurrentShiftQuery } from '@/entities/shift';
-import { useSupplierBalanceQuery } from '@/entities/supplier';
+import { useSupplierBalanceQuery, type Supplier } from '@/entities/supplier';
 import { usePricedGradesQuery } from '@/entities/product-grade';
 import { useTareTypeOptionsQuery } from '@/entities/tare-type';
+import { usePointCashForPointQuery } from '@/entities/point-cash';
 import { ReceiptDialog } from '@/widgets/receipt';
 import { useOpenShiftMutation, CountDrawerDialog } from '@/features/count-shift';
+import type { SupplierPickerHandle } from '@/features/pick-supplier';
 import { useCreateIntakeMutation } from '../api/intakes';
 import { apiErrorToFields, type ApiFieldErrors } from '../lib/apiErrorToFields';
+import { isOwnFormEvent } from '../lib/formEventGuards';
 import { useIntakePreview } from '../lib/useIntakePreview';
+import { suggestedPaid } from '../lib/suggestedPaid';
 import { emptyLine, toCreateBody, type IntakeFormValues } from '../model/intakeForm';
 import { SupplierSection } from './SupplierSection';
 import { LineEditor } from './LineEditor';
 import { LinesTable, type CommittedLine } from './LinesTable';
 import { TotalsSection } from './TotalsSection';
 import { TodayReceipts } from './TodayReceipts';
+import { PointStatePanel } from './PointStatePanel';
 import { ShiftBanner } from './ShiftBanner';
 
 /** §3 — a UI cap that matches the paper book (4 committed + the draft). */
@@ -51,6 +56,7 @@ export function ReceptionPage() {
   const { t, i18n } = useTranslation();
   const locale = i18n.resolvedLanguage ?? 'uk';
   const { data: me } = useMeQuery();
+  const isOwner = me?.role === 'network_owner';
   const { pointId, canPick, setPointId } = useWorkingPoint();
   const { data: points } = usePointOptionsQuery();
 
@@ -69,7 +75,7 @@ export function ReceptionPage() {
     (tareTypes.data ?? []).find((type) => type.is_crate)?.id ?? tareTypes.data?.[0]?.id ?? '';
 
   const form = useForm<IntakeFormValues>({
-    defaultValues: { supplier_id: '', items: [emptyLine('')] },
+    defaultValues: { supplier_id: '', items: [emptyLine('')], paid_amount: '' },
   });
   const { control, register, setValue, handleSubmit, reset } = form;
   const lines = useFieldArray({ control, name: 'items' });
@@ -77,16 +83,27 @@ export function ReceptionPage() {
   // React Compiler cannot memoize safely (it bails out of the whole component).
   const values = useWatch({ control, defaultValue: form.getValues() }) as IntakeFormValues;
 
-  // The tare registry is a network read, so the first draft is built before its
-  // default is knowable; seed it the moment it arrives. Every LATER line gets
-  // the id passed to `emptyLine` directly.
+  // The tare registry and the priced grades are both network reads, so the
+  // first draft is built before either default is knowable; seed them the
+  // moment each arrives. Every LATER line keeps `''` for its grade (the mock
+  // pre-selects only the first) and gets its tare default from `emptyLine`
+  // directly.
   useEffect(() => {
-    if (defaultTareTypeId === '') return;
-    if (form.getValues('items.0.tare.0.tare_type_id') === '') {
+    if (defaultTareTypeId !== '' && form.getValues('items.0.tare.0.tare_type_id') === '') {
       setValue('items.0.tare.0.tare_type_id', defaultTareTypeId);
     }
-  }, [defaultTareTypeId, form, setValue]);
+    if (grades.data.length > 0 && form.getValues('items.0.product_grade_id') === '') {
+      setValue('items.0.product_grade_id', grades.data[0].id);
+    }
+  }, [defaultTareTypeId, form, setValue, grades.data]);
 
+  // The picker hands over the whole row when it is chosen; the form only
+  // ever carries the id (`supplier_id`) that the document needs, so the two
+  // are kept in sync from here rather than the picker re-reading by id.
+  const [supplier, setSupplier] = useState<Supplier | null>(null);
+  // Read only inside event handlers (the Enter guard below, and after a
+  // successful submit) — never during render, which the React Compiler bans.
+  const pickerRef = useRef<SupplierPickerHandle>(null);
   const [receiptId, setReceiptId] = useState<string | null>(null);
   const [openDialogOpen, setOpenDialogOpen] = useState(false);
   // Bumped on every open so the dialog remounts with fresh RHF defaults and no
@@ -96,11 +113,28 @@ export function ReceptionPage() {
   const [submitFailure, setSubmitFailure] = useState<{ at: string; errors: ApiFieldErrors } | null>(
     null,
   );
+  // «Видано готівкою» AUTO-SUGGESTS the cash-capped total until the operator
+  // types in it themselves (`suggestedPaid`, below) — this is the only thing
+  // that switches it over to what RHF actually holds.
+  const [paidTouched, setPaidTouched] = useState(false);
 
   const shiftOpen = shift.data != null;
   const balance = useSupplierBalanceQuery(values.supplier_id || null);
   const debt = balance.data?.debt ?? null;
   const preview = useIntakePreview(values, bodyPointId, { enabled: shiftOpen });
+  // The drawer for berries — only read once a shift is open, same gate the
+  // preview itself uses; `pointId` (not `bodyPointId`) because an operator's
+  // OWN point still has cash to read even though their token, not this id,
+  // is what the intake body sends. `PointStatePanel` reads this SAME query
+  // key ungated, so the shared cache may end up populated even while this
+  // gate is closed — harmless, since every consumer of `cash` below is
+  // itself disabled while the shift is closed.
+  const pointCash = usePointCashForPointQuery(pointId, undefined, shiftOpen);
+  // ONE derived value, not two independent reads: TanStack keeps the last
+  // successful `data` when a REFETCH fails (typically right after a submit
+  // invalidates this key), so `data` and `isError` can both be set. The
+  // disclaimer wins — a figure known to be stale is not a cap.
+  const cash = pointCash.isError ? null : (pointCash.data?.cash ?? null);
 
   // A refusal from `POST /intakes` stands only while the form still says what it
   // said when the server refused — the next keystroke hands the question back to
@@ -119,6 +153,9 @@ export function ReceptionPage() {
   // draft field nothing draws — would otherwise disable the submit in silence.
   const draftPrefix = `items.${draftIndex}.`;
   const isFieldRendered = (field: string) => {
+    // «Видано готівкою» — always on screen once the form is, unlike a draft
+    // line's fields (only the trailing one is ever editable).
+    if (field === 'paid_amount') return true;
     if (!field.startsWith(draftPrefix)) return false;
     const suffix = field.slice(draftPrefix.length);
     return DRAFT_FIELDS.has(suffix) || suffix.startsWith('tare.');
@@ -164,31 +201,79 @@ export function ReceptionPage() {
   const settled = preview.isSettled ? preview.preview : null;
   const accrued = settled?.amount ?? null;
   const netKg = settled ? sum(settled.items.map((i) => i.net_kg)) : null;
+  // `netKg`/`lineCount` above describe the WHOLE form, draft included — right
+  // for `TotalsSection`'s submit button, wrong for the table's own counter,
+  // which sits over `committed` rows only (`rows.length` there). Summed off
+  // `rowsPreview` (already scoped to the draft-excluded slice `committed`
+  // reads from) rather than `settled`, so the counter stays in step with the
+  // same rows the table renders even in the debounce window `isSettled`
+  // excludes.
+  const committedNetKg = rowsPreview
+    ? sum(rowsPreview.items.slice(0, draftIndex).map((i) => i.net_kg))
+    : null;
   const isPreviewing = !preview.isSettled && (preview.isPending || preview.preview !== null);
-  const canSubmit =
-    shiftOpen && values.supplier_id !== '' && settled !== null && !hasServerError;
+  const canSubmit = shiftOpen && values.supplier_id !== '' && settled !== null && !hasServerError;
 
-  const onSubmit = handleSubmit(async (formValues) => {
+  // «Видано готівкою» auto-suggests the cash-capped total (§2.1 ⑥) until the
+  // operator types into it themselves — `paidTouched` is the one switch, and
+  // this is derived fresh every render rather than pushed into RHF by an
+  // effect (no `setState` during render, no stale suggestion one tick behind
+  // a fresh preview).
+  const suggested = suggestedPaid(accrued, debt, cash);
+  const paidShown = paidTouched ? values.paid_amount : suggested;
+  const onPaidChange = (v: string) => {
+    setPaidTouched(true);
+    setValue('paid_amount', v, { shouldDirty: true });
+  };
+
+  // A plain closure, not wrapped in `handleSubmit()` here: `handleSubmit`
+  // is called instead from inside the `<form>`'s own `onSubmit` prop below,
+  // so `pickerRef.current` is only ever read from inside an actual event
+  // handler — never eagerly, while the component renders (React Compiler
+  // lint bans a ref read reachable during render).
+  const submitIntake = async (formValues: IntakeFormValues) => {
     setSubmitFailure(null);
+    // Captured BEFORE the write: a successful create invalidates
+    // `supplierBalances`, which can refetch before the toast below reads
+    // `debt` — this is what the supplier owed WALKING IN, not after.
+    const carriedIn = debt !== null && cmp(debt, '0') === 1 ? debt : '0.00';
     try {
-      const created = await create.mutateAsync(toCreateBody(formValues, bodyPointId));
-      toast.success(
+      const created = await create.mutateAsync(
+        toCreateBody({ ...formValues, paid_amount: paidShown }, bodyPointId),
+      );
+      const remainderOf = sub(add(created.amount, carriedIn), created.paid_amount);
+      toastSuccess(
         t('reception.toast.accepted', {
-          kg: formatKg(sum(created.items.map((item) => item.net_kg)), locale),
+          // The server ships the sum already (`net_kg` on the document
+          // header) — TodayReceipts' own header comment says a row is READ,
+          // not recomputed; re-summing `items[].net_kg` here duplicated that
+          // arithmetic client-side for no reason (M3).
+          kg: formatKg(created.net_kg, locale),
           uah: formatUah(created.amount, locale),
         }),
+        {
+          description:
+            cmp(remainderOf, '0') === 1
+              ? t('reception.toast.remainder', { uah: formatUah(remainderOf, locale) })
+              : t('reception.toast.settled'),
+        },
       );
       setReceiptId(created.id);
       // The mock resets everything, supplier included: the next person in the
       // queue is a new visit, not an edit of this one.
-      reset({ supplier_id: '', items: [emptyLine(defaultTareTypeId)] });
+      reset({ supplier_id: '', items: [emptyLine(defaultTareTypeId)], paid_amount: '' });
+      setSupplier(null);
+      setPaidTouched(false);
+      // The next person in the queue starts where the operator's hands
+      // already are — back on the supplier picker, not the mouse.
+      pickerRef.current?.focus();
     } catch (error) {
       setSubmitFailure({
         at: snapshot,
         errors: apiErrorToFields(error, formValues.items.length),
       });
     }
-  });
+  };
 
   const handleOpenShift = () => {
     setOpenDialogInstance((n) => n + 1);
@@ -196,6 +281,10 @@ export function ReceptionPage() {
   };
 
   const pointName = (points ?? []).find((p) => p.id === pointId)?.name ?? '';
+  // «Наділ» for `PointStatePanel`'s crates block — read off the same
+  // `usePointOptionsQuery()` list `pages/crates` resolves it from, rather
+  // than a second network read for one field.
+  const targetCrates = (points ?? []).find((p) => p.id === pointId)?.target_crates ?? null;
   const actions = (
     <>
       {canPick ? (
@@ -213,11 +302,11 @@ export function ReceptionPage() {
           ))}
         </SelectField>
       ) : null}
-      {me?.role === 'network_owner' ? (
-        <Button variant="outline" asChild>
-          <Link to="/prices">{t('reception.toPrices')}</Link>
-        </Button>
-      ) : null}
+      {/* Both roles: an operator's /prices is read-only (no role gate on the
+          route), so «Ціни дня» is a look, not just a set. */}
+      <Button variant="outline" asChild>
+        <Link to="/prices">{t('reception.toPrices')}</Link>
+      </Button>
       <Button variant="secondary" asChild>
         <Link to="/day">{t('reception.toDay')}</Link>
       </Button>
@@ -235,7 +324,20 @@ export function ReceptionPage() {
         <Spinner />
       </div>
     ) : grades.data.length === 0 ? (
-      <EmptyState title={t('reception.noPrices.title')} hint={t('reception.noPrices.hint')} />
+      <EmptyState
+        title={t('reception.noPrices.title')}
+        hint={t('reception.noPrices.hint')}
+        action={
+          // Only the owner can actually set a price on the next screen — an
+          // operator's own `/prices` is read-only, so this call to action is
+          // theirs alone.
+          isOwner ? (
+            <Button asChild>
+              <Link to="/prices">{t('reception.noPrices.action')}</Link>
+            </Button>
+          ) : undefined
+        }
+      />
     ) : (
       <>
         {/* A failed read and «no shift» are the same `null` in the data, and an
@@ -253,13 +355,59 @@ export function ReceptionPage() {
           />
         ) : null}
 
-        <div className="grid gap-5 xl:grid-cols-[minmax(0,1.35fr)_minmax(320px,1fr)]">
-          <form onSubmit={(e) => void onSubmit(e)} noValidate>
+        <div className="grid gap-5 lg:grid-cols-[minmax(0,1.35fr)_minmax(320px,1fr)]">
+          <form
+            onSubmit={(e) => {
+              // React bubbles `submit` along the fiber tree, not the DOM: the
+              // inline supplier dialog (`SupplierPicker` → `SupplierFormDialog`)
+              // is portaled to `document.body` by `shared/ui/dialog.tsx`, but
+              // is still a REACT descendant of this form, so without this
+              // guard its own submit would reach `handleSubmit(submitIntake)`
+              // — a real `POST /intakes` nobody pressed «Прийняти» for.
+              if (!isOwnFormEvent(e)) return;
+              void handleSubmit(submitIntake)(e);
+            }}
+            // Enter is how an operator moves between fields on the scale's
+            // numeric pad; it must never fire a submit the form isn't ready
+            // for. Scoped to text inputs only, so it never swallows Enter
+            // inside the grade `<select>` or on a button. Same portal guard as
+            // `onSubmit` above — the dialog's own Enter keystrokes must not be
+            // swallowed by a guard meant for THIS form.
+            onKeyDown={(e) => {
+              if (!isOwnFormEvent(e)) return;
+              if (e.key === 'Enter' && (e.target as HTMLElement).tagName === 'INPUT' && !canSubmit) {
+                e.preventDefault();
+              }
+            }}
+            noValidate
+          >
             <Card>
               <SupplierSection
                 pointId={pointId}
-                value={values.supplier_id}
-                onChange={(id) => setValue('supplier_id', id, { shouldDirty: true })}
+                ownerMode={isOwner}
+                supplier={supplier}
+                pickerRef={pickerRef}
+                autoFocus={supplier === null}
+                onChange={(s) => {
+                  // Lines belong to the SUPPLIER who brought them — switching
+                  // mid-visit (an operator picked the wrong row) leaves the
+                  // committed lines behind rather than filing them under
+                  // whoever is picked next. A draft-only form (one empty
+                  // line, nothing committed) has nothing to lose, so it is
+                  // left alone.
+                  if (lines.fields.length > 1) {
+                    reset({
+                      supplier_id: s.id,
+                      items: [emptyLine(defaultTareTypeId)],
+                      paid_amount: '',
+                    });
+                    toast(t('reception.toast.linesCleared'));
+                  } else {
+                    setValue('supplier_id', s.id, { shouldDirty: true });
+                  }
+                  setSupplier(s);
+                  setPaidTouched(false);
+                }}
                 debt={debt}
                 disabled={!shiftOpen}
               />
@@ -286,6 +434,8 @@ export function ReceptionPage() {
                 canAdd={draftReady && !atCap && shiftOpen && settled !== null && !hasServerError}
                 atCap={atCap}
                 disabled={!shiftOpen}
+                lineCount={committed.length}
+                netKg={committed.length > 0 ? committedNetKg : null}
                 onAdd={() => lines.append(emptyLine(defaultTareTypeId))}
                 onRemove={(index) => lines.remove(index)}
               />
@@ -294,6 +444,11 @@ export function ReceptionPage() {
                 netKg={netKg}
                 lineCount={settled?.items.length ?? lines.fields.length}
                 debt={debt}
+                cash={cash}
+                cashUnavailable={pointCash.isError}
+                paid={paidShown}
+                onPaidChange={onPaidChange}
+                paidError={errorAt('paid_amount')}
                 disabled={!canSubmit}
                 isPreviewing={isPreviewing}
                 isSubmitting={create.isPending}
@@ -303,7 +458,15 @@ export function ReceptionPage() {
             </Card>
           </form>
 
-          <TodayReceipts shiftId={shift.data?.id} onOpen={setReceiptId} />
+          <div className="flex flex-col gap-4">
+            <PointStatePanel
+              pointId={pointId}
+              shiftId={shift.data?.id}
+              isOwner={isOwner}
+              targetCrates={targetCrates}
+            />
+            <TodayReceipts shiftId={shift.data?.id} onOpen={setReceiptId} />
+          </div>
         </div>
       </>
     );

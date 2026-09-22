@@ -182,6 +182,14 @@
       "wholesale": "Wholesale",
       "farmer": "Farmer"
     },
+    "kindBadge": {
+      "wholesale": "WHOLESALE",
+      "farmer": "Farmer"
+    },
+    "kindHint": {
+      "wholesale": "A wholesaler — add an extra price.",
+      "farmer": "A farmer — add an extra price."
+    },
     "active": "Active",
     "inactive": "Inactive",
     "empty": {
@@ -211,6 +219,15 @@
       "nameRequired": "Enter a name",
       "pointRequired": "Choose a collection point"
     }
+  },
+  "pickSupplier": {
+    "placeholder": "Pick a supplier",
+    "search": "Last name or phone…",
+    "empty": "Nobody found.",
+    "noPhone": "no phone",
+    "ourPoint": "Our point",
+    "otherPoints": "Other points",
+    "addNew": "Add a new supplier"
   },
   "catalog": {
     "eyebrow": "Directory",
@@ -647,6 +664,7 @@
       "amountZero": "The amount must be above zero",
       "exceedsDebt": "Cannot pay more than the balance — balance {{debt}}",
       "exceedsDebtServer": "Refused: the amount exceeds the balance",
+      "exceedsCash": "There isn't enough cash for berries at the till — nothing to pay this amount out of right now",
       "noOpenShift": "No open shift — open one in Cash for the day",
       "supplierInactive": "The supplier is deactivated",
       "shiftClosed": "The shift is already closed",
@@ -655,7 +673,9 @@
   },
   "receipt": {
     "title": "Receipt {{code}}",
-    "description": "Printable receipt — pay out cash or void the document from here.",
+    "titleLines_one": "Receipt {{code}} · {{count}} line",
+    "titleLines_other": "Receipt {{code}} · {{count}} lines",
+    "description": "Printable receipt — void the document from here.",
     "heading": "BERRY INTAKE",
     "code": "Receipt",
     "date": "Date",
@@ -667,13 +687,14 @@
     "pricePerKg": "Price per kg",
     "amount": "Amount",
     "accrued": "Accrued",
+    "paid": "Paid out in cash",
+    "payoutVoided": "payout {{code}} voided",
     "balanceAtPoint": "Balance at this point now",
     "receivedBy": "Received by",
     "footer": "The receipt is saved in the system. A duplicate can be printed anytime.",
     "voided": "VOIDED",
     "voidReason": "Reason: {{reason}}",
     "print": "Print",
-    "payOut": "Pay out in cash",
     "void": "Void"
   },
   "reception": {
@@ -691,15 +712,13 @@
     "noPoint": "Select a point to receive berries",
     "noPrices": {
       "title": "No prices set for today",
-      "hint": "Until the day price is set, intake is blocked — so nobody counts by yesterday's."
+      "hint": "Until the day price is set, intake is blocked — so nobody counts by yesterday's.",
+      "action": "Set today's prices"
     },
     "supplier": {
       "eyebrow": "1 · Supplier",
-      "search": "Last name or phone…",
-      "noPhone": "no phone",
-      "change": "Change",
-      "empty": "Nobody found — check the name or add the person in Suppliers.",
       "debt": "Previous balance {{uah}}",
+      "debtNote": "added to “Total” below",
       "credit": "Overpaid by us {{uah}}",
       "history": "Intake history",
       "card": "Supplier card",
@@ -717,7 +736,8 @@
       "fewer": "One fewer {{n}}",
       "more": "One more {{n}}",
       "removeTare": "Remove tare row",
-      "otherTare": "Other tare"
+      "otherTare": "Other tare",
+      "rowWeight": "{{kg}}"
     },
     "grade": {
       "eyebrow": "3 · Product, grade and day price",
@@ -728,13 +748,13 @@
       "gradeOption": "{{name}} · {{price}} ₴/kg",
       "bonus": "Extra price — for this line, ₴/kg",
       "bonusDown": "Extra price down",
-      "bonusUp": "Extra price up",
-      "bounds": "limits: −{{discount}} … +{{markup}} ₴/kg",
-      "outOfRange": "out of range"
+      "bonusUp": "Extra price up"
     },
     "line": {
       "preview": "tare {{tare}} · net {{net}} · {{price}}{{bonus}} → {{amount}}",
       "pending": "…",
+      "tareMissing": "Enter the tare quantity — without it the gross weight would count entirely as net.",
+      "gradeMissing": "Choose a grade for this line — otherwise it won't make it into the receipt.",
       "grossWarning": "{{gross}} kg — more than the largest line of the season (701.5 kg). Check the gross weight.",
       "perCrateWarning": "{{kg}} kg per crate. Check the gross weight or the tare count."
     },
@@ -745,6 +765,8 @@
       "remove": "Remove line",
       "draftHint": "Finish this line or remove it",
       "title": "Receipt lines",
+      "counter_one": "{{count}} line · {{kg}}",
+      "counter_other": "{{count}} lines · {{kg}}",
       "col": {
         "grade": "Grade",
         "gross": "Gross",
@@ -757,22 +779,60 @@
     },
     "totals": {
       "eyebrow": "4 · Settlement",
-      "accrued": "Accrued",
+      "accruedToday": "Accrued today",
+      "linesSuffix_one": " · {{count}} line",
+      "linesSuffix_other": " · {{count}} lines",
       "debt": "Previous balance",
-      "total": "Total to pay out"
+      "total": "Total to pay out",
+      "paid": "Paid in cash",
+      "all": "Full amount",
+      "toHundreds": "Round to 100",
+      "allToBalance": "All to balance",
+      "overCap": "Cannot pay out more than the total — using {{uah}}",
+      "overCash": "Cannot pay out more than is in the berry drawer — using {{uah}}",
+      "cashNote": "Only {{uah}} is in the berry drawer — nothing more to pay out right now. The difference is added to the supplier's balance; a transfer from the owner restocks it.",
+      "cashUnavailable": "The berry cash drawer could not be read — the server will check the amount when the receipt is recorded",
+      "remainder": "Owed by us",
+      "settled": "Settled in full",
+      "remainderHint": "Added to the supplier's balance — dated today",
+      "settledHint": "Nothing is left hanging on the balance"
     },
     "submit": "Accept",
     "submitKg": "Accept {{kg}}",
     "submitLines_one": "Accept {{count}} line · {{kg}}",
     "submitLines_other": "Accept {{count}} lines · {{kg}}",
+    "submitPay": "Accept {{lines}}{{kg}} · pay out {{uah}}",
+    "linesPart_one": "{{count}} line · ",
+    "linesPart_other": "{{count}} lines · ",
+    "state": {
+      "cashTitle": "Point cash",
+      "cratesTitle": "Crates",
+      "open": "Open",
+      "openingCash": "Counted this morning",
+      "currentCash": "In the berry drawer now",
+      "paidOut": "Paid out for berries",
+      "newDebt": "New balance created",
+      "allotment": "Allotment",
+      "allotmentValue_one": "{{count}} crate",
+      "allotmentValue_other": "{{count}} crates",
+      "allotmentUnset": "no allotment set for this point yet",
+      "inField": "Out with people",
+      "truncatedCaption": "first 100 documents"
+    },
     "today": {
       "title": "Today's receipts",
       "empty": "Nothing received yet. The first receipt will appear here.",
-      "voided": "voided"
+      "voided": "voided",
+      "positions_one": "{{count}} position",
+      "positions_other": "{{count}} positions",
+      "remainder": "remainder {{uah}}"
     },
     "toast": {
       "opened": "Shift opened",
-      "accepted": "Accepted {{kg}} — {{uah}}"
+      "accepted": "Accepted {{kg}} — {{uah}}",
+      "remainder": "Owed by us: {{uah}}",
+      "settled": "Settled in full",
+      "linesCleared": "Lines cleared — they belonged to the previous supplier"
     },
     "errors": {
       "failed": "Could not record the receipt",
@@ -787,7 +847,10 @@
       "rateNegative": "Price plus extra price cannot be negative",
       "noOpenShift": "No open shift — open one in Cash for the day",
       "supplierInactive": "The supplier is deactivated",
-      "shiftClosed": "The shift is already closed"
+      "shiftClosed": "The shift is already closed",
+      "paidExceedsCash": "The receipt was not recorded: the berry cash drawer holds less. Lower the amount and try again.",
+      "paidExceedsDebt": "The receipt was not recorded: you cannot pay out more than the total.",
+      "paidFormat": "Enter an amount, e.g. 4000 or 4000.50"
     }
   },
   "debts": {

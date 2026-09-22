@@ -152,7 +152,7 @@ export class CratesService {
    * §6.5 — the oldest issuance first, at the price it was taken at. The
    * operator chooses nothing.
    *
-   * THE SUPPLIER ROW IS LOCKED FIRST, exactly as `PayoutsService.create` locks
+   * THE SUPPLIER ROW IS LOCKED FIRST, exactly as `PayoutsService.writePayout` locks
    * it: the tranches are a read-then-write over a derived sum, and no CHECK can
    * express «not more than is outstanding». Without the lock two returns in
    * flight both read `remaining = 20`, both allocate it, and the supplier is

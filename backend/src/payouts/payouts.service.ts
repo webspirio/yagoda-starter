@@ -19,6 +19,7 @@ import { SuppliersService } from '../suppliers/suppliers.service';
 import { SupplierBalanceService } from '../supplier-balance/supplier-balance.service';
 import { CollectionPointsService } from '../collection-points/collection-points.service';
 import { AuditService } from '../audit/audit.service';
+import { PointCashService } from '../point-cash/point-cash.service';
 import { nextDocumentCode } from '../common/document-code';
 import { gt, isZero } from '../common/money';
 import { resolveWritePoint, resolvePointFilter } from '../auth/access/point-scope';
@@ -32,6 +33,17 @@ interface UniqueViolation {
   constraint?: string;
 }
 
+export interface WritePayoutInput {
+  actor: AuthenticatedUser;
+  pointId: string;
+  pointCode: string;
+  supplierId: string;
+  /** Canonical decimal string, already known to be > 0. */
+  amount: string;
+  /** The receipt this cash goes with (§2.1 ⑥), or null for «Видати без ягоди». */
+  intakeId: string | null;
+}
+
 @Injectable()
 export class PayoutsService {
   constructor(
@@ -43,17 +55,16 @@ export class PayoutsService {
     private readonly balance: SupplierBalanceService,
     private readonly points: CollectionPointsService,
     private readonly audit: AuditService,
+    private readonly pointCash: PointCashService,
   ) {}
 
   /**
-   * HALF OF §3.6, AND THE HALF IS DELIBERATE. The full ceiling is
-   * `min(Разом, каса за ягоду)`; the cash half needs `transfers`,
-   * `cash_counts`, `crate_issuances` and `crate_returns`, none of which exist.
-   *
-   * SO: A PAYOUT CAN CURRENTLY EXCEED THE CASH PHYSICALLY IN THE DRAWER, and
-   * nothing here can notice. Shipping the debt half means the `voided_at IS
-   * NULL` filter on both histories is exercised from day one rather than being
-   * retrofitted against tables full of rows. Spec §9.
+   * §3.6 IN FULL, since 2026-09-21. The ceiling is `min(Разом, каса за ягоду)`;
+   * for years the cash half was unreachable because `transfers`, `cash_counts`
+   * and the crate books did not exist. They do now, `PointCashService.cashFor`
+   * reads the drawer inside a caller's transaction, and `writePayout` below is
+   * the ONE place both halves are enforced — for this route and for a payout
+   * written with a receipt (`IntakesService.create`).
    */
   async create(actor: AuthenticatedUser, dto: CreatePayoutDto): Promise<PayoutResponse> {
     const pointId = resolveWritePoint(actor, dto.collection_point_id);
@@ -89,84 +100,153 @@ export class PayoutsService {
     }
 
     return this.dataSource.transaction(async (m) => {
-      /**
-       * THE LOCK COMES FIRST, AND THE ORDER IS THE POINT.
-       *
-       * The ceiling is a read-then-write over a sum across two tables, and no
-       * CHECK can express «not greater than a sum over two tables». Without
-       * this line two payouts in flight together — two operators, one
-       * double-tapped submit button, or a client retry on a slow response —
-       * both read a debt of 380, both pass, both commit, and 760 leaves the
-       * drawer against a 380 debt. Nothing downstream notices, because the
-       * schema has no `борг >= 0` invariant to violate.
-       *
-       * The `suppliers` row is a MUTEX, not data being changed. Contention is
-       * per supplier: payouts to different suppliers never block each other and
-       * intakes are untouched.
-       *
-       * SERIALIZABLE was rejected — it needs a retry loop for an expected 40001
-       * and this repo has no retry infrastructure, which is more new machinery
-       * than one route justifies.
-       */
-      await m.query('SELECT id FROM suppliers WHERE id = $1 FOR UPDATE', [dto.supplier_id]);
-
-      const shift = await this.shifts.findOpenAtPoint(pointId, m);
-      if (!shift) {
-        throw new ConflictException({
-          message: 'No open shift at this point — open one first',
-          code: 'NO_OPEN_SHIFT',
-        });
-      }
-
-      // Read INSIDE the transaction, under the lock taken above — otherwise the
-      // value checked is not the value that was locked.
-      const debt = await this.balance.debtFor(dto.supplier_id, m);
-      if (gt(dto.amount, debt)) {
-        // The message NAMES the balance. §3.1 already puts that figure on the
-        // operator's screen, and a refusal they cannot act on just gets retried
-        // with the same number.
-        throw new BadRequestException({
-          message: `Payout of ${dto.amount} exceeds the supplier's balance of ${debt}`,
-          code: 'PAYOUT_EXCEEDS_DEBT',
-        });
-      }
-
-      const code = await nextDocumentCode(m, {
+      const { payout, shift } = await this.writePayout(m, {
+        actor,
+        pointId,
         pointCode: point.code,
-        businessDate: shift.business_date,
-        kind: 'PO',
-        shiftId: shift.id,
-        table: 'payouts',
+        supplierId: supplier.id,
+        amount: dto.amount,
+        intakeId: null,
       });
-
-      try {
-        const payout = await m.save(
-          Payout,
-          m.create(Payout, {
-            code,
-            shift_id: shift.id,
-            supplier_id: supplier.id,
-            amount: dto.amount,
-            paid_by_user_id: actor.sub,
-          }),
-        );
-
-        await this.audit.record(
-          {
-            action: 'payout.created',
-            actor_id: actor.sub,
-            target_type: 'payout',
-            target_id: payout.id,
-            after: { code, amount: dto.amount, supplier_id: supplier.id },
-          },
-          m,
-        );
-
-        return toPayoutResponse(payout, shift);
-      } catch (error) {
-        throw this.translateDuplicateCode(error, code);
-      }
+      return toPayoutResponse(payout, shift);
     });
+  }
+
+  /**
+   * THE payout writer. Called inside the caller's transaction by `create`
+   * (standalone) and by `IntakesService.create` (cash handed over with the
+   * receipt, §2.1 ⑥), so the two ceilings and the numbering have exactly one
+   * implementation.
+   *
+   * LOCK ORDER IS THE CONTRACT: supplier row → open shift → debt →
+   * `nextDocumentCode`'s advisory lock → cash → insert. The reception path
+   * holds the `intakes` advisory lock BEFORE calling this and never after, so
+   * the two paths cannot form a cycle. (See the block comment below on why the
+   * supplier row is a mutex and why SERIALIZABLE was rejected.)
+   *
+   * On the reception path the caller has already inserted the intake, which
+   * holds `FOR KEY SHARE` on the same `suppliers` row (the FK); `FOR UPDATE`
+   * here is therefore a lock UPGRADE by the same transaction, which Postgres
+   * grants without waiting on itself, and no other path takes the `payouts`
+   * advisory lock before the supplier row — so the hierarchy `intakes`
+   * advisory → `suppliers` row → `payouts` advisory is acyclic.
+   *
+   * Callers must have checked, outside the transaction, that the point
+   * exists, the supplier is active and belongs to `pointId`; this method
+   * assumes all three.
+   */
+  async writePayout(
+    m: EntityManager,
+    { actor, pointId, pointCode, supplierId, amount, intakeId }: WritePayoutInput,
+  ): Promise<{ payout: Payout; shift: Shift }> {
+    /**
+     * THE LOCK COMES FIRST, AND THE ORDER IS THE POINT.
+     *
+     * The ceiling is a read-then-write over a sum across two tables, and no
+     * CHECK can express «not greater than a sum over two tables». Without
+     * this line two payouts in flight together — two operators, one
+     * double-tapped submit button, or a client retry on a slow response —
+     * both read a debt of 380, both pass, both commit, and 760 leaves the
+     * drawer against a 380 debt. Nothing downstream notices, because the
+     * schema has no `борг >= 0` invariant to violate.
+     *
+     * The `suppliers` row is a MUTEX, not data being changed. Contention is
+     * per supplier: payouts to different suppliers never block each other and
+     * intakes are untouched.
+     *
+     * SERIALIZABLE was rejected — it needs a retry loop for an expected 40001
+     * and this repo has no retry infrastructure, which is more new machinery
+     * than one route justifies.
+     */
+    await m.query('SELECT id FROM suppliers WHERE id = $1 FOR UPDATE', [supplierId]);
+
+    const shift = await this.shifts.findOpenAtPoint(pointId, m);
+    if (!shift) {
+      throw new ConflictException({
+        message: 'No open shift at this point — open one first',
+        code: 'NO_OPEN_SHIFT',
+      });
+    }
+
+    // Read INSIDE the transaction, under the lock taken above — otherwise the
+    // value checked is not the value that was locked. When the caller has
+    // just inserted an intake in this same transaction, this debt already
+    // includes it: that is how «Разом» (§3.1) reaches the ceiling.
+    const debt = await this.balance.debtFor(supplierId, m);
+    if (gt(amount, debt)) {
+      // The message NAMES the balance. §3.1 already puts that figure on the
+      // operator's screen, and a refusal they cannot act on just gets retried
+      // with the same number.
+      throw new BadRequestException({
+        message: `Payout of ${amount} exceeds the supplier's balance of ${debt}`,
+        code: 'PAYOUT_EXCEEDS_DEBT',
+      });
+    }
+
+    const code = await nextDocumentCode(m, {
+      pointCode,
+      businessDate: shift.business_date,
+      kind: 'PO',
+      shiftId: shift.id,
+      table: 'payouts',
+    });
+
+    // The other half of §3.6: «у поле підставляється 1 616,10 ₴, а не 5 497,37».
+    // A negative drawer (reachable — the owner may lower a target after the
+    // fact) admits nothing, and that is correct: the berries are taken, the
+    // money lands in the supplier's balance, and a transfer restores the cash.
+    //
+    // READ HERE, AFTER `nextDocumentCode`, NOT BEFORE IT (moved 2026-09-21,
+    // PR #137 review). The debt check above is protected by the SUPPLIER row
+    // lock taken at the top of this method, and that lock is a fine mutex for
+    // it — contention is per supplier. But the cash ceiling is a fact about
+    // the whole SHIFT (one point's one business date): two payouts to two
+    // DIFFERENT suppliers at one point take their own, different supplier
+    // locks and never block each other, so reading the drawer under only the
+    // supplier lock let both read the same cash, both pass, both commit —
+    // drawer negative. `nextDocumentCode`'s advisory lock, keyed on `(payouts,
+    // shift, 'PO')` and held to commit, IS the shift-wide mutex this route
+    // has, so the read moves to right after it: authoritative only once that
+    // lock is held, and, like `nextDocumentCode`'s own count, it relies on
+    // READ COMMITTED giving each statement a fresh snapshot — the second lock
+    // holder's read sees the first's committed payout. LOCK ORDER IS
+    // UNCHANGED (supplier row → PO advisory); only the read moved under it.
+    const cash = await this.pointCash.cashFor(pointId, undefined, m);
+    if (gt(amount, cash)) {
+      throw new BadRequestException({
+        message: `Payout of ${amount} exceeds the cash for berries at this point (${cash})`,
+        code: 'PAYOUT_EXCEEDS_CASH',
+      });
+    }
+
+    try {
+      const payout = await m.save(
+        Payout,
+        m.create(Payout, {
+          code,
+          shift_id: shift.id,
+          supplier_id: supplierId,
+          amount,
+          paid_by_user_id: actor.sub,
+          intake_id: intakeId,
+        }),
+      );
+
+      await this.audit.record(
+        {
+          action: 'payout.created',
+          actor_id: actor.sub,
+          target_type: 'payout',
+          target_id: payout.id,
+          after: { code, amount, supplier_id: supplierId, intake_id: intakeId },
+        },
+        m,
+      );
+
+      return { payout, shift };
+    } catch (error) {
+      throw this.translateDuplicateCode(error, code);
+    }
   }
 
   /**

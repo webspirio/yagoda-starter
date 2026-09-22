@@ -144,6 +144,10 @@ const intake = (over: Partial<Intake> & Pick<Intake, 'id' | 'code' | 'amount'>):
   voided_by_user_id: null,
   void_reason: null,
   created_at: '2026-09-08T07:10:00Z',
+  net_kg: '36.90',
+  lines_count: 2,
+  supplier_name: 'Ніна Ільчук',
+  paid_amount: '0.00',
   ...over,
 });
 
@@ -153,6 +157,7 @@ const payout = (over: Partial<Payout> & Pick<Payout, 'id' | 'code' | 'amount'>):
   business_date: '2026-09-08',
   supplier_id: 'sup1',
   paid_by_user_id: 'u1',
+  intake_id: null,
   voided_at: null,
   voided_by_user_id: null,
   void_reason: null,

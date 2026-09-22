@@ -11,6 +11,7 @@ import { GradePricesModule } from '../grade-prices/grade-prices.module';
 import { TareTypesModule } from '../tare-types/tare-types.module';
 import { CollectionPointsModule } from '../collection-points/collection-points.module';
 import { AuditModule } from '../audit/audit.module';
+import { PayoutsModule } from '../payouts/payouts.module';
 
 /**
  * Reads four other modules THROUGH THEIR SERVICES, never their repositories —
@@ -18,6 +19,10 @@ import { AuditModule } from '../audit/audit.module';
  * way. `grade_prices` and `tare_types` are read for §2.8's and §2.5's
  * snapshots; `shifts` for the point and business date, which this module's own
  * tables deliberately do not store.
+ *
+ * Imports `PayoutsModule` so the cash handed over with a receipt (§2.1 ⑥) is
+ * written by the ONE payout writer, ceilings included. `PayoutsModule` does
+ * not import this module back.
  */
 @Module({
   imports: [
@@ -28,6 +33,7 @@ import { AuditModule } from '../audit/audit.module';
     TareTypesModule,
     CollectionPointsModule,
     AuditModule,
+    PayoutsModule,
   ],
   providers: [IntakesService],
   controllers: [IntakesController],

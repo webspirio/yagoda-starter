@@ -38,7 +38,7 @@ const elsewhere = {
 };
 
 describe('IntakesService', () => {
-  let repo: { findOne: jest.Mock; createQueryBuilder: jest.Mock };
+  let repo: { findOne: jest.Mock; createQueryBuilder: jest.Mock; manager: unknown };
   let itemRepo: { find: jest.Mock };
   let manager: {
     getRepository: jest.Mock;
@@ -48,9 +48,17 @@ describe('IntakesService', () => {
     query: jest.Mock;
   };
   /** `dataSource.manager` — the NON-transactional manager `preview` reads
-   *  through. A separate object from `manager` so a test can tell which of
-   *  the two a snapshot read went through. */
-  let plainManager: { getRepository: jest.Mock };
+   *  through, and the same object `this.repo.manager` resolves to (a
+   *  repository's manager IS the data source's manager outside a
+   *  transaction) — so `findOne` reads its extras and receiver name through
+   *  this one too. A separate object from `manager` so a test can tell which
+   *  of the two a snapshot read went through. */
+  let plainManager: {
+    getRepository: jest.Mock;
+    query: jest.Mock;
+    findOne: jest.Mock;
+    find: jest.Mock;
+  };
   let dataSource: { transaction: jest.Mock; manager: typeof plainManager };
   let shifts: { findOpenAtPoint: jest.Mock; findOneRaw: jest.Mock };
   let suppliers: { findOne: jest.Mock };
@@ -58,6 +66,7 @@ describe('IntakesService', () => {
   let tare: { findManyRaw: jest.Mock };
   let points: { findOneRaw: jest.Mock };
   let audit: { record: jest.Mock };
+  let payouts: { writePayout: jest.Mock };
   let service: IntakesService;
 
   const shift = (over: Record<string, unknown> = {}) => ({
@@ -100,23 +109,54 @@ describe('IntakesService', () => {
 
   beforeEach(() => {
     itemRepo = { find: jest.fn().mockResolvedValue([]) };
+    // Shared by `manager` and `plainManager`: `extrasFor` reads `ROW_EXTRAS_SQL`
+    // (contains `AS net_kg`) and `nextDocumentCode`'s count reads everything
+    // else, so branching on the SQL text is what lets one mock answer both.
+    const queryExtrasOrCount = (sql: string) =>
+      Promise.resolve(
+        sql.includes('pg_advisory_xact_lock')
+          ? [{}]
+          : sql.includes('AS net_kg')
+            ? [
+                {
+                  net_kg: '36.90',
+                  lines_count: 2,
+                  supplier_name: 'Іван Коваль',
+                  paid_amount: '0.00',
+                },
+              ]
+            : // `nextDocumentCode` locks, then counts the documents already in
+              // this shift. Three of them, so the next receipt is 004.
+              [{ n: 3 }],
+      );
+    // `nameOf` reads `User` by id; branch on the entity CLASS's `.name` so
+    // every other `findOne(Entity, …)` call keeps its own mock untouched.
+    const findOneUserOrNull = (entity: { name?: string }) =>
+      Promise.resolve(
+        entity?.name === 'User' ? { first_name: 'Оксана', last_name: 'Гнатюк' } : null,
+      );
     manager = {
       getRepository: jest.fn().mockReturnValue(itemRepo),
-      // `nextDocumentCode` locks, then counts the documents already in this
-      // shift. Three of them, so the next receipt is 004.
-      query: jest.fn().mockImplementation((sql: string) =>
-        Promise.resolve(sql.includes('pg_advisory_xact_lock') ? [{}] : [{ n: 3 }]),
-      ),
-      findOne: jest.fn().mockResolvedValue(null),
+      query: jest.fn().mockImplementation(queryExtrasOrCount),
+      findOne: jest.fn().mockImplementation(findOneUserOrNull),
       save: jest.fn().mockImplementation((_e, v) => Promise.resolve(intake(v))),
       create: jest.fn().mockImplementation((_e, v) => v),
     };
-    plainManager = { getRepository: jest.fn().mockReturnValue(itemRepo) };
+    plainManager = {
+      getRepository: jest.fn().mockReturnValue(itemRepo),
+      query: jest.fn().mockImplementation(queryExtrasOrCount),
+      findOne: jest.fn().mockImplementation(findOneUserOrNull),
+      find: jest.fn().mockResolvedValue([]),
+    };
     dataSource = {
       transaction: jest.fn().mockImplementation((cb: (m: unknown) => unknown) => cb(manager)),
       manager: plainManager,
     };
-    repo = { findOne: jest.fn().mockResolvedValue(null), createQueryBuilder: jest.fn() };
+    repo = {
+      findOne: jest.fn().mockResolvedValue(null),
+      createQueryBuilder: jest.fn(),
+      manager: plainManager,
+    };
     shifts = {
       findOpenAtPoint: jest.fn().mockResolvedValue(shift()),
       findOneRaw: jest.fn().mockResolvedValue(shift()),
@@ -137,6 +177,20 @@ describe('IntakesService', () => {
     tare = { findManyRaw: jest.fn().mockResolvedValue([{ id: CRATE, weight_kg: '1.20' }]) };
     points = { findOneRaw: jest.fn().mockResolvedValue({ id: POINT_A, code: 'KPG' }) };
     audit = { record: jest.fn().mockResolvedValue(undefined) };
+    payouts = {
+      writePayout: jest.fn().mockImplementation((_m, input: { amount: string; intakeId: string }) =>
+        Promise.resolve({
+          payout: {
+            id: 'po-1',
+            code: 'KPG-PO-20260908-001',
+            amount: input.amount,
+            intake_id: input.intakeId,
+            voided_at: null,
+          },
+          shift: shift(),
+        }),
+      ),
+    };
 
     service = new IntakesService(
       repo as never,
@@ -147,6 +201,7 @@ describe('IntakesService', () => {
       tare as never,
       points as never,
       audit as never,
+      payouts as never,
     );
   });
 
@@ -304,6 +359,78 @@ describe('IntakesService', () => {
         }),
         manager,
       );
+    });
+
+    it('throws if the row-extras read comes back empty — `list`’s guard, mirrored', async () => {
+      // Same shape as `list`'s `if (!row) throw new Error(...)` guard over its
+      // `byId` map — `extrasFor`'s own signature promises a non-null
+      // `IntakeRowExtras`, and until this guard existed a missing row (the
+      // insert committed but `ROW_EXTRAS_SQL` found nothing for its id — a
+      // read-your-own-write bug, not a real-world case) would have handed
+      // `undefined` to `toIntakeDetailResponse` and failed far from here with
+      // no clue which intake was involved.
+      manager.query.mockImplementation((sql: string) =>
+        Promise.resolve(
+          sql.includes('pg_advisory_xact_lock')
+            ? [{}]
+            : sql.includes('AS net_kg')
+              ? []
+              : [{ n: 3 }],
+        ),
+      );
+
+      await expect(service.create(oksana, dto())).rejects.toThrow(
+        /intake row extras missing for/,
+      );
+    });
+  });
+
+  describe('paid at reception (§2.1 ⑥, §3.1)', () => {
+    it('writes no payout when paid_amount is absent', async () => {
+      const res = await service.create(oksana, dto() as never);
+      expect(payouts.writePayout).not.toHaveBeenCalled();
+      expect(res.payouts).toEqual([]);
+    });
+
+    it('writes no payout for 0.00 — «видано 0,00» is an intake with no payout', async () => {
+      await service.create(oksana, dto({ paid_amount: '0.00' }) as never);
+      expect(payouts.writePayout).not.toHaveBeenCalled();
+    });
+
+    it('writes no payout for an explicit null — truthiness, not `!== undefined`', async () => {
+      const res = await service.create(oksana, dto({ paid_amount: null }) as never);
+      expect(payouts.writePayout).not.toHaveBeenCalled();
+      expect(res.payouts).toEqual([]);
+    });
+
+    it('hands the cash to writePayout AFTER the intake is saved, stamped with its id', async () => {
+      const res = await service.create(oksana, dto({ paid_amount: '380.00' }) as never);
+      expect(manager.save.mock.invocationCallOrder[0]).toBeLessThan(
+        payouts.writePayout.mock.invocationCallOrder[0],
+      );
+      expect(payouts.writePayout).toHaveBeenCalledWith(
+        manager,
+        expect.objectContaining({
+          actor: oksana,
+          pointId: POINT_A,
+          pointCode: 'KPG',
+          supplierId: SUPPLIER,
+          amount: '380.00',
+          intakeId: INTAKE_ID,
+        }),
+      );
+      expect(res.payouts).toEqual([
+        { id: 'po-1', code: 'KPG-PO-20260908-001', amount: '380.00', voided_at: null },
+      ]);
+    });
+
+    it('lets a ceiling refusal roll the whole transaction back', async () => {
+      payouts.writePayout.mockRejectedValue(new Error('PAYOUT_EXCEEDS_CASH'));
+      await expect(service.create(oksana, dto({ paid_amount: '380.00' }) as never)).rejects.toThrow(
+        'PAYOUT_EXCEEDS_CASH',
+      );
+      // The mock `transaction` just runs the callback; the real one rolls back
+      // on a throw. What this asserts is that the throw is not swallowed.
     });
   });
 
@@ -533,6 +660,192 @@ describe('IntakesService', () => {
       // There is no balance lookup in this path at all, and adding a floor check
       // would contradict «інваріанта борг >= 0 в цій схемі теж немає».
       await expect(service.void(owner, INTAKE_ID, { reason: 'сторно' })).resolves.toBeDefined();
+    });
+  });
+
+  /**
+   * §11.5 — the journal every row of which now carries the four columns
+   * `intake-row-extras.ts` defines ONCE. `getRawAndEntities` is the seam:
+   * TypeORM keeps `raw[n]` aligned with `entities[n]` for a to-one join, so
+   * the mock's single row proves the wiring — the alignment claim itself is
+   * proven against real Postgres by the Task 6 db-spec, not here.
+   */
+  describe('list', () => {
+    let qb: {
+      innerJoinAndMapOne: jest.Mock;
+      innerJoin: jest.Mock;
+      addSelect: jest.Mock;
+      andWhere: jest.Mock;
+      orderBy: jest.Mock;
+      addOrderBy: jest.Mock;
+      skip: jest.Mock;
+      take: jest.Mock;
+      getRawAndEntities: jest.Mock;
+      getCount: jest.Mock;
+      clone: jest.Mock;
+    };
+
+    const listQuery = (over: Record<string, unknown> = {}) => ({
+      page: 1,
+      limit: 20,
+      include_voided: true,
+      ...over,
+    });
+
+    beforeEach(() => {
+      qb = {
+        innerJoinAndMapOne: jest.fn().mockReturnThis(),
+        innerJoin: jest.fn().mockReturnThis(),
+        addSelect: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        addOrderBy: jest.fn().mockReturnThis(),
+        skip: jest.fn().mockReturnThis(),
+        take: jest.fn().mockReturnThis(),
+        getRawAndEntities: jest.fn().mockResolvedValue({
+          entities: [{ ...intake(), shift: shift() }],
+          raw: [
+            {
+              i_id: INTAKE_ID,
+              net_kg: '36.90',
+              lines_count: 2,
+              supplier_name: 'Іван Коваль',
+              paid_amount: '0.00',
+            },
+          ],
+        }),
+        getCount: jest.fn().mockResolvedValue(1),
+        // `clone()` returns THIS SAME mock object by default (`qb.clone()`
+        // called as a method binds `this` to `qb`), so its `getCount` is the
+        // one already stocked above — the dedicated clone test below
+        // overrides this to prove the real builder is never asked for a
+        // count directly.
+        clone: jest.fn().mockReturnThis(),
+      };
+      repo.createQueryBuilder.mockReturnValue(qb);
+    });
+
+    it('carries net_kg, lines_count, supplier_name and paid_amount on every row', async () => {
+      const result = await service.list(oksana, listQuery() as never);
+
+      expect(result.data).toHaveLength(1);
+      expect(result.data[0]).toMatchObject({
+        net_kg: '36.90',
+        lines_count: 2,
+        supplier_name: 'Іван Коваль',
+        paid_amount: '0.00',
+      });
+      expect(result.total).toBe(1);
+    });
+
+    it('joins suppliers and adds the four extras selects, once each', async () => {
+      await service.list(oksana, listQuery() as never);
+
+      expect(qb.innerJoin).toHaveBeenCalledWith(expect.anything(), 'sup', 'sup.id = i.supplier_id');
+      expect(qb.addSelect).toHaveBeenCalledTimes(4);
+    });
+
+    it('maps each raw row to its OWN entity BY ID, not by array position', async () => {
+      // Two intakes with different extras, and the raw rows handed back in
+      // the OPPOSITE order from the entities — a positional `raw[n]` read
+      // would hand intake TWO's numbers to intake ONE's row (or vice versa)
+      // and this test would not notice unless the values actually differ.
+      const OTHER_ID = '99999999-9999-9999-9999-999999999999';
+      qb.getRawAndEntities.mockResolvedValue({
+        entities: [
+          { ...intake({ id: INTAKE_ID }), shift: shift() },
+          { ...intake({ id: OTHER_ID }), shift: shift() },
+        ],
+        raw: [
+          {
+            i_id: OTHER_ID,
+            net_kg: '5.00',
+            lines_count: 1,
+            supplier_name: 'Петро Мельник',
+            paid_amount: '100.00',
+          },
+          {
+            i_id: INTAKE_ID,
+            net_kg: '36.90',
+            lines_count: 2,
+            supplier_name: 'Іван Коваль',
+            paid_amount: '0.00',
+          },
+        ],
+      });
+      qb.getCount.mockResolvedValue(2);
+
+      const result = await service.list(oksana, listQuery() as never);
+
+      expect(result.data).toHaveLength(2);
+      expect(result.data.find((r) => r.id === INTAKE_ID)).toMatchObject({
+        net_kg: '36.90',
+        lines_count: 2,
+        supplier_name: 'Іван Коваль',
+        paid_amount: '0.00',
+      });
+      expect(result.data.find((r) => r.id === OTHER_ID)).toMatchObject({
+        net_kg: '5.00',
+        lines_count: 1,
+        supplier_name: 'Петро Мельник',
+        paid_amount: '100.00',
+      });
+    });
+
+    it('runs the count on a CLONE of the builder, not the builder itself', async () => {
+      // `getCount()` flips `expressionMap.queryEntity` on the builder it
+      // runs on; sharing one builder between the two in-flight calls would
+      // make them fight over that map.
+      const clone = { getCount: jest.fn().mockResolvedValue(1) };
+      qb.clone = jest.fn().mockReturnValue(clone);
+
+      await service.list(oksana, listQuery() as never);
+
+      expect(qb.clone).toHaveBeenCalled();
+      expect(clone.getCount).toHaveBeenCalled();
+    });
+
+    it('throws a programming error, not a 400, when a raw row is missing for an entity', async () => {
+      qb.getRawAndEntities.mockResolvedValue({
+        entities: [{ ...intake(), shift: shift() }],
+        raw: [],
+      });
+
+      await expect(service.list(oksana, listQuery() as never)).rejects.toThrow(
+        `intake row extras missing for ${INTAKE_ID}`,
+      );
+    });
+  });
+
+  describe('findOne', () => {
+    beforeEach(() => {
+      repo.findOne.mockResolvedValue(intake());
+      shifts.findOneRaw.mockResolvedValue(shift());
+    });
+
+    it('404s when the intake does not exist', async () => {
+      repo.findOne.mockResolvedValue(null);
+
+      await expect(service.findOne(oksana, INTAKE_ID)).rejects.toThrow(NotFoundException);
+    });
+
+    it('404s an intake at another point for an operator', async () => {
+      await expect(service.findOne(elsewhere, INTAKE_ID)).rejects.toThrow(NotFoundException);
+    });
+
+    it('carries the four row extras alongside the items and payouts', async () => {
+      const result = await service.findOne(oksana, INTAKE_ID);
+
+      expect(result.net_kg).toBe('36.90');
+      expect(result.lines_count).toBe(2);
+      expect(result.supplier_name).toBe('Іван Коваль');
+      expect(result.paid_amount).toBe('0.00');
+    });
+
+    it('names the receiver on the detail', async () => {
+      const result = await service.findOne(oksana, INTAKE_ID);
+
+      expect(result.received_by_name).toBe('Оксана Гнатюк');
     });
   });
 

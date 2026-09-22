@@ -14,9 +14,21 @@ import { Field } from '@/shared/ui/field';
 import { SelectField } from '@/shared/ui/select-field';
 import { TextInput } from '@/shared/ui/text-input';
 import { cn } from '@/shared/lib/cn';
-import { add, cmp, div, formatDecimal, formatKg, formatUah, sub } from '@/shared/lib/money';
+import {
+  add,
+  clampDecimal,
+  cmp,
+  div,
+  formatDecimal,
+  formatKg,
+  formatUah,
+  maskDecimalInput,
+  mul,
+  sub,
+} from '@/shared/lib/money';
 import type { PricedGrade } from '@/entities/product-grade';
 import type { TareTypeOption } from '@/entities/tare-type';
+import { formatBonusSign } from '../lib/formatBonusSign';
 import type { IntakeFormValues, IntakePreviewItem } from '../model/intakeForm';
 
 /** §5.2 — the largest line of the season was 701,5 kg; above this we ask. */
@@ -35,21 +47,6 @@ function compare(a: string, b: string): -1 | 0 | 1 | null {
   } catch {
     return null;
   }
-}
-
-/**
- * The bonus half of the draft's preview line: a leading `+` unless the bonus
- * is already negative, in which case `formatDecimal`'s own typographic minus
- * (U+2212) is the only sign a literal `+` glued in front of it used to render
- * as `+−5,00`. Kept as `+`-for-non-negative rather than mirroring
- * `widgets/receipt`'s `formatBonus` exactly (`+` only when strictly
- * positive): that dialog OMITS a zero bonus row outright, which reads fine
- * there, but this line concatenates price and bonus with no separator of its
- * own — dropping the `+` for zero would glue them into one unreadable number.
- */
-function formatBonusSign(bonus: string, locale: string): string {
-  const formatted = formatDecimal(bonus, locale);
-  return cmp(bonus, '0') === -1 ? formatted : `+${formatted}`;
 }
 
 /**
@@ -98,6 +95,7 @@ export function LineEditor({
 
   const tare = useFieldArray({ control, name: `items.${index}.tare` });
   const gross = useWatch({ control, name: `items.${index}.gross_kg` }) ?? '';
+  const pallet = useWatch({ control, name: `items.${index}.pallet_kg` }) ?? '0.00';
   const bonus = useWatch({ control, name: `items.${index}.bonus` }) ?? '';
   const gradeId = useWatch({ control, name: `items.${index}.product_grade_id` }) ?? '';
   const tareRows = useWatch({ control, name: `items.${index}.tare` }) ?? [];
@@ -133,45 +131,53 @@ export function LineEditor({
   const hasLineError = Boolean(grossError || palletError || bonusError || gradeError || tareError);
 
   // Bounds are the GRADE's, not a global setting (§3): `max_discount` is a
-  // magnitude, so the floor is its negation.
+  // magnitude, so the floor is its negation. §2.10 / #117 — the bound is a
+  // LIMIT applied silently (blur, stepper), never a number shown on screen.
   const bonusFloor = grade ? sub('0', grade.max_discount) : null;
-  const bonusOutOfRange =
-    grade !== null &&
-    bonusFloor !== null &&
-    (compare(bonus, grade.max_markup) === 1 || compare(bonus, bonusFloor) === -1);
 
   const stepBonus = (direction: 1 | -1) => {
     const current = compare(bonus, '0') === null ? '0.00' : bonus.trim().replace(',', '.');
-    setValue(
-      `items.${index}.bonus`,
-      direction === 1 ? add(current, BONUS_STEP) : sub(current, BONUS_STEP),
-      { shouldDirty: true },
-    );
+    const next = direction === 1 ? add(current, BONUS_STEP) : sub(current, BONUS_STEP);
+    const clamped =
+      grade && bonusFloor !== null ? clampDecimal(next, bonusFloor, grade.max_markup) : next;
+    setValue(`items.${index}.bonus`, clamped, { shouldDirty: true });
   };
 
-  // A tare row that counts nothing is not a row — the stepper floors at 1 and
-  // «remove» is how a row goes away. (A typed 0 is still possible, and
-  // `toPreviewBody` drops it before the request.)
+  // A tare row that counts nothing is still a row — zero is a real (if
+  // incomplete) state the mock lets an operator sit in while they weigh out
+  // the crates; «remove» is how a row goes away entirely. The stepper floors
+  // at 0 rather than 1.
   const stepUnits = (row: number, direction: 1 | -1) => {
     const parsed = Number.parseInt(tareRows[row]?.units ?? '', 10);
     const current = Number.isInteger(parsed) ? parsed : 0;
-    setValue(`items.${index}.tare.${row}.units`, String(Math.max(1, current + direction)), {
+    setValue(`items.${index}.tare.${row}.units`, String(Math.max(0, current + direction)), {
       shouldDirty: true,
     });
   };
+
+  // Integer unit COUNTS, never money — `Number.parseInt`, not `cmp`.
+  const totalUnits = tareRows.reduce((n, r) => n + (Number.parseInt(r.units, 10) || 0), 0);
 
   // ONE normalization, fed to both the comparison and the formatter: they use
   // different regexes, and `formatDecimal`'s admits no surrounding whitespace —
   // so a pasted " 800" used to pass the comparison and then throw mid-render.
   const normalizedGross = gross.trim().replace(',', '.');
   const grossWarning = compare(normalizedGross, IMPLAUSIBLE_GROSS) === 1;
+  const grossPositive = compare(normalizedGross, '0') === 1;
+  // The pallet field auto-reveals once it has something to say: a manual
+  // «+ Pallet» click, a server refusal pinned to it, twenty tare units (the
+  // mock's own threshold — a pallet is likely under that much), or a value
+  // already typed into it (e.g. a refusal round-trip that left it non-zero).
+  const revealPallet =
+    showPallet || palletError !== null || totalUnits >= 20 || compare(pallet, '0.00') !== 0;
   // Per crate is read off the SERVER's net weight and the integer unit counts it
   // resolved — never off a typed weight, and never through a float (`div` is
   // BigInt kopiykas).
   const previewUnits = (previewItem?.tare ?? []).reduce((total, row) => total + row.units, 0);
   const perCrate = previewItem && previewUnits > 0 ? div(previewItem.net_kg, previewUnits) : null;
   const perCrateWarning =
-    perCrate !== null && (cmp(perCrate, PER_CRATE_MIN) === -1 || cmp(perCrate, PER_CRATE_MAX) === 1);
+    perCrate !== null &&
+    (cmp(perCrate, PER_CRATE_MIN) === -1 || cmp(perCrate, PER_CRATE_MAX) === 1);
 
   return (
     <>
@@ -190,7 +196,12 @@ export function LineEditor({
               <div className="relative">
                 <TextInput
                   {...a11y}
-                  {...register(`items.${index}.gross_kg`)}
+                  value={gross}
+                  onChange={(e) =>
+                    setValue(`items.${index}.gross_kg`, maskDecimalInput(e.target.value), {
+                      shouldDirty: true,
+                    })
+                  }
                   disabled={disabled}
                   inputMode="decimal"
                   placeholder="0,00"
@@ -204,7 +215,7 @@ export function LineEditor({
             )}
           </Field>
 
-          {showPallet || palletError !== null ? (
+          {revealPallet ? (
             <Field
               name={`items.${index}.pallet_kg`}
               label={t('reception.weight.pallet')}
@@ -214,7 +225,12 @@ export function LineEditor({
               {(a11y) => (
                 <TextInput
                   {...a11y}
-                  {...register(`items.${index}.pallet_kg`)}
+                  value={pallet}
+                  onChange={(e) =>
+                    setValue(`items.${index}.pallet_kg`, maskDecimalInput(e.target.value), {
+                      shouldDirty: true,
+                    })
+                  }
                   disabled={disabled}
                   inputMode="decimal"
                   autoComplete="off"
@@ -246,77 +262,92 @@ export function LineEditor({
 
         <p className="mt-3 mb-1.5 text-xs text-muted-foreground">{t('reception.weight.tare')}</p>
         <div className="flex flex-col gap-2">
-          {tare.fields.map((row, rowIndex) => (
-            <div key={row.id} className="flex items-center gap-2">
-              <div className="min-w-0 flex-1">
-                <SelectField
-                  aria-label={t('reception.weight.tareType', { n: rowIndex + 1 })}
-                  disabled={disabled}
-                  className="h-10"
-                  {...register(`items.${index}.tare.${rowIndex}.tare_type_id`)}
-                >
-                  {tareTypes.map((type) => (
-                    <option key={type.id} value={type.id}>
-                      {t('reception.weight.tareOption', {
-                        name: type.name,
-                        weight: type.weight_kg,
-                      })}
-                    </option>
-                  ))}
-                </SelectField>
+          {tare.fields.map((row, rowIndex) => {
+            const rowTareType = tareTypes.find(
+              (type) => type.id === tareRows[rowIndex]?.tare_type_id,
+            );
+            const rowUnits = Math.max(0, Number.parseInt(tareRows[rowIndex]?.units ?? '', 10) || 0);
+            return (
+              <div key={row.id} className="flex items-center gap-2">
+                <div className="min-w-0 flex-1">
+                  <SelectField
+                    aria-label={t('reception.weight.tareType', { n: rowIndex + 1 })}
+                    disabled={disabled}
+                    className="h-10"
+                    {...register(`items.${index}.tare.${rowIndex}.tare_type_id`)}
+                  >
+                    {tareTypes.map((type) => (
+                      <option key={type.id} value={type.id}>
+                        {t('reception.weight.tareOption', {
+                          name: type.name,
+                          weight: type.weight_kg,
+                        })}
+                      </option>
+                    ))}
+                  </SelectField>
+                </div>
+                <div className="flex items-center gap-1 rounded-lg border border-border bg-background p-1">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label={t('reception.weight.fewer', { n: rowIndex + 1 })}
+                    disabled={disabled}
+                    onClick={() => stepUnits(rowIndex, -1)}
+                  >
+                    <Minus className="size-3.5" />
+                  </Button>
+                  <TextInput
+                    variant="ghost"
+                    aria-label={t('reception.weight.units', { n: rowIndex + 1 })}
+                    inputMode="numeric"
+                    autoComplete="off"
+                    disabled={disabled}
+                    className="w-12 text-center font-mono font-semibold"
+                    {...register(`items.${index}.tare.${rowIndex}.units`)}
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label={t('reception.weight.more', { n: rowIndex + 1 })}
+                    disabled={disabled}
+                    onClick={() => stepUnits(rowIndex, 1)}
+                  >
+                    <Plus className="size-3.5" />
+                  </Button>
+                </div>
+                {rowTareType ? (
+                  <span className="w-16 shrink-0 text-right font-mono text-xs text-muted-foreground">
+                    {t('reception.weight.rowWeight', {
+                      kg: formatKg(mul(rowTareType.weight_kg, rowUnits), locale),
+                    })}
+                  </span>
+                ) : null}
+                {tare.fields.length > 1 ? (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label={t('reception.weight.removeTare')}
+                    disabled={disabled}
+                    onClick={() => tare.remove(rowIndex)}
+                  >
+                    <Trash2 className="size-3.5" />
+                  </Button>
+                ) : null}
               </div>
-              <div className="flex items-center gap-1 rounded-lg border border-border bg-background p-1">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon-sm"
-                  aria-label={t('reception.weight.fewer', { n: rowIndex + 1 })}
-                  disabled={disabled}
-                  onClick={() => stepUnits(rowIndex, -1)}
-                >
-                  <Minus className="size-3.5" />
-                </Button>
-                <TextInput
-                  variant="ghost"
-                  aria-label={t('reception.weight.units', { n: rowIndex + 1 })}
-                  inputMode="numeric"
-                  autoComplete="off"
-                  disabled={disabled}
-                  className="w-12 text-center font-mono font-semibold"
-                  {...register(`items.${index}.tare.${rowIndex}.units`)}
-                />
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon-sm"
-                  aria-label={t('reception.weight.more', { n: rowIndex + 1 })}
-                  disabled={disabled}
-                  onClick={() => stepUnits(rowIndex, 1)}
-                >
-                  <Plus className="size-3.5" />
-                </Button>
-              </div>
-              {tare.fields.length > 1 ? (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon-sm"
-                  aria-label={t('reception.weight.removeTare')}
-                  disabled={disabled}
-                  onClick={() => tare.remove(rowIndex)}
-                >
-                  <Trash2 className="size-3.5" />
-                </Button>
-              ) : null}
-            </div>
-          ))}
+            );
+          })}
           <div>
             <Button
               type="button"
               variant="ghost"
               size="sm"
               disabled={disabled || !freeTareType}
-              onClick={() => freeTareType && tare.append({ tare_type_id: freeTareType.id, units: '1' })}
+              onClick={() =>
+                freeTareType && tare.append({ tare_type_id: freeTareType.id, units: '1' })
+              }
             >
               <Package className="size-3.5" />
               {t('reception.weight.otherTare')}
@@ -325,6 +356,20 @@ export function LineEditor({
           {tareError ? (
             <p role="alert" className="text-xs text-destructive">
               {t(tareError)}
+            </p>
+          ) : null}
+          {/* Instant, client-side hints — never a rule the server enforces,
+              just what the operator is about to be surprised by. */}
+          {grossPositive && totalUnits === 0 ? (
+            <p className="flex items-start gap-2 text-xs text-amber">
+              <AlertTriangle className="mt-px size-3.5 shrink-0" />
+              {t('reception.line.tareMissing')}
+            </p>
+          ) : null}
+          {grossPositive && totalUnits > 0 && gradeId === '' ? (
+            <p className="flex items-start gap-2 text-xs text-amber">
+              <AlertTriangle className="mt-px size-3.5 shrink-0" />
+              {t('reception.line.gradeMissing')}
             </p>
           ) : null}
         </div>
@@ -374,6 +419,16 @@ export function LineEditor({
             {(a11y) => (
               <SelectField
                 {...a11y}
+                // A hybrid of `register` (so a user pick still updates RHF the
+                // normal way) plus an explicit `value`: the grade OPTIONS are
+                // scoped to `product`, which itself is derived from the grade
+                // (one render behind a programmatic `setValue`, e.g. the
+                // page's pre-select effect) — a plain uncontrolled `register`
+                // select would try to apply that value before its matching
+                // `<option>` exists and silently drop it, with no later
+                // render retrying since nothing marks it controlled. `value`
+                // makes React re-apply it on every render until it sticks.
+                value={gradeId}
                 disabled={disabled || product === ''}
                 {...register(`items.${index}.product_grade_id`)}
               >
@@ -395,12 +450,7 @@ export function LineEditor({
             error={bonusError ?? undefined}
           >
             {(a11y) => (
-              <div
-                className={cn(
-                  'flex items-center gap-1 rounded-lg border bg-background p-1',
-                  bonusOutOfRange ? 'border-amber' : 'border-border',
-                )}
-              >
+              <div className="flex items-center gap-1 rounded-lg border border-border bg-background p-1">
                 <Button
                   type="button"
                   variant="ghost"
@@ -414,11 +464,28 @@ export function LineEditor({
                 <TextInput
                   {...a11y}
                   variant="ghost"
+                  value={bonus}
+                  onChange={(e) =>
+                    setValue(
+                      `items.${index}.bonus`,
+                      maskDecimalInput(e.target.value, { allowNegative: true }),
+                      { shouldDirty: true },
+                    )
+                  }
+                  onBlur={() => {
+                    if (!grade || bonusFloor === null) return;
+                    setValue(
+                      `items.${index}.bonus`,
+                      clampDecimal(bonus, bonusFloor, grade.max_markup),
+                      {
+                        shouldDirty: true,
+                      },
+                    );
+                  }}
                   inputMode="decimal"
                   autoComplete="off"
                   disabled={disabled}
                   className="w-16 text-center font-mono font-semibold"
-                  {...register(`items.${index}.bonus`)}
                 />
                 <Button
                   type="button"
@@ -433,20 +500,6 @@ export function LineEditor({
               </div>
             )}
           </Field>
-          {grade ? (
-            <p className="pb-2 text-xs text-muted-foreground">
-              {t('reception.grade.bounds', {
-                discount: grade.max_discount,
-                markup: grade.max_markup,
-              })}
-            </p>
-          ) : null}
-          {bonusOutOfRange ? (
-            <p className="flex items-center gap-1.5 pb-2 text-xs text-amber">
-              <AlertTriangle className="size-3.5 shrink-0" />
-              {t('reception.grade.outOfRange')}
-            </p>
-          ) : null}
         </div>
 
         {/* The line's numbers, kept visible (dimmed) while a newer preview is in

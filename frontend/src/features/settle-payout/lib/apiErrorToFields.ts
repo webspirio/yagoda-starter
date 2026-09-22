@@ -23,6 +23,7 @@ const FORM_LEVEL = 'payout.errors.failed';
 const CODE_FIELD: Readonly<Record<string, { field: string; messageKey: string }>> = {
   PAYOUT_EXCEEDS_DEBT: { field: 'amount', messageKey: 'payout.errors.exceedsDebtServer' },
   PAYOUT_AMOUNT_ZERO: { field: 'amount', messageKey: 'payout.errors.amountZero' },
+  PAYOUT_EXCEEDS_CASH: { field: 'amount', messageKey: 'payout.errors.exceedsCash' },
 };
 
 const CODE_BANNER: Readonly<Record<string, string>> = {

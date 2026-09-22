@@ -966,7 +966,7 @@ describe('documents pipeline (HTTP)', () => {
    * about Postgres. This shows the thing that actually matters: two payouts in
    * flight together against a debt that admits only one, and the second is
    * REFUSED. Spec §11 asked for «blocks and then fails»; the second half is
-   * this test. Delete the `FOR UPDATE` from `PayoutsService.create` and both
+   * this test. Delete the `FOR UPDATE` from `PayoutsService.writePayout` and both
    * requests read the same debt, both clear the ceiling, and 800,00 ₴ leaves
    * the drawer against a 615,60 ₴ debt with nothing downstream to notice.
    */
