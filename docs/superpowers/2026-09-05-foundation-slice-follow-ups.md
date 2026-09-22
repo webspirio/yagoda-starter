@@ -1104,7 +1104,7 @@ because it is either a client question or a change that reaches beyond the two s
 
 ## Deferred from the reweigh screen (2026-09-21)
 
-Plan: `docs/superpowers/sdd/2026-09-21-yagoda-reweigh-screen/`. Each item below is a deliberate
+Plan: `docs/superpowers/plans/2026-09-21-yagoda-reweigh-screen.md`. Each item below is a deliberate
 omission, not an oversight — the contract it would need is given so the next person reads a
 decision rather than guessing whether something was missed.
 
