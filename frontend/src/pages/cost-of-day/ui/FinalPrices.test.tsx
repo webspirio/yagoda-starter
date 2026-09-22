@@ -80,6 +80,16 @@ describe('FinalPrices', () => {
     expect(within(row).getByText('133 050,82 ₴')).toBeInTheDocument();
   });
 
+  it('foots the «разом» column to the sum of the per-product «разом» cells, not total_check', () => {
+    // 133 050,82 (Малина: 128 000,00 + 5 050,82) + 4 309,18 (Ожина:
+    // 3 900,00 + 409,18) = 137 360,00 — NOT day.total_check (135 700,00),
+    // which is accrued + expenses_amount and belongs to the звірка line only.
+    render(<FinalPrices day={day} locale="uk" />);
+
+    const footerRow = screen.getByRole('row', { name: /РАЗОМ/ });
+    expect(within(footerRow).getByText('137 360,00 ₴')).toBeInTheDocument();
+  });
+
   it('reports the Σ із пулу = КОШИК звірка as passing', () => {
     render(<FinalPrices day={day} locale="uk" />);
 

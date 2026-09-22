@@ -14,9 +14,13 @@ import type { CostOfDay } from '@/entities/cost-of-day';
  * «із пулу» is the server's `basket_share`, allocated by largest remainder so
  * the parts sum exactly to the basket. That identity is what the first check
  * below prints, and it is §8.4's own claim: «жодна гривня не загубилася і не
- * з'явилася з нічого». The only arithmetic done here is `add(accrued,
- * basket_share)` for the «разом» column — two server figures summed, never a
- * division.
+ * з'явилася з нічого». The component sums with `sum`, compares with `cmp`
+ * and adds with `add`: the «разом» cell for a product is `add(accrued,
+ * basket_share)`, and the footer's «разом» is `sum` of exactly those cells —
+ * never `total_check`, which is the звірка line below it, not this column's
+ * total. There is NO DIVISION anywhere in this component; every rate it
+ * prints — «було», «собівартість», «нараховане ÷ наша вага», «середня ціна
+ * після витрат» — is the server's own.
  *
  * Every derived cell of a product that is not `complete` is «—». It
  * contributed no kilograms to the day's denominator, so it collects no share
@@ -36,6 +40,15 @@ export function FinalPrices({ day, locale }: { day: CostOfDay; locale: string })
     .filter((s): s is string => s !== null);
   const sharesTotal = shares.length > 0 ? sum(shares) : '0.00';
   const sharesMatch = cmp(sharesTotal, day.basket) === 0;
+
+  // The footer's «разом» cell must equal the sum of the per-product «разом»
+  // cells above it, not `total_check` (accrued + ALL expenses, звірка's own
+  // figure two lines below). Sum only the products that actually show a
+  // «разом» figure — the same «жодного нуля» rule the per-row cell follows.
+  const togetherAmounts = day.products
+    .map((p) => (p.basket_share === null ? null : add(p.accrued, p.basket_share)))
+    .filter((v): v is string => v !== null);
+  const togetherTotal = togetherAmounts.length > 0 ? sum(togetherAmounts) : '0.00';
 
   return (
     <div className="mt-6">
@@ -104,7 +117,7 @@ export function FinalPrices({ day, locale }: { day: CostOfDay; locale: string })
                 {formatUah(sharesTotal, locale)}
               </TableCell>
               <TableCell className="text-right font-mono font-semibold tabular-nums">
-                {formatUah(add(day.accrued, day.expenses_amount), locale)}
+                {formatUah(togetherTotal, locale)}
               </TableCell>
               <TableCell className="text-right text-muted-foreground">—</TableCell>
               <TableCell className="text-right text-muted-foreground">—</TableCell>
