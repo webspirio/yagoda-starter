@@ -681,13 +681,22 @@
   },
   "pointTarget": {
     "title": "Change the cash target — {{pointName}}",
-    "description": "This becomes the point's new target right away, for every day including past ones — it keeps no history of its own.",
-    "targetCash": "New target",
+    "description": {
+      "current": "Current: {{amount}}",
+      "none": "This point hasn't been assigned a cash target yet."
+    },
+    "targetCash": "How much money, ₴",
     "reason": "Reason",
     "submit": "Save target",
-    "toast": "Target updated",
-    "warnings": {
-      "belowCash": "This is below the {{amount}} already at the point. Allowed — a target is a management decision — but check with the point first."
+    "preview": {
+      "cashNow": "Cash for berries right now",
+      "shortfall": "Will fall short of the target"
+    },
+    "note": "The drawer isn't recounted: only the figure used to measure \"short of the target\" changes.",
+    "overTarget": "There's already more in the drawer than this target. There will be no debt to the point at all — this can't be refused: a target is a management decision.",
+    "toast": {
+      "title": "Cash target — {{amount}}",
+      "description": "{{point}}. The old target isn't recorded in history — it's a single number on the point."
     },
     "errors": {
       "cashFormat": "Enter an amount — up to two decimal places",
