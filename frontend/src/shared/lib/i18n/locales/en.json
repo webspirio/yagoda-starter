@@ -1171,6 +1171,7 @@
       "voided": "voided",
       "void": "Void",
       "voidLine": "Void the {{time}} line from {{point}}",
+      "confirmVoidLine": "Confirm voiding the {{time}} line from {{point}}",
       "cancel": "Cancel",
       "reason": "Reason — required",
       "reasonPlaceholder": "e.g. entered the same truck twice",

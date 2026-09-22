@@ -18,14 +18,14 @@ vi.mock('@/entities/user', () => ({
   useStaffQuery: () => staffMock(),
 }));
 
-/** Once the reason row opens, two buttons share the void/сторнувати accessible
- *  name (the row's own opener, still on screen, and the reason row's confirm
- *  button, rendered after it in DOM order) — this grabs the LAST one, i.e.
- *  the confirm button, without relying on `Array.prototype.at` (unavailable
- *  under this project's ES2020 `lib` target). */
-function lastButton(name: RegExp): HTMLElement {
-  const matches = screen.getAllByRole('button', { name });
-  return matches[matches.length - 1];
+/** The reason row's confirm button, selected BY NAME rather than by DOM
+ *  position. It used to be reachable only as "the last button whose name
+ *  matches /void|сторнувати/", because the row's opener and the confirm
+ *  shared one accessible name — selecting by position is the test-side smell
+ *  that names a real a11y defect, so the component gives the confirm its own
+ *  `reweigh.day.confirmVoidLine` label and this helper asserts it. */
+function confirmButton(): HTMLElement {
+  return screen.getByRole('button', { name: /confirm voiding|підтвердити сторно/i });
 }
 
 const line = (over = {}): DayLine => ({
@@ -138,7 +138,7 @@ describe('DayLines', () => {
     render(<DayLines lines={[line()]} isPending={false} isError={false} date="2026-09-21" />);
     await userEvent.click(screen.getByRole('button', { name: /void|сторнувати/i }));
 
-    const confirm = lastButton(/void|сторнувати/i);
+    const confirm = confirmButton();
     expect(confirm).toBeDisabled();
     await userEvent.type(screen.getByLabelText(/reason|причина/i), 'двічі ввели ту саму машину');
     expect(confirm).toBeEnabled();
@@ -149,9 +149,43 @@ describe('DayLines', () => {
     render(<DayLines lines={[line()]} isPending={false} isError={false} date="2026-09-21" />);
     await userEvent.click(screen.getByRole('button', { name: /void|сторнувати/i }));
     await userEvent.type(screen.getByLabelText(/reason|причина/i), 'двічі ввели ту саму машину');
-    await userEvent.click(lastButton(/void|сторнувати/i));
+    await userEvent.click(confirmButton());
 
     expect(voidMock).toHaveBeenCalledWith({ id: 'ri1', reason: 'двічі ввели ту саму машину' });
+  });
+
+  /**
+   * The a11y finding in one assertion. With the reason row open there are two
+   * buttons on screen that both read «Сторнувати» visibly — the row's opener
+   * and the destructive confirm. If they also share an accessible name, a
+   * screen-reader user cannot tell "open the form" from "commit the void",
+   * and axe does NOT flag a duplicate button name, so nothing else here
+   * catches it. Before the fix both carried `reweigh.day.voidLine` and the
+   * final assertion fails.
+   */
+  it('gives the confirm button an accessible name distinct from the opener', async () => {
+    render(<DayLines lines={[line()]} isPending={false} isError={false} date="2026-09-21" />);
+    const opener = screen.getByRole('button', { name: /void|сторнувати/i });
+    await userEvent.click(opener);
+
+    const confirm = confirmButton();
+    expect(confirm).not.toBe(opener);
+
+    const openerName = opener.getAttribute('aria-label');
+    const confirmName = confirm.getAttribute('aria-label');
+    expect(openerName).toBeTruthy();
+    expect(confirmName).toBeTruthy();
+    expect(confirmName).not.toBe(openerName);
+    // Both must still name WHICH line, or the split just trades one
+    // ambiguity for another. The time is asserted by SHAPE and against the
+    // opener's own rendering, never as a literal: `formatTime` is deliberately
+    // local-timezone (see shared/lib/date), so pinning "10:00" here would pass
+    // only in UTC and fail on the machine of anyone who is not.
+    expect(confirmName).toMatch(/Шипинки/);
+    expect(confirmName).toMatch(/\d{1,2}:\d{2}/);
+    const time = /(\d{1,2}:\d{2})/.exec(openerName ?? '')?.[1];
+    expect(time).toBeTruthy();
+    expect(confirmName).toContain(time);
   });
 
   it('keeps a voided line on screen with its time, author and reason', () => {
@@ -225,7 +259,7 @@ describe('DayLines', () => {
     render(<DayLines lines={[line()]} isPending={false} isError={false} date="2026-09-21" />);
     await userEvent.click(screen.getByRole('button', { name: /void|сторнувати/i }));
     await userEvent.type(screen.getByLabelText(/reason|причина/i), 'x');
-    await userEvent.click(lastButton(/void|сторнувати/i));
+    await userEvent.click(confirmButton());
 
     await waitFor(() => expect(screen.getByText(/already voided|вже сторновано/i)).toBeInTheDocument());
   });

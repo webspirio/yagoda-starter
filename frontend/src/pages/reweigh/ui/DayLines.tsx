@@ -129,6 +129,16 @@ export function DayLines({
                 point: pointName,
                 time: formatTime(item.created_at, locale),
               });
+              // The trigger and the confirm below it BOTH say «Сторнувати»
+              // visibly, and both are on screen at once once the reason row
+              // opens. Giving them the same accessible name leaves a screen
+              // reader with two identically-named buttons where one opens a
+              // form and the other commits the void — axe does not flag a
+              // duplicate button name, so only this split catches it.
+              const confirmVoidLabel = t('reweigh.day.confirmVoidLine', {
+                point: pointName,
+                time: formatTime(item.created_at, locale),
+              });
               // A grade name alone is ambiguous — «Стандарт» is the grade
               // of eight different products in this catalogue (see the
               // seed data), so «Товар» has to carry the product too. Either
@@ -195,7 +205,7 @@ export function DayLines({
                           </Field>
                           <Button
                             variant="destructive"
-                            aria-label={voidLabel}
+                            aria-label={confirmVoidLabel}
                             disabled={!reason.trim() || voidItem.isPending}
                             onClick={() => confirmVoid(item.id)}
                           >
