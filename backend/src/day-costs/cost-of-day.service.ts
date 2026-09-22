@@ -8,6 +8,19 @@ import type { AuthenticatedUser } from '../auth/jwt.strategy';
 export interface CostOfDayProduct {
   product_id: string;
   product_name: string;
+  /** «нараховано» for this product — Σ intake_items.amount + its allocated
+   *  top-ups, non-voided. The numerator behind `price_was`, carried so §8.4's
+   *  left table can print the money column it divides. */
+  accrued: string;
+  /** Σ intake_items.net_kg — what the POINT says it took in. */
+  intake_net_kg: string;
+  /** Σ reweigh_items.net_kg — «наша вага». `null`, never '0.00', whenever
+   *  `complete` is false: §8.6's «Це не нуль», so the screen prints «—». */
+  reweigh_net_kg: string | null;
+  /** «недостача» for this product, already clamped so a surplus on one grade
+   *  never lowers it. '0.00' both when nothing is missing and when the product
+   *  is not `complete` — `reweigh_net_kg === null` is what tells the two apart. */
+  shortfall: string;
   /** «було» — the price the day's intake actually paid, per kilogram taken in. */
   price_was: string;
   /** «собівартість» — `price_was` plus the day's per-kilogram basket share.
@@ -138,6 +151,10 @@ export class CostOfDayService {
       return {
         product_id: r.product_id,
         product_name: r.product_name,
+        accrued: r.accrued,
+        intake_net_kg: r.intake_net_kg,
+        reweigh_net_kg: r.reweigh_net_kg,
+        shortfall: r.shortfall,
         price_was: priceWas,
         price_cost: priceCost,
         price_by_our_weight: priceByOurWeight,

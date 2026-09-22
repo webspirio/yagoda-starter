@@ -268,3 +268,28 @@ describe('CostOfDayService.forShift', () => {
     expect(out.provisional).toBe(false);
   });
 });
+
+describe('CostOfDayProduct carries the figures it was built from (§8.4 left half)', () => {
+  it('passes нараховано, both weights and the недостача through per product', async () => {
+    const res = await svc.forShift(owner, 's-1');
+    const rasp = res.products.find((p) => p.product_id === 'p-rasp');
+
+    // 800 кг accruing 128 000,00 is 160,00 ₴/кг; 790 кг came back, so 10 кг
+    // short × 160,00 = 1 600,00 — §8.4's own raspberry line.
+    expect(rasp).toMatchObject({
+      accrued: '128000.00',
+      intake_net_kg: '800.00',
+      reweigh_net_kg: '790.00',
+      shortfall: '1600.00',
+    });
+  });
+
+  it('reports reweigh_net_kg as null — never 0.00 — for a product nothing weighed', async () => {
+    const res = await svcWithNoReweigh.forShift(owner, 's-1');
+
+    // §8.6's «Це не нуль»: the screen must be able to print «—» rather than a
+    // zero that reads as «the berries vanished».
+    expect(res.products.map((p) => p.reweigh_net_kg)).toEqual([null, null]);
+    expect(res.products.map((p) => p.shortfall)).toEqual(['0.00', '0.00']);
+  });
+});
