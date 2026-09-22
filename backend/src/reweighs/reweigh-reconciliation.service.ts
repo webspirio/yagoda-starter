@@ -10,6 +10,7 @@ export interface GradeTotalsRow {
   product_id: string;
   product_name: string;
   product_grade_id: string;
+  product_grade_name: string;
   intake_net_kg: string;
   intake_amount: string;
   /** NULL — not '0.00' — when nothing was weighed for this grade. §8.6: «Це не нуль». */
@@ -42,6 +43,7 @@ export async function gradeTotals(
     `SELECT p.id           AS product_id,
             p.name         AS product_name,
             pg.id          AS product_grade_id,
+            pg.name        AS product_grade_name,
             SUM(ii.net_kg)::text  AS intake_net_kg,
             SUM(ii.amount)::text  AS intake_amount,
             rw.net_kg::text       AS reweigh_net_kg
@@ -57,8 +59,11 @@ export async function gradeTotals(
              GROUP BY ri.product_grade_id
        ) rw ON rw.product_grade_id = pg.id
       WHERE i.shift_id = $1
-      GROUP BY p.id, p.name, pg.id, rw.net_kg
-      ORDER BY p.name, pg.id`,
+      GROUP BY p.id, p.name, pg.id, pg.name, rw.net_kg
+      -- p.name stays leading so products[]' own order is unchanged; pg.name
+      -- (not pg.id) orders grades WITHIN a product, because grades[] exists
+      -- to fill a human's picker, and ordering by uuid is arbitrary to one.
+      ORDER BY p.name, pg.name`,
     [shiftId],
   ) as Promise<GradeTotalsRow[]>;
 }
@@ -76,6 +81,15 @@ export async function gradeTotals(
  */
 export function weighedInFull(grades: Pick<GradeTotalsRow, 'reweigh_net_kg'>[]): boolean {
   return grades.every((g) => g.reweigh_net_kg !== null);
+}
+
+export interface ReconciliationGrade {
+  product_grade_id: string;
+  product_grade_name: string;
+  product_id: string;
+  product_name: string;
+  intake_net_kg: string;
+  reweigh_net_kg: string;
 }
 
 export interface ReconciliationProduct {
@@ -103,6 +117,20 @@ export interface ReconciliationResponse {
    */
   items: ReweighItemResponse[];
   products: ReconciliationProduct[];
+  /**
+   * ONE ROW PER GRADE THE SHIFT ACCEPTED — the picker on §8.1's screen.
+   *
+   * The API refuses a grade this shift did not accept (`GRADE_NOT_ACCEPTED`),
+   * so the picker has to promise exactly that set, from exactly this query:
+   * a list assembled anywhere else drifts from the refusal it is meant to
+   * prevent. `gradeTotals` already computes these rows and the product rollup
+   * below used to discard the grade identity; this keeps it.
+   *
+   * `reweigh_net_kg` is '0.00', never null: «не перезважено» is a PRODUCT
+   * state (§3.15) and it lives on `products[]`. A second, weaker copy of that
+   * rule at grade level is how the two screens drift apart.
+   */
+  grades: ReconciliationGrade[];
 }
 
 /**
@@ -128,6 +156,7 @@ export class ReweighReconciliationService {
   async forShift(
     _actor: AuthenticatedUser,
     shiftId: string,
+    includeVoided = false,
   ): Promise<ReconciliationResponse> {
     const shift = await this.shifts.findOneRaw(shiftId);
     if (!shift) throw new NotFoundException('Shift not found');
@@ -141,11 +170,30 @@ export class ReweighReconciliationService {
     // than an error. `created_at` DESC is §5.3's «newest first»;
     // `item_order` breaks the tie for two lines saved in the same
     // transaction, which `created_at` alone cannot.
+    //
+    // §8.7's storno leaves the row: «документ НЕ зникає». Filtering voided
+    // lines out of `items[]` made that promise false on screen — the line
+    // the owner had just voided vanished on the next refetch, taking its
+    // reason and its author with it. The flag governs THIS LIST ONLY:
+    // `products[]` comes from `gradeTotals`, whose own SQL filters
+    // `ri.voided_at IS NULL`, so a voided line can never be counted
+    // whatever is passed here.
     const items = await this.dataSource.getRepository(ReweighItem).find({
-      where: { reweigh: { shift_id: shiftId }, voided_at: IsNull() },
+      where: includeVoided
+        ? { reweigh: { shift_id: shiftId } }
+        : { reweigh: { shift_id: shiftId }, voided_at: IsNull() },
       relations: { product_grade: { product: true }, tare: { tare_type: true } },
       order: { created_at: 'DESC', item_order: 'DESC' },
     });
+
+    const grades: ReconciliationGrade[] = rows.map((r) => ({
+      product_grade_id: r.product_grade_id,
+      product_grade_name: r.product_grade_name,
+      product_id: r.product_id,
+      product_name: r.product_name,
+      intake_net_kg: r.intake_net_kg,
+      reweigh_net_kg: r.reweigh_net_kg ?? '0.00',
+    }));
 
     const byProduct = new Map<string, GradeTotalsRow[]>();
     for (const row of rows) {
@@ -155,18 +203,18 @@ export class ReweighReconciliationService {
     }
 
     const products: ReconciliationProduct[] = [];
-    for (const [productId, grades] of byProduct) {
-      const intakeNet = sum(grades.map((g) => g.intake_net_kg));
-      const reweighNet = sum(grades.map((g) => g.reweigh_net_kg ?? '0.00'));
+    for (const [productId, productGrades] of byProduct) {
+      const intakeNet = sum(productGrades.map((g) => g.intake_net_kg));
+      const reweighNet = sum(productGrades.map((g) => g.reweigh_net_kg ?? '0.00'));
 
       // §3.15 — one unweighed grade makes the whole product «не перезважено»,
       // because the shortfall on that grade would otherwise read as real.
-      const complete = weighedInFull(grades);
+      const complete = weighedInFull(productGrades);
 
       if (!complete || open) {
         products.push({
           product_id: productId,
-          product_name: grades[0].product_name,
+          product_name: productGrades[0].product_name,
           intake_net_kg: intakeNet,
           reweigh_net_kg: reweighNet,
           state: complete ? 'weighed' : 'not_reweighed',
@@ -178,7 +226,7 @@ export class ReweighReconciliationService {
 
       // §3.6 — per GRADE, at the weighted average actually accrued (bonuses
       // included, because it is already paid), then summed for display.
-      const amounts = grades.map((g) => {
+      const amounts = productGrades.map((g) => {
         const missing = sub(g.intake_net_kg, g.reweigh_net_kg as string);
         if (isZero(g.intake_net_kg)) return '0.00';
         return mul(missing, div(g.intake_amount, g.intake_net_kg));
@@ -186,7 +234,7 @@ export class ReweighReconciliationService {
 
       products.push({
         product_id: productId,
-        product_name: grades[0].product_name,
+        product_name: productGrades[0].product_name,
         intake_net_kg: intakeNet,
         reweigh_net_kg: reweighNet,
         state: 'weighed',
@@ -201,6 +249,7 @@ export class ReweighReconciliationService {
       accepted_anything: rows.length > 0,
       items: items.map(toReweighItemResponse),
       products,
+      grades,
     };
   }
 }
