@@ -113,7 +113,7 @@ describe('intake item names', () => {
       bonus: '0.00',
       amount: '10080.00',
       tare: [],
-      grade: { name: 'Альба', product: { name: 'Полуниця' } },
+      product_grade: { name: 'Альба', product: { name: 'Полуниця' } },
     } as unknown as IntakeItem;
 
     expect(toIntakeItemResponse(item)).toMatchObject({
@@ -158,8 +158,8 @@ export interface IntakeItemResponse {
 and in `toIntakeItemResponse`, after `product_grade_id`:
 
 ```ts
-    product_name: item.grade?.product?.name ?? '',
-    grade_name: item.grade?.name ?? '',
+    product_name: item.product_grade?.product?.name ?? '',
+    grade_name: item.product_grade?.name ?? '',
 ```
 
 - [ ] **Step 8: Extend `toIntakeResponse` to carry optional items**
@@ -207,7 +207,7 @@ In `backend/src/intakes/intakes.service.ts`, `findOne`'s item load (around line 
 ```ts
     const items = await m.find(IntakeItem, {
       where: { intake_id: intake.id },
-      relations: { tare: true, grade: { product: true } },
+      relations: { tare: true, product_grade: { product: true } },
     });
 ```
 
@@ -222,7 +222,7 @@ In `list`, after the existing `qb.take(query.limit);` block, nest items only whe
     if (query.expand === 'items' && entities.length > 0) {
       const lines = await this.dataSource.manager.find(IntakeItem, {
         where: { intake_id: In(entities.map((i) => i.id)) },
-        relations: { tare: true, grade: { product: true } },
+        relations: { tare: true, product_grade: { product: true } },
       });
       for (const line of lines) {
         const bucket = itemsByIntake.get(line.intake_id);
@@ -703,12 +703,22 @@ In `SupplierTimeline.tsx`, inside the receipt branch, beneath the existing row c
   {t('supplierCard.line.weights', {
     gross: formatKg(item.gross_kg, locale),
     tare: formatKg(item.tare_weight_kg, locale),
-    price: formatUah(add(item.price, item.bonus), locale),
+    price: formatDecimal(add(item.price, item.bonus), locale),
   })}
 </span>
 ```
 
-`add` comes from `@/shared/lib/money` — the eslint rule in this module bans bare `+` on money. Use the project's existing kilogram formatter; find it with `grep -rn "formatKg" frontend/src/shared/lib/`, and if there is none, format through the same helper the reception screen already uses rather than adding a second one.
+All three helpers come from `@/shared/lib/money` (`format.ts:42-49`), and **which one goes where is not interchangeable — the units are already baked in:**
+
+| Helper | Renders | Use it for |
+|---|---|---|
+| `formatKg('84.00')` | `84,00 кг` | `net_kg` only — the «{товар} «{сорт}» · {кг}» line |
+| `formatDecimal('86.50')` | `86,50` | `gross_kg`, `tare_kg`, and the price — the key already supplies «брутто», «тара» and «₴/кг» |
+| `formatUah('120.00')` | `120,00 ₴` | **not here** |
+
+`formatUah` on the price would render «120,00 ₴ ₴/кг», and `formatKg` on gross/tare would render «86,50 кг брутто», neither of which is what the mock shows.
+
+`add` comes from the same module — the eslint rule here bans a bare `+` on money.
 
 Keep the row a single clickable target — the lines are inside the existing button, not siblings of it, so clicking anywhere still opens the receipt sheet.
 
@@ -803,6 +813,9 @@ git commit -m "feat(suppliers): the card explains itself without a click (#148, 
 ```bash
 cd backend  && npm test && npm run test:db && npm run lint
 cd ../frontend && npm test && npm run lint && npm run build && rm -rf dist
+cd .. && npm run verify:full
 ```
 
-All four must be green before the branch is offered for review. The pre-push hook runs `verify --tier full` and will refuse the push otherwise.
+`verify:full`, not `verify` — the repo's own rule (root `CLAUDE.md` § Verification): money code's proof lives against a real Postgres, and the fast tier cannot see it. Task 2 rewrites the debt SQL, so this branch is money code by that definition.
+
+**Report skips aloud.** A `SKIPPED` row is a row nobody ran — «the full tier is green, `test:ci-scripts` skipped, no jq on this machine» is the honest form; «all green» is not. And never widen a baseline or relax a rule to turn a row green: the ratchet turns one way.
