@@ -6,11 +6,11 @@ import { LedgerRow } from '@/shared/ui/ledger-row';
 import { Badge } from '@/shared/ui/badge';
 import { Button } from '@/shared/ui/button';
 import { Spinner } from '@/shared/ui/spinner';
-import { formatUah, isZero } from '@/shared/lib/money';
+import { formatUah } from '@/shared/lib/money';
 import { formatTime } from '@/shared/lib/date';
 import type { Shift } from '@/entities/shift';
 import type { CashCount } from '@/entities/cash-count';
-import { RecountDrawerDialog } from '@/features/count-shift';
+import { RecountDrawerDialog, discrepancyTone } from '@/features/count-shift';
 
 /**
  * The four action states (R4), in the order the mock lists them. Computed
@@ -37,13 +37,13 @@ function panelActionState(shift: Shift | null, isToday: boolean): PanelActionSta
 
 function DiscrepancyPill({ discrepancy }: { discrepancy: string }) {
   const { t } = useTranslation();
-  const settled = isZero(discrepancy);
+  const tone = discrepancyTone(discrepancy);
   return (
     <Badge
       variant="outline"
-      className={settled ? 'border-leaf/40 text-leaf' : 'border-destructive/40 text-destructive'}
+      className={tone === 'leaf' ? 'border-leaf/40 text-leaf' : 'border-destructive/40 text-destructive'}
     >
-      {settled ? <CheckCircle2 aria-hidden="true" /> : <TriangleAlert aria-hidden="true" />}
+      {tone === 'leaf' ? <CheckCircle2 aria-hidden="true" /> : <TriangleAlert aria-hidden="true" />}
       {t('pointCash.panel.discrepancy')}
     </Badge>
   );
@@ -72,6 +72,7 @@ function DiscrepancyPill({ discrepancy }: { discrepancy: string }) {
 export function ShiftCountPanel({
   shift,
   isShiftLoading,
+  isShiftError,
   counts,
   isOperator,
   isToday,
@@ -80,6 +81,17 @@ export function ShiftCountPanel({
 }: {
   shift: Shift | null;
   isShiftLoading: boolean;
+  /**
+   * `shift.isError || shiftCashCounts.isError` — a FAILED read is not «no
+   * shift». Both reads settle to `data: undefined` on failure, which the
+   * page turns into `shift ?? null` / an empty `counts` array — exactly the
+   * shape a genuinely shift-less day has. Without this flag the panel would
+   * silently offer an operator «Відкрити зміну» over a shift it never
+   * actually confirmed doesn't exist (the same failure mode `DayPage`'s own
+   * `isError` guards against, and `IncomingTransfers`'s doc comment names
+   * directly: "A FAILED READ IS NOT «NOTHING IN TRANSIT»").
+   */
+  isShiftError: boolean;
   counts: CashCount[];
   isOperator: boolean;
   isToday: boolean;
@@ -152,6 +164,13 @@ export function ShiftCountPanel({
         <div className="flex justify-center py-6">
           <Spinner />
         </div>
+      ) : isShiftError ? (
+        // No shift line, no midday list, no actions — none of those claims
+        // ("no shift today", "you've never recounted") are ones a failed
+        // read can honestly make.
+        <p role="alert" className="text-sm text-destructive">
+          {t('pointCash.shiftPanel.readFailed')}
+        </p>
       ) : (
         <>
           {shift && (shift.status === 'open' || shift.status === 'closed') ? (
@@ -202,8 +221,12 @@ export function ShiftCountPanel({
                       {t('pointCash.panel.recountAt', { time: formatTime(c.counted_at, locale) })}
                     </span>
                     <span aria-hidden="true">·</span>
-                    <span className={isZero(c.discrepancy) ? 'text-leaf' : 'text-destructive'}>
-                      {isZero(c.discrepancy)
+                    <span
+                      className={
+                        discrepancyTone(c.discrepancy) === 'leaf' ? 'text-leaf' : 'text-destructive'
+                      }
+                    >
+                      {discrepancyTone(c.discrepancy) === 'leaf'
                         ? t('pointCash.panel.matched')
                         : t('pointCash.panel.mismatched')}
                     </span>

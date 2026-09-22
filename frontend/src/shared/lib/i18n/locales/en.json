@@ -550,17 +550,19 @@
     "body": "Count the cash in the drawer and enter the amount. What it should be stays hidden until you enter it — otherwise this would not be a recount.",
     "amount": "How much is in the drawer, ₴",
     "submit": "Recorded the count",
-    "done": "Done",
     "result": {
-      "expected": "Expected",
-      "counted": "Counted",
-      "discrepancy": "Discrepancy",
       "note": "This figure cannot be changed in the app. Call the base — the owner will find where it went off."
     },
     "errors": {
       "amount": "Enter an amount greater than zero — and only while the shift is open: a closed shift takes no recount.",
       "failed": "Could not record the recount"
     }
+  },
+  "countResult": {
+    "expected": "Expected",
+    "counted": "Counted",
+    "discrepancy": "Discrepancy",
+    "done": "Done"
   },
   "pointCash": {
     "eyebrow": "{{point}} · {{date}}, {{weekday}}",
@@ -665,12 +667,12 @@
       "footnote": "The drawer can be recounted as many times a day as needed — every recount stays its own record and corrects nothing."
     },
     "result": {
-      "counted": "Counted",
       "opened": "Shift opened",
-      "discrepancy": "Discrepancy",
       "closedSettled": "Shift closed. The day matched.",
-      "closedDiscrepancy": "Shift closed. Discrepancy {{amount}} — the owner will see it on their own list.",
-      "done": "Done"
+      "closedDiscrepancy": "Shift closed. Discrepancy {{amount}} — the owner will see it on their own list."
+    },
+    "shiftPanel": {
+      "readFailed": "The shift could not be read — reload the page"
     },
     "target": {
       "set": "Assign a target",

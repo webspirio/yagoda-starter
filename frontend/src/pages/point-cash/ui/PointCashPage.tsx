@@ -8,7 +8,7 @@ import { EmptyState } from '@/shared/ui/empty-state';
 import { Spinner } from '@/shared/ui/spinner';
 import { isTruncated } from '@/shared/api';
 import { useUrlParam } from '@/shared/lib/url-state';
-import { isNegative, formatUah, cmp } from '@/shared/lib/money';
+import { isNegative, formatUah, cmp, isZero } from '@/shared/lib/money';
 import { todayIso, addDaysIso, isRealIsoDate, formatLongDate, formatWeekday, formatShortDate } from '@/shared/lib/date';
 import { useMeQuery } from '@/entities/user';
 import { useWorkingPoint } from '@/features/point-scope';
@@ -20,13 +20,17 @@ import { useTransfersQuery } from '@/entities/transfer';
 import { useCashCountsQuery } from '@/entities/cash-count';
 import { useShiftOnDateQuery } from '@/entities/shift';
 import { SetTargetCashDialog } from '@/features/set-point-target';
-import { useOpenShiftMutation, useCloseShiftMutation, CountDrawerDialog } from '@/features/count-shift';
+import {
+  useOpenShiftMutation,
+  useCloseShiftMutation,
+  CountDrawerDialog,
+  CountResultView,
+} from '@/features/count-shift';
 import { CashLedger } from './CashLedger';
 import { CratesBookCard } from './CratesBookCard';
 import { IncomingTransfers } from './IncomingTransfers';
 import { CashCountHistory } from './CashCountHistory';
 import { ShiftCountPanel } from './ShiftCountPanel';
-import { CountResultView } from './CountResultView';
 
 /** What the shift-count dialog is open for: which verb, and — for a close —
  *  the shift it closes. Same shape `pages/day/ui/DayPage.tsx` keeps locally;
@@ -157,6 +161,13 @@ export function PointCashPage() {
   // rows stay THAT shift's, whatever `date` does later.
   const shift = useShiftOnDateQuery(pointId, date);
   const shiftCashCounts = useCashCountsQuery({ shiftId: shift.data?.id });
+  // A failed read is not «no shift» — both settle to `data: undefined`,
+  // which reads identically to a genuinely shift-less day unless the panel
+  // is told otherwise. Kept OUT of the page-wide `isError` below on purpose:
+  // the rest of the page (ledger, crates, transfers) is independent of
+  // whether this one section's read succeeded, so only `ShiftCountPanel`
+  // degrades — not the whole screen.
+  const isShiftError = shift.isError || shiftCashCounts.isError;
   const panelCounts = shiftCashCounts.data?.data ?? [];
   // §7.6 — the panel's own result-view lookup needs the SAME berry-only
   // narrowing `ShiftCountPanel` applies to its own copy of this array; kept
@@ -419,6 +430,7 @@ export function PointCashPage() {
             <ShiftCountPanel
               shift={shift.data ?? null}
               isShiftLoading={shift.isPending}
+              isShiftError={isShiftError}
               counts={panelCounts}
               isOperator={isOperator}
               isToday={isToday}
@@ -511,16 +523,32 @@ export function PointCashPage() {
         }}
       />
 
-      <CountResultView
-        // Waits for `resultRow`, not merely for `resultFor` — see this
-        // state's own doc comment above: the mutation's invalidation is what
-        // eventually lands the new row in `panelBerryCounts`, and the dialog
-        // has nothing honest to show before that happens.
-        open={resultFor !== null && resultRow !== null}
-        mode={resultFor}
-        row={resultRow}
-        onClose={() => setResultFor(null)}
-      />
+      {/* Mounted only once `resultRow` exists — see that state's own doc
+          comment above: the mutation's invalidation is what eventually lands
+          the new row in `panelBerryCounts`, and there is nothing honest to
+          show before that happens. `CountResultView` is the SAME component
+          `RecountDrawerDialog` (features/count-shift) renders for its own
+          result — a `pages/*` module reaching down into `features/*` is the
+          allowed direction, so this is the one place the two callers share it. */}
+      {resultFor !== null && resultRow !== null ? (
+        <CountResultView
+          open
+          title={
+            resultFor === 'open'
+              ? t('pointCash.result.opened')
+              : isZero(resultRow.discrepancy)
+                ? t('pointCash.result.closedSettled')
+                : t('pointCash.result.closedDiscrepancy', {
+                    amount: formatUah(resultRow.discrepancy, locale),
+                  })
+          }
+          counted={resultRow.counted_amount}
+          // Opening carries no discrepancy — §7.3, the first count IS the
+          // opening balance, nothing to compare it against yet.
+          discrepancy={resultFor === 'close' ? resultRow.discrepancy : null}
+          onClose={() => setResultFor(null)}
+        />
+      ) : null}
     </>
   );
 }

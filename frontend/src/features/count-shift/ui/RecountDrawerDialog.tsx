@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
-import { CheckCircle2, TriangleAlert } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -13,12 +12,11 @@ import {
 import { Field } from '@/shared/ui/field';
 import { TextInput } from '@/shared/ui/text-input';
 import { Button } from '@/shared/ui/button';
-import { Badge } from '@/shared/ui/badge';
-import { LedgerRow } from '@/shared/ui/ledger-row';
-import { amountRules, normalizeAmount, formatUah, isZero } from '@/shared/lib/money';
+import { amountRules, normalizeAmount, isZero } from '@/shared/lib/money';
 import { apiErrorToBanner } from '@/shared/lib/api-error';
 import type { CashCount } from '@/entities/cash-count';
 import { useRecountMutation } from '../api/recount';
+import { CountResultView } from './CountResultView';
 
 interface RecountFormValues {
   amount: string;
@@ -36,13 +34,21 @@ interface RecountFormValues {
  * нічого понад «записати підрахунок і показати, що повернулось», тож
  * підіймати цю логіку на рівень сторінки нема сенсу.
  *
- * Результат (`result`) і банер (`formError`) — внутрішній стан; викликач
- * скидає їх, ремонтуючи діалог через `key` на кожному новому відкритті —
- * той самий підхід, який уже застосовують виклики `CountDrawerDialog`.
+ * Two SEPARATE `Dialog`s, not one that swaps its body: the result is
+ * `CountResultView` — the SAME component `PointCashPage` renders for the
+ * open/close result (review round 1 folded what used to be two near-copies
+ * into one, feature-owned component; a `features/*` module cannot import
+ * from `pages/*`, so this is the one place both callers can share it from).
+ * The form dialog closes exactly when the result dialog opens
+ * (`open={open && result === null}` / `open={open && result !== null}`), so
+ * from the outside it still reads as one dialog changing its content.
+ *
+ * `result`/`formError` — internal state; the caller resets them by
+ * remounting this component via `key` on every new open, the same
+ * convention `CountDrawerDialog`'s own callers already follow.
  */
 export function RecountDrawerDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const { t, i18n } = useTranslation();
-  const locale = i18n.resolvedLanguage;
+  const { t } = useTranslation();
   const recount = useRecountMutation();
   const [formError, setFormError] = useState<string | null>(null);
   const [result, setResult] = useState<CashCount | null>(null);
@@ -73,59 +79,18 @@ export function RecountDrawerDialog({ open, onClose }: { open: boolean; onClose:
     onClose();
   };
 
-  const discrepancyTone = result && isZero(result.discrepancy) ? 'leaf' : 'destructive';
-
   return (
-    <Dialog open={open} onOpenChange={(next) => !next && handleClose()}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>{t('recount.title')}</DialogTitle>
-          {result === null ? <DialogDescription>{t('recount.body')}</DialogDescription> : null}
-        </DialogHeader>
+    <>
+      <Dialog
+        open={open && result === null}
+        onOpenChange={(next) => !next && handleClose()}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t('recount.title')}</DialogTitle>
+            <DialogDescription>{t('recount.body')}</DialogDescription>
+          </DialogHeader>
 
-        {result ? (
-          <>
-            <dl className="flex flex-col gap-1">
-              <LedgerRow
-                label={t('recount.result.expected')}
-                value={formatUah(result.expected_amount, locale)}
-              />
-              <LedgerRow
-                label={t('recount.result.counted')}
-                value={formatUah(result.counted_amount, locale)}
-                strong
-              />
-            </dl>
-            <div>
-              <Badge
-                variant="outline"
-                className={
-                  discrepancyTone === 'leaf'
-                    ? 'border-leaf/40 text-leaf'
-                    : 'border-destructive/40 text-destructive'
-                }
-              >
-                {discrepancyTone === 'leaf' ? (
-                  <CheckCircle2 aria-hidden="true" />
-                ) : (
-                  <TriangleAlert aria-hidden="true" />
-                )}
-                {t('recount.result.discrepancy')}
-              </Badge>
-            </div>
-            {/* §7.7 — a discrepancy never blocks anything; it only means this
-                figure cannot be edited here, and the owner sees it explained
-                on their own list, not that something needs fixing NOW. */}
-            {discrepancyTone === 'destructive' ? (
-              <p className="text-sm text-muted-foreground">{t('recount.result.note')}</p>
-            ) : null}
-            <DialogFooter>
-              <Button type="button" onClick={handleClose}>
-                {t('recount.done')}
-              </Button>
-            </DialogFooter>
-          </>
-        ) : (
           <form
             onSubmit={(event) => {
               // Cleared at the START of every attempt, same convention
@@ -169,8 +134,23 @@ export function RecountDrawerDialog({ open, onClose }: { open: boolean; onClose:
               </Button>
             </DialogFooter>
           </form>
-        )}
-      </DialogContent>
-    </Dialog>
+        </DialogContent>
+      </Dialog>
+
+      {result ? (
+        <CountResultView
+          open={open}
+          title={t('recount.title')}
+          expected={result.expected_amount}
+          counted={result.counted_amount}
+          discrepancy={result.discrepancy}
+          // §7.7 — a discrepancy never blocks anything; it only means this
+          // figure cannot be edited here, and the owner sees it explained on
+          // their own list, not that something needs fixing NOW.
+          note={!isZero(result.discrepancy) ? t('recount.result.note') : null}
+          onClose={handleClose}
+        />
+      ) : null}
+    </>
   );
 }

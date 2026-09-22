@@ -11,10 +11,17 @@ import { ShiftCountPanel } from './ShiftCountPanel';
 // its own full suite already (`RecountDrawerDialog.test.tsx`). This panel's
 // own job is only to open/close it, which a stub with the same `open` prop
 // proves just as well.
-vi.mock('@/features/count-shift', () => ({
-  RecountDrawerDialog: ({ open }: { open: boolean }) =>
-    open ? <div role="dialog">Recount dialog</div> : null,
-}));
+vi.mock('@/features/count-shift', async (importOriginal) => {
+  // `discrepancyTone` is the REAL feature export — this panel's own pill and
+  // midday rows call it directly, and stubbing it away would just be
+  // re-implementing it a second time in this file.
+  const actual = await importOriginal<typeof import('@/features/count-shift')>();
+  return {
+    ...actual,
+    RecountDrawerDialog: ({ open }: { open: boolean }) =>
+      open ? <div role="dialog">Recount dialog</div> : null,
+  };
+});
 
 const shift = (over: Partial<Shift> = {}): Shift => ({
   id: 's1',
@@ -61,6 +68,7 @@ describe('ShiftCountPanel — the shift line and names', () => {
       <ShiftCountPanel
         shift={shift({ status: 'open' })}
         isShiftLoading={false}
+        isShiftError={false}
         counts={[]}
         isOperator={false}
         isToday
@@ -83,6 +91,7 @@ describe('ShiftCountPanel — the shift line and names', () => {
           closed_by_name: 'Petro',
         })}
         isShiftLoading={false}
+        isShiftError={false}
         counts={[]}
         isOperator={false}
         isToday
@@ -100,6 +109,7 @@ describe('ShiftCountPanel — the shift line and names', () => {
       <ShiftCountPanel
         shift={shift({ status: 'closed', closed_by_name: 'Petro' })}
         isShiftLoading={false}
+        isShiftError={false}
         counts={[
           count({ kind: 'opening', counted_amount: '1000.00' }),
           count({ id: 'c2', kind: 'closing', counted_amount: '1450.00', discrepancy: '0.00' }),
@@ -122,6 +132,7 @@ describe('ShiftCountPanel — the shift line and names', () => {
       <ShiftCountPanel
         shift={shift({ status: 'open' })}
         isShiftLoading={false}
+        isShiftError={false}
         counts={[count({ kind: 'opening' })]}
         isOperator={false}
         isToday
@@ -139,6 +150,7 @@ describe('ShiftCountPanel — the shift line and names', () => {
       <ShiftCountPanel
         shift={shift({ status: 'closed', closed_by_name: 'Petro' })}
         isShiftLoading={false}
+        isShiftError={false}
         counts={[count({ kind: 'closing', discrepancy: '0.00' })]}
         isOperator={false}
         isToday={false}
@@ -155,6 +167,7 @@ describe('ShiftCountPanel — the shift line and names', () => {
       <ShiftCountPanel
         shift={shift({ status: 'closed', closed_by_name: 'Petro' })}
         isShiftLoading={false}
+        isShiftError={false}
         counts={[count({ kind: 'closing', discrepancy: '-25.00' })]}
         isOperator={false}
         isToday={false}
@@ -171,6 +184,7 @@ describe('ShiftCountPanel — the shift line and names', () => {
       <ShiftCountPanel
         shift={shift({ status: 'closed', closed_by_name: 'Petro' })}
         isShiftLoading={false}
+        isShiftError={false}
         counts={[]}
         isOperator={false}
         isToday={false}
@@ -191,6 +205,7 @@ describe('ShiftCountPanel — the shift line and names', () => {
           explanation: 'Double-paid a payout',
         })}
         isShiftLoading={false}
+        isShiftError={false}
         counts={[]}
         isOperator={false}
         isToday={false}
@@ -208,6 +223,7 @@ describe('ShiftCountPanel — the shift line and names', () => {
       <ShiftCountPanel
         shift={null}
         isShiftLoading={false}
+        isShiftError={false}
         counts={[]}
         isOperator={false}
         isToday
@@ -225,6 +241,7 @@ describe('ShiftCountPanel — the shift line and names', () => {
       <ShiftCountPanel
         shift={null}
         isShiftLoading
+        isShiftError={false}
         counts={[]}
         isOperator
         isToday
@@ -239,12 +256,101 @@ describe('ShiftCountPanel — the shift line and names', () => {
   });
 });
 
+describe('ShiftCountPanel — a failed shift/counts read is not «no shift»', () => {
+  it('shows the read-failed line to an operator, today, instead of offering to open a shift', () => {
+    render(
+      <ShiftCountPanel
+        shift={null}
+        isShiftLoading={false}
+        isShiftError
+        counts={[]}
+        isOperator
+        isToday
+        onOpenShift={noop}
+        onCloseShift={noop}
+      />,
+    );
+
+    expect(
+      screen.getByRole('alert'),
+    ).toHaveTextContent('The shift could not be read — reload the page');
+    expect(screen.queryByRole('button', { name: 'Open shift' })).toBeNull();
+    expect(screen.queryByRole('button', { name: /Recount the drawer/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Close shift' })).toBeNull();
+  });
+
+  it('shows the same read-failed line to an owner — no action to offer either way', () => {
+    render(
+      <ShiftCountPanel
+        shift={null}
+        isShiftLoading={false}
+        isShiftError
+        counts={[]}
+        isOperator={false}
+        isToday
+        onOpenShift={noop}
+        onCloseShift={noop}
+      />,
+    );
+
+    expect(
+      screen.getByRole('alert'),
+    ).toHaveTextContent('The shift could not be read — reload the page');
+    expect(screen.queryByRole('button')).toBeNull();
+  });
+
+  it('shows the failure even when a stale shift/counts value is still sitting in props', () => {
+    // `isShiftError` is the source of truth, not whatever `shift`/`counts`
+    // happen to carry from before the read failed (TanStack Query keeps the
+    // last-good `data` around during a failed refetch in some shapes) — the
+    // panel must not quietly fall back to showing that stale state as current.
+    render(
+      <ShiftCountPanel
+        shift={shift({ status: 'open' })}
+        isShiftLoading={false}
+        isShiftError
+        counts={[count({ kind: 'opening' })]}
+        isOperator
+        isToday
+        onOpenShift={noop}
+        onCloseShift={noop}
+      />,
+    );
+
+    expect(
+      screen.getByRole('alert'),
+    ).toHaveTextContent('The shift could not be read — reload the page');
+    expect(screen.queryByText('Shift open')).toBeNull();
+    expect(screen.queryByText('Counted this morning')).toBeNull();
+    expect(screen.queryByRole('button')).toBeNull();
+  });
+
+  it('the loading state still wins over the error state (mutually exclusive in practice, but loading must not be masked)', () => {
+    render(
+      <ShiftCountPanel
+        shift={null}
+        isShiftLoading
+        isShiftError
+        counts={[]}
+        isOperator
+        isToday
+        onOpenShift={noop}
+        onCloseShift={noop}
+      />,
+    );
+
+    expect(screen.getByRole('progressbar')).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+});
+
 describe('ShiftCountPanel — the day’s recounts', () => {
   it('says the drawer was not recounted today when the midday list is empty', () => {
     render(
       <ShiftCountPanel
         shift={shift()}
         isShiftLoading={false}
+        isShiftError={false}
         counts={[]}
         isOperator={false}
         isToday
@@ -262,6 +368,7 @@ describe('ShiftCountPanel — the day’s recounts', () => {
       <ShiftCountPanel
         shift={shift()}
         isShiftLoading={false}
+        isShiftError={false}
         counts={[
           count({
             id: 'm1',
@@ -291,6 +398,7 @@ describe('ShiftCountPanel — the day’s recounts', () => {
       <ShiftCountPanel
         shift={shift()}
         isShiftLoading={false}
+        isShiftError={false}
         counts={[count({ id: 'm1', kind: 'midday', discrepancy: '-15.00' })]}
         isOperator={false}
         isToday
@@ -309,6 +417,7 @@ describe('ShiftCountPanel — the day’s recounts', () => {
       <ShiftCountPanel
         shift={shift()}
         isShiftLoading={false}
+        isShiftError={false}
         counts={[
           count({ id: 'm2', kind: 'midday', counted_at: '2026-09-22T14:00:00.000Z' }),
           count({ id: 'm1', kind: 'midday', counted_at: '2026-09-22T09:00:00.000Z' }),
@@ -332,6 +441,7 @@ describe('ShiftCountPanel — the four action states, per role', () => {
       <ShiftCountPanel
         shift={shift({ status: 'open' })}
         isShiftLoading={false}
+        isShiftError={false}
         counts={[]}
         isOperator
         isToday
@@ -349,6 +459,7 @@ describe('ShiftCountPanel — the four action states, per role', () => {
       <ShiftCountPanel
         shift={shift({ status: 'open' })}
         isShiftLoading={false}
+        isShiftError={false}
         counts={[]}
         isOperator={false}
         isToday
@@ -366,6 +477,7 @@ describe('ShiftCountPanel — the four action states, per role', () => {
       <ShiftCountPanel
         shift={shift({ status: 'closed', closed_by_name: 'Petro' })}
         isShiftLoading={false}
+        isShiftError={false}
         counts={[]}
         isOperator
         isToday={false}
@@ -387,6 +499,7 @@ describe('ShiftCountPanel — the four action states, per role', () => {
       <ShiftCountPanel
         shift={shift({ status: 'closed', closed_by_name: 'Petro' })}
         isShiftLoading={false}
+        isShiftError={false}
         counts={[]}
         isOperator={false}
         isToday={false}
@@ -407,6 +520,7 @@ describe('ShiftCountPanel — the four action states, per role', () => {
       <ShiftCountPanel
         shift={null}
         isShiftLoading={false}
+        isShiftError={false}
         counts={[]}
         isOperator
         isToday
@@ -424,6 +538,7 @@ describe('ShiftCountPanel — the four action states, per role', () => {
       <ShiftCountPanel
         shift={null}
         isShiftLoading={false}
+        isShiftError={false}
         counts={[]}
         isOperator={false}
         isToday
@@ -441,6 +556,7 @@ describe('ShiftCountPanel — the four action states, per role', () => {
       <ShiftCountPanel
         shift={null}
         isShiftLoading={false}
+        isShiftError={false}
         counts={[]}
         isOperator
         isToday={false}
@@ -460,6 +576,7 @@ describe('ShiftCountPanel — the four action states, per role', () => {
       <ShiftCountPanel
         shift={null}
         isShiftLoading={false}
+        isShiftError={false}
         counts={[]}
         isOperator={false}
         isToday={false}
@@ -480,6 +597,7 @@ describe('ShiftCountPanel — the four action states, per role', () => {
       <ShiftCountPanel
         shift={null}
         isShiftLoading={false}
+        isShiftError={false}
         counts={[]}
         isOperator={false}
         isToday={false}
@@ -503,6 +621,7 @@ describe('ShiftCountPanel — wiring the actions', () => {
       <ShiftCountPanel
         shift={shift({ status: 'open' })}
         isShiftLoading={false}
+        isShiftError={false}
         counts={[]}
         isOperator
         isToday
@@ -523,6 +642,7 @@ describe('ShiftCountPanel — wiring the actions', () => {
       <ShiftCountPanel
         shift={shift({ id: 's7', status: 'open' })}
         isShiftLoading={false}
+        isShiftError={false}
         counts={[]}
         isOperator
         isToday
@@ -542,6 +662,7 @@ describe('ShiftCountPanel — wiring the actions', () => {
       <ShiftCountPanel
         shift={null}
         isShiftLoading={false}
+        isShiftError={false}
         counts={[]}
         isOperator
         isToday
@@ -559,6 +680,7 @@ describe('ShiftCountPanel — wiring the actions', () => {
       <ShiftCountPanel
         shift={shift({ status: 'closed', closed_by_name: 'Petro', explanation: 'Recounted twice' })}
         isShiftLoading={false}
+        isShiftError={false}
         counts={[
           count({ id: 'op', kind: 'opening' }),
           count({ id: 'md', kind: 'midday', discrepancy: '-5.00' }),
@@ -576,6 +698,7 @@ describe('ShiftCountPanel — wiring the actions', () => {
       <ShiftCountPanel
         shift={shift({ status: 'closed', closed_by_name: 'Petro', explanation: 'Recounted twice' })}
         isShiftLoading={false}
+        isShiftError={false}
         counts={[
           count({ id: 'op', kind: 'opening' }),
           count({ id: 'md', kind: 'midday', discrepancy: '-5.00' }),

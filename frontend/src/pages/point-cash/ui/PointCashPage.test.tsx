@@ -84,29 +84,39 @@ vi.mock('@/entities/shift', () => ({
 // `CountDrawerDialog` stub exposes a «Confirm» button that calls `onConfirm`
 // with a fixed amount, so a test can drive this page's OWN result-view
 // wiring (`resultFor`) without re-testing the dialog's own form.
-vi.mock('@/features/count-shift', () => ({
-  useOpenShiftMutation: () => ({ mutateAsync: openShiftMock, isPending: false }),
-  useCloseShiftMutation: () => ({ mutateAsync: closeShiftMock, isPending: false }),
-  CountDrawerDialog: ({
-    open,
-    mode,
-    onConfirm,
-  }: {
-    open: boolean;
-    mode: 'open' | 'close';
-    onConfirm: (amount: string, broken: number | null) => Promise<unknown>;
-  }) =>
-    open ? (
-      <div role="dialog">
-        Count dialog — {mode}
-        <button onClick={() => onConfirm('1000.00', mode === 'close' ? 0 : null)}>
-          Confirm {mode}
-        </button>
-      </div>
-    ) : null,
-  RecountDrawerDialog: ({ open }: { open: boolean }) =>
-    open ? <div role="dialog">Recount dialog</div> : null,
-}));
+vi.mock('@/features/count-shift', async (importOriginal) => {
+  // `CountResultView` and `discrepancyTone` are the REAL feature exports —
+  // this page renders the actual shared result view (its own suite lives in
+  // `features/count-shift/ui/CountResultView.test.tsx`), and
+  // `ShiftCountPanel`'s own discrepancy pill needs the real tone function.
+  // Only the mutations and the two dialogs that need a `QueryClient` this
+  // suite has no other reason to wire up are stubbed.
+  const actual = await importOriginal<typeof import('@/features/count-shift')>();
+  return {
+    ...actual,
+    useOpenShiftMutation: () => ({ mutateAsync: openShiftMock, isPending: false }),
+    useCloseShiftMutation: () => ({ mutateAsync: closeShiftMock, isPending: false }),
+    CountDrawerDialog: ({
+      open,
+      mode,
+      onConfirm,
+    }: {
+      open: boolean;
+      mode: 'open' | 'close';
+      onConfirm: (amount: string, broken: number | null) => Promise<unknown>;
+    }) =>
+      open ? (
+        <div role="dialog">
+          Count dialog — {mode}
+          <button onClick={() => onConfirm('1000.00', mode === 'close' ? 0 : null)}>
+            Confirm {mode}
+          </button>
+        </div>
+      ) : null,
+    RecountDrawerDialog: ({ open }: { open: boolean }) =>
+      open ? <div role="dialog">Recount dialog</div> : null,
+  };
+});
 
 // «Прийняв»/«Не сходиться» pull in `useAcceptTransferMutation`, which calls
 // `useQueryClient()` for real — `IncomingTransfers` already has its own full
@@ -958,5 +968,55 @@ describe('PointCashPage — R4: the open/close result view', () => {
 
     const title = `Shift closed. Discrepancy ${formatUah('-50.00', 'en')} — the owner will see it on their own list.`;
     expect(await screen.findByRole('heading', { name: title })).toBeInTheDocument();
+  });
+});
+
+describe('PointCashPage — R4 review fix: a failed shift/counts read reaches the panel as an error, not «no shift»', () => {
+  it('tells ShiftCountPanel the shift read failed — no «Open shift» offered over an unconfirmed absence', () => {
+    shiftMock.mockReturnValue({ data: undefined, isPending: false, isError: true });
+
+    renderPointCash();
+
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'The shift could not be read — reload the page',
+    );
+    expect(screen.queryByRole('button', { name: 'Open shift' })).toBeNull();
+  });
+
+  it('tells ShiftCountPanel the shift-scoped counts read failed too', () => {
+    shiftMock.mockReturnValue({
+      data: shift({ id: 's5', status: 'open' }),
+      isPending: false,
+      isError: false,
+    });
+    cashCountsMock.mockImplementation((filter: { shiftId?: string }) =>
+      'shiftId' in filter
+        ? { data: undefined, isPending: false, isError: true }
+        : list([cashCount()]),
+    );
+
+    renderPointCash();
+
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'The shift could not be read — reload the page',
+    );
+    expect(screen.queryByRole('button', { name: 'Close shift' })).toBeNull();
+  });
+
+  it('shows the same failure to an owner, who never had an action to lose', () => {
+    meMock.mockReturnValue({ data: OWNER });
+    pointScopeMock.mockReturnValue({
+      pointId: 'p1',
+      canPick: true,
+      setPointId: vi.fn(),
+      isLoading: false,
+    });
+    shiftMock.mockReturnValue({ data: undefined, isPending: false, isError: true });
+
+    renderPointCash();
+
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'The shift could not be read — reload the page',
+    );
   });
 });
