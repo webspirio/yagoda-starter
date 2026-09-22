@@ -10,7 +10,7 @@ import { EmptyState } from '@/shared/ui/empty-state';
 import { Spinner } from '@/shared/ui/spinner';
 import { isTruncated } from '@/shared/api';
 import { useUrlParam } from '@/shared/lib/url-state';
-import { isNegative, formatUah } from '@/shared/lib/money';
+import { isNegative, formatUah, cmp } from '@/shared/lib/money';
 import { todayIso, addDaysIso, isRealIsoDate, formatLongDate, formatWeekday, formatShortDate } from '@/shared/lib/date';
 import { useMeQuery } from '@/entities/user';
 import { useWorkingPoint } from '@/features/point-scope';
@@ -61,6 +61,8 @@ export function PointCashPage() {
   const { t, i18n } = useTranslation();
   const locale = i18n.language;
   const { data: me } = useMeQuery();
+  const isOperator = me?.role === 'point_operator';
+  const isOwner = me?.role === 'network_owner';
   const { pointId, canPick, setPointId } = useWorkingPoint();
   const { data: points } = usePointOptionsQuery();
   const [dateParam, setDateParam] = useUrlParam('date');
@@ -78,6 +80,20 @@ export function PointCashPage() {
     enabled: pointId !== null,
   });
   const pointRow = pointCash.data?.data[0] ?? null;
+
+  // OWNER-ONLY, AND ONLY FOR THE GROUPING — the unscoped `/point-cash` list
+  // (the same endpoint §7.10's network table reads), read once to split the
+  // owner's <select> into «З наділом» / «Без наділу». Never a source of
+  // figures: every stat on this page still comes from `pointRow` alone. Rules
+  // of Hooks forbid skipping this call for an operator, so it always mounts —
+  // `enabled: isOwner` is what keeps it from ever actually fetching for one.
+  const pointCashAll = usePointCashQuery({ enabled: isOwner });
+  const groupedPoints = pointCashAll.data
+    ? {
+        withTarget: pointCashAll.data.data.filter((row) => row.target_cash != null),
+        withoutTarget: pointCashAll.data.data.filter((row) => row.target_cash == null),
+      }
+    : null;
 
   // §7.9's cash counts as what was CREDITED (`resolved_cash ?? reported_cash
   // ?? cash`, `buildLedger`'s job), not what was SENT — `from`/`to` on
@@ -107,8 +123,6 @@ export function PointCashPage() {
   const [targetOpen, setTargetOpen] = useState(false);
   const [targetInstance, setTargetInstance] = useState(0);
 
-  const isOperator = me?.role === 'point_operator';
-  const isOwner = me?.role === 'network_owner';
   // A SETTLED READ WITH NO ROW MEANS THE POINT DOES NOT EXIST. The backend
   // selects `FROM collection_points WHERE ($1 IS NULL OR cp.id = $1)` with no
   // active-only filter, so a scoped read answers with this point's row or
@@ -168,6 +182,12 @@ export function PointCashPage() {
   // whose «—» would otherwise be a claim made on top of an error.
   const shownRow = isError ? null : pointRow;
   const shortfall = shownRow ? shortfallTone(shownRow.shortfall) : null;
+  // `shortfallTone` alone only tells amber (owed) from leaf (<= 0) — it does
+  // not say WHICH leaf reading this is, and «наділ на точці відновлено»
+  // (exactly 0) is a different claim from «у касі більше, ніж наділ» (below
+  // 0). The raw `cmp` against '0' is what tells those two apart; `null` means
+  // no target was ever assigned, same as `shortfallTone`'s own null case.
+  const shortfallCmp = shownRow?.shortfall == null ? null : cmp(shownRow.shortfall, '0');
   const stats: StatItem[] | undefined = shownRow
     ? [
         {
@@ -186,11 +206,13 @@ export function PointCashPage() {
           value: formatNullableUah(shownRow.shortfall, locale),
           tone: shortfall ?? undefined,
           hint:
-            shortfall === null
+            shortfallCmp === null
               ? t('pointCash.stats.shortfallUnset')
-              : shortfall === 'amber'
+              : shortfallCmp === 1
                 ? t('pointCash.stats.shortfallOwed')
-                : t('pointCash.stats.shortfallSettled'),
+                : shortfallCmp === -1
+                  ? t('pointCash.stats.shortfallOver')
+                  : t('pointCash.stats.shortfallSettled'),
         },
       ]
     : undefined;
@@ -205,11 +227,38 @@ export function PointCashPage() {
           className="w-48"
         >
           <option value="">{t('pointCash.pickPoint')}</option>
-          {(points ?? []).map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.name}
-            </option>
-          ))}
+          {groupedPoints ? (
+            <>
+              {/* R6 — the owner's select lists points with a target first, so
+                  a point still waiting on one does not compete for attention
+                  with the points the owner actually has to fund today. */}
+              <optgroup label={t('pointCash.pick.withTarget')}>
+                {groupedPoints.withTarget.map((p) => (
+                  <option key={p.collection_point_id} value={p.collection_point_id}>
+                    {p.name}
+                  </option>
+                ))}
+              </optgroup>
+              <optgroup label={t('pointCash.pick.withoutTarget')}>
+                {groupedPoints.withoutTarget.map((p) => (
+                  <option key={p.collection_point_id} value={p.collection_point_id}>
+                    {p.name}
+                  </option>
+                ))}
+              </optgroup>
+            </>
+          ) : (
+            // `pointCashAll` has not settled yet (or this render is not the
+            // owner's) — the flat, ungrouped `points` list is what the select
+            // showed before grouping existed, kept here as the one render
+            // that must never come up empty while the grouping read is on
+            // its way.
+            (points ?? []).map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))
+          )}
         </SelectField>
       ) : null}
       <DateStepper
@@ -301,7 +350,11 @@ export function PointCashPage() {
       <DashboardPage
         eyebrow={
           pointName
-            ? t('pointCash.eyebrow', { point: pointName, weekday: formatWeekday(date, locale) })
+            ? t('pointCash.eyebrow', {
+                point: pointName,
+                date: formatLongDate(date, locale),
+                weekday: formatWeekday(date, locale),
+              })
             : undefined
         }
         title={t('pointCash.title', { date: formatLongDate(date, locale) })}

@@ -546,23 +546,28 @@
     }
   },
   "pointCash": {
-    "eyebrow": "{{point}} · {{weekday}}",
+    "eyebrow": "{{point}} · {{date}}, {{weekday}}",
     "title": "Point cash — {{date}}",
-    "description": "How much cash the point should have on hand right now, and how far that is from its target. Berry cash and crate deposits share the same drawer but are counted separately.",
+    "description": "How much cash the point should have on hand right now, and how much is missing from its target. Berry cash and crate deposits are two separate books — neither borrows from the other.",
     "pickPoint": "Select a point",
     "today": "Today",
     "errors": {
       "pointMissing": "This point does not exist — pick another one"
     },
+    "pick": {
+      "withTarget": "With a target",
+      "withoutTarget": "No target"
+    },
     "stats": {
       "target": "Target",
-      "targetUnset": "No target assigned yet",
+      "targetUnset": "no target assigned to this point yet",
       "cash": "Berry cash",
       "cashHint": "cash available to pay for berries",
       "neverCounted": "Never counted yet: the first count when the shift opens sets the opening balance.",
       "shortfall": "Short of target",
-      "shortfallUnset": "No target to compare against",
+      "shortfallUnset": "no target to compare against",
       "shortfallOwed": "the base has not transferred it yet",
+      "shortfallOver": "there is more in the drawer than the target",
       "shortfallSettled": "the target is covered"
     },
     "ledger": {

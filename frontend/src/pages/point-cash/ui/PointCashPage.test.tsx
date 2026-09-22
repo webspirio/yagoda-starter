@@ -181,7 +181,14 @@ beforeEach(() => {
     isPending: false,
     isError: false,
   });
-  pointCashMock.mockReset().mockReturnValue(list([pointRow()]));
+  // The scoped read (carries `asOf`) answers with this point's row; the
+  // owner-only grouping read (Task 2 — carries neither `asOf` nor `pointId`)
+  // defaults to an empty page so it never bleeds a duplicate name into a
+  // test that is only pinning the scoped row's own figures. Tests that
+  // actually exercise the grouped `<select>` override this explicitly.
+  pointCashMock.mockReset().mockImplementation((opts: { asOf?: string } = {}) =>
+    'asOf' in opts ? list([pointRow()]) : list([]),
+  );
   intakesMock.mockReset().mockReturnValue(list([]));
   payoutsMock.mockReset().mockReturnValue(list([]));
   ledgerTransfersMock.mockReset().mockReturnValue(list([]));
@@ -327,6 +334,112 @@ describe('PointCashPage — honesty rule 3: null target/shortfall render «—»
   });
 });
 
+describe('PointCashPage — Task 2: header, hints and the amber cash tile', () => {
+  it('names the eyebrow «point · long date, weekday»', () => {
+    renderPointCash();
+    expect(screen.getByText('Shypynky · September 8, 2026, Tuesday')).toBeInTheDocument();
+  });
+
+  it('prints the mock’s description', () => {
+    renderPointCash();
+    expect(
+      screen.getByText(
+        'How much cash the point should have on hand right now, and how much is missing from its target. Berry cash and crate deposits are two separate books — neither borrows from the other.',
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('hints that this point has no target assigned yet', () => {
+    pointCashMock.mockReturnValue(list([pointRow({ target_cash: null })]));
+    renderPointCash();
+    expect(tile('Target')).toHaveTextContent('no target assigned to this point yet');
+  });
+
+  it('hints that a cash shortfall has nothing to compare against without a target', () => {
+    pointCashMock.mockReturnValue(list([pointRow({ shortfall: null })]));
+    renderPointCash();
+    expect(tile('Short of target')).toHaveTextContent('no target to compare against');
+  });
+
+  it('hints that the base has not transferred the shortfall yet (shortfall > 0)', () => {
+    pointCashMock.mockReturnValue(list([pointRow({ shortfall: '250.00' })]));
+    renderPointCash();
+    expect(tile('Short of target')).toHaveTextContent('the base has not transferred it yet');
+  });
+
+  // NEW branch (Task 2) — a negative shortfall means the drawer holds more
+  // than the target calls for, which reads differently from «settled at
+  // exactly zero» even though both get the leaf tone.
+  it('hints that the drawer holds more than the target when shortfall is negative', () => {
+    pointCashMock.mockReturnValue(list([pointRow({ shortfall: '-50.00' })]));
+    renderPointCash();
+    expect(tile('Short of target')).toHaveTextContent(
+      'there is more in the drawer than the target',
+    );
+  });
+
+  it('hints that the target is covered when shortfall is exactly zero', () => {
+    pointCashMock.mockReturnValue(list([pointRow({ shortfall: '0.00' })]));
+    renderPointCash();
+    expect(tile('Short of target')).toHaveTextContent('the target is covered');
+  });
+
+  it('tones the cash tile amber when the drawer reads negative', () => {
+    pointCashMock.mockReturnValue(list([pointRow({ cash: '-100.00' })]));
+    renderPointCash();
+    // «Berry cash» also labels the ledger's own total row (`CashLedger`), so
+    // `tile()`/`tileValue()` (built for a unique label) cannot be used here —
+    // filter to the match that actually sits inside a stat tile.
+    const cashTile = screen
+      .getAllByText('Berry cash')
+      .map((el) => el.closest('[data-slot="stat-tile"]'))
+      .find((el): el is HTMLElement => el !== null);
+    if (!cashTile) throw new Error('No stat tile labelled "Berry cash"');
+    expect(within(cashTile).getByText('−100.00 ₴').className).toContain('text-[var(--amber)]');
+  });
+});
+
+describe('PointCashPage — Task 2: the owner’s grouped point select', () => {
+  it('splits the owner’s select into «with a target» / «no target» optgroups', () => {
+    meMock.mockReturnValue({ data: OWNER });
+    pointScopeMock.mockReturnValue({
+      pointId: 'p1',
+      canPick: true,
+      setPointId: vi.fn(),
+      isLoading: false,
+    });
+    // Same mocked hook backs both the scoped row (carries `asOf`) and the
+    // owner-only unscoped grouping read (carries neither `asOf` nor
+    // `pointId`) — distinguish them by shape, the way `ReceptionPage.test.tsx`
+    // already does for a hook reused with two different filters.
+    pointCashMock.mockImplementation((opts: { asOf?: string }) =>
+      'asOf' in opts
+        ? list([pointRow()])
+        : list([
+            pointRow({ collection_point_id: 'p1', name: 'Shypynky', target_cash: '5000.00' }),
+            pointRow({ collection_point_id: 'p2', name: 'Haiove', target_cash: null }),
+          ]),
+    );
+
+    renderPointCash();
+
+    const select = screen.getByLabelText('Select a point');
+    const withTarget = select.querySelector('optgroup[label="With a target"]');
+    const withoutTarget = select.querySelector('optgroup[label="No target"]');
+    expect(withTarget).not.toBeNull();
+    expect(withoutTarget).not.toBeNull();
+    expect(within(withTarget as HTMLElement).getByText('Shypynky')).toBeInTheDocument();
+    expect(within(withoutTarget as HTMLElement).getByText('Haiove')).toBeInTheDocument();
+    // Never grouped into the wrong bucket.
+    expect(within(withTarget as HTMLElement).queryByText('Haiove')).toBeNull();
+  });
+
+  it('renders no select at all for an operator — grouping never reaches someone who cannot pick', () => {
+    renderPointCash();
+    expect(screen.queryByLabelText('Select a point')).toBeNull();
+  });
+});
+
 describe('PointCashPage — one scoped read, not the whole network', () => {
   it('asks for this point’s row only', () => {
     renderPointCash();
@@ -335,7 +448,11 @@ describe('PointCashPage — one scoped read, not the whole network', () => {
       pointId: 'p1',
       enabled: true,
     });
-    expect(pointCashMock).toHaveBeenCalledTimes(1);
+    // The owner-only grouping read (Task 2) stays MOUNTED but DISABLED for an
+    // operator — Rules of Hooks forbid skipping the call itself, so `enabled`
+    // is the only thing that keeps it from ever actually fetching here.
+    expect(pointCashMock).toHaveBeenCalledWith({ enabled: false });
+    expect(pointCashMock).toHaveBeenCalledTimes(2);
   });
 
   it('takes every figure from that one row — target, cash and shortfall alike', () => {
@@ -507,7 +624,14 @@ describe('PointCashPage — scope and failure states', () => {
       isPending: false,
       isError: false,
     });
-    pointCashMock.mockReturnValue(list([pointRow({ name: 'Fresh Row Name' })]));
+    // The unscoped grouping read (Task 2) must stay out of this: it is not
+    // under test here, and letting it echo the same row would put «Fresh Row
+    // Name» on screen twice (the eyebrow AND a `<select>` option), which
+    // breaks the single-match `getByText` below for a reason that has
+    // nothing to do with what this test is pinning.
+    pointCashMock.mockImplementation((opts: { asOf?: string }) =>
+      'asOf' in opts ? list([pointRow({ name: 'Fresh Row Name' })]) : list([]),
+    );
 
     renderPointCash();
 
