@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, within, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createMemoryRouter, RouterProvider } from 'react-router';
 import { expectNoAxeViolations } from '../../../test-axe';
@@ -1038,6 +1038,50 @@ describe('PointCashPage — R4: the open/close result view', () => {
 
     const title = `Shift closed. Discrepancy ${formatUah('-50.00', 'en')} — the owner will see it on their own list.`;
     expect(await screen.findByRole('heading', { name: title })).toBeInTheDocument();
+  });
+
+  it('does not surface a stale close result over another day’s shift after the date changes (minor 6)', async () => {
+    // `resultFor` used to be bare `'close'`, which outlived the shift it was
+    // about. The result dialog is modal (background inert, `pointer-events:
+    // none`) — no click could ever reach the date stepper behind it — so
+    // this drives the URL straight through the router, the same as the
+    // browser's own back button would, to prove the STATE survives a date
+    // change it should not: the new date's OWN shift (`s9`, a different id)
+    // must never be described by a result that was about `s5`.
+    const user = userEvent.setup();
+    shiftMock.mockImplementation((_pointId: string | null, date: string) =>
+      date === '2026-09-08'
+        ? { data: shift({ id: 's5', status: 'open' }), isPending: false, isError: false }
+        : {
+            data: shift({ id: 's9', status: 'closed', closed_by_name: 'Petro', business_date: date }),
+            isPending: false,
+            isError: false,
+          },
+    );
+    cashCountsMock.mockImplementation((filter: { shiftId?: string }) =>
+      'shiftId' in filter
+        ? list([
+            cashCount({ id: 'cl', kind: 'closing', counted_amount: '3000.00', discrepancy: '0.00' }),
+          ])
+        : list([cashCount()]),
+    );
+
+    const router = createMemoryRouter([{ path: '/point-cash', element: <PointCashPage /> }], {
+      initialEntries: ['/point-cash'],
+    });
+    render(<RouterProvider router={router} />);
+
+    await user.click(screen.getByRole('button', { name: 'Close shift' }));
+    await user.click(await screen.findByRole('button', { name: 'Confirm close' }));
+    expect(
+      await screen.findByRole('heading', { name: 'Shift closed. The day matched.' }),
+    ).toBeInTheDocument();
+
+    await router.navigate('/point-cash?date=2026-09-07');
+
+    await waitFor(() =>
+      expect(screen.queryByRole('heading', { name: 'Shift closed. The day matched.' })).toBeNull(),
+    );
   });
 });
 

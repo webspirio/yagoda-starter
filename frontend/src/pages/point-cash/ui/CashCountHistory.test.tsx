@@ -90,6 +90,20 @@ describe('CashCountHistory', () => {
     expect(screen.getByText('—')).toBeInTheDocument();
   });
 
+  it('shows «needs no explanation» for a closed midday recount with a real discrepancy — never «Matched»', () => {
+    // R2: a midday recount is a witness, never an incident — the backend
+    // never sets `is_open` for one even when the figure genuinely differs.
+    // Deciding the cell off `is_open` alone used to print «Matched» beside
+    // this row's own −50.00 ₴.
+    countsMock.mockReturnValue(
+      page([count({ kind: 'midday', discrepancy: '-50.00', is_open: false, explanation: null })]),
+    );
+    render(<CashCountHistory pointId="p1" isOwner={false} />);
+
+    expect(screen.getByText('needs no explanation')).toBeInTheDocument();
+    expect(screen.queryByText('Matched')).toBeNull();
+  });
+
   it('offers «Explain» only to the owner, only on an open discrepancy', () => {
     countsMock.mockReturnValue(page([count({ is_open: true, discrepancy: '-40.00' })]));
     const { rerender } = render(<CashCountHistory pointId="p1" isOwner={false} />);

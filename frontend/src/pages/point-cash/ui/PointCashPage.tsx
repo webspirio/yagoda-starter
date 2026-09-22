@@ -199,8 +199,24 @@ export function PointCashPage() {
   // is what `CountResultView` waits for (its own doc comment). No effect
   // needed: `resultFor` is set once, synchronously, in the confirm handler
   // below, and the row it names is whatever the counts query says right now.
-  const [resultFor, setResultFor] = useState<'open' | 'close' | null>(null);
-  const resultRow = resultFor === 'open' ? openingCountRow : resultFor === 'close' ? closingCountRow : null;
+  //
+  // `shiftId` (minor 6, review) — `resultFor` used to be bare
+  // `'open' | 'close' | null`, which outlives the shift it was about:
+  // changing the date after a close left `resultFor === 'close'` sitting in
+  // state, and the moment `closingCountRow` for the NEW date's shift
+  // happened to be non-null, the old result popped up over the wrong day.
+  // Naming the shift alongside the mode is what `resultRow` below checks
+  // against `shift.data?.id` — a stale `resultFor` from another day can
+  // never match the shift on screen now.
+  const [resultFor, setResultFor] = useState<{ mode: 'open' | 'close'; shiftId: string } | null>(
+    null,
+  );
+  const resultRow =
+    resultFor === null || resultFor.shiftId !== shift.data?.id
+      ? null
+      : resultFor.mode === 'open'
+        ? openingCountRow
+        : closingCountRow;
 
   const [showCountHistory, setShowCountHistory] = useState(false);
 
@@ -429,7 +445,13 @@ export function PointCashPage() {
             />
             <ShiftCountPanel
               shift={shift.data ?? null}
-              isShiftLoading={shift.isPending}
+              // `shift.isPending` alone hangs the spinner forever while
+              // `shiftCashCounts` sits DISABLED (no `shift.data?.id` yet) —
+              // a disabled query's own `isPending` never clears, it just
+              // never fetches. `isLoading` (`isPending && isFetching`) is
+              // `false` for a disabled query, so it only adds real wait
+              // time, never a phantom one.
+              isShiftLoading={shift.isPending || shiftCashCounts.isLoading}
               isShiftError={isShiftError}
               counts={panelCounts}
               isOperator={isOperator}
@@ -510,14 +532,17 @@ export function PointCashPage() {
             throw new Error('count dialog confirmed without a target');
           }
           if (countTarget.mode === 'open') {
-            await openShift.mutateAsync({ counted_amount });
-            setResultFor('open');
+            // The response NAMES the new shift — no need to wait on
+            // `shift.data?.id` catching up with its own refetch just to know
+            // which id `resultRow` should watch for.
+            const opened = await openShift.mutateAsync({ counted_amount });
+            setResultFor({ mode: 'open', shiftId: opened.id });
           } else {
             if (broken_crates === null) {
               throw new Error('close confirmed without a breakage count');
             }
             await closeShift.mutateAsync({ id: countTarget.shiftId, counted_amount, broken_crates });
-            setResultFor('close');
+            setResultFor({ mode: 'close', shiftId: countTarget.shiftId });
           }
           setCountTarget(null);
         }}
@@ -534,7 +559,7 @@ export function PointCashPage() {
         <CountResultView
           open
           title={
-            resultFor === 'open'
+            resultFor.mode === 'open'
               ? t('pointCash.result.opened')
               : isZero(resultRow.discrepancy)
                 ? t('pointCash.result.closedSettled')
@@ -545,7 +570,7 @@ export function PointCashPage() {
           counted={resultRow.counted_amount}
           // Opening carries no discrepancy — §7.3, the first count IS the
           // opening balance, nothing to compare it against yet.
-          discrepancy={resultFor === 'close' ? resultRow.discrepancy : null}
+          discrepancy={resultFor.mode === 'close' ? resultRow.discrepancy : null}
           onClose={() => setResultFor(null)}
         />
       ) : null}

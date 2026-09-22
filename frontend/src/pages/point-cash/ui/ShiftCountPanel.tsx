@@ -13,25 +13,37 @@ import type { CashCount } from '@/entities/cash-count';
 import { RecountDrawerDialog, discrepancyTone } from '@/features/count-shift';
 
 /**
- * The four action states (R4), in the order the mock lists them. Computed
- * once from `shift`/`isToday` rather than as four independent booleans, so
- * the panel can never show two of them at once — the OWNER never sees any of
- * them (`isOperator` gates the whole block, not each branch).
+ * The action states (R4), in the order the mock lists them. Computed once
+ * from `shift`/`isToday` rather than as independent booleans, so the panel
+ * can never show two of them at once — the OWNER never sees any of them
+ * (`isOperator` gates the whole block, not each branch).
  *
- *   - `openToday`  — an open shift, and it is today's: recount + close.
- *   - `closed`     — a closed shift, ANY date: the settled note (no button).
- *   - `noneToday`  — no shift at all, but the date on screen is today: open.
- *   - `other`      — everything else (no shift on a past date; an open shift
- *                    left over from a date that is no longer today — R4 only
- *                    promises live actions "today", so this bucket reads the
- *                    same generic note either way).
+ *   - `openToday`   — an open shift, and it is today's: recount + close.
+ *   - `closed`      — any shift whose `status !== 'open'`, ANY date: the
+ *                     settled note, no buttons. This covers the legacy
+ *                     `awaiting_explanation` value too — the 09.09 rule
+ *                     retired that branch (a discrepancy never blocks
+ *                     anything, `ShiftStatus`'s own doc comment), so any row
+ *                     still carrying it from before that decision reads
+ *                     exactly like `closed` rather than falling through to
+ *                     nothing.
+ *   - `noneToday`   — no shift at all, but the date on screen is today: open.
+ *   - `openPastDay` — an open shift left over from a date that is no longer
+ *                     today. R4 only promises live actions "today", so there
+ *                     is no button — but unlike `other` below, the shift
+ *                     itself IS real: its own line still renders, with a
+ *                     note that its actions live on its own day, not a
+ *                     generic "no shift" claim that would misdescribe it.
+ *   - `other`       — the genuine no-shift case on a date that is not today:
+ *                     nothing to attach a recount to.
  */
-type PanelActionState = 'openToday' | 'closed' | 'noneToday' | 'other';
+type PanelActionState = 'openToday' | 'closed' | 'noneToday' | 'openPastDay' | 'other';
 
 function panelActionState(shift: Shift | null, isToday: boolean): PanelActionState {
   if (isToday && shift?.status === 'open') return 'openToday';
-  if (shift?.status === 'closed') return 'closed';
+  if (shift && shift.status !== 'open') return 'closed';
   if (isToday && shift === null) return 'noneToday';
+  if (shift?.status === 'open') return 'openPastDay';
   return 'other';
 }
 
@@ -154,6 +166,8 @@ export function ShiftCountPanel({
         </Button>
         <p className="text-xs text-muted-foreground">{t('pointCash.panel.actions.openCaption')}</p>
       </div>
+    ) : state === 'openPastDay' ? (
+      <p className="text-xs text-muted-foreground">{t('pointCash.panel.actions.openPastDayNote')}</p>
     ) : (
       <p className="text-xs text-muted-foreground">{t('pointCash.panel.actions.noShiftNote')}</p>
     );
@@ -173,11 +187,17 @@ export function ShiftCountPanel({
         </p>
       ) : (
         <>
-          {shift && (shift.status === 'open' || shift.status === 'closed') ? (
+          {shift ? (
             <div className="flex flex-col gap-1 border-b border-line2 pb-3">
               <div className="flex flex-wrap items-baseline gap-2">
                 <span className="font-medium">
-                  {t(`pointCash.panel.status.${shift.status}`)}
+                  {/* Any status other than `open` reads as «Зміна закрита» —
+                      including the legacy, otherwise-unreachable
+                      `awaiting_explanation` value (`ShiftStatus`'s own doc
+                      comment, the 09.09 rule): there is no copy left for it
+                      to show, and a settled shift is the honest reading of
+                      one either way. */}
+                  {t(`pointCash.panel.status.${shift.status === 'open' ? 'open' : 'closed'}`)}
                 </span>
                 <span className="font-mono text-xs text-muted-foreground">{timeRange}</span>
               </div>
@@ -196,7 +216,7 @@ export function ShiftCountPanel({
               ) : null}
               {closing ? <DiscrepancyPill discrepancy={closing.discrepancy} /> : null}
 
-              {shift.status === 'closed' ? (
+              {shift.status !== 'open' ? (
                 <p className="text-xs text-muted-foreground">
                   {t('pointCash.panel.closedBy', { name: shift.closed_by_name ?? '—' })}
                 </p>

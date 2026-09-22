@@ -11,6 +11,7 @@ import { formatUah } from '@/shared/lib/money';
 import { formatShortDate } from '@/shared/lib/date';
 import { useCashCountsQuery, type CashCount } from '@/entities/cash-count';
 import { ExplainDiscrepancyDialog } from '@/features/set-cash-explanation';
+import { discrepancyTone } from '@/features/count-shift';
 
 /**
  * §7.6's journal for one point — every drawer count, opening/midday/closing
@@ -75,18 +76,43 @@ export function CashCountHistory({
     {
       id: 'explanation',
       header: t('pointCash.countHistory.columns.explanation'),
-      cell: (row) =>
-        row.explanation ? (
-          <span className="text-sm italic text-muted-foreground">{row.explanation}</span>
-        ) : row.is_open && isOwner ? (
-          <Button size="xs" variant="outline" onClick={() => setExplainTarget(row)}>
-            {t('pointCash.countHistory.explain')}
-          </Button>
-        ) : row.is_open ? (
-          <span className="text-xs text-muted-foreground">{t('pointCash.countHistory.open')}</span>
-        ) : (
-          <span className="text-xs text-muted-foreground">{t('pointCash.countHistory.matched')}</span>
-        ),
+      // Decide on the FIGURE, not `is_open` alone — `is_open` reads `false`
+      // for BOTH a genuinely matched count AND a witness-only midday
+      // discrepancy (R2: a recount never opens an incident, only the
+      // closing count carries the day's discrepancy — `PointCashService`'s
+      // own comment), so printing «Зійшлося» off `is_open` alone used to
+      // claim a midday −50,00 ₴ recount had matched.
+      cell: (row) => {
+        if (row.explanation) {
+          return <span className="text-sm italic text-muted-foreground">{row.explanation}</span>;
+        }
+        if (discrepancyTone(row.discrepancy) === 'leaf') {
+          return (
+            <span className="text-xs text-muted-foreground">
+              {t('pointCash.countHistory.matched')}
+            </span>
+          );
+        }
+        if (row.is_open) {
+          return isOwner ? (
+            <Button size="xs" variant="outline" onClick={() => setExplainTarget(row)}>
+              {t('pointCash.countHistory.explain')}
+            </Button>
+          ) : (
+            <span className="text-xs text-muted-foreground">{t('pointCash.countHistory.open')}</span>
+          );
+        }
+        // A non-zero, unexplained discrepancy with `is_open === false` — only
+        // reachable for `kind === 'midday'` (R2: a recount is a witness, not
+        // an incident, so it never opens one even with a real gap; an
+        // opening/closing count only clears `is_open` by being explained,
+        // caught above).
+        return (
+          <span className="text-xs text-muted-foreground">
+            {t('pointCash.countHistory.noExplanationNeeded')}
+          </span>
+        );
+      },
     },
   ];
 

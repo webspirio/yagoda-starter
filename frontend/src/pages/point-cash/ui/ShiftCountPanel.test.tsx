@@ -218,6 +218,33 @@ describe('ShiftCountPanel — the shift line and names', () => {
     expect(note).toHaveClass('italic');
   });
 
+  it('reads a legacy «awaiting_explanation» shift as closed, with its explanation', () => {
+    // The 09.09 rule retired this branch (a discrepancy never blocks
+    // anything) — `awaiting_explanation` has no copy of its own left, so a
+    // row still carrying it from before that decision must read exactly
+    // like `closed`, not fall through to nothing.
+    render(
+      <ShiftCountPanel
+        shift={shift({
+          status: 'awaiting_explanation',
+          closed_by_name: 'Petro',
+          explanation: 'Recounted twice',
+        })}
+        isShiftLoading={false}
+        isShiftError={false}
+        counts={[]}
+        isOperator={false}
+        isToday={false}
+        onOpenShift={noop}
+        onCloseShift={noop}
+      />,
+    );
+
+    expect(screen.getByText('Shift closed')).toBeInTheDocument();
+    expect(screen.getByText('closed by Petro')).toBeInTheDocument();
+    expect(screen.getByText('“Recounted twice”')).toBeInTheDocument();
+  });
+
   it('shows no shift line at all when the date has no shift', () => {
     render(
       <ShiftCountPanel
@@ -549,6 +576,32 @@ describe('ShiftCountPanel — the four action states, per role', () => {
 
     expect(screen.queryByRole('button', { name: 'Open shift' })).toBeNull();
     expect(screen.queryByText('a recount attaches to an open shift')).toBeNull();
+  });
+
+  it('operator, an open shift left over from a past date: the shift line, the own-day note, no buttons', () => {
+    render(
+      <ShiftCountPanel
+        shift={shift({ status: 'open' })}
+        isShiftLoading={false}
+        isShiftError={false}
+        counts={[]}
+        isOperator
+        isToday={false}
+        onOpenShift={noop}
+        onCloseShift={noop}
+      />,
+    );
+
+    // The shift IS real — its own line still renders — but R4 only promises
+    // live actions "today", so no Recount/Close button and a note explaining
+    // why, not a generic "no shift" claim that would misdescribe it.
+    expect(screen.getByText('Shift open')).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "The shift is still open, but it is not today's — its actions live on its own day",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('button')).toBeNull();
   });
 
   it('operator, no shift, a past date: the nothing-to-attach-to note', () => {
