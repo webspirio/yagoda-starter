@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, beforeAll, afterAll } from 'vitest';
 import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { i18n } from '@/shared/lib/i18n';
 import { CostOfDayPage } from './CostOfDayPage';
 
@@ -87,6 +88,28 @@ beforeEach(() => {
 });
 
 describe('CostOfDayPage', () => {
+  it('drops a half-typed expense when the shift underneath it changes', async () => {
+    // ExpensesPanel keeps `label`/`amount`/`editing` in its own useState, and
+    // the page re-RENDERS rather than remounts when the owner steps to another
+    // date whose queries are already cached (gcTime is 24h, so `isPending`
+    // never goes true and the pending branch never unmounts the tree). Without
+    // a key tied to the shift, the words typed against 22.09 are still in the
+    // form after stepping back to 21.09 — and `Додати` would then record them
+    // against the wrong business day, moving that day's basket, per_kg and
+    // every product's basket_share with nothing on screen saying so.
+    const user = userEvent.setup();
+    const { rerender } = render(<CostOfDayPage />);
+
+    await user.type(screen.getByPlaceholderText('Підпис витрати'), 'пальне');
+    expect(screen.getByPlaceholderText('Підпис витрати')).toHaveValue('пальне');
+
+    shiftMock.mockReturnValue(ok({ id: 's2', status: 'open' }));
+    dayMock.mockReturnValue(ok({ ...day, shift_id: 's2' }));
+    rerender(<CostOfDayPage />);
+
+    expect(screen.getByPlaceholderText('Підпис витрати')).toHaveValue('');
+  });
+
   it('renders the day — both halves and the final table', () => {
     render(<CostOfDayPage />);
 

@@ -168,7 +168,19 @@ export function CostOfDayPage() {
                 locale={locale}
               />
             )}
+            {/* KEYED ON THE SHIFT, and that key is load-bearing. The panel
+                holds the half-typed expense — label, amount, and which line is
+                open for editing — in its own state, and stepping to another
+                date only RE-RENDERS this tree: the queries for a day already
+                visited come back from cache with `isPending` false, so the
+                pending branch never unmounts anything. Without the key the
+                words typed against one day stay in the form while `shift_id`
+                has moved to another, and «Додати» writes them to the wrong
+                business day. A draft belongs to its shift and should die with
+                it — the same rule `pages/reweigh` applies by clearing its
+                drafts when (date, point) changes. */}
             <ExpensesPanel
+              key={day.shift_id}
               day={day}
               expenses={expenses.data ?? []}
               shiftId={day.shift_id}
