@@ -149,28 +149,34 @@ export function CostOfDayPage() {
             ) : null}
           </div>
 
-          {day.products.length === 0 ? (
-            <p className="py-8 text-center text-sm text-muted-foreground">
-              {t('costOfDay.noIntake')}
-            </p>
-          ) : (
-            <>
-              <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(290px,0.6fr)]">
-                <BerryTable
-                  products={day.products}
-                  reweighedKg={day.reweighed_kg}
-                  accrued={day.accrued}
-                  locale={locale}
-                />
-                <ExpensesPanel
-                  day={day}
-                  expenses={expenses.data ?? []}
-                  shiftId={day.shift_id}
-                  locale={locale}
-                />
-              </div>
-              {day.per_kg === null ? null : <FinalPrices day={day} locale={locale} />}
-            </>
+          {/* ExpensesPanel is the ONLY write path to `day_expenses`, and the
+              server keeps counting its lines in expenses_amount/basket/per_kg
+              even when every intake on the day is voided — so it stays
+              reachable whenever a shift exists, not just when there are
+              products. The berry side alone falls back to the empty-day
+              message. */}
+          <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(290px,0.6fr)]">
+            {day.products.length === 0 ? (
+              <p className="py-8 text-center text-sm text-muted-foreground">
+                {t('costOfDay.noIntake')}
+              </p>
+            ) : (
+              <BerryTable
+                products={day.products}
+                reweighedKg={day.reweighed_kg}
+                accrued={day.accrued}
+                locale={locale}
+              />
+            )}
+            <ExpensesPanel
+              day={day}
+              expenses={expenses.data ?? []}
+              shiftId={day.shift_id}
+              locale={locale}
+            />
+          </div>
+          {day.products.length === 0 || day.per_kg === null ? null : (
+            <FinalPrices day={day} locale={locale} />
           )}
         </div>
       )}

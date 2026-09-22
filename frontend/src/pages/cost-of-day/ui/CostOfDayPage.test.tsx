@@ -133,6 +133,20 @@ describe('CostOfDayPage', () => {
     expect(screen.getByText('Цього дня на цьому пункті прийомки не було.')).toBeInTheDocument();
   });
 
+  // ExpensesPanel is the application's ONLY write path to `day_expenses`.
+  // A day with no products still needs it reachable: either nothing has
+  // come in yet and the owner still wants to log «пальне 1 000,00», or
+  // every intake was voided under §9.3 while the server still counts
+  // existing expense lines in expenses_amount/basket/per_kg — money that
+  // moves the собівартість must never become invisible and unreachable.
+  it('keeps the expenses panel reachable on an empty day, beside the empty-day message', () => {
+    dayMock.mockReturnValue(ok({ ...day, products: [] }));
+    render(<CostOfDayPage />);
+
+    expect(screen.getByText('Цього дня на цьому пункті прийомки не було.')).toBeInTheDocument();
+    expect(screen.getByText('Витрати за день')).toBeInTheDocument();
+  });
+
   it('offers every active point, base included — this screen does not filter by kind', () => {
     pointsMock.mockReturnValue(
       ok([
