@@ -246,6 +246,11 @@ export class GradePricesService {
     // `CAST($1 AS text)`: `AT TIME ZONE` is overloaded on `text` and
     // `interval`, so an untyped parameter is ambiguous to Postgres.
     const localDate = (expr: string) => `(${expr} AT TIME ZONE CAST($1 AS text))::date`;
+    // The same day as a half-open RANGE on `created_at`, not a function of it,
+    // so the filter compares the bare column and stays open to an index. A
+    // local `date` cast to `timestamp` is its local midnight, and `AT TIME
+    // ZONE` on a zoneless timestamp returns that instant as a `timestamptz`.
+    const dayStart = (date: string) => `(${date})::timestamp AT TIME ZONE CAST($1 AS text)`;
 
     // «Today» is read ONCE and then passed in, so the `date` this returns and
     // the rows it filters cannot straddle midnight between two `now()` calls.
@@ -280,7 +285,8 @@ export class GradePricesService {
             ORDER BY g2.created_at DESC, g2.id DESC
             LIMIT 1
          ) prev ON true
-        WHERE ${localDate('gp.created_at')} = CAST($2 AS date)
+        WHERE gp.created_at >= ${dayStart('CAST($2 AS date)')}
+          AND gp.created_at <  ${dayStart('CAST($2 AS date) + 1')}
           ${pointWhere}
         ORDER BY gp.created_at DESC, gp.id DESC`,
       params,
