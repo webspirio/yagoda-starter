@@ -1,4 +1,5 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import type { ConfigType } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { EntityManager, Repository } from 'typeorm';
 import { GradePrice } from './grade-price.entity';
@@ -11,14 +12,18 @@ import { BulkGradePriceDto } from './dto/bulk-grade-price.dto';
 import {
   GradePriceResponse,
   GradePriceSheetResponse,
+  PriceChangeRow,
+  PriceChangesResponse,
   SheetCell,
   SheetPointColumn,
   toGradePriceResponse,
+  toPriceChangeResponse,
 } from './grade-price.mapper';
 import { CollectionPointsService } from '../collection-points/collection-points.service';
 import { ProductGradesService } from '../products/product-grades.service';
 import { assertOwnsPoint, resolvePointFilter } from '../auth/access/point-scope';
 import { Paginated } from '../common/dto/paginated';
+import { timezoneConfig } from '../config/timezone.config';
 import type { AuthenticatedUser } from '../auth/jwt.strategy';
 
 /**
@@ -71,6 +76,10 @@ export class GradePricesService {
     private readonly repo: Repository<GradePrice>,
     private readonly points: CollectionPointsService,
     private readonly grades: ProductGradesService,
+    /** For `changes()` alone: «today» is a LOCAL date, and `created_at` is a
+     *  `timestamptz` that only the app zone can turn into one. */
+    @Inject(timezoneConfig.KEY)
+    private readonly tz: ConfigType<typeof timezoneConfig>,
   ) {}
 
   /**
@@ -202,6 +211,85 @@ export class GradePricesService {
       [pointId, gradeId],
     );
     return (row as GradePrice | undefined) ?? null;
+  }
+
+  /**
+   * #151 — «Зміни протягом дня»: every price written TODAY, newest first, each
+   * paired with the price it replaced. §4.2's «кожна зміна лягає окремим
+   * записом із часом і автором», read as a feed of when, where and by how much.
+   *
+   * «TODAY» IS `created_at`'s LOCAL DATE, and the `AT TIME ZONE` is not
+   * decoration — the same hazard `TransfersService.list` documents. There is no
+   * `business_date` on this table (spec `2026-09-07` §8.1), and a bare `::date`
+   * resolves in the SESSION zone: with a UTC session the owner's 07:10 Kyiv
+   * price is stored at 04:10Z and survives, but a 01:00 Kyiv one lands on
+   * yesterday. Both sides go through the app zone, so they agree.
+   *
+   * THE «WAS» IS NOT LIMITED TO TODAY. The morning's first change replaces
+   * yesterday's (or last week's — prices carry over) price, and that is the
+   * number the point was trading at. A `LAG` over today's rows alone would show
+   * the day's first change with no «was» at all. The LATERAL read orders by the
+   * same `created_at, id` pair as `latestPricesSql`, so «the row before» and
+   * «the current row» can never disagree about the order of two rows.
+   *
+   * SCOPED BY `resolvePointFilter` with no request value, as `sheet()` is: the
+   * operator gets their own point's changes, the owner the network's — «коли,
+   * ДЕ, наскільки» is a cross-point question.
+   *
+   * UNPAGINATED: bounded by one day of one owner's writes. NOT filtered by
+   * `is_active` on grade or point — history is not filtered by the current
+   * state of the thing it describes (see `ListGradePricesQueryDto`).
+   */
+  async changes(actor: AuthenticatedUser): Promise<PriceChangesResponse> {
+    const pointId = resolvePointFilter(actor, undefined);
+
+    // `CAST($1 AS text)`: `AT TIME ZONE` is overloaded on `text` and
+    // `interval`, so an untyped parameter is ambiguous to Postgres.
+    const localDate = (expr: string) => `(${expr} AT TIME ZONE CAST($1 AS text))::date`;
+
+    // «Today» is read ONCE and then passed in, so the `date` this returns and
+    // the rows it filters cannot straddle midnight between two `now()` calls.
+    const [{ date }]: { date: string }[] = await this.repo.manager.query(
+      `SELECT ${localDate('now()')}::text AS date`,
+      [this.tz.appTimezone],
+    );
+
+    const params: unknown[] = [this.tz.appTimezone, date];
+    let pointWhere = '';
+    if (pointId) {
+      params.push(pointId);
+      pointWhere = `AND gp.collection_point_id = $${params.length}`;
+    }
+
+    const rows: PriceChangeRow[] = await this.repo.manager.query(
+      `SELECT gp.id, gp.created_at, gp.collection_point_id, cp.name AS point_name,
+              gp.product_grade_id, p.name AS product_name, pg.name AS grade_name,
+              prev.base_price AS previous_base_price, gp.base_price, gp.reason,
+              u.first_name, u.last_name
+         FROM grade_prices gp
+         JOIN collection_points cp ON cp.id = gp.collection_point_id
+         JOIN product_grades pg ON pg.id = gp.product_grade_id
+         JOIN products p ON p.id = pg.product_id
+         JOIN users u ON u.id = gp.created_by_user_id
+         LEFT JOIN LATERAL (
+           SELECT g2.base_price
+             FROM grade_prices g2
+            WHERE g2.collection_point_id = gp.collection_point_id
+              AND g2.product_grade_id = gp.product_grade_id
+              AND (g2.created_at, g2.id) < (gp.created_at, gp.id)
+            ORDER BY g2.created_at DESC, g2.id DESC
+            LIMIT 1
+         ) prev ON true
+        WHERE ${localDate('gp.created_at')} = CAST($2 AS date)
+          ${pointWhere}
+        ORDER BY gp.created_at DESC, gp.id DESC`,
+      params,
+    );
+
+    return {
+      date,
+      changes: rows.map(toPriceChangeResponse),
+    };
   }
 
   /**
