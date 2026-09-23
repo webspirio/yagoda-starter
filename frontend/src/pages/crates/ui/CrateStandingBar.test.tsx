@@ -34,9 +34,15 @@ describe('CrateStandingBar', () => {
 
   it('draws no segment wider than its share and never a negative width', () => {
     const { container } = render(
-      <CrateStandingBar standing={{ ...base, on_hand: -15, in_field: 0, at_base: 0 }} />,
+      <CrateStandingBar standing={{ ...base, on_hand: -15, in_field: 195, at_base: 620 }} />,
     );
-    const widths = [...container.querySelectorAll<HTMLElement>('[data-segment]')].map((el) => el.style.width);
+    const segments = [...container.querySelectorAll<HTMLElement>('[data-segment]')];
+    expect(segments).toHaveLength(3);
+    const widths = segments.map((el) => el.style.width);
+    const onHandWidth = segments.find((el) => el.dataset.segment === 'onHand')?.style.width;
+    expect(onHandWidth).toBe('0%');
     expect(widths.every((w) => !w.startsWith('-') && w !== 'NaN%')).toBe(true);
+    const total = widths.reduce((sum, w) => sum + parseFloat(w), 0);
+    expect(total).toBeCloseTo(100, 2);
   });
 });
