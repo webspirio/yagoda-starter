@@ -380,6 +380,10 @@
       "allPoints_one": "all reception points ({{count}})",
       "allPoints_other": "all reception points ({{count}})",
       "historyCell": "{{grade}} at {{point}} — price history"
+    },
+    "changes": {
+      "title": "Changes today",
+      "empty": "No price has changed today — the previous prices still apply."
     }
   },
   "day": {

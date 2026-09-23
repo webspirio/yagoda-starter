@@ -9,6 +9,7 @@ import { usePriceSheetQuery } from '../api/priceSheet';
 import { PriceSheet } from './PriceSheet';
 import { SetPriceDialog } from './SetPriceDialog';
 import { PriceHistoryDialog } from './PriceHistoryDialog';
+import { PriceChanges } from './PriceChanges';
 import type { SheetPoint, SheetRow } from '../model/gradePrice';
 
 /** What the open dialog is about: which grade, which points, prefilled with what. */
@@ -136,6 +137,9 @@ export function PricesPage() {
         ) : (
           <EmptyState title={t('prices.empty.title')} hint={t('prices.empty.hint')} />
         )}
+
+        {/* #151 — its own read, so a failed or slow feed never hides the sheet. */}
+        <PriceChanges />
       </div>
 
       {editing ? (
