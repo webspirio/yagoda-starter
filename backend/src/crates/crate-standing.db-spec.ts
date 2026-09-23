@@ -267,6 +267,11 @@ describe('CrateStandingService.forPoint (Postgres)', () => {
   });
 
   describe('the client example, step by step (allotment 500)', () => {
+    // These five `it`s SHARE STATE — `day1`, `holder` and `depositIssuance`
+    // below are written by an earlier step and read by a later one, and each
+    // step's assertion builds on the previous step's documents. They MUST run
+    // in file order: don't reorder them, run one alone with `-t`/`.only`, or
+    // let a randomized test order near this file.
     let day1: string;
     let holder: string;
     let depositIssuance: string;

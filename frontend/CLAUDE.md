@@ -46,7 +46,7 @@ src/
   entities/transfer/             # useTransfersQuery, Transfer type — one point-to-point movement of cash and crates (§7), read by pages/point-cash and pages/transfers
   entities/point-cash/           # usePointCashQuery / usePointCashForPointQuery, PointCashRow/PointCashOne types — a point's cash-on-hand, one server-computed figure never re-summed client-side, read by pages/point-cash, pages/transfers and features/set-point-target
   entities/cash-count/           # useCashCountsQuery, CashCount type — a point's drawer-count history (opening/midday/closing; §7.6 one drawer, two books), read by pages/point-cash
-  entities/crate/                 # useCrateBalancesQuery / useCrateStandingQuery / useCrateIssuancesQuery / useCrateReturnsQuery — who holds a point's crates, the server-computed allotment split (on hand / with people / at base), and the crate documents; read by pages/crates and reception's PointStatePanel
+  entities/crate/                 # useCrateBalancesQuery / useCrateStandingQuery / useCrateIssuancesQuery / useCrateReturnsQuery — who holds a point's crates, the server-computed allotment split (empty at the point / with people / with berries — the open shift only, since crates at the base are no longer tracked), and the crate documents; read by pages/crates and reception's PointStatePanel
   features/auth/                 # login/logout API calls, LoginForm, RequireAuth + RequireRole route guards — no register API
   features/edit-profile/         # useUploadAvatarMutation (single consumer: pages/profile — kept as the upload exemplar)
   features/pick-supplier/        # SupplierPicker (+ SupplierPickerHandle) — the mock's searchable combobox: debounced search, owner-only «Наша точка»/«Інші точки» groups, per-row open balance, the §2.11 wholesale/farmer hint, and an inline «Додати нового постачальника» footer that opens features/edit-supplier and auto-picks the created supplier; single consumer today is pages/reception's SupplierSection
@@ -69,7 +69,7 @@ src/
   pages/journal/                 # «Журнал прийомки» — the owner's register of every receipt and payout, filtered by point/month/supplier, server-paginated
   pages/point-cash/              # «Каса точки» — one point's cash-on-hand for a date: the ledger explaining the server's own figure, drawer-count history, incoming transfers — both roles, target-setting owner-only (§10.2)
   pages/transfers/               # «Перекази» — the owner's view of money and crates in flight and what each point is short (§7.9, §7.10) — OWNER-ONLY as a route-level gate, not a hidden button
-  pages/crates/                   # «Ящики» — the allotment bar (CrateStandingBar), holders (InFieldTable) and each holder's documents with server-hinted voids (PersonCrateDocs) — both roles; the «Відправлення» dialog is deferred with crate_shipments
+  pages/crates/                   # «Ящики» — the allotment bar (CrateStandingBar), recomputed to the client's crate flow: empty at the point / with people / with berries (the point's open shift only) summing to «Усього за точкою», against the allotment as short of it or over it; holders (InFieldTable) and each holder's documents with server-hinted voids (PersonCrateDocs) — both roles; the «Відправлення» dialog is deferred with crate_shipments
   shared/
     api/                       # httpClient (axios instance, env.apiUrl baseURL) + ApiError + attachAuthInterceptors + queryClient + queryKeys + persister + Paginated<T>/isTruncated (shared/api/pagination.ts, the one list-envelope shape every paginated GET returns)
     lib/

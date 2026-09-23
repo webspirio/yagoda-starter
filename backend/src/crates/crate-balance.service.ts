@@ -66,10 +66,15 @@ export const crateBookSql = (pointExpr: string): string => `(
 
 /**
  * CRATES ON RECEIPTS — the ONE place that knows `is_crate` selects the crate
- * tare. §6.8's «з ягодою» for one shift (`CrateDispatchService`) and the
- * point-lifetime «у нас з ягодою» (`CrateStandingService`) both read it, so the
- * two cannot drift. `where` is a predicate over `i` (intakes) and `sh` (the
- * intake's shift) — an SQL naming, never a request value.
+ * tare. §6.8's «з ягодою» for one shift (`CrateDispatchService`) reads it, and
+ * so does `CrateStandingService`'s revised standing (§8.1–§8.2) — TWICE: once
+ * unfiltered, over every live receipt at the point (`all_receipt_crates`,
+ * since full crates are always ours and every receipt's tare leaves the
+ * empties), and once filtered to the point's OPEN shift (`with_berry`, «у нас
+ * з ягодою» — closed shifts already moved that tare to the base). Neither
+ * caller re-derives the filter, so the three cannot drift. `where` is a
+ * predicate over `i` (intakes) and `sh` (the intake's shift) — an SQL naming,
+ * never a request value.
  */
 export const crateTareUnitsSql = (where: string): string => `(
     SELECT COALESCE(SUM(itt.units), 0)::int

@@ -1157,3 +1157,37 @@ decision rather than guessing whether something was missed.
   the panel to `useCrateStandingQuery` was left out of that slice as an adjacent change.
 
 - **Reception returns our rented crates in the same «Прийняти» (deferred 2026-09-23).** Approved design: spec `docs/superpowers/specs/2026-09-23-yagoda-crates-standing.md` §8.3–§8.4; tasks R1–R3, R7–R9 of `docs/superpowers/plans/2026-09-23-yagoda-crates-standing-revision.md` (`crate_returns.intake_id`, one shared return writer, `returned_crates` on `POST /intakes`, void cascade, the «З них наших ящиків» field, the receipt line, the drill-down hint). Until it ships the operator records the receipt AND a standalone «Прийняти ящики»; forgetting the return leaves the supplier owing those crates.
+
+## Flaky frontend test under full-suite load (found during crates-standing R10 gate, 2026-09-23)
+
+- **`frontend/src/pages/reception/ui/ReceptionPage.test.tsx` › "commits the draft into the
+  lines table and stops at five" has been reported failing under `npm run verify:full`'s
+  `coverage` row (part of a batch of 8 failed tests in that run) while passing every time it
+  is run alone or as part of a plain `vitest run`. This branch never touched
+  `frontend/src/pages/reception` (`git diff --stat c02ebf1..HEAD -- frontend/src/pages/reception`
+  is empty), so the flake pre-exists this slice and is out of its scope (crates tables only).
+  Reading the test found no unawaited `userEvent` call, no `getBy` standing in for a `findBy`,
+  and no missing `waitFor` — every interaction is `await`ed and every assertion after it is
+  synchronous against state React has already flushed. What the test DOES have is the file's
+  longest real-timer interaction chain: five `fillDraft()` calls (each a `clear`+`type` of a
+  weight, a `clear`+`type` of tare units, and a `selectOptions`) plus a supplier pick and three
+  "Add line" clicks, all under real (non-fake) timers, against the file's global
+  `testTimeout: 15_000` (`frontend/vite.config.ts`).
+  **Root-cause hypothesis:** not a bug in the test's logic but resource contention from Vitest's
+  per-file worker isolation — the SAME coverage run's own output warns `165 workers spawned
+  · ~5.05s startup each` and that `isolate: false` would be "at least ~114.02s faster". Under
+  that spawn pressure a handful of tests running at the wrong moment lose enough wall-clock time
+  that their real userEvent interactions blow past `testTimeout`, and the longest interaction
+  chain in a file is the most likely one to tip over. Reproduction attempts made while
+  investigating this: a plain `vitest run` (no coverage) — 1189/1189 passed, this test included;
+  a direct `vitest run --coverage` — 1188/1189 passed, but the ONE failure was a DIFFERENT test,
+  `src/app/route-suspense.test.tsx` › "replaces the fallback with the screen once the chunk
+  arrives", with `Error: Test timed out in 15000ms` at 15814ms — the same symptom (a
+  `testTimeout` timeout under coverage's worker-spawn pressure) landing on a different test each
+  time, which is consistent with contention rather than a defect specific to either test.
+  Whoever picks this up should attack the CONTENTION, not the symptom — raising `testTimeout`
+  would be exactly the kind of widening this repo's verify layer exists to refuse. The run's own
+  suggestion, `isolate: false` in `frontend/vite.config.ts`'s `test` block (reusing workers
+  across files instead of spawning one per file), or sharding the coverage run, are the
+  candidates worth measuring. None attempted here: a fix would touch project-wide test
+  infrastructure, not the crates tables this slice owns.
