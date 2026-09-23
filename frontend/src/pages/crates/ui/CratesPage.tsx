@@ -20,8 +20,8 @@ import { PersonCrateDocs } from './PersonCrateDocs';
 /**
  * «ЯЩИКИ» — who at this point is still holding crates, and on what terms.
  *
- * ALL FOUR FIGURES ARE REAL. The standing bar's allotment, empty-at-the-point,
- * out-with-people and with-us-with-berries all come from ONE server read,
+ * EVERY FIGURE ON THE BAR IS REAL. Allotment, received, empty, with people,
+ * with berries, total and shortfall all come from ONE server read,
  * `GET /crate-standing` — nothing here is re-derived from `/crate-balances`,
  * which is paginated and would undercount past its first page.
  *

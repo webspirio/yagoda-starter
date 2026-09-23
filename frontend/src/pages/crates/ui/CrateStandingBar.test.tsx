@@ -51,11 +51,19 @@ describe('CrateStandingBar', () => {
     expect(screen.getByText('Total for the point 400 = 350 + 50 + 0')).toBeInTheDocument();
   });
 
+  /** §8.4 — no allotment means no «Short of the allotment:»/«Over the allotment:» label at all. */
+  it('renders a bare «—» with no shortfall label when the allotment is unset', () => {
+    render(<CrateStandingBar standing={{ ...base, allotment: null, shortfall: null }} />);
+    expect(screen.queryByText('Short of the allotment:')).not.toBeInTheDocument();
+    expect(screen.queryByText('Over the allotment:')).not.toBeInTheDocument();
+    expect(screen.queryByText('Allotment complete')).not.toBeInTheDocument();
+  });
+
   it('turns a negative on-hand red and warns, without blocking anything', () => {
     render(<CrateStandingBar standing={{ ...base, on_hand: -5, total: 45 }} />);
     expect(screen.getByText('−5')).toHaveClass('text-destructive');
     expect(
-      screen.getByText(/More crates were issued or went out with berries than arrived by transfer/),
+      screen.getByText(/Fewer than zero empty crates: the documents don't add up/),
     ).toBeInTheDocument();
   });
 

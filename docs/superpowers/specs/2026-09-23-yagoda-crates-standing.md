@@ -1,6 +1,6 @@
 # Crates standing — the «Ящики» screen at parity with the mock
 
-**Date:** 2026-09-23 · **Branch:** `feat/crates-standing` · **Status:** approved design, **revised by §8** (the figures in §3/§4.1 are superseded there)
+**Date:** 2026-09-23 · **Branch:** `feat/crates-standing` · **Status:** approved design, **revised by §8** (the figures in §3/§4.1 are superseded there, along with §1's motivating example, §5's Bar bullet and §6's db-spec bullet)
 
 ## 1. Why
 

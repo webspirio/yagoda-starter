@@ -124,10 +124,10 @@ export const openTranchesSql = (where: string): string => `(
 )`;
 
 /**
- * CRATES BROUGHT BACK TO A POINT BY TRANSFER — the same three-way reading
- * `point-cash`'s `movementsSql` gives the cash on the same rows (09.09.2026
- * client ruling): accepted → `crates`; disputed and resolved →
- * `resolved_crates`; disputed and open → the point's own `reported_crates`.
+ * A TRANSFER IS HOW EMPTY CRATES ARRIVE AT THE POINT (spec §8.1) — the same
+ * three-way reading `point-cash`'s `movementsSql` gives the cash on the same
+ * rows (09.09.2026 client ruling): accepted → `crates`; disputed and resolved
+ * → `resolved_crates`; disputed and open → the point's own `reported_crates`.
  * `sent` moves nothing. The void filter sits in the OUTER `WHERE` so a
  * resolved-then-voided transfer counts for nothing — voided wins.
  */

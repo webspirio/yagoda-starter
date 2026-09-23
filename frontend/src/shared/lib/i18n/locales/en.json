@@ -1094,7 +1094,7 @@
       "shortfallNone": "—",
       "complete": "Allotment complete",
       "over": "Over the allotment:",
-      "negative": "More crates were issued or went out with berries than arrived by transfer — check the transfers and issues."
+      "negative": "Fewer than zero empty crates: the documents don't add up — check the transfers, issues, returns, receipts and breakage."
     },
     "field": {
       "supplier": "Person",
@@ -1146,7 +1146,7 @@
     },
     "note": {
       "receiptVsDeposit": "Crates taken on a receipt have no cash cover at all — their deposit column reads «—», not zero. That is why «crates out» and «deposits held» are two different numbers.",
-      "shipmentsDeferred": "The «Shipments today» window is not built yet: a shipment is not recorded as a document, so «with us, with berries» is counted live from receipts, breakage and transfers."
+      "shipmentsDeferred": "The «Shipments today» window is not built yet. «With us, with berries» counts the crate tare on receipts of the point's currently open shift, and leaves the point's count the moment that shift closes."
     },
     "docs": {
       "title": "This person's crate documents",

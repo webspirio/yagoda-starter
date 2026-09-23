@@ -87,7 +87,12 @@ export function CrateStandingBar({ standing }: { standing: CrateStanding }) {
       </p>
 
       <div className="mt-4 flex flex-wrap items-baseline gap-x-3 gap-y-1 border-t border-line2 pt-3">
-        {shortfall === 0 ? (
+        {/* §8.4 — no allotment means no shortfall to name: a bare «—», no label at all. */}
+        {allotment === null ? (
+          <span className="font-mono text-lg font-semibold text-muted-foreground">
+            {t('crates.standing.shortfallNone')}
+          </span>
+        ) : shortfall === 0 ? (
           <span className="text-sm font-medium">{t('crates.standing.complete')}</span>
         ) : (
           <>
@@ -96,9 +101,7 @@ export function CrateStandingBar({ standing }: { standing: CrateStanding }) {
                 ? t('crates.standing.over')
                 : t('crates.standing.shortfall')}
             </span>
-            <span className="font-mono text-lg font-semibold">
-              {shortfall === null ? t('crates.standing.shortfallNone') : n(Math.abs(shortfall))}
-            </span>
+            <span className="font-mono text-lg font-semibold">{n(Math.abs(shortfall ?? 0))}</span>
           </>
         )}
       </div>
