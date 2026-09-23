@@ -1146,6 +1146,23 @@
       "receiptVsDeposit": "Crates taken on a receipt have no cash cover at all — their deposit column reads «—», not zero. That is why «crates out» and «deposits held» are two different numbers.",
       "notTracked": "Empty crates on hand, crates here with berries in them, and shipments are not tracked yet — there is no table for them, so this screen shows nothing rather than a number it cannot stand behind."
     },
+    "docs": {
+      "title": "This person's crate documents",
+      "empty": "No crate documents for this person.",
+      "failed": "Could not load the documents",
+      "issued_one": "issued {{count}} crate",
+      "issued_other": "issued {{count}} crates",
+      "returned_one": "accepted {{count}} crate",
+      "returned_other": "accepted {{count}} crates",
+      "onDeposit": "on a deposit · {{amount}}",
+      "onReceipt": "on receipt {{code}} · no deposit",
+      "refunded": "deposit refunded {{amount}}",
+      "noRefund": "no deposit — taken on a receipt",
+      "voidedLine": "voided {{date}} · {{reason}}",
+      "blockedByReturn": "a return rests on this issuance — void the return first",
+      "void": "Void",
+      "returnLabel": "return of {{units}} · {{date}}"
+    },
     "errors": {
       "supplierRequired": "Pick who is taking the crates",
       "unitsFormat": "Enter a whole number of crates",
