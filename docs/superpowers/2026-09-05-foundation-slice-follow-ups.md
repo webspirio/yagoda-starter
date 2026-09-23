@@ -1151,3 +1151,7 @@ decision rather than guessing whether something was missed.
   become 200 with this row staying green, because the gate is the first-load set by design. A
   per-chunk ceiling is the obvious next instrument; none is agreed, and `bundle` deliberately
   does not invent one.
+- **Reception's «Стан точки» sums a paginated list.** `pages/reception/ui/PointStatePanel.tsx`
+  totals «у людей» from `useCrateBalancesQuery` rows (limit 100), which undercounts past one page.
+  `GET /crate-standing` (crates-standing slice, 2026-09-23) now serves the exact figure; switching
+  the panel to `useCrateStandingQuery` was left out of that slice as an adjacent change.

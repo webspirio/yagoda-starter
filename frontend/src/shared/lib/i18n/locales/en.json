@@ -1090,8 +1090,7 @@
       "unset": "No allotment has been set for this point yet",
       "shortfall": "Short of the allotment:",
       "shortfallParts": "(with people {{inField}} + with us {{atBase}})",
-      "overdrawn": "The allotment does not cover this day: fewer than zero empty crates at the point. There is nowhere to take them from until people return them or the base brings some.",
-      "overAllotment": "{{over}} more crates are out than the allotment — a target is a guide, not a limit."
+      "overdrawn": "The allotment does not cover this day: fewer than zero empty crates at the point. There is nowhere to take them from until people return them or the base brings some."
     },
     "field": {
       "supplier": "Person",
@@ -1104,7 +1103,6 @@
       "receipt": "Receipt",
       "depositHint": "Money is taken now, at the crate price from the catalogue, and goes into the point crate drawer.",
       "receiptHint": "A paper receipt is signed. NO money changes hands, so these crates are out with no cash cover at all.",
-      "mixed": "Deposit + receipt",
       "split": "Deposit {{deposit}} · receipt {{receipt}}"
     },
     "issue": {
@@ -1144,7 +1142,7 @@
     },
     "note": {
       "receiptVsDeposit": "Crates taken on a receipt have no cash cover at all — their deposit column reads «—», not zero. That is why «crates out» and «deposits held» are two different numbers.",
-      "notTracked": "Empty crates on hand, crates here with berries in them, and shipments are not tracked yet — there is no table for them, so this screen shows nothing rather than a number it cannot stand behind."
+      "shipmentsDeferred": "The «Shipments today» window is not built yet: a shipment is not recorded as a document, so «with us, with berries» is counted live from receipts, breakage and transfers."
     },
     "docs": {
       "title": "This person's crate documents",

@@ -1,12 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { expectNoAxeViolations } from '../../../test-axe';
 import { CratesPage } from './CratesPage';
-import type { CrateBalanceRow } from '@/entities/crate';
+import type { CrateBalanceRow, CrateStanding } from '@/entities/crate';
 
-const { balancesMock, meMock, scopeMock, pointsMock, issueDialogMock, returnDialogMock } =
+const { standingMock, balancesMock, meMock, scopeMock, pointsMock, issueDialogMock, returnDialogMock } =
   vi.hoisted(() => ({
+    standingMock: vi.fn(),
     balancesMock: vi.fn(),
     meMock: vi.fn(),
     scopeMock: vi.fn(),
@@ -17,6 +18,7 @@ const { balancesMock, meMock, scopeMock, pointsMock, issueDialogMock, returnDial
 
 vi.mock('@/entities/crate', () => ({
   useCrateBalancesQuery: (args: unknown) => balancesMock(args),
+  useCrateStandingQuery: (args: unknown) => standingMock(args),
 }));
 
 vi.mock('@/entities/user', () => ({
@@ -26,6 +28,17 @@ vi.mock('@/entities/user', () => ({
 
 vi.mock('@/entities/collection-point', () => ({
   usePointOptionsQuery: () => pointsMock(),
+}));
+
+vi.mock('./CrateStandingBar', () => ({
+  CrateStandingBar: ({ standing }: { standing: { in_field: number } }) => (
+    <div data-testid="bar">{standing.in_field}</div>
+  ),
+}));
+vi.mock('./InFieldTable', () => ({
+  InFieldTable: (p: { holders: number; truncated: boolean }) => (
+    <div data-testid="table" data-holders={p.holders} data-truncated={String(p.truncated)} />
+  ),
 }));
 
 vi.mock('@/features/issue-crates', () => ({
@@ -44,6 +57,11 @@ vi.mock('@/features/return-crates', () => ({
 
 const OWNER = { id: 'u1', role: 'network_owner', collection_point_id: null };
 const OPERATOR = { id: 'u2', role: 'point_operator', collection_point_id: 'p1' };
+
+const STANDING: CrateStanding = {
+  collection_point_id: 'p1', allotment: 800, in_field: 195, deposit_units: 115,
+  deposit_held: '13800.00', at_base: 264, on_hand: 341, shortfall: 459,
+};
 
 const row = (over: Partial<CrateBalanceRow> & Pick<CrateBalanceRow, 'supplier_id'>): CrateBalanceRow => ({
   first_name: 'Василь',
@@ -74,96 +92,44 @@ beforeEach(() => {
     isPending: false,
     isError: false,
   });
+  standingMock.mockReturnValue({ data: STANDING, isPending: false, isError: false });
   balancesMock.mockReturnValue(page([row({ supplier_id: 's1' })]));
 });
 
 describe('CratesPage', () => {
-  it('shows the allotment and what is out with people', () => {
+  it('passes the server standing to the bar and the page total to the table', () => {
+    standingMock.mockReturnValue({ data: STANDING, isPending: false, isError: false });
+    balancesMock.mockReturnValue({ data: { data: [row({ supplier_id: 's1' })], total: 11, page: 1, limit: 100 }, isPending: false, isError: false });
     render(<CratesPage />);
-    expect(screen.getByText('120')).toBeInTheDocument();
-    expect(screen.getAllByText('40').length).toBeGreaterThan(0);
+    expect(screen.getByTestId('bar')).toHaveTextContent('195');
+    expect(screen.getByTestId('table')).toHaveAttribute('data-holders', '11');
+    expect(screen.getByTestId('table')).toHaveAttribute('data-truncated', 'true');
   });
 
-  /**
-   * §6.9 — «—» for a point without a target, because «нуль стверджував би, що
-   * ящиків немає, тоді як ми просто не знаємо, скільки їх має бути».
-   */
-  it('shows «—» for an unset allotment, never 0', () => {
-    pointsMock.mockReturnValue({
-      data: [{ id: 'p1', name: 'Шипинки', target_crates: null }],
-      isPending: false,
-      isError: false,
-    });
+  it('asks the owner to pick a point and fires nothing until they do', () => {
+    meMock.mockReturnValue({ data: OWNER });
+    scopeMock.mockReturnValue({ pointId: null, canPick: true, setPointId: vi.fn() });
     render(<CratesPage />);
-    expect(screen.getAllByText('—').length).toBeGreaterThan(0);
+    expect(screen.getByText(/no point selected/i)).toBeInTheDocument();
+    expect(standingMock).toHaveBeenCalledWith({ pointId: null, isOwner: true });
   });
 
-  /** §6.1 — an allotment below what is already out WARNS, never blocks. */
-  it('warns when more crates are out than the allotment, and keeps both gestures live', () => {
-    pointsMock.mockReturnValue({
-      data: [{ id: 'p1', name: 'Шипинки', target_crates: 30 }],
-      isPending: false,
-      isError: false,
-    });
+  it('keeps both gestures live', () => {
     render(<CratesPage />);
-
-    expect(screen.getByText(/10 more crates are out/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /issue crates/i })).toBeEnabled();
     expect(screen.getByRole('button', { name: /accept crates/i })).toBeEnabled();
   });
 
-  it('does not warn when the allotment is unset', () => {
-    pointsMock.mockReturnValue({
-      data: [{ id: 'p1', name: 'Шипинки', target_crates: null }],
-      isPending: false,
-      isError: false,
-    });
+  it('shows the empty state, not a table, when nobody holds crates', () => {
+    balancesMock.mockReturnValue(page([]));
     render(<CratesPage />);
-    expect(screen.queryByText(/more crates are out/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/nobody is holding crates/i)).toBeInTheDocument();
+    expect(screen.queryByTestId('table')).not.toBeInTheDocument();
   });
 
-  /**
-   * The note on this screen is explicitly about this difference: crates taken
-   * on a розписка have NO cash cover, and a zero would read as «the deposit
-   * came back».
-   */
-  it('renders «—» in the deposit column for a receipt holder, never a zero', () => {
-    balancesMock.mockReturnValue(
-      page([
-        row({
-          supplier_id: 's2',
-          first_name: 'Христина',
-          last_name: 'Каленчук',
-          outstanding_units: 200,
-          deposit_held: '0.00',
-          has_receipt: true,
-        }),
-      ]),
-    );
+  it('says plainly that the shipments window is deferred', () => {
     render(<CratesPage />);
-
-    const line = screen.getByRole('row', { name: /Христина/ });
-    expect(within(line).getByText('—')).toBeInTheDocument();
-    expect(within(line).queryByText(/0\.00/)).not.toBeInTheDocument();
-    expect(within(line).getByText(/receipt/i)).toBeInTheDocument();
-  });
-
-  it('totals the units column', () => {
-    balancesMock.mockReturnValue(
-      page([
-        row({ supplier_id: 's1', outstanding_units: 40 }),
-        row({ supplier_id: 's2', last_name: 'Інша', outstanding_units: 200, has_receipt: true }),
-      ]),
-    );
-    render(<CratesPage />);
-
-    const total = screen.getByRole('row', { name: /TOTAL/i });
-    expect(within(total).getByText('240')).toBeInTheDocument();
-  });
-
-  it('says plainly that on-hand and shipments are not tracked yet', () => {
-    render(<CratesPage />);
-    expect(screen.getByText(/not tracked yet/i)).toBeInTheDocument();
+    expect(screen.getByText(/shipments today.*window is not built yet/i)).toBeInTheDocument();
   });
 
   it('opens the issue dialog without a point id for an operator', async () => {
@@ -187,12 +153,6 @@ describe('CratesPage', () => {
     expect(screen.getByTestId('return-dialog-mock')).toBeInTheDocument();
   });
 
-  it('shows an empty state when nobody is holding crates', () => {
-    balancesMock.mockReturnValue(page([]));
-    render(<CratesPage />);
-    expect(screen.getByText(/nobody is holding crates/i)).toBeInTheDocument();
-  });
-
   it('is accessible', async () => {
     const { container } = render(<CratesPage />);
     await expectNoAxeViolations(container);
@@ -207,6 +167,7 @@ describe('CratesPage — the owner', () => {
   it('asks for a point before showing anything', () => {
     scopeMock.mockReturnValue({ pointId: null, canPick: true, setPointId: vi.fn() });
     balancesMock.mockReturnValue({ data: undefined, isPending: true, isError: false });
+    standingMock.mockReturnValue({ data: undefined, isPending: true, isError: false });
     render(<CratesPage />);
     expect(screen.getByText(/no point selected/i)).toBeInTheDocument();
   });
@@ -231,56 +192,21 @@ describe('CratesPage — states', () => {
     expect(screen.getByRole('alert')).toBeInTheDocument();
   });
 
+  it('reports a failed standing read too', () => {
+    standingMock.mockReturnValue({ data: undefined, isPending: false, isError: true });
+    render(<CratesPage />);
+    expect(screen.getByRole('alert')).toBeInTheDocument();
+  });
+
   it('spins while loading', () => {
     balancesMock.mockReturnValue({ data: undefined, isPending: true, isError: false });
     render(<CratesPage />);
     expect(screen.getByRole('progressbar')).toBeInTheDocument();
   });
-});
 
-/**
- * A person can hold BOTH kinds at once — two issuances, two modes, one
- * balance. The first draft of this table branched on `has_receipt` alone and
- * would have printed «—» over real money.
- */
-describe('CratesPage — a mixed holder', () => {
-  it('shows the deposit that IS held, not a dash, when both kinds are out', () => {
-    balancesMock.mockReturnValue(
-      page([
-        row({
-          supplier_id: 's3',
-          first_name: 'Змішаний',
-          last_name: 'Тримач',
-          outstanding_units: 60,
-          deposit_held: '2400.00',
-          has_receipt: true,
-        }),
-      ]),
-    );
+  it('spins while the standing is loading', () => {
+    standingMock.mockReturnValue({ data: undefined, isPending: true, isError: false });
     render(<CratesPage />);
-
-    const line = screen.getByRole('row', { name: /Змішаний/ });
-    expect(within(line).queryByText('—')).not.toBeInTheDocument();
-    expect(within(line).getByText(/2[,\s]?400\.00/)).toBeInTheDocument();
-    expect(within(line).getByText(/deposit \+ receipt/i)).toBeInTheDocument();
-  });
-
-  it('still shows a dash when the receipt holder has no cash cover at all', () => {
-    balancesMock.mockReturnValue(
-      page([
-        row({
-          supplier_id: 's4',
-          first_name: 'Лише',
-          last_name: 'Розписка',
-          outstanding_units: 200,
-          deposit_held: '0.00',
-          has_receipt: true,
-        }),
-      ]),
-    );
-    render(<CratesPage />);
-
-    const line = screen.getByRole('row', { name: /Лише/ });
-    expect(within(line).getByText('—')).toBeInTheDocument();
+    expect(screen.getByRole('progressbar')).toBeInTheDocument();
   });
 });
