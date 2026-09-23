@@ -1158,6 +1158,7 @@
       "refunded": "deposit refunded {{amount}}",
       "noRefund": "no deposit — taken on a receipt",
       "voidedLine": "voided {{date}} · {{reason}}",
+      "truncated": "Showing the latest 100 of each kind.",
       "blockedByReturn": "a return rests on this issuance — void the return first",
       "void": "Void",
       "returnLabel": "return of {{units}} · {{date}}"

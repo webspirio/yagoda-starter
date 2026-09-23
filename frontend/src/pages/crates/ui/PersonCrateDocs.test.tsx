@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { expectNoAxeViolations } from '../../../test-axe';
 import { PersonCrateDocs } from './PersonCrateDocs';
 import type { CrateIssuance, CrateReturn } from '@/entities/crate';
 
@@ -92,5 +93,33 @@ describe('PersonCrateDocs', () => {
     expect(voidDialogMock).toHaveBeenLastCalledWith(expect.objectContaining({
       kind: 'crateIssuance', id: 'i1', code: 'ЯЩ-0001', open: true,
     }));
+  });
+
+  it('formats a void date in local time, not UTC', () => {
+    // 2026-09-10T22:30 UTC is 2026-09-11 in a positive UTC offset — slicing
+    // to the first 10 chars of the ISO string would print the wrong day.
+    returnsMock.mockReturnValue(ok([]));
+    issuancesMock.mockReturnValue(ok([issuance({
+      voided_at: '2026-09-10T22:30:00Z', void_reason: 'дубль', voided_by_user_id: 'u1',
+    })]));
+    render(<PersonCrateDocs supplierId="s1" isOwner />);
+    const expected = new Date('2026-09-10T22:30:00Z').toLocaleDateString('en', { day: '2-digit', month: '2-digit' });
+    expect(screen.getByText(new RegExp(`voided ${expected.replace('.', '\\.')}`))).toBeInTheDocument();
+  });
+
+  it('shows one line noting the list is truncated when either kind is', () => {
+    issuancesMock.mockReturnValue({ data: { data: [issuance()], total: 200, page: 1, limit: 100 }, isPending: false, isError: false });
+    render(<PersonCrateDocs supplierId="s1" isOwner={false} />);
+    expect(screen.getByText(/latest 100 of each kind/i)).toBeInTheDocument();
+  });
+
+  it('shows no truncation line when neither list is truncated', () => {
+    render(<PersonCrateDocs supplierId="s1" isOwner={false} />);
+    expect(screen.queryByText(/latest 100 of each kind/i)).not.toBeInTheDocument();
+  });
+
+  it('is accessible', async () => {
+    const { container } = render(<PersonCrateDocs supplierId="s1" isOwner={false} />);
+    await expectNoAxeViolations(container);
   });
 });

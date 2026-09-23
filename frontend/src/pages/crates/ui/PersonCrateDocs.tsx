@@ -5,7 +5,8 @@ import { Button } from '@/shared/ui/button';
 import { Spinner } from '@/shared/ui/spinner';
 import { cn } from '@/shared/lib/cn';
 import { formatUah } from '@/shared/lib/money';
-import { formatShortDate, formatTime } from '@/shared/lib/date';
+import { formatShortDate, formatTime, formatDateTime } from '@/shared/lib/date';
+import { isTruncated } from '@/shared/api';
 import { useCrateIssuancesQuery, useCrateReturnsQuery } from '@/entities/crate';
 import type { CrateIssuance, CrateReturn } from '@/entities/crate';
 import { VoidDocumentDialog } from '@/features/void-document';
@@ -81,7 +82,7 @@ export function PersonCrateDocs({ supplierId, isOwner }: { supplierId: string; i
                 {voided ? (
                   <span className="ml-auto text-xs text-muted-foreground">
                     {t('crates.docs.voidedLine', {
-                      date: formatShortDate(d.doc.voided_at!.slice(0, 10), i18n.language),
+                      date: formatDateTime(d.doc.voided_at!, i18n.language),
                       reason: d.doc.void_reason ?? '',
                     })}
                   </span>
@@ -98,6 +99,9 @@ export function PersonCrateDocs({ supplierId, isOwner }: { supplierId: string; i
           })}
         </ul>
       )}
+      {isTruncated(issuances.data) || isTruncated(returns.data) ? (
+        <p className="text-xs text-muted-foreground">{t('crates.docs.truncated')}</p>
+      ) : null}
       {voiding ? (
         <VoidDocumentDialog
           kind={voiding.kind}

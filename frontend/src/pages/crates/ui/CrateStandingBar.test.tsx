@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
+import { expectNoAxeViolations } from '../../../test-axe';
 import { CrateStandingBar } from './CrateStandingBar';
 import type { CrateStanding } from '@/entities/crate';
 
@@ -44,5 +45,10 @@ describe('CrateStandingBar', () => {
     expect(widths.every((w) => !w.startsWith('-') && w !== 'NaN%')).toBe(true);
     const total = widths.reduce((sum, w) => sum + parseFloat(w), 0);
     expect(total).toBeCloseTo(100, 2);
+  });
+
+  it('is accessible', async () => {
+    const { container } = render(<CrateStandingBar standing={base} />);
+    await expectNoAxeViolations(container);
   });
 });

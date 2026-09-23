@@ -40,8 +40,12 @@ describe('useCrateStandingQuery', () => {
   });
 
   /** An owner with no point would get a 400 — the request must not leave. */
-  it('does not fire for an owner who has not chosen a point', () => {
-    renderHook(() => useCrateStandingQuery({ pointId: null, isOwner: true }), { wrapper });
+  it('does not fire for an owner who has not chosen a point', async () => {
+    const { result } = renderHook(() => useCrateStandingQuery({ pointId: null, isOwner: true }), { wrapper });
+    expect(result.current.fetchStatus).toBe('idle');
+    // Flush microtasks so a request that WOULD have fired has had its chance.
+    await new Promise((r) => setTimeout(r, 0));
+    expect(result.current.fetchStatus).toBe('idle');
     expect(mock.history.get).toHaveLength(0);
   });
 
