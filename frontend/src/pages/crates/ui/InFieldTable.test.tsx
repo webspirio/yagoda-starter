@@ -1,7 +1,8 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, afterEach } from 'vitest';
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import i18n from 'i18next';
+import { i18n } from '@/shared/lib/i18n';
+import { expectNoAxeViolations } from '../../../test-axe';
 import { InFieldTable } from './InFieldTable';
 import type { CrateBalanceRow, CrateStanding } from '@/entities/crate';
 
@@ -17,6 +18,13 @@ const row = (over: Partial<CrateBalanceRow> & Pick<CrateBalanceRow, 'supplier_id
 const props = (rows: CrateBalanceRow[], over = {}) => ({
   rows, holders: rows.length, standing, truncated: false,
   renderDocs: (id: string) => <div data-testid={`docs-${id}`} />, ...over,
+});
+
+// The Ukrainian-plurals test below switches language — reset unconditionally
+// (even on a failed assertion) so it never leaks into a later file's "runs in
+// ENGLISH" assumption. Mirrors `WeighingForm.test.tsx`'s own convention.
+afterEach(async () => {
+  await i18n.changeLanguage('en');
 });
 
 describe('InFieldTable', () => {
@@ -54,6 +62,32 @@ describe('InFieldTable', () => {
     await i18n.changeLanguage('uk');
     render(<InFieldTable {...props([row({ supplier_id: 's1' })], { holders: 11 })} />);
     expect(screen.getByText('195 ящ. · 11 осіб')).toBeInTheDocument();
-    await i18n.changeLanguage('en');
+  });
+
+  /** #1 — a person who returned everything must stay reachable so their
+   *  documents can still be voided. */
+  it('shows a zero row with «—» for how/deposit, units 0, and still expands', async () => {
+    render(
+      <InFieldTable
+        {...props([
+          row({ supplier_id: 's3', outstanding_units: 0, deposit_units: 0, receipt_units: 0, deposit_held: '0.00' }),
+        ])}
+      />,
+    );
+    const dataRow = screen.getByRole('row', { name: /Яремчук/ });
+    const cells = within(dataRow).getAllByRole('cell');
+    expect(cells[0]).toHaveTextContent('0');
+    expect(cells[1]).toHaveTextContent('—');
+    expect(cells[2]).toHaveTextContent('—');
+
+    const toggle = within(dataRow).getByRole('button', { name: /Василь Яремчук/ });
+    await userEvent.click(toggle);
+    expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByTestId('docs-s3')).toBeInTheDocument();
+  });
+
+  it('is accessible', async () => {
+    const { container } = render(<InFieldTable {...props([row({ supplier_id: 's1' })])} />);
+    await expectNoAxeViolations(container);
   });
 });

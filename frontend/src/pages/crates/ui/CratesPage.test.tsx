@@ -153,6 +153,20 @@ describe('CratesPage', () => {
     expect(screen.getByTestId('return-dialog-mock')).toBeInTheDocument();
   });
 
+  it('flips includeZero when the "show everyone" switch is toggled, off by default', async () => {
+    const user = userEvent.setup();
+    render(<CratesPage />);
+    expect(balancesMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({ includeZero: false }),
+    );
+
+    await user.click(screen.getByRole('switch', { name: /show everyone who took crates/i }));
+
+    expect(balancesMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({ includeZero: true }),
+    );
+  });
+
   it('is accessible', async () => {
     const { container } = render(<CratesPage />);
     await expectNoAxeViolations(container);

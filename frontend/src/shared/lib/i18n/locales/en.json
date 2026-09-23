@@ -1078,6 +1078,7 @@
     "title": "Crates",
     "description": "Who is still holding crates, and on what terms.",
     "pickPoint": "Select a point",
+    "showZero": "Show everyone who took crates",
     "empty": {
       "title": "No point selected",
       "hint": "Crates sit at a point. Choose one to see what is out."

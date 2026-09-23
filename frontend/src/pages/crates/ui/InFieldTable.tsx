@@ -34,11 +34,13 @@ export function InFieldTable({
   const [openId, setOpenId] = useState<string | null>(null);
 
   const how = (row: CrateBalanceRow) =>
-    row.receipt_units === 0
-      ? t('crates.mode.deposit')
-      : row.deposit_units === 0
-        ? t('crates.mode.receipt')
-        : t('crates.mode.split', { deposit: row.deposit_units, receipt: row.receipt_units });
+    row.outstanding_units === 0
+      ? '—'
+      : row.receipt_units === 0
+        ? t('crates.mode.deposit')
+        : row.deposit_units === 0
+          ? t('crates.mode.receipt')
+          : t('crates.mode.split', { deposit: row.deposit_units, receipt: row.receipt_units });
 
   return (
     <Card className="overflow-hidden">

@@ -6,6 +6,7 @@ import { Button } from '@/shared/ui/button';
 import { SelectField } from '@/shared/ui/select-field';
 import { EmptyState } from '@/shared/ui/empty-state';
 import { Spinner } from '@/shared/ui/spinner';
+import { Switch } from '@/shared/ui/switch';
 import { isTruncated } from '@/shared/api';
 import { useMeQuery, usePointScope } from '@/entities/user';
 import { usePointOptionsQuery } from '@/entities/collection-point';
@@ -49,7 +50,8 @@ export function CratesPage() {
   const { data: points } = usePointOptionsQuery();
 
   const isOwner = me?.role === 'network_owner';
-  const balances = useCrateBalancesQuery({ pointId, isOwner: Boolean(isOwner) });
+  const [includeZero, setIncludeZero] = useState(false);
+  const balances = useCrateBalancesQuery({ pointId, isOwner: Boolean(isOwner), includeZero });
   const standing = useCrateStandingQuery({ pointId, isOwner: Boolean(isOwner) });
 
   const [issueOpen, setIssueOpen] = useState(false);
@@ -122,6 +124,11 @@ export function CratesPage() {
                 <PackageCheck className="size-4" />
                 {t('crates.return.title')}
               </Button>
+
+              <label className="ml-auto flex items-center gap-2 text-sm text-muted-foreground">
+                <Switch checked={includeZero} onCheckedChange={setIncludeZero} />
+                {t('crates.showZero')}
+              </label>
             </div>
 
             {rows.length === 0 ? (
