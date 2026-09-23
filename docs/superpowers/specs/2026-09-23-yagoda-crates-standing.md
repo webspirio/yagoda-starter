@@ -1,6 +1,6 @@
 # Crates standing — the «Ящики» screen at parity with the mock
 
-**Date:** 2026-09-23 · **Branch:** `feat/crates-standing` · **Status:** approved design
+**Date:** 2026-09-23 · **Branch:** `feat/crates-standing` · **Status:** approved design, **revised by §8** (the figures in §3/§4.1 are superseded there)
 
 ## 1. Why
 
@@ -149,3 +149,96 @@ No new table, no migration.
   totals), drill-down button matrix (role × `shift_closed` ×
   `has_live_returns` × voided). `tsc -b` explicitly.
 - Gate: `npm run verify:full` (real-database SQL).
+
+## 8. Revision — the crate flow as the client runs it (2026-09-23, supersedes §3 and §4.1's shape)
+
+### 8.1 Why
+
+§3 modelled a transfer as crates coming BACK from the base, netted against what
+was shipped. That is backwards: **a transfer is how EMPTY crates arrive at the
+point.** On the dev seed it printed «У нас з ягодою» = 4 − 808 = −804. The client
+described the real flow by example (allotment 500):
+
+| Step | Documents | Empty | With people | With berries |
+|---|---|---|---|---|
+| Transfer 500 empty | transfer, 500 crates | 500 | 0 | 0 |
+| Issue 100 | issuance 100 | 400 | 100 | 0 |
+| 50 full, from people not holding ours | receipt with 50 crate tare | 350 | 100 | 50 |
+| 50 full, in OUR rented crates | receipt with 50 crate tare + return of 50 written BY THE RECEIPT (deposit refunded) | 350 | 50 | 100 |
+| Shift closed → next shift | none | 350 | 50 | 0 |
+
+Full crates are always ours (client, 2026-09-23): berries brought in anything
+end up in our crates, so every crate-tare unit on a receipt leaves the empties.
+Breakage comes out of the empties too.
+
+### 8.2 The figures (replace §3)
+
+For point `P`, point-lifetime, voided documents excluded everywhere:
+
+| Field | Definition |
+|---|---|
+| `allotment` | `target_crates`; `null` = «не задано» |
+| `received` | Σ transfer crates to `P` — the point-cash three-way reading (accepted → `crates`, disputed ∧ resolved → `resolved_crates`, disputed → `reported_crates`; `sent` nothing; voided excluded in the outer `WHERE`) — `transferCratesSql` as it stands |
+| `in_field` | open units of live tranches (unchanged) |
+| `deposit_units`, `deposit_held` | unchanged |
+| `with_berry` | Σ crate-tare units on live receipts of `P`'s **currently open shift**; `0` when no shift is open. Never negative. |
+| `on_hand` | `received − Σ issued + Σ returned − Σ crate-tare units on ALL live receipts − Σ broken_crates` (NULL breakage adds 0). NOT null any more — it no longer depends on the allotment. MAY be negative when documents disagree (red, §6.9 wording adapted). |
+| `total` | `on_hand + in_field + with_berry` |
+| `shortfall` | `allotment − total`, `null` when `allotment` is; negative means «понад наділ» |
+
+`at_base` is dropped: nothing on this screen tracks crates at the base.
+
+A return written by a receipt (§8.3) adds its units to `on_hand` through Σ
+returned while the same crates leave through the receipt's crate tare — net 0,
+exactly «not added to empties because they are already full».
+
+### 8.3 Reception returns our crates in the same «Прийняти»
+
+- `crate_returns.intake_id uuid NULL` → `intakes.id`, partial UNIQUE
+  (one return per receipt), migration + DBML Note. Ordinary «Прийняти ящики»
+  returns leave it NULL.
+- `POST /intakes` gains optional `returned_crates` (int ≥ 0; absent/0 = none).
+  In the SAME transaction as the receipt (like `paid_amount`'s payout): FIFO
+  allocation over the supplier's open tranches, deposit refund at each tranche's
+  price, the crates-drawer check. Refusals refuse the WHOLE receipt:
+  - `returned_crates` > crate-tare units on this receipt → 400 `RETURNED_EXCEEDS_TARE`;
+  - > what the supplier holds → the existing return-shortfall refusal;
+  - crates drawer < refund → the existing crates `cashInsufficient` refusal (§6.7).
+- The write path is ONE shared writer (extracted from `CratesService.returnCrates`,
+  taking the transaction's manager, the shift and an optional `intake_id`) so a
+  reception return and a standalone return cannot allocate differently.
+- Intake responses carry the linked return (`units`, `deposit_refund`, the
+  allocation modes) so the receipt can print it.
+- **Void:** voiding the receipt voids its linked return in the same transaction,
+  same reason, both audited; the receipt's own permission rule applies.
+  Voiding a linked return on its own → 409 `RETURN_BELONGS_TO_INTAKE`.
+  Crate return responses gain `intake_id` and `intake_code`.
+
+### 8.4 Frontend
+
+- **Reception:** under the tare, «З них наших ящиків», shown only when the
+  supplier holds our crates; pre-filled `min(crate-tare units on the receipt,
+  held)` and editable within `[0, that min]`; beside it the live refund
+  («завдаток до повернення 6 000,00 ₴» / «за розпискою, без грошей») from
+  `POST /crate-returns/preview`. Sent as `returned_crates`. The three refusals
+  map to banners.
+- **Receipt widget:** prints «Повернено наших ящиків: 50 · завдаток повернуто
+  6 000,00 ₴» (or «· за розпискою, без грошей»), apart from «Видано готівкою».
+- **Bar:** segments empty / with people / with berries; headline «Наділ»; line
+  «Усього за точкою 400 = 350 + 50 + 0»; «Не вистачає до наділу: 100» or
+  «Понад наділ: N» or «—»; «Отримано переказами: 808» as context; red warning
+  when `on_hand` < 0.
+- **PersonCrateDocs:** a return with `intake_id` shows no void button but
+  «записано з квитанцією {code} — сторнуйте квитанцію».
+
+### 8.5 Testing
+
+- db-spec: the client's example step by step (500 → 350/100/50 → 350/50/100 →
+  next shift 350/50/0), plus breakage, voided receipt (and its cascaded return),
+  disputed/voided transfers, no open shift.
+- Reception return: happy path (deposit + розписка tranches), each refusal
+  rolls back the whole receipt, void cascade, standalone void of a linked return
+  refused, lock order against a concurrent standalone return.
+- Frontend: pre-fill/clamp/hidden field, refund preview, receipt line, bar
+  figures, linked-return hint.
+- Gate: `npm run verify:full` (migration + money + SQL).
