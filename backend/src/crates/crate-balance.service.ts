@@ -243,7 +243,7 @@ export class CrateBalanceService {
     if (query.supplier_id) qb.andWhere('i.supplier_id = :supplierId', { supplierId: query.supplier_id });
     if (query.mode) qb.andWhere('i.mode = :mode', { mode: query.mode });
     if (query.voided === true) qb.andWhere('i.voided_at IS NOT NULL');
-    else if (!query.voided) qb.andWhere('i.voided_at IS NULL');
+    else if (!query.include_voided) qb.andWhere('i.voided_at IS NULL');
 
     const [data, total] = await qb
       .orderBy('i.created_at', 'DESC')
@@ -252,8 +252,24 @@ export class CrateBalanceService {
       .take(query.limit)
       .getManyAndCount();
 
+    // ONE query for the page, never one per row.
+    const ids = data.map((issuance) => issuance.id);
+    const liveRows: Array<{ issuance_id: string }> = ids.length
+      ? await this.dataSource.query(
+          `SELECT DISTINCT a.issuance_id
+             FROM crate_return_allocations a
+             JOIN crate_returns cr ON cr.id = a.return_id
+            WHERE a.issuance_id = ANY($1)
+              AND cr.voided_at IS NULL`,
+          [ids],
+        )
+      : [];
+    const live = new Set(liveRows.map((row) => row.issuance_id));
+
     return {
-      data: data.map((issuance) => toCrateIssuanceResponse(issuance, issuance.shift as Shift)),
+      data: data.map((issuance) =>
+        toCrateIssuanceResponse(issuance, issuance.shift as Shift, live.has(issuance.id)),
+      ),
       total,
       page: query.page,
       limit: query.limit,
@@ -282,7 +298,7 @@ export class CrateBalanceService {
     if (pointId) qb.andWhere('s.collection_point_id = :pointId', { pointId });
     if (query.supplier_id) qb.andWhere('r.supplier_id = :supplierId', { supplierId: query.supplier_id });
     if (query.voided === true) qb.andWhere('r.voided_at IS NOT NULL');
-    else if (!query.voided) qb.andWhere('r.voided_at IS NULL');
+    else if (!query.include_voided) qb.andWhere('r.voided_at IS NULL');
 
     const [data, total] = await qb
       .orderBy('r.created_at', 'DESC')

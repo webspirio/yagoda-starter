@@ -19,12 +19,17 @@ export interface CrateIssuanceResponse {
   voided_at: string | null;
   voided_by_user_id: string | null;
   void_reason: string | null;
+  /** The shift is closed — voiding is then the owner's alone (§9.4 as amended). */
+  shift_closed: boolean;
+  /** A live return is allocated against this issuance — `voidIssuance` refuses it (§9.3). */
+  has_live_returns: boolean;
   created_at: string;
 }
 
 export function toCrateIssuanceResponse(
   issuance: CrateIssuance,
   shift: Shift,
+  hasLiveReturns: boolean,
 ): CrateIssuanceResponse {
   return {
     id: issuance.id,
@@ -41,6 +46,8 @@ export function toCrateIssuanceResponse(
     voided_at: issuance.voided_at ? issuance.voided_at.toISOString() : null,
     voided_by_user_id: issuance.voided_by_user_id,
     void_reason: issuance.void_reason,
+    shift_closed: shift.closed_at !== null,
+    has_live_returns: hasLiveReturns,
     created_at: issuance.created_at.toISOString(),
   };
 }
