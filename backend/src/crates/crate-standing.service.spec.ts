@@ -12,13 +12,15 @@ const scopeless = { sub: 'x', role: UserRole.PointOperator, collection_point_id:
 
 const ROW = {
   collection_point_id: POINT_A,
-  allotment: 800,
-  in_field: 195,
-  deposit_units: 115,
-  deposit_held: '13800.00',
-  at_base: 264,
-  on_hand: 341,
-  shortfall: 459,
+  allotment: 500,
+  received: 500,
+  on_hand: 350,
+  in_field: 50,
+  deposit_units: 30,
+  deposit_held: '3600.00',
+  with_berry: 0,
+  total: 400,
+  shortfall: 100,
 };
 
 describe('CrateStandingService', () => {

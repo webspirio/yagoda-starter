@@ -7,38 +7,24 @@ import { UserRole } from '../users/user-role.enum';
 import type { AuthenticatedUser } from '../auth/jwt.strategy';
 
 /**
- * `GET /crate-standing` against a real Postgres — the §6.8 20:40 day:
- * allotment 800 = 341 empty + 195 with people + 264 at base.
+ * `GET /crate-standing` against a real Postgres — spec §8.1's crate flow as the
+ * client runs it (2026-09-23), step by step at ONE fresh point, allotment 500:
  *
- * Composition of the 264 at base, built below:
- *   yesterday (closed): 120 crates on receipts + 2 broken   = 122
- *   today (OPEN):       142 crates on receipts               = 142
- *   plus noise that must NOT count: 30 «Чешка» (not a crate), a voided
- *   receipt with 50 crates, a `sent` transfer of 40.
- *   plus transfers that DO net out to zero: accepted 10, disputed+resolved
- *   (resolved 6), disputed open (reported 4) = −20; and 20 extra crates on a
- *   closed shift receipt, so 122 + 142 + 20 − 20 = 264.
- *   A voided resolved transfer of 99 must count for nothing (voided wins).
+ *   | Step                                   | Empty | With people | With berries |
+ *   | Transfer 500 empty                     |   500 |           0 |            0 |
+ *   | Issue 100 (80 deposit + 20 розписка)   |   400 |         100 |            0 |
+ *   | 50 full, from someone not holding ours |   350 |         100 |           50 |
+ *   | 50 full in OUR crates + return of 50   |   350 |          50 |          100 |
+ *   | Shift closed → next shift              |   350 |          50 |            0 |
  *
- * Composition of the 195 in field / 115 on deposit / 13 800,00 ₴ held, built
- * below — this exercises `openTranchesSql`'s RETURN side, which the first
- * version of this file never touched:
- *   supplier `a` is issued 125 crates on a deposit at 120,00 ₴/шт
- *     (deposit_taken 15 000,00 ₴); a REAL partial return of 10 brings her
- *     remaining tranche to 115 and refunds 1 200,00 ₴ (deposit_refund); a
- *     SECOND, VOIDED return of 20 against the SAME issuance must count for
- *     NOTHING — neither shrinking the 115 further nor refunding its
- *     2 400,00 ₴ — because `openTranchesSql` and `crateBookSql` both filter
- *     `cr.voided_at IS NULL`.
- *   supplier `b` is issued 80 on a розписка (0,00 ₴), untouched by any
- *     return, so her whole 80 stays open.
- *   supplier `c` is issued 30 on a VOIDED deposit (3 600,00 ₴) — excluded
- *     entirely, tranche and cash both, by `ci.voided_at IS NULL`.
- *   115 (a) + 80 (b) = 195 in_field; 115 (a, the only open deposit tranche)
- *     = deposit_units; 15 000,00 − 1 200,00 = 13 800,00 ₴ deposit_held — the
- *     SAME figure the pre-return fixture produced, because the voided
- *     issuance and the voided return were chosen to cancel out rather than
- *     to move the total.
+ * The steps are ordered `it`s over the same point: each one adds its documents
+ * and asserts the WHOLE response, so a figure that moves when it should not is
+ * caught at the step that moved it. Step 4's return is a plain standalone
+ * return — the receipt-linked `intake_id` is deferred with spec §8.3, and §8.2's
+ * formula nets the two documents the same way either way.
+ *
+ * The remaining cases each use their own fresh point so they cannot disturb
+ * the example's figures.
  */
 describe('CrateStandingService.forPoint (Postgres)', () => {
   let ds: DataSource;
@@ -51,8 +37,6 @@ describe('CrateStandingService.forPoint (Postgres)', () => {
   let crateTare: string;
   let boxTare: string;
   let grade: string;
-  let yesterday: string;
-  let today: string;
 
   const owner = () =>
     ({ sub: userId, role: UserRole.NetworkOwner, collection_point_id: null }) as AuthenticatedUser;
@@ -256,97 +240,180 @@ describe('CrateStandingService.forPoint (Postgres)', () => {
     );
     grade = g.id;
 
-    point = await newPoint(800);
+    point = await newPoint(500);
     bare = await newPoint(null);
-    yesterday = await shift(point, '2026-09-09', { broken: 2 });
-    const older = await shift(point, '2026-09-08', { broken: null });
-    today = await shift(point, '2026-09-10', null);
-
-    const s = await supplier(point);
-    await receipt(yesterday, s, 120, { boxes: 30 });
-    await receipt(yesterday, s, 50, { voided: true });
-    await receipt(older, s, 20);
-    await receipt(today, s, 142);
-
-    await transfer(point, { status: 'sent', crates: 40 });
-    await transfer(point, {
-      status: 'accepted', crates: 10,
-      accepted_by_user_id: userId, accepted_date: '2026-09-10', accepted_at: new Date(),
-    });
-    await transfer(point, {
-      status: 'disputed', crates: 9, reported_crates: 7, resolved_crates: 6,
-      accepted_by_user_id: userId, accepted_date: '2026-09-10', accepted_at: new Date(),
-      resolved_by_user_id: userId, resolved_at: new Date(),
-    });
-    await transfer(point, {
-      status: 'disputed', crates: 8, reported_crates: 4,
-      accepted_by_user_id: userId, accepted_date: '2026-09-10', accepted_at: new Date(),
-    });
-    await transfer(point, {
-      status: 'disputed', crates: 99, reported_crates: 99, resolved_crates: 99,
-      accepted_by_user_id: userId, accepted_date: '2026-09-10', accepted_at: new Date(),
-      resolved_by_user_id: userId, resolved_at: new Date(),
-      voided_at: new Date(), voided_by_user_id: userId, void_reason: 'фікстура',
-    });
-
-    // 195 out: 115 on deposit (13 800,00 ₴, after a real partial return and a
-    // voided one that must count for nothing) + 80 on a розписка, plus a
-    // fully voided deposit issuance that must not appear anywhere — see this
-    // describe block's doc comment for the arithmetic.
-    const a = await supplier(point);
-    const b = await supplier(point);
-    const c = await supplier(point);
-    const issuanceA = await issue(today, a, 125, 'deposit', '15000.00');
-    await giveBack(today, a, issuanceA, 10, '120.00', '1200.00');
-    await giveBack(today, a, issuanceA, 20, '120.00', '2400.00', { voided: true });
-    await issue(today, b, 80, 'receipt', '0.00');
-    await issue(today, c, 30, 'deposit', '3600.00', { voided: true });
   });
 
   afterAll(async () => {
     await ds?.destroy();
   });
 
-  it('reproduces §6.8: 800 = 341 + 195 + 264', async () => {
-    const got = await service.forPoint(owner(), { collection_point_id: point });
-    expect(got).toEqual({
-      collection_point_id: point,
-      allotment: 800,
-      in_field: 195,
-      deposit_units: 115,
-      deposit_held: '13800.00',
-      at_base: 264,
-      on_hand: 341,
-      shortfall: 459,
+  const acceptedTransfer = (crates: number): Record<string, unknown> => ({
+    status: 'accepted',
+    crates,
+    accepted_by_user_id: userId,
+    accepted_date: '2026-09-10',
+    accepted_at: new Date(),
+  });
+
+  /** The figures that do not move through the example, merged into each step. */
+  const standing = (over: Record<string, unknown>) => ({
+    collection_point_id: point,
+    allotment: 500,
+    received: 500,
+    deposit_units: 0,
+    deposit_held: '0.00',
+    ...over,
+  });
+
+  describe('the client example, step by step (allotment 500)', () => {
+    let day1: string;
+    let holder: string;
+    let depositIssuance: string;
+
+    it('1. a transfer of 500 empties lands them all on hand', async () => {
+      await transfer(point, acceptedTransfer(500));
+      await expect(service.forPoint(owner(), { collection_point_id: point })).resolves.toEqual(
+        standing({ on_hand: 500, in_field: 0, with_berry: 0, total: 500, shortfall: 0 }),
+      );
+    });
+
+    it('2. issuing 100 (80 on deposit, 20 on a розписка) moves them from empty to people', async () => {
+      day1 = await shift(point, '2026-09-10', null);
+      holder = await supplier(point);
+      const other = await supplier(point);
+      depositIssuance = await issue(day1, holder, 80, 'deposit', '9600.00');
+      await issue(day1, other, 20, 'receipt', '0.00');
+      await expect(service.forPoint(owner(), { collection_point_id: point })).resolves.toEqual(
+        standing({
+          on_hand: 400, in_field: 100, with_berry: 0, total: 500, shortfall: 0,
+          deposit_units: 80, deposit_held: '9600.00',
+        }),
+      );
+    });
+
+    it('3. 50 full crates from someone not holding ours come out of the empties', async () => {
+      // 30 «Чешка» on the same receipt are NOT crates and must not count.
+      await receipt(day1, await supplier(point), 50, { boxes: 30 });
+      await expect(service.forPoint(owner(), { collection_point_id: point })).resolves.toEqual(
+        standing({
+          on_hand: 350, in_field: 100, with_berry: 50, total: 500, shortfall: 0,
+          deposit_units: 80, deposit_held: '9600.00',
+        }),
+      );
+    });
+
+    it('4. 50 full in OUR crates plus a return of 50: empties unchanged, people −50, berries +50', async () => {
+      await receipt(day1, holder, 50);
+      await giveBack(day1, holder, depositIssuance, 50, '120.00', '6000.00');
+      await expect(service.forPoint(owner(), { collection_point_id: point })).resolves.toEqual(
+        standing({
+          on_hand: 350, in_field: 50, with_berry: 100, total: 500, shortfall: 0,
+          deposit_units: 30, deposit_held: '3600.00',
+        }),
+      );
+    });
+
+    it('5. closing the shift sends the berries to the base; the next shift starts with none', async () => {
+      await ds.query(
+        `UPDATE shifts SET status = 'closed', closed_at = now(), closed_by_user_id = $2, broken_crates = 0
+          WHERE id = $1`,
+        [day1, userId],
+      );
+      await shift(point, '2026-09-11', null);
+      await expect(service.forPoint(owner(), { collection_point_id: point })).resolves.toEqual(
+        standing({
+          on_hand: 350, in_field: 50, with_berry: 0, total: 400, shortfall: 100,
+          deposit_units: 30, deposit_held: '3600.00',
+        }),
+      );
+    });
+
+    it('voided documents change nothing', async () => {
+      const before = await service.forPoint(owner(), { collection_point_id: point });
+      const [open] = await ds.query(
+        `SELECT id FROM shifts WHERE collection_point_id = $1 AND closed_at IS NULL`,
+        [point],
+      );
+      const s = await supplier(point);
+      await receipt(day1, s, 40, { voided: true });
+      await receipt(open.id, s, 40, { voided: true });
+      await transfer(point, {
+        ...acceptedTransfer(99),
+        status: 'disputed', reported_crates: 99, resolved_crates: 99,
+        resolved_by_user_id: userId, resolved_at: new Date(),
+        voided_at: new Date(), voided_by_user_id: userId, void_reason: 'фікстура',
+      });
+      await transfer(point, {
+        ...acceptedTransfer(77),
+        voided_at: new Date(), voided_by_user_id: userId, void_reason: 'фікстура',
+      });
+      await issue(open.id, s, 25, 'deposit', '3000.00', { voided: true });
+      await giveBack(open.id, holder, depositIssuance, 10, '120.00', '1200.00', { voided: true });
+      await expect(service.forPoint(owner(), { collection_point_id: point })).resolves.toEqual(before);
+    });
+
+    it('agrees with the sum of /crate-balances for the same point', async () => {
+      const page = await balances.list(owner(), {
+        collection_point_id: point, page: 1, limit: 200, include_zero: false,
+      } as never);
+      const sum = page.data.reduce((n, r) => n + r.outstanding_units, 0);
+      const got = await service.forPoint(owner(), { collection_point_id: point });
+      expect(got.in_field).toBe(sum);
+    });
+
+    it('pins an operator to their own point', async () => {
+      const got = await service.forPoint(operatorAt(point), { collection_point_id: bare });
+      expect(got.collection_point_id).toBe(point);
     });
   });
 
-  it('agrees with the sum of /crate-balances for the same point', async () => {
-    const page = await balances.list(owner(), {
-      collection_point_id: point, page: 1, limit: 200, include_zero: false,
-    } as never);
-    const sum = page.data.reduce((n, r) => n + r.outstanding_units, 0);
-    const got = await service.forPoint(owner(), { collection_point_id: point });
-    expect(got.in_field).toBe(sum);
+  it('takes recorded breakage out of the empties (a NULL breakage adds 0)', async () => {
+    const p = await newPoint(10);
+    await transfer(p, acceptedTransfer(10));
+    await shift(p, '2026-09-08', { broken: null });
+    await shift(p, '2026-09-09', { broken: 3 });
+    const got = await service.forPoint(owner(), { collection_point_id: p });
+    expect(got).toMatchObject({ received: 10, on_hand: 7, total: 7, shortfall: 3 });
   });
 
-  it('pins an operator to their own point', async () => {
-    const got = await service.forPoint(operatorAt(point), { collection_point_id: bare });
-    expect(got.collection_point_id).toBe(point);
+  it('reads transfers through the three-way CASE: sent counts nothing, disputed counts resolved else reported', async () => {
+    const p = await newPoint(100);
+    await transfer(p, { status: 'sent', crates: 40 });
+    await transfer(p, acceptedTransfer(10));
+    await transfer(p, {
+      ...acceptedTransfer(9),
+      status: 'disputed', reported_crates: 7, resolved_crates: 6,
+      resolved_by_user_id: userId, resolved_at: new Date(),
+    });
+    await transfer(p, { ...acceptedTransfer(8), status: 'disputed', reported_crates: 4 });
+    const got = await service.forPoint(owner(), { collection_point_id: p });
+    // 10 accepted + 6 resolved + 4 reported; the 40 still `sent` has not arrived.
+    expect(got).toMatchObject({ received: 20, on_hand: 20, total: 20, shortfall: 80 });
   });
 
-  /** §6.9 — «—», not 0, and no on-hand without an allotment. */
+  /** §6.9 — «—», not 0: without an allotment there is no shortfall. */
   it('reports a point without an allotment as null, not zero', async () => {
-    const got = await service.forPoint(owner(), { collection_point_id: bare });
-    expect(got).toMatchObject({ allotment: null, on_hand: null, in_field: 0, at_base: 0, shortfall: 0 });
-    expect(got.deposit_held).toBe('0.00');
+    await expect(service.forPoint(owner(), { collection_point_id: bare })).resolves.toEqual({
+      collection_point_id: bare,
+      allotment: null,
+      received: 0,
+      on_hand: 0,
+      in_field: 0,
+      deposit_units: 0,
+      deposit_held: '0.00',
+      with_berry: 0,
+      total: 0,
+      shortfall: null,
+    });
   });
 
-  it('lets on_hand go negative when the allotment is overdrawn', async () => {
-    const small = await newPoint(10);
-    const open = await shift(small, '2026-09-10', null);
-    await receipt(open, await supplier(small), 25);
-    const got = await service.forPoint(owner(), { collection_point_id: small });
-    expect(got.on_hand).toBe(-15);
+  it('lets on_hand go negative when the documents issue more than was received', async () => {
+    const p = await newPoint(500);
+    await transfer(p, acceptedTransfer(500));
+    const open = await shift(p, '2026-09-10', null);
+    await issue(open, await supplier(p), 600, 'receipt', '0.00');
+    const got = await service.forPoint(owner(), { collection_point_id: p });
+    expect(got).toMatchObject({ received: 500, on_hand: -100, in_field: 600, total: 500, shortfall: 0 });
   });
 });
