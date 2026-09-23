@@ -4,38 +4,64 @@ import { expectNoAxeViolations } from '../../../test-axe';
 import { CrateStandingBar } from './CrateStandingBar';
 import type { CrateStanding } from '@/entities/crate';
 
+/** The client's day-2 example, spec §8.1's table's last row: 500 → 350/50/0. */
 const base: CrateStanding = {
-  collection_point_id: 'p1', allotment: 800, in_field: 195, deposit_units: 115,
-  deposit_held: '13800.00', at_base: 264, on_hand: 341, shortfall: 459,
+  collection_point_id: 'p1',
+  allotment: 500,
+  received: 500,
+  on_hand: 350,
+  in_field: 50,
+  deposit_units: 30,
+  deposit_held: '3600.00',
+  with_berry: 0,
+  total: 400,
+  shortfall: 100,
 };
 
 describe('CrateStandingBar', () => {
-  it('prints the three figures and the identity line', () => {
+  it('prints the three figures, the identity line and the context line', () => {
     render(<CrateStandingBar standing={base} />);
-    expect(screen.getByText('800 = 341 + 195 + 264')).toBeInTheDocument();
-    expect(screen.getByText('Empty at the point').parentElement).toHaveTextContent('341');
-    expect(screen.getByText('Out with people').parentElement).toHaveTextContent('195');
-    expect(screen.getByText('With us, with berries').parentElement).toHaveTextContent('264');
-    expect(screen.getByText('459')).toBeInTheDocument();
+    expect(screen.getByText('500')).toBeInTheDocument();
+    expect(screen.getByText('Received by transfer: 500')).toBeInTheDocument();
+    expect(screen.getByText('Empty at the point').parentElement).toHaveTextContent('350');
+    expect(screen.getByText('Out with people').parentElement).toHaveTextContent('50');
+    expect(screen.getByText('With us, with berries').parentElement).toHaveTextContent('0');
+    expect(screen.getByText('Total for the point 400 = 350 + 50 + 0')).toBeInTheDocument();
+    expect(screen.getByText('Short of the allotment:')).toBeInTheDocument();
+    expect(screen.getByText('100')).toBeInTheDocument();
   });
 
-  /** §6.9 — «—», never 0; and no identity to state without an allotment. */
-  it('shows «—» and no identity line when the allotment is unset', () => {
-    render(<CrateStandingBar standing={{ ...base, allotment: null, on_hand: null }} />);
+  it('says the allotment is complete at shortfall 0', () => {
+    render(<CrateStandingBar standing={{ ...base, allotment: 400, shortfall: 0 }} />);
+    expect(screen.getByText('Allotment complete')).toBeInTheDocument();
+    expect(screen.queryByText('Short of the allotment:')).not.toBeInTheDocument();
+  });
+
+  it('prints «over N» once total runs past the allotment', () => {
+    render(<CrateStandingBar standing={{ ...base, allotment: 380, shortfall: -20 }} />);
+    expect(screen.getByText('Over the allotment:')).toBeInTheDocument();
+    expect(screen.getByText('20')).toBeInTheDocument();
+    expect(screen.queryByText('Short of the allotment:')).not.toBeInTheDocument();
+  });
+
+  /** §6.9/§8.2 — «—», never 0; the identity line still prints, unlike before. */
+  it('shows «—» for the allotment and the shortfall when the allotment is unset', () => {
+    render(<CrateStandingBar standing={{ ...base, allotment: null, shortfall: null }} />);
     expect(screen.getAllByText('—').length).toBeGreaterThanOrEqual(2);
-    expect(screen.queryByText(/=/)).not.toBeInTheDocument();
-    expect(screen.getByText(/no allotment has been set/i)).toBeInTheDocument();
+    expect(screen.getByText('Total for the point 400 = 350 + 50 + 0')).toBeInTheDocument();
   });
 
-  it('turns a negative on-hand red and says why, without blocking anything', () => {
-    render(<CrateStandingBar standing={{ ...base, allotment: 800, on_hand: -15, at_base: 620 }} />);
-    expect(screen.getByText('−15')).toHaveClass('text-destructive');
-    expect(screen.getByText(/does not cover this day/i)).toBeInTheDocument();
+  it('turns a negative on-hand red and warns, without blocking anything', () => {
+    render(<CrateStandingBar standing={{ ...base, on_hand: -5, total: 45 }} />);
+    expect(screen.getByText('−5')).toHaveClass('text-destructive');
+    expect(
+      screen.getByText(/More crates were issued or went out with berries than arrived by transfer/),
+    ).toBeInTheDocument();
   });
 
   it('draws no segment wider than its share and never a negative width', () => {
     const { container } = render(
-      <CrateStandingBar standing={{ ...base, on_hand: -15, in_field: 195, at_base: 620 }} />,
+      <CrateStandingBar standing={{ ...base, on_hand: -15, in_field: 195, with_berry: 620 }} />,
     );
     const segments = [...container.querySelectorAll<HTMLElement>('[data-segment]')];
     expect(segments).toHaveLength(3);

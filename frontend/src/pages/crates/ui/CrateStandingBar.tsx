@@ -4,29 +4,37 @@ import { cn } from '@/shared/lib/cn';
 import type { CrateStanding } from '@/entities/crate';
 
 /**
- * The allotment, split into where the crates physically are — §6.8's 20:40
- * block, which the client asked to SEE rather than check in her head
- * («щоб вони візуально це бачили»). The identity line
- * `800 = 341 + 195 + 264` adds nothing to the data and is exactly why it is
- * here.
+ * The allotment, split into empty / with people / with berries — spec §8.2's
+ * revised figures, §8.4's Bar bullet. The identity line
+ * `400 = 350 + 50 + 0` adds nothing to the data and is exactly why it is
+ * here, and it is ALWAYS shown now: `on_hand` is never null any more, so the
+ * sum is always computable even before an allotment is set.
  *
- * NOTHING IS COMPUTED HERE. Every number comes from `GET /crate-standing`;
- * only the bar's widths are derived, and a negative on-hand draws no fill
- * (there is no negative width) — the red figure and the warning below say it.
+ * NOTHING IS COMPUTED HERE beyond the bar's own widths (clamped at 0 — there
+ * is no negative width) and `Math.abs` for the shortfall/overage magnitude.
+ * Every figure comes from `GET /crate-standing`; a negative `on_hand` prints
+ * red with the warning below rather than being hidden or clamped away.
  */
 export function CrateStandingBar({ standing }: { standing: CrateStanding }) {
   const { t, i18n } = useTranslation();
   const n = (value: number) => value.toLocaleString(i18n.language).replace('-', '−');
-  const { allotment, on_hand: onHand, in_field: inField, at_base: atBase, shortfall } = standing;
-  const known = allotment !== null && onHand !== null;
-  const overdrawn = onHand !== null && onHand < 0;
+  const {
+    allotment,
+    received,
+    on_hand: onHand,
+    in_field: inField,
+    with_berry: withBerry,
+    total,
+    shortfall,
+  } = standing;
+  const negative = onHand < 0;
 
   const segments = [
-    { key: 'onHand', value: Math.max(0, onHand ?? 0), className: 'bg-[var(--leaf)]' },
+    { key: 'onHand', value: Math.max(0, onHand), className: 'bg-[var(--leaf)]' },
     { key: 'inField', value: Math.max(0, inField), className: 'bg-[var(--amber)]' },
-    { key: 'atBase', value: Math.max(0, atBase), className: 'bg-primary' },
+    { key: 'withBerry', value: Math.max(0, withBerry), className: 'bg-primary' },
   ];
-  const total = segments.reduce((sum, s) => sum + s.value, 0);
+  const barTotal = segments.reduce((sum, s) => sum + s.value, 0);
 
   return (
     <Card className="p-5">
@@ -35,52 +43,68 @@ export function CrateStandingBar({ standing }: { standing: CrateStanding }) {
           <span className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
             {t('crates.standing.allotment')}
           </span>
-          <span className={cn('font-mono text-3xl leading-none font-semibold', known ? undefined : 'text-muted-foreground')}>
-            {/* «—» is «не задано», NOT zero (§6.9). */}
+          <span
+            className={cn(
+              'font-mono text-3xl leading-none font-semibold',
+              allotment === null ? 'text-muted-foreground' : undefined,
+            )}
+          >
+            {/* «—» is «не задано», NOT zero (§6.9 / §8.2). */}
             {allotment === null ? '—' : n(allotment)}
           </span>
         </div>
-        {allotment === null ? (
-          <span className="text-xs text-muted-foreground">{t('crates.standing.unset')}</span>
-        ) : null}
       </div>
+      <p className="text-xs text-muted-foreground">
+        {t('crates.standing.received', { received: n(received) })}
+      </p>
 
       <div className="mt-4 flex h-2.5 w-full gap-[2px] overflow-hidden rounded-full bg-muted">
-        {total > 0
+        {barTotal > 0
           ? segments.map((s) => (
               <div
                 key={s.key}
                 data-segment={s.key}
                 className={cn('h-full first:rounded-l-full last:rounded-r-full', s.className)}
-                style={{ width: `${(s.value / total) * 100}%` }}
+                style={{ width: `${(s.value / barTotal) * 100}%` }}
               />
             ))
           : null}
       </div>
 
       <div className="mt-4 grid gap-3 sm:grid-cols-3">
-        <Figure label={t('crates.standing.onHand')} dot="bg-[var(--leaf)]"
-          value={onHand === null ? '—' : n(onHand)} tone={overdrawn ? 'text-destructive' : undefined} />
+        <Figure
+          label={t('crates.standing.onHand')}
+          dot="bg-[var(--leaf)]"
+          value={n(onHand)}
+          tone={negative ? 'text-destructive' : undefined}
+        />
         <Figure label={t('crates.standing.inField')} dot="bg-[var(--amber)]" value={n(inField)} />
-        <Figure label={t('crates.standing.atBase')} dot="bg-primary" value={n(atBase)} />
+        <Figure label={t('crates.standing.withBerry')} dot="bg-primary" value={n(withBerry)} />
       </div>
 
-      {known ? (
-        <p className="mt-3 font-mono text-xs text-muted-foreground">
-          {`${n(allotment)} = ${n(onHand)} + ${n(inField)} + ${n(atBase)}`}
-        </p>
-      ) : null}
+      <p className="mt-3 font-mono text-xs text-muted-foreground">
+        {`${t('crates.standing.total')} ${n(total)} = ${n(onHand)} + ${n(inField)} + ${n(withBerry)}`}
+      </p>
 
       <div className="mt-4 flex flex-wrap items-baseline gap-x-3 gap-y-1 border-t border-line2 pt-3">
-        <span className="text-sm font-medium">{t('crates.standing.shortfall')}</span>
-        <span className="font-mono text-lg font-semibold">{n(shortfall)}</span>
-        <span className="text-xs text-muted-foreground">
-          {t('crates.standing.shortfallParts', { inField: n(inField), atBase: n(atBase) })}
-        </span>
+        {shortfall === 0 ? (
+          <span className="text-sm font-medium">{t('crates.standing.complete')}</span>
+        ) : (
+          <>
+            <span className="text-sm font-medium">
+              {shortfall !== null && shortfall < 0
+                ? t('crates.standing.over')
+                : t('crates.standing.shortfall')}
+            </span>
+            <span className="font-mono text-lg font-semibold">
+              {shortfall === null ? t('crates.standing.shortfallNone') : n(Math.abs(shortfall))}
+            </span>
+          </>
+        )}
       </div>
 
-      {overdrawn ? (
-        <p className="mt-2 text-sm font-medium text-destructive">{t('crates.standing.overdrawn')}</p>
+      {negative ? (
+        <p className="mt-2 text-sm font-medium text-destructive">{t('crates.standing.negative')}</p>
       ) : null}
     </Card>
   );

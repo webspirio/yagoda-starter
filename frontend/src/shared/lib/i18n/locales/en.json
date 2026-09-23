@@ -1087,11 +1087,14 @@
       "allotment": "Allotment",
       "onHand": "Empty at the point",
       "inField": "Out with people",
-      "atBase": "With us, with berries",
-      "unset": "No allotment has been set for this point yet",
+      "withBerry": "With us, with berries",
+      "received": "Received by transfer: {{received}}",
+      "total": "Total for the point",
       "shortfall": "Short of the allotment:",
-      "shortfallParts": "(with people {{inField}} + with us {{atBase}})",
-      "overdrawn": "The allotment does not cover this day: fewer than zero empty crates at the point. There is nowhere to take them from until people return them or the base brings some."
+      "shortfallNone": "—",
+      "complete": "Allotment complete",
+      "over": "Over the allotment:",
+      "negative": "More crates were issued or went out with berries than arrived by transfer — check the transfers and issues."
     },
     "field": {
       "supplier": "Person",

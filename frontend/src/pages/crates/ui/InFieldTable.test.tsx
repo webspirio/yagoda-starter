@@ -7,8 +7,8 @@ import { InFieldTable } from './InFieldTable';
 import type { CrateBalanceRow, CrateStanding } from '@/entities/crate';
 
 const standing: CrateStanding = {
-  collection_point_id: 'p1', allotment: 800, in_field: 195, deposit_units: 115,
-  deposit_held: '13800.00', at_base: 264, on_hand: 341, shortfall: 459,
+  collection_point_id: 'p1', allotment: 800, received: 808, on_hand: 341, in_field: 195,
+  deposit_units: 115, deposit_held: '13800.00', with_berry: 264, total: 800, shortfall: 0,
 };
 const row = (over: Partial<CrateBalanceRow> & Pick<CrateBalanceRow, 'supplier_id'>): CrateBalanceRow => ({
   first_name: 'Василь', last_name: 'Яремчук', is_active: true, collection_point_id: 'p1',

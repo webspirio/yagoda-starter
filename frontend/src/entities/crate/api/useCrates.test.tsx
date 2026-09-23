@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import MockAdapter from 'axios-mock-adapter';
 import type { ReactNode } from 'react';
 import { httpClient, attachAuthInterceptors } from '@/shared/api';
+import type { CrateStanding } from '../model/crate';
 import { useCrateStandingQuery, useCrateIssuancesQuery } from './useCrates';
 
 attachAuthInterceptors(httpClient, { getToken: () => null, onUnauthorized: () => {} });
@@ -15,15 +16,17 @@ const wrapper = ({ children }: { children: ReactNode }) => (
   </QueryClientProvider>
 );
 
-const STANDING = {
+const STANDING: CrateStanding = {
   collection_point_id: 'p1',
   allotment: 800,
+  received: 808,
+  on_hand: 341,
   in_field: 195,
   deposit_units: 115,
   deposit_held: '13800.00',
-  at_base: 264,
-  on_hand: 341,
-  shortfall: 459,
+  with_berry: 264,
+  total: 800,
+  shortfall: 0,
 };
 
 beforeEach(() => {
