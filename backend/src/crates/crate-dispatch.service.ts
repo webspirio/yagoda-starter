@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { ShiftsService } from '../shifts/shifts.service';
+import { crateTareUnitsSql } from './crate-balance.service';
 import type { AuthenticatedUser } from '../auth/jwt.strategy';
 
 /** §6.8's three numbers. Only `broken` is stored. */
@@ -19,7 +20,9 @@ export interface CrateDispatchResponse {
  * counting, exactly as `point-cash/` reads `CRATE_BOOK_SQL` out of
  * `crate-balance.service.ts` rather than re-deriving the filter. Putting this
  * query in `shifts/` would make `shifts/` the second module that knows how
- * `is_crate` selects a tare type. (An earlier draft of the spec claimed the
+ * `is_crate` selects a tare type. The selector itself is `crateTareUnitsSql`
+ * in `crate-balance.service.ts`, shared with the point standing. (An earlier
+ * draft of the spec claimed the
  * money-arithmetic eslint rule FORCED the move; it does not — `Number.parseInt`
  * is a MemberExpression and passes that rule. The module boundary is the real
  * reason and stands on its own.)
@@ -46,14 +49,7 @@ export class CrateDispatchService {
     // yields as a STRING, and `runner.query` returns `any` so TypeScript would
     // not catch it landing in `with_berry: number`.
     const rows: Array<{ with_berry: number }> = await this.dataSource.manager.query(
-      `SELECT COALESCE(SUM(itt.units), 0)::int AS with_berry
-         FROM intake_item_tare_types itt
-         JOIN intake_items ii ON ii.id = itt.item_id
-         JOIN intakes i       ON i.id = ii.intake_id
-         JOIN tare_types tt   ON tt.id = itt.tare_type_id
-        WHERE i.shift_id = $1
-          AND i.voided_at IS NULL
-          AND tt.is_crate`,
+      `SELECT ${crateTareUnitsSql('i.shift_id = $1')} AS with_berry`,
       [shiftId],
     );
 

@@ -64,6 +64,44 @@ export const crateBookSql = (pointExpr: string): string => `(
           AND cr.voided_at IS NULL), 0.00)
 )`;
 
+/**
+ * CRATES ON RECEIPTS — the ONE place that knows `is_crate` selects the crate
+ * tare. §6.8's «з ягодою» for one shift (`CrateDispatchService`) and the
+ * point-lifetime «у нас з ягодою» (`CrateStandingService`) both read it, so the
+ * two cannot drift. `where` is a predicate over `i` (intakes) and `sh` (the
+ * intake's shift) — an SQL naming, never a request value.
+ */
+export const crateTareUnitsSql = (where: string): string => `(
+    SELECT COALESCE(SUM(itt.units), 0)::int
+      FROM intake_item_tare_types itt
+      JOIN intake_items ii ON ii.id = itt.item_id
+      JOIN intakes i       ON i.id = ii.intake_id
+      JOIN shifts sh       ON sh.id = i.shift_id
+      JOIN tare_types tt   ON tt.id = itt.tare_type_id
+     WHERE ${where}
+       AND i.voided_at IS NULL
+       AND tt.is_crate
+)`;
+
+/**
+ * CRATES BROUGHT BACK TO A POINT BY TRANSFER — the same three-way reading
+ * `point-cash`'s `movementsSql` gives the cash on the same rows (09.09.2026
+ * client ruling): accepted → `crates`; disputed and resolved →
+ * `resolved_crates`; disputed and open → the point's own `reported_crates`.
+ * `sent` moves nothing. The void filter sits in the OUTER `WHERE` so a
+ * resolved-then-voided transfer counts for nothing — voided wins.
+ */
+export const transferCratesSql = (pointExpr: string): string => `(
+    SELECT COALESCE(SUM(CASE
+             WHEN t.status = 'accepted' THEN t.crates
+             WHEN t.status = 'disputed' AND t.resolved_at IS NOT NULL THEN t.resolved_crates
+             WHEN t.status = 'disputed' THEN t.reported_crates
+           END), 0)::int
+      FROM transfers t
+     WHERE t.collection_point_id = ${pointExpr}
+       AND t.voided_at IS NULL
+)`;
+
 @Injectable()
 export class CrateBalanceService {
   constructor(
