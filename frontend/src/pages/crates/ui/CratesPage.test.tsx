@@ -53,6 +53,8 @@ const row = (over: Partial<CrateBalanceRow> & Pick<CrateBalanceRow, 'supplier_id
   outstanding_units: 40,
   deposit_held: '5000.00',
   has_receipt: false,
+  deposit_units: 40,
+  receipt_units: 0,
   ...over,
 });
 

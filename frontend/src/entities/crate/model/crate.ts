@@ -35,6 +35,8 @@ export interface CrateIssuance {
   voided_by_user_id: string | null;
   void_reason: string | null;
   created_at: string;
+  shift_closed: boolean;
+  has_live_returns: boolean;
 }
 
 /**
@@ -65,6 +67,7 @@ export interface CrateReturn {
   voided_by_user_id: string | null;
   void_reason: string | null;
   created_at: string;
+  shift_closed: boolean;
 }
 
 /**
@@ -117,6 +120,23 @@ export interface CrateBalanceRow {
   outstanding_units: number;
   deposit_held: string;
   has_receipt: boolean;
+  deposit_units: number;
+  receipt_units: number;
+}
+
+/**
+ * `GET /crate-standing` — §6.8's 20:40 block for one point: every figure
+ * server-computed. `null` on `allotment`/`on_hand` is «не задано», never 0.
+ */
+export interface CrateStanding {
+  collection_point_id: string;
+  allotment: number | null;
+  in_field: number;
+  deposit_units: number;
+  deposit_held: string;
+  at_base: number;
+  on_hand: number | null;
+  shortfall: number;
 }
 
 /** Filters `GET /crate-issuances` and `GET /crate-returns` accept. */
