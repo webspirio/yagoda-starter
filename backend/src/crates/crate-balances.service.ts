@@ -28,6 +28,10 @@ export interface CrateBalanceRowResponse {
   deposit_held: string;
   /** True when at least one OPEN tranche was taken on a paper розписка. */
   has_receipt: boolean;
+  /** Of `outstanding_units`, those out on a deposit. */
+  deposit_units: number;
+  /** Of `outstanding_units`, those out on a paper розписка — no cash cover. */
+  receipt_units: number;
 }
 
 /**
@@ -78,7 +82,9 @@ export class CrateBalancesService {
                o.collection_point_id,
                SUM(o.remaining_units)::int AS outstanding_units,
                SUM(o.deposit_per_unit * o.remaining_units)::text AS deposit_held,
-               bool_or(o.mode = $1::crate_issuance_mode) AS has_receipt
+               bool_or(o.mode = $1::crate_issuance_mode) AS has_receipt,
+               (SUM(o.remaining_units) FILTER (WHERE o.mode <> $1::crate_issuance_mode))::int AS deposit_units,
+               (SUM(o.remaining_units) FILTER (WHERE o.mode = $1::crate_issuance_mode))::int AS receipt_units
           FROM open o
          GROUP BY o.supplier_id, o.collection_point_id
       )
@@ -89,7 +95,9 @@ export class CrateBalancesService {
              sup.collection_point_id,
              COALESCE(r.outstanding_units, 0) AS outstanding_units,
              COALESCE(r.deposit_held, '0.00') AS deposit_held,
-             COALESCE(r.has_receipt, false) AS has_receipt
+             COALESCE(r.has_receipt, false) AS has_receipt,
+             COALESCE(r.deposit_units, 0) AS deposit_units,
+             COALESCE(r.receipt_units, 0) AS receipt_units
         FROM suppliers sup
         ${query.include_zero ? 'LEFT JOIN' : 'JOIN'} rolled r ON r.supplier_id = sup.id
        ${pointId ? `WHERE sup.collection_point_id = ${pointPlaceholder}` : ''}`;
