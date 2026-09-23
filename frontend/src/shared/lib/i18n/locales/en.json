@@ -1104,7 +1104,8 @@
       "receipt": "Receipt",
       "depositHint": "Money is taken now, at the crate price from the catalogue, and goes into the point crate drawer.",
       "receiptHint": "A paper receipt is signed. NO money changes hands, so these crates are out with no cash cover at all.",
-      "mixed": "Deposit + receipt"
+      "mixed": "Deposit + receipt",
+      "split": "Deposit {{deposit}} · receipt {{receipt}}"
     },
     "issue": {
       "title": "Issue crates",
@@ -1135,7 +1136,11 @@
       "total": "TOTAL",
       "inactive": "deactivated",
       "empty.title": "Nobody is holding crates",
-      "empty.hint": "Everything issued here has come back."
+      "empty.hint": "Everything issued here has come back.",
+      "summary_one": "{{units}} cr. · {{count}} person",
+      "summary_other": "{{units}} cr. · {{count}} people",
+      "ofWhichDeposit": "of which {{count}} on a deposit",
+      "truncated": "Showing the first {{shown}} of {{total}} people — the totals below count everyone."
     },
     "note": {
       "receiptVsDeposit": "Crates taken on a receipt have no cash cover at all — their deposit column reads «—», not zero. That is why «crates out» and «deposits held» are two different numbers.",
