@@ -192,7 +192,14 @@ A return written by a receipt (§8.3) adds its units to `on_hand` through Σ
 returned while the same crates leave through the receipt's crate tare — net 0,
 exactly «not added to empties because they are already full».
 
-### 8.3 Reception returns our crates in the same «Прийняти»
+### 8.3 Reception returns our crates in the same «Прийняти» — DEFERRED
+
+> **Deferred to the next slice (client, 2026-09-23: «shorten the slice»).** This
+> branch ships §8.1/§8.2 and the bar only. Until then a supplier bringing berries
+> in our crates is recorded as the receipt PLUS a standalone «Прийняти ящики»
+> return — the §8.2 formula nets the two, so full crates never count as empties.
+> The design below is approved and stays as that slice's starting point.
+
 
 - `crate_returns.intake_id uuid NULL` → `intakes.id`, partial UNIQUE
   (one return per receipt), migration + DBML Note. Ordinary «Прийняти ящики»
@@ -216,6 +223,9 @@ exactly «not added to empties because they are already full».
 
 ### 8.4 Frontend
 
+Shipped now: the **Bar** bullet. Deferred with §8.3: Reception, Receipt widget, PersonCrateDocs.
+
+
 - **Reception:** under the tare, «З них наших ящиків», shown only when the
   supplier holds our crates; pre-filled `min(crate-tare units on the receipt,
   held)` and editable within `[0, that min]`; beside it the live refund
@@ -232,6 +242,9 @@ exactly «not added to empties because they are already full».
   «записано з квитанцією {code} — сторнуйте квитанцію».
 
 ### 8.5 Testing
+
+Shipped now: the standing db-spec (step 4 of the example uses a standalone return) and the bar tests. The rest is deferred with §8.3.
+
 
 - db-spec: the client's example step by step (500 → 350/100/50 → 350/50/100 →
   next shift 350/50/0), plus breakage, voided receipt (and its cascaded return),

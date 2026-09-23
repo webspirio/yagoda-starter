@@ -12,6 +12,19 @@
 
 **Builds on:** branch `feat/crates-standing` at `fddf3ab` (plan `docs/superpowers/plans/2026-09-23-yagoda-crates-standing.md`, Tasks 1–10 + final fixes done).
 
+## Scope cut (client, 2026-09-23)
+
+**Run only R4, R5 (standing type only), R6 and R10.** R1, R2, R3, R7, R8, R9 are
+DEFERRED to the next slice with spec §8.3 — do not implement them here. Adjustments
+the cut forces:
+- R4 step 1, case 4: the return of 50 is a plain standalone return (no `intake_id`
+  column exists yet); the expected figures are unchanged.
+- R5: only `CrateStanding` changes (and fixtures `tsc -b` flags). No `CrateReturn`,
+  `IntakeDetail` or `intakeForm` changes.
+- R10: no `CLAUDE.md` «Documents» sentence and no reception line; `frontend/CLAUDE.md`'s
+  `pages/crates` line mentions the recomputed standing only.
+- Review Focus items 1–4 belong to the deferred tasks; item 5 stays.
+
 ## Global Constraints
 
 - Branch `feat/crates-standing` in the main checkout. No worktree. Never push.

@@ -1155,3 +1155,5 @@ decision rather than guessing whether something was missed.
   totals «у людей» from `useCrateBalancesQuery` rows (limit 100), which undercounts past one page.
   `GET /crate-standing` (crates-standing slice, 2026-09-23) now serves the exact figure; switching
   the panel to `useCrateStandingQuery` was left out of that slice as an adjacent change.
+
+- **Reception returns our rented crates in the same «Прийняти» (deferred 2026-09-23).** Approved design: spec `docs/superpowers/specs/2026-09-23-yagoda-crates-standing.md` §8.3–§8.4; tasks R1–R3, R7–R9 of `docs/superpowers/plans/2026-09-23-yagoda-crates-standing-revision.md` (`crate_returns.intake_id`, one shared return writer, `returned_crates` on `POST /intakes`, void cascade, the «З них наших ящиків» field, the receipt line, the drill-down hint). Until it ships the operator records the receipt AND a standalone «Прийняти ящики»; forgetting the return leaves the supplier owing those crates.
