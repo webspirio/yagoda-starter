@@ -1,6 +1,11 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { DataSource } from 'typeorm';
-import { crateBookSql, crateTareUnitsSql, transferCratesSql } from './crate-balance.service';
+import {
+  crateBookSql,
+  crateTareUnitsSql,
+  openTranchesSql,
+  transferCratesSql,
+} from './crate-balance.service';
 import { CrateIssuanceMode } from './crate-issuance-mode.enum';
 import { CrateStandingQueryDto } from './dto/crate-standing.query';
 import { resolvePointFilter } from '../auth/access/point-scope';
@@ -25,9 +30,11 @@ export interface CrateStandingResponse {
  * §6.8's 20:40 block — «800 = 341 порожніх + 195 у людей + 264 на базі» —
  * for ONE point, point-lifetime, every figure computed by Postgres.
  *
- * `in_field` AND `deposit_units` USE THE OPEN-TRANCHE DEFINITION
- * `/crate-balances` uses (units issued minus units allocated to live returns),
- * so this total and the sum of that list cannot disagree; the db-spec pins it.
+ * `in_field` AND `deposit_units` sum `openTranchesSql` (`crate-balance.service.ts`),
+ * the SAME shared fragment `/crate-balances`'s aggregate reads — units issued
+ * minus units allocated to live returns, filtered to what is still open — so
+ * this total and the sum of that list cannot disagree; the db-spec pins it
+ * regardless.
  *
  * `at_base` = crates on live receipts across ALL the point's shifts, the open
  * one included (§6.8's 20:40 example counts today's 142 before the 20:55
@@ -53,19 +60,7 @@ export class CrateStandingService {
     }
 
     const rows: CrateStandingResponse[] = await this.dataSource.query(
-      `WITH tranche AS (
-         SELECT ci.mode,
-                (ci.units - COALESCE((
-                    SELECT SUM(a.units)
-                      FROM crate_return_allocations a
-                      JOIN crate_returns cr ON cr.id = a.return_id
-                     WHERE a.issuance_id = ci.id
-                       AND cr.voided_at IS NULL), 0))::int AS remaining_units
-           FROM crate_issuances ci
-           JOIN shifts s ON s.id = ci.shift_id
-          WHERE s.collection_point_id = $1
-            AND ci.voided_at IS NULL
-       ),
+      `WITH tranche AS ${openTranchesSql('s.collection_point_id = $1')},
        figures AS (
          SELECT cp.id AS collection_point_id,
                 cp.target_crates AS allotment,

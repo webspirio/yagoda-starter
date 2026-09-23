@@ -84,6 +84,41 @@ export const crateTareUnitsSql = (where: string): string => `(
 )`;
 
 /**
+ * OPEN TRANCHES — the ONE definition both `/crate-balances`'s aggregate and
+ * `CrateStandingService`'s point total read, so a tranche open in one cannot
+ * silently read closed in the other. `remaining_units` is DERIVED, never
+ * stored (§3.2): units issued minus units allocated to non-voided returns.
+ * Filtered to `remaining_units > 0` HERE — a fully-returned tranche is not
+ * open — so neither caller repeats that filter or risks forgetting it.
+ *
+ * `where` is a predicate over `ci` (crate_issuances) and `s` (the issuance's
+ * shift) — an SQL naming, never a request value — ANDed with
+ * `ci.voided_at IS NULL`; pass `'TRUE'` for "every issuance network-wide".
+ * Returns a PARENTHESISED SELECT, so a caller writes it straight after
+ * `AS`/`WITH x AS` — see either caller below.
+ */
+export const openTranchesSql = (where: string): string => `(
+    SELECT * FROM (
+      SELECT ci.id,
+             ci.supplier_id,
+             ci.mode,
+             ci.deposit_per_unit,
+             s.collection_point_id,
+             (ci.units - COALESCE((
+                 SELECT SUM(a.units)
+                   FROM crate_return_allocations a
+                   JOIN crate_returns cr ON cr.id = a.return_id
+                  WHERE a.issuance_id = ci.id
+                    AND cr.voided_at IS NULL), 0))::int AS remaining_units
+        FROM crate_issuances ci
+        JOIN shifts s ON s.id = ci.shift_id
+       WHERE ci.voided_at IS NULL
+         AND ${where}
+    ) t
+   WHERE t.remaining_units > 0
+)`;
+
+/**
  * CRATES BROUGHT BACK TO A POINT BY TRANSFER — the same three-way reading
  * `point-cash`'s `movementsSql` gives the cash on the same rows (09.09.2026
  * client ruling): accepted → `crates`; disputed and resolved →

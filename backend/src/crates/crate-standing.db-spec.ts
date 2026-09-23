@@ -19,6 +19,26 @@ import type { AuthenticatedUser } from '../auth/jwt.strategy';
  *   (resolved 6), disputed open (reported 4) = −20; and 20 extra crates on a
  *   closed shift receipt, so 122 + 142 + 20 − 20 = 264.
  *   A voided resolved transfer of 99 must count for nothing (voided wins).
+ *
+ * Composition of the 195 in field / 115 on deposit / 13 800,00 ₴ held, built
+ * below — this exercises `openTranchesSql`'s RETURN side, which the first
+ * version of this file never touched:
+ *   supplier `a` is issued 125 crates on a deposit at 120,00 ₴/шт
+ *     (deposit_taken 15 000,00 ₴); a REAL partial return of 10 brings her
+ *     remaining tranche to 115 and refunds 1 200,00 ₴ (deposit_refund); a
+ *     SECOND, VOIDED return of 20 against the SAME issuance must count for
+ *     NOTHING — neither shrinking the 115 further nor refunding its
+ *     2 400,00 ₴ — because `openTranchesSql` and `crateBookSql` both filter
+ *     `cr.voided_at IS NULL`.
+ *   supplier `b` is issued 80 on a розписка (0,00 ₴), untouched by any
+ *     return, so her whole 80 stays open.
+ *   supplier `c` is issued 30 on a VOIDED deposit (3 600,00 ₴) — excluded
+ *     entirely, tranche and cash both, by `ci.voided_at IS NULL`.
+ *   115 (a) + 80 (b) = 195 in_field; 115 (a, the only open deposit tranche)
+ *     = deposit_units; 15 000,00 − 1 200,00 = 13 800,00 ₴ deposit_held — the
+ *     SAME figure the pre-return fixture produced, because the voided
+ *     issuance and the voided return were chosen to cancel out rather than
+ *     to move the total.
  */
 describe('CrateStandingService.forPoint (Postgres)', () => {
   let ds: DataSource;
@@ -138,11 +158,14 @@ describe('CrateStandingService.forPoint (Postgres)', () => {
     units: number,
     mode: 'deposit' | 'receipt',
     taken: string,
-  ): Promise<void> => {
-    await ds.query(
+    opts: { voided?: boolean } = {},
+  ): Promise<string> => {
+    const [row] = await ds.query(
       `INSERT INTO crate_issuances
-         (code, shift_id, supplier_id, units, mode, deposit_per_unit, deposit_taken, issued_by_user_id)
-       VALUES ($1, $2, $3, $4, $5::crate_issuance_mode, $6, $7, $8)`,
+         (code, shift_id, supplier_id, units, mode, deposit_per_unit, deposit_taken,
+          issued_by_user_id, voided_at, voided_by_user_id, void_reason)
+       VALUES ($1, $2, $3, $4, $5::crate_issuance_mode, $6, $7, $8, $9, $10, $11)
+       RETURNING id`,
       [
         `STI-${randomUUID().slice(0, 8)}`,
         shiftId,
@@ -152,7 +175,47 @@ describe('CrateStandingService.forPoint (Postgres)', () => {
         mode === 'deposit' ? '120.00' : '0.00',
         taken,
         userId,
+        opts.voided ? new Date().toISOString() : null,
+        opts.voided ? userId : null,
+        opts.voided ? 'фікстура' : null,
       ],
+    );
+    return row.id;
+  };
+
+  /**
+   * A return plus the `crate_return_allocations` row that consumes
+   * `issuanceId` — the shape `crate-balances.db-spec.ts`'s `giveBack` uses.
+   */
+  const giveBack = async (
+    shiftId: string,
+    supplierId: string,
+    issuanceId: string,
+    units: number,
+    perUnit: string,
+    refund: string,
+    opts: { voided?: boolean } = {},
+  ): Promise<void> => {
+    const [ret] = await ds.query(
+      `INSERT INTO crate_returns
+         (shift_id, supplier_id, units, deposit_refund, accepted_by_user_id,
+          voided_at, void_reason, voided_by_user_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
+      [
+        shiftId,
+        supplierId,
+        units,
+        refund,
+        userId,
+        opts.voided ? new Date().toISOString() : null,
+        opts.voided ? 'фікстура' : null,
+        opts.voided ? userId : null,
+      ],
+    );
+    await ds.query(
+      `INSERT INTO crate_return_allocations (return_id, issuance_id, units, per_unit, amount)
+       VALUES ($1, $2, $3, $4, $5)`,
+      [ret.id, issuanceId, units, perUnit, refund],
     );
   };
 
@@ -226,11 +289,18 @@ describe('CrateStandingService.forPoint (Postgres)', () => {
       voided_at: new Date(), voided_by_user_id: userId, void_reason: 'фікстура',
     });
 
-    // 195 out: 115 on deposit (13 800,00 ₴) + 80 on a розписка.
+    // 195 out: 115 on deposit (13 800,00 ₴, after a real partial return and a
+    // voided one that must count for nothing) + 80 on a розписка, plus a
+    // fully voided deposit issuance that must not appear anywhere — see this
+    // describe block's doc comment for the arithmetic.
     const a = await supplier(point);
     const b = await supplier(point);
-    await issue(today, a, 115, 'deposit', '13800.00');
+    const c = await supplier(point);
+    const issuanceA = await issue(today, a, 125, 'deposit', '15000.00');
+    await giveBack(today, a, issuanceA, 10, '120.00', '1200.00');
+    await giveBack(today, a, issuanceA, 20, '120.00', '2400.00', { voided: true });
     await issue(today, b, 80, 'receipt', '0.00');
+    await issue(today, c, 30, 'deposit', '3600.00', { voided: true });
   });
 
   afterAll(async () => {

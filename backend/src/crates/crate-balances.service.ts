@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { ListCrateBalancesQueryDto } from './dto/list-crate-balances.query';
 import { CrateIssuanceMode } from './crate-issuance-mode.enum';
+import { openTranchesSql } from './crate-balance.service';
 import { Paginated } from '../common/dto/paginated';
 import { skipOf } from '../common/dto/pagination-query.dto';
 import { resolvePointFilter } from '../auth/access/point-scope';
@@ -40,10 +41,11 @@ export interface CrateBalanceRowResponse {
  * second implementation of the same sum, so the sum stays in the query.
  *
  * THE OPEN-TRANCHE DEFINITION IS THE ONE `tranchesFor` USES — units issued
- * minus units allocated to non-voided returns, filtered to what is left. It is
- * repeated here as SQL rather than imported because the shapes differ (one
- * supplier's rows versus an aggregate over a point), and the db-spec pins the
- * two against each other so they cannot drift apart silently.
+ * minus units allocated to non-voided returns, filtered to what is left.
+ * Here it comes from `openTranchesSql` (`crate-balance.service.ts`), the
+ * shared fragment `CrateStandingService`'s point total also reads, so an
+ * aggregate over a point and that total cannot silently disagree about what
+ * counts as open — the db-spec pins the two against each other regardless.
  */
 @Injectable()
 export class CrateBalancesService {
@@ -59,36 +61,18 @@ export class CrateBalancesService {
     // The placeholder is captured when the value is pushed, never looked up
     // afterwards: `params.indexOf(pointId)` would find the WRONG slot the day
     // a point id and some other bound value compare equal.
-    let pointWhere = '';
     let pointPlaceholder = '';
+    let pointPredicate = 'TRUE';
     if (pointId) {
       params.push(pointId);
       pointPlaceholder = `$${params.length}`;
-      pointWhere = `AND s.collection_point_id = ${pointPlaceholder}`;
+      pointPredicate = `s.collection_point_id = ${pointPlaceholder}`;
     }
 
-    // Open tranches first, then aggregate per supplier. `remaining` is DERIVED
-    // (§3.2), never stored, and a voided return releases its allocations
-    // through `cr.voided_at IS NULL` on the join — no allocation row is ever
-    // deleted.
+    // Open tranches (`openTranchesSql`, `crate-balance.service.ts`) first,
+    // then aggregate per supplier.
     const base = `
-      WITH tranche AS (
-        SELECT ci.supplier_id,
-               ci.mode,
-               ci.deposit_per_unit,
-               s.collection_point_id,
-               (ci.units - COALESCE((
-                   SELECT SUM(a.units)
-                     FROM crate_return_allocations a
-                     JOIN crate_returns cr ON cr.id = a.return_id
-                    WHERE a.issuance_id = ci.id
-                      AND cr.voided_at IS NULL), 0))::int AS remaining_units
-          FROM crate_issuances ci
-          JOIN shifts s ON s.id = ci.shift_id
-         WHERE ci.voided_at IS NULL
-           ${pointWhere}
-      ),
-      open AS (SELECT * FROM tranche WHERE remaining_units > 0),
+      WITH open AS ${openTranchesSql(pointPredicate)},
       rolled AS (
         SELECT o.supplier_id,
                o.collection_point_id,

@@ -48,6 +48,7 @@ describe('CrateStandingService', () => {
 
   it('refuses an operator with no point assigned', async () => {
     await expect(service.forPoint(scopeless, {})).rejects.toBeInstanceOf(ForbiddenException);
+    expect(ds.query).not.toHaveBeenCalled();
   });
 
   it('404s an unknown point', async () => {
