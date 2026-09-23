@@ -187,8 +187,7 @@
       "farmer": "Farmer"
     },
     "kindHint": {
-      "wholesale": "A wholesaler — add an extra price.",
-      "farmer": "A farmer — add an extra price."
+      "wholesale": "A wholesaler — add an extra price."
     },
     "active": "Active",
     "inactive": "Inactive",
