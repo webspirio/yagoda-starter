@@ -47,7 +47,7 @@ book, §7.5), voided documents excluded everywhere:
 | Field | Definition |
 |---|---|
 | `allotment` | `collection_points.target_crates` — `null` = «не задано» |
-| `in_field` | Σ `crate_issuances.units` − Σ `crate_returns.units` at `P` |
+| `in_field` | open units of live tranches at `P` (the `/crate-balances` tranche definition; equal to Σ issued − Σ returned because a return may not exceed what is out) |
 | `deposit_units` | open units of `mode = 'deposit'` tranches (the tranche logic `/crate-balances` already uses) |
 | `deposit_held` | `crateBookSql(P)` — reused, not re-derived (money string) |
 | `at_base` | Σ crate units on live intakes of ALL `P`'s shifts, open one included + Σ non-null `shifts.broken_crates` − Σ transfer crates |
