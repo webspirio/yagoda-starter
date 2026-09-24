@@ -51,6 +51,12 @@ export class CrateReturn {
   @JoinColumn({ name: 'supplier_id' })
   supplier?: Supplier;
 
+  /** A return written BY the receipt in the same «Прийняти» (spec §8.3).
+   *  NULL for a standalone «Прийняти ящики». Partial UNIQUE at the DB —
+   *  one receipt writes at most one return. */
+  @Column({ type: 'uuid', nullable: true })
+  intake_id: string | null;
+
   @Column({ type: 'int' })
   units: number;
 
