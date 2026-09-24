@@ -1,7 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { httpClient } from '@/shared/api';
 import { queryKeys } from '@/shared/api/queryKeys';
-import { STALE } from '@/shared/api/queryClient';
 import type {
   CollectionPoint,
   CreateCollectionPointInput,
@@ -19,7 +18,6 @@ export function useCollectionPointsQuery() {
       });
       return data;
     },
-    staleTime: STALE.reference,
   });
 }
 

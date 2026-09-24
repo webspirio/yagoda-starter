@@ -1,6 +1,5 @@
 import { useQueries } from '@tanstack/react-query';
 import { httpClient } from '@/shared/api';
-import { STALE } from '@/shared/api/queryClient';
 import { queryKeys } from '@/shared/api/queryKeys';
 import type { GradeCatalogItem } from '../model/product-grade';
 
@@ -55,7 +54,6 @@ export function useGradeCatalogQuery(): GradeCatalogResult {
           const { data } = await httpClient.get<ProductsEnvelope>('/products');
           return data;
         },
-        staleTime: STALE.reference,
       },
       {
         queryKey: [...queryKeys.productGrades(), 'active'],
@@ -65,7 +63,6 @@ export function useGradeCatalogQuery(): GradeCatalogResult {
           });
           return data;
         },
-        staleTime: STALE.reference,
       },
     ],
     combine: ([productsResult, gradesResult]) => {

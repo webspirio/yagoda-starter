@@ -18,7 +18,7 @@ export interface CreatePayoutInput {
  * together — and it is one of the three terms of `PointCashService`'s drawer
  * formula (money paid out leaves the drawer), so without the third «Каса
  * точки» and the owner's «Перекази» table keep showing the pre-payout figure
- * for `STALE.list` after the operator walks back from «Борги».
+ * for as long as they stay mounted.
  */
 export function useCreatePayoutMutation() {
   const qc = useQueryClient();
