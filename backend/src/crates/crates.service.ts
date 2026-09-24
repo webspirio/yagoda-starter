@@ -611,9 +611,11 @@ export class CratesService {
    * The cascade half of spec §8.3: voiding the receipt voids the return IT
    * wrote, in the SAME transaction, so the two never disagree about whether
    * the crates came back. NO PERMISSION CHECK HERE — `IntakesService`'s own
-   * void already ran §9.4's rule for the receipt, and a return with no
-   * `code` and no void route of its own (see `CrateReturn`'s header) has
-   * nothing left to check independently.
+   * void already ran §9.4's rule for the receipt, and a linked return's OWN
+   * void route (`POST /crate-returns/:id/void`) refuses it outright with a
+   * 409 `RETURN_BELONGS_TO_INTAKE` (see the check just above this method) —
+   * this is the only path that can ever void one, so there is nothing left
+   * to check independently here.
    *
    * NO SUPPLIER LOCK HERE EITHER. `voidReturn`/`writeReturn` lock the
    * supplier row themselves because each is reachable on its own; this method
