@@ -63,6 +63,18 @@ describe('apiErrorToFields', () => {
     expect(out.formErrorKey).toBe('reception.errors.noOpenShift');
   });
 
+  // «З них наших ящиків» (2026-09-24) — each refuses the WHOLE receipt, and
+  // none names a line: the returned-crates figure is one number on the form.
+  it.each([
+    ['RETURNED_EXCEEDS_TARE', 400, 'reception.returned.exceedsTare'],
+    ['RETURN_EXCEEDS_OUTSTANDING', 400, 'crates.errors.returnExceeds'],
+    ['CRATE_CASH_INSUFFICIENT', 409, 'crates.errors.cashInsufficient'],
+  ])('maps %s to its banner', (code, status, key) => {
+    const out = apiErrorToFields(apiError({ status, code }), 2);
+    expect(out.fieldErrors).toEqual([]);
+    expect(out.formErrorKey).toBe(key);
+  });
+
   it('maps SUPPLIER_INACTIVE to a banner', () => {
     const out = apiErrorToFields(apiError({ status: 400, code: 'SUPPLIER_INACTIVE' }), 1);
     expect(out.fieldErrors).toEqual([]);

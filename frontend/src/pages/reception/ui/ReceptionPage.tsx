@@ -27,11 +27,17 @@ import { apiErrorToFields, type ApiFieldErrors } from '../lib/apiErrorToFields';
 import { isOwnFormEvent } from '../lib/formEventGuards';
 import { useIntakePreview } from '../lib/useIntakePreview';
 import { suggestedPaid } from '../lib/suggestedPaid';
-import { emptyLine, toCreateBody, type IntakeFormValues } from '../model/intakeForm';
+import {
+  crateTareUnits,
+  emptyLine,
+  toCreateBody,
+  type IntakeFormValues,
+} from '../model/intakeForm';
 import { SupplierSection } from './SupplierSection';
 import { LineEditor } from './LineEditor';
 import { LinesTable, type CommittedLine } from './LinesTable';
 import { TotalsSection } from './TotalsSection';
+import { ReturnedCratesField } from './ReturnedCratesField';
 import { TodayReceipts } from './TodayReceipts';
 import { PointStatePanel } from './PointStatePanel';
 import { ShiftBanner } from './ShiftBanner';
@@ -75,7 +81,7 @@ export function ReceptionPage() {
     (tareTypes.data ?? []).find((type) => type.is_crate)?.id ?? tareTypes.data?.[0]?.id ?? '';
 
   const form = useForm<IntakeFormValues>({
-    defaultValues: { supplier_id: '', items: [emptyLine('')], paid_amount: '' },
+    defaultValues: { supplier_id: '', items: [emptyLine('')], paid_amount: '', returned_crates: '' },
   });
   const { control, register, setValue, handleSubmit, reset } = form;
   const lines = useFieldArray({ control, name: 'items' });
@@ -117,6 +123,10 @@ export function ReceptionPage() {
   // types in it themselves (`suggestedPaid`, below) — this is the only thing
   // that switches it over to what RHF actually holds.
   const [paidTouched, setPaidTouched] = useState(false);
+  // Bumped on every supplier pick — even a re-pick of the same row, which
+  // `reset()` above may have just emptied — so «З них наших ящиків» remounts
+  // and pre-fills afresh.
+  const [supplierPick, setSupplierPick] = useState(0);
 
   const shiftOpen = shift.data != null;
   const balance = useSupplierBalanceQuery(values.supplier_id || null);
@@ -261,7 +271,12 @@ export function ReceptionPage() {
       setReceiptId(created.id);
       // The mock resets everything, supplier included: the next person in the
       // queue is a new visit, not an edit of this one.
-      reset({ supplier_id: '', items: [emptyLine(defaultTareTypeId)], paid_amount: '' });
+      reset({
+        supplier_id: '',
+        items: [emptyLine(defaultTareTypeId)],
+        paid_amount: '',
+        returned_crates: '',
+      });
       setSupplier(null);
       setPaidTouched(false);
       // The next person in the queue starts where the operator's hands
@@ -400,6 +415,7 @@ export function ReceptionPage() {
                       supplier_id: s.id,
                       items: [emptyLine(defaultTareTypeId)],
                       paid_amount: '',
+                      returned_crates: '',
                     });
                     toast(t('reception.toast.linesCleared'));
                   } else {
@@ -407,6 +423,7 @@ export function ReceptionPage() {
                   }
                   setSupplier(s);
                   setPaidTouched(false);
+                  setSupplierPick((n) => n + 1);
                 }}
                 debt={debt}
                 disabled={!shiftOpen}
@@ -438,6 +455,17 @@ export function ReceptionPage() {
                 netKg={committed.length > 0 ? committedNetKg : null}
                 onAdd={() => lines.append(emptyLine(defaultTareTypeId))}
                 onRemove={(index) => lines.remove(index)}
+              />
+              {/* Keyed by the supplier pick: a new pick remounts it, so the
+                  pre-fill follows the ceiling again until the operator types. */}
+              <ReturnedCratesField
+                key={`${values.supplier_id}:${supplierPick}`}
+                supplierId={values.supplier_id || null}
+                pointId={bodyPointId ?? undefined}
+                crateTareUnits={crateTareUnits(values.items, tareTypes.data ?? [])}
+                value={values.returned_crates}
+                onChange={(v) => setValue('returned_crates', v, { shouldDirty: true })}
+                disabled={!shiftOpen}
               />
               <TotalsSection
                 accrued={accrued}

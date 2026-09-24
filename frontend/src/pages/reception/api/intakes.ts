@@ -12,7 +12,8 @@ import type { CreateIntakeBody, IntakePreview, PreviewIntakeBody } from '../mode
  * Σ payouts number), and — since a payout may have ridden along — `payouts`
  * and `pointCash` too: the SAME write can move the point's drawer, exactly
  * as `features/settle-payout`'s `useCreatePayoutMutation` already invalidates
- * for a payout recorded on its own.
+ * for a payout recorded on its own. And `crateBalances`/`crates`, because
+ * `returned_crates` writes a crate return alongside the receipt.
  */
 export function useCreateIntakeMutation() {
   const qc = useQueryClient();
@@ -26,6 +27,11 @@ export function useCreateIntakeMutation() {
       qc.invalidateQueries({ queryKey: queryKeys.payouts });
       qc.invalidateQueries({ queryKey: queryKeys.pointCash });
       qc.invalidateQueries({ queryKey: queryKeys.supplierBalances });
+      // «З них наших ящиків» may have returned crates in the same write —
+      // the supplier's crate balance, the point's standing and the crate
+      // journals all move with it, same as `useReturnCratesMutation`.
+      qc.invalidateQueries({ queryKey: queryKeys.crateBalances });
+      qc.invalidateQueries({ queryKey: queryKeys.crates });
     },
   });
 }

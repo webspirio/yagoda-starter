@@ -117,6 +117,7 @@ function buildIntake(overrides: Partial<IntakeDetail> = {}): IntakeDetail {
     paid_amount: '0.00',
     payouts: [],
     received_by_name: 'Оксана Гнатюк',
+    crate_return: null,
     items: [
       {
         id: 'item-1',

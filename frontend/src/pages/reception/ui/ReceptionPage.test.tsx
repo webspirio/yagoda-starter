@@ -33,6 +33,8 @@ const {
   pointCashMock,
   toastMock,
   toastSuccessMock,
+  crateBalanceMock,
+  returnPreviewMock,
 } = vi.hoisted(() => {
   type ToastMock = ReturnType<typeof vi.fn> & {
     success: ReturnType<typeof vi.fn>;
@@ -58,6 +60,8 @@ const {
     pointCashMock: vi.fn(),
     toastMock,
     toastSuccessMock: vi.fn(),
+    crateBalanceMock: vi.fn(),
+    returnPreviewMock: vi.fn(),
   };
 });
 
@@ -90,6 +94,12 @@ vi.mock('@/entities/payout', () => ({
 
 vi.mock('@/entities/crate', () => ({
   useCrateBalancesQuery: () => ({ data: undefined, isPending: true, isError: false }),
+  // «З них наших ящиків» — the picked supplier's crates (R8).
+  useCrateBalanceQuery: (supplierId: string | null) => crateBalanceMock(supplierId),
+}));
+
+vi.mock('@/features/return-crates', () => ({
+  useReturnPreviewQuery: (input: unknown) => returnPreviewMock(input),
 }));
 
 vi.mock('@/entities/user', () => ({
@@ -299,6 +309,7 @@ const CREATED: IntakeDetail = {
   paid_amount: '0.00',
   payouts: [],
   received_by_name: 'Оксана Гнатюк',
+  crate_return: null,
   items: [
     {
       id: 'it1',
@@ -407,6 +418,10 @@ beforeEach(() => {
   gradesMock.mockReset().mockReturnValue({ data: GRADES, isPending: false, isError: false });
   tareTypesMock.mockReset().mockReturnValue({ data: TARE_TYPES, isPending: false, isError: false });
   previewMock.mockReset().mockReturnValue(previewState());
+  // Holds none of our crates by default, so «З них наших ящиків» stays hidden
+  // and every body assertion below carries no `returned_crates`.
+  crateBalanceMock.mockReset().mockReturnValue({ data: undefined, isPending: true, isError: false });
+  returnPreviewMock.mockReset().mockReturnValue({ data: undefined });
   createMock.mockReset().mockResolvedValue(CREATED);
   openShiftMock.mockReset().mockResolvedValue(openShift);
   // A genuinely-read, EMPTY drawer by default — NOT `isPending`/`undefined`.
@@ -1293,6 +1308,65 @@ describe('ReceptionPage — line editor ergonomics (#117)', () => {
     await waitFor(() => {
       expect(screen.getByLabelText('Grade and day price')).toHaveValue('g1');
     });
+  });
+});
+
+describe('ReceptionPage — «З них наших ящиків» (our rented crates coming back)', () => {
+  beforeEach(() => {
+    previewMock.mockReturnValue(SETTLED);
+    crateBalanceMock.mockImplementation((id: string | null) => ({
+      data:
+        id === 's1'
+          ? { supplier_id: 's1', outstanding_units: 30, deposit_held: '3600.00', tranches: [] }
+          : undefined,
+      isPending: false,
+      isError: false,
+    }));
+  });
+
+  it('pre-fills min(crate tare 40, held 30) and sends returned_crates: 30 with the receipt', async () => {
+    const user = userEvent.setup();
+    renderReception();
+    await user.click(screen.getByRole('button', { name: 'pick-nina' }));
+    await fillDraft(user);
+    const units = screen.getByLabelText('Tare units 1');
+    await user.clear(units);
+    await user.type(units, '40');
+
+    const field = screen.getByLabelText('Of them, our crates') as HTMLInputElement;
+    await waitFor(() => expect(field.value).toBe('30'));
+
+    await user.click(screen.getByRole('button', { name: /^Accept/ }));
+    await waitFor(() =>
+      expect(createMock).toHaveBeenCalledWith(expect.objectContaining({ returned_crates: 30 })),
+    );
+  });
+
+  it('is hidden when the supplier holds none of our crates', async () => {
+    crateBalanceMock.mockReturnValue({
+      data: { supplier_id: 's1', outstanding_units: 0, deposit_held: '0.00', tranches: [] },
+      isPending: false,
+      isError: false,
+    });
+    const user = userEvent.setup();
+    renderReception();
+    await user.click(screen.getByRole('button', { name: 'pick-nina' }));
+    await fillDraft(user);
+    expect(screen.queryByLabelText('Of them, our crates')).toBeNull();
+  });
+
+  it.each([
+    ['RETURNED_EXCEEDS_TARE', 400, 'More returned crates than crate tare on this receipt'],
+    ['RETURN_EXCEEDS_OUTSTANDING', 400, 'That is more crates than this person is holding'],
+    ['CRATE_CASH_INSUFFICIENT', 409, 'The crate deposits drawer holds less than this refund needs'],
+  ])('banners a %s refusal of the whole receipt', async (code, status, copy) => {
+    createMock.mockRejectedValue(new ApiError(status, 'refused', undefined, code));
+    const user = userEvent.setup();
+    renderReception();
+    await user.click(screen.getByRole('button', { name: 'pick-nina' }));
+    await fillDraft(user);
+    await user.click(screen.getByRole('button', { name: /^Accept/ }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(copy);
   });
 });
 

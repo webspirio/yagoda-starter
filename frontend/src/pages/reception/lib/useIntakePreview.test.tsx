@@ -19,7 +19,12 @@ const wrapper = ({ children }: { children: ReactNode }) => (
   </QueryClientProvider>
 );
 
-const emptyValues: IntakeFormValues = { supplier_id: '', items: [], paid_amount: '' };
+const emptyValues: IntakeFormValues = {
+  supplier_id: '',
+  items: [],
+  paid_amount: '',
+  returned_crates: '',
+};
 
 const line = (overrides: Partial<IntakeFormValues['items'][number]> = {}) => ({
   product_grade_id: 'g1',
@@ -34,6 +39,7 @@ const previewableValues = (grossKg: string): IntakeFormValues => ({
   supplier_id: 's1',
   items: [line({ gross_kg: grossKg })],
   paid_amount: '',
+  returned_crates: '',
 });
 
 const previewResponse = (amount: string) => ({

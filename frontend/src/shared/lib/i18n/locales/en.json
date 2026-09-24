@@ -854,6 +854,13 @@
         "amount": "Amount"
       }
     },
+    "returned": {
+      "label": "Of them, our crates",
+      "held": "of the {{held}} crates this person holds",
+      "deposit": "deposit to refund {{amount}}",
+      "receipt": "on a receipt, no money",
+      "exceedsTare": "More returned crates than crate tare on this receipt"
+    },
     "totals": {
       "eyebrow": "4 · Settlement",
       "accruedToday": "Accrued today",
