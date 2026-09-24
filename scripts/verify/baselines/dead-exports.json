@@ -49,7 +49,6 @@
     "exports|frontend/src/shared/api/index.ts|extractErrorPayload",
     "exports|frontend/src/shared/api/index.ts|extractErrorReason",
     "exports|frontend/src/shared/api/index.ts|queryKeys",
-    "exports|frontend/src/shared/api/index.ts|STALE",
     "exports|frontend/src/shared/lib/date/index.ts|isIsoDate",
     "exports|frontend/src/shared/lib/money/index.ts|CRATES_INPUT",
     "exports|frontend/src/shared/lib/motion.ts|fadeSlideUp",
