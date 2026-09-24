@@ -29,7 +29,7 @@ src/
   main.tsx                    # entry point — wires auth interceptors, initI18n, global error reporting, renders App
   app/
     App.tsx                   # root component: ErrorBoundary > QueryClientProvider > RouterProvider
-    router.tsx                # createBrowserRouter — /login, / (dashboard), /profile, /suppliers, /points, /users, /prices, /catalog, /day, /reception, /debts, /suppliers/:id, /journal, /point-cash, /transfers, /ui-kit, catch-all 404 — no /register
+    router.tsx                # createBrowserRouter — /login, / (dashboard), /profile, /suppliers, /points, /users, /prices, /catalog, /day, /reception, /debts, /suppliers/:id, /journal, /point-cash, /transfers, /cost-of-day, /ui-kit, catch-all 404 — no /register
     layouts/AppLayout.tsx      # persistent shell: dark sidebar with role-aware grouped nav + PAPER top bar (mock composition) with scope, ThemeToggle, sign-out; renders auth pages bare
     providers/
       ErrorBoundary.tsx        # React class error boundary → ErrorFallback
@@ -46,6 +46,8 @@ src/
   entities/transfer/             # useTransfersQuery, Transfer type — one point-to-point movement of cash and crates (§7), read by pages/point-cash and pages/transfers
   entities/point-cash/           # usePointCashQuery / usePointCashForPointQuery, PointCashRow/PointCashOne types — a point's cash-on-hand, one server-computed figure never re-summed client-side, read by pages/point-cash, pages/transfers and features/set-point-target
   entities/cash-count/           # useCashCountsQuery, CashCount type — a point's drawer-count history (opening/midday/closing; §7.6 one drawer, two books), read by pages/point-cash
+  entities/cost-of-day/           # useCostOfDayQuery, CostOfDay/CostOfDayProduct types — §8.4's `GET /shifts/:shiftId/cost-of-day` read, computed live with no posting moment or snapshot, read by pages/cost-of-day
+  entities/day-expense/           # useDayExpensesQuery + useCreateDayExpenseMutation/useUpdateDayExpenseMutation/useDeleteDayExpenseMutation, DayExpense type — a shift's manual expense lines, the schema's one mutable money table (§2.7 carve-out), read and written by pages/cost-of-day
   features/auth/                 # login/logout API calls, LoginForm, RequireAuth + RequireRole route guards — no register API
   features/edit-profile/         # useUploadAvatarMutation (single consumer: pages/profile — kept as the upload exemplar)
   features/pick-supplier/        # SupplierPicker (+ SupplierPickerHandle) — the mock's searchable combobox: debounced search, owner-only «Наша точка»/«Інші точки» groups, per-row open balance, the §2.11 wholesale/farmer hint, and an inline «Додати нового постачальника» footer that opens features/edit-supplier and auto-picks the created supplier; single consumer today is pages/reception's SupplierSection
@@ -68,6 +70,7 @@ src/
   pages/journal/                 # «Журнал прийомки» — the owner's register of every receipt and payout, filtered by point/month/supplier, server-paginated
   pages/point-cash/              # «Каса точки» — one point's cash-on-hand for a date: the ledger explaining the server's own figure, drawer-count history, incoming transfers — both roles, target-setting owner-only (§10.2)
   pages/transfers/               # «Перекази» — the owner's view of money and crates in flight and what each point is short (§7.9, §7.10) — OWNER-ONLY as a route-level gate, not a hidden button
+  pages/cost-of-day/             # «Собівартість дня» — §8.4's convergence of the reweigh reconciliation, the top-up allocation and the day's expenses into three prices per product (було / собівартість / нараховане÷наша вага) — OWNER-ONLY, own `?date=` and point picker unfiltered by `kind`
   shared/
     api/                       # httpClient (axios instance, env.apiUrl baseURL) + ApiError + attachAuthInterceptors + queryClient + queryKeys + persister + Paginated<T>/isTruncated (shared/api/pagination.ts, the one list-envelope shape every paginated GET returns)
     lib/

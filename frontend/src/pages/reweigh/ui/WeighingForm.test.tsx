@@ -82,9 +82,9 @@ describe('WeighingForm', () => {
     ]);
   });
 
-  it('keeps «+ ще позиція» inactive and says why, in order', async () => {
+  it('keeps «+ Додати позицію» inactive and says why, in order', async () => {
     render(<WeighingForm {...base} acceptedAnything={false} />);
-    expect(screen.getByRole('button', { name: /another position|ще позиція/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /add position|додати позицію/i })).toBeDisabled();
     expect(screen.getByText(/nothing was accepted|нічого не приймали/i)).toBeInTheDocument();
   });
 
@@ -94,7 +94,7 @@ describe('WeighingForm', () => {
     expect(screen.getByText(/801|800|check the weight|перевірте вагу/i)).toBeInTheDocument();
     // a warning, never a block: with a grade chosen the button still works
     await userEvent.selectOptions(screen.getByLabelText(/grade|сорт/i), 'g1');
-    expect(screen.getByRole('button', { name: /another position|ще позиція/i })).toBeEnabled();
+    expect(screen.getByRole('button', { name: /add position|додати позицію/i })).toBeEnabled();
   });
 
   it('hands up a complete draft, clears the fields, and KEEPS a non-default tare type', async () => {
@@ -109,7 +109,7 @@ describe('WeighingForm', () => {
     await userEvent.clear(screen.getByLabelText(/crates|кількість ящиків/i));
     await userEvent.type(screen.getByLabelText(/crates|кількість ящиків/i), '5');
     await userEvent.selectOptions(screen.getByLabelText(/grade|сорт/i), 'g1');
-    await userEvent.click(screen.getByRole('button', { name: /another position|ще позиція/i }));
+    await userEvent.click(screen.getByRole('button', { name: /add position|додати позицію/i }));
 
     expect(onAdd).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -138,7 +138,7 @@ describe('WeighingForm', () => {
     render(<WeighingForm {...base} onAdd={onAdd} />);
     await userEvent.type(screen.getByLabelText(/gross|вага з ягодою/i), '50');
     await userEvent.selectOptions(screen.getByLabelText(/grade|сорт/i), 'g1');
-    await userEvent.click(screen.getByRole('button', { name: /another position|ще позиція/i }));
+    await userEvent.click(screen.getByRole('button', { name: /add position|додати позицію/i }));
     expect(onAdd.mock.calls[0][0].tare).toEqual([]);
   });
 

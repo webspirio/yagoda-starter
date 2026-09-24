@@ -23,15 +23,16 @@ import { NotFoundPage } from '@/pages/not-found';
 import { UiKitPage } from '@/pages/ui-kit';
 
 // LAZY — the owner-only group, in ONE chunk fetched the first time an owner
-// opens any of these six screens. They live in their own module because a
+// opens any of these seven screens. They live in their own module because a
 // file that DEFINES components and also exports plain values (`routes`,
 // `router`) is not a Fast Refresh boundary — eslint-plugin-react-refresh
 // says so, and this repo's eslint config answers that by extracting rather
 // than whitelisting. `./lazy-routes` carries the measurements behind the
 // one-chunk choice and the guard-before-chunk ordering the routes below
-// depend on; read it before adding a seventh.
+// depend on; read it before adding an eighth.
 import {
   CatalogPage,
+  CostOfDayPage,
   JournalPage,
   PointsPage,
   ReweighPage,
@@ -209,6 +210,18 @@ export const routes: RouteObject[] = [
           <RequireAuth>
             <RequireRole role="network_owner">
               <ReweighPage />
+            </RequireRole>
+          </RequireAuth>
+        ),
+      },
+      {
+        // Owner-only, like /reweigh: §8's reads as well as its writes are the
+        // base's view of a point, not something the point sees about itself.
+        path: '/cost-of-day',
+        element: (
+          <RequireAuth>
+            <RequireRole role="network_owner">
+              <CostOfDayPage />
             </RequireRole>
           </RequireAuth>
         ),
