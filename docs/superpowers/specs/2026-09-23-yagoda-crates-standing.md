@@ -192,7 +192,7 @@ A return written by a receipt (§8.3) adds its units to `on_hand` through Σ
 returned while the same crates leave through the receipt's crate tare — net 0,
 exactly «not added to empties because they are already full».
 
-### 8.3 Reception returns our crates in the same «Прийняти» — DEFERRED
+### 8.3 Reception returns our crates in the same «Прийняти» — IN PROGRESS (2026-09-24, branch `feat/reception-crate-returns`)
 
 > **Deferred to the next slice (client, 2026-09-23: «shorten the slice»).** This
 > branch ships §8.1/§8.2 and the bar only. Until then a supplier bringing berries
