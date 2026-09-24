@@ -15,9 +15,11 @@ describe('KindBadge', () => {
     render(<KindBadge kind="wholesale" />);
     expect(screen.getByText(/suppliers\.kindBadge\.wholesale|ОПТ|wholesale/i)).toBeInTheDocument();
   });
-  it('hints only for the two marked kinds', () => {
+  it('hints only for a wholesaler (#118)', () => {
     expect(kindHintKey('none')).toBeNull();
     expect(kindHintKey('wholesale')).toBe('suppliers.kindHint.wholesale');
-    expect(kindHintKey('farmer')).toBe('suppliers.kindHint.farmer');
+    // A farmer's price may vary within the bounds like anyone's, but the red
+    // reminder is the wholesaler's alone.
+    expect(kindHintKey('farmer')).toBeNull();
   });
 });
