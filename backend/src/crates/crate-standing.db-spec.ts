@@ -20,8 +20,14 @@ import type { AuthenticatedUser } from '../auth/jwt.strategy';
  * The steps are ordered `it`s over the same point: each one adds its documents
  * and asserts the WHOLE response, so a figure that moves when it should not is
  * caught at the step that moved it. Step 4's return is a plain standalone
- * return — the receipt-linked `intake_id` is deferred with spec §8.3, and §8.2's
- * formula nets the two documents the same way either way.
+ * return, written on its own rather than riding in on a receipt — but §8.2's
+ * formula nets the two documents the same way either way, and it does not
+ * distinguish them: a receipt-linked return (`crate_returns.intake_id`,
+ * shipped 2026-09-24 — `POST /intakes`'s `returned_crates`) is netted through
+ * exactly this arithmetic too, Σ returned against the receipt's own crate
+ * tare (`crateTareUnitsSql`), which is why a linked write leaves `on_hand`
+ * unchanged while moving units from `in_field` to `with_berry` — see the
+ * standalone case below.
  *
  * The remaining cases each use their own fresh point so they cannot disturb
  * the example's figures.
@@ -78,13 +84,15 @@ describe('CrateStandingService.forPoint (Postgres)', () => {
     return row.id;
   };
 
-  /** A receipt carrying `crates` crate-tare units and `boxes` non-crate units. */
+  /** A receipt carrying `crates` crate-tare units and `boxes` non-crate units.
+   *  Returns the intake's id — callers that link a `giveBack` return to it, or
+   *  void it directly, need that id back. */
   const receipt = async (
     shiftId: string,
     supplierId: string,
     crates: number,
     opts: { boxes?: number; voided?: boolean } = {},
-  ): Promise<void> => {
+  ): Promise<string> => {
     const [intake] = await ds.query(
       `INSERT INTO intakes (code, shift_id, supplier_id, amount, received_by_user_id,
                             voided_at, voided_by_user_id, void_reason)
@@ -115,6 +123,7 @@ describe('CrateStandingService.forPoint (Postgres)', () => {
         [item.id, boxTare, opts.boxes],
       );
     }
+    return intake.id;
   };
 
   const transfer = async (pointId: string, over: Record<string, unknown>): Promise<void> => {
@@ -170,6 +179,11 @@ describe('CrateStandingService.forPoint (Postgres)', () => {
   /**
    * A return plus the `crate_return_allocations` row that consumes
    * `issuanceId` — the shape `crate-balances.db-spec.ts`'s `giveBack` uses.
+   * `opts.intakeId` links it to a receipt (`crate_returns.intake_id`, §8.3's
+   * `POST /intakes` `returned_crates`) — written by raw SQL rather than the
+   * real service, since this file exercises `CrateStandingService`'s reading
+   * of the two tables, not `IntakesService`'s write orchestration (that is
+   * `intake-crate-return.db-spec.ts`'s job).
    */
   const giveBack = async (
     shiftId: string,
@@ -178,13 +192,13 @@ describe('CrateStandingService.forPoint (Postgres)', () => {
     units: number,
     perUnit: string,
     refund: string,
-    opts: { voided?: boolean } = {},
+    opts: { voided?: boolean; intakeId?: string } = {},
   ): Promise<void> => {
     const [ret] = await ds.query(
       `INSERT INTO crate_returns
          (shift_id, supplier_id, units, deposit_refund, accepted_by_user_id,
-          voided_at, void_reason, voided_by_user_id)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
+          voided_at, void_reason, voided_by_user_id, intake_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
       [
         shiftId,
         supplierId,
@@ -194,6 +208,7 @@ describe('CrateStandingService.forPoint (Postgres)', () => {
         opts.voided ? new Date().toISOString() : null,
         opts.voided ? 'фікстура' : null,
         opts.voided ? userId : null,
+        opts.intakeId ?? null,
       ],
     );
     await ds.query(
@@ -370,6 +385,48 @@ describe('CrateStandingService.forPoint (Postgres)', () => {
     it('pins an operator to their own point', async () => {
       const got = await service.forPoint(operatorAt(point), { collection_point_id: bare });
       expect(got.collection_point_id).toBe(point);
+    });
+  });
+
+  it('a receipt-linked return nets to 0 on on_hand, moving units field → berries; voiding the receipt restores both', async () => {
+    const p = await newPoint(100);
+    await transfer(p, acceptedTransfer(100));
+    const open = await shift(p, '2026-09-12', null);
+    const s = await supplier(p);
+    const issuance = await issue(open, s, 20, 'deposit', '2400.00');
+
+    // Before the linked write: 20 empties out with the supplier, none with
+    // berries yet.
+    await expect(service.forPoint(owner(), { collection_point_id: p })).resolves.toMatchObject({
+      on_hand: 80, in_field: 20, with_berry: 0, total: 100,
+    });
+
+    // `POST /intakes` with `returned_crates: 20` — a receipt carrying 20
+    // crate-tare units, with a return of the same 20 units riding in on it,
+    // linked via `crate_returns.intake_id`.
+    const intakeId = await receipt(open, s, 20);
+    await giveBack(open, s, issuance, 20, '120.00', '2400.00', { intakeId });
+
+    // Σ returned (+20) cancels the receipt's own crate tare (−20): on_hand is
+    // untouched. The 20 units move off `in_field` (the tranche they closed)
+    // and onto `with_berry` (the open shift's own crate-tare receipt).
+    await expect(service.forPoint(owner(), { collection_point_id: p })).resolves.toMatchObject({
+      on_hand: 80, in_field: 0, with_berry: 20, total: 100,
+    });
+
+    // Voiding the receipt voids the linked return with it (`voidReturnForIntake`)
+    // — simulated here by voiding both rows directly, since this file tests
+    // `CrateStandingService`'s reading of the two tables, not the void
+    // orchestration itself. Both figures come straight back.
+    await ds.query(`UPDATE intakes SET voided_at = now(), voided_by_user_id = $2, void_reason = 'фікстура' WHERE id = $1`, [
+      intakeId, userId,
+    ]);
+    await ds.query(
+      `UPDATE crate_returns SET voided_at = now(), voided_by_user_id = $2, void_reason = 'фікстура' WHERE intake_id = $1`,
+      [intakeId, userId],
+    );
+    await expect(service.forPoint(owner(), { collection_point_id: p })).resolves.toMatchObject({
+      on_hand: 80, in_field: 20, with_berry: 0, total: 100,
     });
   });
 
