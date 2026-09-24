@@ -164,7 +164,7 @@ function toKgInput(value: string): string {
 
 /** Drives `WeighingForm` exactly as the owner would: gross weight, an
  *  optional crate count (against the catalogue's default tare type, `t1`),
- *  a grade, then «another position». */
+ *  a grade, then «Додати позицію». */
 async function addDraft({
   gross,
   grade,
@@ -180,7 +180,7 @@ async function addDraft({
     await userEvent.type(screen.getByLabelText(/crates|кількість ящиків/i), String(crates));
   }
   await userEvent.selectOptions(screen.getByLabelText(/grade|сорт/i), grade);
-  await userEvent.click(screen.getByRole('button', { name: /another position|ще позиція/i }));
+  await userEvent.click(screen.getByRole('button', { name: /add position|додати позицію/i }));
 }
 
 beforeEach(() => {
@@ -224,7 +224,7 @@ describe('ReweighPage', () => {
     shiftMock.mockReturnValue({ data: null, isPending: false });
     render(<ReweighPage />);
     expect(screen.getByText(/never opened|не відкривали/i)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /another position|ще позиція/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /add position|додати позицію/i })).toBeDisabled();
   });
 
   /**

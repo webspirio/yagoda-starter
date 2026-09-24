@@ -886,3 +886,162 @@ describe('PointCashService.list (Postgres)', () => {
     expect(late.data[0].latest_transfer).toBeNull();
   });
 });
+
+/**
+ * R8 — `crateUnitsSql`'s MEANING, AGAINST A REAL POSTGRES. `crate-balance
+ * .service.spec.ts` and `point-cash.service.spec.ts` already pin the SQL
+ * TEXT for both call shapes; what needs proving here is that the formula
+ * ANSWERS RIGHT — a unit spec cannot tell «deposit minus returned» from
+ * «deposit plus returned» by reading the string.
+ *
+ * Reuses the outer describe's harness by re-opening its own — see
+ * `PointCashService.list` right above for the same shape and the same
+ * reason: a top-level `describe` here has no `shift`/`newPoint` in scope
+ * from the very first block, which closes over a different connection.
+ */
+describe('PointCashService.crateUnitsFor (Postgres)', () => {
+  let ds: DataSource;
+  let service: PointCashService;
+  let ownerId: string;
+
+  const newPoint = async (): Promise<string> => {
+    const tag = randomUUID().slice(0, 8);
+    const [{ id }] = (await ds.query(
+      `INSERT INTO collection_points (name, code, kind, is_active)
+       VALUES ($1, $2, 'reception', true) RETURNING id`,
+      [`Точка ${tag}`, `U${tag.slice(0, 6).toUpperCase()}`],
+    )) as { id: string }[];
+    return id;
+  };
+
+  const shift = async (pointId: string): Promise<string> => {
+    const [{ id }] = (await ds.query(
+      `INSERT INTO shifts (collection_point_id, opened_by_user_id, business_date,
+                           closed_at, closed_by_user_id, status)
+       VALUES ($1, $2, '2026-09-05', now(), $2, 'closed') RETURNING id`,
+      [pointId, ownerId],
+    )) as { id: string }[];
+    return id;
+  };
+
+  const supplierAt = async (pointId: string): Promise<string> => {
+    const [{ id }] = (await ds.query(
+      `INSERT INTO suppliers (collection_point_id, first_name, last_name, kind, is_active)
+       VALUES ($1, 'Тест', $2, 'none', true) RETURNING id`,
+      [pointId, randomUUID().slice(0, 8)],
+    )) as { id: string }[];
+    return id;
+  };
+
+  /** Mirrors `crates.db-spec.ts`'s fixture shape — money is a placeholder
+   *  here, since `crateUnitsSql` reads `units`/`mode`/`voided_at` and never
+   *  `deposit_taken`. */
+  const crateIssuance = async (
+    shiftId: string,
+    supplierId: string,
+    units: number,
+    mode: 'deposit' | 'receipt',
+    over: Record<string, unknown> = {},
+  ): Promise<string> => {
+    const row: Record<string, unknown> = {
+      code: `CI-${randomUUID().slice(0, 12)}`,
+      shift_id: shiftId,
+      supplier_id: supplierId,
+      units,
+      mode,
+      deposit_per_unit: mode === 'deposit' ? '120.00' : '0.00',
+      deposit_taken: mode === 'deposit' ? '2400.00' : '0.00',
+      issued_by_user_id: ownerId,
+      ...over,
+    };
+    const keys = Object.keys(row);
+    const [{ id }] = (await ds.query(
+      `INSERT INTO crate_issuances (${keys.map((k) => `"${k}"`).join(', ')})
+       VALUES (${keys.map((_, i) => `$${i + 1}`).join(', ')}) RETURNING id`,
+      keys.map((k) => row[k]),
+    )) as { id: string }[];
+    return id;
+  };
+
+  /** A return of `units`, ENTIRELY allocated against one issuance — the
+   *  smallest fixture that still exercises the allocation JOIN, since
+   *  `crateUnitsSql`'s second term sums `crate_return_allocations.units`,
+   *  never `crate_returns.units` (the latter can span more than one
+   *  issuance, and only the allocation rows say which one).
+   *
+   *  `deposit_refund`/`amount` ARE REAL MONEY, NOT A PLACEHOLDER: the ONE
+   *  caller below (7 units, `crateIssuance`'s `deposit_per_unit` of
+   *  `'120.00'`) refunds `7 × 120.00 = 840.00` — the only shape
+   *  `CratesService`'s own allocator would ever write. `crateUnitsSql` never
+   *  reads either column (see the doc comment above), so this was free to be
+   *  `'0.00'` and still pass every test in this file; it is corrected here
+   *  because a self-contradictory row (7 units at 120.00/unit refunding
+   *  0.00) is a bad fixture to leave lying around for the next reader or the
+   *  next test that DOES read money off it. No test in this file currently
+   *  asserts `crate_deposits`/`deposit_refund`, so nothing else needed to
+   *  change to keep this file green. */
+  const returnAgainst = async (
+    shiftId: string,
+    supplierId: string,
+    issuanceId: string,
+    units: number,
+  ): Promise<void> => {
+    const [{ id: returnId }] = (await ds.query(
+      `INSERT INTO crate_returns (shift_id, supplier_id, units, deposit_refund, accepted_by_user_id)
+       VALUES ($1, $2, $3, '840.00', $4) RETURNING id`,
+      [shiftId, supplierId, units, ownerId],
+    )) as { id: string }[];
+    await ds.query(
+      `INSERT INTO crate_return_allocations (return_id, issuance_id, units, per_unit, amount)
+       VALUES ($1, $2, $3, '120.00', '840.00')`,
+      [returnId, issuanceId, units],
+    );
+  };
+
+  beforeAll(async () => {
+    ds = await openTestDataSource();
+    service = new PointCashService(ds, { appTimezone: 'Europe/Kyiv' });
+    const run = randomUUID().slice(0, 8);
+    [{ id: ownerId }] = (await ds.query(
+      `INSERT INTO users (first_name, last_name, role, is_active)
+       VALUES ('Тест', $1, 'network_owner', true) RETURNING id`,
+      [`Owner units ${run}`],
+    )) as { id: string }[];
+  });
+
+  afterAll(async () => {
+    await ds?.destroy();
+  });
+
+  it('20 deposit-mode units minus a 7-unit return settles on 13', async () => {
+    const p = await newPoint();
+    const s = await shift(p);
+    const supplierId = await supplierAt(p);
+    const issuanceId = await crateIssuance(s, supplierId, 20, 'deposit');
+    await returnAgainst(s, supplierId, issuanceId, 7);
+
+    await expect(service.crateUnitsFor(p)).resolves.toBe(13);
+  });
+
+  it('a receipt-mode issuance counts 0 — no deposit was ever taken for it', async () => {
+    const p = await newPoint();
+    const s = await shift(p);
+    const supplierId = await supplierAt(p);
+    await crateIssuance(s, supplierId, 50, 'receipt');
+
+    await expect(service.crateUnitsFor(p)).resolves.toBe(0);
+  });
+
+  it('a voided deposit-mode issuance counts 0 — it is no longer live', async () => {
+    const p = await newPoint();
+    const s = await shift(p);
+    const supplierId = await supplierAt(p);
+    await crateIssuance(s, supplierId, 20, 'deposit', {
+      voided_at: new Date(),
+      voided_by_user_id: ownerId,
+      void_reason: 'дубль',
+    });
+
+    await expect(service.crateUnitsFor(p)).resolves.toBe(0);
+  });
+});

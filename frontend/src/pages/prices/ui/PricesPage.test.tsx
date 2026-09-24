@@ -22,6 +22,14 @@ vi.mock('../api/gradePrices', () => ({
   usePriceHistoryQuery: () => ({ data: [], isPending: false, isError: false }),
 }));
 
+vi.mock('../api/priceChanges', () => ({
+  usePriceChangesQuery: () => ({
+    data: { date: '2026-09-23', changes: [] },
+    isPending: false,
+    isError: false,
+  }),
+}));
+
 vi.mock('@/entities/user', () => ({
   useMeQuery: () => meMock(),
 }));
@@ -153,6 +161,11 @@ describe('PricesPage — the sheet', () => {
     await waitFor(() => expect(setPriceMock).toHaveBeenCalledTimes(1));
     expect(setPriceMock.mock.calls[0][0].collection_point_id).toBe('p2');
     expect(bulkMock).not.toHaveBeenCalled();
+  });
+
+  it("shows today's price changes under the sheet (#151)", () => {
+    render(<PricesPage />);
+    expect(screen.getByText('Changes today')).toBeInTheDocument();
   });
 
   it('has no date control — this sheet shows current prices, not a day', () => {

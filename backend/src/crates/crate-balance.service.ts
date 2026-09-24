@@ -142,6 +142,78 @@ export const transferCratesSql = (pointExpr: string): string => `(
        AND t.voided_at IS NULL
 )`;
 
+/**
+ * THE SAME BOOK, IN CRATES RATHER THAN GRYVNIAS — R8's card, «завдатків за N
+ * ящиків». `point-cash` shows this NEXT TO `crateBookSql`'s money figure, not
+ * derived from it: a receipt issuance's units are never in `crateBookSql`
+ * either (its rows carry `deposit_taken = 0` by
+ * `CHK_crate_issuances_receipt_no_money`), but this counter states that
+ * exclusion directly, with an explicit `ci.mode = 'deposit'`, rather than
+ * leaning on a CHECK constraint a reader of this file would otherwise have to
+ * already know about.
+ *
+ * SAME TWO-TERM SHAPE, SAME POINT-EXPRESSION CONTRACT AS `crateBookSql`: the
+ * first term sums every live deposit-mode issuance's `units` at the point,
+ * the second sums the `crate_return_allocations.units` that have since come
+ * back against one of THOSE issuances — `a.units`, not `cr.units`, because a
+ * return's own `units` can span both modes (§4.1 of the crates slice) and
+ * only the allocation rows say which issuance, and therefore which mode,
+ * each returned unit came off. `pointExpr` is spliced in unparameterised for
+ * the identical reason `crateBookSql` splices it: it is a SQL NAMING the
+ * caller controls (a bind placeholder or a correlated column), never a value
+ * from a request.
+ *
+ * NOT `tranchesFor`'s `remaining_units`: that method already answers "how
+ * many crates does THIS SUPPLIER still owe", per open tranche, receipt
+ * tranches included. This answers "how many DEPOSIT-COVERED crates are out
+ * across THE WHOLE POINT", which is a different aggregate over a different
+ * filter — recomputing it from tranches would mean summing every supplier's
+ * open tranches and then subtracting the receipt-mode ones back out, the
+ * exact kind of re-derivation this file exists to avoid.
+ *
+ * `::int` WRAPS THE WHOLE EXPRESSION, NOT EITHER `SUM`. Postgres promotes
+ * `SUM(int4)` to `bigint`, which the driver returns as a STRING (bigint can
+ * exceed `Number.MAX_SAFE_INTEGER`, which no realistic crate count ever
+ * will) — the outer cast back to `int4` is what hands `point-cash` back a
+ * genuine JS `number` at the query boundary, so the units never cross into
+ * TypeScript as a string that would need parsing there. Foundation §5.1 bans
+ * exactly that conversion in this file's directory; casting in SQL is the
+ * side of the line this belongs on, and it is why `point-cash.service.ts`
+ * never calls `Number()`/`parseInt` on this column.
+ *
+ * ONE ASYMMETRY WITH `crateBookSql`, NOTED RATHER THAN FIXED: the SUBTRACTION
+ * term here scopes by `ci.mode = 'deposit' AND cs.collection_point_id =
+ * ${pointExpr}` — the ISSUANCE's point, reached through `ci`'s own shift —
+ * while `crateBookSql`'s refund term scopes by the RETURN's point, through
+ * `rs`/`cr.shift_id`. The two happen to agree today because a supplier's
+ * `collection_point_id` is immutable (§3.9 — `update-supplier.dto.ts` carries
+ * no such field) and a return only ever allocates against ITS OWN supplier's
+ * issuances (`crate-allocation.ts`), so an issuance and every return drawn
+ * against it are always the same point. This form — scoping by the
+ * issuance's point on both terms — is the more ROBUST of the two, because it
+ * stays correct even if a return's own shift could someday sit at a
+ * different point than the issuance it draws down. A future supplier-transfer
+ * feature (a supplier reassigned to another point mid-tranche) would have to
+ * revisit BOTH functions, not just this one.
+ */
+export const crateUnitsSql = (pointExpr: string): string => `(
+    COALESCE((SELECT SUM(ci.units)
+         FROM crate_issuances ci
+         JOIN shifts cs ON cs.id = ci.shift_id
+        WHERE cs.collection_point_id = ${pointExpr}
+          AND ci.mode = 'deposit'
+          AND ci.voided_at IS NULL), 0)
+  - COALESCE((SELECT SUM(a.units)
+         FROM crate_return_allocations a
+         JOIN crate_issuances ci ON ci.id = a.issuance_id
+         JOIN crate_returns cr ON cr.id = a.return_id
+         JOIN shifts cs ON cs.id = ci.shift_id
+        WHERE cs.collection_point_id = ${pointExpr}
+          AND ci.mode = 'deposit'
+          AND ci.voided_at IS NULL
+          AND cr.voided_at IS NULL), 0)
+)::int`;
+
 @Injectable()
 export class CrateBalanceService {
   constructor(

@@ -12,7 +12,7 @@ export const TARE_SUSPECT_UNITS = 120;
 export type BlockReason = 'noShift' | 'nothingAccepted' | 'noGrade' | 'noGross' | 'noNet' | null;
 
 /**
- * Why «+ ще позиція» is inactive — a REASON CODE, resolved to copy by the page.
+ * Why «+ Додати позицію» is inactive — a REASON CODE, resolved to copy by the page.
  *
  * The order is the message. «Того дня тут нічого не приймали» has to win over
  * «оберіть сорт», or the owner who picked the wrong point is told to fix the
