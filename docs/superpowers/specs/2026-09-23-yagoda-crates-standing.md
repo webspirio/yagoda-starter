@@ -192,13 +192,16 @@ A return written by a receipt (§8.3) adds its units to `on_hand` through Σ
 returned while the same crates leave through the receipt's crate tare — net 0,
 exactly «not added to empties because they are already full».
 
-### 8.3 Reception returns our crates in the same «Прийняти» — IN PROGRESS (2026-09-24, branch `feat/reception-crate-returns`)
+### 8.3 Reception returns our crates in the same «Прийняти» — SHIPPED (2026-09-24, branch `feat/reception-crate-returns`)
 
-> **Deferred to the next slice (client, 2026-09-23: «shorten the slice»).** This
-> branch ships §8.1/§8.2 and the bar only. Until then a supplier bringing berries
-> in our crates is recorded as the receipt PLUS a standalone «Прийняти ящики»
-> return — the §8.2 formula nets the two, so full crates never count as empties.
-> The design below is approved and stays as that slice's starting point.
+> Shipped 2026-09-24. The design below is what shipped, with one controller
+> ruling beyond its text: `IntakesService.create` locks the supplier row
+> `FOR UPDATE` on EVERY receipt (not only one with `returned_crates > 0`),
+> before the intakes advisory lock. A lock taken only when returning crates
+> deadlocks against a plain receipt for the same supplier — the advisory lock
+> is held while the FK's key-share and `writePayout` wait on the supplier row
+> the other transaction hasn't taken. `IntakesService.void` locks
+> supplier → intake row, the same order.
 
 
 - `crate_returns.intake_id uuid NULL` → `intakes.id`, partial UNIQUE
@@ -223,7 +226,7 @@ exactly «not added to empties because they are already full».
 
 ### 8.4 Frontend
 
-Shipped now: the **Bar** bullet. Deferred with §8.3: Reception, Receipt widget, PersonCrateDocs.
+Shipped: the **Bar** bullet, then Reception, Receipt widget and PersonCrateDocs (§8.3, 2026-09-24).
 
 
 - **Reception:** under the tare, «З них наших ящиків», shown only when the
@@ -243,7 +246,7 @@ Shipped now: the **Bar** bullet. Deferred with §8.3: Reception, Receipt widget,
 
 ### 8.5 Testing
 
-Shipped now: the standing db-spec (step 4 of the example uses a standalone return) and the bar tests. The rest is deferred with §8.3.
+Shipped: the standing db-spec (step 4 of the example uses a standalone return) and the bar tests, then `intake-crate-return.db-spec.ts` and the reception/receipt/crates-page frontend tests (§8.3, 2026-09-24).
 
 
 - db-spec: the client's example step by step (500 → 350/100/50 → 350/50/100 →
