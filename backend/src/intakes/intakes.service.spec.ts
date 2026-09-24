@@ -67,6 +67,7 @@ describe('IntakesService', () => {
   let points: { findOneRaw: jest.Mock };
   let audit: { record: jest.Mock };
   let payouts: { writePayout: jest.Mock };
+  let crates: { writeReturn: jest.Mock; voidReturnForIntake: jest.Mock };
   let service: IntakesService;
 
   const shift = (over: Record<string, unknown> = {}) => ({
@@ -107,6 +108,10 @@ describe('IntakesService', () => {
     ...over,
   });
 
+  /** What the crate-return read (`FROM crate_returns`) answers — none by
+   *  default, one row in the tests that write or read a linked return. */
+  let crateReturnRows: unknown[];
+
   beforeEach(() => {
     itemRepo = { find: jest.fn().mockResolvedValue([]) };
     // Shared by `manager` and `plainManager`: `extrasFor` reads `ROW_EXTRAS_SQL`
@@ -114,8 +119,10 @@ describe('IntakesService', () => {
     // else, so branching on the SQL text is what lets one mock answer both.
     const queryExtrasOrCount = (sql: string) =>
       Promise.resolve(
-        sql.includes('pg_advisory_xact_lock')
+        sql.includes('pg_advisory_xact_lock') || sql.includes('FOR UPDATE')
           ? [{}]
+          : sql.includes('FROM crate_returns')
+            ? crateReturnRows
           : sql.includes('AS net_kg')
             ? [
                 {
@@ -174,7 +181,9 @@ describe('IntakesService', () => {
         max_discount: '20.00',
       }),
     };
-    tare = { findManyRaw: jest.fn().mockResolvedValue([{ id: CRATE, weight_kg: '1.20' }]) };
+    tare = {
+      findManyRaw: jest.fn().mockResolvedValue([{ id: CRATE, weight_kg: '1.20', is_crate: true }]),
+    };
     points = { findOneRaw: jest.fn().mockResolvedValue({ id: POINT_A, code: 'KPG' }) };
     audit = { record: jest.fn().mockResolvedValue(undefined) };
     payouts = {
@@ -192,6 +201,12 @@ describe('IntakesService', () => {
       ),
     };
 
+    crates = {
+      writeReturn: jest.fn().mockResolvedValue({ ret: {}, allocations: [], tranches: [] }),
+      voidReturnForIntake: jest.fn().mockResolvedValue(null),
+    };
+    crateReturnRows = [];
+
     service = new IntakesService(
       repo as never,
       dataSource as never,
@@ -202,6 +217,7 @@ describe('IntakesService', () => {
       points as never,
       audit as never,
       payouts as never,
+      crates as never,
     );
   });
 
@@ -435,6 +451,102 @@ describe('IntakesService', () => {
   });
 
   /**
+   * Spec §8.3 — OUR crates coming back in the same «Прийняти». The db-spec
+   * (`intake-crate-return.db-spec.ts`) proves the SQL, the FIFO split and the
+   * rollbacks against Postgres; this pins the ORDER of the calls.
+   */
+  describe('returned crates at reception (spec §8.3)', () => {
+    const lockCalls = () =>
+      (manager.query.mock.calls as [string, unknown[]][])
+        .map(([sql, params], i) => ({ sql, params, order: manager.query.mock.invocationCallOrder[i] }))
+        .filter(({ sql }) => sql.includes('FOR UPDATE') || sql.includes('pg_advisory_xact_lock'));
+
+    it('locks the supplier row BEFORE the intakes advisory lock — on every receipt, crates or not', async () => {
+      await service.create(oksana, dto() as never);
+
+      const locks = lockCalls();
+      expect(locks[0].sql).toContain('FROM suppliers');
+      expect(locks[0].sql).toContain('FOR UPDATE');
+      expect(locks[0].params).toEqual([SUPPLIER]);
+      expect(locks[1].sql).toContain('pg_advisory_xact_lock');
+      // …and before any snapshot is read.
+      expect(locks[0].order).toBeLessThan(shifts.findOpenAtPoint.mock.invocationCallOrder[0]);
+    });
+
+    it('writes no return when returned_crates is absent or 0', async () => {
+      const absent = await service.create(oksana, dto() as never);
+      await service.create(oksana, dto({ returned_crates: 0 }) as never);
+
+      expect(crates.writeReturn).not.toHaveBeenCalled();
+      expect(absent.crate_return).toBeNull();
+    });
+
+    it('400s RETURNED_EXCEEDS_TARE past the receipt’s own crate-tare units, before anything is written', async () => {
+      // `dto()` carries 3 units of the crate.
+      await expect(
+        service.create(oksana, dto({ returned_crates: 4 }) as never),
+      ).rejects.toMatchObject({ response: { code: 'RETURNED_EXCEEDS_TARE' } });
+      expect(manager.save).not.toHaveBeenCalled();
+      expect(crates.writeReturn).not.toHaveBeenCalled();
+    });
+
+    it('counts only crate tare — units of another tare type are not returnable', async () => {
+      tare.findManyRaw.mockResolvedValue([{ id: CRATE, weight_kg: '1.20', is_crate: false }]);
+
+      await expect(
+        service.create(oksana, dto({ returned_crates: 1 }) as never),
+      ).rejects.toMatchObject({ response: { code: 'RETURNED_EXCEEDS_TARE' } });
+    });
+
+    it('writes the return AFTER the intake is saved and BEFORE the payout, linked by the intake id', async () => {
+      crateReturnRows = [
+        {
+          id: 'cr-1',
+          units: 3,
+          deposit_refund: '240.00',
+          deposit_units: 2,
+          receipt_units: 1,
+          voided_at: null,
+        },
+      ];
+
+      const res = await service.create(
+        oksana,
+        dto({ returned_crates: 3, paid_amount: '100.00' }) as never,
+      );
+
+      expect(crates.writeReturn).toHaveBeenCalledWith(manager, {
+        actor: oksana,
+        pointId: POINT_A,
+        shift: expect.objectContaining({ id: SHIFT_ID }),
+        supplierId: SUPPLIER,
+        units: 3,
+        intakeId: INTAKE_ID,
+      });
+      const returned = crates.writeReturn.mock.invocationCallOrder[0];
+      expect(manager.save.mock.invocationCallOrder[0]).toBeLessThan(returned);
+      expect(returned).toBeLessThan(payouts.writePayout.mock.invocationCallOrder[0]);
+      expect(res.crate_return).toEqual({
+        id: 'cr-1',
+        units: 3,
+        deposit_refund: '240.00',
+        deposit_units: 2,
+        receipt_units: 1,
+        voided_at: null,
+      });
+    });
+
+    it('lets a crates refusal propagate — no payout is attempted', async () => {
+      crates.writeReturn.mockRejectedValue(new Error('CRATE_CASH_INSUFFICIENT'));
+
+      await expect(
+        service.create(oksana, dto({ returned_crates: 3, paid_amount: '100.00' }) as never),
+      ).rejects.toThrow('CRATE_CASH_INSUFFICIENT');
+      expect(payouts.writePayout).not.toHaveBeenCalled();
+    });
+  });
+
+  /**
    * `POST /intakes/preview` — `create` up to the point where it would write,
    * and then nothing. The reception screen shows net weight, price, bonus and
    * the line and document amounts LIVE as the operator types, and §2.4/§2.8/
@@ -655,6 +767,48 @@ describe('IntakesService', () => {
       );
     });
 
+    it('locks the supplier row BEFORE the intake row — the order every crate write uses', async () => {
+      await service.void(oksana, INTAKE_ID, { reason: 'помилка' });
+
+      const supplierLock = (manager.query.mock.calls as [string, unknown[]][]).findIndex(
+        ([sql]) => sql.includes('FROM suppliers') && sql.includes('FOR UPDATE'),
+      );
+      expect(supplierLock).toBeGreaterThanOrEqual(0);
+      expect(manager.query.mock.calls[supplierLock][1]).toEqual([SUPPLIER]);
+
+      const lockedLoad = (manager.findOne.mock.calls as [unknown, { lock?: unknown }][]).findIndex(
+        ([, opts]) => opts?.lock !== undefined,
+      );
+      // The stub read (unlocked) comes first, then the supplier lock, then the
+      // pessimistic load of the intake.
+      expect(manager.findOne.mock.calls[0][1]).toEqual({ where: { id: INTAKE_ID } });
+      expect(manager.findOne.mock.invocationCallOrder[0]).toBeLessThan(
+        manager.query.mock.invocationCallOrder[supplierLock],
+      );
+      expect(manager.query.mock.invocationCallOrder[supplierLock]).toBeLessThan(
+        manager.findOne.mock.invocationCallOrder[lockedLoad],
+      );
+    });
+
+    it('voids the linked crate return with the same reason, after the intake’s own void', async () => {
+      await service.void(oksana, INTAKE_ID, { reason: 'не той постачальник' });
+
+      expect(crates.voidReturnForIntake).toHaveBeenCalledWith(manager, {
+        actor: oksana,
+        intakeId: INTAKE_ID,
+        reason: 'не той постачальник',
+      });
+      expect(manager.save.mock.invocationCallOrder[0]).toBeLessThan(
+        crates.voidReturnForIntake.mock.invocationCallOrder[0],
+      );
+      expect(payouts.writePayout).not.toHaveBeenCalled();
+    });
+
+    it('does not touch the crate return when the void itself is refused', async () => {
+      await expect(service.void(maria, INTAKE_ID, { reason: 'не моя' })).rejects.toBeDefined();
+      expect(crates.voidReturnForIntake).not.toHaveBeenCalled();
+    });
+
     it('does NOT refuse a void that drives the supplier’s debt negative', async () => {
       // «сторно КВИТАНЦІЇ ЄДИНИЙ шлях у мінус, і воно ДОЗВОЛЕНЕ, з попередженням».
       // There is no balance lookup in this path at all, and adding a floor check
@@ -846,6 +1000,36 @@ describe('IntakesService', () => {
       const result = await service.findOne(oksana, INTAKE_ID);
 
       expect(result.received_by_name).toBe('Оксана Гнатюк');
+    });
+
+    it('carries the linked crate return — the receipt widget reads it here', async () => {
+      crateReturnRows = [
+        {
+          id: 'cr-1',
+          units: 40,
+          deposit_refund: '2400.00',
+          deposit_units: 20,
+          receipt_units: 20,
+          voided_at: new Date('2026-09-08T09:00:00.000Z'),
+        },
+      ];
+
+      const result = await service.findOne(oksana, INTAKE_ID);
+
+      expect(result.crate_return).toEqual({
+        id: 'cr-1',
+        units: 40,
+        deposit_refund: '2400.00',
+        deposit_units: 20,
+        receipt_units: 20,
+        voided_at: '2026-09-08T09:00:00.000Z',
+      });
+    });
+
+    it('carries crate_return: null when no crates came back', async () => {
+      const result = await service.findOne(oksana, INTAKE_ID);
+
+      expect(result.crate_return).toBeNull();
     });
   });
 

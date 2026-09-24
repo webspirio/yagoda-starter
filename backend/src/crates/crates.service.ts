@@ -174,13 +174,16 @@ export class CratesService {
    * THE ONE RETURN WRITER, extracted so a receipt can call it too (spec §8.3,
    * Task R3). `CratesService.returnCrates` below is this method plus a caller
    * that has already resolved a point, a supplier and an open shift, and
-   * always passes `intakeId: null`; `IntakesService`'s receipt-with-crates
-   * path resolves the same three things ITSELF — inside `POST /intakes`'s own
-   * transaction, under the same supplier lock its debt write already holds —
-   * and passes its own intake's id instead. This method LOCKS THE SUPPLIER ROW
-   * ITSELF regardless of which caller it is: re-locking an already-held row in
-   * the SAME transaction is a no-op in Postgres (idempotent), not a second
-   * lock either caller has to remember to skip.
+   * always passes `intakeId: null`; `IntakesService.create` resolves the same
+   * three things ITSELF, inside `POST /intakes`'s own transaction, and calls
+   * this after inserting the intake and before any payout, passing its own
+   * intake's id. That transaction has ALREADY locked this supplier row
+   * `FOR UPDATE` as its very first statement — before its `intakes` advisory
+   * lock and before the intake insert (see `IntakesService.create`'s lock
+   * order). This method LOCKS THE SUPPLIER ROW ITSELF regardless of which
+   * caller it is: re-locking an already-held row in the SAME transaction is a
+   * no-op in Postgres (idempotent), not a second lock either caller has to
+   * remember to skip.
    */
   async writeReturn(
     m: EntityManager,
@@ -614,8 +617,9 @@ export class CratesService {
    *
    * NO SUPPLIER LOCK HERE EITHER. `voidReturn`/`writeReturn` lock the
    * supplier row themselves because each is reachable on its own; this method
-   * is reachable ONLY from inside the receipt's void transaction, which has
-   * already locked that same supplier row before calling here (Task R3) —
+   * is reachable ONLY from inside the receipt's void transaction
+   * (`IntakesService.void`), which has already locked that same supplier row
+   * before its own pessimistic load of the intake and before calling here —
    * taking a second, redundant lock would just be a second place that could
    * forget the order `writeReturn`/`voidIssuance`/`voidReturn` already share.
    *

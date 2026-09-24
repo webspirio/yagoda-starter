@@ -12,6 +12,7 @@ import { TareTypesModule } from '../tare-types/tare-types.module';
 import { CollectionPointsModule } from '../collection-points/collection-points.module';
 import { AuditModule } from '../audit/audit.module';
 import { PayoutsModule } from '../payouts/payouts.module';
+import { CratesModule } from '../crates/crates.module';
 
 /**
  * Reads four other modules THROUGH THEIR SERVICES, never their repositories —
@@ -23,6 +24,11 @@ import { PayoutsModule } from '../payouts/payouts.module';
  * Imports `PayoutsModule` so the cash handed over with a receipt (§2.1 ⑥) is
  * written by the ONE payout writer, ceilings included. `PayoutsModule` does
  * not import this module back.
+ *
+ * Imports `CratesModule` for the same reason (spec §8.3): the crates the
+ * supplier brings back with a receipt are written by the ONE return writer,
+ * `CratesService.writeReturn`, and voided with the receipt by
+ * `voidReturnForIntake`. `CratesModule` does not import this module back.
  */
 @Module({
   imports: [
@@ -34,6 +40,7 @@ import { PayoutsModule } from '../payouts/payouts.module';
     CollectionPointsModule,
     AuditModule,
     PayoutsModule,
+    CratesModule,
   ],
   providers: [IntakesService],
   controllers: [IntakesController],

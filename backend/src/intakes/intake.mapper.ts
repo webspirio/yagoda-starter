@@ -68,6 +68,45 @@ function toIntakePayoutResponse(payout: Payout): IntakePayoutResponse {
   };
 }
 
+/**
+ * The crate return written WITH this receipt (spec §8.3, `crate_returns.
+ * intake_id`), voided or not — a voided one stays so the receipt can say the
+ * return was cancelled with it. `deposit_units`/`receipt_units` split `units`
+ * by the MODE of the issuance each FIFO allocation row drew from: the first
+ * were refunded at their deposit price (`deposit_refund`), the second came
+ * back against a розписка and moved no money.
+ */
+export interface IntakeCrateReturnResponse {
+  id: string;
+  units: number;
+  deposit_refund: string;
+  deposit_units: number;
+  receipt_units: number;
+  voided_at: string | null;
+}
+
+/** One row of `IntakesService`'s crate-return read — the SQL sums the
+ *  allocation units per mode (`::int`), so nothing here adds anything up. */
+export interface IntakeCrateReturnRow {
+  id: string;
+  units: number;
+  deposit_refund: string;
+  deposit_units: number;
+  receipt_units: number;
+  voided_at: Date | null;
+}
+
+export function toIntakeCrateReturnResponse(row: IntakeCrateReturnRow): IntakeCrateReturnResponse {
+  return {
+    id: row.id,
+    units: row.units,
+    deposit_refund: row.deposit_refund,
+    deposit_units: row.deposit_units,
+    receipt_units: row.receipt_units,
+    voided_at: row.voided_at ? row.voided_at.toISOString() : null,
+  };
+}
+
 export interface IntakeDetailResponse extends IntakeResponse {
   items: IntakeItemResponse[];
   /** Payouts handed over WITH this receipt (§2.1 ⑥) — `intake_id` = this id,
@@ -75,6 +114,8 @@ export interface IntakeDetailResponse extends IntakeResponse {
   payouts: IntakePayoutResponse[];
   /** «Приймав» on the printed receipt. `null` only if the user row is gone. */
   received_by_name: string | null;
+  /** `null` when no crates came back with this receipt. */
+  crate_return: IntakeCrateReturnResponse | null;
 }
 
 export function toIntakeResponse(
@@ -125,6 +166,7 @@ export function toIntakeDetailResponse(
   extras: IntakeRowExtras,
   payouts: Payout[],
   receivedByName: string | null,
+  crateReturn: IntakeCrateReturnRow | null,
 ): IntakeDetailResponse {
   return {
     ...toIntakeResponse(intake, shift, extras),
@@ -135,6 +177,7 @@ export function toIntakeDetailResponse(
       .sort((a, b) => a.created_at.getTime() - b.created_at.getTime())
       .map(toIntakePayoutResponse),
     received_by_name: receivedByName,
+    crate_return: crateReturn ? toIntakeCrateReturnResponse(crateReturn) : null,
   };
 }
 

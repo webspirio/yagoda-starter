@@ -24,6 +24,9 @@ export interface PriceSnapshot {
 export interface TareSnapshot {
   id: string;
   weight_kg: string;
+  /** The ONE network-wide crate (`UQ_tare_types_single_crate`). Its units on
+   *  a receipt are the ceiling on crates returned with it (spec §8.3). */
+  is_crate: boolean;
 }
 
 export interface IntakeLineInput {
@@ -50,6 +53,10 @@ export interface BuiltLine {
 export interface BuiltIntake {
   amount: string;
   items: BuiltLine[];
+  /** Σ units of crate tare across every line — how many of OUR crates this
+   *  receipt physically carries, and so the most `returned_crates` may name
+   *  (spec §8.3). Units of any other tare type never count. */
+  crate_units: number;
 }
 
 /** Declared as a `function` with an explicit `never` return so TypeScript's
@@ -71,7 +78,14 @@ export function buildIntake(
   // shows the lines above the total. Summing the ROUNDED line amounts is what
   // makes the printed total equal the printed lines; see money.spec.ts's
   // «Σ round(each) differs from round(Σ)».
-  return { amount: sum(items.map((i) => i.amount)), items };
+  //
+  // `crate_units` is an integer count, not money: `+` over units is the same
+  // arithmetic `tare_weight_kg` feeds to `mul` as `String(t.units)`.
+  const crate_units = items
+    .flatMap((i) => i.tare)
+    .reduce((n, t) => (tareTypes.get(t.tare_type_id)?.is_crate ? n + t.units : n), 0);
+
+  return { amount: sum(items.map((i) => i.amount)), items, crate_units };
 }
 
 function buildLine(

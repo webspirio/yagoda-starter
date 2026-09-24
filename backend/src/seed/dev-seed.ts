@@ -518,7 +518,7 @@ async function seedDocuments(
       `SELECT id, weight_kg::text AS weight_kg FROM tare_types WHERE lower(name) = lower($1)`,
       [t.name],
     );
-    if (row) tareByName.set(t.name, { id: row.id, weight_kg: row.weight_kg });
+    if (row) tareByName.set(t.name, { id: row.id, weight_kg: row.weight_kg, is_crate: t.is_crate });
   }
   const tareById = new Map([...tareByName.values()].map((t) => [t.id, t]));
 

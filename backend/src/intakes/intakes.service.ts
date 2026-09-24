@@ -21,6 +21,7 @@ import { PreviewIntakeDto } from './dto/preview-intake.dto';
 import { VoidDocumentDto } from './dto/void-document.dto';
 import { ListIntakesQueryDto } from './dto/list-intakes.query';
 import {
+  IntakeCrateReturnRow,
   IntakeDetailResponse,
   IntakeResponse,
   PreviewIntakeResponse,
@@ -43,6 +44,7 @@ import type { CollectionPoint } from '../collection-points/collection-point.enti
 import { AuditService } from '../audit/audit.service';
 import { PayoutsService } from '../payouts/payouts.service';
 import { Payout } from '../payouts/payout.entity';
+import { CratesService } from '../crates/crates.service';
 import { nextDocumentCode } from '../common/document-code';
 import { isZero } from '../common/money';
 import { resolveWritePoint, resolvePointFilter } from '../auth/access/point-scope';
@@ -77,6 +79,7 @@ export class IntakesService {
     private readonly points: CollectionPointsService,
     private readonly audit: AuditService,
     private readonly payouts: PayoutsService,
+    private readonly crates: CratesService,
   ) {}
 
   /**
@@ -96,13 +99,57 @@ export class IntakesService {
    *
    * Since 2026-09-21 the same transaction may also write the payout handed
    * over with the receipt (`paid_amount`, §2.1 ⑥) — see
-   * `PayoutsService.writePayout`, which owns both ceilings.
+   * `PayoutsService.writePayout`, which owns both ceilings. Since 2026-09-24
+   * it may also write the return of OUR crates the supplier brought back
+   * (`returned_crates`, spec §8.3) — see `CratesService.writeReturn`, which
+   * owns FIFO and the crates-book check. Any refusal from either rolls back
+   * the WHOLE receipt: no receipt without its return, no return without its
+   * receipt.
+   *
+   * LOCK ORDER — ONE ORDER FOR EVERY RECEIPT, crates or not:
+   *
+   *   supplier row `FOR UPDATE` → `intakes` advisory (`nextDocumentCode`)
+   *     → [crate return: supplier re-lock, a no-op]
+   *     → [payout: supplier re-lock, a no-op → `payouts` advisory]
+   *
+   * The supplier row is taken FIRST, before `compute` and before the intake
+   * insert, because a crate return must hold it before any document row
+   * («supplier before documents», the order `returnCrates`, `voidIssuance`
+   * and `voidReturn` share). It is taken UNCONDITIONALLY — not only when
+   * `returned_crates > 0` — because a conditional lock would give two
+   * concurrent receipts at one shift for one supplier OPPOSITE orders: the
+   * crates receipt holding the supplier row and waiting on the `intakes`
+   * advisory lock, while a plain receipt holds that advisory lock and waits on
+   * the supplier row (its intake INSERT needs `FOR KEY SHARE` on it for the
+   * FK, which conflicts with `FOR UPDATE`). That is a deadlock, not a wait.
+   * With one order, the worst case is two receipts for the SAME supplier
+   * queueing behind each other, which is the contention the payout path
+   * already accepted. Before 2026-09-24 the paid-at-reception path took the
+   * advisory lock first and the supplier second (inside `writePayout`); the
+   * supplier now comes first there too, so `intakes` advisory → `suppliers`
+   * row no longer occurs anywhere, and `suppliers` → `intakes` advisory →
+   * `payouts` advisory is the whole, acyclic hierarchy.
    */
   async create(actor: AuthenticatedUser, dto: CreateIntakeDto): Promise<IntakeDetailResponse> {
     const { pointId, point, supplier } = await this.resolveTarget(actor, dto);
 
     return this.dataSource.transaction(async (m) => {
+      // FIRST, and on every receipt — see the lock order in this method's doc.
+      await m.query('SELECT id FROM suppliers WHERE id = $1 FOR UPDATE', [supplier.id]);
+
       const { shift, built } = await this.compute(pointId, dto, m);
+
+      // Spec §8.3 — the crates coming back must be crates THIS receipt
+      // carries. A return beyond them is a typo or a tare line recorded as the
+      // wrong type (a «Лубянка» typed where «Чешка» was meant), and letting
+      // it through would refund deposit for crates nobody weighed in.
+      const returned = dto.returned_crates ?? 0;
+      if (returned > built.crate_units) {
+        throw new BadRequestException({
+          message: `Only ${built.crate_units} crates on this receipt are crate tare`,
+          code: 'RETURNED_EXCEEDS_TARE',
+        });
+      }
 
       const code = await nextDocumentCode(m, {
         pointCode: point.code,
@@ -167,6 +214,21 @@ export class IntakesService {
         m,
       );
 
+      // Spec §8.3 — BEFORE the payout, so the crates refusals
+      // (`RETURN_EXCEEDS_OUTSTANDING`, `CRATE_CASH_INSUFFICIENT`) roll back a
+      // receipt that has not yet handed any cash over. Linked by `intakeId`,
+      // which is what lets this receipt's void strike the return too.
+      if (returned > 0) {
+        await this.crates.writeReturn(m, {
+          actor,
+          pointId,
+          shift,
+          supplierId: supplier.id,
+          units: returned,
+          intakeId: intake.id,
+        });
+      }
+
       // §2.1 ⑥ — the cash for THIS visit leaves the drawer in the same
       // transaction as the receipt. The debt `writePayout` checks already
       // includes the intake saved above (same transaction), so «Разом» is
@@ -198,6 +260,7 @@ export class IntakesService {
         await this.extrasFor(intake.id, m),
         paid,
         await this.nameOf(actor.sub, m),
+        await this.crateReturnFor(intake.id, m),
       );
     });
   }
@@ -260,6 +323,19 @@ export class IntakesService {
     // last-writer-wins. §9.3's «кнопки просто немає» is a claim about the
     // record, and only the lock makes it one.
     return this.dataSource.transaction(async (m) => {
+      // A cheap, UNLOCKED read, only to learn who the supplier is — 404s
+      // before any lock is taken if the document simply does not exist.
+      const stub = await m.findOne(Intake, { where: { id } });
+      if (!stub) throw new NotFoundException('Intake not found');
+
+      // THE SUPPLIER ROW BEFORE THE DOCUMENT ROW — the order `create`,
+      // `CratesService.writeReturn`, `voidIssuance` and `voidReturn` all use
+      // (see `CratesService.voidIssuance` for the interleaving a reversed
+      // order opens). Taken on EVERY void, linked return or not: the order
+      // must not depend on the data. `voidReturnForIntake` below relies on
+      // this lock and takes none of its own.
+      await m.query('SELECT id FROM suppliers WHERE id = $1 FOR UPDATE', [stub.supplier_id]);
+
       const intake = await m.findOne(Intake, {
         where: { id },
         lock: { mode: 'pessimistic_write' },
@@ -317,6 +393,16 @@ export class IntakesService {
         },
         m,
       );
+
+      // Spec §8.3 — the crates that came back WITH this receipt did not come
+      // back if the receipt did not happen. Same transaction, same reason.
+      // The payout handed over with it is NOT touched: §3.5's recorded
+      // exception, and voiding a payout is its own verb with its own rule.
+      await this.crates.voidReturnForIntake(m, {
+        actor,
+        intakeId: saved.id,
+        reason: dto.reason,
+      });
 
       return toIntakeResponse(saved, shift, await this.extrasFor(saved.id, m));
     });
@@ -433,7 +519,39 @@ export class IntakesService {
       await this.extrasFor(intake.id, m),
       payouts,
       await this.nameOf(intake.received_by_user_id, m),
+      await this.crateReturnFor(intake.id, m),
     );
+  }
+
+  /**
+   * The crate return written WITH this receipt (spec §8.3), voided or not —
+   * `create` (after `writeReturn`, same transaction) and `findOne` both read
+   * it here, so the receipt printed at the counter and the one reopened later
+   * are the same query. `UQ_crate_returns_intake` makes it at most one row.
+   *
+   * The split by MODE is summed from the FIFO allocation rows joined to the
+   * issuance each drew from — the same rows `CrateReturnAllocationView`
+   * carries `mode` on — and cast `::int` so the driver hands back numbers.
+   */
+  private async crateReturnFor(
+    intakeId: string,
+    m: EntityManager,
+  ): Promise<IntakeCrateReturnRow | null> {
+    const [row] = (await m.query(
+      `SELECT cr.id,
+              cr.units,
+              cr.deposit_refund,
+              cr.voided_at,
+              COALESCE(SUM(a.units) FILTER (WHERE ci.mode = 'deposit'), 0)::int AS deposit_units,
+              COALESCE(SUM(a.units) FILTER (WHERE ci.mode = 'receipt'), 0)::int AS receipt_units
+         FROM crate_returns cr
+         LEFT JOIN crate_return_allocations a ON a.return_id = cr.id
+         LEFT JOIN crate_issuances ci ON ci.id = a.issuance_id
+        WHERE cr.intake_id = $1
+        GROUP BY cr.id`,
+      [intakeId],
+    )) as IntakeCrateReturnRow[];
+    return row ?? null;
   }
 
   /** The four derived columns for ONE document, read by id — `findOne`,
@@ -550,7 +668,9 @@ export class IntakesService {
   ): Promise<Map<string, TareSnapshot>> {
     const tareIds = [...new Set(dto.items.flatMap((i) => i.tare.map((t) => t.tare_type_id)))];
     const rows = await this.tare.findManyRaw(tareIds, m);
-    return new Map(rows.map((t) => [t.id, { id: t.id, weight_kg: t.weight_kg }]));
+    return new Map(
+      rows.map((t) => [t.id, { id: t.id, weight_kg: t.weight_kg, is_crate: t.is_crate }]),
+    );
   }
 
   /**
