@@ -1168,3 +1168,8 @@ decision rather than guessing whether something was missed.
   (`ReweighPage.tsx:83-86`); `pages/cost-of-day`, `pages/point-cash` and `pages/transfers` do
   not. This is a shared gap in `entities/user`'s scope hook rather than anything the cost-of-day
   screen introduced, and the fix belongs there — one place, not four.
+
+## Deferred from the query cache allowlist (2026-09-24)
+
+- **Polling an always-focused screen.** The allowlist refetches on mount and on window focus, so an operator who never leaves `/reception` still does not see the owner's void, transfer or dispute resolution from another device until they switch tabs or navigate. Candidate: `refetchInterval` (~30 s, visible tab only) on reception's live reads — the drawer, the shift's intakes/payouts, the current shift. It needs a home in `cachePolicy.ts`, since hooks may not set freshness options.
+- **An intake create or void does not invalidate `crateBalances`.** `/crates`' «з ягодою» reads live intakes (`GET /crate-standing`), but neither `useCreateIntakeMutation` nor `useVoidDocumentMutation`'s intake entry invalidates `queryKeys.crateBalances`. Since the allowlist it only survives while `/crates` stays mounted, but it is still wrong there.
