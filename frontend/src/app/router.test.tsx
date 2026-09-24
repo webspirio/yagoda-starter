@@ -21,6 +21,9 @@ vi.mock('@/pages/transfers', () => ({
 vi.mock('@/pages/point-cash', () => ({
   PointCashPage: () => <p>point-cash page</p>,
 }));
+vi.mock('@/pages/cost-of-day', () => ({
+  CostOfDayPage: () => <p>cost-of-day page</p>,
+}));
 
 function renderAt(path: string) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -96,6 +99,33 @@ describe('router', () => {
     });
     renderAt('/transfers');
     expect(await screen.findByText('transfers page')).toBeInTheDocument();
+  });
+
+  it('keeps /cost-of-day away from an operator', async () => {
+    // §8's READS are owner-only as well as its writes: what the base claims
+    // went missing is not something the point reads about itself. A
+    // route-level RequireRole gate, so the owner chunk is never even fetched
+    // — invert the two and code-splitting becomes authorisation-by-download.
+    useSession.setState({ token: 'tok' });
+    meMock.mockReturnValue({
+      data: { role: 'point_operator', display_name: 'Оператор Тест' },
+      isPending: false,
+      isError: false,
+    });
+    renderAt('/cost-of-day');
+    expect(await screen.findByRole('heading', { name: /summary/i })).toBeInTheDocument();
+    expect(screen.queryByText('cost-of-day page')).not.toBeInTheDocument();
+  });
+
+  it('lets an owner onto /cost-of-day', async () => {
+    useSession.setState({ token: 'tok' });
+    meMock.mockReturnValue({
+      data: { role: 'network_owner', display_name: 'Керівник Тест' },
+      isPending: false,
+      isError: false,
+    });
+    renderAt('/cost-of-day');
+    expect(await screen.findByText('cost-of-day page')).toBeInTheDocument();
   });
 
   it('lets both roles onto /point-cash', async () => {

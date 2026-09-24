@@ -126,7 +126,9 @@ const openShift: Shift = {
   business_date: '2026-09-08',
   status: 'open',
   opened_by_user_id: 'u1',
+  opened_by_name: 'Olha',
   closed_by_user_id: null,
+  closed_by_name: null,
   closed_at: null,
   created_at: '2026-09-08T05:00:00Z',
   explanation: null,
@@ -139,6 +141,7 @@ const closedShift: Shift = {
   business_date: '2026-09-07',
   status: 'closed',
   closed_by_user_id: 'u1',
+  closed_by_name: 'Olha',
   closed_at: '2026-09-07T18:00:00Z',
   created_at: '2026-09-07T05:00:00Z',
 };

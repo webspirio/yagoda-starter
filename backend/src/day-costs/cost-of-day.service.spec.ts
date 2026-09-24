@@ -1,5 +1,5 @@
 import { CostOfDayService } from './cost-of-day.service';
-import { add, sub, gte } from '../common/money';
+import { add, sub, gte, mul } from '../common/money';
 import { UserRole } from '../users/user-role.enum';
 import type { GradeTotalsRow } from '../reweighs/reweigh-reconciliation.service';
 
@@ -134,6 +134,37 @@ const MIXED: GradeTotalsRow[] = [
 const svcMixed = build(MIXED, '1000.00');
 const svcOpenShift = build(DAY, '3800.00', [], null, null);
 
+/**
+ * §3.15 — Малина has TWO grades and only one is on the scale, so the whole
+ * product is «не перезважено»: it contributes no kilograms to переважено and
+ * therefore collects no share of the basket. Ожина is weighed in full.
+ *
+ * Named apart from the file's existing `PARTIAL`/`svcPartial` (a different,
+ * already-in-use 100 кг fixture for the §3.15 describe block above) so this
+ * one — built on `DAY`'s own 800/64 кг figures, to land on the exact
+ * §8.4 shares this describe block asserts — doesn't collide with it.
+ */
+const BASKET_PARTIAL: GradeTotalsRow[] = [
+  {
+    ...DAY[0],
+    product_grade_id: 'g-rasp-1',
+    product_grade_name: 'Малина 1',
+    intake_net_kg: '400.00',
+    intake_amount: '64000.00',
+    reweigh_net_kg: '395.00',
+  },
+  {
+    ...DAY[0],
+    product_grade_id: 'g-rasp-2',
+    product_grade_name: 'Малина 2',
+    intake_net_kg: '400.00',
+    intake_amount: '64000.00',
+    reweigh_net_kg: null,
+  },
+  DAY[1],
+];
+const svcBasketPartial = build(BASKET_PARTIAL);
+
 describe('CostOfDayService.forShift', () => {
   // §8.4's worked day, reduced to the two products it implies:
   //   нараховано 131 900,00 · переважено 854 кг · недостача 1 660,00 · витрати 3 800,00
@@ -266,5 +297,95 @@ describe('CostOfDayService.forShift', () => {
     const out = await svc.forShift(owner, 's-1');
     expect(out.closed_at).toBe('2026-09-17T18:00:00.000Z');
     expect(out.provisional).toBe(false);
+  });
+});
+
+describe('CostOfDayProduct carries the figures it was built from (§8.4 left half)', () => {
+  it('passes нараховано, both weights and the недостача through per product', async () => {
+    const res = await svc.forShift(owner, 's-1');
+    const rasp = res.products.find((p) => p.product_id === 'p-rasp');
+
+    // 800 кг accruing 128 000,00 is 160,00 ₴/кг; 790 кг came back, so 10 кг
+    // short × 160,00 = 1 600,00 — §8.4's own raspberry line.
+    expect(rasp).toMatchObject({
+      accrued: '128000.00',
+      intake_net_kg: '800.00',
+      reweigh_net_kg: '790.00',
+      shortfall: '1600.00',
+    });
+  });
+
+  it('reports reweigh_net_kg as null — never 0.00 — for a product nothing weighed', async () => {
+    const res = await svcWithNoReweigh.forShift(owner, 's-1');
+
+    // §8.6's «Це не нуль»: the screen must be able to print «—» rather than a
+    // zero that reads as «the berries vanished».
+    expect(res.products.map((p) => p.reweigh_net_kg)).toEqual([null, null]);
+    expect(res.products.map((p) => p.shortfall)).toEqual(['0.00', '0.00']);
+  });
+});
+
+describe('на кілограм splits into its two halves (§8.4)', () => {
+  it('prints з них недостача 1,94 and з них витрати 4,45 on §8.4 own numbers', async () => {
+    const res = await svc.forShift(owner, 's-1');
+
+    // КОШИК 5 460,00 over 854 кг. The three divisions are independent, which
+    // is why they are asserted as three facts and not as an addition.
+    expect(res.basket).toBe('5460.00');
+    expect(res.reweighed_kg).toBe('854.00');
+    expect(res.per_kg).toBe('6.39');
+    expect(res.shortfall_per_kg).toBe('1.94');
+    expect(res.expenses_per_kg).toBe('4.45');
+  });
+
+  it('dashes both halves on a day with nothing on the scale', async () => {
+    const res = await svcWithNoReweigh.forShift(owner, 's-1');
+
+    // Same guard as `per_kg`: `div` throws on a zero divisor by design, and
+    // «нічого не важили» is a dash, never a zero.
+    expect(res.per_kg).toBeNull();
+    expect(res.shortfall_per_kg).toBeNull();
+    expect(res.expenses_per_kg).toBeNull();
+  });
+});
+
+describe('basket_share is allocated, never multiplied out (§8.4)', () => {
+  const shareOf = (products: { product_id: string; basket_share: string | null }[], id: string) =>
+    products.find((p) => p.product_id === id)?.basket_share ?? null;
+
+  it('splits the basket so the parts sum EXACTLY to it', async () => {
+    const res = await svc.forShift(owner, 's-1');
+
+    // КОШИК 5 460,00 over 790 кг + 64 кг. Largest remainder puts the leftover
+    // kopiyka on raspberry.
+    expect(shareOf(res.products, 'p-rasp')).toBe('5050.82');
+    expect(shareOf(res.products, 'p-black')).toBe('409.18');
+    expect(add('5050.82', '409.18')).toBe(res.basket);
+  });
+
+  it('does not lose the kopiykas a per-row multiplication would', async () => {
+    const res = await svc.forShift(owner, 's-1');
+
+    // per_kg × kg per row is 6,39 × 790 + 6,39 × 64 = 5 457,06 — 2,94 ₴ of a
+    // 5 460,00 basket gone. This is the whole reason the field exists.
+    expect(add(mul(res.per_kg as string, '790.00'), mul(res.per_kg as string, '64.00'))).toBe(
+      '5457.06',
+    );
+    expect(res.basket).toBe('5460.00');
+  });
+
+  it('gives a partially weighed product no share at all — not a zero', async () => {
+    const res = await svcBasketPartial.forShift(owner, 's-1');
+
+    // §3.15: Малина contributed no kilograms to переважено, so it collects
+    // nothing from the denominator it was left out of. Ожина takes the lot.
+    expect(shareOf(res.products, 'p-rasp')).toBeNull();
+    expect(shareOf(res.products, 'p-black')).toBe(res.basket);
+    expect(res.reweighed_kg).toBe('64.00');
+  });
+
+  it('dashes every share on a day with nothing on the scale', async () => {
+    const res = await svcWithNoReweigh.forShift(owner, 's-1');
+    expect(res.products.map((p) => p.basket_share)).toEqual([null, null]);
   });
 });

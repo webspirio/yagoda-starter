@@ -60,9 +60,9 @@ function groupByProduct(grades: ReconciliationGrade[]): ProductGroup[] {
 
 /**
  * Mock steps 1–3 (`.reference/yagoda-crm/src/pages/ReweighPage.tsx:431-583`):
- * вага з ягодою → піддон → кількість ящиків → сорт → «ще позиція», in that
+ * вага з ягодою → піддон → кількість ящиків → сорт → «Додати позицію», in that
  * order and no other. Чиста вага is DERIVED — `netOf` (Task 5), never a field
- * anyone types into — and «+ ще позиція» is gated by `addBlockReason`
+ * anyone types into — and «+ Додати позицію» is gated by `addBlockReason`
  * (Task 6), a hard ladder distinct from the two amber warnings
  * (`grossHint`/`tareHint`) that never disable anything.
  *

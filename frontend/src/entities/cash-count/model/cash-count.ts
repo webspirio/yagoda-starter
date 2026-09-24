@@ -19,6 +19,8 @@ export interface CashCount {
   /** Розбіжність є і її ще не пояснили. */
   is_open: boolean;
   counted_by_user_id: string;
+  /** `displayNameOf` — `null` лише для рядків, записаних до появи цього поля. */
+  counted_by_name: string | null;
   counted_at: string;
   explanation: string | null;
 }

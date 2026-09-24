@@ -729,6 +729,17 @@ describe('suppliers + grade prices (HTTP)', () => {
       .expect(200);
     expect(journal.body.total).toBeGreaterThanOrEqual(2);
     expect(journal.body.data[0].base_price).toBe('55.00');
+
+    // #151 — the same move, read as «Зміни протягом дня»: routed ahead of the
+    // bare `@Get()`, open to the operator, and paired with the price it replaced.
+    const changes = await request(app.getHttpServer())
+      .get('/grade-prices/changes')
+      .set('Authorization', `Bearer ${operatorToken}`)
+      .expect(200);
+    const latest = changes.body.changes.find(
+      (c: { product_grade_id: string }) => c.product_grade_id === gradeId,
+    );
+    expect(latest).toMatchObject({ previous_base_price: '52.00', base_price: '55.00' });
   });
 
   it('403s an operator trying to set a price', async () => {

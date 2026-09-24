@@ -30,7 +30,9 @@ const shift = {
   business_date: '2026-09-08',
   status: 'open',
   opened_by_user_id: 'u1',
+  opened_by_name: 'Olha',
   closed_by_user_id: null,
+  closed_by_name: null,
   closed_at: null,
   created_at: '2026-09-08T04:30:00Z',
 };

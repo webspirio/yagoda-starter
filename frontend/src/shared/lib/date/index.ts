@@ -1,5 +1,6 @@
 export {
   todayIso,
+  toLocalIsoDate,
   addDaysIso,
   isIsoDate,
   isRealIsoDate,
