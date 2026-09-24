@@ -1,7 +1,6 @@
 import { queryOptions, useQuery } from '@tanstack/react-query';
 import { httpClient } from '@/shared/api';
 import { queryKeys } from '@/shared/api/queryKeys';
-import { STALE } from '@/shared/api/queryClient';
 import type { Reweigh } from '../model/reweigh';
 
 /**
@@ -29,7 +28,6 @@ export function reweighQueryOptions(
       });
       return data;
     },
-    staleTime: STALE.list,
   });
 }
 

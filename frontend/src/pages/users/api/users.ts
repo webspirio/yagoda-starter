@@ -1,7 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { httpClient } from '@/shared/api';
 import { queryKeys } from '@/shared/api/queryKeys';
-import { STALE } from '@/shared/api/queryClient';
 import type {
   AdminUser,
   CreateUserInput,
@@ -21,7 +20,6 @@ export function useUsersQuery() {
       });
       return data;
     },
-    staleTime: STALE.list,
   });
 }
 
@@ -74,10 +72,9 @@ export function useRevealPasswordMutation() {
       const { data } = await httpClient.get<RevealedPassword>(`/users/${id}/password`);
       return data;
     },
-    // No retention window: react-query keeps a settled mutation (and its
-    // `data` — here, a plaintext password) for `gcTime`, five minutes by
-    // default. The caller calls `reset()` when the row closes; this makes the
-    // unobserved case forget too.
-    gcTime: 0,
+    // No retention window: `shared/api/cachePolicy.ts` gives every mutation
+    // `gcTime: 0`, so a settled mutation's `data` — here, a plaintext password —
+    // is forgotten once unobserved. The caller still calls `reset()` when the
+    // row closes.
   });
 }

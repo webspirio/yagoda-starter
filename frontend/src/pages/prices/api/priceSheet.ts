@@ -1,7 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { httpClient } from '@/shared/api';
 import { queryKeys } from '@/shared/api/queryKeys';
-import { STALE } from '@/shared/api/queryClient';
 import type { BulkPriceInput, PriceSheet } from '../model/gradePrice';
 
 /**
@@ -23,7 +22,6 @@ export function usePriceSheetQuery() {
       const { data } = await httpClient.get<PriceSheet>('/grade-prices/sheet');
       return data;
     },
-    staleTime: STALE.list,
   });
 }
 

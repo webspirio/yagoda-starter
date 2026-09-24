@@ -1,7 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { httpClient } from '@/shared/api';
 import { queryKeys } from '@/shared/api/queryKeys';
-import { STALE } from '@/shared/api/queryClient';
 import type { TransferFilter, Transfer, Paginated } from '../model/transfer';
 
 /**
@@ -58,6 +57,5 @@ export function useTransfersQuery({
       });
       return data;
     },
-    staleTime: STALE.list,
   });
 }

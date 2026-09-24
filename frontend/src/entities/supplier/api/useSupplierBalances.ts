@@ -12,7 +12,6 @@ export function useSupplierBalanceQuery(id: string | null) {
       (await httpClient.get<{ supplier_id: string; debt: string }>(`/suppliers/${id}/balance`))
         .data,
     // A balance moves with every receipt and payout; those writes invalidate the prefix.
-    staleTime: 30_000,
   });
 }
 
@@ -40,6 +39,5 @@ export function useSupplierBalancesQuery(filter: {
           },
         })
       ).data,
-    staleTime: 30_000,
   });
 }

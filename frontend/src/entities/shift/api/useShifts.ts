@@ -31,15 +31,13 @@ export function useCurrentShiftQuery(pointId: string | null) {
         throw error;
       }
     },
-    // A shift changes by the operator's own action, which invalidates; 30s covers a second tab.
-    staleTime: 30_000,
   });
 }
 
 /**
  * The one shift a point had on a date (UQ point+date), or `null`. Built with
  * `queryOptions()` so `useQueries` callers (the owner overview) can share
- * this exact queryKey/queryFn/staleTime without duplicating the fetcher.
+ * this exact queryKey/queryFn without duplicating the fetcher.
  */
 export function shiftOnDateQueryOptions(pointId: string | null, date: string) {
   return queryOptions({
@@ -51,7 +49,6 @@ export function shiftOnDateQueryOptions(pointId: string | null, date: string) {
       });
       return data.data[0] ?? null;
     },
-    staleTime: 30_000,
   });
 }
 

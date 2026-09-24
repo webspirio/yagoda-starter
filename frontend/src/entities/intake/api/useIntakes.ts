@@ -1,7 +1,6 @@
 import { queryOptions, useQuery } from '@tanstack/react-query';
 import { httpClient } from '@/shared/api';
 import { queryKeys } from '@/shared/api/queryKeys';
-import { STALE } from '@/shared/api/queryClient';
 import type { DocumentFilter, Intake, Paginated } from '../model/intake';
 
 export function documentParams(f: DocumentFilter) {
@@ -20,7 +19,7 @@ export function documentParams(f: DocumentFilter) {
 /**
  * Receipt headers for a shift, a supplier, a point, or a `from`/`to` date
  * range — never bare. Built with `queryOptions()` so `useQueries` callers
- * (the owner overview) can share this exact queryKey/queryFn/staleTime
+ * (the owner overview) can share this exact queryKey/queryFn
  * without duplicating the fetcher.
  */
 export function intakesQueryOptions(filter: DocumentFilter) {
@@ -36,7 +35,6 @@ export function intakesQueryOptions(filter: DocumentFilter) {
       });
       return data;
     },
-    staleTime: STALE.list,
   });
 }
 

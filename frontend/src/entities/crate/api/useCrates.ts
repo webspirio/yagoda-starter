@@ -2,7 +2,6 @@ import { useQuery } from '@tanstack/react-query';
 import { httpClient } from '@/shared/api';
 import type { Paginated } from '@/shared/api';
 import { queryKeys } from '@/shared/api/queryKeys';
-import { STALE } from '@/shared/api/queryClient';
 import type {
   CrateBalance,
   CrateBalanceRow,
@@ -52,7 +51,6 @@ export function useCrateBalancesQuery({
       });
       return data;
     },
-    staleTime: STALE.list,
   });
 }
 
@@ -68,7 +66,6 @@ export function useCrateBalanceQuery(supplierId: string | null) {
       );
       return data;
     },
-    staleTime: STALE.list,
   });
 }
 
@@ -83,7 +80,6 @@ export function useCrateIssuancesQuery(filter: CrateDocumentFilter) {
       });
       return data;
     },
-    staleTime: STALE.list,
   });
 }
 
@@ -98,6 +94,5 @@ export function useCrateReturnsQuery(filter: CrateDocumentFilter) {
       });
       return data;
     },
-    staleTime: STALE.list,
   });
 }
