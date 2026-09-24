@@ -5,16 +5,16 @@ import { lazy } from 'react';
  *
  * WHY. Every screen here is behind `RequireRole role="network_owner"` in
  * `router.tsx`, so an operator can never reach one — and until this split
- * every operator downloaded all six anyway: six management screens that a
+ * every operator downloaded the lot anyway: management screens that a
  * phone at a collection point, on mobile data, fetches, parses and compiles
- * on first paint and then never runs. Measured on this branch, the operator's
+ * on first paint and then never runs. Measured at six screens, the operator's
  * first load went from 309,842 B gzip / 1,089,334 B raw to 291,949 /
  * 1,007,840 — 17.9 KiB gzip and 79.6 KiB raw they no longer pay.
  *
- * WHY ONE CHUNK FOR ALL SIX, and not one per page. Both were built and
- * measured. Six separate `import()` entry points made the bundler hoist the
- * code shared between them and the eager graph into SEVEN extra chunks
- * (`table`, `url-state`, `dialog`, `tare-type`, `api-error`,
+ * WHY ONE CHUNK FOR THE WHOLE GROUP, and not one per page. Both were built
+ * and measured at six. Six separate `import()` entry points made the bundler
+ * hoist the code shared between them and the eager graph into SEVEN extra
+ * chunks (`table`, `url-state`, `dialog`, `tare-type`, `api-error`,
  * `void-document`, `collection-point`) — every one of them `modulepreload`ed
  * from index.html, so the operator's first load became TEN requests instead
  * of two and, because each file is compressed on its own, 297,437 B gzip
@@ -52,3 +52,4 @@ export const CatalogPage = lazy(() => ownerPages().then((m) => ({ default: m.Cat
 export const JournalPage = lazy(() => ownerPages().then((m) => ({ default: m.JournalPage })));
 export const TransfersPage = lazy(() => ownerPages().then((m) => ({ default: m.TransfersPage })));
 export const ReweighPage = lazy(() => ownerPages().then((m) => ({ default: m.ReweighPage })));
+export const CostOfDayPage = lazy(() => ownerPages().then((m) => ({ default: m.CostOfDayPage })));

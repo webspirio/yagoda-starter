@@ -187,8 +187,7 @@
       "farmer": "Farmer"
     },
     "kindHint": {
-      "wholesale": "A wholesaler — add an extra price.",
-      "farmer": "A farmer — add an extra price."
+      "wholesale": "A wholesaler — add an extra price."
     },
     "active": "Active",
     "inactive": "Inactive",
@@ -380,6 +379,10 @@
       "allPoints_one": "all reception points ({{count}})",
       "allPoints_other": "all reception points ({{count}})",
       "historyCell": "{{grade}} at {{point}} — price history"
+    },
+    "changes": {
+      "title": "Changes today",
+      "empty": "No price has changed today — the previous prices still apply."
     }
   },
   "day": {
@@ -562,28 +565,55 @@
       "failed": "Could not save the explanation"
     }
   },
+  "recount": {
+    "title": "Cash recount",
+    "body": "Count the cash in the drawer and enter the amount. What it should be stays hidden until you enter it — otherwise this would not be a recount.",
+    "amount": "How much is in the drawer, ₴",
+    "submit": "Recorded the count",
+    "result": {
+      "note": "This figure cannot be changed in the app. Call the base — the owner will find where it went off."
+    },
+    "errors": {
+      "amount": "Enter the amount you counted in the drawer — a number, not less than zero.",
+      "noOpenShift": "A recount does not attach to a closed shift — you can only count while the shift is open.",
+      "failed": "Could not record the recount"
+    }
+  },
+  "countResult": {
+    "expected": "Expected",
+    "counted": "Counted",
+    "discrepancy": "Discrepancy",
+    "done": "Done"
+  },
   "pointCash": {
-    "eyebrow": "{{point}} · {{weekday}}",
-    "title": "Point cash — {{date}}",
-    "description": "How much cash the point should have on hand right now, and how far that is from its target. Berry cash and crate deposits share the same drawer but are counted separately.",
+    "eyebrow": "{{point}} · {{date}}, {{weekday}}",
+    "title": "Point cash",
+    "description": "How much cash the point should have on hand right now, and how much is missing from its target. Berry cash and crate deposits are two separate books — neither borrows from the other.",
     "pickPoint": "Select a point",
     "today": "Today",
     "errors": {
       "pointMissing": "This point does not exist — pick another one"
     },
+    "pick": {
+      "withTarget": "With a target",
+      "withoutTarget": "No target"
+    },
     "stats": {
       "target": "Target",
-      "targetUnset": "No target assigned yet",
+      "targetUnset": "no target assigned to this point yet",
       "cash": "Berry cash",
       "cashHint": "cash available to pay for berries",
       "neverCounted": "Never counted yet: the first count when the shift opens sets the opening balance.",
       "shortfall": "Short of target",
-      "shortfallUnset": "No target to compare against",
+      "shortfallUnset": "no target to compare against",
       "shortfallOwed": "the base has not transferred it yet",
+      "shortfallOver": "there is more in the drawer than the target",
       "shortfallSettled": "the target is covered"
     },
     "ledger": {
       "title": "Where this number comes from",
+      "opening": "Opening count",
+      "openingHint": "target {{target}}",
       "accruedToday": "Accrued today",
       "accruedTodayHint": "does not move cash",
       "accruedTodayTruncated": "Showing recent receipts only — older ones may be missing from this total.",
@@ -594,28 +624,32 @@
       "returnedToday": "Returned to the drawer",
       "cashIn": "Received by transfer today",
       "cashInTruncated": "Showing recent transfers only — older ones may be missing from this total.",
-      "total": "Berry cash"
+      "total": "Berry cash",
+      "negative": "Berry cash has gone negative: the target does not cover this day. This is not a data-entry mistake — it means more was paid out than the point had in berry cash.",
+      "twoRowsNote": "Payouts show as two rows on purpose: a day can pay out more than it earned, because old balances get settled too — one \"paid out\" figure would not explain that."
     },
     "crates": {
-      "label": "Crate cash",
-      "note": "Crates aren't tracked yet — this space is reserved for a future slice."
-    },
-    "drawer": {
-      "label": "Should be in the drawer",
-      "caption": "Berries only — crates aren't counted yet."
+      "title": "Crate cash",
+      "caption_one": "deposits for {{count}} crate",
+      "caption_other": "deposits for {{count}} crates",
+      "captionZero": "no crate deposits held",
+      "footnote": "This money sits apart from the berry cash: we pay someone for their crates even if the berry drawer is empty. No deposit was taken against a signed receipt — those crates are not counted here.",
+      "twoBooks": "Two books: berries {{berry}} · crates {{crates}}"
     },
     "incoming": {
       "loadFailed": "Could not load the transfers on their way"
     },
     "countHistory": {
       "title": "Cash counts",
+      "toggle": "Full recount history",
       "empty": "No cash counts recorded for this point yet.",
       "columns": {
         "when": "When",
         "counted": "Counted",
         "expected": "Expected",
         "discrepancy": "Discrepancy",
-        "explanation": "Explanation"
+        "explanation": "Explanation",
+        "countedBy": "Counted by"
       },
       "kind": {
         "opening": "Opening",
@@ -624,7 +658,42 @@
       },
       "matched": "Matched",
       "open": "Unexplained",
+      "noExplanationNeeded": "needs no explanation",
       "explain": "Explain"
+    },
+    "panel": {
+      "title": "Shift and recount",
+      "status": {
+        "open": "Shift open",
+        "closed": "Shift closed"
+      },
+      "since": "since {{from}}",
+      "sinceUntil": "{{from}} to {{to}}",
+      "opening": "Counted this morning",
+      "closing": "Counted at close",
+      "discrepancy": "Discrepancy",
+      "closedBy": "closed by {{name}}",
+      "explanation": "“{{text}}”",
+      "countAt": "Count at {{time}}",
+      "matched": "✓ matched",
+      "mismatched": "⚠ did not match",
+      "recountsEmpty": "The drawer has not been recounted today.",
+      "actions": {
+        "recount": "Recount the drawer",
+        "close": "Close shift",
+        "open": "Open shift",
+        "openCaption": "a recount attaches to an open shift",
+        "closedNote": "This day's shift is already settled. A second book is never opened for the same drawer, and a recount does not attach to a closed shift.",
+        "openPastDayNote": "The shift is still open, but it is not today's — its actions live on its own day",
+        "noShiftNote": "There is no shift for this day — there is nothing for a recount to attach to."
+      },
+      "footnote": "The drawer can be recounted as many times a day as needed — every recount stays its own record and corrects nothing.",
+      "readFailed": "The shift could not be read — reload the page"
+    },
+    "result": {
+      "opened": "Shift opened",
+      "closedSettled": "Shift closed. The day matched.",
+      "closedDiscrepancy": "Shift closed. Discrepancy {{amount}} — the owner will see it on their own list."
     },
     "target": {
       "set": "Assign a target",
@@ -633,13 +702,22 @@
   },
   "pointTarget": {
     "title": "Change the cash target — {{pointName}}",
-    "description": "This becomes the point's new target right away, for every day including past ones — it keeps no history of its own.",
-    "targetCash": "New target",
+    "description": {
+      "current": "Current: {{amount}}",
+      "none": "This point hasn't been assigned a cash target yet."
+    },
+    "targetCash": "How much money, ₴",
     "reason": "Reason",
     "submit": "Save target",
-    "toast": "Target updated",
-    "warnings": {
-      "belowCash": "This is below the {{amount}} already at the point. Allowed — a target is a management decision — but check with the point first."
+    "preview": {
+      "cashNow": "Cash for berries right now",
+      "shortfall": "Will fall short of the target"
+    },
+    "note": "The drawer isn't recounted: only the figure used to measure \"short of the target\" changes.",
+    "overTarget": "There's already more in the drawer than this target. There will be no debt to the point at all — this can't be refused: a target is a management decision.",
+    "toast": {
+      "title": "Cash target — {{amount}}",
+      "description": "{{point}}. The old target isn't recorded in history — it's a single number on the point."
     },
     "errors": {
       "cashFormat": "Enter an amount — up to two decimal places",
@@ -1006,11 +1084,22 @@
     "incoming": {
       "inTransit_one": "In transit: {{uah}} and {{count}} crate",
       "inTransit_other": "In transit: {{uah}} and {{count}} crates",
-      "meta": "{{carrier}}, sent {{date}}",
+      "meta": "{{carrier}} · sent {{date}} at {{time}} · until you press \"Accept\", the cash and the target don't move",
       "pointAccepts": "the point accepts",
       "accept": "Accept",
       "dispute": "Doesn't match",
-      "toastAccepted": "Transfer accepted"
+      "toastAccepted": "Transfer accepted",
+      "toastAcceptedDetail_one": "{{uah}} and {{count}} crate joined the cash and the target.",
+      "toastAcceptedDetail_other": "{{uah}} and {{count}} crates joined the cash and the target.",
+      "disputed": {
+        "header": "Flagged \"doesn't match\" — transfer from {{date}}",
+        "sent_one": "Sent {{uah}} and {{count}} crate",
+        "sent_other": "Sent {{uah}} and {{count}} crates",
+        "reported_one": "you counted {{uah}} and {{count}} crate",
+        "reported_other": "you counted {{uah}} and {{count}} crates",
+        "note": "\"{{note}}\"",
+        "footer": "The cash hasn't moved by a single kopiyka. The owner will resolve the transfer — the point doesn't touch this figure."
+      }
     }
   },
   "transfers": {
@@ -1175,7 +1264,7 @@
     "crateMore": "Add one crate",
     "crateQuick": "+{{n}} cr.",
     "netEyebrow": "Net weight · calculated by the system",
-    "addLine": "another position",
+    "addLine": "Add position",
     "block": {
       "noShift": "The shift for this day at this point was not opened",
       "nothingAccepted": "Nothing was accepted at {{point}} on {{date}}. Check the point and the date",
@@ -1250,5 +1339,68 @@
       "tareUnknown": "That tare type is unknown or deactivated"
     },
     "draftsCleared": "Positions cleared — they belonged to a different day or point"
+  },
+  "costOfDay": {
+    "eyebrow": "Management",
+    "title": "Cost of day",
+    "description": "The day's shortfall and expenses, spread over every kilogram of berries. The left half only reads; the right is the only place anything is entered.",
+    "point": "Point",
+    "print": "Print",
+    "provisional": "The shift is still open — these figures are still moving",
+    "topUps": "Includes price top-ups, the latest entered {{at}}",
+    "noShift": "No shift was opened at «{{point}}» on {{date}}.",
+    "noIntake": "Nothing was taken in at this point on this day.",
+    "sheetTitle": "Cost of day for {{date}} · {{point}}",
+    "berry": {
+      "title": "Berries",
+      "product": "product",
+      "weight": "weight",
+      "perKg": "₴/kg",
+      "accrued": "accrued",
+      "ourWeight": "our weight",
+      "shortfall": "shortfall",
+      "total": "TOTAL at the point",
+      "totalOurWeight": "our weight, total",
+      "notReweighed": "not re-weighed",
+      "note": "«Accrued» is the purchase accrued, not cash out of the drawer: debts exist, so the cash that left the drawer that day is a different number and does not affect the cost of day."
+    },
+    "expenses": {
+      "title": "Expenses for the day",
+      "empty": "No expenses have been entered for this day yet.",
+      "labelField": "Expense label",
+      "amountField": "₴",
+      "add": "Add",
+      "edit": "Edit «{{label}}»",
+      "save": "Save",
+      "cancel": "Cancel",
+      "remove": "Remove «{{label}}»",
+      "shortfallRow": "Shortfall in berries",
+      "expensesRow": "Day expenses",
+      "basket": "Shared basket",
+      "perKg": "per kilogram",
+      "split": "of which shortfall {{shortfall}} · of which expenses {{expenses}}",
+      "awaiting": "Awaiting re-weighing",
+      "awaitingAmount": "{{amount}} not spread",
+      "awaitingNote": "Until the load is weighed at the base there is no shortfall yet — the day's expenses have landed nowhere.",
+      "addFailed": "Line not added",
+      "updateFailed": "Line not changed",
+      "removeFailed": "Line not removed"
+    },
+    "final": {
+      "title": "Average price after expenses",
+      "basis": "spread: by weight",
+      "rate": "≈ {{rate}} ₴/kg on everything",
+      "product": "Product",
+      "ourWeight": "our weight",
+      "fromBasket": "from basket",
+      "together": "together",
+      "cost": "cost",
+      "was": "was",
+      "byOurWeight": "accrued ÷ our weight",
+      "total": "TOTAL",
+      "summary": "The day's expenses together with the shortfall — {{basket}} over {{kg}} — come to {{rate}} ₴ on every kilogram of any berry.",
+      "checkShare": "Σ from basket {{shares}} = basket {{basket}}",
+      "checkTotal": "{{total}} = accrued {{accrued}} + expenses {{expenses}}"
+    }
   }
 }

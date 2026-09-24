@@ -1,4 +1,5 @@
 import { GradePrice } from './grade-price.entity';
+import { displayNameOf } from '../users/display-name';
 
 /** All three money values are STRINGS on the wire — `numeric` is carried end
  *  to end so no value ever passes through a binary float. */
@@ -70,4 +71,67 @@ export interface SheetRow {
 export interface GradePriceSheetResponse {
   points: SheetPointColumn[];
   rows: SheetRow[];
+}
+
+/**
+ * ONE LINE OF #151's «Зміни протягом дня» — §4.2's journal row, named for a
+ * reader rather than for a join.
+ *
+ * `previous_base_price` is the price this row REPLACED at the same (point,
+ * grade), whatever day that was set on — `null` only for a pair's first-ever
+ * price. It is read from the journal at query time, never stored: storing it
+ * would be a second copy of the row before it.
+ */
+export interface PriceChangeResponse {
+  id: string;
+  created_at: string;
+  collection_point_id: string;
+  point_name: string;
+  product_grade_id: string;
+  product_name: string;
+  grade_name: string;
+  previous_base_price: string | null;
+  base_price: string;
+  reason: string | null;
+  author_name: string;
+}
+
+export interface PriceChangesResponse {
+  /** The app zone's today, `YYYY-MM-DD` — the day the list is about. */
+  date: string;
+  changes: PriceChangeResponse[];
+}
+
+/** The raw row `GradePricesService.changes()` selects — the journal row joined
+ *  to the names a reader needs, with the author still in two columns. */
+export interface PriceChangeRow {
+  id: string;
+  created_at: Date;
+  collection_point_id: string;
+  point_name: string;
+  product_grade_id: string;
+  product_name: string;
+  grade_name: string;
+  previous_base_price: string | null;
+  base_price: string;
+  reason: string | null;
+  first_name: string;
+  last_name: string;
+}
+
+export function toPriceChangeResponse(row: PriceChangeRow): PriceChangeResponse {
+  return {
+    id: row.id,
+    created_at: row.created_at.toISOString(),
+    collection_point_id: row.collection_point_id,
+    point_name: row.point_name,
+    product_grade_id: row.product_grade_id,
+    product_name: row.product_name,
+    grade_name: row.grade_name,
+    // Strings straight through — `numeric` never becomes a float here.
+    previous_base_price: row.previous_base_price,
+    base_price: row.base_price,
+    reason: row.reason,
+    author_name: displayNameOf(row),
+  };
 }

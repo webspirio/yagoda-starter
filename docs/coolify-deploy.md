@@ -205,6 +205,136 @@ neither turned anything red:
    «is production actually on `main`?» matters, check
    `/api/health/version`, not the colour of the run.
 
+## Deploy timings and cache baselines (measured 2026-09-17)
+
+What a healthy merge looks like, so that a slow run can be told from a hung one
+and a cache regression from ordinary variance. Two consecutive merges were
+measured: `4e7bb56` (#111, source in both workspaces) and `57586ec` (#83, a
+dependabot lockfile bump — the worst case for every cache).
+
+**Merge to live production: 3 min 34 s** (`57586ec`: run created 13:40:20Z,
+`/api/health/version` verified 13:43:54Z). `checks` is the critical path; the
+deploy itself adds under a minute.
+
+| Stage | `4e7bb56` (code) | `57586ec` (lockfile bump) |
+|---|---|---|
+| `checks` | 2:45 | 2:32 |
+| `docker` | 1:09 | 1:57 |
+| `db-checks` | 1:03 | 1:16 |
+| `deploy-prod` job | 0:08 (superseded) | 0:51 |
+| └ `coolify-deploy` action | skipped | 44.9 s |
+
+The three test jobs run in parallel, so the run total is `checks` plus the deploy.
+
+**Inside `coolify-deploy` (44.9 s):** trigger → Coolify reports `finished`
+(43.1 s) → `/api/health/ready` 200 (0.6 s) → `/api/health/version` matches
+(0.5 s).
+
+### What Coolify does with those 41 seconds
+
+Server-side, from `application_deployment_queues` (id 8). Offsets are from the
+deployment's own start:
+
+```
++ 0.3s  helper container up
++ 3.4s  git fetch main → 57586ec
++10.4s  clone finished                     ← ~7 s of git, on every deploy
++15.7s  "No services to build"             ← confirms Coolify never builds
++16.1s  removing old containers  ──┐
++19.1s  image pull starts           │
++21.9s  nginx pulled                │  production is down
++26.3s  backend pulled              │  for ~22 s
++27.2s  all containers created      │
++32.9s  postgres healthy            │
++38.6s  backend healthy             │
++38.8s  nginx started  ─────────────┘
++39.1s  "New container started"
+```
+
+Six deploys (2026-09-11 … 2026-09-17) took **36–41 s** server-side, so that
+range is the baseline; a deploy past a minute is worth a look, and the 900 s
+`DEPLOY_TIMEOUT_SEC` is nowhere near it.
+
+**A deploy costs ~22 s of downtime.** Coolify removes the old containers before
+it creates the new ones, so between +16.6 s and +38.8 s Traefik has no backend
+for the host. This is the plain `down`/`up` strategy, not a misconfiguration.
+Coolify can do rolling updates, but this app runs its migrations on backend
+startup, so two versions would race for them — treat the switch as its own
+piece of work, not a checkbox.
+
+### Cache
+
+| Layer | Code-only merge | Lockfile bump |
+|---|---|---|
+| npm (`setup-node`) | hit | miss — `package-lock.json` is the key |
+| Turborepo | restored, but **0 of 2 tasks replayed** | full miss |
+| buildx (`type=gha`) | base layers `CACHED`; backend 27 s, nginx 23 s | backend 55 s, nginx 42 s |
+
+Turborepo replays only the workspace a change did not touch: #107 and #93 each
+reported `1 cached, 2 total` for lint, test and build, while #111 — which
+touched backend and frontend — got `0 cached, 2 total`. Restoring and saving
+`.turbo` costs ~11 s for 6.7 MB, so on a wide change the cache is a small net
+loss and on a narrow one a large win. Do not read a `0 cached` line as a broken
+cache.
+
+**Layer reuse on the server is what makes the pull cheap.** The backend image is
+492 MB, but only one ~10.5 MB layer crossed the network — everything else was
+already on the host from the previous deploy. Both images pulled in 7.2 s. The
+host therefore keeps two generations of images (4.178 GB total, 845.6 MB
+reclaimable); that is the price of the fast pull, at roughly 0.5 GB per
+generation against 28 GB free.
+
+**Actions cache: 4.40 GB of the 10 GB repository limit**, 589 entries.
+
+```
+3122 MB  x317  buildkit-blob  [PR]      ← 70 % of the budget
+ 645 MB  x7    npm            [PR]
+ 489 MB  x98   buildkit-blob  [main]
+ 138 MB  x37   turbo-checks   [PR]
+  52 MB  x13   turbo-checks   [main]
+```
+
+Scoping PR builds to `*-pr` keeps them from *overwriting* the `*-main` seed, but
+it does not keep them from *evicting* it: GitHub evicts by LRU across the whole
+repository once it crosses 10 GB, and the `*-main` entries are the least
+recently used precisely because only main touches them. If the budget gets
+tight, drop PR buildkit blobs first — losing them costs one slow PR build,
+losing the main seed slows every PR.
+
+### Health of the deployed stack
+
+`/api/health/ready` answers 200 in 0.13 s, `/` in 0.14 s. Against the compose
+limits the containers sit at backend 61/384 MiB, postgres 21/256, nginx
+4.7/64, redis 3.7/64; the host uses 1.3 of 7.7 GiB and 8.7 of 38 GB of disk.
+
+### Re-measuring
+
+`jq` is not required anywhere below — `gh` has its own `--jq`.
+
+```bash
+# CI: per-job and per-step durations for a run
+gh run view <run-id> --json jobs \
+  --jq '.jobs[] | "\(.name) \(.conclusion) \(.startedAt) \(.completedAt)"'
+
+# CI: which caches hit
+gh run view <run-id> --log | grep -E "Cache (hit|restored|saved)|Cached: .*total|CACHED"
+
+# CI: the deploy script's own timeline
+gh run view <run-id> --log | grep "deploy-prod.*coolify-deploy"
+
+# Actions cache budget
+gh api repos/webspirio/yagoda-starter/actions/cache/usage
+
+# Server: the deployment's timeline, straight from Coolify's database
+ssh root@<vps> "docker exec coolify-db psql -U coolify -d coolify -t -A -F'|' \
+  -c \"select id, deployment_uuid, status, created_at, finished_at \
+      from application_deployment_queues order by id desc limit 6;\""
+# …and the log of one deployment (field: logs, a JSON array of {output,timestamp})
+
+# Server: what is actually running, and since when
+ssh root@<vps> 'docker ps --format "{{.Names}}\t{{.Status}}\t{{.Image}}"; docker system df'
+```
+
 ## When a deploy goes wrong
 
 | Symptom | Cause | Fix |

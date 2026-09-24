@@ -44,4 +44,9 @@ export const queryKeys = {
   crateBalances: ['crate-balances'] as const,
   /** Підрахунки каси — префікс; читання дописує точку/зміну. */
   cashCounts: ['cash-counts'] as const,
+  /** §8.4's собівартість — prefix; a read appends the shift. Invalidated by
+   *  every expense write, since a витрата moves the basket and на кілограм. */
+  costOfDay: ['cost-of-day'] as const,
+  /** §8.3's витрати дня — prefix; a read appends the shift. */
+  dayExpenses: ['day-expenses'] as const,
 };

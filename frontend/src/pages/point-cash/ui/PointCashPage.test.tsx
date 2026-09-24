@@ -1,11 +1,13 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, within, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createMemoryRouter, RouterProvider } from 'react-router';
 import { expectNoAxeViolations } from '../../../test-axe';
+import { formatUah } from '@/shared/lib/money';
 import type { CashCount } from '@/entities/cash-count';
 import type { Payout } from '@/entities/payout';
 import type { PointCashRow } from '@/entities/point-cash';
+import type { Shift } from '@/entities/shift';
 import { PointCashPage } from './PointCashPage';
 
 const {
@@ -17,6 +19,9 @@ const {
   payoutsMock,
   ledgerTransfersMock,
   cashCountsMock,
+  shiftMock,
+  openShiftMock,
+  closeShiftMock,
 } = vi.hoisted(() => ({
   meMock: vi.fn(),
   pointScopeMock: vi.fn(),
@@ -26,6 +31,9 @@ const {
   payoutsMock: vi.fn(),
   ledgerTransfersMock: vi.fn(),
   cashCountsMock: vi.fn(),
+  shiftMock: vi.fn(),
+  openShiftMock: vi.fn(),
+  closeShiftMock: vi.fn(),
 }));
 
 vi.mock('@/entities/user', () => ({
@@ -64,12 +72,61 @@ vi.mock('@/entities/cash-count', () => ({
   useCashCountsQuery: (filter: unknown) => cashCountsMock(filter),
 }));
 
+vi.mock('@/entities/shift', () => ({
+  useShiftOnDateQuery: (pointId: string | null, date: string) => shiftMock(pointId, date),
+}));
+
+// `CountDrawerDialog`/`RecountDrawerDialog` each have their own full suite
+// already (`CountDrawerDialog.test.tsx`, `RecountDrawerDialog.test.tsx`);
+// `RecountDrawerDialog` additionally needs a real `QueryClient`
+// (`useRecountMutation`) that this page's test has no other reason to wire
+// up — same reasoning as the `SetTargetCashDialog` stub below. The
+// `CountDrawerDialog` stub exposes a «Confirm» button that calls `onConfirm`
+// with a fixed amount, so a test can drive this page's OWN result-view
+// wiring (`resultFor`) without re-testing the dialog's own form.
+vi.mock('@/features/count-shift', async (importOriginal) => {
+  // `CountResultView` and `discrepancyTone` are the REAL feature exports —
+  // this page renders the actual shared result view (its own suite lives in
+  // `features/count-shift/ui/CountResultView.test.tsx`), and
+  // `ShiftCountPanel`'s own discrepancy pill needs the real tone function.
+  // Only the mutations and the two dialogs that need a `QueryClient` this
+  // suite has no other reason to wire up are stubbed.
+  const actual = await importOriginal<typeof import('@/features/count-shift')>();
+  return {
+    ...actual,
+    useOpenShiftMutation: () => ({ mutateAsync: openShiftMock, isPending: false }),
+    useCloseShiftMutation: () => ({ mutateAsync: closeShiftMock, isPending: false }),
+    CountDrawerDialog: ({
+      open,
+      mode,
+      onConfirm,
+    }: {
+      open: boolean;
+      mode: 'open' | 'close';
+      onConfirm: (amount: string, broken: number | null) => Promise<unknown>;
+    }) =>
+      open ? (
+        <div role="dialog">
+          Count dialog — {mode}
+          <button onClick={() => onConfirm('1000.00', mode === 'close' ? 0 : null)}>
+            Confirm {mode}
+          </button>
+        </div>
+      ) : null,
+    RecountDrawerDialog: ({ open }: { open: boolean }) =>
+      open ? <div role="dialog">Recount dialog</div> : null,
+  };
+});
+
 // «Прийняв»/«Не сходиться» pull in `useAcceptTransferMutation`, which calls
 // `useQueryClient()` for real — `IncomingTransfers` already has its own full
 // suite (`IncomingTransfers.test.tsx`), so this page's suite stubs it rather
 // than wiring up a QueryClientProvider it does not otherwise need.
+// R10 — the marker element (rather than `null`) is what lets the composition-
+// order tests below locate this section in the DOM without re-testing its
+// own content (`IncomingTransfers.test.tsx` already does that).
 vi.mock('./IncomingTransfers', () => ({
-  IncomingTransfers: () => null,
+  IncomingTransfers: () => <div data-testid="incoming-transfers-stub" />,
 }));
 
 // Same reasoning as above — `useSetPointTargetMutation` needs a real
@@ -109,6 +166,8 @@ const pointRow = (over: Partial<PointCashRow> = {}): PointCashRow => ({
   shortfall: null,
   unexplained_difference: '0.00',
   latest_transfer: null,
+  crate_deposits: '0.00',
+  crate_deposit_units: 0,
   ...over,
 });
 
@@ -143,8 +202,25 @@ const cashCount = (over: Partial<CashCount> = {}): CashCount => ({
   discrepancy: '0.00',
   is_open: false,
   counted_by_user_id: 'u1',
+  counted_by_name: 'Olha',
   counted_at: '2026-09-08T07:00:00Z',
   explanation: null,
+  ...over,
+});
+
+const shift = (over: Partial<Shift> = {}): Shift => ({
+  id: 's1',
+  collection_point_id: 'p1',
+  business_date: '2026-09-08',
+  status: 'open',
+  opened_by_user_id: 'u1',
+  opened_by_name: 'Olha',
+  closed_by_user_id: null,
+  closed_by_name: null,
+  closed_at: null,
+  created_at: '2026-09-08T07:00:00Z',
+  explanation: null,
+  broken_crates: null,
   ...over,
 });
 
@@ -179,11 +255,21 @@ beforeEach(() => {
     isPending: false,
     isError: false,
   });
-  pointCashMock.mockReset().mockReturnValue(list([pointRow()]));
+  // The scoped read (carries `asOf`) answers with this point's row; the
+  // owner-only grouping read (Task 2 — carries neither `asOf` nor `pointId`)
+  // defaults to an empty page so it never bleeds a duplicate name into a
+  // test that is only pinning the scoped row's own figures. Tests that
+  // actually exercise the grouped `<select>` override this explicitly.
+  pointCashMock.mockReset().mockImplementation((opts: { asOf?: string } = {}) =>
+    'asOf' in opts ? list([pointRow()]) : list([]),
+  );
   intakesMock.mockReset().mockReturnValue(list([]));
   payoutsMock.mockReset().mockReturnValue(list([]));
   ledgerTransfersMock.mockReset().mockReturnValue(list([]));
   cashCountsMock.mockReset().mockReturnValue(list([cashCount()]));
+  shiftMock.mockReset().mockReturnValue({ data: null, isPending: false, isError: false });
+  openShiftMock.mockReset().mockResolvedValue({});
+  closeShiftMock.mockReset().mockResolvedValue({});
 });
 
 afterEach(() => vi.useRealTimers());
@@ -325,6 +411,181 @@ describe('PointCashPage — honesty rule 3: null target/shortfall render «—»
   });
 });
 
+describe('PointCashPage — Task 2: header, hints and the amber cash tile', () => {
+  it('names the eyebrow «point · long date, weekday»', () => {
+    renderPointCash();
+    expect(screen.getByText('Shypynky · September 8, 2026, Tuesday')).toBeInTheDocument();
+  });
+
+  // Folded in from the Task 2 review — the date now lives in the eyebrow
+  // alone; the title is the bare «Каса точки» / "Point cash", with no
+  // `{{date}}` interpolation left in either locale.
+  it('titles the page with the bare «Point cash» — the date lives in the eyebrow only', () => {
+    renderPointCash();
+    expect(screen.getByRole('heading', { name: 'Point cash' })).toBeInTheDocument();
+  });
+
+  it('prints the mock’s description', () => {
+    renderPointCash();
+    expect(
+      screen.getByText(
+        'How much cash the point should have on hand right now, and how much is missing from its target. Berry cash and crate deposits are two separate books — neither borrows from the other.',
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('hints that this point has no target assigned yet', () => {
+    pointCashMock.mockReturnValue(list([pointRow({ target_cash: null })]));
+    renderPointCash();
+    expect(tile('Target')).toHaveTextContent('no target assigned to this point yet');
+  });
+
+  it('hints that a cash shortfall has nothing to compare against without a target', () => {
+    pointCashMock.mockReturnValue(list([pointRow({ shortfall: null })]));
+    renderPointCash();
+    expect(tile('Short of target')).toHaveTextContent('no target to compare against');
+  });
+
+  it('hints that the base has not transferred the shortfall yet (shortfall > 0)', () => {
+    pointCashMock.mockReturnValue(list([pointRow({ shortfall: '250.00' })]));
+    renderPointCash();
+    expect(tile('Short of target')).toHaveTextContent('the base has not transferred it yet');
+  });
+
+  // NEW branch (Task 2) — a negative shortfall means the drawer holds more
+  // than the target calls for, which reads differently from «settled at
+  // exactly zero» even though both get the leaf tone.
+  it('hints that the drawer holds more than the target when shortfall is negative', () => {
+    pointCashMock.mockReturnValue(list([pointRow({ shortfall: '-50.00' })]));
+    renderPointCash();
+    expect(tile('Short of target')).toHaveTextContent(
+      'there is more in the drawer than the target',
+    );
+  });
+
+  it('hints that the target is covered when shortfall is exactly zero', () => {
+    pointCashMock.mockReturnValue(list([pointRow({ shortfall: '0.00' })]));
+    renderPointCash();
+    expect(tile('Short of target')).toHaveTextContent('the target is covered');
+  });
+
+  it('tones the cash tile amber when the drawer reads negative', () => {
+    pointCashMock.mockReturnValue(list([pointRow({ cash: '-100.00' })]));
+    renderPointCash();
+    // «Berry cash» also labels the ledger's own total row (`CashLedger`), so
+    // `tile()`/`tileValue()` (built for a unique label) cannot be used here —
+    // filter to the match that actually sits inside a stat tile.
+    const cashTile = screen
+      .getAllByText('Berry cash')
+      .map((el) => el.closest('[data-slot="stat-tile"]'))
+      .find((el): el is HTMLElement => el !== null);
+    if (!cashTile) throw new Error('No stat tile labelled "Berry cash"');
+    expect(within(cashTile).getByText('−100.00 ₴').className).toContain('text-[var(--amber)]');
+  });
+});
+
+describe('PointCashPage — Task 2: the owner’s grouped point select', () => {
+  it('splits the owner’s select into «with a target» / «no target» optgroups', () => {
+    meMock.mockReturnValue({ data: OWNER });
+    pointScopeMock.mockReturnValue({
+      pointId: 'p1',
+      canPick: true,
+      setPointId: vi.fn(),
+      isLoading: false,
+    });
+    // Same mocked hook backs both the scoped row (carries `asOf`) and the
+    // owner-only unscoped grouping read (carries neither `asOf` nor
+    // `pointId`) — distinguish them by shape, the way `ReceptionPage.test.tsx`
+    // already does for a hook reused with two different filters.
+    pointCashMock.mockImplementation((opts: { asOf?: string }) =>
+      'asOf' in opts
+        ? list([pointRow()])
+        : list([
+            pointRow({ collection_point_id: 'p1', name: 'Shypynky', target_cash: '5000.00' }),
+            pointRow({ collection_point_id: 'p2', name: 'Haiove', target_cash: null }),
+          ]),
+    );
+
+    renderPointCash();
+
+    const select = screen.getByLabelText('Select a point');
+    const withTarget = select.querySelector('optgroup[label="With a target"]');
+    const withoutTarget = select.querySelector('optgroup[label="No target"]');
+    expect(withTarget).not.toBeNull();
+    expect(withoutTarget).not.toBeNull();
+    expect(within(withTarget as HTMLElement).getByText('Shypynky')).toBeInTheDocument();
+    expect(within(withoutTarget as HTMLElement).getByText('Haiove')).toBeInTheDocument();
+    // Never grouped into the wrong bucket.
+    expect(within(withTarget as HTMLElement).queryByText('Haiove')).toBeNull();
+  });
+
+  it('renders no select at all for an operator — grouping never reaches someone who cannot pick', () => {
+    renderPointCash();
+    expect(screen.queryByLabelText('Select a point')).toBeNull();
+  });
+
+  // Folded in from the Task 2 review — the grouped select intersects the
+  // unscoped `/point-cash` rows with `usePointOptionsQuery()`'s ACTIVE
+  // points; a point absent from that active list (deactivated since) is not
+  // listed in either optgroup, even though it still has a cash row. It stays
+  // reachable via `?point=` — see «names a deactivated point…» below.
+  it('leaves an unscoped row for a point outside the active options out of both optgroups', () => {
+    meMock.mockReturnValue({ data: OWNER });
+    pointScopeMock.mockReturnValue({
+      pointId: 'p1',
+      canPick: true,
+      setPointId: vi.fn(),
+      isLoading: false,
+    });
+    // `pointOptionsMock` (beforeEach) lists only p1/p2 as active — p3 has a
+    // cash row but is not among them.
+    pointCashMock.mockImplementation((opts: { asOf?: string }) =>
+      'asOf' in opts
+        ? list([pointRow()])
+        : list([
+            pointRow({ collection_point_id: 'p1', name: 'Shypynky', target_cash: '5000.00' }),
+            pointRow({ collection_point_id: 'p3', name: 'Zombie Point', target_cash: null }),
+          ]),
+    );
+
+    renderPointCash();
+
+    const select = screen.getByLabelText('Select a point');
+    expect(within(select).queryByText('Zombie Point')).toBeNull();
+    expect(within(select).getByText('Shypynky')).toBeInTheDocument();
+  });
+
+  // Review, minor 7 — the old shape filtered `pointCashAll`'s own (capped)
+  // page down to the active points, which dropped an active point ENTIRELY
+  // the moment its row fell outside that page, not merely its target. Now
+  // the select is built FROM the active `points` list, so a point still
+  // offered here but missing a row reads as «Без наділу»/"No target" — the
+  // same honest default a point that genuinely has no target gets.
+  it('still offers an active point whose row is missing from the unscoped page, under «No target»', () => {
+    meMock.mockReturnValue({ data: OWNER });
+    pointScopeMock.mockReturnValue({
+      pointId: 'p1',
+      canPick: true,
+      setPointId: vi.fn(),
+      isLoading: false,
+    });
+    // `pointOptionsMock` (beforeEach) lists p1 AND p2 as active — the
+    // unscoped grouping read here carries only p1's row.
+    pointCashMock.mockImplementation((opts: { asOf?: string }) =>
+      'asOf' in opts
+        ? list([pointRow()])
+        : list([pointRow({ collection_point_id: 'p1', name: 'Shypynky', target_cash: '5000.00' })]),
+    );
+
+    renderPointCash();
+
+    const select = screen.getByLabelText('Select a point');
+    const withoutTarget = select.querySelector('optgroup[label="No target"]');
+    expect(withoutTarget).not.toBeNull();
+    expect(within(withoutTarget as HTMLElement).getByText('Haiove')).toBeInTheDocument();
+  });
+});
+
 describe('PointCashPage — one scoped read, not the whole network', () => {
   it('asks for this point’s row only', () => {
     renderPointCash();
@@ -333,7 +594,11 @@ describe('PointCashPage — one scoped read, not the whole network', () => {
       pointId: 'p1',
       enabled: true,
     });
-    expect(pointCashMock).toHaveBeenCalledTimes(1);
+    // The owner-only grouping read (Task 2) stays MOUNTED but DISABLED for an
+    // operator — Rules of Hooks forbid skipping the call itself, so `enabled`
+    // is the only thing that keeps it from ever actually fetching here.
+    expect(pointCashMock).toHaveBeenCalledWith({ enabled: false });
+    expect(pointCashMock).toHaveBeenCalledTimes(2);
   });
 
   it('takes every figure from that one row — target, cash and shortfall alike', () => {
@@ -386,6 +651,62 @@ describe('PointCashPage — one scoped read, not the whole network', () => {
   });
 });
 
+describe('PointCashPage — R6: the ledger’s opening row', () => {
+  it('asks for THIS point’s THIS date’s opening count, separately from the unbounded history read', () => {
+    renderPointCash();
+
+    expect(cashCountsMock).toHaveBeenCalledWith({
+      pointId: 'p1',
+      from: '2026-09-08',
+      to: '2026-09-08',
+    });
+  });
+
+  it('picks the opening BERRY count out of a mixed day, ignoring midday and crates rows', () => {
+    // `cashCountsMock` backs three different call sites in this render
+    // (this page's own unbounded `neverCounted` read, the R6 day-scoped
+    // read, and `CashCountHistory`'s own read) — distinguish the day-scoped
+    // one by shape, the way `pointCashMock` above already distinguishes its
+    // two call sites by `'asOf' in opts`.
+    cashCountsMock.mockImplementation((filter: { from?: string }) =>
+      'from' in filter
+        ? list([
+            cashCount({ kind: 'midday', book: 'berry', counted_amount: '400.00' }),
+            cashCount({ kind: 'opening', book: 'crates', counted_amount: '999.00' }),
+            cashCount({ kind: 'opening', book: 'berry', counted_amount: '750.00' }),
+          ])
+        : list([cashCount()]),
+    );
+
+    renderPointCash();
+
+    expect(screen.getByText('Opening count')).toBeInTheDocument();
+    expect(screen.getByText('750.00 ₴')).toBeInTheDocument();
+    expect(screen.queryByText('999.00 ₴')).toBeNull();
+    expect(screen.queryByText('400.00 ₴')).toBeNull();
+  });
+
+  it('shows no opening row when this date has no opening count yet, even with older history elsewhere', () => {
+    cashCountsMock.mockImplementation((filter: { from?: string }) =>
+      'from' in filter ? list([]) : list([cashCount()]),
+    );
+
+    renderPointCash();
+
+    expect(screen.queryByText('Opening count')).toBeNull();
+  });
+
+  it('captions the opening row with the point’s target — read from the same scoped `point-cash` row as every other figure', () => {
+    pointCashMock.mockImplementation((opts: { asOf?: string } = {}) =>
+      'asOf' in opts ? list([pointRow({ target_cash: '5000.00' })]) : list([]),
+    );
+
+    renderPointCash();
+
+    expect(screen.getByText('target 5,000.00 ₴')).toBeInTheDocument();
+  });
+});
+
 describe('PointCashPage — honesty rule 4: the target button does not exist for an operator', () => {
   it('does not render the target button for an operator AT ALL (§10.2)', () => {
     renderPointCash();
@@ -410,22 +731,108 @@ describe('PointCashPage — honesty rule 4: the target button does not exist for
   });
 });
 
-describe('PointCashPage — the crates half has no backing tables', () => {
-  it('reserves the crates section with a labelled placeholder', async () => {
+describe('PointCashPage — R1: the crates book beside the berry book, never a combined figure', () => {
+  it('shows the crates book from the row', () => {
+    pointCashMock.mockImplementation((opts: { asOf?: string } = {}) =>
+      'asOf' in opts
+        ? list([pointRow({ crate_deposits: '250.00', crate_deposit_units: 3 })])
+        : list([]),
+    );
+
     renderPointCash();
-    expect(await screen.findByRole('note')).toBeInTheDocument();
+
+    expect(screen.getByText('Crate cash')).toBeInTheDocument();
+    expect(screen.getByText('250.00 ₴')).toBeInTheDocument();
+    expect(screen.getByText('deposits for 3 crates')).toBeInTheDocument();
   });
 
-  it('shows the drawer tile as berry cash alone, captioned, never berry + an unknown crate figure', () => {
+  it('never shows a combined drawer figure — the mock’s dark block is not ported', () => {
+    // Berry cash 1,000.00 + crate deposits 250.00 = 1,250.00 — that sum must
+    // never appear anywhere on the page. The client's «Правка» says the two
+    // books do not lie in one drawer, and `point-cash.service.ts` already
+    // refuses to add them.
+    pointCashMock.mockImplementation((opts: { asOf?: string } = {}) =>
+      'asOf' in opts
+        ? list([pointRow({ cash: '1000.00', crate_deposits: '250.00', crate_deposit_units: 3 })])
+        : list([]),
+    );
+
     renderPointCash();
-    const drawer = screen.getByText('Should be in the drawer').closest('[data-slot="stat-tile"]');
-    expect(drawer).toHaveTextContent('1,000.00 ₴');
-    expect(drawer).toHaveTextContent(/berries only/i);
+
+    expect(screen.queryByText('Should be in the drawer')).toBeNull();
+    expect(screen.queryByText(/1,250\.00/)).toBeNull();
+  });
+});
+
+describe('PointCashPage — R10: composition order', () => {
+  /** `a` comes before `b` in document order — the same test either role's
+   *  markup must pass, since R10 asks for one order, not a per-role one. */
+  function precedes(a: Element, b: Element): void {
+    const position = a.compareDocumentPosition(b);
+    expect(position & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
+  }
+
+  /**
+   * Stats → `IncomingTransfers` (full width) → the grid (`CashLedger` left,
+   * right column `CratesBookCard` then `ShiftCountPanel`) → the history
+   * toggle. Asserted on DOM order alone — the grid's `lg:grid-cols-[…]`
+   * class only ever adds COLUMNS at that breakpoint; nothing here reorders
+   * children, so this same order is what renders in one column below `lg`
+   * (the brief's "DOM order = mobile order").
+   */
+  function assertCompositionOrder() {
+    const targetTile = tile('Target');
+    const transfers = screen.getByTestId('incoming-transfers-stub');
+    const ledgerCard = screen.getByText('Where this number comes from').closest('.rounded-xl');
+    if (!ledgerCard) throw new Error('CashLedger’s SectionCard root not found');
+    const cratesEyebrow = screen.getByText('Crate cash');
+    const panelEyebrow = screen.getByText('Shift and recount');
+    const historyToggle = screen.getByRole('button', { name: 'Full recount history' });
+
+    precedes(targetTile, transfers);
+    precedes(transfers, ledgerCard);
+    precedes(ledgerCard, cratesEyebrow);
+    precedes(cratesEyebrow, panelEyebrow);
+    precedes(panelEyebrow, historyToggle);
+
+    // The grid itself: `CashLedger`'s card is the FIRST child (left column);
+    // `CratesBookCard` and `ShiftCountPanel` both live inside the SECOND
+    // child (the right column) — so below `lg`, where the grid falls back
+    // to a single column, the right column still renders after the ledger
+    // because nothing reorders it, not because of any breakpoint-specific
+    // class.
+    const grid = ledgerCard.parentElement;
+    if (!grid) throw new Error('grid container not found');
+    expect(grid.className).toContain('lg:grid-cols-[minmax(0,1fr)_minmax(320px,0.8fr)]');
+    expect(grid.className).not.toMatch(/\border-/); // no order-* utility undoing source order
+    expect(grid.children[0]).toBe(ledgerCard);
+    const rightColumn = grid.children[1];
+    if (!rightColumn) throw new Error('right column not found');
+    expect(rightColumn).toContainElement(cratesEyebrow);
+    expect(rightColumn).toContainElement(panelEyebrow);
+  }
+
+  it('stats → transfers → ledger|[crates, panel] → history toggle, for an operator', () => {
+    renderPointCash();
+    assertCompositionOrder();
+  });
+
+  it('keeps the same composition order for the owner', () => {
+    meMock.mockReturnValue({ data: OWNER });
+    pointScopeMock.mockReturnValue({
+      pointId: 'p1',
+      canPick: true,
+      setPointId: vi.fn(),
+      isLoading: false,
+    });
+
+    renderPointCash();
+    assertCompositionOrder();
   });
 });
 
 describe('PointCashPage — scope and failure states', () => {
-  it('reads NOTHING until the owner picks a point', () => {
+  it('reads nothing about the PICKED point until the owner picks one — the unscoped grouping read is the one exception', () => {
     meMock.mockReturnValue({ data: OWNER });
     pointScopeMock.mockReturnValue({
       pointId: null,
@@ -459,6 +866,18 @@ describe('PointCashPage — scope and failure states', () => {
       limit: 100,
     });
     expect(cashCountsMock).toHaveBeenCalledWith({ pointId: undefined });
+    // R6's day-scoped opening-count read gates the same way `intakes` does
+    // just above — an empty object, not `{ from: date, to: date }` with no
+    // point, which `useCashCountsQuery`'s own `isScoped` would treat as
+    // scope enough to fire network-wide.
+    expect(cashCountsMock).toHaveBeenCalledWith({});
+    // THE EXCEPTION (review, minor 8): the owner's OWN unscoped `/point-cash`
+    // read (Task 2 — the grouping for this very `<select>`) is not gated on
+    // `pointId` at all, only on `isOwner` — it has to fire before a point is
+    // picked, since picking the point is exactly what it exists to inform.
+    // It never names figures for the picked point, so it does not violate
+    // this test's own claim about that.
+    expect(pointCashMock).toHaveBeenCalledWith({ enabled: true });
   });
 
   it('names a deactivated point from its own cash row, not from the active-points list', async () => {
@@ -505,7 +924,14 @@ describe('PointCashPage — scope and failure states', () => {
       isPending: false,
       isError: false,
     });
-    pointCashMock.mockReturnValue(list([pointRow({ name: 'Fresh Row Name' })]));
+    // The unscoped grouping read (Task 2) must stay out of this: it is not
+    // under test here, and letting it echo the same row would put «Fresh Row
+    // Name» on screen twice (the eyebrow AND a `<select>` option), which
+    // breaks the single-match `getByText` below for a reason that has
+    // nothing to do with what this test is pinning.
+    pointCashMock.mockImplementation((opts: { asOf?: string }) =>
+      'asOf' in opts ? list([pointRow({ name: 'Fresh Row Name' })]) : list([]),
+    );
 
     renderPointCash();
 
@@ -526,5 +952,247 @@ describe('PointCashPage — scope and failure states', () => {
   it('has no axe violations', async () => {
     const { container } = renderPointCash();
     await expectNoAxeViolations(container);
+  });
+});
+
+describe('PointCashPage — R4: the count history toggle', () => {
+  it('keeps the whole-point history off the screen until the toggle is pressed', async () => {
+    const user = userEvent.setup();
+    renderPointCash();
+
+    // `CashCountHistory` is not even mounted yet — not merely hidden — so
+    // its own eyebrow title cannot be on screen.
+    expect(screen.queryByText('Cash counts')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Full recount history' })).toHaveAttribute(
+      'aria-expanded',
+      'false',
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Full recount history' }));
+
+    expect(screen.getByText('Cash counts')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Full recount history' })).toHaveAttribute(
+      'aria-expanded',
+      'true',
+    );
+  });
+
+  it('hides the history again on a second press of the same toggle', async () => {
+    const user = userEvent.setup();
+    renderPointCash();
+
+    const toggle = screen.getByRole('button', { name: 'Full recount history' });
+    await user.click(toggle);
+    expect(screen.getByText('Cash counts')).toBeInTheDocument();
+
+    await user.click(toggle);
+    expect(screen.queryByText('Cash counts')).toBeNull();
+  });
+});
+
+describe('PointCashPage — R4: the open/close result view', () => {
+  it('shows «Shift opened» and the counted figure after Open shift is confirmed', async () => {
+    const user = userEvent.setup();
+    shiftMock.mockReturnValue({ data: null, isPending: false, isError: false });
+    cashCountsMock.mockImplementation((filter: { shiftId?: string }) =>
+      'shiftId' in filter
+        ? list([cashCount({ kind: 'opening', counted_amount: '2500.00' })])
+        : list([cashCount()]),
+    );
+
+    renderPointCash();
+
+    await user.click(screen.getByRole('button', { name: 'Open shift' }));
+    expect(await screen.findByRole('dialog')).toHaveTextContent('Count dialog — open');
+    await user.click(screen.getByRole('button', { name: 'Confirm open' }));
+
+    expect(openShiftMock).toHaveBeenCalledWith({ counted_amount: '1000.00' });
+    expect(await screen.findByRole('heading', { name: 'Shift opened' })).toBeInTheDocument();
+    expect(screen.getByText('2,500.00 ₴')).toBeInTheDocument();
+    // Opening never carries a discrepancy pill (§7.3 — nothing to compare
+    // the first count against yet).
+    expect(screen.queryByText('Discrepancy')).toBeNull();
+  });
+
+  it('dismisses via «Done» rather than hard-popping, without leaking stale content into the next result (minor 14)', async () => {
+    // The result dialog is now ALWAYS mounted, with `open` the only gate
+    // (review) — a dismiss animates closed like every other dialog instead
+    // of the whole component vanishing from the tree the instant `resultFor`
+    // clears. Nothing to show before the first count of the day ever lands.
+    const user = userEvent.setup();
+    shiftMock.mockReturnValue({ data: null, isPending: false, isError: false });
+    cashCountsMock.mockImplementation((filter: { shiftId?: string }) =>
+      'shiftId' in filter
+        ? list([cashCount({ kind: 'opening', counted_amount: '2500.00' })])
+        : list([cashCount()]),
+    );
+
+    renderPointCash();
+    expect(screen.queryByRole('heading', { name: 'Shift opened' })).toBeNull();
+
+    await user.click(screen.getByRole('button', { name: 'Open shift' }));
+    await user.click(screen.getByRole('button', { name: 'Confirm open' }));
+    expect(await screen.findByRole('heading', { name: 'Shift opened' })).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Done' }));
+    expect(screen.queryByRole('heading', { name: 'Shift opened' })).toBeNull();
+  });
+
+  it('shows «The day matched» and a leaf pill after Close shift is confirmed with no discrepancy', async () => {
+    const user = userEvent.setup();
+    shiftMock.mockReturnValue({
+      data: shift({ id: 's5', status: 'open' }),
+      isPending: false,
+      isError: false,
+    });
+    cashCountsMock.mockImplementation((filter: { shiftId?: string }) =>
+      'shiftId' in filter
+        ? list([
+            cashCount({
+              id: 'cl',
+              kind: 'closing',
+              counted_amount: '3000.00',
+              discrepancy: '0.00',
+            }),
+          ])
+        : list([cashCount()]),
+    );
+
+    renderPointCash();
+
+    await user.click(screen.getByRole('button', { name: 'Close shift' }));
+    await user.click(await screen.findByRole('button', { name: 'Confirm close' }));
+
+    expect(closeShiftMock).toHaveBeenCalledWith({
+      id: 's5',
+      counted_amount: '1000.00',
+      broken_crates: 0,
+    });
+    expect(
+      await screen.findByRole('heading', { name: 'Shift closed. The day matched.' }),
+    ).toBeInTheDocument();
+  });
+
+  it('names the discrepancy and warns the owner will see it, after a Close shift that does not match', async () => {
+    const user = userEvent.setup();
+    shiftMock.mockReturnValue({
+      data: shift({ id: 's5', status: 'open' }),
+      isPending: false,
+      isError: false,
+    });
+    cashCountsMock.mockImplementation((filter: { shiftId?: string }) =>
+      'shiftId' in filter
+        ? list([
+            cashCount({
+              id: 'cl',
+              kind: 'closing',
+              counted_amount: '2950.00',
+              discrepancy: '-50.00',
+            }),
+          ])
+        : list([cashCount()]),
+    );
+
+    renderPointCash();
+
+    await user.click(screen.getByRole('button', { name: 'Close shift' }));
+    await user.click(await screen.findByRole('button', { name: 'Confirm close' }));
+
+    const title = `Shift closed. Discrepancy ${formatUah('-50.00', 'en')} — the owner will see it on their own list.`;
+    expect(await screen.findByRole('heading', { name: title })).toBeInTheDocument();
+  });
+
+  it('does not surface a stale close result over another day’s shift after the date changes (minor 6)', async () => {
+    // `resultFor` used to be bare `'close'`, which outlived the shift it was
+    // about. The result dialog is modal (background inert, `pointer-events:
+    // none`) — no click could ever reach the date stepper behind it — so
+    // this drives the URL straight through the router, the same as the
+    // browser's own back button would, to prove the STATE survives a date
+    // change it should not: the new date's OWN shift (`s9`, a different id)
+    // must never be described by a result that was about `s5`.
+    const user = userEvent.setup();
+    shiftMock.mockImplementation((_pointId: string | null, date: string) =>
+      date === '2026-09-08'
+        ? { data: shift({ id: 's5', status: 'open' }), isPending: false, isError: false }
+        : {
+            data: shift({ id: 's9', status: 'closed', closed_by_name: 'Petro', business_date: date }),
+            isPending: false,
+            isError: false,
+          },
+    );
+    cashCountsMock.mockImplementation((filter: { shiftId?: string }) =>
+      'shiftId' in filter
+        ? list([
+            cashCount({ id: 'cl', kind: 'closing', counted_amount: '3000.00', discrepancy: '0.00' }),
+          ])
+        : list([cashCount()]),
+    );
+
+    const router = createMemoryRouter([{ path: '/point-cash', element: <PointCashPage /> }], {
+      initialEntries: ['/point-cash'],
+    });
+    render(<RouterProvider router={router} />);
+
+    await user.click(screen.getByRole('button', { name: 'Close shift' }));
+    await user.click(await screen.findByRole('button', { name: 'Confirm close' }));
+    expect(
+      await screen.findByRole('heading', { name: 'Shift closed. The day matched.' }),
+    ).toBeInTheDocument();
+
+    await router.navigate('/point-cash?date=2026-09-07');
+
+    await waitFor(() =>
+      expect(screen.queryByRole('heading', { name: 'Shift closed. The day matched.' })).toBeNull(),
+    );
+  });
+});
+
+describe('PointCashPage — R4 review fix: a failed shift/counts read reaches the panel as an error, not «no shift»', () => {
+  it('tells ShiftCountPanel the shift read failed — no «Open shift» offered over an unconfirmed absence', () => {
+    shiftMock.mockReturnValue({ data: undefined, isPending: false, isError: true });
+
+    renderPointCash();
+
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'The shift could not be read — reload the page',
+    );
+    expect(screen.queryByRole('button', { name: 'Open shift' })).toBeNull();
+  });
+
+  it('tells ShiftCountPanel the shift-scoped counts read failed too', () => {
+    shiftMock.mockReturnValue({
+      data: shift({ id: 's5', status: 'open' }),
+      isPending: false,
+      isError: false,
+    });
+    cashCountsMock.mockImplementation((filter: { shiftId?: string }) =>
+      'shiftId' in filter
+        ? { data: undefined, isPending: false, isError: true }
+        : list([cashCount()]),
+    );
+
+    renderPointCash();
+
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'The shift could not be read — reload the page',
+    );
+    expect(screen.queryByRole('button', { name: 'Close shift' })).toBeNull();
+  });
+
+  it('shows the same failure to an owner, who never had an action to lose', () => {
+    meMock.mockReturnValue({ data: OWNER });
+    pointScopeMock.mockReturnValue({
+      pointId: 'p1',
+      canPick: true,
+      setPointId: vi.fn(),
+      isLoading: false,
+    });
+    shiftMock.mockReturnValue({ data: undefined, isPending: false, isError: true });
+
+    renderPointCash();
+
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'The shift could not be read — reload the page',
+    );
   });
 });

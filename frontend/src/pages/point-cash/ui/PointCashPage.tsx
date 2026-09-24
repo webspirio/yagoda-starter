@@ -1,8 +1,6 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { DashboardPage, type StatItem } from '@/shared/ui/templates/dashboard-page';
-import { StatTile } from '@/shared/ui/stat-tile';
-import { PendingSlice } from '@/shared/ui/pending-slice';
 import { DateStepper } from '@/shared/ui/date-stepper';
 import { SelectField } from '@/shared/ui/select-field';
 import { Button } from '@/shared/ui/button';
@@ -10,7 +8,7 @@ import { EmptyState } from '@/shared/ui/empty-state';
 import { Spinner } from '@/shared/ui/spinner';
 import { isTruncated } from '@/shared/api';
 import { useUrlParam } from '@/shared/lib/url-state';
-import { isNegative, formatUah } from '@/shared/lib/money';
+import { isNegative, formatUah, cmp, isZero } from '@/shared/lib/money';
 import { todayIso, addDaysIso, isRealIsoDate, formatLongDate, formatWeekday, formatShortDate } from '@/shared/lib/date';
 import { useMeQuery } from '@/entities/user';
 import { useWorkingPoint } from '@/features/point-scope';
@@ -20,10 +18,25 @@ import { useIntakesQuery } from '@/entities/intake';
 import { usePayoutsQuery } from '@/entities/payout';
 import { useTransfersQuery } from '@/entities/transfer';
 import { useCashCountsQuery } from '@/entities/cash-count';
+import { useShiftOnDateQuery } from '@/entities/shift';
 import { SetTargetCashDialog } from '@/features/set-point-target';
+import {
+  useOpenShiftMutation,
+  useCloseShiftMutation,
+  CountDrawerDialog,
+  CountResultView,
+} from '@/features/count-shift';
 import { CashLedger } from './CashLedger';
+import { CratesBookCard } from './CratesBookCard';
 import { IncomingTransfers } from './IncomingTransfers';
 import { CashCountHistory } from './CashCountHistory';
+import { ShiftCountPanel } from './ShiftCountPanel';
+
+/** What the shift-count dialog is open for: which verb, and — for a close —
+ *  the shift it closes. Same shape `pages/day/ui/DayPage.tsx` keeps locally;
+ *  not shared, because the two pages' surrounding wiring (toolbar vs panel)
+ *  differs enough that a shared type would buy nothing but an import. */
+type CountTarget = { mode: 'open' } | { mode: 'close'; shiftId: string };
 
 /**
  * «Каса точки» — one point, one date, the drawer it should hold right now.
@@ -52,15 +65,23 @@ import { CashCountHistory } from './CashCountHistory';
  *    scoped read is what makes that a single `if`: the row and the cash
  *    figure now arrive together, so neither can be ahead of the other.
  *
- * THE PAGE READS NOTHING BEFORE A POINT IS PICKED. An owner lands here with
- * `pointId === null` and sees one empty state; every read below is gated so
- * that state costs no network-wide sweep of transfers, intakes, payouts,
- * cash counts or point cash.
+ * THE PAGE READS NOTHING ABOUT THE PICKED POINT BEFORE ONE IS PICKED. An
+ * owner lands here with `pointId === null` and sees one empty state; every
+ * read below that would name a figure — transfers, intakes, payouts, cash
+ * counts, point cash — is gated so that state costs no network-wide sweep.
+ * ONE EXCEPTION (review, minor 8): `pointCashAll` below, the owner's OWN
+ * unscoped `/point-cash` read that feeds the picker's «З наділом»/«Без
+ * наділу» grouping, fires on `isOwner` alone, not on `pointId` — it has to,
+ * since picking the point is exactly what it exists to help with. It never
+ * names a figure FOR the picked point (every stat still comes from `pointRow`
+ * alone), so it does not undermine the claim above.
  */
 export function PointCashPage() {
   const { t, i18n } = useTranslation();
   const locale = i18n.language;
   const { data: me } = useMeQuery();
+  const isOperator = me?.role === 'point_operator';
+  const isOwner = me?.role === 'network_owner';
   const { pointId, canPick, setPointId } = useWorkingPoint();
   const { data: points } = usePointOptionsQuery();
   const [dateParam, setDateParam] = useUrlParam('date');
@@ -78,6 +99,40 @@ export function PointCashPage() {
     enabled: pointId !== null,
   });
   const pointRow = pointCash.data?.data[0] ?? null;
+
+  // OWNER-ONLY, AND ONLY FOR THE GROUPING — the unscoped `/point-cash` list
+  // (the same endpoint §7.10's network table reads), read once to split the
+  // owner's <select> into «З наділом» / «Без наділу». Never a source of
+  // figures: every stat on this page still comes from `pointRow` alone. Rules
+  // of Hooks forbid skipping this call for an operator, so it always mounts —
+  // `enabled: isOwner` is what keeps it from ever actually fetching for one.
+  const pointCashAll = usePointCashQuery({ enabled: isOwner });
+  // BUILT FROM `points` (folded in from a later review round), not from
+  // `pointCashAll`'s own rows — `points` is `usePointOptionsQuery()`'s
+  // active-only list, read at the top of this component already. Filtering
+  // `pointCashAll.data.data` down to the active ones (the old shape) dropped
+  // an active point ENTIRELY the moment its row fell outside that read's own
+  // page (the default `limit`), not merely its target — a point that
+  // legitimately exists and can be picked would silently vanish from both
+  // optgroups. Iterating `points` instead and looking each one up in a `Map`
+  // of the unscoped rows means every active point is always offered; one
+  // whose row is unknown here reads as «Без наділу»/"No target" — the same
+  // honest default a point that genuinely has none gets, not a third group
+  // for "we don't know" (this screen has no other use for that distinction).
+  // A DEACTIVATED point can still carry an unscoped `/point-cash` row (it may
+  // still owe or hold money), but it belongs in neither optgroup either way:
+  // it stays reachable only via `?point=`, where `pointName`'s own fallback
+  // (below) still names it from `pointRow` alone.
+  const pointCashByPointId = new Map(
+    (pointCashAll.data?.data ?? []).map((row) => [row.collection_point_id, row]),
+  );
+  const groupedPoints =
+    pointCashAll.data && points
+      ? {
+          withTarget: points.filter((p) => pointCashByPointId.get(p.id)?.target_cash != null),
+          withoutTarget: points.filter((p) => pointCashByPointId.get(p.id)?.target_cash == null),
+        }
+      : null;
 
   // §7.9's cash counts as what was CREDITED (`resolved_cash ?? reported_cash
   // ?? cash`, `buildLedger`'s job), not what was SENT — `from`/`to` on
@@ -103,12 +158,126 @@ export function PointCashPage() {
     enabled: pointId !== null,
   });
   const cashCounts = useCashCountsQuery({ pointId: pointId ?? undefined });
+  // R6 — the ledger's «на початок дня» row needs exactly ONE count: THIS
+  // date's opening berry count. `cashCounts` above is unbounded and
+  // newest-first, so on a long-running point today's opening count is
+  // exactly the kind of row a capped page could drop — a date-scoped read
+  // of its own can never lose it to that cap. Gated the same way
+  // `intakes` is just above (an empty object rather than a bare date
+  // range) so it never fires network-wide before a point is picked —
+  // `useCashCountsQuery`'s own `isScoped` would otherwise treat `from`/`to`
+  // alone as scope enough.
+  const openingCashCounts = useCashCountsQuery(pointId ? { pointId, from: date, to: date } : {});
+
+  // R4 — «Зміна і перерахунок каси». `useShiftOnDateQuery` already gates
+  // itself on `pointId !== null` (`shiftOnDateQueryOptions`), same as every
+  // other read on this page. The panel's own counts read is scoped to the
+  // shift alone (not point+date) — a closed shift's opening/closing/midday
+  // rows stay THAT shift's, whatever `date` does later.
+  const shift = useShiftOnDateQuery(pointId, date);
+  const shiftCashCounts = useCashCountsQuery({ shiftId: shift.data?.id });
+  // A failed read is not «no shift» — both settle to `data: undefined`,
+  // which reads identically to a genuinely shift-less day unless the panel
+  // is told otherwise. Kept OUT of the page-wide `isError` below on purpose:
+  // the rest of the page (ledger, crates, transfers) is independent of
+  // whether this one section's read succeeded, so only `ShiftCountPanel`
+  // degrades — not the whole screen.
+  const isShiftError = shift.isError || shiftCashCounts.isError;
+  const panelCounts = shiftCashCounts.data?.data ?? [];
+  // §7.6 — the panel's own result-view lookup needs the SAME berry-only
+  // narrowing `ShiftCountPanel` applies to its own copy of this array; kept
+  // separate rather than threading derived rows down as props, so a test
+  // that renders `ShiftCountPanel` alone can hand it a raw, unfiltered page
+  // (see that component's own doc comment).
+  const panelBerryCounts = panelCounts.filter((c) => c.book === 'berry');
+  const openingCountRow = panelBerryCounts.find((c) => c.kind === 'opening') ?? null;
+  const closingCountRow = panelBerryCounts.find((c) => c.kind === 'closing') ?? null;
+
+  const openShift = useOpenShiftMutation();
+  const closeShift = useCloseShiftMutation();
+  const [countTarget, setCountTarget] = useState<CountTarget | null>(null);
+  // The COPY the dialog shows — same split from `countTarget` (and the same
+  // reason) `DayPage` documents: `open={countTarget !== null}` alone drives
+  // visibility, so `countMode` must survive the close (exit) animation after
+  // `countTarget` is already cleared.
+  const [countMode, setCountMode] = useState<'open' | 'close'>('open');
+  const [countInstance, setCountInstance] = useState(0);
+  const openCountDialog = (target: CountTarget) => {
+    setCountInstance((n) => n + 1);
+    setCountMode(target.mode);
+    setCountTarget(target);
+  };
+  // R4 — the result view after an open/close, read back from
+  // `panelBerryCounts` above rather than from the mutation's own response:
+  // `useInvalidateDay` (both mutations' `onSuccess`) refetches `shifts` AND
+  // `cashCounts`, and THAT refetch — not a value stashed off the response —
+  // is what `CountResultView` waits for (its own doc comment). No effect
+  // needed: `resultFor` is set once, synchronously, in the confirm handler
+  // below, and the row it names is whatever the counts query says right now.
+  //
+  // `shiftId` (minor 6, review) — `resultFor` used to be bare
+  // `'open' | 'close' | null`, which outlives the shift it was about:
+  // changing the date after a close left `resultFor === 'close'` sitting in
+  // state, and the moment `closingCountRow` for the NEW date's shift
+  // happened to be non-null, the old result popped up over the wrong day.
+  // Naming the shift alongside the mode is what `resultRow` below checks
+  // against `shift.data?.id` — a stale `resultFor` from another day can
+  // never match the shift on screen now.
+  const [resultFor, setResultFor] = useState<{ mode: 'open' | 'close'; shiftId: string } | null>(
+    null,
+  );
+  const resultRow =
+    resultFor === null || resultFor.shiftId !== shift.data?.id
+      ? null
+      : resultFor.mode === 'open'
+        ? openingCountRow
+        : closingCountRow;
+
+  // Minor 14 (review) — the CONTENT for the close (exit) animation.
+  // `CountResultView` used to be wrapped in `resultFor !== null && resultRow
+  // !== null ? (…) : null`, which unmounted the whole dialog the INSTANT
+  // either went null — a hard pop, unlike every other dialog on this page,
+  // which stays mounted and lets `open` alone drive visibility. Latched here
+  // so the LAST real content survives dismissal (`resultFor` clears
+  // immediately; this does not) — set during render, not an effect: React's
+  // own documented technique for storing derived info from a previous render
+  // (`useState`'s reference doc, "storing information from previous
+  // renders"). An effect would run one tick AFTER the render that needs it,
+  // which is exactly the render the very first count of the day has to show.
+  const [resultView, setResultView] = useState<{
+    mode: 'open' | 'close';
+    title: string;
+    counted: string;
+    discrepancy: string | null;
+  } | null>(null);
+  if (resultFor !== null && resultRow !== null) {
+    const title =
+      resultFor.mode === 'open'
+        ? t('pointCash.result.opened')
+        : isZero(resultRow.discrepancy)
+          ? t('pointCash.result.closedSettled')
+          : t('pointCash.result.closedDiscrepancy', {
+              amount: formatUah(resultRow.discrepancy, locale),
+            });
+    // Opening carries no discrepancy — §7.3, the first count IS the opening
+    // balance, nothing to compare it against yet.
+    const discrepancy = resultFor.mode === 'close' ? resultRow.discrepancy : null;
+    if (
+      resultView === null ||
+      resultView.mode !== resultFor.mode ||
+      resultView.title !== title ||
+      resultView.counted !== resultRow.counted_amount ||
+      resultView.discrepancy !== discrepancy
+    ) {
+      setResultView({ mode: resultFor.mode, title, counted: resultRow.counted_amount, discrepancy });
+    }
+  }
+
+  const [showCountHistory, setShowCountHistory] = useState(false);
 
   const [targetOpen, setTargetOpen] = useState(false);
   const [targetInstance, setTargetInstance] = useState(0);
 
-  const isOperator = me?.role === 'point_operator';
-  const isOwner = me?.role === 'network_owner';
   // A SETTLED READ WITH NO ROW MEANS THE POINT DOES NOT EXIST. The backend
   // selects `FROM collection_points WHERE ($1 IS NULL OR cp.id = $1)` with no
   // active-only filter, so a scoped read answers with this point's row or
@@ -121,7 +290,8 @@ export function PointCashPage() {
     intakes.isError ||
     payouts.isError ||
     ledgerTransfers.isError ||
-    cashCounts.isError;
+    cashCounts.isError ||
+    openingCashCounts.isError;
 
   // THE ROW NAMES THE POINT, NOT THE PICKER — `pointRow` is the one source
   // guaranteed to describe the figures actually on screen, so it goes
@@ -164,10 +334,26 @@ export function PointCashPage() {
     counts.total === counts.data.length &&
     !counts.data.some((c) => c.business_date <= date);
 
+  // R6 — the ledger's opening row, from `openingCashCounts` alone (never
+  // from `counts` above — that read is unbounded and can drop THIS date's
+  // row on a long-running point, exactly the failure mode `neverCounted`'s
+  // own comment names). §7.6: one drawer, two books — `book === 'berry'`
+  // picks the book this page's ledger explains, leaving the crates count
+  // (if any) for `CratesBookCard` to worry about, not this row.
+  const openingCount =
+    openingCashCounts.data?.data.find((c) => c.kind === 'opening' && c.book === 'berry')
+      ?.counted_amount ?? null;
+
   // Nothing is shown off a page whose reads failed — including the target,
   // whose «—» would otherwise be a claim made on top of an error.
   const shownRow = isError ? null : pointRow;
   const shortfall = shownRow ? shortfallTone(shownRow.shortfall) : null;
+  // `shortfallTone` alone only tells amber (owed) from leaf (<= 0) — it does
+  // not say WHICH leaf reading this is, and «наділ на точці відновлено»
+  // (exactly 0) is a different claim from «у касі більше, ніж наділ» (below
+  // 0). The raw `cmp` against '0' is what tells those two apart; `null` means
+  // no target was ever assigned, same as `shortfallTone`'s own null case.
+  const shortfallCmp = shownRow?.shortfall == null ? null : cmp(shownRow.shortfall, '0');
   const stats: StatItem[] | undefined = shownRow
     ? [
         {
@@ -186,11 +372,13 @@ export function PointCashPage() {
           value: formatNullableUah(shownRow.shortfall, locale),
           tone: shortfall ?? undefined,
           hint:
-            shortfall === null
+            shortfallCmp === null
               ? t('pointCash.stats.shortfallUnset')
-              : shortfall === 'amber'
+              : shortfallCmp === 1
                 ? t('pointCash.stats.shortfallOwed')
-                : t('pointCash.stats.shortfallSettled'),
+                : shortfallCmp === -1
+                  ? t('pointCash.stats.shortfallOver')
+                  : t('pointCash.stats.shortfallSettled'),
         },
       ]
     : undefined;
@@ -205,11 +393,38 @@ export function PointCashPage() {
           className="w-48"
         >
           <option value="">{t('pointCash.pickPoint')}</option>
-          {(points ?? []).map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.name}
-            </option>
-          ))}
+          {groupedPoints ? (
+            <>
+              {/* R6 — the owner's select lists points with a target first, so
+                  a point still waiting on one does not compete for attention
+                  with the points the owner actually has to fund today. */}
+              <optgroup label={t('pointCash.pick.withTarget')}>
+                {groupedPoints.withTarget.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </optgroup>
+              <optgroup label={t('pointCash.pick.withoutTarget')}>
+                {groupedPoints.withoutTarget.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </optgroup>
+            </>
+          ) : (
+            // `pointCashAll` has not settled yet (or this render is not the
+            // owner's) — the flat, ungrouped `points` list is what the select
+            // showed before grouping existed, kept here as the one render
+            // that must never come up empty while the grouping read is on
+            // its way.
+            (points ?? []).map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))
+          )}
         </SelectField>
       ) : null}
       <DateStepper
@@ -268,30 +483,59 @@ export function PointCashPage() {
             intakesTruncated={intakesTruncated}
             payoutsTruncated={payoutsTruncated}
             transfersTruncated={transfersTruncated}
+            openingCount={openingCount}
+            target={shownRow.target_cash}
           />
           <div className="flex flex-col gap-5">
-            <PendingSlice
-              label={t('pointCash.crates.label')}
-              note={t('pointCash.crates.note')}
-              variant="block"
+            {/* R1 — no combined «У шухляді має бути» figure here: the
+                client's «Правка» says berry cash and crate deposits do not
+                lie in one drawer, and `point-cash.service.ts` already
+                refuses to add the two books. `CratesBookCard` shows the
+                crates figure alone, with a muted two-books line that prints
+                both figures side by side and never their sum. */}
+            <CratesBookCard
+              crateDeposits={shownRow.crate_deposits}
+              crateDepositUnits={shownRow.crate_deposit_units}
+              berryCash={shownRow.cash}
             />
-            {/* «У шухляді має бути» — the mock adds berry cash to crate
-                deposits here; crates have no source in this backend (§3), so
-                this tile shows `cash` ALONE with a caption saying so. Adding
-                a known figure to an unknown one would print a wrong number
-                with a confident face. */}
-            <StatTile
-              label={t('pointCash.drawer.label')}
-              value={formatUah(shownRow.cash, locale)}
-              tone={isNegative(shownRow.cash) ? 'amber' : 'berry'}
-              hint={t('pointCash.drawer.caption')}
+            <ShiftCountPanel
+              shift={shift.data ?? null}
+              // `shift.isPending` alone hangs the spinner forever while
+              // `shiftCashCounts` sits DISABLED (no `shift.data?.id` yet) —
+              // a disabled query's own `isPending` never clears, it just
+              // never fetches. `isLoading` (`isPending && isFetching`) is
+              // `false` for a disabled query, so it only adds real wait
+              // time, never a phantom one.
+              isShiftLoading={shift.isPending || shiftCashCounts.isLoading}
+              isShiftError={isShiftError}
+              counts={panelCounts}
+              isOperator={isOperator}
+              isToday={isToday}
+              onOpenShift={() => openCountDialog({ mode: 'open' })}
+              onCloseShift={(shiftId) => openCountDialog({ mode: 'close', shiftId })}
             />
           </div>
         </div>
         {/* Full width, below the ledger/right-column grid — the journal is a
-            wide table, and the 320px column it used to sit in truncated it. */}
+            wide table, and the 320px column it used to sit in truncated it.
+            Behind a toggle: the whole-point history is a long table nobody
+            reads on every visit, and `CashCountHistory` owns its own
+            unbounded `useCashCountsQuery({ pointId })` read, which now stays
+            off the network entirely until asked for. */}
         <div className="mt-5">
-          <CashCountHistory pointId={pointId} isOwner={isOwner} />
+          <Button
+            variant="outline"
+            size="sm"
+            aria-expanded={showCountHistory}
+            onClick={() => setShowCountHistory((v) => !v)}
+          >
+            {t('pointCash.countHistory.toggle')}
+          </Button>
+          {showCountHistory ? (
+            <div className="mt-3">
+              <CashCountHistory pointId={pointId} isOwner={isOwner} />
+            </div>
+          ) : null}
         </div>
       </>
     );
@@ -301,10 +545,14 @@ export function PointCashPage() {
       <DashboardPage
         eyebrow={
           pointName
-            ? t('pointCash.eyebrow', { point: pointName, weekday: formatWeekday(date, locale) })
+            ? t('pointCash.eyebrow', {
+                point: pointName,
+                date: formatLongDate(date, locale),
+                weekday: formatWeekday(date, locale),
+              })
             : undefined
         }
-        title={t('pointCash.title', { date: formatLongDate(date, locale) })}
+        title={t('pointCash.title')}
         description={t('pointCash.description')}
         actions={actions}
         stats={stats}
@@ -323,6 +571,56 @@ export function PointCashPage() {
           onClose={() => setTargetOpen(false)}
         />
       ) : null}
+
+      <CountDrawerDialog
+        key={`count-${countInstance}`}
+        mode={countMode}
+        shiftId={countTarget?.mode === 'close' ? countTarget.shiftId : null}
+        open={countTarget !== null}
+        onClose={() => setCountTarget(null)}
+        onConfirm={async (counted_amount, broken_crates) => {
+          if (countTarget === null) {
+            // Only reachable while the dialog is open, which only happens
+            // with a target set — same guard `DayPage` keeps for the same
+            // reason: a programming error here must not look like a silent
+            // no-op success.
+            throw new Error('count dialog confirmed without a target');
+          }
+          if (countTarget.mode === 'open') {
+            // The response NAMES the new shift — no need to wait on
+            // `shift.data?.id` catching up with its own refetch just to know
+            // which id `resultRow` should watch for.
+            const opened = await openShift.mutateAsync({ counted_amount });
+            setResultFor({ mode: 'open', shiftId: opened.id });
+          } else {
+            if (broken_crates === null) {
+              throw new Error('close confirmed without a breakage count');
+            }
+            await closeShift.mutateAsync({ id: countTarget.shiftId, counted_amount, broken_crates });
+            setResultFor({ mode: 'close', shiftId: countTarget.shiftId });
+          }
+          setCountTarget(null);
+        }}
+      />
+
+      {/* ALWAYS mounted (minor 14, review) — `open` alone drives visibility,
+          same as `CountDrawerDialog`/`SetTargetCashDialog` above, so a
+          dismiss animates closed instead of hard-popping out of the DOM.
+          There is nothing to show before the very first count of the day
+          ever lands (`resultView` stays `null`, `open` stays `false`) —
+          `resultView`'s own doc comment above is what keeps this rendering
+          the LAST real content while it fades, not a blank flash. This is
+          the SAME component `RecountDrawerDialog` (features/count-shift)
+          renders for its own result — a `pages/*` module reaching down into
+          `features/*` is the allowed direction, so this is the one place the
+          two callers share it. */}
+      <CountResultView
+        open={resultFor !== null && resultRow !== null}
+        title={resultView?.title ?? ''}
+        counted={resultView?.counted ?? '0.00'}
+        discrepancy={resultView?.discrepancy ?? null}
+        onClose={() => setResultFor(null)}
+      />
     </>
   );
 }

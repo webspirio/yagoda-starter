@@ -465,4 +465,95 @@ describe('crates lifecycle (HTTP)', () => {
         .expect(400);
     });
   });
+
+  /**
+   * R8 — `crate_deposit_units` OVER HTTP, ON BOTH READS. The formula's
+   * MEANING (20 minus a 7-unit return, a receipt issuance, a voided one) is
+   * `point-cash.db-spec.ts`'s job; what this proves is that the field
+   * actually reaches both `GET /point-cash/:pointId` and `GET /point-cash`
+   * — the same reason test 9 above re-checks `crate_deposits` on the
+   * correlated list path after only exercising the `$1` path directly.
+   *
+   * Its OWN point/operator/supplier/shift, deliberately not threaded into
+   * the sequential fixture above: that fixture's supplier already carries a
+   * voided deposit issuance and a voided return by the time test 9 runs, and
+   * bending it to also produce a clean "20 minus 7" would make this
+   * assertion depend on reading nine unrelated tests correctly. `crateTareId`
+   * is reused — it is the network's one crate type (`is_crate` is exclusive),
+   * not scoped to a point.
+   */
+  describe('point-cash: crate_deposit_units carries through both reads (R8)', () => {
+    let r8PointId: string;
+    let r8OperatorToken: string;
+    let r8SupplierId: string;
+
+    beforeAll(async () => {
+      const jwt = app.get(JwtService);
+      const users = app.get(UsersService);
+      const credentials = app.get(CredentialsService);
+      const tokenFor = (userId: string): string => jwt.sign({ sub: userId });
+
+      const pointRes = await request(app.getHttpServer())
+        .post('/collection-points')
+        .set('Authorization', `Bearer ${ownerToken}`)
+        .send({ name: `crates-r8-${randomUUID()}`, code: pointCode() })
+        .expect(201);
+      r8PointId = pointRes.body.id as string;
+
+      const { user: operator } = await users.createWithIdentity(
+        {
+          provider: LOCAL_PROVIDER,
+          providerUserId: `crates-r8-op-${randomUUID()}`,
+          first_name: 'Тест',
+          last_name: 'R8',
+          role: UserRole.PointOperator,
+          collection_point_id: r8PointId,
+        },
+        async (created, manager) => credentials.set(created.id, 'hunter2!!', manager),
+      );
+      r8OperatorToken = tokenFor(operator.id);
+
+      const supplierRes = await request(app.getHttpServer())
+        .post('/suppliers')
+        .set('Authorization', `Bearer ${r8OperatorToken}`)
+        .send({ first_name: 'Тест', last_name: `R8-${randomUUID()}` })
+        .expect(201);
+      r8SupplierId = supplierRes.body.id as string;
+
+      await request(app.getHttpServer())
+        .post('/shifts')
+        .set('Authorization', `Bearer ${r8OperatorToken}`)
+        .send({ counted_amount: '0.00' })
+        .expect(201);
+    });
+
+    it('issues 20 against a deposit, returns 7, and both point-cash reads settle on 13', async () => {
+      await request(app.getHttpServer())
+        .post('/crate-issuances')
+        .set('Authorization', `Bearer ${r8OperatorToken}`)
+        .send({ supplier_id: r8SupplierId, units: 20, mode: 'deposit' })
+        .expect(201);
+
+      await request(app.getHttpServer())
+        .post('/crate-returns')
+        .set('Authorization', `Bearer ${r8OperatorToken}`)
+        .send({ supplier_id: r8SupplierId, units: 7 })
+        .expect(201);
+
+      const one = await request(app.getHttpServer())
+        .get(`/point-cash/${r8PointId}`)
+        .set('Authorization', `Bearer ${r8OperatorToken}`)
+        .expect(200);
+      expect(one.body.crate_deposit_units).toBe(13);
+
+      const list = await request(app.getHttpServer())
+        .get('/point-cash')
+        .set('Authorization', `Bearer ${r8OperatorToken}`)
+        .expect(200);
+      const row = (
+        list.body.data as Array<{ collection_point_id: string; crate_deposit_units: number }>
+      ).find((r) => r.collection_point_id === r8PointId);
+      expect(row?.crate_deposit_units).toBe(13);
+    });
+  });
 });
