@@ -1253,7 +1253,9 @@
       "truncated": "Showing the latest 100 of each kind.",
       "blockedByReturn": "a return rests on this issuance — void the return first",
       "void": "Void",
-      "returnLabel": "return of {{units}} · {{date}}"
+      "returnLabel": "return of {{units}} · {{date}}",
+      "withBerriesPrefix": "with berries · ",
+      "linkedToIntake": "recorded with receipt {{code}} — void the receipt"
     },
     "errors": {
       "supplierRequired": "Pick who is taking the crates",

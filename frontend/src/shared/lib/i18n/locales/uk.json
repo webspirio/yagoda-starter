@@ -1299,7 +1299,9 @@
       "truncated": "Показано останні 100 документів кожного виду.",
       "blockedByReturn": "на цю видачу вже лягло повернення — спершу сторнуйте його",
       "void": "Сторнувати",
-      "returnLabel": "повернення {{units}} · {{date}}"
+      "returnLabel": "повернення {{units}} · {{date}}",
+      "withBerriesPrefix": "з ягодою · ",
+      "linkedToIntake": "записано з квитанцією {{code}} — сторнуйте квитанцію"
     },
     "errors": {
       "supplierRequired": "Оберіть, хто бере ящики",

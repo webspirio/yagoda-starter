@@ -45,15 +45,24 @@ export function PersonCrateDocs({ supplierId, isOwner }: { supplierId: string; i
 
   const mayVoid = (d: Doc) => d.doc.voided_at === null && (isOwner || !d.doc.shift_closed);
   const blocked = (d: Doc) => d.kind === 'crateIssuance' && d.doc.has_live_returns;
+  /**
+   * A return the SAME «Прийняти» wrote alongside a receipt (2026-09-24): it
+   * has no standalone void — only voiding the receipt voids it — regardless
+   * of role or shift state, so this check overrides `mayVoid`.
+   */
+  const linkedToIntake = (d: Doc) => d.kind === 'crateReturn' && d.doc.intake_id !== null;
 
-  const terms = (d: Doc) =>
-    d.kind === 'crateIssuance'
-      ? d.doc.mode === 'deposit'
+  const terms = (d: Doc) => {
+    if (d.kind === 'crateIssuance') {
+      return d.doc.mode === 'deposit'
         ? t('crates.docs.onDeposit', { amount: formatUah(d.doc.deposit_taken, i18n.language) })
-        : t('crates.docs.onReceipt', { code: d.doc.code })
-      : d.doc.allocations.some((a) => a.mode === 'deposit')
-        ? t('crates.docs.refunded', { amount: formatUah(d.doc.deposit_refund, i18n.language) })
-        : t('crates.docs.noRefund');
+        : t('crates.docs.onReceipt', { code: d.doc.code });
+    }
+    const base = d.doc.allocations.some((a) => a.mode === 'deposit')
+      ? t('crates.docs.refunded', { amount: formatUah(d.doc.deposit_refund, i18n.language) })
+      : t('crates.docs.noRefund');
+    return d.doc.intake_id !== null ? t('crates.docs.withBerriesPrefix') + base : base;
+  };
 
   const label = (d: Doc) =>
     d.kind === 'crateIssuance'
@@ -88,6 +97,10 @@ export function PersonCrateDocs({ supplierId, isOwner }: { supplierId: string; i
                   </span>
                 ) : blocked(d) ? (
                   <span className="ml-auto text-xs text-muted-foreground">{t('crates.docs.blockedByReturn')}</span>
+                ) : linkedToIntake(d) ? (
+                  <span className="ml-auto text-xs text-muted-foreground">
+                    {t('crates.docs.linkedToIntake', { code: d.kind === 'crateReturn' ? d.doc.intake_code : null })}
+                  </span>
                 ) : mayVoid(d) ? (
                   <Button variant="ghost" size="sm" className="ml-auto h-7 px-2 text-destructive" onClick={() => setVoiding(d)}>
                     <Ban className="size-3.5" aria-hidden="true" />
