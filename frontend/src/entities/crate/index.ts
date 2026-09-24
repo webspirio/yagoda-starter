@@ -3,6 +3,7 @@ export {
   useCrateBalanceQuery,
   useCrateIssuancesQuery,
   useCrateReturnsQuery,
+  useCrateStandingQuery,
 } from './api/useCrates';
 export type {
   CrateAllocation,
@@ -13,5 +14,6 @@ export type {
   CrateIssuanceMode,
   CrateReturn,
   CrateReturnPreview,
+  CrateStanding,
   CrateTranche,
 } from './model/crate';

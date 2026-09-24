@@ -1167,14 +1167,23 @@
     "title": "Crates",
     "description": "Who is still holding crates, and on what terms.",
     "pickPoint": "Select a point",
+    "showZero": "Show everyone who took crates",
     "empty": {
       "title": "No point selected",
       "hint": "Crates sit at a point. Choose one to see what is out."
     },
     "standing": {
       "allotment": "Allotment",
+      "onHand": "Empty at the point",
       "inField": "Out with people",
-      "overAllotment": "{{over}} more crates are out than the allotment — a target is a guide, not a limit."
+      "withBerry": "With us, with berries",
+      "received": "Received by transfer: {{received}}",
+      "total": "Total for the point",
+      "shortfall": "Short of the allotment:",
+      "shortfallNone": "—",
+      "complete": "Allotment complete",
+      "over": "Over the allotment:",
+      "negative": "Fewer than zero empty crates: the documents don't add up — check the transfers, issues, returns, receipts and breakage."
     },
     "field": {
       "supplier": "Person",
@@ -1187,7 +1196,7 @@
       "receipt": "Receipt",
       "depositHint": "Money is taken now, at the crate price from the catalogue, and goes into the point crate drawer.",
       "receiptHint": "A paper receipt is signed. NO money changes hands, so these crates are out with no cash cover at all.",
-      "mixed": "Deposit + receipt"
+      "split": "Deposit {{deposit}} · receipt {{receipt}}"
     },
     "issue": {
       "title": "Issue crates",
@@ -1218,11 +1227,33 @@
       "total": "TOTAL",
       "inactive": "deactivated",
       "empty.title": "Nobody is holding crates",
-      "empty.hint": "Everything issued here has come back."
+      "empty.hint": "Everything issued here has come back.",
+      "summary_one": "{{units}} cr. · {{count}} person",
+      "summary_other": "{{units}} cr. · {{count}} people",
+      "ofWhichDeposit": "of which {{count}} on a deposit",
+      "truncated": "Showing the first {{shown}} of {{total}} people — the totals below count everyone."
     },
     "note": {
       "receiptVsDeposit": "Crates taken on a receipt have no cash cover at all — their deposit column reads «—», not zero. That is why «crates out» and «deposits held» are two different numbers.",
-      "notTracked": "Empty crates on hand, crates here with berries in them, and shipments are not tracked yet — there is no table for them, so this screen shows nothing rather than a number it cannot stand behind."
+      "shipmentsDeferred": "The «Shipments today» window is not built yet. «With us, with berries» counts the crate tare on receipts of the point's currently open shift, and leaves the point's count the moment that shift closes."
+    },
+    "docs": {
+      "title": "This person's crate documents",
+      "empty": "No crate documents for this person.",
+      "failed": "Could not load the documents",
+      "issued_one": "issued {{count}} crate",
+      "issued_other": "issued {{count}} crates",
+      "returned_one": "accepted {{count}} crate",
+      "returned_other": "accepted {{count}} crates",
+      "onDeposit": "on a deposit · {{amount}}",
+      "onReceipt": "on receipt {{code}} · no deposit",
+      "refunded": "deposit refunded {{amount}}",
+      "noRefund": "no deposit — taken on a receipt",
+      "voidedLine": "voided {{date}} · {{reason}}",
+      "truncated": "Showing the latest 100 of each kind.",
+      "blockedByReturn": "a return rests on this issuance — void the return first",
+      "void": "Void",
+      "returnLabel": "return of {{units}} · {{date}}"
     },
     "errors": {
       "supplierRequired": "Pick who is taking the crates",
