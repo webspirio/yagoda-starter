@@ -1276,6 +1276,7 @@
       "returnExceeds": "That is more crates than this person is holding",
       "cashInsufficient": "The crate deposits drawer holds less than this refund needs",
       "hasReturns": "A return has already been allocated against this issuance — void the return first",
+      "returnBelongsToIntake": "This return was recorded with a receipt — void the receipt instead",
       "supplierInactive": "This person is deactivated, so crates cannot be issued to them"
     }
   },

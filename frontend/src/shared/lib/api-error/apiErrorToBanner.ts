@@ -62,6 +62,11 @@ const CODE: Readonly<Record<string, string>> = {
   RETURN_EXCEEDS_OUTSTANDING: 'crates.errors.returnExceeds',
   CRATE_CASH_INSUFFICIENT: 'crates.errors.cashInsufficient',
   ISSUANCE_HAS_RETURNS: 'crates.errors.hasReturns',
+  // A return `POST /intakes` wrote alongside a receipt (§8.3, `returned_crates`)
+  // has no void route of its own — `POST /crate-returns/:id/void` refuses it
+  // with this code, reachable from a stale crates list showing a void button
+  // for one. The fix is the receipt's own void, not this one.
+  RETURN_BELONGS_TO_INTAKE: 'crates.errors.returnBelongsToIntake',
   // Reweigh (§8), owner-only. `POST /shifts/:shiftId/reweigh-items` refuses a
   // line against a shift that bought nothing, a grade that shift did not
   // accept (the picker promises the same list `grades[]` states, so this is
