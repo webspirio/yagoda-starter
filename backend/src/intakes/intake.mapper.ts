@@ -76,7 +76,7 @@ function toIntakePayoutResponse(payout: Payout): IntakePayoutResponse {
  * were refunded at their deposit price (`deposit_refund`), the second came
  * back against a розписка and moved no money.
  */
-export interface IntakeCrateReturnResponse {
+interface IntakeCrateReturnResponse {
   id: string;
   units: number;
   deposit_refund: string;
@@ -96,7 +96,7 @@ export interface IntakeCrateReturnRow {
   voided_at: Date | null;
 }
 
-export function toIntakeCrateReturnResponse(row: IntakeCrateReturnRow): IntakeCrateReturnResponse {
+function toIntakeCrateReturnResponse(row: IntakeCrateReturnRow): IntakeCrateReturnResponse {
   return {
     id: row.id,
     units: row.units,
