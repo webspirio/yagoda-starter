@@ -69,6 +69,14 @@ Every query not on the allowlist gets:
 Allowlisted keys get `staleTime` 30 min and `gcTime` 24h — the latter keeps the
 persister's `gcTime >= maxAge` requirement for `me`.
 
+**Mutations get `gcTime: 0` too.** A settled mutation's `data` is held for `gcTime`
+(5 min by default) once nothing observes it — and one mutation's `data` is a plaintext
+password (`useRevealPasswordMutation`, `pages/users/api/users.ts`, which sets `gcTime: 0`
+itself today). The lint rule of §3.4 forbids that per-hook option, so the guarantee moves
+into the client default rather than being lost. Nothing in `src` reads the mutation cache
+from outside the observing component (`useMutationState`, `useIsMutating`,
+`getMutationCache` — zero uses), so the default changes no screen.
+
 ## 3. Components
 
 ### 3.1 `shared/api/cachePolicy.ts` (new)
@@ -90,7 +98,8 @@ more.
 Every `staleTime:` is deleted from the 29 non-test files that set one (list:
 `grep -rlE '\bstaleTime\s*:' frontend/src | grep -v '\.test\.'`), including the explicit
 `staleTime: 0` in `features/count-shift/api/crateDispatch.ts` and
-`features/return-crates/api/useReturnCrates.ts`; they are now the default, and the
+`features/return-crates/api/useReturnCrates.ts` (and that file's `gcTime: 0`, plus
+`useRevealPasswordMutation`'s — see §2.2); they are now the default, and the
 comment in `crateDispatch.ts` about «not inheriting the client's 30-second staleTime» is
 rewritten to match. Doc comments that describe a hook's freshness window are corrected in
 the same pass.
@@ -120,6 +129,7 @@ current coverage.
 2. An allowlisted key (`tare-types`, and `['product-grades', 'active']` for the prefix)
    does NOT refetch when re-mounted inside its window.
 3. A window-focus event refetches a key off the allowlist.
+4. A settled mutation's `data` is gone from the mutation cache once unobserved.
 
 A lint fixture proves the rule fires on `staleTime` in a `.ts` hook and in a page `.tsx`,
 and that the raw-`<input>` rule still fires after the options merge.
