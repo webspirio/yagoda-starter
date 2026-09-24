@@ -62,6 +62,7 @@ describe('CratesService', () => {
     id: 'return-1',
     shift_id: SHIFT_ID,
     supplier_id: SUPPLIER,
+    intake_id: null,
     units: 10,
     deposit_refund: '1200.00',
     accepted_by_user_id: 'op-1',
@@ -361,6 +362,96 @@ describe('CratesService', () => {
       await expect(
         service.returnCrates(operator, { supplier_id: 's-1', units: 7 }),
       ).rejects.toMatchObject({ response: { code: 'CRATE_CASH_INSUFFICIENT' } });
+    });
+
+    /** R2 — `returnCrates` is now `writeReturn` plus a caller that always
+     *  passes `intakeId: null`; this is the one place that fixes what "always"
+     *  means. */
+    it('writes intake_id: null — the standalone route never links a receipt', async () => {
+      balance.tranchesFor.mockResolvedValue(tranches);
+
+      await service.returnCrates(operator, { supplier_id: 's-1', units: 7 });
+
+      expect(manager.create).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ intake_id: null }),
+      );
+    });
+  });
+
+  /**
+   * R2 — the extracted writer, exercised directly the way `IntakesService`
+   * (Task R3) will call it: with an already-resolved shift and a real
+   * `intakeId`, inside a transaction the caller opened.
+   */
+  describe('writeReturn', () => {
+    const tranches = [
+      {
+        issuance_id: 'jul18',
+        code: 'KPG-CD-20260718-001',
+        remaining_units: 20,
+        per_unit: '120.00',
+        mode: CrateIssuanceMode.Deposit,
+      },
+    ];
+    const openShift = shift();
+
+    it('carries a caller-supplied intake_id onto the return and its audit entry', async () => {
+      balance.tranchesFor.mockResolvedValue(tranches);
+
+      const result = await service.writeReturn(manager as never, {
+        actor: operator,
+        pointId: POINT_A,
+        shift: openShift as never,
+        supplierId: SUPPLIER,
+        units: 5,
+        intakeId: 'intake-42',
+      });
+
+      expect(result.ret.intake_id).toBe('intake-42');
+      expect(manager.create).toHaveBeenCalledWith(
+        CrateReturn,
+        expect.objectContaining({ intake_id: 'intake-42', units: 5 }),
+      );
+      expect(audit.record).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: 'crate-return.created',
+          after: expect.objectContaining({ intake_id: 'intake-42' }),
+        }),
+        manager,
+      );
+    });
+
+    it('locks the supplier row itself, idempotently, when called directly', async () => {
+      balance.tranchesFor.mockResolvedValue(tranches);
+
+      await service.writeReturn(manager as never, {
+        actor: operator,
+        pointId: POINT_A,
+        shift: openShift as never,
+        supplierId: SUPPLIER,
+        units: 5,
+        intakeId: null,
+      });
+
+      const [firstSql, firstParams] = manager.query.mock.calls[0] as [string, unknown[]];
+      expect(firstSql).toContain('FOR UPDATE');
+      expect(firstParams).toEqual([SUPPLIER]);
+    });
+
+    it('still refuses RETURN_EXCEEDS_OUTSTANDING for a linked call', async () => {
+      balance.tranchesFor.mockResolvedValue([tranches[0]]);
+
+      await expect(
+        service.writeReturn(manager as never, {
+          actor: operator,
+          pointId: POINT_A,
+          shift: openShift as never,
+          supplierId: SUPPLIER,
+          units: 25,
+          intakeId: 'intake-42',
+        }),
+      ).rejects.toMatchObject({ response: { code: 'RETURN_EXCEEDS_OUTSTANDING' } });
     });
   });
 
@@ -705,6 +796,103 @@ describe('CratesService', () => {
         expect.objectContaining({ action: 'crate-return.voided' }),
         manager,
       );
+    });
+
+    /** R2 — spec §8.3: a return a receipt wrote is voided only as part of
+     *  voiding that receipt, never on its own. */
+    it('refuses a standalone void of a return a receipt wrote, naming the receipt', async () => {
+      loadReturn({
+        intake_id: 'intake-9',
+        shift: { collection_point_id: 'point-1', closed_at: null },
+      });
+      manager.query.mockImplementation((sql: string) =>
+        sql.includes('FROM intakes')
+          ? Promise.resolve([{ code: 'KPG-IN-20260924-001' }])
+          : Promise.resolve([{ id: SUPPLIER }]),
+      );
+
+      await expect(
+        service.voidReturn(voidOperator, 'r-1', { reason: 'x' }),
+      ).rejects.toMatchObject({
+        response: {
+          code: 'RETURN_BELONGS_TO_INTAKE',
+          message: expect.stringContaining('KPG-IN-20260924-001'),
+        },
+      });
+      expect(manager.save).not.toHaveBeenCalled();
+    });
+
+    /** The intake check runs AFTER `assertMayVoid` — another point's operator
+     *  still 404s first, per the brief's placement note. */
+    it('still 404s another point before checking whether the return belongs to an intake', async () => {
+      loadReturn({
+        intake_id: 'intake-9',
+        shift: { collection_point_id: 'point-2', closed_at: null },
+      });
+
+      await expect(
+        service.voidReturn(voidOperator, 'r-1', { reason: 'x' }),
+      ).rejects.toBeInstanceOf(NotFoundException);
+    });
+  });
+
+  /**
+   * R2 — the cascade half of spec §8.3 (no caller yet; Task R3 wires
+   * `IntakesService`'s void to call this inside its own transaction).
+   */
+  describe('voidReturnForIntake', () => {
+    const reasonArgs = { actor: operator, intakeId: 'intake-1', reason: 'сторно квитанції' };
+
+    it('voids the live return written by this intake, and audits it', async () => {
+      manager.findOne.mockResolvedValue(crateReturn({ intake_id: 'intake-1' }));
+
+      const result = await service.voidReturnForIntake(manager as never, reasonArgs);
+
+      expect(result).not.toBeNull();
+      expect(manager.findOne).toHaveBeenCalledWith(
+        CrateReturn,
+        expect.objectContaining({
+          where: expect.objectContaining({ intake_id: 'intake-1' }),
+          lock: { mode: 'pessimistic_write' },
+        }),
+      );
+      expect(manager.save).toHaveBeenCalledWith(
+        CrateReturn,
+        expect.objectContaining({
+          voided_at: expect.any(Date),
+          voided_by_user_id: 'op-1',
+          void_reason: 'сторно квитанції',
+        }),
+      );
+      expect(audit.record).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: 'crate-return.voided',
+          note: 'сторно квитанції',
+          after: expect.objectContaining({ intake_id: 'intake-1' }),
+        }),
+        manager,
+      );
+    });
+
+    it('returns null when the receipt wrote no return', async () => {
+      manager.findOne.mockResolvedValue(null);
+
+      const result = await service.voidReturnForIntake(manager as never, {
+        ...reasonArgs,
+        intakeId: 'intake-without-a-return',
+      });
+
+      expect(result).toBeNull();
+      expect(manager.save).not.toHaveBeenCalled();
+      expect(audit.record).not.toHaveBeenCalled();
+    });
+
+    it('takes no supplier lock itself — the caller already holds it', async () => {
+      manager.findOne.mockResolvedValue(crateReturn({ intake_id: 'intake-1' }));
+
+      await service.voidReturnForIntake(manager as never, reasonArgs);
+
+      expect(manager.query).not.toHaveBeenCalled();
     });
   });
 });
