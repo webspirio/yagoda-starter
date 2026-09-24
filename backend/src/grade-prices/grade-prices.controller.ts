@@ -54,6 +54,16 @@ export class GradePricesController {
     return this.prices.sheet(actor, query);
   }
 
+  /** #151's «Зміни протягом дня» — today's changes, network-wide for the
+   *  owner, own point for the operator. Declared BEFORE the bare `@Get()` for
+   *  the declaration-order reason given above `/current`. Takes no query: the
+   *  day is the server's today, the scope is the actor's. */
+  @Get('changes')
+  @Auth()
+  changes(@CurrentUser() actor: AuthenticatedUser) {
+    return this.prices.changes(actor);
+  }
+
   @Get()
   @Auth()
   list(@CurrentUser() actor: AuthenticatedUser, @Query() query: ListGradePricesQueryDto) {
