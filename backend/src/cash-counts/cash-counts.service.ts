@@ -1,20 +1,34 @@
-import { Injectable } from '@nestjs/common';
+import { ConflictException, ForbiddenException, Injectable } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { ListCashCountsQueryDto } from './dto/list-cash-counts.query';
+import { CreateCashCountDto } from './dto/create-cash-count.dto';
 import {
   CashCountRow,
   CashCountRowResponse,
   toCashCountRowResponse,
 } from './cash-count.mapper';
+import { CashCount } from './cash-count.entity';
+import { CashBook } from './cash-book.enum';
+import { CashCountKind } from './cash-count-kind.enum';
+import { ShiftsService } from '../shifts/shifts.service';
+import { PointCashService } from '../point-cash/point-cash.service';
+import { AuditService } from '../audit/audit.service';
 import { resolvePointFilter } from '../auth/access/point-scope';
 import { Paginated } from '../common/dto/paginated';
 import { skipOf } from '../common/dto/pagination-query.dto';
+import { loadDisplayNames } from '../users/display-names';
+import { TimeService } from '../time/time.service';
 import type { AuthenticatedUser } from '../auth/jwt.strategy';
 
 /**
- * READ ONLY, AND THAT IS THE WHOLE MODULE. Counts are WRITTEN by `shifts`,
- * inside the open and close transactions (§6.1), because a count that could be
- * written on its own is a count that could be skipped.
+ * `opening` AND `closing` COUNTS ARE STILL WRITTEN BY `shifts`, inside the
+ * open and close transactions (§6.1), because a count that could be written on
+ * its own is a count that could be skipped. THIS MODULE NOW OWNS ONE WRITE OF
+ * ITS OWN — `recount`, a `midday` count (R2, spec
+ * `2026-09-22-yagoda-point-cash-parity.md`) — and that is the one `kind` that
+ * was always meant to live outside a shift verb: §7.6 puts no endpoint on it
+ * and no limit on how many times it may happen, unlike `opening`/`closing`,
+ * which are each exactly one per shift by construction.
  *
  * THIS IS WHAT «NOTIFY THE OWNER» MEANS in this project: there is no email, no
  * push and no notification centre, so a notification is a read the owner's
@@ -27,17 +41,157 @@ import type { AuthenticatedUser } from '../auth/jwt.strategy';
  * the owner a −90 shortage is −180 on one screen while the headline figure
  * says −90 on the other. The demoted row is evidence and keeps its place in
  * the UNFILTERED list; what it loses is a seat on the list of things still to
- * be worked.
+ * be worked. A RECOUNT'S `midday` ROW IS EXCLUDED FOR A DIFFERENT REASON — not
+ * because it is superseded (nothing supersedes it — see `recount`'s own doc
+ * comment), but because §7.6 makes a recount a witness, never an incident: it
+ * never opens anything for the owner to work.
  *
- * ITS LIMIT, named rather than discovered: this reads «midday» as «superseded»,
- * which holds only while a demotion is the sole way a midday row is created. A
- * midday-RECOUNT route would make that false, and would have to revisit this
- * filter, `point-cash.service.ts`'s matching one, and `is_open` in
- * `cash-count.mapper.ts` together.
+ * THE LIMIT NAMED BELOW BY THE OLD COMMENT IS NOW RESOLVED, not discovered:
+ * this module now has a midday-recount route, and the filter above, plus
+ * `point-cash.service.ts`'s `unexplained_difference` and `is_open` in
+ * `cash-count.mapper.ts`, were re-checked against it — all three already
+ * excluded every `kind = 'midday'` row unconditionally, with no branch that
+ * distinguished "demoted" from "recounted", so none of the three needed to
+ * change.
  */
 @Injectable()
 export class CashCountsService {
-  constructor(private readonly dataSource: DataSource) {}
+  constructor(
+    private readonly dataSource: DataSource,
+    private readonly shifts: ShiftsService,
+    private readonly cash: PointCashService,
+    private readonly audit: AuditService,
+    private readonly time: TimeService,
+  ) {}
+
+  /**
+   * `POST /cash-counts` — operator only (`@Auth(UserRole.PointOperator)` on
+   * the controller decides that; this method does not re-check the role). A
+   * MIDDAY RECOUNT, and §7.6's own words are the spec: «перерахунок — це
+   * свідчення, а не коригування». It writes exactly one `cash_counts` row and
+   * touches nothing else — no shift, no document, no balance — and it can
+   * happen any number of times on one open shift, which is exactly why `kind
+   * = 'midday'` sits outside `UQ_cash_counts_shift_book_kind`.
+   *
+   * THE POINT IS THE ACTOR'S, NEVER THE REQUEST'S — same rule as every other
+   * write in this backend (`auth/access/point-scope.ts`'s header): the DTO
+   * carries no point field to forge, and an operator with no point assigned is
+   * refused before the transaction even opens, the same `NO_COLLECTION_POINT`
+   * `ForbiddenException` `ShiftsService.open` throws for the identical
+   * situation.
+   *
+   * `expected_amount` IS `PointCashService.cashFor` READ INSIDE THE SAME
+   * TRANSACTION AS THE INSERT — the drawer at this instant, exactly as
+   * `ShiftsService.open`/`close` snapshot it for their own counts. A midday
+   * count NEVER ANCHORS the formula (`cashFor`'s `anchorSql` filters `kind <>
+   * 'midday'`), so recording one changes nothing about what a LATER count —
+   * midday or closing — expects to find.
+   *
+   * `is_open` STAYS FALSE. `toCashCountRowResponse` already treats every
+   * `midday` row that way, and `CashCountsService.list`'s
+   * `only_discrepancies` filter already excludes `kind = 'midday'`
+   * unconditionally — a recount finding a shortage is recorded evidence, not
+   * an incident the owner's list surfaces. THE CLOSING COUNT IS STILL WHAT
+   * CARRIES THE DAY: the 10.09 note's «midday = перекрито» reading — that a
+   * midday count could settle the drawer the way a close does — is FALSE, and
+   * this is where that correction is recorded (see also the controller's own
+   * comment).
+   */
+  async recount(actor: AuthenticatedUser, dto: CreateCashCountDto): Promise<CashCountRowResponse> {
+    const pointId = actor.collection_point_id;
+    if (!pointId) {
+      throw new ForbiddenException({
+        message: 'No collection point assigned',
+        code: 'NO_COLLECTION_POINT',
+      });
+    }
+
+    return this.dataSource.transaction(async (m) => {
+      const shift = await this.shifts.findOpenAtPoint(pointId, m);
+      if (!shift) {
+        // Aligned with `intakes`/`payouts`/`transfers`/`crates` (`payouts
+        // .service.ts:117`): the identical fact — no open shift at the
+        // actor's point — is a `ConflictException`/`NO_OPEN_SHIFT`/409
+        // everywhere else in this backend, and a recount is not a reason to
+        // diverge.
+        throw new ConflictException({
+          message: 'Перерахунок чіпляється лише до відкритої зміни',
+          code: 'NO_OPEN_SHIFT',
+        });
+      }
+
+      // The drawer at THIS instant, under no lock of its own — a recount is a
+      // read of a moving figure, not a claim that nothing else may write
+      // between the read and the insert (§7.6 names no such guarantee). A
+      // concurrent payout or a concurrent close changes nothing about the
+      // witness this writes: the row records what the drawer held at its own
+      // instant, `close()` never reads a midday row back, and `reopen()`
+      // demotes only `closing` — so there is nothing here for a lock to
+      // protect against.
+      //
+      // UNDER READ COMMITTED, `findOpenAtPoint` above and this read are two
+      // separate statements — a recount can therefore land on a shift that
+      // closed microseconds earlier, between them, with no lock taken on
+      // purpose (see immediately above). Nothing moves when that happens:
+      // every consumer of a `midday` row (`list`'s `only_discrepancies`,
+      // `is_open`, `point-cash`'s `unexplained_difference`) already excludes
+      // `kind = 'midday'` unconditionally. The only residue is a `midday`
+      // row timestamped after the shift's `closed_at`, which the point-cash
+      // panel then renders under a shift it shows as closed — evidence of a
+      // race that settled itself, not a bug to guard against here.
+      const expected = await this.cash.cashFor(pointId, undefined, m);
+      const countedAt = this.time.now().toJSDate();
+
+      const saved = await m.save(CashCount, {
+        shift_id: shift.id,
+        book: CashBook.Berry,
+        kind: CashCountKind.Midday,
+        counted_amount: dto.counted_amount,
+        expected_amount: expected,
+        // §10.6 — whoever pressed the button, not whoever opened the shift.
+        counted_by_user_id: actor.sub,
+        counted_at: countedAt,
+      });
+
+      await this.audit.record(
+        {
+          action: 'cash-count.recorded',
+          actor_id: actor.sub,
+          target_type: 'cash_count',
+          target_id: saved.id,
+          after: {
+            shift_id: shift.id,
+            kind: CashCountKind.Midday,
+            book: CashBook.Berry,
+            counted_amount: dto.counted_amount,
+            expected_amount: expected,
+          },
+        },
+        m,
+      );
+
+      const names = await loadDisplayNames(m, [saved.counted_by_user_id]);
+      return toCashCountRowResponse(
+        {
+          id: saved.id,
+          shift_id: saved.shift_id,
+          collection_point_id: shift.collection_point_id,
+          business_date: shift.business_date,
+          book: saved.book,
+          kind: saved.kind,
+          counted_amount: saved.counted_amount,
+          expected_amount: saved.expected_amount,
+          counted_by_user_id: saved.counted_by_user_id,
+          counted_at: saved.counted_at,
+          // A fresh count carries whatever explanation is already on the
+          // shift — the same column `list`'s SQL joins in — never a value of
+          // its own; a count has no `explanation` column (see the entity).
+          explanation: shift.explanation ?? null,
+        },
+        names,
+      );
+    });
+  }
 
   async list(
     actor: AuthenticatedUser,
@@ -94,8 +248,15 @@ export class CashCountsService {
       params,
     )) as { total: number }[];
 
+    // ONE map for the whole page (D-8) — never one `loadDisplayNames` call
+    // per row.
+    const names = await loadDisplayNames(
+      m,
+      rows.map((r) => r.counted_by_user_id),
+    );
+
     return {
-      data: rows.map(toCashCountRowResponse),
+      data: rows.map((r) => toCashCountRowResponse(r, names)),
       total,
       page: query.page,
       limit: query.limit,

@@ -49,7 +49,7 @@ describe('SetTargetCashDialog', () => {
   it('does not read the point’s cash while it is closed', () => {
     // The page mounts this dialog closed for every owner + point, so an
     // ungated read here is one extra request per point the owner picks —
-    // for a warning nobody can see yet.
+    // for a preview nobody can see yet.
     render(
       <SetTargetCashDialog
         pointId="p1"
@@ -63,7 +63,7 @@ describe('SetTargetCashDialog', () => {
     expect(pointCashMock).toHaveBeenCalledWith('p1', undefined, false);
   });
 
-  it('reads the point’s cash once it is open — the §6.1 warning needs it', () => {
+  it('reads the point’s cash once it is open — the preview and the over-target copy both need it', () => {
     renderDialog();
     expect(pointCashMock).toHaveBeenCalledWith('p1', undefined, true);
   });
@@ -76,14 +76,31 @@ describe('SetTargetCashDialog', () => {
     await expectNoAxeViolations(container);
   });
 
+  it('describes the CURRENT target when the point already has one', () => {
+    renderDialog(vi.fn(), '600000.00');
+    expect(screen.getByText('Current: 600,000.00 ₴')).toBeInTheDocument();
+  });
+
+  it('describes the point as never targeted when it has none yet', () => {
+    renderDialog(vi.fn(), null);
+    expect(screen.getByText("This point hasn't been assigned a cash target yet.")).toBeInTheDocument();
+  });
+
   it('prefills the target field with the current target', () => {
     renderDialog(vi.fn(), '600000.00');
-    expect(screen.getByLabelText('New target')).toHaveValue('600000.00');
+    expect(screen.getByLabelText('How much money, ₴')).toHaveValue('600000.00');
   });
 
   it('starts blank when the point has no target yet', () => {
     renderDialog(vi.fn(), null);
-    expect(screen.getByLabelText('New target')).toHaveValue('');
+    expect(screen.getByLabelText('How much money, ₴')).toHaveValue('');
+  });
+
+  it('masks while typing — comma becomes dot, two decimals only, like the reception fields', async () => {
+    renderDialog(vi.fn(), null);
+    const targetField = screen.getByLabelText('How much money, ₴');
+    await userEvent.type(targetField, '12,345');
+    expect(targetField).toHaveValue('12.34');
   });
 
   it('refuses a blank reason when changing an EXISTING target and does not call the mutation', async () => {
@@ -104,7 +121,7 @@ describe('SetTargetCashDialog', () => {
     // попереднього рівня не існувало» — `currentTarget: null` is the signal.
     const { onClose } = renderDialog(vi.fn(), null);
 
-    await userEvent.type(screen.getByLabelText('New target'), '145453.00');
+    await userEvent.type(screen.getByLabelText('How much money, ₴'), '145453.00');
     await userEvent.click(screen.getByRole('button', { name: 'Save target' }));
 
     expect(screen.queryByText('Enter a reason')).toBeNull();
@@ -113,7 +130,12 @@ describe('SetTargetCashDialog', () => {
       target_cash: '145453.00',
       reason: '',
     });
-    expect(await screen.findByText('Target updated')).toBeInTheDocument();
+    expect(await screen.findByText('Cash target — 145,453.00 ₴')).toBeInTheDocument();
+    expect(
+      await screen.findByText(
+        "Шипинки. The old target isn't recorded in history — it's a single number on the point.",
+      ),
+    ).toBeInTheDocument();
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
@@ -143,7 +165,7 @@ describe('SetTargetCashDialog', () => {
   it('submits the new target with the reason and closes', async () => {
     const { onClose } = renderDialog();
 
-    const targetField = screen.getByLabelText('New target');
+    const targetField = screen.getByLabelText('How much money, ₴');
     await userEvent.clear(targetField);
     await userEvent.type(targetField, '700000.00');
     await userEvent.type(screen.getByLabelText('Reason'), 'розширили точку');
@@ -154,54 +176,11 @@ describe('SetTargetCashDialog', () => {
       target_cash: '700000.00',
       reason: 'розширили точку',
     });
-    expect(await screen.findByText('Target updated')).toBeInTheDocument();
+    expect(await screen.findByText('Cash target — 700,000.00 ₴')).toBeInTheDocument();
     expect(onClose).toHaveBeenCalledTimes(1);
-  });
-
-  it('warns when the new target is below what is already out, but still submits', async () => {
-    // §6.1 — a lower target is allowed WITH A WARNING, never a refusal: a
-    // target is a management decision, and this point already holds
-    // 400000.00, more than the 300000.00 being typed here.
-    const { onClose } = renderDialog(vi.fn(), '600000.00');
-
-    const targetField = screen.getByLabelText('New target');
-    await userEvent.clear(targetField);
-    await userEvent.type(targetField, '300000.00');
-    await userEvent.type(screen.getByLabelText('Reason'), 'сезон закінчується');
-
-    expect(await screen.findByRole('status')).toHaveTextContent(
-      'This is below the 400,000.00 ₴ already at the point',
-    );
-
-    const submitButton = screen.getByRole('button', { name: 'Save target' });
-    expect(submitButton).not.toBeDisabled();
-    await userEvent.click(submitButton);
-
-    expect(setTargetMock).toHaveBeenCalledWith({
-      pointId: 'p1',
-      target_cash: '300000.00',
-      reason: 'сезон закінчується',
-    });
-    expect(onClose).toHaveBeenCalledTimes(1);
-  });
-
-  it('does not warn for a target at or above what is already out', async () => {
-    renderDialog(vi.fn(), '600000.00');
-
-    const targetField = screen.getByLabelText('New target');
-    await userEvent.clear(targetField);
-    await userEvent.type(targetField, '400000.00');
-
-    expect(screen.queryByRole('status')).toBeNull();
   });
 
   it('shows the fallback banner and stays open when the server refuses', async () => {
-    // `CollectionPointsService.update` has no assert-level rejection of its
-    // own for this field — a non-owner never reaches it (`@Auth(NetworkOwner)`
-    // refuses first, with `INSUFFICIENT_ROLE`, a code this map does not carry
-    // because the button this dialog belongs to never renders for that actor
-    // in the first place, per §10.2). A network failure is what a REAL caller
-    // of this dialog can actually hit, so that is what this test simulates.
     setTargetMock.mockRejectedValue(new Error('network down'));
     const { onClose } = renderDialog();
 
@@ -210,5 +189,116 @@ describe('SetTargetCashDialog', () => {
 
     expect(await screen.findByText('Could not update the target')).toBeInTheDocument();
     expect(onClose).not.toHaveBeenCalled();
+  });
+
+  describe('the live preview', () => {
+    it('shows the point’s current berry cash as soon as it opens', () => {
+      renderDialog(vi.fn(), '600000.00');
+      expect(screen.getByText('Cash for berries right now')).toBeInTheDocument();
+      expect(screen.getByText('400,000.00 ₴')).toBeInTheDocument();
+    });
+
+    it('computes the shortfall from the prefilled value as soon as it opens, no typing needed', () => {
+      // The field starts prefilled with the CURRENT target, 600000.00 —
+      // already above the 400000.00 at the point — so the preview is live
+      // from the very first render, not only after the user types.
+      renderDialog(vi.fn(), '600000.00');
+      // 600000.00 (current target) − 400000.00 (cash) = 200000.00
+      expect(screen.getByText('200,000.00 ₴')).toBeInTheDocument();
+    });
+
+    it('shows a dash for the shortfall while the field starts blank', () => {
+      // A point's first-ever target starts with a blank field — nothing
+      // valid to compare against yet.
+      renderDialog(vi.fn(), null);
+      const shortfallRow = screen.getByText('Will fall short of the target').closest('div');
+      expect(shortfallRow).toHaveTextContent('—');
+    });
+
+    it('computes the shortfall live as the typed target grows past the current cash', async () => {
+      renderDialog(vi.fn(), '600000.00');
+
+      const targetField = screen.getByLabelText('How much money, ₴');
+      await userEvent.clear(targetField);
+      await userEvent.type(targetField, '500000.00');
+
+      // 500000.00 (typed) − 400000.00 (cash) = 100000.00
+      expect(await screen.findByText('100,000.00 ₴')).toBeInTheDocument();
+    });
+
+    it('falls back to a dash while the typed amount is not a valid decimal', async () => {
+      // `maskDecimalInput` on this field's `onChange` caps the FRACTION to
+      // two digits while typing, so a value like «12.999» can no longer land
+      // in the field at all — the still-reachable not-yet-valid state is a
+      // trailing separator with no digits after it, the same in-progress
+      // shape `TotalsSection`'s own blur handler names («1200,» is not yet a
+      // well-formed decimal).
+      renderDialog(vi.fn(), '600000.00');
+
+      const targetField = screen.getByLabelText('How much money, ₴');
+      await userEvent.clear(targetField);
+      await userEvent.type(targetField, '12.');
+
+      const shortfallRow = screen.getByText('Will fall short of the target').closest('div');
+      expect(shortfallRow).toHaveTextContent('—');
+    });
+
+    it('falls back to a dash once the typed target no longer exceeds the current cash', async () => {
+      renderDialog(vi.fn(), '600000.00');
+
+      const targetField = screen.getByLabelText('How much money, ₴');
+      await userEvent.clear(targetField);
+      await userEvent.type(targetField, '400000.00');
+
+      const shortfallRow = screen.getByText('Will fall short of the target').closest('div');
+      expect(shortfallRow).toHaveTextContent('—');
+    });
+  });
+
+  describe('the over-target copy', () => {
+    it('replaces the amber warning when the typed target is below the current cash — still not a block', async () => {
+      // The point already holds 400000.00 in berry cash; typing 300000.00
+      // means the drawer already covers more than the new target.
+      const { onClose } = renderDialog(vi.fn(), '600000.00');
+
+      const targetField = screen.getByLabelText('How much money, ₴');
+      await userEvent.clear(targetField);
+      await userEvent.type(targetField, '300000.00');
+      await userEvent.type(screen.getByLabelText('Reason'), 'сезон закінчується');
+
+      expect(await screen.findByRole('status')).toHaveTextContent(
+        "There's already more in the drawer than this target. There will be no debt to the point at all — this can't be refused: a target is a management decision.",
+      );
+
+      const submitButton = screen.getByRole('button', { name: 'Save target' });
+      expect(submitButton).not.toBeDisabled();
+      await userEvent.click(submitButton);
+
+      expect(setTargetMock).toHaveBeenCalledWith({
+        pointId: 'p1',
+        target_cash: '300000.00',
+        reason: 'сезон закінчується',
+      });
+      expect(onClose).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not show for a target at or above what is already out', async () => {
+      renderDialog(vi.fn(), '600000.00');
+
+      const targetField = screen.getByLabelText('How much money, ₴');
+      await userEvent.clear(targetField);
+      await userEvent.type(targetField, '400000.00');
+
+      expect(screen.queryByRole('status')).toBeNull();
+    });
+  });
+
+  it('shows the static note about what changes and what does not', () => {
+    renderDialog();
+    expect(
+      screen.getByText(
+        'The drawer isn\'t recounted: only the figure used to measure "short of the target" changes.',
+      ),
+    ).toBeInTheDocument();
   });
 });

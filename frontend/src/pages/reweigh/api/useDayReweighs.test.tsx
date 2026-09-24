@@ -39,9 +39,13 @@ const shift = (id: string, pointId: string): Shift => ({
   created_at: '2026-09-21T05:00:00Z',
   explanation: null,
   broken_crates: null,
+  opened_by_name: null,
+  closed_by_name: null,
 });
 
-const item = (over: Partial<ReweighItem> & Pick<ReweighItem, 'id' | 'created_at'>): ReweighItem => ({
+const item = (
+  over: Partial<ReweighItem> & Pick<ReweighItem, 'id' | 'created_at'>,
+): ReweighItem => ({
   reweigh_id: 'r1',
   item_order: 1,
   product_grade_id: 'pg1',

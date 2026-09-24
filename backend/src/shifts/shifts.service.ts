@@ -22,6 +22,7 @@ import { Paginated } from '../common/dto/paginated';
 import { skipOf } from '../common/dto/pagination-query.dto';
 import { TimeService } from '../time/time.service';
 import { UserRole } from '../users/user-role.enum';
+import { loadDisplayNames } from '../users/display-names';
 import type { AuthenticatedUser } from '../auth/jwt.strategy';
 import { CashCount } from '../cash-counts/cash-count.entity';
 import { CashBook } from '../cash-counts/cash-book.enum';
@@ -135,7 +136,8 @@ export class ShiftsService {
         m,
       );
 
-      return toShiftResponse(shift);
+      const names = await this.namesFor([shift], m);
+      return toShiftResponse(shift, names);
     });
   }
 
@@ -225,7 +227,8 @@ export class ShiftsService {
         m,
       );
 
-      return toShiftResponse(saved);
+      const names = await this.namesFor([saved], m);
+      return toShiftResponse(saved, names);
     });
   }
 
@@ -334,7 +337,8 @@ export class ShiftsService {
         m,
       );
 
-      return toShiftResponse(saved);
+      const names = await this.namesFor([saved], m);
+      return toShiftResponse(saved, names);
     });
   }
 
@@ -367,7 +371,8 @@ export class ShiftsService {
       after: { explanation: saved.explanation },
     });
 
-    return toShiftResponse(saved);
+    const names = await this.namesFor([saved], this.dataSource.manager);
+    return toShiftResponse(saved, names);
   }
 
   async list(
@@ -393,7 +398,15 @@ export class ShiftsService {
       .take(query.limit)
       .getManyAndCount();
 
-    return { data: data.map(toShiftResponse), total, page: query.page, limit: query.limit };
+    // ONE map for the whole page (D-8) — never one `loadDisplayNames` call per
+    // row.
+    const names = await this.namesFor(data, this.dataSource.manager);
+    return {
+      data: data.map((shift) => toShiftResponse(shift, names)),
+      total,
+      page: query.page,
+      limit: query.limit,
+    };
   }
 
   async current(actor: AuthenticatedUser, query: CurrentShiftQueryDto): Promise<ShiftResponse> {
@@ -403,11 +416,14 @@ export class ShiftsService {
     }
     const shift = await this.findOpenAtPoint(pointId);
     if (!shift) throw new NotFoundException('No open shift at that point');
-    return toShiftResponse(shift);
+    const names = await this.namesFor([shift], this.dataSource.manager);
+    return toShiftResponse(shift, names);
   }
 
   async findOne(actor: AuthenticatedUser, id: string): Promise<ShiftResponse> {
-    return toShiftResponse(await this.loadVisible(actor, id));
+    const shift = await this.loadVisible(actor, id);
+    const names = await this.namesFor([shift], this.dataSource.manager);
+    return toShiftResponse(shift, names);
   }
 
   /**
@@ -464,6 +480,25 @@ export class ShiftsService {
       assertOwnsPoint(actor, shift.collection_point_id);
     }
     return shift;
+  }
+
+  /**
+   * D-8 — ONE `loadDisplayNames` call for however many shifts are in play,
+   * never one per row: a `list` page passes every row on it, every other
+   * caller passes its single shift wrapped in an array. Collects BOTH
+   * `opened_by_user_id` and `closed_by_user_id` (when set) so `toShiftResponse`
+   * can resolve either field from the same map.
+   */
+  private async namesFor(
+    shifts: Shift[],
+    manager: EntityManager,
+  ): Promise<ReadonlyMap<string, string>> {
+    const ids = new Set<string>();
+    for (const shift of shifts) {
+      ids.add(shift.opened_by_user_id);
+      if (shift.closed_by_user_id) ids.add(shift.closed_by_user_id);
+    }
+    return loadDisplayNames(manager, ids);
   }
 
   /**
