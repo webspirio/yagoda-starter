@@ -510,7 +510,7 @@ export class GradePricesService {
 }
 
 /** The longest period `changes()` reads, in days, both ends counted. */
-export const MAX_CHANGES_DAYS = 31;
+const MAX_CHANGES_DAYS = 31;
 
 /**
  * The checks on `PriceChangesQueryDto` that need BOTH bounds, or a calendar:

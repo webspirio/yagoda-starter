@@ -170,6 +170,27 @@ describe('PriceChanges', () => {
       expect(search().get('changes_to')).toBe('2026-09-24');
     });
 
+    it('ignores a year still being typed, and commits the finished date', () => {
+      changesMock.mockReturnValue(loaded([], '2026-09-20', '2026-09-24'));
+      const { search } = renderAt('/prices?changes_from=2026-09-20&changes_to=2026-09-24');
+      const from = screen.getByLabelText('From');
+
+      fireEvent.change(from, { target: { value: '0202-09-18' } });
+      expect(search().get('changes_from')).toBe('2026-09-20');
+      expect(search().get('changes_to')).toBe('2026-09-24');
+
+      fireEvent.change(from, { target: { value: '2026-09-18' } });
+      expect(search().get('changes_from')).toBe('2026-09-18');
+      expect(search().get('changes_to')).toBe('2026-09-24');
+    });
+
+    it('heads each day with a level-2 heading that names its section', () => {
+      changesMock.mockReturnValue(loaded([change({})], '2026-09-20', '2026-09-24'));
+      renderAt('/prices?changes_from=2026-09-20&changes_to=2026-09-24');
+      const heading = screen.getByRole('heading', { level: 2 });
+      expect(screen.getByRole('region')).toHaveAccessibleName(heading.textContent!);
+    });
+
     it('turns a link the server would refuse into today, not an error', () => {
       changesMock.mockReturnValue(loaded([]));
       renderAt('/prices?changes_from=2026-09-24&changes_to=2026-09-01');

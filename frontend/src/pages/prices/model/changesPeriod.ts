@@ -7,8 +7,17 @@ import { addDaysIso, isRealIsoDate, toLocalIsoDate } from '@/shared/lib/date';
  * span is capped at the same 31 days `GradePricesService` enforces.
  *
  * Pure functions, so the component only wires them to the URL.
+ *
+ * `today` is the BROWSER's date, while the server filters by `APP_TIMEZONE`.
+ * Both are Kyiv in practice; a viewer in another zone near midnight could see
+ * «Вчора» ask for a neighbouring day. «Сьогодні» sends no bounds at all, so the
+ * default view is always the server's own today.
  */
 export const MAX_CHANGES_DAYS = 31;
+
+/** The earliest date the inputs accept. Anything before it is a year still
+ *  being typed (`0002-…`, `0202-…`), never a period anyone means. */
+export const MIN_CHANGES_DATE = '2020-01-01';
 
 export interface ChangesPeriod {
   from: string | null;
@@ -27,12 +36,27 @@ const fitsCap = (from: string, to: string) =>
  * with a 400 stops here and becomes today — a list, never an error page.
  * `YYYY-MM-DD` strings order correctly as text.
  */
-export function readPeriod(from: string | null, to: string | null): ChangesPeriod {
+export function readPeriod(from: string | null, to: string | null, today: string): ChangesPeriod {
   if ((from !== null && !isRealIsoDate(from)) || (to !== null && !isRealIsoDate(to))) {
     return TODAY_PERIOD;
   }
-  if (from !== null && to !== null && !fitsCap(from, to)) return TODAY_PERIOD;
+  // `from` alone runs to TODAY on the server, so a «7 днів» link opened a month
+  // later is too long, and a future `from` is reversed — both checked here.
+  if (from !== null && !fitsCap(from, to ?? today)) return TODAY_PERIOD;
   return { from, to };
+}
+
+/** Whether a period covers one day — from the period itself, so the title does
+ *  not flip while the next period is still loading. */
+export function isOneDay(period: ChangesPeriod, today: string): boolean {
+  const to = period.to ?? today;
+  return (period.from ?? to) === to;
+}
+
+/** A value from a date input worth committing: on the calendar and within
+ *  `[MIN_CHANGES_DATE, today]`. */
+export function isPickableDate(value: string, today: string): boolean {
+  return isRealIsoDate(value) && value >= MIN_CHANGES_DATE && value <= today;
 }
 
 /** «Сьогодні» is NO period, so the server's today still decides the day. */

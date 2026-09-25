@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import {
   MAX_CHANGES_DAYS,
+  isOneDay,
+  isPickableDate,
   groupByLocalDay,
   periodOfPreset,
   presetOf,
@@ -13,11 +15,11 @@ const TODAY = '2026-09-25';
 
 describe('readPeriod', () => {
   it('reads an absent period as «the server picks today»', () => {
-    expect(readPeriod(null, null)).toEqual({ from: null, to: null });
+    expect(readPeriod(null, null, TODAY)).toEqual({ from: null, to: null });
   });
 
   it('keeps a well-formed period', () => {
-    expect(readPeriod('2026-09-20', '2026-09-24')).toEqual({
+    expect(readPeriod('2026-09-20', '2026-09-24', TODAY)).toEqual({
       from: '2026-09-20',
       to: '2026-09-24',
     });
@@ -29,12 +31,20 @@ describe('readPeriod', () => {
     ['2026-02-30', null],
     ['2026-09-24', '2026-09-20'],
     ['2026-01-01', '2026-02-01'],
+    // `from` alone runs to today: a «7 днів» link opened a month later…
+    ['2026-08-20', null],
+    // …and a `from` after today.
+    ['2026-09-26', null],
   ])('falls back to today for %o → %o', (from, to) => {
-    expect(readPeriod(from, to)).toEqual({ from: null, to: null });
+    expect(readPeriod(from, to, TODAY)).toEqual({ from: null, to: null });
+  });
+
+  it('keeps `from` alone while it is within the cap of today', () => {
+    expect(readPeriod('2026-08-26', null, TODAY)).toEqual({ from: '2026-08-26', to: null });
   });
 
   it(`accepts exactly ${MAX_CHANGES_DAYS} days`, () => {
-    expect(readPeriod('2026-01-01', '2026-01-31')).toEqual({
+    expect(readPeriod('2026-01-01', '2026-01-31', TODAY)).toEqual({
       from: '2026-01-01',
       to: '2026-01-31',
     });
@@ -107,5 +117,26 @@ describe('groupByLocalDay', () => {
       { date: '2026-09-24', rows: [rows[0], rows[1]] },
       { date: '2026-09-23', rows: [rows[2]] },
     ]);
+  });
+});
+
+describe('isOneDay', () => {
+  it.each([
+    [{ from: null, to: null }, true],
+    [{ from: '2026-09-24', to: '2026-09-24' }, true],
+    [{ from: null, to: '2026-09-24' }, true],
+    [{ from: '2026-09-19', to: null }, false],
+  ])('%o → %s', (period, expected) => {
+    expect(isOneDay(period, TODAY)).toBe(expected);
+  });
+});
+
+describe('isPickableDate', () => {
+  it.each(['0002-09-25', '0202-09-25', '2026-09-26', '2026-02-30', ''])('refuses %o', (v) => {
+    expect(isPickableDate(v, TODAY)).toBe(false);
+  });
+
+  it('accepts a real date up to today', () => {
+    expect(isPickableDate('2026-09-25', TODAY)).toBe(true);
   });
 });
