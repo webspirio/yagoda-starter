@@ -3,7 +3,7 @@ import { Auth } from '../auth/decorators/auth.decorators';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { SupplierBalanceService } from './supplier-balance.service';
 import { SuppliersService } from '../suppliers/suppliers.service';
-import { toSupplierBalanceResponse } from './supplier-balance.mapper';
+import { toSupplierBalanceResponse, toSupplierSettlementResponse } from './supplier-balance.mapper';
 import type { AuthenticatedUser } from '../auth/jwt.strategy';
 
 /**
@@ -36,5 +36,22 @@ export class SupplierBalanceController {
   ) {
     const supplier = await this.suppliers.findOne(actor, id);
     return toSupplierBalanceResponse(supplier.id, await this.balance.debtFor(supplier.id));
+  }
+
+  /**
+   * «За що саме винні» — spec §4.3. SAME DEPTH AS `/balance`, so the class
+   * comment's shadowing warning is honoured. Same visibility call: an
+   * operator reading another point's supplier gets the same 404 `findOne`
+   * gives everywhere. `/balance` stays a single number on purpose — the
+   * payout ceiling reads it and must not pay for a breakdown.
+   */
+  @Get(':id/settlement')
+  @Auth()
+  async settlement(
+    @CurrentUser() actor: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    const supplier = await this.suppliers.findOne(actor, id);
+    return toSupplierSettlementResponse(supplier.id, await this.balance.settlementFor(supplier.id));
   }
 }
