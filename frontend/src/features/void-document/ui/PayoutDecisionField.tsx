@@ -1,6 +1,7 @@
 import { useId } from 'react';
 import { useTranslation } from 'react-i18next';
 import { formatUah, isZero } from '@/shared/lib/money';
+import { Radio } from '@/shared/ui/radio';
 import type { PayoutDecision } from '../api/useVoidDocument';
 
 export interface LinkedPayout {
@@ -40,14 +41,7 @@ export function PayoutDecisionField({
       <div className="grid gap-3">
         {options.map((option) => (
           <label key={option} className="flex items-start gap-2 text-sm">
-            <input
-              type="radio"
-              name={name}
-              value={option}
-              checked={value === option}
-              onChange={() => onChange(option)}
-              className="mt-0.5 size-4 shrink-0 accent-brand"
-            />
+            <Radio name={name} value={option} checked={value === option} onChange={() => onChange(option)} />
             {t(`void.payout.${labelKey[option]}`)}
           </label>
         ))}
