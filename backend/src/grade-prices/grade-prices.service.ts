@@ -7,6 +7,7 @@ import { CreateGradePriceDto } from './dto/create-grade-price.dto';
 import { ListGradePricesQueryDto } from './dto/list-grade-prices.query';
 import { CurrentGradePricesQueryDto } from './dto/current-grade-prices.query';
 import { GradePriceSheetQueryDto } from './dto/grade-price-sheet.query';
+import { PriceChangesQueryDto } from './dto/price-changes.query';
 import { skipOf } from '../common/dto/pagination-query.dto';
 import { BulkGradePriceDto } from './dto/bulk-grade-price.dto';
 import {
@@ -214,8 +215,9 @@ export class GradePricesService {
   }
 
   /**
-   * #151 — «Зміни протягом дня»: every price written TODAY, newest first, each
-   * paired with the price it replaced. §4.2's «кожна зміна лягає окремим
+   * #151 — «Зміни протягом дня»: every price written over a PERIOD of local
+   * days (today unless asked otherwise), newest first, each paired with the
+   * price it replaced. §4.2's «кожна зміна лягає окремим
    * записом із часом і автором», read as a feed of when, where and by how much.
    *
    * «TODAY» IS `created_at`'s LOCAL DATE, and the `AT TIME ZONE` is not
@@ -236,11 +238,23 @@ export class GradePricesService {
    * operator gets their own point's changes, the owner the network's — «коли,
    * ДЕ, наскільки» is a cross-point question.
    *
-   * UNPAGINATED: bounded by one day of one owner's writes. NOT filtered by
-   * `is_active` on grade or point — history is not filtered by the current
-   * state of the thing it describes (see `ListGradePricesQueryDto`).
+   * THE PERIOD is `[from, to]`, both inclusive; none is today, `from` alone
+   * runs to today, `to` alone is that one day.
+   *
+   * UNPAGINATED, and that is why the period is capped at `MAX_CHANGES_DAYS`:
+   * the list is bounded by at most a month of one owner's writes. The OWNER's
+   * network-wide read has no index to lean on — `IDX_grade_prices_lookup` leads
+   * with the point — so it scans the table and runs one LATERAL lookup per row
+   * in the period. Fine at today's volumes; raising the cap (or paginating) is
+   * the moment to add an index on `created_at`.
+   *
+   * NOT filtered by `is_active` on grade or point — history is not filtered by
+   * the current state of the thing it describes (see `ListGradePricesQueryDto`).
    */
-  async changes(actor: AuthenticatedUser): Promise<PriceChangesResponse> {
+  async changes(
+    actor: AuthenticatedUser,
+    query: PriceChangesQueryDto,
+  ): Promise<PriceChangesResponse> {
     const pointId = resolvePointFilter(actor, undefined);
 
     // `CAST($1 AS text)`: `AT TIME ZONE` is overloaded on `text` and
@@ -252,14 +266,17 @@ export class GradePricesService {
     // ZONE` on a zoneless timestamp returns that instant as a `timestamptz`.
     const dayStart = (date: string) => `(${date})::timestamp AT TIME ZONE CAST($1 AS text)`;
 
-    // «Today» is read ONCE and then passed in, so the `date` this returns and
+    // «Today» is read ONCE and then passed in, so the bounds this returns and
     // the rows it filters cannot straddle midnight between two `now()` calls.
-    const [{ date }]: { date: string }[] = await this.repo.manager.query(
-      `SELECT ${localDate('now()')}::text AS date`,
+    const [{ today }]: { today: string }[] = await this.repo.manager.query(
+      `SELECT ${localDate('now()')}::text AS today`,
       [this.tz.appTimezone],
     );
+    const to = query.to ?? today;
+    const from = query.from ?? query.to ?? today;
+    assertChangesPeriod(from, to);
 
-    const params: unknown[] = [this.tz.appTimezone, date];
+    const params: unknown[] = [this.tz.appTimezone, from, to];
     let pointWhere = '';
     if (pointId) {
       params.push(pointId);
@@ -286,14 +303,15 @@ export class GradePricesService {
             LIMIT 1
          ) prev ON true
         WHERE gp.created_at >= ${dayStart('CAST($2 AS date)')}
-          AND gp.created_at <  ${dayStart('CAST($2 AS date) + 1')}
+          AND gp.created_at <  ${dayStart('CAST($3 AS date) + 1')}
           ${pointWhere}
         ORDER BY gp.created_at DESC, gp.id DESC`,
       params,
     );
 
     return {
-      date,
+      from,
+      to,
       changes: rows.map(toPriceChangeResponse),
     };
   }
@@ -392,7 +410,6 @@ export class GradePricesService {
       })),
     };
   }
-
 
   /**
    * «Поставити всім» — one grade, one set of numbers, every NAMED point, in ONE
@@ -494,5 +511,43 @@ export class GradePricesService {
     );
 
     return toGradePriceResponse(price);
+  }
+}
+
+/** The longest period `changes()` reads, in days, both ends counted. Mirrored
+ *  in the frontend's `pages/prices/model/changesPeriod.ts`; a test there reads
+ *  the declaration below, so change both together. */
+const MAX_CHANGES_DAYS = 31;
+
+/**
+ * The checks on `PriceChangesQueryDto` that need BOTH bounds, or a calendar:
+ * the DTO's regex lets `2026-02-30` through, and Postgres would answer that
+ * cast with a 500. A date that does not survive the round trip through `Date`
+ * is not on the calendar. No arithmetic here beyond calendar days — this file
+ * is under the money lint, and `YYYY-MM-DD` strings order correctly as text.
+ */
+function assertChangesPeriod(from: string, to: string): void {
+  const calendarDay = (value: string): Date | null => {
+    const day = new Date(`${value}T00:00:00Z`);
+    return !Number.isNaN(day.getTime()) && day.toISOString().slice(0, 10) === value ? day : null;
+  };
+  const start = calendarDay(from);
+  const end = calendarDay(to);
+  if (!start || !end) {
+    throw new BadRequestException({ message: 'Not a calendar date', code: 'INVALID_DATE' });
+  }
+  if (to < from) {
+    throw new BadRequestException({
+      message: '`to` is before `from`',
+      code: 'CHANGES_PERIOD_REVERSED',
+    });
+  }
+  const lastAllowed = new Date(start);
+  lastAllowed.setUTCDate(lastAllowed.getUTCDate() + MAX_CHANGES_DAYS - 1);
+  if (end > lastAllowed) {
+    throw new BadRequestException({
+      message: `The period is longer than ${MAX_CHANGES_DAYS} days`,
+      code: 'CHANGES_PERIOD_TOO_LONG',
+    });
   }
 }

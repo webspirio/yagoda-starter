@@ -125,7 +125,9 @@ export interface PriceChange {
 }
 
 export interface PriceChanges {
-  /** The server's today in the app zone, `YYYY-MM-DD`. */
-  date: string;
+  /** The period the list covers, both ends inclusive, `YYYY-MM-DD` in the
+   *  app zone — the server's today on both when no period was asked for. */
+  from: string;
+  to: string;
   changes: PriceChange[];
 }
