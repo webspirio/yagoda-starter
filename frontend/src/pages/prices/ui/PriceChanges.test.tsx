@@ -1,8 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createMemoryRouter, RouterProvider } from 'react-router';
 import { expectNoAxeViolations } from '../../../test-axe';
+import { addDaysIso, todayIso } from '@/shared/lib/date';
 import { PriceChanges } from './PriceChanges';
 import type { PriceChange } from '../model/gradePrice';
 
@@ -161,7 +162,7 @@ describe('PriceChanges', () => {
       expect(search().has('changes_to')).toBe(false);
     });
 
-    it('commits a typed bound on blur, not per keystroke', () => {
+    it('does not commit a date mid-edit, and commits it on blur', () => {
       changesMock.mockReturnValue(loaded([], '2026-09-20', '2026-09-24'));
       const { search } = renderAt('/prices?changes_from=2026-09-20&changes_to=2026-09-24');
       const from = screen.getByLabelText('From');
@@ -170,11 +171,36 @@ describe('PriceChanges', () => {
       fireEvent.change(from, { target: { value: '2026-01-18' } });
       expect(search().get('changes_from')).toBe('2026-09-20');
       expect(search().get('changes_to')).toBe('2026-09-24');
-      // …and nothing is committed until the edit is finished.
+      // …and the finished edit commits on blur, without waiting.
       fireEvent.change(from, { target: { value: '2026-09-18' } });
       fireEvent.blur(from);
       expect(search().get('changes_from')).toBe('2026-09-18');
       expect(search().get('changes_to')).toBe('2026-09-24');
+    });
+
+    /* The native picker fires `change` and keeps focus — no blur, no Enter. */
+    it('commits a date picked from the calendar once it settles', () => {
+      vi.useFakeTimers();
+      try {
+        changesMock.mockReturnValue(loaded([], '2026-09-20', '2026-09-24'));
+        const { search } = renderAt('/prices?changes_from=2026-09-20&changes_to=2026-09-24');
+        const from = screen.getByLabelText('From');
+        from.focus();
+
+        fireEvent.change(from, { target: { value: '2026-01-18' } });
+        act(() => vi.advanceTimersByTime(300));
+        fireEvent.change(from, { target: { value: '2026-09-18' } });
+        act(() => vi.advanceTimersByTime(300));
+        // The January keystroke was superseded inside the window.
+        expect(search().get('changes_from')).toBe('2026-09-20');
+
+        act(() => vi.advanceTimersByTime(300));
+        expect(search().get('changes_from')).toBe('2026-09-18');
+        expect(search().get('changes_to')).toBe('2026-09-24');
+        expect(screen.getByLabelText('From')).toHaveFocus();
+      } finally {
+        vi.useRealTimers();
+      }
     });
 
     it('commits on Enter and keeps focus in the field', () => {
@@ -204,9 +230,9 @@ describe('PriceChanges', () => {
       changesMock.mockReturnValue(loaded([]));
       renderAt('/prices?changes_from=2026-09-20&changes_to=2026-09-24');
       await userEvent.setup().click(screen.getByRole('button', { name: 'Yesterday' }));
-      const from = (screen.getByLabelText('From') as HTMLInputElement).value;
-      expect(from).not.toBe('2026-09-20');
-      expect(screen.getByLabelText('To')).toHaveValue(from);
+      const yesterday = addDaysIso(todayIso(), -1);
+      expect(screen.getByLabelText('From')).toHaveValue(yesterday);
+      expect(screen.getByLabelText('To')).toHaveValue(yesterday);
     });
 
     it('heads each day with a level-2 heading that names its section', () => {

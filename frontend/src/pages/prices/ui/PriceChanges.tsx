@@ -171,13 +171,22 @@ export function PriceChanges() {
   );
 }
 
+/** How long a pickable draft must sit unchanged before it commits on its own. */
+const SETTLE_MS = 600;
+
 /**
- * One bound of the period. The typed value is a DRAFT, committed on blur or
- * Enter — never per keystroke. A native date input reports a complete date
- * after every segment edit: typing `12` into the month passes through January,
- * and a year passes through `0002-…` and `0202-…`. Committing those would fire
- * a request per keystroke and drag the other bound to a period nobody asked
- * for.
+ * One bound of the period. The typed value is a DRAFT — never committed per
+ * keystroke. A native date input reports a complete date after every segment
+ * edit: typing `12` into the month passes through January, and a year passes
+ * through `0002-…` and `0202-…`. Committing those would fire a request per
+ * keystroke and drag the other bound to a period nobody asked for.
+ *
+ * It commits on blur or Enter at once, and otherwise once a pickable draft has
+ * SETTLED for `SETTLE_MS`. The settle path is the one the native calendar
+ * picker takes: choosing a date fires `change` but leaves focus in the field,
+ * so without it the list would keep the old period under the new label — and
+ * on touch the picker is the only way in. The keystrokes of one segment land
+ * well inside the window.
  *
  * The draft follows `value` when it changes from outside (a preset, the other
  * bound dragging this one) by remembering the value it was last synced to —
@@ -206,6 +215,12 @@ function DateBound({
     if (!isPickableDate(draft, today)) setDraft(value);
     else if (draft !== value) onCommit(draft);
   };
+
+  useEffect(() => {
+    if (draft === value || !isPickableDate(draft, today)) return;
+    const timer = setTimeout(() => onCommit(draft), SETTLE_MS);
+    return () => clearTimeout(timer);
+  }, [draft, value, today, onCommit]);
 
   return (
     <label className="flex items-center gap-1.5 text-xs text-muted-foreground">

@@ -10,6 +10,9 @@ import {
   withFrom,
   withTo,
 } from './changesPeriod';
+// The backend service's SOURCE, for the cap test at the bottom. If this path
+// goes stale (the service moved or was renamed), this suite fails to resolve —
+// point it at wherever `MAX_CHANGES_DAYS` now lives.
 import serviceSource from '../../../../../backend/src/grade-prices/grade-prices.service.ts?raw';
 
 const TODAY = '2026-09-25';
@@ -150,6 +153,8 @@ describe('isPickableDate', () => {
  */
 describe('the cap', () => {
   it('matches the one GradePricesService enforces', () => {
-    expect(serviceSource).toMatch(new RegExp(`const MAX_CHANGES_DAYS = ${MAX_CHANGES_DAYS};`));
+    expect(serviceSource).toMatch(
+      new RegExp(`^const MAX_CHANGES_DAYS = ${MAX_CHANGES_DAYS};$`, 'm'),
+    );
   });
 });

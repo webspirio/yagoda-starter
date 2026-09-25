@@ -246,10 +246,10 @@ export class GradePricesService {
    * network-wide read has no index to lean on — `IDX_grade_prices_lookup` leads
    * with the point — so it scans the table and runs one LATERAL lookup per row
    * in the period. Fine at today's volumes; raising the cap (or paginating) is
-   * the moment to add an index on `created_at`. The cap is mirrored in the
-   * frontend's `changesPeriod.ts`, and a test there reads this line. NOT filtered by
-   * `is_active` on grade or point — history is not filtered by the current
-   * state of the thing it describes (see `ListGradePricesQueryDto`).
+   * the moment to add an index on `created_at`.
+   *
+   * NOT filtered by `is_active` on grade or point — history is not filtered by
+   * the current state of the thing it describes (see `ListGradePricesQueryDto`).
    */
   async changes(
     actor: AuthenticatedUser,
@@ -514,7 +514,9 @@ export class GradePricesService {
   }
 }
 
-/** The longest period `changes()` reads, in days, both ends counted. */
+/** The longest period `changes()` reads, in days, both ends counted. Mirrored
+ *  in the frontend's `pages/prices/model/changesPeriod.ts`; a test there reads
+ *  the declaration below, so change both together. */
 const MAX_CHANGES_DAYS = 31;
 
 /**
