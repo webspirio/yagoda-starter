@@ -162,45 +162,68 @@ describe('PriceChanges', () => {
       expect(search().has('changes_to')).toBe(false);
     });
 
-    it('does not commit a date mid-edit, and commits it on blur', () => {
+    it('never commits a typed date mid-edit, however long the pause', () => {
+      vi.useFakeTimers();
+      try {
+        changesMock.mockReturnValue(loaded([], '2026-09-20', '2026-09-24'));
+        const { search } = renderAt('/prices?changes_from=2026-09-20&changes_to=2026-09-24');
+        const to = screen.getByLabelText('To');
+        to.focus();
+
+        // «По» → the 10th: the first digit alone is the complete date 2026-09-01,
+        // which would drag «З» down to it if it were committed.
+        fireEvent.keyDown(to, { key: '1' });
+        fireEvent.change(to, { target: { value: '2026-09-01' } });
+        act(() => vi.advanceTimersByTime(5_000));
+        expect(search().get('changes_from')).toBe('2026-09-20');
+        expect(search().get('changes_to')).toBe('2026-09-24');
+
+        fireEvent.keyDown(to, { key: '0' });
+        fireEvent.change(to, { target: { value: '2026-09-10' } });
+        fireEvent.blur(to);
+        // Reversed against «З», so «З» follows — but to the FINISHED date.
+        expect(search().get('changes_from')).toBe('2026-09-10');
+        expect(search().get('changes_to')).toBe('2026-09-10');
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('commits a typed date on blur', () => {
       changesMock.mockReturnValue(loaded([], '2026-09-20', '2026-09-24'));
       const { search } = renderAt('/prices?changes_from=2026-09-20&changes_to=2026-09-24');
       const from = screen.getByLabelText('From');
 
-      // A month segment on its way to «12» passes through January…
-      fireEvent.change(from, { target: { value: '2026-01-18' } });
-      expect(search().get('changes_from')).toBe('2026-09-20');
-      expect(search().get('changes_to')).toBe('2026-09-24');
-      // …and the finished edit commits on blur, without waiting.
+      fireEvent.keyDown(from, { key: '8' });
       fireEvent.change(from, { target: { value: '2026-09-18' } });
+      expect(search().get('changes_from')).toBe('2026-09-20');
       fireEvent.blur(from);
       expect(search().get('changes_from')).toBe('2026-09-18');
       expect(search().get('changes_to')).toBe('2026-09-24');
     });
 
-    /* The native picker fires `change` and keeps focus — no blur, no Enter. */
-    it('commits a date picked from the calendar once it settles', () => {
-      vi.useFakeTimers();
-      try {
-        changesMock.mockReturnValue(loaded([], '2026-09-20', '2026-09-24'));
-        const { search } = renderAt('/prices?changes_from=2026-09-20&changes_to=2026-09-24');
-        const from = screen.getByLabelText('From');
-        from.focus();
+    /* The native picker fires `change` with no keystroke and keeps focus. */
+    it('commits a date picked from the calendar at once, keeping focus', () => {
+      changesMock.mockReturnValue(loaded([], '2026-09-20', '2026-09-24'));
+      const { search } = renderAt('/prices?changes_from=2026-09-20&changes_to=2026-09-24');
+      const from = screen.getByLabelText('From');
+      from.focus();
 
-        fireEvent.change(from, { target: { value: '2026-01-18' } });
-        act(() => vi.advanceTimersByTime(300));
-        fireEvent.change(from, { target: { value: '2026-09-18' } });
-        act(() => vi.advanceTimersByTime(300));
-        // The January keystroke was superseded inside the window.
-        expect(search().get('changes_from')).toBe('2026-09-20');
+      fireEvent.change(from, { target: { value: '2026-09-18' } });
+      expect(search().get('changes_from')).toBe('2026-09-18');
+      expect(search().get('changes_to')).toBe('2026-09-24');
+      expect(screen.getByLabelText('From')).toHaveFocus();
+    });
 
-        act(() => vi.advanceTimersByTime(300));
-        expect(search().get('changes_from')).toBe('2026-09-18');
-        expect(search().get('changes_to')).toBe('2026-09-24');
-        expect(screen.getByLabelText('From')).toHaveFocus();
-      } finally {
-        vi.useRealTimers();
-      }
+    it('lets the picker commit at once even after a keystroke earlier', () => {
+      changesMock.mockReturnValue(loaded([], '2026-09-20', '2026-09-24'));
+      const { search } = renderAt('/prices?changes_from=2026-09-20&changes_to=2026-09-24');
+      const from = screen.getByLabelText('From');
+
+      fireEvent.keyDown(from, { key: 'ArrowUp' });
+      fireEvent.pointerDown(from);
+      fireEvent.change(from, { target: { value: '2026-09-18' } });
+      expect(search().get('changes_from')).toBe('2026-09-18');
     });
 
     it('commits on Enter and keeps focus in the field', () => {
@@ -209,7 +232,9 @@ describe('PriceChanges', () => {
       const to = screen.getByLabelText('To');
       to.focus();
 
+      fireEvent.keyDown(to, { key: '2' });
       fireEvent.change(to, { target: { value: '2026-09-22' } });
+      expect(search().get('changes_to')).toBe('2026-09-24');
       fireEvent.keyDown(to, { key: 'Enter' });
       expect(search().get('changes_to')).toBe('2026-09-22');
       expect(screen.getByLabelText('To')).toHaveFocus();
@@ -220,6 +245,7 @@ describe('PriceChanges', () => {
       const { search } = renderAt('/prices?changes_from=2026-09-20&changes_to=2026-09-24');
       const from = screen.getByLabelText('From');
 
+      fireEvent.keyDown(from, { key: '2' });
       fireEvent.change(from, { target: { value: '0202-09-18' } });
       fireEvent.blur(from);
       expect(search().get('changes_from')).toBe('2026-09-20');

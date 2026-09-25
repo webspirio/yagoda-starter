@@ -1,4 +1,4 @@
-import { useEffect, useId, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { Clock } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useSearchParams } from 'react-router';
@@ -171,22 +171,24 @@ export function PriceChanges() {
   );
 }
 
-/** How long a pickable draft must sit unchanged before it commits on its own. */
-const SETTLE_MS = 600;
+/** Keys that move focus or only modify another key — not an edit of the date. */
+const NON_EDIT_KEYS = new Set(['Tab', 'Shift', 'Control', 'Alt', 'Meta', 'Escape']);
 
 /**
- * One bound of the period. The typed value is a DRAFT — never committed per
- * keystroke. A native date input reports a complete date after every segment
- * edit: typing `12` into the month passes through January, and a year passes
- * through `0002-…` and `0202-…`. Committing those would fire a request per
- * keystroke and drag the other bound to a period nobody asked for.
+ * One bound of the period, with TWO ways in that must commit differently.
  *
- * It commits on blur or Enter at once, and otherwise once a pickable draft has
- * SETTLED for `SETTLE_MS`. The settle path is the one the native calendar
- * picker takes: choosing a date fires `change` but leaves focus in the field,
- * so without it the list would keep the old period under the new label — and
- * on touch the picker is the only way in. The keystrokes of one segment land
- * well inside the window.
+ * TYPING commits on blur or Enter only. A native date input reports a
+ * complete date after every segment edit: typing `10` into the day passes
+ * through the 1st, `12` into the month through January, a year through
+ * `0002-…` and `0202-…`. Any commit mid-edit — at once or after a pause — fires
+ * a request for a period nobody asked for and can drag the OTHER bound
+ * (`withFrom` / `withTo`), losing it for good.
+ *
+ * THE CALENDAR PICKER commits at once. Choosing a date fires `change` with no
+ * keystroke and leaves focus in the field, so waiting for a blur would leave
+ * the old period's rows under the new label — and on touch the picker is the
+ * only way in. A keystroke in the field is what tells the two apart, so no
+ * timer has to guess.
  *
  * The draft follows `value` when it changes from outside (a preset, the other
  * bound dragging this one) by remembering the value it was last synced to —
@@ -210,17 +212,15 @@ function DateBound({
     setSyncedTo(value);
     setDraft(value);
   }
+  // Set by a keystroke in the field, cleared by a commit: «this draft is being
+  // typed». Only read in handlers, never during render.
+  const typing = useRef(false);
 
-  const commit = () => {
-    if (!isPickableDate(draft, today)) setDraft(value);
-    else if (draft !== value) onCommit(draft);
+  const commit = (next: string) => {
+    typing.current = false;
+    if (!isPickableDate(next, today)) setDraft(value);
+    else if (next !== value) onCommit(next);
   };
-
-  useEffect(() => {
-    if (draft === value || !isPickableDate(draft, today)) return;
-    const timer = setTimeout(() => onCommit(draft), SETTLE_MS);
-    return () => clearTimeout(timer);
-  }, [draft, value, today, onCommit]);
 
   return (
     <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
@@ -231,10 +231,19 @@ function DateBound({
         value={draft}
         min={MIN_CHANGES_DATE}
         max={today}
-        onChange={(e) => setDraft(e.target.value)}
-        onBlur={commit}
+        onChange={(e) => {
+          setDraft(e.target.value);
+          if (!typing.current && isPickableDate(e.target.value, today)) commit(e.target.value);
+        }}
+        onBlur={() => commit(draft)}
+        // A pointer in the field (opening the picker, clicking a segment)
+        // starts a fresh gesture; a keystroke after it flags typing again.
+        onPointerDown={() => {
+          typing.current = false;
+        }}
         onKeyDown={(e) => {
-          if (e.key === 'Enter') commit();
+          if (e.key === 'Enter') commit(draft);
+          else if (!NON_EDIT_KEYS.has(e.key)) typing.current = true;
         }}
       />
     </label>
