@@ -860,9 +860,26 @@
     "returned": {
       "label": "Of them, our crates",
       "held": "of the {{held}} crates this person holds",
-      "deposit": "deposit to refund {{amount}}",
+      "deposit": "Hand back from the crates drawer:",
       "receipt": "on a receipt, no money",
       "exceedsTare": "More returned crates than crate tare on this receipt"
+    },
+    "refundConfirm": {
+      "titleTwo": "Hand the person two sums",
+      "titleOne": "Hand back the deposit",
+      "berries": "For berries",
+      "berryDrawer": "from the berry drawer",
+      "deposit_one": "Deposit for {{count}} crate",
+      "deposit_other": "Deposit for {{count}} crates",
+      "crateDrawer": "from the crates drawer",
+      "receiptPart_one": "{{count}} crate on a receipt — no money",
+      "receiptPart_other": "{{count}} crates on a receipt — no money",
+      "confirm": "Handed over {{amount}}",
+      "pending": "Accept",
+      "back": "Back",
+      "loading": "Working out the deposit…",
+      "failed": "Could not work out the deposit",
+      "retry": "Try again"
     },
     "totals": {
       "eyebrow": "4 · Settlement",

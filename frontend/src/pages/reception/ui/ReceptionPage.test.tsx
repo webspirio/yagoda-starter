@@ -1311,9 +1311,35 @@ describe('ReceptionPage — line editor ergonomics (#117)', () => {
   });
 });
 
+const RETURN_ON_RECEIPT = {
+  data: {
+    allocations: [
+      { issuance_id: 'i1', units: 30, per_unit: '0.00', amount: '0.00', mode: 'receipt', code: 'C1' },
+    ],
+    deposit_refund: '0.00',
+    shortfall: 0,
+  },
+  isFetching: false,
+  isError: false,
+  refetch: vi.fn(),
+};
+const RETURN_ON_DEPOSIT = {
+  ...RETURN_ON_RECEIPT,
+  data: {
+    allocations: [
+      { issuance_id: 'i1', units: 30, per_unit: '120.00', amount: '3600.00', mode: 'deposit', code: 'C1' },
+    ],
+    deposit_refund: '3600.00',
+    shortfall: 0,
+  },
+};
+
 describe('ReceptionPage — «З них наших ящиків» (our rented crates coming back)', () => {
   beforeEach(() => {
     previewMock.mockReturnValue(SETTLED);
+    // A розписка-only return refunds nothing, so no confirmation stands in
+    // the way of the submit; the deposit cases below override this.
+    returnPreviewMock.mockReturnValue(RETURN_ON_RECEIPT);
     crateBalanceMock.mockImplementation((id: string | null) => ({
       data:
         id === 's1'
@@ -1340,6 +1366,66 @@ describe('ReceptionPage — «З них наших ящиків» (our rented cr
     await waitFor(() =>
       expect(createMock).toHaveBeenCalledWith(expect.objectContaining({ returned_crates: 30 })),
     );
+  });
+
+  it('stops a receipt that refunds a deposit at a confirmation, and writes only once it is given', async () => {
+    returnPreviewMock.mockReturnValue(RETURN_ON_DEPOSIT);
+    const user = userEvent.setup();
+    renderReception();
+    await user.click(screen.getByRole('button', { name: 'pick-nina' }));
+    await fillDraft(user);
+    const units = screen.getByLabelText('Tare units 1');
+    await user.clear(units);
+    await user.type(units, '40');
+    await waitFor(() =>
+      expect((screen.getByLabelText('Of them, our crates') as HTMLInputElement).value).toBe('30'),
+    );
+
+    await user.click(screen.getByRole('button', { name: /^Accept/ }));
+    const dialog = await screen.findByRole('alertdialog');
+    expect(dialog).toHaveTextContent('Deposit for 30 crates — 3,600.00 ₴ from the crates drawer');
+    expect(returnPreviewMock).toHaveBeenCalledWith(
+      expect.objectContaining({ supplierId: 's1', units: 30 }),
+    );
+    expect(createMock).not.toHaveBeenCalled();
+
+    await user.click(
+      within(dialog).getByRole('button', { name: 'Handed over 3,600.00 ₴' }),
+    );
+    await waitFor(() =>
+      expect(createMock).toHaveBeenCalledWith(expect.objectContaining({ returned_crates: 30 })),
+    );
+    expect(createMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('«Back» on the confirmation writes nothing and keeps the form as it was', async () => {
+    returnPreviewMock.mockReturnValue(RETURN_ON_DEPOSIT);
+    const user = userEvent.setup();
+    renderReception();
+    await user.click(screen.getByRole('button', { name: 'pick-nina' }));
+    await fillDraft(user);
+
+    await user.click(screen.getByRole('button', { name: /^Accept/ }));
+    const dialog = await screen.findByRole('alertdialog');
+    await user.click(within(dialog).getByRole('button', { name: 'Back' }));
+
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
+    expect(createMock).not.toHaveBeenCalled();
+    expect(screen.getByLabelText('Of them, our crates')).toBeInTheDocument();
+  });
+
+  it('asks nothing when the return is on a розписка only — the receipt goes straight through', async () => {
+    const user = userEvent.setup();
+    renderReception();
+    await user.click(screen.getByRole('button', { name: 'pick-nina' }));
+    await fillDraft(user);
+
+    await user.click(screen.getByRole('button', { name: /^Accept/ }));
+    await waitFor(() =>
+      expect(createMock).toHaveBeenCalledWith(expect.objectContaining({ returned_crates: 12 })),
+    );
+    expect(createMock).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole('alertdialog')).toBeNull();
   });
 
   it('is hidden when the supplier holds none of our crates', async () => {

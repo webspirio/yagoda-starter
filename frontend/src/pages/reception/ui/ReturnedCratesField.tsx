@@ -97,12 +97,22 @@ export function ReturnedCratesField({
                 if (canonical !== value) onChange(canonical);
               }}
             />
+            {/* A refund is cash the operator must hand over, so it reads as
+                an instruction with the sum emphasised — not muted helper text
+                (2026-09-25: the old grey line was easy to miss). */}
             {refund !== null ? (
-              <span aria-live="polite" className="text-sm text-muted-foreground">
-                {isZero(refund)
-                  ? t('reception.returned.receipt')
-                  : t('reception.returned.deposit', { amount: formatUah(refund, locale) })}
-              </span>
+              isZero(refund) ? (
+                <span aria-live="polite" className="text-sm text-muted-foreground">
+                  {t('reception.returned.receipt')}
+                </span>
+              ) : (
+                <span aria-live="polite" className="text-sm font-medium text-foreground">
+                  {t('reception.returned.deposit')}{' '}
+                  <strong className="font-mono text-base text-amber">
+                    {formatUah(refund, locale)}
+                  </strong>
+                </span>
+              )
             ) : null}
           </div>
         )}

@@ -876,9 +876,30 @@
     "returned": {
       "label": "З них наших ящиків",
       "held": "із {{held}} ящиків, що в цієї людини",
-      "deposit": "завдаток до повернення {{amount}}",
+      "deposit": "Видати з каси за ящики:",
       "receipt": "за розпискою, без грошей",
       "exceedsTare": "Наших ящиків більше, ніж ящиків у тарі цієї квитанції"
+    },
+    "refundConfirm": {
+      "titleTwo": "Видайте людині дві суми",
+      "titleOne": "Поверніть завдаток",
+      "berries": "За ягоду",
+      "berryDrawer": "з каси за ягоду",
+      "deposit_one": "Завдаток за {{count}} ящик",
+      "deposit_few": "Завдаток за {{count}} ящики",
+      "deposit_many": "Завдаток за {{count}} ящиків",
+      "deposit_other": "Завдаток за {{count}} ящиків",
+      "crateDrawer": "з каси за ящики",
+      "receiptPart_one": "{{count}} ящик за розпискою — без грошей",
+      "receiptPart_few": "{{count}} ящики за розпискою — без грошей",
+      "receiptPart_many": "{{count}} ящиків за розпискою — без грошей",
+      "receiptPart_other": "{{count}} ящиків за розпискою — без грошей",
+      "confirm": "Видав {{amount}}",
+      "pending": "Прийняти",
+      "back": "Назад",
+      "loading": "Рахуємо завдаток…",
+      "failed": "Не вдалося порахувати завдаток",
+      "retry": "Спробувати ще"
     },
     "totals": {
       "eyebrow": "4 · Розрахунок",

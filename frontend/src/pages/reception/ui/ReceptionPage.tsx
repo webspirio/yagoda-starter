@@ -30,6 +30,7 @@ import { suggestedPaid } from '../lib/suggestedPaid';
 import {
   crateTareUnits,
   emptyLine,
+  parseCount,
   toCreateBody,
   type IntakeFormValues,
 } from '../model/intakeForm';
@@ -38,6 +39,7 @@ import { LineEditor } from './LineEditor';
 import { LinesTable, type CommittedLine } from './LinesTable';
 import { TotalsSection } from './TotalsSection';
 import { ReturnedCratesField } from './ReturnedCratesField';
+import { ConfirmRefundDialog } from './ConfirmRefundDialog';
 import { TodayReceipts } from './TodayReceipts';
 import { PointStatePanel } from './PointStatePanel';
 import { ShiftBanner } from './ShiftBanner';
@@ -127,6 +129,9 @@ export function ReceptionPage() {
   // `reset()` above may have just emptied — so «З них наших ящиків» remounts
   // and pre-fills afresh.
   const [supplierPick, setSupplierPick] = useState(0);
+  // A submit held back for «Видайте людині дві суми» (`ConfirmRefundDialog`):
+  // the validated form values, waiting on the operator's confirmation.
+  const [pendingSubmit, setPendingSubmit] = useState<IntakeFormValues | null>(null);
 
   const shiftOpen = shift.data != null;
   const balance = useSupplierBalanceQuery(values.supplier_id || null);
@@ -290,6 +295,20 @@ export function ReceptionPage() {
     }
   };
 
+  // Every receipt that returns our crates passes through `ConfirmRefundDialog`,
+  // which decides on the server's FRESH split whether there is a deposit to
+  // hand over — and confirms straight through when there is none.
+  const requestSubmit = (formValues: IntakeFormValues) => {
+    if (parseCount(formValues.returned_crates) > 0) setPendingSubmit(formValues);
+    else void submitIntake(formValues);
+  };
+  // The body the pending submit WOULD send — the same `toCreateBody` the write
+  // uses, so the dialog names exactly the berry payout and crates that go out.
+  const pendingBody =
+    pendingSubmit !== null
+      ? toCreateBody({ ...pendingSubmit, paid_amount: paidShown }, bodyPointId)
+      : null;
+
   const handleOpenShift = () => {
     setOpenDialogInstance((n) => n + 1);
     setOpenDialogOpen(true);
@@ -377,10 +396,10 @@ export function ReceptionPage() {
               // inline supplier dialog (`SupplierPicker` → `SupplierFormDialog`)
               // is portaled to `document.body` by `shared/ui/dialog.tsx`, but
               // is still a REACT descendant of this form, so without this
-              // guard its own submit would reach `handleSubmit(submitIntake)`
+              // guard its own submit would reach `handleSubmit(requestSubmit)`
               // — a real `POST /intakes` nobody pressed «Прийняти» for.
               if (!isOwnFormEvent(e)) return;
-              void handleSubmit(submitIntake)(e);
+              void handleSubmit(requestSubmit)(e);
             }}
             // Enter is how an operator moves between fields on the scale's
             // numeric pad; it must never fire a submit the form isn't ready
@@ -524,6 +543,19 @@ export function ReceptionPage() {
           setOpenDialogOpen(false);
         }}
       />
+      {pendingSubmit !== null && pendingBody !== null ? (
+        <ConfirmRefundDialog
+          supplierId={pendingSubmit.supplier_id}
+          pointId={bodyPointId ?? undefined}
+          units={pendingBody.returned_crates ?? 0}
+          paid={pendingBody.paid_amount ?? null}
+          onConfirm={() => {
+            setPendingSubmit(null);
+            void submitIntake(pendingSubmit);
+          }}
+          onCancel={() => setPendingSubmit(null)}
+        />
+      ) : null}
       <ReceiptDialog
         key={receiptId}
         intakeId={receiptId}

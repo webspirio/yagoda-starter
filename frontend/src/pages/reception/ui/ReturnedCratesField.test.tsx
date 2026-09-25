@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { expectNoAxeViolations } from '../../../test-axe';
 import type { CrateBalance, CrateReturnPreview } from '@/entities/crate';
@@ -140,7 +140,10 @@ describe('ReturnedCratesField', () => {
       data: args.units > 0 ? DEPOSIT : undefined,
     }));
     render(<Harness initialTare={40} />);
-    expect(await screen.findByText(/deposit to refund/)).toBeTruthy();
+    const line = await screen.findByText(/Hand back from the crates drawer/);
+    expect(line).toHaveTextContent('Hand back from the crates drawer: 3,600.00 ₴');
+    // The sum itself is the emphasised part, not muted helper text.
+    expect(within(line).getByText('3,600.00 ₴').tagName).toBe('STRONG');
     expect(previewMock).toHaveBeenLastCalledWith({
       supplierId: 's1',
       units: 30,
@@ -160,7 +163,7 @@ describe('ReturnedCratesField', () => {
     previewMock.mockReturnValue({ data: DEPOSIT });
     render(<Harness initialTare={0} />);
     await waitFor(() => expect(input().value).toBe('0'));
-    expect(screen.queryByText(/deposit to refund/)).toBeNull();
+    expect(screen.queryByText(/Hand back from the crates drawer/)).toBeNull();
   });
 
   it('has no axe violations', async () => {
