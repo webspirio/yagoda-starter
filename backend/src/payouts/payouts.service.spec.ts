@@ -1,4 +1,5 @@
 import { ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
+import { IsNull } from 'typeorm';
 import { UserRole } from '../users/user-role.enum';
 import { PayoutsService } from './payouts.service';
 import { ShiftStatus } from '../shifts/shift-status.enum';
@@ -477,6 +478,47 @@ describe('PayoutsService', () => {
       expect(manager.create).toHaveBeenCalledWith(
         expect.anything(),
         expect.objectContaining({ intake_id: null, amount: '380.00', paid_by_user_id: 'u-oksana' }),
+      );
+    });
+  });
+
+  describe('helpers used by the intake void', () => {
+    it('findLiveBoundForUpdate locks the live payout bound to the intake', async () => {
+      manager.findOne.mockResolvedValue(payout());
+
+      await service.findLiveBoundForUpdate(manager as never, 'intake-1');
+
+      expect(manager.findOne).toHaveBeenCalledWith(expect.anything(), {
+        where: { intake_id: 'intake-1', voided_at: IsNull() },
+        lock: { mode: 'pessimistic_write' },
+      });
+    });
+
+    it('voidWithin writes the trio and audits payout.voided', async () => {
+      const row = payout();
+
+      await service.voidWithin(manager as never, oksana, row as never, 'помилка');
+
+      const saved = manager.save.mock.calls[0][1] as Record<string, unknown>;
+      expect(saved).toMatchObject({ voided_by_user_id: oksana.sub, void_reason: 'помилка' });
+      expect(saved.voided_at).toBeInstanceOf(Date);
+      expect(audit.record).toHaveBeenCalledWith(
+        expect.objectContaining({ action: 'payout.voided', target_id: row.id, note: 'помилка' }),
+        manager,
+      );
+    });
+
+    it('settleReturnWithin records the return and audits payout.return-settled', async () => {
+      const row = payout({ voided_at: new Date() });
+
+      await service.settleReturnWithin(manager as never, owner, row as never, 'повернув');
+
+      const saved = manager.save.mock.calls[0][1] as Record<string, unknown>;
+      expect(saved).toMatchObject({ return_settled_by_user_id: owner.sub, return_note: 'повернув' });
+      expect(saved.return_settled_at).toBeInstanceOf(Date);
+      expect(audit.record).toHaveBeenCalledWith(
+        expect.objectContaining({ action: 'payout.return-settled', note: 'повернув' }),
+        manager,
       );
     });
   });

@@ -6,7 +6,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, EntityManager, Repository } from 'typeorm';
+import { DataSource, EntityManager, IsNull, Repository } from 'typeorm';
 import { Payout } from './payout.entity';
 import { CreatePayoutDto } from './dto/create-payout.dto';
 import { SettleReturnDto } from './dto/settle-return.dto';
@@ -249,69 +249,58 @@ export class PayoutsService {
     }
   }
 
-  /**
-   * §9.4, identical to `IntakesService.void` — an operator may void only a
-   * document they recorded themselves, and only while the shift is open.
-   *
-   * VOIDING DOES NOT RETURN THE CASH. §9.3: «сторновано виплату 8 000,00 ₴ →
-   * каса НЕ виросла на 8 000». Nothing here touches `return_settled_at`; that
-   * is a separate, owner-only act recording that a human physically put the
-   * money back.
-   */
+  /** §9.4 as in `IntakesService.void`. Voiding does not return the cash (§9.3). */
   async void(actor: AuthenticatedUser, id: string, dto: VoidDocumentDto): Promise<PayoutResponse> {
-    // THE LOAD AND THE STATE CHECK ARE INSIDE THE TRANSACTION, under the row
-    // lock `loadForWrite` takes. Checking `voided_at` before the transaction
-    // opens is a check-then-write: two requests — a double-tapped button, or a
-    // client retry on a slow response — both read a null `voided_at`, both
-    // write, and the audit log ends up with two `payout.voided` entries naming
-    // possibly different actors and reasons while `voided_by_user_id` is
-    // last-writer-wins. §6.5's «409 if already voided» has to be enforced
-    // where the write happens or it is not enforced at all.
+    // Load and state check under the row lock, or a double tap audits twice.
     return this.dataSource.transaction(async (m) => {
       const { payout, shift } = await this.loadForWrite(actor, id, { requireAuthor: true }, m);
-
       if (payout.voided_at) {
         throw new ConflictException({
           message: 'That payout is already voided',
           code: 'ALREADY_VOIDED',
         });
       }
-
-      payout.voided_at = new Date();
-      payout.voided_by_user_id = actor.sub;
-      payout.void_reason = dto.reason;
-      const saved = await m.save(Payout, payout);
-
-      await this.audit.record(
-        {
-          action: 'payout.voided',
-          actor_id: actor.sub,
-          target_type: 'payout',
-          target_id: saved.id,
-          after: { code: saved.code, amount: saved.amount },
-          note: dto.reason,
-        },
-        m,
-      );
-
-      return toPayoutResponse(saved, shift);
+      return toPayoutResponse(await this.voidWithin(m, actor, payout, dto.reason), shift);
     });
   }
 
+  /** The live payout issued with this receipt, locked for the caller's transaction. */
+  findLiveBoundForUpdate(m: EntityManager, intakeId: string): Promise<Payout | null> {
+    return m.findOne(Payout, {
+      where: { intake_id: intakeId, voided_at: IsNull() },
+      lock: { mode: 'pessimistic_write' },
+    });
+  }
+
+  /** Voids a payout the caller already loaded, locked and authorised. */
+  async voidWithin(
+    m: EntityManager,
+    actor: AuthenticatedUser,
+    payout: Payout,
+    reason: string,
+  ): Promise<Payout> {
+    payout.voided_at = new Date();
+    payout.voided_by_user_id = actor.sub;
+    payout.void_reason = reason;
+    const saved = await m.save(Payout, payout);
+    await this.audit.record(
+      {
+        action: 'payout.voided',
+        actor_id: actor.sub,
+        target_type: 'payout',
+        target_id: saved.id,
+        after: { code: saved.code, amount: saved.amount },
+        note: reason,
+      },
+      m,
+    );
+    return saved;
+  }
+
   /**
-   * The gesture that records the cash physically coming back after a void.
-   *
-   * OWNER ONLY, AND THAT IS THE POINT. An operator who could both void their
-   * own payout and certify the refill would close, alone and unobserved, the
-   * exact loop §9.3 names as «спосіб красти». The person holding the drawer is
-   * not the person who attests it was refilled.
-   *
-   * `return_settled_at` IS NOW READ by the cash formula — `movementsSql` in
-   * `point-cash.service.ts` credits a settled return to the shift whose
-   * business date matches the settlement's LOCAL date (§4.2, reversed from the
-   * payout's own day in 7db4619). This comment said «nothing in this slice
-   * reads it» when the column shipped ahead of its consumer; both consumers
-   * now exist.
+   * Owner-only because whoever holds the drawer must not attest its refill (§9.3).
+   * `return_settled_at` is read by `point-cash`'s `movementsSql`.
+   * No amount — always the whole payout.
    */
   async settleReturn(
     actor: AuthenticatedUser,
@@ -345,28 +334,36 @@ export class PayoutsService {
         });
       }
 
-      payout.return_settled_at = new Date();
-      payout.return_settled_by_user_id = actor.sub;
-      // NO AMOUNT. It always equals `payout.amount` — «внесення завжди на всю
-      // суму: часткового не буває» — and a second copy is what the DBML header
-      // forbids.
-      payout.return_note = dto.note ?? null;
-      const saved = await m.save(Payout, payout);
-
-      await this.audit.record(
-        {
-          action: 'payout.return-settled',
-          actor_id: actor.sub,
-          target_type: 'payout',
-          target_id: saved.id,
-          after: { code: saved.code, amount: saved.amount },
-          note: dto.note ?? null,
-        },
-        m,
+      return toPayoutResponse(
+        await this.settleReturnWithin(m, actor, payout, dto.note ?? null),
+        shift,
       );
-
-      return toPayoutResponse(saved, shift);
     });
+  }
+
+  /** Records the full cash return of a voided payout the caller already locked. Owner-only is the caller's check. */
+  async settleReturnWithin(
+    m: EntityManager,
+    actor: AuthenticatedUser,
+    payout: Payout,
+    note: string | null,
+  ): Promise<Payout> {
+    payout.return_settled_at = new Date();
+    payout.return_settled_by_user_id = actor.sub;
+    payout.return_note = note;
+    const saved = await m.save(Payout, payout);
+    await this.audit.record(
+      {
+        action: 'payout.return-settled',
+        actor_id: actor.sub,
+        target_type: 'payout',
+        target_id: saved.id,
+        after: { code: saved.code, amount: saved.amount },
+        note,
+      },
+      m,
+    );
+    return saved;
   }
 
   async list(
