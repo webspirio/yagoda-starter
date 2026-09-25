@@ -1,6 +1,6 @@
 import * as fc from 'fast-check';
 import { settle, DebtLine, PayoutLine } from './settlement';
-import { add, cmp, isNegative, sub, sum } from '../common/money';
+import { add, cmp, isNegative, isZero, sub, sum } from '../common/money';
 
 /**
  * `settlement.spec.ts` is the EXAMPLE TABLE. This file is the LAW.
@@ -155,6 +155,21 @@ describe('settle — properties', () => {
             cmp(over, '0.00') <= 0 ? '0.00' : cmp(over, l.amount) >= 0 ? l.amount : over;
           expect(l.open).toBe(expected);
         }
+      }),
+      RUNS,
+    );
+  });
+
+  it('a non-zero unallocated means every line is fully paid (open = 0.00)', () => {
+    // FIFO (pass 2) only ever leaves money unallocated after every line's
+    // `open` has been driven to zero — the cursor cannot stop early with a
+    // still-open line ahead of leftover cash. If this ever failed it would
+    // mean money sat unallocated while a line upstream of it stayed open.
+    fc.assert(
+      fc.property(queue, ({ lines, pays }) => {
+        const s = settle(lines, pays);
+        if (isZero(s.unallocated)) return;
+        for (const l of s.lines) expect(l.open).toBe('0.00');
       }),
       RUNS,
     );

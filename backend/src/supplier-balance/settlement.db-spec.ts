@@ -14,6 +14,9 @@ import { sub, sum } from '../common/money';
  * One supplier, Ніна, with:
  *   12.07  R1 1000.00
  *   12.07  top-up 200.00 on R1 (written 20.08 — must still queue behind R1)
+ *   12.07  top-up 70.00 on R1, VOIDED on its own merits — R1 stays LIVE, so this
+ *          is the case `debtSql`'s two-filter comment names but this file never
+ *          exercised: a top-up voided while its parent receipt is untouched.
  *   15.07  R2 300.00  VOIDED, with a top-up 50.00 (must count for nothing)
  *   15.07  R3 500.00
  *   04.08  P1 1300.00 bound to R2 (voided) → whole payout goes FIFO
@@ -64,11 +67,19 @@ describe('SupplierBalanceService.settlementFor (Postgres)', () => {
     );
     return row.id as string;
   };
-  const topUp = async (intakeId: string, amount: string, createdAt: string): Promise<string> => {
+  const topUp = async (
+    intakeId: string,
+    amount: string,
+    createdAt: string,
+    voided = false,
+  ): Promise<string> => {
     const [row] = await ds.query(
-      `INSERT INTO intake_top_ups (intake_id, amount, reason, created_by_user_id, created_at)
-       VALUES ($1, $2, 'доплата', $3, $4) RETURNING id`,
-      [intakeId, amount, userId, createdAt],
+      `INSERT INTO intake_top_ups (intake_id, amount, reason, created_by_user_id, created_at,
+                                   voided_at, voided_by_user_id, void_reason)
+       VALUES ($1, $2, 'доплата', $3, $4,
+               CASE WHEN $5 THEN now() END, CASE WHEN $5 THEN $3::uuid END,
+               CASE WHEN $5 THEN 'test' END) RETURNING id`,
+      [intakeId, amount, userId, createdAt, voided],
     );
     return row.id as string;
   };
@@ -119,13 +130,17 @@ describe('SupplierBalanceService.settlementFor (Postgres)', () => {
 
     const r1 = await intake(s0712, '1000.00', '2026-07-12T08:00:00Z');
     const t1 = await topUp(r1, '200.00', '2026-08-20T12:00:00Z');
+    // Voided on its OWN merits, parent R1 still LIVE — the case `debtSql`'s
+    // two-filter comment names (`t.voided_at` vs `ti.voided_at`) and this
+    // file never exercised until now.
+    const t1v = await topUp(r1, '70.00', '2026-08-20T12:10:00Z', true);
     const r2 = await intake(s0715, '300.00', '2026-07-15T08:00:00Z', true);
     await topUp(r2, '50.00', '2026-08-20T12:05:00Z');
     const r3 = await intake(s0715, '500.00', '2026-07-15T09:00:00Z');
     const p1 = await payout(s0804, '1300.00', r2, '2026-08-04T10:00:00Z');
     await payout(s0804, '100.00', null, '2026-08-04T10:05:00Z', true);
     const r4 = await intake(s0805, '250.00', '2026-08-05T11:00:00Z');
-    ids = { r1, t1, r3, p1, r4 };
+    ids = { r1, t1, t1v, r3, p1, r4 };
   });
 
   afterAll(async () => {
@@ -142,6 +157,11 @@ describe('SupplierBalanceService.settlementFor (Postgres)', () => {
     const s = await service.settlementFor(supplierId);
     expect(s.lines.map((l) => l.amount)).toEqual(['1000.00', '200.00', '500.00', '250.00']);
     expect(s.payouts.map((p) => p.id)).toEqual([ids.p1]);
+  });
+
+  it('excludes a top-up voided on its own merits, even though its parent receipt is live', async () => {
+    const s = await service.settlementFor(supplierId);
+    expect(s.lines.map((l) => l.id)).not.toContain(ids.t1v);
   });
 
   it('a payout bound to a voided receipt goes whole into FIFO, and may reach a younger line', async () => {
