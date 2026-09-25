@@ -220,8 +220,23 @@ describe('PriceChanges', () => {
       const { search } = renderAt('/prices?changes_from=2026-09-20&changes_to=2026-09-24');
       const from = screen.getByLabelText('From');
 
+      // An arrow steps the day segment — a typed edit, held back…
       fireEvent.keyDown(from, { key: 'ArrowUp' });
+      fireEvent.change(from, { target: { value: '2026-09-21' } });
+      expect(search().get('changes_from')).toBe('2026-09-20');
+      // …then the mouse opens the picker and chooses: committed at once.
       fireEvent.pointerDown(from);
+      fireEvent.change(from, { target: { value: '2026-09-18' } });
+      expect(search().get('changes_from')).toBe('2026-09-18');
+    });
+
+    it('treats a calendar opened with Alt+↓ as a pick, and segment moves as no edit', () => {
+      changesMock.mockReturnValue(loaded([], '2026-09-20', '2026-09-24'));
+      const { search } = renderAt('/prices?changes_from=2026-09-20&changes_to=2026-09-24');
+      const from = screen.getByLabelText('From');
+
+      fireEvent.keyDown(from, { key: 'ArrowRight' });
+      fireEvent.keyDown(from, { key: 'ArrowDown', altKey: true });
       fireEvent.change(from, { target: { value: '2026-09-18' } });
       expect(search().get('changes_from')).toBe('2026-09-18');
     });

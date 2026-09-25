@@ -171,8 +171,23 @@ export function PriceChanges() {
   );
 }
 
-/** Keys that move focus or only modify another key — not an edit of the date. */
-const NON_EDIT_KEYS = new Set(['Tab', 'Shift', 'Control', 'Alt', 'Meta', 'Escape']);
+/** Keys that move focus, move between segments, or only modify another key —
+ *  not an edit of the date. */
+const NON_EDIT_KEYS = new Set([
+  'Tab',
+  'Shift',
+  'Control',
+  'Alt',
+  'Meta',
+  'Escape',
+  'ArrowLeft',
+  'ArrowRight',
+]);
+
+/** Whether a keystroke edits the date. `Alt`+`↓`/`↑` opens the calendar from
+ *  the keyboard, so the choice that follows is a pick, not typing. */
+const isEditKey = (e: { key: string; altKey: boolean }) =>
+  !NON_EDIT_KEYS.has(e.key) && !(e.altKey && (e.key === 'ArrowDown' || e.key === 'ArrowUp'));
 
 /**
  * One bound of the period, with TWO ways in that must commit differently.
@@ -243,7 +258,7 @@ function DateBound({
         }}
         onKeyDown={(e) => {
           if (e.key === 'Enter') commit(draft);
-          else if (!NON_EDIT_KEYS.has(e.key)) typing.current = true;
+          else if (isEditKey(e)) typing.current = true;
         }}
       />
     </label>
