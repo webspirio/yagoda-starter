@@ -2,6 +2,7 @@ export {
   todayIso,
   toLocalIsoDate,
   addDaysIso,
+  daysBetween,
   isIsoDate,
   isRealIsoDate,
   formatLongDate,
