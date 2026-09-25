@@ -171,8 +171,8 @@ export function PriceChanges() {
   );
 }
 
-/** Keys that move focus, move between segments, or only modify another key —
- *  not an edit of the date. */
+/** Keys that move focus, move between segments, only modify another key, or
+ *  dismiss the picker — not an edit of the date. */
 const NON_EDIT_KEYS = new Set([
   'Tab',
   'Shift',
@@ -184,10 +184,10 @@ const NON_EDIT_KEYS = new Set([
   'ArrowRight',
 ]);
 
-/** Whether a keystroke edits the date. `Alt`+`↓`/`↑` opens the calendar from
- *  the keyboard, so the choice that follows is a pick, not typing. */
-const isEditKey = (e: { key: string; altKey: boolean }) =>
-  !NON_EDIT_KEYS.has(e.key) && !(e.altKey && (e.key === 'ArrowDown' || e.key === 'ArrowUp'));
+/** `Alt`+`↓`/`↑` opens the calendar from the keyboard, so the choice that
+ *  follows is a pick, not typing — the keyboard's `pointerdown`. */
+const opensPicker = (e: { key: string; altKey: boolean }) =>
+  e.altKey && (e.key === 'ArrowDown' || e.key === 'ArrowUp');
 
 /**
  * One bound of the period, with TWO ways in that must commit differently.
@@ -258,7 +258,8 @@ function DateBound({
         }}
         onKeyDown={(e) => {
           if (e.key === 'Enter') commit(draft);
-          else if (isEditKey(e)) typing.current = true;
+          else if (opensPicker(e)) typing.current = false;
+          else if (!NON_EDIT_KEYS.has(e.key)) typing.current = true;
         }}
       />
     </label>

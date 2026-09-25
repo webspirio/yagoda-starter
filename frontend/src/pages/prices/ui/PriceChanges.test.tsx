@@ -235,6 +235,10 @@ describe('PriceChanges', () => {
       const { search } = renderAt('/prices?changes_from=2026-09-20&changes_to=2026-09-24');
       const from = screen.getByLabelText('From');
 
+      // A digit typed first, then a change of mind: the calendar from the keyboard.
+      fireEvent.keyDown(from, { key: '1' });
+      fireEvent.change(from, { target: { value: '2026-09-01' } });
+      expect(search().get('changes_from')).toBe('2026-09-20');
       fireEvent.keyDown(from, { key: 'ArrowRight' });
       fireEvent.keyDown(from, { key: 'ArrowDown', altKey: true });
       fireEvent.change(from, { target: { value: '2026-09-18' } });
