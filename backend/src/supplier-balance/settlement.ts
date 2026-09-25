@@ -52,24 +52,24 @@ export interface PayoutLine {
   intake_id: string | null;
 }
 
-export interface Coverage {
+interface Coverage {
   payout_id: string;
   amount: string;
 }
 
-export interface Cover {
+interface Cover {
   line_id: string;
   kind: DebtKind;
   amount: string;
 }
 
-export interface SettledLine extends DebtLine {
+interface SettledLine extends DebtLine {
   paid: string;
   open: string;
   covered_by: Coverage[];
 }
 
-export interface SettledPayout extends PayoutLine {
+interface SettledPayout extends PayoutLine {
   covers: Cover[];
   unallocated: string;
 }

@@ -3,9 +3,7 @@ export type {
   SupplierKind,
   SupplierBalanceRow,
   Paginated,
-  SupplierSettlement,
   SettlementLine,
-  SettlementPayout,
 } from './model/supplier';
 export { supplierName } from './model/supplier';
 export { useSuppliersQuery, useSupplierQuery } from './api/useSuppliers';

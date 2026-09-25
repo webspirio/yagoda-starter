@@ -54,7 +54,7 @@ export interface SettlementLine {
   covered_by: { payout_id: string; payout_code: string; amount: string }[];
 }
 
-export interface SettlementPayout {
+interface SettlementPayout {
   id: string;
   code: string;
   business_date: string;
