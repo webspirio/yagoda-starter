@@ -1211,15 +1211,7 @@ decision rather than guessing whether something was missed.
 
 ## Deferred from the supplier settlement slice (2026-09-25)
 
-- **Slice 2 — voiding a receipt that has a bound payout (#125).** When the receipt being
-  voided has a live payout with `intake_id` pointing at it, the void dialog shows it and
-  requires one of three explicit choices, none preselected: leave the payout (the common
-  case — a corrected receipt follows); void both, money already back in the drawer
-  (`return_settled_*` set in the same transaction); void both, return expected. Both voids
-  in one transaction with one reason; rights are the intersection of §9.4 for both
-  documents. #125's stated consequence («каса не сходиться») comes from an unrecorded
-  `return_settled`, not from a forgotten payout void — voiding a payout does not move cash
-  (§9.3); the issue should be annotated to say so.
+- ~~**Slice 2 (#125).**~~ Done 2026-09-25 — spec docs/superpowers/specs/2026-09-25-yagoda-intake-void-payout-decision-slice.md.
 - **«Найстаріший борг» column on the «Залишки» list.** Separate slice, plain FIFO by date
   in SQL over `supplier-balances`; must not re-implement `settle()`.
 - **Client confirmation of the §3.3 change.** The projection is «bound first, then FIFO».
@@ -1240,3 +1232,14 @@ decision rather than guessing whether something was missed.
 - **§4.4's grades and kg on an open intake row are half-shown.** Spec §4.4 asks for grades
   and kg; `OpenBalances` shows kg only, because the Intake list row carries no grade names —
   adding them needs either a field on the list response or a lookup, deferred.
+
+## Deferred from slice 2 — intake void with a payout decision (2026-09-25)
+
+- **The owner's `settle-return` screen.** `POST /payouts/:id/settle-return` exists; no screen
+  calls it. A payout voided with «постачальник поверне гроші» has its return recorded only
+  through the API until then.
+- **A shift-close reminder** listing the shift's payouts voided with no recorded return.
+- **`SupplierCardPage` has no intake-void entry.** Intakes are voided from `ReceiptDialog`
+  only; a future second entry point must pass `linkedPayout` / `canConfirmReturn` the same way.
+- **Next slice: stored payout allocations (`feat/payout-allocations`).** Decided in grilling 2026-09-26: the 04.09.2026 removal of `payout_allocations` was an artifact of an earlier schema simplification, not an owner decision, and is reversed. Decisions: an allocation is a frozen append-only fact (a document void sets `voided_at` on its allocations; freed money moves by new rows); one `allocate(supplierId, m)` runs in the transaction of every event (payout, intake, top-up, their voids) — bound intake first, then FIFO `(business_date, created_at, id)`; debt stays the document formula, with `Σ open − unallocated = debt` held by tests; table `payout_allocations(id, payout_id, intake_id NULL, intake_top_up_id NULL, CHECK exactly one, amount > 0, created_at, voided_at)`; one-off backfill in the migration with a frozen copy of `settle()`; `GET /suppliers/:id/settlement` keeps its contract and reads the table. Open: a per-supplier lock against double allocation; rewriting the 04.09 notes in §3.3/§3.10 and the DBML.
+- **`radio-group` is reused.** `frontend/CLAUDE.md`'s kit-hygiene note lists `shared/ui/radio-group` as a starter leftover not to reuse; slice 2's `PayoutDecisionField` now uses it. Update that note and add a `/ui-kit` gallery entry.
