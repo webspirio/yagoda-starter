@@ -9,16 +9,23 @@ import { Button } from '@/shared/ui/button';
 import { Spinner } from '@/shared/ui/spinner';
 import { ApiError, isTruncated } from '@/shared/api';
 import { sum, cmp, isZero, formatUah } from '@/shared/lib/money';
-import { useSupplierQuery, useSupplierBalanceQuery, supplierName } from '@/entities/supplier';
+import {
+  useSupplierQuery,
+  useSupplierBalanceQuery,
+  useSupplierSettlementQuery,
+  supplierName,
+} from '@/entities/supplier';
 import { useIntakesQuery, type Intake } from '@/entities/intake';
 import { usePayoutsQuery, type Payout } from '@/entities/payout';
 import { useIntakeTopUpsQuery, type IntakeTopUp } from '@/entities/intake-top-up';
 import { useMeQuery } from '@/entities/user';
 import { usePointOptionsQuery } from '@/entities/collection-point';
+import { daysBetween, todayIso, formatShortDate } from '@/shared/lib/date';
 import { PayoutDialog } from '@/features/settle-payout';
 import { VoidDocumentDialog } from '@/features/void-document';
 import { TopUpDialog } from '@/features/top-up-intake';
 import { ReceiptDialog } from '@/widgets/receipt';
+import { OpenBalances } from './OpenBalances';
 import { SupplierTimeline } from './SupplierTimeline';
 
 /**
@@ -37,6 +44,9 @@ export function SupplierCardPage() {
   const intakes = useIntakesQuery({ supplierId: id, limit: 100 });
   const payouts = usePayoutsQuery({ supplierId: id, limit: 100 });
   const topUps = useIntakeTopUpsQuery({ supplierId: id, limit: 100 });
+  // THE FOURTH QUERY — spec 2026-09-25 §3.8. The three lists stay for the
+  // history (voided rows, reasons, authors); this one carries the arithmetic.
+  const settlement = useSupplierSettlementQuery(id ?? null);
   const me = useMeQuery();
   const points = usePointOptionsQuery();
 
@@ -100,7 +110,14 @@ export function SupplierCardPage() {
     );
   }
 
-  if (supplier.isError || balance.isError || intakes.isError || payouts.isError || topUps.isError) {
+  if (
+    supplier.isError ||
+    balance.isError ||
+    intakes.isError ||
+    payouts.isError ||
+    topUps.isError ||
+    settlement.isError
+  ) {
     return (
       <div className="flex flex-col items-center gap-3 py-6 text-center">
         <p role="alert" className="text-destructive">
@@ -119,8 +136,10 @@ export function SupplierCardPage() {
     intakes.isPending ||
     payouts.isPending ||
     topUps.isPending ||
+    settlement.isPending ||
     !supplier.data ||
-    !balance.data
+    !balance.data ||
+    !settlement.data
   ) {
     return (
       <div className="flex justify-center py-12">
@@ -152,6 +171,28 @@ export function SupplierCardPage() {
   // says so instead of quietly summing only what happened to load.
   const truncated = isTruncated(intakes.data) || isTruncated(topUps.data);
   const payoutsTruncated = isTruncated(payouts.data);
+
+  const st = settlement.data;
+  const intakesById = new Map(intakeRows.map((i) => [i.id, i]));
+  const openByLineId = new Map(st.lines.map((l) => [l.id, l.open]));
+  const lineDate = new Map(st.lines.map((l) => [l.id, l.business_date]));
+  const coversByPayoutId = new Map(
+    st.payouts.map((p) => {
+      const dates = [...new Set(p.covers.map((c) => lineDate.get(c.line_id) ?? ''))]
+        .filter((d) => d !== '')
+        .sort();
+      return [p.id, { dates, unallocated: p.unallocated }];
+    }),
+  );
+  const oldestOpen = st.lines.find((l) => !isZero(l.open));
+  const balanceHint = oldestOpen
+    ? t('supplierCard.open.oldest', {
+        date: formatShortDate(oldestOpen.business_date, i18n.language),
+        count: daysBetween(oldestOpen.business_date, todayIso()),
+      })
+    : isZero(debt)
+      ? t('supplierCard.tiles.balanceHint')
+      : undefined;
 
   return (
     <>
@@ -202,9 +243,16 @@ export function SupplierCardPage() {
           label={t('supplierCard.tiles.balance')}
           value={formatUah(debt, i18n.language)}
           tone={cmp(debt, '0') === 1 ? 'amber' : 'leaf'}
-          hint={isZero(debt) ? t('supplierCard.tiles.balanceHint') : undefined}
+          hint={balanceHint}
         />
       </StatGrid>
+
+      <OpenBalances
+        lines={st.lines}
+        unallocated={st.unallocated}
+        intakesById={intakesById}
+        locale={i18n.language}
+      />
 
       <SectionCard eyebrow={t('supplierCard.timeline.title')}>
         <SupplierTimeline
@@ -212,6 +260,8 @@ export function SupplierCardPage() {
           payouts={payoutRows}
           topUps={topUpRows}
           me={me.data}
+          openByLineId={openByLineId}
+          coversByPayoutId={coversByPayoutId}
           onOpenReceipt={openReceipt}
           onVoidPayout={openVoidPayout}
           onAddTopUp={openTopUp}

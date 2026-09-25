@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { createMemoryRouter, RouterProvider } from 'react-router';
 import { ApiError } from '@/shared/api';
 import { expectNoAxeViolations } from '../../../test-axe';
-import type { Supplier } from '@/entities/supplier';
+import type { Supplier, SettlementLine } from '@/entities/supplier';
 import type { Intake } from '@/entities/intake';
 import type { Payout } from '@/entities/payout';
 import type { IntakeTopUp } from '@/entities/intake-top-up';
@@ -14,6 +14,7 @@ import { SupplierCardPage } from './SupplierCardPage';
 const {
   supplierMock,
   balanceMock,
+  settlementMock,
   intakesMock,
   payoutsMock,
   topUpsMock,
@@ -26,6 +27,7 @@ const {
 } = vi.hoisted(() => ({
   supplierMock: vi.fn(),
   balanceMock: vi.fn(),
+  settlementMock: vi.fn(),
   intakesMock: vi.fn(),
   payoutsMock: vi.fn(),
   topUpsMock: vi.fn(),
@@ -40,6 +42,7 @@ const {
 vi.mock('@/entities/supplier', () => ({
   useSupplierQuery: (id: string | null) => supplierMock(id),
   useSupplierBalanceQuery: (id: string | null) => balanceMock(id),
+  useSupplierSettlementQuery: (id: string | null) => settlementMock(id),
   supplierName: (s: { first_name: string; last_name: string }) =>
     `${s.first_name} ${s.last_name}`,
 }));
@@ -178,6 +181,20 @@ const topUp = (
   ...over,
 });
 
+const settlementLine = (
+  over: Partial<SettlementLine> & Pick<SettlementLine, 'id' | 'open'>,
+): SettlementLine => ({
+  kind: 'intake',
+  code: over.id.toUpperCase(),
+  intake_id: over.id,
+  business_date: '2026-09-08',
+  created_at: '2026-09-08T07:10:00Z',
+  amount: over.open,
+  paid: '0.00',
+  covered_by: [],
+  ...over,
+});
+
 const page = <T,>(data: T[], total = data.length) => ({
   data: { data, total, page: 1, limit: 100 },
   isPending: false,
@@ -206,6 +223,11 @@ beforeEach(() => {
       isPending: false,
       isError: false,
     });
+  settlementMock.mockReset().mockReturnValue({
+    data: { supplier_id: 'sup1', debt: '500.00', unallocated: '0.00', lines: [], payouts: [] },
+    isPending: false,
+    isError: false,
+  });
   intakesMock.mockReset().mockReturnValue(page<Intake>([]));
   payoutsMock.mockReset().mockReturnValue(page<Payout>([]));
   topUpsMock.mockReset().mockReturnValue(page<IntakeTopUp>([]));
@@ -451,6 +473,117 @@ describe('SupplierCardPage', () => {
     expect(screen.getByRole('progressbar', { name: 'loading' })).toBeInTheDocument();
     expect(screen.queryByText('Accrued')).toBeNull();
     expect(screen.queryByRole('heading', { level: 1, name: 'Ivan Koval' })).toBeNull();
+  });
+
+  it('shows the open-balances section and the oldest-debt hint from the settlement', () => {
+    settlementMock.mockReturnValue({
+      data: {
+        supplier_id: 'sup1',
+        debt: '500.00',
+        unallocated: '0.00',
+        lines: [settlementLine({ id: 'i1', open: '500.00', business_date: '2026-09-01' })],
+        payouts: [],
+      },
+      isPending: false,
+      isError: false,
+    });
+    intakesMock.mockReturnValue(
+      page<Intake>([
+        intake({ id: 'i1', code: 'KV-0001', amount: '500.00', created_at: '2026-09-01T07:10:00Z' }),
+      ]),
+    );
+
+    renderCard();
+
+    expect(screen.getByText('Open balances — what exactly is owed')).toBeInTheDocument();
+    // The short-date spelling is `formatShortDate`'s for `en`; the hint's shape is what matters.
+    expect(tile('Balance')).toHaveTextContent(/oldest from .+ — \d+ days?/);
+  });
+
+  it('captions history rows with what is open and what a payout closed', () => {
+    settlementMock.mockReturnValue({
+      data: {
+        supplier_id: 'sup1',
+        debt: '200.00',
+        unallocated: '0.00',
+        lines: [
+          settlementLine({ id: 'i1', open: '0.00', amount: '300.00', paid: '300.00', business_date: '2026-09-01' }),
+          settlementLine({ id: 'i2', open: '200.00', amount: '200.00', business_date: '2026-09-08' }),
+        ],
+        payouts: [
+          {
+            id: 'y1', code: 'VD-0001', business_date: '2026-09-08', created_at: '2026-09-08T09:20:00Z',
+            amount: '300.00', intake_id: null,
+            covers: [{ line_id: 'i1', kind: 'intake', amount: '300.00' }],
+            unallocated: '0.00',
+          },
+        ],
+      },
+      isPending: false,
+      isError: false,
+    });
+    intakesMock.mockReturnValue(
+      page<Intake>([
+        intake({ id: 'i1', code: 'KV-0001', amount: '300.00', created_at: '2026-09-01T07:10:00Z', business_date: '2026-09-01' }),
+        intake({ id: 'i2', code: 'KV-0002', amount: '200.00', created_at: '2026-09-08T07:10:00Z' }),
+      ]),
+    );
+    payoutsMock.mockReturnValue(
+      page<Payout>([
+        payout({ id: 'y1', code: 'VD-0001', amount: '300.00', created_at: '2026-09-08T09:20:00Z' }),
+      ]),
+    );
+
+    renderCard();
+
+    // `SectionCard` renders a plain `<div>` for every level (the eyebrow's own
+    // wrapper included), so `closest('section, div')` would stop at the
+    // eyebrow's own one-line div rather than the card. `.rounded-xl` is the
+    // outer SectionCard shell's own class, and no ancestor between the title
+    // text and that shell carries it, so it scopes to the whole history card.
+    const history = screen.getByText('History — receipts and payouts').closest('.rounded-xl')!;
+    expect(within(history as HTMLElement).getByText('KV-0002').closest('li')).toHaveTextContent(
+      '200.00 ₴ still open',
+    );
+    expect(within(history as HTMLElement).getByText('KV-0001').closest('li')).not.toHaveTextContent(
+      'still open',
+    );
+    expect(screen.getByText('VD-0001').closest('li')).toHaveTextContent(/closed berries of .*01/);
+  });
+
+  it('captions an overpaid payout with the unallocated amount', () => {
+    settlementMock.mockReturnValue({
+      data: {
+        supplier_id: 'sup1',
+        debt: '-50.00',
+        unallocated: '50.00',
+        lines: [],
+        payouts: [
+          {
+            id: 'y1', code: 'VD-0001', business_date: '2026-09-08', created_at: '2026-09-08T09:20:00Z',
+            amount: '50.00', intake_id: null, covers: [], unallocated: '50.00',
+          },
+        ],
+      },
+      isPending: false,
+      isError: false,
+    });
+    payoutsMock.mockReturnValue(
+      page<Payout>([
+        payout({ id: 'y1', code: 'VD-0001', amount: '50.00', created_at: '2026-09-08T09:20:00Z' }),
+      ]),
+    );
+
+    renderCard();
+
+    expect(screen.getByText('VD-0001').closest('li')).toHaveTextContent('50.00 ₴ not allocated');
+    expect(screen.getByText('Overpayment — not allocated')).toBeInTheDocument();
+  });
+
+  it('shows the shared error banner when the settlement fails', () => {
+    settlementMock.mockReturnValue({ data: undefined, isPending: false, isError: true });
+    renderCard();
+    expect(screen.getByRole('alert')).toBeInTheDocument();
   });
 });
 

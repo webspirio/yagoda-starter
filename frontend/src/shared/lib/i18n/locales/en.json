@@ -991,7 +991,10 @@
       "topUp": "Balance",
       "addTopUp": "Add a balance",
       "againstReceipt": "against {{code}}",
-      "parentVoided": "the receipt was voided — counts for nothing"
+      "parentVoided": "the receipt was voided — counts for nothing",
+      "openLeft": "{{uah}} still open",
+      "closed": "closed berries of {{dates}}",
+      "unallocated": "{{uah}} not allocated"
     }
   },
   "journal": {

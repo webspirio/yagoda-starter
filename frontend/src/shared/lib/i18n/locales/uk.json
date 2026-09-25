@@ -1021,7 +1021,10 @@
       "topUp": "Залишок",
       "addTopUp": "Додати залишок",
       "againstReceipt": "до {{code}}",
-      "parentVoided": "квитанцію сторновано — не рахується"
+      "parentVoided": "квитанцію сторновано — не рахується",
+      "openLeft": "у залишок {{uah}}",
+      "closed": "закрито ягоду за {{dates}}",
+      "unallocated": "не розподілено {{uah}}"
     }
   },
   "journal": {
