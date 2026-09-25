@@ -1208,3 +1208,36 @@ decision rather than guessing whether something was missed.
   (`ReweighPage.tsx:83-86`); `pages/cost-of-day`, `pages/point-cash` and `pages/transfers` do
   not. This is a shared gap in `entities/user`'s scope hook rather than anything the cost-of-day
   screen introduced, and the fix belongs there — one place, not four.
+
+## Deferred from the supplier settlement slice (2026-09-25)
+
+- **Slice 2 — voiding a receipt that has a bound payout (#125).** When the receipt being
+  voided has a live payout with `intake_id` pointing at it, the void dialog shows it and
+  requires one of three explicit choices, none preselected: leave the payout (the common
+  case — a corrected receipt follows); void both, money already back in the drawer
+  (`return_settled_*` set in the same transaction); void both, return expected. Both voids
+  in one transaction with one reason; rights are the intersection of §9.4 for both
+  documents. #125's stated consequence («каса не сходиться») comes from an unrecorded
+  `return_settled`, not from a forgotten payout void — voiding a payout does not move cash
+  (§9.3); the issue should be annotated to say so.
+- **«Найстаріший борг» column on the «Залишки» list.** Separate slice, plain FIFO by date
+  in SQL over `supplier-balances`; must not re-implement `settle()`.
+- **Client confirmation of the §3.3 change.** The projection is «bound first, then FIFO».
+  If the client insists on strict oldest-first, pass 1 of `settle()` is removed and nothing
+  else changes.
+- **The money eslint block does not lint spec files.** `backend/eslint.config.mjs` gives the
+  money block `ignores: ['**/*.spec.ts', '**/*.db-spec.ts']`. So `settlement.properties.spec.ts`,
+  `money.properties.spec.ts` and every other spec that builds money fixtures sit outside the
+  `*`/`/`/`Number()` ban. CLAUDE.md's money section reads as if they were covered. Either
+  narrow the ignore for fixture-building specs, or correct the wording. Found in review,
+  2026-09-25.
+- **`SectionCard` has no semantic hook.** Tests scope to it by the Tailwind class
+  `.rounded-xl` (`SupplierCardPage.test.tsx`). Adding a `data-slot="section-card"` would let
+  tests stop coupling to styling.
+- **`toSupplierSettlementResponse` has an unreachable fallback.** Its
+  `payoutCode.get(...) ?? ''` cannot fire, given `settle()`'s invariants. Document the
+  invariant, or replace the fallback with an assertion.
+- **`settlement.db-spec.ts` misses one case.** It does not exercise a top-up voided on its
+  own merits while its parent is still live. That case is covered by
+  `intake-top-ups-balance.db-spec.ts`; add it here only if the settlement SQL ever stops
+  sharing `debtSql`'s filters.
