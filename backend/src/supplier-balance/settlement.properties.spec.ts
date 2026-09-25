@@ -17,8 +17,9 @@ const RUNS = { seed: 20260925, numRuns: 500 } as const;
 
 /**
  * Scale-2 positive amount as a string, 0.01 … 99999.99. Built from two
- * naturals, not from an integer divided by 100: this file is inside the
- * eslint money list, where `/` is banned even in a fixture generator.
+ * naturals, not from an integer divided by 100, because amounts must be
+ * exact scale-2 strings that a double cannot guarantee. (Spec files are
+ * outside the eslint money ban; eslint.config.mjs ignores *.spec.ts.)
  */
 const amount = fc
   .tuple(fc.nat({ max: 99_999 }), fc.nat({ max: 99 }))
