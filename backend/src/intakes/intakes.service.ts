@@ -237,6 +237,8 @@ export class IntakesService {
   async void(actor: AuthenticatedUser, id: string, dto: VoidIntakeDto): Promise<IntakeResponse> {
     return this.dataSource.transaction(async (m) => {
       const { intake, shift } = await this.loadForVoid(actor, id, m);
+      // §3.5: a bound payout is written only at reception, by the same actor in the same
+      // shift, so `loadForVoid`'s §9.4 check already covers it; `void_returned` alone is owner-only.
       const payout = await this.payouts.findLiveBoundForUpdate(m, intake.id);
       assertPayoutDecision(actor, payout !== null, dto.payout);
 
