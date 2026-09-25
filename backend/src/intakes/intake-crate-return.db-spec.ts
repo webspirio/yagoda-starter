@@ -396,6 +396,34 @@ describe('POST /intakes with returned_crates (HTTP, Postgres)', () => {
     expect(await count('intakes', supplierId)).toBe(results[1]?.status === 201 ? 1 : 0);
   });
 
+  // Every receipt takes the supplier lock, not only one carrying
+  // `returned_crates` — otherwise a plain receipt (advisory lock only) and a
+  // crates receipt (supplier then advisory) would take them in opposite orders.
+  it('a plain receipt and a crates receipt for one supplier both land — no deadlock', async () => {
+    const supplierId = await newSupplier();
+    await issue(supplierId, 20, 'receipt');
+
+    const results = await Promise.allSettled([
+      post({ supplier_id: supplierId, items: [line(10)], paid_amount: '100.00' }),
+      post({ supplier_id: supplierId, items: [line(20)], returned_crates: 20 }),
+      post({ supplier_id: supplierId, items: [line(1)] }),
+    ]);
+    // On a refusal the body's `code` is the error code; on success it is the
+    // receipt number — so print it only when the status is wrong.
+    const statuses = results.map((r) =>
+      r.status !== 'fulfilled'
+        ? r.reason
+        : r.value.status === 201
+          ? 201
+          : { status: r.value.status, code: r.value.body.code },
+    );
+    expect(statuses).toEqual([201, 201, 201]);
+
+    expect(await count('intakes', supplierId)).toBe(3);
+    expect(await count('crate_returns', supplierId)).toBe(1);
+    expect(await outstanding(supplierId)).toBe(0);
+  });
+
   // MUST RUN LAST — it drains this point's crates book for good.
   it('409s CRATE_CASH_INSUFFICIENT when the crates drawer is short, and writes nothing at all', async () => {
     const supplierId = await newSupplier();
