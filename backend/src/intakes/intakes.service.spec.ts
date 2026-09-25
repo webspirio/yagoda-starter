@@ -738,11 +738,14 @@ describe('IntakesService', () => {
       await expect(
         service.void(oksana, INTAKE_ID, { reason: 'r', payout: 'void' }),
       ).rejects.toMatchObject({ response: { code: 'PAYOUT_DECISION_NOT_APPLICABLE' } });
+      expect(manager.save).not.toHaveBeenCalled();
+      expect(audit.record).not.toHaveBeenCalled();
     });
 
     it('records no payout_decision when nothing was bound', async () => {
       await service.void(oksana, INTAKE_ID, { reason: 'r' });
 
+      expect(payouts.voidWithin).not.toHaveBeenCalled();
       const entry = audit.record.mock.calls[0][0] as { after: Record<string, unknown> };
       expect(entry.after).not.toHaveProperty('payout_decision');
     });

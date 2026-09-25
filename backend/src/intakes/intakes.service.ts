@@ -279,9 +279,9 @@ export class IntakesService {
   /**
    * §9.4: own receipt + open shift for an operator; anything for the owner. An author
    * check, not a point check — §10.6 puts two operators in one shift. Under a row lock
-   * so a double tap cannot void twice.
+   * so a double tap cannot void twice. §10.2 lists receipt voids as owner-only; §9.4
+   * (followed here) allows the author — spec §10.2 records the switch.
    */
-  // §10.2 lists receipt voids as owner-only; §9.4 (followed here) allows the author. Spec §10.2 records the switch.
   private async loadForVoid(
     actor: AuthenticatedUser,
     id: string,
