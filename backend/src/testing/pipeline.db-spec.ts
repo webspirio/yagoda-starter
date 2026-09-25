@@ -740,6 +740,22 @@ describe('suppliers + grade prices (HTTP)', () => {
       (c: { product_grade_id: string }) => c.product_grade_id === gradeId,
     );
     expect(latest).toMatchObject({ previous_base_price: '52.00', base_price: '55.00' });
+
+    // The period reaches the service through the DTO: bounds echoed back, a
+    // malformed date refused by the pipe, an impossible one by the service.
+    const period = await request(app.getHttpServer())
+      .get(`/grade-prices/changes?from=${changes.body.from}&to=${changes.body.to}`)
+      .set('Authorization', `Bearer ${operatorToken}`)
+      .expect(200);
+    expect(period.body).toMatchObject({ from: changes.body.from, to: changes.body.to });
+    await request(app.getHttpServer())
+      .get('/grade-prices/changes?from=2026/01/01')
+      .set('Authorization', `Bearer ${operatorToken}`)
+      .expect(400);
+    await request(app.getHttpServer())
+      .get('/grade-prices/changes?to=2026-02-30')
+      .set('Authorization', `Bearer ${operatorToken}`)
+      .expect(400);
   });
 
   it('403s an operator trying to set a price', async () => {
