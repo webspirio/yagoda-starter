@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { MemoryRouter } from 'react-router';
 import { expectNoAxeViolations } from '../../../test-axe';
 import { PricesPage } from './PricesPage';
 import type { PriceSheet } from '../model/gradePrice';
@@ -24,7 +25,7 @@ vi.mock('../api/gradePrices', () => ({
 
 vi.mock('../api/priceChanges', () => ({
   usePriceChangesQuery: () => ({
-    data: { date: '2026-09-23', changes: [] },
+    data: { from: '2026-09-23', to: '2026-09-23', changes: [] },
     isPending: false,
     isError: false,
   }),
@@ -89,14 +90,14 @@ beforeEach(() => {
 
 describe('PricesPage — the sheet', () => {
   it('renders a column per point, warehouse included', () => {
-    render(<PricesPage />);
+    render(<PricesPage />, { wrapper: MemoryRouter });
     for (const name of ['Шипинки', 'Гайове', 'Склад']) {
       expect(screen.getByRole('columnheader', { name: new RegExp(name) })).toBeInTheDocument();
     }
   });
 
   it('shows a bare number in «загальна» when every reception point agrees', () => {
-    render(<PricesPage />);
+    render(<PricesPage />, { wrapper: MemoryRouter });
     const row = rowFor('Вищий сорт');
     // 150.00 appears in both reception cells AND in the common column.
     expect(within(row).getAllByText('150.00').length).toBeGreaterThanOrEqual(3);
@@ -104,7 +105,7 @@ describe('PricesPage — the sheet', () => {
   });
 
   it('shows «mixed» with the span when the points disagree', () => {
-    render(<PricesPage />);
+    render(<PricesPage />, { wrapper: MemoryRouter });
     const row = rowFor('1 сорт');
     expect(within(row).getByText('mixed')).toBeInTheDocument();
     // The two ends are separate text nodes, so this reads the cell's whole text.
@@ -117,14 +118,14 @@ describe('PricesPage — the sheet', () => {
    * every row would read «різні» for the one reason that is never news.
    */
   it('keeps the warehouse OUT of «загальна» even though it is a column', () => {
-    render(<PricesPage />);
+    render(<PricesPage />, { wrapper: MemoryRouter });
     const row = rowFor('Вищий сорт');
     expect(within(row).getByText('145.00')).toBeInTheDocument();
     expect(within(row).queryByText('mixed')).not.toBeInTheDocument();
   });
 
   it('shows a dash, never a zero, for a grade nobody has priced', () => {
-    render(<PricesPage />);
+    render(<PricesPage />, { wrapper: MemoryRouter });
     const row = rowFor('2 сорт');
     expect(within(row).queryByText('0.00')).not.toBeInTheDocument();
     expect(within(row).getAllByText('—').length).toBeGreaterThan(0);
@@ -132,7 +133,7 @@ describe('PricesPage — the sheet', () => {
 
   it('sends ONLY the reception points to the bulk write', async () => {
     const user = userEvent.setup();
-    render(<PricesPage />);
+    render(<PricesPage />, { wrapper: MemoryRouter });
 
     const row = rowFor('Вищий сорт');
     await user.click(within(row).getByRole('button', { name: /set for all/i }));
@@ -150,7 +151,7 @@ describe('PricesPage — the sheet', () => {
 
   it('writes ONE point when a cell is edited', async () => {
     const user = userEvent.setup();
-    render(<PricesPage />);
+    render(<PricesPage />, { wrapper: MemoryRouter });
 
     const row = rowFor('Вищий сорт');
     await user.click(within(row).getByRole('button', { name: /Малина · Вищий сорт.*Гайове/i }));
@@ -164,17 +165,17 @@ describe('PricesPage — the sheet', () => {
   });
 
   it("shows today's price changes under the sheet (#151)", () => {
-    render(<PricesPage />);
-    expect(screen.getByText('Changes today')).toBeInTheDocument();
+    render(<PricesPage />, { wrapper: MemoryRouter });
+    expect(screen.getByText('Changes during the day')).toBeInTheDocument();
   });
 
   it('has no date control — this sheet shows current prices, not a day', () => {
-    render(<PricesPage />);
+    render(<PricesPage />, { wrapper: MemoryRouter });
     expect(screen.queryByLabelText(/дата|date/i)).not.toBeInTheDocument();
   });
 
   it('is accessible', async () => {
-    const { container } = render(<PricesPage />);
+    const { container } = render(<PricesPage />, { wrapper: MemoryRouter });
     await expectNoAxeViolations(container);
   });
 });
@@ -195,7 +196,7 @@ describe('PricesPage — the operator', () => {
    * «заблокована кнопка вчить шукати обхід, відсутня не вчить нічого».
    */
   it('is never offered «встановити всім»', () => {
-    render(<PricesPage />);
+    render(<PricesPage />, { wrapper: MemoryRouter });
     expect(screen.queryByRole('button', { name: /set for all/i })).not.toBeInTheDocument();
   });
 
@@ -205,7 +206,7 @@ describe('PricesPage — the operator', () => {
    * підписом вчить правилу».
    */
   it('still SEES the price, with a lock and the caption', () => {
-    render(<PricesPage />);
+    render(<PricesPage />, { wrapper: MemoryRouter });
     expect(screen.getAllByText('150.00').length).toBeGreaterThan(0);
     expect(screen.getAllByRole('img', { name: /view only/i }).length).toBeGreaterThan(0);
     expect(screen.getByText(/the owner sets the day/i)).toBeInTheDocument();
@@ -218,7 +219,7 @@ describe('PricesPage — the operator', () => {
    */
   it('opens the price JOURNAL from a cell, never the set-price form', async () => {
     const user = userEvent.setup();
-    render(<PricesPage />);
+    render(<PricesPage />, { wrapper: MemoryRouter });
 
     expect(
       screen.queryByRole('button', { name: /Малина · Вищий сорт at Шипинки$/i }),
@@ -238,14 +239,14 @@ describe('PricesPage — states', () => {
   it('shows a spinner while the sheet loads', () => {
     meMock.mockReturnValue({ data: OWNER });
     sheetMock.mockReturnValue({ data: undefined, isPending: true, isError: false });
-    render(<PricesPage />);
+    render(<PricesPage />, { wrapper: MemoryRouter });
     expect(screen.getByRole('progressbar')).toBeInTheDocument();
   });
 
   it('reports a failed read rather than rendering an empty sheet', () => {
     meMock.mockReturnValue({ data: OWNER });
     sheetMock.mockReturnValue({ data: undefined, isPending: false, isError: true });
-    render(<PricesPage />);
+    render(<PricesPage />, { wrapper: MemoryRouter });
     expect(screen.getByRole('alert')).toBeInTheDocument();
   });
 
@@ -256,7 +257,7 @@ describe('PricesPage — states', () => {
       isPending: false,
       isError: false,
     });
-    render(<PricesPage />);
+    render(<PricesPage />, { wrapper: MemoryRouter });
     expect(screen.getByText(/nothing to price/i)).toBeInTheDocument();
   });
 });
