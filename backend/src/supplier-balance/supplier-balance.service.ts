@@ -10,6 +10,7 @@ import { resolvePointFilter } from '../auth/access/point-scope';
 import { Paginated } from '../common/dto/paginated';
 import { skipOf } from '../common/dto/pagination-query.dto';
 import type { AuthenticatedUser } from '../auth/jwt.strategy';
+import { settle, DebtLine, PayoutLine, Settlement } from './settlement';
 
 /**
  * THE FORMULA, WRITTEN ONCE. `supplier` is the SQL naming whose debt is
@@ -43,6 +44,27 @@ const debtSql = (supplier: string): string =>
                  AND t.voided_at  IS NULL), 0.00)
   - COALESCE((SELECT SUM(p.amount) FROM payouts p
                WHERE p.supplier_id = ${supplier} AND p.voided_at IS NULL), 0.00))`;
+
+/**
+ * The queue key, `(business_date, created_at, id)`, for merging the receipt
+ * and top-up reads — each is already in this order from Postgres. String
+ * comparison is exact here: ISO dates and `timestamp::text` sort
+ * lexicographically, and uuids only break ties.
+ */
+const byQueueKey = (a: DebtLine, b: DebtLine): number =>
+  a.business_date < b.business_date
+    ? -1
+    : a.business_date > b.business_date
+      ? 1
+      : a.created_at < b.created_at
+        ? -1
+        : a.created_at > b.created_at
+          ? 1
+          : a.id < b.id
+            ? -1
+            : a.id > b.id
+              ? 1
+              : 0;
 
 /**
  * THE ONLY `SUM` **FOR DEBT** IN THE BACKEND — `point-cash.service.ts` also
@@ -165,5 +187,76 @@ export class SupplierBalanceService {
       page: query.page,
       limit: query.limit,
     };
+  }
+
+  /**
+   * «За що саме винні» for one supplier — spec §4.2.
+   *
+   * THREE READS, THE SAME FOUR FILTERS AS `debtSql`. Receipts (`i.voided_at`),
+   * top-ups (`t.voided_at` AND the parent's `ti.voided_at`), payouts
+   * (`p.voided_at`). Drop any one and the projection disagrees with the
+   * balance tile beside it, which is the one visible bug this slice can ship.
+   *
+   * ORDER IS THE CALLER'S CONTRACT with `settle`: each read is ordered by
+   * `(business_date, created_at, id)` in Postgres, and receipts and top-ups
+   * are merged here on that same key. A top-up has no shift of its own; its
+   * `business_date` is its PARENT's (spec §3.5), which is why the second read
+   * joins `shifts` through `intakes`.
+   *
+   * `::text` on every amount and on `business_date` (a `date` would otherwise
+   * arrive as a JS `Date` from the driver, local-time-shifted).
+   *
+   * ONE TRANSACTION, `REPEATABLE READ`: the three reads and `debtFor` must see
+   * one snapshot, or a payout landing between two of them makes `debt` and
+   * `Σ open − unallocated` disagree for that one response.
+   */
+  async settlementFor(supplierId: string): Promise<Settlement & { debt: string }> {
+    return this.dataSource.transaction('REPEATABLE READ', async (manager) => {
+      type IntakeRow = { id: string; code: string; business_date: string; created_at: string; amount: string };
+      type TopUpRow = IntakeRow & { intake_id: string };
+      type PayoutRow = IntakeRow & { intake_id: string | null };
+
+      const intakes = (await manager.query(
+        `SELECT i.id, i.code, s.business_date::text AS business_date,
+                i.created_at::text AS created_at, i.amount::text AS amount
+           FROM intakes i
+           JOIN shifts s ON s.id = i.shift_id
+          WHERE i.supplier_id = $1 AND i.voided_at IS NULL
+          ORDER BY s.business_date, i.created_at, i.id`,
+        [supplierId],
+      )) as IntakeRow[];
+
+      const topUps = (await manager.query(
+        `SELECT t.id, ti.code, t.intake_id, s.business_date::text AS business_date,
+                t.created_at::text AS created_at, t.amount::text AS amount
+           FROM intake_top_ups t
+           JOIN intakes ti ON ti.id = t.intake_id
+           JOIN shifts s ON s.id = ti.shift_id
+          WHERE ti.supplier_id = $1
+            AND ti.voided_at IS NULL
+            AND t.voided_at IS NULL
+          ORDER BY s.business_date, t.created_at, t.id`,
+        [supplierId],
+      )) as TopUpRow[];
+
+      const payouts = (await manager.query(
+        `SELECT p.id, p.code, p.intake_id, s.business_date::text AS business_date,
+                p.created_at::text AS created_at, p.amount::text AS amount
+           FROM payouts p
+           JOIN shifts s ON s.id = p.shift_id
+          WHERE p.supplier_id = $1 AND p.voided_at IS NULL
+          ORDER BY s.business_date, p.created_at, p.id`,
+        [supplierId],
+      )) as PayoutRow[];
+
+      const lines: DebtLine[] = [
+        ...intakes.map((r): DebtLine => ({ ...r, kind: 'intake', intake_id: r.id })),
+        ...topUps.map((r): DebtLine => ({ ...r, kind: 'top_up' })),
+      ].sort(byQueueKey);
+      const payoutLines: PayoutLine[] = payouts;
+
+      const debt = await this.debtFor(supplierId, manager);
+      return { debt, ...settle(lines, payoutLines) };
+    });
   }
 }
