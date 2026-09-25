@@ -230,7 +230,7 @@ describe('PriceChanges', () => {
       expect(search().get('changes_from')).toBe('2026-09-18');
     });
 
-    it('treats a calendar opened with Alt+↓ as a pick, and segment moves as no edit', () => {
+    it('treats a calendar opened with Alt+↓ after typing as a pick', () => {
       changesMock.mockReturnValue(loaded([], '2026-09-20', '2026-09-24'));
       const { search } = renderAt('/prices?changes_from=2026-09-20&changes_to=2026-09-24');
       const from = screen.getByLabelText('From');
@@ -239,8 +239,18 @@ describe('PriceChanges', () => {
       fireEvent.keyDown(from, { key: '1' });
       fireEvent.change(from, { target: { value: '2026-09-01' } });
       expect(search().get('changes_from')).toBe('2026-09-20');
-      fireEvent.keyDown(from, { key: 'ArrowRight' });
       fireEvent.keyDown(from, { key: 'ArrowDown', altKey: true });
+      fireEvent.change(from, { target: { value: '2026-09-18' } });
+      expect(search().get('changes_from')).toBe('2026-09-18');
+    });
+
+    it('does not count moving between segments as typing', () => {
+      changesMock.mockReturnValue(loaded([], '2026-09-20', '2026-09-24'));
+      const { search } = renderAt('/prices?changes_from=2026-09-20&changes_to=2026-09-24');
+      const from = screen.getByLabelText('From');
+
+      fireEvent.keyDown(from, { key: 'ArrowRight' });
+      fireEvent.keyDown(from, { key: 'ArrowLeft' });
       fireEvent.change(from, { target: { value: '2026-09-18' } });
       expect(search().get('changes_from')).toBe('2026-09-18');
     });
