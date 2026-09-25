@@ -132,6 +132,14 @@ describe('VoidDocumentDialog with a bound payout (#125)', () => {
     expect(voidDocumentMock).not.toHaveBeenCalled();
   });
 
+  it('focuses the first radio when submitted without a choice', async () => {
+    renderWithPayout();
+    await userEvent.type(screen.getByLabelText('Reason'), 'помилка');
+    await userEvent.click(screen.getByRole('button', { name: 'Void' }));
+
+    await waitFor(() => expect(screen.getAllByRole('radio')[0]).toHaveFocus());
+  });
+
   it('warns about the drawer only for void, and sends the decision', async () => {
     renderWithPayout();
     await userEvent.click(screen.getByLabelText('Keep the payout'));

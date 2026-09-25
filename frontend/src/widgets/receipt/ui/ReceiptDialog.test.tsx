@@ -9,6 +9,7 @@ const {
   intakeMock,
   supplierMock,
   balanceMock,
+  settlementMock,
   gradesMock,
   tareTypesMock,
   pointsMock,
@@ -18,6 +19,7 @@ const {
   intakeMock: vi.fn(),
   supplierMock: vi.fn(),
   balanceMock: vi.fn(),
+  settlementMock: vi.fn(),
   gradesMock: vi.fn(),
   tareTypesMock: vi.fn(),
   pointsMock: vi.fn(),
@@ -32,7 +34,7 @@ vi.mock('@/entities/intake', () => ({
 vi.mock('@/entities/supplier', () => ({
   useSupplierQuery: (id: string | null) => supplierMock(id),
   useSupplierBalanceQuery: (id: string | null) => balanceMock(id),
-  useSupplierSettlementQuery: () => ({ data: undefined }),
+  useSupplierSettlementQuery: (id: string | null) => settlementMock(id),
   supplierName: (s: { first_name: string; last_name: string }) => `${s.first_name} ${s.last_name}`,
 }));
 
@@ -176,10 +178,12 @@ function setUp({
     isError: false,
   });
   meMock.mockReturnValue({ data: me, isPending: false, isError: false });
+  settlementMock.mockReturnValue({ data: undefined, isPending: false, isError: false });
 }
 
 beforeEach(() => {
   voidDialogMock.mockReset();
+  settlementMock.mockReset();
 });
 
 describe('ReceiptDialog', () => {
@@ -442,5 +446,91 @@ describe('ReceiptDialog', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Close' }));
 
     expect(onClose).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('ReceiptDialog wiring into VoidDocumentDialog (#125)', () => {
+  it('builds linkedPayout from the payout with voided_at === null', () => {
+    setUp({
+      me: OWNER,
+      intake: buildIntake({
+        payouts: [
+          { id: 'payout-1', code: 'SHP-PO-1', amount: '5000.00', voided_at: '2026-09-07T12:00:00.000Z' },
+          { id: 'payout-2', code: 'SHP-PO-2', amount: '3000.00', voided_at: null },
+        ],
+      }),
+    });
+    render(<ReceiptDialog intakeId="intake-1" open onClose={vi.fn()} />);
+
+    expect(voidDialogMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        linkedPayout: expect.objectContaining({ code: 'SHP-PO-2', amount: '3000.00' }),
+      }),
+    );
+  });
+
+  it('leaves linkedPayout undefined when every payout is voided', () => {
+    setUp({
+      me: OWNER,
+      intake: buildIntake({
+        payouts: [
+          { id: 'payout-1', code: 'SHP-PO-1', amount: '5000.00', voided_at: '2026-09-07T12:00:00.000Z' },
+        ],
+      }),
+    });
+    render(<ReceiptDialog intakeId="intake-1" open onClose={vi.fn()} />);
+
+    expect(voidDialogMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({ linkedPayout: undefined }),
+    );
+  });
+
+  it('sets canConfirmReturn true for an owner', () => {
+    setUp({ me: OWNER });
+    render(<ReceiptDialog intakeId="intake-1" open onClose={vi.fn()} />);
+
+    expect(voidDialogMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({ canConfirmReturn: true }),
+    );
+  });
+
+  it('sets canConfirmReturn false for an operator', () => {
+    setUp({ me: OPERATOR_AUTHOR });
+    render(<ReceiptDialog intakeId="intake-1" open onClose={vi.fn()} />);
+
+    expect(voidDialogMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({ canConfirmReturn: false }),
+    );
+  });
+
+  it('leaves otherCovered null while the settlement has no data', () => {
+    setUp({
+      me: OWNER,
+      intake: buildIntake({
+        payouts: [{ id: 'payout-1', code: 'SHP-PO-1', amount: '3000.00', voided_at: null }],
+      }),
+    });
+    settlementMock.mockReturnValue({ data: undefined, isPending: true, isError: false });
+    render(<ReceiptDialog intakeId="intake-1" open onClose={vi.fn()} />);
+
+    expect(voidDialogMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        linkedPayout: expect.objectContaining({ otherCovered: null }),
+      }),
+    );
+  });
+
+  it('still renders the receipt (not the generic error) when the settlement query errors', () => {
+    setUp({
+      me: OWNER,
+      intake: buildIntake({
+        payouts: [{ id: 'payout-1', code: 'SHP-PO-1', amount: '3000.00', voided_at: null }],
+      }),
+    });
+    settlementMock.mockReturnValue({ data: undefined, isPending: false, isError: true });
+    render(<ReceiptDialog intakeId="intake-1" open onClose={vi.fn()} />);
+
+    expect(screen.getByText('SHP-IN-20260908-00412')).toBeInTheDocument();
+    expect(screen.queryByText('Something went wrong')).not.toBeInTheDocument();
   });
 });

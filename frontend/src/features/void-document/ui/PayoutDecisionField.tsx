@@ -1,4 +1,4 @@
-import { useId } from 'react';
+import { useId, type Ref } from 'react';
 import { useTranslation } from 'react-i18next';
 import { formatUah, isZero } from '@/shared/lib/money';
 import { Radio } from '@/shared/ui/radio';
@@ -18,30 +18,45 @@ export function PayoutDecisionField({
   value,
   onChange,
   error,
+  firstRadioRef,
 }: {
   payout: LinkedPayout;
   canConfirmReturn: boolean;
   value: PayoutDecision | undefined;
   onChange: (value: PayoutDecision) => void;
   error?: string;
+  /** RHF's `field.ref` from the enclosing `Controller` — lets a failed submit focus this
+   *  fieldset's first radio the way `register()` would focus a plain input. */
+  firstRadioRef?: Ref<HTMLInputElement>;
 }) {
   const { t, i18n } = useTranslation();
   const name = useId();
+  const errorId = useId();
   const money = (v: string) => formatUah(v, i18n.resolvedLanguage);
   const options: PayoutDecision[] = canConfirmReturn ? ['keep', 'void', 'void_returned'] : ['keep', 'void'];
   const labelKey = { keep: 'keep', void: 'void', void_returned: 'voidReturned' } as const;
 
   return (
-    <fieldset className="flex flex-col gap-3">
+    <fieldset
+      className="flex flex-col gap-3"
+      aria-invalid={error ? true : undefined}
+      aria-describedby={error ? errorId : undefined}
+    >
       <legend className="mb-2 text-sm font-medium">
         {t('void.payout.legend', { code: payout.code, amount: money(payout.amount) })}
       </legend>
       {/* Native radios, not the kit's Radix RadioGroup: measured 2026-09-26, dropping it took the
           first-load bundle from 307.7 to 303.1 KiB gzip — over the ceiling to under it. */}
       <div className="grid gap-3">
-        {options.map((option) => (
+        {options.map((option, index) => (
           <label key={option} className="flex items-start gap-2 text-sm">
-            <Radio name={name} value={option} checked={value === option} onChange={() => onChange(option)} />
+            <Radio
+              ref={index === 0 ? firstRadioRef : undefined}
+              name={name}
+              value={option}
+              checked={value === option}
+              onChange={() => onChange(option)}
+            />
             {t(`void.payout.${labelKey[option]}`)}
           </label>
         ))}
@@ -54,7 +69,11 @@ export function PayoutDecisionField({
           {t('void.payout.otherCovered', { amount: money(payout.otherCovered) })}
         </p>
       ) : null}
-      {error ? <p className="text-sm text-destructive">{t(error)}</p> : null}
+      {error ? (
+        <p id={errorId} className="text-sm text-destructive">
+          {t(error)}
+        </p>
+      ) : null}
     </fieldset>
   );
 }

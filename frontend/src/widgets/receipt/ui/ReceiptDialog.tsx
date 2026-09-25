@@ -86,8 +86,16 @@ export function ReceiptDialog({
   const me = meQuery.data;
 
   const livePayout = intake?.payouts.find((p) => p.voided_at === null) ?? null;
-  // Only fetched when there is a payout to explain; the line waits for it, the choice does not.
-  const settlementQuery = useSupplierSettlementQuery(livePayout ? (intake?.supplier_id ?? null) : null);
+
+  const [voidOpen, setVoidOpen] = useState(false);
+  const [voidKey, setVoidKey] = useState(0);
+
+  // Only fetched once the void dialog is actually open on a receipt with a
+  // payout to explain — otherwise every receipt would pay for a settlement
+  // read nothing on screen shows.
+  const settlementQuery = useSupplierSettlementQuery(
+    voidOpen && livePayout ? (intake?.supplier_id ?? null) : null,
+  );
 
   const isError =
     intakeQuery.isError ||
@@ -97,9 +105,6 @@ export function ReceiptDialog({
     tareTypesQuery.isError ||
     pointsQuery.isError ||
     meQuery.isError;
-
-  const [voidOpen, setVoidOpen] = useState(false);
-  const [voidKey, setVoidKey] = useState(0);
 
   // VoidDocumentDialog keeps its form state for its lifetime (react-hook-form's
   // `defaultValues` only apply on mount, and it stays mounted here so `open`

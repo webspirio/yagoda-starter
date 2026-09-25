@@ -3,9 +3,13 @@ import { renderHook, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import MockAdapter from 'axios-mock-adapter';
 import type { ReactNode } from 'react';
-import { httpClient } from '@/shared/api';
+import { httpClient, attachAuthInterceptors } from '@/shared/api';
 import { queryKeys } from '@/shared/api/queryKeys';
 import { useVoidDocumentMutation } from './useVoidDocument';
+
+// Needed so a mocked error response turns into an ApiError with a `.code` —
+// apiErrorCode() (used by the onError below) reads that, not the raw axios error.
+attachAuthInterceptors(httpClient, { getToken: () => null, onUnauthorized: () => {} });
 
 let mock: MockAdapter;
 let queryClient: QueryClient;
@@ -105,5 +109,31 @@ describe('useVoidDocumentMutation', () => {
     await waitFor(() =>
       expect(spy).toHaveBeenCalledWith({ queryKey: queryKeys.pointCash }),
     );
+  });
+
+  it('invalidates the kind’s queries on a stale-dialog error (PAYOUT_DECISION_NOT_APPLICABLE)', async () => {
+    mock.onPost('/intakes/i1/void').reply(400, { code: 'PAYOUT_DECISION_NOT_APPLICABLE' });
+    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries');
+    const { result } = renderHook(() => useVoidDocumentMutation(), { wrapper });
+
+    await expect(
+      result.current.mutateAsync({ kind: 'intake', id: 'i1', reason: 'r' }),
+    ).rejects.toThrow();
+
+    await waitFor(() =>
+      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: queryKeys.intakes }),
+    );
+  });
+
+  it('does not invalidate anything on a generic failure', async () => {
+    mock.onPost('/intakes/i1/void').reply(500);
+    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries');
+    const { result } = renderHook(() => useVoidDocumentMutation(), { wrapper });
+
+    await expect(
+      result.current.mutateAsync({ kind: 'intake', id: 'i1', reason: 'r' }),
+    ).rejects.toThrow();
+
+    expect(invalidateSpy).not.toHaveBeenCalled();
   });
 });
