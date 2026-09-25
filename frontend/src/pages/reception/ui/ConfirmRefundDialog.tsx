@@ -1,15 +1,13 @@
 import { useEffect, useEffectEvent, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/shared/ui/alert-dialog';
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/shared/ui/dialog';
 import { Button } from '@/shared/ui/button';
 import { Spinner } from '@/shared/ui/spinner';
 import { formatUah, isZero } from '@/shared/lib/money';
@@ -34,8 +32,14 @@ import { useReturnPreviewQuery } from '@/features/return-crates';
  * to miss: when the fresh preview says `0.00` the dialog never opens and
  * `onConfirm` fires straight away.
  *
- * Focus lands on «Назад» (Radix AlertDialog's default): Enter is how the
- * operator submits the form, and a second habitual Enter must not accept.
+ * Focus lands on «Назад»: Enter is how the operator submits the form, and a
+ * second habitual Enter must not accept.
+ *
+ * Built on `shared/ui/dialog`, not `shared/ui/alert-dialog`: reception is an
+ * eager route, and Radix AlertDialog would be a whole second package in the
+ * first-load bundle for this one screen (it pushed `bundle` over its ceiling).
+ * The alert-dialog behaviour it would have given is set here by hand —
+ * `role="alertdialog"`, no dismiss on an outside click, focus on «Назад».
  */
 export function ConfirmRefundDialog({
   supplierId,
@@ -63,6 +67,7 @@ export function ConfirmRefundDialog({
 
   // Fires once: a StrictMode double effect must not submit the receipt twice.
   const submitted = useRef(false);
+  const backRef = useRef<HTMLButtonElement>(null);
   const confirmOnce = () => {
     if (submitted.current) return;
     submitted.current = true;
@@ -83,15 +88,24 @@ export function ConfirmRefundDialog({
     .reduce((n, a) => n + a.units, 0);
 
   return (
-    // Radix closes on «Action» too — a close that follows a confirm is not a
-    // cancel, and must not tell the page to drop the submit it just started.
-    <AlertDialog open onOpenChange={(next) => !next && !submitted.current && onCancel()}>
-      <AlertDialogContent size="sm">
-        <AlertDialogHeader>
-          <AlertDialogTitle>
-            {paid !== null ? t('reception.refundConfirm.titleTwo') : t('reception.refundConfirm.titleOne')}
-          </AlertDialogTitle>
-          <AlertDialogDescription asChild>
+    <Dialog open onOpenChange={(next) => !next && onCancel()}>
+      <DialogContent
+        role="alertdialog"
+        className="sm:max-w-[420px]"
+        showCloseButton={false}
+        onPointerDownOutside={(e) => e.preventDefault()}
+        onOpenAutoFocus={(e) => {
+          e.preventDefault();
+          backRef.current?.focus();
+        }}
+      >
+        <DialogHeader>
+          <DialogTitle>
+            {paid !== null
+              ? t('reception.refundConfirm.titleTwo')
+              : t('reception.refundConfirm.titleOne')}
+          </DialogTitle>
+          <DialogDescription asChild>
             <div className="flex flex-col gap-2 text-left">
               {preview.isError ? (
                 <div role="alert" className="flex flex-col items-start gap-2 text-destructive">
@@ -132,19 +146,21 @@ export function ConfirmRefundDialog({
                 </ul>
               )}
             </div>
-          </AlertDialogDescription>
-        </AlertDialogHeader>
-        <AlertDialogFooter>
-          <AlertDialogCancel size="cta">{t('reception.refundConfirm.back')}</AlertDialogCancel>
-          <AlertDialogAction size="cta" disabled={fresh === null} onClick={() => confirmOnce()}>
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button ref={backRef} type="button" variant="outline" size="cta" onClick={onCancel}>
+            {t('reception.refundConfirm.back')}
+          </Button>
+          <Button type="button" size="cta" disabled={fresh === null} onClick={confirmOnce}>
             {fresh !== null
               ? t('reception.refundConfirm.confirm', {
                   amount: formatUah(fresh.deposit_refund, locale),
                 })
               : t('reception.refundConfirm.pending')}
-          </AlertDialogAction>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
