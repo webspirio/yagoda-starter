@@ -14,7 +14,7 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { IntakesService } from './intakes.service';
 import { CreateIntakeDto } from './dto/create-intake.dto';
 import { PreviewIntakeDto } from './dto/preview-intake.dto';
-import { VoidDocumentDto } from './dto/void-document.dto';
+import { VoidIntakeDto } from './dto/void-intake.dto';
 import { ListIntakesQueryDto } from './dto/list-intakes.query';
 import type { AuthenticatedUser } from '../auth/jwt.strategy';
 
@@ -88,7 +88,7 @@ export class IntakesController {
   void(
     @CurrentUser() actor: AuthenticatedUser,
     @Param('id', ParseUUIDPipe) id: string,
-    @Body() dto: VoidDocumentDto,
+    @Body() dto: VoidIntakeDto,
   ) {
     return this.intakes.void(actor, id, dto);
   }

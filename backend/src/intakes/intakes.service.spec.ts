@@ -66,7 +66,12 @@ describe('IntakesService', () => {
   let tare: { findManyRaw: jest.Mock };
   let points: { findOneRaw: jest.Mock };
   let audit: { record: jest.Mock };
-  let payouts: { writePayout: jest.Mock };
+  let payouts: {
+    writePayout: jest.Mock;
+    findLiveBoundForUpdate: jest.Mock;
+    voidWithin: jest.Mock;
+    settleReturnWithin: jest.Mock;
+  };
   let service: IntakesService;
 
   const shift = (over: Record<string, unknown> = {}) => ({
@@ -190,6 +195,9 @@ describe('IntakesService', () => {
           shift: shift(),
         }),
       ),
+      findLiveBoundForUpdate: jest.fn().mockResolvedValue(null),
+      voidWithin: jest.fn().mockImplementation((_m, _a, p) => Promise.resolve({ ...p, voided_at: new Date() })),
+      settleReturnWithin: jest.fn().mockImplementation((_m, _a, p) => Promise.resolve(p)),
     };
 
     service = new IntakesService(
@@ -660,6 +668,83 @@ describe('IntakesService', () => {
       // There is no balance lookup in this path at all, and adding a floor check
       // would contradict «інваріанта борг >= 0 в цій схемі теж немає».
       await expect(service.void(owner, INTAKE_ID, { reason: 'сторно' })).resolves.toBeDefined();
+    });
+
+    describe('with a live bound payout (#125)', () => {
+      const bound = { id: 'po-1', code: 'KPG-PO-20260908-001', amount: '1500.00', voided_at: null };
+      beforeEach(() => payouts.findLiveBoundForUpdate.mockResolvedValue(bound));
+
+      it('locks the payout after the intake, in the same transaction', async () => {
+        await service.void(oksana, INTAKE_ID, { reason: 'r', payout: 'keep' });
+
+        expect(payouts.findLiveBoundForUpdate).toHaveBeenCalledWith(manager, INTAKE_ID);
+        expect(manager.findOne.mock.invocationCallOrder[0]).toBeLessThan(
+          payouts.findLiveBoundForUpdate.mock.invocationCallOrder[0],
+        );
+      });
+
+      it('400s without a decision and writes nothing', async () => {
+        await expect(service.void(oksana, INTAKE_ID, { reason: 'r' })).rejects.toMatchObject({
+          response: { code: 'PAYOUT_DECISION_REQUIRED' },
+        });
+        expect(manager.save).not.toHaveBeenCalled();
+        expect(audit.record).not.toHaveBeenCalled();
+      });
+
+      it('403s an operator choosing void_returned and writes nothing', async () => {
+        await expect(
+          service.void(oksana, INTAKE_ID, { reason: 'r', payout: 'void_returned' }),
+        ).rejects.toMatchObject({ response: { code: 'OWNER_ONLY' } });
+        expect(manager.save).not.toHaveBeenCalled();
+      });
+
+      it('keep: voids only the intake and records the decision', async () => {
+        await service.void(oksana, INTAKE_ID, { reason: 'r', payout: 'keep' });
+
+        expect(payouts.voidWithin).not.toHaveBeenCalled();
+        expect(audit.record).toHaveBeenCalledWith(
+          expect.objectContaining({
+            action: 'intake.voided',
+            after: expect.objectContaining({ payout_decision: 'keep' }),
+          }),
+          manager,
+        );
+      });
+
+      it('void: voids the payout with the same reason, no return', async () => {
+        await service.void(oksana, INTAKE_ID, { reason: 'помилка', payout: 'void' });
+
+        expect(payouts.voidWithin).toHaveBeenCalledWith(manager, oksana, bound, 'помилка');
+        expect(payouts.settleReturnWithin).not.toHaveBeenCalled();
+      });
+
+      it('void_returned (owner): voids, then settles the return with the reason as note', async () => {
+        await service.void(owner, INTAKE_ID, { reason: 'повернув', payout: 'void_returned' });
+
+        expect(payouts.voidWithin).toHaveBeenCalledWith(manager, owner, bound, 'повернув');
+        expect(payouts.settleReturnWithin).toHaveBeenCalledWith(
+          manager,
+          owner,
+          expect.objectContaining({ id: 'po-1' }),
+          'повернув',
+        );
+        expect(payouts.voidWithin.mock.invocationCallOrder[0]).toBeLessThan(
+          payouts.settleReturnWithin.mock.invocationCallOrder[0],
+        );
+      });
+    });
+
+    it('400s a decision when no live payout is bound (e.g. voided on its own earlier)', async () => {
+      await expect(
+        service.void(oksana, INTAKE_ID, { reason: 'r', payout: 'void' }),
+      ).rejects.toMatchObject({ response: { code: 'PAYOUT_DECISION_NOT_APPLICABLE' } });
+    });
+
+    it('records no payout_decision when nothing was bound', async () => {
+      await service.void(oksana, INTAKE_ID, { reason: 'r' });
+
+      const entry = audit.record.mock.calls[0][0] as { after: Record<string, unknown> };
+      expect(entry.after).not.toHaveProperty('payout_decision');
     });
   });
 
