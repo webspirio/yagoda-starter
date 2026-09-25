@@ -32,6 +32,7 @@ vi.mock('@/entities/intake', () => ({
 vi.mock('@/entities/supplier', () => ({
   useSupplierQuery: (id: string | null) => supplierMock(id),
   useSupplierBalanceQuery: (id: string | null) => balanceMock(id),
+  useSupplierSettlementQuery: () => ({ data: undefined }),
   supplierName: (s: { first_name: string; last_name: string }) => `${s.first_name} ${s.last_name}`,
 }));
 
@@ -56,6 +57,7 @@ vi.mock('@/features/void-document', () => ({
     voidDialogMock(props);
     return props.open ? <div data-testid="void-dialog-mock" /> : null;
   },
+  otherCovered: () => '0.00',
 }));
 
 const SUPPLIER = {

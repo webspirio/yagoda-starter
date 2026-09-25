@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useForm } from 'react-hook-form';
+import { Controller, useForm } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
 import {
   Dialog,
@@ -13,11 +13,14 @@ import { Field } from '@/shared/ui/field';
 import { Textarea } from '@/shared/ui/textarea';
 import { Button } from '@/shared/ui/button';
 import { toast } from '@/shared/ui/toast';
-import { useVoidDocumentMutation } from '../api/useVoidDocument';
+import { useVoidDocumentMutation, type PayoutDecision } from '../api/useVoidDocument';
 import { apiErrorToBanner } from '@/shared/lib/api-error';
+import { PayoutDecisionField, type LinkedPayout } from './PayoutDecisionField';
 
 interface VoidFormValues {
   reason: string;
+  /** #125: only asked for an intake with a live linked payout — see `showPayout`. */
+  payout?: PayoutDecision;
 }
 
 /**
@@ -35,6 +38,8 @@ export function VoidDocumentDialog({
   open,
   onClose,
   onVoided,
+  linkedPayout,
+  canConfirmReturn = false,
 }: {
   kind: 'intake' | 'payout' | 'transfer' | 'topUp' | 'crateIssuance' | 'crateReturn';
   id: string;
@@ -43,13 +48,19 @@ export function VoidDocumentDialog({
   onClose: () => void;
   /** Fires after a successful void, before `onClose` — e.g. to refresh a detail view. */
   onVoided?: () => void;
+  /** #125: the intake's live payout, if any — asks what happens to it too. */
+  linkedPayout?: LinkedPayout;
+  /** Owner-only third choice: the money is already back in the drawer. */
+  canConfirmReturn?: boolean;
 }) {
   const { t } = useTranslation();
   const voidDocument = useVoidDocumentMutation();
+  const showPayout = kind === 'intake' && linkedPayout !== undefined;
 
   const {
     register,
     handleSubmit,
+    control,
     formState: { errors, isSubmitting },
   } = useForm<VoidFormValues>({ defaultValues: { reason: '' } });
 
@@ -58,7 +69,12 @@ export function VoidDocumentDialog({
   const onSubmit = handleSubmit(async (values) => {
     setFormError(null);
     try {
-      await voidDocument.mutateAsync({ kind, id, reason: values.reason.trim() });
+      await voidDocument.mutateAsync({
+        kind,
+        id,
+        reason: values.reason.trim(),
+        ...(showPayout && values.payout ? { payout: values.payout } : {}),
+      });
       toast.success(t('void.toast.voided'));
       onVoided?.();
       onClose();
@@ -76,6 +92,23 @@ export function VoidDocumentDialog({
         </DialogHeader>
 
         <form onSubmit={onSubmit} className="flex flex-col gap-4" noValidate>
+          {showPayout ? (
+            <Controller
+              control={control}
+              name="payout"
+              rules={{ validate: (v) => v !== undefined || 'void.payout.required' }}
+              render={({ field, fieldState }) => (
+                <PayoutDecisionField
+                  payout={linkedPayout}
+                  canConfirmReturn={canConfirmReturn}
+                  value={field.value}
+                  onChange={field.onChange}
+                  error={fieldState.error?.message}
+                />
+              )}
+            />
+          ) : null}
+
           <Field name="reason" label={t('void.reason')} required error={errors.reason?.message}>
             {(a11y) => (
               <Textarea

@@ -12,12 +12,17 @@ import { Button } from '@/shared/ui/button';
 import { add, cmp, formatKg, formatUah, isNegative } from '@/shared/lib/money';
 import { formatLongDate, formatTime } from '@/shared/lib/date';
 import { useIntakeQuery } from '@/entities/intake';
-import { useSupplierBalanceQuery, useSupplierQuery, supplierName } from '@/entities/supplier';
+import {
+  useSupplierBalanceQuery,
+  useSupplierQuery,
+  useSupplierSettlementQuery,
+  supplierName,
+} from '@/entities/supplier';
 import { useGradeCatalogQuery } from '@/entities/product-grade';
 import { useTareTypeOptionsQuery } from '@/entities/tare-type';
 import { usePointOptionsQuery } from '@/entities/collection-point';
 import { useMeQuery } from '@/entities/user';
-import { VoidDocumentDialog } from '@/features/void-document';
+import { VoidDocumentDialog, otherCovered } from '@/features/void-document';
 import { ReceiptSheet, type ReceiptSheetLine } from './ReceiptSheet';
 
 /** Formats the «Ціна за кг» row's right side when a per-kilogram bonus/markup
@@ -79,6 +84,10 @@ export function ReceiptDialog({
 
   const meQuery = useMeQuery();
   const me = meQuery.data;
+
+  const livePayout = intake?.payouts.find((p) => p.voided_at === null) ?? null;
+  // Only fetched when there is a payout to explain; the line waits for it, the choice does not.
+  const settlementQuery = useSupplierSettlementQuery(livePayout ? (intake?.supplier_id ?? null) : null);
 
   const isError =
     intakeQuery.isError ||
@@ -207,6 +216,18 @@ export function ReceiptDialog({
         code={intake.code}
         open={voidOpen}
         onClose={() => setVoidOpen(false)}
+        linkedPayout={
+          livePayout
+            ? {
+                code: livePayout.code,
+                amount: livePayout.amount,
+                otherCovered: settlementQuery.data
+                  ? otherCovered(settlementQuery.data, livePayout.id, intake.id)
+                  : null,
+              }
+            : undefined
+        }
+        canConfirmReturn={me.role === 'network_owner'}
       />
     );
   }
