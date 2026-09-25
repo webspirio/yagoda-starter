@@ -38,3 +38,42 @@ export interface SupplierBalanceRow {
 
 export const supplierName = (s: { first_name: string; last_name: string }) =>
   `${s.first_name} ${s.last_name}`;
+
+/** One line of «Відкриті залишки» — `GET /suppliers/:id/settlement`. Every amount a string. */
+export interface SettlementLine {
+  kind: 'intake' | 'top_up';
+  id: string;
+  /** A top-up carries its PARENT receipt's code. */
+  code: string;
+  intake_id: string;
+  business_date: string;
+  created_at: string;
+  amount: string;
+  paid: string;
+  open: string;
+  covered_by: { payout_id: string; payout_code: string; amount: string }[];
+}
+
+export interface SettlementPayout {
+  id: string;
+  code: string;
+  business_date: string;
+  created_at: string;
+  amount: string;
+  intake_id: string | null;
+  covers: { line_id: string; kind: 'intake' | 'top_up'; amount: string }[];
+  unallocated: string;
+}
+
+/**
+ * The card's «за що саме винні» — a projection the backend computes on every
+ * read (spec 2026-09-25 §3.1); nothing here is stored. `debt` is the same
+ * number `/balance` returns; `lines` is oldest first.
+ */
+export interface SupplierSettlement {
+  supplier_id: string;
+  debt: string;
+  unallocated: string;
+  lines: SettlementLine[];
+  payouts: SettlementPayout[];
+}
