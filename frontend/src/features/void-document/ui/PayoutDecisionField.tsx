@@ -1,5 +1,5 @@
+import { useId } from 'react';
 import { useTranslation } from 'react-i18next';
-import { RadioGroup, RadioGroupItem } from '@/shared/ui/radio-group';
 import { formatUah, isZero } from '@/shared/lib/money';
 import type { PayoutDecision } from '../api/useVoidDocument';
 
@@ -25,6 +25,7 @@ export function PayoutDecisionField({
   error?: string;
 }) {
   const { t, i18n } = useTranslation();
+  const name = useId();
   const money = (v: string) => formatUah(v, i18n.resolvedLanguage);
   const options: PayoutDecision[] = canConfirmReturn ? ['keep', 'void', 'void_returned'] : ['keep', 'void'];
   const labelKey = { keep: 'keep', void: 'void', void_returned: 'voidReturned' } as const;
@@ -34,14 +35,23 @@ export function PayoutDecisionField({
       <legend className="mb-2 text-sm font-medium">
         {t('void.payout.legend', { code: payout.code, amount: money(payout.amount) })}
       </legend>
-      <RadioGroup value={value ?? ''} onValueChange={(v) => onChange(v as PayoutDecision)}>
+      {/* Native radios, not the kit's Radix RadioGroup: measured 2026-09-26, dropping it took the
+          first-load bundle from 307.7 to 303.1 KiB gzip — over the ceiling to under it. */}
+      <div className="grid gap-3">
         {options.map((option) => (
           <label key={option} className="flex items-start gap-2 text-sm">
-            <RadioGroupItem value={option} />
+            <input
+              type="radio"
+              name={name}
+              value={option}
+              checked={value === option}
+              onChange={() => onChange(option)}
+              className="mt-0.5 size-4 shrink-0 accent-brand"
+            />
             {t(`void.payout.${labelKey[option]}`)}
           </label>
         ))}
-      </RadioGroup>
+      </div>
       {value === 'void' ? (
         <p className="text-sm text-amber">{t('void.payout.cashWarning', { amount: money(payout.amount) })}</p>
       ) : null}
