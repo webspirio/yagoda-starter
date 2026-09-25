@@ -558,7 +558,14 @@ Found by the reviews during that slice's execution, judged and deferred:
   both say `Europe/Kyiv`. `ShiftsService.open`'s own comment warns that under
   UTC an evening shift and every document in it is silently misfiled by a day.
   The cash database specs pin their own timezone rather than inherit this, so
-  the slice is unaffected — but local env setup is not.
+  the slice is unaffected — but local env setup is not. **Reproduced
+  2026-09-26:** the local backend's `.env` UTC against the e2e `global-setup`/
+  browser's Kyiv makes `smoke` fail between 00:00 and 03:00 Kyiv — «receipts
+  tile rendered zero» — because the two sides disagree about what "today" is
+  for those three hours. Passes with `APP_TIMEZONE=Europe/Kyiv`. A proof run
+  recreated the shared local backend container with `APP_TIMEZONE=Europe/Kyiv`
+  set; a plain `docker compose up` (no env override) restores UTC and the
+  window reopens.
 - **`point-cash.db-spec.ts` scenario 12 pins only half of `asOfSql`.** It
   covers the `COALESCE` (drop it and the result changes) but not the
   `AT TIME ZONE` inside it — any timezone puts "today" past the fixture's date.
@@ -1182,7 +1189,17 @@ decision rather than guessing whether something was missed.
   suggestion, `isolate: false` in `frontend/vite.config.ts`'s `test` block (reusing workers
   across files instead of spawning one per file), or sharding the coverage run, are the
   candidates worth measuring. None attempted here: a fix would touch project-wide test
-  infrastructure, not the crates tables this slice owns.
+  infrastructure, not the crates tables this slice owns. **2026-09-26 measurement:** under the
+  root `turbo coverage` parallel run this same test measured 15 498 ms against the file's
+  15 000 ms `testTimeout` — over the limit by 498 ms, consistent with the contention hypothesis
+  above rather than a regression in the test itself. Do not raise the timeout to clear it.
+- **`backend/src/media/file-interceptor.spec.ts` › "rejects a body over limits.fileSize instead
+  of truncating it" times out at Jest's 5 s default under the parallel full-tier run, though it
+  passes when run alone.** Same shape as the frontend flake above: a real multipart upload of a
+  size at `MEDIA_MAX_BYTES` competing for CPU/IO against everything else the full tier runs
+  concurrently, not a defect in the test or the interceptor. The fix is finding and relieving
+  that contention (or giving this one spec more isolation), never raising the 5 s default —
+  that is a ratchet this repo's verify layer exists to refuse.
 
 ## Deferred from the cost-of-day screen (2026-09-22)
 
@@ -1241,4 +1258,9 @@ decision rather than guessing whether something was missed.
 - **A shift-close reminder** listing the shift's payouts voided with no recorded return.
 - **`SupplierCardPage` has no intake-void entry.** Intakes are voided from `ReceiptDialog`
   only; a future second entry point must pass `linkedPayout` / `canConfirmReturn` the same way.
+- **`shared/ui/radio.tsx` is a second radio primitive.** Native `Radio` (this slice) sits beside
+  the unused Radix `radio-group` already listed in `frontend/CLAUDE.md`'s «Kit hygiene» note.
+  Per that note: add `Radio` to `/ui-kit` (it has no gallery entry yet) and mark `radio-group`
+  a deletion candidate there — a second answer to a question the mock kit already answers,
+  same as the rest of that list.
 - **Next slice: stored payout allocations (`feat/payout-allocations`).** Decided in grilling 2026-09-26: the 04.09.2026 removal of `payout_allocations` was an artifact of an earlier schema simplification, not an owner decision, and is reversed. Decisions: an allocation is a frozen append-only fact (a document void sets `voided_at` on its allocations; freed money moves by new rows); one `allocate(supplierId, m)` runs in the transaction of every event (payout, intake, top-up, their voids) — bound intake first, then FIFO `(business_date, created_at, id)`; debt stays the document formula, with `Σ open − unallocated = debt` held by tests; table `payout_allocations(id, payout_id, intake_id NULL, intake_top_up_id NULL, CHECK exactly one, amount > 0, created_at, voided_at)`; one-off backfill in the migration with a frozen copy of `settle()`; `GET /suppliers/:id/settlement` keeps its contract and reads the table. Open: a per-supplier lock against double allocation; rewriting the 04.09 notes in §3.3/§3.10 and the DBML.
