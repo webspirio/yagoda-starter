@@ -119,17 +119,18 @@ export class PayoutsService {
    * implementation.
    *
    * LOCK ORDER IS THE CONTRACT: supplier row → open shift → debt →
-   * `nextDocumentCode`'s advisory lock → cash → insert. The reception path
-   * holds the `intakes` advisory lock BEFORE calling this and never after, so
-   * the two paths cannot form a cycle. (See the block comment below on why the
-   * supplier row is a mutex and why SERIALIZABLE was rejected.)
+   * `nextDocumentCode`'s advisory lock → cash → insert. (See the block
+   * comment below on why the supplier row is a mutex and why SERIALIZABLE was
+   * rejected.)
    *
-   * On the reception path the caller has already inserted the intake, which
-   * holds `FOR KEY SHARE` on the same `suppliers` row (the FK); `FOR UPDATE`
-   * here is therefore a lock UPGRADE by the same transaction, which Postgres
-   * grants without waiting on itself, and no other path takes the `payouts`
-   * advisory lock before the supplier row — so the hierarchy `intakes`
-   * advisory → `suppliers` row → `payouts` advisory is acyclic.
+   * On the reception path the caller has ALREADY locked this supplier row
+   * `FOR UPDATE` as its first statement (since 2026-09-24 — spec §8.3's crate
+   * return needs it before any document row), then taken the `intakes`
+   * advisory lock and inserted the intake. `FOR UPDATE` here is therefore a
+   * re-lock by the same transaction, which Postgres grants without waiting
+   * on itself, and no path takes the `payouts` or `intakes` advisory lock
+   * before the supplier row — so the hierarchy `suppliers` row → `intakes`
+   * advisory → `payouts` advisory is acyclic.
    *
    * Callers must have checked, outside the transaction, that the point
    * exists, the supplier is active and belongs to `pointId`; this method

@@ -27,11 +27,19 @@ import { apiErrorToFields, type ApiFieldErrors } from '../lib/apiErrorToFields';
 import { isOwnFormEvent } from '../lib/formEventGuards';
 import { useIntakePreview } from '../lib/useIntakePreview';
 import { suggestedPaid } from '../lib/suggestedPaid';
-import { emptyLine, toCreateBody, type IntakeFormValues } from '../model/intakeForm';
+import {
+  crateTareUnits,
+  emptyLine,
+  parseCount,
+  toCreateBody,
+  type IntakeFormValues,
+} from '../model/intakeForm';
 import { SupplierSection } from './SupplierSection';
 import { LineEditor } from './LineEditor';
 import { LinesTable, type CommittedLine } from './LinesTable';
 import { TotalsSection } from './TotalsSection';
+import { ReturnedCratesField } from './ReturnedCratesField';
+import { ConfirmRefundDialog } from './ConfirmRefundDialog';
 import { TodayReceipts } from './TodayReceipts';
 import { PointStatePanel } from './PointStatePanel';
 import { ShiftBanner } from './ShiftBanner';
@@ -75,7 +83,7 @@ export function ReceptionPage() {
     (tareTypes.data ?? []).find((type) => type.is_crate)?.id ?? tareTypes.data?.[0]?.id ?? '';
 
   const form = useForm<IntakeFormValues>({
-    defaultValues: { supplier_id: '', items: [emptyLine('')], paid_amount: '' },
+    defaultValues: { supplier_id: '', items: [emptyLine('')], paid_amount: '', returned_crates: '' },
   });
   const { control, register, setValue, handleSubmit, reset } = form;
   const lines = useFieldArray({ control, name: 'items' });
@@ -117,6 +125,13 @@ export function ReceptionPage() {
   // types in it themselves (`suggestedPaid`, below) — this is the only thing
   // that switches it over to what RHF actually holds.
   const [paidTouched, setPaidTouched] = useState(false);
+  // Bumped on every supplier pick — even a re-pick of the same row, which
+  // `reset()` above may have just emptied — so «З них наших ящиків» remounts
+  // and pre-fills afresh.
+  const [supplierPick, setSupplierPick] = useState(0);
+  // A submit held back for «Видайте людині дві суми» (`ConfirmRefundDialog`):
+  // the validated form values, waiting on the operator's confirmation.
+  const [pendingSubmit, setPendingSubmit] = useState<IntakeFormValues | null>(null);
 
   const shiftOpen = shift.data != null;
   const balance = useSupplierBalanceQuery(values.supplier_id || null);
@@ -261,7 +276,12 @@ export function ReceptionPage() {
       setReceiptId(created.id);
       // The mock resets everything, supplier included: the next person in the
       // queue is a new visit, not an edit of this one.
-      reset({ supplier_id: '', items: [emptyLine(defaultTareTypeId)], paid_amount: '' });
+      reset({
+        supplier_id: '',
+        items: [emptyLine(defaultTareTypeId)],
+        paid_amount: '',
+        returned_crates: '',
+      });
       setSupplier(null);
       setPaidTouched(false);
       // The next person in the queue starts where the operator's hands
@@ -274,6 +294,20 @@ export function ReceptionPage() {
       });
     }
   };
+
+  // Every receipt that returns our crates passes through `ConfirmRefundDialog`,
+  // which decides on the server's FRESH split whether there is a deposit to
+  // hand over — and confirms straight through when there is none.
+  const requestSubmit = (formValues: IntakeFormValues) => {
+    if (parseCount(formValues.returned_crates) > 0) setPendingSubmit(formValues);
+    else void submitIntake(formValues);
+  };
+  // The body the pending submit WOULD send — the same `toCreateBody` the write
+  // uses, so the dialog names exactly the berry payout and crates that go out.
+  const pendingBody =
+    pendingSubmit !== null
+      ? toCreateBody({ ...pendingSubmit, paid_amount: paidShown }, bodyPointId)
+      : null;
 
   const handleOpenShift = () => {
     setOpenDialogInstance((n) => n + 1);
@@ -362,10 +396,10 @@ export function ReceptionPage() {
               // inline supplier dialog (`SupplierPicker` → `SupplierFormDialog`)
               // is portaled to `document.body` by `shared/ui/dialog.tsx`, but
               // is still a REACT descendant of this form, so without this
-              // guard its own submit would reach `handleSubmit(submitIntake)`
+              // guard its own submit would reach `handleSubmit(requestSubmit)`
               // — a real `POST /intakes` nobody pressed «Прийняти» for.
               if (!isOwnFormEvent(e)) return;
-              void handleSubmit(submitIntake)(e);
+              void handleSubmit(requestSubmit)(e);
             }}
             // Enter is how an operator moves between fields on the scale's
             // numeric pad; it must never fire a submit the form isn't ready
@@ -400,6 +434,7 @@ export function ReceptionPage() {
                       supplier_id: s.id,
                       items: [emptyLine(defaultTareTypeId)],
                       paid_amount: '',
+                      returned_crates: '',
                     });
                     toast(t('reception.toast.linesCleared'));
                   } else {
@@ -407,6 +442,7 @@ export function ReceptionPage() {
                   }
                   setSupplier(s);
                   setPaidTouched(false);
+                  setSupplierPick((n) => n + 1);
                 }}
                 debt={debt}
                 disabled={!shiftOpen}
@@ -438,6 +474,17 @@ export function ReceptionPage() {
                 netKg={committed.length > 0 ? committedNetKg : null}
                 onAdd={() => lines.append(emptyLine(defaultTareTypeId))}
                 onRemove={(index) => lines.remove(index)}
+              />
+              {/* Keyed by the supplier pick: a new pick remounts it, so the
+                  pre-fill follows the ceiling again until the operator types. */}
+              <ReturnedCratesField
+                key={`${values.supplier_id}:${supplierPick}`}
+                supplierId={values.supplier_id || null}
+                pointId={bodyPointId ?? undefined}
+                crateTareUnits={crateTareUnits(values.items, tareTypes.data ?? [])}
+                value={values.returned_crates}
+                onChange={(v) => setValue('returned_crates', v, { shouldDirty: true })}
+                disabled={!shiftOpen}
               />
               <TotalsSection
                 accrued={accrued}
@@ -496,6 +543,19 @@ export function ReceptionPage() {
           setOpenDialogOpen(false);
         }}
       />
+      {pendingSubmit !== null && pendingBody !== null ? (
+        <ConfirmRefundDialog
+          supplierId={pendingSubmit.supplier_id}
+          pointId={bodyPointId ?? undefined}
+          units={pendingBody.returned_crates ?? 0}
+          paid={pendingBody.paid_amount ?? null}
+          onConfirm={() => {
+            setPendingSubmit(null);
+            void submitIntake(pendingSubmit);
+          }}
+          onCancel={() => setPendingSubmit(null)}
+        />
+      ) : null}
       <ReceiptDialog
         key={receiptId}
         intakeId={receiptId}

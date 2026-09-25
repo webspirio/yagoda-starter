@@ -44,6 +44,13 @@ const BANNER: Readonly<Record<string, string>> = {
   NO_OPEN_SHIFT: 'reception.errors.noOpenShift',
   SUPPLIER_INACTIVE: 'reception.errors.supplierInactive',
   SHIFT_CLOSED: 'reception.errors.shiftClosed',
+  // «З них наших ящиків» (2026-09-24): the crate return rides the same write
+  // as the receipt, and any refusal of it refuses the WHOLE receipt (§8.3) —
+  // so a banner, never a field error. The last two reuse the standalone
+  // «Прийняти ящики» dialog's copy: the rule refused is the same one.
+  RETURNED_EXCEEDS_TARE: 'reception.returned.exceedsTare',
+  RETURN_EXCEEDS_OUTSTANDING: 'crates.errors.returnExceeds',
+  CRATE_CASH_INSUFFICIENT: 'crates.errors.cashInsufficient',
 };
 
 /**

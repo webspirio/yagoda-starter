@@ -12,7 +12,15 @@
 
 **Builds on:** branch `feat/crates-standing` at `fddf3ab` (plan `docs/superpowers/plans/2026-09-23-yagoda-crates-standing.md`, Tasks 1–10 + final fixes done).
 
-## Scope cut (client, 2026-09-23)
+## Slice 2 — reception crate returns (2026-09-24)
+
+**Run R1, R2, R3, R7, R8, R9 and R10 on branch `feat/reception-crate-returns`** (from `main` at
+`641ff53`, where R4–R6 already shipped with PR #158). R5's `CrateReturn`, `IntakeDetail` and
+`intakeForm` type changes, deferred by the cut below, land here inside R7/R8/R9. Review Focus 1–4
+apply. Where this section and the Global Constraints' branch line disagree, this section wins.
+Client confirmation 2026-09-24: a crates-drawer shortfall refuses the WHOLE receipt, as spec §8.3 says.
+
+## Scope cut (client, 2026-09-23) — slice 1, done
 
 **Run only R4, R5 (standing type only), R6 and R10.** R1, R2, R3, R7, R8, R9 are
 DEFERRED to the next slice with spec §8.3 — do not implement them here. Adjustments

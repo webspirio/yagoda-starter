@@ -59,12 +59,28 @@ interface IntakePayout {
   voided_at: string | null;
 }
 
+/** Our rented crates handed back in the SAME «Прийняти» as this receipt
+ *  (2026-09-24) — mirrors the backend's intake-detail `crate_return`.
+ *  `units` = `deposit_units + receipt_units`; `deposit_refund` is `numeric`
+ *  carried as a STRING. Voided together with the receipt, never on its own.
+ *  Not exported: only `IntakeDetail.crate_return` (below) names it. */
+interface IntakeCrateReturn {
+  id: string;
+  units: number;
+  deposit_refund: string;
+  deposit_units: number;
+  receipt_units: number;
+  voided_at: string | null;
+}
+
 /** `GET /intakes/:id` — the header (`Intake`) plus its lines, ordered like the
  *  paper. `GET /intakes` (the list) never nests items; only the detail read does. */
 export interface IntakeDetail extends Intake {
   items: IntakeItem[];
   payouts: IntakePayout[];
   received_by_name: string | null;
+  /** `null` when no crates came back with this receipt. */
+  crate_return: IntakeCrateReturn | null;
 }
 
 /** Re-exported so existing `../model/intake` importers keep working — see `@/shared/api/pagination.ts`. */

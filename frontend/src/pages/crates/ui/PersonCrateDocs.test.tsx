@@ -29,7 +29,7 @@ const ret = (over: Partial<CrateReturn> = {}): CrateReturn => ({
   id: 'r1', shift_id: 'sh1', collection_point_id: 'p1', business_date: '2026-09-10', supplier_id: 's1',
   units: 5, deposit_refund: '600.00', allocations: [], accepted_by_user_id: 'u1',
   voided_at: null, voided_by_user_id: null, void_reason: null,
-  created_at: '2026-09-10T09:00:00Z', shift_closed: false, ...over,
+  created_at: '2026-09-10T09:00:00Z', shift_closed: false, intake_id: null, intake_code: null, ...over,
 });
 const ok = <T,>(data: T[]) => ({ data: { data, total: data.length, page: 1, limit: 100 }, isPending: false, isError: false });
 
@@ -84,6 +84,23 @@ describe('PersonCrateDocs', () => {
     render(<PersonCrateDocs supplierId="s1" isOwner />);
     expect(screen.getByText(/issued 20 crates/)).toHaveClass('line-through');
     expect(screen.getByText(/дубль/)).toBeInTheDocument();
+  });
+
+  it('points a receipt-linked return at its receipt instead of offering a void, even for the owner', () => {
+    issuancesMock.mockReturnValue(ok([]));
+    returnsMock.mockReturnValue(ok([ret({ intake_id: 'in1', intake_code: 'ПР-0007' })]));
+    render(<PersonCrateDocs supplierId="s1" isOwner />);
+    expect(screen.getByText(/recorded with receipt ПР-0007 — void the receipt/i)).toBeInTheDocument();
+    expect(screen.getByText(/with berries · no deposit/i)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /void/i })).not.toBeInTheDocument();
+  });
+
+  it('still offers the void button on an unlinked return', () => {
+    issuancesMock.mockReturnValue(ok([]));
+    returnsMock.mockReturnValue(ok([ret()]));
+    render(<PersonCrateDocs supplierId="s1" isOwner={false} />);
+    expect(screen.getByRole('button', { name: /void/i })).toBeInTheDocument();
+    expect(screen.queryByText(/void the receipt/i)).not.toBeInTheDocument();
   });
 
   it('opens the void dialog with the right kind and id', async () => {

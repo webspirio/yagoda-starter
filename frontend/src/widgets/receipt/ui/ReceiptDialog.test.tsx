@@ -117,6 +117,7 @@ function buildIntake(overrides: Partial<IntakeDetail> = {}): IntakeDetail {
     paid_amount: '0.00',
     payouts: [],
     received_by_name: 'Оксана Гнатюк',
+    crate_return: null,
     items: [
       {
         id: 'item-1',
@@ -286,6 +287,64 @@ describe('ReceiptDialog', () => {
 
     const line = screen.getByText('payout SHP-PO-20260907-00020 voided');
     expect(line).toHaveClass('text-neutral-500');
+  });
+
+  it('prints the crates returned with the receipt, amount form, even when the return is mixed deposit/receipt', () => {
+    setUp({
+      intake: buildIntake({
+        crate_return: {
+          id: 'return-1',
+          units: 8,
+          deposit_refund: '250.00',
+          deposit_units: 5,
+          receipt_units: 3,
+          voided_at: null,
+        },
+      }),
+    });
+    render(<ReceiptDialog intakeId="intake-1" open onClose={vi.fn()} />);
+
+    expect(
+      screen.getByText('Returned our crates: 8 · deposit refunded 250.00 ₴'),
+    ).toBeInTheDocument();
+  });
+
+  it('prints the no-money form when deposit_refund is zero (an all-receipt return)', () => {
+    setUp({
+      intake: buildIntake({
+        crate_return: {
+          id: 'return-2',
+          units: 4,
+          deposit_refund: '0.00',
+          deposit_units: 0,
+          receipt_units: 4,
+          voided_at: null,
+        },
+      }),
+    });
+    render(<ReceiptDialog intakeId="intake-1" open onClose={vi.fn()} />);
+
+    expect(screen.getByText('Returned our crates: 4 · on a receipt, no money')).toBeInTheDocument();
+  });
+
+  it('prints a muted annulment line when the crate return was voided, and hides the numbers', () => {
+    setUp({
+      intake: buildIntake({
+        crate_return: {
+          id: 'return-3',
+          units: 5,
+          deposit_refund: '500.00',
+          deposit_units: 5,
+          receipt_units: 0,
+          voided_at: '2026-09-08T10:00:00.000Z',
+        },
+      }),
+    });
+    render(<ReceiptDialog intakeId="intake-1" open onClose={vi.fn()} />);
+
+    const line = screen.getByText('crate return voided');
+    expect(line).toHaveClass('text-neutral-500');
+    expect(screen.queryByText(/Returned our crates/)).not.toBeInTheDocument();
   });
 
   describe('the date — the BUSINESS date plus the time, pinned to TZ=UTC for a fixed literal', () => {

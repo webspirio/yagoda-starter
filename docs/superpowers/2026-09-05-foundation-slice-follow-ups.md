@@ -1148,7 +1148,7 @@ decision rather than guessing whether something was missed.
   `GET /crate-standing` (crates-standing slice, 2026-09-23) now serves the exact figure; switching
   the panel to `useCrateStandingQuery` was left out of that slice as an adjacent change.
 
-- **Reception returns our rented crates in the same «Прийняти» (deferred 2026-09-23).** Approved design: spec `docs/superpowers/specs/2026-09-23-yagoda-crates-standing.md` §8.3–§8.4; tasks R1–R3, R7–R9 of `docs/superpowers/plans/2026-09-23-yagoda-crates-standing-revision.md` (`crate_returns.intake_id`, one shared return writer, `returned_crates` on `POST /intakes`, void cascade, the «З них наших ящиків» field, the receipt line, the drill-down hint). Until it ships the operator records the receipt AND a standalone «Прийняти ящики»; forgetting the return leaves the supplier owing those crates.
+- **DONE 2026-09-24 — Reception returns our rented crates in the same «Прийняти» (deferred 2026-09-23).** Shipped on branch `feat/reception-crate-returns` (tasks R1–R3, R7–R10 of `docs/superpowers/plans/2026-09-23-yagoda-crates-standing-revision.md`): `crate_returns.intake_id`, one shared return writer, `returned_crates` on `POST /intakes`, the void cascade, the «З них наших ящиків» field, the receipt line, and the drill-down hint — spec `docs/superpowers/specs/2026-09-23-yagoda-crates-standing.md` §8.3–§8.4, now marked SHIPPED there. The operator no longer needs a standalone «Прийняти ящики» alongside the receipt.
 
 ## Flaky frontend test under full-suite load (found during crates-standing R10 gate, 2026-09-23)
 

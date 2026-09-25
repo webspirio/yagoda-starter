@@ -767,6 +767,9 @@
     "accrued": "Accrued",
     "paid": "Paid out in cash",
     "payoutVoided": "payout {{code}} voided",
+    "crateReturn": "Returned our crates: {{units}} · deposit refunded {{amount}}",
+    "crateReturnNoMoney": "Returned our crates: {{units}} · on a receipt, no money",
+    "crateReturnVoided": "crate return voided",
     "balanceAtPoint": "Balance at this point now",
     "receivedBy": "Received by",
     "footer": "The receipt is saved in the system. A duplicate can be printed anytime.",
@@ -853,6 +856,30 @@
         "price": "Price",
         "amount": "Amount"
       }
+    },
+    "returned": {
+      "label": "Of them, our crates",
+      "held": "of the {{held}} crates this person holds",
+      "deposit": "Hand back from the crates drawer:",
+      "receipt": "on a receipt, no money",
+      "exceedsTare": "More returned crates than crate tare on this receipt"
+    },
+    "refundConfirm": {
+      "titleTwo": "Hand the person two sums",
+      "titleOne": "Hand back the deposit",
+      "berries": "For berries",
+      "berryDrawer": "from the berry drawer",
+      "deposit_one": "Deposit for {{count}} crate",
+      "deposit_other": "Deposit for {{count}} crates",
+      "crateDrawer": "from the crates drawer",
+      "receiptPart_one": "{{count}} crate on a receipt — no money",
+      "receiptPart_other": "{{count}} crates on a receipt — no money",
+      "confirm": "Handed over {{amount}}",
+      "pending": "Accept",
+      "back": "Back",
+      "loading": "Working out the deposit…",
+      "failed": "Could not work out the deposit",
+      "retry": "Try again"
     },
     "totals": {
       "eyebrow": "4 · Settlement",
@@ -1253,7 +1280,9 @@
       "truncated": "Showing the latest 100 of each kind.",
       "blockedByReturn": "a return rests on this issuance — void the return first",
       "void": "Void",
-      "returnLabel": "return of {{units}} · {{date}}"
+      "returnLabel": "return of {{units}} · {{date}}",
+      "withBerriesPrefix": "with berries · ",
+      "linkedToIntake": "recorded with receipt {{code}} — void the receipt"
     },
     "errors": {
       "supplierRequired": "Pick who is taking the crates",
@@ -1264,6 +1293,7 @@
       "returnExceeds": "That is more crates than this person is holding",
       "cashInsufficient": "The crate deposits drawer holds less than this refund needs",
       "hasReturns": "A return has already been allocated against this issuance — void the return first",
+      "returnBelongsToIntake": "This return was recorded with a receipt — void the receipt instead",
       "supplierInactive": "This person is deactivated, so crates cannot be issued to them"
     }
   },

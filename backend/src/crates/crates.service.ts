@@ -5,7 +5,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { DataSource, In } from 'typeorm';
+import { DataSource, EntityManager, In, IsNull } from 'typeorm';
 import { CrateIssuance } from './crate-issuance.entity';
 import { CrateReturn } from './crate-return.entity';
 import { CrateReturnAllocation } from './crate-return-allocation.entity';
@@ -20,8 +20,8 @@ import {
   toCrateReturnResponse,
   joinIssuanceInfo,
 } from './crate-return.mapper';
-import { allocate } from './crate-allocation';
-import { CrateBalanceService } from './crate-balance.service';
+import { allocate, CrateAllocationRow } from './crate-allocation';
+import { CrateBalanceService, CrateTrancheView } from './crate-balance.service';
 import { nextIssuanceCode } from './crate-code';
 import { ShiftsService } from '../shifts/shifts.service';
 import { SuppliersService } from '../suppliers/suppliers.service';
@@ -31,6 +31,7 @@ import { AuditService } from '../audit/audit.service';
 import { mul, lt } from '../common/money';
 import { resolveWritePoint } from '../auth/access/point-scope';
 import { UserRole } from '../users/user-role.enum';
+import type { Shift } from '../shifts/shift.entity';
 import type { VoidDocumentDto } from '../intakes/dto/void-document.dto';
 import type { AuthenticatedUser } from '../auth/jwt.strategy';
 
@@ -169,7 +170,114 @@ export class CratesService {
    * other 5 are the supplier's own, swapped for empties, «в системі це не
    * записується». A server that quietly wrote 20 when asked for 25 would be
    * editing a document.
+   *
+   * THE ONE RETURN WRITER, extracted so a receipt can call it too (spec §8.3,
+   * Task R3). `CratesService.returnCrates` below is this method plus a caller
+   * that has already resolved a point, a supplier and an open shift, and
+   * always passes `intakeId: null`; `IntakesService.create` resolves the same
+   * three things ITSELF, inside `POST /intakes`'s own transaction, and calls
+   * this after inserting the intake and before any payout, passing its own
+   * intake's id. That transaction has ALREADY locked this supplier row
+   * `FOR UPDATE` as its very first statement — before its `intakes` advisory
+   * lock and before the intake insert (see `IntakesService.create`'s lock
+   * order). This method LOCKS THE SUPPLIER ROW ITSELF regardless of which
+   * caller it is: re-locking an already-held row in the SAME transaction is a
+   * no-op in Postgres (idempotent), not a second lock either caller has to
+   * remember to skip.
    */
+  async writeReturn(
+    m: EntityManager,
+    args: {
+      actor: AuthenticatedUser;
+      pointId: string;
+      shift: Shift;
+      supplierId: string;
+      units: number;
+      intakeId: string | null;
+    },
+  ): Promise<{ ret: CrateReturn; allocations: CrateAllocationRow[]; tranches: CrateTrancheView[] }> {
+    const { actor, pointId, shift, supplierId, units, intakeId } = args;
+
+    await m.query('SELECT id FROM suppliers WHERE id = $1 FOR UPDATE', [supplierId]);
+
+    // Read INSIDE the transaction, under the lock — otherwise the value
+    // checked is not the value that was locked.
+    const tranches = await this.balance.tranchesFor(supplierId, m);
+    const result = allocate(tranches, units);
+
+    if (result.shortfall > 0) {
+      const outstanding = units - result.shortfall;
+      // The message NAMES the number, because a refusal the operator cannot
+      // act on just gets retried with the same input.
+      throw new BadRequestException({
+        message: `That supplier is holding ${outstanding} crates, not ${units}`,
+        code: 'RETURN_EXCEEDS_OUTSTANDING',
+      });
+    }
+
+    /**
+     * §6.7, AND IT SHOULD NEVER FIRE. FIFO guarantees a refund never exceeds
+     * what this supplier deposited, so the point's crates book cannot go
+     * negative through any sequence of valid documents. It ships anyway: if
+     * it ever fires, the data is wrong, and a named 409 beats a silently
+     * negative drawer. The REAL §6.7 risk — deposit cash spent on berries out
+     * of the one physical drawer — is invisible to a book nobody counts.
+     */
+    const book = await this.balance.pointDepositBook(pointId, m);
+    if (lt(book, result.deposit_refund)) {
+      throw new ConflictException({
+        message: `The crate deposits book holds ${book}, less than the ${result.deposit_refund} this return refunds`,
+        code: 'CRATE_CASH_INSUFFICIENT',
+      });
+    }
+
+    const ret = await m.save(
+      CrateReturn,
+      m.create(CrateReturn, {
+        shift_id: shift.id,
+        supplier_id: supplierId,
+        units,
+        deposit_refund: result.deposit_refund,
+        accepted_by_user_id: actor.sub,
+        intake_id: intakeId,
+      }),
+    );
+
+    for (const row of result.allocations) {
+      await m.save(
+        CrateReturnAllocation,
+        m.create(CrateReturnAllocation, {
+          return_id: ret.id,
+          issuance_id: row.issuance_id,
+          units: row.units,
+          per_unit: row.per_unit,
+          amount: row.amount,
+        }),
+      );
+    }
+
+    await this.audit.record(
+      {
+        action: 'crate-return.created',
+        actor_id: actor.sub,
+        target_type: 'crate_return',
+        target_id: ret.id,
+        after: {
+          units,
+          deposit_refund: result.deposit_refund,
+          supplier_id: supplierId,
+          intake_id: intakeId,
+        },
+      },
+      m,
+    );
+
+    return { ret, allocations: result.allocations, tranches };
+  }
+
+  /** `writeReturn` with `intakeId: null` — the standalone «Прийняти ящики»
+   *  route. See that method's doc comment for the write itself; this is now
+   *  only the point/supplier resolution and the open-shift check. */
   async returnCrates(
     actor: AuthenticatedUser,
     dto: CreateCrateReturnDto,
@@ -182,8 +290,6 @@ export class CratesService {
     }
 
     return this.dataSource.transaction(async (m) => {
-      await m.query('SELECT id FROM suppliers WHERE id = $1 FOR UPDATE', [dto.supplier_id]);
-
       const shift = await this.shifts.findOpenAtPoint(pointId, m);
       if (!shift) {
         throw new ConflictException({
@@ -192,77 +298,21 @@ export class CratesService {
         });
       }
 
-      // Read INSIDE the transaction, under the lock — otherwise the value
-      // checked is not the value that was locked.
-      const tranches = await this.balance.tranchesFor(dto.supplier_id, m);
-      const result = allocate(tranches, dto.units);
+      const { ret, allocations, tranches } = await this.writeReturn(m, {
+        actor,
+        pointId,
+        shift,
+        // `dto.supplier_id`, not `supplier.id` — identical in production
+        // (`supplier` above was loaded BY `dto.supplier_id`), but keeping the
+        // raw request value here is what the supplier-row lock has always
+        // taken, and a swap to the resolved entity's id is not this task's to
+        // make.
+        supplierId: dto.supplier_id,
+        units: dto.units,
+        intakeId: null,
+      });
 
-      if (result.shortfall > 0) {
-        const outstanding = dto.units - result.shortfall;
-        // The message NAMES the number, because a refusal the operator cannot
-        // act on just gets retried with the same input.
-        throw new BadRequestException({
-          message: `That supplier is holding ${outstanding} crates, not ${dto.units}`,
-          code: 'RETURN_EXCEEDS_OUTSTANDING',
-        });
-      }
-
-      /**
-       * §6.7, AND IT SHOULD NEVER FIRE. FIFO guarantees a refund never exceeds
-       * what this supplier deposited, so the point's crates book cannot go
-       * negative through any sequence of valid documents. It ships anyway: if
-       * it ever fires, the data is wrong, and a named 409 beats a silently
-       * negative drawer. The REAL §6.7 risk — deposit cash spent on berries out
-       * of the one physical drawer — is invisible to a book nobody counts.
-       */
-      const book = await this.balance.pointDepositBook(pointId, m);
-      if (lt(book, result.deposit_refund)) {
-        throw new ConflictException({
-          message: `The crate deposits book holds ${book}, less than the ${result.deposit_refund} this return refunds`,
-          code: 'CRATE_CASH_INSUFFICIENT',
-        });
-      }
-
-      const ret = await m.save(
-        CrateReturn,
-        m.create(CrateReturn, {
-          shift_id: shift.id,
-          supplier_id: supplier.id,
-          units: dto.units,
-          deposit_refund: result.deposit_refund,
-          accepted_by_user_id: actor.sub,
-        }),
-      );
-
-      for (const row of result.allocations) {
-        await m.save(
-          CrateReturnAllocation,
-          m.create(CrateReturnAllocation, {
-            return_id: ret.id,
-            issuance_id: row.issuance_id,
-            units: row.units,
-            per_unit: row.per_unit,
-            amount: row.amount,
-          }),
-        );
-      }
-
-      await this.audit.record(
-        {
-          action: 'crate-return.created',
-          actor_id: actor.sub,
-          target_type: 'crate_return',
-          target_id: ret.id,
-          after: {
-            units: dto.units,
-            deposit_refund: result.deposit_refund,
-            supplier_id: supplier.id,
-          },
-        },
-        m,
-      );
-
-      return toCrateReturnResponse(ret, shift, result.allocations, tranches);
+      return toCrateReturnResponse(ret, shift, allocations, tranches, null);
     });
   }
 
@@ -499,6 +549,25 @@ export class CratesService {
         });
       }
 
+      /**
+       * Spec §8.3 — a return a receipt wrote is not a document of its own to
+       * strike out from here; it is voided ONLY as part of voiding that
+       * receipt (`voidReturnForIntake`, called from `IntakesService`'s void,
+       * Task R3), under the SAME supplier lock as the receipt's other writes.
+       * This route's own `assertMayVoid` runs FIRST (right above), so another
+       * point still 404s before this check ever gets a chance to leak that a
+       * given return exists and is linked.
+       */
+      if (ret.intake_id) {
+        const [row] = (await m.query(`SELECT code FROM intakes WHERE id = $1`, [
+          ret.intake_id,
+        ])) as Array<{ code: string }>;
+        throw new ConflictException({
+          message: `This return was recorded with receipt ${row?.code ?? ret.intake_id} — void the receipt`,
+          code: 'RETURN_BELONGS_TO_INTAKE',
+        });
+      }
+
       ret.voided_at = new Date();
       ret.voided_by_user_id = actor.sub;
       ret.void_reason = dto.reason;
@@ -532,7 +601,67 @@ export class CratesService {
         code: i.code,
       }));
 
-      return toCrateReturnResponse(saved, shift, allocations, issuanceInfo);
+      // Always `null` here — a linked return never reaches this line; the
+      // `RETURN_BELONGS_TO_INTAKE` refusal above already threw for one.
+      return toCrateReturnResponse(saved, shift, allocations, issuanceInfo, null);
     });
+  }
+
+  /**
+   * The cascade half of spec §8.3: voiding the receipt voids the return IT
+   * wrote, in the SAME transaction, so the two never disagree about whether
+   * the crates came back. NO PERMISSION CHECK HERE — `IntakesService`'s own
+   * void already ran §9.4's rule for the receipt, and a linked return's OWN
+   * void route (`POST /crate-returns/:id/void`) refuses it outright with a
+   * 409 `RETURN_BELONGS_TO_INTAKE` (see the check just above this method) —
+   * this is the only path that can ever void one, so there is nothing left
+   * to check independently here.
+   *
+   * NO SUPPLIER LOCK HERE EITHER. `voidReturn`/`writeReturn` lock the
+   * supplier row themselves because each is reachable on its own; this method
+   * is reachable ONLY from inside the receipt's void transaction
+   * (`IntakesService.void`), which has already locked that same supplier row
+   * before its own pessimistic load of the intake and before calling here —
+   * taking a second, redundant lock would just be a second place that could
+   * forget the order `writeReturn`/`voidIssuance`/`voidReturn` already share.
+   *
+   * `intake_id` is UNIQUE among non-null values (`UQ_crate_returns_intake`),
+   * so at most one row can ever match; `voided_at IS NULL` is what makes a
+   * second call (e.g. a retried request) find nothing rather than double-void.
+   */
+  async voidReturnForIntake(
+    m: EntityManager,
+    args: { actor: AuthenticatedUser; intakeId: string; reason: string },
+  ): Promise<CrateReturn | null> {
+    const { actor, intakeId, reason } = args;
+
+    const ret = await m.findOne(CrateReturn, {
+      where: { intake_id: intakeId, voided_at: IsNull() },
+      lock: { mode: 'pessimistic_write' },
+    });
+    if (!ret) return null;
+
+    ret.voided_at = new Date();
+    ret.voided_by_user_id = actor.sub;
+    ret.void_reason = reason;
+    const saved = await m.save(CrateReturn, ret);
+
+    await this.audit.record(
+      {
+        action: 'crate-return.voided',
+        actor_id: actor.sub,
+        target_type: 'crate_return',
+        target_id: saved.id,
+        after: {
+          units: saved.units,
+          deposit_refund: saved.deposit_refund,
+          intake_id: saved.intake_id,
+        },
+        note: reason,
+      },
+      m,
+    );
+
+    return saved;
   }
 }

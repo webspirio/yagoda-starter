@@ -22,13 +22,15 @@ interface VoidDescriptor {
  *
  * INVALIDATION SPLITS BY KIND, deliberately not harmonised (§9.3). An intake
  * or payout invalidates `intakes`, `payouts` AND `supplierBalances` together —
- * a void changes the supplier's running balance too. A transfer invalidates
- * `transfers` AND `pointCash` instead: voiding a transfer stops it from being
- * added to a point's cash, and it never touched a supplier's balance in the
- * first place — invalidating `supplierBalances` for it would be needless
- * network noise and a hint at a relationship that doesn't exist. This is the
- * flip side of a voided PAYOUT, which stays subtracted because that money
- * physically left the drawer.
+ * a void changes the supplier's running balance too — and an intake ALSO
+ * invalidates the crate queries and `pointCash` (see `INTAKE_VOID_KEYS`
+ * below), since `POST /intakes` can carry a linked crate return that the
+ * void undoes with it. A transfer invalidates `transfers` AND `pointCash`
+ * instead: voiding a transfer stops it from being added to a point's cash,
+ * and it never touched a supplier's balance in the first place — invalidating
+ * `supplierBalances` for it would be needless network noise and a hint at a
+ * relationship that doesn't exist. This is the flip side of a voided PAYOUT,
+ * which stays subtracted because that money physically left the drawer.
  */
 /** Shared by `intake` and `payout` below — both are journal documents, and
  *  a void of either changes the supplier's running balance the same way. */
@@ -38,10 +40,27 @@ const DOCUMENT_KEYS: readonly QueryKey[] = [
   queryKeys.supplierBalances,
 ];
 
+/**
+ * An intake void is a superset of `DOCUMENT_KEYS`: `POST /intakes` can write
+ * a linked crate return (`returned_crates`, §8.3), and voiding the receipt
+ * (`voidReturnForIntake`) voids that return too — same as
+ * `useCreateIntakeMutation` invalidating `crates`/`crateBalances` alongside
+ * the document keys when the return rides in on the create. `pointCash`
+ * joins them here even though a crate RETURN carries no deposit cash,
+ * because the void is symmetric with the create write it undoes, which also
+ * invalidates `pointCash` for its own (possibly ridden-along) payout.
+ */
+const INTAKE_VOID_KEYS: readonly QueryKey[] = [
+  ...DOCUMENT_KEYS,
+  queryKeys.crates,
+  queryKeys.crateBalances,
+  queryKeys.pointCash,
+];
+
 const DOCUMENTS: Record<VoidDocumentInput['kind'], VoidDescriptor> = {
   intake: {
     path: (id) => `/intakes/${id}/void`,
-    invalidates: DOCUMENT_KEYS,
+    invalidates: INTAKE_VOID_KEYS,
   },
   payout: {
     path: (id) => `/payouts/${id}/void`,
