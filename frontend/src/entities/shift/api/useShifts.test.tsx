@@ -1,10 +1,15 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import MockAdapter from 'axios-mock-adapter';
 import type { ReactNode } from 'react';
 import { httpClient, attachAuthInterceptors } from '@/shared/api';
-import { useCurrentShiftQuery, useShiftOnDateQuery, shiftOnDateQueryOptions } from './useShifts';
+import {
+  useCurrentShiftQuery,
+  useShiftOnDateQuery,
+  shiftOnDateQueryOptions,
+  useStaleOpenShiftsQuery,
+} from './useShifts';
 
 // Without this, a mocked 404 surfaces as a plain AxiosError rather than the
 // ApiError the 404-as-null branch in useCurrentShiftQuery checks for — see
@@ -81,5 +86,30 @@ describe('shiftOnDateQueryOptions', () => {
     renderHook(() => useShiftOnDateQuery(null, '2026-09-07'), { wrapper: localWrapper });
     const [query] = queryClient.getQueryCache().getAll();
     expect(query?.queryKey).toEqual(shiftOnDateQueryOptions(null, '2026-09-07').queryKey);
+  });
+});
+
+describe('useStaleOpenShiftsQuery', () => {
+  beforeEach(() => vi.useFakeTimers({ toFake: ['Date'], now: new Date('2026-09-08T09:00:00') }));
+  afterEach(() => vi.useRealTimers());
+
+  it('asks the whole network for the shifts still open before today', async () => {
+    mock
+      .onGet('/shifts', { params: { status: 'open', to: '2026-09-07', limit: 100 } })
+      .reply(200, {
+        data: [{ ...shift, id: 's9', business_date: '2026-09-05' }],
+        total: 1,
+        page: 1,
+        limit: 100,
+      });
+
+    const { result } = renderHook(() => useStaleOpenShiftsQuery(), { wrapper });
+
+    await waitFor(() => expect(result.current.data?.data[0]?.id).toBe('s9'));
+  });
+
+  it('does not fire for a viewer who has no business reading the network', () => {
+    const { result } = renderHook(() => useStaleOpenShiftsQuery({ enabled: false }), { wrapper });
+    expect(result.current.fetchStatus).toBe('idle');
   });
 });

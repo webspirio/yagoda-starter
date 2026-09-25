@@ -401,6 +401,12 @@
     },
     "open": "Open shift",
     "close": "Close shift",
+    "staleShift": {
+      "title": "The shift for {{date}} is not closed yet",
+      "hint": "No new shift can be opened until it is closed.",
+      "hintOwner": "No new shift can be opened until it is closed — and the operator is the one who closes it.",
+      "goToDay": "Go to that day"
+    },
     "reopen": "Reopen shift",
     "reopenDialog": {
       "title": "Reopen shift",
@@ -499,6 +505,12 @@
       },
       "dayCash": "Cash for the day",
       "reception": "Intake"
+    },
+    "staleShifts": {
+      "title": "Unclosed shifts",
+      "hint": "These shifts were left open on earlier days — a point cannot open a new one until its shift is closed, and the operator is the one who closes it.",
+      "loadFailed": "Could not check for unclosed shifts",
+      "inactivePoint": "Inactive point"
     },
     "topBalances": {
       "title": "Biggest balances",
