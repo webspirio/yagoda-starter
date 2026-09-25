@@ -1237,7 +1237,6 @@ decision rather than guessing whether something was missed.
 - **`toSupplierSettlementResponse` has an unreachable fallback.** Its
   `payoutCode.get(...) ?? ''` cannot fire, given `settle()`'s invariants. Document the
   invariant, or replace the fallback with an assertion.
-- **`settlement.db-spec.ts` misses one case.** It does not exercise a top-up voided on its
-  own merits while its parent is still live. That case is covered by
-  `intake-top-ups-balance.db-spec.ts`; add it here only if the settlement SQL ever stops
-  sharing `debtSql`'s filters.
+- **§4.4's grades and kg on an open intake row are half-shown.** Spec §4.4 asks for grades
+  and kg; `OpenBalances` shows kg only, because the Intake list row carries no grade names —
+  adding them needs either a field on the list response or a lookup, deferred.
