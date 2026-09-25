@@ -4,6 +4,7 @@ export type {
   SupplierBalanceRow,
   Paginated,
   SettlementLine,
+  SupplierSettlement,
 } from './model/supplier';
 export { supplierName } from './model/supplier';
 export { useSuppliersQuery, useSupplierQuery } from './api/useSuppliers';

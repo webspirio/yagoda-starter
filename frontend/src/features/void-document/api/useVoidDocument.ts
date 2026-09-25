@@ -2,10 +2,14 @@ import { useMutation, useQueryClient, type QueryKey } from '@tanstack/react-quer
 import { httpClient } from '@/shared/api';
 import { queryKeys } from '@/shared/api/queryKeys';
 
+export type PayoutDecision = 'keep' | 'void' | 'void_returned';
+
 export interface VoidDocumentInput {
   kind: 'intake' | 'payout' | 'transfer' | 'topUp' | 'crateIssuance' | 'crateReturn';
   id: string;
   reason: string;
+  /** Intake only (#125): what happens to the payout issued with it. */
+  payout?: PayoutDecision;
 }
 
 interface VoidDescriptor {
@@ -13,23 +17,8 @@ interface VoidDescriptor {
   invalidates: readonly QueryKey[];
 }
 
-/**
- * Voids an intake, payout or transfer — `POST /<kind>s/:id/void` with
- * `{ reason }`. A document is never edited (§2.7 freezes `amount`, §9.3 makes
- * a correction a void plus a new document): this call freezes the row and the
- * reason is what survives in the journal, so the operator writes a fresh
- * document afterwards rather than patching this one.
- *
- * INVALIDATION SPLITS BY KIND, deliberately not harmonised (§9.3). An intake
- * or payout invalidates `intakes`, `payouts` AND `supplierBalances` together —
- * a void changes the supplier's running balance too. A transfer invalidates
- * `transfers` AND `pointCash` instead: voiding a transfer stops it from being
- * added to a point's cash, and it never touched a supplier's balance in the
- * first place — invalidating `supplierBalances` for it would be needless
- * network noise and a hint at a relationship that doesn't exist. This is the
- * flip side of a voided PAYOUT, which stays subtracted because that money
- * physically left the drawer.
- */
+/** One void per kind; invalidation differs by kind on purpose (§9.3); a
+ *  voided payout stays subtracted from cash until its return is recorded. */
 /** Shared by `intake` and `payout` below — both are journal documents, and
  *  a void of either changes the supplier's running balance the same way. */
 const DOCUMENT_KEYS: readonly QueryKey[] = [
@@ -41,7 +30,8 @@ const DOCUMENT_KEYS: readonly QueryKey[] = [
 const DOCUMENTS: Record<VoidDocumentInput['kind'], VoidDescriptor> = {
   intake: {
     path: (id) => `/intakes/${id}/void`,
-    invalidates: DOCUMENT_KEYS,
+    // + pointCash: a void_returned puts the payout back in the drawer.
+    invalidates: [...DOCUMENT_KEYS, queryKeys.pointCash],
   },
   payout: {
     path: (id) => `/payouts/${id}/void`,
@@ -78,8 +68,8 @@ const DOCUMENTS: Record<VoidDocumentInput['kind'], VoidDescriptor> = {
 export function useVoidDocumentMutation() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async ({ kind, id, reason }: VoidDocumentInput): Promise<void> => {
-      await httpClient.post(DOCUMENTS[kind].path(id), { reason });
+    mutationFn: async ({ kind, id, reason, payout }: VoidDocumentInput): Promise<void> => {
+      await httpClient.post(DOCUMENTS[kind].path(id), payout ? { reason, payout } : { reason });
     },
     onSuccess: (_data, { kind }) => {
       for (const queryKey of DOCUMENTS[kind].invalidates) {

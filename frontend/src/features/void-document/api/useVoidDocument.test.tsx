@@ -85,4 +85,25 @@ describe('useVoidDocumentMutation', () => {
     expect(invalidateSpy).not.toHaveBeenCalledWith({ queryKey: queryKeys.intakes });
     expect(invalidateSpy).not.toHaveBeenCalledWith({ queryKey: queryKeys.payouts });
   });
+
+  it('sends the payout decision for an intake', async () => {
+    mock.onPost('/intakes/i1/void').reply(201);
+    const { result } = renderHook(() => useVoidDocumentMutation(), { wrapper });
+
+    await result.current.mutateAsync({ kind: 'intake', id: 'i1', reason: 'r', payout: 'void' });
+
+    expect(JSON.parse(mock.history.post[0].data as string)).toEqual({ reason: 'r', payout: 'void' });
+  });
+
+  it('invalidates point cash after an intake void (a returned payout refills the drawer)', async () => {
+    mock.onPost('/intakes/i1/void').reply(201);
+    const spy = vi.spyOn(queryClient, 'invalidateQueries');
+    const { result } = renderHook(() => useVoidDocumentMutation(), { wrapper });
+
+    await result.current.mutateAsync({ kind: 'intake', id: 'i1', reason: 'r' });
+
+    await waitFor(() =>
+      expect(spy).toHaveBeenCalledWith({ queryKey: queryKeys.pointCash }),
+    );
+  });
 });
