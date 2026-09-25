@@ -974,6 +974,13 @@
       "balance": "Balance",
       "balanceHint": "fully settled"
     },
+    "open": {
+      "title": "Open balances — what exactly is owed",
+      "topUp": "Top-up on {{code}}",
+      "unallocated": "Overpayment — not allocated",
+      "oldest_one": "oldest from {{date}} — {{count}} day",
+      "oldest_other": "oldest from {{date}} — {{count}} days"
+    },
     "timeline": {
       "title": "History — receipts and payouts",
       "empty": "No receipts yet — this will be the first.",
