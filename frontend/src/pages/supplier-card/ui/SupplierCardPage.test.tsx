@@ -13,7 +13,6 @@ import { SupplierCardPage } from './SupplierCardPage';
 
 const {
   supplierMock,
-  balanceMock,
   settlementMock,
   intakesMock,
   payoutsMock,
@@ -26,7 +25,6 @@ const {
   topUpDialogMock,
 } = vi.hoisted(() => ({
   supplierMock: vi.fn(),
-  balanceMock: vi.fn(),
   settlementMock: vi.fn(),
   intakesMock: vi.fn(),
   payoutsMock: vi.fn(),
@@ -41,7 +39,6 @@ const {
 
 vi.mock('@/entities/supplier', () => ({
   useSupplierQuery: (id: string | null) => supplierMock(id),
-  useSupplierBalanceQuery: (id: string | null) => balanceMock(id),
   useSupplierSettlementQuery: (id: string | null) => settlementMock(id),
   supplierName: (s: { first_name: string; last_name: string }) =>
     `${s.first_name} ${s.last_name}`,
@@ -216,13 +213,6 @@ function tile(label: string): HTMLElement {
 
 beforeEach(() => {
   supplierMock.mockReset().mockReturnValue({ data: SUPPLIER, isPending: false, isError: false });
-  balanceMock
-    .mockReset()
-    .mockReturnValue({
-      data: { supplier_id: 'sup1', debt: '500.00' },
-      isPending: false,
-      isError: false,
-    });
   settlementMock.mockReset().mockReturnValue({
     data: { supplier_id: 'sup1', debt: '500.00', unallocated: '0.00', lines: [], payouts: [] },
     isPending: false,
@@ -310,8 +300,8 @@ describe('SupplierCardPage', () => {
   });
 
   it('hides the pay-out action once the balance is settled', () => {
-    balanceMock.mockReturnValue({
-      data: { supplier_id: 'sup1', debt: '0.00' },
+    settlementMock.mockReturnValue({
+      data: { supplier_id: 'sup1', debt: '0.00', unallocated: '0.00', lines: [], payouts: [] },
       isPending: false,
       isError: false,
     });
@@ -476,28 +466,68 @@ describe('SupplierCardPage', () => {
   });
 
   it('shows the open-balances section and the oldest-debt hint from the settlement', () => {
-    settlementMock.mockReturnValue({
-      data: {
-        supplier_id: 'sup1',
-        debt: '500.00',
-        unallocated: '0.00',
-        lines: [settlementLine({ id: 'i1', open: '500.00', business_date: '2026-09-01' })],
-        payouts: [],
-      },
-      isPending: false,
-      isError: false,
-    });
-    intakesMock.mockReturnValue(
-      page<Intake>([
-        intake({ id: 'i1', code: 'KV-0001', amount: '500.00', created_at: '2026-09-01T07:10:00Z' }),
-      ]),
-    );
+    // M6 — pin the clock so the day count is a fixed number, not a moving
+    // target. Fake ONLY `Date`: faking timers wholesale is known to break
+    // TanStack/Testing Library's async plumbing.
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-09-08T12:00:00'));
+    try {
+      settlementMock.mockReturnValue({
+        data: {
+          supplier_id: 'sup1',
+          debt: '500.00',
+          unallocated: '0.00',
+          lines: [settlementLine({ id: 'i1', open: '500.00', business_date: '2026-09-01' })],
+          payouts: [],
+        },
+        isPending: false,
+        isError: false,
+      });
+      intakesMock.mockReturnValue(
+        page<Intake>([
+          intake({ id: 'i1', code: 'KV-0001', amount: '500.00', created_at: '2026-09-01T07:10:00Z' }),
+        ]),
+      );
 
-    renderCard();
+      renderCard();
 
-    expect(screen.getByText('Open balances — what exactly is owed')).toBeInTheDocument();
-    // The short-date spelling is `formatShortDate`'s for `en`; the hint's shape is what matters.
-    expect(tile('Balance')).toHaveTextContent(/oldest from .+ — \d+ days?/);
+      expect(screen.getByText('Open balances — what exactly is owed')).toBeInTheDocument();
+      // 2026-09-01 to 2026-09-08 (the pinned "today") is exactly 7 whole days.
+      expect(tile('Balance')).toHaveTextContent('— 7 days');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('clamps the day count to 0 when the oldest open line is dated AFTER today', () => {
+    // M5 — a reopened-shift receipt (or clock skew) can carry a business_date
+    // in the future; the hint must never print a negative day count.
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-09-08T12:00:00'));
+    try {
+      settlementMock.mockReturnValue({
+        data: {
+          supplier_id: 'sup1',
+          debt: '500.00',
+          unallocated: '0.00',
+          lines: [settlementLine({ id: 'i1', open: '500.00', business_date: '2026-09-10' })],
+          payouts: [],
+        },
+        isPending: false,
+        isError: false,
+      });
+      intakesMock.mockReturnValue(
+        page<Intake>([
+          intake({ id: 'i1', code: 'KV-0001', amount: '500.00', created_at: '2026-09-10T07:10:00Z' }),
+        ]),
+      );
+
+      renderCard();
+
+      expect(tile('Balance')).toHaveTextContent('— 0 days');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('captions history rows with what is open and what a payout closed', () => {
@@ -618,6 +648,42 @@ describe('SupplierCardPage — top-ups', () => {
 
     expect(screen.getByText('Домовились про 48 замість 45 після здачі')).toBeInTheDocument();
     expect(screen.getByText('against KV-0001')).toBeInTheDocument();
+  });
+
+  /**
+   * M8 — a top-up row is captioned from ITS OWN settlement line (kind
+   * `top_up`, id = the top-up's own id), not its parent receipt's.
+   */
+  it('captions an open top-up row with what is still open, from its own settlement line', () => {
+    settlementMock.mockReturnValue({
+      data: {
+        supplier_id: 'sup1',
+        debt: '750.00',
+        unallocated: '0.00',
+        lines: [
+          settlementLine({ id: 'i1', open: '0.00', amount: '1000.00', paid: '1000.00' }),
+          settlementLine({
+            id: 't1',
+            open: '750.00',
+            kind: 'top_up',
+            intake_id: 'i1',
+            amount: '750.00',
+          }),
+        ],
+        payouts: [],
+      },
+      isPending: false,
+      isError: false,
+    });
+    topUpsMock.mockReturnValue(
+      page<IntakeTopUp>([
+        topUp({ id: 't1', amount: '750.00', reason: 'Доплата', created_at: '2026-09-09T10:00:00Z' }),
+      ]),
+    );
+
+    renderCard();
+
+    expect(screen.getByText('Доплата').closest('li')).toHaveTextContent('750.00 ₴ still open');
   });
 
   /**

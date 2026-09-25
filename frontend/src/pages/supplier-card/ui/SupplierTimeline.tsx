@@ -59,10 +59,15 @@ export function SupplierTimeline({
   payouts: Payout[];
   topUps: IntakeTopUp[];
   me: Me | undefined;
-  /** Line id → open amount, from the settlement. Absent on a voided row. */
-  openByLineId?: Map<string, string>;
+  /**
+   * Line id → open amount, from the settlement. Required — the settlement is
+   * now the page's only debt query (M4), so every caller already has one to
+   * pass; a missing map silently hid every "still open" caption rather than
+   * failing loudly.
+   */
+  openByLineId: Map<string, string>;
   /** Payout id → the business dates it closed and what it left unallocated. */
-  coversByPayoutId?: Map<string, { dates: string[]; unallocated: string }>;
+  coversByPayoutId: Map<string, { dates: string[]; unallocated: string }>;
   onOpenReceipt: (intakeId: string) => void;
   onVoidPayout: (payout: Payout) => void;
   /** Owner only. Absent for an operator — §10.2: «заблокована кнопка вчить

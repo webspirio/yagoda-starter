@@ -11,7 +11,6 @@ import { ApiError, isTruncated } from '@/shared/api';
 import { sum, cmp, isZero, formatUah } from '@/shared/lib/money';
 import {
   useSupplierQuery,
-  useSupplierBalanceQuery,
   useSupplierSettlementQuery,
   supplierName,
 } from '@/entities/supplier';
@@ -40,7 +39,6 @@ export function SupplierCardPage() {
   const { id } = useParams<{ id: string }>();
 
   const supplier = useSupplierQuery(id ?? null);
-  const balance = useSupplierBalanceQuery(id ?? null);
   const intakes = useIntakesQuery({ supplierId: id, limit: 100 });
   const payouts = usePayoutsQuery({ supplierId: id, limit: 100 });
   const topUps = useIntakeTopUpsQuery({ supplierId: id, limit: 100 });
@@ -112,7 +110,6 @@ export function SupplierCardPage() {
 
   if (
     supplier.isError ||
-    balance.isError ||
     intakes.isError ||
     payouts.isError ||
     topUps.isError ||
@@ -132,13 +129,11 @@ export function SupplierCardPage() {
 
   if (
     supplier.isPending ||
-    balance.isPending ||
     intakes.isPending ||
     payouts.isPending ||
     topUps.isPending ||
     settlement.isPending ||
     !supplier.data ||
-    !balance.data ||
     !settlement.data
   ) {
     return (
@@ -149,7 +144,10 @@ export function SupplierCardPage() {
   }
 
   const s = supplier.data;
-  const debt = balance.data.debt;
+  // THE TILE, THE HINT AND OpenBalances READ ONE SNAPSHOT: `settlement.data`,
+  // not `balance.data` — two separate requests can otherwise land either
+  // side of a write and disagree about the same number on the same screen.
+  const debt = settlement.data.debt;
   const pointName = (points.data ?? []).find((p) => p.id === s.collection_point_id)?.name ?? '';
 
   const intakeRows = intakes.data?.data ?? [];
@@ -188,7 +186,9 @@ export function SupplierCardPage() {
   const balanceHint = oldestOpen
     ? t('supplierCard.open.oldest', {
         date: formatShortDate(oldestOpen.business_date, i18n.language),
-        count: daysBetween(oldestOpen.business_date, todayIso()),
+        // A business_date after "today" (a reopened-shift receipt, a clock
+        // skew) must never print a negative day count.
+        count: Math.max(0, daysBetween(oldestOpen.business_date, todayIso())),
       })
     : isZero(debt)
       ? t('supplierCard.tiles.balanceHint')
