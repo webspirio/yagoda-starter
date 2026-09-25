@@ -1,4 +1,4 @@
-import { useId, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import { Clock } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useSearchParams } from 'react-router';
@@ -59,7 +59,17 @@ export function PriceChanges() {
   const [searchParams] = useSearchParams();
   const patch = useUrlPatch();
   const today = todayIso();
-  const period = readPeriod(searchParams.get(FROM_PARAM), searchParams.get(TO_PARAM), today);
+  const rawFrom = searchParams.get(FROM_PARAM);
+  const rawTo = searchParams.get(TO_PARAM);
+  const period = readPeriod(rawFrom, rawTo, today);
+  // A period `readPeriod` refused is read as today; take it out of the address
+  // bar too, or the chips say «Сьогодні» while a re-copied link still carries
+  // the broken period.
+  const refused =
+    (rawFrom !== null || rawTo !== null) && period.from === null && period.to === null;
+  useEffect(() => {
+    if (refused) patch({ [FROM_PARAM]: null, [TO_PARAM]: null });
+  }, [refused, patch]);
   const preset = presetOf(period, today);
   const query = usePriceChangesQuery(period);
   const changes = query.data?.changes ?? [];
@@ -114,17 +124,13 @@ export function PriceChanges() {
             {t(`prices.changes.presets.${p}`)}
           </Chip>
         ))}
-        {/* Keyed by the committed value: an outside change (a preset, the
-            other bound dragging this one) resets the field's draft. */}
         <DateBound
-          key={`from-${shownFrom}`}
           label={t('prices.changes.from')}
           value={shownFrom}
           today={today}
           onCommit={(value) => setPeriod(withFrom(period, value, today))}
         />
         <DateBound
-          key={`to-${shownTo}`}
           label={t('prices.changes.to')}
           value={shownTo}
           today={today}
@@ -166,11 +172,17 @@ export function PriceChanges() {
 }
 
 /**
- * One bound of the period. The typed value is a DRAFT until it is a pickable
- * date: typing a year from the keyboard passes through `0002-…`, `0020-…` and
- * `0202-…`, each a real calendar date, and committing those would drag the
- * other bound and fire a request per keystroke. A date chosen from the native
- * picker is pickable at once, so it commits immediately.
+ * One bound of the period. The typed value is a DRAFT, committed on blur or
+ * Enter — never per keystroke. A native date input reports a complete date
+ * after every segment edit: typing `12` into the month passes through January,
+ * and a year passes through `0002-…` and `0202-…`. Committing those would fire
+ * a request per keystroke and drag the other bound to a period nobody asked
+ * for.
+ *
+ * The draft follows `value` when it changes from outside (a preset, the other
+ * bound dragging this one) by remembering the value it was last synced to —
+ * React's «adjust state when a prop changes», with no effect and no remount,
+ * so focus stays where the user left it.
  */
 function DateBound({
   label,
@@ -184,6 +196,17 @@ function DateBound({
   onCommit: (value: string) => void;
 }) {
   const [draft, setDraft] = useState(value);
+  const [syncedTo, setSyncedTo] = useState(value);
+  if (syncedTo !== value) {
+    setSyncedTo(value);
+    setDraft(value);
+  }
+
+  const commit = () => {
+    if (!isPickableDate(draft, today)) setDraft(value);
+    else if (draft !== value) onCommit(draft);
+  };
+
   return (
     <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
       {label}
@@ -193,15 +216,10 @@ function DateBound({
         value={draft}
         min={MIN_CHANGES_DATE}
         max={today}
-        onChange={(e) => {
-          setDraft(e.target.value);
-          if (isPickableDate(e.target.value, today) && e.target.value !== value) {
-            onCommit(e.target.value);
-          }
-        }}
-        onBlur={() => {
-          // An abandoned or cleared edit snaps back to the committed value.
-          if (!isPickableDate(draft, today)) setDraft(value);
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') commit();
         }}
       />
     </label>

@@ -10,6 +10,7 @@ import {
   withFrom,
   withTo,
 } from './changesPeriod';
+import serviceSource from '../../../../../backend/src/grade-prices/grade-prices.service.ts?raw';
 
 const TODAY = '2026-09-25';
 
@@ -138,5 +139,17 @@ describe('isPickableDate', () => {
 
   it('accepts a real date up to today', () => {
     expect(isPickableDate('2026-09-25', TODAY)).toBe(true);
+  });
+});
+
+/*
+ * ONE CAP, TWO FILES. If the server's number moves alone, `readPeriod` either
+ * refuses periods the server would answer or lets through the 400 it exists to
+ * prevent — so the two are read side by side here rather than trusted to a
+ * comment.
+ */
+describe('the cap', () => {
+  it('matches the one GradePricesService enforces', () => {
+    expect(serviceSource).toMatch(new RegExp(`const MAX_CHANGES_DAYS = ${MAX_CHANGES_DAYS};`));
   });
 });

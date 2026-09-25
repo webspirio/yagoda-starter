@@ -161,27 +161,52 @@ describe('PriceChanges', () => {
       expect(search().has('changes_to')).toBe(false);
     });
 
-    it('moves the period from the date inputs', () => {
+    it('commits a typed bound on blur, not per keystroke', () => {
       changesMock.mockReturnValue(loaded([], '2026-09-20', '2026-09-24'));
       const { search } = renderAt('/prices?changes_from=2026-09-20&changes_to=2026-09-24');
+      const from = screen.getByLabelText('From');
 
-      fireEvent.change(screen.getByLabelText('From'), { target: { value: '2026-09-18' } });
+      // A month segment on its way to «12» passes through January…
+      fireEvent.change(from, { target: { value: '2026-01-18' } });
+      expect(search().get('changes_from')).toBe('2026-09-20');
+      expect(search().get('changes_to')).toBe('2026-09-24');
+      // …and nothing is committed until the edit is finished.
+      fireEvent.change(from, { target: { value: '2026-09-18' } });
+      fireEvent.blur(from);
       expect(search().get('changes_from')).toBe('2026-09-18');
       expect(search().get('changes_to')).toBe('2026-09-24');
     });
 
-    it('ignores a year still being typed, and commits the finished date', () => {
+    it('commits on Enter and keeps focus in the field', () => {
+      changesMock.mockReturnValue(loaded([], '2026-09-20', '2026-09-24'));
+      const { search } = renderAt('/prices?changes_from=2026-09-20&changes_to=2026-09-24');
+      const to = screen.getByLabelText('To');
+      to.focus();
+
+      fireEvent.change(to, { target: { value: '2026-09-22' } });
+      fireEvent.keyDown(to, { key: 'Enter' });
+      expect(search().get('changes_to')).toBe('2026-09-22');
+      expect(screen.getByLabelText('To')).toHaveFocus();
+    });
+
+    it('snaps an unfinished year back on blur', () => {
       changesMock.mockReturnValue(loaded([], '2026-09-20', '2026-09-24'));
       const { search } = renderAt('/prices?changes_from=2026-09-20&changes_to=2026-09-24');
       const from = screen.getByLabelText('From');
 
       fireEvent.change(from, { target: { value: '0202-09-18' } });
+      fireEvent.blur(from);
       expect(search().get('changes_from')).toBe('2026-09-20');
-      expect(search().get('changes_to')).toBe('2026-09-24');
+      expect(from).toHaveValue('2026-09-20');
+    });
 
-      fireEvent.change(from, { target: { value: '2026-09-18' } });
-      expect(search().get('changes_from')).toBe('2026-09-18');
-      expect(search().get('changes_to')).toBe('2026-09-24');
+    it('follows a preset into the fields', async () => {
+      changesMock.mockReturnValue(loaded([]));
+      renderAt('/prices?changes_from=2026-09-20&changes_to=2026-09-24');
+      await userEvent.setup().click(screen.getByRole('button', { name: 'Yesterday' }));
+      const from = (screen.getByLabelText('From') as HTMLInputElement).value;
+      expect(from).not.toBe('2026-09-20');
+      expect(screen.getByLabelText('To')).toHaveValue(from);
     });
 
     it('heads each day with a level-2 heading that names its section', () => {
@@ -191,10 +216,12 @@ describe('PriceChanges', () => {
       expect(screen.getByRole('region')).toHaveAccessibleName(heading.textContent!);
     });
 
-    it('turns a link the server would refuse into today, not an error', () => {
+    it('turns a link the server would refuse into today, and clears it from the URL', () => {
       changesMock.mockReturnValue(loaded([]));
-      renderAt('/prices?changes_from=2026-09-24&changes_to=2026-09-01');
+      const { search } = renderAt('/prices?changes_from=2026-09-24&changes_to=2026-09-01');
       expect(changesMock).toHaveBeenCalledWith({ from: null, to: null });
+      expect(search().has('changes_from')).toBe(false);
+      expect(search().has('changes_to')).toBe(false);
     });
 
     it('says the PERIOD had no changes, not «today»', () => {

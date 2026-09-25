@@ -242,7 +242,12 @@ export class GradePricesService {
    * runs to today, `to` alone is that one day.
    *
    * UNPAGINATED, and that is why the period is capped at `MAX_CHANGES_DAYS`:
-   * the list is bounded by at most a month of one owner's writes. NOT filtered by
+   * the list is bounded by at most a month of one owner's writes. The OWNER's
+   * network-wide read has no index to lean on — `IDX_grade_prices_lookup` leads
+   * with the point — so it scans the table and runs one LATERAL lookup per row
+   * in the period. Fine at today's volumes; raising the cap (or paginating) is
+   * the moment to add an index on `created_at`. The cap is mirrored in the
+   * frontend's `changesPeriod.ts`, and a test there reads this line. NOT filtered by
    * `is_active` on grade or point — history is not filtered by the current
    * state of the thing it describes (see `ListGradePricesQueryDto`).
    */
