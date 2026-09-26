@@ -20,6 +20,7 @@ import { SupplierBalanceService } from '../supplier-balance/supplier-balance.ser
 import { CollectionPointsService } from '../collection-points/collection-points.service';
 import { AuditService } from '../audit/audit.service';
 import { PointCashService } from '../point-cash/point-cash.service';
+import { AllocationsService } from '../supplier-balance/allocations.service';
 import { nextDocumentCode } from '../common/document-code';
 import { gt, isZero } from '../common/money';
 import { resolveWritePoint, resolvePointFilter } from '../auth/access/point-scope';
@@ -56,6 +57,7 @@ export class PayoutsService {
     private readonly points: CollectionPointsService,
     private readonly audit: AuditService,
     private readonly pointCash: PointCashService,
+    private readonly allocations: AllocationsService,
   ) {}
 
   /**
@@ -108,57 +110,21 @@ export class PayoutsService {
         amount: dto.amount,
         intakeId: null,
       });
+      await this.allocations.allocate(m, supplier.id);
       return toPayoutResponse(payout, shift);
     });
   }
 
-  /**
-   * THE payout writer. Called inside the caller's transaction by `create`
-   * (standalone) and by `IntakesService.create` (cash handed over with the
-   * receipt, §2.1 ⑥), so the two ceilings and the numbering have exactly one
-   * implementation.
-   *
-   * LOCK ORDER IS THE CONTRACT: supplier row → open shift → debt →
-   * `nextDocumentCode`'s advisory lock → cash → insert. The reception path
-   * holds the `intakes` advisory lock BEFORE calling this and never after, so
-   * the two paths cannot form a cycle. (See the block comment below on why the
-   * supplier row is a mutex and why SERIALIZABLE was rejected.)
-   *
-   * On the reception path the caller has already inserted the intake, which
-   * holds `FOR KEY SHARE` on the same `suppliers` row (the FK); `FOR UPDATE`
-   * here is therefore a lock UPGRADE by the same transaction, which Postgres
-   * grants without waiting on itself, and no other path takes the `payouts`
-   * advisory lock before the supplier row — so the hierarchy `intakes`
-   * advisory → `suppliers` row → `payouts` advisory is acyclic.
-   *
-   * Callers must have checked, outside the transaction, that the point
-   * exists, the supplier is active and belongs to `pointId`; this method
-   * assumes all three.
-   */
+  /** THE payout writer, inside the caller's transaction (standalone create and §2.1 ⑥
+   *  reception). Lock order: supplier (already held on the reception path) → open shift →
+   *  debt → PO code lock → cash → insert. The supplier row is the per-supplier mutex behind
+   *  both ceilings; SERIALIZABLE was rejected (no retry infrastructure). Callers have checked
+   *  point, supplier activity and supplier-at-point. Callers run `allocate`. */
   async writePayout(
     m: EntityManager,
     { actor, pointId, pointCode, supplierId, amount, intakeId }: WritePayoutInput,
   ): Promise<{ payout: Payout; shift: Shift }> {
-    /**
-     * THE LOCK COMES FIRST, AND THE ORDER IS THE POINT.
-     *
-     * The ceiling is a read-then-write over a sum across two tables, and no
-     * CHECK can express «not greater than a sum over two tables». Without
-     * this line two payouts in flight together — two operators, one
-     * double-tapped submit button, or a client retry on a slow response —
-     * both read a debt of 380, both pass, both commit, and 760 leaves the
-     * drawer against a 380 debt. Nothing downstream notices, because the
-     * schema has no `борг >= 0` invariant to violate.
-     *
-     * The `suppliers` row is a MUTEX, not data being changed. Contention is
-     * per supplier: payouts to different suppliers never block each other and
-     * intakes are untouched.
-     *
-     * SERIALIZABLE was rejected — it needs a retry loop for an expected 40001
-     * and this repo has no retry infrastructure, which is more new machinery
-     * than one route justifies.
-     */
-    await m.query('SELECT id FROM suppliers WHERE id = $1 FOR UPDATE', [supplierId]);
+    await this.allocations.lockSupplier(m, supplierId);
 
     const shift = await this.shifts.findOpenAtPoint(pointId, m);
     if (!shift) {
@@ -196,21 +162,8 @@ export class PayoutsService {
     // fact) admits nothing, and that is correct: the berries are taken, the
     // money lands in the supplier's balance, and a transfer restores the cash.
     //
-    // READ HERE, AFTER `nextDocumentCode`, NOT BEFORE IT (moved 2026-09-21,
-    // PR #137 review). The debt check above is protected by the SUPPLIER row
-    // lock taken at the top of this method, and that lock is a fine mutex for
-    // it — contention is per supplier. But the cash ceiling is a fact about
-    // the whole SHIFT (one point's one business date): two payouts to two
-    // DIFFERENT suppliers at one point take their own, different supplier
-    // locks and never block each other, so reading the drawer under only the
-    // supplier lock let both read the same cash, both pass, both commit —
-    // drawer negative. `nextDocumentCode`'s advisory lock, keyed on `(payouts,
-    // shift, 'PO')` and held to commit, IS the shift-wide mutex this route
-    // has, so the read moves to right after it: authoritative only once that
-    // lock is held, and, like `nextDocumentCode`'s own count, it relies on
-    // READ COMMITTED giving each statement a fresh snapshot — the second lock
-    // holder's read sees the first's committed payout. LOCK ORDER IS
-    // UNCHANGED (supplier row → PO advisory); only the read moved under it.
+    // Cash is shift-wide: read it under the PO code lock (the shift mutex),
+    // not only the supplier lock — PR #137.
     const cash = await this.pointCash.cashFor(pointId, undefined, m);
     if (gt(amount, cash)) {
       throw new BadRequestException({
@@ -253,6 +206,7 @@ export class PayoutsService {
   async void(actor: AuthenticatedUser, id: string, dto: VoidDocumentDto): Promise<PayoutResponse> {
     // Load and state check under the row lock, or a double tap audits twice.
     return this.dataSource.transaction(async (m) => {
+      const supplierId = await this.lockSupplierOf(m, id);
       const { payout, shift } = await this.loadForWrite(actor, id, { requireAuthor: true }, m);
       if (payout.voided_at) {
         throw new ConflictException({
@@ -260,8 +214,18 @@ export class PayoutsService {
           code: 'ALREADY_VOIDED',
         });
       }
-      return toPayoutResponse(await this.voidWithin(m, actor, payout, dto.reason), shift);
+      const voided = await this.voidWithin(m, actor, payout, dto.reason);
+      await this.allocations.allocate(m, supplierId);
+      return toPayoutResponse(voided, shift);
     });
+  }
+
+  /** Unlocked stub read (a missing id 404s before any lock), then the supplier lock — always first. */
+  private async lockSupplierOf(m: EntityManager, id: string): Promise<string> {
+    const stub = await m.findOne(Payout, { where: { id } });
+    if (!stub) throw new NotFoundException('Payout not found');
+    await this.allocations.lockSupplier(m, stub.supplier_id);
+    return stub.supplier_id;
   }
 
   /** The live payout issued with this receipt, locked for the caller's transaction. */
@@ -272,7 +236,7 @@ export class PayoutsService {
     });
   }
 
-  /** Voids a payout the caller already loaded, locked and authorised. */
+  /** Voids a payout the caller loaded, locked and authorised, and releases its allocations. The caller allocates. */
   async voidWithin(
     m: EntityManager,
     actor: AuthenticatedUser,
@@ -283,6 +247,7 @@ export class PayoutsService {
     payout.voided_by_user_id = actor.sub;
     payout.void_reason = reason;
     const saved = await m.save(Payout, payout);
+    await this.allocations.release(m, { payoutId: saved.id });
     await this.audit.record(
       {
         action: 'payout.voided',

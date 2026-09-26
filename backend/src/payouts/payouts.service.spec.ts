@@ -45,6 +45,7 @@ describe('PayoutsService', () => {
   let points: { findOneRaw: jest.Mock };
   let audit: { record: jest.Mock };
   let pointCash: { cashFor: jest.Mock };
+  let allocations: { lockSupplier: jest.Mock; release: jest.Mock; allocate: jest.Mock };
   let service: PayoutsService;
 
   const shift = (over: Record<string, unknown> = {}) => ({
@@ -109,6 +110,11 @@ describe('PayoutsService', () => {
     points = { findOneRaw: jest.fn().mockResolvedValue({ id: POINT_A, code: 'KPG' }) };
     audit = { record: jest.fn().mockResolvedValue(undefined) };
     pointCash = { cashFor: jest.fn().mockResolvedValue('10000.00') };
+    allocations = {
+      lockSupplier: jest.fn().mockResolvedValue(undefined),
+      release: jest.fn().mockResolvedValue(undefined),
+      allocate: jest.fn().mockResolvedValue(0),
+    };
 
     service = new PayoutsService(
       repo as never,
@@ -119,6 +125,7 @@ describe('PayoutsService', () => {
       points as never,
       audit as never,
       pointCash as never,
+      allocations as never,
     );
   });
 
@@ -169,17 +176,16 @@ describe('PayoutsService', () => {
       });
     });
 
-    it('locks the supplier row BEFORE reading the debt', async () => {
+    it('locks the supplier BEFORE reading the shift or the debt', async () => {
       await service.create(oksana, dto());
 
-      const first = (manager.query.mock.calls[0] as [string])[0];
-      expect(first).toMatch(/FOR UPDATE/);
-      // ORDER, not just presence: a lock taken AFTER the debt is read protects
-      // nothing. `invocationCallOrder` is the vanilla-Jest way to assert it —
-      // `toHaveBeenCalledBefore` is a jest-extended matcher this repo has not
-      // installed.
-      expect(manager.query.mock.invocationCallOrder[0]).toBeLessThan(
-        balance.debtFor.mock.invocationCallOrder[0],
+      expect(allocations.lockSupplier).toHaveBeenCalledWith(manager, SUPPLIER);
+      // ORDER, not just presence: a lock taken AFTER the shift/debt reads
+      // protects nothing. `invocationCallOrder` is the vanilla-Jest way to
+      // assert it — `toHaveBeenCalledBefore` is a jest-extended matcher this
+      // repo has not installed.
+      expect(allocations.lockSupplier.mock.invocationCallOrder[0]).toBeLessThan(
+        shifts.findOpenAtPoint.mock.invocationCallOrder[0],
       );
     });
 
@@ -205,11 +211,13 @@ describe('PayoutsService', () => {
       expect(counting?.[0]).toContain('FROM payouts');
     });
 
-    it('takes the supplier row lock BEFORE numbering, so the debt read is the locked one', async () => {
+    it('takes the supplier lock BEFORE numbering, so the debt read is the locked one', async () => {
       await service.create(oksana, dto());
 
+      expect(allocations.lockSupplier.mock.invocationCallOrder[0]).toBeLessThan(
+        manager.query.mock.invocationCallOrder[0],
+      );
       const sqls = (manager.query.mock.calls as [string][]).map(([sql]) => sql);
-      expect(sqls[0]).toMatch(/FOR UPDATE/);
       expect(sqls.findIndex((sql) => sql.includes('count(*)'))).toBeGreaterThan(0);
     });
 
@@ -244,6 +252,13 @@ describe('PayoutsService', () => {
         expect.objectContaining({ action: 'payout.created' }),
         manager,
       );
+    });
+
+    it('allocates once, after the payout is written', async () => {
+      await service.create(oksana, dto());
+
+      expect(allocations.allocate).toHaveBeenCalledTimes(1);
+      expect(allocations.allocate).toHaveBeenCalledWith(manager, SUPPLIER);
     });
   });
 
@@ -311,6 +326,36 @@ describe('PayoutsService', () => {
       await expect(service.void(owner, PAYOUT_ID, { reason: 'ще' })).rejects.toThrow(
         ConflictException,
       );
+    });
+
+    it('locks the supplier before the payout row, releases, then allocates once', async () => {
+      await service.void(oksana, PAYOUT_ID, { reason: 'помилка' });
+
+      const rowLockIndex = manager.findOne.mock.calls.findIndex(
+        ([, options]: [unknown, { lock?: unknown }]) => options?.lock,
+      );
+      expect(allocations.lockSupplier.mock.invocationCallOrder[0]).toBeLessThan(
+        manager.findOne.mock.invocationCallOrder[rowLockIndex],
+      );
+      expect(allocations.release).toHaveBeenCalledWith(manager, { payoutId: PAYOUT_ID });
+      expect(allocations.allocate).toHaveBeenCalledTimes(1);
+      expect(allocations.allocate).toHaveBeenCalledWith(manager, SUPPLIER);
+    });
+
+    it('is 404 before any lock for a missing payout', async () => {
+      manager.findOne.mockResolvedValueOnce(null); // the unlocked stub read
+
+      await expect(service.void(owner, 'nope', { reason: 'x' })).rejects.toThrow(
+        'Payout not found',
+      );
+      expect(allocations.lockSupplier).not.toHaveBeenCalled();
+    });
+
+    it('other point is still 404 for an operator, and nothing is released', async () => {
+      await expect(service.void(elsewhere, PAYOUT_ID, { reason: 'x' })).rejects.toThrow(
+        NotFoundException,
+      );
+      expect(allocations.release).not.toHaveBeenCalled();
     });
   });
 
@@ -417,7 +462,7 @@ describe('PayoutsService', () => {
       // regression back to reading cash before the advisory lock fails here.
       pointCash.cashFor.mockResolvedValue('380.00');
       await service.create(oksana, dto());
-      const lockCall = manager.query.mock.invocationCallOrder[0];
+      const lockCall = allocations.lockSupplier.mock.invocationCallOrder[0];
       const debtCall = balance.debtFor.mock.invocationCallOrder[0];
       const sqls = (manager.query.mock.calls as [string][]).map(([sql]) => sql);
       const advisoryIndex = sqls.findIndex((sql) => sql.includes('pg_advisory_xact_lock'));
@@ -506,6 +551,15 @@ describe('PayoutsService', () => {
         expect.objectContaining({ action: 'payout.voided', target_id: row.id, note: 'помилка' }),
         manager,
       );
+    });
+
+    it('voidWithin releases the payout and does not allocate — the caller allocates', async () => {
+      const row = payout();
+
+      await service.voidWithin(manager as never, oksana, row as never, 'r');
+
+      expect(allocations.release).toHaveBeenCalledWith(manager, { payoutId: row.id });
+      expect(allocations.allocate).not.toHaveBeenCalled();
     });
 
     it('settleReturnWithin records the return and audits payout.return-settled', async () => {
