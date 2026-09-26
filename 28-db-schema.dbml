@@ -849,6 +849,34 @@ Table intake_top_ups {
 '''
 }
 
+Table payout_allocations {
+  id uuid [pk]
+
+  payout_id uuid [not null, ref: > payouts.id]
+  intake_id uuid [ref: > intakes.id]
+  intake_top_up_id uuid [ref: > intake_top_ups.id]
+
+  amount numeric(12,2) [not null]
+
+  created_at timestamp [not null]
+  voided_at timestamp
+
+  indexes {
+    (payout_id)
+    (intake_id)
+    (intake_top_up_id)
+  }
+
+  Note: '''
+Розподіл виплат (правка 26.09.2026, спека 2026-09-26-yagoda-payout-allocations-slice). Рядок —
+заморожений факт «виплата P закрила `amount` цієї квитанції або доплати»; рівно одна ціль
+(CHK_payout_allocations_one_target), amount > 0. Змінюється лише voided_at: сторно документа гасить
+його рядки, а звільнені гроші йдуть НОВИМИ рядками. Пише тільки AllocationsService, під блокуванням
+рядка постачальника, взятим першим. Правило: спершу квитанція з payouts.intake_id, решта — FIFO
+(business_date, created_at, id).
+'''
+}
+
 /* ---------------------------- ящики ---------------------------- */
 
 Table crate_issuances {
