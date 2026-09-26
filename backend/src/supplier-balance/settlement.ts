@@ -94,7 +94,7 @@ export function settle(lines: DebtLine[], payouts: PayoutLine[]): Settlement {
   for (const p of settledPayouts) {
     if (p.intake_id === null) continue;
     const target = byIntakeId.get(p.intake_id);
-    if (target === undefined) continue; // voided receipt: pass 2 takes the whole payout
+    if (target === undefined) continue; // receipt voided or already fully covered: pass 2 takes the rest
     const take = min(p.unallocated, target.open);
     if (!isZero(take)) cover(p, target, take);
   }

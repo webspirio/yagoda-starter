@@ -77,9 +77,17 @@ export class AllocationsService {
     );
     if (covers.length === 0) return 0;
 
+    // `created_at = clock_timestamp()`, not the column default `now()` (the
+    // transaction start): every row here shares one transaction, so `now()`
+    // would tie them and `settle()`'s ORDER BY would fall back to a random
+    // uuid within this call. Ordered by ordinality so cover order (bound
+    // first, then FIFO) survives into `settle()`'s read.
     await m.query(
-      `INSERT INTO payout_allocations (payout_id, intake_id, intake_top_up_id, amount)
-       SELECT * FROM unnest($1::uuid[], $2::uuid[], $3::uuid[], $4::numeric[])`,
+      `INSERT INTO payout_allocations (payout_id, intake_id, intake_top_up_id, amount, created_at)
+       SELECT u.payout_id, u.intake_id, u.intake_top_up_id, u.amount, clock_timestamp()
+         FROM unnest($1::uuid[], $2::uuid[], $3::uuid[], $4::numeric[])
+              WITH ORDINALITY AS u(payout_id, intake_id, intake_top_up_id, amount, ord)
+        ORDER BY u.ord`,
       [
         covers.map((c) => c.payout_id),
         covers.map((c) => (c.kind === 'intake' ? c.line_id : null)),

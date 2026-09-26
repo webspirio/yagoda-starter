@@ -135,11 +135,11 @@ describe('IntakeTopUpsService.create', () => {
       service.create(OWNER, { intake_id: 'intake-1', amount: '2000.00', reason: 'доплата' }),
     ).resolves.toBeDefined();
     expect(manager.findOne).toHaveBeenCalledWith(Intake, { where: { id: 'intake-1' } });
-    // Exactly two lookups, the intake and its supplier — nothing else, and in
-    // particular no shift. Asserting the SET of entities rather than a count
-    // keeps this test about the shift instead of about how many rows create
-    // happens to read.
-    expect(manager.findOne.mock.calls.map((call) => call[0])).toEqual([Intake, Supplier]);
+    // The intake stub, the re-read intake and its supplier — nothing else, and
+    // in particular no shift. Asserting the SEQUENCE of entities rather than a
+    // count keeps this test about the shift instead of about how many rows
+    // create happens to read.
+    expect(manager.findOne.mock.calls.map((call) => call[0])).toEqual([Intake, Intake, Supplier]);
   });
 
   it('audits inside the same transaction', async () => {
@@ -161,10 +161,15 @@ describe('IntakeTopUpsService.create', () => {
     );
   });
 
-  it('locks the supplier before the insert and allocates once, after it', async () => {
+  it('locks the supplier before the is_active read and the insert, and allocates once, after it', async () => {
     await service.create(OWNER, { intake_id: 'intake-1', amount: '10.00', reason: 'x' });
 
+    // The supplier findOne IS the is_active read — it now happens after the lock.
+    const supplierRead = manager.findOne.mock.calls.findIndex(([entity]) => entity === Supplier);
     expect(allocations.lockSupplier).toHaveBeenCalledWith(manager, 'supplier-1');
+    expect(allocations.lockSupplier.mock.invocationCallOrder[0]).toBeLessThan(
+      manager.findOne.mock.invocationCallOrder[supplierRead],
+    );
     expect(allocations.lockSupplier.mock.invocationCallOrder[0]).toBeLessThan(
       manager.save.mock.invocationCallOrder[0],
     );

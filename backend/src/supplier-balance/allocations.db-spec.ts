@@ -181,7 +181,26 @@ describe('AllocationsService (db)', () => {
     const s = await supplier();
     const sh = await shift('2026-06-05');
     await event(s, async (m) => { await intake(m, s, sh, '100.00'); await payout(m, s, sh, '30.00', null); });
+    // Prove the first call actually wrote — otherwise "0 the second time" is trivially true.
+    expect(await live(s)).toHaveLength(1);
     await expect(ds.transaction(async (m) => { await alloc.lockSupplier(m, s); return alloc.allocate(m, s); })).resolves.toBe(0);
+  });
+
+  it('one allocate call inserts rows in cover order: bound first, then FIFO', async () => {
+    const s = await supplier();
+    const sh = await shift('2026-06-07');
+    let r1 = '', r2 = '';
+    await event(s, async (m) => { r1 = await intake(m, s, sh, '100.00'); });
+    await event(s, async (m) => { r2 = await intake(m, s, sh, '100.00'); });
+    // One event, one allocate() call: the bound cover (r1) and the FIFO
+    // overflow (r2) are both written here, sharing one transaction's clock.
+    await event(s, async (m) => { await payout(m, s, sh, '250.00', r1); });
+    const rows = await live(s);
+    expect(rows.map((a: { intake_id: string; amount: string }) => [a.intake_id, a.amount])).toEqual([
+      [r1, '100.00'],
+      [r2, '100.00'],
+    ]);
+    expect(await ds.transaction((m) => allocationViolations(m, s))).toEqual([]);
   });
 
   it('a seeded random sequence of 40 events keeps all four invariants after every event', async () => {

@@ -19,6 +19,7 @@ import { LOCAL_PROVIDER } from '../users/user-identity.entity';
 import { UserRole } from '../users/user-role.enum';
 import { PayoutsService } from '../payouts/payouts.service';
 import { SupplierBalanceService } from '../supplier-balance/supplier-balance.service';
+import { AllocationsService } from '../supplier-balance/allocations.service';
 import { PointCashService } from '../point-cash/point-cash.service';
 import { timezoneConfig } from '../config/timezone.config';
 import { sub } from '../common/money';
@@ -125,7 +126,20 @@ describe('intake void with a payout decision (HTTP, Postgres)', () => {
        VALUES ($1, $2, $3, '1500.00', $4, $5) RETURNING id`,
       [`PO-${run}-${++seq}`, todayShiftId, supplier.id, operatorId, rId],
     );
-    return { supplierId: supplier.id as string, oldId, rId, pId: p.id as string };
+
+    // Raw fixture, so nothing has allocated this yet. Without this, the "keep"
+    // case below would pass even if `release` did nothing — `allocate` recomputes
+    // fully from live documents, so a fixture with no prior rows can't tell a
+    // working void from a no-op one. Allocating here first gives `release` real
+    // frozen rows to void.
+    const supplierId = supplier.id as string;
+    await ds.transaction(async (m) => {
+      const a = new AllocationsService();
+      await a.lockSupplier(m, supplierId);
+      await a.allocate(m, supplierId);
+    });
+
+    return { supplierId, oldId, rId, pId: p.id as string };
   };
 
   const voidIntake = (token: string, id: string, body: Record<string, unknown>) =>

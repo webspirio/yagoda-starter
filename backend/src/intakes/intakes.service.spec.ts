@@ -703,7 +703,11 @@ describe('IntakesService', () => {
         await service.void(oksana, INTAKE_ID, { reason: 'r', payout: 'keep' });
 
         expect(payouts.findLiveBoundForUpdate).toHaveBeenCalledWith(manager, INTAKE_ID);
-        expect(manager.findOne.mock.invocationCallOrder[0]).toBeLessThan(
+        // Compare against the LOCKED intake read (`loadForVoid`'s `FOR UPDATE`
+        // find), not the unlocked stub read — that one always runs first and
+        // would pass this assertion even if the payout lock jumped ahead of it.
+        const locked = manager.findOne.mock.calls.findIndex(([, opts]) => opts?.lock);
+        expect(manager.findOne.mock.invocationCallOrder[locked]).toBeLessThan(
           payouts.findLiveBoundForUpdate.mock.invocationCallOrder[0],
         );
       });

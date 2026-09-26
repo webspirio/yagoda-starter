@@ -54,6 +54,8 @@ describe('AllocationsService', () => {
     await expect(service.allocate(m, 's1')).resolves.toBe(2);
     const [sql, params] = m.query.mock.calls[2];
     expect(sql).toMatch(/INSERT INTO payout_allocations/);
+    expect(sql).toMatch(/clock_timestamp\(\)/);
+    expect(sql).toMatch(/WITH ORDINALITY/);
     expect(params).toEqual([
       ['p1', 'p1'],
       ['r22', 'r1'],

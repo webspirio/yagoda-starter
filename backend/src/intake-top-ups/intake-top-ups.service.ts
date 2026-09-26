@@ -89,10 +89,16 @@ export class IntakeTopUpsService {
     }
 
     return this.dataSource.transaction(async (m) => {
+      // Unlocked stub, only to find which supplier to lock; 404s before any lock.
+      const stub = await m.findOne(Intake, { where: { id: dto.intake_id } });
+      if (!stub) throw new NotFoundException('Intake not found');
+      await this.allocations.lockSupplier(m, stub.supplier_id);
+
+      // Re-read under the lock: an is_active check against the unlocked stub
+      // could miss a deactivation that landed between that read and the lock.
+      // A voided parent is legal either way: the row simply never counts (debtSql, allocate).
       const intake = await m.findOne(Intake, { where: { id: dto.intake_id } });
       if (!intake) throw new NotFoundException('Intake not found');
-
-      // Inactive supplier refused: the counter could not settle this debt (PayoutsService refuses them).
       const supplier = await m.findOne(Supplier, { where: { id: intake.supplier_id } });
       if (!supplier) throw new NotFoundException('Intake not found');
       if (!supplier.is_active) {
@@ -102,8 +108,6 @@ export class IntakeTopUpsService {
         });
       }
 
-      // A voided parent is legal: the row simply never counts (debtSql, allocate).
-      await this.allocations.lockSupplier(m, supplier.id);
       const saved = await m.save(IntakeTopUp, {
         intake_id: intake.id,
         amount: dto.amount,
