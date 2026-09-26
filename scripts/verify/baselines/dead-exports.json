@@ -77,7 +77,6 @@
     "exports|frontend/src/shared/ui/table.tsx|TableFooter",
     "exports|frontend/src/shared/ui/tabs.tsx|tabsListVariants",
     "exports|frontend/src/shared/ui/tooltip.tsx|TooltipProvider",
-    "files|backend/src/supplier-balance/payout-allocation.entity.ts|backend/src/supplier-balance/payout-allocation.entity.ts",
     "files|frontend/src/shared/lib/form-draft/index.ts|frontend/src/shared/lib/form-draft/index.ts",
     "files|frontend/src/shared/lib/useIsDesktop.ts|frontend/src/shared/lib/useIsDesktop.ts",
     "files|frontend/src/shared/ui/animated-number.tsx|frontend/src/shared/ui/animated-number.tsx",

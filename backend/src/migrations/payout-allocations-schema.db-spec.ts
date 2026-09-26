@@ -2,6 +2,7 @@ import { randomUUID } from 'crypto';
 import { DataSource } from 'typeorm';
 import { openTestDataSource } from '../testing/db-harness';
 import { backfillPayoutAllocations } from '../common/payout-allocations-backfill';
+import { AllocationsService } from '../supplier-balance/allocations.service';
 
 /**
  * The table's constraints, and the backfill over the slice-1 fixture (spec
@@ -152,5 +153,56 @@ describe('PayoutAllocations migration', () => {
         { payout_id: p, intake_id: old, intake_top_up_id: null, amount: '200.00' },
       ]),
     );
+  });
+
+  it('the frozen backfill and the live allocator write the same rows over the same documents', async () => {
+    // A fresh point per build() call: both build the SAME dates (2026-08-01/02), and
+    // shifts.UQ_shifts_point_business_date is one shift per (point, date) — sharing the
+    // suite's own `pointId` across both calls would collide on those two dates.
+    const build = async () => {
+      const [pt] = await ds.query(
+        `INSERT INTO collection_points (name, kind, code) VALUES ($1, 'reception', $2) RETURNING id`,
+        [`Крос-${run}-${++seq}`, `X${run.slice(0, 3).toUpperCase()}${seq}`],
+      );
+      const localShift = async (date: string): Promise<string> => {
+        const [row] = await ds.query(
+          `INSERT INTO shifts (collection_point_id, opened_by_user_id, business_date,
+                               closed_at, closed_by_user_id, status)
+           VALUES ($1, $2, $3, now(), $2, 'closed') RETURNING id`,
+          [pt.id, userId, date],
+        );
+        return row.id as string;
+      };
+      const s = await supplier();
+      const d1 = await localShift('2026-08-01');
+      const d2 = await localShift('2026-08-02');
+      const a = await intake(s, d1, '400.00', '2026-08-01T08:00:00Z');
+      const b = await intake(s, d1, '300.00', '2026-08-01T09:00:00Z', true);
+      const t = await topUp(a, '50.00', '2026-08-05T08:00:00Z');
+      const c = await intake(s, d2, '200.00', '2026-08-02T08:00:00Z');
+      const p1 = await payout(s, d2, '380.00', c, '2026-08-02T08:01:00Z');
+      const p2 = await payout(s, d2, '100.00', b, '2026-08-02T09:00:00Z');
+      return { s, names: new Map([[a, 'a'], [t, 't'], [c, 'c'], [p1, 'p1'], [p2, 'p2']]) };
+    };
+    const shape = async (s: string, names: Map<string, string>) =>
+      (await rowsOf(s))
+        .map((r: { payout_id: string; intake_id: string | null; intake_top_up_id: string | null; amount: string }) =>
+          `${names.get(r.payout_id)}→${names.get((r.intake_id ?? r.intake_top_up_id) as string)}:${r.amount}`)
+        .sort();
+
+    const frozen = await build();
+    const qr = ds.createQueryRunner();
+    try {
+      await backfillPayoutAllocations(qr, [frozen.s]);
+    } finally {
+      await qr.release();
+    }
+    const live = await build();
+    await ds.transaction(async (m) => {
+      const alloc = new AllocationsService();
+      await alloc.lockSupplier(m, live.s);
+      await alloc.allocate(m, live.s);
+    });
+    expect(await shape(frozen.s, frozen.names)).toEqual(await shape(live.s, live.names));
   });
 });

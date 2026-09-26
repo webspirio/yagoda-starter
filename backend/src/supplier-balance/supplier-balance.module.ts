@@ -1,21 +1,23 @@
 import { Module } from '@nestjs/common';
+import { TypeOrmModule } from '@nestjs/typeorm';
 import { SupplierBalanceService } from './supplier-balance.service';
 import { SupplierBalanceController } from './supplier-balance.controller';
 import { SupplierBalancesController } from './supplier-balances.controller';
+import { AllocationsService } from './allocations.service';
+import { PayoutAllocation } from './payout-allocation.entity';
 import { SuppliersModule } from '../suppliers/suppliers.module';
 
 /**
- * OWNS NO TABLE AND WRITES NOTHING. It exists so the debt formula — which spans
- * `intakes` and `payouts` and must carry `voided_at IS NULL` on BOTH halves —
- * has exactly one home. Routing it through the two document services would
- * either return two numbers to subtract in a third place or drag a `SUM` into
- * services that own a row model.
+ * Owns `payout_allocations` and nothing else. The debt formula still reads
+ * `intakes`, `intake_top_ups` and `payouts` directly (reads are open);
+ * allocation rows are written only through `AllocationsService`.
  *
  * This is the `nest-module-conventions` invariant it satisfies: READS ARE OPEN,
  * writes go through a seam. It reads two other modules' tables directly and
- * mutates nothing.
+ * mutates nothing beyond its own table.
  *
- * `PayoutsModule` imports it for the §3.6 ceiling; nothing else does.
+ * Imported by `PayoutsModule` (ceiling + allocations), `IntakesModule` and
+ * `IntakeTopUpsModule` (allocations).
  *
  * TWO CONTROLLERS, ONE FORMULA: `GET /suppliers/:id/balance` answers for one
  * person, `GET /supplier-balances` for every supplier at a point (the
@@ -23,9 +25,9 @@ import { SuppliersModule } from '../suppliers/suppliers.module';
  * exactly once and the list is the same expression correlated per row.
  */
 @Module({
-  imports: [SuppliersModule],
-  providers: [SupplierBalanceService],
+  imports: [SuppliersModule, TypeOrmModule.forFeature([PayoutAllocation])],
+  providers: [SupplierBalanceService, AllocationsService],
   controllers: [SupplierBalanceController, SupplierBalancesController],
-  exports: [SupplierBalanceService],
+  exports: [SupplierBalanceService, AllocationsService],
 })
 export class SupplierBalanceModule {}
