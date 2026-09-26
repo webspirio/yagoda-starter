@@ -8,7 +8,7 @@ import { SectionCard } from '@/shared/ui/section-card';
 import { Button } from '@/shared/ui/button';
 import { Spinner } from '@/shared/ui/spinner';
 import { ApiError, isTruncated } from '@/shared/api';
-import { sum, cmp, isZero, formatUah } from '@/shared/lib/money';
+import { cmp, isZero, formatUah, formatKg } from '@/shared/lib/money';
 import { useSupplierQuery, useSupplierBalanceQuery, supplierName } from '@/entities/supplier';
 import { useIntakesQuery, type Intake } from '@/entities/intake';
 import { usePayoutsQuery, type Payout } from '@/entities/payout';
@@ -23,10 +23,14 @@ import { SupplierTimeline } from './SupplierTimeline';
 
 /**
  * `/suppliers/:id` — one supplier's card: header, season tiles and the
- * merged history of their receipts and payouts (spec §5.4). A balance is
- * ONE number here too (§3) — the tiles total the loaded documents, they
- * never reconstruct `/balance` from them. Kind and phone stay editable only
- * from the suppliers list's own dialog; this page is read (plus a payout).
+ * merged history of their receipts and payouts (spec §5.4). Since #103/#148
+ * the tiles are READ FACTS off `/balance`'s breakdown (`intakes_count`,
+ * `kg_total`, `intakes_total`, `debt`, plus the `{intakes} + {top-ups} −
+ * {payouts}` line under the balance tile) — they are never a sum over
+ * `intakes`/`payouts`/`topUps`, which stay capped at `limit: 100` and would
+ * silently under-report past that for any supplier with a long season. Kind
+ * and phone stay editable only from the suppliers list's own dialog; this
+ * page is read (plus a payout).
  */
 export function SupplierCardPage() {
   const { t, i18n } = useTranslation();
@@ -34,7 +38,9 @@ export function SupplierCardPage() {
 
   const supplier = useSupplierQuery(id ?? null);
   const balance = useSupplierBalanceQuery(id ?? null);
-  const intakes = useIntakesQuery({ supplierId: id, limit: 100 });
+  // `expandItems`: §148 — a receipt row shows what was handed over without a
+  // click, which needs each intake's lines nested onto the list read.
+  const intakes = useIntakesQuery({ supplierId: id, limit: 100, expandItems: true });
   const payouts = usePayoutsQuery({ supplierId: id, limit: 100 });
   const topUps = useIntakeTopUpsQuery({ supplierId: id, limit: 100 });
   const me = useMeQuery();
@@ -136,22 +142,12 @@ export function SupplierCardPage() {
   const intakeRows = intakes.data?.data ?? [];
   const payoutRows = payouts.data?.data ?? [];
   const topUpRows = topUps.data?.data ?? [];
-  const liveIntakes = intakeRows.filter((i) => i.voided_at === null);
-  const livePayouts = payoutRows.filter((p) => p.voided_at === null);
-  // `counts_toward_balance`, NOT `voided_at`: it folds in the PARENT receipt's
-  // void too, and a top-up on a voided receipt counts for nothing.
-  const liveTopUps = topUpRows.filter((u) => u.counts_toward_balance);
-  // THE MIDDLE TERM OF THE BALANCE. `debt` is «Σ intakes + Σ top-ups − Σ
-  // payouts»; a «Нараховано» tile that summed only receipts would visibly
-  // disagree with the balance tile beside it, and the owner would have no way
-  // to tell which one was wrong.
-  const accrued = sum([...liveIntakes.map((i) => i.amount), ...liveTopUps.map((u) => u.amount)]);
-  const paid = sum(livePayouts.map((p) => p.amount));
-  // Both journals are read at a fixed `limit: 100` (spec §5.4) — past that
-  // the «Нараховано»/«Видано» tiles would under-report the season, so each
-  // says so instead of quietly summing only what happened to load.
-  const truncated = isTruncated(intakes.data) || isTruncated(topUps.data);
-  const payoutsTruncated = isTruncated(payouts.data);
+  // All three journals are read at a fixed `limit: 100` (spec §5.4) — the
+  // TIMELINE below can under-report past that, so it says so. The tiles
+  // above it cannot: they read `/balance`'s breakdown, a server-computed
+  // season total this flag never touches (§103/#148).
+  const truncated =
+    isTruncated(intakes.data) || isTruncated(payouts.data) || isTruncated(topUps.data);
 
   return (
     <>
@@ -183,20 +179,18 @@ export function SupplierCardPage() {
         }
       />
 
-      <StatGrid columns={4} className="mb-5">
+      <StatGrid columns={4} className="mb-1.5">
         <StatTile
           label={t('supplierCard.tiles.seasonIntakes')}
-          value={String(intakes.data?.total ?? 0)}
+          value={String(balance.data.intakes_count)}
+        />
+        <StatTile
+          label={t('supplierCard.tiles.kgTotal')}
+          value={formatKg(balance.data.kg_total, i18n.language)}
         />
         <StatTile
           label={t('supplierCard.tiles.accrued')}
-          value={formatUah(accrued, i18n.language)}
-          hint={truncated ? t('supplierCard.tiles.accruedHint') : undefined}
-        />
-        <StatTile
-          label={t('supplierCard.tiles.paid')}
-          value={formatUah(paid, i18n.language)}
-          hint={payoutsTruncated ? t('supplierCard.tiles.accruedHint') : undefined}
+          value={formatUah(balance.data.intakes_total, i18n.language)}
         />
         <StatTile
           label={t('supplierCard.tiles.balance')}
@@ -205,6 +199,16 @@ export function SupplierCardPage() {
           hint={isZero(debt) ? t('supplierCard.tiles.balanceHint') : undefined}
         />
       </StatGrid>
+
+      {/* §103: `debt` decomposed into the same three terms the SQL sums it
+          from — spelled out once here rather than re-derived per tile. */}
+      <p className="mb-5 text-right text-xs text-muted-foreground">
+        {t('supplierCard.breakdown', {
+          intakes: formatUah(balance.data.intakes_total, i18n.language),
+          topUps: formatUah(balance.data.top_ups_total, i18n.language),
+          payouts: formatUah(balance.data.payouts_total, i18n.language),
+        })}
+      </p>
 
       <SectionCard eyebrow={t('supplierCard.timeline.title')}>
         <SupplierTimeline
@@ -217,7 +221,7 @@ export function SupplierCardPage() {
           onAddTopUp={openTopUp}
           onVoidTopUp={openVoidTopUp}
         />
-        {truncated || payoutsTruncated ? (
+        {truncated ? (
           <p className="mt-3 text-xs text-muted-foreground">
             {t('supplierCard.timeline.truncated')}
           </p>

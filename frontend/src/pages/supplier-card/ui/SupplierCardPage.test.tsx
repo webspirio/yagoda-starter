@@ -1,11 +1,12 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createMemoryRouter, RouterProvider } from 'react-router';
 import { ApiError } from '@/shared/api';
+import { i18n } from '@/shared/lib/i18n';
 import { expectNoAxeViolations } from '../../../test-axe';
-import type { Supplier } from '@/entities/supplier';
-import type { Intake } from '@/entities/intake';
+import type { Supplier, SupplierBalanceOne } from '@/entities/supplier';
+import type { Intake, IntakeItem } from '@/entities/intake';
 import type { Payout } from '@/entities/payout';
 import type { IntakeTopUp } from '@/entities/intake-top-up';
 import type { Me } from '@/entities/user';
@@ -178,15 +179,66 @@ const topUp = (
   ...over,
 });
 
+/** One receipt line as `expand=items` returns it — every field an item needs. */
+const itemFixture: IntakeItem = {
+  id: 'item1',
+  item_order: 1,
+  product_grade_id: 'pg1',
+  product_name: 'Малина',
+  grade_name: '1 сорт',
+  gross_kg: '10.00',
+  pallet_kg: '0.00',
+  tare_weight_kg: '1.00',
+  net_kg: '9.00',
+  price: '100.00',
+  bonus: '0.00',
+  amount: '900.00',
+  tare: [],
+};
+
+/** A whole intake header, `items` absent by default (matches «not asked»). */
+const intakeFixture: Intake = intake({
+  id: 'i1',
+  code: 'KV-0001',
+  amount: '1000.00',
+  created_at: '2026-09-08T07:10:00Z',
+});
+
+/** The balance breakdown's season figures, matched to arithmetic (`intakes_total
+ *  + top_ups_total − payouts_total === debt`) so a test that never overrides it
+ *  can't accidentally rely on an inconsistent default. */
+const BALANCE_DEFAULT: SupplierBalanceOne = {
+  supplier_id: 'sup1',
+  debt: '500.00',
+  intakes_total: '500.00',
+  top_ups_total: '0.00',
+  payouts_total: '0.00',
+  intakes_count: 0,
+  kg_total: '0.00',
+  last_intake_date: null,
+};
+
 const page = <T,>(data: T[], total = data.length) => ({
   data: { data, total, page: 1, limit: 100 },
   isPending: false,
   isError: false,
 });
 
-function renderCard(id = 'sup1') {
+/**
+ * `intakes`/`balance` override the respective mocks' return value BEFORE
+ * rendering — for the tests that need a specific fixture rather than the
+ * `beforeEach` defaults below. Existing call sites that pass neither keep
+ * working unchanged.
+ */
+function renderCard(opts?: { id?: string; intakes?: Intake[]; balance?: SupplierBalanceOne }) {
+  if (opts?.intakes) {
+    intakesMock.mockReturnValue(page<Intake>(opts.intakes));
+  }
+  if (opts?.balance) {
+    balanceMock.mockReturnValue({ data: opts.balance, isPending: false, isError: false });
+  }
   const router = createMemoryRouter([{ path: '/suppliers/:id', element: <SupplierCardPage /> }], {
-    initialEntries: [`/suppliers/${id}`],
+    initialEntries: [`/suppliers/${opts?.id ?? 'sup1'}`],
   });
   return render(<RouterProvider router={router} />);
 }
@@ -202,7 +254,7 @@ beforeEach(() => {
   balanceMock
     .mockReset()
     .mockReturnValue({
-      data: { supplier_id: 'sup1', debt: '500.00' },
+      data: BALANCE_DEFAULT,
       isPending: false,
       isError: false,
     });
@@ -230,18 +282,18 @@ describe('SupplierCardPage', () => {
     expect(screen.getByText('Shypynky · Farmer')).toBeInTheDocument();
   });
 
-  it('tiles the season totals, excluding voided documents, and is axe-clean', async () => {
+  /**
+   * §103/#148: the tiles are READ FACTS off `/balance`'s breakdown, not a
+   * sum of whatever page of `/intakes` happened to load — a voided document
+   * is already excluded server-side by the time `intakes_total`/
+   * `intakes_count` reach here, so this is no longer a frontend filtering
+   * concern (see the dedicated "reads its tiles from the breakdown" test
+   * below for the case where the two sources would visibly disagree).
+   */
+  it('tiles the season totals from the balance breakdown, and is axe-clean', async () => {
     intakesMock.mockReturnValue(
       page<Intake>([
         intake({ id: 'i1', code: 'KV-0001', amount: '1000.00', created_at: '2026-09-08T07:10:00Z' }),
-        intake({
-          id: 'i2',
-          code: 'KV-0002',
-          amount: '99.00',
-          created_at: '2026-09-08T08:00:00Z',
-          voided_at: '2026-09-08T09:00:00Z',
-          void_reason: 'Wrong supplier',
-        }),
       ]),
     );
     payoutsMock.mockReturnValue(
@@ -249,15 +301,59 @@ describe('SupplierCardPage', () => {
         payout({ id: 'y1', code: 'VD-0001', amount: '300.00', created_at: '2026-09-08T09:20:00Z' }),
       ]),
     );
+    balanceMock.mockReturnValue({
+      data: {
+        supplier_id: 'sup1',
+        debt: '500.00',
+        intakes_total: '1000.00',
+        top_ups_total: '0.00',
+        payouts_total: '300.00',
+        // 2, not 1 loaded row — a season total past what /intakes returned,
+        // proving the tile reads the breakdown and not `intakes.data`.
+        intakes_count: 2,
+        kg_total: '36.90',
+        last_intake_date: '2026-09-08',
+      },
+      isPending: false,
+      isError: false,
+    });
 
     const { container } = renderCard();
 
     expect(tile('Receipts this season')).toHaveTextContent('2');
+    expect(tile('Berries handed over')).toHaveTextContent('36.90 kg');
     expect(tile('Accrued')).toHaveTextContent('1,000.00 ₴');
-    expect(tile('Paid')).toHaveTextContent('300.00 ₴');
     expect(tile('Balance')).toHaveTextContent('500.00 ₴');
 
     await expectNoAxeViolations(container);
+  });
+
+  /**
+   * §103/#148 — pinned with a fixture where the two sources would visibly
+   * disagree: the loaded page has ONE receipt worth 1 000, but the season
+   * had ninety more. If a tile ever went back to summing `intakes.data`,
+   * this is the test that would catch it.
+   */
+  it('reads its tiles from the breakdown, not from the page it happened to load', async () => {
+    renderCard({
+      intakes: [{ ...intakeFixture, amount: '1000.00', net_kg: '10.00' }],
+      balance: {
+        supplier_id: 'sup1',
+        debt: '4200.00',
+        intakes_total: '10000.00',
+        top_ups_total: '200.00',
+        payouts_total: '6000.00',
+        intakes_count: 91,
+        kg_total: '2500.50',
+        last_intake_date: '2026-09-20',
+      },
+    });
+
+    expect(await screen.findByText('91')).toBeInTheDocument();
+    expect(tile('Accrued')).toHaveTextContent('10,000.00 ₴');
+    expect(tile('Accrued')).not.toHaveTextContent('1,000.00 ₴');
+    // Kilograms diverge the same way: the one loaded row weighs 10.00.
+    expect(tile('Berries handed over')).toHaveTextContent('2,500.50 kg');
   });
 
   it('strikes the voided row through and shows the reason', () => {
@@ -289,7 +385,7 @@ describe('SupplierCardPage', () => {
 
   it('hides the pay-out action once the balance is settled', () => {
     balanceMock.mockReturnValue({
-      data: { supplier_id: 'sup1', debt: '0.00' },
+      data: { ...BALANCE_DEFAULT, debt: '0.00', intakes_total: '0.00' },
       isPending: false,
       isError: false,
     });
@@ -377,7 +473,7 @@ describe('SupplierCardPage', () => {
       error: new ApiError(404, 'not found', undefined, 'NOT_FOUND'),
     });
 
-    renderCard('nope');
+    renderCard({ id: 'nope' });
 
     expect(screen.getByText('Card not found.')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /All suppliers/ })).toBeInTheDocument();
@@ -409,21 +505,40 @@ describe('SupplierCardPage', () => {
     expect(screen.getByRole('link', { name: /All suppliers/ })).toBeInTheDocument();
   });
 
-  it('warns the Paid tile is partial when payouts were truncated, same as Accrued', () => {
-    intakesMock.mockReturnValue(page<Intake>([]));
-    payoutsMock.mockReturnValue(page<Payout>([], 150));
+  /**
+   * §103/#148 — the pairing that is the whole point of the change: the
+   * timeline's OWN note stays honest about the page it loaded, while the
+   * tiles (now server-computed season facts) don't move at all.
+   */
+  it('keeps the tiles unaffected by a truncated timeline page', () => {
+    intakesMock.mockReturnValue(
+      page<Intake>(
+        [intake({ id: 'i1', code: 'KV-0001', amount: '1000.00', created_at: '2026-09-08T07:10:00Z' })],
+        150,
+      ),
+    );
+    balanceMock.mockReturnValue({
+      data: {
+        ...BALANCE_DEFAULT,
+        intakes_count: 200,
+        kg_total: '9999.99',
+        intakes_total: '50000.00',
+        debt: '1000.00',
+      },
+      isPending: false,
+      isError: false,
+    });
 
     renderCard();
 
-    expect(tile('Paid')).toHaveTextContent('first 100');
-    expect(tile('Accrued')).not.toHaveTextContent('first 100');
+    expect(screen.getByText('Showing the first 100 receipts and payouts')).toBeInTheDocument();
+    expect(tile('Receipts this season')).toHaveTextContent('200');
+    expect(tile('Accrued')).toHaveTextContent('50,000.00 ₴');
   });
 
-  it('shows no truncation hints when both journals are complete', () => {
+  it('shows no truncation note when every journal is complete', () => {
     renderCard();
 
-    expect(tile('Accrued')).not.toHaveTextContent('first 100');
-    expect(tile('Paid')).not.toHaveTextContent('first 100');
     expect(screen.queryByText('Showing the first 100 receipts and payouts')).toBeNull();
   });
 
@@ -455,9 +570,176 @@ describe('SupplierCardPage', () => {
 });
 
 /**
- * #61 — «фантомний залишок». `GET /suppliers/:id/balance` returns ONE `debt`
- * string with no breakdown, so this timeline is the only place the owner can
- * learn why the balance is what it is. Everything below is about that.
+ * #148 — the client's own complaint: «достатньо зайти на постачальника і
+ * одразу розгорнуто видно, що коли і скільки». A multi-line receipt shows
+ * every line beneath its row, always — no disclosure, no second click. These
+ * assertions pin the actual Ukrainian copy a приймальник reads (product,
+ * grade, «брутто»/«тара», the U+2212 minus, the price-per-kilogram unit), so
+ * — unlike the rest of this file, which runs `en` — they switch to `uk`, the
+ * locale `test-setup.ts` only overrides away from for the suite's own
+ * assertions (mirrors `WeighingForm.test.tsx`'s own convention).
+ */
+describe('SupplierCardPage — receipt lines (uk locale)', () => {
+  beforeEach(async () => {
+    await i18n.changeLanguage('uk');
+  });
+
+  afterEach(async () => {
+    await i18n.changeLanguage('en');
+  });
+
+  it('shows what the person handed over without opening anything', async () => {
+    renderCard({
+      intakes: [
+        {
+          ...intakeFixture,
+          code: 'КВ-000142',
+          amount: '12480.00',
+          items: [
+            {
+              ...itemFixture,
+              id: 'item1',
+              item_order: 1,
+              product_name: 'Полуниця',
+              grade_name: 'Альба',
+              gross_kg: '86.50',
+              tare_weight_kg: '2.50',
+              net_kg: '84.00',
+              price: '120.00',
+              bonus: '0.00',
+            },
+            {
+              ...itemFixture,
+              id: 'item2',
+              item_order: 2,
+              product_name: 'Малина',
+              grade_name: 'Полка',
+              gross_kg: '60.00',
+              tare_weight_kg: '2.00',
+              net_kg: '58.00',
+              price: '95.00',
+              bonus: '0.00',
+            },
+          ],
+        },
+      ],
+    });
+
+    expect(await screen.findByText(/Полуниця «Альба»/)).toBeInTheDocument();
+    expect(screen.getByText(/86,50 брутто − 2,50 тара · 120,00 ₴\/кг/)).toBeInTheDocument();
+    expect(screen.getByText(/Малина «Полка»/)).toBeInTheDocument();
+  });
+
+  it('adds the bonus into the price it prints', async () => {
+    renderCard({
+      intakes: [
+        { ...intakeFixture, items: [{ ...itemFixture, price: '120.00', bonus: '5.00' }] },
+      ],
+    });
+
+    expect(await screen.findByText(/125,00 ₴\/кг/)).toBeInTheDocument();
+  });
+
+  /**
+   * Review round 1 (#148): the weights line omitted `pallet_kg`, so
+   * `{gross} брутто − {tare} тара` did not reconcile with `net_kg` printed
+   * directly above it whenever a receipt used a pallet — the backend's own
+   * formula is `net = (gross − pallet) − tare` (`intake-lines.ts:149`). This
+   * pins the case that broke: gross 42,00 − pallet 1,50 − tare 3,60 = net
+   * 36,90, asserted alongside the `net_kg` line above it so the test
+   * documents the real arithmetic, not just the string.
+   */
+  it('adds the pallet term when it is non-zero, reconciling with the net kg above it', async () => {
+    renderCard({
+      intakes: [
+        {
+          ...intakeFixture,
+          items: [
+            {
+              ...itemFixture,
+              product_name: 'Малина',
+              grade_name: '1 сорт',
+              gross_kg: '42.00',
+              pallet_kg: '1.50',
+              tare_weight_kg: '3.60',
+              net_kg: '36.90',
+              price: '100.00',
+              bonus: '0.00',
+            },
+          ],
+        },
+      ],
+    });
+
+    expect(await screen.findByText(/Малина «1 сорт» · 36,90 кг/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/42,00 брутто − 1,50 піддон − 3,60 тара · 100,00 ₴\/кг/),
+    ).toBeInTheDocument();
+  });
+
+  /**
+   * The common single-crate row (no pallet) must stay byte-identical to
+   * what it rendered before this fix, so the mock's row still matches.
+   */
+  it('keeps the two-term weights line when pallet is zero', async () => {
+    renderCard({
+      intakes: [
+        {
+          ...intakeFixture,
+          items: [
+            {
+              ...itemFixture,
+              pallet_kg: '0.00',
+              gross_kg: '86.50',
+              tare_weight_kg: '2.50',
+              net_kg: '84.00',
+              price: '120.00',
+              bonus: '0.00',
+            },
+          ],
+        },
+      ],
+    });
+
+    expect(
+      await screen.findByText(/86,50 брутто − 2,50 тара · 120,00 ₴\/кг/),
+    ).toBeInTheDocument();
+    // Not the three-term form — «піддон» must not appear anywhere on this row.
+    expect(screen.queryByText(/піддон/)).not.toBeInTheDocument();
+  });
+
+  /**
+   * A receipt row grew a whole block of new content; the СТОРНОВАНО
+   * treatment sits on the `<li>` it grew inside, so the lines must ride
+   * along with it rather than escape the struck-through row.
+   */
+  it('still strikes a voided receipt through, reason and all, now that it carries lines', async () => {
+    renderCard({
+      intakes: [
+        {
+          ...intakeFixture,
+          voided_at: '2026-09-20T10:00:00.000Z',
+          void_reason: 'Помилка ваги',
+          items: [{ ...itemFixture, product_name: 'Полуниця', grade_name: 'Альба' }],
+        },
+      ],
+    });
+
+    expect(await screen.findByText('Помилка ваги')).toBeInTheDocument();
+    // The lines are inside the struck-through row, not escaping it.
+    const row = screen.getByText('Помилка ваги').closest('li');
+    expect(row).toHaveClass('line-through');
+    expect(within(row as HTMLElement).getByText(/Полуниця «Альба»/)).toBeInTheDocument();
+  });
+});
+
+/**
+ * #61 — «фантомний залишок». `GET /suppliers/:id/balance` now returns the
+ * three terms that add up to `debt` (Task 2/#103) — the CARD's tiles and
+ * breakdown line read those directly (see the describe block below this
+ * one). This timeline stays the only place the owner sees each individual
+ * DOCUMENT: which receipt, which top-up, when, and — since #148 — exactly
+ * what was handed over per receipt line.
  */
 describe('SupplierCardPage — top-ups', () => {
   beforeEach(() => {
@@ -534,30 +816,30 @@ describe('SupplierCardPage — top-ups', () => {
   });
 
   /**
-   * The balance is `Σ intakes + Σ top-ups − Σ payouts`. A «Нараховано» tile
-   * that summed only receipts would visibly disagree with the balance tile
-   * beside it, and nothing on screen would say which one to believe.
+   * The balance is `Σ intakes + Σ top-ups − Σ payouts`. Since #103 the
+   * SERVER decomposes it this way too (`supplier-balance.service.ts`'s
+   * `debtSql()`), so the top-up term is spelled out in the breakdown line
+   * under the balance tile — «Нараховано» itself now reads `intakes_total`
+   * verbatim and no longer re-sums top-ups client-side (see "reads its
+   * tiles from the breakdown, not from the page it happened to load" for
+   * that half of the change).
    */
-  it('adds LIVE top-ups to «Нараховано» so it agrees with the balance', () => {
-    topUpsMock.mockReturnValue(
-      page<IntakeTopUp>([
-        topUp({ id: 't1', amount: '750.00', reason: 'r', created_at: '2026-09-09T10:00:00Z' }),
-        topUp({
-          id: 't2',
-          amount: '999.00',
-          reason: 'r',
-          created_at: '2026-09-09T11:00:00Z',
-          counts_toward_balance: false,
-        }),
-      ]),
-    );
+  it('shows the top-up term in the balance breakdown line', () => {
+    balanceMock.mockReturnValue({
+      data: {
+        ...BALANCE_DEFAULT,
+        intakes_total: '1000.00',
+        top_ups_total: '750.00',
+        payouts_total: '250.00',
+        debt: '1500.00',
+      },
+      isPending: false,
+      isError: false,
+    });
 
     renderCard();
 
-    // 1 000 receipt + 750 live top-up. The 999 counts for nothing and is excluded.
-    // The en locale groups thousands with a comma, so match the digits loosely
-    // rather than pinning a separator this assertion is not about.
-    expect(within(tile('Accrued')).getByText(/1[,\s]?750\.00/)).toBeInTheDocument();
+    expect(screen.getByText('1,000.00 ₴ + 750.00 ₴ − 250.00 ₴')).toBeInTheDocument();
   });
 
   it('opens the top-up dialog for the receipt the owner clicked', async () => {

@@ -1,4 +1,7 @@
-/** Mirrors the backend's `IntakeResponse` (header only — `GET /intakes` never nests items). */
+/** Mirrors the backend's `IntakeResponse` — the header, plus the lines when
+ *  the caller asked for them (`expand=items`, #148: a screen that shows what a
+ *  receipt contained reads the list it already has, not one detail request per
+ *  row). `items` stays optional here because the flag is opt-in. */
 export interface Intake {
   id: string;
   code: string;
@@ -19,6 +22,9 @@ export interface Intake {
   supplier_name: string;
   /** Σ live payouts handed over with this receipt; '0.00' when none. */
   paid_amount: string;
+  /** Present ONLY when the read asked for `expand=items`; `undefined`
+   *  otherwise, which is not the same as a receipt with no lines. */
+  items?: IntakeItem[];
 }
 
 /** One tare line on a receipt item — a tare type and how many units of it. */
@@ -39,6 +45,9 @@ export interface IntakeItem {
   id: string;
   item_order: number;
   product_grade_id: string;
+  /** Joined by the server at read time — a rename is retroactive, by design. */
+  product_name: string;
+  grade_name: string;
   gross_kg: string;
   pallet_kg: string;
   tare_weight_kg: string;
@@ -60,7 +69,10 @@ interface IntakePayout {
 }
 
 /** `GET /intakes/:id` — the header (`Intake`) plus its lines, ordered like the
- *  paper. `GET /intakes` (the list) never nests items; only the detail read does. */
+ *  paper. The list can nest lines too (`expand=items`); the difference is the
+ *  GUARANTEE — here `items` is always there, which is why this type requires
+ *  what `Intake` leaves optional, and the receipt can name a line without a
+ *  catalog lookup. */
 export interface IntakeDetail extends Intake {
   items: IntakeItem[];
   payouts: IntakePayout[];
@@ -80,4 +92,8 @@ export interface DocumentFilter {
   includeVoided?: boolean;
   page?: number;
   limit?: number;
+  /** Ask the server to nest each row's lines (`expand=items`). Off for every
+   *  other caller: the day feed, reception and the dashboard read the same
+   *  endpoint and would pay for lines they never render. */
+  expandItems?: boolean;
 }

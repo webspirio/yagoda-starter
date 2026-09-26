@@ -38,7 +38,7 @@ src/
   entities/user/                # session store (Zustand), Me type (model/user.ts), useMeQuery / useUpdateMeMutation / usePointScope (validated ?point= scoping for money screens) — authenticated-account concerns only
   entities/collection-point/    # usePointOptionsQuery — active points as select options, shared by users / suppliers / prices
   entities/supplier/            # useSuppliersQuery / useSupplierQuery / useSupplierBalanceQuery, Supplier type — the point's supplier directory and running balance, read by suppliers, reception and the receipt widget
-  entities/product-grade/       # useGradeCatalogQuery / usePricedGradesQuery — grades joined to product names, for prices and reception
+  entities/product-grade/       # usePricedGradesQuery — grades joined to product names and the point's current price, for reception; the bare `useGradeCatalogQuery` join is slice-internal (see the note in its index.ts)
   entities/tare-type/           # useTareTypeOptionsQuery, TareTypeOption type — the tare registry, read by catalog and reception
   entities/shift/                # useShiftOnDateQuery / useCurrentShiftQuery / shiftOnDateQueryOptions, Shift type — one point's working day, read by pages/day and reception (the queryOptions factory also backs pages/dashboard's useNetworkToday fan-out)
   entities/intake/               # useIntakesQuery / intakesQueryOptions, Intake type — a point's receipts journal, read by pages/day, reception, supplier-card and journal (the queryOptions factory also backs pages/dashboard's useNetworkToday fan-out)

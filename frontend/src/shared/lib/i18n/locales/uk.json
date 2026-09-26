@@ -996,12 +996,17 @@
     "notFound": "Картку не знайдено.",
     "tiles": {
       "seasonIntakes": "Здач за сезон",
+      "kgTotal": "Ягоди здано",
       "accrued": "Нараховано",
-      "accruedHint": "перші 100",
-      "paid": "Видано",
       "balance": "Залишок",
       "balanceHint": "усе розраховано"
     },
+    "line": {
+      "what": "{{product}} «{{grade}}»",
+      "weights": "{{gross}} брутто − {{tare}} тара · {{price}} ₴/кг",
+      "weightsWithPallet": "{{gross}} брутто − {{pallet}} піддон − {{tare}} тара · {{price}} ₴/кг"
+    },
+    "breakdown": "{{intakes}} + {{topUps}} − {{payouts}}",
     "timeline": {
       "title": "Історія — здачі та виплати",
       "empty": "Здач ще не було — це буде перша.",

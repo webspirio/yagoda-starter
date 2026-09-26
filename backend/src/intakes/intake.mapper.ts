@@ -31,6 +31,8 @@ export interface IntakeResponse {
   supplier_name: string;
   /** Σ live payouts handed over with this receipt (`payouts.intake_id`); '0.00' when none. */
   paid_amount: string;
+  /** Lines, only when the caller asked with `expand=items`. */
+  items?: IntakeItemResponse[];
 }
 
 export interface IntakeItemTareResponse {
@@ -42,6 +44,10 @@ export interface IntakeItemResponse {
   id: string;
   item_order: number;
   product_grade_id: string;
+  /** Joined at READ time, never snapshotted: `product-grade.entity.ts` states
+   *  that a rename is retroactive by construction and that this is accepted. */
+  product_name: string;
+  grade_name: string;
   gross_kg: string;
   pallet_kg: string;
   tare_weight_kg: string;
@@ -81,6 +87,10 @@ export function toIntakeResponse(
   intake: Intake,
   shift: Shift,
   extras: IntakeRowExtras,
+  /** Present ONLY for `expand=items`. Absent — not `[]` — on the plain list,
+   *  so a consumer can tell «not asked for» from «a receipt with no lines»,
+   *  which cannot exist but would be indistinguishable otherwise. */
+  items?: IntakeItem[],
 ): IntakeResponse {
   return {
     id: intake.id,
@@ -99,6 +109,9 @@ export function toIntakeResponse(
     lines_count: extras.lines_count,
     supplier_name: extras.supplier_name,
     paid_amount: extras.paid_amount,
+    ...(items
+      ? { items: [...items].sort((a, b) => a.item_order - b.item_order).map(toIntakeItemResponse) }
+      : {}),
   };
 }
 
@@ -107,6 +120,8 @@ export function toIntakeItemResponse(item: IntakeItem): IntakeItemResponse {
     id: item.id,
     item_order: item.item_order,
     product_grade_id: item.product_grade_id,
+    product_name: item.product_grade?.product?.name ?? '',
+    grade_name: item.product_grade?.name ?? '',
     gross_kg: item.gross_kg,
     pallet_kg: item.pallet_kg,
     tare_weight_kg: item.tare_weight_kg,
@@ -139,8 +154,13 @@ export function toIntakeDetailResponse(
 }
 
 /** An item as `POST /intakes/preview` returns it: `IntakeItemResponse` minus
- *  `id`, because nothing was written and there is no row to name. */
-export type PreviewIntakeItemResponse = Omit<IntakeItemResponse, 'id'>;
+ *  `id`, because nothing was written and there is no row to name, and minus
+ *  `product_name`/`grade_name` — the operator picked the grade from the
+ *  catalog the client already has open, so a preview has nothing to join. */
+export type PreviewIntakeItemResponse = Omit<
+  IntakeItemResponse,
+  'id' | 'product_name' | 'grade_name'
+>;
 
 /**
  * `POST /intakes/preview`'s answer — the COMPUTED part of `IntakeDetailResponse`

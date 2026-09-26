@@ -304,6 +304,8 @@ const CREATED: IntakeDetail = {
       id: 'it1',
       item_order: 1,
       product_grade_id: 'g1',
+      product_name: 'Raspberry',
+      grade_name: 'Grade 1',
       gross_kg: '126.40',
       pallet_kg: '0.00',
       tare_weight_kg: '6.00',

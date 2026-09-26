@@ -968,12 +968,17 @@
     "notFound": "Card not found.",
     "tiles": {
       "seasonIntakes": "Receipts this season",
+      "kgTotal": "Berries handed over",
       "accrued": "Accrued",
-      "accruedHint": "first 100",
-      "paid": "Paid",
       "balance": "Balance",
       "balanceHint": "fully settled"
     },
+    "line": {
+      "what": "{{product}} “{{grade}}”",
+      "weights": "{{gross}} gross − {{tare}} tare · {{price}} ₴/kg",
+      "weightsWithPallet": "{{gross}} gross − {{pallet}} pallet − {{tare}} tare · {{price}} ₴/kg"
+    },
+    "breakdown": "{{intakes}} + {{topUps}} − {{payouts}}",
     "timeline": {
       "title": "History — receipts and payouts",
       "empty": "No receipts yet — this will be the first.",

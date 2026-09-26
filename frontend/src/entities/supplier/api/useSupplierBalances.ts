@@ -1,16 +1,15 @@
 import { useQuery } from '@tanstack/react-query';
 import { httpClient } from '@/shared/api';
 import { queryKeys } from '@/shared/api/queryKeys';
-import type { Paginated, SupplierBalanceRow } from '../model/supplier';
+import type { Paginated, SupplierBalanceOne, SupplierBalanceRow } from '../model/supplier';
 
 /** One supplier's outstanding debt — §3.1's «Разом», read before a payout. */
 export function useSupplierBalanceQuery(id: string | null) {
   return useQuery({
     queryKey: [...queryKeys.supplierBalances, 'one', id],
     enabled: id !== null,
-    queryFn: async (): Promise<{ supplier_id: string; debt: string }> =>
-      (await httpClient.get<{ supplier_id: string; debt: string }>(`/suppliers/${id}/balance`))
-        .data,
+    queryFn: async (): Promise<SupplierBalanceOne> =>
+      (await httpClient.get<SupplierBalanceOne>(`/suppliers/${id}/balance`)).data,
     // A balance moves with every receipt and payout; those writes invalidate the prefix.
     staleTime: 30_000,
   });
