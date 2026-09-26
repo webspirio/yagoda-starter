@@ -253,13 +253,14 @@ describe('SupplierBalanceService', () => {
         .mockResolvedValueOnce([]) // receipts
         .mockResolvedValueOnce([]) // top-ups
         .mockResolvedValueOnce([]) // payouts
+        .mockResolvedValueOnce([]) // allocations
         .mockResolvedValueOnce([{ debt: '0.00' }]); // debtFor
     });
 
-    it('reads receipts, top-ups and payouts, then the debt, all for the one supplier', async () => {
+    it('reads receipts, top-ups, payouts and allocations, then the debt, all for the one supplier', async () => {
       const s = await service.settlementFor(SUPPLIER);
       expect(s).toEqual({ debt: '0.00', unallocated: '0.00', lines: [], payouts: [] });
-      expect(calls()).toHaveLength(4);
+      expect(calls()).toHaveLength(5);
       for (const [, params] of calls()) expect(params).toEqual([SUPPLIER]);
     });
 
@@ -299,7 +300,8 @@ describe('SupplierBalanceService', () => {
         .mockResolvedValueOnce([
           { id: 't1', code: 'R1', intake_id: 'r1', business_date: '2026-07-12', created_at: '2026-07-20T12:00:00.000Z', amount: '200.00' },
         ])
-        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([]) // payouts
+        .mockResolvedValueOnce([]) // allocations
         .mockResolvedValueOnce([{ debt: '1700.00' }]);
 
       const s = await service.settlementFor(SUPPLIER);

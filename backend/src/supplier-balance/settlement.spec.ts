@@ -1,4 +1,4 @@
-import { settle, DebtLine, PayoutLine } from './settlement';
+import { settle, fromAllocations, DebtLine, PayoutLine } from './settlement';
 
 /**
  * THE RULE AS EXAMPLES. Spec §3.2: a payout first covers the receipt it was
@@ -161,5 +161,58 @@ describe('settle', () => {
     const lines = [line({ id: 'b', amount: '1.00' }), line({ id: 'a', amount: '1.00' })];
     const s = settle(lines, []);
     expect(s.lines.map((l) => l.id)).toEqual(['b', 'a']);
+  });
+});
+
+describe('fromAllocations', () => {
+  const line = (id: string, amount: string, kind: 'intake' | 'top_up' = 'intake', intake_id = id) => ({
+    id, kind, code: 'IN-1', intake_id, business_date: '2026-07-01', created_at: '2026-07-01 08:00', amount,
+  });
+  const pay = (id: string, amount: string) => ({
+    id, code: 'PO-1', business_date: '2026-07-02', created_at: '2026-07-02 08:00', amount, intake_id: null,
+  });
+
+  it('no rows: every line fully open, every payout fully unallocated', () => {
+    const s = fromAllocations([line('r1', '100.00')], [pay('p1', '30.00')], []);
+    expect(s.lines[0]).toMatchObject({ paid: '0.00', open: '100.00', covered_by: [] });
+    expect(s.payouts[0]).toMatchObject({ covers: [], unallocated: '30.00' });
+    expect(s.unallocated).toBe('30.00');
+  });
+
+  it('a partial cover and a top-up row', () => {
+    const s = fromAllocations(
+      [line('r1', '100.00'), line('t1', '20.00', 'top_up', 'r1')],
+      [pay('p1', '110.00')],
+      [
+        { payout_id: 'p1', intake_id: 'r1', intake_top_up_id: null, amount: '100.00' },
+        { payout_id: 'p1', intake_id: null, intake_top_up_id: 't1', amount: '10.00' },
+      ],
+    );
+    expect(s.lines.map((l) => l.open)).toEqual(['0.00', '10.00']);
+    expect(s.payouts[0].covers).toEqual([
+      { line_id: 'r1', kind: 'intake', amount: '100.00' },
+      { line_id: 't1', kind: 'top_up', amount: '10.00' },
+    ]);
+    expect(s.unallocated).toBe('0.00');
+  });
+
+  it('two rows on one pair stay two entries and sum', () => {
+    const s = fromAllocations([line('r1', '100.00')], [pay('p1', '100.00')], [
+      { payout_id: 'p1', intake_id: 'r1', intake_top_up_id: null, amount: '60.00' },
+      { payout_id: 'p1', intake_id: 'r1', intake_top_up_id: null, amount: '40.00' },
+    ]);
+    expect(s.lines[0].covered_by).toEqual([
+      { payout_id: 'p1', amount: '60.00' },
+      { payout_id: 'p1', amount: '40.00' },
+    ]);
+    expect(s.lines[0].open).toBe('0.00');
+  });
+
+  it('a row pointing outside the live documents throws, loudly', () => {
+    expect(() =>
+      fromAllocations([line('r1', '100.00')], [pay('p1', '10.00')], [
+        { payout_id: 'p1', intake_id: 'gone', intake_top_up_id: null, amount: '10.00' },
+      ]),
+    ).toThrow(/outside the live documents/);
   });
 });

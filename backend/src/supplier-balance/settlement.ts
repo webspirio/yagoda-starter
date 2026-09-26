@@ -1,31 +1,14 @@
 import { add, cmp, isZero, sub, sum } from '../common/money';
 
 /**
- * «ЗА ЩО САМЕ ВИННІ» — THE RULE, AND NOTHING ELSE.
+ * «За що саме винні» — spec 2026-09-26 (stored allocations).
  *
- * Spec `docs/superpowers/specs/2026-09-25-yagoda-supplier-settlement-slice.md`
- * §3.2. Two queues, both already in `(business_date, created_at, id)` order
- * (this function does NOT sort — the order is the caller's contract, and the
- * db-spec holds it). Two passes:
+ * `settle` is the allocation RULE: bound pass (a payout covers its own receipt), then
+ * FIFO over `(business_date, created_at, id)`. `AllocationsService.allocate` runs it on
+ * residuals and stores each cover as a frozen `payout_allocations` row.
+ * `fromAllocations` rebuilds the read model from those live rows.
  *
- *   1. BOUND — a payout with `intake_id` covers THAT receipt, up to what is
- *      still open on it.
- *   2. FIFO — every remaining amount (unbound payouts, bound excess, payouts
- *      whose receipt is voided and therefore absent from `lines`) closes open
- *      lines from the head of the debt queue.
- *
- * What is left after pass 2 is `unallocated` — the negative debt §3.5 says
- * «гаситься сам наступною здачею». It may land on a line YOUNGER than the
- * payout (spec §3.3); forbidding that would make this disagree with `debtFor`
- * after the next receipt, which is the one thing it must never do.
- *
- * NOTHING HERE IS STORED. The 04.09.2026 decision removed `payout_allocations`
- * because a stored breakdown drifts from the documents (124 breaks in the
- * client's workbook); a projection cannot drift. A void of any document simply
- * changes the input.
- *
- * Pure: no Nest, no database, no `Date`. Every amount is a scale-2 string and
- * every operation is `money.ts`'s — this module is in the eslint money list.
+ * Pure, no Nest/DB/Date; every amount a scale-2 string through `money.ts`.
  */
 
 export type DebtKind = 'intake' | 'top_up';
@@ -82,30 +65,30 @@ export interface Settlement {
 
 const min = (a: string, b: string): string => (cmp(a, b) <= 0 ? a : b);
 
+const open = (lines: DebtLine[]): SettledLine[] =>
+  lines.map((l) => ({ ...l, paid: '0.00', open: l.amount, covered_by: [] }));
+const unpaid = (payouts: PayoutLine[]): SettledPayout[] =>
+  payouts.map((p) => ({ ...p, covers: [], unallocated: p.amount }));
+const cover = (payout: SettledPayout, line: SettledLine, amount: string): void => {
+  line.paid = add(line.paid, amount);
+  line.open = sub(line.open, amount);
+  line.covered_by.push({ payout_id: payout.id, amount });
+  payout.unallocated = sub(payout.unallocated, amount);
+  payout.covers.push({ line_id: line.id, kind: line.kind, amount });
+};
+const result = (lines: SettledLine[], payouts: SettledPayout[]): Settlement => ({
+  unallocated: sum(payouts.map((p) => p.unallocated)),
+  lines,
+  payouts,
+});
+
 export function settle(lines: DebtLine[], payouts: PayoutLine[]): Settlement {
-  const settledLines: SettledLine[] = lines.map((l) => ({
-    ...l,
-    paid: '0.00',
-    open: l.amount,
-    covered_by: [],
-  }));
-  const settledPayouts: SettledPayout[] = payouts.map((p) => ({
-    ...p,
-    covers: [],
-    unallocated: p.amount,
-  }));
+  const settledLines = open(lines);
+  const settledPayouts = unpaid(payouts);
 
   // Receipts only: a top-up is never the target of a binding (spec §3.5).
   const byIntakeId = new Map<string, SettledLine>();
   for (const l of settledLines) if (l.kind === 'intake') byIntakeId.set(l.intake_id, l);
-
-  const cover = (payout: SettledPayout, line: SettledLine, amount: string): void => {
-    line.paid = add(line.paid, amount);
-    line.open = sub(line.open, amount);
-    line.covered_by.push({ payout_id: payout.id, amount });
-    payout.unallocated = sub(payout.unallocated, amount);
-    payout.covers.push({ line_id: line.id, kind: line.kind, amount });
-  };
 
   // Pass 1 — bound.
   for (const p of settledPayouts) {
@@ -130,9 +113,33 @@ export function settle(lines: DebtLine[], payouts: PayoutLine[]): Settlement {
     }
   }
 
-  return {
-    unallocated: sum(settledPayouts.map((p) => p.unallocated)),
-    lines: settledLines,
-    payouts: settledPayouts,
-  };
+  return result(settledLines, settledPayouts);
+}
+
+export interface AllocationRow {
+  payout_id: string;
+  intake_id: string | null;
+  intake_top_up_id: string | null;
+  amount: string;
+}
+
+/** The read model from live allocation rows. A row outside `lines`/`payouts` is a broken invariant: throw. */
+export function fromAllocations(
+  lines: DebtLine[],
+  payouts: PayoutLine[],
+  allocations: AllocationRow[],
+): Settlement {
+  const settledLines = open(lines);
+  const settledPayouts = unpaid(payouts);
+  const lineById = new Map(settledLines.map((l) => [l.id, l]));
+  const payoutById = new Map(settledPayouts.map((p) => [p.id, p]));
+  for (const a of allocations) {
+    const line = lineById.get(a.intake_id ?? a.intake_top_up_id ?? '');
+    const payout = payoutById.get(a.payout_id);
+    if (!line || !payout) {
+      throw new Error(`Allocation of payout ${a.payout_id} points outside the live documents`);
+    }
+    cover(payout, line, a.amount);
+  }
+  return result(settledLines, settledPayouts);
 }

@@ -17,6 +17,7 @@ import { CrateBalanceService } from '../crates/crate-balance.service';
 import { allocate } from '../crates/crate-allocation';
 import { nextIssuanceCode } from '../crates/crate-code';
 import { CrateIssuanceMode } from '../crates/crate-issuance-mode.enum';
+import { AllocationsService } from '../supplier-balance/allocations.service';
 import {
 
   DEV_OPERATOR_PASSWORD,
@@ -83,6 +84,7 @@ export interface DevSeedSummary {
   topUps: number;
   transfers: number;
   cashCounts: number;
+  allocations: number;
 }
 
 const MONEY = /^(-)?(\d+)(?:\.(\d{1,2}))?$/;
@@ -146,6 +148,7 @@ export async function seedDev(ds: DataSource): Promise<DevSeedSummary> {
       topUps: 0,
       transfers: 0,
       cashCounts: 0,
+      allocations: 0,
     };
 
     const ownerId = await resolveOwner(qr, summary);
@@ -365,6 +368,14 @@ export async function seedDev(ds: DataSource): Promise<DevSeedSummary> {
     }
 
     await seedDocuments(qr, summary, pointId, gradeId, gradeKey, ds, ownerId);
+
+    // Documents above are raw inserts; allocate them as the services would. Idempotent.
+    const alloc = new AllocationsService();
+    const suppliers = (await qr.query(`SELECT id FROM suppliers ORDER BY id`)) as { id: string }[];
+    for (const { id } of suppliers) {
+      await alloc.lockSupplier(qr.manager, id);
+      summary.allocations += await alloc.allocate(qr.manager, id);
+    }
 
     await qr.commitTransaction();
     return summary;

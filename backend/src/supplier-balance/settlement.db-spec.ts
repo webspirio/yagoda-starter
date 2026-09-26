@@ -2,6 +2,8 @@ import { randomUUID } from 'crypto';
 import { DataSource } from 'typeorm';
 import { openTestDataSource } from '../testing/db-harness';
 import { SupplierBalanceService } from './supplier-balance.service';
+import { AllocationsService } from './allocations.service';
+import { allocationViolations } from '../testing/allocation-invariants';
 import { sub, sum } from '../common/money';
 
 /**
@@ -141,6 +143,14 @@ describe('SupplierBalanceService.settlementFor (Postgres)', () => {
     await payout(s0804, '100.00', null, '2026-08-04T10:05:00Z', true);
     const r4 = await intake(s0805, '250.00', '2026-08-05T11:00:00Z');
     ids = { r1, t1, t1v, r3, p1, r4 };
+
+    // Allocate once over the final raw state — equal to `settle()` over it,
+    // so every expectation below stays as it was.
+    await ds.transaction(async (m) => {
+      const alloc = new AllocationsService();
+      await alloc.lockSupplier(m, supplierId);
+      await alloc.allocate(m, supplierId);
+    });
   });
 
   afterAll(async () => {
@@ -181,6 +191,10 @@ describe('SupplierBalanceService.settlementFor (Postgres)', () => {
     expect(s.debt).toBe('650.00');
     expect(sub(sum(s.lines.map((l) => l.open)), s.unallocated)).toBe(s.debt);
     await expect(service.debtFor(supplierId)).resolves.toBe(s.debt);
+  });
+
+  it('holds the four allocation invariants', async () => {
+    expect(await ds.transaction((m) => allocationViolations(m, supplierId))).toEqual([]);
   });
 
   it('a supplier with no documents settles to nothing', async () => {

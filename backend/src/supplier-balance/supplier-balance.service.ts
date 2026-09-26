@@ -10,7 +10,7 @@ import { resolvePointFilter } from '../auth/access/point-scope';
 import { Paginated } from '../common/dto/paginated';
 import { skipOf } from '../common/dto/pagination-query.dto';
 import type { AuthenticatedUser } from '../auth/jwt.strategy';
-import { settle, DebtLine, PayoutLine, Settlement } from './settlement';
+import { fromAllocations, AllocationRow, DebtLine, PayoutLine, Settlement } from './settlement';
 
 /**
  * THE FORMULA, WRITTEN ONCE. `supplier` is the SQL naming whose debt is
@@ -189,27 +189,7 @@ export class SupplierBalanceService {
     };
   }
 
-  /**
-   * «За що саме винні» for one supplier — spec §4.2.
-   *
-   * THREE READS, THE SAME FOUR FILTERS AS `debtSql`. Receipts (`i.voided_at`),
-   * top-ups (`t.voided_at` AND the parent's `ti.voided_at`), payouts
-   * (`p.voided_at`). Drop any one and the projection disagrees with the
-   * balance tile beside it, which is the one visible bug this slice can ship.
-   *
-   * ORDER IS THE CALLER'S CONTRACT with `settle`: each read is ordered by
-   * `(business_date, created_at, id)` in Postgres, and receipts and top-ups
-   * are merged here on that same key. A top-up has no shift of its own; its
-   * `business_date` is its PARENT's (spec §3.5), which is why the second read
-   * joins `shifts` through `intakes`.
-   *
-   * `::text` on every amount and on `business_date` (a `date` would otherwise
-   * arrive as a JS `Date` from the driver, local-time-shifted).
-   *
-   * ONE TRANSACTION, `REPEATABLE READ`: the three reads and `debtFor` must see
-   * one snapshot, or a payout landing between two of them makes `debt` and
-   * `Σ open − unallocated` disagree for that one response.
-   */
+  /** «За що саме винні» for one supplier. Live documents (the four `voided_at` filters of `debtSql`) plus live allocation rows, in one REPEATABLE READ snapshot so `debt` and `Σ open − unallocated` agree. */
   async settlementFor(supplierId: string): Promise<Settlement & { debt: string }> {
     return this.dataSource.transaction('REPEATABLE READ', async (manager) => {
       type IntakeRow = { id: string; code: string; business_date: string; created_at: string; amount: string };
@@ -255,8 +235,17 @@ export class SupplierBalanceService {
       ].sort(byQueueKey);
       const payoutLines: PayoutLine[] = payouts;
 
+      const allocations = (await manager.query(
+        `SELECT a.payout_id, a.intake_id, a.intake_top_up_id, a.amount::text AS amount
+           FROM payout_allocations a
+           JOIN payouts p ON p.id = a.payout_id
+          WHERE p.supplier_id = $1 AND a.voided_at IS NULL
+          ORDER BY a.created_at, a.id`,
+        [supplierId],
+      )) as AllocationRow[];
+
       const debt = await this.debtFor(supplierId, manager);
-      return { debt, ...settle(lines, payoutLines) };
+      return { debt, ...fromAllocations(lines, payoutLines, allocations) };
     });
   }
 }
