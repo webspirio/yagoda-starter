@@ -32,6 +32,7 @@ describe('IntakeTopUpsService.create', () => {
   let manager: { findOne: jest.Mock; save: jest.Mock };
   let dataSource: { transaction: jest.Mock; manager: unknown };
   let audit: { record: jest.Mock };
+  let allocations: { lockSupplier: jest.Mock; release: jest.Mock; allocate: jest.Mock };
 
   beforeEach(() => {
     manager = {
@@ -50,7 +51,13 @@ describe('IntakeTopUpsService.create', () => {
       manager,
     };
     audit = { record: jest.fn() };
-    service = new IntakeTopUpsService({} as never, dataSource as never, audit as never);
+    allocations = { lockSupplier: jest.fn(), release: jest.fn(), allocate: jest.fn().mockResolvedValue(0) };
+    service = new IntakeTopUpsService(
+      {} as never,
+      dataSource as never,
+      audit as never,
+      allocations as never,
+    );
   });
 
   it('writes the row and returns it counting toward the balance', async () => {
@@ -154,6 +161,20 @@ describe('IntakeTopUpsService.create', () => {
     );
   });
 
+  it('locks the supplier before the insert and allocates once, after it', async () => {
+    await service.create(OWNER, { intake_id: 'intake-1', amount: '10.00', reason: 'x' });
+
+    expect(allocations.lockSupplier).toHaveBeenCalledWith(manager, 'supplier-1');
+    expect(allocations.lockSupplier.mock.invocationCallOrder[0]).toBeLessThan(
+      manager.save.mock.invocationCallOrder[0],
+    );
+    expect(allocations.allocate).toHaveBeenCalledTimes(1);
+    expect(allocations.allocate).toHaveBeenCalledWith(manager, 'supplier-1');
+    expect(allocations.allocate.mock.invocationCallOrder[0]).toBeGreaterThan(
+      manager.save.mock.invocationCallOrder[0],
+    );
+  });
+
   it('may be written against an ALREADY VOIDED intake', async () => {
     // Legal but pointless — the row will not count. Refusing it would be a
     // rule the balance formula does not have, and the mapper already tells
@@ -176,6 +197,7 @@ describe('IntakeTopUpsService.void', () => {
   let manager: { findOne: jest.Mock; save: jest.Mock };
   let dataSource: { transaction: jest.Mock; manager: unknown };
   let audit: { record: jest.Mock };
+  let allocations: { lockSupplier: jest.Mock; release: jest.Mock; allocate: jest.Mock };
 
   const live = (): IntakeTopUp =>
     ({
@@ -203,7 +225,13 @@ describe('IntakeTopUpsService.void', () => {
       manager,
     };
     audit = { record: jest.fn() };
-    service = new IntakeTopUpsService({} as never, dataSource as never, audit as never);
+    allocations = { lockSupplier: jest.fn(), release: jest.fn(), allocate: jest.fn().mockResolvedValue(0) };
+    service = new IntakeTopUpsService(
+      {} as never,
+      dataSource as never,
+      audit as never,
+      allocations as never,
+    );
   });
 
   it('writes the whole trio and stops counting', async () => {
@@ -229,6 +257,25 @@ describe('IntakeTopUpsService.void', () => {
       service.void(OPERATOR, 'top-up-1', { reason: 'x' }),
     ).rejects.toBeInstanceOf(ForbiddenException);
     expect(manager.save).not.toHaveBeenCalled();
+  });
+
+  it('locks the supplier before the row, releases the top-up, allocates once', async () => {
+    await service.void(OWNER, 'top-up-1', { reason: 'x' });
+
+    const locked = manager.findOne.mock.calls.findIndex(([, opts]) => opts?.lock);
+    expect(allocations.lockSupplier).toHaveBeenCalledWith(manager, 'supplier-1');
+    expect(allocations.lockSupplier.mock.invocationCallOrder[0]).toBeLessThan(
+      manager.findOne.mock.invocationCallOrder[locked],
+    );
+    expect(allocations.release).toHaveBeenCalledWith(manager, { topUpId: 'top-up-1' });
+    expect(allocations.allocate).toHaveBeenCalledTimes(1);
+    expect(allocations.allocate).toHaveBeenCalledWith(manager, 'supplier-1');
+  });
+
+  it('404s a missing top-up before any lock', async () => {
+    manager.findOne.mockResolvedValue(null);
+    await expect(service.void(OWNER, 'nope', { reason: 'x' })).rejects.toBeInstanceOf(NotFoundException);
+    expect(allocations.lockSupplier).not.toHaveBeenCalled();
   });
 
   it('409s an already-voided row', async () => {

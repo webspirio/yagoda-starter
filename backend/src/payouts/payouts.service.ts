@@ -117,8 +117,9 @@ export class PayoutsService {
 
   /** THE payout writer, inside the caller's transaction (standalone create and §2.1 ⑥
    *  reception). Lock order: supplier (already held on the reception path) → open shift →
-   *  debt → PO code lock → cash → insert. The supplier row is the per-supplier mutex behind
-   *  both ceilings; SERIALIZABLE was rejected (no retry infrastructure). Callers have checked
+   *  debt → PO code lock → cash → insert. The supplier lock guards the debt ceiling; the cash
+   *  ceiling rests on the PO code lock (a per-shift mutex), read after it because READ COMMITTED
+   *  gives each statement a fresh snapshot. SERIALIZABLE was rejected (no retry). Callers have checked
    *  point, supplier activity and supplier-at-point. Callers run `allocate`. */
   async writePayout(
     m: EntityManager,

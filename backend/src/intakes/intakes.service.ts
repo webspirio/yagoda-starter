@@ -44,6 +44,7 @@ import type { CollectionPoint } from '../collection-points/collection-point.enti
 import { AuditService } from '../audit/audit.service';
 import { PayoutsService } from '../payouts/payouts.service';
 import { Payout } from '../payouts/payout.entity';
+import { AllocationsService } from '../supplier-balance/allocations.service';
 import { nextDocumentCode } from '../common/document-code';
 import { isZero } from '../common/money';
 import { resolveWritePoint, resolvePointFilter } from '../auth/access/point-scope';
@@ -78,6 +79,7 @@ export class IntakesService {
     private readonly points: CollectionPointsService,
     private readonly audit: AuditService,
     private readonly payouts: PayoutsService,
+    private readonly allocations: AllocationsService,
   ) {}
 
   /**
@@ -97,12 +99,14 @@ export class IntakesService {
    *
    * Since 2026-09-21 the same transaction may also write the payout handed
    * over with the receipt (`paid_amount`, §2.1 ⑥) — see
-   * `PayoutsService.writePayout`, which owns both ceilings.
+   * `PayoutsService.writePayout`, which owns both ceilings. The supplier lock
+   * comes first and `allocate` runs once, last (payout allocations slice).
    */
   async create(actor: AuthenticatedUser, dto: CreateIntakeDto): Promise<IntakeDetailResponse> {
     const { pointId, point, supplier } = await this.resolveTarget(actor, dto);
 
     return this.dataSource.transaction(async (m) => {
+      await this.allocations.lockSupplier(m, supplier.id); // first: one lock order on every path
       const { shift, built } = await this.compute(pointId, dto, m);
 
       const code = await nextDocumentCode(m, {
@@ -191,6 +195,7 @@ export class IntakesService {
         });
         paid.push(payout);
       }
+      await this.allocations.allocate(m, supplier.id);
 
       return toIntakeDetailResponse(
         intake,
@@ -233,9 +238,10 @@ export class IntakesService {
     );
   }
 
-  /** §9.4 row by row, plus #125's payout decision. Lock order: intake, then payout. */
+  /** §9.4 row by row, plus #125's payout decision. Lock order: supplier → intake → payout. */
   async void(actor: AuthenticatedUser, id: string, dto: VoidIntakeDto): Promise<IntakeResponse> {
     return this.dataSource.transaction(async (m) => {
+      const supplierId = await this.lockSupplierOf(m, id);
       const { intake, shift } = await this.loadForVoid(actor, id, m);
       // §3.5: a bound payout is written only at reception, by the same actor in the same
       // shift, so `loadForVoid`'s §9.4 check already covers it; `void_returned` alone is owner-only.
@@ -247,6 +253,7 @@ export class IntakesService {
       intake.voided_by_user_id = actor.sub;
       intake.void_reason = dto.reason;
       const saved = await m.save(Intake, intake);
+      await this.allocations.release(m, { intakeId: saved.id });
       await this.audit.record(
         {
           action: 'intake.voided',
@@ -271,9 +278,18 @@ export class IntakesService {
           await this.payouts.settleReturnWithin(m, actor, voided, dto.reason);
         }
       }
+      await this.allocations.allocate(m, supplierId);
 
       return toIntakeResponse(saved, shift, await this.extrasFor(saved.id, m));
     });
+  }
+
+  /** Unlocked stub read (a missing id 404s before any lock), then the supplier lock — always first. */
+  private async lockSupplierOf(m: EntityManager, id: string): Promise<string> {
+    const stub = await m.findOne(Intake, { where: { id } });
+    if (!stub) throw new NotFoundException('Intake not found');
+    await this.allocations.lockSupplier(m, stub.supplier_id);
+    return stub.supplier_id;
   }
 
   /**

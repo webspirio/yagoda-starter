@@ -72,6 +72,7 @@ describe('IntakesService', () => {
     voidWithin: jest.Mock;
     settleReturnWithin: jest.Mock;
   };
+  let allocations: { lockSupplier: jest.Mock; release: jest.Mock; allocate: jest.Mock };
   let service: IntakesService;
 
   const shift = (over: Record<string, unknown> = {}) => ({
@@ -199,6 +200,11 @@ describe('IntakesService', () => {
       voidWithin: jest.fn().mockImplementation((_m, _a, p) => Promise.resolve({ ...p, voided_at: new Date() })),
       settleReturnWithin: jest.fn().mockImplementation((_m, _a, p) => Promise.resolve(p)),
     };
+    allocations = {
+      lockSupplier: jest.fn().mockResolvedValue(undefined),
+      release: jest.fn().mockResolvedValue(undefined),
+      allocate: jest.fn().mockResolvedValue(0),
+    };
 
     service = new IntakesService(
       repo as never,
@@ -210,8 +216,15 @@ describe('IntakesService', () => {
       points as never,
       audit as never,
       payouts as never,
+      allocations as never,
     );
   });
+
+  /** The invocation order of `nextDocumentCode`'s advisory lock on the transactional manager. */
+  const advisoryOrder = () => {
+    const i = manager.query.mock.calls.findIndex(([sql]) => /pg_advisory_xact_lock/.test(sql as string));
+    return manager.query.mock.invocationCallOrder[i];
+  };
 
   const savedIntake = () =>
     manager.save.mock.calls[0][1] as {
@@ -366,6 +379,18 @@ describe('IntakesService', () => {
           after: expect.objectContaining({ code: 'KPG-IN-20260908-004' }),
         }),
         manager,
+      );
+    });
+
+    it('locks the supplier before numbering and allocates once, at the end', async () => {
+      await service.create(oksana, dto({ paid_amount: '100.00' }));
+
+      expect(allocations.lockSupplier).toHaveBeenCalledWith(manager, SUPPLIER);
+      expect(allocations.lockSupplier.mock.invocationCallOrder[0]).toBeLessThan(advisoryOrder());
+      expect(allocations.allocate).toHaveBeenCalledTimes(1);
+      expect(allocations.allocate).toHaveBeenCalledWith(manager, SUPPLIER);
+      expect(allocations.allocate.mock.invocationCallOrder[0]).toBeGreaterThan(
+        payouts.writePayout.mock.invocationCallOrder[0],
       );
     });
 
@@ -740,6 +765,41 @@ describe('IntakesService', () => {
       ).rejects.toMatchObject({ response: { code: 'PAYOUT_DECISION_NOT_APPLICABLE' } });
       expect(manager.save).not.toHaveBeenCalled();
       expect(audit.record).not.toHaveBeenCalled();
+    });
+
+    it('locks the supplier before the intake row, releases the intake, allocates once', async () => {
+      await service.void(owner, INTAKE_ID, { reason: 'x' });
+
+      expect(allocations.lockSupplier).toHaveBeenCalledWith(manager, SUPPLIER);
+      const locked = manager.findOne.mock.calls.findIndex(([, opts]) => opts?.lock);
+      expect(allocations.lockSupplier.mock.invocationCallOrder[0]).toBeLessThan(
+        manager.findOne.mock.invocationCallOrder[locked],
+      );
+      expect(allocations.release).toHaveBeenCalledWith(manager, { intakeId: INTAKE_ID });
+      expect(allocations.allocate).toHaveBeenCalledTimes(1);
+      expect(allocations.allocate).toHaveBeenCalledWith(manager, SUPPLIER);
+    });
+
+    it('with payout decision void, allocates once, after both voids', async () => {
+      payouts.findLiveBoundForUpdate.mockResolvedValue({ id: 'po-1', amount: '1.00', voided_at: null });
+      await service.void(owner, INTAKE_ID, { reason: 'x', payout: 'void' });
+
+      expect(allocations.allocate).toHaveBeenCalledTimes(1);
+      expect(allocations.allocate.mock.invocationCallOrder[0]).toBeGreaterThan(
+        payouts.voidWithin.mock.invocationCallOrder[0],
+      );
+    });
+
+    it('404s a missing intake before any lock', async () => {
+      manager.findOne.mockResolvedValue(null);
+      await expect(service.void(owner, 'nope', { reason: 'x' })).rejects.toThrow('Intake not found');
+      expect(allocations.lockSupplier).not.toHaveBeenCalled();
+    });
+
+    it('still 404s another point for an operator, releasing nothing', async () => {
+      await expect(service.void(elsewhere, INTAKE_ID, { reason: 'x' })).rejects.toThrow('Intake not found');
+      expect(allocations.release).not.toHaveBeenCalled();
+      expect(allocations.allocate).not.toHaveBeenCalled();
     });
 
     it('records no payout_decision when nothing was bound', async () => {

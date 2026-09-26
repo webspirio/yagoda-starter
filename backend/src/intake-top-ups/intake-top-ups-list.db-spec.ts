@@ -3,6 +3,7 @@ import { DataSource } from 'typeorm';
 import { openTestDataSource } from '../testing/db-harness';
 import { IntakeTopUpsService } from './intake-top-ups.service';
 import { IntakeTopUp } from './intake-top-up.entity';
+import { AllocationsService } from '../supplier-balance/allocations.service';
 import { UserRole } from '../users/user-role.enum';
 import type { AuthenticatedUser } from '../auth/jwt.strategy';
 
@@ -115,9 +116,12 @@ describe('IntakeTopUpsService.list (Postgres)', () => {
 
   beforeAll(async () => {
     ds = await openTestDataSource();
-    service = new IntakeTopUpsService(ds.getRepository(IntakeTopUp), ds, {
-      record: async () => undefined,
-    } as never);
+    service = new IntakeTopUpsService(
+      ds.getRepository(IntakeTopUp),
+      ds,
+      { record: async () => undefined } as never,
+      new AllocationsService(),
+    );
     run = randomUUID().slice(0, 8);
 
     const [user] = await ds.query(

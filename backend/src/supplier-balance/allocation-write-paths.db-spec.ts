@@ -87,8 +87,8 @@ afterAll(async () => {
 /**
  * Task 3 end to end, over real HTTP against a real database: `POST /payouts`
  * and `POST /payouts/:id/void` allocate through `AllocationsService` rather
- * than leaving `payout_allocations` untouched. Task 4 adds intake/top-up
- * `describe`s to this same file.
+ * than leaving `payout_allocations` untouched; Task 4 adds the intake and
+ * top-up paths and the races between them.
  */
 describe('allocation write paths (HTTP, Postgres)', () => {
   let gradeId: string;
@@ -164,22 +164,27 @@ describe('allocation write paths (HTTP, Postgres)', () => {
         ORDER BY COALESCE(i.created_at, t.created_at), a.id`,
       [supplierId],
     );
-  // One crate (1.20 kg) at 100.00/kg: gross '11.20' → 1000.00, '6.20' → 500.00.
-  const receipt = (supplierId: string, gross: string) =>
+  // One crate (1.20 kg) at 100.00/kg: gross '11.20' → 1000.00, '6.20' → 500.00,
+  // '4.20' → 300.00, '3.20' → 200.00. `paid` is the cash handed over with it (§2.1 ⑥).
+  const receipt = (supplierId: string, gross: string, paid?: string) =>
     as(operatorToken).post('/intakes', {
       supplier_id: supplierId,
       items: [{ product_grade_id: gradeId, gross_kg: gross, tare: [{ tare_type_id: crateId, units: 1 }] }],
+      ...(paid ? { paid_amount: paid } : {}),
     });
+  const newSupplier = async (): Promise<string> =>
+    (
+      await as(operatorToken)
+        .post('/suppliers', { first_name: 'Ніна', last_name: `awp-${randomUUID()}` })
+        .expect(201)
+    ).body.id;
+  type Row = { payout_id: string; intake_id: string | null; intake_top_up_id: string | null; amount: string };
 
   describe('payouts', () => {
     let s: string;
 
     beforeAll(async () => {
-      s = (
-        await as(operatorToken)
-          .post('/suppliers', { first_name: 'Ніна', last_name: `awp-${randomUUID()}` })
-          .expect(201)
-      ).body.id;
+      s = await newSupplier();
     });
 
     it('a standalone payout allocates FIFO and keeps the invariants', async () => {
@@ -207,6 +212,179 @@ describe('allocation write paths (HTTP, Postgres)', () => {
         [p],
       );
       expect(released[0].n).toBe(1);
+
+      // The released cover reopened a line; the next payout must cover that same line again.
+      const [{ intake_id: reopened }] = await ds.query(
+        `SELECT intake_id FROM payout_allocations WHERE payout_id = $1`,
+        [p],
+      );
+      const next = (
+        await as(operatorToken).post('/payouts', { supplier_id: s, amount: '100.00' }).expect(201)
+      ).body.id;
+      expect((await liveRows(s)).filter((r: Row) => r.payout_id === next)).toEqual([
+        expect.objectContaining({ intake_id: reopened, amount: '100.00' }),
+      ]);
+      expect(await violations(s)).toEqual([]);
+    });
+  });
+
+  describe('intakes and top-ups', () => {
+    let s: string;
+    beforeEach(async () => {
+      s = await newSupplier();
+    });
+
+    it('a reception payout larger than its receipt covers that receipt first, then older debt', async () => {
+      const old = (await receipt(s, '11.20').expect(201)).body.id; // 1000
+      const r = (await receipt(s, '6.20', '1200.00').expect(201)).body.id; // 500, paid 1200
+
+      expect(await liveRows(s)).toEqual([
+        expect.objectContaining({ intake_id: old, amount: '700.00' }),
+        expect.objectContaining({ intake_id: r, amount: '500.00' }),
+      ]);
+      expect(await violations(s)).toEqual([]);
+    });
+
+    it('a receipt written when no money is free stays open', async () => {
+      await receipt(s, '4.20').expect(201); // 300
+      await as(operatorToken).post('/payouts', { supplier_id: s, amount: '300.00' }).expect(201);
+      const r = (await receipt(s, '3.20').expect(201)).body.id; // 200
+
+      expect((await liveRows(s)).some((x: Row) => x.intake_id === r)).toBe(false);
+      expect(await violations(s)).toEqual([]);
+    });
+
+    it('void with keep frees the bound payout, and the next receipt picks that money up', async () => {
+      const r1 = (await receipt(s, '6.20', '500.00').expect(201)).body;
+      const p1 = r1.payouts[0].id as string;
+      await as(operatorToken).post(`/intakes/${r1.id}/void`, { reason: 'x', payout: 'keep' }).expect(201);
+      expect(await liveRows(s)).toEqual([]);
+      expect(await violations(s)).toEqual([]);
+
+      const r2 = (await receipt(s, '6.20').expect(201)).body.id; // 500, no cash handed over
+      expect(await liveRows(s)).toEqual([
+        expect.objectContaining({ payout_id: p1, intake_id: r2, amount: '500.00' }),
+      ]);
+      expect(await violations(s)).toEqual([]);
+    });
+
+    it('void with payout void releases both documents', async () => {
+      const r = (await receipt(s, '6.20', '500.00').expect(201)).body.id;
+      await as(operatorToken).post(`/intakes/${r}/void`, { reason: 'x', payout: 'void' }).expect(201);
+
+      expect(await liveRows(s)).toEqual([]);
+      expect(await violations(s)).toEqual([]);
+    });
+
+    it('a top-up is covered like a receipt, and voiding it frees that money for the next line', async () => {
+      const r = (await receipt(s, '6.20').expect(201)).body.id; // 500
+      const t = (
+        await as(ownerToken)
+          .post('/intake-top-ups', { intake_id: r, amount: '50.00', reason: 'ціна' })
+          .expect(201)
+      ).body.id;
+      expect(await violations(s)).toEqual([]);
+      const p = (
+        await as(operatorToken).post('/payouts', { supplier_id: s, amount: '550.00' }).expect(201)
+      ).body.id;
+      expect(await liveRows(s)).toEqual([
+        expect.objectContaining({ intake_id: r, amount: '500.00' }),
+        expect.objectContaining({ intake_top_up_id: t, amount: '50.00' }),
+      ]);
+
+      await as(ownerToken).post(`/intake-top-ups/${t}/void`, { reason: 'x' }).expect(201);
+      expect((await liveRows(s)).some((x: Row) => x.intake_top_up_id === t)).toBe(false);
+      expect(await violations(s)).toEqual([]);
+
+      const r2 = (await receipt(s, '3.20').expect(201)).body.id; // 200 picks up the freed 50
+      expect((await liveRows(s)).filter((x: Row) => x.intake_id === r2)).toEqual([
+        expect.objectContaining({ payout_id: p, amount: '50.00' }),
+      ]);
+      expect(await violations(s)).toEqual([]);
+    });
+  });
+
+  describe('concurrency', () => {
+    let s: string;
+    beforeEach(async () => {
+      s = await newSupplier();
+      await receipt(s, '11.20').expect(201); // 1000 of debt to pay against
+    });
+
+    it('two payouts at once: both land, no double allocation', async () => {
+      const [a, b] = await Promise.all([
+        as(operatorToken).post('/payouts', { supplier_id: s, amount: '400.00' }),
+        as(operatorToken).post('/payouts', { supplier_id: s, amount: '400.00' }),
+      ]);
+      expect([a.status, b.status]).toEqual([201, 201]);
+      expect(await violations(s)).toEqual([]);
+    });
+
+    it('two receipts at once: both land, invariants hold', async () => {
+      await as(operatorToken).post('/payouts', { supplier_id: s, amount: '1000.00' }).expect(201);
+      const [a, b] = await Promise.all([receipt(s, '4.20'), receipt(s, '3.20')]);
+      expect([a.status, b.status]).toEqual([201, 201]);
+      expect(await violations(s)).toEqual([]);
+    });
+
+    it('a receipt void against a new payout: no deadlock, invariants hold', async () => {
+      const r = (await receipt(s, '6.20', '500.00').expect(201)).body.id;
+      const [v, p] = await Promise.all([
+        as(operatorToken).post(`/intakes/${r}/void`, { reason: 'x', payout: 'keep' }),
+        as(operatorToken).post('/payouts', { supplier_id: s, amount: '100.00' }),
+      ]);
+      expect([v.status, p.status]).toEqual([201, 201]); // debt is ≥ 500 whichever lands first
+      expect(await violations(s)).toEqual([]);
+    });
+
+    it('a receipt void against a void of its bound payout: no deadlock, one payout.voided', async () => {
+      const r = (await receipt(s, '6.20', '500.00').expect(201)).body;
+      const p = r.payouts[0].id as string;
+      const [iv, pv] = await Promise.all([
+        as(operatorToken).post(`/intakes/${r.id}/void`, { reason: 'x', payout: 'void' }),
+        as(operatorToken).post(`/payouts/${p}/void`, { reason: 'x' }),
+      ]);
+      // Receipt first: it voids the payout and the payout void 409s. Payout first: the
+      // receipt's decision no longer applies (400). Never a 500 — that would be a deadlock.
+      expect([
+        [201, 409],
+        [400, 201],
+      ]).toContainEqual([iv.status, pv.status]);
+      const [{ n }] = await ds.query(
+        `SELECT count(*)::int AS n FROM audit_log WHERE target_id = $1 AND action = 'payout.voided'`,
+        [p],
+      );
+      expect(n).toBe(1);
+      expect(await violations(s)).toEqual([]);
+    });
+
+    it('a payout void against a new receipt: no deadlock, invariants hold', async () => {
+      const p = (
+        await as(operatorToken).post('/payouts', { supplier_id: s, amount: '600.00' }).expect(201)
+      ).body.id;
+      const [v, r] = await Promise.all([
+        as(operatorToken).post(`/payouts/${p}/void`, { reason: 'x' }),
+        receipt(s, '4.20'),
+      ]);
+      expect([v.status, r.status]).toEqual([201, 201]);
+      expect(await violations(s)).toEqual([]);
+    });
+
+    it('two voids of one payout: one wins, one payout.voided, invariants hold', async () => {
+      const p = (
+        await as(operatorToken).post('/payouts', { supplier_id: s, amount: '100.00' }).expect(201)
+      ).body.id;
+      const res = await Promise.all([
+        as(operatorToken).post(`/payouts/${p}/void`, { reason: 'x' }),
+        as(operatorToken).post(`/payouts/${p}/void`, { reason: 'x' }),
+      ]);
+      expect(res.map((x) => x.status).sort()).toEqual([201, 409]);
+      const [{ n }] = await ds.query(
+        `SELECT count(*)::int AS n FROM audit_log WHERE target_id = $1 AND action = 'payout.voided'`,
+        [p],
+      );
+      expect(n).toBe(1);
+      expect(await violations(s)).toEqual([]);
     });
   });
 });

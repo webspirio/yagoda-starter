@@ -12,6 +12,7 @@ import { TareTypesModule } from '../tare-types/tare-types.module';
 import { CollectionPointsModule } from '../collection-points/collection-points.module';
 import { AuditModule } from '../audit/audit.module';
 import { PayoutsModule } from '../payouts/payouts.module';
+import { SupplierBalanceModule } from '../supplier-balance/supplier-balance.module';
 
 /**
  * Reads four other modules THROUGH THEIR SERVICES, never their repositories —
@@ -22,7 +23,8 @@ import { PayoutsModule } from '../payouts/payouts.module';
  *
  * Imports `PayoutsModule` so the cash handed over with a receipt (§2.1 ⑥) is
  * written by the ONE payout writer, ceilings included. `PayoutsModule` does
- * not import this module back.
+ * not import this module back. `SupplierBalanceModule` supplies the allocation
+ * writer (supplier lock, release, allocate).
  */
 @Module({
   imports: [
@@ -34,6 +36,7 @@ import { PayoutsModule } from '../payouts/payouts.module';
     CollectionPointsModule,
     AuditModule,
     PayoutsModule,
+    SupplierBalanceModule,
   ],
   providers: [IntakesService],
   controllers: [IntakesController],

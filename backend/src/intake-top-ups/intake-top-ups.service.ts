@@ -6,7 +6,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, Repository } from 'typeorm';
+import { DataSource, EntityManager, Repository } from 'typeorm';
 import { IntakeTopUp } from './intake-top-up.entity';
 import { CreateIntakeTopUpDto } from './dto/create-intake-top-up.dto';
 import { ListIntakeTopUpsQueryDto } from './dto/list-intake-top-ups.query';
@@ -15,6 +15,7 @@ import { Intake } from '../intakes/intake.entity';
 import { Supplier } from '../suppliers/supplier.entity';
 import { VoidDocumentDto } from '../intakes/dto/void-document.dto';
 import { AuditService } from '../audit/audit.service';
+import { AllocationsService } from '../supplier-balance/allocations.service';
 import { gt } from '../common/money';
 import { UserRole } from '../users/user-role.enum';
 import type { AuthenticatedUser } from '../auth/jwt.strategy';
@@ -50,13 +51,8 @@ interface RawTopUpRow {
  * off a shift of its own, which would have forced an open shift onto an owner
  * who is not at the point.
  *
- * IT ALSO TAKES NO SUPPLIER LOCK, and that is safe only because the amount is
- * strictly positive. `PayoutsService.create` reads the ceiling under a lock on
- * the SUPPLIER row; this insert never touches that row, so the two do not
- * serialise. A payout racing a top-up computes a ceiling that is stale-LOW —
- * it refuses money that is now owed, which is retryable and never an
- * overpayment. Anyone making this column signed must add the lock in the same
- * change; see the spec's §7.4.
+ * Both writes lock the SUPPLIER row first and allocate last, like every debt
+ * write (payout allocations slice): a top-up is a line payouts can cover.
  */
 @Injectable()
 export class IntakeTopUpsService {
@@ -65,6 +61,7 @@ export class IntakeTopUpsService {
     private readonly repo: Repository<IntakeTopUp>,
     private readonly dataSource: DataSource,
     private readonly audit: AuditService,
+    private readonly allocations: AllocationsService,
   ) {}
 
   async create(
@@ -95,16 +92,7 @@ export class IntakeTopUpsService {
       const intake = await m.findOne(Intake, { where: { id: dto.intake_id } });
       if (!intake) throw new NotFoundException('Intake not found');
 
-      // A DEACTIVATED SUPPLIER IS REFUSED, and the asymmetry with the voided
-      // parent below is deliberate. `PayoutsService.create` refuses
-      // `SUPPLIER_INACTIVE`, so this row would raise a debt that the counter
-      // cannot settle until someone reactivates the card — a dead end with no
-      // document explaining it. A voided parent, by contrast, is a live rule
-      // of the balance formula and needs no refusal here.
-      //
-      // `supplier` cannot actually be null — `intakes.supplier_id` is a
-      // RESTRICT FK — but the type says it can, and a caller who passed a
-      // top-up's intake id is owed the same 404 the lookup above gives.
+      // Inactive supplier refused: the counter could not settle this debt (PayoutsService refuses them).
       const supplier = await m.findOne(Supplier, { where: { id: intake.supplier_id } });
       if (!supplier) throw new NotFoundException('Intake not found');
       if (!supplier.is_active) {
@@ -114,10 +102,8 @@ export class IntakeTopUpsService {
         });
       }
 
-      // NO CHECK ON `intake.voided_at`. Writing against a voided receipt is
-      // legal and pointless: the row simply will not count, and the response
-      // says so through `counts_toward_balance`. Refusing it would be a rule
-      // the balance formula does not have.
+      // A voided parent is legal: the row simply never counts (debtSql, allocate).
+      await this.allocations.lockSupplier(m, supplier.id);
       const saved = await m.save(IntakeTopUp, {
         intake_id: intake.id,
         amount: dto.amount,
@@ -139,26 +125,16 @@ export class IntakeTopUpsService {
         },
         m,
       );
+      await this.allocations.allocate(m, supplier.id);
 
       return toIntakeTopUpResponse(saved, intake);
     });
   }
 
   /**
-   * §9.3 — a document is never edited. A wrong amount or a wrong reason is
-   * corrected by voiding this row and writing a new one; there is no PATCH and
-   * there never will be.
-   *
-   * OWNER ONLY, unlike `IntakesService.void`, which lets an operator void
-   * their own receipt in their own open shift (§9.4). The asymmetry is not an
-   * oversight: an operator never creates one of these, so «своя квитанція»
-   * has no meaning here, and there is no shift whose closure could gate it.
-   *
-   * THE LOAD AND THE STATE CHECK ARE INSIDE THE TRANSACTION, under a row lock,
-   * for the reason `IntakesService.void` spells out: reading `voided_at`
-   * before the transaction opens is a check-then-write, and a double-tapped
-   * button would write two audit entries naming possibly different reasons
-   * while `voided_by_user_id` is last-writer-wins.
+   * §9.3: correct by void and reissue, never PATCH. Owner only: an operator never writes
+   * one, so §9.4's «своя квитанція» has no meaning here. The state check sits under the
+   * row lock so a double tap cannot void (and audit) twice. Lock order: supplier → top-up.
    */
   async void(
     actor: AuthenticatedUser,
@@ -173,32 +149,18 @@ export class IntakeTopUpsService {
     }
 
     return this.dataSource.transaction(async (m) => {
-      const topUp = await m.findOne(IntakeTopUp, {
-        where: { id },
-        lock: { mode: 'pessimistic_write' },
-      });
+      const intake = await this.lockSupplierOf(m, id);
+      const topUp = await m.findOne(IntakeTopUp, { where: { id }, lock: { mode: 'pessimistic_write' } });
       if (!topUp) throw new NotFoundException('Intake top-up not found');
-
       if (topUp.voided_at) {
-        throw new ConflictException({
-          message: 'That top-up is already voided',
-          code: 'ALREADY_VOIDED',
-        });
+        throw new ConflictException({ message: 'That top-up is already voided', code: 'ALREADY_VOIDED' });
       }
-
-      const intake = await m.findOne(Intake, { where: { id: topUp.intake_id } });
-      // Names the OUTER resource ('Intake top-up not found'), not 'Intake not
-      // found' — deliberate, matching IntakesService.void and PayoutsService:
-      // the id in the URL is a top-up id, and this branch is unreachable in
-      // practice (the parent is RESTRICT and never deleted) so it is not worth
-      // confirming which row is actually missing.
-      if (!intake) throw new NotFoundException('Intake top-up not found');
 
       topUp.voided_at = new Date();
       topUp.voided_by_user_id = actor.sub;
       topUp.void_reason = dto.reason.trim();
       const saved = await m.save(IntakeTopUp, topUp);
-
+      await this.allocations.release(m, { topUpId: saved.id });
       await this.audit.record(
         {
           action: 'intake-top-up.voided',
@@ -216,9 +178,21 @@ export class IntakeTopUpsService {
         },
         m,
       );
+      await this.allocations.allocate(m, intake.supplier_id);
 
       return toIntakeTopUpResponse(saved, intake);
     });
+  }
+
+  /** Unlocked stub reads (a missing id 404s before any lock), then the supplier lock — always first.
+   *  Returns the parent intake; its 404 names the top-up, the id the caller sent. */
+  private async lockSupplierOf(m: EntityManager, id: string): Promise<Intake> {
+    const stub = await m.findOne(IntakeTopUp, { where: { id } });
+    if (!stub) throw new NotFoundException('Intake top-up not found');
+    const intake = await m.findOne(Intake, { where: { id: stub.intake_id } });
+    if (!intake) throw new NotFoundException('Intake top-up not found');
+    await this.allocations.lockSupplier(m, intake.supplier_id);
+    return intake;
   }
 
   /**
