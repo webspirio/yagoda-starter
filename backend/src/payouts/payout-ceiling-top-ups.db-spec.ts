@@ -8,7 +8,7 @@ import { relaxThrottleForTests, resolveTestDatabaseName } from '../testing/db-ha
 import { AppModule } from '../app.module';
 import { CreatePayoutCommand } from './commands/create-payout.command';
 import { VoidIntakeCommand } from '../intakes/commands/void-intake.command';
-import { IntakeTopUpsService } from '../intake-top-ups/intake-top-ups.service';
+import { CreateIntakeTopUpCommand } from '../intake-top-ups/commands/create-intake-top-up.command';
 import { SupplierDebtQuery } from '../supplier-balance/queries/supplier-debt.query';
 import { PointCashService } from '../point-cash/point-cash.service';
 import { UserRole } from '../users/user-role.enum';
@@ -29,7 +29,7 @@ describe('payout ceiling with top-ups (Postgres)', () => {
   let ds: DataSource;
   let payouts: CreatePayoutCommand;
   let intakes: VoidIntakeCommand;
-  let topUps: IntakeTopUpsService;
+  let topUps: CreateIntakeTopUpCommand;
   let balance: SupplierDebtQuery;
   let pointCash: PointCashService;
   let run: string;
@@ -81,7 +81,7 @@ describe('payout ceiling with top-ups (Postgres)', () => {
     ds = app.get(DataSource);
     payouts = app.get(CreatePayoutCommand);
     intakes = app.get(VoidIntakeCommand);
-    topUps = app.get(IntakeTopUpsService);
+    topUps = app.get(CreateIntakeTopUpCommand);
     balance = app.get(SupplierDebtQuery);
     pointCash = app.get(PointCashService);
     run = randomUUID().slice(0, 8);

@@ -1,24 +1,27 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { IntakeTopUp } from './intake-top-up.entity';
-import { IntakeTopUpsService } from './intake-top-ups.service';
+import { CreateIntakeTopUpCommand } from './commands/create-intake-top-up.command';
+import { VoidIntakeTopUpCommand } from './commands/void-intake-top-up.command';
+import { GetIntakeTopUpQuery } from './queries/get-intake-top-up.query';
+import { ListIntakeTopUpsQuery } from './queries/list-intake-top-ups.query';
 import { IntakeTopUpsController } from './intake-top-ups.controller';
 import { AuditModule } from '../audit/audit.module';
 import { SupplierBalanceModule } from '../supplier-balance/supplier-balance.module';
 
 /**
- * IMPORTS NEITHER `ShiftsModule` NOR `SuppliersModule`, and both absences are
- * deliberate. There is no shift rule to apply (see the service header), and
- * the supplier is reached by JOIN rather than by service call because the
- * scope question here is "which rows", not "may this actor see this supplier".
- *
- * Beyond `AuditModule` it imports only `SupplierBalanceModule` (the allocation
- * writer), which never imports this module back.
+ * Owner-written debt on a receipt (#61). No `ShiftsModule` (no shift rule applies) and no
+ * `SuppliersModule` (the supplier is reached by JOIN — a "which rows" question, not "may this
+ * actor see this supplier"). Allocations go through the supplier ledger. Exports nothing.
  */
 @Module({
   imports: [TypeOrmModule.forFeature([IntakeTopUp]), AuditModule, SupplierBalanceModule],
-  providers: [IntakeTopUpsService],
+  providers: [
+    CreateIntakeTopUpCommand,
+    VoidIntakeTopUpCommand,
+    GetIntakeTopUpQuery,
+    ListIntakeTopUpsQuery,
+  ],
   controllers: [IntakeTopUpsController],
-  exports: [IntakeTopUpsService],
 })
 export class IntakeTopUpsModule {}

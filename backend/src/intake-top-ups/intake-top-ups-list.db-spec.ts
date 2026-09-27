@@ -1,9 +1,8 @@
 import { randomUUID } from 'crypto';
 import { DataSource } from 'typeorm';
 import { openTestDataSource } from '../testing/db-harness';
-import { IntakeTopUpsService } from './intake-top-ups.service';
+import { ListIntakeTopUpsQuery } from './queries/list-intake-top-ups.query';
 import { IntakeTopUp } from './intake-top-up.entity';
-import { AllocationsService } from '../supplier-balance/services/allocations';
 import { UserRole } from '../users/user-role.enum';
 import type { AuthenticatedUser } from '../auth/jwt.strategy';
 
@@ -17,7 +16,7 @@ import type { AuthenticatedUser } from '../auth/jwt.strategy';
  */
 describe('IntakeTopUpsService.list (Postgres)', () => {
   let ds: DataSource;
-  let service: IntakeTopUpsService;
+  let service: ListIntakeTopUpsQuery;
   let run: string;
   let pointA: string;
   let pointB: string;
@@ -120,12 +119,7 @@ describe('IntakeTopUpsService.list (Postgres)', () => {
 
   beforeAll(async () => {
     ds = await openTestDataSource();
-    service = new IntakeTopUpsService(
-      ds.getRepository(IntakeTopUp),
-      ds,
-      { record: async () => undefined } as never,
-      new AllocationsService(),
-    );
+    service = new ListIntakeTopUpsQuery(ds.getRepository(IntakeTopUp));
     run = randomUUID().slice(0, 8);
 
     const [user] = await ds.query(
