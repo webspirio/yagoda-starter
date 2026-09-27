@@ -1284,8 +1284,9 @@ Spec `docs/superpowers/specs/2026-09-27-allocations-cluster-refactor-design.md`,
    (with its 2026-09-15 carve-out) and `cash-counts` — candidates for the next refactor passes,
    along with `reweighs`/`day-costs` and `point-cash`.
 4. **Two stale comments survive in the zero-edit pipeline specs.** `testing/documents-pipeline.db-spec.ts`
-   still names the pre-refactor symbols: ~line 969 says `PayoutsService.writePayout` (now
-   `PayoutWriter.write`), and ~line 1075 says `IntakeTopUpsService` (now
+   still names the pre-refactor symbols: ~line 969 says to delete the `FOR UPDATE` from
+   `PayoutsService.writePayout` — that supplier lock now lives in
+   `AllocationsService.withinSupplierLedger` (via `lockSupplier`), not in `PayoutWriter.write`, and ~line 1075 says `IntakeTopUpsService` (now
    `CreateIntakeTopUpCommand`/`VoidIntakeTopUpCommand`, depending on which write the sentence
    means). Left alone because `testing/*pipeline.db-spec.ts` is a zero-edit surface for this
    refactor; fix in whichever change next touches that file.

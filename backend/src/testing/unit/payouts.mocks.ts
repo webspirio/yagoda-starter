@@ -89,7 +89,8 @@ export function makePayoutsMocks() {
     allocate: jest.fn().mockResolvedValue(0),
     withinSupplierLedger: jest.fn(),
   };
-  // Delegates to the two spies so the lock/allocate order assertions read as before.
+  // Mirrors AllocationsService.withinSupplierLedger (lock → work → allocate); the real
+  // order is pinned in supplier-balance/services/allocations.spec.ts.
   allocations.withinSupplierLedger.mockImplementation(
     async (m: unknown, id: string, work: () => Promise<unknown>) => {
       await allocations.lockSupplier(m, id);

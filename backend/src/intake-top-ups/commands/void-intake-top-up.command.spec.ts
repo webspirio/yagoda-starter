@@ -68,6 +68,8 @@ describe('VoidIntakeTopUpCommand', () => {
       allocate: jest.fn().mockResolvedValue(0),
       withinSupplierLedger: jest.fn(),
     };
+    // Mirrors AllocationsService.withinSupplierLedger (lock → work → allocate); the real
+    // order is pinned in supplier-balance/services/allocations.spec.ts.
     allocations.withinSupplierLedger.mockImplementation(
       async (m: unknown, id: string, work: () => Promise<unknown>) => {
         await allocations.lockSupplier(m, id);
