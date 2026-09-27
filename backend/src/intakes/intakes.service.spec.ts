@@ -129,6 +129,7 @@ describe('IntakesService', () => {
                   lines_count: 2,
                   supplier_name: 'Іван Коваль',
                   paid_amount: '0.00',
+                  open_amount: '1200.00',
                 },
               ]
             : // `nextDocumentCode` locks, then counts the documents already in
@@ -863,6 +864,7 @@ describe('IntakesService', () => {
               lines_count: 2,
               supplier_name: 'Іван Коваль',
               paid_amount: '0.00',
+              open_amount: '1200.00',
             },
           ],
         }),
@@ -877,7 +879,7 @@ describe('IntakesService', () => {
       repo.createQueryBuilder.mockReturnValue(qb);
     });
 
-    it('carries net_kg, lines_count, supplier_name and paid_amount on every row', async () => {
+    it('carries net_kg, lines_count, supplier_name, paid_amount and open_amount on every row', async () => {
       const result = await service.list(oksana, listQuery() as never);
 
       expect(result.data).toHaveLength(1);
@@ -886,15 +888,16 @@ describe('IntakesService', () => {
         lines_count: 2,
         supplier_name: 'Іван Коваль',
         paid_amount: '0.00',
+        open_amount: '1200.00',
       });
       expect(result.total).toBe(1);
     });
 
-    it('joins suppliers and adds the four extras selects, once each', async () => {
+    it('joins suppliers and adds the five extras selects, once each', async () => {
       await service.list(oksana, listQuery() as never);
 
       expect(qb.innerJoin).toHaveBeenCalledWith(expect.anything(), 'sup', 'sup.id = i.supplier_id');
-      expect(qb.addSelect).toHaveBeenCalledTimes(4);
+      expect(qb.addSelect).toHaveBeenCalledTimes(5);
     });
 
     it('maps each raw row to its OWN entity BY ID, not by array position', async () => {
@@ -915,6 +918,7 @@ describe('IntakesService', () => {
             lines_count: 1,
             supplier_name: 'Петро Мельник',
             paid_amount: '100.00',
+            open_amount: '0.00',
           },
           {
             i_id: INTAKE_ID,
@@ -922,6 +926,7 @@ describe('IntakesService', () => {
             lines_count: 2,
             supplier_name: 'Іван Коваль',
             paid_amount: '0.00',
+            open_amount: '1200.00',
           },
         ],
       });
@@ -935,12 +940,14 @@ describe('IntakesService', () => {
         lines_count: 2,
         supplier_name: 'Іван Коваль',
         paid_amount: '0.00',
+        open_amount: '1200.00',
       });
       expect(result.data.find((r) => r.id === OTHER_ID)).toMatchObject({
         net_kg: '5.00',
         lines_count: 1,
         supplier_name: 'Петро Мельник',
         paid_amount: '100.00',
+        open_amount: '0.00',
       });
     });
 

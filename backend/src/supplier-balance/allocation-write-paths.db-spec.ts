@@ -19,6 +19,7 @@ import { CredentialsService } from '../users/credentials.service';
 import { LOCAL_PROVIDER } from '../users/user-identity.entity';
 import { UserRole } from '../users/user-role.enum';
 import { allocationViolations } from '../testing/allocation-invariants';
+import { sum } from '../common/money';
 
 const pointCode = (): string => randomUUID().replace(/-/g, '').slice(0, 8).toUpperCase();
 
@@ -301,6 +302,79 @@ describe('allocation write paths (HTTP, Postgres)', () => {
         expect.objectContaining({ payout_id: p, amount: '50.00' }),
       ]);
       expect(await violations(s)).toEqual([]);
+    });
+  });
+
+  describe('open_amount on the receipt', () => {
+    let s: string;
+    beforeEach(async () => {
+      s = await newSupplier();
+    });
+
+    const openOf = async (intakeId: string): Promise<string> =>
+      (await http().get(`/intakes/${intakeId}`).set('Authorization', `Bearer ${operatorToken}`).expect(200))
+        .body.open_amount;
+    // The card's lines for this receipt (itself + its top-ups) — open_amount must equal their Σ open.
+    const cardOpenOf = async (intakeId: string): Promise<string> => {
+      const { body } = await http()
+        .get(`/suppliers/${s}/settlement`)
+        .set('Authorization', `Bearer ${ownerToken}`)
+        .expect(200);
+      return sum(
+        (body.lines as { intake_id: string; open: string }[])
+          .filter((l) => l.intake_id === intakeId)
+          .map((l) => l.open),
+      );
+    };
+
+    it('a partly paid receipt shows what is still open', async () => {
+      const r = (await receipt(s, '6.20').expect(201)).body.id; // 500
+      await as(operatorToken).post('/payouts', { supplier_id: s, amount: '300.00' }).expect(201);
+
+      expect(await openOf(r)).toBe('200.00');
+      expect(await cardOpenOf(r)).toBe('200.00');
+    });
+
+    it('a receipt closed by money left over from before is not open, though nothing was paid with it', async () => {
+      const r1 = (await receipt(s, '6.20', '500.00').expect(201)).body.id;
+      await as(operatorToken).post(`/intakes/${r1}/void`, { reason: 'x', payout: 'keep' }).expect(201);
+      const r2 = (await receipt(s, '6.20').expect(201)).body; // 500, no cash with it
+
+      expect(r2.paid_amount).toBe('0.00');
+      expect(r2.open_amount).toBe('0.00');
+      expect(await cardOpenOf(r2.id)).toBe('0.00');
+    });
+
+    it('counts the open part of its live top-ups, and may exceed the printed amount', async () => {
+      const r = (await receipt(s, '6.20').expect(201)).body.id; // 500
+      await as(ownerToken)
+        .post('/intake-top-ups', { intake_id: r, amount: '200.00', reason: 'ціна' })
+        .expect(201);
+      expect(await openOf(r)).toBe('700.00');
+
+      await as(operatorToken).post('/payouts', { supplier_id: s, amount: '300.00' }).expect(201);
+      expect(await openOf(r)).toBe('400.00');
+      expect(await cardOpenOf(r)).toBe('400.00');
+    });
+
+    it('a voided receipt is 0.00', async () => {
+      const r = (await receipt(s, '6.20').expect(201)).body.id;
+      const voided = (
+        await as(operatorToken).post(`/intakes/${r}/void`, { reason: 'x' }).expect(201)
+      ).body;
+
+      expect(voided.open_amount).toBe('0.00');
+    });
+
+    it('the journal row carries the same figure as the single read', async () => {
+      const r = (await receipt(s, '6.20', '100.00').expect(201)).body.id;
+      const { body } = await http()
+        .get(`/intakes?supplier_id=${s}`)
+        .set('Authorization', `Bearer ${operatorToken}`)
+        .expect(200);
+
+      expect(body.data.find((row: { id: string }) => row.id === r).open_amount).toBe('400.00');
+      expect(await openOf(r)).toBe('400.00');
     });
   });
 

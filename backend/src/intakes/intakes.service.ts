@@ -400,6 +400,7 @@ export class IntakesService {
           lines_count: row.lines_count,
           supplier_name: row.supplier_name,
           paid_amount: row.paid_amount,
+          open_amount: row.open_amount,
         });
       }),
       total,

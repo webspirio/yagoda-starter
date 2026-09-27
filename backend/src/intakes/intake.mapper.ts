@@ -31,6 +31,8 @@ export interface IntakeResponse {
   supplier_name: string;
   /** Σ live payouts handed over with this receipt (`payouts.intake_id`); '0.00' when none. */
   paid_amount: string;
+  /** Still owed for this receipt and its live top-ups, from live allocations; '0.00' once voided. */
+  open_amount: string;
 }
 
 export interface IntakeItemTareResponse {
@@ -99,6 +101,7 @@ export function toIntakeResponse(
     lines_count: extras.lines_count,
     supplier_name: extras.supplier_name,
     paid_amount: extras.paid_amount,
+    open_amount: extras.open_amount,
   };
 }
 
