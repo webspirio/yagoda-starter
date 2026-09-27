@@ -6,7 +6,7 @@ import { DataSource } from 'typeorm';
 // runs ConfigModule.forRoot() eagerly at import time.
 import { relaxThrottleForTests, resolveTestDatabaseName } from '../testing/db-harness';
 import { AppModule } from '../app.module';
-import { PayoutsService } from './payouts.service';
+import { CreatePayoutCommand } from './commands/create-payout.command';
 import { IntakesService } from '../intakes/intakes.service';
 import { IntakeTopUpsService } from '../intake-top-ups/intake-top-ups.service';
 import { SupplierDebtQuery } from '../supplier-balance/queries/supplier-debt.query';
@@ -27,7 +27,7 @@ import type { AuthenticatedUser } from '../auth/jwt.strategy';
 describe('payout ceiling with top-ups (Postgres)', () => {
   let app: INestApplication;
   let ds: DataSource;
-  let payouts: PayoutsService;
+  let payouts: CreatePayoutCommand;
   let intakes: IntakesService;
   let topUps: IntakeTopUpsService;
   let balance: SupplierDebtQuery;
@@ -79,7 +79,7 @@ describe('payout ceiling with top-ups (Postgres)', () => {
     await app.init();
 
     ds = app.get(DataSource);
-    payouts = app.get(PayoutsService);
+    payouts = app.get(CreatePayoutCommand);
     intakes = app.get(IntakesService);
     topUps = app.get(IntakeTopUpsService);
     balance = app.get(SupplierDebtQuery);

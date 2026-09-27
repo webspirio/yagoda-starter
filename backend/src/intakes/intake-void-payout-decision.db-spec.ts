@@ -17,7 +17,7 @@ import { UsersService } from '../users/users.service';
 import { CredentialsService } from '../users/credentials.service';
 import { LOCAL_PROVIDER } from '../users/user-identity.entity';
 import { UserRole } from '../users/user-role.enum';
-import { PayoutsService } from '../payouts/payouts.service';
+import { PayoutWriter } from '../payouts/services/payout-writer';
 import { SupplierDebtQuery } from '../supplier-balance/queries/supplier-debt.query';
 import { SupplierSettlementQuery } from '../supplier-balance/queries/supplier-settlement.query';
 import { AllocationsService } from '../supplier-balance/services/allocations';
@@ -221,9 +221,7 @@ describe('intake void with a payout decision (HTTP, Postgres)', () => {
 
   it('is atomic: a failure voiding the payout leaves the receipt live', async () => {
     const s = await scenario();
-    const spy = jest
-      .spyOn(app.get(PayoutsService), 'voidWithin')
-      .mockRejectedValueOnce(new Error('boom'));
+    const spy = jest.spyOn(app.get(PayoutWriter), 'void').mockRejectedValueOnce(new Error('boom'));
     try {
       await voidIntake(operatorToken, s.rId, { reason: 'помилка', payout: 'void' }).expect(500);
     } finally {

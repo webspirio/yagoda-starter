@@ -67,10 +67,10 @@ describe('IntakesService', () => {
   let points: { findOneRaw: jest.Mock };
   let audit: { record: jest.Mock };
   let payouts: {
-    writePayout: jest.Mock;
-    findLiveBoundForUpdate: jest.Mock;
-    voidWithin: jest.Mock;
-    settleReturnWithin: jest.Mock;
+    write: jest.Mock;
+    findLiveBoundToIntake: jest.Mock;
+    void: jest.Mock;
+    settleReturn: jest.Mock;
   };
   let allocations: { lockSupplier: jest.Mock; release: jest.Mock; allocate: jest.Mock };
   let service: IntakesService;
@@ -185,7 +185,7 @@ describe('IntakesService', () => {
     points = { findOneRaw: jest.fn().mockResolvedValue({ id: POINT_A, code: 'KPG' }) };
     audit = { record: jest.fn().mockResolvedValue(undefined) };
     payouts = {
-      writePayout: jest.fn().mockImplementation((_m, input: { amount: string; intakeId: string }) =>
+      write: jest.fn().mockImplementation((_m, input: { amount: string; intakeId: string }) =>
         Promise.resolve({
           payout: {
             id: 'po-1',
@@ -197,9 +197,11 @@ describe('IntakesService', () => {
           shift: shift(),
         }),
       ),
-      findLiveBoundForUpdate: jest.fn().mockResolvedValue(null),
-      voidWithin: jest.fn().mockImplementation((_m, _a, p) => Promise.resolve({ ...p, voided_at: new Date() })),
-      settleReturnWithin: jest.fn().mockImplementation((_m, _a, p) => Promise.resolve(p)),
+      findLiveBoundToIntake: jest.fn().mockResolvedValue(null),
+      void: jest
+        .fn()
+        .mockImplementation((_m, _a, p) => Promise.resolve({ ...p, voided_at: new Date() })),
+      settleReturn: jest.fn().mockImplementation((_m, _a, p) => Promise.resolve(p)),
     };
     allocations = {
       lockSupplier: jest.fn().mockResolvedValue(undefined),
@@ -223,7 +225,9 @@ describe('IntakesService', () => {
 
   /** The invocation order of `nextDocumentCode`'s advisory lock on the transactional manager. */
   const advisoryOrder = () => {
-    const i = manager.query.mock.calls.findIndex(([sql]) => /pg_advisory_xact_lock/.test(sql as string));
+    const i = manager.query.mock.calls.findIndex(([sql]) =>
+      /pg_advisory_xact_lock/.test(sql as string),
+    );
     return manager.query.mock.invocationCallOrder[i];
   };
 
@@ -391,7 +395,7 @@ describe('IntakesService', () => {
       expect(allocations.allocate).toHaveBeenCalledTimes(1);
       expect(allocations.allocate).toHaveBeenCalledWith(manager, SUPPLIER);
       expect(allocations.allocate.mock.invocationCallOrder[0]).toBeGreaterThan(
-        payouts.writePayout.mock.invocationCallOrder[0],
+        payouts.write.mock.invocationCallOrder[0],
       );
     });
 
@@ -413,36 +417,34 @@ describe('IntakesService', () => {
         ),
       );
 
-      await expect(service.create(oksana, dto())).rejects.toThrow(
-        /intake row extras missing for/,
-      );
+      await expect(service.create(oksana, dto())).rejects.toThrow(/intake row extras missing for/);
     });
   });
 
   describe('paid at reception (§2.1 ⑥, §3.1)', () => {
     it('writes no payout when paid_amount is absent', async () => {
       const res = await service.create(oksana, dto() as never);
-      expect(payouts.writePayout).not.toHaveBeenCalled();
+      expect(payouts.write).not.toHaveBeenCalled();
       expect(res.payouts).toEqual([]);
     });
 
     it('writes no payout for 0.00 — «видано 0,00» is an intake with no payout', async () => {
       await service.create(oksana, dto({ paid_amount: '0.00' }) as never);
-      expect(payouts.writePayout).not.toHaveBeenCalled();
+      expect(payouts.write).not.toHaveBeenCalled();
     });
 
     it('writes no payout for an explicit null — truthiness, not `!== undefined`', async () => {
       const res = await service.create(oksana, dto({ paid_amount: null }) as never);
-      expect(payouts.writePayout).not.toHaveBeenCalled();
+      expect(payouts.write).not.toHaveBeenCalled();
       expect(res.payouts).toEqual([]);
     });
 
-    it('hands the cash to writePayout AFTER the intake is saved, stamped with its id', async () => {
+    it('hands the cash to write AFTER the intake is saved, stamped with its id', async () => {
       const res = await service.create(oksana, dto({ paid_amount: '380.00' }) as never);
       expect(manager.save.mock.invocationCallOrder[0]).toBeLessThan(
-        payouts.writePayout.mock.invocationCallOrder[0],
+        payouts.write.mock.invocationCallOrder[0],
       );
-      expect(payouts.writePayout).toHaveBeenCalledWith(
+      expect(payouts.write).toHaveBeenCalledWith(
         manager,
         expect.objectContaining({
           actor: oksana,
@@ -459,7 +461,7 @@ describe('IntakesService', () => {
     });
 
     it('lets a ceiling refusal roll the whole transaction back', async () => {
-      payouts.writePayout.mockRejectedValue(new Error('PAYOUT_EXCEEDS_CASH'));
+      payouts.write.mockRejectedValue(new Error('PAYOUT_EXCEEDS_CASH'));
       await expect(service.create(oksana, dto({ paid_amount: '380.00' }) as never)).rejects.toThrow(
         'PAYOUT_EXCEEDS_CASH',
       );
@@ -698,18 +700,18 @@ describe('IntakesService', () => {
 
     describe('with a live bound payout (#125)', () => {
       const bound = { id: 'po-1', code: 'KPG-PO-20260908-001', amount: '1500.00', voided_at: null };
-      beforeEach(() => payouts.findLiveBoundForUpdate.mockResolvedValue(bound));
+      beforeEach(() => payouts.findLiveBoundToIntake.mockResolvedValue(bound));
 
       it('locks the payout after the intake, in the same transaction', async () => {
         await service.void(oksana, INTAKE_ID, { reason: 'r', payout: 'keep' });
 
-        expect(payouts.findLiveBoundForUpdate).toHaveBeenCalledWith(manager, INTAKE_ID);
+        expect(payouts.findLiveBoundToIntake).toHaveBeenCalledWith(manager, INTAKE_ID);
         // Compare against the LOCKED intake read (`loadForVoid`'s `FOR UPDATE`
         // find), not the unlocked stub read — that one always runs first and
         // would pass this assertion even if the payout lock jumped ahead of it.
         const locked = manager.findOne.mock.calls.findIndex(([, opts]) => opts?.lock);
         expect(manager.findOne.mock.invocationCallOrder[locked]).toBeLessThan(
-          payouts.findLiveBoundForUpdate.mock.invocationCallOrder[0],
+          payouts.findLiveBoundToIntake.mock.invocationCallOrder[0],
         );
       });
 
@@ -731,7 +733,7 @@ describe('IntakesService', () => {
       it('keep: voids only the intake and records the decision', async () => {
         await service.void(oksana, INTAKE_ID, { reason: 'r', payout: 'keep' });
 
-        expect(payouts.voidWithin).not.toHaveBeenCalled();
+        expect(payouts.void).not.toHaveBeenCalled();
         expect(audit.record).toHaveBeenCalledWith(
           expect.objectContaining({
             action: 'intake.voided',
@@ -744,22 +746,22 @@ describe('IntakesService', () => {
       it('void: voids the payout with the same reason, no return', async () => {
         await service.void(oksana, INTAKE_ID, { reason: 'помилка', payout: 'void' });
 
-        expect(payouts.voidWithin).toHaveBeenCalledWith(manager, oksana, bound, 'помилка');
-        expect(payouts.settleReturnWithin).not.toHaveBeenCalled();
+        expect(payouts.void).toHaveBeenCalledWith(manager, oksana, bound, 'помилка');
+        expect(payouts.settleReturn).not.toHaveBeenCalled();
       });
 
       it('void_returned (owner): voids, then settles the return with the reason as note', async () => {
         await service.void(owner, INTAKE_ID, { reason: 'повернув', payout: 'void_returned' });
 
-        expect(payouts.voidWithin).toHaveBeenCalledWith(manager, owner, bound, 'повернув');
-        expect(payouts.settleReturnWithin).toHaveBeenCalledWith(
+        expect(payouts.void).toHaveBeenCalledWith(manager, owner, bound, 'повернув');
+        expect(payouts.settleReturn).toHaveBeenCalledWith(
           manager,
           owner,
           expect.objectContaining({ id: 'po-1' }),
           'повернув',
         );
-        expect(payouts.voidWithin.mock.invocationCallOrder[0]).toBeLessThan(
-          payouts.settleReturnWithin.mock.invocationCallOrder[0],
+        expect(payouts.void.mock.invocationCallOrder[0]).toBeLessThan(
+          payouts.settleReturn.mock.invocationCallOrder[0],
         );
       });
     });
@@ -786,23 +788,31 @@ describe('IntakesService', () => {
     });
 
     it('with payout decision void, allocates once, after both voids', async () => {
-      payouts.findLiveBoundForUpdate.mockResolvedValue({ id: 'po-1', amount: '1.00', voided_at: null });
+      payouts.findLiveBoundToIntake.mockResolvedValue({
+        id: 'po-1',
+        amount: '1.00',
+        voided_at: null,
+      });
       await service.void(owner, INTAKE_ID, { reason: 'x', payout: 'void' });
 
       expect(allocations.allocate).toHaveBeenCalledTimes(1);
       expect(allocations.allocate.mock.invocationCallOrder[0]).toBeGreaterThan(
-        payouts.voidWithin.mock.invocationCallOrder[0],
+        payouts.void.mock.invocationCallOrder[0],
       );
     });
 
     it('404s a missing intake before any lock', async () => {
       manager.findOne.mockResolvedValue(null);
-      await expect(service.void(owner, 'nope', { reason: 'x' })).rejects.toThrow('Intake not found');
+      await expect(service.void(owner, 'nope', { reason: 'x' })).rejects.toThrow(
+        'Intake not found',
+      );
       expect(allocations.lockSupplier).not.toHaveBeenCalled();
     });
 
     it('still 404s another point for an operator, releasing nothing', async () => {
-      await expect(service.void(elsewhere, INTAKE_ID, { reason: 'x' })).rejects.toThrow('Intake not found');
+      await expect(service.void(elsewhere, INTAKE_ID, { reason: 'x' })).rejects.toThrow(
+        'Intake not found',
+      );
       expect(allocations.release).not.toHaveBeenCalled();
       expect(allocations.allocate).not.toHaveBeenCalled();
     });
@@ -810,7 +820,7 @@ describe('IntakesService', () => {
     it('records no payout_decision when nothing was bound', async () => {
       await service.void(oksana, INTAKE_ID, { reason: 'r' });
 
-      expect(payouts.voidWithin).not.toHaveBeenCalled();
+      expect(payouts.void).not.toHaveBeenCalled();
       const entry = audit.record.mock.calls[0][0] as { after: Record<string, unknown> };
       expect(entry.after).not.toHaveProperty('payout_decision');
     });

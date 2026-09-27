@@ -42,7 +42,7 @@ import { TareTypesService } from '../tare-types/tare-types.service';
 import { CollectionPointsService } from '../collection-points/collection-points.service';
 import type { CollectionPoint } from '../collection-points/collection-point.entity';
 import { AuditService } from '../audit/audit.service';
-import { PayoutsService } from '../payouts/payouts.service';
+import { PayoutWriter } from '../payouts/services/payout-writer';
 import { Payout } from '../payouts/payout.entity';
 import { AllocationsService } from '../supplier-balance/services/allocations';
 import { nextDocumentCode } from '../common/document-code';
@@ -78,7 +78,7 @@ export class IntakesService {
     private readonly tare: TareTypesService,
     private readonly points: CollectionPointsService,
     private readonly audit: AuditService,
-    private readonly payouts: PayoutsService,
+    private readonly payouts: PayoutWriter,
     private readonly allocations: AllocationsService,
   ) {}
 
@@ -99,7 +99,7 @@ export class IntakesService {
    *
    * Since 2026-09-21 the same transaction may also write the payout handed
    * over with the receipt (`paid_amount`, §2.1 ⑥) — see
-   * `PayoutsService.writePayout`, which owns both ceilings. The supplier lock
+   * `PayoutWriter.write`, which owns both ceilings. The supplier lock
    * comes first and `allocate` runs once, last (payout allocations slice).
    */
   async create(actor: AuthenticatedUser, dto: CreateIntakeDto): Promise<IntakeDetailResponse> {
@@ -173,7 +173,7 @@ export class IntakesService {
       );
 
       // §2.1 ⑥ — the cash for THIS visit leaves the drawer in the same
-      // transaction as the receipt. The debt `writePayout` checks already
+      // transaction as the receipt. The debt `write` checks already
       // includes the intake saved above (same transaction), so «Разом» is
       // the ceiling as §3.1 defines it. A refusal throws, and the intake is
       // rolled back with it: a receipt without its «видано» would not match
@@ -185,7 +185,7 @@ export class IntakesService {
       // truthy and `isZero` catches it below.
       const paid: Payout[] = [];
       if (dto.paid_amount && !isZero(dto.paid_amount)) {
-        const { payout } = await this.payouts.writePayout(m, {
+        const { payout } = await this.payouts.write(m, {
           actor,
           pointId,
           pointCode: point.code,
@@ -245,7 +245,7 @@ export class IntakesService {
       const { intake, shift } = await this.loadForVoid(actor, id, m);
       // §3.5: a bound payout is written only at reception, by the same actor in the same
       // shift, so `loadForVoid`'s §9.4 check already covers it; `void_returned` alone is owner-only.
-      const payout = await this.payouts.findLiveBoundForUpdate(m, intake.id);
+      const payout = await this.payouts.findLiveBoundToIntake(m, intake.id);
       assertPayoutDecision(actor, payout !== null, dto.payout);
 
       // No balance floor: voiding a receipt is the one allowed way into negative debt.
@@ -273,9 +273,9 @@ export class IntakesService {
       );
 
       if (payout && dto.payout !== 'keep') {
-        const voided = await this.payouts.voidWithin(m, actor, payout, dto.reason);
+        const voided = await this.payouts.void(m, actor, payout, dto.reason);
         if (dto.payout === 'void_returned') {
-          await this.payouts.settleReturnWithin(m, actor, voided, dto.reason);
+          await this.payouts.settleReturn(m, actor, voided, dto.reason);
         }
       }
       await this.allocations.allocate(m, supplierId);
