@@ -7,7 +7,7 @@ import { DataSource } from 'typeorm';
 import { relaxThrottleForTests, resolveTestDatabaseName } from '../testing/db-harness';
 import { AppModule } from '../app.module';
 import { CreatePayoutCommand } from './commands/create-payout.command';
-import { IntakesService } from '../intakes/intakes.service';
+import { VoidIntakeCommand } from '../intakes/commands/void-intake.command';
 import { IntakeTopUpsService } from '../intake-top-ups/intake-top-ups.service';
 import { SupplierDebtQuery } from '../supplier-balance/queries/supplier-debt.query';
 import { PointCashService } from '../point-cash/point-cash.service';
@@ -28,7 +28,7 @@ describe('payout ceiling with top-ups (Postgres)', () => {
   let app: INestApplication;
   let ds: DataSource;
   let payouts: CreatePayoutCommand;
-  let intakes: IntakesService;
+  let intakes: VoidIntakeCommand;
   let topUps: IntakeTopUpsService;
   let balance: SupplierDebtQuery;
   let pointCash: PointCashService;
@@ -80,7 +80,7 @@ describe('payout ceiling with top-ups (Postgres)', () => {
 
     ds = app.get(DataSource);
     payouts = app.get(CreatePayoutCommand);
-    intakes = app.get(IntakesService);
+    intakes = app.get(VoidIntakeCommand);
     topUps = app.get(IntakeTopUpsService);
     balance = app.get(SupplierDebtQuery);
     pointCash = app.get(PointCashService);
