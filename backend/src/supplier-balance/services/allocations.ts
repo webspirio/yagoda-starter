@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { EntityManager } from 'typeorm';
-import { settle, DebtLine, PayoutLine } from './settlement';
+import { settle, DebtLine, PayoutLine } from '../settlement';
 
 export type ReleaseTarget = { payoutId: string } | { intakeId: string } | { topUpId: string };
 
@@ -42,11 +42,24 @@ const RESIDUAL_PAYOUTS_SQL = `
    ORDER BY r.business_date, r.created_at, r.id`;
 
 /**
- * The only writer of `payout_allocations` (spec 2026-09-26 §4.2). Rows are frozen:
- * `release` stamps `voided_at`, `allocate` appends. Callers hold `lockSupplier` first.
+ * The only writer of `payout_allocations` (spec 2026-09-26 §4.2). Rows are frozen: `release`
+ * stamps `voided_at`, `allocate` appends. Commands go through `withinSupplierLedger`;
+ * `lockSupplier`/`allocate` are public only for the seed and raw-SQL fixtures.
  */
 @Injectable()
 export class AllocationsService {
+  /** Every debt write: supplier lock first, one `allocate` last. A throw skips the allocate and rolls back. */
+  async withinSupplierLedger<T>(
+    m: EntityManager,
+    supplierId: string,
+    work: () => Promise<T>,
+  ): Promise<T> {
+    await this.lockSupplier(m, supplierId);
+    const result = await work();
+    await this.allocate(m, supplierId);
+    return result;
+  }
+
   /** Per-supplier mutex, taken before any document lock so every path locks in one order. */
   async lockSupplier(m: EntityManager, supplierId: string): Promise<void> {
     await m.query('SELECT id FROM suppliers WHERE id = $1 FOR UPDATE', [supplierId]);

@@ -2,7 +2,7 @@ import { randomUUID } from 'crypto';
 import { DataSource } from 'typeorm';
 import { openTestDataSource } from '../testing/db-harness';
 import { backfillPayoutAllocations } from '../common/payout-allocations-backfill';
-import { AllocationsService } from '../supplier-balance/allocations.service';
+import { AllocationsService } from '../supplier-balance/services/allocations';
 
 /**
  * The table's constraints, and the backfill over the slice-1 fixture (spec
@@ -52,7 +52,13 @@ describe('PayoutAllocations migration', () => {
     );
     return row.id as string;
   };
-  const payout = async (s: string, shiftId: string, amount: string, intakeId: string | null, at: string) => {
+  const payout = async (
+    s: string,
+    shiftId: string,
+    amount: string,
+    intakeId: string | null,
+    at: string,
+  ) => {
     const [row] = await ds.query(
       `INSERT INTO payouts (code, shift_id, supplier_id, amount, paid_by_user_id, intake_id, created_at)
        VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
@@ -182,12 +188,28 @@ describe('PayoutAllocations migration', () => {
       const c = await intake(s, d2, '200.00', '2026-08-02T08:00:00Z');
       const p1 = await payout(s, d2, '380.00', c, '2026-08-02T08:01:00Z');
       const p2 = await payout(s, d2, '100.00', b, '2026-08-02T09:00:00Z');
-      return { s, names: new Map([[a, 'a'], [t, 't'], [c, 'c'], [p1, 'p1'], [p2, 'p2']]) };
+      return {
+        s,
+        names: new Map([
+          [a, 'a'],
+          [t, 't'],
+          [c, 'c'],
+          [p1, 'p1'],
+          [p2, 'p2'],
+        ]),
+      };
     };
     const shape = async (s: string, names: Map<string, string>) =>
       (await rowsOf(s))
-        .map((r: { payout_id: string; intake_id: string | null; intake_top_up_id: string | null; amount: string }) =>
-          `${names.get(r.payout_id)}→${names.get((r.intake_id ?? r.intake_top_up_id) as string)}:${r.amount}`)
+        .map(
+          (r: {
+            payout_id: string;
+            intake_id: string | null;
+            intake_top_up_id: string | null;
+            amount: string;
+          }) =>
+            `${names.get(r.payout_id)}→${names.get((r.intake_id ?? r.intake_top_up_id) as string)}:${r.amount}`,
+        )
         .sort();
 
     const frozen = await build();

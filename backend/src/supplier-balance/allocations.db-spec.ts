@@ -1,7 +1,7 @@
 import { randomUUID } from 'crypto';
 import { DataSource, EntityManager } from 'typeorm';
 import { openTestDataSource } from '../testing/db-harness';
-import { AllocationsService } from './allocations.service';
+import { AllocationsService } from './services/allocations';
 import { allocationViolations } from '../testing/allocation-invariants';
 import { seededRandom } from '../testing/seeded-random';
 
@@ -37,7 +37,12 @@ describe('AllocationsService (db)', () => {
     );
     return row.id as string;
   };
-  const intake = async (m: EntityManager, s: string, shiftId: string, amount: string): Promise<string> => {
+  const intake = async (
+    m: EntityManager,
+    s: string,
+    shiftId: string,
+    amount: string,
+  ): Promise<string> => {
     const [row] = await m.query(
       `INSERT INTO intakes (code, shift_id, supplier_id, amount, received_by_user_id, created_at)
        VALUES ($1, $2, $3, $4, $5, clock_timestamp()) RETURNING id`,
@@ -111,23 +116,41 @@ describe('AllocationsService (db)', () => {
   it('frozen: a void re-routes freed money by NEW rows and leaves others untouched', async () => {
     const s = await supplier();
     const sh = await shift('2026-06-01');
-    let r1 = '', r2 = '', p1 = '', p2 = '';
-    await event(s, async (m) => { r1 = await intake(m, s, sh, '100.00'); });
-    await event(s, async (m) => { p1 = await payout(m, s, sh, '60.00', null); });
-    await event(s, async (m) => { r2 = await intake(m, s, sh, '100.00'); });
-    await event(s, async (m) => { p2 = await payout(m, s, sh, '100.00', null); });
+    let r1 = '',
+      r2 = '',
+      p1 = '',
+      p2 = '';
+    await event(s, async (m) => {
+      r1 = await intake(m, s, sh, '100.00');
+    });
+    await event(s, async (m) => {
+      p1 = await payout(m, s, sh, '60.00', null);
+    });
+    await event(s, async (m) => {
+      r2 = await intake(m, s, sh, '100.00');
+    });
+    await event(s, async (m) => {
+      p2 = await payout(m, s, sh, '100.00', null);
+    });
     // p1→r1 60, p2→r1 40, p2→r2 60
     const before = await live(s);
-    const p2r2 = before.find((a: { payout_id: string; intake_id: string }) => a.payout_id === p2 && a.intake_id === r2);
+    const p2r2 = before.find(
+      (a: { payout_id: string; intake_id: string }) => a.payout_id === p2 && a.intake_id === r2,
+    );
     expect(p2r2.amount).toBe('60.00');
 
-    await event(s, async (m) => { await voidDoc('intakes', r1)(m); await alloc.release(m, { intakeId: r1 }); });
+    await event(s, async (m) => {
+      await voidDoc('intakes', r1)(m);
+      await alloc.release(m, { intakeId: r1 });
+    });
     const after = await live(s);
     // The p2→r2 60 row is the SAME row, still live; p1's freed 60 covers r2's last 40 by a new row.
     expect(after.find((a: { id: string }) => a.id === p2r2.id)).toEqual(p2r2);
-    expect(after).toEqual(expect.arrayContaining([
-      expect.objectContaining({ payout_id: p1, intake_id: r2, amount: '40.00' }),
-    ]));
+    expect(after).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ payout_id: p1, intake_id: r2, amount: '40.00' }),
+      ]),
+    );
     expect(after).toHaveLength(2);
     expect(await ds.transaction((m) => allocationViolations(m, s))).toEqual([]);
   });
@@ -135,30 +158,50 @@ describe('AllocationsService (db)', () => {
   it('keep: a bound payout whose receipt is voided frees its money, and the next receipt takes it', async () => {
     const s = await supplier();
     const sh = await shift('2026-06-02');
-    let old = '', r = '', r3 = '';
-    await event(s, async (m) => { old = await intake(m, s, sh, '1000.00'); });
+    let old = '',
+      r = '',
+      r3 = '';
+    await event(s, async (m) => {
+      old = await intake(m, s, sh, '1000.00');
+    });
     await event(s, async (m) => {
       r = await intake(m, s, sh, '500.00');
       await payout(m, s, sh, '1500.00', r);
     });
-    await event(s, async (m) => { await voidDoc('intakes', r)(m); await alloc.release(m, { intakeId: r }); });
+    await event(s, async (m) => {
+      await voidDoc('intakes', r)(m);
+      await alloc.release(m, { intakeId: r });
+    });
     const settled = await ds.transaction((m) => allocationViolations(m, s));
     expect(settled).toEqual([]);
-    await event(s, async (m) => { r3 = await intake(m, s, sh, '300.00'); });
-    expect(await live(s)).toEqual(expect.arrayContaining([
-      expect.objectContaining({ intake_id: old, amount: '1000.00' }),
-      expect.objectContaining({ intake_id: r3, amount: '300.00' }),
-    ]));
+    await event(s, async (m) => {
+      r3 = await intake(m, s, sh, '300.00');
+    });
+    expect(await live(s)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ intake_id: old, amount: '1000.00' }),
+        expect.objectContaining({ intake_id: r3, amount: '300.00' }),
+      ]),
+    );
     expect(await ds.transaction((m) => allocationViolations(m, s))).toEqual([]);
   });
 
   it('voiding a top-up releases only its rows', async () => {
     const s = await supplier();
     const sh = await shift('2026-06-03');
-    let r = '', t = '';
-    await event(s, async (m) => { r = await intake(m, s, sh, '100.00'); t = await topUp(m, r, '50.00'); });
-    await event(s, async (m) => { await payout(m, s, sh, '150.00', null); });
-    await event(s, async (m) => { await voidDoc('intake_top_ups', t)(m); await alloc.release(m, { topUpId: t }); });
+    let r = '',
+      t = '';
+    await event(s, async (m) => {
+      r = await intake(m, s, sh, '100.00');
+      t = await topUp(m, r, '50.00');
+    });
+    await event(s, async (m) => {
+      await payout(m, s, sh, '150.00', null);
+    });
+    await event(s, async (m) => {
+      await voidDoc('intake_top_ups', t)(m);
+      await alloc.release(m, { topUpId: t });
+    });
     const rows = await live(s);
     expect(rows).toEqual([expect.objectContaining({ intake_id: r, amount: '100.00' })]);
     expect(await ds.transaction((m) => allocationViolations(m, s))).toEqual([]);
@@ -168,10 +211,19 @@ describe('AllocationsService (db)', () => {
     const s = await supplier();
     const sh = await shift('2026-06-04');
     let r = '';
-    await event(s, async (m) => { r = await intake(m, s, sh, '100.00'); });
-    await event(s, async (m) => { await voidDoc('intakes', r)(m); await alloc.release(m, { intakeId: r }); });
-    await event(s, async (m) => { await payout(m, s, sh, '40.00', null); });
-    await event(s, async (m) => { await topUp(m, r, '70.00'); });
+    await event(s, async (m) => {
+      r = await intake(m, s, sh, '100.00');
+    });
+    await event(s, async (m) => {
+      await voidDoc('intakes', r)(m);
+      await alloc.release(m, { intakeId: r });
+    });
+    await event(s, async (m) => {
+      await payout(m, s, sh, '40.00', null);
+    });
+    await event(s, async (m) => {
+      await topUp(m, r, '70.00');
+    });
     const rows = await live(s);
     expect(rows).toEqual([]);
     expect(await ds.transaction((m) => allocationViolations(m, s))).toEqual([]);
@@ -180,26 +232,43 @@ describe('AllocationsService (db)', () => {
   it('allocate twice in a row writes nothing the second time', async () => {
     const s = await supplier();
     const sh = await shift('2026-06-05');
-    await event(s, async (m) => { await intake(m, s, sh, '100.00'); await payout(m, s, sh, '30.00', null); });
+    await event(s, async (m) => {
+      await intake(m, s, sh, '100.00');
+      await payout(m, s, sh, '30.00', null);
+    });
     // Prove the first call actually wrote — otherwise "0 the second time" is trivially true.
     expect(await live(s)).toHaveLength(1);
-    await expect(ds.transaction(async (m) => { await alloc.lockSupplier(m, s); return alloc.allocate(m, s); })).resolves.toBe(0);
+    await expect(
+      ds.transaction(async (m) => {
+        await alloc.lockSupplier(m, s);
+        return alloc.allocate(m, s);
+      }),
+    ).resolves.toBe(0);
   });
 
   it('one allocate call inserts rows in cover order: bound first, then FIFO', async () => {
     const s = await supplier();
     const sh = await shift('2026-06-07');
-    let r1 = '', r2 = '';
-    await event(s, async (m) => { r1 = await intake(m, s, sh, '100.00'); });
-    await event(s, async (m) => { r2 = await intake(m, s, sh, '100.00'); });
+    let r1 = '',
+      r2 = '';
+    await event(s, async (m) => {
+      r1 = await intake(m, s, sh, '100.00');
+    });
+    await event(s, async (m) => {
+      r2 = await intake(m, s, sh, '100.00');
+    });
     // One event, one allocate() call: the bound cover (r1) and the FIFO
     // overflow (r2) are both written here, sharing one transaction's clock.
-    await event(s, async (m) => { await payout(m, s, sh, '250.00', r1); });
+    await event(s, async (m) => {
+      await payout(m, s, sh, '250.00', r1);
+    });
     const rows = await live(s);
-    expect(rows.map((a: { intake_id: string; amount: string }) => [a.intake_id, a.amount])).toEqual([
-      [r1, '100.00'],
-      [r2, '100.00'],
-    ]);
+    expect(rows.map((a: { intake_id: string; amount: string }) => [a.intake_id, a.amount])).toEqual(
+      [
+        [r1, '100.00'],
+        [r2, '100.00'],
+      ],
+    );
     expect(await ds.transaction((m) => allocationViolations(m, s))).toEqual([]);
   });
 
@@ -211,7 +280,17 @@ describe('AllocationsService (db)', () => {
     const topUps: string[] = [];
     const payouts: string[] = [];
     for (let i = 0; i < 40; i++) {
-      const kind = pick(['intake', 'intake', 'payout', 'payout', 'bound', 'topUp', 'voidIntake', 'voidPayout', 'voidTopUp']);
+      const kind = pick([
+        'intake',
+        'intake',
+        'payout',
+        'payout',
+        'bound',
+        'topUp',
+        'voidIntake',
+        'voidPayout',
+        'voidTopUp',
+      ]);
       await event(s, async (m) => {
         if (kind === 'intake' || intakes.length === 0) intakes.push(await intake(m, s, sh, cash()));
         else if (kind === 'payout') payouts.push(await payout(m, s, sh, cash(), null));
@@ -231,8 +310,11 @@ describe('AllocationsService (db)', () => {
           await alloc.release(m, { topUpId: id });
         }
       });
-      expect({ step: i, kind, violations: await ds.transaction((m) => allocationViolations(m, s)) })
-        .toEqual({ step: i, kind, violations: [] });
+      expect({
+        step: i,
+        kind,
+        violations: await ds.transaction((m) => allocationViolations(m, s)),
+      }).toEqual({ step: i, kind, violations: [] });
     }
   });
 });

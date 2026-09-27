@@ -18,8 +18,9 @@ import { CredentialsService } from '../users/credentials.service';
 import { LOCAL_PROVIDER } from '../users/user-identity.entity';
 import { UserRole } from '../users/user-role.enum';
 import { PayoutsService } from '../payouts/payouts.service';
-import { SupplierBalanceService } from '../supplier-balance/supplier-balance.service';
-import { AllocationsService } from '../supplier-balance/allocations.service';
+import { SupplierDebtQuery } from '../supplier-balance/queries/supplier-debt.query';
+import { SupplierSettlementQuery } from '../supplier-balance/queries/supplier-settlement.query';
+import { AllocationsService } from '../supplier-balance/services/allocations';
 import { PointCashService } from '../point-cash/point-cash.service';
 import { timezoneConfig } from '../config/timezone.config';
 import { sub } from '../common/money';
@@ -150,7 +151,7 @@ describe('intake void with a payout decision (HTTP, Postgres)', () => {
 
   const row = async (table: 'intakes' | 'payouts', id: string) =>
     (await ds.query(`SELECT * FROM ${table} WHERE id = $1`, [id]))[0];
-  const debt = (supplierId: string) => app.get(SupplierBalanceService).debtFor(supplierId);
+  const debt = (supplierId: string) => app.get(SupplierDebtQuery).debtFor(supplierId);
   const cash = () => app.get(PointCashService).movementsForShift(todayShiftId);
 
   it('400s without a decision and leaves both documents live', async () => {
@@ -177,7 +178,7 @@ describe('intake void with a payout decision (HTTP, Postgres)', () => {
 
     expect((await row('payouts', s.pId)).voided_at).toBeNull();
     await expect(debt(s.supplierId)).resolves.toBe('-500.00');
-    const settlement = await app.get(SupplierBalanceService).settlementFor(s.supplierId);
+    const settlement = await app.get(SupplierSettlementQuery).settlementFor(s.supplierId);
     expect(settlement.lines.map((l) => [l.id, l.open])).toEqual([[s.oldId, '0.00']]);
     expect(settlement.payouts[0].unallocated).toBe('500.00');
   });
@@ -198,7 +199,9 @@ describe('intake void with a payout decision (HTTP, Postgres)', () => {
   it('void_returned (owner): both voided and 1500 back in the drawer', async () => {
     const s = await scenario();
     const before = await cash();
-    await voidIntake(ownerToken, s.rId, { reason: 'повернув', payout: 'void_returned' }).expect(201);
+    await voidIntake(ownerToken, s.rId, { reason: 'повернув', payout: 'void_returned' }).expect(
+      201,
+    );
 
     const p = await row('payouts', s.pId);
     expect(p.return_settled_at).not.toBeNull();

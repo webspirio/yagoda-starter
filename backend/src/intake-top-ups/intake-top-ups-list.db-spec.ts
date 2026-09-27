@@ -3,7 +3,7 @@ import { DataSource } from 'typeorm';
 import { openTestDataSource } from '../testing/db-harness';
 import { IntakeTopUpsService } from './intake-top-ups.service';
 import { IntakeTopUp } from './intake-top-up.entity';
-import { AllocationsService } from '../supplier-balance/allocations.service';
+import { AllocationsService } from '../supplier-balance/services/allocations';
 import { UserRole } from '../users/user-role.enum';
 import type { AuthenticatedUser } from '../auth/jwt.strategy';
 
@@ -33,7 +33,11 @@ describe('IntakeTopUpsService.list (Postgres)', () => {
   const owner = (): AuthenticatedUser =>
     ({ sub: ownerId, role: UserRole.NetworkOwner, collection_point_id: null }) as AuthenticatedUser;
   const operatorAt = (pointId: string): AuthenticatedUser =>
-    ({ sub: ownerId, role: UserRole.PointOperator, collection_point_id: pointId }) as AuthenticatedUser;
+    ({
+      sub: ownerId,
+      role: UserRole.PointOperator,
+      collection_point_id: pointId,
+    }) as AuthenticatedUser;
 
   const makePoint = async (label: string): Promise<string> => {
     const [row] = await ds.query(
@@ -266,9 +270,9 @@ describe('IntakeTopUpsService.list (Postgres)', () => {
       // with it, so naming someone else's supplier narrows to zero rather
       // than reaching across points.
       const page = await service.list(operatorAt(pointC), {
-        supplier_id: (await ds.query(`SELECT id FROM suppliers WHERE collection_point_id = $1`, [
-          pointA,
-        ]))[0].id,
+        supplier_id: (
+          await ds.query(`SELECT id FROM suppliers WHERE collection_point_id = $1`, [pointA])
+        )[0].id,
         include_voided: true,
         page: 1,
         limit: 50,

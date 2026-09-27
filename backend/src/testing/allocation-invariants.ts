@@ -1,9 +1,12 @@
 import { EntityManager } from 'typeorm';
-import { SupplierBalanceService } from '../supplier-balance/supplier-balance.service';
+import { SupplierDebtQuery } from '../supplier-balance/queries/supplier-debt.query';
 import { sub } from '../common/money';
 
 /** Spec 2026-09-26 §4.5 as SQL. `[]` means all four hold for this supplier. */
-export async function allocationViolations(m: EntityManager, supplierId: string): Promise<string[]> {
+export async function allocationViolations(
+  m: EntityManager,
+  supplierId: string,
+): Promise<string[]> {
   const [r] = (await m.query(
     `WITH lines AS (
        SELECT i.amount, COALESCE((SELECT SUM(a.amount) FROM payout_allocations a
@@ -43,10 +46,12 @@ export async function allocationViolations(m: EntityManager, supplierId: string)
     dangling: number;
   }[];
 
-  const debt = await new SupplierBalanceService(m.connection).debtFor(supplierId, m);
+  const debt = await new SupplierDebtQuery(m.connection).debtFor(supplierId, m);
   const out: string[] = [];
-  if (sub(r.open, r.unallocated) !== debt) out.push(`open ${r.open} − unallocated ${r.unallocated} ≠ debt ${debt}`);
-  if (r.open_lines > 0 && r.free_payouts > 0) out.push(`${r.open_lines} open lines beside ${r.free_payouts} free payouts`);
+  if (sub(r.open, r.unallocated) !== debt)
+    out.push(`open ${r.open} − unallocated ${r.unallocated} ≠ debt ${debt}`);
+  if (r.open_lines > 0 && r.free_payouts > 0)
+    out.push(`${r.open_lines} open lines beside ${r.free_payouts} free payouts`);
   if (r.dangling > 0) out.push(`${r.dangling} live rows on voided documents`);
   if (r.over > 0) out.push(`${r.over} documents over-allocated`);
   return out;

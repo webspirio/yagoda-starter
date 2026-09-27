@@ -44,7 +44,7 @@ import type { CollectionPoint } from '../collection-points/collection-point.enti
 import { AuditService } from '../audit/audit.service';
 import { PayoutsService } from '../payouts/payouts.service';
 import { Payout } from '../payouts/payout.entity';
-import { AllocationsService } from '../supplier-balance/allocations.service';
+import { AllocationsService } from '../supplier-balance/services/allocations';
 import { nextDocumentCode } from '../common/document-code';
 import { isZero } from '../common/money';
 import { resolveWritePoint, resolvePointFilter } from '../auth/access/point-scope';
@@ -327,7 +327,10 @@ export class IntakesService {
       }
     }
     if (intake.voided_at) {
-      throw new ConflictException({ message: 'That intake is already voided', code: 'ALREADY_VOIDED' });
+      throw new ConflictException({
+        message: 'That intake is already voided',
+        code: 'ALREADY_VOIDED',
+      });
     }
     return { intake, shift };
   }

@@ -16,11 +16,11 @@ import { VoidDocumentDto } from '../intakes/dto/void-document.dto';
 import { Shift } from '../shifts/shift.entity';
 import { ShiftsService } from '../shifts/shifts.service';
 import { SuppliersService } from '../suppliers/suppliers.service';
-import { SupplierBalanceService } from '../supplier-balance/supplier-balance.service';
+import { SupplierDebtQuery } from '../supplier-balance/queries/supplier-debt.query';
 import { CollectionPointsService } from '../collection-points/collection-points.service';
 import { AuditService } from '../audit/audit.service';
 import { PointCashService } from '../point-cash/point-cash.service';
-import { AllocationsService } from '../supplier-balance/allocations.service';
+import { AllocationsService } from '../supplier-balance/services/allocations';
 import { nextDocumentCode } from '../common/document-code';
 import { gt, isZero } from '../common/money';
 import { resolveWritePoint, resolvePointFilter } from '../auth/access/point-scope';
@@ -53,7 +53,7 @@ export class PayoutsService {
     private readonly dataSource: DataSource,
     private readonly shifts: ShiftsService,
     private readonly suppliers: SuppliersService,
-    private readonly balance: SupplierBalanceService,
+    private readonly balance: SupplierDebtQuery,
     private readonly points: CollectionPointsService,
     private readonly audit: AuditService,
     private readonly pointCash: PointCashService,

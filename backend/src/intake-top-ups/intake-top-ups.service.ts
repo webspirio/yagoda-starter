@@ -15,7 +15,7 @@ import { Intake } from '../intakes/intake.entity';
 import { Supplier } from '../suppliers/supplier.entity';
 import { VoidDocumentDto } from '../intakes/dto/void-document.dto';
 import { AuditService } from '../audit/audit.service';
-import { AllocationsService } from '../supplier-balance/allocations.service';
+import { AllocationsService } from '../supplier-balance/services/allocations';
 import { gt } from '../common/money';
 import { UserRole } from '../users/user-role.enum';
 import type { AuthenticatedUser } from '../auth/jwt.strategy';
@@ -64,10 +64,7 @@ export class IntakeTopUpsService {
     private readonly allocations: AllocationsService,
   ) {}
 
-  async create(
-    actor: AuthenticatedUser,
-    dto: CreateIntakeTopUpDto,
-  ): Promise<IntakeTopUpResponse> {
+  async create(actor: AuthenticatedUser, dto: CreateIntakeTopUpDto): Promise<IntakeTopUpResponse> {
     // Owner only. #61 is written «Як керівник», and the amount is a pricing
     // decision with no operator scenario. The controller's @Auth already says
     // this; the service says it again because the service is what a later
@@ -154,10 +151,16 @@ export class IntakeTopUpsService {
 
     return this.dataSource.transaction(async (m) => {
       const intake = await this.lockSupplierOf(m, id);
-      const topUp = await m.findOne(IntakeTopUp, { where: { id }, lock: { mode: 'pessimistic_write' } });
+      const topUp = await m.findOne(IntakeTopUp, {
+        where: { id },
+        lock: { mode: 'pessimistic_write' },
+      });
       if (!topUp) throw new NotFoundException('Intake top-up not found');
       if (topUp.voided_at) {
-        throw new ConflictException({ message: 'That top-up is already voided', code: 'ALREADY_VOIDED' });
+        throw new ConflictException({
+          message: 'That top-up is already voided',
+          code: 'ALREADY_VOIDED',
+        });
       }
 
       topUp.voided_at = new Date();
@@ -229,7 +232,8 @@ export class IntakeTopUpsService {
     const pointId = resolvePointFilter(actor, query.collection_point_id);
     const qb = this.queryBase(pointId);
 
-    if (query.supplier_id) qb.andWhere('i.supplier_id = :supplierId', { supplierId: query.supplier_id });
+    if (query.supplier_id)
+      qb.andWhere('i.supplier_id = :supplierId', { supplierId: query.supplier_id });
     if (query.intake_id) qb.andWhere('t.intake_id = :intakeId', { intakeId: query.intake_id });
     if (!query.include_voided) qb.andWhere('t.voided_at IS NULL');
 

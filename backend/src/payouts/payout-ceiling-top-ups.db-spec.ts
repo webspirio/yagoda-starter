@@ -9,7 +9,7 @@ import { AppModule } from '../app.module';
 import { PayoutsService } from './payouts.service';
 import { IntakesService } from '../intakes/intakes.service';
 import { IntakeTopUpsService } from '../intake-top-ups/intake-top-ups.service';
-import { SupplierBalanceService } from '../supplier-balance/supplier-balance.service';
+import { SupplierDebtQuery } from '../supplier-balance/queries/supplier-debt.query';
 import { PointCashService } from '../point-cash/point-cash.service';
 import { UserRole } from '../users/user-role.enum';
 import type { AuthenticatedUser } from '../auth/jwt.strategy';
@@ -30,7 +30,7 @@ describe('payout ceiling with top-ups (Postgres)', () => {
   let payouts: PayoutsService;
   let intakes: IntakesService;
   let topUps: IntakeTopUpsService;
-  let balance: SupplierBalanceService;
+  let balance: SupplierDebtQuery;
   let pointCash: PointCashService;
   let run: string;
   let pointId: string;
@@ -82,7 +82,7 @@ describe('payout ceiling with top-ups (Postgres)', () => {
     payouts = app.get(PayoutsService);
     intakes = app.get(IntakesService);
     topUps = app.get(IntakeTopUpsService);
-    balance = app.get(SupplierBalanceService);
+    balance = app.get(SupplierDebtQuery);
     pointCash = app.get(PointCashService);
     run = randomUUID().slice(0, 8);
 

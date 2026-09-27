@@ -21,7 +21,8 @@ describe('SupplierBalanceController', () => {
   const debtFor = jest.fn();
   const settlementFor = jest.fn();
   const controller = new SupplierBalanceController(
-    { debtFor, settlementFor } as never,
+    { debtFor } as never,
+    { settlementFor } as never,
     { findOne } as never,
   );
 

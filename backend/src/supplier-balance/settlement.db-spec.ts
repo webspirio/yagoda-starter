@@ -1,8 +1,9 @@
 import { randomUUID } from 'crypto';
 import { DataSource } from 'typeorm';
 import { openTestDataSource } from '../testing/db-harness';
-import { SupplierBalanceService } from './supplier-balance.service';
-import { AllocationsService } from './allocations.service';
+import { SupplierSettlementQuery } from './queries/supplier-settlement.query';
+import { SupplierDebtQuery } from './queries/supplier-debt.query';
+import { AllocationsService } from './services/allocations';
 import { allocationViolations } from '../testing/allocation-invariants';
 import { sub, sum } from '../common/money';
 
@@ -25,9 +26,10 @@ import { sub, sum } from '../common/money';
  *   04.08  P2 100.00  VOIDED
  *   05.08  R4 250.00  (a reopened-shift receipt written AFTER P1 by the clock)
  */
-describe('SupplierBalanceService.settlementFor (Postgres)', () => {
+describe('SupplierSettlementQuery.settlementFor (Postgres)', () => {
   let ds: DataSource;
-  let service: SupplierBalanceService;
+  let service: SupplierSettlementQuery;
+  let debtQuery: SupplierDebtQuery;
   let run: string;
   let userId: string;
   let supplierId: string;
@@ -105,7 +107,8 @@ describe('SupplierBalanceService.settlementFor (Postgres)', () => {
 
   beforeAll(async () => {
     ds = await openTestDataSource();
-    service = new SupplierBalanceService(ds);
+    debtQuery = new SupplierDebtQuery(ds);
+    service = new SupplierSettlementQuery(ds, debtQuery);
     run = randomUUID();
     const short = run.slice(0, 4).toUpperCase();
 
@@ -160,7 +163,11 @@ describe('SupplierBalanceService.settlementFor (Postgres)', () => {
   it('queues live lines by (business_date, created_at, id) with the top-up behind its parent', async () => {
     const s = await service.settlementFor(supplierId);
     expect(s.lines.map((l) => l.id)).toEqual([ids.r1, ids.t1, ids.r3, ids.r4]);
-    expect(s.lines[1]).toMatchObject({ kind: 'top_up', business_date: '2026-07-12', intake_id: ids.r1 });
+    expect(s.lines[1]).toMatchObject({
+      kind: 'top_up',
+      business_date: '2026-07-12',
+      intake_id: ids.r1,
+    });
   });
 
   it('excludes the voided receipt, its top-up and the voided payout', async () => {
@@ -190,7 +197,7 @@ describe('SupplierBalanceService.settlementFor (Postgres)', () => {
     const s = await service.settlementFor(supplierId);
     expect(s.debt).toBe('650.00');
     expect(sub(sum(s.lines.map((l) => l.open)), s.unallocated)).toBe(s.debt);
-    await expect(service.debtFor(supplierId)).resolves.toBe(s.debt);
+    await expect(debtQuery.debtFor(supplierId)).resolves.toBe(s.debt);
   });
 
   it('holds the four allocation invariants', async () => {
