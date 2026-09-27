@@ -36,7 +36,7 @@ describe('generated history', () => {
   });
 
   /**
-   * The db-spec proves no seeded balance is negative, and `CreatePayoutCommand`
+   * The db-spec proves no seeded balance is negative, and `PayoutWriter.write`
    * enforces a real ceiling, so a generated payout above what the supplier is
    * owed would fail the seed outright. The ceiling used here (gross times the
    * whole-hryvnia price) is ABOVE the server's own figure, which works on net
