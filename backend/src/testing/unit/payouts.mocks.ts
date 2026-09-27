@@ -72,7 +72,7 @@ export const dto = (over: Record<string, unknown> = {}) => ({
 
 export function makePayoutsMocks() {
   const manager = {
-    // The supplier row lock, then `nextDocumentCode`'s advisory lock and count (two payouts
+    // `nextDocumentCode`'s advisory lock and count (two payouts
     // already in this shift, so the next is 003).
     query: jest
       .fn()

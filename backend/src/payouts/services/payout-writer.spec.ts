@@ -52,6 +52,8 @@ describe('PayoutWriter', () => {
         }),
         manager,
       );
+      // §4.2 — the writer takes no supplier lock; that is the caller's job.
+      expect(allocations.lockSupplier).not.toHaveBeenCalled();
     });
 
     it('leaves intake_id null for a standalone payout — «Видати без ягоди»', async () => {

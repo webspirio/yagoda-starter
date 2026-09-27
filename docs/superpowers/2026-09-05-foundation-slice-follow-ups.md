@@ -675,8 +675,8 @@ doubled every point's starting cash); the un-anchored formula still standing in
   says «a day with no shift», and that undersells it — most evenings qualify.**
 
 - **The void reason is trimmed by one service out of three.**
-  `TransfersService.void` writes `dto.reason.trim()`; `IntakesService.void` and
-  `PayoutsService.void` write `dto.reason` as it arrived. `VoidDocumentDto`'s
+  `TransfersService.void` writes `dto.reason.trim()`; `VoidIntakeCommand.void` and
+  `VoidPayoutCommand.void` write `dto.reason` as it arrived. `VoidDocumentDto`'s
   `@Matches(/\S/)` now guarantees all three store a reason with something in it,
   so nothing is broken — but the stored value differs by module, and the DTO's
   comment had to be corrected because it claimed trimming was a codebase-wide

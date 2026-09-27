@@ -26,7 +26,8 @@ let ownerToken: string;
 
 /**
  * §3.6 IN FULL, under REAL concurrency — the finding behind PR #137's review:
- * before the fix, `PayoutWriter.write` read `PointCashService.cashFor` and checked
+ * before the fix, the payout writer (then `PayoutsService.writePayout`) read
+ * `PointCashService.cashFor` and checked
  * `PAYOUT_EXCEEDS_CASH` BEFORE `nextDocumentCode`'s advisory lock, guarded
  * only by `FOR UPDATE` on the SUPPLIER row. That lock is a per-supplier
  * mutex, so two payouts to two DIFFERENT suppliers at one point never
@@ -52,7 +53,8 @@ let ownerToken: string;
  * several milliseconds AFTER the first request has already committed — long
  * outside the window the bug needs, so the race silently fails to reproduce
  * even against the unfixed code (confirmed empirically while writing this
- * spec: the bare pattern passed 5/5 runs against the pre-fix `PayoutWriter.write`).
+ * spec: the bare pattern passed 5/5 runs against the pre-fix payout writer, then
+ * `PayoutsService.writePayout`).
  * Reusing two already-established sockets removes that connection-setup tax
  * from the timing entirely, which is what makes the reproduction reliable.
  */

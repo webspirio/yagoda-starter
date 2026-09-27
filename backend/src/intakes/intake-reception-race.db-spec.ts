@@ -32,7 +32,7 @@ let operatorToken: string;
  * are genuinely concurrent: Nest handles them on the same event loop, but the
  * database work each one awaits interleaves, which is exactly the window the
  * `intakes` advisory lock (`nextDocumentCode`) and the supplier row lock
- * (`PayoutWriter.write`) exist to close. WHICH of the two requests wins that lock is
+ * (`AllocationsService.withinSupplierLedger`) exist to close. WHICH of the two requests wins that lock is
  * not deterministic — Postgres makes no ordering promise for two backends
  * blocked on the same `pg_advisory_xact_lock` — so every assertion below reads
  * the pair as a SET, never by array position, even where the lock happens to
