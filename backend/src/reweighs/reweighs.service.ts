@@ -71,7 +71,7 @@ export class ReweighsService {
       // win over an unknown tare type, or §8.1's own example is reachable only
       // once everything else about the request is already valid. Resolved
       // INSIDE the transaction (and through `m`) for the same reason
-      // `IntakesService.snapshotTare` is — the snapshot and the line it is
+      // `PriceIntakeQuery.snapshotTare` is — the snapshot and the line it is
       // snapshotted onto are one atomic read-then-write, not two.
       const tareWeight = await this.resolveTareWeight(dto, m);
 

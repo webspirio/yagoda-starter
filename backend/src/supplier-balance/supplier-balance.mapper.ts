@@ -14,7 +14,7 @@ export function toSupplierBalanceResponse(
   return { supplier_id, debt };
 }
 
-/** The row `SupplierBalanceService.list` projects — `debt` already `::text`. */
+/** The row `ListSupplierBalancesQuery.list` projects — `debt` already `::text`. */
 export interface SupplierBalanceRow {
   supplier_id: string;
   first_name: string;

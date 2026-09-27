@@ -152,7 +152,7 @@ export class CratesService {
    * §6.5 — the oldest issuance first, at the price it was taken at. The
    * operator chooses nothing.
    *
-   * THE SUPPLIER ROW IS LOCKED FIRST, exactly as `PayoutsService.writePayout` locks
+   * THE SUPPLIER ROW IS LOCKED FIRST, exactly as `PayoutWriter.write` locks
    * it: the tranches are a read-then-write over a derived sum, and no CHECK can
    * express «not more than is outstanding». Without the lock two returns in
    * flight both read `remaining = 20`, both allocate it, and the supplier is
@@ -315,7 +315,7 @@ export class CratesService {
 
   /**
    * §9.4 AS AMENDED BY THE CLIENT, 2026-09-15 — and the amendment is the whole
-   * reason this is not `PayoutsService.loadForWrite`.
+   * reason this is not `LoadVisiblePayoutQuery.load`.
    *
    * The rules table says «ящиковий документ → тільки керівник». The client
    * relaxed it: an operator may void ANY crate document at their OWN point

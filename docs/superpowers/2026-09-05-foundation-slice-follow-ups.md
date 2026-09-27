@@ -1269,3 +1269,23 @@ decision rather than guessing whether something was missed.
   the allocations slice as an adjacent module.
 - **No UI shows allocation history (voided rows).** `GET /suppliers/:id/settlement` serves live
   rows only.
+
+## 2026-09-27 — allocations-cluster refactor
+
+Spec `docs/superpowers/specs/2026-09-27-allocations-cluster-refactor-design.md`, §7.
+
+1. **`SHIFT_CLOSED` message drift between intakes and payouts.** Intakes reply «That shift is
+   closed — ask the network owner to void it», payouts reply «That shift is closed — ask the
+   network owner». Client-visible, so left as is.
+2. **«Supplier exists, is visible, is at this point, is active» is duplicated** in
+   `PriceIntakeQuery.target` and `CreatePayoutCommand.create`; its home is the `suppliers`
+   module.
+3. **The same §9.4 / supplier-lock / unique-violation copies remain** in `transfers`, `crates`
+   (with its 2026-09-15 carve-out) and `cash-counts` — candidates for the next refactor passes,
+   along with `reweighs`/`day-costs` and `point-cash`.
+4. **Two stale comments survive in the zero-edit pipeline specs.** `testing/documents-pipeline.db-spec.ts`
+   still names the pre-refactor symbols: ~line 969 says `PayoutsService.writePayout` (now
+   `PayoutWriter.write`), and ~line 1075 says `IntakeTopUpsService` (now
+   `CreateIntakeTopUpCommand`/`VoidIntakeTopUpCommand`, depending on which write the sentence
+   means). Left alone because `testing/*pipeline.db-spec.ts` is a zero-edit surface for this
+   refactor; fix in whichever change next touches that file.

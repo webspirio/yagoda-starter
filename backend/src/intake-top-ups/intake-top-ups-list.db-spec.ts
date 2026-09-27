@@ -14,7 +14,7 @@ import type { AuthenticatedUser } from '../auth/jwt.strategy';
  * `intake_top_ups → intakes → suppliers.collection_point_id`, and a unit spec
  * can only assert the text of that.
  */
-describe('IntakeTopUpsService.list (Postgres)', () => {
+describe('ListIntakeTopUpsQuery.list (Postgres)', () => {
   let ds: DataSource;
   let service: ListIntakeTopUpsQuery;
   let run: string;

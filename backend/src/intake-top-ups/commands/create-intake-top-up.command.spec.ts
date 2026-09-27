@@ -107,7 +107,7 @@ describe('CreateIntakeTopUpCommand', () => {
   });
 
   it('refuses a DEACTIVATED supplier — the debt would be unpayable', async () => {
-    // `PayoutsService.create` refuses `SUPPLIER_INACTIVE`, so a top-up written
+    // `CreatePayoutCommand.create` refuses `SUPPLIER_INACTIVE`, so a top-up written
     // here against a retired card raises a debt the counter cannot settle
     // until someone reactivates the supplier. Refused at the source, with the
     // same code the payout route uses, rather than discovered at the counter.

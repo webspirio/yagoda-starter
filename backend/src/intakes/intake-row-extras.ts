@@ -47,7 +47,7 @@ export function rowExtrasSelects(
       // live allocations — the same figure as its lines on the supplier card.
       // A voided receipt owes nothing. Not `paid_amount`'s complement: older
       // money can close a receipt nothing was handed over with. Same per-line
-      // expression as `RESIDUAL_LINES_SQL` in allocations.service.ts — change both.
+      // expression as `RESIDUAL_LINES_SQL` in services/allocations.ts — change both.
       sql: `(CASE WHEN ${alias}.voided_at IS NOT NULL THEN '0.00' ELSE (
         ${alias}.amount
         - COALESCE((SELECT SUM(a.amount) FROM payout_allocations a
