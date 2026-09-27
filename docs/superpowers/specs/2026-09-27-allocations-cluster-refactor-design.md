@@ -57,12 +57,23 @@ async withinSupplierLedger<T>(m: EntityManager, supplierId: string, work: () => 
 }
 ```
 
-`lockSupplier` and `allocate` become private. `release` stays public — it is about one
-document, called inside `work`. Every debt write (intake create/void, payout create/void,
+`release` stays public — it is about one document, called inside `work`. `lockSupplier` and
+`allocate` also stay public, for one reason found while planning: `seed/dev-seed.ts` and five
+DB specs allocate raw-inserted fixtures directly (the seed also reports `allocate`'s row
+count), and neither is a debt-writing command. No command, query or writer in the four modules
+calls them directly — every command goes through `withinSupplierLedger`, and the method's
+doc comment says so. Every debt write (intake create/void, payout create/void,
 top-up create/void) finds its `supplier_id` itself first — with its own 404, before any
 lock, as today's `lockSupplierOf` copies do — and then wraps its work. The SQL issued and its
 order are unchanged (bar the one re-lock of §4.2). If `work` throws, `allocate` is not called and the transaction rolls
 back, as today.
+
+**A response that reads allocation-derived columns is built after the ledger returns.** An
+intake's `open_amount` (in `intake-row-extras.ts`) sums live `payout_allocations`, and today
+`create` and `void` run `allocate` *before* reading those extras. So `CreateIntakeCommand` and
+`VoidIntakeCommand` return their document from `work` and read the extras after
+`withinSupplierLedger`, still inside the transaction. Building the response inside `work`
+would serve a stale `open_amount`.
 
 ### 3.2 `auth/access/document-access.ts`
 
@@ -70,9 +81,10 @@ Pure functions, no DI, next to `point-scope.ts`:
 
 - `assertCanSee(actor, shift, notFound: string)` — an operator at another point gets
   `NotFoundException(notFound)` (404, never 403); the owner sees everything.
-- `assertCanVoid(actor, { authorId, shift }, messages)` — operator only: not the author →
-  403 `NOT_YOUR_DOCUMENT`; shift closed → 403 `SHIFT_CLOSED`. `authorId: null` skips the
-  author check (payout `settleReturn`, owner-only anyway).
+- `assertCanVoid(actor, { authorId, shift }, shiftClosedMessage)` — operator only: not the
+  author → 403 `NOT_YOUR_DOCUMENT`; shift closed → 403 `SHIFT_CLOSED`. Payout `settleReturn`
+  does not call it: it refuses every non-owner first, so today's `requireAuthor: false`
+  branch is unreachable and is dropped rather than carried.
 
 **Messages stay per module.** Today intakes says «…ask the network owner to void it» and
 payouts «…ask the network owner»; the caller passes its own text so no response changes.
@@ -120,7 +132,7 @@ commands/
     create-payout.command.ts     zero check → point/supplier → tx → ledger → writer.write
     void-payout.command.ts       tx → stub supplier_id → ledger → LoadVisiblePayout(m)
                                  → assertCanVoid → writer.void
-    settle-return.command.ts     owner check → tx → LoadVisiblePayout(m) → state checks
+    settle-return.command.ts     owner check → tx → LoadVisiblePayout(m) → state checks (no assertCanVoid)
                                  → writer.settleReturn   (no ledger: allocations untouched, as today)
 queries/
     load-visible-payout.query.ts {payout, shift}; given `m`, FOR UPDATE
@@ -213,7 +225,9 @@ new files fall under it without a config change.
 
 **Commit order** (seams before consumers):
 1. `document-access.ts` + `unique-violation.ts` with their tests.
-2. `supplier-balance` — queries + `withinSupplierLedger`; callers switched to the ledger.
+2. `supplier-balance` — queries + `withinSupplierLedger`; import paths updated. Each debt
+   writer switches to the ledger in its own module's commit (3–5), so no service is rewritten
+   twice.
 3. `payouts` — `PayoutWriter` + commands/queries.
 4. `intakes`.
 5. `intake-top-ups`.
