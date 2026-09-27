@@ -5,7 +5,7 @@ import { Card } from '@/shared/ui/card';
 import { Eyebrow } from '@/shared/ui/eyebrow';
 import { cn } from '@/shared/lib/cn';
 import { formatTime } from '@/shared/lib/date';
-import { cmp, formatKg, formatUah, sub, sum } from '@/shared/lib/money';
+import { cmp, formatKg, formatUah, sum } from '@/shared/lib/money';
 import { useIntakesQuery } from '@/entities/intake';
 
 /**
@@ -15,9 +15,7 @@ import { useIntakesQuery } from '@/entities/intake';
  * the confirmation that the document landed.
  *
  * A row is READ, not recomputed: `net_kg`, `lines_count`, `supplier_name` and
- * `paid_amount` all arrive already on the `Intake` header, so the only
- * arithmetic here is `sub(amount, paid_amount)` — the one number the header
- * does not carry directly — through `shared/lib/money`.
+ * `open_amount` all arrive already on the `Intake` header.
  */
 export function TodayReceipts({
   shiftId,
@@ -58,11 +56,9 @@ export function TodayReceipts({
       ) : (
         <ul className="max-h-[560px] divide-y divide-border overflow-y-auto">
           {rows.map((row) => {
-            const remainder = sub(row.amount, row.paid_amount);
-            // A VOIDED receipt never owes anything — the amber badge is for
-            // a live document still short of its own amount, matching
-            // `PointStatePanel`'s «Залишків створено», which filters
-            // `voided_at === null` before summing the same subtraction.
+            // The server's open figure (allocations), not amount − paid_amount:
+            // older money can close a receipt nothing was handed over with.
+            const remainder = row.open_amount;
             const hasRemainder = row.voided_at === null && cmp(remainder, '0') === 1;
             return (
               <li key={row.id}>

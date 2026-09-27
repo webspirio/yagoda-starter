@@ -139,6 +139,7 @@ const intake = (
   lines_count: 2,
   supplier_name: 'Ніна Ільчук',
   paid_amount: '0.00',
+  open_amount: '0.00',
   ...over,
 });
 

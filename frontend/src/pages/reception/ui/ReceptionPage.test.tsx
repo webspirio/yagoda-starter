@@ -297,6 +297,7 @@ const CREATED: IntakeDetail = {
   lines_count: 1,
   supplier_name: 'Ніна Ільчук',
   paid_amount: '0.00',
+  open_amount: '1204.00',
   payouts: [],
   received_by_name: 'Оксана Гнатюк',
   items: [
@@ -332,6 +333,7 @@ const intake = (over: Partial<Intake> & Pick<Intake, 'id' | 'code' | 'amount'>):
   lines_count: 1,
   supplier_name: 'Ніна Ільчук',
   paid_amount: '0.00',
+  open_amount: '0.00',
   ...over,
 });
 

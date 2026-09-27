@@ -19,6 +19,9 @@ export interface Intake {
   supplier_name: string;
   /** Σ live payouts handed over with this receipt; '0.00' when none. */
   paid_amount: string;
+  /** Still owed for this receipt and its live top-ups, from the server's
+   *  allocations — not amount − paid_amount; '0.00' once voided. */
+  open_amount: string;
 }
 
 /** One tare line on a receipt item — a tare type and how many units of it. */

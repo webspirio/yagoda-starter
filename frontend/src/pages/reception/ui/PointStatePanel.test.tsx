@@ -74,11 +74,11 @@ const PAYOUTS = [
   { id: 'po2', amount: '500.00', voided_at: '2026-09-21T10:00:00Z' },
 ];
 
-// A full `Intake` per literal — `PointStatePanel` reads only `amount`,
-// `paid_amount` and `voided_at`, but a partial/`Pick`-typed fixture would
+// A full `Intake` per literal — `PointStatePanel` reads only `open_amount`
+// and `voided_at`, but a partial/`Pick`-typed fixture would
 // hide a real `Intake` from ever being tested here (the project's own rule:
 // any `Intake` literal carries `net_kg`, `lines_count`, `supplier_name` and
-// `paid_amount`, not just the fields one caller happens to read).
+// `paid_amount` and `open_amount`, not just the fields one caller happens to read).
 const intake = (over: Partial<Intake> & Pick<Intake, 'id'>): Intake => ({
   code: 'SHP-IN-20260921-00001',
   shift_id: 's1',
@@ -95,11 +95,13 @@ const intake = (over: Partial<Intake> & Pick<Intake, 'id'>): Intake => ({
   supplier_name: 'Ніна Ільчук',
   amount: '0.00',
   paid_amount: '0.00',
+  open_amount: '0.00',
   ...over,
 });
 
 const INTAKES: Intake[] = [
-  intake({ id: 'i1', amount: '1204.00', paid_amount: '204.00', voided_at: null }),
+  // open_amount 700.00, not amount − paid_amount (1000.00): a later payout closed 300 more.
+  intake({ id: 'i1', amount: '1204.00', paid_amount: '204.00', open_amount: '700.00', voided_at: null }),
   intake({
     id: 'i2',
     supplier_name: 'Petro Kotyk',
@@ -107,6 +109,7 @@ const INTAKES: Intake[] = [
     lines_count: 3,
     amount: '5000.00',
     paid_amount: '0.00',
+    open_amount: '5000.00',
     voided_at: '2026-09-21T10:00:00Z',
   }),
 ];
@@ -148,11 +151,11 @@ describe('PointStatePanel — the six figures', () => {
     expect(screen.getByText('Paid out for berries')).toBeInTheDocument();
     expect(screen.getByText('800.00 ₴')).toBeInTheDocument();
 
-    // Only the LIVE intake's remainder (1204.00 − 204.00 = 1000.00) counts.
-    expect(screen.getByText('New balance created')).toBeInTheDocument();
-    const newDebt = screen.getByText('1,000.00 ₴');
-    expect(newDebt).toBeInTheDocument();
-    expect(newDebt).toHaveClass('text-amber');
+    // Only the LIVE intake's open_amount (700.00) counts — the voided one's is excluded.
+    expect(screen.getByText("Open on today's receipts")).toBeInTheDocument();
+    const openToday = screen.getByText('700.00 ₴');
+    expect(openToday).toBeInTheDocument();
+    expect(openToday).toHaveClass('text-amber');
 
     expect(screen.getByText('Allotment')).toBeInTheDocument();
     expect(screen.getByText('40 crates')).toBeInTheDocument();
@@ -169,11 +172,23 @@ describe('PointStatePanel — the six figures', () => {
 
   it('does not tone the new-balance figure amber when nothing is outstanding', () => {
     intakesMock.mockReturnValue(
-      page([{ id: 'i1', amount: '1000.00', paid_amount: '1000.00', voided_at: null }]),
+      page([intake({ id: 'i1', amount: '1000.00', paid_amount: '1000.00', open_amount: '0.00' })]),
     );
     renderPanel();
     const zero = screen.getByText('0.00 ₴');
     expect(zero).not.toHaveClass('text-amber');
+  });
+
+  it('never goes negative when cash handed over with a receipt also closed older debt', () => {
+    intakesMock.mockReturnValue(
+      page([
+        intake({ id: 'i1', amount: '500.00', paid_amount: '1200.00', open_amount: '0.00' }),
+        intake({ id: 'i2', amount: '300.00', paid_amount: '0.00', open_amount: '300.00' }),
+      ]),
+    );
+    renderPanel();
+    // amount − paid_amount would read −400.00; the open figures sum to 300.00.
+    expect(screen.getByText('300.00 ₴')).toBeInTheDocument();
   });
 
   it('reads «наділу цій точці ще не призначали» when the point has no target', () => {
@@ -197,7 +212,7 @@ describe('PointStatePanel — a truncated page (100+ documents in one shift)', (
     expect(tile).toHaveTextContent('first 100 documents');
   });
 
-  it('captions «New balance created» when only the intakes page is truncated, and leaves «Paid out for berries» alone', () => {
+  it("captions «Open on today's receipts» when only the intakes page is truncated, and leaves «Paid out for berries» alone", () => {
     intakesMock.mockReturnValue({
       data: { data: INTAKES, total: INTAKES.length + 50, page: 1, limit: 100 },
       isPending: false,
@@ -206,8 +221,8 @@ describe('PointStatePanel — a truncated page (100+ documents in one shift)', (
     renderPanel();
 
     expect(screen.getAllByText('first 100 documents')).toHaveLength(1);
-    const newDebtTile = screen.getByText('New balance created').parentElement;
-    expect(newDebtTile).toHaveTextContent('first 100 documents');
+    const openTodayTile = screen.getByText("Open on today's receipts").parentElement;
+    expect(openTodayTile).toHaveTextContent('first 100 documents');
     const paidOutTile = screen.getByText('Paid out for berries').parentElement;
     expect(paidOutTile).not.toHaveTextContent('first 100 documents');
   });

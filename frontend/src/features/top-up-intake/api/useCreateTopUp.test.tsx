@@ -5,7 +5,7 @@ import MockAdapter from 'axios-mock-adapter';
 import type { ReactNode } from 'react';
 import { httpClient } from '@/shared/api';
 import { queryKeys } from '@/shared/api/queryKeys';
-import { useCreatePayoutMutation } from './useCreatePayout';
+import { useCreateTopUpMutation } from './useCreateTopUp';
 
 let mock: MockAdapter;
 let queryClient: QueryClient;
@@ -19,27 +19,19 @@ beforeEach(() => {
 });
 afterEach(() => mock.restore());
 
-describe('useCreatePayoutMutation', () => {
-  it('posts the payout and invalidates payouts, supplier balances AND point cash', async () => {
-    mock.onPost('/payouts').reply(201, { id: 'pay1' });
+describe('useCreateTopUpMutation', () => {
+  it('posts the top-up and invalidates top-ups, balances and intakes', async () => {
+    mock.onPost('/intake-top-ups').reply(201, { id: 't1' });
     const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries');
-    const { result } = renderHook(() => useCreatePayoutMutation(), { wrapper });
+    const { result } = renderHook(() => useCreateTopUpMutation(), { wrapper });
 
-    await result.current.mutateAsync({ supplier_id: 's1', amount: '300.00' });
+    await result.current.mutateAsync({ intake_id: 'i1', amount: '200.00', reason: 'ціна' });
 
-    expect(mock.history.post).toHaveLength(1);
-    expect(mock.history.post[0].url).toBe('/payouts');
-    expect(JSON.parse(mock.history.post[0].data as string)).toEqual({
-      supplier_id: 's1',
-      amount: '300.00',
-    });
-    // A payout is a term of the drawer formula: «Каса точки» must not keep
-    // the pre-payout `cash` for `STALE.list` after the operator walks back.
+    expect(mock.history.post[0].url).toBe('/intake-top-ups');
     await waitFor(() => {
-      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: queryKeys.payouts });
+      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: queryKeys.intakeTopUps });
       expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: queryKeys.supplierBalances });
-      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: queryKeys.pointCash });
-      // A payout allocates onto open receipts, so their open_amount moves.
+      // The parent receipt's open_amount now includes this top-up.
       expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: queryKeys.intakes });
     });
   });

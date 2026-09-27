@@ -26,10 +26,13 @@ const intake = (over: Partial<Intake> & Pick<Intake, 'id' | 'created_at'>): Inta
   supplier_name: '—',
   amount: '0.00',
   paid_amount: '0.00',
+  open_amount: '0.00',
   ...over,
 });
 
-// Ніна's receipt: two lines, a partial cash payout, so «залишок» reads.
+// Ніна's receipt: two lines, a partial cash payout, and a later payout that
+// closed 2000.00 more — so «залишок» reads the server's open_amount (3000.00),
+// not amount − paid_amount (5000.00).
 const NINA = intake({
   id: 'i1',
   created_at: '2026-09-21T09:15:00Z',
@@ -38,6 +41,7 @@ const NINA = intake({
   lines_count: 2,
   amount: '15000.00',
   paid_amount: '10000.00',
+  open_amount: '3000.00',
 });
 
 // Voided, single line, fully paid — proves the voided styling AND that a
@@ -65,9 +69,8 @@ const OLEH = intake({
   paid_amount: '500.00',
 });
 
-// Voided, but would owe a «залишок» if it were live (100.00 amount, nothing
-// paid) — proves the amber badge is gated on `voided_at === null`, not just
-// on the arithmetic.
+// Voided, with a non-zero open_amount the server would never send — proves
+// the amber badge is gated on `voided_at === null` too, not only on the figure.
 const VOIDED_WITH_GAP = intake({
   id: 'i4',
   created_at: '2026-09-21T06:00:00Z',
@@ -76,7 +79,20 @@ const VOIDED_WITH_GAP = intake({
   lines_count: 1,
   amount: '100.00',
   paid_amount: '0.00',
+  open_amount: '100.00',
   voided_at: '2026-09-21T11:00:00Z',
+});
+
+// Nothing handed over with it, yet closed by money left from an earlier visit.
+const CLOSED_BY_OLD_MONEY = intake({
+  id: 'i5',
+  created_at: '2026-09-21T12:00:00Z',
+  supplier_name: 'Olena Hrab',
+  net_kg: '8.00',
+  lines_count: 1,
+  amount: '800.00',
+  paid_amount: '0.00',
+  open_amount: '0.00',
 });
 
 const page = (data: Intake[]) => ({
@@ -99,7 +115,7 @@ describe('TodayReceipts — a row reads like the mock', () => {
     expect(screen.getByText('2 positions')).toBeInTheDocument();
     expect(screen.getByText(formatKg('36.90', 'en'))).toBeInTheDocument();
 
-    const remainder = screen.getByText('remainder ' + formatUah('5000.00', 'en'));
+    const remainder = screen.getByText('remainder ' + formatUah('3000.00', 'en'));
     expect(remainder).toHaveClass('text-amber');
 
     expect(screen.getByText(formatUah('15000.00', 'en'))).toBeInTheDocument();
@@ -131,12 +147,20 @@ describe('TodayReceipts — a row reads like the mock', () => {
     render(<TodayReceipts shiftId="s1" onOpen={vi.fn()} />);
 
     // The live row (Ніна) still reads its remainder…
-    expect(screen.getByText('remainder ' + formatUah('5000.00', 'en'))).toBeInTheDocument();
-    // …but the voided row's own would-be remainder (100.00 − 0.00) does not.
+    expect(screen.getByText('remainder ' + formatUah('3000.00', 'en'))).toBeInTheDocument();
+    // …but the voided row's open figure does not.
     expect(screen.getByText('Iryna Sokil')).toBeInTheDocument();
     expect(
       screen.queryByText('remainder ' + formatUah('100.00', 'en')),
     ).not.toBeInTheDocument();
+  });
+
+  it('reads the open figure from allocations: no remainder on a receipt older money already closed', () => {
+    intakesMock.mockReturnValue(page([CLOSED_BY_OLD_MONEY]));
+    render(<TodayReceipts shiftId="s1" onOpen={vi.fn()} />);
+
+    expect(screen.getByText('Olena Hrab')).toBeInTheDocument();
+    expect(screen.queryByText(/remainder/)).not.toBeInTheDocument();
   });
 
   it('scrolls a tall list instead of growing the page', () => {

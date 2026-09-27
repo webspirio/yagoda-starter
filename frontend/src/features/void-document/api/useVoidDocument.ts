@@ -41,14 +41,12 @@ const DOCUMENTS: Record<VoidDocumentInput['kind'], VoidDescriptor> = {
     path: (id) => `/transfers/${id}/void`,
     invalidates: [queryKeys.transfers, queryKeys.pointCash],
   },
-  // A TOP-UP HAS NO SHIFT, so `intakes` and `payouts` are untouched by voiding
-  // one — the third kind of key set, not a copy of either. What moves is the
-  // supplier's debt, and voiding a top-up that was ALREADY PAID OUT drives that
-  // debt negative. That is legal: the money left the drawer, so the balance
-  // must show it, exactly as a voided receipt does.
+  // A TOP-UP HAS NO SHIFT, so `payouts` are untouched by voiding one. What
+  // moves is the supplier's debt (legally negative if it was already paid
+  // out) and the parent receipt's `open_amount`, which counts its top-ups.
   topUp: {
     path: (id) => `/intake-top-ups/${id}/void`,
-    invalidates: [queryKeys.intakeTopUps, queryKeys.supplierBalances],
+    invalidates: [queryKeys.intakeTopUps, queryKeys.supplierBalances, queryKeys.intakes],
   },
   // CRATES ARE NOT MONEY OWED FOR BERRIES, so neither of these touches
   // `supplierBalances` — a person can owe twenty crates and be owed nothing for

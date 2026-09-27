@@ -60,6 +60,20 @@ describe('useVoidDocumentMutation', () => {
     });
   });
 
+  it('voiding a top-up refreshes intakes: the parent receipt\'s open_amount moves', async () => {
+    mock.onPost('/intake-top-ups/t1/void').reply(200);
+    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries');
+    const { result } = renderHook(() => useVoidDocumentMutation(), { wrapper });
+
+    await result.current.mutateAsync({ kind: 'topUp', id: 't1', reason: 'mistake' });
+
+    await waitFor(() => {
+      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: queryKeys.intakes });
+      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: queryKeys.intakeTopUps });
+      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: queryKeys.supplierBalances });
+    });
+  });
+
   it('posts to /transfers/:id/void for a transfer', async () => {
     mock.onPost('/transfers/t1/void').reply(200);
     const { result } = renderHook(() => useVoidDocumentMutation(), { wrapper });

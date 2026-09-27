@@ -898,7 +898,7 @@
       "openingCash": "Counted this morning",
       "currentCash": "In the berry drawer now",
       "paidOut": "Paid out for berries",
-      "newDebt": "New balance created",
+      "openToday": "Open on today's receipts",
       "allotment": "Allotment",
       "allotmentValue_one": "{{count}} crate",
       "allotmentValue_other": "{{count}} crates",

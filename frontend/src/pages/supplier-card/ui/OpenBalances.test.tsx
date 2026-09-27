@@ -33,6 +33,7 @@ const receipt = (id: string): Intake => ({
   lines_count: 1,
   supplier_name: 'Ніна Ільчук',
   paid_amount: '0.00',
+  open_amount: '0.00',
 });
 
 describe('OpenBalances', () => {

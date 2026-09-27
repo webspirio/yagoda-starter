@@ -920,7 +920,7 @@
       "openingCash": "На ранок порахували",
       "currentCash": "У касі за ягоду зараз",
       "paidOut": "Видано за ягоду",
-      "newDebt": "Залишків створено",
+      "openToday": "Відкрито за сьогоднішніми квитанціями",
       "allotment": "Наділ",
       "allotmentValue_one": "{{count}} ящик",
       "allotmentValue_few": "{{count}} ящики",

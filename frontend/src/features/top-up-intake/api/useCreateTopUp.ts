@@ -17,10 +17,10 @@ export interface CreateTopUpInput {
  * against an ALREADY-RECORDED receipt, when a price was renegotiated after the
  * fact.
  *
- * INVALIDATES `intakeTopUps` AND `supplierBalances`, and nothing else. The
- * balance is the entire reason the row exists — `Σ intakes + Σ top-ups −
- * Σ payouts` — while `intakes` and `payouts` are untouched: a top-up has no
- * shift and joins the world only through its parent receipt.
+ * INVALIDATES `intakeTopUps`, `supplierBalances` and `intakes`. The balance
+ * is the entire reason the row exists — `Σ intakes + Σ top-ups − Σ payouts`;
+ * `intakes` because the parent receipt's `open_amount` counts its top-ups.
+ * `payouts` are untouched: a top-up has no shift.
  */
 export function useCreateTopUpMutation() {
   const qc = useQueryClient();
@@ -32,6 +32,7 @@ export function useCreateTopUpMutation() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: queryKeys.intakeTopUps });
       qc.invalidateQueries({ queryKey: queryKeys.supplierBalances });
+      qc.invalidateQueries({ queryKey: queryKeys.intakes });
     },
   });
 }

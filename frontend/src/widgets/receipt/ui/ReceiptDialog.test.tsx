@@ -119,6 +119,7 @@ function buildIntake(overrides: Partial<IntakeDetail> = {}): IntakeDetail {
     lines_count: 2,
     supplier_name: 'Ніна Ільчук',
     paid_amount: '0.00',
+    open_amount: '0.00',
     payouts: [],
     received_by_name: 'Оксана Гнатюк',
     items: [
