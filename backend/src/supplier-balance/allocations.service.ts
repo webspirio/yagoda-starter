@@ -4,7 +4,8 @@ import { settle, DebtLine, PayoutLine } from './settlement';
 
 export type ReleaseTarget = { payoutId: string } | { intakeId: string } | { topUpId: string };
 
-/** What is still open on each live line, queue-ordered. A top-up queues under its parent's date. */
+/** What is still open on each live line, queue-ordered. A top-up queues under its parent's date.
+ *  `intake-row-extras.ts` `open_amount` sums the same expression per receipt — change both. */
 const RESIDUAL_LINES_SQL = `
   SELECT r.id, r.kind, r.code, r.intake_id, r.business_date::text AS business_date,
          r.created_at::text AS created_at, r.open::text AS amount

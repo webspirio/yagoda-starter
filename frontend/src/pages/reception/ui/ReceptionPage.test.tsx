@@ -886,9 +886,8 @@ describe("ReceptionPage — the supplier's history and today's badge", () => {
     renderReception();
 
     // Scoped to the receipts card itself: `PointStatePanel` reads the SAME
-    // `useIntakesQuery({ shiftId })` for its own «Залишків створено» figure,
-    // and this fixture's live receipt (200.00 − 0.00 paid) prints the same
-    // «200.00 ₴» there too.
+    // `useIntakesQuery({ shiftId })` for its own «Відкрито за сьогоднішніми
+    // квитанціями» tile, so an amount could print there too.
     const card = screen.getByText("Today's receipts").closest('[data-slot="card"]');
     const scoped = within(card as HTMLElement);
 

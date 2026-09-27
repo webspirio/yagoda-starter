@@ -136,7 +136,7 @@ beforeEach(() => {
 });
 
 describe('PointStatePanel — the six figures', () => {
-  it('reads the berry drawer, the morning count, payouts, new balance, allotment and crates out', () => {
+  it('reads the berry drawer, the morning count, payouts, open on today, allotment and crates out', () => {
     renderPanel();
 
     expect(screen.getByText('In the berry drawer now')).toBeInTheDocument();
@@ -170,7 +170,7 @@ describe('PointStatePanel — the six figures', () => {
     expect(screen.getByText('—')).toBeInTheDocument();
   });
 
-  it('does not tone the new-balance figure amber when nothing is outstanding', () => {
+  it('does not tone the open-on-today figure amber when nothing is outstanding', () => {
     intakesMock.mockReturnValue(
       page([intake({ id: 'i1', amount: '1000.00', paid_amount: '1000.00', open_amount: '0.00' })]),
     );

@@ -357,6 +357,25 @@ describe('allocation write paths (HTTP, Postgres)', () => {
       expect(await cardOpenOf(r)).toBe('400.00');
     });
 
+    it('a voided top-up drops out, and the money it freed shows on the next receipt', async () => {
+      const r = (await receipt(s, '6.20').expect(201)).body.id; // 500
+      const t = (
+        await as(ownerToken)
+          .post('/intake-top-ups', { intake_id: r, amount: '200.00', reason: 'ціна' })
+          .expect(201)
+      ).body.id;
+      await as(operatorToken).post('/payouts', { supplier_id: s, amount: '700.00' }).expect(201);
+      expect(await openOf(r)).toBe('0.00');
+
+      await as(ownerToken).post(`/intake-top-ups/${t}/void`, { reason: 'x' }).expect(201);
+      expect(await openOf(r)).toBe('0.00');
+      expect(await cardOpenOf(r)).toBe('0.00');
+
+      const r2 = (await receipt(s, '4.20').expect(201)).body; // 300, picks up the freed 200
+      expect(r2.open_amount).toBe('100.00');
+      expect(await cardOpenOf(r2.id)).toBe('100.00');
+    });
+
     it('a voided receipt is 0.00', async () => {
       const r = (await receipt(s, '6.20').expect(201)).body.id;
       const voided = (
