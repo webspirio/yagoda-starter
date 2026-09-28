@@ -1,5 +1,6 @@
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/shared/lib/cn';
+import { reportError } from '@/shared/lib/error-reporting';
 import { switchLanguage } from '@/shared/lib/i18n';
 import { SUPPORTED_LANGUAGES, storeLanguage } from '@/shared/lib/i18n/language-preference';
 import { Segmented } from './segmented';
@@ -25,8 +26,12 @@ export function LanguageSwitcher({ className }: { className?: string }) {
 
   const active = i18n.resolvedLanguage as (typeof SUPPORTED_LANGUAGES)[number] | undefined;
   const set = (code: string) => {
-    void switchLanguage(code); // fetches English first when it is not loaded yet
-    storeLanguage(code);
+    // Fetches English first when it is not loaded yet. Stored only once the
+    // switch succeeded: a persisted `en` whose chunk failed would make every
+    // later start wait on the same failing fetch.
+    switchLanguage(code)
+      .then(() => storeLanguage(code))
+      .catch((error: unknown) => reportError(error, { type: 'languageSwitch', code }));
   };
   const options = SUPPORTED_LANGUAGES.map((code) => ({ value: code, label: t(`lang.${code}`) }));
 

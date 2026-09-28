@@ -1322,11 +1322,12 @@ Spec `docs/superpowers/specs/2026-09-27-allocations-cluster-refactor-design.md`,
    /payouts/:id/void`.** The formula is proven with raw rows and via the intake-void path, but
    not by hitting the payout-void route directly and reading the shift's expected cash after.
    Fix: add that one db-spec case alongside the existing open-shift void coverage.
-6. **Bundle first-load headroom is 0.1 KiB raw under the ceiling (1059.9/1060.0 KiB)** — the
-   next frontend slice of any size will trip the `bundle` verify row. Fix direction: move
-   `frontend/src/shared/lib/i18n/locales/en.json` (≈55 KiB raw, the fallback language) out of
-   the first load; the budget file's own reasoning is to shrink the first load, never to raise
-   the ceiling.
+6. **CLOSED (`d819e92`, 2026-09-28).** ~~**Bundle first-load headroom is 0.1 KiB raw under
+   the ceiling (1059.9/1060.0 KiB)** — move `en.json` out of the first load.~~ English is now a
+   deferred chunk; the first load fell to 1017.8 KiB raw / 290.8 KiB gzip.
+   **Still open:** first-load headroom is 13.9 KiB gzip / 41.1 KiB raw, still below the
+   budget's designed 25 KiB / 100 KiB minimum — shrink the first load further, never raise the
+   ceiling.
 7. **Smaller test/UX gaps left as found:** `VoidConsequences`' error text lacks `role="alert"`;
    the payout-void dialog's tests are thin (no closed-shift-payout case, no reopened-shift
    case); `payout-decision.spec` doesn't exercise `(true, false, undefined)` for its decision
