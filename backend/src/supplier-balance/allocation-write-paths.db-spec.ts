@@ -94,6 +94,7 @@ afterAll(async () => {
 describe('allocation write paths (HTTP, Postgres)', () => {
   let gradeId: string;
   let crateId: string;
+  let shiftId: string;
 
   beforeAll(async () => {
     // The catalog this point uses. Names carry a per-run uuid: app_test
@@ -137,11 +138,12 @@ describe('allocation write paths (HTTP, Postgres)', () => {
 
     // §6.1 — opening counts the drawer in the same request. A big drawer so
     // the cash ceiling never bites in this file; Task 4 adds more describes.
-    await request(app.getHttpServer())
+    const shiftRes = await request(app.getHttpServer())
       .post('/shifts')
       .set('Authorization', `Bearer ${operatorToken}`)
       .send({ counted_amount: '100000.00' })
       .expect(201);
+    shiftId = shiftRes.body.id as string;
   }, 30_000);
 
   const http = () => request(app.getHttpServer());
@@ -149,6 +151,20 @@ describe('allocation write paths (HTTP, Postgres)', () => {
     post: (url: string, body: object) =>
       http().post(url).set('Authorization', `Bearer ${token}`).send(body),
   });
+  /**
+   * `keep` exists only in a closed shift (2026-09-28): close the day, let the owner act, reopen.
+   * The reopen is plumbing so the next receipt can be written.
+   */
+  const inClosedShift = async (act: () => Promise<unknown>) => {
+    await as(operatorToken)
+      .post(`/shifts/${shiftId}/close`, { counted_amount: '100000.00', broken_crates: 0 })
+      .expect(201);
+    try {
+      await act();
+    } finally {
+      await as(ownerToken).post(`/shifts/${shiftId}/reopen`, { reason: 'тест' }).expect(201);
+    }
+  };
   const violations = (supplierId: string) => ds.transaction((m) => allocationViolations(m, supplierId));
   // Ordered by the COVERED LINE's created_at, not the allocation row's: a
   // single `allocate()` call inserts every row for one supplier in the same
@@ -258,7 +274,9 @@ describe('allocation write paths (HTTP, Postgres)', () => {
     it('void with keep frees the bound payout, and the next receipt picks that money up', async () => {
       const r1 = (await receipt(s, '6.20', '500.00').expect(201)).body;
       const p1 = r1.payouts[0].id as string;
-      await as(operatorToken).post(`/intakes/${r1.id}/void`, { reason: 'x', payout: 'keep' }).expect(201);
+      await inClosedShift(() =>
+        as(ownerToken).post(`/intakes/${r1.id}/void`, { reason: 'x', payout: 'keep' }).expect(201),
+      );
       expect(await liveRows(s)).toEqual([]);
       expect(await violations(s)).toEqual([]);
 
@@ -271,7 +289,8 @@ describe('allocation write paths (HTTP, Postgres)', () => {
 
     it('void with payout void releases both documents', async () => {
       const r = (await receipt(s, '6.20', '500.00').expect(201)).body.id;
-      await as(operatorToken).post(`/intakes/${r}/void`, { reason: 'x', payout: 'void' }).expect(201);
+      // Open shift: the bound payout goes with the receipt, no decision taken.
+      await as(operatorToken).post(`/intakes/${r}/void`, { reason: 'x' }).expect(201);
 
       expect(await liveRows(s)).toEqual([]);
       expect(await violations(s)).toEqual([]);
@@ -337,7 +356,10 @@ describe('allocation write paths (HTTP, Postgres)', () => {
 
     it('a receipt closed by money left over from before is not open, though nothing was paid with it', async () => {
       const r1 = (await receipt(s, '6.20', '500.00').expect(201)).body.id;
-      await as(operatorToken).post(`/intakes/${r1}/void`, { reason: 'x', payout: 'keep' }).expect(201);
+      // The leftover money comes from `keep`, which only a closed shift allows.
+      await inClosedShift(() =>
+        as(ownerToken).post(`/intakes/${r1}/void`, { reason: 'x', payout: 'keep' }).expect(201),
+      );
       const r2 = (await receipt(s, '6.20').expect(201)).body; // 500, no cash with it
 
       expect(r2.paid_amount).toBe('0.00');
@@ -423,7 +445,7 @@ describe('allocation write paths (HTTP, Postgres)', () => {
     it('a receipt void against a new payout: no deadlock, invariants hold', async () => {
       const r = (await receipt(s, '6.20', '500.00').expect(201)).body.id;
       const [v, p] = await Promise.all([
-        as(operatorToken).post(`/intakes/${r}/void`, { reason: 'x', payout: 'keep' }),
+        as(operatorToken).post(`/intakes/${r}/void`, { reason: 'x' }),
         as(operatorToken).post('/payouts', { supplier_id: s, amount: '100.00' }),
       ]);
       expect([v.status, p.status]).toEqual([201, 201]); // debt is ≥ 500 whichever lands first
@@ -434,14 +456,14 @@ describe('allocation write paths (HTTP, Postgres)', () => {
       const r = (await receipt(s, '6.20', '500.00').expect(201)).body;
       const p = r.payouts[0].id as string;
       const [iv, pv] = await Promise.all([
-        as(operatorToken).post(`/intakes/${r.id}/void`, { reason: 'x', payout: 'void' }),
+        as(operatorToken).post(`/intakes/${r.id}/void`, { reason: 'x' }),
         as(operatorToken).post(`/payouts/${p}/void`, { reason: 'x' }),
       ]);
-      // Receipt first: it voids the payout and the payout void 409s. Payout first: the
-      // receipt's decision no longer applies (400). Never a 500 — that would be a deadlock.
+      // Receipt first: it takes the payout with it and the payout void 409s. Payout first: the
+      // receipt has nothing bound left and voids alone. Never a 500 — that would be a deadlock.
       expect([
         [201, 409],
-        [400, 201],
+        [201, 201],
       ]).toContainEqual([iv.status, pv.status]);
       const [{ n }] = await ds.query(
         `SELECT count(*)::int AS n FROM audit_log WHERE target_id = $1 AND action = 'payout.voided'`,

@@ -804,11 +804,24 @@ describe('documents pipeline (HTTP)', () => {
         .expect(409);
     });
 
-    it('voids the payout WITHOUT returning the cash', async () => {
+    // A payout voided in an open shift returns its cash at once (2026-09-28); the pending
+    // return this block walks through belongs to a CLOSED shift, voided by the owner.
+    it('voids the payout WITHOUT returning the cash — closed shift, owner', async () => {
+      const current = await request(app.getHttpServer())
+        .get('/shifts/current')
+        .set('Authorization', `Bearer ${operatorToken}`)
+        .expect(200);
+      const shiftId = current.body.id as string;
+      await request(app.getHttpServer())
+        .post(`/shifts/${shiftId}/close`)
+        .set('Authorization', `Bearer ${operatorToken}`)
+        .send({ counted_amount: '5000.00', broken_crates: 0 })
+        .expect(201);
+
       // §9.3 — «сторновано виплату 8 000,00 ₴ → каса НЕ виросла на 8 000».
       const res = await request(app.getHttpServer())
         .post(`/payouts/${payoutId}/void`)
-        .set('Authorization', `Bearer ${operatorToken}`)
+        .set('Authorization', `Bearer ${ownerToken}`)
         .send({ reason: 'видав не тій людині' })
         .expect(201);
 
@@ -816,9 +829,46 @@ describe('documents pipeline (HTTP)', () => {
       expect(res.body.return_settled_at).toBeNull();
       // The voided payout leaves the DEBT formula, so the balance rises again.
       expect(await balanceOf(operatorToken)).toBe('600.00');
+
+      // Plumbing: the rest of this block trades in an open shift again.
+      await request(app.getHttpServer())
+        .post(`/shifts/${shiftId}/reopen`)
+        .set('Authorization', `Bearer ${ownerToken}`)
+        .send({ reason: 'сторно минулої виплати' })
+        .expect(201);
     });
 
-    it('refuses settle-return to the operator who voided it', async () => {
+    it('voids a payout in an OPEN shift WITH the cash back, so there is nothing left to settle', async () => {
+      const created = await request(app.getHttpServer())
+        .post('/payouts')
+        .set('Authorization', `Bearer ${operatorToken}`)
+        .send({ supplier_id: supplierId, amount: '100.00' })
+        .expect(201);
+      const id = created.body.id as string;
+
+      const res = await request(app.getHttpServer())
+        .post(`/payouts/${id}/void`)
+        .set('Authorization', `Bearer ${operatorToken}`)
+        .send({ reason: 'передумав' })
+        .expect(201);
+
+      expect(res.body.voided_at).not.toBeNull();
+      expect(res.body.return_settled_at).not.toBeNull();
+      const [row] = await app
+        .get(DataSource)
+        .query(`SELECT returned_on_void FROM payouts WHERE id = $1`, [id]);
+      expect(row.returned_on_void).toBe(true);
+      expect(await balanceOf(operatorToken)).toBe('600.00');
+
+      const again = await request(app.getHttpServer())
+        .post(`/payouts/${id}/settle-return`)
+        .set('Authorization', `Bearer ${ownerToken}`)
+        .send({})
+        .expect(409);
+      expect(again.body.code).toBe('RETURN_ALREADY_SETTLED');
+    });
+
+    it('refuses settle-return to an operator', async () => {
       // §9.3's loop, kept open: the person holding the drawer is not the person
       // who attests it was refilled — «інакше сторно стає способом красти».
       await request(app.getHttpServer())
