@@ -84,7 +84,7 @@ describe('TransfersService.create', () => {
     // admits `0` on both fields by design (a cash-only run and a crates-only
     // run are both ordinary), so nothing before this line catches the pair,
     // and no `QueryFailedError` mapping exists anywhere in this backend.
-    // Same shape, same reason, as `PayoutsService.create`'s zero check.
+    // Same shape, same reason, as `CreatePayoutCommand.create`'s zero check.
     const { service, repo } = build();
     await expect(
       service.create(owner, { ...dto, cash: '0', crates: 0 } as never),

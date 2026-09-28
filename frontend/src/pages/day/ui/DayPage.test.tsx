@@ -56,7 +56,8 @@ vi.mock('@/entities/shift', () => ({
   useCurrentShiftQuery: (pointId: string | null) => currentShiftMock(pointId),
 }));
 
-vi.mock('@/entities/intake', () => ({
+vi.mock('@/entities/intake', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/entities/intake')>()),
   useIntakesQuery: (filter: unknown) => intakesMock(filter),
 }));
 
@@ -70,9 +71,23 @@ vi.mock('@/entities/supplier', () => ({
     `${s.first_name} ${s.last_name}`,
 }));
 
-vi.mock('@/widgets/receipt', () => ({
-  ReceiptDialog: ({ intakeId, open }: { intakeId: string | null; open: boolean }) =>
-    open ? <div>Receipt for {intakeId}</div> : null,
+vi.mock('@/widgets/receipt', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/widgets/receipt')>()),
+  ReceiptDialog: ({
+    intakeId,
+    open,
+    startWithVoid,
+  }: {
+    intakeId: string | null;
+    open: boolean;
+    startWithVoid?: boolean;
+  }) =>
+    open ? (
+      <div>
+        Receipt for {intakeId}
+        {startWithVoid ? ' (void)' : ''}
+      </div>
+    ) : null,
 }));
 
 vi.mock('@/entities/collection-point', () => ({
@@ -155,11 +170,13 @@ const intake = (over: Partial<Intake> & Pick<Intake, 'id' | 'code' | 'amount'>):
   voided_at: null,
   voided_by_user_id: null,
   void_reason: null,
+  shift_closed: false,
   created_at: '2026-09-08T07:10:00Z',
   net_kg: '36.90',
   lines_count: 2,
   supplier_name: 'Ніна Ільчук',
   paid_amount: '0.00',
+  open_amount: '0.00',
   ...over,
 });
 
@@ -173,6 +190,7 @@ const payout = (over: Partial<Payout> & Pick<Payout, 'id' | 'code' | 'amount'>):
   voided_at: null,
   voided_by_user_id: null,
   void_reason: null,
+  shift_closed: false,
   return_settled_at: null,
   return_settled_by_user_id: null,
   return_note: null,
@@ -437,7 +455,7 @@ describe('DayPage — the operator on an open shift', () => {
     renderDay();
 
     expect(screen.queryByText('Receipt for i1')).toBeNull();
-    await user.click(screen.getByRole('button', { name: /KV-0001/ }));
+    await user.click(screen.getByText('KV-0001'));
     expect(screen.getByText('Receipt for i1')).toBeInTheDocument();
 
     // The payout row carries no button at all — the spec has no document view for it.
@@ -457,6 +475,52 @@ describe('DayPage — the operator on an open shift', () => {
     renderDay();
 
     expect(screen.getByText('Voided: Wrong supplier')).toBeInTheDocument();
+  });
+});
+
+describe('DayPage — «Void» on the feed (§9.4)', () => {
+  const voidButton = (code: string) => screen.queryByRole('button', { name: `Void ${code}` });
+
+  beforeEach(() => {
+    intakesMock.mockReturnValue(
+      page<Intake>([
+        intake({ id: 'i1', code: 'KV-0001', amount: '10.00' }),
+        intake({ id: 'i2', code: 'KV-0002', amount: '20.00', received_by_user_id: 'u9' }),
+        intake({ id: 'i3', code: 'KV-0003', amount: '30.00', voided_at: '2026-09-08T10:05:00Z' }),
+      ]),
+    );
+    payoutsMock.mockReturnValue(page<Payout>([payout({ id: 'y1', code: 'VD-0001', amount: '5.00' })]));
+  });
+
+  it('shows the author their own receipt on an open shift, never another’s or a voided one', () => {
+    renderDay();
+    expect(voidButton('KV-0001')).toBeInTheDocument();
+    expect(voidButton('KV-0002')).toBeNull();
+    expect(voidButton('KV-0003')).toBeNull();
+    expect(voidButton('VD-0001')).toBeNull(); // payout rows never carry it
+  });
+
+  it('hides it from the author once the shift is closed', () => {
+    intakesMock.mockReturnValue(
+      page<Intake>([intake({ id: 'i1', code: 'KV-0001', amount: '10.00', shift_closed: true })]),
+    );
+    renderDay();
+    expect(voidButton('KV-0001')).toBeNull();
+  });
+
+  it('shows the owner every live receipt', () => {
+    meMock.mockReturnValue({ data: OWNER });
+    renderDay();
+    expect(voidButton('KV-0001')).toBeInTheDocument();
+    expect(voidButton('KV-0002')).toBeInTheDocument();
+    expect(voidButton('KV-0003')).toBeNull();
+  });
+
+  it('opens the receipt straight into its void', async () => {
+    const user = userEvent.setup();
+    renderDay();
+    await user.click(voidButton('KV-0001')!);
+    expect(screen.getByText('Receipt for i1 (void)')).toBeInTheDocument();
   });
 });
 

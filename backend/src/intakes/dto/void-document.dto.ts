@@ -22,8 +22,8 @@ export class VoidDocumentDto {
   //
   // WHAT THE STORED VALUE THEN IS varies by service, and this decorator is
   // what makes that variation harmless rather than load-bearing:
-  // `TransfersService.void` writes `dto.reason.trim()`, while `IntakesService`
-  // and `PayoutsService` write `dto.reason` as it arrived. Both now store a
+  // `TransfersService.void` writes `dto.reason.trim()`, while `VoidIntakeCommand`
+  // and `VoidPayoutCommand` write `dto.reason` as it arrived. Both now store a
   // reason with something in it. Making the three agree is recorded in the
   // follow-ups; it is a change to three services, not to this DTO.
   @Matches(/\S/, { message: 'reason must not be blank' })

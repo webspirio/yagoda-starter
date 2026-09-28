@@ -50,11 +50,13 @@ const intake = (over: Partial<Intake> & Pick<Intake, 'id' | 'code' | 'amount'>):
   voided_at: null,
   voided_by_user_id: null,
   void_reason: null,
+  shift_closed: false,
   created_at: '2026-09-08T07:10:00Z',
   net_kg: '36.90',
   lines_count: 2,
   supplier_name: 'Ніна Ільчук',
   paid_amount: '0.00',
+  open_amount: '0.00',
   ...over,
 });
 
@@ -68,6 +70,7 @@ const payout = (over: Partial<Payout> & Pick<Payout, 'id' | 'code' | 'amount'>):
   voided_at: null,
   voided_by_user_id: null,
   void_reason: null,
+  shift_closed: false,
   return_settled_at: null,
   return_settled_by_user_id: null,
   return_note: null,

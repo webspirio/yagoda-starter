@@ -196,6 +196,7 @@ const payout = (over: Partial<Payout> & Pick<Payout, 'amount'>): Payout => ({
   voided_at: null,
   voided_by_user_id: null,
   void_reason: null,
+  shift_closed: false,
   return_settled_at: null,
   return_settled_by_user_id: null,
   return_note: null,

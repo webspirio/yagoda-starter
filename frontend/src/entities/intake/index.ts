@@ -8,3 +8,4 @@ export type {
 } from './model/intake';
 export { useIntakesQuery, intakesQueryOptions } from './api/useIntakes';
 export { useIntakeQuery } from './api/useIntake';
+export { canVoidIntake } from './model/canVoidIntake';

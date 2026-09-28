@@ -9,6 +9,8 @@ export interface PayoutResponse {
   shift_id: string;
   collection_point_id: string;
   business_date: string;
+  /** `shift.closed_at !== null` — doc «2026-09-28: the void dialog branches on it». */
+  shift_closed: boolean;
   supplier_id: string;
   intake_id: string | null;
   amount: string;
@@ -29,6 +31,7 @@ export function toPayoutResponse(payout: Payout, shift: Shift): PayoutResponse {
     shift_id: payout.shift_id,
     collection_point_id: shift.collection_point_id,
     business_date: shift.business_date,
+    shift_closed: shift.closed_at !== null,
     supplier_id: payout.supplier_id,
     intake_id: payout.intake_id,
     amount: payout.amount,

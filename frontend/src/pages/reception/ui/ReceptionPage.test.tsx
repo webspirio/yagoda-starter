@@ -143,7 +143,8 @@ vi.mock('@/features/pick-supplier', () => ({
   }),
 }));
 
-vi.mock('@/entities/intake', () => ({
+vi.mock('@/entities/intake', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/entities/intake')>()),
   useIntakesQuery: (filter: unknown) => intakesMock(filter),
 }));
 
@@ -155,9 +156,23 @@ vi.mock('@/entities/tare-type', () => ({
   useTareTypeOptionsQuery: () => tareTypesMock(),
 }));
 
-vi.mock('@/widgets/receipt', () => ({
-  ReceiptDialog: ({ intakeId, open }: { intakeId: string | null; open: boolean }) =>
-    open ? <div>Receipt for {intakeId}</div> : null,
+vi.mock('@/widgets/receipt', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/widgets/receipt')>()),
+  ReceiptDialog: ({
+    intakeId,
+    open,
+    startWithVoid,
+  }: {
+    intakeId: string | null;
+    open: boolean;
+    startWithVoid?: boolean;
+  }) =>
+    open ? (
+      <div>
+        Receipt for {intakeId}
+        {startWithVoid ? ' (void)' : ''}
+      </div>
+    ) : null,
 }));
 
 vi.mock('../api/intakes', () => ({
@@ -305,6 +320,7 @@ const CREATED: IntakeDetail = {
   voided_at: null,
   voided_by_user_id: null,
   void_reason: null,
+  shift_closed: false,
   created_at: '2026-09-08T09:15:00Z',
   // Agrees with the ONE item below (120.40 kg net) — the toast now reads
   // this header field directly rather than re-summing `items[]` (M3/M9).
@@ -312,6 +328,7 @@ const CREATED: IntakeDetail = {
   lines_count: 1,
   supplier_name: 'Ніна Ільчук',
   paid_amount: '0.00',
+  open_amount: '1204.00',
   payouts: [],
   received_by_name: 'Оксана Гнатюк',
   items: [
@@ -340,6 +357,7 @@ const intake = (over: Partial<Intake> & Pick<Intake, 'id' | 'code' | 'amount'>):
   voided_at: null,
   voided_by_user_id: null,
   void_reason: null,
+  shift_closed: false,
   created_at: '2026-09-08T07:10:00Z',
   // Same one-line 120.40 kg default as `CREATED` above — one canonical
   // example receipt throughout this file (M3/M9).
@@ -347,6 +365,7 @@ const intake = (over: Partial<Intake> & Pick<Intake, 'id' | 'code' | 'amount'>):
   lines_count: 1,
   supplier_name: 'Ніна Ільчук',
   paid_amount: '0.00',
+  open_amount: '0.00',
   ...over,
 });
 
@@ -907,9 +926,8 @@ describe("ReceptionPage — the supplier's history and today's badge", () => {
     renderReception();
 
     // Scoped to the receipts card itself: `PointStatePanel` reads the SAME
-    // `useIntakesQuery({ shiftId })` for its own «Залишків створено» figure,
-    // and this fixture's live receipt (200.00 − 0.00 paid) prints the same
-    // «200.00 ₴» there too.
+    // `useIntakesQuery({ shiftId })` for its own «Відкрито за сьогоднішніми
+    // квитанціями» tile, so an amount could print there too.
     const card = screen.getByText("Today's receipts").closest('[data-slot="card"]');
     const scoped = within(card as HTMLElement);
 
@@ -925,6 +943,33 @@ describe("ReceptionPage — the supplier's history and today's badge", () => {
     // Only the live receipt's kilos count toward the header tonnage — the
     // voided one (same 120.40 kg fixture default) does not double it up.
     expect(within(badgeArea!).getByText('120.40 kg')).toBeInTheDocument();
+  });
+});
+
+describe("ReceptionPage — «Void» on today's receipts", () => {
+  it('opens the receipt straight into its void, not as a plain open', async () => {
+    const user = userEvent.setup();
+    intakesMock.mockImplementation((filter: { shiftId?: string }) =>
+      filter.shiftId ? page<Intake>([intake({ id: 'i2', code: 'SHP-IN-2', amount: '200.00' })]) : page<Intake>([]),
+    );
+    renderReception();
+
+    await user.click(screen.getByRole('button', { name: 'Void SHP-IN-2' }));
+
+    expect(await screen.findByText('Receipt for i2 (void)')).toBeInTheDocument();
+  });
+
+  it('a plain row click still opens the receipt without the void', async () => {
+    const user = userEvent.setup();
+    intakesMock.mockImplementation((filter: { shiftId?: string }) =>
+      filter.shiftId ? page<Intake>([intake({ id: 'i2', code: 'SHP-IN-2', amount: '200.00' })]) : page<Intake>([]),
+    );
+    renderReception();
+
+    const card = screen.getByText("Today's receipts").closest('[data-slot="card"]');
+    await user.click(within(card as HTMLElement).getByText('200.00 ₴'));
+
+    expect(await screen.findByText('Receipt for i2')).toBeInTheDocument();
   });
 });
 

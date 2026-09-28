@@ -61,7 +61,7 @@ src/
   features/resolve-transfer/     # useResolveTransferMutation, ResolveTransferDialog — the owner settles a disputed transfer
   features/set-cash-explanation/ # useSetCashExplanationMutation, ExplainDiscrepancyDialog — the owner explains a drawer discrepancy after the fact
   features/set-point-target/     # useSetPointTargetMutation, SetTargetCashDialog — the owner sets or changes a point's cash target; the dialog shows the current target (when one exists), a render-time live preview of the shortfall while typing, and the over-target sentence — no «Діє з» and no history (§6.1, 03.09.2026: a target is a plain column)
-  widgets/receipt/               # ReceiptDialog — the printable receipt for one intake, opened from reception, day and the supplier card alike; prints «Видано готівкою» (the live linked payouts' total + codes, a muted «виплату {code} анульовано» line per voided one) and «Приймав: {received_by_name}» — it no longer opens PayoutDialog itself (#116): the payout button left for the reception screen's own «Прийняти» action, and PayoutDialog still opens from pages/debts and pages/supplier-card for a payout made without an intake
+  widgets/receipt/               # ReceiptDialog — the printable receipt for one intake, opened from reception, day and the supplier card alike; prints «Видано готівкою» (the live linked payouts' total + codes, a muted «виплату {code} анульовано» line per voided one) and «Приймав: {received_by_name}» — it no longer opens PayoutDialog itself (#116): the payout button left for the reception screen's own «Прийняти» action, and PayoutDialog still opens from pages/debts and pages/supplier-card for a payout made without an intake; `ReceiptVoidButton` is each receipt row's «Анулювати» (reception, day, journal, supplier card), shown iff `canVoidIntake` (entities/intake), opening ReceiptDialog with `startWithVoid`; `useReceiptOpener` is the pages' shared receipt state (`openReceipt(id, { void })`)
   pages/dashboard/               # «Зведення» — the owner's today-across-the-network overview (open shifts, receipts, cash, the biggest balances) at `/`; the same route shows the operator only their own point's row plus reception/day-cash/balances shortcuts. api/useNetworkToday.ts fans out shift+intake+payout `queryOptions` per point in one `useQueries` — today ONLY, which is why «Незакриті зміни» (#114, owner-only, above the grid, nothing rendered when the list is empty) is a separate network-wide read rather than a fourth query per point
   pages/login/, pages/profile/, pages/not-found/, pages/ui-kit/
   pages/points/, pages/users/, pages/suppliers/, pages/catalog/, pages/prices/   # each: api/ (TanStack hooks) · model/ (wire types + form values) · lib/apiErrorToFields · ui/ (page + dialogs + tests)
@@ -77,7 +77,7 @@ src/
     api/                       # httpClient (axios instance, env.apiUrl baseURL) + ApiError + attachAuthInterceptors + queryClient + queryKeys + persister + Paginated<T>/isTruncated (shared/api/pagination.ts, the one list-envelope shape every paginated GET returns)
     lib/
       env/                     # Zod-validated import.meta.env → env.apiUrl
-      i18n/                    # i18next init + locales/en.json + language-preference (localStorage)
+      i18n/                    # i18next init + locales (uk static, en on demand) + language-preference (localStorage)
       theme/                   # useThemePreference (system/light/dark, localStorage) + useAppTheme — the single owner of the `.dark` class on <html>
       upload/                  # validateImageFile, resolveUploadUrl, useImageUpload — client-side mirror of the backend's MEDIA_MAX_BYTES cap
       money/                    # sum / add / sub / cmp / div / isNegative / isZero (decimal-string arithmetic, kopiykas under the hood) + formatUah / formatDecimal / formatKg — the client-side twin of `backend/src/common/money.ts`, used wherever a screen totals or formats a money value + amountRules / cratesRules — the `required`/`validate` pair every money- or crates-string `register()` field needs, factored out of the six dialogs that used to write it by hand + maskDecimalInput / clampDecimal / floorToHundreds / mul — what a controlled decimal `<input>` needs while the operator is still typing: mask keystrokes into a canonical `N.NN` (comma or dot, digits only), clamp a typed or stepped value into `[min, max]` on blur (reception's surcharge bounds, §2.10/#117 — the bound is never shown, only enforced), floor a cash figure to whole hundreds (the «До сотні» chip), and multiply a decimal by an integer count exactly in kopiykas (a tare row's `{weight × units}` kg) — reception is the first consumer of all four
@@ -156,8 +156,11 @@ instead of importing the store directly.
 ## i18n
 
 Strings live in `src/shared/lib/i18n/locales/uk.json` (default) and `en.json`; components use `useTranslation()`/`t()`.
-To add a locale: create `locales/<code>.json` mirroring `en.json`, add it to the
-`resources` map in `src/shared/lib/i18n/index.ts`, and add its code to
+`uk.json` is in the first load; `en.json` is a deferred chunk fetched on demand — switch
+language through `switchLanguage(code)`, never a bare `i18n.changeLanguage`, and
+`test-setup.ts` registers `en.json` statically so tests stay synchronous.
+To add a locale: create `locales/<code>.json` mirroring `en.json`, load it on demand in
+`src/shared/lib/i18n/index.ts` the way English is, and add its code to
 `SUPPORTED_LANGUAGES` (`language-preference.ts`) — it becomes selectable once
 something writes that code via `storeLanguage`. `<html lang>` is kept in sync
 with the resolved language automatically.
