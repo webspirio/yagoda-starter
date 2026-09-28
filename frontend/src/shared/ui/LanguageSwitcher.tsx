@@ -1,5 +1,6 @@
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/shared/lib/cn';
+import { switchLanguage } from '@/shared/lib/i18n';
 import { SUPPORTED_LANGUAGES, storeLanguage } from '@/shared/lib/i18n/language-preference';
 import { Segmented } from './segmented';
 
@@ -24,7 +25,7 @@ export function LanguageSwitcher({ className }: { className?: string }) {
 
   const active = i18n.resolvedLanguage as (typeof SUPPORTED_LANGUAGES)[number] | undefined;
   const set = (code: string) => {
-    void i18n.changeLanguage(code);
+    void switchLanguage(code); // fetches English first when it is not loaded yet
     storeLanguage(code);
   };
   const options = SUPPORTED_LANGUAGES.map((code) => ({ value: code, label: t(`lang.${code}`) }));

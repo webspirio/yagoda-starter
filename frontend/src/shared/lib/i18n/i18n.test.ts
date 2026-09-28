@@ -22,10 +22,18 @@ describe('<html lang> tracks the rendered language', () => {
   });
 });
 
-describe('detectLanguage priority', () => {
-  it('a persisted language wins on init', () => {
+describe('startup language', () => {
+  it('a persisted en waits for English and renders it', async () => {
     storeLanguage('en');
-    initI18n();
+    await initI18n();
     expect(i18n.resolvedLanguage).toBe('en');
+    expect(i18n.t('lang.label')).toBe('Language');
+  });
+
+  it('uk starts in Ukrainian without waiting for English', async () => {
+    storeLanguage('uk');
+    await initI18n();
+    expect(i18n.resolvedLanguage).toBe('uk');
+    expect(i18n.t('lang.label')).not.toBe('Language');
   });
 });
