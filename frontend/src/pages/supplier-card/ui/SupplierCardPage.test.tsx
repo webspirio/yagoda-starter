@@ -21,6 +21,7 @@ const {
   pointsMock,
   receiptDialogMock,
   voidDialogMock,
+  reopenedCodesMock,
   payoutDialogMock,
   topUpDialogMock,
 } = vi.hoisted(() => ({
@@ -33,6 +34,7 @@ const {
   pointsMock: vi.fn(),
   receiptDialogMock: vi.fn(),
   voidDialogMock: vi.fn(),
+  reopenedCodesMock: vi.fn(),
   payoutDialogMock: vi.fn(),
   topUpDialogMock: vi.fn(),
 }));
@@ -76,6 +78,7 @@ vi.mock('@/features/void-document', () => ({
     voidDialogMock(props);
     return props.open ? <div data-testid="void-dialog-mock" /> : null;
   },
+  reopenedCodes: (...args: unknown[]) => reopenedCodesMock(...args),
 }));
 
 vi.mock('@/features/top-up-intake', () => ({
@@ -232,6 +235,7 @@ beforeEach(() => {
   });
   receiptDialogMock.mockReset();
   voidDialogMock.mockReset();
+  reopenedCodesMock.mockReset().mockReturnValue(['KV-0001', 'KV-0002']);
   payoutDialogMock.mockReset();
   topUpDialogMock.mockReset();
 });
@@ -382,6 +386,29 @@ describe('SupplierCardPage', () => {
     renderCard();
 
     expect(screen.getByRole('button', { name: 'Void' })).toBeInTheDocument();
+  });
+
+  it('voids a payout with its amount, shift state and the receipts it reopens', async () => {
+    payoutsMock.mockReturnValue(
+      page<Payout>([
+        payout({ id: 'y1', code: 'VD-0001', amount: '300.00', created_at: '2026-09-08T09:20:00Z', shift_closed: true }),
+      ]),
+    );
+    meMock.mockReturnValue({ data: OWNER, isPending: false, isError: false });
+
+    renderCard();
+    await userEvent.click(screen.getByRole('button', { name: 'Void' }));
+
+    expect(reopenedCodesMock).toHaveBeenCalledWith(settlementMock.mock.results[0].value.data, 'y1', null);
+    expect(voidDialogMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        kind: 'payout',
+        id: 'y1',
+        shiftClosed: true,
+        payoutAmount: '300.00',
+        reopens: ['KV-0001', 'KV-0002'],
+      }),
+    );
   });
 
   it('shows a not-found message and a link back to the list for a missing supplier', () => {

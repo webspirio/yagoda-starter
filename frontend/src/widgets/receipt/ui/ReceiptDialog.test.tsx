@@ -529,6 +529,23 @@ describe('ReceiptDialog wiring into VoidDocumentDialog (#125)', () => {
     );
   });
 
+  it('passes reopens: null and reopensFailed when the settlement query errors', () => {
+    setUp({
+      me: OWNER,
+      intake: buildIntake({
+        payouts: [{ id: 'payout-1', code: 'SHP-PO-1', amount: '3000.00', created_at: '2026-09-08T08:25:00.000Z', voided_at: null }],
+      }),
+    });
+    settlementMock.mockReturnValue({ data: undefined, isPending: false, isError: true });
+    render(<ReceiptDialog intakeId="intake-1" open onClose={vi.fn()} />);
+
+    expect(voidDialogMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        linkedPayout: expect.objectContaining({ reopens: null, reopensFailed: true }),
+      }),
+    );
+  });
+
   it('still renders the receipt (not the generic error) when the settlement query errors', () => {
     setUp({
       me: OWNER,

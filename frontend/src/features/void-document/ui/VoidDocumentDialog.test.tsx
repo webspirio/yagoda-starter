@@ -228,6 +228,46 @@ describe('VoidDocumentDialog — open shift', () => {
     );
   });
 
+  it('refuses to submit while the reopened receipts are still loading', async () => {
+    renderOpenShiftIntake({ reopens: null });
+    expect(screen.getByText('Loading…')).toBeInTheDocument();
+    await userEvent.type(screen.getByLabelText(/Reason/), 'клієнт повернув');
+    for (const box of screen.getAllByRole('checkbox')) await userEvent.click(box);
+    expect(screen.getByRole('button', { name: 'Void' })).toBeDisabled();
+    await userEvent.click(screen.getByRole('button', { name: 'Void' }));
+    expect(voidDocumentMock).not.toHaveBeenCalled();
+  });
+
+  it('once the reopened receipts arrive, their box appears and must be ticked', async () => {
+    const payout: LinkedPayout = {
+      code: 'PO-7', amount: '1500.00', otherCovered: null,
+      paidAt: '2026-09-28T11:32:00.000Z', paidBy: null, reopens: null,
+    };
+    const dialog = (p: LinkedPayout) => (
+      <VoidDocumentDialog kind="intake" id="i1" code="ПР-0012" open onClose={vi.fn()} linkedPayout={p} />
+    );
+    const { rerender } = render(dialog(payout));
+    await userEvent.type(screen.getByLabelText(/Reason/), 'клієнт повернув');
+    for (const box of screen.getAllByRole('checkbox')) await userEvent.click(box);
+
+    rerender(dialog({ ...payout, reopens: ['ПР-0009'] }));
+    expect(screen.getAllByRole('checkbox')).toHaveLength(3);
+    expect(screen.getByRole('checkbox', { name: 'Receipts ПР-0009 will reopen' })).not.toBeChecked();
+    await userEvent.click(screen.getByRole('button', { name: 'Void' }));
+    expect(await screen.findByText('Tick every item')).toBeInTheDocument();
+    expect(voidDocumentMock).not.toHaveBeenCalled();
+
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Receipts ПР-0009 will reopen' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Void' }));
+    await waitFor(() => expect(voidDocumentMock).toHaveBeenCalledTimes(1));
+  });
+
+  it('keeps submit refused and says so when the settlement read fails', () => {
+    renderOpenShiftIntake({ reopens: null, reopensFailed: true });
+    expect(screen.getByText('Something went wrong')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Void' })).toBeDisabled();
+  });
+
   it('with no bound payout, asks for the one debt checkbox', () => {
     renderOpenShiftIntake(null);
     expect(screen.getAllByRole('checkbox')).toHaveLength(1);

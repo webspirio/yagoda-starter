@@ -73,6 +73,7 @@ export function VoidDocumentDialog({
   const voidDocument = useVoidDocumentMutation();
   const showDecision = kind === 'intake' && linkedPayout !== undefined && shiftClosed;
   const openLinkedPayout = kind === 'intake' && !shiftClosed ? linkedPayout : undefined;
+  const notReady = openLinkedPayout?.reopens === null;
 
   const reopen = (codes?: string[] | null) => (codes?.length ? [t('void.ack.reopens', { codes: codes.join(', ') })] : []);
   const consequences = shiftClosed
@@ -163,6 +164,11 @@ export function VoidDocumentDialog({
               error={errors.acks ? 'void.ack.required' : undefined}
             />
           ) : null}
+          {notReady ? (
+            <p role="status" className="text-sm text-muted-foreground">
+              {t(openLinkedPayout.reopensFailed ? 'common.somethingWentWrong' : 'common.loading')}
+            </p>
+          ) : null}
 
           <Field name="reason" label={t('void.reason')} required error={errors.reason?.message}>
             {(a11y) => (
@@ -186,7 +192,7 @@ export function VoidDocumentDialog({
             <Button type="button" variant="ghost" disabled={isSubmitting} onClick={onClose}>
               {t('common.cancel')}
             </Button>
-            <Button type="submit" variant="destructive" disabled={isSubmitting}>
+            <Button type="submit" variant="destructive" disabled={isSubmitting || notReady}>
               {t('void.submit')}
             </Button>
           </DialogFooter>

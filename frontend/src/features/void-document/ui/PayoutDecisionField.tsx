@@ -12,8 +12,11 @@ export interface LinkedPayout {
   /** 2026-09-28 payout card: when and by whom it was handed over. */
   paidAt: string;
   paidBy: string | null;
-  /** Receipt codes that reopen with it; null while the settlement loads. */
+  /** Receipt codes that reopen with it; null until the settlement loads — an open-shift
+   *  void refuses to submit until then, so the reopen box cannot be skipped. */
   reopens: string[] | null;
+  /** The settlement read failed: `reopens` will never arrive. */
+  reopensFailed?: boolean;
 }
 
 /** #125: what happens to the payout issued with the receipt — asked only for a closed
