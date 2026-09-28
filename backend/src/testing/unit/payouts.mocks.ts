@@ -59,6 +59,7 @@ export const payout = (over: Record<string, unknown> = {}) => ({
   return_settled_at: null,
   return_settled_by_user_id: null,
   return_note: null,
+  returned_on_void: false,
   created_at: new Date('2026-09-08T07:00:00.000Z'),
   updated_at: new Date('2026-09-08T07:00:00.000Z'),
   ...over,
