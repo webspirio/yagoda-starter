@@ -225,8 +225,9 @@ describe('intake void with a payout decision (HTTP, Postgres)', () => {
   });
 
   // The return is settled by date, so its cash lands in today's shift, not the closed one.
-  it('closed shift, void_returned: both voided and the return settled, not at the void', async () => {
+  it('closed shift, void_returned: both voided and 1500 back in today\'s drawer', async () => {
     const s = await scenario(closedShiftId);
+    const before = await cash(todayShiftId);
     await voidIntake(ownerToken, s.rId, { reason: 'повернув', payout: 'void_returned' }).expect(
       201,
     );
@@ -236,6 +237,7 @@ describe('intake void with a payout decision (HTTP, Postgres)', () => {
     expect(p.returned_on_void).toBe(false);
     expect(p.return_note).toBe('повернув');
     await expect(debt(s.supplierId)).resolves.toBe('1000.00');
+    expect(sub(await cash(todayShiftId), before)).toBe('1500.00');
     const actions = await ds.query(
       `SELECT action FROM audit_log WHERE target_id IN ($1, $2) ORDER BY at, action`,
       [s.rId, s.pId],
