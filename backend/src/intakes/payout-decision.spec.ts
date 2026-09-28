@@ -1,35 +1,32 @@
-import { BadRequestException, ForbiddenException } from '@nestjs/common';
-import { UserRole } from '../users/user-role.enum';
+import { BadRequestException } from '@nestjs/common';
 import { assertPayoutDecision } from './payout-decision';
 
-const owner = { sub: 'o', username: 'o', role: UserRole.NetworkOwner, collection_point_id: null };
-const operator = { sub: 'a', username: 'a', role: UserRole.PointOperator, collection_point_id: 'p' };
+const code = (c: string) => expect.objectContaining({ response: expect.objectContaining({ code: c }) });
 
 describe('assertPayoutDecision', () => {
-  it('requires a decision when a live payout is bound', () => {
-    expect(() => assertPayoutDecision(operator, true, undefined)).toThrow(
-      expect.objectContaining({ response: expect.objectContaining({ code: 'PAYOUT_DECISION_REQUIRED' }) }),
-    );
+  describe('open shift — the payout always goes with the receipt', () => {
+    it('takes no decision, bound payout or not', () => {
+      expect(() => assertPayoutDecision(false, true, undefined)).not.toThrow();
+      expect(() => assertPayoutDecision(false, false, undefined)).not.toThrow();
+    });
+
+    it.each(['keep', 'void', 'void_returned'] as const)('rejects %s', (d) => {
+      expect(() => assertPayoutDecision(false, true, d)).toThrow(BadRequestException);
+      expect(() => assertPayoutDecision(false, true, d)).toThrow(code('PAYOUT_DECISION_NOT_APPLICABLE'));
+    });
   });
 
-  it('rejects a decision when no live payout is bound', () => {
-    expect(() => assertPayoutDecision(owner, false, 'keep')).toThrow(BadRequestException);
-    expect(() => assertPayoutDecision(owner, false, 'keep')).toThrow(
-      expect.objectContaining({ response: expect.objectContaining({ code: 'PAYOUT_DECISION_NOT_APPLICABLE' }) }),
-    );
-  });
+  describe('closed shift — #125 as before', () => {
+    it('requires a decision when a live payout is bound', () => {
+      expect(() => assertPayoutDecision(true, true, undefined)).toThrow(code('PAYOUT_DECISION_REQUIRED'));
+    });
 
-  it('keeps void_returned for the owner', () => {
-    expect(() => assertPayoutDecision(operator, true, 'void_returned')).toThrow(ForbiddenException);
-    expect(() => assertPayoutDecision(operator, true, 'void_returned')).toThrow(
-      expect.objectContaining({ response: expect.objectContaining({ code: 'OWNER_ONLY' }) }),
-    );
-    expect(() => assertPayoutDecision(owner, true, 'void_returned')).not.toThrow();
-  });
+    it('rejects a decision when nothing is bound', () => {
+      expect(() => assertPayoutDecision(true, false, 'keep')).toThrow(code('PAYOUT_DECISION_NOT_APPLICABLE'));
+    });
 
-  it('accepts keep and void from an operator, and nothing when nothing is bound', () => {
-    expect(() => assertPayoutDecision(operator, true, 'keep')).not.toThrow();
-    expect(() => assertPayoutDecision(operator, true, 'void')).not.toThrow();
-    expect(() => assertPayoutDecision(operator, false, undefined)).not.toThrow();
+    it.each(['keep', 'void', 'void_returned'] as const)('accepts %s', (d) => {
+      expect(() => assertPayoutDecision(true, true, d)).not.toThrow();
+    });
   });
 });

@@ -152,12 +152,12 @@ describe('VoidIntakeCommand', () => {
       await expect(command.void(owner, INTAKE_ID, { reason: 'сторно' })).resolves.toBeDefined();
     });
 
-    describe('with a live bound payout (#125)', () => {
+    describe('with a live bound payout, open shift', () => {
       const bound = { id: 'po-1', code: 'KPG-PO-20260908-001', amount: '1500.00', voided_at: null };
       beforeEach(() => payouts.findLiveBoundToIntake.mockResolvedValue(bound));
 
       it('locks the payout after the intake, in the same transaction', async () => {
-        await command.void(oksana, INTAKE_ID, { reason: 'r', payout: 'keep' });
+        await command.void(oksana, INTAKE_ID, { reason: 'r' });
 
         expect(payouts.findLiveBoundToIntake).toHaveBeenCalledWith(manager, INTAKE_ID);
         // Compare against the LOCKED intake read (the `FOR UPDATE` find), not
@@ -169,42 +169,63 @@ describe('VoidIntakeCommand', () => {
         );
       });
 
-      it('400s without a decision and writes nothing', async () => {
-        await expect(command.void(oksana, INTAKE_ID, { reason: 'r' })).rejects.toMatchObject({
-          response: { code: 'PAYOUT_DECISION_REQUIRED' },
-        });
-        expect(manager.save).not.toHaveBeenCalled();
-        expect(audit.record).not.toHaveBeenCalled();
-      });
+      it('always voids the payout with the cash returned, and says so in the audit', async () => {
+        await command.void(oksana, INTAKE_ID, { reason: 'помилка' });
 
-      it('403s an operator choosing void_returned and writes nothing', async () => {
-        await expect(
-          command.void(oksana, INTAKE_ID, { reason: 'r', payout: 'void_returned' }),
-        ).rejects.toMatchObject({ response: { code: 'OWNER_ONLY' } });
-        expect(manager.save).not.toHaveBeenCalled();
-      });
-
-      it('keep: voids only the intake and records the decision', async () => {
-        await command.void(oksana, INTAKE_ID, { reason: 'r', payout: 'keep' });
-
-        expect(payouts.void).not.toHaveBeenCalled();
+        expect(payouts.void).toHaveBeenCalledWith(manager, oksana, bound, 'помилка', true);
+        expect(payouts.settleReturn).not.toHaveBeenCalled();
         expect(audit.record).toHaveBeenCalledWith(
           expect.objectContaining({
             action: 'intake.voided',
-            after: expect.objectContaining({ payout_decision: 'keep' }),
+            after: expect.objectContaining({ payout_decision: 'void_on_open_shift' }),
           }),
           manager,
         );
       });
 
-      it('void: voids the payout with the same reason, no return', async () => {
-        await command.void(oksana, INTAKE_ID, { reason: 'помилка', payout: 'void' });
+      it('400s any decision and writes nothing', async () => {
+        await expect(
+          command.void(oksana, INTAKE_ID, { reason: 'r', payout: 'keep' }),
+        ).rejects.toMatchObject({ response: { code: 'PAYOUT_DECISION_NOT_APPLICABLE' } });
+        expect(manager.save).not.toHaveBeenCalled();
+        expect(audit.record).not.toHaveBeenCalled();
+      });
+    });
 
-        expect(payouts.void).toHaveBeenCalledWith(manager, oksana, bound, 'помилка', false);
+    describe('with a live bound payout, closed shift (owner)', () => {
+      const bound = { id: 'po-1', code: 'KPG-PO-20260908-001', amount: '1500.00', voided_at: null };
+      beforeEach(() => {
+        payouts.findLiveBoundToIntake.mockResolvedValue(bound);
+        shifts.findOneRaw.mockResolvedValue(
+          shift({ closed_at: new Date(), status: ShiftStatus.Closed }),
+        );
+      });
+
+      it('400s without a decision', async () => {
+        await expect(command.void(owner, INTAKE_ID, { reason: 'r' })).rejects.toMatchObject({
+          response: { code: 'PAYOUT_DECISION_REQUIRED' },
+        });
+        expect(manager.save).not.toHaveBeenCalled();
+      });
+
+      it('keep: voids only the intake and records the decision', async () => {
+        await command.void(owner, INTAKE_ID, { reason: 'r', payout: 'keep' });
+
+        expect(payouts.void).not.toHaveBeenCalled();
+        expect(audit.record).toHaveBeenCalledWith(
+          expect.objectContaining({ after: expect.objectContaining({ payout_decision: 'keep' }) }),
+          manager,
+        );
+      });
+
+      it('void: voids the payout, return pending', async () => {
+        await command.void(owner, INTAKE_ID, { reason: 'помилка', payout: 'void' });
+
+        expect(payouts.void).toHaveBeenCalledWith(manager, owner, bound, 'помилка', false);
         expect(payouts.settleReturn).not.toHaveBeenCalled();
       });
 
-      it('void_returned (owner): voids, then settles the return with the reason as note', async () => {
+      it('void_returned: voids, then settles the return with the reason as note', async () => {
         await command.void(owner, INTAKE_ID, { reason: 'повернув', payout: 'void_returned' });
 
         expect(payouts.void).toHaveBeenCalledWith(manager, owner, bound, 'повернув', false);
@@ -243,13 +264,13 @@ describe('VoidIntakeCommand', () => {
       expect(allocations.allocate).toHaveBeenCalledWith(manager, SUPPLIER);
     });
 
-    it('with payout decision void, allocates once, after both voids', async () => {
+    it('with a bound payout in an open shift, allocates once, after both voids', async () => {
       payouts.findLiveBoundToIntake.mockResolvedValue({
         id: 'po-1',
         amount: '1.00',
         voided_at: null,
       });
-      await command.void(owner, INTAKE_ID, { reason: 'x', payout: 'void' });
+      await command.void(owner, INTAKE_ID, { reason: 'x' });
 
       expect(allocations.allocate).toHaveBeenCalledTimes(1);
       expect(allocations.allocate.mock.invocationCallOrder[0]).toBeGreaterThan(

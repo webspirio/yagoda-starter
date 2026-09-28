@@ -1,34 +1,28 @@
-import { BadRequestException, ForbiddenException } from '@nestjs/common';
-import { UserRole } from '../users/user-role.enum';
-import type { AuthenticatedUser } from '../auth/jwt.strategy';
+import { BadRequestException } from '@nestjs/common';
 import type { PayoutDecision } from './dto/void-intake.dto';
 
 /**
- * #125: a receipt with a live bound payout cannot be voided without saying what
- * happens to that payout. `void_returned` attests cash back in the drawer — owner only,
- * like `settle-return`.
+ * #125 + 2026-09-28. Open shift: the supplier is at the counter, so a live bound payout always
+ * goes with the receipt and there is nothing to decide. Closed shift (owner only, via
+ * `assertCanVoid`): the decision is required iff a live payout is bound.
  */
 export function assertPayoutDecision(
-  actor: AuthenticatedUser,
+  shiftClosed: boolean,
   hasLivePayout: boolean,
   decision: PayoutDecision | undefined,
 ): void {
-  if (hasLivePayout && !decision) {
+  if (decision && (!shiftClosed || !hasLivePayout)) {
     throw new BadRequestException({
-      message: 'This receipt has a live payout — say whether to keep or void it',
-      code: 'PAYOUT_DECISION_REQUIRED',
-    });
-  }
-  if (!hasLivePayout && decision) {
-    throw new BadRequestException({
-      message: 'This receipt has no live payout to decide about',
+      message: shiftClosed
+        ? 'This receipt has no live payout to decide about'
+        : 'In an open shift the payout is voided with the receipt — there is nothing to decide',
       code: 'PAYOUT_DECISION_NOT_APPLICABLE',
     });
   }
-  if (decision === 'void_returned' && actor.role !== UserRole.NetworkOwner) {
-    throw new ForbiddenException({
-      message: 'Only the network owner may record a returned payout',
-      code: 'OWNER_ONLY',
+  if (shiftClosed && hasLivePayout && !decision) {
+    throw new BadRequestException({
+      message: 'This receipt has a live payout — say whether to keep or void it',
+      code: 'PAYOUT_DECISION_REQUIRED',
     });
   }
 }

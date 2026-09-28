@@ -15,6 +15,7 @@ import type { AuthenticatedUser } from '../../auth/jwt.strategy';
 
 /**
  * §9.4 void plus #125's decision about a bound payout. Lock order: supplier → intake → payout.
+ * Open shift (2026-09-28): the bound payout always goes too, cash back at once.
  * §10.2 lists receipt voids as owner-only; §9.4 (followed here) allows the author.
  */
 @Injectable()
@@ -63,10 +64,11 @@ export class VoidIntakeCommand {
       });
     }
 
-    // §3.5: a bound payout is written only at reception by the same actor in the same shift, so
-    // the check above covers it; `void_returned` alone is owner-only.
+    // §3.5: a bound payout shares the receipt's author and shift, so the check above covers it.
     const payout = await this.payouts.findLiveBoundToIntake(m, intake.id);
-    assertPayoutDecision(actor, payout !== null, dto.payout);
+    const shiftClosed = shift.closed_at !== null;
+    assertPayoutDecision(shiftClosed, payout !== null, dto.payout);
+    const decision = shiftClosed ? dto.payout : 'void_on_open_shift';
 
     // No balance floor: voiding a receipt is the one allowed way into negative debt.
     intake.voided_at = new Date();
@@ -85,17 +87,16 @@ export class VoidIntakeCommand {
           voided_at: saved.voided_at,
           code: saved.code,
           amount: saved.amount,
-          ...(payout ? { payout_decision: dto.payout } : {}),
+          ...(payout ? { payout_decision: decision } : {}),
         },
         note: dto.reason,
       },
       m,
     );
 
-    if (payout && dto.payout !== 'keep') {
-      // Task 4 rewrites this call to ask the intake's own shift; for now it never returns cash.
-      const voided = await this.payouts.void(m, actor, payout, dto.reason, false);
-      if (dto.payout === 'void_returned') {
+    if (payout && decision !== 'keep') {
+      const voided = await this.payouts.void(m, actor, payout, dto.reason, !shiftClosed);
+      if (decision === 'void_returned') {
         await this.payouts.settleReturn(m, actor, voided, dto.reason);
       }
     }
