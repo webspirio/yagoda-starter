@@ -251,6 +251,7 @@ export function ReceiptDialog({
                   ? reopenedCodes(settlementQuery.data, livePayout.id, intake.id)
                   : null,
                 reopensFailed: settlementQuery.isError,
+                retryReopens: () => void settlementQuery.refetch(),
               }
             : undefined
         }

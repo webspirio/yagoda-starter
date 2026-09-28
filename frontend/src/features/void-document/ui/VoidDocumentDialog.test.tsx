@@ -185,7 +185,7 @@ function renderOpenShiftIntake(linkedPayout?: Partial<LinkedPayout> | null) {
   render(
     <>
       <VoidDocumentDialog
-        kind="intake" id="i1" code="ПР-0012" open onClose={vi.fn()}
+        kind="intake" id="i1" code="ПР-0012" open onClose={vi.fn()} shiftClosed={false}
         intakeAmount="500.00"
         linkedPayout={linkedPayout === null ? undefined : {
           code: 'PO-7', amount: '1500.00', otherCovered: '1000.00',
@@ -244,7 +244,7 @@ describe('VoidDocumentDialog — open shift', () => {
       paidAt: '2026-09-28T11:32:00.000Z', paidBy: null, reopens: null,
     };
     const dialog = (p: LinkedPayout) => (
-      <VoidDocumentDialog kind="intake" id="i1" code="ПР-0012" open onClose={vi.fn()} linkedPayout={p} />
+      <VoidDocumentDialog kind="intake" id="i1" code="ПР-0012" open onClose={vi.fn()} linkedPayout={p} shiftClosed={false} />
     );
     const { rerender } = render(dialog(payout));
     await userEvent.type(screen.getByLabelText(/Reason/), 'клієнт повернув');
@@ -262,10 +262,45 @@ describe('VoidDocumentDialog — open shift', () => {
     await waitFor(() => expect(voidDocumentMock).toHaveBeenCalledTimes(1));
   });
 
-  it('keeps submit refused and says so when the settlement read fails', () => {
-    renderOpenShiftIntake({ reopens: null, reopensFailed: true });
-    expect(screen.getByText('Something went wrong')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Void' })).toBeDisabled();
+  // #173 review: a failed read must not lock the void out — the backend never needed `reopens`.
+  it('when the settlement read fails, offers a retry and lets the void go through behind its own box', async () => {
+    const retryReopens = vi.fn();
+    renderOpenShiftIntake({ reopens: null, reopensFailed: true, retryReopens });
+    expect(screen.getByRole('alert')).toHaveTextContent("Couldn't load the receipts that will reopen");
+    await userEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    expect(retryReopens).toHaveBeenCalledTimes(1);
+
+    expect(screen.getAllByRole('checkbox')).toHaveLength(3);
+    await userEvent.type(screen.getByLabelText(/Reason/), 'клієнт повернув');
+    for (const box of screen.getAllByRole('checkbox')) await userEvent.click(box);
+    await userEvent.click(screen.getByRole('button', { name: 'Void' }));
+    await waitFor(() =>
+      expect(voidDocumentMock).toHaveBeenCalledWith({ kind: 'intake', id: 'i1', reason: 'клієнт повернув' }),
+    );
+  });
+
+  it('a retry that succeeds swaps in the reopen box, unticked', async () => {
+    const payout: LinkedPayout = {
+      code: 'PO-7', amount: '1500.00', otherCovered: null,
+      paidAt: '2026-09-28T11:32:00.000Z', paidBy: null, reopens: null, reopensFailed: true,
+    };
+    const dialog = (p: LinkedPayout) => (
+      <VoidDocumentDialog kind="intake" id="i1" code="ПР-0012" open onClose={vi.fn()} linkedPayout={p} shiftClosed={false} />
+    );
+    const { rerender } = render(dialog(payout));
+    await userEvent.type(screen.getByLabelText(/Reason/), 'клієнт повернув');
+    for (const box of screen.getAllByRole('checkbox')) await userEvent.click(box);
+
+    rerender(dialog({ ...payout, reopens: ['ПР-0009'], reopensFailed: false }));
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(screen.getByRole('checkbox', { name: 'Receipts ПР-0009 will reopen' })).not.toBeChecked();
+    await userEvent.click(screen.getByRole('button', { name: 'Void' }));
+    expect(await screen.findByText('Tick every item')).toBeInTheDocument();
+    expect(voidDocumentMock).not.toHaveBeenCalled();
+
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Receipts ПР-0009 will reopen' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Void' }));
+    await waitFor(() => expect(voidDocumentMock).toHaveBeenCalledTimes(1));
   });
 
   it('with no bound payout, asks for the one debt checkbox', () => {

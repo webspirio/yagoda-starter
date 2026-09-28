@@ -10,9 +10,9 @@ export function VoidConsequences({
   box,
   error,
 }: {
-  items: string[];
-  /** RHF's `register` for box `i` — a failed submit focuses the first unticked one. */
-  box: (i: number) => UseFormRegisterReturn;
+  items: { id: string; text: string }[];
+  /** RHF's `register` for box `id` — a failed submit focuses the first unticked one. */
+  box: (id: string) => UseFormRegisterReturn;
   error?: string;
 }) {
   const { t } = useTranslation();
@@ -24,9 +24,9 @@ export function VoidConsequences({
       aria-describedby={error ? errorId : undefined}
     >
       <legend className="mb-2 text-sm font-medium">{t('void.ack.legend')}</legend>
-      {items.map((text, i) => (
-        <label key={text} className="flex items-start gap-2 text-sm">
-          <NativeCheckbox {...box(i)} />
+      {items.map(({ id, text }) => (
+        <label key={id} className="flex items-start gap-2 text-sm">
+          <NativeCheckbox {...box(id)} />
           {text}
         </label>
       ))}

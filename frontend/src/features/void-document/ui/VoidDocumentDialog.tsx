@@ -24,9 +24,38 @@ interface VoidFormValues {
   reason: string;
   /** #125: only asked for a closed-shift intake with a live linked payout — see `showDecision`. */
   payout?: PayoutDecision;
-  /** One required tick per open-shift consequence — a UI gate only (spec decision 8). */
-  acks: boolean[];
+  /** One required tick per open-shift consequence, keyed by its id — a UI gate only (spec
+   *  decision 8). Keyed, not indexed: a box swapped for another must not inherit its tick. */
+  acks: Record<string, boolean>;
 }
+
+interface BaseProps {
+  id: string;
+  code: string;
+  open: boolean;
+  onClose: () => void;
+  /** Fires after a successful void, before `onClose` — e.g. to refresh a detail view. */
+  onVoided?: () => void;
+  /** #125: the intake's live payout, if any — asks what happens to it too. */
+  linkedPayout?: LinkedPayout;
+  /** Intake without a live payout: the debt the void takes off. */
+  intakeAmount?: string;
+  /** Payout only: the amount going back to the drawer, and the receipts that reopen. */
+  payoutAmount?: string;
+  reopens?: string[] | null;
+}
+
+/** Closed shift: #125's three choices. Open: the void returns the cash, so the dialog lists
+ *  every consequence as a checkbox instead (2026-09-28). Required for an intake — a forgotten
+ *  prop would silently mean «open» and stop sending the decision. */
+type VoidDocumentDialogProps = BaseProps &
+  (
+    | { kind: 'intake'; shiftClosed: boolean }
+    | {
+        kind: 'payout' | 'transfer' | 'topUp' | 'crateIssuance' | 'crateReturn';
+        shiftClosed?: boolean;
+      }
+  );
 
 /**
  * «Анулювати» — void an intake or payout with a reason. A document is never
@@ -44,50 +73,44 @@ export function VoidDocumentDialog({
   onClose,
   onVoided,
   linkedPayout,
-  shiftClosed = false,
+  shiftClosed,
   intakeAmount,
   payoutAmount,
   reopens,
-}: {
-  kind: 'intake' | 'payout' | 'transfer' | 'topUp' | 'crateIssuance' | 'crateReturn';
-  id: string;
-  code: string;
-  open: boolean;
-  onClose: () => void;
-  /** Fires after a successful void, before `onClose` — e.g. to refresh a detail view. */
-  onVoided?: () => void;
-  /** #125: the intake's live payout, if any — asks what happens to it too. */
-  linkedPayout?: LinkedPayout;
-  /** Closed shift: #125's three choices. Open: the void returns the cash, so the dialog
-   *  lists every consequence as a checkbox instead (2026-09-28). */
-  shiftClosed?: boolean;
-  /** Intake without a live payout: the debt the void takes off. */
-  intakeAmount?: string;
-  /** Payout only: the amount going back to the drawer, and the receipts that reopen. */
-  payoutAmount?: string;
-  reopens?: string[] | null;
-}) {
+}: VoidDocumentDialogProps) {
   const { t, i18n } = useTranslation();
   const locale = i18n.resolvedLanguage ?? 'uk';
   const money = (v: string) => formatUah(v, locale);
   const voidDocument = useVoidDocumentMutation();
   const showDecision = kind === 'intake' && linkedPayout !== undefined && shiftClosed;
   const openLinkedPayout = kind === 'intake' && !shiftClosed ? linkedPayout : undefined;
-  const notReady = openLinkedPayout?.reopens === null;
+  // A failed read is not «not ready»: `reopens` is disclosure only, so the void goes on
+  // behind its own box (#173 review) rather than locking the operator out.
+  const reopensFailed =
+    openLinkedPayout?.reopens === null && openLinkedPayout.reopensFailed === true;
+  const notReady = openLinkedPayout?.reopens === null && !reopensFailed;
 
-  const reopen = (codes?: string[] | null) => (codes?.length ? [t('void.ack.reopens', { codes: codes.join(', ') })] : []);
+  const reopen = (codes?: string[] | null) =>
+    codes?.length
+      ? [{ id: 'reopens', text: t('void.ack.reopens', { codes: codes.join(', ') }) }]
+      : [];
   const consequences = shiftClosed
     ? null
     : kind === 'payout' && payoutAmount
-      ? [t('void.ack.payoutCash', { amount: money(payoutAmount) }), ...reopen(reopens)]
+      ? [
+          { id: 'payoutCash', text: t('void.ack.payoutCash', { amount: money(payoutAmount) }) },
+          ...reopen(reopens),
+        ]
       : openLinkedPayout
         ? [
-            t('void.ack.cash', { amount: money(openLinkedPayout.amount) }),
-            t('void.ack.payout', { code: openLinkedPayout.code }),
-            ...reopen(openLinkedPayout.reopens),
+            { id: 'cash', text: t('void.ack.cash', { amount: money(openLinkedPayout.amount) }) },
+            { id: 'payout', text: t('void.ack.payout', { code: openLinkedPayout.code }) },
+            ...(reopensFailed
+              ? [{ id: 'reopensUnknown', text: t('void.ack.reopensUnknown') }]
+              : reopen(openLinkedPayout.reopens)),
           ]
         : kind === 'intake' && intakeAmount
-          ? [t('void.ack.debt', { amount: money(intakeAmount) })]
+          ? [{ id: 'debt', text: t('void.ack.debt', { amount: money(intakeAmount) }) }]
           : null;
 
   const {
@@ -95,7 +118,7 @@ export function VoidDocumentDialog({
     handleSubmit,
     control,
     formState: { errors, isSubmitting },
-  } = useForm<VoidFormValues>({ defaultValues: { reason: '', acks: [] } });
+  } = useForm<VoidFormValues>({ defaultValues: { reason: '', acks: {} } });
 
   const [formError, setFormError] = useState<string | null>(null);
 
@@ -160,14 +183,32 @@ export function VoidDocumentDialog({
           {consequences ? (
             <VoidConsequences
               items={consequences}
-              box={(i) => register(`acks.${i}`, { required: 'void.ack.required' })}
+              box={(ackId) => register(`acks.${ackId}`, { required: 'void.ack.required' })}
               error={errors.acks ? 'void.ack.required' : undefined}
             />
           ) : null}
           {notReady ? (
             <p role="status" className="text-sm text-muted-foreground">
-              {t(openLinkedPayout.reopensFailed ? 'common.somethingWentWrong' : 'common.loading')}
+              {t('common.loading')}
             </p>
+          ) : null}
+          {reopensFailed ? (
+            <div
+              role="alert"
+              className="flex items-center justify-between gap-2 text-sm text-destructive"
+            >
+              <span>{t('void.reopensFailed')}</span>
+              {openLinkedPayout.retryReopens ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={openLinkedPayout.retryReopens}
+                >
+                  {t('common.retry')}
+                </Button>
+              ) : null}
+            </div>
           ) : null}
 
           <Field name="reason" label={t('void.reason')} required error={errors.reason?.message}>

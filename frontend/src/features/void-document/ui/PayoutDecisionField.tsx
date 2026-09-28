@@ -15,8 +15,10 @@ export interface LinkedPayout {
   /** Receipt codes that reopen with it; null until the settlement loads — an open-shift
    *  void refuses to submit until then, so the reopen box cannot be skipped. */
   reopens: string[] | null;
-  /** The settlement read failed: `reopens` will never arrive. */
+  /** The settlement read failed: the dialog swaps the reopen box for a «list unknown» one. */
   reopensFailed?: boolean;
+  /** Refetches the settlement after a failure. */
+  retryReopens?: () => void;
 }
 
 /** #125: what happens to the payout issued with the receipt — asked only for a closed

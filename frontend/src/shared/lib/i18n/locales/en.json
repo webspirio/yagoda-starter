@@ -555,6 +555,7 @@
       "cash": "Client returned or never took {{amount}} — it is in the drawer",
       "payout": "Payout {{code}} will be voided",
       "reopens": "Receipts {{codes}} will reopen",
+      "reopensUnknown": "The list of receipts that will reopen didn't load — void anyway",
       "debt": "Receipt voided, debt drops by {{amount}}",
       "payoutCash": "Client returned {{amount}} — it is in the drawer",
       "required": "Tick every item"
@@ -570,7 +571,8 @@
       "failed": "Could not void",
       "reasonRequired": "Enter a reason",
       "payoutChanged": "The payout on this receipt just changed — close and reopen the dialog"
-    }
+    },
+    "reopensFailed": "Couldn't load the receipts that will reopen"
   },
   "cash": {
     "explainDialog": {
