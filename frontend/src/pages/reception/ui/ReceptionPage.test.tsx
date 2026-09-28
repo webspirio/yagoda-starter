@@ -1,11 +1,11 @@
 import { forwardRef, useImperativeHandle, useRef } from 'react';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor, within, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createMemoryRouter, RouterProvider } from 'react-router';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ApiError } from '@/shared/api';
-import { todayIso, addDaysIso, formatLongDate } from '@/shared/lib/date';
+import { addDaysIso, formatLongDate } from '@/shared/lib/date';
 import { expectNoAxeViolations } from '../../../test-axe';
 import type { Shift } from '@/entities/shift';
 import type { Intake, IntakeDetail } from '@/entities/intake';
@@ -198,14 +198,18 @@ const OWNER = {
   collection_point_id: null,
 };
 
+/** «Today» for the whole suite — `beforeEach` pins `Date` to it, so the
+ *  fixtures below and the component's own `todayIso()` can never straddle a
+ *  real midnight between module load and render. */
+const TODAY = '2026-09-08';
+
 const openShift: Shift = {
   id: 's-open',
   collection_point_id: 'p1',
-  // TODAY's, not a fixed date: this screen is always about today, and since
-  // #114 an open shift dated in the past is a DIFFERENT state (the stale-shift
-  // alert), not the ordinary one every test below assumes. The suite runs on
-  // real timers, so there is no fake «today» to pin this to.
-  business_date: todayIso(),
+  // TODAY's: this screen is always about today, and since #114 an open shift
+  // dated in the past is a DIFFERENT state (the stale-shift alert), not the
+  // ordinary one every test below assumes.
+  business_date: TODAY,
   status: 'open',
   opened_by_user_id: 'u1',
   opened_by_name: 'Olha',
@@ -409,6 +413,10 @@ async function fillDraft(user: ReturnType<typeof userEvent.setup>, gross = '126,
 }
 
 beforeEach(() => {
+  // Only Date is faked, so testing-library's waitFor, user-event and the
+  // preview's debounce keep their real timers. LOCAL time, which is what
+  // `todayIso` reads.
+  vi.useFakeTimers({ toFake: ['Date'], now: new Date(`${TODAY}T09:00:00`) });
   meMock.mockReset().mockReturnValue({ data: OPERATOR });
   pointScopeMock
     .mockReset()
@@ -441,6 +449,8 @@ beforeEach(() => {
   toastMock.error.mockReset();
   toastSuccessMock.mockReset();
 });
+
+afterEach(() => vi.useRealTimers());
 
 describe('ReceptionPage — before the shift is open', () => {
   beforeEach(() => {
@@ -1342,7 +1352,7 @@ describe('ReceptionPage — an open shift left behind on another day (#114)', ()
   // DERIVED FROM TODAY, never a literal: the rule is «earlier than today», and
   // this suite runs on real timers, so a hard-coded date would stop testing
   // that rule the moment the calendar moved past it.
-  const STRANDED_DATE = addDaysIso(todayIso(), -5);
+  const STRANDED_DATE = addDaysIso(TODAY, -5);
   const STRANDED_TITLE = `The shift for ${formatLongDate(STRANDED_DATE, 'en')} is not closed yet`;
   const strandedShift: Shift = {
     ...openShift,
@@ -1445,7 +1455,7 @@ describe('ReceptionPage — an open shift left behind on another day (#114)', ()
   });
 
   it('speaks for a shift one single day behind — the rule is earlier, not much earlier', () => {
-    const yesterday = addDaysIso(todayIso(), -1);
+    const yesterday = addDaysIso(TODAY, -1);
     shiftMock.mockReturnValue({
       data: { ...strandedShift, business_date: yesterday },
       isPending: false,

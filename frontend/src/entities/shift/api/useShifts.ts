@@ -4,13 +4,6 @@ import { queryKeys } from '@/shared/api/queryKeys';
 import { todayIso, addDaysIso } from '@/shared/lib/date';
 import type { Shift } from '../model/shift';
 
-interface ShiftListEnvelope {
-  data: Shift[];
-  total: number;
-  page: number;
-  limit: number;
-}
-
 /**
  * The OPEN shift at a point, or `null`. The API answers 404 when none is open;
  * that is a state, not a failure, so it is folded into `null` rather than
@@ -47,7 +40,7 @@ export function shiftOnDateQueryOptions(pointId: string | null, date: string) {
     queryKey: [...queryKeys.shifts, 'on', pointId, date] as const,
     enabled: pointId !== null,
     queryFn: async (): Promise<Shift | null> => {
-      const { data } = await httpClient.get<ShiftListEnvelope>('/shifts', {
+      const { data } = await httpClient.get<Paginated<Shift>>('/shifts', {
         params: { collection_point_id: pointId, from: date, to: date, limit: 1 },
       });
       return data.data[0] ?? null;

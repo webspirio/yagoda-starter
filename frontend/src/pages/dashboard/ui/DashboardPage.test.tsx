@@ -19,7 +19,11 @@ vi.mock('@/entities/user', () => ({
   useMeQuery: () => meMock(),
 }));
 
-vi.mock('@/entities/shift', () => ({
+vi.mock('@/entities/shift', async (importOriginal) => ({
+  // The real module under the one stub: a runtime import the page adds from
+  // `@/entities/shift` later then works as itself, instead of failing as an
+  // opaque «not a function» from a mock that never heard of it.
+  ...(await importOriginal<typeof import('@/entities/shift')>()),
   useStaleOpenShiftsQuery: (options: unknown) => staleShiftsMock(options),
 }));
 
