@@ -200,14 +200,14 @@ describe('VoidIntakeCommand', () => {
       it('void: voids the payout with the same reason, no return', async () => {
         await command.void(oksana, INTAKE_ID, { reason: 'помилка', payout: 'void' });
 
-        expect(payouts.void).toHaveBeenCalledWith(manager, oksana, bound, 'помилка');
+        expect(payouts.void).toHaveBeenCalledWith(manager, oksana, bound, 'помилка', false);
         expect(payouts.settleReturn).not.toHaveBeenCalled();
       });
 
       it('void_returned (owner): voids, then settles the return with the reason as note', async () => {
         await command.void(owner, INTAKE_ID, { reason: 'повернув', payout: 'void_returned' });
 
-        expect(payouts.void).toHaveBeenCalledWith(manager, owner, bound, 'повернув');
+        expect(payouts.void).toHaveBeenCalledWith(manager, owner, bound, 'повернув', false);
         expect(payouts.settleReturn).toHaveBeenCalledWith(
           manager,
           owner,

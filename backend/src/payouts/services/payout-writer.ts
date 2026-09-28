@@ -129,16 +129,24 @@ export class PayoutWriter {
   }
 
   /** Voids a payout the caller loaded, locked and authorised, and releases its allocations.
-   *  Does not return the cash (§9.3) — that is `settleReturn`. */
+   *  `returnToDrawer` (open shift, 2026-09-28): the cash is back at this instant, booked to the
+   *  payout's own shift. Otherwise the return waits for `settleReturn` (§9.3). */
   async void(
     m: EntityManager,
     actor: AuthenticatedUser,
     payout: Payout,
     reason: string,
+    returnToDrawer: boolean,
   ): Promise<Payout> {
-    payout.voided_at = new Date();
+    const now = new Date();
+    payout.voided_at = now;
     payout.voided_by_user_id = actor.sub;
     payout.void_reason = reason;
+    if (returnToDrawer) {
+      payout.return_settled_at = now;
+      payout.return_settled_by_user_id = actor.sub;
+      payout.returned_on_void = true;
+    }
     const saved = await m.save(Payout, payout);
     await this.allocations.release(m, { payoutId: saved.id });
     await this.audit.record(
@@ -147,7 +155,7 @@ export class PayoutWriter {
         actor_id: actor.sub,
         target_type: 'payout',
         target_id: saved.id,
-        after: { code: saved.code, amount: saved.amount },
+        after: { code: saved.code, amount: saved.amount, returned_on_void: returnToDrawer },
         note: reason,
       },
       m,

@@ -99,5 +99,21 @@ describe('SettleReturnCommand', () => {
       expect(saved()).not.toHaveProperty('return_amount');
       expect(saved().return_note).toBeNull();
     });
+
+    it('409s a payout already returned on void', async () => {
+      manager.findOne.mockResolvedValue(
+        payout({
+          voided_at: new Date(),
+          voided_by_user_id: 'u-oksana',
+          void_reason: 'r',
+          return_settled_at: new Date(),
+          return_settled_by_user_id: 'u-oksana',
+          returned_on_void: true,
+        }),
+      );
+      await expect(command.settle(owner, PAYOUT_ID, {})).rejects.toMatchObject({
+        response: { code: 'RETURN_ALREADY_SETTLED' },
+      });
+    });
   });
 });

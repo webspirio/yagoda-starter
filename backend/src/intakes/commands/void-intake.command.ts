@@ -93,7 +93,8 @@ export class VoidIntakeCommand {
     );
 
     if (payout && dto.payout !== 'keep') {
-      const voided = await this.payouts.void(m, actor, payout, dto.reason);
+      // Task 4 rewrites this call to ask the intake's own shift; for now it never returns cash.
+      const voided = await this.payouts.void(m, actor, payout, dto.reason, false);
       if (dto.payout === 'void_returned') {
         await this.payouts.settleReturn(m, actor, voided, dto.reason);
       }

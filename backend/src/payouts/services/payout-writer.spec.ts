@@ -89,7 +89,7 @@ describe('PayoutWriter', () => {
     it('void writes the trio and audits payout.voided', async () => {
       const row = payout();
 
-      await writer.void(manager as never, oksana, row as never, 'помилка');
+      await writer.void(manager as never, oksana, row as never, 'помилка', false);
 
       const saved = manager.save.mock.calls[0][1] as Record<string, unknown>;
       expect(saved).toMatchObject({ voided_by_user_id: oksana.sub, void_reason: 'помилка' });
@@ -103,10 +103,39 @@ describe('PayoutWriter', () => {
     it('void releases the payout and does not allocate — the caller allocates', async () => {
       const row = payout();
 
-      await writer.void(manager as never, oksana, row as never, 'r');
+      await writer.void(manager as never, oksana, row as never, 'r', false);
 
       expect(allocations.release).toHaveBeenCalledWith(manager, { payoutId: row.id });
       expect(allocations.allocate).not.toHaveBeenCalled();
+    });
+
+    it('void with returnToDrawer stamps the return at the void’s own instant', async () => {
+      const row = payout();
+
+      await writer.void(manager as never, oksana, row as never, 'повернув', true);
+
+      const saved = manager.save.mock.calls[0][1] as Record<string, unknown>;
+      expect(saved.returned_on_void).toBe(true);
+      expect(saved.return_settled_at).toBe(saved.voided_at);
+      expect(saved.return_settled_by_user_id).toBe(oksana.sub);
+      expect(audit.record).toHaveBeenCalledTimes(1);
+      expect(audit.record).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: 'payout.voided',
+          after: expect.objectContaining({ returned_on_void: true }),
+        }),
+        manager,
+      );
+    });
+
+    it('void without returnToDrawer leaves the return pending', async () => {
+      const row = payout();
+
+      await writer.void(manager as never, owner, row as never, 'r', false);
+
+      const saved = manager.save.mock.calls[0][1] as Record<string, unknown>;
+      expect(saved.returned_on_void).toBe(false);
+      expect(saved.return_settled_at).toBeNull();
     });
 
     it('settleReturn records the return and audits payout.return-settled', async () => {

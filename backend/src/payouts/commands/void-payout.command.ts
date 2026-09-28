@@ -9,7 +9,8 @@ import { AllocationsService } from '../../supplier-balance/services/allocations'
 import { assertCanVoid } from '../../auth/access/document-access';
 import type { AuthenticatedUser } from '../../auth/jwt.strategy';
 
-/** §9.4 void. Load and state check under the row lock, or a double tap audits twice. */
+/** §9.4 void. An open shift returns the cash at once (2026-09-28). Load and state check under
+ *  the row lock, or a double tap audits twice. */
 @Injectable()
 export class VoidPayoutCommand {
   constructor(
@@ -38,7 +39,10 @@ export class VoidPayoutCommand {
             code: 'ALREADY_VOIDED',
           });
         }
-        return toPayoutResponse(await this.writer.void(m, actor, payout, dto.reason), shift);
+        return toPayoutResponse(
+          await this.writer.void(m, actor, payout, dto.reason, shift.closed_at === null),
+          shift,
+        );
       });
     });
   }

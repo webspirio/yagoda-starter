@@ -14,6 +14,7 @@ import {
   type PayoutsMocks,
 } from '../../testing/unit/payouts.mocks';
 import { VoidPayoutCommand } from './void-payout.command';
+import { ShiftStatus } from '../../shifts/shift-status.enum';
 
 describe('VoidPayoutCommand', () => {
   let manager: PayoutsMocks['manager'];
@@ -78,11 +79,21 @@ describe('VoidPayoutCommand', () => {
       );
     });
 
-    it('does NOT touch return_settled_at', async () => {
-      // §9.3 — «каса НЕ виросла на 8 000». Voiding and the money coming back
-      // are two separate events; conflating them is the theft the rule names.
-      await command.void(oksana, PAYOUT_ID, { reason: 'помилка' });
+    it('in an open shift, returns the cash at the void', async () => {
+      await command.void(oksana, PAYOUT_ID, { reason: 'повернув' });
 
+      expect(saved().returned_on_void).toBe(true);
+      expect(saved().return_settled_at).toBeInstanceOf(Date);
+    });
+
+    it('in a closed shift (owner), leaves the return pending — §9.3', async () => {
+      shifts.findOneRaw.mockResolvedValue(
+        shift({ closed_at: new Date(), status: ShiftStatus.Closed }),
+      );
+
+      await command.void(owner, PAYOUT_ID, { reason: 'пізно' });
+
+      expect(saved().returned_on_void).toBe(false);
       expect(saved().return_settled_at).toBeNull();
     });
 
