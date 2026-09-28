@@ -97,8 +97,10 @@ export interface PriceChangeResponse {
 }
 
 export interface PriceChangesResponse {
-  /** The app zone's today, `YYYY-MM-DD` — the day the list is about. */
-  date: string;
+  /** The period the list covers, both ends inclusive local dates in the app
+   *  zone, `YYYY-MM-DD` — `from === to` for a single day. */
+  from: string;
+  to: string;
   changes: PriceChangeResponse[];
 }
 

@@ -381,8 +381,18 @@
       "historyCell": "{{grade}} at {{point}} — price history"
     },
     "changes": {
-      "title": "Changes today",
-      "empty": "No price has changed today — the previous prices still apply."
+      "title": "Changes during the day",
+      "titlePeriod": "Price changes",
+      "empty": "No price has changed today — the previous prices still apply.",
+      "emptyPeriod": "No price changed in this period.",
+      "period": "Period",
+      "from": "From",
+      "to": "To",
+      "presets": {
+        "today": "Today",
+        "yesterday": "Yesterday",
+        "week": "7 days"
+      }
     }
   },
   "day": {
