@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { expectNoAxeViolations } from '../../../test-axe';
 import type { IntakeDetail } from '@/entities/intake';
@@ -27,7 +27,8 @@ const {
   voidDialogMock: vi.fn(),
 }));
 
-vi.mock('@/entities/intake', () => ({
+vi.mock('@/entities/intake', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/entities/intake')>()),
   useIntakeQuery: (id: string | null) => intakeMock(id),
 }));
 
@@ -558,5 +559,65 @@ describe('ReceiptDialog wiring into VoidDocumentDialog (#125)', () => {
 
     expect(screen.getByText('SHP-IN-20260908-00412')).toBeInTheDocument();
     expect(screen.queryByText('Something went wrong')).not.toBeInTheDocument();
+  });
+});
+
+describe('ReceiptDialog startWithVoid — the row action opens straight into the void', () => {
+  it('opens the void dialog at once when the viewer may void', () => {
+    setUp({ me: OWNER });
+    render(<ReceiptDialog intakeId="intake-1" open startWithVoid onClose={vi.fn()} />);
+
+    expect(screen.getByTestId('void-dialog-mock')).toBeInTheDocument();
+  });
+
+  it('opens the void dialog for the author on an open shift', () => {
+    setUp({ me: OPERATOR_AUTHOR });
+    render(<ReceiptDialog intakeId="intake-1" open startWithVoid onClose={vi.fn()} />);
+
+    expect(screen.getByTestId('void-dialog-mock')).toBeInTheDocument();
+  });
+
+  it('does not open it when the viewer may not void', () => {
+    setUp({ me: OPERATOR_OTHER });
+    render(<ReceiptDialog intakeId="intake-1" open startWithVoid onClose={vi.fn()} />);
+
+    expect(screen.queryByTestId('void-dialog-mock')).not.toBeInTheDocument();
+  });
+
+  it('does not open it without startWithVoid', () => {
+    setUp({ me: OWNER });
+    render(<ReceiptDialog intakeId="intake-1" open onClose={vi.fn()} />);
+
+    expect(screen.queryByTestId('void-dialog-mock')).not.toBeInTheDocument();
+  });
+
+  it('closing the void dialog leaves the receipt open, and it does not reopen', () => {
+    setUp({ me: OWNER });
+    const onClose = vi.fn();
+    const { rerender } = render(
+      <ReceiptDialog intakeId="intake-1" open startWithVoid onClose={onClose} />,
+    );
+
+    const { onClose: closeVoid } = voidDialogMock.mock.lastCall![0] as { onClose: () => void };
+    act(() => closeVoid());
+    rerender(<ReceiptDialog intakeId="intake-1" open startWithVoid onClose={onClose} />);
+
+    expect(screen.queryByTestId('void-dialog-mock')).not.toBeInTheDocument();
+    expect(screen.getByText('SHP-IN-20260908-00412')).toBeInTheDocument();
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it('opens it again on the next opening of the same receipt', () => {
+    setUp({ me: OWNER });
+    const { rerender } = render(
+      <ReceiptDialog intakeId="intake-1" open startWithVoid onClose={vi.fn()} />,
+    );
+    const { onClose: closeVoid } = voidDialogMock.mock.lastCall![0] as { onClose: () => void };
+    act(() => closeVoid());
+
+    rerender(<ReceiptDialog intakeId="intake-1" open={false} startWithVoid onClose={vi.fn()} />);
+    rerender(<ReceiptDialog intakeId="intake-1" open startWithVoid onClose={vi.fn()} />);
+
+    expect(screen.getByTestId('void-dialog-mock')).toBeInTheDocument();
   });
 });

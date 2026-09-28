@@ -105,6 +105,12 @@ export function ReceptionPage() {
   // successful submit) — never during render, which the React Compiler bans.
   const pickerRef = useRef<SupplierPickerHandle>(null);
   const [receiptId, setReceiptId] = useState<string | null>(null);
+  // A row's «Анулювати» opens the same receipt straight into its void.
+  const [receiptVoid, setReceiptVoid] = useState(false);
+  const openReceipt = (intakeId: string, { void: startWithVoid = false } = {}) => {
+    setReceiptId(intakeId);
+    setReceiptVoid(startWithVoid);
+  };
   const [openDialogOpen, setOpenDialogOpen] = useState(false);
   // Bumped on every open so the dialog remounts with fresh RHF defaults and no
   // banner from the refusal before it — the convention `ReopenShiftDialog`
@@ -258,7 +264,7 @@ export function ReceptionPage() {
               : t('reception.toast.settled'),
         },
       );
-      setReceiptId(created.id);
+      openReceipt(created.id);
       // The mock resets everything, supplier included: the next person in the
       // queue is a new visit, not an edit of this one.
       reset({ supplier_id: '', items: [emptyLine(defaultTareTypeId)], paid_amount: '' });
@@ -465,7 +471,7 @@ export function ReceptionPage() {
               isOwner={isOwner}
               targetCrates={targetCrates}
             />
-            <TodayReceipts shiftId={shift.data?.id} onOpen={setReceiptId} />
+            <TodayReceipts shiftId={shift.data?.id} me={me} onOpen={openReceipt} />
           </div>
         </div>
       </>
@@ -500,6 +506,7 @@ export function ReceptionPage() {
         key={receiptId}
         intakeId={receiptId}
         open={receiptId !== null}
+        startWithVoid={receiptVoid}
         onClose={() => setReceiptId(null)}
       />
     </>

@@ -140,7 +140,8 @@ vi.mock('@/features/pick-supplier', () => ({
   }),
 }));
 
-vi.mock('@/entities/intake', () => ({
+vi.mock('@/entities/intake', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/entities/intake')>()),
   useIntakesQuery: (filter: unknown) => intakesMock(filter),
 }));
 
@@ -152,9 +153,23 @@ vi.mock('@/entities/tare-type', () => ({
   useTareTypeOptionsQuery: () => tareTypesMock(),
 }));
 
-vi.mock('@/widgets/receipt', () => ({
-  ReceiptDialog: ({ intakeId, open }: { intakeId: string | null; open: boolean }) =>
-    open ? <div>Receipt for {intakeId}</div> : null,
+vi.mock('@/widgets/receipt', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/widgets/receipt')>()),
+  ReceiptDialog: ({
+    intakeId,
+    open,
+    startWithVoid,
+  }: {
+    intakeId: string | null;
+    open: boolean;
+    startWithVoid?: boolean;
+  }) =>
+    open ? (
+      <div>
+        Receipt for {intakeId}
+        {startWithVoid ? ' (void)' : ''}
+      </div>
+    ) : null,
 }));
 
 vi.mock('../api/intakes', () => ({
@@ -905,6 +920,33 @@ describe("ReceptionPage — the supplier's history and today's badge", () => {
     // Only the live receipt's kilos count toward the header tonnage — the
     // voided one (same 120.40 kg fixture default) does not double it up.
     expect(within(badgeArea!).getByText('120.40 kg')).toBeInTheDocument();
+  });
+});
+
+describe("ReceptionPage — «Void» on today's receipts", () => {
+  it('opens the receipt straight into its void, not as a plain open', async () => {
+    const user = userEvent.setup();
+    intakesMock.mockImplementation((filter: { shiftId?: string }) =>
+      filter.shiftId ? page<Intake>([intake({ id: 'i2', code: 'SHP-IN-2', amount: '200.00' })]) : page<Intake>([]),
+    );
+    renderReception();
+
+    await user.click(screen.getByRole('button', { name: 'Void SHP-IN-2' }));
+
+    expect(await screen.findByText('Receipt for i2 (void)')).toBeInTheDocument();
+  });
+
+  it('a plain row click still opens the receipt without the void', async () => {
+    const user = userEvent.setup();
+    intakesMock.mockImplementation((filter: { shiftId?: string }) =>
+      filter.shiftId ? page<Intake>([intake({ id: 'i2', code: 'SHP-IN-2', amount: '200.00' })]) : page<Intake>([]),
+    );
+    renderReception();
+
+    const card = screen.getByText("Today's receipts").closest('[data-slot="card"]');
+    await user.click(within(card as HTMLElement).getByText('200.00 ₴'));
+
+    expect(await screen.findByText('Receipt for i2')).toBeInTheDocument();
   });
 });
 

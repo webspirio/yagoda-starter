@@ -1,5 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import type { Me } from '@/entities/user';
 import type { Intake } from '@/entities/intake';
 import { formatTime } from '@/shared/lib/date';
 import { formatKg, formatUah } from '@/shared/lib/money';
@@ -7,9 +9,22 @@ import { TodayReceipts } from './TodayReceipts';
 
 const { intakesMock } = vi.hoisted(() => ({ intakesMock: vi.fn() }));
 
-vi.mock('@/entities/intake', () => ({
+vi.mock('@/entities/intake', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/entities/intake')>()),
   useIntakesQuery: (filter: unknown) => intakesMock(filter),
 }));
+
+const AUTHOR: Me = {
+  id: 'u1',
+  username: 'oksana',
+  display_name: 'Oksana',
+  avatar_url: null,
+  language_code: null,
+  role: 'point_operator',
+  collection_point_id: 'p1',
+};
+const OTHER_OPERATOR: Me = { ...AUTHOR, id: 'u2', username: 'taras' };
+const OWNER: Me = { ...AUTHOR, id: 'u9', role: 'network_owner', collection_point_id: null };
 
 const intake = (over: Partial<Intake> & Pick<Intake, 'id' | 'created_at'>): Intake => ({
   code: 'SHP-IN-20260921-00001',
@@ -109,7 +124,7 @@ beforeEach(() => {
 describe('TodayReceipts — a row reads like the mock', () => {
   it('shows the time, the supplier, the line count, the kilos, the remainder and the amount', () => {
     intakesMock.mockReturnValue(page([NINA, VOIDED, OLEH]));
-    render(<TodayReceipts shiftId="s1" onOpen={vi.fn()} />);
+    render(<TodayReceipts shiftId="s1" me={AUTHOR} onOpen={vi.fn()} />);
 
     expect(screen.getByText(formatTime(NINA.created_at, 'en'))).toBeInTheDocument();
     expect(screen.getByText('Ніна Ільчук')).toBeInTheDocument();
@@ -124,7 +139,7 @@ describe('TodayReceipts — a row reads like the mock', () => {
 
   it('shows no «N positions» suffix and no remainder for a single, fully-paid line', () => {
     intakesMock.mockReturnValue(page([OLEH]));
-    render(<TodayReceipts shiftId="s1" onOpen={vi.fn()} />);
+    render(<TodayReceipts shiftId="s1" me={AUTHOR} onOpen={vi.fn()} />);
 
     expect(screen.queryByText(/position/)).not.toBeInTheDocument();
     expect(screen.queryByText(/remainder/)).not.toBeInTheDocument();
@@ -132,7 +147,7 @@ describe('TodayReceipts — a row reads like the mock', () => {
 
   it('still lists a voided receipt, struck through, without it counting toward the header', () => {
     intakesMock.mockReturnValue(page([NINA, VOIDED, OLEH]));
-    render(<TodayReceipts shiftId="s1" onOpen={vi.fn()} />);
+    render(<TodayReceipts shiftId="s1" me={AUTHOR} onOpen={vi.fn()} />);
 
     expect(screen.getByText('Petro Kotyk')).toBeInTheDocument();
     expect(screen.getByText('voided')).toBeInTheDocument();
@@ -145,7 +160,7 @@ describe('TodayReceipts — a row reads like the mock', () => {
 
   it('never shows the amber remainder on a voided receipt, even when the amount was never paid', () => {
     intakesMock.mockReturnValue(page([NINA, VOIDED_WITH_GAP]));
-    render(<TodayReceipts shiftId="s1" onOpen={vi.fn()} />);
+    render(<TodayReceipts shiftId="s1" me={AUTHOR} onOpen={vi.fn()} />);
 
     // The live row (Ніна) still reads its remainder…
     expect(screen.getByText('remainder ' + formatUah('3000.00', 'en'))).toBeInTheDocument();
@@ -158,7 +173,7 @@ describe('TodayReceipts — a row reads like the mock', () => {
 
   it('reads the open figure from allocations: no remainder on a receipt older money already closed', () => {
     intakesMock.mockReturnValue(page([CLOSED_BY_OLD_MONEY]));
-    render(<TodayReceipts shiftId="s1" onOpen={vi.fn()} />);
+    render(<TodayReceipts shiftId="s1" me={AUTHOR} onOpen={vi.fn()} />);
 
     expect(screen.getByText('Olena Hrab')).toBeInTheDocument();
     expect(screen.queryByText(/remainder/)).not.toBeInTheDocument();
@@ -166,7 +181,53 @@ describe('TodayReceipts — a row reads like the mock', () => {
 
   it('scrolls a tall list instead of growing the page', () => {
     intakesMock.mockReturnValue(page([NINA]));
-    const { container } = render(<TodayReceipts shiftId="s1" onOpen={vi.fn()} />);
+    const { container } = render(<TodayReceipts shiftId="s1" me={AUTHOR} onOpen={vi.fn()} />);
     expect(container.querySelector('.max-h-\\[560px\\].overflow-y-auto')).toBeInTheDocument();
+  });
+});
+
+describe('TodayReceipts — «Void» on a receipt row (§9.4)', () => {
+  const voidButton = (code: string) => screen.queryByRole('button', { name: `Void ${code}` });
+  const LIVE = intake({ id: 'i7', code: 'SHP-IN-7', created_at: '2026-09-21T09:00:00Z' });
+
+  it('is shown to the owner', () => {
+    intakesMock.mockReturnValue(page([intake({ ...LIVE, shift_closed: true })]));
+    render(<TodayReceipts shiftId="s1" me={OWNER} onOpen={vi.fn()} />);
+    expect(voidButton('SHP-IN-7')).toBeInTheDocument();
+  });
+
+  it('is shown to the author while the shift is open', () => {
+    intakesMock.mockReturnValue(page([LIVE]));
+    render(<TodayReceipts shiftId="s1" me={AUTHOR} onOpen={vi.fn()} />);
+    expect(voidButton('SHP-IN-7')).toBeInTheDocument();
+  });
+
+  it('is hidden from another operator', () => {
+    intakesMock.mockReturnValue(page([LIVE]));
+    render(<TodayReceipts shiftId="s1" me={OTHER_OPERATOR} onOpen={vi.fn()} />);
+    expect(voidButton('SHP-IN-7')).not.toBeInTheDocument();
+  });
+
+  it('is hidden from the author once the shift is closed', () => {
+    intakesMock.mockReturnValue(page([intake({ ...LIVE, shift_closed: true })]));
+    render(<TodayReceipts shiftId="s1" me={AUTHOR} onOpen={vi.fn()} />);
+    expect(voidButton('SHP-IN-7')).not.toBeInTheDocument();
+  });
+
+  it('is hidden on a voided receipt', () => {
+    intakesMock.mockReturnValue(page([intake({ ...LIVE, voided_at: '2026-09-21T10:00:00Z' })]));
+    render(<TodayReceipts shiftId="s1" me={OWNER} onOpen={vi.fn()} />);
+    expect(voidButton('SHP-IN-7')).not.toBeInTheDocument();
+  });
+
+  it('opens that receipt straight into its void, and only once', async () => {
+    const onOpen = vi.fn();
+    intakesMock.mockReturnValue(page([LIVE]));
+    render(<TodayReceipts shiftId="s1" me={AUTHOR} onOpen={onOpen} />);
+
+    await userEvent.click(voidButton('SHP-IN-7')!);
+
+    expect(onOpen).toHaveBeenCalledTimes(1);
+    expect(onOpen).toHaveBeenCalledWith('i7', { void: true });
   });
 });

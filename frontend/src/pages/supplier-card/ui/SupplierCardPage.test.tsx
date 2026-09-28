@@ -46,7 +46,8 @@ vi.mock('@/entities/supplier', () => ({
     `${s.first_name} ${s.last_name}`,
 }));
 
-vi.mock('@/entities/intake', () => ({
+vi.mock('@/entities/intake', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/entities/intake')>()),
   useIntakesQuery: (filter: unknown) => intakesMock(filter),
 }));
 
@@ -66,7 +67,8 @@ vi.mock('@/entities/collection-point', () => ({
   usePointOptionsQuery: () => pointsMock(),
 }));
 
-vi.mock('@/widgets/receipt', () => ({
+vi.mock('@/widgets/receipt', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/widgets/receipt')>()),
   ReceiptDialog: (props: Record<string, unknown>) => {
     receiptDialogMock(props);
     return props.open ? <div data-testid="receipt-dialog-mock" /> : null;
@@ -652,6 +654,67 @@ describe('SupplierCardPage', () => {
  * string with no breakdown, so this timeline is the only place the owner can
  * learn why the balance is what it is. Everything below is about that.
  */
+describe('SupplierCardPage — «Void» on a receipt row (§9.4)', () => {
+  const voidButton = (code: string) => screen.queryByRole('button', { name: `Void ${code}` });
+  const LIVE = { id: 'i1', code: 'KV-0001', amount: '1000.00', created_at: '2026-09-08T07:10:00Z' };
+
+  it('is shown to the owner, even on a closed shift', () => {
+    meMock.mockReturnValue({ data: OWNER, isPending: false, isError: false });
+    intakesMock.mockReturnValue(page<Intake>([intake({ ...LIVE, shift_closed: true })]));
+    renderCard();
+    expect(voidButton('KV-0001')).toBeInTheDocument();
+  });
+
+  it('is shown to the author while the shift is open', () => {
+    intakesMock.mockReturnValue(page<Intake>([intake(LIVE)]));
+    renderCard();
+    expect(voidButton('KV-0001')).toBeInTheDocument();
+  });
+
+  it('is hidden from another operator', () => {
+    intakesMock.mockReturnValue(page<Intake>([intake({ ...LIVE, received_by_user_id: 'u2' })]));
+    renderCard();
+    expect(voidButton('KV-0001')).toBeNull();
+  });
+
+  it('is hidden from the author once the shift is closed', () => {
+    intakesMock.mockReturnValue(page<Intake>([intake({ ...LIVE, shift_closed: true })]));
+    renderCard();
+    expect(voidButton('KV-0001')).toBeNull();
+  });
+
+  it('is hidden on a voided receipt', () => {
+    meMock.mockReturnValue({ data: OWNER, isPending: false, isError: false });
+    intakesMock.mockReturnValue(
+      page<Intake>([intake({ ...LIVE, voided_at: '2026-09-08T08:00:00Z' })]),
+    );
+    renderCard();
+    expect(voidButton('KV-0001')).toBeNull();
+  });
+
+  it('opens the receipt straight into its void', async () => {
+    intakesMock.mockReturnValue(page<Intake>([intake(LIVE)]));
+    renderCard();
+
+    await userEvent.click(voidButton('KV-0001')!);
+
+    expect(receiptDialogMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({ open: true, intakeId: 'i1', startWithVoid: true }),
+    );
+  });
+
+  it('a plain row click opens the receipt without the void', async () => {
+    intakesMock.mockReturnValue(page<Intake>([intake(LIVE)]));
+    renderCard();
+
+    await userEvent.click(screen.getByText('KV-0001'));
+
+    expect(receiptDialogMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({ open: true, intakeId: 'i1', startWithVoid: false }),
+    );
+  });
+});
+
 describe('SupplierCardPage — top-ups', () => {
   beforeEach(() => {
     meMock.mockReturnValue({ data: OWNER, isPending: false, isError: false });

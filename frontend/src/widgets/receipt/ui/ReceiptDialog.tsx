@@ -11,7 +11,7 @@ import {
 import { Button } from '@/shared/ui/button';
 import { add, cmp, formatKg, formatUah, isNegative } from '@/shared/lib/money';
 import { formatLongDate, formatTime } from '@/shared/lib/date';
-import { useIntakeQuery } from '@/entities/intake';
+import { canVoidIntake, useIntakeQuery } from '@/entities/intake';
 import {
   useSupplierBalanceQuery,
   useSupplierQuery,
@@ -53,15 +53,21 @@ function formatBonus(price: string, bonus: string, locale: string): string | nul
  * staying `true`) while swapping `intakeId` to a different document, that
  * state would carry over from the previous receipt — remount with
  * `key={intakeId}` when doing that.
+ *
+ * `startWithVoid` is a table row's «Анулювати»: the receipt opens with its
+ * void dialog already on top (once per opening, and only if the viewer may
+ * void it); closing the void dialog leaves the receipt itself open.
  */
 export function ReceiptDialog({
   intakeId,
   open,
   onClose,
+  startWithVoid = false,
 }: {
   intakeId: string | null;
   open: boolean;
   onClose: () => void;
+  startWithVoid?: boolean;
 }) {
   const { t, i18n } = useTranslation();
   const locale = i18n.resolvedLanguage ?? 'uk';
@@ -114,6 +120,16 @@ export function ReceiptDialog({
     setVoidKey((k) => k + 1);
     setVoidOpen(true);
   };
+
+  // State adjusted during render, not in an effect: the void dialog is open
+  // on the very first frame the receipt is, instead of flashing in a frame
+  // later. `autoVoided` makes it once per opening; closing resets it.
+  const [autoVoided, setAutoVoided] = useState(false);
+  if (!open && autoVoided) setAutoVoided(false);
+  if (open && startWithVoid && !autoVoided && intake && me && canVoidIntake(me, intake)) {
+    setAutoVoided(true);
+    openVoid();
+  }
 
   if (intakeId === null) {
     return null;
@@ -176,10 +192,7 @@ export function ReceiptDialog({
       .filter((p) => p.voided_at !== null)
       .map((p) => p.code);
 
-    // A closed shift's receipt is the owner's alone (§9.4).
-    const showVoid =
-      !voided &&
-      (me.role === 'network_owner' || (me.id === intake.received_by_user_id && !intake.shift_closed));
+    const showVoid = canVoidIntake(me, intake);
 
     content = (
       <ReceiptSheet

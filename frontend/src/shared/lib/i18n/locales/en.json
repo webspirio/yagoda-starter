@@ -796,7 +796,8 @@
     "voided": "VOIDED",
     "voidReason": "Reason: {{reason}}",
     "print": "Print",
-    "void": "Void"
+    "void": "Void",
+    "voidRow": "Void {{code}}"
   },
   "reception": {
     "eyebrow": "{{point}} · {{date}}",
@@ -1048,7 +1049,8 @@
       "point": "Point",
       "supplier": "Supplier",
       "amount": "Amount",
-      "status": "Status"
+      "status": "Status",
+      "action": "Action"
     },
     "voided": "Voided",
     "empty": "No records for this period.",

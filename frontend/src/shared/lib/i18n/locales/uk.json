@@ -810,7 +810,8 @@
     "voided": "АНУЛЬОВАНО",
     "voidReason": "Причина: {{reason}}",
     "print": "Друк",
-    "void": "Анулювати"
+    "void": "Анулювати",
+    "voidRow": "Анулювати {{code}}"
   },
   "reception": {
     "eyebrow": "{{point}} · {{date}}",
@@ -1078,7 +1079,8 @@
       "point": "Точка",
       "supplier": "Постачальник",
       "amount": "Сума",
-      "status": "Стан"
+      "status": "Стан",
+      "action": "Дія"
     },
     "voided": "Анульовано",
     "empty": "За цей період записів немає.",

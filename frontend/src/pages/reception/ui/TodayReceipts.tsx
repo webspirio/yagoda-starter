@@ -6,7 +6,9 @@ import { Eyebrow } from '@/shared/ui/eyebrow';
 import { cn } from '@/shared/lib/cn';
 import { formatTime } from '@/shared/lib/date';
 import { cmp, formatKg, formatUah, sum } from '@/shared/lib/money';
-import { useIntakesQuery } from '@/entities/intake';
+import { canVoidIntake, useIntakesQuery } from '@/entities/intake';
+import type { Me } from '@/entities/user';
+import { ReceiptVoidButton } from '@/widgets/receipt';
 
 /**
  * The right column: every receipt of the CURRENT shift, newest first, each one
@@ -19,10 +21,12 @@ import { useIntakesQuery } from '@/entities/intake';
  */
 export function TodayReceipts({
   shiftId,
+  me,
   onOpen,
 }: {
   shiftId: string | undefined;
-  onOpen: (intakeId: string) => void;
+  me: Me | undefined;
+  onOpen: (intakeId: string, options?: { void?: boolean }) => void;
 }) {
   const { t, i18n } = useTranslation();
   const locale = i18n.resolvedLanguage ?? 'uk';
@@ -61,12 +65,13 @@ export function TodayReceipts({
             const remainder = row.open_amount;
             const hasRemainder = row.voided_at === null && cmp(remainder, '0') === 1;
             return (
-              <li key={row.id}>
+              // The void action is a SIBLING of the row button, never nested in it.
+              <li key={row.id} className="flex items-center gap-1">
                 <button
                   type="button"
                   onClick={() => onOpen(row.id)}
                   className={cn(
-                    'flex w-full items-center gap-2 py-2 text-left text-sm transition-colors hover:text-brand',
+                    'flex min-w-0 flex-1 items-center gap-2 py-2 text-left text-sm transition-colors hover:text-brand',
                     row.voided_at !== null && 'text-muted-foreground line-through',
                   )}
                 >
@@ -95,6 +100,9 @@ export function TodayReceipts({
                   </span>
                   <Receipt className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
                 </button>
+                {me && canVoidIntake(me, row) ? (
+                  <ReceiptVoidButton code={row.code} onClick={() => onOpen(row.id, { void: true })} />
+                ) : null}
               </li>
             );
           })}

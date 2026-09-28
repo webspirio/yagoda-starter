@@ -6,10 +6,11 @@ import { EmptyState } from '@/shared/ui/empty-state';
 import { cn } from '@/shared/lib/cn';
 import { formatShortDate } from '@/shared/lib/date';
 import { formatUah, isZero } from '@/shared/lib/money';
-import type { Intake } from '@/entities/intake';
+import { canVoidIntake, type Intake } from '@/entities/intake';
 import type { Payout } from '@/entities/payout';
 import type { IntakeTopUp } from '@/entities/intake-top-up';
 import type { Me } from '@/entities/user';
+import { ReceiptVoidButton } from '@/widgets/receipt';
 
 interface TimelineRowBase {
   id: string;
@@ -36,9 +37,9 @@ type TimelineRow =
  * `created_at` (spec §5.4) — the season's whole history; the per-line
  * breakdown arrives as two maps from the settlement projection (spec
  * 2026-09-25) — this list never computes it. Voided rows are struck through
- * with the reason shown, not just hinted at in a tooltip; a payout carries
- * its own «Анулювати» when the viewer is allowed to void it — an intake's
- * void action lives inside the receipt widget it opens, not here.
+ * with the reason shown, not just hinted at in a tooltip; a payout and a
+ * receipt each carry their own «Анулювати» when the viewer may void it — the
+ * receipt's opens the receipt widget straight into its void.
  *
  * `OpenBalances` above explains the balance; the captions here point each
  * row at it.
@@ -68,7 +69,7 @@ export function SupplierTimeline({
   openByLineId: Map<string, string>;
   /** Payout id → the business dates it closed and what it left unallocated. */
   coversByPayoutId: Map<string, { dates: string[]; unallocated: string }>;
-  onOpenReceipt: (intakeId: string) => void;
+  onOpenReceipt: (intakeId: string, options?: { void?: boolean }) => void;
   onVoidPayout: (payout: Payout) => void;
   /** Owner only. Absent for an operator — §10.2: «заблокована кнопка вчить
    *  шукати обхід, відсутня не вчить нічого». */
@@ -181,6 +182,12 @@ export function SupplierTimeline({
                   ) : null}
                 </span>
               </button>
+              {me && canVoidIntake(me, row.intake) ? (
+                <ReceiptVoidButton
+                  code={row.code}
+                  onClick={() => onOpenReceipt(row.id, { void: true })}
+                />
+              ) : null}
               {/* NOT OFFERED ON A VOIDED RECEIPT: `counts_toward_balance` folds
                   in the parent's void, so a top-up written here would count for
                   nothing the moment it was saved. */}
