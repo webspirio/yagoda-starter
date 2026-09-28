@@ -60,8 +60,7 @@ vi.mock('@/entities/payout', () => ({
 
 vi.mock('@/entities/supplier', () => ({
   useSuppliersQuery: (search: string, pointId: string | null) => suppliersMock(search, pointId),
-  supplierName: (s: { first_name: string; last_name: string }) =>
-    `${s.first_name} ${s.last_name}`,
+  supplierName: (s: { first_name: string; last_name: string }) => `${s.first_name} ${s.last_name}`,
 }));
 
 vi.mock('@/widgets/receipt', () => ({
@@ -275,10 +274,11 @@ describe('DayPage — the operator on an open shift', () => {
     ).toBeInTheDocument();
 
     // The voided receipt is out of every total but still on the feed.
-    expect(tile('Receipts')).toHaveTextContent('2');
+    expect(tile('Berry received')).toHaveTextContent('73.80 kg');
+    expect(tile('Berry received')).toHaveTextContent('2 receipts');
     expect(tile('Accrued')).toHaveTextContent('12,771.00 ₴');
-    expect(tile('Paid')).toHaveTextContent('4,000.00 ₴');
-    expect(tile('To balance')).toHaveTextContent('8,771.00 ₴');
+    expect(tile('Cash out')).toHaveTextContent('4,000.00 ₴');
+    expect(tile('Balances created')).toHaveTextContent('8,771.00 ₴');
 
     expect(screen.getByText('KV-0003')).toBeInTheDocument();
     expect(screen.getByText('voided')).toBeInTheDocument();
@@ -343,9 +343,7 @@ describe('DayPage — the operator on an open shift', () => {
 
     await user.click(screen.getByRole('button', { name: 'Close shift' }));
     const dialog = await screen.findByRole('dialog');
-    expect(
-      within(dialog).getByText(/only the owner can reopen it/),
-    ).toBeInTheDocument();
+    expect(within(dialog).getByText(/only the owner can reopen it/)).toBeInTheDocument();
   });
 
   it('closes the count dialog once the close is recorded', async () => {
@@ -440,7 +438,7 @@ describe('DayPage — the operator on an open shift', () => {
     expect(within(payoutRow!).getByText('Iryna Kovalenko')).toBeInTheDocument();
   });
 
-  it('renders a voided row\'s reason as visible text, not only a title attribute', () => {
+  it("renders a voided row's reason as visible text, not only a title attribute", () => {
     renderDay();
 
     expect(screen.getByText('Voided: Wrong supplier')).toBeInTheDocument();
@@ -464,9 +462,7 @@ describe('DayPage — the operator before the shift is open', () => {
     const dialog = await screen.findByRole('dialog');
     await user.type(within(dialog).getByRole('textbox'), '1500.00');
     await user.click(within(dialog).getByRole('button', { name: SUBMIT_COUNT }));
-    await waitFor(() =>
-      expect(openMock).toHaveBeenCalledWith({ counted_amount: '1500.00' }),
-    );
+    await waitFor(() => expect(openMock).toHaveBeenCalledWith({ counted_amount: '1500.00' }));
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
   });
 
@@ -496,11 +492,11 @@ describe('DayPage — a failed read', () => {
   });
 });
 
-describe('DayPage — the To-balance tile tone', () => {
+describe('DayPage — the balances-created tile tone', () => {
   it('stays the default tone when nothing is owed', () => {
     renderDay();
 
-    const value = within(tile('To balance')).getByText('0.00 ₴');
+    const value = within(tile('Balances created')).getByText('0.00 ₴');
     expect(value.className).not.toContain('amber');
   });
 
@@ -511,8 +507,90 @@ describe('DayPage — the To-balance tile tone', () => {
 
     renderDay();
 
-    const value = within(tile('To balance')).getByText('10.00 ₴');
+    const value = within(tile('Balances created')).getByText('10.00 ₴');
     expect(value.className).toContain('amber');
+  });
+});
+
+describe('DayPage — the cash reconciliation', () => {
+  const ledger = () =>
+    screen.getByText('Cash reconciliation').closest('div.rounded-xl') as HTMLElement;
+  const row = (label: string) => {
+    const el = within(ledger()).getByText(label).closest('div');
+    if (!el) throw new Error(`No ledger row "${label}"`);
+    return el as HTMLElement;
+  };
+
+  it('breaks the accrued sum into cash with a receipt, cash without one and the rest owed', () => {
+    intakesMock.mockReturnValue(
+      page<Intake>([intake({ id: 'i1', code: 'KV-0001', amount: '1000.00' })]),
+    );
+    payoutsMock.mockReturnValue(
+      page<Payout>([
+        payout({ id: 'y1', code: 'VD-0001', amount: '600.00', intake_id: 'i1' }),
+        payout({ id: 'y2', code: 'VD-0002', amount: '150.00' }),
+      ]),
+    );
+
+    renderDay();
+
+    expect(row("Accrued for this day's berry")).toHaveTextContent('1,000.00 ₴');
+    expect(row('Paid in cash on the spot')).toHaveTextContent('−600.00 ₴');
+    expect(row('Paid without berry')).toHaveTextContent('−150.00 ₴');
+    expect(row('Left on balance for us')).toHaveTextContent('−250.00 ₴');
+    expect(row('Total cash out')).toHaveTextContent('750.00 ₴');
+    // The two splits the mock draws from allocations do not exist here (§3.3, §3.9).
+    expect(screen.queryByText(/same day|another point/i)).toBeNull();
+  });
+
+  it('hides the without-berry row on a day with no such payout', () => {
+    intakesMock.mockReturnValue(
+      page<Intake>([intake({ id: 'i1', code: 'KV-0001', amount: '100.00' })]),
+    );
+    renderDay();
+    expect(within(ledger()).queryByText('Paid without berry')).toBeNull();
+    // A zero is not an outflow: no «−0.00».
+    expect(row('Paid in cash on the spot')).toHaveTextContent(
+      /^Paid in cash on the spotwith a receipt0\.00 ₴$/,
+    );
+  });
+
+  it('says old balances were paid down when the day paid more than it accrued', () => {
+    intakesMock.mockReturnValue(
+      page<Intake>([intake({ id: 'i1', code: 'KV-0001', amount: '100.00' })]),
+    );
+    payoutsMock.mockReturnValue(
+      page<Payout>([payout({ id: 'y1', code: 'VD-0001', amount: '300.00' })]),
+    );
+
+    renderDay();
+
+    expect(tile('Balances paid down')).toHaveTextContent('200.00 ₴');
+    expect(screen.queryByText('Balances created')).toBeNull();
+    expect(row('Old balances paid down')).toHaveTextContent('+200.00 ₴');
+  });
+
+  it('names voided payout cash that has not come back to the drawer', () => {
+    payoutsMock.mockReturnValue(
+      page<Payout>([
+        payout({
+          id: 'y1',
+          code: 'VD-0001',
+          amount: '40.00',
+          voided_at: '2026-09-08T12:00:00Z',
+          voided_by_user_id: 'u1',
+          void_reason: 'typo',
+        }),
+      ]),
+    );
+
+    renderDay();
+
+    expect(
+      screen.getByText(
+        'Another 40.00 ₴ from voided payouts has not been returned to the drawer yet',
+      ),
+    ).toBeInTheDocument();
   });
 });
 

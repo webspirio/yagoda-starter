@@ -11,7 +11,7 @@ import { Spinner } from '@/shared/ui/spinner';
 import { toast } from '@/shared/ui/toast';
 import { isTruncated } from '@/shared/api';
 import { useUrlParam } from '@/shared/lib/url-state';
-import { sum, sub, cmp, formatUah } from '@/shared/lib/money';
+import { sub, isNegative, isZero, formatUah, formatKg } from '@/shared/lib/money';
 import {
   todayIso,
   addDaysIso,
@@ -34,6 +34,8 @@ import {
   useCloseShiftMutation,
   CountDrawerDialog,
 } from '@/features/count-shift';
+import { buildDaySummary } from '../lib/daySummary';
+import { DayLedger } from './DayLedger';
 import { ReopenShiftDialog } from './ReopenShiftDialog';
 
 interface FeedRow {
@@ -123,32 +125,41 @@ export function DayPage() {
   // confirmed either way are both worse than saying so.
   const isError = shift.isError || intakes.isError || payouts.isError;
 
-  const liveIntakes = (intakes.data?.data ?? []).filter((i) => i.voided_at === null);
-  const livePayouts = (payouts.data?.data ?? []).filter((p) => p.voided_at === null);
-  const accrued = sum(liveIntakes.map((i) => i.amount));
-  const paid = sum(livePayouts.map((p) => p.amount));
+  const summary = buildDaySummary(intakes.data?.data ?? [], payouts.data?.data ?? []);
+  const paidDown = isNegative(summary.debtGrowth);
   const stats: StatItem[] = [
-    { label: t('day.tiles.receipts'), value: String(liveIntakes.length) },
+    {
+      label: t('day.tiles.received'),
+      value: formatKg(summary.netKg, i18n.language),
+      hint: t('day.tiles.receipts', { count: summary.receipts }),
+    },
     {
       label: t('day.tiles.accrued'),
-      value: formatUah(accrued, i18n.language),
+      value: formatUah(summary.accrued, i18n.language),
       hint: t('day.tiles.accruedHint'),
     },
     {
-      label: t('day.tiles.paid'),
-      value: formatUah(paid, i18n.language),
-      hint: t('day.tiles.paidHint'),
+      label: t('day.tiles.cashOut'),
+      value: formatUah(summary.cashOut, i18n.language),
+      hint: t('day.tiles.cashOutHint'),
       tone: 'berry',
     },
-    {
-      label: t('day.tiles.toDebt'),
-      value: formatUah(sub(accrued, paid), i18n.language),
-      hint: t('day.tiles.toDebtHint'),
-      // §5.1: amber only while something is actually owed — a settled (or
-      // negative, which should not happen but must not shout either) balance
-      // reads as any other tile.
-      tone: cmp(sub(accrued, paid), '0') === 1 ? 'amber' : 'default',
-    },
+    // The corrected «Інваріант дня» shows the GROWTH of the debt, which a day
+    // that paid down old balances drives below zero — so the tile says which
+    // way it went rather than print «created: −200».
+    paidDown
+      ? {
+          label: t('day.tiles.debtPaidDown'),
+          value: formatUah(sub('0', summary.debtGrowth), i18n.language),
+          hint: t('day.tiles.debtPaidDownHint'),
+        }
+      : {
+          label: t('day.tiles.debtCreated'),
+          value: formatUah(summary.debtGrowth, i18n.language),
+          hint: t('day.tiles.debtCreatedHint'),
+          // §5.1: amber only while something is actually owed.
+          tone: isZero(summary.debtGrowth) ? 'default' : 'amber',
+        },
   ];
 
   const feed: FeedRow[] = [
@@ -365,7 +376,17 @@ export function DayPage() {
             {t('day.tiles.truncated', { count: feed.length })}
           </p>
         ) : null}
-        <SectionCard eyebrow={t('day.feed.title')}>{feedContent}</SectionCard>
+        {/* The mock's two columns: the reconciliation beside the feed — equal
+            here, since a feed row also carries the document code. The
+            ledger only means something once there is a shift to reconcile. */}
+        {pointId && status !== 'none' && !isError && !shift.isPending ? (
+          <div className="grid items-start gap-5 lg:grid-cols-2">
+            <DayLedger summary={summary} />
+            <SectionCard eyebrow={t('day.feed.title')}>{feedContent}</SectionCard>
+          </div>
+        ) : (
+          <SectionCard eyebrow={t('day.feed.title')}>{feedContent}</SectionCard>
+        )}
       </DashboardPage>
 
       <CountDrawerDialog
