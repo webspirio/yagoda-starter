@@ -65,6 +65,84 @@ export const crateBookSql = (pointExpr: string): string => `(
 )`;
 
 /**
+ * CRATES ON RECEIPTS — the ONE place that knows `is_crate` selects the crate
+ * tare. §6.8's «з ягодою» for one shift (`CrateDispatchService`) reads it, and
+ * so does `CrateStandingService`'s revised standing (§8.1–§8.2) — TWICE: once
+ * unfiltered, over every live receipt at the point (`all_receipt_crates`,
+ * since full crates are always ours and every receipt's tare leaves the
+ * empties), and once filtered to the point's OPEN shift (`with_berry`, «у нас
+ * з ягодою» — closed shifts already moved that tare to the base). Neither
+ * caller re-derives the filter, so the three cannot drift. `where` is a
+ * predicate over `i` (intakes) and `sh` (the intake's shift) — an SQL naming,
+ * never a request value.
+ */
+export const crateTareUnitsSql = (where: string): string => `(
+    SELECT COALESCE(SUM(itt.units), 0)::int
+      FROM intake_item_tare_types itt
+      JOIN intake_items ii ON ii.id = itt.item_id
+      JOIN intakes i       ON i.id = ii.intake_id
+      JOIN shifts sh       ON sh.id = i.shift_id
+      JOIN tare_types tt   ON tt.id = itt.tare_type_id
+     WHERE ${where}
+       AND i.voided_at IS NULL
+       AND tt.is_crate
+)`;
+
+/**
+ * OPEN TRANCHES — the ONE definition both `/crate-balances`'s aggregate and
+ * `CrateStandingService`'s point total read, so a tranche open in one cannot
+ * silently read closed in the other. `remaining_units` is DERIVED, never
+ * stored (§3.2): units issued minus units allocated to non-voided returns.
+ * Filtered to `remaining_units > 0` HERE — a fully-returned tranche is not
+ * open — so neither caller repeats that filter or risks forgetting it.
+ *
+ * `where` is a predicate over `ci` (crate_issuances) and `s` (the issuance's
+ * shift) — an SQL naming, never a request value — ANDed with
+ * `ci.voided_at IS NULL`; pass `'TRUE'` for "every issuance network-wide".
+ * Returns a PARENTHESISED SELECT, so a caller writes it straight after
+ * `AS`/`WITH x AS` — see either caller below.
+ */
+export const openTranchesSql = (where: string): string => `(
+    SELECT * FROM (
+      SELECT ci.id,
+             ci.supplier_id,
+             ci.mode,
+             ci.deposit_per_unit,
+             s.collection_point_id,
+             (ci.units - COALESCE((
+                 SELECT SUM(a.units)
+                   FROM crate_return_allocations a
+                   JOIN crate_returns cr ON cr.id = a.return_id
+                  WHERE a.issuance_id = ci.id
+                    AND cr.voided_at IS NULL), 0))::int AS remaining_units
+        FROM crate_issuances ci
+        JOIN shifts s ON s.id = ci.shift_id
+       WHERE ci.voided_at IS NULL
+         AND ${where}
+    ) t
+   WHERE t.remaining_units > 0
+)`;
+
+/**
+ * A TRANSFER IS HOW EMPTY CRATES ARRIVE AT THE POINT (spec §8.1) — the same
+ * three-way reading `point-cash`'s `movementsSql` gives the cash on the same
+ * rows (09.09.2026 client ruling): accepted → `crates`; disputed and resolved
+ * → `resolved_crates`; disputed and open → the point's own `reported_crates`.
+ * `sent` moves nothing. The void filter sits in the OUTER `WHERE` so a
+ * resolved-then-voided transfer counts for nothing — voided wins.
+ */
+export const transferCratesSql = (pointExpr: string): string => `(
+    SELECT COALESCE(SUM(CASE
+             WHEN t.status = 'accepted' THEN t.crates
+             WHEN t.status = 'disputed' AND t.resolved_at IS NOT NULL THEN t.resolved_crates
+             WHEN t.status = 'disputed' THEN t.reported_crates
+           END), 0)::int
+      FROM transfers t
+     WHERE t.collection_point_id = ${pointExpr}
+       AND t.voided_at IS NULL
+)`;
+
+/**
  * THE SAME BOOK, IN CRATES RATHER THAN GRYVNIAS — R8's card, «завдатків за N
  * ящиків». `point-cash` shows this NEXT TO `crateBookSql`'s money figure, not
  * derived from it: a receipt issuance's units are never in `crateBookSql`
@@ -242,7 +320,7 @@ export class CrateBalanceService {
     if (query.supplier_id) qb.andWhere('i.supplier_id = :supplierId', { supplierId: query.supplier_id });
     if (query.mode) qb.andWhere('i.mode = :mode', { mode: query.mode });
     if (query.voided === true) qb.andWhere('i.voided_at IS NOT NULL');
-    else if (!query.voided) qb.andWhere('i.voided_at IS NULL');
+    else if (!query.include_voided) qb.andWhere('i.voided_at IS NULL');
 
     const [data, total] = await qb
       .orderBy('i.created_at', 'DESC')
@@ -251,8 +329,24 @@ export class CrateBalanceService {
       .take(query.limit)
       .getManyAndCount();
 
+    // ONE query for the page, never one per row.
+    const ids = data.map((issuance) => issuance.id);
+    const liveRows: Array<{ issuance_id: string }> = ids.length
+      ? await this.dataSource.query(
+          `SELECT DISTINCT a.issuance_id
+             FROM crate_return_allocations a
+             JOIN crate_returns cr ON cr.id = a.return_id
+            WHERE a.issuance_id = ANY($1)
+              AND cr.voided_at IS NULL`,
+          [ids],
+        )
+      : [];
+    const live = new Set(liveRows.map((row) => row.issuance_id));
+
     return {
-      data: data.map((issuance) => toCrateIssuanceResponse(issuance, issuance.shift as Shift)),
+      data: data.map((issuance) =>
+        toCrateIssuanceResponse(issuance, issuance.shift as Shift, live.has(issuance.id)),
+      ),
       total,
       page: query.page,
       limit: query.limit,
@@ -281,7 +375,7 @@ export class CrateBalanceService {
     if (pointId) qb.andWhere('s.collection_point_id = :pointId', { pointId });
     if (query.supplier_id) qb.andWhere('r.supplier_id = :supplierId', { supplierId: query.supplier_id });
     if (query.voided === true) qb.andWhere('r.voided_at IS NOT NULL');
-    else if (!query.voided) qb.andWhere('r.voided_at IS NULL');
+    else if (!query.include_voided) qb.andWhere('r.voided_at IS NULL');
 
     const [data, total] = await qb
       .orderBy('r.created_at', 'DESC')

@@ -50,6 +50,8 @@ export interface CrateReturnResponse {
   voided_at: string | null;
   voided_by_user_id: string | null;
   void_reason: string | null;
+  /** The shift is closed — voiding is then the owner's alone (§9.4 as amended). */
+  shift_closed: boolean;
   created_at: string;
 }
 
@@ -119,6 +121,7 @@ export function toCrateReturnResponse(
     voided_at: ret.voided_at ? ret.voided_at.toISOString() : null,
     voided_by_user_id: ret.voided_by_user_id,
     void_reason: ret.void_reason,
+    shift_closed: shift.closed_at !== null,
     created_at: ret.created_at.toISOString(),
   };
 }

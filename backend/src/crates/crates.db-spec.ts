@@ -302,7 +302,25 @@ describe('crates lifecycle (HTTP)', () => {
     expect(balance.body.deposit_held).toBe('0.00');
   });
 
-  it('6. refuses returning 11 more, naming the 10 actually outstanding', async () => {
+  it('6. flags an issuance a live return rests on, and says the shift is open', async () => {
+    const res = await request(app.getHttpServer())
+      .get('/crate-issuances')
+      .query({ supplier_id: supplierId })
+      .set('Authorization', `Bearer ${operatorToken}`)
+      .expect(200);
+    const row = (res.body.data as Array<{ id: string; has_live_returns: boolean; shift_closed: boolean }>)
+      .find((r) => r.id === depositIssuanceId);
+    expect(row).toMatchObject({ has_live_returns: true, shift_closed: false });
+
+    const rets = await request(app.getHttpServer())
+      .get('/crate-returns')
+      .query({ supplier_id: supplierId })
+      .set('Authorization', `Bearer ${operatorToken}`)
+      .expect(200);
+    expect(rets.body.data[0].shift_closed).toBe(false);
+  });
+
+  it('7. refuses returning 11 more, naming the 10 actually outstanding', async () => {
     const res = await request(app.getHttpServer())
       .post('/crate-returns')
       .set('Authorization', `Bearer ${operatorToken}`)
@@ -313,7 +331,7 @@ describe('crates lifecycle (HTTP)', () => {
     expect(JSON.stringify(res.body)).toContain('10');
   });
 
-  it('7. refuses voiding the first issuance while a live return is allocated against it', async () => {
+  it('8. refuses voiding the first issuance while a live return is allocated against it', async () => {
     const res = await request(app.getHttpServer())
       .post(`/crate-issuances/${depositIssuanceId}/void`)
       .set('Authorization', `Bearer ${operatorToken}`)
@@ -323,7 +341,7 @@ describe('crates lifecycle (HTTP)', () => {
     expect(res.body.code).toBe('ISSUANCE_HAS_RETURNS');
   });
 
-  it('8. voids the return — restores tranche capacity WITHOUT deleting the allocation rows', async () => {
+  it('9. voids the return — restores tranche capacity WITHOUT deleting the allocation rows', async () => {
     const res = await request(app.getHttpServer())
       .post(`/crate-returns/${returnId}/void`)
       .set('Authorization', `Bearer ${operatorToken}`)
@@ -349,7 +367,30 @@ describe('crates lifecycle (HTTP)', () => {
     expect(n).toBe(2);
   });
 
-  it('9. voids the first issuance now that its return is void, and the point-cash figure drops to 0.00', async () => {
+  it('10. clears has_live_returns once the return is void, and include_voided lists the voided return', async () => {
+    const res = await request(app.getHttpServer())
+      .get('/crate-issuances')
+      .query({ supplier_id: supplierId })
+      .set('Authorization', `Bearer ${operatorToken}`)
+      .expect(200);
+    const row = (res.body.data as Array<{ id: string; has_live_returns: boolean }>)
+      .find((r) => r.id === depositIssuanceId);
+    expect(row?.has_live_returns).toBe(false);
+
+    const live = await request(app.getHttpServer())
+      .get('/crate-returns')
+      .query({ supplier_id: supplierId })
+      .set('Authorization', `Bearer ${operatorToken}`)
+      .expect(200);
+    const all = await request(app.getHttpServer())
+      .get('/crate-returns')
+      .query({ supplier_id: supplierId, include_voided: true })
+      .set('Authorization', `Bearer ${operatorToken}`)
+      .expect(200);
+    expect(all.body.total).toBe(live.body.total + 1);
+  });
+
+  it('11. voids the first issuance now that its return is void, and the point-cash figure drops to 0.00', async () => {
     const res = await request(app.getHttpServer())
       .post(`/crate-issuances/${depositIssuanceId}/void`)
       .set('Authorization', `Bearer ${operatorToken}`)
