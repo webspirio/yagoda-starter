@@ -139,6 +139,9 @@ export function DayPage() {
   // shift the server never denied. The toolbar waits for both — the same rule
   // `pages/reception` applies to its own banner.
   const mayOpenShift = current.data == null && !current.isPending && !current.isError;
+  // Everything the Open button asks for EXCEPT the answer from `current`.
+  const wouldOfferOpen =
+    !shift.isError && !isLoadingShift && isOperator && isToday && status === 'none' && pointId;
 
   const liveIntakes = (intakes.data?.data ?? []).filter((i) => i.voided_at === null);
   const livePayouts = (payouts.data?.data ?? []).filter((p) => p.voided_at === null);
@@ -251,16 +254,20 @@ export function DayPage() {
           {shift.data.broken_crates === null ? '—' : shift.data.broken_crates}
         </Badge>
       ) : null}
-      {!shift.isError &&
-      !isLoadingShift &&
-      isOperator &&
-      isToday &&
-      status === 'none' &&
-      mayOpenShift &&
-      pointId ? (
+      {wouldOfferOpen && mayOpenShift ? (
         <Button onClick={() => openCountDialog({ mode: 'open' })} disabled={open.isPending}>
           {t('day.open')}
         </Button>
+      ) : null}
+      {/* A failed `current` read withholds the button (above) but is kept OUT
+          of the page-level `isError`: the day's own figures are still true,
+          and blanking them would overcorrect. Said here, in the button's
+          place, so «not opened yet» over no way to open it is never silent —
+          the same thing `pages/reception` says on its own `shift.isError`. */}
+      {wouldOfferOpen && current.isError ? (
+        <p role="alert" className="text-xs text-destructive">
+          {t('day.currentShiftFailed')}
+        </p>
       ) : null}
       {/* `shiftId` in the condition (not just `status === 'open'`) is what lets
           the branch below narrow it to `string` for the click handler — no

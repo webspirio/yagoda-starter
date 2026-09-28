@@ -838,5 +838,25 @@ describe('DayPage — an open shift left behind on another day (#114)', () => {
       'Shift not opened yet',
     );
     expect(screen.queryByRole('button', { name: 'Open shift' })).toBeNull();
+    // …and the missing button is SAID, not just absent: a badge reading «not
+    // opened yet» over no way to open it, with nothing else on screen, is a
+    // dead end the operator can only guess their way out of.
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'Could not check whether a shift is already open — reload the page',
+    );
+    // The day's own read is still true, so the feed is NOT blanked.
+    expect(
+      screen.getByText('The shift is not open yet — no receipts and no payouts.'),
+    ).toBeInTheDocument();
+  });
+
+  it('says nothing about the failed check where no open action was on offer anyway', () => {
+    // A past date: the toolbar never offers «Open shift» there, so there is no
+    // missing button to explain.
+    currentShiftMock.mockReturnValue({ data: undefined, isPending: false, isError: true });
+
+    renderDay('/day?date=2026-09-07');
+
+    expect(screen.queryByRole('alert')).toBeNull();
   });
 });

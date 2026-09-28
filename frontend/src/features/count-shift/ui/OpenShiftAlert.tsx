@@ -22,7 +22,8 @@ import { CountDrawerDialog } from './CountDrawerDialog';
  * that answer belongs on every screen that would otherwise pretend the day is
  * clean — so the alert composes `entities/shift`'s read with this feature's
  * own close mutation and `CountDrawerDialog` and lives at the feature layer,
- * where both consumers (`pages/day`, `pages/reception`) can reach it.
+ * where every consumer (`pages/day`, `pages/reception`, `pages/point-cash`)
+ * can reach it.
  *
  * Closing happens IN PLACE: there is nothing on the stale day's screen an
  * operator needs in order to sign for the drawer, and sending them there
@@ -56,9 +57,10 @@ export function OpenShiftAlert({
    *
    * A CALLBACK TAKING THE DATE, not a `to=` link and not a ready-made node:
    * this component is the only one that knows WHICH date, and each page is
-   * the only one that knows what «go there» means for it — `pages/day` writes
-   * its own `?date=` (no navigation at all), `pages/reception` navigates to
-   * `/day`. One shape covers both without either of them re-deriving the date.
+   * the only one that knows what «go there» means for it — `pages/day` and
+   * `pages/point-cash` write their own `?date=` (no navigation at all),
+   * `pages/reception` navigates to `/day`. One shape covers all three
+   * without any of them re-deriving the date.
    */
   onGoToDate?: (businessDate: string) => void;
 }) {
