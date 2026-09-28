@@ -427,7 +427,7 @@
       "accrued": "Accrued",
       "accruedHint": "value of the berry taken in",
       "cashOut": "Cash out",
-      "cashOutHint": "cash for the day, balances included",
+      "cashOutHint": "cash for the day, balances and voided payouts included",
       "debtCreated": "Balances created",
       "debtCreatedHint": "carries over to supplier balances",
       "debtPaidDown": "Paid beyond accrued",
@@ -446,8 +446,9 @@
       "cashOut": "Total cash out",
       "voidedReturned": "of which {{voided}} on voided payouts, returned to the drawer",
       "voidedNotReturned": "of which {{voided}} on voided payouts, {{notReturned}} of it not yet back in the drawer",
+      "voidedNoneReturned": "of which {{voided}} on voided payouts, none of it back in the drawer yet",
       "note": "A payout does not remember which debt it settled (the correction to §3.3), so the day shows how much the balance grew rather than a breakdown by date. The owner's top-ups carry no date and are not included.",
-      "truncated": "Not every document was read — these sums are partial"
+      "truncated": "Showing only the first documents — sums are partial"
     },
     "feed": {
       "title": "Day feed",

@@ -614,10 +614,71 @@ describe('DayPage — the cash reconciliation', () => {
     expect(tile('Cash out')).toHaveTextContent('40.00 ₴');
     expect(row('Total cash out')).toHaveTextContent('40.00 ₴');
     expect(
-      screen.getByText('of which 40.00 ₴ on voided payouts, 40.00 ₴ of it not yet back in the drawer'),
+      screen.getByText('of which 40.00 ₴ on voided payouts, none of it back in the drawer yet'),
     ).toBeInTheDocument();
     // The accrual rows keep the debt reading: nothing live was paid.
     expect(row('Left on balance for us')).toHaveTextContent('−500.00 ₴');
+  });
+
+  it('names a partial return with both figures', () => {
+    const voided = { voided_at: '2026-09-08T12:00:00Z', voided_by_user_id: 'u1', void_reason: 'typo' };
+    payoutsMock.mockReturnValue(
+      page<Payout>([
+        payout({ id: 'y1', code: 'VD-0001', amount: '40.00', ...voided }),
+        payout({
+          id: 'y2',
+          code: 'VD-0002',
+          amount: '25.00',
+          ...voided,
+          return_settled_at: '2026-09-08T13:00:00Z',
+          return_settled_by_user_id: 'u1',
+        }),
+      ]),
+    );
+    renderDay();
+    expect(
+      screen.getByText('of which 65.00 ₴ on voided payouts, 40.00 ₴ of it not yet back in the drawer'),
+    ).toBeInTheDocument();
+  });
+
+  it('says so when every voided payout came back', () => {
+    payoutsMock.mockReturnValue(
+      page<Payout>([
+        payout({
+          id: 'y1',
+          code: 'VD-0001',
+          amount: '25.00',
+          voided_at: '2026-09-08T12:00:00Z',
+          voided_by_user_id: 'u1',
+          void_reason: 'typo',
+          return_settled_at: '2026-09-08T13:00:00Z',
+          return_settled_by_user_id: 'u1',
+        }),
+      ]),
+    );
+    renderDay();
+    expect(
+      screen.getByText('of which 25.00 ₴ on voided payouts, returned to the drawer'),
+    ).toBeInTheDocument();
+  });
+
+  it('puts the voided-payout line between the rows and the plaque it explains', () => {
+    payoutsMock.mockReturnValue(
+      page<Payout>([
+        payout({
+          id: 'y1',
+          code: 'VD-0001',
+          amount: '40.00',
+          voided_at: '2026-09-08T12:00:00Z',
+          voided_by_user_id: 'u1',
+          void_reason: 'typo',
+        }),
+      ]),
+    );
+    renderDay();
+    const line = screen.getByText(/on voided payouts/);
+    const plaque = screen.getByText('Total cash out');
+    expect(line.compareDocumentPosition(plaque) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   it('shows no ledger on a day without a shift', () => {
@@ -641,7 +702,7 @@ describe('DayPage — the cash reconciliation', () => {
     renderDay();
 
     expect(
-      within(ledger()).getByText('Not every document was read — these sums are partial'),
+      within(ledger()).getByText('Showing only the first documents — sums are partial'),
     ).toBeInTheDocument();
   });
 });

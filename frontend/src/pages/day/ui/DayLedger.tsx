@@ -1,7 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import { SectionCard } from '@/shared/ui/section-card';
 import { LedgerRow } from '@/shared/ui/ledger-row';
-import { sub, isNegative, isZero, formatUah } from '@/shared/lib/money';
+import { sub, cmp, isNegative, isZero, formatUah } from '@/shared/lib/money';
 import type { DaySummary } from '../lib/daySummary';
 
 /**
@@ -60,6 +60,21 @@ export function DayLedger({ summary, truncated }: { summary: DaySummary; truncat
         />
       </div>
 
+      {/* The plaque is the drawer's reading and counts voided payouts; the
+          rows above are the debt's and do not. This line is the difference,
+          so it sits BETWEEN them — the reader meets the bridge before the gap. */}
+      {isZero(summary.voidedOut) ? null : (
+        <p className="mt-3 text-xs text-[var(--amber)]">
+          {isZero(summary.voidedNotReturned)
+            ? t('day.ledger.voidedReturned', { voided: formatUah(summary.voidedOut, locale) })
+            : cmp(summary.voidedNotReturned, summary.voidedOut) === 0
+              ? t('day.ledger.voidedNoneReturned', { voided: formatUah(summary.voidedOut, locale) })
+              : t('day.ledger.voidedNotReturned', {
+                  voided: formatUah(summary.voidedOut, locale),
+                  notReturned: formatUah(summary.voidedNotReturned, locale),
+                })}
+        </p>
+      )}
       <div className="mt-5 flex items-center justify-between rounded-lg bg-foreground px-4 py-3 text-background">
         <span className="text-sm font-medium">{t('day.ledger.cashOut')}</span>
         <span className="font-mono text-xl font-semibold tabular-nums">
@@ -67,18 +82,6 @@ export function DayLedger({ summary, truncated }: { summary: DaySummary; truncat
         </span>
       </div>
 
-      {/* The plaque is the drawer's reading and counts voided payouts; the
-          rows above are the debt's and do not. This line is the difference. */}
-      {isZero(summary.voidedOut) ? null : (
-        <p className="mt-2 text-xs text-[var(--amber)]">
-          {isZero(summary.voidedNotReturned)
-            ? t('day.ledger.voidedReturned', { voided: formatUah(summary.voidedOut, locale) })
-            : t('day.ledger.voidedNotReturned', {
-                voided: formatUah(summary.voidedOut, locale),
-                notReturned: formatUah(summary.voidedNotReturned, locale),
-              })}
-        </p>
-      )}
       {truncated ? (
         <p className="mt-2 text-xs text-muted-foreground">{t('day.ledger.truncated')}</p>
       ) : null}
