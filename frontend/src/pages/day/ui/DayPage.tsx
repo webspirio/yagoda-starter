@@ -28,7 +28,7 @@ import { useShiftOnDateQuery, type Shift } from '@/entities/shift';
 import { canVoidIntake, useIntakesQuery, type Intake } from '@/entities/intake';
 import { usePayoutsQuery, type Payout } from '@/entities/payout';
 import { useSuppliersQuery, supplierName } from '@/entities/supplier';
-import { ReceiptDialog, ReceiptVoidButton } from '@/widgets/receipt';
+import { ReceiptDialog, ReceiptVoidButton, useReceiptOpener } from '@/widgets/receipt';
 import {
   useOpenShiftMutation,
   useCloseShiftMutation,
@@ -88,13 +88,8 @@ export function DayPage() {
   const open = useOpenShiftMutation();
   const close = useCloseShiftMutation();
   const [reopenOpen, setReopenOpen] = useState(false);
-  const [receiptId, setReceiptId] = useState<string | null>(null);
-  // A row's «Анулювати» opens the same receipt straight into its void.
-  const [receiptVoid, setReceiptVoid] = useState(false);
-  const openReceipt = (intakeId: string, { void: startWithVoid = false } = {}) => {
-    setReceiptId(intakeId);
-    setReceiptVoid(startWithVoid);
-  };
+  const receipt = useReceiptOpener();
+  const { openReceipt } = receipt;
   // Bumped on every open so the dialog remounts with fresh RHF defaults and no
   // banner from the refusal before it — the convention SetPriceDialog documents.
   const [reopenInstance, setReopenInstance] = useState(0);
@@ -430,11 +425,11 @@ export function DayPage() {
       ) : null}
 
       <ReceiptDialog
-        key={receiptId}
-        intakeId={receiptId}
-        open={receiptId !== null}
-        startWithVoid={receiptVoid}
-        onClose={() => setReceiptId(null)}
+        key={receipt.receiptId}
+        intakeId={receipt.receiptId}
+        open={receipt.open}
+        startWithVoid={receipt.startWithVoid}
+        onClose={receipt.clear}
       />
     </>
   );

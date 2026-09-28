@@ -19,7 +19,7 @@ import { useSupplierBalanceQuery, type Supplier } from '@/entities/supplier';
 import { usePricedGradesQuery } from '@/entities/product-grade';
 import { useTareTypeOptionsQuery } from '@/entities/tare-type';
 import { usePointCashForPointQuery } from '@/entities/point-cash';
-import { ReceiptDialog } from '@/widgets/receipt';
+import { ReceiptDialog, useReceiptOpener } from '@/widgets/receipt';
 import { useOpenShiftMutation, CountDrawerDialog } from '@/features/count-shift';
 import type { SupplierPickerHandle } from '@/features/pick-supplier';
 import { useCreateIntakeMutation } from '../api/intakes';
@@ -104,13 +104,8 @@ export function ReceptionPage() {
   // Read only inside event handlers (the Enter guard below, and after a
   // successful submit) — never during render, which the React Compiler bans.
   const pickerRef = useRef<SupplierPickerHandle>(null);
-  const [receiptId, setReceiptId] = useState<string | null>(null);
-  // A row's «Анулювати» opens the same receipt straight into its void.
-  const [receiptVoid, setReceiptVoid] = useState(false);
-  const openReceipt = (intakeId: string, { void: startWithVoid = false } = {}) => {
-    setReceiptId(intakeId);
-    setReceiptVoid(startWithVoid);
-  };
+  const receipt = useReceiptOpener();
+  const { openReceipt } = receipt;
   const [openDialogOpen, setOpenDialogOpen] = useState(false);
   // Bumped on every open so the dialog remounts with fresh RHF defaults and no
   // banner from the refusal before it — the convention `ReopenShiftDialog`
@@ -503,11 +498,11 @@ export function ReceptionPage() {
         }}
       />
       <ReceiptDialog
-        key={receiptId}
-        intakeId={receiptId}
-        open={receiptId !== null}
-        startWithVoid={receiptVoid}
-        onClose={() => setReceiptId(null)}
+        key={receipt.receiptId}
+        intakeId={receipt.receiptId}
+        open={receipt.open}
+        startWithVoid={receipt.startWithVoid}
+        onClose={receipt.clear}
       />
     </>
   );

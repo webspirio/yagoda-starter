@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSearchParams } from 'react-router';
 import { ListPage } from '@/shared/ui/templates/list-page';
@@ -13,7 +12,7 @@ import { useIntakesQuery, type DocumentFilter } from '@/entities/intake';
 import { usePayoutsQuery } from '@/entities/payout';
 import { useSuppliersQuery, useSupplierBalancesQuery, supplierName } from '@/entities/supplier';
 import { useMeQuery } from '@/entities/user';
-import { ReceiptDialog } from '@/widgets/receipt';
+import { ReceiptDialog, useReceiptOpener } from '@/widgets/receipt';
 import { monthRange, parseFilters, PAGE_SIZE } from '../model/journalFilters';
 import { JournalToolbar } from './JournalToolbar';
 import { JournalTable, type JournalRow } from './JournalTable';
@@ -115,15 +114,8 @@ export function JournalPage() {
   // needs the «на цій сторінці» caveat once a page held back the rest.
   const pageOnly = isTruncated<JournalDocument>(activeQuery.data);
 
-  const [receiptId, setReceiptId] = useState<string | null>(null);
-  const [receiptOpen, setReceiptOpen] = useState(false);
-  // A row's «Анулювати» opens the same receipt straight into its void.
-  const [receiptVoid, setReceiptVoid] = useState(false);
-  const openReceipt = (intakeId: string, { void: startWithVoid = false } = {}) => {
-    setReceiptId(intakeId);
-    setReceiptVoid(startWithVoid);
-    setReceiptOpen(true);
-  };
+  const receipt = useReceiptOpener();
+  const { openReceipt } = receipt;
   const { data: me } = useMeQuery();
 
   const setPage = (page: number) => patch({ page: page === 1 ? null : page });
@@ -204,11 +196,11 @@ export function JournalPage() {
       </Tabs>
 
       <ReceiptDialog
-        key={receiptId}
-        intakeId={receiptId}
-        open={receiptOpen}
-        startWithVoid={receiptVoid}
-        onClose={() => setReceiptOpen(false)}
+        key={receipt.receiptId}
+        intakeId={receipt.receiptId}
+        open={receipt.open}
+        startWithVoid={receipt.startWithVoid}
+        onClose={receipt.close}
       />
     </>
   );

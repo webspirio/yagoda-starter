@@ -23,7 +23,7 @@ import { daysBetween, todayIso, formatShortDate } from '@/shared/lib/date';
 import { PayoutDialog } from '@/features/settle-payout';
 import { VoidDocumentDialog, reopenedCodes } from '@/features/void-document';
 import { TopUpDialog } from '@/features/top-up-intake';
-import { ReceiptDialog } from '@/widgets/receipt';
+import { ReceiptDialog, useReceiptOpener } from '@/widgets/receipt';
 import { OpenBalances } from './OpenBalances';
 import { SupplierTimeline } from './SupplierTimeline';
 
@@ -50,10 +50,8 @@ export function SupplierCardPage() {
 
   const [payoutOpen, setPayoutOpen] = useState(false);
   const [payoutKey, setPayoutKey] = useState(0);
-  const [receiptId, setReceiptId] = useState<string | null>(null);
-  const [receiptOpen, setReceiptOpen] = useState(false);
-  // A row's «Анулювати» opens the same receipt straight into its void.
-  const [receiptVoid, setReceiptVoid] = useState(false);
+  const receipt = useReceiptOpener();
+  const { openReceipt } = receipt;
   // ONE void dialog for both kinds. `features/void-document` grew a fourth
   // `kind` rather than this page growing a second dialog — a top-up is voided
   // by the same §9.3 rule, with the same required reason.
@@ -71,11 +69,6 @@ export function SupplierCardPage() {
   const openPayout = () => {
     setPayoutKey((k) => k + 1);
     setPayoutOpen(true);
-  };
-  const openReceipt = (intakeId: string, { void: startWithVoid = false } = {}) => {
-    setReceiptId(intakeId);
-    setReceiptVoid(startWithVoid);
-    setReceiptOpen(true);
   };
   const openVoidPayout = (target: Payout) => {
     setVoidTarget({
@@ -286,11 +279,11 @@ export function SupplierCardPage() {
       </SectionCard>
 
       <ReceiptDialog
-        key={receiptId ?? 'none'}
-        intakeId={receiptId}
-        open={receiptOpen}
-        startWithVoid={receiptVoid}
-        onClose={() => setReceiptOpen(false)}
+        key={receipt.receiptId ?? 'none'}
+        intakeId={receipt.receiptId}
+        open={receipt.open}
+        startWithVoid={receipt.startWithVoid}
+        onClose={receipt.close}
       />
 
       {voidTarget ? (

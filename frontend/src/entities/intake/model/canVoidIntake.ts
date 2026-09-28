@@ -5,7 +5,7 @@
  * (the `useMeQuery` user fits) so this slice never imports `entities/user`.
  */
 export function canVoidIntake(
-  viewer: { id: string; role: string },
+  viewer: { id: string; role: 'network_owner' | 'point_operator' },
   intake: { voided_at: string | null; received_by_user_id: string; shift_closed: boolean },
 ): boolean {
   if (intake.voided_at !== null) return false;
