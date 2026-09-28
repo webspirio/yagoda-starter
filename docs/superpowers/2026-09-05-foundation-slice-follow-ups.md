@@ -1290,3 +1290,54 @@ Spec `docs/superpowers/specs/2026-09-27-allocations-cluster-refactor-design.md`,
    `CreateIntakeTopUpCommand`/`VoidIntakeTopUpCommand`, depending on which write the sentence
    means). Left alone because `testing/*pipeline.db-spec.ts` is a zero-edit surface for this
    refactor; fix in whichever change next touches that file.
+
+## Deferred from the open-shift void slice (2026-09-28)
+
+1. **`buildLedger`'s `returnedToday` still mirrors the date-only return term.**
+   `frontend/src/pages/point-cash/lib/buildLedger.ts:190-197`. After a void past local midnight
+   or in a reopened shift the explanatory row shows the return on the void's calendar date
+   while the server credits the payout's shift — the headline figure is correct, only the
+   breakdown row drifts. The same file's `LedgerPayout`/`buildLedger` comments still say a
+   voided payout "comes back only when a human returns it", which is now only true of a closed
+   shift. Fix: expose `returned_on_void` on `PayoutResponse` and count those rows by the
+   payout's `business_date` instead of `return_settled_at`'s calendar date.
+2. **The void paths read the shift without a lock.** `void-intake.command.ts:56` and
+   `void-payout.command.ts:30`, via the visible-load queries that decide `returnToDrawer`. An
+   owner void racing the operator's close can commit `returned_on_void = true` on a shift that
+   just closed; the closing count's `expected_amount` was computed before that write and then
+   lacks the return, showing a spurious surplus on that count (the next anchor self-corrects,
+   so money is never lost, only misreported for one count). Fix: take the shift row
+   `pessimistic_read` inside the void transaction — closing a shift locks no payouts, so this
+   cannot deadlock against it.
+3. **The payout-void dialog is built from a cached `payout.shift_closed`.** If the shift was
+   reopened or closed since the page loaded, the dialog shows the wrong acknowledgements to the
+   user (both directions are money-safe — the server still decides `returnToDrawer` from the
+   live row). Fix direction: have the client send the shift state it rendered from, and 409 on
+   the server when it no longer matches the live shift.
+4. **`SupplierTimeline`'s `canVoid` still offers payout Void on a closed shift.**
+   `pages/supplier-card/ui/SupplierTimeline.tsx:81-82` — the operator sees an enabled button the
+   server will 403 on. One-line fix: gate it on `payout.shift_closed` the way the receipt dialog
+   already gates its own Void button.
+5. **No db-spec asserts the open-shift payout-void cash delta end to end via `POST
+   /payouts/:id/void`.** The formula is proven with raw rows and via the intake-void path, but
+   not by hitting the payout-void route directly and reading the shift's expected cash after.
+   Fix: add that one db-spec case alongside the existing open-shift void coverage.
+6. **Bundle first-load headroom is 0.1 KiB raw under the ceiling (1059.9/1060.0 KiB)** — the
+   next frontend slice of any size will trip the `bundle` verify row. Fix direction: move
+   `frontend/src/shared/lib/i18n/locales/en.json` (≈55 KiB raw, the fallback language) out of
+   the first load; the budget file's own reasoning is to shrink the first load, never to raise
+   the ceiling.
+7. **Smaller test/UX gaps left as found:** `VoidConsequences`' error text lacks `role="alert"`;
+   the payout-void dialog's tests are thin (no closed-shift-payout case, no reopened-shift
+   case); `payout-decision.spec` doesn't exercise `(true, false, undefined)` for its decision
+   argument; the closed-shift "400s without a decision" unit test no longer asserts that no
+   audit entry is written; there is no unit test that an owner voiding in an open shift gets
+   `returnToDrawer = true`; the documents-pipeline close→void→reopen sequence has no
+   try/finally to guarantee the reopen runs if an assertion in between throws; the open-shift
+   no-payout-plus-decision 400 message still mentions a payout that isn't there; and
+   `28-db-schema.dbml`'s `payouts` Note doesn't name `CHK_payouts_returned_on_void`.
+8. **Deploy-window message gap.** An old SPA tab still open across the deploy that sends a
+   `payout` decision on an open-shift receipt void gets a `400 PAYOUT_DECISION_NOT_APPLICABLE`
+   with no mapped frontend message, so the user sees a generic error banner until they reload.
+   Money is unaffected — the request is simply rejected. Fix direction: add the mapped message
+   whenever this error code's neighbours next get touched, rather than as a standalone change.
