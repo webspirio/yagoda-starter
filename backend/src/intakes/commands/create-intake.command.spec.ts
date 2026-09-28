@@ -278,7 +278,13 @@ describe('CreateIntakeCommand', () => {
         }),
       );
       expect(res.payouts).toEqual([
-        { id: 'po-1', code: 'KPG-PO-20260908-001', amount: '380.00', voided_at: null },
+        {
+          id: 'po-1',
+          code: 'KPG-PO-20260908-001',
+          amount: '380.00',
+          voided_at: null,
+          created_at: '2026-09-08T07:00:00.000Z',
+        },
       ]);
     });
 

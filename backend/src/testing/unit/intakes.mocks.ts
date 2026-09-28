@@ -159,6 +159,7 @@ export function makeIntakesMocks() {
           amount: input.amount,
           intake_id: input.intakeId,
           voided_at: null,
+          created_at: new Date('2026-09-08T07:00:00.000Z'),
         },
         shift: shift(),
       }),

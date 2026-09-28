@@ -17,6 +17,8 @@ export interface IntakeResponse {
   shift_id: string;
   collection_point_id: string;
   business_date: string;
+  /** `shift.closed_at !== null` — doc «2026-09-28: the void dialog branches on it». */
+  shift_closed: boolean;
   supplier_id: string;
   amount: string;
   received_by_user_id: string;
@@ -59,6 +61,7 @@ interface IntakePayoutResponse {
   code: string;
   amount: string;
   voided_at: string | null;
+  created_at: string;
 }
 
 function toIntakePayoutResponse(payout: Payout): IntakePayoutResponse {
@@ -67,6 +70,7 @@ function toIntakePayoutResponse(payout: Payout): IntakePayoutResponse {
     code: payout.code,
     amount: payout.amount,
     voided_at: payout.voided_at ? payout.voided_at.toISOString() : null,
+    created_at: payout.created_at.toISOString(),
   };
 }
 
@@ -90,6 +94,7 @@ export function toIntakeResponse(
     shift_id: intake.shift_id,
     collection_point_id: shift.collection_point_id,
     business_date: shift.business_date,
+    shift_closed: shift.closed_at !== null,
     supplier_id: intake.supplier_id,
     amount: intake.amount,
     received_by_user_id: intake.received_by_user_id,
