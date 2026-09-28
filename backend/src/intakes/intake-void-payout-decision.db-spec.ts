@@ -197,6 +197,19 @@ describe('intake void with a payout decision (HTTP, Postgres)', () => {
     expect((await row('payouts', s.pId)).voided_at).toBeNull();
   });
 
+  // `assertPayoutDecision` no longer checks the actor: `assertCanVoid` is what keeps an operator
+  // from attesting the cash is back (§9.3). Pin that composition where it is relied on.
+  it('closed shift: an operator choosing void_returned is SHIFT_CLOSED and nothing is written', async () => {
+    const s = await scenario(closedShiftId);
+    const res = await voidIntake(operatorToken, s.rId, {
+      reason: 'повернув',
+      payout: 'void_returned',
+    }).expect(403);
+    expect(res.body.code).toBe('SHIFT_CLOSED');
+    expect((await row('intakes', s.rId)).voided_at).toBeNull();
+    expect((await row('payouts', s.pId)).voided_at).toBeNull();
+  });
+
   it('closed shift, keep: the payout re-routes to the old receipt and leaves 500 as an advance', async () => {
     const s = await scenario(closedShiftId);
     const before = await cash(closedShiftId);
@@ -225,7 +238,7 @@ describe('intake void with a payout decision (HTTP, Postgres)', () => {
   });
 
   // The return is settled by date, so its cash lands in today's shift, not the closed one.
-  it('closed shift, void_returned: both voided and 1500 back in today\'s drawer', async () => {
+  it("closed shift, void_returned: both voided and 1500 back in today's drawer", async () => {
     const s = await scenario(closedShiftId);
     const before = await cash(todayShiftId);
     await voidIntake(ownerToken, s.rId, { reason: 'повернув', payout: 'void_returned' }).expect(

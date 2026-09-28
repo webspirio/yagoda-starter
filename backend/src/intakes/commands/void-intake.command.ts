@@ -3,7 +3,7 @@ import { DataSource, EntityManager } from 'typeorm';
 import { Intake } from '../intake.entity';
 import { VoidIntakeDto } from '../dto/void-intake.dto';
 import { IntakeResponse, toIntakeResponse } from '../intake.mapper';
-import { assertPayoutDecision } from '../payout-decision';
+import { assertPayoutDecision, type AuditedPayoutDecision } from '../payout-decision';
 import { LoadVisibleIntakeQuery } from '../queries/load-visible-intake.query';
 import { IntakeDetailQuery } from '../queries/intake-detail.query';
 import { Shift } from '../../shifts/shift.entity';
@@ -67,8 +67,10 @@ export class VoidIntakeCommand {
     // §3.5: a bound payout shares the receipt's author and shift, so the check above covers it.
     const payout = await this.payouts.findLiveBoundToIntake(m, intake.id);
     const shiftClosed = shift.closed_at !== null;
-    assertPayoutDecision(shiftClosed, payout !== null, dto.payout);
-    const decision = shiftClosed ? dto.payout : 'void_on_open_shift';
+    assertPayoutDecision({ shiftClosed, hasLivePayout: payout !== null }, dto.payout);
+    const decision: AuditedPayoutDecision | undefined = shiftClosed
+      ? dto.payout
+      : 'void_on_open_shift';
 
     // No balance floor: voiding a receipt is the one allowed way into negative debt.
     intake.voided_at = new Date();

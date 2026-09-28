@@ -1,14 +1,16 @@
 import { BadRequestException } from '@nestjs/common';
 import type { PayoutDecision } from './dto/void-intake.dto';
 
+/** What `intake.voided` audits as `payout_decision`: a closed shift's choice, or the open-shift rule. */
+export type AuditedPayoutDecision = PayoutDecision | 'void_on_open_shift';
+
 /**
  * #125 + 2026-09-28. Open shift: the supplier is at the counter, so a live bound payout always
  * goes with the receipt and there is nothing to decide. Closed shift (owner only, via
  * `assertCanVoid`): the decision is required iff a live payout is bound.
  */
 export function assertPayoutDecision(
-  shiftClosed: boolean,
-  hasLivePayout: boolean,
+  { shiftClosed, hasLivePayout }: { shiftClosed: boolean; hasLivePayout: boolean },
   decision: PayoutDecision | undefined,
 ): void {
   if (decision && (!shiftClosed || !hasLivePayout)) {
