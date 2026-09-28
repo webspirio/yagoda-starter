@@ -67,7 +67,10 @@ export function DayLedger({ summary, truncated }: { summary: DaySummary; truncat
         <p className="mt-3 text-xs text-[var(--amber)]">
           {isZero(summary.voidedNotReturned)
             ? t('day.ledger.voidedReturned', { voided: formatUah(summary.voidedOut, locale) })
-            : cmp(summary.voidedNotReturned, summary.voidedOut) === 0
+            : // Equal sums mean «none came back» only because no payout is
+              // 0,00 (`CHK_payouts_amount`, `amount > 0`); a returned zero
+              // would otherwise leave them equal too.
+              cmp(summary.voidedNotReturned, summary.voidedOut) === 0
               ? t('day.ledger.voidedNoneReturned', { voided: formatUah(summary.voidedOut, locale) })
               : t('day.ledger.voidedNotReturned', {
                   voided: formatUah(summary.voidedOut, locale),

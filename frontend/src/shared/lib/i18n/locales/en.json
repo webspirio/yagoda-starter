@@ -448,7 +448,7 @@
       "voidedNotReturned": "of which {{voided}} on voided payouts, {{notReturned}} of it not yet back in the drawer",
       "voidedNoneReturned": "of which {{voided}} on voided payouts, none of it back in the drawer yet",
       "note": "A payout does not remember which debt it settled (the correction to §3.3), so the day shows how much the balance grew rather than a breakdown by date. The owner's top-ups carry no date and are not included.",
-      "truncated": "Showing only the first documents — sums are partial"
+      "truncated": "Showing only the first documents — totals are partial"
     },
     "feed": {
       "title": "Day feed",

@@ -678,6 +678,8 @@ describe('DayPage — the cash reconciliation', () => {
     renderDay();
     const line = screen.getByText(/on voided payouts/);
     const plaque = screen.getByText('Total cash out');
+    const lastRow = screen.getByText('Left on balance for us');
+    expect(lastRow.compareDocumentPosition(line) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(line.compareDocumentPosition(plaque) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
@@ -702,7 +704,7 @@ describe('DayPage — the cash reconciliation', () => {
     renderDay();
 
     expect(
-      within(ledger()).getByText('Showing only the first documents — sums are partial'),
+      within(ledger()).getByText('Showing only the first documents — totals are partial'),
     ).toBeInTheDocument();
   });
 });
