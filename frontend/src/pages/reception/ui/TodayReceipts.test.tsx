@@ -21,6 +21,7 @@ const intake = (over: Partial<Intake> & Pick<Intake, 'id' | 'created_at'>): Inta
   voided_at: null,
   voided_by_user_id: null,
   void_reason: null,
+  shift_closed: false,
   net_kg: '0.00',
   lines_count: 1,
   supplier_name: '—',

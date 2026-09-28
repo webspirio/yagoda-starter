@@ -28,6 +28,7 @@ const receipt = (id: string): Intake => ({
   voided_at: null,
   voided_by_user_id: null,
   void_reason: null,
+  shift_closed: false,
   created_at: '2026-07-12T08:00:00.000Z',
   net_kg: '41.20',
   lines_count: 1,

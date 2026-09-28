@@ -290,6 +290,7 @@ const CREATED: IntakeDetail = {
   voided_at: null,
   voided_by_user_id: null,
   void_reason: null,
+  shift_closed: false,
   created_at: '2026-09-08T09:15:00Z',
   // Agrees with the ONE item below (120.40 kg net) — the toast now reads
   // this header field directly rather than re-summing `items[]` (M3/M9).
@@ -326,6 +327,7 @@ const intake = (over: Partial<Intake> & Pick<Intake, 'id' | 'code' | 'amount'>):
   voided_at: null,
   voided_by_user_id: null,
   void_reason: null,
+  shift_closed: false,
   created_at: '2026-09-08T07:10:00Z',
   // Same one-line 120.40 kg default as `CREATED` above — one canonical
   // example receipt throughout this file (M3/M9).

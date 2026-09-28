@@ -22,7 +22,7 @@ import { useGradeCatalogQuery } from '@/entities/product-grade';
 import { useTareTypeOptionsQuery } from '@/entities/tare-type';
 import { usePointOptionsQuery } from '@/entities/collection-point';
 import { useMeQuery } from '@/entities/user';
-import { VoidDocumentDialog, otherCovered } from '@/features/void-document';
+import { VoidDocumentDialog, otherCovered, reopenedCodes } from '@/features/void-document';
 import { ReceiptSheet, type ReceiptSheetLine } from './ReceiptSheet';
 
 /** Formats the «Ціна за кг» row's right side when a per-kilogram bonus/markup
@@ -176,8 +176,10 @@ export function ReceiptDialog({
       .filter((p) => p.voided_at !== null)
       .map((p) => p.code);
 
+    // A closed shift's receipt is the owner's alone (§9.4).
     const showVoid =
-      !voided && (me.role === 'network_owner' || me.id === intake.received_by_user_id);
+      !voided &&
+      (me.role === 'network_owner' || (me.id === intake.received_by_user_id && !intake.shift_closed));
 
     content = (
       <ReceiptSheet
@@ -229,10 +231,17 @@ export function ReceiptDialog({
                 otherCovered: settlementQuery.data
                   ? otherCovered(settlementQuery.data, livePayout.id, intake.id)
                   : null,
+                paidAt: livePayout.created_at,
+                // Same actor as the receipt (§3.5) — the response carries no payer name.
+                paidBy: intake.received_by_name,
+                reopens: settlementQuery.data
+                  ? reopenedCodes(settlementQuery.data, livePayout.id, intake.id)
+                  : null,
               }
             : undefined
         }
-        canConfirmReturn={me.role === 'network_owner'}
+        shiftClosed={intake.shift_closed}
+        intakeAmount={intake.amount}
       />
     );
   }

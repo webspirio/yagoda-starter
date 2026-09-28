@@ -25,17 +25,17 @@ const DOCUMENT_KEYS: readonly QueryKey[] = [
   queryKeys.supplierBalances,
 ];
 
-/** One void per kind; invalidation differs by kind on purpose (§9.3); a
- *  voided payout stays subtracted from cash until its return is recorded. */
+/** One void per kind; invalidation differs by kind on purpose (§9.3). */
 const DOCUMENTS: Record<VoidDocumentInput['kind'], VoidDescriptor> = {
   intake: {
     path: (id) => `/intakes/${id}/void`,
-    // + pointCash: a void_returned puts the payout back in the drawer.
+    // + pointCash: an open-shift void or a void_returned puts the payout back in the drawer (2026-09-28).
     invalidates: [...DOCUMENT_KEYS, queryKeys.pointCash],
   },
   payout: {
     path: (id) => `/payouts/${id}/void`,
-    invalidates: DOCUMENT_KEYS,
+    // + pointCash: an open-shift void puts the payout back in the drawer (2026-09-28).
+    invalidates: [...DOCUMENT_KEYS, queryKeys.pointCash],
   },
   transfer: {
     path: (id) => `/transfers/${id}/void`,

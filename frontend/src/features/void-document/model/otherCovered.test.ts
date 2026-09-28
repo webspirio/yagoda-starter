@@ -1,9 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import type { SupplierSettlement } from '@/entities/supplier';
-import { otherCovered } from './otherCovered';
+import { otherCovered, reopenedCodes } from './otherCovered';
 
+// A top-up line carries its parent receipt's code, as the settlement does.
 const line = (id: string, kind: 'intake' | 'top_up', intake_id: string) => ({
-  kind, id, code: 'C', intake_id, business_date: '2026-09-25', created_at: '', amount: '0.00',
+  kind, id, code: `ПР-${intake_id}`, intake_id, business_date: '2026-09-25', created_at: '', amount: '0.00',
   paid: '0.00', open: '0.00', covered_by: [],
 });
 
@@ -36,5 +37,19 @@ describe('otherCovered', () => {
 
   it('is zero when the payout is not in the settlement', () => {
     expect(otherCovered({ ...settlement, payouts: [] }, 'p', 'r')).toBe('0.00');
+  });
+});
+
+describe('reopenedCodes', () => {
+  it('lists the codes the payout covers outside the receipt, oldest first, once each', () => {
+    expect(reopenedCodes(settlement, 'p', 'r')).toEqual(['ПР-old']);
+  });
+
+  it('with no receipt excluded, lists everything the payout covers, a top-up folded into its parent', () => {
+    expect(reopenedCodes(settlement, 'p', null)).toEqual(['ПР-old', 'ПР-r']);
+  });
+
+  it('is empty when the payout is not in the settlement', () => {
+    expect(reopenedCodes({ ...settlement, payouts: [] }, 'p', null)).toEqual([]);
   });
 });

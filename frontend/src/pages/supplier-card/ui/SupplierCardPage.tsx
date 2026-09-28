@@ -21,7 +21,7 @@ import { useMeQuery } from '@/entities/user';
 import { usePointOptionsQuery } from '@/entities/collection-point';
 import { daysBetween, todayIso, formatShortDate } from '@/shared/lib/date';
 import { PayoutDialog } from '@/features/settle-payout';
-import { VoidDocumentDialog } from '@/features/void-document';
+import { VoidDocumentDialog, reopenedCodes } from '@/features/void-document';
 import { TopUpDialog } from '@/features/top-up-intake';
 import { ReceiptDialog } from '@/widgets/receipt';
 import { OpenBalances } from './OpenBalances';
@@ -56,7 +56,9 @@ export function SupplierCardPage() {
   // `kind` rather than this page growing a second dialog — a top-up is voided
   // by the same §9.3 rule, with the same required reason.
   const [voidTarget, setVoidTarget] = useState<
-    { kind: 'payout' | 'topUp'; id: string; code: string } | null
+    | { kind: 'payout'; id: string; code: string; amount: string; shiftClosed: boolean }
+    | { kind: 'topUp'; id: string; code: string }
+    | null
   >(null);
   const [voidOpen, setVoidOpen] = useState(false);
   const [voidKey, setVoidKey] = useState(0);
@@ -73,7 +75,13 @@ export function SupplierCardPage() {
     setReceiptOpen(true);
   };
   const openVoidPayout = (target: Payout) => {
-    setVoidTarget({ kind: 'payout', id: target.id, code: target.code });
+    setVoidTarget({
+      kind: 'payout',
+      id: target.id,
+      code: target.code,
+      amount: target.amount,
+      shiftClosed: target.shift_closed,
+    });
     setVoidKey((k) => k + 1);
     setVoidOpen(true);
   };
@@ -289,6 +297,13 @@ export function SupplierCardPage() {
           code={voidTarget.code}
           open={voidOpen}
           onClose={() => setVoidOpen(false)}
+          {...(voidTarget.kind === 'payout'
+            ? {
+                shiftClosed: voidTarget.shiftClosed,
+                payoutAmount: voidTarget.amount,
+                reopens: reopenedCodes(st, voidTarget.id, null),
+              }
+            : {})}
         />
       ) : null}
 

@@ -15,12 +15,17 @@ import { Button } from '@/shared/ui/button';
 import { toast } from '@/shared/ui/toast';
 import { useVoidDocumentMutation, type PayoutDecision } from '../api/useVoidDocument';
 import { apiErrorToBanner } from '@/shared/lib/api-error';
+import { formatUah } from '@/shared/lib/money';
+import { formatTime } from '@/shared/lib/date';
 import { PayoutDecisionField, type LinkedPayout } from './PayoutDecisionField';
+import { VoidConsequences } from './VoidConsequences';
 
 interface VoidFormValues {
   reason: string;
-  /** #125: only asked for an intake with a live linked payout — see `showPayout`. */
+  /** #125: only asked for a closed-shift intake with a live linked payout — see `showDecision`. */
   payout?: PayoutDecision;
+  /** One tick per open-shift consequence — see `consequences`. */
+  acks: boolean[];
 }
 
 /**
@@ -39,7 +44,10 @@ export function VoidDocumentDialog({
   onClose,
   onVoided,
   linkedPayout,
-  canConfirmReturn = false,
+  shiftClosed = false,
+  intakeAmount,
+  payoutAmount,
+  reopens,
 }: {
   kind: 'intake' | 'payout' | 'transfer' | 'topUp' | 'crateIssuance' | 'crateReturn';
   id: string;
@@ -50,19 +58,46 @@ export function VoidDocumentDialog({
   onVoided?: () => void;
   /** #125: the intake's live payout, if any — asks what happens to it too. */
   linkedPayout?: LinkedPayout;
-  /** Owner-only third choice: the money is already back in the drawer. */
-  canConfirmReturn?: boolean;
+  /** Closed shift: #125's three choices. Open: the void returns the cash, so the dialog
+   *  lists every consequence as a checkbox instead (2026-09-28). */
+  shiftClosed?: boolean;
+  /** Intake without a live payout: the debt the void takes off. */
+  intakeAmount?: string;
+  /** Payout only: the amount going back to the drawer, and the receipts that reopen. */
+  payoutAmount?: string;
+  reopens?: string[] | null;
 }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const locale = i18n.resolvedLanguage ?? 'uk';
+  const money = (v: string) => formatUah(v, locale);
   const voidDocument = useVoidDocumentMutation();
-  const showPayout = kind === 'intake' && linkedPayout !== undefined;
+  const showDecision = kind === 'intake' && linkedPayout !== undefined && shiftClosed;
+  const openLinkedPayout = kind === 'intake' && !shiftClosed ? linkedPayout : undefined;
+
+  // A UI gate only (spec decision 8): the server cannot know a human read these.
+  const reopenLine = (codes: string[] | null | undefined) =>
+    codes?.length ? [t('void.consequences.reopens', { codes: codes.join(', ') })] : [];
+  let consequences: string[] | null = null;
+  if (!shiftClosed && kind === 'intake') {
+    if (linkedPayout) {
+      consequences = [
+        t('void.consequences.cashBack', { amount: money(linkedPayout.amount) }),
+        t('void.consequences.payoutVoided', { code: linkedPayout.code }),
+        ...reopenLine(linkedPayout.reopens),
+      ];
+    } else if (intakeAmount !== undefined) {
+      consequences = [t('void.consequences.debtDrops', { amount: money(intakeAmount) })];
+    }
+  } else if (!shiftClosed && kind === 'payout' && payoutAmount !== undefined) {
+    consequences = [t('void.consequences.payoutCashBack', { amount: money(payoutAmount) }), ...reopenLine(reopens)];
+  }
 
   const {
     register,
     handleSubmit,
     control,
     formState: { errors, isSubmitting },
-  } = useForm<VoidFormValues>({ defaultValues: { reason: '' } });
+  } = useForm<VoidFormValues>({ defaultValues: { reason: '', acks: [] } });
 
   const [formError, setFormError] = useState<string | null>(null);
 
@@ -73,7 +108,7 @@ export function VoidDocumentDialog({
         kind,
         id,
         reason: values.reason.trim(),
-        ...(showPayout && values.payout ? { payout: values.payout } : {}),
+        ...(showDecision && values.payout ? { payout: values.payout } : {}),
       });
       toast.success(t('void.toast.voided'));
       onVoided?.();
@@ -92,7 +127,7 @@ export function VoidDocumentDialog({
         </DialogHeader>
 
         <form onSubmit={onSubmit} className="flex flex-col gap-4" noValidate>
-          {showPayout ? (
+          {showDecision ? (
             <Controller
               control={control}
               name="payout"
@@ -100,11 +135,44 @@ export function VoidDocumentDialog({
               render={({ field, fieldState }) => (
                 <PayoutDecisionField
                   payout={linkedPayout}
-                  canConfirmReturn={canConfirmReturn}
                   value={field.value}
                   onChange={field.onChange}
                   error={fieldState.error?.message}
                   firstRadioRef={field.ref}
+                />
+              )}
+            />
+          ) : null}
+
+          {openLinkedPayout ? (
+            <div className="rounded-md border border-destructive/40 bg-destructive/8 p-3 text-sm">
+              <p className="font-medium">{t('void.payoutCard.title')}</p>
+              <p>
+                {openLinkedPayout.code} · {money(openLinkedPayout.amount)}
+              </p>
+              <p className="text-muted-foreground">
+                {t('void.payoutCard.paid', {
+                  when: formatTime(openLinkedPayout.paidAt, locale),
+                  who: openLinkedPayout.paidBy ?? '—',
+                })}
+              </p>
+            </div>
+          ) : null}
+
+          {consequences ? (
+            <Controller
+              control={control}
+              name="acks"
+              rules={{
+                validate: (v) => (consequences ?? []).every((_, i) => v?.[i]) || 'void.consequences.required',
+              }}
+              render={({ field, fieldState }) => (
+                <VoidConsequences
+                  items={consequences}
+                  value={field.value}
+                  onChange={field.onChange}
+                  error={fieldState.error?.message}
+                  firstBoxRef={field.ref}
                 />
               )}
             />

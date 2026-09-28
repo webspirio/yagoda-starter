@@ -9,19 +9,23 @@ export interface LinkedPayout {
   amount: string;
   /** Null while the settlement loads — the line is then simply absent. */
   otherCovered: string | null;
+  /** 2026-09-28 payout card: when and by whom it was handed over. */
+  paidAt: string;
+  paidBy: string | null;
+  /** Receipt codes that reopen with it; null while the settlement loads. */
+  reopens: string[] | null;
 }
 
-/** #125: what happens to the payout issued with the receipt. No default on purpose. */
+/** #125: what happens to the payout issued with the receipt — asked only for a closed
+ *  shift (an open-shift void always takes the payout, 2026-09-28). No default on purpose. */
 export function PayoutDecisionField({
   payout,
-  canConfirmReturn,
   value,
   onChange,
   error,
   firstRadioRef,
 }: {
   payout: LinkedPayout;
-  canConfirmReturn: boolean;
   value: PayoutDecision | undefined;
   onChange: (value: PayoutDecision) => void;
   error?: string;
@@ -33,7 +37,7 @@ export function PayoutDecisionField({
   const name = useId();
   const errorId = useId();
   const money = (v: string) => formatUah(v, i18n.resolvedLanguage);
-  const options: PayoutDecision[] = canConfirmReturn ? ['keep', 'void', 'void_returned'] : ['keep', 'void'];
+  const options: PayoutDecision[] = ['keep', 'void', 'void_returned'];
   const labelKey = { keep: 'keep', void: 'void', void_returned: 'voidReturned' } as const;
 
   return (

@@ -60,6 +60,7 @@ vi.mock('@/features/void-document', () => ({
     return props.open ? <div data-testid="void-dialog-mock" /> : null;
   },
   otherCovered: () => '0.00',
+  reopenedCodes: () => [],
 }));
 
 const SUPPLIER = {
@@ -114,6 +115,7 @@ function buildIntake(overrides: Partial<IntakeDetail> = {}): IntakeDetail {
     voided_at: null,
     voided_by_user_id: null,
     void_reason: null,
+    shift_closed: false,
     created_at: '2026-09-08T08:20:00.000Z',
     net_kg: '36.90',
     lines_count: 2,
@@ -257,7 +259,7 @@ describe('ReceiptDialog', () => {
       intake: buildIntake({
         paid_amount: '10000.00',
         payouts: [
-          { id: 'payout-1', code: 'SHP-PO-20260908-00031', amount: '10000.00', voided_at: null },
+          { id: 'payout-1', code: 'SHP-PO-20260908-00031', amount: '10000.00', created_at: '2026-09-08T08:25:00.000Z', voided_at: null },
         ],
       }),
     });
@@ -284,6 +286,7 @@ describe('ReceiptDialog', () => {
             id: 'payout-1',
             code: 'SHP-PO-20260907-00020',
             amount: '5000.00',
+            created_at: '2026-09-07T08:25:00.000Z',
             voided_at: '2026-09-07T12:00:00.000Z',
           },
         ],
@@ -456,8 +459,8 @@ describe('ReceiptDialog wiring into VoidDocumentDialog (#125)', () => {
       me: OWNER,
       intake: buildIntake({
         payouts: [
-          { id: 'payout-1', code: 'SHP-PO-1', amount: '5000.00', voided_at: '2026-09-07T12:00:00.000Z' },
-          { id: 'payout-2', code: 'SHP-PO-2', amount: '3000.00', voided_at: null },
+          { id: 'payout-1', code: 'SHP-PO-1', amount: '5000.00', created_at: '2026-09-08T08:25:00.000Z', voided_at: '2026-09-07T12:00:00.000Z' },
+          { id: 'payout-2', code: 'SHP-PO-2', amount: '3000.00', created_at: '2026-09-08T08:25:00.000Z', voided_at: null },
         ],
       }),
     });
@@ -475,7 +478,7 @@ describe('ReceiptDialog wiring into VoidDocumentDialog (#125)', () => {
       me: OWNER,
       intake: buildIntake({
         payouts: [
-          { id: 'payout-1', code: 'SHP-PO-1', amount: '5000.00', voided_at: '2026-09-07T12:00:00.000Z' },
+          { id: 'payout-1', code: 'SHP-PO-1', amount: '5000.00', created_at: '2026-09-08T08:25:00.000Z', voided_at: '2026-09-07T12:00:00.000Z' },
         ],
       }),
     });
@@ -486,21 +489,26 @@ describe('ReceiptDialog wiring into VoidDocumentDialog (#125)', () => {
     );
   });
 
-  it('sets canConfirmReturn true for an owner', () => {
-    setUp({ me: OWNER });
+  it('hides Void from the author operator once the shift is closed', () => {
+    setUp({ me: OPERATOR_AUTHOR, intake: buildIntake({ shift_closed: true }) });
     render(<ReceiptDialog intakeId="intake-1" open onClose={vi.fn()} />);
 
-    expect(voidDialogMock).toHaveBeenLastCalledWith(
-      expect.objectContaining({ canConfirmReturn: true }),
-    );
+    expect(screen.queryByRole('button', { name: 'Void' })).not.toBeInTheDocument();
   });
 
-  it('sets canConfirmReturn false for an operator', () => {
-    setUp({ me: OPERATOR_AUTHOR });
+  it('still shows Void to the owner on a closed shift', () => {
+    setUp({ me: OWNER, intake: buildIntake({ shift_closed: true }) });
+    render(<ReceiptDialog intakeId="intake-1" open onClose={vi.fn()} />);
+
+    expect(screen.getByRole('button', { name: 'Void' })).toBeInTheDocument();
+  });
+
+  it('passes shiftClosed through to the void dialog', () => {
+    setUp({ me: OWNER, intake: buildIntake({ shift_closed: true }) });
     render(<ReceiptDialog intakeId="intake-1" open onClose={vi.fn()} />);
 
     expect(voidDialogMock).toHaveBeenLastCalledWith(
-      expect.objectContaining({ canConfirmReturn: false }),
+      expect.objectContaining({ shiftClosed: true }),
     );
   });
 
@@ -508,7 +516,7 @@ describe('ReceiptDialog wiring into VoidDocumentDialog (#125)', () => {
     setUp({
       me: OWNER,
       intake: buildIntake({
-        payouts: [{ id: 'payout-1', code: 'SHP-PO-1', amount: '3000.00', voided_at: null }],
+        payouts: [{ id: 'payout-1', code: 'SHP-PO-1', amount: '3000.00', created_at: '2026-09-08T08:25:00.000Z', voided_at: null }],
       }),
     });
     settlementMock.mockReturnValue({ data: undefined, isPending: true, isError: false });
@@ -525,7 +533,7 @@ describe('ReceiptDialog wiring into VoidDocumentDialog (#125)', () => {
     setUp({
       me: OWNER,
       intake: buildIntake({
-        payouts: [{ id: 'payout-1', code: 'SHP-PO-1', amount: '3000.00', voided_at: null }],
+        payouts: [{ id: 'payout-1', code: 'SHP-PO-1', amount: '3000.00', created_at: '2026-09-08T08:25:00.000Z', voided_at: null }],
       }),
     });
     settlementMock.mockReturnValue({ data: undefined, isPending: false, isError: true });

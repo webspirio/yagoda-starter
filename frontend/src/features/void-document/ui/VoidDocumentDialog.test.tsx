@@ -1,10 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { ApiError } from '@/shared/api';
 import { Toaster } from '@/shared/ui/sonner';
 import { expectNoAxeViolations } from '../../../test-axe';
 import { VoidDocumentDialog } from './VoidDocumentDialog';
+import type { LinkedPayout } from './PayoutDecisionField';
 
 const { voidDocumentMock } = vi.hoisted(() => ({
   voidDocumentMock: vi.fn(),
@@ -27,6 +28,7 @@ function renderDialog(onClose = vi.fn(), onVoided = vi.fn()) {
           open
           onClose={onClose}
           onVoided={onVoided}
+          shiftClosed
         />
         <Toaster />
       </>,
@@ -34,10 +36,7 @@ function renderDialog(onClose = vi.fn(), onVoided = vi.fn()) {
   };
 }
 
-function renderWithPayout({
-  canConfirmReturn = false,
-  otherCovered = null as string | null,
-} = {}) {
+function renderWithPayout({ otherCovered = null as string | null } = {}) {
   const onClose = vi.fn();
   render(
     <>
@@ -47,8 +46,11 @@ function renderWithPayout({
         code="ПР-0012"
         open
         onClose={onClose}
-        linkedPayout={{ code: 'PO-7', amount: '1500.00', otherCovered }}
-        canConfirmReturn={canConfirmReturn}
+        linkedPayout={{
+          code: 'PO-7', amount: '1500.00', otherCovered,
+          paidAt: '2026-09-28T11:32:00.000Z', paidBy: 'Оксана Т.', reopens: null,
+        }}
+        shiftClosed
       />
       <Toaster />
     </>,
@@ -110,17 +112,13 @@ describe('VoidDocumentDialog', () => {
 });
 
 describe('VoidDocumentDialog with a bound payout (#125)', () => {
-  it('offers two choices to an operator, none preselected', () => {
+  it('a closed shift offers the three #125 choices, none preselected, and no checkboxes', () => {
     renderWithPayout();
     const radios = screen.getAllByRole('radio');
-    expect(radios).toHaveLength(2);
+    expect(radios).toHaveLength(3);
     radios.forEach((r) => expect(r).not.toBeChecked());
-    expect(screen.queryByLabelText(/already back in the drawer/)).not.toBeInTheDocument();
-  });
-
-  it('offers the third choice to the owner', () => {
-    renderWithPayout({ canConfirmReturn: true });
-    expect(screen.getAllByRole('radio')).toHaveLength(3);
+    expect(screen.getByLabelText(/already back in the drawer/)).toBeInTheDocument();
+    expect(screen.queryByRole('checkbox')).toBeNull();
   });
 
   it('refuses to submit without a choice', async () => {
@@ -180,5 +178,67 @@ describe('VoidDocumentDialog with a bound payout (#125)', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Void' }));
 
     expect(await screen.findByRole('alert')).toHaveTextContent('just changed');
+  });
+});
+
+function renderOpenShiftIntake(linkedPayout?: Partial<LinkedPayout> | null) {
+  render(
+    <>
+      <VoidDocumentDialog
+        kind="intake" id="i1" code="ПР-0012" open onClose={vi.fn()}
+        intakeAmount="500.00"
+        linkedPayout={linkedPayout === null ? undefined : {
+          code: 'PO-7', amount: '1500.00', otherCovered: '1000.00',
+          paidAt: '2026-09-28T11:32:00.000Z', paidBy: 'Оксана Т.', reopens: ['ПР-0009'],
+          ...linkedPayout,
+        }}
+      />
+      <Toaster />
+    </>,
+  );
+}
+
+describe('VoidDocumentDialog — open shift', () => {
+  it('shows the payout card and three consequences, and no decision radios', () => {
+    renderOpenShiftIntake();
+    // Scoped to the card: «Payout PO-7 will be voided» names the code too.
+    const card = screen.getByText('This payout will be voided').parentElement!;
+    expect(within(card).getByText('PO-7', { exact: false })).toBeInTheDocument();
+    expect(within(card).getByText('Оксана Т.', { exact: false })).toBeInTheDocument();
+    expect(screen.getAllByRole('checkbox')).toHaveLength(3);
+    expect(screen.queryByRole('radio')).toBeNull();
+  });
+
+  it('omits the reopen line when the payout covered only this receipt', () => {
+    renderOpenShiftIntake({ reopens: [] });
+    expect(screen.getAllByRole('checkbox')).toHaveLength(2);
+  });
+
+  it('refuses to submit until every box is ticked, then sends no payout field', async () => {
+    renderOpenShiftIntake();
+    await userEvent.type(screen.getByLabelText(/Reason/), 'клієнт повернув');
+    await userEvent.click(screen.getByRole('button', { name: 'Void' }));
+    expect(await screen.findByText('Tick every item')).toBeInTheDocument();
+    expect(voidDocumentMock).not.toHaveBeenCalled();
+
+    for (const box of screen.getAllByRole('checkbox')) await userEvent.click(box);
+    await userEvent.click(screen.getByRole('button', { name: 'Void' }));
+    await waitFor(() =>
+      expect(voidDocumentMock).toHaveBeenCalledWith({ kind: 'intake', id: 'i1', reason: 'клієнт повернув' }),
+    );
+  });
+
+  it('with no bound payout, asks for the one debt checkbox', () => {
+    renderOpenShiftIntake(null);
+    expect(screen.getAllByRole('checkbox')).toHaveLength(1);
+    expect(screen.getByText(/debt drops by/)).toBeInTheDocument();
+  });
+
+  it('a payout void asks for cash-back and reopen', () => {
+    render(
+      <VoidDocumentDialog kind="payout" id="p1" code="PO-7" open onClose={vi.fn()}
+        payoutAmount="1500.00" reopens={['ПР-0009', 'ПР-0012']} />,
+    );
+    expect(screen.getAllByRole('checkbox')).toHaveLength(2);
   });
 });

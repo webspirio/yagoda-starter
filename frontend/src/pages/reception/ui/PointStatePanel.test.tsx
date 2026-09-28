@@ -89,6 +89,7 @@ const intake = (over: Partial<Intake> & Pick<Intake, 'id'>): Intake => ({
   voided_at: null,
   voided_by_user_id: null,
   void_reason: null,
+  shift_closed: false,
   created_at: '2026-09-21T09:00:00Z',
   net_kg: '120.40',
   lines_count: 1,
