@@ -23,7 +23,8 @@ export interface DaySummary {
   /** §3.7's «Видати без ягоди» — a payout with no visit. */
   paidWithoutBerry: string;
   cashOut: string;
-  /** Σ квитанцій дня − Σ виплат дня. Negative when old balances were paid down. */
+  /** Σ квитанцій дня − Σ виплат дня. Negative when old balances were paid down,
+   *  or when a receipt was voided with its payout still live (§3.5's one path). */
   debtGrowth: string;
   /** Voided payouts whose cash nobody has put back yet (see `Payout`'s header). */
   voidedNotReturned: string;

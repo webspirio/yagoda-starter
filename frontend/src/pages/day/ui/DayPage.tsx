@@ -124,6 +124,10 @@ export function DayPage() {
   // 0,00 ₴ tiles or an «Open shift» button over a shift the server never
   // confirmed either way are both worse than saying so.
   const isError = shift.isError || intakes.isError || payouts.isError;
+  // The journals are gated on the shift's id, so there is always a round trip
+  // where the shift is in and they are not. Totals over that gap would be
+  // zeros, which on a cash screen read as «nothing happened» — so wait.
+  const documentsReady = !intakes.isPending && !payouts.isPending;
 
   const summary = buildDaySummary(intakes.data?.data ?? [], payouts.data?.data ?? []);
   const paidDown = isNegative(summary.debtGrowth);
@@ -144,9 +148,10 @@ export function DayPage() {
       hint: t('day.tiles.cashOutHint'),
       tone: 'berry',
     },
-    // The corrected «Інваріант дня» shows the GROWTH of the debt, which a day
-    // that paid down old balances drives below zero — so the tile says which
-    // way it went rather than print «created: −200».
+    // The corrected «Інваріант дня» shows the GROWTH of the debt, which goes
+    // below zero when old balances were paid down OR when a receipt was voided
+    // with its payout still live — the two are indistinguishable without
+    // allocations, so the label names the fact, not a cause.
     paidDown
       ? {
           label: t('day.tiles.debtPaidDown'),
@@ -284,7 +289,7 @@ export function DayPage() {
       <p role="alert" className="py-6 text-center text-destructive">
         {t('common.somethingWentWrong')}
       </p>
-    ) : shift.isPending ? (
+    ) : shift.isPending || (status !== 'none' && !documentsReady) ? (
       <div className="flex justify-center py-12">
         <Spinner />
       </div>
@@ -368,7 +373,7 @@ export function DayPage() {
         title={t('day.title', { date: formatLongDate(date, i18n.language) })}
         description={t('day.description')}
         actions={actions}
-        stats={pointId && status !== 'none' && !isError ? stats : undefined}
+        stats={pointId && status !== 'none' && !isError && documentsReady ? stats : undefined}
         statColumns={4}
       >
         {truncated ? (
@@ -379,7 +384,7 @@ export function DayPage() {
         {/* The mock's two columns: the reconciliation beside the feed — equal
             here, since a feed row also carries the document code. The
             ledger only means something once there is a shift to reconcile. */}
-        {pointId && status !== 'none' && !isError && !shift.isPending ? (
+        {pointId && status !== 'none' && !isError && !shift.isPending && documentsReady ? (
           <div className="grid items-start gap-5 lg:grid-cols-2">
             <DayLedger summary={summary} />
             <SectionCard eyebrow={t('day.feed.title')}>{feedContent}</SectionCard>

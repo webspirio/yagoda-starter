@@ -430,8 +430,8 @@
       "cashOutHint": "cash for the day, balances included",
       "debtCreated": "Balances created",
       "debtCreatedHint": "carries over to supplier balances",
-      "debtPaidDown": "Balances paid down",
-      "debtPaidDownHint": "paid out beyond what the day accrued",
+      "debtPaidDown": "Paid beyond accrued",
+      "debtPaidDownHint": "reduces supplier balances",
       "truncated_one": "Showing the first {{count}} document — totals are partial",
       "truncated_other": "Showing the first {{count}} documents — totals are partial"
     },
@@ -442,10 +442,10 @@
       "paidAtReceptionHint": "with a receipt",
       "paidWithoutBerry": "Paid without berry",
       "debtCreated": "Left on balance for us",
-      "debtPaidDown": "Old balances paid down",
+      "debtPaidDown": "Paid out beyond accrued",
       "cashOut": "Total cash out",
       "voidedNotReturned": "Another {{amount}} from voided payouts has not been returned to the drawer yet",
-      "note": "A payout does not remember which debt it settled (the correction to §3.3), so the day shows how much the balance grew rather than a breakdown by date."
+      "note": "A payout does not remember which debt it settled (the correction to §3.3), so the day shows how much the balance grew rather than a breakdown by date. The owner's top-ups carry no date and are not included."
     },
     "feed": {
       "title": "Day feed",

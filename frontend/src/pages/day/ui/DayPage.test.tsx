@@ -60,7 +60,8 @@ vi.mock('@/entities/payout', () => ({
 
 vi.mock('@/entities/supplier', () => ({
   useSuppliersQuery: (search: string, pointId: string | null) => suppliersMock(search, pointId),
-  supplierName: (s: { first_name: string; last_name: string }) => `${s.first_name} ${s.last_name}`,
+  supplierName: (s: { first_name: string; last_name: string }) =>
+    `${s.first_name} ${s.last_name}`,
 }));
 
 vi.mock('@/widgets/receipt', () => ({
@@ -343,7 +344,9 @@ describe('DayPage — the operator on an open shift', () => {
 
     await user.click(screen.getByRole('button', { name: 'Close shift' }));
     const dialog = await screen.findByRole('dialog');
-    expect(within(dialog).getByText(/only the owner can reopen it/)).toBeInTheDocument();
+    expect(
+      within(dialog).getByText(/only the owner can reopen it/),
+    ).toBeInTheDocument();
   });
 
   it('closes the count dialog once the close is recorded', async () => {
@@ -438,7 +441,7 @@ describe('DayPage — the operator on an open shift', () => {
     expect(within(payoutRow!).getByText('Iryna Kovalenko')).toBeInTheDocument();
   });
 
-  it("renders a voided row's reason as visible text, not only a title attribute", () => {
+  it('renders a voided row\'s reason as visible text, not only a title attribute', () => {
     renderDay();
 
     expect(screen.getByText('Voided: Wrong supplier')).toBeInTheDocument();
@@ -462,7 +465,9 @@ describe('DayPage — the operator before the shift is open', () => {
     const dialog = await screen.findByRole('dialog');
     await user.type(within(dialog).getByRole('textbox'), '1500.00');
     await user.click(within(dialog).getByRole('button', { name: SUBMIT_COUNT }));
-    await waitFor(() => expect(openMock).toHaveBeenCalledWith({ counted_amount: '1500.00' }));
+    await waitFor(() =>
+      expect(openMock).toHaveBeenCalledWith({ counted_amount: '1500.00' }),
+    );
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
   });
 
@@ -555,7 +560,7 @@ describe('DayPage — the cash reconciliation', () => {
     );
   });
 
-  it('says old balances were paid down when the day paid more than it accrued', () => {
+  it('says more was paid out than accrued, without claiming which debt it settled', () => {
     intakesMock.mockReturnValue(
       page<Intake>([intake({ id: 'i1', code: 'KV-0001', amount: '100.00' })]),
     );
@@ -565,9 +570,25 @@ describe('DayPage — the cash reconciliation', () => {
 
     renderDay();
 
-    expect(tile('Balances paid down')).toHaveTextContent('200.00 ₴');
+    expect(tile('Paid beyond accrued')).toHaveTextContent('200.00 ₴');
     expect(screen.queryByText('Balances created')).toBeNull();
-    expect(row('Old balances paid down')).toHaveTextContent('+200.00 ₴');
+    expect(row('Paid out beyond accrued')).toHaveTextContent('+200.00 ₴');
+    // A voided receipt with its payout still live reads the same way, and no
+    // old balance was paid then — so nothing may say one was.
+    expect(screen.queryByText(/old balances/i)).toBeNull();
+  });
+
+  it('shows neither tiles nor the ledger while the documents are still loading', () => {
+    // The shift is in, the journals (gated on its id) are not — the gap every
+    // page load and date change goes through. Zeros here would be a lie.
+    intakesMock.mockReturnValue({ data: undefined, isPending: true, isError: false });
+    payoutsMock.mockReturnValue({ data: undefined, isPending: true, isError: false });
+
+    renderDay();
+
+    expect(screen.queryByText('Cash reconciliation')).toBeNull();
+    expect(screen.queryByText('Accrued')).toBeNull();
+    expect(screen.queryByText('Nothing moved on this day.')).toBeNull();
   });
 
   it('names voided payout cash that has not come back to the drawer', () => {
