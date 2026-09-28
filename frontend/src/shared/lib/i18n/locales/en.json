@@ -444,8 +444,10 @@
       "debtCreated": "Left on balance for us",
       "debtPaidDown": "Paid out beyond accrued",
       "cashOut": "Total cash out",
-      "voidedNotReturned": "Another {{amount}} from voided payouts has not been returned to the drawer yet",
-      "note": "A payout does not remember which debt it settled (the correction to §3.3), so the day shows how much the balance grew rather than a breakdown by date. The owner's top-ups carry no date and are not included."
+      "voidedReturned": "of which {{voided}} on voided payouts, returned to the drawer",
+      "voidedNotReturned": "of which {{voided}} on voided payouts, {{notReturned}} of it not yet back in the drawer",
+      "note": "A payout does not remember which debt it settled (the correction to §3.3), so the day shows how much the balance grew rather than a breakdown by date. The owner's top-ups carry no date and are not included.",
+      "truncated": "Not every document was read — these sums are partial"
     },
     "feed": {
       "title": "Day feed",

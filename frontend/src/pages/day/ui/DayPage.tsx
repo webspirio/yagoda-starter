@@ -11,7 +11,7 @@ import { Spinner } from '@/shared/ui/spinner';
 import { toast } from '@/shared/ui/toast';
 import { isTruncated } from '@/shared/api';
 import { useUrlParam } from '@/shared/lib/url-state';
-import { sub, isNegative, isZero, formatUah, formatKg } from '@/shared/lib/money';
+import { sub, isZero, formatUah, formatKg } from '@/shared/lib/money';
 import {
   todayIso,
   addDaysIso,
@@ -128,9 +128,11 @@ export function DayPage() {
   // where the shift is in and they are not. Totals over that gap would be
   // zeros, which on a cash screen read as «nothing happened» — so wait.
   const documentsReady = !intakes.isPending && !payouts.isPending;
+  // One gate for every figure on the page: a point, a shift, a clean read,
+  // and both journals in. Tiles and ledger must never disagree on it.
+  const figuresVisible = pointId !== null && status !== 'none' && !isError && documentsReady;
 
   const summary = buildDaySummary(intakes.data?.data ?? [], payouts.data?.data ?? []);
-  const paidDown = isNegative(summary.debtGrowth);
   const stats: StatItem[] = [
     {
       label: t('day.tiles.received'),
@@ -152,7 +154,7 @@ export function DayPage() {
     // below zero when old balances were paid down OR when a receipt was voided
     // with its payout still live — the two are indistinguishable without
     // allocations, so the label names the fact, not a cause.
-    paidDown
+    summary.paidDown
       ? {
           label: t('day.tiles.debtPaidDown'),
           value: formatUah(sub('0', summary.debtGrowth), i18n.language),
@@ -373,7 +375,7 @@ export function DayPage() {
         title={t('day.title', { date: formatLongDate(date, i18n.language) })}
         description={t('day.description')}
         actions={actions}
-        stats={pointId && status !== 'none' && !isError && documentsReady ? stats : undefined}
+        stats={figuresVisible ? stats : undefined}
         statColumns={4}
       >
         {truncated ? (
@@ -384,9 +386,9 @@ export function DayPage() {
         {/* The mock's two columns: the reconciliation beside the feed — equal
             here, since a feed row also carries the document code. The
             ledger only means something once there is a shift to reconcile. */}
-        {pointId && status !== 'none' && !isError && !shift.isPending && documentsReady ? (
+        {figuresVisible ? (
           <div className="grid items-start gap-5 lg:grid-cols-2">
-            <DayLedger summary={summary} />
+            <DayLedger summary={summary} truncated={truncated} />
             <SectionCard eyebrow={t('day.feed.title')}>{feedContent}</SectionCard>
           </div>
         ) : (

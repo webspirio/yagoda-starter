@@ -4,8 +4,14 @@ import { LedgerRow } from '@/shared/ui/ledger-row';
 import { sub, isNegative, isZero, formatUah } from '@/shared/lib/money';
 import type { DaySummary } from '../lib/daySummary';
 
-/** An outflow printed with the mock's `uahAuto` sign: «−» out, «+» back in,
- *  and a zero bare — «−0,00» would read as money that left. */
+/**
+ * A term of the decomposition «accrued − … = 0», printed with the mock's
+ * `uahAuto` sign: «−» subtracts from the accrued sum, «+» adds to it, and a
+ * zero stays bare. For the two payout rows that is also the cash direction;
+ * for the debt row it is NOT — «−250» there is money that stayed in the
+ * drawer, «+200» money that left it beyond the accrued sum. Read the column as
+ * arithmetic, not as a cash flow.
+ */
 function signed(value: string, locale: string): string {
   if (isZero(value)) return formatUah(value, locale);
   return isNegative(value)
@@ -20,10 +26,10 @@ function signed(value: string, locale: string): string {
  * mock checks per-line `paid + debt` against the line amount, and here debt is
  * derived, never stored, so there is nothing that could disagree.
  */
-export function DayLedger({ summary }: { summary: DaySummary }) {
+export function DayLedger({ summary, truncated }: { summary: DaySummary; truncated: boolean }) {
   const { t, i18n } = useTranslation();
   const locale = i18n.language;
-  const paidDown = isNegative(summary.debtGrowth);
+  const { paidDown } = summary;
 
   return (
     <SectionCard eyebrow={t('day.ledger.title')}>
@@ -61,13 +67,21 @@ export function DayLedger({ summary }: { summary: DaySummary }) {
         </span>
       </div>
 
-      {isZero(summary.voidedNotReturned) ? null : (
+      {/* The plaque is the drawer's reading and counts voided payouts; the
+          rows above are the debt's and do not. This line is the difference. */}
+      {isZero(summary.voidedOut) ? null : (
         <p className="mt-2 text-xs text-[var(--amber)]">
-          {t('day.ledger.voidedNotReturned', {
-            amount: formatUah(summary.voidedNotReturned, locale),
-          })}
+          {isZero(summary.voidedNotReturned)
+            ? t('day.ledger.voidedReturned', { voided: formatUah(summary.voidedOut, locale) })
+            : t('day.ledger.voidedNotReturned', {
+                voided: formatUah(summary.voidedOut, locale),
+                notReturned: formatUah(summary.voidedNotReturned, locale),
+              })}
         </p>
       )}
+      {truncated ? (
+        <p className="mt-2 text-xs text-muted-foreground">{t('day.ledger.truncated')}</p>
+      ) : null}
       <p className="mt-3 text-xs leading-relaxed text-muted-foreground">{t('day.ledger.note')}</p>
     </SectionCard>
   );

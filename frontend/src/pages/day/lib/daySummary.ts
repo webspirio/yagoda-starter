@@ -1,4 +1,4 @@
-import { sum, sub } from '@/shared/lib/money';
+import { sum, sub, isNegative } from '@/shared/lib/money';
 
 export interface SummaryIntake {
   amount: string;
@@ -22,17 +22,27 @@ export interface DaySummary {
   paidAtReception: string;
   /** §3.7's «Видати без ягоди» — a payout with no visit. */
   paidWithoutBerry: string;
+  /**
+   * Every payout of the shift, voided or not — the DRAWER's reading, the same
+   * one «Каса точки» uses for «видано сьогодні» (`buildLedger`'s paidToday):
+   * a voided payout's cash left and comes back only as a separate inflow on
+   * the day a human returns it.
+   */
   cashOut: string;
-  /** Σ квитанцій дня − Σ виплат дня. Negative when old balances were paid down,
-   *  or when a receipt was voided with its payout still live (§3.5's one path). */
+  /** Σ квитанцій дня − Σ ЖИВИХ виплат дня — the DEBT's reading. Negative when
+   *  old balances were paid down, or when a receipt was voided with its payout
+   *  still live (§3.5's one path). */
   debtGrowth: string;
-  /** Voided payouts whose cash nobody has put back yet (see `Payout`'s header). */
+  /** `debtGrowth < 0`, decided once so the tile and the ledger cannot disagree. */
+  paidDown: boolean;
+  /** The part of `cashOut` that sits on voided payouts. */
+  voidedOut: string;
   voidedNotReturned: string;
 }
 
 /**
  * The day's figures, as the corrected «Інваріант дня» in `26-rules-by-example.md`
- * defines them: accrued = cash out + growth of the debt.
+ * defines them: accrued = live payouts + growth of the debt.
  *
  * THERE IS NO «погашено того ж дня» AND NO «за ягоду іншого пункту». Both need a
  * payout to remember WHICH debt it settled, and the correction to §3.3 cancelled
@@ -41,8 +51,9 @@ export interface DaySummary {
  * split below is by `intake_id` — with which visit the cash left the drawer —
  * which is a signature, not an allocation (migration …0017).
  *
- * A voided payout is out of every figure but the last, the same DEBT reading
- * `supplier-balance` uses; its cash only returns when `return_settled_at` is set.
+ * TWO READINGS OF A VOIDED PAYOUT, as `Payout`'s header names them: the debt
+ * rows (split, growth) drop it like `supplier-balance` does; `cashOut` keeps
+ * it, because the money physically left the drawer.
  */
 export function buildDaySummary(
   intakes: readonly SummaryIntake[],
@@ -55,19 +66,18 @@ export function buildDaySummary(
   const paidWithoutBerry = sum(
     livePayouts.filter((p) => p.intake_id === null).map((p) => p.amount),
   );
-  const cashOut = sum([paidAtReception, paidWithoutBerry]);
+  const debtGrowth = sub(accrued, sum([paidAtReception, paidWithoutBerry]));
+  const voided = payouts.filter((p) => p.voided_at !== null);
   return {
     netKg: sum(liveIntakes.map((i) => i.net_kg)),
     receipts: liveIntakes.length,
     accrued,
     paidAtReception,
     paidWithoutBerry,
-    cashOut,
-    debtGrowth: sub(accrued, cashOut),
-    voidedNotReturned: sum(
-      payouts
-        .filter((p) => p.voided_at !== null && p.return_settled_at === null)
-        .map((p) => p.amount),
-    ),
+    cashOut: sum(payouts.map((p) => p.amount)),
+    debtGrowth,
+    paidDown: isNegative(debtGrowth),
+    voidedOut: sum(voided.map((p) => p.amount)),
+    voidedNotReturned: sum(voided.filter((p) => p.return_settled_at === null).map((p) => p.amount)),
   };
 }

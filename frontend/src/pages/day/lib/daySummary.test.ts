@@ -53,14 +53,25 @@ describe('buildDaySummary', () => {
     expect(s.debtGrowth).toBe('-200.00');
   });
 
-  it('keeps a voided payout out of the cash-out and the split', () => {
+  it('keeps a voided payout out of the split and the debt, but not out of the cash', () => {
     const s = buildDaySummary(
       [intake('100.00', '1.00')],
-      [payout('40.00', { intake_id: 'i1', voided_at: '2026-09-08T12:00:00Z' })],
+      [
+        payout('60.00', { intake_id: 'i1' }),
+        payout('40.00', { intake_id: 'i1', voided_at: '2026-09-08T12:00:00Z' }),
+      ],
     );
-    expect(s.cashOut).toBe('0.00');
-    expect(s.paidAtReception).toBe('0.00');
-    expect(s.debtGrowth).toBe('100.00');
+    expect(s.paidAtReception).toBe('60.00');
+    expect(s.debtGrowth).toBe('40.00');
+    // «Каса точки»'s own reading: the money left the drawer; a return is a
+    // separate inflow on the day it happens (buildLedger's returnedToday).
+    expect(s.cashOut).toBe('100.00');
+    expect(s.voidedOut).toBe('40.00');
+  });
+
+  it('flags a negative growth once, so no consumer re-derives it', () => {
+    expect(buildDaySummary([intake('100.00', '1.00')], [payout('300.00')]).paidDown).toBe(true);
+    expect(buildDaySummary([intake('100.00', '1.00')], []).paidDown).toBe(false);
   });
 
   it('names the cash of voided payouts that has not come back to the drawer yet', () => {
@@ -86,6 +97,8 @@ describe('buildDaySummary', () => {
       paidWithoutBerry: '0.00',
       cashOut: '0.00',
       debtGrowth: '0.00',
+      paidDown: false,
+      voidedOut: '0.00',
       voidedNotReturned: '0.00',
     });
   });

@@ -591,7 +591,10 @@ describe('DayPage — the cash reconciliation', () => {
     expect(screen.queryByText('Nothing moved on this day.')).toBeNull();
   });
 
-  it('names voided payout cash that has not come back to the drawer', () => {
+  it('counts voided payout cash as cash out, and says how much is not back yet', () => {
+    intakesMock.mockReturnValue(
+      page<Intake>([intake({ id: 'i1', code: 'KV-0001', amount: '500.00' })]),
+    );
     payoutsMock.mockReturnValue(
       page<Payout>([
         payout({
@@ -607,10 +610,38 @@ describe('DayPage — the cash reconciliation', () => {
 
     renderDay();
 
+    // The drawer's reading, as «Каса точки» has it — not the debt's.
+    expect(tile('Cash out')).toHaveTextContent('40.00 ₴');
+    expect(row('Total cash out')).toHaveTextContent('40.00 ₴');
     expect(
-      screen.getByText(
-        'Another 40.00 ₴ from voided payouts has not been returned to the drawer yet',
-      ),
+      screen.getByText('of which 40.00 ₴ on voided payouts, 40.00 ₴ of it not yet back in the drawer'),
+    ).toBeInTheDocument();
+    // The accrual rows keep the debt reading: nothing live was paid.
+    expect(row('Left on balance for us')).toHaveTextContent('−500.00 ₴');
+  });
+
+  it('shows no ledger on a day without a shift', () => {
+    shiftMock.mockReturnValue({ data: undefined, isPending: false, isError: false });
+    renderDay();
+    expect(screen.queryByText('Cash reconciliation')).toBeNull();
+  });
+
+  it('shows no ledger over a failed read', () => {
+    payoutsMock.mockReturnValue({ data: undefined, isPending: false, isError: true });
+    renderDay();
+    expect(screen.queryByText('Cash reconciliation')).toBeNull();
+  });
+
+  it('warns inside the ledger when a journal was truncated', () => {
+    const hundred = Array.from({ length: 100 }, (_, n) =>
+      intake({ id: `i${n}`, code: `KV-${n}`, amount: '1.00' }),
+    );
+    intakesMock.mockReturnValue(page<Intake>(hundred, 150));
+
+    renderDay();
+
+    expect(
+      within(ledger()).getByText('Not every document was read — these sums are partial'),
     ).toBeInTheDocument();
   });
 });
