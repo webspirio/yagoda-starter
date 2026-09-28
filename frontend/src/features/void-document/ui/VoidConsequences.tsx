@@ -1,22 +1,19 @@
-import { useId, type Ref } from 'react';
+import { useId } from 'react';
 import { useTranslation } from 'react-i18next';
+import type { UseFormRegisterReturn } from 'react-hook-form';
 import { NativeCheckbox } from '@/shared/ui/native-checkbox';
 
 /** 2026-09-28: every consequence of an open-shift void, each one ticked before «Сторнувати».
  *  Native checkboxes — same bundle-ceiling reason as the radios in `PayoutDecisionField`. */
 export function VoidConsequences({
   items,
-  value,
-  onChange,
+  box,
   error,
-  firstBoxRef,
 }: {
   items: string[];
-  value: boolean[];
-  onChange: (value: boolean[]) => void;
+  /** RHF's `register` for box `i` — a failed submit focuses the first unticked one. */
+  box: (i: number) => UseFormRegisterReturn;
   error?: string;
-  /** RHF's `field.ref` — a failed submit focuses the first box. */
-  firstBoxRef?: Ref<HTMLInputElement>;
 }) {
   const { t } = useTranslation();
   const errorId = useId();
@@ -26,14 +23,10 @@ export function VoidConsequences({
       aria-invalid={error ? true : undefined}
       aria-describedby={error ? errorId : undefined}
     >
-      <legend className="mb-2 text-sm font-medium">{t('void.consequences.legend')}</legend>
+      <legend className="mb-2 text-sm font-medium">{t('void.ack.legend')}</legend>
       {items.map((text, i) => (
         <label key={text} className="flex items-start gap-2 text-sm">
-          <NativeCheckbox
-            ref={i === 0 ? firstBoxRef : undefined}
-            checked={value[i] ?? false}
-            onChange={(e) => onChange(items.map((_, j) => (j === i ? e.target.checked : (value[j] ?? false))))}
-          />
+          <NativeCheckbox {...box(i)} />
           {text}
         </label>
       ))}

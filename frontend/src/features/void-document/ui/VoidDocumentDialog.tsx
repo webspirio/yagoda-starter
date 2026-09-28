@@ -24,7 +24,7 @@ interface VoidFormValues {
   reason: string;
   /** #125: only asked for a closed-shift intake with a live linked payout — see `showDecision`. */
   payout?: PayoutDecision;
-  /** One tick per open-shift consequence — see `consequences`. */
+  /** One required tick per open-shift consequence — a UI gate only (spec decision 8). */
   acks: boolean[];
 }
 
@@ -74,23 +74,20 @@ export function VoidDocumentDialog({
   const showDecision = kind === 'intake' && linkedPayout !== undefined && shiftClosed;
   const openLinkedPayout = kind === 'intake' && !shiftClosed ? linkedPayout : undefined;
 
-  // A UI gate only (spec decision 8): the server cannot know a human read these.
-  const reopenLine = (codes: string[] | null | undefined) =>
-    codes?.length ? [t('void.consequences.reopens', { codes: codes.join(', ') })] : [];
-  let consequences: string[] | null = null;
-  if (!shiftClosed && kind === 'intake') {
-    if (linkedPayout) {
-      consequences = [
-        t('void.consequences.cashBack', { amount: money(linkedPayout.amount) }),
-        t('void.consequences.payoutVoided', { code: linkedPayout.code }),
-        ...reopenLine(linkedPayout.reopens),
-      ];
-    } else if (intakeAmount !== undefined) {
-      consequences = [t('void.consequences.debtDrops', { amount: money(intakeAmount) })];
-    }
-  } else if (!shiftClosed && kind === 'payout' && payoutAmount !== undefined) {
-    consequences = [t('void.consequences.payoutCashBack', { amount: money(payoutAmount) }), ...reopenLine(reopens)];
-  }
+  const reopen = (codes?: string[] | null) => (codes?.length ? [t('void.ack.reopens', { codes: codes.join(', ') })] : []);
+  const consequences = shiftClosed
+    ? null
+    : kind === 'payout' && payoutAmount
+      ? [t('void.ack.payoutCash', { amount: money(payoutAmount) }), ...reopen(reopens)]
+      : openLinkedPayout
+        ? [
+            t('void.ack.cash', { amount: money(openLinkedPayout.amount) }),
+            t('void.ack.payout', { code: openLinkedPayout.code }),
+            ...reopen(openLinkedPayout.reopens),
+          ]
+        : kind === 'intake' && intakeAmount
+          ? [t('void.ack.debt', { amount: money(intakeAmount) })]
+          : null;
 
   const {
     register,
@@ -146,12 +143,12 @@ export function VoidDocumentDialog({
 
           {openLinkedPayout ? (
             <div className="rounded-md border border-destructive/40 bg-destructive/8 p-3 text-sm">
-              <p className="font-medium">{t('void.payoutCard.title')}</p>
+              <p className="font-medium">{t('void.card.title')}</p>
               <p>
                 {openLinkedPayout.code} · {money(openLinkedPayout.amount)}
               </p>
               <p className="text-muted-foreground">
-                {t('void.payoutCard.paid', {
+                {t('void.card.paid', {
                   when: formatTime(openLinkedPayout.paidAt, locale),
                   who: openLinkedPayout.paidBy ?? '—',
                 })}
@@ -160,21 +157,10 @@ export function VoidDocumentDialog({
           ) : null}
 
           {consequences ? (
-            <Controller
-              control={control}
-              name="acks"
-              rules={{
-                validate: (v) => (consequences ?? []).every((_, i) => v?.[i]) || 'void.consequences.required',
-              }}
-              render={({ field, fieldState }) => (
-                <VoidConsequences
-                  items={consequences}
-                  value={field.value}
-                  onChange={field.onChange}
-                  error={fieldState.error?.message}
-                  firstBoxRef={field.ref}
-                />
-              )}
+            <VoidConsequences
+              items={consequences}
+              box={(i) => register(`acks.${i}`, { required: 'void.ack.required' })}
+              error={errors.acks ? 'void.ack.required' : undefined}
             />
           ) : null}
 

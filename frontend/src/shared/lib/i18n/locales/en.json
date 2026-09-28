@@ -550,16 +550,16 @@
       "otherCovered": "{{amount}} of it covered other receipts — they will reopen",
       "required": "Choose what to do with the payout"
     },
-    "consequences": {
-      "legend": "Confirm you understand what happens",
-      "cashBack": "The client returned or never took {{amount}} — the money is in the drawer",
-      "payoutVoided": "Payout {{code}} will be voided",
+    "ack": {
+      "legend": "Confirm each consequence",
+      "cash": "Client returned or never took {{amount}} — it is in the drawer",
+      "payout": "Payout {{code}} will be voided",
       "reopens": "Receipts {{codes}} will reopen",
-      "debtDrops": "The receipt will be voided and the debt drops by {{amount}}",
-      "payoutCashBack": "The client returned {{amount}} — the money is in the drawer",
+      "debt": "Receipt voided, debt drops by {{amount}}",
+      "payoutCash": "Client returned {{amount}} — it is in the drawer",
       "required": "Tick every item"
     },
-    "payoutCard": {
+    "card": {
       "title": "This payout will be voided",
       "paid": "Paid {{when}} · {{who}}"
     },

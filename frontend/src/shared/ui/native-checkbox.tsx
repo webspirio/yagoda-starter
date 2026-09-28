@@ -1,19 +1,7 @@
-import * as React from 'react';
-import { cn } from '@/shared/lib/cn';
+import type { ComponentProps } from 'react';
 
-/**
- * Native checkbox — the checkbox counterpart of `Radio`: the browser's own control, none of the
- * Radix `Checkbox`'s bundle weight (`checkbox.tsx`). Wrap it in a `<label>` with its text.
- */
-export const NativeCheckbox = React.forwardRef<HTMLInputElement, Omit<React.ComponentProps<'input'>, 'type'>>(
-  function NativeCheckbox({ className, ...props }, ref) {
-    return (
-      <input
-        ref={ref}
-        type="checkbox"
-        className={cn('mt-0.5 size-4 shrink-0 cursor-pointer accent-brand disabled:cursor-not-allowed', className)}
-        {...props}
-      />
-    );
-  },
+/** Native checkbox in the brand accent — `Radio`'s counterpart, none of the Radix `Checkbox`'s
+ *  bundle weight. Wrap it in a `<label>` with its text. */
+export const NativeCheckbox = (props: Omit<ComponentProps<'input'>, 'type' | 'className'>) => (
+  <input type="checkbox" className="mt-0.5 size-4 shrink-0 cursor-pointer accent-brand" {...props} />
 );
