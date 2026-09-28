@@ -92,7 +92,7 @@ export class TransfersService {
     // is no `QueryFailedError` mapping anywhere in this backend and a
     // constraint violation no service pre-check catches reaches the owner as
     // an opaque server error. Same shape, same reason, as
-    // `PayoutsService.create`'s zero check.
+    // `CreatePayoutCommand.create`'s zero check.
     //
     // It runs BEFORE the point is read: the document is empty whoever it was
     // addressed to, and the cheaper refusal comes first.
@@ -276,7 +276,7 @@ export class TransfersService {
    * lock, the state check and the audit entry.
    *
    * THE LOAD AND THE STATE CHECK ARE INSIDE THE TRANSACTION, under the row
-   * lock, exactly as `PayoutsService.void` does and for the same reason.
+   * lock, exactly as `VoidPayoutCommand.void` does and for the same reason.
    * Checking `status` before the transaction opens is a check-then-write: two
    * operators at one point — or one double-tapped button — both read `sent`,
    * both write, and `accepted_by_user_id` becomes last-writer-wins while the

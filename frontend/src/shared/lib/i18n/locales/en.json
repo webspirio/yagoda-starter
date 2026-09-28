@@ -551,13 +551,38 @@
     "toast": {
       "voided": "Document voided"
     },
+    "payout": {
+      "legend": "What about payout {{code}} ({{amount}})?",
+      "keep": "Keep the payout",
+      "void": "Void the payout too — the supplier will return the money",
+      "voidReturned": "Void the payout too — the money is already back in the drawer",
+      "cashWarning": "The drawer will be {{amount}} short until the owner confirms the return",
+      "otherCovered": "{{amount}} of it covered other receipts — they will reopen",
+      "required": "Choose what to do with the payout"
+    },
+    "ack": {
+      "legend": "Confirm each consequence",
+      "cash": "Client returned or never took {{amount}} — it is in the drawer",
+      "payout": "Payout {{code}} will be voided",
+      "reopens": "Receipts {{codes}} will reopen",
+      "reopensUnknown": "The list of receipts that will reopen didn't load — void anyway",
+      "debt": "Receipt voided, debt drops by {{amount}}",
+      "payoutCash": "Client returned {{amount}} — it is in the drawer",
+      "required": "Tick every item"
+    },
+    "card": {
+      "title": "This payout will be voided",
+      "paid": "Paid {{when}} · {{who}}"
+    },
     "errors": {
       "notYourDocument": "Only the author or the owner can void a document",
       "shiftClosed": "The shift is closed — ask the network owner to void it",
       "alreadyVoided": "Already voided",
       "failed": "Could not void",
-      "reasonRequired": "Enter a reason"
-    }
+      "reasonRequired": "Enter a reason",
+      "payoutChanged": "The payout on this receipt just changed — close and reopen the dialog"
+    },
+    "reopensFailed": "Couldn't load the receipts that will reopen"
   },
   "cash": {
     "explainDialog": {
@@ -783,7 +808,8 @@
     "voided": "VOIDED",
     "voidReason": "Reason: {{reason}}",
     "print": "Print",
-    "void": "Void"
+    "void": "Void",
+    "voidRow": "Void {{code}}"
   },
   "reception": {
     "eyebrow": "{{point}} · {{date}}",
@@ -898,7 +924,7 @@
       "openingCash": "Counted this morning",
       "currentCash": "In the berry drawer now",
       "paidOut": "Paid out for berries",
-      "newDebt": "New balance created",
+      "openToday": "Open on today's receipts",
       "allotment": "Allotment",
       "allotmentValue_one": "{{count}} crate",
       "allotmentValue_other": "{{count}} crates",
@@ -984,6 +1010,13 @@
       "balance": "Balance",
       "balanceHint": "fully settled"
     },
+    "open": {
+      "title": "Open balances — what exactly is owed",
+      "topUp": "Top-up on {{code}}",
+      "unallocated": "Overpayment — not allocated",
+      "oldest_one": "oldest from {{date}} — {{count}} day",
+      "oldest_other": "oldest from {{date}} — {{count}} days"
+    },
     "timeline": {
       "title": "History — receipts and payouts",
       "empty": "No receipts yet — this will be the first.",
@@ -994,7 +1027,10 @@
       "topUp": "Balance",
       "addTopUp": "Add a balance",
       "againstReceipt": "against {{code}}",
-      "parentVoided": "the receipt was voided — counts for nothing"
+      "parentVoided": "the receipt was voided — counts for nothing",
+      "openLeft": "{{uah}} still open",
+      "closed": "closed berries of {{dates}}",
+      "unallocated": "{{uah}} not allocated"
     }
   },
   "journal": {
@@ -1025,7 +1061,8 @@
       "point": "Point",
       "supplier": "Supplier",
       "amount": "Amount",
-      "status": "Status"
+      "status": "Status",
+      "action": "Action"
     },
     "voided": "Voided",
     "empty": "No records for this period.",

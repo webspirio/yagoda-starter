@@ -31,6 +31,8 @@ export function useCreatePayoutMutation() {
       qc.invalidateQueries({ queryKey: queryKeys.payouts });
       qc.invalidateQueries({ queryKey: queryKeys.supplierBalances });
       qc.invalidateQueries({ queryKey: queryKeys.pointCash });
+      // A payout allocates onto open receipts: their open_amount moves.
+      qc.invalidateQueries({ queryKey: queryKeys.intakes });
     },
   });
 }

@@ -26,13 +26,13 @@ let operatorToken: string;
 /**
  * §2.1 ⑥ + §3.6, under REAL concurrency: two `POST /intakes` requests fired
  * together at one supplier, over real HTTP against a real database — the
- * proof behind the doc comment `PayoutsService.writePayout` now carries.
+ * proof behind the doc comment `PayoutWriter.write` now carries.
  *
  * Two requests issued from one supertest app against one running `INestApplication`
  * are genuinely concurrent: Nest handles them on the same event loop, but the
  * database work each one awaits interleaves, which is exactly the window the
  * `intakes` advisory lock (`nextDocumentCode`) and the supplier row lock
- * (`writePayout`) exist to close. WHICH of the two requests wins that lock is
+ * (`AllocationsService.withinSupplierLedger`) exist to close. WHICH of the two requests wins that lock is
  * not deterministic — Postgres makes no ordering promise for two backends
  * blocked on the same `pg_advisory_xact_lock` — so every assertion below reads
  * the pair as a SET, never by array position, even where the lock happens to

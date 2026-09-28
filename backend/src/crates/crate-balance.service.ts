@@ -303,7 +303,7 @@ export class CrateBalanceService {
    * The journal (unfiltered `voided`), ticket #58's supplier-receipts view
    * (`supplier_id` + `mode`), and the owner's voided-deposit incident list
    * (`voided: true` + `mode: deposit`) — three consumers, one query shape,
-   * the same JOIN-on-`shifts` `PayoutsService.list` uses because neither
+   * the same JOIN-on-`shifts` `ListPayoutsQuery.list` uses because neither
    * `crate_issuances` nor `crate_returns` stores a point or a business date.
    */
   async listIssuances(

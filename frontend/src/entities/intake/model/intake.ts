@@ -11,6 +11,8 @@ export interface Intake {
   voided_at: string | null;
   voided_by_user_id: string | null;
   void_reason: string | null;
+  /** The shift's state decides what a void does to the cash (2026-09-28). */
+  shift_closed: boolean;
   created_at: string;
   /** Σ items.net_kg, a decimal string — the row can show kilograms. */
   net_kg: string;
@@ -19,6 +21,9 @@ export interface Intake {
   supplier_name: string;
   /** Σ live payouts handed over with this receipt; '0.00' when none. */
   paid_amount: string;
+  /** Still owed for this receipt and its live top-ups, from the server's
+   *  allocations — not amount − paid_amount; '0.00' once voided. */
+  open_amount: string;
 }
 
 /** One tare line on a receipt item — a tare type and how many units of it. */
@@ -56,6 +61,7 @@ interface IntakePayout {
   id: string;
   code: string;
   amount: string;
+  created_at: string;
   voided_at: string | null;
 }
 
