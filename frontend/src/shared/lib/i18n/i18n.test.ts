@@ -24,6 +24,8 @@ describe('<html lang> tracks the rendered language', () => {
 
 describe('startup language', () => {
   it('a persisted en waits for English and renders it', async () => {
+    // test-setup registers en statically; drop it so this exercises the dynamic import.
+    i18n.removeResourceBundle('en', 'translation');
     storeLanguage('en');
     await initI18n();
     expect(i18n.resolvedLanguage).toBe('en');
