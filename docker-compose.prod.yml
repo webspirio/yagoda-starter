@@ -106,7 +106,10 @@ services:
       # SERVICE_NAME_<SERVICE> in the deployment .env — unsuffixed in
       # production — and compose resolves it at `up` time. The default is for
       # the standalone path, where nothing sets SERVICE_NAME_*. Same for
-      # REDIS_HOST, the seed's DB_HOST and nginx's BACKEND_HOST below.
+      # REDIS_HOST, the seed's DB_HOST and nginx's BACKEND_HOST below. The
+      # seed's local-host guard (backend/src/seed/local-db-host.ts) accepts
+      # exactly `postgres` and `postgres-pr-<N>` — rename the service and
+      # update it too.
       DB_HOST: ${SERVICE_NAME_POSTGRES:-postgres}
       DB_PORT: 5432
       DB_USER: ${DB_USER:-app}
