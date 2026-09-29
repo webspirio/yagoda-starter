@@ -668,10 +668,11 @@ describe('DayPage — the cash reconciliation', () => {
           id: 'y1',
           code: 'VD-0001',
           amount: '4930.00',
-          voided_at: '2026-09-08T12:00:00Z',
+          voided_at: '2026-09-09T00:10:00',
           voided_by_user_id: 'u1',
           void_reason: 'typo',
-          return_settled_at: '2026-09-08T12:00:00Z',
+          // After midnight, shift still open: only `returned_on_void` nets it.
+          return_settled_at: '2026-09-09T00:10:00',
           return_settled_by_user_id: 'u1',
           returned_on_void: true,
         }),

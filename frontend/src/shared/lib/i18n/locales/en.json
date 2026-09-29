@@ -457,7 +457,7 @@
       "voidedReturned": "of which {{voided}} on voided payouts returned later, on the day of the return",
       "voidedNotReturned": "of which {{voided}} on voided payouts, {{notReturned}} of it still waiting to come back to the drawer",
       "voidedNoneReturned": "of which {{voided}} on voided payouts still waiting to come back to the drawer",
-      "note": "A payout does not remember which debt it settled on this screen yet (#175), so the day shows how much the balance grew rather than a breakdown by date. The owner's top-ups carry no date and are not included, nor is cash returned today for an earlier day's voided payout.",
+      "note": "This screen has no per-date breakdown of payouts yet (#175), so the day shows how much the balance grew. The owner's top-ups carry no date and are not included, nor is cash returned today for an earlier day's voided payout.",
       "truncated": "Showing only the first documents — totals are partial"
     },
     "feed": {

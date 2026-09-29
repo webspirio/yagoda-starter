@@ -63,9 +63,12 @@ describe('buildDaySummary', () => {
   it('drops a payout whose cash came back at void time — the screenshot of #170', () => {
     // Everything voided in an OPEN shift: the cash went straight back into this
     // shift's drawer (`returned_on_void`, 2026-09-28), so nothing left it.
+    // Voided at 00:10 on the NEXT calendar day in a shift still open for
+    // 2026-09-08 — the row migration …0019 exists for: `return_settled_at`
+    // alone would book it on 2026-09-09. Only `returned_on_void` keeps it here.
     const back = {
-      voided_at: '2026-09-08T12:00:00Z',
-      return_settled_at: '2026-09-08T12:00:00Z',
+      voided_at: '2026-09-09T00:10:00',
+      return_settled_at: '2026-09-09T00:10:00',
       returned_on_void: true,
     };
     const s = buildDaySummary(

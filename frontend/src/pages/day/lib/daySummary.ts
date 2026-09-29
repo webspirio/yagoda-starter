@@ -54,12 +54,11 @@ export interface DaySummary {
  * The day's figures, as the corrected «Інваріант дня» in `26-rules-by-example.md`
  * defines them: accrued = live payouts + growth of the debt.
  *
- * THERE IS NO «погашено того ж дня» AND NO «за ягоду іншого пункту». Both need a
- * payout to remember WHICH debt it settled, and the correction to §3.3 cancelled
- * exactly that («система не знає, яка виплата що закрила»); the second one is
- * also §3.9's «борг, набутий на одній точці, не можна забрати на іншій». The
- * split below is by `intake_id` — with which visit the cash left the drawer —
- * which is a signature, not an allocation (migration …0017).
+ * NO «погашено того ж дня» YET — #175. Allocations are stored again
+ * (`payout_allocations`, the 26.09.2026 correction to §3.3), but this screen
+ * has no per-shift read of them. «За ягоду іншого пункту» is always zero:
+ * §3.9 pins a debt to its point. The split below is by `intake_id` — with
+ * which visit the cash left the drawer.
  *
  * TWO READINGS OF A VOIDED PAYOUT, as `Payout`'s header names them: the debt
  * rows (split, growth) drop it like `supplier-balance` does; `cashOut` keeps
