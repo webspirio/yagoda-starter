@@ -96,7 +96,20 @@ describe('GET /intakes?expand=items (HTTP, Postgres)', () => {
   let gradeId: string;
   let secondGradeId: string;
   let tareId: string;
-  let createResponse: { body: { items: { product_name: string; grade_name: string }[] } };
+  let createResponse: {
+    body: { id: string; items: { product_name: string; grade_name: string }[] };
+  };
+  let secondIntakeId: string;
+
+  type ListedIntake = {
+    id: string;
+    items?: { item_order: number; grade_name: string; net_kg: string }[];
+  };
+  const listed = (body: { data: ListedIntake[] }, id: string): ListedIntake => {
+    const row = body.data.find((i) => i.id === id);
+    if (!row) throw new Error(`receipt ${id} missing from the list`);
+    return row;
+  };
 
   beforeAll(async () => {
     // The catalog this suite's receipt is built from. Names carry a per-run
@@ -181,6 +194,27 @@ describe('GET /intakes?expand=items (HTTP, Postgres)', () => {
         ],
       })
       .expect(201);
+
+    // A SECOND receipt with a distinguishable line: `itemsByIntake` buckets
+    // one flat query's lines by `intake_id`, so a mis-keyed bucket — the
+    // realistic bug — only shows with more than one receipt in the page.
+    const second = await request(app.getHttpServer())
+      .post('/intakes')
+      .set('Authorization', `Bearer ${operatorToken}`)
+      .send({
+        supplier_id: supplierId,
+        items: [
+          {
+            product_grade_id: secondGradeId,
+            gross_kg: '30.00',
+            pallet_kg: '0.00',
+            bonus: '0.00',
+            tare: [{ tare_type_id: tareId, units: 1 }],
+          },
+        ],
+      })
+      .expect(201);
+    secondIntakeId = second.body.id as string;
   }, 30_000);
 
   // Review round 1 (#148): `create`'s response used to take its `items` from
@@ -206,19 +240,41 @@ describe('GET /intakes?expand=items (HTTP, Postgres)', () => {
       .set('Authorization', `Bearer ${operatorToken}`)
       .expect(200);
 
-    expect(body.data[0].items).toHaveLength(2);
-    expect(body.data[0].items[0].item_order).toBe(1);
-    expect(body.data[0].items[0]).toMatchObject({
+    const first = listed(body, createResponse.body.id).items ?? [];
+    expect(first).toHaveLength(2);
+    expect(first[0].item_order).toBe(1);
+    expect(first[0]).toMatchObject({
       product_name: expect.stringMatching(/^Полуниця-/),
       grade_name: expect.stringMatching(/^Альба-/),
       net_kg: '84.00',
       price: '120.00',
     });
-    expect(body.data[0].items[1]).toMatchObject({
+    expect(first[1]).toMatchObject({
       item_order: 2,
       grade_name: expect.stringMatching(/^Хоней-/),
       net_kg: '17.50',
     });
+  });
+
+  it('gives each receipt its own lines and none of another’s', async () => {
+    const { body } = await request(app.getHttpServer())
+      .get('/intakes')
+      .query({ supplier_id: supplierId, expand: 'items' })
+      .set('Authorization', `Bearer ${operatorToken}`)
+      .expect(200);
+
+    expect(body.data).toHaveLength(2);
+    expect(listed(body, createResponse.body.id).items?.map((i) => i.net_kg)).toEqual([
+      '84.00',
+      '17.50',
+    ]);
+    expect(listed(body, secondIntakeId).items).toEqual([
+      expect.objectContaining({
+        item_order: 1,
+        grade_name: expect.stringMatching(/^Хоней-/),
+        net_kg: '27.50',
+      }),
+    ]);
   });
 
   it('returns exactly today’s shape when nobody asks', async () => {
@@ -228,8 +284,8 @@ describe('GET /intakes?expand=items (HTTP, Postgres)', () => {
       .set('Authorization', `Bearer ${operatorToken}`)
       .expect(200);
 
-    expect(body.data[0].items).toBeUndefined();
-    expect(Object.keys(body.data[0]).sort()).toEqual(
+    for (const row of body.data) expect(row.items).toBeUndefined();
+    expect(Object.keys(listed(body, createResponse.body.id)).sort()).toEqual(
       [
         'amount',
         'business_date',
