@@ -20,6 +20,7 @@ const {
   ledgerTransfersMock,
   cashCountsMock,
   shiftMock,
+  currentShiftMock,
   openShiftMock,
   closeShiftMock,
 } = vi.hoisted(() => ({
@@ -32,6 +33,7 @@ const {
   ledgerTransfersMock: vi.fn(),
   cashCountsMock: vi.fn(),
   shiftMock: vi.fn(),
+  currentShiftMock: vi.fn(),
   openShiftMock: vi.fn(),
   closeShiftMock: vi.fn(),
 }));
@@ -74,6 +76,9 @@ vi.mock('@/entities/cash-count', () => ({
 
 vi.mock('@/entities/shift', () => ({
   useShiftOnDateQuery: (pointId: string | null, date: string) => shiftMock(pointId, date),
+  // `GET /shifts/current` — the point's open shift whatever its date (#114),
+  // which gates the panel's «Open shift».
+  useCurrentShiftQuery: (pointId: string | null) => currentShiftMock(pointId),
 }));
 
 // `CountDrawerDialog`/`RecountDrawerDialog` each have their own full suite
@@ -115,6 +120,14 @@ vi.mock('@/features/count-shift', async (importOriginal) => {
       ) : null,
     RecountDrawerDialog: ({ open }: { open: boolean }) =>
       open ? <div role="dialog">Recount dialog</div> : null,
+    // Its own suite (`OpenShiftAlert.test.tsx`) covers what it shows and its
+    // in-place close, which needs a real `QueryClient`. Here only the wiring
+    // matters: that it is mounted, for which point and which viewed date.
+    OpenShiftAlert: ({ pointId, viewedDate }: { pointId: string | null; viewedDate: string }) => (
+      <div data-testid="open-shift-alert-stub">
+        {pointId} {viewedDate}
+      </div>
+    ),
   };
 });
 
@@ -269,6 +282,8 @@ beforeEach(() => {
   ledgerTransfersMock.mockReset().mockReturnValue(list([]));
   cashCountsMock.mockReset().mockReturnValue(list([cashCount()]));
   shiftMock.mockReset().mockReturnValue({ data: null, isPending: false, isError: false });
+  // The same world `shiftMock` describes by default: nothing open anywhere.
+  currentShiftMock.mockReset().mockReturnValue({ data: null, isPending: false, isError: false });
   openShiftMock.mockReset().mockResolvedValue({});
   closeShiftMock.mockReset().mockResolvedValue({});
 });
@@ -1194,6 +1209,69 @@ describe('PointCashPage — R4 review fix: a failed shift/counts read reaches th
 
     expect(screen.getByRole('alert')).toHaveTextContent(
       'The shift could not be read — reload the page',
+    );
+  });
+});
+
+/**
+ * #114 — «Відкрити зміну» on this panel answers the same date-blind question
+ * `/day` and `/reception` do: is ANY shift open at the point? A shift stranded
+ * on 2026-09-03 is invisible to today's `useShiftOnDateQuery`, and the server
+ * refuses a second one (SHIFT_ALREADY_OPEN, #113).
+ */
+describe('PointCashPage — an open shift left behind on another day (#114)', () => {
+  const stranded = shift({ id: 's-stranded', business_date: '2026-09-03' });
+
+  it('mounts the stale-shift alert for the point and the viewed date', () => {
+    renderPointCash('/point-cash?date=2026-09-07');
+
+    expect(screen.getByTestId('open-shift-alert-stub')).toHaveTextContent('p1 2026-09-07');
+    expect(currentShiftMock).toHaveBeenCalledWith('p1');
+  });
+
+  it('withholds «Open shift» today while a shift from another day is still open', () => {
+    currentShiftMock.mockReturnValue({ data: stranded, isPending: false, isError: false });
+
+    renderPointCash();
+
+    expect(screen.queryByRole('button', { name: 'Open shift' })).toBeNull();
+    expect(
+      screen.getByText('A shift from another day is still open — close it before opening a new one'),
+    ).toBeInTheDocument();
+  });
+
+  it('withholds it while that is still unknown', () => {
+    currentShiftMock.mockReturnValue({ data: undefined, isPending: true, isError: false });
+
+    renderPointCash();
+
+    expect(screen.queryByRole('button', { name: 'Open shift' })).toBeNull();
+  });
+
+  it('withholds it when the check failed, and says so', () => {
+    currentShiftMock.mockReturnValue({ data: undefined, isPending: false, isError: true });
+
+    renderPointCash();
+
+    expect(screen.queryByRole('button', { name: 'Open shift' })).toBeNull();
+    expect(
+      screen.getByText('Could not check whether a shift is already open — reload the page'),
+    ).toBeInTheDocument();
+  });
+
+  it('closes the stranded shift from its own day', async () => {
+    const user = userEvent.setup();
+    shiftMock.mockReturnValue({ data: stranded, isPending: false, isError: false });
+    currentShiftMock.mockReturnValue({ data: stranded, isPending: false, isError: false });
+
+    renderPointCash('/point-cash?date=2026-09-03');
+
+    await user.click(screen.getByRole('button', { name: 'Close shift' }));
+    expect(await screen.findByRole('dialog')).toHaveTextContent('Count dialog — close');
+    await user.click(screen.getByRole('button', { name: 'Confirm close' }));
+
+    expect(closeShiftMock).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 's-stranded', counted_amount: '1000.00' }),
     );
   });
 });
