@@ -303,7 +303,7 @@ export class CrateBalanceService {
    * The journal (unfiltered `voided`), ticket #58's supplier-receipts view
    * (`supplier_id` + `mode`), and the owner's voided-deposit incident list
    * (`voided: true` + `mode: deposit`) — three consumers, one query shape,
-   * the same JOIN-on-`shifts` `PayoutsService.list` uses because neither
+   * the same JOIN-on-`shifts` `ListPayoutsQuery.list` uses because neither
    * `crate_issuances` nor `crate_returns` stores a point or a business date.
    */
   async listIssuances(
@@ -409,6 +409,21 @@ export class CrateBalanceService {
       else allocationsByReturn.set(row.return_id, [row]);
     }
 
+    // The codes for the WHOLE PAGE in ONE query, keyed by the returns'
+    // distinct `intake_id`s — never one query per row. Most pages carry no
+    // linked return at all, hence the length guard.
+    const intakeIds = [
+      ...new Set(data.map((ret) => ret.intake_id).filter((id): id is string => typeof id === 'string')),
+    ];
+    const intakeCodeById = new Map<string, string>();
+    if (intakeIds.length > 0) {
+      const intakeRows: Array<{ id: string; code: string }> = await this.dataSource.manager.query(
+        `SELECT id, code FROM intakes WHERE id = ANY($1)`,
+        [intakeIds],
+      );
+      for (const row of intakeRows) intakeCodeById.set(row.id, row.code);
+    }
+
     return {
       data: data.map((ret) =>
         toCrateReturnResponse(
@@ -416,6 +431,7 @@ export class CrateBalanceService {
           ret.shift as Shift,
           allocationsByReturn.get(ret.id) ?? [],
           issuanceInfo,
+          ret.intake_id ? intakeCodeById.get(ret.intake_id) ?? null : null,
         ),
       ),
       total,

@@ -22,6 +22,10 @@ export interface IntakeFormValues {
   supplier_id: string;
   items: IntakeLineValues[];
   paid_amount: string;
+  /** «З них наших ящиків» — how many of the receipt's crate-tare units are
+   *  our rented crates coming back full (2026-09-24). A digits-only STRING
+   *  while typed; `''` means 0. */
+  returned_crates: string;
 }
 
 /** A fresh draft line — pallet and bonus default to `'0.00'` (the same
@@ -66,6 +70,8 @@ export interface PreviewIntakeBody {
  *  payout" server-side, so `toCreateBody` sends the key at all only then. */
 export interface CreateIntakeBody extends PreviewIntakeBody {
   paid_amount?: string;
+  /** Our rented crates handed back with this receipt — sent only when > 0. */
+  returned_crates?: number;
 }
 
 /** One line of `POST /intakes/preview`'s answer — mirrors the backend's
@@ -140,10 +146,40 @@ export function toPreviewBody(values: IntakeFormValues, pointId: string | null):
  * server's own reading of "absent" already means "no payout" (§2.1 ⑥, §3.1).
  */
 export function toCreateBody(values: IntakeFormValues, pointId: string | null): CreateIntakeBody {
-  const body = toPreviewBody(values, pointId);
+  const body: CreateIntakeBody = toPreviewBody(values, pointId);
   const paid = normalizeAmount(values.paid_amount);
-  if (DECIMAL_INPUT.test(paid) && cmp(paid, '0') === 1) {
-    return { ...body, paid_amount: paid };
-  }
+  if (DECIMAL_INPUT.test(paid) && cmp(paid, '0') === 1) body.paid_amount = paid;
+  // A crate COUNT, not money. Empty or 0 is "nothing came back", which the
+  // server reads the same as an absent key — so the key rides only when > 0.
+  const returned = parseCount(values.returned_crates);
+  if (returned > 0) body.returned_crates = returned;
   return body;
+}
+
+/** A digits-only count typed into the form — `''` (or anything unparsable)
+ *  is 0. Integer counts, never money. */
+export function parseCount(value: string): number {
+  const n = Number.parseInt(value, 10);
+  return Number.isInteger(n) && n > 0 ? n : 0;
+}
+
+/**
+ * Σ units of every tare row, on every line (committed and draft alike — the
+ * whole form is the receipt), whose tare type is a crate. The server checks
+ * `returned_crates` against exactly this (`RETURNED_EXCEEDS_TARE`); the form
+ * uses it as the field's ceiling. Rows the body would drop (units < 1) count
+ * for nothing here either.
+ */
+export function crateTareUnits(
+  items: IntakeLineValues[],
+  tareTypes: ReadonlyArray<{ id: string; is_crate: boolean }>,
+): number {
+  const crateIds = new Set(tareTypes.filter((type) => type.is_crate).map((type) => type.id));
+  let total = 0;
+  for (const line of items) {
+    for (const row of line.tare) {
+      if (crateIds.has(row.tare_type_id)) total += parseCount(row.units);
+    }
+  }
+  return total;
 }

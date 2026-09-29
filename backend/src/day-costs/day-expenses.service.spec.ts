@@ -155,7 +155,7 @@ describe('DayExpensesService', () => {
   /**
    * `CHK_day_expenses_amount` is `amount > 0`, and nothing in this backend
    * maps a `QueryFailedError`, so a '0.00' that reaches Postgres comes back
-   * as a 500. `IntakeTopUpsService` answers the identical case with a 400 and
+   * as a 500. `CreateIntakeTopUpCommand` answers the identical case with a 400 and
    * a `code`; so does this one, and for the same reason.
    */
   it('REFUSES a zero amount with a code, not an opaque 500 — CHK_day_expenses_amount', async () => {

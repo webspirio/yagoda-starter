@@ -2,6 +2,7 @@ import { DataSource } from 'typeorm';
 import { openTestDataSource } from '../testing/db-harness';
 import { PointCashService } from '../point-cash/point-cash.service';
 import { verifyPassword } from '../users/password-hashing';
+import { allocationViolations } from '../testing/allocation-invariants';
 import { seedDev } from './dev-seed';
 import {
   DEV_OPERATOR_PASSWORD,
@@ -51,7 +52,23 @@ describe('dev seed', () => {
       topUps: 0,
       transfers: 0,
       cashCounts: 0,
+      allocations: 0,
     });
+  });
+
+  it('allocates every seeded supplier: the invariants hold', async () => {
+    // Scoped to the seed's own points (`SEED_POINTS`) — the shared test
+    // database is never truncated, so other specs' raw fixtures may hold
+    // suppliers that were never allocated, and this must not fail on those.
+    const suppliers = (await ds.query(
+      `SELECT s.id FROM suppliers s
+         JOIN collection_points cp ON cp.id = s.collection_point_id
+        WHERE cp.name = ANY($1)`,
+      [SEED_POINTS.map((p) => p.name)],
+    )) as { id: string }[];
+    for (const { id } of suppliers) {
+      expect({ id, v: await ds.transaction((m) => allocationViolations(m, id)) }).toEqual({ id, v: [] });
+    }
   });
 
   it('seeds the documents the API would have written: shifts on their dates, receipts in shifts, no negative balance', async () => {

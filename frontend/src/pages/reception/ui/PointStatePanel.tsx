@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { Card } from '@/shared/ui/card';
 import { Eyebrow } from '@/shared/ui/eyebrow';
 import { cn } from '@/shared/lib/cn';
-import { cmp, formatUah, sub, sum } from '@/shared/lib/money';
+import { cmp, formatUah, sum } from '@/shared/lib/money';
 import { isTruncated } from '@/shared/api';
 import { usePointCashForPointQuery } from '@/entities/point-cash';
 import { useCashCountsQuery } from '@/entities/cash-count';
@@ -16,7 +16,7 @@ import { useCrateBalancesQuery } from '@/entities/crate';
  * form to look up: the berry drawer and the crates out with people, both
  * read from the SAME reads «Каса точки» and «Ящики» use for themselves.
  * NOTHING here is a second computation of a number those screens already own
- * — every figure is a straight `sum`/`sub` over the live rows of the same
+ * — every figure is a straight `sum` over the live rows of the same
  * entity reads, never re-derived a different way (a second arithmetic path
  * could silently disagree with the first).
  */
@@ -51,20 +51,20 @@ export function PointStatePanel({
   const paidOut = sum(
     (payouts.data?.data ?? []).filter((row) => row.voided_at === null).map((row) => row.amount),
   );
-  // «Залишків створено» — Σ (amount − paid_amount) over today's LIVE
-  // receipts: what still hangs on a supplier's balance because the drawer
-  // could not cover it in full.
-  const newDebt = sum(
+  // «Відкрито за сьогоднішніми квитанціями» — Σ open_amount over today's LIVE
+  // receipts: what is still owed for them now, from allocations. Never
+  // negative, unlike amount − paid_amount when cash also closed older debt.
+  const openToday = sum(
     (intakes.data?.data ?? [])
       .filter((row) => row.voided_at === null)
-      .map((row) => sub(row.amount, row.paid_amount)),
+      .map((row) => row.open_amount),
   );
   // Both sums above run over `page.data` — capped at 100 rows, server-side
   // (`Paginated<T>`'s `limit`) — never the whole shift. A busy point can
   // legitimately clear 100 receipts or payouts before close, and without
   // this caption the tile would silently read as the day's true total.
   const paidOutTruncated = isTruncated(payouts.data);
-  const newDebtTruncated = isTruncated(intakes.data);
+  const openTodayTruncated = isTruncated(intakes.data);
   // A row COUNT, never money — see `entities/crate`'s header for why the two
   // must not mix.
   const outstanding = (balances.data?.data ?? []).reduce(
@@ -94,10 +94,10 @@ export function PointStatePanel({
             value={cash.data ? formatUah(cash.data.cash, locale) : '…'}
           />
           <Tile
-            label={t('reception.state.newDebt')}
-            value={formatUah(newDebt, locale)}
-            tone={cmp(newDebt, '0') === 1 ? 'amber' : undefined}
-            caption={newDebtTruncated ? t('reception.state.truncatedCaption') : undefined}
+            label={t('reception.state.openToday')}
+            value={formatUah(openToday, locale)}
+            tone={cmp(openToday, '0') === 1 ? 'amber' : undefined}
+            caption={openTodayTruncated ? t('reception.state.truncatedCaption') : undefined}
           />
         </div>
       </section>
