@@ -400,6 +400,29 @@ export const CHECKS = [
       'void route from an edit disguised as one.',
   },
   {
+    id: 'compose',
+    tier: 'fast',
+    // Both conventions this row enforces were discovered in production first — a preview
+    // dying on a hardcoded `postgres`, then a preview booting with production's owner
+    // password — and each lived only as a comment until then. The row exists so the third
+    // one is caught by a script, not by a deploy.
+    cmd: 'npm run compose:check',
+    proves:
+      'Two compose conventions hold in docker-compose.prod.yml: no environment entry addresses ' +
+      'a sibling service by its literal name — previews rename every service, so it must read ' +
+      '`${SERVICE_NAME_<SVC>:-<svc>}` — and no entry is `KEY: ${KEY:-default}` outside the ' +
+      'allowlist of keys whose value is identical in every env set, because Coolify\'s parser ' +
+      'rewrites that form into the production literal, previews included. An empty scan ' +
+      'refuses a verdict.',
+    blindSpot:
+      'Only docker-compose.prod.yml, and only its environment blocks: a hostname hardcoded in ' +
+      'nginx/default.conf.template, in a healthcheck or in a command is invisible, as is a ' +
+      'value whose variable name differs from its key — that shape is safe today and simply ' +
+      'not checked. The allowlist is trusted, not verified: a key added there whose value ' +
+      'later diverges between env sets leaks unnoticed. Parsing is line-based and reads this ' +
+      'file\'s indentation style, not arbitrary YAML.',
+  },
+  {
     id: 'selfcheck',
     // FULL, NOT FAST, and the reason CHANGED — which is worth stating, because a stale
     // justification for a correct decision is how the next person gets talked into

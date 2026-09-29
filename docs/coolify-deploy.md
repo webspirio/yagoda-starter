@@ -188,7 +188,11 @@ is the same in both sets (`APP_TIMEZONE`, `JWT_EXPIRES_IN`, `DB_USER`,
 `DB_NAME`). The two previews that leaked (#181, #183) ran for minutes on public
 hostnames without basic auth; the credential itself never left their
 containers, but rotating the production owner password afterwards is cheap
-insurance.
+insurance. The rule — and the sibling-hostname one from «What Coolify renames
+in a preview» — is enforced by the `compose` verify row
+(`npm run compose:check`, `scripts/verify/checks/compose-conventions.mjs`),
+which fails on that form outside a dated allowlist of same-value keys and on
+any `environment:` value that is a bare service name.
 
 ### Memory
 
