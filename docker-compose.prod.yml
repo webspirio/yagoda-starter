@@ -13,10 +13,15 @@
 #     the merge, and that PR's own preview still runs main's copy;
 #   - a sibling service is addressed as ${SERVICE_NAME_<SVC>:-<svc>}, never by
 #     its literal name — previews suffix every service with -pr-<N>;
-#   - a key that Coolify's env sets define per environment is written
-#     `KEY: ${KEY}`, never `${KEY:-default}` — Coolify's parser turns the
-#     latter into the PRODUCTION value, previews included (BOOTSTRAP_OWNER_*
-#     below has the full story).
+#   - an environment entry whose value references a variable OF THE SAME NAME
+#     with a default operator — `KEY: ${KEY:-x}`, also `-`, `:?`, `?` — is
+#     rewritten by Coolify's parser into the PRODUCTION env set's literal,
+#     previews included. So a key the env sets define per environment is
+#     written `KEY: ${KEY}`; a same-name default is allowed only where every
+#     env set holds the same value (APP_TIMEZONE, JWT_EXPIRES_IN, DB_USER,
+#     DB_NAME), and a default on a DIFFERENT variable name is untouched.
+#     BOOTSTRAP_OWNER_* below has the full story; `npm run compose:check`
+#     enforces both this rule and the one above.
 #
 # Memory sizing: every mem_limit and Node heap cap below is a variable with the
 # current preview-sized default, so a limit is an env-set edit in Coolify, not

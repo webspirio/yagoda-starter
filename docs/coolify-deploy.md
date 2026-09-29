@@ -188,7 +188,11 @@ is the same in both sets (`APP_TIMEZONE`, `JWT_EXPIRES_IN`, `DB_USER`,
 `DB_NAME`). The two previews that leaked (#181, #183) ran for minutes on public
 hostnames without basic auth; the credential itself never left their
 containers, but rotating the production owner password afterwards is cheap
-insurance. The rule — and the sibling-hostname one from «What Coolify renames
+insurance. `PASSWORD_VAULT_KEY` travelled by the same mechanism but was unset
+in production at the time (both containers and both rows held an empty value),
+so nothing was carried; had it been set, the choice would have been to accept
+the exposure or to rotate it and reissue every stored password — see its row
+in the table. The rule — and the sibling-hostname one from «What Coolify renames
 in a preview» — is enforced by the `compose` verify row
 (`npm run compose:check`, `scripts/verify/checks/compose-conventions.mjs`),
 which fails on that form outside a dated allowlist of same-value keys and on
