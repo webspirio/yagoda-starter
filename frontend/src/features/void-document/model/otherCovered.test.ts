@@ -11,6 +11,9 @@ const line = (id: string, kind: 'intake' | 'top_up', intake_id: string) => ({
 const settlement: SupplierSettlement = {
   supplier_id: 's',
   debt: '0.00',
+  intakes_total: '0.00',
+  top_ups_total: '0.00',
+  payouts_total: '0.00',
   unallocated: '0.00',
   lines: [line('old', 'intake', 'old'), line('r', 'intake', 'r'), line('t', 'top_up', 'r')],
   payouts: [

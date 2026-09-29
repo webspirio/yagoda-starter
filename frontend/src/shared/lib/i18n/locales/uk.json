@@ -1073,7 +1073,8 @@
       "weights": "{{gross}} брутто − {{tare}} тара · {{price}} ₴/кг",
       "weightsWithPallet": "{{gross}} брутто − {{pallet}} піддон − {{tare}} тара · {{price}} ₴/кг"
     },
-    "breakdown": "{{intakes}} + {{topUps}} − {{payouts}}",
+    "breakdown": "здачі {{intakes}} + доплати {{topUps}} − видано {{payouts}}",
+    "breakdownNoTopUps": "здачі {{intakes}} − видано {{payouts}}",
     "open": {
       "title": "Відкриті залишки — за що саме винні",
       "topUp": "Доплата до {{code}}",

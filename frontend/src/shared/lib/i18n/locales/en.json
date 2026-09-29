@@ -1041,7 +1041,8 @@
       "weights": "{{gross}} gross − {{tare}} tare · {{price}} ₴/kg",
       "weightsWithPallet": "{{gross}} gross − {{pallet}} pallet − {{tare}} tare · {{price}} ₴/kg"
     },
-    "breakdown": "{{intakes}} + {{topUps}} − {{payouts}}",
+    "breakdown": "receipts {{intakes}} + top-ups {{topUps}} − paid out {{payouts}}",
+    "breakdownNoTopUps": "receipts {{intakes}} − paid out {{payouts}}",
     "open": {
       "title": "Open balances — what exactly is owed",
       "topUp": "Top-up on {{code}}",

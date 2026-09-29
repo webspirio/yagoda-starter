@@ -1,12 +1,19 @@
 import { Injectable } from '@nestjs/common';
 import { DataSource } from 'typeorm';
-import { debtSql, debtTermsSql } from '../supplier-debt.sql';
+import { debtSql } from '../supplier-debt.sql';
 import type { SupplierBalanceBreakdown } from '../supplier-balance.mapper';
 
 /**
- * The balance AND what it is made of, in one read. `GET /suppliers/:id/balance`
- * used to answer one number, so the card rebuilt the explanation from three
- * paginated reads and its tiles were wrong past 100 documents (#103).
+ * The balance AND the season counters, in one read. `GET /suppliers/:id/balance`
+ * used to answer one number, so the card rebuilt its tiles from three
+ * paginated reads and they were wrong past 100 documents (#103).
+ *
+ * THE THREE TERMS OF `debt` ARE NOT HERE — they ride on `/settlement`
+ * (`SupplierDebtQuery.termsFor`), which is the snapshot the card's balance tile
+ * reads; a breakdown line fed from this separate request could land on the
+ * other side of a write and fail to add up to the tile above it (#153). That
+ * also keeps this read cheap for the reception screen's payout ceiling, which
+ * wants only `debt`.
  *
  * The three season counters (`intakes_count`, `kg_total`, `last_intake_date`)
  * ride here rather than in a separate summary endpoint because the
@@ -24,10 +31,7 @@ export class SupplierBalanceBreakdownQuery {
 
   async breakdownFor(supplierId: string): Promise<SupplierBalanceBreakdown> {
     const sql = `SELECT
-      ${debtSql('$1')}::text                  AS debt,
-      ${debtTermsSql.intakes('$1')}::text     AS intakes_total,
-      ${debtTermsSql.topUps('$1')}::text      AS top_ups_total,
-      ${debtTermsSql.payouts('$1')}::text     AS payouts_total,
+      ${debtSql('$1')}::text AS debt,
       (SELECT COUNT(i.id)::int FROM intakes i
         WHERE i.supplier_id = $1 AND i.voided_at IS NULL) AS intakes_count,
       (SELECT COALESCE(SUM(ii.net_kg)::text, '0.00') FROM intake_items ii

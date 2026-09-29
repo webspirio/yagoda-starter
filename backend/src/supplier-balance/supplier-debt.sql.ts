@@ -21,7 +21,7 @@ const payoutsTermSql = (supplier: string): string =>
   `COALESCE((SELECT SUM(p.amount) FROM payouts p
               WHERE p.supplier_id = ${supplier} AND p.voided_at IS NULL), 0.00)`;
 
-/** The three terms on their own — what `SupplierBalanceBreakdownQuery` projects beside the total (#103). */
+/** The three terms on their own — what `SupplierDebtQuery.termsFor` projects for `/settlement` (#103, #153). */
 export const debtTermsSql = {
   intakes: intakesTermSql,
   topUps: topUpsTermSql,

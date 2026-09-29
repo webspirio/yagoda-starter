@@ -216,19 +216,31 @@ describe('supplier balance breakdown (HTTP)', () => {
     await app?.close();
   });
 
+  // The three terms live on `/settlement` (#153), not `/balance`: the
+  // card's breakdown line has to read the SAME snapshot as the tile it explains,
+  // and `settlementFor` is the one REPEATABLE READ transaction that holds `debt`.
   it('adds up to its own debt over the same data', async () => {
-    const { body } = await get(`/suppliers/${supplierId}/balance`);
+    const { body } = await get(`/suppliers/${supplierId}/settlement`);
     expect(sub(add(body.intakes_total, body.top_ups_total), body.payouts_total)).toBe(body.debt);
+    expect(body.intakes_total).toBe('10000.00');
   });
 
   it('lets a voided receipt neutralise its own top-up', async () => {
-    const { body } = await get(`/suppliers/${supplierId}/balance`);
+    const { body } = await get(`/suppliers/${supplierId}/settlement`);
     expect(body.top_ups_total).toBe('150.00'); // only the live receipt's top-up
   });
 
   it('does not let a voided payout close any debt', async () => {
-    const { body } = await get(`/suppliers/${supplierId}/balance`);
+    const { body } = await get(`/suppliers/${supplierId}/settlement`);
     expect(body.payouts_total).toBe('5000.00'); // the voided one is absent
+  });
+
+  it('agrees with /balance about the debt', async () => {
+    const [{ body: balance }, { body: settlement }] = await Promise.all([
+      get(`/suppliers/${supplierId}/balance`),
+      get(`/suppliers/${supplierId}/settlement`),
+    ]);
+    expect(settlement.debt).toBe(balance.debt);
   });
 
   it('counts and weighs only live receipts, and dates the newest of them', async () => {
@@ -240,14 +252,19 @@ describe('supplier balance breakdown (HTTP)', () => {
 
   it('reads 0.00, not 0, for a supplier with no documents at all', async () => {
     const { body } = await get(`/suppliers/${emptySupplierId}/balance`);
-    expect(body).toMatchObject({
+    expect(body).toEqual({
+      supplier_id: emptySupplierId,
+      debt: '0.00',
+      intakes_count: 0,
+      kg_total: '0.00',
+      last_intake_date: null,
+    });
+    const { body: settlement } = await get(`/suppliers/${emptySupplierId}/settlement`);
+    expect(settlement).toMatchObject({
       debt: '0.00',
       intakes_total: '0.00',
       top_ups_total: '0.00',
       payouts_total: '0.00',
-      intakes_count: 0,
-      kg_total: '0.00',
-      last_intake_date: null,
     });
   });
 });

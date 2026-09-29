@@ -38,10 +38,10 @@ export interface SupplierBalanceRow {
 
 /**
  * Mirrors the backend `SupplierBalanceResponse` (`GET /suppliers/:id/balance`,
- * `supplier-balance/supplier-balance.mapper.ts`) — §3.1's «Разом», now WITH
- * what it is made of (#103): the three terms of `debt`, plus the season
- * counters the card's tiles read instead of summing a page that truncates
- * past 100 documents. Every money and weight field is a decimal STRING;
+ * `supplier-balance/supplier-balance.mapper.ts`) — §3.1's «Разом», plus the
+ * season counters the card's tiles read instead of summing a page that
+ * truncates past 100 documents (#103). The three terms of `debt` are on
+ * `SupplierSettlement`, not here (#153). Every money and weight field is a decimal STRING;
  * `debt` is legitimately negative after a voided receipt that had already
  * been paid for. Only THIS single-supplier read widened — `SupplierBalanceRow`
  * above (`GET /supplier-balances`, the list) did not.
@@ -49,9 +49,6 @@ export interface SupplierBalanceRow {
 export interface SupplierBalanceOne {
   supplier_id: string;
   debt: string;
-  intakes_total: string;
-  top_ups_total: string;
-  payouts_total: string;
   intakes_count: number;
   kg_total: string;
   /** Business date of the most recent LIVE receipt; `null` when there is none. */
@@ -90,11 +87,16 @@ interface SettlementPayout {
 /**
  * The card's «за що саме винні» — a projection the backend computes on every
  * read (spec 2026-09-25 §3.1); nothing here is stored. `debt` is the same
- * number `/balance` returns; `lines` is oldest first.
+ * number `/balance` returns; `lines` is oldest first. The three `*_total`
+ * terms add up to `debt` and come from the SAME snapshot, which is why the
+ * card's breakdown line reads them here and not off `/balance` (#153).
  */
 export interface SupplierSettlement {
   supplier_id: string;
   debt: string;
+  intakes_total: string;
+  top_ups_total: string;
+  payouts_total: string;
   unallocated: string;
   lines: SettlementLine[];
   payouts: SettlementPayout[];

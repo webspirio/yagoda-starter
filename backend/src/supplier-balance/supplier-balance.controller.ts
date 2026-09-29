@@ -36,8 +36,9 @@ export class SupplierBalanceController {
    * comment's shadowing warning is honoured. Same visibility call: an
    * operator reading another point's supplier gets the same 404 `findOne`
    * gives everywhere. `/balance` stays free of the settlement walk on purpose —
-   * the payout ceiling reads it and must not pay for a per-line queue; its
-   * breakdown (#103) is aggregate terms of the same sum, not a walk.
+   * the payout ceiling reads it and must not pay for a per-line queue. The
+   * three terms of `debt` (#103) ride HERE, not on `/balance`, so the card's
+   * breakdown line shares this snapshot with the balance tile (#153).
    */
   @Get(':id/settlement')
   @Auth()

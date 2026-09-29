@@ -41,12 +41,22 @@ describe('SupplierSettlementQuery', () => {
         .mockResolvedValueOnce([]) // top-ups
         .mockResolvedValueOnce([]) // payouts
         .mockResolvedValueOnce([]) // allocations
-        .mockResolvedValueOnce([{ debt: '0.00' }]); // debtFor
+        .mockResolvedValueOnce([
+          { debt: '0.00', intakes_total: '0.00', top_ups_total: '0.00', payouts_total: '0.00' },
+        ]); // termsFor
     });
 
-    it('reads receipts, top-ups, payouts and allocations, then the debt, all for the one supplier', async () => {
+    it('reads receipts, top-ups, payouts and allocations, then the debt and its terms, all for the one supplier', async () => {
       const s = await service.settlementFor(SUPPLIER);
-      expect(s).toEqual({ debt: '0.00', unallocated: '0.00', lines: [], payouts: [] });
+      expect(s).toEqual({
+        debt: '0.00',
+        intakes_total: '0.00',
+        top_ups_total: '0.00',
+        payouts_total: '0.00',
+        unallocated: '0.00',
+        lines: [],
+        payouts: [],
+      });
       expect(calls()).toHaveLength(5);
       for (const [, params] of calls()) expect(params).toEqual([SUPPLIER]);
     });
@@ -108,12 +118,20 @@ describe('SupplierSettlementQuery', () => {
         ])
         .mockResolvedValueOnce([]) // payouts
         .mockResolvedValueOnce([]) // allocations
-        .mockResolvedValueOnce([{ debt: '1700.00' }]);
+        .mockResolvedValueOnce([
+          {
+            debt: '1700.00',
+            intakes_total: '1500.00',
+            top_ups_total: '200.00',
+            payouts_total: '0.00',
+          },
+        ]);
 
       const s = await service.settlementFor(SUPPLIER);
       expect(s.lines.map((l) => l.id)).toEqual(['r1', 't1', 'r2']);
       expect(s.lines[1]).toMatchObject({ kind: 'top_up', intake_id: 'r1', code: 'R1' });
       expect(s.debt).toBe('1700.00');
+      expect(s).toMatchObject({ intakes_total: '1500.00', top_ups_total: '200.00' });
     });
   });
 });

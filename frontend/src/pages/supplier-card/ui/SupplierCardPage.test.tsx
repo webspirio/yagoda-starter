@@ -5,7 +5,12 @@ import { createMemoryRouter, RouterProvider } from 'react-router';
 import { ApiError } from '@/shared/api';
 import { i18n } from '@/shared/lib/i18n';
 import { expectNoAxeViolations } from '../../../test-axe';
-import type { Supplier, SupplierBalanceOne, SettlementLine } from '@/entities/supplier';
+import type {
+  Supplier,
+  SupplierBalanceOne,
+  SupplierSettlement,
+  SettlementLine,
+} from '@/entities/supplier';
 import type { Intake, IntakeItem } from '@/entities/intake';
 import type { Payout } from '@/entities/payout';
 import type { IntakeTopUp } from '@/entities/intake-top-up';
@@ -215,18 +220,28 @@ const intakeFixture: Intake = intake({
   created_at: '2026-09-08T07:10:00Z',
 });
 
-/** The balance breakdown's season figures, matched to arithmetic (`intakes_total
- *  + top_ups_total − payouts_total === debt`) so a test that never overrides it
- *  can't accidentally rely on an inconsistent default. */
+/** `/balance`'s season counters. The three terms of `debt` are NOT here — the
+ *  card reads them off `/settlement` (#153), see `SETTLEMENT_DEFAULT`. */
 const BALANCE_DEFAULT: SupplierBalanceOne = {
+  supplier_id: 'sup1',
+  debt: '500.00',
+  intakes_count: 0,
+  kg_total: '0.00',
+  last_intake_date: null,
+};
+
+/** `/settlement` with its three terms matched to arithmetic (`intakes_total
+ *  + top_ups_total − payouts_total === debt`) so a test that never overrides
+ *  them can't accidentally rely on an inconsistent default. */
+const SETTLEMENT_DEFAULT: SupplierSettlement = {
   supplier_id: 'sup1',
   debt: '500.00',
   intakes_total: '500.00',
   top_ups_total: '0.00',
   payouts_total: '0.00',
-  intakes_count: 0,
-  kg_total: '0.00',
-  last_intake_date: null,
+  unallocated: '0.00',
+  lines: [],
+  payouts: [],
 };
 
 const settlementLine = (
@@ -255,12 +270,24 @@ const page = <T,>(data: T[], total = data.length) => ({
  * `beforeEach` defaults below. Existing call sites that pass neither keep
  * working unchanged.
  */
-function renderCard(opts?: { id?: string; intakes?: Intake[]; balance?: SupplierBalanceOne }) {
+function renderCard(opts?: {
+  id?: string;
+  intakes?: Intake[];
+  balance?: SupplierBalanceOne;
+  settlement?: Partial<SupplierSettlement>;
+}) {
   if (opts?.intakes) {
     intakesMock.mockReturnValue(page<Intake>(opts.intakes));
   }
   if (opts?.balance) {
     balanceMock.mockReturnValue({ data: opts.balance, isPending: false, isError: false });
+  }
+  if (opts?.settlement) {
+    settlementMock.mockReturnValue({
+      data: { ...SETTLEMENT_DEFAULT, ...opts.settlement },
+      isPending: false,
+      isError: false,
+    });
   }
   const router = createMemoryRouter([{ path: '/suppliers/:id', element: <SupplierCardPage /> }], {
     initialEntries: [`/suppliers/${opts?.id ?? 'sup1'}`],
@@ -284,7 +311,7 @@ beforeEach(() => {
       isError: false,
     });
   settlementMock.mockReset().mockReturnValue({
-    data: { supplier_id: 'sup1', debt: '500.00', unallocated: '0.00', lines: [], payouts: [] },
+    data: SETTLEMENT_DEFAULT,
     isPending: false,
     isError: false,
   });
@@ -314,17 +341,24 @@ describe('SupplierCardPage', () => {
   });
 
   /**
-   * §103/#148: the tiles are READ FACTS off `/balance`'s breakdown, not a
-   * sum of whatever page of `/intakes` happened to load — a voided document
-   * is already excluded server-side by the time `intakes_total`/
-   * `intakes_count` reach here, so this is no longer a frontend filtering
-   * concern (see the dedicated "reads its tiles from the breakdown" test
-   * below for the case where the two sources would visibly disagree).
+   * §103/#148: the tiles are READ FACTS — the counters off `/balance`, the
+   * money off `/settlement` (#153) — not a sum of whatever page of `/intakes`
+   * happened to load. A voided document is already excluded server-side, so
+   * this is no longer a frontend filtering concern (see "reads its tiles from
+   * the server" below for the case where the two sources visibly disagree).
+   * The receipt carries `items` so the nested lines inside the row button
+   * reach axe too.
    */
-  it('tiles the season totals from the balance breakdown, and is axe-clean', async () => {
+  it('tiles the season totals from the server, and is axe-clean', async () => {
     intakesMock.mockReturnValue(
       page<Intake>([
-        intake({ id: 'i1', code: 'KV-0001', amount: '1000.00', created_at: '2026-09-08T07:10:00Z' }),
+        intake({
+          id: 'i1',
+          code: 'KV-0001',
+          amount: '1000.00',
+          created_at: '2026-09-08T07:10:00Z',
+          items: [itemFixture, { ...itemFixture, id: 'item2', item_order: 2 }],
+        }),
       ]),
     );
     payoutsMock.mockReturnValue(
@@ -335,12 +369,9 @@ describe('SupplierCardPage', () => {
     balanceMock.mockReturnValue({
       data: {
         supplier_id: 'sup1',
-        debt: '500.00',
-        intakes_total: '1000.00',
-        top_ups_total: '0.00',
-        payouts_total: '300.00',
+        debt: '700.00',
         // 2, not 1 loaded row — a season total past what /intakes returned,
-        // proving the tile reads the breakdown and not `intakes.data`.
+        // proving the tile reads the server and not `intakes.data`.
         intakes_count: 2,
         kg_total: '36.90',
         last_intake_date: '2026-09-08',
@@ -349,12 +380,14 @@ describe('SupplierCardPage', () => {
       isError: false,
     });
 
-    const { container } = renderCard();
+    const { container } = renderCard({
+      settlement: { debt: '700.00', intakes_total: '1000.00', payouts_total: '300.00' },
+    });
 
     expect(tile('Receipts this season')).toHaveTextContent('2');
     expect(tile('Berries handed over')).toHaveTextContent('36.90 kg');
     expect(tile('Accrued')).toHaveTextContent('1,000.00 ₴');
-    expect(tile('Balance')).toHaveTextContent('500.00 ₴');
+    expect(tile('Balance')).toHaveTextContent('700.00 ₴');
 
     await expectNoAxeViolations(container);
   });
@@ -365,19 +398,17 @@ describe('SupplierCardPage', () => {
    * had ninety more. If a tile ever went back to summing `intakes.data`,
    * this is the test that would catch it.
    */
-  it('reads its tiles from the breakdown, not from the page it happened to load', async () => {
+  it('reads its tiles from the server, not from the page it happened to load', async () => {
     renderCard({
       intakes: [{ ...intakeFixture, amount: '1000.00', net_kg: '10.00' }],
       balance: {
         supplier_id: 'sup1',
-        debt: '4200.00',
-        intakes_total: '10000.00',
-        top_ups_total: '200.00',
-        payouts_total: '6000.00',
+        debt: '4000.00',
         intakes_count: 91,
         kg_total: '2500.50',
         last_intake_date: '2026-09-20',
       },
+      settlement: { debt: '4000.00', intakes_total: '10000.00', payouts_total: '6000.00' },
     });
 
     expect(await screen.findByText('91')).toBeInTheDocument();
@@ -385,6 +416,29 @@ describe('SupplierCardPage', () => {
     expect(tile('Accrued')).not.toHaveTextContent('1,000.00 ₴');
     // Kilograms diverge the same way: the one loaded row weighs 10.00.
     expect(tile('Berries handed over')).toHaveTextContent('2,500.50 kg');
+  });
+
+  /**
+   * #153 — the tile and the line that explains it read ONE snapshot. Here
+   * `/balance` answers a stale 4 200 while `/settlement` answers 4 000: the
+   * tile and every term of the line must come from `/settlement`, so the
+   * line always adds up to the number above it.
+   */
+  it('explains the balance from the same snapshot the balance tile reads', () => {
+    renderCard({
+      balance: { ...BALANCE_DEFAULT, debt: '4200.00' },
+      settlement: {
+        debt: '4000.00',
+        intakes_total: '9000.00',
+        top_ups_total: '1000.00',
+        payouts_total: '6000.00',
+      },
+    });
+
+    expect(tile('Balance')).toHaveTextContent('4,000.00 ₴');
+    expect(
+      screen.getByText('receipts 9,000.00 ₴ + top-ups 1,000.00 ₴ − paid out 6,000.00 ₴'),
+    ).toBeInTheDocument();
   });
 
   it('strikes the voided row through and shows the reason', () => {
@@ -416,7 +470,7 @@ describe('SupplierCardPage', () => {
 
   it('hides the pay-out action once the balance is settled', () => {
     settlementMock.mockReturnValue({
-      data: { supplier_id: 'sup1', debt: '0.00', unallocated: '0.00', lines: [], payouts: [] },
+      data: { ...SETTLEMENT_DEFAULT, debt: '0.00', payouts_total: '500.00' },
       isPending: false,
       isError: false,
     });
@@ -576,14 +630,15 @@ describe('SupplierCardPage', () => {
         ...BALANCE_DEFAULT,
         intakes_count: 200,
         kg_total: '9999.99',
-        intakes_total: '50000.00',
         debt: '1000.00',
       },
       isPending: false,
       isError: false,
     });
 
-    renderCard();
+    renderCard({
+      settlement: { debt: '1000.00', intakes_total: '50000.00', payouts_total: '49000.00' },
+    });
 
     expect(screen.getByText('Showing the first 100 receipts and payouts')).toBeInTheDocument();
     expect(tile('Receipts this season')).toHaveTextContent('200');
@@ -631,7 +686,7 @@ describe('SupplierCardPage', () => {
     try {
       settlementMock.mockReturnValue({
         data: {
-          supplier_id: 'sup1',
+          ...SETTLEMENT_DEFAULT,
           debt: '500.00',
           unallocated: '0.00',
           lines: [settlementLine({ id: 'i1', open: '500.00', business_date: '2026-09-01' })],
@@ -664,7 +719,7 @@ describe('SupplierCardPage', () => {
     try {
       settlementMock.mockReturnValue({
         data: {
-          supplier_id: 'sup1',
+          ...SETTLEMENT_DEFAULT,
           debt: '500.00',
           unallocated: '0.00',
           lines: [settlementLine({ id: 'i1', open: '500.00', business_date: '2026-09-10' })],
@@ -690,7 +745,7 @@ describe('SupplierCardPage', () => {
   it('captions history rows with what is open and what a payout closed', () => {
     settlementMock.mockReturnValue({
       data: {
-        supplier_id: 'sup1',
+        ...SETTLEMENT_DEFAULT,
         debt: '200.00',
         unallocated: '0.00',
         lines: [
@@ -741,7 +796,7 @@ describe('SupplierCardPage', () => {
   it('captions an overpaid payout with the unallocated amount', () => {
     settlementMock.mockReturnValue({
       data: {
-        supplier_id: 'sup1',
+        ...SETTLEMENT_DEFAULT,
         debt: '-50.00',
         unallocated: '50.00',
         lines: [],
@@ -939,8 +994,8 @@ describe('SupplierCardPage — receipt lines (uk locale)', () => {
 });
 
 /**
- * #61 — «фантомний залишок». `GET /suppliers/:id/balance` now returns the
- * three terms that add up to `debt` (Task 2/#103) — the CARD's tiles and
+ * #61 — «фантомний залишок». `GET /suppliers/:id/settlement` returns the
+ * three terms that add up to `debt` (#103, #153) — the CARD's tiles and
  * breakdown line read those directly (see the describe block below this
  * one). This timeline stays the only place the owner sees each individual
  * DOCUMENT: which receipt, which top-up, when, and — since #148 — exactly
@@ -1042,7 +1097,7 @@ describe('SupplierCardPage — top-ups', () => {
   it('captions an open top-up row with what is still open, from its own settlement line', () => {
     settlementMock.mockReturnValue({
       data: {
-        supplier_id: 'sup1',
+        ...SETTLEMENT_DEFAULT,
         debt: '750.00',
         unallocated: '0.00',
         lines: [
@@ -1118,30 +1173,40 @@ describe('SupplierCardPage — top-ups', () => {
   });
 
   /**
-   * The balance is `Σ intakes + Σ top-ups − Σ payouts`. Since #103 the
-   * SERVER decomposes it this way too (`supplier-balance.service.ts`'s
-   * `debtSql()`), so the top-up term is spelled out in the breakdown line
-   * under the balance tile — «Нараховано» itself now reads `intakes_total`
-   * verbatim and no longer re-sums top-ups client-side (see "reads its
-   * tiles from the breakdown, not from the page it happened to load" for
-   * that half of the change).
+   * The balance is `Σ intakes + Σ top-ups − Σ payouts`, and the SERVER
+   * decomposes it that way too (`SupplierDebtQuery.termsFor`, on
+   * `/settlement`). «Нараховано» is what the supplier was credited — receipts
+   * AND top-ups — so it cannot read 1 000 beside a 1 500 balance; the labelled
+   * line under the tiles keeps the top-up term visible on its own.
    */
-  it('shows the top-up term in the balance breakdown line', () => {
-    balanceMock.mockReturnValue({
-      data: {
-        ...BALANCE_DEFAULT,
+  it('counts top-ups into «Accrued» and names every term of the breakdown line', () => {
+    renderCard({
+      settlement: {
         intakes_total: '1000.00',
         top_ups_total: '750.00',
         payouts_total: '250.00',
         debt: '1500.00',
       },
-      isPending: false,
-      isError: false,
     });
 
-    renderCard();
+    expect(tile('Accrued')).toHaveTextContent('1,750.00 ₴');
+    expect(
+      screen.getByText('receipts 1,000.00 ₴ + top-ups 750.00 ₴ − paid out 250.00 ₴'),
+    ).toBeInTheDocument();
+  });
 
-    expect(screen.getByText('1,000.00 ₴ + 750.00 ₴ − 250.00 ₴')).toBeInTheDocument();
+  it('drops the top-up term from the breakdown line when there are none', () => {
+    renderCard({
+      settlement: {
+        intakes_total: '1000.00',
+        top_ups_total: '0.00',
+        payouts_total: '250.00',
+        debt: '750.00',
+      },
+    });
+
+    expect(screen.getByText('receipts 1,000.00 ₴ − paid out 250.00 ₴')).toBeInTheDocument();
+    expect(screen.queryByText(/top-ups/)).toBeNull();
   });
 
   it('opens the top-up dialog for the receipt the owner clicked', async () => {
