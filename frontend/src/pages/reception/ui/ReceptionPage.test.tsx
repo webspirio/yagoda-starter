@@ -33,6 +33,8 @@ const {
   pointCashMock,
   toastMock,
   toastSuccessMock,
+  crateBalanceMock,
+  returnPreviewMock,
 } = vi.hoisted(() => {
   type ToastMock = ReturnType<typeof vi.fn> & {
     success: ReturnType<typeof vi.fn>;
@@ -58,6 +60,8 @@ const {
     pointCashMock: vi.fn(),
     toastMock,
     toastSuccessMock: vi.fn(),
+    crateBalanceMock: vi.fn(),
+    returnPreviewMock: vi.fn(),
   };
 });
 
@@ -90,6 +94,12 @@ vi.mock('@/entities/payout', () => ({
 
 vi.mock('@/entities/crate', () => ({
   useCrateBalancesQuery: () => ({ data: undefined, isPending: true, isError: false }),
+  // «З них наших ящиків» — the picked supplier's crates (R8).
+  useCrateBalanceQuery: (supplierId: string | null) => crateBalanceMock(supplierId),
+}));
+
+vi.mock('@/features/return-crates', () => ({
+  useReturnPreviewQuery: (input: unknown) => returnPreviewMock(input),
 }));
 
 vi.mock('@/entities/user', () => ({
@@ -140,7 +150,8 @@ vi.mock('@/features/pick-supplier', () => ({
   }),
 }));
 
-vi.mock('@/entities/intake', () => ({
+vi.mock('@/entities/intake', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/entities/intake')>()),
   useIntakesQuery: (filter: unknown) => intakesMock(filter),
 }));
 
@@ -152,9 +163,23 @@ vi.mock('@/entities/tare-type', () => ({
   useTareTypeOptionsQuery: () => tareTypesMock(),
 }));
 
-vi.mock('@/widgets/receipt', () => ({
-  ReceiptDialog: ({ intakeId, open }: { intakeId: string | null; open: boolean }) =>
-    open ? <div>Receipt for {intakeId}</div> : null,
+vi.mock('@/widgets/receipt', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/widgets/receipt')>()),
+  ReceiptDialog: ({
+    intakeId,
+    open,
+    startWithVoid,
+  }: {
+    intakeId: string | null;
+    open: boolean;
+    startWithVoid?: boolean;
+  }) =>
+    open ? (
+      <div>
+        Receipt for {intakeId}
+        {startWithVoid ? ' (void)' : ''}
+      </div>
+    ) : null,
 }));
 
 vi.mock('../api/intakes', () => ({
@@ -290,6 +315,7 @@ const CREATED: IntakeDetail = {
   voided_at: null,
   voided_by_user_id: null,
   void_reason: null,
+  shift_closed: false,
   created_at: '2026-09-08T09:15:00Z',
   // Agrees with the ONE item below (120.40 kg net) — the toast now reads
   // this header field directly rather than re-summing `items[]` (M3/M9).
@@ -297,8 +323,10 @@ const CREATED: IntakeDetail = {
   lines_count: 1,
   supplier_name: 'Ніна Ільчук',
   paid_amount: '0.00',
+  open_amount: '1204.00',
   payouts: [],
   received_by_name: 'Оксана Гнатюк',
+  crate_return: null,
   items: [
     {
       id: 'it1',
@@ -327,6 +355,7 @@ const intake = (over: Partial<Intake> & Pick<Intake, 'id' | 'code' | 'amount'>):
   voided_at: null,
   voided_by_user_id: null,
   void_reason: null,
+  shift_closed: false,
   created_at: '2026-09-08T07:10:00Z',
   // Same one-line 120.40 kg default as `CREATED` above — one canonical
   // example receipt throughout this file (M3/M9).
@@ -334,6 +363,7 @@ const intake = (over: Partial<Intake> & Pick<Intake, 'id' | 'code' | 'amount'>):
   lines_count: 1,
   supplier_name: 'Ніна Ільчук',
   paid_amount: '0.00',
+  open_amount: '0.00',
   ...over,
 });
 
@@ -409,6 +439,10 @@ beforeEach(() => {
   gradesMock.mockReset().mockReturnValue({ data: GRADES, isPending: false, isError: false });
   tareTypesMock.mockReset().mockReturnValue({ data: TARE_TYPES, isPending: false, isError: false });
   previewMock.mockReset().mockReturnValue(previewState());
+  // Holds none of our crates by default, so «З них наших ящиків» stays hidden
+  // and every body assertion below carries no `returned_crates`.
+  crateBalanceMock.mockReset().mockReturnValue({ data: undefined, isPending: true, isError: false });
+  returnPreviewMock.mockReset().mockReturnValue({ data: undefined });
   createMock.mockReset().mockResolvedValue(CREATED);
   openShiftMock.mockReset().mockResolvedValue(openShift);
   // A genuinely-read, EMPTY drawer by default — NOT `isPending`/`undefined`.
@@ -886,9 +920,8 @@ describe("ReceptionPage — the supplier's history and today's badge", () => {
     renderReception();
 
     // Scoped to the receipts card itself: `PointStatePanel` reads the SAME
-    // `useIntakesQuery({ shiftId })` for its own «Залишків створено» figure,
-    // and this fixture's live receipt (200.00 − 0.00 paid) prints the same
-    // «200.00 ₴» there too.
+    // `useIntakesQuery({ shiftId })` for its own «Відкрито за сьогоднішніми
+    // квитанціями» tile, so an amount could print there too.
     const card = screen.getByText("Today's receipts").closest('[data-slot="card"]');
     const scoped = within(card as HTMLElement);
 
@@ -904,6 +937,33 @@ describe("ReceptionPage — the supplier's history and today's badge", () => {
     // Only the live receipt's kilos count toward the header tonnage — the
     // voided one (same 120.40 kg fixture default) does not double it up.
     expect(within(badgeArea!).getByText('120.40 kg')).toBeInTheDocument();
+  });
+});
+
+describe("ReceptionPage — «Void» on today's receipts", () => {
+  it('opens the receipt straight into its void, not as a plain open', async () => {
+    const user = userEvent.setup();
+    intakesMock.mockImplementation((filter: { shiftId?: string }) =>
+      filter.shiftId ? page<Intake>([intake({ id: 'i2', code: 'SHP-IN-2', amount: '200.00' })]) : page<Intake>([]),
+    );
+    renderReception();
+
+    await user.click(screen.getByRole('button', { name: 'Void SHP-IN-2' }));
+
+    expect(await screen.findByText('Receipt for i2 (void)')).toBeInTheDocument();
+  });
+
+  it('a plain row click still opens the receipt without the void', async () => {
+    const user = userEvent.setup();
+    intakesMock.mockImplementation((filter: { shiftId?: string }) =>
+      filter.shiftId ? page<Intake>([intake({ id: 'i2', code: 'SHP-IN-2', amount: '200.00' })]) : page<Intake>([]),
+    );
+    renderReception();
+
+    const card = screen.getByText("Today's receipts").closest('[data-slot="card"]');
+    await user.click(within(card as HTMLElement).getByText('200.00 ₴'));
+
+    expect(await screen.findByText('Receipt for i2')).toBeInTheDocument();
   });
 });
 
@@ -1295,6 +1355,151 @@ describe('ReceptionPage — line editor ergonomics (#117)', () => {
     await waitFor(() => {
       expect(screen.getByLabelText('Grade and day price')).toHaveValue('g1');
     });
+  });
+});
+
+const RETURN_ON_RECEIPT = {
+  data: {
+    allocations: [
+      { issuance_id: 'i1', units: 30, per_unit: '0.00', amount: '0.00', mode: 'receipt', code: 'C1' },
+    ],
+    deposit_refund: '0.00',
+    shortfall: 0,
+  },
+  isFetching: false,
+  isError: false,
+  refetch: vi.fn(),
+};
+const RETURN_ON_DEPOSIT = {
+  ...RETURN_ON_RECEIPT,
+  data: {
+    allocations: [
+      { issuance_id: 'i1', units: 30, per_unit: '120.00', amount: '3600.00', mode: 'deposit', code: 'C1' },
+    ],
+    deposit_refund: '3600.00',
+    shortfall: 0,
+  },
+};
+
+describe('ReceptionPage — «З них наших ящиків» (our rented crates coming back)', () => {
+  beforeEach(() => {
+    previewMock.mockReturnValue(SETTLED);
+    // A розписка-only return refunds nothing, so no confirmation stands in
+    // the way of the submit; the deposit cases below override this.
+    returnPreviewMock.mockReturnValue(RETURN_ON_RECEIPT);
+    crateBalanceMock.mockImplementation((id: string | null) => ({
+      data:
+        id === 's1'
+          ? { supplier_id: 's1', outstanding_units: 30, deposit_held: '3600.00', tranches: [] }
+          : undefined,
+      isPending: false,
+      isError: false,
+    }));
+  });
+
+  it('pre-fills min(crate tare 40, held 30) and sends returned_crates: 30 with the receipt', async () => {
+    const user = userEvent.setup();
+    renderReception();
+    await user.click(screen.getByRole('button', { name: 'pick-nina' }));
+    await fillDraft(user);
+    const units = screen.getByLabelText('Tare units 1');
+    await user.clear(units);
+    await user.type(units, '40');
+
+    const field = screen.getByLabelText('Of them, our crates') as HTMLInputElement;
+    await waitFor(() => expect(field.value).toBe('30'));
+
+    await user.click(screen.getByRole('button', { name: /^Accept/ }));
+    await waitFor(() =>
+      expect(createMock).toHaveBeenCalledWith(expect.objectContaining({ returned_crates: 30 })),
+    );
+  });
+
+  it('stops a receipt that refunds a deposit at a confirmation, and writes only once it is given', async () => {
+    returnPreviewMock.mockReturnValue(RETURN_ON_DEPOSIT);
+    const user = userEvent.setup();
+    renderReception();
+    await user.click(screen.getByRole('button', { name: 'pick-nina' }));
+    await fillDraft(user);
+    const units = screen.getByLabelText('Tare units 1');
+    await user.clear(units);
+    await user.type(units, '40');
+    await waitFor(() =>
+      expect((screen.getByLabelText('Of them, our crates') as HTMLInputElement).value).toBe('30'),
+    );
+
+    await user.click(screen.getByRole('button', { name: /^Accept/ }));
+    const dialog = await screen.findByRole('alertdialog');
+    expect(dialog).toHaveTextContent('Deposit for 30 crates — 3,600.00 ₴ from the crates drawer');
+    expect(returnPreviewMock).toHaveBeenCalledWith(
+      expect.objectContaining({ supplierId: 's1', units: 30 }),
+    );
+    expect(createMock).not.toHaveBeenCalled();
+
+    await user.click(
+      within(dialog).getByRole('button', { name: 'Handed over 3,600.00 ₴' }),
+    );
+    await waitFor(() =>
+      expect(createMock).toHaveBeenCalledWith(expect.objectContaining({ returned_crates: 30 })),
+    );
+    expect(createMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('«Back» on the confirmation writes nothing and keeps the form as it was', async () => {
+    returnPreviewMock.mockReturnValue(RETURN_ON_DEPOSIT);
+    const user = userEvent.setup();
+    renderReception();
+    await user.click(screen.getByRole('button', { name: 'pick-nina' }));
+    await fillDraft(user);
+
+    await user.click(screen.getByRole('button', { name: /^Accept/ }));
+    const dialog = await screen.findByRole('alertdialog');
+    await user.click(within(dialog).getByRole('button', { name: 'Back' }));
+
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
+    expect(createMock).not.toHaveBeenCalled();
+    expect(screen.getByLabelText('Of them, our crates')).toBeInTheDocument();
+  });
+
+  it('asks nothing when the return is on a розписка only — the receipt goes straight through', async () => {
+    const user = userEvent.setup();
+    renderReception();
+    await user.click(screen.getByRole('button', { name: 'pick-nina' }));
+    await fillDraft(user);
+
+    await user.click(screen.getByRole('button', { name: /^Accept/ }));
+    await waitFor(() =>
+      expect(createMock).toHaveBeenCalledWith(expect.objectContaining({ returned_crates: 12 })),
+    );
+    expect(createMock).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole('alertdialog')).toBeNull();
+  });
+
+  it('is hidden when the supplier holds none of our crates', async () => {
+    crateBalanceMock.mockReturnValue({
+      data: { supplier_id: 's1', outstanding_units: 0, deposit_held: '0.00', tranches: [] },
+      isPending: false,
+      isError: false,
+    });
+    const user = userEvent.setup();
+    renderReception();
+    await user.click(screen.getByRole('button', { name: 'pick-nina' }));
+    await fillDraft(user);
+    expect(screen.queryByLabelText('Of them, our crates')).toBeNull();
+  });
+
+  it.each([
+    ['RETURNED_EXCEEDS_TARE', 400, 'More returned crates than crate tare on this receipt'],
+    ['RETURN_EXCEEDS_OUTSTANDING', 400, 'That is more crates than this person is holding'],
+    ['CRATE_CASH_INSUFFICIENT', 409, 'The crate deposits drawer holds less than this refund needs'],
+  ])('banners a %s refusal of the whole receipt', async (code, status, copy) => {
+    createMock.mockRejectedValue(new ApiError(status, 'refused', undefined, code));
+    const user = userEvent.setup();
+    renderReception();
+    await user.click(screen.getByRole('button', { name: 'pick-nina' }));
+    await fillDraft(user);
+    await user.click(screen.getByRole('button', { name: /^Accept/ }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(copy);
   });
 });
 

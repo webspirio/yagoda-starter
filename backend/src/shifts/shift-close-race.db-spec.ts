@@ -22,7 +22,7 @@ import type { AuthenticatedUser } from '../auth/jwt.strategy';
  * one of the two `translateUniqueViolation` knows, so it fell through to
  * `AllExceptionsFilter` as a **500** — on the flagship money path, where every
  * sibling write in this slice (`TransfersService.transition`,
- * `PayoutsService.void`) takes `pessimistic_write` and re-checks state under
+ * `VoidPayoutCommand.void`) takes `pessimistic_write` and re-checks state under
  * the lock, returning a 409.
  *
  * WHAT THE LOCK BUYS, precisely: the loser BLOCKS until the winner commits,

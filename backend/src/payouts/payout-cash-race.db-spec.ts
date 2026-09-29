@@ -26,14 +26,15 @@ let ownerToken: string;
 
 /**
  * §3.6 IN FULL, under REAL concurrency — the finding behind PR #137's review:
- * before the fix, `writePayout` read `PointCashService.cashFor` and checked
+ * before the fix, the payout writer (then `PayoutsService.writePayout`) read
+ * `PointCashService.cashFor` and checked
  * `PAYOUT_EXCEEDS_CASH` BEFORE `nextDocumentCode`'s advisory lock, guarded
  * only by `FOR UPDATE` on the SUPPLIER row. That lock is a per-supplier
  * mutex, so two payouts to two DIFFERENT suppliers at one point never
  * contend on it — both read the same drawer, both pass, both commit, and the
  * drawer goes negative. `intake-reception-race.db-spec.ts` proves the
  * reception path is already safe (it holds the `intakes` advisory lock
- * before ever calling `writePayout`); this file is the standalone-payout
+ * before ever calling `PayoutWriter.write`); this file is the standalone-payout
  * twin that lock does NOT cover.
  *
  * Two requests issued from one supertest app against one running
@@ -52,7 +53,8 @@ let ownerToken: string;
  * several milliseconds AFTER the first request has already committed — long
  * outside the window the bug needs, so the race silently fails to reproduce
  * even against the unfixed code (confirmed empirically while writing this
- * spec: the bare pattern passed 5/5 runs against the pre-fix `writePayout`).
+ * spec: the bare pattern passed 5/5 runs against the pre-fix payout writer, then
+ * `PayoutsService.writePayout`).
  * Reusing two already-established sockets removes that connection-setup tax
  * from the timing entirely, which is what makes the reproduction reliable.
  */
@@ -298,7 +300,7 @@ describe('payout cash race: two suppliers, one drawer (HTTP, Postgres)', () => {
         .send({ supplier_id: supplierAId, items: [line()], paid_amount: '1000.00' }),
     );
     // A reception does far more work than a standalone payout BEFORE either
-    // reaches `writePayout`'s cash read — price/tare lookups, `buildIntake`,
+    // reaches `PayoutWriter.write`'s cash read — price/tare lookups, `buildIntake`,
     // its OWN `IN` advisory lock — so dispatched at the exact same instant
     // the payout always wins the race to `cashFor` and commits well before
     // the reception gets there (measured empirically while writing this

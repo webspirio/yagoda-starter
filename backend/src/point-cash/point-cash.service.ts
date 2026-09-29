@@ -60,6 +60,12 @@ const asOfSql = (asOf: string, tz: string): string =>
  * be wrong twice — Tuesday is already closed and counted, and every as-of read
  * before Friday would be contaminated by money that was not yet in the drawer.
  *
+ * A RETURN MADE AT THE VOID IS THE EXCEPTION (2026-09-28). A payout voided while
+ * its shift is open never left that drawer in any sense a count could see — the
+ * supplier handed it back at the counter — so `returned_on_void` books it to the
+ * payout's OWN shift. By date it would misfile twice: a void at 00:30 in a shift
+ * not yet closed, and a void in a shift the owner reopened days later.
+ *
  * `AT TIME ZONE` ON `return_settled_at` IS NOT DECORATION. It is the only
  * `timestamptz` in this formula and it is matched against a business DATE; a
  * bare `::date` would take the SESSION timezone and misfile a settlement just
@@ -123,11 +129,15 @@ const movementsSql = (shift: string, tz: string): string => `(
           AND t.voided_at IS NULL), 0.00)
   - COALESCE((SELECT SUM(p.amount) FROM payouts p
         WHERE p.shift_id = ${shift}), 0.00)
+  + COALESCE((SELECT SUM(p.amount) FROM payouts p
+        WHERE p.shift_id = ${shift}
+          AND p.returned_on_void), 0.00)
   + COALESCE((SELECT SUM(p.amount)
          FROM payouts p
          JOIN shifts ps ON ps.id = p.shift_id
          JOIN shifts s  ON s.id = ${shift}
         WHERE p.return_settled_at IS NOT NULL
+          AND NOT p.returned_on_void
           AND ps.collection_point_id = s.collection_point_id
           AND (p.return_settled_at AT TIME ZONE ${tz}::text)::date = s.business_date), 0.00)
 )`;

@@ -206,6 +206,8 @@ describe('CrateBalancesService.list (Postgres)', () => {
     // 20 x 120 + 20 x 130 = 5 000, computed by Postgres.
     expect(row!.deposit_held).toBe('5000.00');
     expect(row!.has_receipt).toBe(false);
+    expect(row!.deposit_units).toBe(40);
+    expect(row!.receipt_units).toBe(0);
   });
 
   /**
@@ -217,6 +219,8 @@ describe('CrateBalancesService.list (Postgres)', () => {
     expect(row!.outstanding_units).toBe(200);
     expect(row!.deposit_held).toBe('0.00');
     expect(row!.has_receipt).toBe(true);
+    expect(row!.deposit_units).toBe(0);
+    expect(row!.receipt_units).toBe(200);
   });
 
   it('drops a supplier whose returns consumed everything', async () => {
@@ -228,6 +232,17 @@ describe('CrateBalancesService.list (Postgres)', () => {
     expect(row).toBeDefined();
     expect(row!.outstanding_units).toBe(0);
     expect(row!.deposit_held).toBe('0.00');
+    expect(row!.deposit_units).toBe(0);
+    expect(row!.receipt_units).toBe(0);
+  });
+
+  /** A person can hold BOTH kinds at once — the mock's «за кошти 20 · розписка 70». */
+  it('splits a mixed holder into deposit and receipt units', async () => {
+    const mixed = await supplier(pointA, 'Змішано');
+    await issue(shiftA, mixed, 20, 'deposit', '120.00');
+    await issue(shiftA, mixed, 70, 'receipt', '0.00');
+    const row = await rowFor(mixed);
+    expect(row).toMatchObject({ outstanding_units: 90, deposit_units: 20, receipt_units: 70 });
   });
 
   it('ignores a VOIDED issuance entirely', async () => {

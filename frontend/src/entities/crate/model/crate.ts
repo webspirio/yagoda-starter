@@ -35,6 +35,8 @@ export interface CrateIssuance {
   voided_by_user_id: string | null;
   void_reason: string | null;
   created_at: string;
+  shift_closed: boolean;
+  has_live_returns: boolean;
 }
 
 /**
@@ -65,6 +67,15 @@ export interface CrateReturn {
   voided_by_user_id: string | null;
   void_reason: string | null;
   created_at: string;
+  shift_closed: boolean;
+  /**
+   * The receipt (`intakes`) this return was written alongside, if any — an
+   * operator returns their own rented crates in the same «Прийняти» as the
+   * intake (2026-09-24). `null` means a standalone return, voidable on its
+   * own; non-null means only voiding the receipt can void this return.
+   */
+  intake_id: string | null;
+  intake_code: string | null;
 }
 
 /**
@@ -117,6 +128,33 @@ export interface CrateBalanceRow {
   outstanding_units: number;
   deposit_held: string;
   has_receipt: boolean;
+  deposit_units: number;
+  receipt_units: number;
+}
+
+/**
+ * `GET /crate-standing` — §8.2's revised figures for one point, point-lifetime,
+ * every figure server-computed. `null` on `allotment`/`shortfall` is «не
+ * задано», never 0. `on_hand` is NEVER null any more (it no longer depends on
+ * the allotment) and MAY be negative when documents disagree — that is a red
+ * figure on the bar, not a client-side error. There is no `at_base`: nothing
+ * on this screen tracks crates at the base any more.
+ */
+export interface CrateStanding {
+  collection_point_id: string;
+  allotment: number | null;
+  /** Σ transfer crates to this point — `transferCratesSql`'s reading. */
+  received: number;
+  /** `received − issued + returned − crate-tare on live receipts − breakage`. */
+  on_hand: number;
+  in_field: number;
+  deposit_units: number;
+  deposit_held: string;
+  /** Σ crate-tare units on live receipts of the point's currently open shift. */
+  with_berry: number;
+  /** `on_hand + in_field + with_berry`. */
+  total: number;
+  shortfall: number | null;
 }
 
 /** Filters `GET /crate-issuances` and `GET /crate-returns` accept. */

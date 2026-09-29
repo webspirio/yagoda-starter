@@ -39,6 +39,8 @@ describe('useCreatePayoutMutation', () => {
       expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: queryKeys.payouts });
       expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: queryKeys.supplierBalances });
       expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: queryKeys.pointCash });
+      // A payout allocates onto open receipts, so their open_amount moves.
+      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: queryKeys.intakes });
     });
   });
 });

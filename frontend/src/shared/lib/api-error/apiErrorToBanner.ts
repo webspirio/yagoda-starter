@@ -20,6 +20,10 @@ const CODE: Readonly<Record<string, string>> = {
   NOT_YOUR_DOCUMENT: 'void.errors.notYourDocument',
   SHIFT_CLOSED: 'void.errors.shiftClosed',
   ALREADY_VOIDED: 'void.errors.alreadyVoided',
+  // #125: the payout choice was computed against a settlement that changed
+  // (a payout voided, or reassigned) between opening the dialog and submitting.
+  PAYOUT_DECISION_REQUIRED: 'void.errors.payoutChanged',
+  PAYOUT_DECISION_NOT_APPLICABLE: 'void.errors.payoutChanged',
   // features/count-shift
   SHIFT_ALREADY_OPEN: 'day.errors.alreadyOpen',
   SHIFT_ALREADY_CLOSED: 'day.errors.notOpen',
@@ -62,6 +66,11 @@ const CODE: Readonly<Record<string, string>> = {
   RETURN_EXCEEDS_OUTSTANDING: 'crates.errors.returnExceeds',
   CRATE_CASH_INSUFFICIENT: 'crates.errors.cashInsufficient',
   ISSUANCE_HAS_RETURNS: 'crates.errors.hasReturns',
+  // A return `POST /intakes` wrote alongside a receipt (§8.3, `returned_crates`)
+  // has no void route of its own — `POST /crate-returns/:id/void` refuses it
+  // with this code, reachable from a stale crates list showing a void button
+  // for one. The fix is the receipt's own void, not this one.
+  RETURN_BELONGS_TO_INTAKE: 'crates.errors.returnBelongsToIntake',
   // Reweigh (§8), owner-only. `POST /shifts/:shiftId/reweigh-items` refuses a
   // line against a shift that bought nothing, a grade that shift did not
   // accept (the picker promises the same list `grades[]` states, so this is

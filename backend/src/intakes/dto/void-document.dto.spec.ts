@@ -11,7 +11,7 @@ import { VoidDocumentDto } from './void-document.dto';
  * so `"   "` passed validation and the document was voided with a reason that
  * says nothing — exactly what §9.3 forbids and what «кнопка неактивна»
  * describes on the client. (`TransfersService.void` trims before writing and
- * would have stored `''`; `IntakesService` and `PayoutsService` write the
+ * would have stored `''`; `VoidIntakeCommand` and `VoidPayoutCommand` write the
  * string as it arrived and would have stored the spaces. Both are a void with
  * no reason.)
  */

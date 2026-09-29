@@ -127,4 +127,21 @@ export class CreateIntakeDto {
   })
   @CanonicalDecimal()
   paid_amount?: string;
+
+  /**
+   * Spec §8.3 — OUR rented crates the supplier brings back in THIS visit,
+   * written as a crate return linked to the receipt in the same transaction
+   * (FIFO allocation, deposit refund, crates-book check — `CratesService.
+   * writeReturn`). Absent or `0` writes no return at all.
+   *
+   * The ceilings are not checked here: «not more than this receipt's own
+   * crate-tare units» needs the tare catalogue's `is_crate`, and «not more
+   * than the supplier holds» needs the ledger under the supplier lock — both
+   * only the service can read. `PreviewIntakeDto` is this same class and
+   * simply ignores it.
+   */
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  returned_crates?: number;
 }

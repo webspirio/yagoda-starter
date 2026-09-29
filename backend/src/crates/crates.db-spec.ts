@@ -302,7 +302,25 @@ describe('crates lifecycle (HTTP)', () => {
     expect(balance.body.deposit_held).toBe('0.00');
   });
 
-  it('6. refuses returning 11 more, naming the 10 actually outstanding', async () => {
+  it('6. flags an issuance a live return rests on, and says the shift is open', async () => {
+    const res = await request(app.getHttpServer())
+      .get('/crate-issuances')
+      .query({ supplier_id: supplierId })
+      .set('Authorization', `Bearer ${operatorToken}`)
+      .expect(200);
+    const row = (res.body.data as Array<{ id: string; has_live_returns: boolean; shift_closed: boolean }>)
+      .find((r) => r.id === depositIssuanceId);
+    expect(row).toMatchObject({ has_live_returns: true, shift_closed: false });
+
+    const rets = await request(app.getHttpServer())
+      .get('/crate-returns')
+      .query({ supplier_id: supplierId })
+      .set('Authorization', `Bearer ${operatorToken}`)
+      .expect(200);
+    expect(rets.body.data[0].shift_closed).toBe(false);
+  });
+
+  it('7. refuses returning 11 more, naming the 10 actually outstanding', async () => {
     const res = await request(app.getHttpServer())
       .post('/crate-returns')
       .set('Authorization', `Bearer ${operatorToken}`)
@@ -313,7 +331,7 @@ describe('crates lifecycle (HTTP)', () => {
     expect(JSON.stringify(res.body)).toContain('10');
   });
 
-  it('7. refuses voiding the first issuance while a live return is allocated against it', async () => {
+  it('8. refuses voiding the first issuance while a live return is allocated against it', async () => {
     const res = await request(app.getHttpServer())
       .post(`/crate-issuances/${depositIssuanceId}/void`)
       .set('Authorization', `Bearer ${operatorToken}`)
@@ -323,7 +341,7 @@ describe('crates lifecycle (HTTP)', () => {
     expect(res.body.code).toBe('ISSUANCE_HAS_RETURNS');
   });
 
-  it('8. voids the return — restores tranche capacity WITHOUT deleting the allocation rows', async () => {
+  it('9. voids the return — restores tranche capacity WITHOUT deleting the allocation rows', async () => {
     const res = await request(app.getHttpServer())
       .post(`/crate-returns/${returnId}/void`)
       .set('Authorization', `Bearer ${operatorToken}`)
@@ -349,7 +367,30 @@ describe('crates lifecycle (HTTP)', () => {
     expect(n).toBe(2);
   });
 
-  it('9. voids the first issuance now that its return is void, and the point-cash figure drops to 0.00', async () => {
+  it('10. clears has_live_returns once the return is void, and include_voided lists the voided return', async () => {
+    const res = await request(app.getHttpServer())
+      .get('/crate-issuances')
+      .query({ supplier_id: supplierId })
+      .set('Authorization', `Bearer ${operatorToken}`)
+      .expect(200);
+    const row = (res.body.data as Array<{ id: string; has_live_returns: boolean }>)
+      .find((r) => r.id === depositIssuanceId);
+    expect(row?.has_live_returns).toBe(false);
+
+    const live = await request(app.getHttpServer())
+      .get('/crate-returns')
+      .query({ supplier_id: supplierId })
+      .set('Authorization', `Bearer ${operatorToken}`)
+      .expect(200);
+    const all = await request(app.getHttpServer())
+      .get('/crate-returns')
+      .query({ supplier_id: supplierId, include_voided: true })
+      .set('Authorization', `Bearer ${operatorToken}`)
+      .expect(200);
+    expect(all.body.total).toBe(live.body.total + 1);
+  });
+
+  it('11. voids the first issuance now that its return is void, and the point-cash figure drops to 0.00', async () => {
     const res = await request(app.getHttpServer())
       .post(`/crate-issuances/${depositIssuanceId}/void`)
       .set('Authorization', `Bearer ${operatorToken}`)
@@ -554,6 +595,134 @@ describe('crates lifecycle (HTTP)', () => {
         list.body.data as Array<{ collection_point_id: string; crate_deposit_units: number }>
       ).find((r) => r.collection_point_id === r8PointId);
       expect(row?.crate_deposit_units).toBe(13);
+    });
+  });
+
+  /**
+   * R2 — a return a receipt wrote carries `intake_id`/`intake_code`, and
+   * refuses a standalone void. `POST /crate-returns` never accepts an
+   * `intake_id` yet (that wiring is R3, inside `POST /intakes`), so the linked
+   * row here is written straight to SQL, exactly as the dispatch fixture above
+   * writes its intake directly — this spec only needs the row to EXIST with
+   * `intake_id` set, not to exercise the route that will one day create it.
+   *
+   * Its own point/operator/supplier/shift, for the same reason R8's block
+   * above is isolated: the shared fixture's supplier already carries a voided
+   * deposit issuance and a voided return by the time this file's later tests
+   * run.
+   */
+  describe('linked returns — a return a receipt wrote (R2)', () => {
+    let r2OperatorToken: string;
+    let r2SupplierId: string;
+    let r2IssuanceId: string;
+    let r2IntakeId: string;
+    let r2IntakeCode: string;
+    let r2ReturnId: string;
+
+    beforeAll(async () => {
+      const jwt = app.get(JwtService);
+      const users = app.get(UsersService);
+      const credentials = app.get(CredentialsService);
+      const tokenFor = (userId: string): string => jwt.sign({ sub: userId });
+
+      const pointRes = await request(app.getHttpServer())
+        .post('/collection-points')
+        .set('Authorization', `Bearer ${ownerToken}`)
+        .send({ name: `crates-r2-${randomUUID()}`, code: pointCode() })
+        .expect(201);
+      const r2PointId = pointRes.body.id as string;
+
+      const { user: operator } = await users.createWithIdentity(
+        {
+          provider: LOCAL_PROVIDER,
+          providerUserId: `crates-r2-op-${randomUUID()}`,
+          first_name: 'Тест',
+          last_name: 'R2',
+          role: UserRole.PointOperator,
+          collection_point_id: r2PointId,
+        },
+        async (created, manager) => credentials.set(created.id, 'hunter2!!', manager),
+      );
+      r2OperatorToken = tokenFor(operator.id);
+
+      const supplierRes = await request(app.getHttpServer())
+        .post('/suppliers')
+        .set('Authorization', `Bearer ${r2OperatorToken}`)
+        .send({ first_name: 'Тест', last_name: `R2-${randomUUID()}` })
+        .expect(201);
+      r2SupplierId = supplierRes.body.id as string;
+
+      const shiftRes = await request(app.getHttpServer())
+        .post('/shifts')
+        .set('Authorization', `Bearer ${r2OperatorToken}`)
+        .send({ counted_amount: '0.00' })
+        .expect(201);
+      const r2ShiftId = shiftRes.body.id as string;
+
+      const issuanceRes = await request(app.getHttpServer())
+        .post('/crate-issuances')
+        .set('Authorization', `Bearer ${r2OperatorToken}`)
+        .send({ supplier_id: r2SupplierId, units: 20, mode: 'deposit' })
+        .expect(201);
+      r2IssuanceId = issuanceRes.body.id as string;
+
+      // A real intake row, written straight to SQL — see this block's doc
+      // comment for why (same reasoning as the dispatch fixture's own intake
+      // insert further up this file).
+      r2IntakeCode = `R2-${randomUUID().slice(0, 8)}`;
+      const [{ id: intakeId }] = (await ds.query(
+        `INSERT INTO intakes (code, shift_id, supplier_id, amount, received_by_user_id)
+         VALUES ($1, $2, $3, '0.00', $4) RETURNING id`,
+        [r2IntakeCode, r2ShiftId, r2SupplierId, ownerActor.sub],
+      )) as Array<{ id: string }>;
+      r2IntakeId = intakeId;
+
+      // The linked return itself, and its one allocation — also written
+      // directly, since the route that will write these together
+      // (`POST /intakes` calling `CratesService.writeReturn`) is R3's job.
+      const [{ id: returnId }] = (await ds.query(
+        `INSERT INTO crate_returns
+           (shift_id, supplier_id, intake_id, units, deposit_refund, accepted_by_user_id)
+         VALUES ($1, $2, $3, 5, '600.00', $4) RETURNING id`,
+        [r2ShiftId, r2SupplierId, r2IntakeId, operator.id],
+      )) as Array<{ id: string }>;
+      r2ReturnId = returnId;
+
+      await ds.query(
+        `INSERT INTO crate_return_allocations (return_id, issuance_id, units, per_unit, amount)
+         VALUES ($1, $2, 5, '120.00', '600.00')`,
+        [r2ReturnId, r2IssuanceId],
+      );
+    });
+
+    it('GET /crate-returns shows intake_id and intake_code on a linked return', async () => {
+      const res = await request(app.getHttpServer())
+        .get('/crate-returns')
+        .query({ supplier_id: r2SupplierId })
+        .set('Authorization', `Bearer ${r2OperatorToken}`)
+        .expect(200);
+
+      const row = (
+        res.body.data as Array<{ id: string; intake_id: string | null; intake_code: string | null }>
+      ).find((r) => r.id === r2ReturnId);
+      expect(row).toMatchObject({ intake_id: r2IntakeId, intake_code: r2IntakeCode });
+    });
+
+    it('refuses a standalone void of a return a receipt wrote, and writes nothing', async () => {
+      const res = await request(app.getHttpServer())
+        .post(`/crate-returns/${r2ReturnId}/void`)
+        .set('Authorization', `Bearer ${r2OperatorToken}`)
+        .send({ reason: 'спроба сторнувати окремо' })
+        .expect(409);
+
+      expect(res.body.code).toBe('RETURN_BELONGS_TO_INTAKE');
+      expect(res.body.message).toContain(r2IntakeCode);
+
+      const [{ voided_at }] = (await ds.query(
+        `SELECT voided_at FROM crate_returns WHERE id = $1`,
+        [r2ReturnId],
+      )) as Array<{ voided_at: Date | null }>;
+      expect(voided_at).toBeNull();
     });
   });
 });

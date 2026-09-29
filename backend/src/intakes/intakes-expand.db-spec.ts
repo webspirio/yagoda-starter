@@ -86,7 +86,7 @@ afterAll(async () => {
 
 /**
  * `expand=items` (Task 1 of the supplier-card-history slice, #148) — the ONE
- * place `IntakesService.list`'s second query (`IntakeItem` `In` the page's
+ * place `ListIntakesQuery.list`'s second query (`IntakeItem` `In` the page's
  * ids, joined to `product_grade`/`product`) is ever executed against real
  * Postgres, and the ONE place the default list's shape is pinned so this
  * change cannot silently grow it for every other consumer of `GET /intakes`.
@@ -239,8 +239,10 @@ describe('GET /intakes?expand=items (HTTP, Postgres)', () => {
         'id',
         'lines_count',
         'net_kg',
+        'open_amount',
         'paid_amount',
         'received_by_user_id',
+        'shift_closed',
         'shift_id',
         'supplier_id',
         'supplier_name',

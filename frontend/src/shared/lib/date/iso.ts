@@ -63,6 +63,19 @@ export function addDaysIso(iso: string, days: number): string {
   return fromDate(d);
 }
 
+const DAY_MS = 86_400_000;
+
+/**
+ * Whole calendar days from `fromIso` to `toIso` (`to − from`; negative when
+ * `to` is earlier). Built on the same UTC-noon anchor as `addDaysIso`, so a
+ * DST change between the two dates cannot shave the count to 22.9 and floor
+ * it wrong — the card's «найстаріший з 12.07 — 23 дні» is read by a person
+ * who will count on a calendar.
+ */
+export function daysBetween(fromIso: string, toIso: string): number {
+  return Math.round((toUtcNoon(toIso).getTime() - toUtcNoon(fromIso).getTime()) / DAY_MS);
+}
+
 export const formatLongDate = (iso: string, locale = 'uk'): string =>
   new Intl.DateTimeFormat(locale, {
     day: 'numeric',

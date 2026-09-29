@@ -4,7 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import MockAdapter from 'axios-mock-adapter';
 import type { ReactNode } from 'react';
 import { httpClient, attachAuthInterceptors } from '@/shared/api';
-import { useSupplierBalanceQuery, useSupplierBalancesQuery } from './useSupplierBalances';
+import { useSupplierBalanceQuery, useSupplierBalancesQuery, useSupplierSettlementQuery } from './useSupplierBalances';
 
 // Attached once at module scope (not per test) so it is never stacked on the
 // shared httpClient singleton — see useShifts.test.tsx for the same pattern.
@@ -71,5 +71,21 @@ describe('useSupplierBalancesQuery', () => {
       { wrapper },
     );
     await waitFor(() => expect(result.current.data?.data).toEqual([row]));
+  });
+});
+
+describe('useSupplierSettlementQuery', () => {
+  it('reads /suppliers/:id/settlement', async () => {
+    mock
+      .onGet('/suppliers/s1/settlement')
+      .reply(200, { supplier_id: 's1', debt: '0.00', unallocated: '0.00', lines: [], payouts: [] });
+    const { result } = renderHook(() => useSupplierSettlementQuery('s1'), { wrapper });
+    await waitFor(() => expect(result.current.data?.debt).toBe('0.00'));
+    expect(result.current.data?.lines).toEqual([]);
+  });
+
+  it('does not fire without an id', () => {
+    const { result } = renderHook(() => useSupplierSettlementQuery(null), { wrapper });
+    expect(result.current.fetchStatus).toBe('idle');
   });
 });
