@@ -82,13 +82,13 @@ the app (once the prod stack is running) — just not over HTTPS yet.
 
 The `X-Forwarded-*` headers matter here: `docker-compose.prod.yml` sets
 `TRUST_PROXY_HOPS: 2` on the backend (this host terminator + the internal nginx).
-The internal nginx (`nginx/nginx.conf`) appends its own hop via
+The internal nginx (`nginx/default.conf.template`) appends its own hop via
 `$proxy_add_x_forwarded_for`, so as long as this host block sets the headers
 above, the chain lines up and the backend sees the real client IP for rate
 limiting instead of the internal Docker network IP.
 
 The `client_max_body_size 12m;` line is required, not optional. The app accepts
-avatar uploads up to 10 MB (`MEDIA_MAX_BYTES`; the internal `nginx/nginx.conf`
+avatar uploads up to 10 MB (`MEDIA_MAX_BYTES`; the internal `nginx/default.conf.template`
 already sets a matching `client_max_body_size`), and without a matching-or-larger
 limit here the host terminator returns **413 Request Entity Too Large** for any
 image over 1 MB — the request never reaches the app and the frontend shows a

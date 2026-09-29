@@ -27,9 +27,20 @@ Design: `docs/superpowers/specs/2026-09-09-coolify-deployment-and-cd-design.md`.
    `/api/health/version == sha-<commit>` and (previews) a seeded login, and only
    then comments «Preview ready» / passes.
 
-Coolify's own auto-deploy is **off**; CI is the only trigger, so Coolify never
-pulls a tag that has not been pushed yet. Previews are removed by Coolify's
-GitHub App webhook when the PR closes.
+Coolify's own auto-deploy is **off**, so production is deployed by CI alone and
+Coolify never pulls a `main` tag that has not been pushed yet. Previews are
+different, and deliberately so: on every PR `opened`/`synchronize`/`reopened`
+the GitHub App webhook makes Coolify create the preview record **and attempt a
+deploy** of `sha-<head>`. The record is what CI's later `POST /deploy?pr=<N>`
+relies on (the API cannot create it), and the attempt fails on
+`docker compose pull` because CI has not built that tag yet. The deployment
+log shows that pull running *before* the old containers are stopped («Pulling
+image-based services before stopping the current deployment»), so a live
+preview is not touched — observed on #179's webhook deploys, which had no
+healthy preview to protect yet; the first `synchronize` against a healthy one
+will confirm it. Expect one red webhook deployment per push in Coolify's
+list; the API-triggered one that follows is the one CI verifies.
+Previews are removed by the same webhook when the PR closes (gate 4 below).
 
 `deploy-preview` runs `scripts/ci/coolify-deploy.sh` from the PR's own checkout
 with the Coolify token in its environment — acceptable for internal PRs only,
@@ -71,8 +82,30 @@ the preview owner or for this middleware.
    ```
    Then in the panel (reach it once over an SSH tunnel: `ssh -N -L 8000:localhost:8000 root@188.245.146.122` → `http://localhost:8000`): *Settings → Instance domain* = `https://coolify.yagoda.webspirio.com`. Change the root password.
    `AUTOUPDATE=false`: update Coolify deliberately (Settings → Update) after reading its release notes.
-4. **GitHub App** (Coolify → *Sources → + GitHub App*): organization `webspirio`,
-   enable **Preview Deployments**; install it on `yagoda-starter` only.
+4. **GitHub App** (Coolify → *Sources → + GitHub App*): name
+   `yagoda-coolify-pr-preview`, **Organization `webspirio`** — that field is
+   what makes GitHub create the App under the org rather than under the
+   clicking user; an App owned by a personal account cannot be installed on
+   the org's repositories at all (what stalled #68). Register it, then install
+   it on `yagoda-starter` only. Done 2026-09-29, with two surprises the panel
+   does not explain:
+   - the redirect back from GitHub answered **422**, yet the App row was
+     saved (`github_apps`: app id, client id, private key and webhook secret
+     all present) — only `installation_id` was empty. Installing from GitHub
+     itself (`https://github.com/apps/<app>/installations/new` → the org →
+     *Only select repositories*) fills it in;
+   - the application's *Git Source* page in 4.3.23 offers deploy keys only, so
+     an application created with a deploy key cannot be moved onto the App in
+     the UI. It was switched in the database (after
+     `create table applications_backup_issue68 as select * from applications where id = 1`):
+     `source_id` = the App's row, `source_type` = `App\Models\GithubApp`,
+     `private_key_id` = NULL, `git_repository` = `webspirio/yagoda-starter`,
+     `repository_project_id` = the repository's numeric GitHub id
+     (`gh api repos/webspirio/yagoda-starter --jq .id`) — the column the
+     webhook matches applications on. The old deploy key (`private_keys` id 1,
+     and its read-only counterpart on the repository) is now unused.
+   The App needs *Pull requests: read & write* plus the `pull_request` and
+   `push` events; Coolify's manifest requests exactly that.
 5. **Registry credentials for pulls.** Preferred: Coolify → *Settings → Docker
    registries* (if present in the installed version) → `ghcr.io`, a PAT with
    `read:packages`. Fallback: on the server
@@ -85,7 +118,12 @@ the preview owner or for this middleware.
    repo `webspirio/yagoda-starter`, branch `main`, build pack **Docker Compose**,
    compose location `/docker-compose.prod.yml`. Then:
    - *General*: domain for service `nginx` = `https://yagoda.webspirio.com`; **Auto Deploy: off**;
-     *Preview Deployments*: on, URL template `pr-{{pr_id}}.yagoda.webspirio.com`.
+     *Preview Deployments*: on, URL template `pr-{{pr_id}}.yagoda.webspirio.com`;
+     *Watch Paths*: **blank** — a watch path also filters the PR webhook, and
+     it returns *before* the preview record is created, so CI's deploy would be
+     refused with «Pull request N not found» again. Leave *Preview deployments
+     from public contributors* off: fork PRs and non-member authors then get no
+     preview at all, which matches CI (it never pushes their images either).
    - *Advanced*: **Include Source Commit** (`SOURCE_COMMIT`) on.
    - *Environment Variables* — production and preview sets below.
    - Request body size: **nothing to configure.** Traefik imposes no default
@@ -95,7 +133,7 @@ the preview owner or for this middleware.
      belongs to the standalone path, where a host **nginx** terminates TLS and
      its 1 MB default would 413 an upload. Here the path is already clear:
      Traefik unlimited → internal nginx `client_max_body_size 12m`
-     (`nginx/nginx.conf:24`) → the app's own 10 MB cap (`MEDIA_MAX_BYTES`).
+     (`nginx/default.conf.template:32`) → the app's own 10 MB cap (`MEDIA_MAX_BYTES`).
 7. **GitHub repository settings**: secrets `COOLIFY_URL`, `COOLIFY_API_TOKEN`
    (Coolify → *Keys & Tokens → API tokens*, permissions `deploy` + `read`; add `write`
    only if the fallback below is in force), `COOLIFY_APP_UUID` (from the application URL);
@@ -131,11 +169,11 @@ the preview owner or for this middleware.
 
 ### Memory
 
-`docker-compose.prod.yml` is deployed **from each branch**, so a hardcoded
-`mem_limit` could only be changed by committing and then redeploying every open
-PR. Every limit is therefore a variable whose default is the tight preview
-profile; production raises them in its own Coolify env set, and recalibration is
-an env edit, not a commit.
+Every limit in `docker-compose.prod.yml` is a variable whose default is the
+tight preview profile; production raises them in its own Coolify env set, and
+recalibration is an env edit, not a commit — which would otherwise have to be
+merged before any preview could pick it up (see «The compose comes from
+`main`» below).
 
 Budget on the resized server (measured 2026-09-10): 7.56 GiB total − 0.37 OS −
 0.63 Coolify − ~1.0 production ≈ **5.5 GiB** for previews. At ~0.25 GiB each,
@@ -162,10 +200,10 @@ Coolify altogether, see the last section.
 | Gate | Result |
 |---|---|
 | `SOURCE_COMMIT` interpolates in compose | ✅ 2026-09-10 — production runs `…-backend:sha-94ea42ee…`, the merge commit, and `/api/health/version` returns it |
-| Preview `SOURCE_COMMIT` == PR head SHA | **blocked** — previews need the GitHub App (#68) |
-| Manual «Redeploy» keeps the same SHA | blocked, same reason |
-| Preview deleted on PR close with Auto Deploy off | blocked, same reason |
-| API lists previews (cap source) | blocked, same reason — `application_previews` is empty |
+| Preview `SOURCE_COMMIT` == PR head SHA | ⏳ cannot be shown on #180 itself — its preview runs main's compose («The compose comes from `main`» below), so its backend dies before `/api/health/version` answers; filled in by the first PR preview after the merge, whose `deploy-preview` asserts exactly this |
+| Manual «Redeploy» keeps the same SHA | not exercised — CI re-runs `deploy-preview` instead. Per the deployment job's source the button checks out `pull/<N>/head`: pressed after a CI deploy it redeploys that same head; pressed right after a push it fails on pull, because CI has not built the new head yet |
+| Preview deleted on PR close with Auto Deploy off | ✅ 2026-09-29 — #179 closed at 20:56:15Z; by 20:58:10Z `docker ps -a`, `docker volume ls` and `docker network ls` showed nothing named `pr-179` and `application_previews` was empty. That stack had never come up healthy, so this also covers the failed-preview case of amendment #5 |
+| API lists previews (cap source) | ✗ — 4.3.23 exposes only `/applications/{uuid}/previews/{pr}/logs`, `PATCH` and `DELETE`, no list, and the application JSON carries none; the `preview` label stays the cap's source |
 | Coolify holds registry credentials | ✗ — this version has no registry store; use the `docker login` fallback (step 5) |
 | `docker compose up` does not fail on the one-shot `seed` exiting 0 | ✅ 2026-09-10 — production is the risky case (no `SEED_DEV_DATA`, so the seed exits 0 immediately) and the deployment still reached `finished` |
 | Coolify routes the domain to nginx's port 8080 | ✅ 2026-09-10 — with `expose: 8080` in the compose and the port set on the domain, `https://yagoda.webspirio.com` answers 200 |
@@ -176,8 +214,76 @@ deploy key alone, `POST /api/v1/deploy?uuid=<app>&pr=<N>` is refused with
 from the App's webhook, and `application_previews.pull_request_html_url` is
 `NOT NULL`, so no other path can create the row. Production CD is unaffected —
 `deploy-prod` sends no `&pr=`. That is why the workflow has two gates:
-`COOLIFY_ENABLED` arms production, `PREVIEWS_ENABLED` arms previews and stays
-unset until #68 is closed.
+`COOLIFY_ENABLED` arms production, `PREVIEWS_ENABLED` arms previews. Both are
+`true` since 2026-09-29 (#68); flip `PREVIEWS_ENABLED` to pause previews
+without a commit.
+
+### What Coolify renames in a preview
+
+Every service, volume and network of a preview carries a `-pr-<N>` suffix
+(`postgres` → `postgres-pr-179`, volume `<uuid>_pg-data-pr-179`, network
+`<uuid>-179`), and a container's DNS name follows its service name. A compose
+file that names a sibling service literally therefore works in production and
+dies in every preview — the first preview of this stack ended on
+`getaddrinfo EAI_AGAIN postgres` in the backend. Coolify's contract for this
+is `SERVICE_NAME_<SERVICE>`, which it writes into the deployment `.env` and
+into every container's environment — `postgres-pr-179` in the preview (both
+seen on #179: the `.env` under `/data/coolify/applications/<uuid>/` and
+`docker inspect` of its backend), `postgres` in production (the same code
+path with no PR number). `docker-compose.prod.yml` reads it with a default
+(`DB_HOST: ${SERVICE_NAME_POSTGRES:-postgres}`), so the standalone path, where
+nothing sets it, keeps the plain name; the nginx image renders the same
+variable into `proxy_pass` from `nginx/default.conf.template` at start-up.
+Two side effects worth knowing: Coolify's compose parser registers every
+`$SERVICE_*` reference it sees as a hidden, value-less environment variable of
+the application (harmless — it is filtered out of the generated `.env`), and
+`docker compose config` shows the rendered result locally:
+`SERVICE_NAME_POSTGRES=postgres-pr-9 docker compose -f docker-compose.prod.yml config`.
+
+The webhook deploy at push time has one edge: on `opened`/`reopened` of a head
+CI has already built (a branch reused for a new PR), Coolify's own deploy
+succeeds minutes before `deploy-preview` claims the `preview` label, so the
+cap under-counts by one until that job runs. Accepted — the window is short
+and the job always runs on those events.
+
+Sources, because none of this is on Coolify's *application* pages:
+`SERVICE_NAME_<SERVICE>` is documented only for *Services*
+(<https://coolify.io/docs/services/configuration/docker-compose>: «Coolify
+creates this variable automatically for every Compose service»); the `-pr-<N>`
+value for application previews lives in `app/Jobs/ApplicationDeploymentJob.php`
+(`addPreviewDeploymentSuffix`), and coollabsio/coolify#10186 (2026-06) is the
+fix that stops a stale user-defined `SERVICE_NAME_*` from overriding it — so
+never define those keys in the env sets. Volume suffixing is documented
+(<https://coolify.io/docs/core/persistent-storage/storage-mounts/volume-mounts>).
+For a compose application the `deploy?pr=<N>` API creates no preview record
+(only the `dockerimage` build pack gets that), which is why the webhook is
+mandatory. Known 4.3.x issues to expect: coollabsio/coolify#9014 — compose
+previews share one project name, so deploying one preview can 502 its siblings
+for a few seconds; #12005 — a preview's storage *records* outlive the preview
+in Coolify's database (the volumes themselves are removed, see gate 4);
+#11534 — a preview delete also removes user-named (`external`/`name:`)
+volumes and networks, which this compose deliberately has none of.
+
+### The compose comes from `main`, not from the PR
+
+Coolify does not deploy the compose file of the commit it checks out. On every
+deploy — production and preview alike — `ApplicationDeploymentJob` calls
+`loadComposeFile()`, which clones the application's configured branch
+(`git_branch`, i.e. `main`) with `only_checkout` (it never passes the PR
+number to `generateGitImportCommands`) and stores that file as
+`docker_compose_raw`; the parser then renders *that* file against the PR's
+commit. Observed on #180: its rendered `docker-compose-pr-180.yaml` still had
+the literal `DB_HOST: postgres` the branch had already replaced, while its
+`.env` carried the correct `SERVICE_NAME_*=…-pr-180`. Consequences:
+
+- a PR that edits `docker-compose.prod.yml` gets a preview of its **code**
+  under **main's compose**; the edit itself is exercised by the first preview
+  after the merge (and by production);
+- a compose change that previews *need* — like the `SERVICE_NAME_*` fix —
+  cannot be proven green on its own PR: expect that PR's `deploy-preview` to
+  fail the old way, and verify on the next PR;
+- CI's `changes` job still treats `docker-compose*.yml` as a docker input so
+  that such a PR builds images and gets a preview of its code at all.
 
 **Fallback (only if a `SOURCE_COMMIT` gate failed):** CI sets `IMAGE_TAG` in the
 relevant env set via `PATCH /api/v1/applications/<uuid>/envs` right before
@@ -343,6 +449,9 @@ ssh root@<vps> 'docker ps --format "{{.Names}}\t{{.Status}}\t{{.Image}}"; docker
 | `deploy-*` job: Coolify `failed`, log shows compose error | compose file in that branch is invalid | `docker compose -f docker-compose.prod.yml config` locally |
 | `serves commit 'X', expected 'Y'` | Coolify deployed another commit (fallback misuse, or Auto Deploy got switched on) | Check Auto Deploy is off; re-run the job |
 | `/ready` never 200 | backend crash-loop | Coolify → application → logs; usually a missing env var |
+| A preview's backend logs `getaddrinfo EAI_AGAIN postgres` (or `redis`) | a service hostname is hardcoded in the compose (previews suffix every service), or someone defined `SERVICE_NAME_<SVC>` — even empty — in a Coolify env set | reference it as `${SERVICE_NAME_<SVC>:-<svc>}` and never define those keys yourself — «What Coolify renames in a preview» |
+| A preview ignores the PR's change to `docker-compose.prod.yml` | expected — the compose is loaded from `main` on every deploy («The compose comes from `main`») | merge, then check the next preview |
+| Coolify lists a **failed** deployment seconds after every PR push, before CI is green | expected: the App webhook deploys `sha-<head>` before CI has pushed it; the pull fails, and it runs before the old containers are stopped, so a live preview stays up | nothing — `deploy-preview`'s API deploy is the one that counts |
 | «Preview not deployed — limit reached» | `PREVIEW_CAP` live previews (default 12). A PR whose deploy FAILED keeps its `preview` label on purpose — the stack is still running and still holding memory | close or merge an older PR, or remove its `preview` label once you have confirmed Coolify no longer runs that preview |
 | `deploy-preview` shows "cancelled", no comment | another PR took the single pending slot of the `preview-allocation` concurrency group while this one waited | re-run the job |
 | `deploy-prod` skipped with «main is at X, not Y» | correct: a newer merge owns production, and its own run deploys it | nothing — unless that newer run went red, in which case prod is deliberately behind `main` until it is fixed and re-run |
