@@ -148,6 +148,50 @@ test('a list-form environment block is scanned the same way', () => {
   })
 })
 
+test('a sibling-service hostname inside a URL value is RED too', () => {
+  const compose = CLEAN.replace(
+    '      NODE_ENV: production\n',
+    '      NODE_ENV: production\n      DATABASE_URL: postgres://app:secret@postgres:5432/app\n      REDIS_URL: redis://redis:6379/0\n',
+  )
+  withFixture(compose, (dir) => {
+    const res = run(dir)
+    assert.equal(res.status, 1, res.out)
+    assert.match(res.out, /backend\.DATABASE_URL \(line \d+\)/)
+    assert.match(res.out, /backend\.REDIS_URL \(line \d+\)/)
+    assert.match(res.out, /\$\{SERVICE_NAME_REDIS:-redis\}/)
+  })
+})
+
+test('a URL whose host is the SERVICE_NAME_ form is green, and a scheme that spells a service name is not a host', () => {
+  const compose = CLEAN.replace(
+    '      NODE_ENV: production\n',
+    '      NODE_ENV: production\n      REDIS_URL: redis://${SERVICE_NAME_REDIS:-redis}:6379/0\n',
+  )
+  withFixture(compose, (dir) => {
+    const res = run(dir)
+    assert.equal(res.status, 0, res.out)
+  })
+})
+
+test('a service written in another indentation is RED, not silently skipped', () => {
+  const compose = CLEAN.replace('  redis:\n    image: redis:7-alpine\n', '   redis:\n     image: redis:7-alpine\n')
+  withFixture(compose, (dir) => {
+    const res = run(dir)
+    assert.equal(res.status, 1, res.out)
+    assert.match(res.out, /line \d+/)
+    assert.match(res.out, /indent/i)
+  })
+})
+
+test('an environment line the scanner cannot read is RED, not silently skipped', () => {
+  const compose = CLEAN.replace('      NODE_ENV: production\n', '      NODE_ENV: production\n      WEIRD_ENTRY\n')
+  withFixture(compose, (dir) => {
+    const res = run(dir)
+    assert.equal(res.status, 1, res.out)
+    assert.match(res.out, /environment line \d+/)
+  })
+})
+
 test('a compose with no environment entries at all refuses a verdict instead of passing', () => {
   withFixture('name: fixture\nservices:\n  redis:\n    image: redis:7-alpine\n', (dir) => {
     const res = run(dir)
