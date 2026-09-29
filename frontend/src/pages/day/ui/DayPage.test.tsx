@@ -713,6 +713,26 @@ describe('DayPage — the cash reconciliation', () => {
     expect(row('Left on balance for us')).toHaveTextContent('−500.00 ₴');
   });
 
+  it('counts nothing out for a closed-shift void returned the same day', () => {
+    payoutsMock.mockReturnValue(
+      page<Payout>([
+        payout({
+          id: 'y1',
+          code: 'VD-0001',
+          amount: '25.00',
+          voided_at: '2026-09-08T16:30:00',
+          voided_by_user_id: 'u2',
+          void_reason: 'typo',
+          return_settled_at: '2026-09-08T16:40:00',
+          return_settled_by_user_id: 'u2',
+        }),
+      ]),
+    );
+    renderDay();
+    expect(tile('Cash out')).toHaveTextContent('0.00 ₴');
+    expect(screen.queryByText(/on voided payouts/)).toBeNull();
+  });
+
   it('names a partial return with both figures', () => {
     const voided = { voided_at: '2026-09-08T12:00:00Z', voided_by_user_id: 'u1', void_reason: 'typo' };
     payoutsMock.mockReturnValue(
@@ -723,7 +743,7 @@ describe('DayPage — the cash reconciliation', () => {
           code: 'VD-0002',
           amount: '25.00',
           ...voided,
-          return_settled_at: '2026-09-08T13:00:00Z',
+          return_settled_at: '2026-09-10T09:00:00',
           return_settled_by_user_id: 'u1',
         }),
       ]),
@@ -744,7 +764,7 @@ describe('DayPage — the cash reconciliation', () => {
           voided_at: '2026-09-08T12:00:00Z',
           voided_by_user_id: 'u1',
           void_reason: 'typo',
-          return_settled_at: '2026-09-08T13:00:00Z',
+          return_settled_at: '2026-09-10T09:00:00',
           return_settled_by_user_id: 'u1',
         }),
       ]),

@@ -1,4 +1,5 @@
 import { sum, sub, isNegative } from '@/shared/lib/money';
+import { toLocalIsoDate } from '@/shared/lib/date';
 
 export interface SummaryIntake {
   amount: string;
@@ -24,12 +25,16 @@ export interface DaySummary {
   /** §3.7's «Видати без ягоди» — a payout with no visit. */
   paidWithoutBerry: string;
   /**
-   * The DRAWER's reading, mirroring `movementsSql` in `point-cash.service.ts`
-   * for this shift: every payout minus those whose cash came back AT VOID TIME
-   * (`returned_on_void` — an open-shift void, 2026-09-28, which is «it
-   * happened in front of the supplier»). A closed-shift void stays out: its
-   * return waits for the owner's `settle-return`, and even once confirmed is
-   * credited on the day it happened, not here.
+   * The DRAWER's reading: `movementsSql`'s three payout terms, as far as this
+   * shift's own payouts can reach them (`point-cash.service.ts`) —
+   *   − every payout of the shift
+   *   + those whose cash came back AT VOID TIME (`returned_on_void`, an
+   *     open-shift void, 2026-09-28)
+   *   + those whose owner-confirmed `settle-return` falls on THIS business
+   *     date (read as the browser's local date — #75 is the known edge).
+   * Not reachable from here: a return settled today against an EARLIER
+   * shift's payout, which also credits today's drawer. The journals this
+   * screen reads are shift-scoped, so the note under the ledger says so.
    */
   cashOut: string;
   /** Σ квитанцій дня − Σ ЖИВИХ виплат дня — the DEBT's reading. Negative when
@@ -38,7 +43,8 @@ export interface DaySummary {
   debtGrowth: string;
   /** `debtGrowth < 0`, decided once so the tile and the ledger cannot disagree. */
   paidDown: boolean;
-  /** The part of `cashOut` that sits on voided payouts (closed-shift voids). */
+  /** The part of `cashOut` that sits on voided payouts — voids that did not
+   *  return their cash at void time and have not come back on this date. */
   voidedOut: string;
   /** …of which the owner has not yet confirmed the return. */
   voidedNotReturned: string;
@@ -57,11 +63,13 @@ export interface DaySummary {
  *
  * TWO READINGS OF A VOIDED PAYOUT, as `Payout`'s header names them: the debt
  * rows (split, growth) drop it like `supplier-balance` does; `cashOut` keeps
- * it unless its cash came back at void time.
+ * it until its cash is back in THIS shift's drawer (see `cashOut`).
  */
 export function buildDaySummary(
   intakes: readonly SummaryIntake[],
   payouts: readonly SummaryPayout[],
+  /** The shift's business date, `YYYY-MM-DD`. */
+  date: string,
 ): DaySummary {
   const liveIntakes = intakes.filter((i) => i.voided_at === null);
   const livePayouts = payouts.filter((p) => p.voided_at === null);
@@ -71,14 +79,20 @@ export function buildDaySummary(
     livePayouts.filter((p) => p.intake_id === null).map((p) => p.amount),
   );
   const debtGrowth = sub(accrued, sum([paidAtReception, paidWithoutBerry]));
-  const voided = payouts.filter((p) => p.voided_at !== null && !p.returned_on_void);
+  // Cash that came back into THIS drawer: at void time, or by an owner's
+  // settle-return dated today. Everything else that was paid is still out.
+  const backHere = (p: SummaryPayout): boolean =>
+    p.returned_on_void ||
+    (p.return_settled_at !== null && toLocalIsoDate(p.return_settled_at) === date);
+  const stillOut = payouts.filter((p) => !backHere(p));
+  const voided = stillOut.filter((p) => p.voided_at !== null);
   return {
     netKg: sum(liveIntakes.map((i) => i.net_kg)),
     receipts: liveIntakes.length,
     accrued,
     paidAtReception,
     paidWithoutBerry,
-    cashOut: sum(payouts.filter((p) => !p.returned_on_void).map((p) => p.amount)),
+    cashOut: sum(stillOut.map((p) => p.amount)),
     debtGrowth,
     paidDown: isNegative(debtGrowth),
     voidedOut: sum(voided.map((p) => p.amount)),

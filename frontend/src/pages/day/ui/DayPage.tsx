@@ -135,7 +135,7 @@ export function DayPage() {
   // and both journals in. Tiles and ledger must never disagree on it.
   const figuresVisible = pointId !== null && status !== 'none' && !isError && documentsReady;
 
-  const summary = buildDaySummary(intakes.data?.data ?? [], payouts.data?.data ?? []);
+  const summary = buildDaySummary(intakes.data?.data ?? [], payouts.data?.data ?? [], date);
   const stats: StatItem[] = [
     {
       label: t('day.tiles.received'),

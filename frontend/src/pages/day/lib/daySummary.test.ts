@@ -1,6 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import { buildDaySummary, type SummaryIntake, type SummaryPayout } from './daySummary';
 
+/** The shift's business date — what `movementsSql` compares a return's local date to. */
+const DAY = '2026-09-08';
+
 const intake = (amount: string, net_kg: string, voided = false): SummaryIntake => ({
   amount,
   net_kg,
@@ -24,6 +27,7 @@ describe('buildDaySummary', () => {
     const s = buildDaySummary(
       [intake('100.00', '10.50'), intake('50.25', '4.25'), intake('999.00', '99.00', true)],
       [],
+      DAY,
     );
     expect(s.netKg).toBe('14.75');
     expect(s.receipts).toBe(2);
@@ -34,6 +38,7 @@ describe('buildDaySummary', () => {
     const s = buildDaySummary(
       [intake('1000.00', '10.00')],
       [payout('600.00', { intake_id: 'i1' }), payout('150.00')],
+      DAY,
     );
     expect(s.paidAtReception).toBe('600.00');
     expect(s.paidWithoutBerry).toBe('150.00');
@@ -44,13 +49,14 @@ describe('buildDaySummary', () => {
     const s = buildDaySummary(
       [intake('1000.00', '10.00')],
       [payout('600.00', { intake_id: 'i1' }), payout('150.00')],
+      DAY,
     );
     // §«Інваріант дня», as corrected: Σ квитанцій дня − Σ виплат дня.
     expect(s.debtGrowth).toBe('250.00');
   });
 
   it('lets the growth go negative when old balances were paid down', () => {
-    const s = buildDaySummary([intake('100.00', '1.00')], [payout('300.00')]);
+    const s = buildDaySummary([intake('100.00', '1.00')], [payout('300.00')], DAY);
     expect(s.debtGrowth).toBe('-200.00');
   });
 
@@ -65,6 +71,7 @@ describe('buildDaySummary', () => {
     const s = buildDaySummary(
       [intake('510.00', '5.00', true)],
       [payout('510.00', { intake_id: 'i1', ...back }), payout('4930.00', back)],
+      DAY,
     );
     expect(s.cashOut).toBe('0.00');
     expect(s.voidedOut).toBe('0.00');
@@ -83,6 +90,7 @@ describe('buildDaySummary', () => {
           return_settled_at: '2026-09-10T09:00:00Z',
         }),
       ],
+      DAY,
     );
     expect(s.paidAtReception).toBe('60.00');
     expect(s.debtGrowth).toBe('40.00');
@@ -91,9 +99,28 @@ describe('buildDaySummary', () => {
     expect(s.voidedNotReturned).toBe('40.00');
   });
 
+  it('nets a closed-shift void whose return was confirmed the same business day', () => {
+    // movementsSql's third term: a settle-return credits the drawer of the
+    // shift whose business date is the return's LOCAL date — here, this one.
+    const s = buildDaySummary(
+      [],
+      [
+        payout('25.00', {
+          voided_at: '2026-09-08T16:30:00',
+          return_settled_at: '2026-09-08T16:40:00',
+        }),
+      ],
+      DAY,
+    );
+    expect(s.cashOut).toBe('0.00');
+    expect(s.voidedOut).toBe('0.00');
+  });
+
   it('flags a negative growth once, so no consumer re-derives it', () => {
-    expect(buildDaySummary([intake('100.00', '1.00')], [payout('300.00')]).paidDown).toBe(true);
-    expect(buildDaySummary([intake('100.00', '1.00')], []).paidDown).toBe(false);
+    expect(buildDaySummary([intake('100.00', '1.00')], [payout('300.00')], DAY).paidDown).toBe(
+      true,
+    );
+    expect(buildDaySummary([intake('100.00', '1.00')], [], DAY).paidDown).toBe(false);
   });
 
   it('names the cash of voided payouts that has not come back to the drawer yet', () => {
@@ -106,12 +133,13 @@ describe('buildDaySummary', () => {
           return_settled_at: '2026-09-08T13:00:00Z',
         }),
       ],
+      DAY,
     );
     expect(s.voidedNotReturned).toBe('40.00');
   });
 
   it('is all zeros for an empty day', () => {
-    expect(buildDaySummary([], [])).toEqual({
+    expect(buildDaySummary([], [], DAY)).toEqual({
       netKg: '0.00',
       receipts: 0,
       accrued: '0.00',
