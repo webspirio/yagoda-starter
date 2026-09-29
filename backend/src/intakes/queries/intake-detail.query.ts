@@ -3,7 +3,11 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { EntityManager, Repository } from 'typeorm';
 import { Intake } from '../intake.entity';
 import { IntakeItem } from '../intake-item.entity';
-import { IntakeDetailResponse, toIntakeDetailResponse } from '../intake.mapper';
+import {
+  IntakeCrateReturnRow,
+  IntakeDetailResponse,
+  toIntakeDetailResponse,
+} from '../intake.mapper';
 import { ROW_EXTRAS_SQL, type IntakeRowExtras } from '../intake-row-extras';
 import { Payout } from '../../payouts/payout.entity';
 import { Shift } from '../../shifts/shift.entity';
@@ -29,6 +33,31 @@ export class IntakeDetailQuery {
     return user ? displayNameOf(user) : null;
   }
 
+  /**
+   * The crate return written WITH this receipt (spec §8.3), voided or not — `create` and
+   * `forIntake` both read it here, so the receipt printed at the counter and the one reopened
+   * later are the same query. `UQ_crate_returns_intake` makes it at most one row. The split by
+   * MODE is summed from the FIFO allocation rows joined to the issuance each drew from, cast
+   * `::int` so the driver hands back numbers.
+   */
+  async crateReturn(intakeId: string, m: EntityManager): Promise<IntakeCrateReturnRow | null> {
+    const [row] = (await m.query(
+      `SELECT cr.id,
+              cr.units,
+              cr.deposit_refund,
+              cr.voided_at,
+              COALESCE(SUM(a.units) FILTER (WHERE ci.mode = 'deposit'), 0)::int AS deposit_units,
+              COALESCE(SUM(a.units) FILTER (WHERE ci.mode = 'receipt'), 0)::int AS receipt_units
+         FROM crate_returns cr
+         LEFT JOIN crate_return_allocations a ON a.return_id = cr.id
+         LEFT JOIN crate_issuances ci ON ci.id = a.issuance_id
+        WHERE cr.intake_id = $1
+        GROUP BY cr.id`,
+      [intakeId],
+    )) as IntakeCrateReturnRow[];
+    return row ?? null;
+  }
+
   async forIntake(intake: Intake, shift: Shift): Promise<IntakeDetailResponse> {
     const m = this.repo.manager;
     const items = await m.find(IntakeItem, {
@@ -47,6 +76,7 @@ export class IntakeDetailQuery {
       await this.extras(intake.id, m),
       payouts,
       await this.receiverName(intake.received_by_user_id, m),
+      await this.crateReturn(intake.id, m),
     );
   }
 }

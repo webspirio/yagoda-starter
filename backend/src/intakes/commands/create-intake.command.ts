@@ -1,4 +1,4 @@
-import { ConflictException, Injectable } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable } from '@nestjs/common';
 import { DataSource, EntityManager } from 'typeorm';
 import { Intake } from '../intake.entity';
 import { IntakeItem } from '../intake-item.entity';
@@ -11,6 +11,7 @@ import { IntakeDetailQuery } from '../queries/intake-detail.query';
 import { Payout } from '../../payouts/payout.entity';
 import { PayoutWriter } from '../../payouts/services/payout-writer';
 import { AllocationsService } from '../../supplier-balance/services/allocations';
+import { CratesService } from '../../crates/crates.service';
 import { AuditService } from '../../audit/audit.service';
 import { nextDocumentCode } from '../../common/document-code';
 import { isZero } from '../../common/money';
@@ -20,7 +21,9 @@ import type { AuthenticatedUser } from '../../auth/jwt.strategy';
 /**
  * One POST, one transaction, the whole receipt (§2.3) — and, since 2026-09-21, the payout
  * handed over with it (§2.1 ⑥). No update path exists: §2.7 freezes `amount`, §9.3 corrects
- * by void plus a new document.
+ * by void plus a new document. Since 2026-09-24 it may also write the return of OUR crates the
+ * supplier brought back (`returned_crates`, spec §8.3) through `CratesService.writeReturn`; any
+ * refusal from either writer rolls back the WHOLE receipt.
  */
 @Injectable()
 export class CreateIntakeCommand {
@@ -29,6 +32,7 @@ export class CreateIntakeCommand {
     private readonly pricing: PriceIntakeQuery,
     private readonly allocations: AllocationsService,
     private readonly payouts: PayoutWriter,
+    private readonly crates: CratesService,
     private readonly audit: AuditService,
     private readonly detail: IntakeDetailQuery,
   ) {}
@@ -42,6 +46,17 @@ export class CreateIntakeCommand {
         supplier.id,
         async () => {
           const { shift, built } = await this.pricing.price(pointId, dto, m);
+
+          // Spec §8.3 — the crates coming back must be crates THIS receipt carries. More is a
+          // typo or a tare line typed as the wrong type, and would refund deposit for crates
+          // nobody weighed in.
+          const returned = dto.returned_crates ?? 0;
+          if (returned > built.crate_units) {
+            throw new BadRequestException({
+              message: `Only ${built.crate_units} crates on this receipt are crate tare`,
+              code: 'RETURNED_EXCEEDS_TARE',
+            });
+          }
           const code = await nextDocumentCode(m, {
             pointCode: point.code,
             businessDate: shift.business_date,
@@ -60,6 +75,19 @@ export class CreateIntakeCommand {
             },
             m,
           );
+
+          // Spec §8.3 — BEFORE the payout, so a crates refusal rolls back a receipt that has not
+          // handed any cash over yet. `intakeId` is what lets this receipt's void strike it too.
+          if (returned > 0) {
+            await this.crates.writeReturn(m, {
+              actor,
+              pointId,
+              shift,
+              supplierId: supplier.id,
+              units: returned,
+              intakeId: intake.id,
+            });
+          }
 
           // §2.1 ⑥ — the cash leaves in the same transaction; a ceiling refusal rolls the receipt
           // back with it. Truthiness on purpose: absent, null and '' all mean «нічого не видано» (§3.7).
@@ -87,6 +115,7 @@ export class CreateIntakeCommand {
         await this.detail.extras(intake.id, m),
         paid,
         await this.detail.receiverName(actor.sub, m),
+        await this.detail.crateReturn(intake.id, m),
       );
     });
   }

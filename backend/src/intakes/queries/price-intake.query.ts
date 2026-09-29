@@ -113,6 +113,8 @@ export class PriceIntakeQuery {
   ): Promise<Map<string, TareSnapshot>> {
     const tareIds = [...new Set(dto.items.flatMap((i) => i.tare.map((t) => t.tare_type_id)))];
     const rows = await this.tare.findManyRaw(tareIds, m);
-    return new Map(rows.map((t) => [t.id, { id: t.id, weight_kg: t.weight_kg }]));
+    return new Map(
+      rows.map((t) => [t.id, { id: t.id, weight_kg: t.weight_kg, is_crate: t.is_crate }]),
+    );
   }
 }

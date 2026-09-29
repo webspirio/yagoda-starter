@@ -82,6 +82,9 @@ export const dto = (over: Record<string, unknown> = {}) => ({
 });
 
 export function makeIntakesMocks() {
+  // What the crate-return read (`FROM crate_returns`) answers — none by default; a test that
+  // writes or reads a linked return assigns `state.crateReturnRows`.
+  const state = { crateReturnRows: [] as unknown[] };
   const itemRepo = { find: jest.fn().mockResolvedValue([]) };
   // Shared by `manager` and `plainManager`: `extras` reads `ROW_EXTRAS_SQL`
   // (contains `AS net_kg`) and `nextDocumentCode`'s count reads everything
@@ -90,7 +93,9 @@ export function makeIntakesMocks() {
     Promise.resolve(
       sql.includes('pg_advisory_xact_lock')
         ? [{}]
-        : sql.includes('AS net_kg')
+        : sql.includes('FROM crate_returns')
+          ? state.crateReturnRows
+          : sql.includes('AS net_kg')
           ? [
               {
                 net_kg: '36.90',
@@ -147,7 +152,9 @@ export function makeIntakesMocks() {
       max_discount: '20.00',
     }),
   };
-  const tare = { findManyRaw: jest.fn().mockResolvedValue([{ id: CRATE, weight_kg: '1.20' }]) };
+  const tare = {
+    findManyRaw: jest.fn().mockResolvedValue([{ id: CRATE, weight_kg: '1.20', is_crate: true }]),
+  };
   const points = { findOneRaw: jest.fn().mockResolvedValue({ id: POINT_A, code: 'KPG' }) };
   const audit = { record: jest.fn().mockResolvedValue(undefined) };
   const payouts = {
@@ -170,6 +177,10 @@ export function makeIntakesMocks() {
       .mockImplementation((_m, _a, p) => Promise.resolve({ ...p, voided_at: new Date() })),
     settleReturn: jest.fn().mockImplementation((_m, _a, p) => Promise.resolve(p)),
   };
+  const crates = {
+    writeReturn: jest.fn().mockResolvedValue({ ret: {}, allocations: [], tranches: [] }),
+    voidReturnForIntake: jest.fn().mockResolvedValue(null),
+  };
   const allocations = {
     lockSupplier: jest.fn().mockResolvedValue(undefined),
     release: jest.fn().mockResolvedValue(undefined),
@@ -187,6 +198,7 @@ export function makeIntakesMocks() {
     },
   );
   return {
+    state,
     itemRepo,
     manager,
     plainManager,
@@ -199,6 +211,7 @@ export function makeIntakesMocks() {
     points,
     audit,
     payouts,
+    crates,
     allocations,
   };
 }
@@ -220,6 +233,7 @@ export function buildIntakes(m: IntakesMocks) {
       pricing,
       m.allocations as never,
       m.payouts as never,
+      m.crates as never,
       m.audit as never,
       detail,
     ),
@@ -228,6 +242,7 @@ export function buildIntakes(m: IntakesMocks) {
       visible,
       m.allocations as never,
       m.payouts as never,
+      m.crates as never,
       m.audit as never,
       detail,
     ),

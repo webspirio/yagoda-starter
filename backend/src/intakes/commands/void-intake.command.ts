@@ -9,6 +9,7 @@ import { IntakeDetailQuery } from '../queries/intake-detail.query';
 import { Shift } from '../../shifts/shift.entity';
 import { PayoutWriter } from '../../payouts/services/payout-writer';
 import { AllocationsService } from '../../supplier-balance/services/allocations';
+import { CratesService } from '../../crates/crates.service';
 import { AuditService } from '../../audit/audit.service';
 import { assertCanVoid } from '../../auth/access/document-access';
 import type { AuthenticatedUser } from '../../auth/jwt.strategy';
@@ -25,6 +26,7 @@ export class VoidIntakeCommand {
     private readonly visible: LoadVisibleIntakeQuery,
     private readonly allocations: AllocationsService,
     private readonly payouts: PayoutWriter,
+    private readonly crates: CratesService,
     private readonly audit: AuditService,
     private readonly detail: IntakeDetailQuery,
   ) {}
@@ -95,6 +97,10 @@ export class VoidIntakeCommand {
       },
       m,
     );
+
+    // Spec §8.3 — the crates that came back WITH this receipt did not come back if the receipt
+    // did not happen. Relies on the supplier lock `withinSupplierLedger` already holds.
+    await this.crates.voidReturnForIntake(m, { actor, intakeId: saved.id, reason: dto.reason });
 
     if (payout && decision !== 'keep') {
       const voided = await this.payouts.void(m, actor, payout, dto.reason, !shiftClosed);

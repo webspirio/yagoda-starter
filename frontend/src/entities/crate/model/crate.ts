@@ -68,6 +68,14 @@ export interface CrateReturn {
   void_reason: string | null;
   created_at: string;
   shift_closed: boolean;
+  /**
+   * The receipt (`intakes`) this return was written alongside, if any — an
+   * operator returns their own rented crates in the same «Прийняти» as the
+   * intake (2026-09-24). `null` means a standalone return, voidable on its
+   * own; non-null means only voiding the receipt can void this return.
+   */
+  intake_id: string | null;
+  intake_code: string | null;
 }
 
 /**
