@@ -86,7 +86,15 @@ services:
       APP_URL: ${APP_URL}
       JWT_SECRET: ${JWT_SECRET}
       JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
-      DB_HOST: postgres
+      # Coolify renames every service of a PREVIEW with a `-pr-<N>` suffix
+      # (postgres → postgres-pr-179) and the DNS name follows, so a hardcoded
+      # `postgres` here left every preview backend on `getaddrinfo EAI_AGAIN
+      # postgres` (#68). Coolify publishes each service's real name as
+      # SERVICE_NAME_<SERVICE> in the deployment .env — unsuffixed in
+      # production — and compose resolves it at `up` time. The default is for
+      # the standalone path, where nothing sets SERVICE_NAME_*. Same for
+      # REDIS_HOST, the seed's DB_HOST and nginx's BACKEND_HOST below.
+      DB_HOST: ${SERVICE_NAME_POSTGRES:-postgres}
       DB_PORT: 5432
       DB_USER: ${DB_USER:-app}
       DB_PASSWORD: ${DB_PASSWORD}
@@ -96,7 +104,7 @@ services:
       # limiting keys on the client IP taken this many hops back in
       # X-Forwarded-For.
       TRUST_PROXY_HOPS: 2
-      REDIS_HOST: redis
+      REDIS_HOST: ${SERVICE_NAME_REDIS:-redis}
       REDIS_PORT: 6379
       # Pin the uploads dir to the volume's absolute mount path. Without this the
       # backend (and any migration run) falls back to `./uploads`, which is
@@ -153,8 +161,9 @@ services:
   # this topology: the command below flips NODE_ENV to development only for
   # the exec'd process, after the guard has already let it through, so that
   # refusal never fires here. Its local-host check also passes (DB_HOST is
-  # `postgres`). The ONLY thing keeping demo data out of production is that
-  # SEED_DEV_DATA is absent from the production env set — never set it there.
+  # `postgres`, or `postgres-pr-<N>` in a preview, which the check accepts).
+  # The ONLY thing keeping demo data out of production is that SEED_DEV_DATA
+  # is absent from the production env set — never set it there.
   seed:
     image: ghcr.io/${GHCR_REPO:-webspirio/yagoda-starter}-backend:${IMAGE_TAG:-sha-${SOURCE_COMMIT}}
     command:
@@ -166,7 +175,7 @@ services:
       NODE_ENV: production
       # Heap cap below mem_limit for the same reason as the backend's.
       NODE_OPTIONS: --max-old-space-size=${SEED_HEAP_MB:-192}
-      DB_HOST: postgres
+      DB_HOST: ${SERVICE_NAME_POSTGRES:-postgres}
       DB_PORT: 5432
       DB_USER: ${DB_USER:-app}
       DB_PASSWORD: ${DB_PASSWORD}
@@ -183,8 +192,13 @@ services:
   # allow request bodies of at least 12 MB (uploads are capped at 10 MB).
   nginx:
     image: ghcr.io/${GHCR_REPO:-webspirio/yagoda-starter}-nginx:${IMAGE_TAG:-sha-${SOURCE_COMMIT}}
+    environment:
+      # nginx/default.conf.template proxies /api/ to BACKEND_HOST:3000; the
+      # image renders it with envsubst at start-up (nginx/Dockerfile). In a
+      # preview the backend is `backend-pr-<N>` — see DB_HOST above.
+      BACKEND_HOST: ${SERVICE_NAME_BACKEND:-backend}
     # Coolify's Traefik reads the compose file, not the image metadata, to learn
-    # which port to route a domain to; nginx/nginx.conf listens on 8080 and the
+    # which port to route a domain to; nginx/default.conf.template listens on 8080 and the
     # image declares no EXPOSE, so without this the generated route points at 80
     # and the domain answers 502. `expose` does not publish to the host, so the
     # «no ports:» rule above still holds.
