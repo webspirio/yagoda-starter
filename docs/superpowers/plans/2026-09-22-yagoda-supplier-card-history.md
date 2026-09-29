@@ -10,6 +10,12 @@
 
 **Spec:** `docs/superpowers/specs/2026-09-22-yagoda-supplier-card-history-design.md`
 
+> **Superseded in part (2026-09-29, PR #153 review round 4).** The «D-1 is closed»
+> constraint below was overtaken by the stored-allocations slice (2026-09-26): the card now
+> shows per-receipt open amounts and the oldest-open hint off `/settlement`. The breakdown
+> terms this plan puts on `/balance` (Task 2) now ride on `/settlement` instead, so the line
+> under the tiles shares the balance tile's snapshot. See the spec's matching note.
+
 ## Global Constraints
 
 - **Worktree:** `/home/dz/work/yagoda-starter/.claude/worktrees/supplier-card`, branch `feat/148-supplier-card-history`. Never touch the main checkout or another worktree.

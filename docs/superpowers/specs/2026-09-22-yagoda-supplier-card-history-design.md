@@ -4,6 +4,20 @@
 **Programme slice:** 6 «Постачальники» and the card — `docs/superpowers/specs/2026-09-17-yagoda-mock-parity-programme.md` §5.6
 **Date:** 2026-09-22
 
+> **Superseded in part (2026-09-29, PR #153 review round 4).** Two things below no longer
+> describe the tree this ships in:
+>
+> - **D-1 was reopened by the stored-allocations slice (2026-09-26).** `payout_allocations`
+>   exists, and the card now shows per-receipt «у залишок», the «Відкриті залишки — за що
+>   саме винні» panel and the oldest-open hint (`OpenBalances`, `GET /suppliers/:id/settlement`).
+>   §3's «no allocation table exists» and the exclusions that follow from it are history.
+> - **The three terms of `debt` moved from `/balance` (§4.2) to `/settlement`.** The card's
+>   balance tile reads `/settlement`'s REPEATABLE READ snapshot, and a breakdown line fed
+>   from a second request could fail to add up to the tile above it. `/balance` keeps
+>   `debt` and the season counters (`intakes_count`, `kg_total`, `last_intake_date`).
+>   «Нараховано» is now `intakes_total + top_ups_total` — what the supplier was credited —
+>   and the line under the tiles names each term.
+
 ## 1. The complaint, in the client's words
 
 > Є вимога аби приймальник міг явно бачити коли зʼявився борг і що конкретно
