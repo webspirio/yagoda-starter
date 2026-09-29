@@ -200,7 +200,7 @@ Coolify altogether, see the last section.
 | Gate | Result |
 |---|---|
 | `SOURCE_COMMIT` interpolates in compose | ✅ 2026-09-10 — production runs `…-backend:sha-94ea42ee…`, the merge commit, and `/api/health/version` returns it |
-| Preview `SOURCE_COMMIT` == PR head SHA | ⏳ cannot be shown on #180 itself — its preview runs main's compose («The compose comes from `main`» below), so its backend dies before `/api/health/version` answers; filled in by the first PR preview after the merge, whose `deploy-preview` asserts exactly this |
+| Preview `SOURCE_COMMIT` == PR head SHA | ✅ 2026-09-29 — #181, the first PR after the #180 merge (it could not be shown on #180 itself, whose preview still ran main's old compose — «The compose comes from `main`» below): `https://pr-181.yagoda.webspirio.com/api/health/version` returned `0faf3e46…`, its head; on the server the backend had `DB_HOST=postgres-pr-181`, zero `EAI_AGAIN`, the seed exited 0 and nginx's rendered config read `proxy_pass http://backend-pr-181:3000/` |
 | Manual «Redeploy» keeps the same SHA | not exercised — CI re-runs `deploy-preview` instead. Per the deployment job's source the button checks out `pull/<N>/head`: pressed after a CI deploy it redeploys that same head; pressed right after a push it fails on pull, because CI has not built the new head yet |
 | Preview deleted on PR close with Auto Deploy off | ✅ 2026-09-29 — #179 closed at 20:56:15Z; by 20:58:10Z `docker ps -a`, `docker volume ls` and `docker network ls` showed nothing named `pr-179` and `application_previews` was empty. That stack had never come up healthy, so this also covers the failed-preview case of amendment #5 |
 | API lists previews (cap source) | ✗ — 4.3.23 exposes only `/applications/{uuid}/previews/{pr}/logs`, `PATCH` and `DELETE`, no list, and the application JSON carries none; the `preview` label stays the cap's source |
@@ -236,7 +236,12 @@ nothing sets it, keeps the plain name; the nginx image renders the same
 variable into `proxy_pass` from `nginx/default.conf.template` at start-up.
 Two side effects worth knowing: Coolify's compose parser registers every
 `$SERVICE_*` reference it sees as a hidden, value-less environment variable of
-the application (harmless — it is filtered out of the generated `.env`), and
+the application — observed on the first parse of the fixed compose
+(2026-09-29 21:35:39Z: `environment_variables` rows `SERVICE_NAME_POSTGRES`,
+`_REDIS`, `_BACKEND` with `NULL` values, one per env set), and harmless: the
+production `.env` written two minutes later carried the full
+`SERVICE_NAME_POSTGRES=postgres` etc., because the deployment job drops stored
+`SERVICE_NAME_*` rows before generating that file. And
 `docker compose config` shows the rendered result locally:
 `SERVICE_NAME_POSTGRES=postgres-pr-9 docker compose -f docker-compose.prod.yml config`.
 
