@@ -12,7 +12,7 @@ function validate(env: Record<string, string>) {
 }
 
 describe('envValidationSchema', () => {
-  it('treats empty BOOTSTRAP_OWNER_* as unset — docker-compose.prod.yml forwards them as ${VAR:-}', () => {
+  it('treats empty BOOTSTRAP_OWNER_* as unset — docker-compose.prod.yml forwards them as a bare ${VAR}, which renders "" when unset', () => {
     const { error, value } = validate({
       BOOTSTRAP_OWNER_LOGIN: '',
       BOOTSTRAP_OWNER_PASSWORD: '',
