@@ -17,3 +17,4 @@ docs
 **/*.md
 *.log
 .DS_Store
+# probe for #68 gate 4 — throwaway PR, never merged
