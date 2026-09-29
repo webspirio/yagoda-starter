@@ -153,8 +153,8 @@ export class CratesService {
    * §6.5 — the oldest issuance first, at the price it was taken at. The
    * operator chooses nothing.
    *
-   * THE SUPPLIER ROW IS LOCKED FIRST, exactly as `PayoutsService.writePayout` locks
-   * it: the tranches are a read-then-write over a derived sum, and no CHECK can
+   * THE SUPPLIER ROW IS LOCKED FIRST, exactly as every payout write locks it
+   * (`AllocationsService.withinSupplierLedger`): the tranches are a read-then-write over a derived sum, and no CHECK can
    * express «not more than is outstanding». Without the lock two returns in
    * flight both read `remaining = 20`, both allocate it, and the supplier is
    * refunded twice for one set of crates. The lock does NOT protect
@@ -174,13 +174,13 @@ export class CratesService {
    * THE ONE RETURN WRITER, extracted so a receipt can call it too (spec §8.3,
    * Task R3). `CratesService.returnCrates` below is this method plus a caller
    * that has already resolved a point, a supplier and an open shift, and
-   * always passes `intakeId: null`; `IntakesService.create` resolves the same
+   * always passes `intakeId: null`; `CreateIntakeCommand` resolves the same
    * three things ITSELF, inside `POST /intakes`'s own transaction, and calls
    * this after inserting the intake and before any payout, passing its own
    * intake's id. That transaction has ALREADY locked this supplier row
    * `FOR UPDATE` as its very first statement — before its `intakes` advisory
-   * lock and before the intake insert (see `IntakesService.create`'s lock
-   * order). This method LOCKS THE SUPPLIER ROW ITSELF regardless of which
+   * lock and before the intake insert (`AllocationsService.withinSupplierLedger`).
+   * This method LOCKS THE SUPPLIER ROW ITSELF regardless of which
    * caller it is: re-locking an already-held row in the SAME transaction is a
    * no-op in Postgres (idempotent), not a second lock either caller has to
    * remember to skip.
@@ -365,7 +365,7 @@ export class CratesService {
 
   /**
    * §9.4 AS AMENDED BY THE CLIENT, 2026-09-15 — and the amendment is the whole
-   * reason this is not `PayoutsService.loadForWrite`.
+   * reason this is not `LoadVisiblePayoutQuery.load`.
    *
    * The rules table says «ящиковий документ → тільки керівник». The client
    * relaxed it: an operator may void ANY crate document at their OWN point
@@ -552,7 +552,7 @@ export class CratesService {
       /**
        * Spec §8.3 — a return a receipt wrote is not a document of its own to
        * strike out from here; it is voided ONLY as part of voiding that
-       * receipt (`voidReturnForIntake`, called from `IntakesService`'s void,
+       * receipt (`voidReturnForIntake`, called from `VoidIntakeCommand`,
        * Task R3), under the SAME supplier lock as the receipt's other writes.
        * This route's own `assertMayVoid` runs FIRST (right above), so another
        * point still 404s before this check ever gets a chance to leak that a
@@ -610,7 +610,7 @@ export class CratesService {
   /**
    * The cascade half of spec §8.3: voiding the receipt voids the return IT
    * wrote, in the SAME transaction, so the two never disagree about whether
-   * the crates came back. NO PERMISSION CHECK HERE — `IntakesService`'s own
+   * the crates came back. NO PERMISSION CHECK HERE — `VoidIntakeCommand`'s own
    * void already ran §9.4's rule for the receipt, and a linked return's OWN
    * void route (`POST /crate-returns/:id/void`) refuses it outright with a
    * 409 `RETURN_BELONGS_TO_INTAKE` (see the check just above this method) —
@@ -620,7 +620,7 @@ export class CratesService {
    * NO SUPPLIER LOCK HERE EITHER. `voidReturn`/`writeReturn` lock the
    * supplier row themselves because each is reachable on its own; this method
    * is reachable ONLY from inside the receipt's void transaction
-   * (`IntakesService.void`), which has already locked that same supplier row
+   * (`VoidIntakeCommand`), which has already locked that same supplier row
    * before its own pessimistic load of the intake and before calling here —
    * taking a second, redundant lock would just be a second place that could
    * forget the order `writeReturn`/`voidIssuance`/`voidReturn` already share.

@@ -380,8 +380,8 @@ describe('CratesService', () => {
   });
 
   /**
-   * R2 — the extracted writer, exercised directly the way `IntakesService`
-   * (Task R3) will call it: with an already-resolved shift and a real
+   * R2 — the extracted writer, exercised directly the way `CreateIntakeCommand`
+   * calls it: with an already-resolved shift and a real
    * `intakeId`, inside a transaction the caller opened.
    */
   describe('writeReturn', () => {
@@ -837,8 +837,8 @@ describe('CratesService', () => {
   });
 
   /**
-   * R2 — the cascade half of spec §8.3 (no caller yet; Task R3 wires
-   * `IntakesService`'s void to call this inside its own transaction).
+   * R2 — the cascade half of spec §8.3 (`VoidIntakeCommand` calls
+   * this inside its own transaction).
    */
   describe('voidReturnForIntake', () => {
     const reasonArgs = { actor: operator, intakeId: 'intake-1', reason: 'сторно квитанції' };

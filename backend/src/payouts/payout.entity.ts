@@ -28,13 +28,17 @@ import { User } from '../users/user.entity';
  * coming back, so the CHECKs differ: the void trio is all-or-nothing, the
  * return pair requires only the timestamp and the settler.
  *
- * VOIDING A PAYOUT DOES NOT RETURN THE CASH, and this is the schema's sharpest
- * rule: «сторновано виплату 8 000,00 ₴ → каса НЕ виросла на 8 000 → створюється
- * ОЧІКУВАНЕ ПОВЕРНЕННЯ під фізичне внесення грошей… Інакше сторно стає способом
- * красти.» The money left the drawer and comes back only when a human puts it
- * back, which is what stamping `return_settled_at` records. The amount is NEVER
- * stored again — it always equals `amount`, and «внесення завжди на всю суму:
- * часткового не буває».
+ * IN A CLOSED SHIFT, VOIDING A PAYOUT DOES NOT RETURN THE CASH, and this is the
+ * schema's sharpest rule: «сторновано виплату 8 000,00 ₴ → каса НЕ виросла на
+ * 8 000 → створюється ОЧІКУВАНЕ ПОВЕРНЕННЯ під фізичне внесення грошей…
+ * Інакше сторно стає способом красти.» The money left the drawer and comes
+ * back only when a human puts it back, which is what stamping
+ * `return_settled_at` records. The amount is NEVER stored again — it always
+ * equals `amount`, and «внесення завжди на всю суму: часткового не буває».
+ *
+ * In an open shift it does (2026-09-28 team decision): the supplier is at the
+ * counter, so the void stamps the return itself and sets `returned_on_void`,
+ * and `point-cash` books it to this payout's own shift.
  *
  * THE ASYMMETRY THIS CREATES, named rather than fixed: the DEBT formula filters
  * voided payouts OUT (they were never really paid), while the CASH formula
@@ -58,6 +62,7 @@ import { User } from '../users/user.entity';
 )
 @Check('CHK_payouts_return_requires_void', `"return_settled_at" IS NULL OR "voided_at" IS NOT NULL`)
 @Check('CHK_payouts_amount', `"amount" > 0`)
+@Check('CHK_payouts_returned_on_void', `NOT "returned_on_void" OR "return_settled_at" IS NOT NULL`)
 @Index('IDX_payouts_supplier_created', ['supplier_id', 'created_at'])
 @Index('IDX_payouts_shift', ['shift_id'])
 @Index('IDX_payouts_intake', ['intake_id'], { where: '"intake_id" IS NOT NULL' })
@@ -120,7 +125,8 @@ export class Payout {
   void_reason: string | null;
 
   /** The moment a human physically put the cash back. See this class's header:
-   *  a void alone does NOT do this. */
+   *  a void alone does NOT do this — except in an open shift, see
+   *  `returned_on_void`. */
   @Column({ type: 'timestamptz', nullable: true })
   return_settled_at: Date | null;
 
@@ -134,6 +140,11 @@ export class Payout {
   /** OPTIONAL, unlike `void_reason`. See this class's header. */
   @Column({ type: 'text', nullable: true })
   return_note: string | null;
+
+  /** The return happened AT the void, in an open shift (2026-09-28): cash goes back to this
+   *  payout's own shift, not to the calendar date of `return_settled_at`. */
+  @Column({ type: 'boolean', default: false })
+  returned_on_void: boolean;
 
   @CreateDateColumn({ type: 'timestamptz' })
   created_at: Date;

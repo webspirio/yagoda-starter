@@ -182,7 +182,7 @@ describe('CrateStandingService.forPoint (Postgres)', () => {
    * `opts.intakeId` links it to a receipt (`crate_returns.intake_id`, §8.3's
    * `POST /intakes` `returned_crates`) — written by raw SQL rather than the
    * real service, since this file exercises `CrateStandingService`'s reading
-   * of the two tables, not `IntakesService`'s write orchestration (that is
+   * of the two tables, not `CreateIntakeCommand`'s write orchestration (that is
    * `intake-crate-return.db-spec.ts`'s job).
    */
   const giveBack = async (

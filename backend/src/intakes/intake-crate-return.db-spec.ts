@@ -329,7 +329,7 @@ describe('POST /intakes with returned_crates (HTTP, Postgres)', () => {
     expect(await count('crate_returns', supplierId)).toBe(0);
   });
 
-  it('voiding the receipt voids its return with the same reason — the payout stays live', async () => {
+  it('voiding the receipt voids its return with the same reason — and, in an open shift, its payout', async () => {
     const bookBefore = await crateBook();
 
     await request(app.getHttpServer())
@@ -349,11 +349,14 @@ describe('POST /intakes with returned_crates (HTTP, Postgres)', () => {
     expect(await outstanding(returnedSupplierId)).toBe(50);
     expect(await crateBook()).toBe(add(bookBefore, '2400.00'));
 
-    const payouts = (await ds.query(`SELECT voided_at FROM payouts WHERE intake_id = $1`, [
-      returnedIntakeId,
-    ])) as { voided_at: Date | null }[];
+    // 2026-09-28: an open-shift void takes the bound payout with it, cash back at once.
+    const payouts = (await ds.query(
+      `SELECT voided_at, returned_on_void FROM payouts WHERE intake_id = $1`,
+      [returnedIntakeId],
+    )) as { voided_at: Date | null; returned_on_void: boolean }[];
     expect(payouts).toHaveLength(1);
-    expect(payouts[0].voided_at).toBeNull();
+    expect(payouts[0].voided_at).not.toBeNull();
+    expect(payouts[0].returned_on_void).toBe(true);
 
     const detail = await request(app.getHttpServer())
       .get(`/intakes/${returnedIntakeId}`)

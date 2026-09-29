@@ -13,8 +13,8 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
  *
  * RESTRICT, not CASCADE: nothing deletes a document (§9.3).
  */
-export class CrateReturnIntakeLink1788600000018 implements MigrationInterface {
-  name = 'CrateReturnIntakeLink1788600000018';
+export class CrateReturnIntakeLink1788600000020 implements MigrationInterface {
+  name = 'CrateReturnIntakeLink1788600000020';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`ALTER TABLE "crate_returns" ADD COLUMN "intake_id" uuid`);

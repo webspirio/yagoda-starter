@@ -9,16 +9,22 @@ import { Button } from '@/shared/ui/button';
 import { Spinner } from '@/shared/ui/spinner';
 import { ApiError, isTruncated } from '@/shared/api';
 import { sum, cmp, isZero, formatUah } from '@/shared/lib/money';
-import { useSupplierQuery, useSupplierBalanceQuery, supplierName } from '@/entities/supplier';
+import {
+  useSupplierQuery,
+  useSupplierSettlementQuery,
+  supplierName,
+} from '@/entities/supplier';
 import { useIntakesQuery, type Intake } from '@/entities/intake';
 import { usePayoutsQuery, type Payout } from '@/entities/payout';
 import { useIntakeTopUpsQuery, type IntakeTopUp } from '@/entities/intake-top-up';
 import { useMeQuery } from '@/entities/user';
 import { usePointOptionsQuery } from '@/entities/collection-point';
+import { daysBetween, todayIso, formatShortDate } from '@/shared/lib/date';
 import { PayoutDialog } from '@/features/settle-payout';
-import { VoidDocumentDialog } from '@/features/void-document';
+import { VoidDocumentDialog, reopenedCodes } from '@/features/void-document';
 import { TopUpDialog } from '@/features/top-up-intake';
-import { ReceiptDialog } from '@/widgets/receipt';
+import { ReceiptDialog, useReceiptOpener } from '@/widgets/receipt';
+import { OpenBalances } from './OpenBalances';
 import { SupplierTimeline } from './SupplierTimeline';
 
 /**
@@ -33,22 +39,26 @@ export function SupplierCardPage() {
   const { id } = useParams<{ id: string }>();
 
   const supplier = useSupplierQuery(id ?? null);
-  const balance = useSupplierBalanceQuery(id ?? null);
   const intakes = useIntakesQuery({ supplierId: id, limit: 100 });
   const payouts = usePayoutsQuery({ supplierId: id, limit: 100 });
   const topUps = useIntakeTopUpsQuery({ supplierId: id, limit: 100 });
+  // THE FOURTH QUERY — spec 2026-09-25 §3.8. The three lists stay for the
+  // history (voided rows, reasons, authors); this one carries the arithmetic.
+  const settlement = useSupplierSettlementQuery(id ?? null);
   const me = useMeQuery();
   const points = usePointOptionsQuery();
 
   const [payoutOpen, setPayoutOpen] = useState(false);
   const [payoutKey, setPayoutKey] = useState(0);
-  const [receiptId, setReceiptId] = useState<string | null>(null);
-  const [receiptOpen, setReceiptOpen] = useState(false);
+  const receipt = useReceiptOpener();
+  const { openReceipt } = receipt;
   // ONE void dialog for both kinds. `features/void-document` grew a fourth
   // `kind` rather than this page growing a second dialog — a top-up is voided
   // by the same §9.3 rule, with the same required reason.
   const [voidTarget, setVoidTarget] = useState<
-    { kind: 'payout' | 'topUp'; id: string; code: string } | null
+    | { kind: 'payout'; id: string; code: string; amount: string; shiftClosed: boolean }
+    | { kind: 'topUp'; id: string; code: string }
+    | null
   >(null);
   const [voidOpen, setVoidOpen] = useState(false);
   const [voidKey, setVoidKey] = useState(0);
@@ -60,12 +70,14 @@ export function SupplierCardPage() {
     setPayoutKey((k) => k + 1);
     setPayoutOpen(true);
   };
-  const openReceipt = (intakeId: string) => {
-    setReceiptId(intakeId);
-    setReceiptOpen(true);
-  };
   const openVoidPayout = (target: Payout) => {
-    setVoidTarget({ kind: 'payout', id: target.id, code: target.code });
+    setVoidTarget({
+      kind: 'payout',
+      id: target.id,
+      code: target.code,
+      amount: target.amount,
+      shiftClosed: target.shift_closed,
+    });
     setVoidKey((k) => k + 1);
     setVoidOpen(true);
   };
@@ -100,7 +112,13 @@ export function SupplierCardPage() {
     );
   }
 
-  if (supplier.isError || balance.isError || intakes.isError || payouts.isError || topUps.isError) {
+  if (
+    supplier.isError ||
+    intakes.isError ||
+    payouts.isError ||
+    topUps.isError ||
+    settlement.isError
+  ) {
     return (
       <div className="flex flex-col items-center gap-3 py-6 text-center">
         <p role="alert" className="text-destructive">
@@ -115,12 +133,12 @@ export function SupplierCardPage() {
 
   if (
     supplier.isPending ||
-    balance.isPending ||
     intakes.isPending ||
     payouts.isPending ||
     topUps.isPending ||
+    settlement.isPending ||
     !supplier.data ||
-    !balance.data
+    !settlement.data
   ) {
     return (
       <div className="flex justify-center py-12">
@@ -130,7 +148,10 @@ export function SupplierCardPage() {
   }
 
   const s = supplier.data;
-  const debt = balance.data.debt;
+  // THE TILE, THE HINT AND OpenBalances READ ONE SNAPSHOT: `settlement.data`,
+  // not `balance.data` — two separate requests can otherwise land either
+  // side of a write and disagree about the same number on the same screen.
+  const debt = settlement.data.debt;
   const pointName = (points.data ?? []).find((p) => p.id === s.collection_point_id)?.name ?? '';
 
   const intakeRows = intakes.data?.data ?? [];
@@ -152,6 +173,30 @@ export function SupplierCardPage() {
   // says so instead of quietly summing only what happened to load.
   const truncated = isTruncated(intakes.data) || isTruncated(topUps.data);
   const payoutsTruncated = isTruncated(payouts.data);
+
+  const st = settlement.data;
+  const intakesById = new Map(intakeRows.map((i) => [i.id, i]));
+  const openByLineId = new Map(st.lines.map((l) => [l.id, l.open]));
+  const lineDate = new Map(st.lines.map((l) => [l.id, l.business_date]));
+  const coversByPayoutId = new Map(
+    st.payouts.map((p) => {
+      const dates = [...new Set(p.covers.map((c) => lineDate.get(c.line_id) ?? ''))]
+        .filter((d) => d !== '')
+        .sort();
+      return [p.id, { dates, unallocated: p.unallocated }];
+    }),
+  );
+  const oldestOpen = st.lines.find((l) => !isZero(l.open));
+  const balanceHint = oldestOpen
+    ? t('supplierCard.open.oldest', {
+        date: formatShortDate(oldestOpen.business_date, i18n.language),
+        // A business_date after "today" (a reopened-shift receipt, a clock
+        // skew) must never print a negative day count.
+        count: Math.max(0, daysBetween(oldestOpen.business_date, todayIso())),
+      })
+    : isZero(debt)
+      ? t('supplierCard.tiles.balanceHint')
+      : undefined;
 
   return (
     <>
@@ -202,9 +247,16 @@ export function SupplierCardPage() {
           label={t('supplierCard.tiles.balance')}
           value={formatUah(debt, i18n.language)}
           tone={cmp(debt, '0') === 1 ? 'amber' : 'leaf'}
-          hint={isZero(debt) ? t('supplierCard.tiles.balanceHint') : undefined}
+          hint={balanceHint}
         />
       </StatGrid>
+
+      <OpenBalances
+        lines={st.lines}
+        unallocated={st.unallocated}
+        intakesById={intakesById}
+        locale={i18n.language}
+      />
 
       <SectionCard eyebrow={t('supplierCard.timeline.title')}>
         <SupplierTimeline
@@ -212,6 +264,8 @@ export function SupplierCardPage() {
           payouts={payoutRows}
           topUps={topUpRows}
           me={me.data}
+          openByLineId={openByLineId}
+          coversByPayoutId={coversByPayoutId}
           onOpenReceipt={openReceipt}
           onVoidPayout={openVoidPayout}
           onAddTopUp={openTopUp}
@@ -225,10 +279,11 @@ export function SupplierCardPage() {
       </SectionCard>
 
       <ReceiptDialog
-        key={receiptId ?? 'none'}
-        intakeId={receiptId}
-        open={receiptOpen}
-        onClose={() => setReceiptOpen(false)}
+        key={receipt.receiptId ?? 'none'}
+        intakeId={receipt.receiptId}
+        open={receipt.open}
+        startWithVoid={receipt.startWithVoid}
+        onClose={receipt.close}
       />
 
       {voidTarget ? (
@@ -239,6 +294,13 @@ export function SupplierCardPage() {
           code={voidTarget.code}
           open={voidOpen}
           onClose={() => setVoidOpen(false)}
+          {...(voidTarget.kind === 'payout'
+            ? {
+                shiftClosed: voidTarget.shiftClosed,
+                payoutAmount: voidTarget.amount,
+                reopens: reopenedCodes(st, voidTarget.id, null),
+              }
+            : {})}
         />
       ) : null}
 

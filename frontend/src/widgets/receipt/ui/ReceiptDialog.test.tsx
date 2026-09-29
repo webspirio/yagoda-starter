@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { expectNoAxeViolations } from '../../../test-axe';
 import type { IntakeDetail } from '@/entities/intake';
@@ -9,6 +9,7 @@ const {
   intakeMock,
   supplierMock,
   balanceMock,
+  settlementMock,
   gradesMock,
   tareTypesMock,
   pointsMock,
@@ -18,6 +19,7 @@ const {
   intakeMock: vi.fn(),
   supplierMock: vi.fn(),
   balanceMock: vi.fn(),
+  settlementMock: vi.fn(),
   gradesMock: vi.fn(),
   tareTypesMock: vi.fn(),
   pointsMock: vi.fn(),
@@ -25,13 +27,15 @@ const {
   voidDialogMock: vi.fn(),
 }));
 
-vi.mock('@/entities/intake', () => ({
+vi.mock('@/entities/intake', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/entities/intake')>()),
   useIntakeQuery: (id: string | null) => intakeMock(id),
 }));
 
 vi.mock('@/entities/supplier', () => ({
   useSupplierQuery: (id: string | null) => supplierMock(id),
   useSupplierBalanceQuery: (id: string | null) => balanceMock(id),
+  useSupplierSettlementQuery: (id: string | null) => settlementMock(id),
   supplierName: (s: { first_name: string; last_name: string }) => `${s.first_name} ${s.last_name}`,
 }));
 
@@ -56,6 +60,8 @@ vi.mock('@/features/void-document', () => ({
     voidDialogMock(props);
     return props.open ? <div data-testid="void-dialog-mock" /> : null;
   },
+  otherCovered: () => '0.00',
+  reopenedCodes: () => [],
 }));
 
 const SUPPLIER = {
@@ -110,11 +116,13 @@ function buildIntake(overrides: Partial<IntakeDetail> = {}): IntakeDetail {
     voided_at: null,
     voided_by_user_id: null,
     void_reason: null,
+    shift_closed: false,
     created_at: '2026-09-08T08:20:00.000Z',
     net_kg: '36.90',
     lines_count: 2,
     supplier_name: 'Ніна Ільчук',
     paid_amount: '0.00',
+    open_amount: '0.00',
     payouts: [],
     received_by_name: 'Оксана Гнатюк',
     crate_return: null,
@@ -175,10 +183,12 @@ function setUp({
     isError: false,
   });
   meMock.mockReturnValue({ data: me, isPending: false, isError: false });
+  settlementMock.mockReturnValue({ data: undefined, isPending: false, isError: false });
 }
 
 beforeEach(() => {
   voidDialogMock.mockReset();
+  settlementMock.mockReset();
 });
 
 describe('ReceiptDialog', () => {
@@ -251,7 +261,7 @@ describe('ReceiptDialog', () => {
       intake: buildIntake({
         paid_amount: '10000.00',
         payouts: [
-          { id: 'payout-1', code: 'SHP-PO-20260908-00031', amount: '10000.00', voided_at: null },
+          { id: 'payout-1', code: 'SHP-PO-20260908-00031', amount: '10000.00', created_at: '2026-09-08T08:25:00.000Z', voided_at: null },
         ],
       }),
     });
@@ -278,6 +288,7 @@ describe('ReceiptDialog', () => {
             id: 'payout-1',
             code: 'SHP-PO-20260907-00020',
             amount: '5000.00',
+            created_at: '2026-09-07T08:25:00.000Z',
             voided_at: '2026-09-07T12:00:00.000Z',
           },
         ],
@@ -499,5 +510,173 @@ describe('ReceiptDialog', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Close' }));
 
     expect(onClose).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('ReceiptDialog wiring into VoidDocumentDialog (#125)', () => {
+  it('builds linkedPayout from the payout with voided_at === null', () => {
+    setUp({
+      me: OWNER,
+      intake: buildIntake({
+        payouts: [
+          { id: 'payout-1', code: 'SHP-PO-1', amount: '5000.00', created_at: '2026-09-08T08:25:00.000Z', voided_at: '2026-09-07T12:00:00.000Z' },
+          { id: 'payout-2', code: 'SHP-PO-2', amount: '3000.00', created_at: '2026-09-08T08:25:00.000Z', voided_at: null },
+        ],
+      }),
+    });
+    render(<ReceiptDialog intakeId="intake-1" open onClose={vi.fn()} />);
+
+    expect(voidDialogMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        linkedPayout: expect.objectContaining({ code: 'SHP-PO-2', amount: '3000.00' }),
+      }),
+    );
+  });
+
+  it('leaves linkedPayout undefined when every payout is voided', () => {
+    setUp({
+      me: OWNER,
+      intake: buildIntake({
+        payouts: [
+          { id: 'payout-1', code: 'SHP-PO-1', amount: '5000.00', created_at: '2026-09-08T08:25:00.000Z', voided_at: '2026-09-07T12:00:00.000Z' },
+        ],
+      }),
+    });
+    render(<ReceiptDialog intakeId="intake-1" open onClose={vi.fn()} />);
+
+    expect(voidDialogMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({ linkedPayout: undefined }),
+    );
+  });
+
+  it('hides Void from the author operator once the shift is closed', () => {
+    setUp({ me: OPERATOR_AUTHOR, intake: buildIntake({ shift_closed: true }) });
+    render(<ReceiptDialog intakeId="intake-1" open onClose={vi.fn()} />);
+
+    expect(screen.queryByRole('button', { name: 'Void' })).not.toBeInTheDocument();
+  });
+
+  it('still shows Void to the owner on a closed shift', () => {
+    setUp({ me: OWNER, intake: buildIntake({ shift_closed: true }) });
+    render(<ReceiptDialog intakeId="intake-1" open onClose={vi.fn()} />);
+
+    expect(screen.getByRole('button', { name: 'Void' })).toBeInTheDocument();
+  });
+
+  it('passes shiftClosed through to the void dialog', () => {
+    setUp({ me: OWNER, intake: buildIntake({ shift_closed: true }) });
+    render(<ReceiptDialog intakeId="intake-1" open onClose={vi.fn()} />);
+
+    expect(voidDialogMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({ shiftClosed: true }),
+    );
+  });
+
+  it('leaves otherCovered null while the settlement has no data', () => {
+    setUp({
+      me: OWNER,
+      intake: buildIntake({
+        payouts: [{ id: 'payout-1', code: 'SHP-PO-1', amount: '3000.00', created_at: '2026-09-08T08:25:00.000Z', voided_at: null }],
+      }),
+    });
+    settlementMock.mockReturnValue({ data: undefined, isPending: true, isError: false });
+    render(<ReceiptDialog intakeId="intake-1" open onClose={vi.fn()} />);
+
+    expect(voidDialogMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        linkedPayout: expect.objectContaining({ otherCovered: null }),
+      }),
+    );
+  });
+
+  it('passes reopens: null and reopensFailed when the settlement query errors', () => {
+    setUp({
+      me: OWNER,
+      intake: buildIntake({
+        payouts: [{ id: 'payout-1', code: 'SHP-PO-1', amount: '3000.00', created_at: '2026-09-08T08:25:00.000Z', voided_at: null }],
+      }),
+    });
+    settlementMock.mockReturnValue({ data: undefined, isPending: false, isError: true });
+    render(<ReceiptDialog intakeId="intake-1" open onClose={vi.fn()} />);
+
+    expect(voidDialogMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        linkedPayout: expect.objectContaining({ reopens: null, reopensFailed: true }),
+      }),
+    );
+  });
+
+  it('still renders the receipt (not the generic error) when the settlement query errors', () => {
+    setUp({
+      me: OWNER,
+      intake: buildIntake({
+        payouts: [{ id: 'payout-1', code: 'SHP-PO-1', amount: '3000.00', created_at: '2026-09-08T08:25:00.000Z', voided_at: null }],
+      }),
+    });
+    settlementMock.mockReturnValue({ data: undefined, isPending: false, isError: true });
+    render(<ReceiptDialog intakeId="intake-1" open onClose={vi.fn()} />);
+
+    expect(screen.getByText('SHP-IN-20260908-00412')).toBeInTheDocument();
+    expect(screen.queryByText('Something went wrong')).not.toBeInTheDocument();
+  });
+});
+
+describe('ReceiptDialog startWithVoid — the row action opens straight into the void', () => {
+  it('opens the void dialog at once when the viewer may void', () => {
+    setUp({ me: OWNER });
+    render(<ReceiptDialog intakeId="intake-1" open startWithVoid onClose={vi.fn()} />);
+
+    expect(screen.getByTestId('void-dialog-mock')).toBeInTheDocument();
+  });
+
+  it('opens the void dialog for the author on an open shift', () => {
+    setUp({ me: OPERATOR_AUTHOR });
+    render(<ReceiptDialog intakeId="intake-1" open startWithVoid onClose={vi.fn()} />);
+
+    expect(screen.getByTestId('void-dialog-mock')).toBeInTheDocument();
+  });
+
+  it('does not open it when the viewer may not void', () => {
+    setUp({ me: OPERATOR_OTHER });
+    render(<ReceiptDialog intakeId="intake-1" open startWithVoid onClose={vi.fn()} />);
+
+    expect(screen.queryByTestId('void-dialog-mock')).not.toBeInTheDocument();
+  });
+
+  it('does not open it without startWithVoid', () => {
+    setUp({ me: OWNER });
+    render(<ReceiptDialog intakeId="intake-1" open onClose={vi.fn()} />);
+
+    expect(screen.queryByTestId('void-dialog-mock')).not.toBeInTheDocument();
+  });
+
+  it('closing the void dialog leaves the receipt open, and it does not reopen', () => {
+    setUp({ me: OWNER });
+    const onClose = vi.fn();
+    const { rerender } = render(
+      <ReceiptDialog intakeId="intake-1" open startWithVoid onClose={onClose} />,
+    );
+
+    const { onClose: closeVoid } = voidDialogMock.mock.lastCall![0] as { onClose: () => void };
+    act(() => closeVoid());
+    rerender(<ReceiptDialog intakeId="intake-1" open startWithVoid onClose={onClose} />);
+
+    expect(screen.queryByTestId('void-dialog-mock')).not.toBeInTheDocument();
+    expect(screen.getByText('SHP-IN-20260908-00412')).toBeInTheDocument();
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it('opens it again on the next opening of the same receipt', () => {
+    setUp({ me: OWNER });
+    const { rerender } = render(
+      <ReceiptDialog intakeId="intake-1" open startWithVoid onClose={vi.fn()} />,
+    );
+    const { onClose: closeVoid } = voidDialogMock.mock.lastCall![0] as { onClose: () => void };
+    act(() => closeVoid());
+
+    rerender(<ReceiptDialog intakeId="intake-1" open={false} startWithVoid onClose={vi.fn()} />);
+    rerender(<ReceiptDialog intakeId="intake-1" open startWithVoid onClose={vi.fn()} />);
+
+    expect(screen.getByTestId('void-dialog-mock')).toBeInTheDocument();
   });
 });

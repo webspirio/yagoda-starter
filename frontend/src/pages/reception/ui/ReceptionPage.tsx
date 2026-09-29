@@ -19,7 +19,7 @@ import { useSupplierBalanceQuery, type Supplier } from '@/entities/supplier';
 import { usePricedGradesQuery } from '@/entities/product-grade';
 import { useTareTypeOptionsQuery } from '@/entities/tare-type';
 import { usePointCashForPointQuery } from '@/entities/point-cash';
-import { ReceiptDialog } from '@/widgets/receipt';
+import { ReceiptDialog, useReceiptOpener } from '@/widgets/receipt';
 import { useOpenShiftMutation, CountDrawerDialog } from '@/features/count-shift';
 import type { SupplierPickerHandle } from '@/features/pick-supplier';
 import { useCreateIntakeMutation } from '../api/intakes';
@@ -112,7 +112,8 @@ export function ReceptionPage() {
   // Read only inside event handlers (the Enter guard below, and after a
   // successful submit) — never during render, which the React Compiler bans.
   const pickerRef = useRef<SupplierPickerHandle>(null);
-  const [receiptId, setReceiptId] = useState<string | null>(null);
+  const receipt = useReceiptOpener();
+  const { openReceipt } = receipt;
   const [openDialogOpen, setOpenDialogOpen] = useState(false);
   // Bumped on every open so the dialog remounts with fresh RHF defaults and no
   // banner from the refusal before it — the convention `ReopenShiftDialog`
@@ -273,7 +274,7 @@ export function ReceptionPage() {
               : t('reception.toast.settled'),
         },
       );
-      setReceiptId(created.id);
+      openReceipt(created.id);
       // The mock resets everything, supplier included: the next person in the
       // queue is a new visit, not an edit of this one.
       reset({
@@ -512,7 +513,7 @@ export function ReceptionPage() {
               isOwner={isOwner}
               targetCrates={targetCrates}
             />
-            <TodayReceipts shiftId={shift.data?.id} onOpen={setReceiptId} />
+            <TodayReceipts shiftId={shift.data?.id} me={me} onOpen={openReceipt} />
           </div>
         </div>
       </>
@@ -557,10 +558,11 @@ export function ReceptionPage() {
         />
       ) : null}
       <ReceiptDialog
-        key={receiptId}
-        intakeId={receiptId}
-        open={receiptId !== null}
-        onClose={() => setReceiptId(null)}
+        key={receipt.receiptId}
+        intakeId={receipt.receiptId}
+        open={receipt.open}
+        startWithVoid={receipt.startWithVoid}
+        onClose={receipt.clear}
       />
     </>
   );

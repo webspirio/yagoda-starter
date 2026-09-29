@@ -3,9 +3,13 @@ import { renderHook, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import MockAdapter from 'axios-mock-adapter';
 import type { ReactNode } from 'react';
-import { httpClient } from '@/shared/api';
+import { httpClient, attachAuthInterceptors } from '@/shared/api';
 import { queryKeys } from '@/shared/api/queryKeys';
 import { useVoidDocumentMutation } from './useVoidDocument';
+
+// Needed so a mocked error response turns into an ApiError with a `.code` —
+// apiErrorCode() (used by the onError below) reads that, not the raw axios error.
+attachAuthInterceptors(httpClient, { getToken: () => null, onUnauthorized: () => {} });
 
 let mock: MockAdapter;
 let queryClient: QueryClient;
@@ -65,7 +69,7 @@ describe('useVoidDocumentMutation', () => {
 
     // `POST /intakes` can write a linked crate return (§8.3); voiding the
     // receipt voids that return too, so a stale crate/point-cash cache must
-    // not survive the void (see useVoidDocument.ts's INTAKE_VOID_KEYS).
+    // not survive the void (see useVoidDocument.ts's `intake` descriptor).
     await waitFor(() => {
       expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: queryKeys.intakes });
       expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: queryKeys.payouts });
@@ -73,6 +77,20 @@ describe('useVoidDocumentMutation', () => {
       expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: queryKeys.crates });
       expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: queryKeys.crateBalances });
       expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: queryKeys.pointCash });
+    });
+  });
+
+  it('voiding a top-up refreshes intakes: the parent receipt\'s open_amount moves', async () => {
+    mock.onPost('/intake-top-ups/t1/void').reply(200);
+    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries');
+    const { result } = renderHook(() => useVoidDocumentMutation(), { wrapper });
+
+    await result.current.mutateAsync({ kind: 'topUp', id: 't1', reason: 'mistake' });
+
+    await waitFor(() => {
+      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: queryKeys.intakes });
+      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: queryKeys.intakeTopUps });
+      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: queryKeys.supplierBalances });
     });
   });
 
@@ -104,5 +122,52 @@ describe('useVoidDocumentMutation', () => {
     expect(invalidateSpy).not.toHaveBeenCalledWith({ queryKey: queryKeys.supplierBalances });
     expect(invalidateSpy).not.toHaveBeenCalledWith({ queryKey: queryKeys.intakes });
     expect(invalidateSpy).not.toHaveBeenCalledWith({ queryKey: queryKeys.payouts });
+  });
+
+  it('sends the payout decision for an intake', async () => {
+    mock.onPost('/intakes/i1/void').reply(201);
+    const { result } = renderHook(() => useVoidDocumentMutation(), { wrapper });
+
+    await result.current.mutateAsync({ kind: 'intake', id: 'i1', reason: 'r', payout: 'void' });
+
+    expect(JSON.parse(mock.history.post[0].data as string)).toEqual({ reason: 'r', payout: 'void' });
+  });
+
+  it('invalidates point cash after an intake void (a returned payout refills the drawer)', async () => {
+    mock.onPost('/intakes/i1/void').reply(201);
+    const spy = vi.spyOn(queryClient, 'invalidateQueries');
+    const { result } = renderHook(() => useVoidDocumentMutation(), { wrapper });
+
+    await result.current.mutateAsync({ kind: 'intake', id: 'i1', reason: 'r' });
+
+    await waitFor(() =>
+      expect(spy).toHaveBeenCalledWith({ queryKey: queryKeys.pointCash }),
+    );
+  });
+
+  it('invalidates the kind’s queries on a stale-dialog error (PAYOUT_DECISION_NOT_APPLICABLE)', async () => {
+    mock.onPost('/intakes/i1/void').reply(400, { code: 'PAYOUT_DECISION_NOT_APPLICABLE' });
+    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries');
+    const { result } = renderHook(() => useVoidDocumentMutation(), { wrapper });
+
+    await expect(
+      result.current.mutateAsync({ kind: 'intake', id: 'i1', reason: 'r' }),
+    ).rejects.toThrow();
+
+    await waitFor(() =>
+      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: queryKeys.intakes }),
+    );
+  });
+
+  it('does not invalidate anything on a generic failure', async () => {
+    mock.onPost('/intakes/i1/void').reply(500);
+    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries');
+    const { result } = renderHook(() => useVoidDocumentMutation(), { wrapper });
+
+    await expect(
+      result.current.mutateAsync({ kind: 'intake', id: 'i1', reason: 'r' }),
+    ).rejects.toThrow();
+
+    expect(invalidateSpy).not.toHaveBeenCalled();
   });
 });

@@ -1,7 +1,8 @@
 import { randomUUID } from 'crypto';
 import { DataSource } from 'typeorm';
 import { openTestDataSource } from '../testing/db-harness';
-import { SupplierBalanceService } from './supplier-balance.service';
+import { SupplierDebtQuery } from './queries/supplier-debt.query';
+import { ListSupplierBalancesQuery } from './queries/list-supplier-balances.query';
 
 /**
  * THE THIRD TERM, against a real Postgres.
@@ -13,7 +14,8 @@ import { SupplierBalanceService } from './supplier-balance.service';
  */
 describe('debt with intake top-ups (Postgres)', () => {
   let ds: DataSource;
-  let service: SupplierBalanceService;
+  let debt: SupplierDebtQuery;
+  let balances: ListSupplierBalancesQuery;
   let run: string;
   let pointId: string;
   let userId: string;
@@ -73,7 +75,8 @@ describe('debt with intake top-ups (Postgres)', () => {
 
   beforeAll(async () => {
     ds = await openTestDataSource();
-    service = new SupplierBalanceService(ds);
+    debt = new SupplierDebtQuery(ds);
+    balances = new ListSupplierBalancesQuery(ds);
     run = randomUUID().slice(0, 8);
 
     const [point] = await ds.query(
@@ -105,7 +108,7 @@ describe('debt with intake top-ups (Postgres)', () => {
     await payout(s, '30.00');
     await topUp(i, '20.00');
 
-    expect(await service.debtFor(s)).toBe('90.00');
+    expect(await debt.debtFor(s)).toBe('90.00');
   });
 
   it('ignores a VOIDED top-up', async () => {
@@ -113,7 +116,7 @@ describe('debt with intake top-ups (Postgres)', () => {
     const i = await intake(s, '100.00');
     await topUp(i, '20.00', true);
 
-    expect(await service.debtFor(s)).toBe('100.00');
+    expect(await debt.debtFor(s)).toBe('100.00');
   });
 
   it('ignores a live top-up whose PARENT INTAKE is voided', async () => {
@@ -121,7 +124,7 @@ describe('debt with intake top-ups (Postgres)', () => {
     const i = await intake(s, '100.00', true);
     await topUp(i, '20.00');
 
-    expect(await service.debtFor(s)).toBe('0.00');
+    expect(await debt.debtFor(s)).toBe('0.00');
   });
 
   it('sums several top-ups across several intakes', async () => {
@@ -132,12 +135,12 @@ describe('debt with intake top-ups (Postgres)', () => {
     await topUp(a, '5.00');
     await topUp(b, '1.50');
 
-    expect(await service.debtFor(s)).toBe('166.50');
+    expect(await debt.debtFor(s)).toBe('166.50');
   });
 
   it('reads 0.00, not "0", for a supplier with no documents at all', async () => {
     const s = await supplier('Порожній');
-    expect(await service.debtFor(s)).toBe('0.00');
+    expect(await debt.debtFor(s)).toBe('0.00');
   });
 
   it('the list agrees with the single read, and orders by the three-term total', async () => {
@@ -147,7 +150,7 @@ describe('debt with intake top-ups (Postgres)', () => {
     await topUp(bigIntake, '9000.00');
     await intake(small, '20.00');
 
-    const page = await service.list(
+    const page = await balances.list(
       { sub: userId, role: 'network_owner', collection_point_id: null } as never,
       { collection_point_id: pointId, include_zero: false, page: 1, limit: 50 } as never,
     );
@@ -155,7 +158,7 @@ describe('debt with intake top-ups (Postgres)', () => {
     const bigRow = page.data.find((r) => r.supplier_id === big);
     const smallRow = page.data.find((r) => r.supplier_id === small);
     expect(bigRow?.debt).toBe('9010.00');
-    expect(bigRow?.debt).toBe(await service.debtFor(big));
+    expect(bigRow?.debt).toBe(await debt.debtFor(big));
     expect(page.data.indexOf(bigRow!)).toBeLessThan(page.data.indexOf(smallRow!));
   });
 
@@ -165,7 +168,7 @@ describe('debt with intake top-ups (Postgres)', () => {
     await topUp(i, '20.00');
     await payout(s, '120.00');
 
-    const page = await service.list(
+    const page = await balances.list(
       { sub: userId, role: 'network_owner', collection_point_id: null } as never,
       { collection_point_id: pointId, include_zero: false, page: 1, limit: 50 } as never,
     );
