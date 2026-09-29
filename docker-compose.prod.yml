@@ -146,8 +146,11 @@ services:
       BOOTSTRAP_OWNER_FIRST_NAME: ${BOOTSTRAP_OWNER_FIRST_NAME}
       BOOTSTRAP_OWNER_LAST_NAME: ${BOOTSTRAP_OWNER_LAST_NAME}
       # `:-` is tolerable ONLY where every env set holds the same value (this,
-      # JWT_EXPIRES_IN, DB_USER, DB_NAME): the production literal the parser
-      # injects is then the right value everywhere.
+      # JWT_EXPIRES_IN, DB_USER, DB_NAME) — the production literal the parser
+      # injects is then the right value everywhere — OR where the variable's
+      # name differs from the key's (NODE_OPTIONS: …${BACKEND_HEAP_MB:-256},
+      # DB_HOST: ${SERVICE_NAME_POSTGRES:-postgres}): the parser only rewrites
+      # `KEY: ${KEY:-…}`, key and variable sharing a name.
       APP_TIMEZONE: ${APP_TIMEZONE:-Europe/Kyiv}
       # Owner-readable passwords (issue #11). Forwarded explicitly for the same
       # reason as BOOTSTRAP_OWNER_* above — compose's .env does not reach the
