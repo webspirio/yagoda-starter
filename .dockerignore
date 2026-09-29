@@ -17,3 +17,4 @@ docs
 **/*.md
 *.log
 .DS_Store
+# probe for #68 after #184 — throwaway PR, never merged (2026-09-30)
