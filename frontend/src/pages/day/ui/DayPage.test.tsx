@@ -185,6 +185,7 @@ const payout = (over: Partial<Payout> & Pick<Payout, 'id' | 'code' | 'amount'>):
   return_settled_at: null,
   return_settled_by_user_id: null,
   return_note: null,
+  returned_on_void: false,
   created_at: '2026-09-08T11:00:00Z',
   ...over,
 });
@@ -655,7 +656,36 @@ describe('DayPage — the cash reconciliation', () => {
     expect(screen.queryByText('Nothing moved on this day.')).toBeNull();
   });
 
-  it('counts voided payout cash as cash out, and says how much is not back yet', () => {
+  it('shows nothing out when every payout was voided in the open shift (#170 review)', () => {
+    intakesMock.mockReturnValue(
+      page<Intake>([
+        intake({ id: 'i1', code: 'KV-0001', amount: '510.00', voided_at: '2026-09-08T12:00:00Z', void_reason: 'x' }),
+      ]),
+    );
+    payoutsMock.mockReturnValue(
+      page<Payout>([
+        payout({
+          id: 'y1',
+          code: 'VD-0001',
+          amount: '4930.00',
+          voided_at: '2026-09-08T12:00:00Z',
+          voided_by_user_id: 'u1',
+          void_reason: 'typo',
+          return_settled_at: '2026-09-08T12:00:00Z',
+          return_settled_by_user_id: 'u1',
+          returned_on_void: true,
+        }),
+      ]),
+    );
+
+    renderDay();
+
+    expect(tile('Cash out')).toHaveTextContent('0.00 ₴');
+    expect(row('Total cash out')).toHaveTextContent('0.00 ₴');
+    expect(screen.queryByText(/on voided payouts/)).toBeNull();
+  });
+
+  it('counts a closed-shift void as cash out while its return is pending', () => {
     intakesMock.mockReturnValue(
       page<Intake>([intake({ id: 'i1', code: 'KV-0001', amount: '500.00' })]),
     );
@@ -678,9 +708,8 @@ describe('DayPage — the cash reconciliation', () => {
     expect(tile('Cash out')).toHaveTextContent('40.00 ₴');
     expect(row('Total cash out')).toHaveTextContent('40.00 ₴');
     expect(
-      screen.getByText('of which 40.00 ₴ on voided payouts, none of it back in the drawer yet'),
+      screen.getByText('of which 40.00 ₴ on voided payouts still waiting to come back to the drawer'),
     ).toBeInTheDocument();
-    // The accrual rows keep the debt reading: nothing live was paid.
     expect(row('Left on balance for us')).toHaveTextContent('−500.00 ₴');
   });
 
@@ -701,7 +730,7 @@ describe('DayPage — the cash reconciliation', () => {
     );
     renderDay();
     expect(
-      screen.getByText('of which 65.00 ₴ on voided payouts, 40.00 ₴ of it not yet back in the drawer'),
+      screen.getByText('of which 65.00 ₴ on voided payouts, 40.00 ₴ of it still waiting to come back to the drawer'),
     ).toBeInTheDocument();
   });
 
@@ -722,7 +751,7 @@ describe('DayPage — the cash reconciliation', () => {
     );
     renderDay();
     expect(
-      screen.getByText('of which 25.00 ₴ on voided payouts, returned to the drawer'),
+      screen.getByText('of which 25.00 ₴ on voided payouts returned later, on the day of the return'),
     ).toBeInTheDocument();
   });
 

@@ -15,6 +15,7 @@ const payout = (
   intake_id: null,
   voided_at: null,
   return_settled_at: null,
+  returned_on_void: false,
   ...over,
 });
 
@@ -53,20 +54,41 @@ describe('buildDaySummary', () => {
     expect(s.debtGrowth).toBe('-200.00');
   });
 
-  it('keeps a voided payout out of the split and the debt, but not out of the cash', () => {
+  it('drops a payout whose cash came back at void time — the screenshot of #170', () => {
+    // Everything voided in an OPEN shift: the cash went straight back into this
+    // shift's drawer (`returned_on_void`, 2026-09-28), so nothing left it.
+    const back = {
+      voided_at: '2026-09-08T12:00:00Z',
+      return_settled_at: '2026-09-08T12:00:00Z',
+      returned_on_void: true,
+    };
+    const s = buildDaySummary(
+      [intake('510.00', '5.00', true)],
+      [payout('510.00', { intake_id: 'i1', ...back }), payout('4930.00', back)],
+    );
+    expect(s.cashOut).toBe('0.00');
+    expect(s.voidedOut).toBe('0.00');
+  });
+
+  it('keeps a closed-shift void in the cash until its return is confirmed', () => {
+    // `movementsSql`: a payout left the drawer; a pending return has not come
+    // back, and an owner-confirmed one is credited on ITS OWN date.
     const s = buildDaySummary(
       [intake('100.00', '1.00')],
       [
         payout('60.00', { intake_id: 'i1' }),
         payout('40.00', { intake_id: 'i1', voided_at: '2026-09-08T12:00:00Z' }),
+        payout('25.00', {
+          voided_at: '2026-09-08T12:00:00Z',
+          return_settled_at: '2026-09-10T09:00:00Z',
+        }),
       ],
     );
     expect(s.paidAtReception).toBe('60.00');
     expect(s.debtGrowth).toBe('40.00');
-    // «Каса точки»'s own reading: the money left the drawer; a return is a
-    // separate inflow on the day it happens (buildLedger's returnedToday).
-    expect(s.cashOut).toBe('100.00');
-    expect(s.voidedOut).toBe('40.00');
+    expect(s.cashOut).toBe('125.00');
+    expect(s.voidedOut).toBe('65.00');
+    expect(s.voidedNotReturned).toBe('40.00');
   });
 
   it('flags a negative growth once, so no consumer re-derives it', () => {

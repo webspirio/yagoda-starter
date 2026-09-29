@@ -11,6 +11,7 @@ export interface SummaryPayout {
   intake_id: string | null;
   voided_at: string | null;
   return_settled_at: string | null;
+  returned_on_void: boolean;
 }
 
 export interface DaySummary {
@@ -23,10 +24,12 @@ export interface DaySummary {
   /** §3.7's «Видати без ягоди» — a payout with no visit. */
   paidWithoutBerry: string;
   /**
-   * Every payout of the shift, voided or not — the DRAWER's reading, the same
-   * one «Каса точки» uses for «видано сьогодні» (`buildLedger`'s paidToday):
-   * a voided payout's cash left and comes back only as a separate inflow on
-   * the day a human returns it.
+   * The DRAWER's reading, mirroring `movementsSql` in `point-cash.service.ts`
+   * for this shift: every payout minus those whose cash came back AT VOID TIME
+   * (`returned_on_void` — an open-shift void, 2026-09-28, which is «it
+   * happened in front of the supplier»). A closed-shift void stays out: its
+   * return waits for the owner's `settle-return`, and even once confirmed is
+   * credited on the day it happened, not here.
    */
   cashOut: string;
   /** Σ квитанцій дня − Σ ЖИВИХ виплат дня — the DEBT's reading. Negative when
@@ -35,8 +38,9 @@ export interface DaySummary {
   debtGrowth: string;
   /** `debtGrowth < 0`, decided once so the tile and the ledger cannot disagree. */
   paidDown: boolean;
-  /** The part of `cashOut` that sits on voided payouts. */
+  /** The part of `cashOut` that sits on voided payouts (closed-shift voids). */
   voidedOut: string;
+  /** …of which the owner has not yet confirmed the return. */
   voidedNotReturned: string;
 }
 
@@ -53,7 +57,7 @@ export interface DaySummary {
  *
  * TWO READINGS OF A VOIDED PAYOUT, as `Payout`'s header names them: the debt
  * rows (split, growth) drop it like `supplier-balance` does; `cashOut` keeps
- * it, because the money physically left the drawer.
+ * it unless its cash came back at void time.
  */
 export function buildDaySummary(
   intakes: readonly SummaryIntake[],
@@ -67,14 +71,14 @@ export function buildDaySummary(
     livePayouts.filter((p) => p.intake_id === null).map((p) => p.amount),
   );
   const debtGrowth = sub(accrued, sum([paidAtReception, paidWithoutBerry]));
-  const voided = payouts.filter((p) => p.voided_at !== null);
+  const voided = payouts.filter((p) => p.voided_at !== null && !p.returned_on_void);
   return {
     netKg: sum(liveIntakes.map((i) => i.net_kg)),
     receipts: liveIntakes.length,
     accrued,
     paidAtReception,
     paidWithoutBerry,
-    cashOut: sum(payouts.map((p) => p.amount)),
+    cashOut: sum(payouts.filter((p) => !p.returned_on_void).map((p) => p.amount)),
     debtGrowth,
     paidDown: isNegative(debtGrowth),
     voidedOut: sum(voided.map((p) => p.amount)),

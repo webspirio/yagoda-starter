@@ -60,8 +60,9 @@ export function DayLedger({ summary, truncated }: { summary: DaySummary; truncat
         />
       </div>
 
-      {/* The plaque is the drawer's reading and counts voided payouts; the
-          rows above are the debt's and do not. This line is the difference,
+      {/* The plaque is the drawer's reading and counts a closed-shift void
+          until its cash is back (an open-shift void returned it at once and is
+          out of both); the rows above are the debt's and count no void. This line is the difference,
           so it sits BETWEEN them — the reader meets the bridge before the gap. */}
       {isZero(summary.voidedOut) ? null : (
         <p className="mt-3 text-xs text-[var(--amber)]">
