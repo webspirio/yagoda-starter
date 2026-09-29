@@ -32,10 +32,14 @@ Coolify never pulls a `main` tag that has not been pushed yet. Previews are
 different, and deliberately so: on every PR `opened`/`synchronize`/`reopened`
 the GitHub App webhook makes Coolify create the preview record **and attempt a
 deploy** of `sha-<head>`. The record is what CI's later `POST /deploy?pr=<N>`
-relies on (the API cannot create it), and the attempt fails harmlessly on
-`docker compose pull` — before any running container is touched — because CI
-has not built that tag yet. Expect one red webhook deployment per push in
-Coolify's list; the API-triggered one that follows is the one CI verifies.
+relies on (the API cannot create it), and the attempt fails on
+`docker compose pull` because CI has not built that tag yet. The deployment
+log shows that pull running *before* the old containers are stopped («Pulling
+image-based services before stopping the current deployment»), so a live
+preview is not touched — observed on #179's webhook deploys, which had no
+healthy preview to protect yet; the first `synchronize` against a healthy one
+will confirm it. Expect one red webhook deployment per push in Coolify's
+list; the API-triggered one that follows is the one CI verifies.
 Previews are removed by the same webhook when the PR closes (gate 4 below).
 
 `deploy-preview` runs `scripts/ci/coolify-deploy.sh` from the PR's own checkout
@@ -197,7 +201,7 @@ Coolify altogether, see the last section.
 |---|---|
 | `SOURCE_COMMIT` interpolates in compose | ✅ 2026-09-10 — production runs `…-backend:sha-94ea42ee…`, the merge commit, and `/api/health/version` returns it |
 | Preview `SOURCE_COMMIT` == PR head SHA | ⏳ filled in from this fix's own preview (the PR that closes #68) |
-| Manual «Redeploy» keeps the same SHA | not exercised — CI re-runs `deploy-preview` instead; the UI button checks out `pull/<N>/head`, i.e. the same commit the last CI deploy used |
+| Manual «Redeploy» keeps the same SHA | not exercised — CI re-runs `deploy-preview` instead. Per the deployment job's source the button checks out `pull/<N>/head`: pressed after a CI deploy it redeploys that same head; pressed right after a push it fails on pull, because CI has not built the new head yet |
 | Preview deleted on PR close with Auto Deploy off | ✅ 2026-09-29 — #179 closed at 20:56:15Z; by 20:58:10Z `docker ps -a`, `docker volume ls` and `docker network ls` showed nothing named `pr-179` and `application_previews` was empty. That stack had never come up healthy, so this also covers the failed-preview case of amendment #5 |
 | API lists previews (cap source) | ✗ — 4.3.23 exposes only `/applications/{uuid}/previews/{pr}/logs`, `PATCH` and `DELETE`, no list, and the application JSON carries none; the `preview` label stays the cap's source |
 | Coolify holds registry credentials | ✗ — this version has no registry store; use the `docker login` fallback (step 5) |
@@ -222,9 +226,11 @@ Every service, volume and network of a preview carries a `-pr-<N>` suffix
 file that names a sibling service literally therefore works in production and
 dies in every preview — the first preview of this stack ended on
 `getaddrinfo EAI_AGAIN postgres` in the backend. Coolify's contract for this
-is `SERVICE_NAME_<SERVICE>`, which it writes into the deployment `.env` (and
-every container's environment): `postgres` in production, `postgres-pr-179`
-in the preview. `docker-compose.prod.yml` reads it with a default
+is `SERVICE_NAME_<SERVICE>`, which it writes into the deployment `.env` and
+into every container's environment — `postgres-pr-179` in the preview (both
+seen on #179: the `.env` under `/data/coolify/applications/<uuid>/` and
+`docker inspect` of its backend), `postgres` in production (the same code
+path with no PR number). `docker-compose.prod.yml` reads it with a default
 (`DB_HOST: ${SERVICE_NAME_POSTGRES:-postgres}`), so the standalone path, where
 nothing sets it, keeps the plain name; the nginx image renders the same
 variable into `proxy_pass` from `nginx/default.conf.template` at start-up.
@@ -422,8 +428,8 @@ ssh root@<vps> 'docker ps --format "{{.Names}}\t{{.Status}}\t{{.Image}}"; docker
 | `deploy-*` job: Coolify `failed`, log shows compose error | compose file in that branch is invalid | `docker compose -f docker-compose.prod.yml config` locally |
 | `serves commit 'X', expected 'Y'` | Coolify deployed another commit (fallback misuse, or Auto Deploy got switched on) | Check Auto Deploy is off; re-run the job |
 | `/ready` never 200 | backend crash-loop | Coolify → application → logs; usually a missing env var |
-| A preview's backend logs `getaddrinfo EAI_AGAIN postgres` (or `redis`) | a service hostname is hardcoded in the compose; previews suffix every service | reference it as `${SERVICE_NAME_<SVC>:-<svc>}` — «What Coolify renames in a preview» |
-| Coolify lists a **failed** deployment seconds after every PR push, before CI is green | expected: the App webhook deploys `sha-<head>` before CI has pushed it; the pull fails and nothing running is touched | nothing — `deploy-preview`'s API deploy is the one that counts |
+| A preview's backend logs `getaddrinfo EAI_AGAIN postgres` (or `redis`) | a service hostname is hardcoded in the compose (previews suffix every service), or someone defined `SERVICE_NAME_<SVC>` — even empty — in a Coolify env set | reference it as `${SERVICE_NAME_<SVC>:-<svc>}` and never define those keys yourself — «What Coolify renames in a preview» |
+| Coolify lists a **failed** deployment seconds after every PR push, before CI is green | expected: the App webhook deploys `sha-<head>` before CI has pushed it; the pull fails, and it runs before the old containers are stopped, so a live preview stays up | nothing — `deploy-preview`'s API deploy is the one that counts |
 | «Preview not deployed — limit reached» | `PREVIEW_CAP` live previews (default 12). A PR whose deploy FAILED keeps its `preview` label on purpose — the stack is still running and still holding memory | close or merge an older PR, or remove its `preview` label once you have confirmed Coolify no longer runs that preview |
 | `deploy-preview` shows "cancelled", no comment | another PR took the single pending slot of the `preview-allocation` concurrency group while this one waited | re-run the job |
 | `deploy-prod` skipped with «main is at X, not Y» | correct: a newer merge owns production, and its own run deploys it | nothing — unless that newer run went red, in which case prod is deliberately behind `main` until it is fixed and re-run |

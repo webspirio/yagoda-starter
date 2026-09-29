@@ -18,7 +18,9 @@ RUN npm run build -w frontend
 # to `backend-pr-<N>` in a Coolify preview (docker-compose.prod.yml sets
 # BACKEND_HOST). The filter limits substitution to that ONE variable, so nginx's
 # own `$host`, `$uri`, … can never be clobbered by an env var sharing a name.
-# The BACKEND_HOST default keeps a bare `docker run` of this image working.
+# The BACKEND_HOST default keeps the rendered config identical to the old
+# hardcoded one wherever nothing sets it (the standalone path); nginx still
+# needs a resolvable `backend` at start-up, exactly as before.
 FROM nginxinc/nginx-unprivileged:alpine
 ENV BACKEND_HOST=backend
 ENV NGINX_ENVSUBST_FILTER="^BACKEND_HOST\$"
