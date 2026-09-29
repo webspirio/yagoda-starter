@@ -5,12 +5,16 @@ import * as Joi from 'joi';
  * (allowUnknown: true, abortEarly: false are ConfigModule's defaults).
  *
  * BOOTSTRAP_OWNER_*: `.empty('')` maps an empty string to `undefined`.
- * docker-compose.prod.yml forwards these as `${VAR:-}` so the BootstrapOwner
- * migration can read them inside the container; when the operator has not set
- * them that expands to "", which a plain `Joi.string().optional()` rejects —
- * and a fresh production stack crash-loops before its first request. "" and
- * "unset" have to mean the same thing, which is also what the migration
- * assumes (`if (!login || !password) return`).
+ * docker-compose.prod.yml forwards these as a bare `${VAR}` so the
+ * BootstrapOwner migration can read them inside the container; when the
+ * operator has not set them that renders as "", which a plain
+ * `Joi.string().optional()` rejects — and a fresh production stack
+ * crash-loops before its first request. "" and "unset" have to mean the same
+ * thing, which is also what the migration assumes
+ * (`if (!login || !password) return`). It is deliberately NOT `${VAR:-}`: a
+ * `:-` default makes Coolify's compose parser inject production's literal
+ * into previews (see the compose header) — the schema rule here is what lets
+ * the compose stay default-free.
  */
 export const envValidationSchema = Joi.object({
   NODE_ENV: Joi.string().valid('development', 'production', 'test').default('development'),
@@ -50,8 +54,8 @@ export const envValidationSchema = Joi.object({
   // character-count rule waves through a key `createCipheriv` cannot use.
   // Boot would then succeed, nothing would ever be sealed, and every row would
   // read «перевидайте пароль» forever — with reissuing no help. Unset (or '',
-  // the ${VAR:-} case described above) means the vault is off: passwords are
-  // hashed and nothing more.
+  // the bare-`${VAR}` case described above) means the vault is off: passwords
+  // are hashed and nothing more.
   PASSWORD_VAULT_KEY: Joi.string()
     .empty('')
     .base64()

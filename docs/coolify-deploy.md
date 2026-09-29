@@ -160,12 +160,43 @@ the preview owner or for this middleware.
 | `DB_PASSWORD` | random | random | |
 | `BOOTSTRAP_OWNER_LOGIN` / `_PASSWORD` / `_FIRST_NAME` / `_LAST_NAME` | the real owner | `owner` / *generate one* / `Preview` / `Owner` | read once, on the first boot of an empty DB. Generate the preview password too (`openssl rand -base64 18`) and keep it in Coolify only — a password written into a repo doc is a password on every preview forever |
 | `PASSWORD_VAULT_KEY` | *(set it, or leave the feature off)* | *(optional)* | `openssl rand -base64 32`. Lets the owner READ an issued password back on «Користувачі» (issue #11). Absent = the feature is off and passwords are hashed only. **Never change it after passwords have been issued** — the existing copies stop opening (logins keep working; each password has to be reissued to become readable again) |
-| `SEED_DEV_DATA` | *(absent)* | `true` | enables the one-shot `seed` service — **the only thing that keeps demo data out of production; never set it in the production env set** |
+| `SEED_DEV_DATA` | *(absent — or the empty row the parser creates by itself)* | `true` | enables the one-shot `seed` service — **the only thing that keeps demo data out of production; never set it in the production env set**. Written as `${SEED_DEV_DATA}` in the compose: with a `:-` default the parser hardcodes production's empty value into previews and the seed never runs (see below) |
 | `IMAGE_TAG` | *(absent)* | *(absent)* | **never set** unless the fallback below is in force |
 | `POSTGRES_MEM_LIMIT` | `768m` | *(absent → 256m)* | see «Memory» below |
 | `BACKEND_MEM_LIMIT` / `BACKEND_HEAP_MB` | `768m` / `576` | *(absent → 384m / 256)* | the heap cap must stay well below the mem_limit, so an OOM is a Node error, not a SIGKILL |
 | `REDIS_MEM_LIMIT` / `NGINX_MEM_LIMIT` | `128m` / `64m` | *(absent → 64m / 64m)* | |
 | `SEED_MEM_LIMIT` / `SEED_HEAP_MB` | *(irrelevant — no seed in prod)* | *(absent → 256m / 192)* | |
+
+**`KEY: ${KEY:-default}` is rewritten by Coolify's parser — never use it for a
+key an env set defines.** For an `environment:` entry whose value is a
+`${VAR:-default}` (or `${VAR-default}`) reference to a variable *of the same
+name*, the compose parser replaces the value with the stored **production**
+row's literal (`bootstrap/helpers/parsers.php`, the default-value branch:
+`$environment[$varName] = $envVar->value`) — in previews too, so the preview
+env set is ignored and compose never sees a variable to interpolate. A bare
+`${VAR}` is kept as a reference («Keep the ${VAR} reference in compose —
+Docker Compose resolves from .env at deploy time», same file) and resolves
+against that deployment's own `.env`. Observed on 2026-09-29, the day the
+first preview came up (#181): its backend carried production's
+`BOOTSTRAP_OWNER_PASSWORD` (the preview row held a different, 15-character
+one), its seed container had `SEED_DEV_DATA=''` — the parser-created, empty
+production row — so no preview seed had ever run, while `JWT_SECRET` and
+`DB_PASSWORD`, written as `${JWT_SECRET}` / `${DB_PASSWORD}`, were the
+preview's own. `docker-compose.prod.yml` therefore writes every
+per-environment key as a bare `${KEY}`; `:-` survives only on keys whose value
+is the same in both sets (`APP_TIMEZONE`, `JWT_EXPIRES_IN`, `DB_USER`,
+`DB_NAME`). The two previews that leaked (#181, #183) ran for minutes on public
+hostnames without basic auth; the credential itself never left their
+containers, but rotating the production owner password afterwards is cheap
+insurance. `PASSWORD_VAULT_KEY` travelled by the same mechanism but was unset
+in production at the time (both containers and both rows held an empty value),
+so nothing was carried; had it been set, the choice would have been to accept
+the exposure or to rotate it and reissue every stored password — see its row
+in the table. The rule — and the sibling-hostname one from «What Coolify renames
+in a preview» — is enforced by the `compose` verify row
+(`npm run compose:check`, `scripts/verify/checks/compose-conventions.mjs`),
+which fails on that form outside a dated allowlist of same-value keys and on
+any `environment:` value that is a bare service name.
 
 ### Memory
 
@@ -450,6 +481,8 @@ ssh root@<vps> 'docker ps --format "{{.Names}}\t{{.Status}}\t{{.Image}}"; docker
 | `serves commit 'X', expected 'Y'` | Coolify deployed another commit (fallback misuse, or Auto Deploy got switched on) | Check Auto Deploy is off; re-run the job |
 | `/ready` never 200 | backend crash-loop | Coolify → application → logs; usually a missing env var |
 | A preview's backend logs `getaddrinfo EAI_AGAIN postgres` (or `redis`) | a service hostname is hardcoded in the compose (previews suffix every service), or someone defined `SERVICE_NAME_<SVC>` — even empty — in a Coolify env set | reference it as `${SERVICE_NAME_<SVC>:-<svc>}` and never define those keys yourself — «What Coolify renames in a preview» |
+| `deploy-preview`: «login as seeded user … returned 401 — did the seed run?», and the seed container exited 0 with no output | `SEED_DEV_DATA` reached the seed container empty — a `:-` default let the parser inject production's empty row | write the key as `${SEED_DEV_DATA}` («Environment variables in Coolify»); `docker inspect` the seed container for `SEED_DEV_DATA=true` |
+| A preview runs with a production value (owner password, vault key) although the preview env set differs | the same parser rule: `KEY: ${KEY:-…}` becomes the production literal | bare `${KEY}` only; close the PR to tear the preview down until the compose on `main` is fixed |
 | A preview ignores the PR's change to `docker-compose.prod.yml` | expected — the compose is loaded from `main` on every deploy («The compose comes from `main`») | merge, then check the next preview |
 | Coolify lists a **failed** deployment seconds after every PR push, before CI is green | expected: the App webhook deploys `sha-<head>` before CI has pushed it; the pull fails, and it runs before the old containers are stopped, so a live preview stays up | nothing — `deploy-preview`'s API deploy is the one that counts |
 | «Preview not deployed — limit reached» | `PREVIEW_CAP` live previews (default 12). A PR whose deploy FAILED keeps its `preview` label on purpose — the stack is still running and still holding memory | close or merge an older PR, or remove its `preview` label once you have confirmed Coolify no longer runs that preview |
