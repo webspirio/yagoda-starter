@@ -60,6 +60,26 @@ describe('useVoidDocumentMutation', () => {
     });
   });
 
+  it('voids an intake and also invalidates the crate queries and point cash', async () => {
+    mock.onPost('/intakes/i1/void').reply(200);
+    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries');
+    const { result } = renderHook(() => useVoidDocumentMutation(), { wrapper });
+
+    await result.current.mutateAsync({ kind: 'intake', id: 'i1', reason: 'mistake' });
+
+    // `POST /intakes` can write a linked crate return (§8.3); voiding the
+    // receipt voids that return too, so a stale crate/point-cash cache must
+    // not survive the void (see useVoidDocument.ts's `intake` descriptor).
+    await waitFor(() => {
+      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: queryKeys.intakes });
+      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: queryKeys.payouts });
+      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: queryKeys.supplierBalances });
+      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: queryKeys.crates });
+      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: queryKeys.crateBalances });
+      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: queryKeys.pointCash });
+    });
+  });
+
   it('voiding a top-up refreshes intakes: the parent receipt\'s open_amount moves', async () => {
     mock.onPost('/intake-top-ups/t1/void').reply(200);
     const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries');

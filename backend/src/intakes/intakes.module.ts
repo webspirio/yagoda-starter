@@ -20,12 +20,15 @@ import { CollectionPointsModule } from '../collection-points/collection-points.m
 import { AuditModule } from '../audit/audit.module';
 import { PayoutsModule } from '../payouts/payouts.module';
 import { SupplierBalanceModule } from '../supplier-balance/supplier-balance.module';
+import { CratesModule } from '../crates/crates.module';
 
 /**
  * The berry receipt. Reads other modules through their services (grade prices and tare for
  * §2.8/§2.5 snapshots, shifts for the point and business date its tables do not store).
- * Writes payouts only through `PayoutWriter` and allocations only through the supplier ledger.
- * Exports nothing — no other module writes or reads receipts through it.
+ * Writes payouts only through `PayoutWriter`, allocations only through the supplier ledger,
+ * and the crates a supplier brings back with a receipt only through `CratesService`
+ * (`writeReturn`, `voidReturnForIntake` — spec §8.3). Exports nothing — no other module
+ * writes or reads receipts through it.
  */
 @Module({
   imports: [
@@ -37,6 +40,7 @@ import { SupplierBalanceModule } from '../supplier-balance/supplier-balance.modu
     CollectionPointsModule,
     AuditModule,
     PayoutsModule,
+    CratesModule,
     SupplierBalanceModule,
   ],
   providers: [

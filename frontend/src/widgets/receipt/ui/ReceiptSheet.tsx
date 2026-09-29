@@ -42,6 +42,20 @@ export interface ReceiptSheetProps {
   /** Who received this document (`received_by_name`), or «—» when unknown. */
   receivedBy: string;
   voided: { reason: string } | null;
+  /** Our rented crates handed back in the SAME «Прийняти» as this receipt
+   *  (2026-09-24) — `null` when none came back with it. Printed as its own
+   *  line under the tare/lines block, apart from «Видано готівкою». */
+  crateReturn: {
+    units: number;
+    /** Formatted deposit refund, or `null` when the whole return was «на
+     *  розписку» (`deposit_refund` is zero — no money changed hands). A
+     *  MIXED return (part deposit, part receipt) still has a non-null
+     *  amount here, since the amount covers only the deposit part. */
+    amount: string | null;
+    /** The return is voided together with the receipt, never on its own —
+     *  prints a muted annulment line instead of the units/amount. */
+    voided: boolean;
+  } | null;
 }
 
 function Row({
@@ -81,6 +95,7 @@ export function ReceiptSheet({
   voidedPayouts,
   receivedBy,
   voided,
+  crateReturn,
 }: ReceiptSheetProps) {
   const { t } = useTranslation();
 
@@ -127,6 +142,23 @@ export function ReceiptSheet({
           <Row label={t('receipt.amount')} value={line.amount} />
         </div>
       ))}
+
+      {crateReturn ? (
+        <div>
+          <div className="my-3 border-t border-dashed border-neutral-300" />
+          {crateReturn.voided ? (
+            <Row label={t('receipt.crateReturnVoided')} value="" muted />
+          ) : (
+            <Row
+              label={t(
+                crateReturn.amount !== null ? 'receipt.crateReturn' : 'receipt.crateReturnNoMoney',
+                { units: crateReturn.units, amount: crateReturn.amount ?? undefined },
+              )}
+              value=""
+            />
+          )}
+        </div>
+      ) : null}
 
       <div className="my-3 border-t border-dashed border-neutral-300" />
 

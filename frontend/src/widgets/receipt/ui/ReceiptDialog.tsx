@@ -9,7 +9,7 @@ import {
   DialogTitle,
 } from '@/shared/ui/dialog';
 import { Button } from '@/shared/ui/button';
-import { add, cmp, formatKg, formatUah, isNegative } from '@/shared/lib/money';
+import { add, cmp, formatKg, formatUah, isNegative, isZero } from '@/shared/lib/money';
 import { formatLongDate, formatTime } from '@/shared/lib/date';
 import { canVoidIntake, useIntakeQuery } from '@/entities/intake';
 import {
@@ -192,6 +192,16 @@ export function ReceiptDialog({
       .filter((p) => p.voided_at !== null)
       .map((p) => p.code);
 
+    const crateReturn = intake.crate_return
+      ? {
+          units: intake.crate_return.units,
+          amount: isZero(intake.crate_return.deposit_refund)
+            ? null
+            : formatUah(intake.crate_return.deposit_refund, locale),
+          voided: intake.crate_return.voided_at !== null,
+        }
+      : null;
+
     const showVoid = canVoidIntake(me, intake);
 
     content = (
@@ -212,6 +222,7 @@ export function ReceiptDialog({
         voidedPayouts={voidedPayouts}
         receivedBy={receivedBy}
         voided={voided ? { reason: intake.void_reason ?? '' } : null}
+        crateReturn={crateReturn}
       />
     );
 

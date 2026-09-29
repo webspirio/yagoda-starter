@@ -27,6 +27,7 @@ describe('intake mapper', () => {
       extras,
       [{ id: 'p', code: 'PO', amount: '1.00', voided_at: null, created_at: at }] as never,
       null,
+      null,
     );
     expect(res.payouts[0].created_at).toBe('2026-09-08T11:32:00.000Z');
   });

@@ -23,11 +23,12 @@ describe('VoidIntakeCommand', () => {
   let audit: IntakesMocks['audit'];
   let payouts: IntakesMocks['payouts'];
   let allocations: IntakesMocks['allocations'];
+  let crates: IntakesMocks['crates'];
   let command: VoidIntakeCommand;
 
   beforeEach(() => {
     const mocks = makeIntakesMocks();
-    ({ manager, dataSource, shifts, audit, payouts, allocations } = mocks);
+    ({ manager, dataSource, shifts, audit, payouts, allocations, crates } = mocks);
     command = buildIntakes(mocks).voidCmd;
   });
 
@@ -143,6 +144,24 @@ describe('VoidIntakeCommand', () => {
       expect(manager.query.mock.invocationCallOrder[extrasCall]).toBeGreaterThan(
         allocations.allocate.mock.invocationCallOrder[0],
       );
+    });
+
+    it('voids the linked crate return with the same reason, after the intake’s own void', async () => {
+      await command.void(oksana, INTAKE_ID, { reason: 'не той постачальник' });
+
+      expect(crates.voidReturnForIntake).toHaveBeenCalledWith(manager, {
+        actor: oksana,
+        intakeId: INTAKE_ID,
+        reason: 'не той постачальник',
+      });
+      const voided = crates.voidReturnForIntake.mock.invocationCallOrder[0];
+      expect(allocations.lockSupplier.mock.invocationCallOrder[0]).toBeLessThan(voided);
+      expect(manager.save.mock.invocationCallOrder[0]).toBeLessThan(voided);
+    });
+
+    it('does not touch the crate return when the void itself is refused', async () => {
+      await expect(command.void(maria, INTAKE_ID, { reason: 'не моя' })).rejects.toBeDefined();
+      expect(crates.voidReturnForIntake).not.toHaveBeenCalled();
     });
 
     it('does NOT refuse a void that drives the supplier’s debt negative', async () => {

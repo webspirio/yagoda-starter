@@ -53,6 +53,14 @@ export interface CrateReturnResponse {
   /** The shift is closed — voiding is then the owner's alone (§9.4 as amended). */
   shift_closed: boolean;
   created_at: string;
+  /** A return written BY the receipt in the same «Прийняти» (spec §8.3).
+   *  NULL for a standalone «Прийняти ящики». */
+  intake_id: string | null;
+  /** The receipt's own code, joined on for display — NULL exactly when
+   *  `intake_id` is NULL. Never derived from `intake_id` alone: a caller
+   *  supplies it (`crates.service.ts`, `crate-balance.service.ts`), because
+   *  loading it is a query this mapper must not run itself. */
+  intake_code: string | null;
 }
 
 /**
@@ -101,12 +109,19 @@ export function joinIssuanceInfo(
  * comment); the join happens in `joinIssuanceInfo`, not there, from
  * `issuanceInfo` — a lookup the caller already has (the tranches it allocated
  * from, or a batch load for a list of returns).
+ *
+ * `intakeCode` is a REQUIRED last parameter, not an optional one defaulting to
+ * `null` — a caller that forgets `intake_code` should fail to compile, not
+ * silently ship a return that reads standalone when it is not. `returnCrates`
+ * always passes `null` (it never writes a linked return); `listReturns` and
+ * `voidReturn` load the one query this mapper is not allowed to run itself.
  */
 export function toCrateReturnResponse(
   ret: CrateReturn,
   shift: Shift,
   allocations: CrateAllocationRow[],
   issuanceInfo: CrateReturnIssuanceInfo[],
+  intakeCode: string | null,
 ): CrateReturnResponse {
   return {
     id: ret.id,
@@ -123,5 +138,7 @@ export function toCrateReturnResponse(
     void_reason: ret.void_reason,
     shift_closed: shift.closed_at !== null,
     created_at: ret.created_at.toISOString(),
+    intake_id: ret.intake_id,
+    intake_code: intakeCode,
   };
 }

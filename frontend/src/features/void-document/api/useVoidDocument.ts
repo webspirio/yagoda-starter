@@ -30,7 +30,13 @@ const DOCUMENTS: Record<VoidDocumentInput['kind'], VoidDescriptor> = {
   intake: {
     path: (id) => `/intakes/${id}/void`,
     // + pointCash: an open-shift void or a void_returned puts the payout back in the drawer (2026-09-28).
-    invalidates: [...DOCUMENT_KEYS, queryKeys.pointCash],
+    // + crates: the void also strikes a crate return the receipt wrote (`returned_crates`, §8.3).
+    invalidates: [
+      ...DOCUMENT_KEYS,
+      queryKeys.pointCash,
+      queryKeys.crates,
+      queryKeys.crateBalances,
+    ],
   },
   payout: {
     path: (id) => `/payouts/${id}/void`,

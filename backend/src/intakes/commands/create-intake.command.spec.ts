@@ -27,11 +27,15 @@ describe('CreateIntakeCommand', () => {
   let audit: IntakesMocks['audit'];
   let payouts: IntakesMocks['payouts'];
   let allocations: IntakesMocks['allocations'];
+  let crates: IntakesMocks['crates'];
+  let tare: IntakesMocks['tare'];
+  let state: IntakesMocks['state'];
   let command: CreateIntakeCommand;
 
   beforeEach(() => {
     const mocks = makeIntakesMocks();
     ({ manager, dataSource, shifts, suppliers, prices, audit, payouts, allocations } = mocks);
+    ({ crates, tare, state } = mocks);
     command = buildIntakes(mocks).create;
   });
 
@@ -295,6 +299,86 @@ describe('CreateIntakeCommand', () => {
       );
       // The mock `transaction` just runs the callback; the real one rolls back
       // on a throw. What this asserts is that the throw is not swallowed.
+    });
+  });
+
+  /**
+   * Spec §8.3 — OUR crates coming back in the same «Прийняти». The db-spec
+   * (`intake-crate-return.db-spec.ts`) proves the SQL, the FIFO split and the
+   * rollbacks against Postgres; this pins the ORDER of the calls.
+   */
+  describe('returned crates at reception (spec §8.3)', () => {
+    it('writes no return when returned_crates is absent or 0', async () => {
+      const absent = await command.create(oksana, dto() as never);
+      await command.create(oksana, dto({ returned_crates: 0 }) as never);
+
+      expect(crates.writeReturn).not.toHaveBeenCalled();
+      expect(absent.crate_return).toBeNull();
+    });
+
+    it('400s RETURNED_EXCEEDS_TARE past the receipt’s own crate-tare units, before anything is written', async () => {
+      // `dto()` carries 3 units of the crate.
+      await expect(
+        command.create(oksana, dto({ returned_crates: 4 }) as never),
+      ).rejects.toMatchObject({ response: { code: 'RETURNED_EXCEEDS_TARE' } });
+      expect(manager.save).not.toHaveBeenCalled();
+      expect(crates.writeReturn).not.toHaveBeenCalled();
+    });
+
+    it('counts only crate tare — units of another tare type are not returnable', async () => {
+      tare.findManyRaw.mockResolvedValue([{ id: CRATE, weight_kg: '1.20', is_crate: false }]);
+
+      await expect(
+        command.create(oksana, dto({ returned_crates: 1 }) as never),
+      ).rejects.toMatchObject({ response: { code: 'RETURNED_EXCEEDS_TARE' } });
+    });
+
+    it('writes the return AFTER the intake is saved and BEFORE the payout, linked by the intake id', async () => {
+      state.crateReturnRows = [
+        {
+          id: 'cr-1',
+          units: 3,
+          deposit_refund: '240.00',
+          deposit_units: 2,
+          receipt_units: 1,
+          voided_at: null,
+        },
+      ];
+
+      const res = await command.create(
+        oksana,
+        dto({ returned_crates: 3, paid_amount: '100.00' }) as never,
+      );
+
+      expect(crates.writeReturn).toHaveBeenCalledWith(manager, {
+        actor: oksana,
+        pointId: POINT_A,
+        shift: expect.objectContaining({ id: SHIFT_ID }),
+        supplierId: SUPPLIER,
+        units: 3,
+        intakeId: INTAKE_ID,
+      });
+      const returned = crates.writeReturn.mock.invocationCallOrder[0];
+      expect(allocations.lockSupplier.mock.invocationCallOrder[0]).toBeLessThan(returned);
+      expect(manager.save.mock.invocationCallOrder[0]).toBeLessThan(returned);
+      expect(returned).toBeLessThan(payouts.write.mock.invocationCallOrder[0]);
+      expect(res.crate_return).toEqual({
+        id: 'cr-1',
+        units: 3,
+        deposit_refund: '240.00',
+        deposit_units: 2,
+        receipt_units: 1,
+        voided_at: null,
+      });
+    });
+
+    it('lets a crates refusal propagate — no payout is attempted', async () => {
+      crates.writeReturn.mockRejectedValue(new Error('CRATE_CASH_INSUFFICIENT'));
+
+      await expect(
+        command.create(oksana, dto({ returned_crates: 3, paid_amount: '100.00' }) as never),
+      ).rejects.toThrow('CRATE_CASH_INSUFFICIENT');
+      expect(payouts.write).not.toHaveBeenCalled();
     });
   });
 
