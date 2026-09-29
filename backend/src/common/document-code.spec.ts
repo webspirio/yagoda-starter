@@ -1,5 +1,5 @@
 import { BadRequestException } from '@nestjs/common';
-import { composeDocumentCode, normalizeTypedCode } from './document-code';
+import { composeDocumentCode, nextDocumentCode, normalizeTypedCode } from './document-code';
 
 describe('normalizeTypedCode', () => {
   it.each([
@@ -43,5 +43,115 @@ describe('composeDocumentCode', () => {
 
   it('rejects a business date that is not YYYY-MM-DD', () => {
     expect(() => composeDocumentCode('KPG', 'IN', '08.09.2026', '1')).toThrow(BadRequestException);
+  });
+});
+
+describe('nextDocumentCode', () => {
+  const managerWithCount = (n: number) => ({
+    query: jest.fn().mockImplementation((sql: string) => {
+      if (sql.includes('pg_advisory_xact_lock')) return Promise.resolve([{}]);
+      return Promise.resolve([{ n }]);
+    }),
+  });
+
+  it('numbers an intake from the count of that shift', async () => {
+    const manager = managerWithCount(6);
+    const code = await nextDocumentCode(manager as never, {
+      pointCode: 'SHP',
+      businessDate: '2026-09-18',
+      kind: 'IN',
+      shiftId: 'a-shift',
+      table: 'intakes',
+    });
+    expect(code).toBe('SHP-IN-20260918-007');
+  });
+
+  it('numbers a payout on its own counter, in the same shift', async () => {
+    const manager = managerWithCount(2);
+    const code = await nextDocumentCode(manager as never, {
+      pointCode: 'SHP',
+      businessDate: '2026-09-18',
+      kind: 'PO',
+      shiftId: 'a-shift',
+      table: 'payouts',
+    });
+    expect(code).toBe('SHP-PO-20260918-003');
+  });
+
+  it('counts the table it was asked for', async () => {
+    const manager = managerWithCount(0);
+    await nextDocumentCode(manager as never, {
+      pointCode: 'KON',
+      businessDate: '2026-09-18',
+      kind: 'PO',
+      shiftId: 'a-shift',
+      table: 'payouts',
+    });
+    const counting = (manager.query.mock.calls as [string][]).find(([sql]) =>
+      sql.includes('count(*)'),
+    );
+    expect(counting?.[0]).toContain('FROM payouts');
+  });
+
+  it('takes the advisory lock before counting', async () => {
+    const manager = managerWithCount(0);
+    await nextDocumentCode(manager as never, {
+      pointCode: 'KON',
+      businessDate: '2026-09-18',
+      kind: 'IN',
+      shiftId: 'a-shift',
+      table: 'intakes',
+    });
+    const [first] = manager.query.mock.calls[0] as [string];
+    expect(first).toContain('pg_advisory_xact_lock');
+  });
+
+  it('partitions the lock by kind, so an intake never waits on a payout', async () => {
+    const lockKeyFor = async (kind: 'IN' | 'PO') => {
+      const manager = managerWithCount(0);
+      await nextDocumentCode(manager as never, {
+        pointCode: 'KON',
+        businessDate: '2026-09-18',
+        kind,
+        shiftId: 'a-shift',
+        table: kind === 'IN' ? 'intakes' : 'payouts',
+      });
+      const [, params] = manager.query.mock.calls[0] as [string, string[]];
+      return params[0];
+    };
+    expect(await lockKeyFor('IN')).not.toBe(await lockKeyFor('PO'));
+  });
+
+  it('counts voided rows too, so a number is never reissued', async () => {
+    const manager = managerWithCount(3);
+    await nextDocumentCode(manager as never, {
+      pointCode: 'KON',
+      businessDate: '2026-09-18',
+      kind: 'IN',
+      shiftId: 'a-shift',
+      table: 'intakes',
+    });
+    const counting = (manager.query.mock.calls as [string][]).find(([sql]) =>
+      sql.includes('count(*)'),
+    );
+    expect(counting?.[0]).not.toContain('voided_at');
+  });
+
+  it('narrows the counter with a scope, so crate books stay separate', async () => {
+    const manager = managerWithCount(6);
+    const code = await nextDocumentCode(manager as never, {
+      pointCode: 'SHP',
+      businessDate: '2026-09-18',
+      kind: 'CR',
+      shiftId: 'a-shift',
+      table: 'crate_issuances',
+      scope: { column: 'mode', value: 'receipt' },
+    });
+    expect(code).toBe('SHP-CR-20260918-007');
+    const counting = (manager.query.mock.calls as [string, string[]][]).find(([sql]) =>
+      sql.includes('count(*)'),
+    );
+    expect(counting?.[0]).toContain('mode = $2');
+    expect(counting?.[1]).toEqual(['a-shift', 'receipt']);
   });
 });

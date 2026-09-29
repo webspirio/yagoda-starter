@@ -34,6 +34,8 @@ export const queryKeys = {
   pointCash: ['point-cash'] as const,
   /** Ящики — префікс для видач і повернень; читання дописує свій фільтр. */
   crates: ['crates'] as const,
+  /** Переважування — префікс; читання дописує зміну і прапорець сторнованих. */
+  reweighs: ['reweighs'] as const,
   /**
    * Залишки ящиків — і список точки (`/crate-balances`), і баланс однієї
    * людини (`/suppliers/:id/crate-balance`). Спільний префікс навмисно: будь-яка
@@ -42,4 +44,9 @@ export const queryKeys = {
   crateBalances: ['crate-balances'] as const,
   /** Підрахунки каси — префікс; читання дописує точку/зміну. */
   cashCounts: ['cash-counts'] as const,
+  /** §8.4's собівартість — prefix; a read appends the shift. Invalidated by
+   *  every expense write, since a витрата moves the basket and на кілограм. */
+  costOfDay: ['cost-of-day'] as const,
+  /** §8.3's витрати дня — prefix; a read appends the shift. */
+  dayExpenses: ['day-expenses'] as const,
 };

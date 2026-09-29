@@ -6,10 +6,10 @@ import { DataSource } from 'typeorm';
 // runs ConfigModule.forRoot() eagerly at import time.
 import { relaxThrottleForTests, resolveTestDatabaseName } from '../testing/db-harness';
 import { AppModule } from '../app.module';
-import { PayoutsService } from './payouts.service';
-import { IntakesService } from '../intakes/intakes.service';
-import { IntakeTopUpsService } from '../intake-top-ups/intake-top-ups.service';
-import { SupplierBalanceService } from '../supplier-balance/supplier-balance.service';
+import { CreatePayoutCommand } from './commands/create-payout.command';
+import { VoidIntakeCommand } from '../intakes/commands/void-intake.command';
+import { CreateIntakeTopUpCommand } from '../intake-top-ups/commands/create-intake-top-up.command';
+import { SupplierDebtQuery } from '../supplier-balance/queries/supplier-debt.query';
 import { PointCashService } from '../point-cash/point-cash.service';
 import { UserRole } from '../users/user-role.enum';
 import type { AuthenticatedUser } from '../auth/jwt.strategy';
@@ -27,10 +27,10 @@ import type { AuthenticatedUser } from '../auth/jwt.strategy';
 describe('payout ceiling with top-ups (Postgres)', () => {
   let app: INestApplication;
   let ds: DataSource;
-  let payouts: PayoutsService;
-  let intakes: IntakesService;
-  let topUps: IntakeTopUpsService;
-  let balance: SupplierBalanceService;
+  let payouts: CreatePayoutCommand;
+  let intakes: VoidIntakeCommand;
+  let topUps: CreateIntakeTopUpCommand;
+  let balance: SupplierDebtQuery;
   let pointCash: PointCashService;
   let run: string;
   let pointId: string;
@@ -79,10 +79,10 @@ describe('payout ceiling with top-ups (Postgres)', () => {
     await app.init();
 
     ds = app.get(DataSource);
-    payouts = app.get(PayoutsService);
-    intakes = app.get(IntakesService);
-    topUps = app.get(IntakeTopUpsService);
-    balance = app.get(SupplierBalanceService);
+    payouts = app.get(CreatePayoutCommand);
+    intakes = app.get(VoidIntakeCommand);
+    topUps = app.get(CreateIntakeTopUpCommand);
+    balance = app.get(SupplierDebtQuery);
     pointCash = app.get(PointCashService);
     run = randomUUID().slice(0, 8);
 
@@ -137,7 +137,6 @@ describe('payout ceiling with top-ups (Postgres)', () => {
     expect(await balance.debtFor(supplierId)).toBe('2000.00');
 
     const paid = await payouts.create(owner(), {
-      code: `CEIL-${run}`,
       collection_point_id: pointId,
       supplier_id: supplierId,
       amount: '2000.00',
@@ -164,7 +163,6 @@ describe('payout ceiling with top-ups (Postgres)', () => {
 
     await expect(
       payouts.create(owner(), {
-        code: `CEIL2-${run}`,
         collection_point_id: pointId,
         supplier_id: supplierId,
         amount: '2000.01',

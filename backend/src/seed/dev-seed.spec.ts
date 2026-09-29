@@ -150,7 +150,12 @@ describe('dev seed documents', () => {
     }
   });
 
-  it('typed receipt numbers are unique per point, day and kind (UQ on the composed code)', () => {
+  // The handle no longer becomes the stored code — `dev-seed.ts` numbers each
+  // shift 001, 002, … — but it still has to be unique per (point, day, kind),
+  // because that triple is the key the seed files a written code under for
+  // `SEED_TOP_UPS` to look up. A collision would attach a top-up to the wrong
+  // receipt silently.
+  it('document handles are unique per point, day and kind', () => {
     const seen = new Set<string>();
     for (const [kind, docs] of [
       ['IN', SEED_INTAKES],

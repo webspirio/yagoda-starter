@@ -11,6 +11,7 @@ import { ReweighItemTareType } from './reweigh-item-tare-type.entity';
 import { CreateReweighItemDto } from './dto/create-reweigh-item.dto';
 import { VoidDocumentDto } from '../intakes/dto/void-document.dto';
 import { ReweighItemResponse, toReweighItemResponse } from './reweigh-item.mapper';
+import { gradeTotals } from './reweigh-reconciliation.service';
 import { ShiftsService } from '../shifts/shifts.service';
 import { TareTypesService } from '../tare-types/tare-types.service';
 import { AuditService } from '../audit/audit.service';
@@ -70,7 +71,7 @@ export class ReweighsService {
       // win over an unknown tare type, or §8.1's own example is reachable only
       // once everything else about the request is already valid. Resolved
       // INSIDE the transaction (and through `m`) for the same reason
-      // `IntakesService.snapshotTare` is — the snapshot and the line it is
+      // `PriceIntakeQuery.snapshotTare` is — the snapshot and the line it is
       // snapshotted onto are one atomic read-then-write, not two.
       const tareWeight = await this.resolveTareWeight(dto, m);
 
@@ -227,15 +228,25 @@ export class ReweighsService {
     return { id: rows[0].id, shift_id: shiftId } as Reweigh;
   }
 
-  /** The grades this shift actually accepted — §8.1's picker, enforced. */
+  /**
+   * The grades this shift actually accepted — §8.1's picker, enforced.
+   *
+   * ONE QUERY, shared with the reconciliation's `grades[]`, and that sharing is
+   * the point rather than an economy. `GET /shifts/:id/reweigh` promises the
+   * picker exactly the set this method refuses outside of (`GRADE_NOT_ACCEPTED`),
+   * and the design decision behind it (§3.4) says the promise and the refusal
+   * come "from exactly this query". While these were two statements that merely
+   * happened to agree, that sentence was aspirational: adding `pg.is_active` to
+   * one, or an `ii.voided_at` filter if intake lines ever gain one, would have
+   * left the picker offering a grade the API rejects — and nothing anywhere
+   * would have failed. Deriving one from the other makes the claim structural.
+   *
+   * `gradeTotals` does more work than this caller needs (it also LEFT JOINs the
+   * weighed totals it exists to compute). That cost is deliberate: a second
+   * statement tuned for this path is exactly the drift described above.
+   */
   private async acceptedGrades(m: EntityManager, shiftId: string): Promise<string[]> {
-    const rows = (await m.query(
-      `SELECT DISTINCT ii.product_grade_id
-         FROM intake_items ii
-         JOIN intakes i ON i.id = ii.intake_id
-        WHERE i.shift_id = $1 AND i.voided_at IS NULL`,
-      [shiftId],
-    )) as { product_grade_id: string }[];
+    const rows = await gradeTotals(m, shiftId);
     return rows.map((r) => r.product_grade_id);
   }
 

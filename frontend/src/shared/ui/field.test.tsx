@@ -70,4 +70,40 @@ describe('Field a11y wiring', () => {
     );
     expect(screen.getByLabelText('Імʼя')).toHaveAttribute('aria-required', 'true');
   });
+
+  it('renders the hint muted by default, and amber when hintTone is "warning"', () => {
+    const { rerender } = render(
+      <Field name="birth" label="Дата" hint="ДД.ММ">
+        {(a11y) => <TextInput {...a11y} />}
+      </Field>,
+    );
+    expect(screen.getByText('ДД.ММ')).toHaveClass('text-muted-foreground');
+    expect(screen.getByText('ДД.ММ')).not.toHaveClass('text-amber');
+
+    rerender(
+      <Field name="birth" label="Дата" hint="ДД.ММ" hintTone="warning">
+        {(a11y) => <TextInput {...a11y} />}
+      </Field>,
+    );
+    expect(screen.getByText('ДД.ММ')).toHaveClass('text-amber');
+    expect(screen.getByText('ДД.ММ')).not.toHaveClass('text-muted-foreground');
+  });
+
+  it('the warning icon renders only for the warning tone — colour alone never carries it', () => {
+    const { rerender, container } = render(
+      <Field name="birth" label="Дата" hint="ДД.ММ">
+        {(a11y) => <TextInput {...a11y} />}
+      </Field>,
+    );
+    expect(container.querySelector('svg')).not.toBeInTheDocument();
+
+    rerender(
+      <Field name="birth" label="Дата" hint="ДД.ММ" hintTone="warning">
+        {(a11y) => <TextInput {...a11y} />}
+      </Field>,
+    );
+    const icon = container.querySelector('svg');
+    expect(icon).toBeInTheDocument();
+    expect(icon).toHaveAttribute('aria-hidden');
+  });
 });

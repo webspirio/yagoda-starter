@@ -8,7 +8,7 @@ import { resolvePointFilter } from '../auth/access/point-scope';
 import type { AuthenticatedUser } from '../auth/jwt.strategy';
 import { ListPointCashQueryDto } from './dto/list-point-cash.query';
 import { PointCashRow, PointCashRowResponse, toPointCashRowResponse } from './point-cash.mapper';
-import { crateBookSql } from '../crates/crate-balance.service';
+import { crateBookSql, crateUnitsSql } from '../crates/crate-balance.service';
 
 /**
  * «As of» resolves to TODAY IN `APP_TIMEZONE` when the caller names no date,
@@ -60,6 +60,12 @@ const asOfSql = (asOf: string, tz: string): string =>
  * be wrong twice — Tuesday is already closed and counted, and every as-of read
  * before Friday would be contaminated by money that was not yet in the drawer.
  *
+ * A RETURN MADE AT THE VOID IS THE EXCEPTION (2026-09-28). A payout voided while
+ * its shift is open never left that drawer in any sense a count could see — the
+ * supplier handed it back at the counter — so `returned_on_void` books it to the
+ * payout's OWN shift. By date it would misfile twice: a void at 00:30 in a shift
+ * not yet closed, and a void in a shift the owner reopened days later.
+ *
  * `AT TIME ZONE` ON `return_settled_at` IS NOT DECORATION. It is the only
  * `timestamptz` in this formula and it is matched against a business DATE; a
  * bare `::date` would take the SESSION timezone and misfile a settlement just
@@ -103,6 +109,12 @@ const asOfSql = (asOf: string, tz: string): string =>
  * point-lifetime running sum, which is a different shape from the berry book
  * on the same screen; the field name and this comment are what keep a reader
  * from "fixing" one into the other.
+ *
+ * `crate_deposit_units` (R8) SITS RIGHT BESIDE IT, SAME EXEMPTIONS. §7.5's
+ * card names both — money held AND units still out — and `crateUnitsSql`
+ * shares `crateBookSql`'s scope exactly: point-lifetime, no `as_of`, no
+ * supplier filter. It is a COUNT, not money, so it crosses the driver
+ * boundary as a JS `number` (SQL casts it `::int`), never a `::text` string.
  */
 const movementsSql = (shift: string, tz: string): string => `(
     COALESCE((SELECT SUM(CASE
@@ -117,11 +129,15 @@ const movementsSql = (shift: string, tz: string): string => `(
           AND t.voided_at IS NULL), 0.00)
   - COALESCE((SELECT SUM(p.amount) FROM payouts p
         WHERE p.shift_id = ${shift}), 0.00)
+  + COALESCE((SELECT SUM(p.amount) FROM payouts p
+        WHERE p.shift_id = ${shift}
+          AND p.returned_on_void), 0.00)
   + COALESCE((SELECT SUM(p.amount)
          FROM payouts p
          JOIN shifts ps ON ps.id = p.shift_id
          JOIN shifts s  ON s.id = ${shift}
         WHERE p.return_settled_at IS NOT NULL
+          AND NOT p.returned_on_void
           AND ps.collection_point_id = s.collection_point_id
           AND (p.return_settled_at AT TIME ZONE ${tz}::text)::date = s.business_date), 0.00)
 )`;
@@ -250,6 +266,27 @@ export class PointCashService {
   }
 
   /**
+   * The point's deposit-covered crate units, LIFETIME, as an integer — §7.5's
+   * card, «завдатків за N ящиків». Same shape and same reasoning as
+   * `crateDepositsFor` right above it: no `asOf`, because the units book has
+   * no lower bound and no physical count either.
+   *
+   * `crateUnitsSql` already casts to `::int` in SQL, so the row this returns
+   * IS a JS `number` off the driver — there is no `Number()`/`parseInt` here
+   * to ban in the first place (foundation §5.1's conversion never happens on
+   * the TypeScript side of this boundary).
+   */
+  async crateUnitsFor(pointId: string, manager?: EntityManager): Promise<number> {
+    const runner = manager ?? this.dataSource.manager;
+    const [row] = (await runner.query(
+      `SELECT ${crateUnitsSql('$1')} AS crate_deposit_units`,
+      [pointId],
+    )) as { crate_deposit_units: number }[];
+
+    return row.crate_deposit_units;
+  }
+
+  /**
    * The signed movements of one shift, as a decimal STRING. A shift with
    * nothing in it reads `'0.00'`.
    */
@@ -362,12 +399,17 @@ export class PointCashService {
                 -- reports -200. The demoted row is SUPERSEDED by the re-close,
                 -- not additional to it.
                 --
-                -- THE LIMIT, because this is not a general truth: a midday row
-                -- can ONLY arise from a reopen today — §7.6's «перерахувати
-                -- можна скільки завгодно разів» has no endpoint, so nothing
-                -- else writes one. If a midday RECOUNT route is ever added,
-                -- its discrepancies are NOT superseded by anything and this
-                -- filter has to be revisited rather than left to drop them.
+                -- THE LIMIT NAMED HERE IS NOW RESOLVED, not open: a midday
+                -- RECOUNT route has existed since 2026-09-22 (R2), and its
+                -- rows are kind = 'midday' too, exactly like a demoted
+                -- closing count. This filter was RE-CHECKED against that —
+                -- see CashCountsService's own doc comment for the same check
+                -- against its only_discrepancies filter and
+                -- cash-count.mapper.ts's is_open — and it still excludes
+                -- midday UNCONDITIONALLY, on purpose: a recount's
+                -- discrepancy is not superseded by anything, but §7.6 makes a
+                -- recount a WITNESS, never an incident, so it was never meant
+                -- to add to this sum in the first place.
                 --
                 -- Unlike the anchor above, this is NOT
                 -- only_discrepancies-filtered -- that predicate belongs to a
@@ -384,7 +426,10 @@ export class PointCashService {
                 -- bind, so every row gets its own figure inside this one
                 -- CTE instead of a query per row. UNBOUNDED by b.as_of,
                 -- unlike every other column of this row: section 7.5.
-                ${crateBookSql('cp.id')} AS crate_deposits
+                ${crateBookSql('cp.id')} AS crate_deposits,
+                -- The SAME book in units rather than money (R8) -- same
+                -- correlated-column call shape, same unbounded lifetime.
+                ${crateUnitsSql('cp.id')} AS crate_deposit_units
            FROM collection_points cp CROSS JOIN bounds b
           WHERE ($1::uuid IS NULL OR cp.id = $1::uuid)
        )
@@ -396,6 +441,7 @@ export class PointCashService {
               (s.target_cash - s.cash)::text AS shortfall,
               s.unexplained_difference::text AS unexplained_difference,
               s.crate_deposits::text AS crate_deposits,
+              s.crate_deposit_units AS crate_deposit_units,
               lt.status  AS latest_transfer_status,
               lt.sent_at AS latest_transfer_sent_at
          FROM scoped s

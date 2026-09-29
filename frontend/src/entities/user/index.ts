@@ -5,3 +5,4 @@ export { useMeQuery } from './api/useMeQuery';
 export { usePointScope } from './model/usePointScope';
 export { useUpdateMeMutation } from './api/useUpdateMeMutation';
 export type { UpdateMeInput } from './api/useUpdateMeMutation';
+export { useStaffQuery } from './api/useStaff';

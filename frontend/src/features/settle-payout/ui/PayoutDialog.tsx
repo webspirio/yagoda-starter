@@ -19,11 +19,6 @@ import { useCreatePayoutMutation } from '../api/useCreatePayout';
 import { apiErrorToFields } from '../lib/apiErrorToFields';
 import type { PayoutFormValues } from '../model/payoutForm';
 
-/** Mirrors the backend's typed-receipt-number rule (spec §3): 1–16 chars,
- *  upper-cased, first char alphanumeric so a document can never start with a
- *  bare dash. */
-const CODE = /^[A-Z0-9][A-Z0-9-]{0,15}$/;
-
 /**
  * Payout dialog — records money handed to a supplier as a standalone
  * document (never a field on an intake; spec §5.5). The debt ceiling is
@@ -35,8 +30,15 @@ const CODE = /^[A-Z0-9][A-Z0-9-]{0,15}$/;
  * the owner's caller passes the picked point so `collection_point_id`
  * travels with the request.
  *
+ * THERE IS NO RECEIPT-NUMBER FIELD. The operator used to copy one in off the
+ * paper payout book; since 2026-09-18 the server numbers the shift itself
+ * (`common/document-code.ts`) and the number comes back on the response, to be
+ * written onto the paper rather than read off it. The amount stayed: §3.7
+ * allows any sum from 0 to «Разом», and only the person at the counter knows
+ * which one is leaving the drawer.
+ *
  * The parent remounts it via a changing `key` on every open, so the prefilled
- * amount and code only reset when the whole `PayoutDialog` instance remounts.
+ * amount only resets when the whole `PayoutDialog` instance remounts.
  */
 export function PayoutDialog({
   supplier,
@@ -73,7 +75,6 @@ export function PayoutDialog({
     formState: { errors, isSubmitting },
   } = useForm<PayoutFormValues>({
     defaultValues: {
-      code: '',
       amount: defaultAmount ?? debt,
     },
   });
@@ -91,7 +92,6 @@ export function PayoutDialog({
 
   const onSubmit = handleSubmit(async (values) => {
     setFormError(null);
-    const code = values.code.trim().toUpperCase();
     const amount = normalizeAmount(values.amount);
 
     if (cmp(amount, '0') !== 1) {
@@ -111,7 +111,6 @@ export function PayoutDialog({
 
     try {
       const payout = await createPayout.mutateAsync({
-        code,
         supplier_id: supplier.id,
         amount,
         ...(pointId ? { collection_point_id: pointId } : {}),
@@ -138,33 +137,6 @@ export function PayoutDialog({
 
         <form onSubmit={onSubmit} className="flex flex-col gap-4" noValidate>
           <Field
-            name="code"
-            label={t('payout.form.code')}
-            required
-            hint={t('payout.form.codeHint')}
-            error={errors.code?.message}
-          >
-            {(a11y) => {
-              const codeField = register('code', {
-                required: 'payout.errors.codeRequired',
-                pattern: { value: CODE, message: 'payout.errors.codeFormat' },
-              });
-              return (
-                <TextInput
-                  {...a11y}
-                  className="font-mono uppercase"
-                  {...codeField}
-                  onChange={(event) => {
-                    event.target.value = event.target.value.toUpperCase();
-                    void codeField.onChange(event);
-                  }}
-                  autoFocus
-                />
-              );
-            }}
-          </Field>
-
-          <Field
             name="amount"
             label={t('payout.form.amount')}
             required
@@ -176,6 +148,7 @@ export function PayoutDialog({
                 inputMode="decimal"
                 className="font-mono"
                 {...register('amount', amountRules('payout.errors.amountFormat'))}
+                autoFocus
               />
             )}
           </Field>

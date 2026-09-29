@@ -144,6 +144,7 @@ export default tseslint.config(
       'src/crates/crate-allocation.ts',
       'src/crates/crates.service.ts',
       'src/crates/crate-balance.service.ts',
+      'src/crates/crate-standing.service.ts',
       'src/intake-top-ups/**/*.ts',
       // THE LIST'S MOST IMPORTANT PROPERTY, not an afterthought: EVERY module that
       // owns a money or weight `numeric` column is in it. registry.test.mjs derives
@@ -246,6 +247,7 @@ export default tseslint.config(
       'src/testing/documents-pipeline.db-spec.ts',
       'src/crates/crates.db-spec.ts',
       'src/crates/crates-race.db-spec.ts',
+      'src/cash-counts/cash-count-recount.db-spec.ts',
     ],
     rules: {
       '@typescript-eslint/no-require-imports': ['error', { allowAsImport: true }],

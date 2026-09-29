@@ -38,7 +38,7 @@ import {
  *    reader, unchanged for the assertions.
  *
  * 3. NON-NEGATIVE BALANCES. `dev-seed.db-spec.ts` proves no seeded supplier
- *    balance is negative, and `PayoutsService` enforces a real debt ceiling. A
+ *    balance is negative, and `PayoutWriter.write` enforces a real debt ceiling. A
  *    generated payout is therefore a QUARTER of what that same supplier has
  *    been received for, tracked as this file generates — never a round number
  *    chosen for looks.
@@ -198,9 +198,10 @@ for (let day = HISTORY_DAYS + 1; day >= 2; day -= 1) {
       intakes.push({
         point,
         day,
-        // Unique within (point, day) by construction — the index is in the
-        // code — and `composeDocumentCode` prefixes the point and the date, so
-        // it is unique network-wide too.
+        // The dataset's HANDLE, not the stored code — `dev-seed.ts` numbers
+        // each shift 001, 002, … the way the server does. Unique within
+        // (point, day) by construction, since the index is in the string, which
+        // is all a handle has to be.
         typed: `H${String(day).padStart(2, '0')}${String(n).padStart(2, '0')}`,
         supplier,
         receivedBy: operator,

@@ -246,4 +246,104 @@ describe('CashLedger', () => {
     );
     await expectNoAxeViolations(container);
   });
+
+  describe('opening row — R6', () => {
+    it('shows the opening row only when an opening count was passed', () => {
+      render(
+        <CashLedger
+          date="2026-09-10"
+          cash="0.00"
+          intakes={[]}
+          payouts={[]}
+          transfers={[]}
+          openingCount="1500.00"
+        />,
+      );
+
+      expect(screen.getByText('Opening count')).toBeInTheDocument();
+      expect(screen.getByText('1,500.00 ₴')).toBeInTheDocument();
+    });
+
+    it('shows no opening row at all without one', () => {
+      render(
+        <CashLedger date="2026-09-10" cash="0.00" intakes={[]} payouts={[]} transfers={[]} />,
+      );
+
+      expect(screen.queryByText('Opening count')).toBeNull();
+    });
+
+    it('shows the target hint only when a target is assigned', () => {
+      render(
+        <CashLedger
+          date="2026-09-10"
+          cash="0.00"
+          intakes={[]}
+          payouts={[]}
+          transfers={[]}
+          openingCount="1500.00"
+          target="5000.00"
+        />,
+      );
+
+      expect(screen.getByText('target 5,000.00 ₴')).toBeInTheDocument();
+    });
+
+    it('shows the opening row with no hint at all when the point has no target', () => {
+      render(
+        <CashLedger
+          date="2026-09-10"
+          cash="0.00"
+          intakes={[]}
+          payouts={[]}
+          transfers={[]}
+          openingCount="1500.00"
+        />,
+      );
+
+      expect(screen.getByText('Opening count')).toBeInTheDocument();
+      expect(screen.queryByText(/^target /)).toBeNull();
+    });
+
+    it('still prints the server cash as the total, not the opening count plus the rows', () => {
+      // Rule 1 must survive the new row: `cash` alone is the total, whatever
+      // `openingCount` says.
+      render(
+        <CashLedger
+          date="2026-09-10"
+          cash="1000.00"
+          intakes={[]}
+          payouts={[]}
+          transfers={[]}
+          openingCount="1500.00"
+        />,
+      );
+
+      const total = screen.getByText('Berry cash').closest('div');
+      expect(total).toHaveTextContent('1,000.00 ₴');
+    });
+  });
+
+  describe('negative-cash notice — R6', () => {
+    it('shows the notice when the total has gone negative', () => {
+      render(
+        <CashLedger date="2026-09-10" cash="-100.00" intakes={[]} payouts={[]} transfers={[]} />,
+      );
+
+      expect(screen.getByText(/Berry cash has gone negative/)).toBeInTheDocument();
+    });
+
+    it('says nothing when the total is not negative', () => {
+      render(
+        <CashLedger date="2026-09-10" cash="0.00" intakes={[]} payouts={[]} transfers={[]} />,
+      );
+
+      expect(screen.queryByText(/Berry cash has gone negative/)).toBeNull();
+    });
+  });
+
+  it('prints the two-rows footnote, unconditionally', () => {
+    render(<CashLedger date="2026-09-10" cash="0.00" intakes={[]} payouts={[]} transfers={[]} />);
+
+    expect(screen.getByText(/Payouts show as two rows on purpose/)).toBeInTheDocument();
+  });
 });

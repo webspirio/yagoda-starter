@@ -10,8 +10,8 @@ const prices = (over: Partial<PriceSnapshot> = {}): Map<string, PriceSnapshot> =
 
 const tare = (): Map<string, TareSnapshot> =>
   new Map([
-    [CRATE, { id: CRATE, weight_kg: '1.20' }],
-    [BUCKET, { id: BUCKET, weight_kg: '0.50' }],
+    [CRATE, { id: CRATE, weight_kg: '1.20', is_crate: true }],
+    [BUCKET, { id: BUCKET, weight_kg: '0.50', is_crate: false }],
   ]);
 
 const line = (over: Record<string, unknown> = {}) => ({
@@ -262,6 +262,36 @@ describe('buildIntake', () => {
       expect(() =>
         buildIntake([line({ gross_kg: '3.60', pallet_kg: '0.00' })], prices(), tare()),
       ).toThrow(/net/i);
+    });
+  });
+
+  describe('crate_units — spec §8.3, the ceiling on crates returned with a receipt', () => {
+    it('sums the crate-tare units across every line, and only those', () => {
+      const built = buildIntake(
+        [
+          line({ tare: [{ tare_type_id: CRATE, units: 3 }] }),
+          line({
+            tare: [
+              { tare_type_id: CRATE, units: 2 },
+              { tare_type_id: BUCKET, units: 5 },
+            ],
+          }),
+        ],
+        prices(),
+        tare(),
+      );
+
+      expect(built.crate_units).toBe(5);
+    });
+
+    it('is 0 when no line carries the crate', () => {
+      const built = buildIntake(
+        [line({ tare: [{ tare_type_id: BUCKET, units: 5 }] })],
+        prices(),
+        tare(),
+      );
+
+      expect(built.crate_units).toBe(0);
     });
   });
 });

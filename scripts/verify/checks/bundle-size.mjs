@@ -42,15 +42,28 @@
  * single-digit-percent headroom is not a stricter budget, it is a budget that trains people
  * to raise it on sight — this rule sizes the slack to what ordinary work costs so ordinary
  * work does not need a ceiling edit, and a new dependency pulled in whole still does. This
- * SAME rule runs on EVERY `--write`, off one shared MIN_HEADROOM/STEP pair; neither metric
- * is ever frozen or treated as a one-time computation. Bare `--write` re-baselines BOTH
- * gated pairs at once, same as it always has; `--write=first-paint` or `--write=lazy`
- * re-baselines ONLY that pair, leaving the other pair's ceiling exactly where it was
+ * SAME rule derives EVERY ceiling, off one shared MIN_HEADROOM/STEP pair. Bare `--write`
+ * re-derives BOTH gated pairs at once; `--write=first-paint` or `--write=lazy` re-derives
+ * ONLY that pair, leaving the other pair's ceiling exactly where it was
  * (`measured*`/`headroom*` still refresh for both, because those describe the build, not a
  * decision) — reach for the per-metric form when only one metric's ceiling actually needs
- * to move and the other's should stay reviewable on its own. A bare `--write` still moves
- * both regardless of which one was actually over budget; when it moves a pair that was not,
- * it says so on its own printed line rather than leaving that a silent side effect.
+ * to move and the other's should stay reviewable on its own. When a bare `--write` moves a
+ * pair that was not over budget, it says so on its own printed line rather than leaving
+ * that a silent side effect.
+ *
+ * THE RATCHET IS ARITHMETIC, NOT PROSE IN THE BASELINE: a derived ceiling is CLAMPED to the
+ * ceiling already on file, so `--write` (bare or per-metric) can only ever LOWER a ceiling;
+ * raising one takes `--raise` and is announced as a WARNING that it widened the budget.
+ * Without that clamp `--write` is a one-command widening whose diff reads like a routine
+ * re-measurement — precisely the unread ceiling raise every paragraph of the baseline's
+ * `reason` exists to prevent. A refused raise is announced too (the ceiling was HELD, and
+ * the headroom written is below the designed minimum), so the writer learns it on the spot
+ * rather than from a red row later.
+ *
+ * A DEVELOPMENT BUILD IS RED, HOWEVER SMALL. React's development runtime shipped to users
+ * is still minified, so nothing about it looks wrong except ~291 KiB raw / ~82 KiB gzip of
+ * warning machinery and DevTools hooks and React's slow path. See `assertProductionBuild()`:
+ * dev-only string literals that survive minification, checked against first paint's JS.
  *
  * What must still fail is a REGRESSION: a new dependency pulled in whole, an accidental
  * whole-package import, a chart library added for one small feature. Those are tens or
@@ -94,27 +107,24 @@
  * longer carries a ceiling of its own: gating it on top of first paint and lazy would just
  * double-book bytes both of them already cover.
  *
- * WHAT THE OPERATOR ACTUALLY GAINED FROM THE SPLIT THAT PROMPTED THIS CHECK: on `main`,
- * before the split, first paint WAS the whole bundle — there was nothing else to measure —
- * at 295.5 KiB gzip / 1034.7 KiB raw. After splitting, first paint is 281.7 KiB gzip /
- * 962.3 KiB raw: -13.8 KiB gzip (-4.7%), -72.4 KiB raw (-7.0%). Real, but nowhere near the
- * -43% the largest-chunk WARNING line alone would suggest (276.4 KiB gzip down to
- * 157.7 KiB): `dialog-*.js` (101.3 KiB gzip / 323.8 KiB raw) is a STATIC import of the
- * entry, so splitting it out RELOCATED it into its own chunk file rather than UNLOADING it
- * from first paint. The largest-chunk line answers "how big is the single biggest file"; it
- * does not answer "how much smaller is what a first visit downloads" — only the first-paint
- * figure above answers that, which is exactly why it — and now lazy alongside it — are the
- * gates rather than a WARNING.
+ * WHY THE STATIC CLOSURE, AND NOT JUST THE ENTRY FILE: Vite `modulepreload`s every chunk the
+ * entry statically imports, so a split that hoists shared code into new eagerly-preloaded
+ * chunks still lands INSIDE first paint and is caught. Measured on this repo when the owner
+ * screens were first split (2026-09-21, frontend/src/app/lazy-routes.ts), one `import()` per
+ * page produced seven such shared chunks and GREW the operator's first load to 297,437 B
+ * gzip; one dynamic entry point for the whole owner group took it from 309,842 B gzip /
+ * 1,089,334 B raw to 291,949 / 1,007,840 in one JS file and one CSS file. The largest-chunk
+ * line answers "how big is the single biggest file"; it does not answer "how much smaller
+ * is what a first visit downloads" — only the first-paint figure answers that, which is
+ * exactly why it — and lazy alongside it — are the gates rather than a WARNING.
  *
- * LAZY HAD NO CEILING AT ALL UNTIL NOW, AND THAT WAS THE GAP THIS REVISION CLOSES. The
- * version of this check that first added first paint kept the OLD sum ceiling as a frozen,
- * printed-only figure — meaning the five split-off owner screens, and any future chart
- * library added behind a dynamic import, could grow without bound: no row would ever fail
- * for it, because first paint does not see dynamicImports and the frozen sum ceiling was
- * never designed to gate anything again. Giving lazy its own ceiling — ratcheted by
- * `--write` exactly like first paint's, never frozen — closes that gap: splitting code
- * between first paint and lazy now moves bytes between two BUDGETS, not out of every budget
- * that exists.
+ * LAZY HAD NO CEILING AT ALL UNTIL THIS REVISION, AND THAT WAS THE GAP IT CLOSES. The
+ * index.html-based first-load gate this replaced printed the deferred bytes as a WARNING
+ * with no ceiling — meaning the owner-only chunk, and any future chart library added behind
+ * a dynamic import, could grow without bound: no row would ever fail for it. Giving lazy
+ * its own ceiling, derived and clamped by exactly the same rule as first paint's, closes
+ * that gap: splitting code between first paint and lazy now moves bytes between two
+ * BUDGETS, not out of every budget that exists.
  *
  * CONCEDED: THE SAME ABSOLUTE MINIMUM READS AS A LOT MORE HEADROOM ON LAZY THAN ON FIRST
  * PAINT — kept anyway, deliberately. MIN_HEADROOM_GZIP_BYTES/MIN_HEADROOM_RAW_BYTES stay one
@@ -122,10 +132,11 @@
  * absolute KiB whichever closure it lands in, so the minimum that absorbs it is the same
  * absolute number either way — that argument does not weaken just because lazy's own
  * baseline is small. But it does mean lazy's ceiling, at its first measurement, carries
- * roughly 139% headroom over lazy's own measured bytes, where the identical constant reads
+ * headroom comparable to lazy's own measured bytes, where the identical constant reads
  * as a low double-digit percentage against first paint's much larger baseline — a number
  * that would look alarming taken alone. It is not a standing gap: `--write` re-tightens
- * EVERY pair to measurement + minimum on every run it touches, so that headroom never
+ * EVERY pair it touches down to measurement + minimum (the clamp only ever stops it
+ * going UP), so that headroom never
  * accumulates across ordinary work the way a frozen ceiling would, and the "fallen BELOW the
  * minimum" WARNING two sections down fires the moment lazy's own headroom erodes toward the
  * same absolute minimum — long before lazy's ceiling itself would ever trip. So the large
@@ -200,6 +211,49 @@ function fail(lines) {
 
 /** @param {number} n @returns {string} */
 const kib = (n) => `${(n / 1024).toFixed(1)} KiB`
+
+/**
+ * React's development runtime, shipped to users, is a bug this check can actually see —
+ * and the only one it can, because the output is still MINIFIED and therefore looks
+ * entirely normal. It cost ~291 KiB raw / ~82 KiB gzip here and, worse, swaps React for
+ * its slow path with DevTools hooks and warning machinery attached.
+ *
+ * How it happened, so the next person recognises it: the repo keeps ONE `.env` at the
+ * root because docker compose reads it, and it carries `NODE_ENV=development` for the
+ * backend. Any arrangement that lets Vite's env machinery see that file — `envDir: '..'`
+ * is the obvious one, `loadEnv('..', 'VITE_')` is the one that looks safe and is not —
+ * makes Vite honour that NODE_ENV and build in development mode. Nothing warns. The
+ * build succeeds, the bundle is minified, and the only symptom is a bigger number on a
+ * row somebody has to be reading.
+ *
+ * These marker strings are dev-only React branches that survive minification because
+ * they are string literals. Checked against first paint's JS only: a dev-mode build puts
+ * React in the entry closure, and scanning every asset would make this O(bundle) for no
+ * extra signal.
+ *
+ * @param {AssetFile[]} firstPaint
+ */
+function assertProductionBuild(firstPaint) {
+  const markers = ['Each child in a list should have a unique', 'Invalid hook call']
+  for (const f of firstPaint) {
+    if (!f.file.endsWith('.js')) continue
+    const text = readFileSync(path.join(ASSETS, f.file), 'utf8')
+    const hit = markers.find((m) => text.includes(m))
+    if (hit === undefined) continue
+    fail([
+      `${ASSETS_REL}/${f.file} contains React's DEVELOPMENT runtime (matched ${JSON.stringify(hit)}).`,
+      'This build shipped dev-only React to users: warning machinery, DevTools hooks and the',
+      'slow render path, for roughly 291 KiB raw / 82 KiB gzip of dead weight. It is still',
+      'minified, so nothing else about the output looks wrong and no other row here catches it.',
+      '',
+      'Almost always the cause is Vite reading the repo-root .env, which carries',
+      'NODE_ENV=development for the backend and compose. See frontend/vite.config.ts: the root',
+      "file's VITE_ keys are read by hand precisely so Vite's env machinery never sees",
+      'NODE_ENV. `envDir: \'..\'` and `loadEnv(mode, \'..\', \'VITE_\')` both reintroduce it —',
+      'the prefix argument filters what loadEnv RETURNS, not what it reads.',
+    ])
+  }
+}
 
 /**
  * @typedef {object} AssetFile
@@ -541,34 +595,30 @@ const DEFAULT_REASON =
   'unread ceiling raise by one commit. The fix is this minimum: 25 KiB gzip / 100 KiB raw, ' +
   'sized to absorb roughly one ordinary phase of feature work without tripping, while a ' +
   'new dependency pulled in whole — tens or hundreds of KiB, not tens of KiB — still trips ' +
-  'it. THIS RULE NEVER FREEZES: `--write` re-baselines BOTH gated pairs, first paint and ' +
-  'lazy, to a fresh measurement plus the minimum headroom every time it runs — there is no ' +
-  'hand-edit required to keep either ceiling honest, and nothing about either pair is ever ' +
-  'carried forward untouched the way the old sum ceiling once was. What looks like ' +
-  '"raising the ceiling" is simply `--write` doing exactly that because the measurement ' +
-  'grew: the number worth reading on every run is the headroom this check prints as a ' +
-  'WARNING line, not the pass/fail alone — a ceiling with single-digit-percent headroom ' +
-  'trains people to skim past budgets rather than read them, which is the one thing this ' +
-  'whole check exists to prevent. ' +
-  'FIRST PAINT was first measured 2026-09-21, as the FIRST measurement of that metric — ' +
-  "the Vite manifest's entry chunk plus its static import closure and their css — and has " +
-  'gated this row, ratcheting on every `--write`, ever since. LAZY was first measured on ' +
-  'the same date, closing the gap first paint alone left open: every OTHER manifest-listed ' +
-  'chunk, reachable from the entry only by crossing a dynamicImports edge, previously had ' +
-  'no ceiling at all — a chart library added behind one lazy route could have grown ' +
-  'without bound and no row would ever have failed for it. Lazy now ratchets on every ' +
-  '`--write` exactly like first paint; neither is ever frozen. The SUM across ' +
-  'frontend/dist/assets is still measured and printed on every run, but as of the same ' +
-  'date it carries no ceiling of its own and this file records no field for one: first ' +
-  'paint and lazy between them already cover every manifest-listed byte, so gating a third, ' +
-  'overlapping figure on top would only double-book bytes the other two already price. ' +
-  'WHAT THE OPERATOR ACTUALLY GAINED from the split that prompted first paint to be added: ' +
-  'on `main`, first paint WAS the whole bundle, 295.5 KiB gzip / 1034.7 KiB raw; after ' +
-  'splitting it is 281.7 KiB gzip / 962.3 KiB raw — -13.8 KiB gzip (-4.7%), -72.4 KiB raw ' +
-  '(-7.0%), real but far short of the -43% the largest-chunk WARNING line alone would ' +
-  'suggest, because the biggest relocated chunk (`dialog-*.js`, 101.3 KiB gzip / 323.8 KiB ' +
-  'raw) is a STATIC import of the entry — moved into its own chunk file, not unloaded from ' +
-  'first paint.'
+  'it. Lowering a ceiling is an ordinary edit, and `--write` does it: it re-derives each ' +
+  'pair it touches from a fresh measurement and CLAMPS the result to the ceiling already on ' +
+  'file, so it can only ever lower one. Raising a ceiling takes `--write --raise`, which ' +
+  'says out loud that it widened the budget, and the diff must say here what changed and ' +
+  'why it could not fit in the existing headroom. The number worth reading on every run is ' +
+  'the headroom this check prints as a WARNING line, not the pass/fail alone — a ceiling ' +
+  'with single-digit-percent headroom trains people to raise budgets on sight rather than ' +
+  'to read them, which is the one thing this whole check exists to prevent. ' +
+  'WHAT IS GATED CHANGED TWICE ON 2026-09-21 WHILE THE FIRST-PAINT CEILING DID NOT RISE. The ' +
+  'ceiling was first set 2026-09-10 against the SUM of frontend/dist/assets. Splitting the ' +
+  'owner-only screens behind one React.lazy boundary cut the operator\'s real first load by ' +
+  '17.9 KiB gzip and pushed that sum OVER the ceiling, because two chunks compress worse ' +
+  'than one; the ceiling was held (312,320 B gzip / 1,085,440 B raw) and the measured ' +
+  'quantity corrected to the first-load set instead. FIRST PAINT — the Vite manifest\'s ' +
+  'entry chunk plus its static import closure and their css, the same set index.html ' +
+  'preloads — now carries that held ceiling. LAZY — every OTHER manifest-listed chunk, ' +
+  'reachable from the entry only by crossing a dynamicImports edge — was given its own ' +
+  'ceiling at the same time, closing the gap the first-load gate left open: deferred ' +
+  'bytes had no ceiling at all, so a chart library added behind one lazy route could have ' +
+  'grown without bound and no row would ever have failed for it. The SUM is still measured ' +
+  'and printed on every run but carries no ceiling of its own and this file records no ' +
+  'field for one: first paint and lazy between them already cover every manifest-listed ' +
+  'byte, so gating a third, overlapping figure would only double-book bytes the other two ' +
+  'already price.'
 
 /**
  * The ceiling for one measured metric is `measurement + minimum headroom`, THEN rounded up
@@ -590,9 +640,8 @@ function ceilingFor(measured, minHeadroom, step) {
  * which pair's `max*` (and therefore `headroom*`, which is derived from whichever `max*` is
  * in effect) actually MOVES on this write:
  *
- * - `'both'` (the plain `--write`, unchanged behaviour): both ceilings are recomputed from a
- *   fresh measurement, same as always — neither pair is ever carried forward untouched the
- *   way the old, frozen sum ceiling once was.
+ * - `'both'` (the plain `--write`): both ceilings are re-derived from a fresh measurement
+ *   (and clamped, below).
  * - `'first-paint'` / `'lazy'` (the `--write=<metric>` forms): ONLY that pair's ceiling is
  *   recomputed; the OTHER pair's `max*` is carried forward from `previous` untouched, and
  *   its `headroom*` is recomputed against that untouched `max*` and the fresh measurement —
@@ -600,7 +649,16 @@ function ceilingFor(measured, minHeadroom, step) {
  *   doesn't move that pair's ceiling.
  *
  * `previous` must supply the untouched pair's `max*` for a per-metric write — {@link main}
- * refuses the write before calling this when it can't. Recording
+ * refuses the write before calling this when it can't.
+ *
+ * THE RATCHET IS ARITHMETIC HERE, NOT PROSE IN THE BASELINE. Every pair this write moves is
+ * clamped to the ceiling `previous` already records for it, so `--write` can only ever LOWER
+ * a ceiling; raising one takes `allowRaise` (`--raise`), and {@link main} announces both a
+ * held ceiling and a raised one. Without the clamp `--write` is a one-command widening that
+ * produces a diff reading like a routine re-measurement — and it became reachable the moment
+ * a recorded ceiling stopped equalling this function's own output (2026-09-21: the first-load
+ * ceiling was held while the measured quantity was corrected, so it is deliberately tighter
+ * than the arithmetic derives). Recording
  * `minHeadroomGzipBytes`/`minHeadroomRawBytes`/`stepGzipBytes`/`stepRawBytes` alongside the
  * result means the next person to re-measure follows this exact arithmetic instead of
  * inventing their own rounding rule (the mistake this check's own history already made
@@ -609,9 +667,10 @@ function ceilingFor(measured, minHeadroom, step) {
  * @param {{ firstPaintGzip: number, firstPaintRaw: number, lazyGzip: number, lazyRaw: number }} measured
  * @param {Partial<Budget> | undefined} previous
  * @param {'both' | 'first-paint' | 'lazy'} target
+ * @param {boolean} [allowRaise] explicit `--raise`: permit a ceiling above `previous`
  * @returns {Budget}
  */
-function buildBudget(measured, previous, target) {
+function buildBudget(measured, previous, target, allowRaise = false) {
   const fpGzip = ceilingFor(measured.firstPaintGzip, MIN_HEADROOM_GZIP_BYTES, STEP_GZIP_BYTES)
   const fpRaw = ceilingFor(measured.firstPaintRaw, MIN_HEADROOM_RAW_BYTES, STEP_RAW_BYTES)
   const lazyGzip = ceilingFor(measured.lazyGzip, MIN_HEADROOM_GZIP_BYTES, STEP_GZIP_BYTES)
@@ -620,14 +679,22 @@ function buildBudget(measured, previous, target) {
   const writeFirstPaint = target === 'both' || target === 'first-paint'
   const writeLazy = target === 'both' || target === 'lazy'
 
+  /** @param {number} derived @param {number | undefined} prev */
+  const clamp = (derived, prev) =>
+    !allowRaise && typeof prev === 'number' && Number.isFinite(prev) ? Math.min(derived, prev) : derived
+
   const maxFirstPaintGzipBytes = writeFirstPaint
-    ? fpGzip.max
+    ? clamp(fpGzip.max, previous?.maxFirstPaintGzipBytes)
     : /** @type {number} */ (previous?.maxFirstPaintGzipBytes)
   const maxFirstPaintRawBytes = writeFirstPaint
-    ? fpRaw.max
+    ? clamp(fpRaw.max, previous?.maxFirstPaintRawBytes)
     : /** @type {number} */ (previous?.maxFirstPaintRawBytes)
-  const maxLazyGzipBytes = writeLazy ? lazyGzip.max : /** @type {number} */ (previous?.maxLazyGzipBytes)
-  const maxLazyRawBytes = writeLazy ? lazyRaw.max : /** @type {number} */ (previous?.maxLazyRawBytes)
+  const maxLazyGzipBytes = writeLazy
+    ? clamp(lazyGzip.max, previous?.maxLazyGzipBytes)
+    : /** @type {number} */ (previous?.maxLazyGzipBytes)
+  const maxLazyRawBytes = writeLazy
+    ? clamp(lazyRaw.max, previous?.maxLazyRawBytes)
+    : /** @type {number} */ (previous?.maxLazyRawBytes)
 
   return {
     measuredAt: new Date().toISOString().slice(0, 10),
@@ -692,6 +759,73 @@ function parseWriteTarget(argv) {
   return null
 }
 
+/**
+ * A refused raise is ANNOUNCED, never silent: the writer asked to re-record a baseline and
+ * got a tighter one than the arithmetic derives, and the whole value of the clamp is that
+ * they find out here rather than discovering a red `bundle` row later and assuming the
+ * check is broken. A granted raise is announced just as loudly, because it WIDENS a budget.
+ *
+ * @param {'both' | 'first-paint' | 'lazy'} target
+ * @param {boolean} raise
+ * @param {Partial<Budget> | undefined} previous
+ * @param {Budget} budget
+ * @param {{ fp: { gzip: number, raw: number }, lz: { gzip: number, raw: number } }} measured
+ */
+function announceClampOrRaise(target, raise, previous, budget, { fp, lz }) {
+  const pairs = [
+    {
+      label: 'first paint',
+      moved: target !== 'lazy',
+      gzip: fp.gzip,
+      raw: fp.raw,
+      prevGzip: previous?.maxFirstPaintGzipBytes,
+      prevRaw: previous?.maxFirstPaintRawBytes,
+      maxGzip: budget.maxFirstPaintGzipBytes,
+      maxRaw: budget.maxFirstPaintRawBytes,
+    },
+    {
+      label: 'lazy',
+      moved: target !== 'first-paint',
+      gzip: lz.gzip,
+      raw: lz.raw,
+      prevGzip: previous?.maxLazyGzipBytes,
+      prevRaw: previous?.maxLazyRawBytes,
+      maxGzip: budget.maxLazyGzipBytes,
+      maxRaw: budget.maxLazyRawBytes,
+    },
+  ]
+  for (const p of pairs) {
+    if (!p.moved) continue
+    const derivedGzip = ceilingFor(p.gzip, MIN_HEADROOM_GZIP_BYTES, STEP_GZIP_BYTES).max
+    const derivedRaw = ceilingFor(p.raw, MIN_HEADROOM_RAW_BYTES, STEP_RAW_BYTES).max
+    if (!raise && (p.maxGzip < derivedGzip || p.maxRaw < derivedRaw)) {
+      process.stdout.write(
+        `WARNING: the recorded ${p.label} ceiling was HELD, not re-derived — this measurement wants ` +
+          `${kib(derivedGzip)} gzip / ${kib(derivedRaw)} raw to keep the designed minimum headroom, which ` +
+          `is ABOVE the ceiling already on file. --write can only ever lower a ceiling; the headroom ` +
+          `it writes is therefore below the minimum and the check will say so on every run. The ` +
+          `intended response is to make ${p.label} smaller. If the ceiling genuinely has to rise, re-run ` +
+          `with --raise and say in ${BUDGET_REL}'s reason what changed and why it could not fit in the ` +
+          'existing headroom.\n',
+      )
+    }
+    const prevGzip = typeof p.prevGzip === 'number' ? p.prevGzip : undefined
+    const prevRaw = typeof p.prevRaw === 'number' ? p.prevRaw : undefined
+    if (
+      raise &&
+      ((prevGzip !== undefined && p.maxGzip > prevGzip) || (prevRaw !== undefined && p.maxRaw > prevRaw))
+    ) {
+      process.stdout.write(
+        `WARNING: --raise was given, so the ${p.label} ceiling was re-derived from the measurement ` +
+          `rather than clamped to the ${kib(prevGzip ?? 0)} gzip / ${kib(prevRaw ?? 0)} raw already on file. ` +
+          `This WIDENS the budget. The diff must carry a reason stating what changed and why it could ` +
+          'not fit in the existing headroom — a ceiling raised without one is the unread ratchet this ' +
+          'check exists to prevent.\n',
+      )
+    }
+  }
+}
+
 function main() {
   const writeTarget = parseWriteTarget(process.argv)
   const files = measure()
@@ -700,6 +834,9 @@ function main() {
   const manifest = readManifest()
   assertNoDevOnlyChunksShipped(manifest)
   const { resolved: firstPaint, visited: firstPaintVisited } = firstPaintFiles(manifest, byName)
+  // Before --write as well as before the gate: a dev-mode build must never be recorded as
+  // a baseline either.
+  assertProductionBuild(firstPaint)
   const firstPaintFileNames = new Set(firstPaint.map((f) => f.file))
   const { resolved: lazy } = lazyFiles(manifest, byName, firstPaintVisited, firstPaintFileNames)
   assertClosureInvariant(manifest, firstPaint, lazy)
@@ -736,12 +873,15 @@ function main() {
       }
     }
 
+    const raise = process.argv.includes('--raise')
     const budget = buildBudget(
       { firstPaintGzip: fp.gzip, firstPaintRaw: fp.raw, lazyGzip: lz.gzip, lazyRaw: lz.raw },
       previous,
       writeTarget,
+      raise,
     )
     writeFileSync(BUDGET, `${JSON.stringify(budget, null, 2)}\n`)
+    announceClampOrRaise(writeTarget, raise, previous, budget, { fp, lz })
 
     if (writeTarget === 'first-paint') {
       process.stdout.write(
@@ -774,8 +914,8 @@ function main() {
         `sum ${kib(sum.gzip)} gzip / ${kib(sum.raw)} raw (informational only, no ceiling)\n`,
     )
 
-    // A plain --write (both) always re-baselines BOTH pairs, even a pair that was NOT
-    // actually over its OLD ceiling — the pair somebody ran --write to fix is not
+    // A plain --write (both) re-derives BOTH pairs (lowering only, unless --raise), even a
+    // pair that was NOT actually over its OLD ceiling — the pair somebody ran --write to fix is not
     // necessarily the only one whose ceiling just moved. Named here, unconditionally, so
     // that side effect is never a silent one: printed only when it actually happened
     // (previous existed, had a usable old max for this pair, and the new max differs) AND
@@ -794,8 +934,8 @@ function main() {
         process.stdout.write(
           `bundle: first paint also re-baselined: ${kib(/** @type {number} */ (previous.maxFirstPaintGzipBytes))} → ` +
             `${kib(budget.maxFirstPaintGzipBytes)} gzip / ${kib(/** @type {number} */ (previous.maxFirstPaintRawBytes))} → ` +
-            `${kib(budget.maxFirstPaintRawBytes)} raw — it was not over its old ceiling; a plain --write moves ` +
-            'both pairs regardless of which one needed it.\n',
+            `${kib(budget.maxFirstPaintRawBytes)} raw — it was not over its old ceiling; a plain --write ` +
+            're-derives both pairs regardless of which one needed it.\n',
         )
       }
 
@@ -811,8 +951,8 @@ function main() {
         process.stdout.write(
           `bundle: lazy also re-baselined: ${kib(/** @type {number} */ (previous.maxLazyGzipBytes))} → ` +
             `${kib(budget.maxLazyGzipBytes)} gzip / ${kib(/** @type {number} */ (previous.maxLazyRawBytes))} → ` +
-            `${kib(budget.maxLazyRawBytes)} raw — it was not over its old ceiling; a plain --write moves ` +
-            'both pairs regardless of which one needed it.\n',
+            `${kib(budget.maxLazyRawBytes)} raw — it was not over its old ceiling; a plain --write ` +
+            're-derives both pairs regardless of which one needed it.\n',
         )
       }
     }
@@ -887,9 +1027,10 @@ function main() {
   }
   if (problems.length) {
     problems.push(
-      `Raising a ceiling is a visible, reasoned edit to ${BUDGET_REL} — it never widens on its ` +
-        'own. Lowering it is ordinary; look for a new or oversized dependency, or a chunk that ' +
-        'should move to (or out of) a dynamic import.',
+      `Raising a ceiling is a visible, reasoned edit to ${BUDGET_REL} (--write --raise) — it ` +
+        'never widens on its own, and a plain --write only ever lowers it. Lowering is ' +
+        'ordinary; look for a new or oversized dependency, or a chunk that should move to (or ' +
+        'out of) a dynamic import.',
     )
     fail(problems)
   }

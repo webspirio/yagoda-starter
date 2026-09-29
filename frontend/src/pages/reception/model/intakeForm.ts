@@ -1,4 +1,4 @@
-import { normalizeCode } from '../lib/receiptCode';
+import { cmp, DECIMAL_INPUT, normalizeAmount } from '@/shared/lib/money';
 
 /** One tare row on the draft line, while the operator is still typing.
  *  `units` is a STRING here (an editable input value) — parsed to an integer
@@ -13,11 +13,19 @@ export interface IntakeLineValues {
 
 /** RHF values for the reception form. Every money/weight field is a STRING
  *  the operator typed — nothing here is ever computed client-side (§2.4,
- *  §2.8, §2.9 reserve net weight, price and amount to the server). */
+ *  §2.8, §2.9 reserve net weight, price and amount to the server).
+ *
+ *  `paid_amount` is the payout half of the SAME action (§2.1 ⑥, §3.1, §3.6) —
+ *  `''` means "type nothing, pay out nothing" and is a legal value, not a
+ *  half-filled field. */
 export interface IntakeFormValues {
-  code: string;
   supplier_id: string;
   items: IntakeLineValues[];
+  paid_amount: string;
+  /** «З них наших ящиків» — how many of the receipt's crate-tare units are
+   *  our rented crates coming back full (2026-09-24). A digits-only STRING
+   *  while typed; `''` means 0. */
+  returned_crates: string;
 }
 
 /** A fresh draft line — pallet and bonus default to `'0.00'` (the same
@@ -45,7 +53,7 @@ export interface PreviewIntakeItemBody {
   tare: { tare_type_id: string; units: number }[];
 }
 
-/** `POST /intakes/preview` body — `CreateIntakeBody` minus `code`. */
+/** `POST /intakes/preview` body. */
 export interface PreviewIntakeBody {
   /** Owner only — an operator's point is resolved server-side from their
    *  token, so this is omitted (not sent as `undefined`) for an operator. */
@@ -54,10 +62,16 @@ export interface PreviewIntakeBody {
   items: PreviewIntakeItemBody[];
 }
 
-/** `POST /intakes` body — the preview body plus the typed, normalized
- *  receipt number. */
+/** `POST /intakes` body — the same lines as the preview body (identical since
+ *  2026-09-18, when the receipt number stopped being typed: the server
+ *  numbers each shift itself), plus an OPTIONAL `paid_amount` for the payout
+ *  half of the same action (§2.1 ⑥, §3.1, §3.6). Present only when it is a
+ *  genuine positive figure — absent, `null`, `''` and `'0.00'` all mean "no
+ *  payout" server-side, so `toCreateBody` sends the key at all only then. */
 export interface CreateIntakeBody extends PreviewIntakeBody {
-  code: string;
+  paid_amount?: string;
+  /** Our rented crates handed back with this receipt — sent only when > 0. */
+  returned_crates?: number;
 }
 
 /** One line of `POST /intakes/preview`'s answer — mirrors the backend's
@@ -124,7 +138,48 @@ export function toPreviewBody(values: IntakeFormValues, pointId: string | null):
   };
 }
 
-/** `toPreviewBody` plus the typed, normalized receipt number. */
+/**
+ * What `POST /intakes` sends — the same body a preview asks about, plus
+ * `paid_amount` when the operator's typed figure is a genuine positive
+ * amount. `DECIMAL_INPUT` is the same shape the server's own `@Matches`
+ * enforces; a malformed or non-positive value is simply never sent — the
+ * server's own reading of "absent" already means "no payout" (§2.1 ⑥, §3.1).
+ */
 export function toCreateBody(values: IntakeFormValues, pointId: string | null): CreateIntakeBody {
-  return { code: normalizeCode(values.code), ...toPreviewBody(values, pointId) };
+  const body: CreateIntakeBody = toPreviewBody(values, pointId);
+  const paid = normalizeAmount(values.paid_amount);
+  if (DECIMAL_INPUT.test(paid) && cmp(paid, '0') === 1) body.paid_amount = paid;
+  // A crate COUNT, not money. Empty or 0 is "nothing came back", which the
+  // server reads the same as an absent key — so the key rides only when > 0.
+  const returned = parseCount(values.returned_crates);
+  if (returned > 0) body.returned_crates = returned;
+  return body;
+}
+
+/** A digits-only count typed into the form — `''` (or anything unparsable)
+ *  is 0. Integer counts, never money. */
+export function parseCount(value: string): number {
+  const n = Number.parseInt(value, 10);
+  return Number.isInteger(n) && n > 0 ? n : 0;
+}
+
+/**
+ * Σ units of every tare row, on every line (committed and draft alike — the
+ * whole form is the receipt), whose tare type is a crate. The server checks
+ * `returned_crates` against exactly this (`RETURNED_EXCEEDS_TARE`); the form
+ * uses it as the field's ceiling. Rows the body would drop (units < 1) count
+ * for nothing here either.
+ */
+export function crateTareUnits(
+  items: IntakeLineValues[],
+  tareTypes: ReadonlyArray<{ id: string; is_crate: boolean }>,
+): number {
+  const crateIds = new Set(tareTypes.filter((type) => type.is_crate).map((type) => type.id));
+  let total = 0;
+  for (const line of items) {
+    for (const row of line.tare) {
+      if (crateIds.has(row.tare_type_id)) total += parseCount(row.units);
+    }
+  }
+  return total;
 }

@@ -6,6 +6,9 @@ import { EmptyState } from '@/shared/ui/empty-state';
 import { Spinner } from '@/shared/ui/spinner';
 import { formatShortDate } from '@/shared/lib/date';
 import { formatUah } from '@/shared/lib/money';
+import { canVoidIntake, type Intake } from '@/entities/intake';
+import type { Me } from '@/entities/user';
+import { ReceiptVoidButton } from '@/widgets/receipt';
 
 /** One journal row — an `Intake` or a `Payout` reduced to the fields the two
  *  document kinds share, plus the names a bare id doesn't carry (resolved by
@@ -20,6 +23,8 @@ export interface JournalRow {
   amount: string;
   voided: boolean;
   reason: string | null;
+  /** The receipt behind a receipts-tab row — what `canVoidIntake` reads. */
+  intake?: Intake;
 }
 
 /**
@@ -27,7 +32,8 @@ export interface JournalRow {
  * set (identical for a receipts page and a payouts page — both documents
  * carry the same header shape), and the «Назад»/«Далі» pager. `onRowClick`
  * is the receipts-only affordance — a payout row has no detail dialog to
- * open, so the payouts panel simply omits it.
+ * open, so the payouts panel simply omits it — and so is `onVoid`, the row's
+ * «Анулювати», shown where `canVoidIntake(me, row.intake)` holds.
  */
 export function JournalTable({
   isPending,
@@ -38,6 +44,8 @@ export function JournalTable({
   limit,
   onPageChange,
   onRowClick,
+  me,
+  onVoid,
 }: {
   isPending: boolean;
   isError: boolean;
@@ -47,6 +55,8 @@ export function JournalTable({
   limit: number;
   onPageChange: (page: number) => void;
   onRowClick?: (row: JournalRow) => void;
+  me?: Me;
+  onVoid?: (row: JournalRow) => void;
 }) {
   const { t, i18n } = useTranslation();
 
@@ -125,6 +135,17 @@ export function JournalTable({
         ),
     },
   ];
+  if (onVoid) {
+    columns.push({
+      id: 'actions',
+      header: <span className="sr-only">{t('journal.col.action')}</span>,
+      align: 'right',
+      cell: (r) =>
+        me && r.intake && canVoidIntake(me, r.intake) ? (
+          <ReceiptVoidButton code={r.code} onClick={() => onVoid(r)} />
+        ) : null,
+    });
+  }
 
   const start = (page - 1) * limit + 1;
   const end = Math.min(page * limit, total);

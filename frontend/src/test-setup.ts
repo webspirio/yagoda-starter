@@ -2,6 +2,7 @@ import { afterEach } from 'vitest';
 import '@testing-library/jest-dom/vitest';
 import { configure } from '@testing-library/dom';
 import { i18n, initI18n } from './shared/lib/i18n';
+import en from './shared/lib/i18n/locales/en.json';
 
 /**
  * Testing Library's async utilities (`findBy*`, `waitFor`) default to a 1000ms
@@ -23,7 +24,10 @@ import { i18n, initI18n } from './shared/lib/i18n';
  */
 configure({ asyncUtilTimeout: 5000 });
 
-initI18n();
+// Production fetches en.json on demand; tests register it statically so the
+// switch to English below stays synchronous and no test has to await it.
+void initI18n();
+i18n.addResourceBundle('en', 'translation', en);
 void i18n.changeLanguage('en');
 
 // jsdom doesn't implement ResizeObserver; Radix's Popper-based components

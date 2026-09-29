@@ -172,7 +172,7 @@ export class DayExpensesService {
    * guarantee; this pre-check only keeps the refusal a 400 with a `code`
    * instead of the opaque 500 a `QueryFailedError` becomes, since nothing in
    * this backend maps one. Same shape and same reasoning as
-   * `IntakeTopUpsService`'s `TOP_UP_AMOUNT_NOT_POSITIVE`.
+   * `CreateIntakeTopUpCommand`'s `TOP_UP_AMOUNT_NOT_POSITIVE`.
    *
    * `gt`, never `>`: `amount` is a decimal STRING and JS string comparison
    * would make '9.00' greater than '10.00' (foundation §5.1).

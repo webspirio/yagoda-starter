@@ -9,6 +9,7 @@ export interface PointCashRow {
   shortfall: string | null;
   unexplained_difference: string;
   crate_deposits: string;
+  crate_deposit_units: number;
   latest_transfer_status: TransferStatus | null;
   latest_transfer_sent_at: Date | null;
 }
@@ -74,6 +75,16 @@ export interface PointCashRowResponse {
    */
   crate_deposits: string;
   /**
+   * §7.5's card again, in units rather than money — «завдатків за N ящиків».
+   * `Σ units` of every live deposit-mode issuance minus `Σ units` returned
+   * against one of them, POINT-LIFETIME, same exemptions as `crate_deposits`
+   * right above: never folded into it, never bounded by `as_of`. An INTEGER,
+   * never a decimal STRING — it is a row count, not money, so it carries no
+   * scale-2 rounding and crosses the driver boundary as a JS `number` (the
+   * SQL behind it casts `::int`, see `crateUnitsSql`).
+   */
+  crate_deposit_units: number;
+  /**
    * The point's most recent trip AS OF `as_of`, or `null` when there had been
    * none — and `status` is the status the transfer HELD on that date, not the
    * one it holds now.
@@ -102,6 +113,7 @@ export function toPointCashRowResponse(row: PointCashRow): PointCashRowResponse 
     shortfall: row.shortfall,
     unexplained_difference: row.unexplained_difference,
     crate_deposits: row.crate_deposits,
+    crate_deposit_units: row.crate_deposit_units,
     latest_transfer:
       row.latest_transfer_status && row.latest_transfer_sent_at
         ? { status: row.latest_transfer_status, sent_at: row.latest_transfer_sent_at }

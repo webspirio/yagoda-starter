@@ -57,13 +57,21 @@ export class CollectionPoint {
   name: string;
 
   /**
-   * The point's short identifier, and the first segment of every receipt code
-   * written here: `KPG-IN-20260908-04412` (spec §6.2).
+   * The point's short identifier, and the first segment of every document code
+   * written here: `KPG-IN-20260908-004` (spec §6.2).
    *
-   * NOT IN `28-db-schema.dbml`. It exists because the operator types the number
-   * from the paper receipt book, and two points buying identical books both
-   * have an «04412» — without a point segment the DBML's own global UNIQUE on
-   * `intakes.code` refuses the second one mid-transaction with a car waiting.
+   * NOT IN `28-db-schema.dbml`. It exists because THE SEQUENCE RESTARTS AT 001
+   * EVERY SHIFT (`common/document-code.ts`): without a point segment two points
+   * numbering in parallel both reach «004» on the same day, and the DBML's own
+   * global UNIQUE on `intakes.code` refuses the second one mid-transaction with
+   * a car waiting.
+   *
+   * THE REASON WAS CORRECTED 2026-09-18, THE COLUMN WAS NOT. It used to say the
+   * operator types the number from the paper receipt book, and that two points
+   * buying identical books both have an 04412 — true while `IN` and `PO` carried
+   * a number read off paper, and true of no document kind since the server
+   * started numbering all four. The point segment is load-bearing either way;
+   * only what it defends against moved.
    *
    * Upper ASCII alphanumeric only, CHECK-enforced, so a composed code survives
    * any encoding. THE ALPHABET HERE AND IN `common/document-code.ts` MUST

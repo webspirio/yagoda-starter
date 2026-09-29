@@ -101,3 +101,33 @@ export interface BulkPriceInput {
   max_discount: string;
   reason?: string;
 }
+
+/* ------------------------------------------------------------------------- *
+ * #151 — «Зміни протягом дня».
+ * ------------------------------------------------------------------------- */
+
+/** Mirrors the backend `PriceChangeResponse`: one journal row, named for a
+ *  reader. `previous_base_price` is the price this row REPLACED at the same
+ *  point and grade — possibly set on an earlier day — and `null` only for the
+ *  pair's first-ever price. */
+export interface PriceChange {
+  id: string;
+  created_at: string;
+  collection_point_id: string;
+  point_name: string;
+  product_grade_id: string;
+  product_name: string;
+  grade_name: string;
+  previous_base_price: string | null;
+  base_price: string;
+  reason: string | null;
+  author_name: string;
+}
+
+export interface PriceChanges {
+  /** The period the list covers, both ends inclusive, `YYYY-MM-DD` in the
+   *  app zone — the server's today on both when no period was asked for. */
+  from: string;
+  to: string;
+  changes: PriceChange[];
+}

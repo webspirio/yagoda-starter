@@ -1,7 +1,8 @@
 import { Plus, Trash2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/shared/ui/button';
-import { formatDecimal } from '@/shared/lib/money';
+import { cmp, formatDecimal, formatKg } from '@/shared/lib/money';
+import { formatBonusSign } from '../lib/formatBonusSign';
 import type { IntakePreviewItem } from '../model/intakeForm';
 
 export interface CommittedLine {
@@ -27,6 +28,8 @@ export function LinesTable({
   canAdd,
   atCap,
   disabled,
+  lineCount,
+  netKg,
   onAdd,
   onRemove,
 }: {
@@ -35,6 +38,15 @@ export function LinesTable({
   atCap: boolean;
   /** No shift, no document — a committed line cannot be dropped either. */
   disabled: boolean;
+  /** The number of COMMITTED rows — `rows.length`, i.e. the trailing draft
+   *  (never in `rows`) is never counted here. `TotalsSection`'s own count
+   *  includes the draft, since it describes what the submit button is about
+   *  to send; this one describes only what the table above it shows. */
+  lineCount: number;
+  /** The committed rows' net weight, or `null` when there are none yet, or
+   *  the preview covering them has not settled — the counter is withheld
+   *  rather than built from a stale or half-typed total. */
+  netKg: string | null;
   onAdd: () => void;
   onRemove: (index: number) => void;
 }) {
@@ -51,6 +63,11 @@ export function LinesTable({
         <span className="text-xs text-muted-foreground">
           {atCap ? t('reception.lines.capHint') : t('reception.lines.hint')}
         </span>
+        {netKg !== null ? (
+          <span className="ml-auto font-mono text-xs text-muted-foreground">
+            {t('reception.lines.counter', { count: lineCount, kg: formatKg(netKg, locale) })}
+          </span>
+        ) : null}
       </div>
 
       {rows.length > 0 ? (
@@ -96,13 +113,28 @@ export function LinesTable({
                     {row.item ? formatDecimal(row.item.pallet_kg, locale) : <Pending />}
                   </td>
                   <td className="px-2 py-1.5 text-right text-muted-foreground">
-                    {row.item ? formatDecimal(row.item.tare_weight_kg, locale) : <Pending />}
+                    {row.item ? (
+                      row.item.tare.reduce((n, tareRow) => n + tareRow.units, 0)
+                    ) : (
+                      <Pending />
+                    )}
                   </td>
                   <td className="px-2 py-1.5 text-right font-semibold">
                     {row.item ? formatDecimal(row.item.net_kg, locale) : <Pending />}
                   </td>
                   <td className="px-2 py-1.5 text-right">
-                    {row.item ? formatDecimal(row.item.price, locale) : <Pending />}
+                    {row.item ? (
+                      <>
+                        {formatDecimal(row.item.price, locale)}
+                        {cmp(row.item.bonus, '0') !== 0 ? (
+                          <span className="ml-1 text-amber">
+                            {formatBonusSign(row.item.bonus, locale)}
+                          </span>
+                        ) : null}
+                      </>
+                    ) : (
+                      <Pending />
+                    )}
                   </td>
                   <td className="px-2 py-1.5 text-right font-semibold">
                     {row.item ? formatDecimal(row.item.amount, locale) : <Pending />}

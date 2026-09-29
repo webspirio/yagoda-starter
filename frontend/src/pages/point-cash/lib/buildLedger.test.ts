@@ -236,4 +236,65 @@ describe('buildLedger', () => {
       expect(rows.find((r) => r.key === 'returnedToday')?.value).toBe('0.00');
     });
   });
+
+  describe('opening row — R6', () => {
+    it('emits a first row from the opening count when one exists', () => {
+      const rows = buildLedger({
+        date: '2026-09-10',
+        intakes: [],
+        payouts: [],
+        transfers: [],
+        openingCount: '1500.00',
+      });
+      expect(rows[0]).toMatchObject({ key: 'opening', value: '1500.00', truncated: false });
+    });
+
+    it('emits no opening row at all when there is no count for this date', () => {
+      const rows = buildLedger({ date: '2026-09-10', intakes: [], payouts: [], transfers: [] });
+      expect(rows.some((r) => r.key === 'opening')).toBe(false);
+    });
+
+    it('carries the target as a hint only when a target is assigned', () => {
+      const withTarget = buildLedger({
+        date: '2026-09-10',
+        intakes: [],
+        payouts: [],
+        transfers: [],
+        openingCount: '1500.00',
+        target: '5000.00',
+      });
+      expect(withTarget.find((r) => r.key === 'opening')?.hint).toBe('5000.00');
+    });
+
+    it('leaves the hint undefined when the point has no target — nothing to say «наділ» about', () => {
+      const withoutTarget = buildLedger({
+        date: '2026-09-10',
+        intakes: [],
+        payouts: [],
+        transfers: [],
+        openingCount: '1500.00',
+        target: null,
+      });
+      expect(withoutTarget.find((r) => r.key === 'opening')?.hint).toBeUndefined();
+    });
+
+    it('does not disturb the other five rows — the total stays the count of buckets buildLedger has always returned', () => {
+      const rows = buildLedger({
+        date: '2026-09-10',
+        intakes: [],
+        payouts: [],
+        transfers: [],
+        openingCount: '1500.00',
+      });
+      expect(rows).toHaveLength(6);
+      expect(rows.map((r) => r.key)).toEqual([
+        'opening',
+        'accruedToday',
+        'paidToday',
+        'paidPast',
+        'returnedToday',
+        'cashIn',
+      ]);
+    });
+  });
 });

@@ -1,0 +1,233 @@
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import type { Me } from '@/entities/user';
+import type { Intake } from '@/entities/intake';
+import { formatTime } from '@/shared/lib/date';
+import { formatKg, formatUah } from '@/shared/lib/money';
+import { TodayReceipts } from './TodayReceipts';
+
+const { intakesMock } = vi.hoisted(() => ({ intakesMock: vi.fn() }));
+
+vi.mock('@/entities/intake', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/entities/intake')>()),
+  useIntakesQuery: (filter: unknown) => intakesMock(filter),
+}));
+
+const AUTHOR: Me = {
+  id: 'u1',
+  username: 'oksana',
+  display_name: 'Oksana',
+  avatar_url: null,
+  language_code: null,
+  role: 'point_operator',
+  collection_point_id: 'p1',
+};
+const OTHER_OPERATOR: Me = { ...AUTHOR, id: 'u2', username: 'taras' };
+const OWNER: Me = { ...AUTHOR, id: 'u9', role: 'network_owner', collection_point_id: null };
+
+const intake = (over: Partial<Intake> & Pick<Intake, 'id' | 'created_at'>): Intake => ({
+  code: 'SHP-IN-20260921-00001',
+  shift_id: 's1',
+  collection_point_id: 'p1',
+  business_date: '2026-09-21',
+  supplier_id: 's1',
+  received_by_user_id: 'u1',
+  voided_at: null,
+  voided_by_user_id: null,
+  void_reason: null,
+  shift_closed: false,
+  net_kg: '0.00',
+  lines_count: 1,
+  supplier_name: '—',
+  amount: '0.00',
+  paid_amount: '0.00',
+  open_amount: '0.00',
+  ...over,
+});
+
+// Ніна's receipt: two lines, a partial cash payout, and a later payout that
+// closed 2000.00 more — so «залишок» reads the server's open_amount (3000.00),
+// not amount − paid_amount (5000.00).
+const NINA = intake({
+  id: 'i1',
+  created_at: '2026-09-21T09:15:00Z',
+  supplier_name: 'Ніна Ільчук',
+  net_kg: '36.90',
+  lines_count: 2,
+  amount: '15000.00',
+  paid_amount: '10000.00',
+  open_amount: '3000.00',
+});
+
+// Voided, single line, fully paid — proves the voided styling AND that a
+// single line never gets a «N positions» suffix.
+const VOIDED = intake({
+  id: 'i2',
+  created_at: '2026-09-21T08:00:00Z',
+  supplier_name: 'Petro Kotyk',
+  net_kg: '20.00',
+  lines_count: 1,
+  amount: '2000.00',
+  paid_amount: '2000.00',
+  voided_at: '2026-09-21T10:00:00Z',
+});
+
+// A second LIVE receipt, fully settled — its own kg still counts toward the
+// header's live tonnage even though it carries no «залишок».
+const OLEH = intake({
+  id: 'i3',
+  created_at: '2026-09-21T07:30:00Z',
+  supplier_name: 'Oleh Marchuk',
+  net_kg: '10.10',
+  lines_count: 1,
+  amount: '500.00',
+  paid_amount: '500.00',
+});
+
+// Voided, with a non-zero open_amount the server would never send — proves
+// the amber badge is gated on `voided_at === null` too, not only on the figure.
+const VOIDED_WITH_GAP = intake({
+  id: 'i4',
+  created_at: '2026-09-21T06:00:00Z',
+  supplier_name: 'Iryna Sokil',
+  net_kg: '5.00',
+  lines_count: 1,
+  amount: '100.00',
+  paid_amount: '0.00',
+  open_amount: '100.00',
+  voided_at: '2026-09-21T11:00:00Z',
+});
+
+// Nothing handed over with it, yet closed by money left from an earlier visit.
+const CLOSED_BY_OLD_MONEY = intake({
+  id: 'i5',
+  created_at: '2026-09-21T12:00:00Z',
+  supplier_name: 'Olena Hrab',
+  net_kg: '8.00',
+  lines_count: 1,
+  amount: '800.00',
+  paid_amount: '0.00',
+  open_amount: '0.00',
+});
+
+const page = (data: Intake[]) => ({
+  data: { data, total: data.length, page: 1, limit: 100 },
+  isPending: false,
+  isError: false,
+});
+
+beforeEach(() => {
+  intakesMock.mockReset().mockReturnValue(page([]));
+});
+
+describe('TodayReceipts — a row reads like the mock', () => {
+  it('shows the time, the supplier, the line count, the kilos, the remainder and the amount', () => {
+    intakesMock.mockReturnValue(page([NINA, VOIDED, OLEH]));
+    render(<TodayReceipts shiftId="s1" me={AUTHOR} onOpen={vi.fn()} />);
+
+    expect(screen.getByText(formatTime(NINA.created_at, 'en'))).toBeInTheDocument();
+    expect(screen.getByText('Ніна Ільчук')).toBeInTheDocument();
+    expect(screen.getByText('2 positions')).toBeInTheDocument();
+    expect(screen.getByText(formatKg('36.90', 'en'))).toBeInTheDocument();
+
+    const remainder = screen.getByText('remainder ' + formatUah('3000.00', 'en'));
+    expect(remainder).toHaveClass('text-amber');
+
+    expect(screen.getByText(formatUah('15000.00', 'en'))).toBeInTheDocument();
+  });
+
+  it('shows no «N positions» suffix and no remainder for a single, fully-paid line', () => {
+    intakesMock.mockReturnValue(page([OLEH]));
+    render(<TodayReceipts shiftId="s1" me={AUTHOR} onOpen={vi.fn()} />);
+
+    expect(screen.queryByText(/position/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/remainder/)).not.toBeInTheDocument();
+  });
+
+  it('still lists a voided receipt, struck through, without it counting toward the header', () => {
+    intakesMock.mockReturnValue(page([NINA, VOIDED, OLEH]));
+    render(<TodayReceipts shiftId="s1" me={AUTHOR} onOpen={vi.fn()} />);
+
+    expect(screen.getByText('Petro Kotyk')).toBeInTheDocument();
+    expect(screen.getByText('voided')).toBeInTheDocument();
+
+    // Live count badge: 2 (Ніна + Oleh) — the voided row excluded.
+    expect(screen.getByText('2')).toBeInTheDocument();
+    // Live tonnage: 36.90 + 10.10 = 47.00 kg — the voided 20.00 excluded.
+    expect(screen.getByText(formatKg('47.00', 'en'))).toBeInTheDocument();
+  });
+
+  it('never shows the amber remainder on a voided receipt, even when the amount was never paid', () => {
+    intakesMock.mockReturnValue(page([NINA, VOIDED_WITH_GAP]));
+    render(<TodayReceipts shiftId="s1" me={AUTHOR} onOpen={vi.fn()} />);
+
+    // The live row (Ніна) still reads its remainder…
+    expect(screen.getByText('remainder ' + formatUah('3000.00', 'en'))).toBeInTheDocument();
+    // …but the voided row's open figure does not.
+    expect(screen.getByText('Iryna Sokil')).toBeInTheDocument();
+    expect(
+      screen.queryByText('remainder ' + formatUah('100.00', 'en')),
+    ).not.toBeInTheDocument();
+  });
+
+  it('reads the open figure from allocations: no remainder on a receipt older money already closed', () => {
+    intakesMock.mockReturnValue(page([CLOSED_BY_OLD_MONEY]));
+    render(<TodayReceipts shiftId="s1" me={AUTHOR} onOpen={vi.fn()} />);
+
+    expect(screen.getByText('Olena Hrab')).toBeInTheDocument();
+    expect(screen.queryByText(/remainder/)).not.toBeInTheDocument();
+  });
+
+  it('scrolls a tall list instead of growing the page', () => {
+    intakesMock.mockReturnValue(page([NINA]));
+    const { container } = render(<TodayReceipts shiftId="s1" me={AUTHOR} onOpen={vi.fn()} />);
+    expect(container.querySelector('.max-h-\\[560px\\].overflow-y-auto')).toBeInTheDocument();
+  });
+});
+
+describe('TodayReceipts — «Void» on a receipt row (§9.4)', () => {
+  const voidButton = (code: string) => screen.queryByRole('button', { name: `Void ${code}` });
+  const LIVE = intake({ id: 'i7', code: 'SHP-IN-7', created_at: '2026-09-21T09:00:00Z' });
+
+  it('is shown to the owner', () => {
+    intakesMock.mockReturnValue(page([intake({ ...LIVE, shift_closed: true })]));
+    render(<TodayReceipts shiftId="s1" me={OWNER} onOpen={vi.fn()} />);
+    expect(voidButton('SHP-IN-7')).toBeInTheDocument();
+  });
+
+  it('is shown to the author while the shift is open', () => {
+    intakesMock.mockReturnValue(page([LIVE]));
+    render(<TodayReceipts shiftId="s1" me={AUTHOR} onOpen={vi.fn()} />);
+    expect(voidButton('SHP-IN-7')).toBeInTheDocument();
+  });
+
+  it('is hidden from another operator', () => {
+    intakesMock.mockReturnValue(page([LIVE]));
+    render(<TodayReceipts shiftId="s1" me={OTHER_OPERATOR} onOpen={vi.fn()} />);
+    expect(voidButton('SHP-IN-7')).not.toBeInTheDocument();
+  });
+
+  it('is hidden from the author once the shift is closed', () => {
+    intakesMock.mockReturnValue(page([intake({ ...LIVE, shift_closed: true })]));
+    render(<TodayReceipts shiftId="s1" me={AUTHOR} onOpen={vi.fn()} />);
+    expect(voidButton('SHP-IN-7')).not.toBeInTheDocument();
+  });
+
+  it('is hidden on a voided receipt', () => {
+    intakesMock.mockReturnValue(page([intake({ ...LIVE, voided_at: '2026-09-21T10:00:00Z' })]));
+    render(<TodayReceipts shiftId="s1" me={OWNER} onOpen={vi.fn()} />);
+    expect(voidButton('SHP-IN-7')).not.toBeInTheDocument();
+  });
+
+  it('opens that receipt straight into its void, and only once', async () => {
+    const onOpen = vi.fn();
+    intakesMock.mockReturnValue(page([LIVE]));
+    render(<TodayReceipts shiftId="s1" me={AUTHOR} onOpen={onOpen} />);
+
+    await userEvent.click(voidButton('SHP-IN-7')!);
+
+    expect(onOpen).toHaveBeenCalledTimes(1);
+    expect(onOpen).toHaveBeenCalledWith('i7', { void: true });
+  });
+});

@@ -9,7 +9,8 @@ import type { Supplier } from '@/entities/supplier';
 import { PAGE_SIZE } from '../model/journalFilters';
 import { JournalPage } from './JournalPage';
 
-const { intakesMock, payoutsMock, suppliersMock, balancesMock, receiptMock } = vi.hoisted(() => ({
+const { intakesMock, payoutsMock, suppliersMock, balancesMock, receiptMock, meMock } = vi.hoisted(() => ({
+  meMock: vi.fn(),
   intakesMock: vi.fn(),
   payoutsMock: vi.fn(),
   suppliersMock: vi.fn(),
@@ -17,9 +18,18 @@ const { intakesMock, payoutsMock, suppliersMock, balancesMock, receiptMock } = v
   receiptMock: vi.fn(),
 }));
 
-vi.mock('@/entities/intake', () => ({
+vi.mock('@/entities/intake', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/entities/intake')>()),
   useIntakesQuery: (filter: unknown) => intakesMock(filter),
 }));
+
+vi.mock('@/entities/user', () => ({
+  useMeQuery: () => meMock(),
+}));
+
+const OWNER = { id: 'owner', role: 'network_owner' };
+const AUTHOR = { id: 'u1', role: 'point_operator' };
+const OTHER_OPERATOR = { id: 'u2', role: 'point_operator' };
 
 vi.mock('@/entities/payout', () => ({
   usePayoutsQuery: (filter: unknown) => payoutsMock(filter),
@@ -49,8 +59,14 @@ vi.mock('@/entities/collection-point', () => ({
   }),
 }));
 
-vi.mock('@/widgets/receipt', () => ({
-  ReceiptDialog: (props: { intakeId: string | null; open: boolean; onClose: () => void }) => {
+vi.mock('@/widgets/receipt', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/widgets/receipt')>()),
+  ReceiptDialog: (props: {
+    intakeId: string | null;
+    open: boolean;
+    onClose: () => void;
+    startWithVoid?: boolean;
+  }) => {
     receiptMock(props);
     return props.open ? <div data-testid="receipt-dialog">{props.intakeId}</div> : null;
   },
@@ -65,7 +81,13 @@ const intake = (over: Partial<Intake> & Pick<Intake, 'id' | 'code' | 'amount'>):
   voided_at: null,
   voided_by_user_id: null,
   void_reason: null,
+  shift_closed: false,
   created_at: '2026-09-08T07:10:00Z',
+  net_kg: '36.90',
+  lines_count: 2,
+  supplier_name: 'Ніна Ільчук',
+  paid_amount: '0.00',
+  open_amount: '0.00',
   ...over,
 });
 
@@ -75,9 +97,11 @@ const payout = (over: Partial<Payout> & Pick<Payout, 'id' | 'code' | 'amount'>):
   business_date: '2026-09-08',
   supplier_id: SUP1,
   paid_by_user_id: 'u1',
+  intake_id: null,
   voided_at: null,
   voided_by_user_id: null,
   void_reason: null,
+  shift_closed: false,
   return_settled_at: null,
   return_settled_by_user_id: null,
   return_note: null,
@@ -125,6 +149,7 @@ beforeEach(() => {
   suppliersMock.mockReset().mockReturnValue(page<Supplier>([]));
   balancesMock.mockReset().mockReturnValue(page<{ supplier_id: string; first_name: string; last_name: string }>([]));
   receiptMock.mockReset();
+  meMock.mockReset().mockReturnValue({ data: OWNER });
 });
 
 afterEach(() => vi.useRealTimers());
@@ -257,6 +282,75 @@ describe('JournalPage — opening a receipt', () => {
 
     expect(receiptMock).toHaveBeenLastCalledWith(
       expect.objectContaining({ open: true, intakeId: 'i1' }),
+    );
+  });
+});
+
+describe('JournalPage — «Void» on a receipt row (§9.4)', () => {
+  const voidButton = (code: string) => screen.queryByRole('button', { name: `Void ${code}` });
+  const LIVE = { id: 'i1', code: 'KV-0001', amount: '100.00' };
+
+  it('is shown to the owner, even on a closed shift', () => {
+    intakesMock.mockReturnValue(page<Intake>([intake({ ...LIVE, shift_closed: true })]));
+    renderJournal();
+    expect(voidButton('KV-0001')).toBeInTheDocument();
+  });
+
+  it('is shown to the author while the shift is open', () => {
+    meMock.mockReturnValue({ data: AUTHOR });
+    intakesMock.mockReturnValue(page<Intake>([intake(LIVE)]));
+    renderJournal();
+    expect(voidButton('KV-0001')).toBeInTheDocument();
+  });
+
+  it('is hidden from another operator, from the author on a closed shift, and on a voided receipt', () => {
+    meMock.mockReturnValue({ data: OTHER_OPERATOR });
+    intakesMock.mockReturnValue(page<Intake>([intake(LIVE)]));
+    const { unmount } = renderJournal();
+    expect(voidButton('KV-0001')).toBeNull();
+    unmount();
+
+    meMock.mockReturnValue({ data: AUTHOR });
+    intakesMock.mockReturnValue(page<Intake>([intake({ ...LIVE, shift_closed: true })]));
+    const second = renderJournal();
+    expect(voidButton('KV-0001')).toBeNull();
+    second.unmount();
+
+    meMock.mockReturnValue({ data: OWNER });
+    intakesMock.mockReturnValue(
+      page<Intake>([intake({ ...LIVE, voided_at: '2026-09-08T08:00:00Z' })]),
+    );
+    renderJournal();
+    expect(voidButton('KV-0001')).toBeNull();
+  });
+
+  it('is never offered on the payouts tab', () => {
+    payoutsMock.mockReturnValue(page<Payout>([payout({ id: 'y1', code: 'VD-0001', amount: '5.00' })]));
+    renderJournal('/journal?kind=payouts');
+    expect(voidButton('VD-0001')).toBeNull();
+  });
+
+  it('opens the receipt straight into its void, without the row click firing too', async () => {
+    const user = userEvent.setup();
+    intakesMock.mockReturnValue(page<Intake>([intake(LIVE)]));
+    renderJournal();
+
+    await user.click(voidButton('KV-0001')!);
+
+    expect(receiptMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({ open: true, intakeId: 'i1', startWithVoid: true }),
+    );
+  });
+
+  it('a plain row click opens the receipt without the void', async () => {
+    const user = userEvent.setup();
+    intakesMock.mockReturnValue(page<Intake>([intake(LIVE)]));
+    renderJournal();
+
+    await user.click(screen.getByText('KV-0001').closest('tr')!);
+
+    expect(receiptMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({ open: true, intakeId: 'i1', startWithVoid: false }),
     );
   });
 });

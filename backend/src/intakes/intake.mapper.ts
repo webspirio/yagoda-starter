@@ -1,7 +1,9 @@
 import { Intake } from './intake.entity';
 import { IntakeItem } from './intake-item.entity';
 import type { BuiltIntake } from './intake-lines';
+import type { IntakeRowExtras } from './intake-row-extras';
 import { Shift } from '../shifts/shift.entity';
+import type { Payout } from '../payouts/payout.entity';
 
 /**
  * `collection_point_id` and `business_date` are JOINED IN from the shift and
@@ -15,6 +17,8 @@ export interface IntakeResponse {
   shift_id: string;
   collection_point_id: string;
   business_date: string;
+  /** `shift.closed_at !== null` — doc «2026-09-28: the void dialog branches on it». */
+  shift_closed: boolean;
   supplier_id: string;
   amount: string;
   received_by_user_id: string;
@@ -22,6 +26,15 @@ export interface IntakeResponse {
   voided_by_user_id: string | null;
   void_reason: string | null;
   created_at: string;
+  /** Σ items.net_kg — kilograms on the list row (programme §6). */
+  net_kg: string;
+  lines_count: number;
+  /** «first last», trimmed; present even for a deactivated supplier. */
+  supplier_name: string;
+  /** Σ live payouts handed over with this receipt (`payouts.intake_id`); '0.00' when none. */
+  paid_amount: string;
+  /** Still owed for this receipt and its live top-ups, from live allocations; '0.00' once voided. */
+  open_amount: string;
 }
 
 export interface IntakeItemTareResponse {
@@ -43,17 +56,86 @@ export interface IntakeItemResponse {
   tare: IntakeItemTareResponse[];
 }
 
-export interface IntakeDetailResponse extends IntakeResponse {
-  items: IntakeItemResponse[];
+interface IntakePayoutResponse {
+  id: string;
+  code: string;
+  amount: string;
+  voided_at: string | null;
+  created_at: string;
 }
 
-export function toIntakeResponse(intake: Intake, shift: Shift): IntakeResponse {
+function toIntakePayoutResponse(payout: Payout): IntakePayoutResponse {
+  return {
+    id: payout.id,
+    code: payout.code,
+    amount: payout.amount,
+    voided_at: payout.voided_at ? payout.voided_at.toISOString() : null,
+    created_at: payout.created_at.toISOString(),
+  };
+}
+
+/**
+ * The crate return written WITH this receipt (spec §8.3, `crate_returns.
+ * intake_id`), voided or not — a voided one stays so the receipt can say the
+ * return was cancelled with it. `deposit_units`/`receipt_units` split `units`
+ * by the MODE of the issuance each FIFO allocation row drew from: the first
+ * were refunded at their deposit price (`deposit_refund`), the second came
+ * back against a розписка and moved no money.
+ */
+interface IntakeCrateReturnResponse {
+  id: string;
+  units: number;
+  deposit_refund: string;
+  deposit_units: number;
+  receipt_units: number;
+  voided_at: string | null;
+}
+
+/** One row of `IntakeDetailQuery.crateReturn`'s read — the SQL sums the
+ *  allocation units per mode (`::int`), so nothing here adds anything up. */
+export interface IntakeCrateReturnRow {
+  id: string;
+  units: number;
+  deposit_refund: string;
+  deposit_units: number;
+  receipt_units: number;
+  voided_at: Date | null;
+}
+
+function toIntakeCrateReturnResponse(row: IntakeCrateReturnRow): IntakeCrateReturnResponse {
+  return {
+    id: row.id,
+    units: row.units,
+    deposit_refund: row.deposit_refund,
+    deposit_units: row.deposit_units,
+    receipt_units: row.receipt_units,
+    voided_at: row.voided_at ? row.voided_at.toISOString() : null,
+  };
+}
+
+export interface IntakeDetailResponse extends IntakeResponse {
+  items: IntakeItemResponse[];
+  /** Payouts handed over WITH this receipt (§2.1 ⑥) — `intake_id` = this id,
+   *  voided ones included so the receipt can say a payout was cancelled. */
+  payouts: IntakePayoutResponse[];
+  /** «Приймав» on the printed receipt. `null` only if the user row is gone. */
+  received_by_name: string | null;
+  /** `null` when no crates came back with this receipt. */
+  crate_return: IntakeCrateReturnResponse | null;
+}
+
+export function toIntakeResponse(
+  intake: Intake,
+  shift: Shift,
+  extras: IntakeRowExtras,
+): IntakeResponse {
   return {
     id: intake.id,
     code: intake.code,
     shift_id: intake.shift_id,
     collection_point_id: shift.collection_point_id,
     business_date: shift.business_date,
+    shift_closed: shift.closed_at !== null,
     supplier_id: intake.supplier_id,
     amount: intake.amount,
     received_by_user_id: intake.received_by_user_id,
@@ -61,6 +143,11 @@ export function toIntakeResponse(intake: Intake, shift: Shift): IntakeResponse {
     voided_by_user_id: intake.voided_by_user_id,
     void_reason: intake.void_reason,
     created_at: intake.created_at.toISOString(),
+    net_kg: extras.net_kg,
+    lines_count: extras.lines_count,
+    supplier_name: extras.supplier_name,
+    paid_amount: extras.paid_amount,
+    open_amount: extras.open_amount,
   };
 }
 
@@ -84,12 +171,21 @@ export function toIntakeDetailResponse(
   intake: Intake,
   shift: Shift,
   items: IntakeItem[],
+  extras: IntakeRowExtras,
+  payouts: Payout[],
+  receivedByName: string | null,
+  crateReturn: IntakeCrateReturnRow | null,
 ): IntakeDetailResponse {
   return {
-    ...toIntakeResponse(intake, shift),
+    ...toIntakeResponse(intake, shift, extras),
     // Ordered by `item_order` so the response reads like the paper, whatever
     // order the database returned the rows in.
     items: [...items].sort((a, b) => a.item_order - b.item_order).map(toIntakeItemResponse),
+    payouts: [...payouts]
+      .sort((a, b) => a.created_at.getTime() - b.created_at.getTime())
+      .map(toIntakePayoutResponse),
+    received_by_name: receivedByName,
+    crate_return: crateReturn ? toIntakeCrateReturnResponse(crateReturn) : null,
   };
 }
 

@@ -46,6 +46,7 @@ describe('ShiftsService.close with negative expected movements (Postgres)', () =
   let ownerId: string;
   let operator: AuthenticatedUser;
   let pointId: string;
+  let operatorDisplayName: string;
 
   beforeAll(async () => {
     ds = await openTestDataSource();
@@ -74,10 +75,11 @@ describe('ShiftsService.close with negative expected movements (Postgres)', () =
       [`Owner ${run}`],
     )) as { id: string }[];
 
+    const operatorLastName = `Приймальник ${run}`;
     const [{ id: operatorId }] = (await ds.query(
       `INSERT INTO users (first_name, last_name, role, collection_point_id, is_active)
        VALUES ('Оксана', $1, 'point_operator', $2, true) RETURNING id`,
-      [`Приймальник ${run}`, pointId],
+      [operatorLastName, pointId],
     )) as { id: string }[];
     operator = {
       sub: operatorId,
@@ -85,6 +87,8 @@ describe('ShiftsService.close with negative expected movements (Postgres)', () =
       role: UserRole.PointOperator,
       collection_point_id: pointId,
     };
+    // D-8 — `displayNameOf(user)`: "first last" trimmed.
+    operatorDisplayName = `Оксана ${operatorLastName}`;
   });
 
   afterAll(async () => {
@@ -95,6 +99,9 @@ describe('ShiftsService.close with negative expected movements (Postgres)', () =
     // 1. The drawer holds 1 000 at open. This is the point's first count, so
     //    `expected` equals `counted` and the chain starts at 1 000.
     const shift = await service.open(operator, { counted_amount: '1000.00' });
+    // D-8 — the opener's name, resolved through `loadDisplayNames`.
+    expect(shift.opened_by_name).toBe(operatorDisplayName);
+    expect(shift.closed_by_name).toBeNull();
 
     // 2. A transfer of 10 000 arrives and is accepted into this shift. Seeded
     //    directly: what is under test is the CLOSE, and the accept path has
@@ -139,6 +146,9 @@ describe('ShiftsService.close with negative expected movements (Postgres)', () =
     // QueryFailedError and the point is stranded.
     const closed = await service.close(operator, shift.id, { counted_amount: '0.00', broken_crates: 0 });
     expect(closed.status).toBe('closed');
+    // D-8 — same operator opened and closed, so both names match.
+    expect(closed.opened_by_name).toBe(operatorDisplayName);
+    expect(closed.closed_by_name).toBe(operatorDisplayName);
 
     const [row] = (await ds.query(
       `SELECT counted_amount::text AS counted, expected_amount::text AS expected

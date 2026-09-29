@@ -8,6 +8,7 @@ import { BulkGradePriceDto } from './dto/bulk-grade-price.dto';
 import { ListGradePricesQueryDto } from './dto/list-grade-prices.query';
 import { CurrentGradePricesQueryDto } from './dto/current-grade-prices.query';
 import { GradePriceSheetQueryDto } from './dto/grade-price-sheet.query';
+import { PriceChangesQueryDto } from './dto/price-changes.query';
 import type { AuthenticatedUser } from '../auth/jwt.strategy';
 
 /**
@@ -52,6 +53,16 @@ export class GradePricesController {
   @Auth()
   sheet(@CurrentUser() actor: AuthenticatedUser, @Query() query: GradePriceSheetQueryDto) {
     return this.prices.sheet(actor, query);
+  }
+
+  /** #151's «Зміни протягом дня» — the changes over a period of local days
+   *  (today by default), network-wide for the owner, own point for the
+   *  operator. Declared BEFORE the bare `@Get()` for the declaration-order
+   *  reason given above `/current`. The scope is the actor's, never a query. */
+  @Get('changes')
+  @Auth()
+  changes(@CurrentUser() actor: AuthenticatedUser, @Query() query: PriceChangesQueryDto) {
+    return this.prices.changes(actor, query);
   }
 
   @Get()

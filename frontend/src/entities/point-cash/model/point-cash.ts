@@ -20,12 +20,20 @@ export interface PointCashRow {
   shortfall: string | null;
   unexplained_difference: string;
   latest_transfer: { status: TransferStatus; sent_at: string } | null;
+  /** Сума завдатків, які досі утримано (крейти видані «за кошти», ще не повернуті). */
+  crate_deposits: string;
+  /** §R8 — скільки ящиків з тих завдатків: видано «за кошти» мінус повернуто. */
+  crate_deposit_units: number;
 }
 
 /** Дзеркалить відповідь `GET /point-cash/:pointId` — лише сума однієї точки. */
 export interface PointCashOne {
   collection_point_id: string;
   cash: string;
+  /** Сума завдатків, які досі утримано (крейти видані «за кошти», ще не повернуті). */
+  crate_deposits: string;
+  /** §R8 — скільки ящиків з тих завдатків: видано «за кошти» мінус повернуто. */
+  crate_deposit_units: number;
 }
 
 /** Реекспорт для існуючих імпортерів `../model/point-cash` — див. `@/shared/api/pagination.ts`. */

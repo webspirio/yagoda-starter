@@ -97,6 +97,7 @@ describe('GradePricesService.bulk (Postgres)', () => {
       ds.getRepository(GradePrice),
       { findOneRaw: (id: string) => byId('collection_points', id) } as never,
       { findOneRaw: (id: string) => byId('product_grades', id) } as never,
+      { appTimezone: 'Europe/Kyiv' },
     );
   });
 

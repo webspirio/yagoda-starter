@@ -35,11 +35,20 @@ export class PointCashController {
     @Query() query: ListPointCashQueryDto,
   ) {
     assertOwnsPoint(actor, pointId);
+    // Three independent reads — no query depends on another's result — so
+    // they run concurrently rather than one round trip after another.
+    const [cash, crateDeposits, crateDepositUnits] = await Promise.all([
+      this.cash.cashFor(pointId, query.as_of),
+      // Never bounded by `as_of` — see `crateDepositsFor`'s doc comment.
+      this.cash.crateDepositsFor(pointId),
+      // Same exemption, same shape, in units rather than money (R8).
+      this.cash.crateUnitsFor(pointId),
+    ]);
     return {
       collection_point_id: pointId,
-      cash: await this.cash.cashFor(pointId, query.as_of),
-      // Never bounded by `as_of` — see `crateDepositsFor`'s doc comment.
-      crate_deposits: await this.cash.crateDepositsFor(pointId),
+      cash,
+      crate_deposits: crateDeposits,
+      crate_deposit_units: crateDepositUnits,
     };
   }
 }

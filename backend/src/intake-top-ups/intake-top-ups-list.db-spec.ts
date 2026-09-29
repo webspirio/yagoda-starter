@@ -1,7 +1,7 @@
 import { randomUUID } from 'crypto';
 import { DataSource } from 'typeorm';
 import { openTestDataSource } from '../testing/db-harness';
-import { IntakeTopUpsService } from './intake-top-ups.service';
+import { ListIntakeTopUpsQuery } from './queries/list-intake-top-ups.query';
 import { IntakeTopUp } from './intake-top-up.entity';
 import { UserRole } from '../users/user-role.enum';
 import type { AuthenticatedUser } from '../auth/jwt.strategy';
@@ -14,9 +14,9 @@ import type { AuthenticatedUser } from '../auth/jwt.strategy';
  * `intake_top_ups → intakes → suppliers.collection_point_id`, and a unit spec
  * can only assert the text of that.
  */
-describe('IntakeTopUpsService.list (Postgres)', () => {
+describe('ListIntakeTopUpsQuery.list (Postgres)', () => {
   let ds: DataSource;
-  let service: IntakeTopUpsService;
+  let service: ListIntakeTopUpsQuery;
   let run: string;
   let pointA: string;
   let pointB: string;
@@ -32,7 +32,11 @@ describe('IntakeTopUpsService.list (Postgres)', () => {
   const owner = (): AuthenticatedUser =>
     ({ sub: ownerId, role: UserRole.NetworkOwner, collection_point_id: null }) as AuthenticatedUser;
   const operatorAt = (pointId: string): AuthenticatedUser =>
-    ({ sub: ownerId, role: UserRole.PointOperator, collection_point_id: pointId }) as AuthenticatedUser;
+    ({
+      sub: ownerId,
+      role: UserRole.PointOperator,
+      collection_point_id: pointId,
+    }) as AuthenticatedUser;
 
   const makePoint = async (label: string): Promise<string> => {
     const [row] = await ds.query(
@@ -115,9 +119,7 @@ describe('IntakeTopUpsService.list (Postgres)', () => {
 
   beforeAll(async () => {
     ds = await openTestDataSource();
-    service = new IntakeTopUpsService(ds.getRepository(IntakeTopUp), ds, {
-      record: async () => undefined,
-    } as never);
+    service = new ListIntakeTopUpsQuery(ds.getRepository(IntakeTopUp));
     run = randomUUID().slice(0, 8);
 
     const [user] = await ds.query(
@@ -262,9 +264,9 @@ describe('IntakeTopUpsService.list (Postgres)', () => {
       // with it, so naming someone else's supplier narrows to zero rather
       // than reaching across points.
       const page = await service.list(operatorAt(pointC), {
-        supplier_id: (await ds.query(`SELECT id FROM suppliers WHERE collection_point_id = $1`, [
-          pointA,
-        ]))[0].id,
+        supplier_id: (
+          await ds.query(`SELECT id FROM suppliers WHERE collection_point_id = $1`, [pointA])
+        )[0].id,
         include_voided: true,
         page: 1,
         limit: 50,

@@ -2,6 +2,7 @@ import { randomUUID } from 'crypto';
 import { DataSource } from 'typeorm';
 import { openTestDataSource } from '../testing/db-harness';
 import { CostOfDayService } from './cost-of-day.service';
+import { sum } from '../common/money';
 import { Shift } from '../shifts/shift.entity';
 import type { AuthenticatedUser } from '../auth/jwt.strategy';
 import { UserRole } from '../users/user-role.enum';
@@ -153,6 +154,15 @@ describe('CostOfDayService.forShift (DB)', () => {
     expect(raspberryOut?.price_was).toBe('160.00');
     expect(raspberryOut?.price_cost).toBe('166.39');
     expect(raspberryOut?.price_by_our_weight).toBe('162.03');
+
+    // §8.4's «жодна гривня не загубилася» — the basket is ALLOCATED across
+    // both complete products, not multiplied out per row, so the parts sum
+    // back to the basket exactly; `per_kg × kg` per row would not (it drops
+    // 2,94 ₴ of this very 5 460,00 basket).
+    const blackberryOut = out.products.find((p) => p.product_id === blackberry.id);
+    expect(raspberryOut?.basket_share).not.toBeNull();
+    expect(blackberryOut?.basket_share).not.toBeNull();
+    expect(sum([raspberryOut!.basket_share!, blackberryOut!.basket_share!])).toBe(out.basket);
   });
 
   /**
@@ -230,6 +240,9 @@ describe('CostOfDayService.forShift (DB)', () => {
     expect(product?.price_was).toBe('90.00');
     expect(product?.price_by_our_weight).toBeNull();
     expect(product?.price_cost).toBeNull();
+    // §3.15 — contributed no kilograms to the denominator, so it collects no
+    // share of the basket either: `null`, not a zero.
+    expect(product?.basket_share).toBeNull();
 
     // §3.9 — and the screen can say the day is not finished.
     expect(out.closed_at).toBeNull();

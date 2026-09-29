@@ -40,10 +40,40 @@ export function todayIso(): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
+/**
+ * The LOCAL `YYYY-MM-DD` of a full timestamp (a document's `sent_at`) — built
+ * the exact same way `todayIso()` builds today's date, from local `Date`
+ * getters, zero-padded. Exists because `formatShortDate` is UTC-only by
+ * design (a business date is a calendar day, deliberately immune to DST —
+ * see the file doc comment), but `sent_at` is a real instant and a business
+ * day HERE is the viewer's own local day: a transfer sent at 22:00 UTC is
+ * already tomorrow in Kyiv (UTC+2/+3). Slicing `sent_at` to its first ten
+ * characters and handing that to `formatShortDate` reads the UTC day
+ * instead, which can print a date one day behind the LOCAL time shown next
+ * to it. Use this first, then `formatShortDate(toLocalIsoDate(iso), locale)`.
+ */
+export function toLocalIsoDate(iso: string): string {
+  const d = new Date(iso);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
 export function addDaysIso(iso: string, days: number): string {
   const d = toUtcNoon(iso);
   d.setUTCDate(d.getUTCDate() + days);
   return fromDate(d);
+}
+
+const DAY_MS = 86_400_000;
+
+/**
+ * Whole calendar days from `fromIso` to `toIso` (`to − from`; negative when
+ * `to` is earlier). Built on the same UTC-noon anchor as `addDaysIso`, so a
+ * DST change between the two dates cannot shave the count to 22.9 and floor
+ * it wrong — the card's «найстаріший з 12.07 — 23 дні» is read by a person
+ * who will count on a calendar.
+ */
+export function daysBetween(fromIso: string, toIso: string): number {
+  return Math.round((toUtcNoon(toIso).getTime() - toUtcNoon(fromIso).getTime()) / DAY_MS);
 }
 
 export const formatLongDate = (iso: string, locale = 'uk'): string =>

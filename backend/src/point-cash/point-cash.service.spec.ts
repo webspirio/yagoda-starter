@@ -1,5 +1,5 @@
 import { PointCashService } from './point-cash.service';
-import { crateBookSql } from '../crates/crate-balance.service';
+import { crateBookSql, crateUnitsSql } from '../crates/crate-balance.service';
 import { toPointCashRowResponse, PointCashRow } from './point-cash.mapper';
 import { TransferStatus } from '../transfers/transfer-status.enum';
 
@@ -27,6 +27,30 @@ describe('crateBookSql — both call shapes', () => {
 
     expect(sql).toContain('cs.collection_point_id = cp.id');
     expect(sql).toContain('rs.collection_point_id = cp.id');
+    expect(sql).not.toMatch(/\$1/);
+  });
+});
+
+/**
+ * R8 — SAME PINNING, FOR THE UNITS COUNTER. `crateUnitsSql` is a SEPARATE
+ * function from `crateBookSql` (see that function's own doc comment), so it
+ * needs its own canary rather than inheriting the money one's coverage.
+ */
+describe('crateUnitsSql — both call shapes', () => {
+  it('produces a bound-parameter predicate for crateUnitsFor', () => {
+    const sql = crateUnitsSql('$1');
+
+    expect(sql).toContain('cs.collection_point_id = $1');
+    expect(sql).not.toContain('cp.id');
+    // Only deposit-mode issuances count units — R8's whole point.
+    expect(sql).toContain("ci.mode = 'deposit'");
+    expect(sql).toMatch(/::int\s*$/);
+  });
+
+  it('produces a correlated-column predicate for the list CTE', () => {
+    const sql = crateUnitsSql('cp.id');
+
+    expect(sql).toContain('cs.collection_point_id = cp.id');
     expect(sql).not.toMatch(/\$1/);
   });
 });
@@ -79,6 +103,35 @@ describe('PointCashService — crate deposits book', () => {
     });
   });
 
+  describe('crateUnitsFor', () => {
+    it('reports the crate units figure as its own integer, never folded into crate_deposits', async () => {
+      query.mockResolvedValue([{ crate_deposit_units: 13 }]);
+
+      await expect(service.crateUnitsFor('point-1')).resolves.toBe(13);
+    });
+
+    it("splices crateUnitsSql('$1') and binds the point id as $1, nothing else", async () => {
+      query.mockResolvedValue([{ crate_deposit_units: 0 }]);
+
+      await service.crateUnitsFor('point-1');
+
+      const [sql, params] = query.mock.calls[0] as [string, unknown[]];
+      expect(sql).toMatch(/crate_issuances/);
+      expect(sql).toMatch(/crate_return_allocations/);
+      expect(sql).toMatch(/mode = 'deposit'/);
+      expect(params).toEqual(['point-1']);
+    });
+
+    it('reads inside a caller’s transaction when given a manager', async () => {
+      const managerQuery = jest.fn().mockResolvedValue([{ crate_deposit_units: 5 }]);
+
+      await service.crateUnitsFor('point-1', { query: managerQuery } as never);
+
+      expect(managerQuery).toHaveBeenCalled();
+      expect(query).not.toHaveBeenCalled();
+    });
+  });
+
   describe('list', () => {
     const row: PointCashRow = {
       collection_point_id: 'point-1',
@@ -88,6 +141,7 @@ describe('PointCashService — crate deposits book', () => {
       shortfall: '0.00',
       unexplained_difference: '0.00',
       crate_deposits: '2400.00',
+      crate_deposit_units: 13,
       latest_transfer_status: null,
       latest_transfer_sent_at: null,
     };
@@ -110,6 +164,7 @@ describe('PointCashService — crate deposits book', () => {
       expect(query).toHaveBeenCalledTimes(2);
       const [pageSql] = query.mock.calls[0] as [string, unknown[]];
       expect(pageSql).toMatch(/AS crate_deposits/);
+      expect(pageSql).toMatch(/AS crate_deposit_units/);
       expect(pageSql).toMatch(/crate_issuances/);
     });
 
@@ -121,6 +176,15 @@ describe('PointCashService — crate deposits book', () => {
 
       expect(result.data[0]?.crate_deposits).toBe('2400.00');
       expect(result.data[0]?.cash).not.toBe('2400.00');
+    });
+
+    it('maps crate_deposit_units onto the response as its own integer field (R8)', async () => {
+      const result = await service.list(
+        { sub: 'u', username: 'owner', role: 'network_owner', collection_point_id: null } as never,
+        listQuery() as never,
+      );
+
+      expect(result.data[0]?.crate_deposit_units).toBe(13);
     });
   });
 });
@@ -134,6 +198,7 @@ describe('toPointCashRowResponse — crate deposits stay separate', () => {
     shortfall: '0.00',
     unexplained_difference: '0.00',
     crate_deposits: '2400.00',
+    crate_deposit_units: 13,
     latest_transfer_status: TransferStatus.Accepted,
     latest_transfer_sent_at: new Date('2026-09-01T00:00:00Z'),
   };
@@ -144,5 +209,11 @@ describe('toPointCashRowResponse — crate deposits stay separate', () => {
     expect(response.crate_deposits).toBe('2400.00');
     expect(response.cash).not.toBe('2400.00');
     expect(response.cash).toBe('500.00');
+  });
+
+  it('reports the crate units figure as its own integer field (R8)', () => {
+    const response = toPointCashRowResponse(row);
+
+    expect(response.crate_deposit_units).toBe(13);
   });
 });

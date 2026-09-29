@@ -1,12 +1,14 @@
-import { IsOptional, IsString, IsUUID, Matches } from 'class-validator';
+import { IsOptional, IsUUID, Matches } from 'class-validator';
 import { CanonicalDecimal } from '../../common/dto/canonical-decimal';
 
+/**
+ * NO `code`. It was the number printed in the paper payout book, copied in by
+ * the operator; since 2026-09-18 the server numbers the shift itself
+ * (`common/document-code.ts`) and the field is gone from the form. `amount`
+ * stayed — §3.7 still allows any sum from 0 to «Разом», and only the person at
+ * the counter knows which one is leaving the drawer.
+ */
 export class CreatePayoutDto {
-  /** The number printed in the paper receipt book; the server prefixes point,
-   *  kind and business date. */
-  @IsString()
-  code: string;
-
   /** Owner only — an operator's point comes from their token. */
   @IsOptional()
   @IsUUID()

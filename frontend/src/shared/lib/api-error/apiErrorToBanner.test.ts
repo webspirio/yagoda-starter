@@ -192,6 +192,45 @@ describe('apiErrorToBanner', () => {
     });
   });
 
+  describe('reweigh (§8)', () => {
+    const FALLBACK = 'reweigh.errors.postFailed';
+
+    it.each([
+      ['NOTHING_ACCEPTED', 'reweigh.errors.nothingAccepted'],
+      ['GRADE_NOT_ACCEPTED', 'reweigh.errors.gradeNotAccepted'],
+      ['NET_NOT_POSITIVE', 'reweigh.errors.netNotPositive'],
+      ['TARE_TYPE_DUPLICATED', 'reweigh.errors.tareDuplicated'],
+      ['TARE_TYPE_UNKNOWN', 'reweigh.errors.tareUnknown'],
+    ])('maps %s to %s', (code, key) => {
+      expect(apiErrorToBanner(apiError(400, code), FALLBACK)).toBe(key);
+    });
+
+    it('still falls back to the post’s own key when the server names no code', () => {
+      // A 500 or a dropped connection — generic, but about POSTING.
+      expect(apiErrorToBanner(apiError(500), FALLBACK)).toBe(FALLBACK);
+    });
+
+    it('shares ALREADY_VOIDED with every other document — §8.7 is not special', () => {
+      expect(apiErrorToBanner(apiError(409, 'ALREADY_VOIDED'), 'reweigh.day.errors.failed')).toBe(
+        'void.errors.alreadyVoided',
+      );
+    });
+  });
+
+  describe('crates — a receipt-linked return', () => {
+    it('says a return recorded with a receipt has no void of its own', () => {
+      // `POST /crate-returns/:id/void` refuses a return `POST /intakes`
+      // wrote alongside a receipt (§8.3, `returned_crates`) with this code —
+      // reachable from a stale crates list still showing a void button for
+      // one. `VoidDocumentDialog` calls this with the generic
+      // `void.errors.failed` fallback, and the shared map must still resolve
+      // it to the crates-specific sentence rather than the generic one.
+      expect(apiErrorToBanner(apiError(409, 'RETURN_BELONGS_TO_INTAKE'), 'void.errors.failed')).toBe(
+        'crates.errors.returnBelongsToIntake',
+      );
+    });
+  });
+
   it('falls back for an empty-string code rather than returning the empty string itself', () => {
     // `(code && CODE[code]) ?? fallback` short-circuits on `code: ''` to `''`
     // itself — `??` only falls back on null/undefined, not on falsy-but-not-

@@ -655,11 +655,11 @@ test('--write sets BOTH gated pairs (first paint and lazy) to measurement + a MI
   rmSync(r.root, { recursive: true, force: true })
 })
 
-test('--write always re-baselines both gated pairs — neither first paint nor lazy is ever frozen across writes', () => {
+test('--write re-derives both gated pairs — a too-loose ceiling on either is tightened, never frozen', () => {
   // The old sum ceiling used to be carried forward untouched after its first computation.
-  // Neither gated pair works that way: this proves a second --write moves BOTH ceilings off
-  // a deliberately wrong placeholder value planted directly into the budget file, rather
-  // than preserving it the way the old frozen sum ceiling once did.
+  // Neither gated pair works that way: this proves a second --write moves BOTH ceilings DOWN
+  // off a deliberately loose placeholder planted directly into the budget file. (Moving one
+  // UP is the clamp's business — see the --raise tests below.)
   const root = mkdtempSync(path.join(os.tmpdir(), 'bundle-size-'))
   const assets = path.join(root, 'frontend', 'dist', 'assets')
   mkdirSync(assets, { recursive: true })
@@ -732,10 +732,11 @@ test('--write=first-paint writes only the first-paint pair; lazy\'s max* is unto
   const prevLazyGzip = ceilingForTest(50 * KIB, MIN_GZIP, STEP_GZIP)
   const prevLazyRaw = ceilingForTest(150 * KIB, MIN_RAW, STEP_RAW)
   const previous = budgetFile({
-    // Deliberately absurd — must NOT survive into the written file, proving first paint was
-    // actually re-baselined rather than also left untouched.
-    maxFirstPaintGzipBytes: 1,
-    maxFirstPaintRawBytes: 1,
+    // Deliberately absurd (and HIGH, so the clamp lets it come down) — must NOT survive into
+    // the written file, proving first paint was actually re-baselined rather than also left
+    // untouched.
+    maxFirstPaintGzipBytes: 1e9,
+    maxFirstPaintRawBytes: 1e9,
     maxLazyGzipBytes: prevLazyGzip.max,
     maxLazyRawBytes: prevLazyRaw.max,
   })
@@ -754,7 +755,7 @@ test('--write=first-paint writes only the first-paint pair; lazy\'s max* is unto
 
   // First paint: fully re-baselined off THIS measurement, not the absurd previous value.
   assert.equal(written.measuredFirstPaintGzipBytes, gzEntry)
-  assert.notEqual(written.maxFirstPaintGzipBytes, 1)
+  assert.notEqual(written.maxFirstPaintGzipBytes, 1e9)
   assert.ok(written.maxFirstPaintGzipBytes >= gzEntry + MIN_GZIP)
 
   // Lazy: measured/headroom refreshed to the NEW bytes, but max* is the OLD ceiling,
@@ -782,9 +783,10 @@ test('--write=lazy writes only the lazy pair; first paint\'s max* is untouched, 
   const previous = budgetFile({
     maxFirstPaintGzipBytes: prevFpGzip.max,
     maxFirstPaintRawBytes: prevFpRaw.max,
-    // Deliberately absurd — must NOT survive, proving lazy was actually re-baselined.
-    maxLazyGzipBytes: 1,
-    maxLazyRawBytes: 1,
+    // Deliberately absurd (and HIGH, so the clamp lets it come down) — must NOT survive,
+    // proving lazy was actually re-baselined.
+    maxLazyGzipBytes: 1e9,
+    maxLazyRawBytes: 1e9,
   })
 
   const r = runIn({
@@ -800,7 +802,7 @@ test('--write=lazy writes only the lazy pair; first paint\'s max* is untouched, 
   const written = r.readBudget()
 
   assert.equal(written.measuredLazyGzipBytes, gzLazy)
-  assert.notEqual(written.maxLazyGzipBytes, 1)
+  assert.notEqual(written.maxLazyGzipBytes, 1e9)
   assert.ok(written.maxLazyGzipBytes >= gzLazy + MIN_GZIP)
 
   assert.equal(written.measuredFirstPaintGzipBytes, gzEntry)
@@ -900,6 +902,10 @@ test('a plain --write prints "also re-baselined" for a pair that was NOT over bu
   assert.equal(r.status, 0, r.out)
   assert.match(r.out, /^bundle: first paint also re-baselined: /m)
   assert.doesNotMatch(r.out, /lazy also re-baselined/)
+  // The over-budget pair is HELD by the clamp, not widened, and the writer is told so.
+  assert.equal(r.readBudget().maxLazyGzipBytes, gzLazy - 1)
+  assert.match(r.out, /WARNING: the recorded lazy ceiling was HELD/)
+  assert.doesNotMatch(r.out, /recorded first paint ceiling was HELD/)
   rmSync(r.root, { recursive: true, force: true })
 })
 
@@ -929,6 +935,149 @@ test('a plain --write prints no "also re-baselined" line when neither ceiling ac
   })
   assert.equal(r.status, 0, r.out)
   assert.doesNotMatch(r.out, /also re-baselined/)
+  rmSync(r.root, { recursive: true, force: true })
+})
+
+/**
+ * THE RATCHET IS ARITHMETIC, NOT PROSE. Before the clamp, a recorded ceiling tighter than
+ * the formula derives (which is exactly what first paint's held ceiling is) meant a bare
+ * `--write` — the one command the baseline's own `reason` tells people to use — silently
+ * re-derived and WIDENED it, producing a diff that reads like a routine re-measurement.
+ * The fixture is that situation exactly, on BOTH pairs: ceilings far below what this
+ * measurement would derive.
+ */
+test('--write can only LOWER an existing ceiling, never raise it — on both pairs', () => {
+  const r = runIn({
+    files: { 'index-A.js': noise(40 * KIB), 'lazy-C.js': noise(40 * KIB) },
+    manifest: {
+      'index.html': { file: 'assets/index-A.js', isEntry: true, dynamicImports: ['lazy-chunk'] },
+      'lazy-chunk': { file: 'assets/lazy-C.js' },
+    },
+    // Absurdly tight on purpose: any re-derivation from a 40 KiB measurement must exceed it.
+    budget: budgetFile({
+      maxFirstPaintGzipBytes: KIB,
+      maxFirstPaintRawBytes: 4 * KIB,
+      maxLazyGzipBytes: 2 * KIB,
+      maxLazyRawBytes: 8 * KIB,
+    }),
+    args: ['--write'],
+  })
+  assert.equal(r.status, 0, r.out)
+  const written = r.readBudget()
+
+  assert.equal(written.maxFirstPaintGzipBytes, KIB, 'the recorded first-paint gzip ceiling must be held')
+  assert.equal(written.maxFirstPaintRawBytes, 4 * KIB, 'the recorded first-paint raw ceiling must be held')
+  assert.equal(written.maxLazyGzipBytes, 2 * KIB, 'the recorded lazy gzip ceiling must be held')
+  assert.equal(written.maxLazyRawBytes, 8 * KIB, 'the recorded lazy raw ceiling must be held')
+  // Held rather than re-derived means the headroom it writes is NEGATIVE, and the writer
+  // has to be told so — a silent clamp would just move the surprise to the next run.
+  assert.ok(written.headroomFirstPaintGzipBytes < 0)
+  assert.ok(written.headroomLazyGzipBytes < 0)
+  assert.match(r.out, /WARNING: the recorded first paint ceiling was HELD/)
+  assert.match(r.out, /WARNING: the recorded lazy ceiling was HELD/)
+  assert.match(r.out, /--raise/)
+  rmSync(r.root, { recursive: true, force: true })
+})
+
+test('--write=first-paint is clamped too — the per-metric form is not a way around the ratchet', () => {
+  const r = runIn({
+    files: { 'index-A.js': noise(40 * KIB) },
+    manifest: { 'index.html': { file: 'assets/index-A.js', isEntry: true } },
+    budget: budgetFile({ ...AMPLE, maxFirstPaintGzipBytes: KIB, maxFirstPaintRawBytes: 4 * KIB }),
+    args: ['--write=first-paint'],
+  })
+  assert.equal(r.status, 0, r.out)
+  assert.equal(r.readBudget().maxFirstPaintGzipBytes, KIB)
+  assert.match(r.out, /WARNING: the recorded first paint ceiling was HELD/)
+  rmSync(r.root, { recursive: true, force: true })
+})
+
+test('--write --raise re-derives the ceiling and says out loud that it widened it', () => {
+  const js = noise(40 * KIB)
+  const gz = gzipSync(js, { level: 9 }).length
+  const r = runIn({
+    files: { 'index-A.js': js },
+    manifest: { 'index.html': { file: 'assets/index-A.js', isEntry: true } },
+    budget: budgetFile({ ...AMPLE, maxFirstPaintGzipBytes: KIB, maxFirstPaintRawBytes: 4 * KIB }),
+    args: ['--write', '--raise'],
+  })
+  assert.equal(r.status, 0, r.out)
+  const written = r.readBudget()
+
+  // The escape hatch genuinely works — the ratchet is one-way, not welded shut.
+  assert.ok(written.maxFirstPaintGzipBytes > KIB)
+  assert.ok(written.maxFirstPaintGzipBytes >= gz + written.minHeadroomGzipBytes)
+  assert.match(r.out, /WARNING: --raise was given, so the first paint ceiling/)
+  assert.match(r.out, /WIDENS/)
+  assert.doesNotMatch(r.out, /HELD/)
+  rmSync(r.root, { recursive: true, force: true })
+})
+
+/**
+ * The clamp must not turn the ordinary case — a bundle that genuinely SHRANK — into a
+ * frozen ceiling that can never come back down. Lowering is the whole point of re-recording.
+ */
+test('--write still lowers the ceiling when the bundle shrank', () => {
+  const r = runIn({
+    files: { 'index-A.js': noise(4 * KIB) },
+    manifest: { 'index.html': { file: 'assets/index-A.js', isEntry: true } },
+    budget: budgetFile({
+      maxFirstPaintGzipBytes: 500 * KIB,
+      maxFirstPaintRawBytes: 2000 * KIB,
+      maxLazyGzipBytes: 500 * KIB,
+      maxLazyRawBytes: 2000 * KIB,
+    }),
+    args: ['--write'],
+  })
+  assert.equal(r.status, 0, r.out)
+  const written = r.readBudget()
+
+  assert.ok(written.maxFirstPaintGzipBytes < 500 * KIB, 'a shrunk bundle must still tighten the ceiling')
+  assert.ok(written.maxFirstPaintRawBytes < 2000 * KIB)
+  assert.ok(written.maxLazyGzipBytes < 500 * KIB)
+  assert.doesNotMatch(r.out, /HELD/)
+  rmSync(r.root, { recursive: true, force: true })
+})
+
+/**
+ * The dev-runtime guard, in the shape the real failure had: a MINIFIED bundle that is
+ * nonetheless React's development build. Size alone cannot catch it — a dev build that
+ * still fits under the ceiling passes every other assertion in this file — so the marker
+ * is the only signal, and this is the test that keeps it wired up.
+ */
+test('a first-paint chunk carrying React’s development runtime is RED, however small', () => {
+  const r = runIn({
+    // Deliberately tiny: this must fail on the MARKER, not on the byte count.
+    files: { 'index-A.js': Buffer.from('var a=1;/*Each child in a list should have a unique key*/') },
+    manifest: { 'index.html': { file: 'assets/index-A.js', isEntry: true } },
+    budget: budgetFile(AMPLE),
+  })
+  assert.equal(r.status, 1, r.out)
+  assert.match(r.out, /DEVELOPMENT runtime/)
+  assert.match(r.out, /envDir/)
+  rmSync(r.root, { recursive: true, force: true })
+})
+
+test('a development build is refused under --write too — it must never become the baseline', () => {
+  const r = runIn({
+    files: { 'index-A.js': Buffer.from('var a=1;/*Invalid hook call*/') },
+    manifest: { 'index.html': { file: 'assets/index-A.js', isEntry: true } },
+    budget: null,
+    args: ['--write'],
+  })
+  assert.equal(r.status, 1, r.out)
+  assert.match(r.out, /DEVELOPMENT runtime/)
+  rmSync(r.root, { recursive: true, force: true })
+})
+
+test('an ordinary production chunk is not mistaken for a development one', () => {
+  const r = runIn({
+    files: { 'index-A.js': noise(8 * KIB) },
+    manifest: { 'index.html': { file: 'assets/index-A.js', isEntry: true } },
+    budget: budgetFile(AMPLE),
+  })
+  assert.equal(r.status, 0, r.out)
+  assert.doesNotMatch(r.out, /DEVELOPMENT runtime/)
   rmSync(r.root, { recursive: true, force: true })
 })
 

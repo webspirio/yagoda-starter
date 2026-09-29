@@ -46,6 +46,15 @@ import { envValidationSchema } from './config/env.schema';
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
+      // Resolved against the process cwd, which is `backend/` for every host entry
+      // point (`turbo dev`, jest, the migration CLI) — so the repo-root `.env`, the
+      // one docker compose reads for itself, has to be named explicitly or a host
+      // run boots with neither APP_URL nor JWT_SECRET and Joi aborts it. Earlier
+      // entries win (`loadEnvFile` keeps what it already accumulated), so a
+      // workspace-local `.env` still overrides the shared one. Real environment
+      // variables outrank both files, which is why compose's `DB_HOST: postgres`
+      // survives a root `.env` that says localhost for the host workflow.
+      envFilePath: ['.env', '../.env'],
       load: [appConfig, databaseConfig, authConfig, redisConfig, timezoneConfig, uploadsConfig],
       validationSchema: envValidationSchema,
     }),

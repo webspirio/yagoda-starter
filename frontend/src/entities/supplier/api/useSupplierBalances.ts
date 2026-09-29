@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { httpClient } from '@/shared/api';
 import { queryKeys } from '@/shared/api/queryKeys';
-import type { Paginated, SupplierBalanceRow } from '../model/supplier';
+import type { Paginated, SupplierBalanceRow, SupplierSettlement } from '../model/supplier';
 
 /** One supplier's outstanding debt — §3.1's «Разом», read before a payout. */
 export function useSupplierBalanceQuery(id: string | null) {
@@ -40,6 +40,23 @@ export function useSupplierBalancesQuery(filter: {
           },
         })
       ).data,
+    staleTime: 30_000,
+  });
+}
+
+/**
+ * «Відкриті залишки» for one supplier. UNDER THE `supplierBalances` PREFIX on
+ * purpose: every document write already invalidates that prefix (payout
+ * create/void, receipt create/void, top-up create/void), so the breakdown
+ * refreshes with the balance tile it sits beside — a stale breakdown under a
+ * fresh tile is the one visible bug this read could introduce.
+ */
+export function useSupplierSettlementQuery(id: string | null) {
+  return useQuery({
+    queryKey: [...queryKeys.supplierBalances, 'settlement', id],
+    enabled: id !== null,
+    queryFn: async (): Promise<SupplierSettlement> =>
+      (await httpClient.get<SupplierSettlement>(`/suppliers/${id}/settlement`)).data,
     staleTime: 30_000,
   });
 }

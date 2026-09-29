@@ -4,7 +4,6 @@ import { queryKeys } from '@/shared/api/queryKeys';
 import type { Payout } from '@/entities/payout';
 
 export interface CreatePayoutInput {
-  code: string;
   supplier_id: string;
   amount: string;
   /** Owner only — an operator's point is resolved server-side from their token. */
@@ -32,6 +31,8 @@ export function useCreatePayoutMutation() {
       qc.invalidateQueries({ queryKey: queryKeys.payouts });
       qc.invalidateQueries({ queryKey: queryKeys.supplierBalances });
       qc.invalidateQueries({ queryKey: queryKeys.pointCash });
+      // A payout allocates onto open receipts: their open_amount moves.
+      qc.invalidateQueries({ queryKey: queryKeys.intakes });
     },
   });
 }

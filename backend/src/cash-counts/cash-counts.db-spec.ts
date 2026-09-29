@@ -37,6 +37,9 @@ describe('CashCountsService.list (Postgres)', () => {
   let pointA: string;
   let pointB: string;
   let userId: string;
+  // D-8 — `displayNameOf(user)`, i.e. "first last" trimmed; every count below
+  // is recorded by this one fixture user.
+  let userDisplayName: string;
 
   const owner: AuthenticatedUser = {
     sub: 'u-owner',
@@ -96,7 +99,11 @@ describe('CashCountsService.list (Postgres)', () => {
 
   beforeAll(async () => {
     ds = await openTestDataSource();
-    service = new CashCountsService(ds);
+    // `list` (the only method this file exercises) never touches
+    // `shifts`/`cash`/`audit`/`time` — those four back `recount` alone, which
+    // has its own db-spec (`cash-count-recount.db-spec.ts`) wired through real
+    // Nest DI. Stubbing them here keeps this file's fixture unchanged.
+    service = new CashCountsService(ds, {} as never, {} as never, {} as never, {} as never);
     const run = randomUUID();
     const short = run.slice(0, 4).toUpperCase();
 
@@ -119,12 +126,14 @@ describe('CashCountsService.list (Postgres)', () => {
       collection_point_id: pointA,
     };
 
+    const lastName = `Тест-${run}`;
     const [user] = await ds.query(
       `INSERT INTO users (first_name, last_name, role, is_active)
        VALUES ('Оксана', $1, 'network_owner', true) RETURNING id`,
-      [`Тест-${run}`],
+      [lastName],
     );
     userId = user.id;
+    userDisplayName = `Оксана ${lastName}`;
 
     // 2026-09-01 — a point's FIRST count: expected := counted by construction,
     // so this row is a discrepancy of exactly zero and must never read "open".
@@ -181,6 +190,13 @@ describe('CashCountsService.list (Postgres)', () => {
 
     expect(page.data.length).toBeGreaterThan(0);
     expect(page.total).toBeGreaterThanOrEqual(page.data.length);
+  });
+
+  it('carries counted_by_name — the fixture user’s "first last", one map for the whole page (D-8)', async () => {
+    const page = await service.list(owner, query({ collection_point_id: pointA }));
+
+    expect(page.data.length).toBeGreaterThan(0);
+    expect(page.data.every((r) => r.counted_by_name === userDisplayName)).toBe(true);
   });
 
   it('only_discrepancies=true filters IN SQL: only the mismatched, unexplained rows come back', async () => {

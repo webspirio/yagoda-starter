@@ -12,7 +12,7 @@ import { useDebouncedValue } from '@/shared/lib/useDebouncedValue';
 import { usePointOptionsQuery } from '@/entities/collection-point';
 import { useSuppliersQuery } from '@/entities/supplier';
 import type { Supplier } from '@/entities/supplier';
-import { SupplierFormDialog } from './SupplierFormDialog';
+import { SupplierFormDialog } from '@/features/edit-supplier';
 
 export function SuppliersPage() {
   const { t } = useTranslation();

@@ -729,6 +729,33 @@ describe('suppliers + grade prices (HTTP)', () => {
       .expect(200);
     expect(journal.body.total).toBeGreaterThanOrEqual(2);
     expect(journal.body.data[0].base_price).toBe('55.00');
+
+    // #151 — the same move, read as «Зміни протягом дня»: routed ahead of the
+    // bare `@Get()`, open to the operator, and paired with the price it replaced.
+    const changes = await request(app.getHttpServer())
+      .get('/grade-prices/changes')
+      .set('Authorization', `Bearer ${operatorToken}`)
+      .expect(200);
+    const latest = changes.body.changes.find(
+      (c: { product_grade_id: string }) => c.product_grade_id === gradeId,
+    );
+    expect(latest).toMatchObject({ previous_base_price: '52.00', base_price: '55.00' });
+
+    // The period reaches the service through the DTO: bounds echoed back, a
+    // malformed date refused by the pipe, an impossible one by the service.
+    const period = await request(app.getHttpServer())
+      .get(`/grade-prices/changes?from=${changes.body.from}&to=${changes.body.to}`)
+      .set('Authorization', `Bearer ${operatorToken}`)
+      .expect(200);
+    expect(period.body).toMatchObject({ from: changes.body.from, to: changes.body.to });
+    await request(app.getHttpServer())
+      .get('/grade-prices/changes?from=2026/01/01')
+      .set('Authorization', `Bearer ${operatorToken}`)
+      .expect(400);
+    await request(app.getHttpServer())
+      .get('/grade-prices/changes?to=2026-02-30')
+      .set('Authorization', `Bearer ${operatorToken}`)
+      .expect(400);
   });
 
   it('403s an operator trying to set a price', async () => {

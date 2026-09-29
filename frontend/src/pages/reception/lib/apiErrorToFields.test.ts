@@ -8,10 +8,10 @@ const apiError = (init: { status: number; message?: string; code?: string; detai
   new ApiError(init.status, init.message ?? 'Request failed', init.details, init.code);
 
 describe('apiErrorToFields', () => {
-  it('maps INTAKE_CODE_TAKEN onto the code field', () => {
+  it('INTAKE_CODE_TAKEN has no field left to land on, so it banners', () => {
     const out = apiErrorToFields(apiError({ status: 409, code: 'INTAKE_CODE_TAKEN' }), 1);
-    expect(out.fieldErrors).toEqual([{ field: 'code', messageKey: 'reception.errors.codeTaken' }]);
-    expect(out.formErrorKey).toBeNull();
+    expect(out.fieldErrors).toEqual([]);
+    expect(out.formErrorKey).toBe('reception.errors.failed');
   });
 
   it('maps GRADE_NOT_PRICED onto the last line’s product_grade_id', () => {
@@ -61,6 +61,18 @@ describe('apiErrorToFields', () => {
     const out = apiErrorToFields(apiError({ status: 409, code: 'NO_OPEN_SHIFT' }), 1);
     expect(out.fieldErrors).toEqual([]);
     expect(out.formErrorKey).toBe('reception.errors.noOpenShift');
+  });
+
+  // «З них наших ящиків» (2026-09-24) — each refuses the WHOLE receipt, and
+  // none names a line: the returned-crates figure is one number on the form.
+  it.each([
+    ['RETURNED_EXCEEDS_TARE', 400, 'reception.returned.exceedsTare'],
+    ['RETURN_EXCEEDS_OUTSTANDING', 400, 'crates.errors.returnExceeds'],
+    ['CRATE_CASH_INSUFFICIENT', 409, 'crates.errors.cashInsufficient'],
+  ])('maps %s to its banner', (code, status, key) => {
+    const out = apiErrorToFields(apiError({ status, code }), 2);
+    expect(out.fieldErrors).toEqual([]);
+    expect(out.formErrorKey).toBe(key);
   });
 
   it('maps SUPPLIER_INACTIVE to a banner', () => {
@@ -143,5 +155,43 @@ describe('apiErrorToFields', () => {
     const out = apiErrorToFields(new Error('network down'), 1);
     expect(out.fieldErrors).toEqual([]);
     expect(out.formErrorKey).toBe('reception.errors.failed');
+  });
+
+  it('maps PAYOUT_EXCEEDS_CASH onto paid_amount, not a line', () => {
+    const out = apiErrorToFields(apiError({ status: 400, code: 'PAYOUT_EXCEEDS_CASH' }), 2);
+    expect(out.fieldErrors).toEqual([
+      { field: 'paid_amount', messageKey: 'reception.errors.paidExceedsCash' },
+    ]);
+    expect(out.formErrorKey).toBeNull();
+  });
+
+  it('maps PAYOUT_EXCEEDS_DEBT onto paid_amount', () => {
+    const out = apiErrorToFields(apiError({ status: 400, code: 'PAYOUT_EXCEEDS_DEBT' }), 1);
+    expect(out.fieldErrors).toEqual([
+      { field: 'paid_amount', messageKey: 'reception.errors.paidExceedsDebt' },
+    ]);
+    expect(out.formErrorKey).toBeNull();
+  });
+
+  it('maps PAYOUT_AMOUNT_ZERO onto paid_amount — unreachable from this client, mapped anyway', () => {
+    const out = apiErrorToFields(apiError({ status: 400, code: 'PAYOUT_AMOUNT_ZERO' }), 1);
+    expect(out.fieldErrors).toEqual([
+      { field: 'paid_amount', messageKey: 'reception.errors.paidFormat' },
+    ]);
+    expect(out.formErrorKey).toBeNull();
+  });
+
+  it('maps a class-validator detail on paid_amount to paidFormat, not decimalFormat', () => {
+    const out = apiErrorToFields(
+      apiError({
+        status: 400,
+        details: ['paid_amount must match /^\\d{1,10}(\\.\\d{1,2})?$/'],
+      }),
+      1,
+    );
+    expect(out.fieldErrors).toEqual([
+      { field: 'paid_amount', messageKey: 'reception.errors.paidFormat' },
+    ]);
+    expect(out.formErrorKey).toBeNull();
   });
 });

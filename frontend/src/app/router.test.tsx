@@ -1,3 +1,4 @@
+import { lazy } from 'react';
 import { cleanup, render, screen } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { createMemoryRouter, RouterProvider, type RouteObject } from 'react-router';
@@ -22,8 +23,8 @@ vi.mock('@/pages/point-cash', () => ({
   PointCashPage: () => <p>point-cash page</p>,
 }));
 // The rest of the owner-only group (§router.tsx's pathless RequireRole
-// layout) — stubbed the same way so mounting one on `lazy` resolution
-// doesn't drag in every query those real pages read.
+// layout) — stubbed the same way so resolving the lazy owner chunk doesn't
+// drag in every query those real pages read.
 vi.mock('@/pages/points', () => ({
   PointsPage: () => <p>points page</p>,
 }));
@@ -36,23 +37,30 @@ vi.mock('@/pages/catalog', () => ({
 vi.mock('@/pages/journal', () => ({
   JournalPage: () => <p>journal page</p>,
 }));
+vi.mock('@/pages/reweigh', () => ({
+  ReweighPage: () => <p>reweigh page</p>,
+}));
+vi.mock('@/pages/cost-of-day', () => ({
+  CostOfDayPage: () => <p>cost-of-day page</p>,
+}));
 
 /**
  * Deep-copies just the ancestors of the route matching `path`, swapping that route's own
- * `lazy` for one that always rejects — an ordinary redeploy, where the chunk hash a stale
- * `index.html` still references no longer exists on the CDN. Everything else (AppLayout,
- * both guards, sibling routes) is the real router.tsx wiring, untouched.
+ * element for a React.lazy one whose import always rejects — an ordinary redeploy, where
+ * the chunk hash a stale `index.html` still references no longer exists on the CDN.
+ * Everything else (AppLayout, both guards, sibling routes) is the real router.tsx wiring,
+ * untouched.
  */
-function withRejectingLazy(nodes: RouteObject[], path: string): RouteObject[] {
+function withRejectingChunk(nodes: RouteObject[], path: string): RouteObject[] {
   return nodes.map((node) => {
     if (node.path === path) {
-      return {
-        ...node,
-        lazy: () => Promise.reject(new Error('Failed to fetch dynamically imported module')),
-      };
+      const Rejecting = lazy(() =>
+        Promise.reject(new Error('Failed to fetch dynamically imported module')),
+      );
+      return { ...node, element: <Rejecting /> };
     }
     if (node.children) {
-      return { ...node, children: withRejectingLazy(node.children, path) };
+      return { ...node, children: withRejectingChunk(node.children, path) };
     }
     return node;
   });
@@ -163,16 +171,20 @@ describe('router', () => {
     expect(await screen.findByText('transfers page')).toBeInTheDocument();
   });
 
-  // /points, /users, /catalog and /journal share /transfers' guard — one
-  // pathless `RequireAuth` + `RequireRole` layout wrapping four `lazy`
-  // children (router.tsx) — so each pair below is the same assertion shape
-  // as the two /transfers tests above, proving the `lazy` module only
-  // mounts once the guard actually passes.
+  // The rest of the owner-only group shares /transfers' guard — one pathless
+  // `RequireAuth` + `RequireRole` layout wrapping React.lazy children
+  // (router.tsx) — so each pair below is the same assertion shape as the two
+  // /transfers tests above. §8's READS (/reweigh, /cost-of-day) are
+  // owner-only as well as its writes: what the base claims went missing is
+  // not something the point reads about itself. That the owner chunk is
+  // never even FETCHED for an operator is router.lazy-guard.test.tsx's job.
   it.each([
     ['/points', 'points page'],
     ['/users', 'users page'],
     ['/catalog', 'catalog page'],
     ['/journal', 'journal page'],
+    ['/reweigh', 'reweigh page'],
+    ['/cost-of-day', 'cost-of-day page'],
   ] as const)('keeps %s away from an operator', async (path, text) => {
     useSession.setState({ token: 'tok' });
     meMock.mockReturnValue({
@@ -190,6 +202,8 @@ describe('router', () => {
     ['/users', 'users page'],
     ['/catalog', 'catalog page'],
     ['/journal', 'journal page'],
+    ['/reweigh', 'reweigh page'],
+    ['/cost-of-day', 'cost-of-day page'],
   ] as const)('lets an owner onto %s', async (path, text) => {
     useSession.setState({ token: 'tok' });
     meMock.mockReturnValue({
@@ -244,12 +258,15 @@ describe('router', () => {
     warning.restore();
   });
 
-  it('loads /journal directly without a HydrateFallback warning, showing the loading fallback before the page resolves', async () => {
-    // Unlike /ui-kit, /journal is nested under AppLayout, which carries the
-    // shared `hydrateFallbackElement` — this is the regression guard proving
-    // that ancestor fallback still covers a directly-loaded lazy route
-    // nested several layers down (AppLayout > the owner-only guard layout >
-    // /journal itself).
+  it('loads /journal directly without a HydrateFallback warning', async () => {
+    // /journal is a React.lazy element under AppLayout, whose main column holds
+    // the app's one Suspense boundary. A route-level `lazy` would instead need a
+    // `hydrateFallbackElement` on some ancestor or warn on a direct load — this
+    // guards against a future split drifting back to that shape without one.
+    // That the Suspense fallback actually RENDERS while the chunk is in flight
+    // is route-suspense.test.tsx's job: it needs a module registry in which the
+    // owner chunk has not already resolved, which this file (whose owner tests
+    // above resolve it) cannot give it.
     useSession.setState({ token: 'tok' });
     meMock.mockReturnValue({
       data: { role: 'network_owner', display_name: 'Керівник Тест' },
@@ -258,12 +275,6 @@ describe('router', () => {
     });
     const warning = watchForHydrateFallbackWarning();
     renderAt('/journal');
-    // The PRESENCE half of this regression guard: `HydrateFallback` actually
-    // renders `common.loading` while `/journal`'s module is still in flight,
-    // checked BEFORE the mocked module resolves — asserting only the
-    // ABSENCE of a console warning (below) would stay green even if
-    // `hydrateFallbackElement` rendered nothing at all.
-    expect(await screen.findByText(/loading/i)).toBeInTheDocument();
     expect(await screen.findByText('journal page')).toBeInTheDocument();
     warning.assertNone();
     warning.restore();
@@ -271,8 +282,8 @@ describe('router', () => {
 
   it("keeps AppLayout's shell up when a lazy chunk fetch rejects, replacing only the owner-only group's own content", async () => {
     // An ordinary redeploy: old hashed chunks vanish from the CDN while a
-    // session still holds a stale index.html, so `import()` for the matched
-    // route's `lazy` module rejects. Before router.tsx's owner-only group
+    // session still holds a stale index.html, so the owner chunk's
+    // `import()` rejects. Before router.tsx's owner-only group
     // route declared its OWN errorElement, react-router bubbled that
     // rejection up to the nearest ancestor that had one — AppLayout itself —
     // which unmounted the whole shell (sidebar, nav) along with the failed
@@ -283,7 +294,7 @@ describe('router', () => {
       isPending: false,
       isError: false,
     });
-    renderAt('/journal', withRejectingLazy(routes, '/journal'));
+    renderAt('/journal', withRejectingChunk(routes, '/journal'));
     // The shell survives: the sidebar's brand mark is still on screen.
     expect(await screen.findByText('Yagoda')).toBeInTheDocument();
     // ...and the failed route's own content is the error fallback, not a

@@ -33,6 +33,14 @@ import { User } from '../users/user.entity';
   `num_nulls("voided_at", "voided_by_user_id", "void_reason") IN (0, 3)`,
 )
 @Index('IDX_crate_returns_supplier_created', ['supplier_id', 'created_at'])
+// DECLARED SO `migration:generate` DOES NOT PROPOSE DROPPING IT — same reasoning
+// as `UQ_shifts_open_per_point` on `Shift`. §8.3: a return written by a receipt in
+// the same «Прийняти» is the ONLY case with a non-null intake_id, and one receipt
+// writes at most one return.
+@Index('UQ_crate_returns_intake', ['intake_id'], {
+  unique: true,
+  where: '"intake_id" IS NOT NULL',
+})
 export class CrateReturn {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -50,6 +58,12 @@ export class CrateReturn {
   @ManyToOne(() => Supplier, { onDelete: 'RESTRICT' })
   @JoinColumn({ name: 'supplier_id' })
   supplier?: Supplier;
+
+  /** A return written BY the receipt in the same «Прийняти» (spec §8.3).
+   *  NULL for a standalone «Прийняти ящики». Partial UNIQUE at the DB —
+   *  one receipt writes at most one return. */
+  @Column({ type: 'uuid', nullable: true })
+  intake_id: string | null;
 
   @Column({ type: 'int' })
   units: number;

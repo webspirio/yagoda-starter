@@ -1,7 +1,10 @@
 import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Query } from '@nestjs/common';
 import { Auth } from '../auth/decorators/auth.decorators';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
-import { IntakeTopUpsService } from './intake-top-ups.service';
+import { CreateIntakeTopUpCommand } from './commands/create-intake-top-up.command';
+import { VoidIntakeTopUpCommand } from './commands/void-intake-top-up.command';
+import { GetIntakeTopUpQuery } from './queries/get-intake-top-up.query';
+import { ListIntakeTopUpsQuery } from './queries/list-intake-top-ups.query';
 import { CreateIntakeTopUpDto } from './dto/create-intake-top-up.dto';
 import { ListIntakeTopUpsQueryDto } from './dto/list-intake-top-ups.query';
 import { VoidDocumentDto } from '../intakes/dto/void-document.dto';
@@ -31,24 +34,29 @@ import type { AuthenticatedUser } from '../auth/jwt.strategy';
  */
 @Controller('intake-top-ups')
 export class IntakeTopUpsController {
-  constructor(private readonly topUps: IntakeTopUpsService) {}
+  constructor(
+    private readonly createCommand: CreateIntakeTopUpCommand,
+    private readonly voidCommand: VoidIntakeTopUpCommand,
+    private readonly getQuery: GetIntakeTopUpQuery,
+    private readonly listQuery: ListIntakeTopUpsQuery,
+  ) {}
 
   @Post()
   @Auth(UserRole.NetworkOwner)
   create(@CurrentUser() actor: AuthenticatedUser, @Body() dto: CreateIntakeTopUpDto) {
-    return this.topUps.create(actor, dto);
+    return this.createCommand.create(actor, dto);
   }
 
   @Get()
   @Auth()
   list(@CurrentUser() actor: AuthenticatedUser, @Query() query: ListIntakeTopUpsQueryDto) {
-    return this.topUps.list(actor, query);
+    return this.listQuery.list(actor, query);
   }
 
   @Get(':id')
   @Auth()
   findOne(@CurrentUser() actor: AuthenticatedUser, @Param('id', ParseUUIDPipe) id: string) {
-    return this.topUps.findOne(actor, id);
+    return this.getQuery.get(actor, id);
   }
 
   @Post(':id/void')
@@ -58,6 +66,6 @@ export class IntakeTopUpsController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: VoidDocumentDto,
   ) {
-    return this.topUps.void(actor, id, dto);
+    return this.voidCommand.void(actor, id, dto);
   }
 }

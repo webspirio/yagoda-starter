@@ -56,7 +56,9 @@ describe('GradePricesService', () => {
     };
     points = { findOneRaw: jest.fn().mockResolvedValue({ id: POINT_A, is_active: true }) };
     grades = { findOneRaw: jest.fn().mockResolvedValue({ id: GRADE, is_active: true }) };
-    service = new GradePricesService(repo as never, points as never, grades as never);
+    service = new GradePricesService(repo as never, points as never, grades as never, {
+      appTimezone: 'Europe/Kyiv',
+    });
   });
 
   describe('sheet', () => {

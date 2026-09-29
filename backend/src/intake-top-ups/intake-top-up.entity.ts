@@ -36,10 +36,17 @@ import { User } from '../users/user.entity';
  * Whoever wants a signed column must also revisit the locking argument in the
  * spec's §7.4 — it is safe only because this value cannot shrink a debt.
  *
- * NO `code` COLUMN. `composeDocumentCode` exists because an operator types the
- * number printed in the paper receipt book (§6.2); a top-up has no paper twin,
+ * NO `code` COLUMN. A `code` exists where someone walks away with paper in
+ * hand (§6.2); a top-up has no paper twin — the owner records it at a desk —
  * and a synthetic code would be a forged receipt number. `transfers` made the
  * same call for the same reason.
+ *
+ * WORDING CORRECTED 2026-09-18, alongside the DBML's twin of this sentence
+ * (`28-db-schema.dbml`, Note intake_top_ups). It used to name
+ * `composeDocumentCode` and say it exists because an operator types the number
+ * printed in the paper receipt book — which from that date describes no table
+ * at all, since the server numbers all four document kinds. The grounds for
+ * having no code are unchanged: the paper gives them, not who types the number.
  *
  * A VOIDED PARENT NEUTRALISES THIS ROW WITHOUT TOUCHING IT — see `debtSql` in
  * `supplier-balance.service.ts`. There is deliberately no cascade: voiding an

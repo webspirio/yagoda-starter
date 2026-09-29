@@ -8,7 +8,11 @@ export interface Shift {
   business_date: string;
   status: ShiftStatus;
   opened_by_user_id: string;
+  /** `displayNameOf` — `null` only for rows recorded before this field existed. */
+  opened_by_name: string | null;
   closed_by_user_id: string | null;
+  /** Same caveat as `opened_by_name`, plus: `null` while the shift is still open. */
+  closed_by_name: string | null;
   closed_at: string | null;
   created_at: string;
   /**

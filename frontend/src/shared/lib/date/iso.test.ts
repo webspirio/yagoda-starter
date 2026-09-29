@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import {
   addDaysIso,
+  toLocalIsoDate,
   isIsoDate,
   isRealIsoDate,
   formatLongDate,
@@ -8,6 +9,7 @@ import {
   formatShortDate,
   formatTime,
   formatDateTime,
+  daysBetween,
 } from './iso';
 
 describe('iso dates', () => {
@@ -57,5 +59,39 @@ describe('iso dates', () => {
       vi.stubEnv('TZ', 'UTC');
       expect(formatDateTime('2026-09-10T08:05:00.000Z', 'uk')).toBe('10.09 · 08:05');
     });
+  });
+
+  // `formatShortDate` is UTC-only (business dates are calendar days, immune
+  // to DST) — `toLocalIsoDate` exists so a full timestamp can still be
+  // rendered as the LOCAL day the viewer's clock would call it, the way
+  // `IncomingTransfers`'s in-transit caption and disputed-card header need
+  // (a transfer sent at 22:00 UTC is already the next day in Kyiv).
+  describe('toLocalIsoDate (the LOCAL calendar day of an instant, not the UTC one)', () => {
+    afterEach(() => {
+      vi.unstubAllEnvs();
+    });
+
+    it('reads the same day the instant falls on in UTC', () => {
+      vi.stubEnv('TZ', 'UTC');
+      expect(toLocalIsoDate('2026-09-10T22:00:00.000Z')).toBe('2026-09-10');
+    });
+
+    it('reads the NEXT day in Europe/Kyiv, which is ahead of UTC', () => {
+      vi.stubEnv('TZ', 'Europe/Kyiv');
+      expect(toLocalIsoDate('2026-09-10T22:00:00.000Z')).toBe('2026-09-11');
+    });
+  });
+});
+
+describe('daysBetween', () => {
+  it('counts whole calendar days, to − from', () => {
+    expect(daysBetween('2026-07-12', '2026-08-04')).toBe(23);
+    expect(daysBetween('2026-08-04', '2026-08-04')).toBe(0);
+    expect(daysBetween('2026-08-04', '2026-07-12')).toBe(-23);
+  });
+
+  it('is immune to the DST change (last Sunday of March / October)', () => {
+    expect(daysBetween('2026-03-28', '2026-03-30')).toBe(2);
+    expect(daysBetween('2026-10-24', '2026-10-26')).toBe(2);
   });
 });

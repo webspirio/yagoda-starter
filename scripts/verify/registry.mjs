@@ -593,8 +593,12 @@ export const CHECKS = [
     after: ['build'],
     // THIS IS THE FIRST REAL `after` IN THIS REGISTRY — every earlier row's own `after`
     // comment argues why ordering was NOT needed; this one argues the opposite. bundle-
-    // size.mjs reads frontend/dist/assets directly off disk; unlike `coverage` (re-runs the
-    // whole suite itself) or `audit` (shells out to npm's own tooling), it builds nothing.
+    // size.mjs reads frontend/dist/index.html and frontend/dist/assets directly off disk;
+    // unlike `coverage` (re-runs the whole suite itself) or `audit` (shells out to npm's own
+    // tooling), it builds nothing. Reading index.html makes a stale tree MORE dangerous, not
+    // less: an index.html left by an earlier commit names chunk hashes a fresh assets
+    // directory does not contain, which the check now refuses outright rather than measuring
+    // the smaller first load it could still see.
     // Without `build` having actually PASSED first, this row runs against whatever happens
     // to already be sitting in frontend/dist: nothing at all on a fresh checkout (a clear,
     // named failure — see measure()'s own message), or worse, a STALE tree left over from an
@@ -606,19 +610,19 @@ export const CHECKS = [
     // `bundle` reported NOT_RUN, naming `build` as the unmet dependency, never FAILED and
     // never a false PASSED against the tree `build` left behind.
     proves:
-      "First paint — the Vite manifest's entry chunk plus the closure of its static " +
-      "`imports` and their `css` — and lazy — every other chunk reached only through a " +
-      '`dynamicImports` edge — each sit inside their own recorded ceiling, gzip and raw, ' +
-      'covering every manifest-listed chunk with no gap and no overlap. Splitting code ' +
-      'moves bytes between the two ceilings, never out of both. Each is derived, never ' +
-      'chosen, and re-baselined on every explicit `--write`.',
+      "First paint — the manifest entry plus its static-import closure (everything " +
+      'index.html modulepreloads) and css — and lazy — every chunk reached only through ' +
+      '`dynamicImports` — each sit inside their own ceiling, gzip and raw, covering every ' +
+      'manifest-listed chunk. Ceilings are derived; `--write` only lowers one, `--raise` ' +
+      "widens and says so. React's development runtime in first paint is RED at any size. " +
+      'WARNING lines print headroom, the sum and the largest chunk on every pass.',
     blindSpot:
       'Reads whatever the LAST `build` wrote — a stale-but-consistent dist/manifest pair ' +
       "still gives a stale, passing verdict. It trusts the manifest's own " +
       'static-versus-dynamic split, models a cold download only — no HTTP cache, no ' +
       "repeat visit — and counts neither figure's own webfonts, which the entry's css " +
-      'pulls in but this check never opens. No per-chunk ceiling exists, and the sum it ' +
-      'also prints carries no ceiling of its own at all.',
+      'pulls in but this check never opens. Bytes, never load time. No per-chunk ceiling ' +
+      'exists, and the sum it also prints carries no ceiling of its own at all.',
   },
   {
     id: 'test:db',

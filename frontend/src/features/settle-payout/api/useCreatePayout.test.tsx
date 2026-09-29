@@ -25,12 +25,11 @@ describe('useCreatePayoutMutation', () => {
     const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries');
     const { result } = renderHook(() => useCreatePayoutMutation(), { wrapper });
 
-    await result.current.mutateAsync({ code: 'ВИП-001', supplier_id: 's1', amount: '300.00' });
+    await result.current.mutateAsync({ supplier_id: 's1', amount: '300.00' });
 
     expect(mock.history.post).toHaveLength(1);
     expect(mock.history.post[0].url).toBe('/payouts');
     expect(JSON.parse(mock.history.post[0].data as string)).toEqual({
-      code: 'ВИП-001',
       supplier_id: 's1',
       amount: '300.00',
     });
@@ -40,6 +39,8 @@ describe('useCreatePayoutMutation', () => {
       expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: queryKeys.payouts });
       expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: queryKeys.supplierBalances });
       expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: queryKeys.pointCash });
+      // A payout allocates onto open receipts, so their open_amount moves.
+      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: queryKeys.intakes });
     });
   });
 });

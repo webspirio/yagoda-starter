@@ -31,9 +31,31 @@ export interface ReceiptSheetProps {
   lines: ReceiptSheetLine[];
   accrued: string;
   balance: string;
-  /** The current user's name when they received this document, else «—». */
+  /** `null` when nothing has been paid out yet (`paid_amount` is `'0.00'`) —
+   *  the row and its muted list of payout codes are both hidden then.
+   *  `codes` are the LIVE (non-voided) linked payouts' codes. */
+  paid: { amount: string; codes: string[] } | null;
+  /** Codes of linked payouts that were voided after the fact — printed as a
+   *  muted annulment line each, so the paper slip doesn't silently disagree
+   *  with the register. */
+  voidedPayouts: string[];
+  /** Who received this document (`received_by_name`), or «—» when unknown. */
   receivedBy: string;
   voided: { reason: string } | null;
+  /** Our rented crates handed back in the SAME «Прийняти» as this receipt
+   *  (2026-09-24) — `null` when none came back with it. Printed as its own
+   *  line under the tare/lines block, apart from «Видано готівкою». */
+  crateReturn: {
+    units: number;
+    /** Formatted deposit refund, or `null` when the whole return was «на
+     *  розписку» (`deposit_refund` is zero — no money changed hands). A
+     *  MIXED return (part deposit, part receipt) still has a non-null
+     *  amount here, since the amount covers only the deposit part. */
+    amount: string | null;
+    /** The return is voided together with the receipt, never on its own —
+     *  prints a muted annulment line instead of the units/amount. */
+    voided: boolean;
+  } | null;
 }
 
 function Row({
@@ -69,8 +91,11 @@ export function ReceiptSheet({
   lines,
   accrued,
   balance,
+  paid,
+  voidedPayouts,
   receivedBy,
   voided,
+  crateReturn,
 }: ReceiptSheetProps) {
   const { t } = useTranslation();
 
@@ -118,9 +143,35 @@ export function ReceiptSheet({
         </div>
       ))}
 
+      {crateReturn ? (
+        <div>
+          <div className="my-3 border-t border-dashed border-neutral-300" />
+          {crateReturn.voided ? (
+            <Row label={t('receipt.crateReturnVoided')} value="" muted />
+          ) : (
+            <Row
+              label={t(
+                crateReturn.amount !== null ? 'receipt.crateReturn' : 'receipt.crateReturnNoMoney',
+                { units: crateReturn.units, amount: crateReturn.amount ?? undefined },
+              )}
+              value=""
+            />
+          )}
+        </div>
+      ) : null}
+
       <div className="my-3 border-t border-dashed border-neutral-300" />
 
       <Row label={t('receipt.accrued')} value={accrued} strong />
+      {paid ? <Row label={t('receipt.paid')} value={paid.amount} /> : null}
+      {paid ? (
+        <div className="text-[10px] text-neutral-500">{paid.codes.join(', ')}</div>
+      ) : null}
+      {voidedPayouts.map((code) => (
+        <div key={code} className="text-[10px] text-neutral-500">
+          {t('receipt.payoutVoided', { code })}
+        </div>
+      ))}
       <Row label={t('receipt.balanceAtPoint')} value={balance} />
       <Row label={t('receipt.receivedBy')} value={receivedBy} muted />
 

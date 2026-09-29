@@ -5,11 +5,12 @@ import { Button } from '@/shared/ui/button';
 import { EmptyState } from '@/shared/ui/empty-state';
 import { cn } from '@/shared/lib/cn';
 import { formatShortDate } from '@/shared/lib/date';
-import { formatUah } from '@/shared/lib/money';
-import type { Intake } from '@/entities/intake';
+import { formatUah, isZero } from '@/shared/lib/money';
+import { canVoidIntake, type Intake } from '@/entities/intake';
 import type { Payout } from '@/entities/payout';
 import type { IntakeTopUp } from '@/entities/intake-top-up';
 import type { Me } from '@/entities/user';
+import { ReceiptVoidButton } from '@/widgets/receipt';
 
 interface TimelineRowBase {
   id: string;
@@ -33,23 +34,23 @@ type TimelineRow =
 
 /**
  * intakes + payouts + TOP-UPS of one supplier, merged newest-first by
- * `created_at` (spec §5.4) — the season's whole history, no per-receipt balance
- * breakdown (§3: a balance is ONE number). Voided rows are struck through
- * with the reason shown, not just hinted at in a tooltip; a payout carries
- * its own «Анулювати» when the viewer is allowed to void it — an intake's
- * void action lives inside the receipt widget it opens, not here.
+ * `created_at` (spec §5.4) — the season's whole history; the per-line
+ * breakdown arrives as two maps from the settlement projection (spec
+ * 2026-09-25) — this list never computes it. Voided rows are struck through
+ * with the reason shown, not just hinted at in a tooltip; a payout and a
+ * receipt each carry their own «Анулювати» when the viewer may void it — the
+ * receipt's opens the receipt widget straight into its void.
  *
- * THIS IS THE ONLY PLACE THE BALANCE IS EXPLAINED. `GET /suppliers/:id/balance`
- * returns a single `debt` string with no breakdown, so the three terms of
- * `Σ intakes + Σ top-ups − Σ payouts` meet on screen here and nowhere else.
- * That is why a top-up must be visible even when it counts for nothing: a
- * reader comparing this list against the balance tile has no other source.
+ * `OpenBalances` above explains the balance; the captions here point each
+ * row at it.
  */
 export function SupplierTimeline({
   intakes,
   payouts,
   topUps,
   me,
+  openByLineId,
+  coversByPayoutId,
   onOpenReceipt,
   onVoidPayout,
   onAddTopUp,
@@ -59,7 +60,16 @@ export function SupplierTimeline({
   payouts: Payout[];
   topUps: IntakeTopUp[];
   me: Me | undefined;
-  onOpenReceipt: (intakeId: string) => void;
+  /**
+   * Line id → open amount, from the settlement. Required — the settlement is
+   * now the page's only debt query (M4), so every caller already has one to
+   * pass; a missing map silently hid every "still open" caption rather than
+   * failing loudly.
+   */
+  openByLineId: Map<string, string>;
+  /** Payout id → the business dates it closed and what it left unallocated. */
+  coversByPayoutId: Map<string, { dates: string[]; unallocated: string }>;
+  onOpenReceipt: (intakeId: string, options?: { void?: boolean }) => void;
   onVoidPayout: (payout: Payout) => void;
   /** Owner only. Absent for an operator — §10.2: «заблокована кнопка вчить
    *  шукати обхід, відсутня не вчить нічого». */
@@ -161,10 +171,23 @@ export function SupplierTimeline({
                 <span className="font-mono">{row.code}</span>
                 <Badge variant="secondary">{t('supplierCard.timeline.intake')}</Badge>
                 {row.voided ? <span className="text-xs">{row.reason}</span> : null}
-                <span className="ml-auto font-mono tabular-nums">
-                  {formatUah(row.amount, locale)}
+                <span className="ml-auto text-right">
+                  <span className="block font-mono tabular-nums">{formatUah(row.amount, locale)}</span>
+                  {!row.voided && openByLineId?.get(row.id) && !isZero(openByLineId.get(row.id)!) ? (
+                    <span className="block font-mono text-[11px] text-[var(--amber)]">
+                      {t('supplierCard.timeline.openLeft', {
+                        uah: formatUah(openByLineId.get(row.id)!, locale),
+                      })}
+                    </span>
+                  ) : null}
                 </span>
               </button>
+              {me && canVoidIntake(me, row.intake) ? (
+                <ReceiptVoidButton
+                  code={row.code}
+                  onClick={() => onOpenReceipt(row.id, { void: true })}
+                />
+              ) : null}
               {/* NOT OFFERED ON A VOIDED RECEIPT: `counts_toward_balance` folds
                   in the parent's void, so a top-up written here would count for
                   nothing the moment it was saved. */}
@@ -201,8 +224,15 @@ export function SupplierTimeline({
                     : t('supplierCard.timeline.parentVoided')}
                 </span>
               ) : null}
-              <span className="ml-auto font-mono tabular-nums">
-                {formatUah(row.amount, locale)}
+              <span className="ml-auto text-right">
+                <span className="block font-mono tabular-nums">{formatUah(row.amount, locale)}</span>
+                {!row.voided && openByLineId?.get(row.id) && !isZero(openByLineId.get(row.id)!) ? (
+                  <span className="block font-mono text-[11px] text-[var(--amber)]">
+                    {t('supplierCard.timeline.openLeft', {
+                      uah: formatUah(openByLineId.get(row.id)!, locale),
+                    })}
+                  </span>
+                ) : null}
               </span>
               {isOwner && row.topUp.voided_at === null ? (
                 <Button
@@ -220,13 +250,31 @@ export function SupplierTimeline({
               <Badge variant="outline">{t('supplierCard.timeline.payout')}</Badge>
               <span className="font-mono">{row.code}</span>
               {row.voided ? <span className="text-xs">{row.reason}</span> : null}
-              <span
-                className={cn(
-                  'ml-auto font-mono tabular-nums',
-                  !row.voided && 'text-[var(--leaf)]',
-                )}
-              >
-                {formatUah(row.amount, locale)}
+              <span className="ml-auto text-right">
+                <span
+                  className={cn('block font-mono tabular-nums', !row.voided && 'text-[var(--leaf)]')}
+                >
+                  {formatUah(row.amount, locale)}
+                </span>
+                {!row.voided && coversByPayoutId?.get(row.id)?.dates.length ? (
+                  <span className="block text-[11px] text-muted-foreground">
+                    {t('supplierCard.timeline.closed', {
+                      dates: coversByPayoutId
+                        .get(row.id)!
+                        .dates.map((d) => formatShortDate(d, locale))
+                        .join(', '),
+                    })}
+                  </span>
+                ) : null}
+                {!row.voided &&
+                coversByPayoutId?.get(row.id) &&
+                !isZero(coversByPayoutId.get(row.id)!.unallocated) ? (
+                  <span className="block font-mono text-[11px] text-[var(--leaf)]">
+                    {t('supplierCard.timeline.unallocated', {
+                      uah: formatUah(coversByPayoutId.get(row.id)!.unallocated, locale),
+                    })}
+                  </span>
+                ) : null}
               </span>
               {canVoid(row.payout) ? (
                 <Button

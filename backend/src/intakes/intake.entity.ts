@@ -58,8 +58,10 @@ export class Intake {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  /** Composed server-side as `{POINT}-IN-{YYYYMMDD}-{typed}` — see
-   *  `common/document-code.ts`. The raw typed part is not stored separately. */
+  /** `{POINT}-IN-{YYYYMMDD}-{NNN}`, composed AND numbered server-side — see
+   *  `common/document-code.ts`. The `{NNN}` was a number the operator read off
+   *  the paper receipt book until 2026-09-18; it is a per-shift sequence the
+   *  server allocates now, and it is not stored separately either way. */
   @Column({ type: 'varchar' })
   code: string;
 
