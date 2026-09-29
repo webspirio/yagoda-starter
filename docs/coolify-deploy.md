@@ -169,11 +169,11 @@ the preview owner or for this middleware.
 
 ### Memory
 
-`docker-compose.prod.yml` is deployed **from each branch**, so a hardcoded
-`mem_limit` could only be changed by committing and then redeploying every open
-PR. Every limit is therefore a variable whose default is the tight preview
-profile; production raises them in its own Coolify env set, and recalibration is
-an env edit, not a commit.
+Every limit in `docker-compose.prod.yml` is a variable whose default is the
+tight preview profile; production raises them in its own Coolify env set, and
+recalibration is an env edit, not a commit — which would otherwise have to be
+merged before any preview could pick it up (see «The compose comes from
+`main`» below).
 
 Budget on the resized server (measured 2026-09-10): 7.56 GiB total − 0.37 OS −
 0.63 Coolify − ~1.0 production ≈ **5.5 GiB** for previews. At ~0.25 GiB each,
@@ -200,7 +200,7 @@ Coolify altogether, see the last section.
 | Gate | Result |
 |---|---|
 | `SOURCE_COMMIT` interpolates in compose | ✅ 2026-09-10 — production runs `…-backend:sha-94ea42ee…`, the merge commit, and `/api/health/version` returns it |
-| Preview `SOURCE_COMMIT` == PR head SHA | ⏳ filled in from this fix's own preview (the PR that closes #68) |
+| Preview `SOURCE_COMMIT` == PR head SHA | ⏳ cannot be shown on #180 itself — its preview runs main's compose («The compose comes from `main`» below), so its backend dies before `/api/health/version` answers; filled in by the first PR preview after the merge, whose `deploy-preview` asserts exactly this |
 | Manual «Redeploy» keeps the same SHA | not exercised — CI re-runs `deploy-preview` instead. Per the deployment job's source the button checks out `pull/<N>/head`: pressed after a CI deploy it redeploys that same head; pressed right after a push it fails on pull, because CI has not built the new head yet |
 | Preview deleted on PR close with Auto Deploy off | ✅ 2026-09-29 — #179 closed at 20:56:15Z; by 20:58:10Z `docker ps -a`, `docker volume ls` and `docker network ls` showed nothing named `pr-179` and `application_previews` was empty. That stack had never come up healthy, so this also covers the failed-preview case of amendment #5 |
 | API lists previews (cap source) | ✗ — 4.3.23 exposes only `/applications/{uuid}/previews/{pr}/logs`, `PATCH` and `DELETE`, no list, and the application JSON carries none; the `preview` label stays the cap's source |
@@ -263,6 +263,27 @@ for a few seconds; #12005 — a preview's storage *records* outlive the preview
 in Coolify's database (the volumes themselves are removed, see gate 4);
 #11534 — a preview delete also removes user-named (`external`/`name:`)
 volumes and networks, which this compose deliberately has none of.
+
+### The compose comes from `main`, not from the PR
+
+Coolify does not deploy the compose file of the commit it checks out. On every
+deploy — production and preview alike — `ApplicationDeploymentJob` calls
+`loadComposeFile()`, which clones the application's configured branch
+(`git_branch`, i.e. `main`) with `only_checkout` (it never passes the PR
+number to `generateGitImportCommands`) and stores that file as
+`docker_compose_raw`; the parser then renders *that* file against the PR's
+commit. Observed on #180: its rendered `docker-compose-pr-180.yaml` still had
+the literal `DB_HOST: postgres` the branch had already replaced, while its
+`.env` carried the correct `SERVICE_NAME_*=…-pr-180`. Consequences:
+
+- a PR that edits `docker-compose.prod.yml` gets a preview of its **code**
+  under **main's compose**; the edit itself is exercised by the first preview
+  after the merge (and by production);
+- a compose change that previews *need* — like the `SERVICE_NAME_*` fix —
+  cannot be proven green on its own PR: expect that PR's `deploy-preview` to
+  fail the old way, and verify on the next PR;
+- CI's `changes` job still treats `docker-compose*.yml` as a docker input so
+  that such a PR builds images and gets a preview of its code at all.
 
 **Fallback (only if a `SOURCE_COMMIT` gate failed):** CI sets `IMAGE_TAG` in the
 relevant env set via `PATCH /api/v1/applications/<uuid>/envs` right before
@@ -429,6 +450,7 @@ ssh root@<vps> 'docker ps --format "{{.Names}}\t{{.Status}}\t{{.Image}}"; docker
 | `serves commit 'X', expected 'Y'` | Coolify deployed another commit (fallback misuse, or Auto Deploy got switched on) | Check Auto Deploy is off; re-run the job |
 | `/ready` never 200 | backend crash-loop | Coolify → application → logs; usually a missing env var |
 | A preview's backend logs `getaddrinfo EAI_AGAIN postgres` (or `redis`) | a service hostname is hardcoded in the compose (previews suffix every service), or someone defined `SERVICE_NAME_<SVC>` — even empty — in a Coolify env set | reference it as `${SERVICE_NAME_<SVC>:-<svc>}` and never define those keys yourself — «What Coolify renames in a preview» |
+| A preview ignores the PR's change to `docker-compose.prod.yml` | expected — the compose is loaded from `main` on every deploy («The compose comes from `main`») | merge, then check the next preview |
 | Coolify lists a **failed** deployment seconds after every PR push, before CI is green | expected: the App webhook deploys `sha-<head>` before CI has pushed it; the pull fails, and it runs before the old containers are stopped, so a live preview stays up | nothing — `deploy-preview`'s API deploy is the one that counts |
 | «Preview not deployed — limit reached» | `PREVIEW_CAP` live previews (default 12). A PR whose deploy FAILED keeps its `preview` label on purpose — the stack is still running and still holding memory | close or merge an older PR, or remove its `preview` label once you have confirmed Coolify no longer runs that preview |
 | `deploy-preview` shows "cancelled", no comment | another PR took the single pending slot of the `preview-allocation` concurrency group while this one waited | re-run the job |

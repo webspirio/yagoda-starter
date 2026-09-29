@@ -65,8 +65,12 @@ jobs:
         #   - root package manifest + lockfile
         #   - .dockerignore
         #
-        #   - docker-compose*.yml  Coolify deploys the compose file FROM THE PR
-        #                          BRANCH, so it is a deploy input too
+        #   - docker-compose*.yml  NOT because Coolify deploys the PR's copy —
+        #                          it loads the compose from main on every
+        #                          deploy (docs/coolify-deploy.md «The compose
+        #                          comes from main») — but so that a PR editing
+        #                          it still builds images and gets a preview of
+        #                          its code at all
         #   - .github/workflows/** a workflow change must exercise the build
         #
         # turbo.json is intentionally absent: the Dockerfiles invoke workspace

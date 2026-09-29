@@ -7,12 +7,16 @@
 #   - no `networks:` — Coolify creates the stack network; a second network on
 #     a container makes its Traefik pick interfaces non-deterministically;
 #   - no `ports:` — Coolify does not strip them, and two previews would fight
-#     over 127.0.0.1:8080. The standalone override adds them back.
+#     over 127.0.0.1:8080. The standalone override adds them back;
+#   - Coolify reads this file from the application's branch (`main`) on EVERY
+#     deploy, previews included — a PR's edit to it reaches previews only after
+#     the merge, and that PR's own preview still runs main's copy;
+#   - a sibling service is addressed as ${SERVICE_NAME_<SVC>:-<svc>}, never by
+#     its literal name — previews suffix every service with -pr-<N>.
 #
 # Memory sizing: every mem_limit and Node heap cap below is a variable with the
-# current preview-sized default. Coolify deploys THIS FILE FROM EACH BRANCH, so
-# a hardcoded limit can only be changed by committing and then redeploying every
-# open PR; as variables they are an env-set edit in Coolify instead. Production
+# current preview-sized default, so a limit is an env-set edit in Coolify, not
+# a commit that has to be merged before any preview can pick it up. Production
 # overrides them upward (docs/coolify-deploy.md «Environment variables»);
 # previews keep the defaults. Invariant when overriding: the Node heap cap stays
 # comfortably below its service's mem_limit, so an out-of-memory surfaces as a
