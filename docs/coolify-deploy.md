@@ -240,6 +240,24 @@ succeeds minutes before `deploy-preview` claims the `preview` label, so the
 cap under-counts by one until that job runs. Accepted — the window is short
 and the job always runs on those events.
 
+Sources, because none of this is on Coolify's *application* pages:
+`SERVICE_NAME_<SERVICE>` is documented only for *Services*
+(<https://coolify.io/docs/services/configuration/docker-compose>: «Coolify
+creates this variable automatically for every Compose service»); the `-pr-<N>`
+value for application previews lives in `app/Jobs/ApplicationDeploymentJob.php`
+(`addPreviewDeploymentSuffix`), and coollabsio/coolify#10186 (2026-06) is the
+fix that stops a stale user-defined `SERVICE_NAME_*` from overriding it — so
+never define those keys in the env sets. Volume suffixing is documented
+(<https://coolify.io/docs/core/persistent-storage/storage-mounts/volume-mounts>).
+For a compose application the `deploy?pr=<N>` API creates no preview record
+(only the `dockerimage` build pack gets that), which is why the webhook is
+mandatory. Known 4.3.x issues to expect: coollabsio/coolify#9014 — compose
+previews share one project name, so deploying one preview can 502 its siblings
+for a few seconds; #12005 — a preview's storage *records* outlive the preview
+in Coolify's database (the volumes themselves are removed, see gate 4);
+#11534 — a preview delete also removes user-named (`external`/`name:`)
+volumes and networks, which this compose deliberately has none of.
+
 **Fallback (only if a `SOURCE_COMMIT` gate failed):** CI sets `IMAGE_TAG` in the
 relevant env set via `PATCH /api/v1/applications/<uuid>/envs` right before
 `deploy`, under the same `concurrency` group. Then **never press «Redeploy» on a
