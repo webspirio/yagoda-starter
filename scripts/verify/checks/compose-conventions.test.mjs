@@ -192,6 +192,78 @@ test('an environment line the scanner cannot read is RED, not silently skipped',
   })
 })
 
+test('an evenly re-indented service (keys at six, entries at ten) is still read, and its violations found', () => {
+  const compose = `services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: app
+  backend:
+      image: example/backend
+      environment:
+          DB_HOST: postgres
+          SEED_DEV_DATA: \${SEED_DEV_DATA:-}
+          BOOTSTRAP_OWNER_PASSWORD: \${BOOTSTRAP_OWNER_PASSWORD:-}
+`
+  withFixture(compose, (dir) => {
+    const res = run(dir)
+    assert.equal(res.status, 1, res.out)
+    assert.match(res.out, /backend\.DB_HOST \(line 9\)/)
+    assert.match(res.out, /backend\.SEED_DEV_DATA \(line 10\)/)
+    assert.match(res.out, /backend\.BOOTSTRAP_OWNER_PASSWORD \(line 11\)/)
+  })
+})
+
+test('a service nested under another service by indentation makes its environment: unread — and that refuses a verdict', () => {
+  const compose = `services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: app
+    backend:
+      image: example/backend
+      environment:
+        DB_HOST: postgres
+`
+  withFixture(compose, (dir) => {
+    const res = run(dir)
+    assert.equal(res.status, 1, res.out)
+    assert.match(res.out, /environment:.*line 8/)
+    assert.doesNotMatch(res.out, /conventions hold/)
+  })
+})
+
+test('a service name padded inside quotes, or inside a comma-separated host list, is still a bare hostname', () => {
+  const compose = CLEAN.replace(
+    '      NODE_ENV: production\n',
+    '      NODE_ENV: production\n      HOST_PADDED: "postgres "\n      REDIS_HOSTS: cache,redis:6379\n',
+  )
+  withFixture(compose, (dir) => {
+    const res = run(dir)
+    assert.equal(res.status, 1, res.out)
+    assert.match(res.out, /backend\.HOST_PADDED \(line \d+\)/)
+    assert.match(res.out, /backend\.REDIS_HOSTS \(line \d+\)/)
+    assert.match(res.out, /\$\{SERVICE_NAME_REDIS:-redis\}/)
+  })
+})
+
+test('a path that merely starts with a service name is not a hostname, while a URL host followed by a path is', () => {
+  const compose = CLEAN.replace(
+    '      NODE_ENV: production\n',
+    '      NODE_ENV: production\n      APP_ROOT: backend/dist\n',
+  )
+  withFixture(compose, (dir) => {
+    const res = run(dir)
+    assert.equal(res.status, 0, res.out)
+  })
+  const url = CLEAN.replace('      NODE_ENV: production\n', '      NODE_ENV: production\n      DATABASE_URL: postgres://app@postgres/app\n')
+  withFixture(url, (dir) => {
+    const res = run(dir)
+    assert.equal(res.status, 1, res.out)
+    assert.match(res.out, /backend\.DATABASE_URL/)
+  })
+})
+
 test('a compose with no environment entries at all refuses a verdict instead of passing', () => {
   withFixture('name: fixture\nservices:\n  redis:\n    image: redis:7-alpine\n', (dir) => {
     const res = run(dir)

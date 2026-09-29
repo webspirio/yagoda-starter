@@ -20,13 +20,15 @@
  *     `DB_HOST: ${SERVICE_NAME_POSTGRES:-postgres}`) is left alone by the parser, and so by
  *     this check.
  *
- * Line-based on purpose: no YAML library is a dependency of the repo root, and the file is
- * hand-written in one indentation style — services at two spaces, their keys at four,
- * environment entries at six, or the list form `- KEY=value`. A line in another style is an
- * ERROR, never a skip: an odd indentation inside `services:`, a two-space line that is not a
- * service name, or an environment line that is neither `KEY: value` nor `- KEY=value` all
- * make the check RED with the line number, so a partially re-indented file cannot hide a
- * service from it. An empty scan refuses a verdict rather than passing.
+ * Line-based on purpose: no YAML library is a dependency of the repo root. Services sit at
+ * two spaces; a service's key indentation is whatever its FIRST key uses, so a service whose
+ * keys sit at six and entries at ten is read the same as one at four and six. Three things
+ * make the check RED with a line number instead of skipping: a line inside `services:`
+ * indented neither like a service nor like the current service's keys nor deeper; an
+ * environment line that is neither `KEY: value` nor `- KEY=value`; and — the guarantee that
+ * a service nested under another service by indentation cannot hide — every
+ * `environment:` line in the file must have been read as a service's own environment block,
+ * or there is no verdict. An empty scan refuses a verdict too.
  */
 import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
@@ -62,7 +64,8 @@ function unquote(raw) {
   const quoted =
     v.length >= 2 &&
     ((v.startsWith("'") && v.endsWith("'")) || (v.startsWith('"') && v.endsWith('"')))
-  return quoted ? v.slice(1, -1) : v
+  // Trim again after the slice: a hostname padded INSIDE the quotes is still that hostname.
+  return quoted ? v.slice(1, -1).trim() : v
 }
 
 /**
@@ -85,11 +88,20 @@ export function parseCompose(text) {
   let inServices = false
   /** @type {string | null} */
   let service = null
+  /** The indentation of the current service's keys — set by its first key line. */
+  let keyIndent = 0
   let inEnvironment = false
+  /** Every `environment:` line in the file, wherever it sits. */
+  /** @type {number[]} */
+  const environmentLines = []
+  /** The ones read as a service's own environment block. */
+  /** @type {number[]} */
+  const environmentBlocks = []
 
   text.split('\n').forEach((line, i) => {
     if (/^\s*(#|$)/.test(line)) return
     const n = i + 1
+    if (/^\s+environment:\s*$/.test(line)) environmentLines.push(n)
     const indent = line.length - line.trimStart().length
     if (indent === 0) {
       inServices = /^services:\s*$/.test(line)
@@ -98,24 +110,27 @@ export function parseCompose(text) {
       return
     }
     if (!inServices) return
-    if (indent % 2 !== 0)
-      throw new Error(
-        `line ${n}: an indentation of ${indent} is not this file's style (services at two ` +
-          'spaces, their keys at four, environment entries at six) — fix the line or teach the check',
-      )
     if (indent === 2) {
       const m = /^ {2}([A-Za-z0-9_.-]+):\s*$/.exec(line)
       if (!m) throw new Error(`line ${n}: expected a service name at two spaces, found \`${line.trim()}\``)
       service = m[1]
       services.push(m[1])
+      keyIndent = 0
       inEnvironment = false
       return
     }
     if (service === null) throw new Error(`line ${n}: indented content before any service`)
-    if (indent === 4) {
-      inEnvironment = /^ {4}environment:\s*$/.test(line)
+    if (keyIndent === 0) keyIndent = indent
+    if (indent === keyIndent) {
+      inEnvironment = /^\s+environment:\s*$/.test(line)
+      if (inEnvironment) environmentBlocks.push(n)
       return
     }
+    if (indent < keyIndent)
+      throw new Error(
+        `line ${n}: an indentation of ${indent} is neither a service (two spaces) nor a key of ` +
+          `\`${service}\` (${keyIndent} spaces) — fix the line or teach the check`,
+      )
     if (!inEnvironment) return
     let m = /^\s+([A-Za-z_][A-Za-z0-9_]*):\s*(.*)$/.exec(line)
     if (m) {
@@ -134,22 +149,32 @@ export function parseCompose(text) {
     )
   })
 
+  const unread = environmentLines.filter((n) => !environmentBlocks.includes(n))
+  if (unread.length > 0)
+    throw new Error(
+      `environment: at line ${unread.join(', ')} was not read as a service's own environment ` +
+        'block — a service or block is indented outside this file\'s style, and its entries ' +
+        'would otherwise pass unchecked',
+    )
+
   return { services, entries }
 }
 
 /**
  * Where a service name counts as a HOSTNAME inside a value: the whole value (`postgres`,
- * `postgres:5432`, `postgres/db`), or the authority of a URL, after `://` or a `user:pw@`.
- * A scheme that happens to spell a service name (`redis://…`) is not a host — `:` followed by
- * `//` is excluded at the start — and `${SERVICE_NAME_REDIS:-redis}` never matches, because
- * nothing puts the bare name in host position.
+ * `postgres:5432`), a member of a comma- or space-separated host list (`cache,redis:6379`),
+ * or the authority of a URL, after `://` or a `user:pw@` (`postgres://app@postgres/app`).
+ * A scheme that happens to spell a service name (`redis://…`) is not a host — at the start,
+ * `:` followed by `//` is excluded — a path that starts with a service name
+ * (`backend/dist`) is not a host either, and `${SERVICE_NAME_REDIS:-redis}` never matches,
+ * because nothing puts the bare name in host position.
  *
  * @param {string} service
  * @returns {RegExp}
  */
 function hostnameOf(service) {
   const s = service.replace(/[.*+?^${}()|[\]\\-]/g, '\\$&')
-  return new RegExp(`^${s}(?=$|/|:(?!//))|(?:://|@)${s}(?=$|[:/?#])`)
+  return new RegExp(`^${s}(?=$|[,\\s]|:(?!//))|(?:://|@|[,\\s])${s}(?=$|[:/?#,\\s])`)
 }
 
 /** @param {string} service */
