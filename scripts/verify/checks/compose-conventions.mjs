@@ -55,8 +55,42 @@ const SAME_NAME_DEFAULT_ALLOWLIST = new Map([
   ['DB_NAME', "2026-09-29 — app in every env set; also the postgres service's POSTGRES_DB"],
 ])
 
+/**
+ * Environment keys allowed to carry a sibling service's literal name. Empty on purpose: the
+ * only correct spelling of a sibling hostname is `${SERVICE_NAME_<SVC>:-<svc>}`. The list
+ * exists so that a value which merely LOOKS like one — a legitimately literal token the
+ * detector cannot tell from a host — has a dated, reasoned way past the check instead of a
+ * rewrite that would be wrong for it.
+ */
+/** @type {Map<string, string>} */
+const SIBLING_HOSTNAME_ALLOWLIST = new Map()
+
 /** `${NAME:-…}`, `${NAME-…}`, `${NAME:?…}`, `${NAME?…}` at the very start of a value. */
 const SAME_NAME_DEFAULT = /^\$\{([A-Za-z_][A-Za-z0-9_]*)(:-|-|:\?|\?)/
+
+/**
+ * Drop a trailing YAML comment: a `#` outside quotes that starts the line or follows
+ * whitespace. A `#` inside `'…'` or `"…"` is data.
+ *
+ * @param {string} line
+ */
+function stripComment(line) {
+  /** @type {string | null} */
+  let quote = null
+  for (let i = 0; i < line.length; i++) {
+    const c = line[i]
+    if (quote !== null) {
+      if (c === quote) quote = null
+      continue
+    }
+    if (c === "'" || c === '"') {
+      quote = c
+      continue
+    }
+    if (c === '#' && (i === 0 || /\s/.test(line[i - 1]))) return line.slice(0, i).trimEnd()
+  }
+  return line
+}
 
 /** @param {string} raw */
 function unquote(raw) {
@@ -98,8 +132,9 @@ export function parseCompose(text) {
   /** @type {number[]} */
   const environmentBlocks = []
 
-  text.split('\n').forEach((line, i) => {
-    if (/^\s*(#|$)/.test(line)) return
+  text.split('\n').forEach((rawLine, i) => {
+    if (/^\s*(#|$)/.test(rawLine)) return
+    const line = stripComment(rawLine)
     const n = i + 1
     if (/^\s+environment:\s*$/.test(line)) environmentLines.push(n)
     const indent = line.length - line.trimStart().length
@@ -162,19 +197,19 @@ export function parseCompose(text) {
 
 /**
  * Where a service name counts as a HOSTNAME inside a value: the whole value (`postgres`,
- * `postgres:5432`), a member of a comma- or space-separated host list (`cache,redis:6379`),
- * or the authority of a URL, after `://` or a `user:pw@` (`postgres://app@postgres/app`).
- * A scheme that happens to spell a service name (`redis://…`) is not a host — at the start,
- * `:` followed by `//` is excluded — a path that starts with a service name
- * (`backend/dist`) is not a host either, and `${SERVICE_NAME_REDIS:-redis}` never matches,
- * because nothing puts the bare name in host position.
+ * `postgres:5432`), a member of a comma-separated host list (`cache,redis:6379`), or the
+ * authority of a URL, after `://` or a `user:pw@` (`postgres://app@postgres/app`). Not a
+ * host: a scheme that happens to spell a service name (`redis://…` — at the start, `:`
+ * followed by `//` is excluded), a path that starts with one (`backend/dist`), a word in
+ * free text (`welcome to the backend` — whitespace is deliberately not a separator), and
+ * `${SERVICE_NAME_REDIS:-redis}`, which never puts the bare name in host position.
  *
  * @param {string} service
  * @returns {RegExp}
  */
 function hostnameOf(service) {
   const s = service.replace(/[.*+?^${}()|[\]\\-]/g, '\\$&')
-  return new RegExp(`^${s}(?=$|[,\\s]|:(?!//))|(?:://|@|[,\\s])${s}(?=$|[:/?#,\\s])`)
+  return new RegExp(`^${s}(?=$|,|:(?!//))|(?:://|@|,)${s}(?=$|[:/?#,])`)
 }
 
 /** @param {string} service */
@@ -188,14 +223,20 @@ function serviceNameVariable(service) {
  * @property {string[]} services
  * @property {Entry[]} entries
  * @property {string[]} allowlisted the allowlisted same-name defaults actually present, sorted
+ * @property {string[]} hostAllowlisted the allowlisted sibling-hostname keys actually present, sorted
  */
 
 /**
  * @param {string} [root]
- * @param {Map<string, string>} [allowlist]
+ * @param {Map<string, string>} [allowlist] same-name defaults that may stay
+ * @param {Map<string, string>} [hostAllowlist] keys that may carry a sibling's literal name
  * @returns {ScanResult}
  */
-export function scan(root = ROOT, allowlist = SAME_NAME_DEFAULT_ALLOWLIST) {
+export function scan(
+  root = ROOT,
+  allowlist = SAME_NAME_DEFAULT_ALLOWLIST,
+  hostAllowlist = SIBLING_HOSTNAME_ALLOWLIST,
+) {
   const file = path.join(root, COMPOSE_REL)
   if (!existsSync(file)) throw new Error(`${COMPOSE_REL} not found under ${root}`)
   const { services, entries } = parseCompose(readFileSync(file, 'utf8'))
@@ -203,6 +244,7 @@ export function scan(root = ROOT, allowlist = SAME_NAME_DEFAULT_ALLOWLIST) {
   /** @type {string[]} */
   const findings = []
   const allowlisted = new Set()
+  const hostAllowlisted = new Set()
 
   for (const e of entries) {
     const m = SAME_NAME_DEFAULT.exec(e.value)
@@ -216,16 +258,28 @@ export function scan(root = ROOT, allowlist = SAME_NAME_DEFAULT_ALLOWLIST) {
             'or allowlist the key in this check if its value is identical in every env set',
         )
     }
-    for (const { service: sibling, re } of hostnames)
-      if (re.test(e.value))
-        findings.push(
-          `${e.service}.${e.key} (line ${e.line}): bare sibling hostname \`${sibling}\` in ` +
-            `\`${e.value}\` — previews rename every service to \`<name>-pr-<N>\` and the DNS ` +
-            `name follows; put \`\${${serviceNameVariable(sibling)}:-${sibling}}\` in its place`,
-        )
+    for (const { service: sibling, re } of hostnames) {
+      if (!re.test(e.value)) continue
+      if (hostAllowlist.has(e.key)) {
+        hostAllowlisted.add(e.key)
+        continue
+      }
+      findings.push(
+        `${e.service}.${e.key} (line ${e.line}): bare sibling hostname \`${sibling}\` in ` +
+          `\`${e.value}\` — previews rename every service to \`<name>-pr-<N>\` and the DNS ` +
+          `name follows; put \`\${${serviceNameVariable(sibling)}:-${sibling}}\` in its place, ` +
+          'or, if this value is not a hostname at all, allowlist the key in this check with a reason',
+      )
+    }
   }
 
-  return { findings, services, entries, allowlisted: [...allowlisted].sort() }
+  return {
+    findings,
+    services,
+    entries,
+    allowlisted: [...allowlisted].sort(),
+    hostAllowlisted: [...hostAllowlisted].sort(),
+  }
 }
 
 function main() {
@@ -248,10 +302,13 @@ function main() {
     process.exit(1)
   }
 
+  const hosts = result.hostAllowlisted.length
+    ? `; sibling hostnames allowlisted: ${result.hostAllowlisted.join(', ')}`
+    : ''
   process.stdout.write(
     `compose: conventions hold — ${result.entries.length} environment entries across ` +
       `${result.services.length} services in ${COMPOSE_REL}; same-name \`:-\` defaults ` +
-      `allowlisted: ${result.allowlisted.join(', ') || 'none'}\n`,
+      `allowlisted: ${result.allowlisted.join(', ') || 'none'}${hosts}\n`,
   )
 }
 

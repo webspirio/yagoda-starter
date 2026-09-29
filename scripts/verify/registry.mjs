@@ -417,10 +417,10 @@ export const CHECKS = [
     blindSpot:
       'Only docker-compose.prod.yml, and only its environment blocks: a hostname hardcoded in ' +
       'nginx/default.conf.template, in a healthcheck or in a command is invisible, as is a ' +
-      'value whose variable name differs from its key — that shape is safe today and simply ' +
-      'not checked. The allowlist is trusted, not verified: a key added there whose value ' +
-      'later diverges between env sets leaks unnoticed. Parsing is line-based and reads this ' +
-      'file\'s indentation style, not arbitrary YAML.',
+      'value whose variable name differs from its key — safe today, simply not checked. A ' +
+      'service name inside free text or a space-separated list is not read as a host. Both ' +
+      'allowlists are trusted, not verified: a key added there whose value later diverges ' +
+      'between env sets leaks unnoticed. Parsing is line-based, not arbitrary YAML.',
   },
   {
     id: 'selfcheck',

@@ -264,6 +264,56 @@ test('a path that merely starts with a service name is not a hostname, while a U
   })
 })
 
+test('a trailing comment on the environment: line does not hide the block', () => {
+  const compose = CLEAN.replace(
+    '    environment:\n      DB_HOST: ${SERVICE_NAME_POSTGRES:-postgres}\n',
+    '    environment:  # forwarded to the container\n      DB_HOST: ${SERVICE_NAME_POSTGRES:-postgres}\n      SEED_DEV_DATA: ${SEED_DEV_DATA:-}\n',
+  )
+  withFixture(compose, (dir) => {
+    const res = run(dir)
+    assert.equal(res.status, 1, res.out)
+    assert.match(res.out, /backend\.SEED_DEV_DATA \(line \d+\)/)
+  })
+})
+
+test('a quoted value with a trailing comment is unquoted and still checked; a # inside quotes is not a comment', () => {
+  const compose = CLEAN.replace(
+    '      DB_HOST: ${SERVICE_NAME_POSTGRES:-postgres}\n',
+    "      DB_HOST: 'postgres'  # legacy name\n      TOKEN: \"abc#def\" # real comment\n",
+  )
+  withFixture(compose, (dir) => {
+    const res = run(dir)
+    assert.equal(res.status, 1, res.out)
+    assert.match(res.out, /backend\.DB_HOST \(line \d+\)/)
+    assert.doesNotMatch(res.out, /backend\.TOKEN/)
+  })
+})
+
+test('a service name as a word in free text is not a hostname; a member of a comma-separated list is', () => {
+  const compose = CLEAN.replace(
+    '      NODE_ENV: production\n',
+    '      NODE_ENV: production\n      MOTD: welcome to the backend\n      HOSTS: cache,redis\n',
+  )
+  withFixture(compose, (dir) => {
+    const res = run(dir)
+    assert.equal(res.status, 1, res.out)
+    assert.doesNotMatch(res.out, /backend\.MOTD/)
+    assert.match(res.out, /backend\.HOSTS \(line \d+\)/)
+  })
+})
+
+test('a key on the sibling-hostname allowlist may carry a service name and says why', async () => {
+  const { scan } = await import('./compose-conventions.mjs')
+  const compose = CLEAN.replace('      NODE_ENV: production\n', '      NODE_ENV: production\n      LEGACY_HOST: postgres\n')
+  withFixture(compose, (dir) => {
+    const strict = scan(dir)
+    assert.ok(strict.findings.some((f) => f.includes('backend.LEGACY_HOST')), strict.findings.join('\n'))
+    const relaxed = scan(dir, undefined, new Map([['LEGACY_HOST', 'a fixture reason']]))
+    assert.deepEqual(relaxed.findings, [])
+    assert.deepEqual(relaxed.hostAllowlisted, ['LEGACY_HOST'])
+  })
+})
+
 test('a compose with no environment entries at all refuses a verdict instead of passing', () => {
   withFixture('name: fixture\nservices:\n  redis:\n    image: redis:7-alpine\n', (dir) => {
     const res = run(dir)
