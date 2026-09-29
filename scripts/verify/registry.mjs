@@ -419,8 +419,8 @@ export const CHECKS = [
       'nginx/default.conf.template, in a healthcheck or in a command is invisible, as is a ' +
       'value whose variable name differs from its key — safe today, simply not checked. A ' +
       'service name inside free text or a space-separated list is not read as a host. Both ' +
-      'allowlists are trusted, not verified: a key added there whose value later diverges ' +
-      'between env sets leaks unnoticed. Parsing is line-based, not arbitrary YAML.',
+      'allowlists, keyed per service, are trusted, not verified: an entry whose value later ' +
+      'diverges between env sets leaks unnoticed. Anchors are refused, not followed.',
   },
   {
     id: 'selfcheck',

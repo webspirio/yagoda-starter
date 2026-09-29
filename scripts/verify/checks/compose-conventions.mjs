@@ -22,13 +22,16 @@
  *
  * Line-based on purpose: no YAML library is a dependency of the repo root. Services sit at
  * two spaces; a service's key indentation is whatever its FIRST key uses, so a service whose
- * keys sit at six and entries at ten is read the same as one at four and six. Three things
- * make the check RED with a line number instead of skipping: a line inside `services:`
- * indented neither like a service nor like the current service's keys nor deeper; an
- * environment line that is neither `KEY: value` nor `- KEY=value`; and — the guarantee that
- * a service nested under another service by indentation cannot hide — every
- * `environment:` line in the file must have been read as a service's own environment block,
- * or there is no verdict. An empty scan refuses a verdict too.
+ * keys sit at six and entries at ten is read the same as one at four and six. Trailing
+ * comments are stripped quote-aware first. Anything the reader does not understand is RED
+ * with a line number, never a skip: a line inside `services:` indented neither like a
+ * service nor like the current service's keys nor deeper; `environment:` in flow form
+ * (`{…}` / `[…]`) or with any trailing content; a merge key `<<:` in a service (anchors are
+ * not followed — a top-level `x-…` extension field is simply not read); an environment line
+ * that is neither `KEY: value` nor `- KEY=value`; and — the guarantee that a service nested
+ * under another service by indentation cannot hide — every `environment:` line inside
+ * `services:` must have been read as a service's own block, or there is no verdict. An
+ * empty scan refuses a verdict too.
  */
 import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
@@ -43,22 +46,25 @@ const ROOT = scanRoot()
 const COMPOSE_REL = 'docker-compose.prod.yml'
 
 /**
- * Same-name `:-` defaults that are tolerable: keys whose value is identical in every Coolify
- * env set, so the production literal the parser injects is the right value everywhere.
- * Every entry is dated and reasoned; a key whose value ever diverges between env sets must
- * leave this list, or previews get production's value for it.
+ * Same-name `:-` defaults that are tolerable, keyed `service.KEY` so an entry exempts one
+ * entry of one service, never a key everywhere: keys whose value is identical in every
+ * Coolify env set, so the production literal the parser injects is the right value
+ * everywhere. Every entry is dated and reasoned; a key whose value ever diverges between
+ * env sets must leave this list, or previews get production's value for it.
  */
 const SAME_NAME_DEFAULT_ALLOWLIST = new Map([
-  ['APP_TIMEZONE', '2026-09-29 — Europe/Kyiv in production and previews alike'],
-  ['JWT_EXPIRES_IN', '2026-09-29 — 7d in every env set'],
-  ['DB_USER', "2026-09-29 — app in every env set; also the postgres service's POSTGRES_USER"],
-  ['DB_NAME', "2026-09-29 — app in every env set; also the postgres service's POSTGRES_DB"],
+  ['backend.APP_TIMEZONE', '2026-09-29 — Europe/Kyiv in production and previews alike'],
+  ['backend.JWT_EXPIRES_IN', '2026-09-29 — 7d in every env set'],
+  ['backend.DB_USER', "2026-09-29 — app in every env set; also the postgres service's POSTGRES_USER"],
+  ['backend.DB_NAME', "2026-09-29 — app in every env set; also the postgres service's POSTGRES_DB"],
+  ['seed.DB_USER', '2026-09-29 — the same app, read by the one-shot seed'],
+  ['seed.DB_NAME', '2026-09-29 — the same app, read by the one-shot seed'],
 ])
 
 /**
- * Environment keys allowed to carry a sibling service's literal name. Empty on purpose: the
- * only correct spelling of a sibling hostname is `${SERVICE_NAME_<SVC>:-<svc>}`. The list
- * exists so that a value which merely LOOKS like one — a legitimately literal token the
+ * `service.KEY` entries allowed to carry a sibling service's literal name. Empty on purpose:
+ * the only correct spelling of a sibling hostname is `${SERVICE_NAME_<SVC>:-<svc>}`. The
+ * list exists so that a value which merely LOOKS like one — a legitimately literal token the
  * detector cannot tell from a host — has a dated, reasoned way past the check instead of a
  * rewrite that would be wrong for it.
  */
@@ -136,7 +142,6 @@ export function parseCompose(text) {
     if (/^\s*(#|$)/.test(rawLine)) return
     const line = stripComment(rawLine)
     const n = i + 1
-    if (/^\s+environment:\s*$/.test(line)) environmentLines.push(n)
     const indent = line.length - line.trimStart().length
     if (indent === 0) {
       inServices = /^services:\s*$/.test(line)
@@ -145,6 +150,13 @@ export function parseCompose(text) {
       return
     }
     if (!inServices) return
+    // Every `environment:` inside services, in any form and at any depth, is accounted for.
+    if (/^\s+environment:/.test(line)) environmentLines.push(n)
+    if (/^\s+<<:/.test(line))
+      throw new Error(
+        `line ${n}: merge key \`<<:\` in service \`${service ?? '?'}\` — this check does not ` +
+          'follow anchors; inline the mapping so its entries can be read',
+      )
     if (indent === 2) {
       const m = /^ {2}([A-Za-z0-9_.-]+):\s*$/.exec(line)
       if (!m) throw new Error(`line ${n}: expected a service name at two spaces, found \`${line.trim()}\``)
@@ -157,7 +169,13 @@ export function parseCompose(text) {
     if (service === null) throw new Error(`line ${n}: indented content before any service`)
     if (keyIndent === 0) keyIndent = indent
     if (indent === keyIndent) {
-      inEnvironment = /^\s+environment:\s*$/.test(line)
+      const env = /^\s+environment:(.*)$/.exec(line)
+      if (env && env[1].trim() !== '')
+        throw new Error(
+          `line ${n}: \`environment:\` in flow form (\`${env[1].trim()}\`) in service ` +
+            `\`${service}\` — this check reads the block form only; write one entry per line`,
+        )
+      inEnvironment = env !== null
       if (inEnvironment) environmentBlocks.push(n)
       return
     }
@@ -247,28 +265,29 @@ export function scan(
   const hostAllowlisted = new Set()
 
   for (const e of entries) {
+    const id = `${e.service}.${e.key}`
     const m = SAME_NAME_DEFAULT.exec(e.value)
     if (m && m[1] === e.key) {
-      if (allowlist.has(e.key)) allowlisted.add(e.key)
+      if (allowlist.has(id)) allowlisted.add(id)
       else
         findings.push(
           `${e.service}.${e.key} (line ${e.line}): \`${e.key}: \${${e.key}${m[2]}…}\` — Coolify's ` +
             "compose parser replaces this with the PRODUCTION env set's literal, previews " +
             `included; write \`${e.key}: \${${e.key}}\` (see the docker-compose.prod.yml header), ` +
-            'or allowlist the key in this check if its value is identical in every env set',
+            `or allowlist \`${id}\` in this check if its value is identical in every env set`,
         )
     }
     for (const { service: sibling, re } of hostnames) {
       if (!re.test(e.value)) continue
-      if (hostAllowlist.has(e.key)) {
-        hostAllowlisted.add(e.key)
+      if (hostAllowlist.has(id)) {
+        hostAllowlisted.add(id)
         continue
       }
       findings.push(
         `${e.service}.${e.key} (line ${e.line}): bare sibling hostname \`${sibling}\` in ` +
           `\`${e.value}\` — previews rename every service to \`<name>-pr-<N>\` and the DNS ` +
           `name follows; put \`\${${serviceNameVariable(sibling)}:-${sibling}}\` in its place, ` +
-          'or, if this value is not a hostname at all, allowlist the key in this check with a reason',
+          `or, if this value is not a hostname at all, allowlist \`${id}\` in this check with a reason`,
       )
     }
   }

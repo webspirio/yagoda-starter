@@ -83,7 +83,7 @@ test('a compose that follows both conventions is green and the verdict names wha
     assert.equal(res.status, 0, res.out)
     assert.match(res.out, /^compose: conventions hold/)
     assert.match(res.out, /\b9 environment entries across 3 services\b/)
-    assert.match(res.out, /allowlisted: DB_USER\b/)
+    assert.match(res.out, /allowlisted: backend\.DB_USER\b/)
   })
 })
 
@@ -114,7 +114,55 @@ test('an allowlisted same-name default stays green and is reported as allowliste
   withFixture(compose, (dir) => {
     const res = run(dir)
     assert.equal(res.status, 0, res.out)
-    assert.match(res.out, /allowlisted: APP_TIMEZONE, DB_USER\b/)
+    assert.match(res.out, /allowlisted: backend\.APP_TIMEZONE, backend\.DB_USER\b/)
+  })
+})
+
+test('an allowlist entry is scoped to one service — the same key elsewhere is still RED', () => {
+  const compose = CLEAN.replace(
+    '  redis:\n    image: redis:7-alpine\n',
+    '  redis:\n    image: redis:7-alpine\n    environment:\n      DB_USER: ${DB_USER:-app}\n',
+  )
+  withFixture(compose, (dir) => {
+    const res = run(dir)
+    assert.equal(res.status, 1, res.out)
+    assert.match(res.out, /redis\.DB_USER \(line \d+\)/)
+  })
+})
+
+test('environment: in flow form is refused with the line, never skipped', () => {
+  for (const flow of ['{ DB_HOST: postgres }', '[DB_HOST=postgres]']) {
+    const compose = CLEAN.replace(
+      '    environment:\n      DB_HOST: ${SERVICE_NAME_POSTGRES:-postgres}\n      REDIS_HOST: "${SERVICE_NAME_REDIS:-redis}"\n      DB_USER: ${DB_USER:-app}\n      NODE_OPTIONS: --max-old-space-size=${BACKEND_HEAP_MB:-256}\n      APP_URL: ${APP_URL}\n      BOOTSTRAP_OWNER_PASSWORD: ${BOOTSTRAP_OWNER_PASSWORD}\n      TRUST_PROXY_HOPS: 2\n      NODE_ENV: production\n',
+      `    environment: ${flow}\n`,
+    )
+    withFixture(compose, (dir) => {
+      const res = run(dir)
+      assert.equal(res.status, 1, `${flow}:\n${res.out}`)
+      assert.match(res.out, /line \d+/)
+      assert.match(res.out, /flow form/)
+    })
+  }
+})
+
+test('an environment: inside a top-level extension field is not a service block and is not misreported', () => {
+  const compose = `x-shared: &shared\n  environment:\n    LOG_LEVEL: info\n${CLEAN}`
+  withFixture(compose, (dir) => {
+    const res = run(dir)
+    assert.equal(res.status, 0, res.out)
+  })
+})
+
+test('a merge key inside a service is refused — the check does not follow anchors', () => {
+  const compose = `x-shared: &shared\n  environment:\n    DB_HOST: postgres\n${CLEAN}`.replace(
+    '  redis:\n    image: redis:7-alpine\n',
+    '  redis:\n    <<: *shared\n    image: redis:7-alpine\n',
+  )
+  withFixture(compose, (dir) => {
+    const res = run(dir)
+    assert.equal(res.status, 1, res.out)
+    assert.match(res.out, /merge key/)
+    assert.match(res.out, /line \d+/)
   })
 })
 
@@ -308,9 +356,9 @@ test('a key on the sibling-hostname allowlist may carry a service name and says 
   withFixture(compose, (dir) => {
     const strict = scan(dir)
     assert.ok(strict.findings.some((f) => f.includes('backend.LEGACY_HOST')), strict.findings.join('\n'))
-    const relaxed = scan(dir, undefined, new Map([['LEGACY_HOST', 'a fixture reason']]))
+    const relaxed = scan(dir, undefined, new Map([['backend.LEGACY_HOST', 'a fixture reason']]))
     assert.deepEqual(relaxed.findings, [])
-    assert.deepEqual(relaxed.hostAllowlisted, ['LEGACY_HOST'])
+    assert.deepEqual(relaxed.hostAllowlisted, ['backend.LEGACY_HOST'])
   })
 })
 
