@@ -12,7 +12,11 @@
 #     deploy, previews included — a PR's edit to it reaches previews only after
 #     the merge, and that PR's own preview still runs main's copy;
 #   - a sibling service is addressed as ${SERVICE_NAME_<SVC>:-<svc>}, never by
-#     its literal name — previews suffix every service with -pr-<N>.
+#     its literal name — previews suffix every service with -pr-<N>;
+#   - a key that Coolify's env sets define per environment is written
+#     `KEY: ${KEY}`, never `${KEY:-default}` — Coolify's parser turns the
+#     latter into the PRODUCTION value, previews included (BOOTSTRAP_OWNER_*
+#     below has the full story).
 #
 # Memory sizing: every mem_limit and Node heap cap below is a variable with the
 # current preview-sized default, so a limit is an env-set edit in Coolify, not
@@ -125,19 +129,33 @@ services:
       # registration is deleted — the install has no owner and no recovery path
       # short of hand-inserting a user row, an identity row and a hand-computed
       # scrypt hash. A missed variable here is unrecoverable, not merely
-      # inconvenient, so forward these even though the defaults are empty
+      # inconvenient, so forward these even though they may be empty
       # (config/env.schema.ts treats "" as unset).
-      BOOTSTRAP_OWNER_LOGIN: ${BOOTSTRAP_OWNER_LOGIN:-}
-      BOOTSTRAP_OWNER_PASSWORD: ${BOOTSTRAP_OWNER_PASSWORD:-}
-      BOOTSTRAP_OWNER_FIRST_NAME: ${BOOTSTRAP_OWNER_FIRST_NAME:-}
-      BOOTSTRAP_OWNER_LAST_NAME: ${BOOTSTRAP_OWNER_LAST_NAME:-}
+      #
+      # NO `:-` DEFAULT on any key that Coolify's env sets define per
+      # environment. Coolify's compose parser rewrites `KEY: ${KEY:-x}` into a
+      # LITERAL taken from the application's PRODUCTION env set — in previews
+      # too — while a bare `KEY: ${KEY}` is kept as a reference that compose
+      # resolves from that deployment's own .env. On 2026-09-29 the first
+      # working preview therefore booted with production's owner password and
+      # an empty SEED_DEV_DATA (docs/coolify-deploy.md «Environment variables
+      # in Coolify»). An unset variable renders as "" here, which every one of
+      # these treats as «not set», so the standalone path loses nothing.
+      BOOTSTRAP_OWNER_LOGIN: ${BOOTSTRAP_OWNER_LOGIN}
+      BOOTSTRAP_OWNER_PASSWORD: ${BOOTSTRAP_OWNER_PASSWORD}
+      BOOTSTRAP_OWNER_FIRST_NAME: ${BOOTSTRAP_OWNER_FIRST_NAME}
+      BOOTSTRAP_OWNER_LAST_NAME: ${BOOTSTRAP_OWNER_LAST_NAME}
+      # `:-` is tolerable ONLY where every env set holds the same value (this,
+      # JWT_EXPIRES_IN, DB_USER, DB_NAME): the production literal the parser
+      # injects is then the right value everywhere.
       APP_TIMEZONE: ${APP_TIMEZONE:-Europe/Kyiv}
       # Owner-readable passwords (issue #11). Forwarded explicitly for the same
       # reason as BOOTSTRAP_OWNER_* above — compose's .env does not reach the
       # container. Empty is a supported value and means the feature is off; a
       # key CHANGED after passwords were issued makes the existing copies
-      # unreadable, so treat it as a permanent per-environment secret.
-      PASSWORD_VAULT_KEY: ${PASSWORD_VAULT_KEY:-}
+      # unreadable, so treat it as a permanent per-environment secret. No `:-`
+      # for the same reason as BOOTSTRAP_OWNER_* above.
+      PASSWORD_VAULT_KEY: ${PASSWORD_VAULT_KEY}
     volumes:
       - uploads_data:/app/uploads
     mem_limit: ${BACKEND_MEM_LIMIT:-384m}
@@ -167,7 +185,11 @@ services:
   # refusal never fires here. Its local-host check also passes (DB_HOST is
   # `postgres`, or `postgres-pr-<N>` in a preview, which the check accepts).
   # The ONLY thing keeping demo data out of production is that SEED_DEV_DATA
-  # is absent from the production env set — never set it there.
+  # is empty or absent in the production env set — never set it there. And it
+  # is written as `${SEED_DEV_DATA}` with no `:-` on purpose: with a default,
+  # Coolify's parser hardcodes the PRODUCTION set's (empty) value into every
+  # preview too, and the preview seed never runs — which is exactly what
+  # happened until 2026-09-29 (see BOOTSTRAP_OWNER_* in the backend above).
   seed:
     image: ghcr.io/${GHCR_REPO:-webspirio/yagoda-starter}-backend:${IMAGE_TAG:-sha-${SOURCE_COMMIT}}
     command:
@@ -175,7 +197,7 @@ services:
       - -c
       - '[ "$$SEED_DEV_DATA" = "true" ] || exit 0; exec env NODE_ENV=development node backend/dist/seed/dev-seed.cli.js'
     environment:
-      SEED_DEV_DATA: ${SEED_DEV_DATA:-}
+      SEED_DEV_DATA: ${SEED_DEV_DATA}
       NODE_ENV: production
       # Heap cap below mem_limit for the same reason as the backend's.
       NODE_OPTIONS: --max-old-space-size=${SEED_HEAP_MB:-192}
