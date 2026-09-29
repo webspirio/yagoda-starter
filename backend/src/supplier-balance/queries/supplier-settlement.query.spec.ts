@@ -133,5 +133,30 @@ describe('SupplierSettlementQuery', () => {
       expect(s.debt).toBe('1700.00');
       expect(s).toMatchObject({ intakes_total: '1500.00', top_ups_total: '200.00' });
     });
+
+    // #153 — the terms are the balance tile's AND the breakdown line's one
+    // snapshot only if they are read inside the REPEATABLE READ transaction.
+    it('reads the debt and its terms through the transaction, not the bare data source', async () => {
+      const outside = jest.fn();
+      const inside = jest
+        .fn()
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([
+          { debt: '0.00', intakes_total: '0.00', top_ups_total: '0.00', payouts_total: '0.00' },
+        ]);
+      const ds = {
+        manager: { query: outside },
+        transaction: (_level: string, fn: (m: { query: jest.Mock }) => unknown) =>
+          fn({ query: inside }),
+      } as never;
+      await new SupplierSettlementQuery(ds, new SupplierDebtQuery(ds)).settlementFor(SUPPLIER);
+
+      expect(outside).not.toHaveBeenCalled();
+      expect(inside).toHaveBeenCalledTimes(5);
+      expect((inside.mock.calls[4] as [string])[0]).toMatch(/AS payouts_total/);
+    });
   });
 });

@@ -170,9 +170,10 @@ export function ReceiptDialog({
         .join(', ');
       return {
         key: item.id,
-        // `intake.mapper` keeps `?? ''` for a missing name; paper gets «—», not a bare « · ».
+        // `intake.mapper` keeps `?? ''` for a missing name: print the name that
+        // is known, and «—» only when neither is — never a bare « · ».
         label:
-          item.product_name && item.grade_name ? `${item.product_name} · ${item.grade_name}` : '—',
+          [item.product_name, item.grade_name].filter((name) => name !== '').join(' · ') || '—',
         gross: formatKg(item.gross_kg, locale),
         pallet: cmp(item.pallet_kg, '0') !== 0 ? formatKg(item.pallet_kg, locale) : null,
         tareLabel,

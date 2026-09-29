@@ -243,12 +243,22 @@ describe('ReceiptDialog', () => {
     expect(screen.getByText('Малина · 1 сорт')).toBeInTheDocument();
   });
 
-  it('prints a dash, not a bare « · », when the line has lost a name', () => {
+  it('keeps the known name, not a bare « · », when the line has lost the other', () => {
     const base = buildIntake();
     setUp({ intake: buildIntake({ items: [{ ...base.items![0], product_name: '' }] }) });
     render(<ReceiptDialog intakeId="intake-1" open onClose={vi.fn()} />);
 
     expect(screen.queryByText(/^\s*·/)).not.toBeInTheDocument();
+    expect(screen.getByText('1 сорт')).toBeInTheDocument();
+  });
+
+  it('prints a dash when the line has lost both names', () => {
+    const base = buildIntake();
+    setUp({
+      intake: buildIntake({ items: [{ ...base.items![0], product_name: '', grade_name: '' }] }),
+    });
+    render(<ReceiptDialog intakeId="intake-1" open onClose={vi.fn()} />);
+
     expect(screen.getByText('—')).toBeInTheDocument();
   });
 
