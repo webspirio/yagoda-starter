@@ -253,7 +253,7 @@ the preview owner or for this middleware.
    included, and bypasses branch protection unless «Do not allow bypassing
    the above settings» is on — it exists for this one step, so treat the
    secret like the API token and rotate it the moment it may have leaked;
-   variables `COOLIFY_ENABLED=true`, `STAGING_ENABLED=true`,
+   variables `COOLIFY_ENABLED=true`, `PREVIEWS_ENABLED=true`, `STAGING_ENABLED=true`,
    `STAGING_URL=https://staging.yagoda.webspirio.com`,
    `PROD_URL=https://yagoda.webspirio.com`,
    `PREVIEW_DOMAIN=yagoda.webspirio.com`, `PREVIEW_CAP` (optional; overrides the
