@@ -947,6 +947,11 @@ intake_items.tare_weight_kg знімається з тари прийомки (�
 спец §3 рішення 10): приймальник сторнує на СВОЄМУ пункті, поки зміна ВІДКРИТА; закрита зміна —
 тільки керівник. Стара форма («тільки керівник» для будь-якого ящикового документа) лишається
 записана в 26-rules-by-example.md як скасована, не стерта.
+
+Empties at the point (`onHandSql`) never go below zero through a new document: an issuance,
+breakage, a receipt's crate tare, voiding a transfer or a return, and resolving a dispute
+downwards are refused past zero by `CrateStockGuard` (spec 2026-09-30). Documents that give
+crates back are never refused.
 '''
 }
 
