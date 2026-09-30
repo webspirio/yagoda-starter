@@ -27,6 +27,7 @@ import type { AuthenticatedUser } from '../auth/jwt.strategy';
 import { CashCount } from '../cash-counts/cash-count.entity';
 import { CashBook } from '../cash-counts/cash-book.enum';
 import { CashCountKind } from '../cash-counts/cash-count-kind.enum';
+import { CrateStockGuard } from '../crate-stock/crate-stock.guard';
 import { PointCashService } from '../point-cash/point-cash.service';
 
 /** Shape of the driver error TypeORM surfaces for a unique violation. Narrowed
@@ -46,6 +47,7 @@ export class ShiftsService {
     private readonly time: TimeService,
     private readonly dataSource: DataSource,
     private readonly cash: PointCashService,
+    private readonly stock: CrateStockGuard,
   ) {}
 
   /**
@@ -226,6 +228,10 @@ export class ShiftsService {
         },
         m,
       );
+      // §6.8's breakage leaves the empties (spec 2026-09-30) — refused if there are not that many.
+      if (dto.broken_crates > 0) {
+        await this.stock.assertOnHand(m, saved.collection_point_id, dto.broken_crates);
+      }
 
       const names = await this.namesFor([saved], m);
       return toShiftResponse(saved, names);

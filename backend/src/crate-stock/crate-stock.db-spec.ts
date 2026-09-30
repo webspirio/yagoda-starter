@@ -100,5 +100,21 @@ describe('CrateStockGuard (real Postgres)', () => {
       refused(res, 0, 10);
       expect(await onHand(ds, pointId)).toBe(0);
     });
+
+    it('case 5 — closing with more breakage than empties is refused; the shift stays open', async () => {
+      const { pointId, operatorToken } = await makePoint(app, ownerToken, 'case5');
+      await stockPoint(app, ownerToken, operatorToken, pointId, 10);
+      const [{ id }] = (await ds.query(
+        `SELECT id FROM shifts WHERE collection_point_id = $1 AND closed_at IS NULL`,
+        [pointId],
+      )) as { id: string }[];
+      const res = await request(app.getHttpServer())
+        .post(`/shifts/${id}/close`)
+        .set('Authorization', `Bearer ${operatorToken}`)
+        .send({ counted_amount: '0.00', broken_crates: 25 });
+      refused(res, 10, 25);
+      const [{ closed_at }] = (await ds.query(`SELECT closed_at FROM shifts WHERE id = $1`, [id])) as { closed_at: Date | null }[];
+      expect(closed_at).toBeNull();
+    });
   });
 });
