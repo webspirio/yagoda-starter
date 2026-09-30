@@ -99,14 +99,22 @@ Three rules bind every turn, whether or not anyone opened the skill:
 
 ## Deployment
 
-Production and PR previews run on one Hetzner VPS under **Coolify**, which
-pulls images CI built — it never builds. `.github/workflows/ci.yml` pushes
-`ghcr.io/webspirio/yagoda-starter-{backend,nginx}:sha-<commit>` on every PR and
-on `main`; `deploy-prod` (push to `main`) and `deploy-preview` (internal PR,
-all CI jobs green) trigger Coolify through its API and then verify the
-application (`/api/health/ready`, `/api/health/version`, a seeded login for
-previews). `sha-<commit>` is the only tag ever deployed. Runbook, env tables,
-failure modes and measured timing/cache baselines: `docs/coolify-deploy.md`; design: `docs/superpowers/specs/2026-09-09-coolify-deployment-and-cd-design.md`.
+Production, staging and PR previews run on one Hetzner VPS under **Coolify**,
+which pulls images CI built — it never builds. `.github/workflows/ci.yml`
+pushes `ghcr.io/webspirio/yagoda-starter-{backend,nginx}:sha-<commit>` on every
+PR, on `main` and on every release. **`main` deploys staging automatically**
+(`deploy-staging`, seeded demo data, `https://staging.yagoda.webspirio.com`);
+**production is deployed only by publishing a GitHub Release `vX.Y.Z`**
+(`deploy-prod`: the production application tracks a `production` branch that
+only that job moves, after a guard that refuses rolling back across a
+migration); previews (`deploy-preview`, internal PRs, all CI jobs green) are
+previews of the staging application. Every deploy job verifies the
+application (`/api/health/ready`, `/api/health/version`, a seeded login on
+staging and previews). `sha-<commit>` is the only tag ever deployed. Runbook,
+env tables, failure modes and measured timing/cache baselines:
+`docs/coolify-deploy.md`; designs:
+`docs/superpowers/specs/2026-09-09-coolify-deployment-and-cd-design.md` and
+`docs/superpowers/specs/2026-09-30-staging-deployment-design.md`.
 
 `docker-compose.prod.yml` is the single compose file (no `ports`, no custom
 `networks` — Coolify's Traefik owns TLS and routing). Without Coolify, add

@@ -8,10 +8,10 @@
 #     open PR's alias, and older than KEEP_SHA_DAYS: delete;
 #   - anything carrying any other tag (or an open PR's alias): keep;
 #   - the KEEP_RECENT_SHA newest sha-tagged versions: keep regardless of age.
-#     Age alone was not enough: production's image is tagged only with its merge
-#     commit, so once development pauses for KEEP_SHA_DAYS — exactly the
-#     "Coolify stays as the prod runtime" case the design plans for — the next
-#     weekly run would delete the image production is running.
+#     Age alone was not enough: staging's image is tagged only with its merge
+#     commit (production's carries the release's v* tag and is kept by the
+#     rule above), so once development pauses for KEEP_SHA_DAYS the next
+#     weekly run would delete the image staging is running.
 # `--select` reads a versions JSON array on stdin and prints the ids to delete
 # (used by the tests); without it, lists and deletes via `gh api`.
 set -euo pipefail
