@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # scripts/ci/coolify-deploy.test.sh — run: bash scripts/ci/coolify-deploy.test.sh
 # Needs bash, jq. Locally: docker run --rm -v "$PWD:/w" -w /w alpine sh -c 'apk add -q bash jq curl && bash scripts/ci/coolify-deploy.test.sh'
-# Expected: passed=20 failed=0
+# Expected: passed=21 failed=0
 set -euo pipefail
 HERE=$(cd "$(dirname "$0")" && pwd)
 T=$(mktemp -d); trap 'rm -rf "$T"' EXIT
@@ -87,10 +87,12 @@ canned '/api/health/version' '{"commit":"bbbbbbbb"}' 200
 check_fail run 2>"$T/err3"
 check grep -q 'expected' "$T/err3"
 
-echo "# 4. no PR_NUMBER -> production deploy URL has no &pr=, no seed login"
+echo "# 4. no PR_NUMBER -> application (staging/production) deploy URL has no &pr=, no seed login"
 canned '/api/health/version' "{\"commit\":\"$EXPECTED_COMMIT\"}" 200
 : > "$FAKE_CURL_LOG"
-check run -u PR_NUMBER -u SEED_USERNAME
+check run -u PR_NUMBER -u SEED_USERNAME >"$T/out4"
+# The same path deploys staging and production, so the log names neither.
+check grep -q 'queued (application)' "$T/out4"
 check_fail grep -q '&pr=' "$FAKE_CURL_LOG"
 check_fail grep -q '/api/auth/login' "$FAKE_CURL_LOG"
 
