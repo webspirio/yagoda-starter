@@ -1,3 +1,4 @@
+import { CrateStockGuard } from '../crate-stock/crate-stock.guard';
 import {
   BadRequestException,
   ConflictException,
@@ -45,6 +46,7 @@ export class CratesService {
     private readonly tareTypes: TareTypesService,
     private readonly audit: AuditService,
     private readonly balance: CrateBalanceService,
+    private readonly stock: CrateStockGuard,
   ) {}
 
   /**
@@ -58,7 +60,8 @@ export class CratesService {
    *
    * NO `target_crates` CHECK EITHER. Правка 14: an unset target WARNS and never
    * blocks an issuance — «забороняти видачу через порожній target_crates
-   * означало б відтворити скасовану заборону».
+   * означало б відтворити скасовану заборону». The one crates check it DOES make
+   * is physical — `CrateStockGuard`, empties at the point (spec 2026-09-30).
    */
   async issue(
     actor: AuthenticatedUser,
@@ -144,6 +147,9 @@ export class CratesService {
         },
         m,
       );
+
+      // Last: the issuance and its audit are written, so the recount includes them (spec 2026-09-30).
+      await this.stock.assertOnHand(m, pointId, dto.units);
 
       return toCrateIssuanceResponse(issuance, shift, false);
     });
@@ -584,6 +590,9 @@ export class CratesService {
         },
         m,
       );
+
+      // The returned crates leave the empties again — refused if they already went out.
+      await this.stock.assertOnHand(m, shift.collection_point_id, saved.units);
 
       // NO DELETE. The allocation rows stay exactly as they were — see this
       // method's doc comment — so the response is rebuilt from them, never
