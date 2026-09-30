@@ -24,8 +24,12 @@ on:
 # Cancel superseded in-progress runs for the same PR branch when new commits are
 # pushed. main is never cancelled (cancel-in-progress is false for push events) so
 # every merge's CI run completes and reports an accurate status for that commit.
+#
+# A dispatch gets its own group, keyed by the tag: a pending run in a group is
+# cancelled by a newer one, so sharing main's group would let a merge silently
+# cancel a rollback, or a rollback a merge.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.event_name == 'workflow_dispatch' && format('dispatch-{0}', inputs.tag) || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 # The default token is read-only. The docker job raises itself to
@@ -216,6 +220,9 @@ jobs:
   # workflow that builds an image at all.
 
   verify:
+    # Not on a dispatch: a dispatch deploys an already-released commit, main's
+    # HEAD says nothing about it, and a red main must not block a rollback.
+    if: github.event_name != 'workflow_dispatch'
     runs-on: ubuntu-latest
     # A full-tier, --no-skip run exercises every row in scripts/verify/registry.mjs.
     # The slowest are now `selfcheck` (node --test over the layer's own 163 tests,
@@ -518,12 +525,16 @@ jobs:
       pushed: ${{ steps.meta.outputs.push }}
 
     env:
+      # A dispatch builds nothing: it re-deploys a release, whose images exist
+      # and are v*-tagged (never pruned). The explicit exclusion is needed
+      # because `changes` is skipped on a dispatch, and a skipped `changes`
+      # otherwise means "build".
       BUILD: >-
-        ${{ github.event_name == 'push'
-          || github.event_name == 'release'
-          || github.event_name == 'workflow_dispatch'
-          || needs.changes.result != 'success'
-          || needs.changes.outputs.docker == 'true' }}
+        ${{ github.event_name != 'workflow_dispatch'
+          && (github.event_name == 'push'
+            || github.event_name == 'release'
+            || needs.changes.result != 'success'
+            || needs.changes.outputs.docker == 'true') }}
 
     steps:
       - id: meta
@@ -532,10 +543,9 @@ jobs:
           IS_FORK: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
           PR: ${{ github.event.pull_request.number }}
           SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
-          # A release and a manual re-deploy both name a TAG. Resolve its commit
-          # through the API instead of trusting github.sha — a dispatch's sha is
-          # main's HEAD, and one path for both events leaves nothing to the
-          # event's semantics.
+          # A release names a tag; resolve its commit through the API instead
+          # of trusting github.sha. (A dispatch names one too, but builds
+          # nothing — BUILD is false there — so the resolution is harmless.)
           RELEASE_TAG: ${{ github.event.release.tag_name || inputs.tag }}
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -686,14 +696,15 @@ jobs:
       pull-requests: write
       issues: write # gh label create / gh pr edit --add-label use the Issues API
     env:
-      # 12, recalibrated 2026-09-10 against the resized server and Coolify's
+      # 11 since staging took one slot of the same budget (#186); 12 before,
+      # recalibrated 2026-09-10 against the resized server and Coolify's
       # measured RSS (docs/coolify-deploy.md «Spike results»):
       #   7.56 total − 0.37 OS − 0.63 Coolify − ~1.0 production ≈ 5.5 GiB free;
       #   at ~0.25 GiB per preview, 12 previews use ~3.0 and leave ~2.5 GiB,
       #   comfortably past the ≥0.8–1.0 GiB the spec §1 invariant requires.
       # The repository variable PREVIEW_CAP overrides it without a commit —
       # used for recalibration and for testing the limit path.
-      PREVIEW_CAP: ${{ vars.PREVIEW_CAP || 12 }}
+      PREVIEW_CAP: ${{ vars.PREVIEW_CAP || 11 }}
       PR: ${{ github.event.pull_request.number }}
       HEAD_SHA: ${{ github.event.pull_request.head.sha }}
       PREVIEW_URL: https://pr-${{ github.event.pull_request.number }}.${{ vars.PREVIEW_DOMAIN }}
@@ -877,15 +888,22 @@ jobs:
     needs: [verify, docker]
     if: >-
       !cancelled()
-      && needs.verify.result == 'success'
       && needs.docker.result == 'success'
-      && (github.event_name == 'release' || github.event_name == 'workflow_dispatch')
+      && ((github.event_name == 'release' && needs.verify.result == 'success')
+        || (github.event_name == 'workflow_dispatch' && needs.verify.result == 'skipped'))
+      && github.event.release.prerelease != true
       && vars.COOLIFY_ENABLED == 'true'
+    # A release gates on `verify` of its own commit; a dispatch skips `verify`
+    # (see that job) and re-deploys an already-released commit. A GitHub
+    # pre-release deploys nothing — `prerelease` is empty on a dispatch, so
+    # that clause only ever stops a release.
     concurrency:
       group: deploy-prod
       cancel-in-progress: false
     permissions:
-      contents: write # moves the `production` branch
+      # Read-only contents — the `production` move goes over SSH with a deploy
+      # key (see the move step).
+      contents: read
       packages: read # docker manifest inspect against GHCR
     env:
       GH_TOKEN: ${{ github.token }}
@@ -897,6 +915,10 @@ jobs:
           # The guard diffs two commits and the tag, main and production must
           # all be reachable: full history, all branches, all tags.
           fetch-depth: 0
+          # The write deploy key that moves `production` (see the move step).
+          # With ssh-key set, checkout configures the SSH remote and the key,
+          # so the later `git push … production` authenticates with it.
+          ssh-key: ${{ secrets.PRODUCTION_BRANCH_KEY }}
 
       - name: Resolve the release
         id: target
@@ -919,11 +941,13 @@ jobs:
           echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
           for img in backend nginx; do
             docker manifest inspect "ghcr.io/${GITHUB_REPOSITORY,,}-$img:sha-$SHA" >/dev/null \
-              || { echo "::error::ghcr.io/${GITHUB_REPOSITORY,,}-$img:sha-$SHA is missing — publish the release again so the docker job rebuilds it"; exit 1; }
+              || { echo "::error::ghcr.io/${GITHUB_REPOSITORY,,}-$img:sha-$SHA is missing — re-run this workflow run's failed jobs so the docker job rebuilds it"; exit 1; }
           done
 
       - name: Refuse to roll back across a migration
-        run: bash scripts/ci/release-guard.sh "${{ steps.target.outputs.live }}" "${{ steps.target.outputs.sha }}" backend/src/migrations "$ALLOW_SCHEMA_ROLLBACK"
+        # MODE: a release may only move production forward (two releases can
+        # finish out of order); rollbacks go through a dispatch only.
+        run: bash scripts/ci/release-guard.sh "${{ steps.target.outputs.live }}" "${{ steps.target.outputs.sha }}" backend/src/migrations "$ALLOW_SCHEMA_ROLLBACK" "${{ github.event_name == 'release' && 'release' || 'dispatch' }}"
 
       - name: Move `production` to the release
         env:
@@ -931,6 +955,11 @@ jobs:
           LIVE: ${{ steps.target.outputs.live }}
         run: |
           set -euo pipefail
+          # Over SSH with the PRODUCTION_BRANCH_KEY deploy key, not GITHUB_TOKEN:
+          # a GitHub App / Actions token cannot update a ref whose pushed range
+          # changes .github/workflows/* without the `workflows` permission,
+          # which `permissions:` cannot grant; a repository deploy key with
+          # write access can.
           # --force-with-lease: a rollback moves the branch backwards, but only
           # from the commit this run read; a concurrent move fails the push.
           if [ -n "$LIVE" ]; then
