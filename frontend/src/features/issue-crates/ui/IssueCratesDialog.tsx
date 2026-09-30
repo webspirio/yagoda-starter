@@ -15,7 +15,7 @@ import { SelectField } from '@/shared/ui/select-field';
 import { Button } from '@/shared/ui/button';
 import { toast } from '@/shared/ui/toast';
 import { cratesRules } from '@/shared/lib/money';
-import { apiErrorToBanner } from '@/shared/lib/api-error';
+import { toBannerError, type BannerError } from '@/shared/lib/api-error';
 import { useSuppliersQuery, supplierName } from '@/entities/supplier';
 import type { CrateIssuanceMode } from '@/entities/crate';
 import { useIssueCratesMutation } from '../api/useIssueCrates';
@@ -64,7 +64,7 @@ export function IssueCratesDialog({
     defaultValues: { supplier_id: '', units: '', mode: 'deposit' },
   });
 
-  const [formError, setFormError] = useState<string | null>(null);
+  const [formError, setFormError] = useState<BannerError | null>(null);
   // `useWatch`, not `watch()` — the same choice `PayoutDialog` makes, and the
   // one the react-hooks lint rule accepts.
   const mode = useWatch({ control, name: 'mode' });
@@ -83,7 +83,7 @@ export function IssueCratesDialog({
       onClose();
     } catch (error) {
       setFormError(
-        apiErrorToBanner(error, 'crates.errors.issueFailed', {
+        toBannerError(error, 'crates.errors.issueFailed', {
           // Shared code, screen-specific consequence — see `apiErrorToBanner`.
           SUPPLIER_INACTIVE: 'crates.errors.supplierInactive',
         }),
@@ -155,7 +155,7 @@ export function IssueCratesDialog({
 
           {formError ? (
             <p role="alert" className="text-sm text-destructive">
-              {t(formError)}
+              {t(formError.key, formError.params)}
             </p>
           ) : null}
 

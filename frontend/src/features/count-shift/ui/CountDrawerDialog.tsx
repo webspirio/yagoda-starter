@@ -13,7 +13,7 @@ import { Field } from '@/shared/ui/field';
 import { TextInput } from '@/shared/ui/text-input';
 import { Button } from '@/shared/ui/button';
 import { normalizeAmount, amountRules, cratesRules } from '@/shared/lib/money';
-import { apiErrorToBanner } from '@/shared/lib/api-error';
+import { toBannerError, type BannerError } from '@/shared/lib/api-error';
 import { useCrateDispatchQuery } from '../api/crateDispatch';
 
 interface CountFormValues {
@@ -50,7 +50,7 @@ export function CountDrawerDialog({
   onConfirm: (countedAmount: string, brokenCrates: number | null) => Promise<unknown>;
 }) {
   const { t } = useTranslation();
-  const [formError, setFormError] = useState<string | null>(null);
+  const [formError, setFormError] = useState<BannerError | null>(null);
   const closing = mode === 'close';
 
   const {
@@ -83,7 +83,7 @@ export function CountDrawerDialog({
         closing ? Number.parseInt(values.broken.trim(), 10) : null,
       );
     } catch (error) {
-      setFormError(apiErrorToBanner(error, 'day.errors.failed'));
+      setFormError(toBannerError(error, 'day.errors.failed'));
     }
   };
 
@@ -163,7 +163,7 @@ export function CountDrawerDialog({
 
           {formError ? (
             <p role="alert" className="text-sm text-destructive">
-              {t(formError)}
+              {t(formError.key, formError.params)}
             </p>
           ) : null}
 

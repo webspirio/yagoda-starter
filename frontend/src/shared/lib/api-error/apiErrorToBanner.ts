@@ -1,4 +1,4 @@
-import { apiErrorCode } from '@/shared/api';
+import { ApiError, apiErrorCode } from '@/shared/api';
 
 /**
  * Business-rule codes across every screen that maps a failed mutation onto a
@@ -120,5 +120,36 @@ export function apiErrorToBanner(
 ): string {
   const code = apiErrorCode(error);
   if (!code) return fallback;
+  if (code === 'CRATES_ON_HAND_INSUFFICIENT') return onHandKey(error);
   return overrides?.[code] ?? CODE[code] ?? fallback;
+}
+
+/** Spec 2026-09-30 — the one code whose sentence depends on a FIELD, not the endpoint: with a
+ *  transfer in transit the operator's fix is «Прийняв», not a smaller number. */
+export function onHandKey(error: unknown): string {
+  const inTransit = error instanceof ApiError ? error.payload?.in_transit : undefined;
+  return typeof inTransit === 'number' && inTransit > 0
+    ? 'crates.errors.onHandInsufficientInTransit'
+    : 'crates.errors.onHandInsufficient';
+}
+
+/** The error body's numeric context fields, for `t(key, params)`. */
+export function apiErrorParams(error: unknown): Record<string, number> {
+  if (!(error instanceof ApiError) || !error.payload) return {};
+  return Object.fromEntries(
+    Object.entries(error.payload).filter((e): e is [string, number] => typeof e[1] === 'number'),
+  );
+}
+
+export interface BannerError {
+  key: string;
+  params: Record<string, number>;
+}
+
+export function toBannerError(
+  error: unknown,
+  fallback: string,
+  overrides?: Readonly<Record<string, string>>,
+): BannerError {
+  return { key: apiErrorToBanner(error, fallback, overrides), params: apiErrorParams(error) };
 }

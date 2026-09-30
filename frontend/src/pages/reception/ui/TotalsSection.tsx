@@ -43,6 +43,7 @@ export function TotalsSection({
   isPreviewing,
   isSubmitting,
   formErrorKey,
+  formErrorParams,
   showDraftHint,
 }: {
   /** `null` unless the preview has SETTLED on the form as it stands now. */
@@ -69,6 +70,7 @@ export function TotalsSection({
   isPreviewing: boolean;
   isSubmitting: boolean;
   formErrorKey: string | null;
+  formErrorParams?: Record<string, number>;
   /** «Ще позиція» left an empty draft behind — nudges the operator toward
    *  finishing it or using `LineEditor`'s «Прибрати позицію» escape hatch,
    *  rather than leaving a dark submit button unexplained. */
@@ -259,7 +261,7 @@ export function TotalsSection({
 
       {formErrorKey ? (
         <p role="alert" className="mt-3 text-sm text-destructive">
-          {t(formErrorKey)}
+          {t(formErrorKey, formErrorParams)}
         </p>
       ) : null}
 
