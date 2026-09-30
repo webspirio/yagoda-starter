@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSearchParams } from 'react-router';
 import { ListPage } from '@/shared/ui/templates/list-page';
@@ -12,7 +11,8 @@ import { usePointOptionsQuery } from '@/entities/collection-point';
 import { useIntakesQuery, type DocumentFilter } from '@/entities/intake';
 import { usePayoutsQuery } from '@/entities/payout';
 import { useSuppliersQuery, useSupplierBalancesQuery, supplierName } from '@/entities/supplier';
-import { ReceiptDialog } from '@/widgets/receipt';
+import { useMeQuery } from '@/entities/user';
+import { ReceiptDialog, useReceiptOpener } from '@/widgets/receipt';
 import { monthRange, parseFilters, PAGE_SIZE } from '../model/journalFilters';
 import { JournalToolbar } from './JournalToolbar';
 import { JournalTable, type JournalRow } from './JournalTable';
@@ -114,12 +114,9 @@ export function JournalPage() {
   // needs the «на цій сторінці» caveat once a page held back the rest.
   const pageOnly = isTruncated<JournalDocument>(activeQuery.data);
 
-  const [receiptId, setReceiptId] = useState<string | null>(null);
-  const [receiptOpen, setReceiptOpen] = useState(false);
-  const openReceipt = (row: JournalRow) => {
-    setReceiptId(row.id);
-    setReceiptOpen(true);
-  };
+  const receipt = useReceiptOpener();
+  const { openReceipt } = receipt;
+  const { data: me } = useMeQuery();
 
   const setPage = (page: number) => patch({ page: page === 1 ? null : page });
 
@@ -169,14 +166,17 @@ export function JournalPage() {
             <JournalTable
               isPending={intakesQuery.isPending}
               isError={intakesQuery.isError}
-              rows={(intakesQuery.data?.data ?? []).map((doc) =>
-                toJournalRow(doc, pointName, supplierLabel),
-              )}
+              rows={(intakesQuery.data?.data ?? []).map((doc) => ({
+                ...toJournalRow(doc, pointName, supplierLabel),
+                intake: doc,
+              }))}
               total={intakesQuery.data?.total ?? 0}
               page={filters.page}
               limit={PAGE_SIZE}
               onPageChange={setPage}
-              onRowClick={openReceipt}
+              onRowClick={(row) => openReceipt(row.id)}
+              me={me}
+              onVoid={(row) => openReceipt(row.id, { void: true })}
             />
           </TabsContent>
           <TabsContent value="payouts">
@@ -196,10 +196,11 @@ export function JournalPage() {
       </Tabs>
 
       <ReceiptDialog
-        key={receiptId}
-        intakeId={receiptId}
-        open={receiptOpen}
-        onClose={() => setReceiptOpen(false)}
+        key={receipt.receiptId}
+        intakeId={receipt.receiptId}
+        open={receipt.open}
+        startWithVoid={receipt.startWithVoid}
+        onClose={receipt.close}
       />
     </>
   );

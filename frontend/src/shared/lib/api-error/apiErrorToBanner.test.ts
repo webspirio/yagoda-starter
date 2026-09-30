@@ -217,6 +217,20 @@ describe('apiErrorToBanner', () => {
     });
   });
 
+  describe('crates — a receipt-linked return', () => {
+    it('says a return recorded with a receipt has no void of its own', () => {
+      // `POST /crate-returns/:id/void` refuses a return `POST /intakes`
+      // wrote alongside a receipt (§8.3, `returned_crates`) with this code —
+      // reachable from a stale crates list still showing a void button for
+      // one. `VoidDocumentDialog` calls this with the generic
+      // `void.errors.failed` fallback, and the shared map must still resolve
+      // it to the crates-specific sentence rather than the generic one.
+      expect(apiErrorToBanner(apiError(409, 'RETURN_BELONGS_TO_INTAKE'), 'void.errors.failed')).toBe(
+        'crates.errors.returnBelongsToIntake',
+      );
+    });
+  });
+
   it('falls back for an empty-string code rather than returning the empty string itself', () => {
     // `(code && CODE[code]) ?? fallback` short-circuits on `code: ''` to `''`
     // itself — `??` only falls back on null/undefined, not on falsy-but-not-

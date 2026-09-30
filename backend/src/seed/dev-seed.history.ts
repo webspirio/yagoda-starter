@@ -38,7 +38,7 @@ import {
  *    reader, unchanged for the assertions.
  *
  * 3. NON-NEGATIVE BALANCES. `dev-seed.db-spec.ts` proves no seeded supplier
- *    balance is negative, and `PayoutsService` enforces a real debt ceiling. A
+ *    balance is negative, and `PayoutWriter.write` enforces a real debt ceiling. A
  *    generated payout is therefore a QUARTER of what that same supplier has
  *    been received for, tracked as this file generates — never a round number
  *    chosen for looks.

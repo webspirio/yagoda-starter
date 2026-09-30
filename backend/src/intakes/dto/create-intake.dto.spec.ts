@@ -47,3 +47,26 @@ describe('CreateIntakeDto.paid_amount', () => {
     }
   });
 });
+
+describe('CreateIntakeDto.returned_crates', () => {
+  it('is optional — absent means no crates came back', async () => {
+    const { dto, errors } = await check(body());
+    expect(errors).toEqual([]);
+    expect(dto.returned_crates).toBeUndefined();
+  });
+
+  it('accepts 0 and a positive integer', async () => {
+    for (const ok of [0, 40]) {
+      const { dto, errors } = await check(body({ returned_crates: ok }));
+      expect(errors).toEqual([]);
+      expect(dto.returned_crates).toBe(ok);
+    }
+  });
+
+  it('refuses a negative, a fraction and a string', async () => {
+    for (const bad of [-1, 1.5, '40']) {
+      const { errors } = await check(body({ returned_crates: bad }));
+      expect(errors.map((e) => e.property)).toEqual(['returned_crates']);
+    }
+  });
+});

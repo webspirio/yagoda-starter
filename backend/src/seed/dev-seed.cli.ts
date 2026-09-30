@@ -2,18 +2,17 @@ import { AppDataSource } from '../data-source';
 import { databaseEnv } from '../config/database.defaults';
 import { seedDev } from './dev-seed';
 import { DEV_OPERATOR_PASSWORD, SEED_OPERATORS } from './dev-seed.data';
-
-/** Hosts a dev database answers on: the laptop itself, or the compose service. */
-const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '::1', 'postgres']);
+import { isLocalDbHost } from './local-db-host';
 
 /**
  * `npm run seed:dev -w backend` (or `npm run db:seed` from the root).
  *
  * Refuses under NODE_ENV=production for the same reason SeedDevAdmin does:
  * known credentials must never reach a production database. Also refuses a
- * NON-LOCAL `DB_HOST` unless `SEED_ALLOW_REMOTE_DB=1` is set — a laptop whose
- * `.env` points at a staging database, with NODE_ENV unset, is exactly the
- * case the NODE_ENV guard alone cannot see. Refuses on a database with pending
+ * NON-LOCAL `DB_HOST` (local-db-host.ts: the laptop or the stack's own
+ * Postgres) unless `SEED_ALLOW_REMOTE_DB=1` is set — a laptop whose `.env`
+ * points at a staging database, with NODE_ENV unset, is exactly the case the
+ * NODE_ENV guard alone cannot see. Refuses on a database with pending
  * migrations rather than inserting into a half-built schema — run
  * `migration:run` (or just start the app) first.
  */
@@ -24,7 +23,7 @@ async function main(): Promise<void> {
     return;
   }
   const host = databaseEnv().host;
-  if (!LOCAL_HOSTS.has(host) && process.env.SEED_ALLOW_REMOTE_DB !== '1') {
+  if (!isLocalDbHost(host) && process.env.SEED_ALLOW_REMOTE_DB !== '1') {
     console.error(
       `Refusing to seed a non-local database (DB_HOST=${host}). Set SEED_ALLOW_REMOTE_DB=1 if you really mean it.`,
     );

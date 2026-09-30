@@ -558,7 +558,14 @@ Found by the reviews during that slice's execution, judged and deferred:
   both say `Europe/Kyiv`. `ShiftsService.open`'s own comment warns that under
   UTC an evening shift and every document in it is silently misfiled by a day.
   The cash database specs pin their own timezone rather than inherit this, so
-  the slice is unaffected — but local env setup is not.
+  the slice is unaffected — but local env setup is not. **Reproduced
+  2026-09-26:** the local backend's `.env` UTC against the e2e `global-setup`/
+  browser's Kyiv makes `smoke` fail between 00:00 and 03:00 Kyiv — «receipts
+  tile rendered zero» — because the two sides disagree about what "today" is
+  for those three hours. Passes with `APP_TIMEZONE=Europe/Kyiv`. A proof run
+  recreated the shared local backend container with `APP_TIMEZONE=Europe/Kyiv`
+  set; a plain `docker compose up` (no env override) restores UTC and the
+  window reopens.
 - **`point-cash.db-spec.ts` scenario 12 pins only half of `asOfSql`.** It
   covers the `COALESCE` (drop it and the result changes) but not the
   `AT TIME ZONE` inside it — any timezone puts "today" past the fixture's date.
@@ -668,8 +675,8 @@ doubled every point's starting cash); the un-anchored formula still standing in
   says «a day with no shift», and that undersells it — most evenings qualify.**
 
 - **The void reason is trimmed by one service out of three.**
-  `TransfersService.void` writes `dto.reason.trim()`; `IntakesService.void` and
-  `PayoutsService.void` write `dto.reason` as it arrived. `VoidDocumentDto`'s
+  `TransfersService.void` writes `dto.reason.trim()`; `VoidIntakeCommand.void` and
+  `VoidPayoutCommand.void` write `dto.reason` as it arrived. `VoidDocumentDto`'s
   `@Matches(/\S/)` now guarantees all three store a reason with something in it,
   so nothing is broken — but the stored value differs by module, and the DTO's
   comment had to be corrected because it claimed trimming was a codebase-wide
@@ -1143,6 +1150,56 @@ decision rather than guessing whether something was missed.
   become 200 with this row staying green, because the gate is the first-load set by design. A
   per-chunk ceiling is the obvious next instrument; none is agreed, and `bundle` deliberately
   does not invent one.
+- **Reception's «Стан точки» sums a paginated list.** `pages/reception/ui/PointStatePanel.tsx`
+  totals «у людей» from `useCrateBalancesQuery` rows (limit 100), which undercounts past one page.
+  `GET /crate-standing` (crates-standing slice, 2026-09-23) now serves the exact figure; switching
+  the panel to `useCrateStandingQuery` was left out of that slice as an adjacent change.
+
+- **DONE 2026-09-24 — Reception returns our rented crates in the same «Прийняти» (deferred 2026-09-23).** Shipped on branch `feat/reception-crate-returns` (tasks R1–R3, R7–R10 of `docs/superpowers/plans/2026-09-23-yagoda-crates-standing-revision.md`): `crate_returns.intake_id`, one shared return writer, `returned_crates` on `POST /intakes`, the void cascade, the «З них наших ящиків» field, the receipt line, and the drill-down hint — spec `docs/superpowers/specs/2026-09-23-yagoda-crates-standing.md` §8.3–§8.4, now marked SHIPPED there. The operator no longer needs a standalone «Прийняти ящики» alongside the receipt.
+
+## Flaky frontend test under full-suite load (found during crates-standing R10 gate, 2026-09-23)
+
+- **`frontend/src/pages/reception/ui/ReceptionPage.test.tsx` › "commits the draft into the
+  lines table and stops at five" has been reported failing under `npm run verify:full`'s
+  `coverage` row (part of a batch of 8 failed tests in that run) while passing every time it
+  is run alone or as part of a plain `vitest run`. This branch never touched
+  `frontend/src/pages/reception` (`git diff --stat c02ebf1..HEAD -- frontend/src/pages/reception`
+  is empty), so the flake pre-exists this slice and is out of its scope (crates tables only).
+  Reading the test found no unawaited `userEvent` call, no `getBy` standing in for a `findBy`,
+  and no missing `waitFor` — every interaction is `await`ed and every assertion after it is
+  synchronous against state React has already flushed. What the test DOES have is the file's
+  longest real-timer interaction chain: five `fillDraft()` calls (each a `clear`+`type` of a
+  weight, a `clear`+`type` of tare units, and a `selectOptions`) plus a supplier pick and three
+  "Add line" clicks, all under real (non-fake) timers, against the file's global
+  `testTimeout: 15_000` (`frontend/vite.config.ts`).
+  **Root-cause hypothesis:** not a bug in the test's logic but resource contention from Vitest's
+  per-file worker isolation — the SAME coverage run's own output warns `165 workers spawned
+  · ~5.05s startup each` and that `isolate: false` would be "at least ~114.02s faster". Under
+  that spawn pressure a handful of tests running at the wrong moment lose enough wall-clock time
+  that their real userEvent interactions blow past `testTimeout`, and the longest interaction
+  chain in a file is the most likely one to tip over. Reproduction attempts made while
+  investigating this: a plain `vitest run` (no coverage) — 1189/1189 passed, this test included;
+  a direct `vitest run --coverage` — 1188/1189 passed, but the ONE failure was a DIFFERENT test,
+  `src/app/route-suspense.test.tsx` › "replaces the fallback with the screen once the chunk
+  arrives", with `Error: Test timed out in 15000ms` at 15814ms — the same symptom (a
+  `testTimeout` timeout under coverage's worker-spawn pressure) landing on a different test each
+  time, which is consistent with contention rather than a defect specific to either test.
+  Whoever picks this up should attack the CONTENTION, not the symptom — raising `testTimeout`
+  would be exactly the kind of widening this repo's verify layer exists to refuse. The run's own
+  suggestion, `isolate: false` in `frontend/vite.config.ts`'s `test` block (reusing workers
+  across files instead of spawning one per file), or sharding the coverage run, are the
+  candidates worth measuring. None attempted here: a fix would touch project-wide test
+  infrastructure, not the crates tables this slice owns. **2026-09-26 measurement:** under the
+  root `turbo coverage` parallel run this same test measured 15 498 ms against the file's
+  15 000 ms `testTimeout` — over the limit by 498 ms, consistent with the contention hypothesis
+  above rather than a regression in the test itself. Do not raise the timeout to clear it.
+- **`backend/src/media/file-interceptor.spec.ts` › "rejects a body over limits.fileSize instead
+  of truncating it" times out at Jest's 5 s default under the parallel full-tier run, though it
+  passes when run alone.** Same shape as the frontend flake above: a real multipart upload of a
+  size at `MEDIA_MAX_BYTES` competing for CPU/IO against everything else the full tier runs
+  concurrently, not a defect in the test or the interceptor. The fix is finding and relieving
+  that contention (or giving this one spec more isolation), never raising the 5 s default —
+  that is a ratchet this repo's verify layer exists to refuse.
 
 ## Deferred from the cost-of-day screen (2026-09-22)
 
@@ -1174,3 +1231,120 @@ decision rather than guessing whether something was missed.
 - **Polling an always-focused screen.** The allowlist refetches on mount and on window focus, so an operator who never leaves `/reception` still does not see the owner's void, transfer or dispute resolution from another device until they switch tabs or navigate. Candidate: `refetchInterval` (~30 s, visible tab only) on reception's live reads — the drawer, the shift's intakes/payouts, the current shift. It needs a home in `cachePolicy.ts`, since hooks may not set freshness options.
 - **An intake create or void does not invalidate `crateBalances`.** `/crates`' «з ягодою» reads live intakes (`GET /crate-standing`), but neither `useCreateIntakeMutation` nor `useVoidDocumentMutation`'s intake entry invalidates `queryKeys.crateBalances`. Since the allowlist it only survives while `/crates` stays mounted, but it is still wrong there.
 - **Known risk: focus refetch against the per-IP throttle.** Every observed query now refetches on window focus, and the backend throttle is 100 req/min per IP (`backend/src/app.module.ts`). A focus on `/point-cash` fires about 13 reads, `/reception` about 10, and the owner dashboard 3 per point plus its own (the final-review count, 2026-09-24; not measured in a browser). An operator switching apps on a phone several times a minute, or several devices behind one point's NAT, can reach 429, and `retry: 1` doubles the burst. Options, none chosen: accept it; skip a focus refetch when the data is only a few seconds old (a `refetchOnWindowFocus` function in `cachePolicy.ts`); or revisit the throttle budget for authenticated reads.
+
+## Deferred from the supplier settlement slice (2026-09-25)
+
+- ~~**Slice 2 (#125).**~~ Done 2026-09-25 — spec docs/superpowers/specs/2026-09-25-yagoda-intake-void-payout-decision-slice.md.
+- **«Найстаріший борг» column on the «Залишки» list.** Separate slice, plain FIFO by date
+  in SQL over `supplier-balances`; must not re-implement `settle()`.
+- **Client confirmation of the §3.3 change.** The projection is «bound first, then FIFO».
+  If the client insists on strict oldest-first, pass 1 of `settle()` is removed and nothing
+  else changes.
+- **The money eslint block does not lint spec files.** `backend/eslint.config.mjs` gives the
+  money block `ignores: ['**/*.spec.ts', '**/*.db-spec.ts']`. So `settlement.properties.spec.ts`,
+  `money.properties.spec.ts` and every other spec that builds money fixtures sit outside the
+  `*`/`/`/`Number()` ban. CLAUDE.md's money section reads as if they were covered. Either
+  narrow the ignore for fixture-building specs, or correct the wording. Found in review,
+  2026-09-25.
+- **`SectionCard` has no semantic hook.** Tests scope to it by the Tailwind class
+  `.rounded-xl` (`SupplierCardPage.test.tsx`). Adding a `data-slot="section-card"` would let
+  tests stop coupling to styling.
+- **`toSupplierSettlementResponse` has an unreachable fallback.** Its
+  `payoutCode.get(...) ?? ''` cannot fire, given `settle()`'s invariants. Document the
+  invariant, or replace the fallback with an assertion.
+- **§4.4's grades and kg on an open intake row are half-shown.** Spec §4.4 asks for grades
+  and kg; `OpenBalances` shows kg only, because the Intake list row carries no grade names —
+  adding them needs either a field on the list response or a lookup, deferred.
+
+## Deferred from slice 2 — intake void with a payout decision (2026-09-25)
+
+- **The owner's `settle-return` screen.** `POST /payouts/:id/settle-return` exists; no screen
+  calls it. A payout voided with «постачальник поверне гроші» has its return recorded only
+  through the API until then.
+- **A shift-close reminder** listing the shift's payouts voided with no recorded return.
+- **`SupplierCardPage` has no intake-void entry.** Intakes are voided from `ReceiptDialog`
+  only; a future second entry point must pass `linkedPayout` / `canConfirmReturn` the same way.
+- **`shared/ui/radio.tsx` is a second radio primitive.** Native `Radio` (this slice) sits beside
+  the unused Radix `radio-group` already listed in `frontend/CLAUDE.md`'s «Kit hygiene» note.
+  Per that note: add `Radio` to `/ui-kit` (it has no gallery entry yet) and mark `radio-group`
+  a deletion candidate there — a second answer to a question the mock kit already answers,
+  same as the rest of that list.
+- ~~**Next slice: stored payout allocations (`feat/payout-allocations`).** Decided in grilling 2026-09-26: the 04.09.2026 removal of `payout_allocations` was an artifact of an earlier schema simplification, not an owner decision, and is reversed. Decisions: an allocation is a frozen append-only fact (a document void sets `voided_at` on its allocations; freed money moves by new rows); one `allocate(supplierId, m)` runs in the transaction of every event (payout, intake, top-up, their voids) — bound intake first, then FIFO `(business_date, created_at, id)`; debt stays the document formula, with `Σ open − unallocated = debt` held by tests; table `payout_allocations(id, payout_id, intake_id NULL, intake_top_up_id NULL, CHECK exactly one, amount > 0, created_at, voided_at)`; one-off backfill in the migration with a frozen copy of `settle()`; `GET /suppliers/:id/settlement` keeps its contract and reads the table. Open: a per-supplier lock against double allocation; rewriting the 04.09 notes in §3.3/§3.10 and the DBML.~~ **Done 2026-09-26** on `feat/payout-allocations`.
+- **Crates' inline supplier lock could go through `AllocationsService.lockSupplier`.** Same
+  query as their `SELECT … FOR UPDATE` (three call sites in `crates.service.ts`); left out of
+  the allocations slice as an adjacent module.
+- **No UI shows allocation history (voided rows).** `GET /suppliers/:id/settlement` serves live
+  rows only.
+
+## 2026-09-27 — allocations-cluster refactor
+
+Spec `docs/superpowers/specs/2026-09-27-allocations-cluster-refactor-design.md`, §7.
+
+1. **`SHIFT_CLOSED` message drift between intakes and payouts.** Intakes reply «That shift is
+   closed — ask the network owner to void it», payouts reply «That shift is closed — ask the
+   network owner». Client-visible, so left as is.
+2. **«Supplier exists, is visible, is at this point, is active» is duplicated** in
+   `PriceIntakeQuery.target` and `CreatePayoutCommand.create`; its home is the `suppliers`
+   module.
+3. **The same §9.4 / supplier-lock / unique-violation copies remain** in `transfers`, `crates`
+   (with its 2026-09-15 carve-out) and `cash-counts` — candidates for the next refactor passes,
+   along with `reweighs`/`day-costs` and `point-cash`.
+4. **Two stale comments survive in the zero-edit pipeline specs.** `testing/documents-pipeline.db-spec.ts`
+   still names the pre-refactor symbols: ~line 969 says to delete the `FOR UPDATE` from
+   `PayoutsService.writePayout` — that supplier lock now lives in
+   `AllocationsService.withinSupplierLedger` (via `lockSupplier`), not in `PayoutWriter.write`, and ~line 1075 says `IntakeTopUpsService` (now
+   `CreateIntakeTopUpCommand`/`VoidIntakeTopUpCommand`, depending on which write the sentence
+   means). Left alone because `testing/*pipeline.db-spec.ts` is a zero-edit surface for this
+   refactor; fix in whichever change next touches that file.
+
+## Deferred from the open-shift void slice (2026-09-28)
+
+1. **`buildLedger`'s `returnedToday` still mirrors the date-only return term.**
+   `frontend/src/pages/point-cash/lib/buildLedger.ts:190-197`. After a void past local midnight
+   or in a reopened shift the explanatory row shows the return on the void's calendar date
+   while the server credits the payout's shift — the headline figure is correct, only the
+   breakdown row drifts. The same file's `LedgerPayout`/`buildLedger` comments still say a
+   voided payout "comes back only when a human returns it", which is now only true of a closed
+   shift. Fix: expose `returned_on_void` on `PayoutResponse` and count those rows by the
+   payout's `business_date` instead of `return_settled_at`'s calendar date.
+2. **The void paths read the shift without a lock.** `void-intake.command.ts:56` and
+   `void-payout.command.ts:30`, via the visible-load queries that decide `returnToDrawer`. An
+   owner void racing the operator's close can commit `returned_on_void = true` on a shift that
+   just closed; the closing count's `expected_amount` was computed before that write and then
+   lacks the return, showing a spurious surplus on that count (the next anchor self-corrects,
+   so money is never lost, only misreported for one count). Fix: take the shift row
+   `pessimistic_read` inside the void transaction — closing a shift locks no payouts, so this
+   cannot deadlock against it.
+3. **The payout-void dialog is built from a cached `payout.shift_closed`.** If the shift was
+   reopened or closed since the page loaded, the dialog shows the wrong acknowledgements to the
+   user (both directions are money-safe — the server still decides `returnToDrawer` from the
+   live row). Fix direction: have the client send the shift state it rendered from, and 409 on
+   the server when it no longer matches the live shift.
+4. **`SupplierTimeline`'s `canVoid` still offers payout Void on a closed shift.**
+   `pages/supplier-card/ui/SupplierTimeline.tsx:81-82` — the operator sees an enabled button the
+   server will 403 on. One-line fix: gate it on `payout.shift_closed` the way the receipt dialog
+   already gates its own Void button.
+5. **No db-spec asserts the open-shift payout-void cash delta end to end via `POST
+   /payouts/:id/void`.** The formula is proven with raw rows and via the intake-void path, but
+   not by hitting the payout-void route directly and reading the shift's expected cash after.
+   Fix: add that one db-spec case alongside the existing open-shift void coverage.
+6. **CLOSED (`d819e92`, 2026-09-28).** ~~**Bundle first-load headroom is 0.1 KiB raw under
+   the ceiling (1059.9/1060.0 KiB)** — move `en.json` out of the first load.~~ English is now a
+   deferred chunk; the first load fell to 1017.8 KiB raw / 290.8 KiB gzip.
+   **Still open:** first-load headroom is 13.9 KiB gzip / 41.1 KiB raw, still below the
+   budget's designed 25 KiB / 100 KiB minimum — shrink the first load further, never raise the
+   ceiling.
+7. **Smaller test/UX gaps left as found:** `VoidConsequences`' error text lacks `role="alert"`;
+   the payout-void dialog's tests are thin (no closed-shift-payout case, no reopened-shift
+   case); `payout-decision.spec` doesn't exercise `(true, false, undefined)` for its decision
+   argument; the closed-shift "400s without a decision" unit test no longer asserts that no
+   audit entry is written; there is no unit test that an owner voiding in an open shift gets
+   `returnToDrawer = true`; the documents-pipeline close→void→reopen sequence has no
+   try/finally to guarantee the reopen runs if an assertion in between throws; the open-shift
+   no-payout-plus-decision 400 message still mentions a payout that isn't there; and
+   `28-db-schema.dbml`'s `payouts` Note doesn't name `CHK_payouts_returned_on_void`.
+8. **Deploy-window message gap.** An old SPA tab still open across the deploy that sends a
+   `payout` decision on an open-shift receipt void gets a `400 PAYOUT_DECISION_NOT_APPLICABLE`
+   with no mapped frontend message, so the user sees a generic error banner until they reload.
+   Money is unaffected — the request is simply rejected. Fix direction: add the mapped message
+   whenever this error code's neighbours next get touched, rather than as a standalone change.

@@ -24,20 +24,23 @@ import { cn } from '@/shared/lib/cn';
 import { useMeQuery } from '@/entities/user';
 import { useWorkingPoint } from '@/features/point-scope';
 import { usePointOptionsQuery } from '@/entities/collection-point';
-import { useShiftOnDateQuery, type Shift } from '@/entities/shift';
-import { useIntakesQuery, type Intake } from '@/entities/intake';
+import { useShiftOnDateQuery, useCurrentShiftQuery, type Shift } from '@/entities/shift';
+import { canVoidIntake, useIntakesQuery, type Intake } from '@/entities/intake';
 import { usePayoutsQuery, type Payout } from '@/entities/payout';
 import { useSuppliersQuery, supplierName } from '@/entities/supplier';
-import { ReceiptDialog } from '@/widgets/receipt';
+import { ReceiptDialog, ReceiptVoidButton, useReceiptOpener } from '@/widgets/receipt';
 import {
   useOpenShiftMutation,
   useCloseShiftMutation,
   CountDrawerDialog,
+  OpenShiftAlert,
 } from '@/features/count-shift';
 import { ReopenShiftDialog } from './ReopenShiftDialog';
 
 interface FeedRow {
   kind: 'intake' | 'payout';
+  /** The receipt itself on an intake row — what `canVoidIntake` reads. */
+  intake: Intake | null;
   id: string;
   code: string;
   amount: string;
@@ -73,6 +76,11 @@ export function DayPage() {
 
   const shift = useShiftOnDateQuery(pointId, date);
   const shiftId = shift.data?.id;
+  // The point's open shift WHATEVER its date (#114). `shift` above only ever
+  // answers about the date on screen, so a shift left open on an earlier day
+  // is invisible to it — and «Відкрити зміну» offered on top of one is the
+  // refusal (SHIFT_ALREADY_OPEN) recorded in #113.
+  const current = useCurrentShiftQuery(pointId);
   const intakes = useIntakesQuery({ shiftId });
   const payouts = usePayoutsQuery({ shiftId });
   // §5.1 — every feed row (intake AND payout) carries the supplier's name; the
@@ -86,7 +94,8 @@ export function DayPage() {
   const open = useOpenShiftMutation();
   const close = useCloseShiftMutation();
   const [reopenOpen, setReopenOpen] = useState(false);
-  const [receiptId, setReceiptId] = useState<string | null>(null);
+  const receipt = useReceiptOpener();
+  const { openReceipt } = receipt;
   // Bumped on every open so the dialog remounts with fresh RHF defaults and no
   // banner from the refusal before it — the convention SetPriceDialog documents.
   const [reopenInstance, setReopenInstance] = useState(0);
@@ -122,6 +131,20 @@ export function DayPage() {
   // 0,00 ₴ tiles or an «Open shift» button over a shift the server never
   // confirmed either way are both worse than saying so.
   const isError = shift.isError || intakes.isError || payouts.isError;
+  // ANY open shift at the point, whatever day it belongs to — deliberately a
+  // WIDER question than the one `OpenShiftAlert` asks itself. The alert warns
+  // only about a shift left behind on an EARLIER day; the server refuses a
+  // second shift regardless, so the button must go away for all of them,
+  // including one dated today that `shift` above has not caught up with yet.
+  // A read still IN FLIGHT and a read that FAILED are the same unknown, and
+  // neither of them is «none»: `isPending` goes back to false the moment the
+  // request errors, so watching it alone would hand the button back over a
+  // shift the server never denied. The toolbar waits for both — the same rule
+  // `pages/reception` applies to its own banner.
+  const mayOpenShift = current.data == null && !current.isPending && !current.isError;
+  // Everything the Open button asks for EXCEPT the answer from `current`.
+  const wouldOfferOpen =
+    !shift.isError && !isLoadingShift && isOperator && isToday && status === 'none' && pointId;
 
   const liveIntakes = (intakes.data?.data ?? []).filter((i) => i.voided_at === null);
   const livePayouts = (payouts.data?.data ?? []).filter((p) => p.voided_at === null);
@@ -154,6 +177,7 @@ export function DayPage() {
   const feed: FeedRow[] = [
     ...(intakes.data?.data ?? []).map((i: Intake): FeedRow => ({
       kind: 'intake',
+      intake: i,
       id: i.id,
       code: i.code,
       amount: i.amount,
@@ -164,6 +188,7 @@ export function DayPage() {
     })),
     ...(payouts.data?.data ?? []).map((p: Payout): FeedRow => ({
       kind: 'payout',
+      intake: null,
       id: p.id,
       code: p.code,
       amount: p.amount,
@@ -234,15 +259,20 @@ export function DayPage() {
           {shift.data.broken_crates === null ? '—' : shift.data.broken_crates}
         </Badge>
       ) : null}
-      {!shift.isError &&
-      !isLoadingShift &&
-      isOperator &&
-      isToday &&
-      status === 'none' &&
-      pointId ? (
+      {wouldOfferOpen && mayOpenShift ? (
         <Button onClick={() => openCountDialog({ mode: 'open' })} disabled={open.isPending}>
           {t('day.open')}
         </Button>
+      ) : null}
+      {/* A failed `current` read withholds the button (above) but is kept OUT
+          of the page-level `isError`: the day's own figures are still true,
+          and blanking them would overcorrect. Said here, in the button's
+          place, so «not opened yet» over no way to open it is never silent —
+          the same thing `pages/reception` says on its own `shift.isError`. */}
+      {wouldOfferOpen && current.isError ? (
+        <p role="alert" className="text-xs text-destructive">
+          {t('day.currentShiftFailed')}
+        </p>
       ) : null}
       {/* `shiftId` in the condition (not just `status === 'open'`) is what lets
           the branch below narrow it to `string` for the click handler — no
@@ -319,14 +349,23 @@ export function DayPage() {
             <li key={`${row.kind}-${row.id}`} className="py-2.5">
               {/* Intake rows open the receipt (spec §5.1); a payout row has no
                   document view, so it stays a plain, non-interactive row. */}
-              {row.kind === 'intake' ? (
-                <button
-                  type="button"
-                  onClick={() => setReceiptId(row.id)}
-                  className={cn(rowClassName, 'w-full text-left')}
-                >
-                  {rowContent}
-                </button>
+              {row.intake ? (
+                // The void action is a SIBLING of the row button, never nested in it.
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => openReceipt(row.id)}
+                    className={cn(rowClassName, 'min-w-0 flex-1 text-left')}
+                  >
+                    {rowContent}
+                  </button>
+                  {me && canVoidIntake(me, row.intake) ? (
+                    <ReceiptVoidButton
+                      code={row.code}
+                      onClick={() => openReceipt(row.id, { void: true })}
+                    />
+                  ) : null}
+                </div>
               ) : (
                 <div className={rowClassName}>{rowContent}</div>
               )}
@@ -360,6 +399,12 @@ export function DayPage() {
         stats={pointId && status !== 'none' && !isError ? stats : undefined}
         statColumns={4}
       >
+        <OpenShiftAlert
+          pointId={pointId}
+          viewedDate={date}
+          // Нікуди не йдемо — це та сама сторінка, змінюється лише дата в URL.
+          onGoToDate={setDateParam}
+        />
         {truncated ? (
           <p className="-mt-2 mb-4 text-xs text-muted-foreground">
             {t('day.tiles.truncated', { count: feed.length })}
@@ -411,10 +456,11 @@ export function DayPage() {
       ) : null}
 
       <ReceiptDialog
-        key={receiptId}
-        intakeId={receiptId}
-        open={receiptId !== null}
-        onClose={() => setReceiptId(null)}
+        key={receipt.receiptId}
+        intakeId={receipt.receiptId}
+        open={receipt.open}
+        startWithVoid={receipt.startWithVoid}
+        onClose={receipt.clear}
       />
     </>
   );

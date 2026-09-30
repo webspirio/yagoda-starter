@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Link } from 'react-router';
+import { Link, useNavigate } from 'react-router';
 import { useTranslation } from 'react-i18next';
 import { useFieldArray, useForm, useWatch } from 'react-hook-form';
 import { PageHeader } from '@/shared/ui/page-header';
@@ -19,19 +19,27 @@ import { useSupplierBalanceQuery, type Supplier } from '@/entities/supplier';
 import { usePricedGradesQuery } from '@/entities/product-grade';
 import { useTareTypeOptionsQuery } from '@/entities/tare-type';
 import { usePointCashForPointQuery } from '@/entities/point-cash';
-import { ReceiptDialog } from '@/widgets/receipt';
-import { useOpenShiftMutation, CountDrawerDialog } from '@/features/count-shift';
+import { ReceiptDialog, useReceiptOpener } from '@/widgets/receipt';
+import { useOpenShiftMutation, CountDrawerDialog, OpenShiftAlert } from '@/features/count-shift';
 import type { SupplierPickerHandle } from '@/features/pick-supplier';
 import { useCreateIntakeMutation } from '../api/intakes';
 import { apiErrorToFields, type ApiFieldErrors } from '../lib/apiErrorToFields';
 import { isOwnFormEvent } from '../lib/formEventGuards';
 import { useIntakePreview } from '../lib/useIntakePreview';
 import { suggestedPaid } from '../lib/suggestedPaid';
-import { emptyLine, toCreateBody, type IntakeFormValues } from '../model/intakeForm';
+import {
+  crateTareUnits,
+  emptyLine,
+  parseCount,
+  toCreateBody,
+  type IntakeFormValues,
+} from '../model/intakeForm';
 import { SupplierSection } from './SupplierSection';
 import { LineEditor } from './LineEditor';
 import { LinesTable, type CommittedLine } from './LinesTable';
 import { TotalsSection } from './TotalsSection';
+import { ReturnedCratesField } from './ReturnedCratesField';
+import { ConfirmRefundDialog } from './ConfirmRefundDialog';
 import { TodayReceipts } from './TodayReceipts';
 import { PointStatePanel } from './PointStatePanel';
 import { ShiftBanner } from './ShiftBanner';
@@ -54,6 +62,7 @@ const DRAFT_FIELDS = new Set(['gross_kg', 'pallet_kg', 'bonus', 'product_grade_i
  */
 export function ReceptionPage() {
   const { t, i18n } = useTranslation();
+  const navigate = useNavigate();
   const locale = i18n.resolvedLanguage ?? 'uk';
   const { data: me } = useMeQuery();
   const isOwner = me?.role === 'network_owner';
@@ -75,7 +84,7 @@ export function ReceptionPage() {
     (tareTypes.data ?? []).find((type) => type.is_crate)?.id ?? tareTypes.data?.[0]?.id ?? '';
 
   const form = useForm<IntakeFormValues>({
-    defaultValues: { supplier_id: '', items: [emptyLine('')], paid_amount: '' },
+    defaultValues: { supplier_id: '', items: [emptyLine('')], paid_amount: '', returned_crates: '' },
   });
   const { control, register, setValue, handleSubmit, reset } = form;
   const lines = useFieldArray({ control, name: 'items' });
@@ -104,7 +113,8 @@ export function ReceptionPage() {
   // Read only inside event handlers (the Enter guard below, and after a
   // successful submit) — never during render, which the React Compiler bans.
   const pickerRef = useRef<SupplierPickerHandle>(null);
-  const [receiptId, setReceiptId] = useState<string | null>(null);
+  const receipt = useReceiptOpener();
+  const { openReceipt } = receipt;
   const [openDialogOpen, setOpenDialogOpen] = useState(false);
   // Bumped on every open so the dialog remounts with fresh RHF defaults and no
   // banner from the refusal before it — the convention `ReopenShiftDialog`
@@ -117,6 +127,13 @@ export function ReceptionPage() {
   // types in it themselves (`suggestedPaid`, below) — this is the only thing
   // that switches it over to what RHF actually holds.
   const [paidTouched, setPaidTouched] = useState(false);
+  // Bumped on every supplier pick — even a re-pick of the same row, which
+  // `reset()` above may have just emptied — so «З них наших ящиків» remounts
+  // and pre-fills afresh.
+  const [supplierPick, setSupplierPick] = useState(0);
+  // A submit held back for «Видайте людині дві суми» (`ConfirmRefundDialog`):
+  // the validated form values, waiting on the operator's confirmation.
+  const [pendingSubmit, setPendingSubmit] = useState<IntakeFormValues | null>(null);
 
   const shiftOpen = shift.data != null;
   const balance = useSupplierBalanceQuery(values.supplier_id || null);
@@ -258,10 +275,15 @@ export function ReceptionPage() {
               : t('reception.toast.settled'),
         },
       );
-      setReceiptId(created.id);
+      openReceipt(created.id);
       // The mock resets everything, supplier included: the next person in the
       // queue is a new visit, not an edit of this one.
-      reset({ supplier_id: '', items: [emptyLine(defaultTareTypeId)], paid_amount: '' });
+      reset({
+        supplier_id: '',
+        items: [emptyLine(defaultTareTypeId)],
+        paid_amount: '',
+        returned_crates: '',
+      });
       setSupplier(null);
       setPaidTouched(false);
       // The next person in the queue starts where the operator's hands
@@ -274,6 +296,29 @@ export function ReceptionPage() {
       });
     }
   };
+
+  // #114 — «Каса за день» for the day a shift was left open on. An operator's
+  // point comes from their token, so only the owner's has to ride in the link
+  // or that screen opens on whichever point it remembers.
+  const goToDay = (businessDate: string) => {
+    const params = new URLSearchParams({ date: businessDate });
+    if (canPick && pointId !== null) params.set('point', pointId);
+    void navigate(`/day?${params.toString()}`);
+  };
+
+  // Every receipt that returns our crates passes through `ConfirmRefundDialog`,
+  // which decides on the server's FRESH split whether there is a deposit to
+  // hand over — and confirms straight through when there is none.
+  const requestSubmit = (formValues: IntakeFormValues) => {
+    if (parseCount(formValues.returned_crates) > 0) setPendingSubmit(formValues);
+    else void submitIntake(formValues);
+  };
+  // The body the pending submit WOULD send — the same `toCreateBody` the write
+  // uses, so the dialog names exactly the berry payout and crates that go out.
+  const pendingBody =
+    pendingSubmit !== null
+      ? toCreateBody({ ...pendingSubmit, paid_amount: paidShown }, bodyPointId)
+      : null;
 
   const handleOpenShift = () => {
     setOpenDialogInstance((n) => n + 1);
@@ -355,6 +400,15 @@ export function ReceptionPage() {
           />
         ) : null}
 
+        {/* An open shift that is NOT today's (#114). A SIBLING of the intake
+            form, never a child: its count dialog is portaled but stays a REACT
+            descendant of whatever renders it, and React bubbles `submit` along
+            the fiber tree — inside the form, confirming a close would also
+            post the receipt. Whether the form should be blocked while the open
+            shift is stale is a separate question this deliberately leaves
+            alone: there IS an open shift, so `shiftOpen` is unchanged. */}
+        <OpenShiftAlert pointId={pointId} viewedDate={todayIso()} onGoToDate={goToDay} />
+
         <div className="grid gap-5 lg:grid-cols-[minmax(0,1.35fr)_minmax(320px,1fr)]">
           <form
             onSubmit={(e) => {
@@ -362,10 +416,10 @@ export function ReceptionPage() {
               // inline supplier dialog (`SupplierPicker` → `SupplierFormDialog`)
               // is portaled to `document.body` by `shared/ui/dialog.tsx`, but
               // is still a REACT descendant of this form, so without this
-              // guard its own submit would reach `handleSubmit(submitIntake)`
+              // guard its own submit would reach `handleSubmit(requestSubmit)`
               // — a real `POST /intakes` nobody pressed «Прийняти» for.
               if (!isOwnFormEvent(e)) return;
-              void handleSubmit(submitIntake)(e);
+              void handleSubmit(requestSubmit)(e);
             }}
             // Enter is how an operator moves between fields on the scale's
             // numeric pad; it must never fire a submit the form isn't ready
@@ -400,6 +454,7 @@ export function ReceptionPage() {
                       supplier_id: s.id,
                       items: [emptyLine(defaultTareTypeId)],
                       paid_amount: '',
+                      returned_crates: '',
                     });
                     toast(t('reception.toast.linesCleared'));
                   } else {
@@ -407,6 +462,7 @@ export function ReceptionPage() {
                   }
                   setSupplier(s);
                   setPaidTouched(false);
+                  setSupplierPick((n) => n + 1);
                 }}
                 debt={debt}
                 disabled={!shiftOpen}
@@ -439,6 +495,17 @@ export function ReceptionPage() {
                 onAdd={() => lines.append(emptyLine(defaultTareTypeId))}
                 onRemove={(index) => lines.remove(index)}
               />
+              {/* Keyed by the supplier pick: a new pick remounts it, so the
+                  pre-fill follows the ceiling again until the operator types. */}
+              <ReturnedCratesField
+                key={`${values.supplier_id}:${supplierPick}`}
+                supplierId={values.supplier_id || null}
+                pointId={bodyPointId ?? undefined}
+                crateTareUnits={crateTareUnits(values.items, tareTypes.data ?? [])}
+                value={values.returned_crates}
+                onChange={(v) => setValue('returned_crates', v, { shouldDirty: true })}
+                disabled={!shiftOpen}
+              />
               <TotalsSection
                 accrued={accrued}
                 netKg={netKg}
@@ -465,7 +532,7 @@ export function ReceptionPage() {
               isOwner={isOwner}
               targetCrates={targetCrates}
             />
-            <TodayReceipts shiftId={shift.data?.id} onOpen={setReceiptId} />
+            <TodayReceipts shiftId={shift.data?.id} me={me} onOpen={openReceipt} />
           </div>
         </div>
       </>
@@ -496,11 +563,25 @@ export function ReceptionPage() {
           setOpenDialogOpen(false);
         }}
       />
+      {pendingSubmit !== null && pendingBody !== null ? (
+        <ConfirmRefundDialog
+          supplierId={pendingSubmit.supplier_id}
+          pointId={bodyPointId ?? undefined}
+          units={pendingBody.returned_crates ?? 0}
+          paid={pendingBody.paid_amount ?? null}
+          onConfirm={() => {
+            setPendingSubmit(null);
+            void submitIntake(pendingSubmit);
+          }}
+          onCancel={() => setPendingSubmit(null)}
+        />
+      ) : null}
       <ReceiptDialog
-        key={receiptId}
-        intakeId={receiptId}
-        open={receiptId !== null}
-        onClose={() => setReceiptId(null)}
+        key={receipt.receiptId}
+        intakeId={receipt.receiptId}
+        open={receipt.open}
+        startWithVoid={receipt.startWithVoid}
+        onClose={receipt.clear}
       />
     </>
   );

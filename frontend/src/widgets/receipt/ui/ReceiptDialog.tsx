@@ -9,15 +9,20 @@ import {
   DialogTitle,
 } from '@/shared/ui/dialog';
 import { Button } from '@/shared/ui/button';
-import { add, cmp, formatKg, formatUah, isNegative } from '@/shared/lib/money';
+import { add, cmp, formatKg, formatUah, isNegative, isZero } from '@/shared/lib/money';
 import { formatLongDate, formatTime } from '@/shared/lib/date';
-import { useIntakeQuery } from '@/entities/intake';
-import { useSupplierBalanceQuery, useSupplierQuery, supplierName } from '@/entities/supplier';
+import { canVoidIntake, useIntakeQuery } from '@/entities/intake';
+import {
+  useSupplierBalanceQuery,
+  useSupplierQuery,
+  useSupplierSettlementQuery,
+  supplierName,
+} from '@/entities/supplier';
 import { useGradeCatalogQuery } from '@/entities/product-grade';
 import { useTareTypeOptionsQuery } from '@/entities/tare-type';
 import { usePointOptionsQuery } from '@/entities/collection-point';
 import { useMeQuery } from '@/entities/user';
-import { VoidDocumentDialog } from '@/features/void-document';
+import { VoidDocumentDialog, otherCovered, reopenedCodes } from '@/features/void-document';
 import { ReceiptSheet, type ReceiptSheetLine } from './ReceiptSheet';
 
 /** Formats the «Ціна за кг» row's right side when a per-kilogram bonus/markup
@@ -48,15 +53,21 @@ function formatBonus(price: string, bonus: string, locale: string): string | nul
  * staying `true`) while swapping `intakeId` to a different document, that
  * state would carry over from the previous receipt — remount with
  * `key={intakeId}` when doing that.
+ *
+ * `startWithVoid` is a table row's «Анулювати»: the receipt opens with its
+ * void dialog already on top (once per opening, and only if the viewer may
+ * void it); closing the void dialog leaves the receipt itself open.
  */
 export function ReceiptDialog({
   intakeId,
   open,
   onClose,
+  startWithVoid = false,
 }: {
   intakeId: string | null;
   open: boolean;
   onClose: () => void;
+  startWithVoid?: boolean;
 }) {
   const { t, i18n } = useTranslation();
   const locale = i18n.resolvedLanguage ?? 'uk';
@@ -80,6 +91,18 @@ export function ReceiptDialog({
   const meQuery = useMeQuery();
   const me = meQuery.data;
 
+  const livePayout = intake?.payouts.find((p) => p.voided_at === null) ?? null;
+
+  const [voidOpen, setVoidOpen] = useState(false);
+  const [voidKey, setVoidKey] = useState(0);
+
+  // Only fetched once the void dialog is actually open on a receipt with a
+  // payout to explain — otherwise every receipt would pay for a settlement
+  // read nothing on screen shows.
+  const settlementQuery = useSupplierSettlementQuery(
+    voidOpen && livePayout ? (intake?.supplier_id ?? null) : null,
+  );
+
   const isError =
     intakeQuery.isError ||
     supplierQuery.isError ||
@@ -89,9 +112,6 @@ export function ReceiptDialog({
     pointsQuery.isError ||
     meQuery.isError;
 
-  const [voidOpen, setVoidOpen] = useState(false);
-  const [voidKey, setVoidKey] = useState(0);
-
   // VoidDocumentDialog keeps its form state for its lifetime (react-hook-form's
   // `defaultValues` only apply on mount, and it stays mounted here so `open`
   // alone controls its visibility) — bumping the key on every open forces a
@@ -100,6 +120,16 @@ export function ReceiptDialog({
     setVoidKey((k) => k + 1);
     setVoidOpen(true);
   };
+
+  // State adjusted during render, not in an effect: the void dialog is open
+  // on the very first frame the receipt is, instead of flashing in a frame
+  // later. `autoVoided` makes it once per opening; closing resets it.
+  const [autoVoided, setAutoVoided] = useState(false);
+  if (!open && autoVoided) setAutoVoided(false);
+  if (open && startWithVoid && !autoVoided && intake && me && canVoidIntake(me, intake)) {
+    setAutoVoided(true);
+    openVoid();
+  }
 
   if (intakeId === null) {
     return null;
@@ -162,8 +192,17 @@ export function ReceiptDialog({
       .filter((p) => p.voided_at !== null)
       .map((p) => p.code);
 
-    const showVoid =
-      !voided && (me.role === 'network_owner' || me.id === intake.received_by_user_id);
+    const crateReturn = intake.crate_return
+      ? {
+          units: intake.crate_return.units,
+          amount: isZero(intake.crate_return.deposit_refund)
+            ? null
+            : formatUah(intake.crate_return.deposit_refund, locale),
+          voided: intake.crate_return.voided_at !== null,
+        }
+      : null;
+
+    const showVoid = canVoidIntake(me, intake);
 
     content = (
       <ReceiptSheet
@@ -183,6 +222,7 @@ export function ReceiptDialog({
         voidedPayouts={voidedPayouts}
         receivedBy={receivedBy}
         voided={voided ? { reason: intake.void_reason ?? '' } : null}
+        crateReturn={crateReturn}
       />
     );
 
@@ -207,6 +247,27 @@ export function ReceiptDialog({
         code={intake.code}
         open={voidOpen}
         onClose={() => setVoidOpen(false)}
+        linkedPayout={
+          livePayout
+            ? {
+                code: livePayout.code,
+                amount: livePayout.amount,
+                otherCovered: settlementQuery.data
+                  ? otherCovered(settlementQuery.data, livePayout.id, intake.id)
+                  : null,
+                paidAt: livePayout.created_at,
+                // Same actor as the receipt (§3.5) — the response carries no payer name.
+                paidBy: intake.received_by_name,
+                reopens: settlementQuery.data
+                  ? reopenedCodes(settlementQuery.data, livePayout.id, intake.id)
+                  : null,
+                reopensFailed: settlementQuery.isError,
+                retryReopens: () => void settlementQuery.refetch(),
+              }
+            : undefined
+        }
+        shiftClosed={intake.shift_closed}
+        intakeAmount={intake.amount}
       />
     );
   }

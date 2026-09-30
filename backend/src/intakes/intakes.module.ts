@@ -3,8 +3,15 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { Intake } from './intake.entity';
 import { IntakeItem } from './intake-item.entity';
 import { IntakeItemTareType } from './intake-item-tare-type.entity';
-import { IntakesService } from './intakes.service';
 import { IntakesController } from './intakes.controller';
+import { CreateIntakeCommand } from './commands/create-intake.command';
+import { VoidIntakeCommand } from './commands/void-intake.command';
+import { PriceIntakeQuery } from './queries/price-intake.query';
+import { PreviewIntakeQuery } from './queries/preview-intake.query';
+import { LoadVisibleIntakeQuery } from './queries/load-visible-intake.query';
+import { IntakeDetailQuery } from './queries/intake-detail.query';
+import { GetIntakeQuery } from './queries/get-intake.query';
+import { ListIntakesQuery } from './queries/list-intakes.query';
 import { ShiftsModule } from '../shifts/shifts.module';
 import { SuppliersModule } from '../suppliers/suppliers.module';
 import { GradePricesModule } from '../grade-prices/grade-prices.module';
@@ -12,17 +19,16 @@ import { TareTypesModule } from '../tare-types/tare-types.module';
 import { CollectionPointsModule } from '../collection-points/collection-points.module';
 import { AuditModule } from '../audit/audit.module';
 import { PayoutsModule } from '../payouts/payouts.module';
+import { SupplierBalanceModule } from '../supplier-balance/supplier-balance.module';
+import { CratesModule } from '../crates/crates.module';
 
 /**
- * Reads four other modules THROUGH THEIR SERVICES, never their repositories —
- * each stays the sole writer of its own tables and the dependencies point one
- * way. `grade_prices` and `tare_types` are read for §2.8's and §2.5's
- * snapshots; `shifts` for the point and business date, which this module's own
- * tables deliberately do not store.
- *
- * Imports `PayoutsModule` so the cash handed over with a receipt (§2.1 ⑥) is
- * written by the ONE payout writer, ceilings included. `PayoutsModule` does
- * not import this module back.
+ * The berry receipt. Reads other modules through their services (grade prices and tare for
+ * §2.8/§2.5 snapshots, shifts for the point and business date its tables do not store).
+ * Writes payouts only through `PayoutWriter`, allocations only through the supplier ledger,
+ * and the crates a supplier brings back with a receipt only through `CratesService`
+ * (`writeReturn`, `voidReturnForIntake` — spec §8.3). Exports nothing — no other module
+ * writes or reads receipts through it.
  */
 @Module({
   imports: [
@@ -34,9 +40,19 @@ import { PayoutsModule } from '../payouts/payouts.module';
     CollectionPointsModule,
     AuditModule,
     PayoutsModule,
+    CratesModule,
+    SupplierBalanceModule,
   ],
-  providers: [IntakesService],
+  providers: [
+    CreateIntakeCommand,
+    VoidIntakeCommand,
+    PriceIntakeQuery,
+    PreviewIntakeQuery,
+    LoadVisibleIntakeQuery,
+    IntakeDetailQuery,
+    GetIntakeQuery,
+    ListIntakesQuery,
+  ],
   controllers: [IntakesController],
-  exports: [IntakesService],
 })
 export class IntakesModule {}

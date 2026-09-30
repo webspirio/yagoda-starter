@@ -1,10 +1,11 @@
 import { forwardRef, useImperativeHandle, useRef } from 'react';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor, within, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createMemoryRouter, RouterProvider } from 'react-router';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ApiError } from '@/shared/api';
+import { addDaysIso, formatLongDate } from '@/shared/lib/date';
 import { expectNoAxeViolations } from '../../../test-axe';
 import type { Shift } from '@/entities/shift';
 import type { Intake, IntakeDetail } from '@/entities/intake';
@@ -30,9 +31,12 @@ const {
   previewMock,
   createMock,
   openShiftMock,
+  closeShiftMock,
   pointCashMock,
   toastMock,
   toastSuccessMock,
+  crateBalanceMock,
+  returnPreviewMock,
 } = vi.hoisted(() => {
   type ToastMock = ReturnType<typeof vi.fn> & {
     success: ReturnType<typeof vi.fn>;
@@ -55,9 +59,12 @@ const {
     previewMock: vi.fn(),
     createMock: vi.fn(),
     openShiftMock: vi.fn(),
+    closeShiftMock: vi.fn(),
     pointCashMock: vi.fn(),
     toastMock,
     toastSuccessMock: vi.fn(),
+    crateBalanceMock: vi.fn(),
+    returnPreviewMock: vi.fn(),
   };
 });
 
@@ -90,6 +97,12 @@ vi.mock('@/entities/payout', () => ({
 
 vi.mock('@/entities/crate', () => ({
   useCrateBalancesQuery: () => ({ data: undefined, isPending: true, isError: false }),
+  // «З них наших ящиків» — the picked supplier's crates (R8).
+  useCrateBalanceQuery: (supplierId: string | null) => crateBalanceMock(supplierId),
+}));
+
+vi.mock('@/features/return-crates', () => ({
+  useReturnPreviewQuery: (input: unknown) => returnPreviewMock(input),
 }));
 
 vi.mock('@/entities/user', () => ({
@@ -140,7 +153,8 @@ vi.mock('@/features/pick-supplier', () => ({
   }),
 }));
 
-vi.mock('@/entities/intake', () => ({
+vi.mock('@/entities/intake', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/entities/intake')>()),
   useIntakesQuery: (filter: unknown) => intakesMock(filter),
 }));
 
@@ -152,23 +166,41 @@ vi.mock('@/entities/tare-type', () => ({
   useTareTypeOptionsQuery: () => tareTypesMock(),
 }));
 
-vi.mock('@/widgets/receipt', () => ({
-  ReceiptDialog: ({ intakeId, open }: { intakeId: string | null; open: boolean }) =>
-    open ? <div>Receipt for {intakeId}</div> : null,
+vi.mock('@/widgets/receipt', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/widgets/receipt')>()),
+  ReceiptDialog: ({
+    intakeId,
+    open,
+    startWithVoid,
+  }: {
+    intakeId: string | null;
+    open: boolean;
+    startWithVoid?: boolean;
+  }) =>
+    open ? (
+      <div>
+        Receipt for {intakeId}
+        {startWithVoid ? ' (void)' : ''}
+      </div>
+    ) : null,
 }));
 
 vi.mock('../api/intakes', () => ({
   useCreateIntakeMutation: () => ({ mutateAsync: createMock, isPending: false }),
 }));
 
-// Only the mutation hook is stubbed — `CountDrawerDialog` (the real
-// component, re-exported by this same module) still renders for real, since
-// the "opens it on demand" test below drives it exactly as an operator would.
-vi.mock('@/features/count-shift', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@/features/count-shift')>();
+// Only the mutation hooks are stubbed — `CountDrawerDialog` and
+// `OpenShiftAlert` (real components from the same slice) still render for
+// real, since the tests below drive them exactly as an operator would. Mocked
+// at the SLICE-INTERNAL module rather than at the barrel: `OpenShiftAlert`
+// imports these by relative path (a slice may not import its own public API),
+// so a barrel-level mock would leave its close unstubbed.
+vi.mock('@/features/count-shift/api/shiftActions', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/features/count-shift/api/shiftActions')>();
   return {
     ...actual,
     useOpenShiftMutation: () => ({ mutateAsync: openShiftMock, isPending: false }),
+    useCloseShiftMutation: () => ({ mutateAsync: closeShiftMock, isPending: false }),
   };
 });
 
@@ -191,10 +223,18 @@ const OWNER = {
   collection_point_id: null,
 };
 
+/** «Today» for the whole suite — `beforeEach` pins `Date` to it, so the
+ *  fixtures below and the component's own `todayIso()` can never straddle a
+ *  real midnight between module load and render. */
+const TODAY = '2026-09-08';
+
 const openShift: Shift = {
   id: 's-open',
   collection_point_id: 'p1',
-  business_date: '2026-09-08',
+  // TODAY's: this screen is always about today, and since #114 an open shift
+  // dated in the past is a DIFFERENT state (the stale-shift alert), not the
+  // ordinary one every test below assumes.
+  business_date: TODAY,
   status: 'open',
   opened_by_user_id: 'u1',
   opened_by_name: 'Olha',
@@ -290,6 +330,7 @@ const CREATED: IntakeDetail = {
   voided_at: null,
   voided_by_user_id: null,
   void_reason: null,
+  shift_closed: false,
   created_at: '2026-09-08T09:15:00Z',
   // Agrees with the ONE item below (120.40 kg net) — the toast now reads
   // this header field directly rather than re-summing `items[]` (M3/M9).
@@ -297,8 +338,10 @@ const CREATED: IntakeDetail = {
   lines_count: 1,
   supplier_name: 'Ніна Ільчук',
   paid_amount: '0.00',
+  open_amount: '1204.00',
   payouts: [],
   received_by_name: 'Оксана Гнатюк',
+  crate_return: null,
   items: [
     {
       id: 'it1',
@@ -325,6 +368,7 @@ const intake = (over: Partial<Intake> & Pick<Intake, 'id' | 'code' | 'amount'>):
   voided_at: null,
   voided_by_user_id: null,
   void_reason: null,
+  shift_closed: false,
   created_at: '2026-09-08T07:10:00Z',
   // Same one-line 120.40 kg default as `CREATED` above — one canonical
   // example receipt throughout this file (M3/M9).
@@ -332,6 +376,7 @@ const intake = (over: Partial<Intake> & Pick<Intake, 'id' | 'code' | 'amount'>):
   lines_count: 1,
   supplier_name: 'Ніна Ільчук',
   paid_amount: '0.00',
+  open_amount: '0.00',
   ...over,
 });
 
@@ -369,6 +414,7 @@ function renderReception() {
     [
       { path: '/reception', element: <ReceptionPage /> },
       { path: '/suppliers/:id', element: <div>Supplier card</div> },
+      { path: '/day', element: <div>Day screen</div> },
     ],
     { initialEntries: ['/reception'] },
   );
@@ -397,6 +443,10 @@ async function fillDraft(user: ReturnType<typeof userEvent.setup>, gross = '126,
 }
 
 beforeEach(() => {
+  // Only Date is faked, so testing-library's waitFor, user-event and the
+  // preview's debounce keep their real timers. LOCAL time, which is what
+  // `todayIso` reads.
+  vi.useFakeTimers({ toFake: ['Date'], now: new Date(`${TODAY}T09:00:00`) });
   meMock.mockReset().mockReturnValue({ data: OPERATOR });
   pointScopeMock
     .mockReset()
@@ -407,8 +457,13 @@ beforeEach(() => {
   gradesMock.mockReset().mockReturnValue({ data: GRADES, isPending: false, isError: false });
   tareTypesMock.mockReset().mockReturnValue({ data: TARE_TYPES, isPending: false, isError: false });
   previewMock.mockReset().mockReturnValue(previewState());
+  // Holds none of our crates by default, so «З них наших ящиків» stays hidden
+  // and every body assertion below carries no `returned_crates`.
+  crateBalanceMock.mockReset().mockReturnValue({ data: undefined, isPending: true, isError: false });
+  returnPreviewMock.mockReset().mockReturnValue({ data: undefined });
   createMock.mockReset().mockResolvedValue(CREATED);
   openShiftMock.mockReset().mockResolvedValue(openShift);
+  closeShiftMock.mockReset().mockResolvedValue({ ...openShift, status: 'closed' });
   // A genuinely-read, EMPTY drawer by default — NOT `isPending`/`undefined`.
   // `cash === null` (still loading, or the read errored) is UNKNOWN, not
   // empty (review finding 2), and now suggests the UNCAPPED total rather
@@ -428,6 +483,8 @@ beforeEach(() => {
   toastMock.error.mockReset();
   toastSuccessMock.mockReset();
 });
+
+afterEach(() => vi.useRealTimers());
 
 describe('ReceptionPage — before the shift is open', () => {
   beforeEach(() => {
@@ -884,9 +941,8 @@ describe("ReceptionPage — the supplier's history and today's badge", () => {
     renderReception();
 
     // Scoped to the receipts card itself: `PointStatePanel` reads the SAME
-    // `useIntakesQuery({ shiftId })` for its own «Залишків створено» figure,
-    // and this fixture's live receipt (200.00 − 0.00 paid) prints the same
-    // «200.00 ₴» there too.
+    // `useIntakesQuery({ shiftId })` for its own «Відкрито за сьогоднішніми
+    // квитанціями» tile, so an amount could print there too.
     const card = screen.getByText("Today's receipts").closest('[data-slot="card"]');
     const scoped = within(card as HTMLElement);
 
@@ -902,6 +958,33 @@ describe("ReceptionPage — the supplier's history and today's badge", () => {
     // Only the live receipt's kilos count toward the header tonnage — the
     // voided one (same 120.40 kg fixture default) does not double it up.
     expect(within(badgeArea!).getByText('120.40 kg')).toBeInTheDocument();
+  });
+});
+
+describe("ReceptionPage — «Void» on today's receipts", () => {
+  it('opens the receipt straight into its void, not as a plain open', async () => {
+    const user = userEvent.setup();
+    intakesMock.mockImplementation((filter: { shiftId?: string }) =>
+      filter.shiftId ? page<Intake>([intake({ id: 'i2', code: 'SHP-IN-2', amount: '200.00' })]) : page<Intake>([]),
+    );
+    renderReception();
+
+    await user.click(screen.getByRole('button', { name: 'Void SHP-IN-2' }));
+
+    expect(await screen.findByText('Receipt for i2 (void)')).toBeInTheDocument();
+  });
+
+  it('a plain row click still opens the receipt without the void', async () => {
+    const user = userEvent.setup();
+    intakesMock.mockImplementation((filter: { shiftId?: string }) =>
+      filter.shiftId ? page<Intake>([intake({ id: 'i2', code: 'SHP-IN-2', amount: '200.00' })]) : page<Intake>([]),
+    );
+    renderReception();
+
+    const card = screen.getByText("Today's receipts").closest('[data-slot="card"]');
+    await user.click(within(card as HTMLElement).getByText('200.00 ₴'));
+
+    expect(await screen.findByText('Receipt for i2')).toBeInTheDocument();
   });
 });
 
@@ -1296,6 +1379,151 @@ describe('ReceptionPage — line editor ergonomics (#117)', () => {
   });
 });
 
+const RETURN_ON_RECEIPT = {
+  data: {
+    allocations: [
+      { issuance_id: 'i1', units: 30, per_unit: '0.00', amount: '0.00', mode: 'receipt', code: 'C1' },
+    ],
+    deposit_refund: '0.00',
+    shortfall: 0,
+  },
+  isFetching: false,
+  isError: false,
+  refetch: vi.fn(),
+};
+const RETURN_ON_DEPOSIT = {
+  ...RETURN_ON_RECEIPT,
+  data: {
+    allocations: [
+      { issuance_id: 'i1', units: 30, per_unit: '120.00', amount: '3600.00', mode: 'deposit', code: 'C1' },
+    ],
+    deposit_refund: '3600.00',
+    shortfall: 0,
+  },
+};
+
+describe('ReceptionPage — «З них наших ящиків» (our rented crates coming back)', () => {
+  beforeEach(() => {
+    previewMock.mockReturnValue(SETTLED);
+    // A розписка-only return refunds nothing, so no confirmation stands in
+    // the way of the submit; the deposit cases below override this.
+    returnPreviewMock.mockReturnValue(RETURN_ON_RECEIPT);
+    crateBalanceMock.mockImplementation((id: string | null) => ({
+      data:
+        id === 's1'
+          ? { supplier_id: 's1', outstanding_units: 30, deposit_held: '3600.00', tranches: [] }
+          : undefined,
+      isPending: false,
+      isError: false,
+    }));
+  });
+
+  it('pre-fills min(crate tare 40, held 30) and sends returned_crates: 30 with the receipt', async () => {
+    const user = userEvent.setup();
+    renderReception();
+    await user.click(screen.getByRole('button', { name: 'pick-nina' }));
+    await fillDraft(user);
+    const units = screen.getByLabelText('Tare units 1');
+    await user.clear(units);
+    await user.type(units, '40');
+
+    const field = screen.getByLabelText('Of them, our crates') as HTMLInputElement;
+    await waitFor(() => expect(field.value).toBe('30'));
+
+    await user.click(screen.getByRole('button', { name: /^Accept/ }));
+    await waitFor(() =>
+      expect(createMock).toHaveBeenCalledWith(expect.objectContaining({ returned_crates: 30 })),
+    );
+  });
+
+  it('stops a receipt that refunds a deposit at a confirmation, and writes only once it is given', async () => {
+    returnPreviewMock.mockReturnValue(RETURN_ON_DEPOSIT);
+    const user = userEvent.setup();
+    renderReception();
+    await user.click(screen.getByRole('button', { name: 'pick-nina' }));
+    await fillDraft(user);
+    const units = screen.getByLabelText('Tare units 1');
+    await user.clear(units);
+    await user.type(units, '40');
+    await waitFor(() =>
+      expect((screen.getByLabelText('Of them, our crates') as HTMLInputElement).value).toBe('30'),
+    );
+
+    await user.click(screen.getByRole('button', { name: /^Accept/ }));
+    const dialog = await screen.findByRole('alertdialog');
+    expect(dialog).toHaveTextContent('Deposit for 30 crates — 3,600.00 ₴ from the crates drawer');
+    expect(returnPreviewMock).toHaveBeenCalledWith(
+      expect.objectContaining({ supplierId: 's1', units: 30 }),
+    );
+    expect(createMock).not.toHaveBeenCalled();
+
+    await user.click(
+      within(dialog).getByRole('button', { name: 'Handed over 3,600.00 ₴' }),
+    );
+    await waitFor(() =>
+      expect(createMock).toHaveBeenCalledWith(expect.objectContaining({ returned_crates: 30 })),
+    );
+    expect(createMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('«Back» on the confirmation writes nothing and keeps the form as it was', async () => {
+    returnPreviewMock.mockReturnValue(RETURN_ON_DEPOSIT);
+    const user = userEvent.setup();
+    renderReception();
+    await user.click(screen.getByRole('button', { name: 'pick-nina' }));
+    await fillDraft(user);
+
+    await user.click(screen.getByRole('button', { name: /^Accept/ }));
+    const dialog = await screen.findByRole('alertdialog');
+    await user.click(within(dialog).getByRole('button', { name: 'Back' }));
+
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
+    expect(createMock).not.toHaveBeenCalled();
+    expect(screen.getByLabelText('Of them, our crates')).toBeInTheDocument();
+  });
+
+  it('asks nothing when the return is on a розписка only — the receipt goes straight through', async () => {
+    const user = userEvent.setup();
+    renderReception();
+    await user.click(screen.getByRole('button', { name: 'pick-nina' }));
+    await fillDraft(user);
+
+    await user.click(screen.getByRole('button', { name: /^Accept/ }));
+    await waitFor(() =>
+      expect(createMock).toHaveBeenCalledWith(expect.objectContaining({ returned_crates: 12 })),
+    );
+    expect(createMock).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole('alertdialog')).toBeNull();
+  });
+
+  it('is hidden when the supplier holds none of our crates', async () => {
+    crateBalanceMock.mockReturnValue({
+      data: { supplier_id: 's1', outstanding_units: 0, deposit_held: '0.00', tranches: [] },
+      isPending: false,
+      isError: false,
+    });
+    const user = userEvent.setup();
+    renderReception();
+    await user.click(screen.getByRole('button', { name: 'pick-nina' }));
+    await fillDraft(user);
+    expect(screen.queryByLabelText('Of them, our crates')).toBeNull();
+  });
+
+  it.each([
+    ['RETURNED_EXCEEDS_TARE', 400, 'More returned crates than crate tare on this receipt'],
+    ['RETURN_EXCEEDS_OUTSTANDING', 400, 'That is more crates than this person is holding'],
+    ['CRATE_CASH_INSUFFICIENT', 409, 'The crate deposits drawer holds less than this refund needs'],
+  ])('banners a %s refusal of the whole receipt', async (code, status, copy) => {
+    createMock.mockRejectedValue(new ApiError(status, 'refused', undefined, code));
+    const user = userEvent.setup();
+    renderReception();
+    await user.click(screen.getByRole('button', { name: 'pick-nina' }));
+    await fillDraft(user);
+    await user.click(screen.getByRole('button', { name: /^Accept/ }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(copy);
+  });
+});
+
 describe('ReceptionPage — accessibility', () => {
   it('has no axe violations at rest', async () => {
     const { container } = renderReception();
@@ -1316,5 +1544,133 @@ describe('ReceptionPage — accessibility', () => {
     await fillDraft(user);
 
     await expectNoAxeViolations(container);
+  });
+});
+
+/**
+ * #114 — the shift open at this point belongs to an earlier day. The intake
+ * form stays ENABLED (`shiftOpen` is unchanged: there IS an open shift, and
+ * whether a document may be booked against a stale one is a separate
+ * decision); the screen only stops pretending the day is clean.
+ */
+describe('ReceptionPage — an open shift left behind on another day (#114)', () => {
+  // DERIVED FROM TODAY, never a literal: the rule is «earlier than today», and
+  // this suite runs on real timers, so a hard-coded date would stop testing
+  // that rule the moment the calendar moved past it.
+  const STRANDED_DATE = addDaysIso(TODAY, -5);
+  const STRANDED_TITLE = `The shift for ${formatLongDate(STRANDED_DATE, 'en')} is not closed yet`;
+  const strandedShift: Shift = {
+    ...openShift,
+    id: 's-stranded',
+    business_date: STRANDED_DATE,
+    created_at: `${STRANDED_DATE}T05:00:00Z`,
+  };
+
+  beforeEach(() => {
+    shiftMock.mockReturnValue({ data: strandedShift, isPending: false, isError: false });
+  });
+
+  it('names the stranded shift without taking the form away', () => {
+    renderReception();
+
+    expect(screen.getByText(STRANDED_TITLE)).toBeInTheDocument();
+    // Unchanged on purpose: «Accept» is disabled here only because nothing is
+    // drafted yet, never because the open shift is yesterday's.
+    expect(screen.getByLabelText('Gross — berries including tare')).toBeEnabled();
+  });
+
+  it('closes it from reception, sending the counted drawer to that shift', async () => {
+    const user = userEvent.setup();
+    renderReception();
+
+    await user.click(screen.getByRole('button', { name: 'Close shift' }));
+    const dialog = await screen.findByRole('dialog');
+    await user.type(within(dialog).getByRole('textbox', { name: /drawer|amount/i }), '1500.00');
+    await user.type(within(dialog).getByRole('textbox', { name: /broken/i }), '0');
+    await user.click(within(dialog).getByRole('button', { name: SUBMIT_COUNT }));
+
+    await waitFor(() =>
+      expect(closeShiftMock).toHaveBeenCalledWith({
+        id: 's-stranded',
+        counted_amount: '1500.00',
+        broken_crates: 0,
+      }),
+    );
+  });
+
+  it('never books a receipt on the way — the dialog’s submit is not the form’s', async () => {
+    // React bubbles `submit` along the FIBER tree, and a portaled dialog is
+    // still a React descendant of whatever rendered it. The alert sits beside
+    // the intake `<form>`, not inside it, and `isOwnFormEvent` guards the form
+    // besides — this pins BOTH, with a form that would otherwise be ready to
+    // post (`SETTLED` preview, a chosen supplier).
+    const user = userEvent.setup();
+    previewMock.mockReturnValue(SETTLED);
+    renderReception();
+
+    await user.click(screen.getByRole('button', { name: 'pick-nina' }));
+    await fillDraft(user);
+    await user.click(screen.getByRole('button', { name: 'Close shift' }));
+    const dialog = await screen.findByRole('dialog');
+    await user.type(within(dialog).getByRole('textbox', { name: /drawer|amount/i }), '1500.00');
+    await user.type(within(dialog).getByRole('textbox', { name: /broken/i }), '0');
+    await user.click(within(dialog).getByRole('button', { name: SUBMIT_COUNT }));
+
+    await waitFor(() => expect(closeShiftMock).toHaveBeenCalled());
+    expect(createMock).not.toHaveBeenCalled();
+  });
+
+  it('can hand the operator over to that day’s cash screen instead', async () => {
+    const user = userEvent.setup();
+    const { router } = renderReception();
+
+    await user.click(screen.getByRole('button', { name: 'Go to that day' }));
+    await waitFor(() => expect(router.state.location.pathname).toBe('/day'));
+    expect(new URLSearchParams(router.state.location.search).get('date')).toBe(STRANDED_DATE);
+  });
+
+  it('carries the owner’s chosen point along to that day', async () => {
+    const user = userEvent.setup();
+    meMock.mockReturnValue({ data: OWNER });
+    pointScopeMock.mockReturnValue({
+      pointId: 'p1',
+      canPick: true,
+      setPointId: vi.fn(),
+      isLoading: false,
+    });
+
+    const { router } = renderReception();
+
+    await user.click(screen.getByRole('button', { name: 'Go to that day' }));
+    await waitFor(() => expect(router.state.location.pathname).toBe('/day'));
+    // An operator's point comes from their token; only the owner's has to ride
+    // in the link, or «Каса за день» opens on whichever point it remembers.
+    expect(new URLSearchParams(router.state.location.search).get('point')).toBe('p1');
+  });
+
+  it('says nothing while the shift open at this point is today’s', () => {
+    // The default fixture — the ordinary state every other test here assumes.
+    // This screen is ALWAYS about today, so «today's shift» is precisely the
+    // boundary «earlier than today» draws.
+    shiftMock.mockReturnValue({ data: openShift, isPending: false, isError: false });
+
+    renderReception();
+
+    expect(screen.queryByText(/is not closed yet/)).toBeNull();
+  });
+
+  it('speaks for a shift one single day behind — the rule is earlier, not much earlier', () => {
+    const yesterday = addDaysIso(TODAY, -1);
+    shiftMock.mockReturnValue({
+      data: { ...strandedShift, business_date: yesterday },
+      isPending: false,
+      isError: false,
+    });
+
+    renderReception();
+
+    expect(
+      screen.getByText(`The shift for ${formatLongDate(yesterday, 'en')} is not closed yet`),
+    ).toBeInTheDocument();
   });
 });

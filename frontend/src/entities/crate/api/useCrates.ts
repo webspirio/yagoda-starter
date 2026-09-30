@@ -8,6 +8,7 @@ import type {
   CrateDocumentFilter,
   CrateIssuance,
   CrateReturn,
+  CrateStanding,
 } from '../model/crate';
 
 function documentParams(f: CrateDocumentFilter) {
@@ -48,6 +49,29 @@ export function useCrateBalancesQuery({
           ...(includeZero ? { include_zero: true } : {}),
           limit: 100,
         },
+      });
+      return data;
+    },
+  });
+}
+
+/**
+ * The allotment bar — one point's standing, computed by the server. The page
+ * never re-derives it from `/crate-balances`, which is PAGINATED: summing a
+ * page is wrong the moment a point has more holders than fit on it.
+ *
+ * UNDER THE `crateBalances` PREFIX on purpose: every issue, return and void
+ * already invalidates that prefix, so this refreshes with them for free.
+ * Movements made elsewhere (receipts, transfers, a shift close) arrive through
+ * normal staleness.
+ */
+export function useCrateStandingQuery({ pointId, isOwner }: { pointId: string | null; isOwner: boolean }) {
+  return useQuery({
+    queryKey: [...queryKeys.crateBalances, 'standing', pointId] as const,
+    enabled: !isOwner || pointId !== null,
+    queryFn: async (): Promise<CrateStanding> => {
+      const { data } = await httpClient.get<CrateStanding>('/crate-standing', {
+        params: pointId ? { collection_point_id: pointId } : {},
       });
       return data;
     },

@@ -8,7 +8,7 @@ import { initI18n } from './shared/lib/i18n';
 import './index.css';
 
 attachAuthInterceptors(httpClient, sessionAuthHooks);
-initI18n();
+const i18nReady = initI18n();
 
 window.addEventListener('unhandledrejection', (event) => {
   reportError(event.reason, { type: 'unhandledrejection' });
@@ -32,8 +32,14 @@ const root = ReactDOM.createRoot(document.getElementById('root')!, {
   },
 });
 
-root.render(
-  <React.StrictMode>
-    <App />
-  </React.StrictMode>,
-);
+// A stored `en` renders only once English has arrived; if that fetch fails,
+// the UI stays in Ukrainian rather than showing raw keys.
+void i18nReady
+  .catch((error: unknown) => reportError(error, { type: 'i18nLoad' }))
+  .finally(() =>
+    root.render(
+      <React.StrictMode>
+        <App />
+      </React.StrictMode>,
+    ),
+  );

@@ -520,6 +520,44 @@ describe('PointCashService.cashFor (Postgres)', () => {
       await expect(service.movementsForShift(returned)).resolves.toBe('250.00');
     });
 
+    it('a payout returned ON VOID nets to zero in its own shift', async () => {
+      const p = await newPoint();
+      const s = await shift(p, '2026-09-02', false);
+      const at = new Date('2026-09-02T10:00:00Z');
+      await payoutIn(s, '250.00', {
+        voided_at: at, voided_by_user_id: ownerId, void_reason: 'помилка',
+        return_settled_at: at, return_settled_by_user_id: ownerId, returned_on_void: true,
+      });
+      await expect(service.movementsForShift(s)).resolves.toBe('0.00');
+    });
+
+    it('returned on void after local midnight still lands in the payout’s shift, not the next day’s', async () => {
+      const p = await newPoint();
+      const paid = await shift(p, '2026-09-02');
+      const next = await shift(p, '2026-09-03', false);
+      // 00:30 Kyiv on the 3rd — the shift of the 2nd was still open when this was voided.
+      const at = new Date('2026-09-02T21:30:00Z');
+      await payoutIn(paid, '250.00', {
+        voided_at: at, voided_by_user_id: ownerId, void_reason: 'помилка',
+        return_settled_at: at, return_settled_by_user_id: ownerId, returned_on_void: true,
+      });
+      await expect(service.movementsForShift(paid)).resolves.toBe('0.00');
+      await expect(service.movementsForShift(next)).resolves.toBe('0.00');
+    });
+
+    it('returned on void days later (a reopened shift) still lands in the payout’s shift', async () => {
+      const p = await newPoint();
+      const paid = await shift(p, '2026-09-02', false);
+      const later = await shift(p, '2026-09-06');
+      const at = new Date('2026-09-06T09:00:00Z');
+      await payoutIn(paid, '250.00', {
+        voided_at: at, voided_by_user_id: ownerId, void_reason: 'помилка',
+        return_settled_at: at, return_settled_by_user_id: ownerId, returned_on_void: true,
+      });
+      await expect(service.movementsForShift(paid)).resolves.toBe('0.00');
+      await expect(service.movementsForShift(later)).resolves.toBe('0.00');
+    });
+
     it('movementsForShift reads 0.00, not 0, for a shift with nothing in it', async () => {
       const p = await newPoint();
       await expect(service.movementsForShift(await shift(p, '2026-09-02'))).resolves.toBe('0.00');
