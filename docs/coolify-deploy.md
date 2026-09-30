@@ -85,6 +85,13 @@ newer release (two releases published in quick succession can finish out of
 order), the guard refuses the older one — «production is already at a NEWER
 release». A rollback is always the manual path below.
 
+**One pending production deploy at a time.** `deploy-prod` runs under a
+single concurrency group, and GitHub keeps only one *pending* run per group:
+a release published while a rollback run is still waiting replaces it
+silently, and the other way round. Let the run you started finish before
+publishing or dispatching anything else; `/api/health/version` says what
+actually landed.
+
 **Re-deploying an older release** — *Actions → CI → Run workflow* with
 `tag = v0.2.0` — is allowed when no migration file changed between the
 commit `production` points at and the target: `deploy-prod` runs

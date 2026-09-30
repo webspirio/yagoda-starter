@@ -544,9 +544,11 @@ jobs:
           PR: ${{ github.event.pull_request.number }}
           SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
           # A release names a tag; resolve its commit through the API instead
-          # of trusting github.sha. (A dispatch names one too, but builds
-          # nothing — BUILD is false there — so the resolution is harmless.)
-          RELEASE_TAG: ${{ github.event.release.tag_name || inputs.tag }}
+          # of trusting github.sha. A dispatch names one too but builds
+          # nothing, and a mistyped tag must fail in deploy-prod with «no tag
+          # named …» — not here, as an unexplained red docker job — so the
+          # dispatch input is deliberately not read.
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
@@ -696,12 +698,14 @@ jobs:
       pull-requests: write
       issues: write # gh label create / gh pr edit --add-label use the Issues API
     env:
-      # 11 since staging took one slot of the same budget (#186); 12 before,
-      # recalibrated 2026-09-10 against the resized server and Coolify's
-      # measured RSS (docs/coolify-deploy.md «Spike results»):
+      # Recalibrated 2026-09-10 against the resized server and Coolify's
+      # measured RSS (docs/coolify-deploy.md «Spike results»), then lowered
+      # from 12 to 11 when staging joined the same budget (#186):
       #   7.56 total − 0.37 OS − 0.63 Coolify − ~1.0 production ≈ 5.5 GiB free;
-      #   at ~0.25 GiB per preview, 12 previews use ~3.0 and leave ~2.5 GiB,
-      #   comfortably past the ≥0.8–1.0 GiB the spec §1 invariant requires.
+      #   staging is one more preview-sized stack (seeded, idle) at ~0.25 GiB,
+      #   so at ~0.25 GiB per preview, staging + 11 previews use ~3.0 and
+      #   leave ~2.5 GiB, comfortably past the ≥0.8–1.0 GiB the spec §1
+      #   invariant requires.
       # The repository variable PREVIEW_CAP overrides it without a commit —
       # used for recalibration and for testing the limit path.
       PREVIEW_CAP: ${{ vars.PREVIEW_CAP || 11 }}

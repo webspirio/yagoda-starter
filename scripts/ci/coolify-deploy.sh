@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Deploy one Coolify application (production, or the preview for PR_NUMBER),
+# Deploy one Coolify application (production, staging, or the preview for PR_NUMBER),
 # wait for Coolify to finish, then prove the APPLICATION is up — Coolify's
 # "finished" is not "serving": Traefik/DNS/container start-up leave a window,
 # and for previews the seed still has to complete.
