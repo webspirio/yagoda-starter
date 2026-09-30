@@ -238,7 +238,9 @@ the preview owner or for this middleware.
      (`nginx/default.conf.template:32`) → the app's own 10 MB cap (`MEDIA_MAX_BYTES`).
 7. **GitHub repository settings**: secrets `COOLIFY_URL`, `COOLIFY_API_TOKEN`
    (Coolify → *Keys & Tokens → API tokens*, permissions `deploy` + `read`; add `write`
-   only if the fallback below is in force), `COOLIFY_APP_UUID` (from the application URL),
+   only if the fallback below is in force), `COOLIFY_APP_UUID` and
+   `COOLIFY_STAGING_APP_UUID` (each from its application's URL — the staging
+   one serves `deploy-staging` and `deploy-preview` alike),
    `PRODUCTION_BRANCH_KEY` — the private half of the write deploy key titled
    «ci: production branch mover (#186)», which `deploy-prod` uses to move the
    `production` branch (the Actions token cannot push a range that changes
@@ -247,8 +249,13 @@ the preview owner or for this middleware.
    `gh repo deploy-key add key.pub --title "ci: production branch mover (#186)" --allow-write`,
    `gh secret set PRODUCTION_BRANCH_KEY < key`, then delete both local files.
    To rotate it, delete that deploy key in the repository settings and repeat
-   the three commands;
-   variables `COOLIFY_ENABLED=true`, `PROD_URL=https://yagoda.webspirio.com`,
+   the three commands. A write deploy key can push **any** ref, `main`
+   included, and bypasses branch protection unless «Do not allow bypassing
+   the above settings» is on — it exists for this one step, so treat the
+   secret like the API token and rotate it the moment it may have leaked;
+   variables `COOLIFY_ENABLED=true`, `STAGING_ENABLED=true`,
+   `STAGING_URL=https://staging.yagoda.webspirio.com`,
+   `PROD_URL=https://yagoda.webspirio.com`,
    `PREVIEW_DOMAIN=yagoda.webspirio.com`, `PREVIEW_CAP` (optional; overrides the
    default cap of 11 live previews without a commit — `ci.yml` reads
    `vars.PREVIEW_CAP || 11`; the default was recalibrated on 2026-09-10 against
@@ -615,7 +622,7 @@ ssh root@<vps> 'docker ps --format "{{.Names}}\t{{.Status}}\t{{.Image}}"; docker
 | `deploy-prod`: «no tag named …» / «… is not on main» | the Release was published from a tag that does not exist or was not cut from `main` | delete the Release, tag the right `main` commit, publish again |
 | `deploy-prod` on a release: «production is already at a NEWER release» | a newer release finished first; a release only moves production forward | nothing — production already runs the newer release; to go back deliberately, *Run workflow* with the older tag — «Rolling back» |
 | `deploy-prod`: «rolling back production … crosses these migrations» | the target release is older than a migration that is live | forward-fix (hotfix release); or re-run with `allow_schema_rollback=true` after verifying the down path — «Rolling back» |
-| Staging did not update after a merge | `deploy-staging` skipped (`STAGING_ENABLED` not `true`, or a newer merge superseded the run) | check the job's notice; the newer merge's own run owns staging |
+| Staging did not update after a merge | `deploy-staging` skipped (`STAGING_ENABLED` not `true`, or a newer merge superseded the run) | a job skipped by its own `if:` logs nothing — the run graph shows `deploy-staging` as *skipped*: check the variable; a superseded run says so in a notice, and the newer merge's own run owns staging |
 
 ## Leaving Coolify
 

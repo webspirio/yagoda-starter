@@ -932,6 +932,13 @@ jobs:
             || { echo "::error::no tag named '$TAG' — releases are published from an existing tag"; exit 1; }
           git merge-base --is-ancestor "$target" origin/main \
             || { echo "::error::$TAG ($target) is not on main — releases are cut from main; merge the hotfix first"; exit 1; }
+          # The verify job this deploy is gated on checked out github.sha. On
+          # a release GitHub sets that to the tagged commit, so the two agree
+          # by GitHub's rule — and this check makes the gate rest on the
+          # checked fact rather than on the rule.
+          if [ "$GITHUB_EVENT_NAME" = release ] && [ "$target" != "$GITHUB_SHA" ]; then
+            echo "::error::$TAG resolves to $target but this run verified $GITHUB_SHA — production is gated on a commit that was not verified"; exit 1
+          fi
           live=$(git rev-parse -q --verify origin/production 2>/dev/null || true)
           echo "sha=$target" >> "$GITHUB_OUTPUT"
           echo "live=$live" >> "$GITHUB_OUTPUT"
@@ -942,7 +949,7 @@ jobs:
           SHA: ${{ steps.target.outputs.sha }}
         run: |
           set -euo pipefail
-          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          echo "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
           for img in backend nginx; do
             docker manifest inspect "ghcr.io/${GITHUB_REPOSITORY,,}-$img:sha-$SHA" >/dev/null \
               || { echo "::error::ghcr.io/${GITHUB_REPOSITORY,,}-$img:sha-$SHA is missing — re-run this workflow run's failed jobs so the docker job rebuilds it"; exit 1; }
@@ -963,7 +970,9 @@ jobs:
           # a GitHub App / Actions token cannot update a ref whose pushed range
           # changes .github/workflows/* without the `workflows` permission,
           # which `permissions:` cannot grant; a repository deploy key with
-          # write access can.
+          # write access can. That key can push ANY ref, main included, and
+          # bypasses branch protection unless «Do not allow bypassing» is on —
+          # it exists for this one line; rotation is in the runbook's step 7.
           # --force-with-lease: a rollback moves the branch backwards, but only
           # from the commit this run read; a concurrent move fails the push.
           if [ -n "$LIVE" ]; then
