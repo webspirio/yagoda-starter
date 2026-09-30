@@ -1,9 +1,13 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { DataSource, EntityManager } from 'typeorm';
 import { Intake } from '../intake.entity';
-import { VoidIntakeDto } from '../dto/void-intake.dto';
+import { VoidDocumentDto } from '../dto/void-document.dto';
 import { IntakeResponse, toIntakeResponse } from '../intake.mapper';
-import { assertPayoutDecision, type AuditedPayoutDecision } from '../payout-decision';
 import { LoadVisibleIntakeQuery } from '../queries/load-visible-intake.query';
 import { IntakeDetailQuery } from '../queries/intake-detail.query';
 import { Shift } from '../../shifts/shift.entity';
@@ -15,10 +19,13 @@ import { assertCanVoid } from '../../auth/access/document-access';
 import type { AuthenticatedUser } from '../../auth/jwt.strategy';
 
 /**
- * §9.4 void plus #125's decision about a bound payout. Lock order: supplier → intake → payout.
- * Open shift (2026-09-28): the bound payout always goes too, cash back at once.
- * §10.2 lists receipt voids as owner-only; §9.4 (followed here) allows the author.
+ * §9.4 void. Lock order: supplier → intake → payout. A bound payout always goes too, cash back
+ * at once (2026-09-28). A closed shift refuses everyone, the owner included (2026-09-30): the
+ * owner reopens it first. §10.2 lists receipt voids as owner-only; §9.4 (followed here) allows
+ * the author.
  */
+const SHIFT_CLOSED = 'That shift is closed — the network owner must reopen it first';
+
 @Injectable()
 export class VoidIntakeCommand {
   constructor(
@@ -31,7 +38,7 @@ export class VoidIntakeCommand {
     private readonly detail: IntakeDetailQuery,
   ) {}
 
-  async void(actor: AuthenticatedUser, id: string, dto: VoidIntakeDto): Promise<IntakeResponse> {
+  async void(actor: AuthenticatedUser, id: string, dto: VoidDocumentDto): Promise<IntakeResponse> {
     return this.dataSource.transaction(async (m) => {
       // Unlocked stub: a missing id 404s before any lock.
       const stub = await m.findOne(Intake, { where: { id } });
@@ -51,14 +58,13 @@ export class VoidIntakeCommand {
     m: EntityManager,
     actor: AuthenticatedUser,
     id: string,
-    dto: VoidIntakeDto,
+    dto: VoidDocumentDto,
   ): Promise<{ saved: Intake; shift: Shift }> {
     const { intake, shift } = await this.visible.load(actor, id, m);
-    assertCanVoid(
-      actor,
-      { authorId: intake.received_by_user_id, shift },
-      'That shift is closed — ask the network owner to void it',
-    );
+    assertCanVoid(actor, { authorId: intake.received_by_user_id, shift }, SHIFT_CLOSED);
+    if (shift.closed_at) {
+      throw new ForbiddenException({ message: SHIFT_CLOSED, code: 'SHIFT_CLOSED' });
+    }
     if (intake.voided_at) {
       throw new ConflictException({
         message: 'That intake is already voided',
@@ -68,11 +74,6 @@ export class VoidIntakeCommand {
 
     // §3.5: a bound payout shares the receipt's author and shift, so the check above covers it.
     const payout = await this.payouts.findLiveBoundToIntake(m, intake.id);
-    const shiftClosed = shift.closed_at !== null;
-    assertPayoutDecision({ shiftClosed, hasLivePayout: payout !== null }, dto.payout);
-    const decision: AuditedPayoutDecision | undefined = shiftClosed
-      ? dto.payout
-      : 'void_on_open_shift';
 
     // No balance floor: voiding a receipt is the one allowed way into negative debt.
     intake.voided_at = new Date();
@@ -91,7 +92,6 @@ export class VoidIntakeCommand {
           voided_at: saved.voided_at,
           code: saved.code,
           amount: saved.amount,
-          ...(payout ? { payout_decision: decision } : {}),
         },
         note: dto.reason,
       },
@@ -102,12 +102,7 @@ export class VoidIntakeCommand {
     // did not happen. Relies on the supplier lock `withinSupplierLedger` already holds.
     await this.crates.voidReturnForIntake(m, { actor, intakeId: saved.id, reason: dto.reason });
 
-    if (payout && decision !== 'keep') {
-      const voided = await this.payouts.void(m, actor, payout, dto.reason, !shiftClosed);
-      if (decision === 'void_returned') {
-        await this.payouts.settleReturn(m, actor, voided, dto.reason);
-      }
-    }
+    if (payout) await this.payouts.void(m, actor, payout, dto.reason, true);
     return { saved, shift };
   }
 }

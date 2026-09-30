@@ -64,7 +64,6 @@ vi.mock('@/features/void-document', () => ({
     voidDialogMock(props);
     return props.open ? <div data-testid="void-dialog-mock" /> : null;
   },
-  otherCovered: () => '0.00',
   reopenedCodes: () => [],
 }));
 
@@ -611,37 +610,11 @@ describe('ReceiptDialog wiring into VoidDocumentDialog (#125)', () => {
     expect(screen.queryByRole('button', { name: 'Void' })).not.toBeInTheDocument();
   });
 
-  it('still shows Void to the owner on a closed shift', () => {
+  it('hides Void even from the owner once the shift is closed', () => {
     setUp({ me: OWNER, intake: buildIntake({ shift_closed: true }) });
     render(<ReceiptDialog intakeId="intake-1" open onClose={vi.fn()} />);
 
-    expect(screen.getByRole('button', { name: 'Void' })).toBeInTheDocument();
-  });
-
-  it('passes shiftClosed through to the void dialog', () => {
-    setUp({ me: OWNER, intake: buildIntake({ shift_closed: true }) });
-    render(<ReceiptDialog intakeId="intake-1" open onClose={vi.fn()} />);
-
-    expect(voidDialogMock).toHaveBeenLastCalledWith(
-      expect.objectContaining({ shiftClosed: true }),
-    );
-  });
-
-  it('leaves otherCovered null while the settlement has no data', () => {
-    setUp({
-      me: OWNER,
-      intake: buildIntake({
-        payouts: [{ id: 'payout-1', code: 'SHP-PO-1', amount: '3000.00', created_at: '2026-09-08T08:25:00.000Z', voided_at: null }],
-      }),
-    });
-    settlementMock.mockReturnValue({ data: undefined, isPending: true, isError: false });
-    render(<ReceiptDialog intakeId="intake-1" open onClose={vi.fn()} />);
-
-    expect(voidDialogMock).toHaveBeenLastCalledWith(
-      expect.objectContaining({
-        linkedPayout: expect.objectContaining({ otherCovered: null }),
-      }),
-    );
+    expect(screen.queryByRole('button', { name: 'Void' })).not.toBeInTheDocument();
   });
 
   it('passes reopens: null and reopensFailed when the settlement query errors', () => {

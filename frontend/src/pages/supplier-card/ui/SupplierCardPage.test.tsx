@@ -1005,11 +1005,18 @@ describe('SupplierCardPage — «Void» on a receipt row (§9.4)', () => {
   const voidButton = (code: string) => screen.queryByRole('button', { name: `Void ${code}` });
   const LIVE = { id: 'i1', code: 'KV-0001', amount: '1000.00', created_at: '2026-09-08T07:10:00Z' };
 
-  it('is shown to the owner, even on a closed shift', () => {
+  it('is shown to the owner while the shift is open', () => {
+    meMock.mockReturnValue({ data: OWNER, isPending: false, isError: false });
+    intakesMock.mockReturnValue(page<Intake>([intake(LIVE)]));
+    renderCard();
+    expect(voidButton('KV-0001')).toBeInTheDocument();
+  });
+
+  it('is hidden even from the owner once the shift is closed', () => {
     meMock.mockReturnValue({ data: OWNER, isPending: false, isError: false });
     intakesMock.mockReturnValue(page<Intake>([intake({ ...LIVE, shift_closed: true })]));
     renderCard();
-    expect(voidButton('KV-0001')).toBeInTheDocument();
+    expect(voidButton('KV-0001')).not.toBeInTheDocument();
   });
 
   it('is shown to the author while the shift is open', () => {

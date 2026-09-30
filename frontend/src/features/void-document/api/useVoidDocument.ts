@@ -2,14 +2,10 @@ import { useMutation, useQueryClient, type QueryKey } from '@tanstack/react-quer
 import { httpClient, apiErrorCode } from '@/shared/api';
 import { queryKeys } from '@/shared/api/queryKeys';
 
-export type PayoutDecision = 'keep' | 'void' | 'void_returned';
-
 export interface VoidDocumentInput {
   kind: 'intake' | 'payout' | 'transfer' | 'topUp' | 'crateIssuance' | 'crateReturn';
   id: string;
   reason: string;
-  /** Intake only (#125): what happens to the payout issued with it. */
-  payout?: PayoutDecision;
 }
 
 interface VoidDescriptor {
@@ -29,7 +25,7 @@ const DOCUMENT_KEYS: readonly QueryKey[] = [
 const DOCUMENTS: Record<VoidDocumentInput['kind'], VoidDescriptor> = {
   intake: {
     path: (id) => `/intakes/${id}/void`,
-    // + pointCash: an open-shift void or a void_returned puts the payout back in the drawer (2026-09-28).
+    // + pointCash: the void puts the linked payout back in the drawer (2026-09-28).
     // + crates: the void also strikes a crate return the receipt wrote (`returned_crates`, §8.3).
     invalidates: [
       ...DOCUMENT_KEYS,
@@ -72,22 +68,21 @@ const DOCUMENTS: Record<VoidDocumentInput['kind'], VoidDescriptor> = {
 export function useVoidDocumentMutation() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async ({ kind, id, reason, payout }: VoidDocumentInput): Promise<void> => {
-      await httpClient.post(DOCUMENTS[kind].path(id), payout ? { reason, payout } : { reason });
+    mutationFn: async ({ kind, id, reason }: VoidDocumentInput): Promise<void> => {
+      await httpClient.post(DOCUMENTS[kind].path(id), { reason });
     },
     onSuccess: (_data, { kind }) => {
       for (const queryKey of DOCUMENTS[kind].invalidates) {
         qc.invalidateQueries({ queryKey });
       }
     },
-    // These three codes all mean the dialog's own data went stale (a payout
-    // voided or reassigned, or the document itself already voided, since it
-    // was opened) — refetch so reopening shows what actually changed instead
+    // Both codes mean the dialog's own data went stale (the shift closed, or
+    // the document itself already voided, since it was opened) — refetch so reopening shows what actually changed instead
     // of looping on the same stale banner (intake detail has a 60s staleTime
     // and no refetch-on-focus, so nothing else would refresh it).
     onError: (error, { kind }) => {
       const code = apiErrorCode(error);
-      if (code === 'PAYOUT_DECISION_REQUIRED' || code === 'PAYOUT_DECISION_NOT_APPLICABLE' || code === 'ALREADY_VOIDED') {
+      if (code === 'SHIFT_CLOSED' || code === 'ALREADY_VOIDED') {
         for (const queryKey of DOCUMENTS[kind].invalidates) {
           qc.invalidateQueries({ queryKey });
         }

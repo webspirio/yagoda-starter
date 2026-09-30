@@ -21,7 +21,7 @@ import {
 import { useTareTypeOptionsQuery } from '@/entities/tare-type';
 import { usePointOptionsQuery } from '@/entities/collection-point';
 import { useMeQuery } from '@/entities/user';
-import { VoidDocumentDialog, otherCovered, reopenedCodes } from '@/features/void-document';
+import { VoidDocumentDialog, reopenedCodes } from '@/features/void-document';
 import { ReceiptSheet, type ReceiptSheetLine } from './ReceiptSheet';
 
 /** Formats the «Ціна за кг» row's right side when a per-kilogram bonus/markup
@@ -256,9 +256,6 @@ export function ReceiptDialog({
             ? {
                 code: livePayout.code,
                 amount: livePayout.amount,
-                otherCovered: settlementQuery.data
-                  ? otherCovered(settlementQuery.data, livePayout.id, intake.id)
-                  : null,
                 paidAt: livePayout.created_at,
                 // Same actor as the receipt (§3.5) — the response carries no payer name.
                 paidBy: intake.received_by_name,
@@ -270,7 +267,6 @@ export function ReceiptDialog({
               }
             : undefined
         }
-        shiftClosed={intake.shift_closed}
         intakeAmount={intake.amount}
       />
     );

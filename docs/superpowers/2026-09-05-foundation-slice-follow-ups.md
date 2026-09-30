@@ -1369,3 +1369,21 @@ Spec `docs/superpowers/specs/2026-09-27-allocations-cluster-refactor-design.md`,
   `gh issue develop`): no closing reference, the issues stayed open after the
   merge and were handled by hand. Not a repository defect; re-check on the next
   PR before relying on it.
+
+## Deferred from forbidding the closed-shift intake void (2026-09-30)
+
+Nobody voids an intake in a closed shift any more, the owner included; the owner reopens the
+shift first (§9.4, правка 30.09.2026). #125's `keep` / `void` / `void_returned` choice went with it.
+
+- **The closed-shift PAYOUT void is still there.** It keeps `POST /payouts/:id/settle-return`,
+  the «expected return» (`return_settled_at`, `return_note`, the two CHECKs) and the
+  booking-by-date term in `movementsSql` alive. Forbidding it the same way would retire all of
+  that, but it needs a migration. Wait for the client to ask either way.
+- **`buildLedger.ts` ignores `returned_on_void`.** `pages/point-cash/lib/buildLedger.ts` books
+  every settled return on the local date of `return_settled_at` (`returnedToday`). The backend
+  (`point-cash.service.ts`, `movementsSql`) books a `returned_on_void` payout into the payout's
+  OWN shift. The two disagree whenever an open-shift void happens on a different calendar day
+  than the shift's `business_date`: after midnight in a still-open shift, or in a reopened
+  shift. The reopened shift is now the ONLY way to correct a closed day's receipt, so this
+  display gap sits on that path. The server's figure is right; the ledger rows explaining it
+  are not.

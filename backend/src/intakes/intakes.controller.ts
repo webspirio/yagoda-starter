@@ -18,7 +18,7 @@ import { GetIntakeQuery } from './queries/get-intake.query';
 import { ListIntakesQuery } from './queries/list-intakes.query';
 import { CreateIntakeDto } from './dto/create-intake.dto';
 import { PreviewIntakeDto } from './dto/preview-intake.dto';
-import { VoidIntakeDto } from './dto/void-intake.dto';
+import { VoidDocumentDto } from './dto/void-document.dto';
 import { ListIntakesQueryDto } from './dto/list-intakes.query';
 import type { AuthenticatedUser } from '../auth/jwt.strategy';
 
@@ -89,7 +89,7 @@ export class IntakesController {
   void(
     @CurrentUser() actor: AuthenticatedUser,
     @Param('id', ParseUUIDPipe) id: string,
-    @Body() dto: VoidIntakeDto,
+    @Body() dto: VoidDocumentDto,
   ) {
     return this.voidCommand.void(actor, id, dto);
   }
