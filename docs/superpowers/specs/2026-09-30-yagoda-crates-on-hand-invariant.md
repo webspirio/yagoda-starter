@@ -91,15 +91,17 @@ import the leaf.
 assertOnHand(m: EntityManager, pointId: string, required: number): Promise<void>
 ```
 
-1. `SELECT id FROM collection_points WHERE id = $1 FOR UPDATE`.
+1. `SELECT id FROM collection_points WHERE id = $1 FOR NO KEY UPDATE` — serialises guard
+   against guard without conflicting with the `FOR KEY SHARE` that FK inserts naming the point take.
 2. One query: `onHandSql($1) AS after`, `inTransitCratesSql($1) AS in_transit`.
 3. If `after < 0`, throw (§5).
 
 **Concurrency.** Under READ COMMITTED every statement takes a fresh snapshot. A second
 transaction blocked on the point row reads the first one's committed document after the lock
-is released, so two parallel issuances cannot both pass. The point lock is always taken
-**last**, after whatever supplier or document locks the path already takes, so it adds no
-new lock-order inversion. Nothing locks `collection_points` earlier in any path today.
+is released, so two parallel issuances cannot both pass. The point lock is taken after
+whatever supplier or document locks the path already takes; the one lock that follows it is a
+receipt's payout code (PO advisory), and nothing takes that lock and then the point row, so it
+adds no lock-order inversion. Nothing locks `collection_points` earlier in any path today.
 
 ## 5. Error contract
 
