@@ -17,7 +17,7 @@ import { toast } from '@/shared/ui/toast';
 import { cratesRules } from '@/shared/lib/money';
 import { toBannerError, type BannerError } from '@/shared/lib/api-error';
 import { useSuppliersQuery, supplierName } from '@/entities/supplier';
-import type { CrateIssuanceMode } from '@/entities/crate';
+import { useCrateStandingQuery, type CrateIssuanceMode } from '@/entities/crate';
 import { useIssueCratesMutation } from '../api/useIssueCrates';
 
 interface IssueFormValues {
@@ -54,6 +54,10 @@ export function IssueCratesDialog({
   const { t } = useTranslation();
   const issue = useIssueCratesMutation();
   const suppliers = useSuppliersQuery('', pointId ?? null);
+  const standing = useCrateStandingQuery({ pointId: pointId ?? null, isOwner: Boolean(pointId) });
+  const onHand = standing.data?.on_hand;
+  const inTransit = standing.data?.in_transit ?? 0;
+  const noneLeft = onHand !== undefined && onHand <= 0;
 
   const {
     register,
@@ -134,10 +138,26 @@ export function IssueCratesDialog({
                 {...a11y}
                 inputMode="numeric"
                 className="font-mono"
-                {...register('units', cratesRules('crates.errors.unitsFormat'))}
+                {...register('units', {
+                  ...cratesRules('crates.errors.unitsFormat'),
+                  // A hint, not the rule: the server's CrateStockGuard is the final word.
+                  validate: {
+                    format: cratesRules('crates.errors.unitsFormat').validate,
+                    onHand: (v: string) =>
+                      onHand === undefined ||
+                      Number.parseInt(v.trim(), 10) <= onHand ||
+                      'crates.errors.overOnHand',
+                  },
+                })}
               />
             )}
           </Field>
+          {onHand !== undefined ? (
+            <p className={noneLeft ? 'text-sm text-destructive' : 'text-sm text-muted-foreground'}>
+              {t('crates.issue.onHandHint', { on_hand: onHand })}
+              {inTransit > 0 ? ` ${t('crates.issue.inTransitHint', { in_transit: inTransit })}` : null}
+            </p>
+          ) : null}
 
           <Field name="mode" label={t('crates.field.mode')} required error={errors.mode?.message}>
             {(a11y) => (
@@ -163,7 +183,7 @@ export function IssueCratesDialog({
             <Button type="button" variant="ghost" onClick={onClose} disabled={isSubmitting}>
               {t('common.cancel')}
             </Button>
-            <Button type="submit" disabled={isSubmitting}>
+            <Button type="submit" disabled={isSubmitting || noneLeft}>
               {t('crates.issue.submit')}
             </Button>
           </DialogFooter>

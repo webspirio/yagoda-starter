@@ -147,6 +147,8 @@ export interface CrateStanding {
   received: number;
   /** `received − issued + returned − crate-tare on live receipts − breakage`. */
   on_hand: number;
+  /** Σ crates of `sent` transfers — on their way, not yet empties. */
+  in_transit: number;
   in_field: number;
   deposit_units: number;
   deposit_held: string;

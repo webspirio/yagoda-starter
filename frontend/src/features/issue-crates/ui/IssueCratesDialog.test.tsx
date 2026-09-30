@@ -4,10 +4,13 @@ import userEvent from '@testing-library/user-event';
 import { ApiError } from '@/shared/api';
 import { IssueCratesDialog } from './IssueCratesDialog';
 
-const { issueMock, suppliersMock } = vi.hoisted(() => ({
+const { issueMock, suppliersMock, standingMock } = vi.hoisted(() => ({
   issueMock: vi.fn(),
   suppliersMock: vi.fn(),
+  standingMock: vi.fn(),
 }));
+
+vi.mock('@/entities/crate', () => ({ useCrateStandingQuery: (a: unknown) => standingMock(a) }));
 
 vi.mock('../api/useIssueCrates', () => ({
   useIssueCratesMutation: () => ({ mutateAsync: issueMock }),
@@ -30,9 +33,39 @@ beforeEach(() => {
     isError: false,
   });
   issueMock.mockResolvedValue({});
+  standingMock.mockReturnValue({ data: { on_hand: 100, in_transit: 0 } });
 });
 
 describe('IssueCratesDialog', () => {
+  it('shows how many empties the point has', () => {
+    standingMock.mockReturnValue({ data: { on_hand: 7, in_transit: 0 } });
+    open();
+    expect(screen.getByText(/7 empty crates at the point/i)).toBeInTheDocument();
+  });
+
+  it('refuses more than the point has, before asking the server', async () => {
+    standingMock.mockReturnValue({ data: { on_hand: 7, in_transit: 0 } });
+    const user = userEvent.setup();
+    open();
+    await user.selectOptions(screen.getByLabelText('Person'), 's1');
+    await user.type(screen.getByLabelText('Crates'), '8');
+    await user.click(screen.getByRole('button', { name: /^issue$/i }));
+    expect(await screen.findByText(/more than the point has/i)).toBeInTheDocument();
+    expect(issueMock).not.toHaveBeenCalled();
+  });
+
+  it('with no empties, disables Issue and points at the transfer in transit', () => {
+    standingMock.mockReturnValue({ data: { on_hand: 0, in_transit: 20 } });
+    open();
+    expect(screen.getByRole('button', { name: /^issue$/i })).toBeDisabled();
+    expect(screen.getByText(/20 in transit/i)).toBeInTheDocument();
+  });
+
+  it('reads the OWNER-picked point', () => {
+    open('p1');
+    expect(standingMock).toHaveBeenCalledWith({ pointId: 'p1', isOwner: true });
+  });
+
   it('sends the person, a whole number of crates and the mode', async () => {
     const user = userEvent.setup();
     open();
