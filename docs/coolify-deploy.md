@@ -56,13 +56,18 @@ gh release create v0.3.0 --target main --generate-notes --title "v0.3.0"
 ```
 
 The workflow then, in this order and stopping loudly at the first failure:
-resolves the tag (it must exist and its commit must be on `main`); builds and
-pushes the images for that commit with both the `sha-<commit>` and the
-`v0.3.0` tag; checks both images are in GHCR; runs the schema-rollback guard
-(below); moves `production` to the tag's commit; deploys the production
-application and asserts `/api/health/version` equals the commit. Read the
-`deploy-prod` job log for any of those steps; production is untouched until
-the branch move, and the branch move is the last step before the deploy.
+the `docker` job builds and pushes the images for the tag's commit with both
+the `sha-<commit>` and the `v0.3.0` tag (in parallel with `verify`); then
+`deploy-prod` resolves the tag (it must exist and its commit must be on
+`main`), checks both images are in GHCR, runs the release guard (below — a
+release only ever moves production forward), moves `production` to the tag's
+commit, deploys the production application and asserts
+`/api/health/version` equals the commit. Read the `docker` or `deploy-prod`
+job log for any of those steps; production is untouched until the branch
+move, and the branch move is the last step before the deploy.
+
+A release marked *pre-release* deploys nothing; publish it as a full release
+when it is meant for production.
 
 A hotfix is a normal PR to `main` followed by a release. Never tag a commit
 that is not on `main` — the workflow refuses it.
@@ -74,6 +79,11 @@ that is not on `main` — the workflow refuses it.
 code onto a newer schema is the one move that can break production. The
 default rollback is therefore a hotfix release (`v0.3.1`) that fixes or
 reverts the change in code.
+
+**Publishing a release never rolls back.** If production is already at a
+newer release (two releases published in quick succession can finish out of
+order), the guard refuses the older one — «production is already at a NEWER
+release». A rollback is always the manual path below.
 
 **Re-deploying an older release** — *Actions → CI → Run workflow* with
 `tag = v0.2.0` — is allowed when no migration file changed between the
@@ -221,12 +231,22 @@ the preview owner or for this middleware.
      (`nginx/default.conf.template:32`) → the app's own 10 MB cap (`MEDIA_MAX_BYTES`).
 7. **GitHub repository settings**: secrets `COOLIFY_URL`, `COOLIFY_API_TOKEN`
    (Coolify → *Keys & Tokens → API tokens*, permissions `deploy` + `read`; add `write`
-   only if the fallback below is in force), `COOLIFY_APP_UUID` (from the application URL);
+   only if the fallback below is in force), `COOLIFY_APP_UUID` (from the application URL),
+   `PRODUCTION_BRANCH_KEY` — the private half of the write deploy key titled
+   «ci: production branch mover (#186)», which `deploy-prod` uses to move the
+   `production` branch (the Actions token cannot push a range that changes
+   `.github/workflows/*`):
+   `ssh-keygen -t ed25519 -N '' -C ci-production-branch -f key`,
+   `gh repo deploy-key add key.pub --title "ci: production branch mover (#186)" --allow-write`,
+   `gh secret set PRODUCTION_BRANCH_KEY < key`, then delete both local files.
+   To rotate it, delete that deploy key in the repository settings and repeat
+   the three commands;
    variables `COOLIFY_ENABLED=true`, `PROD_URL=https://yagoda.webspirio.com`,
    `PREVIEW_DOMAIN=yagoda.webspirio.com`, `PREVIEW_CAP` (optional; overrides the
-   default cap of 12 live previews without a commit — `ci.yml` reads
-   `vars.PREVIEW_CAP || 12`; the default was recalibrated on 2026-09-10 against
-   the resized server and Coolify's measured RSS — see «Memory» below).
+   default cap of 11 live previews without a commit — `ci.yml` reads
+   `vars.PREVIEW_CAP || 11`; the default was recalibrated on 2026-09-10 against
+   the resized server and Coolify's measured RSS, and lowered from 12 when
+   staging took one slot of the same budget — see «Memory» below).
 8. **Backups**: `scp scripts/vps/backup.sh root@…:/usr/local/bin/yagoda-backup.sh`,
    the two unit files to `/etc/systemd/system/`, `yagoda-backup.env.example` → `/etc/yagoda-backup.env`
    (fill `PG_CONTAINER`, `UPLOADS_VOLUME` from `docker ps` / `docker volume ls` — pick
@@ -308,9 +328,11 @@ changes — only a cross-origin call to a preview API would be refused.
 
 ## When development slows down
 
-Turn **Preview Deployments** off in the application (Coolify removes any live
-previews on their PRs' close as before). Nothing else changes: Coolify keeps
-running production, renewing TLS and taking the nightly backups. To leave
+Turn **Preview Deployments** off in the staging application `yagoda-staging`
+(Coolify removes any live previews on their PRs' close as before), and set the
+repository variable `STAGING_ENABLED=false` to stop redeploying staging on
+every merge. Nothing else changes: Coolify keeps running production, renewing
+TLS and taking the nightly backups. To leave
 Coolify altogether, see the last section.
 
 ## Spike results (fill in during setup — spec §3.1 gates)
@@ -332,9 +354,10 @@ deploy key alone, `POST /api/v1/deploy?uuid=<app>&pr=<N>` is refused with
 from the App's webhook, and `application_previews.pull_request_html_url` is
 `NOT NULL`, so no other path can create the row. Production CD is unaffected —
 `deploy-prod` sends no `&pr=`. That is why the workflow has two gates:
-`COOLIFY_ENABLED` arms production, `PREVIEWS_ENABLED` arms previews. Both are
-`true` since 2026-09-29 (#68); flip `PREVIEWS_ENABLED` to pause previews
-without a commit.
+`COOLIFY_ENABLED` arms production and staging, `STAGING_ENABLED` arms staging,
+`PREVIEWS_ENABLED` arms previews. `COOLIFY_ENABLED` and `PREVIEWS_ENABLED` are
+`true` since 2026-09-29 (#68); flip `PREVIEWS_ENABLED` (or `STAGING_ENABLED`)
+to pause previews (or staging) without a commit.
 
 ### What Coolify renames in a preview
 
@@ -390,9 +413,9 @@ volumes and networks, which this compose deliberately has none of.
 ### The compose comes from `main`, not from the PR
 
 Coolify does not deploy the compose file of the commit it checks out. On every
-deploy — production and preview alike — `ApplicationDeploymentJob` calls
+deploy — production, staging and preview alike — `ApplicationDeploymentJob` calls
 `loadComposeFile()`, which clones the application's configured branch
-(`git_branch`, i.e. `main`) with `only_checkout` (it never passes the PR
+(`git_branch`: `main` for staging and previews, `production` for production) with `only_checkout` (it never passes the PR
 number to `generateGitImportCommands`) and stores that file as
 `docker_compose_raw`; the parser then renders *that* file against the PR's
 commit. Observed on #180: its rendered `docker-compose-pr-180.yaml` still had
@@ -577,12 +600,13 @@ ssh root@<vps> 'docker ps --format "{{.Names}}\t{{.Status}}\t{{.Image}}"; docker
 | A preview runs with a production value (owner password, vault key) although the preview env set differs | the same parser rule: `KEY: ${KEY:-…}` becomes the production literal | bare `${KEY}` only; close the PR to tear the preview down until the compose on `main` is fixed |
 | A preview ignores the PR's change to `docker-compose.prod.yml` | expected — the compose is loaded from `main` on every deploy («The compose comes from `main`») | merge, then check the next preview |
 | Coolify lists a **failed** deployment seconds after every PR push, before CI is green | expected: the App webhook deploys `sha-<head>` before CI has pushed it; the pull fails, and it runs before the old containers are stopped, so a live preview stays up | nothing — `deploy-preview`'s API deploy is the one that counts |
-| «Preview not deployed — limit reached» | `PREVIEW_CAP` live previews (default 12). A PR whose deploy FAILED keeps its `preview` label on purpose — the stack is still running and still holding memory | close or merge an older PR, or remove its `preview` label once you have confirmed Coolify no longer runs that preview |
+| «Preview not deployed — limit reached» | `PREVIEW_CAP` live previews (default 11). A PR whose deploy FAILED keeps its `preview` label on purpose — the stack is still running and still holding memory | close or merge an older PR, or remove its `preview` label once you have confirmed Coolify no longer runs that preview |
 | `deploy-preview` shows "cancelled", no comment | another PR took the single pending slot of the `preview-allocation` concurrency group while this one waited | re-run the job |
-| `deploy-prod` skipped with «main is at X, not Y» | correct: a newer merge owns production, and its own run deploys it | nothing — unless that newer run went red, in which case prod is deliberately behind `main` until it is fixed and re-run |
-| CI green but production still on the old commit | a deploy job was *skipped*, not run — a skip anywhere upstream in `needs` propagates | check the `deploy-prod` job exists in the run at all, then `/api/health/version` |
+| `deploy-staging` skipped with «main is at X, not Y» | correct: a newer merge owns staging, and its own run deploys it | nothing — unless that newer run went red, in which case staging is behind `main` until it is fixed and re-run |
+| CI green after a merge but production unchanged | expected — production moves only on a release («Releasing to production»); check staging instead | publish a release when the change is meant for production |
 | Prod is wrong after a release | | re-deploy the previous release (*Run workflow* with its tag) or ship a hotfix release — «Rolling back». **Neither reverts schema migrations** — see `docs/backup-restore.md` to restore last night's pair if a migration destroyed data. |
 | `deploy-prod`: «no tag named …» / «… is not on main» | the Release was published from a tag that does not exist or was not cut from `main` | delete the Release, tag the right `main` commit, publish again |
+| `deploy-prod` on a release: «production is already at a NEWER release» | a newer release finished first; a release only moves production forward | nothing — production already runs the newer release; to go back deliberately, *Run workflow* with the older tag — «Rolling back» |
 | `deploy-prod`: «rolling back production … crosses these migrations» | the target release is older than a migration that is live | forward-fix (hotfix release); or re-run with `allow_schema_rollback=true` after verifying the down path — «Rolling back» |
 | Staging did not update after a merge | `deploy-staging` skipped (`STAGING_ENABLED` not `true`, or a newer merge superseded the run) | check the job's notice; the newer merge's own run owns staging |
 

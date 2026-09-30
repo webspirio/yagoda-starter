@@ -228,3 +228,24 @@ sitting.
 Basic auth on staging/previews; a scheduled reset of staging data; a copy of
 production data on staging; Coolify rolling updates; release notes tooling
 (release-please) — each a separate ticket if wanted.
+
+## 9. Amendment (2026-09-30, review fix wave)
+
+- **F1 — a release only moves production forward.** Two releases published in
+  quick succession can finish out of order. `release-guard.sh` takes a fifth
+  argument, `MODE` (`release` | `dispatch`); in `release` mode any backward
+  move is refused outright. Rollbacks go only through `workflow_dispatch`,
+  where the §4.1 step 3 migration check applies as written.
+- **F2 — the `production` move uses a deploy key, not `GITHUB_TOKEN`.**
+  Supersedes the §4.1 step 4 sentence about `GITHUB_TOKEN`: an Actions token
+  cannot update a ref whose pushed range changes `.github/workflows/*` without
+  the `workflows` permission, which `permissions:` cannot grant. `deploy-prod`
+  checks out with the write deploy key in secret `PRODUCTION_BRANCH_KEY` and
+  keeps `contents: read`.
+- **F3 — a dispatch really does not rebuild or wait on `main`.** On
+  `workflow_dispatch` the `docker` job builds nothing, `verify` is skipped (a
+  red `main` must not block a rollback; §4.1's «`verify` unchanged» no longer
+  holds for dispatch), and the run gets its own concurrency group keyed by the
+  tag, so a merge cannot cancel a pending rollback or vice versa.
+- **F4 — a GitHub pre-release deploys nothing.** `deploy-prod` requires
+  `github.event.release.prerelease != true`.
