@@ -14,18 +14,91 @@ Design: `docs/superpowers/specs/2026-09-09-coolify-deployment-and-cd-design.md`.
 | `https://pr-<N>.yagoda.webspirio.com` | preview of PR `N`, seeded, removed on close |
 | `https://coolify.yagoda.webspirio.com` | the Coolify panel |
 
+## Environments
+
+| Environment | Git | Coolify application | Data | Deploy trigger | URL |
+|---|---|---|---|---|---|
+| production | branch `production` — moved only by releases | `yagoda` | real; no seed | a published GitHub Release `vX.Y.Z`, or a manual re-deploy of one (`workflow_dispatch`) | `https://yagoda.webspirio.com` |
+| staging | branch `main` | `yagoda-staging` (environment `staging`) | demo seed + whatever testers add; persists across deploys | every push to `main` | `https://staging.yagoda.webspirio.com` |
+| preview `N` | the PR's head | a preview of `yagoda-staging` | demo seed; torn down when the PR closes | `deploy-preview` on an internal PR | `https://pr-N.yagoda.webspirio.com` |
+
+`main` is never deployed to production directly, and nobody pushes
+`production` by hand: the release workflow fast-forwards it (or, for an
+explicit rollback, force-moves it), so every move is a workflow run with a
+log. Previews belong to the staging application because the GitHub App
+matches a PR webhook to an application by its branch — the PR's base,
+`main` — and production no longer tracks `main`.
+
 ## How a deploy happens
 
-1. CI (`docker` job) pushes `ghcr.io/webspirio/yagoda-starter-{backend,nginx}:sha-<commit>`.
-2. `deploy-prod` (push to `main`) or `deploy-preview` (internal PR, all CI jobs green)
-   calls `POST /api/v1/deploy` on Coolify (`scripts/ci/coolify-deploy.sh`).
-3. Coolify checks out the commit, sets `SOURCE_COMMIT`, and runs
-   `docker compose up` on `docker-compose.prod.yml`, whose `image:` lines resolve
-   to `sha-${SOURCE_COMMIT}` (the `SOURCE_COMMIT` behaviour is confirmed by the
-   spike below before the first real deploy).
+1. CI (`docker` job) pushes `ghcr.io/webspirio/yagoda-starter-{backend,nginx}:sha-<commit>`
+   on every PR, every push to `main` and every release (a release also tags
+   the same image `vX.Y.Z`).
+2. `deploy-staging` (push to `main`), `deploy-preview` (internal PR, all CI
+   jobs green) or `deploy-prod` (release) calls `POST /api/v1/deploy` on
+   Coolify (`scripts/ci/coolify-deploy.sh`) for the matching application.
+3. Coolify checks out the application's branch HEAD (`main` for staging and
+   previews, `production` for production — which `deploy-prod` has just moved
+   to the release commit), sets `SOURCE_COMMIT`, and runs `docker compose up`
+   on `docker-compose.prod.yml`, whose `image:` lines resolve to
+   `sha-${SOURCE_COMMIT}`.
 4. The job waits for Coolify, then checks `/api/health/ready`,
-   `/api/health/version == sha-<commit>` and (previews) a seeded login, and only
-   then comments «Preview ready» / passes.
+   `/api/health/version == sha-<commit>` and (staging, previews) a seeded
+   login, and only then passes / comments «Preview ready».
+
+## Releasing to production
+
+A release is a GitHub Release published from `main`:
+
+```bash
+gh release create v0.3.0 --target main --generate-notes --title "v0.3.0"
+```
+
+The workflow then, in this order and stopping loudly at the first failure:
+resolves the tag (it must exist and its commit must be on `main`); builds and
+pushes the images for that commit with both the `sha-<commit>` and the
+`v0.3.0` tag; checks both images are in GHCR; runs the schema-rollback guard
+(below); moves `production` to the tag's commit; deploys the production
+application and asserts `/api/health/version` equals the commit. Read the
+`deploy-prod` job log for any of those steps; production is untouched until
+the branch move, and the branch move is the last step before the deploy.
+
+A hotfix is a normal PR to `main` followed by a release. Never tag a commit
+that is not on `main` — the workflow refuses it.
+
+## Rolling back
+
+**Forward-fix first.** Migrations run on backend start-up
+(`migrationsRun: true`) and never roll back by themselves, so deploying older
+code onto a newer schema is the one move that can break production. The
+default rollback is therefore a hotfix release (`v0.3.1`) that fixes or
+reverts the change in code.
+
+**Re-deploying an older release** — *Actions → CI → Run workflow* with
+`tag = v0.2.0` — is allowed when no migration file changed between the
+commit `production` points at and the target: `deploy-prod` runs
+`scripts/ci/release-guard.sh`, which refuses a move backwards across
+`backend/src/migrations/` and prints the files. `allow_schema_rollback=true`
+turns that refusal into a warning; use it only after verifying the down path
+by hand (or after restoring the pair from `docs/backup-restore.md`). A
+release's images are `v*`-tagged, which the weekly cleanup never deletes, so
+an old release always has its images.
+
+**After a failed production deploy** the `production` branch may point at a
+commit that is not live (the branch moves before the deploy call).
+`/api/health/version` is the truth, never the branch: re-run the release
+(same tag) or re-deploy the previous one; both move the branch again.
+
+## Staging
+
+Staging is `main`, always: every merge redeploys `yagoda-staging` within
+minutes (`deploy-staging`, paused with `STAGING_ENABLED=false`). It boots with
+the demo seed (`SEED_DEV_DATA=true`, idempotent) and keeps its Postgres and
+uploads volumes across deploys, so test data accumulates until someone
+resets it: Coolify → `yagoda-staging` → *Persistent Storage* → delete the
+`pg-data` and `uploads-data` volumes → *Redeploy* (the next boot re-seeds).
+It runs at the preview-sized memory defaults (see «Memory»); it is public,
+like previews, and its owner password lives only in its Coolify env set.
 
 Coolify's own auto-deploy is **off**, so production is deployed by CI alone and
 Coolify never pulls a `main` tag that has not been pushed yet. Previews are
@@ -87,7 +160,8 @@ the preview owner or for this middleware.
    what makes GitHub create the App under the org rather than under the
    clicking user; an App owned by a personal account cannot be installed on
    the org's repositories at all (what stalled #68). Register it, then install
-   it on `yagoda-starter` only. Done 2026-09-29, with two surprises the panel
+   it on `yagoda-starter` only (Preview Deployments are a per-application
+   setting — see step 6). Done 2026-09-29, with two surprises the panel
    does not explain:
    - the redirect back from GitHub answered **422**, yet the App row was
      saved (`github_apps`: app id, client id, private key and webhook secret
@@ -118,14 +192,22 @@ the preview owner or for this middleware.
    repo `webspirio/yagoda-starter`, branch `main`, build pack **Docker Compose**,
    compose location `/docker-compose.prod.yml`. Then:
    - *General*: domain for service `nginx` = `https://yagoda.webspirio.com`; **Auto Deploy: off**;
-     *Preview Deployments*: on, URL template `pr-{{pr_id}}.yagoda.webspirio.com`;
-     *Watch Paths*: **blank** — a watch path also filters the PR webhook, and
-     it returns *before* the preview record is created, so CI's deploy would be
-     refused with «Pull request N not found» again. Leave *Preview deployments
-     from public contributors* off: fork PRs and non-member authors then get no
-     preview at all, which matches CI (it never pushes their images either).
-   - *Advanced*: **Include Source Commit** (`SOURCE_COMMIT`) on.
-   - *Environment Variables* — production and preview sets below.
+     **Preview Deployments: off** (previews belong to the staging application);
+     branch **`production`** — not `main`; only the release workflow moves it
+     (`docs/coolify-deploy.md` «Releasing to production»).
+   - *Advanced*: **Include Source Commit** (`SOURCE_COMMIT`) on; *Watch Paths* blank.
+   - *Environment Variables* — the production set below.
+   - **Staging application** `yagoda-staging` (project *yagoda*, environment
+     `staging`, created 2026-09-30 through the API — the exact calls are in
+     `docs/superpowers/plans/2026-09-30-staging-deployment.md`, Task 5): same
+     repository through the App, branch **`main`**, Docker Compose,
+     `/docker-compose.prod.yml`, domain for `nginx` =
+     `https://staging.yagoda.webspirio.com`; **Auto Deploy off**;
+     **Preview Deployments on**, URL template `pr-{{pr_id}}.yagoda.webspirio.com`,
+     *PR deployment access: repository members only*; *Watch Paths* **blank** —
+     a watch path also filters the PR webhook, and it returns *before* the
+     preview record is created, so CI's deploy would be refused with
+     «Pull request N not found». Two env sets: staging (its own) and preview.
    - Request body size: **nothing to configure.** Traefik imposes no default
      limit (`buffering.maxRequestBodyBytes` defaults to 0 = unlimited), and the
      `buffering` middleware is opt-in — adding it would *introduce* a cap and
@@ -153,19 +235,19 @@ the preview owner or for this middleware.
 
 ## Environment variables in Coolify
 
-| Variable | Production | Preview | Note |
-|---|---|---|---|
-| `APP_URL` | `https://yagoda.webspirio.com` | `https://pr-{{pr_id}}.yagoda.webspirio.com`¹ | CORS allowlist |
-| `JWT_SECRET` | 48+ random chars | different 48+ random chars | `openssl rand -base64 48` |
-| `DB_PASSWORD` | random | random | |
-| `BOOTSTRAP_OWNER_LOGIN` / `_PASSWORD` / `_FIRST_NAME` / `_LAST_NAME` | the real owner | `owner` / *generate one* / `Preview` / `Owner` | read once, on the first boot of an empty DB. Generate the preview password too (`openssl rand -base64 18`) and keep it in Coolify only — a password written into a repo doc is a password on every preview forever |
-| `PASSWORD_VAULT_KEY` | *(set it, or leave the feature off)* | *(optional)* | `openssl rand -base64 32`. Lets the owner READ an issued password back on «Користувачі» (issue #11). Absent = the feature is off and passwords are hashed only. **Never change it after passwords have been issued** — the existing copies stop opening (logins keep working; each password has to be reissued to become readable again) |
-| `SEED_DEV_DATA` | *(absent — or the empty row the parser creates by itself)* | `true` | enables the one-shot `seed` service — **the only thing that keeps demo data out of production; never set it in the production env set**. Written as `${SEED_DEV_DATA}` in the compose: with a `:-` default the parser hardcodes production's empty value into previews and the seed never runs (see below) |
-| `IMAGE_TAG` | *(absent)* | *(absent)* | **never set** unless the fallback below is in force |
-| `POSTGRES_MEM_LIMIT` | `768m` | *(absent → 256m)* | see «Memory» below |
-| `BACKEND_MEM_LIMIT` / `BACKEND_HEAP_MB` | `768m` / `576` | *(absent → 384m / 256)* | the heap cap must stay well below the mem_limit, so an OOM is a Node error, not a SIGKILL |
-| `REDIS_MEM_LIMIT` / `NGINX_MEM_LIMIT` | `128m` / `64m` | *(absent → 64m / 64m)* | |
-| `SEED_MEM_LIMIT` / `SEED_HEAP_MB` | *(irrelevant — no seed in prod)* | *(absent → 256m / 192)* | |
+| Variable | Production (`yagoda`) | Staging (`yagoda-staging`) | Preview (`yagoda-staging`, preview set) | Note |
+|---|---|---|---|---|
+| `APP_URL` | `https://yagoda.webspirio.com` | `https://staging.yagoda.webspirio.com` | `https://yagoda.webspirio.com`¹ | CORS allowlist |
+| `JWT_SECRET` | 48+ random chars | different 48+ random chars | different again | `openssl rand -base64 48` |
+| `DB_PASSWORD` | random | random | random | |
+| `BOOTSTRAP_OWNER_LOGIN` / `_PASSWORD` / `_FIRST_NAME` / `_LAST_NAME` | the real owner | `owner` / *generated* / `Staging` / `Owner` | `owner` / *generated* / `Preview` / `Owner` | read once, on the first boot of an empty DB. Each password is generated on the server and lives only in its Coolify set — a password written into a repo doc is a password on every deploy forever |
+| `PASSWORD_VAULT_KEY` | *(set it, or leave the feature off)* | *(optional)* | *(optional)* | `openssl rand -base64 32`. Lets the owner READ an issued password back on «Користувачі» (issue #11). Absent = the feature is off and passwords are hashed only. **Never change it after passwords have been issued** — the existing copies stop opening (logins keep working; each password has to be reissued to become readable again) |
+| `SEED_DEV_DATA` | *(absent — or the empty row the parser creates by itself)* | `true` | `true` | enables the one-shot `seed` service — **the only thing that keeps demo data out of production; never set it in the production env set**. Written as `${SEED_DEV_DATA}` in the compose: with a `:-` default the parser hardcodes production's empty value into previews and the seed never runs (see below) |
+| `IMAGE_TAG` | *(absent)* | *(absent)* | *(absent)* | **never set** unless the fallback below is in force |
+| `POSTGRES_MEM_LIMIT` | `768m` | *(absent → 256m)* | *(absent → 256m)* | see «Memory» below |
+| `BACKEND_MEM_LIMIT` / `BACKEND_HEAP_MB` | `768m` / `576` | *(absent → 384m / 256)* | *(absent → 384m / 256)* | the heap cap must stay well below the mem_limit, so an OOM is a Node error, not a SIGKILL |
+| `REDIS_MEM_LIMIT` / `NGINX_MEM_LIMIT` | `128m` / `64m` | *(absent → 64m / 64m)* | *(absent → 64m / 64m)* | |
+| `SEED_MEM_LIMIT` / `SEED_HEAP_MB` | *(irrelevant — no seed in prod)* | *(absent → 256m / 192)* | *(absent → 256m / 192)* | |
 
 **`KEY: ${KEY:-default}` is rewritten by Coolify's parser — never use it for a
 key an env set defines.** For an `environment:` entry whose value is a
@@ -207,11 +289,13 @@ merged before any preview could pick it up (see «The compose comes from
 `main`» below).
 
 Budget on the resized server (measured 2026-09-10): 7.56 GiB total − 0.37 OS −
-0.63 Coolify − ~1.0 production ≈ **5.5 GiB** for previews. At ~0.25 GiB each,
-the cap of 12 (`PREVIEW_CAP`, `ci.yml`) uses ~3.0 and leaves ~2.5 GiB, well past
-the ≥0.8–1.0 GiB the design requires. Raise the cap with
-`gh variable set PREVIEW_CAP --body <n>` — it takes effect on the next run, with
-no commit.
+0.63 Coolify − ~1.0 production ≈ **5.5 GiB** for previews. Staging runs at the
+same preview-sized defaults and is always on, so it is the first tenant of
+that budget: ~0.25 GiB. At ~0.25 GiB per preview, the cap of **11**
+(`PREVIEW_CAP`, `ci.yml`; 12 before staging existed) uses ~2.75, which with
+staging's ~0.25 leaves ~2.5 GiB — well past the ≥0.8–1.0 GiB the design
+requires. Raise the cap with `gh variable set PREVIEW_CAP --body <n>` — it
+takes effect on the next run, with no commit.
 
 ¹ Coolify substitutes `{{pr_id}}` in the preview URL template; whether it does so
 inside env values is checked in the spike. If it does not, set the preview
@@ -494,7 +578,10 @@ ssh root@<vps> 'docker ps --format "{{.Names}}\t{{.Status}}\t{{.Image}}"; docker
 | `deploy-preview` shows "cancelled", no comment | another PR took the single pending slot of the `preview-allocation` concurrency group while this one waited | re-run the job |
 | `deploy-prod` skipped with «main is at X, not Y» | correct: a newer merge owns production, and its own run deploys it | nothing — unless that newer run went red, in which case prod is deliberately behind `main` until it is fixed and re-run |
 | CI green but production still on the old commit | a deploy job was *skipped*, not run — a skip anywhere upstream in `needs` propagates | check the `deploy-prod` job exists in the run at all, then `/api/health/version` |
-| Prod is wrong after a merge | | `git revert <merge>` + push. **This does not revert schema migrations** — see `docs/backup-restore.md` to restore last night's pair if a migration destroyed data. |
+| Prod is wrong after a release | | re-deploy the previous release (*Run workflow* with its tag) or ship a hotfix release — «Rolling back». **Neither reverts schema migrations** — see `docs/backup-restore.md` to restore last night's pair if a migration destroyed data. |
+| `deploy-prod`: «no tag named …» / «… is not on main» | the Release was published from a tag that does not exist or was not cut from `main` | delete the Release, tag the right `main` commit, publish again |
+| `deploy-prod`: «rolling back production … crosses these migrations» | the target release is older than a migration that is live | forward-fix (hotfix release); or re-run with `allow_schema_rollback=true` after verifying the down path — «Rolling back» |
+| Staging did not update after a merge | `deploy-staging` skipped (`STAGING_ENABLED` not `true`, or a newer merge superseded the run) | check the job's notice; the newer merge's own run owns staging |
 
 ## Leaving Coolify
 
