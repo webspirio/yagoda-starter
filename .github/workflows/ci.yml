@@ -65,8 +65,12 @@ jobs:
         #   - root package manifest + lockfile
         #   - .dockerignore
         #
-        #   - docker-compose*.yml  Coolify deploys the compose file FROM THE PR
-        #                          BRANCH, so it is a deploy input too
+        #   - docker-compose*.yml  NOT because Coolify deploys the PR's copy —
+        #                          it loads the compose from main on every
+        #                          deploy (docs/coolify-deploy.md «The compose
+        #                          comes from main») — but so that a PR editing
+        #                          it still builds images and gets a preview of
+        #                          its code at all
         #   - .github/workflows/** a workflow change must exercise the build
         #
         # turbo.json is intentionally absent: the Dockerfiles invoke workspace
@@ -178,7 +182,7 @@ jobs:
   # than assumed: `changes`' trigger set is a strict SUPERSET of what the two
   # Dockerfiles actually COPY (backend/Dockerfile takes package.json,
   # package-lock.json, backend/package.json and backend/; nginx/Dockerfile takes
-  # those two plus frontend/package.json, frontend/ and nginx/nginx.conf), and no
+  # those two plus frontend/package.json, frontend/ and nginx/default.conf.template), and no
   # root tsconfig feeds either — the only `extends` in the repo is
   # backend/tsconfig.build.json pointing at its own sibling. So when this job skips
   # its build, no input to either image changed.
@@ -465,7 +469,7 @@ jobs:
     # (`npm run build -w frontend`, the identical `tsc -b && vite build` the
     # `build` row runs on the host, run again from scratch inside the
     # container) before copying frontend/dist onto an nginx-unprivileged base
-    # together with nginx/nginx.conf. A compile error, a failing npm ci, or a
+    # together with nginx/default.conf.template. A compile error, a failing npm ci, or a
     # COPY naming a path absent from the stage it draws from fails this job.
     # AS A DATED SNAPSHOT, MEASURED 2026-09-15: 24 Dockerfile steps across four
     # stages for the backend, 12 across two for nginx; 487 MB and 93 MB per
@@ -484,7 +488,7 @@ jobs:
     # actually wired together with env vars, volumes and networks, is never
     # invoked or validated: a correct image plus a compose file naming the
     # wrong one is invisible here. The two are built in complete ISOLATION from
-    # each other, so nginx.conf proxying /api/ to a route the backend renamed
+    # each other, so the nginx template proxying /api/ to a route the backend renamed
     # is invisible too. And the `type=gha` cache below means a layer whose
     # cache key did not change is TRUSTED rather than re-executed — the
     # deleted row had the identical hole (it never passed --no-cache either),
@@ -625,7 +629,9 @@ jobs:
     # the PR, and it only ever learns that from the App's webhook. Production
     # CD needs no PR record, so it stays armed while previews are switched off;
     # without the split, every PR would carry a red job for a capability that
-    # is not installed. Set this to true once issue #68 is closed.
+    # is not installed. The App has been installed since 2026-09-29 (#68) and
+    # the variable is true; it stays a variable so previews can be paused
+    # without a commit (docs/coolify-deploy.md «When development slows down»).
     if: >-
       !cancelled()
       && needs.verify.result == 'success'

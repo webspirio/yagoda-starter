@@ -262,6 +262,9 @@ test('the runner default still clears every row that inherits it, and that set i
     schema: 350,
     bundle: 188,
     testfiles: 158,
+    // `compose`: bash `time`, slowest of ten `npm run compose:check` on the laptop — the same
+    // method as the four above minus /usr/bin/time, which this laptop does not have.
+    compose: 403,
   }
 
   const inheriting = CHECKS.filter((c) => c.timeoutMs === undefined).map((c) => c.id)

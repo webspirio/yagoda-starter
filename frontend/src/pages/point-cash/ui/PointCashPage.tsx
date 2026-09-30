@@ -18,19 +18,20 @@ import { useIntakesQuery } from '@/entities/intake';
 import { usePayoutsQuery } from '@/entities/payout';
 import { useTransfersQuery } from '@/entities/transfer';
 import { useCashCountsQuery } from '@/entities/cash-count';
-import { useShiftOnDateQuery } from '@/entities/shift';
+import { useShiftOnDateQuery, useCurrentShiftQuery } from '@/entities/shift';
 import { SetTargetCashDialog } from '@/features/set-point-target';
 import {
   useOpenShiftMutation,
   useCloseShiftMutation,
   CountDrawerDialog,
   CountResultView,
+  OpenShiftAlert,
 } from '@/features/count-shift';
 import { CashLedger } from './CashLedger';
 import { CratesBookCard } from './CratesBookCard';
 import { IncomingTransfers } from './IncomingTransfers';
 import { CashCountHistory } from './CashCountHistory';
-import { ShiftCountPanel } from './ShiftCountPanel';
+import { ShiftCountPanel, type OpenShiftGate } from './ShiftCountPanel';
 
 /** What the shift-count dialog is open for: which verb, and — for a close —
  *  the shift it closes. Same shape `pages/day/ui/DayPage.tsx` keeps locally;
@@ -183,6 +184,18 @@ export function PointCashPage() {
   // whether this one section's read succeeded, so only `ShiftCountPanel`
   // degrades — not the whole screen.
   const isShiftError = shift.isError || shiftCashCounts.isError;
+  // #114 — `shift` answers only for the date on screen; a shift left open on
+  // an earlier day is invisible to it, and «Відкрити зміну» over one is the
+  // SHIFT_ALREADY_OPEN refusal of #113. `/shifts/current` is date-blind — the
+  // same gate `pages/day` and `pages/reception` put on their own button.
+  const current = useCurrentShiftQuery(pointId);
+  const openShiftGate: OpenShiftGate = current.isError
+    ? 'failed'
+    : current.isPending
+      ? 'checking'
+      : current.data == null
+        ? 'allowed'
+        : 'blocked';
   const panelCounts = shiftCashCounts.data?.data ?? [];
   // §7.6 — the panel's own result-view lookup needs the SAME berry-only
   // narrowing `ShiftCountPanel` applies to its own copy of this array; kept
@@ -512,6 +525,7 @@ export function PointCashPage() {
               isOperator={isOperator}
               isToday={isToday}
               onOpenShift={() => openCountDialog({ mode: 'open' })}
+              openShiftGate={openShiftGate}
               onCloseShift={(shiftId) => openCountDialog({ mode: 'close', shiftId })}
             />
           </div>
@@ -558,6 +572,12 @@ export function PointCashPage() {
         stats={stats}
         statColumns={3}
       >
+        <OpenShiftAlert
+          pointId={pointId}
+          viewedDate={date}
+          // The same page, another `?date=` — where the panel offers the close.
+          onGoToDate={setDateParam}
+        />
         {body}
       </DashboardPage>
 

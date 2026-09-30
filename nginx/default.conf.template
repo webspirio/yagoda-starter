@@ -1,5 +1,13 @@
-# This file is included into the http {} context via /etc/nginx/conf.d/*.conf
-# (see nginx/Dockerfile), so `map` — which is only valid at http scope — can
+# A TEMPLATE, not a finished config: the nginx image's entrypoint runs envsubst
+# over /etc/nginx/templates/*.template into /etc/nginx/conf.d/default.conf at
+# start-up, substituting ONLY ${BACKEND_HOST} (NGINX_ENVSUBST_FILTER in
+# nginx/Dockerfile) — every other `$name` below is an nginx variable and must
+# stay untouched. BACKEND_HOST is `backend` in production and `backend-pr-<N>`
+# in a Coolify preview, where every service carries that suffix
+# (docker-compose.prod.yml).
+#
+# The rendered file is included into the http {} context via
+# /etc/nginx/conf.d/*.conf, so `map` — which is only valid at http scope — can
 # live here even though there's no explicit `http { ... }` wrapper in this file.
 #
 # Upgrade/Connection passthrough for WebSocket support: falls back to "close"
@@ -37,7 +45,7 @@ server {
     add_header Content-Security-Policy "frame-ancestors 'none'" always;
 
     location /api/ {
-        proxy_pass http://backend:3000/;
+        proxy_pass http://${BACKEND_HOST}:3000/;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
@@ -61,7 +69,7 @@ server {
     # Nest under /uploads/. Without this block they fall through to
     # `location /` and get the SPA index.html instead of the image.
     location /uploads/ {
-        proxy_pass http://backend:3000;
+        proxy_pass http://${BACKEND_HOST}:3000;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
