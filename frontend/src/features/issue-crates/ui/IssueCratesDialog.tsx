@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { useForm, useWatch } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
 import {
@@ -16,6 +17,8 @@ import { Button } from '@/shared/ui/button';
 import { toast } from '@/shared/ui/toast';
 import { cratesRules } from '@/shared/lib/money';
 import { toBannerError, type BannerError } from '@/shared/lib/api-error';
+import { ApiError } from '@/shared/api';
+import { queryKeys } from '@/shared/api/queryKeys';
 import { useSuppliersQuery, supplierName } from '@/entities/supplier';
 import { useCrateStandingQuery, type CrateIssuanceMode } from '@/entities/crate';
 import { useIssueCratesMutation } from '../api/useIssueCrates';
@@ -52,6 +55,7 @@ export function IssueCratesDialog({
   onClose: () => void;
 }) {
   const { t } = useTranslation();
+  const qc = useQueryClient();
   const issue = useIssueCratesMutation();
   const suppliers = useSuppliersQuery('', pointId ?? null);
   const standing = useCrateStandingQuery({ pointId: pointId ?? null, isOwner: Boolean(pointId) });
@@ -86,6 +90,10 @@ export function IssueCratesDialog({
       toast.success(t('crates.issue.toast'));
       onClose();
     } catch (error) {
+      // The server counted differently from the hint — bring the hint up to its figure.
+      if (error instanceof ApiError && error.code === 'CRATES_ON_HAND_INSUFFICIENT') {
+        void qc.invalidateQueries({ queryKey: queryKeys.crateBalances });
+      }
       setFormError(
         toBannerError(error, 'crates.errors.issueFailed', {
           // Shared code, screen-specific consequence — see `apiErrorToBanner`.
@@ -132,6 +140,7 @@ export function IssueCratesDialog({
             label={t('crates.field.units')}
             required
             error={errors.units?.message}
+            errorParams={{ on_hand: onHand }}
           >
             {(a11y) => (
               <TextInput

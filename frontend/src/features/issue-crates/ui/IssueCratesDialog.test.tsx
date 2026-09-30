@@ -1,7 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ApiError } from '@/shared/api';
+import { queryKeys } from '@/shared/api/queryKeys';
 import { IssueCratesDialog } from './IssueCratesDialog';
 
 const { issueMock, suppliersMock, standingMock } = vi.hoisted(() => ({
@@ -22,11 +24,17 @@ vi.mock('@/entities/supplier', () => ({
     `${s.first_name} ${s.last_name}`,
 }));
 
+let queryClient: QueryClient;
 const open = (pointId?: string) =>
-  render(<IssueCratesDialog pointId={pointId} open onClose={() => {}} />);
+  render(
+    <QueryClientProvider client={queryClient}>
+      <IssueCratesDialog pointId={pointId} open onClose={() => {}} />
+    </QueryClientProvider>,
+  );
 
 beforeEach(() => {
   vi.clearAllMocks();
+  queryClient = new QueryClient();
   suppliersMock.mockReturnValue({
     data: { data: [{ id: 's1', first_name: 'Василь', last_name: 'Яремчук' }], total: 1 },
     isPending: false,
@@ -50,8 +58,23 @@ describe('IssueCratesDialog', () => {
     await user.selectOptions(screen.getByLabelText('Person'), 's1');
     await user.type(screen.getByLabelText('Crates'), '8');
     await user.click(screen.getByRole('button', { name: /^issue$/i }));
-    expect(await screen.findByText(/more than the point has/i)).toBeInTheDocument();
+    expect(await screen.findByText(/only 7 empty crates at the point/i)).toBeInTheDocument();
     expect(issueMock).not.toHaveBeenCalled();
+  });
+
+  it('when the server refuses on empties, refetches the standing so the hint catches up', async () => {
+    const user = userEvent.setup();
+    issueMock.mockRejectedValue(
+      new ApiError(409, 'x', undefined, 'CRATES_ON_HAND_INSUFFICIENT', {
+        code: 'CRATES_ON_HAND_INSUFFICIENT', available: 3, required: 5, in_transit: 0, message: 'x',
+      }),
+    );
+    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries');
+    open();
+    await user.selectOptions(screen.getByLabelText('Person'), 's1');
+    await user.type(screen.getByLabelText('Crates'), '5');
+    await user.click(screen.getByRole('button', { name: /^issue$/i }));
+    await waitFor(() => expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: queryKeys.crateBalances }));
   });
 
   it('with no empties, disables Issue and points at the transfer in transit', () => {

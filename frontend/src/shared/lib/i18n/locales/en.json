@@ -1361,7 +1361,7 @@
       "hasReturns": "A return has already been allocated against this issuance — void the return first",
       "returnBelongsToIntake": "This return was recorded with a receipt — void the receipt instead",
       "supplierInactive": "This person is deactivated, so crates cannot be issued to them",
-      "overOnHand": "More than the point has empty."
+      "overOnHand": "Only {{on_hand}} empty crates at the point."
     }
   },
   "reweigh": {
