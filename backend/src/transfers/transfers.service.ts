@@ -416,8 +416,9 @@ export class TransfersService {
         m,
       );
 
-      // A resolution below the point's own count takes the difference back out of the empties.
-      if (dto.resolved_crates < before) {
+      // A resolution below the point's own count takes the difference back out of the empties —
+      // unless the transfer is voided: it counts nothing either way, so there is nothing to take.
+      if (!transfer.voided_at && dto.resolved_crates < before) {
         await this.stock.assertOnHand(m, saved.collection_point_id, before - dto.resolved_crates);
       }
 

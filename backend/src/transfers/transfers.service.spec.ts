@@ -474,6 +474,12 @@ describe('TransfersService.resolve / void', () => {
     expect(stock.assertOnHand).toHaveBeenCalledWith(expect.anything(), 'point-a', 5);
   });
 
+  it('resolve does not ask when the transfer is voided — a voided transfer counts nothing', async () => {
+    const { service } = build(disputed({ voided_at: new Date() }));
+    await service.resolve(owner, 't-1', { ...resolution, resolved_crates: 190 } as never);
+    expect(stock.assertOnHand).not.toHaveBeenCalled();
+  });
+
   it('void refuses an operator — §9.4, «точка сторнувати не може»', async () => {
     const { service } = build(disputed());
     await expect(service.void(operatorA, 't-1', { reason: 'дубль' } as never)).rejects.toThrow(
