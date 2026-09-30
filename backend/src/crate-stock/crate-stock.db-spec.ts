@@ -116,6 +116,43 @@ describe('CrateStockGuard (real Postgres)', () => {
       const [{ closed_at }] = (await ds.query(`SELECT closed_at FROM shifts WHERE id = $1`, [id])) as { closed_at: Date | null }[];
       expect(closed_at).toBeNull();
     });
+
+    it('case 3 — voiding an accepted transfer whose crates went out is refused', async () => {
+      const { pointId, operatorToken } = await makePoint(app, ownerToken, 'case3');
+      const sup = await makeSupplier(app, operatorToken);
+      const tr = await stockPoint(app, ownerToken, operatorToken, pointId, 20);
+      expect((await issue(operatorToken, sup, 15)).status).toBe(201);
+      const res = await request(app.getHttpServer()).post(`/transfers/${tr}/void`)
+        .set('Authorization', `Bearer ${ownerToken}`).send({ reason: 'помилка' });
+      refused(res, 5, 20);
+      const [{ voided_at }] = (await ds.query(`SELECT voided_at FROM transfers WHERE id = $1`, [tr])) as { voided_at: Date | null }[];
+      expect(voided_at).toBeNull();
+    });
+
+    it('case 4 — resolving a dispute below what was already issued is refused', async () => {
+      const { pointId, operatorToken } = await makePoint(app, ownerToken, 'case4');
+      const sup = await makeSupplier(app, operatorToken);
+      const tr = await sendCrates(app, ownerToken, pointId, 20);
+      await request(app.getHttpServer()).post(`/transfers/${tr}/dispute`).set('Authorization', `Bearer ${operatorToken}`)
+        .send({ reported_cash: '0.00', reported_crates: 20, dispute_note: 'перевірка' }).expect(201);
+      expect((await issue(operatorToken, sup, 20)).status).toBe(201);
+      const res = await request(app.getHttpServer()).post(`/transfers/${tr}/resolve`)
+        .set('Authorization', `Bearer ${ownerToken}`).send({ resolved_cash: '0.00', resolved_crates: 5 });
+      refused(res, 0, 15);
+    });
+
+    it('voiding a sent transfer takes nothing, so it passes even at a negative point', async () => {
+      const { pointId } = await makePoint(app, ownerToken, 'void-sent');
+      const [{ id: opener }] = (await ds.query(`SELECT opened_by_user_id AS id FROM shifts WHERE collection_point_id = $1`, [pointId])) as { id: string }[];
+      await ds.query(
+        `UPDATE shifts SET broken_crates = 7, closed_at = now(), closed_by_user_id = $2, status = 'closed' WHERE collection_point_id = $1`,
+        [pointId, opener],
+      );
+      expect(await onHand(ds, pointId)).toBe(-7);
+      const tr = await sendCrates(app, ownerToken, pointId, 10);
+      expect((await request(app.getHttpServer()).post(`/transfers/${tr}/void`)
+        .set('Authorization', `Bearer ${ownerToken}`).send({ reason: 'не поїхала' })).status).toBe(201);
+    });
   });
 
   describe('receipts', () => {
