@@ -155,6 +155,90 @@ describe('CrateStockGuard (real Postgres)', () => {
     });
   });
 
+  describe('a point already below zero, and races', () => {
+    /** A point at `-n`: an earlier CLOSED shift with breakage n, written past the guard, and a
+     *  fresh open shift for today's work. */
+    const negativePoint = async (label: string, n: number) => {
+      const p = await makePoint(app, ownerToken, label);
+      // Yesterday's shift — moved back a day because UQ_shifts_point_business_date allows one per day.
+      await ds.query(
+        `UPDATE shifts SET broken_crates = $2, closed_at = now(), closed_by_user_id = opened_by_user_id,
+                           status = 'closed', business_date = business_date - 1
+          WHERE collection_point_id = $1 AND closed_at IS NULL`,
+        [p.pointId, n],
+      );
+      await request(app.getHttpServer()).post('/shifts').set('Authorization', `Bearer ${p.operatorToken}`)
+        .send({ counted_amount: '0.00' }).expect(201);
+      expect(await onHand(ds, p.pointId)).toBe(-n);
+      return p;
+    };
+    const openShiftId = async (pointId: string) =>
+      ((await ds.query(`SELECT id FROM shifts WHERE collection_point_id = $1 AND closed_at IS NULL`, [pointId])) as { id: string }[])[0].id;
+
+    it('accepting a transfer heals a negative point', async () => {
+      const { pointId, operatorToken } = await negativePoint('heal-accept', 30);
+      await stockPoint(app, ownerToken, operatorToken, pointId, 10);
+      expect(await onHand(ds, pointId)).toBe(-20);
+    });
+
+    it('a crate return and an issuance void both pass while the point is negative', async () => {
+      const { pointId, operatorToken } = await negativePoint('heal-return', 5);
+      const a = await makeSupplier(app, operatorToken);
+      const b = await makeSupplier(app, operatorToken);
+      await stockPoint(app, ownerToken, operatorToken, pointId, 10); // -5 -> 5
+      expect((await issue(operatorToken, a, 3)).status).toBe(201); // 5 -> 2
+      const toVoid = await issue(operatorToken, b, 2); // 2 -> 0
+      expect(toVoid.status).toBe(201);
+      // Push the point negative again past the guard: more breakage on yesterday's shift.
+      await ds.query(
+        `UPDATE shifts SET broken_crates = broken_crates + 4 WHERE collection_point_id = $1 AND closed_at IS NOT NULL`,
+        [pointId],
+      );
+      expect(await onHand(ds, pointId)).toBe(-4);
+      await request(app.getHttpServer()).post('/crate-returns').set('Authorization', `Bearer ${operatorToken}`)
+        .send({ supplier_id: a, units: 3 }).expect(201); // -4 -> -1
+      await request(app.getHttpServer()).post(`/crate-issuances/${toVoid.body.id}/void`)
+        .set('Authorization', `Bearer ${operatorToken}`).send({ reason: 'помилка' }).expect(201); // -1 -> 1
+      expect(await onHand(ds, pointId)).toBe(1);
+    });
+
+    it('reopening a shift gives its breakage back', async () => {
+      const { pointId, operatorToken } = await makePoint(app, ownerToken, 'heal-reopen');
+      await stockPoint(app, ownerToken, operatorToken, pointId, 10);
+      const id = await openShiftId(pointId);
+      await request(app.getHttpServer()).post(`/shifts/${id}/close`).set('Authorization', `Bearer ${operatorToken}`)
+        .send({ counted_amount: '0.00', broken_crates: 10 }).expect(201);
+      expect(await onHand(ds, pointId)).toBe(0);
+      await request(app.getHttpServer()).post(`/shifts/${id}/reopen`).set('Authorization', `Bearer ${ownerToken}`)
+        .send({ reason: 'помилка' }).expect(201);
+      expect(await onHand(ds, pointId)).toBe(10);
+    });
+
+    it('two concurrent issuances that fit alone but not together — exactly one wins', async () => {
+      const { pointId, operatorToken } = await makePoint(app, ownerToken, 'race');
+      const a = await makeSupplier(app, operatorToken);
+      const b = await makeSupplier(app, operatorToken);
+      await stockPoint(app, ownerToken, operatorToken, pointId, 10);
+      const [ra, rb] = await Promise.all([issue(operatorToken, a, 10), issue(operatorToken, b, 10)]);
+      expect([ra.status, rb.status].sort()).toEqual([201, 409]);
+      expect(await onHand(ds, pointId)).toBe(0);
+    });
+
+    it('a concurrent issuance and a close with breakage — never both', async () => {
+      const { pointId, operatorToken } = await makePoint(app, ownerToken, 'race-close');
+      const sup = await makeSupplier(app, operatorToken);
+      await stockPoint(app, ownerToken, operatorToken, pointId, 10);
+      const id = await openShiftId(pointId);
+      const [ri, rc] = await Promise.all([
+        issue(operatorToken, sup, 6),
+        request(app.getHttpServer()).post(`/shifts/${id}/close`).set('Authorization', `Bearer ${operatorToken}`)
+          .send({ counted_amount: '0.00', broken_crates: 6 }),
+      ]);
+      expect([ri.status, rc.status]).toContain(409);
+      expect(await onHand(ds, pointId)).toBeGreaterThanOrEqual(0);
+    });
+  });
+
   describe('receipts', () => {
     let pointId: string;
     let operatorToken: string;
@@ -200,6 +284,29 @@ describe('CrateStockGuard (real Postgres)', () => {
       expect(await onHand(ds, pointId)).toBe(0);
       expect((await receipt(5, 5)).status).toBe(201);
       expect(await onHand(ds, pointId)).toBe(0);
+    });
+
+    it('voiding a receipt that gives its crates back passes at a negative point', async () => {
+      await stockPoint(app, ownerToken, operatorToken, pointId, 12);
+      const before = await onHand(ds, pointId);
+      const made = await receipt(12);
+      expect(made.status).toBe(201);
+      expect(await onHand(ds, pointId)).toBe(before - 12);
+      // Push the point below zero past the guard, the way legacy data did: the shift the
+      // receipt sits in becomes yesterday's and closes with breakage; today gets a fresh shift.
+      await ds.query(
+        `UPDATE shifts SET broken_crates = $2, closed_at = now(), closed_by_user_id = opened_by_user_id,
+                           status = 'closed', business_date = business_date - 1
+          WHERE collection_point_id = $1 AND closed_at IS NULL`,
+        [pointId, before + 4],
+      );
+      await request(app.getHttpServer()).post('/shifts').set('Authorization', `Bearer ${operatorToken}`)
+        .send({ counted_amount: '0.00' }).expect(201);
+      expect(await onHand(ds, pointId)).toBe(-16);
+      const res = await request(app.getHttpServer()).post(`/intakes/${made.body.id}/void`)
+        .set('Authorization', `Bearer ${ownerToken}`).send({ reason: 'x' });
+      expect(res.status).not.toBe(409);
+      expect(await onHand(ds, pointId)).toBe(-4);
     });
   });
 });
