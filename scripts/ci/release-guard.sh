@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/ci/release-guard.sh LIVE_SHA TARGET_SHA MIGRATIONS_DIR ALLOW
+# scripts/ci/release-guard.sh LIVE_SHA TARGET_SHA MIGRATIONS_DIR ALLOW [MODE]
 #
 # Decides whether moving production from LIVE_SHA (the commit the `production`
 # branch points at; empty before the first release) to TARGET_SHA (a release
@@ -9,8 +9,15 @@
 # ALLOW is the literal `true`, which the workflow sets only from an explicit
 # `allow_schema_rollback` input. Runs inside a checkout containing both commits;
 # never touches the network. Exit 0 = proceed, exit 1 = refused.
+#
+# MODE is `release` or `dispatch` (default `dispatch`). A published release may
+# only move production FORWARD: two releases in quick succession can finish out
+# of order, and the older one must not overwrite the newer — so in `release`
+# mode any backward move is refused outright. Rollbacks go only through a
+# `workflow_dispatch` (`dispatch` mode), where the migration check above applies.
 set -euo pipefail
-live=${1-}; target=${2:?TARGET_SHA}; dir=${3:?MIGRATIONS_DIR}; allow=${4:-false}
+live=${1-}; target=${2:?TARGET_SHA}; dir=${3:?MIGRATIONS_DIR}; allow=${4:-false}; mode=${5:-dispatch}
+case "$mode" in release|dispatch) ;; *) echo "release-guard: MODE must be release or dispatch, got '$mode'" >&2; exit 1 ;; esac
 
 if [ -z "$live" ]; then
   echo "release-guard: no production branch yet — first release, nothing to compare"
@@ -26,6 +33,10 @@ if git merge-base --is-ancestor "$live" "$target"; then
 fi
 if ! git merge-base --is-ancestor "$target" "$live"; then
   echo "release-guard: $target is neither ahead of nor behind production ($live) — refusing a sideways move; releases are cut from main" >&2
+  exit 1
+fi
+if [ "$mode" = release ]; then
+  echo "release-guard: production is already at a NEWER release ($live); publishing $target would move it backwards. A release only moves production forward — to roll back, run the workflow by hand with the tag (docs/coolify-deploy.md «Rolling back»)." >&2
   exit 1
 fi
 changed=$(git diff --name-only "$target" "$live" -- "$dir")

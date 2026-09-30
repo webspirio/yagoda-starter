@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # scripts/ci/release-guard.test.sh — run: bash scripts/ci/release-guard.test.sh
-# Needs bash, git. Expected: passed=10 failed=0
+# Needs bash, git. Expected: passed=16 failed=0
 set -euo pipefail
 HERE=$(cd "$(dirname "$0")" && pwd)
 GUARD="$HERE/release-guard.sh"
@@ -45,8 +45,20 @@ check grep -q "backup-restore.md" "$T/err"
 
 echo "# 6. the same with allow_schema_rollback=true -> allowed with a warning"
 check run "$c2" "$c1" backend/src/migrations true
+check grep -q "1700000000000-AddThing.ts" "$T/err"
+check grep -q "::warning::" "$T/out"
 
 echo "# 7. a sideways move (neither ancestor) -> refused"
 check_fail run "$c3" "$side" backend/src/migrations false
+
+echo "# 8. release mode, backward move that crosses no migration (c3 -> c2) -> refused: a release only moves forward"
+check_fail run "$c3" "$c2" backend/src/migrations false release
+check grep -q "NEWER release" "$T/err"
+
+echo "# 9. release mode, forward move (c1 -> c3) -> allowed"
+check run "$c1" "$c3" backend/src/migrations false release
+
+echo "# 10. dispatch mode, backward move that crosses no migration (c3 -> c2) -> allowed (a rollback)"
+check run "$c3" "$c2" backend/src/migrations false dispatch
 
 echo "passed=$pass failed=$fail"; [ "$fail" -eq 0 ]
