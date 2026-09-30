@@ -1357,10 +1357,12 @@ Spec `docs/superpowers/specs/2026-09-27-allocations-cluster-refactor-design.md`,
   agreed. The deploy key bypasses protection unless «Do not allow bypassing the
   above settings» is on — and that setting would block CI too — so protect
   against humans, not the key.
-- **PRs opened before #187** (#170, #153, #140, #159, #166, #165, #67) run
-  their branch's old workflow: `deploy-preview` targets the production
-  application, where previews are now off, and goes red until each merges
-  `main`. Nothing to change in the repository.
+- **PRs opened before #187** (#170, #153, #140, #159) run their branch's old
+  workflow: `deploy-preview` targets the production application, where
+  previews are now off, and goes red until each merges `main`. Dependabot PRs
+  (#165, #166) are not affected — their `docker` job sets `push=false` for
+  `dependabot[bot]`, so `deploy-preview` is skipped, not red — and #67
+  predates the job entirely. Nothing to change in the repository.
 - **`Closes #N` did not register** on #187 and #189 (both branches created with
   `gh issue develop`): no closing reference, the issues stayed open after the
   merge and were handled by hand. Not a repository defect; re-check on the next
