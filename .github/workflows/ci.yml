@@ -532,13 +532,15 @@ jobs:
           IS_FORK: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
           PR: ${{ github.event.pull_request.number }}
           SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
-          # A release names its commit through github.sha; a manual re-deploy
-          # names a tag, and github.sha would be main's HEAD — resolve the tag.
+          # A release and a manual re-deploy both name a TAG. Resolve its commit
+          # through the API instead of trusting github.sha — a dispatch's sha is
+          # main's HEAD, and one path for both events leaves nothing to the
+          # event's semantics.
           RELEASE_TAG: ${{ github.event.release.tag_name || inputs.tag }}
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
+          if [ -n "$RELEASE_TAG" ]; then
             SHA=$(gh api "repos/$GITHUB_REPOSITORY/commits/$RELEASE_TAG" --jq .sha)
           fi
           push=false
