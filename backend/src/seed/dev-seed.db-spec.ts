@@ -3,6 +3,7 @@ import { openTestDataSource } from '../testing/db-harness';
 import { PointCashService } from '../point-cash/point-cash.service';
 import { verifyPassword } from '../users/password-hashing';
 import { allocationViolations } from '../testing/allocation-invariants';
+import { onHandSql } from '../crates/crate-balance.service';
 import { seedDev } from './dev-seed';
 import {
   DEV_OPERATOR_PASSWORD,
@@ -115,6 +116,13 @@ describe('dev seed', () => {
     );
     expect(balances.length).toBeGreaterThan(0);
     for (const b of balances) expect(b.debt.startsWith('-')).toBe(false);
+  });
+
+  it('leaves no seeded point with negative empties (spec 2026-09-30)', async () => {
+    const rows = (await ds.query(
+      `SELECT cp.code, ${onHandSql('cp.id')} AS on_hand FROM collection_points cp ORDER BY cp.code`,
+    )) as { code: string; on_hand: number }[];
+    expect(rows.filter((r) => r.on_hand < 0)).toEqual([]);
   });
 
   it('prices every active grade at every working point, exactly once per pair as the base', async () => {
