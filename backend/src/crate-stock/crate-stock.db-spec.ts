@@ -117,4 +117,52 @@ describe('CrateStockGuard (real Postgres)', () => {
       expect(closed_at).toBeNull();
     });
   });
+
+  describe('receipts', () => {
+    let pointId: string;
+    let operatorToken: string;
+    let supplierId: string;
+    let gradeId: string;
+    let crateTypeId: string;
+
+    beforeAll(async () => {
+      ({ pointId, operatorToken } = await makePoint(app, ownerToken, 'case7'));
+      supplierId = await makeSupplier(app, operatorToken);
+      const product = await request(app.getHttpServer()).post('/products')
+        .set('Authorization', `Bearer ${ownerToken}`).send({ name: `stock-product-${Date.now()}` }).expect(201);
+      const grade = await request(app.getHttpServer()).post('/product-grades')
+        .set('Authorization', `Bearer ${ownerToken}`).send({ product_id: product.body.id, name: `сорт-${Date.now()}` }).expect(201);
+      gradeId = grade.body.id as string;
+      await request(app.getHttpServer()).post('/grade-prices').set('Authorization', `Bearer ${ownerToken}`)
+        .send({ collection_point_id: pointId, product_grade_id: gradeId, base_price: '50.00', max_markup: '0.00', max_discount: '0.00' })
+        .expect(201);
+      [{ id: crateTypeId }] = (await ds.query(`SELECT id FROM tare_types WHERE is_crate`)) as { id: string }[];
+    });
+
+    const receipt = (crates: number, returned?: number) =>
+      request(app.getHttpServer()).post('/intakes').set('Authorization', `Bearer ${operatorToken}`).send({
+        supplier_id: supplierId,
+        items: [{ product_grade_id: gradeId, gross_kg: '40.00', tare: [{ tare_type_id: crateTypeId, units: crates }] }],
+        ...(returned === undefined ? {} : { returned_crates: returned }),
+      });
+
+    it('case 7 — crate tare with no empties at the point is refused, and no receipt is written', async () => {
+      refused(await receipt(12), 0, 12);
+      const [{ n }] = (await ds.query(
+        `SELECT COUNT(*)::int AS n FROM intakes i JOIN shifts s ON s.id = i.shift_id WHERE s.collection_point_id = $1`,
+        [pointId],
+      )) as { n: number }[];
+      expect(n).toBe(0);
+    });
+
+    it('a receipt returning every crate it carries takes no empties, so it passes at 0', async () => {
+      // The return needs outstanding crates: stock 5, issue 5 (on_hand back to 0).
+      await stockPoint(app, ownerToken, operatorToken, pointId, 5);
+      await request(app.getHttpServer()).post('/crate-issuances').set('Authorization', `Bearer ${operatorToken}`)
+        .send({ supplier_id: supplierId, units: 5, mode: 'receipt' }).expect(201);
+      expect(await onHand(ds, pointId)).toBe(0);
+      expect((await receipt(5, 5)).status).toBe(201);
+      expect(await onHand(ds, pointId)).toBe(0);
+    });
+  });
 });
