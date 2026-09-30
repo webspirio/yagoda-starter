@@ -63,9 +63,9 @@ export function useCrateBalancesQuery({
  * page is wrong the moment a point has more holders than fit on it.
  *
  * UNDER THE `crateBalances` PREFIX on purpose: every issue, return and void
- * already invalidates that prefix, so this refreshes with them for free.
- * Movements made elsewhere (receipts, transfers, a shift close) arrive through
- * normal staleness.
+ * already invalidates that prefix, so this refreshes with them for free, and so
+ * do transfer send/accept/dispute/resolve and shift open/close/reopen. Receipts
+ * arrive through normal staleness.
  */
 export function useCrateStandingQuery({ pointId, isOwner }: { pointId: string | null; isOwner: boolean }) {
   return useQuery({

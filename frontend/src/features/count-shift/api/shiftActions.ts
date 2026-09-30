@@ -18,6 +18,8 @@ import type { Shift } from '@/entities/shift';
  * and the point-cash SQL anchors on counts where `kind <> 'midday'`), so
  * `cashCounts` and `pointCash` are invalidated alongside shifts/intakes/payouts,
  * or «Каса точки» would show a stale number right after any of the three.
+ * `crateBalances` likewise: close subtracts the shift's breakage from the
+ * point's empties and reopen gives it back.
  */
 export function useInvalidateDay() {
   const qc = useQueryClient();
@@ -28,6 +30,7 @@ export function useInvalidateDay() {
       qc.invalidateQueries({ queryKey: queryKeys.payouts }),
       qc.invalidateQueries({ queryKey: queryKeys.cashCounts }),
       qc.invalidateQueries({ queryKey: queryKeys.pointCash }),
+      qc.invalidateQueries({ queryKey: queryKeys.crateBalances }),
     ]);
 }
 

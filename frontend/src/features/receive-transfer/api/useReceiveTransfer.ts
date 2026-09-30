@@ -10,6 +10,10 @@ import type { Transfer } from '@/entities/transfer';
  * immediately, and — under the 09.09.2026 ruling — so does a disputed one:
  * `reported_cash` already counts while the dispute sits open.
  *
+ * `crateBalances` too: accepting puts the transfer's crates among the point's
+ * empties (a dispute, its `reported_crates`), and the issue dialog caps its
+ * count by that figure — a stale one keeps «Видати» disabled after «Прийняв».
+ *
  * NOT `shifts`, though §4.1 makes an open shift a precondition.
  * `TransfersService.transition` READS that shift to learn its business date
  * and then writes `accepted_date`/`accepted_at` ON THE TRANSFER ROW — the
@@ -22,6 +26,7 @@ function useInvalidateTransferAnswer() {
   return () => {
     qc.invalidateQueries({ queryKey: queryKeys.transfers });
     qc.invalidateQueries({ queryKey: queryKeys.pointCash });
+    qc.invalidateQueries({ queryKey: queryKeys.crateBalances });
   };
 }
 
