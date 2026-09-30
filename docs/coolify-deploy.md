@@ -1,4 +1,4 @@
-# Deploying with Coolify (production + PR previews)
+# Deploying with Coolify (production + staging + PR previews)
 
 The server `188.245.146.122` (Hetzner, 4 vCPU / 7.6 GiB, Ubuntu 26.04 — resized
 up from 2 vCPU / 3.7 GiB on 2026-09-10, which is why the spec's sizing
@@ -10,8 +10,9 @@ Design: `docs/superpowers/specs/2026-09-09-coolify-deployment-and-cd-design.md`.
 
 | Hostname | What |
 |---|---|
-| `https://yagoda.webspirio.com` | production (`main`) |
-| `https://pr-<N>.yagoda.webspirio.com` | preview of PR `N`, seeded, removed on close |
+| `https://yagoda.webspirio.com` | production — the `production` branch, moved only by releases (`vX.Y.Z`) |
+| `https://staging.yagoda.webspirio.com` | staging — `main`, redeployed on every merge; seeded, persistent test data |
+| `https://pr-<N>.yagoda.webspirio.com` | preview of PR `N` on the staging application, seeded, removed on close |
 | `https://coolify.yagoda.webspirio.com` | the Coolify panel |
 
 ## Environments
@@ -20,7 +21,7 @@ Design: `docs/superpowers/specs/2026-09-09-coolify-deployment-and-cd-design.md`.
 |---|---|---|---|---|---|
 | production | branch `production` — moved only by releases | `yagoda` | real; no seed | a published GitHub Release `vX.Y.Z`, or a manual re-deploy of one (`workflow_dispatch`) | `https://yagoda.webspirio.com` |
 | staging | branch `main` | `yagoda-staging` (environment `staging`) | demo seed + whatever testers add; persists across deploys | every push to `main` | `https://staging.yagoda.webspirio.com` |
-| preview `N` | the PR's head | a preview of `yagoda-staging` | demo seed; torn down when the PR closes | `deploy-preview` on an internal PR | `https://pr-N.yagoda.webspirio.com` |
+| preview `<N>` | the PR's head | a preview of `yagoda-staging` | demo seed; torn down when the PR closes | `deploy-preview` on an internal PR | `https://pr-<N>.yagoda.webspirio.com` |
 
 `main` is never deployed to production directly, and nobody pushes
 `production` by hand: the release workflow fast-forwards it (or, for an
@@ -100,11 +101,13 @@ resets it: Coolify → `yagoda-staging` → *Persistent Storage* → delete the
 It runs at the preview-sized memory defaults (see «Memory»); it is public,
 like previews, and its owner password lives only in its Coolify env set.
 
-Coolify's own auto-deploy is **off**, so production is deployed by CI alone and
-Coolify never pulls a `main` tag that has not been pushed yet. Previews are
-different, and deliberately so: on every PR `opened`/`synchronize`/`reopened`
-the GitHub App webhook makes Coolify create the preview record **and attempt a
-deploy** of `sha-<head>`. The record is what CI's later `POST /deploy?pr=<N>`
+Coolify's own auto-deploy is **off** on both applications, so every deploy is
+CI's: production from the `production` branch a release has just moved,
+staging from `main` on every push — and Coolify never pulls a tag CI has not
+pushed yet. Previews are different, and deliberately so: on every PR
+`opened`/`synchronize`/`reopened` the GitHub App webhook makes Coolify create
+the preview record **and attempt a deploy** of `sha-<head>`. The record is
+what CI's later `POST /deploy?pr=<N>`
 relies on (the API cannot create it), and the attempt fails on
 `docker compose pull` because CI has not built that tag yet. The deployment
 log shows that pull running *before* the old containers are stopped («Pulling
