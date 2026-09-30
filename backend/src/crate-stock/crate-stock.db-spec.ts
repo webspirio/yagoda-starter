@@ -214,13 +214,67 @@ describe('CrateStockGuard (real Postgres)', () => {
       expect(await onHand(ds, pointId)).toBe(10);
     });
 
-    it('two concurrent issuances that fit alone but not together — exactly one wins', async () => {
+    /** Exactly one of two concurrent writes wins; the loser is the guard's refusal, not some other 409. */
+    const oneWins = (a: request.Response, b: request.Response) => {
+      expect([a.status, b.status].sort()).toEqual([201, 409]);
+      expect((a.status === 409 ? a : b).body.code).toBe('CRATES_ON_HAND_INSUFFICIENT');
+    };
+
+    /**
+     * Both writes' last statement before the guard is their audit insert, so holding `audit_log`
+     * EXCLUSIVE parks each one there with its document already written; releasing it sends both
+     * into the guard together. Without this barrier the two requests mostly serialise by timing
+     * alone, and a guard with its point lock removed passed ~8 runs in 10.
+     */
+    const raceAtGuard = async (a: request.Test, b: request.Test) => {
+      const qr = ds.createQueryRunner();
+      await qr.connect();
+      await qr.startTransaction();
+      try {
+        await qr.query('LOCK TABLE audit_log IN EXCLUSIVE MODE');
+        const both = Promise.all([a, b]);
+        for (let i = 0; i < 500; i++) {
+          const [{ n }] = (await qr.query(
+            `SELECT COUNT(*)::int AS n FROM pg_locks WHERE relation = 'audit_log'::regclass AND NOT granted`,
+          )) as { n: number }[];
+          if (n >= 2) break;
+          await new Promise((r) => setTimeout(r, 10));
+        }
+        await qr.commitTransaction();
+        return await both;
+      } finally {
+        if (qr.isTransactionActive) await qr.rollbackTransaction();
+        await qr.release();
+      }
+    };
+
+    // The races below share NO lock before the guard's point lock: a receipt- and a deposit-mode
+    // issuance take different document-code advisory keys (CR vs CD), and a transfer void locks
+    // only the transfer row. Without the point lock both writes would pass (spec 2026-09-30).
+    it('a receipt- and a deposit-mode issuance that fit alone but not together — exactly one wins', async () => {
       const { pointId, operatorToken } = await makePoint(app, ownerToken, 'race');
       const a = await makeSupplier(app, operatorToken);
       const b = await makeSupplier(app, operatorToken);
       await stockPoint(app, ownerToken, operatorToken, pointId, 10);
-      const [ra, rb] = await Promise.all([issue(operatorToken, a, 10), issue(operatorToken, b, 10)]);
-      expect([ra.status, rb.status].sort()).toEqual([201, 409]);
+      const [ra, rb] = await raceAtGuard(
+        issue(operatorToken, a, 10),
+        request(app.getHttpServer()).post('/crate-issuances').set('Authorization', `Bearer ${operatorToken}`)
+          .send({ supplier_id: b, units: 10, mode: 'deposit' }),
+      );
+      oneWins(ra, rb);
+      expect(await onHand(ds, pointId)).toBe(0);
+    });
+
+    it('a concurrent issuance and the owner voiding the transfer that stocked the point — exactly one wins', async () => {
+      const { pointId, operatorToken } = await makePoint(app, ownerToken, 'race-void');
+      const sup = await makeSupplier(app, operatorToken);
+      const tr = await stockPoint(app, ownerToken, operatorToken, pointId, 10);
+      const [ri, rv] = await raceAtGuard(
+        issue(operatorToken, sup, 10),
+        request(app.getHttpServer()).post(`/transfers/${tr}/void`).set('Authorization', `Bearer ${ownerToken}`)
+          .send({ reason: 'помилка' }),
+      );
+      oneWins(ri, rv);
       expect(await onHand(ds, pointId)).toBe(0);
     });
 
@@ -235,6 +289,10 @@ describe('CrateStockGuard (real Postgres)', () => {
           .send({ counted_amount: '0.00', broken_crates: 6 }),
       ]);
       expect([ri.status, rc.status]).toContain(409);
+      // The shift row serialises these two; the issuance may lose on either count.
+      for (const r of [ri, rc].filter((x) => x.status === 409)) {
+        expect(['CRATES_ON_HAND_INSUFFICIENT', 'NO_OPEN_SHIFT']).toContain(r.body.code);
+      }
       expect(await onHand(ds, pointId)).toBeGreaterThanOrEqual(0);
     });
   });
