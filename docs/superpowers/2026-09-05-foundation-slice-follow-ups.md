@@ -1358,11 +1358,13 @@ Spec `docs/superpowers/specs/2026-09-27-allocations-cluster-refactor-design.md`,
   above settings» is on — and that setting would block CI too — so protect
   against humans, not the key.
 - **PRs opened before #187** (#170, #153, #140, #159) run their branch's old
-  workflow: `deploy-preview` targets the production application, where
-  previews are now off, and goes red until each merges `main`. Dependabot PRs
-  (#165, #166) are not affected — their `docker` job sets `push=false` for
-  `dependabot[bot]`, so `deploy-preview` is skipped, not red — and #67
-  predates the job entirely. Nothing to change in the repository.
+  workflow, whose `deploy-preview` targets the production application, where
+  previews are now off. The job only runs when `verify` is green and the
+  commit touches a Docker/deploy input (`pushed == 'true'`) — today all four
+  skip it — and the next time one of them does run it, it goes red until that
+  PR merges `main`. Dependabot PRs (#165, #166) never push an image, so the
+  job is always skipped for them, and #67 predates the job entirely. Nothing
+  to change in the repository.
 - **`Closes #N` did not register** on #187 and #189 (both branches created with
   `gh issue develop`): no closing reference, the issues stayed open after the
   merge and were handled by hand. Not a repository defect; re-check on the next
