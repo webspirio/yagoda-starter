@@ -20,6 +20,7 @@ import { LOCAL_PROVIDER } from '../users/user-identity.entity';
 import { UserRole } from '../users/user-role.enum';
 import { allocationViolations } from '../testing/allocation-invariants';
 import { sum } from '../common/money';
+import { stockPoint } from '../testing/crate-stock-fixture';
 
 const pointCode = (): string => randomUUID().replace(/-/g, '').slice(0, 8).toUpperCase();
 
@@ -144,6 +145,9 @@ describe('allocation write paths (HTTP, Postgres)', () => {
       .send({ counted_amount: '100000.00' })
       .expect(201);
     shiftId = shiftRes.body.id as string;
+    // Spec 2026-09-30: a receipt's crate tare leaves the point's empties. 1000 is far above
+    // the crate tare this file weighs, and the transfer carries no cash.
+    await stockPoint(app, ownerToken, operatorToken, pointId, 1000);
   }, 30_000);
 
   const http = () => request(app.getHttpServer());
