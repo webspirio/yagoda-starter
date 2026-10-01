@@ -27,13 +27,15 @@ import { RecountDrawerDialog, discrepancyTone } from '@/features/count-shift';
  *                     still carrying it from before that decision reads
  *                     exactly like `closed` rather than falling through to
  *                     nothing.
- *   - `noneToday`   — no shift at all, but the date on screen is today: open.
+ *   - `noneToday`   — no shift at all, but the date on screen is today: open
+ *                     — if `openShiftGate` says the POINT has none open on
+ *                     any other day either (#114).
  *   - `openPastDay` — an open shift left over from a date that is no longer
- *                     today. R4 only promises live actions "today", so there
- *                     is no button — but unlike `other` below, the shift
- *                     itself IS real: its own line still renders, with a
- *                     note that its actions live on its own day, not a
- *                     generic "no shift" claim that would misdescribe it.
+ *                     today, viewed on its own day. It blocks every new shift
+ *                     until it is closed (#114), and this is the screen for
+ *                     it, so the operator gets «Закрити зміну» here — the
+ *                     same close `/day` offers on that date. No recount: R4
+ *                     promises that live, today only.
  *   - `other`       — the genuine no-shift case on a date that is not today:
  *                     nothing to attach a recount to.
  */
@@ -60,6 +62,22 @@ function DiscrepancyPill({ discrepancy }: { discrepancy: string }) {
     </Badge>
   );
 }
+
+/**
+ * The date-blind answer (`GET /shifts/current`) to «may a shift be opened
+ * here at all?» — the page reads it, the panel only obeys it. Four values,
+ * not a boolean, because «not yet known» and «the read FAILED» both withhold
+ * the button but only the second is worth saying out loud.
+ *
+ *   - `allowed`  — nothing is open at the point, on any day.
+ *   - `checking` — not answered yet: withhold, say nothing (it is a blink).
+ *   - `failed`   — withhold, and say the check failed — «не відкрито» over no
+ *                  button and no reason is a dead end.
+ *   - `blocked`  — a shift is open on some other day; the server would refuse
+ *                  (SHIFT_ALREADY_OPEN, #113). `OpenShiftAlert` above the panel
+ *                  names it and closes it; the note here points there.
+ */
+export type OpenShiftGate = 'allowed' | 'checking' | 'failed' | 'blocked';
 
 /**
  * «Зміна і перерахунок каси» (R4) — the shift's own line (open/closed, its
@@ -89,6 +107,7 @@ export function ShiftCountPanel({
   isOperator,
   isToday,
   onOpenShift,
+  openShiftGate,
   onCloseShift,
 }: {
   shift: Shift | null;
@@ -108,6 +127,7 @@ export function ShiftCountPanel({
   isOperator: boolean;
   isToday: boolean;
   onOpenShift: () => void;
+  openShiftGate: OpenShiftGate;
   onCloseShift: (shiftId: string) => void;
 }) {
   const { t, i18n } = useTranslation();
@@ -160,14 +180,31 @@ export function ShiftCountPanel({
     ) : state === 'closed' ? (
       <p className="text-xs text-muted-foreground">{t('pointCash.panel.actions.closedNote')}</p>
     ) : state === 'noneToday' ? (
+      openShiftGate === 'allowed' ? (
+        <div className="flex flex-col items-start gap-1">
+          <Button size="sm" onClick={onOpenShift}>
+            {t('pointCash.panel.actions.open')}
+          </Button>
+          <p className="text-xs text-muted-foreground">{t('pointCash.panel.actions.openCaption')}</p>
+        </div>
+      ) : openShiftGate === 'failed' ? (
+        <p role="alert" className="text-xs text-destructive">
+          {t('pointCash.panel.actions.currentShiftFailed')}
+        </p>
+      ) : openShiftGate === 'blocked' ? (
+        <p className="text-xs text-muted-foreground">
+          {t('pointCash.panel.actions.openBlockedNote')}
+        </p>
+      ) : null
+    ) : state === 'openPastDay' && shift ? (
       <div className="flex flex-col items-start gap-1">
-        <Button size="sm" onClick={onOpenShift}>
-          {t('pointCash.panel.actions.open')}
+        <Button size="sm" variant="outline" onClick={() => onCloseShift(shift.id)}>
+          {t('pointCash.panel.actions.close')}
         </Button>
-        <p className="text-xs text-muted-foreground">{t('pointCash.panel.actions.openCaption')}</p>
+        <p className="text-xs text-muted-foreground">
+          {t('pointCash.panel.actions.openPastDayNote')}
+        </p>
       </div>
-    ) : state === 'openPastDay' ? (
-      <p className="text-xs text-muted-foreground">{t('pointCash.panel.actions.openPastDayNote')}</p>
     ) : (
       <p className="text-xs text-muted-foreground">{t('pointCash.panel.actions.noShiftNote')}</p>
     );

@@ -73,6 +73,7 @@ describe('ShiftCountPanel — the shift line and names', () => {
         isOperator={false}
         isToday
         onOpenShift={noop}
+        openShiftGate="allowed"
         onCloseShift={noop}
       />,
     );
@@ -96,6 +97,7 @@ describe('ShiftCountPanel — the shift line and names', () => {
         isOperator={false}
         isToday
         onOpenShift={noop}
+        openShiftGate="allowed"
         onCloseShift={noop}
       />,
     );
@@ -117,6 +119,7 @@ describe('ShiftCountPanel — the shift line and names', () => {
         isOperator={false}
         isToday={false}
         onOpenShift={noop}
+        openShiftGate="allowed"
         onCloseShift={noop}
       />,
     );
@@ -137,6 +140,7 @@ describe('ShiftCountPanel — the shift line and names', () => {
         isOperator={false}
         isToday
         onOpenShift={noop}
+        openShiftGate="allowed"
         onCloseShift={noop}
       />,
     );
@@ -155,6 +159,7 @@ describe('ShiftCountPanel — the shift line and names', () => {
         isOperator={false}
         isToday={false}
         onOpenShift={noop}
+        openShiftGate="allowed"
         onCloseShift={noop}
       />,
     );
@@ -172,6 +177,7 @@ describe('ShiftCountPanel — the shift line and names', () => {
         isOperator={false}
         isToday={false}
         onOpenShift={noop}
+        openShiftGate="allowed"
         onCloseShift={noop}
       />,
     );
@@ -189,6 +195,7 @@ describe('ShiftCountPanel — the shift line and names', () => {
         isOperator={false}
         isToday={false}
         onOpenShift={noop}
+        openShiftGate="allowed"
         onCloseShift={noop}
       />,
     );
@@ -210,6 +217,7 @@ describe('ShiftCountPanel — the shift line and names', () => {
         isOperator={false}
         isToday={false}
         onOpenShift={noop}
+        openShiftGate="allowed"
         onCloseShift={noop}
       />,
     );
@@ -236,6 +244,7 @@ describe('ShiftCountPanel — the shift line and names', () => {
         isOperator={false}
         isToday={false}
         onOpenShift={noop}
+        openShiftGate="allowed"
         onCloseShift={noop}
       />,
     );
@@ -255,6 +264,7 @@ describe('ShiftCountPanel — the shift line and names', () => {
         isOperator={false}
         isToday
         onOpenShift={noop}
+        openShiftGate="allowed"
         onCloseShift={noop}
       />,
     );
@@ -273,6 +283,7 @@ describe('ShiftCountPanel — the shift line and names', () => {
         isOperator
         isToday
         onOpenShift={noop}
+        openShiftGate="allowed"
         onCloseShift={noop}
       />,
     );
@@ -294,6 +305,7 @@ describe('ShiftCountPanel — a failed shift/counts read is not «no shift»', (
         isOperator
         isToday
         onOpenShift={noop}
+        openShiftGate="allowed"
         onCloseShift={noop}
       />,
     );
@@ -316,6 +328,7 @@ describe('ShiftCountPanel — a failed shift/counts read is not «no shift»', (
         isOperator={false}
         isToday
         onOpenShift={noop}
+        openShiftGate="allowed"
         onCloseShift={noop}
       />,
     );
@@ -340,6 +353,7 @@ describe('ShiftCountPanel — a failed shift/counts read is not «no shift»', (
         isOperator
         isToday
         onOpenShift={noop}
+        openShiftGate="allowed"
         onCloseShift={noop}
       />,
     );
@@ -362,6 +376,7 @@ describe('ShiftCountPanel — a failed shift/counts read is not «no shift»', (
         isOperator
         isToday
         onOpenShift={noop}
+        openShiftGate="allowed"
         onCloseShift={noop}
       />,
     );
@@ -382,6 +397,7 @@ describe('ShiftCountPanel — the day’s recounts', () => {
         isOperator={false}
         isToday
         onOpenShift={noop}
+        openShiftGate="allowed"
         onCloseShift={noop}
       />,
     );
@@ -409,6 +425,7 @@ describe('ShiftCountPanel — the day’s recounts', () => {
         isOperator={false}
         isToday
         onOpenShift={noop}
+        openShiftGate="allowed"
         onCloseShift={noop}
       />,
     );
@@ -430,6 +447,7 @@ describe('ShiftCountPanel — the day’s recounts', () => {
         isOperator={false}
         isToday
         onOpenShift={noop}
+        openShiftGate="allowed"
         onCloseShift={noop}
       />,
     );
@@ -452,6 +470,7 @@ describe('ShiftCountPanel — the day’s recounts', () => {
         isOperator={false}
         isToday
         onOpenShift={noop}
+        openShiftGate="allowed"
         onCloseShift={noop}
       />,
     );
@@ -484,6 +503,7 @@ describe('ShiftCountPanel — the day’s recounts', () => {
         isOperator={false}
         isToday
         onOpenShift={noop}
+        openShiftGate="allowed"
         onCloseShift={noop}
       />,
     );
@@ -505,6 +525,7 @@ describe('ShiftCountPanel — the four action states, per role', () => {
         isOperator
         isToday
         onOpenShift={noop}
+        openShiftGate="allowed"
         onCloseShift={noop}
       />,
     );
@@ -523,6 +544,7 @@ describe('ShiftCountPanel — the four action states, per role', () => {
         isOperator={false}
         isToday
         onOpenShift={noop}
+        openShiftGate="allowed"
         onCloseShift={noop}
       />,
     );
@@ -541,6 +563,7 @@ describe('ShiftCountPanel — the four action states, per role', () => {
         isOperator
         isToday={false}
         onOpenShift={noop}
+        openShiftGate="allowed"
         onCloseShift={noop}
       />,
     );
@@ -563,6 +586,7 @@ describe('ShiftCountPanel — the four action states, per role', () => {
         isOperator={false}
         isToday={false}
         onOpenShift={noop}
+        openShiftGate="allowed"
         onCloseShift={noop}
       />,
     );
@@ -584,6 +608,7 @@ describe('ShiftCountPanel — the four action states, per role', () => {
         isOperator
         isToday
         onOpenShift={noop}
+        openShiftGate="allowed"
         onCloseShift={noop}
       />,
     );
@@ -602,6 +627,7 @@ describe('ShiftCountPanel — the four action states, per role', () => {
         isOperator={false}
         isToday
         onOpenShift={noop}
+        openShiftGate="allowed"
         onCloseShift={noop}
       />,
     );
@@ -610,7 +636,7 @@ describe('ShiftCountPanel — the four action states, per role', () => {
     expect(screen.queryByText('a recount attaches to an open shift')).toBeNull();
   });
 
-  it('operator, an open shift left over from a past date: the shift line, the own-day note, no buttons', () => {
+  it('operator, an open shift left over from a past date: the shift line, a close, no recount', () => {
     render(
       <ShiftCountPanel
         shift={shift({ status: 'open' })}
@@ -620,19 +646,59 @@ describe('ShiftCountPanel — the four action states, per role', () => {
         isOperator
         isToday={false}
         onOpenShift={noop}
+        openShiftGate="allowed"
         onCloseShift={noop}
       />,
     );
 
-    // The shift IS real — its own line still renders — but R4 only promises
-    // live actions "today", so no Recount/Close button and a note explaining
-    // why, not a generic "no shift" claim that would misdescribe it.
+    // The shift IS real — its own line still renders. This IS its own day, so
+    // there is nowhere else to send the operator: a shift stranded here blocks
+    // every new one (#114), and closing it is the one action that belongs on
+    // it. A midday recount does not — R4 promises that live, today only.
     expect(screen.getByText('Shift open')).toBeInTheDocument();
     expect(
-      screen.getByText(
-        "The shift is still open, but it is not today's — its actions live on its own day",
-      ),
+      screen.getByText('This shift is from an earlier day and is still open — close it'),
     ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Close shift' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Recount the drawer' })).toBeNull();
+  });
+
+  it('closes the leftover shift by its own id', async () => {
+    const user = userEvent.setup();
+    const onCloseShift = vi.fn();
+    render(
+      <ShiftCountPanel
+        shift={shift({ id: 's-stranded', status: 'open' })}
+        isShiftLoading={false}
+        isShiftError={false}
+        counts={[]}
+        isOperator
+        isToday={false}
+        onOpenShift={noop}
+        openShiftGate="allowed"
+        onCloseShift={onCloseShift}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Close shift' }));
+    expect(onCloseShift).toHaveBeenCalledWith('s-stranded');
+  });
+
+  it('owner, an open shift left over from a past date: no close (§10.3)', () => {
+    render(
+      <ShiftCountPanel
+        shift={shift({ status: 'open' })}
+        isShiftLoading={false}
+        isShiftError={false}
+        counts={[]}
+        isOperator={false}
+        isToday={false}
+        onOpenShift={noop}
+        openShiftGate="allowed"
+        onCloseShift={noop}
+      />,
+    );
+
     expect(screen.queryByRole('button')).toBeNull();
   });
 
@@ -646,6 +712,7 @@ describe('ShiftCountPanel — the four action states, per role', () => {
         isOperator
         isToday={false}
         onOpenShift={noop}
+        openShiftGate="allowed"
         onCloseShift={noop}
       />,
     );
@@ -666,6 +733,7 @@ describe('ShiftCountPanel — the four action states, per role', () => {
         isOperator={false}
         isToday={false}
         onOpenShift={noop}
+        openShiftGate="allowed"
         onCloseShift={noop}
       />,
     );
@@ -687,6 +755,7 @@ describe('ShiftCountPanel — the four action states, per role', () => {
         isOperator={false}
         isToday={false}
         onOpenShift={noop}
+        openShiftGate="allowed"
         onCloseShift={noop}
       />,
     );
@@ -696,6 +765,54 @@ describe('ShiftCountPanel — the four action states, per role', () => {
         'The drawer can be recounted as many times a day as needed — every recount stays its own record and corrects nothing.',
       ),
     ).toBeInTheDocument();
+  });
+});
+
+/**
+ * #114 — today's date having no shift is not the same as the point having
+ * none open. `openShiftGate` carries the date-blind answer (`/shifts/current`)
+ * the page read, so the panel withholds «Open shift» the server would refuse
+ * with SHIFT_ALREADY_OPEN, exactly as `/day` and `/reception` do.
+ */
+describe('ShiftCountPanel — «Open shift» waits for the point to have none open', () => {
+  const renderNoneToday = (openShiftGate: 'allowed' | 'checking' | 'failed' | 'blocked') =>
+    render(
+      <ShiftCountPanel
+        shift={null}
+        isShiftLoading={false}
+        isShiftError={false}
+        counts={[]}
+        isOperator
+        isToday
+        onOpenShift={noop}
+        openShiftGate={openShiftGate}
+        onCloseShift={noop}
+      />,
+    );
+
+  it('withholds it while a shift from another day is still open, and says why', () => {
+    renderNoneToday('blocked');
+
+    expect(screen.queryByRole('button', { name: 'Open shift' })).toBeNull();
+    expect(
+      screen.getByText('A shift from another day is still open — close it before opening a new one'),
+    ).toBeInTheDocument();
+  });
+
+  it('withholds it, silently, while that answer is still in flight', () => {
+    renderNoneToday('checking');
+
+    expect(screen.queryByRole('button', { name: 'Open shift' })).toBeNull();
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
+  it('withholds it when the check FAILED — and says so rather than go quiet', () => {
+    renderNoneToday('failed');
+
+    expect(screen.queryByRole('button', { name: 'Open shift' })).toBeNull();
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'Could not check whether a shift is already open — reload the page',
+    );
   });
 });
 
@@ -711,6 +828,7 @@ describe('ShiftCountPanel — wiring the actions', () => {
         isOperator
         isToday
         onOpenShift={noop}
+        openShiftGate="allowed"
         onCloseShift={noop}
       />,
     );
@@ -732,6 +850,7 @@ describe('ShiftCountPanel — wiring the actions', () => {
         isOperator
         isToday
         onOpenShift={noop}
+        openShiftGate="allowed"
         onCloseShift={onCloseShift}
       />,
     );
@@ -752,6 +871,7 @@ describe('ShiftCountPanel — wiring the actions', () => {
         isOperator
         isToday
         onOpenShift={onOpenShift}
+        openShiftGate="allowed"
         onCloseShift={noop}
       />,
     );
@@ -774,6 +894,7 @@ describe('ShiftCountPanel — wiring the actions', () => {
         isOperator
         isToday={false}
         onOpenShift={noop}
+        openShiftGate="allowed"
         onCloseShift={noop}
       />,
     );
@@ -792,6 +913,7 @@ describe('ShiftCountPanel — wiring the actions', () => {
         isOperator={false}
         isToday={false}
         onOpenShift={noop}
+        openShiftGate="allowed"
         onCloseShift={noop}
       />,
     );

@@ -411,6 +411,13 @@
     },
     "open": "Open shift",
     "close": "Close shift",
+    "currentShiftFailed": "Could not check whether a shift is already open — reload the page",
+    "staleShift": {
+      "title": "The shift for {{date}} is not closed yet",
+      "hint": "No new shift can be opened until it is closed.",
+      "hintOwner": "No new shift can be opened until it is closed — and the operator is the one who closes it.",
+      "goToDay": "Go to that day"
+    },
     "reopen": "Reopen shift",
     "reopenDialog": {
       "title": "Reopen shift",
@@ -509,6 +516,12 @@
       },
       "dayCash": "Cash for the day",
       "reception": "Intake"
+    },
+    "staleShifts": {
+      "title": "Unclosed shifts",
+      "hint": "These shifts were left open on earlier days — a point cannot open a new one until its shift is closed, and the operator is the one who closes it.",
+      "loadFailed": "Could not check for unclosed shifts",
+      "inactivePoint": "Inactive point"
     },
     "topBalances": {
       "title": "Biggest balances",
@@ -719,7 +732,9 @@
         "open": "Open shift",
         "openCaption": "a recount attaches to an open shift",
         "closedNote": "This day's shift is already settled. A second book is never opened for the same drawer, and a recount does not attach to a closed shift.",
-        "openPastDayNote": "The shift is still open, but it is not today's — its actions live on its own day",
+        "openPastDayNote": "This shift is from an earlier day and is still open — close it",
+        "openBlockedNote": "A shift from another day is still open — close it before opening a new one",
+        "currentShiftFailed": "Could not check whether a shift is already open — reload the page",
         "noShiftNote": "There is no shift for this day — there is nothing for a recount to attach to."
       },
       "footnote": "The drawer can be recounted as many times a day as needed — every recount stays its own record and corrects nothing.",

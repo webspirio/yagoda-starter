@@ -7,12 +7,25 @@
 #   - no `networks:` — Coolify creates the stack network; a second network on
 #     a container makes its Traefik pick interfaces non-deterministically;
 #   - no `ports:` — Coolify does not strip them, and two previews would fight
-#     over 127.0.0.1:8080. The standalone override adds them back.
+#     over 127.0.0.1:8080. The standalone override adds them back;
+#   - Coolify reads this file from the application's branch (`main`) on EVERY
+#     deploy, previews included — a PR's edit to it reaches previews only after
+#     the merge, and that PR's own preview still runs main's copy;
+#   - a sibling service is addressed as ${SERVICE_NAME_<SVC>:-<svc>}, never by
+#     its literal name — previews suffix every service with -pr-<N>;
+#   - an environment entry whose value references a variable OF THE SAME NAME
+#     with a default operator — `KEY: ${KEY:-x}`, also `-`, `:?`, `?` — is
+#     rewritten by Coolify's parser into the PRODUCTION env set's literal,
+#     previews included. So a key the env sets define per environment is
+#     written `KEY: ${KEY}`; a same-name default is allowed only where every
+#     env set holds the same value (APP_TIMEZONE, JWT_EXPIRES_IN, DB_USER,
+#     DB_NAME), and a default on a DIFFERENT variable name is untouched.
+#     BOOTSTRAP_OWNER_* below has the full story; `npm run compose:check`
+#     enforces both this rule and the one above.
 #
 # Memory sizing: every mem_limit and Node heap cap below is a variable with the
-# current preview-sized default. Coolify deploys THIS FILE FROM EACH BRANCH, so
-# a hardcoded limit can only be changed by committing and then redeploying every
-# open PR; as variables they are an env-set edit in Coolify instead. Production
+# current preview-sized default, so a limit is an env-set edit in Coolify, not
+# a commit that has to be merged before any preview can pick it up. Production
 # overrides them upward (docs/coolify-deploy.md «Environment variables»);
 # previews keep the defaults. Invariant when overriding: the Node heap cap stays
 # comfortably below its service's mem_limit, so an out-of-memory surfaces as a
@@ -86,7 +99,18 @@ services:
       APP_URL: ${APP_URL}
       JWT_SECRET: ${JWT_SECRET}
       JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
-      DB_HOST: postgres
+      # Coolify renames every service of a PREVIEW with a `-pr-<N>` suffix
+      # (postgres → postgres-pr-179) and the DNS name follows, so a hardcoded
+      # `postgres` here left every preview backend on `getaddrinfo EAI_AGAIN
+      # postgres` (#68). Coolify publishes each service's real name as
+      # SERVICE_NAME_<SERVICE> in the deployment .env — unsuffixed in
+      # production — and compose resolves it at `up` time. The default is for
+      # the standalone path, where nothing sets SERVICE_NAME_*. Same for
+      # REDIS_HOST, the seed's DB_HOST and nginx's BACKEND_HOST below. The
+      # seed's local-host guard (backend/src/seed/local-db-host.ts) accepts
+      # exactly `postgres` and `postgres-pr-<N>` — rename the service and
+      # update it too.
+      DB_HOST: ${SERVICE_NAME_POSTGRES:-postgres}
       DB_PORT: 5432
       DB_USER: ${DB_USER:-app}
       DB_PASSWORD: ${DB_PASSWORD}
@@ -96,7 +120,7 @@ services:
       # limiting keys on the client IP taken this many hops back in
       # X-Forwarded-For.
       TRUST_PROXY_HOPS: 2
-      REDIS_HOST: redis
+      REDIS_HOST: ${SERVICE_NAME_REDIS:-redis}
       REDIS_PORT: 6379
       # Pin the uploads dir to the volume's absolute mount path. Without this the
       # backend (and any migration run) falls back to `./uploads`, which is
@@ -113,19 +137,36 @@ services:
       # registration is deleted — the install has no owner and no recovery path
       # short of hand-inserting a user row, an identity row and a hand-computed
       # scrypt hash. A missed variable here is unrecoverable, not merely
-      # inconvenient, so forward these even though the defaults are empty
+      # inconvenient, so forward these even though they may be empty
       # (config/env.schema.ts treats "" as unset).
-      BOOTSTRAP_OWNER_LOGIN: ${BOOTSTRAP_OWNER_LOGIN:-}
-      BOOTSTRAP_OWNER_PASSWORD: ${BOOTSTRAP_OWNER_PASSWORD:-}
-      BOOTSTRAP_OWNER_FIRST_NAME: ${BOOTSTRAP_OWNER_FIRST_NAME:-}
-      BOOTSTRAP_OWNER_LAST_NAME: ${BOOTSTRAP_OWNER_LAST_NAME:-}
+      #
+      # NO `:-` DEFAULT on any key that Coolify's env sets define per
+      # environment. Coolify's compose parser rewrites `KEY: ${KEY:-x}` into a
+      # LITERAL taken from the application's PRODUCTION env set — in previews
+      # too — while a bare `KEY: ${KEY}` is kept as a reference that compose
+      # resolves from that deployment's own .env. On 2026-09-29 the first
+      # working preview therefore booted with production's owner password and
+      # an empty SEED_DEV_DATA (docs/coolify-deploy.md «Environment variables
+      # in Coolify»). An unset variable renders as "" here, which every one of
+      # these treats as «not set», so the standalone path loses nothing.
+      BOOTSTRAP_OWNER_LOGIN: ${BOOTSTRAP_OWNER_LOGIN}
+      BOOTSTRAP_OWNER_PASSWORD: ${BOOTSTRAP_OWNER_PASSWORD}
+      BOOTSTRAP_OWNER_FIRST_NAME: ${BOOTSTRAP_OWNER_FIRST_NAME}
+      BOOTSTRAP_OWNER_LAST_NAME: ${BOOTSTRAP_OWNER_LAST_NAME}
+      # `:-` is tolerable ONLY where every env set holds the same value (this,
+      # JWT_EXPIRES_IN, DB_USER, DB_NAME) — the production literal the parser
+      # injects is then the right value everywhere — OR where the variable's
+      # name differs from the key's (NODE_OPTIONS: …${BACKEND_HEAP_MB:-256},
+      # DB_HOST: ${SERVICE_NAME_POSTGRES:-postgres}): the parser only rewrites
+      # `KEY: ${KEY:-…}`, key and variable sharing a name.
       APP_TIMEZONE: ${APP_TIMEZONE:-Europe/Kyiv}
       # Owner-readable passwords (issue #11). Forwarded explicitly for the same
       # reason as BOOTSTRAP_OWNER_* above — compose's .env does not reach the
       # container. Empty is a supported value and means the feature is off; a
       # key CHANGED after passwords were issued makes the existing copies
-      # unreadable, so treat it as a permanent per-environment secret.
-      PASSWORD_VAULT_KEY: ${PASSWORD_VAULT_KEY:-}
+      # unreadable, so treat it as a permanent per-environment secret. No `:-`
+      # for the same reason as BOOTSTRAP_OWNER_* above.
+      PASSWORD_VAULT_KEY: ${PASSWORD_VAULT_KEY}
     volumes:
       - uploads_data:/app/uploads
     mem_limit: ${BACKEND_MEM_LIMIT:-384m}
@@ -153,8 +194,13 @@ services:
   # this topology: the command below flips NODE_ENV to development only for
   # the exec'd process, after the guard has already let it through, so that
   # refusal never fires here. Its local-host check also passes (DB_HOST is
-  # `postgres`). The ONLY thing keeping demo data out of production is that
-  # SEED_DEV_DATA is absent from the production env set — never set it there.
+  # `postgres`, or `postgres-pr-<N>` in a preview, which the check accepts).
+  # The ONLY thing keeping demo data out of production is that SEED_DEV_DATA
+  # is empty or absent in the production env set — never set it there. And it
+  # is written as `${SEED_DEV_DATA}` with no `:-` on purpose: with a default,
+  # Coolify's parser hardcodes the PRODUCTION set's (empty) value into every
+  # preview too, and the preview seed never runs — which is exactly what
+  # happened until 2026-09-29 (see BOOTSTRAP_OWNER_* in the backend above).
   seed:
     image: ghcr.io/${GHCR_REPO:-webspirio/yagoda-starter}-backend:${IMAGE_TAG:-sha-${SOURCE_COMMIT}}
     command:
@@ -162,11 +208,11 @@ services:
       - -c
       - '[ "$$SEED_DEV_DATA" = "true" ] || exit 0; exec env NODE_ENV=development node backend/dist/seed/dev-seed.cli.js'
     environment:
-      SEED_DEV_DATA: ${SEED_DEV_DATA:-}
+      SEED_DEV_DATA: ${SEED_DEV_DATA}
       NODE_ENV: production
       # Heap cap below mem_limit for the same reason as the backend's.
       NODE_OPTIONS: --max-old-space-size=${SEED_HEAP_MB:-192}
-      DB_HOST: postgres
+      DB_HOST: ${SERVICE_NAME_POSTGRES:-postgres}
       DB_PORT: 5432
       DB_USER: ${DB_USER:-app}
       DB_PASSWORD: ${DB_PASSWORD}
@@ -183,8 +229,13 @@ services:
   # allow request bodies of at least 12 MB (uploads are capped at 10 MB).
   nginx:
     image: ghcr.io/${GHCR_REPO:-webspirio/yagoda-starter}-nginx:${IMAGE_TAG:-sha-${SOURCE_COMMIT}}
+    environment:
+      # nginx/default.conf.template proxies /api/ to BACKEND_HOST:3000; the
+      # image renders it with envsubst at start-up (nginx/Dockerfile). In a
+      # preview the backend is `backend-pr-<N>` — see DB_HOST above.
+      BACKEND_HOST: ${SERVICE_NAME_BACKEND:-backend}
     # Coolify's Traefik reads the compose file, not the image metadata, to learn
-    # which port to route a domain to; nginx/nginx.conf listens on 8080 and the
+    # which port to route a domain to; nginx/default.conf.template listens on 8080 and the
     # image declares no EXPOSE, so without this the generated route points at 80
     # and the domain answers 502. `expose` does not publish to the host, so the
     # «no ports:» rule above still holds.

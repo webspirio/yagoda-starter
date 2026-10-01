@@ -4,12 +4,32 @@ on:
   push:
     branches: [main]
   pull_request:
+  # Production is deployed ONLY from here: publishing a GitHub Release
+  # (vX.Y.Z, cut from main) or re-deploying an existing release tag by hand —
+  # docs/coolify-deploy.md «Releasing to production» / «Rolling back».
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'An existing release tag to (re)deploy to production, e.g. v0.2.0'
+        required: true
+        type: string
+      allow_schema_rollback:
+        description: 'Deploy even if this moves production BACKWARDS across a migration (you have verified the down path by hand)'
+        required: false
+        type: boolean
+        default: false
 
 # Cancel superseded in-progress runs for the same PR branch when new commits are
 # pushed. main is never cancelled (cancel-in-progress is false for push events) so
 # every merge's CI run completes and reports an accurate status for that commit.
+#
+# A dispatch gets its own group, keyed by the tag: a pending run in a group is
+# cancelled by a newer one, so sharing main's group would let a merge silently
+# cancel a rollback, or a rollback a merge.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.event_name == 'workflow_dispatch' && format('dispatch-{0}', inputs.tag) || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 # The default token is read-only. The docker job raises itself to
@@ -65,8 +85,12 @@ jobs:
         #   - root package manifest + lockfile
         #   - .dockerignore
         #
-        #   - docker-compose*.yml  Coolify deploys the compose file FROM THE PR
-        #                          BRANCH, so it is a deploy input too
+        #   - docker-compose*.yml  NOT because Coolify deploys the PR's copy —
+        #                          it loads the compose from main on every
+        #                          deploy (docs/coolify-deploy.md «The compose
+        #                          comes from main») — but so that a PR editing
+        #                          it still builds images and gets a preview of
+        #                          its code at all
         #   - .github/workflows/** a workflow change must exercise the build
         #
         # turbo.json is intentionally absent: the Dockerfiles invoke workspace
@@ -178,7 +202,7 @@ jobs:
   # than assumed: `changes`' trigger set is a strict SUPERSET of what the two
   # Dockerfiles actually COPY (backend/Dockerfile takes package.json,
   # package-lock.json, backend/package.json and backend/; nginx/Dockerfile takes
-  # those two plus frontend/package.json, frontend/ and nginx/nginx.conf), and no
+  # those two plus frontend/package.json, frontend/ and nginx/default.conf.template), and no
   # root tsconfig feeds either — the only `extends` in the repo is
   # backend/tsconfig.build.json pointing at its own sibling. So when this job skips
   # its build, no input to either image changed.
@@ -196,6 +220,9 @@ jobs:
   # workflow that builds an image at all.
 
   verify:
+    # Not on a dispatch: a dispatch deploys an already-released commit, main's
+    # HEAD says nothing about it, and a red main must not block a rollback.
+    if: github.event_name != 'workflow_dispatch'
     runs-on: ubuntu-latest
     # A full-tier, --no-skip run exercises every row in scripts/verify/registry.mjs.
     # The slowest are now `selfcheck` (node --test over the layer's own 163 tests,
@@ -465,7 +492,7 @@ jobs:
     # (`npm run build -w frontend`, the identical `tsc -b && vite build` the
     # `build` row runs on the host, run again from scratch inside the
     # container) before copying frontend/dist onto an nginx-unprivileged base
-    # together with nginx/nginx.conf. A compile error, a failing npm ci, or a
+    # together with nginx/default.conf.template. A compile error, a failing npm ci, or a
     # COPY naming a path absent from the stage it draws from fails this job.
     # AS A DATED SNAPSHOT, MEASURED 2026-09-15: 24 Dockerfile steps across four
     # stages for the backend, 12 across two for nginx; 487 MB and 93 MB per
@@ -484,7 +511,7 @@ jobs:
     # actually wired together with env vars, volumes and networks, is never
     # invoked or validated: a correct image plus a compose file naming the
     # wrong one is invisible here. The two are built in complete ISOLATION from
-    # each other, so nginx.conf proxying /api/ to a route the backend renamed
+    # each other, so the nginx template proxying /api/ to a route the backend renamed
     # is invisible too. And the `type=gha` cache below means a layer whose
     # cache key did not change is TRUSTED rather than re-executed — the
     # deleted row had the identical hole (it never passed --no-cache either),
@@ -498,10 +525,16 @@ jobs:
       pushed: ${{ steps.meta.outputs.push }}
 
     env:
+      # A dispatch builds nothing: it re-deploys a release, whose images exist
+      # and are v*-tagged (never pruned). The explicit exclusion is needed
+      # because `changes` is skipped on a dispatch, and a skipped `changes`
+      # otherwise means "build".
       BUILD: >-
-        ${{ github.event_name == 'push'
-          || needs.changes.result != 'success'
-          || needs.changes.outputs.docker == 'true' }}
+        ${{ github.event_name != 'workflow_dispatch'
+          && (github.event_name == 'push'
+            || github.event_name == 'release'
+            || needs.changes.result != 'success'
+            || needs.changes.outputs.docker == 'true') }}
 
     steps:
       - id: meta
@@ -510,34 +543,50 @@ jobs:
           IS_FORK: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
           PR: ${{ github.event.pull_request.number }}
           SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          # A release names a tag; resolve its commit through the API instead
+          # of trusting github.sha. A dispatch names one too but builds
+          # nothing, and a mistyped tag must fail in deploy-prod with «no tag
+          # named …» — not here, as an unexplained red docker job — so the
+          # dispatch input is deliberately not read.
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+          if [ -n "$RELEASE_TAG" ]; then
+            SHA=$(gh api "repos/$GITHUB_REPOSITORY/commits/$RELEASE_TAG" --jq .sha)
+          fi
           push=false
           # Dependabot PRs build but never push — they would otherwise each hold
           # a preview slot and their token cannot write packages. Scoped to
           # pull_request on purpose: an auto-merged Dependabot PR arrives on
           # main as a push by the same actor, and suppressing the image there
-          # would skip deploy-prod with no signal at all.
+          # would skip deploy-staging with no signal at all.
           dependabot=false
           if [ "$GITHUB_EVENT_NAME" = pull_request ] && [ "$GITHUB_ACTOR" = 'dependabot[bot]' ]; then dependabot=true; fi
           if [ "$BUILD" = true ] && [ "$IS_FORK" != true ] && [ "$dependabot" != true ]; then push=true; fi
           echo "push=$push" >> "$GITHUB_OUTPUT"
           echo "sha=$SHA" >> "$GITHUB_OUTPUT"
           # Cache scopes: PRs read prod's cache but write only their own, so
-          # preview churn never evicts the seed main relies on.
-          if [ "$GITHUB_EVENT_NAME" = push ]; then scope='main'; else scope='pr'; fi
+          # preview churn never evicts the seed main relies on. Releases are
+          # main commits, so they share main's scope.
+          case "$GITHUB_EVENT_NAME" in push|release|workflow_dispatch) scope='main';; *) scope='pr';; esac
           echo "scope=$scope" >> "$GITHUB_OUTPUT"
           {
             echo "backend_tags<<EOF"
             echo "ghcr.io/${GITHUB_REPOSITORY,,}-backend:sha-$SHA"
             [ -n "$PR" ] && echo "ghcr.io/${GITHUB_REPOSITORY,,}-backend:pr-$PR"
+            # A release tag on the image keeps it out of the weekly cleanup
+            # (scripts/ci/ghcr-cleanup.sh deletes only pr-*/sha-*-only versions),
+            # so a later re-deploy of this release always finds it.
+            [ -n "$RELEASE_TAG" ] && echo "ghcr.io/${GITHUB_REPOSITORY,,}-backend:$RELEASE_TAG"
             echo "EOF"
             echo "nginx_tags<<EOF"
             echo "ghcr.io/${GITHUB_REPOSITORY,,}-nginx:sha-$SHA"
             [ -n "$PR" ] && echo "ghcr.io/${GITHUB_REPOSITORY,,}-nginx:pr-$PR"
+            [ -n "$RELEASE_TAG" ] && echo "ghcr.io/${GITHUB_REPOSITORY,,}-nginx:$RELEASE_TAG"
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
-          echo "build=$BUILD push=$push scope=$scope sha=$SHA"
+          echo "build=$BUILD push=$push scope=$scope sha=$SHA release_tag=${RELEASE_TAG:-}"
 
       - uses: actions/checkout@v7
         if: env.BUILD == 'true'
@@ -625,7 +674,12 @@ jobs:
     # the PR, and it only ever learns that from the App's webhook. Production
     # CD needs no PR record, so it stays armed while previews are switched off;
     # without the split, every PR would carry a red job for a capability that
-    # is not installed. Set this to true once issue #68 is closed.
+    # is not installed. The App has been installed since 2026-09-29 (#68) and
+    # the variable is true; it stays a variable so previews can be paused
+    # without a commit (docs/coolify-deploy.md «When development slows down»).
+    # Previews are previews OF THE STAGING APPLICATION: the GitHub App matches a
+    # PR webhook to an application by its branch (= the PR's base, main), and
+    # production tracks `production` — see docs/coolify-deploy.md §Environments.
     if: >-
       !cancelled()
       && needs.verify.result == 'success'
@@ -644,14 +698,17 @@ jobs:
       pull-requests: write
       issues: write # gh label create / gh pr edit --add-label use the Issues API
     env:
-      # 12, recalibrated 2026-09-10 against the resized server and Coolify's
-      # measured RSS (docs/coolify-deploy.md «Spike results»):
+      # Recalibrated 2026-09-10 against the resized server and Coolify's
+      # measured RSS (docs/coolify-deploy.md «Spike results»), then lowered
+      # from 12 to 11 when staging joined the same budget (#186):
       #   7.56 total − 0.37 OS − 0.63 Coolify − ~1.0 production ≈ 5.5 GiB free;
-      #   at ~0.25 GiB per preview, 12 previews use ~3.0 and leave ~2.5 GiB,
-      #   comfortably past the ≥0.8–1.0 GiB the spec §1 invariant requires.
+      #   staging is one more preview-sized stack (seeded, idle) at ~0.25 GiB,
+      #   so at ~0.25 GiB per preview, staging + 11 previews use ~3.0 and
+      #   leave ~2.5 GiB, comfortably past the ≥0.8–1.0 GiB the spec §1
+      #   invariant requires.
       # The repository variable PREVIEW_CAP overrides it without a commit —
       # used for recalibration and for testing the limit path.
-      PREVIEW_CAP: ${{ vars.PREVIEW_CAP || 12 }}
+      PREVIEW_CAP: ${{ vars.PREVIEW_CAP || 11 }}
       PR: ${{ github.event.pull_request.number }}
       HEAD_SHA: ${{ github.event.pull_request.head.sha }}
       PREVIEW_URL: https://pr-${{ github.event.pull_request.number }}.${{ vars.PREVIEW_DOMAIN }}
@@ -704,7 +761,7 @@ jobs:
         with:
           coolify-url: ${{ secrets.COOLIFY_URL }}
           coolify-api-token: ${{ secrets.COOLIFY_API_TOKEN }}
-          app-uuid: ${{ secrets.COOLIFY_APP_UUID }}
+          app-uuid: ${{ secrets.COOLIFY_STAGING_APP_UUID }}
           base-url: ${{ env.PREVIEW_URL }}
           commit: ${{ env.HEAD_SHA }}
           pr-number: ${{ env.PR }}
@@ -760,7 +817,7 @@ jobs:
             https://pr-${{ github.event.pull_request.number }}.${{ vars.PREVIEW_DOMAIN }} still serves the previous deployed commit.
 
 
-  deploy-prod:
+  deploy-staging:
     runs-on: ubuntu-latest
     timeout-minutes: 25
     needs: [verify, docker]
@@ -768,11 +825,12 @@ jobs:
     # needs graph transitively: `changes` skips itself on push, `docker` survives
     # only via `always()`, and every job downstream of it then inherits that skip
     # unless its own `if` contains a status function. Without this the gate
-    # evaluated true — event=push, ref=refs/heads/main, docker.result=success,
-    # COOLIFY_ENABLED=true, all printed by a debug job standing beside it — and
-    # the job was skipped anyway, so a merge to main reported success while
-    # production stayed on the previous commit. The needs' results are therefore
-    # asserted explicitly, since `!cancelled()` no longer implies they passed.
+    # evaluated true and the job was skipped anyway, so a merge to main reported
+    # success while nothing deployed. The needs' results are therefore asserted
+    # explicitly, since `!cancelled()` no longer implies they passed.
+    #
+    # STAGING_ENABLED is a pause switch, like PREVIEWS_ENABLED: flip it to false
+    # to stop staging deploys without a commit.
     if: >-
       !cancelled()
       && needs.verify.result == 'success'
@@ -780,18 +838,19 @@ jobs:
       && github.event_name == 'push'
       && github.ref == 'refs/heads/main'
       && vars.COOLIFY_ENABLED == 'true'
+      && vars.STAGING_ENABLED == 'true'
     concurrency:
-      group: deploy-prod
+      group: deploy-staging
       cancel-in-progress: false
     permissions:
       contents: read
     steps:
       - uses: actions/checkout@v7
 
-      # `concurrency` serialises prod deploys but does not order them, and this
-      # repo merges stacked PRs forward in quick succession. Without this guard
-      # a slower run for an older commit deploys AFTER the newer one and puts
-      # production behind main — while staying green, because its own
+      # `concurrency` serialises staging deploys but does not order them, and
+      # this repo merges stacked PRs forward in quick succession. Without this
+      # guard a slower run for an older commit deploys AFTER the newer one and
+      # puts staging behind main — while staying green, because its own
       # /api/health/version assertion compares against its own SHA.
       - name: Skip if main has moved on
         id: tip
@@ -804,14 +863,128 @@ jobs:
             echo "superseded=false" >> "$GITHUB_OUTPUT"
           else
             echo "superseded=true" >> "$GITHUB_OUTPUT"
-            echo "::notice::main is at $tip, not $GITHUB_SHA — its own deploy run owns production; skipping."
+            echo "::notice::main is at $tip, not $GITHUB_SHA — its own run owns staging; skipping."
           fi
 
+      # Staging is seeded (SEED_DEV_DATA=true in its env set), so the same
+      # seeded-login assertion previews make proves the seed ran here too.
       - uses: ./.github/actions/coolify-deploy
         if: steps.tip.outputs.superseded != 'true'
         with:
           coolify-url: ${{ secrets.COOLIFY_URL }}
           coolify-api-token: ${{ secrets.COOLIFY_API_TOKEN }}
+          app-uuid: ${{ secrets.COOLIFY_STAGING_APP_UUID }}
+          base-url: ${{ vars.STAGING_URL }}
+          commit: ${{ github.sha }}
+          seed-username: oksana
+          seed-password: operator
+
+  # Production is deployed only from a published GitHub Release (or a manual
+  # re-deploy of an existing release tag). Coolify's deploy API takes no git
+  # ref — it deploys the application's branch HEAD — so the production
+  # application tracks a `production` branch that ONLY this job moves, to the
+  # tag's commit, right before the deploy call. Order matters: images verified
+  # first, the schema-rollback guard second, the branch move third, the deploy
+  # last, so a refusal leaves both the branch and production untouched.
+  deploy-prod:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    needs: [verify, docker]
+    if: >-
+      !cancelled()
+      && needs.docker.result == 'success'
+      && ((github.event_name == 'release' && needs.verify.result == 'success')
+        || (github.event_name == 'workflow_dispatch' && needs.verify.result == 'skipped'))
+      && github.event.release.prerelease != true
+      && vars.COOLIFY_ENABLED == 'true'
+    # A release gates on `verify` of its own commit; a dispatch skips `verify`
+    # (see that job) and re-deploys an already-released commit. A GitHub
+    # pre-release deploys nothing — `prerelease` is empty on a dispatch, so
+    # that clause only ever stops a release.
+    concurrency:
+      group: deploy-prod
+      cancel-in-progress: false
+    permissions:
+      # Read-only contents — the `production` move goes over SSH with a deploy
+      # key (see the move step).
+      contents: read
+      packages: read # docker manifest inspect against GHCR
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: ${{ github.event.release.tag_name || inputs.tag }}
+      ALLOW_SCHEMA_ROLLBACK: ${{ inputs.allow_schema_rollback == true && 'true' || 'false' }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # The guard diffs two commits and the tag, main and production must
+          # all be reachable: full history, all branches, all tags.
+          fetch-depth: 0
+          # The write deploy key that moves `production` (see the move step).
+          # With ssh-key set, checkout configures the SSH remote and the key,
+          # so the later `git push … production` authenticates with it.
+          ssh-key: ${{ secrets.PRODUCTION_BRANCH_KEY }}
+
+      - name: Resolve the release
+        id: target
+        run: |
+          set -euo pipefail
+          target=$(git rev-parse -q --verify "refs/tags/$TAG^{commit}") \
+            || { echo "::error::no tag named '$TAG' — releases are published from an existing tag"; exit 1; }
+          git merge-base --is-ancestor "$target" origin/main \
+            || { echo "::error::$TAG ($target) is not on main — releases are cut from main; merge the hotfix first"; exit 1; }
+          # The verify job this deploy is gated on checked out github.sha. On
+          # a release GitHub sets that to the tagged commit, so the two agree
+          # by GitHub's rule — and this check makes the gate rest on the
+          # checked fact rather than on the rule.
+          if [ "$GITHUB_EVENT_NAME" = release ] && [ "$target" != "$GITHUB_SHA" ]; then
+            echo "::error::$TAG resolves to $target but this run verified $GITHUB_SHA — production is gated on a commit that was not verified"; exit 1
+          fi
+          live=$(git rev-parse -q --verify origin/production 2>/dev/null || true)
+          echo "sha=$target" >> "$GITHUB_OUTPUT"
+          echo "live=$live" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG target=$target production=${live:-<none yet>}"
+
+      - name: Both images exist for the release
+        env:
+          SHA: ${{ steps.target.outputs.sha }}
+        run: |
+          set -euo pipefail
+          echo "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          for img in backend nginx; do
+            docker manifest inspect "ghcr.io/${GITHUB_REPOSITORY,,}-$img:sha-$SHA" >/dev/null \
+              || { echo "::error::ghcr.io/${GITHUB_REPOSITORY,,}-$img:sha-$SHA is missing — re-run this workflow run's failed jobs so the docker job rebuilds it"; exit 1; }
+          done
+
+      - name: Refuse to roll back across a migration
+        # MODE: a release may only move production forward (two releases can
+        # finish out of order); rollbacks go through a dispatch only.
+        run: bash scripts/ci/release-guard.sh "${{ steps.target.outputs.live }}" "${{ steps.target.outputs.sha }}" backend/src/migrations "$ALLOW_SCHEMA_ROLLBACK" "${{ github.event_name == 'release' && 'release' || 'dispatch' }}"
+
+      - name: Move `production` to the release
+        env:
+          SHA: ${{ steps.target.outputs.sha }}
+          LIVE: ${{ steps.target.outputs.live }}
+        run: |
+          set -euo pipefail
+          # Over SSH with the PRODUCTION_BRANCH_KEY deploy key, not GITHUB_TOKEN:
+          # a GitHub App / Actions token cannot update a ref whose pushed range
+          # changes .github/workflows/* without the `workflows` permission,
+          # which `permissions:` cannot grant; a repository deploy key with
+          # write access can. That key can push ANY ref, main included, and
+          # bypasses branch protection unless «Do not allow bypassing» is on —
+          # it exists for this one line; rotation is in the runbook's step 7.
+          # --force-with-lease: a rollback moves the branch backwards, but only
+          # from the commit this run read; a concurrent move fails the push.
+          if [ -n "$LIVE" ]; then
+            git push --force-with-lease="refs/heads/production:$LIVE" origin "$SHA:refs/heads/production"
+          else
+            git push origin "$SHA:refs/heads/production"
+          fi
+
+      - uses: ./.github/actions/coolify-deploy
+        with:
+          coolify-url: ${{ secrets.COOLIFY_URL }}
+          coolify-api-token: ${{ secrets.COOLIFY_API_TOKEN }}
           app-uuid: ${{ secrets.COOLIFY_APP_UUID }}
           base-url: ${{ vars.PROD_URL }}
-          commit: ${{ github.sha }}
+          commit: ${{ steps.target.outputs.sha }}
