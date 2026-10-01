@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { SupplierSettlement } from '@/entities/supplier';
-import { otherCovered, reopenedCodes } from './otherCovered';
+import { reopenedCodes } from './reopenedCodes';
 
 // A top-up line carries its parent receipt's code, as the settlement does.
 const line = (id: string, kind: 'intake' | 'top_up', intake_id: string) => ({
@@ -28,20 +28,6 @@ const settlement: SupplierSettlement = {
     },
   ],
 };
-
-describe('otherCovered', () => {
-  it('sums what the payout covers outside the receipt and its top-ups', () => {
-    expect(otherCovered(settlement, 'p', 'r')).toBe('1000.00');
-  });
-
-  it('seen from another receipt, counts this receipt and its top-up as "other"', () => {
-    expect(otherCovered(settlement, 'p', 'old')).toBe('500.00');
-  });
-
-  it('is zero when the payout is not in the settlement', () => {
-    expect(otherCovered({ ...settlement, payouts: [] }, 'p', 'r')).toBe('0.00');
-  });
-});
 
 describe('reopenedCodes', () => {
   it('lists the codes the payout covers outside the receipt, oldest first, once each', () => {

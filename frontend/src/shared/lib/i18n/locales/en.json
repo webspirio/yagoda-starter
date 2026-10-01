@@ -564,15 +564,6 @@
     "toast": {
       "voided": "Document voided"
     },
-    "payout": {
-      "legend": "What about payout {{code}} ({{amount}})?",
-      "keep": "Keep the payout",
-      "void": "Void the payout too — the supplier will return the money",
-      "voidReturned": "Void the payout too — the money is already back in the drawer",
-      "cashWarning": "The drawer will be {{amount}} short until the owner confirms the return",
-      "otherCovered": "{{amount}} of it covered other receipts — they will reopen",
-      "required": "Choose what to do with the payout"
-    },
     "ack": {
       "legend": "Confirm each consequence",
       "cash": "Client returned or never took {{amount}} — it is in the drawer",
@@ -589,11 +580,10 @@
     },
     "errors": {
       "notYourDocument": "Only the author or the owner can void a document",
-      "shiftClosed": "The shift is closed — ask the network owner to void it",
+      "shiftClosed": "The shift is closed — ask the network owner",
       "alreadyVoided": "Already voided",
       "failed": "Could not void",
-      "reasonRequired": "Enter a reason",
-      "payoutChanged": "The payout on this receipt just changed — close and reopen the dialog"
+      "reasonRequired": "Enter a reason"
     },
     "reopensFailed": "Couldn't load the receipts that will reopen"
   },
