@@ -256,6 +256,7 @@ export function SupplierCardPage() {
         unallocated={st.unallocated}
         intakesById={intakesById}
         locale={i18n.language}
+        onOpenReceipt={openReceipt}
       />
 
       <SectionCard eyebrow={t('supplierCard.timeline.title')}>

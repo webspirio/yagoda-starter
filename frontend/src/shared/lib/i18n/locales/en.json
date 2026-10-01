@@ -1056,6 +1056,7 @@
       "title": "Open balances — what exactly is owed",
       "topUp": "Top-up on {{code}}",
       "unallocated": "Overpayment — not allocated",
+      "openReceipt": "Open receipt {{code}}",
       "oldest_one": "oldest from {{date}} — {{count}} day",
       "oldest_other": "oldest from {{date}} — {{count}} days"
     },
