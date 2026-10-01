@@ -94,4 +94,39 @@ describe('SupplierDebtQuery', () => {
     expect(managerQuery).toHaveBeenCalled();
     expect(query).not.toHaveBeenCalled();
   });
+
+  /**
+   * `termsFor` is what `/settlement` reads (#153): the debt AND the three
+   * sums it is made of, from ONE evaluation of the terms, so the card's
+   * breakdown line cannot disagree with the tile above it.
+   */
+  describe('termsFor', () => {
+    const row = {
+      debt: '4200.00',
+      intakes_total: '10000.00',
+      top_ups_total: '200.00',
+      payouts_total: '6000.00',
+    };
+
+    beforeEach(() => query.mockResolvedValue([row]));
+
+    it('returns the debt with its three terms', async () => {
+      await expect(service.termsFor(SUPPLIER)).resolves.toEqual(row);
+    });
+
+    it('evaluates each term ONCE and derives the debt from them', async () => {
+      await service.termsFor(SUPPLIER);
+      expect(sql().match(/SUM\(i\.amount\)/g)).toHaveLength(1);
+      expect(sql().match(/SUM\(t\.amount\)/g)).toHaveLength(1);
+      expect(sql().match(/SUM\(p\.amount\)/g)).toHaveLength(1);
+      expect(sql()).toMatch(/intakes_total \+ t\.top_ups_total - t\.payouts_total/);
+    });
+
+    it('reads through the given manager, so it can share a transaction', async () => {
+      const inTx = jest.fn().mockResolvedValue([row]);
+      await service.termsFor(SUPPLIER, { query: inTx } as never);
+      expect(inTx).toHaveBeenCalledTimes(1);
+      expect(query).not.toHaveBeenCalled();
+    });
+  });
 });

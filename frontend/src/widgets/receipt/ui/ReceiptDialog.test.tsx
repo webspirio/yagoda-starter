@@ -39,6 +39,10 @@ vi.mock('@/entities/supplier', () => ({
   supplierName: (s: { first_name: string; last_name: string }) => `${s.first_name} ${s.last_name}`,
 }));
 
+// INERT ON PURPOSE. `ReceiptDialog` stopped importing this module in #148, so
+// this factory never loads — which is precisely the regression pin: re-wire the
+// dialog to the active-only catalog and the two tests below go live again and
+// fail, one on a deactivated grade, one on a failing `/product-grades` read.
 vi.mock('@/entities/product-grade', () => ({
   useGradeCatalogQuery: () => gradesMock(),
 }));
@@ -103,6 +107,8 @@ const OWNER = {
   collection_point_id: null,
 };
 
+const GRADE_1 = { id: 'grade-1', name: '1 сорт', productId: 'product-1', productName: 'Малина' };
+
 function buildIntake(overrides: Partial<IntakeDetail> = {}): IntakeDetail {
   return {
     id: 'intake-1',
@@ -131,6 +137,8 @@ function buildIntake(overrides: Partial<IntakeDetail> = {}): IntakeDetail {
         id: 'item-1',
         item_order: 1,
         product_grade_id: 'grade-1',
+        product_name: 'Малина',
+        grade_name: '1 сорт',
         gross_kg: '126.40',
         pallet_kg: '0.00',
         tare_weight_kg: '14.40',
@@ -150,11 +158,15 @@ function setUp({
   debt = '9000.00',
   me = OPERATOR_OTHER,
   intakeIsError = false,
+  grades = [GRADE_1],
+  gradesIsError = false,
 }: {
   intake?: IntakeDetail | null;
   debt?: string;
   me?: typeof OPERATOR_AUTHOR | typeof OPERATOR_OTHER | typeof OWNER;
   intakeIsError?: boolean;
+  grades?: Array<typeof GRADE_1>;
+  gradesIsError?: boolean;
 } = {}) {
   intakeMock.mockReturnValue({
     data: intake ?? undefined,
@@ -168,9 +180,9 @@ function setUp({
     isError: false,
   });
   gradesMock.mockReturnValue({
-    data: [{ id: 'grade-1', name: '1 сорт', productId: 'product-1', productName: 'Малина' }],
+    data: grades,
     isPending: false,
-    isError: false,
+    isError: gradesIsError,
   });
   tareTypesMock.mockReturnValue({
     data: [{ id: 'tare-1', name: 'Чешка', weight_kg: '1.20', is_crate: true }],
@@ -209,6 +221,47 @@ describe('ReceiptDialog', () => {
     await expectNoAxeViolations(container);
   });
 
+  /**
+   * #148. Deactivating a grade is the routine end-of-season action — the only
+   * removal verb the schema has — and the catalog read is active-only. If the
+   * line's names came from that catalog, the paper in the supplier's hand and
+   * the card on the operator's screen would describe one delivery two ways.
+   * The receipt names its own lines.
+   */
+  it('names the line from the receipt itself when the grade is no longer in the catalog', () => {
+    setUp({ grades: [] });
+    render(<ReceiptDialog intakeId="intake-1" open onClose={vi.fn()} />);
+
+    expect(screen.getByText('Малина · 1 сорт')).toBeInTheDocument();
+  });
+
+  it('prints the receipt even when the grade catalog read fails — it no longer depends on it', () => {
+    setUp({ gradesIsError: true });
+    render(<ReceiptDialog intakeId="intake-1" open onClose={vi.fn()} />);
+
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(screen.getByText('Малина · 1 сорт')).toBeInTheDocument();
+  });
+
+  it('keeps the known name, not a bare « · », when the line has lost the other', () => {
+    const base = buildIntake();
+    setUp({ intake: buildIntake({ items: [{ ...base.items![0], product_name: '' }] }) });
+    render(<ReceiptDialog intakeId="intake-1" open onClose={vi.fn()} />);
+
+    expect(screen.queryByText(/^\s*·/)).not.toBeInTheDocument();
+    expect(screen.getByText('1 сорт')).toBeInTheDocument();
+  });
+
+  it('prints a dash when the line has lost both names', () => {
+    const base = buildIntake();
+    setUp({
+      intake: buildIntake({ items: [{ ...base.items![0], product_name: '', grade_name: '' }] }),
+    });
+    render(<ReceiptDialog intakeId="intake-1" open onClose={vi.fn()} />);
+
+    expect(screen.getByText('—')).toBeInTheDocument();
+  });
+
   it('shows price − bonus = total for a per-kilogram discount', () => {
     setUp();
     render(<ReceiptDialog intakeId="intake-1" open onClose={vi.fn()} />);
@@ -224,6 +277,8 @@ describe('ReceiptDialog', () => {
             id: 'item-1',
             item_order: 1,
             product_grade_id: 'grade-1',
+            product_name: 'Малина',
+            grade_name: '1 сорт',
             gross_kg: '126.40',
             pallet_kg: '0.00',
             tare_weight_kg: '14.40',

@@ -119,6 +119,11 @@ export function makeIntakesMocks() {
     findOne: jest.fn().mockImplementation(findOneUserOrNull),
     save: jest.fn().mockImplementation((_e, v) => Promise.resolve(intake(v))),
     create: jest.fn().mockImplementation((_e, v) => v),
+    // `create`'s response items are RE-READ, not taken from the cascade
+    // save — the saved `IntakeItem`s never carry `product_grade`, so
+    // reusing them would silently answer `product_name: ''`. Empty by
+    // default; `create-intake.command.spec.ts` stocks a real row to prove the names flow.
+    find: jest.fn().mockResolvedValue([]),
   };
   const plainManager = {
     getRepository: jest.fn().mockReturnValue(itemRepo),

@@ -4,6 +4,7 @@ import { SuppliersModule } from '../suppliers/suppliers.module';
 import { PayoutAllocation } from './payout-allocation.entity';
 import { AllocationsService } from './services/allocations';
 import { SupplierDebtQuery } from './queries/supplier-debt.query';
+import { SupplierBalanceBreakdownQuery } from './queries/supplier-balance-breakdown.query';
 import { ListSupplierBalancesQuery } from './queries/list-supplier-balances.query';
 import { SupplierSettlementQuery } from './queries/supplier-settlement.query';
 import { SupplierBalanceController } from './supplier-balance.controller';
@@ -20,6 +21,7 @@ import { SupplierBalancesController } from './supplier-balances.controller';
   providers: [
     AllocationsService,
     SupplierDebtQuery,
+    SupplierBalanceBreakdownQuery,
     ListSupplierBalancesQuery,
     SupplierSettlementQuery,
   ],
