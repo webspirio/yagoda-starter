@@ -185,7 +185,7 @@ describe('intake void with a bound payout (HTTP, Postgres)', () => {
     expect((await row('intakes', s.rId)).voided_at).toBeNull();
   });
 
-  // 2026-09-30: a closed shift is frozen for everyone; the owner reopens it first.
+  // 2026-09-30: a closed shift is frozen for everyone, the owner included.
   it('closed shift: even the owner is SHIFT_CLOSED and nothing is written', async () => {
     const s = await scenario(closedShiftId);
     const before = await cash(closedShiftId);

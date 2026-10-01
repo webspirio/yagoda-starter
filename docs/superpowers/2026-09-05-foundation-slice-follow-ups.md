@@ -1372,8 +1372,14 @@ Spec `docs/superpowers/specs/2026-09-27-allocations-cluster-refactor-design.md`,
 
 ## Deferred from forbidding the closed-shift intake void (2026-09-30)
 
-Nobody voids an intake in a closed shift any more, the owner included; the owner reopens the
-shift first (§9.4, правка 30.09.2026). #125's `keep` / `void` / `void_returned` choice went with it.
+Nobody voids an intake in a closed shift any more, the owner included (§9.4, правка
+30.09.2026). #125's `keep` / `void` / `void_returned` choice went with it.
+
+- **An older day's receipt cannot be corrected at all — known and accepted.** Reopening is the
+  only way back, and `ShiftsService.reopen` admits only the point's newest shift while no other
+  is open there (`SHIFT_NOT_NEWEST`, `SHIFT_ALREADY_OPEN`). Once the next day's shift exists, a
+  wrong receipt from any earlier day stays as recorded, debt included. Two ways out when the
+  client asks: let `reopen` admit an older shift, or bring back an owner-only closed-shift void.
 
 - **The closed-shift PAYOUT void is still there.** It keeps `POST /payouts/:id/settle-return`,
   the «expected return» (`return_settled_at`, `return_note`, the two CHECKs) and the
@@ -1384,6 +1390,6 @@ shift first (§9.4, правка 30.09.2026). #125's `keep` / `void` / `void_ret
   (`point-cash.service.ts`, `movementsSql`) books a `returned_on_void` payout into the payout's
   OWN shift. The two disagree whenever an open-shift void happens on a different calendar day
   than the shift's `business_date`: after midnight in a still-open shift, or in a reopened
-  shift. The reopened shift is now the ONLY way to correct a closed day's receipt, so this
+  shift. Reopening the point's newest shift is now the ONLY way to correct a closed day's receipt, so this
   display gap sits on that path. The server's figure is right; the ledger rows explaining it
   are not.

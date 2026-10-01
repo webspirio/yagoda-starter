@@ -87,8 +87,7 @@ describe('VoidIntakeCommand', () => {
     });
 
     it('403s the author once the shift is closed', async () => {
-      // §9.4's second row — «квитанція минулого дня → тільки керівник» — and the
-      // freeze line the shift close draws.
+      // The freeze line the shift close draws (§9.4, правка 30.09.2026).
       shifts.findOneRaw.mockResolvedValue(
         shift({ closed_at: new Date(), status: ShiftStatus.Closed }),
       );
@@ -99,7 +98,7 @@ describe('VoidIntakeCommand', () => {
     });
 
     it('403s even the owner once the shift is closed, writing nothing', async () => {
-      // 2026-09-30: a closed day is frozen for everyone; the owner reopens the shift first.
+      // 2026-09-30: a closed day is frozen for everyone, the owner included.
       shifts.findOneRaw.mockResolvedValue(
         shift({ closed_at: new Date(), status: ShiftStatus.Closed }),
       );

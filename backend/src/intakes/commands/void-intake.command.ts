@@ -18,14 +18,14 @@ import { AuditService } from '../../audit/audit.service';
 import { assertCanVoid } from '../../auth/access/document-access';
 import type { AuthenticatedUser } from '../../auth/jwt.strategy';
 
+const SHIFT_CLOSED = 'That shift is closed — its receipts can no longer be voided';
+
 /**
  * §9.4 void. Lock order: supplier → intake → payout. A bound payout always goes too, cash back
- * at once (2026-09-28). A closed shift refuses everyone, the owner included (2026-09-30): the
- * owner reopens it first. §10.2 lists receipt voids as owner-only; §9.4 (followed here) allows
- * the author.
+ * at once (2026-09-28). A closed shift refuses everyone, the owner included (2026-09-30); only
+ * the point's newest shift can be reopened, so an older day's receipt is final. §10.2 lists
+ * receipt voids as owner-only; §9.4 (followed here) allows the author.
  */
-const SHIFT_CLOSED = 'That shift is closed — the network owner must reopen it first';
-
 @Injectable()
 export class VoidIntakeCommand {
   constructor(
