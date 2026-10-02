@@ -1,17 +1,30 @@
 import type { DebtKind, Settlement } from './settlement';
+import type { DebtTerms } from './queries/supplier-debt.query';
 
-/** «Разом» — §3.1's one number. A decimal STRING, and legitimately negative
- *  after a voided receipt that had already been paid for. */
-export interface SupplierBalanceResponse {
-  supplier_id: string;
+/** `debt` plus the season counters the card's tiles read instead of summing a
+ *  page that truncates past 100 documents (#103). The three terms of `debt`
+ *  are on `/settlement`, not here (#153). Every money and weight field is a
+ *  decimal STRING (`::text` in `SupplierBalanceBreakdownQuery`'s SQL) — `debt`
+ *  is legitimately negative after a voided receipt that had already been
+ *  paid for; the DBML's «інваріанта борг >= 0 в цій схемі немає». */
+export interface SupplierBalanceBreakdown {
   debt: string;
+  intakes_count: number;
+  kg_total: string;
+  /** Business date of the most recent LIVE receipt; `null` when there is none. */
+  last_intake_date: string | null;
+}
+
+/** «Разом» — §3.1's one number, with the season counters (#103). */
+export interface SupplierBalanceResponse extends SupplierBalanceBreakdown {
+  supplier_id: string;
 }
 
 export function toSupplierBalanceResponse(
   supplier_id: string,
-  debt: string,
+  breakdown: SupplierBalanceBreakdown,
 ): SupplierBalanceResponse {
-  return { supplier_id, debt };
+  return { supplier_id, ...breakdown };
 }
 
 /** The row `ListSupplierBalancesQuery.list` projects — `debt` already `::text`. */
@@ -85,6 +98,10 @@ interface SettlementPayoutResponse {
 export interface SupplierSettlementResponse {
   supplier_id: string;
   debt: string;
+  /** `debt`'s three terms, from the same snapshot as `debt` (#153). */
+  intakes_total: string;
+  top_ups_total: string;
+  payouts_total: string;
   unallocated: string;
   lines: SettlementLineResponse[];
   payouts: SettlementPayoutResponse[];
@@ -93,12 +110,15 @@ export interface SupplierSettlementResponse {
 /** Field by field, not `...row` — a raw projection must not reach the client. */
 export function toSupplierSettlementResponse(
   supplier_id: string,
-  s: Settlement & { debt: string },
+  s: Settlement & DebtTerms,
 ): SupplierSettlementResponse {
   const payoutCode = new Map(s.payouts.map((p) => [p.id, p.code]));
   return {
     supplier_id,
     debt: s.debt,
+    intakes_total: s.intakes_total,
+    top_ups_total: s.top_ups_total,
+    payouts_total: s.payouts_total,
     unallocated: s.unallocated,
     lines: s.lines.map((l) => ({
       kind: l.kind,

@@ -11,6 +11,7 @@ export function documentParams(f: DocumentFilter) {
     ...(f.from ? { from: f.from } : {}),
     ...(f.to ? { to: f.to } : {}),
     ...(f.page ? { page: f.page } : {}),
+    ...(f.expandItems ? { expand: 'items' } : {}),
     include_voided: f.includeVoided ?? true,
     limit: f.limit ?? 100,
   };

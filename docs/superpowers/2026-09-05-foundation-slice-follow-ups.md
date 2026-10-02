@@ -1348,3 +1348,54 @@ Spec `docs/superpowers/specs/2026-09-27-allocations-cluster-refactor-design.md`,
    with no mapped frontend message, so the user sees a generic error banner until they reload.
    Money is unaffected — the request is simply rejected. Fix direction: add the mapped message
    whenever this error code's neighbours next get touched, rather than as a standalone change.
+
+## Deferred from the staging / release-gated production slice (2026-09-30, #186)
+
+- **Retag instead of rebuild on a release.** The `docker` job rebuilds
+  `sha-<commit>` on a `release` event and overwrites the image staging already
+  validated — same commit, not necessarily the same bytes.
+  `docker buildx imagetools create -t …:vX.Y.Z …:sha-<commit>` would promote
+  the tested manifest instead and give the release run back two build slots.
+  From the automated review of #187.
+- **Protect the `production` branch.** Only CI moves it (over SSH with the
+  `PRODUCTION_BRANCH_KEY` deploy key); a protection rule forbidding pushes and
+  deletion by people would make «nobody pushes it by hand» enforced rather than
+  agreed. The deploy key bypasses protection unless «Do not allow bypassing the
+  above settings» is on — and that setting would block CI too — so protect
+  against humans, not the key.
+- **PRs opened before #187** (#170, #153, #140, #159) run their branch's old
+  workflow, whose `deploy-preview` targets the production application, where
+  previews are now off. The job only runs when `verify` is green and the
+  commit touches a Docker/deploy input (`pushed == 'true'`) — today all four
+  skip it — and the next time one of them does run it, it goes red until that
+  PR merges `main`. Dependabot PRs (#165, #166) never push an image, so the
+  job is always skipped for them, and #67 predates the job entirely. Nothing
+  to change in the repository.
+- **`Closes #N` did not register** on #187 and #189 (both branches created with
+  `gh issue develop`): no closing reference, the issues stayed open after the
+  merge and were handled by hand. Not a repository defect; re-check on the next
+  PR before relying on it.
+
+## Deferred from forbidding the closed-shift intake void (2026-09-30)
+
+Nobody voids an intake in a closed shift any more, the owner included (§9.4, правка
+30.09.2026). #125's `keep` / `void` / `void_returned` choice went with it.
+
+- **An older day's receipt cannot be corrected at all — known and accepted.** Reopening is the
+  only way back, and `ShiftsService.reopen` admits only the point's newest shift while no other
+  is open there (`SHIFT_NOT_NEWEST`, `SHIFT_ALREADY_OPEN`). Once the next day's shift exists, a
+  wrong receipt from any earlier day stays as recorded, debt included. Two ways out when the
+  client asks: let `reopen` admit an older shift, or bring back an owner-only closed-shift void.
+
+- **The closed-shift PAYOUT void is still there.** It keeps `POST /payouts/:id/settle-return`,
+  the «expected return» (`return_settled_at`, `return_note`, the two CHECKs) and the
+  booking-by-date term in `movementsSql` alive. Forbidding it the same way would retire all of
+  that, but it needs a migration. Wait for the client to ask either way.
+- **`buildLedger.ts` ignores `returned_on_void`.** `pages/point-cash/lib/buildLedger.ts` books
+  every settled return on the local date of `return_settled_at` (`returnedToday`). The backend
+  (`point-cash.service.ts`, `movementsSql`) books a `returned_on_void` payout into the payout's
+  OWN shift. The two disagree whenever an open-shift void happens on a different calendar day
+  than the shift's `business_date`: after midnight in a still-open shift, or in a reopened
+  shift. Reopening the point's newest shift is now the ONLY way to correct a closed day's receipt, so this
+  display gap sits on that path. The server's figure is right; the ledger rows explaining it
+  are not.

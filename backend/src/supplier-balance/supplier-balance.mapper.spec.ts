@@ -4,6 +4,9 @@ describe('toSupplierSettlementResponse', () => {
   it('maps field by field and resolves payout codes onto covered_by', () => {
     const out = toSupplierSettlementResponse('sup', {
       debt: '-50.00',
+      intakes_total: '100.00',
+      top_ups_total: '0.00',
+      payouts_total: '150.00',
       unallocated: '50.00',
       lines: [
         {
@@ -28,6 +31,9 @@ describe('toSupplierSettlementResponse', () => {
     expect(out).toEqual({
       supplier_id: 'sup',
       debt: '-50.00',
+      intakes_total: '100.00',
+      top_ups_total: '0.00',
+      payouts_total: '150.00',
       unallocated: '50.00',
       lines: [
         {

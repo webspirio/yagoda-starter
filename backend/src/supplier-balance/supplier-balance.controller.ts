@@ -1,7 +1,7 @@
 import { Controller, Get, Param, ParseUUIDPipe } from '@nestjs/common';
 import { Auth } from '../auth/decorators/auth.decorators';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
-import { SupplierDebtQuery } from './queries/supplier-debt.query';
+import { SupplierBalanceBreakdownQuery } from './queries/supplier-balance-breakdown.query';
 import { SupplierSettlementQuery } from './queries/supplier-settlement.query';
 import { SuppliersService } from '../suppliers/suppliers.service';
 import { toSupplierBalanceResponse, toSupplierSettlementResponse } from './supplier-balance.mapper';
@@ -19,7 +19,7 @@ import type { AuthenticatedUser } from '../auth/jwt.strategy';
 @Controller('suppliers')
 export class SupplierBalanceController {
   constructor(
-    private readonly debt: SupplierDebtQuery,
+    private readonly breakdown: SupplierBalanceBreakdownQuery,
     private readonly settlementQuery: SupplierSettlementQuery,
     private readonly suppliers: SuppliersService,
   ) {}
@@ -28,15 +28,17 @@ export class SupplierBalanceController {
   @Auth()
   async findOne(@CurrentUser() actor: AuthenticatedUser, @Param('id', ParseUUIDPipe) id: string) {
     const supplier = await this.suppliers.findOne(actor, id);
-    return toSupplierBalanceResponse(supplier.id, await this.debt.debtFor(supplier.id));
+    return toSupplierBalanceResponse(supplier.id, await this.breakdown.breakdownFor(supplier.id));
   }
 
   /**
    * «За що саме винні» — spec §4.3. SAME DEPTH AS `/balance`, so the class
    * comment's shadowing warning is honoured. Same visibility call: an
    * operator reading another point's supplier gets the same 404 `findOne`
-   * gives everywhere. `/balance` stays a single number on purpose — the
-   * payout ceiling reads it and must not pay for a breakdown.
+   * gives everywhere. `/balance` stays free of the settlement walk on purpose —
+   * the payout ceiling reads it and must not pay for a per-line queue. The
+   * three terms of `debt` (#103) ride HERE, not on `/balance`, so the card's
+   * breakdown line shares this snapshot with the balance tile (#153).
    */
   @Get(':id/settlement')
   @Auth()

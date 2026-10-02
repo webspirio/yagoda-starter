@@ -2,6 +2,7 @@ export type {
   Supplier,
   SupplierKind,
   SupplierBalanceRow,
+  SupplierBalanceOne,
   Paginated,
   SettlementLine,
   SupplierSettlement,
