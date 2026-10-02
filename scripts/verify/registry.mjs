@@ -273,20 +273,21 @@ export const CHECKS = [
     tier: 'fast',
     cmd: 'npm run test:ci-scripts',
     needs: ['jq'],
-    // No `after`: neither suite reads any other row's output, and both fake their own
-    // `curl`/PATH fixtures from scratch on every run.
+    // No `after`: no suite reads any other row's output, and each fakes its own
+    // `curl`/`gh`/PATH fixtures from scratch on every run.
     proves:
-      'Both deploy shell scripts behave under a faked `curl`: ' +
-      'scripts/ci/coolify-deploy.sh and ghcr-cleanup.sh are driven through their success, ' +
-      'retry, timeout, HTML-instead-of-JSON and log-redaction paths with canned ' +
-      'responses, and every assertion passes. These scripts run only in CI, against a ' +
-      'live Coolify and GHCR, so this is the only place their logic is exercised at all.',
+      'Every shell suite the glob `scripts/ci/*.test.sh` matches passes — the same glob ' +
+      'the npm script loops over, so a new suite joins this row without an edit here. Each ' +
+      'drives its script against a faked `curl` or `gh` with canned responses, through ' +
+      'success, refusal, retry and malformed-response paths, and asserts what the script ' +
+      'sent, not only where. These scripts run only in CI against live services, so this ' +
+      'is the only place their logic is exercised.',
     blindSpot:
-      'A fake curl, not Coolify. It proves the scripts parse and branch correctly on ' +
-      'responses this suite invents; it proves nothing about what the real API returns, ' +
-      'whether the token is valid, or whether the deployment actually happened. It SKIPS ' +
-      'without jq rather than failing. Nothing here runs the workflow YAML that calls ' +
-      'these scripts.',
+      'Fakes, not Coolify, GHCR or GitHub. It proves the scripts parse and branch correctly ' +
+      'on responses the suites invent; it proves nothing about what the real APIs return, ' +
+      'whether a token carries the permission a call needs, or whether GitHub renders a ' +
+      'deployment record as «View deployment». It SKIPS without jq rather than failing. ' +
+      'Nothing here runs the workflow YAML that calls these scripts.',
   },
   {
     id: 'testfiles',

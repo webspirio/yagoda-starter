@@ -1401,3 +1401,16 @@ Nobody voids an intake in a closed shift any more, the owner included (§9.4, п
   shift. Reopening the point's newest shift is now the ONLY way to correct a closed day's receipt, so this
   display gap sits on that path. The server's figure is right; the ledger rows explaining it
   are not.
+
+## Deferred from preview links (2026-10-02)
+
+- **GitHub environments for `staging` and `production`.** `deploy-staging` and
+  `deploy-prod` could keep a deployment record the same way previews now do (a job-level
+  `environment: { name, url }` is enough there — no cap, no per-PR record), so the
+  repository's *Deployments* sidebar would show which commit each one serves. Left out on
+  purpose: `deploy-prod` is the most sensitive job in the workflow, and it should not change
+  in passing inside a preview change. Spec `docs/superpowers/specs/2026-10-02-preview-links-design.md` D5.
+- **The deployment record's `ref` is the PR's head branch.** The spec assumes GitHub ties
+  such a record to the PR and shows «View deployment»; the first PR to run it confirms or
+  refutes that. The fallback is `ref` = head SHA (`deploy_start` in `scripts/ci/preview-links.sh`),
+  which would also need `own_deployments` to stop filtering on `ref`.
