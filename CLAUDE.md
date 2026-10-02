@@ -108,7 +108,11 @@ PR, on `main` and on every release. **`main` deploys staging automatically**
 (`deploy-prod`: the production application tracks a `production` branch that
 only that job moves, after a guard that refuses rolling back across a
 migration); previews (`deploy-preview`, internal PRs, all CI jobs green) are
-previews of the staging application. Every deploy job verifies the
+previews of the staging application. A preview's link shows up in the sticky
+PR comment, as the PR's «View deployment» button (a deployment record in the
+shared GitHub environment `preview`) and as a block at the end of each issue
+the PR closes — the last two written by `scripts/ci/preview-links.sh`, and
+tidied on close by `preview-closed.yml`. Every deploy job verifies the
 application (`/api/health/ready`, `/api/health/version`, a seeded login on
 staging and previews). `sha-<commit>` is the only tag ever deployed. Runbook,
 env tables, failure modes and measured timing/cache baselines:

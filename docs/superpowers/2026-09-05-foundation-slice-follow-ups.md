@@ -1401,3 +1401,33 @@ Nobody voids an intake in a closed shift any more, the owner included (§9.4, п
   shift. Reopening the point's newest shift is now the ONLY way to correct a closed day's receipt, so this
   display gap sits on that path. The server's figure is right; the ledger rows explaining it
   are not.
+
+## Deferred from preview links (2026-10-02)
+
+- **GitHub environments for `staging` and `production`.** `deploy-staging` and
+  `deploy-prod` could keep a deployment record the same way previews now do (a job-level
+  `environment: { name, url }` is enough there — no cap, no per-PR record), so the
+  repository's *Deployments* sidebar would show which commit each one serves. Left out on
+  purpose: `deploy-prod` is the most sensitive job in the workflow, and it should not change
+  in passing inside a preview change. Spec `docs/superpowers/specs/2026-10-02-preview-links-design.md` D5.
+- **Coolify skips a PR whose author it sees as `CONTRIBUTOR`.** The staging application's
+  *PR deployment access: repository members only* reads `author_association` from the App
+  webhook, which is the PUBLIC view: an org member with private membership (and no direct
+  collaborator grant) arrives as `CONTRIBUTOR`, Coolify creates no preview record, and
+  `deploy-preview` fails with «Pull request N not found for this resource» — on every push
+  and on a close/reopen alike. Found on #199 (author `swefd`: `CONTRIBUTOR` anonymously,
+  `MEMBER` to an authenticated member; the authors whose previews work read `COLLABORATOR`).
+  Check with `curl -s https://api.github.com/repos/webspirio/yagoda-starter/pulls/<N> | jq -r .author_association`.
+  Fix per person: a DIRECT repository grant (any role; it reads `COLLABORATOR` and the
+  membership stays private), or a public org membership (`MEMBER`). Org-admin access and a
+  team grant (`internal-team`, `admin`) both still read `CONTRIBUTOR` — tried on #199. The
+  fix is per repository: any other repository that gets Coolify previews needs the same.
+- **An issue unlinked after its block was written keeps the block.** Deleting `Closes #7`
+  from a PR body after #7 received its block leaves it there: later runs and `closed` read
+  only the CURRENT closing references. Fix if it bites: remember the issue numbers in the
+  deployment `payload` and act on the union. From the branch review of the preview-links change.
+- **Two writers on one issue can lose an update.** `preview-closed` for PR A and
+  `deploy-preview` for PR B read-modify-write the same issue body in different concurrency
+  groups; one write can be lost. Rare (two PRs closing one issue, at the same second); a
+  duplicated block it leaves behind is collapsed by the next write. A re-read-and-retry after
+  the PATCH would close it.

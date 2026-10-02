@@ -47,6 +47,30 @@ matches a PR webhook to an application by its branch — the PR's base,
    `/api/health/version == sha-<commit>` and (staging, previews) a seeded
    login, and only then passes / comments «Preview ready».
 
+### Where a preview's link appears
+
+`deploy-preview` puts the link in three places, and the last two exist because the
+first sinks under review comments on a busy PR (spec
+`docs/superpowers/specs/2026-10-02-preview-links-design.md`):
+
+- **the sticky PR comment** (`yagoda-preview`) — unchanged, and the only one of the
+  three that notifies anyone;
+- **«View deployment»** on the PR — a GitHub deployment record in the shared
+  `preview` environment, `in_progress` while Coolify deploys and `success`/`failure`
+  once the job has verified it. Its description carries the Coolify deployment uuid,
+  so it can be matched to the `yagoda-coolify-pr-preview[bot]` comment for the same
+  deploy. Coolify's push-time webhook deploy never reaches GitHub; a deploy started
+  by hand in Coolify's UI is not recorded either;
+- **a block at the end of each issue the PR closes** (`Closes #N`, or linked in the
+  sidebar's *Development*) — link, commit and demo sign-in, or a ⚠️ when the last deploy
+  failed, between `<!-- yagoda-preview:pr-<N>:start/end -->` markers.
+
+`scripts/ci/preview-links.sh` writes both. Its steps are `continue-on-error`: a link
+that could not be written is a `::warning::` on the run, never a red `deploy-preview`.
+When the PR closes, `.github/workflows/preview-closed.yml` deactivates the record and
+rewrites the block — «merged, on staging in a few minutes» — or removes it if the PR
+closed unmerged. Coolify removes the stack itself, as before.
+
 ## Releasing to production
 
 A release is a GitHub Release published from `main`:
@@ -615,6 +639,9 @@ ssh root@<vps> 'docker ps --format "{{.Names}}\t{{.Status}}\t{{.Image}}"; docker
 | A preview ignores the PR's change to `docker-compose.prod.yml` | expected — the compose is loaded from `main` on every deploy («The compose comes from `main`») | merge, then check the next preview |
 | Coolify lists a **failed** deployment seconds after every PR push, before CI is green | expected: the App webhook deploys `sha-<head>` before CI has pushed it; the pull fails, and it runs before the old containers are stopped, so a live preview stays up | nothing — `deploy-preview`'s API deploy is the one that counts |
 | «Preview not deployed — limit reached» | `PREVIEW_CAP` live previews (default 11). A PR whose deploy FAILED keeps its `preview` label on purpose — the stack is still running and still holding memory | close or merge an older PR, or remove its `preview` label once you have confirmed Coolify no longer runs that preview |
+| A preview is live but the PR has no «View deployment», or its issue has no block | a `preview-links.sh` step failed — it is `continue-on-error`, so the job stays green — or the PR closes no issue | the `::warning::` annotation on the `deploy-preview` run names the call; add `Closes #N` (or link the issue under *Development*) and re-run the job |
+| «a yagoda-preview:pr-N start marker has no end marker — left untouched» | someone edited the issue and cut the block's end marker | delete the block's remaining lines by hand; the next deploy writes a fresh one |
+| `deploy-preview`: «Pull request N not found for this resource», on every push and after a close/reopen too | Coolify skipped the PR's webhook: *PR deployment access: repository members only* reads the author's PUBLIC `author_association`, and an org member with private membership arrives as `CONTRIBUTOR` | `curl -s https://api.github.com/repos/webspirio/yagoda-starter/pulls/<N> \| jq -r .author_association` — anything but `OWNER`/`MEMBER`/`COLLABORATOR` is this. Give that person a DIRECT repository grant (any role; membership can stay private) or make their org membership public, then push to the PR. Org-role and team access do not count — both were tried on #199 |
 | `deploy-preview` shows "cancelled", no comment | another PR took the single pending slot of the `preview-allocation` concurrency group while this one waited | re-run the job |
 | `deploy-staging` skipped with «main is at X, not Y» | correct: a newer merge owns staging, and its own run deploys it | nothing — unless that newer run went red, in which case staging is behind `main` until it is fixed and re-run |
 | CI green after a merge but production unchanged | expected — production moves only on a release («Releasing to production»); check staging instead | publish a release when the change is meant for production |

@@ -696,7 +696,8 @@ jobs:
     permissions:
       contents: read
       pull-requests: write
-      issues: write # gh label create / gh pr edit --add-label use the Issues API
+      issues: write # gh label create / gh pr edit --add-label use the Issues API; the issue block
+      deployments: write # scripts/ci/preview-links.sh: the record behind «View deployment»
     env:
       # Recalibrated 2026-09-10 against the resized server and Coolify's
       # measured RSS (docs/coolify-deploy.md «Spike results»), then lowered
@@ -711,7 +712,17 @@ jobs:
       PREVIEW_CAP: ${{ vars.PREVIEW_CAP || 11 }}
       PR: ${{ github.event.pull_request.number }}
       HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+      # A branch name is PR-controlled text: it reaches scripts through env, never
+      # through ${{ }} inside a run: block.
+      HEAD_REF: ${{ github.event.pull_request.head.ref }}
       PREVIEW_URL: https://pr-${{ github.event.pull_request.number }}.${{ vars.PREVIEW_DOMAIN }}
+      # Demo credentials from backend/src/seed/dev-seed.data.ts. They exist
+      # only where the preview env set carries SEED_DEV_DATA=true — that
+      # variable must never be set on production (docs/coolify-deploy.md).
+      # The deploy verifies a login with them; preview-links.sh prints them in
+      # the issue block.
+      SEED_USERNAME: oksana
+      SEED_PASSWORD: operator
       GH_TOKEN: ${{ github.token }}
 
     steps:
@@ -754,6 +765,18 @@ jobs:
         if: steps.cap.outputs.blocked != 'true'
         run: gh pr edit "$PR" --repo "$GITHUB_REPOSITORY" --add-label preview
 
+      # The link where people look (docs/superpowers/specs/2026-10-02-preview-links-design.md):
+      # a deployment record, so the PR shows «View deployment», and a block in every
+      # issue the PR closes. All three preview-links steps are continue-on-error: a red
+      # deploy-preview means «the preview is broken» — the cap and re-runs are read off
+      # it — and must not start meaning «a link could not be written». The script names
+      # what failed in a ::warning::, and the sticky PR comment still carries the link.
+      - name: Deployment record — start
+        id: gh-deployment
+        if: steps.cap.outputs.blocked != 'true'
+        continue-on-error: true
+        run: bash scripts/ci/preview-links.sh deploy-start
+
       - name: Deploy preview
         id: deploy
         if: steps.cap.outputs.blocked != 'true'
@@ -765,11 +788,8 @@ jobs:
           base-url: ${{ env.PREVIEW_URL }}
           commit: ${{ env.HEAD_SHA }}
           pr-number: ${{ env.PR }}
-          # Demo credentials from backend/src/seed/dev-seed.data.ts. They exist
-          # only where the preview env set carries SEED_DEV_DATA=true — that
-          # variable must never be set on production (docs/coolify-deploy.md).
-          seed-username: oksana
-          seed-password: operator
+          seed-username: ${{ env.SEED_USERNAME }}
+          seed-password: ${{ env.SEED_PASSWORD }}
           # Set the PREVIEW_BASIC_AUTH secret (user:pass) if the preview routers
           # carry a basicAuth middleware; empty means no credentials are sent.
           basic-auth: ${{ secrets.PREVIEW_BASIC_AUTH }}
@@ -791,6 +811,32 @@ jobs:
           message: |
             **Preview deploy failed** for `sha-${{ env.HEAD_SHA }}` — see the `deploy-preview` job log.
             ${{ env.PREVIEW_URL }} may be serving an older commit.
+
+      # Both run whenever the deploy itself ran — a FAILED deploy still records
+      # `failure` and the ⚠️ — and neither runs when the cap refused it (the deploy
+      # step was skipped). The state is a literal chosen by the expression, so
+      # nothing PR-controlled is interpolated into the command.
+      - name: Deployment record — finish
+        if: "!cancelled() && (steps.deploy.outcome == 'success' || steps.deploy.outcome == 'failure')"
+        continue-on-error: true
+        env:
+          DEPLOYMENT_ID: ${{ steps.gh-deployment.outputs.deployment_id }}
+          COOLIFY_DEPLOYMENT_UUID: ${{ steps.deploy.outputs.deployment-uuid }}
+        run: bash scripts/ci/preview-links.sh deploy-finish ${{ steps.deploy.outcome == 'success' && 'success' || 'failure' }}
+
+      - name: Preview link in the closing issues
+        if: "!cancelled() && (steps.deploy.outcome == 'success' || steps.deploy.outcome == 'failure')"
+        continue-on-error: true
+        run: bash scripts/ci/preview-links.sh issues ${{ steps.deploy.outcome == 'success' && 'ready' || 'failed' }}
+
+      # A cancelled run (a newer push, or by hand) would otherwise leave its record at
+      # in_progress for good; `error` closes it. The issue block is left as it was.
+      - name: Deployment record — cancelled
+        if: cancelled() && steps.gh-deployment.outputs.deployment_id != ''
+        continue-on-error: true
+        env:
+          DEPLOYMENT_ID: ${{ steps.gh-deployment.outputs.deployment_id }}
+        run: bash scripts/ci/preview-links.sh deploy-finish error
 
 
   preview-note-skipped:
