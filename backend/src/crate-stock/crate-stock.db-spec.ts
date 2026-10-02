@@ -350,20 +350,18 @@ describe('CrateStockGuard (real Postgres)', () => {
       const made = await receipt(12);
       expect(made.status).toBe(201);
       expect(await onHand(ds, pointId)).toBe(before - 12);
-      // Push the point below zero past the guard, the way legacy data did: the shift the
-      // receipt sits in becomes yesterday's and closes with breakage; today gets a fresh shift.
+      // Push the point below zero past the guard, the way legacy data did: an issuance written
+      // straight by SQL. The shift stays open — a closed shift's receipt is not voidable (2026-09-30).
       await ds.query(
-        `UPDATE shifts SET broken_crates = $2, closed_at = now(), closed_by_user_id = opened_by_user_id,
-                           status = 'closed', business_date = business_date - 1
-          WHERE collection_point_id = $1 AND closed_at IS NULL`,
-        [pointId, before + 4],
+        `INSERT INTO crate_issuances (code, shift_id, supplier_id, units, mode, deposit_per_unit, deposit_taken, issued_by_user_id)
+         SELECT 'NEG-' || substr(md5(random()::text), 1, 8), s.id, $2, $3, 'receipt', 0, 0, s.opened_by_user_id
+           FROM shifts s
+          WHERE s.collection_point_id = $1 AND s.closed_at IS NULL`,
+        [pointId, supplierId, before + 4],
       );
-      await request(app.getHttpServer()).post('/shifts').set('Authorization', `Bearer ${operatorToken}`)
-        .send({ counted_amount: '0.00' }).expect(201);
       expect(await onHand(ds, pointId)).toBe(-16);
-      const res = await request(app.getHttpServer()).post(`/intakes/${made.body.id}/void`)
-        .set('Authorization', `Bearer ${ownerToken}`).send({ reason: 'x' });
-      expect(res.status).not.toBe(409);
+      await request(app.getHttpServer()).post(`/intakes/${made.body.id}/void`)
+        .set('Authorization', `Bearer ${ownerToken}`).send({ reason: 'x' }).expect(201);
       expect(await onHand(ds, pointId)).toBe(-4);
     });
   });
