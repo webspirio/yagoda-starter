@@ -1404,12 +1404,14 @@ Nobody voids an intake in a closed shift any more, the owner included (§9.4, п
 
 ## Deferred from preview links (2026-10-02)
 
-- **GitHub environments for `staging` and `production`.** `deploy-staging` and
-  `deploy-prod` could keep a deployment record the same way previews now do (a job-level
-  `environment: { name, url }` is enough there — no cap, no per-PR record), so the
-  repository's *Deployments* sidebar would show which commit each one serves. Left out on
-  purpose: `deploy-prod` is the most sensitive job in the workflow, and it should not change
-  in passing inside a preview change. Spec `docs/superpowers/specs/2026-10-02-preview-links-design.md` D5.
+- ~~**GitHub environments for `staging` and `production`.**~~ Done (2026-10-02,
+  `scripts/ci/deployment-record.sh`). The note above suggested a job-level
+  `environment: { name, url }`, and that turned out NOT to be enough: `deploy-staging` ends
+  green when it skips a superseded commit, which would leave a success record for a deploy
+  that never ran; a `workflow_dispatch` rollback runs at main's tip, so the record would
+  name the wrong commit; and GitHub's `auto_inactive` never touches production records,
+  so every release would stay «active». The script sets the ref itself (the tag for
+  production, the commit for staging) and sweeps the previous live record.
 - **Coolify skips a PR whose author it sees as `CONTRIBUTOR`.** The staging application's
   *PR deployment access: repository members only* reads `author_association` from the App
   webhook, which is the PUBLIC view: an org member with private membership (and no direct

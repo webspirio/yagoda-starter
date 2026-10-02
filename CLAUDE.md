@@ -112,7 +112,9 @@ previews of the staging application. A preview's link shows up in the sticky
 PR comment, as the PR's «View deployment» button (a deployment record in the
 shared GitHub environment `preview`) and as a block at the end of each issue
 the PR closes — the last two written by `scripts/ci/preview-links.sh`, and
-tidied on close by `preview-closed.yml`. Every deploy job verifies the
+tidied on close by `preview-closed.yml`. Staging and production get the same
+kind of record (`scripts/ci/deployment-record.sh`), so the repository's
+*Deployments* page shows the commit each environment serves. Every deploy job verifies the
 application (`/api/health/ready`, `/api/health/version`, a seeded login on
 staging and previews). `sha-<commit>` is the only tag ever deployed. Runbook,
 env tables, failure modes and measured timing/cache baselines:
