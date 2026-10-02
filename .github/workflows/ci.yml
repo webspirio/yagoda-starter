@@ -890,6 +890,13 @@ jobs:
       cancel-in-progress: false
     permissions:
       contents: read
+      deployments: write # scripts/ci/deployment-record.sh: the `staging` record on *Deployments*
+    env:
+      # Read by scripts/ci/deployment-record.sh.
+      ENVIRONMENT: staging
+      SHA: ${{ github.sha }}
+      URL: ${{ vars.STAGING_URL }}
+      GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v7
 
@@ -914,7 +921,19 @@ jobs:
 
       # Staging is seeded (SEED_DEV_DATA=true in its env set), so the same
       # seeded-login assertion previews make proves the seed ran here too.
+      # The record goes on the repository's *Deployments* page, so «what is staging
+      # running?» has an answer without opening Coolify. It starts only when this run
+      # really deploys — a superseded commit must not leave a success record behind —
+      # and all three record steps are continue-on-error: a red deploy-staging keeps
+      # meaning «staging did not come up», never «a record could not be written».
+      - name: Deployment record — start
+        id: gh-deployment
+        if: steps.tip.outputs.superseded != 'true'
+        continue-on-error: true
+        run: bash scripts/ci/deployment-record.sh start
+
       - uses: ./.github/actions/coolify-deploy
+        id: deploy
         if: steps.tip.outputs.superseded != 'true'
         with:
           coolify-url: ${{ secrets.COOLIFY_URL }}
@@ -924,6 +943,21 @@ jobs:
           commit: ${{ github.sha }}
           seed-username: oksana
           seed-password: operator
+
+      - name: Deployment record — finish
+        if: "!cancelled() && (steps.deploy.outcome == 'success' || steps.deploy.outcome == 'failure')"
+        continue-on-error: true
+        env:
+          DEPLOYMENT_ID: ${{ steps.gh-deployment.outputs.deployment_id }}
+          COOLIFY_DEPLOYMENT_UUID: ${{ steps.deploy.outputs.deployment-uuid }}
+        run: bash scripts/ci/deployment-record.sh finish ${{ steps.deploy.outcome == 'success' && 'success' || 'failure' }}
+
+      - name: Deployment record — cancelled
+        if: cancelled() && steps.gh-deployment.outputs.deployment_id != ''
+        continue-on-error: true
+        env:
+          DEPLOYMENT_ID: ${{ steps.gh-deployment.outputs.deployment_id }}
+        run: bash scripts/ci/deployment-record.sh finish error
 
   # Production is deployed only from a published GitHub Release (or a manual
   # re-deploy of an existing release tag). Coolify's deploy API takes no git
@@ -955,9 +989,15 @@ jobs:
       # key (see the move step).
       contents: read
       packages: read # docker manifest inspect against GHCR
+      deployments: write # scripts/ci/deployment-record.sh: the `production` record on *Deployments*
     env:
       GH_TOKEN: ${{ github.token }}
       TAG: ${{ github.event.release.tag_name || inputs.tag }}
+      # Read by scripts/ci/deployment-record.sh. Its SHA is the RESOLVED release commit,
+      # set per step: on a workflow_dispatch GITHUB_SHA is main's tip, not the release.
+      ENVIRONMENT: production
+      PRODUCTION: 'true'
+      URL: ${{ vars.PROD_URL }}
       ALLOW_SCHEMA_ROLLBACK: ${{ inputs.allow_schema_rollback == true && 'true' || 'false' }}
     steps:
       - uses: actions/checkout@v7
@@ -1027,10 +1067,37 @@ jobs:
             git push origin "$SHA:refs/heads/production"
           fi
 
+      # After every guard: a refused rollback or a missing image deploys nothing, so it
+      # records nothing. Same continue-on-error rule as deploy-staging.
+      - name: Deployment record — start
+        id: gh-deployment
+        continue-on-error: true
+        env:
+          SHA: ${{ steps.target.outputs.sha }}
+        run: bash scripts/ci/deployment-record.sh start
+
       - uses: ./.github/actions/coolify-deploy
+        id: deploy
         with:
           coolify-url: ${{ secrets.COOLIFY_URL }}
           coolify-api-token: ${{ secrets.COOLIFY_API_TOKEN }}
           app-uuid: ${{ secrets.COOLIFY_APP_UUID }}
           base-url: ${{ vars.PROD_URL }}
           commit: ${{ steps.target.outputs.sha }}
+
+      - name: Deployment record — finish
+        if: "!cancelled() && (steps.deploy.outcome == 'success' || steps.deploy.outcome == 'failure')"
+        continue-on-error: true
+        env:
+          DEPLOYMENT_ID: ${{ steps.gh-deployment.outputs.deployment_id }}
+          COOLIFY_DEPLOYMENT_UUID: ${{ steps.deploy.outputs.deployment-uuid }}
+          SHA: ${{ steps.target.outputs.sha }}
+        run: bash scripts/ci/deployment-record.sh finish ${{ steps.deploy.outcome == 'success' && 'success' || 'failure' }}
+
+      - name: Deployment record — cancelled
+        if: cancelled() && steps.gh-deployment.outputs.deployment_id != ''
+        continue-on-error: true
+        env:
+          DEPLOYMENT_ID: ${{ steps.gh-deployment.outputs.deployment_id }}
+          SHA: ${{ steps.target.outputs.sha }}
+        run: bash scripts/ci/deployment-record.sh finish error
