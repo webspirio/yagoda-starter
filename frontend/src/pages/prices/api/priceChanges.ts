@@ -1,7 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { httpClient } from '@/shared/api';
 import { queryKeys } from '@/shared/api/queryKeys';
-import { STALE } from '@/shared/api/queryClient';
 import type { PriceChanges } from '../model/gradePrice';
 import type { ChangesPeriod } from '../model/changesPeriod';
 
@@ -25,6 +24,5 @@ export function usePriceChangesQuery(period: ChangesPeriod) {
       const { data } = await httpClient.get<PriceChanges>('/grade-prices/changes', { params });
       return data;
     },
-    staleTime: STALE.list,
   });
 }
