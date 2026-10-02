@@ -50,6 +50,31 @@ $E6
 
 $NEW"
 
+echo "# 3b. a duplicated block (a lost update can leave two): the first is replaced, the rest dropped"
+check upsert "Intro
+$S5
+> old
+$E5
+Middle
+$S5
+> older
+$E5" "$T/block"
+check same "$T/out" "Intro
+$NEW
+Middle"
+
+echo "# 3c. replace-only: no block of ours yet → the body comes back as it was"
+check eval 'printf "%s" "Hello" | bash "$SCRIPT" block-upsert 5 "$T/block" replace-only > "$T/out"'
+check same "$T/out" "Hello"
+
+echo "# 3d. replace-only with a block present → replaced like any other upsert"
+check eval 'printf "%s" "Intro
+$S5
+> old
+$E5" | bash "$SCRIPT" block-upsert 5 "$T/block" replace-only > "$T/out"'
+check same "$T/out" "Intro
+$NEW"
+
 echo "# 4. an empty block removes ours and leaves no trailing blank lines"
 check upsert "Intro
 
@@ -79,7 +104,9 @@ check [ "$rc" -eq 3 ]
 check same "$T/out" ""
 
 # ---------------------------------------------------------------------------
-# Fake gh. KEY is "METHOD path" for `gh api` and "pr-view" for `gh pr view`. Every call
+# Fake gh. KEY is "METHOD path" for `gh api` and "pr-view:<json field>" for `gh pr view`.
+# Like the real gh, `gh api` defaults to GET, and to POST once a field or --input is given
+# without -X — so a script that drops its `-X GET` is logged as the POST it would send. Every call
 # is logged as KEY<TAB>FIELDS<TAB>STDIN, so a test asserts what was SENT, not only where.
 # The response is $FAKE_GH/responses/<KEY with ' /?=&' as '_'>; a missing file is a
 # failed call (exit 1), which is how gh reports an HTTP error.
@@ -87,8 +114,10 @@ mkdir -p "$T/bin"
 cat > "$T/bin/gh" <<'EOF'
 #!/usr/bin/env bash
 set -u
-method=GET; path=""; fields=""; input=0
-if [ "$1" = pr ]; then key=pr-view
+method=""; path=""; fields=""; input=0; json=""
+if [ "$1" = pr ]; then
+  while [ $# -gt 0 ]; do case "$1" in --json) json=$2; shift 2 ;; *) shift ;; esac; done
+  key="pr-view:$json"
 else
   shift
   while [ $# -gt 0 ]; do
@@ -99,6 +128,9 @@ else
       *) path=$1; shift ;;
     esac
   done
+  if [ -z "$method" ]; then
+    if [ -n "$fields" ] || [ "$input" -eq 1 ]; then method=POST; else method=GET; fi
+  fi
   key="$method $path"
 fi
 stdin=""; [ "$input" -eq 1 ] && stdin=$(cat)
@@ -114,12 +146,14 @@ export PREVIEW_URL=https://pr-5.test STAGING_URL=https://staging.test SEED_USERN
 export GITHUB_SERVER_URL=https://github.com GITHUB_RUN_ID=42 GITHUB_OUTPUT="$T/gh_out"
 unset DEPLOYMENT_ID COOLIFY_DEPLOYMENT_UUID 2>/dev/null || true
 
-reset()   { rm -rf "$FAKE_GH"; mkdir -p "$FAKE_GH/responses"; : > "$FAKE_GH/calls.log"; : > "$GITHUB_OUTPUT"; }
 respond() { printf '%s' "$2" > "$FAKE_GH/responses/$(printf '%s' "$1" | tr ' /?=&' '_____')"; }
 called()  { cut -f1 "$FAKE_GH/calls.log" | grep -qxF "$1"; }
 fields()  { awk -F'\t' -v k="$1" '$1 == k { print $2 }' "$FAKE_GH/calls.log"; }
 sent()    { awk -F'\t' -v k="$1" '$1 == k { print $3 }' "$FAKE_GH/calls.log"; }
 run()     { bash "$SCRIPT" "$@" > "$T/stdout" 2> "$T/stderr"; }
+# Every case starts from an OPEN PR; the closed-PR cases override it.
+reset()   { rm -rf "$FAKE_GH"; mkdir -p "$FAKE_GH/responses"; : > "$FAKE_GH/calls.log"; : > "$GITHUB_OUTPUT"
+            respond pr-view:state '{"state":"OPEN"}'; }
 D=repos/acme/app/deployments
 I=repos/acme/app/issues
 # Closing references as `gh pr view --json closingIssuesReferences` returns them.
@@ -166,11 +200,11 @@ check jq -e '.state == "success" and .auto_inactive == false and .environment_ur
 echo "# 11. deploy-finish without a deployment id calls nothing and exits 0"
 reset
 check run deploy-finish failure
-check [ ! -s "$FAKE_GH/calls.log" ]
+check_fail grep -q '/statuses' "$FAKE_GH/calls.log"
 
 echo "# 12. issues ready: this repo's closing issue gets the block; a foreign repo's is never read"
 reset
-respond pr-view "$(refs '7@ACME/App' '8@acme/other')"
+respond pr-view:closingIssuesReferences "$(refs '7@ACME/App' '8@acme/other')"
 respond "GET $I/7" "$(body_json 'Bug report')"
 respond "PATCH $I/7" '{}'
 check run issues ready
@@ -182,7 +216,7 @@ check_fail grep -q 'issues/8' "$FAKE_GH/calls.log"
 
 echo "# 13. re-run on an unchanged commit, body stored with CRLF: no PATCH"
 reset
-respond pr-view "$(refs '7@acme/app')"
+respond pr-view:closingIssuesReferences "$(refs '7@acme/app')"
 respond "GET $I/7" "$(body_json "$(printf '%s\n' "$READY" | awk '{ printf "%s\r\n", $0 }')")"
 check run issues ready
 check_fail called "PATCH $I/7"
@@ -190,7 +224,7 @@ check grep -q 'unchanged' "$T/stdout"
 
 echo "# 14. one issue failing does not stop the next; a null body becomes the block alone"
 reset
-respond pr-view "$(refs '7@acme/app' '9@acme/app')"
+respond pr-view:closingIssuesReferences "$(refs '7@acme/app' '9@acme/app')"
 respond "GET $I/9" '{"body":null}'
 respond "PATCH $I/9" '{}'
 check_fail run issues ready
@@ -199,7 +233,7 @@ check [ "$(sent "PATCH $I/9" | jq -r .body | head -1)" = "$S5" ]
 
 echo "# 15. issues failed: the warning replaces the commit line"
 reset
-respond pr-view "$(refs '7@acme/app')"
+respond pr-view:closingIssuesReferences "$(refs '7@acme/app')"
 respond "GET $I/7" "$(body_json 'x')"
 respond "PATCH $I/7" '{}'
 check run issues failed
@@ -210,7 +244,7 @@ check_fail grep -q 'Commit `' <<< "$FAILED"
 
 echo "# 16. a PR that closes no issue: nothing to do, exit 0"
 reset
-respond pr-view '{"closingIssuesReferences":[]}'
+respond pr-view:closingIssuesReferences '{"closingIssuesReferences":[]}'
 check run issues ready
 check grep -q 'closes no issue' "$T/stdout"
 
@@ -219,7 +253,7 @@ reset
 respond "GET $D" '[{"id":99,"payload":{"pr":5}}]'
 respond "GET $D/99/statuses?per_page=1" '[{"state":"success"}]'
 respond "POST $D/99/statuses" '{}'
-respond pr-view "$(refs '7@acme/app')"
+respond pr-view:closingIssuesReferences "$(refs '7@acme/app')"
 respond "GET $I/7" "$(body_json "$READY")"
 respond "PATCH $I/7" '{}'
 check run closed true
@@ -231,11 +265,49 @@ check_fail grep -q 'Preview for' <<< "$MERGED"
 echo "# 18. closed, not merged: the block is removed and the author's text is all that is left"
 reset
 respond "GET $D" '[]'
-respond pr-view "$(refs '7@acme/app')"
+respond pr-view:closingIssuesReferences "$(refs '7@acme/app')"
 respond "GET $I/7" "$(body_json "$READY")"
 respond "PATCH $I/7" '{}'
 check run closed false
 check [ "$(sent "PATCH $I/7" | jq -r .body)" = "Bug report" ]
+
+echo "# 19. the PR closed while this run was still going: start, finish and issues touch nothing"
+reset
+respond pr-view:state '{"state":"MERGED"}'
+check run deploy-start
+check_fail called "POST $D"
+check_fail called "GET $D"
+check grep -q 'no longer open' "$T/stdout"
+check env DEPLOYMENT_ID=99 bash "$SCRIPT" deploy-finish success
+check_fail called "POST $D/99/statuses"
+check run issues ready
+check_fail called "pr-view:closingIssuesReferences"
+
+echo "# 20. an issue whose end marker was cut: warning, non-zero, and NO PATCH that could wipe it"
+reset
+respond pr-view:closingIssuesReferences "$(refs '7@acme/app')"
+respond "GET $I/7" "$(body_json "Report
+$S5
+> old, and the author typed below it")"
+respond "PATCH $I/7" '{}'
+check_fail run issues ready
+check grep -q '^::warning::issue #7: .*no end marker' "$T/stderr"
+check_fail called "PATCH $I/7"
+
+echo "# 21. closed, merged, but this PR never wrote a block there: the issue is left alone"
+reset
+respond "GET $D" '[]'
+respond pr-view:closingIssuesReferences "$(refs '7@acme/app')"
+respond "GET $I/7" "$(body_json 'Bug report')"
+check run closed true
+check_fail called "PATCH $I/7"
+check_fail called "pr-view:state"
+
+echo "# 22. deploy-finish error (the run was cancelled): the record does not stay in_progress"
+reset
+respond "POST $D/99/statuses" '{}'
+check env DEPLOYMENT_ID=99 bash "$SCRIPT" deploy-finish error
+check jq -e '.state == "error" and .description == "sha-abcdef1 · run cancelled"' <<< "$(sent "POST $D/99/statuses")"
 
 echo "passed=$pass failed=$fail"
 [ "$fail" -eq 0 ]

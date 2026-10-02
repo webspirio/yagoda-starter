@@ -1414,3 +1414,12 @@ Nobody voids an intake in a closed shift any more, the owner included (§9.4, п
   such a record to the PR and shows «View deployment»; the first PR to run it confirms or
   refutes that. The fallback is `ref` = head SHA (`deploy_start` in `scripts/ci/preview-links.sh`),
   which would also need `own_deployments` to stop filtering on `ref`.
+- **An issue unlinked after its block was written keeps the block.** Deleting `Closes #7`
+  from a PR body after #7 received its block leaves it there: later runs and `closed` read
+  only the CURRENT closing references. Fix if it bites: remember the issue numbers in the
+  deployment `payload` and act on the union. From the branch review of the preview-links change.
+- **Two writers on one issue can lose an update.** `preview-closed` for PR A and
+  `deploy-preview` for PR B read-modify-write the same issue body in different concurrency
+  groups; one write can be lost. Rare (two PRs closing one issue, at the same second); a
+  duplicated block it leaves behind is collapsed by the next write. A re-read-and-retry after
+  the PATCH would close it.

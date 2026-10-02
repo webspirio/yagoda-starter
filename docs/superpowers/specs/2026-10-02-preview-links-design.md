@@ -28,7 +28,7 @@ Coolify's own `yagoda-coolify-pr-preview[bot]` comment (untouched).
 |---|---|
 | D1 | The issue block lives in the issue BODY between per-PR markers, not in a comment — a comment sinks the same way the PR comment does. |
 | D2 | Block text is English. States: ready · failed (link kept, warning added) · merged (points at staging) · removed (closed unmerged). No block when the preview cap refuses the deploy. |
-| D3 | ONE shared environment, `preview`. Deployments are `transient_environment: true` and every status is written with `auto_inactive: false`, so PR B's deploy cannot deactivate PR A's button; the script deactivates only its own PR's older deployments. A per-PR environment was rejected: hundreds would pile up, and deleting one needs an administration-scoped token in CI. |
+| D3 | ONE shared environment, `preview`. Deployments are `transient_environment: true` — GitHub's `auto_inactive` already skips transient records, so PR B's deploy cannot deactivate PR A's button — and every status states `auto_inactive: false` as well, so that does not hang on one flag; the script deactivates only its own PR's older deployments. A per-PR environment was rejected: hundreds would pile up, and deleting one needs an administration-scoped token in CI. |
 | D4 | The sticky PR comment stays as it is (it is the only one of the three that notifies). |
 | D5 | Staging/production environments are a follow-up, not this change. |
 | D6 | The new steps are `continue-on-error: true` and report `::warning::`. A red `deploy-preview` means «the preview is broken» — the cap and re-runs are read off it — and must not start meaning «a link could not be written». |
@@ -106,8 +106,10 @@ purpose: the preview may not be serving that commit.
 
 ### `.github/workflows/preview-closed.yml`
 
-`on: pull_request: types: [closed]`; runs only for a same-repository head, a PR carrying the
-`preview` label, `COOLIFY_ENABLED` and `PREVIEWS_ENABLED` both `true`. Permissions
+`on: pull_request: types: [closed]`; runs only for a same-repository head with
+`COOLIFY_ENABLED` and `PREVIEWS_ENABLED` both `true`. Not gated on the `preview` label: the
+runbook has people drop it by hand to free a cap slot, and a PR without a preview costs one
+no-op run, because on a merge the script only REPLACES an existing block. Permissions
 `contents: read`, `deployments: write`, `issues: write`, `pull-requests: read`. Sparse
 checkout of `scripts/ci` at the PR head SHA (a closed, unmerged PR may have no merge ref).
 `concurrency: preview-closed-<N>`. It touches no server.
@@ -120,6 +122,17 @@ so a failed deploy still records `failure` and the ⚠️; the state comes from
 `steps.deploy.outcome`. They skip when `deploy-start` produced no deployment id (finish) —
 a deployment is never created after the fact. The existing comment steps keep their
 `success()`/`failure()` conditions: a `continue-on-error` step cannot flip either.
+
+### Races handled after review
+
+- **A merge while `deploy-preview` is still running.** A merge does not cancel that run, so
+  `deploy-start`, `deploy-finish` and `issues` first check that the PR is still `OPEN` and do
+  nothing otherwise; an unreadable state counts as open (a warning). Without it the late run
+  revived the record and turned «merged» back into a link to a removed stack.
+- **A cancelled run** posts `error` on its record (`if: cancelled()`), instead of leaving it
+  `in_progress`.
+- **Two copies of one PR's block** (a lost update between two writers): the first range is
+  replaced, the rest dropped.
 
 ## Testing
 

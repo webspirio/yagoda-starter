@@ -5,10 +5,15 @@
 #
 # Usage:
 #   preview-links.sh deploy-start                   deactivate this PR's older deployments, create one
-#   preview-links.sh deploy-finish success|failure  set the deployment's final status
+#   preview-links.sh deploy-finish success|failure|error  set the deployment's final status
 #   preview-links.sh issues ready|failed            write the block into every closing issue
 #   preview-links.sh closed true|false              (merged?) deactivate; block → staging, or removed
-#   preview-links.sh block-upsert <pr> <block-file> < body   pure; prints the new body
+#   preview-links.sh block-upsert <pr> <block-file> [replace-only] < body   pure; prints the new body
+#
+# deploy-start, deploy-finish and issues do nothing once the PR is no longer open: a merge
+# does not cancel a deploy-preview run already in flight, and without the check that run
+# would overwrite what preview-closed.yml has just tidied — reviving the record and
+# turning «merged» back into a link to a stack Coolify has removed.
 #
 # Env: GITHUB_REPOSITORY PR HEAD_REF HEAD_SHA PREVIEW_URL, and as each command needs them
 #      DEPLOYMENT_ID [COOLIFY_DEPLOYMENT_UUID] [SEED_USERNAME SEED_PASSWORD] [STAGING_URL]
@@ -19,39 +24,46 @@
 set -euo pipefail
 
 warn() { echo "::warning::$*" >&2; }
-usage() { sed -n '6,11p' "$0" >&2; exit 2; }
+usage() { sed -n '6,16p' "$0" >&2; exit 2; }
 need() {
   local v
   for v in "$@"; do [ -n "${!v:-}" ] || { warn "preview-links: $v is not set"; exit 1; }; done
 }
 sha7() { printf '%s' "${HEAD_SHA:0:7}"; }
 
-# upsert_block <pr> <block-file>: body on stdin, new body on stdout, no trailing newline.
-# The block file's contents (markers included) replace this PR's marker range in place, or
-# are appended after one blank line when there is none; an empty file removes the range.
+# upsert_block <pr> <block-file> [replace-only]: body on stdin, new body on stdout, no
+# trailing newline. The block file's contents (markers included) replace this PR's first
+# marker range in place, and any further copy of it is dropped (a lost update between two
+# writers can leave two); with no range the block is appended after one blank line, or
+# with replace-only the body is returned as it was. An empty file removes every range.
 # CRLF becomes LF first, because a body written in the web UI carries CRLF and a marker
 # line ending in \r would never match. A start marker with no end marker after it exits 3
 # and prints nothing: the only other reading is «delete to the end of the body», and
 # whatever follows that marker may be the author's own text.
 upsert_block() {
   tr -d '\r' | awk -v start="<!-- yagoda-preview:pr-$1:start -->" \
-                   -v end="<!-- yagoda-preview:pr-$1:end -->" -v bf="$2" '
+                   -v end="<!-- yagoda-preview:pr-$1:end -->" -v bf="$2" -v mode="${3:-}" '
     BEGIN { blk = ""; while ((getline l < bf) > 0) blk = blk l "\n" }
     { line[++n] = $0 }
     END {
-      s = 0; e = 0
+      # skip[i] marks every line inside a range; first[i] the start of the first range.
+      ranges = 0; open_at = 0
       for (i = 1; i <= n; i++) {
-        if (!s && line[i] == start) s = i
-        else if (s && !e && line[i] == end) e = i
+        if (!open_at && line[i] == start) open_at = i
+        else if (open_at && line[i] == end) {
+          for (j = open_at; j <= i; j++) skip[j] = 1
+          if (!ranges) first[open_at] = 1
+          ranges++; open_at = 0
+        }
       }
-      if (s && !e) exit 3
+      if (open_at) exit 3
       out = ""
       for (i = 1; i <= n; i++) {
-        if (s && i == s) { out = out blk; i = e; continue }
-        out = out line[i] "\n"
+        if (first[i]) out = out blk
+        if (!skip[i]) out = out line[i] "\n"
       }
       sub(/\n+$/, "", out)
-      if (!s && blk != "") out = (out == "" ? "" : out "\n\n") blk
+      if (!ranges && blk != "" && mode != "replace-only") out = (out == "" ? "" : out "\n\n") blk
       sub(/\n+$/, "", out)
       printf "%s", out
     }'
@@ -98,8 +110,9 @@ own_deployments() {
 }
 
 # post_status <deployment id> <state> [description]. auto_inactive is false on EVERY
-# status: its default would deactivate every other PR's deployment in the shared
-# environment, taking their «View deployment» buttons with it.
+# status. GitHub's default already skips transient deployments, and every record here is
+# transient — stating it means another PR's «View deployment» does not hang on that flag
+# alone; this script deactivates its own PR's older records explicitly.
 post_status() {
   local log_url=""
   [ -n "${GITHUB_RUN_ID:-}" ] && log_url="${GITHUB_SERVER_URL:-https://github.com}/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
@@ -123,8 +136,18 @@ deactivate_own() {
   done
 }
 
+# pr_is_open: false only when GitHub says the PR is closed or merged. A state that cannot
+# be read is a warning and counts as open — losing a link is worse than a rare overwrite.
+pr_is_open() {
+  local state
+  state=$(gh pr view "$PR" --repo "$GITHUB_REPOSITORY" --json state | jq -r '.state // empty') || state=""
+  if [ -z "$state" ]; then warn "could not read #$PR's state — carrying on as if it were open"; return 0; fi
+  if [ "$state" != OPEN ]; then echo "#$PR is no longer open ($state) — preview-closed.yml owns its links now"; return 1; fi
+}
+
 deploy_start() {
   need GITHUB_REPOSITORY PR HEAD_REF HEAD_SHA PREVIEW_URL
+  pr_is_open || return 0
   deactivate_own || exit 1
   # auto_merge: false — the default merges the default branch INTO the PR branch when it
   # is behind. required_contexts: [] — the default refuses (409) while this very run's
@@ -147,10 +170,13 @@ deploy_finish() {
     return 0
   fi
   need GITHUB_REPOSITORY PR HEAD_SHA PREVIEW_URL
+  pr_is_open || return 0
   # D7: the Coolify uuid matches this record to the Coolify bot's comment for the same deploy.
+  # `error` is a cancelled run: without it the record would sit at in_progress for good.
   local d
   d="sha-$(sha7)"
   if [ -n "${COOLIFY_DEPLOYMENT_UUID:-}" ]; then d="$d · coolify $COOLIFY_DEPLOYMENT_UUID"; fi
+  if [ "$1" = error ]; then d="$d · run cancelled"; fi
   post_status "$DEPLOYMENT_ID" "$1" "$d" || { warn "could not mark deployment $DEPLOYMENT_ID $1"; exit 1; }
   echo "deployment $DEPLOYMENT_ID: $1"
 }
@@ -163,14 +189,14 @@ closing_issues() {
         | .number'
 }
 
-# update_issue <number> <block-file>. The body is read immediately before the write, and
+# update_issue <number> <block-file> [replace-only]. The body is read immediately before the write, and
 # nothing is written when the result equals what is there (CRLF aside) — a re-run must not
 # keep stamping «edited» on someone else's issue.
 update_issue() {
-  local n=$1 raw new rc=0
+  local n=$1 bf=$2 mode=${3:-} raw new rc=0
   raw=$(gh api "repos/$GITHUB_REPOSITORY/issues/$n" | jq -r '.body // ""') \
     || { warn "issue #$n: could not read its body"; return 1; }
-  new=$(printf '%s' "$raw" | upsert_block "$PR" "$2") || rc=$?
+  new=$(printf '%s' "$raw" | upsert_block "$PR" "$bf" "$mode") || rc=$?
   if [ "$rc" -eq 3 ]; then
     warn "issue #$n: a yagoda-preview:pr-$PR start marker has no end marker — left untouched"
     return 1
@@ -184,7 +210,8 @@ update_issue() {
 }
 
 # issues_cmd ready|failed|merged|none. Each issue on its own: one failure is a warning,
-# and the rest are still written.
+# and the rest are still written. `merged` only REPLACES a block: an issue this PR never
+# wrote to (no preview ever deployed, or the label dropped by hand) is left alone.
 issues_cmd() {
   local bf nums n rc=0
   bf=$(mktemp)
@@ -195,7 +222,9 @@ issues_cmd() {
   if [ -z "$nums" ]; then
     echo "#$PR closes no issue in $GITHUB_REPOSITORY — nothing to update"; rm -f "$bf"; return 0
   fi
-  for n in $nums; do update_issue "$n" "$bf" || rc=1; done
+  local mode=""
+  if [ "$1" = merged ]; then mode=replace-only; fi
+  for n in $nums; do update_issue "$n" "$bf" "$mode" || rc=1; done
   rm -f "$bf"
   return $rc
 }
@@ -211,14 +240,16 @@ closed_cmd() {
 case "${1:-}" in
   deploy-start) deploy_start ;;
   deploy-finish)
-    case "${2:-}" in success|failure) deploy_finish "$2" ;; *) usage ;; esac ;;
+    case "${2:-}" in success|failure|error) deploy_finish "$2" ;; *) usage ;; esac ;;
   issues)
     case "${2:-}" in
-      ready|failed) need GITHUB_REPOSITORY PR HEAD_SHA PREVIEW_URL; issues_cmd "$2" ;;
+      ready|failed)
+        need GITHUB_REPOSITORY PR HEAD_SHA PREVIEW_URL
+        if pr_is_open; then issues_cmd "$2"; fi ;;
       *) usage ;;
     esac ;;
   closed)
     case "${2:-}" in true|false) closed_cmd "$2" ;; *) usage ;; esac ;;
-  block-upsert) upsert_block "$2" "$3" ;;
+  block-upsert) upsert_block "$2" "$3" "${4:-}" ;;
   *) usage ;;
 esac

@@ -829,6 +829,15 @@ jobs:
         continue-on-error: true
         run: bash scripts/ci/preview-links.sh issues ${{ steps.deploy.outcome == 'success' && 'ready' || 'failed' }}
 
+      # A cancelled run (a newer push, or by hand) would otherwise leave its record at
+      # in_progress for good; `error` closes it. The issue block is left as it was.
+      - name: Deployment record — cancelled
+        if: cancelled() && steps.gh-deployment.outputs.deployment_id != ''
+        continue-on-error: true
+        env:
+          DEPLOYMENT_ID: ${{ steps.gh-deployment.outputs.deployment_id }}
+        run: bash scripts/ci/preview-links.sh deploy-finish error
+
 
   preview-note-skipped:
     runs-on: ubuntu-latest
