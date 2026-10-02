@@ -1410,10 +1410,18 @@ Nobody voids an intake in a closed shift any more, the owner included (§9.4, п
   repository's *Deployments* sidebar would show which commit each one serves. Left out on
   purpose: `deploy-prod` is the most sensitive job in the workflow, and it should not change
   in passing inside a preview change. Spec `docs/superpowers/specs/2026-10-02-preview-links-design.md` D5.
-- **The deployment record's `ref` is the PR's head branch.** The spec assumes GitHub ties
-  such a record to the PR and shows «View deployment»; the first PR to run it confirms or
-  refutes that. The fallback is `ref` = head SHA (`deploy_start` in `scripts/ci/preview-links.sh`),
-  which would also need `own_deployments` to stop filtering on `ref`.
+- **Coolify skips a PR whose author it sees as `CONTRIBUTOR`.** The staging application's
+  *PR deployment access: repository members only* reads `author_association` from the App
+  webhook, which is the PUBLIC view: an org member with private membership (and no direct
+  collaborator grant) arrives as `CONTRIBUTOR`, Coolify creates no preview record, and
+  `deploy-preview` fails with «Pull request N not found for this resource» — on every push
+  and on a close/reopen alike. Found on #199 (author `swefd`: `CONTRIBUTOR` anonymously,
+  `MEMBER` to an authenticated member; the authors whose previews work read `COLLABORATOR`).
+  Check with `curl -s https://api.github.com/repos/webspirio/yagoda-starter/pulls/<N> | jq -r .author_association`.
+  Fix per person: a DIRECT repository grant (any role; it reads `COLLABORATOR` and the
+  membership stays private), or a public org membership (`MEMBER`). Org-admin access and a
+  team grant (`internal-team`, `admin`) both still read `CONTRIBUTOR` — tried on #199. The
+  fix is per repository: any other repository that gets Coolify previews needs the same.
 - **An issue unlinked after its block was written keeps the block.** Deleting `Closes #7`
   from a PR body after #7 received its block leaves it there: later runs and `closed` read
   only the CURRENT closing references. Fix if it bites: remember the issue numbers in the
