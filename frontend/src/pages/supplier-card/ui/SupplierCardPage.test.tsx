@@ -174,6 +174,7 @@ const payout = (
   return_settled_at: null,
   return_settled_by_user_id: null,
   return_note: null,
+  returned_on_void: false,
   ...over,
 });
 

@@ -21,6 +21,10 @@ export interface PayoutResponse {
   return_settled_at: string | null;
   return_settled_by_user_id: string | null;
   return_note: string | null;
+  /** The cash came back AT VOID TIME, into this payout's own shift (open-shift
+   *  void, 2026-09-28) — as opposed to an owner's later `settle-return`, which
+   *  `movementsSql` credits by date. */
+  returned_on_void: boolean;
   created_at: string;
 }
 
@@ -42,6 +46,7 @@ export function toPayoutResponse(payout: Payout, shift: Shift): PayoutResponse {
     return_settled_at: payout.return_settled_at ? payout.return_settled_at.toISOString() : null,
     return_settled_by_user_id: payout.return_settled_by_user_id,
     return_note: payout.return_note,
+    returned_on_void: payout.returned_on_void,
     created_at: payout.created_at.toISOString(),
   };
 }
