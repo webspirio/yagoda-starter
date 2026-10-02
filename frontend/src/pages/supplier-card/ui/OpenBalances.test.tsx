@@ -1,5 +1,6 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import type { SettlementLine } from '@/entities/supplier';
 import type { Intake } from '@/entities/intake';
 import { OpenBalances } from './OpenBalances';
@@ -44,7 +45,7 @@ describe('OpenBalances', () => {
         lines={[line({ id: 'r1', open: '0.00' })]}
         unallocated="0.00"
         intakesById={new Map()}
-        locale="en"
+        locale="en" onOpenReceipt={() => {}}
       />,
     );
     expect(container).toBeEmptyDOMElement();
@@ -60,7 +61,7 @@ describe('OpenBalances', () => {
         ]}
         unallocated="0.00"
         intakesById={new Map([['r1', receipt('r1')]])}
-        locale="en"
+        locale="en" onOpenReceipt={() => {}}
       />,
     );
     expect(screen.getByText('Open balances — what exactly is owed')).toBeInTheDocument();
@@ -79,7 +80,7 @@ describe('OpenBalances', () => {
         lines={[line({ id: 'r9', open: '10.00' })]}
         unallocated="0.00"
         intakesById={new Map()}
-        locale="en"
+        locale="en" onOpenReceipt={() => {}}
       />,
     );
     expect(screen.getByRole('listitem')).toHaveTextContent('R9');
@@ -92,7 +93,7 @@ describe('OpenBalances', () => {
         lines={[line({ id: 't1', kind: 'top_up', code: 'R1', intake_id: 'r1', open: '200.00' })]}
         unallocated="0.00"
         intakesById={new Map()}
-        locale="en"
+        locale="en" onOpenReceipt={() => {}}
       />,
     );
     expect(screen.getByRole('listitem')).toHaveTextContent('Top-up on R1');
@@ -100,9 +101,29 @@ describe('OpenBalances', () => {
 
   it('shows the overpayment as one row under the list, even with nothing open', () => {
     render(
-      <OpenBalances lines={[]} unallocated="50.00" intakesById={new Map()} locale="en" />,
+      <OpenBalances lines={[]} unallocated="50.00" intakesById={new Map()} locale="en" onOpenReceipt={() => {}} />,
     );
     expect(screen.getByText('Overpayment — not allocated')).toBeInTheDocument();
     expect(screen.getByText('50.00 ₴')).toBeInTheDocument();
+  });
+
+  it('opens the receipt on click — a top-up opens its parent', async () => {
+    const onOpenReceipt = vi.fn();
+    render(
+      <OpenBalances
+        lines={[
+          line({ id: 'r1', open: '100.00' }),
+          line({ id: 't1', kind: 'top_up', code: 'R2', intake_id: 'r2', open: '200.00' }),
+        ]}
+        unallocated="0.00"
+        intakesById={new Map()}
+        locale="en"
+        onOpenReceipt={onOpenReceipt}
+      />,
+    );
+    const [receiptRow, topUpRow] = screen.getAllByRole('button');
+    await userEvent.click(receiptRow);
+    await userEvent.click(topUpRow);
+    expect(onOpenReceipt.mock.calls).toEqual([['r1'], ['r2']]);
   });
 });

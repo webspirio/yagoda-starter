@@ -291,10 +291,16 @@ describe('JournalPage — «Void» on a receipt row (§9.4)', () => {
   const voidButton = (code: string) => screen.queryByRole('button', { name: `Void ${code}` });
   const LIVE = { id: 'i1', code: 'KV-0001', amount: '100.00' };
 
-  it('is shown to the owner, even on a closed shift', () => {
-    intakesMock.mockReturnValue(page<Intake>([intake({ ...LIVE, shift_closed: true })]));
+  it('is shown to the owner while the shift is open', () => {
+    intakesMock.mockReturnValue(page<Intake>([intake(LIVE)]));
     renderJournal();
     expect(voidButton('KV-0001')).toBeInTheDocument();
+  });
+
+  it('is hidden even from the owner once the shift is closed', () => {
+    intakesMock.mockReturnValue(page<Intake>([intake({ ...LIVE, shift_closed: true })]));
+    renderJournal();
+    expect(voidButton('KV-0001')).not.toBeInTheDocument();
   });
 
   it('is shown to the author while the shift is open', () => {

@@ -18,11 +18,10 @@ import {
   useSupplierSettlementQuery,
   supplierName,
 } from '@/entities/supplier';
-import { useGradeCatalogQuery } from '@/entities/product-grade';
 import { useTareTypeOptionsQuery } from '@/entities/tare-type';
 import { usePointOptionsQuery } from '@/entities/collection-point';
 import { useMeQuery } from '@/entities/user';
-import { VoidDocumentDialog, otherCovered, reopenedCodes } from '@/features/void-document';
+import { VoidDocumentDialog, reopenedCodes } from '@/features/void-document';
 import { ReceiptSheet, type ReceiptSheetLine } from './ReceiptSheet';
 
 /** Formats the «Ціна за кг» row's right side when a per-kilogram bonus/markup
@@ -39,15 +38,21 @@ function formatBonus(price: string, bonus: string, locale: string): string | nul
 
 /**
  * The receipt for one intake — `GET /intakes/:id` composed with the names a
- * bare id doesn't carry (grade, product, tare type, supplier, point). Since
- * #116 the payout itself is recorded from the reception screen's own action
- * («Видано готівкою» alongside «Прийняти»), so this dialog no longer opens a
- * `PayoutDialog` — it PRINTS what was paid (the live total plus each linked
- * payout's code, and any voided one as an annulment line) and keeps the one
- * action still local to it: void the document. First widget in the app (spec
- * §"Structure"): the reception, day and supplier-card screens each open the
- * same receipt on the same document, so it lives above `features` and below
- * `pages` rather than inside any one of them.
+ * bare id doesn't carry (tare type, supplier, point). The PRODUCT and GRADE
+ * names are NOT among them since #148: they ride on the line itself. The
+ * grade catalog is active-only, and deactivation is the one removal verb the
+ * schema has, so reading the label from it printed «—» on every receipt
+ * written before an end-of-season deactivation while the supplier card's
+ * timeline still named the berry — one delivery, two accounts of it.
+ *
+ * Since #116 the payout itself is recorded from the reception screen's own
+ * action («Видано готівкою» alongside «Прийняти»), so this dialog no longer
+ * opens a `PayoutDialog` — it PRINTS what was paid (the live total plus each
+ * linked payout's code, and any voided one as an annulment line) and keeps
+ * the one action still local to it: void the document. First widget in the
+ * app (spec §"Structure"): the reception, day and supplier-card screens each
+ * open the same receipt on the same document, so it lives above `features`
+ * and below `pages` rather than inside any one of them.
  *
  * `voidOpen` is local state, so if a caller keeps this dialog mounted (`open`
  * staying `true`) while swapping `intakeId` to a different document, that
@@ -81,7 +86,6 @@ export function ReceiptDialog({
   const balanceQuery = useSupplierBalanceQuery(intake?.supplier_id ?? null);
   const balance = balanceQuery.data;
 
-  const gradeCatalog = useGradeCatalogQuery();
   const tareTypesQuery = useTareTypeOptionsQuery();
   const tareTypes = tareTypesQuery.data;
 
@@ -107,7 +111,6 @@ export function ReceiptDialog({
     intakeQuery.isError ||
     supplierQuery.isError ||
     balanceQuery.isError ||
-    gradeCatalog.isError ||
     tareTypesQuery.isError ||
     pointsQuery.isError ||
     meQuery.isError;
@@ -150,8 +153,7 @@ export function ReceiptDialog({
         {t('common.somethingWentWrong')}
       </p>
     );
-  } else if (intake && supplier && balance && !gradeCatalog.isPending && tareTypes && points && me) {
-    const gradeById = new Map(gradeCatalog.data.map((g) => [g.id, g]));
+  } else if (intake && supplier && balance && tareTypes && points && me) {
     const tareById = new Map(tareTypes.map((tt) => [tt.id, tt]));
     const pointName = points.find((p) => p.id === intake.collection_point_id)?.name ?? '—';
     const receivedBy = intake.received_by_name ?? '—';
@@ -163,13 +165,15 @@ export function ReceiptDialog({
     title = t('receipt.titleLines', { code: intake.code, count: intake.items.length });
 
     const lines: ReceiptSheetLine[] = intake.items.map((item) => {
-      const grade = gradeById.get(item.product_grade_id);
       const tareLabel = item.tare
         .map((tareLine) => `${tareLine.units} × ${tareById.get(tareLine.tare_type_id)?.name ?? '—'}`)
         .join(', ');
       return {
         key: item.id,
-        label: grade ? `${grade.productName} · ${grade.name}` : '—',
+        // `intake.mapper` keeps `?? ''` for a missing name: print the name that
+        // is known, and «—» only when neither is — never a bare « · ».
+        label:
+          [item.product_name, item.grade_name].filter((name) => name !== '').join(' · ') || '—',
         gross: formatKg(item.gross_kg, locale),
         pallet: cmp(item.pallet_kg, '0') !== 0 ? formatKg(item.pallet_kg, locale) : null,
         tareLabel,
@@ -252,9 +256,6 @@ export function ReceiptDialog({
             ? {
                 code: livePayout.code,
                 amount: livePayout.amount,
-                otherCovered: settlementQuery.data
-                  ? otherCovered(settlementQuery.data, livePayout.id, intake.id)
-                  : null,
                 paidAt: livePayout.created_at,
                 // Same actor as the receipt (§3.5) — the response carries no payer name.
                 paidBy: intake.received_by_name,
@@ -266,7 +267,6 @@ export function ReceiptDialog({
               }
             : undefined
         }
-        shiftClosed={intake.shift_closed}
         intakeAmount={intake.amount}
       />
     );

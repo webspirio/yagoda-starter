@@ -1,4 +1,5 @@
-import { toIntakeResponse, toIntakeDetailResponse } from './intake.mapper';
+import { toIntakeResponse, toIntakeDetailResponse, toIntakeItemResponse } from './intake.mapper';
+import type { IntakeItem } from './intake-item.entity';
 import { intake, shift } from '../testing/unit/intakes.mocks';
 
 const extras = {
@@ -30,5 +31,27 @@ describe('intake mapper', () => {
       null,
     );
     expect(res.payouts[0].created_at).toBe('2026-09-08T11:32:00.000Z');
+  });
+
+  it('carries the product and grade names so a list row can be read without a catalog lookup', () => {
+    const item = {
+      id: 'ii-1',
+      item_order: 1,
+      product_grade_id: 'g-1',
+      gross_kg: '86.50',
+      pallet_kg: '0.00',
+      tare_weight_kg: '2.50',
+      net_kg: '84.00',
+      price: '120.00',
+      bonus: '0.00',
+      amount: '10080.00',
+      tare: [],
+      product_grade: { name: 'Альба', product: { name: 'Полуниця' } },
+    } as unknown as IntakeItem;
+
+    expect(toIntakeItemResponse(item)).toMatchObject({
+      product_name: 'Полуниця',
+      grade_name: 'Альба',
+    });
   });
 });

@@ -18,7 +18,7 @@ describe('canVoidIntake — §9.4', () => {
   it.each([
     // viewer, voided, shift closed, expected
     ['owner', false, false, true],
-    ['owner', false, true, true],
+    ['owner', false, true, false],
     ['owner', true, false, false],
     ['owner', true, true, false],
     ['author', false, false, true],

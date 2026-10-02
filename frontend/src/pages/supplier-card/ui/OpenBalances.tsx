@@ -1,4 +1,5 @@
 import { useTranslation } from 'react-i18next';
+import { ChevronRight } from 'lucide-react';
 import { SectionCard } from '@/shared/ui/section-card';
 import { formatLongDate } from '@/shared/lib/date';
 import { formatUah, formatKg, isZero } from '@/shared/lib/money';
@@ -21,17 +22,22 @@ import type { Intake } from '@/entities/intake';
  *
  * Overpayment is ONE ROW under the list, never a line: it is money nothing is
  * open against, the `−debt` §3.5 says «гаситься сам наступною здачею».
+ *
+ * A row opens its receipt: a top-up's `intake_id` is its parent's, so both kinds
+ * land on the paper the debt was written on.
  */
 export function OpenBalances({
   lines,
   unallocated,
   intakesById,
   locale,
+  onOpenReceipt,
 }: {
   lines: SettlementLine[];
   unallocated: string;
   intakesById: Map<string, Intake>;
   locale: string;
+  onOpenReceipt: (intakeId: string) => void;
 }) {
   const { t } = useTranslation();
   const open = lines.filter((l) => !isZero(l.open));
@@ -46,24 +52,32 @@ export function OpenBalances({
           {open.map((l) => {
             const receipt = l.kind === 'intake' ? intakesById.get(l.intake_id) : undefined;
             return (
-              <li
-                key={`${l.kind}-${l.id}`}
-                className="flex items-center gap-3 rounded-lg bg-[var(--amber)]/8 px-3 py-2 text-sm"
-              >
-                <span className="font-mono text-xs text-muted-foreground">{l.code}</span>
-                <span>{formatLongDate(l.business_date, locale)}</span>
-                {l.kind === 'top_up' ? (
-                  <span className="text-xs text-muted-foreground">
-                    {t('supplierCard.open.topUp', { code: l.code })}
+              <li key={`${l.kind}-${l.id}`}>
+                <button
+                  type="button"
+                  onClick={() => onOpenReceipt(l.intake_id)}
+                  title={t('supplierCard.open.openReceipt', { code: l.code })}
+                  className="group flex w-full items-center gap-3 rounded-lg bg-[var(--amber)]/8 px-3 py-2 text-left text-sm transition-colors hover:bg-[var(--amber)]/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  <span className="font-mono text-xs text-muted-foreground">{l.code}</span>
+                  <span>{formatLongDate(l.business_date, locale)}</span>
+                  {l.kind === 'top_up' ? (
+                    <span className="text-xs text-muted-foreground">
+                      {t('supplierCard.open.topUp', { code: l.code })}
+                    </span>
+                  ) : receipt ? (
+                    <span className="text-xs text-muted-foreground">
+                      {formatKg(receipt.net_kg, locale)}
+                    </span>
+                  ) : null}
+                  <span className="ml-auto font-mono font-semibold tabular-nums text-[var(--amber)]">
+                    {formatUah(l.open, locale)}
                   </span>
-                ) : receipt ? (
-                  <span className="text-xs text-muted-foreground">
-                    {formatKg(receipt.net_kg, locale)}
-                  </span>
-                ) : null}
-                <span className="ml-auto font-mono font-semibold tabular-nums text-[var(--amber)]">
-                  {formatUah(l.open, locale)}
-                </span>
+                  <ChevronRight
+                    aria-hidden
+                    className="size-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5"
+                  />
+                </button>
               </li>
             );
           })}

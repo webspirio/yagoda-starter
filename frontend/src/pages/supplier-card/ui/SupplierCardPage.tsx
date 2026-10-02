@@ -8,9 +8,10 @@ import { SectionCard } from '@/shared/ui/section-card';
 import { Button } from '@/shared/ui/button';
 import { Spinner } from '@/shared/ui/spinner';
 import { ApiError, isTruncated } from '@/shared/api';
-import { sum, cmp, isZero, formatUah } from '@/shared/lib/money';
+import { add, cmp, isZero, formatUah, formatKg } from '@/shared/lib/money';
 import {
   useSupplierQuery,
+  useSupplierBalanceQuery,
   useSupplierSettlementQuery,
   supplierName,
 } from '@/entities/supplier';
@@ -29,17 +30,25 @@ import { SupplierTimeline } from './SupplierTimeline';
 
 /**
  * `/suppliers/:id` — one supplier's card: header, season tiles and the
- * merged history of their receipts and payouts (spec §5.4). A balance is
- * ONE number here too (§3) — the tiles total the loaded documents, they
- * never reconstruct `/balance` from them. Kind and phone stay editable only
- * from the suppliers list's own dialog; this page is read (plus a payout).
+ * merged history of their receipts and payouts (spec §5.4). Since #103/#148
+ * the tiles are READ FACTS — `intakes_count` and `kg_total` off `/balance`,
+ * `debt`, «Нараховано» and the breakdown line off `/settlement`'s one
+ * snapshot (see `debt` below) — never a sum over
+ * `intakes`/`payouts`/`topUps`, which stay capped at `limit: 100` and would
+ * silently under-report past that for any supplier with a long season. Kind
+ * and phone stay editable only from the suppliers list's own dialog; this
+ * page is read (plus a payout).
  */
 export function SupplierCardPage() {
   const { t, i18n } = useTranslation();
   const { id } = useParams<{ id: string }>();
 
   const supplier = useSupplierQuery(id ?? null);
-  const intakes = useIntakesQuery({ supplierId: id, limit: 100 });
+  // The season counters (#103). No money on the card reads this — see `debt` below.
+  const balance = useSupplierBalanceQuery(id ?? null);
+  // `expandItems`: §148 — a receipt row shows what was handed over without a
+  // click, which needs each intake's lines nested onto the list read.
+  const intakes = useIntakesQuery({ supplierId: id, limit: 100, expandItems: true });
   const payouts = usePayoutsQuery({ supplierId: id, limit: 100 });
   const topUps = useIntakeTopUpsQuery({ supplierId: id, limit: 100 });
   // THE FOURTH QUERY — spec 2026-09-25 §3.8. The three lists stay for the
@@ -117,7 +126,8 @@ export function SupplierCardPage() {
     intakes.isError ||
     payouts.isError ||
     topUps.isError ||
-    settlement.isError
+    settlement.isError ||
+    balance.isError
   ) {
     return (
       <div className="flex flex-col items-center gap-3 py-6 text-center">
@@ -137,8 +147,10 @@ export function SupplierCardPage() {
     payouts.isPending ||
     topUps.isPending ||
     settlement.isPending ||
+    balance.isPending ||
     !supplier.data ||
-    !settlement.data
+    !settlement.data ||
+    !balance.data
   ) {
     return (
       <div className="flex justify-center py-12">
@@ -148,31 +160,23 @@ export function SupplierCardPage() {
   }
 
   const s = supplier.data;
-  // THE TILE, THE HINT AND OpenBalances READ ONE SNAPSHOT: `settlement.data`,
-  // not `balance.data` — two separate requests can otherwise land either
-  // side of a write and disagree about the same number on the same screen.
+  // EVERY MONEY FIGURE ON THE CARD READS ONE SNAPSHOT: `settlement.data` —
+  // the balance tile, its hint, «Нараховано», the breakdown line under them
+  // and OpenBalances. Two separate requests can land either side of a write
+  // (or one can be served from cache), and then the line explaining the tile
+  // would not add up to it (#153). `balance.data` feeds only the two counters.
   const debt = settlement.data.debt;
   const pointName = (points.data ?? []).find((p) => p.id === s.collection_point_id)?.name ?? '';
 
   const intakeRows = intakes.data?.data ?? [];
   const payoutRows = payouts.data?.data ?? [];
   const topUpRows = topUps.data?.data ?? [];
-  const liveIntakes = intakeRows.filter((i) => i.voided_at === null);
-  const livePayouts = payoutRows.filter((p) => p.voided_at === null);
-  // `counts_toward_balance`, NOT `voided_at`: it folds in the PARENT receipt's
-  // void too, and a top-up on a voided receipt counts for nothing.
-  const liveTopUps = topUpRows.filter((u) => u.counts_toward_balance);
-  // THE MIDDLE TERM OF THE BALANCE. `debt` is «Σ intakes + Σ top-ups − Σ
-  // payouts»; a «Нараховано» tile that summed only receipts would visibly
-  // disagree with the balance tile beside it, and the owner would have no way
-  // to tell which one was wrong.
-  const accrued = sum([...liveIntakes.map((i) => i.amount), ...liveTopUps.map((u) => u.amount)]);
-  const paid = sum(livePayouts.map((p) => p.amount));
-  // Both journals are read at a fixed `limit: 100` (spec §5.4) — past that
-  // the «Нараховано»/«Видано» tiles would under-report the season, so each
-  // says so instead of quietly summing only what happened to load.
-  const truncated = isTruncated(intakes.data) || isTruncated(topUps.data);
-  const payoutsTruncated = isTruncated(payouts.data);
+  // All three journals are read at a fixed `limit: 100` (spec §5.4) — the
+  // TIMELINE below can under-report past that, so it says so. The tiles
+  // above it cannot: they read server-computed season totals this flag never
+  // touches (§103/#148).
+  const truncated =
+    isTruncated(intakes.data) || isTruncated(payouts.data) || isTruncated(topUps.data);
 
   const st = settlement.data;
   const intakesById = new Map(intakeRows.map((i) => [i.id, i]));
@@ -228,20 +232,20 @@ export function SupplierCardPage() {
         }
       />
 
-      <StatGrid columns={4} className="mb-5">
+      <StatGrid columns={4} className="mb-1.5">
         <StatTile
           label={t('supplierCard.tiles.seasonIntakes')}
-          value={String(intakes.data?.total ?? 0)}
+          value={String(balance.data.intakes_count)}
         />
+        <StatTile
+          label={t('supplierCard.tiles.kgTotal')}
+          value={formatKg(balance.data.kg_total, i18n.language)}
+        />
+        {/* Credited to the supplier: receipts AND top-ups, so it can never
+            read less than a balance nothing has been paid against (#153). */}
         <StatTile
           label={t('supplierCard.tiles.accrued')}
-          value={formatUah(accrued, i18n.language)}
-          hint={truncated ? t('supplierCard.tiles.accruedHint') : undefined}
-        />
-        <StatTile
-          label={t('supplierCard.tiles.paid')}
-          value={formatUah(paid, i18n.language)}
-          hint={payoutsTruncated ? t('supplierCard.tiles.accruedHint') : undefined}
+          value={formatUah(add(st.intakes_total, st.top_ups_total), i18n.language)}
         />
         <StatTile
           label={t('supplierCard.tiles.balance')}
@@ -251,11 +255,23 @@ export function SupplierCardPage() {
         />
       </StatGrid>
 
+      {/* §103: `debt` decomposed into the same three terms the SQL sums it
+          from, each one named — the only place the season's payout total
+          appears on the card. A zero top-up term is dropped, not printed. */}
+      <p className="mb-5 text-right text-xs text-muted-foreground">
+        {t(isZero(st.top_ups_total) ? 'supplierCard.breakdownNoTopUps' : 'supplierCard.breakdown', {
+          intakes: formatUah(st.intakes_total, i18n.language),
+          topUps: formatUah(st.top_ups_total, i18n.language),
+          payouts: formatUah(st.payouts_total, i18n.language),
+        })}
+      </p>
+
       <OpenBalances
         lines={st.lines}
         unallocated={st.unallocated}
         intakesById={intakesById}
         locale={i18n.language}
+        onOpenReceipt={openReceipt}
       />
 
       <SectionCard eyebrow={t('supplierCard.timeline.title')}>
@@ -271,7 +287,7 @@ export function SupplierCardPage() {
           onAddTopUp={openTopUp}
           onVoidTopUp={openVoidTopUp}
         />
-        {truncated || payoutsTruncated ? (
+        {truncated ? (
           <p className="mt-3 text-xs text-muted-foreground">
             {t('supplierCard.timeline.truncated')}
           </p>

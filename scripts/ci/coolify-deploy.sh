@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Deploy one Coolify application (production, or the preview for PR_NUMBER),
+# Deploy one Coolify application (production, staging, or the preview for PR_NUMBER),
 # wait for Coolify to finish, then prove the APPLICATION is up — Coolify's
 # "finished" is not "serving": Traefik/DNS/container start-up leave a window,
 # and for previews the seed still has to complete.
@@ -50,7 +50,7 @@ deploy_url="$COOLIFY_URL/api/v1/deploy?uuid=$COOLIFY_APP_UUID&force=false"
 resp=$(curl -sS --max-time 30 -X POST "${AUTH[@]}" "$deploy_url")
 deployment_uuid=$(printf '%s' "$resp" | jqr '.deployments[0].deployment_uuid // empty')
 [ -n "$deployment_uuid" ] || fail "Coolify did not return a deployment_uuid: $resp"
-if [ -n "${PR_NUMBER:-}" ]; then target="preview pr=$PR_NUMBER"; else target="production"; fi
+if [ -n "${PR_NUMBER:-}" ]; then target="preview pr=$PR_NUMBER"; else target="application"; fi
 echo "deployment $deployment_uuid queued ($target)"
 [ -n "${GITHUB_OUTPUT:-}" ] && echo "deployment_uuid=$deployment_uuid" >> "$GITHUB_OUTPUT"
 
