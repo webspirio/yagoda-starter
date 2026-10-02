@@ -211,7 +211,7 @@ describe('ReceiptDialog', () => {
 
     expect(screen.getByText('SHP-IN-20260908-00412')).toBeInTheDocument();
     expect(screen.getByText('Галина Кушнірук')).toBeInTheDocument();
-    expect(screen.getByText('Малина · 1 сорт')).toBeInTheDocument();
+    expect(screen.getByText('Малина')).toBeInTheDocument();
     expect(screen.getByText('112.00 kg')).toBeInTheDocument();
     expect(screen.getAllByText('14,560.00 ₴').length).toBeGreaterThan(0);
     // received_by_name from the fixture, independent of who is logged in
@@ -231,7 +231,7 @@ describe('ReceiptDialog', () => {
     setUp({ grades: [] });
     render(<ReceiptDialog intakeId="intake-1" open onClose={vi.fn()} />);
 
-    expect(screen.getByText('Малина · 1 сорт')).toBeInTheDocument();
+    expect(screen.getByText('Малина')).toBeInTheDocument();
   });
 
   it('prints the receipt even when the grade catalog read fails — it no longer depends on it', () => {
@@ -239,26 +239,25 @@ describe('ReceiptDialog', () => {
     render(<ReceiptDialog intakeId="intake-1" open onClose={vi.fn()} />);
 
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
-    expect(screen.getByText('Малина · 1 сорт')).toBeInTheDocument();
+    expect(screen.getByText('Малина')).toBeInTheDocument();
   });
 
-  it('keeps the known name, not a bare « · », when the line has lost the other', () => {
+  // #162: the supplier's paper names the berry, never the grade — the grade
+  // shows only through the price it set.
+  it('names the line by its product alone, without the grade', () => {
+    setUp();
+    render(<ReceiptDialog intakeId="intake-1" open onClose={vi.fn()} />);
+
+    expect(screen.queryByText(/1 сорт/)).not.toBeInTheDocument();
+  });
+
+  it('prints a dash, not the grade, when the line has lost its product name', () => {
     const base = buildIntake();
     setUp({ intake: buildIntake({ items: [{ ...base.items![0], product_name: '' }] }) });
     render(<ReceiptDialog intakeId="intake-1" open onClose={vi.fn()} />);
 
-    expect(screen.queryByText(/^\s*·/)).not.toBeInTheDocument();
-    expect(screen.getByText('1 сорт')).toBeInTheDocument();
-  });
-
-  it('prints a dash when the line has lost both names', () => {
-    const base = buildIntake();
-    setUp({
-      intake: buildIntake({ items: [{ ...base.items![0], product_name: '', grade_name: '' }] }),
-    });
-    render(<ReceiptDialog intakeId="intake-1" open onClose={vi.fn()} />);
-
     expect(screen.getByText('—')).toBeInTheDocument();
+    expect(screen.queryByText(/1 сорт/)).not.toBeInTheDocument();
   });
 
   it('shows price − bonus = total for a per-kilogram discount', () => {

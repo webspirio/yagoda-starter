@@ -8,7 +8,7 @@ import { Badge } from '@/shared/ui/badge';
  *  `yagoda-crm`'s `components/reception/ReceiptDialog.tsx`). */
 export interface ReceiptSheetLine {
   key: string;
-  /** «{product} · {grade}» */
+  /** The product name — never the grade (#162). */
   label: string;
   gross: string;
   /** `null` hides the Піддон row — only shown when the intake had one. */
