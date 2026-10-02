@@ -633,18 +633,19 @@ export const CHECKS = [
     // `bundle` reported NOT_RUN, naming `build` as the unmet dependency, never FAILED and
     // never a false PASSED against the tree `build` left behind.
     proves:
-      'The first-load set named by frontend/dist/index.html — the entry script, its ' +
-      'stylesheets and every modulepreloaded chunk — is inside the recorded ceiling, gzip ' +
-      'and raw. The ceiling is derived, not chosen: measurement plus a minimum headroom, ' +
-      'rounded to a step, written only by an explicit --write. WARNING lines print the ' +
-      'headroom left, the total shipped and how much of it is deferred, and the largest ' +
-      'JS chunk, on every PASSING run — those numbers, not the verdict, are the point.',
+      "First paint — the manifest entry plus its static-import closure (everything " +
+      'index.html modulepreloads) and css — and lazy — every chunk reached only through ' +
+      '`dynamicImports` — each sit inside their own ceiling, gzip and raw, covering every ' +
+      'manifest-listed chunk. Ceilings are derived; `--write` only lowers one, `--raise` ' +
+      "widens and says so. React's development runtime in first paint is RED at any size. " +
+      'WARNING lines print headroom, the sum and the largest chunk on every pass.',
     blindSpot:
-      'Bytes, never load time, and caching is invisible: a returning visitor pays less ' +
-      'than anything printed here. The deferred chunks carry no ceiling at all, so a lazy ' +
-      'route may grow without limit and this row stays green. No per-chunk ceiling ' +
-      'either, so one eager file may fill the whole budget. It measures the last ' +
-      '`build`\'s output, so a stale dist gives a stale verdict.',
+      'Reads whatever the LAST `build` wrote — a stale-but-consistent dist/manifest pair ' +
+      "still gives a stale, passing verdict. It trusts the manifest's own " +
+      'static-versus-dynamic split, models a cold download only — no HTTP cache, no ' +
+      "repeat visit — and counts neither figure's own webfonts, which the entry's css " +
+      'pulls in but this check never opens. Bytes, never load time. No per-chunk ceiling ' +
+      'exists, and the sum it also prints carries no ceiling of its own at all.',
   },
   {
     id: 'test:db',

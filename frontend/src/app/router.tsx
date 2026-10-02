@@ -1,6 +1,7 @@
-import { createBrowserRouter, type RouteObject } from 'react-router';
+import { createBrowserRouter, Outlet, type RouteObject } from 'react-router';
 import { AppLayout } from './layouts/AppLayout';
 import { RouteError } from './providers/RouteError';
+import { HydrateFallback } from './providers/HydrateFallback';
 import { RequireAuth, RequireRole } from '@/features/auth';
 
 // EAGER — the screens an operator opens every shift, plus the two auth-shaped
@@ -20,7 +21,6 @@ import { ReceptionPage } from '@/pages/reception';
 import { CratesPage } from '@/pages/crates';
 import { PointCashPage } from '@/pages/point-cash';
 import { NotFoundPage } from '@/pages/not-found';
-import { UiKitPage } from '@/pages/ui-kit';
 
 // LAZY — the owner-only group, in ONE chunk fetched the first time an owner
 // opens any of these seven screens. They live in their own module because a
@@ -47,11 +47,32 @@ import {
  * `/login` is the only public route. Everything else is wrapped in
  * RequireAuth individually rather than guarding the layout, so the layout can
  * render the auth screens bare (see AppLayout's CHROMELESS list).
+ *
+ * Every eager route below imports its page statically, so it ships in the
+ * app's entry chunk. Owner-only pages (`/catalog` included — see its comment
+ * below) are React.lazy instead, grouped under the one pathless guard layout
+ * further down, so their shared chunk only downloads the first time an owner
+ * opens one of them.
  */
 export const routes: RouteObject[] = [
   // Standalone dev gallery of the shared/ui kit — no AppLayout shell, no auth,
-  // so it opens directly at /ui-kit for visual review.
-  { path: '/ui-kit', element: <UiKitPage />, errorElement: <RouteError /> },
+  // so it opens directly at /ui-kit for visual review. Dev-only: a developer
+  // tool, not something production ships. `import.meta.env.DEV` is baked in
+  // at build time, so the production bundle never even contains this array
+  // entry, let alone the lazily-imported page module.
+  ...(import.meta.env.DEV
+    ? [
+        {
+          path: '/ui-kit',
+          lazy: () => import('@/pages/ui-kit').then((m) => ({ Component: m.UiKitPage })),
+          errorElement: <RouteError />,
+          // Outside AppLayout, so no ancestor route supplies a fallback for a
+          // direct load — without its own, React Router warns "No
+          // HydrateFallback element provided" and renders nothing meanwhile.
+          hydrateFallbackElement: <HydrateFallback />,
+        } satisfies RouteObject,
+      ]
+    : []),
   {
     element: <AppLayout />,
     errorElement: <RouteError />,
@@ -136,24 +157,67 @@ export const routes: RouteObject[] = [
         ),
       },
       {
-        path: '/points',
+        // Owner-only pages, grouped under ONE guard layout. The pages are
+        // React.lazy components from `./lazy-routes` (one shared chunk), and
+        // the guards here are the ORDERING that chunk depends on: RequireRole
+        // renders the `<Outlet />` — and so constructs-then-renders the lazy
+        // child — only once the role check passes, so an operator is
+        // redirected before the chunk is ever requested
+        // (router.lazy-guard.test.tsx holds that down).
+        //
+        // errorElement here (rather than relying on AppLayout's own, above) stops a
+        // rejected chunk fetch from bubbling all the way up and replacing the WHOLE
+        // shell: an ordinary redeploy retires old hashed chunks, so a session that still
+        // holds a stale index.html can have the owner chunk's import reject. Without an
+        // errorElement on THIS route, react-router bubbles the error to the nearest
+        // ancestor that has one — AppLayout — unmounting the sidebar and nav along with
+        // the failed page. Declaring it here instead means only this group's own content
+        // (the Outlet above) is replaced; the shell survives — which is also why
+        // `fullHeight={false}` matters here and nowhere else: this fallback renders INSIDE
+        // AppLayout's `<main>`, in the pane the sidebar leaves for it, not as the whole
+        // page the way AppLayout's own errorElement (above) or /ui-kit's is.
         element: (
           <RequireAuth>
             <RequireRole role="network_owner">
-              <PointsPage />
+              <Outlet />
             </RequireRole>
           </RequireAuth>
         ),
-      },
-      {
-        path: '/users',
-        element: (
-          <RequireAuth>
-            <RequireRole role="network_owner">
-              <UsersPage />
-            </RequireRole>
-          </RequireAuth>
-        ),
+        errorElement: <RouteError fullHeight={false} />,
+        children: [
+          { path: '/points', element: <PointsPage /> },
+          { path: '/users', element: <UsersPage /> },
+          {
+            // The tare & grades catalog is owner-only: GET is open to both
+            // roles server-side, but every write here is @Auth(NetworkOwner).
+            path: '/catalog',
+            element: <CatalogPage />,
+          },
+          {
+            // The full receipts/payouts register is owner-only — an operator's
+            // view is scoped to their own point's shift already (Каса за день).
+            path: '/journal',
+            element: <JournalPage />,
+          },
+          {
+            // Лише керівник: заборгованість перед ІНШИМИ точками — не справа
+            // приймальника (§7, G16). Тому роль-гейт маршруту, а не сірі кнопки.
+            path: '/transfers',
+            element: <TransfersPage />,
+          },
+          {
+            // Owner-only: this is the screen at the scale, at the base — not a
+            // point-level document any operator could write.
+            path: '/reweigh',
+            element: <ReweighPage />,
+          },
+          {
+            // Owner-only, like /reweigh: §8's reads as well as its writes are the
+            // base's view of a point, not something the point sees about itself.
+            path: '/cost-of-day',
+            element: <CostOfDayPage />,
+          },
+        ],
       },
       {
         // Both roles: `GET /grade-prices` (current + history) is open to both
@@ -163,66 +227,6 @@ export const routes: RouteObject[] = [
         element: (
           <RequireAuth>
             <PricesPage />
-          </RequireAuth>
-        ),
-      },
-      {
-        // The tare & grades catalog is owner-only: GET is open to both roles
-        // server-side, but every write here is @Auth(NetworkOwner).
-        path: '/catalog',
-        element: (
-          <RequireAuth>
-            <RequireRole role="network_owner">
-              <CatalogPage />
-            </RequireRole>
-          </RequireAuth>
-        ),
-      },
-      {
-        // The full receipts/payouts register is owner-only — an operator's
-        // view is scoped to their own point's shift already (Каса за день).
-        path: '/journal',
-        element: (
-          <RequireAuth>
-            <RequireRole role="network_owner">
-              <JournalPage />
-            </RequireRole>
-          </RequireAuth>
-        ),
-      },
-      {
-        // Лише керівник: заборгованість перед ІНШИМИ точками — не справа
-        // приймальника (§7, G16). Тому роль-гейт маршруту, а не сірі кнопки.
-        path: '/transfers',
-        element: (
-          <RequireAuth>
-            <RequireRole role="network_owner">
-              <TransfersPage />
-            </RequireRole>
-          </RequireAuth>
-        ),
-      },
-      {
-        // Owner-only: this is the screen at the scale, at the base — not a
-        // point-level document any operator could write.
-        path: '/reweigh',
-        element: (
-          <RequireAuth>
-            <RequireRole role="network_owner">
-              <ReweighPage />
-            </RequireRole>
-          </RequireAuth>
-        ),
-      },
-      {
-        // Owner-only, like /reweigh: §8's reads as well as its writes are the
-        // base's view of a point, not something the point sees about itself.
-        path: '/cost-of-day',
-        element: (
-          <RequireAuth>
-            <RequireRole role="network_owner">
-              <CostOfDayPage />
-            </RequireRole>
           </RequireAuth>
         ),
       },
