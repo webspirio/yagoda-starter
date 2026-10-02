@@ -55,6 +55,11 @@ import {
  *    honest rather than a jump: the last generated closing already equals the
  *    curated anchor before it is forced to.
  *
+ * 5. EMPTIES THAT NEVER GO NEGATIVE (spec 2026-09-30). Generated receipts weigh `Ящик`, which is
+ *    NOT the crate type (`SEED_TARE_TYPES`), and generated transfers only ADD crates, so history
+ *    cannot take a point's empties below zero. Switching the history tare to the crate type
+ *    would break that; `dev-seed.db-spec.ts` asserts it for every point.
+ *
  * WHAT IS DELIBERATELY NOT GENERATED: `grade_prices`. Prices carry over until
  * changed (spec 2026-09-07 §8.1 removed `business_date`), so the historical
  * price IS the current one. Writing a row per day would silently re-introduce

@@ -21,6 +21,7 @@ const STANDING: CrateStanding = {
   allotment: 800,
   received: 808,
   on_hand: 341,
+  in_transit: 0,
   in_field: 195,
   deposit_units: 115,
   deposit_held: '13800.00',

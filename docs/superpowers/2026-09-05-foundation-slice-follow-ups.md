@@ -1370,6 +1370,14 @@ Spec `docs/superpowers/specs/2026-09-27-allocations-cluster-refactor-design.md`,
   merge and were handled by hand. Not a repository defect; re-check on the next
   PR before relying on it.
 
+## From the crates on-hand invariant (2026-09-30)
+
+- **`tare_types.is_crate` toggle** is an eighth path below zero: moving the single crate flag onto
+  a tare type already on receipts reclassifies history at every point at once. Candidate: refuse
+  the toggle once the type is on any live receipt.
+- **Up-front hints** in the void-transfer, resolve-dispute and close-shift dialogs (e.g. «з цього
+  переказу вже видано 15»); today they learn of the guard only from the 409.
+
 ## Deferred from forbidding the closed-shift intake void (2026-09-30)
 
 Nobody voids an intake in a closed shift any more, the owner included (§9.4, правка

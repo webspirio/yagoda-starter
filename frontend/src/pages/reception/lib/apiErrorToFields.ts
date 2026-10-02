@@ -1,10 +1,13 @@
 import { ApiError } from '@/shared/api';
+import { onHandKey, apiErrorParams } from '@/shared/lib/api-error';
 
 export interface ApiFieldErrors {
   /** field name (RHF path, e.g. `items.0.gross_kg`) -> i18n message key */
   fieldErrors: Array<{ field: string; messageKey: string }>;
   /** i18n key for a form-level banner, or null */
   formErrorKey: string | null;
+  /** numbers for interpolating `formErrorKey` */
+  formErrorParams?: Record<string, number>;
 }
 
 const FORM_LEVEL = 'reception.errors.failed';
@@ -118,6 +121,10 @@ export function apiErrorToFields(error: unknown, lineCount: number): ApiFieldErr
         fieldErrors: [{ field: `items.${lastLine}.${line.suffix}`, messageKey: line.messageKey }],
         formErrorKey: null,
       };
+    }
+
+    if (error.code === 'CRATES_ON_HAND_INSUFFICIENT') {
+      return { fieldErrors: [], formErrorKey: onHandKey(error), formErrorParams: apiErrorParams(error) };
     }
 
     const banner = BANNER[error.code];

@@ -69,6 +69,8 @@ describe('useCloseShiftMutation', () => {
       expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: queryKeys.payouts });
       expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: queryKeys.cashCounts });
       expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: queryKeys.pointCash });
+      // Close subtracts the breakage from the point's empties.
+      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: queryKeys.crateBalances });
     });
   });
 });

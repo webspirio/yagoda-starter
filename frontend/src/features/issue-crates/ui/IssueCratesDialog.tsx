@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { useForm, useWatch } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
 import {
@@ -15,9 +16,11 @@ import { SelectField } from '@/shared/ui/select-field';
 import { Button } from '@/shared/ui/button';
 import { toast } from '@/shared/ui/toast';
 import { cratesRules } from '@/shared/lib/money';
-import { apiErrorToBanner } from '@/shared/lib/api-error';
+import { toBannerError, type BannerError } from '@/shared/lib/api-error';
+import { ApiError } from '@/shared/api';
+import { queryKeys } from '@/shared/api/queryKeys';
 import { useSuppliersQuery, supplierName } from '@/entities/supplier';
-import type { CrateIssuanceMode } from '@/entities/crate';
+import { useCrateStandingQuery, type CrateIssuanceMode } from '@/entities/crate';
 import { useIssueCratesMutation } from '../api/useIssueCrates';
 
 interface IssueFormValues {
@@ -52,8 +55,13 @@ export function IssueCratesDialog({
   onClose: () => void;
 }) {
   const { t } = useTranslation();
+  const qc = useQueryClient();
   const issue = useIssueCratesMutation();
   const suppliers = useSuppliersQuery('', pointId ?? null);
+  const standing = useCrateStandingQuery({ pointId: pointId ?? null, isOwner: Boolean(pointId) });
+  const onHand = standing.data?.on_hand;
+  const inTransit = standing.data?.in_transit ?? 0;
+  const noneLeft = onHand !== undefined && onHand <= 0;
 
   const {
     register,
@@ -64,7 +72,7 @@ export function IssueCratesDialog({
     defaultValues: { supplier_id: '', units: '', mode: 'deposit' },
   });
 
-  const [formError, setFormError] = useState<string | null>(null);
+  const [formError, setFormError] = useState<BannerError | null>(null);
   // `useWatch`, not `watch()` — the same choice `PayoutDialog` makes, and the
   // one the react-hooks lint rule accepts.
   const mode = useWatch({ control, name: 'mode' });
@@ -82,8 +90,12 @@ export function IssueCratesDialog({
       toast.success(t('crates.issue.toast'));
       onClose();
     } catch (error) {
+      // The server counted differently from the hint — bring the hint up to its figure.
+      if (error instanceof ApiError && error.code === 'CRATES_ON_HAND_INSUFFICIENT') {
+        void qc.invalidateQueries({ queryKey: queryKeys.crateBalances });
+      }
       setFormError(
-        apiErrorToBanner(error, 'crates.errors.issueFailed', {
+        toBannerError(error, 'crates.errors.issueFailed', {
           // Shared code, screen-specific consequence — see `apiErrorToBanner`.
           SUPPLIER_INACTIVE: 'crates.errors.supplierInactive',
         }),
@@ -128,16 +140,33 @@ export function IssueCratesDialog({
             label={t('crates.field.units')}
             required
             error={errors.units?.message}
+            errorParams={{ on_hand: onHand }}
           >
             {(a11y) => (
               <TextInput
                 {...a11y}
                 inputMode="numeric"
                 className="font-mono"
-                {...register('units', cratesRules('crates.errors.unitsFormat'))}
+                {...register('units', {
+                  ...cratesRules('crates.errors.unitsFormat'),
+                  // A hint, not the rule: the server's CrateStockGuard is the final word.
+                  validate: {
+                    format: cratesRules('crates.errors.unitsFormat').validate,
+                    onHand: (v: string) =>
+                      onHand === undefined ||
+                      Number.parseInt(v.trim(), 10) <= onHand ||
+                      'crates.errors.overOnHand',
+                  },
+                })}
               />
             )}
           </Field>
+          {onHand !== undefined ? (
+            <p className={noneLeft ? 'text-sm text-destructive' : 'text-sm text-muted-foreground'}>
+              {t('crates.issue.onHandHint', { on_hand: onHand })}
+              {inTransit > 0 ? ` ${t('crates.issue.inTransitHint', { in_transit: inTransit })}` : null}
+            </p>
+          ) : null}
 
           <Field name="mode" label={t('crates.field.mode')} required error={errors.mode?.message}>
             {(a11y) => (
@@ -155,7 +184,7 @@ export function IssueCratesDialog({
 
           {formError ? (
             <p role="alert" className="text-sm text-destructive">
-              {t(formError)}
+              {t(formError.key, formError.params)}
             </p>
           ) : null}
 
@@ -163,7 +192,7 @@ export function IssueCratesDialog({
             <Button type="button" variant="ghost" onClick={onClose} disabled={isSubmitting}>
               {t('common.cancel')}
             </Button>
-            <Button type="submit" disabled={isSubmitting}>
+            <Button type="submit" disabled={isSubmitting || noneLeft}>
               {t('crates.issue.submit')}
             </Button>
           </DialogFooter>

@@ -29,6 +29,7 @@ describe('CratesService', () => {
   let points: { findOneRaw: jest.Mock };
   let tareTypes: { findCrateType: jest.Mock };
   let audit: { record: jest.Mock };
+  let stock: { assertOnHand: jest.Mock };
   let balance: { tranchesFor: jest.Mock; balanceFor: jest.Mock; pointDepositBook: jest.Mock };
   let service: CratesService;
 
@@ -103,6 +104,7 @@ describe('CratesService', () => {
     tareTypes = {
       findCrateType: jest.fn().mockResolvedValue({ id: 't-1', deposit_price: '120.00' }),
     };
+    stock = { assertOnHand: jest.fn().mockResolvedValue(undefined) };
     audit = { record: jest.fn().mockResolvedValue(undefined) };
     balance = {
       tranchesFor: jest.fn().mockResolvedValue([]),
@@ -118,6 +120,7 @@ describe('CratesService', () => {
       tareTypes as never,
       audit as never,
       balance as never,
+      stock as never,
     );
   });
 
@@ -194,6 +197,12 @@ describe('CratesService', () => {
     await expect(
       service.issue(operator, { supplier_id: 's-1', units: 20, mode: CrateIssuanceMode.Deposit }),
     ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('asks the stock guard for exactly the units issued, at the issuing point', async () => {
+    await service.issue(operator, { supplier_id: 's-1', units: 12, mode: CrateIssuanceMode.Receipt });
+
+    expect(stock.assertOnHand).toHaveBeenCalledWith(expect.anything(), POINT_A, 12);
   });
 
   it('audits crate-issuance.created', async () => {

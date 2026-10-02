@@ -20,6 +20,7 @@ import { UsersService } from '../users/users.service';
 import { CredentialsService } from '../users/credentials.service';
 import { LOCAL_PROVIDER } from '../users/user-identity.entity';
 import { UserRole } from '../users/user-role.enum';
+import { stockPoint } from './crate-stock-fixture';
 
 const pointCode = (): string => randomUUID().replace(/-/g, '').slice(0, 8).toUpperCase();
 
@@ -165,6 +166,10 @@ describe('documents pipeline (HTTP)', () => {
       expect(res.body.status).toBe('open');
       expect(res.body.closed_at).toBeNull();
       shiftId = res.body.id as string;
+
+      // Spec 2026-09-30: empties must exist before crates can go out. 1000 is far above
+      // the breakage and crate tare this suite writes, and the transfer carries no cash.
+      await stockPoint(app, ownerToken, operatorToken, pointId, 1000);
     });
 
     it('refuses the OWNER the open verb entirely', async () => {

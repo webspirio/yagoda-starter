@@ -17,6 +17,7 @@ import { UsersService } from '../users/users.service';
 import { CredentialsService } from '../users/credentials.service';
 import { LOCAL_PROVIDER } from '../users/user-identity.entity';
 import { UserRole } from '../users/user-role.enum';
+import { stockPoint } from '../testing/crate-stock-fixture';
 
 const pointCode = (): string => randomUUID().replace(/-/g, '').slice(0, 8).toUpperCase();
 
@@ -150,6 +151,9 @@ describe('reception race: two concurrent POST /intakes for one supplier (HTTP, P
       .send({ counted_amount: '1500.00' })
       .expect(201);
     shiftId = shiftRes.body.id as string;
+    // Spec 2026-09-30: a receipt's crate tare leaves the point's empties. 1000 is far above
+    // the crate tare these races weigh, and the transfer carries no cash — the drawer stays 1500.00.
+    await stockPoint(app, ownerToken, operatorToken, pointId, 1000);
   }, 30_000);
 
   afterAll(async () => {

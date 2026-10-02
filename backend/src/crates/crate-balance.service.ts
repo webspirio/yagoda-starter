@@ -143,6 +143,42 @@ export const transferCratesSql = (pointExpr: string): string => `(
 )`;
 
 /**
+ * CRATES IN TRANSIT — `sent`, not yet accepted or disputed, not voided. They are NOT
+ * empties at the point (`transferCratesSql` counts `sent` as 0); the guard names them so an
+ * operator who already unloaded the truck is told to press «Прийняв» first.
+ */
+export const inTransitCratesSql = (pointExpr: string): string => `(
+    SELECT COALESCE(SUM(t.crates), 0)::int
+      FROM transfers t
+     WHERE t.collection_point_id = ${pointExpr}
+       AND t.status = 'sent'
+       AND t.voided_at IS NULL
+)`;
+
+/**
+ * EMPTIES AT THE POINT — the ONE formula (spec 2026-09-30 §4.1). `/crate-standing` shows it
+ * and `CrateStockGuard` refuses a write that leaves it below zero, so the two cannot drift:
+ * received − issued + returned − crate tare on every live receipt − breakage.
+ */
+export const onHandSql = (pointExpr: string): string => `(
+    ${transferCratesSql(pointExpr)}
+  - (SELECT COALESCE(SUM(ci.units), 0)::int
+       FROM crate_issuances ci
+       JOIN shifts s ON s.id = ci.shift_id
+      WHERE s.collection_point_id = ${pointExpr}
+        AND ci.voided_at IS NULL)
+  + (SELECT COALESCE(SUM(cr.units), 0)::int
+       FROM crate_returns cr
+       JOIN shifts s ON s.id = cr.shift_id
+      WHERE s.collection_point_id = ${pointExpr}
+        AND cr.voided_at IS NULL)
+  - ${crateTareUnitsSql(`sh.collection_point_id = ${pointExpr}`)}
+  - (SELECT COALESCE(SUM(bs.broken_crates), 0)::int
+       FROM shifts bs
+      WHERE bs.collection_point_id = ${pointExpr})
+)::int`;
+
+/**
  * THE SAME BOOK, IN CRATES RATHER THAN GRYVNIAS — R8's card, «завдатків за N
  * ящиків». `point-cash` shows this NEXT TO `crateBookSql`'s money figure, not
  * derived from it: a receipt issuance's units are never in `crateBookSql`

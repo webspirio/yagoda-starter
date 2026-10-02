@@ -18,6 +18,7 @@ import { LOCAL_PROVIDER } from '../users/user-identity.entity';
 import { UserRole } from '../users/user-role.enum';
 import { CrateDispatchService } from './crate-dispatch.service';
 import type { AuthenticatedUser } from '../auth/jwt.strategy';
+import { stockPoint } from '../testing/crate-stock-fixture';
 
 /**
  * UNVERIFIED AT WRITE TIME. This spec has never been run — no Postgres was
@@ -195,6 +196,9 @@ describe('crates lifecycle (HTTP)', () => {
       .send({ counted_amount: '0.00' })
       .expect(201);
     shiftId = shiftRes.body.id as string;
+    // Spec 2026-09-30: empties must exist before crates can go out. 1000 is far above the
+    // 220 this file issues here, and the transfer carries no cash.
+    await stockPoint(app, ownerToken, operatorToken, pointId, 1000);
   }, 30_000);
 
   afterAll(async () => {
@@ -566,6 +570,9 @@ describe('crates lifecycle (HTTP)', () => {
         .set('Authorization', `Bearer ${r8OperatorToken}`)
         .send({ counted_amount: '0.00' })
         .expect(201);
+      // Spec 2026-09-30: empties must exist before crates can go out. 1000 is far above
+      // anything this block issues, and the transfer carries no cash.
+      await stockPoint(app, ownerToken, r8OperatorToken, r8PointId, 1000);
     });
 
     it('issues 20 against a deposit, returns 7, and both point-cash reads settle on 13', async () => {
@@ -658,6 +665,9 @@ describe('crates lifecycle (HTTP)', () => {
         .send({ counted_amount: '0.00' })
         .expect(201);
       const r2ShiftId = shiftRes.body.id as string;
+      // Spec 2026-09-30: empties must exist before crates can go out. 1000 is far above
+      // anything this block issues, and the transfer carries no cash.
+      await stockPoint(app, ownerToken, r2OperatorToken, r2PointId, 1000);
 
       const issuanceRes = await request(app.getHttpServer())
         .post('/crate-issuances')

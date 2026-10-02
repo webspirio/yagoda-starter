@@ -13,7 +13,7 @@ import { Field } from '@/shared/ui/field';
 import { TextInput } from '@/shared/ui/text-input';
 import { Button } from '@/shared/ui/button';
 import { toast } from '@/shared/ui/toast';
-import { apiErrorToBanner } from '@/shared/lib/api-error';
+import { toBannerError, type BannerError } from '@/shared/lib/api-error';
 import { normalizeAmount, amountRules, cratesRules } from '@/shared/lib/money';
 import type { Transfer } from '@/entities/transfer';
 import { useResolveTransferMutation } from '../api/useResolveTransfer';
@@ -42,7 +42,7 @@ export function ResolveTransferDialog({
 }) {
   const { t } = useTranslation();
   const resolveTransfer = useResolveTransferMutation();
-  const [formError, setFormError] = useState<string | null>(null);
+  const [formError, setFormError] = useState<BannerError | null>(null);
 
   const {
     register,
@@ -66,7 +66,7 @@ export function ResolveTransferDialog({
       toast.success(t('transfer.resolve.toast'));
       onClose();
     } catch (error) {
-      setFormError(apiErrorToBanner(error, 'transfer.errors.failed'));
+      setFormError(toBannerError(error, 'transfer.errors.failed'));
     }
   });
 
@@ -116,7 +116,7 @@ export function ResolveTransferDialog({
 
           {formError ? (
             <p role="alert" className="text-sm text-destructive">
-              {t(formError)}
+              {t(formError.key, formError.params)}
             </p>
           ) : null}
 

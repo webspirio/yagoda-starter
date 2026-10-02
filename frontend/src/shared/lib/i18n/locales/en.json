@@ -1307,7 +1307,9 @@
       "title": "Issue crates",
       "description": "Crates go home with a person. Both modes put the same crates on the same balance — the difference is only in the money.",
       "submit": "Issue",
-      "toast": "Crates issued"
+      "toast": "Crates issued",
+      "onHandHint": "{{on_hand}} empty crates at the point.",
+      "inTransitHint": "{{in_transit}} in transit — accept the transfer first."
     },
     "return": {
       "title": "Accept crates",
@@ -1370,9 +1372,12 @@
       "noCrateType": "No tare type is marked as the crate — set one in the catalogue first",
       "returnExceeds": "That is more crates than this person is holding",
       "cashInsufficient": "The crate deposits drawer holds less than this refund needs",
+      "onHandInsufficient": "The point has {{available}} empty crates, and this takes {{required}}.",
+      "onHandInsufficientInTransit": "The point has {{available}} empty crates, and this takes {{required}}. {{in_transit}} more are in transit — press «Accept» in Point cash first.",
       "hasReturns": "A return has already been allocated against this issuance — void the return first",
       "returnBelongsToIntake": "This return was recorded with a receipt — void the receipt instead",
-      "supplierInactive": "This person is deactivated, so crates cannot be issued to them"
+      "supplierInactive": "This person is deactivated, so crates cannot be issued to them",
+      "overOnHand": "Only {{on_hand}} empty crates at the point."
     }
   },
   "reweigh": {

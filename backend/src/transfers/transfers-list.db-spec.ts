@@ -2,6 +2,7 @@ import { randomUUID } from 'crypto';
 import { DataSource } from 'typeorm';
 import { openTestDataSource } from '../testing/db-harness';
 import { Transfer } from './transfer.entity';
+import { CrateStockGuard } from '../crate-stock/crate-stock.guard';
 import { TransfersService } from './transfers.service';
 import { UserRole } from '../users/user-role.enum';
 import type { AuthenticatedUser } from '../auth/jwt.strategy';
@@ -58,6 +59,7 @@ describe('TransfersService.list date filter (Postgres)', () => {
       // `transition`'s §4.1 check — so a functional stub that always reports
       // no open shift is honest here without needing a real one.
       { findOpenAtPoint: async () => null } as never,
+      new CrateStockGuard(),
     );
 
     const tag = randomUUID().slice(0, 8);
