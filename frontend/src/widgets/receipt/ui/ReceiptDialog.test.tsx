@@ -260,14 +260,16 @@ describe('ReceiptDialog', () => {
     expect(screen.queryByText(/1 сорт/)).not.toBeInTheDocument();
   });
 
-  it('shows price − bonus = total for a per-kilogram discount', () => {
+  // #164: the supplier sees the price they were paid, not how it was built.
+  it('shows only the final price for a per-kilogram discount', () => {
     setUp();
     render(<ReceiptDialog intakeId="intake-1" open onClose={vi.fn()} />);
 
-    expect(screen.getByText('135.00 ₴ − 5.00 ₴ = 130.00 ₴')).toBeInTheDocument();
+    expect(screen.getByText('130.00 ₴')).toBeInTheDocument();
+    expect(screen.queryByText(/135\.00/)).not.toBeInTheDocument();
   });
 
-  it('shows price + bonus = total for a per-kilogram markup', () => {
+  it('shows only the final price for a per-kilogram markup', () => {
     setUp({
       intake: buildIntake({
         items: [
@@ -291,7 +293,8 @@ describe('ReceiptDialog', () => {
     });
     render(<ReceiptDialog intakeId="intake-1" open onClose={vi.fn()} />);
 
-    expect(screen.getByText('135.00 ₴ + 5.00 ₴ = 140.00 ₴')).toBeInTheDocument();
+    expect(screen.getByText('140.00 ₴')).toBeInTheDocument();
+    expect(screen.queryByText(/135\.00/)).not.toBeInTheDocument();
   });
 
   it("shows who received the document from received_by_name, regardless of who is logged in", () => {

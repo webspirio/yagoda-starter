@@ -17,9 +17,8 @@ export interface ReceiptSheetLine {
   tareLabel: string;
   tareWeight: string;
   net: string;
+  /** The final per-kilogram price, bonus included (#164). */
   price: string;
-  /** Formatted bonus (already signed), or `null` when the bonus is 0.00. */
-  bonus: string | null;
   amount: string;
 }
 
@@ -135,10 +134,7 @@ export function ReceiptSheet({
           <Row label={t('receipt.tare', { detail: line.tareLabel })} value={`− ${line.tareWeight}`} />
           <div className="my-1.5 border-t border-neutral-900" />
           <Row label={t('receipt.net')} value={line.net} strong />
-          <Row
-            label={t('receipt.pricePerKg')}
-            value={line.bonus !== null ? `${line.price} ${line.bonus}` : line.price}
-          />
+          <Row label={t('receipt.pricePerKg')} value={line.price} />
           <Row label={t('receipt.amount')} value={line.amount} />
         </div>
       ))}
