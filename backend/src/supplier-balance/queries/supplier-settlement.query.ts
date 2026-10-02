@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { fromAllocations, AllocationRow, DebtLine, PayoutLine, Settlement } from '../settlement';
-import { SupplierDebtQuery } from './supplier-debt.query';
+import { DebtTerms, SupplierDebtQuery } from './supplier-debt.query';
 
 /** Queue key (business_date, created_at, id); ISO dates and timestamp::text sort lexicographically. */
 const byQueueKey = (a: DebtLine, b: DebtLine): number =>
@@ -26,8 +26,8 @@ export class SupplierSettlementQuery {
     private readonly debt: SupplierDebtQuery,
   ) {}
 
-  /** «За що саме винні» for one supplier. Live documents (the four `voided_at` filters of `debtSql`) plus live allocation rows, in one REPEATABLE READ snapshot so `debt` and `Σ open − unallocated` agree. */
-  async settlementFor(supplierId: string): Promise<Settlement & { debt: string }> {
+  /** «За що саме винні» for one supplier. Live documents (the four `voided_at` filters of `debtSql`) plus live allocation rows, in one REPEATABLE READ snapshot so `debt`, its three terms and `Σ open − unallocated` all agree — the card's balance tile and the breakdown line under it read this one answer (#153). */
+  async settlementFor(supplierId: string): Promise<Settlement & DebtTerms> {
     return this.dataSource.transaction('REPEATABLE READ', async (manager) => {
       type IntakeRow = {
         id: string;
@@ -87,8 +87,8 @@ export class SupplierSettlementQuery {
         [supplierId],
       )) as AllocationRow[];
 
-      const debt = await this.debt.debtFor(supplierId, manager);
-      return { debt, ...fromAllocations(lines, payoutLines, allocations) };
+      const terms = await this.debt.termsFor(supplierId, manager);
+      return { ...terms, ...fromAllocations(lines, payoutLines, allocations) };
     });
   }
 }

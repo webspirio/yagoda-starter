@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Controller, useForm } from 'react-hook-form';
+import { useForm } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
 import {
   Dialog,
@@ -13,49 +13,54 @@ import { Field } from '@/shared/ui/field';
 import { Textarea } from '@/shared/ui/textarea';
 import { Button } from '@/shared/ui/button';
 import { toast } from '@/shared/ui/toast';
-import { useVoidDocumentMutation, type PayoutDecision } from '../api/useVoidDocument';
+import { useVoidDocumentMutation } from '../api/useVoidDocument';
 import { apiErrorToBanner } from '@/shared/lib/api-error';
 import { formatUah } from '@/shared/lib/money';
 import { formatTime } from '@/shared/lib/date';
-import { PayoutDecisionField, type LinkedPayout } from './PayoutDecisionField';
 import { VoidConsequences } from './VoidConsequences';
+
+/** An intake's live payout: the void takes it too, cash back in the drawer (2026-09-28). */
+export interface LinkedPayout {
+  code: string;
+  amount: string;
+  /** When and by whom it was handed over. */
+  paidAt: string;
+  paidBy: string | null;
+  /** Receipt codes that reopen with it; null until the settlement loads — the void refuses to
+   *  submit until then, so the reopen box cannot be skipped. */
+  reopens: string[] | null;
+  /** The settlement read failed: the dialog swaps the reopen box for a «list unknown» one. */
+  reopensFailed?: boolean;
+  /** Refetches the settlement after a failure. */
+  retryReopens?: () => void;
+}
 
 interface VoidFormValues {
   reason: string;
-  /** #125: only asked for a closed-shift intake with a live linked payout — see `showDecision`. */
-  payout?: PayoutDecision;
   /** One required tick per open-shift consequence, keyed by its id — a UI gate only (spec
    *  decision 8). Keyed, not indexed: a box swapped for another must not inherit its tick. */
   acks: Record<string, boolean>;
 }
 
-interface BaseProps {
+interface VoidDocumentDialogProps {
+  kind: 'intake' | 'payout' | 'transfer' | 'topUp' | 'crateIssuance' | 'crateReturn';
   id: string;
   code: string;
   open: boolean;
   onClose: () => void;
   /** Fires after a successful void, before `onClose` — e.g. to refresh a detail view. */
   onVoided?: () => void;
-  /** #125: the intake's live payout, if any — asks what happens to it too. */
+  /** Intake only: its live payout, if any. */
   linkedPayout?: LinkedPayout;
   /** Intake without a live payout: the debt the void takes off. */
   intakeAmount?: string;
   /** Payout only: the amount going back to the drawer, and the receipts that reopen. */
   payoutAmount?: string;
   reopens?: string[] | null;
+  /** Payout only: a closed shift's void returns no cash, so there is nothing to tick. An intake
+   *  is never voided in a closed shift (2026-09-30). */
+  shiftClosed?: boolean;
 }
-
-/** Closed shift: #125's three choices. Open: the void returns the cash, so the dialog lists
- *  every consequence as a checkbox instead (2026-09-28). Required for an intake — a forgotten
- *  prop would silently mean «open» and stop sending the decision. */
-type VoidDocumentDialogProps = BaseProps &
-  (
-    | { kind: 'intake'; shiftClosed: boolean }
-    | {
-        kind: 'payout' | 'transfer' | 'topUp' | 'crateIssuance' | 'crateReturn';
-        shiftClosed?: boolean;
-      }
-  );
 
 /**
  * «Анулювати» — void an intake or payout with a reason. A document is never
@@ -82,8 +87,7 @@ export function VoidDocumentDialog({
   const locale = i18n.resolvedLanguage ?? 'uk';
   const money = (v: string) => formatUah(v, locale);
   const voidDocument = useVoidDocumentMutation();
-  const showDecision = kind === 'intake' && linkedPayout !== undefined && shiftClosed;
-  const openLinkedPayout = kind === 'intake' && !shiftClosed ? linkedPayout : undefined;
+  const openLinkedPayout = kind === 'intake' ? linkedPayout : undefined;
   // A failed read is not «not ready»: `reopens` is disclosure only, so the void goes on
   // behind its own box (#173 review) rather than locking the operator out.
   const reopensFailed =
@@ -116,7 +120,6 @@ export function VoidDocumentDialog({
   const {
     register,
     handleSubmit,
-    control,
     formState: { errors, isSubmitting },
   } = useForm<VoidFormValues>({ defaultValues: { reason: '', acks: {} } });
 
@@ -129,7 +132,6 @@ export function VoidDocumentDialog({
         kind,
         id,
         reason: values.reason.trim(),
-        ...(showDecision && values.payout ? { payout: values.payout } : {}),
       });
       toast.success(t('void.toast.voided'));
       onVoided?.();
@@ -148,23 +150,6 @@ export function VoidDocumentDialog({
         </DialogHeader>
 
         <form onSubmit={onSubmit} className="flex flex-col gap-4" noValidate>
-          {showDecision ? (
-            <Controller
-              control={control}
-              name="payout"
-              rules={{ validate: (v) => v !== undefined || 'void.payout.required' }}
-              render={({ field, fieldState }) => (
-                <PayoutDecisionField
-                  payout={linkedPayout}
-                  value={field.value}
-                  onChange={field.onChange}
-                  error={fieldState.error?.message}
-                  firstRadioRef={field.ref}
-                />
-              )}
-            />
-          ) : null}
-
           {openLinkedPayout ? (
             <div className="rounded-md border border-destructive/40 bg-destructive/8 p-3 text-sm">
               <p className="font-medium">{t('void.card.title')}</p>

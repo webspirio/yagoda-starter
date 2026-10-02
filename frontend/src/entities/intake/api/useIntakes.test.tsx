@@ -48,6 +48,28 @@ describe('useIntakesQuery', () => {
   });
 });
 
+describe('expand=items', () => {
+  it('asks for lines only when the caller wants them', async () => {
+    mock.onGet('/intakes').reply((config) => {
+      expect(config.params.expand).toBe('items');
+      return [200, { data: [], total: 0, page: 1, limit: 100 }];
+    });
+    const { result } = renderHook(() => useIntakesQuery({ supplierId: 's1', expandItems: true }), {
+      wrapper,
+    });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+  });
+
+  it('leaves the param off entirely for every other caller', async () => {
+    mock.onGet('/intakes').reply((config) => {
+      expect('expand' in config.params).toBe(false);
+      return [200, { data: [], total: 0, page: 1, limit: 100 }];
+    });
+    const { result } = renderHook(() => useIntakesQuery({ supplierId: 's1' }), { wrapper });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+  });
+});
+
 describe('intakesQueryOptions', () => {
   it('has the same queryKey the hook registers for the same filter', () => {
     const filter = {};
