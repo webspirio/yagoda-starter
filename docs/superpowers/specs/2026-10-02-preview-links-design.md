@@ -91,13 +91,18 @@ The transformation is a pure function of (body, PR number, new block or empty):
 Block texts (`<sha7>` = first seven characters of the head SHA):
 
 ```
-ready:   > **🔍 Preview for #196:** https://pr-196.yagoda.webspirio.com<br>
+ready:   > **🔍 Preview for #196:** https://pr-196.yagoda.webspirio.com
          > Commit `5f15c25` · sign in as `oksana` / `operator` · removed when the PR closes
-failed:  ready text, plus
+failed:  > **🔍 Preview for #196:** https://pr-196.yagoda.webspirio.com
          > ⚠️ The latest deploy (`abc1234`) failed — the preview may still be serving an older commit.
+         > Sign in as `oksana` / `operator` · removed when the PR closes
 merged:  > ✅ #196 was merged — it will be on staging in a few minutes: https://staging.yagoda.webspirio.com
          (without STAGING_URL: «✅ #196 was merged.»)
 ```
+
+GitHub renders a newline inside an issue body as a line break, so consecutive quoted
+lines stay on separate lines without `<br>`. The failed block drops the «Commit» line on
+purpose: the preview may not be serving that commit.
 
 ### `.github/workflows/preview-closed.yml`
 
