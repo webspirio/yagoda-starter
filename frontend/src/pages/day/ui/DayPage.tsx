@@ -11,7 +11,7 @@ import { Spinner } from '@/shared/ui/spinner';
 import { toast } from '@/shared/ui/toast';
 import { isTruncated } from '@/shared/api';
 import { useUrlParam } from '@/shared/lib/url-state';
-import { sum, sub, cmp, formatUah } from '@/shared/lib/money';
+import { sub, isZero, formatUah, formatKg } from '@/shared/lib/money';
 import {
   todayIso,
   addDaysIso,
@@ -35,6 +35,8 @@ import {
   CountDrawerDialog,
   OpenShiftAlert,
 } from '@/features/count-shift';
+import { buildDaySummary } from '../lib/daySummary';
+import { DayLedger } from './DayLedger';
 import { ReopenShiftDialog } from './ReopenShiftDialog';
 
 interface FeedRow {
@@ -131,6 +133,13 @@ export function DayPage() {
   // 0,00 ₴ tiles or an «Open shift» button over a shift the server never
   // confirmed either way are both worse than saying so.
   const isError = shift.isError || intakes.isError || payouts.isError;
+  // The journals are gated on the shift's id, so there is always a round trip
+  // where the shift is in and they are not. Totals over that gap would be
+  // zeros, which on a cash screen read as «nothing happened» — so wait.
+  const documentsReady = !intakes.isPending && !payouts.isPending;
+  // One gate for every figure on the page: a point, a shift, a clean read,
+  // and both journals in. Tiles and ledger must never disagree on it.
+  const figuresVisible = pointId !== null && status !== 'none' && !isError && documentsReady;
   // ANY open shift at the point, whatever day it belongs to — deliberately a
   // WIDER question than the one `OpenShiftAlert` asks itself. The alert warns
   // only about a shift left behind on an EARLIER day; the server refuses a
@@ -146,32 +155,41 @@ export function DayPage() {
   const wouldOfferOpen =
     !shift.isError && !isLoadingShift && isOperator && isToday && status === 'none' && pointId;
 
-  const liveIntakes = (intakes.data?.data ?? []).filter((i) => i.voided_at === null);
-  const livePayouts = (payouts.data?.data ?? []).filter((p) => p.voided_at === null);
-  const accrued = sum(liveIntakes.map((i) => i.amount));
-  const paid = sum(livePayouts.map((p) => p.amount));
+  const summary = buildDaySummary(intakes.data?.data ?? [], payouts.data?.data ?? [], date);
   const stats: StatItem[] = [
-    { label: t('day.tiles.receipts'), value: String(liveIntakes.length) },
+    {
+      label: t('day.tiles.received'),
+      value: formatKg(summary.netKg, i18n.language),
+      hint: t('day.tiles.receipts', { count: summary.receipts }),
+    },
     {
       label: t('day.tiles.accrued'),
-      value: formatUah(accrued, i18n.language),
+      value: formatUah(summary.accrued, i18n.language),
       hint: t('day.tiles.accruedHint'),
     },
     {
-      label: t('day.tiles.paid'),
-      value: formatUah(paid, i18n.language),
-      hint: t('day.tiles.paidHint'),
+      label: t('day.tiles.cashOut'),
+      value: formatUah(summary.cashOut, i18n.language),
+      hint: t('day.tiles.cashOutHint'),
       tone: 'berry',
     },
-    {
-      label: t('day.tiles.toDebt'),
-      value: formatUah(sub(accrued, paid), i18n.language),
-      hint: t('day.tiles.toDebtHint'),
-      // §5.1: amber only while something is actually owed — a settled (or
-      // negative, which should not happen but must not shout either) balance
-      // reads as any other tile.
-      tone: cmp(sub(accrued, paid), '0') === 1 ? 'amber' : 'default',
-    },
+    // The corrected «Інваріант дня» shows the GROWTH of the debt, which goes
+    // below zero when old balances were paid down OR when a receipt was voided
+    // with its payout still live — the two are indistinguishable without
+    // allocations, so the label names the fact, not a cause.
+    summary.paidDown
+      ? {
+          label: t('day.tiles.debtPaidDown'),
+          value: formatUah(sub('0', summary.debtGrowth), i18n.language),
+          hint: t('day.tiles.debtPaidDownHint'),
+        }
+      : {
+          label: t('day.tiles.debtCreated'),
+          value: formatUah(summary.debtGrowth, i18n.language),
+          hint: t('day.tiles.debtCreatedHint'),
+          // §5.1: amber only while something is actually owed.
+          tone: isZero(summary.debtGrowth) ? 'default' : 'amber',
+        },
   ];
 
   const feed: FeedRow[] = [
@@ -303,7 +321,7 @@ export function DayPage() {
       <p role="alert" className="py-6 text-center text-destructive">
         {t('common.somethingWentWrong')}
       </p>
-    ) : shift.isPending ? (
+    ) : shift.isPending || (status !== 'none' && !documentsReady) ? (
       <div className="flex justify-center py-12">
         <Spinner />
       </div>
@@ -396,7 +414,7 @@ export function DayPage() {
         title={t('day.title', { date: formatLongDate(date, i18n.language) })}
         description={t('day.description')}
         actions={actions}
-        stats={pointId && status !== 'none' && !isError ? stats : undefined}
+        stats={figuresVisible ? stats : undefined}
         statColumns={4}
       >
         <OpenShiftAlert
@@ -410,7 +428,17 @@ export function DayPage() {
             {t('day.tiles.truncated', { count: feed.length })}
           </p>
         ) : null}
-        <SectionCard eyebrow={t('day.feed.title')}>{feedContent}</SectionCard>
+        {/* The mock's two columns: the reconciliation beside the feed — equal
+            here, since a feed row also carries the document code. The
+            ledger only means something once there is a shift to reconcile. */}
+        {figuresVisible ? (
+          <div className="grid items-start gap-5 lg:grid-cols-2">
+            <DayLedger summary={summary} truncated={truncated} />
+            <SectionCard eyebrow={t('day.feed.title')}>{feedContent}</SectionCard>
+          </div>
+        ) : (
+          <SectionCard eyebrow={t('day.feed.title')}>{feedContent}</SectionCard>
+        )}
       </DashboardPage>
 
       <CountDrawerDialog

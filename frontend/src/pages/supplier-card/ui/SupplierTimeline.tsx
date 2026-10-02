@@ -5,7 +5,7 @@ import { Button } from '@/shared/ui/button';
 import { EmptyState } from '@/shared/ui/empty-state';
 import { cn } from '@/shared/lib/cn';
 import { formatShortDate } from '@/shared/lib/date';
-import { formatUah, isZero } from '@/shared/lib/money';
+import { formatUah, formatKg, formatDecimal, add, cmp, isZero } from '@/shared/lib/money';
 import { canVoidIntake, type Intake } from '@/entities/intake';
 import type { Payout } from '@/entities/payout';
 import type { IntakeTopUp } from '@/entities/intake-top-up';
@@ -43,6 +43,10 @@ type TimelineRow =
  *
  * `OpenBalances` above explains the balance; the captions here point each
  * row at it.
+ *
+ * §148: a receipt row also carries what was actually handed over — every
+ * item, in `item_order`, beneath the header line — so settling an argument
+ * with a supplier no longer means opening each receipt one at a time.
  */
 export function SupplierTimeline({
   intakes,
@@ -157,30 +161,80 @@ export function SupplierTimeline({
               <button
                 type="button"
                 onClick={() => onOpenReceipt(row.id)}
-                className="flex flex-1 items-center gap-3 text-left"
+                className="flex flex-1 flex-col items-stretch gap-1.5 text-left"
               >
-                <span className="font-mono text-xs text-muted-foreground">
-                  {formatShortDate(row.businessDate, locale)}
-                </span>
-                <span className="font-mono text-xs text-muted-foreground">
-                  {new Date(row.createdAt).toLocaleTimeString(locale, {
-                    hour: '2-digit',
-                    minute: '2-digit',
-                  })}
-                </span>
-                <span className="font-mono">{row.code}</span>
-                <Badge variant="secondary">{t('supplierCard.timeline.intake')}</Badge>
-                {row.voided ? <span className="text-xs">{row.reason}</span> : null}
-                <span className="ml-auto text-right">
-                  <span className="block font-mono tabular-nums">{formatUah(row.amount, locale)}</span>
-                  {!row.voided && openByLineId?.get(row.id) && !isZero(openByLineId.get(row.id)!) ? (
-                    <span className="block font-mono text-[11px] text-[var(--amber)]">
-                      {t('supplierCard.timeline.openLeft', {
-                        uah: formatUah(openByLineId.get(row.id)!, locale),
-                      })}
+                <span className="flex items-center gap-3">
+                  <span className="font-mono text-xs text-muted-foreground">
+                    {formatShortDate(row.businessDate, locale)}
+                  </span>
+                  <span className="font-mono text-xs text-muted-foreground">
+                    {new Date(row.createdAt).toLocaleTimeString(locale, {
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    })}
+                  </span>
+                  <span className="font-mono">{row.code}</span>
+                  <Badge variant="secondary">{t('supplierCard.timeline.intake')}</Badge>
+                  {row.voided ? <span className="text-xs">{row.reason}</span> : null}
+                  <span className="ml-auto text-right">
+                    <span className="block font-mono tabular-nums">
+                      {formatUah(row.amount, locale)}
                     </span>
-                  ) : null}
+                    {!row.voided &&
+                    openByLineId?.get(row.id) &&
+                    !isZero(openByLineId.get(row.id)!) ? (
+                      <span className="block font-mono text-[11px] text-[var(--amber)]">
+                        {t('supplierCard.timeline.openLeft', {
+                          uah: formatUah(openByLineId.get(row.id)!, locale),
+                        })}
+                      </span>
+                    ) : null}
+                  </span>
                 </span>
+                {/* §148: what was actually handed over, without a click — every
+                    item, `item_order` first (same order as the paper). `items`
+                    is ABSENT (not `[]`) for a row this page didn't ask
+                    `expand=items` for; there is no such row here, since
+                    `SupplierCardPage` always asks, but `?? []` keeps this
+                    block safe regardless. */}
+                {[...(row.intake.items ?? [])]
+                  .sort((a, b) => a.item_order - b.item_order)
+                  .map((item) => (
+                    <span key={item.id} className="flex flex-col">
+                      <span className="block text-sm">
+                        {t('supplierCard.line.what', {
+                          product: item.product_name,
+                          grade: item.grade_name,
+                        })}
+                        {' · '}
+                        {formatKg(item.net_kg, locale)}
+                      </span>
+                      {/* `formatDecimal`, NOT `formatKg`, for gross/pallet/tare
+                          — the key already supplies «брутто»/«піддон»/«тара»;
+                          `formatKg` here would double the unit («86,50 кг
+                          брутто»). Review round 1 (#148): net_kg is
+                          `(gross − pallet) − tare` (`intake-lines.ts:149`),
+                          so a line that dropped the pallet term did not
+                          reconcile with the кг printed just above it — the
+                          pallet term is conditional, same check
+                          `ReceiptDialog.tsx` already uses, and the common
+                          zero-pallet row stays byte-identical. */}
+                      <span className="block text-xs text-muted-foreground">
+                        {cmp(item.pallet_kg, '0') !== 0
+                          ? t('supplierCard.line.weightsWithPallet', {
+                              gross: formatDecimal(item.gross_kg, locale),
+                              pallet: formatDecimal(item.pallet_kg, locale),
+                              tare: formatDecimal(item.tare_weight_kg, locale),
+                              price: formatDecimal(add(item.price, item.bonus), locale),
+                            })
+                          : t('supplierCard.line.weights', {
+                              gross: formatDecimal(item.gross_kg, locale),
+                              tare: formatDecimal(item.tare_weight_kg, locale),
+                              price: formatDecimal(add(item.price, item.bonus), locale),
+                            })}
+                      </span>
+                    </span>
+                  ))}
               </button>
               {me && canVoidIntake(me, row.intake) ? (
                 <ReceiptVoidButton

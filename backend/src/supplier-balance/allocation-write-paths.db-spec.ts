@@ -95,7 +95,6 @@ afterAll(async () => {
 describe('allocation write paths (HTTP, Postgres)', () => {
   let gradeId: string;
   let crateId: string;
-  let shiftId: string;
 
   beforeAll(async () => {
     // The catalog this point uses. Names carry a per-run uuid: app_test
@@ -139,12 +138,11 @@ describe('allocation write paths (HTTP, Postgres)', () => {
 
     // §6.1 — opening counts the drawer in the same request. A big drawer so
     // the cash ceiling never bites in this file; Task 4 adds more describes.
-    const shiftRes = await request(app.getHttpServer())
+    await request(app.getHttpServer())
       .post('/shifts')
       .set('Authorization', `Bearer ${operatorToken}`)
       .send({ counted_amount: '100000.00' })
       .expect(201);
-    shiftId = shiftRes.body.id as string;
     // Spec 2026-09-30: a receipt's crate tare leaves the point's empties. 1000 is far above
     // the crate tare this file weighs, and the transfer carries no cash.
     await stockPoint(app, ownerToken, operatorToken, pointId, 1000);
@@ -155,20 +153,6 @@ describe('allocation write paths (HTTP, Postgres)', () => {
     post: (url: string, body: object) =>
       http().post(url).set('Authorization', `Bearer ${token}`).send(body),
   });
-  /**
-   * `keep` exists only in a closed shift (2026-09-28): close the day, let the owner act, reopen.
-   * The reopen is plumbing so the next receipt can be written.
-   */
-  const inClosedShift = async (act: () => Promise<unknown>) => {
-    await as(operatorToken)
-      .post(`/shifts/${shiftId}/close`, { counted_amount: '100000.00', broken_crates: 0 })
-      .expect(201);
-    try {
-      await act();
-    } finally {
-      await as(ownerToken).post(`/shifts/${shiftId}/reopen`, { reason: 'тест' }).expect(201);
-    }
-  };
   const violations = (supplierId: string) => ds.transaction((m) => allocationViolations(m, supplierId));
   // Ordered by the COVERED LINE's created_at, not the allocation row's: a
   // single `allocate()` call inserts every row for one supplier in the same
@@ -275,12 +259,13 @@ describe('allocation write paths (HTTP, Postgres)', () => {
       expect(await violations(s)).toEqual([]);
     });
 
-    it('void with keep frees the bound payout, and the next receipt picks that money up', async () => {
-      const r1 = (await receipt(s, '6.20', '500.00').expect(201)).body;
-      const p1 = r1.payouts[0].id as string;
-      await inClosedShift(() =>
-        as(ownerToken).post(`/intakes/${r1.id}/void`, { reason: 'x', payout: 'keep' }).expect(201),
-      );
+    it('voiding a receipt frees a standalone payout, and the next receipt picks that money up', async () => {
+      const r1 = (await receipt(s, '6.20').expect(201)).body; // 500
+      const p1 = (
+        await as(operatorToken).post('/payouts', { supplier_id: s, amount: '500.00' }).expect(201)
+      ).body.id as string;
+      // Not bound to r1, so the payout outlives its void.
+      await as(operatorToken).post(`/intakes/${r1.id}/void`, { reason: 'x' }).expect(201);
       expect(await liveRows(s)).toEqual([]);
       expect(await violations(s)).toEqual([]);
 
@@ -359,11 +344,10 @@ describe('allocation write paths (HTTP, Postgres)', () => {
     });
 
     it('a receipt closed by money left over from before is not open, though nothing was paid with it', async () => {
-      const r1 = (await receipt(s, '6.20', '500.00').expect(201)).body.id;
-      // The leftover money comes from `keep`, which only a closed shift allows.
-      await inClosedShift(() =>
-        as(ownerToken).post(`/intakes/${r1}/void`, { reason: 'x', payout: 'keep' }).expect(201),
-      );
+      const r1 = (await receipt(s, '6.20').expect(201)).body.id; // 500
+      await as(operatorToken).post('/payouts', { supplier_id: s, amount: '500.00' }).expect(201);
+      // The leftover money: a standalone payout outlives the receipt it covered.
+      await as(operatorToken).post(`/intakes/${r1}/void`, { reason: 'x' }).expect(201);
       const r2 = (await receipt(s, '6.20').expect(201)).body; // 500, no cash with it
 
       expect(r2.paid_amount).toBe('0.00');

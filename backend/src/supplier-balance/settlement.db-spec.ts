@@ -5,7 +5,7 @@ import { SupplierSettlementQuery } from './queries/supplier-settlement.query';
 import { SupplierDebtQuery } from './queries/supplier-debt.query';
 import { AllocationsService } from './services/allocations';
 import { allocationViolations } from '../testing/allocation-invariants';
-import { sub, sum } from '../common/money';
+import { add, sub, sum } from '../common/money';
 
 /**
  * `settlementFor` against a real Postgres. What is under test is the SQL:
@@ -198,6 +198,8 @@ describe('SupplierSettlementQuery.settlementFor (Postgres)', () => {
     expect(s.debt).toBe('650.00');
     expect(sub(sum(s.lines.map((l) => l.open)), s.unallocated)).toBe(s.debt);
     await expect(debtQuery.debtFor(supplierId)).resolves.toBe(s.debt);
+    // …and its three terms add up to it, from the same snapshot (#153).
+    expect(sub(add(s.intakes_total, s.top_ups_total), s.payouts_total)).toBe(s.debt);
   });
 
   it('holds the four allocation invariants', async () => {
@@ -212,6 +214,9 @@ describe('SupplierSettlementQuery.settlementFor (Postgres)', () => {
     );
     await expect(service.settlementFor(other.id)).resolves.toEqual({
       debt: '0.00',
+      intakes_total: '0.00',
+      top_ups_total: '0.00',
+      payouts_total: '0.00',
       unallocated: '0.00',
       lines: [],
       payouts: [],

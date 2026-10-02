@@ -248,6 +248,7 @@ export default tseslint.config(
       'src/crates/crates.db-spec.ts',
       'src/crates/crates-race.db-spec.ts',
       'src/cash-counts/cash-count-recount.db-spec.ts',
+      'src/supplier-balance/supplier-balance-breakdown.db-spec.ts',
     ],
     rules: {
       '@typescript-eslint/no-require-imports': ['error', { allowAsImport: true }],

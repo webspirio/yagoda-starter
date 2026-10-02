@@ -27,13 +27,13 @@ import { sub } from '../common/money';
 import { allocationViolations } from '../testing/allocation-invariants';
 
 /**
- * #125 end to end: old debt 1000, receipt R 500, payout P 1500 issued with R
- * (it covered R and the old receipt). R in today's open shift: the payout always
- * goes too, cash back at once (2026-09-28). R in a closed shift: the owner decides.
+ * Old debt 1000, receipt R 500, payout P 1500 issued with R (it covered R and the
+ * old receipt). R in today's open shift: the payout always goes too, cash back at
+ * once (2026-09-28). R in a closed shift: nobody voids it (2026-09-30).
  * Each test builds its own supplier; the database persists between runs, so every
  * name carries the run's uuid.
  */
-describe('intake void with a payout decision (HTTP, Postgres)', () => {
+describe('intake void with a bound payout (HTTP, Postgres)', () => {
   let app: INestApplication;
   let ds: DataSource;
   let ownerToken: string;
@@ -95,7 +95,6 @@ describe('intake void with a payout decision (HTTP, Postgres)', () => {
       [pointId, operatorId],
     );
     oldShiftId = old.id;
-    // Today's local date: a settled return is credited to the shift of its local date.
     const [today] = await ds.query(
       `INSERT INTO shifts (collection_point_id, opened_by_user_id, business_date, status)
        VALUES ($1, $2, (now() AT TIME ZONE $3::text)::date, 'open') RETURNING id`,
@@ -139,11 +138,9 @@ describe('intake void with a payout decision (HTTP, Postgres)', () => {
       [`PO-${run}-${++seq}`, shiftId, supplier.id, operatorId, rId],
     );
 
-    // Raw fixture, so nothing has allocated this yet. Without this, the "keep"
-    // case below would pass even if `release` did nothing — `allocate` recomputes
-    // fully from live documents, so a fixture with no prior rows can't tell a
-    // working void from a no-op one. Allocating here first gives `release` real
-    // frozen rows to void.
+    // Raw fixture, so nothing has allocated this yet. `allocate` recomputes fully
+    // from live documents, so a fixture with no prior rows can't tell a working
+    // `release` from a no-op one. Allocating here first gives it real rows to void.
     const supplierId = supplier.id as string;
     await ds.transaction(async (m) => {
       const a = new AllocationsService();
@@ -182,84 +179,25 @@ describe('intake void with a payout decision (HTTP, Postgres)', () => {
     expect(await invariants(s.supplierId)).toEqual([]);
   });
 
-  it('open shift: any payout decision is a 400 and nothing is written', async () => {
+  it('a leftover payout decision field is a 400 and nothing is written', async () => {
     const s = await scenario();
-    const res = await voidIntake(operatorToken, s.rId, { reason: 'r', payout: 'keep' }).expect(400);
-    expect(res.body.code).toBe('PAYOUT_DECISION_NOT_APPLICABLE');
+    await voidIntake(operatorToken, s.rId, { reason: 'r', payout: 'keep' }).expect(400);
     expect((await row('intakes', s.rId)).voided_at).toBeNull();
   });
 
-  it('closed shift: 400s without a decision and leaves both documents live', async () => {
+  // 2026-09-30: a closed shift is frozen for everyone, the owner included.
+  it('closed shift: even the owner is SHIFT_CLOSED and nothing is written', async () => {
     const s = await scenario(closedShiftId);
-    const res = await voidIntake(ownerToken, s.rId, { reason: 'помилка' }).expect(400);
-    expect(res.body.code).toBe('PAYOUT_DECISION_REQUIRED');
-    expect((await row('intakes', s.rId)).voided_at).toBeNull();
-    expect((await row('payouts', s.pId)).voided_at).toBeNull();
-  });
-
-  // `assertPayoutDecision` no longer checks the actor: `assertCanVoid` is what keeps an operator
-  // from attesting the cash is back (§9.3). Pin that composition where it is relied on.
-  it('closed shift: an operator choosing void_returned is SHIFT_CLOSED and nothing is written', async () => {
-    const s = await scenario(closedShiftId);
-    const res = await voidIntake(operatorToken, s.rId, {
-      reason: 'повернув',
-      payout: 'void_returned',
-    }).expect(403);
+    const before = await cash(closedShiftId);
+    const res = await voidIntake(ownerToken, s.rId, { reason: 'помилка' }).expect(403);
     expect(res.body.code).toBe('SHIFT_CLOSED');
     expect((await row('intakes', s.rId)).voided_at).toBeNull();
     expect((await row('payouts', s.pId)).voided_at).toBeNull();
-  });
-
-  it('closed shift, keep: the payout re-routes to the old receipt and leaves 500 as an advance', async () => {
-    const s = await scenario(closedShiftId);
-    const before = await cash(closedShiftId);
-    await voidIntake(ownerToken, s.rId, { reason: 'помилка', payout: 'keep' }).expect(201);
-
-    expect((await row('payouts', s.pId)).voided_at).toBeNull();
-    await expect(debt(s.supplierId)).resolves.toBe('-500.00');
-    const settlement = await app.get(SupplierSettlementQuery).settlementFor(s.supplierId);
-    expect(settlement.lines.map((l) => [l.id, l.open])).toEqual([[s.oldId, '0.00']]);
-    expect(settlement.payouts[0].unallocated).toBe('500.00');
     expect(sub(await cash(closedShiftId), before)).toBe('0.00');
-  });
-
-  it('closed shift, void: both voided, the old receipt reopens, the drawer does not change', async () => {
-    const s = await scenario(closedShiftId);
-    const before = await cash(closedShiftId);
-    await voidIntake(ownerToken, s.rId, { reason: 'помилка', payout: 'void' }).expect(201);
-
-    const p = await row('payouts', s.pId);
-    expect(p.voided_at).not.toBeNull();
-    expect(p.void_reason).toBe('помилка');
-    expect(p.return_settled_at).toBeNull();
-    expect(p.returned_on_void).toBe(false);
-    await expect(debt(s.supplierId)).resolves.toBe('1000.00');
-    expect(sub(await cash(closedShiftId), before)).toBe('0.00');
-  });
-
-  // The return is settled by date, so its cash lands in today's shift, not the closed one.
-  it("closed shift, void_returned: both voided and 1500 back in today's drawer", async () => {
-    const s = await scenario(closedShiftId);
-    const before = await cash(todayShiftId);
-    await voidIntake(ownerToken, s.rId, { reason: 'повернув', payout: 'void_returned' }).expect(
-      201,
-    );
-
-    const p = await row('payouts', s.pId);
-    expect(p.return_settled_at).not.toBeNull();
-    expect(p.returned_on_void).toBe(false);
-    expect(p.return_note).toBe('повернув');
-    await expect(debt(s.supplierId)).resolves.toBe('1000.00');
-    expect(sub(await cash(todayShiftId), before)).toBe('1500.00');
-    const actions = await ds.query(
-      `SELECT action FROM audit_log WHERE target_id IN ($1, $2) ORDER BY at, action`,
-      [s.rId, s.pId],
-    );
-    expect(actions.map((a: { action: string }) => a.action).sort()).toEqual([
-      'intake.voided',
-      'payout.return-settled',
-      'payout.voided',
+    const [{ n }] = await ds.query(`SELECT count(*)::int AS n FROM audit_log WHERE target_id = $1`, [
+      s.rId,
     ]);
+    expect(n).toBe(0);
   });
 
   it('is atomic: a failure voiding the payout leaves the receipt live', async () => {

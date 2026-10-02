@@ -161,6 +161,40 @@ describe('CreateIntakeCommand', () => {
       expect(saved.items[0].tare).toHaveLength(1);
     });
 
+    it('carries product_name/grade_name on the response by RE-READING the items, not from the cascade save', async () => {
+      // The cascade-saved `IntakeItem`s (what `manager.save` echoes back) never
+      // load `product_grade` — only a fresh `find` does, which is exactly the
+      // gap review round 1 found: `intake.items ?? []` answered '' for both
+      // names on every line of a freshly created receipt.
+      manager.find.mockResolvedValue([
+        {
+          id: 'ii-1',
+          item_order: 1,
+          product_grade_id: GRADE,
+          gross_kg: '42.00',
+          pallet_kg: '1.50',
+          tare_weight_kg: '3.60',
+          net_kg: '36.90',
+          price: '57.00',
+          bonus: '0.00',
+          amount: '2103.30',
+          tare: [{ tare_type_id: CRATE, units: 3 }],
+          product_grade: { name: 'Альба', product: { name: 'Полуниця' } },
+        },
+      ]);
+
+      const res = await command.create(oksana, dto());
+
+      expect(manager.find).toHaveBeenCalledWith(expect.anything(), {
+        where: { intake_id: INTAKE_ID },
+        relations: { tare: true, product_grade: { product: true } },
+      });
+      expect(res.items[0]).toMatchObject({
+        product_name: 'Полуниця',
+        grade_name: 'Альба',
+      });
+    });
+
     it('stores amount as Σ of the line amounts', async () => {
       await command.create(oksana, dto());
 

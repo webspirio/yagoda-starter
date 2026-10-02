@@ -124,13 +124,13 @@ describe('useVoidDocumentMutation', () => {
     expect(invalidateSpy).not.toHaveBeenCalledWith({ queryKey: queryKeys.payouts });
   });
 
-  it('sends the payout decision for an intake', async () => {
+  it('sends only the reason for an intake', async () => {
     mock.onPost('/intakes/i1/void').reply(201);
     const { result } = renderHook(() => useVoidDocumentMutation(), { wrapper });
 
-    await result.current.mutateAsync({ kind: 'intake', id: 'i1', reason: 'r', payout: 'void' });
+    await result.current.mutateAsync({ kind: 'intake', id: 'i1', reason: 'r' });
 
-    expect(JSON.parse(mock.history.post[0].data as string)).toEqual({ reason: 'r', payout: 'void' });
+    expect(JSON.parse(mock.history.post[0].data as string)).toEqual({ reason: 'r' });
   });
 
   it('invalidates point cash after an intake void (a returned payout refills the drawer)', async () => {
@@ -145,8 +145,8 @@ describe('useVoidDocumentMutation', () => {
     );
   });
 
-  it('invalidates the kind’s queries on a stale-dialog error (PAYOUT_DECISION_NOT_APPLICABLE)', async () => {
-    mock.onPost('/intakes/i1/void').reply(400, { code: 'PAYOUT_DECISION_NOT_APPLICABLE' });
+  it('invalidates the kind’s queries on a stale-dialog error (SHIFT_CLOSED)', async () => {
+    mock.onPost('/intakes/i1/void').reply(403, { code: 'SHIFT_CLOSED' });
     const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries');
     const { result } = renderHook(() => useVoidDocumentMutation(), { wrapper });
 

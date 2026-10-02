@@ -20,10 +20,6 @@ const CODE: Readonly<Record<string, string>> = {
   NOT_YOUR_DOCUMENT: 'void.errors.notYourDocument',
   SHIFT_CLOSED: 'void.errors.shiftClosed',
   ALREADY_VOIDED: 'void.errors.alreadyVoided',
-  // #125: the payout choice was computed against a settlement that changed
-  // (a payout voided, or reassigned) between opening the dialog and submitting.
-  PAYOUT_DECISION_REQUIRED: 'void.errors.payoutChanged',
-  PAYOUT_DECISION_NOT_APPLICABLE: 'void.errors.payoutChanged',
   // features/count-shift
   SHIFT_ALREADY_OPEN: 'day.errors.alreadyOpen',
   SHIFT_ALREADY_CLOSED: 'day.errors.notOpen',

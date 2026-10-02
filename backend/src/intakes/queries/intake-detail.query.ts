@@ -27,6 +27,17 @@ export class IntakeDetailQuery {
     return row;
   }
 
+  /** The lines WITH their product and grade names — `create` and `forIntake` both read them
+   *  here. `create` cannot reuse the cascade-saved `intake.items`: those never load
+   *  `product_grade`, so the mapper's `?? ''` would answer both names empty on every line of a
+   *  freshly created receipt. */
+  async items(intakeId: string, m: EntityManager): Promise<IntakeItem[]> {
+    return m.find(IntakeItem, {
+      where: { intake_id: intakeId },
+      relations: { tare: true, product_grade: { product: true } },
+    });
+  }
+
   /** `displayNameOf` — the ONE definition of a user's name. */
   async receiverName(userId: string, m: EntityManager): Promise<string | null> {
     const user = await m.findOne(User, { where: { id: userId } });
@@ -60,10 +71,7 @@ export class IntakeDetailQuery {
 
   async forIntake(intake: Intake, shift: Shift): Promise<IntakeDetailResponse> {
     const m = this.repo.manager;
-    const items = await m.find(IntakeItem, {
-      where: { intake_id: intake.id },
-      relations: { tare: true },
-    });
+    const items = await this.items(intake.id, m);
     // Tiebreaker: two payouts in one millisecond are ordinary, and Postgres orders no ties.
     const payouts = await m.find(Payout, {
       where: { intake_id: intake.id },

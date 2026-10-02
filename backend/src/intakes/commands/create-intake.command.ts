@@ -119,7 +119,7 @@ export class CreateIntakeCommand {
       return toIntakeDetailResponse(
         intake,
         shift,
-        intake.items ?? [],
+        await this.detail.items(intake.id, m),
         await this.detail.extras(intake.id, m),
         paid,
         await this.detail.receiverName(actor.sub, m),

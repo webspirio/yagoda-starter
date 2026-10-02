@@ -1,4 +1,4 @@
-import { IsOptional, IsUUID, Matches } from 'class-validator';
+import { IsIn, IsOptional, IsUUID, Matches } from 'class-validator';
 import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
 import { BooleanQueryParam } from '../../common/dto/boolean-query-param';
 
@@ -36,4 +36,18 @@ export class ListIntakesQueryDto extends PaginationQueryDto {
    */
   @BooleanQueryParam()
   include_voided: boolean = true;
+
+  /**
+   * `expand=items` nests each row's lines. OPT-IN, because the day feed,
+   * reception and the dashboard all read this endpoint and none of them wants
+   * items — the default response must not get heavier for them.
+   *
+   * The word comes from the parity programme's shared-reads register (§6),
+   * which names this read `expand=items` and gives it two consumers: the
+   * supplier card (5.6) and the journal (5.8). A second spelling elsewhere
+   * would split one read into two.
+   */
+  @IsOptional()
+  @IsIn(['items'], { message: 'expand must be "items"' })
+  expand?: 'items';
 }

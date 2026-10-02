@@ -194,6 +194,7 @@ const payout = (over: Partial<Payout> & Pick<Payout, 'id' | 'code' | 'amount'>):
   return_settled_at: null,
   return_settled_by_user_id: null,
   return_note: null,
+  returned_on_void: false,
   created_at: '2026-09-08T11:00:00Z',
   ...over,
 });
@@ -306,10 +307,11 @@ describe('DayPage — the operator on an open shift', () => {
     ).toBeInTheDocument();
 
     // The voided receipt is out of every total but still on the feed.
-    expect(tile('Receipts')).toHaveTextContent('2');
+    expect(tile('Berry received')).toHaveTextContent('73.80 kg');
+    expect(tile('Berry received')).toHaveTextContent('2 receipts');
     expect(tile('Accrued')).toHaveTextContent('12,771.00 ₴');
-    expect(tile('Paid')).toHaveTextContent('4,000.00 ₴');
-    expect(tile('To balance')).toHaveTextContent('8,771.00 ₴');
+    expect(tile('Cash out')).toHaveTextContent('4,000.00 ₴');
+    expect(tile('Balances created')).toHaveTextContent('8,771.00 ₴');
 
     expect(screen.getByText('KV-0003')).toBeInTheDocument();
     expect(screen.getByText('voided')).toBeInTheDocument();
@@ -576,11 +578,11 @@ describe('DayPage — a failed read', () => {
   });
 });
 
-describe('DayPage — the To-balance tile tone', () => {
+describe('DayPage — the balances-created tile tone', () => {
   it('stays the default tone when nothing is owed', () => {
     renderDay();
 
-    const value = within(tile('To balance')).getByText('0.00 ₴');
+    const value = within(tile('Balances created')).getByText('0.00 ₴');
     expect(value.className).not.toContain('amber');
   });
 
@@ -591,8 +593,249 @@ describe('DayPage — the To-balance tile tone', () => {
 
     renderDay();
 
-    const value = within(tile('To balance')).getByText('10.00 ₴');
+    const value = within(tile('Balances created')).getByText('10.00 ₴');
     expect(value.className).toContain('amber');
+  });
+});
+
+describe('DayPage — the cash reconciliation', () => {
+  const ledger = () =>
+    screen.getByText('Cash reconciliation').closest('div.rounded-xl') as HTMLElement;
+  const row = (label: string) => {
+    const el = within(ledger()).getByText(label).closest('div');
+    if (!el) throw new Error(`No ledger row "${label}"`);
+    return el as HTMLElement;
+  };
+
+  it('breaks the accrued sum into cash with a receipt, cash without one and the rest owed', () => {
+    intakesMock.mockReturnValue(
+      page<Intake>([intake({ id: 'i1', code: 'KV-0001', amount: '1000.00' })]),
+    );
+    payoutsMock.mockReturnValue(
+      page<Payout>([
+        payout({ id: 'y1', code: 'VD-0001', amount: '600.00', intake_id: 'i1' }),
+        payout({ id: 'y2', code: 'VD-0002', amount: '150.00' }),
+      ]),
+    );
+
+    renderDay();
+
+    expect(row("Accrued for this day's berry")).toHaveTextContent('1,000.00 ₴');
+    expect(row('Paid in cash on the spot')).toHaveTextContent('−600.00 ₴');
+    expect(row('Paid without berry')).toHaveTextContent('−150.00 ₴');
+    expect(row('Left on balance for us')).toHaveTextContent('−250.00 ₴');
+    expect(row('Total cash out')).toHaveTextContent('750.00 ₴');
+    // The two splits the mock draws from allocations do not exist here (§3.3, §3.9).
+    expect(screen.queryByText(/same day|another point/i)).toBeNull();
+  });
+
+  it('hides the without-berry row on a day with no such payout', () => {
+    intakesMock.mockReturnValue(
+      page<Intake>([intake({ id: 'i1', code: 'KV-0001', amount: '100.00' })]),
+    );
+    renderDay();
+    expect(within(ledger()).queryByText('Paid without berry')).toBeNull();
+    // A zero is not an outflow: no «−0.00».
+    expect(row('Paid in cash on the spot')).toHaveTextContent(
+      /^Paid in cash on the spotwith a receipt0\.00 ₴$/,
+    );
+  });
+
+  it('says more was paid out than accrued, without claiming which debt it settled', () => {
+    intakesMock.mockReturnValue(
+      page<Intake>([intake({ id: 'i1', code: 'KV-0001', amount: '100.00' })]),
+    );
+    payoutsMock.mockReturnValue(
+      page<Payout>([payout({ id: 'y1', code: 'VD-0001', amount: '300.00' })]),
+    );
+
+    renderDay();
+
+    expect(tile('Paid beyond accrued')).toHaveTextContent('200.00 ₴');
+    expect(screen.queryByText('Balances created')).toBeNull();
+    expect(row('Paid out beyond accrued')).toHaveTextContent('+200.00 ₴');
+    // A voided receipt with its payout still live reads the same way, and no
+    // old balance was paid then — so nothing may say one was.
+    expect(screen.queryByText(/old balances/i)).toBeNull();
+  });
+
+  it('shows neither tiles nor the ledger while the documents are still loading', () => {
+    // The shift is in, the journals (gated on its id) are not — the gap every
+    // page load and date change goes through. Zeros here would be a lie.
+    intakesMock.mockReturnValue({ data: undefined, isPending: true, isError: false });
+    payoutsMock.mockReturnValue({ data: undefined, isPending: true, isError: false });
+
+    renderDay();
+
+    expect(screen.queryByText('Cash reconciliation')).toBeNull();
+    expect(screen.queryByText('Accrued')).toBeNull();
+    expect(screen.queryByText('Nothing moved on this day.')).toBeNull();
+  });
+
+  it('shows nothing out when every payout was voided in the open shift (#170 review)', () => {
+    intakesMock.mockReturnValue(
+      page<Intake>([
+        intake({ id: 'i1', code: 'KV-0001', amount: '510.00', voided_at: '2026-09-08T12:00:00Z', void_reason: 'x' }),
+      ]),
+    );
+    payoutsMock.mockReturnValue(
+      page<Payout>([
+        payout({
+          id: 'y1',
+          code: 'VD-0001',
+          amount: '4930.00',
+          voided_at: '2026-09-09T00:10:00',
+          voided_by_user_id: 'u1',
+          void_reason: 'typo',
+          // After midnight, shift still open: only `returned_on_void` nets it.
+          return_settled_at: '2026-09-09T00:10:00',
+          return_settled_by_user_id: 'u1',
+          returned_on_void: true,
+        }),
+      ]),
+    );
+
+    renderDay();
+
+    expect(tile('Cash out')).toHaveTextContent('0.00 ₴');
+    expect(row('Total cash out')).toHaveTextContent('0.00 ₴');
+    expect(screen.queryByText(/on voided payouts/)).toBeNull();
+  });
+
+  it('counts a closed-shift void as cash out while its return is pending', () => {
+    intakesMock.mockReturnValue(
+      page<Intake>([intake({ id: 'i1', code: 'KV-0001', amount: '500.00' })]),
+    );
+    payoutsMock.mockReturnValue(
+      page<Payout>([
+        payout({
+          id: 'y1',
+          code: 'VD-0001',
+          amount: '40.00',
+          voided_at: '2026-09-08T12:00:00Z',
+          voided_by_user_id: 'u1',
+          void_reason: 'typo',
+        }),
+      ]),
+    );
+
+    renderDay();
+
+    // The drawer's reading, as «Каса точки» has it — not the debt's.
+    expect(tile('Cash out')).toHaveTextContent('40.00 ₴');
+    expect(row('Total cash out')).toHaveTextContent('40.00 ₴');
+    expect(
+      screen.getByText('of which 40.00 ₴ on voided payouts still waiting to come back to the drawer'),
+    ).toBeInTheDocument();
+    expect(row('Left on balance for us')).toHaveTextContent('−500.00 ₴');
+  });
+
+  it('counts nothing out for a closed-shift void returned the same day', () => {
+    payoutsMock.mockReturnValue(
+      page<Payout>([
+        payout({
+          id: 'y1',
+          code: 'VD-0001',
+          amount: '25.00',
+          voided_at: '2026-09-08T16:30:00',
+          voided_by_user_id: 'u2',
+          void_reason: 'typo',
+          return_settled_at: '2026-09-08T16:40:00',
+          return_settled_by_user_id: 'u2',
+        }),
+      ]),
+    );
+    renderDay();
+    expect(tile('Cash out')).toHaveTextContent('0.00 ₴');
+    expect(screen.queryByText(/on voided payouts/)).toBeNull();
+  });
+
+  it('names a partial return with both figures', () => {
+    const voided = { voided_at: '2026-09-08T12:00:00Z', voided_by_user_id: 'u1', void_reason: 'typo' };
+    payoutsMock.mockReturnValue(
+      page<Payout>([
+        payout({ id: 'y1', code: 'VD-0001', amount: '40.00', ...voided }),
+        payout({
+          id: 'y2',
+          code: 'VD-0002',
+          amount: '25.00',
+          ...voided,
+          return_settled_at: '2026-09-10T09:00:00',
+          return_settled_by_user_id: 'u1',
+        }),
+      ]),
+    );
+    renderDay();
+    expect(
+      screen.getByText('of which 65.00 ₴ on voided payouts, 40.00 ₴ of it still waiting to come back to the drawer'),
+    ).toBeInTheDocument();
+  });
+
+  it('says so when every voided payout came back', () => {
+    payoutsMock.mockReturnValue(
+      page<Payout>([
+        payout({
+          id: 'y1',
+          code: 'VD-0001',
+          amount: '25.00',
+          voided_at: '2026-09-08T12:00:00Z',
+          voided_by_user_id: 'u1',
+          void_reason: 'typo',
+          return_settled_at: '2026-09-10T09:00:00',
+          return_settled_by_user_id: 'u1',
+        }),
+      ]),
+    );
+    renderDay();
+    expect(
+      screen.getByText('of which 25.00 ₴ on voided payouts returned later, on the day of the return'),
+    ).toBeInTheDocument();
+  });
+
+  it('puts the voided-payout line between the rows and the plaque it explains', () => {
+    payoutsMock.mockReturnValue(
+      page<Payout>([
+        payout({
+          id: 'y1',
+          code: 'VD-0001',
+          amount: '40.00',
+          voided_at: '2026-09-08T12:00:00Z',
+          voided_by_user_id: 'u1',
+          void_reason: 'typo',
+        }),
+      ]),
+    );
+    renderDay();
+    const line = screen.getByText(/on voided payouts/);
+    const plaque = screen.getByText('Total cash out');
+    const lastRow = screen.getByText('Left on balance for us');
+    expect(lastRow.compareDocumentPosition(line) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(line.compareDocumentPosition(plaque) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('shows no ledger on a day without a shift', () => {
+    shiftMock.mockReturnValue({ data: undefined, isPending: false, isError: false });
+    renderDay();
+    expect(screen.queryByText('Cash reconciliation')).toBeNull();
+  });
+
+  it('shows no ledger over a failed read', () => {
+    payoutsMock.mockReturnValue({ data: undefined, isPending: false, isError: true });
+    renderDay();
+    expect(screen.queryByText('Cash reconciliation')).toBeNull();
+  });
+
+  it('warns inside the ledger when a journal was truncated', () => {
+    const hundred = Array.from({ length: 100 }, (_, n) =>
+      intake({ id: `i${n}`, code: `KV-${n}`, amount: '1.00' }),
+    );
+    intakesMock.mockReturnValue(page<Intake>(hundred, 150));
+
+    renderDay();
+
+    expect(
+      within(ledger()).getByText('Showing only the first documents — totals are partial'),
+    ).toBeInTheDocument();
   });
 });
 

@@ -190,10 +190,16 @@ describe('TodayReceipts — «Void» on a receipt row (§9.4)', () => {
   const voidButton = (code: string) => screen.queryByRole('button', { name: `Void ${code}` });
   const LIVE = intake({ id: 'i7', code: 'SHP-IN-7', created_at: '2026-09-21T09:00:00Z' });
 
-  it('is shown to the owner', () => {
-    intakesMock.mockReturnValue(page([intake({ ...LIVE, shift_closed: true })]));
+  it('is shown to the owner while the shift is open', () => {
+    intakesMock.mockReturnValue(page([LIVE]));
     render(<TodayReceipts shiftId="s1" me={OWNER} onOpen={vi.fn()} />);
     expect(voidButton('SHP-IN-7')).toBeInTheDocument();
+  });
+
+  it('is hidden even from the owner once the shift is closed', () => {
+    intakesMock.mockReturnValue(page([intake({ ...LIVE, shift_closed: true })]));
+    render(<TodayReceipts shiftId="s1" me={OWNER} onOpen={vi.fn()} />);
+    expect(voidButton('SHP-IN-7')).not.toBeInTheDocument();
   });
 
   it('is shown to the author while the shift is open', () => {

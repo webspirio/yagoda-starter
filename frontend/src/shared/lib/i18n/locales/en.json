@@ -438,15 +438,34 @@
       "dispatched": "Dispatched"
     },
     "tiles": {
-      "receipts": "Receipts",
+      "received": "Berry received",
+      "receipts_one": "{{count}} receipt",
+      "receipts_other": "{{count}} receipts",
       "accrued": "Accrued",
       "accruedHint": "value of the berry taken in",
-      "paid": "Paid",
-      "paidHint": "cash for the day",
-      "toDebt": "To balance",
-      "toDebtHint": "carries over to supplier balances",
+      "cashOut": "Cash out",
+      "cashOutHint": "cash for the day, balances included, and voided payouts until their cash is back",
+      "debtCreated": "Balances created",
+      "debtCreatedHint": "carries over to supplier balances",
+      "debtPaidDown": "Paid beyond accrued",
+      "debtPaidDownHint": "reduces supplier balances",
       "truncated_one": "Showing the first {{count}} document — totals are partial",
       "truncated_other": "Showing the first {{count}} documents — totals are partial"
+    },
+    "ledger": {
+      "title": "Cash reconciliation",
+      "accrued": "Accrued for this day's berry",
+      "paidAtReception": "Paid in cash on the spot",
+      "paidAtReceptionHint": "with a receipt",
+      "paidWithoutBerry": "Paid without berry",
+      "debtCreated": "Left on balance for us",
+      "debtPaidDown": "Paid out beyond accrued",
+      "cashOut": "Total cash out",
+      "voidedReturned": "of which {{voided}} on voided payouts returned later, on the day of the return",
+      "voidedNotReturned": "of which {{voided}} on voided payouts, {{notReturned}} of it still waiting to come back to the drawer",
+      "voidedNoneReturned": "of which {{voided}} on voided payouts still waiting to come back to the drawer",
+      "note": "This screen has no per-date breakdown of payouts yet (#175), so the day shows how much the balance grew. The owner's top-ups carry no date and are not included, nor is cash returned today for an earlier day's voided payout.",
+      "truncated": "Showing only the first documents — totals are partial"
     },
     "feed": {
       "title": "Day feed",
@@ -564,15 +583,6 @@
     "toast": {
       "voided": "Document voided"
     },
-    "payout": {
-      "legend": "What about payout {{code}} ({{amount}})?",
-      "keep": "Keep the payout",
-      "void": "Void the payout too — the supplier will return the money",
-      "voidReturned": "Void the payout too — the money is already back in the drawer",
-      "cashWarning": "The drawer will be {{amount}} short until the owner confirms the return",
-      "otherCovered": "{{amount}} of it covered other receipts — they will reopen",
-      "required": "Choose what to do with the payout"
-    },
     "ack": {
       "legend": "Confirm each consequence",
       "cash": "Client returned or never took {{amount}} — it is in the drawer",
@@ -589,11 +599,10 @@
     },
     "errors": {
       "notYourDocument": "Only the author or the owner can void a document",
-      "shiftClosed": "The shift is closed — ask the network owner to void it",
+      "shiftClosed": "The shift is closed — ask the network owner",
       "alreadyVoided": "Already voided",
       "failed": "Could not void",
-      "reasonRequired": "Enter a reason",
-      "payoutChanged": "The payout on this receipt just changed — close and reopen the dialog"
+      "reasonRequired": "Enter a reason"
     },
     "reopensFailed": "Couldn't load the receipts that will reopen"
   },
@@ -1046,16 +1055,23 @@
     "notFound": "Card not found.",
     "tiles": {
       "seasonIntakes": "Receipts this season",
+      "kgTotal": "Berries handed over",
       "accrued": "Accrued",
-      "accruedHint": "first 100",
-      "paid": "Paid",
       "balance": "Balance",
       "balanceHint": "fully settled"
     },
+    "line": {
+      "what": "{{product}} “{{grade}}”",
+      "weights": "{{gross}} gross − {{tare}} tare · {{price}} ₴/kg",
+      "weightsWithPallet": "{{gross}} gross − {{pallet}} pallet − {{tare}} tare · {{price}} ₴/kg"
+    },
+    "breakdown": "receipts {{intakes}} + top-ups {{topUps}} − paid out {{payouts}}",
+    "breakdownNoTopUps": "receipts {{intakes}} − paid out {{payouts}}",
     "open": {
       "title": "Open balances — what exactly is owed",
       "topUp": "Top-up on {{code}}",
       "unallocated": "Overpayment — not allocated",
+      "openReceipt": "Open receipt {{code}}",
       "oldest_one": "oldest from {{date}} — {{count}} day",
       "oldest_other": "oldest from {{date}} — {{count}} days"
     },

@@ -18,17 +18,17 @@ const operator = {
 
 describe('SupplierBalanceController', () => {
   const findOne = jest.fn();
-  const debtFor = jest.fn();
+  const breakdownFor = jest.fn();
   const settlementFor = jest.fn();
   const controller = new SupplierBalanceController(
-    { debtFor } as never,
+    { breakdownFor } as never,
     { settlementFor } as never,
     { findOne } as never,
   );
 
   beforeEach(() => {
     findOne.mockReset();
-    debtFor.mockReset();
+    breakdownFor.mockReset();
     settlementFor.mockReset();
   });
 
