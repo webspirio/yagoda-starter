@@ -57,6 +57,8 @@ export interface ReceiptSheetProps {
   } | null;
 }
 
+const TRAILING_BLANK_LINES = 7;
+
 function Row({
   label,
   value,
@@ -172,6 +174,13 @@ export function ReceiptSheet({
       <Row label={t('receipt.receivedBy')} value={receivedBy} muted />
 
       <div className="mt-4 text-center text-[10px] text-neutral-400">{t('receipt.footer')}</div>
+
+      {/* Feeds the slip past the printer's tear bar, so the footer isn't torn off. */}
+      <div className="print-only" aria-hidden="true">
+        {Array.from({ length: TRAILING_BLANK_LINES }, (_, i) => (
+          <div key={i}>{' '}</div>
+        ))}
+      </div>
     </div>
   );
 }
