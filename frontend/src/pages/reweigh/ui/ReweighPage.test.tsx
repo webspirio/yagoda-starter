@@ -369,7 +369,7 @@ describe('ReweighPage', () => {
    * §6.4 promises the toast carries the backend's OWN code. Before the five
    * reweigh codes reached `CODE`, every refusal fell through to the post
    * path's then-fallback `reweigh.day.errors.failed` — «Позицію не
-   * сторновано», *the line was not voided*: a failed WRITE described to the
+   * анульовано», *the line was not voided*: a failed WRITE described to the
    * owner as a failed STORNO, with no cause named. This matters most in the
    * §3.1 case the screen accepts the cost of — a refusal partway through a
    * batch — where the owner has to know WHICH rule refused before deciding
@@ -384,7 +384,7 @@ describe('ReweighPage', () => {
     await waitFor(() => expect(toastErrorMock).toHaveBeenCalled());
     const description = toastErrorMock.mock.calls[0][1]?.description as string;
     expect(description).toMatch(/not accepted|не приймали/i);
-    expect(description).not.toMatch(/сторновано|was not voided/i);
+    expect(description).not.toMatch(/анульовано|was not voided/i);
   });
 
   it('clears the drafts when the point changes — they belonged to another day', async () => {
