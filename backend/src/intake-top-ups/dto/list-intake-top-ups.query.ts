@@ -20,7 +20,7 @@ export class ListIntakeTopUpsQueryDto extends PaginationQueryDto {
 
   /**
    * DEFAULTS TO TRUE, matching `ListIntakesQueryDto`. §9.3 keeps a voided
-   * document in the journal «НАЗАВЖДИ з печаткою "СТОРНОВАНО"», and a voided
+   * document in the journal «НАЗАВЖДИ з печаткою "АНУЛЬОВАНО"», and a voided
    * top-up is no different.
    *
    * NOTE THE ASYMMETRY WITH `counts_toward_balance`: this flag hides rows the

@@ -640,7 +640,7 @@ describe('CratesService', () => {
       ).rejects.toBeInstanceOf(NotFoundException);
     });
 
-    /** §9.3 — «видачу, на яку вже лягло повернення, сторнувати не можна». */
+    /** §9.3 — «видачу, на яку вже лягло повернення, анулювати не можна». */
     it('refuses to void an issuance that has live allocations', async () => {
       loadIssuance({ shift: { collection_point_id: 'point-1', closed_at: null } });
       manager.query.mockImplementation((sql: string) =>
@@ -850,7 +850,7 @@ describe('CratesService', () => {
    * this inside its own transaction).
    */
   describe('voidReturnForIntake', () => {
-    const reasonArgs = { actor: operator, intakeId: 'intake-1', reason: 'сторно квитанції' };
+    const reasonArgs = { actor: operator, intakeId: 'intake-1', reason: 'анулювання квитанції' };
 
     it('voids the live return written by this intake, and audits it', async () => {
       manager.findOne.mockResolvedValue(crateReturn({ intake_id: 'intake-1' }));
@@ -870,13 +870,13 @@ describe('CratesService', () => {
         expect.objectContaining({
           voided_at: expect.any(Date),
           voided_by_user_id: 'op-1',
-          void_reason: 'сторно квитанції',
+          void_reason: 'анулювання квитанції',
         }),
       );
       expect(audit.record).toHaveBeenCalledWith(
         expect.objectContaining({
           action: 'crate-return.voided',
-          note: 'сторно квитанції',
+          note: 'анулювання квитанції',
           after: expect.objectContaining({ intake_id: 'intake-1' }),
         }),
         manager,

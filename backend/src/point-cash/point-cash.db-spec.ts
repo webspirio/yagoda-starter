@@ -14,7 +14,7 @@ import type { AuthenticatedUser } from '../auth/jwt.strategy';
  * Five of the numbered thirteen exist specifically to stop someone harmonising
  * the two opposite readings of `voided_at`: voided PAYOUTS stay subtracted (the
  * money left the drawer), voided TRANSFERS stop being added (no valid document
- * accounts for them). §9.3 — «інакше сторно стає способом красти». Scenario 13 is
+ * accounts for them). §9.3 — «інакше анулювання стає способом красти». Scenario 13 is
  * narrower still: it defends the PLACEMENT of the transfer filter, which no
  * other scenario can distinguish.
  *

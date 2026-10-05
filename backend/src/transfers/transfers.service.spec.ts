@@ -480,7 +480,7 @@ describe('TransfersService.resolve / void', () => {
     expect(stock.assertOnHand).not.toHaveBeenCalled();
   });
 
-  it('void refuses an operator — §9.4, «точка сторнувати не може»', async () => {
+  it('void refuses an operator — §9.4, «точка анулювати не може»', async () => {
     const { service } = build(disputed());
     await expect(service.void(operatorA, 't-1', { reason: 'дубль' } as never)).rejects.toThrow(
       ForbiddenException,

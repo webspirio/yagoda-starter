@@ -722,7 +722,7 @@ describe('crates lifecycle (HTTP)', () => {
       const res = await request(app.getHttpServer())
         .post(`/crate-returns/${r2ReturnId}/void`)
         .set('Authorization', `Bearer ${r2OperatorToken}`)
-        .send({ reason: 'спроба сторнувати окремо' })
+        .send({ reason: 'спроба анулювати окремо' })
         .expect(409);
 
       expect(res.body.code).toBe('RETURN_BELONGS_TO_INTAKE');

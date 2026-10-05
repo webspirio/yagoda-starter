@@ -182,7 +182,7 @@ describe('CrateBalancesService.list (Postgres)', () => {
     deposits = await supplier(pointA, 'Завдаток');
     paper = await supplier(pointA, 'Розписка');
     settled = await supplier(pointA, 'Розрахувався');
-    voided = await supplier(pointA, 'Сторновано');
+    voided = await supplier(pointA, 'Анульовано');
     elsewhere = await supplier(pointB, 'Сусідній');
 
     // Two tranches at different prices: 20 at 120 and 20 at 130.
@@ -251,7 +251,7 @@ describe('CrateBalancesService.list (Postgres)', () => {
 
   /** A voided RETURN releases its allocations — no allocation row is deleted. */
   it('releases the units a voided return had consumed', async () => {
-    const back = await supplier(pointA, 'Сторнували-повернення');
+    const back = await supplier(pointA, 'Анулювали-повернення');
     const tranche = await issue(shiftA, back, 12, 'deposit', '100.00');
     await giveBack(shiftA, back, tranche, 12, '100.00', { voided: true });
 

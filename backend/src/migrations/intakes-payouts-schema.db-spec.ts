@@ -282,7 +282,7 @@ describe('YagodaIntakesAndPayouts', () => {
 
     it('cannot be settled unless the payout is voided', async () => {
       const id = await insertPayout(shift, `${short}-PO-settle-a`);
-      // §9.3 — «каса НЕ виросла на 8 000… інакше сторно стає способом красти».
+      // §9.3 — «каса НЕ виросла на 8 000… інакше анулювання стає способом красти».
       // Settling a LIVE payout would claim money came back that never left.
       await expect(
         ds.query(

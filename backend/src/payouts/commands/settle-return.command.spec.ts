@@ -55,7 +55,7 @@ describe('SettleReturnCommand', () => {
     it('is refused to an operator at their own point', async () => {
       // The operator who voided the payout is the person holding the drawer.
       // Letting them also certify the refill closes §9.3's loop unobserved —
-      // «інакше сторно стає способом красти».
+      // «інакше анулювання стає способом красти».
       await expect(command.settle(oksana, PAYOUT_ID, {})).rejects.toThrow(ForbiddenException);
     });
 
