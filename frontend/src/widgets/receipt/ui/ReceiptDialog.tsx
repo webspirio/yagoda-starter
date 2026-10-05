@@ -9,7 +9,7 @@ import {
   DialogTitle,
 } from '@/shared/ui/dialog';
 import { Button } from '@/shared/ui/button';
-import { add, cmp, formatKg, formatUah, isNegative, isZero } from '@/shared/lib/money';
+import { add, cmp, formatKg, formatUah, isZero } from '@/shared/lib/money';
 import { formatLongDate, formatTime } from '@/shared/lib/date';
 import { canVoidIntake, useIntakeQuery } from '@/entities/intake';
 import {
@@ -23,18 +23,6 @@ import { usePointOptionsQuery } from '@/entities/collection-point';
 import { useMeQuery } from '@/entities/user';
 import { VoidDocumentDialog, reopenedCodes } from '@/features/void-document';
 import { ReceiptSheet, type ReceiptSheetLine } from './ReceiptSheet';
-
-/** Formats the «Ціна за кг» row's right side when a per-kilogram bonus/markup
- *  applies: `+ 5.00 ₴ = 140.00 ₴` for a markup, `− 5.00 ₴ = 130.00 ₴` for a
- *  discount. The operator itself carries the sign, so only the MAGNITUDE of
- *  the bonus is formatted (never a second `−` from `formatUah`) — `null`
- *  when the bonus is 0.00, so the row falls back to the bare price. */
-function formatBonus(price: string, bonus: string, locale: string): string | null {
-  if (cmp(bonus, '0') === 0) return null;
-  const magnitude = isNegative(bonus) ? bonus.slice(1) : bonus;
-  const operator = isNegative(bonus) ? '−' : '+';
-  return `${operator} ${formatUah(magnitude, locale)} = ${formatUah(add(price, bonus), locale)}`;
-}
 
 /**
  * The receipt for one intake — `GET /intakes/:id` composed with the names a
@@ -170,17 +158,16 @@ export function ReceiptDialog({
         .join(', ');
       return {
         key: item.id,
-        // `intake.mapper` keeps `?? ''` for a missing name: print the name that
-        // is known, and «—» only when neither is — never a bare « · ».
-        label:
-          [item.product_name, item.grade_name].filter((name) => name !== '').join(' · ') || '—',
+        // #162: the product alone — the grade shows only through its price.
+        // `intake.mapper` keeps `?? ''` for a missing name, hence the «—».
+        label: item.product_name || '—',
         gross: formatKg(item.gross_kg, locale),
         pallet: cmp(item.pallet_kg, '0') !== 0 ? formatKg(item.pallet_kg, locale) : null,
         tareLabel,
         tareWeight: formatKg(item.tare_weight_kg, locale),
         net: formatKg(item.net_kg, locale),
-        price: formatUah(item.price, locale),
-        bonus: formatBonus(item.price, item.bonus, locale),
+        // #164: the final price only — the bonus is folded in, not shown.
+        price: formatUah(add(item.price, item.bonus), locale),
         amount: formatUah(item.amount, locale),
       };
     });
