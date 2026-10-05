@@ -466,8 +466,8 @@ export class CratesService {
       }
 
       /**
-       * §9.3 — «видачу, на яку вже лягло повернення, сторнувати не можна, поки
-       * не сторновано повернення». Voiding it out from under a live allocation
+       * §9.3 — «видачу, на яку вже лягло повернення, анулювати не можна, поки
+       * не анульовано повернення». Voiding it out from under a live allocation
        * would refund crates that, on the books, were never issued.
        */
       const live: Array<{ n: number }> = await m.query(

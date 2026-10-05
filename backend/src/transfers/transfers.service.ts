@@ -427,7 +427,7 @@ export class TransfersService {
   }
 
   /**
-   * §9.4 — «сторнує переказ ТІЛЬКИ керівник; точка сторнувати не може.»
+   * §9.4 — «анулює переказ ТІЛЬКИ керівник; точка анулювати не може.»
    *
    * LEGAL IN ANY STATE, INCLUDING `accepted`, and that is anticipated rather
    * than tolerated: the DBML says in as many words that a voided transfer

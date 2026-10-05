@@ -29,9 +29,9 @@ import { User } from '../users/user.entity';
  * return pair requires only the timestamp and the settler.
  *
  * IN A CLOSED SHIFT, VOIDING A PAYOUT DOES NOT RETURN THE CASH, and this is the
- * schema's sharpest rule: «сторновано виплату 8 000,00 ₴ → каса НЕ виросла на
+ * schema's sharpest rule: «анульовано виплату 8 000,00 ₴ → каса НЕ виросла на
  * 8 000 → створюється ОЧІКУВАНЕ ПОВЕРНЕННЯ під фізичне внесення грошей…
- * Інакше сторно стає способом красти.» The money left the drawer and comes
+ * Інакше анулювання стає способом красти.» The money left the drawer and comes
  * back only when a human puts it back, which is what stamping
  * `return_settled_at` records. The amount is NEVER stored again — it always
  * equals `amount`, and «внесення завжди на всю суму: часткового не буває».

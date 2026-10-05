@@ -615,7 +615,7 @@ describe('documents pipeline (HTTP)', () => {
     });
 
     it('refuses a void with no reason', async () => {
-      // §9.3 — «спроба сторнувати без причини → кнопка неактивна».
+      // §9.3 — «спроба анулювати без причини → кнопка неактивна».
       await request(app.getHttpServer())
         .post(`/intakes/${intakeId}/void`)
         .set('Authorization', `Bearer ${operatorToken}`)
@@ -639,7 +639,7 @@ describe('documents pipeline (HTTP)', () => {
     });
 
     it('keeps a voided intake in the journal and flags it', async () => {
-      // §9.3 — «лишається в журналі НАЗАВЖДИ з печаткою СТОРНОВАНО».
+      // §9.3 — «лишається в журналі НАЗАВЖДИ з печаткою АНУЛЬОВАНО».
       await request(app.getHttpServer())
         .post(`/intakes/${intakeId}/void`)
         .set('Authorization', `Bearer ${operatorToken}`)
@@ -823,7 +823,7 @@ describe('documents pipeline (HTTP)', () => {
         .send({ counted_amount: '5000.00', broken_crates: 0 })
         .expect(201);
 
-      // §9.3 — «сторновано виплату 8 000,00 ₴ → каса НЕ виросла на 8 000».
+      // §9.3 — «анульовано виплату 8 000,00 ₴ → каса НЕ виросла на 8 000».
       const res = await request(app.getHttpServer())
         .post(`/payouts/${payoutId}/void`)
         .set('Authorization', `Bearer ${ownerToken}`)
@@ -839,7 +839,7 @@ describe('documents pipeline (HTTP)', () => {
       await request(app.getHttpServer())
         .post(`/shifts/${shiftId}/reopen`)
         .set('Authorization', `Bearer ${ownerToken}`)
-        .send({ reason: 'сторно минулої виплати' })
+        .send({ reason: 'анулювання минулої виплати' })
         .expect(201);
     });
 
@@ -875,7 +875,7 @@ describe('documents pipeline (HTTP)', () => {
 
     it('refuses settle-return to an operator', async () => {
       // §9.3's loop, kept open: the person holding the drawer is not the person
-      // who attests it was refilled — «інакше сторно стає способом красти».
+      // who attests it was refilled — «інакше анулювання стає способом красти».
       await request(app.getHttpServer())
         .post(`/payouts/${payoutId}/settle-return`)
         .set('Authorization', `Bearer ${operatorToken}`)
@@ -901,7 +901,7 @@ describe('documents pipeline (HTTP)', () => {
     });
 
     it('voiding the intake drives the balance NEGATIVE, and is allowed', async () => {
-      // «сторно КВИТАНЦІЇ ЄДИНИЙ шлях у мінус, і воно ДОЗВОЛЕНЕ, з
+      // «анулювання КВИТАНЦІЇ ЄДИНИЙ шлях у мінус, і воно ДОЗВОЛЕНЕ, з
       // попередженням». There is no floor anywhere, by design.
       await request(app.getHttpServer())
         .post(`/intakes/${intakeId}/void`)

@@ -18,7 +18,7 @@ import type { AuthenticatedUser } from '../auth/jwt.strategy';
  * `expectedForClosing` is the opening count plus this shift's SIGNED movements
  * (spec §3.3), and nothing bounds that sum below zero: payouts are subtracted,
  * and a transfer that was accepted and then voided stops being added while the
- * payouts it funded stay gone (§9.3 — «інакше сторно стає способом красти»).
+ * payouts it funded stay gone (§9.3 — «інакше анулювання стає способом красти»).
  *
  * The flow below is the one `TransfersService.void` documents as the intended
  * way to undo a mistaken «Прийняв», and before `1788600000010` it ended in a

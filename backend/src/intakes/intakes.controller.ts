@@ -29,7 +29,7 @@ import type { AuthenticatedUser } from '../auth/jwt.strategy';
  * of their own: they are parts of a document, not rows in their own right.
  *
  * NO `PATCH`. §2.7 — `amount` «після проведення не міняється НІКОЛИ», and §9.3
- * makes a correction a void plus a NEW document: «Часткового сторно немає.
+ * makes a correction a void plus a NEW document: «Часткового анулювання немає.
  * Тільки повне + новий правильний документ».
  *
  * NO `DELETE`, here or anywhere. §9.3 — «фізичного видалення проведеного

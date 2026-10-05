@@ -259,7 +259,7 @@ export class ReweighsService {
    * the controller's class-level `@Auth(UserRole.NetworkOwner)` is the whole
    * rule. There is nobody left for a row-level check to exclude.
    *
-   * THE ROW STAYS. «документ НЕ зникає: лишається з позначкою "сторновано",
+   * THE ROW STAYS. «документ НЕ зникає: лишається з позначкою "анульовано",
    * часом, автором і причиною» — which is the trio, not a DELETE and not a
    * status.
    */

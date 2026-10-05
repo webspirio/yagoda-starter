@@ -12,7 +12,7 @@ import type { AuthenticatedUser } from '../auth/jwt.strategy';
 
 /**
  * §8 IS THE OWNER'S WORLD, READS INCLUDED (spec §3.10): §8.7 «переважує і
- * сторнує тільки керівник». Whether the operator ever sees the недостача
+ * анулює тільки керівник». Whether the operator ever sees the недостача
  * claimed against his own point is an open question, not an oversight.
  */
 @Controller()

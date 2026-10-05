@@ -112,7 +112,7 @@ describe('debt with intake top-ups (Postgres)', () => {
   });
 
   it('ignores a VOIDED top-up', async () => {
-    const s = await supplier('Сторнована');
+    const s = await supplier('Анульована');
     const i = await intake(s, '100.00');
     await topUp(i, '20.00', true);
 

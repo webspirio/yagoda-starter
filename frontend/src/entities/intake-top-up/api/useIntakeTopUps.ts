@@ -11,7 +11,7 @@ import type { IntakeTopUp, TopUpFilter } from '../model/intakeTopUp';
  * without a filter is a mistake rather than a default.
  *
  * `include_voided` is left at the server's default of `true`: §9.3 keeps a
- * voided document in the journal «НАЗАВЖДИ з печаткою "СТОРНОВАНО"», and a
+ * voided document in the journal «НАЗАВЖДИ з печаткою "АНУЛЬОВАНО"», and a
  * voided top-up is no different. The screen strikes it through; it does not
  * drop it.
  */

@@ -970,7 +970,7 @@ describe('SupplierCardPage — receipt lines (uk locale)', () => {
   });
 
   /**
-   * A receipt row grew a whole block of new content; the СТОРНОВАНО
+   * A receipt row grew a whole block of new content; the АНУЛЬОВАНО
    * treatment sits on the `<li>` it grew inside, so the lines must ride
    * along with it rather than escape the struck-through row.
    */

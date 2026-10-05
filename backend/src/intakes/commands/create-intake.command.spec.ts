@@ -430,7 +430,7 @@ describe('CreateIntakeCommand', () => {
 
   describe('there is no update path', () => {
     it('exposes no method that mutates a posted document’s numbers', () => {
-      // §2.7 — «після проведення не міняється НІКОЛИ». §9.3 — «Часткового сторно
+      // §2.7 — «після проведення не міняється НІКОЛИ». §9.3 — «Часткового анулювання
       // немає. Тільки повне + новий правильний документ». This asserts the
       // SHAPE of the write surface, which is the cheapest place to catch a
       // PATCH being added back.
