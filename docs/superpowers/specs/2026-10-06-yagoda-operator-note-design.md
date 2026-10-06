@@ -98,10 +98,16 @@ guarantee, and the window rule cannot be expressed as a row CHECK anyway.
    `shift.operator_noted` with `before: { operator_note }` and `after: { operator_note }`,
    both inside the same transaction.
 
-The window check uses the same query reopen uses for «the point's most recent shift»
-(`order: { business_date: 'DESC' }`). That query is exact because
-`UQ_shifts_point_business_date` allows one shift per point per day. It moves into a private
-helper `newestAtPoint(pointId, m)` that both `reopen` and `setOperatorNote` call.
+The window check asks the same question reopen's `SHIFT_NOT_NEWEST` asks («is there a shift
+at this point with a later `business_date`?»), but as a `NOT EXISTS` column in one SQL query
+that also answers «does the standing closing count disagree?». The question is exact because
+`UQ_shifts_point_business_date` allows one shift per point per day. Reopen keeps its own
+query unchanged.
+
+The checks live in one pure function, `operatorNoteRefusal(actor, shift, facts)` in
+`shifts/operator-note.ts`, which returns the exception to throw or `null`. The `PUT` throws
+what it returns. The read flag `operator_note_editable` is `refusal === null`, so the button
+and the `PUT` agree by construction rather than by two copies kept in step.
 
 «Standing `closing` count» means the row with `kind = 'closing'` and `book = 'berry'`. A close
 writes only the berry book, and a reopen demotes the previous closing count to `midday`, so at
@@ -128,17 +134,16 @@ adds `operator_note: null` to `after` of `shift.reopened`.
 
 ### 4.4 Reads
 
-One predicate, `operatorNoteEditable(actor, shift, isNewest, hasDiscrepancy)`, lives next to
-the shift mapper and is the single definition of «may this actor write the note now». It
-mirrors §4.1's table: operator role, closed, closer, newest, no owner explanation, non-zero
-closing discrepancy. The `PUT` checks the same conditions so it can return a specific code,
-and a unit test asserts that the predicate is `true` exactly when the `PUT` would pass.
+`operatorNoteEditable(actor, shift, facts)` is `actor.role === PointOperator &&
+operatorNoteRefusal(…) === null` (§4.1) and is the single definition of «may this actor write
+the note now».
 
 - **`ShiftResponse`** gains `operator_note: string | null` and `operator_note_editable: boolean`.
-  `toShiftResponse` takes the two facts it cannot read off the row (`isNewest`,
-  `hasDiscrepancy`) from the caller. Every caller that returns a shift supplies them:
-  `findOne`, `current`, `list`, `close`, `reopen`, `setExplanation` and `setOperatorNote`. In
-  `list` the facts come from one query per page, not one per row (D-8).
+  `toShiftResponse(shift, names, editable)` takes the flag from the caller. Every caller that
+  returns a shift goes through one private `ShiftsService.respond(actor, shifts, m)`, which
+  loads names and facts once per call, never once per row (D-8). The facts query runs only
+  for shifts that could possibly be editable (operator actor, closed, closed by them, no owner
+  explanation), so an owner's read and an open shift cost no extra query.
 - **`GET /cash-counts` rows** gain `operator_note` (selected through the same `shifts` join
   that already provides `explanation`) and `operator_note_editable`. The row is
   `kind = 'closing'` and carries its own discrepancy. «Newest at point» is a
@@ -152,7 +157,7 @@ and a unit test asserts that the predicate is `true` exactly when the `PUT` woul
 ## 5. Error contract
 
 The five codes in §4.1 are new. The frontend maps them through `apiErrorToBanner` with
-translations in `en.json` and `uk.json`. The `locales` verify row checks parity and code keys.
+translations in `en.json` and `uk.json`. `frontend/src/shared/lib/i18n/locales.test.ts` checks that the two files have the same keys.
 The `@Auth` refusal for the owner is the existing 403 and needs no new code.
 
 ## 6. Frontend
@@ -163,21 +168,30 @@ It follows the structure of `set-cash-explanation`:
 
 - `api/useSetOperatorNote.ts`: `useSetOperatorNoteMutation()`, `PUT
   /shifts/:id/operator-note`, which invalidates `queryKeys.shifts` and `queryKeys.cashCounts`.
-- `ui/OperatorNoteDialog.tsx`: the title states the discrepancy amount (as
+- `ui/OperatorNoteForm.tsx`: header, textarea and footer with no `Dialog` of its own, the same
+  split as `CountResultBody`. The title states the discrepancy amount (as
   `ExplainDiscrepancyDialog` does). The textarea is prefilled with the current
   `operator_note` so it can be corrected. Validation is 1–2000 characters, not blank. Errors
-  go to `apiErrorToBanner`.
+  go to `apiErrorToBanner`, with `SHIFT_NOT_CLOSED` overridden, because its shared wording is
+  about reopening.
+- `ui/OperatorNoteDialog.tsx`: a thin `Dialog` wrapper around the form, used by
+  `CashCountHistory`.
 - `index.ts`: the public API.
 
 ### 6.2 Close result screen
 
 `CountResultView` belongs to `features/count-shift`, and a feature may not import another
-feature. `CountResultBody`/`CountResultView` therefore gain an optional slot
-`action?: ReactNode`, rendered in the footer next to the close button. `PointCashPage` (page
-layer) fills it with «Пояснити розбіжність» when the close's discrepancy is non-zero. The
-click closes the result view first and then opens `OperatorNoteDialog`. Two dialogs never
-coexist, which avoids the double-`role="dialog"` bug `RecountDrawerDialog`'s doc comment
-describes.
+feature. It therefore gains two generic optional props:
+- `action?: ReactNode`, rendered in the result body's footer before «Готово»;
+- `swap?: ReactNode | null`, which, when non-null, replaces the result body inside the
+  SAME `DialogContent`.
+
+`PointCashPage` (page layer) passes «Пояснити розбіжність» as `action` when the closing
+row's `operator_note_editable` is true. The click sets page state that passes
+`<OperatorNoteForm>` as `swap`. Saving closes the whole dialog, and cancelling returns to the
+result. Only one `Dialog` ever exists, which avoids the double-`role="dialog"` bug that
+`RecountDrawerDialog`'s doc comment describes, for the same reason that component swaps its
+body instead of opening a second dialog.
 
 ### 6.3 `CashCountHistory`
 
@@ -221,14 +235,14 @@ A «Приймальник: …» line appears next to the existing `pointCash.p
 - a successful write trims the text and records `shift.operator_noted` with before and after;
 - a replacement inside the window records the previous text in `before`;
 - `reopen` clears `operator_note` and records it in `before`;
-- the predicate equals the `PUT`'s outcome over the condition matrix;
+- `operatorNoteRefusal` returns each refusal for its own condition and `null` only when all hold, and `operatorNoteEditable` is false for the owner whatever the facts;
 - for the owner, `operator_note_editable` is `false`.
 
 **Backend db-spec** (real Postgres):
 - the migration adds the column, the CHECK rejects `'   '`, and `down` reverses it;
 - opening the next shift closes the window (409 `OPERATOR_NOTE_WINDOW_CLOSED`);
 - `GET /cash-counts` returns `operator_note` and a flag that matches the `PUT`;
-- an operator note leaves `is_open` true and `unexplained_difference` unchanged;
+- an operator note leaves `is_open` true and keeps the row on the owner's `only_discrepancies` list (`unexplained_difference` reads no `shifts` text column, so it cannot move);
 - the full cycle: close with a discrepancy, write a note, reopen (note cleared), close again,
   write a new note, then the owner explains, after which the operator's `PUT` returns 409
   `OWNER_ALREADY_EXPLAINED`.
