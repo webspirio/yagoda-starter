@@ -19,6 +19,10 @@ vi.mock('@/features/set-cash-explanation/api/useSetCashExplanation', () => ({
   useSetCashExplanationMutation: () => ({ mutateAsync: explainMock, isPending: false }),
 }));
 
+vi.mock('@/features/set-operator-note/api/useSetOperatorNote', () => ({
+  useSetOperatorNoteMutation: () => ({ mutateAsync: vi.fn().mockResolvedValue({}) }),
+}));
+
 const count = (over: Partial<CashCount> = {}): CashCount => ({
   id: 'c1',
   shift_id: 's1',
@@ -136,5 +140,45 @@ describe('CashCountHistory', () => {
     await user.click(screen.getByRole('button', { name: 'Explain' }));
     const dialog = await screen.findByRole('dialog');
     expect(dialog).toHaveTextContent('40.00');
+  });
+
+  const openClosing = (over: Partial<CashCount> = {}) =>
+    count({ kind: 'closing', counted_amount: '1400.00', discrepancy: '-100.00', is_open: true, ...over });
+
+  it('the closer gets «Add my explanation» on an editable row', async () => {
+    countsMock.mockReturnValue(page([openClosing({ operator_note_editable: true })]));
+    render(<CashCountHistory pointId="p1" isOwner={false} />);
+    await userEvent.click(screen.getByRole('button', { name: 'Add my explanation' }));
+    expect(screen.getByRole('heading', { name: /What happened\?/ })).toBeInTheDocument();
+  });
+
+  it('once written, the closer edits it and everyone reads it', () => {
+    countsMock.mockReturnValue(page([openClosing({ operator_note: 'віддав решту', operator_note_editable: true })]));
+    render(<CashCountHistory pointId="p1" isOwner={false} />);
+    expect(screen.getByText('Operator: “віддав решту”')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Edit my explanation' })).toBeInTheDocument();
+  });
+
+  it('a non-editable open row still just says it is unexplained', () => {
+    countsMock.mockReturnValue(page([openClosing()]));
+    render(<CashCountHistory pointId="p1" isOwner={false} />);
+    expect(screen.getByText('Unexplained')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Add my explanation' })).toBeNull();
+  });
+
+  it('the owner sees the operator’s note AND still has to explain — the note closes nothing', () => {
+    countsMock.mockReturnValue(page([openClosing({ operator_note: 'віддав решту' })]));
+    render(<CashCountHistory pointId="p1" isOwner />);
+    expect(screen.getByText('Operator: “віддав решту”')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Explain' })).toBeInTheDocument();
+  });
+
+  it('after the owner decides, both texts stay readable', () => {
+    countsMock.mockReturnValue(
+      page([openClosing({ is_open: false, explanation: 'утримати з зарплати', operator_note: 'віддав решту' })]),
+    );
+    render(<CashCountHistory pointId="p1" isOwner />);
+    expect(screen.getByText('утримати з зарплати')).toBeInTheDocument();
+    expect(screen.getByText('Operator: “віддав решту”')).toBeInTheDocument();
   });
 });

@@ -34,11 +34,13 @@ interface ExplainFormValues {
 export function ExplainDiscrepancyDialog({
   shiftId,
   discrepancy,
+  operatorNote,
   open,
   onClose,
 }: {
   shiftId: string;
   discrepancy: string;
+  operatorNote: string | null;
   open: boolean;
   onClose: () => void;
 }) {
@@ -74,6 +76,16 @@ export function ExplainDiscrepancyDialog({
           </DialogTitle>
           <DialogDescription>{t('cash.explainDialog.description')}</DialogDescription>
         </DialogHeader>
+
+        {/* Spec 2026-10-06 — what the closer said, as context; never prefilled into the owner's field. */}
+        {operatorNote ? (
+          <figure className="rounded-md border border-line2 px-3 py-2">
+            <figcaption className="text-xs text-muted-foreground">
+              {t('cash.explainDialog.operatorNote')}
+            </figcaption>
+            <blockquote className="text-sm italic">{operatorNote}</blockquote>
+          </figure>
+        ) : null}
 
         <form onSubmit={onSubmit} className="flex flex-col gap-4" noValidate>
           <Field

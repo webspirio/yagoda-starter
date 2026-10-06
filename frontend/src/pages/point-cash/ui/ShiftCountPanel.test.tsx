@@ -230,6 +230,24 @@ describe('ShiftCountPanel — the shift line and names', () => {
     expect(note).toHaveClass('italic');
   });
 
+  it('quotes the operator’s own account too, labelled as theirs', () => {
+    render(
+      <ShiftCountPanel
+        shift={shift({ status: 'closed', closed_by_name: 'Petro', operator_note: 'віддав решту' })}
+        isShiftLoading={false}
+        isShiftError={false}
+        counts={[]}
+        isOperator={false}
+        isToday={false}
+        onOpenShift={noop}
+        openShiftGate="allowed"
+        onCloseShift={noop}
+      />,
+    );
+
+    expect(screen.getByText('Operator: “віддав решту”')).toHaveClass('italic');
+  });
+
   it('reads a legacy «awaiting_explanation» shift as closed, with its explanation', () => {
     // The 09.09 rule retired this branch (a discrepancy never blocks
     // anything) — `awaiting_explanation` has no copy of its own left, so a

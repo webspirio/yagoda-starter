@@ -11,12 +11,13 @@ import { formatUah } from '@/shared/lib/money';
 import { formatShortDate } from '@/shared/lib/date';
 import { useCashCountsQuery, type CashCount } from '@/entities/cash-count';
 import { ExplainDiscrepancyDialog } from '@/features/set-cash-explanation';
+import { OperatorNoteDialog } from '@/features/set-operator-note';
 import { discrepancyTone } from '@/features/count-shift';
 
 /**
  * §7.6's journal for one point — every drawer count, opening/midday/closing
  * alike, read-only by design: there is no edit here, only `ExplainDiscrepancyDialog`
- * (§7.7, owner only) which never moves the counted or expected figure, only
+ * (§7.7, owner) and `OperatorNoteDialog` (spec 2026-10-06, the closing operator), neither of which ever moves the counted or expected figure, only
  * attaches a reason to a discrepancy that already happened.
  */
 export function CashCountHistory({
@@ -29,6 +30,7 @@ export function CashCountHistory({
   const { t, i18n } = useTranslation();
   const counts = useCashCountsQuery({ pointId });
   const [explainTarget, setExplainTarget] = useState<CashCount | null>(null);
+  const [noteTarget, setNoteTarget] = useState<CashCount | null>(null);
   const rows = counts.data?.data ?? [];
 
   const columns: Column<CashCount>[] = [
@@ -83,8 +85,18 @@ export function CashCountHistory({
       // own comment), so printing «Зійшлося» off `is_open` alone used to
       // claim a midday −50,00 ₴ recount had matched.
       cell: (row) => {
+        const operatorNote = row.operator_note ? (
+          <span className="text-xs italic text-muted-foreground">
+            {t('pointCash.countHistory.operatorNote', { text: row.operator_note })}
+          </span>
+        ) : null;
         if (row.explanation) {
-          return <span className="text-sm italic text-muted-foreground">{row.explanation}</span>;
+          return (
+            <div className="flex flex-col gap-1">
+              <span className="text-sm italic text-muted-foreground">{row.explanation}</span>
+              {operatorNote}
+            </div>
+          );
         }
         if (discrepancyTone(row.discrepancy) === 'leaf') {
           return (
@@ -94,12 +106,23 @@ export function CashCountHistory({
           );
         }
         if (row.is_open) {
-          return isOwner ? (
+          // The operator's note informs; the incident stays open until the owner explains it.
+          const action = isOwner ? (
             <Button size="xs" variant="outline" onClick={() => setExplainTarget(row)}>
               {t('pointCash.countHistory.explain')}
             </Button>
+          ) : row.operator_note_editable ? (
+            <Button size="xs" variant="outline" onClick={() => setNoteTarget(row)}>
+              {t(row.operator_note ? 'operatorNote.edit' : 'operatorNote.write')}
+            </Button>
           ) : (
             <span className="text-xs text-muted-foreground">{t('pointCash.countHistory.open')}</span>
+          );
+          return (
+            <div className="flex flex-col items-start gap-1">
+              {operatorNote}
+              {action}
+            </div>
           );
         }
         // A non-zero, unexplained discrepancy with `is_open === false` — only
@@ -136,8 +159,18 @@ export function CashCountHistory({
         <ExplainDiscrepancyDialog
           shiftId={explainTarget.shift_id}
           discrepancy={explainTarget.discrepancy}
+          operatorNote={explainTarget.operator_note}
           open
           onClose={() => setExplainTarget(null)}
+        />
+      ) : null}
+      {noteTarget ? (
+        <OperatorNoteDialog
+          shiftId={noteTarget.shift_id}
+          discrepancy={noteTarget.discrepancy}
+          initialNote={noteTarget.operator_note}
+          open
+          onClose={() => setNoteTarget(null)}
         />
       ) : null}
     </SectionCard>

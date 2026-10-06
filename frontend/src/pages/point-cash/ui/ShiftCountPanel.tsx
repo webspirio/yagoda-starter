@@ -264,6 +264,12 @@ export function ShiftCountPanel({
                   {t('pointCash.panel.explanation', { text: shift.explanation })}
                 </p>
               ) : null}
+
+              {shift.operator_note ? (
+                <p className="text-xs italic text-muted-foreground">
+                  {t('pointCash.panel.operatorNote', { text: shift.operator_note })}
+                </p>
+              ) : null}
             </div>
           ) : null}
 

@@ -20,6 +20,7 @@ function renderDialog(onClose = vi.fn()) {
         <ExplainDiscrepancyDialog
           shiftId="s1"
           discrepancy="-320.00"
+          operatorNote={null}
           open
           onClose={onClose}
         />
@@ -80,5 +81,14 @@ describe('ExplainDiscrepancyDialog', () => {
       await screen.findByText('Only the network owner can do this'),
     ).toBeInTheDocument();
     expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it('shows the operator’s account above the owner’s field without prefilling it', () => {
+    render(
+      <ExplainDiscrepancyDialog shiftId="s1" discrepancy="-320.00" operatorNote="віддав решту" open onClose={vi.fn()} />,
+    );
+    expect(screen.getByText('The operator wrote')).toBeInTheDocument();
+    expect(screen.getByText('віддав решту')).toBeInTheDocument();
+    expect(screen.getByLabelText('Explanation')).toHaveValue('');
   });
 });
