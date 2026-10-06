@@ -147,6 +147,8 @@ const openShift: Shift = {
   closed_at: null,
   created_at: '2026-09-08T05:00:00Z',
   explanation: null,
+  operator_note: null,
+  operator_note_editable: false,
   broken_crates: null,
 };
 

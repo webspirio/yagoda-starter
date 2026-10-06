@@ -34,6 +34,8 @@ const count = (over: Partial<CashCount> = {}): CashCount => ({
   counted_by_name: 'Olha',
   counted_at: '2026-09-10T07:00:00Z',
   explanation: null,
+  operator_note: null,
+  operator_note_editable: false,
   ...over,
 });
 

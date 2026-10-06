@@ -35,6 +35,8 @@ const shift = (over: Partial<Shift> = {}): Shift => ({
   closed_at: null,
   created_at: '2026-09-22T07:00:00.000Z',
   explanation: null,
+  operator_note: null,
+  operator_note_editable: false,
   broken_crates: null,
   ...over,
 });
@@ -54,6 +56,8 @@ const count = (over: Partial<CashCount> = {}): CashCount => ({
   counted_by_name: 'Olha',
   counted_at: '2026-09-22T07:00:00.000Z',
   explanation: null,
+  operator_note: null,
+  operator_note_editable: false,
   ...over,
 });
 

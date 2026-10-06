@@ -38,6 +38,8 @@ const shift = (id: string, pointId: string): Shift => ({
   closed_at: null,
   created_at: '2026-09-21T05:00:00Z',
   explanation: null,
+  operator_note: null,
+  operator_note_editable: false,
   broken_crates: null,
   opened_by_name: null,
   closed_by_name: null,

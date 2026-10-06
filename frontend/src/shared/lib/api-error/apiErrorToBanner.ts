@@ -81,6 +81,12 @@ const CODE: Readonly<Record<string, string>> = {
   NET_NOT_POSITIVE: 'reweigh.errors.netNotPositive',
   TARE_TYPE_DUPLICATED: 'reweigh.errors.tareDuplicated',
   TARE_TYPE_UNKNOWN: 'reweigh.errors.tareUnknown',
+  // Operator's note (spec 2026-10-06) — `PUT /shifts/:id/operator-note` alone
+  // throws these. `SHIFT_NOT_CLOSED` keeps its shared entry; the form overrides it.
+  NOT_SHIFT_CLOSER: 'operatorNote.errors.notCloser',
+  OPERATOR_NOTE_WINDOW_CLOSED: 'operatorNote.errors.windowClosed',
+  OWNER_ALREADY_EXPLAINED: 'operatorNote.errors.ownerExplained',
+  NO_DISCREPANCY: 'operatorNote.errors.noDiscrepancy',
   // SUPPLIER_INACTIVE IS DELIBERATELY ABSENT — it is the one code whose
   // sentence depends on which endpoint refused, so each caller passes its own
   // via `overrides` below. See that argument's doc.

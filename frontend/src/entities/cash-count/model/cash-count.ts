@@ -23,6 +23,10 @@ export interface CashCount {
   counted_by_name: string | null;
   counted_at: string;
   explanation: string | null;
+  /** Пояснення приймальника до розбіжності закриття — `is_open` не змінює. */
+  operator_note: string | null;
+  /** Чи може ЦЕЙ користувач написати його з цього рядка зараз (лише рядок закриття). */
+  operator_note_editable: boolean;
 }
 
 /** Реекспорт для існуючих імпортерів `../model/cash-count` — див. `@/shared/api/pagination.ts`. */

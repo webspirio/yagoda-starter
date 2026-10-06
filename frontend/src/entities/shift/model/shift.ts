@@ -27,4 +27,8 @@ export interface Shift {
    * це НЕ те саме: це «нічого не побилось». Не зводьте одне до одного.
    */
   broken_crates: number | null;
+  /** Пояснення приймальника, що закрив зміну (spec 2026-10-06). Інцидент НЕ закриває — лише `explanation`. */
+  operator_note: string | null;
+  /** Чи може ЦЕЙ користувач зараз написати `operator_note` — рахує сервер. */
+  operator_note_editable: boolean;
 }
