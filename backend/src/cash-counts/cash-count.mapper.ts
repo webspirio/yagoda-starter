@@ -15,6 +15,7 @@ export interface CashCountRow {
   counted_by_user_id: string;
   counted_at: Date;
   explanation: string | null;
+  operator_note: string | null;
 }
 
 /**
@@ -72,6 +73,10 @@ export interface CashCountRowResponse {
   counted_by_name: string | null;
   counted_at: Date;
   explanation: string | null;
+  /** The closing operator's account (spec 2026-10-06) — informs, never closes `is_open`. */
+  operator_note: string | null;
+  /** May THIS caller write `operator_note` from this row now — closing rows only. */
+  operator_note_editable: boolean;
 }
 
 /**
@@ -81,6 +86,7 @@ export interface CashCountRowResponse {
 export function toCashCountRowResponse(
   row: CashCountRow,
   names: ReadonlyMap<string, string>,
+  operatorNoteEditable: boolean,
 ): CashCountRowResponse {
   const discrepancy = sub(row.counted_amount, row.expected_amount);
   return {
@@ -101,5 +107,7 @@ export function toCashCountRowResponse(
     counted_by_name: names.get(row.counted_by_user_id) ?? null,
     counted_at: row.counted_at,
     explanation: row.explanation,
+    operator_note: row.operator_note,
+    operator_note_editable: operatorNoteEditable,
   };
 }

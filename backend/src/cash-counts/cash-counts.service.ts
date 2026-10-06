@@ -10,6 +10,7 @@ import {
 import { CashCount } from './cash-count.entity';
 import { CashBook } from './cash-book.enum';
 import { CashCountKind } from './cash-count-kind.enum';
+import { operatorNoteEditable } from '../shifts/operator-note';
 import { ShiftsService } from '../shifts/shifts.service';
 import { PointCashService } from '../point-cash/point-cash.service';
 import { AuditService } from '../audit/audit.service';
@@ -19,6 +20,14 @@ import { skipOf } from '../common/dto/pagination-query.dto';
 import { loadDisplayNames } from '../users/display-names';
 import { TimeService } from '../time/time.service';
 import type { AuthenticatedUser } from '../auth/jwt.strategy';
+
+/** The shift columns `operator-note.ts` decides from, joined per row in `list`. */
+interface NoteColumns {
+  closed_at: Date | null;
+  closed_by_user_id: string | null;
+  is_newest: boolean;
+  has_discrepancy: boolean;
+}
 
 /**
  * `opening` AND `closing` COUNTS ARE STILL WRITTEN BY `shifts`, inside the
@@ -187,8 +196,10 @@ export class CashCountsService {
           // shift — the same column `list`'s SQL joins in — never a value of
           // its own; a count has no `explanation` column (see the entity).
           explanation: shift.explanation ?? null,
+          operator_note: shift.operator_note ?? null,
         },
         names,
+        false, // a midday row is never where the note is written
       );
     });
   }
@@ -236,12 +247,17 @@ export class CashCountsService {
               c.book, c.kind,
               c.counted_amount::text  AS counted_amount,
               c.expected_amount::text AS expected_amount,
-              c.counted_by_user_id, c.counted_at, s.explanation
+              c.counted_by_user_id, c.counted_at, s.explanation, s.operator_note,
+              s.closed_at, s.closed_by_user_id,
+              NOT EXISTS (SELECT 1 FROM shifts n
+                           WHERE n.collection_point_id = s.collection_point_id
+                             AND n.business_date > s.business_date) AS is_newest,
+              (c.counted_amount <> c.expected_amount) AS has_discrepancy
        ${scope}
         ORDER BY s.business_date DESC, c.counted_at DESC, c.id ASC
         LIMIT $6 OFFSET $7`,
       [...params, query.limit, skipOf(query)],
-    )) as CashCountRow[];
+    )) as (CashCountRow & NoteColumns)[];
 
     const [{ total }] = (await m.query(
       `SELECT COUNT(*)::int AS total ${scope}`,
@@ -256,7 +272,18 @@ export class CashCountsService {
     );
 
     return {
-      data: rows.map((r) => toCashCountRowResponse(r, names)),
+      // Only the standing closing row is where the operator explains the day.
+      data: rows.map((r) =>
+        toCashCountRowResponse(
+          r,
+          names,
+          r.kind === CashCountKind.Closing &&
+            operatorNoteEditable(actor, r, {
+              is_newest: r.is_newest,
+              has_discrepancy: r.has_discrepancy,
+            }),
+        ),
+      ),
       total,
       page: query.page,
       limit: query.limit,
