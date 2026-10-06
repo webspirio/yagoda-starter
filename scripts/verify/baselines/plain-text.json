@@ -1,0 +1,13 @@
+[
+  {
+    "file": "frontend/src/pages/ui-kit/ui/UiKitPage.tsx",
+    "date": "2026-10-06",
+    "reason": "Design-system showcase at /ui-kit with deliberate Ukrainian mock data; a visual reference for developers, not a product screen."
+  },
+  {
+    "file": "frontend/src/app/providers/ErrorFallback.tsx",
+    "text": "Unhandled error",
+    "date": "2026-10-06",
+    "reason": "Rendered only inside the import.meta.env.DEV branch next to a raw stack trace; production renders errorFallback.* keys."
+  }
+]
