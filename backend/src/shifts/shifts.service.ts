@@ -519,9 +519,8 @@ export class ShiftsService {
    * 409 has to be enforced where the write happens or it is not enforced at
    * all» — and this is that rule applied to shifts.
    *
-   * The READ callers (`findOne`) pass
-   * nothing and take no lock, because a read that locks a row blocks the
-   * operator who is trying to close it.
+   * The READ callers (`findOne`) pass nothing and take no lock, because a
+   * read that locks a row blocks the operator who is trying to close it.
    */
   private async loadVisible(
     actor: AuthenticatedUser,

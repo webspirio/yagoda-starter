@@ -239,7 +239,7 @@ A «Приймальник: …» line appears next to the existing `pointCash.p
 - for the owner, `operator_note_editable` is `false`.
 
 **Backend db-spec** (real Postgres):
-- the migration adds the column, the CHECK rejects `'   '`, and `down` reverses it;
+- the migration adds the column, the CHECK rejects `'   '`;
 - opening the next shift closes the window (409 `OPERATOR_NOTE_WINDOW_CLOSED`);
 - `GET /cash-counts` returns `operator_note` and a flag that matches the `PUT`;
 - an operator note leaves `is_open` true and keeps the row on the owner's `only_discrepancies` list (`unexplained_difference` reads no `shifts` text column, so it cannot move);

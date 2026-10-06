@@ -181,4 +181,15 @@ describe('CashCountHistory', () => {
     expect(screen.getByText('утримати з зарплати')).toBeInTheDocument();
     expect(screen.getByText('Operator: “віддав решту”')).toBeInTheDocument();
   });
+
+  it('an opening-count incident never shows the closer’s note, in the cell or the owner’s dialog', async () => {
+    countsMock.mockReturnValue(
+      page([count({ kind: 'opening', discrepancy: '-100.00', is_open: true, operator_note: 'віддав решту' })]),
+    );
+    render(<CashCountHistory pointId="p1" isOwner />);
+    expect(screen.queryByText('Operator: “віддав решту”')).toBeNull();
+    await userEvent.click(screen.getByRole('button', { name: 'Explain' }));
+    await screen.findByRole('dialog');
+    expect(screen.queryByText(/The operator wrote/)).toBeNull();
+  });
 });

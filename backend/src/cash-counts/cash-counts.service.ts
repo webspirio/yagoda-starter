@@ -252,7 +252,7 @@ export class CashCountsService {
               NOT EXISTS (SELECT 1 FROM shifts n
                            WHERE n.collection_point_id = s.collection_point_id
                              AND n.business_date > s.business_date) AS is_newest,
-              (c.counted_amount <> c.expected_amount) AS has_discrepancy
+              (c.book = 'berry' AND c.counted_amount <> c.expected_amount) AS has_discrepancy
        ${scope}
         ORDER BY s.business_date DESC, c.counted_at DESC, c.id ASC
         LIMIT $6 OFFSET $7`,

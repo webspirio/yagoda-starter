@@ -16,9 +16,11 @@ import { discrepancyTone } from '@/features/count-shift';
 
 /**
  * §7.6's journal for one point — every drawer count, opening/midday/closing
- * alike, read-only by design: there is no edit here, only `ExplainDiscrepancyDialog`
- * (§7.7, owner) and `OperatorNoteDialog` (spec 2026-10-06, the closing operator), neither of which ever moves the counted or expected figure, only
- * attaches a reason to a discrepancy that already happened.
+ * alike, read-only by design: there is no edit here, only
+ * `ExplainDiscrepancyDialog` (§7.7, owner) and `OperatorNoteDialog` (spec
+ * 2026-10-06, the closing operator), neither of which ever moves the counted
+ * or expected figure, only attaches a reason to a discrepancy that already
+ * happened.
  */
 export function CashCountHistory({
   pointId,
@@ -85,9 +87,12 @@ export function CashCountHistory({
       // own comment), so printing «Зійшлося» off `is_open` alone used to
       // claim a midday −50,00 ₴ recount had matched.
       cell: (row) => {
-        const operatorNote = row.operator_note ? (
+        // The shifts join puts `operator_note` on every count of the shift, but
+        // it explains only the CLOSING count (spec 2026-10-06 §2.4).
+        const note = row.kind === 'closing' ? row.operator_note : null;
+        const operatorNote = note ? (
           <span className="text-xs italic text-muted-foreground">
-            {t('pointCash.countHistory.operatorNote', { text: row.operator_note })}
+            {t('pointCash.countHistory.operatorNote', { text: note })}
           </span>
         ) : null;
         if (row.explanation) {
@@ -159,7 +164,7 @@ export function CashCountHistory({
         <ExplainDiscrepancyDialog
           shiftId={explainTarget.shift_id}
           discrepancy={explainTarget.discrepancy}
-          operatorNote={explainTarget.operator_note}
+          operatorNote={explainTarget.kind === 'closing' ? explainTarget.operator_note : null}
           open
           onClose={() => setExplainTarget(null)}
         />
