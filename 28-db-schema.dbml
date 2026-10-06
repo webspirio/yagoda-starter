@@ -173,6 +173,8 @@ Table shifts {
 
   explanation text
 
+  operator_note text
+
   broken_crates int
 
   created_at timestamp [not null]

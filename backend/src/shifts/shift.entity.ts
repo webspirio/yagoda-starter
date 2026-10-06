@@ -88,6 +88,8 @@ import { ShiftStatus } from './shift-status.enum';
 // не знаємо». The half that IS true forever is «a number never sits on an open
 // shift», and it survives both the history and the reopen-to-NULL rule.
 @Check('CHK_shifts_broken_crates_closed', `"closed_at" IS NOT NULL OR "broken_crates" IS NULL`)
+// Spec 2026-10-06 — declared so `migration:generate` does not propose dropping it.
+@Check('CHK_shifts_operator_note_not_blank', `"operator_note" IS NULL OR btrim("operator_note") <> ''`)
 export class Shift {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -134,6 +136,11 @@ export class Shift {
    *  is TRUE: an explained discrepancy stays in `Σ (counted − expected)`. */
   @Column({ type: 'text', nullable: true })
   explanation: string | null;
+
+  /** The closing operator's own account of the discrepancy (spec 2026-10-06).
+   *  Never closes the incident — only `explanation` does. Cleared by reopen. */
+  @Column({ type: 'text', nullable: true })
+  operator_note: string | null;
 
   /**
    * §6.8's «бій» — crates that broke during the shift and travel to the base
