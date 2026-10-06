@@ -47,7 +47,16 @@ const SELF = 'scripts/verify/checks/audit.mjs'
  *
  * @type {Record<string, { until: string, why: string }>}
  */
-export const ACCEPTED = {}
+export const ACCEPTED = {
+  'GHSA-hp3w-g68c-fv3c': {
+    until: '2026-11-06',
+    why:
+      'sprintf-js 1.0.3 is dev only, reached through ts-jest → babel-plugin-istanbul → ' +
+      'load-nyc-config → js-yaml@3 → argparse@1, which formats CLI help text from our own ' +
+      'strings; no untrusted input reaches it. The advisory covers <= 1.1.3, the latest ' +
+      'release, so there is no version to move to.',
+  },
+}
 
 /** Under this, a `why` is not a reason. */
 const MIN_WHY = 60
