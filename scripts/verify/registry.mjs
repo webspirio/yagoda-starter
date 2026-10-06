@@ -430,18 +430,18 @@ export const CHECKS = [
     // hides nor fakes a finding here.
     cmd: 'npm run i18n:plain-text',
     proves:
-      'Every tracked .ts and .tsx file under frontend/src, tests and locale data aside, is ' +
-      'parsed with the TypeScript compiler API, and this command fails when one renders ' +
-      'untranslated text: a JSX text node with a letter, a letter-bearing literal in a ' +
-      'placeholder, title, alt, label, description or aria attribute, a literal passed to a ' +
-      'toast call, or any literal containing Cyrillic. Every exception in its baseline is ' +
-      'dated, reasoned and must still match.',
+      'Every .ts and .tsx file under frontend/src, tests and locale data aside, is parsed ' +
+      'with the TypeScript compiler API, and this command fails when one renders untranslated ' +
+      'text: JSX text, or a letter-bearing literal — directly or through a ternary or `&&` — ' +
+      'as a JSX child, in a placeholder, title, alt, label, description, aria-label or ' +
+      'aria-description attribute, or passed to a toast call; or any literal containing ' +
+      'Cyrillic. Every baseline exception is dated, reasoned and must still match.',
     blindSpot:
-      'A Latin-only literal outside JSX text, those attributes and toast calls is invisible: ' +
-      'a column header in an object literal, or a string a helper returns. Text assembled at ' +
-      'runtime, text the backend sends, and a prop whose name is not on the fixed list go ' +
-      'unseen. It proves text reaches the screen through a key, never that the translation ' +
-      'behind the key is right.',
+      'A Latin-only literal anywhere else is invisible: a column header in an object literal, ' +
+      'a string a helper returns, or any other aria attribute such as aria-valuetext. Text ' +
+      'assembled at runtime, text the backend sends, and a prop whose name is not on the ' +
+      'fixed list go unseen. It proves text reaches the screen through a key, never that the ' +
+      'translation behind the key is right.',
   },
   {
     id: 'locales',

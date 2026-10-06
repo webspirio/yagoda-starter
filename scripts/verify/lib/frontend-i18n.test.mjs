@@ -10,7 +10,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 
-import { flattenLocale, frontendSourceFiles, scanSource } from './frontend-i18n.mjs'
+import { flattenLocale, frontendSourceFiles, scanFrontend, scanSource } from './frontend-i18n.mjs'
 import { fixtureGitEnv } from '../scan-root.mjs'
 
 /** @param {string} text */
@@ -62,6 +62,43 @@ test('a node matching two rules is reported once, under the first', () => {
 test('keys: literal first argument of t() and i18n.t(); dynamic keys are not collected', () => {
   const src = `t('a.b'); i18n.t(\`c.d\`); t(\`e.\${x}\`); t(name); other.t('nope'); tt('nope')`
   assert.deepEqual(scanSource('x.ts', src).keys.map((k) => k.key), ['a.b', 'c.d'])
+})
+
+test('literals inside JSX expressions: child, ternary, &&, template — but not conditions or calls', () => {
+  const src = `const A = () => <>
+    <p>{'Close'}</p>
+    <p>{x ? 'Yes' : 'No'}</p>
+    <p>{busy && 'Saving'}</p>
+    <p>{x === 'warning' ? null : t('k')}</p>
+    <i aria-label={x ? 'Open' : 'Shut'} title={\`Step \${n}\`} className={x ? 'a' : 'b'} />
+  </>`
+  assert.deepEqual(rules(src), [
+    'jsx-text:Close', 'jsx-text:Yes', 'jsx-text:No', 'jsx-text:Saving',
+    'jsx-attr:Open', 'jsx-attr:Shut', 'jsx-attr:Step ${n}',
+  ])
+})
+
+test('a Cyrillic template in a UI attribute is reported once', () => {
+  assert.deepEqual(rules('const A = () => <i title={`Крок ${n}`} />'), ['jsx-attr:Крок ${n}'])
+})
+
+test('scanFrontend: a tracked file deleted but not yet staged is skipped, not a crash', () => {
+  const root = mkdtempSync(path.join(os.tmpdir(), 'i18n-lib-'))
+  try {
+    mkdirSync(path.join(root, 'frontend/src'), { recursive: true })
+    writeFileSync(path.join(root, 'frontend/src/a.tsx'), 'export const A = () => <p>Kept</p>;\n')
+    writeFileSync(path.join(root, 'frontend/src/b.ts'), 'export const b = 1;\n')
+    const env = fixtureGitEnv()
+    execFileSync('git', ['init', '-q'], { cwd: root, env })
+    execFileSync('git', ['add', '-A'], { cwd: root, env })
+    execFileSync('git', ['commit', '-qm', 'fixture'], { cwd: root, env })
+    rmSync(path.join(root, 'frontend/src/b.ts'))
+    const { files, candidates } = scanFrontend(root)
+    assert.deepEqual(files, ['frontend/src/a.tsx'])
+    assert.deepEqual(candidates.map((c) => c.text), ['Kept'])
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
 })
 
 test('flattenLocale: dotted leaves, and empty objects reported separately', () => {

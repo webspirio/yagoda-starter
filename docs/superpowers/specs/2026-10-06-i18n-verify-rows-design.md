@@ -92,6 +92,15 @@ never read either.
 
 A node that matches several rules is reported once, under the first rule it matched.
 
+**Expressions** (added after the final review): rules 1–3 also follow a JSX expression:
+- a JSX child expression (`{'Close'}`) counts as JSX text;
+- through rules 1–3, the scanner follows parentheses, both branches of a ternary, and either
+  side of `&&`, `||` or `??`;
+- a template literal with substitutions (`` title={`Step ${n}`} ``) counts when its literal
+  parts contain a letter.
+
+Conditions, calls and comparisons are not followed: `x === 'warning'` is never text.
+
 **Report line:** `path:line:col  rule  "text"`. The line number is for navigation only and is
 never part of a key.
 

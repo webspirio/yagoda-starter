@@ -66,6 +66,32 @@ export function frontendSourceFiles(root) {
 const literal = (node) =>
   node && (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) ? node : undefined
 
+const PASS_THROUGH = new Set([
+  ts.SyntaxKind.AmpersandAmpersandToken,
+  ts.SyntaxKind.BarBarToken,
+  ts.SyntaxKind.QuestionQuestionToken,
+])
+
+/**
+ * The string or template literals an expression can evaluate to as-is: through parentheses,
+ * both branches of `?:`, and either side of `&&` / `||` / `??`. A condition, a call or a
+ * comparison is not followed — `x === 'warning'` is never text.
+ *
+ * @param {ts.Expression | undefined} expr
+ * @returns {(ts.StringLiteral | ts.NoSubstitutionTemplateLiteral | ts.TemplateExpression)[]}
+ */
+function textLiterals(expr) {
+  if (!expr) return []
+  if (ts.isParenthesizedExpression(expr)) return textLiterals(expr.expression)
+  if (ts.isConditionalExpression(expr)) return [...textLiterals(expr.whenTrue), ...textLiterals(expr.whenFalse)]
+  if (ts.isBinaryExpression(expr) && PASS_THROUGH.has(expr.operatorToken.kind)) {
+    return [...textLiterals(expr.left), ...textLiterals(expr.right)]
+  }
+  const lit = literal(expr)
+  if (lit) return [lit]
+  return ts.isTemplateExpression(expr) ? [expr] : []
+}
+
 /** `toast(…)`, `toast.x(…)`, `toastSuccess(…)` — the sonner API and its local wrappers. */
 const isToastCallee = (/** @type {ts.Expression} */ e) =>
   (ts.isIdentifier(e) && e.text.startsWith('toast')) ||
@@ -104,10 +130,18 @@ export function scanSource(rel, text) {
     seen.add(node)
     candidates.push({ file: rel, ...at(pos), rule, text: normalise(raw) })
   }
-  /** @param {ts.Node | undefined} node @param {Rule} rule */
-  const flagLiteral = (node, rule) => {
-    const lit = literal(node)
-    if (lit && LETTER.test(lit.text)) flag(lit, rule, lit.text)
+  /** @param {ts.Expression | undefined} expr @param {Rule} rule */
+  const flagLiteral = (expr, rule) => {
+    for (const lit of textLiterals(expr)) {
+      if (ts.isTemplateExpression(lit)) {
+        // Its head and spans are the nodes the `cyrillic` rule would meet next.
+        for (const part of [lit.head, ...lit.templateSpans.map((s) => s.literal)]) seen.add(part)
+        const parts = lit.head.text + lit.templateSpans.map((s) => s.literal.text).join('')
+        if (LETTER.test(parts)) flag(lit, rule, lit.getText(sf).slice(1, -1))
+      } else if (LETTER.test(lit.text)) {
+        flag(lit, rule, lit.text)
+      }
+    }
   }
 
   /** @param {ts.Node} node */
@@ -115,9 +149,12 @@ export function scanSource(rel, text) {
     if (ts.isJsxText(node) && LETTER.test(node.text)) {
       // JsxText starts at the whitespace before it; point at the first real character.
       flag(node, 'jsx-text', node.text, node.pos + (node.text.length - node.text.trimStart().length))
+    } else if (ts.isJsxExpression(node) && (ts.isJsxElement(node.parent) || ts.isJsxFragment(node.parent))) {
+      // `{'Close'}` or `{x ? 'Yes' : 'No'}` as a child renders exactly like JSX text.
+      flagLiteral(node.expression, 'jsx-text')
     } else if (ts.isJsxAttribute(node) && UI_ATTRIBUTES.has(node.name.getText(sf))) {
       const init = node.initializer
-      flagLiteral(init && ts.isJsxExpression(init) ? init.expression : init, 'jsx-attr')
+      flagLiteral(init && ts.isJsxExpression(init) ? init.expression : literal(init), 'jsx-attr')
     } else if (ts.isCallExpression(node)) {
       if (isToastCallee(node.expression)) {
         flagLiteral(node.arguments[0], 'toast')
@@ -154,12 +191,24 @@ export function scanFrontend(root) {
   const candidates = []
   /** @type {KeyUse[]} */
   const keys = []
+  /** @type {string[]} */
+  const scanned = []
   for (const rel of files) {
-    const found = scanSource(rel, readFileSync(path.join(root, rel), 'utf8'))
+    let text
+    try {
+      text = readFileSync(path.join(root, rel), 'utf8')
+    } catch (err) {
+      // `ls-files -c` still lists a tracked file deleted but not yet staged; mid-refactor that
+      // is a legitimate tree, not a red one. Any other read failure stays loud.
+      if (/** @type {NodeJS.ErrnoException} */ (err).code === 'ENOENT') continue
+      throw err
+    }
+    scanned.push(rel)
+    const found = scanSource(rel, text)
     candidates.push(...found.candidates)
     keys.push(...found.keys)
   }
-  return { files, candidates, keys }
+  return { files: scanned, candidates, keys }
 }
 
 /**
