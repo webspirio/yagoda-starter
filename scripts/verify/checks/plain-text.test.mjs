@@ -11,7 +11,7 @@ import os from 'node:os'
 import path from 'node:path'
 
 import { applyExceptions, validateExceptions } from './plain-text.mjs'
-import { fixtureGitEnv } from '../scan-root.mjs'
+import { fixtureGitEnv, gitEnv } from '../scan-root.mjs'
 
 const REPO = path.resolve(import.meta.dirname, '..', '..', '..')
 const CHECK = path.join(REPO, 'scripts', 'verify', 'checks', 'plain-text.mjs')
@@ -139,7 +139,7 @@ test('CLI: an empty frontend refuses a verdict', () => {
 })
 
 test('the real repository is green, over the file count derived independently here', () => {
-  const independent = execFileSync('git', ['ls-files', '-c', '-o', '--exclude-standard', 'frontend/src'], { cwd: REPO, encoding: 'utf8' })
+  const independent = execFileSync('git', ['ls-files', '-c', '-o', '--exclude-standard', 'frontend/src'], { cwd: REPO, env: gitEnv(), encoding: 'utf8' })
     .split('\n')
     .filter((f) => (f.endsWith('.ts') || f.endsWith('.tsx')) && !f.includes('.test.') && !f.includes('/locales/') && !/test-setup\.tsx?$/.test(f))
   const r = run()
