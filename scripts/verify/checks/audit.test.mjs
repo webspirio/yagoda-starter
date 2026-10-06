@@ -148,8 +148,10 @@ test('bare package-name via entries alone produce no advisory', () => {
 })
 
 test('the ACCEPTED list this check actually ships obeys its own rules', () => {
-  // The list is empty today. This test is what makes the next entry cheap to review and
-  // impossible to leave open-ended: it holds the SHIPPED constant, not a fixture.
+  // This test is what makes an entry cheap to review and impossible to leave open-ended:
+  // it holds the SHIPPED constant, not a fixture. It does not compare `until` with today —
+  // that would turn the fast tier red on a date, on a tree nobody touched; the `audit` row
+  // reports EXPIRED, and CI runs it on every PR.
   for (const [id, entry] of Object.entries(ACCEPTED)) {
     assert.match(id, /^GHSA-[a-z0-9]{4}-[a-z0-9]{4}-[a-z0-9]{4}$/, `${id} is not a GHSA id`)
     assert.match(entry.until, /^\d{4}-\d{2}-\d{2}$/, `${id}: until must be YYYY-MM-DD`)
