@@ -11,11 +11,11 @@
  * person actually has to make a decision about.
  *
  * THE ACCEPTANCE LIST IS THE POINT, and it is deliberately in this file rather than a JSON
- * baseline. It is empty right now. An advisory that can be fixed should be fixed — the six
- * this repository used to carry were fixed by one line in the root package.json
- * (`overrides.multer`), after a baseline had spent three weeks explaining why they could
- * not be. An entry here is for the case where that is genuinely not available, and it costs
- * a reviewer one diff hunk rather than a file nobody opens.
+ * baseline. Every entry in it is an advisory with no patched release. An advisory that can
+ * be fixed should be fixed — the six this repository used to carry were fixed by one line
+ * in the root package.json (`overrides.multer`), after a baseline had spent three weeks
+ * explaining why they could not be. An entry here is for the case where that is genuinely
+ * not available, and it costs a reviewer one diff hunk rather than a file nobody opens.
  *
  * FOUR WAYS THIS GOES RED, and every one of them is self-cancelling — none can be answered
  * by widening anything:
