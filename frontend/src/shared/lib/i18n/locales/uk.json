@@ -9,7 +9,11 @@
     "copy": "Копіювати",
     "copied": "Скопійовано",
     "showPassword": "Показати пароль",
-    "hidePassword": "Сховати пароль"
+    "hidePassword": "Сховати пароль",
+    "today": "Сьогодні",
+    "previousDay": "Попередній день",
+    "nextDay": "Наступний день",
+    "print": "Друк"
   },
   "auth": {
     "signIn": "Увійти",

@@ -906,7 +906,7 @@ describe('DayPage — the owner', () => {
     expect(screen.getByRole('button', { name: 'Reopen shift' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Close shift' })).toBeNull();
     // Yesterday, so stepping forward is allowed.
-    expect(screen.getByRole('button', { name: 'Наступний день' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Next day' })).toBeEnabled();
 
     // The owner's own toolbar — the point picker carries only an aria-label.
     await expectNoAxeViolations(container);

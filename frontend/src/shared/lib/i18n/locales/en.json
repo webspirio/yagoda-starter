@@ -9,7 +9,11 @@
     "copy": "Copy",
     "copied": "Copied",
     "showPassword": "Show password",
-    "hidePassword": "Hide password"
+    "hidePassword": "Hide password",
+    "today": "Today",
+    "previousDay": "Previous day",
+    "nextDay": "Next day",
+    "print": "Print"
   },
   "auth": {
     "signIn": "Sign in",
