@@ -43,6 +43,7 @@ describe('ShiftsService', () => {
     findOne: jest.Mock;
     find: jest.Mock;
     getRepository: jest.Mock;
+    query: jest.Mock;
   };
   let dataSource: { transaction: jest.Mock };
   let cash: { expectedForOpening: jest.Mock; expectedForClosing: jest.Mock };
@@ -59,6 +60,7 @@ describe('ShiftsService', () => {
     closed_at: null,
     status: ShiftStatus.Open,
     explanation: null,
+    operator_note: null,
     created_at: new Date('2026-09-08T04:30:00.000Z'),
     updated_at: new Date('2026-09-08T04:30:00.000Z'),
     ...over,
@@ -97,6 +99,8 @@ describe('ShiftsService', () => {
       // empty result (every name reads `null`) is enough.
       find: jest.fn().mockResolvedValue([]),
       getRepository: jest.fn(() => repo),
+      // `loadOperatorNoteFacts` — no facts means «not editable», which no older test cares about.
+      query: jest.fn().mockResolvedValue([]),
     };
     dataSource = { transaction: jest.fn((cb: (m: unknown) => unknown) => cb(manager)) };
     cash = {
@@ -417,6 +421,123 @@ describe('ShiftsService', () => {
 
       expect(reopened.broken_crates).toBeNull();
     });
+
+    it('clears the operator note and keeps the old text in the audit', async () => {
+      repo.findOne
+        .mockResolvedValueOnce(
+          shift({
+            closed_at: new Date(),
+            closed_by_user_id: 'u-op',
+            status: ShiftStatus.Closed,
+            operator_note: 'віддав решту',
+          }),
+        )
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(shift({ id: SHIFT_ID }));
+
+      const reopened = await service.reopen(owner, SHIFT_ID, { reason: 'помилка' });
+
+      expect(reopened.operator_note).toBeNull();
+      expect(audit.record).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: 'shift.reopened',
+          before: expect.objectContaining({ operator_note: 'віддав решту' }),
+          after: expect.objectContaining({ operator_note: null }),
+        }),
+        expect.anything(),
+      );
+    });
+  });
+
+  describe('setOperatorNote', () => {
+    const closedByOp = (over: Record<string, unknown> = {}) =>
+      shift({ closed_at: new Date(), closed_by_user_id: 'u-op', status: ShiftStatus.Closed, ...over });
+    const facts = (over: Record<string, unknown> = {}) => [
+      { id: SHIFT_ID, is_newest: true, has_discrepancy: true, ...over },
+    ];
+
+    it('trims and saves the closer’s note, audits it and reports it editable', async () => {
+      repo.findOne.mockResolvedValueOnce(closedByOp({ operator_note: null }));
+      manager.query.mockResolvedValue(facts());
+
+      const res = await service.setOperatorNote(operator, SHIFT_ID, {
+        operator_note: '  віддав решту з іншої шухляди ',
+      });
+
+      expect(manager.save).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ operator_note: 'віддав решту з іншої шухляди' }),
+      );
+      expect(audit.record).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: 'shift.operator_noted',
+          before: { operator_note: null },
+          after: { operator_note: 'віддав решту з іншої шухляди' },
+        }),
+        manager,
+      );
+      expect(res.operator_note).toBe('віддав решту з іншої шухляди');
+      expect(res.operator_note_editable).toBe(true);
+    });
+
+    it('records the replaced text in before', async () => {
+      repo.findOne.mockResolvedValueOnce(closedByOp({ operator_note: 'перша версія' }));
+      manager.query.mockResolvedValue(facts());
+
+      await service.setOperatorNote(operator, SHIFT_ID, { operator_note: 'друга версія' });
+
+      expect(audit.record).toHaveBeenCalledWith(
+        expect.objectContaining({ before: { operator_note: 'перша версія' } }),
+        manager,
+      );
+    });
+
+    it.each([
+      ['SHIFT_NOT_CLOSED', shift(), facts()],
+      ['NOT_SHIFT_CLOSER', closedByOp({ closed_by_user_id: 'u-someone' }), facts()],
+      ['OPERATOR_NOTE_WINDOW_CLOSED', closedByOp(), facts({ is_newest: false })],
+      ['OWNER_ALREADY_EXPLAINED', closedByOp({ explanation: 'з’ясовано' }), facts()],
+      ['NO_DISCREPANCY', closedByOp(), facts({ has_discrepancy: false })],
+    ])('refuses with %s and writes nothing', async (code, row, rows) => {
+      repo.findOne.mockResolvedValueOnce(row);
+      manager.query.mockResolvedValue(rows);
+
+      await expect(
+        service.setOperatorNote(operator, SHIFT_ID, { operator_note: 'щось' }),
+      ).rejects.toMatchObject({ response: { code } });
+      expect(manager.save).not.toHaveBeenCalled();
+      expect(audit.record).not.toHaveBeenCalled();
+    });
+
+    it('404s another point’s shift', async () => {
+      repo.findOne.mockResolvedValueOnce(closedByOp());
+      await expect(
+        service.setOperatorNote(otherOperator, SHIFT_ID, { operator_note: 'щось' }),
+      ).rejects.toBeInstanceOf(NotFoundException);
+    });
+  });
+
+  describe('setExplanation', () => {
+    it('writes under the row lock, inside a transaction', async () => {
+      repo.findOne.mockResolvedValueOnce(
+        shift({ closed_at: new Date(), closed_by_user_id: 'u-op', status: ShiftStatus.Closed }),
+      );
+
+      await service.setExplanation(owner, SHIFT_ID, { explanation: ' з’ясовано ' });
+
+      expect(manager.findOne).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ lock: { mode: 'pessimistic_write' } }),
+      );
+      expect(manager.save).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ explanation: 'з’ясовано' }),
+      );
+      expect(audit.record).toHaveBeenCalledWith(
+        expect.objectContaining({ action: 'shift.explained' }),
+        manager,
+      );
+    });
   });
 
   describe('findOpenAtPoint', () => {
@@ -442,6 +563,8 @@ describe('ShiftsService.open with a count', () => {
       // name, so an empty result (every name reads `null`) is enough.
       find: jest.fn().mockResolvedValue([]),
       getRepository: jest.fn(),
+      // `loadOperatorNoteFacts` — no facts means «not editable», which no older test cares about.
+      query: jest.fn().mockResolvedValue([]),
     };
     const dataSource = { transaction: jest.fn((cb: (m: unknown) => unknown) => cb(manager)) };
     const cash = {
@@ -540,6 +663,8 @@ describe('ShiftsService.close with a count', () => {
       // D-8's `loadDisplayNames` — no test in this describe block asserts a
       // name, so an empty result (every name reads `null`) is enough.
       find: jest.fn().mockResolvedValue([]),
+      // `loadOperatorNoteFacts` — no facts means «not editable», which no older test cares about.
+      query: jest.fn().mockResolvedValue([]),
     };
     const dataSource = { transaction: jest.fn((cb: (m: unknown) => unknown) => cb(manager)) };
     const cash = {
@@ -624,6 +749,8 @@ describe('ShiftsService.reopen demotes the closing count', () => {
       // D-8's `loadDisplayNames` — this test asserts only the demotion, not a
       // name, so an empty result (every name reads `null`) is enough.
       find: jest.fn().mockResolvedValue([]),
+      // `loadOperatorNoteFacts` — no facts means «not editable», which no older test cares about.
+      query: jest.fn().mockResolvedValue([]),
     };
     const dataSource = { transaction: jest.fn((cb: (m: unknown) => unknown) => cb(manager)) };
     // `reopen` reads THREE times with different intents: loadVisible and the

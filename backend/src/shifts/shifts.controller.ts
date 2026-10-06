@@ -6,6 +6,7 @@ import { OpenShiftDto } from './dto/open-shift.dto';
 import { CloseShiftDto } from './dto/close-shift.dto';
 import { ReopenShiftDto } from './dto/reopen-shift.dto';
 import { SetExplanationDto } from './dto/set-explanation.dto';
+import { SetOperatorNoteDto } from './dto/set-operator-note.dto';
 import { ListShiftsQueryDto } from './dto/list-shifts.query';
 import { CurrentShiftQueryDto } from './dto/current-shift.query';
 import { UserRole } from '../users/user-role.enum';
@@ -38,6 +39,8 @@ import type { AuthenticatedUser } from '../auth/jwt.strategy';
  *   explanation   → NetworkOwner ONLY (§10.2). §7.7's surviving half: the
  *                   ruling removed the GATE, not the explanation — see
  *                   `SetExplanationDto`. Writing it never moves a number.
+ *   operator-note → PointOperator ONLY, and only the one who closed the shift
+ *                   (spec 2026-10-06). Informs the owner; closes nothing.
  *   reads         → both, scoped by `resolvePointFilter`.
  *
  * `POST /shifts` AND `POST /shifts/:id/close` EACH TAKE ONE FIELD,
@@ -107,5 +110,15 @@ export class ShiftsController {
     @Body() dto: SetExplanationDto,
   ) {
     return this.shifts.setExplanation(actor, id, dto);
+  }
+
+  @Put(':id/operator-note')
+  @Auth(UserRole.PointOperator)
+  setOperatorNote(
+    @CurrentUser() actor: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: SetOperatorNoteDto,
+  ) {
+    return this.shifts.setOperatorNote(actor, id, dto);
   }
 }

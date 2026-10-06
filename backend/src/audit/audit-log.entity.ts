@@ -56,6 +56,7 @@ export const AUDIT_ACTIONS = [
   'transfer.voided',
   'cash-count.recorded',
   'shift.explained',
+  'shift.operator_noted',
   'crate-issuance.created',
   'crate-issuance.voided',
   'crate-return.created',

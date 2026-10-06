@@ -27,13 +27,21 @@ export interface ShiftResponse {
   /** §6.8's «бій» (#110). `null` means «не записано» — an open shift, or one
    *  closed before the column existed. `0` means nothing broke. */
   broken_crates: number | null;
+  /** The closing operator's own account (spec 2026-10-06). Never closes the incident. */
+  operator_note: string | null;
+  /** Whether THIS caller may write `operator_note` now — `operator-note.ts`, the same rule the PUT enforces. */
+  operator_note_editable: boolean;
 }
 
 /**
  * `names` is loaded by the caller, ONCE per page — see `loadDisplayNames`.
- * This function does no I/O of its own; it only reads the map.
+ * `operatorNoteEditable` likewise: this function does no I/O of its own.
  */
-export function toShiftResponse(shift: Shift, names: ReadonlyMap<string, string>): ShiftResponse {
+export function toShiftResponse(
+  shift: Shift,
+  names: ReadonlyMap<string, string>,
+  operatorNoteEditable: boolean,
+): ShiftResponse {
   return {
     id: shift.id,
     collection_point_id: shift.collection_point_id,
@@ -49,5 +57,7 @@ export function toShiftResponse(shift: Shift, names: ReadonlyMap<string, string>
     created_at: shift.created_at.toISOString(),
     explanation: shift.explanation,
     broken_crates: shift.broken_crates,
+    operator_note: shift.operator_note,
+    operator_note_editable: operatorNoteEditable,
   };
 }
