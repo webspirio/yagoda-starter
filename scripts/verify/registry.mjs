@@ -424,6 +424,43 @@ export const CHECKS = [
       'diverges between env sets leaks unnoticed. Anchors are refused, not followed.',
   },
   {
+    id: 'plain-text',
+    tier: 'fast',
+    // No `after`, for the reason on `migrations`: syntax-only parse, so a type error neither
+    // hides nor fakes a finding here.
+    cmd: 'npm run i18n:plain-text',
+    proves:
+      'Every tracked .ts and .tsx file under frontend/src, tests and locale data aside, is ' +
+      'parsed with the TypeScript compiler API, and this command fails when one renders ' +
+      'untranslated text: a JSX text node with a letter, a letter-bearing literal in a ' +
+      'placeholder, title, alt, label, description or aria attribute, a literal passed to a ' +
+      'toast call, or any literal containing Cyrillic. Every exception in its baseline is ' +
+      'dated, reasoned and must still match.',
+    blindSpot:
+      'A Latin-only literal outside JSX text, those attributes and toast calls is invisible: ' +
+      'a column header in an object literal, or a string a helper returns. Text assembled at ' +
+      'runtime, text the backend sends, and a prop whose name is not on the fixed list go ' +
+      'unseen. It proves text reaches the screen through a key, never that the translation ' +
+      'behind the key is right.',
+  },
+  {
+    id: 'locales',
+    tier: 'fast',
+    cmd: 'npm run i18n:locales',
+    proves:
+      'Every locales JSON file under frontend/src is compared with en.json beside it, and this ' +
+      'command fails on a key present on one side only once plural suffixes are normalised, a ' +
+      'plural family missing a category Intl.PluralRules requires for that language, an ' +
+      'empty, blank or non-string value or an empty object, differing placeholder names, or a ' +
+      'literal key passed to t() or i18n.t() in frontend source that en.json lacks.',
+    blindSpot:
+      'A key built from a template or a variable is never checked, so a typo inside a ' +
+      'template key still reaches the screen raw. Unused keys are not reported. Nothing judges ' +
+      'the text itself: a Ukrainian value copied verbatim from English, a misused plural form, ' +
+      'or a placeholder in the wrong place all pass. Locale files outside frontend/src lie ' +
+      'outside its scope.',
+  },
+  {
     id: 'selfcheck',
     // FULL, NOT FAST, and the reason CHANGED — which is worth stating, because a stale
     // justification for a correct decision is how the next person gets talked into

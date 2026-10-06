@@ -265,6 +265,10 @@ test('the runner default still clears every row that inherits it, and that set i
     // `compose`: bash `time`, slowest of ten `npm run compose:check` on the laptop — the same
     // method as the four above minus /usr/bin/time, which this laptop does not have.
     compose: 403,
+    // `plain-text` and `locales`: bash `time`, slowest of ten on the laptop, same method as
+    // `compose`. Replace with cold CI readings after their first CI run.
+    'plain-text': 485,
+    locales: 484,
   }
 
   const inheriting = CHECKS.filter((c) => c.timeoutMs === undefined).map((c) => c.id)

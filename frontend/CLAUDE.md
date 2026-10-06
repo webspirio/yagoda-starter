@@ -165,6 +165,12 @@ To add a locale: create `locales/<code>.json` mirroring `en.json`, load it on de
 something writes that code via `storeLanguage`. `<html lang>` is kept in sync
 with the resolved language automatically.
 
+No user-visible literal outside the locale files: the `plain-text` verify row fails on JSX
+text, UI attributes, toast messages and any Cyrillic literal in `src/`. The only exceptions
+are the dated, reasoned entries in `scripts/verify/baselines/plain-text.json`, and an entry
+that stops matching fails the row too. The `locales` row keeps `en.json` and `uk.json` in
+step: keys, plural forms, empty values, `{{placeholders}}`, and every literal `t('…')` key.
+
 **A `t('…')` grep does NOT find every key in use.** `react-hook-form`'s
 `register(name, { validate })` returns a bare i18n key string (e.g.
 `'transfer.errors.cashFormat'`) as the error message, which `Field` hands
