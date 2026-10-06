@@ -1433,3 +1433,12 @@ Nobody voids an intake in a closed shift any more, the owner included (§9.4, п
   groups; one write can be lost. Rare (two PRs closing one issue, at the same second); a
   duplicated block it leaves behind is collapsed by the next write. A re-read-and-retry after
   the PATCH would close it.
+
+## Opening-count discrepancy is invisible to the operator (2026-10-06)
+
+`ShiftsService.open` compares the morning count with the previous close
+(`expectedForOpening`), and a mismatch is an `is_open` incident on the NEW shift.
+`PointCashPage` deliberately shows no discrepancy pill for an open (§7.3), so the
+operator neither sees it nor can explain it — the operator's note (spec
+`2026-10-06-yagoda-operator-note-design.md`) covers the closing count only. Decide
+whether the opening result should name the gap, and whether the opener may explain it.
