@@ -17,7 +17,8 @@ import { usePointCashQuery, shortfallTone, formatNullableUah } from '@/entities/
 import { useIntakesQuery } from '@/entities/intake';
 import { usePayoutsQuery } from '@/entities/payout';
 import { useTransfersQuery } from '@/entities/transfer';
-import { useCashCountsQuery } from '@/entities/cash-count';
+import { useCashCountsQuery, type CashCount } from '@/entities/cash-count';
+import { OperatorNoteForm } from '@/features/set-operator-note';
 import { useShiftOnDateQuery, useCurrentShiftQuery } from '@/entities/shift';
 import { SetTargetCashDialog } from '@/features/set-point-target';
 import {
@@ -263,6 +264,10 @@ export function PointCashPage() {
     counted: string;
     discrepancy: string | null;
   } | null>(null);
+  // Latched like `resultView`: the form keeps rendering while the dialog fades
+  // out after a save, instead of flashing back to the result.
+  const [noteTarget, setNoteTarget] = useState<CashCount | null>(null);
+  const noteRow = resultFor?.mode === 'close' ? resultRow : null;
   if (resultFor !== null && resultRow !== null) {
     const title =
       resultFor.mode === 'open'
@@ -619,6 +624,7 @@ export function PointCashPage() {
             await closeShift.mutateAsync({ id: countTarget.shiftId, counted_amount, broken_crates });
             setResultFor({ mode: 'close', shiftId: countTarget.shiftId });
           }
+          setNoteTarget(null);
           setCountTarget(null);
         }}
       />
@@ -640,6 +646,24 @@ export function PointCashPage() {
         counted={resultView?.counted ?? '0.00'}
         discrepancy={resultView?.discrepancy ?? null}
         onClose={() => setResultFor(null)}
+        action={
+          noteRow?.operator_note_editable ? (
+            <Button type="button" variant="outline" onClick={() => setNoteTarget(noteRow)}>
+              {t('operatorNote.resultAction')}
+            </Button>
+          ) : null
+        }
+        swap={
+          noteTarget ? (
+            <OperatorNoteForm
+              shiftId={noteTarget.shift_id}
+              discrepancy={noteTarget.discrepancy}
+              initialNote={noteTarget.operator_note}
+              onDone={() => setResultFor(null)}
+              onCancel={() => setNoteTarget(null)}
+            />
+          ) : null
+        }
       />
     </>
   );

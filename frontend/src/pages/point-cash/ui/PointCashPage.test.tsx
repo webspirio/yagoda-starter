@@ -23,6 +23,7 @@ const {
   currentShiftMock,
   openShiftMock,
   closeShiftMock,
+  noteMock,
 } = vi.hoisted(() => ({
   meMock: vi.fn(),
   pointScopeMock: vi.fn(),
@@ -36,6 +37,11 @@ const {
   currentShiftMock: vi.fn(),
   openShiftMock: vi.fn(),
   closeShiftMock: vi.fn(),
+  noteMock: vi.fn(),
+}));
+
+vi.mock('@/features/set-operator-note/api/useSetOperatorNote', () => ({
+  useSetOperatorNoteMutation: () => ({ mutateAsync: noteMock }),
 }));
 
 vi.mock('@/entities/user', () => ({
@@ -291,6 +297,7 @@ beforeEach(() => {
   currentShiftMock.mockReset().mockReturnValue({ data: null, isPending: false, isError: false });
   openShiftMock.mockReset().mockResolvedValue({});
   closeShiftMock.mockReset().mockResolvedValue({});
+  noteMock.mockReset().mockResolvedValue({ id: 's5' });
 });
 
 afterEach(() => vi.useRealTimers());
@@ -1165,6 +1172,64 @@ describe('PointCashPage — R4: the open/close result view', () => {
     await waitFor(() =>
       expect(screen.queryByRole('heading', { name: 'Shift closed. The day matched.' })).toBeNull(),
     );
+  });
+
+  const closeWith = (row: Partial<CashCount>) => {
+    shiftMock.mockReturnValue({ data: shift({ id: 's5', status: 'open' }), isPending: false, isError: false });
+    cashCountsMock.mockImplementation((filter: { shiftId?: string }) =>
+      'shiftId' in filter
+        ? list([cashCount({ id: 'cl', shift_id: 's5', kind: 'closing', counted_amount: '2950.00', discrepancy: '-50.00', ...row })])
+        : list([cashCount()]),
+    );
+  };
+
+  it('offers the closer «Explain the discrepancy» and swaps the result for the form in the same dialog', async () => {
+    const user = userEvent.setup();
+    closeWith({ operator_note_editable: true });
+    renderPointCash();
+
+    await user.click(screen.getByRole('button', { name: 'Close shift' }));
+    await user.click(await screen.findByRole('button', { name: 'Confirm close' }));
+    await user.click(await screen.findByRole('button', { name: 'Explain the discrepancy' }));
+
+    expect(screen.getAllByRole('dialog')).toHaveLength(1);
+    expect(
+      screen.getByRole('heading', { name: `What happened? Discrepancy ${formatUah('-50.00', 'en')}` }),
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(screen.getByRole('button', { name: 'Explain the discrepancy' })).toBeInTheDocument();
+  });
+
+  it('saving closes the whole dialog, and the next close shows a fresh result, not the old form', async () => {
+    const user = userEvent.setup();
+    closeWith({ operator_note_editable: true });
+    renderPointCash();
+
+    await user.click(screen.getByRole('button', { name: 'Close shift' }));
+    await user.click(await screen.findByRole('button', { name: 'Confirm close' }));
+    await user.click(await screen.findByRole('button', { name: 'Explain the discrepancy' }));
+    await user.type(screen.getByLabelText('Your explanation'), 'віддав решту');
+    await user.click(screen.getByRole('button', { name: 'Send to the owner' }));
+
+    expect(noteMock).toHaveBeenCalledWith({ shiftId: 's5', operatorNote: 'віддав решту' });
+    await waitFor(() => expect(screen.queryByLabelText('Your explanation')).toBeNull());
+
+    await user.click(screen.getByRole('button', { name: 'Close shift' }));
+    await user.click(await screen.findByRole('button', { name: 'Confirm close' }));
+    expect(await screen.findByRole('button', { name: 'Explain the discrepancy' })).toBeInTheDocument();
+    expect(screen.queryByLabelText('Your explanation')).toBeNull();
+  });
+
+  it('offers nothing when the server says the note is not editable (a matched close, or not the closer)', async () => {
+    const user = userEvent.setup();
+    closeWith({ operator_note_editable: false });
+    renderPointCash();
+
+    await user.click(screen.getByRole('button', { name: 'Close shift' }));
+    await user.click(await screen.findByRole('button', { name: 'Confirm close' }));
+    await screen.findByRole('button', { name: 'Done' });
+    expect(screen.queryByRole('button', { name: 'Explain the discrepancy' })).toBeNull();
   });
 });
 
