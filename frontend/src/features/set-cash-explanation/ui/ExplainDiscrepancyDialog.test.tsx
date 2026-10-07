@@ -77,7 +77,7 @@ describe('ExplainDiscrepancyDialog', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Save explanation' }));
 
     expect(
-      await screen.findByText('Only the network owner can do this'),
+      await screen.findByText('Only the network owner can do this. Ask them.'),
     ).toBeInTheDocument();
     expect(onClose).not.toHaveBeenCalled();
   });

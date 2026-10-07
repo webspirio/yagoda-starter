@@ -190,7 +190,7 @@ describe('ProfilePage', () => {
 
     pickAvatarFile(validAvatarFile());
 
-    expect(await screen.findByText('Could not upload that image')).toBeInTheDocument();
+    expect(await screen.findByText("Couldn't upload the image. Use a JPEG, PNG or WebP under 10 MB.")).toBeInTheDocument();
   });
 
   // Two picks in quick succession must not start two concurrent uploads:

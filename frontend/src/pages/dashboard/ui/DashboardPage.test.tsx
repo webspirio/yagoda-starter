@@ -394,7 +394,7 @@ describe('DashboardPage — a failed read', () => {
 
     // Rendering nothing would be byte-for-byte «nothing is stranded» — the
     // answer the owner comes to this section FOR.
-    expect(screen.getByText('Could not check for unclosed shifts')).toBeInTheDocument();
+    expect(screen.getByText('Could not check for unclosed shifts. Reload the page.')).toBeInTheDocument();
     // A note, not the section itself, and not the screen's error state either:
     // today's numbers are still true and must not be replaced by a red page.
     expect(screen.queryByRole('alert')).toBeNull();

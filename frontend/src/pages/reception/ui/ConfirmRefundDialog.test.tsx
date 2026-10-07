@@ -137,7 +137,7 @@ describe('ConfirmRefundDialog', () => {
     previewMock.mockReturnValue({ ...settled(DEPOSIT_ONLY), isError: true });
     const user = userEvent.setup();
     renderDialog();
-    expect(screen.getByText('Could not work out the deposit')).toBeInTheDocument();
+    expect(screen.getByText('Could not work out the deposit. Reload the page.')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Handed over|Accept/ })).toBeDisabled();
     await user.click(screen.getByRole('button', { name: 'Try again' }));
     expect(refetchMock).toHaveBeenCalledTimes(1);
