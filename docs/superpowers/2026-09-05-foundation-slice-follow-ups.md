@@ -767,8 +767,11 @@ doubled every point's starting cash); the un-anchored formula still standing in
   asserts the single-read discipline for `accepted_at`/`accepted_date`; `open`
   does not follow it. `close` now reads once, after the lock.
 
-- **`setExplanation` writes its row and its audit entry outside any
-  transaction**, unlike every other verb on `shifts`.
+- ~~**`setExplanation` writes its row and its audit entry outside any
+  transaction**, unlike every other verb on `shifts`.~~ **FIXED 2026-10-06 on
+  the operator-note branch (commit `856645a`).** It now runs in one
+  transaction under `loadVisible`'s `pessimistic_write`, the lock the operator's
+  note write takes too (spec `2026-10-06-yagoda-operator-note-design.md` §4.2).
 
 - **`SetExplanationDto` refuses a blank string, so there is no un-explain
   path.** An owner who explains the wrong shift cannot reopen the incident,
@@ -1442,3 +1445,47 @@ Nobody voids an intake in a closed shift any more, the owner included (§9.4, п
 operator neither sees it nor can explain it — the operator's note (spec
 `2026-10-06-yagoda-operator-note-design.md`) covers the closing count only. Decide
 whether the opening result should name the gap, and whether the opener may explain it.
+
+## An explained opening discrepancy disarms the closing note (2026-10-07)
+
+From the PR #218 review. `shifts.explanation` is one column per shift, and
+`operatorNoteRefusal` (`backend/src/shifts/operator-note.ts`) refuses on any
+non-empty one before it asks whether the closing count disagreed. So: the
+morning count disagrees with yesterday's close → the owner explains it while
+the shift is open → the evening close is short → the closer's `PUT` is 409
+`OWNER_ALREADY_EXPLAINED` («the owner has already decided», untrue for this
+discrepancy) and no button shows. The owner is blind to it too, and that half
+predates the note: the closing row is `is_open: false`
+(`cash-count.mapper.ts`) and filtered out of `only_discrepancies`
+(`cash-counts.service.ts`), explained by a text about the morning. A matched
+close in the same state gets `OWNER_ALREADY_EXPLAINED` rather than
+`NO_DISCREPANCY`.
+
+Gating the refusal alone on when the explanation was written (`explained_at`
+vs `closed_at`) would let the operator write a note the owner's list still
+never shows, so it is not the fix on its own. The options:
+
+- **(a) Per-count explanation** — `explanation` on `cash_counts`, or an
+  `explained_at` that `is_open`, the list SQL and the refusal all compare
+  against. Schema change; its own slice. Also retires reopen's
+  `has_discrepancy` read and the accepted «both counts disagreed» residual
+  (§7.7 amendment of 07.10).
+- **(b) `close` clears a pre-close explanation when the closing count
+  disagrees**, mirroring reopen's 07.10 amendment, with the same residual (the
+  owner explains both again). No schema change, but an operator action erasing
+  the owner's text touches §10.2 — needs the client's sign-off first.
+
+Whichever is chosen, a db-spec — opening discrepancy explained → close with a
+discrepancy → assert the outcome — should pin it.
+
+## The owner's explanation renders on every count row (2026-10-07)
+
+From the PR #218 review; predates the operator note. The `GET /cash-counts`
+shifts join puts `explanation` on every count of the shift, and
+`CashCountHistory`'s explanation cell prints it unconditionally, before its
+«matched» branch. So a `midday` recount (including a closing count reopen
+demoted) and a matched opening row both show the owner's text about a
+different count. The operator note one line above is already guarded to the
+`closing` row; the same guard — `row.kind !== 'midday'` and not a `leaf`
+discrepancy — fixes it. Once (a) above lands, the guard becomes «the count
+this explanation belongs to».

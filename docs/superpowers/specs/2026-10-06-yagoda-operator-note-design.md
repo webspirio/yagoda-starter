@@ -198,6 +198,11 @@ result. Only one `Dialog` ever exists, which avoids the double-`role="dialog"` b
 `RecountDrawerDialog`'s doc comment describes, for the same reason that component swaps its
 body instead of opening a second dialog.
 
+**Amended 2026-10-07 (`7a1b627`):** when the closing row is `operator_note_editable`, the form
+opens by itself, once per close, so the operator lands on it rather than on the result body.
+The form's title carries the discrepancy amount, so nothing the result body said is lost.
+«Скасувати» falls back to the result and its button; the latch resets with the next close.
+
 ### 6.3 `CashCountHistory`
 
 In the explanation column:
@@ -207,6 +212,11 @@ In the explanation column:
 - the operator sees «Пояснити», or «Змінити пояснення» once a note exists, when
   `operator_note_editable` is true, and otherwise the current «Відкрито» text;
 - the owner still sees «Пояснити» while `is_open`. The dialog receives `operatorNote`.
+
+**Amended 2026-10-07 (`0efc770`, `ec6e885`):** the cell is `nowrap`, so both texts render
+through `shared/ui/expandable-text.tsx`: wrapped, clamped to two lines, with «Показати
+повністю» only when the clamp actually hides text. Each toggle's accessible name says which
+text it expands (`label`).
 
 ### 6.4 `ExplainDiscrepancyDialog`
 
@@ -271,5 +281,12 @@ Recorded in `docs/superpowers/2026-09-05-foundation-slice-follow-ups.md`:
   morning count with the previous close (`expectedForOpening`), and a mismatch is an
   `is_open` incident on the new shift. `PointCashPage` deliberately shows no discrepancy pill
   for an open, so the operator cannot see it and therefore cannot explain it.
+- **An explained opening discrepancy disarms the closing note** (PR #218 review, 2026-10-07).
+  `explanation` is one column per shift, and §4.1 refuses on any non-empty one. An owner who
+  explains the morning count before the close therefore turns a genuine closing shortfall into
+  `OWNER_ALREADY_EXPLAINED`, and the closing row is already `is_open: false` and off
+  `only_discrepancies` (that half predates this slice). A matched close in the same state gets
+  `OWNER_ALREADY_EXPLAINED` instead of `NO_DISCREPANCY`. Needs a per-count explanation or a
+  client decision; see the follow-up entry.
 - **Dev seed.** No seeded operator note; manual testing creates one by closing with a
   mismatch.
