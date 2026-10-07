@@ -446,7 +446,6 @@ export function PointCashPage() {
         onNext={() => setDateParam(addDaysIso(date, 1))}
         canNext={!isToday}
         onToday={isToday ? undefined : () => setDateParam(null)}
-        todayLabel={t('pointCash.today')}
       />
       {/* §10.2 — this button exists in the tree ONLY for the owner, not
           merely disabled for anyone else: a disabled button teaches people to

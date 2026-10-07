@@ -11,7 +11,6 @@ export function DateStepper({
   onNext,
   onToday,
   canNext = true,
-  todayLabel,
   className,
 }: {
   label: string;
@@ -19,7 +18,6 @@ export function DateStepper({
   onNext: () => void;
   onToday?: () => void;
   canNext?: boolean;
-  todayLabel?: string;
   className?: string;
 }) {
   const { t } = useTranslation();
@@ -40,7 +38,7 @@ export function DateStepper({
       </Button>
       {onToday ? (
         <Button variant="outline" size="sm" onClick={onToday}>
-          {todayLabel ?? t('common.today')}
+          {t('common.today')}
         </Button>
       ) : null}
     </div>

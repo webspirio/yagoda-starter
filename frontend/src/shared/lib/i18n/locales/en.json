@@ -404,7 +404,6 @@
     "title": "Cash for {{date}}",
     "description": "How much berry came in, how much cash went out and what carried over to balances — from the shift's own documents.",
     "pickPoint": "Select a point",
-    "today": "Today",
     "status": {
       "open": "Shift open",
       "closed": "Shift closed",
@@ -651,7 +650,6 @@
     "title": "Point cash",
     "description": "How much cash the point should have on hand right now, and how much is missing from its target. Berry cash and crate deposits are two separate books — neither borrows from the other.",
     "pickPoint": "Select a point",
-    "today": "Today",
     "errors": {
       "pointMissing": "This point does not exist — pick another one"
     },
