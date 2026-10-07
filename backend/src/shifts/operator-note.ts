@@ -76,6 +76,18 @@ export function couldEditOperatorNote(actor: AuthenticatedUser, shift: NoteShift
   );
 }
 
+/**
+ * The two facts as select-list SQL over a `shifts` row aliased `s` — the ONE
+ * definition, selected here and by `CashCountsService.list`.
+ */
+export const OPERATOR_NOTE_FACTS_SQL = `
+  NOT EXISTS (SELECT 1 FROM shifts n
+               WHERE n.collection_point_id = s.collection_point_id
+                 AND n.business_date > s.business_date) AS is_newest,
+  EXISTS (SELECT 1 FROM cash_counts cc
+           WHERE cc.shift_id = s.id AND cc.book = 'berry' AND cc.kind = 'closing'
+             AND cc.counted_amount <> cc.expected_amount) AS has_discrepancy`;
+
 /** One query for any number of shifts (D-8). */
 export async function loadOperatorNoteFacts(
   m: EntityManager,
@@ -83,13 +95,7 @@ export async function loadOperatorNoteFacts(
 ): Promise<Map<string, OperatorNoteFacts>> {
   if (shiftIds.length === 0) return new Map();
   const rows = (await m.query(
-    `SELECT s.id,
-            NOT EXISTS (SELECT 1 FROM shifts n
-                         WHERE n.collection_point_id = s.collection_point_id
-                           AND n.business_date > s.business_date) AS is_newest,
-            EXISTS (SELECT 1 FROM cash_counts c
-                     WHERE c.shift_id = s.id AND c.book = 'berry' AND c.kind = 'closing'
-                       AND c.counted_amount <> c.expected_amount) AS has_discrepancy
+    `SELECT s.id, ${OPERATOR_NOTE_FACTS_SQL}
        FROM shifts s
       WHERE s.id = ANY($1::uuid[])`,
     [shiftIds],

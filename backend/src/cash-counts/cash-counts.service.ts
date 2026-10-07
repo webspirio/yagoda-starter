@@ -10,7 +10,7 @@ import {
 import { CashCount } from './cash-count.entity';
 import { CashBook } from './cash-book.enum';
 import { CashCountKind } from './cash-count-kind.enum';
-import { operatorNoteEditable } from '../shifts/operator-note';
+import { OPERATOR_NOTE_FACTS_SQL, operatorNoteEditable } from '../shifts/operator-note';
 import { ShiftsService } from '../shifts/shifts.service';
 import { PointCashService } from '../point-cash/point-cash.service';
 import { AuditService } from '../audit/audit.service';
@@ -248,11 +248,7 @@ export class CashCountsService {
               c.counted_amount::text  AS counted_amount,
               c.expected_amount::text AS expected_amount,
               c.counted_by_user_id, c.counted_at, s.explanation, s.operator_note,
-              s.closed_at, s.closed_by_user_id,
-              NOT EXISTS (SELECT 1 FROM shifts n
-                           WHERE n.collection_point_id = s.collection_point_id
-                             AND n.business_date > s.business_date) AS is_newest,
-              (c.book = 'berry' AND c.counted_amount <> c.expected_amount) AS has_discrepancy
+              s.closed_at, s.closed_by_user_id, ${OPERATOR_NOTE_FACTS_SQL}
        ${scope}
         ORDER BY s.business_date DESC, c.counted_at DESC, c.id ASC
         LIMIT $6 OFFSET $7`,
@@ -272,12 +268,13 @@ export class CashCountsService {
     );
 
     return {
-      // Only the standing closing row is where the operator explains the day.
+      // The facts are the shift's; only its standing berry closing row carries the note.
       data: rows.map((r) =>
         toCashCountRowResponse(
           r,
           names,
           r.kind === CashCountKind.Closing &&
+            r.book === CashBook.Berry &&
             operatorNoteEditable(actor, r, {
               is_newest: r.is_newest,
               has_discrepancy: r.has_discrepancy,
