@@ -576,7 +576,8 @@
   },
   "actions": {
     "showAll": "Показати всі ({{count}})",
-    "collapse": "Згорнути"
+    "collapse": "Згорнути",
+    "showMore": "Показати повністю"
   },
   "picker": {
     "searchPlaceholder": "Почніть вводити або оберіть нижче…",

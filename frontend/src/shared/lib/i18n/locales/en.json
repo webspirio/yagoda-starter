@@ -564,7 +564,8 @@
   },
   "actions": {
     "showAll": "Show all ({{count}})",
-    "collapse": "Collapse"
+    "collapse": "Collapse",
+    "showMore": "Show more"
   },
   "picker": {
     "searchPlaceholder": "Start typing or pick below…",

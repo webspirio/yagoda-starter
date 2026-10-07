@@ -5,6 +5,7 @@ import { SectionCard } from '@/shared/ui/section-card';
 import { DataTable, type Column } from '@/shared/ui/data-table';
 import { Button } from '@/shared/ui/button';
 import { EmptyState } from '@/shared/ui/empty-state';
+import { ExpandableText } from '@/shared/ui/expandable-text';
 import { Spinner } from '@/shared/ui/spinner';
 import { cn } from '@/shared/lib/cn';
 import { formatUah } from '@/shared/lib/money';
@@ -91,14 +92,14 @@ export function CashCountHistory({
         // it explains only the CLOSING count (spec 2026-10-06 §2.4).
         const note = row.kind === 'closing' ? row.operator_note : null;
         const operatorNote = note ? (
-          <span className="text-xs italic text-muted-foreground">
+          <ExpandableText className="text-xs italic text-muted-foreground">
             {t('pointCash.countHistory.operatorNote', { text: note })}
-          </span>
+          </ExpandableText>
         ) : null;
         if (row.explanation) {
           return (
             <div className="flex flex-col gap-1">
-              <span className="text-sm italic text-muted-foreground">{row.explanation}</span>
+              <ExpandableText className="text-sm italic text-muted-foreground">{row.explanation}</ExpandableText>
               {operatorNote}
             </div>
           );

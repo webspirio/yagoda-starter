@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { CashCount } from '@/entities/cash-count';
@@ -52,6 +52,8 @@ beforeEach(() => {
   countsMock.mockReset().mockReturnValue(page([]));
   explainMock.mockReset().mockResolvedValue({});
 });
+
+afterEach(() => vi.restoreAllMocks());
 
 describe('CashCountHistory', () => {
   it('asks the cash-count entity for this point', () => {
@@ -180,6 +182,25 @@ describe('CashCountHistory', () => {
     render(<CashCountHistory pointId="p1" isOwner />);
     expect(screen.getByText('утримати з зарплати')).toBeInTheDocument();
     expect(screen.getByText('Operator: “віддав решту”')).toBeInTheDocument();
+  });
+
+  it('clamps both long texts to two lines, each expandable on its own, so the table keeps its width', async () => {
+    const user = userEvent.setup();
+    // jsdom has no layout — fake a clamp that hides text.
+    vi.spyOn(HTMLElement.prototype, 'scrollHeight', 'get').mockReturnValue(120);
+    vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(40);
+    countsMock.mockReturnValue(
+      page([openClosing({ is_open: false, explanation: 'утримати з зарплати', operator_note: 'віддав решту' })]),
+    );
+    render(<CashCountHistory pointId="p1" isOwner />);
+
+    expect(screen.getByText('утримати з зарплати')).toHaveClass('line-clamp-2');
+    expect(screen.getByText('Operator: “віддав решту”')).toHaveClass('line-clamp-2');
+
+    const [first] = screen.getAllByRole('button', { name: 'Show more' });
+    await user.click(first);
+    expect(screen.getByText('утримати з зарплати')).not.toHaveClass('line-clamp-2');
+    expect(screen.getByText('Operator: “віддав решту”')).toHaveClass('line-clamp-2');
   });
 
   it('an opening-count incident never shows the closer’s note, in the cell or the owner’s dialog', async () => {
