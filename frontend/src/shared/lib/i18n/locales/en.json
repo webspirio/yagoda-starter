@@ -565,7 +565,9 @@
   "actions": {
     "showAll": "Show all ({{count}})",
     "collapse": "Collapse",
-    "showMore": "Show more"
+    "showMore": "Show more",
+    "showMoreOf": "Show more: {{what}}",
+    "collapseOf": "Collapse: {{what}}"
   },
   "picker": {
     "searchPlaceholder": "Start typing or pick below…",
@@ -719,7 +721,9 @@
       "open": "Unexplained",
       "noExplanationNeeded": "needs no explanation",
       "explain": "Explain",
-      "operatorNote": "Operator: “{{text}}”"
+      "operatorNote": "Operator: “{{text}}”",
+      "explanationLabel": "the owner's explanation",
+      "operatorNoteLabel": "the operator's note"
     },
     "panel": {
       "title": "Shift and recount",

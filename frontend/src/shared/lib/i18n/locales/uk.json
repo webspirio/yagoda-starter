@@ -577,7 +577,9 @@
   "actions": {
     "showAll": "Показати всі ({{count}})",
     "collapse": "Згорнути",
-    "showMore": "Показати повністю"
+    "showMore": "Показати повністю",
+    "showMoreOf": "Показати повністю: {{what}}",
+    "collapseOf": "Згорнути: {{what}}"
   },
   "picker": {
     "searchPlaceholder": "Почніть вводити або оберіть нижче…",
@@ -733,7 +735,9 @@
       "open": "Не пояснено",
       "noExplanationNeeded": "не потребує пояснення",
       "explain": "Пояснити",
-      "operatorNote": "Приймальник: «{{text}}»"
+      "operatorNote": "Приймальник: «{{text}}»",
+      "explanationLabel": "пояснення керівника",
+      "operatorNoteLabel": "пояснення приймальника"
     },
     "panel": {
       "title": "Зміна і перерахунок каси",

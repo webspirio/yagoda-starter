@@ -32,3 +32,14 @@ it('shows no toggle when the whole text already fits', () => {
   expect(screen.getByText('коротко')).toBeInTheDocument();
   expect(screen.queryByRole('button')).toBeNull();
 });
+
+it('names what it expands, so two toggles in one cell are told apart', async () => {
+  const user = userEvent.setup();
+  overflow(120, 40);
+  render(<ExpandableText label="the owner's explanation">довге пояснення</ExpandableText>);
+
+  const toggle = screen.getByRole('button', { name: "Show more: the owner's explanation" });
+  expect(toggle).toHaveAttribute('aria-controls', screen.getByText('довге пояснення').id);
+  await user.click(toggle);
+  expect(screen.getByRole('button', { name: "Collapse: the owner's explanation" })).toBeInTheDocument();
+});

@@ -92,14 +92,22 @@ export function CashCountHistory({
         // it explains only the CLOSING count (spec 2026-10-06 §2.4).
         const note = row.kind === 'closing' ? row.operator_note : null;
         const operatorNote = note ? (
-          <ExpandableText className="text-xs italic text-muted-foreground">
+          <ExpandableText
+            className="text-xs italic text-muted-foreground"
+            label={t('pointCash.countHistory.operatorNoteLabel')}
+          >
             {t('pointCash.countHistory.operatorNote', { text: note })}
           </ExpandableText>
         ) : null;
         if (row.explanation) {
           return (
             <div className="flex flex-col gap-1">
-              <ExpandableText className="text-sm italic text-muted-foreground">{row.explanation}</ExpandableText>
+              <ExpandableText
+                className="text-sm italic text-muted-foreground"
+                label={t('pointCash.countHistory.explanationLabel')}
+              >
+                {row.explanation}
+              </ExpandableText>
               {operatorNote}
             </div>
           );

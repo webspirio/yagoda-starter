@@ -197,10 +197,10 @@ describe('CashCountHistory', () => {
     expect(screen.getByText('утримати з зарплати')).toHaveClass('line-clamp-2');
     expect(screen.getByText('Operator: “віддав решту”')).toHaveClass('line-clamp-2');
 
-    const [first] = screen.getAllByRole('button', { name: 'Show more' });
-    await user.click(first);
+    await user.click(screen.getByRole('button', { name: "Show more: the owner's explanation" }));
     expect(screen.getByText('утримати з зарплати')).not.toHaveClass('line-clamp-2');
     expect(screen.getByText('Operator: “віддав решту”')).toHaveClass('line-clamp-2');
+    expect(screen.getByRole('button', { name: "Show more: the operator's note" })).toBeInTheDocument();
   });
 
   it('an opening-count incident never shows the closer’s note, in the cell or the owner’s dialog', async () => {
