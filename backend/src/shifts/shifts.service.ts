@@ -313,6 +313,8 @@ export class ShiftsService {
         operator_note: shift.operator_note,
         explanation: shift.explanation,
       };
+      // Read before the demotion below — afterwards there is no closing count to ask about.
+      const { has_discrepancy } = (await loadOperatorNoteFacts(m, [shift.id])).get(shift.id) ?? NO_FACTS;
 
       // §6.3 — THE CLOSING COUNT BECOMES A MIDDAY COUNT. Reopening needs a free
       // `closing` slot (UQ_cash_counts_shift_book_kind), and the 11:00 count
@@ -338,10 +340,11 @@ export class ShiftsService {
       // Back to «не записано»: CHK_shifts_broken_crates_closed forbids a count
       // on an open shift, and the re-close will ask the operator again.
       shift.broken_crates = null;
-      // Both texts explained the count reopen just demoted: the re-close is a
-      // fresh incident, back on the owner's list and open to the re-closer.
+      // The note explained the count reopen just demoted. So did the owner's
+      // explanation if that count disagreed — the re-close is then a fresh
+      // incident. Otherwise it answered the opening count, which reopen keeps.
       shift.operator_note = null;
-      shift.explanation = null;
+      if (has_discrepancy) shift.explanation = null;
       const saved = await m.save(Shift, shift);
 
       await this.audit.record(
@@ -356,7 +359,7 @@ export class ShiftsService {
             status: ShiftStatus.Open,
             broken_crates: null,
             operator_note: null,
-            explanation: null,
+            explanation: shift.explanation,
           },
           note: dto.reason,
         },

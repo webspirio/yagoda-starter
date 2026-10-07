@@ -448,16 +448,18 @@ describe('ShiftsService', () => {
       );
     });
 
-    it("clears the owner's explanation too — it explained the count reopen demotes", async () => {
+    const explainedClose = () =>
+      shift({
+        closed_at: new Date(),
+        closed_by_user_id: 'u-op',
+        status: ShiftStatus.Closed,
+        explanation: 'утримати з зарплати',
+      });
+
+    it("clears the owner's explanation when the closing count it answered disagreed", async () => {
+      manager.query.mockResolvedValue([{ id: SHIFT_ID, is_newest: true, has_discrepancy: true }]);
       repo.findOne
-        .mockResolvedValueOnce(
-          shift({
-            closed_at: new Date(),
-            closed_by_user_id: 'u-op',
-            status: ShiftStatus.Closed,
-            explanation: 'утримати з зарплати',
-          }),
-        )
+        .mockResolvedValueOnce(explainedClose())
         .mockResolvedValueOnce(null)
         .mockResolvedValueOnce(shift({ id: SHIFT_ID }));
 
@@ -472,6 +474,18 @@ describe('ShiftsService', () => {
         }),
         expect.anything(),
       );
+    });
+
+    it('keeps an explanation the closing count never needed — it answered the opening count', async () => {
+      manager.query.mockResolvedValue([{ id: SHIFT_ID, is_newest: true, has_discrepancy: false }]);
+      repo.findOne
+        .mockResolvedValueOnce(explainedClose())
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(shift({ id: SHIFT_ID }));
+
+      const reopened = await service.reopen(owner, SHIFT_ID, { reason: 'анулювати квитанцію' });
+
+      expect(reopened.explanation).toBe('утримати з зарплати');
     });
   });
 

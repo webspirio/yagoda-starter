@@ -78,7 +78,8 @@ export function couldEditOperatorNote(actor: AuthenticatedUser, shift: NoteShift
 
 /**
  * The two facts as select-list SQL over a `shifts` row aliased `s` — the ONE
- * definition, selected here and by `CashCountsService.list`.
+ * definition, selected here, by `CashCountsService.list` and by reopen. Its
+ * subqueries alias `n` and `cc`; a host query must not use either name.
  */
 export const OPERATOR_NOTE_FACTS_SQL = `
   NOT EXISTS (SELECT 1 FROM shifts n

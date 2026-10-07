@@ -134,7 +134,8 @@ export class Shift {
   /** The owner's note on a shift whose drawer did not balance — written by
    *  `ShiftsService.setExplanation` (§6.5). It records what is OPEN, never what
    *  is TRUE: an explained discrepancy stays in `Σ (counted − expected)`.
-   *  Cleared by reopen, with `operator_note`: both explained the demoted count. */
+   *  Cleared by reopen when the closing count it demotes disagreed; an
+   *  explanation of the opening count alone stays — reopen keeps that count. */
   @Column({ type: 'text', nullable: true })
   explanation: string | null;
 

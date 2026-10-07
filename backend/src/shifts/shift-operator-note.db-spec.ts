@@ -159,6 +159,31 @@ describe('operator note on a closing discrepancy (Postgres)', () => {
     expect(noted.operator_note).toBe('ще 50 віддав');
   });
 
+  it('reopen keeps an explanation that answered the OPENING count — reopen never demotes that one', async () => {
+    const p = await point('E');
+    // An earlier close counted 1000 — today's opening is measured against it.
+    const [{ id: earlier }] = (await ds.query(
+      `INSERT INTO shifts (collection_point_id, opened_by_user_id, business_date, status, closed_at, closed_by_user_id)
+       VALUES ($1, $2, CURRENT_DATE - 2, 'closed', now() - interval '2 days', $2) RETURNING id`,
+      [p.id, p.closer.sub],
+    )) as { id: string }[];
+    await ds.query(
+      `INSERT INTO cash_counts (shift_id, book, kind, counted_amount, expected_amount, counted_by_user_id, counted_at)
+       VALUES ($1, 'berry', 'closing', 1000, 1000, $2, now() - interval '2 days')`,
+      [earlier, p.closer.sub],
+    );
+
+    const opened = await shifts.open(p.closer, { counted_amount: '900.00' });
+    await shifts.setExplanation(owner, opened.id, { explanation: 'недостача з учора' });
+    await shifts.close(p.closer, opened.id, { counted_amount: '900.00', broken_crates: 0 });
+
+    const reopened = await shifts.reopen(owner, opened.id, { reason: 'анулювати квитанцію' });
+
+    expect(reopened.explanation).toBe('недостача з учора');
+    const page = await counts.list(owner, { shift_id: opened.id, page: 1, limit: 100, only_discrepancies: false } as never);
+    expect(page.data.find((r) => r.kind === 'opening')!.is_open).toBe(false);
+  });
+
   it('the window closes when the next shift exists', async () => {
     const p = await point('B');
     const opened = await shifts.open(p.closer, { counted_amount: '1000.00' });
