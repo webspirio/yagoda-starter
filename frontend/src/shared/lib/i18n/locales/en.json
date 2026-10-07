@@ -20,7 +20,8 @@
     "tooManyRequests": "Too many attempts. Wait a minute and try again.",
     "accessChanged": "Your access has changed. Reload the page.",
     "server": "The server failed. Try again in a minute.",
-    "pointRequired": "No point is selected. Choose one and try again."
+    "pointRequired": "No point is selected. Choose one and try again.",
+    "documentRace": "Someone saved a document at the same moment. Press again."
   },
   "auth": {
     "signIn": "Sign in",
@@ -369,6 +370,8 @@
     },
     "errors": {
       "saveFailed": "Could not save",
+      "gradeInactive": "This grade is switched off. Turn it on in the catalog or pick another.",
+      "duplicatePoint": "The same point is selected twice. Keep it once.",
       "priceFormat": "Enter an amount like 50 or 50.00",
       "reasonTooLong": "The reason must be at most 1000 characters"
     },

@@ -8,10 +8,15 @@ const apiError = (init: { status: number; message?: string; code?: string; detai
   new ApiError(init.status, init.message ?? 'Request failed', init.details, init.code);
 
 describe('apiErrorToFields', () => {
-  it('INTAKE_CODE_TAKEN has no field left to land on, so it banners', () => {
+  it('INTAKE_CODE_TAKEN is a numbering race, so it banners the press-again sentence', () => {
     const out = apiErrorToFields(apiError({ status: 409, code: 'INTAKE_CODE_TAKEN' }), 1);
     expect(out.fieldErrors).toEqual([]);
-    expect(out.formErrorKey).toBe('reception.errors.failed');
+    expect(out.formErrorKey).toBe('errors.documentRace');
+  });
+
+  it('a network failure gets the status sentence, not failed', () => {
+    const out = apiErrorToFields(apiError({ status: 0 }), 1);
+    expect(out).toEqual({ fieldErrors: [], formErrorKey: 'errors.network' });
   });
 
   it('maps GRADE_NOT_PRICED onto the last line’s product_grade_id', () => {
@@ -146,7 +151,7 @@ describe('apiErrorToFields', () => {
   });
 
   it('falls back to the form-level banner for a code-less, detail-less ApiError', () => {
-    const out = apiErrorToFields(apiError({ status: 500 }), 1);
+    const out = apiErrorToFields(apiError({ status: 400 }), 1);
     expect(out.fieldErrors).toEqual([]);
     expect(out.formErrorKey).toBe('reception.errors.failed');
   });

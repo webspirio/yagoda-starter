@@ -1,4 +1,5 @@
 import { ApiError } from '@/shared/api';
+import { statusKey } from '@/shared/lib/api-error';
 
 export interface ApiFieldErrors {
   /** field name -> i18n message key */
@@ -30,6 +31,7 @@ const CODE_BANNER: Readonly<Record<string, string>> = {
   NO_OPEN_SHIFT: 'payout.errors.noOpenShift',
   SUPPLIER_INACTIVE: 'payout.errors.supplierInactive',
   SHIFT_CLOSED: 'payout.errors.shiftClosed',
+  PAYOUT_CODE_TAKEN: 'errors.documentRace',
 };
 
 /**
@@ -39,11 +41,8 @@ const CODE_BANNER: Readonly<Record<string, string>> = {
  * `details` — today only `amount`'s `@Matches` can fail that way, since it is
  * the only field the request still carries.
  *
- * `PAYOUT_CODE_TAKEN` IS DELIBERATELY UNMAPPED. The server can still raise it,
- * but only against a shift numbered by hand before 2026-09-18, and there is no
- * longer a `code` field to hang the message on — nor anything the operator
- * could change to get past it. It falls through to the banner below, which is
- * the honest outcome: the receipt did not go through, go and find someone.
+ * `PAYOUT_CODE_TAKEN` is generated server-side, so a collision is a race and
+ * the advice is to press again.
  *
  * Anything else, including a non-ApiError (network, etc.), is a form-level
  * failure.
@@ -68,5 +67,5 @@ export function apiErrorToFields(error: unknown): ApiFieldErrors {
     }
   }
 
-  return { fieldErrors: [], formErrorKey: FORM_LEVEL };
+  return { fieldErrors: [], formErrorKey: statusKey(error) ?? FORM_LEVEL };
 }

@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { i18n } from '@/shared/lib/i18n';
+import uk from '@/shared/lib/i18n/locales/uk.json';
 import { expectNoAxeViolations } from '../../../test-axe';
 import { PayoutDialog } from './PayoutDialog';
 
@@ -57,6 +59,25 @@ describe('PayoutDialog', () => {
       await screen.findByText('Cannot pay more than the balance — balance 10,944.00 ₴'),
     ).toBeInTheDocument();
     expect(createPayoutMock).not.toHaveBeenCalled();
+  });
+
+  it('re-translates the above-the-balance error when the language switches', async () => {
+    render(<PayoutDialog supplier={supplier} pointId="p1" debt="100.00" open onClose={vi.fn()} />);
+    try {
+      const amountField = screen.getByLabelText('Amount');
+      await userEvent.clear(amountField);
+      await userEvent.type(amountField, '150');
+      await userEvent.click(screen.getByRole('button', { name: /Pay out/ }));
+      expect(
+        await screen.findByText('Cannot pay more than the balance — balance 100.00 ₴'),
+      ).toBeInTheDocument();
+
+      await act(() => i18n.changeLanguage('uk'));
+      const ukText = uk.payout.errors.exceedsDebt.replace('{{debt}}', '100,00 ₴');
+      expect(screen.getByText(ukText)).toBeInTheDocument();
+    } finally {
+      await act(() => i18n.changeLanguage('en'));
+    }
   });
 
   it('submits a valid payout, toasts, and closes', async () => {

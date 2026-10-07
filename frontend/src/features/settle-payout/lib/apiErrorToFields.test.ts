@@ -24,9 +24,16 @@ describe('apiErrorToFields', () => {
     expect(out.formErrorKey).toBeNull();
   });
 
-  it('PAYOUT_CODE_TAKEN has no field left to land on, so it banners', () => {
+  it('PAYOUT_CODE_TAKEN is a numbering race, so it banners the press-again sentence', () => {
     const out = apiErrorToFields(apiError({ status: 409, code: 'PAYOUT_CODE_TAKEN' }));
-    expect(out).toEqual({ fieldErrors: [], formErrorKey: 'payout.errors.failed' });
+    expect(out).toEqual({ fieldErrors: [], formErrorKey: 'errors.documentRace' });
+  });
+
+  it('a network failure gets the status sentence, not failed', () => {
+    expect(apiErrorToFields(apiError({ status: 0 }))).toEqual({
+      fieldErrors: [],
+      formErrorKey: 'errors.network',
+    });
   });
 
   it('PAYOUT_AMOUNT_ZERO lands on amount', () => {
@@ -67,7 +74,7 @@ describe('apiErrorToFields', () => {
   });
 
   it('an unrecognised code and no usable detail falls back to the form-level banner', () => {
-    const out = apiErrorToFields(apiError({ status: 500 }));
+    const out = apiErrorToFields(apiError({ status: 400 }));
     expect(out.fieldErrors).toEqual([]);
     expect(out.formErrorKey).toBe('payout.errors.failed');
   });
