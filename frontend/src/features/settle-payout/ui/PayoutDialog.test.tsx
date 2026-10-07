@@ -180,7 +180,7 @@ describe('PayoutDialog', () => {
     await userEvent.click(screen.getByRole('button', { name: /Pay out/ }));
 
     expect(
-      await screen.findByText('No open shift — open one in Cash for the day'),
+      await screen.findByText('No open shift — open one in Day cash'),
     ).toBeInTheDocument();
   });
 });

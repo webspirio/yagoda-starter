@@ -511,7 +511,7 @@
       "notClosed": "Only a closed shift can be reopened",
       "dayAlreadyUsed": "A shift for this date already exists — a day cannot have two",
       "notNewest": "Only the point's most recent shift can be reopened",
-      "ownerOnly": "Only the network owner can do this. Ask them.",
+      "ownerOnly": "Only the network owner can do this. Ask the network owner.",
       "noPoint": "Your account has no collection point — ask the owner",
       "reasonRequired": "Give a reason",
       "countFormat": "Enter an amount — at most two decimals",
@@ -556,7 +556,7 @@
         "awaiting_explanation": "Needs an explanation",
         "none": "Shift not opened yet"
       },
-      "dayCash": "Cash for the day",
+      "dayCash": "Day cash",
       "reception": "Intake"
     },
     "staleShifts": {
@@ -571,7 +571,7 @@
     },
     "shortcuts": {
       "reception": "Intake",
-      "dayCash": "Cash for the day",
+      "dayCash": "Day cash",
       "balances": "Balances"
     }
   },
@@ -823,8 +823,8 @@
       "amountZero": "The amount must be above zero",
       "exceedsDebt": "Cannot pay more than the balance — balance {{debt}}",
       "exceedsDebtServer": "The amount is more than the balance owed. Lower it.",
-      "exceedsCash": "There isn't enough cash for berries at the till. Lower the amount.",
-      "noOpenShift": "No open shift — open one in Cash for the day",
+      "exceedsCash": "There isn't enough berry cash at the till for this amount. Lower it.",
+      "noOpenShift": "No open shift — open one in Day cash",
       "supplierInactive": "The supplier is deactivated. Ask an owner before paying out.",
       "shiftClosed": "The shift is already closed. Ask an owner.",
       "failed": "Couldn't record the payout. Reload the page and try again."
@@ -865,7 +865,7 @@
     "title": "Berry intake",
     "pickPoint": "Select a point",
     "toPrices": "Day prices",
-    "toDay": "Cash for the day",
+    "toDay": "Day cash",
     "shift": {
       "none": "Shift not opened yet",
       "noneOwner": "Shift not opened yet — the operator opens it",
@@ -1031,7 +1031,7 @@
       "bonusOutOfRange": "The extra price is outside this grade's limits. Correct it.",
       "netNotPositive": "Net weight comes out zero: the pallet and tare eat the whole gross. Check the weight and tare.",
       "rateNegative": "Price plus extra price cannot be negative. Correct the extra price.",
-      "noOpenShift": "No open shift — open one in Cash for the day",
+      "noOpenShift": "No open shift — open one in Day cash",
       "supplierInactive": "The supplier is deactivated. Pick another or ask an owner.",
       "shiftClosed": "The shift is already closed. Ask an owner.",
       "paidExceedsCash": "The receipt was not recorded: the berry cash drawer holds less. Lower the amount and try again.",
@@ -1286,7 +1286,7 @@
       "amountPositive": "The amount must be above zero",
       "reasonRequired": "Say why — this is what explains the debt later",
       "reasonTooLong": "At most 500 characters",
-      "supplierInactive": "This supplier is deactivated, so a debt raised now could never be paid out. Pick another."
+      "supplierInactive": "This supplier is deactivated, so the debt could never be paid out. Reactivate the supplier first."
     }
   },
   "crates": {
