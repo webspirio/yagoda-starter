@@ -15,7 +15,7 @@ import { fixtureGitEnv, gitEnv } from '../scan-root.mjs'
 
 const REPO = path.resolve(import.meta.dirname, '..', '..', '..')
 const CHECK = path.join(REPO, 'scripts', 'verify', 'checks', 'plain-text.mjs')
-const REASON = 'a reason long enough to pass the thirty-character floor'
+const REASON = 'design showcase, not a product screen'
 
 /** @param {string} file @param {string} text */
 const cand = (file, text) => ({ file, line: 1, col: 1, rule: /** @type {const} */ ('jsx-text'), text })
@@ -45,7 +45,7 @@ function run(root) {
 test('a file exception excuses every finding in that file and nothing elsewhere', () => {
   const { findings, stale } = applyExceptions(
     [cand('a.tsx', 'One'), cand('a.tsx', 'Two'), cand('b.tsx', 'Three')],
-    [{ file: 'a.tsx', date: '2026-10-06', reason: REASON }],
+    [{ file: 'a.tsx', count: 2, date: '2026-10-06', reason: REASON }],
   )
   assert.deepEqual(findings.map((f) => f.text), ['Three'])
   assert.deepEqual(stale, [])
@@ -63,7 +63,7 @@ test('an exception that matches nothing is stale, for both shapes', () => {
   const { stale } = applyExceptions(
     [cand('a.tsx', 'Kept')],
     [
-      { file: 'gone.tsx', date: '2026-10-06', reason: REASON },
+      { file: 'gone.tsx', count: 1, date: '2026-10-06', reason: REASON },
       { file: 'a.tsx', text: 'Fixed already', date: '2026-10-06', reason: REASON },
       { file: 'a.tsx', text: 'Kept', date: '2026-10-06', reason: REASON },
     ],
@@ -71,17 +71,48 @@ test('an exception that matches nothing is stale, for both shapes', () => {
   assert.deepEqual(stale.map((s) => s.text ?? s.file), ['gone.tsx', 'Fixed already'])
 })
 
-test('validateExceptions refuses a short reason, a bad date, a non-array', () => {
+test('validateExceptions: an empty reason, a bad date, a missing or stray count, a non-array', () => {
   assert.match(validateExceptions({}).problems.join('\n'), /must be a JSON array/)
   const { entries, problems } = validateExceptions([
-    { file: 'a.tsx', date: '2026-10-06', reason: 'too short' },
-    { file: 'b.tsx', date: '06.10.2026', reason: REASON },
+    { file: 'a.tsx', count: 1, date: '2026-10-06', reason: '   ' },
+    { file: 'b.tsx', count: 1, date: '06.10.2026', reason: REASON },
     { file: 'c.tsx', date: '2026-10-06', reason: REASON },
+    { file: 'd.tsx', text: 'X', count: 3, date: '2026-10-06', reason: REASON },
+    { file: 'e.tsx', count: 2, date: '2026-10-06', reason: 'short' },
   ])
-  assert.equal(problems.length, 2)
+  assert.equal(problems.length, 4, problems.join('\n'))
   assert.match(problems[0], /a\.tsx.*reason/)
   assert.match(problems[1], /b\.tsx.*date/)
-  assert.deepEqual(entries.map((e) => e.file), ['c.tsx'])
+  assert.match(problems[2], /c\.tsx.*count/)
+  assert.match(problems[3], /d\.tsx.*count/)
+  assert.deepEqual(entries.map((e) => e.file), ['e.tsx'])
+})
+
+test('A4: a file-wide exception goes RED when the file gains text, and asks to lower count when it loses some', () => {
+  const entry = { file: 'a.tsx', count: 2, date: '2026-10-06', reason: REASON }
+  assert.deepEqual(applyExceptions([cand('a.tsx', 'One'), cand('a.tsx', 'Two')], [entry]).drift, [])
+  const grew = applyExceptions([cand('a.tsx', 'One'), cand('a.tsx', 'Two'), cand('a.tsx', 'New')], [entry])
+  assert.match(grew.drift.join('\n'), /a\.tsx: 3 candidates, the exception accepts 2/)
+  assert.deepEqual(grew.findings, [])
+  const shrank = applyExceptions([cand('a.tsx', 'One')], [entry])
+  assert.match(shrank.drift.join('\n'), /lower count to 1/)
+})
+
+test('CLI A4: one more string in an excused file turns the row RED', () => {
+  const entry = { file: 'frontend/src/a.tsx', count: 1, date: '2026-10-06', reason: REASON }
+  const root = fixture({
+    'frontend/src/a.tsx': 'export const B = () => <p>Close</p>;\n',
+    'scripts/verify/baselines/plain-text.json': JSON.stringify([entry]),
+  })
+  try {
+    assert.equal(run(root).status, 0)
+    writeFileSync(path.join(root, 'frontend/src/a.tsx'), 'export const B = () => <p>Close</p>;\nexport const C = () => <p>Open</p>;\n')
+    const r = run(root)
+    assert.equal(r.status, 1)
+    assert.match(r.out, /2 candidates, the exception accepts 1/)
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
 })
 
 test('CLI: RED names file, line, rule and text', () => {

@@ -1,6 +1,7 @@
 [
   {
     "file": "frontend/src/pages/ui-kit/ui/UiKitPage.tsx",
+    "count": 103,
     "date": "2026-10-06",
     "reason": "Design-system showcase at /ui-kit with deliberate Ukrainian mock data; a visual reference for developers, not a product screen."
   },

@@ -430,12 +430,11 @@ export const CHECKS = [
     // hides nor fakes a finding here.
     cmd: 'npm run i18n:plain-text',
     proves:
-      'Every .ts and .tsx file under frontend/src, tests and locale data aside, is parsed ' +
-      'with the TypeScript compiler API, and this command fails when one renders untranslated ' +
-      'text: JSX text, or a letter-bearing literal — directly or through a ternary or `&&` — ' +
-      'as a JSX child, in a placeholder, title, alt, label, description, aria-label or ' +
-      'aria-description attribute, or passed to a toast call; or any literal containing ' +
-      'Cyrillic. Every baseline exception is dated, reasoned and must still match.',
+      'Every .ts and .tsx file under frontend/src, tests and locale data aside, is parsed, ' +
+      'and this command fails when one renders untranslated ' +
+      'text: JSX text, a letter-bearing literal as a JSX child, in a listed UI ' +
+      'attribute or passed to a toast call, or any literal containing Cyrillic. Every exception is dated and reasoned, must still match, and a file-wide one ' +
+      'fails once the file holds more or fewer candidates than it accepts.',
     blindSpot:
       'A Latin-only literal anywhere else is invisible: a column header in an object literal, ' +
       'a string a helper returns, or any other aria attribute such as aria-valuetext. Text ' +

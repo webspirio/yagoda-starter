@@ -6,7 +6,8 @@
  * What counts as "text" is lib/frontend-i18n.mjs's four rules. What is excused lives in ONE
  * reviewed file, scripts/verify/baselines/plain-text.json — never an inline comment, which
  * nobody reviews as an exception and an agent writes faster than a t() call. An entry must
- * still match something, so an exception disappears with the finding it excused.
+ * still match something, so an exception disappears with the finding it excused. A file-wide
+ * entry states how many candidates it accepts, so new text in an excused file is still RED.
  */
 import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
@@ -20,7 +21,7 @@ const BASELINE_REL = 'scripts/verify/baselines/plain-text.json'
 
 /**
  * @typedef {import('../lib/frontend-i18n.mjs').Candidate} Candidate
- * @typedef {{ file: string, text?: string, date: string, reason: string }} Exception
+ * @typedef {{ file: string, text?: string, count?: number, date: string, reason: string }} Exception
  */
 
 /**
@@ -35,10 +36,13 @@ export function validateExceptions(raw) {
   const problems = []
   for (const e of raw) {
     const label = `${BASELINE_REL}: ${e?.file ?? '<no file>'}${e?.text ? ` "${e.text}"` : ''}`
-    if (typeof e?.file !== 'string' || (e.text !== undefined && typeof e.text !== 'string')) {
+    const fileWide = e?.text === undefined
+    if (typeof e?.file !== 'string' || (!fileWide && typeof e.text !== 'string')) {
       problems.push(`${label}: "file" must be a string, "text" a string when present`)
-    } else if (typeof e.reason !== 'string' || e.reason.trim().length < 30) {
-      problems.push(`${label}: "reason" is missing or shorter than 30 characters`)
+    } else if (fileWide ? !(Number.isInteger(e.count) && e.count > 0) : e.count !== undefined) {
+      problems.push(`${label}: "count" must be a positive integer on a file-wide entry, and absent on a text entry`)
+    } else if (typeof e.reason !== 'string' || e.reason.trim() === '') {
+      problems.push(`${label}: "reason" is missing or empty`)
     } else if (typeof e.date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(e.date)) {
       problems.push(`${label}: "date" must be YYYY-MM-DD`)
     } else {
@@ -54,12 +58,25 @@ const covers = (e, c) => e.file === c.file && (e.text === undefined || normalise
 /**
  * @param {Candidate[]} candidates
  * @param {Exception[]} entries
- * @returns {{ findings: Candidate[], stale: Exception[] }}
+ * @returns {{ findings: Candidate[], stale: Exception[], drift: string[] }}
  */
 export function applyExceptions(candidates, entries) {
+  /** @type {string[]} */
+  const drift = []
+  for (const e of entries) {
+    if (e.text !== undefined) continue
+    const n = candidates.filter((c) => c.file === e.file).length
+    if (n === 0 || n === e.count) continue
+    drift.push(
+      n > /** @type {number} */ (e.count)
+        ? `${e.file}: ${n} candidates, the exception accepts ${e.count} — translate the new text, or raise count in a reviewed change`
+        : `${e.file}: ${n} candidates, the exception accepts ${e.count} — lower count to ${n}`,
+    )
+  }
   return {
     findings: candidates.filter((c) => !entries.some((e) => covers(e, c))),
     stale: entries.filter((e) => !candidates.some((c) => covers(e, c))),
+    drift,
   }
 }
 
@@ -92,13 +109,14 @@ function main() {
   }
   refuseEmptyScan('plain-text', result.files.length, 'frontend source files', ROOT)
 
-  const { files, findings, stale, problems } = result
-  if (findings.length || stale.length || problems.length) {
+  const { files, findings, stale, problems, drift } = result
+  if (findings.length || stale.length || problems.length || drift.length) {
     process.stderr.write('plain-text: RED\n')
     for (const p of problems) process.stderr.write(`  ${p}\n`)
     for (const s of stale) {
       process.stderr.write(`  stale exception — matches nothing, delete it: ${s.file}${s.text ? ` "${s.text}"` : ''}\n`)
     }
+    for (const d of drift) process.stderr.write(`  ${d}\n`)
     for (const f of findings) process.stderr.write(`  ${f.file}:${f.line}:${f.col}  ${f.rule}  "${f.text}"\n`)
     if (findings.length) {
       process.stderr.write(
