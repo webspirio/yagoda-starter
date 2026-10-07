@@ -447,6 +447,32 @@ describe('ShiftsService', () => {
         expect.anything(),
       );
     });
+
+    it("clears the owner's explanation too — it explained the count reopen demotes", async () => {
+      repo.findOne
+        .mockResolvedValueOnce(
+          shift({
+            closed_at: new Date(),
+            closed_by_user_id: 'u-op',
+            status: ShiftStatus.Closed,
+            explanation: 'утримати з зарплати',
+          }),
+        )
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(shift({ id: SHIFT_ID }));
+
+      const reopened = await service.reopen(owner, SHIFT_ID, { reason: 'помилка' });
+
+      expect(reopened.explanation).toBeNull();
+      expect(audit.record).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: 'shift.reopened',
+          before: expect.objectContaining({ explanation: 'утримати з зарплати' }),
+          after: expect.objectContaining({ explanation: null }),
+        }),
+        expect.anything(),
+      );
+    });
   });
 
   describe('setOperatorNote', () => {

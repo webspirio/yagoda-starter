@@ -311,6 +311,7 @@ export class ShiftsService {
         status: shift.status,
         broken_crates: shift.broken_crates,
         operator_note: shift.operator_note,
+        explanation: shift.explanation,
       };
 
       // §6.3 — THE CLOSING COUNT BECOMES A MIDDAY COUNT. Reopening needs a free
@@ -337,8 +338,10 @@ export class ShiftsService {
       // Back to «не записано»: CHK_shifts_broken_crates_closed forbids a count
       // on an open shift, and the re-close will ask the operator again.
       shift.broken_crates = null;
-      // The note explained the count reopen just demoted; the re-closer writes their own.
+      // Both texts explained the count reopen just demoted: the re-close is a
+      // fresh incident, back on the owner's list and open to the re-closer.
       shift.operator_note = null;
+      shift.explanation = null;
       const saved = await m.save(Shift, shift);
 
       await this.audit.record(
@@ -348,7 +351,13 @@ export class ShiftsService {
           target_type: 'shift',
           target_id: saved.id,
           before,
-          after: { closed_at: null, status: ShiftStatus.Open, broken_crates: null, operator_note: null },
+          after: {
+            closed_at: null,
+            status: ShiftStatus.Open,
+            broken_crates: null,
+            operator_note: null,
+            explanation: null,
+          },
           note: dto.reason,
         },
         m,

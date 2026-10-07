@@ -130,6 +130,35 @@ describe('operator note on a closing discrepancy (Postgres)', () => {
     expect((await closingRow(p.closer, opened.id)).operator_note_editable).toBe(false);
   });
 
+  it('reopen after the owner explained: the re-close is a fresh incident the closer may explain', async () => {
+    const p = await point('D');
+    const opened = await shifts.open(p.closer, { counted_amount: '1000.00' });
+    await shifts.close(p.closer, opened.id, { counted_amount: '900.00', broken_crates: 0 });
+    await shifts.setExplanation(owner, opened.id, { explanation: 'утримати з зарплати' });
+
+    const reopened = await shifts.reopen(owner, opened.id, { reason: 'перерахунок' });
+    expect(reopened.explanation).toBeNull();
+    const [audit] = (await ds.query(
+      `SELECT before->>'explanation' AS before FROM audit_log WHERE action = 'shift.reopened' AND target_id = $1`,
+      [opened.id],
+    )) as { before: string }[];
+    expect(audit.before).toBe('утримати з зарплати');
+
+    await shifts.close(p.closer, opened.id, { counted_amount: '850.00', broken_crates: 0 });
+
+    const row = await closingRow(p.closer, opened.id);
+    expect(row.explanation).toBeNull();
+    expect(row.is_open).toBe(true);
+    expect(row.operator_note_editable).toBe(true);
+    const ownerList = await counts.list(owner, {
+      collection_point_id: p.id, only_discrepancies: true, page: 1, limit: 100,
+    } as never);
+    expect(ownerList.data.map((r) => r.shift_id)).toContain(opened.id);
+
+    const noted = await shifts.setOperatorNote(p.closer, opened.id, { operator_note: 'ще 50 віддав' });
+    expect(noted.operator_note).toBe('ще 50 віддав');
+  });
+
   it('the window closes when the next shift exists', async () => {
     const p = await point('B');
     const opened = await shifts.open(p.closer, { counted_amount: '1000.00' });

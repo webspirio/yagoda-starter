@@ -37,8 +37,10 @@ that decision but never makes it.
    `closing` count. With no such discrepancy the write is refused (409 `NO_DISCREPANCY`). An
    opening-count discrepancy is out of scope (§9).
 5. **Reopen.** `reopen` clears `operator_note`, the same way it clears `broken_crates`, and
-   records the old text in the `before` of `shift.reopened`. The owner's `explanation`
-   is not touched by reopen, which is current behaviour and stays unchanged.
+   records the old text in the `before` of `shift.reopened`. **Amended 2026-10-07 (PR #218
+   review):** reopen clears the owner's `explanation` too. It explained the count reopen
+   demotes; kept, it made the re-close read as explained, off the owner's list and refused to
+   the re-closer as `OWNER_ALREADY_EXPLAINED`.
 6. **Where the owner sees it.** In the `CashCountHistory` explanation column, in
    `ExplainDiscrepancyDialog` above the owner's own field (never prefilled into it), and in
    `ShiftCountPanel`.
@@ -129,8 +131,8 @@ the gap would need a point-level lock on `open`.
 
 ### 4.3 Reopen
 
-`reopen` additionally sets `shift.operator_note = null`, adds `operator_note` to `before`, and
-adds `operator_note: null` to `after` of `shift.reopened`.
+`reopen` additionally sets `shift.operator_note = null` and `shift.explanation = null`, adds
+both to `before`, and adds both as `null` to `after` of `shift.reopened`.
 
 ### 4.4 Reads
 
