@@ -28,7 +28,8 @@
     "username": "Username",
     "password": "Password",
     "usernameHint": "The login your network owner gave you",
-    "invalidCredentials": "Invalid username or password"
+    "invalidCredentials": "Invalid username or password",
+    "loginFailed": "Couldn't sign in. Check your login and password and try again."
   },
   "nav": {
     "group": {
