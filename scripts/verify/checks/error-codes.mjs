@@ -109,8 +109,8 @@ function main() {
     process.exit(1)
   }
   process.stdout.write(
-    `error-codes: all ${backend.codes.size} backend error codes are named in ${frontend.files.length} frontend source files ` +
-      `or excused (${result.excused} in the baseline), and every frontend code name is one the backend produces\n`,
+    `error-codes: all ${backend.codes.size} backend UPPER_SNAKE names appear in ${frontend.files.length} frontend source files ` +
+      `or are excused (${result.excused} in the baseline), and every frontend code name is one the backend produces\n`,
   )
 }
 

@@ -191,7 +191,7 @@ function main() {
   }
   process.stdout.write(
     `locales: ${result.localeFiles.map((f) => path.basename(f)).join(', ')} agree on en.json's ${result.leafCount} keys, ` +
-      `and all ${result.keyCount} literal t() keys in ${result.files.length} frontend source files exist\n`,
+      `and all ${result.keyCount} literal keys in ${result.files.length} frontend source files exist\n`,
   )
 }
 

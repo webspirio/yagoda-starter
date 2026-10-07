@@ -174,7 +174,8 @@ export function scanSource(rel, text) {
     if (!options || !ts.isObjectLiteralExpression(options)) return
     for (const p of options.properties) {
       if (!ts.isPropertyAssignment(p)) continue
-      const name = p.name.getText(sf)
+      // `.text`, so a quoted `'validate'` is the same rule as a bare one.
+      const name = ts.isIdentifier(p.name) || ts.isStringLiteral(p.name) ? p.name.text : undefined
       const v = p.initializer
       if (name === 'validate') {
         if (ts.isObjectLiteralExpression(v)) {
@@ -184,7 +185,7 @@ export function scanSource(rel, text) {
         }
       } else if (ts.isObjectLiteralExpression(v)) {
         formRuleKeys(v)
-      } else if ((name === 'message' || name === 'required') && literal(v)) {
+      } else if (name === 'message' || name === 'required') {
         pushKeys(v)
       }
     }

@@ -73,6 +73,13 @@ test('A8: required in its object form is read like maxLength; a bare or message-
   assert.deepEqual(scanSource('x.tsx', src).keys.map((k) => k.key), ['a.r'])
 })
 
+test('A8: a ternary message yields both branches; a quoted rule name reads like a bare one', () => {
+  const src = `register('a', { 'validate': (v) => v > 0 || 'a.quoted', 'onBlur': (v) => v || 'not.a' })
+    register('b', { required: c ? 'a.yes' : 'a.no', label: c ? 'not.b' : 'not.c' })
+    register('d', { maxLength: { value: 5, 'message': c ? 'a.m1' : 'a.m2' } })`
+  assert.deepEqual(scanSource('x.tsx', src).keys.map((k) => k.key).sort(), ['a.m1', 'a.m2', 'a.no', 'a.quoted', 'a.yes'])
+})
+
 test('cyrillic: any string or template part; comments and regex literals are invisible', () => {
   const src = `
     // Сьогодні in a comment

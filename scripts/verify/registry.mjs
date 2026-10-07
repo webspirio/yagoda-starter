@@ -472,11 +472,11 @@ export const CHECKS = [
       'either way unless the name is excused individually, dated and reasoned, in its ' +
       'baseline, and on an excuse that matches nothing.',
     blindSpot:
-      'A reference is not a correct mapping: a code named only in a comparison, or mapped to ' +
-      'the wrong sentence, passes. A code assembled at runtime is invisible. Failures that ' +
-      'carry no code, such as a not-found or a validation rejection, are covered only by the ' +
-      'status fallback in the frontend, never by this row, and the wording of any message is ' +
-      'not judged.',
+      'A reference is not a correct mapping: a code named only in a comparison, mapped to the ' +
+      'wrong sentence, or named in a map the screen that receives it never consults, passes. A ' +
+      'code assembled at runtime is invisible. Failures that carry no code, such as a ' +
+      'not-found or a validation rejection, are covered only by the status fallback in the ' +
+      'frontend, never by this row, and the wording of any message is not judged.',
   },
   {
     id: 'selfcheck',
