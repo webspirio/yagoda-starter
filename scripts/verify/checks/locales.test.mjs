@@ -11,15 +11,15 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import os from 'node:os'
 import path from 'node:path'
 
-import { checkLocales } from './locales.mjs'
+import { checkLocales, pluralFamilies, supportedLanguages } from './locales.mjs'
 import { fixtureGitEnv } from '../scan-root.mjs'
 
 const REPO = path.resolve(import.meta.dirname, '..', '..', '..')
 const CHECK = path.join(REPO, 'scripts', 'verify', 'checks', 'locales.mjs')
 
-/** @param {Record<string, unknown>} byLang @param {string[]} [keys] */
-const check = (byLang, keys = []) =>
-  checkLocales(new Map(Object.entries(byLang)), keys.map((key) => ({ file: 'a.tsx', line: 1, col: 1, key })))
+/** @param {Record<string, unknown>} byLang @param {string[]} [keys] @param {string[]} [supported] */
+const check = (byLang, keys = [], supported = ['uk', 'en']) =>
+  checkLocales(new Map(Object.entries(byLang)), keys.map((key) => ({ file: 'a.tsx', line: 1, col: 1, key })), supported)
 
 test('parity: a one-sided key is reported in both directions', () => {
   const p = check({ en: { a: 'A', b: 'B' }, uk: { a: 'А', c: 'В' } })
@@ -98,8 +98,9 @@ const LOC = 'frontend/src/shared/lib/i18n/locales'
 
 test('CLI: green, then red when the code calls a key nobody defined', () => {
   const root = fixture({
-    [`${LOC}/en.json`]: '{"a":"A"}',
-    [`${LOC}/uk.json`]: '{"a":"А"}',
+    [`${LOC}/en.json`]: '{"a":"A","n_one":"x","n_other":"x"}',
+    [`${LOC}/uk.json`]: '{"a":"А","n_one":"x","n_few":"x","n_many":"x","n_other":"x"}',
+    'frontend/src/shared/lib/i18n/language-preference.ts': "export const SUPPORTED_LANGUAGES = ['uk', 'en'] as const;\n",
     'frontend/src/x.tsx': "export const X = () => t('a');\n",
   })
   try {
@@ -131,4 +132,61 @@ test('the real repository is green, over an en.json leaf count derived independe
   const r = run()
   assert.equal(r.status, 0, r.out)
   assert.match(r.out, new RegExp(`en\\.json's ${leaves} keys`))
+})
+
+test('A1: a supported language with no file is RED — a lone en.json cannot be green', () => {
+  assert.deepEqual(check({ en: { a: 'A' } }), ['uk.json is missing — SUPPORTED_LANGUAGES lists "uk"'])
+})
+
+test('A1: a locale file the app never loads is RED', () => {
+  const p = check({ en: { a: 'A' }, uk: { a: 'А' }, de: { a: 'A' } })
+  assert.ok(p.includes('de.json is not in SUPPORTED_LANGUAGES — the app never loads it'), p.join('\n'))
+})
+
+test('A3: a language Intl does not know is refused, never checked against the host grammar', () => {
+  const pl = { n_one: 'a', n_other: 'b' }
+  for (const lang of ['xx', 'ua']) {
+    const p = check({ en: pl, [lang]: pl }, [], ['en', lang])
+    assert.ok(p.some((l) => l.startsWith(`${lang}.json: Intl has no plural rules for "${lang}"`)), `${lang}: ${p.join('\n')}`)
+  }
+  // twin: a real language with the same data is judged on its own grammar
+  assert.equal(check({ en: pl, uk: pl }).length, 2)
+})
+
+test('A6: the unescaped {{- name}} form is compared like {{name}}', () => {
+  const p = check({ en: { a: 'Hi {{- name}}' }, uk: { a: 'Привіт {{- user}}' } })
+  assert.deepEqual(p, ['uk.json: "a" uses placeholders {user}, en.json uses {name}'])
+  assert.deepEqual(check({ en: { a: 'Hi {{- name}}' }, uk: { a: 'Привіт {{- name}}' } }), [])
+})
+
+test('A2: pluralFamilies sees a family in any locale, and none when there is none', () => {
+  assert.deepEqual([...pluralFamilies(new Map([['en', { n_one: 'a', n_other: 'b' }], ['uk', {}]]))], ['n'])
+  assert.equal(pluralFamilies(new Map([['en', { a: 'x' }], ['uk', { a: 'х' }]])).size, 0)
+})
+
+test('supportedLanguages reads the array the app ships, and refuses a missing one', () => {
+  const root = fixture({ 'frontend/src/shared/lib/i18n/language-preference.ts': "export const SUPPORTED_LANGUAGES = ['uk', 'en'] as const;\n" })
+  try {
+    assert.deepEqual(supportedLanguages(root), ['uk', 'en'])
+    writeFileSync(path.join(root, 'frontend/src/shared/lib/i18n/language-preference.ts'), 'export const X = 1;\n')
+    assert.throws(() => supportedLanguages(root), /SUPPORTED_LANGUAGES/)
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('CLI A2: locales with no plural family refuse a verdict', () => {
+  const root = fixture({
+    [`${LOC}/en.json`]: '{"a":"A"}',
+    [`${LOC}/uk.json`]: '{"a":"А"}',
+    'frontend/src/shared/lib/i18n/language-preference.ts': "export const SUPPORTED_LANGUAGES = ['uk', 'en'] as const;\n",
+    'frontend/src/x.tsx': "export const X = () => t('a');\n",
+  })
+  try {
+    const r = run(root)
+    assert.equal(r.status, 1)
+    assert.match(r.out, /scanned ZERO plural families/)
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
 })

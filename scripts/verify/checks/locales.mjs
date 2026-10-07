@@ -8,10 +8,14 @@
  * A miss on any of these reaches the screen as a raw key, a wrong plural form, or a blank.
  *
  * The plural categories come from Intl.PluralRules, not a list kept here, so a locale added
- * later is checked against its own grammar for free.
+ * later is checked against its own grammar for free. The language set comes from
+ * SUPPORTED_LANGUAGES, and a locale name Intl does not know is refused rather than checked
+ * against the host's default grammar.
  */
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
+
+import ts from 'typescript'
 
 import { errMessage } from '../hash.mjs'
 import { FRONTEND_SRC, flattenLocale, listUnder, scanFrontend } from '../lib/frontend-i18n.mjs'
@@ -19,7 +23,8 @@ import { refuseEmptyScan, scanRoot } from '../scan-root.mjs'
 
 const ROOT = scanRoot()
 const PLURAL = /_(zero|one|two|few|many|other)$/
-const PLACEHOLDER = /\{\{\s*([^,}\s]+)[^}]*\}\}/g
+const PLACEHOLDER = /\{\{-?\s*([^,}\s]+)[^}]*\}\}/g
+const LANGUAGE_PREFERENCE = 'frontend/src/shared/lib/i18n/language-preference.ts'
 
 /** @typedef {import('../lib/frontend-i18n.mjs').KeyUse} KeyUse */
 
@@ -28,6 +33,41 @@ const baseOf = (key) => key.replace(PLURAL, '')
 
 /** @param {Set<string>} s */
 const show = (s) => `{${[...s].sort().join(', ')}}`
+
+/** The languages the app loads — read from the app, never kept here as a second copy. @param {string} root */
+export function supportedLanguages(root) {
+  const rel = LANGUAGE_PREFERENCE
+  let text
+  try {
+    text = readFileSync(path.join(root, rel), 'utf8')
+  } catch (err) {
+    throw new Error(`cannot read ${rel}: ${errMessage(err)}`)
+  }
+  const sf = ts.createSourceFile(rel, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS)
+  /** @type {string[]} */
+  let langs = []
+  /** @param {ts.Node} n */
+  const visit = (n) => {
+    if (ts.isVariableDeclaration(n) && n.name.getText(sf) === 'SUPPORTED_LANGUAGES' && n.initializer) {
+      let init = n.initializer
+      while (ts.isAsExpression(init) || ts.isSatisfiesExpression(init)) init = init.expression
+      if (ts.isArrayLiteralExpression(init)) {
+        langs = init.elements.filter(ts.isStringLiteral).map((e) => e.text)
+      }
+    }
+    ts.forEachChild(n, visit)
+  }
+  visit(sf)
+  if (!langs.length) throw new Error(`${rel} declares no SUPPORTED_LANGUAGES string array`)
+  return langs
+}
+
+/** Base keys carrying a plural suffix in any locale. @param {Map<string, unknown>} locales */
+export function pluralFamilies(locales) {
+  return new Set(
+    [...locales.values()].flatMap((raw) => [...flattenLocale(raw).leaves.keys()].filter((k) => PLURAL.test(k)).map(baseOf)),
+  )
+}
 
 /**
  * @param {Map<string, unknown>} leaves
@@ -47,21 +87,22 @@ function placeholdersByBase(leaves) {
 /**
  * @param {Map<string, unknown>} locales lang -> parsed JSON
  * @param {KeyUse[]} keyUses
+ * @param {string[]} supported languages the app loads
  * @returns {string[]} sorted problem lines; empty means green
  */
-export function checkLocales(locales, keyUses) {
+export function checkLocales(locales, keyUses, supported) {
   const enRaw = locales.get('en')
   if (enRaw === undefined) return ['en.json is missing — it is the reference every other locale is compared with']
 
   /** @type {string[]} */
   const problems = []
+  for (const lang of supported) if (!locales.has(lang)) problems.push(`${lang}.json is missing — SUPPORTED_LANGUAGES lists "${lang}"`)
+  for (const lang of locales.keys()) if (!supported.includes(lang)) problems.push(`${lang}.json is not in SUPPORTED_LANGUAGES — the app never loads it`)
   const flat = new Map([...locales].map(([lang, raw]) => [lang, flattenLocale(raw)]))
   const en = flattenLocale(enRaw)
   const enBases = new Set([...en.leaves.keys()].map(baseOf))
   const enPlaceholders = placeholdersByBase(en.leaves)
-  const pluralFamilies = new Set(
-    [...flat.values()].flatMap(({ leaves }) => [...leaves.keys()].filter((k) => PLURAL.test(k)).map(baseOf)),
-  )
+  const families = pluralFamilies(locales)
 
   for (const [lang, { leaves, emptyObjects }] of flat) {
     const file = `${lang}.json`
@@ -71,10 +112,16 @@ export function checkLocales(locales, keyUses) {
       else if (v.trim() === '') problems.push(`${file}: "${k}" is empty`)
     }
 
-    const categories = new Intl.PluralRules(lang).resolvedOptions().pluralCategories
-    for (const family of pluralFamilies) {
-      for (const cat of categories) {
-        if (!leaves.has(`${family}_${cat}`)) problems.push(`${file}: plural family "${family}" is missing "${family}_${cat}"`)
+    const rules = new Intl.PluralRules(lang)
+    const resolved = rules.resolvedOptions().locale
+    const known = Intl.PluralRules.supportedLocalesOf([lang]).length > 0 && resolved.split('-')[0] === lang.split('-')[0]
+    if (!known) {
+      problems.push(`${file}: Intl has no plural rules for "${lang}" — it would borrow the host's (${resolved})`)
+    } else {
+      for (const family of families) {
+        for (const cat of rules.resolvedOptions().pluralCategories) {
+          if (!leaves.has(`${family}_${cat}`)) problems.push(`${file}: plural family "${family}" is missing "${family}_${cat}"`)
+        }
       }
     }
 
@@ -90,7 +137,7 @@ export function checkLocales(locales, keyUses) {
   }
 
   for (const u of keyUses) {
-    if (!en.leaves.has(u.key) && !(pluralFamilies.has(u.key) && enBases.has(u.key))) {
+    if (!en.leaves.has(u.key) && !(families.has(u.key) && enBases.has(u.key))) {
       problems.push(`${u.file}:${u.line}:${u.col}  t('${u.key}') — en.json has no such key`)
     }
   }
@@ -114,7 +161,14 @@ function scan(root = ROOT) {
   }
   const { files, keys } = scanFrontend(root)
   const leafCount = locales.has('en') ? flattenLocale(locales.get('en')).leaves.size : 0
-  return { files, localeFiles, keyCount: keys.length, leafCount, problems: localeFiles.length ? checkLocales(locales, keys) : [] }
+  return {
+    files,
+    localeFiles,
+    keyCount: keys.length,
+    leafCount,
+    pluralFamilyCount: pluralFamilies(locales).size,
+    problems: localeFiles.length ? checkLocales(locales, keys, supportedLanguages(root)) : [],
+  }
 }
 
 function main() {
@@ -128,6 +182,7 @@ function main() {
   }
   refuseEmptyScan('locales', result.localeFiles.length, 'locale files', ROOT)
   refuseEmptyScan('locales', result.files.length, 'frontend source files', ROOT)
+  refuseEmptyScan('locales', result.pluralFamilyCount, 'plural families', ROOT)
 
   if (result.problems.length) {
     process.stderr.write('locales: RED\n')

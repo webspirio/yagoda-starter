@@ -448,11 +448,11 @@ export const CHECKS = [
     tier: 'fast',
     cmd: 'npm run i18n:locales',
     proves:
-      'Every locales JSON file under frontend/src is compared with en.json beside it, and this ' +
-      'command fails on a key present on one side only once plural suffixes are normalised, a ' +
-      'plural family missing a category Intl.PluralRules requires for that language, an ' +
-      'empty, blank or non-string value or an empty object, differing placeholder names, or a ' +
-      'literal key passed to t() or i18n.t() in frontend source that en.json lacks.',
+      'Every locales JSON file under frontend/src is compared with en.json, and this command ' +
+      'fails when a language in SUPPORTED_LANGUAGES has no file or a file is not listed there, ' +
+      'Intl knows no plural rules for a locale, a key is one-sided, a plural category is ' +
+      'missing, a value is empty, blank or non-string, placeholder names differ, or a literal ' +
+      'key passed to t() or i18n.t() in frontend source is absent from en.json.',
     blindSpot:
       'A key built from a template or a variable is never checked, so a typo inside a ' +
       'template key still reaches the screen raw. Unused keys are not reported. Nothing judges ' +
