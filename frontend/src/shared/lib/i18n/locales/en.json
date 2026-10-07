@@ -15,6 +15,13 @@
     "nextDay": "Next day",
     "print": "Print"
   },
+  "errors": {
+    "network": "Can't reach the server. Check your connection and try again.",
+    "tooManyRequests": "Too many attempts. Wait a minute and try again.",
+    "accessChanged": "Your access has changed. Reload the page.",
+    "server": "The server failed. Try again in a minute.",
+    "pointRequired": "No point is selected. Choose one and try again."
+  },
   "auth": {
     "signIn": "Sign in",
     "signOut": "Sign out",
@@ -396,6 +403,11 @@
         "today": "Today",
         "yesterday": "Yesterday",
         "week": "7 days"
+      },
+      "errors": {
+        "invalidDate": "That date doesn't exist. Pick one from the calendar.",
+        "periodReversed": "The period ends before it starts. Swap the dates.",
+        "periodTooLong": "The period is too long. Choose a shorter one."
       }
     }
   },
@@ -1525,7 +1537,11 @@
       "awaitingNote": "Until the load is weighed at the base there is no shortfall yet — the day's expenses have landed nowhere.",
       "addFailed": "Line not added",
       "updateFailed": "Line not changed",
-      "removeFailed": "Line not removed"
+      "removeFailed": "Line not removed",
+      "errors": {
+        "amountPositive": "The amount must be above zero. Correct it.",
+        "labelRequired": "The expense has no name. Say what the money went on."
+      }
     },
     "final": {
       "title": "Average price after expenses",

@@ -3,6 +3,7 @@ import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createMemoryRouter, RouterProvider } from 'react-router';
 import { expectNoAxeViolations } from '../../../test-axe';
+import { ApiError } from '@/shared/api';
 import { addDaysIso, todayIso } from '@/shared/lib/date';
 import { PriceChanges } from './PriceChanges';
 import type { PriceChange } from '../model/gradePrice';
@@ -104,6 +105,17 @@ describe('PriceChanges', () => {
     renderAt();
     expect(screen.getByRole('alert')).toBeInTheDocument();
     expect(screen.queryByText(/No price has changed today/)).not.toBeInTheDocument();
+  });
+
+  it('words a refused period from its code, not from the server text', () => {
+    changesMock.mockReturnValue({
+      data: undefined,
+      isPending: false,
+      isError: true,
+      error: new ApiError(400, 'Period too long', undefined, 'CHANGES_PERIOD_TOO_LONG'),
+    });
+    renderAt();
+    expect(screen.getByRole('alert')).toHaveTextContent('The period is too long. Choose a shorter one.');
   });
 
   it('has no axe violations', async () => {

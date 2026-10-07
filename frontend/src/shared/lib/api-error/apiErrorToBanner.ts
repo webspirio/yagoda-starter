@@ -81,10 +81,41 @@ const CODE: Readonly<Record<string, string>> = {
   NET_NOT_POSITIVE: 'reweigh.errors.netNotPositive',
   TARE_TYPE_DUPLICATED: 'reweigh.errors.tareDuplicated',
   TARE_TYPE_UNKNOWN: 'reweigh.errors.tareUnknown',
+  // Cross-cutting (#52): the two 403s that carry a code — a role or a point
+  // changed while the page was open — and an owner write that named no point.
+  INSUFFICIENT_ROLE: 'errors.accessChanged',
+  WRONG_COLLECTION_POINT: 'errors.accessChanged',
+  COLLECTION_POINT_REQUIRED: 'errors.pointRequired',
+  POINT_REQUIRED: 'errors.pointRequired',
+  // Codes whose form already guards the input, reachable through a stale tab or
+  // a second click; each still gets its own sentence.
+  TRANSFER_EMPTY: 'transfer.errors.notEmpty',
+  TOP_UP_AMOUNT_NOT_POSITIVE: 'topUp.errors.amountPositive',
+  EXPENSE_AMOUNT_NOT_POSITIVE: 'costOfDay.expenses.errors.amountPositive',
+  LABEL_EMPTY: 'costOfDay.expenses.errors.labelRequired',
+  // Price-changes period filter (GET /grade-prices/changes).
+  INVALID_DATE: 'prices.changes.errors.invalidDate',
+  CHANGES_PERIOD_REVERSED: 'prices.changes.errors.periodReversed',
+  CHANGES_PERIOD_TOO_LONG: 'prices.changes.errors.periodTooLong',
   // SUPPLIER_INACTIVE IS DELIBERATELY ABSENT — it is the one code whose
   // sentence depends on which endpoint refused, so each caller passes its own
   // via `overrides` below. See that argument's doc.
 };
+
+/**
+ * The shared sentence for a failure no code explains: no connection, the rate
+ * limit, a permission that changed under an open page, or the server itself.
+ * It sits between the code map and the caller's fallback, so a known code —
+ * `OWNER_ONLY` is a 403 too — always keeps its own sentence.
+ */
+export function statusKey(error: unknown): string | undefined {
+  if (!(error instanceof ApiError)) return undefined;
+  if (error.status === 0) return 'errors.network';
+  if (error.status === 429) return 'errors.tooManyRequests';
+  if (error.status === 403) return 'errors.accessChanged';
+  if (error.status >= 500) return 'errors.server';
+  return undefined;
+}
 
 /**
  * Maps a failed mutation onto an i18n key for a form-level banner.
@@ -115,9 +146,8 @@ export function apiErrorToBanner(
   overrides?: Readonly<Record<string, string>>,
 ): string {
   const code = apiErrorCode(error);
-  if (!code) return fallback;
   if (code === 'CRATES_ON_HAND_INSUFFICIENT') return onHandKey(error);
-  return overrides?.[code] ?? CODE[code] ?? fallback;
+  return (code && (overrides?.[code] ?? CODE[code])) || statusKey(error) || fallback;
 }
 
 /** Spec 2026-09-30 — the one code whose sentence depends on a FIELD, not the endpoint: with a
