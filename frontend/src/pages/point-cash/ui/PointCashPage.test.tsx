@@ -1183,22 +1183,34 @@ describe('PointCashPage — R4: the open/close result view', () => {
     );
   };
 
-  it('offers the closer «Explain the discrepancy» and swaps the result for the form in the same dialog', async () => {
+  it('opens the form by itself in the same dialog when the closer may explain a discrepancy', async () => {
     const user = userEvent.setup();
     closeWith({ operator_note_editable: true });
     renderPointCash();
 
     await user.click(screen.getByRole('button', { name: 'Close shift' }));
     await user.click(await screen.findByRole('button', { name: 'Confirm close' }));
-    await user.click(await screen.findByRole('button', { name: 'Explain the discrepancy' }));
 
-    expect(screen.getAllByRole('dialog')).toHaveLength(1);
     expect(
-      screen.getByRole('heading', { name: `What happened? Discrepancy ${formatUah('-50.00', 'en')}` }),
+      await screen.findByRole('heading', { name: `What happened? Discrepancy ${formatUah('-50.00', 'en')}` }),
     ).toBeInTheDocument();
+    expect(screen.getAllByRole('dialog')).toHaveLength(1);
+  });
 
-    await user.click(screen.getByRole('button', { name: 'Cancel' }));
-    expect(screen.getByRole('button', { name: 'Explain the discrepancy' })).toBeInTheDocument();
+  it('Cancel falls back to the result, which still offers the form, and the form does not reopen on its own', async () => {
+    const user = userEvent.setup();
+    closeWith({ operator_note_editable: true });
+    renderPointCash();
+
+    await user.click(screen.getByRole('button', { name: 'Close shift' }));
+    await user.click(await screen.findByRole('button', { name: 'Confirm close' }));
+    await user.click(await screen.findByRole('button', { name: 'Cancel' }));
+
+    expect(await screen.findByRole('button', { name: 'Explain the discrepancy' })).toBeInTheDocument();
+    expect(screen.queryByLabelText('Your explanation')).toBeNull();
+
+    await user.click(screen.getByRole('button', { name: 'Explain the discrepancy' }));
+    expect(screen.getByLabelText('Your explanation')).toBeInTheDocument();
   });
 
   it('saving closes the whole dialog, and the next close shows a fresh result, not the old form', async () => {
@@ -1208,16 +1220,16 @@ describe('PointCashPage — R4: the open/close result view', () => {
 
     await user.click(screen.getByRole('button', { name: 'Close shift' }));
     await user.click(await screen.findByRole('button', { name: 'Confirm close' }));
-    await user.click(await screen.findByRole('button', { name: 'Explain the discrepancy' }));
-    await user.type(screen.getByLabelText('Your explanation'), 'віддав решту');
+    await user.type(await screen.findByLabelText('Your explanation'), 'віддав решту');
     await user.click(screen.getByRole('button', { name: 'Send to the owner' }));
 
     expect(noteMock).toHaveBeenCalledWith({ shiftId: 's5', operatorNote: 'віддав решту' });
     await waitFor(() => expect(screen.queryByLabelText('Your explanation')).toBeNull());
 
+    closeWith({ operator_note_editable: false });
     await user.click(screen.getByRole('button', { name: 'Close shift' }));
     await user.click(await screen.findByRole('button', { name: 'Confirm close' }));
-    expect(await screen.findByRole('button', { name: 'Explain the discrepancy' })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: 'Done' })).toBeInTheDocument();
     expect(screen.queryByLabelText('Your explanation')).toBeNull();
   });
 

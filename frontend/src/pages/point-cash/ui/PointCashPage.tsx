@@ -268,6 +268,13 @@ export function PointCashPage() {
   // out after a save, instead of flashing back to the result.
   const [noteTarget, setNoteTarget] = useState<CashCount | null>(null);
   const noteRow = resultFor?.mode === 'close' ? resultRow : null;
+  // A discrepancy the closer may explain opens the form once per close; after
+  // «Скасувати» the result's own button is the way back in.
+  const [noteOffered, setNoteOffered] = useState(false);
+  if (noteRow?.operator_note_editable && !noteOffered) {
+    setNoteOffered(true);
+    setNoteTarget(noteRow);
+  }
   if (resultFor !== null && resultRow !== null) {
     const title =
       resultFor.mode === 'open'
@@ -625,6 +632,7 @@ export function PointCashPage() {
             setResultFor({ mode: 'close', shiftId: countTarget.shiftId });
           }
           setNoteTarget(null);
+          setNoteOffered(false);
           setCountTarget(null);
         }}
       />
