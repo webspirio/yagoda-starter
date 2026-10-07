@@ -177,10 +177,10 @@ export function scanSource(rel, text) {
         } else {
           returnedKeys(v)
         }
-      } else if (name === 'message' || name === 'required') {
-        if (literal(v)) pushKeys(v)
       } else if (ts.isObjectLiteralExpression(v)) {
         formRuleKeys(v)
+      } else if ((name === 'message' || name === 'required') && literal(v)) {
+        pushKeys(v)
       }
     }
   }

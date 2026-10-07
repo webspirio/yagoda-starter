@@ -66,6 +66,13 @@ test('A8: keys returned by validate and given as rule messages are key uses', ()
   assert.deepEqual(keys, ['a.max', 'a.one', 'a.req', 'a.set', 'a.two', 'a.val'])
 })
 
+test('A8: required in its object form is read like maxLength; a bare or message-less one yields nothing', () => {
+  const src = `register('a', { required: { value: true, message: 'a.r' } })
+    register('b', { required: { value: true } })
+    register('c', { required: true })`
+  assert.deepEqual(scanSource('x.tsx', src).keys.map((k) => k.key), ['a.r'])
+})
+
 test('cyrillic: any string or template part; comments and regex literals are invisible', () => {
   const src = `
     // Сьогодні in a comment
