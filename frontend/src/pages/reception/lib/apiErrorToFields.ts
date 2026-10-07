@@ -54,7 +54,10 @@ const BANNER: Readonly<Record<string, string>> = {
   RETURNED_EXCEEDS_TARE: 'reception.returned.exceedsTare',
   RETURN_EXCEEDS_OUTSTANDING: 'crates.errors.returnExceeds',
   CRATE_CASH_INSUFFICIENT: 'crates.errors.cashInsufficient',
-  INTAKE_CODE_TAKEN: 'errors.documentRace',
+  // Not a race — `nextDocumentCode` locks the counter. Only a shift numbered
+  // by hand before 2026-09-18 can collide, and a retry recomputes the same
+  // number, so the advice is the owner, never «press again».
+  INTAKE_CODE_TAKEN: 'errors.documentNumberTaken',
 };
 
 /**
@@ -108,8 +111,6 @@ export function apiErrorToFields(error: unknown, lineCount: number): ApiFieldErr
     const paid = PAID_FIELD[error.code];
     if (paid) return { fieldErrors: [{ field: 'paid_amount', messageKey: paid }], formErrorKey: null };
 
-    // `INTAKE_CODE_TAKEN` is in BANNER: the code is generated server-side, so
-    // a collision is a race and the advice is to press again.
     const line = LINE_FIELD[error.code];
     if (line) {
       const lastLine = Math.max(lineCount - 1, 0);

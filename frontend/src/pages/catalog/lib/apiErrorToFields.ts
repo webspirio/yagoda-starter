@@ -38,7 +38,7 @@ const PROPERTY: Readonly<Record<string, string>> = {
  * detail that cannot be placed becomes a banner rather than vanishing silently.
  */
 export function apiErrorToFields(error: unknown, fields: readonly string[]): ApiFieldErrors {
-  if (!(error instanceof ApiError)) return { fieldErrors: [], formErrorKey: statusKey(error) ?? FORM_LEVEL };
+  if (!(error instanceof ApiError)) return { fieldErrors: [], formErrorKey: FORM_LEVEL };
 
   const key = error.code ? CODE_KEY[error.code] : undefined;
   if (key && fields.includes('name')) {

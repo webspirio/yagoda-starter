@@ -15,6 +15,11 @@
     "reason": "No frontend caller of POST /payouts/:id/settle-return: `git grep settle-return frontend/src` finds only comments, and the code is thrown only in backend/src/payouts/commands/settle-return.command.ts."
   },
   {
+    "code": "POINT_REQUIRED",
+    "date": "2026-10-07",
+    "reason": "Thrown only by GET /crate-standing (backend/src/crates/crate-standing.service.ts) when an owner names no point. Its one caller, useCrateStandingQuery (frontend/src/entities/crate/api/useCrates.ts), feeds two consumers and neither maps its error to a sentence: CratesPage renders the static common.somethingWentWrong for any failed read, and IssueCratesDialog reads only standing.data."
+  },
+  {
     "code": "REDIS_CLIENT",
     "date": "2026-10-07",
     "reason": "A Nest DI token (backend/src/redis/redis.module.ts), not an error code; nothing ever sends it to a client."

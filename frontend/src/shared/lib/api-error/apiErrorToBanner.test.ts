@@ -38,9 +38,10 @@ describe('apiErrorToBanner', () => {
       );
     });
 
-    it('says the shift is not open when a close arrives on a closed one', () => {
+    it('says the shift is already closed when a close arrives on a closed one', () => {
+      // A double tap or a stale tab — there is no shift to open that day.
       expect(apiErrorToBanner(apiError(409, 'SHIFT_ALREADY_CLOSED'), FALLBACK)).toBe(
-        'day.errors.notOpen',
+        'day.errors.alreadyClosed',
       );
     });
 
@@ -299,5 +300,11 @@ describe('apiErrorToBanner precedence', () => {
   it('the two coded 403s map to the access sentence by name', () => {
     expect(apiErrorToBanner(new ApiError(403, 'x', undefined, 'INSUFFICIENT_ROLE'), 'f')).toBe('errors.accessChanged');
     expect(apiErrorToBanner(new ApiError(403, 'x', undefined, 'WRONG_COLLECTION_POINT'), 'f')).toBe('errors.accessChanged');
+  });
+  // POINT_REQUIRED comes only from GET /crate-standing, whose error no screen
+  // maps — so it has no entry, and only COLLECTION_POINT_REQUIRED keeps the sentence.
+  it('maps COLLECTION_POINT_REQUIRED, and leaves the unrendered POINT_REQUIRED unmapped', () => {
+    expect(apiErrorToBanner(new ApiError(400, 'x', undefined, 'COLLECTION_POINT_REQUIRED'), 'f')).toBe('errors.pointRequired');
+    expect(apiErrorToBanner(new ApiError(400, 'x', undefined, 'POINT_REQUIRED'), 'f')).toBe('f');
   });
 });

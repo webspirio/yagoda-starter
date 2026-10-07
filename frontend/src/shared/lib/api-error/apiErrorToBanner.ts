@@ -22,7 +22,7 @@ const CODE: Readonly<Record<string, string>> = {
   ALREADY_VOIDED: 'void.errors.alreadyVoided',
   // features/count-shift
   SHIFT_ALREADY_OPEN: 'day.errors.alreadyOpen',
-  SHIFT_ALREADY_CLOSED: 'day.errors.notOpen',
+  SHIFT_ALREADY_CLOSED: 'day.errors.alreadyClosed',
   SHIFT_NOT_CLOSED: 'day.errors.notClosed',
   SHIFT_DAY_ALREADY_USED: 'day.errors.dayAlreadyUsed',
   SHIFT_NOT_NEWEST: 'day.errors.notNewest',
@@ -83,10 +83,11 @@ const CODE: Readonly<Record<string, string>> = {
   TARE_TYPE_UNKNOWN: 'reweigh.errors.tareUnknown',
   // Cross-cutting (#52): the two 403s that carry a code — a role or a point
   // changed while the page was open — and an owner write that named no point.
+  // `POINT_REQUIRED` is absent: only GET /crate-standing throws it, and no
+  // screen maps that read's error (see the error-codes baseline).
   INSUFFICIENT_ROLE: 'errors.accessChanged',
   WRONG_COLLECTION_POINT: 'errors.accessChanged',
   COLLECTION_POINT_REQUIRED: 'errors.pointRequired',
-  POINT_REQUIRED: 'errors.pointRequired',
   // Codes whose form already guards the input, reachable through a stale tab or
   // a second click; each still gets its own sentence.
   TRANSFER_EMPTY: 'transfer.errors.notEmpty',

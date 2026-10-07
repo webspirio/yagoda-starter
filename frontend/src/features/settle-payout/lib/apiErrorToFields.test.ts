@@ -24,9 +24,9 @@ describe('apiErrorToFields', () => {
     expect(out.formErrorKey).toBeNull();
   });
 
-  it('PAYOUT_CODE_TAKEN is a numbering race, so it banners the press-again sentence', () => {
+  it('PAYOUT_CODE_TAKEN is a legacy hand-numbered collision, so it banners the ask-the-owner sentence', () => {
     const out = apiErrorToFields(apiError({ status: 409, code: 'PAYOUT_CODE_TAKEN' }));
-    expect(out).toEqual({ fieldErrors: [], formErrorKey: 'errors.documentRace' });
+    expect(out).toEqual({ fieldErrors: [], formErrorKey: 'errors.documentNumberTaken' });
   });
 
   it('a network failure gets the status sentence, not failed', () => {

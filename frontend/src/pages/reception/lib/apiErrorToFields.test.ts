@@ -8,10 +8,10 @@ const apiError = (init: { status: number; message?: string; code?: string; detai
   new ApiError(init.status, init.message ?? 'Request failed', init.details, init.code);
 
 describe('apiErrorToFields', () => {
-  it('INTAKE_CODE_TAKEN is a numbering race, so it banners the press-again sentence', () => {
+  it('INTAKE_CODE_TAKEN is a legacy hand-numbered collision, so it banners the ask-the-owner sentence', () => {
     const out = apiErrorToFields(apiError({ status: 409, code: 'INTAKE_CODE_TAKEN' }), 1);
     expect(out.fieldErrors).toEqual([]);
-    expect(out.formErrorKey).toBe('errors.documentRace');
+    expect(out.formErrorKey).toBe('errors.documentNumberTaken');
   });
 
   it('a network failure gets the status sentence, not failed', () => {

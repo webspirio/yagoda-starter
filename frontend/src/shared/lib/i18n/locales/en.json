@@ -21,7 +21,7 @@
     "accessChanged": "Your access has changed. Reload the page.",
     "server": "The server failed. Try again in a minute.",
     "pointRequired": "No point is selected. Choose one and try again.",
-    "documentRace": "Someone saved a document at the same moment. Press again."
+    "documentNumberTaken": "The document number clashes with an old hand-entered one. Ask the network owner."
   },
   "auth": {
     "signIn": "Sign in",
@@ -175,7 +175,7 @@
       "pointRequired": "Choose a collection point",
       "lastOwner": "This is the last active owner. Make someone else an owner first.",
       "selfLockout": "You can't deactivate or demote yourself. Ask another owner.",
-      "ownerHasNoPoint": "An owner doesn't belong to a point. Clear the point field.",
+      "ownerHasNoPoint": "An owner doesn't belong to a point. Reload the page and try again.",
       "pointUnusable": "That point is deactivated. Choose another."
     }
   },
@@ -507,7 +507,7 @@
     "errors": {
       "failed": "Couldn't change the shift. Reload the page and try again.",
       "alreadyOpen": "A shift is already open at this point. Reload the page.",
-      "notOpen": "The shift isn't open. Open it in «Day cash».",
+      "alreadyClosed": "The shift is already closed. Reload the page.",
       "notClosed": "Only a closed shift can be reopened",
       "dayAlreadyUsed": "A shift for this date already exists — a day cannot have two",
       "notNewest": "Only the point's most recent shift can be reopened",
@@ -960,7 +960,7 @@
       "pending": "Accept",
       "back": "Back",
       "loading": "Working out the deposit…",
-      "failed": "Could not work out the deposit. Reload the page.",
+      "failed": "Could not work out the deposit. Press “Try again”.",
       "retry": "Try again"
     },
     "totals": {
@@ -1021,13 +1021,13 @@
       "linesCleared": "Lines cleared — they belonged to the previous supplier"
     },
     "errors": {
-      "failed": "Couldn't record the receipt. Reload the page and try again.",
+      "failed": "Couldn't record the receipt. Try again, and if it happens again, tell the network owner.",
       "lineRefused": "The server refused one of the lines — check the rows in the table",
       "decimalFormat": "Enter a weight like 126.40",
       "gradeNotPriced": "This grade has no price for today — set it in Day prices",
       "tareRequired": "Add the tare — without it the whole gross weight would count as net",
       "tareTypeDuplicated": "The same tare type twice — merge the rows",
-      "tareTypeUnknown": "That tare type doesn't exist. Reload the page and pick from the list.",
+      "tareTypeUnknown": "That tare type doesn't exist. Pick another tare type.",
       "bonusOutOfRange": "The extra price is outside this grade's limits. Correct it.",
       "netNotPositive": "Net weight comes out zero: the pallet and tare eat the whole gross. Check the weight and tare.",
       "rateNegative": "Price plus extra price cannot be negative. Correct the extra price.",
@@ -1173,7 +1173,7 @@
       "pointOperatorOnly": "Only the collection point may accept or dispute a transfer",
       "notDisputed": "Only a disputed transfer can be resolved",
       "alreadyResolved": "This dispute is already resolved. Reload the page.",
-      "pointInactive": "That collection point is deactivated. Choose another.",
+      "pointInactive": "That collection point is deactivated. A transfer can't be sent to it.",
       "correctionPointMismatch": "A correction must name a transfer at the same point"
     },
     "send": {
@@ -1483,21 +1483,21 @@
       "reasonPlaceholder": "e.g. entered the same truck twice",
       "empty": "No reweighing has been recorded for this day yet.",
       "errors": {
-        "failed": "The line wasn't voided. Reload the page and try again."
+        "failed": "The line wasn't voided. Try again."
       }
     },
     "post": "Post reweighing · {{kg}}",
     "postNote": "Positions are written one at a time: if the server refuses the third, the first two are already recorded, and the rest stay on screen.",
     "noShift": "The shift for {{date}} at {{point}} was never opened — there is nothing to reweigh.",
     "posted": "Reweighing posted · {{kg}}",
-    "postFailed": "The position “{{grade}}” wasn't posted. Reload the page and try again.",
+    "postFailed": "The position “{{grade}}” wasn't posted.",
     "errors": {
-      "postFailed": "The position wasn't posted. Reload the page and try again.",
+      "postFailed": "Check the position and try again.",
       "nothingAccepted": "Nothing was accepted at this point that day — there is nothing to reweigh",
-      "gradeNotAccepted": "That grade was not accepted on this shift. Reload the page — the grade list is stale",
+      "gradeNotAccepted": "That grade was not accepted on this shift. Remove the position and enter it with another grade.",
       "netNotPositive": "The pallet and tare consume the whole gross weight, so no net weight is left. Check the weight and tare.",
       "tareDuplicated": "One tare type is listed twice on a single position — record it once with the total count",
-      "tareUnknown": "That tare type is unknown or deactivated. Reload the page and pick from the list."
+      "tareUnknown": "That tare type is unknown or deactivated. Remove the position and enter it again with another tare type."
     },
     "draftsCleared": "Positions cleared — they belonged to a different day or point"
   },
@@ -1543,9 +1543,9 @@
       "awaiting": "Awaiting re-weighing",
       "awaitingAmount": "{{amount}} not spread",
       "awaitingNote": "Until the load is weighed at the base there is no shortfall yet — the day's expenses have landed nowhere.",
-      "addFailed": "The line wasn't added. Reload the page and try again.",
-      "updateFailed": "The line wasn't changed. Reload the page and try again.",
-      "removeFailed": "The line wasn't removed. Reload the page and try again.",
+      "addFailed": "The line wasn't added.",
+      "updateFailed": "The line wasn't changed.",
+      "removeFailed": "The line wasn't removed.",
       "errors": {
         "amountPositive": "The amount must be above zero. Correct it.",
         "labelRequired": "The expense has no name. Say what the money went on."

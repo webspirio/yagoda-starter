@@ -16,10 +16,9 @@ const FORM_LEVEL = 'payout.errors.failed';
  * unlike `prices`' class-validator `details` array, where one message key
  * covers three interchangeable money fields, there is no allowlist to thread
  * through here. `PAYOUT_EXCEEDS_DEBT`'s server message names the actual
- * debt, but `Field` only ever calls `t(key)` with no interpolation options,
- * so the field shows the static `exceedsDebtServer` copy rather than the
- * server's sentence — the client has already re-derived and shown the same
- * debt itself via the `cmp` check before the request was even sent.
+ * debt, but a server sentence is never rendered, so the field shows the
+ * static `exceedsDebtServer` copy — the client has already re-derived and
+ * shown the same debt itself via the `cmp` check before the request was sent.
  */
 const CODE_FIELD: Readonly<Record<string, { field: string; messageKey: string }>> = {
   PAYOUT_EXCEEDS_DEBT: { field: 'amount', messageKey: 'payout.errors.exceedsDebtServer' },
@@ -31,7 +30,9 @@ const CODE_BANNER: Readonly<Record<string, string>> = {
   NO_OPEN_SHIFT: 'payout.errors.noOpenShift',
   SUPPLIER_INACTIVE: 'payout.errors.supplierInactive',
   SHIFT_CLOSED: 'payout.errors.shiftClosed',
-  PAYOUT_CODE_TAKEN: 'errors.documentRace',
+  // Not a race — `nextDocumentCode` locks the counter. Only a shift numbered by
+  // hand before 2026-09-18 collides, and a retry recomputes the same number.
+  PAYOUT_CODE_TAKEN: 'errors.documentNumberTaken',
 };
 
 /**
@@ -40,9 +41,6 @@ const CODE_BANNER: Readonly<Record<string, string>> = {
  * names exactly one outcome; a code-less 400 falls back to class-validator
  * `details` — today only `amount`'s `@Matches` can fail that way, since it is
  * the only field the request still carries.
- *
- * `PAYOUT_CODE_TAKEN` is generated server-side, so a collision is a race and
- * the advice is to press again.
  *
  * Anything else, including a non-ApiError (network, etc.), is a form-level
  * failure.

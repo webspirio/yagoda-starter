@@ -387,6 +387,20 @@ describe('ReweighPage', () => {
     expect(description).not.toMatch(/анульовано|was not voided/i);
   });
 
+  // A title paired with a description is one sentence of what happened; the
+  // description carries the action — even for a refusal no code explains.
+  it('a code-less refusal: the title says what happened, the description what to do', async () => {
+    addMock.mockRejectedValueOnce(new Error('boom'));
+    render(<ReweighPage />);
+    await addDraft({ gross: '100', grade: 'g1' });
+    await userEvent.click(screen.getByRole('button', { name: /post|провести/i }));
+
+    await waitFor(() => expect(toastErrorMock).toHaveBeenCalled());
+    const [title, options] = toastErrorMock.mock.calls[0];
+    expect(title).toBe('The position “Малина 1” wasn\'t posted.');
+    expect(options?.description).toBe('Check the position and try again.');
+  });
+
   it('clears the drafts when the point changes — they belonged to another day', async () => {
     render(<ReweighPage />);
     await addDraft({ gross: '100', grade: 'g1' });

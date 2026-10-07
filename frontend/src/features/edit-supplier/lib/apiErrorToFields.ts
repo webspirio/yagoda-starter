@@ -35,7 +35,7 @@ const PROPERTY: Readonly<Record<string, string>> = {
  * degrades to a form-level banner rather than a lost error.
  */
 export function apiErrorToFields(error: unknown, fields: readonly string[]): ApiFieldErrors {
-  if (!(error instanceof ApiError)) return { fieldErrors: [], formErrorKey: statusKey(error) ?? FORM_LEVEL };
+  if (!(error instanceof ApiError)) return { fieldErrors: [], formErrorKey: FORM_LEVEL };
 
   const code = error.code;
   if (code) {

@@ -34,7 +34,7 @@ const PROPERTY: Readonly<Record<string, string>> = {
  * field; a deactivation conflict is a banner (not a field).
  */
 export function apiErrorToFields(error: unknown, fields: readonly string[]): ApiFieldErrors {
-  if (!(error instanceof ApiError)) return { fieldErrors: [], formErrorKey: statusKey(error) ?? FORM_LEVEL };
+  if (!(error instanceof ApiError)) return { fieldErrors: [], formErrorKey: FORM_LEVEL };
 
   if (error.code) {
     const match = CODE_FIELD[error.code];

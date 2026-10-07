@@ -43,7 +43,7 @@ const CODE_BANNER: Readonly<Record<string, string>> = {
  * failure gets the shared status sentence, else the generic banner.
  */
 export function apiErrorToFields(error: unknown, fields: readonly string[]): ApiFieldErrors {
-  if (!(error instanceof ApiError)) return { fieldErrors: [], formErrorKey: statusKey(error) ?? FORM_LEVEL };
+  if (!(error instanceof ApiError)) return { fieldErrors: [], formErrorKey: FORM_LEVEL };
 
   if (error.code) {
     const field = CODE_FIELD[error.code];
