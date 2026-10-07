@@ -1,9 +1,10 @@
 /**
- * What the two i18n rows read from frontend/src, parsed once.
+ * What the two i18n rows read from frontend/src, enumerated once.
  *
  * `plain-text` asks "does shipped UI code render a literal?" and `locales` asks "does every
- * literal t() key exist?". Both need the same AST over the same file set, and one
- * enumeration means the two rows cannot disagree about what "the frontend" is.
+ * literal t() key exist?". Both read the same file set through one enumeration, so
+ * the two rows cannot disagree about what "the frontend" is; each row is its own process and
+ * parses it again.
  *
  * Syntax only — `ts.createSourceFile`, never a Program — so neither row is ordered behind
  * `typecheck`: a file that does not type-check still parses.
@@ -26,6 +27,17 @@ const UI_ATTRIBUTES = new Set(['placeholder', 'title', 'alt', 'label', 'descript
 
 const LETTER = /\p{L}/u
 const CYRILLIC = /[Ѐ-ӿ]/
+
+/** `&nbsp;`, `&times;`, `&#8212;`, `&#x2014;` — markup for a character, not text. */
+const CHAR_REF = /&(?:[a-z][a-z0-9]*|#\d+|#x[0-9a-f]+);/gi
+
+/** Modules whose named imports are toast callees: sonner's `toast`, and every wrapper the
+ *  app exports from its toast module. Bound by IMPORT, so `toastIdFor(…)` is never one. */
+const SONNER = 'sonner'
+const TOAST_MODULE = '@/shared/ui/toast'
+
+/** Form-library calls whose options object carries message KEYS, resolved later by `Field`. */
+const FORM_CALLS = new Set(['register', 'setError'])
 
 /**
  * @typedef {'jsx-text' | 'jsx-attr' | 'toast' | 'cyrillic'} Rule
@@ -92,11 +104,6 @@ function textLiterals(expr) {
   return ts.isTemplateExpression(expr) ? [expr] : []
 }
 
-/** `toast(…)`, `toast.x(…)`, `toastSuccess(…)` — the sonner API and its local wrappers. */
-const isToastCallee = (/** @type {ts.Expression} */ e) =>
-  (ts.isIdentifier(e) && e.text.startsWith('toast')) ||
-  (ts.isPropertyAccessExpression(e) && ts.isIdentifier(e.expression) && e.expression.text === 'toast')
-
 /** `t(…)` or `i18n.t(…)`. */
 const isTCallee = (/** @type {ts.Expression} */ e) =>
   (ts.isIdentifier(e) && e.text === 't') ||
@@ -118,6 +125,65 @@ export function scanSource(rel, text) {
   // first, and this set keeps the literal from being reported again as `cyrillic`.
   /** @type {Set<ts.Node>} */
   const seen = new Set()
+
+  /** @type {Set<string>} */
+  const toastNames = new Set()
+  for (const st of sf.statements) {
+    if (!ts.isImportDeclaration(st) || !ts.isStringLiteral(st.moduleSpecifier)) continue
+    const from = st.moduleSpecifier.text
+    const named = st.importClause?.namedBindings
+    if (!named || !ts.isNamedImports(named) || st.importClause?.isTypeOnly) continue
+    for (const el of named.elements) {
+      if (el.isTypeOnly) continue
+      const imported = (el.propertyName ?? el.name).text
+      if ((from === SONNER && imported === 'toast') || from === TOAST_MODULE) toastNames.add(el.name.text)
+    }
+  }
+  const isToastCallee = (/** @type {ts.Expression} */ e) =>
+    (ts.isIdentifier(e) && toastNames.has(e.text)) ||
+    (ts.isPropertyAccessExpression(e) && ts.isIdentifier(e.expression) && toastNames.has(e.expression.text))
+
+  /** @param {ts.Expression} e */
+  const isFormCall = (e) =>
+    (ts.isIdentifier(e) && FORM_CALLS.has(e.text)) || (ts.isPropertyAccessExpression(e) && FORM_CALLS.has(e.name.text))
+
+  /** @param {ts.Expression | undefined} expr */
+  const pushKeys = (expr) => {
+    for (const lit of textLiterals(expr)) {
+      if (!ts.isTemplateExpression(lit)) keys.push({ file: rel, ...at(lit.getStart(sf)), key: lit.text })
+    }
+  }
+  /** A validate function's returned literals; nested functions are not followed. @param {ts.Node} fn */
+  const returnedKeys = (fn) => {
+    if (!ts.isArrowFunction(fn) && !ts.isFunctionExpression(fn)) return
+    if (!ts.isBlock(fn.body)) return pushKeys(fn.body)
+    /** @param {ts.Node} n */
+    const walk = (n) => {
+      if (ts.isReturnStatement(n)) pushKeys(n.expression)
+      else if (!ts.isFunctionLike(n)) ts.forEachChild(n, walk)
+    }
+    walk(fn.body)
+  }
+  /** @param {ts.Expression | undefined} options */
+  const formRuleKeys = (options) => {
+    if (!options || !ts.isObjectLiteralExpression(options)) return
+    for (const p of options.properties) {
+      if (!ts.isPropertyAssignment(p)) continue
+      const name = p.name.getText(sf)
+      const v = p.initializer
+      if (name === 'validate') {
+        if (ts.isObjectLiteralExpression(v)) {
+          for (const q of v.properties) if (ts.isPropertyAssignment(q)) returnedKeys(q.initializer)
+        } else {
+          returnedKeys(v)
+        }
+      } else if (name === 'message' || name === 'required') {
+        if (literal(v)) pushKeys(v)
+      } else if (ts.isObjectLiteralExpression(v)) {
+        formRuleKeys(v)
+      }
+    }
+  }
 
   /** @param {number} pos */
   const at = (pos) => {
@@ -146,7 +212,7 @@ export function scanSource(rel, text) {
 
   /** @param {ts.Node} node */
   const visit = (node) => {
-    if (ts.isJsxText(node) && LETTER.test(node.text)) {
+    if (ts.isJsxText(node) && LETTER.test(node.text.replace(CHAR_REF, ' '))) {
       // JsxText starts at the whitespace before it; point at the first real character.
       flag(node, 'jsx-text', node.text, node.pos + (node.text.length - node.text.trimStart().length))
     } else if (ts.isJsxExpression(node) && (ts.isJsxElement(node.parent) || ts.isJsxFragment(node.parent))) {
@@ -167,6 +233,8 @@ export function scanSource(rel, text) {
       } else if (isTCallee(node.expression)) {
         const lit = literal(node.arguments[0])
         if (lit) keys.push({ file: rel, ...at(lit.getStart(sf)), key: lit.text })
+      } else if (isFormCall(node.expression)) {
+        formRuleKeys(node.arguments[1])
       }
     } else if (
       (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node) || ts.isTemplateHead(node) ||

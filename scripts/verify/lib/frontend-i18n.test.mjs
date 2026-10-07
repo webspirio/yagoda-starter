@@ -37,12 +37,33 @@ test('jsx-attr: only the fixed list, in every literal form', () => {
   assert.deepEqual(rules(src), ['jsx-attr:Hello', 'jsx-attr:Type', 'jsx-attr:Pic', 'jsx-attr:close it'])
 })
 
-test('toast: first argument and options.description, through every callee shape', () => {
-  const src = `
+test('toast: first argument and options.description, through every callee the file imports', () => {
+  const src = `import { toast } from 'sonner'; import { toastSuccess } from '@/shared/ui/toast'
     toast('One'); toast.error('Two'); toastSuccess('Three')
-    toast.success(t('k'), { description: 'Four', id: 'not-text' })
-    notAToast('Five')`
+    toast.success(t('k'), { description: 'Four', id: 'not-text' })`
   assert.deepEqual(rules(src), ['toast:One', 'toast:Two', 'toast:Three', 'toast:Four'])
+})
+
+test('A7: an alias of sonner toast is a toast; a toast-prefixed helper is not', () => {
+  const src = `import { toast as notify } from 'sonner'
+    notify('Saved'); toastIdFor('Receipt'); toastQueueLength('Hello there')`
+  assert.deepEqual(rules(src), ['toast:Saved'])
+})
+
+test('A5: HTML character references are not text; a word beside one still is', () => {
+  const src = `const A = () => <><span>&times;</span><td>&nbsp;</td><i>&#8212;</i><b>Close&nbsp;it</b></>`
+  assert.deepEqual(rules(src), ['jsx-text:Close&nbsp;it'])
+})
+
+test('A8: keys returned by validate and given as rule messages are key uses', () => {
+  const src = `register('cash', { required: 'a.req', maxLength: { value: 5, message: 'a.max' },
+      validate: (v) => v !== '' || 'a.val' })
+    register('x', { validate: { one: (v) => v > 0 || 'a.one', two: (v) => { if (v) return 'a.two'; return true } } })
+    setError('amount', { message: 'a.set' })
+    register('mode', { required: true })
+    other('y', { message: 'not.a.form' })`
+  const keys = scanSource('x.tsx', src).keys.map((k) => k.key).sort()
+  assert.deepEqual(keys, ['a.max', 'a.one', 'a.req', 'a.set', 'a.two', 'a.val'])
 })
 
 test('cyrillic: any string or template part; comments and regex literals are invisible', () => {
