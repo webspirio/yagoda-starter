@@ -182,8 +182,11 @@ reaches a form field this way and delete it as unused.
 
 **Error and status messages — the tone rule (#52).** At most two short sentences: what
 happened, in the user's words, then what to do. No codes, no English terms in `uk`, never a
-bare «Помилка». Good: «Цю точку деактивовано. Оберіть іншу.» Bad: «POINT_UNUSABLE»,
-«Request failed», «Не вдалося» on its own.
+bare «Помилка». Good: «Зміну вже закрито. Оновіть сторінку.» Bad: «POINT_UNUSABLE»,
+«Request failed», «Не вдалося» on its own. The action must exist on that screen — no
+«Оновіть сторінку» where unsaved work lives only in memory (reception, reweigh). A toast
+title paired with a description is one sentence saying what happened; the description
+carries the action.
 
 **A failed request reaches the screen only through `shared/lib/api-error`.** Use
 `apiErrorToBanner` for a banner or toast, or a slice's `apiErrorToFields` mapper for a form.
@@ -191,7 +194,9 @@ Both put `statusKey` (network / 429 / 403 / 5xx) ahead of the caller's fallback.
 render `error.message`, `ApiError.details` or `String(err)`: that is English text from the
 server, meant for a log. Map codes exactly, never by suffix. A new backend code is mapped
 where it surfaces or excused in `scripts/verify/baselines/error-codes.json`; the
-`error-codes` verify row fails otherwise.
+`error-codes` verify row fails otherwise. The deliberate exception is a failed GET: its error state renders a
+static `loadFailed` or `common.somethingWentWrong` key, unmapped — except where the read's
+own refusals carry codes (`PriceChanges`' period filter goes through `apiErrorToBanner`).
 
 ## Routing
 
