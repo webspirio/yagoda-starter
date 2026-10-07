@@ -1213,6 +1213,21 @@ describe('PointCashPage — R4: the open/close result view', () => {
     expect(screen.getByLabelText('Your explanation')).toBeInTheDocument();
   });
 
+  it('every close the closer may explain opens the form again — once per close, not once per visit', async () => {
+    const user = userEvent.setup();
+    closeWith({ operator_note_editable: true });
+    renderPointCash();
+
+    await user.click(screen.getByRole('button', { name: 'Close shift' }));
+    await user.click(await screen.findByRole('button', { name: 'Confirm close' }));
+    await user.click(await screen.findByRole('button', { name: 'Cancel' }));
+    await user.click(await screen.findByRole('button', { name: 'Done' }));
+
+    await user.click(screen.getByRole('button', { name: 'Close shift' }));
+    await user.click(await screen.findByRole('button', { name: 'Confirm close' }));
+    expect(await screen.findByLabelText('Your explanation')).toBeInTheDocument();
+  });
+
   it('saving closes the whole dialog, and the next close shows a fresh result, not the old form', async () => {
     const user = userEvent.setup();
     closeWith({ operator_note_editable: true });
