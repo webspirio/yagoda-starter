@@ -20,7 +20,8 @@ import { refuseEmptyScan, scanRoot } from '../scan-root.mjs'
 
 const ROOT = scanRoot()
 const BASELINE_REL = 'scripts/verify/baselines/error-codes.json'
-const NOT_SHIPPED = /(spec\.ts$|^backend\/src\/(testing|migrations|seed)\/)/
+// Exactly the two test suffixes: a shipped `openapi-spec.ts` is source, not a test.
+const NOT_SHIPPED = /(\.(db-)?spec\.ts$|^backend\/src\/(testing|migrations|seed)\/)/
 
 /** @param {string} root */
 export function backendCodes(root) {

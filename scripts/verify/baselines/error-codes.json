@@ -12,7 +12,7 @@
   {
     "code": "PAYOUT_NOT_VOIDED",
     "date": "2026-10-07",
-    "reason": "No frontend caller of POST /payouts/:id/settle-return; the only payout write under frontend/src/**/api/ is POST /payouts (features/settle-payout)."
+    "reason": "No frontend caller of POST /payouts/:id/settle-return: `git grep settle-return frontend/src` finds only comments, and the code is thrown only in backend/src/payouts/commands/settle-return.command.ts."
   },
   {
     "code": "REDIS_CLIENT",
@@ -22,7 +22,7 @@
   {
     "code": "RETURN_ALREADY_SETTLED",
     "date": "2026-10-07",
-    "reason": "No frontend caller of POST /payouts/:id/settle-return; the only payout write under frontend/src/**/api/ is POST /payouts (features/settle-payout)."
+    "reason": "No frontend caller of POST /payouts/:id/settle-return: `git grep settle-return frontend/src` finds only comments, and the code is thrown only in backend/src/payouts/commands/settle-return.command.ts."
   },
   {
     "code": "VITE_API_URL",

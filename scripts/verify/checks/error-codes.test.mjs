@@ -10,7 +10,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 
-import { checkErrorCodes } from './error-codes.mjs'
+import { backendCodes, checkErrorCodes } from './error-codes.mjs'
 import { fixtureGitEnv, gitEnv } from '../scan-root.mjs'
 
 const REPO = path.resolve(import.meta.dirname, '..', '..', '..')
@@ -57,15 +57,38 @@ test('a baseline entry excuses a name on either side, and goes stale once both s
   assert.match(checkErrorCodes(B('X_Y'), B('X_Y'), [ENTRY('X_Y')]).problems.join(), /stale exception.*X_Y/)
 })
 
-test('a baseline entry with an empty reason or a bad date is RED', () => {
-  const p = checkErrorCodes(B('A_B'), B(), [{ code: 'A_B', date: '07.10.2026', reason: ' ' }]).problems
-  assert.ok(p.some((l) => /A_B.*reason|A_B.*date/.test(l)), p.join('\n'))
+// One malformed field per entry, so each assertion fails if its own branch is deleted.
+test('a baseline entry with an empty reason is RED', () => {
+  const p = checkErrorCodes(B('A_B'), B(), [{ code: 'A_B', date: '2026-10-07', reason: ' ' }]).problems
+  assert.ok(p.some((l) => /A_B: "reason" is missing or empty/.test(l)), p.join('\n'))
 })
 
-test('CLI: every way a code is written in the backend is seen; comments and specs are not', () => {
+test('a baseline entry with a bad date is RED, even with a reason', () => {
+  const p = checkErrorCodes(B('A_B'), B(), [{ code: 'A_B', date: '07.10.2026', reason: 'a DI token' }]).problems
+  assert.ok(p.some((l) => /A_B: "date" must be YYYY-MM-DD/.test(l)), p.join('\n'))
+})
+
+test('a baseline entry whose code is not a string is RED', () => {
+  const p = checkErrorCodes(B(), B(), [{ code: 42, date: '2026-10-07', reason: 'a DI token' }]).problems
+  assert.ok(p.some((l) => /42: "code" must be a string/.test(l)), p.join('\n'))
+})
+
+test('a baseline that is not an array is RED', () => {
+  assert.deepEqual(checkErrorCodes(B(), B(), { code: 'A_B' }), {
+    problems: ['scripts/verify/baselines/error-codes.json must be a JSON array'],
+    excused: 0,
+  })
+})
+
+test('CLI: every way a code is written in the backend is seen; comments and tests are not', () => {
   const root = fixture({
     'backend/src/a.service.ts': `throw new X({ code: 'ONE_CODE' }); assertTrimmedName(n, 'name', 'TWO_CODE'); bad('m', 'THREE_CODE')\n// 'COMMENT_CODE'\n`,
+    // Shipped: only `.spec.ts` / `.db-spec.ts` are tests, not every name ending in "spec".
+    'backend/src/openapi-spec.ts': `export const c = 'OPENAPI_CODE'\n`,
     'backend/src/a.service.spec.ts': `expect(code).toBe('SPEC_ONLY')\n`,
+    'backend/src/a.db-spec.ts': `expect(code).toBe('DB_SPEC_ONLY')\n`,
+    'backend/src/testing/h.ts': `export const t = 'TESTING_ONLY'\n`,
+    'backend/src/seed/s.ts': `export const s = 'SEED_ONLY'\n`,
     'backend/src/migrations/1-x.ts': `const s = 'MIGRATION_ONLY'\n`,
     'frontend/src/m.ts': `export const M = { ONE_CODE: 'k', TWO_CODE: 'k' }\n`,
   })
@@ -73,7 +96,10 @@ test('CLI: every way a code is written in the backend is seen; comments and spec
     const r = run(root)
     assert.equal(r.status, 1)
     assert.match(r.out, /THREE_CODE/)
-    assert.doesNotMatch(r.out, /COMMENT_CODE|SPEC_ONLY|MIGRATION_ONLY/)
+    assert.match(r.out, /OPENAPI_CODE/)
+    // Named on the frontend, so silence here means the backend scan saw both spellings.
+    assert.doesNotMatch(r.out, /ONE_CODE|TWO_CODE/)
+    assert.doesNotMatch(r.out, /COMMENT_CODE|SPEC_ONLY|TESTING_ONLY|SEED_ONLY|MIGRATION_ONLY/)
   } finally {
     rmSync(root, { recursive: true, force: true })
   }
@@ -90,13 +116,15 @@ test('CLI: no backend codes refuses a verdict', () => {
   }
 })
 
-test('the real repository is green, over a backend code count derived independently here', () => {
-  // Independent of the AST: every `code: 'X'` literal outside tests, by git grep. The AST
-  // scan also sees helper arguments, so it can only be GREATER — equality would be wrong.
-  const out = execFileSync('git', ['grep', '-h', '-o', '-E', "code: '[A-Z][A-Z0-9_]+'", '--', 'backend/src', ':!*spec.ts', ':!backend/src/testing', ':!backend/src/migrations', ':!backend/src/seed'], { cwd: REPO, env: gitEnv(), encoding: 'utf8' })
-  const lowerBound = new Set(out.split('\n').filter(Boolean)).size
+test('the real repository is green, over backend codes found independently here', () => {
+  // Independent of the AST: every `code: 'X'` on a non-comment line outside tests, by git
+  // grep. The AST scan also sees helper arguments, so it is a superset — membership, never
+  // equality.
+  const out = execFileSync('git', ['grep', '-h', '-E', "code: '[A-Z][A-Z0-9_]+'", '--', 'backend/src', ':!*.spec.ts', ':!*.db-spec.ts', ':!backend/src/testing', ':!backend/src/migrations', ':!backend/src/seed'], { cwd: REPO, env: gitEnv(), encoding: 'utf8' })
+  const grepped = [...new Set(out.split('\n').filter((l) => !/^\s*(\/\/|\/?\*)/.test(l)).flatMap((l) => [...l.matchAll(/code: '([A-Z][A-Z0-9_]+)'/g)].map((m) => m[1])))]
+  assert.ok(grepped.length > 0, 'git grep found no codes')
+  const { codes } = backendCodes(REPO)
+  assert.deepEqual(grepped.filter((c) => !codes.has(c)), [], 'codes git grep sees that the AST scan missed')
   const r = run()
   assert.equal(r.status, 0, r.out)
-  const m = r.out.match(/all (\d+) backend error codes/)
-  assert.ok(m && Number(m[1]) >= lowerBound && lowerBound > 0, `${r.out} vs lower bound ${lowerBound}`)
 })
