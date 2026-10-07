@@ -152,3 +152,11 @@ test('frontendSourceFiles: ts/tsx under frontend/src, minus tests, test-setup an
     rmSync(root, { recursive: true, force: true })
   }
 })
+
+test('names: UPPER_SNAKE literals and property names, never identifiers, comments or prose', () => {
+  const src = `// NOT_IN_A_COMMENT
+    const CODE = { NOT_YOUR_DOCUMENT: 'k', 'SHIFT_CLOSED': 'k', lower_case: 'k' }
+    if (e.code === 'CRATES_ON_HAND_INSUFFICIENT') {}
+    const FORM_LEVEL = 'x'; const s = 'Hello WORLD_X'; const one = 'SINGLE'`
+  assert.deepEqual(scanSource('x.ts', src).names.sort(), ['CRATES_ON_HAND_INSUFFICIENT', 'NOT_YOUR_DOCUMENT', 'SHIFT_CLOSED'])
+})

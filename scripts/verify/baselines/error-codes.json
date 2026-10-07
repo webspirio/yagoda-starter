@@ -1,0 +1,32 @@
+[
+  {
+    "code": "BUSINESS_DATE_MALFORMED",
+    "date": "2026-10-07",
+    "reason": "Unreachable from user input: document codes are server-generated since the typed-code field was removed, and composeDocumentCode throws this only if TypeORM stops returning a shift's date column as YYYY-MM-DD (backend/src/common/document-code.ts)."
+  },
+  {
+    "code": "DOCUMENT_CODE_INVALID",
+    "date": "2026-10-07",
+    "reason": "Unreachable from user input: document codes are server-generated since the typed-code field was removed; normalizeTypedCode only ever sees padSequence's output via nextDocumentCode (backend/src/common/document-code.ts)."
+  },
+  {
+    "code": "PAYOUT_NOT_VOIDED",
+    "date": "2026-10-07",
+    "reason": "No frontend caller of POST /payouts/:id/settle-return; the only payout write under frontend/src/**/api/ is POST /payouts (features/settle-payout)."
+  },
+  {
+    "code": "REDIS_CLIENT",
+    "date": "2026-10-07",
+    "reason": "A Nest DI token (backend/src/redis/redis.module.ts), not an error code; nothing ever sends it to a client."
+  },
+  {
+    "code": "RETURN_ALREADY_SETTLED",
+    "date": "2026-10-07",
+    "reason": "No frontend caller of POST /payouts/:id/settle-return; the only payout write under frontend/src/**/api/ is POST /payouts (features/settle-payout)."
+  },
+  {
+    "code": "VITE_API_URL",
+    "date": "2026-10-07",
+    "reason": "A Vite env-schema key in frontend/src/shared/lib/env/index.ts, not an error code; the backend has no reason to produce it."
+  }
+]

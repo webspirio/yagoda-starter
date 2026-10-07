@@ -44,6 +44,7 @@
     "compose:check": "node scripts/verify/checks/compose-conventions.mjs",
     "i18n:plain-text": "node scripts/verify/checks/plain-text.mjs",
     "i18n:locales": "node scripts/verify/checks/locales.mjs",
+    "i18n:error-codes": "node scripts/verify/checks/error-codes.mjs",
     "audit:check": "node scripts/verify/checks/audit.mjs",
     "coverage": "turbo coverage",
     "bundle": "node scripts/verify/checks/bundle-size.mjs",

@@ -1,12 +1,12 @@
 /**
- * What the two i18n rows read from frontend/src, enumerated once.
+ * What the three i18n rows read from frontend/src, enumerated once.
  *
- * `plain-text` asks "does shipped UI code render a literal?" and `locales` asks "does every
- * literal t() key exist?". Both read the same file set through one enumeration, so
- * the two rows cannot disagree about what "the frontend" is; each row is its own process and
- * parses it again.
+ * `plain-text` asks "does shipped UI code render a literal?", `locales` asks "does every
+ * literal t() key exist?", and `error-codes` asks "does the frontend name every backend
+ * code?". All read the same file set through one enumeration, so the rows cannot disagree
+ * about what "the frontend" is; each row is its own process and parses it again.
  *
- * Syntax only — `ts.createSourceFile`, never a Program — so neither row is ordered behind
+ * Syntax only — `ts.createSourceFile`, never a Program — so no row is ordered behind
  * `typecheck`: a file that does not type-check still parses.
  */
 import { execFileSync } from 'node:child_process'
@@ -35,6 +35,9 @@ const CHAR_REF = /&(?:[a-z][a-z0-9]*|#\d+|#x[0-9a-f]+);/gi
  *  app exports from its toast module. Bound by IMPORT, so `toastIdFor(…)` is never one. */
 const SONNER = 'sonner'
 const TOAST_MODULE = '@/shared/ui/toast'
+
+/** A backend error code's shape — and, by the `error-codes` row, a frontend reference to one. */
+export const CODE_NAME = /^[A-Z][A-Z0-9]*(_[A-Z0-9]+)+$/
 
 /** Form-library calls whose options object carries message KEYS, resolved later by `Field`. */
 const FORM_CALLS = new Set(['register', 'setError'])
@@ -112,7 +115,7 @@ const isTCallee = (/** @type {ts.Expression} */ e) =>
 /**
  * @param {string} rel repo-relative path, used in the report and to pick TS vs TSX
  * @param {string} text file contents
- * @returns {{ candidates: Candidate[], keys: KeyUse[] }}
+ * @returns {{ candidates: Candidate[], keys: KeyUse[], names: string[] }}
  */
 export function scanSource(rel, text) {
   const kind = rel.endsWith('.tsx') ? ts.ScriptKind.TSX : ts.ScriptKind.TS
@@ -121,6 +124,8 @@ export function scanSource(rel, text) {
   const candidates = []
   /** @type {KeyUse[]} */
   const keys = []
+  /** @type {Set<string>} */
+  const names = new Set()
   // A node can satisfy two rules (an aria-label in Cyrillic); the walk meets the parent rule
   // first, and this set keeps the literal from being reported again as `cyrillic`.
   /** @type {Set<ts.Node>} */
@@ -212,6 +217,9 @@ export function scanSource(rel, text) {
 
   /** @param {ts.Node} node */
   const visit = (node) => {
+    // Its own `if`, so a code literal still meets the text rules below.
+    if ((ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) && CODE_NAME.test(node.text)) names.add(node.text)
+    else if (ts.isPropertyAssignment(node) && (ts.isIdentifier(node.name) || ts.isStringLiteral(node.name)) && CODE_NAME.test(node.name.text)) names.add(node.name.text)
     if (ts.isJsxText(node) && LETTER.test(node.text.replace(CHAR_REF, ' '))) {
       // JsxText starts at the whitespace before it; point at the first real character.
       flag(node, 'jsx-text', node.text, node.pos + (node.text.length - node.text.trimStart().length))
@@ -246,12 +254,12 @@ export function scanSource(rel, text) {
     ts.forEachChild(node, visit)
   }
   visit(sf)
-  return { candidates, keys }
+  return { candidates, keys, names: [...names] }
 }
 
 /**
  * @param {string} root
- * @returns {{ files: string[], candidates: Candidate[], keys: KeyUse[] }}
+ * @returns {{ files: string[], candidates: Candidate[], keys: KeyUse[], names: string[] }}
  */
 export function scanFrontend(root) {
   const files = frontendSourceFiles(root)
@@ -259,6 +267,8 @@ export function scanFrontend(root) {
   const candidates = []
   /** @type {KeyUse[]} */
   const keys = []
+  /** @type {Set<string>} */
+  const names = new Set()
   /** @type {string[]} */
   const scanned = []
   for (const rel of files) {
@@ -275,8 +285,9 @@ export function scanFrontend(root) {
     const found = scanSource(rel, text)
     candidates.push(...found.candidates)
     keys.push(...found.keys)
+    for (const n of found.names) names.add(n)
   }
-  return { files: scanned, candidates, keys }
+  return { files: scanned, candidates, keys, names: [...names].sort() }
 }
 
 /**

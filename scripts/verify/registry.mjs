@@ -461,6 +461,24 @@ export const CHECKS = [
       'outside its scope.',
   },
   {
+    id: 'error-codes',
+    tier: 'fast',
+    // No `after`, for the reason on `migrations`: syntax-only parse on both sides.
+    cmd: 'npm run i18n:error-codes',
+    proves:
+      'Every UPPER_SNAKE string literal in shipped backend source, tests, migrations and seed ' +
+      'aside, is named by a string literal or object key in shipped frontend source, and every ' +
+      'such name in the frontend is one the backend produces; this command fails on a gap ' +
+      'either way unless the name is excused individually, dated and reasoned, in its ' +
+      'baseline, and on an excuse that matches nothing.',
+    blindSpot:
+      'A reference is not a correct mapping: a code named only in a comparison, or mapped to ' +
+      'the wrong sentence, passes. A code assembled at runtime is invisible. Failures that ' +
+      'carry no code, such as a not-found or a validation rejection, are covered only by the ' +
+      'status fallback in the frontend, never by this row, and the wording of any message is ' +
+      'not judged.',
+  },
+  {
     id: 'selfcheck',
     // FULL, NOT FAST, and the reason CHANGED — which is worth stating, because a stale
     // justification for a correct decision is how the next person gets talked into
