@@ -1,4 +1,5 @@
 import { ApiError } from '@/shared/api';
+import { statusKey } from '@/shared/lib/api-error';
 
 export interface ApiFieldErrors {
   /** field name -> i18n message key */
@@ -9,15 +10,15 @@ export interface ApiFieldErrors {
 
 const FORM_LEVEL = 'catalog.errors.saveFailed';
 
-/**
- * The three catalog services each prefix their codes with their own resource
- * name (`PRODUCT_`, `GRADE_`, `TARE_TYPE_`), so match the SUFFIX. Matching whole
- * codes would need nine entries and would silently miss a fourth resource.
- */
-const CODE_SUFFIX: ReadonlyArray<[string, string]> = [
-  ['_NAME_TAKEN', 'catalog.errors.nameTaken'],
-  ['_NAME_EMPTY', 'catalog.errors.nameEmpty'],
-];
+// Each service prefixes its own codes; exact entries, so a stray code never matches.
+const CODE_KEY: Readonly<Record<string, string>> = {
+  GRADE_NAME_TAKEN: 'catalog.errors.nameTaken',
+  PRODUCT_NAME_TAKEN: 'catalog.errors.nameTaken',
+  TARE_TYPE_NAME_TAKEN: 'catalog.errors.nameTaken',
+  GRADE_NAME_EMPTY: 'catalog.errors.nameEmpty',
+  PRODUCT_NAME_EMPTY: 'catalog.errors.nameEmpty',
+  TARE_TYPE_NAME_EMPTY: 'catalog.errors.nameEmpty',
+};
 
 /**
  * class-validator emits `"<property> <complaint>"`. The complaint text is not
@@ -37,25 +38,23 @@ const PROPERTY: Readonly<Record<string, string>> = {
  * detail that cannot be placed becomes a banner rather than vanishing silently.
  */
 export function apiErrorToFields(error: unknown, fields: readonly string[]): ApiFieldErrors {
-  if (!(error instanceof ApiError)) return { fieldErrors: [], formErrorKey: FORM_LEVEL };
+  if (!(error instanceof ApiError)) return { fieldErrors: [], formErrorKey: statusKey(error) ?? FORM_LEVEL };
 
-  if (error.code) {
-    const match = CODE_SUFFIX.find(([suffix]) => error.code!.endsWith(suffix));
-    if (match && fields.includes('name')) {
-      return { fieldErrors: [{ field: 'name', messageKey: match[1] }], formErrorKey: null };
-    }
+  const key = error.code ? CODE_KEY[error.code] : undefined;
+  if (key && fields.includes('name')) {
+    return { fieldErrors: [{ field: 'name', messageKey: key }], formErrorKey: null };
   }
 
   const fieldErrors: Array<{ field: string; messageKey: string }> = [];
   let unattributed = false;
   for (const detail of error.details ?? []) {
     const prop = detail.split(' ')[0];
-    const key = PROPERTY[prop];
-    if (key && fields.includes(prop)) fieldErrors.push({ field: prop, messageKey: key });
+    const propKey = PROPERTY[prop];
+    if (propKey && fields.includes(prop)) fieldErrors.push({ field: prop, messageKey: propKey });
     else unattributed = true;
   }
   if (fieldErrors.length > 0) {
     return { fieldErrors, formErrorKey: unattributed ? FORM_LEVEL : null };
   }
-  return { fieldErrors: [], formErrorKey: FORM_LEVEL };
+  return { fieldErrors: [], formErrorKey: statusKey(error) ?? FORM_LEVEL };
 }

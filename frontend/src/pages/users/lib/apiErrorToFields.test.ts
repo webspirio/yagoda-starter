@@ -14,7 +14,7 @@ const FIELDS = [
 
 describe('apiErrorToFields', () => {
   it('maps a login-clash code onto the login field', () => {
-    const err = new ApiError(409, 'taken', undefined, 'USER_LOGIN_TAKEN');
+    const err = new ApiError(409, 'taken', undefined, 'LOGIN_TAKEN');
     const out = apiErrorToFields(err, FIELDS);
     expect(out.fieldErrors).toEqual([{ field: 'login', messageKey: 'users.errors.loginTaken' }]);
     expect(out.formErrorKey).toBeNull();
@@ -40,5 +40,34 @@ describe('apiErrorToFields', () => {
     const out = apiErrorToFields(new Error('network'), FIELDS);
     expect(out.fieldErrors).toEqual([]);
     expect(out.formErrorKey).toBe('users.errors.saveFailed');
+  });
+
+  it.each([
+    ['LAST_OWNER', 409, 'users.errors.lastOwner'],
+    ['SELF_LOCKOUT', 403, 'users.errors.selfLockout'],
+    ['OWNER_HAS_NO_POINT', 400, 'users.errors.ownerHasNoPoint'],
+    ['POINT_UNUSABLE', 400, 'users.errors.pointUnusable'],
+    ['USER_NAME_EMPTY', 400, 'users.errors.nameRequired'],
+  ])('%s banners its own sentence, even on a 403', (code, status, key) => {
+    expect(apiErrorToFields(new ApiError(status, 'x', undefined, code), FIELDS)).toEqual({
+      fieldErrors: [],
+      formErrorKey: key,
+    });
+  });
+
+  it('OPERATOR_NEEDS_POINT lands on the point field', () => {
+    expect(
+      apiErrorToFields(new ApiError(400, 'x', undefined, 'OPERATOR_NEEDS_POINT'), FIELDS).fieldErrors,
+    ).toEqual([{ field: 'collection_point_id', messageKey: 'users.errors.pointRequired' }]);
+  });
+
+  it('a made-up *_LOGIN_TAKEN no longer matches', () => {
+    const err = new ApiError(409, 'x', undefined, 'USER_LOGIN_TAKEN');
+    expect(apiErrorToFields(err, FIELDS).formErrorKey).toBe('users.errors.saveFailed');
+  });
+
+  it('a network failure and a 500 get the status sentence, not saveFailed', () => {
+    expect(apiErrorToFields(new ApiError(0, 'x'), FIELDS).formErrorKey).toBe('errors.network');
+    expect(apiErrorToFields(new ApiError(500, 'x'), FIELDS).formErrorKey).toBe('errors.server');
   });
 });

@@ -171,7 +171,11 @@
       "loginWhitespace": "The login must not contain spaces",
       "nameRequired": "Enter a name",
       "passwordShort": "Password must be at least 8 characters",
-      "pointRequired": "Choose a collection point"
+      "pointRequired": "Choose a collection point",
+      "lastOwner": "This is the last active owner. Make someone else an owner first.",
+      "selfLockout": "You can't deactivate or demote yourself. Ask another owner.",
+      "ownerHasNoPoint": "An owner doesn't belong to a point. Clear the point field.",
+      "pointUnusable": "That point is deactivated. Choose another."
     }
   },
   "suppliers": {
