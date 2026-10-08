@@ -842,7 +842,7 @@
     },
     "saved": "Settings saved",
     "errors": {
-      "failed": "Could not save the settings",
+      "failed": "Could not save the settings. Try again.",
       "noteTooLong": "The note doesn't fit seven lines of forty characters."
     }
   },

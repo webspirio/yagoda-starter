@@ -581,7 +581,7 @@ describe('ReceiptDialog', () => {
     render(<ReceiptDialog intakeId="intake-1" open onClose={vi.fn()} />);
 
     const tail = document.querySelector('.printable')?.lastElementChild;
-    expect(tail).toHaveClass('print-only');
+    expect(tail).toHaveClass('print-only', 'break-inside-avoid');
     expect(tail).toHaveAttribute('aria-hidden', 'true');
     expect(Array.from(tail?.children ?? [], (line) => line.textContent)).toEqual(
       Array(7).fill('\u00a0'),
