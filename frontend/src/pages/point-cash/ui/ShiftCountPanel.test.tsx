@@ -57,6 +57,7 @@ const count = (over: Partial<CashCount> = {}): CashCount => ({
   operator_note_editable: false,
   explainable: false,
   ...over,
+  explained: over.explained ?? over.explanation != null,
 });
 
 const noop = () => {};
@@ -223,6 +224,11 @@ describe('ShiftCountPanel — the shift line and names', () => {
   it('quotes the owner’s explanation of a count in italics', () => {
     renderWith([count({ kind: 'closing', explanation: 'Double-paid a payout' })]);
     expect(screen.getByText('“Double-paid a payout”')).toHaveClass('italic');
+  });
+
+  it('tells an operator the owner settled it, without the owner’s text', () => {
+    renderWith([count({ kind: 'closing', explanation: null, explained: true })]);
+    expect(screen.getByText('Settled by the owner')).toBeInTheDocument();
   });
 
   it('quotes the counter’s own account too, labelled as theirs', () => {

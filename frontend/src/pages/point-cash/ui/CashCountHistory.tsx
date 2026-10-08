@@ -101,15 +101,20 @@ export function CashCountHistory({
             {t('pointCash.countHistory.operatorNote', { text: note })}
           </ExpandableText>
         ) : null;
-        if (row.explanation) {
+        // The owner's text reaches only the owner; an operator reads that it is settled.
+        if (row.explained) {
           return (
             <div className="flex flex-col gap-1">
-              <ExpandableText
-                className="text-sm italic text-muted-foreground"
-                label={t('pointCash.countHistory.explanationLabel')}
-              >
-                {row.explanation}
-              </ExpandableText>
+              {row.explanation ? (
+                <ExpandableText
+                  className="text-sm italic text-muted-foreground"
+                  label={t('pointCash.countHistory.explanationLabel')}
+                >
+                  {row.explanation}
+                </ExpandableText>
+              ) : (
+                <span className="text-xs text-muted-foreground">{t('pointCash.countHistory.settled')}</span>
+              )}
               {operatorNote}
             </div>
           );

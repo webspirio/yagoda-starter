@@ -177,6 +177,8 @@ describe('count explanations and operator notes (Postgres)', () => {
     expect((await closingRow(owner, opened.id)).is_open).toBe(true);
     await counts.setExplanation(owner, closingId, { explanation: 'прийнято' });
     expect((await closingRow(owner, opened.id)).is_open).toBe(false);
+    // The text is the owner's: the operator learns only that it is settled.
+    expect(await closingRow(p.closer, opened.id)).toMatchObject({ explanation: null, explained: true, is_open: false });
     const [audit] = (await ds.query(
       `SELECT after->>'explanation' AS after FROM audit_log
         WHERE action = 'cash-count.explained' AND target_id = $1`,

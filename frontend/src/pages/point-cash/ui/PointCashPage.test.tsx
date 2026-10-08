@@ -239,6 +239,7 @@ const cashCount = (over: Partial<CashCount> = {}): CashCount => ({
   operator_note_editable: false,
   explainable: false,
   ...over,
+  explained: over.explained ?? over.explanation != null,
 });
 
 const shift = (over: Partial<Shift> = {}): Shift => ({

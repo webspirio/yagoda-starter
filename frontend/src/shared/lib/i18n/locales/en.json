@@ -635,7 +635,7 @@
   "cash": {
     "explainDialog": {
       "title": "Explain the {{amount}} discrepancy",
-      "description": "A discrepancy never blocks closing a shift — the operator already closed it. This explanation does not change the count; it stays in the journal alongside it.",
+      "description": "A discrepancy never stops a shift from working. This explanation does not change the count; it stays in the journal alongside it.",
       "explanation": "Explanation",
       "submit": "Save explanation",
       "operatorNote": "The operator wrote"
@@ -743,6 +743,7 @@
       "matched": "Matched",
       "open": "Unexplained",
       "noExplanationNeeded": "needs no explanation",
+      "settled": "Settled by the owner",
       "explain": "Explain",
       "operatorNote": "Operator: “{{text}}”",
       "explanationLabel": "the owner's explanation",
@@ -761,6 +762,7 @@
       "discrepancy": "Discrepancy",
       "closedBy": "closed by {{name}}",
       "explanation": "“{{text}}”",
+      "settled": "Settled by the owner",
       "countAt": "Count at {{time}}",
       "matched": "✓ matched",
       "mismatched": "⚠ did not match",

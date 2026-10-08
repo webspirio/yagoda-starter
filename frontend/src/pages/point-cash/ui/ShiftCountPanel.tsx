@@ -58,6 +58,9 @@ function CountTexts({ count }: { count: CashCount }) {
         <p className="text-xs italic text-muted-foreground">
           {t('pointCash.panel.explanation', { text: count.explanation })}
         </p>
+      ) : count.explained ? (
+        // The owner's text is the owner's; an operator only learns it is settled.
+        <p className="text-xs text-muted-foreground">{t('pointCash.panel.settled')}</p>
       ) : null}
       {count.operator_note ? (
         <p className="text-xs italic text-muted-foreground">

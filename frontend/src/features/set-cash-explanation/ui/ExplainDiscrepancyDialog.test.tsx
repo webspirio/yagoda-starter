@@ -32,6 +32,7 @@ const row = (over: Partial<CashCount> = {}): CashCount => ({
   operator_note_editable: false,
   explainable: true,
   ...over,
+  explained: over.explained ?? over.explanation != null,
 });
 
 function renderDialog(onClose = vi.fn()) {
@@ -57,6 +58,11 @@ describe('ExplainDiscrepancyDialog', () => {
       screen.getByRole('heading', { name: 'Explain the −320.00 ₴ discrepancy' }),
     ).toBeInTheDocument();
     await expectNoAxeViolations(container);
+  });
+
+  it('does not claim the shift is closed — the owner may explain an opening while it is open', () => {
+    render(<ExplainDiscrepancyDialog count={row({ kind: 'opening' })} open onClose={vi.fn()} />);
+    expect(screen.getByRole('dialog')).not.toHaveTextContent(/closed it/);
   });
 
   it('refuses a blank explanation and does not call the mutation', async () => {

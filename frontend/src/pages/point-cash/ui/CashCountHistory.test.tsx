@@ -42,6 +42,7 @@ const count = (over: Partial<CashCount> = {}): CashCount => ({
   operator_note_editable: false,
   explainable: false,
   ...over,
+  explained: over.explained ?? over.explanation != null,
 });
 
 const page = (data: CashCount[]) => ({
@@ -183,6 +184,16 @@ describe('CashCountHistory', () => {
     render(<CashCountHistory pointId="p1" isOwner meId="u1" />);
     expect(screen.getByText('утримати з зарплати')).toBeInTheDocument();
     expect(screen.getByText('Operator: “віддав решту”')).toBeInTheDocument();
+  });
+
+  it('an operator reads «settled by the owner» — the server withholds the owner’s text from them', () => {
+    countsMock.mockReturnValue(
+      page([openClosing({ is_open: false, explanation: null, explained: true, operator_note: 'віддав решту' })]),
+    );
+    render(<CashCountHistory pointId="p1" isOwner={false} meId="u1" />);
+    expect(screen.getByText('Settled by the owner')).toBeInTheDocument();
+    expect(screen.getByText('Operator: “віддав решту”')).toBeInTheDocument();
+    expect(screen.queryByText('needs no explanation')).toBeNull();
   });
 
   it('clamps both long texts to two lines, each expandable on its own, so the table keeps its width', async () => {

@@ -2,6 +2,7 @@ import { sub } from '../common/money';
 import { CashBook } from './cash-book.enum';
 import { CashCountKind } from './cash-count-kind.enum';
 import { countNoteAllowed } from './count-notes';
+import { UserRole } from '../users/user-role.enum';
 import type { AuthenticatedUser } from '../auth/jwt.strategy';
 
 /** The raw projection — every numeric already `::text`. */
@@ -74,8 +75,10 @@ export interface CashCountRowResponse {
    *  `null` only if the caller's map has no entry for that id. */
   counted_by_name: string | null;
   counted_at: Date;
-  /** The owner's decision on THIS count. */
+  /** The owner's decision on THIS count — the owner's to read; an operator gets `null` and reads `explained`. */
   explanation: string | null;
+  /** Whether the owner explained THIS count, for every caller. */
+  explained: boolean;
   /** Whoever counted (spec 2026-10-08) — informs, never closes `is_open`. */
   operator_note: string | null;
   /** May THIS caller (the owner) explain this count now. */
@@ -108,7 +111,8 @@ export function toCashCountRowResponse(
     counted_by_user_id: row.counted_by_user_id,
     counted_by_name: names.get(row.counted_by_user_id) ?? null,
     counted_at: row.counted_at,
-    explanation: row.explanation,
+    explanation: actor.role === UserRole.NetworkOwner ? row.explanation : null,
+    explained: row.explanation !== null,
     operator_note: row.operator_note,
     explainable: countNoteAllowed(actor, row, 'explanation'),
     operator_note_editable: countNoteAllowed(actor, row, 'operator_note'),

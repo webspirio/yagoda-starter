@@ -32,6 +32,7 @@ const row = (over: Partial<CashCount> = {}): CashCount => ({
   operator_note_editable: true,
   explainable: false,
   ...over,
+  explained: over.explained ?? over.explanation != null,
 });
 
 function renderDialog(over: Partial<CashCount> = {}, onClose = vi.fn()) {
