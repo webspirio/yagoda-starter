@@ -1,7 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { httpClient } from '@/shared/api';
 import { queryKeys } from '@/shared/api/queryKeys';
-import { STALE } from '@/shared/api/queryClient';
 import type { CostOfDay } from '../model/cost-of-day';
 
 /**
@@ -20,6 +19,5 @@ export function useCostOfDayQuery(shiftId: string | undefined) {
       const { data } = await httpClient.get<CostOfDay>(`/shifts/${shiftId}/cost-of-day`);
       return data;
     },
-    staleTime: STALE.detail,
   });
 }

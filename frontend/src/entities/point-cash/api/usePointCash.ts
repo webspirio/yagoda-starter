@@ -1,7 +1,6 @@
 import { useQuery, type UseQueryResult } from '@tanstack/react-query';
 import { httpClient } from '@/shared/api';
 import { queryKeys } from '@/shared/api/queryKeys';
-import { STALE } from '@/shared/api/queryClient';
 import type { PointCashRow, PointCashOne, Paginated } from '../model/point-cash';
 
 /** `as_of` only when named — undated means "today", resolved server-side (see the service header). */
@@ -50,7 +49,6 @@ export function usePointCashQuery({
       });
       return data;
     },
-    staleTime: STALE.list,
   });
 }
 
@@ -85,6 +83,5 @@ export function usePointCashForPointQuery(
       });
       return data;
     },
-    staleTime: STALE.list,
   });
 }

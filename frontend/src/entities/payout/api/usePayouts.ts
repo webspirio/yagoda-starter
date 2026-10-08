@@ -1,7 +1,6 @@
 import { queryOptions, useQuery } from '@tanstack/react-query';
 import { httpClient } from '@/shared/api';
 import { queryKeys } from '@/shared/api/queryKeys';
-import { STALE } from '@/shared/api/queryClient';
 import type { DocumentFilter, Payout, Paginated } from '../model/payout';
 
 /**
@@ -26,7 +25,7 @@ export function documentParams(f: DocumentFilter) {
 /**
  * Payout headers for a shift, a supplier, a point, or a `from`/`to` date
  * range — never bare. Built with `queryOptions()` so `useQueries` callers
- * (the owner overview) can share this exact queryKey/queryFn/staleTime
+ * (the owner overview) can share this exact queryKey/queryFn
  * without duplicating the fetcher.
  */
 export function payoutsQueryOptions(filter: DocumentFilter) {
@@ -42,7 +41,6 @@ export function payoutsQueryOptions(filter: DocumentFilter) {
       });
       return data;
     },
-    staleTime: STALE.list,
   });
 }
 

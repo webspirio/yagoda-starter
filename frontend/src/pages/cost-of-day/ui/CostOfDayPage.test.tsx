@@ -91,8 +91,10 @@ describe('CostOfDayPage', () => {
   it('drops a half-typed expense when the shift underneath it changes', async () => {
     // ExpensesPanel keeps `label`/`amount`/`editing` in its own useState, and
     // the page re-RENDERS rather than remounts when the owner steps to another
-    // date whose queries are already cached (gcTime is 24h, so `isPending`
-    // never goes true and the pending branch never unmounts the tree). Without
+    // date whose queries are still in this test's cache (its own client keeps
+    // them; the app's cachePolicy drops them, but the key below must not
+    // depend on that — so `isPending` never goes true and the pending branch
+    // never unmounts the tree). Without
     // a key tied to the shift, the words typed against 22.09 are still in the
     // form after stepping back to 21.09 — and `Додати` would then record them
     // against the wrong business day, moving that day's basket, per_kg and

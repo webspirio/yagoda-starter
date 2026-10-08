@@ -1,7 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { httpClient } from '@/shared/api';
 import { queryKeys } from '@/shared/api/queryKeys';
-import { STALE } from '@/shared/api/queryClient';
 import type { CashCount, CashCountFilter, Paginated } from '../model/cash-count';
 
 function cashCountParams(f: CashCountFilter) {
@@ -46,6 +45,5 @@ export function useCashCountsQuery(filter: CashCountFilter) {
       });
       return data;
     },
-    staleTime: STALE.list,
   });
 }

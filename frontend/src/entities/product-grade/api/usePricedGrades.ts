@@ -1,6 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
 import { httpClient } from '@/shared/api';
-import { STALE } from '@/shared/api/queryClient';
 import { queryKeys } from '@/shared/api/queryKeys';
 import { useGradeCatalogQuery } from './useGradeCatalog';
 import type { GradeCatalogItem, PricedGrade } from '../model/product-grade';
@@ -64,7 +63,6 @@ export function usePricedGradesQuery(pointId: string | null): {
         return map;
       }, {});
     },
-    staleTime: STALE.list,
   });
 
   const priceMap = prices.data ?? {};

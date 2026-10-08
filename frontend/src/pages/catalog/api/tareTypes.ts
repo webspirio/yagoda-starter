@@ -1,7 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { httpClient } from '@/shared/api';
 import { queryKeys } from '@/shared/api/queryKeys';
-import { STALE } from '@/shared/api/queryClient';
 import type { Paginated } from '../model/product';
 import type {
   CreateTareTypeInput,
@@ -20,7 +19,6 @@ export function useTareTypesQuery() {
       });
       return data;
     },
-    staleTime: STALE.reference,
   });
 }
 
