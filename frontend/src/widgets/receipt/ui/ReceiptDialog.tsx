@@ -22,6 +22,7 @@ import { useTareTypeOptionsQuery } from '@/entities/tare-type';
 import { usePointOptionsQuery } from '@/entities/collection-point';
 import { useMeQuery } from '@/entities/user';
 import { VoidDocumentDialog, reopenedCodes } from '@/features/void-document';
+import { ReceiptNoteField } from './ReceiptNoteField';
 import { ReceiptSheet, type ReceiptSheetLine } from './ReceiptSheet';
 
 /**
@@ -122,6 +123,10 @@ export function ReceiptDialog({
     openVoid();
   }
 
+  // For this print only: nothing stores it, so closing the receipt drops it.
+  const [note, setNote] = useState('');
+  if (!open && note !== '') setNote('');
+
   if (intakeId === null) {
     return null;
   }
@@ -196,25 +201,29 @@ export function ReceiptDialog({
     const showVoid = canVoidIntake(me, intake);
 
     content = (
-      <ReceiptSheet
-        code={intake.code}
-        // §5 row 50 — the BUSINESS date (from the shift, §2.3), not the
-        // calendar day `created_at` happens to carry: a receipt written just
-        // past local midnight is still that shift's day, and printing
-        // `created_at`'s own date could show one day while `business_date`
-        // (and every other document on this receipt's shift) says another.
-        date={`${formatLongDate(intake.business_date, locale)} · ${formatTime(intake.created_at, locale)}`}
-        pointName={pointName}
-        supplierName={supplierName(supplier)}
-        lines={lines}
-        accrued={formatUah(intake.amount, locale)}
-        balance={formatUah(balance.debt, locale)}
-        paid={paid}
-        voidedPayouts={voidedPayouts}
-        receivedBy={receivedBy}
-        voided={voided ? { reason: intake.void_reason ?? '' } : null}
-        crateReturn={crateReturn}
-      />
+      <>
+        <ReceiptSheet
+          code={intake.code}
+          // §5 row 50 — the BUSINESS date (from the shift, §2.3), not the
+          // calendar day `created_at` happens to carry: a receipt written just
+          // past local midnight is still that shift's day, and printing
+          // `created_at`'s own date could show one day while `business_date`
+          // (and every other document on this receipt's shift) says another.
+          date={`${formatLongDate(intake.business_date, locale)} · ${formatTime(intake.created_at, locale)}`}
+          pointName={pointName}
+          supplierName={supplierName(supplier)}
+          lines={lines}
+          accrued={formatUah(intake.amount, locale)}
+          balance={formatUah(balance.debt, locale)}
+          paid={paid}
+          voidedPayouts={voidedPayouts}
+          receivedBy={receivedBy}
+          voided={voided ? { reason: intake.void_reason ?? '' } : null}
+          crateReturn={crateReturn}
+          note={note}
+        />
+        <ReceiptNoteField value={note} onChange={setNote} />
+      </>
     );
 
     actions = (
@@ -261,7 +270,7 @@ export function ReceiptDialog({
 
   return (
     <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
-      <DialogContent className="sm:max-w-[420px]" showCloseButton={false}>
+      <DialogContent className="sm:w-[420px] sm:max-w-[420px]" showCloseButton={false}>
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription>{t('receipt.description')}</DialogDescription>

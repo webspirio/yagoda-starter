@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Badge } from '@/shared/ui/badge';
+import { NOTE_LINES } from '../model/receiptNote';
 
 /** One line of the printed receipt, already resolved to display strings —
  *  `ReceiptDialog` does the grade/tare lookups and money/weight formatting;
@@ -40,6 +41,8 @@ export interface ReceiptSheetProps {
   voidedPayouts: string[];
   /** Who received this document (`received_by_name`), or «—» when unknown. */
   receivedBy: string;
+  /** Typed in the dialog for this print only — one line per ruled line. */
+  note: string;
   voided: { reason: string } | null;
   /** Our rented crates handed back in the SAME «Прийняти» as this receipt
    *  (2026-09-24) — `null` when none came back with it. Printed as its own
@@ -56,8 +59,6 @@ export interface ReceiptSheetProps {
     voided: boolean;
   } | null;
 }
-
-const TRAILING_BLANK_LINES = 7;
 
 function Row({
   label,
@@ -95,10 +96,12 @@ export function ReceiptSheet({
   paid,
   voidedPayouts,
   receivedBy,
+  note,
   voided,
   crateReturn,
 }: ReceiptSheetProps) {
   const { t } = useTranslation();
+  const noteLines = note.split('\n');
 
   return (
     <div className="printable rounded-lg border border-dashed border-border bg-white p-4 text-[13px] text-neutral-900">
@@ -178,10 +181,16 @@ export function ReceiptSheet({
         {t('receipt.footer')}
       </div>
 
-      {/* Ruled lines for handwritten notes; they also feed the slip past the tear bar. */}
+      {/* Ruled lines: the typed note first, then blank ones for handwriting;
+          they also feed the slip past the tear bar. */}
       <div className="print-only" aria-hidden="true">
-        {Array.from({ length: TRAILING_BLANK_LINES }, (_, i) => (
-          <div key={i} className="h-7 border-b border-dashed border-black">{' '}</div>
+        {Array.from({ length: NOTE_LINES }, (_, i) => (
+          <div
+            key={i}
+            className="flex h-7 items-end overflow-hidden border-b border-dashed border-black pb-0.5 font-mono whitespace-pre"
+          >
+            {noteLines[i] || '\u00a0'}
+          </div>
         ))}
       </div>
     </div>

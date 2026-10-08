@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { act, render, screen } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { expectNoAxeViolations } from '../../../test-axe';
 import type { IntakeDetail } from '@/entities/intake';
@@ -556,9 +556,56 @@ describe('ReceiptDialog', () => {
     expect(tail).toHaveClass('print-only');
     expect(tail).toHaveAttribute('aria-hidden', 'true');
     expect(Array.from(tail?.children ?? [], (line) => line.textContent)).toEqual(
-      Array(7).fill(' '),
+      Array(7).fill('\u00a0'),
     );
     for (const line of Array.from(tail?.children ?? [])) expect(line).toHaveClass('border-b');
+  });
+
+  it('prints the typed note onto the ruled lines and takes nothing past the seventh', async () => {
+    const user = userEvent.setup();
+    setUp();
+    render(<ReceiptDialog intakeId="intake-1" open onClose={vi.fn()} />);
+
+    const note = screen.getByRole('textbox', { name: 'Note on the receipt' });
+    // A long line breaks at its last space on its own.
+    await user.type(note, `${'a'.repeat(30)} ${'b'.repeat(15)}`);
+    await user.type(note, '{Enter}3{Enter}4{Enter}5{Enter}6{Enter}7');
+    await user.type(note, '{Enter}'); // an eighth line is not taken
+    const typed = [`${'a'.repeat(30)}`, `${'b'.repeat(15)}`, '3', '4', '5', '6', '7'];
+    expect(note).toHaveValue(typed.join('\n'));
+    expect(screen.getByText(/Line 7 of 7/)).toBeInTheDocument();
+
+    const tail = document.querySelector('.printable')?.lastElementChild;
+    expect(Array.from(tail?.children ?? [], (line) => line.textContent)).toEqual(typed);
+  });
+
+  it('keeps the caret in place when a hard cut lands after it', async () => {
+    const user = userEvent.setup();
+    setUp();
+    render(<ReceiptDialog intakeId="intake-1" open onClose={vi.fn()} />);
+
+    const note = screen.getByRole<HTMLTextAreaElement>('textbox', { name: 'Note on the receipt' });
+    await user.type(note, 'x'.repeat(40));
+    await user.type(note, 'y', { initialSelectionStart: 5, initialSelectionEnd: 5 });
+    expect(note).toHaveValue(`xxxxxy${'x'.repeat(34)}\nx`);
+    await waitFor(() => expect(note.selectionStart).toBe(6));
+  });
+
+  it('leaves the blank lines blank after a short note, and forgets it on close', async () => {
+    const user = userEvent.setup();
+    setUp();
+    const { rerender } = render(<ReceiptDialog intakeId="intake-1" open onClose={vi.fn()} />);
+
+    await user.type(screen.getByRole('textbox', { name: 'Note on the receipt' }), 'Ящики брудні');
+    const tail = () => document.querySelector('.printable')?.lastElementChild;
+    expect(Array.from(tail()?.children ?? [], (line) => line.textContent)).toEqual([
+      'Ящики брудні',
+      ...Array(6).fill('\u00a0'),
+    ]);
+
+    rerender(<ReceiptDialog intakeId="intake-1" open={false} onClose={vi.fn()} />);
+    rerender(<ReceiptDialog intakeId="intake-1" open onClose={vi.fn()} />);
+    expect(await screen.findByRole('textbox', { name: 'Note on the receipt' })).toHaveValue('');
   });
 
   it('keeps the «saved in the system» footer off the paper', () => {
