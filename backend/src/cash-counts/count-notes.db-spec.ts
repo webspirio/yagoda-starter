@@ -211,7 +211,7 @@ describe('count explanations and operator notes (Postgres)', () => {
     const [row] = (await ds.query(
       `SELECT before->>'operator_note' AS before, after->>'operator_note' AS after
          FROM audit_log WHERE action = 'cash-count.operator_noted' AND target_id = $1
-        ORDER BY created_at DESC LIMIT 1`,
+        ORDER BY at DESC LIMIT 1`,
       [closingId],
     )) as { before: string | null; after: string }[];
     expect(row.before).toBeNull();
