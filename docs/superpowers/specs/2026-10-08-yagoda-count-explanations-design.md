@@ -108,7 +108,7 @@ must never get one. The schema cannot tell them apart, so the write path enforce
 - `28-db-schema.dbml`: the two columns under `cash_counts` with a Note paragraph (who writes
   each, «only `explanation` closes the incident», reopen keeps them on the demoted row); the
   `shifts` column and its 06.10 and 07.10 amendments go, replaced by one sentence pointing to
-  `cash_counts`. Still twenty-four tables.
+  `cash_counts`. Still twenty-three tables on this branch (PR #222 adds the 24th).
 
 ## 4. Backend
 

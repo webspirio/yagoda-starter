@@ -39,9 +39,10 @@ describe('cash_counts explanations (Postgres)', () => {
       [`Точка ${run}`, `E${run.slice(0, 6).toUpperCase()}`],
     );
     [{ id: userId }] = await ds.query(
-      `INSERT INTO users (first_name, last_name, role, is_active)
-       VALUES ('Тест', $1, 'point_operator', true) RETURNING id`,
-      [`Op ${run}`],
+      // CHK_users_role_point: an operator must be pinned to a point.
+      `INSERT INTO users (first_name, last_name, role, is_active, collection_point_id)
+       VALUES ('Тест', $1, 'point_operator', true, $2) RETURNING id`,
+      [`Op ${run}`, pointId],
     );
   });
   afterAll(async () => {
@@ -73,19 +74,23 @@ describe('cash_counts explanations (Postgres)', () => {
     let blank: { s: string; closing: string };
 
     beforeAll(async () => {
+      // Relies on serial suites (maxWorkers: 1 in jest.db.config.js): down() is real DDL on the shared DB.
       const qr = ds.createQueryRunner();
       await migration.down(qr); // shifts.explanation is back, the count columns are gone
-      const a = await shift();
-      both = { s: a, opening: await count(a, 'opening', '120.00', '100.00'), closing: await count(a, 'closing', '80.00', '100.00') };
-      const b = await shift();
-      matchedOnly = { s: b, opening: await count(b, 'opening', '100.00', '100.00'), closing: await count(b, 'closing', '100.00', '100.00') };
-      const c = await shift();
-      blank = { s: c, closing: await count(c, 'closing', '90.00', '100.00') };
-      await ds.query(`UPDATE shifts SET explanation = 'одне пояснення на зміну' WHERE id = $1`, [a]);
-      await ds.query(`UPDATE shifts SET explanation = 'зійшлося, але написав' WHERE id = $1`, [b]);
-      await ds.query(`UPDATE shifts SET explanation = '' WHERE id = $1`, [c]);
-      await migration.up(qr);
-      await qr.release();
+      try {
+        const a = await shift();
+        both = { s: a, opening: await count(a, 'opening', '120.00', '100.00'), closing: await count(a, 'closing', '80.00', '100.00') };
+        const b = await shift();
+        matchedOnly = { s: b, opening: await count(b, 'opening', '100.00', '100.00'), closing: await count(b, 'closing', '100.00', '100.00') };
+        const c = await shift();
+        blank = { s: c, closing: await count(c, 'closing', '90.00', '100.00') };
+        await ds.query(`UPDATE shifts SET explanation = 'одне пояснення на зміну' WHERE id = $1`, [a]);
+        await ds.query(`UPDATE shifts SET explanation = 'зійшлося, але написав' WHERE id = $1`, [b]);
+        await ds.query(`UPDATE shifts SET explanation = '' WHERE id = $1`, [c]);
+      } finally {
+        await migration.up(qr); // the schema is always restored
+        await qr.release();
+      }
     });
 
     it('puts one shift text on BOTH disagreeing counts', async () => {

@@ -783,7 +783,7 @@
     "result": {
       "opened": "Shift opened",
       "closedSettled": "Shift closed. The day matched.",
-      "openedDiscrepancy": "Shift opened. {{amount}} off last close — the owner will see it in their list.",
+      "openedDiscrepancy": "Shift opened. {{amount}} off the previous close — the owner will see it in their list.",
       "closedDiscrepancy": "Shift closed. Discrepancy {{amount}} — the owner will see it on their own list."
     },
     "target": {

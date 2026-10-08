@@ -137,7 +137,7 @@ export class ShiftsService {
         m,
       );
 
-      const [response] = await this.respond(actor, [shift], m);
+      const [response] = await this.respond([shift], m);
       return response;
     });
   }
@@ -232,7 +232,7 @@ export class ShiftsService {
         await this.stock.assertOnHand(m, saved.collection_point_id, dto.broken_crates);
       }
 
-      const [response] = await this.respond(actor, [saved], m);
+      const [response] = await this.respond([saved], m);
       return response;
     });
   }
@@ -347,7 +347,7 @@ export class ShiftsService {
         m,
       );
 
-      const [response] = await this.respond(actor, [saved], m);
+      const [response] = await this.respond([saved], m);
       return response;
     });
   }
@@ -377,7 +377,7 @@ export class ShiftsService {
 
     // ONE map and ONE facts query for the whole page (D-8).
     return {
-      data: await this.respond(actor, data, this.dataSource.manager),
+      data: await this.respond(data, this.dataSource.manager),
       total,
       page: query.page,
       limit: query.limit,
@@ -391,13 +391,13 @@ export class ShiftsService {
     }
     const shift = await this.findOpenAtPoint(pointId);
     if (!shift) throw new NotFoundException('No open shift at that point');
-    const [response] = await this.respond(actor, [shift], this.dataSource.manager);
+    const [response] = await this.respond([shift], this.dataSource.manager);
     return response;
   }
 
   async findOne(actor: AuthenticatedUser, id: string): Promise<ShiftResponse> {
     const shift = await this.loadVisible(actor, id);
-    const [response] = await this.respond(actor, [shift], this.dataSource.manager);
+    const [response] = await this.respond([shift], this.dataSource.manager);
     return response;
   }
 
@@ -459,11 +459,7 @@ export class ShiftsService {
   /**
    * Every ShiftResponse goes through here: names load ONCE per call (D-8).
    */
-  private async respond(
-    actor: AuthenticatedUser,
-    shifts: Shift[],
-    m: EntityManager,
-  ): Promise<ShiftResponse[]> {
+  private async respond(shifts: Shift[], m: EntityManager): Promise<ShiftResponse[]> {
     const names = await this.namesFor(shifts, m);
     return shifts.map((s) => toShiftResponse(s, names));
   }

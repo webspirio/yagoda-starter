@@ -37,8 +37,7 @@ import { ShiftStatus } from './shift-status.enum';
  *    row would be «два примірники одного факту».
  *
  * Explanations and operator notes live on `cash_counts` (spec 2026-10-08), not
- * here. `ShiftStatus`'s
- * `AwaitingExplanation` is the half that stayed unreachable, and BY DECISION
+ * here. `ShiftStatus`'s `AwaitingExplanation` is the half that stayed unreachable, and BY DECISION
  * rather than by absence: the client's 09.09.2026 ruling removed the blocking
  * a discrepancy used to impose (§7.7, cash counts spec §11.1). See the enum.
  *

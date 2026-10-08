@@ -226,6 +226,15 @@ describe('CashCountHistory', () => {
     expect(screen.queryByRole('button')).toBeNull();
   });
 
+  it('a demoted closing with only an operator note still shows the note', () => {
+    countsMock.mockReturnValue(
+      page([count({ kind: 'midday', discrepancy: '-20.00', explanation: null, operator_note: 'перший раз', is_open: false })]),
+    );
+    render(<CashCountHistory pointId="p1" isOwner={false} meId="u1" />);
+    expect(screen.getByText(/перший раз/)).toBeInTheDocument();
+    expect(screen.getByText('needs no explanation')).toBeInTheDocument();
+  });
+
   it('an open row the operator cannot explain says who counted it', () => {
     countsMock.mockReturnValue(
       page([openClosing({ operator_note_editable: false, counted_by_user_id: 'u2', counted_by_name: 'Марія' })]),

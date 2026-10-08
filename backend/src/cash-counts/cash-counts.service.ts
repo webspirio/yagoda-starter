@@ -18,7 +18,7 @@ import { UserRole } from '../users/user-role.enum';
 import { ShiftsService } from '../shifts/shifts.service';
 import { PointCashService } from '../point-cash/point-cash.service';
 import { AuditService } from '../audit/audit.service';
-import { assertOwnsPoint, resolvePointFilter } from '../auth/access/point-scope';
+import { resolvePointFilter } from '../auth/access/point-scope';
 import { Paginated } from '../common/dto/paginated';
 import { skipOf } from '../common/dto/pagination-query.dto';
 import { loadDisplayNames } from '../users/display-names';
@@ -293,7 +293,6 @@ export class CashCountsService {
       ) {
         throw new NotFoundException('Cash count not found');
       }
-      assertOwnsPoint(actor, shift.collection_point_id);
 
       const refusal = countNoteRefusal(actor, count, field);
       if (refusal) throw refusal;

@@ -116,9 +116,10 @@ export function CashCountHistory({
         }
         if (discrepancyTone(row.discrepancy) === 'leaf') {
           return (
-            <span className="text-xs text-muted-foreground">
-              {t('pointCash.countHistory.matched')}
-            </span>
+            <div className="flex flex-col items-start gap-1">
+              <span className="text-xs text-muted-foreground">{t('pointCash.countHistory.matched')}</span>
+              {operatorNote}
+            </div>
           );
         }
         if (row.is_open) {
@@ -155,10 +156,14 @@ export function CashCountHistory({
         // an incident, so it never opens one even with a real gap; an
         // opening/closing count only clears `is_open` by being explained,
         // caught above).
+        // A demoted count keeps the operator's note as history, so show it here too.
         return (
-          <span className="text-xs text-muted-foreground">
-            {t('pointCash.countHistory.noExplanationNeeded')}
-          </span>
+          <div className="flex flex-col items-start gap-1">
+            <span className="text-xs text-muted-foreground">
+              {t('pointCash.countHistory.noExplanationNeeded')}
+            </span>
+            {operatorNote}
+          </div>
         );
       },
     },

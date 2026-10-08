@@ -775,7 +775,7 @@ doubled every point's starting cash); the un-anchored formula still standing in
 
 - **`SetExplanationDto` refuses a blank string, so there is no un-explain
   path.** An owner who explains the wrong shift cannot reopen the incident,
-  since `is_open` keys on a non-empty `explanation`.
+  since a count's `is_open` keys on that count's own non-empty `explanation`.
 
 - **The reopen demotion does not filter `book`**, so it will demote the crates
   closing count too once that book exists. Probably intended; nothing says so.

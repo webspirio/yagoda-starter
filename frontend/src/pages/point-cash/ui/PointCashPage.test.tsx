@@ -1353,7 +1353,7 @@ describe('PointCashPage — count explanations: the opening note (S4) and a bann
 
     expect(
       await screen.findByRole('heading', {
-        name: `Shift opened. ${formatUah('-20.00', 'en')} off last close — the owner will see it in their list.`,
+        name: `Shift opened. ${formatUah('-20.00', 'en')} off the previous close — the owner will see it in their list.`,
       }),
     ).toBeInTheDocument();
   });
