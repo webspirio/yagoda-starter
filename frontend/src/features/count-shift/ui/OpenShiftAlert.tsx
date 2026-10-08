@@ -64,7 +64,7 @@ export function OpenShiftAlert({
    * without any of them re-deriving the date.
    */
   onGoToDate?: (businessDate: string) => void;
-  /** PointCashPage shows the result screen instead of the toast — spec 2026-10-08, S2. */
+  /** The page shows the close result (`widgets/count-result`) instead of the toast — spec 2026-10-08, S2. */
   onClosed?: (shiftId: string) => void;
 }) {
   const { t, i18n } = useTranslation();

@@ -8,7 +8,7 @@ import { EmptyState } from '@/shared/ui/empty-state';
 import { Spinner } from '@/shared/ui/spinner';
 import { isTruncated } from '@/shared/api';
 import { useUrlParam } from '@/shared/lib/url-state';
-import { isNegative, formatUah, cmp, isZero } from '@/shared/lib/money';
+import { isNegative, formatUah, cmp } from '@/shared/lib/money';
 import { todayIso, addDaysIso, isRealIsoDate, formatLongDate, formatWeekday, formatShortDate } from '@/shared/lib/date';
 import { useMeQuery } from '@/entities/user';
 import { useWorkingPoint } from '@/features/point-scope';
@@ -17,17 +17,16 @@ import { usePointCashQuery, shortfallTone, formatNullableUah } from '@/entities/
 import { useIntakesQuery } from '@/entities/intake';
 import { usePayoutsQuery } from '@/entities/payout';
 import { useTransfersQuery } from '@/entities/transfer';
-import { useCashCountsQuery, type CashCount } from '@/entities/cash-count';
-import { OperatorNoteForm } from '@/features/set-operator-note';
+import { useCashCountsQuery } from '@/entities/cash-count';
 import { useShiftOnDateQuery, useCurrentShiftQuery } from '@/entities/shift';
 import { SetTargetCashDialog } from '@/features/set-point-target';
 import {
   useOpenShiftMutation,
   useCloseShiftMutation,
   CountDrawerDialog,
-  CountResultView,
   OpenShiftAlert,
 } from '@/features/count-shift';
+import { ShiftCountResult, type ShiftCountResultFor } from '@/widgets/count-result';
 import { CashLedger } from './CashLedger';
 import { CratesBookCard } from './CratesBookCard';
 import { IncomingTransfers } from './IncomingTransfers';
@@ -213,73 +212,8 @@ export function PointCashPage() {
     setCountMode(target.mode);
     setCountTarget(target);
   };
-  // R4 — the result view after an open/close, read back from the counts of
-  // the result's own shift rather than the mutation's response: the mutations'
-  // `onSuccess` refetches `cashCounts`, and THAT refetch is what `CountResultView`
-  // waits for. `shiftId` names the shift, so a result outlives a date change
-  // describing the day it was about (minor 6).
-  const [resultFor, setResultFor] = useState<{ mode: 'open' | 'close'; shiftId: string } | null>(
-    null,
-  );
-  // Counts are read by the result's own shift, so a result can never show
-  // another day's count.
-  const resultCounts = useCashCountsQuery({ shiftId: resultFor?.shiftId });
-  const resultBerry = (resultCounts.data?.data ?? []).filter((c) => c.book === 'berry');
-  const resultRow =
-    resultFor === null
-      ? null
-      : (resultBerry.find((c) => c.kind === (resultFor.mode === 'open' ? 'opening' : 'closing')) ?? null);
-
-  // Minor 14 (review) — the CONTENT for the close (exit) animation.
-  // `CountResultView` used to be wrapped in `resultFor !== null && resultRow
-  // !== null ? (…) : null`, which unmounted the whole dialog the INSTANT
-  // either went null — a hard pop, unlike every other dialog on this page,
-  // which stays mounted and lets `open` alone drive visibility. Latched here
-  // so the LAST real content survives dismissal (`resultFor` clears
-  // immediately; this does not) — set during render, not an effect: React's
-  // own documented technique for storing derived info from a previous render
-  // (`useState`'s reference doc, "storing information from previous
-  // renders"). An effect would run one tick AFTER the render that needs it,
-  // which is exactly the render the very first count of the day has to show.
-  const [resultView, setResultView] = useState<{
-    mode: 'open' | 'close';
-    title: string;
-    counted: string;
-    discrepancy: string | null;
-  } | null>(null);
-  // Latched like `resultView`: the form keeps rendering while the dialog fades
-  // out after a save, instead of flashing back to the result.
-  const [noteTarget, setNoteTarget] = useState<CashCount | null>(null);
-  const noteRow = resultRow;
-  // A discrepancy the closer may explain opens the form once per result; after
-  // «Скасувати» the result's own button is the way back in.
-  const [noteOffered, setNoteOffered] = useState(false);
-  if (noteRow?.operator_note_editable && !noteOffered) {
-    setNoteOffered(true);
-    setNoteTarget(noteRow);
-  }
-  if (resultFor !== null && resultRow !== null) {
-    const amount = formatUah(resultRow.discrepancy, locale);
-    const title =
-      resultFor.mode === 'open'
-        ? isZero(resultRow.discrepancy)
-          ? t('pointCash.result.opened')
-          : t('pointCash.result.openedDiscrepancy', { amount })
-        : isZero(resultRow.discrepancy)
-          ? t('pointCash.result.closedSettled')
-          : t('pointCash.result.closedDiscrepancy', { amount });
-    // Since 09.09 the opening is compared with the last close (spec 2026-10-08, decision 5).
-    const discrepancy = resultRow.discrepancy;
-    if (
-      resultView === null ||
-      resultView.mode !== resultFor.mode ||
-      resultView.title !== title ||
-      resultView.counted !== resultRow.counted_amount ||
-      resultView.discrepancy !== discrepancy
-    ) {
-      setResultView({ mode: resultFor.mode, title, counted: resultRow.counted_amount, discrepancy });
-    }
-  }
+  // R4 — the result view after an open/close; see `ShiftCountResult`.
+  const [resultFor, setResultFor] = useState<ShiftCountResultFor | null>(null);
 
   const [showCountHistory, setShowCountHistory] = useState(false);
 
@@ -571,11 +505,7 @@ export function PointCashPage() {
           viewedDate={date}
           // The same page, another `?date=` — where the panel offers the close.
           onGoToDate={setDateParam}
-          onClosed={(id) => {
-            setNoteTarget(null);
-            setNoteOffered(false);
-            setResultFor({ mode: 'close', shiftId: id });
-          }}
+          onClosed={(id) => setResultFor({ mode: 'close', shiftId: id })}
         />
         {body}
       </DashboardPage>
@@ -618,46 +548,11 @@ export function PointCashPage() {
             await closeShift.mutateAsync({ id: countTarget.shiftId, counted_amount, broken_crates });
             setResultFor({ mode: 'close', shiftId: countTarget.shiftId });
           }
-          setNoteTarget(null);
-          setNoteOffered(false);
           setCountTarget(null);
         }}
       />
 
-      {/* ALWAYS mounted (minor 14, review) — `open` alone drives visibility,
-          same as `CountDrawerDialog`/`SetTargetCashDialog` above, so a
-          dismiss animates closed instead of hard-popping out of the DOM.
-          There is nothing to show before the very first count of the day
-          ever lands (`resultView` stays `null`, `open` stays `false`) —
-          `resultView`'s own doc comment above is what keeps this rendering
-          the LAST real content while it fades, not a blank flash. This is
-          the SAME component `RecountDrawerDialog` (features/count-shift)
-          renders for its own result — a `pages/*` module reaching down into
-          `features/*` is the allowed direction, so this is the one place the
-          two callers share it. */}
-      <CountResultView
-        open={resultFor !== null && resultRow !== null}
-        title={resultView?.title ?? ''}
-        counted={resultView?.counted ?? '0.00'}
-        discrepancy={resultView?.discrepancy ?? null}
-        onClose={() => setResultFor(null)}
-        action={
-          noteRow?.operator_note_editable ? (
-            <Button type="button" variant="outline" onClick={() => setNoteTarget(noteRow)}>
-              {t('operatorNote.resultAction')}
-            </Button>
-          ) : null
-        }
-        swap={
-          noteTarget ? (
-            <OperatorNoteForm
-              count={noteTarget}
-              onDone={() => setResultFor(null)}
-              onCancel={() => setNoteTarget(null)}
-            />
-          ) : null
-        }
-      />
+      <ShiftCountResult result={resultFor} onClose={() => setResultFor(null)} />
     </>
   );
 }
