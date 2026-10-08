@@ -1439,6 +1439,8 @@ Nobody voids an intake in a closed shift any more, the owner included (§9.4, п
 
 ## Opening-count discrepancy is invisible to the operator (2026-10-06)
 
+**Closed 2026-10-08** — spec `2026-10-08-yagoda-count-explanations-design.md`.
+
 `ShiftsService.open` compares the morning count with the previous close
 (`expectedForOpening`), and a mismatch is an `is_open` incident on the NEW shift.
 `PointCashPage` deliberately shows no discrepancy pill for an open (§7.3), so the
@@ -1447,6 +1449,8 @@ operator neither sees it nor can explain it — the operator's note (spec
 whether the opening result should name the gap, and whether the opener may explain it.
 
 ## An explained opening discrepancy disarms the closing note (2026-10-07)
+
+**Closed 2026-10-08** — spec `2026-10-08-yagoda-count-explanations-design.md`.
 
 From the PR #218 review. `shifts.explanation` is one column per shift, and
 `operatorNoteRefusal` (`backend/src/shifts/operator-note.ts`) refuses on any
@@ -1479,6 +1483,8 @@ Whichever is chosen, a db-spec — opening discrepancy explained → close with 
 discrepancy → assert the outcome — should pin it.
 
 ## The owner's explanation renders on every count row (2026-10-07)
+
+**Closed 2026-10-08** — spec `2026-10-08-yagoda-count-explanations-design.md`.
 
 From the PR #218 review; predates the operator note. The `GET /cash-counts`
 shifts join puts `explanation` on every count of the shift, and

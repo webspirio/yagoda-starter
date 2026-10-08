@@ -251,7 +251,7 @@ export function PointCashPage() {
   // out after a save, instead of flashing back to the result.
   const [noteTarget, setNoteTarget] = useState<CashCount | null>(null);
   const noteRow = resultRow;
-  // A discrepancy the closer may explain opens the form once per close; after
+  // A discrepancy the closer may explain opens the form once per result; after
   // «Скасувати» the result's own button is the way back in.
   const [noteOffered, setNoteOffered] = useState(false);
   if (noteRow?.operator_note_editable && !noteOffered) {
