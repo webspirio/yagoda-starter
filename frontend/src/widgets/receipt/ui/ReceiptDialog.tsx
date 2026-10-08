@@ -21,8 +21,8 @@ import {
 import { useTareTypeOptionsQuery } from '@/entities/tare-type';
 import { usePointOptionsQuery } from '@/entities/collection-point';
 import { useMeQuery } from '@/entities/user';
+import { useNetworkSettingsQuery } from '@/entities/network-settings';
 import { VoidDocumentDialog, reopenedCodes } from '@/features/void-document';
-import { ReceiptNoteField } from './ReceiptNoteField';
 import { ReceiptSheet, type ReceiptSheetLine } from './ReceiptSheet';
 
 /**
@@ -84,6 +84,9 @@ export function ReceiptDialog({
   const meQuery = useMeQuery();
   const me = meQuery.data;
 
+  // Not part of `isError`: a missing note must never stop a supplier's receipt.
+  const settingsQuery = useNetworkSettingsQuery();
+
   const livePayout = intake?.payouts.find((p) => p.voided_at === null) ?? null;
 
   const [voidOpen, setVoidOpen] = useState(false);
@@ -122,10 +125,6 @@ export function ReceiptDialog({
     setAutoVoided(true);
     openVoid();
   }
-
-  // For this print only: nothing stores it, so closing the receipt drops it.
-  const [note, setNote] = useState('');
-  if (!open && note !== '') setNote('');
 
   if (intakeId === null) {
     return null;
@@ -220,9 +219,11 @@ export function ReceiptDialog({
           receivedBy={receivedBy}
           voided={voided ? { reason: intake.void_reason ?? '' } : null}
           crateReturn={crateReturn}
-          note={note}
+          note={settingsQuery.data?.receipt_note ?? null}
         />
-        <ReceiptNoteField value={note} onChange={setNote} />
+        {settingsQuery.isError ? (
+          <p className="print-hide text-sm text-muted-foreground">{t('receipt.noteLoadFailed')}</p>
+        ) : null}
       </>
     );
 
@@ -233,7 +234,7 @@ export function ReceiptDialog({
             {t('receipt.void')}
           </Button>
         ) : null}
-        <Button type="button" onClick={() => window.print()}>
+        <Button type="button" disabled={settingsQuery.isPending} onClick={() => window.print()}>
           {t('receipt.print')}
         </Button>
       </>

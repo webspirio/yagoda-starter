@@ -809,6 +809,7 @@
     }
   },
   "receipt": {
+    "noteLoadFailed": "The network's note didn't load — the ruled lines will print blank.",
     "note": {
       "label": "Note on the receipt",
       "hint": "printed into the ruled lines, not saved",

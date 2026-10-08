@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { expectNoAxeViolations } from '../../../test-axe';
 import type { IntakeDetail } from '@/entities/intake';
@@ -15,6 +15,7 @@ const {
   pointsMock,
   meMock,
   voidDialogMock,
+  settingsMock,
 } = vi.hoisted(() => ({
   intakeMock: vi.fn(),
   supplierMock: vi.fn(),
@@ -25,6 +26,7 @@ const {
   pointsMock: vi.fn(),
   meMock: vi.fn(),
   voidDialogMock: vi.fn(),
+  settingsMock: vi.fn(),
 }));
 
 vi.mock('@/entities/intake', async (importOriginal) => ({
@@ -57,6 +59,11 @@ vi.mock('@/entities/collection-point', () => ({
 
 vi.mock('@/entities/user', () => ({
   useMeQuery: () => meMock(),
+}));
+
+vi.mock('@/entities/network-settings', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/entities/network-settings')>()),
+  useNetworkSettingsQuery: () => settingsMock(),
 }));
 
 vi.mock('@/features/void-document', () => ({
@@ -159,6 +166,7 @@ function setUp({
   intakeIsError = false,
   grades = [GRADE_1],
   gradesIsError = false,
+  note = null,
 }: {
   intake?: IntakeDetail | null;
   debt?: string;
@@ -166,6 +174,7 @@ function setUp({
   intakeIsError?: boolean;
   grades?: Array<typeof GRADE_1>;
   gradesIsError?: boolean;
+  note?: string | null;
 } = {}) {
   intakeMock.mockReturnValue({
     data: intake ?? undefined,
@@ -195,6 +204,11 @@ function setUp({
   });
   meMock.mockReturnValue({ data: me, isPending: false, isError: false });
   settlementMock.mockReturnValue({ data: undefined, isPending: false, isError: false });
+  settingsMock.mockReturnValue({
+    data: { receipt_note: note, updated_at: '2026-10-08T09:00:00.000Z' },
+    isPending: false,
+    isError: false,
+  });
 }
 
 beforeEach(() => {
@@ -561,51 +575,37 @@ describe('ReceiptDialog', () => {
     for (const line of Array.from(tail?.children ?? [])) expect(line).toHaveClass('border-b');
   });
 
-  it('prints the typed note onto the ruled lines and takes nothing past the seventh', async () => {
-    const user = userEvent.setup();
-    setUp();
+  it("prints the network's note on the ruled lines, blank after it", () => {
+    setUp({ note: 'Ящики повертати до 20:00\nТел. 067 000 00 00' });
     render(<ReceiptDialog intakeId="intake-1" open onClose={vi.fn()} />);
-
-    const note = screen.getByRole('textbox', { name: 'Note on the receipt' });
-    // A long line breaks at its last space on its own.
-    await user.type(note, `${'a'.repeat(30)} ${'b'.repeat(15)}`);
-    await user.type(note, '{Enter}3{Enter}4{Enter}5{Enter}6{Enter}7');
-    await user.type(note, '{Enter}'); // an eighth line is not taken
-    const typed = [`${'a'.repeat(30)}`, `${'b'.repeat(15)}`, '3', '4', '5', '6', '7'];
-    expect(note).toHaveValue(typed.join('\n'));
-    expect(screen.getByText(/Line 7 of 7/)).toBeInTheDocument();
 
     const tail = document.querySelector('.printable')?.lastElementChild;
-    expect(Array.from(tail?.children ?? [], (line) => line.textContent)).toEqual(typed);
+    expect(Array.from(tail?.children ?? [], (line) => line.textContent)).toEqual([
+      'Ящики повертати до 20:00',
+      'Тел. 067 000 00 00',
+      ...Array(5).fill('\u00a0'),
+    ]);
+    expect(screen.queryByRole('textbox')).toBeNull();
   });
 
-  it('keeps the caret in place when a hard cut lands after it', async () => {
-    const user = userEvent.setup();
+  it('waits to print until the note has loaded', () => {
     setUp();
+    settingsMock.mockReturnValue({ data: undefined, isPending: true, isError: false });
+    render(<ReceiptDialog intakeId="intake-1" open onClose={vi.fn()} />);
+    expect(screen.getByRole('button', { name: 'Print' })).toBeDisabled();
+  });
+
+  it('warns and still prints, with blank lines, when the note fails to load', () => {
+    setUp();
+    settingsMock.mockReturnValue({ data: undefined, isPending: false, isError: true });
     render(<ReceiptDialog intakeId="intake-1" open onClose={vi.fn()} />);
 
-    const note = screen.getByRole<HTMLTextAreaElement>('textbox', { name: 'Note on the receipt' });
-    await user.type(note, 'x'.repeat(40));
-    await user.type(note, 'y', { initialSelectionStart: 5, initialSelectionEnd: 5 });
-    expect(note).toHaveValue(`xxxxxy${'x'.repeat(34)}\nx`);
-    await waitFor(() => expect(note.selectionStart).toBe(6));
-  });
-
-  it('leaves the blank lines blank after a short note, and forgets it on close', async () => {
-    const user = userEvent.setup();
-    setUp();
-    const { rerender } = render(<ReceiptDialog intakeId="intake-1" open onClose={vi.fn()} />);
-
-    await user.type(screen.getByRole('textbox', { name: 'Note on the receipt' }), 'Ящики брудні');
-    const tail = () => document.querySelector('.printable')?.lastElementChild;
-    expect(Array.from(tail()?.children ?? [], (line) => line.textContent)).toEqual([
-      'Ящики брудні',
-      ...Array(6).fill('\u00a0'),
-    ]);
-
-    rerender(<ReceiptDialog intakeId="intake-1" open={false} onClose={vi.fn()} />);
-    rerender(<ReceiptDialog intakeId="intake-1" open onClose={vi.fn()} />);
-    expect(await screen.findByRole('textbox', { name: 'Note on the receipt' })).toHaveValue('');
+    expect(screen.getByText(/note didn't load/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Print' })).toBeEnabled();
+    const tail = document.querySelector('.printable')?.lastElementChild;
+    expect(Array.from(tail?.children ?? [], (line) => line.textContent)).toEqual(
+      Array(7).fill('\u00a0'),
+    );
   });
 
   it('keeps the «saved in the system» footer off the paper', () => {

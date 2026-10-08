@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Badge } from '@/shared/ui/badge';
-import { NOTE_LINES } from '../model/receiptNote';
+import { NOTE_LINES } from '@/entities/network-settings';
 
 /** One line of the printed receipt, already resolved to display strings —
  *  `ReceiptDialog` does the grade/tare lookups and money/weight formatting;
@@ -42,7 +42,7 @@ export interface ReceiptSheetProps {
   /** Who received this document (`received_by_name`), or «—» when unknown. */
   receivedBy: string;
   /** Typed in the dialog for this print only — one line per ruled line. */
-  note: string;
+  note: string | null;
   voided: { reason: string } | null;
   /** Our rented crates handed back in the SAME «Прийняти» as this receipt
    *  (2026-09-24) — `null` when none came back with it. Printed as its own
@@ -101,7 +101,7 @@ export function ReceiptSheet({
   crateReturn,
 }: ReceiptSheetProps) {
   const { t } = useTranslation();
-  const noteLines = note.split('\n');
+  const noteLines = note?.split('\n') ?? [];
 
   return (
     <div className="printable rounded-lg border border-dashed border-border bg-white p-4 text-[13px] text-neutral-900">
@@ -181,7 +181,7 @@ export function ReceiptSheet({
         {t('receipt.footer')}
       </div>
 
-      {/* Ruled lines: the typed note first, then blank ones for handwriting;
+      {/* Ruled lines: the network's note first, then blank ones for handwriting;
           they also feed the slip past the tear bar. */}
       <div className="print-only" aria-hidden="true">
         {Array.from({ length: NOTE_LINES }, (_, i) => (
