@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { ApiError } from '@/shared/api';
-import { apiErrorToBanner, apiErrorParams, toBannerError } from './apiErrorToBanner';
+import { apiErrorToBanner, apiErrorParams, statusKey, toBannerError } from './apiErrorToBanner';
 
 /** ApiError(status, message, details?, code?) — built from the parts each case
  *  cares about, so a test reads as the server response it stands for. */
@@ -38,9 +38,10 @@ describe('apiErrorToBanner', () => {
       );
     });
 
-    it('says the shift is not open when a close arrives on a closed one', () => {
+    it('says the shift is already closed when a close arrives on a closed one', () => {
+      // A double tap or a stale tab — there is no shift to open that day.
       expect(apiErrorToBanner(apiError(409, 'SHIFT_ALREADY_CLOSED'), FALLBACK)).toBe(
-        'day.errors.notOpen',
+        'day.errors.alreadyClosed',
       );
     });
 
@@ -205,9 +206,9 @@ describe('apiErrorToBanner', () => {
       expect(apiErrorToBanner(apiError(400, code), FALLBACK)).toBe(key);
     });
 
-    it('still falls back to the post’s own key when the server names no code', () => {
-      // A 500 or a dropped connection — generic, but about POSTING.
-      expect(apiErrorToBanner(apiError(500), FALLBACK)).toBe(FALLBACK);
+    it('a 500 with no code gets the shared server sentence, a 404 still the post’s own key', () => {
+      expect(apiErrorToBanner(apiError(500), FALLBACK)).toBe('errors.server');
+      expect(apiErrorToBanner(apiError(404), FALLBACK)).toBe(FALLBACK);
     });
 
     it('shares ALREADY_VOIDED with every other document — §8.7 is not special', () => {
@@ -265,4 +266,45 @@ describe('CRATES_ON_HAND_INSUFFICIENT', () => {
     });
   });
   it('has no params for a non-ApiError', () => expect(apiErrorParams(new Error('down'))).toEqual({}));
+});
+
+describe('statusKey', () => {
+  it.each([
+    [0, 'errors.network'],
+    [429, 'errors.tooManyRequests'],
+    [403, 'errors.accessChanged'],
+    [500, 'errors.server'],
+    [503, 'errors.server'],
+  ])('status %i → %s', (status, key) => {
+    expect(statusKey(new ApiError(status, 'raw'))).toBe(key);
+  });
+
+  it('has nothing to say about a 404, a 400 or a non-ApiError', () => {
+    expect(statusKey(new ApiError(404, 'Supplier not found'))).toBeUndefined();
+    expect(statusKey(new ApiError(400, 'x'))).toBeUndefined();
+    expect(statusKey(new Error('boom'))).toBeUndefined();
+  });
+});
+
+describe('apiErrorToBanner precedence', () => {
+  it('a known code beats the status: OWNER_ONLY on a 403 keeps its own sentence', () => {
+    expect(apiErrorToBanner(new ApiError(403, 'x', undefined, 'OWNER_ONLY'), 'f')).toBe('day.errors.ownerOnly');
+  });
+  it('an unknown code on a 5xx gets the status sentence, not the fallback', () => {
+    expect(apiErrorToBanner(new ApiError(500, 'x', undefined, 'SOMETHING_NEW'), 'f')).toBe('errors.server');
+  });
+  it('no code: status first, then the fallback', () => {
+    expect(apiErrorToBanner(new ApiError(0, 'Request failed with status 0'), 'f')).toBe('errors.network');
+    expect(apiErrorToBanner(new ApiError(404, 'Supplier not found'), 'f')).toBe('f');
+  });
+  it('the two coded 403s map to the access sentence by name', () => {
+    expect(apiErrorToBanner(new ApiError(403, 'x', undefined, 'INSUFFICIENT_ROLE'), 'f')).toBe('errors.accessChanged');
+    expect(apiErrorToBanner(new ApiError(403, 'x', undefined, 'WRONG_COLLECTION_POINT'), 'f')).toBe('errors.accessChanged');
+  });
+  // POINT_REQUIRED comes only from GET /crate-standing, whose error no screen
+  // maps — so it has no entry, and only COLLECTION_POINT_REQUIRED keeps the sentence.
+  it('maps COLLECTION_POINT_REQUIRED, and leaves the unrendered POINT_REQUIRED unmapped', () => {
+    expect(apiErrorToBanner(new ApiError(400, 'x', undefined, 'COLLECTION_POINT_REQUIRED'), 'f')).toBe('errors.pointRequired');
+    expect(apiErrorToBanner(new ApiError(400, 'x', undefined, 'POINT_REQUIRED'), 'f')).toBe('f');
+  });
 });

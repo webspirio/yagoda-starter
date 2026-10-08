@@ -10,6 +10,23 @@ const apiError = (init: { status: number; code?: string; details?: string[] }) =
   new ApiError(init.status, 'Request failed', init.details, init.code);
 
 describe('apiErrorToFields', () => {
+  it.each([
+    ['PRODUCT_GRADE_INACTIVE', 'prices.errors.gradeInactive'],
+    ['DUPLICATE_COLLECTION_POINT', 'prices.errors.duplicatePoint'],
+  ])('%s banners its own sentence', (code, key) => {
+    expect(apiErrorToFields(new ApiError(400, 'x', undefined, code), FIELDS)).toEqual({
+      fieldErrors: [],
+      formErrorKey: key,
+    });
+  });
+
+  it('a network failure gets the status sentence, not saveFailed', () => {
+    expect(apiErrorToFields(apiError({ status: 0 }), FIELDS)).toEqual({
+      fieldErrors: [],
+      formErrorKey: 'errors.network',
+    });
+  });
+
   it('maps each money property onto its field by the leading token', () => {
     const out = apiErrorToFields(
       apiError({

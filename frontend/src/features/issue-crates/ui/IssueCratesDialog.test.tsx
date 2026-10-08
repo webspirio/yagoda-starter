@@ -180,6 +180,6 @@ describe('IssueCratesDialog', () => {
     await user.type(screen.getByLabelText('Crates'), '20');
     await user.click(screen.getByRole('button', { name: /^issue$/i }));
 
-    await waitFor(() => expect(screen.getByText(/could not issue/i)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/the server failed/i)).toBeInTheDocument());
   });
 });

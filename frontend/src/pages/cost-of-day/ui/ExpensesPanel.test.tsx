@@ -6,10 +6,15 @@ import type { CostOfDay } from '@/entities/cost-of-day';
 import type { DayExpense } from '@/entities/day-expense';
 import { ExpensesPanel } from './ExpensesPanel';
 
-const { createMock, updateMock, removeMock } = vi.hoisted(() => ({
+const { createMock, updateMock, removeMock, toastErrorMock } = vi.hoisted(() => ({
   createMock: vi.fn(),
   updateMock: vi.fn(),
   removeMock: vi.fn(),
+  toastErrorMock: vi.fn(),
+}));
+
+vi.mock('@/shared/ui/toast', () => ({
+  toast: { error: (...args: unknown[]) => toastErrorMock(...args) },
 }));
 
 vi.mock('@/entities/day-expense', () => ({
@@ -68,6 +73,7 @@ beforeEach(() => {
   createMock.mockReset().mockResolvedValue(undefined);
   updateMock.mockReset().mockResolvedValue(undefined);
   removeMock.mockReset().mockResolvedValue(undefined);
+  toastErrorMock.mockReset();
 });
 
 describe('ExpensesPanel', () => {
@@ -110,6 +116,23 @@ describe('ExpensesPanel', () => {
     await waitFor(() => expect(createMock).toHaveBeenCalled());
     expect(screen.getByPlaceholderText('Підпис витрати')).toHaveValue('водій');
     expect(screen.getByPlaceholderText('₴')).toHaveValue('500');
+  });
+
+  // A title paired with a description is one sentence of what happened; the
+  // description carries the action.
+  it('a refused write toasts what happened as the title and the action beneath it', async () => {
+    createMock.mockRejectedValue(new Error('nope'));
+    const user = userEvent.setup();
+    renderPanel();
+
+    await user.type(screen.getByPlaceholderText('Підпис витрати'), 'водій');
+    await user.type(screen.getByPlaceholderText('₴'), '500');
+    await user.click(screen.getByRole('button', { name: 'Додати' }));
+
+    await waitFor(() => expect(toastErrorMock).toHaveBeenCalled());
+    expect(toastErrorMock).toHaveBeenCalledWith('Рядок не додано.', {
+      description: 'Щось пішло не так. Оновіть сторінку й спробуйте ще раз.',
+    });
   });
 
   it('patches only the field that actually moved', async () => {

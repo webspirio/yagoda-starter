@@ -10,7 +10,7 @@ const apiError = (init: { status: number; code?: string; details?: string[] }) =
   new ApiError(init.status, 'Request failed', init.details, init.code);
 
 describe('apiErrorToFields', () => {
-  // The three services use three different prefixes for the same condition.
+  // Each service prefixes its own codes; the mapper lists all six exactly.
   it.each(['PRODUCT_NAME_TAKEN', 'GRADE_NAME_TAKEN', 'TARE_TYPE_NAME_TAKEN'])(
     'puts a %s conflict on the name field, not in the banner',
     (code) => {
@@ -59,5 +59,15 @@ describe('apiErrorToFields', () => {
     const out = apiErrorToFields(new Error('network down'), FIELDS);
     expect(out.fieldErrors).toEqual([]);
     expect(out.formErrorKey).toBe('catalog.errors.saveFailed');
+  });
+
+  it('a made-up FOO_NAME_TAKEN no longer matches', () => {
+    const out = apiErrorToFields(apiError({ status: 409, code: 'FOO_NAME_TAKEN' }), FIELDS);
+    expect(out).toEqual({ fieldErrors: [], formErrorKey: 'catalog.errors.saveFailed' });
+  });
+
+  it('a network failure and a 500 get the status sentence, not saveFailed', () => {
+    expect(apiErrorToFields(new ApiError(0, 'x'), FIELDS).formErrorKey).toBe('errors.network');
+    expect(apiErrorToFields(new ApiError(500, 'x'), FIELDS).formErrorKey).toBe('errors.server');
   });
 });

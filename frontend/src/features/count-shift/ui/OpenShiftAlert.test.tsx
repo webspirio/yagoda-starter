@@ -164,7 +164,7 @@ describe('OpenShiftAlert — closing in place', () => {
     await user.type(within(dialog).getByRole('textbox', { name: /broken/i }), '0');
     await user.click(within(dialog).getByRole('button', { name: SUBMIT_COUNT }));
 
-    expect(await within(dialog).findByRole('alert')).toHaveTextContent('The shift is not open');
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent('The shift is already closed. Reload the page.');
     expect(screen.getByRole('dialog')).toBeInTheDocument();
   });
 });

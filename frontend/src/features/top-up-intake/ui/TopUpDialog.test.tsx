@@ -130,7 +130,7 @@ describe('TopUpDialog', () => {
     await fill(user, '750', 'Доплата');
 
     await waitFor(() =>
-      expect(screen.getByRole('alert').textContent).toMatch(/could not add/i),
+      expect(screen.getByRole('alert').textContent).toMatch(/the server failed/i),
     );
   });
 });

@@ -673,7 +673,7 @@ describe('SupplierCardPage', () => {
 
     renderCard();
 
-    expect(screen.getByRole('progressbar', { name: 'loading' })).toBeInTheDocument();
+    expect(screen.getByRole('progressbar', { name: 'Loading…' })).toBeInTheDocument();
     expect(screen.queryByText('Accrued')).toBeNull();
     expect(screen.queryByRole('heading', { level: 1, name: 'Ivan Koval' })).toBeNull();
   });
