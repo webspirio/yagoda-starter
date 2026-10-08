@@ -28,4 +28,8 @@ describe('fitReceiptNote', () => {
     expect(fitReceiptNote(`${full}\n`)).toBeNull();
     expect(fitReceiptNote(`${full}y`)).toBeNull();
   });
+
+  it('turns a pasted tab into a space, which prints one column wide', () => {
+    expect(fitReceiptNote('Тел.\t067 000 00 00')).toBe('Тел. 067 000 00 00');
+  });
 });

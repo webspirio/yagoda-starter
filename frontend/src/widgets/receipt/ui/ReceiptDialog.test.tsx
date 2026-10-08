@@ -159,6 +159,24 @@ function buildIntake(overrides: Partial<IntakeDetail> = {}): IntakeDetail {
   };
 }
 
+const AT = '2026-10-08T09:00:00.000Z';
+const refetchSettings = vi.fn();
+function settingsState(over: {
+  data?: { receipt_note: string | null; updated_at: string };
+  isPending?: boolean;
+  isFetching?: boolean;
+  isError?: boolean;
+}) {
+  return {
+    data: undefined,
+    isPending: false,
+    isFetching: false,
+    isError: false,
+    refetch: refetchSettings,
+    ...over,
+  };
+}
+
 function setUp({
   intake = buildIntake(),
   debt = '9000.00',
@@ -204,11 +222,7 @@ function setUp({
   });
   meMock.mockReturnValue({ data: me, isPending: false, isError: false });
   settlementMock.mockReturnValue({ data: undefined, isPending: false, isError: false });
-  settingsMock.mockReturnValue({
-    data: { receipt_note: note, updated_at: '2026-10-08T09:00:00.000Z' },
-    isPending: false,
-    isError: false,
-  });
+  settingsMock.mockReturnValue(settingsState({ data: { receipt_note: note, updated_at: AT } }));
 }
 
 beforeEach(() => {
@@ -588,16 +602,42 @@ describe('ReceiptDialog', () => {
     expect(screen.queryByRole('textbox')).toBeNull();
   });
 
+  it('re-reads the note each time the receipt opens, and waits for it to print', () => {
+    setUp();
+    const { rerender } = render(<ReceiptDialog intakeId="intake-1" open={false} onClose={vi.fn()} />);
+    refetchSettings.mockClear();
+
+    settingsMock.mockReturnValue(
+      settingsState({ data: { receipt_note: 'стара', updated_at: AT }, isFetching: true }),
+    );
+    rerender(<ReceiptDialog intakeId="intake-1" open onClose={vi.fn()} />);
+
+    expect(refetchSettings).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole('button', { name: 'Print' })).toBeDisabled();
+  });
+
+  it('prints the last-known note without the blank-lines warning when a re-read fails', () => {
+    setUp();
+    settingsMock.mockReturnValue(
+      settingsState({ data: { receipt_note: 'Тел. 067', updated_at: AT }, isError: true }),
+    );
+    render(<ReceiptDialog intakeId="intake-1" open onClose={vi.fn()} />);
+
+    expect(screen.queryByText(/note didn't load/)).toBeNull();
+    const tail = document.querySelector('.printable')?.lastElementChild;
+    expect(tail?.children[0]?.textContent).toBe('Тел. 067');
+  });
+
   it('waits to print until the note has loaded', () => {
     setUp();
-    settingsMock.mockReturnValue({ data: undefined, isPending: true, isError: false });
+    settingsMock.mockReturnValue(settingsState({ isPending: true, isFetching: true }));
     render(<ReceiptDialog intakeId="intake-1" open onClose={vi.fn()} />);
     expect(screen.getByRole('button', { name: 'Print' })).toBeDisabled();
   });
 
   it('warns and still prints, with blank lines, when the note fails to load', () => {
     setUp();
-    settingsMock.mockReturnValue({ data: undefined, isPending: false, isError: true });
+    settingsMock.mockReturnValue(settingsState({ isError: true }));
     render(<ReceiptDialog intakeId="intake-1" open onClose={vi.fn()} />);
 
     expect(screen.getByText(/note didn't load/)).toBeInTheDocument();

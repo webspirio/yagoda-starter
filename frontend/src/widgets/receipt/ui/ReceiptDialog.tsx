@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   Dialog,
@@ -86,6 +86,12 @@ export function ReceiptDialog({
 
   // Not part of `isError`: a missing note must never stop a supplier's receipt.
   const settingsQuery = useNetworkSettingsQuery();
+  const { refetch: refetchSettings } = settingsQuery;
+  // The dialog lives as long as its page, so re-read the note on every opening:
+  // an owner's save must reach the very next receipt printed.
+  useEffect(() => {
+    if (open) void refetchSettings();
+  }, [open, refetchSettings]);
 
   const livePayout = intake?.payouts.find((p) => p.voided_at === null) ?? null;
 
@@ -221,7 +227,7 @@ export function ReceiptDialog({
           crateReturn={crateReturn}
           note={settingsQuery.data?.receipt_note ?? null}
         />
-        {settingsQuery.isError ? (
+        {settingsQuery.isError && !settingsQuery.data ? (
           <p className="print-hide text-sm text-muted-foreground">{t('receipt.noteLoadFailed')}</p>
         ) : null}
       </>
@@ -234,7 +240,7 @@ export function ReceiptDialog({
             {t('receipt.void')}
           </Button>
         ) : null}
-        <Button type="button" disabled={settingsQuery.isPending} onClick={() => window.print()}>
+        <Button type="button" disabled={settingsQuery.isFetching} onClick={() => window.print()}>
           {t('receipt.print')}
         </Button>
       </>
