@@ -116,8 +116,8 @@ must never get one. The schema cannot tell them apart, so the write path enforce
 
 Both live in `CashCountsService`, run in one transaction with `pessimistic_write` on the
 count row, scope the count through its shift's point (another point's count is 404, as
-today), and record an audit entry in the same transaction: `cash_count.explained` and
-`cash_count.operator_noted`, `before`/`after` carrying the text. DTOs keep today's rules:
+today), and record an audit entry in the same transaction: `cash-count.explained` and
+`cash-count.operator_noted`, `before`/`after` carrying the text. DTOs keep today's rules:
 1–2000 characters, not blank, trimmed.
 
 One pure function, `countNoteRefusal(actor, count, field)` in
@@ -189,8 +189,8 @@ codes. `apiErrorToBanner` and both locales follow; the `error-codes` verify row 
 - **Types**: `entities/cash-count` gains `explainable`; `entities/shift` loses the three
   fields.
 - **Copy**: «Надіслати керівнику» → «Зберегти пояснення» (nothing is sent; the owner reads it
-  in the list). «Не пояснено» without a button gains a reason line when the owner has already
-  explained or the count is a recount.
+  in the list). «Не пояснено» without a button gains a reason line: «рахував {name}», for an operator
+  who did not make that count (an explained or midday row is never «Не пояснено»).
 
 ## 7. Rules and docs
 
