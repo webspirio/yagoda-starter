@@ -22,11 +22,14 @@ export interface CashCount {
   /** `displayNameOf` — `null` лише для рядків, записаних до появи цього поля. */
   counted_by_name: string | null;
   counted_at: string;
+  /** Рішення керівника щодо ЦЬОГО підрахунку. */
   explanation: string | null;
-  /** Пояснення приймальника до розбіжності закриття — `is_open` не змінює. */
+  /** Пояснення того, хто рахував, щодо ЦЬОГО підрахунку — `is_open` не змінює. */
   operator_note: string | null;
-  /** Чи може ЦЕЙ користувач написати його з цього рядка зараз (лише рядок закриття). */
+  /** Чи може ЦЕЙ користувач (той, хто рахував) написати його зараз. */
   operator_note_editable: boolean;
+  /** May THIS caller (the owner) explain this count now — the server decides. */
+  explainable: boolean;
 }
 
 /** Реекспорт для існуючих імпортерів `../model/cash-count` — див. `@/shared/api/pagination.ts`. */

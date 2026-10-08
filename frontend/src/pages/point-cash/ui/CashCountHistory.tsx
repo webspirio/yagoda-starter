@@ -19,16 +19,19 @@ import { discrepancyTone } from '@/features/count-shift';
  * §7.6's journal for one point — every drawer count, opening/midday/closing
  * alike, read-only by design: there is no edit here, only
  * `ExplainDiscrepancyDialog` (§7.7, owner) and `OperatorNoteDialog` (spec
- * 2026-10-06, the closing operator), neither of which ever moves the counted
+ * 2026-10-08, the operator who counted), neither of which ever moves the counted
  * or expected figure, only attaches a reason to a discrepancy that already
  * happened.
  */
 export function CashCountHistory({
   pointId,
   isOwner,
+  meId,
 }: {
   pointId: string;
   isOwner: boolean;
+  /** Names the counter on an open row this operator may not explain. */
+  meId: string | null;
 }) {
   const { t, i18n } = useTranslation();
   const counts = useCashCountsQuery({ pointId });
@@ -88,9 +91,8 @@ export function CashCountHistory({
       // own comment), so printing «Зійшлося» off `is_open` alone used to
       // claim a midday −50,00 ₴ recount had matched.
       cell: (row) => {
-        // The shifts join puts `operator_note` on every count of the shift, but
-        // it explains only the CLOSING count (spec 2026-10-06 §2.4).
-        const note = row.kind === 'closing' ? row.operator_note : null;
+        // Each row carries its OWN note and explanation (spec 2026-10-08), whatever its kind.
+        const note = row.operator_note;
         const operatorNote = note ? (
           <ExpandableText
             className="text-xs italic text-muted-foreground"
@@ -122,15 +124,24 @@ export function CashCountHistory({
         if (row.is_open) {
           // The operator's note informs; the incident stays open until the owner explains it.
           const action = isOwner ? (
-            <Button size="xs" variant="outline" onClick={() => setExplainTarget(row)}>
-              {t('pointCash.countHistory.explain')}
-            </Button>
+            row.explainable ? (
+              <Button size="xs" variant="outline" onClick={() => setExplainTarget(row)}>
+                {t('pointCash.countHistory.explain')}
+              </Button>
+            ) : (
+              <span className="text-xs text-muted-foreground">{t('pointCash.countHistory.open')}</span>
+            )
           ) : row.operator_note_editable ? (
             <Button size="xs" variant="outline" onClick={() => setNoteTarget(row)}>
               {t(row.operator_note ? 'operatorNote.edit' : 'operatorNote.write')}
             </Button>
           ) : (
-            <span className="text-xs text-muted-foreground">{t('pointCash.countHistory.open')}</span>
+            <span className="text-xs text-muted-foreground">
+              {t('pointCash.countHistory.open')}
+              {meId !== null && row.counted_by_user_id !== meId
+                ? ` · ${t('pointCash.countHistory.notYours', { name: row.counted_by_name ?? '—' })}`
+                : ''}
+            </span>
           );
           return (
             <div className="flex flex-col items-start gap-1">
@@ -171,18 +182,14 @@ export function CashCountHistory({
 
       {explainTarget ? (
         <ExplainDiscrepancyDialog
-          shiftId={explainTarget.shift_id}
-          discrepancy={explainTarget.discrepancy}
-          operatorNote={explainTarget.kind === 'closing' ? explainTarget.operator_note : null}
+          count={explainTarget}
           open
           onClose={() => setExplainTarget(null)}
         />
       ) : null}
       {noteTarget ? (
         <OperatorNoteDialog
-          shiftId={noteTarget.shift_id}
-          discrepancy={noteTarget.discrepancy}
-          initialNote={noteTarget.operator_note}
+          count={noteTarget}
           open
           onClose={() => setNoteTarget(null)}
         />

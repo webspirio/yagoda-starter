@@ -21,17 +21,17 @@ afterEach(() => mock.restore());
 
 describe('useSetCashExplanationMutation', () => {
   it('PUTs the explanation and invalidates shifts and cash counts', async () => {
-    mock.onPut('/shifts/s1/explanation').reply(200, { id: 's1' });
+    mock.onPut('/cash-counts/c1/explanation').reply(200, { id: 'c1' });
     const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries');
     const { result } = renderHook(() => useSetCashExplanationMutation(), { wrapper });
 
     await result.current.mutateAsync({
-      shiftId: 's1',
+      countId: 'c1',
       explanation: 'здачу віддали з іншої шухляди',
     });
 
     expect(mock.history.put).toHaveLength(1);
-    expect(mock.history.put[0].url).toBe('/shifts/s1/explanation');
+    expect(mock.history.put[0].url).toBe('/cash-counts/c1/explanation');
     expect(JSON.parse(mock.history.put[0].data as string)).toEqual({
       explanation: 'здачу віддали з іншої шухляди',
     });

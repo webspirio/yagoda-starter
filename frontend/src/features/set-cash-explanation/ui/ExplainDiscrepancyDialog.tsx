@@ -15,6 +15,7 @@ import { Button } from '@/shared/ui/button';
 import { toast } from '@/shared/ui/toast';
 import { apiErrorToBanner } from '@/shared/lib/api-error';
 import { formatUah } from '@/shared/lib/money';
+import type { CashCount } from '@/entities/cash-count';
 import { useSetCashExplanationMutation } from '../api/useSetCashExplanation';
 
 interface ExplainFormValues {
@@ -24,7 +25,7 @@ interface ExplainFormValues {
 /**
  * §7.7 (ред. 09.09.2026) — розбіжність НІКОЛИ не блокує закриття зміни;
  * приймальник закриває, керівник пояснює постфактум через `PUT
- * /shifts/:id/explanation`. Заголовок називає розмір розбіжності
+ * /cash-counts/:id/explanation`. Заголовок називає розмір розбіжності
  * (`discrepancy`), щоб клік не був наосліп — керівник бачить, що саме він
  * зараз пояснює, а не тицяє в порожню кнопку.
  *
@@ -32,15 +33,11 @@ interface ExplainFormValues {
  * лишається в документі таким, яким було.
  */
 export function ExplainDiscrepancyDialog({
-  shiftId,
-  discrepancy,
-  operatorNote,
+  count,
   open,
   onClose,
 }: {
-  shiftId: string;
-  discrepancy: string;
-  operatorNote: string | null;
+  count: CashCount | null;
   open: boolean;
   onClose: () => void;
 }) {
@@ -55,9 +52,10 @@ export function ExplainDiscrepancyDialog({
   } = useForm<ExplainFormValues>({ defaultValues: { explanation: '' } });
 
   const onSubmit = handleSubmit(async (values) => {
+    if (!count) return;
     setFormError(null);
     try {
-      await setExplanation.mutateAsync({ shiftId, explanation: values.explanation.trim() });
+      await setExplanation.mutateAsync({ countId: count.id, explanation: values.explanation.trim() });
       toast.success(t('cash.toast.explained'));
       onClose();
     } catch (error) {
@@ -71,19 +69,19 @@ export function ExplainDiscrepancyDialog({
         <DialogHeader>
           <DialogTitle>
             {t('cash.explainDialog.title', {
-              amount: formatUah(discrepancy, i18n.resolvedLanguage),
+              amount: formatUah(count?.discrepancy ?? '0', i18n.resolvedLanguage),
             })}
           </DialogTitle>
           <DialogDescription>{t('cash.explainDialog.description')}</DialogDescription>
         </DialogHeader>
 
-        {/* Spec 2026-10-06 — what the closer said, as context; never prefilled into the owner's field. */}
-        {operatorNote ? (
+        {/* Spec 2026-10-06 — what the counter said, as context; never prefilled into the owner's field. */}
+        {count?.operator_note ? (
           <figure className="rounded-md border border-line2 px-3 py-2">
             <figcaption className="text-xs text-muted-foreground">
               {t('cash.explainDialog.operatorNote')}
             </figcaption>
-            <blockquote className="text-sm italic">{operatorNote}</blockquote>
+            <blockquote className="text-sm italic">{count.operator_note}</blockquote>
           </figure>
         ) : null}
 

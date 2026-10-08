@@ -8,26 +8,20 @@ import { Button } from '@/shared/ui/button';
 import { toast } from '@/shared/ui/toast';
 import { apiErrorToBanner } from '@/shared/lib/api-error';
 import { formatUah } from '@/shared/lib/money';
+import type { CashCount } from '@/entities/cash-count';
 import { useSetOperatorNoteMutation } from '../api/useSetOperatorNote';
 
-/** `SHIFT_NOT_CLOSED`'s shared sentence is about reopening; here it means «reopened, close it first». */
-const OVERRIDES = { SHIFT_NOT_CLOSED: 'operatorNote.errors.notClosed' } as const;
-
 /**
- * Spec 2026-10-06 — the body only, no `Dialog`: the close result screen swaps
+ * Spec 2026-10-08 — the note belongs to ONE count (`count`) — the body only, no `Dialog`: the close result screen swaps
  * it into its OWN dialog (one `role="dialog"`, as `RecountDrawerDialog` does),
  * and `OperatorNoteDialog` wraps it for the history table.
  */
 export function OperatorNoteForm({
-  shiftId,
-  discrepancy,
-  initialNote,
+  count,
   onDone,
   onCancel,
 }: {
-  shiftId: string;
-  discrepancy: string;
-  initialNote: string | null;
+  count: CashCount;
   onDone: () => void;
   onCancel: () => void;
 }) {
@@ -38,16 +32,16 @@ export function OperatorNoteForm({
     register,
     handleSubmit,
     formState: { errors, isSubmitting },
-  } = useForm<{ note: string }>({ defaultValues: { note: initialNote ?? '' } });
+  } = useForm<{ note: string }>({ defaultValues: { note: count.operator_note ?? '' } });
 
   const onSubmit = handleSubmit(async ({ note }) => {
     setFormError(null);
     try {
-      await setNote.mutateAsync({ shiftId, operatorNote: note.trim() });
+      await setNote.mutateAsync({ countId: count.id, operatorNote: note.trim() });
       toast.success(t('operatorNote.saved'));
       onDone();
     } catch (error) {
-      setFormError(apiErrorToBanner(error, 'operatorNote.errors.failed', OVERRIDES));
+      setFormError(apiErrorToBanner(error, 'operatorNote.errors.failed'));
     }
   });
 
@@ -55,7 +49,9 @@ export function OperatorNoteForm({
     <>
       <DialogHeader>
         <DialogTitle>
-          {t('operatorNote.title', { amount: formatUah(discrepancy, i18n.resolvedLanguage) })}
+          {t(count.kind === 'opening' ? 'operatorNote.titleOpening' : 'operatorNote.titleClosing', {
+            amount: formatUah(count.discrepancy, i18n.resolvedLanguage),
+          })}
         </DialogTitle>
         <DialogDescription>{t('operatorNote.description')}</DialogDescription>
       </DialogHeader>

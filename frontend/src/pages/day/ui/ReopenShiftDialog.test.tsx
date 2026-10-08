@@ -22,9 +22,6 @@ const closedShift: Shift = {
   closed_by_name: 'Olha',
   closed_at: '2026-09-07T18:00:00Z',
   created_at: '2026-09-07T05:00:00Z',
-  explanation: null,
-  operator_note: null,
-  operator_note_editable: false,
   broken_crates: 3,
 };
 

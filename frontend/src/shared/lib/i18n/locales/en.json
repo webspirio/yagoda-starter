@@ -725,6 +725,7 @@
     "countHistory": {
       "title": "Cash counts",
       "toggle": "Full recount history",
+      "notYours": "counted by {{name}}",
       "empty": "No cash counts recorded for this point yet.",
       "columns": {
         "when": "When",
@@ -782,6 +783,7 @@
     "result": {
       "opened": "Shift opened",
       "closedSettled": "Shift closed. The day matched.",
+      "openedDiscrepancy": "Shift opened. {{amount}} off last close — the owner will see it in their list.",
       "closedDiscrepancy": "Shift closed. Discrepancy {{amount}} — the owner will see it on their own list."
     },
     "target": {
@@ -1580,20 +1582,20 @@
     "write": "Add my explanation",
     "edit": "Edit my explanation",
     "resultAction": "Explain the discrepancy",
-    "title": "What happened? Discrepancy {{amount}}",
+    "titleOpening": "What happened? Opening discrepancy {{amount}}",
+    "titleClosing": "What happened? Closing discrepancy {{amount}}",
     "description": "Write what you know while you are still at the point. The owner reads it next to the discrepancy and makes the final decision.",
     "label": "Your explanation",
-    "submit": "Send to the owner",
-    "saved": "Your explanation was sent to the owner",
+    "submit": "Save explanation",
+    "saved": "Saved — the owner will see it next to the discrepancy",
     "errors": {
       "required": "Write what happened",
       "tooLong": "2000 characters or fewer",
-      "failed": "Could not save your explanation",
-      "notClosed": "The shift is open again — explain after it is closed",
-      "notCloser": "Only the operator who closed this shift can explain it",
-      "windowClosed": "The next shift is already open — the owner decides from here",
-      "ownerExplained": "The owner has already decided on this discrepancy",
-      "noDiscrepancy": "This shift closed without a discrepancy"
+      "failed": "Could not save the explanation. Try again.",
+      "notCounter": "Only the person who counted this drawer can explain it.",
+      "notExplainable": "This count no longer stands — explain the new one. Refresh the page.",
+      "ownerExplained": "The owner has already decided on this discrepancy. Refresh the page.",
+      "noDiscrepancy": "The drawer matched here — there is nothing to explain. Refresh the page."
     }
   }
 }

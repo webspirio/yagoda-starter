@@ -228,6 +228,7 @@ const cashCount = (over: Partial<CashCount> = {}): CashCount => ({
   explanation: null,
   operator_note: null,
   operator_note_editable: false,
+  explainable: false,
   ...over,
 });
 
@@ -242,9 +243,6 @@ const shift = (over: Partial<Shift> = {}): Shift => ({
   closed_by_name: null,
   closed_at: null,
   created_at: '2026-09-08T07:00:00Z',
-  explanation: null,
-  operator_note: null,
-  operator_note_editable: false,
   broken_crates: null,
   ...over,
 });
@@ -1192,7 +1190,7 @@ describe('PointCashPage — R4: the open/close result view', () => {
     await user.click(await screen.findByRole('button', { name: 'Confirm close' }));
 
     expect(
-      await screen.findByRole('heading', { name: `What happened? Discrepancy ${formatUah('-50.00', 'en')}` }),
+      await screen.findByRole('heading', { name: `What happened? Closing discrepancy ${formatUah('-50.00', 'en')}` }),
     ).toBeInTheDocument();
     expect(screen.getAllByRole('dialog')).toHaveLength(1);
   });
@@ -1236,9 +1234,9 @@ describe('PointCashPage — R4: the open/close result view', () => {
     await user.click(screen.getByRole('button', { name: 'Close shift' }));
     await user.click(await screen.findByRole('button', { name: 'Confirm close' }));
     await user.type(await screen.findByLabelText('Your explanation'), 'віддав решту');
-    await user.click(screen.getByRole('button', { name: 'Send to the owner' }));
+    await user.click(screen.getByRole('button', { name: 'Save explanation' }));
 
-    expect(noteMock).toHaveBeenCalledWith({ shiftId: 's5', operatorNote: 'віддав решту' });
+    expect(noteMock).toHaveBeenCalledWith({ countId: 'cl', operatorNote: 'віддав решту' });
     await waitFor(() => expect(screen.queryByLabelText('Your explanation')).toBeNull());
 
     closeWith({ operator_note_editable: false });

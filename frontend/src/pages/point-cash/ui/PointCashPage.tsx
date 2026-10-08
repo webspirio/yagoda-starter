@@ -558,7 +558,7 @@ export function PointCashPage() {
           </Button>
           {showCountHistory ? (
             <div className="mt-3">
-              <CashCountHistory pointId={pointId} isOwner={isOwner} />
+              <CashCountHistory pointId={pointId} isOwner={isOwner} meId={me?.id ?? null} />
             </div>
           ) : null}
         </div>
@@ -663,9 +663,7 @@ export function PointCashPage() {
         swap={
           noteTarget ? (
             <OperatorNoteForm
-              shiftId={noteTarget.shift_id}
-              discrepancy={noteTarget.discrepancy}
-              initialNote={noteTarget.operator_note}
+              count={noteTarget}
               onDone={() => setResultFor(null)}
               onCancel={() => setNoteTarget(null)}
             />

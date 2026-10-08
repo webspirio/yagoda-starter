@@ -1,26 +1,23 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { httpClient } from '@/shared/api';
 import { queryKeys } from '@/shared/api/queryKeys';
-import type { Shift } from '@/entities/shift';
+import type { CashCount } from '@/entities/cash-count';
 
 export interface SetOperatorNoteInput {
-  shiftId: string;
+  countId: string;
   operatorNote: string;
 }
 
-/**
- * Spec 2026-10-06 — пояснення приймальника. `PUT`, бо замінює одне поле зміни.
- * Оновлює `shifts` і `cashCounts`: обидва несуть `operator_note` і прапорець.
- */
+/** Spec 2026-10-08 — the counter's account of THIS count. Invalidates `cashCounts`
+ *  (the row carries the text and the flag) and `shifts` (the panel reads its counts). */
 export function useSetOperatorNoteMutation() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async ({ shiftId, operatorNote }: SetOperatorNoteInput): Promise<Shift> =>
-      (await httpClient.put<Shift>(`/shifts/${shiftId}/operator-note`, { operator_note: operatorNote }))
-        .data,
+    mutationFn: async ({ countId, operatorNote }: SetOperatorNoteInput): Promise<CashCount> =>
+      (await httpClient.put<CashCount>(`/cash-counts/${countId}/operator-note`, { operator_note: operatorNote })).data,
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: queryKeys.shifts });
       qc.invalidateQueries({ queryKey: queryKeys.cashCounts });
+      qc.invalidateQueries({ queryKey: queryKeys.shifts });
     },
   });
 }

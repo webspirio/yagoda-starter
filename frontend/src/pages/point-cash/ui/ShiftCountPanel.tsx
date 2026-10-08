@@ -49,6 +49,25 @@ function panelActionState(shift: Shift | null, isToday: boolean): PanelActionSta
   return 'other';
 }
 
+/** The owner's decision and the counter's account of ONE count (spec 2026-10-08). */
+function CountTexts({ count }: { count: CashCount }) {
+  const { t } = useTranslation();
+  return (
+    <>
+      {count.explanation ? (
+        <p className="text-xs italic text-muted-foreground">
+          {t('pointCash.panel.explanation', { text: count.explanation })}
+        </p>
+      ) : null}
+      {count.operator_note ? (
+        <p className="text-xs italic text-muted-foreground">
+          {t('pointCash.panel.operatorNote', { text: count.operator_note })}
+        </p>
+      ) : null}
+    </>
+  );
+}
+
 function DiscrepancyPill({ discrepancy }: { discrepancy: string }) {
   const { t } = useTranslation();
   const tone = discrepancyTone(discrepancy);
@@ -81,7 +100,7 @@ export type OpenShiftGate = 'allowed' | 'checking' | 'failed' | 'blocked';
 
 /**
  * «Зміна і перерахунок каси» (R4) — the shift's own line (open/closed, its
- * times, who closed it, the owner's explanation if any), the day's opening
+ * times, who closed it, each count's explanation and note), the day's opening
  * and closing counts, the day's midday recounts, and the operator's actions.
  *
  * `counts` is the RAW `GET /cash-counts?shift_id=` page — narrowed to the
@@ -245,6 +264,10 @@ export function ShiftCountPanel({
                   value={formatUah(opening.counted_amount, locale)}
                 />
               ) : null}
+              {opening && discrepancyTone(opening.discrepancy) !== 'leaf' ? (
+                <DiscrepancyPill discrepancy={opening.discrepancy} />
+              ) : null}
+              {opening ? <CountTexts count={opening} /> : null}
               {closing ? (
                 <LedgerRow
                   label={t('pointCash.panel.closing')}
@@ -252,22 +275,11 @@ export function ShiftCountPanel({
                 />
               ) : null}
               {closing ? <DiscrepancyPill discrepancy={closing.discrepancy} /> : null}
+              {closing ? <CountTexts count={closing} /> : null}
 
               {shift.status !== 'open' ? (
                 <p className="text-xs text-muted-foreground">
                   {t('pointCash.panel.closedBy', { name: shift.closed_by_name ?? '—' })}
-                </p>
-              ) : null}
-
-              {shift.explanation ? (
-                <p className="text-xs italic text-muted-foreground">
-                  {t('pointCash.panel.explanation', { text: shift.explanation })}
-                </p>
-              ) : null}
-
-              {shift.operator_note ? (
-                <p className="text-xs italic text-muted-foreground">
-                  {t('pointCash.panel.operatorNote', { text: shift.operator_note })}
                 </p>
               ) : null}
             </div>
