@@ -1,6 +1,8 @@
 # Yagoda CRM — Operator's Note on a Closing Discrepancy
 
 **Date:** 2026-10-06
+**Superseded in part** by `2026-10-08-yagoda-count-explanations-design.md` (window, subject,
+reopen, data, backend): both texts now live on the count, not the shift.
 **Source:** the `/grilling` + brainstorming session of 2026-10-06. The question was whether
 the owner-only shortage explanation (`PUT /shifts/:id/explanation`) could simply be opened to
 the operator. The answer was no: `is_open` is «a discrepancy with no explanation», so an
