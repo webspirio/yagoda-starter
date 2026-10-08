@@ -1,4 +1,5 @@
 import { ApiError } from '@/shared/api';
+import { statusKey } from '@/shared/lib/api-error';
 
 export interface ApiFieldErrors {
   /** field name -> i18n message key */
@@ -9,14 +10,14 @@ export interface ApiFieldErrors {
 
 const FORM_LEVEL = 'suppliers.errors.saveFailed';
 
-// machine-code suffix -> [field it lands on, message key]
-const CODE_FIELD: ReadonlyArray<[suffix: string, field: string, messageKey: string]> = [
-  ['_PHONE_TAKEN', 'phone', 'suppliers.errors.phoneTaken'],
-  ['_PHONE_INVALID', 'phone', 'suppliers.errors.phoneInvalid'],
-  ['_NAME_EMPTY', 'first_name', 'suppliers.errors.nameRequired'],
-  // COLLECTION_POINT_REQUIRED — an owner who did not name a point.
-  ['_POINT_REQUIRED', 'collection_point_id', 'suppliers.errors.pointRequired'],
-];
+// exact backend code -> [field it lands on, message key]
+const CODE_FIELD: Readonly<Record<string, readonly [field: string, messageKey: string]>> = {
+  SUPPLIER_PHONE_TAKEN: ['phone', 'suppliers.errors.phoneTaken'],
+  SUPPLIER_PHONE_INVALID: ['phone', 'suppliers.errors.phoneInvalid'],
+  SUPPLIER_NAME_EMPTY: ['first_name', 'suppliers.errors.nameRequired'],
+  // an owner who did not name a point
+  COLLECTION_POINT_REQUIRED: ['collection_point_id', 'suppliers.errors.pointRequired'],
+};
 
 // class-validator property (first token of each details string) -> message key
 const PROPERTY: Readonly<Record<string, string>> = {
@@ -27,7 +28,7 @@ const PROPERTY: Readonly<Record<string, string>> = {
 
 /**
  * Maps a server error onto RHF field errors (i18n keys) + an optional
- * form-level banner. Branches on `ApiError.code` first (both the friendly 409
+ * form-level banner. Branches on `ApiError.code` (matched exactly) first (both the friendly 409
  * `SUPPLIER_PHONE_TAKEN` and the 400 `SUPPLIER_PHONE_INVALID`/`_NAME_EMPTY`/
  * `COLLECTION_POINT_REQUIRED`), then on class-validator `details`. A code whose
  * target field is not on the form (e.g. the point on an operator's form)
@@ -38,9 +39,9 @@ export function apiErrorToFields(error: unknown, fields: readonly string[]): Api
 
   const code = error.code;
   if (code) {
-    const match = CODE_FIELD.find(([suffix]) => code.endsWith(suffix));
+    const match = CODE_FIELD[code];
     if (match) {
-      const [, field, messageKey] = match;
+      const [field, messageKey] = match;
       if (fields.includes(field)) {
         return { fieldErrors: [{ field, messageKey }], formErrorKey: null };
       }
@@ -59,5 +60,5 @@ export function apiErrorToFields(error: unknown, fields: readonly string[]): Api
   if (fieldErrors.length > 0) {
     return { fieldErrors, formErrorKey: unattributed ? FORM_LEVEL : null };
   }
-  return { fieldErrors: [], formErrorKey: FORM_LEVEL };
+  return { fieldErrors: [], formErrorKey: statusKey(error) ?? FORM_LEVEL };
 }

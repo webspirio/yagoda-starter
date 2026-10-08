@@ -187,7 +187,7 @@ describe('SetTargetCashDialog', () => {
     await userEvent.type(screen.getByLabelText('Reason'), 'причина');
     await userEvent.click(screen.getByRole('button', { name: 'Save target' }));
 
-    expect(await screen.findByText('Could not update the target')).toBeInTheDocument();
+    expect(await screen.findByText("Couldn't update the target. Reload the page and try again.")).toBeInTheDocument();
     expect(onClose).not.toHaveBeenCalled();
   });
 

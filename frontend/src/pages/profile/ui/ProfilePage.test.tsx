@@ -183,14 +183,24 @@ describe('ProfilePage', () => {
     expect(mock.history.post).toHaveLength(0);
   });
 
-  it('shows an error toast when the avatar upload fails', async () => {
-    mock.onPost('/me/avatar').reply(500, { message: 'boom' });
+  it('shows an error toast when the server refuses the image', async () => {
+    mock.onPost('/me/avatar').reply(400, { message: 'Unsupported image' });
     renderPage();
     await screen.findByText('Alice Operator');
 
     pickAvatarFile(validAvatarFile());
 
-    expect(await screen.findByText('Could not upload that image')).toBeInTheDocument();
+    expect(await screen.findByText("Couldn't upload the image. Use a JPEG, PNG or WebP under 10 MB.")).toBeInTheDocument();
+  });
+
+  it('blames the connection, not the file, when the upload never reached the server', async () => {
+    mock.onPost('/me/avatar').networkError();
+    renderPage();
+    await screen.findByText('Alice Operator');
+
+    pickAvatarFile(validAvatarFile());
+
+    expect(await screen.findByText("Can't reach the server. Check your connection and try again.")).toBeInTheDocument();
   });
 
   // Two picks in quick succession must not start two concurrent uploads:

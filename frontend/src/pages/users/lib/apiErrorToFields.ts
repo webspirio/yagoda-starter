@@ -1,4 +1,5 @@
 import { ApiError } from '@/shared/api';
+import { statusKey } from '@/shared/lib/api-error';
 
 export interface ApiFieldErrors {
   /** field name -> i18n message key */
@@ -18,28 +19,37 @@ const PROPERTY: Readonly<Record<string, string>> = {
   role: FORM_LEVEL,
 };
 
+// exact backend code -> field it lands on; off-form it degrades to a banner
+const CODE_FIELD: Readonly<Record<string, { field: string; messageKey: string }>> = {
+  LOGIN_TAKEN: { field: 'login', messageKey: 'users.errors.loginTaken' },
+  OPERATOR_NEEDS_POINT: { field: 'collection_point_id', messageKey: 'users.errors.pointRequired' },
+};
+
+// exact backend code -> banner (state conflicts, not field problems)
+const CODE_BANNER: Readonly<Record<string, string>> = {
+  LAST_OWNER: 'users.errors.lastOwner',
+  SELF_LOCKOUT: 'users.errors.selfLockout',
+  OWNER_HAS_NO_POINT: 'users.errors.ownerHasNoPoint',
+  POINT_UNUSABLE: 'users.errors.pointUnusable',
+  USER_NAME_EMPTY: 'users.errors.nameRequired',
+};
+
 /**
  * Maps a server error onto RHF field errors (i18n keys) + an optional
  * form-level banner. Branches on `ApiError.code` first (owner-facing conflict
- * codes), then on class-validator `details`. A login clash lands on the `login`
- * field; a `_HAS_ACTIVE_*` state conflict (e.g. deactivating a user with an
- * open shift) is a banner, not a field. A whitespace-in-login validation
- * message routes to its own key.
+ * codes, matched exactly), then on class-validator `details`. A login clash lands
+ * on the `login` field; owner/point state conflicts are banners, not fields. A
+ * whitespace-in-login validation message routes to its own key. An unexplained
+ * failure gets the shared status sentence, else the generic banner.
  */
 export function apiErrorToFields(error: unknown, fields: readonly string[]): ApiFieldErrors {
   if (!(error instanceof ApiError)) return { fieldErrors: [], formErrorKey: FORM_LEVEL };
 
   if (error.code) {
-    if (error.code.endsWith('_LOGIN_TAKEN') && fields.includes('login')) {
-      return {
-        fieldErrors: [{ field: 'login', messageKey: 'users.errors.loginTaken' }],
-        formErrorKey: null,
-      };
-    }
-    // A state conflict (assigned/active dependents) is not a field problem.
-    if (error.code.includes('_HAS_ACTIVE')) {
-      return { fieldErrors: [], formErrorKey: FORM_LEVEL };
-    }
+    const field = CODE_FIELD[error.code];
+    if (field && fields.includes(field.field)) return { fieldErrors: [field], formErrorKey: null };
+    const banner = CODE_BANNER[error.code] ?? field?.messageKey;
+    if (banner) return { fieldErrors: [], formErrorKey: banner };
   }
 
   const fieldErrors: Array<{ field: string; messageKey: string }> = [];
@@ -54,5 +64,5 @@ export function apiErrorToFields(error: unknown, fields: readonly string[]): Api
   if (fieldErrors.length > 0) {
     return { fieldErrors, formErrorKey: unattributed ? FORM_LEVEL : null };
   }
-  return { fieldErrors: [], formErrorKey: FORM_LEVEL };
+  return { fieldErrors: [], formErrorKey: statusKey(error) ?? FORM_LEVEL };
 }

@@ -99,13 +99,7 @@ export function PayoutDialog({
       return;
     }
     if (cmp(amount, debt) === 1) {
-      // `Field` only ever calls `t(key)` with no options, so this ONE error
-      // is resolved and interpolated here rather than passed as a bare key —
-      // every other message in this dialog is a plain key, resolved by
-      // `Field` the way `SetPriceDialog`'s does.
-      setError('amount', {
-        message: t('payout.errors.exceedsDebt', { debt: formatUah(debt, locale) }),
-      });
+      setError('amount', { message: 'payout.errors.exceedsDebt' });
       return;
     }
 
@@ -141,6 +135,11 @@ export function PayoutDialog({
             label={t('payout.form.amount')}
             required
             error={errors.amount?.message}
+            errorParams={
+              errors.amount?.message === 'payout.errors.exceedsDebt'
+                ? { debt: formatUah(debt, locale) }
+                : undefined
+            }
           >
             {(a11y) => (
               <TextInput

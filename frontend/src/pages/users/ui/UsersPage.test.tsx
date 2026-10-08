@@ -173,10 +173,10 @@ describe('reading a password back', () => {
     const row = await rowFor('maria');
 
     await userEvent.click(eyeIn(row));
-    expect(await within(row).findByText('Could not read the password')).toBeInTheDocument();
+    expect(await within(row).findByText("Couldn't read the password. Reload the page and try again.")).toBeInTheDocument();
 
     await userEvent.click(within(row).getByRole('button', { name: 'Hide password' }));
-    expect(within(row).queryByText('Could not read the password')).toBeNull();
+    expect(within(row).queryByText("Couldn't read the password. Reload the page and try again.")).toBeNull();
   });
 
   it('shows one password at a time — revealing another row hides the first', async () => {

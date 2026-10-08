@@ -147,7 +147,7 @@ describe('RecountDrawerDialog', () => {
     await userEvent.type(screen.getByRole('textbox'), '1500.00');
     await userEvent.click(screen.getByRole('button', { name: 'Recorded the count' }));
 
-    expect(await screen.findByRole('alert')).toHaveTextContent('Could not record the recount');
+    expect(await screen.findByRole('alert')).toHaveTextContent("Couldn't record the recount. Reload the page and try again.");
   });
 
   it('stays open and keeps the typed amount when the mutation is refused', async () => {

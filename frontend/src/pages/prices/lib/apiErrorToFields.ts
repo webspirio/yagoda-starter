@@ -1,4 +1,5 @@
 import { ApiError } from '@/shared/api';
+import { statusKey } from '@/shared/lib/api-error';
 
 export interface ApiFieldErrors {
   /** field name -> i18n message key */
@@ -23,6 +24,12 @@ const PROPERTY: Readonly<Record<string, string>> = {
   max_discount: 'prices.errors.priceFormat',
 };
 
+/** Whole-request refusals from `GradePricesService.bulk`, not tied to a typed field. */
+const CODE_BANNER: Readonly<Record<string, string>> = {
+  PRODUCT_GRADE_INACTIVE: 'prices.errors.gradeInactive',
+  DUPLICATE_COLLECTION_POINT: 'prices.errors.duplicatePoint',
+};
+
 /**
  * Maps a failed set-price mutation onto RHF field errors (i18n keys) + an
  * optional form-level banner. A `details` entry that cannot be placed on a field
@@ -31,6 +38,9 @@ const PROPERTY: Readonly<Record<string, string>> = {
  */
 export function apiErrorToFields(error: unknown, fields: readonly string[]): ApiFieldErrors {
   if (!(error instanceof ApiError)) return { fieldErrors: [], formErrorKey: FORM_LEVEL };
+  if (error.code && CODE_BANNER[error.code]) {
+    return { fieldErrors: [], formErrorKey: CODE_BANNER[error.code] };
+  }
 
   const fieldErrors: Array<{ field: string; messageKey: string }> = [];
   let unattributed = false;
@@ -43,5 +53,5 @@ export function apiErrorToFields(error: unknown, fields: readonly string[]): Api
   if (fieldErrors.length > 0) {
     return { fieldErrors, formErrorKey: unattributed ? FORM_LEVEL : null };
   }
-  return { fieldErrors: [], formErrorKey: FORM_LEVEL };
+  return { fieldErrors: [], formErrorKey: statusKey(error) ?? FORM_LEVEL };
 }

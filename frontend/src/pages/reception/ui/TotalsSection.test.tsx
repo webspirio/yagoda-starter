@@ -269,7 +269,7 @@ describe('TotalsSection — refusal and hints', () => {
 
   it('renders the form-level banner as its own alert', () => {
     render(<Harness formErrorKey="reception.errors.failed" />);
-    expect(screen.getByRole('alert')).toHaveTextContent('Could not record the receipt');
+    expect(screen.getByRole('alert')).toHaveTextContent("Couldn't record the receipt. Try again, and if it happens again, tell the network owner.");
   });
 
   it('shows the draft hint when asked to', () => {

@@ -249,7 +249,6 @@ export function DayPage() {
         // Clearing the param — not writing today's date — keeps the shared link
         // for "today" free of a date that would be wrong tomorrow.
         onToday={isToday ? undefined : () => setDateParam(null)}
-        todayLabel={t('day.today')}
       />
       <Badge
         variant={
