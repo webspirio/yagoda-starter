@@ -27,8 +27,11 @@ export function ShiftCountResult({
 }) {
   const { t, i18n } = useTranslation();
   const counts = useCashCountsQuery({ shiftId: result?.shiftId });
+  // Nothing until the refetch the close started has landed: a cached closing
+  // count may be one a remote reopen already demoted.
+  const [fresh, setFresh] = useState(false);
   const row =
-    result === null
+    result === null || !fresh
       ? null
       : ((counts.data?.data ?? []).find(
           (c) => c.book === 'berry' && c.kind === (result.mode === 'open' ? 'opening' : 'closing'),
@@ -46,7 +49,9 @@ export function ShiftCountResult({
     setSeen(result);
     setNoteOffered(false);
     setNoteTarget(null);
+    setFresh(false);
   }
+  if (result !== null && !fresh && !counts.isFetching) setFresh(true);
   if (row?.operator_note_editable && !noteOffered) {
     setNoteOffered(true);
     setNoteTarget(row);

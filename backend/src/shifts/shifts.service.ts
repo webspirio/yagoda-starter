@@ -375,7 +375,7 @@ export class ShiftsService {
       .take(query.limit)
       .getManyAndCount();
 
-    // ONE map and ONE facts query for the whole page (D-8).
+    // ONE names query for the whole page (D-8).
     return {
       data: await this.respond(data, this.dataSource.manager),
       total,

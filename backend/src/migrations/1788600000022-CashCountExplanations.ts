@@ -5,7 +5,8 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
  * `explanation` (owner, closes the incident) and `operator_note` (whoever counted).
  * One shift text is copied onto EVERY disagreeing opening/closing count so no
  * incident reopens; a text on a shift with none disagreeing goes to its closing
- * count (else opening) so it is not lost. `''` was «undecided» and is not copied.
+ * count (else opening) so it is not lost, and with no such count `up()` refuses.
+ * `''` was «undecided» and is not copied.
  *
  * Numbered 022: PR #222 claims 021. Whichever merges second re-checks.
  */
@@ -35,6 +36,18 @@ export class CashCountExplanations1788600000022 implements MigrationInterface {
                         WHERE y."shift_id" = s."id" AND y."book" = 'berry'
                           AND y."kind" IN ('opening', 'closing')
                         ORDER BY (y."kind" = 'closing') DESC LIMIT 1)`);
+    // A text with no berry opening/closing count has nowhere to go; refuse rather than drop it.
+    const orphans: { id: string }[] = await q.query(`
+      SELECT s."id" FROM "shifts" s
+       WHERE btrim(coalesce(s."explanation", '')) <> ''
+         AND NOT EXISTS (SELECT 1 FROM "cash_counts" c
+                          WHERE c."shift_id" = s."id" AND c."explanation" IS NOT NULL)`);
+    if (orphans.length > 0) {
+      throw new Error(
+        `CashCountExplanations: shifts ${orphans.map((o) => o.id).join(', ')} have an explanation ` +
+          `but no opening or closing count to carry it; move the text by hand first.`,
+      );
+    }
     await q.query(`ALTER TABLE "shifts" DROP COLUMN "explanation"`);
   }
 

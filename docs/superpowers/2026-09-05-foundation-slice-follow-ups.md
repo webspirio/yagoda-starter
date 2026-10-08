@@ -772,6 +772,9 @@ doubled every point's starting cash); the un-anchored formula still standing in
   the operator-note branch (commit `856645a`).** It now runs in one
   transaction under `loadVisible`'s `pessimistic_write`, the lock the operator's
   note write takes too (spec `2026-10-06-yagoda-operator-note-design.md` §4.2).
+  Both writes have since moved to the count (spec
+  `2026-10-08-yagoda-count-explanations-design.md`): `CashCountsService.writeNote`
+  does the same, one transaction under `pessimistic_write` on the count row.
 
 - **`SetExplanationDto` refuses a blank string, so there is no un-explain
   path.** An owner who explains the wrong shift cannot reopen the incident,

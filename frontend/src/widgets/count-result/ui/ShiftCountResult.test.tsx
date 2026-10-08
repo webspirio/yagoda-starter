@@ -66,6 +66,20 @@ describe('ShiftCountResult', () => {
     expect(screen.queryByRole('textbox')).toBeNull();
   });
 
+  it('waits out the refetch instead of showing a cached closing count the close replaced', async () => {
+    const stale = count({ id: 'cl-old' });
+    const fresh = count({ id: 'cl-new', counted_amount: '980.00', discrepancy: '-20.00' });
+    cashCountsMock.mockReturnValue({ ...list([stale]), isFetching: true });
+    const { rerender } = render(<ShiftCountResult result={{ mode: 'close', shiftId: 's-old' }} onClose={() => {}} />);
+    expect(screen.queryByRole('dialog')).toBeNull();
+
+    cashCountsMock.mockReturnValue({ ...list([fresh]), isFetching: false });
+    rerender(<ShiftCountResult result={{ mode: 'close', shiftId: 's-old' }} onClose={() => {}} />);
+    const dialog = await screen.findByRole('dialog');
+    expect(dialog).toHaveTextContent(/20\.00/);
+    expect(dialog).not.toHaveTextContent(/50\.00/);
+  });
+
   it('«Cancel» on the form falls back to the result, which offers the form again', async () => {
     const user = userEvent.setup();
     cashCountsMock.mockReturnValue(list([count()]));

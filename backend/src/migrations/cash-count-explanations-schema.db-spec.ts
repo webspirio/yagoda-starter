@@ -110,4 +110,21 @@ describe('cash_counts explanations (Postgres)', () => {
       expect((await texts(blank.closing)).explanation).toBeNull();
     });
   });
+
+  it('refuses to drop a shift text that has no count to land on', async () => {
+    const qr = ds.createQueryRunner();
+    await qr.startTransaction(); // Postgres DDL is transactional: the rollback restores the schema
+    try {
+      await new CashCountExplanations1788600000022().down(qr);
+      await qr.query(
+        `INSERT INTO shifts (collection_point_id, opened_by_user_id, business_date, status, explanation)
+         VALUES ($1, $2, '2026-04-01', 'open', 'без підрахунку')`,
+        [pointId, userId],
+      );
+      await expect(new CashCountExplanations1788600000022().up(qr)).rejects.toThrow(/no opening or closing count/);
+    } finally {
+      await qr.rollbackTransaction();
+      await qr.release();
+    }
+  });
 });
