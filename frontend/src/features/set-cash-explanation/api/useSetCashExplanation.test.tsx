@@ -20,7 +20,7 @@ beforeEach(() => {
 afterEach(() => mock.restore());
 
 describe('useSetCashExplanationMutation', () => {
-  it('PUTs the explanation and invalidates shifts and cash counts', async () => {
+  it('PUTs the explanation and invalidates cash counts only', async () => {
     mock.onPut('/cash-counts/c1/explanation').reply(200, { id: 'c1' });
     const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries');
     const { result } = renderHook(() => useSetCashExplanationMutation(), { wrapper });
@@ -36,13 +36,11 @@ describe('useSetCashExplanationMutation', () => {
       explanation: 'здачу віддали з іншої шухляди',
     });
 
-    // §7.7 (ред. 09.09.2026) — explaining never moves a number, but the
-    // owner's incident list (`GET /cash-counts?only_discrepancies=true`) reads
-    // `is_open`/`explanation` off the count, and the shift itself carries the
-    // explanation — both must refresh, or the incident looks unresolved.
+    // §7.7 — the incident list reads `is_open`/`explanation` off the count; a
+    // Shift carries no text any more, so `shifts` has nothing to refresh.
     await waitFor(() => {
-      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: queryKeys.shifts });
       expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: queryKeys.cashCounts });
     });
+    expect(invalidateSpy).not.toHaveBeenCalledWith({ queryKey: queryKeys.shifts });
   });
 });

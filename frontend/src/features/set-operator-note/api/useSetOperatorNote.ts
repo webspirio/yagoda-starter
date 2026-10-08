@@ -9,7 +9,7 @@ export interface SetOperatorNoteInput {
 }
 
 /** Spec 2026-10-08 — the counter's account of THIS count. Invalidates `cashCounts`
- *  (the row carries the text and the flag) and `shifts` (the panel reads its counts). */
+ *  alone: the row carries the text and the flag, and the panel reads its counts. */
 export function useSetOperatorNoteMutation() {
   const qc = useQueryClient();
   return useMutation({
@@ -17,7 +17,6 @@ export function useSetOperatorNoteMutation() {
       (await httpClient.put<CashCount>(`/cash-counts/${countId}/operator-note`, { operator_note: operatorNote })).data,
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: queryKeys.cashCounts });
-      qc.invalidateQueries({ queryKey: queryKeys.shifts });
     },
   });
 }

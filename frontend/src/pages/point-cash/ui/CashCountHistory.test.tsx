@@ -213,6 +213,7 @@ describe('CashCountHistory', () => {
     expect(within(openingRow).getByText('недостача з учора')).toBeInTheDocument();
     expect(within(closingRow).queryByText('недостача з учора')).toBeNull();
     expect(within(closingRow).getByRole('button', { name: 'Explain' })).toBeInTheDocument();
+    expect(within(openingRow).queryByRole('button')).toBeNull();
   });
 
   it('a demoted closing (midday with texts) shows them and no button', () => {

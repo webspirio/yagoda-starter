@@ -198,14 +198,6 @@ export function PointCashPage() {
         ? 'allowed'
         : 'blocked';
   const panelCounts = shiftCashCounts.data?.data ?? [];
-  // §7.6 — the panel's own result-view lookup needs the SAME berry-only
-  // narrowing `ShiftCountPanel` applies to its own copy of this array; kept
-  // separate rather than threading derived rows down as props, so a test
-  // that renders `ShiftCountPanel` alone can hand it a raw, unfiltered page
-  // (see that component's own doc comment).
-  const panelBerryCounts = panelCounts.filter((c) => c.book === 'berry');
-  const openingCountRow = panelBerryCounts.find((c) => c.kind === 'opening') ?? null;
-  const closingCountRow = panelBerryCounts.find((c) => c.kind === 'closing') ?? null;
 
   const openShift = useOpenShiftMutation();
   const closeShift = useCloseShiftMutation();
@@ -221,31 +213,22 @@ export function PointCashPage() {
     setCountMode(target.mode);
     setCountTarget(target);
   };
-  // R4 — the result view after an open/close, read back from
-  // `panelBerryCounts` above rather than from the mutation's own response:
-  // `useInvalidateDay` (both mutations' `onSuccess`) refetches `shifts` AND
-  // `cashCounts`, and THAT refetch — not a value stashed off the response —
-  // is what `CountResultView` waits for (its own doc comment). No effect
-  // needed: `resultFor` is set once, synchronously, in the confirm handler
-  // below, and the row it names is whatever the counts query says right now.
-  //
-  // `shiftId` (minor 6, review) — `resultFor` used to be bare
-  // `'open' | 'close' | null`, which outlives the shift it was about:
-  // changing the date after a close left `resultFor === 'close'` sitting in
-  // state, and the moment `closingCountRow` for the NEW date's shift
-  // happened to be non-null, the old result popped up over the wrong day.
-  // Naming the shift alongside the mode is what `resultRow` below checks
-  // against `shift.data?.id` — a stale `resultFor` from another day can
-  // never match the shift on screen now.
+  // R4 — the result view after an open/close, read back from the counts of
+  // the result's own shift rather than the mutation's response: the mutations'
+  // `onSuccess` refetches `cashCounts`, and THAT refetch is what `CountResultView`
+  // waits for. `shiftId` names the shift, so a result outlives a date change
+  // describing the day it was about (minor 6).
   const [resultFor, setResultFor] = useState<{ mode: 'open' | 'close'; shiftId: string } | null>(
     null,
   );
+  // Counts are read by the result's own shift, so a result can never show
+  // another day's count.
+  const resultCounts = useCashCountsQuery({ shiftId: resultFor?.shiftId });
+  const resultBerry = (resultCounts.data?.data ?? []).filter((c) => c.book === 'berry');
   const resultRow =
-    resultFor === null || resultFor.shiftId !== shift.data?.id
+    resultFor === null
       ? null
-      : resultFor.mode === 'open'
-        ? openingCountRow
-        : closingCountRow;
+      : (resultBerry.find((c) => c.kind === (resultFor.mode === 'open' ? 'opening' : 'closing')) ?? null);
 
   // Minor 14 (review) — the CONTENT for the close (exit) animation.
   // `CountResultView` used to be wrapped in `resultFor !== null && resultRow
@@ -267,7 +250,7 @@ export function PointCashPage() {
   // Latched like `resultView`: the form keeps rendering while the dialog fades
   // out after a save, instead of flashing back to the result.
   const [noteTarget, setNoteTarget] = useState<CashCount | null>(null);
-  const noteRow = resultFor?.mode === 'close' ? resultRow : null;
+  const noteRow = resultRow;
   // A discrepancy the closer may explain opens the form once per close; after
   // «Скасувати» the result's own button is the way back in.
   const [noteOffered, setNoteOffered] = useState(false);
@@ -276,17 +259,17 @@ export function PointCashPage() {
     setNoteTarget(noteRow);
   }
   if (resultFor !== null && resultRow !== null) {
+    const amount = formatUah(resultRow.discrepancy, locale);
     const title =
       resultFor.mode === 'open'
-        ? t('pointCash.result.opened')
+        ? isZero(resultRow.discrepancy)
+          ? t('pointCash.result.opened')
+          : t('pointCash.result.openedDiscrepancy', { amount })
         : isZero(resultRow.discrepancy)
           ? t('pointCash.result.closedSettled')
-          : t('pointCash.result.closedDiscrepancy', {
-              amount: formatUah(resultRow.discrepancy, locale),
-            });
-    // Opening carries no discrepancy — §7.3, the first count IS the opening
-    // balance, nothing to compare it against yet.
-    const discrepancy = resultFor.mode === 'close' ? resultRow.discrepancy : null;
+          : t('pointCash.result.closedDiscrepancy', { amount });
+    // Since 09.09 the opening is compared with the last close (spec 2026-10-08, decision 5).
+    const discrepancy = resultRow.discrepancy;
     if (
       resultView === null ||
       resultView.mode !== resultFor.mode ||
@@ -588,6 +571,11 @@ export function PointCashPage() {
           viewedDate={date}
           // The same page, another `?date=` — where the panel offers the close.
           onGoToDate={setDateParam}
+          onClosed={(id) => {
+            setNoteTarget(null);
+            setNoteOffered(false);
+            setResultFor({ mode: 'close', shiftId: id });
+          }}
         />
         {body}
       </DashboardPage>

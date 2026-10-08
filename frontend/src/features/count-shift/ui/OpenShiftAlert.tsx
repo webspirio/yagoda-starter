@@ -44,6 +44,7 @@ export function OpenShiftAlert({
   pointId,
   viewedDate,
   onGoToDate,
+  onClosed,
 }: {
   pointId: string | null;
   /** The business date the SCREEN is about — today on «Прийомка», `?date=` on
@@ -63,6 +64,8 @@ export function OpenShiftAlert({
    * without any of them re-deriving the date.
    */
   onGoToDate?: (businessDate: string) => void;
+  /** PointCashPage shows the result screen instead of the toast — spec 2026-10-08, S2. */
+  onClosed?: (shiftId: string) => void;
 }) {
   const { t, i18n } = useTranslation();
   const { data: me } = useMeQuery();
@@ -137,7 +140,8 @@ export function OpenShiftAlert({
             throw new Error('stale-shift close confirmed without a target');
           }
           await close.mutateAsync({ id: closingId, counted_amount, broken_crates });
-          toast.success(t('day.toast.closed'));
+          if (onClosed) onClosed(closingId);
+          else toast.success(t('day.toast.closed'));
           setClosingId(null);
         }}
       />

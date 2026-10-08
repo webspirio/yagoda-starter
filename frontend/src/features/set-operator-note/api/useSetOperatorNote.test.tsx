@@ -20,7 +20,7 @@ beforeEach(() => {
 afterEach(() => mock.restore());
 
 describe('useSetOperatorNoteMutation', () => {
-  it('PUTs operator_note and refreshes shifts and cash counts', async () => {
+  it('PUTs operator_note and refreshes cash counts only', async () => {
     mock.onPut('/cash-counts/c1/operator-note').reply(200, { id: 'c1', operator_note: 'віддав решту' });
     const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries');
     const { result } = renderHook(() => useSetOperatorNoteMutation(), { wrapper });
@@ -29,8 +29,8 @@ describe('useSetOperatorNoteMutation', () => {
 
     expect(JSON.parse(mock.history.put[0].data as string)).toEqual({ operator_note: 'віддав решту' });
     await waitFor(() => {
-      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: queryKeys.shifts });
       expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: queryKeys.cashCounts });
     });
+    expect(invalidateSpy).not.toHaveBeenCalledWith({ queryKey: queryKeys.shifts });
   });
 });

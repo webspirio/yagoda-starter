@@ -235,8 +235,15 @@ describe('ShiftCountPanel — the shift line and names', () => {
       count({ id: 'o', kind: 'opening', explanation: 'ранок' }),
       count({ id: 'c', kind: 'closing', operator_note: 'вечір' }),
     ]);
-    expect(screen.getByText(/ранок/)).toBeInTheDocument();
-    expect(screen.getByText(/вечір/)).toBeInTheDocument();
+    const FOLLOWING = Node.DOCUMENT_POSITION_FOLLOWING;
+    const openingLabel = screen.getByText('Counted this morning');
+    const closingLabel = screen.getByText('Counted at close');
+    const morning = screen.getByText(/ранок/);
+    const evening = screen.getByText(/вечір/);
+    // Each text sits after its own label and before the next one.
+    expect(openingLabel.compareDocumentPosition(morning) & FOLLOWING).toBeTruthy();
+    expect(morning.compareDocumentPosition(closingLabel) & FOLLOWING).toBeTruthy();
+    expect(closingLabel.compareDocumentPosition(evening) & FOLLOWING).toBeTruthy();
   });
 
   it('shows the opening discrepancy pill when the opening count did not match', () => {

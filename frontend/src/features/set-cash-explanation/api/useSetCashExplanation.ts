@@ -10,8 +10,8 @@ export interface SetCashExplanationInput {
 
 /**
  * §7.7 — the owner's decision on ONE count (spec 2026-10-08). OWNER ONLY, replaces
- * the text, never moves a number. Invalidates `cashCounts` (the incident list reads
- * the same row) and `shifts` (the panel reads its counts).
+ * the text, never moves a number. Invalidates `cashCounts` alone: the incident
+ * list and the shift panel both read the same row.
  */
 export function useSetCashExplanationMutation() {
   const qc = useQueryClient();
@@ -20,7 +20,6 @@ export function useSetCashExplanationMutation() {
       (await httpClient.put<CashCount>(`/cash-counts/${countId}/explanation`, { explanation })).data,
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: queryKeys.cashCounts });
-      qc.invalidateQueries({ queryKey: queryKeys.shifts });
     },
   });
 }
