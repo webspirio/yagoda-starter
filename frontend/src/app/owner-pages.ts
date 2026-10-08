@@ -16,3 +16,4 @@ export { JournalPage } from '@/pages/journal';
 export { TransfersPage } from '@/pages/transfers';
 export { ReweighPage } from '@/pages/reweigh';
 export { CostOfDayPage } from '@/pages/cost-of-day';
+export { SettingsPage } from '@/pages/settings';

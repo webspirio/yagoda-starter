@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { fitReceiptNote, NOTE_LINE_CHARS, NOTE_LINES } from './receiptNote';
+import { NOTE_LINE_CHARS, NOTE_LINES } from '@/entities/network-settings';
+import { fitReceiptNote } from './fitReceiptNote';
 
 const x = (n: number) => 'x'.repeat(n);
 

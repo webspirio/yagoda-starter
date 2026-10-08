@@ -1,7 +1,4 @@
-/** The receipt's ruled lines for a typed note: seven, forty monospace
- *  characters each — what fits the slip's width on paper. */
-export const NOTE_LINES = 7;
-export const NOTE_LINE_CHARS = 40;
+import { NOTE_LINE_CHARS, NOTE_LINES } from '@/entities/network-settings';
 
 /**
  * Lays typed text onto the ruled lines: a line past the limit breaks at its

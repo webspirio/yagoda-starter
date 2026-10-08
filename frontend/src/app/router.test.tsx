@@ -24,6 +24,9 @@ vi.mock('@/pages/point-cash', () => ({
 vi.mock('@/pages/cost-of-day', () => ({
   CostOfDayPage: () => <p>cost-of-day page</p>,
 }));
+vi.mock('@/pages/settings', () => ({
+  SettingsPage: () => <p>settings page</p>,
+}));
 
 function renderAt(path: string) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -126,6 +129,29 @@ describe('router', () => {
     });
     renderAt('/cost-of-day');
     expect(await screen.findByText('cost-of-day page')).toBeInTheDocument();
+  });
+
+  it('keeps /settings away from an operator', async () => {
+    useSession.setState({ token: 'tok' });
+    meMock.mockReturnValue({
+      data: { role: 'point_operator', display_name: 'Оператор Тест' },
+      isPending: false,
+      isError: false,
+    });
+    renderAt('/settings');
+    expect(await screen.findByRole('heading', { name: /summary/i })).toBeInTheDocument();
+    expect(screen.queryByText('settings page')).not.toBeInTheDocument();
+  });
+
+  it('lets an owner onto /settings', async () => {
+    useSession.setState({ token: 'tok' });
+    meMock.mockReturnValue({
+      data: { role: 'network_owner', display_name: 'Керівник Тест' },
+      isPending: false,
+      isError: false,
+    });
+    renderAt('/settings');
+    expect(await screen.findByText('settings page')).toBeInTheDocument();
   });
 
   it('lets both roles onto /point-cash', async () => {
