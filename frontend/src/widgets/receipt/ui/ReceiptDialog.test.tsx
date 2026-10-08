@@ -548,7 +548,7 @@ describe('ReceiptDialog', () => {
     expect(screen.queryByRole('button', { name: 'Void' })).not.toBeInTheDocument();
   });
 
-  it('ends the paper with seven blank lines, printed only', () => {
+  it('ends the paper with seven ruled blank lines, printed only', () => {
     setUp();
     render(<ReceiptDialog intakeId="intake-1" open onClose={vi.fn()} />);
 
@@ -558,6 +558,14 @@ describe('ReceiptDialog', () => {
     expect(Array.from(tail?.children ?? [], (line) => line.textContent)).toEqual(
       Array(7).fill(' '),
     );
+    for (const line of Array.from(tail?.children ?? [])) expect(line).toHaveClass('border-b');
+  });
+
+  it('keeps the «saved in the system» footer off the paper', () => {
+    setUp();
+    render(<ReceiptDialog intakeId="intake-1" open onClose={vi.fn()} />);
+
+    expect(screen.getByText(/The receipt is saved in the system/)).toHaveClass('print:hidden');
   });
 
   it('prints via window.print', async () => {

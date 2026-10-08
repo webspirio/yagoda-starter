@@ -173,12 +173,15 @@ export function ReceiptSheet({
       <Row label={t('receipt.balanceAtPoint')} value={balance} />
       <Row label={t('receipt.receivedBy')} value={receivedBy} muted />
 
-      <div className="mt-4 text-center text-[10px] text-neutral-400">{t('receipt.footer')}</div>
+      {/* A note for the screen only — the paper ends in the ruled lines below. */}
+      <div className="mt-4 text-center text-[10px] text-neutral-400 print:hidden">
+        {t('receipt.footer')}
+      </div>
 
-      {/* Feeds the slip past the printer's tear bar, so the footer isn't torn off. */}
+      {/* Ruled lines for handwritten notes; they also feed the slip past the tear bar. */}
       <div className="print-only" aria-hidden="true">
         {Array.from({ length: TRAILING_BLANK_LINES }, (_, i) => (
-          <div key={i}>{' '}</div>
+          <div key={i} className="h-7 border-b border-dashed border-black">{' '}</div>
         ))}
       </div>
     </div>
