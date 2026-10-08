@@ -1,5 +1,5 @@
 import { ApiError } from '@/shared/api';
-import { onHandKey, apiErrorParams } from '@/shared/lib/api-error';
+import { onHandKey, apiErrorParams, statusKey } from '@/shared/lib/api-error';
 
 export interface ApiFieldErrors {
   /** field name (RHF path, e.g. `items.0.gross_kg`) -> i18n message key */
@@ -54,6 +54,10 @@ const BANNER: Readonly<Record<string, string>> = {
   RETURNED_EXCEEDS_TARE: 'reception.returned.exceedsTare',
   RETURN_EXCEEDS_OUTSTANDING: 'crates.errors.returnExceeds',
   CRATE_CASH_INSUFFICIENT: 'crates.errors.cashInsufficient',
+  // Not a race — `nextDocumentCode` locks the counter. Only a shift numbered
+  // by hand before 2026-09-18 can collide, and a retry recomputes the same
+  // number, so the advice is the owner, never «press again».
+  INTAKE_CODE_TAKEN: 'errors.documentNumberTaken',
 };
 
 /**
@@ -107,13 +111,6 @@ export function apiErrorToFields(error: unknown, lineCount: number): ApiFieldErr
     const paid = PAID_FIELD[error.code];
     if (paid) return { fieldErrors: [{ field: 'paid_amount', messageKey: paid }], formErrorKey: null };
 
-    // NOTHING ELSE MAPS TO A TOP-LEVEL FIELD ANY MORE. `INTAKE_CODE_TAKEN`
-    // used to, onto the typed receipt number; that field is gone
-    // (2026-09-18 — the server numbers each shift itself) and the code now
-    // means a generated number met a row this shift was given by hand before
-    // the change. There is nothing the operator can retype to get past it,
-    // so it falls through to the banner at the bottom, which says the
-    // receipt did not go through.
     const line = LINE_FIELD[error.code];
     if (line) {
       const lastLine = Math.max(lineCount - 1, 0);
@@ -130,7 +127,7 @@ export function apiErrorToFields(error: unknown, lineCount: number): ApiFieldErr
     const banner = BANNER[error.code];
     if (banner) return { fieldErrors: [], formErrorKey: banner };
 
-    return { fieldErrors: [], formErrorKey: FORM_LEVEL };
+    return { fieldErrors: [], formErrorKey: statusKey(error) ?? FORM_LEVEL };
   }
 
   const fieldErrors: Array<{ field: string; messageKey: string }> = [];
@@ -148,5 +145,5 @@ export function apiErrorToFields(error: unknown, lineCount: number): ApiFieldErr
   if (fieldErrors.length > 0) {
     return { fieldErrors, formErrorKey: unattributed ? FORM_LEVEL : null };
   }
-  return { fieldErrors: [], formErrorKey: FORM_LEVEL };
+  return { fieldErrors: [], formErrorKey: statusKey(error) ?? FORM_LEVEL };
 }

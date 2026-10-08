@@ -424,6 +424,61 @@ export const CHECKS = [
       'diverges between env sets leaks unnoticed. Anchors are refused, not followed.',
   },
   {
+    id: 'plain-text',
+    tier: 'fast',
+    // No `after`, for the reason on `migrations`: syntax-only parse, so a type error neither
+    // hides nor fakes a finding here.
+    cmd: 'npm run i18n:plain-text',
+    proves:
+      'Every .ts and .tsx file under frontend/src, tests and locale data aside, is parsed, ' +
+      'and this command fails when one renders untranslated ' +
+      'text: JSX text, a letter-bearing literal as a JSX child, in a listed UI ' +
+      'attribute or passed to a toast call, or any literal containing Cyrillic. Every exception is dated and reasoned, must still match, and a file-wide one ' +
+      'fails once the file holds more or fewer candidates than it accepts.',
+    blindSpot:
+      'A Latin-only literal anywhere else is invisible: a column header in an object literal, ' +
+      'a string a helper returns, or another aria attribute. Text assembled at runtime, text ' +
+      'the backend sends, and a prop not on the fixed list go unseen. A toast callee is recognised only through an import from sonner ' +
+      'or the app\'s toast module. It proves text reaches the screen through a key, never ' +
+      'that the translation behind the key is right.',
+  },
+  {
+    id: 'locales',
+    tier: 'fast',
+    cmd: 'npm run i18n:locales',
+    proves:
+      'Every locales JSON file under frontend/src is compared with en.json, and this command ' +
+      'fails when a language in SUPPORTED_LANGUAGES has no file or a file is not listed there, ' +
+      'Intl knows no plural rules for a locale, a key is one-sided, a plural category is ' +
+      'missing, a value is empty, blank or non-string, placeholder names differ, or a literal ' +
+      'key passed to t(), returned by a validate rule, or given as a register or setError ' +
+      'message is absent from en.json.',
+    blindSpot:
+      'A key built from a template or a variable, or passed through a helper such as ' +
+      'amountRules, is never checked, so a typo there still reaches the screen raw. Unused keys are not reported. Nothing judges ' +
+      'the text itself: a Ukrainian value copied verbatim from English, a misused plural form, ' +
+      'or a placeholder in the wrong place all pass. Locale files outside frontend/src lie ' +
+      'outside its scope.',
+  },
+  {
+    id: 'error-codes',
+    tier: 'fast',
+    // No `after`, for the reason on `migrations`: syntax-only parse on both sides.
+    cmd: 'npm run i18n:error-codes',
+    proves:
+      'Every UPPER_SNAKE string literal in shipped backend source, tests, migrations and seed ' +
+      'aside, is named by a string literal or object key in shipped frontend source, and every ' +
+      'such name in the frontend is one the backend produces; this command fails on a gap ' +
+      'either way unless the name is excused individually, dated and reasoned, in its ' +
+      'baseline, and on an excuse that matches nothing.',
+    blindSpot:
+      'A reference is not a correct mapping: a code named only in a comparison, mapped to the ' +
+      'wrong sentence, or named in a map the screen that receives it never consults, passes. A ' +
+      'code assembled at runtime is invisible. Failures that carry no code, such as a ' +
+      'not-found or a validation rejection, are covered only by the status fallback in the ' +
+      'frontend, never by this row, and the wording of any message is not judged.',
+  },
+  {
     id: 'selfcheck',
     // FULL, NOT FAST, and the reason CHANGED — which is worth stating, because a stale
     // justification for a correct decision is how the next person gets talked into

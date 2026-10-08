@@ -6,6 +6,7 @@ describe('money/weight formatting (strings in, strings out)', () => {
     expect(formatDecimal('12658.50', 'uk')).toBe('12 658,50');
     expect(formatUah('12658.50', 'uk')).toBe('12 658,50 ₴');
     expect(formatKg('40.60', 'uk')).toBe('40,60 кг');
+    expect(formatKg('40.60', 'en')).toBe('40.60 kg');
   });
   it('keeps the sign and pads to two decimals', () => {
     expect(formatUah('-1.5', 'uk')).toBe('−1,50 ₴'); // typographic minus U+2212

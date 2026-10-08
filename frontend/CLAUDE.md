@@ -83,7 +83,7 @@ src/
       money/                    # sum / add / sub / cmp / div / isNegative / isZero (decimal-string arithmetic, kopiykas under the hood) + formatUah / formatDecimal / formatKg — the client-side twin of `backend/src/common/money.ts`, used wherever a screen totals or formats a money value + amountRules / cratesRules — the `required`/`validate` pair every money- or crates-string `register()` field needs, factored out of the six dialogs that used to write it by hand + maskDecimalInput / clampDecimal / floorToHundreds / mul — what a controlled decimal `<input>` needs while the operator is still typing: mask keystrokes into a canonical `N.NN` (comma or dot, digits only), clamp a typed or stepped value into `[min, max]` on blur (reception's surcharge bounds, §2.10/#117 — the bound is never shown, only enforced), floor a cash figure to whole hundreds (the «До сотні» chip), and multiply a decimal by an integer count exactly in kopiykas (a tare row's `{weight × units}` kg) — reception is the first consumer of all four
       date/                     # todayIso / addDaysIso / isIsoDate / isRealIsoDate / formatLongDate / formatWeekday / formatShortDate — business-date (`YYYY-MM-DD`) helpers; pages/day and pages/point-cash each own their own `?date=` — there is no longer a single one in the app + formatTime / formatDateTime — full-timestamp helpers (a document's `sent_at`), deliberately LOCAL time zone rather than UTC + toLocalIsoDate — a full timestamp's LOCAL calendar day (`formatShortDate` reads the date string's UTC day by design; slicing an instant like `sent_at` straight into it can print a day behind the local time shown beside it, so convert with this FIRST: `formatShortDate(toLocalIsoDate(iso), locale)`)
       error-reporting/         # reportError(error, context) — swap body for Sentry later
-      api-error/                # apiErrorToBanner — one machine-`code`-keyed mapping of backend business-rule errors to banner copy, imported directly by nine call sites today: count-shift, void-document, send/receive/resolve-transfer, set-point-target, set-cash-explanation, plus two page-level consumers easy to miss in a list like this one — `pages/day/ui/ReopenShiftDialog.tsx` and `pages/point-cash/ui/IncomingTransfers.tsx`. Grep `from '@/shared/lib/api-error'` before trusting any such list, this one included
+      api-error/                # apiErrorToBanner — one machine-`code`-keyed mapping of backend business-rule errors to banner copy, plus `statusKey`, the shared network/429/403/5xx sentence; grep `from '@/shared/lib/api-error'` for its callers
       clipboard/, cn.ts, debounce.ts, useDebouncedValue.ts, useIsDesktop.ts — small framework-free utilities
       form-draft/               # useFormDraft — localStorage-backed draft persistence; infrastructure, not yet wired into any form
       url-state/                 # useUrlParam / useUrlFlag / useUrlList / useUrlNumber / useUrlPatch — query-string state; pages/catalog uses useUrlParam for ?tab= and ?product=
@@ -165,6 +165,13 @@ To add a locale: create `locales/<code>.json` mirroring `en.json`, load it on de
 something writes that code via `storeLanguage`. `<html lang>` is kept in sync
 with the resolved language automatically.
 
+No user-visible literal outside the locale files: the `plain-text` verify row fails on JSX
+text, UI attributes, toast messages and any Cyrillic literal in `src/`. The only exceptions
+are the dated, reasoned entries in `scripts/verify/baselines/plain-text.json`, and an entry
+that stops matching fails the row too. The `locales` row keeps `en.json` and `uk.json` in
+step: keys, plural forms, empty values, `{{placeholders}}`, and every literal `t('…')` key —
+plus the keys a `validate` rule returns and those given as `required`/`message` to `register`/`setError`.
+
 **A `t('…')` grep does NOT find every key in use.** `react-hook-form`'s
 `register(name, { validate })` returns a bare i18n key string (e.g.
 `'transfer.errors.cashFormat'`) as the error message, which `Field` hands
@@ -172,6 +179,24 @@ straight to `shared/ui/field.tsx`, and THAT is where it is finally resolved
 with `t(error)` — nowhere near the literal key. A key-usage sweep that greps
 only for `t('literal.key')` call sites will walk right past every key that
 reaches a form field this way and delete it as unused.
+
+**Error and status messages — the tone rule (#52).** At most two short sentences: what
+happened, in the user's words, then what to do. No codes, no English terms in `uk`, never a
+bare «Помилка». Good: «Зміну вже закрито. Оновіть сторінку.» Bad: «POINT_UNUSABLE»,
+«Request failed», «Не вдалося» on its own. The action must exist on that screen — no
+«Оновіть сторінку» where unsaved work lives only in memory (reception, reweigh). A toast
+title paired with a description is one sentence saying what happened; the description
+carries the action.
+
+**A failed request reaches the screen only through `shared/lib/api-error`.** Use
+`apiErrorToBanner` for a banner or toast, or a slice's `apiErrorToFields` mapper for a form.
+Both put `statusKey` (network / 429 / 403 / 5xx) ahead of the caller's fallback. Never
+render `error.message`, `ApiError.details` or `String(err)`: that is English text from the
+server, meant for a log. Map codes exactly, never by suffix. A new backend code is mapped
+where it surfaces or excused in `scripts/verify/baselines/error-codes.json`; the
+`error-codes` verify row fails otherwise. The deliberate exception is a failed GET: its error state renders a
+static `loadFailed` or `common.somethingWentWrong` key, unmapped — except where the read's
+own refusals carry codes (`PriceChanges`' period filter goes through `apiErrorToBanner`).
 
 ## Routing
 
@@ -189,7 +214,7 @@ reaches a form field this way and delete it as unused.
 
 ## Forms
 
-`react-hook-form` is a dependency, but `LoginForm` uses plain `useState` — it's two fields, and a form library buys nothing there yet. `shared/lib/form-draft/useFormDraft` is the one place `react-hook-form` is actually wired up today, as a `localStorage`-backed draft-persistence hook (unused by any page — see "Structure" above). `@hookform/resolvers` is NOT a dependency (removed as unused; there is no schema-driven form in this starter yet) — reach for `react-hook-form` once a form has more than a couple of fields or needs real per-field validation, and add `@hookform/resolvers` + `zodResolver` at that point if schema validation is worth it; `ApiError.details` (`shared/api/client.ts`) — the backend's raw per-field `message` array from `class-validator` — exists so a form can map server-side validation failures onto individual fields once there's a form to map them onto.
+`react-hook-form` is a dependency; `LoginForm` uses plain `useState` — it's two fields, and a form library buys nothing there — while the dialogs (e.g. `features/edit-supplier/ui/SupplierFormDialog.tsx`) use `react-hook-form`. `shared/lib/form-draft/useFormDraft` is a `localStorage`-backed draft-persistence hook on top of it, still unused by any page (see "Structure" above). `@hookform/resolvers` is NOT a dependency (removed as unused; there is no schema-driven form in this starter yet) — add `@hookform/resolvers` + `zodResolver` if a form ever needs schema validation; `ApiError.details` (`shared/api/client.ts`) — the backend's raw per-field `message` array from `class-validator` — feeds each slice's `apiErrorToFields` mapper, which maps server-side validation failures onto individual fields.
 
 ## Uploads
 
