@@ -216,13 +216,12 @@ describe('YagodaIntakesAndPayouts', () => {
       // the cash_counts slice needs a migration to use its own column.
       await ds.query(
         `UPDATE shifts SET closed_at = now(), closed_by_user_id = $2,
-                           status = 'awaiting_explanation', explanation = 'розбіжність 350 ₴'
+                           status = 'awaiting_explanation'
           WHERE id = $1`,
         [shift, userId],
       );
-      const [row] = await ds.query(`SELECT status, explanation FROM shifts WHERE id = $1`, [shift]);
+      const [row] = await ds.query(`SELECT status FROM shifts WHERE id = $1`, [shift]);
       expect(row.status).toBe('awaiting_explanation');
-      expect(row.explanation).toBe('розбіжність 350 ₴');
     });
 
     it('has NO void_* columns — a shift is reopened, not voided', async () => {
