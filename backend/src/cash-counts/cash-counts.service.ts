@@ -10,7 +10,6 @@ import {
 import { CashCount } from './cash-count.entity';
 import { CashBook } from './cash-book.enum';
 import { CashCountKind } from './cash-count-kind.enum';
-import { OPERATOR_NOTE_FACTS_SQL } from '../shifts/operator-note';
 import { Shift } from '../shifts/shift.entity';
 import { countNoteRefusal, type CountNoteField } from './count-notes';
 import { SetCountExplanationDto } from './dto/set-count-explanation.dto';
@@ -25,14 +24,6 @@ import { skipOf } from '../common/dto/pagination-query.dto';
 import { loadDisplayNames } from '../users/display-names';
 import { TimeService } from '../time/time.service';
 import type { AuthenticatedUser } from '../auth/jwt.strategy';
-
-/** The shift columns `operator-note.ts` decides from, joined per row in `list`. */
-interface NoteColumns {
-  closed_at: Date | null;
-  closed_by_user_id: string | null;
-  is_newest: boolean;
-  has_discrepancy: boolean;
-}
 
 /**
  * `opening` AND `closing` COUNTS ARE STILL WRITTEN BY `shifts`, inside the
@@ -234,7 +225,7 @@ export class CashCountsService {
          AND (NOT $5::boolean
               OR (c.counted_amount <> c.expected_amount
                   AND c.kind <> 'midday'
-                  AND (s.explanation IS NULL OR s.explanation = '')))`;
+                  AND c.explanation IS NULL))`;
 
     const params = [
       pointId,
@@ -249,13 +240,12 @@ export class CashCountsService {
               c.book, c.kind,
               c.counted_amount::text  AS counted_amount,
               c.expected_amount::text AS expected_amount,
-              c.counted_by_user_id, c.counted_at, s.explanation, s.operator_note,
-              s.closed_at, s.closed_by_user_id, ${OPERATOR_NOTE_FACTS_SQL}
+              c.counted_by_user_id, c.counted_at, c.explanation, c.operator_note
        ${scope}
         ORDER BY s.business_date DESC, c.counted_at DESC, c.id ASC
         LIMIT $6 OFFSET $7`,
       [...params, query.limit, skipOf(query)],
-    )) as (CashCountRow & NoteColumns)[];
+    )) as CashCountRow[];
 
     const [{ total }] = (await m.query(
       `SELECT COUNT(*)::int AS total ${scope}`,

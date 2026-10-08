@@ -34,6 +34,10 @@ describe('countNoteRefusal', () => {
     expect(code(countNoteRefusal(OPERATOR, count(), 'explanation'))).toBe('OWNER_ONLY');
   });
 
+  it('checks the role before the row: an operator explaining a midday row is OWNER_ONLY', () => {
+    expect(code(countNoteRefusal(OPERATOR, count({ kind: CashCountKind.Midday }), 'explanation'))).toBe('OWNER_ONLY');
+  });
+
   it('refuses a midday row and the crates book — COUNT_NOT_EXPLAINABLE', () => {
     expect(code(countNoteRefusal(OPERATOR, count({ kind: CashCountKind.Midday }), 'operator_note'))).toBe('COUNT_NOT_EXPLAINABLE');
     expect(code(countNoteRefusal(OWNER, count({ book: CashBook.Crates }), 'explanation'))).toBe('COUNT_NOT_EXPLAINABLE');

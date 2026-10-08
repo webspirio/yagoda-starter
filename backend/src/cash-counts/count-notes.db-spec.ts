@@ -177,6 +177,12 @@ describe('count explanations and operator notes (Postgres)', () => {
     expect((await closingRow(owner, opened.id)).is_open).toBe(true);
     await counts.setExplanation(owner, closingId, { explanation: 'прийнято' });
     expect((await closingRow(owner, opened.id)).is_open).toBe(false);
+    const [audit] = (await ds.query(
+      `SELECT after->>'explanation' AS after FROM audit_log
+        WHERE action = 'cash-count.explained' AND target_id = $1`,
+      [closingId],
+    )) as { after: string }[];
+    expect(audit.after).toBe('прийнято');
     expect(await code(counts.setOperatorNote(p.closer, closingId, { operator_note: 'змінюю' }))).toBe(
       'OWNER_ALREADY_EXPLAINED',
     );
