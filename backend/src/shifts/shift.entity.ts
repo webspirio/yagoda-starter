@@ -36,8 +36,8 @@ import { ShiftStatus } from './shift-status.enum';
  *    inside this shift's own transactions. Denormalising any of them onto this
  *    row would be «два примірники одного факту».
  *
- * `explanation` IS WRITTEN, by `ShiftsService.setExplanation` behind
- * `PUT /shifts/:id/explanation` (owner-only, §6.5). `ShiftStatus`'s
+ * Explanations and operator notes live on `cash_counts` (spec 2026-10-08), not
+ * here. `ShiftStatus`'s
  * `AwaitingExplanation` is the half that stayed unreachable, and BY DECISION
  * rather than by absence: the client's 09.09.2026 ruling removed the blocking
  * a discrepancy used to impose (§7.7, cash counts spec §11.1). See the enum.
@@ -88,8 +88,6 @@ import { ShiftStatus } from './shift-status.enum';
 // не знаємо». The half that IS true forever is «a number never sits on an open
 // shift», and it survives both the history and the reopen-to-NULL rule.
 @Check('CHK_shifts_broken_crates_closed', `"closed_at" IS NOT NULL OR "broken_crates" IS NULL`)
-// Spec 2026-10-06 — declared so `migration:generate` does not propose dropping it.
-@Check('CHK_shifts_operator_note_not_blank', `"operator_note" IS NULL OR btrim("operator_note") <> ''`)
 export class Shift {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -130,19 +128,6 @@ export class Shift {
     default: ShiftStatus.Open,
   })
   status: ShiftStatus;
-
-  /** The owner's note on a shift whose drawer did not balance — written by
-   *  `ShiftsService.setExplanation` (§6.5). It records what is OPEN, never what
-   *  is TRUE: an explained discrepancy stays in `Σ (counted − expected)`.
-   *  Cleared by reopen when the closing count it demotes disagreed; an
-   *  explanation of the opening count alone stays — reopen keeps that count. */
-  @Column({ type: 'text', nullable: true })
-  explanation: string | null;
-
-  /** The closing operator's own account of the discrepancy (spec 2026-10-06).
-   *  Never closes the incident — only `explanation` does. Cleared by reopen. */
-  @Column({ type: 'text', nullable: true })
-  operator_note: string | null;
 
   /**
    * §6.8's «бій» — crates that broke during the shift and travel to the base

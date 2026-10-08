@@ -1,12 +1,10 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Put, Query } from '@nestjs/common';
+import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Query } from '@nestjs/common';
 import { Auth } from '../auth/decorators/auth.decorators';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { ShiftsService } from './shifts.service';
 import { OpenShiftDto } from './dto/open-shift.dto';
 import { CloseShiftDto } from './dto/close-shift.dto';
 import { ReopenShiftDto } from './dto/reopen-shift.dto';
-import { SetExplanationDto } from './dto/set-explanation.dto';
-import { SetOperatorNoteDto } from './dto/set-operator-note.dto';
 import { ListShiftsQueryDto } from './dto/list-shifts.query';
 import { CurrentShiftQueryDto } from './dto/current-shift.query';
 import { UserRole } from '../users/user-role.enum';
@@ -23,7 +21,7 @@ import type { AuthenticatedUser } from '../auth/jwt.strategy';
  * CLOSING DOES THE SAME (Task 6) — `POST /shifts/:id/close` writes the
  * `closing` count in the same transaction as the timestamp. A DISCREPANCY
  * NEVER REFUSES THE CLOSE (client ruling 09.09.2026, overruling §7.7 in
- * full) — `explanation`/`awaiting_explanation` stay unreachable by decision.
+ * full) — `awaiting_explanation` stays unreachable by decision.
  *
  * ROLES ARE NOT UNIFORM HERE, and the split is §10.3 + §10.2:
  *
@@ -36,11 +34,7 @@ import type { AuthenticatedUser } from '../auth/jwt.strategy';
  *   reopen        → NetworkOwner ONLY. A correction, and §10.2 puts corrections
  *                   with the owner. It also demotes the shift's `closing` count
  *                   to `midday` (§6.3), so a second close has a free slot.
- *   explanation   → NetworkOwner ONLY (§10.2). §7.7's surviving half: the
- *                   ruling removed the GATE, not the explanation — see
- *                   `SetExplanationDto`. Writing it never moves a number.
- *   operator-note → PointOperator ONLY, and only the one who closed the shift
- *                   (spec 2026-10-06). Informs the owner; closes nothing.
+ *   explanations → see `cash-counts.controller.ts` (spec 2026-10-08).
  *   reads         → both, scoped by `resolvePointFilter`.
  *
  * `POST /shifts` AND `POST /shifts/:id/close` EACH TAKE ONE FIELD,
@@ -100,25 +94,5 @@ export class ShiftsController {
     @Body() dto: ReopenShiftDto,
   ) {
     return this.shifts.reopen(actor, id, dto);
-  }
-
-  @Put(':id/explanation')
-  @Auth(UserRole.NetworkOwner)
-  setExplanation(
-    @CurrentUser() actor: AuthenticatedUser,
-    @Param('id', ParseUUIDPipe) id: string,
-    @Body() dto: SetExplanationDto,
-  ) {
-    return this.shifts.setExplanation(actor, id, dto);
-  }
-
-  @Put(':id/operator-note')
-  @Auth(UserRole.PointOperator)
-  setOperatorNote(
-    @CurrentUser() actor: AuthenticatedUser,
-    @Param('id', ParseUUIDPipe) id: string,
-    @Body() dto: SetOperatorNoteDto,
-  ) {
-    return this.shifts.setOperatorNote(actor, id, dto);
   }
 }

@@ -58,7 +58,6 @@ export const AUDIT_ACTIONS = [
   'cash-count.explained',
   'cash-count.operator_noted',
   'shift.explained', // historic rows only — since 2026-10-08 explanations are per count
-  'shift.operator_noted', // TEMPORARY: ShiftsService still writes it until Task 4 removes it
   'crate-issuance.created',
   'crate-issuance.voided',
   'crate-return.created',

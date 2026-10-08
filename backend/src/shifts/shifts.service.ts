@@ -11,18 +11,9 @@ import { ShiftStatus } from './shift-status.enum';
 import { OpenShiftDto } from './dto/open-shift.dto';
 import { CloseShiftDto } from './dto/close-shift.dto';
 import { ReopenShiftDto } from './dto/reopen-shift.dto';
-import { SetExplanationDto } from './dto/set-explanation.dto';
 import { ListShiftsQueryDto } from './dto/list-shifts.query';
 import { CurrentShiftQueryDto } from './dto/current-shift.query';
 import { ShiftResponse, toShiftResponse } from './shift.mapper';
-import { SetOperatorNoteDto } from './dto/set-operator-note.dto';
-import {
-  NO_FACTS,
-  couldEditOperatorNote,
-  loadOperatorNoteFacts,
-  operatorNoteEditable,
-  operatorNoteRefusal,
-} from './operator-note';
 import { AuditService } from '../audit/audit.service';
 import { CollectionPointsService } from '../collection-points/collection-points.service';
 import { assertOwnsPoint, resolvePointFilter } from '../auth/access/point-scope';
@@ -310,11 +301,7 @@ export class ShiftsService {
         closed_at: shift.closed_at,
         status: shift.status,
         broken_crates: shift.broken_crates,
-        operator_note: shift.operator_note,
-        explanation: shift.explanation,
       };
-      // Read before the demotion below — afterwards there is no closing count to ask about.
-      const { has_discrepancy } = (await loadOperatorNoteFacts(m, [shift.id])).get(shift.id) ?? NO_FACTS;
 
       // §6.3 — THE CLOSING COUNT BECOMES A MIDDAY COUNT. Reopening needs a free
       // `closing` slot (UQ_cash_counts_shift_book_kind), and the 11:00 count
@@ -340,11 +327,7 @@ export class ShiftsService {
       // Back to «не записано»: CHK_shifts_broken_crates_closed forbids a count
       // on an open shift, and the re-close will ask the operator again.
       shift.broken_crates = null;
-      // The note explained the count reopen just demoted. So did the owner's
-      // explanation if that count disagreed — the re-close is then a fresh
-      // incident. Otherwise it answered the opening count, which reopen keeps.
-      shift.operator_note = null;
-      if (has_discrepancy) shift.explanation = null;
+      // Texts live on the counts (spec 2026-10-08): the demoted row keeps its own.
       const saved = await m.save(Shift, shift);
 
       await this.audit.record(
@@ -358,87 +341,8 @@ export class ShiftsService {
             closed_at: null,
             status: ShiftStatus.Open,
             broken_crates: null,
-            operator_note: null,
-            explanation: shift.explanation,
           },
           note: dto.reason,
-        },
-        m,
-      );
-
-      const [response] = await this.respond(actor, [saved], m);
-      return response;
-    });
-  }
-
-  /**
-   * OWNER ONLY (§10.2 — corrections and judgements belong to the owner).
-   * Idempotent: re-sending replaces the text. Under the row lock since spec
-   * 2026-10-06 — «the operator cannot write after the owner decided» is
-   * decided from this column, so it must not be written unlocked.
-   */
-  async setExplanation(
-    actor: AuthenticatedUser,
-    id: string,
-    dto: SetExplanationDto,
-  ): Promise<ShiftResponse> {
-    if (actor.role !== UserRole.NetworkOwner) {
-      throw new ForbiddenException({
-        message: 'Only the network owner may explain a discrepancy',
-        code: 'OWNER_ONLY',
-      });
-    }
-    return this.dataSource.transaction(async (m) => {
-      const shift = await this.loadVisible(actor, id, m);
-      const before = { explanation: shift.explanation };
-      shift.explanation = dto.explanation.trim();
-      const saved = await m.save(Shift, shift);
-
-      await this.audit.record(
-        {
-          action: 'shift.explained',
-          actor_id: actor.sub,
-          target_type: 'shift',
-          target_id: saved.id,
-          before,
-          after: { explanation: saved.explanation },
-        },
-        m,
-      );
-
-      const [response] = await this.respond(actor, [saved], m);
-      return response;
-    });
-  }
-
-  /**
-   * Spec 2026-10-06 — the closing operator's account. Every refusal comes from
-   * `operatorNoteRefusal`, read under the row lock; facts are read in the same
-   * transaction. A next shift opened a moment later is accepted (spec §4.2).
-   */
-  async setOperatorNote(
-    actor: AuthenticatedUser,
-    id: string,
-    dto: SetOperatorNoteDto,
-  ): Promise<ShiftResponse> {
-    return this.dataSource.transaction(async (m) => {
-      const shift = await this.loadVisible(actor, id, m);
-      const facts = (await loadOperatorNoteFacts(m, [shift.id])).get(shift.id) ?? NO_FACTS;
-      const refusal = operatorNoteRefusal(actor, shift, facts);
-      if (refusal) throw refusal;
-
-      const before = { operator_note: shift.operator_note };
-      shift.operator_note = dto.operator_note.trim();
-      const saved = await m.save(Shift, shift);
-
-      await this.audit.record(
-        {
-          action: 'shift.operator_noted',
-          actor_id: actor.sub,
-          target_type: 'shift',
-          target_id: saved.id,
-          before,
-          after: { operator_note: saved.operator_note },
         },
         m,
       );
@@ -553,9 +457,7 @@ export class ShiftsService {
   }
 
   /**
-   * Every ShiftResponse goes through here: names and operator-note facts load
-   * ONCE per call (D-8), and facts only for shifts this caller could possibly
-   * annotate — an owner's read or an open shift costs no extra query.
+   * Every ShiftResponse goes through here: names load ONCE per call (D-8).
    */
   private async respond(
     actor: AuthenticatedUser,
@@ -563,11 +465,7 @@ export class ShiftsService {
     m: EntityManager,
   ): Promise<ShiftResponse[]> {
     const names = await this.namesFor(shifts, m);
-    const candidates = shifts.filter((s) => couldEditOperatorNote(actor, s)).map((s) => s.id);
-    const facts = await loadOperatorNoteFacts(m, candidates);
-    return shifts.map((s) =>
-      toShiftResponse(s, names, operatorNoteEditable(actor, s, facts.get(s.id) ?? NO_FACTS)),
-    );
+    return shifts.map((s) => toShiftResponse(s, names));
   }
 
   /**
