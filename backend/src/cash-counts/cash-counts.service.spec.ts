@@ -24,30 +24,32 @@ const row = (over: Partial<CashCountRow> = {}): CashCountRow => ({
 });
 
 const NO_NAMES = new Map<string, string>();
+const OWNER = { sub: 'own', role: UserRole.NetworkOwner, collection_point_id: null } as AuthenticatedUser;
+const CLOSER = { sub: row().counted_by_user_id, role: UserRole.PointOperator, collection_point_id: 'p1' } as AuthenticatedUser;
 
 describe('toCashCountRowResponse', () => {
   it('a shortage is NEGATIVE — the opposite of a transfer discrepancy, deliberately', () => {
-    expect(toCashCountRowResponse(row(), NO_NAMES, false).discrepancy).toBe('-350.00');
+    expect(toCashCountRowResponse(row(), NO_NAMES, OWNER).discrepancy).toBe('-350.00');
   });
 
   it('a surplus is positive', () => {
     expect(
-      toCashCountRowResponse(row({ counted_amount: '15766.10' }), NO_NAMES, false).discrepancy,
+      toCashCountRowResponse(row({ counted_amount: '15766.10' }), NO_NAMES, OWNER).discrepancy,
     ).toBe('350.00');
   });
 
   it('a matching count reads 0.00 and is not open', () => {
-    const r = toCashCountRowResponse(row({ counted_amount: '15416.10' }), NO_NAMES, false);
+    const r = toCashCountRowResponse(row({ counted_amount: '15416.10' }), NO_NAMES, OWNER);
     expect(r.discrepancy).toBe('0.00');
     expect(r.is_open).toBe(false);
   });
 
   it('a discrepancy with no explanation is OPEN', () => {
-    expect(toCashCountRowResponse(row(), NO_NAMES, false).is_open).toBe(true);
+    expect(toCashCountRowResponse(row(), NO_NAMES, OWNER).is_open).toBe(true);
   });
 
   it('an explained discrepancy is closed, and its numbers do not move', () => {
-    const r = toCashCountRowResponse(row({ explanation: 'касир помилився решткою' }), NO_NAMES, false);
+    const r = toCashCountRowResponse(row({ explanation: 'касир помилився решткою' }), NO_NAMES, OWNER);
     expect(r.is_open).toBe(false);
     // §7.7 — «розбіжність у документі лишається, її не підганяють».
     expect(r.discrepancy).toBe('-350.00');
@@ -57,18 +59,28 @@ describe('toCashCountRowResponse', () => {
   // D-8 — `counted_by_name` is a pure map read: the mapper does no I/O.
   it('reads counted_by_name from the caller’s map', () => {
     const names = new Map([['u-op', 'Оксана Ткач']]);
-    expect(toCashCountRowResponse(row(), names, false).counted_by_name).toBe('Оксана Ткач');
+    expect(toCashCountRowResponse(row(), names, OWNER).counted_by_name).toBe('Оксана Ткач');
   });
 
   it('an operator note does NOT close the incident — only the owner’s explanation does', () => {
-    const r = toCashCountRowResponse(row({ operator_note: 'віддав решту' }), NO_NAMES, true);
+    const r = toCashCountRowResponse(row({ operator_note: 'віддав решту' }), NO_NAMES, CLOSER);
     expect(r.is_open).toBe(true);
     expect(r.operator_note).toBe('віддав решту');
     expect(r.operator_note_editable).toBe(true);
   });
 
+  it('derives both flags from the row — owner may explain, the counter may note', () => {
+    expect(toCashCountRowResponse(row(), NO_NAMES, OWNER)).toMatchObject({ explainable: true, operator_note_editable: false });
+    expect(toCashCountRowResponse(row(), NO_NAMES, CLOSER)).toMatchObject({ explainable: false, operator_note_editable: true });
+  });
+
+  it("is_open reads only THIS count's explanation", () => {
+    expect(toCashCountRowResponse(row({ explanation: 'вирішено' }), NO_NAMES, OWNER).is_open).toBe(false);
+    expect(toCashCountRowResponse(row({ explanation: null }), NO_NAMES, OWNER).is_open).toBe(true);
+  });
+
   it('reads null when the counting user is not in the map', () => {
-    expect(toCashCountRowResponse(row(), NO_NAMES, false).counted_by_name).toBeNull();
+    expect(toCashCountRowResponse(row(), NO_NAMES, OWNER).counted_by_name).toBeNull();
   });
 });
 

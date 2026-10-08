@@ -1,4 +1,4 @@
-import { ConflictException, ForbiddenException, Injectable } from '@nestjs/common';
+import { ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { ListCashCountsQueryDto } from './dto/list-cash-counts.query';
 import { CreateCashCountDto } from './dto/create-cash-count.dto';
@@ -10,11 +10,16 @@ import {
 import { CashCount } from './cash-count.entity';
 import { CashBook } from './cash-book.enum';
 import { CashCountKind } from './cash-count-kind.enum';
-import { OPERATOR_NOTE_FACTS_SQL, operatorNoteEditable } from '../shifts/operator-note';
+import { OPERATOR_NOTE_FACTS_SQL } from '../shifts/operator-note';
+import { Shift } from '../shifts/shift.entity';
+import { countNoteRefusal, type CountNoteField } from './count-notes';
+import { SetCountExplanationDto } from './dto/set-count-explanation.dto';
+import { SetCountOperatorNoteDto } from './dto/set-count-operator-note.dto';
+import { UserRole } from '../users/user-role.enum';
 import { ShiftsService } from '../shifts/shifts.service';
 import { PointCashService } from '../point-cash/point-cash.service';
 import { AuditService } from '../audit/audit.service';
-import { resolvePointFilter } from '../auth/access/point-scope';
+import { assertOwnsPoint, resolvePointFilter } from '../auth/access/point-scope';
 import { Paginated } from '../common/dto/paginated';
 import { skipOf } from '../common/dto/pagination-query.dto';
 import { loadDisplayNames } from '../users/display-names';
@@ -192,14 +197,11 @@ export class CashCountsService {
           expected_amount: saved.expected_amount,
           counted_by_user_id: saved.counted_by_user_id,
           counted_at: saved.counted_at,
-          // A fresh count carries whatever explanation is already on the
-          // shift — the same column `list`'s SQL joins in — never a value of
-          // its own; a count has no `explanation` column (see the entity).
-          explanation: shift.explanation ?? null,
-          operator_note: shift.operator_note ?? null,
+          explanation: saved.explanation ?? null,
+          operator_note: saved.operator_note ?? null,
         },
         names,
-        false, // a midday row is never where the note is written
+        actor,
       );
     });
   }
@@ -268,22 +270,65 @@ export class CashCountsService {
     );
 
     return {
-      // The facts are the shift's; only its standing berry closing row carries the note.
-      data: rows.map((r) =>
-        toCashCountRowResponse(
-          r,
-          names,
-          r.kind === CashCountKind.Closing &&
-            r.book === CashBook.Berry &&
-            operatorNoteEditable(actor, r, {
-              is_newest: r.is_newest,
-              has_discrepancy: r.has_discrepancy,
-            }),
-        ),
-      ),
+      data: rows.map((r) => toCashCountRowResponse(r, names, actor)),
       total,
       page: query.page,
       limit: query.limit,
     };
+  }
+
+  setExplanation(actor: AuthenticatedUser, id: string, dto: SetCountExplanationDto) {
+    return this.writeNote(actor, id, 'explanation', dto.explanation);
+  }
+
+  setOperatorNote(actor: AuthenticatedUser, id: string, dto: SetCountOperatorNoteDto) {
+    return this.writeNote(actor, id, 'operator_note', dto.operator_note);
+  }
+
+  /** Under the count's row lock, so the owner's write and the operator's serialize (spec §4.1). */
+  private writeNote(
+    actor: AuthenticatedUser,
+    id: string,
+    field: CountNoteField,
+    text: string,
+  ): Promise<CashCountRowResponse> {
+    return this.dataSource.transaction(async (m) => {
+      const count = await m.findOne(CashCount, { where: { id }, lock: { mode: 'pessimistic_write' } });
+      const shift = count ? await m.findOneBy(Shift, { id: count.shift_id }) : null;
+      // Another point's count is 404, never 403 — a 403 would confirm the id exists.
+      if (
+        !count ||
+        !shift ||
+        (actor.role !== UserRole.NetworkOwner && actor.collection_point_id !== shift.collection_point_id)
+      ) {
+        throw new NotFoundException('Cash count not found');
+      }
+      assertOwnsPoint(actor, shift.collection_point_id);
+
+      const refusal = countNoteRefusal(actor, count, field);
+      if (refusal) throw refusal;
+
+      const before = { [field]: count[field] };
+      count[field] = text.trim();
+      const saved = await m.save(CashCount, count);
+      await this.audit.record(
+        {
+          action: field === 'explanation' ? 'cash-count.explained' : 'cash-count.operator_noted',
+          actor_id: actor.sub,
+          target_type: 'cash_count',
+          target_id: saved.id,
+          before,
+          after: { [field]: saved[field] },
+        },
+        m,
+      );
+
+      const names = await loadDisplayNames(m, [saved.counted_by_user_id]);
+      return toCashCountRowResponse(
+        { ...saved, collection_point_id: shift.collection_point_id, business_date: shift.business_date },
+        names,
+        actor,
+      );
+    });
   }
 }
