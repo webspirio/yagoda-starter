@@ -151,7 +151,7 @@ describe('OpenShiftAlert — closing in place', () => {
     });
   });
 
-  it('hands the closed shift to onClosed instead of toasting', async () => {
+  it('hands the closed shift to onClosed AND still toasts — the result may never load', async () => {
     const user = userEvent.setup();
     const onClosed = vi.fn();
     renderAlert({ onClosed });
@@ -163,7 +163,7 @@ describe('OpenShiftAlert — closing in place', () => {
     await user.click(within(dialog).getByRole('button', { name: SUBMIT_COUNT }));
 
     await waitFor(() => expect(onClosed).toHaveBeenCalledWith('s-stale'));
-    expect(toastSuccess).not.toHaveBeenCalled();
+    expect(toastSuccess).toHaveBeenCalledTimes(1);
   });
 
   it('still toasts when no onClosed is given', async () => {

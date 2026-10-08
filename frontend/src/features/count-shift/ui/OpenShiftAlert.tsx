@@ -64,7 +64,7 @@ export function OpenShiftAlert({
    * without any of them re-deriving the date.
    */
   onGoToDate?: (businessDate: string) => void;
-  /** The page shows the close result (`widgets/count-result`) instead of the toast — spec 2026-10-08, S2. */
+  /** The page also shows the close result (`widgets/count-result`) — spec 2026-10-08, S2. */
   onClosed?: (shiftId: string) => void;
 }) {
   const { t, i18n } = useTranslation();
@@ -140,8 +140,9 @@ export function OpenShiftAlert({
             throw new Error('stale-shift close confirmed without a target');
           }
           await close.mutateAsync({ id: closingId, counted_amount, broken_crates });
-          if (onClosed) onClosed(closingId);
-          else toast.success(t('day.toast.closed'));
+          // Always toast: the result `onClosed` opens waits on a read that may never land.
+          toast.success(t('day.toast.closed'));
+          onClosed?.(closingId);
           setClosingId(null);
         }}
       />
