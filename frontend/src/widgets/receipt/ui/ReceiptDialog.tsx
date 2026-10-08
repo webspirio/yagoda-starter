@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   Dialog,
@@ -21,6 +21,7 @@ import {
 import { useTareTypeOptionsQuery } from '@/entities/tare-type';
 import { usePointOptionsQuery } from '@/entities/collection-point';
 import { useMeQuery } from '@/entities/user';
+import { useNetworkSettingsQuery } from '@/entities/network-settings';
 import { VoidDocumentDialog, reopenedCodes } from '@/features/void-document';
 import { ReceiptSheet, type ReceiptSheetLine } from './ReceiptSheet';
 
@@ -82,6 +83,15 @@ export function ReceiptDialog({
 
   const meQuery = useMeQuery();
   const me = meQuery.data;
+
+  // Not part of `isError`: a missing note must never stop a supplier's receipt.
+  const settingsQuery = useNetworkSettingsQuery();
+  const { refetch: refetchSettings } = settingsQuery;
+  // The dialog lives as long as its page, so re-read the note on every opening:
+  // an owner's save must reach the very next receipt printed.
+  useEffect(() => {
+    if (open) void refetchSettings();
+  }, [open, refetchSettings]);
 
   const livePayout = intake?.payouts.find((p) => p.voided_at === null) ?? null;
 
@@ -196,25 +206,31 @@ export function ReceiptDialog({
     const showVoid = canVoidIntake(me, intake);
 
     content = (
-      <ReceiptSheet
-        code={intake.code}
-        // §5 row 50 — the BUSINESS date (from the shift, §2.3), not the
-        // calendar day `created_at` happens to carry: a receipt written just
-        // past local midnight is still that shift's day, and printing
-        // `created_at`'s own date could show one day while `business_date`
-        // (and every other document on this receipt's shift) says another.
-        date={`${formatLongDate(intake.business_date, locale)} · ${formatTime(intake.created_at, locale)}`}
-        pointName={pointName}
-        supplierName={supplierName(supplier)}
-        lines={lines}
-        accrued={formatUah(intake.amount, locale)}
-        balance={formatUah(balance.debt, locale)}
-        paid={paid}
-        voidedPayouts={voidedPayouts}
-        receivedBy={receivedBy}
-        voided={voided ? { reason: intake.void_reason ?? '' } : null}
-        crateReturn={crateReturn}
-      />
+      <>
+        <ReceiptSheet
+          code={intake.code}
+          // §5 row 50 — the BUSINESS date (from the shift, §2.3), not the
+          // calendar day `created_at` happens to carry: a receipt written just
+          // past local midnight is still that shift's day, and printing
+          // `created_at`'s own date could show one day while `business_date`
+          // (and every other document on this receipt's shift) says another.
+          date={`${formatLongDate(intake.business_date, locale)} · ${formatTime(intake.created_at, locale)}`}
+          pointName={pointName}
+          supplierName={supplierName(supplier)}
+          lines={lines}
+          accrued={formatUah(intake.amount, locale)}
+          balance={formatUah(balance.debt, locale)}
+          paid={paid}
+          voidedPayouts={voidedPayouts}
+          receivedBy={receivedBy}
+          voided={voided ? { reason: intake.void_reason ?? '' } : null}
+          crateReturn={crateReturn}
+          note={settingsQuery.data?.receipt_note ?? null}
+        />
+        {settingsQuery.isError && !settingsQuery.data ? (
+          <p className="print-hide text-sm text-muted-foreground">{t('receipt.noteLoadFailed')}</p>
+        ) : null}
+      </>
     );
 
     actions = (
@@ -224,7 +240,7 @@ export function ReceiptDialog({
             {t('receipt.void')}
           </Button>
         ) : null}
-        <Button type="button" onClick={() => window.print()}>
+        <Button type="button" disabled={settingsQuery.isFetching} onClick={() => window.print()}>
           {t('receipt.print')}
         </Button>
       </>
@@ -261,7 +277,7 @@ export function ReceiptDialog({
 
   return (
     <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
-      <DialogContent className="sm:max-w-[420px]" showCloseButton={false}>
+      <DialogContent className="sm:w-[420px] sm:max-w-[420px]" showCloseButton={false}>
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription>{t('receipt.description')}</DialogDescription>

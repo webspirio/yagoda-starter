@@ -18,6 +18,7 @@ import {
   Package,
   Printer,
   Scale,
+  Settings,
   UserCog,
   Users,
   Wallet,
@@ -87,6 +88,7 @@ const NAV_GROUPS: NavGroup[] = [
       { labelKey: 'nav.points', icon: MapPin, to: '/points' },
       { labelKey: 'nav.users', icon: UserCog, to: '/users' },
       { labelKey: 'nav.refs', icon: Package, to: '/catalog' },
+      { labelKey: 'nav.settings', icon: Settings, to: '/settings' },
     ],
   },
 ];

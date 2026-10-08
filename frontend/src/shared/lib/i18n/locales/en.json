@@ -830,7 +830,24 @@
       "failed": "Couldn't record the payout. Reload the page and try again."
     }
   },
+  "settings": {
+    "eyebrow": "Network",
+    "title": "Network settings",
+    "description": "Apply at every collection point.",
+    "receipt": {
+      "title": "Receipt",
+      "label": "Note on every receipt",
+      "hint": "printed on the ruled lines of every receipt in the network",
+      "lines": "Line {{n}} of {{max}}"
+    },
+    "saved": "Settings saved",
+    "errors": {
+      "failed": "Could not save the settings. Try again.",
+      "noteTooLong": "The note doesn't fit seven lines of forty characters."
+    }
+  },
   "receipt": {
+    "noteLoadFailed": "The network's note didn't load — the ruled lines will print blank.",
     "title": "Receipt {{code}}",
     "titleLines_one": "Receipt {{code}} · {{count}} line",
     "titleLines_other": "Receipt {{code}} · {{count}} lines",

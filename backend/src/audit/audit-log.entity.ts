@@ -65,6 +65,7 @@ export const AUDIT_ACTIONS = [
   'day-expense.created',
   'day-expense.updated',
   'day-expense.deleted',
+  'network-settings.updated',
 ] as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
