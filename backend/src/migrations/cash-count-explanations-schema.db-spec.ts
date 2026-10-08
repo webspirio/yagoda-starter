@@ -76,20 +76,23 @@ describe('cash_counts explanations (Postgres)', () => {
     beforeAll(async () => {
       // Relies on serial suites (maxWorkers: 1 in jest.db.config.js): down() is real DDL on the shared DB.
       const qr = ds.createQueryRunner();
-      await migration.down(qr); // shifts.explanation is back, the count columns are gone
       try {
-        const a = await shift();
-        both = { s: a, opening: await count(a, 'opening', '120.00', '100.00'), closing: await count(a, 'closing', '80.00', '100.00') };
-        const b = await shift();
-        matchedOnly = { s: b, opening: await count(b, 'opening', '100.00', '100.00'), closing: await count(b, 'closing', '100.00', '100.00') };
-        const c = await shift();
-        blank = { s: c, closing: await count(c, 'closing', '90.00', '100.00') };
-        await ds.query(`UPDATE shifts SET explanation = 'одне пояснення на зміну' WHERE id = $1`, [a]);
-        await ds.query(`UPDATE shifts SET explanation = 'зійшлося, але написав' WHERE id = $1`, [b]);
-        await ds.query(`UPDATE shifts SET explanation = '' WHERE id = $1`, [c]);
+        await migration.down(qr); // shifts.explanation is back, the count columns are gone
+        try {
+          const a = await shift();
+          both = { s: a, opening: await count(a, 'opening', '120.00', '100.00'), closing: await count(a, 'closing', '80.00', '100.00') };
+          const b = await shift();
+          matchedOnly = { s: b, opening: await count(b, 'opening', '100.00', '100.00'), closing: await count(b, 'closing', '100.00', '100.00') };
+          const c = await shift();
+          blank = { s: c, closing: await count(c, 'closing', '90.00', '100.00') };
+          await ds.query(`UPDATE shifts SET explanation = 'одне пояснення на зміну' WHERE id = $1`, [a]);
+          await ds.query(`UPDATE shifts SET explanation = 'зійшлося, але написав' WHERE id = $1`, [b]);
+          await ds.query(`UPDATE shifts SET explanation = '' WHERE id = $1`, [c]);
+        } finally {
+          await migration.up(qr); // the schema is always restored
+        }
       } finally {
-        await migration.up(qr); // the schema is always restored
-        await qr.release();
+        await qr.release(); // even when down() or up() throws
       }
     });
 

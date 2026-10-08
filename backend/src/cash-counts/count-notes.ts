@@ -8,9 +8,10 @@ import type { AuthenticatedUser } from '../auth/jwt.strategy';
 
 /**
  * Spec 2026-10-08 — who may write which text on which count. ONE definition: the
- * PUTs throw what this returns and every read flag is `refusal === null`, so a
- * button and the server cannot disagree. No window: the next shift opening
- * closes nothing; only the owner's explanation of THIS count does.
+ * PUTs throw what this returns and every read flag is the field's own role AND
+ * `refusal === null` (`countNoteAllowed`), so a button and the server cannot
+ * disagree. No window: the next shift opening closes nothing; only the owner's
+ * explanation of THIS count does.
  */
 export type CountNoteField = 'explanation' | 'operator_note';
 
