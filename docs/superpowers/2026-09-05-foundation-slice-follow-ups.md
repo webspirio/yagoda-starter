@@ -1495,3 +1495,22 @@ different count. The operator note one line above is already guarded to the
 `closing` row; the same guard — `row.kind !== 'midday'` and not a `leaf`
 discrepancy — fixes it. Once (a) above lands, the guard becomes «the count
 this explanation belongs to».
+
+## Left over from the PR #218 browser walkthrough (2026-10-08)
+
+Found by driving the count-explanations slice in a browser. None of them blocks it.
+
+- **The day screen's own «Закрити зміну» still only toasts.** The stale-shift
+  banner on «Прийомка» and «Каса за день» now shows the result and the note
+  form (`widgets/count-result`). `DayPage`'s toolbar close does not; it is one
+  `ShiftCountResult` away.
+- **«рахував» / «закрив» are masculine for everyone.** «рахував Оксана Гнатюк»
+  (`pointCash.countHistory.notYours`) and «закрив …» on the shift panel. Fixing
+  this needs the user's gender, or a wording without a past-tense verb.
+- **After a reopen the shift panel shows the demoted closing count as a plain
+  recount** («Підрахунок о 17:51 · ⚠ не зійшлося») without its texts, even when
+  the owner explained it. The history row shows them. The spec scoped the panel
+  to opening/closing.
+- **The operator has to find the note form again.** Once dismissed, the closed
+  shift's panel shows a «Розбіжність» pill with no amount and no action. The
+  only way back is «Уся історія перерахунків».
