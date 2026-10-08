@@ -1,8 +1,8 @@
 import { BadRequestException } from '@nestjs/common';
 
 /** The receipt's ruled lines — the frontend's `NOTE_LINES`/`NOTE_LINE_CHARS`. */
-export const RECEIPT_NOTE_LINES = 7;
-export const RECEIPT_NOTE_LINE_CHARS = 40;
+const RECEIPT_NOTE_LINES = 7;
+const RECEIPT_NOTE_LINE_CHARS = 40;
 
 /**
  * The editor wraps the note; this only checks the result fits the paper. A tab
