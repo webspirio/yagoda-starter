@@ -89,6 +89,7 @@ describe('BerryTable', () => {
     const tip = await screen.findByRole('tooltip');
     expect(tip).toHaveTextContent(/по кожному сорту окремо/);
     expect(tip).toHaveTextContent(/надлишок одного сорту не зменшує/);
+    expect(tip).toHaveTextContent(/неперезважені продукти входять у «вагу пункту»/);
   });
 
   it('prints «наша вага» and the недостача as dashes, never zeros, when nothing was weighed', () => {
@@ -117,6 +118,17 @@ describe('BerryTable', () => {
     expect(within(total).getAllByText('—')).toHaveLength(3);
     expect(within(total).queryByText('0,00 кг')).not.toBeInTheDocument();
     expect(within(total).queryByText('0,00 ₴')).not.toBeInTheDocument();
+  });
+
+  it('totals a mixed day: вага пункту counts the unweighed product, наша вага and недостача do not', () => {
+    renderTable([weighed, unweighed]);
+
+    const total = screen.getByRole('row', { name: /РАЗОМ по пункту/ });
+    expect(within(total).getByText('1 600,00 кг')).toBeInTheDocument();
+    expect(within(total).getByText('790,00 кг')).toBeInTheDocument();
+    expect(within(total).getByText('10,00 кг')).toBeInTheDocument();
+    expect(within(total).getByText('1 600,00 ₴')).toBeInTheDocument();
+    expect(within(total).queryByText('—')).not.toBeInTheDocument();
   });
 
   it('prints a checked zero as 0,00 when the product was weighed and nothing is missing', () => {
