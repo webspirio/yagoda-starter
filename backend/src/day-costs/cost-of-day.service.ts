@@ -84,8 +84,9 @@ export interface CostOfDayResponse {
    *  own, so the two can sit a kopiyka away from `per_kg`; `per_kg` stays
    *  `basket ÷ reweighed_kg`, because that is the figure actually added to
    *  every product's price. §8.4's own numbers (1,94 + 4,45 = 6,39) land
-   *  exactly — arithmetic luck, not a guarantee — and the screen prints the
-   *  two under «з них» so nothing on it ever reads as a sum that fails. */
+   *  exactly — arithmetic luck, not a guarantee. The screen no longer prints
+   *  this pair (the owner dropped the «з них» hint); it stays on the wire,
+   *  and printed again it must read as a breakdown, never as a sum. */
   expenses_per_kg: string | null;
   /** accrued + expenses_amount — the client's own звірка check. */
   total_check: string;

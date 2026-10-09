@@ -22,8 +22,9 @@ import type { CostOfDay, CostOfDayProduct } from '@/entities/cost-of-day';
  *
  * A product's «разом» is нараховано − недостача + із пулу: the недостача is
  * already paid for inside нараховано and the pool only moves it between
- * products, so adding the share alone counted it twice. The column then foots
- * to нараховано + витрати, which the second check below prints with ✓/✗.
+ * products, so adding the share alone counted it twice. The column plus the
+ * unweighed products' нараховано foots to the server's `total_check`, which
+ * the second check below prints with ✓/✗.
  * Only addition and subtraction of server figures here — every rate printed
  * is the server's own.
  *
@@ -44,13 +45,19 @@ export function FinalPrices({ day, locale }: { day: CostOfDay; locale: string })
   const sharesTotal = shares.length > 0 ? sum(shares) : '0.00';
   const sharesMatch = cmp(sharesTotal, day.basket) === 0;
 
-  const togetherOf = (p: CostOfDayProduct): string | null =>
-    p.basket_share === null ? null : add(sub(p.accrued, p.shortfall), p.basket_share);
-  // Only products in the day's split: the rest show «—» and carry no share.
-  const covered = day.products.filter((p) => p.basket_share !== null);
-  const togetherTotal = covered.length > 0 ? sum(covered.map((p) => togetherOf(p)!)) : '0.00';
-  const coveredAccrued = covered.length > 0 ? sum(covered.map((p) => p.accrued)) : '0.00';
-  const totalMatch = cmp(togetherTotal, add(coveredAccrued, day.expenses_amount)) === 0;
+  const togetherOf = (p: CostOfDayProduct, share: string): string =>
+    add(sub(p.accrued, p.shortfall), share);
+  // Products outside the day's split show «—» and carry no share, so the
+  // column covers the rest; the звірка adds the unweighed back by name and
+  // checks against the server's own total_check, not against figures built
+  // from the same shares (that identity holds by construction).
+  const together = day.products.flatMap((p) =>
+    p.basket_share === null ? [] : [togetherOf(p, p.basket_share)],
+  );
+  const togetherTotal = together.length > 0 ? sum(together) : '0.00';
+  const unweighed = day.products.filter((p) => p.basket_share === null).map((p) => p.accrued);
+  const unweighedTotal = unweighed.length > 0 ? sum(unweighed) : '0.00';
+  const totalMatch = cmp(add(togetherTotal, unweighedTotal), day.total_check) === 0;
 
   return (
     <div className="mt-6">
@@ -121,7 +128,7 @@ export function FinalPrices({ day, locale }: { day: CostOfDay; locale: string })
                   {p.basket_share === null ? '—' : formatUah(p.basket_share, locale)}
                 </TableCell>
                 <TableCell className="text-right font-mono tabular-nums">
-                  {p.basket_share === null ? '—' : formatUah(togetherOf(p)!, locale)}
+                  {p.basket_share === null ? '—' : formatUah(togetherOf(p, p.basket_share), locale)}
                 </TableCell>
                 <TableCell className="text-right font-mono font-semibold tabular-nums">
                   {p.price_cost === null ? '—' : formatDecimal(p.price_cost, locale)}
@@ -178,11 +185,17 @@ export function FinalPrices({ day, locale }: { day: CostOfDay; locale: string })
           data-ok={String(totalMatch)}
           className={cn('font-mono', totalMatch ? 'text-[var(--leaf)]' : 'text-destructive')}
         >
-          {t('costOfDay.final.checkTotal', {
-            total: formatUah(togetherTotal, locale),
-            accrued: formatUah(coveredAccrued, locale),
-            expenses: formatUah(day.expenses_amount, locale),
-          })}{' '}
+          {t(
+            unweighed.length > 0
+              ? 'costOfDay.final.checkTotalUnweighed'
+              : 'costOfDay.final.checkTotal',
+            {
+              total: formatUah(togetherTotal, locale),
+              unweighed: formatUah(unweighedTotal, locale),
+              accrued: formatUah(day.accrued, locale),
+              expenses: formatUah(day.expenses_amount, locale),
+            },
+          )}{' '}
           {totalMatch ? '✓' : '✗'}
         </span>
       </div>

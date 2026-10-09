@@ -138,9 +138,44 @@ describe('FinalPrices', () => {
     expect(screen.getByText(/нараховано 2 573,80/)).toHaveAttribute('data-ok', 'true');
   });
 
-  it('flags the разом звірка as FAILING when the column does not foot', () => {
-    render(<FinalPrices day={{ ...day, expenses_amount: '3801.00' }} locale="uk" />);
+  it('flags the разом звірка as FAILING against the server’s own total_check', () => {
+    // total_check is computed server-side from нараховано + витрати, not from
+    // the shares this column is built of — so a column that does not foot to
+    // it (as the old double-counted «разом» did, 137 360,00) reads ✗.
+    render(<FinalPrices day={{ ...day, total_check: '137360.00' }} locale="uk" />);
     expect(screen.getByText(/131 900,00/)).toHaveAttribute('data-ok', 'false');
+  });
+
+  it('names the unweighed products in the звірка instead of shrinking нараховано', () => {
+    // Ожина is not reweighed: it carries no share and no «разом», so the
+    // column covers Малина only. The line still states the day's нараховано
+    // (the same 131 900,00 the berry table prints) and adds Ожина back by name.
+    const partial: CostOfDay = {
+      ...day,
+      shortfall_amount: '1600.00',
+      basket: '5400.00',
+      products: [
+        { ...day.products[0], basket_share: '5400.00' },
+        {
+          ...day.products[1],
+          reweigh_net_kg: null,
+          shortfall: '0.00',
+          shortfall_kg: '0.00',
+          basket_share: null,
+          price_cost: null,
+          price_by_our_weight: null,
+          complete: false,
+        },
+      ],
+    };
+    render(<FinalPrices day={partial} locale="uk" />);
+
+    // 128 000,00 − 1 600,00 + 5 400,00 = 131 800,00; + 3 900,00 = 135 700,00.
+    const check = screen.getByText(/не перезважено/);
+    expect(check).toHaveTextContent(
+      '131 800,00 ₴ + не перезважено 3 900,00 ₴ = нараховано 131 900,00 ₴ + витрати 3 800,00 ₴',
+    );
+    expect(check).toHaveAttribute('data-ok', 'true');
   });
 
   it('reports the Σ із пулу = КОШИК звірка as passing', () => {

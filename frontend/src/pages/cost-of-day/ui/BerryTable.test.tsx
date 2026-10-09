@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { render, screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { i18n } from '@/shared/lib/i18n';
 import type { CostOfDayProduct } from '@/entities/cost-of-day';
 import { BerryTable } from './BerryTable';
@@ -72,11 +73,22 @@ describe('BerryTable', () => {
   it('puts the недостача in two unit-labelled columns of the product row', () => {
     renderTable([weighed]);
 
-    expect(screen.getByRole('columnheader', { name: 'недостача, кг' })).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: /^недостача, кг/ })).toBeInTheDocument();
     expect(screen.getByRole('columnheader', { name: 'недостача, ₴' })).toBeInTheDocument();
     const row = screen.getByRole('row', { name: /Малина/ });
     expect(within(row).getByText('10,00 кг')).toBeInTheDocument();
     expect(within(row).getByText('1 600,00 ₴')).toBeInTheDocument();
+  });
+
+  it('explains why «недостача, кг» is not вага пункту minus наша вага', async () => {
+    const user = userEvent.setup();
+    renderTable([weighed]);
+
+    await user.hover(screen.getByRole('button', { name: 'Як рахується недостача' }));
+
+    const tip = await screen.findByRole('tooltip');
+    expect(tip).toHaveTextContent(/по кожному сорту окремо/);
+    expect(tip).toHaveTextContent(/надлишок одного сорту не зменшує/);
   });
 
   it('prints «наша вага» and the недостача as dashes, never zeros, when nothing was weighed', () => {

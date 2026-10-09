@@ -73,6 +73,7 @@ export function ExpensesPanel({
   const [draftAmount, setDraftAmount] = useState('');
 
   // `per_kg` is null when nothing was weighed — the amber «awaiting» panel.
+  // Guard every value the branch below formats: `formatUah` throws on null.
   const { per_kg } = day;
   const notSpread = per_kg === null;
 

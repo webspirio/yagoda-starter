@@ -1,6 +1,8 @@
 import { useTranslation } from 'react-i18next';
+import { Info } from 'lucide-react';
 import { Badge } from '@/shared/ui/badge';
 import { Eyebrow } from '@/shared/ui/eyebrow';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/shared/ui/tooltip';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/shared/ui/table';
 import { formatDecimal, formatKg, formatUah, sum } from '@/shared/lib/money';
 import type { CostOfDayProduct } from '@/entities/cost-of-day';
@@ -57,7 +59,25 @@ export function BerryTable({
                 {t('costOfDay.berry.ourWeight')}
               </TableHead>
               <TableHead scope="col" className={`text-right ${short}`}>
-                {t('costOfDay.berry.shortfallKg')}
+                <span className="inline-flex items-center gap-1">
+                  {t('costOfDay.berry.shortfallKg')}
+                  {/* Not вага пункту − наша вага: the server clamps per grade,
+                      so a surplus grade never lowers the figure (§8.2). */}
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        type="button"
+                        aria-label={t('costOfDay.berry.shortfallHelpLabel')}
+                        className="print-hide hover:text-foreground"
+                      >
+                        <Info className="size-3.5" />
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent className="max-w-72 text-left">
+                      {t('costOfDay.berry.shortfallHelp')}
+                    </TooltipContent>
+                  </Tooltip>
+                </span>
               </TableHead>
               <TableHead scope="col" className="text-right">
                 {t('costOfDay.berry.perKg')}

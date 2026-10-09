@@ -1521,6 +1521,8 @@
       "ourWeight": "our weight",
       "shortfallKg": "shortfall, kg",
       "shortfallUah": "shortfall, ₴",
+      "shortfallHelpLabel": "How the shortfall is counted",
+      "shortfallHelp": "Counted for each grade separately: a surplus in one grade does not reduce another grade's shortfall. That is why it can be larger than «point weight» minus «our weight».",
       "total": "TOTAL at the point",
       "notReweighed": "not re-weighed",
       "note": "«Accrued» is the purchase accrued, not cash out of the drawer: debts exist, so the cash that left the drawer that day is a different number and does not affect the cost of day."
@@ -1566,7 +1568,8 @@
       "total": "TOTAL",
       "summary": "The day's expenses together with the shortfall — {{basket}} over {{kg}} — come to {{rate}} ₴ on every kilogram of any berry.",
       "checkShare": "Σ from basket {{shares}} = basket {{basket}}",
-      "checkTotal": "{{total}} = accrued {{accrued}} + expenses {{expenses}}"
+      "checkTotal": "{{total}} = accrued {{accrued}} + expenses {{expenses}}",
+      "checkTotalUnweighed": "{{total}} + not re-weighed {{unweighed}} = accrued {{accrued}} + expenses {{expenses}}"
     }
   }
 }
