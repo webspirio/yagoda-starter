@@ -66,6 +66,7 @@ const day = {
       intake_net_kg: '800.00',
       reweigh_net_kg: '790.00',
       shortfall: '1600.00',
+      shortfall_kg: '10.00',
       basket_share: '5460.00',
       price_was: '160.00',
       price_cost: '166.39',
