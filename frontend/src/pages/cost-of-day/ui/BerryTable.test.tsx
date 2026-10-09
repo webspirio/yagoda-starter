@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { render, screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { i18n } from '@/shared/lib/i18n';
 import type { CostOfDayProduct } from '@/entities/cost-of-day';
 import { BerryTable } from './BerryTable';
@@ -24,6 +25,7 @@ const weighed: CostOfDayProduct = {
   intake_net_kg: '800.00',
   reweigh_net_kg: '790.00',
   shortfall: '1600.00',
+  shortfall_kg: '10.00',
   basket_share: '5050.82',
   price_was: '160.00',
   price_cost: '166.39',
@@ -37,6 +39,7 @@ const unweighed: CostOfDayProduct = {
   product_name: 'Ожина',
   reweigh_net_kg: null,
   shortfall: '0.00',
+  shortfall_kg: '0.00',
   basket_share: null,
   price_cost: null,
   price_by_our_weight: null,
@@ -44,52 +47,110 @@ const unweighed: CostOfDayProduct = {
 };
 
 const renderTable = (products: CostOfDayProduct[]) =>
-  render(<BerryTable products={products} reweighedKg="790.00" accrued="128000.00" locale="uk" />);
+  render(
+    <BerryTable
+      products={products}
+      reweighedKg="790.00"
+      accrued="128000.00"
+      shortfallAmount="1600.00"
+      locale="uk"
+    />,
+  );
 
 describe('BerryTable', () => {
-  it("prints the point's weight, its rate and what it accrued", () => {
+  it('prints both weights, the rate and what was accrued on one product row', () => {
     renderTable([weighed]);
 
+    expect(screen.getByRole('columnheader', { name: 'вага пункту' })).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: 'наша вага' })).toBeInTheDocument();
     const row = screen.getByRole('row', { name: /Малина/ });
     expect(within(row).getByText('800,00 кг')).toBeInTheDocument();
+    expect(within(row).getByText('790,00 кг')).toBeInTheDocument();
     expect(within(row).getByText('160,00')).toBeInTheDocument();
     expect(within(row).getByText('128 000,00 ₴')).toBeInTheDocument();
   });
 
-  it('shows the недостача as its own line when there is one', () => {
+  it('puts the недостача in two unit-labelled columns of the product row', () => {
     renderTable([weighed]);
-    expect(screen.getByText('недостача')).toBeInTheDocument();
-    expect(screen.getByText('1 600,00 ₴')).toBeInTheDocument();
+
+    expect(screen.getByRole('columnheader', { name: /^недостача, кг/ })).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: 'недостача, ₴' })).toBeInTheDocument();
+    const row = screen.getByRole('row', { name: /Малина/ });
+    expect(within(row).getByText('10,00 кг')).toBeInTheDocument();
+    expect(within(row).getByText('1 600,00 ₴')).toBeInTheDocument();
   });
 
-  it('prints «наша вага» as a dash, never a zero, when nothing was weighed', () => {
+  it('explains why «недостача, кг» is not вага пункту minus наша вага', async () => {
+    const user = userEvent.setup();
+    renderTable([weighed]);
+
+    await user.hover(screen.getByRole('button', { name: 'Як рахується недостача' }));
+
+    const tip = await screen.findByRole('tooltip');
+    expect(tip).toHaveTextContent(/по кожному сорту окремо/);
+    expect(tip).toHaveTextContent(/надлишок одного сорту не зменшує/);
+    expect(tip).toHaveTextContent(/неперезважені продукти входять у «вагу пункту»/);
+  });
+
+  it('prints «наша вага» and the недостача as dashes, never zeros, when nothing was weighed', () => {
     renderTable([unweighed]);
 
-    // §8.6's «Це не нуль»: «0,00 кг наша вага» beside 128 000,00 accrued reads
-    // as berries that vanished, rather than berries nobody has weighed yet.
-    // Scoped by the BADGE, not by «наша вага»: the totals below carry a
-    // «наша вага, разом» row that the looser name would match as well.
-    const ourWeight = screen.getByRole('row', { name: /не перезважено/ });
-    expect(within(ourWeight).getAllByText('—')).toHaveLength(2);
-    expect(within(ourWeight).queryByText('0,00 кг')).not.toBeInTheDocument();
+    // §8.6's «Це не нуль»: «0,00 кг» beside 128 000,00 accrued reads as
+    // berries that vanished, rather than berries nobody has weighed yet.
+    const row = screen.getByRole('row', { name: /Ожина/ });
+    expect(within(row).getByText('не перезважено')).toBeInTheDocument();
+    expect(within(row).getAllByText('—')).toHaveLength(3);
+    expect(within(row).queryByText('0,00 кг')).not.toBeInTheDocument();
   });
 
-  it('omits the недостача line entirely when nothing is missing', () => {
-    renderTable([{ ...weighed, shortfall: '0.00' }]);
-    expect(screen.queryByText('недостача')).not.toBeInTheDocument();
+  it('prints the footer as dashes too when no product was weighed in full', () => {
+    render(
+      <BerryTable
+        products={[unweighed]}
+        reweighedKg="0.00"
+        accrued="128000.00"
+        shortfallAmount="0.00"
+        locale="uk"
+      />,
+    );
+
+    const total = screen.getByRole('row', { name: /РАЗОМ по пункту/ });
+    expect(within(total).getAllByText('—')).toHaveLength(3);
+    expect(within(total).queryByText('0,00 кг')).not.toBeInTheDocument();
+    expect(within(total).queryByText('0,00 ₴')).not.toBeInTheDocument();
   });
 
-  it("totals the point's weight and ours as two separate rows", () => {
+  it('totals a mixed day: вага пункту counts the unweighed product, наша вага and недостача do not', () => {
+    renderTable([weighed, unweighed]);
+
+    const total = screen.getByRole('row', { name: /РАЗОМ по пункту/ });
+    expect(within(total).getByText('1 600,00 кг')).toBeInTheDocument();
+    expect(within(total).getByText('790,00 кг')).toBeInTheDocument();
+    expect(within(total).getByText('10,00 кг')).toBeInTheDocument();
+    expect(within(total).getByText('1 600,00 ₴')).toBeInTheDocument();
+    expect(within(total).queryByText('—')).not.toBeInTheDocument();
+  });
+
+  it('prints a checked zero as 0,00 when the product was weighed and nothing is missing', () => {
+    renderTable([{ ...weighed, shortfall: '0.00', shortfall_kg: '0.00' }]);
+
+    const row = screen.getByRole('row', { name: /Малина/ });
+    expect(within(row).getByText('0,00 кг')).toBeInTheDocument();
+    expect(within(row).getByText('0,00 ₴')).toBeInTheDocument();
+  });
+
+  it("totals the point's weight and ours in their own columns of one row", () => {
     renderTable([weighed]);
 
-    const pointTotal = screen.getByRole('row', { name: /РАЗОМ по пункту/ });
-    expect(within(pointTotal).getByText('800,00 кг')).toBeInTheDocument();
-    expect(within(pointTotal).getByText('128 000,00 ₴')).toBeInTheDocument();
-
-    // 790 кг is the BASE's number and belongs on its own line. Printed under
-    // «РАЗОМ по пункту» it would claim the point weighed in what the base
-    // weighed out — the exact disagreement this screen exists to show.
-    const ourTotal = screen.getByRole('row', { name: /наша вага, разом/ });
-    expect(within(ourTotal).getByText('790,00 кг')).toBeInTheDocument();
+    // 790 кг is the BASE's total: it sits under «наша вага», never under the
+    // point's own weight column.
+    const total = screen.getByRole('row', { name: /РАЗОМ по пункту/ });
+    expect(within(total).getByText('800,00 кг')).toBeInTheDocument();
+    expect(within(total).getByText('790,00 кг')).toBeInTheDocument();
+    expect(within(total).getByText('128 000,00 ₴')).toBeInTheDocument();
+    expect(within(total).getByText('10,00 кг')).toBeInTheDocument();
+    expect(within(total).getByText('1 600,00 ₴')).toBeInTheDocument();
+    // Header, one row per product, the total — no sub-rows.
+    expect(screen.getAllByRole('row')).toHaveLength(3);
   });
 });

@@ -1515,13 +1515,15 @@
     "berry": {
       "title": "Berries",
       "product": "product",
-      "weight": "weight",
+      "pointWeight": "point weight",
       "perKg": "₴/kg",
       "accrued": "accrued",
       "ourWeight": "our weight",
-      "shortfall": "shortfall",
+      "shortfallKg": "shortfall, kg",
+      "shortfallUah": "shortfall, ₴",
+      "shortfallHelpLabel": "How the shortfall is counted",
+      "shortfallHelp": "Counted for each grade separately: a surplus in one grade does not reduce another grade's shortfall. That is why it can be larger than «point weight» minus «our weight». In the TOTAL row, unweighed products count towards «point weight» but not towards «our weight» or the shortfall.",
       "total": "TOTAL at the point",
-      "totalOurWeight": "our weight, total",
       "notReweighed": "not re-weighed",
       "note": "«Accrued» is the purchase accrued, not cash out of the drawer: debts exist, so the cash that left the drawer that day is a different number and does not affect the cost of day."
     },
@@ -1539,7 +1541,6 @@
       "expensesRow": "Day expenses",
       "basket": "Shared basket",
       "perKg": "per kilogram",
-      "split": "of which shortfall {{shortfall}} · of which expenses {{expenses}}",
       "awaiting": "Awaiting re-weighing",
       "awaitingAmount": "{{amount}} not spread",
       "awaitingNote": "Until the load is weighed at the base there is no shortfall yet — the day's expenses have landed nowhere.",
@@ -1560,12 +1561,15 @@
       "fromBasket": "from basket",
       "together": "together",
       "cost": "cost",
-      "was": "was",
-      "byOurWeight": "accrued ÷ our weight",
+      "was": "receipt price",
+      "byOurWeight": "purchase price",
+      "byOurWeightHelpLabel": "What purchase price means",
+      "byOurWeightHelp": "What a kilogram that reached the base really cost: accrued ÷ our weight. Counts: the receipt price, top-ups and this product's own shrinkage. Leaves out: the day's expenses and other products' shortfall.",
       "total": "TOTAL",
       "summary": "The day's expenses together with the shortfall — {{basket}} over {{kg}} — come to {{rate}} ₴ on every kilogram of any berry.",
       "checkShare": "Σ from basket {{shares}} = basket {{basket}}",
-      "checkTotal": "{{total}} = accrued {{accrued}} + expenses {{expenses}}"
+      "checkTotal": "{{total}} = accrued {{accrued}} + expenses {{expenses}}",
+      "checkTotalUnweighed": "{{total}} + not re-weighed {{unweighed}} = accrued {{accrued}} + expenses {{expenses}}"
     }
   }
 }

@@ -149,6 +149,8 @@ describe('CostOfDayService.forShift (DB)', () => {
     expect(out.basket).toBe('5460.00');
     expect(out.per_kg).toBe('6.39');
     expect(out.total_check).toBe('135700.00');
+    // 10 кг short on raspberry, 1 кг on blackberry — the kilograms behind 1 660,00.
+    expect(out.products.map((p) => p.shortfall_kg).sort()).toEqual(['1.00', '10.00']);
 
     const raspberryOut = out.products.find((p) => p.product_id === raspberry.id);
     expect(raspberryOut?.price_was).toBe('160.00');

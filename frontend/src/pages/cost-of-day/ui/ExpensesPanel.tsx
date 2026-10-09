@@ -72,14 +72,10 @@ export function ExpensesPanel({
   const [draftLabel, setDraftLabel] = useState('');
   const [draftAmount, setDraftAmount] = useState('');
 
-  // THE THREE NULLS TOGETHER, not `per_kg` alone. The server nulls all of
-  // them on the same `isZero(reweighed_kg)` guard, so this is the same state —
-  // but `formatDecimal` THROWS on a null, so a guard narrower than the values
-  // it protects buys a thrown render instead of a dash. Naming all three both
-  // narrows them for the `else` branch below (no casts) and makes the amber
-  // panel the fallback if the response ever disagrees with itself.
-  const { per_kg, shortfall_per_kg, expenses_per_kg } = day;
-  const notSpread = per_kg === null || shortfall_per_kg === null || expenses_per_kg === null;
+  // `per_kg` is null when nothing was weighed — the amber «awaiting» panel.
+  // It is the only nullable figure the branch below formats (`formatUah` throws on null).
+  const { per_kg } = day;
+  const notSpread = per_kg === null;
 
   async function add() {
     const trimmed = label.trim();
@@ -271,12 +267,6 @@ export function ExpensesPanel({
               {formatUah(per_kg, locale)}
             </span>
           </div>
-          <p className="text-xs text-muted-foreground">
-            {t('costOfDay.expenses.split', {
-              shortfall: formatUah(shortfall_per_kg, locale),
-              expenses: formatUah(expenses_per_kg, locale),
-            })}
-          </p>
         </>
       )}
     </div>
