@@ -18,6 +18,8 @@ interface CountResultBodyProps {
   discrepancy?: string | null;
   /** An optional line under the pill — the recount's «cannot be changed» note; the close result folds its own equivalent into `title` instead. */
   note?: ReactNode | null;
+  /** An extra footer button before «Готово» — the page's, never this feature's (FSD). */
+  action?: ReactNode;
   onClose: () => void;
 }
 
@@ -49,6 +51,7 @@ export function CountResultBody({
   expected = null,
   discrepancy = null,
   note = null,
+  action = null,
   onClose,
 }: CountResultBodyProps) {
   const { t, i18n } = useTranslation();
@@ -91,6 +94,7 @@ export function CountResultBody({
       {note ? <p className="text-sm text-muted-foreground">{note}</p> : null}
 
       <DialogFooter>
+        {action}
         <Button type="button" onClick={onClose}>
           {t('countResult.done')}
         </Button>
@@ -106,17 +110,20 @@ export function CountResultBody({
  * `RecountDrawerDialog` renders `CountResultBody` directly instead of this,
  * because it already owns a `Dialog` whose body swaps between the form and
  * the result rather than opening a second one.
+ *
+ * `swap` replaces the result INSIDE this same `DialogContent` — a caller that
+ * needs a follow-up form (the operator's note) gets it without a second
+ * `Dialog`, for the reason `RecountDrawerDialog` swaps its own body.
  */
 export function CountResultView({
   open,
   onClose,
+  swap = null,
   ...body
-}: { open: boolean; onClose: () => void } & Omit<CountResultBodyProps, 'onClose'>) {
+}: { open: boolean; onClose: () => void; swap?: ReactNode | null } & Omit<CountResultBodyProps, 'onClose'>) {
   return (
     <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
-      <DialogContent>
-        <CountResultBody {...body} onClose={onClose} />
-      </DialogContent>
+      <DialogContent>{swap ?? <CountResultBody {...body} onClose={onClose} />}</DialogContent>
     </Dialog>
   );
 }

@@ -29,6 +29,7 @@ import { canVoidIntake, useIntakesQuery, type Intake } from '@/entities/intake';
 import { usePayoutsQuery, type Payout } from '@/entities/payout';
 import { useSuppliersQuery, supplierName } from '@/entities/supplier';
 import { ReceiptDialog, ReceiptVoidButton, useReceiptOpener } from '@/widgets/receipt';
+import { ShiftCountResult, type ShiftCountResultFor } from '@/widgets/count-result';
 import {
   useOpenShiftMutation,
   useCloseShiftMutation,
@@ -102,6 +103,8 @@ export function DayPage() {
   // banner from the refusal before it — the convention SetPriceDialog documents.
   const [reopenInstance, setReopenInstance] = useState(0);
   const [countInstance, setCountInstance] = useState(0);
+  // A banner close shows its result and the note form, not a bare toast (S2).
+  const [staleResult, setStaleResult] = useState<ShiftCountResultFor | null>(null);
   // What the count dialog is open FOR — captured at click time, not read back
   // off `shift` at submit time. The close click is the one moment the shift
   // being looked at is unambiguously the shift that closes; reading its id
@@ -421,6 +424,7 @@ export function DayPage() {
           viewedDate={date}
           // Нікуди не йдемо — це та сама сторінка, змінюється лише дата в URL.
           onGoToDate={setDateParam}
+          onClosed={(id) => setStaleResult({ mode: 'close', shiftId: id })}
         />
         {truncated ? (
           <p className="-mt-2 mb-4 text-xs text-muted-foreground">
@@ -489,6 +493,7 @@ export function DayPage() {
         startWithVoid={receipt.startWithVoid}
         onClose={receipt.clear}
       />
+      <ShiftCountResult result={staleResult} onClose={() => setStaleResult(null)} />
     </>
   );
 }

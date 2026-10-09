@@ -58,7 +58,6 @@ describe('ShiftsService', () => {
     business_date: '2026-09-08',
     closed_at: null,
     status: ShiftStatus.Open,
-    explanation: null,
     created_at: new Date('2026-09-08T04:30:00.000Z'),
     updated_at: new Date('2026-09-08T04:30:00.000Z'),
     ...over,
@@ -416,6 +415,32 @@ describe('ShiftsService', () => {
       const reopened = await service.reopen(owner, SHIFT_ID, { reason: 'помилка' });
 
       expect(reopened.broken_crates).toBeNull();
+    });
+
+    it('demotes the closing count and touches no text — they stay on the demoted row', async () => {
+      repo.findOne
+        .mockResolvedValueOnce(
+          shift({
+            closed_at: new Date(),
+            closed_by_user_id: 'u-op',
+            status: ShiftStatus.Closed,
+            broken_crates: null,
+          }),
+        )
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(shift({ id: SHIFT_ID }));
+
+      const reopened = await service.reopen(owner, SHIFT_ID, { reason: 'перерахунок' });
+
+      expect(reopened).not.toHaveProperty('explanation');
+      expect(audit.record).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: 'shift.reopened',
+          before: { closed_at: expect.anything(), status: 'closed', broken_crates: null },
+          after: { closed_at: null, status: 'open', broken_crates: null },
+        }),
+        expect.anything(),
+      );
     });
   });
 

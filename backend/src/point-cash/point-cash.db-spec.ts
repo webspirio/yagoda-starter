@@ -781,7 +781,7 @@ describe('PointCashService.list (Postgres)', () => {
     const s2 = await localShift(p, '2026-09-02');
     await localCount(s2, 'opening', '990.00', '990.00');
     await localCount(s2, 'closing', '980.00', '990.00'); // −10
-    await ds.query(`UPDATE shifts SET explanation = 'знайшли причину' WHERE id = $1`, [s2]);
+    await ds.query(`UPDATE cash_counts SET explanation = 'знайшли причину' WHERE shift_id = $1 AND kind = 'closing'`, [s2]);
 
     const page = await service.list(owner, query({ collection_point_id: p }) as never);
     // §6.5 — an explanation changes what is OPEN, never what is TRUE.

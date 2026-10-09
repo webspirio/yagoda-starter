@@ -34,7 +34,6 @@ const shift = (over: Partial<Shift> = {}): Shift => ({
   closed_by_name: null,
   closed_at: null,
   created_at: '2026-09-22T07:00:00.000Z',
-  explanation: null,
   broken_crates: null,
   ...over,
 });
@@ -54,7 +53,11 @@ const count = (over: Partial<CashCount> = {}): CashCount => ({
   counted_by_name: 'Olha',
   counted_at: '2026-09-22T07:00:00.000Z',
   explanation: null,
+  operator_note: null,
+  operator_note_editable: false,
+  explainable: false,
   ...over,
+  explained: over.explained ?? over.explanation != null,
 });
 
 const noop = () => {};
@@ -203,17 +206,13 @@ describe('ShiftCountPanel — the shift line and names', () => {
     expect(screen.getByText('closed by Petro')).toBeInTheDocument();
   });
 
-  it('quotes the owner’s explanation in italics', () => {
+  const renderWith = (counts: CashCount[]) =>
     render(
       <ShiftCountPanel
-        shift={shift({
-          status: 'closed',
-          closed_by_name: 'Petro',
-          explanation: 'Double-paid a payout',
-        })}
+        shift={shift({ status: 'closed', closed_by_name: 'Petro' })}
         isShiftLoading={false}
         isShiftError={false}
-        counts={[]}
+        counts={counts}
         isOperator={false}
         isToday={false}
         onOpenShift={noop}
@@ -222,22 +221,48 @@ describe('ShiftCountPanel — the shift line and names', () => {
       />,
     );
 
-    const note = screen.getByText('“Double-paid a payout”');
-    expect(note).toHaveClass('italic');
+  it('quotes the owner’s explanation of a count in italics', () => {
+    renderWith([count({ kind: 'closing', explanation: 'Double-paid a payout' })]);
+    expect(screen.getByText('“Double-paid a payout”')).toHaveClass('italic');
   });
 
-  it('reads a legacy «awaiting_explanation» shift as closed, with its explanation', () => {
-    // The 09.09 rule retired this branch (a discrepancy never blocks
-    // anything) — `awaiting_explanation` has no copy of its own left, so a
-    // row still carrying it from before that decision must read exactly
-    // like `closed`, not fall through to nothing.
+  it('tells an operator the owner settled it, without the owner’s text', () => {
+    renderWith([count({ kind: 'closing', explanation: null, explained: true })]);
+    expect(screen.getByText('Settled by the owner')).toBeInTheDocument();
+  });
+
+  it('quotes the counter’s own account too, labelled as theirs', () => {
+    renderWith([count({ kind: 'closing', operator_note: 'віддав решту' })]);
+    expect(screen.getByText('Operator: “віддав решту”')).toHaveClass('italic');
+  });
+
+  it('shows the opening and closing texts each under its own count', () => {
+    renderWith([
+      count({ id: 'o', kind: 'opening', explanation: 'ранок' }),
+      count({ id: 'c', kind: 'closing', operator_note: 'вечір' }),
+    ]);
+    const FOLLOWING = Node.DOCUMENT_POSITION_FOLLOWING;
+    const openingLabel = screen.getByText('Counted this morning');
+    const closingLabel = screen.getByText('Counted at close');
+    const morning = screen.getByText(/ранок/);
+    const evening = screen.getByText(/вечір/);
+    // Each text sits after its own label and before the next one.
+    expect(openingLabel.compareDocumentPosition(morning) & FOLLOWING).toBeTruthy();
+    expect(morning.compareDocumentPosition(closingLabel) & FOLLOWING).toBeTruthy();
+    expect(closingLabel.compareDocumentPosition(evening) & FOLLOWING).toBeTruthy();
+  });
+
+  it('shows the opening discrepancy pill when the opening count did not match', () => {
+    renderWith([count({ kind: 'opening', discrepancy: '-50.00', is_open: true })]);
+    expect(screen.getByText('Discrepancy')).toBeInTheDocument();
+  });
+
+  it('reads a legacy «awaiting_explanation» shift as closed', () => {
+    // The 09.09 rule retired this branch — a row still carrying it must read
+    // exactly like `closed`, not fall through to nothing.
     render(
       <ShiftCountPanel
-        shift={shift({
-          status: 'awaiting_explanation',
-          closed_by_name: 'Petro',
-          explanation: 'Recounted twice',
-        })}
+        shift={shift({ status: 'awaiting_explanation', closed_by_name: 'Petro' })}
         isShiftLoading={false}
         isShiftError={false}
         counts={[]}
@@ -251,7 +276,6 @@ describe('ShiftCountPanel — the shift line and names', () => {
 
     expect(screen.getByText('Shift closed')).toBeInTheDocument();
     expect(screen.getByText('closed by Petro')).toBeInTheDocument();
-    expect(screen.getByText('“Recounted twice”')).toBeInTheDocument();
   });
 
   it('shows no shift line at all when the date has no shift', () => {
@@ -883,7 +907,7 @@ describe('ShiftCountPanel — wiring the actions', () => {
   it('has no axe violations across the busiest state (closed shift, midday history, both roles)', async () => {
     const { container, rerender } = render(
       <ShiftCountPanel
-        shift={shift({ status: 'closed', closed_by_name: 'Petro', explanation: 'Recounted twice' })}
+        shift={shift({ status: 'closed', closed_by_name: 'Petro' })}
         isShiftLoading={false}
         isShiftError={false}
         counts={[
@@ -902,7 +926,7 @@ describe('ShiftCountPanel — wiring the actions', () => {
 
     rerender(
       <ShiftCountPanel
-        shift={shift({ status: 'closed', closed_by_name: 'Petro', explanation: 'Recounted twice' })}
+        shift={shift({ status: 'closed', closed_by_name: 'Petro' })}
         isShiftLoading={false}
         isShiftError={false}
         counts={[

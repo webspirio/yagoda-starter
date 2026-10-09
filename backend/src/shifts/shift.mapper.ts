@@ -21,9 +21,6 @@ export interface ShiftResponse {
   closed_by_name: string | null;
   closed_at: string | null;
   created_at: string;
-  /** §7.7's surviving half — see `SetExplanationDto`. `null` until the owner
-   *  writes one; writing it never moves a number. */
-  explanation: string | null;
   /** §6.8's «бій» (#110). `null` means «не записано» — an open shift, or one
    *  closed before the column existed. `0` means nothing broke. */
   broken_crates: number | null;
@@ -31,9 +28,11 @@ export interface ShiftResponse {
 
 /**
  * `names` is loaded by the caller, ONCE per page — see `loadDisplayNames`.
- * This function does no I/O of its own; it only reads the map.
  */
-export function toShiftResponse(shift: Shift, names: ReadonlyMap<string, string>): ShiftResponse {
+export function toShiftResponse(
+  shift: Shift,
+  names: ReadonlyMap<string, string>,
+): ShiftResponse {
   return {
     id: shift.id,
     collection_point_id: shift.collection_point_id,
@@ -47,7 +46,6 @@ export function toShiftResponse(shift: Shift, names: ReadonlyMap<string, string>
       : null,
     closed_at: shift.closed_at ? shift.closed_at.toISOString() : null,
     created_at: shift.created_at.toISOString(),
-    explanation: shift.explanation,
     broken_crates: shift.broken_crates,
   };
 }

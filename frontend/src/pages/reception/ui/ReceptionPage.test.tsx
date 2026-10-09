@@ -166,6 +166,13 @@ vi.mock('@/entities/tare-type', () => ({
   useTareTypeOptionsQuery: () => tareTypesMock(),
 }));
 
+// The result itself has its own suite (`ShiftCountResult.test.tsx`); here only
+// which shift a banner close hands it matters.
+vi.mock('@/widgets/count-result', () => ({
+  ShiftCountResult: ({ result }: { result: { mode: string; shiftId: string } | null }) =>
+    result ? <div data-testid="count-result">{`${result.mode} ${result.shiftId}`}</div> : null,
+}));
+
 vi.mock('@/widgets/receipt', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/widgets/receipt')>()),
   ReceiptDialog: ({
@@ -242,7 +249,6 @@ const openShift: Shift = {
   closed_by_name: null,
   closed_at: null,
   created_at: '2026-09-08T05:00:00Z',
-  explanation: null,
   broken_crates: null,
 };
 
@@ -1598,6 +1604,19 @@ describe('ReceptionPage — an open shift left behind on another day (#114)', ()
         broken_crates: 0,
       }),
     );
+  });
+
+  it('shows that shift’s close result instead of a bare toast (S2)', async () => {
+    const user = userEvent.setup();
+    renderReception();
+
+    await user.click(screen.getByRole('button', { name: 'Close shift' }));
+    const dialog = await screen.findByRole('dialog');
+    await user.type(within(dialog).getByRole('textbox', { name: /drawer|amount/i }), '980.40');
+    await user.type(within(dialog).getByRole('textbox', { name: /broken/i }), '0');
+    await user.click(within(dialog).getByRole('button', { name: SUBMIT_COUNT }));
+
+    expect(await screen.findByTestId('count-result')).toHaveTextContent('close s-stranded');
   });
 
   it('never books a receipt on the way — the dialog’s submit is not the form’s', async () => {

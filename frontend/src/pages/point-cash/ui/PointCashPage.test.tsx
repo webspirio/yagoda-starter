@@ -23,6 +23,7 @@ const {
   currentShiftMock,
   openShiftMock,
   closeShiftMock,
+  noteMock,
 } = vi.hoisted(() => ({
   meMock: vi.fn(),
   pointScopeMock: vi.fn(),
@@ -36,6 +37,11 @@ const {
   currentShiftMock: vi.fn(),
   openShiftMock: vi.fn(),
   closeShiftMock: vi.fn(),
+  noteMock: vi.fn(),
+}));
+
+vi.mock('@/features/set-operator-note/api/useSetOperatorNote', () => ({
+  useSetOperatorNoteMutation: () => ({ mutateAsync: noteMock }),
 }));
 
 vi.mock('@/entities/user', () => ({
@@ -123,9 +129,18 @@ vi.mock('@/features/count-shift', async (importOriginal) => {
     // Its own suite (`OpenShiftAlert.test.tsx`) covers what it shows and its
     // in-place close, which needs a real `QueryClient`. Here only the wiring
     // matters: that it is mounted, for which point and which viewed date.
-    OpenShiftAlert: ({ pointId, viewedDate }: { pointId: string | null; viewedDate: string }) => (
+    OpenShiftAlert: ({
+      pointId,
+      viewedDate,
+      onClosed,
+    }: {
+      pointId: string | null;
+      viewedDate: string;
+      onClosed?: (shiftId: string) => void;
+    }) => (
       <div data-testid="open-shift-alert-stub">
         {pointId} {viewedDate}
+        <button onClick={() => onClosed?.('s-old')}>Stale closed</button>
       </div>
     ),
   };
@@ -220,7 +235,11 @@ const cashCount = (over: Partial<CashCount> = {}): CashCount => ({
   counted_by_name: 'Olha',
   counted_at: '2026-09-08T07:00:00Z',
   explanation: null,
+  operator_note: null,
+  operator_note_editable: false,
+  explainable: false,
   ...over,
+  explained: over.explained ?? over.explanation != null,
 });
 
 const shift = (over: Partial<Shift> = {}): Shift => ({
@@ -234,7 +253,6 @@ const shift = (over: Partial<Shift> = {}): Shift => ({
   closed_by_name: null,
   closed_at: null,
   created_at: '2026-09-08T07:00:00Z',
-  explanation: null,
   broken_crates: null,
   ...over,
 });
@@ -285,8 +303,9 @@ beforeEach(() => {
   shiftMock.mockReset().mockReturnValue({ data: null, isPending: false, isError: false });
   // The same world `shiftMock` describes by default: nothing open anywhere.
   currentShiftMock.mockReset().mockReturnValue({ data: null, isPending: false, isError: false });
-  openShiftMock.mockReset().mockResolvedValue({});
+  openShiftMock.mockReset().mockResolvedValue({ id: 's-new' });
   closeShiftMock.mockReset().mockResolvedValue({});
+  noteMock.mockReset().mockResolvedValue({ id: 's5' });
 });
 
 afterEach(() => vi.useRealTimers());
@@ -1026,9 +1045,9 @@ describe('PointCashPage — R4: the open/close result view', () => {
     expect(openShiftMock).toHaveBeenCalledWith({ counted_amount: '1000.00' });
     expect(await screen.findByRole('heading', { name: 'Shift opened' })).toBeInTheDocument();
     expect(screen.getByText('2,500.00 ₴')).toBeInTheDocument();
-    // Opening never carries a discrepancy pill (§7.3 — nothing to compare
-    // the first count against yet).
-    expect(screen.queryByText('Discrepancy')).toBeNull();
+    // Since 09.09 the opening is compared with the last close, so it carries
+    // the same pill a close does (spec 2026-10-08, decision 5).
+    expect(screen.getByText('Discrepancy')).toBeInTheDocument();
   });
 
   it('dismisses via «Done» rather than hard-popping, without leaking stale content into the next result (minor 14)', async () => {
@@ -1119,14 +1138,11 @@ describe('PointCashPage — R4: the open/close result view', () => {
     expect(await screen.findByRole('heading', { name: title })).toBeInTheDocument();
   });
 
-  it('does not surface a stale close result over another day’s shift after the date changes (minor 6)', async () => {
-    // `resultFor` used to be bare `'close'`, which outlived the shift it was
-    // about. The result dialog is modal (background inert, `pointer-events:
-    // none`) — no click could ever reach the date stepper behind it — so
-    // this drives the URL straight through the router, the same as the
-    // browser's own back button would, to prove the STATE survives a date
-    // change it should not: the new date's OWN shift (`s9`, a different id)
-    // must never be described by a result that was about `s5`.
+  it('keeps describing the shift it was about after the date changes — never the new day’s count (minor 6)', async () => {
+    // The result reads counts by ITS OWN shift (`s5`), so a date change can
+    // neither blank it nor make it describe the new day's shift (`s9`, which
+    // carries a different count). The dialog is modal, so the URL is driven
+    // through the router, as the browser's back button would.
     const user = userEvent.setup();
     shiftMock.mockImplementation((_pointId: string | null, date: string) =>
       date === '2026-09-08'
@@ -1139,9 +1155,13 @@ describe('PointCashPage — R4: the open/close result view', () => {
     );
     cashCountsMock.mockImplementation((filter: { shiftId?: string }) =>
       'shiftId' in filter
-        ? list([
-            cashCount({ id: 'cl', kind: 'closing', counted_amount: '3000.00', discrepancy: '0.00' }),
-          ])
+        ? list(
+            filter.shiftId === 's9'
+              ? [cashCount({ id: 'c9', shift_id: 's9', kind: 'closing', discrepancy: '-10.00' })]
+              : filter.shiftId === 's5'
+                ? [cashCount({ id: 'cl', shift_id: 's5', kind: 'closing', counted_amount: '3000.00', discrepancy: '0.00' })]
+                : [],
+          )
         : list([cashCount()]),
     );
 
@@ -1158,9 +1178,93 @@ describe('PointCashPage — R4: the open/close result view', () => {
 
     await router.navigate('/point-cash?date=2026-09-07');
 
-    await waitFor(() =>
-      expect(screen.queryByRole('heading', { name: 'Shift closed. The day matched.' })).toBeNull(),
+    expect(screen.getByRole('heading', { name: 'Shift closed. The day matched.' })).toBeInTheDocument();
+    expect(screen.queryByText(/Discrepancy .*10\.00/)).toBeNull();
+  });
+
+  const closeWith = (row: Partial<CashCount>) => {
+    shiftMock.mockReturnValue({ data: shift({ id: 's5', status: 'open' }), isPending: false, isError: false });
+    cashCountsMock.mockImplementation((filter: { shiftId?: string }) =>
+      'shiftId' in filter
+        ? list([cashCount({ id: 'cl', shift_id: 's5', kind: 'closing', counted_amount: '2950.00', discrepancy: '-50.00', ...row })])
+        : list([cashCount()]),
     );
+  };
+
+  it('opens the form by itself in the same dialog when the closer may explain a discrepancy', async () => {
+    const user = userEvent.setup();
+    closeWith({ operator_note_editable: true });
+    renderPointCash();
+
+    await user.click(screen.getByRole('button', { name: 'Close shift' }));
+    await user.click(await screen.findByRole('button', { name: 'Confirm close' }));
+
+    expect(
+      await screen.findByRole('heading', { name: `What happened? Closing discrepancy ${formatUah('-50.00', 'en')}` }),
+    ).toBeInTheDocument();
+    expect(screen.getAllByRole('dialog')).toHaveLength(1);
+  });
+
+  it('Cancel falls back to the result, which still offers the form, and the form does not reopen on its own', async () => {
+    const user = userEvent.setup();
+    closeWith({ operator_note_editable: true });
+    renderPointCash();
+
+    await user.click(screen.getByRole('button', { name: 'Close shift' }));
+    await user.click(await screen.findByRole('button', { name: 'Confirm close' }));
+    await user.click(await screen.findByRole('button', { name: 'Cancel' }));
+
+    expect(await screen.findByRole('button', { name: 'Explain the discrepancy' })).toBeInTheDocument();
+    expect(screen.queryByLabelText('Your explanation')).toBeNull();
+
+    await user.click(screen.getByRole('button', { name: 'Explain the discrepancy' }));
+    expect(screen.getByLabelText('Your explanation')).toBeInTheDocument();
+  });
+
+  it('every close the closer may explain opens the form again — once per close, not once per visit', async () => {
+    const user = userEvent.setup();
+    closeWith({ operator_note_editable: true });
+    renderPointCash();
+
+    await user.click(screen.getByRole('button', { name: 'Close shift' }));
+    await user.click(await screen.findByRole('button', { name: 'Confirm close' }));
+    await user.click(await screen.findByRole('button', { name: 'Cancel' }));
+    await user.click(await screen.findByRole('button', { name: 'Done' }));
+
+    await user.click(screen.getByRole('button', { name: 'Close shift' }));
+    await user.click(await screen.findByRole('button', { name: 'Confirm close' }));
+    expect(await screen.findByLabelText('Your explanation')).toBeInTheDocument();
+  });
+
+  it('saving closes the whole dialog, and the next close shows a fresh result, not the old form', async () => {
+    const user = userEvent.setup();
+    closeWith({ operator_note_editable: true });
+    renderPointCash();
+
+    await user.click(screen.getByRole('button', { name: 'Close shift' }));
+    await user.click(await screen.findByRole('button', { name: 'Confirm close' }));
+    await user.type(await screen.findByLabelText('Your explanation'), 'віддав решту');
+    await user.click(screen.getByRole('button', { name: 'Save explanation' }));
+
+    expect(noteMock).toHaveBeenCalledWith({ countId: 'cl', operatorNote: 'віддав решту' });
+    await waitFor(() => expect(screen.queryByLabelText('Your explanation')).toBeNull());
+
+    closeWith({ operator_note_editable: false });
+    await user.click(screen.getByRole('button', { name: 'Close shift' }));
+    await user.click(await screen.findByRole('button', { name: 'Confirm close' }));
+    expect(await screen.findByRole('button', { name: 'Done' })).toBeInTheDocument();
+    expect(screen.queryByLabelText('Your explanation')).toBeNull();
+  });
+
+  it('offers nothing when the server says the note is not editable (a matched close, or not the closer)', async () => {
+    const user = userEvent.setup();
+    closeWith({ operator_note_editable: false });
+    renderPointCash();
+
+    await user.click(screen.getByRole('button', { name: 'Close shift' }));
+    await user.click(await screen.findByRole('button', { name: 'Confirm close' }));
+    await screen.findByRole('button', { name: 'Done' });
+    expect(screen.queryByRole('button', { name: 'Explain the discrepancy' })).toBeNull();
   });
 });
 
@@ -1220,6 +1324,78 @@ describe('PointCashPage — R4 review fix: a failed shift/counts read reaches th
  * on 2026-09-03 is invisible to today's `useShiftOnDateQuery`, and the server
  * refuses a second one (SHIFT_ALREADY_OPEN, #113).
  */
+describe('PointCashPage — count explanations: the opening note (S4) and a banner close (S2)', () => {
+  const openWith = (row: Partial<CashCount>) =>
+    cashCountsMock.mockImplementation((filter: { shiftId?: string }) =>
+      'shiftId' in filter
+        ? list(filter.shiftId === 's-new' ? [cashCount({ id: 'op', shift_id: 's-new', kind: 'opening', ...row })] : [])
+        : list([cashCount()]),
+    );
+
+  it('S4: after opening with a discrepancy the opener sees it and the note form opens', async () => {
+    const user = userEvent.setup();
+    openWith({ discrepancy: '-20.00', counted_amount: '980.00', operator_note_editable: true });
+    renderPointCash();
+
+    await user.click(screen.getByRole('button', { name: 'Open shift' }));
+    await user.click(await screen.findByRole('button', { name: 'Confirm open' }));
+
+    expect(await screen.findByRole('dialog')).toHaveTextContent(/Opening discrepancy/);
+    expect(await screen.findByLabelText('Your explanation')).toBeInTheDocument();
+  });
+
+  it('S4: the open result names the discrepancy in its title', async () => {
+    const user = userEvent.setup();
+    openWith({ discrepancy: '-20.00', operator_note_editable: false });
+    renderPointCash();
+
+    await user.click(screen.getByRole('button', { name: 'Open shift' }));
+    await user.click(await screen.findByRole('button', { name: 'Confirm open' }));
+
+    expect(
+      await screen.findByRole('heading', {
+        name: `Shift opened. ${formatUah('-20.00', 'en')} off the previous close — the owner will see it in their list.`,
+      }),
+    ).toBeInTheDocument();
+  });
+
+  it('first-ever count (discrepancy 0): plain «Shift opened», no form', async () => {
+    const user = userEvent.setup();
+    openWith({ discrepancy: '0.00', operator_note_editable: false });
+    renderPointCash();
+
+    await user.click(screen.getByRole('button', { name: 'Open shift' }));
+    await user.click(await screen.findByRole('button', { name: 'Confirm open' }));
+
+    expect(await screen.findByRole('heading', { name: 'Shift opened' })).toBeInTheDocument();
+    expect(screen.queryByRole('textbox')).toBeNull();
+  });
+
+  it('S2: closing a stale shift from the banner shows THAT shift result and the note form', async () => {
+    const user = userEvent.setup();
+    cashCountsMock.mockImplementation((filter: { shiftId?: string }) =>
+      'shiftId' in filter
+        ? list(
+            filter.shiftId === 's-old'
+              ? [cashCount({ id: 'old-cl', shift_id: 's-old', kind: 'closing', counted_amount: '950.00', discrepancy: '-50.00', operator_note_editable: true })]
+              : [],
+          )
+        : list([cashCount()]),
+    );
+    renderPointCash();
+
+    await user.click(screen.getByRole('button', { name: 'Stale closed' }));
+
+    expect(await screen.findByRole('dialog')).toHaveTextContent(/Closing discrepancy/);
+    expect(await screen.findByLabelText('Your explanation')).toBeInTheDocument();
+  });
+
+  it('reads no result counts before any result exists', () => {
+    renderPointCash();
+    expect(cashCountsMock).toHaveBeenCalledWith({ shiftId: undefined });
+  });
+});
+
 describe('PointCashPage — an open shift left behind on another day (#114)', () => {
   const stranded = shift({ id: 's-stranded', business_date: '2026-09-03' });
 

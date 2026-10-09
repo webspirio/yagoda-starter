@@ -8,7 +8,7 @@ import { EmptyState } from '@/shared/ui/empty-state';
 import { Spinner } from '@/shared/ui/spinner';
 import { isTruncated } from '@/shared/api';
 import { useUrlParam } from '@/shared/lib/url-state';
-import { isNegative, formatUah, cmp, isZero } from '@/shared/lib/money';
+import { isNegative, formatUah, cmp } from '@/shared/lib/money';
 import { todayIso, addDaysIso, isRealIsoDate, formatLongDate, formatWeekday, formatShortDate } from '@/shared/lib/date';
 import { useMeQuery } from '@/entities/user';
 import { useWorkingPoint } from '@/features/point-scope';
@@ -24,9 +24,9 @@ import {
   useOpenShiftMutation,
   useCloseShiftMutation,
   CountDrawerDialog,
-  CountResultView,
   OpenShiftAlert,
 } from '@/features/count-shift';
+import { ShiftCountResult, type ShiftCountResultFor } from '@/widgets/count-result';
 import { CashLedger } from './CashLedger';
 import { CratesBookCard } from './CratesBookCard';
 import { IncomingTransfers } from './IncomingTransfers';
@@ -197,14 +197,6 @@ export function PointCashPage() {
         ? 'allowed'
         : 'blocked';
   const panelCounts = shiftCashCounts.data?.data ?? [];
-  // §7.6 — the panel's own result-view lookup needs the SAME berry-only
-  // narrowing `ShiftCountPanel` applies to its own copy of this array; kept
-  // separate rather than threading derived rows down as props, so a test
-  // that renders `ShiftCountPanel` alone can hand it a raw, unfiltered page
-  // (see that component's own doc comment).
-  const panelBerryCounts = panelCounts.filter((c) => c.book === 'berry');
-  const openingCountRow = panelBerryCounts.find((c) => c.kind === 'opening') ?? null;
-  const closingCountRow = panelBerryCounts.find((c) => c.kind === 'closing') ?? null;
 
   const openShift = useOpenShiftMutation();
   const closeShift = useCloseShiftMutation();
@@ -220,71 +212,8 @@ export function PointCashPage() {
     setCountMode(target.mode);
     setCountTarget(target);
   };
-  // R4 — the result view after an open/close, read back from
-  // `panelBerryCounts` above rather than from the mutation's own response:
-  // `useInvalidateDay` (both mutations' `onSuccess`) refetches `shifts` AND
-  // `cashCounts`, and THAT refetch — not a value stashed off the response —
-  // is what `CountResultView` waits for (its own doc comment). No effect
-  // needed: `resultFor` is set once, synchronously, in the confirm handler
-  // below, and the row it names is whatever the counts query says right now.
-  //
-  // `shiftId` (minor 6, review) — `resultFor` used to be bare
-  // `'open' | 'close' | null`, which outlives the shift it was about:
-  // changing the date after a close left `resultFor === 'close'` sitting in
-  // state, and the moment `closingCountRow` for the NEW date's shift
-  // happened to be non-null, the old result popped up over the wrong day.
-  // Naming the shift alongside the mode is what `resultRow` below checks
-  // against `shift.data?.id` — a stale `resultFor` from another day can
-  // never match the shift on screen now.
-  const [resultFor, setResultFor] = useState<{ mode: 'open' | 'close'; shiftId: string } | null>(
-    null,
-  );
-  const resultRow =
-    resultFor === null || resultFor.shiftId !== shift.data?.id
-      ? null
-      : resultFor.mode === 'open'
-        ? openingCountRow
-        : closingCountRow;
-
-  // Minor 14 (review) — the CONTENT for the close (exit) animation.
-  // `CountResultView` used to be wrapped in `resultFor !== null && resultRow
-  // !== null ? (…) : null`, which unmounted the whole dialog the INSTANT
-  // either went null — a hard pop, unlike every other dialog on this page,
-  // which stays mounted and lets `open` alone drive visibility. Latched here
-  // so the LAST real content survives dismissal (`resultFor` clears
-  // immediately; this does not) — set during render, not an effect: React's
-  // own documented technique for storing derived info from a previous render
-  // (`useState`'s reference doc, "storing information from previous
-  // renders"). An effect would run one tick AFTER the render that needs it,
-  // which is exactly the render the very first count of the day has to show.
-  const [resultView, setResultView] = useState<{
-    mode: 'open' | 'close';
-    title: string;
-    counted: string;
-    discrepancy: string | null;
-  } | null>(null);
-  if (resultFor !== null && resultRow !== null) {
-    const title =
-      resultFor.mode === 'open'
-        ? t('pointCash.result.opened')
-        : isZero(resultRow.discrepancy)
-          ? t('pointCash.result.closedSettled')
-          : t('pointCash.result.closedDiscrepancy', {
-              amount: formatUah(resultRow.discrepancy, locale),
-            });
-    // Opening carries no discrepancy — §7.3, the first count IS the opening
-    // balance, nothing to compare it against yet.
-    const discrepancy = resultFor.mode === 'close' ? resultRow.discrepancy : null;
-    if (
-      resultView === null ||
-      resultView.mode !== resultFor.mode ||
-      resultView.title !== title ||
-      resultView.counted !== resultRow.counted_amount ||
-      resultView.discrepancy !== discrepancy
-    ) {
-      setResultView({ mode: resultFor.mode, title, counted: resultRow.counted_amount, discrepancy });
-    }
-  }
+  // R4 — the result view after an open/close; see `ShiftCountResult`.
+  const [resultFor, setResultFor] = useState<ShiftCountResultFor | null>(null);
 
   const [showCountHistory, setShowCountHistory] = useState(false);
 
@@ -546,7 +475,7 @@ export function PointCashPage() {
           </Button>
           {showCountHistory ? (
             <div className="mt-3">
-              <CashCountHistory pointId={pointId} isOwner={isOwner} />
+              <CashCountHistory pointId={pointId} isOwner={isOwner} meId={me?.id ?? null} />
             </div>
           ) : null}
         </div>
@@ -576,6 +505,7 @@ export function PointCashPage() {
           viewedDate={date}
           // The same page, another `?date=` — where the panel offers the close.
           onGoToDate={setDateParam}
+          onClosed={(id) => setResultFor({ mode: 'close', shiftId: id })}
         />
         {body}
       </DashboardPage>
@@ -622,24 +552,7 @@ export function PointCashPage() {
         }}
       />
 
-      {/* ALWAYS mounted (minor 14, review) — `open` alone drives visibility,
-          same as `CountDrawerDialog`/`SetTargetCashDialog` above, so a
-          dismiss animates closed instead of hard-popping out of the DOM.
-          There is nothing to show before the very first count of the day
-          ever lands (`resultView` stays `null`, `open` stays `false`) —
-          `resultView`'s own doc comment above is what keeps this rendering
-          the LAST real content while it fades, not a blank flash. This is
-          the SAME component `RecountDrawerDialog` (features/count-shift)
-          renders for its own result — a `pages/*` module reaching down into
-          `features/*` is the allowed direction, so this is the one place the
-          two callers share it. */}
-      <CountResultView
-        open={resultFor !== null && resultRow !== null}
-        title={resultView?.title ?? ''}
-        counted={resultView?.counted ?? '0.00'}
-        discrepancy={resultView?.discrepancy ?? null}
-        onClose={() => setResultFor(null)}
-      />
+      <ShiftCountResult result={resultFor} onClose={() => setResultFor(null)} />
     </>
   );
 }

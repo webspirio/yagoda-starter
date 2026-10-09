@@ -1,6 +1,9 @@
 import { sub } from '../common/money';
 import { CashBook } from './cash-book.enum';
 import { CashCountKind } from './cash-count-kind.enum';
+import { countNoteAllowed } from './count-notes';
+import { UserRole } from '../users/user-role.enum';
+import type { AuthenticatedUser } from '../auth/jwt.strategy';
 
 /** The raw projection — every numeric already `::text`. */
 export interface CashCountRow {
@@ -15,6 +18,7 @@ export interface CashCountRow {
   counted_by_user_id: string;
   counted_at: Date;
   explanation: string | null;
+  operator_note: string | null;
 }
 
 /**
@@ -33,8 +37,8 @@ export interface CashCountRow {
  * naturally in their own screen and neither can be flipped without making the
  * other read backwards.
  *
- * `is_open` — a discrepancy, on a count that has not been superseded, on a
- * shift with no explanation. This is the owner's working list, and it shrinks
+ * `is_open` — a discrepancy, on a count that has not been superseded and has
+ * no explanation of its own. This is the owner's working list, and it shrinks
  * as it is worked (§6.5).
  *
  * `midday` IS NEVER OPEN, matching the SQL filter in `CashCountsService.list`
@@ -71,7 +75,16 @@ export interface CashCountRowResponse {
    *  `null` only if the caller's map has no entry for that id. */
   counted_by_name: string | null;
   counted_at: Date;
+  /** The owner's decision on THIS count — the owner's to read; an operator gets `null` and reads `explained`. */
   explanation: string | null;
+  /** Whether the owner explained THIS count, for every caller. */
+  explained: boolean;
+  /** Whoever counted (spec 2026-10-08) — informs, never closes `is_open`. */
+  operator_note: string | null;
+  /** May THIS caller (the owner) explain this count now. */
+  explainable: boolean;
+  /** May THIS caller (the counter) write `operator_note` on this count now. */
+  operator_note_editable: boolean;
 }
 
 /**
@@ -81,6 +94,7 @@ export interface CashCountRowResponse {
 export function toCashCountRowResponse(
   row: CashCountRow,
   names: ReadonlyMap<string, string>,
+  actor: AuthenticatedUser,
 ): CashCountRowResponse {
   const discrepancy = sub(row.counted_amount, row.expected_amount);
   return {
@@ -93,13 +107,14 @@ export function toCashCountRowResponse(
     counted_amount: row.counted_amount,
     expected_amount: row.expected_amount,
     discrepancy,
-    is_open:
-      discrepancy !== '0.00' &&
-      row.kind !== CashCountKind.Midday &&
-      (row.explanation === null || row.explanation === ''),
+    is_open: discrepancy !== '0.00' && row.kind !== CashCountKind.Midday && row.explanation === null,
     counted_by_user_id: row.counted_by_user_id,
     counted_by_name: names.get(row.counted_by_user_id) ?? null,
     counted_at: row.counted_at,
-    explanation: row.explanation,
+    explanation: actor.role === UserRole.NetworkOwner ? row.explanation : null,
+    explained: row.explanation !== null,
+    operator_note: row.operator_note,
+    explainable: countNoteAllowed(actor, row, 'explanation'),
+    operator_note_editable: countNoteAllowed(actor, row, 'operator_note'),
   };
 }

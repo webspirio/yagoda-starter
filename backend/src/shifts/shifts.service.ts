@@ -11,7 +11,6 @@ import { ShiftStatus } from './shift-status.enum';
 import { OpenShiftDto } from './dto/open-shift.dto';
 import { CloseShiftDto } from './dto/close-shift.dto';
 import { ReopenShiftDto } from './dto/reopen-shift.dto';
-import { SetExplanationDto } from './dto/set-explanation.dto';
 import { ListShiftsQueryDto } from './dto/list-shifts.query';
 import { CurrentShiftQueryDto } from './dto/current-shift.query';
 import { ShiftResponse, toShiftResponse } from './shift.mapper';
@@ -138,8 +137,8 @@ export class ShiftsService {
         m,
       );
 
-      const names = await this.namesFor([shift], m);
-      return toShiftResponse(shift, names);
+      const [response] = await this.respond([shift], m);
+      return response;
     });
   }
 
@@ -233,8 +232,8 @@ export class ShiftsService {
         await this.stock.assertOnHand(m, saved.collection_point_id, dto.broken_crates);
       }
 
-      const names = await this.namesFor([saved], m);
-      return toShiftResponse(saved, names);
+      const [response] = await this.respond([saved], m);
+      return response;
     });
   }
 
@@ -328,6 +327,7 @@ export class ShiftsService {
       // Back to «не записано»: CHK_shifts_broken_crates_closed forbids a count
       // on an open shift, and the re-close will ask the operator again.
       shift.broken_crates = null;
+      // Texts live on the counts (spec 2026-10-08): the demoted row keeps its own.
       const saved = await m.save(Shift, shift);
 
       await this.audit.record(
@@ -337,48 +337,19 @@ export class ShiftsService {
           target_type: 'shift',
           target_id: saved.id,
           before,
-          after: { closed_at: null, status: ShiftStatus.Open, broken_crates: null },
+          after: {
+            closed_at: null,
+            status: ShiftStatus.Open,
+            broken_crates: null,
+          },
           note: dto.reason,
         },
         m,
       );
 
-      const names = await this.namesFor([saved], m);
-      return toShiftResponse(saved, names);
+      const [response] = await this.respond([saved], m);
+      return response;
     });
-  }
-
-  /**
-   * OWNER ONLY (§10.2 — corrections and judgements belong to the owner).
-   * Idempotent: re-sending replaces the text.
-   */
-  async setExplanation(
-    actor: AuthenticatedUser,
-    id: string,
-    dto: SetExplanationDto,
-  ): Promise<ShiftResponse> {
-    if (actor.role !== UserRole.NetworkOwner) {
-      throw new ForbiddenException({
-        message: 'Only the network owner may explain a discrepancy',
-        code: 'OWNER_ONLY',
-      });
-    }
-    const shift = await this.loadVisible(actor, id);
-    const before = { explanation: shift.explanation };
-    shift.explanation = dto.explanation.trim();
-    const saved = await this.repo.save(shift);
-
-    await this.audit.record({
-      action: 'shift.explained',
-      actor_id: actor.sub,
-      target_type: 'shift',
-      target_id: saved.id,
-      before,
-      after: { explanation: saved.explanation },
-    });
-
-    const names = await this.namesFor([saved], this.dataSource.manager);
-    return toShiftResponse(saved, names);
   }
 
   async list(
@@ -404,11 +375,9 @@ export class ShiftsService {
       .take(query.limit)
       .getManyAndCount();
 
-    // ONE map for the whole page (D-8) — never one `loadDisplayNames` call per
-    // row.
-    const names = await this.namesFor(data, this.dataSource.manager);
+    // ONE names query for the whole page (D-8).
     return {
-      data: data.map((shift) => toShiftResponse(shift, names)),
+      data: await this.respond(data, this.dataSource.manager),
       total,
       page: query.page,
       limit: query.limit,
@@ -422,14 +391,14 @@ export class ShiftsService {
     }
     const shift = await this.findOpenAtPoint(pointId);
     if (!shift) throw new NotFoundException('No open shift at that point');
-    const names = await this.namesFor([shift], this.dataSource.manager);
-    return toShiftResponse(shift, names);
+    const [response] = await this.respond([shift], this.dataSource.manager);
+    return response;
   }
 
   async findOne(actor: AuthenticatedUser, id: string): Promise<ShiftResponse> {
     const shift = await this.loadVisible(actor, id);
-    const names = await this.namesFor([shift], this.dataSource.manager);
-    return toShiftResponse(shift, names);
+    const [response] = await this.respond([shift], this.dataSource.manager);
+    return response;
   }
 
   /**
@@ -466,9 +435,8 @@ export class ShiftsService {
    * 409 has to be enforced where the write happens or it is not enforced at
    * all» — and this is that rule applied to shifts.
    *
-   * The two READ callers (`findOne`, `setExplanation`'s sibling paths) pass
-   * nothing and take no lock, because a read that locks a row blocks the
-   * operator who is trying to close it.
+   * The READ callers (`findOne`) pass nothing and take no lock, because a
+   * read that locks a row blocks the operator who is trying to close it.
    */
   private async loadVisible(
     actor: AuthenticatedUser,
@@ -486,6 +454,14 @@ export class ShiftsService {
       assertOwnsPoint(actor, shift.collection_point_id);
     }
     return shift;
+  }
+
+  /**
+   * Every ShiftResponse goes through here: names load ONCE per call (D-8).
+   */
+  private async respond(shifts: Shift[], m: EntityManager): Promise<ShiftResponse[]> {
+    const names = await this.namesFor(shifts, m);
+    return shifts.map((s) => toShiftResponse(s, names));
   }
 
   /**

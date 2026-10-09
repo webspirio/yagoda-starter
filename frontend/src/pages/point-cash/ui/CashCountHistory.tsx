@@ -5,30 +5,38 @@ import { SectionCard } from '@/shared/ui/section-card';
 import { DataTable, type Column } from '@/shared/ui/data-table';
 import { Button } from '@/shared/ui/button';
 import { EmptyState } from '@/shared/ui/empty-state';
+import { ExpandableText } from '@/shared/ui/expandable-text';
 import { Spinner } from '@/shared/ui/spinner';
 import { cn } from '@/shared/lib/cn';
 import { formatUah } from '@/shared/lib/money';
 import { formatShortDate } from '@/shared/lib/date';
 import { useCashCountsQuery, type CashCount } from '@/entities/cash-count';
 import { ExplainDiscrepancyDialog } from '@/features/set-cash-explanation';
+import { OperatorNoteDialog } from '@/features/set-operator-note';
 import { discrepancyTone } from '@/features/count-shift';
 
 /**
  * §7.6's journal for one point — every drawer count, opening/midday/closing
- * alike, read-only by design: there is no edit here, only `ExplainDiscrepancyDialog`
- * (§7.7, owner only) which never moves the counted or expected figure, only
- * attaches a reason to a discrepancy that already happened.
+ * alike, read-only by design: there is no edit here, only
+ * `ExplainDiscrepancyDialog` (§7.7, owner) and `OperatorNoteDialog` (spec
+ * 2026-10-08, the operator who counted), neither of which ever moves the counted
+ * or expected figure, only attaches a reason to a discrepancy that already
+ * happened.
  */
 export function CashCountHistory({
   pointId,
   isOwner,
+  meId,
 }: {
   pointId: string;
   isOwner: boolean;
+  /** Names the counter on an open row this operator may not explain. */
+  meId: string | null;
 }) {
   const { t, i18n } = useTranslation();
   const counts = useCashCountsQuery({ pointId });
   const [explainTarget, setExplainTarget] = useState<CashCount | null>(null);
+  const [noteTarget, setNoteTarget] = useState<CashCount | null>(null);
   const rows = counts.data?.data ?? [];
 
   const columns: Column<CashCount>[] = [
@@ -83,23 +91,69 @@ export function CashCountHistory({
       // own comment), so printing «Зійшлося» off `is_open` alone used to
       // claim a midday −50,00 ₴ recount had matched.
       cell: (row) => {
-        if (row.explanation) {
-          return <span className="text-sm italic text-muted-foreground">{row.explanation}</span>;
+        // Each row carries its OWN note and explanation (spec 2026-10-08), whatever its kind.
+        const note = row.operator_note;
+        const operatorNote = note ? (
+          <ExpandableText
+            className="text-xs italic text-muted-foreground"
+            label={t('pointCash.countHistory.operatorNoteLabel')}
+          >
+            {t('pointCash.countHistory.operatorNote', { text: note })}
+          </ExpandableText>
+        ) : null;
+        // The owner's text reaches only the owner; an operator reads that it is settled.
+        if (row.explained) {
+          return (
+            <div className="flex flex-col gap-1">
+              {row.explanation ? (
+                <ExpandableText
+                  className="text-sm italic text-muted-foreground"
+                  label={t('pointCash.countHistory.explanationLabel')}
+                >
+                  {row.explanation}
+                </ExpandableText>
+              ) : (
+                <span className="text-xs text-muted-foreground">{t('pointCash.countHistory.settled')}</span>
+              )}
+              {operatorNote}
+            </div>
+          );
         }
         if (discrepancyTone(row.discrepancy) === 'leaf') {
           return (
-            <span className="text-xs text-muted-foreground">
-              {t('pointCash.countHistory.matched')}
-            </span>
+            <div className="flex flex-col items-start gap-1">
+              <span className="text-xs text-muted-foreground">{t('pointCash.countHistory.matched')}</span>
+              {operatorNote}
+            </div>
           );
         }
         if (row.is_open) {
-          return isOwner ? (
-            <Button size="xs" variant="outline" onClick={() => setExplainTarget(row)}>
-              {t('pointCash.countHistory.explain')}
+          // The operator's note informs; the incident stays open until the owner explains it.
+          const action = isOwner ? (
+            row.explainable ? (
+              <Button size="xs" variant="outline" onClick={() => setExplainTarget(row)}>
+                {t('pointCash.countHistory.explain')}
+              </Button>
+            ) : (
+              <span className="text-xs text-muted-foreground">{t('pointCash.countHistory.open')}</span>
+            )
+          ) : row.operator_note_editable ? (
+            <Button size="xs" variant="outline" onClick={() => setNoteTarget(row)}>
+              {t(row.operator_note ? 'operatorNote.edit' : 'operatorNote.write')}
             </Button>
           ) : (
-            <span className="text-xs text-muted-foreground">{t('pointCash.countHistory.open')}</span>
+            <span className="text-xs text-muted-foreground">
+              {t('pointCash.countHistory.open')}
+              {meId !== null && row.counted_by_user_id !== meId
+                ? ` · ${t('pointCash.countHistory.notYours', { name: row.counted_by_name ?? '—' })}`
+                : ''}
+            </span>
+          );
+          return (
+            <div className="flex flex-col items-start gap-1">
+              {operatorNote}
+              {action}
+            </div>
           );
         }
         // A non-zero, unexplained discrepancy with `is_open === false` — only
@@ -107,10 +161,14 @@ export function CashCountHistory({
         // an incident, so it never opens one even with a real gap; an
         // opening/closing count only clears `is_open` by being explained,
         // caught above).
+        // A demoted count keeps the operator's note as history, so show it here too.
         return (
-          <span className="text-xs text-muted-foreground">
-            {t('pointCash.countHistory.noExplanationNeeded')}
-          </span>
+          <div className="flex flex-col items-start gap-1">
+            <span className="text-xs text-muted-foreground">
+              {t('pointCash.countHistory.noExplanationNeeded')}
+            </span>
+            {operatorNote}
+          </div>
         );
       },
     },
@@ -134,10 +192,16 @@ export function CashCountHistory({
 
       {explainTarget ? (
         <ExplainDiscrepancyDialog
-          shiftId={explainTarget.shift_id}
-          discrepancy={explainTarget.discrepancy}
+          count={explainTarget}
           open
           onClose={() => setExplainTarget(null)}
+        />
+      ) : null}
+      {noteTarget ? (
+        <OperatorNoteDialog
+          count={noteTarget}
+          open
+          onClose={() => setNoteTarget(null)}
         />
       ) : null}
     </SectionCard>

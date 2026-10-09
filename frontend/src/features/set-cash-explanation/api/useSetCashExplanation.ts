@@ -1,33 +1,24 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { httpClient } from '@/shared/api';
 import { queryKeys } from '@/shared/api/queryKeys';
-import type { Shift } from '@/entities/shift';
+import type { CashCount } from '@/entities/cash-count';
 
 export interface SetCashExplanationInput {
-  shiftId: string;
+  countId: string;
   explanation: string;
 }
 
 /**
- * §7.7 (ред. 09.09.2026) — a drawer discrepancy NEVER blocks closing a shift;
- * the operator closes, and the owner explains it afterwards. `PUT
- * /shifts/:id/explanation`, NOT `POST` — this replaces the shift's one
- * `explanation` field (there is no per-count history), it never moves a
- * number, and it is OWNER ONLY (§10.2).
- *
- * Invalidates `shifts` (the field being written lives on the shift) AND
- * `cashCounts` — the owner's incident list (`GET
- * /cash-counts?only_discrepancies=true`) reads the same explanation off the
- * count it belongs to, and both would otherwise show a stale "unexplained"
- * state right after this call succeeds.
+ * §7.7 — the owner's decision on ONE count (spec 2026-10-08). OWNER ONLY, replaces
+ * the text, never moves a number. Invalidates `cashCounts` alone: the incident
+ * list and the shift panel both read the same row.
  */
 export function useSetCashExplanationMutation() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async ({ shiftId, explanation }: SetCashExplanationInput): Promise<Shift> =>
-      (await httpClient.put<Shift>(`/shifts/${shiftId}/explanation`, { explanation })).data,
+    mutationFn: async ({ countId, explanation }: SetCashExplanationInput): Promise<CashCount> =>
+      (await httpClient.put<CashCount>(`/cash-counts/${countId}/explanation`, { explanation })).data,
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: queryKeys.shifts });
       qc.invalidateQueries({ queryKey: queryKeys.cashCounts });
     },
   });

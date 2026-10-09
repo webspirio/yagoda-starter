@@ -81,6 +81,11 @@ const CODE: Readonly<Record<string, string>> = {
   NET_NOT_POSITIVE: 'reweigh.errors.netNotPositive',
   TARE_TYPE_DUPLICATED: 'reweigh.errors.tareDuplicated',
   TARE_TYPE_UNKNOWN: 'reweigh.errors.tareUnknown',
+  // Count explanations (spec 2026-10-08) — `PUT /cash-counts/:id/{explanation,operator-note}`.
+  NOT_COUNTER: 'operatorNote.errors.notCounter',
+  COUNT_NOT_EXPLAINABLE: 'operatorNote.errors.notExplainable',
+  OWNER_ALREADY_EXPLAINED: 'operatorNote.errors.ownerExplained',
+  NO_DISCREPANCY: 'operatorNote.errors.noDiscrepancy',
   // Cross-cutting (#52): the two 403s that carry a code — a role or a point
   // changed while the page was open — and an owner write that named no point.
   // `POINT_REQUIRED` is absent: only GET /crate-standing throws it, and no

@@ -21,6 +21,7 @@ import { useTareTypeOptionsQuery } from '@/entities/tare-type';
 import { usePointCashForPointQuery } from '@/entities/point-cash';
 import { ReceiptDialog, useReceiptOpener } from '@/widgets/receipt';
 import { useOpenShiftMutation, CountDrawerDialog, OpenShiftAlert } from '@/features/count-shift';
+import { ShiftCountResult, type ShiftCountResultFor } from '@/widgets/count-result';
 import type { SupplierPickerHandle } from '@/features/pick-supplier';
 import { useCreateIntakeMutation } from '../api/intakes';
 import { apiErrorToFields, type ApiFieldErrors } from '../lib/apiErrorToFields';
@@ -120,6 +121,8 @@ export function ReceptionPage() {
   // banner from the refusal before it — the convention `ReopenShiftDialog`
   // (pages/day) documents.
   const [openDialogInstance, setOpenDialogInstance] = useState(0);
+  // A banner close shows its result and the note form, not a bare toast (S2).
+  const [staleResult, setStaleResult] = useState<ShiftCountResultFor | null>(null);
   const [submitFailure, setSubmitFailure] = useState<{ at: string; errors: ApiFieldErrors } | null>(
     null,
   );
@@ -408,7 +411,12 @@ export function ReceptionPage() {
             post the receipt. Whether the form should be blocked while the open
             shift is stale is a separate question this deliberately leaves
             alone: there IS an open shift, so `shiftOpen` is unchanged. */}
-        <OpenShiftAlert pointId={pointId} viewedDate={todayIso()} onGoToDate={goToDay} />
+        <OpenShiftAlert
+          pointId={pointId}
+          viewedDate={todayIso()}
+          onGoToDate={goToDay}
+          onClosed={(id) => setStaleResult({ mode: 'close', shiftId: id })}
+        />
 
         <div className="grid gap-5 lg:grid-cols-[minmax(0,1.35fr)_minmax(320px,1fr)]">
           <form
@@ -585,6 +593,7 @@ export function ReceptionPage() {
         startWithVoid={receipt.startWithVoid}
         onClose={receipt.clear}
       />
+      <ShiftCountResult result={staleResult} onClose={() => setStaleResult(null)} />
     </>
   );
 }

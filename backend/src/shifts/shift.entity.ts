@@ -36,9 +36,8 @@ import { ShiftStatus } from './shift-status.enum';
  *    inside this shift's own transactions. Denormalising any of them onto this
  *    row would be «два примірники одного факту».
  *
- * `explanation` IS WRITTEN, by `ShiftsService.setExplanation` behind
- * `PUT /shifts/:id/explanation` (owner-only, §6.5). `ShiftStatus`'s
- * `AwaitingExplanation` is the half that stayed unreachable, and BY DECISION
+ * Explanations and operator notes live on `cash_counts` (spec 2026-10-08), not
+ * here. `ShiftStatus`'s `AwaitingExplanation` is the half that stayed unreachable, and BY DECISION
  * rather than by absence: the client's 09.09.2026 ruling removed the blocking
  * a discrepancy used to impose (§7.7, cash counts spec §11.1). See the enum.
  *
@@ -128,12 +127,6 @@ export class Shift {
     default: ShiftStatus.Open,
   })
   status: ShiftStatus;
-
-  /** The owner's note on a shift whose drawer did not balance — written by
-   *  `ShiftsService.setExplanation` (§6.5). It records what is OPEN, never what
-   *  is TRUE: an explained discrepancy stays in `Σ (counted − expected)`. */
-  @Column({ type: 'text', nullable: true })
-  explanation: string | null;
 
   /**
    * §6.8's «бій» — crates that broke during the shift and travel to the base

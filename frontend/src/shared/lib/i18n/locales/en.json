@@ -587,7 +587,10 @@
   },
   "actions": {
     "showAll": "Show all ({{count}})",
-    "collapse": "Collapse"
+    "collapse": "Collapse",
+    "showMore": "Show more",
+    "showMoreOf": "Show more: {{what}}",
+    "collapseOf": "Collapse: {{what}}"
   },
   "picker": {
     "searchPlaceholder": "Start typing or pick below…",
@@ -632,9 +635,10 @@
   "cash": {
     "explainDialog": {
       "title": "Explain the {{amount}} discrepancy",
-      "description": "A discrepancy never blocks closing a shift — the operator already closed it. This explanation does not change the count; it stays in the journal alongside it.",
+      "description": "A discrepancy never stops a shift from working. This explanation does not change the count; it stays in the journal alongside it.",
       "explanation": "Explanation",
-      "submit": "Save explanation"
+      "submit": "Save explanation",
+      "operatorNote": "The operator wrote"
     },
     "toast": {
       "explained": "Explanation saved"
@@ -721,6 +725,7 @@
     "countHistory": {
       "title": "Cash counts",
       "toggle": "Full recount history",
+      "notYours": "counted by {{name}}",
       "empty": "No cash counts recorded for this point yet.",
       "columns": {
         "when": "When",
@@ -738,7 +743,11 @@
       "matched": "Matched",
       "open": "Unexplained",
       "noExplanationNeeded": "needs no explanation",
-      "explain": "Explain"
+      "settled": "Settled by the owner",
+      "explain": "Explain",
+      "operatorNote": "Operator: “{{text}}”",
+      "explanationLabel": "the owner's explanation",
+      "operatorNoteLabel": "the operator's note"
     },
     "panel": {
       "title": "Shift and recount",
@@ -753,6 +762,7 @@
       "discrepancy": "Discrepancy",
       "closedBy": "closed by {{name}}",
       "explanation": "“{{text}}”",
+      "settled": "Settled by the owner",
       "countAt": "Count at {{time}}",
       "matched": "✓ matched",
       "mismatched": "⚠ did not match",
@@ -769,11 +779,13 @@
         "noShiftNote": "There is no shift for this day — there is nothing for a recount to attach to."
       },
       "footnote": "The drawer can be recounted as many times a day as needed — every recount stays its own record and corrects nothing.",
-      "readFailed": "The shift could not be read — reload the page"
+      "readFailed": "The shift could not be read — reload the page",
+      "operatorNote": "Operator: “{{text}}”"
     },
     "result": {
       "opened": "Shift opened",
       "closedSettled": "Shift closed. The day matched.",
+      "openedDiscrepancy": "Shift opened. {{amount}} off the previous close — the owner will see it in their list.",
       "closedDiscrepancy": "Shift closed. Discrepancy {{amount}} — the owner will see it on their own list."
     },
     "target": {
@@ -1570,6 +1582,26 @@
       "checkShare": "Σ from basket {{shares}} = basket {{basket}}",
       "checkTotal": "{{total}} = accrued {{accrued}} + expenses {{expenses}}",
       "checkTotalUnweighed": "{{total}} + not re-weighed {{unweighed}} = accrued {{accrued}} + expenses {{expenses}}"
+    }
+  },
+  "operatorNote": {
+    "write": "Add my explanation",
+    "edit": "Edit my explanation",
+    "resultAction": "Explain the discrepancy",
+    "titleOpening": "What happened? Opening discrepancy {{amount}}",
+    "titleClosing": "What happened? Closing discrepancy {{amount}}",
+    "description": "Write what you know while you are still at the point. The owner reads it next to the discrepancy and makes the final decision.",
+    "label": "Your explanation",
+    "submit": "Save explanation",
+    "saved": "Saved — the owner will see it next to the discrepancy",
+    "errors": {
+      "required": "Write what happened",
+      "tooLong": "2000 characters or fewer",
+      "failed": "Could not save the explanation. Try again.",
+      "notCounter": "Only the person who counted this drawer can explain it.",
+      "notExplainable": "This count no longer stands — explain the new one. Refresh the page.",
+      "ownerExplained": "The owner has already decided on this discrepancy. Refresh the page.",
+      "noDiscrepancy": "The drawer matched here — there is nothing to explain. Refresh the page."
     }
   }
 }

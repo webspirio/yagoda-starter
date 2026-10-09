@@ -71,6 +71,13 @@ vi.mock('@/entities/supplier', () => ({
     `${s.first_name} ${s.last_name}`,
 }));
 
+// The result itself has its own suite (`ShiftCountResult.test.tsx`); here only
+// which shift a banner close hands it matters.
+vi.mock('@/widgets/count-result', () => ({
+  ShiftCountResult: ({ result }: { result: { mode: string; shiftId: string } | null }) =>
+    result ? <div data-testid="count-result">{`${result.mode} ${result.shiftId}`}</div> : null,
+}));
+
 vi.mock('@/widgets/receipt', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/widgets/receipt')>()),
   ReceiptDialog: ({
@@ -146,7 +153,6 @@ const openShift: Shift = {
   closed_by_name: null,
   closed_at: null,
   created_at: '2026-09-08T05:00:00Z',
-  explanation: null,
   broken_crates: null,
 };
 
@@ -1092,6 +1098,19 @@ describe('DayPage — an open shift left behind on another day (#114)', () => {
     );
     // In place: the close is the whole point, not a detour to another date.
     expect(new URLSearchParams(router.state.location.search).get('date')).toBeNull();
+  });
+
+  it('shows that shift’s close result instead of a bare toast (S2)', async () => {
+    const user = userEvent.setup();
+    renderDay();
+
+    await user.click(screen.getByRole('button', { name: 'Close shift' }));
+    const dialog = await screen.findByRole('dialog');
+    await user.type(drawerBox(dialog), '980.40');
+    await user.type(breakageBox(dialog), '0');
+    await user.click(within(dialog).getByRole('button', { name: SUBMIT_COUNT }));
+
+    expect(await screen.findByTestId('count-result')).toHaveTextContent('close s-stranded');
   });
 
   it('can also step the day screen onto that shift’s own date', async () => {

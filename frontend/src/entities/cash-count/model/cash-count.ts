@@ -22,7 +22,16 @@ export interface CashCount {
   /** `displayNameOf` — `null` лише для рядків, записаних до появи цього поля. */
   counted_by_name: string | null;
   counted_at: string;
+  /** Рішення керівника щодо ЦЬОГО підрахунку — текст бачить лише керівник; приймальнику `null`. */
   explanation: string | null;
+  /** Чи пояснив керівник ЦЕЙ підрахунок — для всіх ролей. */
+  explained: boolean;
+  /** Пояснення того, хто рахував, щодо ЦЬОГО підрахунку — `is_open` не змінює. */
+  operator_note: string | null;
+  /** Чи може ЦЕЙ користувач (той, хто рахував) написати його зараз. */
+  operator_note_editable: boolean;
+  /** May THIS caller (the owner) explain this count now — the server decides. */
+  explainable: boolean;
 }
 
 /** Реекспорт для існуючих імпортерів `../model/cash-count` — див. `@/shared/api/pagination.ts`. */

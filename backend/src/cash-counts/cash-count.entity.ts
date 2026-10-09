@@ -47,7 +47,8 @@ import { CashCountKind } from './cash-count-kind.enum';
  * NO `void_*` TRIO AND NO `PATCH`. A count is evidence, not a document (§7.6):
  * no code, no paper twin, no supplier copy. A count that was wrong is answered
  * by counting again, never by editing. The ONE exception is §6.3's demotion of
- * `kind` on reopen, argued there.
+ * `kind` on reopen, argued there. The two texts are annotations, never the
+ * figures — `counted_amount` and `expected_amount` stay untouchable.
  */
 @Entity('cash_counts')
 // ONLY `counted_amount` IS CONSTRAINED, AND THE ASYMMETRY IS THE POINT. A
@@ -60,6 +61,8 @@ import { CashCountKind } from './cash-count-kind.enum';
 // `1788600000010`; re-adding it here would make `migration:generate` propose
 // putting it back.
 @Check('CHK_cash_counts_counted_non_negative', `"counted_amount" >= 0`)
+@Check('CHK_cash_counts_explanation_not_blank', `"explanation" IS NULL OR btrim("explanation") <> ''`)
+@Check('CHK_cash_counts_operator_note_not_blank', `"operator_note" IS NULL OR btrim("operator_note") <> ''`)
 @Index('IDX_cash_counts_shift_counted_at', ['shift_id', 'counted_at'])
 export class CashCount {
   @PrimaryGeneratedColumn('uuid')
@@ -96,6 +99,15 @@ export class CashCount {
 
   @Column({ type: 'timestamptz' })
   counted_at: Date;
+
+  /** The owner's decision on THIS count's discrepancy — the only thing that closes it
+   *  (spec 2026-10-08). A demoted closing row keeps it as history. */
+  @Column({ type: 'text', nullable: true })
+  explanation: string | null;
+
+  /** Whoever counted (`counted_by_user_id`): their account. Informs, never closes. */
+  @Column({ type: 'text', nullable: true })
+  operator_note: string | null;
 
   @CreateDateColumn({ type: 'timestamptz' })
   created_at: Date;

@@ -11,7 +11,6 @@ const shift = (over: Partial<Shift> = {}): Shift =>
     business_date: '2026-09-22',
     closed_at: null,
     status: ShiftStatus.Open,
-    explanation: null,
     broken_crates: null,
     created_at: new Date('2026-09-22T04:30:00.000Z'),
     updated_at: new Date('2026-09-22T04:30:00.000Z'),
