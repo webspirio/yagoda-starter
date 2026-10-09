@@ -1,26 +1,31 @@
 import { useTranslation } from 'react-i18next';
+import { Info } from 'lucide-react';
 import { Eyebrow } from '@/shared/ui/eyebrow';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/shared/ui/tooltip';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/shared/ui/table';
 import { cn } from '@/shared/lib/cn';
-import { add, cmp, formatDecimal, formatKg, formatUah, sum } from '@/shared/lib/money';
-import type { CostOfDay } from '@/entities/cost-of-day';
+import { add, cmp, formatDecimal, formatKg, formatUah, sub, sum } from '@/shared/lib/money';
+import type { CostOfDay, CostOfDayProduct } from '@/entities/cost-of-day';
 
 /**
- * §8.4's three prices — «було» (what it was bought for), «собівартість»
- * (plus its share of the недостача and the витрати) and «нараховане ÷ наша
- * вага» — plus the two звірки, SHOWN TO THE PERSON rather than hidden in a
- * test.
+ * §8.4's three prices, under the names the owner reads them by: «ціна в
+ * квитанції» (§8.4's «було», нараховане ÷ вага пункту), «закупівельна ціна»
+ * (§8.4's «нараховане ÷ наша вага» — what a kilogram that reached the base
+ * really cost; its own усушка is a side effect) and «собівартість» (було plus
+ * the day's pooled недостача and витрати — NOT закупівельна plus витрати) —
+ * plus the two звірки, SHOWN TO THE PERSON rather than hidden in a test.
  *
  * «із пулу» is the server's `basket_share`, allocated by largest remainder so
  * the parts sum exactly to the basket. That identity is what the first check
  * below prints, and it is §8.4's own claim: «жодна гривня не загубилася і не
- * з'явилася з нічого». The component sums with `sum`, compares with `cmp`
- * and adds with `add`: the «разом» cell for a product is `add(accrued,
- * basket_share)`, and the footer's «разом» is `sum` of exactly those cells —
- * never `total_check`, which is the звірка line below it, not this column's
- * total. There is NO DIVISION anywhere in this component; every rate it
- * prints — «було», «собівартість», «нараховане ÷ наша вага», «середня ціна
- * після витрат» — is the server's own.
+ * з'явилася з нічого».
+ *
+ * A product's «разом» is нараховано − недостача + із пулу: the недостача is
+ * already paid for inside нараховано and the pool only moves it between
+ * products, so adding the share alone counted it twice. The column then foots
+ * to нараховано + витрати, which the second check below prints with ✓/✗.
+ * Only addition and subtraction of server figures here — every rate printed
+ * is the server's own.
  *
  * Every derived cell of a product that is not `complete` is «—». It
  * contributed no kilograms to the day's denominator, so it collects no share
@@ -39,14 +44,13 @@ export function FinalPrices({ day, locale }: { day: CostOfDay; locale: string })
   const sharesTotal = shares.length > 0 ? sum(shares) : '0.00';
   const sharesMatch = cmp(sharesTotal, day.basket) === 0;
 
-  // The footer's «разом» cell must equal the sum of the per-product «разом»
-  // cells above it, not `total_check` (accrued + ALL expenses, звірка's own
-  // figure two lines below). Sum only the products that actually show a
-  // «разом» figure — the same «жодного нуля» rule the per-row cell follows.
-  const togetherAmounts = day.products
-    .map((p) => (p.basket_share === null ? null : add(p.accrued, p.basket_share)))
-    .filter((v): v is string => v !== null);
-  const togetherTotal = togetherAmounts.length > 0 ? sum(togetherAmounts) : '0.00';
+  const togetherOf = (p: CostOfDayProduct): string | null =>
+    p.basket_share === null ? null : add(sub(p.accrued, p.shortfall), p.basket_share);
+  // Only products in the day's split: the rest show «—» and carry no share.
+  const covered = day.products.filter((p) => p.basket_share !== null);
+  const togetherTotal = covered.length > 0 ? sum(covered.map((p) => togetherOf(p)!)) : '0.00';
+  const coveredAccrued = covered.length > 0 ? sum(covered.map((p) => p.accrued)) : '0.00';
+  const totalMatch = cmp(togetherTotal, add(coveredAccrued, day.expenses_amount)) === 0;
 
   return (
     <div className="mt-6">
@@ -86,7 +90,23 @@ export function FinalPrices({ day, locale }: { day: CostOfDay; locale: string })
                 {t('costOfDay.final.was')}
               </TableHead>
               <TableHead scope="col" className="text-right">
-                {t('costOfDay.final.byOurWeight')}
+                <span className="inline-flex items-center gap-1">
+                  {t('costOfDay.final.byOurWeight')}
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        type="button"
+                        aria-label={t('costOfDay.final.byOurWeightHelpLabel')}
+                        className="print-hide text-muted-foreground hover:text-foreground"
+                      >
+                        <Info className="size-3.5" />
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent className="max-w-72 text-left">
+                      {t('costOfDay.final.byOurWeightHelp')}
+                    </TooltipContent>
+                  </Tooltip>
+                </span>
               </TableHead>
             </TableRow>
           </TableHeader>
@@ -101,9 +121,7 @@ export function FinalPrices({ day, locale }: { day: CostOfDay; locale: string })
                   {p.basket_share === null ? '—' : formatUah(p.basket_share, locale)}
                 </TableCell>
                 <TableCell className="text-right font-mono tabular-nums">
-                  {p.basket_share === null
-                    ? '—'
-                    : formatUah(add(p.accrued, p.basket_share), locale)}
+                  {p.basket_share === null ? '—' : formatUah(togetherOf(p)!, locale)}
                 </TableCell>
                 <TableCell className="text-right font-mono font-semibold tabular-nums">
                   {p.price_cost === null ? '—' : formatDecimal(p.price_cost, locale)}
@@ -129,9 +147,9 @@ export function FinalPrices({ day, locale }: { day: CostOfDay; locale: string })
               <TableCell className="text-right font-mono font-semibold tabular-nums">
                 {formatUah(togetherTotal, locale)}
               </TableCell>
-              <TableCell className="text-right text-muted-foreground">—</TableCell>
-              <TableCell className="text-right text-muted-foreground">—</TableCell>
-              <TableCell className="text-right text-muted-foreground">—</TableCell>
+              <TableCell />
+              <TableCell />
+              <TableCell />
             </TableRow>
           </TableBody>
         </Table>
@@ -156,12 +174,16 @@ export function FinalPrices({ day, locale }: { day: CostOfDay; locale: string })
           })}{' '}
           {sharesMatch ? '✓' : '✗'}
         </span>
-        <span className="font-mono text-muted-foreground">
+        <span
+          data-ok={String(totalMatch)}
+          className={cn('font-mono', totalMatch ? 'text-[var(--leaf)]' : 'text-destructive')}
+        >
           {t('costOfDay.final.checkTotal', {
-            total: formatUah(day.total_check, locale),
-            accrued: formatUah(day.accrued, locale),
+            total: formatUah(togetherTotal, locale),
+            accrued: formatUah(coveredAccrued, locale),
             expenses: formatUah(day.expenses_amount, locale),
-          })}
+          })}{' '}
+          {totalMatch ? '✓' : '✗'}
         </span>
       </div>
     </div>
