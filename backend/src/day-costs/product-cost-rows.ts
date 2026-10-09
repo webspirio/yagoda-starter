@@ -22,6 +22,9 @@ export interface ProductCostRow {
    *  `complete`; the latter case is what `reweigh_net_kg === null` exists to
    *  distinguish. */
   shortfall: string;
+  /** The same недостача in kilograms — Σ per-grade missing kg, clamped the
+   *  same way, so it never disagrees with `shortfall`. */
+  shortfall_kg: string;
   /** Σ reweigh net_kg across this product's grades. `null` — not '0.00' —
    *  whenever `complete` is false, which covers both «nothing weighed at
    *  all» and «weighed in one grade but not another» (§8.6: «Це не нуль»,
@@ -87,11 +90,15 @@ export async function productCostRows(
     const price = div(accrued, g.intake_net_kg);
     const reweighNet = g.reweigh_net_kg;
     let shortfall = '0.00';
+    let shortfallKg = '0.00';
     if (reweighNet !== null) {
       const missing = sub(g.intake_net_kg, reweighNet);
       // THE CLAMP — the one place a surplus (missing < 0) is discarded
       // rather than shown, matching `CostOfDayService`.
-      shortfall = gt(missing, '0.00') ? mul(missing, price) : '0.00';
+      if (gt(missing, '0.00')) {
+        shortfallKg = missing;
+        shortfall = mul(missing, price);
+      }
     }
     return {
       product_id: g.product_id,
@@ -100,6 +107,7 @@ export async function productCostRows(
       intake_net_kg: g.intake_net_kg,
       reweigh_net_kg: reweighNet,
       shortfall,
+      shortfallKg,
     };
   });
 
@@ -127,6 +135,7 @@ export async function productCostRows(
       accrued: sum(list.map((g) => g.accrued)),
       intake_net_kg: sum(list.map((g) => g.intake_net_kg)),
       shortfall: complete ? sum(list.map((g) => g.shortfall)) : '0.00',
+      shortfall_kg: complete ? sum(list.map((g) => g.shortfallKg)) : '0.00',
       reweigh_net_kg: complete ? sum(list.map((g) => g.reweigh_net_kg ?? '0.00')) : null,
       complete,
     });
