@@ -41,6 +41,8 @@ export function BerryTable({
   // Σ of the server's own per-product figures — an addition, never a division.
   const intakeTotal = products.length > 0 ? sum(products.map((p) => p.intake_net_kg)) : '0.00';
   const shortfallKgTotal = products.length > 0 ? sum(products.map((p) => p.shortfall_kg)) : '0.00';
+  // Nothing weighed in full: the footer's weighed figures are «—» like every row.
+  const anyWeighed = products.some((p) => p.complete);
   const num = 'text-right font-mono tabular-nums';
   const short = 'bg-[var(--amber)]/8 text-[var(--amber)]';
 
@@ -122,15 +124,15 @@ export function BerryTable({
                 {formatKg(intakeTotal, locale)}
               </TableCell>
               <TableCell className={`${num} font-semibold`}>
-                {formatKg(reweighedKg, locale)}
+                {anyWeighed ? formatKg(reweighedKg, locale) : '—'}
               </TableCell>
               <TableCell className={`${num} ${short} font-semibold`}>
-                {formatKg(shortfallKgTotal, locale)}
+                {anyWeighed ? formatKg(shortfallKgTotal, locale) : '—'}
               </TableCell>
               <TableCell />
               <TableCell className={`${num} font-semibold`}>{formatUah(accrued, locale)}</TableCell>
               <TableCell className={`${num} ${short} font-semibold`}>
-                {formatUah(shortfallAmount, locale)}
+                {anyWeighed ? formatUah(shortfallAmount, locale) : '—'}
               </TableCell>
             </TableRow>
           </TableBody>

@@ -102,6 +102,23 @@ describe('BerryTable', () => {
     expect(within(row).queryByText('0,00 кг')).not.toBeInTheDocument();
   });
 
+  it('prints the footer as dashes too when no product was weighed in full', () => {
+    render(
+      <BerryTable
+        products={[unweighed]}
+        reweighedKg="0.00"
+        accrued="128000.00"
+        shortfallAmount="0.00"
+        locale="uk"
+      />,
+    );
+
+    const total = screen.getByRole('row', { name: /РАЗОМ по пункту/ });
+    expect(within(total).getAllByText('—')).toHaveLength(3);
+    expect(within(total).queryByText('0,00 кг')).not.toBeInTheDocument();
+    expect(within(total).queryByText('0,00 ₴')).not.toBeInTheDocument();
+  });
+
   it('prints a checked zero as 0,00 when the product was weighed and nothing is missing', () => {
     renderTable([{ ...weighed, shortfall: '0.00', shortfall_kg: '0.00' }]);
 
