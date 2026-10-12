@@ -317,7 +317,12 @@ export function ReceptionPage() {
     // #72 — a malformed «Видано готівкою» is never sent (`toCreateBody`), so
     // going ahead would record the receipt WITHOUT the payout the operator
     // typed. The field already names the refusal; the submit agrees with it.
-    if (paidShown.trim() !== '' && parseDecimal(paidShown) === null) return;
+    // Enter submits WITHOUT moving focus, and the field holds its message back
+    // while focused — so leave the field first, or the refusal is silent.
+    if (paidShown.trim() !== '' && parseDecimal(paidShown) === null) {
+      document.getElementById('paid_amount')?.blur();
+      return;
+    }
     if (parseCount(formValues.returned_crates) > 0) setPendingSubmit(formValues);
     else void submitIntake(formValues);
   };

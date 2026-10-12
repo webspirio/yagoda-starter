@@ -115,7 +115,7 @@ describe('apiErrorToFields', () => {
       1,
     );
     expect(out.fieldErrors).toEqual([
-      { field: 'items.0.tare.1.units', messageKey: 'reception.errors.decimalFormat' },
+      { field: 'items.0.tare.1.units', messageKey: 'crates.errors.unitsFormat' },
     ]);
   });
 

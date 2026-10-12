@@ -9,8 +9,10 @@ export interface DecimalInputProps extends Omit<TextInputProps, 'type' | 'inputM
 
 /**
  * The ONE money/weight field (#72). The mask runs on every change, typed or
- * pasted, so the field never holds a space, a letter or a second separator —
- * what the operator sees is exactly what gets saved. It writes the masked text
+ * pasted, so the field never holds a space or a letter — and it never drops a
+ * digit or a separator either: a value that does not fit (`12.000.00`, a 9th
+ * digit) stays visible for the form to refuse. What the operator sees is
+ * exactly what gets saved, or exactly what gets refused. It writes the masked text
  * back only when it differs, so ordinary keystrokes keep the caret, then hands
  * the event on, so it works with RHF `register` and with a controlled `value`
  * alike. Validation is the form's: `decimalRules()` or `parseDecimal`.

@@ -17,8 +17,8 @@ import { Button } from '@/shared/ui/button';
 import { toast } from '@/shared/ui/toast';
 import { apiErrorToBanner } from '@/shared/lib/api-error';
 import {
-  DECIMAL_INPUT,
   normalizeAmount,
+  parseDecimal,
   cmp,
   sub,
   formatUah,
@@ -84,8 +84,9 @@ export function SetTargetCashDialog({
   // The whole preview below is a RENDER-TIME derivation from this watched
   // value — no `useEffect`, so there is nothing to keep in sync by hand.
   const typedTarget = useWatch({ control, name: 'target_cash' });
-  const normalizedTarget = normalizeAmount(typedTarget);
-  const isTypedValid = DECIMAL_INPUT.test(normalizedTarget);
+  const parsedTarget = parseDecimal(typedTarget);
+  const isTypedValid = parsedTarget !== null;
+  const normalizedTarget = parsedTarget ?? '0.00';
   const currentCash = pointCash.data?.cash;
 
   // Fails open by design while the point's cash figure hasn't loaded yet (or

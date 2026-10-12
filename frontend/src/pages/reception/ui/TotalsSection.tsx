@@ -9,11 +9,9 @@ import { cn } from '@/shared/lib/cn';
 import {
   clampDecimal,
   cmp,
-  DECIMAL_INPUT,
   floorToHundreds,
   formatKg,
   formatUah,
-  normalizeAmount,
   parseDecimal,
   sub,
 } from '@/shared/lib/money';
@@ -86,9 +84,9 @@ export function TotalsSection({
   // The cash-capped total — same helper the page uses for the default, so
   // the cap here and the suggestion there can never drift apart.
   const cap = total === null ? null : suggestedPaid(accrued, debt, cash);
-  const paidNormalized = normalizeAmount(paid);
-  const paidValid = DECIMAL_INPUT.test(paidNormalized);
-  const paidValue = paidValid ? paidNormalized : '0.00';
+  const paidParsed = parseDecimal(paid);
+  const paidValid = paidParsed !== null;
+  const paidValue = paidParsed ?? '0.00';
   const remainder = total === null ? null : sub(total, paidValue);
   const owed = remainder !== null && cmp(remainder, '0') === 1;
   const overCap = cap !== null && paidValid && cmp(paidValue, cap) === 1;
@@ -197,8 +195,8 @@ export function TotalsSection({
                       // I5: canonicalise BEFORE validity — a trailing
                       // separator («1200,») is not yet a well-formed decimal,
                       // but it IS one with that one character stripped.
-                      const stripped = normalizeAmount(paid).replace(/\.$/, '');
-                      if (!DECIMAL_INPUT.test(stripped)) return; // leave the text as typed
+                      const stripped = parseDecimal(paid.replace(/[.,]$/, ''));
+                      if (stripped === null) return; // leave the text as typed
                       const canonical = clampDecimal(stripped, '0.00', cap);
                       // I4: idempotent — tabbing through an already-canonical
                       // value must not latch `paidTouched` on the caller's

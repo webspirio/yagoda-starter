@@ -13,7 +13,7 @@ import { Field } from '@/shared/ui/field';
 import { DecimalInput } from '@/shared/ui/decimal-input';
 import { Button } from '@/shared/ui/button';
 import { toast } from '@/shared/ui/toast';
-import { cmp, formatUah, DECIMAL_INPUT, normalizeAmount, decimalRules } from '@/shared/lib/money';
+import { cmp, formatUah, normalizeAmount, parseDecimal, decimalRules } from '@/shared/lib/money';
 import type { Payout } from '@/entities/payout';
 import { useCreatePayoutMutation } from '../api/useCreatePayout';
 import { apiErrorToFields } from '../lib/apiErrorToFields';
@@ -82,8 +82,11 @@ export function PayoutDialog({
   const [formError, setFormError] = useState<string | null>(null);
   const name = `${supplier.first_name} ${supplier.last_name}`;
 
-  const watchedAmount = normalizeAmount(useWatch({ control, name: 'amount' }));
-  const submitAmount = DECIMAL_INPUT.test(watchedAmount) ? watchedAmount : (defaultAmount ?? debt);
+  // The button names the typed sum, or the default while the field is empty —
+  // never the full balance under a value the form is about to refuse.
+  const typedAmount = useWatch({ control, name: 'amount' });
+  const submitAmount =
+    typedAmount.trim() === '' ? (defaultAmount ?? debt) : parseDecimal(typedAmount);
 
   const setAll = () => {
     setValue('amount', debt);
@@ -166,7 +169,9 @@ export function PayoutDialog({
               {t('common.cancel')}
             </Button>
             <Button type="submit" disabled={isSubmitting}>
-              {t('payout.submit', { uah: formatUah(submitAmount, locale) })}
+              {submitAmount === null
+                ? t('payout.submitPlain')
+                : t('payout.submit', { uah: formatUah(submitAmount, locale) })}
             </Button>
           </DialogFooter>
         </form>

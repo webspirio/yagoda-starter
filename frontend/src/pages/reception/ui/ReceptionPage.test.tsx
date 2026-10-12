@@ -1233,6 +1233,21 @@ describe('ReceptionPage — «Видано готівкою» rides along with �
     expect(await screen.findByText('Enter a number, e.g. 12000 or 980.40')).toBeInTheDocument();
   });
 
+  it('Enter inside a malformed «Видано готівкою» is refused OUT LOUD, not silently (#72 review)', async () => {
+    const user = userEvent.setup();
+    renderReception();
+
+    await user.click(screen.getByRole('button', { name: 'pick-nina' }));
+    await fillDraft(user);
+
+    const paidInput = screen.getByLabelText('Paid in cash');
+    await user.clear(paidInput);
+    await user.type(paidInput, '1.2.3{Enter}');
+
+    expect(await screen.findByText('Enter a number, e.g. 12000 or 980.40')).toBeInTheDocument();
+    expect(createMock).not.toHaveBeenCalled();
+  });
+
   it('a malformed «Видано готівкою» stops «Прийняти» instead of recording the receipt without the payout (#72)', async () => {
     const user = userEvent.setup();
     renderReception();

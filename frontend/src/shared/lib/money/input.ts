@@ -65,7 +65,7 @@ export function maskDecimalInput(
 /** `value` clamped into [min, max]; a malformed value is returned unchanged. */
 export function clampDecimal(value: string, min: string, max: string): string {
   const normalized = normalizeAmount(value);
-  if (!/^-?\d{1,10}(\.\d{1,2})?$/.test(normalized)) return value;
+  if (parseDecimal(normalized, { allowNegative: true }) === null) return value;
   // Re-canonicalise through add(x, '0') so '5' becomes '5.00' like the server would store it.
   const canonical = add(normalized, '0');
   if (cmp(canonical, min) === -1) return add(min, '0');

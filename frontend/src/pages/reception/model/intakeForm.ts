@@ -1,4 +1,4 @@
-import { cmp, DECIMAL_INPUT, normalizeAmount } from '@/shared/lib/money';
+import { cmp, normalizeAmount, parseDecimal } from '@/shared/lib/money';
 
 /** One tare row on the draft line, while the operator is still typing.
  *  `units` is a STRING here (an editable input value) — parsed to an integer
@@ -142,14 +142,14 @@ export function toPreviewBody(values: IntakeFormValues, pointId: string | null):
 /**
  * What `POST /intakes` sends — the same body a preview asks about, plus
  * `paid_amount` when the operator's typed figure is a genuine positive
- * amount. `DECIMAL_INPUT` is the same shape the server's own `@Matches`
+ * amount. `parseDecimal` is the same shape the server's own `@Matches`
  * enforces; a malformed or non-positive value is simply never sent — the
  * server's own reading of "absent" already means "no payout" (§2.1 ⑥, §3.1).
  */
 export function toCreateBody(values: IntakeFormValues, pointId: string | null): CreateIntakeBody {
   const body: CreateIntakeBody = toPreviewBody(values, pointId);
-  const paid = normalizeAmount(values.paid_amount);
-  if (DECIMAL_INPUT.test(paid) && cmp(paid, '0') === 1) body.paid_amount = paid;
+  const paid = parseDecimal(values.paid_amount);
+  if (paid !== null && cmp(paid, '0') === 1) body.paid_amount = paid;
   // A crate COUNT, not money. Empty or 0 is "nothing came back", which the
   // server reads the same as an absent key — so the key rides only when > 0.
   const returned = parseCount(values.returned_crates);

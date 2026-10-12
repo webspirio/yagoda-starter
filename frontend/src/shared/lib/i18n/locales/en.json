@@ -821,6 +821,7 @@
     },
     "allButton": "All — {{uah}}",
     "submit": "Pay out {{uah}}",
+    "submitPlain": "Pay out",
     "toast": {
       "paid": "Paid out {{uah}}"
     },
@@ -1045,7 +1046,6 @@
     "errors": {
       "failed": "Couldn't record the receipt. Try again, and if it happens again, tell the network owner.",
       "lineRefused": "The server refused one of the lines — check the rows in the table",
-      "decimalFormat": "Enter a weight like 126.40",
       "gradeNotPriced": "This grade has no price for today — set it in Day prices",
       "tareRequired": "Add the tare — without it the whole gross weight would count as net",
       "tareTypeDuplicated": "The same tare type twice — merge the rows",
