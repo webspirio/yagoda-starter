@@ -1024,7 +1024,7 @@ describe('ReceptionPage — a refusal from the server', () => {
         preview: PREVIEW,
         error: {
           fieldErrors: [
-            { field: 'items.0.gross_kg', messageKey: 'reception.errors.decimalFormat' },
+            { field: 'items.0.gross_kg', messageKey: 'errors.decimalFormat' },
           ],
           formErrorKey: null,
         },
@@ -1039,7 +1039,7 @@ describe('ReceptionPage — a refusal from the server', () => {
     const gross = screen.getByLabelText('Gross — berries including tare');
     expect(gross).toHaveAttribute('aria-invalid', 'true');
     expect(gross.getAttribute('aria-describedby')).toContain('items.0.gross_kg-error');
-    expect(screen.getByText('Enter a weight like 126.40')).toBeInTheDocument();
+    expect(screen.getByText('Enter a number, e.g. 12000 or 980.40')).toBeInTheDocument();
 
     // A refused line is neither submittable nor committable — the last good
     // preview is still on screen, and it is not an answer to THIS form.
@@ -1055,7 +1055,7 @@ describe('ReceptionPage — a refusal from the server', () => {
         preview: PREVIEW,
         error: {
           fieldErrors: [
-            { field: 'items.0.pallet_kg', messageKey: 'reception.errors.decimalFormat' },
+            { field: 'items.0.pallet_kg', messageKey: 'errors.decimalFormat' },
           ],
           formErrorKey: null,
         },
@@ -1068,7 +1068,7 @@ describe('ReceptionPage — a refusal from the server', () => {
     const pallet = screen.getByLabelText('Pallet');
     expect(pallet).toHaveAttribute('aria-invalid', 'true');
     expect(pallet.getAttribute('aria-describedby')).toContain('items.0.pallet_kg-error');
-    expect(screen.getByText('Enter a weight like 126.40')).toBeInTheDocument();
+    expect(screen.getByText('Enter a number, e.g. 12000 or 980.40')).toBeInTheDocument();
   });
 
   it('says so out loud when the refused field is on a line the editor no longer shows', async () => {
@@ -1088,7 +1088,7 @@ describe('ReceptionPage — a refusal from the server', () => {
         preview: PREVIEW,
         error: {
           fieldErrors: [
-            { field: 'items.0.gross_kg', messageKey: 'reception.errors.decimalFormat' },
+            { field: 'items.0.gross_kg', messageKey: 'errors.decimalFormat' },
           ],
           formErrorKey: null,
         },
@@ -1321,6 +1321,11 @@ describe('ReceptionPage — line editor ergonomics (#117)', () => {
     await user.type(gross, '12a,3x45');
     expect(gross).toHaveValue('12.34');
 
+    // #72 — the field never holds a space: «1 200,5» lands as «1200.5».
+    await user.clear(gross);
+    await user.type(gross, '1 200,5');
+    expect(gross).toHaveValue('1200.5');
+
     // §2.10 / ticket #117 — a bound is a limit, never a number shown to the
     // operator, whichever grade is selected.
     expect(screen.queryByText(/limits:/i)).not.toBeInTheDocument();
@@ -1344,6 +1349,15 @@ describe('ReceptionPage — line editor ergonomics (#117)', () => {
 
     await user.click(screen.getByRole('button', { name: 'Extra price up' }));
     expect(bonus).toHaveValue('3.00');
+  });
+
+  it('keeps the surcharge minus sign through the shared field (#72)', async () => {
+    const user = userEvent.setup();
+    renderReception();
+    const bonus = screen.getByLabelText('Extra price — for this line, ₴/kg');
+    await user.clear(bonus);
+    await user.type(bonus, '-2');
+    expect(bonus).toHaveValue('-2');
   });
 
   it('reveals the pallet field on its own at twenty crates', async () => {

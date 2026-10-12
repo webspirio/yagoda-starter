@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { Button } from '@/shared/ui/button';
 import { Eyebrow } from '@/shared/ui/eyebrow';
 import { Field } from '@/shared/ui/field';
-import { TextInput } from '@/shared/ui/text-input';
+import { DecimalInput } from '@/shared/ui/decimal-input';
 import { cn } from '@/shared/lib/cn';
 import {
   clampDecimal,
@@ -12,8 +12,8 @@ import {
   floorToHundreds,
   formatKg,
   formatUah,
-  maskDecimalInput,
   normalizeAmount,
+  parseDecimal,
   sub,
 } from '@/shared/lib/money';
 import { suggestedPaid, totalToPay } from '../lib/suggestedPaid';
@@ -99,6 +99,11 @@ export function TotalsSection({
   // total; once the drawer is what actually limits the payout, the clamp note
   // has to say so instead (M2).
   const overCapKey = limitedByCash ? 'reception.totals.overCash' : 'reception.totals.overCap';
+  // #72 — «Видано готівкою» is never sent while unparsable (`toCreateBody`),
+  // so the server can never say so; the field says it itself, with the one
+  // shared message. Empty is not an error here: it means «nothing paid out».
+  const formatError =
+    paid.trim() !== '' && parseDecimal(paid) === null ? 'errors.decimalFormat' : undefined;
   const settle = (v: string) => onPaidChange(v);
   // The unavailable-drawer note takes the Field hint slot over the over-cap
   // one — a failed read is the more important thing to say, and `overCap`
@@ -166,7 +171,7 @@ export function TotalsSection({
           <Field
             name="paid_amount"
             label={t('reception.totals.paid')}
-            error={paidError ?? undefined}
+            error={paidError ?? formatError}
             hint={fieldHint}
             hintTone={overCap && !cashUnavailable ? 'warning' : undefined}
             className="mt-2"
@@ -174,12 +179,11 @@ export function TotalsSection({
             {(a11y) => (
               <>
                 <div className="relative">
-                  <TextInput
+                  <DecimalInput
                     {...a11y}
-                    inputMode="decimal"
                     className="h-12 pr-9 font-mono text-xl font-semibold"
                     value={paid}
-                    onChange={(e) => onPaidChange(maskDecimalInput(e.target.value))}
+                    onChange={(e) => onPaidChange(e.target.value)}
                     onBlur={() => {
                       if (cap === null) return;
                       // I5: canonicalise BEFORE validity — a trailing

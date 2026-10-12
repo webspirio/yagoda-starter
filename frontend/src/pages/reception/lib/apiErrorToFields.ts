@@ -82,14 +82,18 @@ const PAID_FIELD: Readonly<Record<string, string>> = {
  * class-validator emits `"<property> <complaint>"` for `CreateIntakeDto`'s
  * nested items — `items.0.gross_kg must be …`, `items.0.tare.1.units must
  * not be less than 1`. The PROPERTY (first token) IS the RHF field path
- * already, so no re-mapping is needed beyond taking it verbatim; every such
- * detail maps to the same `decimalFormat` key regardless of which nested
- * field it names (the class-validator complaint text is not stable enough to
- * branch on, and this slice has no other per-property message to show). A
+ * already, so no re-mapping is needed beyond taking it verbatim. A detail on
+ * one of the four money/weight fields (`gross_kg`, `pallet_kg`, `bonus`,
+ * `paid_amount`) maps to the one shared `errors.decimalFormat` key (#72); any
+ * other placed field (tare units — an integer, out of #72's scope) keeps the
+ * slice's own `reception.errors.decimalFormat`, as before. A
  * detail naming anything outside `items.*` (e.g. a picked `supplier_id`) is
  * never something the operator typed here, so it is unplaceable and falls to
  * the form-level banner instead of a phantom field error.
  */
+/** The money/weight fields #72's shared message covers — not tare units. */
+const DECIMAL_FIELD = /^paid_amount$|\.(gross_kg|pallet_kg|bonus)$/;
+
 function fieldFromDetail(detail: string): string | null {
   const prop = detail.split(' ')[0];
   if (prop === 'paid_amount') return prop;
@@ -137,8 +141,7 @@ export function apiErrorToFields(error: unknown, lineCount: number): ApiFieldErr
     if (field) {
       fieldErrors.push({
         field,
-        messageKey:
-          field === 'paid_amount' ? 'reception.errors.paidFormat' : 'reception.errors.decimalFormat',
+        messageKey: DECIMAL_FIELD.test(field) ? 'errors.decimalFormat' : 'reception.errors.decimalFormat',
       });
     } else unattributed = true;
   }

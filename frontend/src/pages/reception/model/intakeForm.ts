@@ -102,11 +102,12 @@ export interface IntakePreview {
   items: IntakePreviewItem[];
 }
 
-/** Trims and swaps a comma for a dot — the only coercion applied to a typed
- *  decimal before it crosses the wire. The server is the sole authority on
- *  format (`@Matches`), so this never re-validates the result. */
+/** Drops every whitespace char (a stray NBSP included) and swaps a comma for a
+ *  dot — the only coercion applied to a typed decimal before it crosses the
+ *  wire. The server is the sole authority on format (`@Matches`), so this
+ *  never re-validates the result. */
 function normalizeDecimal(value: string): string {
-  return value.trim().replace(',', '.');
+  return normalizeAmount(value);
 }
 
 /**

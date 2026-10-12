@@ -101,7 +101,7 @@ describe('apiErrorToFields', () => {
       1,
     );
     expect(out.fieldErrors).toEqual([
-      { field: 'items.0.gross_kg', messageKey: 'reception.errors.decimalFormat' },
+      { field: 'items.0.gross_kg', messageKey: 'errors.decimalFormat' },
     ]);
     expect(out.formErrorKey).toBeNull();
   });
@@ -131,7 +131,7 @@ describe('apiErrorToFields', () => {
       1,
     );
     expect(out.fieldErrors).toEqual([
-      { field: 'items.0.gross_kg', messageKey: 'reception.errors.decimalFormat' },
+      { field: 'items.0.gross_kg', messageKey: 'errors.decimalFormat' },
     ]);
     expect(out.formErrorKey).toBe('reception.errors.failed');
   });
@@ -186,7 +186,7 @@ describe('apiErrorToFields', () => {
     expect(out.formErrorKey).toBeNull();
   });
 
-  it('maps a class-validator detail on paid_amount to paidFormat, not decimalFormat', () => {
+  it('maps a class-validator detail on paid_amount to the shared decimalFormat (#72)', () => {
     const out = apiErrorToFields(
       apiError({
         status: 400,
@@ -195,7 +195,7 @@ describe('apiErrorToFields', () => {
       1,
     );
     expect(out.fieldErrors).toEqual([
-      { field: 'paid_amount', messageKey: 'reception.errors.paidFormat' },
+      { field: 'paid_amount', messageKey: 'errors.decimalFormat' },
     ]);
     expect(out.formErrorKey).toBeNull();
   });

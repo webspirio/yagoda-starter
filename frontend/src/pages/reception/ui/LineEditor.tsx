@@ -12,6 +12,7 @@ import { Button } from '@/shared/ui/button';
 import { Eyebrow } from '@/shared/ui/eyebrow';
 import { Field } from '@/shared/ui/field';
 import { SelectField } from '@/shared/ui/select-field';
+import { DecimalInput } from '@/shared/ui/decimal-input';
 import { TextInput } from '@/shared/ui/text-input';
 import { cn } from '@/shared/lib/cn';
 import {
@@ -22,7 +23,6 @@ import {
   formatDecimal,
   formatKg,
   formatUah,
-  maskDecimalInput,
   mul,
   sub,
 } from '@/shared/lib/money';
@@ -194,18 +194,14 @@ export function LineEditor({
           >
             {(a11y) => (
               <div className="relative">
-                <TextInput
+                <DecimalInput
                   {...a11y}
                   value={gross}
                   onChange={(e) =>
-                    setValue(`items.${index}.gross_kg`, maskDecimalInput(e.target.value), {
-                      shouldDirty: true,
-                    })
+                    setValue(`items.${index}.gross_kg`, e.target.value, { shouldDirty: true })
                   }
                   disabled={disabled}
-                  inputMode="decimal"
                   placeholder="0,00"
-                  autoComplete="off"
                   className="h-14 pr-12 font-mono text-2xl font-semibold"
                 />
                 <span className="pointer-events-none absolute top-1/2 right-3.5 -translate-y-1/2 font-mono text-sm text-muted-foreground">
@@ -223,17 +219,13 @@ export function LineEditor({
               className="w-[124px]"
             >
               {(a11y) => (
-                <TextInput
+                <DecimalInput
                   {...a11y}
                   value={pallet}
                   onChange={(e) =>
-                    setValue(`items.${index}.pallet_kg`, maskDecimalInput(e.target.value), {
-                      shouldDirty: true,
-                    })
+                    setValue(`items.${index}.pallet_kg`, e.target.value, { shouldDirty: true })
                   }
                   disabled={disabled}
-                  inputMode="decimal"
-                  autoComplete="off"
                   className="h-14 font-mono"
                 />
               )}
@@ -459,16 +451,13 @@ export function LineEditor({
                 >
                   <Minus className="size-3.5" />
                 </Button>
-                <TextInput
+                <DecimalInput
                   {...a11y}
                   variant="ghost"
+                  allowNegative
                   value={bonus}
                   onChange={(e) =>
-                    setValue(
-                      `items.${index}.bonus`,
-                      maskDecimalInput(e.target.value, { allowNegative: true }),
-                      { shouldDirty: true },
-                    )
+                    setValue(`items.${index}.bonus`, e.target.value, { shouldDirty: true })
                   }
                   onBlur={() => {
                     if (!grade || bonusFloor === null) return;
@@ -480,8 +469,6 @@ export function LineEditor({
                       },
                     );
                   }}
-                  inputMode="decimal"
-                  autoComplete="off"
                   disabled={disabled}
                   className="w-16 text-center font-mono font-semibold"
                 />
