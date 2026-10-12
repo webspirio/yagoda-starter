@@ -1250,6 +1250,23 @@ describe('ReceptionPage — «Видано готівкою» rides along with �
     expect(paidInput).toHaveFocus();
   });
 
+  it('the refusal goes with the value it refused — re-picking the supplier clears it (#72 review)', async () => {
+    const user = userEvent.setup();
+    renderReception();
+
+    await user.click(screen.getByRole('button', { name: 'pick-nina' }));
+    await fillDraft(user);
+    const paidInput = screen.getByLabelText('Paid in cash');
+    await user.clear(paidInput);
+    await user.type(paidInput, '1.2.3{Enter}');
+    expect(await screen.findByText('Enter a number, e.g. 12000 or 980.40')).toBeInTheDocument();
+
+    // Re-picking the supplier hands «Видано готівкою» back to the suggestion.
+    await user.click(screen.getByRole('button', { name: 'pick-nina' }));
+    expect(paidInput).not.toHaveValue('1.2.3');
+    expect(screen.queryByText('Enter a number, e.g. 12000 or 980.40')).not.toBeInTheDocument();
+  });
+
   it('a malformed «Видано готівкою» stops «Прийняти» instead of recording the receipt without the payout (#72)', async () => {
     const user = userEvent.setup();
     renderReception();

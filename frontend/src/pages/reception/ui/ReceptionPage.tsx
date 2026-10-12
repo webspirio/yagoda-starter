@@ -130,9 +130,11 @@ export function ReceptionPage() {
   // types in it themselves (`suggestedPaid`, below) — this is the only thing
   // that switches it over to what RHF actually holds.
   const [paidTouched, setPaidTouched] = useState(false);
-  // #72 — set when «Прийняти» refuses a malformed «Видано готівкою»; cleared
-  // by the next edit of that field.
-  const [paidRefused, setPaidRefused] = useState(false);
+  // #72 — the «Видано готівкою» text «Прийняти» last refused. The refusal is
+  // shown only while the field still holds exactly that text, so it cannot
+  // outlive it: an edit, a re-picked supplier or the post-save reset all
+  // change `paidShown`, and the message goes with it.
+  const [paidRefused, setPaidRefused] = useState<string | null>(null);
   // Bumped on every supplier pick — even a re-pick of the same row, which
   // `reset()` above may have just emptied — so «З них наших ящиків» remounts
   // and pre-fills afresh.
@@ -247,7 +249,6 @@ export function ReceptionPage() {
   const paidShown = paidTouched ? values.paid_amount : suggested;
   const onPaidChange = (v: string) => {
     setPaidTouched(true);
-    setPaidRefused(false);
     setValue('paid_amount', v, { shouldDirty: true });
   };
 
@@ -326,7 +327,7 @@ export function ReceptionPage() {
     // which shows regardless of focus, and the caret stays where the operator
     // left it (Enter is how they move on the scale's numeric pad).
     if (paidShown.trim() !== '' && parseDecimal(paidShown) === null) {
-      setPaidRefused(true);
+      setPaidRefused(paidShown);
       return;
     }
     if (parseCount(formValues.returned_crates) > 0) setPendingSubmit(formValues);
@@ -539,7 +540,10 @@ export function ReceptionPage() {
                 cashUnavailable={pointCash.isError}
                 paid={paidShown}
                 onPaidChange={onPaidChange}
-                paidError={errorAt('paid_amount') ?? (paidRefused ? 'errors.decimalFormat' : null)}
+                paidError={
+                  errorAt('paid_amount') ??
+                  (paidRefused !== null && paidShown === paidRefused ? 'errors.decimalFormat' : null)
+                }
                 disabled={!canSubmit}
                 isPreviewing={isPreviewing}
                 isSubmitting={create.isPending}

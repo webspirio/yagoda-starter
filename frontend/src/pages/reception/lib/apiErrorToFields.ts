@@ -83,6 +83,13 @@ const DECIMAL_FIELD = /^paid_amount$|\.(gross_kg|pallet_kg|bonus)$/;
 /** A tare row's crate count — a whole number, so the crates screens' message. */
 const UNITS_FIELD = /\.tare\.\d+\.units$/;
 
+/** The per-field message for a placed property, or `null` → the form banner. */
+function fieldMessageKey(field: string): string | null {
+  if (DECIMAL_FIELD.test(field)) return 'errors.decimalFormat';
+  if (UNITS_FIELD.test(field)) return 'crates.errors.unitsFormat';
+  return null;
+}
+
 /**
  * class-validator emits `"<property> <complaint>"` for `CreateIntakeDto`'s
  * nested items — `items.0.gross_kg must be …`, `items.0.tare.1.units must
@@ -141,14 +148,7 @@ export function apiErrorToFields(error: unknown, lineCount: number): ApiFieldErr
   let unattributed = false;
   for (const detail of error.details ?? []) {
     const field = fieldFromDetail(detail);
-    const messageKey =
-      field === null
-        ? null
-        : DECIMAL_FIELD.test(field)
-          ? 'errors.decimalFormat'
-          : UNITS_FIELD.test(field)
-            ? 'crates.errors.unitsFormat'
-            : null;
+    const messageKey = field === null ? null : fieldMessageKey(field);
     if (field !== null && messageKey !== null) fieldErrors.push({ field, messageKey });
     else unattributed = true;
   }
