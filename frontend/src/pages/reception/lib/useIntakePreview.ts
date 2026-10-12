@@ -67,17 +67,14 @@ function priceRows(
   answeredBody: string | null,
   preview: IntakePreview | null,
 ): (IntakePreviewItem | null)[] {
-  const answered = answeredBody ? (JSON.parse(answeredBody) as PreviewIntakeBody) : null;
-  const sameTarget =
-    answered !== null &&
-    answered.supplier_id === current.supplier_id &&
-    answered.collection_point_id === current.collection_point_id;
-  if (!preview || !sameTarget) return current.items.map(() => null);
-  const priced = answered.items.map((line) => JSON.stringify(line));
-  return current.items.map((line) => {
-    const at = priced.indexOf(JSON.stringify(line));
-    return at === -1 ? null : (preview.items[at] ?? null);
-  });
+  const answered = preview && answeredBody ? (JSON.parse(answeredBody) as PreviewIntakeBody) : null;
+  const priced =
+    answered?.supplier_id === current.supplier_id &&
+    answered.collection_point_id === current.collection_point_id
+      ? answered.items.map((line) => JSON.stringify(line))
+      : [];
+  // A miss reads index -1, which is `undefined` → `null`, the same as «not priced yet».
+  return current.items.map((line) => preview?.items[priced.indexOf(JSON.stringify(line))] ?? null);
 }
 
 /**
@@ -192,6 +189,6 @@ export function useIntakePreview(
     // already moved and the request has not yet been sent.
     isSettled:
       active && preview !== null && !isPending && error === null && answeredBody === serializedBody,
-    rowItems: enabled ? priceRows(body, answeredBody, preview) : body.items.map(() => null),
+    rowItems: priceRows(body, enabled ? answeredBody : null, preview),
   };
 }
