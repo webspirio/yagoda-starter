@@ -220,6 +220,53 @@ describe('ExpensesPanel', () => {
     expect(updateMock).not.toHaveBeenCalled();
   });
 
+  it('names the shared format message under a half-typed amount and keeps add disabled (#72)', async () => {
+    const user = userEvent.setup();
+    renderPanel();
+
+    await user.type(screen.getByLabelText('Підпис витрати'), 'водій');
+    await user.type(screen.getByLabelText('₴'), '12.');
+
+    expect(screen.getByRole('alert')).toHaveTextContent('Введіть число, напр. 12000 або 980,40');
+    expect(screen.getByLabelText('₴')).toHaveAttribute('aria-invalid', 'true');
+    expect(screen.getByRole('button', { name: 'Додати' })).toBeDisabled();
+  });
+
+  it('names the shared format message in the inline editor too (#72)', async () => {
+    const user = userEvent.setup();
+    renderPanel();
+
+    await user.click(screen.getByRole('button', { name: 'Змінити «пальне»' }));
+    const amount = screen.getByDisplayValue('1000.00');
+    await user.clear(amount);
+    await user.type(amount, '13.');
+
+    expect(screen.getByRole('alert')).toHaveTextContent('Введіть число, напр. 12000 або 980,40');
+  });
+
+  it('shows no format message on an empty or a well-formed amount (#72)', async () => {
+    const user = userEvent.setup();
+    renderPanel();
+
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    await user.type(screen.getByLabelText('₴'), '12.5');
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('never holds a space: «1 500» is added as 1500 (#72)', async () => {
+    const user = userEvent.setup();
+    renderPanel();
+
+    await user.type(screen.getByLabelText('Підпис витрати'), 'водій');
+    await user.type(screen.getByLabelText('₴'), '1 500');
+    expect(screen.getByLabelText('₴')).toHaveValue('1500');
+    await user.click(screen.getByRole('button', { name: 'Додати' }));
+
+    await waitFor(() =>
+      expect(createMock).toHaveBeenCalledWith({ shiftId: 's1', label: 'водій', amount: '1500' }),
+    );
+  });
+
   it('removes a line', async () => {
     const user = userEvent.setup();
     renderPanel();

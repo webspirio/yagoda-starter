@@ -142,6 +142,40 @@ describe('WeighingForm', () => {
     expect(onAdd.mock.calls[0][0].tare).toEqual([]);
   });
 
+  it('names the shared format message under a half-typed gross and blocks the add (#72)', async () => {
+    render(<WeighingForm {...base} />);
+    await userEvent.selectOptions(screen.getByLabelText(/grade|сорт/i), 'g1');
+    await userEvent.type(screen.getByLabelText(/gross|вага з ягодою/i), '12.');
+
+    const gross = screen.getByLabelText(/gross|вага з ягодою/i);
+    expect(gross).toHaveAttribute('aria-invalid', 'true');
+    expect(screen.getAllByText('Enter a number, e.g. 12000 or 980.40').length).toBeGreaterThan(0);
+    expect(screen.getByRole('button', { name: /add position|додати позицію/i })).toBeDisabled();
+  });
+
+  it('blocks the add on a half-typed pallet under a good gross (#72)', async () => {
+    render(<WeighingForm {...base} />);
+    await userEvent.selectOptions(screen.getByLabelText(/grade|сорт/i), 'g1');
+    await userEvent.type(screen.getByLabelText(/gross|вага з ягодою/i), '120');
+    await userEvent.type(screen.getByLabelText(/pallet|піддон/i), '2.');
+
+    expect(screen.getByLabelText(/pallet|піддон/i)).toHaveAttribute('aria-invalid', 'true');
+    expect(screen.getByRole('button', { name: /add position|додати позицію/i })).toBeDisabled();
+  });
+
+  it('never holds a space: «1 200,5» is weighed as 1200.50 (#72)', async () => {
+    const onAdd = vi.fn();
+    render(<WeighingForm {...base} onAdd={onAdd} />);
+    await userEvent.type(screen.getByLabelText(/gross|вага з ягодою/i), '1 200,5');
+
+    expect(screen.getByLabelText(/gross|вага з ягодою/i)).toHaveValue('1200.5');
+    expect(screen.getByTestId('net-kg')).toHaveTextContent(/1.?200\.50/);
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    await userEvent.selectOptions(screen.getByLabelText(/grade|сорт/i), 'g1');
+    await userEvent.click(screen.getByRole('button', { name: /add position|додати позицію/i }));
+    expect(onAdd).toHaveBeenCalledWith(expect.objectContaining({ gross_kg: '1200.5' }));
+  });
+
   /**
    * `uk` is this app's DEFAULT locale (`test-setup.ts` only switches to `en`
    * for the suite's own assertions) — every other number on this screen
