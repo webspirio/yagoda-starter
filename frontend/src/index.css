@@ -290,6 +290,19 @@
     border: none !important;
     --tw-ring-shadow: 0 0 #0000 !important;
   }
+  /* The receipt prints from inside a dialog, which is centred with `translate`,
+     height-capped and scrolled — so the absolute .printable was clipped to the
+     dialog's header. On paper the dialog is the top of the page, centred across it. */
+  [data-slot='dialog-content']:has(.printable) {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    margin-inline: auto;
+    translate: none;
+    max-height: none;
+    overflow: visible;
+  }
   .print-only {
     display: block !important;
   }

@@ -86,6 +86,9 @@ const CODE: Readonly<Record<string, string>> = {
   COUNT_NOT_EXPLAINABLE: 'operatorNote.errors.notExplainable',
   OWNER_ALREADY_EXPLAINED: 'operatorNote.errors.ownerExplained',
   NO_DISCREPANCY: 'operatorNote.errors.noDiscrepancy',
+  // Network settings — the note does not fit the receipt's ruled lines. The
+  // editor wraps as the owner types, so this is reachable only past the UI.
+  RECEIPT_NOTE_TOO_LONG: 'settings.errors.noteTooLong',
   // Cross-cutting (#52): the two 403s that carry a code — a role or a point
   // changed while the page was open — and an owner write that named no point.
   // `POINT_REQUIRED` is absent: only GET /crate-standing throws it, and no

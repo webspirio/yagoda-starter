@@ -49,4 +49,6 @@ export const queryKeys = {
   costOfDay: ['cost-of-day'] as const,
   /** §8.3's витрати дня — prefix; a read appends the shift. */
   dayExpenses: ['day-expenses'] as const,
+  /** The network's one settings row (`/network-settings`); a save seeds it from the response. */
+  networkSettings: ['network-settings'] as const,
 };

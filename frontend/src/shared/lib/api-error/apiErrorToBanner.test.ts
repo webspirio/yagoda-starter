@@ -8,6 +8,12 @@ const apiError = (status: number, code?: string) =>
   new ApiError(status, 'Request failed', undefined, code);
 
 describe('apiErrorToBanner', () => {
+  it('maps RECEIPT_NOTE_TOO_LONG to the settings sentence', () => {
+    expect(apiErrorToBanner(apiError(400, 'RECEIPT_NOTE_TOO_LONG'), 'settings.errors.failed')).toBe(
+      'settings.errors.noteTooLong',
+    );
+  });
+
   describe('inherited from void-document (void.errors.*)', () => {
     const FALLBACK = 'void.errors.failed';
 

@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Badge } from '@/shared/ui/badge';
+import { NOTE_LINES } from '@/entities/network-settings';
 
 /** One line of the printed receipt, already resolved to display strings —
  *  `ReceiptDialog` does the grade/tare lookups and money/weight formatting;
@@ -40,6 +41,8 @@ export interface ReceiptSheetProps {
   voidedPayouts: string[];
   /** Who received this document (`received_by_name`), or «—» when unknown. */
   receivedBy: string;
+  /** The network's `receipt_note`, already wrapped — one line per ruled line. */
+  note: string | null;
   voided: { reason: string } | null;
   /** Our rented crates handed back in the SAME «Прийняти» as this receipt
    *  (2026-09-24) — `null` when none came back with it. Printed as its own
@@ -93,10 +96,12 @@ export function ReceiptSheet({
   paid,
   voidedPayouts,
   receivedBy,
+  note,
   voided,
   crateReturn,
 }: ReceiptSheetProps) {
   const { t } = useTranslation();
+  const noteLines = note?.split('\n') ?? [];
 
   return (
     <div className="printable rounded-lg border border-dashed border-border bg-white p-4 text-[13px] text-neutral-900">
@@ -171,7 +176,23 @@ export function ReceiptSheet({
       <Row label={t('receipt.balanceAtPoint')} value={balance} />
       <Row label={t('receipt.receivedBy')} value={receivedBy} muted />
 
-      <div className="mt-4 text-center text-[10px] text-neutral-400">{t('receipt.footer')}</div>
+      {/* A note for the screen only — the paper ends in the ruled lines below. */}
+      <div className="mt-4 text-center text-[10px] text-neutral-400 print:hidden">
+        {t('receipt.footer')}
+      </div>
+
+      {/* Ruled lines: the network's note first, then blank ones for handwriting;
+          they also feed the slip past the tear bar. */}
+      <div className="print-only break-inside-avoid" aria-hidden="true">
+        {Array.from({ length: NOTE_LINES }, (_, i) => (
+          <div
+            key={i}
+            className="flex h-7 items-end overflow-hidden border-b border-dashed border-black pb-0.5 font-mono whitespace-pre"
+          >
+            {noteLines[i] || '\u00a0'}
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

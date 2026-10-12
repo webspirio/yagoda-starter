@@ -53,3 +53,4 @@ export const JournalPage = lazy(() => ownerPages().then((m) => ({ default: m.Jou
 export const TransfersPage = lazy(() => ownerPages().then((m) => ({ default: m.TransfersPage })));
 export const ReweighPage = lazy(() => ownerPages().then((m) => ({ default: m.ReweighPage })));
 export const CostOfDayPage = lazy(() => ownerPages().then((m) => ({ default: m.CostOfDayPage })));
+export const SettingsPage = lazy(() => ownerPages().then((m) => ({ default: m.SettingsPage })));
