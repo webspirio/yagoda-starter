@@ -202,4 +202,37 @@ describe('CatalogPage', () => {
     await userEvent.click(within(detail()).getByText('Grade 1'));
     expect(await screen.findByLabelText('Name')).toHaveValue('Grade 1');
   });
+
+  describe('the tare dialog money fields (#72)', () => {
+    const openNewTare = async () => {
+      renderPage();
+      await userEvent.click(screen.getByRole('tab', { name: 'Tare types' }));
+      await userEvent.click(await screen.findByRole('button', { name: 'New tare type' }));
+      await userEvent.type(await screen.findByLabelText('Name'), 'Blue crate');
+    };
+
+    it('submits a comma weight as a dot: «1,2» → 1.2', async () => {
+      await openNewTare();
+      await userEvent.type(screen.getByLabelText('Weight, kg'), '1,2');
+      await userEvent.type(screen.getByLabelText('Deposit, ₴'), '1 500');
+      expect(screen.getByLabelText('Deposit, ₴')).toHaveValue('1500');
+      await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+      await waitFor(() => expect(createTareMock).toHaveBeenCalledTimes(1));
+      expect(createTareMock).toHaveBeenCalledWith({
+        name: 'Blue crate',
+        weight_kg: '1.2',
+        deposit_price: '1500',
+        is_crate: false,
+      });
+    });
+
+    it('refuses a half-typed «12.» with the shared message and sends nothing', async () => {
+      await openNewTare();
+      await userEvent.type(screen.getByLabelText('Weight, kg'), '12.');
+      await userEvent.type(screen.getByLabelText('Deposit, ₴'), '100');
+      await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+      expect(await screen.findByText('Enter a number, e.g. 12000 or 980.40')).toBeInTheDocument();
+      expect(createTareMock).not.toHaveBeenCalled();
+    });
+  });
 });

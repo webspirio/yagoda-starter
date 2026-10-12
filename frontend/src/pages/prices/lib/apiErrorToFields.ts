@@ -19,9 +19,9 @@ const FORM_LEVEL = 'prices.errors.saveFailed';
  * fall through to the form-level banner rather than a phantom field error.
  */
 const PROPERTY: Readonly<Record<string, string>> = {
-  base_price: 'prices.errors.priceFormat',
-  max_markup: 'prices.errors.priceFormat',
-  max_discount: 'prices.errors.priceFormat',
+  base_price: 'errors.decimalFormat',
+  max_markup: 'errors.decimalFormat',
+  max_discount: 'errors.decimalFormat',
 };
 
 /** Whole-request refusals from `GradePricesService.bulk`, not tied to a typed field. */

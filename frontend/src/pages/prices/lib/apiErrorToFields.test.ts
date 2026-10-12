@@ -40,9 +40,9 @@ describe('apiErrorToFields', () => {
       FIELDS,
     );
     expect(out.fieldErrors).toEqual([
-      { field: 'base_price', messageKey: 'prices.errors.priceFormat' },
-      { field: 'max_markup', messageKey: 'prices.errors.priceFormat' },
-      { field: 'max_discount', messageKey: 'prices.errors.priceFormat' },
+      { field: 'base_price', messageKey: 'errors.decimalFormat' },
+      { field: 'max_markup', messageKey: 'errors.decimalFormat' },
+      { field: 'max_discount', messageKey: 'errors.decimalFormat' },
     ]);
     expect(out.formErrorKey).toBeNull();
   });
@@ -59,7 +59,7 @@ describe('apiErrorToFields', () => {
       FIELDS,
     );
     expect(out.fieldErrors).toEqual([
-      { field: 'base_price', messageKey: 'prices.errors.priceFormat' },
+      { field: 'base_price', messageKey: 'errors.decimalFormat' },
     ]);
     expect(out.formErrorKey).toBe('prices.errors.saveFailed');
   });

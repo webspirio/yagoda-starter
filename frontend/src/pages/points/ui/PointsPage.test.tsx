@@ -74,6 +74,32 @@ describe('PointsPage', () => {
     });
   });
 
+  it('never holds a space in the cash target: «15 000,50» submits 15000.50 (#72)', async () => {
+    queryMock.mockReturnValue(loaded([]));
+    render(<PointsPage />);
+    await userEvent.click(screen.getByRole('button', { name: 'New point' }));
+    await userEvent.type(screen.getByLabelText('Name'), 'Гаї');
+    await userEvent.type(screen.getByLabelText('Point code'), 'hai');
+    const cash = screen.getByLabelText('Cash target, ₴');
+    await userEvent.type(cash, '15 000,50');
+    expect(cash).toHaveValue('15000.50');
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(createMock).toHaveBeenCalledTimes(1));
+    expect(createMock.mock.calls[0][0].target_cash).toBe('15000.50');
+  });
+
+  it('refuses a half-typed cash target «12.» with the shared message (#72)', async () => {
+    queryMock.mockReturnValue(loaded([]));
+    render(<PointsPage />);
+    await userEvent.click(screen.getByRole('button', { name: 'New point' }));
+    await userEvent.type(screen.getByLabelText('Name'), 'Гаї');
+    await userEvent.type(screen.getByLabelText('Point code'), 'hai');
+    await userEvent.type(screen.getByLabelText('Cash target, ₴'), '12.');
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+    expect(await screen.findByText('Enter a number, e.g. 12000 or 980.40')).toBeInTheDocument();
+    expect(createMock).not.toHaveBeenCalled();
+  });
+
   it('opens the edit dialog prefilled from a row', async () => {
     queryMock.mockReturnValue(loaded([point]));
     render(<PointsPage />);

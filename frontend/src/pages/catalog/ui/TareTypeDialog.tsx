@@ -10,29 +10,26 @@ import {
 } from '@/shared/ui/dialog';
 import { Field } from '@/shared/ui/field';
 import { TextInput } from '@/shared/ui/text-input';
+import { DecimalInput } from '@/shared/ui/decimal-input';
 import { Switch } from '@/shared/ui/switch';
 import { Button } from '@/shared/ui/button';
 import { toast } from '@/shared/ui/toast';
+import { decimalRules, normalizeAmount } from '@/shared/lib/money';
 import { useCreateTareTypeMutation, useUpdateTareTypeMutation } from '../api/tareTypes';
 import { apiErrorToFields } from '../lib/apiErrorToFields';
 import type { TareType, TareTypeFormValues } from '../model/tareType';
 
 const FIELD_NAMES = ['name', 'weight_kg', 'deposit_price'] as const;
 
-// The patterns mirror the server's columns exactly: numeric(10,2) is 8 integer
-// digits, numeric(12,2) is 10. Zero is legal for both; the leading \d refuses a
-// minus sign before the request is ever made.
-const WEIGHT_PATTERN = /^\d{1,8}(\.\d{1,2})?$/;
-const DEPOSIT_PATTERN = /^\d{1,10}(\.\d{1,2})?$/;
-
 /**
  * One dialog for create AND edit — told apart by `tareType` (null = create). The
  * parent remounts it via a changing `key` on every open.
  *
- * The two numeric inputs are TEXT inputs with `inputMode="decimal"`, never
+ * The two numeric inputs are the shared `DecimalInput` (#72), never
  * `type="number"`: a number input coerces '1.20' into 1.2 before the form state
- * settles, reintroducing binary float into money. `setValueAs` only substitutes
- * a comma for a dot (never `Number()`), so the value stays a string end to end.
+ * settles, reintroducing binary float into money. `decimalRules()` checks the one
+ * grammar (zero legal, no minus), and `normalizeAmount` turns a comma into a dot
+ * at submit (never `Number()`), so the value stays a string end to end.
  * `is_active` appears only when editing — a new tare type is active.
  */
 export function TareTypeDialog({
@@ -69,13 +66,15 @@ export function TareTypeDialog({
   const onSubmit = handleSubmit(async (values) => {
     setFormError(null);
     const name = values.name.trim();
+    const weight_kg = normalizeAmount(values.weight_kg);
+    const deposit_price = normalizeAmount(values.deposit_price);
     try {
       if (tareType) {
         await update.mutateAsync({
           id: tareType.id,
           name,
-          weight_kg: values.weight_kg,
-          deposit_price: values.deposit_price,
+          weight_kg,
+          deposit_price,
           is_crate: values.is_crate,
           is_active: values.is_active,
         });
@@ -85,8 +84,8 @@ export function TareTypeDialog({
         // fields rather than spreading `values`.
         await create.mutateAsync({
           name,
-          weight_kg: values.weight_kg,
-          deposit_price: values.deposit_price,
+          weight_kg,
+          deposit_price,
           is_crate: values.is_crate,
         });
         toast.success(t('catalog.tareTypes.toast.created'));
@@ -138,15 +137,7 @@ export function TareTypeDialog({
             error={errors.weight_kg?.message}
           >
             {(a11y) => (
-              <TextInput
-                {...a11y}
-                inputMode="decimal"
-                {...register('weight_kg', {
-                  required: 'catalog.errors.weightFormat',
-                  pattern: { value: WEIGHT_PATTERN, message: 'catalog.errors.weightFormat' },
-                  setValueAs: (v: string) => v.trim().replace(',', '.'),
-                })}
-              />
+              <DecimalInput {...a11y} {...register('weight_kg', decimalRules())} />
             )}
           </Field>
 
@@ -157,15 +148,7 @@ export function TareTypeDialog({
             error={errors.deposit_price?.message}
           >
             {(a11y) => (
-              <TextInput
-                {...a11y}
-                inputMode="decimal"
-                {...register('deposit_price', {
-                  required: 'catalog.errors.depositFormat',
-                  pattern: { value: DEPOSIT_PATTERN, message: 'catalog.errors.depositFormat' },
-                  setValueAs: (v: string) => v.trim().replace(',', '.'),
-                })}
-              />
+              <DecimalInput {...a11y} {...register('deposit_price', decimalRules())} />
             )}
           </Field>
 
