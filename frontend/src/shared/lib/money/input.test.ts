@@ -1,5 +1,13 @@
 import { describe, it, expect } from 'vitest';
-import { DECIMAL_INPUT, CRATES_INPUT, normalizeAmount, maskDecimalInput, clampDecimal, floorToHundreds } from './input';
+import {
+  DECIMAL_INPUT,
+  CRATES_INPUT,
+  normalizeAmount,
+  parseDecimal,
+  maskDecimalInput,
+  clampDecimal,
+  floorToHundreds,
+} from './input';
 
 describe('normalizeAmount', () => {
   it('accepts a comma as the decimal separator and trims', () => {
@@ -10,6 +18,29 @@ describe('normalizeAmount', () => {
   });
   it('leaves an already-canonical string alone', () => {
     expect(normalizeAmount('0.05')).toBe('0.05');
+  });
+});
+
+describe('parseDecimal', () => {
+  it.each([
+    ['12000', '12000'],
+    ['12 000', '12000'],
+    ['1 234 567,50', '1234567.50'],
+    ['980,40', '980.40'],
+    ['980.40', '980.40'],
+    ['980 40', '98040'],
+    ['12\u202f000,00', '12000.00'],
+    ['12\u00a0000', '12000'],
+    [' 7 ', '7'],
+    ['99999999.99', '99999999.99'],
+  ])('accepts %j as %s', (raw, out) => {
+    expect(parseDecimal(raw)).toBe(out);
+  });
+  it.each(['', '.', '12.', '1.234', 'abc', '123456789', '1,2,3', '-5'])('refuses %j', (raw) => {
+    expect(parseDecimal(raw)).toBeNull();
+  });
+  it('allows a minus only when asked', () => {
+    expect(parseDecimal('-5,5', { allowNegative: true })).toBe('-5.5');
   });
 });
 
@@ -41,6 +72,15 @@ describe('maskDecimalInput', () => {
     expect(maskDecimalInput('-5')).toBe('5');
     expect(maskDecimalInput('-5', { allowNegative: true })).toBe('-5');
     expect(maskDecimalInput('--5', { allowNegative: true })).toBe('-5');
+  });
+  it('never lets a space of any kind into the field', () => {
+    expect(maskDecimalInput('12 000')).toBe('12000');
+    expect(maskDecimalInput('980 40')).toBe('98040');
+    expect(maskDecimalInput('12\u202f000,00')).toBe('12000.00');
+  });
+  it('caps the integer part at 8 digits', () => {
+    expect(maskDecimalInput('123456789')).toBe('12345678');
+    expect(maskDecimalInput('123456789,5')).toBe('12345678.5');
   });
   it('lets a half-typed value through untouched', () => {
     expect(maskDecimalInput('12.')).toBe('12.');

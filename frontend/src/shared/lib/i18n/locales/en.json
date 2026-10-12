@@ -16,6 +16,7 @@
     "print": "Print"
   },
   "errors": {
+    "decimalFormat": "Enter a number, e.g. 12000 or 980.40",
     "network": "Can't reach the server. Check your connection and try again.",
     "tooManyRequests": "Too many attempts. Wait a minute and try again.",
     "accessChanged": "Your access has changed. Reload the page.",

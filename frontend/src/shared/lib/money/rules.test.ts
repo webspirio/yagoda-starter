@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { amountRules, cratesRules } from './rules';
+import { amountRules, cratesRules, decimalRules } from './rules';
 
 describe('amountRules', () => {
   const rules = amountRules('some.error.key');
@@ -46,5 +46,27 @@ describe('cratesRules', () => {
 
   it('validate rejects an empty string with the error key', () => {
     expect(rules.validate('')).toBe('crates.error.key');
+  });
+});
+
+describe('decimalRules', () => {
+  it('uses the one shared key for required and for the shape', () => {
+    const rules = decimalRules();
+    expect(rules.required).toBe('errors.decimalFormat');
+    expect(rules.validate('12.')).toBe('errors.decimalFormat');
+    expect(rules.validate('')).toBe('errors.decimalFormat');
+    expect(rules.validate('12 000')).toBe(true);
+    expect(rules.validate('980,40')).toBe(true);
+  });
+  it('lets an optional field be empty but not malformed', () => {
+    const rules = decimalRules({ required: false });
+    expect(rules.required).toBe(false);
+    expect(rules.validate('')).toBe(true);
+    expect(rules.validate('  ')).toBe(true);
+    expect(rules.validate('12.')).toBe('errors.decimalFormat');
+  });
+  it('allows a minus only when asked', () => {
+    expect(decimalRules().validate('-5')).toBe('errors.decimalFormat');
+    expect(decimalRules({ allowNegative: true }).validate('-5')).toBe(true);
   });
 });

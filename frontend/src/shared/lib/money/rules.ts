@@ -1,4 +1,4 @@
-import { DECIMAL_INPUT, CRATES_INPUT, normalizeAmount } from './input';
+import { DECIMAL_INPUT, CRATES_INPUT, normalizeAmount, parseDecimal } from './input';
 
 /**
  * Only `required`/`validate` — not the full react-hook-form `RegisterOptions`
@@ -11,7 +11,7 @@ import { DECIMAL_INPUT, CRATES_INPUT, normalizeAmount } from './input';
  * satisfies `RegisterOptions<T, N>` — a `Partial<{...}>` — for ANY `T`/`N`.
  */
 interface MoneyFieldRules {
-  required: string;
+  required: string | false;
   validate: (value: string) => boolean | string;
 }
 
@@ -30,6 +30,25 @@ export function amountRules(errorKey: string): MoneyFieldRules {
   return {
     required: errorKey,
     validate: (value: string) => DECIMAL_INPUT.test(normalizeAmount(value)) || errorKey,
+  };
+}
+
+/**
+ * The ONE rule every money or weight `register()` field uses (#72). It takes no
+ * message key on purpose: the message is the same on every form, so a form
+ * cannot ask for a different one. Semantic checks (> 0, ≤ debt) stay in the
+ * form and keep their own keys.
+ */
+export function decimalRules({
+  required = true,
+  allowNegative = false,
+}: { required?: boolean; allowNegative?: boolean } = {}): MoneyFieldRules {
+  return {
+    required: required ? 'errors.decimalFormat' : false,
+    validate: (value: string) =>
+      (!required && value.trim() === '') ||
+      parseDecimal(value, { allowNegative }) !== null ||
+      'errors.decimalFormat',
   };
 }
 

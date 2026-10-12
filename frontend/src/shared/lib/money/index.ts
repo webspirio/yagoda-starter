@@ -4,8 +4,9 @@ export {
   DECIMAL_INPUT,
   CRATES_INPUT,
   normalizeAmount,
+  parseDecimal,
   maskDecimalInput,
   clampDecimal,
   floorToHundreds,
 } from './input';
-export { amountRules, cratesRules } from './rules';
+export { amountRules, cratesRules, decimalRules } from './rules';

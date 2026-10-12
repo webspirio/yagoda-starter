@@ -11,6 +11,24 @@ export const DECIMAL_INPUT = /^\d{1,8}(\.\d{1,2})?$/;
 /** Ціле число ящиків, 0 або більше — дзеркалить `@IsInt() @Min(0)` DTO. */
 export const CRATES_INPUT = /^\d{1,7}$/;
 
+const DECIMAL_SHAPE = /^(-?)(\d{1,8})(?:[.,](\d{1,2}))?$/;
+
+/**
+ * THE grammar of a money or weight field (#72): whitespace of any kind removed
+ * (the field's mask never lets it in; this is the backstop for a default value
+ * or a paste that bypassed the mask), then up to 8 integer digits, comma or dot,
+ * up to 2 decimals. Returns the canonical dot form, or `null` when refused.
+ */
+export function parseDecimal(
+  raw: string,
+  { allowNegative = false }: { allowNegative?: boolean } = {},
+): string | null {
+  const match = DECIMAL_SHAPE.exec(raw.replace(/\s/g, ''));
+  if (!match || (match[1] === '-' && !allowNegative)) return null;
+  const [, sign, int, frac] = match;
+  return `${sign}${int}${frac === undefined ? '' : `.${frac}`}`;
+}
+
 /**
  * Приводить надруковане до канонічного вигляду ПЕРЕД перевіркою: українська
  * розкладка дає кому, а звичка з паперу — пробіл між тисячами. Ні те, ні те не
@@ -22,8 +40,10 @@ export function normalizeAmount(value: string): string {
 
 /**
  * Keeps what a decimal field may hold WHILE TYPING: digits, one separator
- * (comma or dot, stored as dot), at most `decimals` places, an optional
- * leading minus when `allowNegative`. Never adds digits.
+ * (comma or dot, stored as dot), at most 8 integer digits and `decimals`
+ * places, an optional leading minus when `allowNegative`. Whitespace of any
+ * kind never gets in (#72) — the field shows exactly what will be saved, so a
+ * stray space cannot hide a hundred-fold error. Never adds digits.
  */
 export function maskDecimalInput(
   raw: string,
@@ -39,7 +59,8 @@ export function maskDecimalInput(
       body += '.';
     }
   }
-  const [int, frac = ''] = body.split('.');
+  const [rawInt, frac = ''] = body.split('.');
+  const int = rawInt.slice(0, 8);
   const fraction = seen ? `.${frac.slice(0, decimals)}` : '';
   return `${negative ? '-' : ''}${int}${fraction}`;
 }
