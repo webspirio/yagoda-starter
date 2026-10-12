@@ -81,6 +81,11 @@ const CODE: Readonly<Record<string, string>> = {
   NET_NOT_POSITIVE: 'reweigh.errors.netNotPositive',
   TARE_TYPE_DUPLICATED: 'reweigh.errors.tareDuplicated',
   TARE_TYPE_UNKNOWN: 'reweigh.errors.tareUnknown',
+  // Count explanations (spec 2026-10-08) — `PUT /cash-counts/:id/{explanation,operator-note}`.
+  NOT_COUNTER: 'operatorNote.errors.notCounter',
+  COUNT_NOT_EXPLAINABLE: 'operatorNote.errors.notExplainable',
+  OWNER_ALREADY_EXPLAINED: 'operatorNote.errors.ownerExplained',
+  NO_DISCREPANCY: 'operatorNote.errors.noDiscrepancy',
   // Network settings — the note does not fit the receipt's ruled lines. The
   // editor wraps as the owner types, so this is reachable only past the UI.
   RECEIPT_NOTE_TOO_LONG: 'settings.errors.noteTooLong',

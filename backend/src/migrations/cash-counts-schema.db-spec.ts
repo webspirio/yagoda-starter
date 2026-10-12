@@ -101,7 +101,11 @@ describe('cash_counts schema (Postgres)', () => {
         WHERE conrelid = 'cash_counts'::regclass AND conname LIKE 'CHK_cash_counts%'
         ORDER BY conname`,
     )) as { conname: string }[];
-    expect(rows.map((r) => r.conname)).toEqual(['CHK_cash_counts_counted_non_negative']);
+    expect(rows.map((r) => r.conname)).toEqual([
+      'CHK_cash_counts_counted_non_negative',
+      'CHK_cash_counts_explanation_not_blank',
+      'CHK_cash_counts_operator_note_not_blank',
+    ]);
   });
 
   it('requires both amounts', async () => {

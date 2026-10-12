@@ -18,6 +18,8 @@ export interface CostOfDayProduct {
   reweigh_net_kg: string | null;
   /** «недостача», clamped: never negative, §8.2's надлишок is impossible. */
   shortfall: string;
+  /** The same недостача in kilograms, clamped per grade like `shortfall`. */
+  shortfall_kg: string;
   /** «із пулу» — this product's allocated share of the basket. `null` when it
    *  contributed no kilograms to the day. */
   basket_share: string | null;

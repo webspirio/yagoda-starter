@@ -22,7 +22,7 @@ import type { AuthenticatedUser } from '../auth/jwt.strategy';
  *
  *   2026-09-01  opening, MATCHING (counted = expected)        — not open
  *   2026-09-03  opening match + closing MISMATCH, unexplained — open
- *   2026-09-06  closing MISMATCH, shift EXPLAINED             — closed by explanation, not by the numbers
+ *   2026-09-06  closing MISMATCH, count EXPLAINED             — closed by explanation, not by the numbers
  *   2026-09-08  a MIDDAY count, mismatched, unexplained       — §6.3's demotion:
  *               reopening a shift turns its `closing` count into a `midday`
  *               one. The evidence stays VISIBLE in the unfiltered list and
@@ -156,7 +156,7 @@ describe('CashCountsService.list (Postgres)', () => {
     // itself never moves, but it must drop out of the "open" list.
     shiftExplained = await insertShift(pointA, '2026-09-06');
     await insertCount(shiftExplained, 'closing', '750.00', '800.00', '2026-09-06T18:00:00Z');
-    await ds.query(`UPDATE shifts SET explanation = $1 WHERE id = $2`, [
+    await ds.query(`UPDATE cash_counts SET explanation = $1 WHERE shift_id = $2 AND kind = 'closing'`, [
       'касир помилився решткою',
       shiftExplained,
     ]);

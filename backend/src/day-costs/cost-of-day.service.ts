@@ -21,6 +21,8 @@ export interface CostOfDayProduct {
    *  never lowers it. '0.00' both when nothing is missing and when the product
    *  is not `complete` — `reweigh_net_kg === null` is what tells the two apart. */
   shortfall: string;
+  /** The same недостача in kilograms, clamped per grade like `shortfall`. */
+  shortfall_kg: string;
   /** «із пулу» — this product's share of the СПІЛЬНИЙ КОШИК.
    *
    *  ALLOCATED, NOT MULTIPLIED. `allocate` is a largest-remainder split, so
@@ -82,8 +84,9 @@ export interface CostOfDayResponse {
    *  own, so the two can sit a kopiyka away from `per_kg`; `per_kg` stays
    *  `basket ÷ reweighed_kg`, because that is the figure actually added to
    *  every product's price. §8.4's own numbers (1,94 + 4,45 = 6,39) land
-   *  exactly — arithmetic luck, not a guarantee — and the screen prints the
-   *  two under «з них» so nothing on it ever reads as a sum that fails. */
+   *  exactly — arithmetic luck, not a guarantee. The screen no longer prints
+   *  this pair (the owner dropped the «з них» hint); it stays on the wire,
+   *  and printed again it must read as a breakdown, never as a sum. */
   expenses_per_kg: string | null;
   /** accrued + expenses_amount — the client's own звірка check. */
   total_check: string;
@@ -203,6 +206,7 @@ export class CostOfDayService {
         intake_net_kg: r.intake_net_kg,
         reweigh_net_kg: r.reweigh_net_kg,
         shortfall: r.shortfall,
+        shortfall_kg: r.shortfall_kg,
         basket_share: shareOf.get(r.product_id) ?? null,
         price_was: priceWas,
         price_cost: priceCost,

@@ -77,12 +77,11 @@ beforeEach(() => {
 });
 
 describe('ExpensesPanel', () => {
-  it('prints the basket and §8.4 «з них» split', () => {
+  it('prints the basket and the rate without the «з них» split', () => {
     renderPanel();
 
     expect(screen.getByText('5 460,00 ₴')).toBeInTheDocument();
-    expect(screen.getByText(/з них недостача 1,94/)).toBeInTheDocument();
-    expect(screen.getByText(/з них витрати 4,45/)).toBeInTheDocument();
+    expect(screen.queryByText(/з них/)).not.toBeInTheDocument();
   });
 
   it('adds a line and clears the form only after the write succeeds', async () => {

@@ -165,6 +165,7 @@ export function CostOfDayPage() {
                 products={day.products}
                 reweighedKg={day.reweighed_kg}
                 accrued={day.accrued}
+                shortfallAmount={day.shortfall_amount}
                 locale={locale}
               />
             )}

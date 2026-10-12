@@ -60,8 +60,10 @@ src/
   features/send-transfer/        # useSendTransferMutation, SendTransferDialog — the owner sends money and crates to a point
   features/receive-transfer/     # useAcceptTransferMutation / useDisputeTransferMutation, DisputeTransferDialog — the point accepts an incoming transfer or disputes what actually arrived
   features/resolve-transfer/     # useResolveTransferMutation, ResolveTransferDialog — the owner settles a disputed transfer
-  features/set-cash-explanation/ # useSetCashExplanationMutation, ExplainDiscrepancyDialog — the owner explains a drawer discrepancy after the fact
+  features/set-cash-explanation/ # useSetCashExplanationMutation, ExplainDiscrepancyDialog — the owner explains ONE count's discrepancy after the fact (`PUT /cash-counts/:id/explanation`; spec 2026-10-08)
+  features/set-operator-note/    # useSetOperatorNoteMutation, OperatorNoteDialog/Form — whoever made a count writes their account of its discrepancy (`PUT /cash-counts/:id/operator-note`); informs, never closes the incident, no time window
   features/set-point-target/     # useSetPointTargetMutation, SetTargetCashDialog — the owner sets or changes a point's cash target; the dialog shows the current target (when one exists), a render-time live preview of the shortfall while typing, and the over-target sentence — no «Діє з» and no history (§6.1, 03.09.2026: a target is a plain column)
+  widgets/count-result/          # ShiftCountResult — the open/close result (read back by `shiftId`) plus the operator-note form opened once on an explainable discrepancy; used by pages/point-cash (panel and banner) and by the stale-shift banner close on pages/reception and pages/day (spec 2026-10-08, S2)
   widgets/receipt/               # ReceiptDialog — the printable receipt for one intake, opened from reception, day and the supplier card alike; prints «Видано готівкою» (the live linked payouts' total + codes, a muted «виплату {code} анульовано» line per voided one) and «Приймав: {received_by_name}» — it no longer opens PayoutDialog itself (#116): the payout button left for the reception screen's own «Прийняти» action, and PayoutDialog still opens from pages/debts and pages/supplier-card for a payout made without an intake; `ReceiptVoidButton` is each receipt row's «Анулювати» (reception, day, journal, supplier card), shown iff `canVoidIntake` (entities/intake), opening ReceiptDialog with `startWithVoid`; `useReceiptOpener` is the pages' shared receipt state (`openReceipt(id, { void })`); the seven ruled lines print the network's `receipt_note` (entities/network-settings) — print waits while it loads and goes ahead with blank lines if it fails
   pages/dashboard/               # «Зведення» — the owner's today-across-the-network overview (open shifts, receipts, cash, the biggest balances) at `/`; the same route shows the operator only their own point's row plus reception/day-cash/balances shortcuts. api/useNetworkToday.ts fans out shift+intake+payout `queryOptions` per point in one `useQueries` — today ONLY, which is why «Незакриті зміни» (#114, owner-only, above the grid, nothing rendered when the list is empty) is a separate network-wide read rather than a fourth query per point
   pages/login/, pages/profile/, pages/not-found/, pages/ui-kit/
@@ -73,7 +75,7 @@ src/
   pages/point-cash/              # «Каса точки» — one point's cash-on-hand for a date: the ledger explaining the server's own figure (incl. its opening-count row), a «Каса за ящики» card beside it that never sums with the berry figure (R1), incoming transfers incl. the disputed red card (R5), the «Зміна і перерахунок каси» panel (R4, features/count-shift) and drawer-count history behind a toggle — both roles, target-setting owner-only (§10.2). Layout (R10): stats, then the notice/grid content, `IncomingTransfers` full width, `lg:grid-cols-[minmax(0,1fr)_minmax(320px,0.8fr)]` (ledger left; right column = crates card then the shift panel) — one column below `lg`, DOM order unchanged, so the right column reads after the ledger on a phone
   pages/transfers/               # «Перекази» — the owner's view of money and crates in flight and what each point is short (§7.9, §7.10) — OWNER-ONLY as a route-level gate, not a hidden button
   pages/crates/                   # «Ящики» — the allotment bar (CrateStandingBar), recomputed to the client's crate flow: empty at the point / with people / with berries (the point's open shift only) summing to «Усього за точкою», against the allotment as short of it or over it; holders (InFieldTable) and each holder's documents with server-hinted voids (PersonCrateDocs) — both roles; a return a receipt wrote shows no void button, only «записано з квитанцією {code} — анулюйте квитанцію», and the standing recomputes through it (net 0: the return's units and the receipt's own crate tare cancel); the «Відправлення» dialog is deferred with crate_shipments
-  pages/cost-of-day/             # «Собівартість дня» — §8.4's convergence of the reweigh reconciliation, the top-up allocation and the day's expenses into three prices per product (було / собівартість / нараховане÷наша вага) — OWNER-ONLY, own `?date=` and point picker unfiltered by `kind`
+  pages/cost-of-day/             # «Собівартість дня» — §8.4's convergence of the reweigh reconciliation, the top-up allocation and the day's expenses into three prices per product (ціна в квитанції / собівартість / закупівельна ціна) — OWNER-ONLY, own `?date=` and point picker unfiltered by `kind`
   pages/settings/                 # «Налаштування мережі» — OWNER-ONLY, one SectionCard per setting; today the receipt note: ReceiptNoteField wraps as the owner types (lib/fitReceiptNote), «Зберегти» sends `PATCH /network-settings` and seeds the cache
   shared/
     api/                       # httpClient (axios instance, env.apiUrl baseURL) + ApiError + attachAuthInterceptors + queryClient + queryKeys + persister + Paginated<T>/isTruncated (shared/api/pagination.ts, the one list-envelope shape every paginated GET returns)
@@ -99,11 +101,13 @@ only import from layers below it) are enforced by ESLint (`no-restricted-imports
 relying on review to catch it. The rule catches DIRECTION only: a same-layer
 cross-import (e.g. `entities/payout` reaching into `entities/intake`) compiles and
 lints clean, so keeping slices independent within a layer is a review discipline,
-not something lint enforces. `widgets/receipt` is the first (and so far only)
-`widgets/` slice — it sits between `features` and `pages` in FSD, for composed UI
-shared across multiple pages: the printable receipt (`ReceiptDialog`) is opened from
-the reception screen, the day screen and the supplier card alike, so it can't live
-inside any single one of them.
+not something lint enforces. `widgets/` sits between `features` and `pages` in FSD, for
+composed UI shared across multiple pages. `widgets/receipt` was the first: the printable
+receipt (`ReceiptDialog`) is opened from the reception screen, the day screen and the
+supplier card alike, so it can't live inside any single one of them. `widgets/count-result`
+(`ShiftCountResult`) is the second: the open/close result with its discrepancy and the
+operator-note form, shown by «Каса точки», «Прийомка» and «Каса за день». It has to be a
+widget because `features/count-shift` may not import `features/set-operator-note`.
 
 `shared/lib/form-draft` ships as tested, ready-to-use infrastructure carried
 over from the boilerplate this starter was extracted from, but nothing consumes
