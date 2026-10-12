@@ -132,8 +132,8 @@ export function ReceptionPage() {
   const [paidTouched, setPaidTouched] = useState(false);
   // #72 — the «Видано готівкою» text «Прийняти» last refused. The refusal is
   // shown only while the field still holds exactly that text, so it cannot
-  // outlive it: an edit, a re-picked supplier or the post-save reset all
-  // change `paidShown`, and the message goes with it.
+  // outlive it (a re-picked supplier or the post-save reset change
+  // `paidShown`), and any edit clears it outright (`onPaidChange`).
   const [paidRefused, setPaidRefused] = useState<string | null>(null);
   // Bumped on every supplier pick — even a re-pick of the same row, which
   // `reset()` above may have just emptied — so «З них наших ящиків» remounts
@@ -249,6 +249,9 @@ export function ReceptionPage() {
   const paidShown = paidTouched ? values.paid_amount : suggested;
   const onPaidChange = (v: string) => {
     setPaidTouched(true);
+    // Belt to the equality check below: a new edit is not the refused submit,
+    // so retyping the same text does not bring the refusal back mid-keystroke.
+    setPaidRefused(null);
     setValue('paid_amount', v, { shouldDirty: true });
   };
 
