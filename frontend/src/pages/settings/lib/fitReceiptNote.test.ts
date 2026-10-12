@@ -22,7 +22,7 @@ describe('fitReceiptNote', () => {
     expect(fitReceiptNote(x(NOTE_LINE_CHARS + 5))).toBe(`${x(NOTE_LINE_CHARS)}\n${x(5)}`);
   });
 
-  it('refuses anything past the last ruled line', () => {
+  it('refuses anything past the last note line', () => {
     const full = Array.from({ length: NOTE_LINES }, () => x(NOTE_LINE_CHARS)).join('\n');
     expect(fitReceiptNote(full)).toBe(full);
     expect(fitReceiptNote(`${full}\n`)).toBeNull();

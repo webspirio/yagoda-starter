@@ -576,17 +576,13 @@ describe('ReceiptDialog', () => {
     expect(screen.queryByRole('button', { name: 'Void' })).not.toBeInTheDocument();
   });
 
-  it('ends the paper with seven ruled blank lines, printed only', () => {
+  // Decided at the meeting (PR #234 review): no ruled lines and no blank ones
+  // for handwriting — the paper ends at «Приймав», or at the network's note.
+  it('ends the paper at «Приймав» when the network has no note', () => {
     setUp();
     render(<ReceiptDialog intakeId="intake-1" open onClose={vi.fn()} />);
 
-    const tail = document.querySelector('.printable')?.lastElementChild;
-    expect(tail).toHaveClass('print-only', 'break-inside-avoid');
-    expect(tail).toHaveAttribute('aria-hidden', 'true');
-    expect(Array.from(tail?.children ?? [], (line) => line.textContent)).toEqual(
-      Array(7).fill('\u00a0'),
-    );
-    for (const line of Array.from(tail?.children ?? [])) expect(line).toHaveClass('border-b');
+    expect(document.querySelector('.printable .print-only')).toBeNull();
   });
 
   // index.css's print rule hides every OTHER child of <body> while a receipt is
@@ -601,16 +597,19 @@ describe('ReceiptDialog', () => {
     expect(dialog?.parentElement).toBe(document.body);
   });
 
-  it("prints the network's note on the ruled lines, blank after it", () => {
+  it("prints the network's note as plain lines, with no rules and no blank ones", () => {
     setUp({ note: 'Ящики повертати до 20:00\nТел. 067 000 00 00' });
     render(<ReceiptDialog intakeId="intake-1" open onClose={vi.fn()} />);
 
     const tail = document.querySelector('.printable')?.lastElementChild;
+    expect(tail).toHaveClass('print-only', 'break-inside-avoid');
     expect(Array.from(tail?.children ?? [], (line) => line.textContent)).toEqual([
       'Ящики повертати до 20:00',
       'Тел. 067 000 00 00',
-      ...Array(5).fill('\u00a0'),
     ]);
+    for (const line of Array.from(tail?.children ?? [])) {
+      expect(line).not.toHaveClass('border-b');
+    }
     expect(screen.queryByRole('textbox')).toBeNull();
   });
 
@@ -628,7 +627,7 @@ describe('ReceiptDialog', () => {
     expect(screen.getByRole('button', { name: 'Print' })).toBeDisabled();
   });
 
-  it('prints the last-known note without the blank-lines warning when a re-read fails', () => {
+  it('prints the last-known note without the warning when a re-read fails', () => {
     setUp();
     settingsMock.mockReturnValue(
       settingsState({ data: { receipt_note: 'Тел. 067', updated_at: AT }, isError: true }),
@@ -647,17 +646,14 @@ describe('ReceiptDialog', () => {
     expect(screen.getByRole('button', { name: 'Print' })).toBeDisabled();
   });
 
-  it('warns and still prints, with blank lines, when the note fails to load', () => {
+  it('warns and still prints, without the note, when the note fails to load', () => {
     setUp();
     settingsMock.mockReturnValue(settingsState({ isError: true }));
     render(<ReceiptDialog intakeId="intake-1" open onClose={vi.fn()} />);
 
     expect(screen.getByText(/note didn't load/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Print' })).toBeEnabled();
-    const tail = document.querySelector('.printable')?.lastElementChild;
-    expect(Array.from(tail?.children ?? [], (line) => line.textContent)).toEqual(
-      Array(7).fill('\u00a0'),
-    );
+    expect(document.querySelector('.printable .print-only')).toBeNull();
   });
 
   it('keeps the «saved in the system» footer off the paper', () => {

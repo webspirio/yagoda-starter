@@ -6,7 +6,7 @@ export class NetworkSettings {
   @PrimaryColumn({ type: 'boolean', default: true })
   id: boolean;
 
-  /** Already wrapped onto the receipt's ruled lines; `null` prints them blank. */
+  /** Already wrapped onto the receipt's seven note lines; `null` prints no note. */
   @Column({ type: 'text', nullable: true })
   receipt_note: string | null;
 
