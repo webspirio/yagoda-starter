@@ -270,7 +270,11 @@ describe('useIntakePreview — rowItems', () => {
       200,
       {
         ...previewResponse('0.00'),
-        items: body.items.map((i, n) => ({ ...previewResponse('0.00').items[0], item_order: n + 1, net_kg: i.gross_kg })),
+        items: body.items.map((i, n) => ({
+          ...previewResponse('0.00').items[0],
+          item_order: n + 1,
+          net_kg: i.gross_kg,
+        })),
       },
     ] as [number, unknown];
   };
@@ -293,10 +297,13 @@ describe('useIntakePreview — rowItems', () => {
 
   it('keeps the committed lines priced while the fresh draft is still empty', async () => {
     mock.onPost('/intakes/preview').reply(echo);
-    const { result, rerender } = renderHook((v: IntakeFormValues) => useIntakePreview(v, null, { enabled: true }), {
-      wrapper,
-      initialProps: form([line({ gross_kg: '100' }), line({ gross_kg: '50' })]),
-    });
+    const { result, rerender } = renderHook(
+      (v: IntakeFormValues) => useIntakePreview(v, null, { enabled: true }),
+      {
+        wrapper,
+        initialProps: form([line({ gross_kg: '100' }), line({ gross_kg: '50' })]),
+      },
+    );
     await settle();
 
     rerender(form([line({ gross_kg: '100' }), line({ gross_kg: '50' }), emptyDraft]));
@@ -309,10 +316,13 @@ describe('useIntakePreview — rowItems', () => {
 
   it('never moves a removed line’s numbers onto the line that takes its place', async () => {
     mock.onPost('/intakes/preview').reply(echo);
-    const { result, rerender } = renderHook((v: IntakeFormValues) => useIntakePreview(v, null, { enabled: true }), {
-      wrapper,
-      initialProps: form([line({ gross_kg: '100' }), line({ gross_kg: '50' }), emptyDraft]),
-    });
+    const { result, rerender } = renderHook(
+      (v: IntakeFormValues) => useIntakePreview(v, null, { enabled: true }),
+      {
+        wrapper,
+        initialProps: form([line({ gross_kg: '100' }), line({ gross_kg: '50' }), emptyDraft]),
+      },
+    );
     // Nothing answered yet — every row is pending, not zero.
     expect(nets(result.current.rowItems)).toEqual([null, null, null]);
 
@@ -323,15 +333,28 @@ describe('useIntakePreview — rowItems', () => {
     expect(nets(result.current.rowItems)).toEqual(['50', null]);
   });
 
-  it('drops every row’s numbers once the supplier changes', async () => {
+  it.each([
+    ['the supplier changes', { supplier: 's2', point: 'p1', enabled: true }],
+    ['the point changes', { supplier: 's1', point: 'p2', enabled: true }],
+    ['the hook is disabled', { supplier: 's1', point: 'p1', enabled: false }],
+  ])('drops every row’s numbers once %s', async (_, next) => {
     mock.onPost('/intakes/preview').reply(echo);
-    const { result, rerender } = renderHook((v: IntakeFormValues) => useIntakePreview(v, null, { enabled: true }), {
-      wrapper,
-      initialProps: form([line({ gross_kg: '100' })]),
-    });
+    const { result, rerender } = renderHook(
+      (p: { v: IntakeFormValues; point: string; enabled: boolean }) =>
+        useIntakePreview(p.v, p.point, { enabled: p.enabled }),
+      {
+        wrapper,
+        initialProps: { v: form([line({ gross_kg: '100' })]), point: 'p1', enabled: true },
+      },
+    );
     await settle();
+    expect(nets(result.current.rowItems)).toEqual(['100']);
 
-    rerender(form([line({ gross_kg: '100' }), emptyDraft], 's2'));
+    rerender({
+      v: form([line({ gross_kg: '100' }), emptyDraft], next.supplier),
+      point: next.point,
+      enabled: next.enabled,
+    });
 
     expect(nets(result.current.rowItems)).toEqual([null, null]);
   });
