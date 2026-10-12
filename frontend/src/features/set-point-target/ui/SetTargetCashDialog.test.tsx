@@ -302,3 +302,17 @@ describe('SetTargetCashDialog', () => {
     ).toBeInTheDocument();
   });
 });
+
+describe('the shared money field (#72)', () => {
+  it('never holds a space and refuses a half-typed sum with the shared message', async () => {
+    renderDialog();
+    const input = screen.getByLabelText('How much money, ₴');
+    await userEvent.clear(input);
+    await userEvent.type(input, '980 40');
+    expect(input).toHaveValue('98040');
+    await userEvent.clear(input);
+    await userEvent.type(input, '12.');
+    await userEvent.click(screen.getByRole('button', { name: 'Save target' }));
+    expect(await screen.findByText('Enter a number, e.g. 12000 or 980.40')).toBeInTheDocument();
+  });
+});

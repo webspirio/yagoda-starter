@@ -11,8 +11,9 @@ import {
 } from '@/shared/ui/dialog';
 import { Field } from '@/shared/ui/field';
 import { TextInput } from '@/shared/ui/text-input';
+import { DecimalInput } from '@/shared/ui/decimal-input';
 import { Button } from '@/shared/ui/button';
-import { normalizeAmount, amountRules, cratesRules } from '@/shared/lib/money';
+import { normalizeAmount, decimalRules, cratesRules } from '@/shared/lib/money';
 import { toBannerError, type BannerError } from '@/shared/lib/api-error';
 import { useCrateDispatchQuery } from '../api/crateDispatch';
 
@@ -116,11 +117,10 @@ export function CountDrawerDialog({
             error={errors.amount?.message}
           >
             {(a11y) => (
-              <TextInput
+              <DecimalInput
                 {...a11y}
-                inputMode="decimal"
                 className="font-mono"
-                {...register('amount', amountRules('day.errors.countFormat'))}
+                {...register('amount', decimalRules())}
                 autoFocus
               />
             )}

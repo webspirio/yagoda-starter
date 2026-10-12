@@ -10,10 +10,10 @@ import {
   DialogTitle,
 } from '@/shared/ui/dialog';
 import { Field } from '@/shared/ui/field';
-import { TextInput } from '@/shared/ui/text-input';
+import { DecimalInput } from '@/shared/ui/decimal-input';
 import { Button } from '@/shared/ui/button';
 import { toast } from '@/shared/ui/toast';
-import { cmp, formatUah, DECIMAL_INPUT, normalizeAmount, amountRules } from '@/shared/lib/money';
+import { cmp, formatUah, DECIMAL_INPUT, normalizeAmount, decimalRules } from '@/shared/lib/money';
 import type { Payout } from '@/entities/payout';
 import { useCreatePayoutMutation } from '../api/useCreatePayout';
 import { apiErrorToFields } from '../lib/apiErrorToFields';
@@ -142,11 +142,10 @@ export function PayoutDialog({
             }
           >
             {(a11y) => (
-              <TextInput
+              <DecimalInput
                 {...a11y}
-                inputMode="decimal"
                 className="font-mono"
-                {...register('amount', amountRules('payout.errors.amountFormat'))}
+                {...register('amount', decimalRules())}
                 autoFocus
               />
             )}

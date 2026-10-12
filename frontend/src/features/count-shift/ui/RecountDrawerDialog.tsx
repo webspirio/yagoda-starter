@@ -10,9 +10,9 @@ import {
   DialogTitle,
 } from '@/shared/ui/dialog';
 import { Field } from '@/shared/ui/field';
-import { TextInput } from '@/shared/ui/text-input';
+import { DecimalInput } from '@/shared/ui/decimal-input';
 import { Button } from '@/shared/ui/button';
-import { amountRules, maskDecimalInput, normalizeAmount, isZero } from '@/shared/lib/money';
+import { decimalRules, normalizeAmount, isZero } from '@/shared/lib/money';
 import { apiErrorToBanner } from '@/shared/lib/api-error';
 import type { CashCount } from '@/entities/cash-count';
 import { useRecountMutation } from '../api/recount';
@@ -64,13 +64,6 @@ export function RecountDrawerDialog({ open, onClose }: { open: boolean; onClose:
     formState: { errors, isSubmitting },
   } = useForm<RecountFormValues>({ defaultValues: { amount: '' } });
 
-  // Masked the same way `TotalsSection`'s «Видано готівкою» field is
-  // (comma or dot, two decimals, no letters) — wrapped around RHF's own
-  // `onChange` rather than replacing it, since this field stays an
-  // uncontrolled `register()` input; on-submit validation (`amountRules`)
-  // is unchanged.
-  const amountField = register('amount', amountRules('recount.errors.amount'));
-
   const submit = async (values: RecountFormValues) => {
     try {
       const row = await recount.mutateAsync({ counted_amount: normalizeAmount(values.amount) });
@@ -80,9 +73,9 @@ export function RecountDrawerDialog({ open, onClose }: { open: boolean; onClose:
       // with intakes/payouts/transfers/crates) — gets the recount's OWN
       // sentence here (`recount.errors.noOpenShift`), not the shared
       // `transfer.errors.noOpenShift` wording `apiErrorToBanner`'s CODE map
-      // answers with at every other call site, and not `recount.errors.amount`
-      // either (review, minor 11): that key is the client-side VALIDATION
-      // message for the amount field, and doubling it as the server refusal
+      // answers with at every other call site, and not the amount field's
+      // client-side VALIDATION message either (review, minor 11; since #72
+      // that is the shared `errors.decimalFormat`): doubling it as the server refusal
       // banner too was itself a wrong claim — `0` is a legal count, so
       // "enter an amount greater than zero" was never the actual rule.
       setFormError(
@@ -138,15 +131,10 @@ export function RecountDrawerDialog({ open, onClose }: { open: boolean; onClose:
                 error={errors.amount?.message}
               >
                 {(a11y) => (
-                  <TextInput
+                  <DecimalInput
                     {...a11y}
-                    inputMode="decimal"
                     className="font-mono"
-                    {...amountField}
-                    onChange={(e) => {
-                      e.target.value = maskDecimalInput(e.target.value);
-                      void amountField.onChange(e);
-                    }}
+                    {...register('amount', decimalRules())}
                     autoFocus
                   />
                 )}

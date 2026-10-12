@@ -11,10 +11,11 @@ import {
 } from '@/shared/ui/dialog';
 import { Field } from '@/shared/ui/field';
 import { TextInput } from '@/shared/ui/text-input';
+import { DecimalInput } from '@/shared/ui/decimal-input';
 import { Button } from '@/shared/ui/button';
 import { toast } from '@/shared/ui/toast';
 import { toBannerError, type BannerError } from '@/shared/lib/api-error';
-import { normalizeAmount, amountRules, cratesRules } from '@/shared/lib/money';
+import { normalizeAmount, decimalRules, cratesRules } from '@/shared/lib/money';
 import type { Transfer } from '@/entities/transfer';
 import { useResolveTransferMutation } from '../api/useResolveTransfer';
 
@@ -88,11 +89,10 @@ export function ResolveTransferDialog({
             error={errors.resolved_cash?.message}
           >
             {(a11y) => (
-              <TextInput
+              <DecimalInput
                 {...a11y}
-                inputMode="decimal"
                 className="font-mono"
-                {...register('resolved_cash', amountRules('transfer.errors.cashFormat'))}
+                {...register('resolved_cash', decimalRules())}
                 autoFocus
               />
             )}

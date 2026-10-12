@@ -11,11 +11,12 @@ import {
 } from '@/shared/ui/dialog';
 import { Field } from '@/shared/ui/field';
 import { TextInput } from '@/shared/ui/text-input';
+import { DecimalInput } from '@/shared/ui/decimal-input';
 import { Textarea } from '@/shared/ui/textarea';
 import { Button } from '@/shared/ui/button';
 import { toast } from '@/shared/ui/toast';
 import { apiErrorToBanner } from '@/shared/lib/api-error';
-import { normalizeAmount, formatUah, amountRules, cratesRules } from '@/shared/lib/money';
+import { normalizeAmount, formatUah, decimalRules, cratesRules } from '@/shared/lib/money';
 import type { Transfer } from '@/entities/transfer';
 import { useDisputeTransferMutation } from '../api/useReceiveTransfer';
 
@@ -101,11 +102,10 @@ export function DisputeTransferDialog({
             error={errors.reported_cash?.message}
           >
             {(a11y) => (
-              <TextInput
+              <DecimalInput
                 {...a11y}
-                inputMode="decimal"
                 className="font-mono"
-                {...register('reported_cash', amountRules('transfer.errors.cashFormat'))}
+                {...register('reported_cash', decimalRules())}
                 autoFocus
               />
             )}

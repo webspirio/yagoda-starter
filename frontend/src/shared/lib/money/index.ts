@@ -9,4 +9,4 @@ export {
   clampDecimal,
   floorToHundreds,
 } from './input';
-export { amountRules, cratesRules, decimalRules } from './rules';
+export { cratesRules, decimalRules } from './rules';

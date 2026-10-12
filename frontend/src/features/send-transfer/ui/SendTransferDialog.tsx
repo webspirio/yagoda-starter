@@ -11,10 +11,11 @@ import {
 } from '@/shared/ui/dialog';
 import { Field } from '@/shared/ui/field';
 import { TextInput } from '@/shared/ui/text-input';
+import { DecimalInput } from '@/shared/ui/decimal-input';
 import { Button } from '@/shared/ui/button';
 import { toast } from '@/shared/ui/toast';
 import { apiErrorToBanner } from '@/shared/lib/api-error';
-import { normalizeAmount, isZero, amountRules, cratesRules } from '@/shared/lib/money';
+import { normalizeAmount, isZero, decimalRules, cratesRules } from '@/shared/lib/money';
 import { useSendTransferMutation } from '../api/useSendTransfer';
 
 interface SendTransferFormValues {
@@ -88,11 +89,10 @@ export function SendTransferDialog({
         <form onSubmit={onSubmit} className="flex flex-col gap-4" noValidate>
           <Field name="cash" label={t('transfer.send.cash')} error={errors.cash?.message}>
             {(a11y) => (
-              <TextInput
+              <DecimalInput
                 {...a11y}
-                inputMode="decimal"
                 className="font-mono"
-                {...register('cash', amountRules('transfer.errors.cashFormat'))}
+                {...register('cash', decimalRules())}
               />
             )}
           </Field>
