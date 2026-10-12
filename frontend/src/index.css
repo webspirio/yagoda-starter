@@ -292,16 +292,32 @@
   }
   /* The receipt prints from inside a dialog, which is centred with `translate`,
      height-capped and scrolled — so the absolute .printable was clipped to the
-     dialog's header. On paper the dialog is the top of the page, centred across it. */
+     dialog's header. On paper the dialog is the top of the page, centred across it.
+
+     `visibility: hidden` above hides the page under the dialog but keeps its
+     height, and that height printed as blank sheets after the receipt (#212).
+     Radix portals the overlay and the dialog straight into <body>, so while a
+     receipt is open every other child of <body> — the app, the overlay, a void
+     dialog on top — leaves the layout, and the receipt flows from the top of
+     the page: as many sheets as it is long, and no more. */
+  body:has(> [data-slot='dialog-content'] .printable)
+    > :not([data-slot='dialog-content']:has(.printable)) {
+    display: none !important;
+  }
   [data-slot='dialog-content']:has(.printable) {
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
+    position: static;
     margin-inline: auto;
+    padding: 0;
     translate: none;
     max-height: none;
     overflow: visible;
+  }
+  /* The dialog's own header would keep its height above the receipt. */
+  [data-slot='dialog-content']:has(.printable) > :not(.printable, :has(.printable)) {
+    display: none;
+  }
+  [data-slot='dialog-content'] .printable {
+    position: static;
   }
   .print-only {
     display: block !important;
