@@ -72,12 +72,12 @@ whitespace character has been removed:
 | `normalizeAmount(raw)` | Kept: it strips whitespace and turns the comma into a dot, as today. Existing callers keep working. |
 | `DECIMAL_INPUT` | Kept as the canonical-form check (no spaces), for callers that test an already-normalized value. |
 | `maskDecimalInput(raw, opts)` | **Changed.** It also caps the integer part at 8 digits. Spaces of every kind, letters and second separators are still dropped while typing, which is what keeps a space out of the field. |
-| `decimalRules({ required?, allowNegative? })` | **Replaces `amountRules(key)`.** Returns `{ required, validate }` as an RHF rule, always using the single key `common.errors.decimalFormat`. Taking no key is the point: a form cannot ask for a different message. |
+| `decimalRules({ required?, allowNegative? })` | **Replaces `amountRules(key)`.** Returns `{ required, validate }` as an RHF rule, always using the single key `errors.decimalFormat`. Taking no key is the point: a form cannot ask for a different message. |
 | `cratesRules` | Unchanged. |
 
 ### The one message
 
-The `common.errors.decimalFormat` key:
+The `errors.decimalFormat` key:
 - uk: «Введіть число, напр. 12000 або 980,40»
 - en: «Enter a number, e.g. 12000 or 980.40»
 
@@ -87,8 +87,8 @@ per-form format keys this replaces are deleted: `prices.errors.priceFormat`,
 `payout.errors.amountFormat`, `transfer.errors.cashFormat`, `pointTarget.errors.cashFormat`,
 `day.errors.countFormat`, `recount.errors.amount` and `topUp.errors.amountFormat`.
 
-Keys the server maps stay, because they are a different failure:
-`reception.errors.decimalFormat`, `reception.errors.paidFormat` and `apiErrorToFields`. Semantic
+Reception's server-mapped shape errors move to the same key (§4). `reception.errors.paidFormat`
+stays only for `PAYOUT_AMOUNT_ZERO`. Semantic
 checks also keep their own messages: «більше за нуль», «не більше за залишок», «каса» and the
 others.
 
@@ -122,7 +122,7 @@ others.
 | PointFormDialog target_cash | local regex (10 digits), no spaces | `DecimalInput` + `decimalRules({ required: false })` |
 | TareTypeDialog weight, deposit | local regexes + `setValueAs` | `DecimalInput` + `decimalRules()`; `setValueAs` removed |
 | Payout, Send/Dispute/Resolve transfer, CountDrawer, Recount, SetTargetCash, TopUp | `amountRules(own key)`, some unmasked | `DecimalInput` + `decimalRules()`; semantic checks unchanged |
-| Reception gross, pallet, surcharge, paid | mask; server-only errors | `DecimalInput`; an invalid non-empty value (`.`, `12.`) shows the shared message under the field and is left out of the preview body, the same way an empty value is today |
+| Reception gross, pallet, surcharge, paid | mask; server-only shape errors (`reception.errors.decimalFormat` / `paidFormat`) | `DecimalInput`. Lines are still sent to the preview verbatim (the index correspondence `apiErrorToFields` relies on). The server's class-validator shape errors on these four fields map to `errors.decimalFormat`. «Видано готівкою», which is never sent while invalid, shows `errors.decimalFormat` client-side when non-empty and unparsable. `reception.errors.decimalFormat` is deleted; `paidFormat` stays for `PAYOUT_AMOUNT_ZERO` only |
 | ExpensesPanel add and edit amount | mask; invalid only disables the button | `DecimalInput`; an invalid non-empty value shows the shared message |
 | WeighingForm gross, pallet | no mask; invalid silently counted as 0 | `DecimalInput`; an invalid non-empty value shows the shared message and blocks saving |
 
