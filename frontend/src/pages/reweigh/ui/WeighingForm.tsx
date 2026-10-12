@@ -7,6 +7,7 @@ import { Field } from '@/shared/ui/field';
 import { SelectField } from '@/shared/ui/select-field';
 import { TextInput } from '@/shared/ui/text-input';
 import { DecimalInput } from '@/shared/ui/decimal-input';
+import { useFieldFocus } from '@/shared/lib/useFieldFocus';
 import { cmp, formatDecimal, formatKg, parseDecimal } from '@/shared/lib/money';
 import { formatShortDate } from '@/shared/lib/date';
 import { useTareTypeOptionsQuery } from '@/entities/tare-type';
@@ -112,8 +113,14 @@ export function WeighingForm({
 
   const grossForCalc = toCalcAmount(gross);
   const palletForCalc = toCalcAmount(pallet);
-  const grossError = isMalformed(gross) ? 'errors.decimalFormat' : undefined;
-  const palletError = isMalformed(pallet) ? 'errors.decimalFormat' : undefined;
+  // #72 — a malformed weight blocks the add at once, but the line under the
+  // field waits until the owner leaves it: «120.» on the way to «120.5» is not
+  // a mistake yet.
+  const grossFocus = useFieldFocus();
+  const palletFocus = useFieldFocus();
+  const badFormat = isMalformed(gross) || isMalformed(pallet);
+  const grossError = isMalformed(gross) && !grossFocus.focused ? 'errors.decimalFormat' : undefined;
+  const palletError = isMalformed(pallet) && !palletFocus.focused ? 'errors.decimalFormat' : undefined;
 
   const tare =
     tareCount > 0 && effectiveTareId ? [{ tare_type_id: effectiveTareId, units: tareCount }] : [];
@@ -128,7 +135,7 @@ export function WeighingForm({
     hasShift,
     acceptedAnything,
     gradeId,
-    badFormat: Boolean(grossError ?? palletError),
+    badFormat,
     grossKg: grossForCalc,
     netKg: net,
   });
@@ -207,6 +214,7 @@ export function WeighingForm({
                   {...a11y}
                   value={gross}
                   onChange={(e) => setGross(e.target.value)}
+                  {...grossFocus.focusProps}
                   placeholder="0.00"
                   className="h-14 pr-12 font-mono text-2xl font-semibold"
                 />
@@ -223,6 +231,7 @@ export function WeighingForm({
                   {...a11y}
                   value={pallet}
                   onChange={(e) => setPallet(e.target.value)}
+                  {...palletFocus.focusProps}
                   placeholder="0.0"
                   className="h-14 pr-9 font-mono text-lg font-semibold"
                 />

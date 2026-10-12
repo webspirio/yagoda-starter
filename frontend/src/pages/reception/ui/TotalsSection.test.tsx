@@ -267,14 +267,21 @@ describe('TotalsSection — refusal and hints', () => {
     );
   });
 
-  it('shows the shared format message for an unfinished «12.» and none while empty (#72)', async () => {
+  it('shows the shared format message for a malformed sum once the field is left, none while empty (#72)', async () => {
     const user = userEvent.setup();
     render(<Harness />);
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     const input = screen.getByLabelText('Paid in cash');
-    await user.type(input, '12.');
+    // A second separator is kept, never silently dropped — and refused.
+    await user.type(input, '1.2.3');
+    expect(input).toHaveValue('1.2.3');
+    // Mid-keystroke the message waits; leaving the field shows it.
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    await user.tab();
     expect(screen.getByRole('alert')).toHaveTextContent('Enter a number, e.g. 12000 or 980.40');
-    await user.type(input, '5');
+    await user.clear(input);
+    await user.type(input, '12.5');
+    await user.tab();
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 

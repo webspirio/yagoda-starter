@@ -227,6 +227,11 @@ describe('ExpensesPanel', () => {
     await user.type(screen.getByLabelText('Підпис витрати'), 'водій');
     await user.type(screen.getByLabelText('₴'), '12.');
 
+    // Mid-keystroke: the button is blocked, the message waits.
+    expect(screen.getByRole('button', { name: 'Додати' })).toBeDisabled();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    await user.tab();
+
     expect(screen.getByRole('alert')).toHaveTextContent('Введіть число, напр. 12000 або 980,40');
     expect(screen.getByLabelText('₴')).toHaveAttribute('aria-invalid', 'true');
     expect(screen.getByRole('button', { name: 'Додати' })).toBeDisabled();
@@ -240,6 +245,8 @@ describe('ExpensesPanel', () => {
     const amount = screen.getByDisplayValue('1000.00');
     await user.clear(amount);
     await user.type(amount, '13.');
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    await user.tab();
 
     expect(screen.getByRole('alert')).toHaveTextContent('Введіть число, напр. 12000 або 980,40');
   });

@@ -58,10 +58,10 @@ describe('RecountDrawerDialog', () => {
     await expectNoAxeViolations(container);
   });
 
-  it('masks while typing — comma becomes dot, two decimals only, like the reception fields', async () => {
+  it('masks while typing — comma becomes dot; a third decimal stays visible to be refused, never cut (#72)', async () => {
     setup();
     await userEvent.type(screen.getByRole('textbox'), '12,345');
-    expect(screen.getByRole('textbox')).toHaveValue('12.34');
+    expect(screen.getByRole('textbox')).toHaveValue('12.345');
   });
 
   it('never shows the expected figure before a count is submitted', () => {

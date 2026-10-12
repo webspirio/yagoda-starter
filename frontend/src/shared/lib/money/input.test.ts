@@ -63,24 +63,25 @@ describe('CRATES_INPUT', () => {
 });
 
 describe('maskDecimalInput', () => {
-  it('drops letters and a second separator, keeps two decimals', () => {
+  it('drops letters and whitespace of any kind, stores a comma as a dot', () => {
     expect(maskDecimalInput('12a,5')).toBe('12.5');
-    expect(maskDecimalInput('12.5.6')).toBe('12.56');
-    expect(maskDecimalInput('12.345')).toBe('12.34');
+    expect(maskDecimalInput('12 000')).toBe('12000');
+    expect(maskDecimalInput('980 40')).toBe('98040');
+    expect(maskDecimalInput('12\u202f000,00')).toBe('12000.00');
+  });
+  it('never drops a digit or a separator — the grammar refuses what does not fit (#72)', () => {
+    expect(maskDecimalInput('12,000.00')).toBe('12.000.00');
+    expect(maskDecimalInput('1,234')).toBe('1.234');
+    expect(maskDecimalInput('123456789')).toBe('123456789');
+    expect(parseDecimal(maskDecimalInput('12,000.00'))).toBeNull();
+    expect(parseDecimal(maskDecimalInput('1,234'))).toBeNull();
+    expect(parseDecimal(maskDecimalInput('123456789'))).toBeNull();
   });
   it('allows a leading minus only when asked', () => {
     expect(maskDecimalInput('-5')).toBe('5');
     expect(maskDecimalInput('-5', { allowNegative: true })).toBe('-5');
     expect(maskDecimalInput('--5', { allowNegative: true })).toBe('-5');
-  });
-  it('never lets a space of any kind into the field', () => {
-    expect(maskDecimalInput('12 000')).toBe('12000');
-    expect(maskDecimalInput('980 40')).toBe('98040');
-    expect(maskDecimalInput('12\u202f000,00')).toBe('12000.00');
-  });
-  it('caps the integer part at 8 digits', () => {
-    expect(maskDecimalInput('123456789')).toBe('12345678');
-    expect(maskDecimalInput('123456789,5')).toBe('12345678.5');
+    expect(maskDecimalInput('5-', { allowNegative: true })).toBe('5');
   });
   it('lets a half-typed value through untouched', () => {
     expect(maskDecimalInput('12.')).toBe('12.');

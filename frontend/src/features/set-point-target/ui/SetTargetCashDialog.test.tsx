@@ -96,11 +96,11 @@ describe('SetTargetCashDialog', () => {
     expect(screen.getByLabelText('How much money, ₴')).toHaveValue('');
   });
 
-  it('masks while typing — comma becomes dot, two decimals only, like the reception fields', async () => {
+  it('masks while typing — comma becomes dot; a third decimal stays visible to be refused, never cut (#72)', async () => {
     renderDialog(vi.fn(), null);
     const targetField = screen.getByLabelText('How much money, ₴');
     await userEvent.type(targetField, '12,345');
-    expect(targetField).toHaveValue('12.34');
+    expect(targetField).toHaveValue('12.345');
   });
 
   it('refuses a blank reason when changing an EXISTING target and does not call the mutation', async () => {
@@ -227,11 +227,9 @@ describe('SetTargetCashDialog', () => {
     });
 
     it('falls back to a dash while the typed amount is not a valid decimal', async () => {
-      // `maskDecimalInput` on this field's `onChange` caps the FRACTION to
-      // two digits while typing, so a value like «12.999» can no longer land
-      // in the field at all — the still-reachable not-yet-valid state is a
-      // trailing separator with no digits after it, the same in-progress
-      // shape `TotalsSection`'s own blur handler names («1200,» is not yet a
+      // A trailing separator with no digits after it is the commonest
+      // not-yet-valid state while typing — the same in-progress shape
+      // `TotalsSection`'s own blur handler names («1200,» is not yet a
       // well-formed decimal).
       renderDialog(vi.fn(), '600000.00');
 

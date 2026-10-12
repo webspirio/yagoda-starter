@@ -1221,6 +1221,22 @@ describe('ReceptionPage — «Видано готівкою» rides along with �
       ),
     );
   });
+
+  it('a malformed «Видано готівкою» stops «Прийняти» instead of recording the receipt without the payout (#72)', async () => {
+    const user = userEvent.setup();
+    renderReception();
+
+    await user.click(screen.getByRole('button', { name: 'pick-nina' }));
+    await fillDraft(user);
+
+    const paidInput = screen.getByLabelText('Paid in cash');
+    await user.clear(paidInput);
+    await user.type(paidInput, '1.2.3');
+    await user.click(screen.getByRole('button', { name: /Accept 120\.40 kg/ }));
+
+    expect(await screen.findByText('Enter a number, e.g. 12000 or 980.40')).toBeInTheDocument();
+    expect(createMock).not.toHaveBeenCalled();
+  });
 });
 
 describe('ReceptionPage — switching supplier mid-visit', () => {
@@ -1319,7 +1335,8 @@ describe('ReceptionPage — line editor ergonomics (#117)', () => {
 
     const gross = screen.getByLabelText('Gross — berries including tare');
     await user.type(gross, '12a,3x45');
-    expect(gross).toHaveValue('12.34');
+    // #72: letters go, digits never do — a third decimal stays visible to be refused.
+    expect(gross).toHaveValue('12.345');
 
     // #72 — the field never holds a space: «1 200,5» lands as «1200.5».
     await user.clear(gross);

@@ -39,30 +39,27 @@ export function normalizeAmount(value: string): string {
 }
 
 /**
- * Keeps what a decimal field may hold WHILE TYPING: digits, one separator
- * (comma or dot, stored as dot), at most 8 integer digits and `decimals`
- * places, an optional leading minus when `allowNegative`. Whitespace of any
- * kind never gets in (#72) — the field shows exactly what will be saved, so a
- * stray space cannot hide a hundred-fold error. Never adds digits.
+ * What a decimal field lets through WHILE TYPING (#72): digits and separators
+ * (a comma is stored as a dot), plus a leading minus when `allowNegative`.
+ * Everything else — whitespace of any kind, letters — never gets in.
+ *
+ * It removes only characters that cannot be part of a number; it never drops
+ * a digit or a separator. Truncating `12,000.00` to `12.00`, `1,234` to `1.23`
+ * or a 9th digit away would be the same silent hundred- or thousand-fold
+ * change #72 exists to remove — so what does not fit the grammar stays
+ * visible in the field and `parseDecimal` refuses it with the shared message.
  */
 export function maskDecimalInput(
   raw: string,
-  { decimals = 2, allowNegative = false }: { decimals?: number; allowNegative?: boolean } = {},
+  { allowNegative = false }: { allowNegative?: boolean } = {},
 ): string {
   const negative = allowNegative && raw.trimStart().startsWith('-');
-  let seen = false;
   let body = '';
   for (const ch of raw) {
     if (ch >= '0' && ch <= '9') body += ch;
-    else if ((ch === '.' || ch === ',') && !seen) {
-      seen = true;
-      body += '.';
-    }
+    else if (ch === '.' || ch === ',') body += '.';
   }
-  const [rawInt, frac = ''] = body.split('.');
-  const int = rawInt.slice(0, 8);
-  const fraction = seen ? `.${frac.slice(0, decimals)}` : '';
-  return `${negative ? '-' : ''}${int}${fraction}`;
+  return `${negative ? '-' : ''}${body}`;
 }
 
 /** `value` clamped into [min, max]; a malformed value is returned unchanged. */

@@ -5,6 +5,7 @@ import { Button } from '@/shared/ui/button';
 import { Eyebrow } from '@/shared/ui/eyebrow';
 import { TextInput } from '@/shared/ui/text-input';
 import { DecimalInput } from '@/shared/ui/decimal-input';
+import { useFieldFocus } from '@/shared/lib/useFieldFocus';
 import { toast } from '@/shared/ui/toast';
 import { formatUah, parseDecimal } from '@/shared/lib/money';
 import { apiErrorToBanner } from '@/shared/lib/api-error';
@@ -83,6 +84,11 @@ export function ExpensesPanel({
   const [editing, setEditing] = useState<string | null>(null);
   const [draftLabel, setDraftLabel] = useState('');
   const [draftAmount, setDraftAmount] = useState('');
+  // #72 — the format line waits until the operator leaves the field.
+  const addFocus = useFieldFocus();
+  const editFocus = useFieldFocus();
+  const showAddError = isMalformed(amount) && !addFocus.focused;
+  const showEditError = isMalformed(draftAmount) && !editFocus.focused;
 
   // `per_kg` is null when nothing was weighed — the amber «awaiting» panel.
   // It is the only nullable figure the branch below formats (`formatUah` throws on null).
@@ -161,8 +167,9 @@ export function ExpensesPanel({
               <DecimalInput
                 value={draftAmount}
                 onChange={(e) => setDraftAmount(e.target.value)}
-                aria-invalid={isMalformed(draftAmount) || undefined}
-                aria-describedby={isMalformed(draftAmount) ? 'expense-edit-amount-error' : undefined}
+                {...editFocus.focusProps}
+                aria-invalid={showEditError || undefined}
+                aria-describedby={showEditError ? 'expense-edit-amount-error' : undefined}
                 aria-label={t('costOfDay.expenses.amountField')}
                 className="h-8 w-24 text-right font-mono text-xs"
               />
@@ -183,7 +190,7 @@ export function ExpensesPanel({
               >
                 <X className="size-3.5" />
               </Button>
-              {isMalformed(draftAmount) ? <FormatError id="expense-edit-amount-error" /> : null}
+              {showEditError ? <FormatError id="expense-edit-amount-error" /> : null}
             </div>
           ) : (
             <div key={line.id} className="flex items-baseline gap-2">
@@ -225,8 +232,9 @@ export function ExpensesPanel({
         <DecimalInput
           value={amount}
           onChange={(e) => setAmount(e.target.value)}
-          aria-invalid={isMalformed(amount) || undefined}
-          aria-describedby={isMalformed(amount) ? 'expense-amount-error' : undefined}
+          {...addFocus.focusProps}
+          aria-invalid={showAddError || undefined}
+          aria-describedby={showAddError ? 'expense-amount-error' : undefined}
           placeholder={t('costOfDay.expenses.amountField')}
           aria-label={t('costOfDay.expenses.amountField')}
           className="h-8 w-24 text-right font-mono text-xs"
@@ -240,7 +248,7 @@ export function ExpensesPanel({
           <Plus className="size-3.5" />
           {t('costOfDay.expenses.add')}
         </Button>
-        {isMalformed(amount) ? <FormatError id="expense-amount-error" /> : null}
+        {showAddError ? <FormatError id="expense-amount-error" /> : null}
       </div>
 
       {notSpread ? (

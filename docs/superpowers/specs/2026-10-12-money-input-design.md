@@ -32,8 +32,15 @@ plain sight, before submit.
 | `980,40` / `980.40` | `980.40` | 980,40 |
 | `980 40` | `98040`, visibly, with no hidden conversion | whatever the field shows |
 | `12 000` copied from the app (U+202F) | `12000` | 12 000,00 |
-| `abc`, `1.234`, a second separator | dropped or cut while typing | — |
+| `abc` | letters never get in | — |
+| `1,234`, `12,000.00` (a second separator), `123456789` | `1.234`, `12.000.00`, `123456789` — **kept, never cut** | refused with the shared message |
 | empty, `.`, `12.` at submit | refused with the shared message | — |
+
+The mask removes only characters that cannot belong to a number. It never drops a digit or a
+separator: cutting `12,000.00` to `12.00` or a 9th digit away would be the same silent
+hundred- or thousand-fold change, found in review (2026-10-12). The format message appears once
+the operator leaves the field (`useFieldFocus`), not mid-keystroke on `980.`; a blocked button
+stays live.
 
 This amends the issue's criterion «"980 40" відхиляється». The aim behind it, «a stray space
 must not change the sum a hundredfold without anyone seeing», is met by making the space
@@ -71,7 +78,7 @@ whitespace character has been removed:
 | `parseDecimal(raw, { allowNegative? })` → `string \| null` | The canonical dot form (`'980,40'` → `'980.40'`), or `null` when the rule refuses it. This is the one place the grammar lives. It also strips whitespace, as a defence for values that did not come through the mask, such as a default value. |
 | `normalizeAmount(raw)` | Kept: it strips whitespace and turns the comma into a dot, as today. Existing callers keep working. |
 | `DECIMAL_INPUT` | Kept as the canonical-form check (no spaces), for callers that test an already-normalized value. |
-| `maskDecimalInput(raw, opts)` | **Changed.** It also caps the integer part at 8 digits. Spaces of every kind, letters and second separators are still dropped while typing, which is what keeps a space out of the field. |
+| `maskDecimalInput(raw, { allowNegative? })` | **Changed.** Keeps digits, separators (comma → dot) and an opted-in leading minus; drops whitespace of every kind and letters. It no longer cuts the fraction or drops a second separator — those stay visible and `parseDecimal` refuses them. |
 | `decimalRules({ required?, allowNegative? })` | **Replaces `amountRules(key)`.** Returns `{ required, validate }` as an RHF rule, always using the single key `errors.decimalFormat`. Taking no key is the point: a form cannot ask for a different message. |
 | `cratesRules` | Unchanged. |
 
@@ -122,7 +129,7 @@ others.
 | PointFormDialog target_cash | local regex (10 digits), no spaces | `DecimalInput` + `decimalRules({ required: false })` |
 | TareTypeDialog weight, deposit | local regexes + `setValueAs` | `DecimalInput` + `decimalRules()`; `setValueAs` removed |
 | Payout, Send/Dispute/Resolve transfer, CountDrawer, Recount, SetTargetCash, TopUp | `amountRules(own key)`, some unmasked | `DecimalInput` + `decimalRules()`; semantic checks unchanged |
-| Reception gross, pallet, surcharge, paid | mask; server-only shape errors (`reception.errors.decimalFormat` / `paidFormat`) | `DecimalInput`. Lines are still sent to the preview verbatim (the index correspondence `apiErrorToFields` relies on). The server's class-validator shape errors on these four fields map to `errors.decimalFormat`. «Видано готівкою», which is never sent while invalid, shows `errors.decimalFormat` client-side when non-empty and unparsable. `reception.errors.decimalFormat` is deleted; `paidFormat` stays for `PAYOUT_AMOUNT_ZERO` only |
+| Reception gross, pallet, surcharge, paid | mask; server-only shape errors (`reception.errors.decimalFormat` / `paidFormat`) | `DecimalInput`. Lines are still sent to the preview verbatim (the index correspondence `apiErrorToFields` relies on). The server's class-validator shape errors on these four fields map to `errors.decimalFormat`. «Видано готівкою», which is never sent while invalid, shows `errors.decimalFormat` client-side when non-empty and unparsable, and «Прийняти» refuses to submit — otherwise the receipt would be recorded without the payout. `reception.errors.decimalFormat` is deleted; `paidFormat` stays for `PAYOUT_AMOUNT_ZERO` only |
 | ExpensesPanel add and edit amount | mask; invalid only disables the button | `DecimalInput`; an invalid non-empty value shows the shared message |
 | WeighingForm gross, pallet | no mask; invalid silently counted as 0 | `DecimalInput`; an invalid non-empty value shows the shared message and blocks saving |
 

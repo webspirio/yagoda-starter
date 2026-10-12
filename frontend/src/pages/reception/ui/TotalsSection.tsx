@@ -4,6 +4,7 @@ import { Button } from '@/shared/ui/button';
 import { Eyebrow } from '@/shared/ui/eyebrow';
 import { Field } from '@/shared/ui/field';
 import { DecimalInput } from '@/shared/ui/decimal-input';
+import { useFieldFocus } from '@/shared/lib/useFieldFocus';
 import { cn } from '@/shared/lib/cn';
 import {
   clampDecimal,
@@ -102,8 +103,13 @@ export function TotalsSection({
   // #72 — «Видано готівкою» is never sent while unparsable (`toCreateBody`),
   // so the server can never say so; the field says it itself, with the one
   // shared message. Empty is not an error here: it means «nothing paid out».
+  // It waits until the operator leaves the field — «1200.» mid-keystroke is
+  // not a mistake yet.
+  const paidFocus = useFieldFocus();
   const formatError =
-    paid.trim() !== '' && parseDecimal(paid) === null ? 'errors.decimalFormat' : undefined;
+    paid.trim() !== '' && parseDecimal(paid) === null && !paidFocus.focused
+      ? 'errors.decimalFormat'
+      : undefined;
   const settle = (v: string) => onPaidChange(v);
   // The unavailable-drawer note takes the Field hint slot over the over-cap
   // one — a failed read is the more important thing to say, and `overCap`
@@ -184,7 +190,9 @@ export function TotalsSection({
                     className="h-12 pr-9 font-mono text-xl font-semibold"
                     value={paid}
                     onChange={(e) => onPaidChange(e.target.value)}
+                    onFocus={paidFocus.focusProps.onFocus}
                     onBlur={() => {
+                      paidFocus.focusProps.onBlur();
                       if (cap === null) return;
                       // I5: canonicalise BEFORE validity — a trailing
                       // separator («1200,») is not yet a well-formed decimal,

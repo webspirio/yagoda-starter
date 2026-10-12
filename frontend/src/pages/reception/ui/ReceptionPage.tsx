@@ -9,7 +9,7 @@ import { SelectField } from '@/shared/ui/select-field';
 import { EmptyState } from '@/shared/ui/empty-state';
 import { Spinner } from '@/shared/ui/spinner';
 import { toast, toastSuccess } from '@/shared/ui/toast';
-import { add, cmp, formatKg, formatUah, sub, sum } from '@/shared/lib/money';
+import { add, cmp, formatKg, formatUah, parseDecimal, sub, sum } from '@/shared/lib/money';
 import { formatLongDate, todayIso } from '@/shared/lib/date';
 import { useMeQuery } from '@/entities/user';
 import { useWorkingPoint } from '@/features/point-scope';
@@ -314,6 +314,10 @@ export function ReceptionPage() {
   // which decides on the server's FRESH split whether there is a deposit to
   // hand over — and confirms straight through when there is none.
   const requestSubmit = (formValues: IntakeFormValues) => {
+    // #72 — a malformed «Видано готівкою» is never sent (`toCreateBody`), so
+    // going ahead would record the receipt WITHOUT the payout the operator
+    // typed. The field already names the refusal; the submit agrees with it.
+    if (paidShown.trim() !== '' && parseDecimal(paidShown) === null) return;
     if (parseCount(formValues.returned_crates) > 0) setPendingSubmit(formValues);
     else void submitIntake(formValues);
   };

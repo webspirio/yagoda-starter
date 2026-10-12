@@ -148,6 +148,10 @@ describe('WeighingForm', () => {
     await userEvent.type(screen.getByLabelText(/gross|вага з ягодою/i), '12.');
 
     const gross = screen.getByLabelText(/gross|вага з ягодою/i);
+    // Mid-keystroke the add is blocked at once, the field's own line waits.
+    expect(screen.getByRole('button', { name: /add position|додати позицію/i })).toBeDisabled();
+    expect(gross).not.toHaveAttribute('aria-invalid');
+    await userEvent.tab();
     expect(gross).toHaveAttribute('aria-invalid', 'true');
     expect(screen.getAllByText('Enter a number, e.g. 12000 or 980.40').length).toBeGreaterThan(0);
     expect(screen.getByRole('button', { name: /add position|додати позицію/i })).toBeDisabled();
@@ -158,6 +162,7 @@ describe('WeighingForm', () => {
     await userEvent.selectOptions(screen.getByLabelText(/grade|сорт/i), 'g1');
     await userEvent.type(screen.getByLabelText(/gross|вага з ягодою/i), '120');
     await userEvent.type(screen.getByLabelText(/pallet|піддон/i), '2.');
+    await userEvent.tab();
 
     expect(screen.getByLabelText(/pallet|піддон/i)).toHaveAttribute('aria-invalid', 'true');
     expect(screen.getByRole('button', { name: /add position|додати позицію/i })).toBeDisabled();
