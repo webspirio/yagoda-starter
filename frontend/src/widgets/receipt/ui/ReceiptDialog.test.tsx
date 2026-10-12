@@ -589,6 +589,18 @@ describe('ReceiptDialog', () => {
     for (const line of Array.from(tail?.children ?? [])) expect(line).toHaveClass('border-b');
   });
 
+  // index.css's print rule hides every OTHER child of <body> while a receipt is
+  // open (#212). It only matches while the dialog is a direct child of <body>,
+  // and jsdom evaluates no print CSS — so pin that DOM shape here, where a
+  // portal wrapper from a Radix upgrade would otherwise bring #212 back unseen.
+  it('portals the receipt dialog straight into <body>, as the print rule expects', () => {
+    setUp();
+    render(<ReceiptDialog intakeId="intake-1" open onClose={vi.fn()} />);
+
+    const dialog = document.querySelector('.printable')?.closest("[data-slot='dialog-content']");
+    expect(dialog?.parentElement).toBe(document.body);
+  });
+
   it("prints the network's note on the ruled lines, blank after it", () => {
     setUp({ note: 'Ящики повертати до 20:00\nТел. 067 000 00 00' });
     render(<ReceiptDialog intakeId="intake-1" open onClose={vi.fn()} />);
