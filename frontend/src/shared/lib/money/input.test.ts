@@ -1,6 +1,5 @@
 import { describe, it, expect } from 'vitest';
 import {
-  DECIMAL_INPUT,
   CRATES_INPUT,
   normalizeAmount,
   parseDecimal,
@@ -41,15 +40,6 @@ describe('parseDecimal', () => {
   });
   it('allows a minus only when asked', () => {
     expect(parseDecimal('-5,5', { allowNegative: true })).toBe('-5.5');
-  });
-});
-
-describe('DECIMAL_INPUT', () => {
-  it.each(['0', '0.5', '0.05', '99999999.99'])('accepts %s', (v) => {
-    expect(DECIMAL_INPUT.test(v)).toBe(true);
-  });
-  it.each(['', '-1', '1.234', 'abc', '1.'])('rejects %s', (v) => {
-    expect(DECIMAL_INPUT.test(v)).toBe(false);
   });
 });
 

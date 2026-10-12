@@ -62,7 +62,7 @@ whitespace character has been removed:
 ^-?  \d{1,8}  ( [.,] \d{1,2} )?  $
 ```
 
-- At most **8 integer digits and 2 decimals**, for every field. This is today's `DECIMAL_INPUT`.
+- At most **8 integer digits and 2 decimals**, for every field. This is the old `DECIMAL_INPUT`'s limit.
   Prices and weights mirror the backend exactly. For cash columns it is two digits narrower
   than the backend's 10, on purpose: `input.ts` already says that 99 999 999,99 ₴ is never a
   real figure, and an extra zero there is usually a slip of the finger. `PointFormDialog` and
@@ -77,7 +77,7 @@ whitespace character has been removed:
 |---|---|
 | `parseDecimal(raw, { allowNegative? })` → `string \| null` | The canonical dot form (`'980,40'` → `'980.40'`), or `null` when the rule refuses it. This is the one place the grammar lives. It also strips whitespace, as a defence for values that did not come through the mask, such as a default value. |
 | `normalizeAmount(raw)` | Kept: it strips whitespace and turns the comma into a dot, as today. Existing callers keep working. |
-| `DECIMAL_INPUT` | Kept as the canonical-form check (no spaces), for callers that test an already-normalized value. |
+| `DECIMAL_INPUT` | **Deleted.** Every gate that tested it now calls `parseDecimal`, which validates and canonicalises in one call (automated review of #233). |
 | `maskDecimalInput(raw, { allowNegative? })` | **Changed.** Keeps digits, separators (comma → dot) and an opted-in leading minus; drops whitespace of every kind and letters. It no longer cuts the fraction or drops a second separator — those stay visible and `parseDecimal` refuses them. |
 | `decimalRules({ required?, allowNegative? })` | **Replaces `amountRules(key)`.** Returns `{ required, validate }` as an RHF rule, always using the single key `errors.decimalFormat`. Taking no key is the point: a form cannot ask for a different message. |
 | `cratesRules` | Unchanged. |
