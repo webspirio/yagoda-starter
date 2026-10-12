@@ -121,8 +121,13 @@ function normalizeDecimal(value: string): string {
  * typing — dropping incomplete lines would break the 1:1 correspondence
  * between the form's `items` array and the server's response/error indices
  * that `apiErrorToFields` and `useIntakePreview` both rely on. Only a tare
- * row's `units < 1` (or unparsable) is ever dropped — that is never a line
- * the operator is mid-typing, it is one they have not touched at all.
+ * row that is empty or a whole count below 1 is ever dropped — that is never
+ * a line the operator is mid-typing, it is one they have not touched at all.
+ *
+ * A tare count goes out through `Number`, never `parseInt`: `parseInt` read
+ * «2.5» as 2 and «1.2.3» as 1, a silent change of the tare and so of the
+ * sum (#72). A count that is not a whole number is SENT, so the server's
+ * `@IsInt` refuses it and `apiErrorToFields` names it under the tare.
  */
 export function toPreviewBody(values: IntakeFormValues, pointId: string | null): PreviewIntakeBody {
   return {
@@ -134,8 +139,9 @@ export function toPreviewBody(values: IntakeFormValues, pointId: string | null):
       pallet_kg: normalizeDecimal(line.pallet_kg),
       bonus: normalizeDecimal(line.bonus),
       tare: line.tare
-        .map((row) => ({ tare_type_id: row.tare_type_id, units: Number.parseInt(row.units, 10) }))
-        .filter((row) => Number.isInteger(row.units) && row.units >= 1),
+        .filter((row) => row.units.trim() !== '')
+        .map((row) => ({ tare_type_id: row.tare_type_id, units: Number(row.units) }))
+        .filter((row) => !(Number.isInteger(row.units) && row.units < 1)),
     })),
   };
 }

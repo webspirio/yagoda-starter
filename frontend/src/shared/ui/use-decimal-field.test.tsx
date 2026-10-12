@@ -62,7 +62,7 @@ describe('useDecimalField', () => {
     expect(screen.getByTestId('parsed')).toHaveTextContent('-2.5');
   });
 
-  it('wires aria only when given an errorId, and runs the field\'s own onBlur', async () => {
+  it("wires aria only when given an errorId, and runs the field's own onBlur", async () => {
     const onBlur = vi.fn();
     render(<Harness errorId="sum-error" onBlur={onBlur} />);
     const input = screen.getByLabelText('sum');

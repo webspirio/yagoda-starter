@@ -16,7 +16,6 @@ import { netOf, newDraftKey, tareWeightOf, type Draft } from '../model/draft';
 import { addBlockReason, grossHint, tareHint } from '../lib/hints';
 import { FieldWarning } from './FieldWarning';
 
-
 interface ProductGroup {
   product_id: string;
   product_name: string;
@@ -132,7 +131,10 @@ export function WeighingForm({
     block === 'noShift'
       ? t('reweigh.block.noShift')
       : block === 'nothingAccepted'
-        ? t('reweigh.block.nothingAccepted', { point: pointName, date: formatShortDate(date, locale) })
+        ? t('reweigh.block.nothingAccepted', {
+            point: pointName,
+            date: formatShortDate(date, locale),
+          })
         : block === 'noGrade'
           ? t('reweigh.block.noGrade')
           : block === 'badFormat'
@@ -244,7 +246,10 @@ export function WeighingForm({
           >
             {(tareTypes.data ?? []).map((tt) => (
               <option key={tt.id} value={tt.id}>
-                {t('reweigh.tareOption', { name: tt.name, weight: formatDecimal(tt.weight_kg, locale) })}
+                {t('reweigh.tareOption', {
+                  name: tt.name,
+                  weight: formatDecimal(tt.weight_kg, locale),
+                })}
               </option>
             ))}
           </SelectField>
@@ -277,15 +282,11 @@ export function WeighingForm({
               <Plus className="size-3.5" />
             </Button>
           </div>
-          <span className="font-mono text-sm text-muted-foreground">= {formatKg(tareWeight, locale)}</span>
+          <span className="font-mono text-sm text-muted-foreground">
+            = {formatKg(tareWeight, locale)}
+          </span>
           {[5, 10, 20].map((n) => (
-            <Button
-              key={n}
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={stepTare(n)}
-            >
+            <Button key={n} type="button" variant="outline" size="sm" onClick={stepTare(n)}>
               {t('reweigh.crateQuick', { n })}
             </Button>
           ))}
@@ -333,7 +334,9 @@ export function WeighingForm({
             {t('reweigh.addLine')}
           </Button>
           {blockCopy ? (
-            <span className="max-w-[300px] text-right text-xs text-[var(--amber)]">{blockCopy}</span>
+            <span className="max-w-[300px] text-right text-xs text-[var(--amber)]">
+              {blockCopy}
+            </span>
           ) : null}
         </div>
       </div>

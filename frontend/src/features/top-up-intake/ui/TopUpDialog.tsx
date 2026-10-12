@@ -114,7 +114,9 @@ export function TopUpDialog({
                     const shaped = decimalRules().validate(value);
                     if (shaped !== true) return shaped;
                     const amount = parseDecimal(value);
-                    return (amount !== null && cmp(amount, '0') === 1) || 'topUp.errors.amountPositive';
+                    return (
+                      (amount !== null && cmp(amount, '0') === 1) || 'topUp.errors.amountPositive'
+                    );
                   },
                 })}
               />

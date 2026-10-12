@@ -1440,7 +1440,7 @@ describe('ReceptionPage — line editor ergonomics (#117)', () => {
     expect(bonus).toHaveValue('-2');
   });
 
-  it('a tare count is digits only — «1 2» reads 12, never parseInt\'s silent 1 (#233 review)', async () => {
+  it('a tare count drops spaces and letters but never a separator — «2,0» is not 20 (#233 review)', async () => {
     const user = userEvent.setup();
     renderReception();
 
@@ -1449,8 +1449,10 @@ describe('ReceptionPage — line editor ergonomics (#117)', () => {
     await user.type(units, '1 2');
     expect(units).toHaveValue('12');
     await user.clear(units);
-    await user.type(units, '1,5a');
-    expect(units).toHaveValue('15');
+    await user.type(units, '2,0a');
+    expect(units).toHaveValue('2.0');
+    await user.clear(units);
+    await user.type(units, '15');
     // …and the stepper still steps the masked value.
     await user.click(screen.getByRole('button', { name: /^One more/ }));
     expect(units).toHaveValue('16');

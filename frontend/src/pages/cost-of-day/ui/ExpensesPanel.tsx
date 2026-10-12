@@ -17,18 +17,17 @@ import {
 } from '@/entities/day-expense';
 import type { CostOfDay } from '@/entities/cost-of-day';
 
-/**
- * `DecimalInput`'s mask is a TYPING mask, not a validator: '.' and '12.' both
- * survive it mid-keystroke, and `CreateDayExpenseDto`'s
- * `@Matches(/^\d{1,10}(\.\d{1,2})?$/)` refuses both — as a 400 that reaches
- * the person as «щось пішло не так», which says nothing about which field was
- * wrong. Gate on THE grammar, `parseDecimal` (#72), so the refusal is a
- * disabled button plus the shared `errors.decimalFormat` line under the field.
- * (The grammar stops two digits SHORT of the DTO on purpose — `input.ts` says
- * why: 99 999 999,99 ₴ of пальне is a missed key, not a day.) What is sent is
- * `parseDecimal`'s canonical output (`useDecimalField`'s `parsed`), never the
- * raw text.
- */
+// Why the amount inputs gate on the grammar, not the mask (#72):
+// `DecimalInput`'s mask is a TYPING mask, not a validator: '.' and '12.' both
+// survive it mid-keystroke, and `CreateDayExpenseDto`'s
+// `@Matches(/^\d{1,10}(\.\d{1,2})?$/)` refuses both — as a 400 that reaches
+// the person as «щось пішло не так», which says nothing about which field was
+// wrong. Gate on THE grammar, `parseDecimal` (#72), so the refusal is a
+// disabled button plus the shared `errors.decimalFormat` line under the field.
+// (The grammar stops two digits SHORT of the DTO on purpose — `input.ts` says
+// why: 99 999 999,99 ₴ of пальне is a missed key, not a day.) What is sent is
+// `parseDecimal`'s canonical output (`useDecimalField`'s `parsed`), never the
+// raw text.
 
 /** `Field`'s error line, for the two amount inputs that sit outside a `Field`. */
 function FormatError({ id }: { id: string }) {

@@ -24,6 +24,7 @@ import {
   formatDecimal,
   formatKg,
   formatUah,
+  maskDecimalInput,
   mul,
   sub,
 } from '@/shared/lib/money';
@@ -128,17 +129,19 @@ export function LineEditor({
   // #72 — the shape of a weight or a surcharge is the field's own business,
   // not the preview's: with no supplier picked yet there IS no preview, and a
   // «1.2.3» must not sit there unremarked. Shown once the field is left.
-  // A tare row's crate count is digits only (#233 review): it reaches the body
-  // through `parseInt`, which read «1 2» as 1 and «12abc» as 12 — the same
-  // silent change of a number #72 removes, since the tare decides the net
-  // weight and so the sum. What is typed is what is counted.
+  // A tare row's crate count takes the money fields' mask (#233 review):
+  // spaces and letters never get in, a digit or a separator is never dropped.
+  // `\D`-stripping read «2,0» as 20 — ten times the tare, a silent change of
+  // the net weight and so the sum (#72). A separator stays visible instead;
+  // the body sends it through `Number`, and a count that is not whole is
+  // refused by the server and named under the tare.
   const unitsField = (rowIndex: number) => {
     const field = register(`items.${index}.tare.${rowIndex}.units`);
     return {
       ...field,
       onChange: (e: ChangeEvent<HTMLInputElement>) => {
-        const digits = e.target.value.replace(/\D/g, '');
-        if (digits !== e.target.value) e.target.value = digits;
+        const masked = maskDecimalInput(e.target.value);
+        if (masked !== e.target.value) e.target.value = masked;
         return field.onChange(e);
       },
     };
