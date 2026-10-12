@@ -82,11 +82,10 @@ export function PayoutDialog({
   const [formError, setFormError] = useState<string | null>(null);
   const name = `${supplier.first_name} ${supplier.last_name}`;
 
-  // The button names the typed sum, or the default while the field is empty —
-  // never the full balance under a value the form is about to refuse.
-  const typedAmount = useWatch({ control, name: 'amount' });
-  const submitAmount =
-    typedAmount.trim() === '' ? (defaultAmount ?? debt) : parseDecimal(typedAmount);
+  // The button names the typed sum — never the full balance under a value
+  // (or an empty field) the form is about to refuse. The field opens
+  // prefilled, so a freshly opened dialog still reads «Видати 10 944,00 ₴».
+  const submitAmount = parseDecimal(useWatch({ control, name: 'amount' }));
 
   const setAll = () => {
     setValue('amount', debt);

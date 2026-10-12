@@ -1246,6 +1246,8 @@ describe('ReceptionPage — «Видано готівкою» rides along with �
 
     expect(await screen.findByText('Enter a number, e.g. 12000 or 980.40')).toBeInTheDocument();
     expect(createMock).not.toHaveBeenCalled();
+    // …and the keyboard stays where the operator left it.
+    expect(paidInput).toHaveFocus();
   });
 
   it('a malformed «Видано готівкою» stops «Прийняти» instead of recording the receipt without the payout (#72)', async () => {

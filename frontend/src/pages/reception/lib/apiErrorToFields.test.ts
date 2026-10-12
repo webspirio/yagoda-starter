@@ -106,7 +106,7 @@ describe('apiErrorToFields', () => {
     expect(out.formErrorKey).toBeNull();
   });
 
-  it('maps a class-validator detail on a nested tare field to decimalFormat', () => {
+  it('maps a class-validator detail on a tare row\'s units to the crates integer message', () => {
     const out = apiErrorToFields(
       apiError({
         status: 400,
@@ -117,6 +117,15 @@ describe('apiErrorToFields', () => {
     expect(out.fieldErrors).toEqual([
       { field: 'items.0.tare.1.units', messageKey: 'crates.errors.unitsFormat' },
     ]);
+  });
+
+  it('banners a detail on a picked id — no honest per-field message for it', () => {
+    const out = apiErrorToFields(
+      apiError({ status: 400, details: ['items.0.product_grade_id must be a UUID'] }),
+      1,
+    );
+    expect(out.fieldErrors).toEqual([]);
+    expect(out.formErrorKey).not.toBeNull();
   });
 
   it('keeps a placeable detail but banners an unplaceable one alongside it', () => {

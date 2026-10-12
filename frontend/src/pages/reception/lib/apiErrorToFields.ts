@@ -80,6 +80,8 @@ const PAID_FIELD: Readonly<Record<string, string>> = {
 
 /** The money/weight fields #72's shared message covers — not tare units. */
 const DECIMAL_FIELD = /^paid_amount$|\.(gross_kg|pallet_kg|bonus)$/;
+/** A tare row's crate count — a whole number, so the crates screens' message. */
+const UNITS_FIELD = /\.tare\.\d+\.units$/;
 
 /**
  * class-validator emits `"<property> <complaint>"` for `CreateIntakeDto`'s
@@ -88,8 +90,9 @@ const DECIMAL_FIELD = /^paid_amount$|\.(gross_kg|pallet_kg|bonus)$/;
  * already, so no re-mapping is needed beyond taking it verbatim. A detail on
  * one of the four money/weight fields (`gross_kg`, `pallet_kg`, `bonus`,
  * `paid_amount`) maps to the one shared `errors.decimalFormat` key (#72); any
- * other placed field is a tare row's `units` — a whole crate count, so it gets
- * the crates screens' integer message, not a weight one. A
+ * tare row's `units` — a whole crate count — gets the crates screens' integer
+ * message. Any OTHER property (a grade or tare-type id: picked, never typed)
+ * has no honest per-field message, so it falls to the form-level banner. A
  * detail naming anything outside `items.*` (e.g. a picked `supplier_id`) is
  * never something the operator typed here, so it is unplaceable and falls to
  * the form-level banner instead of a phantom field error.
@@ -138,12 +141,16 @@ export function apiErrorToFields(error: unknown, lineCount: number): ApiFieldErr
   let unattributed = false;
   for (const detail of error.details ?? []) {
     const field = fieldFromDetail(detail);
-    if (field) {
-      fieldErrors.push({
-        field,
-        messageKey: DECIMAL_FIELD.test(field) ? 'errors.decimalFormat' : 'crates.errors.unitsFormat',
-      });
-    } else unattributed = true;
+    const messageKey =
+      field === null
+        ? null
+        : DECIMAL_FIELD.test(field)
+          ? 'errors.decimalFormat'
+          : UNITS_FIELD.test(field)
+            ? 'crates.errors.unitsFormat'
+            : null;
+    if (field !== null && messageKey !== null) fieldErrors.push({ field, messageKey });
+    else unattributed = true;
   }
   if (fieldErrors.length > 0) {
     return { fieldErrors, formErrorKey: unattributed ? FORM_LEVEL : null };

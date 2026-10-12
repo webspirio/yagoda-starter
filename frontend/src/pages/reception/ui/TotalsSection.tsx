@@ -105,7 +105,7 @@ export function TotalsSection({
   // not a mistake yet.
   const paidFocus = useFieldFocus();
   const formatError =
-    paid.trim() !== '' && parseDecimal(paid) === null && !paidFocus.focused
+    paid.trim() !== '' && !paidValid && !paidFocus.focused
       ? 'errors.decimalFormat'
       : undefined;
   const settle = (v: string) => onPaidChange(v);

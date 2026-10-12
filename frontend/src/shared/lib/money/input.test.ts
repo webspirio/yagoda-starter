@@ -85,6 +85,8 @@ describe('clampDecimal', () => {
     expect(clampDecimal('-25', '-20', '30')).toBe('-20.00');
     expect(clampDecimal('5', '-20', '30')).toBe('5.00');
     expect(clampDecimal('12.', '-20', '30')).toBe('12.');
+    // 9 integer digits break the grammar: refused as typed, never clamped to a bound.
+    expect(clampDecimal('123456789', '0.00', '30')).toBe('123456789');
   });
 });
 

@@ -130,6 +130,9 @@ export function ReceptionPage() {
   // types in it themselves (`suggestedPaid`, below) — this is the only thing
   // that switches it over to what RHF actually holds.
   const [paidTouched, setPaidTouched] = useState(false);
+  // #72 — set when «Прийняти» refuses a malformed «Видано готівкою»; cleared
+  // by the next edit of that field.
+  const [paidRefused, setPaidRefused] = useState(false);
   // Bumped on every supplier pick — even a re-pick of the same row, which
   // `reset()` above may have just emptied — so «З них наших ящиків» remounts
   // and pre-fills afresh.
@@ -244,6 +247,7 @@ export function ReceptionPage() {
   const paidShown = paidTouched ? values.paid_amount : suggested;
   const onPaidChange = (v: string) => {
     setPaidTouched(true);
+    setPaidRefused(false);
     setValue('paid_amount', v, { shouldDirty: true });
   };
 
@@ -317,10 +321,12 @@ export function ReceptionPage() {
     // #72 — a malformed «Видано готівкою» is never sent (`toCreateBody`), so
     // going ahead would record the receipt WITHOUT the payout the operator
     // typed. The field already names the refusal; the submit agrees with it.
-    // Enter submits WITHOUT moving focus, and the field holds its message back
-    // while focused — so leave the field first, or the refusal is silent.
+    // Enter submits WITHOUT moving focus, and the field holds its own format
+    // line back while focused — so the refusal is said through `paidError`,
+    // which shows regardless of focus, and the caret stays where the operator
+    // left it (Enter is how they move on the scale's numeric pad).
     if (paidShown.trim() !== '' && parseDecimal(paidShown) === null) {
-      document.getElementById('paid_amount')?.blur();
+      setPaidRefused(true);
       return;
     }
     if (parseCount(formValues.returned_crates) > 0) setPendingSubmit(formValues);
@@ -533,7 +539,7 @@ export function ReceptionPage() {
                 cashUnavailable={pointCash.isError}
                 paid={paidShown}
                 onPaidChange={onPaidChange}
-                paidError={errorAt('paid_amount')}
+                paidError={errorAt('paid_amount') ?? (paidRefused ? 'errors.decimalFormat' : null)}
                 disabled={!canSubmit}
                 isPreviewing={isPreviewing}
                 isSubmitting={create.isPending}
