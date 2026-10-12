@@ -4,7 +4,7 @@ import { Button } from '@/shared/ui/button';
 import { Eyebrow } from '@/shared/ui/eyebrow';
 import { Field } from '@/shared/ui/field';
 import { DecimalInput } from '@/shared/ui/decimal-input';
-import { useFieldFocus } from '@/shared/lib/useFieldFocus';
+import { useDecimalField } from '@/shared/ui/use-decimal-field';
 import { cn } from '@/shared/lib/cn';
 import {
   clampDecimal,
@@ -84,7 +84,22 @@ export function TotalsSection({
   // The cash-capped total — same helper the page uses for the default, so
   // the cap here and the suggestion there can never drift apart.
   const cap = total === null ? null : suggestedPaid(accrued, debt, cash);
-  const paidParsed = parseDecimal(paid);
+  const paidField = useDecimalField(paid, {
+    onBlur: () => {
+      if (cap === null) return;
+      // I5: canonicalise BEFORE validity — a trailing separator («1200,») is
+      // not yet a well-formed decimal, but it IS one with that one character
+      // stripped.
+      const stripped = parseDecimal(paid.replace(/[.,]$/, ''));
+      if (stripped === null) return; // leave the text as typed
+      const canonical = clampDecimal(stripped, '0.00', cap);
+      // I4: idempotent — tabbing through an already-canonical value must not
+      // latch `paidTouched` on the caller's side by calling back with the same
+      // string.
+      if (canonical !== paid) onPaidChange(canonical);
+    },
+  });
+  const paidParsed = paidField.parsed;
   const paidValid = paidParsed !== null;
   const paidValue = paidParsed ?? '0.00';
   const remainder = total === null ? null : sub(total, paidValue);
@@ -102,12 +117,8 @@ export function TotalsSection({
   // so the server can never say so; the field says it itself, with the one
   // shared message. Empty is not an error here: it means «nothing paid out».
   // It waits until the operator leaves the field — «1200.» mid-keystroke is
-  // not a mistake yet.
-  const paidFocus = useFieldFocus();
-  const formatError =
-    paid.trim() !== '' && !paidValid && !paidFocus.focused
-      ? 'errors.decimalFormat'
-      : undefined;
+  // not a mistake yet (`useDecimalField`).
+  const formatError = paidField.error ?? undefined;
   const settle = (v: string) => onPaidChange(v);
   // The unavailable-drawer note takes the Field hint slot over the over-cap
   // one — a failed read is the more important thing to say, and `overCap`
@@ -188,21 +199,7 @@ export function TotalsSection({
                     className="h-12 pr-9 font-mono text-xl font-semibold"
                     value={paid}
                     onChange={(e) => onPaidChange(e.target.value)}
-                    onFocus={paidFocus.focusProps.onFocus}
-                    onBlur={() => {
-                      paidFocus.focusProps.onBlur();
-                      if (cap === null) return;
-                      // I5: canonicalise BEFORE validity — a trailing
-                      // separator («1200,») is not yet a well-formed decimal,
-                      // but it IS one with that one character stripped.
-                      const stripped = parseDecimal(paid.replace(/[.,]$/, ''));
-                      if (stripped === null) return; // leave the text as typed
-                      const canonical = clampDecimal(stripped, '0.00', cap);
-                      // I4: idempotent — tabbing through an already-canonical
-                      // value must not latch `paidTouched` on the caller's
-                      // side by calling back with the same string.
-                      if (canonical !== paid) onPaidChange(canonical);
-                    }}
+                    {...paidField.inputProps}
                   />
                   <span className="pointer-events-none absolute top-1/2 right-3.5 -translate-y-1/2 font-mono text-sm text-muted-foreground">
                     ₴

@@ -13,7 +13,7 @@ import { Field } from '@/shared/ui/field';
 import { TextInput } from '@/shared/ui/text-input';
 import { DecimalInput } from '@/shared/ui/decimal-input';
 import { Button } from '@/shared/ui/button';
-import { normalizeAmount, decimalRules, cratesRules } from '@/shared/lib/money';
+import { decimalRules, cratesRules } from '@/shared/lib/money';
 import { toBannerError, type BannerError } from '@/shared/lib/api-error';
 import { useCrateDispatchQuery } from '../api/crateDispatch';
 
@@ -79,7 +79,7 @@ export function CountDrawerDialog({
   const submit = async (values: CountFormValues) => {
     try {
       await onConfirm(
-        normalizeAmount(values.amount),
+        values.amount,
         // Не `Number(...) || 0` і не falsy-перевірка: `0` це відповідь.
         closing ? Number.parseInt(values.broken.trim(), 10) : null,
       );

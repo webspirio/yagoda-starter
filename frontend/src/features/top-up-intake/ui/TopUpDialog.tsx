@@ -14,7 +14,7 @@ import { DecimalInput } from '@/shared/ui/decimal-input';
 import { Textarea } from '@/shared/ui/textarea';
 import { Button } from '@/shared/ui/button';
 import { toast } from '@/shared/ui/toast';
-import { decimalRules, normalizeAmount } from '@/shared/lib/money';
+import { cmp, decimalRules, parseDecimal } from '@/shared/lib/money';
 import { apiErrorToBanner } from '@/shared/lib/api-error';
 import { useCreateTopUpMutation } from '../api/useCreateTopUp';
 
@@ -72,7 +72,7 @@ export function TopUpDialog({
     try {
       await createTopUp.mutateAsync({
         intake_id: intake.id,
-        amount: normalizeAmount(values.amount),
+        amount: values.amount,
         reason: values.reason.trim(),
       });
       toast.success(t('topUp.toast.created'));
@@ -111,10 +111,10 @@ export function TopUpDialog({
                   // the same thing here saves a round trip; the server is still
                   // the authority.
                   validate: (value: string) => {
-                    const normalised = normalizeAmount(value);
                     const shaped = decimalRules().validate(value);
                     if (shaped !== true) return shaped;
-                    return Number(normalised) > 0 || 'topUp.errors.amountPositive';
+                    const amount = parseDecimal(value);
+                    return (amount !== null && cmp(amount, '0') === 1) || 'topUp.errors.amountPositive';
                   },
                 })}
               />

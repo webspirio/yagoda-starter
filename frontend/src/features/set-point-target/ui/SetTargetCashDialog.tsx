@@ -17,7 +17,6 @@ import { Button } from '@/shared/ui/button';
 import { toast } from '@/shared/ui/toast';
 import { apiErrorToBanner } from '@/shared/lib/api-error';
 import {
-  normalizeAmount,
   parseDecimal,
   cmp,
   sub,
@@ -105,7 +104,7 @@ export function SetTargetCashDialog({
   const onSubmit = handleSubmit(async (values) => {
     setFormError(null);
     try {
-      const target_cash = normalizeAmount(values.target_cash);
+      const target_cash = values.target_cash;
       await setTarget.mutateAsync({
         pointId,
         target_cash,

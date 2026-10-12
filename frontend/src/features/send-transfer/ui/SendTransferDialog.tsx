@@ -15,7 +15,7 @@ import { DecimalInput } from '@/shared/ui/decimal-input';
 import { Button } from '@/shared/ui/button';
 import { toast } from '@/shared/ui/toast';
 import { apiErrorToBanner } from '@/shared/lib/api-error';
-import { normalizeAmount, isZero, decimalRules, cratesRules } from '@/shared/lib/money';
+import { isZero, decimalRules, cratesRules } from '@/shared/lib/money';
 import { useSendTransferMutation } from '../api/useSendTransfer';
 
 interface SendTransferFormValues {
@@ -53,7 +53,7 @@ export function SendTransferDialog({
 
   const onSubmit = handleSubmit(async (values) => {
     setFormError(null);
-    const cash = normalizeAmount(values.cash);
+    const cash = values.cash;
     const crates = Number(values.crates.trim());
 
     // Клієнтська перевірка «не порожній переказ» дзеркалить бекендовий

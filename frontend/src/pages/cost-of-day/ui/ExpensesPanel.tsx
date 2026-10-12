@@ -5,9 +5,9 @@ import { Button } from '@/shared/ui/button';
 import { Eyebrow } from '@/shared/ui/eyebrow';
 import { TextInput } from '@/shared/ui/text-input';
 import { DecimalInput } from '@/shared/ui/decimal-input';
-import { useFieldFocus } from '@/shared/lib/useFieldFocus';
+import { useDecimalField } from '@/shared/ui/use-decimal-field';
 import { toast } from '@/shared/ui/toast';
-import { formatUah, parseDecimal } from '@/shared/lib/money';
+import { formatUah } from '@/shared/lib/money';
 import { apiErrorToBanner } from '@/shared/lib/api-error';
 import {
   useCreateDayExpenseMutation,
@@ -26,12 +26,9 @@ import type { CostOfDay } from '@/entities/cost-of-day';
  * disabled button plus the shared `errors.decimalFormat` line under the field.
  * (The grammar stops two digits SHORT of the DTO on purpose — `input.ts` says
  * why: 99 999 999,99 ₴ of пальне is a missed key, not a day.) What is sent is
- * `parseDecimal`'s canonical output, never the raw text.
+ * `parseDecimal`'s canonical output (`useDecimalField`'s `parsed`), never the
+ * raw text.
  */
-const isAmount = (value: string) => parseDecimal(value) !== null;
-
-/** Non-empty and refused — empty is «not typed yet», which the disabled button covers. */
-const isMalformed = (value: string) => value !== '' && !isAmount(value);
 
 /** `Field`'s error line, for the two amount inputs that sit outside a `Field`. */
 function FormatError({ id }: { id: string }) {
@@ -84,11 +81,10 @@ export function ExpensesPanel({
   const [editing, setEditing] = useState<string | null>(null);
   const [draftLabel, setDraftLabel] = useState('');
   const [draftAmount, setDraftAmount] = useState('');
-  // #72 — the format line waits until the operator leaves the field.
-  const addFocus = useFieldFocus();
-  const editFocus = useFieldFocus();
-  const showAddError = isMalformed(amount) && !addFocus.focused;
-  const showEditError = isMalformed(draftAmount) && !editFocus.focused;
+  // #72 — parse, the shared message (once the field is left) and the aria
+  // wiring: these inputs sit outside a `Field`, so the hook carries it.
+  const addAmount = useDecimalField(amount, { errorId: 'expense-amount-error' });
+  const editAmount = useDecimalField(draftAmount, { errorId: 'expense-edit-amount-error' });
 
   // `per_kg` is null when nothing was weighed — the amber «awaiting» panel.
   // It is the only nullable figure the branch below formats (`formatUah` throws on null).
@@ -97,7 +93,7 @@ export function ExpensesPanel({
 
   async function add() {
     const trimmed = label.trim();
-    const canonical = parseDecimal(amount);
+    const canonical = addAmount.parsed;
     if (!trimmed || canonical === null) return;
     try {
       await create.mutateAsync({ shiftId, label: trimmed, amount: canonical });
@@ -121,7 +117,7 @@ export function ExpensesPanel({
     const patch: { id: string; label?: string; amount?: string } = { id: line.id };
     const trimmed = draftLabel.trim();
     if (trimmed && trimmed !== line.label) patch.label = trimmed;
-    const canonical = parseDecimal(draftAmount);
+    const canonical = editAmount.parsed;
     if (canonical !== null && canonical !== line.amount) patch.amount = canonical;
 
     if (patch.label === undefined && patch.amount === undefined) {
@@ -167,9 +163,7 @@ export function ExpensesPanel({
               <DecimalInput
                 value={draftAmount}
                 onChange={(e) => setDraftAmount(e.target.value)}
-                {...editFocus.focusProps}
-                aria-invalid={showEditError || undefined}
-                aria-describedby={showEditError ? 'expense-edit-amount-error' : undefined}
+                {...editAmount.inputProps}
                 aria-label={t('costOfDay.expenses.amountField')}
                 className="h-8 w-24 text-right font-mono text-xs"
               />
@@ -177,7 +171,7 @@ export function ExpensesPanel({
                 variant="secondary"
                 size="sm"
                 onClick={() => void saveEdit(line)}
-                disabled={!draftLabel.trim() || !isAmount(draftAmount) || update.isPending}
+                disabled={!draftLabel.trim() || editAmount.parsed === null || update.isPending}
               >
                 <Check className="size-3.5" />
                 {t('costOfDay.expenses.save')}
@@ -190,7 +184,7 @@ export function ExpensesPanel({
               >
                 <X className="size-3.5" />
               </Button>
-              {showEditError ? <FormatError id="expense-edit-amount-error" /> : null}
+              {editAmount.error ? <FormatError id="expense-edit-amount-error" /> : null}
             </div>
           ) : (
             <div key={line.id} className="flex items-baseline gap-2">
@@ -232,9 +226,7 @@ export function ExpensesPanel({
         <DecimalInput
           value={amount}
           onChange={(e) => setAmount(e.target.value)}
-          {...addFocus.focusProps}
-          aria-invalid={showAddError || undefined}
-          aria-describedby={showAddError ? 'expense-amount-error' : undefined}
+          {...addAmount.inputProps}
           placeholder={t('costOfDay.expenses.amountField')}
           aria-label={t('costOfDay.expenses.amountField')}
           className="h-8 w-24 text-right font-mono text-xs"
@@ -243,12 +235,12 @@ export function ExpensesPanel({
           variant="secondary"
           size="sm"
           onClick={() => void add()}
-          disabled={!label.trim() || !isAmount(amount) || create.isPending}
+          disabled={!label.trim() || addAmount.parsed === null || create.isPending}
         >
           <Plus className="size-3.5" />
           {t('costOfDay.expenses.add')}
         </Button>
-        {showAddError ? <FormatError id="expense-amount-error" /> : null}
+        {addAmount.error ? <FormatError id="expense-amount-error" /> : null}
       </div>
 
       {notSpread ? (

@@ -39,7 +39,7 @@ plain sight, before submit.
 The mask removes only characters that cannot belong to a number. It never drops a digit or a
 separator: cutting `12,000.00` to `12.00` or a 9th digit away would be the same silent
 hundred- or thousand-fold change, found in review (2026-10-12). The format message appears once
-the operator leaves the field (`useFieldFocus`), not mid-keystroke on `980.`; a blocked button
+the operator leaves the field (`useDecimalField`, review of #233), not mid-keystroke on `980.`; a blocked button
 stays live.
 
 This amends the issue's criterion «"980 40" відхиляється». The aim behind it, «a stray space
@@ -76,10 +76,10 @@ whitespace character has been removed:
 | Export | Behaviour |
 |---|---|
 | `parseDecimal(raw, { allowNegative? })` → `string \| null` | The canonical dot form (`'980,40'` → `'980.40'`), or `null` when the rule refuses it. This is the one place the grammar lives. It also strips whitespace, as a defence for values that did not come through the mask, such as a default value. |
-| `normalizeAmount(raw)` | Kept: it strips whitespace and turns the comma into a dot, as today. Existing callers keep working. |
+| `normalizeAmount(raw)` | **Deleted** (review of #233). `decimalRules`' `setValueAs` already stores the canonical form, so the submit-time second pass had nothing left to do. |
 | `DECIMAL_INPUT` | **Deleted.** Every gate that tested it now calls `parseDecimal`, which validates and canonicalises in one call (automated review of #233). |
 | `maskDecimalInput(raw, { allowNegative? })` | **Changed.** Keeps digits, separators (comma → dot) and an opted-in leading minus; drops whitespace of every kind and letters. It no longer cuts the fraction or drops a second separator — those stay visible and `parseDecimal` refuses them. |
-| `decimalRules({ required?, allowNegative? })` | **Replaces `amountRules(key)`.** Returns `{ required, validate }` as an RHF rule, always using the single key `errors.decimalFormat`. Taking no key is the point: a form cannot ask for a different message. |
+| `decimalRules({ required?, allowNegative? })` | **Replaces `amountRules(key)`.** Returns `{ required, validate, setValueAs }` as an RHF rule, always using the single key `errors.decimalFormat`. Taking no key is the point: a form cannot ask for a different message. `setValueAs` stores `parseDecimal`'s canonical form, or a refused text as typed so `validate` still refuses it. A submit sends `values.x` as it is. |
 | `cratesRules` | Unchanged. |
 
 ### The one message
@@ -117,7 +117,27 @@ others.
   moved into the component. It works for both `register` and a controlled `value`.
 - The component holds no validation state. Validation stays with the form, through
   `decimalRules` (RHF) or `parseDecimal` (controlled). A form that owns its state keeps owning it.
-- Added to `/ui-kit`, per the kit-hygiene rule.
+- Added to `/ui-kit`, per the kit-hygiene rule. The demo uses real locale keys only, so the page's `plain-text` exemption count does not move.
+
+### The controlled-field hook — `shared/ui/use-decimal-field.ts` (review of #233)
+
+```tsx
+const amount = useDecimalField(value, { allowNegative?, errorId?, onBlur? });
+// → { parsed, error, isMalformed, inputProps }
+<DecimalInput {...a11y} {...amount.inputProps} value={value} onChange={…} />
+<Field … error={amount.error ?? serverError} />
+```
+
+A controlled form (reception, expenses, reweigh) used to assemble five or six pieces by hand:
+- the focus state;
+- the condition «non-empty, refused, not focused», written four times under four names;
+- `allowNegative` twice, once for the mask and once for the grammar;
+- the aria wiring outside a `Field`;
+- an `onBlur` glued onto the focus handler.
+
+The hook owns all of these. `error` waits until the field is left, while `isMalformed` does not wait, so a button can refuse at once. `aria-*` is set only with an `errorId`, because inside a `Field` the `Field` owns it and a second, `undefined` copy would overwrite a server error.
+
+`register()` fields keep `decimalRules()`. Their message timing is react-hook-form's (on submit, then live). A controlled field's timing is «once left».
 
 ---
 
@@ -125,7 +145,7 @@ others.
 
 | Form | Today | After |
 |---|---|---|
-| SetPriceDialog (3 fields) | local regex, rejects `,` and spaces | `DecimalInput` + `decimalRules()`; submit `normalizeAmount` |
+| SetPriceDialog (3 fields) | local regex, rejects `,` and spaces | `DecimalInput` + `decimalRules()`; submit `values.x` as is |
 | PointFormDialog target_cash | local regex (10 digits), no spaces | `DecimalInput` + `decimalRules({ required: false })` |
 | TareTypeDialog weight, deposit | local regexes + `setValueAs` | `DecimalInput` + `decimalRules()`; `setValueAs` removed |
 | Payout, Send/Dispute/Resolve transfer, CountDrawer, Recount, SetTargetCash, TopUp | `amountRules(own key)`, some unmasked | `DecimalInput` + `decimalRules()`; semantic checks unchanged |
@@ -161,5 +181,6 @@ scope and stay as they are.
 
 - Showing thousands grouping inside the field (the field never holds a space).
 - Raising the client cap to the backend's 10 digits.
-- Crates and integer fields.
+- Crates and integer fields, with one exception from the review of #233: reception's tare count is now digits only. It reached the body through `parseInt`, which read «1 2» as 1 and «12abc» as 12. That is the same silent change of a number this ticket removes, because the tare decides the net weight and therefore the sum.
+- Unifying the four ways integer fields are written today (`cratesRules`, WeighingForm's keystroke filter, `ReturnedCratesField`'s `\D` strip, PointFormDialog's `INTEGER`). This is a follow-up.
 - #77's other hygiene items.

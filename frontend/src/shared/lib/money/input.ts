@@ -9,9 +9,10 @@ export const CRATES_INPUT = /^\d{1,7}$/;
  * знаків після неї. Кому `parseDecimal` міняє на крапку ще до відправки — DTO
  * бачать лише крапку. Мінус доходить до бекенду лише в `bonus` (надбавка
  * приймальника), і там він навмисний: його DTO — `/^-?\d{1,8}(\.\d{1,2})?$/`.
- * Ціни й ваги дзеркалять свої DTO (`\d{1,8}`) точно; грошові колонки каси —
- * `\d{1,10}` на бекенді, тут вужче на два розряди: 99 999 999,99 ₴ за зміну не
- * буває, а зайвий нуль у полі це найчастіше промах по клавіші.
+ * Ціни дня, `bonus` і ваги — `\d{1,8}` і в своїх DTO, тут те саме. Грошові
+ * колонки каси й застава тари (`deposit_price`) — `\d{1,10}` на бекенді, тут
+ * вужче на два розряди: 99 999 999,99 ₴ не буває ні за зміну, ні за ящик, а
+ * зайвий нуль у полі це найчастіше промах по клавіші.
  */
 const DECIMAL_SHAPE = /^(-?)(\d{1,8})(?:[.,](\d{1,2}))?$/;
 
@@ -29,15 +30,6 @@ export function parseDecimal(
   if (!match || (match[1] === '-' && !allowNegative)) return null;
   const [, sign, int, frac] = match;
   return `${sign}${int}${frac === undefined ? '' : `.${frac}`}`;
-}
-
-/**
- * Приводить надруковане до канонічного вигляду ПЕРЕД перевіркою: українська
- * розкладка дає кому, а звичка з паперу — пробіл між тисячами. Ні те, ні те не
- * помилка користувача, тому це нормалізація, а не відмова.
- */
-export function normalizeAmount(value: string): string {
-  return value.replace(/\s/g, '').replace(',', '.');
 }
 
 /**
@@ -66,8 +58,8 @@ export function maskDecimalInput(
 
 /** `value` clamped into [min, max]; a malformed value is returned unchanged. */
 export function clampDecimal(value: string, min: string, max: string): string {
-  const normalized = normalizeAmount(value);
-  if (parseDecimal(normalized, { allowNegative: true }) === null) return value;
+  const normalized = parseDecimal(value, { allowNegative: true });
+  if (normalized === null) return value;
   // Re-canonicalise through add(x, '0') so '5' becomes '5.00' like the server would store it.
   const canonical = add(normalized, '0');
   if (cmp(canonical, min) === -1) return add(min, '0');
@@ -91,14 +83,13 @@ export function clampDecimal(value: string, min: string, max: string): string {
  * bug the same way negative is.
  */
 export function floorToHundreds(value: string): string {
-  const normalized = normalizeAmount(value);
-  if (normalized.startsWith('-')) {
+  if (value.startsWith('-')) {
     throw new Error('money: floorToHundreds needs a non-negative amount');
   }
-  if (add(normalized, '0') !== normalized) {
+  if (add(value, '0') !== value) {
     throw new Error('money: floorToHundreds needs a canonical amount');
   }
-  const int = normalized.split('.')[0];
+  const int = value.split('.')[0];
   const hundreds = int.length > 2 ? `${int.slice(0, -2)}00` : '0';
   return `${hundreds}.00`;
 }

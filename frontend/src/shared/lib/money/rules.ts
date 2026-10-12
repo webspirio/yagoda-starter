@@ -13,6 +13,7 @@ import { CRATES_INPUT, parseDecimal } from './input';
 interface MoneyFieldRules {
   required: string | false;
   validate: (value: string) => boolean | string;
+  setValueAs?: (value: string) => string;
 }
 
 /**
@@ -20,6 +21,12 @@ interface MoneyFieldRules {
  * message key on purpose: the message is the same on every form, so a form
  * cannot ask for a different one. Semantic checks (> 0, ≤ debt) stay in the
  * form and keep their own keys.
+ *
+ * `setValueAs` stores `parseDecimal`'s canonical form in the form values, so a
+ * submit handler sends `values.amount` as it is — there is no second
+ * normalisation to forget. A refused text is stored as typed, so `validate`
+ * still sees (and refuses) it. Defaults are not passed through `setValueAs`
+ * until edited; they come from the server already canonical.
  */
 export function decimalRules({
   required = true,
@@ -31,6 +38,7 @@ export function decimalRules({
       (!required && value.trim() === '') ||
       parseDecimal(value, { allowNegative }) !== null ||
       'errors.decimalFormat',
+    setValueAs: (value: string) => parseDecimal(value, { allowNegative }) ?? value,
   };
 }
 

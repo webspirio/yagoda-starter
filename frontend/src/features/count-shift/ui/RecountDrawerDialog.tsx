@@ -12,7 +12,7 @@ import {
 import { Field } from '@/shared/ui/field';
 import { DecimalInput } from '@/shared/ui/decimal-input';
 import { Button } from '@/shared/ui/button';
-import { decimalRules, normalizeAmount, isZero } from '@/shared/lib/money';
+import { decimalRules, isZero } from '@/shared/lib/money';
 import { apiErrorToBanner } from '@/shared/lib/api-error';
 import type { CashCount } from '@/entities/cash-count';
 import { useRecountMutation } from '../api/recount';
@@ -66,7 +66,7 @@ export function RecountDrawerDialog({ open, onClose }: { open: boolean; onClose:
 
   const submit = async (values: RecountFormValues) => {
     try {
-      const row = await recount.mutateAsync({ counted_amount: normalizeAmount(values.amount) });
+      const row = await recount.mutateAsync({ counted_amount: values.amount });
       setResult(row);
     } catch (error) {
       // NO_OPEN_SHIFT — the contract this dialog refuses on (409, aligned

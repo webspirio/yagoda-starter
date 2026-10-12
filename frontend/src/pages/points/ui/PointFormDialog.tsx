@@ -9,7 +9,7 @@ import { SelectField } from '@/shared/ui/select-field';
 import { Switch } from '@/shared/ui/switch';
 import { Button } from '@/shared/ui/button';
 import { toast } from '@/shared/ui/toast';
-import { decimalRules, normalizeAmount } from '@/shared/lib/money';
+import { decimalRules } from '@/shared/lib/money';
 import {
   useCreateCollectionPointMutation,
   useUpdateCollectionPointMutation,
@@ -62,7 +62,7 @@ export function PointFormDialog({
 
   const onSubmit = handleSubmit(async (values) => {
     setFormError(null);
-    const cash = normalizeAmount(values.target_cash);
+    const cash = values.target_cash;
     const crates = values.target_crates.trim();
     const targets = {
       target_cash: cash === '' ? null : cash,

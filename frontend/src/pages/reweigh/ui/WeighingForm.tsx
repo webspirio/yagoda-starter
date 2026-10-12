@@ -7,8 +7,8 @@ import { Field } from '@/shared/ui/field';
 import { SelectField } from '@/shared/ui/select-field';
 import { TextInput } from '@/shared/ui/text-input';
 import { DecimalInput } from '@/shared/ui/decimal-input';
-import { useFieldFocus } from '@/shared/lib/useFieldFocus';
-import { cmp, formatDecimal, formatKg, parseDecimal } from '@/shared/lib/money';
+import { useDecimalField } from '@/shared/ui/use-decimal-field';
+import { cmp, formatDecimal, formatKg } from '@/shared/lib/money';
 import { formatShortDate } from '@/shared/lib/date';
 import { useTareTypeOptionsQuery } from '@/entities/tare-type';
 import type { ReconciliationGrade } from '@/entities/reweigh';
@@ -16,19 +16,6 @@ import { netOf, newDraftKey, tareWeightOf, type Draft } from '../model/draft';
 import { addBlockReason, grossHint, tareHint } from '../lib/hints';
 import { FieldWarning } from './FieldWarning';
 
-/**
- * A decimal field's RAW typed text, made safe for `@/shared/lib/money`
- * arithmetic through THE grammar, `parseDecimal` (#72). An in-progress
- * keystroke like `"120."` would make `money.ts` throw; falling back to
- * `'0.00'` keeps a live чиста вага from crashing mid-type, while
- * `isMalformed` below names the refusal under the field and blocks the add.
- */
-function toCalcAmount(raw: string): string {
-  return parseDecimal(raw) ?? '0.00';
-}
-
-/** Non-empty and refused by `parseDecimal` — empty is «not typed yet», not wrong. */
-const isMalformed = (raw: string) => raw !== '' && parseDecimal(raw) === null;
 
 interface ProductGroup {
   product_id: string;
@@ -111,16 +98,17 @@ export function WeighingForm({
   const effectiveTareId = tareId ?? tareTypes.data?.[0]?.id ?? null;
   const tareCount = tareCountInput === '' ? 0 : Number(tareCountInput);
 
-  const grossForCalc = toCalcAmount(gross);
-  const palletForCalc = toCalcAmount(pallet);
-  // #72 — a malformed weight blocks the add at once, but the line under the
-  // field waits until the owner leaves it: «120.» on the way to «120.5» is not
-  // a mistake yet.
-  const grossFocus = useFieldFocus();
-  const palletFocus = useFieldFocus();
-  const badFormat = isMalformed(gross) || isMalformed(pallet);
-  const grossError = isMalformed(gross) && !grossFocus.focused ? 'errors.decimalFormat' : undefined;
-  const palletError = isMalformed(pallet) && !palletFocus.focused ? 'errors.decimalFormat' : undefined;
+  // #72 — a malformed weight blocks the add at once (`isMalformed`), but the
+  // line under the field waits until the owner leaves it (`error`): «120.» on
+  // the way to «120.5» is not a mistake yet. An unparsed weight counts as
+  // '0.00' so a live чиста вага never makes `money.ts` throw mid-type.
+  const grossField = useDecimalField(gross);
+  const palletField = useDecimalField(pallet);
+  const grossForCalc = grossField.parsed ?? '0.00';
+  const palletForCalc = palletField.parsed ?? '0.00';
+  const badFormat = grossField.isMalformed || palletField.isMalformed;
+  const grossError = grossField.error ?? undefined;
+  const palletError = palletField.error ?? undefined;
 
   const tare =
     tareCount > 0 && effectiveTareId ? [{ tare_type_id: effectiveTareId, units: tareCount }] : [];
@@ -214,7 +202,7 @@ export function WeighingForm({
                   {...a11y}
                   value={gross}
                   onChange={(e) => setGross(e.target.value)}
-                  {...grossFocus.focusProps}
+                  {...grossField.inputProps}
                   placeholder="0.00"
                   className="h-14 pr-12 font-mono text-2xl font-semibold"
                 />
@@ -231,7 +219,7 @@ export function WeighingForm({
                   {...a11y}
                   value={pallet}
                   onChange={(e) => setPallet(e.target.value)}
-                  {...palletFocus.focusProps}
+                  {...palletField.inputProps}
                   placeholder="0.0"
                   className="h-14 pr-9 font-mono text-lg font-semibold"
                 />

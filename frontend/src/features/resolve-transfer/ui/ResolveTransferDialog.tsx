@@ -15,7 +15,7 @@ import { DecimalInput } from '@/shared/ui/decimal-input';
 import { Button } from '@/shared/ui/button';
 import { toast } from '@/shared/ui/toast';
 import { toBannerError, type BannerError } from '@/shared/lib/api-error';
-import { normalizeAmount, decimalRules, cratesRules } from '@/shared/lib/money';
+import { decimalRules, cratesRules } from '@/shared/lib/money';
 import type { Transfer } from '@/entities/transfer';
 import { useResolveTransferMutation } from '../api/useResolveTransfer';
 
@@ -61,7 +61,7 @@ export function ResolveTransferDialog({
     try {
       await resolveTransfer.mutateAsync({
         id: transfer.id,
-        resolved_cash: normalizeAmount(values.resolved_cash),
+        resolved_cash: values.resolved_cash,
         resolved_crates: Number(values.resolved_crates.trim()),
       });
       toast.success(t('transfer.resolve.toast'));

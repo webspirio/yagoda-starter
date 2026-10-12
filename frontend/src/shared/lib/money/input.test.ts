@@ -1,24 +1,11 @@
 import { describe, it, expect } from 'vitest';
 import {
   CRATES_INPUT,
-  normalizeAmount,
   parseDecimal,
   maskDecimalInput,
   clampDecimal,
   floorToHundreds,
 } from './input';
-
-describe('normalizeAmount', () => {
-  it('accepts a comma as the decimal separator and trims', () => {
-    expect(normalizeAmount(' 1 234,50 ')).toBe('1234.50');
-  });
-  it('strips spaces used as thousands separators', () => {
-    expect(normalizeAmount('12 000')).toBe('12000');
-  });
-  it('leaves an already-canonical string alone', () => {
-    expect(normalizeAmount('0.05')).toBe('0.05');
-  });
-});
 
 describe('parseDecimal', () => {
   it.each([

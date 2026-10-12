@@ -14,7 +14,7 @@ import { DecimalInput } from '@/shared/ui/decimal-input';
 import { Switch } from '@/shared/ui/switch';
 import { Button } from '@/shared/ui/button';
 import { toast } from '@/shared/ui/toast';
-import { decimalRules, normalizeAmount } from '@/shared/lib/money';
+import { decimalRules } from '@/shared/lib/money';
 import { useCreateTareTypeMutation, useUpdateTareTypeMutation } from '../api/tareTypes';
 import { apiErrorToFields } from '../lib/apiErrorToFields';
 import type { TareType, TareTypeFormValues } from '../model/tareType';
@@ -28,7 +28,7 @@ const FIELD_NAMES = ['name', 'weight_kg', 'deposit_price'] as const;
  * The two numeric inputs are the shared `DecimalInput` (#72), never
  * `type="number"`: a number input coerces '1.20' into 1.2 before the form state
  * settles, reintroducing binary float into money. `decimalRules()` checks the one
- * grammar (zero legal, no minus), and `normalizeAmount` turns a comma into a dot
+ * grammar (zero legal, no minus), and `decimalRules`' `setValueAs` turns a comma into a dot
  * at submit (never `Number()`), so the value stays a string end to end.
  * `is_active` appears only when editing — a new tare type is active.
  */
@@ -66,8 +66,8 @@ export function TareTypeDialog({
   const onSubmit = handleSubmit(async (values) => {
     setFormError(null);
     const name = values.name.trim();
-    const weight_kg = normalizeAmount(values.weight_kg);
-    const deposit_price = normalizeAmount(values.deposit_price);
+    const weight_kg = values.weight_kg;
+    const deposit_price = values.deposit_price;
     try {
       if (tareType) {
         await update.mutateAsync({

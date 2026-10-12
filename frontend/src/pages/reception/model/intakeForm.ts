@@ -1,4 +1,4 @@
-import { cmp, normalizeAmount, parseDecimal } from '@/shared/lib/money';
+import { cmp, parseDecimal } from '@/shared/lib/money';
 
 /** One tare row on the draft line, while the operator is still typing.
  *  `units` is a STRING here (an editable input value) — parsed to an integer
@@ -102,12 +102,13 @@ export interface IntakePreview {
   items: IntakePreviewItem[];
 }
 
-/** Drops every whitespace char (a stray NBSP included) and swaps a comma for a
- *  dot — the only coercion applied to a typed decimal before it crosses the
- *  wire. The server is the sole authority on format (`@Matches`), so this
- *  never re-validates the result. */
+/** A line's typed decimal as it crosses the wire: `parseDecimal`'s canonical
+ *  form when it parses, otherwise VERBATIM — the preview must still see an
+ *  unfinished line so its errors keep their indices, and the server is the
+ *  sole authority on format (`@Matches`). The minus is allowed here because
+ *  `bonus` carries one; a negative weight is refused by the server. */
 function normalizeDecimal(value: string): string {
-  return normalizeAmount(value);
+  return parseDecimal(value, { allowNegative: true }) ?? value;
 }
 
 /**

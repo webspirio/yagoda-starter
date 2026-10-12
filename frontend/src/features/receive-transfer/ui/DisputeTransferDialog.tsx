@@ -16,7 +16,7 @@ import { Textarea } from '@/shared/ui/textarea';
 import { Button } from '@/shared/ui/button';
 import { toast } from '@/shared/ui/toast';
 import { apiErrorToBanner } from '@/shared/lib/api-error';
-import { normalizeAmount, formatUah, decimalRules, cratesRules } from '@/shared/lib/money';
+import { formatUah, decimalRules, cratesRules } from '@/shared/lib/money';
 import type { Transfer } from '@/entities/transfer';
 import { useDisputeTransferMutation } from '../api/useReceiveTransfer';
 
@@ -70,7 +70,7 @@ export function DisputeTransferDialog({
     try {
       await disputeTransfer.mutateAsync({
         id: transfer.id,
-        reported_cash: normalizeAmount(values.reported_cash),
+        reported_cash: values.reported_cash,
         reported_crates: Number(values.reported_crates.trim()),
         dispute_note: values.dispute_note.trim(),
       });

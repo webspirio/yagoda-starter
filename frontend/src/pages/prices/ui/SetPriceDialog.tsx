@@ -15,7 +15,7 @@ import { DecimalInput } from '@/shared/ui/decimal-input';
 import { Textarea } from '@/shared/ui/textarea';
 import { Button } from '@/shared/ui/button';
 import { toast } from '@/shared/ui/toast';
-import { decimalRules, normalizeAmount } from '@/shared/lib/money';
+import { decimalRules } from '@/shared/lib/money';
 import type { GradeCatalogItem } from '@/entities/product-grade';
 import { useSetPriceMutation } from '../api/gradePrices';
 import { useBulkSetPriceMutation } from '../api/priceSheet';
@@ -89,9 +89,9 @@ export function SetPriceDialog({
     setFormError(null);
     const reason = values.reason.trim();
     const numbers = {
-      base_price: normalizeAmount(values.base_price),
-      max_markup: normalizeAmount(values.max_markup),
-      max_discount: normalizeAmount(values.max_discount),
+      base_price: values.base_price,
+      max_markup: values.max_markup,
+      max_discount: values.max_discount,
       ...(reason ? { reason } : {}),
     };
     try {

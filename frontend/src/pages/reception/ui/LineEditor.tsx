@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type ChangeEvent } from 'react';
 import { AlertTriangle, Minus, Package, Plus, Trash2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import {
@@ -13,7 +13,7 @@ import { Eyebrow } from '@/shared/ui/eyebrow';
 import { Field } from '@/shared/ui/field';
 import { SelectField } from '@/shared/ui/select-field';
 import { DecimalInput } from '@/shared/ui/decimal-input';
-import { useFieldFocus } from '@/shared/lib/useFieldFocus';
+import { useDecimalField } from '@/shared/ui/use-decimal-field';
 import { TextInput } from '@/shared/ui/text-input';
 import { cn } from '@/shared/lib/cn';
 import {
@@ -25,7 +25,6 @@ import {
   formatKg,
   formatUah,
   mul,
-  parseDecimal,
   sub,
 } from '@/shared/lib/money';
 import type { PricedGrade } from '@/entities/product-grade';
@@ -129,17 +128,35 @@ export function LineEditor({
   // #72 — the shape of a weight or a surcharge is the field's own business,
   // not the preview's: with no supplier picked yet there IS no preview, and a
   // «1.2.3» must not sit there unremarked. Shown once the field is left.
-  const grossFocus = useFieldFocus();
-  const palletFocus = useFieldFocus();
-  const bonusFocus = useFieldFocus();
-  const shapeError = (value: string, focused: boolean, allowNegative = false) =>
-    !focused && value.trim() !== '' && parseDecimal(value, { allowNegative }) === null
-      ? 'errors.decimalFormat'
-      : null;
-  const grossError = shapeError(gross, grossFocus.focused) ?? errorAt(`items.${index}.gross_kg`);
-  const palletError =
-    shapeError(pallet, palletFocus.focused) ?? errorAt(`items.${index}.pallet_kg`);
-  const bonusError = shapeError(bonus, bonusFocus.focused, true) ?? errorAt(`items.${index}.bonus`);
+  // A tare row's crate count is digits only (#233 review): it reaches the body
+  // through `parseInt`, which read «1 2» as 1 and «12abc» as 12 — the same
+  // silent change of a number #72 removes, since the tare decides the net
+  // weight and so the sum. What is typed is what is counted.
+  const unitsField = (rowIndex: number) => {
+    const field = register(`items.${index}.tare.${rowIndex}.units`);
+    return {
+      ...field,
+      onChange: (e: ChangeEvent<HTMLInputElement>) => {
+        const digits = e.target.value.replace(/\D/g, '');
+        if (digits !== e.target.value) e.target.value = digits;
+        return field.onChange(e);
+      },
+    };
+  };
+  const grossField = useDecimalField(gross);
+  const palletField = useDecimalField(pallet);
+  const bonusField = useDecimalField(bonus, {
+    allowNegative: true,
+    onBlur: () => {
+      if (!grade || bonusFloor === null) return;
+      setValue(`items.${index}.bonus`, clampDecimal(bonus, bonusFloor, grade.max_markup), {
+        shouldDirty: true,
+      });
+    },
+  });
+  const grossError = grossField.error ?? errorAt(`items.${index}.gross_kg`);
+  const palletError = palletField.error ?? errorAt(`items.${index}.pallet_kg`);
+  const bonusError = bonusField.error ?? errorAt(`items.${index}.bonus`);
   const gradeError = errorAt(`items.${index}.product_grade_id`);
   const hasLineError = Boolean(grossError || palletError || bonusError || gradeError || tareError);
 
@@ -213,7 +230,7 @@ export function LineEditor({
                   onChange={(e) =>
                     setValue(`items.${index}.gross_kg`, e.target.value, { shouldDirty: true })
                   }
-                  {...grossFocus.focusProps}
+                  {...grossField.inputProps}
                   disabled={disabled}
                   placeholder="0,00"
                   className="h-14 pr-12 font-mono text-2xl font-semibold"
@@ -239,7 +256,7 @@ export function LineEditor({
                   onChange={(e) =>
                     setValue(`items.${index}.pallet_kg`, e.target.value, { shouldDirty: true })
                   }
-                  {...palletFocus.focusProps}
+                  {...palletField.inputProps}
                   disabled={disabled}
                   className="h-14 font-mono"
                 />
@@ -311,7 +328,7 @@ export function LineEditor({
                     autoComplete="off"
                     disabled={disabled}
                     className="w-12 text-center font-mono font-semibold"
-                    {...register(`items.${index}.tare.${rowIndex}.units`)}
+                    {...unitsField(rowIndex)}
                   />
                   <Button
                     type="button"
@@ -469,23 +486,11 @@ export function LineEditor({
                 <DecimalInput
                   {...a11y}
                   variant="ghost"
-                  allowNegative
                   value={bonus}
                   onChange={(e) =>
                     setValue(`items.${index}.bonus`, e.target.value, { shouldDirty: true })
                   }
-                  onFocus={bonusFocus.focusProps.onFocus}
-                  onBlur={() => {
-                    bonusFocus.focusProps.onBlur();
-                    if (!grade || bonusFloor === null) return;
-                    setValue(
-                      `items.${index}.bonus`,
-                      clampDecimal(bonus, bonusFloor, grade.max_markup),
-                      {
-                        shouldDirty: true,
-                      },
-                    );
-                  }}
+                  {...bonusField.inputProps}
                   disabled={disabled}
                   className="w-16 text-center font-mono font-semibold"
                 />

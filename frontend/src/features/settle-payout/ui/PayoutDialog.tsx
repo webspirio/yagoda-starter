@@ -13,7 +13,7 @@ import { Field } from '@/shared/ui/field';
 import { DecimalInput } from '@/shared/ui/decimal-input';
 import { Button } from '@/shared/ui/button';
 import { toast } from '@/shared/ui/toast';
-import { cmp, formatUah, normalizeAmount, parseDecimal, decimalRules } from '@/shared/lib/money';
+import { cmp, formatUah, parseDecimal, decimalRules } from '@/shared/lib/money';
 import type { Payout } from '@/entities/payout';
 import { useCreatePayoutMutation } from '../api/useCreatePayout';
 import { apiErrorToFields } from '../lib/apiErrorToFields';
@@ -94,7 +94,7 @@ export function PayoutDialog({
 
   const onSubmit = handleSubmit(async (values) => {
     setFormError(null);
-    const amount = normalizeAmount(values.amount);
+    const amount = values.amount;
 
     if (cmp(amount, '0') !== 1) {
       setError('amount', { message: 'payout.errors.amountZero' });

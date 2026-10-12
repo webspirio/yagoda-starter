@@ -1250,6 +1250,24 @@ describe('ReceptionPage — «Видано готівкою» rides along with �
     expect(paidInput).toHaveFocus();
   });
 
+  it('retyping the refused text does not bring the refusal back mid-keystroke (#72 review)', async () => {
+    const user = userEvent.setup();
+    renderReception();
+
+    await user.click(screen.getByRole('button', { name: 'pick-nina' }));
+    await fillDraft(user);
+    const paidInput = screen.getByLabelText('Paid in cash');
+    await user.clear(paidInput);
+    await user.type(paidInput, '1.2.3{Enter}');
+    expect(await screen.findByText('Enter a number, e.g. 12000 or 980.40')).toBeInTheDocument();
+
+    // Still focused: the same text typed again is an edit, not a submit.
+    await user.clear(paidInput);
+    await user.type(paidInput, '1.2.3');
+    expect(paidInput).toHaveFocus();
+    expect(screen.queryByText('Enter a number, e.g. 12000 or 980.40')).not.toBeInTheDocument();
+  });
+
   it('the refusal goes with the value it refused — re-picking the supplier clears it (#72 review)', async () => {
     const user = userEvent.setup();
     renderReception();
@@ -1420,6 +1438,22 @@ describe('ReceptionPage — line editor ergonomics (#117)', () => {
     await user.clear(bonus);
     await user.type(bonus, '-2');
     expect(bonus).toHaveValue('-2');
+  });
+
+  it('a tare count is digits only — «1 2» reads 12, never parseInt\'s silent 1 (#233 review)', async () => {
+    const user = userEvent.setup();
+    renderReception();
+
+    const units = screen.getByLabelText('Tare units 1');
+    await user.clear(units);
+    await user.type(units, '1 2');
+    expect(units).toHaveValue('12');
+    await user.clear(units);
+    await user.type(units, '1,5a');
+    expect(units).toHaveValue('15');
+    // …and the stepper still steps the masked value.
+    await user.click(screen.getByRole('button', { name: /^One more/ }));
+    expect(units).toHaveValue('16');
   });
 
   it('reveals the pallet field on its own at twenty crates', async () => {
