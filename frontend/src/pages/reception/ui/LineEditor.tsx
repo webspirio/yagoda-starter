@@ -13,6 +13,7 @@ import { Eyebrow } from '@/shared/ui/eyebrow';
 import { Field } from '@/shared/ui/field';
 import { SelectField } from '@/shared/ui/select-field';
 import { DecimalInput } from '@/shared/ui/decimal-input';
+import { useFieldFocus } from '@/shared/lib/useFieldFocus';
 import { TextInput } from '@/shared/ui/text-input';
 import { cn } from '@/shared/lib/cn';
 import {
@@ -24,6 +25,7 @@ import {
   formatKg,
   formatUah,
   mul,
+  parseDecimal,
   sub,
 } from '@/shared/lib/money';
 import type { PricedGrade } from '@/entities/product-grade';
@@ -124,9 +126,20 @@ export function LineEditor({
       (found, _row, rowIndex) => found ?? errorAt(`items.${index}.tare.${rowIndex}.units`),
       null,
     );
-  const grossError = errorAt(`items.${index}.gross_kg`);
-  const palletError = errorAt(`items.${index}.pallet_kg`);
-  const bonusError = errorAt(`items.${index}.bonus`);
+  // #72 — the shape of a weight or a surcharge is the field's own business,
+  // not the preview's: with no supplier picked yet there IS no preview, and a
+  // «1.2.3» must not sit there unremarked. Shown once the field is left.
+  const grossFocus = useFieldFocus();
+  const palletFocus = useFieldFocus();
+  const bonusFocus = useFieldFocus();
+  const shapeError = (value: string, focused: boolean, allowNegative = false) =>
+    !focused && value.trim() !== '' && parseDecimal(value, { allowNegative }) === null
+      ? 'errors.decimalFormat'
+      : null;
+  const grossError = shapeError(gross, grossFocus.focused) ?? errorAt(`items.${index}.gross_kg`);
+  const palletError =
+    shapeError(pallet, palletFocus.focused) ?? errorAt(`items.${index}.pallet_kg`);
+  const bonusError = shapeError(bonus, bonusFocus.focused, true) ?? errorAt(`items.${index}.bonus`);
   const gradeError = errorAt(`items.${index}.product_grade_id`);
   const hasLineError = Boolean(grossError || palletError || bonusError || gradeError || tareError);
 
@@ -200,6 +213,7 @@ export function LineEditor({
                   onChange={(e) =>
                     setValue(`items.${index}.gross_kg`, e.target.value, { shouldDirty: true })
                   }
+                  {...grossFocus.focusProps}
                   disabled={disabled}
                   placeholder="0,00"
                   className="h-14 pr-12 font-mono text-2xl font-semibold"
@@ -225,6 +239,7 @@ export function LineEditor({
                   onChange={(e) =>
                     setValue(`items.${index}.pallet_kg`, e.target.value, { shouldDirty: true })
                   }
+                  {...palletFocus.focusProps}
                   disabled={disabled}
                   className="h-14 font-mono"
                 />
@@ -459,7 +474,9 @@ export function LineEditor({
                   onChange={(e) =>
                     setValue(`items.${index}.bonus`, e.target.value, { shouldDirty: true })
                   }
+                  onFocus={bonusFocus.focusProps.onFocus}
                   onBlur={() => {
+                    bonusFocus.focusProps.onBlur();
                     if (!grade || bonusFloor === null) return;
                     setValue(
                       `items.${index}.bonus`,

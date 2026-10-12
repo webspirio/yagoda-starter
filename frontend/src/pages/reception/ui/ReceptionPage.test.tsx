@@ -1222,6 +1222,17 @@ describe('ReceptionPage — «Видано готівкою» rides along with �
     );
   });
 
+  it('a malformed gross says so itself once left, even before a supplier (and so a preview) exists (#72)', async () => {
+    const user = userEvent.setup();
+    renderReception();
+
+    const gross = screen.getByLabelText(/^Gross/);
+    await user.type(gross, '1.2.3');
+    expect(screen.queryByText('Enter a number, e.g. 12000 or 980.40')).not.toBeInTheDocument();
+    await user.tab();
+    expect(await screen.findByText('Enter a number, e.g. 12000 or 980.40')).toBeInTheDocument();
+  });
+
   it('a malformed «Видано готівкою» stops «Прийняти» instead of recording the receipt without the payout (#72)', async () => {
     const user = userEvent.setup();
     renderReception();
