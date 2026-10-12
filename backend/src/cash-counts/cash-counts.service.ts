@@ -1,4 +1,4 @@
-import { ConflictException, ForbiddenException, Injectable } from '@nestjs/common';
+import { ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { ListCashCountsQueryDto } from './dto/list-cash-counts.query';
 import { CreateCashCountDto } from './dto/create-cash-count.dto';
@@ -10,6 +10,11 @@ import {
 import { CashCount } from './cash-count.entity';
 import { CashBook } from './cash-book.enum';
 import { CashCountKind } from './cash-count-kind.enum';
+import { Shift } from '../shifts/shift.entity';
+import { countNoteRefusal, type CountNoteField } from './count-notes';
+import { SetCountExplanationDto } from './dto/set-count-explanation.dto';
+import { SetCountOperatorNoteDto } from './dto/set-count-operator-note.dto';
+import { UserRole } from '../users/user-role.enum';
 import { ShiftsService } from '../shifts/shifts.service';
 import { PointCashService } from '../point-cash/point-cash.service';
 import { AuditService } from '../audit/audit.service';
@@ -183,12 +188,11 @@ export class CashCountsService {
           expected_amount: saved.expected_amount,
           counted_by_user_id: saved.counted_by_user_id,
           counted_at: saved.counted_at,
-          // A fresh count carries whatever explanation is already on the
-          // shift — the same column `list`'s SQL joins in — never a value of
-          // its own; a count has no `explanation` column (see the entity).
-          explanation: shift.explanation ?? null,
+          explanation: saved.explanation ?? null,
+          operator_note: saved.operator_note ?? null,
         },
         names,
+        actor,
       );
     });
   }
@@ -221,7 +225,7 @@ export class CashCountsService {
          AND (NOT $5::boolean
               OR (c.counted_amount <> c.expected_amount
                   AND c.kind <> 'midday'
-                  AND (s.explanation IS NULL OR s.explanation = '')))`;
+                  AND c.explanation IS NULL))`;
 
     const params = [
       pointId,
@@ -236,7 +240,7 @@ export class CashCountsService {
               c.book, c.kind,
               c.counted_amount::text  AS counted_amount,
               c.expected_amount::text AS expected_amount,
-              c.counted_by_user_id, c.counted_at, s.explanation
+              c.counted_by_user_id, c.counted_at, c.explanation, c.operator_note
        ${scope}
         ORDER BY s.business_date DESC, c.counted_at DESC, c.id ASC
         LIMIT $6 OFFSET $7`,
@@ -256,10 +260,64 @@ export class CashCountsService {
     );
 
     return {
-      data: rows.map((r) => toCashCountRowResponse(r, names)),
+      data: rows.map((r) => toCashCountRowResponse(r, names, actor)),
       total,
       page: query.page,
       limit: query.limit,
     };
+  }
+
+  setExplanation(actor: AuthenticatedUser, id: string, dto: SetCountExplanationDto) {
+    return this.writeNote(actor, id, 'explanation', dto.explanation);
+  }
+
+  setOperatorNote(actor: AuthenticatedUser, id: string, dto: SetCountOperatorNoteDto) {
+    return this.writeNote(actor, id, 'operator_note', dto.operator_note);
+  }
+
+  /** Under the count's row lock, so the owner's write and the operator's serialize (spec §4.1). */
+  private writeNote(
+    actor: AuthenticatedUser,
+    id: string,
+    field: CountNoteField,
+    text: string,
+  ): Promise<CashCountRowResponse> {
+    return this.dataSource.transaction(async (m) => {
+      const count = await m.findOne(CashCount, { where: { id }, lock: { mode: 'pessimistic_write' } });
+      const shift = count ? await m.findOneBy(Shift, { id: count.shift_id }) : null;
+      // Another point's count is 404, never 403 — a 403 would confirm the id exists.
+      if (
+        !count ||
+        !shift ||
+        (actor.role !== UserRole.NetworkOwner && actor.collection_point_id !== shift.collection_point_id)
+      ) {
+        throw new NotFoundException('Cash count not found');
+      }
+
+      const refusal = countNoteRefusal(actor, count, field);
+      if (refusal) throw refusal;
+
+      const before = { [field]: count[field] };
+      count[field] = text.trim();
+      const saved = await m.save(CashCount, count);
+      await this.audit.record(
+        {
+          action: field === 'explanation' ? 'cash-count.explained' : 'cash-count.operator_noted',
+          actor_id: actor.sub,
+          target_type: 'cash_count',
+          target_id: saved.id,
+          before,
+          after: { [field]: saved[field] },
+        },
+        m,
+      );
+
+      const names = await loadDisplayNames(m, [saved.counted_by_user_id]);
+      return toCashCountRowResponse(
+        { ...saved, collection_point_id: shift.collection_point_id, business_date: shift.business_date },
+        names,
+        actor,
+      );
+    });
   }
 }

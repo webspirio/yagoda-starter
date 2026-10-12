@@ -241,7 +241,7 @@ describe('dev seed', () => {
         WHERE cp.name = 'Шипинки'
           AND c.counted_amount <> c.expected_amount
           AND c.kind <> 'midday'
-          AND (s.explanation IS NULL OR s.explanation = '')`,
+          AND c.explanation IS NULL`,
     );
     // 90 ₴ short at yesterday's close — the one seeded discrepancy, and what
     // makes `GET /cash-counts?only_discrepancies=true` return something on a
