@@ -91,6 +91,10 @@ function canConnect(host, port) {
   })
 }
 
+/** How long `probeDocker` keeps re-asking a daemon that answers `'down'`, and how often. */
+const DOCKER_PROBE_BUDGET_MS = 30_000
+const DOCKER_PROBE_INTERVAL_MS = 2_000
+
 /**
  * `docker info` exits 0 only when the CLI can reach a running daemon — a missing
  * binary, a daemon that is not started, and a permission error all resolve `false` here,
@@ -113,11 +117,8 @@ function canConnect(host, port) {
  * @returns {Promise<boolean>}
  */
 function probeDocker() {
-  return retryProbe(dockerInfoOnce, { budgetMs: DOCKER_PROBE_BUDGET_MS, intervalMs: 2_000 })
+  return retryProbe(dockerInfoOnce, { budgetMs: DOCKER_PROBE_BUDGET_MS, intervalMs: DOCKER_PROBE_INTERVAL_MS })
 }
-
-/** How long `probeDocker` keeps re-asking a daemon that answers `'down'`. */
-const DOCKER_PROBE_BUDGET_MS = 30_000
 
 /**
  * One `docker info`: `'up'`, `'down'` (the CLI ran and failed — may be transient), or
@@ -222,8 +223,8 @@ export const PRECONDITIONS = {
   },
   docker: {
     describe:
-      'Docker is not reachable (no CLI, or the CLI cannot reach a running daemon — ' +
-      `\`docker info\` did not exit 0, retried for ${DOCKER_PROBE_BUDGET_MS / 1000}s). Under --no-skip this is a failure, not "nothing to ` +
+      'Docker is not reachable (no CLI, or a daemon that `docker info` could not reach ' +
+      `through ${DOCKER_PROBE_BUDGET_MS / 1000}s of retries). Under --no-skip this is a failure, not "nothing to ` +
       'report": smoke needs a real daemon to bring up the Compose stack it drives.',
     probe: probeDocker,
   },

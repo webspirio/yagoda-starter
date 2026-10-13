@@ -458,11 +458,37 @@ test('neither config pins a rule off in its own source', () => {
  */
 function ciVerifyLegs() {
   const ci = backendFile('.github/workflows/ci.yml')
-  return [...ci.matchAll(/^\s+- leg: (\S+)\n\s+rows: --(only|exclude) (\S+)\s*$/gm)].map((m) => ({
-    leg: m[1],
-    mode: /** @type {'only' | 'exclude'} */ (m[2]),
-    ids: m[3].split(','),
-  }))
+  // One `- leg:` entry and the deeper-indented `key: value` lines under it, so the flags
+  // that bring up services or a browser for that leg are read with its rows.
+  return [...ci.matchAll(/^(\s+)- leg: (\S+)\n((?:\1  +\S.*\n)*)/gm)].map((m) => {
+    /** @type {Record<string, string>} */
+    const keys = Object.fromEntries([...m[3].matchAll(/^\s+(\w+): (.*?)\s*$/gm)].map((k) => [k[1], k[2]]))
+    const rows = /^--(only|exclude) (\S+)$/.exec(keys.rows ?? '')
+    return {
+      leg: m[2],
+      mode: /** @type {'only' | 'exclude'} */ (rows?.[1]),
+      ids: rows ? rows[2].split(',') : [],
+      services: keys.services === 'true',
+      browser: keys.browser === 'true',
+    }
+  })
+}
+
+/**
+ * Which matrix flag provides each precondition in CI — `null` where every hosted runner
+ * already has it (`docker` and `jq` ship on ubuntu-latest; `npm-registry` is the network).
+ * Every precondition must be listed: a new one forces a decision about which leg can
+ * satisfy it, instead of landing in `fast` by the exclude default and failing there.
+ *
+ * @type {Record<string, 'services' | 'browser' | null>}
+ */
+const PROVIDED_IN_CI_BY = {
+  postgres: 'services',
+  redis: 'services',
+  'playwright-browser': 'browser',
+  docker: null,
+  jq: null,
+  'npm-registry': null,
 }
 
 test('the CI verify legs partition the registry — every row runs in exactly one leg', () => {
@@ -474,7 +500,15 @@ test('the CI verify legs partition the registry — every row runs in exactly on
   assert.equal(excluding.length, 1, 'exactly one leg must take its rows by --exclude, so a row added later lands somewhere')
 
   const all = CHECKS.map((c) => c.id)
-  for (const l of legs) for (const id of l.ids) assert.ok(all.includes(id), `leg ${l.leg} names unknown row ${id}`)
+  for (const l of legs) {
+    assert.ok(l.mode, `leg ${l.leg} has no \`rows: --only|--exclude\` line`)
+    for (const id of l.ids) assert.ok(all.includes(id), `leg ${l.leg} names unknown row ${id}`)
+  }
+  assert.deepEqual(
+    Object.keys(PRECONDITIONS).filter((p) => !(p in PROVIDED_IN_CI_BY)),
+    [],
+    'a precondition with no entry in PROVIDED_IN_CI_BY — say which CI leg can satisfy it',
+  )
 
   /** @type {Map<string, string[]>} row id -> legs that run it */
   const runsIn = new Map(all.map((id) => [id, []]))
@@ -488,6 +522,12 @@ test('the CI verify legs partition the registry — every row runs in exactly on
     for (const id of selected) {
       const away = (checkById(id)?.after ?? []).filter((dep) => !selected.includes(dep))
       assert.deepEqual(away, [], `row ${id} in leg ${l.leg} needs ${away.join(', ')} in the same leg`)
+      // Under --no-skip a missing precondition is a FAILURE, so a row needing Postgres in a
+      // leg that never starts it is a red leg on every commit.
+      for (const need of checkById(id)?.needs ?? []) {
+        const flag = PROVIDED_IN_CI_BY[need]
+        if (flag) assert.ok(l[flag], `row ${id} needs ${need}, but leg ${l.leg} does not set \`${flag}: true\``)
+      }
     }
   }
 
