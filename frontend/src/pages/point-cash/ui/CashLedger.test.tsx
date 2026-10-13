@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { expectNoAxeViolations } from '../../../test-axe';
 import type { PointCashBreakdown } from '@/entities/point-cash';
+import { sum } from '@/shared/lib/money';
 import { CashLedger } from './CashLedger';
 
 const open = (over: Partial<PointCashBreakdown> = {}): PointCashBreakdown => ({
@@ -47,6 +48,9 @@ const NONE: PointCashBreakdown = {
 const row = (label: string) => screen.getByText(label).closest('div') as HTMLElement;
 /** The printed figure of that row. */
 const value = (label: string) => row(label).querySelector('.font-mono') as HTMLElement;
+/** That figure as a decimal string, sign included — for adding rows up. */
+const amount = (label: string) =>
+  (value(label).textContent ?? '').replace('\u2212', '-').replace(/[^\d.+-]/g, '').replace('+', '');
 
 const ledger = (
   breakdown: PointCashBreakdown | undefined,
@@ -120,8 +124,12 @@ describe('CashLedger', () => {
       '2026-09-22',
     );
 
-    expect(value('Correction to the closing count')).toHaveTextContent('1,000.00 ₴');
-    expect(value('Expected')).toHaveTextContent('44,820.00 ₴');
+    // Exact, not a substring: «−1,000.00 ₴» contains «1,000.00 ₴».
+    expect(amount('Correction to the closing count')).toBe('1000.00');
+    const rows = ['Opening count', 'Paid out today', 'Returned to the drawer',
+      'Received by transfer today', 'Correction to the closing count'];
+    expect(sum(rows.map(amount))).toBe(amount('Expected'));
+    expect(amount('Expected')).toBe('44820.00');
   });
 
   it('carried — one line for the last close, no movement rows', () => {

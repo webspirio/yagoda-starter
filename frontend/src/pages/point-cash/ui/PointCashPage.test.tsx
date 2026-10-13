@@ -18,7 +18,6 @@ const {
   pointCashOneMock,
   intakesMock,
   payoutsMock,
-  ledgerTransfersMock,
   cashCountsMock,
   shiftMock,
   currentShiftMock,
@@ -33,7 +32,6 @@ const {
   pointCashOneMock: vi.fn(),
   intakesMock: vi.fn(),
   payoutsMock: vi.fn(),
-  ledgerTransfersMock: vi.fn(),
   cashCountsMock: vi.fn(),
   shiftMock: vi.fn(),
   currentShiftMock: vi.fn(),
@@ -74,10 +72,6 @@ vi.mock('@/entities/intake', () => ({
 
 vi.mock('@/entities/payout', () => ({
   usePayoutsQuery: (filter: unknown) => payoutsMock(filter),
-}));
-
-vi.mock('@/entities/transfer', () => ({
-  useTransfersQuery: (filter: unknown) => ledgerTransfersMock(filter),
 }));
 
 vi.mock('@/entities/cash-count', () => ({
@@ -323,7 +317,6 @@ beforeEach(() => {
   });
   intakesMock.mockReset().mockReturnValue(list([]));
   payoutsMock.mockReset().mockReturnValue(list([]));
-  ledgerTransfersMock.mockReset().mockReturnValue(list([]));
   cashCountsMock.mockReset().mockReturnValue(list([cashCount()]));
   shiftMock.mockReset().mockReturnValue({ data: null, isPending: false, isError: false });
   // The same world `shiftMock` describes by default: nothing open anywhere.
