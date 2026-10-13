@@ -1,0 +1,100 @@
+import { describe, it, expect } from 'vitest';
+import type { TFunction } from 'i18next';
+import type { Payout } from '@/entities/payout';
+import { formatUah } from '@/shared/lib/money';
+import { buildPayoutReceipt } from './buildPayoutReceipt';
+
+const t = ((key: string, opts?: Record<string, unknown>) =>
+  opts ? `${key}${JSON.stringify(opts)}` : key) as unknown as TFunction;
+
+function payout(over: Partial<Payout> = {}): Payout {
+  return {
+    id: 'payout-1',
+    code: 'SHP-PO-20260908-00031',
+    shift_id: 'shift-1',
+    collection_point_id: 'point-1',
+    business_date: '2026-09-08',
+    supplier_id: 'supplier-1',
+    amount: '5000.00',
+    paid_by_user_id: 'user-1',
+    intake_id: null,
+    voided_at: null,
+    voided_by_user_id: null,
+    void_reason: null,
+    return_settled_at: null,
+    return_settled_by_user_id: null,
+    return_note: null,
+    returned_on_void: false,
+    shift_closed: false,
+    created_at: '2026-09-08T08:20:00.000Z',
+    balance_after: '9000.00',
+    paid_by: { first_name: 'Тарас', last_name: 'Бондар' },
+    ...over,
+  };
+}
+
+function build(p: Payout, note: string | null = null) {
+  return buildPayoutReceipt({
+    payout: p,
+    supplierName: 'Ніна Ільчук',
+    pointName: 'Шипинки',
+    note,
+    t,
+    locale: 'uk',
+  });
+}
+
+describe('buildPayoutReceipt', () => {
+  it('puts the point and the payer in the header', () => {
+    expect(build(payout()).header).toEqual({ pointName: 'Шипинки', staffName: 'Бондар Тарас' });
+  });
+
+  it('lists meta in order: number, operation, date, supplier', () => {
+    const doc = build(payout());
+    expect(doc.meta.map((r) => r.label)).toEqual([
+      'receipt.number',
+      'receipt.operation',
+      'receipt.date',
+      'receipt.supplier',
+    ]);
+    expect(doc.meta[0].value).toBe('SHP-PO-20260908-00031');
+    expect(doc.meta[1].value).toBe('receipt.operationPayoutDebt');
+    expect(doc.meta[3].value).toBe('Ніна Ільчук');
+  });
+
+  it('prints cash paid (strong) and the balance after as one totals group', () => {
+    const doc = build(payout());
+    expect(doc.sections).toHaveLength(1);
+    expect(doc.sections[0]).toEqual([
+      {
+        kind: 'rows',
+        rows: [{ label: 'receipt.paid', value: formatUah('5000.00', 'uk'), strong: true }],
+      },
+      {
+        kind: 'rows',
+        rows: [{ label: 'receipt.balanceAfterPayout', value: formatUah('9000.00', 'uk') }],
+      },
+    ]);
+  });
+
+  it('prints a negative balance_after with its minus', () => {
+    const doc = build(payout({ balance_after: '-100.00' }));
+    const last = doc.sections[0][1];
+    expect(last.kind === 'rows' && last.rows[0].value).toMatch(/^[-−]100,00\s?₴$/u);
+  });
+
+  it('is not voided by default and stamps a voided payout with its reason', () => {
+    expect(build(payout()).voided).toBeNull();
+    expect(
+      build(payout({ voided_at: '2026-09-08T10:00:00Z', void_reason: 'помилка' })).voided,
+    ).toEqual({ reason: 'помилка' });
+  });
+
+  it('carries the footer note', () => {
+    expect(build(payout(), 'Дякуємо').footer).toEqual({ note: 'Дякуємо' });
+  });
+
+  it('prints a dash for a payout whose payer is unknown', () => {
+    expect(build(payout({ paid_by: null })).header.staffName).toBe('—');
+  });
+});

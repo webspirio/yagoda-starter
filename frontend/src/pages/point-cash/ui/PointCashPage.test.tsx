@@ -217,6 +217,8 @@ const payout = (over: Partial<Payout> & Pick<Payout, 'amount'>): Payout => ({
   return_note: null,
   returned_on_void: false,
   created_at: '2026-09-08T11:00:00Z',
+  balance_after: '0.00',
+  paid_by: null,
   ...over,
 });
 
