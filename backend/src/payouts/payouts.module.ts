@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { Payout } from './payout.entity';
+import { User } from '../users/user.entity';
 import { PayoutsController } from './payouts.controller';
 import { PayoutWriter } from './services/payout-writer';
 import { CreatePayoutCommand } from './commands/create-payout.command';
@@ -24,7 +25,7 @@ import { PointCashModule } from '../point-cash/point-cash.module';
  */
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Payout]),
+    TypeOrmModule.forFeature([Payout, User]),
     ShiftsModule,
     SuppliersModule,
     SupplierBalanceModule,

@@ -12,7 +12,6 @@ import { ROW_EXTRAS_SQL, type IntakeRowExtras } from '../intake-row-extras';
 import { Payout } from '../../payouts/payout.entity';
 import { Shift } from '../../shifts/shift.entity';
 import { User } from '../../users/user.entity';
-import { displayNameOf } from '../../users/display-name';
 
 /** The printed-receipt facts beyond the row itself: derived columns, lines, payouts, receiver. */
 @Injectable()
@@ -38,10 +37,10 @@ export class IntakeDetailQuery {
     });
   }
 
-  /** `displayNameOf` — the ONE definition of a user's name. */
-  async receiverName(userId: string, m: EntityManager): Promise<string | null> {
-    const user = await m.findOne(User, { where: { id: userId } });
-    return user ? displayNameOf(user) : null;
+  /** The receiving user — ONE read feeding both `received_by_name` (via `displayNameOf`, the
+   *  ONE definition of a user's name) and the `received_by` parts. `null` if the row is gone. */
+  async receiver(userId: string, m: EntityManager): Promise<User | null> {
+    return m.findOne(User, { where: { id: userId } });
   }
 
   /**
@@ -83,7 +82,7 @@ export class IntakeDetailQuery {
       items,
       await this.extras(intake.id, m),
       payouts,
-      await this.receiverName(intake.received_by_user_id, m),
+      await this.receiver(intake.received_by_user_id, m),
       await this.crateReturn(intake.id, m),
     );
   }

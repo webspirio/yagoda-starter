@@ -10,6 +10,7 @@ import {
   buildPayouts,
   type PayoutsMocks,
 } from '../../testing/unit/payouts.mocks';
+import { User } from '../../users/user.entity';
 import { CreatePayoutCommand } from './create-payout.command';
 
 describe('CreatePayoutCommand', () => {
@@ -29,6 +30,17 @@ describe('CreatePayoutCommand', () => {
   });
 
   const saved = () => manager.save.mock.calls[0][1] as Record<string, unknown>;
+
+  describe('create — paid_by', () => {
+    it('answers the actor name parts, loaded by actor.sub in the transaction', async () => {
+      manager.findOne.mockResolvedValue({ first_name: 'Оксана', last_name: 'Гнатюк' });
+
+      const res = await command.create(oksana, dto({ amount: '380.00' }));
+
+      expect(res.paid_by).toEqual({ first_name: 'Оксана', last_name: 'Гнатюк' });
+      expect(manager.findOne).toHaveBeenCalledWith(User, { where: { id: oksana.sub } });
+    });
+  });
 
   describe('create — the debt half of §3.6', () => {
     it('allows a payout equal to the debt', async () => {

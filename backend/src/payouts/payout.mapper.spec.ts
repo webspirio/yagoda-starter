@@ -31,3 +31,17 @@ describe('toPayoutResponse — balance_after', () => {
     ).toBe('5266.00');
   });
 });
+
+describe('toPayoutResponse — paid_by', () => {
+  it('carries the name parts of the user who paid', () => {
+    const user = { first_name: 'Тарас', last_name: 'Бондар' };
+    expect(toPayoutResponse(payout() as never, shift() as never, user).paid_by).toEqual({
+      first_name: 'Тарас',
+      last_name: 'Бондар',
+    });
+  });
+
+  it('is null without a user (list rows, void, settle-return)', () => {
+    expect(toPayoutResponse(payout() as never, shift() as never).paid_by).toBeNull();
+  });
+});

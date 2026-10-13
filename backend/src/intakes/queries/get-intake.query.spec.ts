@@ -49,6 +49,7 @@ describe('GetIntakeQuery', () => {
     const result = await query.get(oksana, INTAKE_ID);
 
     expect(result.received_by_name).toBe('Оксана Гнатюк');
+    expect(result.received_by).toEqual({ first_name: 'Оксана', last_name: 'Гнатюк' });
   });
 
   it('carries the linked crate return — the receipt widget reads it here', async () => {

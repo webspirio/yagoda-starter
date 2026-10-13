@@ -33,6 +33,15 @@ describe('intake mapper', () => {
     expect(res.payouts[0].created_at).toBe('2026-09-08T11:32:00.000Z');
   });
 
+  it('carries the receiver name parts beside the joined name', () => {
+    const detail = (receiver: { first_name: string; last_name: string } | null) =>
+      toIntakeDetailResponse(intake() as never, shift() as never, [], extras, [], receiver, null);
+    const res = detail({ first_name: 'Тарас', last_name: 'Бондар' });
+    expect(res.received_by).toEqual({ first_name: 'Тарас', last_name: 'Бондар' });
+    expect(res.received_by_name).toBe('Тарас Бондар');
+    expect(detail(null).received_by).toBeNull();
+  });
+
   it('carries the product and grade names so a list row can be read without a catalog lookup', () => {
     const item = {
       id: 'ii-1',

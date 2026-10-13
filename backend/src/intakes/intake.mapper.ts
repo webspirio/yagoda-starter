@@ -4,6 +4,8 @@ import type { BuiltIntake } from './intake-lines';
 import type { IntakeRowExtras } from './intake-row-extras';
 import { Shift } from '../shifts/shift.entity';
 import type { Payout } from '../payouts/payout.entity';
+import type { User } from '../users/user.entity';
+import { displayNameOf } from '../users/display-name';
 
 /**
  * `collection_point_id` and `business_date` are JOINED IN from the shift and
@@ -126,6 +128,9 @@ export interface IntakeDetailResponse extends IntakeResponse {
   payouts: IntakePayoutResponse[];
   /** «Приймав» on the printed receipt. `null` only if the user row is gone. */
   received_by_name: string | null;
+  /** The same person as name PARTS — the printed receipt header writes «Прізвище Ім'я»,
+   *  which `received_by_name` («Ім'я Прізвище») cannot be split back into. */
+  received_by: { first_name: string; last_name: string } | null;
   /** `null` when no crates came back with this receipt. */
   crate_return: IntakeCrateReturnResponse | null;
 }
@@ -188,7 +193,7 @@ export function toIntakeDetailResponse(
   items: IntakeItem[],
   extras: IntakeRowExtras,
   payouts: Payout[],
-  receivedByName: string | null,
+  receiver: Pick<User, 'first_name' | 'last_name'> | null,
   crateReturn: IntakeCrateReturnRow | null,
 ): IntakeDetailResponse {
   return {
@@ -199,7 +204,10 @@ export function toIntakeDetailResponse(
     payouts: [...payouts]
       .sort((a, b) => a.created_at.getTime() - b.created_at.getTime())
       .map(toIntakePayoutResponse),
-    received_by_name: receivedByName,
+    received_by_name: receiver ? displayNameOf(receiver) : null,
+    received_by: receiver
+      ? { first_name: receiver.first_name, last_name: receiver.last_name }
+      : null,
     crate_return: crateReturn ? toIntakeCrateReturnResponse(crateReturn) : null,
   };
 }

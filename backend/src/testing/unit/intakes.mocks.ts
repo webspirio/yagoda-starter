@@ -109,7 +109,7 @@ export function makeIntakesMocks() {
             // this shift. Three of them, so the next receipt is 004.
             [{ n: 3 }],
     );
-  // `receiverName` reads `User` by id; branch on the entity CLASS's `.name` so
+  // `receiver` reads `User` by id; branch on the entity CLASS's `.name` so
   // every other `findOne(Entity, …)` call keeps its own mock untouched.
   const findOneUserOrNull = (entity: { name?: string }) =>
     Promise.resolve(entity?.name === 'User' ? { first_name: 'Оксана', last_name: 'Гнатюк' } : null);
