@@ -482,6 +482,13 @@ test('the CI verify legs partition the registry — every row runs in exactly on
     const selected = l.mode === 'only' ? l.ids : all.filter((id) => !l.ids.includes(id))
     const superseded = new Set(selected.flatMap((id) => checkById(id)?.supersedes ?? []))
     for (const id of selected) if (!superseded.has(id)) runsIn.get(id)?.push(l.leg)
+    // `--only` never pulls in an `after` dependency, and a leg is its own runner with its
+    // own checkout — so a row whose `after` row runs in ANOTHER leg reads output that
+    // does not exist there (bundle and smoke read build's frontend/dist).
+    for (const id of selected) {
+      const away = (checkById(id)?.after ?? []).filter((dep) => !selected.includes(dep))
+      assert.deepEqual(away, [], `row ${id} in leg ${l.leg} needs ${away.join(', ')} in the same leg`)
+    }
   }
 
   const twice = [...runsIn].filter(([, ls]) => ls.length > 1).map(([id, ls]) => `${id} (${ls.join(', ')})`)
