@@ -137,6 +137,7 @@ function buildIntake(overrides: Partial<IntakeDetail> = {}): IntakeDetail {
     open_amount: '0.00',
     payouts: [],
     received_by_name: 'Оксана Гнатюк',
+    received_by: { first_name: 'Оксана', last_name: 'Гнатюк' },
     crate_return: null,
     items: [
       {
@@ -242,8 +243,8 @@ describe('ReceiptDialog', () => {
     expect(screen.getByText('Малина')).toBeInTheDocument();
     expect(screen.getByText('112.00 kg')).toBeInTheDocument();
     expect(screen.getAllByText('14,560.00 ₴').length).toBeGreaterThan(0);
-    // received_by_name from the fixture, independent of who is logged in
-    expect(screen.getByText('Оксана Гнатюк')).toBeInTheDocument();
+    // the receiver from the fixture, independent of who is logged in
+    expect(screen.getByText(/Гнатюк Оксана/)).toBeInTheDocument();
 
     await expectNoAxeViolations(container);
   });
@@ -325,19 +326,19 @@ describe('ReceiptDialog', () => {
     expect(screen.queryByText(/135\.00/)).not.toBeInTheDocument();
   });
 
-  it("shows who received the document from received_by_name, regardless of who is logged in", () => {
+  it("shows who received the document in the header, regardless of who is logged in", () => {
     setUp({ me: OPERATOR_AUTHOR });
     render(<ReceiptDialog intakeId="intake-1" open onClose={vi.fn()} />);
 
-    expect(screen.getByText('Оксана Гнатюк')).toBeInTheDocument();
+    expect(screen.getByText(/Гнатюк Оксана/)).toBeInTheDocument();
     expect(screen.queryByText('Оксана Приймальник')).not.toBeInTheDocument();
   });
 
-  it('falls back to a dash when received_by_name is null', () => {
-    setUp({ intake: buildIntake({ received_by_name: null }) });
+  it('falls back to a dash in the header when the receiver is unknown', () => {
+    setUp({ intake: buildIntake({ received_by_name: null, received_by: null }) });
     render(<ReceiptDialog intakeId="intake-1" open onClose={vi.fn()} />);
 
-    expect(screen.getByText('—')).toBeInTheDocument();
+    expect(screen.getByText(/ · —$/)).toBeInTheDocument();
   });
 
   it('prints what was paid out, with the amount and the live payout codes in muted text', () => {
@@ -577,12 +578,16 @@ describe('ReceiptDialog', () => {
   });
 
   // Decided at the meeting (PR #234 review): no ruled lines and no blank ones
-  // for handwriting — the paper ends at «Приймав», or at the network's note.
-  it('ends the paper at «Приймав» when the network has no note', () => {
+  // for handwriting — the paper ends at the thanks and the fiscal disclaimer.
+  it('ends the paper at the thanks and the fiscal disclaimer when the network has no note', () => {
     setUp();
     render(<ReceiptDialog intakeId="intake-1" open onClose={vi.fn()} />);
 
-    expect(document.querySelector('.printable .print-only')).toBeNull();
+    const tail = document.querySelector('.printable')?.lastElementChild;
+    expect(Array.from(tail?.children ?? [], (line) => line.textContent)).toEqual([
+      'Thank you for working with us!',
+      'Not a fiscal receipt',
+    ]);
   });
 
   // index.css's print rule hides every OTHER child of <body> while a receipt is
@@ -602,10 +607,12 @@ describe('ReceiptDialog', () => {
     render(<ReceiptDialog intakeId="intake-1" open onClose={vi.fn()} />);
 
     const tail = document.querySelector('.printable')?.lastElementChild;
-    expect(tail).toHaveClass('print-only', 'break-inside-avoid');
+    expect(tail).toHaveClass('break-inside-avoid');
     expect(Array.from(tail?.children ?? [], (line) => line.textContent)).toEqual([
       'Ящики повертати до 20:00',
       'Тел. 067 000 00 00',
+      'Thank you for working with us!',
+      'Not a fiscal receipt',
     ]);
     for (const line of Array.from(tail?.children ?? [])) {
       expect(line).not.toHaveClass('border-b');

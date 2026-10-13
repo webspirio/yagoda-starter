@@ -347,6 +347,7 @@ const CREATED: IntakeDetail = {
   open_amount: '1204.00',
   payouts: [],
   received_by_name: 'Оксана Гнатюк',
+  received_by: { first_name: 'Оксана', last_name: 'Гнатюк' },
   crate_return: null,
   items: [
     {
