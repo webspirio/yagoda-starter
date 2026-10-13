@@ -181,6 +181,6 @@ scope and stay as they are.
 
 - Showing thousands grouping inside the field (the field never holds a space).
 - Raising the client cap to the backend's 10 digits.
-- Crates and integer fields, with one exception from the review of #233: reception's tare count is now digits only. It reached the body through `parseInt`, which read «1 2» as 1 and «12abc» as 12. That is the same silent change of a number this ticket removes, because the tare decides the net weight and therefore the sum.
+- Crates and integer fields, with one exception from the review of #233: reception's tare count. It reached the body through `parseInt`, which read «1 2» as 1, «12abc» as 12 and «2,5» as 2. That is the same silent change of a number this ticket removes, because the tare decides the net weight and therefore the sum. The count now takes the money mask (spaces and letters never get in, a separator stays visible) and its own grammar, `parseCrateCount` (`''` is 0, a whole number of up to 7 digits is itself, anything else is refused). A count that is not whole («0,5», «2,0») is refused under the tare at once with `crates.errors.unitsFormat`, and the preview is not asked while it stands; every reader of the field (stepper, totals, the body) goes through the same function. `returned_crates` keeps its own `\D` strip and `parseCount` until the follow-up below.
 - Unifying the four ways integer fields are written today (`cratesRules`, WeighingForm's keystroke filter, `ReturnedCratesField`'s `\D` strip, PointFormDialog's `INTEGER`). This is a follow-up.
 - #77's other hygiene items.

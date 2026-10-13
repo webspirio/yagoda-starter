@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   CRATES_INPUT,
+  parseCrateCount,
   parseDecimal,
   maskDecimalInput,
   clampDecimal,
@@ -36,6 +37,22 @@ describe('CRATES_INPUT', () => {
   });
   it.each(['', '-1', '1.5', 'abc', '12345678'])('rejects %s', (v) => {
     expect(CRATES_INPUT.test(v)).toBe(false);
+  });
+});
+
+describe('parseCrateCount', () => {
+  it.each([
+    ['', 0],
+    [' ', 0],
+    ['0', 0],
+    ['12', 12],
+    [' 7 ', 7],
+    ['1234567', 1234567],
+  ])('reads %j as %d', (raw, out) => {
+    expect(parseCrateCount(raw)).toBe(out);
+  });
+  it.each(['0.5', '2,0', '2.0', '1.2.3', ',5', '-1', '12345678'])('refuses %j', (raw) => {
+    expect(parseCrateCount(raw)).toBeNull();
   });
 });
 

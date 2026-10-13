@@ -26,6 +26,7 @@ import {
   formatUah,
   maskDecimalInput,
   mul,
+  parseCrateCount,
   sub,
 } from '@/shared/lib/money';
 import type { PricedGrade } from '@/entities/product-grade';
@@ -116,11 +117,15 @@ export function LineEditor({
   const usedTareTypeIds = new Set(tareRows.map((row) => row.tare_type_id));
   const freeTareType = tareTypes.find((type) => !usedTareTypeIds.has(type.id));
 
+  // Each row's count, read once: `null` is a count the form refuses.
+  const tareCounts = tareRows.map((row) => parseCrateCount(row.units));
   // The tare block has no `Field` of its own (a type select plus a stepper is
-  // not one control), so it carries both of the tare errors the mapper can
-  // produce: the business-rule one it pins to row 0, and a class-validator
-  // complaint about any row's `units`.
+  // not one control), so it carries every tare error: a count that is not
+  // whole, refused here at once — a separator in a count is never on its way
+  // to anything (#233 review) — ahead of the server's two, the business-rule
+  // one it pins to row 0 and a class-validator complaint about any row's `units`.
   const tareError =
+    (tareCounts.includes(null) ? 'crates.errors.unitsFormat' : null) ??
     errorAt(`items.${index}.tare.0.tare_type_id`) ??
     tareRows.reduce<string | null>(
       (found, _row, rowIndex) => found ?? errorAt(`items.${index}.tare.${rowIndex}.units`),
@@ -132,9 +137,8 @@ export function LineEditor({
   // A tare row's crate count takes the money fields' mask (#233 review):
   // spaces and letters never get in, a digit or a separator is never dropped.
   // `\D`-stripping read «2,0» as 20 — ten times the tare, a silent change of
-  // the net weight and so the sum (#72). A separator stays visible instead;
-  // the body sends it through `Number`, and a count that is not whole is
-  // refused by the server and named under the tare.
+  // the net weight and so the sum (#72). A separator stays visible instead,
+  // and `tareError` refuses it.
   const unitsField = (rowIndex: number) => {
     const field = register(`items.${index}.tare.${rowIndex}.units`);
     return {
@@ -179,17 +183,16 @@ export function LineEditor({
   // A tare row that counts nothing is still a row — zero is a real (if
   // incomplete) state the mock lets an operator sit in while they weigh out
   // the crates; «remove» is how a row goes away entirely. The stepper floors
-  // at 0 rather than 1.
+  // at 0 rather than 1, and steps a refused count from 0.
   const stepUnits = (row: number, direction: 1 | -1) => {
-    const parsed = Number.parseInt(tareRows[row]?.units ?? '', 10);
-    const current = Number.isInteger(parsed) ? parsed : 0;
+    const current = tareCounts[row] ?? 0;
     setValue(`items.${index}.tare.${row}.units`, String(Math.max(0, current + direction)), {
       shouldDirty: true,
     });
   };
 
-  // Integer unit COUNTS, never money — `Number.parseInt`, not `cmp`.
-  const totalUnits = tareRows.reduce((n, r) => n + (Number.parseInt(r.units, 10) || 0), 0);
+  // Integer unit COUNTS, never money; a refused count adds nothing.
+  const totalUnits = tareCounts.reduce<number>((n, c) => n + (c ?? 0), 0);
 
   // ONE normalization, fed to both the comparison and the formatter: they use
   // different regexes, and `formatDecimal`'s admits no surrounding whitespace —
@@ -293,7 +296,7 @@ export function LineEditor({
             const rowTareType = tareTypes.find(
               (type) => type.id === tareRows[rowIndex]?.tare_type_id,
             );
-            const rowUnits = Math.max(0, Number.parseInt(tareRows[rowIndex]?.units ?? '', 10) || 0);
+            const rowUnits = tareCounts[rowIndex] ?? 0;
             return (
               <div key={row.id} className="flex items-center gap-2">
                 <div className="min-w-0 flex-1">
@@ -385,7 +388,7 @@ export function LineEditor({
           ) : null}
           {/* Instant, client-side hints — never a rule the server enforces,
               just what the operator is about to be surprised by. */}
-          {grossPositive && totalUnits === 0 ? (
+          {grossPositive && totalUnits === 0 && !tareError ? (
             <p className="flex items-start gap-2 text-xs text-amber">
               <AlertTriangle className="mt-px size-3.5 shrink-0" />
               {t('reception.line.tareMissing')}

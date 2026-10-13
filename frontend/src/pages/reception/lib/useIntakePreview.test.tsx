@@ -87,6 +87,24 @@ describe('useIntakePreview', () => {
     expect(result.current.preview).toBeNull();
   });
 
+  it.each([[['0.5']], [['2', '0.5']], [['2', '1.2.3']]])(
+    'never asks the server while a tare count is not whole: %j (#233 review)',
+    async (units) => {
+      mock.onPost('/intakes/preview').reply(200, previewResponse('990.00'));
+      const values: IntakeFormValues = {
+        ...previewableValues('100'),
+        items: [line({ tare: units.map((u) => ({ tare_type_id: 't1', units: u })) })],
+      };
+      renderHook(() => useIntakePreview(values, null, { enabled: true }), { wrapper });
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1000);
+      });
+
+      expect(mock.history.post.length).toBe(0);
+    },
+  );
+
   it('fires once, 250ms after the last of two rapid edits', async () => {
     mock.onPost('/intakes/preview').reply(200, previewResponse('990.00'));
     const { result, rerender } = renderHook(

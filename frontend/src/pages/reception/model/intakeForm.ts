@@ -1,8 +1,8 @@
-import { cmp, parseDecimal } from '@/shared/lib/money';
+import { cmp, parseCrateCount, parseDecimal } from '@/shared/lib/money';
 
 /** One tare row on the draft line, while the operator is still typing.
- *  `units` is a STRING here (an editable input value) — parsed to an integer
- *  count only when the line crosses the wire; see `toPreviewBody`. */
+ *  `units` is a STRING here (an editable input value), read only through
+ *  `parseCrateCount` — a count that is not whole is refused, never rounded. */
 export interface IntakeLineValues {
   product_grade_id: string;
   gross_kg: string;
@@ -43,8 +43,7 @@ export function emptyLine(defaultTareTypeId: string): IntakeLineValues {
   };
 }
 
-/** One line as it crosses the wire — `units` is an integer count, not money;
- *  `Number.parseInt(…, 10)`, never float arithmetic. */
+/** One line as it crosses the wire — `units` is a whole count ≥ 1, not money. */
 export interface PreviewIntakeItemBody {
   product_grade_id: string;
   gross_kg: string;
@@ -121,13 +120,11 @@ function normalizeDecimal(value: string): string {
  * typing — dropping incomplete lines would break the 1:1 correspondence
  * between the form's `items` array and the server's response/error indices
  * that `apiErrorToFields` and `useIntakePreview` both rely on. Only a tare
- * row that is empty or a whole count below 1 is ever dropped — that is never
- * a line the operator is mid-typing, it is one they have not touched at all.
+ * row counting 0 (empty or `0`) is ever dropped — one not touched at all.
  *
- * A tare count goes out through `Number`, never `parseInt`: `parseInt` read
- * «2.5» as 2 and «1.2.3» as 1, a silent change of the tare and so of the
- * sum (#72). A count that is not a whole number is SENT, so the server's
- * `@IsInt` refuses it and `apiErrorToFields` names it under the tare.
+ * A count that is not whole («0,5», «1.2.3») never gets here: the form names
+ * it under the tare and `useIntakePreview` asks nothing while it stands (#233
+ * review), so the `null` filtered out below is unreachable, not a silent drop.
  */
 export function toPreviewBody(values: IntakeFormValues, pointId: string | null): PreviewIntakeBody {
   return {
@@ -138,10 +135,10 @@ export function toPreviewBody(values: IntakeFormValues, pointId: string | null):
       gross_kg: normalizeDecimal(line.gross_kg),
       pallet_kg: normalizeDecimal(line.pallet_kg),
       bonus: normalizeDecimal(line.bonus),
-      tare: line.tare
-        .filter((row) => row.units.trim() !== '')
-        .map((row) => ({ tare_type_id: row.tare_type_id, units: Number(row.units) }))
-        .filter((row) => !(Number.isInteger(row.units) && row.units < 1)),
+      tare: line.tare.flatMap((row) => {
+        const units = parseCrateCount(row.units);
+        return units ? [{ tare_type_id: row.tare_type_id, units }] : [];
+      }),
     })),
   };
 }
@@ -175,8 +172,8 @@ export function parseCount(value: string): number {
  * Σ units of every tare row, on every line (committed and draft alike — the
  * whole form is the receipt), whose tare type is a crate. The server checks
  * `returned_crates` against exactly this (`RETURNED_EXCEEDS_TARE`); the form
- * uses it as the field's ceiling. Rows the body would drop (units < 1) count
- * for nothing here either.
+ * uses it as the field's ceiling. Rows the body would drop (0, or a count the
+ * form refuses) count for nothing here either.
  */
 export function crateTareUnits(
   items: IntakeLineValues[],
@@ -186,7 +183,7 @@ export function crateTareUnits(
   let total = 0;
   for (const line of items) {
     for (const row of line.tare) {
-      if (crateIds.has(row.tare_type_id)) total += parseCount(row.units);
+      if (crateIds.has(row.tare_type_id)) total += parseCrateCount(row.units) ?? 0;
     }
   }
   return total;

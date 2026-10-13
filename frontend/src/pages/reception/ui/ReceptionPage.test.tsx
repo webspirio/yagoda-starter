@@ -467,7 +467,9 @@ beforeEach(() => {
   previewMock.mockReset().mockReturnValue(previewState());
   // Holds none of our crates by default, so «З них наших ящиків» stays hidden
   // and every body assertion below carries no `returned_crates`.
-  crateBalanceMock.mockReset().mockReturnValue({ data: undefined, isPending: true, isError: false });
+  crateBalanceMock
+    .mockReset()
+    .mockReturnValue({ data: undefined, isPending: true, isError: false });
   returnPreviewMock.mockReset().mockReturnValue({ data: undefined });
   createMock.mockReset().mockResolvedValue(CREATED);
   openShiftMock.mockReset().mockResolvedValue(openShift);
@@ -973,7 +975,9 @@ describe("ReceptionPage — «Void» on today's receipts", () => {
   it('opens the receipt straight into its void, not as a plain open', async () => {
     const user = userEvent.setup();
     intakesMock.mockImplementation((filter: { shiftId?: string }) =>
-      filter.shiftId ? page<Intake>([intake({ id: 'i2', code: 'SHP-IN-2', amount: '200.00' })]) : page<Intake>([]),
+      filter.shiftId
+        ? page<Intake>([intake({ id: 'i2', code: 'SHP-IN-2', amount: '200.00' })])
+        : page<Intake>([]),
     );
     renderReception();
 
@@ -985,7 +989,9 @@ describe("ReceptionPage — «Void» on today's receipts", () => {
   it('a plain row click still opens the receipt without the void', async () => {
     const user = userEvent.setup();
     intakesMock.mockImplementation((filter: { shiftId?: string }) =>
-      filter.shiftId ? page<Intake>([intake({ id: 'i2', code: 'SHP-IN-2', amount: '200.00' })]) : page<Intake>([]),
+      filter.shiftId
+        ? page<Intake>([intake({ id: 'i2', code: 'SHP-IN-2', amount: '200.00' })])
+        : page<Intake>([]),
     );
     renderReception();
 
@@ -1023,9 +1029,7 @@ describe('ReceptionPage — a refusal from the server', () => {
       previewState({
         preview: PREVIEW,
         error: {
-          fieldErrors: [
-            { field: 'items.0.gross_kg', messageKey: 'errors.decimalFormat' },
-          ],
+          fieldErrors: [{ field: 'items.0.gross_kg', messageKey: 'errors.decimalFormat' }],
           formErrorKey: null,
         },
       }),
@@ -1054,9 +1058,7 @@ describe('ReceptionPage — a refusal from the server', () => {
       previewState({
         preview: PREVIEW,
         error: {
-          fieldErrors: [
-            { field: 'items.0.pallet_kg', messageKey: 'errors.decimalFormat' },
-          ],
+          fieldErrors: [{ field: 'items.0.pallet_kg', messageKey: 'errors.decimalFormat' }],
           formErrorKey: null,
         },
       }),
@@ -1087,9 +1089,7 @@ describe('ReceptionPage — a refusal from the server', () => {
       previewState({
         preview: PREVIEW,
         error: {
-          fieldErrors: [
-            { field: 'items.0.gross_kg', messageKey: 'errors.decimalFormat' },
-          ],
+          fieldErrors: [{ field: 'items.0.gross_kg', messageKey: 'errors.decimalFormat' }],
           formErrorKey: null,
         },
       }),
@@ -1325,7 +1325,9 @@ describe('ReceptionPage — switching supplier mid-visit', () => {
 
     expect(screen.queryByRole('table')).toBeNull();
     expect(screen.getByLabelText('Gross — berries including tare')).toHaveValue('');
-    expect(toastMock).toHaveBeenCalledWith('Lines cleared — they belonged to the previous supplier');
+    expect(toastMock).toHaveBeenCalledWith(
+      'Lines cleared — they belonged to the previous supplier',
+    );
   });
 
   it('neither clears anything nor warns on a plain first pick — nothing was committed yet', async () => {
@@ -1458,6 +1460,23 @@ describe('ReceptionPage — line editor ergonomics (#117)', () => {
     expect(units).toHaveValue('16');
   });
 
+  it.each(['0,5', '2,0', '1.2.3'])(
+    'refuses a tare count %j that is not whole, under the tare (#233 review)',
+    async (typed) => {
+      const user = userEvent.setup();
+      renderReception();
+
+      const units = screen.getByLabelText('Tare units 1');
+      await user.clear(units);
+      await user.type(units, typed);
+      expect(screen.getByText('Enter a whole number of crates')).toBeInTheDocument();
+
+      await user.clear(units);
+      await user.type(units, '2');
+      expect(screen.queryByText('Enter a whole number of crates')).toBeNull();
+    },
+  );
+
   it('reveals the pallet field on its own at twenty crates', async () => {
     const user = userEvent.setup();
     renderReception();
@@ -1502,7 +1521,14 @@ describe('ReceptionPage — line editor ergonomics (#117)', () => {
 const RETURN_ON_RECEIPT = {
   data: {
     allocations: [
-      { issuance_id: 'i1', units: 30, per_unit: '0.00', amount: '0.00', mode: 'receipt', code: 'C1' },
+      {
+        issuance_id: 'i1',
+        units: 30,
+        per_unit: '0.00',
+        amount: '0.00',
+        mode: 'receipt',
+        code: 'C1',
+      },
     ],
     deposit_refund: '0.00',
     shortfall: 0,
@@ -1515,7 +1541,14 @@ const RETURN_ON_DEPOSIT = {
   ...RETURN_ON_RECEIPT,
   data: {
     allocations: [
-      { issuance_id: 'i1', units: 30, per_unit: '120.00', amount: '3600.00', mode: 'deposit', code: 'C1' },
+      {
+        issuance_id: 'i1',
+        units: 30,
+        per_unit: '120.00',
+        amount: '3600.00',
+        mode: 'deposit',
+        code: 'C1',
+      },
     ],
     deposit_refund: '3600.00',
     shortfall: 0,
@@ -1577,9 +1610,7 @@ describe('ReceptionPage — «З них наших ящиків» (our rented cr
     );
     expect(createMock).not.toHaveBeenCalled();
 
-    await user.click(
-      within(dialog).getByRole('button', { name: 'Handed over 3,600.00 ₴' }),
-    );
+    await user.click(within(dialog).getByRole('button', { name: 'Handed over 3,600.00 ₴' }));
     await waitFor(() =>
       expect(createMock).toHaveBeenCalledWith(expect.objectContaining({ returned_crates: 30 })),
     );

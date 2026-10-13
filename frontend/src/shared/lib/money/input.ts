@@ -4,6 +4,17 @@ import { add, cmp } from './decimal';
 export const CRATES_INPUT = /^\d{1,7}$/;
 
 /**
+ * A crate count typed into a field that may stay empty (reception's tare row):
+ * `''` is 0, «not counted yet»; a whole number is itself; anything else —
+ * «0,5», «2,0», «1.2.3» — is `null`, refused, never read as some other count.
+ */
+export function parseCrateCount(raw: string): number | null {
+  const value = raw.trim();
+  if (value === '') return 0;
+  return CRATES_INPUT.test(value) ? Number(value) : null;
+}
+
+/**
  * Граматика грошового чи вагового поля: необовʼязковий мінус (лише там, де поле
  * його дозволяє), до 8 цифр цілої частини, кома або крапка і не більше двох
  * знаків після неї. Кому `parseDecimal` міняє на крапку ще до відправки — DTO
