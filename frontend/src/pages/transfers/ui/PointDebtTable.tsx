@@ -160,46 +160,51 @@ export function PointDebtTable({
         ) : null;
         return (
           <div className="flex items-center justify-end gap-2">
-            {disputes.length > 0 && latest?.status !== 'disputed' ? latestBadge : null}
-            {disputes.length >= 2 ? (
-              <button
-                type="button"
-                aria-expanded={expanded}
-                className="group cursor-pointer rounded-4xl outline-none focus-visible:ring-[3px] focus-visible:ring-destructive/30"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  toggle(row);
-                }}
-              >
-                <TransferStatusBadge
-                  status="disputed"
-                  count={disputes.length}
-                  className="group-hover:bg-destructive/10"
-                >
-                  <ChevronDown
-                    aria-hidden="true"
-                    className={cn('transition-transform', expanded ? undefined : '-rotate-90')}
-                  />
-                </TransferStatusBadge>
-              </button>
-            ) : disputes.length === 1 ? (
-              <>
-                <TransferStatusBadge status="disputed" />
-                <Button
-                  size="sm"
-                  variant="outline"
+            {/* Badges STACK rather than sit side by side: a point with an open
+                dispute AND a newer transfer in transit carries two, and in one
+                line they pushed the table past its card at 1440 px (#76). */}
+            <div className="flex flex-col items-end gap-1">
+              {disputes.length > 0 && latest?.status !== 'disputed' ? latestBadge : null}
+              {disputes.length >= 2 ? (
+                <button
+                  type="button"
+                  aria-expanded={expanded}
+                  className="group cursor-pointer rounded-4xl outline-none focus-visible:ring-[3px] focus-visible:ring-destructive/30"
                   onClick={(e) => {
                     e.stopPropagation();
-                    onResolve(disputes[0]);
+                    toggle(row);
                   }}
                 >
-                  <HandCoins className="size-3.5" />
-                  {t('transfers.resolve')}
-                </Button>
-              </>
-            ) : (
-              latestBadge
-            )}
+                  <TransferStatusBadge
+                    status="disputed"
+                    count={disputes.length}
+                    className="group-hover:bg-destructive/10"
+                  >
+                    <ChevronDown
+                      aria-hidden="true"
+                      className={cn('transition-transform', expanded ? undefined : '-rotate-90')}
+                    />
+                  </TransferStatusBadge>
+                </button>
+              ) : disputes.length === 1 ? (
+                <TransferStatusBadge status="disputed" />
+              ) : (
+                latestBadge
+              )}
+            </div>
+            {disputes.length === 1 ? (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onResolve(disputes[0]);
+                }}
+              >
+                <HandCoins className="size-3.5" />
+                {t('transfers.resolve')}
+              </Button>
+            ) : null}
             <Button
               size="sm"
               onClick={(e) => {
