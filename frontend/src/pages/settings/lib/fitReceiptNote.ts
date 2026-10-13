@@ -1,7 +1,7 @@
 import { NOTE_LINE_CHARS, NOTE_LINES } from '@/entities/network-settings';
 
 /**
- * Lays typed text onto the ruled lines: a line past the limit breaks at its
+ * Lays typed text onto the receipt's note lines: a line past the limit breaks at its
  * last space, or at the limit when one word fills it. Returns `null` when the
  * text needs more than `NOTE_LINES` lines — the form then keeps what it had.
  * A pasted tab becomes a space: on paper it would print eight columns wide.

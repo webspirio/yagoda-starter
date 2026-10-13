@@ -1,6 +1,6 @@
 import { BadRequestException } from '@nestjs/common';
 
-/** The receipt's ruled lines — the frontend's `NOTE_LINES`/`NOTE_LINE_CHARS`. */
+/** The note's room on the receipt — the frontend's `NOTE_LINES`/`NOTE_LINE_CHARS`. */
 const RECEIPT_NOTE_LINES = 7;
 const RECEIPT_NOTE_LINE_CHARS = 40;
 
