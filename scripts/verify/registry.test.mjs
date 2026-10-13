@@ -464,7 +464,8 @@ function ciVerifyLegs() {
   let open
   // Line by line rather than one regex, so a comment or a blank line inside a leg — at any
   // indentation — neither ends that leg nor drops the keys below it. A leg closes only at
-  // the next `- leg:` or at the first non-comment line no deeper than its own dash.
+  // the next `- leg:` or at the first non-comment line no deeper than its own dash; any
+  // other deeper line must be `key: value`, or the test names it.
   for (const line of lines) {
     const start = /^(\s*)- leg: (\S+)\s*$/.exec(line)
     if (start) {
@@ -473,9 +474,16 @@ function ciVerifyLegs() {
       continue
     }
     if (!open || /^\s*(#.*)?$/.test(line)) continue
-    const key = /^(\s*)(\w+): (.*?)\s*$/.exec(line)
-    if (key && key[1].length > open.indent) open.keys[key[2]] = key[3]
-    else open = undefined
+    const indent = /^\s*/.exec(line)?.[0].length ?? 0
+    if (indent <= open.indent) {
+      open = undefined
+      continue
+    }
+    const key = /^\s*(\w+): (.*?)\s*$/.exec(line)
+    // A deeper line that is not `key: value` is YAML this parse does not model; say so at
+    // that line rather than drop the keys below it and blame a flag two lines away.
+    assert.ok(key, `ci.yml: leg ${open.leg} has a line this test cannot read: «${line.trim()}»`)
+    open.keys[key[1]] = key[2]
   }
   return raw.map(({ leg, keys }) => {
     const rows = /^--(only|exclude) (\S+)$/.exec(keys.rows ?? '')
@@ -549,8 +557,11 @@ test('the CI verify legs partition the registry — every row runs in exactly on
         if (flag) assert.ok(l[flag], `row ${id} needs ${need}, but leg ${l.leg} does not set \`${flag}: true\``)
       }
     }
-    // The other direction: a flag no row in the leg needs is setup nobody reads, and a
-    // comment would be the only thing holding it — so it must not exist.
+    // The other direction, and the rule is DECLARED needs, not actual use: a row that
+    // starts what it uses itself (smoke's global-setup.ts brings up Postgres and Redis)
+    // does not declare it, so a flag set for it is redundant setup held up by a comment
+    // alone. To pre-start something for such a row anyway — say, to buy back the seconds
+    // its own `docker compose up` costs — declare it in that row's `needs` first.
     for (const flag of /** @type {const} */ (['services', 'browser'])) {
       if (!l[flag]) continue
       const readers = selected.filter((id) =>

@@ -808,7 +808,12 @@ export const CHECKS = [
     // the variance is the runner's rather than the cache's. It relied on the runner default
     // until 2026-09-16 and no longer fits under the 60s that default now is.
     //
-    // 180s is ~3.6x the worst reading. The hang it exists to catch is real and named in
+    // RE-MEASURED after the CI split (#238): 65.8s (run 38414284091). Both readings above
+    // were taken while CI pre-started Postgres and Redis before this row; the `smoke` leg
+    // no longer does, so global-setup.ts's own `docker compose up` now runs inside the row
+    // and counts against this budget. Read 65.8s, not 49.7s, as the current cost.
+    //
+    // 180s is ~2.7x that reading. The hang it exists to catch is real and named in
     // this row's own proves: an earlier version of it died on `Timed out waiting 60000ms
     // from config.webServer` with global-setup.ts never having run a line.
     timeoutMs: 180_000,
