@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Printer } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { PageHeader } from '@/shared/ui/page-header';
 import { Eyebrow } from '@/shared/ui/eyebrow';
 import { StatTile } from '@/shared/ui/stat-tile';
@@ -10,6 +11,9 @@ import { Sparkline } from '@/shared/ui/sparkline';
 import { EmptyState } from '@/shared/ui/empty-state';
 import { LedgerRow } from '@/shared/ui/ledger-row';
 import { SectionCard } from '@/shared/ui/section-card';
+import { Field } from '@/shared/ui/field';
+import { DecimalInput } from '@/shared/ui/decimal-input';
+import { useDecimalField } from '@/shared/ui/use-decimal-field';
 import { DataTable, type Column } from '@/shared/ui/data-table';
 import { DateStepper } from '@/shared/ui/date-stepper';
 import { Button } from '@/shared/ui/button';
@@ -79,6 +83,30 @@ const supplierRows: SupplierRow[] = [
 ];
 
 const DAY = 86_400_000;
+/**
+ * The one money/weight field (#72) as a controlled form uses it. No literal of
+ * its own: the label and the message are real locale keys, so this cell shows
+ * exactly what a screen shows.
+ */
+function DecimalDemo() {
+  const { t } = useTranslation();
+  const [value, setValue] = useState('');
+  const field = useDecimalField(value);
+  return (
+    <Field name="uikit-decimal" label={t('reception.totals.paid')} error={field.error ?? undefined}>
+      {(a11y) => (
+        <DecimalInput
+          {...a11y}
+          {...field.inputProps}
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          className="font-mono"
+        />
+      )}
+    </Field>
+  );
+}
+
 function fmt(d: Date) {
   return d.toLocaleDateString('uk-UA', { day: '2-digit', month: '2-digit', year: 'numeric' });
 }
@@ -205,6 +233,9 @@ export function UiKitPage() {
             <LedgerRow label="Недостача тари" value="−120,00" tone="bad" />
             <LedgerRow label="Разом" value="1 696,10 ₴" strong />
           </SectionCard>
+        </Cell>
+        <Cell name="DecimalInput · useDecimalField" tag="form">
+          <DecimalDemo />
         </Cell>
         <Cell name="DateStepper" tag="layout">
           <DateStepper

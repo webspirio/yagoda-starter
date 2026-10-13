@@ -4,10 +4,12 @@ import { useTranslation } from 'react-i18next';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/shared/ui/dialog';
 import { Field } from '@/shared/ui/field';
 import { TextInput } from '@/shared/ui/text-input';
+import { DecimalInput } from '@/shared/ui/decimal-input';
 import { SelectField } from '@/shared/ui/select-field';
 import { Switch } from '@/shared/ui/switch';
 import { Button } from '@/shared/ui/button';
 import { toast } from '@/shared/ui/toast';
+import { decimalRules } from '@/shared/lib/money';
 import {
   useCreateCollectionPointMutation,
   useUpdateCollectionPointMutation,
@@ -15,7 +17,6 @@ import {
 import { apiErrorToFields } from '../lib/apiErrorToFields';
 import type { CollectionPoint, CollectionPointFormValues } from '../model/collectionPoint';
 
-const DECIMAL = /^\d{1,10}(\.\d{1,2})?$/;
 const INTEGER = /^\d+$/;
 const FIELD_NAMES = ['name', 'kind', 'target_cash', 'target_crates', 'is_active', 'code'] as const;
 
@@ -61,7 +62,7 @@ export function PointFormDialog({
 
   const onSubmit = handleSubmit(async (values) => {
     setFormError(null);
-    const cash = values.target_cash.trim().replace(',', '.');
+    const cash = values.target_cash;
     const crates = values.target_crates.trim();
     const targets = {
       target_cash: cash === '' ? null : cash,
@@ -161,16 +162,10 @@ export function PointFormDialog({
             error={errors.target_cash?.message}
           >
             {(a11y) => (
-              <TextInput
+              <DecimalInput
                 {...a11y}
-                inputMode="decimal"
                 placeholder="—"
-                {...register('target_cash', {
-                  validate: (v) =>
-                    v.trim() === '' ||
-                    DECIMAL.test(v.trim().replace(',', '.')) ||
-                    'points.errors.cashFormat',
-                })}
+                {...register('target_cash', decimalRules({ required: false }))}
               />
             )}
           </Field>

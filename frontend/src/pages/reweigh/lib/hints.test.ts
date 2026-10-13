@@ -7,6 +7,13 @@ const ok = {
 };
 
 describe('addBlockReason', () => {
+  it('refuses a malformed weight after the shift and grade questions, before noGross (#72)', () => {
+    expect(addBlockReason({ ...ok, badFormat: true })).toBe('badFormat');
+    expect(addBlockReason({ ...ok, badFormat: true, grossKg: '0.00' })).toBe('badFormat');
+    expect(addBlockReason({ ...ok, badFormat: true, gradeId: null })).toBe('noGrade');
+    expect(addBlockReason({ ...ok, badFormat: true, hasShift: false })).toBe('noShift');
+  });
+
   it('lets a complete line through', () => {
     expect(addBlockReason(ok)).toBeNull();
   });

@@ -9,7 +9,7 @@ import { SelectField } from '@/shared/ui/select-field';
 import { EmptyState } from '@/shared/ui/empty-state';
 import { Spinner } from '@/shared/ui/spinner';
 import { toast, toastSuccess } from '@/shared/ui/toast';
-import { add, cmp, formatKg, formatUah, sub, sum } from '@/shared/lib/money';
+import { add, cmp, formatKg, formatUah, parseDecimal, sub, sum } from '@/shared/lib/money';
 import { formatLongDate, todayIso } from '@/shared/lib/date';
 import { useMeQuery } from '@/entities/user';
 import { useWorkingPoint } from '@/features/point-scope';
@@ -130,6 +130,11 @@ export function ReceptionPage() {
   // types in it themselves (`suggestedPaid`, below) — this is the only thing
   // that switches it over to what RHF actually holds.
   const [paidTouched, setPaidTouched] = useState(false);
+  // #72 — the «Видано готівкою» text «Прийняти» last refused. The refusal is
+  // shown only while the field still holds exactly that text, so it cannot
+  // outlive it (a re-picked supplier or the post-save reset change
+  // `paidShown`), and any edit clears it outright (`onPaidChange`).
+  const [paidRefused, setPaidRefused] = useState<string | null>(null);
   // Bumped on every supplier pick — even a re-pick of the same row, which
   // `reset()` above may have just emptied — so «З них наших ящиків» remounts
   // and pre-fills afresh.
@@ -244,6 +249,9 @@ export function ReceptionPage() {
   const paidShown = paidTouched ? values.paid_amount : suggested;
   const onPaidChange = (v: string) => {
     setPaidTouched(true);
+    // Belt to the equality check below: a new edit is not the refused submit,
+    // so retyping the same text does not bring the refusal back mid-keystroke.
+    setPaidRefused(null);
     setValue('paid_amount', v, { shouldDirty: true });
   };
 
@@ -314,6 +322,17 @@ export function ReceptionPage() {
   // which decides on the server's FRESH split whether there is a deposit to
   // hand over — and confirms straight through when there is none.
   const requestSubmit = (formValues: IntakeFormValues) => {
+    // #72 — a malformed «Видано готівкою» is never sent (`toCreateBody`), so
+    // going ahead would record the receipt WITHOUT the payout the operator
+    // typed. The field already names the refusal; the submit agrees with it.
+    // Enter submits WITHOUT moving focus, and the field holds its own format
+    // line back while focused — so the refusal is said through `paidError`,
+    // which shows regardless of focus, and the caret stays where the operator
+    // left it (Enter is how they move on the scale's numeric pad).
+    if (paidShown.trim() !== '' && parseDecimal(paidShown) === null) {
+      setPaidRefused(paidShown);
+      return;
+    }
     if (parseCount(formValues.returned_crates) > 0) setPendingSubmit(formValues);
     else void submitIntake(formValues);
   };
@@ -524,7 +543,10 @@ export function ReceptionPage() {
                 cashUnavailable={pointCash.isError}
                 paid={paidShown}
                 onPaidChange={onPaidChange}
-                paidError={errorAt('paid_amount')}
+                paidError={
+                  errorAt('paid_amount') ??
+                  (paidRefused !== null && paidShown === paidRefused ? 'errors.decimalFormat' : null)
+                }
                 disabled={!canSubmit}
                 isPreviewing={isPreviewing}
                 isSubmitting={create.isPending}

@@ -60,7 +60,7 @@ describe('apiErrorToFields', () => {
     expect(out.formErrorKey).toBe('payout.errors.shiftClosed');
   });
 
-  it('a code-less class-validator detail on amount maps to the amount format key', () => {
+  it('a code-less class-validator detail on amount maps to the one shared format key (#72)', () => {
     const out = apiErrorToFields(
       apiError({
         status: 400,
@@ -68,7 +68,7 @@ describe('apiErrorToFields', () => {
       }),
     );
     expect(out.fieldErrors).toEqual([
-      { field: 'amount', messageKey: 'payout.errors.amountFormat' },
+      { field: 'amount', messageKey: 'errors.decimalFormat' },
     ]);
     expect(out.formErrorKey).toBeNull();
   });

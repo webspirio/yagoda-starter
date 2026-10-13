@@ -1,24 +1,33 @@
 import { describe, it, expect } from 'vitest';
-import { DECIMAL_INPUT, CRATES_INPUT, normalizeAmount, maskDecimalInput, clampDecimal, floorToHundreds } from './input';
+import {
+  CRATES_INPUT,
+  parseCrateCount,
+  parseDecimal,
+  maskDecimalInput,
+  clampDecimal,
+  floorToHundreds,
+} from './input';
 
-describe('normalizeAmount', () => {
-  it('accepts a comma as the decimal separator and trims', () => {
-    expect(normalizeAmount(' 1 234,50 ')).toBe('1234.50');
+describe('parseDecimal', () => {
+  it.each([
+    ['12000', '12000'],
+    ['12 000', '12000'],
+    ['1 234 567,50', '1234567.50'],
+    ['980,40', '980.40'],
+    ['980.40', '980.40'],
+    ['980 40', '98040'],
+    ['12\u202f000,00', '12000.00'],
+    ['12\u00a0000', '12000'],
+    [' 7 ', '7'],
+    ['99999999.99', '99999999.99'],
+  ])('accepts %j as %s', (raw, out) => {
+    expect(parseDecimal(raw)).toBe(out);
   });
-  it('strips spaces used as thousands separators', () => {
-    expect(normalizeAmount('12 000')).toBe('12000');
+  it.each(['', '.', '12.', '1.234', 'abc', '123456789', '1,2,3', '-5'])('refuses %j', (raw) => {
+    expect(parseDecimal(raw)).toBeNull();
   });
-  it('leaves an already-canonical string alone', () => {
-    expect(normalizeAmount('0.05')).toBe('0.05');
-  });
-});
-
-describe('DECIMAL_INPUT', () => {
-  it.each(['0', '0.5', '0.05', '99999999.99'])('accepts %s', (v) => {
-    expect(DECIMAL_INPUT.test(v)).toBe(true);
-  });
-  it.each(['', '-1', '1.234', 'abc', '1.'])('rejects %s', (v) => {
-    expect(DECIMAL_INPUT.test(v)).toBe(false);
+  it('allows a minus only when asked', () => {
+    expect(parseDecimal('-5,5', { allowNegative: true })).toBe('-5.5');
   });
 });
 
@@ -31,16 +40,42 @@ describe('CRATES_INPUT', () => {
   });
 });
 
+describe('parseCrateCount', () => {
+  it.each([
+    ['', 0],
+    [' ', 0],
+    ['0', 0],
+    ['12', 12],
+    [' 7 ', 7],
+    ['1234567', 1234567],
+  ])('reads %j as %d', (raw, out) => {
+    expect(parseCrateCount(raw)).toBe(out);
+  });
+  it.each(['0.5', '2,0', '2.0', '1.2.3', ',5', '-1', '12345678'])('refuses %j', (raw) => {
+    expect(parseCrateCount(raw)).toBeNull();
+  });
+});
+
 describe('maskDecimalInput', () => {
-  it('drops letters and a second separator, keeps two decimals', () => {
+  it('drops letters and whitespace of any kind, stores a comma as a dot', () => {
     expect(maskDecimalInput('12a,5')).toBe('12.5');
-    expect(maskDecimalInput('12.5.6')).toBe('12.56');
-    expect(maskDecimalInput('12.345')).toBe('12.34');
+    expect(maskDecimalInput('12 000')).toBe('12000');
+    expect(maskDecimalInput('980 40')).toBe('98040');
+    expect(maskDecimalInput('12\u202f000,00')).toBe('12000.00');
+  });
+  it('never drops a digit or a separator — the grammar refuses what does not fit (#72)', () => {
+    expect(maskDecimalInput('12,000.00')).toBe('12.000.00');
+    expect(maskDecimalInput('1,234')).toBe('1.234');
+    expect(maskDecimalInput('123456789')).toBe('123456789');
+    expect(parseDecimal(maskDecimalInput('12,000.00'))).toBeNull();
+    expect(parseDecimal(maskDecimalInput('1,234'))).toBeNull();
+    expect(parseDecimal(maskDecimalInput('123456789'))).toBeNull();
   });
   it('allows a leading minus only when asked', () => {
     expect(maskDecimalInput('-5')).toBe('5');
     expect(maskDecimalInput('-5', { allowNegative: true })).toBe('-5');
     expect(maskDecimalInput('--5', { allowNegative: true })).toBe('-5');
+    expect(maskDecimalInput('5-', { allowNegative: true })).toBe('5');
   });
   it('lets a half-typed value through untouched', () => {
     expect(maskDecimalInput('12.')).toBe('12.');
@@ -54,6 +89,8 @@ describe('clampDecimal', () => {
     expect(clampDecimal('-25', '-20', '30')).toBe('-20.00');
     expect(clampDecimal('5', '-20', '30')).toBe('5.00');
     expect(clampDecimal('12.', '-20', '30')).toBe('12.');
+    // 9 integer digits break the grammar: refused as typed, never clamped to a bound.
+    expect(clampDecimal('123456789', '0.00', '30')).toBe('123456789');
   });
 });
 

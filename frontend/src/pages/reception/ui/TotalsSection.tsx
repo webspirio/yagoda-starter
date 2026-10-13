@@ -3,17 +3,16 @@ import { useTranslation } from 'react-i18next';
 import { Button } from '@/shared/ui/button';
 import { Eyebrow } from '@/shared/ui/eyebrow';
 import { Field } from '@/shared/ui/field';
-import { TextInput } from '@/shared/ui/text-input';
+import { DecimalInput } from '@/shared/ui/decimal-input';
+import { useDecimalField } from '@/shared/ui/use-decimal-field';
 import { cn } from '@/shared/lib/cn';
 import {
   clampDecimal,
   cmp,
-  DECIMAL_INPUT,
   floorToHundreds,
   formatKg,
   formatUah,
-  maskDecimalInput,
-  normalizeAmount,
+  parseDecimal,
   sub,
 } from '@/shared/lib/money';
 import { suggestedPaid, totalToPay } from '../lib/suggestedPaid';
@@ -85,9 +84,24 @@ export function TotalsSection({
   // The cash-capped total — same helper the page uses for the default, so
   // the cap here and the suggestion there can never drift apart.
   const cap = total === null ? null : suggestedPaid(accrued, debt, cash);
-  const paidNormalized = normalizeAmount(paid);
-  const paidValid = DECIMAL_INPUT.test(paidNormalized);
-  const paidValue = paidValid ? paidNormalized : '0.00';
+  const paidField = useDecimalField(paid, {
+    onBlur: () => {
+      if (cap === null) return;
+      // I5: canonicalise BEFORE validity — a trailing separator («1200,») is
+      // not yet a well-formed decimal, but it IS one with that one character
+      // stripped.
+      const stripped = parseDecimal(paid.replace(/[.,]$/, ''));
+      if (stripped === null) return; // leave the text as typed
+      const canonical = clampDecimal(stripped, '0.00', cap);
+      // I4: idempotent — tabbing through an already-canonical value must not
+      // latch `paidTouched` on the caller's side by calling back with the same
+      // string.
+      if (canonical !== paid) onPaidChange(canonical);
+    },
+  });
+  const paidParsed = paidField.parsed;
+  const paidValid = paidParsed !== null;
+  const paidValue = paidParsed ?? '0.00';
   const remainder = total === null ? null : sub(total, paidValue);
   const owed = remainder !== null && cmp(remainder, '0') === 1;
   const overCap = cap !== null && paidValid && cmp(paidValue, cap) === 1;
@@ -99,6 +113,12 @@ export function TotalsSection({
   // total; once the drawer is what actually limits the payout, the clamp note
   // has to say so instead (M2).
   const overCapKey = limitedByCash ? 'reception.totals.overCash' : 'reception.totals.overCap';
+  // #72 — «Видано готівкою» is never sent while unparsable (`toCreateBody`),
+  // so the server can never say so; the field says it itself, with the one
+  // shared message. Empty is not an error here: it means «nothing paid out».
+  // It waits until the operator leaves the field — «1200.» mid-keystroke is
+  // not a mistake yet (`useDecimalField`).
+  const formatError = paidField.error ?? undefined;
   const settle = (v: string) => onPaidChange(v);
   // The unavailable-drawer note takes the Field hint slot over the over-cap
   // one — a failed read is the more important thing to say, and `overCap`
@@ -166,7 +186,7 @@ export function TotalsSection({
           <Field
             name="paid_amount"
             label={t('reception.totals.paid')}
-            error={paidError ?? undefined}
+            error={paidError ?? formatError}
             hint={fieldHint}
             hintTone={overCap && !cashUnavailable ? 'warning' : undefined}
             className="mt-2"
@@ -174,25 +194,12 @@ export function TotalsSection({
             {(a11y) => (
               <>
                 <div className="relative">
-                  <TextInput
+                  <DecimalInput
                     {...a11y}
-                    inputMode="decimal"
                     className="h-12 pr-9 font-mono text-xl font-semibold"
                     value={paid}
-                    onChange={(e) => onPaidChange(maskDecimalInput(e.target.value))}
-                    onBlur={() => {
-                      if (cap === null) return;
-                      // I5: canonicalise BEFORE validity — a trailing
-                      // separator («1200,») is not yet a well-formed decimal,
-                      // but it IS one with that one character stripped.
-                      const stripped = normalizeAmount(paid).replace(/\.$/, '');
-                      if (!DECIMAL_INPUT.test(stripped)) return; // leave the text as typed
-                      const canonical = clampDecimal(stripped, '0.00', cap);
-                      // I4: idempotent — tabbing through an already-canonical
-                      // value must not latch `paidTouched` on the caller's
-                      // side by calling back with the same string.
-                      if (canonical !== paid) onPaidChange(canonical);
-                    }}
+                    onChange={(e) => onPaidChange(e.target.value)}
+                    {...paidField.inputProps}
                   />
                   <span className="pointer-events-none absolute top-1/2 right-3.5 -translate-y-1/2 font-mono text-sm text-muted-foreground">
                     ₴

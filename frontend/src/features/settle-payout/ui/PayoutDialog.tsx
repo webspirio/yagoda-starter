@@ -10,10 +10,10 @@ import {
   DialogTitle,
 } from '@/shared/ui/dialog';
 import { Field } from '@/shared/ui/field';
-import { TextInput } from '@/shared/ui/text-input';
+import { DecimalInput } from '@/shared/ui/decimal-input';
 import { Button } from '@/shared/ui/button';
 import { toast } from '@/shared/ui/toast';
-import { cmp, formatUah, DECIMAL_INPUT, normalizeAmount, amountRules } from '@/shared/lib/money';
+import { cmp, formatUah, parseDecimal, decimalRules } from '@/shared/lib/money';
 import type { Payout } from '@/entities/payout';
 import { useCreatePayoutMutation } from '../api/useCreatePayout';
 import { apiErrorToFields } from '../lib/apiErrorToFields';
@@ -82,8 +82,10 @@ export function PayoutDialog({
   const [formError, setFormError] = useState<string | null>(null);
   const name = `${supplier.first_name} ${supplier.last_name}`;
 
-  const watchedAmount = normalizeAmount(useWatch({ control, name: 'amount' }));
-  const submitAmount = DECIMAL_INPUT.test(watchedAmount) ? watchedAmount : (defaultAmount ?? debt);
+  // The button names the typed sum — never the full balance under a value
+  // (or an empty field) the form is about to refuse. The field opens
+  // prefilled, so a freshly opened dialog still reads «Видати 10 944,00 ₴».
+  const submitAmount = parseDecimal(useWatch({ control, name: 'amount' }));
 
   const setAll = () => {
     setValue('amount', debt);
@@ -92,7 +94,7 @@ export function PayoutDialog({
 
   const onSubmit = handleSubmit(async (values) => {
     setFormError(null);
-    const amount = normalizeAmount(values.amount);
+    const amount = values.amount;
 
     if (cmp(amount, '0') !== 1) {
       setError('amount', { message: 'payout.errors.amountZero' });
@@ -142,11 +144,10 @@ export function PayoutDialog({
             }
           >
             {(a11y) => (
-              <TextInput
+              <DecimalInput
                 {...a11y}
-                inputMode="decimal"
                 className="font-mono"
-                {...register('amount', amountRules('payout.errors.amountFormat'))}
+                {...register('amount', decimalRules())}
                 autoFocus
               />
             )}
@@ -167,7 +168,9 @@ export function PayoutDialog({
               {t('common.cancel')}
             </Button>
             <Button type="submit" disabled={isSubmitting}>
-              {t('payout.submit', { uah: formatUah(submitAmount, locale) })}
+              {submitAmount === null
+                ? t('payout.submitPlain')
+                : t('payout.submit', { uah: formatUah(submitAmount, locale) })}
             </Button>
           </DialogFooter>
         </form>

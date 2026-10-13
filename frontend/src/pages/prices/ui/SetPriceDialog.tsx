@@ -11,10 +11,11 @@ import {
   DialogTitle,
 } from '@/shared/ui/dialog';
 import { Field } from '@/shared/ui/field';
-import { TextInput } from '@/shared/ui/text-input';
+import { DecimalInput } from '@/shared/ui/decimal-input';
 import { Textarea } from '@/shared/ui/textarea';
 import { Button } from '@/shared/ui/button';
 import { toast } from '@/shared/ui/toast';
+import { decimalRules } from '@/shared/lib/money';
 import type { GradeCatalogItem } from '@/entities/product-grade';
 import { useSetPriceMutation } from '../api/gradePrices';
 import { useBulkSetPriceMutation } from '../api/priceSheet';
@@ -22,11 +23,6 @@ import { apiErrorToFields } from '../lib/apiErrorToFields';
 import type { PriceFormValues } from '../model/gradePrice';
 
 const FIELD_NAMES = ['base_price', 'max_markup', 'max_discount'] as const;
-
-/** Mirrors the backend `@Matches(/^\d{1,8}(\.\d{1,2})?$/)` on all three money
- *  fields — no sign, up to 8 integer digits, at most 2 decimals. Client-side
- *  UX only; the server re-validates. */
-const DECIMAL = /^\d{1,8}(\.\d{1,2})?$/;
 
 /**
  * Set (append) a grade's price. One dialog, no create/edit split — a price is
@@ -93,9 +89,9 @@ export function SetPriceDialog({
     setFormError(null);
     const reason = values.reason.trim();
     const numbers = {
-      base_price: values.base_price.trim(),
-      max_markup: values.max_markup.trim(),
-      max_discount: values.max_discount.trim(),
+      base_price: values.base_price,
+      max_markup: values.max_markup,
+      max_discount: values.max_discount,
       ...(reason ? { reason } : {}),
     };
     try {
@@ -148,14 +144,10 @@ export function SetPriceDialog({
             error={errors.base_price?.message}
           >
             {(a11y) => (
-              <TextInput
+              <DecimalInput
                 {...a11y}
-                inputMode="decimal"
                 className="font-mono"
-                {...register('base_price', {
-                  required: 'prices.errors.priceFormat',
-                  pattern: { value: DECIMAL, message: 'prices.errors.priceFormat' },
-                })}
+                {...register('base_price', decimalRules())}
                 autoFocus
               />
             )}
@@ -168,14 +160,10 @@ export function SetPriceDialog({
             error={errors.max_markup?.message}
           >
             {(a11y) => (
-              <TextInput
+              <DecimalInput
                 {...a11y}
-                inputMode="decimal"
                 className="font-mono"
-                {...register('max_markup', {
-                  required: 'prices.errors.priceFormat',
-                  pattern: { value: DECIMAL, message: 'prices.errors.priceFormat' },
-                })}
+                {...register('max_markup', decimalRules())}
               />
             )}
           </Field>
@@ -187,14 +175,10 @@ export function SetPriceDialog({
             error={errors.max_discount?.message}
           >
             {(a11y) => (
-              <TextInput
+              <DecimalInput
                 {...a11y}
-                inputMode="decimal"
                 className="font-mono"
-                {...register('max_discount', {
-                  required: 'prices.errors.priceFormat',
-                  pattern: { value: DECIMAL, message: 'prices.errors.priceFormat' },
-                })}
+                {...register('max_discount', decimalRules())}
               />
             )}
           </Field>

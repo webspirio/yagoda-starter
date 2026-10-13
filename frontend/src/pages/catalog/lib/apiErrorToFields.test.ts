@@ -40,7 +40,7 @@ describe('apiErrorToFields', () => {
       FIELDS,
     );
     expect(out.fieldErrors).toEqual([
-      { field: 'weight_kg', messageKey: 'catalog.errors.weightFormat' },
+      { field: 'weight_kg', messageKey: 'errors.decimalFormat' },
       { field: 'name', messageKey: 'catalog.errors.nameTooLong' },
     ]);
     expect(out.formErrorKey).toBeNull();

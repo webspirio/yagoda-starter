@@ -11,10 +11,11 @@ import {
 } from '@/shared/ui/dialog';
 import { Field } from '@/shared/ui/field';
 import { TextInput } from '@/shared/ui/text-input';
+import { DecimalInput } from '@/shared/ui/decimal-input';
 import { Button } from '@/shared/ui/button';
 import { toast } from '@/shared/ui/toast';
 import { apiErrorToBanner } from '@/shared/lib/api-error';
-import { normalizeAmount, isZero, amountRules, cratesRules } from '@/shared/lib/money';
+import { isZero, decimalRules, cratesRules } from '@/shared/lib/money';
 import { useSendTransferMutation } from '../api/useSendTransfer';
 
 interface SendTransferFormValues {
@@ -52,7 +53,7 @@ export function SendTransferDialog({
 
   const onSubmit = handleSubmit(async (values) => {
     setFormError(null);
-    const cash = normalizeAmount(values.cash);
+    const cash = values.cash;
     const crates = Number(values.crates.trim());
 
     // Клієнтська перевірка «не порожній переказ» дзеркалить бекендовий
@@ -88,11 +89,10 @@ export function SendTransferDialog({
         <form onSubmit={onSubmit} className="flex flex-col gap-4" noValidate>
           <Field name="cash" label={t('transfer.send.cash')} error={errors.cash?.message}>
             {(a11y) => (
-              <TextInput
+              <DecimalInput
                 {...a11y}
-                inputMode="decimal"
                 className="font-mono"
-                {...register('cash', amountRules('transfer.errors.cashFormat'))}
+                {...register('cash', decimalRules())}
               />
             )}
           </Field>

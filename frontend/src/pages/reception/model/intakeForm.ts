@@ -1,8 +1,8 @@
-import { cmp, DECIMAL_INPUT, normalizeAmount } from '@/shared/lib/money';
+import { cmp, parseCrateCount, parseDecimal } from '@/shared/lib/money';
 
 /** One tare row on the draft line, while the operator is still typing.
- *  `units` is a STRING here (an editable input value) — parsed to an integer
- *  count only when the line crosses the wire; see `toPreviewBody`. */
+ *  `units` is a STRING here (an editable input value), read only through
+ *  `parseCrateCount` — a count that is not whole is refused, never rounded. */
 export interface IntakeLineValues {
   product_grade_id: string;
   gross_kg: string;
@@ -43,8 +43,7 @@ export function emptyLine(defaultTareTypeId: string): IntakeLineValues {
   };
 }
 
-/** One line as it crosses the wire — `units` is an integer count, not money;
- *  `Number.parseInt(…, 10)`, never float arithmetic. */
+/** One line as it crosses the wire — `units` is a whole count ≥ 1, not money. */
 export interface PreviewIntakeItemBody {
   product_grade_id: string;
   gross_kg: string;
@@ -102,11 +101,13 @@ export interface IntakePreview {
   items: IntakePreviewItem[];
 }
 
-/** Trims and swaps a comma for a dot — the only coercion applied to a typed
- *  decimal before it crosses the wire. The server is the sole authority on
- *  format (`@Matches`), so this never re-validates the result. */
+/** A line's typed decimal as it crosses the wire: `parseDecimal`'s canonical
+ *  form when it parses, otherwise VERBATIM — the preview must still see an
+ *  unfinished line so its errors keep their indices, and the server is the
+ *  sole authority on format (`@Matches`). The minus is allowed here because
+ *  `bonus` carries one; a negative weight is refused by the server. */
 function normalizeDecimal(value: string): string {
-  return value.trim().replace(',', '.');
+  return parseDecimal(value, { allowNegative: true }) ?? value;
 }
 
 /**
@@ -119,8 +120,11 @@ function normalizeDecimal(value: string): string {
  * typing — dropping incomplete lines would break the 1:1 correspondence
  * between the form's `items` array and the server's response/error indices
  * that `apiErrorToFields` and `useIntakePreview` both rely on. Only a tare
- * row's `units < 1` (or unparsable) is ever dropped — that is never a line
- * the operator is mid-typing, it is one they have not touched at all.
+ * row counting 0 (empty or `0`) is ever dropped — one not touched at all.
+ *
+ * A count that is not whole («0,5», «1.2.3») never gets here: the form names
+ * it under the tare and `useIntakePreview` asks nothing while it stands (#233
+ * review), so the `null` filtered out below is unreachable, not a silent drop.
  */
 export function toPreviewBody(values: IntakeFormValues, pointId: string | null): PreviewIntakeBody {
   return {
@@ -131,9 +135,10 @@ export function toPreviewBody(values: IntakeFormValues, pointId: string | null):
       gross_kg: normalizeDecimal(line.gross_kg),
       pallet_kg: normalizeDecimal(line.pallet_kg),
       bonus: normalizeDecimal(line.bonus),
-      tare: line.tare
-        .map((row) => ({ tare_type_id: row.tare_type_id, units: Number.parseInt(row.units, 10) }))
-        .filter((row) => Number.isInteger(row.units) && row.units >= 1),
+      tare: line.tare.flatMap((row) => {
+        const units = parseCrateCount(row.units);
+        return units ? [{ tare_type_id: row.tare_type_id, units }] : [];
+      }),
     })),
   };
 }
@@ -141,14 +146,14 @@ export function toPreviewBody(values: IntakeFormValues, pointId: string | null):
 /**
  * What `POST /intakes` sends — the same body a preview asks about, plus
  * `paid_amount` when the operator's typed figure is a genuine positive
- * amount. `DECIMAL_INPUT` is the same shape the server's own `@Matches`
+ * amount. `parseDecimal` is the same shape the server's own `@Matches`
  * enforces; a malformed or non-positive value is simply never sent — the
  * server's own reading of "absent" already means "no payout" (§2.1 ⑥, §3.1).
  */
 export function toCreateBody(values: IntakeFormValues, pointId: string | null): CreateIntakeBody {
   const body: CreateIntakeBody = toPreviewBody(values, pointId);
-  const paid = normalizeAmount(values.paid_amount);
-  if (DECIMAL_INPUT.test(paid) && cmp(paid, '0') === 1) body.paid_amount = paid;
+  const paid = parseDecimal(values.paid_amount);
+  if (paid !== null && cmp(paid, '0') === 1) body.paid_amount = paid;
   // A crate COUNT, not money. Empty or 0 is "nothing came back", which the
   // server reads the same as an absent key — so the key rides only when > 0.
   const returned = parseCount(values.returned_crates);
@@ -167,8 +172,8 @@ export function parseCount(value: string): number {
  * Σ units of every tare row, on every line (committed and draft alike — the
  * whole form is the receipt), whose tare type is a crate. The server checks
  * `returned_crates` against exactly this (`RETURNED_EXCEEDS_TARE`); the form
- * uses it as the field's ceiling. Rows the body would drop (units < 1) count
- * for nothing here either.
+ * uses it as the field's ceiling. Rows the body would drop (0, or a count the
+ * form refuses) count for nothing here either.
  */
 export function crateTareUnits(
   items: IntakeLineValues[],
@@ -178,7 +183,7 @@ export function crateTareUnits(
   let total = 0;
   for (const line of items) {
     for (const row of line.tare) {
-      if (crateIds.has(row.tare_type_id)) total += parseCount(row.units);
+      if (crateIds.has(row.tare_type_id)) total += parseCrateCount(row.units) ?? 0;
     }
   }
   return total;
