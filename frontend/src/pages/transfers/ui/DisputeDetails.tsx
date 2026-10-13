@@ -38,7 +38,7 @@ export function DisputeList({
   );
 }
 
-export function DisputeDetails({
+function DisputeDetails({
   transfer,
   onResolve,
 }: {
