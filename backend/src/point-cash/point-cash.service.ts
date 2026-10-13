@@ -152,7 +152,8 @@ export class PointCashService {
    * The point's crate-deposits book, LIFETIME, as a decimal STRING —
    * `Σ deposit_taken − Σ deposit_refund` (spec §4.3), the SAME formula
    * `CrateBalanceService.pointDepositBook` reads, imported rather than
-   * re-derived so the crates book has ONE definition.
+   * re-derived so the crates book has ONE definition. A SEPARATE field, never
+   * added to `cash` — §7.6: «фізично шухляда одна, книг дві».
    *
    * NO `asOf` PARAMETER, ON PURPOSE. §7.5 gives this book no lower bound —
    * «від першої видачі» — and no physical count to anchor it on, so there is

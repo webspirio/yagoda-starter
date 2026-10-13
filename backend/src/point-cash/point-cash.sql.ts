@@ -16,6 +16,38 @@
 export const asOfSql = (asOf: string, tz: string): string =>
   `COALESCE(${asOf}::date, (now() AT TIME ZONE ${tz}::text)::date)`;
 
+/** Transfers credited to the shift's day — a voided one stops counting (§9.3). */
+export const transfersInSql = (shift: string): string => `
+    COALESCE((SELECT SUM(CASE
+                WHEN t.status = 'accepted' THEN t.cash
+                WHEN t.status = 'disputed' AND t.resolved_at IS NOT NULL THEN t.resolved_cash
+                WHEN t.status = 'disputed' THEN t.reported_cash
+              END)
+         FROM transfers t
+         JOIN shifts s ON s.collection_point_id = t.collection_point_id
+                      AND s.business_date = t.accepted_date
+        WHERE s.id = ${shift}
+          AND t.voided_at IS NULL), 0.00)`;
+
+/** Every payout of the shift, voided or not — the cash left the drawer (§9.3). */
+export const payoutsOutSql = (shift: string): string => `
+    COALESCE((SELECT SUM(p.amount) FROM payouts p
+        WHERE p.shift_id = ${shift}), 0.00)`;
+
+/** Cash back in the drawer: returned at void time in this shift, plus closed-shift returns settled on its day. */
+export const returnsSql = (shift: string, tz: string): string => `(
+    COALESCE((SELECT SUM(p.amount) FROM payouts p
+        WHERE p.shift_id = ${shift}
+          AND p.returned_on_void), 0.00)
+  + COALESCE((SELECT SUM(p.amount)
+         FROM payouts p
+         JOIN shifts ps ON ps.id = p.shift_id
+         JOIN shifts s  ON s.id = ${shift}
+        WHERE p.return_settled_at IS NOT NULL
+          AND NOT p.returned_on_void
+          AND ps.collection_point_id = s.collection_point_id
+          AND (p.return_settled_at AT TIME ZONE ${tz}::text)::date = s.business_date), 0.00))`;
+
 /**
  * THE MOVEMENTS OF ONE SHIFT — the `+ operations` half of every expectation.
  *
@@ -86,61 +118,10 @@ export const asOfSql = (asOf: string, tz: string): string =>
  * caller chose, or the anchor row's own `a.shift_id`. Nothing from a request is
  * spliced here — `tz` is always the module's own `APP_TIMEZONE` bind.
  *
- * THE CRATES BOOK IS HERE NOW, AND IT IS A SEPARATE FIELD. §7.6: «фізично
- * шухляда одна, книг дві». `crate_deposits` is never added to `cash` — a sum
- * without `GROUP BY book` is exactly what `cash-book.enum.ts` exists to make
- * impossible to write by accident.
- *
- * IT DOES NOT HONOUR `as_of`, AND THAT IS NOT AN OVERSIGHT. §7.5 gives the
- * crates book no lower bound — «від першої видачі» — and no physical count to
- * anchor on, because this book is never counted (spec §4.3). It is a
- * point-lifetime running sum, which is a different shape from the berry book
- * on the same screen; the field name and this comment are what keep a reader
- * from "fixing" one into the other.
- *
- * `crate_deposit_units` (R8) SITS RIGHT BESIDE IT, SAME EXEMPTIONS. §7.5's
- * card names both — money held AND units still out — and `crateUnitsSql`
- * shares `crateBookSql`'s scope exactly: point-lifetime, no `as_of`, no
- * supplier filter. It is a COUNT, not money, so it crosses the driver
- * boundary as a JS `number` (SQL casts it `::int`), never a `::text` string.
- *
  * SPLIT INTO THREE NAMED TERMS (#73) so `breakdownFor` can show each one.
  * `movementsSql` is their sum and nothing else — every caller of the formula
  * reads the same SQL it read before the split.
  */
-
-/** Transfers credited to the shift's day — a voided one stops counting (§9.3). */
-export const transfersInSql = (shift: string): string => `
-    COALESCE((SELECT SUM(CASE
-                WHEN t.status = 'accepted' THEN t.cash
-                WHEN t.status = 'disputed' AND t.resolved_at IS NOT NULL THEN t.resolved_cash
-                WHEN t.status = 'disputed' THEN t.reported_cash
-              END)
-         FROM transfers t
-         JOIN shifts s ON s.collection_point_id = t.collection_point_id
-                      AND s.business_date = t.accepted_date
-        WHERE s.id = ${shift}
-          AND t.voided_at IS NULL), 0.00)`;
-
-/** Every payout of the shift, voided or not — the cash left the drawer (§9.3). */
-export const payoutsOutSql = (shift: string): string => `
-    COALESCE((SELECT SUM(p.amount) FROM payouts p
-        WHERE p.shift_id = ${shift}), 0.00)`;
-
-/** Cash back in the drawer: returned at void time in this shift, plus closed-shift returns settled on its day. */
-export const returnsSql = (shift: string, tz: string): string => `(
-    COALESCE((SELECT SUM(p.amount) FROM payouts p
-        WHERE p.shift_id = ${shift}
-          AND p.returned_on_void), 0.00)
-  + COALESCE((SELECT SUM(p.amount)
-         FROM payouts p
-         JOIN shifts ps ON ps.id = p.shift_id
-         JOIN shifts s  ON s.id = ${shift}
-        WHERE p.return_settled_at IS NOT NULL
-          AND NOT p.returned_on_void
-          AND ps.collection_point_id = s.collection_point_id
-          AND (p.return_settled_at AT TIME ZONE ${tz}::text)::date = s.business_date), 0.00))`;
-
 export const movementsSql = (shift: string, tz: string): string =>
   `(${transfersInSql(shift)}
   - ${payoutsOutSql(shift)}
