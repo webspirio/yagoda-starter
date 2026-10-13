@@ -457,16 +457,31 @@ test('neither config pins a rule off in its own source', () => {
  * only the `coverage` leg's `--only coverage` keeps the unit suites in CI at all.
  */
 function ciVerifyLegs() {
-  const ci = backendFile('.github/workflows/ci.yml')
-  // One `- leg:` entry and the deeper-indented `key: value` lines under it, so the flags
-  // that bring up services or a browser for that leg are read with its rows.
-  return [...ci.matchAll(/^(\s+)- leg: (\S+)\n((?:\1  +\S.*\n)*)/gm)].map((m) => {
-    /** @type {Record<string, string>} */
-    const keys = Object.fromEntries([...m[3].matchAll(/^\s+(\w+): (.*?)\s*$/gm)].map((k) => [k[1], k[2]]))
+  const lines = backendFile('.github/workflows/ci.yml').split('\n')
+  /** @type {Array<{ leg: string, indent: number, keys: Record<string, string> }>} */
+  const raw = []
+  /** @type {{ leg: string, indent: number, keys: Record<string, string> } | undefined} */
+  let open
+  // Line by line rather than one regex, so a comment or a blank line inside a leg — at any
+  // indentation — neither ends that leg nor drops the keys below it. A leg closes only at
+  // the next `- leg:` or at the first non-comment line no deeper than its own dash.
+  for (const line of lines) {
+    const start = /^(\s*)- leg: (\S+)\s*$/.exec(line)
+    if (start) {
+      open = { leg: start[2], indent: start[1].length, keys: {} }
+      raw.push(open)
+      continue
+    }
+    if (!open || /^\s*(#.*)?$/.test(line)) continue
+    const key = /^(\s*)(\w+): (.*?)\s*$/.exec(line)
+    if (key && key[1].length > open.indent) open.keys[key[2]] = key[3]
+    else open = undefined
+  }
+  return raw.map(({ leg, keys }) => {
     const rows = /^--(only|exclude) (\S+)$/.exec(keys.rows ?? '')
     return {
-      leg: m[2],
-      mode: /** @type {'only' | 'exclude'} */ (rows?.[1]),
+      leg,
+      mode: /** @type {'only' | 'exclude' | undefined} */ (rows?.[1]),
       ids: rows ? rows[2].split(',') : [],
       services: keys.services === 'true',
       browser: keys.browser === 'true',
@@ -477,10 +492,10 @@ function ciVerifyLegs() {
 /**
  * Which matrix flag provides each precondition in CI — `null` where every hosted runner
  * already has it (`docker` and `jq` ship on ubuntu-latest; `npm-registry` is the network).
- * Every precondition must be listed: a new one forces a decision about which leg can
- * satisfy it, instead of landing in `fast` by the exclude default and failing there.
+ * Typed by `PreconditionId`, so `typecheck` refuses a missing or an unknown key; the test
+ * below repeats both directions at runtime for a reader who never runs tsc.
  *
- * @type {Record<string, 'services' | 'browser' | null>}
+ * @type {Record<import('./registry.mjs').PreconditionId, 'services' | 'browser' | null>}
  */
 const PROVIDED_IN_CI_BY = {
   postgres: 'services',
@@ -509,6 +524,11 @@ test('the CI verify legs partition the registry — every row runs in exactly on
     [],
     'a precondition with no entry in PROVIDED_IN_CI_BY — say which CI leg can satisfy it',
   )
+  assert.deepEqual(
+    Object.keys(PROVIDED_IN_CI_BY).filter((p) => !(p in PRECONDITIONS)),
+    [],
+    'an entry in PROVIDED_IN_CI_BY names no precondition — a dead entry is a silent hole',
+  )
 
   /** @type {Map<string, string[]>} row id -> legs that run it */
   const runsIn = new Map(all.map((id) => [id, []]))
@@ -528,6 +548,15 @@ test('the CI verify legs partition the registry — every row runs in exactly on
         const flag = PROVIDED_IN_CI_BY[need]
         if (flag) assert.ok(l[flag], `row ${id} needs ${need}, but leg ${l.leg} does not set \`${flag}: true\``)
       }
+    }
+    // The other direction: a flag no row in the leg needs is setup nobody reads, and a
+    // comment would be the only thing holding it — so it must not exist.
+    for (const flag of /** @type {const} */ (['services', 'browser'])) {
+      if (!l[flag]) continue
+      const readers = selected.filter((id) =>
+        (checkById(id)?.needs ?? []).some((n) => PROVIDED_IN_CI_BY[n] === flag),
+      )
+      assert.ok(readers.length > 0, `leg ${l.leg} sets \`${flag}: true\`, but no row in it needs what that starts`)
     }
   }
 

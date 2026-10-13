@@ -262,7 +262,6 @@ jobs:
             services: true
           - leg: smoke
             rows: --only build,bundle,smoke
-            services: true
             browser: true
     runs-on: ubuntu-latest
     # The four legs TOGETHER are a full-tier, --no-skip run over every row in
@@ -498,9 +497,10 @@ jobs:
       # open, not a second, CI-only definition of "a database" that could drift
       # from the first. The `postgres` and `redis` PRECONDITIONS (registry.mjs)
       # become true here for the identical reason they become true on a laptop
-      # that ran this same command. The `db` leg needs them for test:db; the `smoke` leg
-      # keeps them because its compose lifecycle has always started from a running
-      # Postgres and Redis here, and the split must not change what smoke meets.
+      # that ran this same command. Only the `db` leg sets `services`: test:db needs them.
+      # The `smoke` leg does not — e2e/global-setup.ts runs `docker compose up -d --wait
+      # postgres redis backend` itself, exactly as on a laptop, so starting them here
+      # first only cost seconds. registry.test.mjs fails on a flag no row in its leg needs.
       - if: matrix.services
         run: docker compose up -d --wait postgres redis
 
