@@ -466,7 +466,13 @@ jobs:
       # next commit. A leg's name is stable where a job's name was not, and the second
       # restore key still reaches the pre-split `turbo-<os>-<sha>` lineage, so the first
       # run of each leg starts warm rather than from nothing.
+      #
+      # Not in the `db` leg: test:db is plain jest (`npm run test:db -w backend`), never a
+      # turbo task, so that leg would only re-upload a restored `.turbo` it never touched —
+      # one dead ~100 MB entry per commit in the repo's 10 GB cache budget, which it shares
+      # with the docker job's buildx caches.
       - name: Cache turbo
+        if: matrix.leg != 'db'
         uses: actions/cache@v6
         with:
           path: .turbo
