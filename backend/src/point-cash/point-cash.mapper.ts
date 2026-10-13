@@ -137,11 +137,9 @@ export interface PointCashBreakdownRow {
   late_change: string | null;
 }
 
-export type PointCashBreakdownKind = 'open' | 'closed' | 'carried' | 'none';
-
 /** What `GET /point-cash/:pointId` says `cash` is made of (#73, spec 2026-10-13). */
 export interface PointCashBreakdown {
-  kind: PointCashBreakdownKind;
+  kind: 'open' | 'closed' | 'carried' | 'none';
   anchor_date: string | null;
   opening: string | null;
   transfers_in: string | null;

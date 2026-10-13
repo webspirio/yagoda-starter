@@ -77,21 +77,19 @@ describe('CashLedger', () => {
     expect(screen.queryByText('Expected')).toBeNull();
   });
 
-  it('closed day — expected, counted and the difference by number; the total says it is the closing count', () => {
+  it('closed day — expected, counted and the difference by number; the total under them is the closing count', () => {
     ledger(closed(), '43730.00', '2026-09-22');
 
     expect(value('Expected')).toHaveTextContent('43,820.00 ₴');
     expect(value('Counted at close')).toHaveTextContent('43,730.00 ₴');
-    expect(value('Difference')).toHaveTextContent('−90.00 ₴');
-    expect(screen.getByText('see the closing count')).toBeInTheDocument();
-    expect(value('Berry cash — counted at close')).toHaveTextContent('43,730.00 ₴');
-    expect(screen.queryByText('Berry cash')).toBeNull();
-    expect(screen.queryByText('Adjustment for changes after close')).toBeNull();
+    expect(value('Discrepancy')).toHaveTextContent('−90.00 ₴');
+    expect(value('Berry cash')).toHaveTextContent('43,730.00 ₴');
+    expect(screen.queryByText('Changed after close')).toBeNull();
   });
 
   it('closed day — a shortage reads bad, a surplus amber, zero neither', () => {
     const shortage = ledger(closed(), '43730.00', '2026-09-22');
-    expect(value('Difference')).toHaveClass('text-destructive');
+    expect(value('Discrepancy')).toHaveClass('text-destructive');
     shortage.unmount();
 
     const surplus = ledger(
@@ -99,11 +97,11 @@ describe('CashLedger', () => {
       '43900.00',
       '2026-09-22',
     );
-    expect(value('Difference')).toHaveClass('text-[var(--amber)]');
+    expect(value('Discrepancy')).toHaveClass('text-[var(--amber)]');
     surplus.unmount();
 
     ledger(closed({ counted: '43820.00', difference: '0.00' }), '43820.00', '2026-09-22');
-    expect(value('Difference')).toHaveClass('text-foreground');
+    expect(value('Discrepancy')).toHaveClass('text-foreground');
   });
 
   it('closed day — a change after close is its own line, signed so the rows still reach Expected', () => {
@@ -119,7 +117,7 @@ describe('CashLedger', () => {
       '2026-09-22',
     );
 
-    expect(value('Adjustment for changes after close')).toHaveTextContent('1,000.00 ₴');
+    expect(value('Changed after close')).toHaveTextContent('1,000.00 ₴');
     expect(value('Expected')).toHaveTextContent('44,820.00 ₴');
   });
 
@@ -135,8 +133,8 @@ describe('CashLedger', () => {
       '2026-09-24',
     );
 
-    expect(value('Counted at close on 09/22')).toHaveTextContent('43,730.00 ₴');
-    expect(screen.getByText(/No shift on this day/)).toBeInTheDocument();
+    expect(value('Counted at close 09/22')).toHaveTextContent('43,730.00 ₴');
+    expect(screen.getByText('No shift that day')).toBeInTheDocument();
     expect(screen.queryByText('Paid out today')).toBeNull();
     expect(value('Berry cash')).toHaveTextContent('43,730.00 ₴');
   });
@@ -144,7 +142,7 @@ describe('CashLedger', () => {
   it('none — says the drawer was never counted', () => {
     ledger(NONE, '0.00');
 
-    expect(screen.getByText("This point's drawer has never been counted.")).toBeInTheDocument();
+    expect(screen.getByText('No cash counts recorded for this point yet.')).toBeInTheDocument();
     expect(screen.queryByText('Opening count')).toBeNull();
     expect(value('Berry cash')).toHaveTextContent('0.00 ₴');
   });
@@ -152,13 +150,13 @@ describe('CashLedger', () => {
   it('open since an earlier day (#114) — says whose movements the rows are', () => {
     ledger(open({ anchor_date: '2026-09-20' }), '54730.00', '2026-09-23');
 
-    expect(screen.getByText(/open since 09\/20/)).toBeInTheDocument();
+    expect(screen.getByText('Shift open since 09/20')).toBeInTheDocument();
   });
 
   it('says nothing about an earlier day when the shift opened on the date shown', () => {
     ledger(open(), '54730.00', '2026-09-23');
 
-    expect(screen.queryByText(/open since/)).toBeNull();
+    expect(screen.queryByText(/open since/i)).toBeNull();
   });
 
   it('a failed detail read says so inside the card and prints no total', () => {

@@ -122,10 +122,9 @@ export function CashLedger({
               label={t('pointCash.ledger.expected')}
               value={money(c.expected ?? '0.00')}
             />
-            <LedgerRowView label={t('pointCash.ledger.countedAtClose')} value={money(c.counted)} />
+            <LedgerRowView label={t('pointCash.panel.closing')} value={money(c.counted)} />
             <LedgerRowView
-              label={t('pointCash.ledger.difference')}
-              hint={t('pointCash.ledger.differenceHint')}
+              label={t('pointCash.panel.discrepancy')}
               value={money(c.difference ?? '0.00')}
               tone={differenceTone(c.difference)}
             />
@@ -135,24 +134,20 @@ export function CashLedger({
         {b.kind === 'carried' && c && b.anchor_date ? (
           <>
             <LedgerRowView
-              label={t('pointCash.ledger.carried', { date: day(b.anchor_date) })}
+              label={`${t('pointCash.panel.closing')} ${day(b.anchor_date)}`}
               value={money(c.counted)}
             />
-            <p className="pt-1 text-xs text-muted-foreground">
-              {t('pointCash.ledger.carriedNote')}
-            </p>
+            <p className="pt-1 text-xs text-muted-foreground">{t('day.status.none')}</p>
           </>
         ) : null}
 
         {b.kind === 'none' ? (
-          <p className="pt-1 text-xs text-muted-foreground">{t('pointCash.ledger.neverCounted')}</p>
+          <p className="pt-1 text-xs text-muted-foreground">{t('pointCash.countHistory.empty')}</p>
         ) : null}
 
         <div className="my-2 border-t border-border" />
         <LedgerRowView
-          label={t(
-            b.kind === 'closed' ? 'pointCash.ledger.totalAtClose' : 'pointCash.ledger.total',
-          )}
+          label={t('pointCash.ledger.total')}
           value={money(cash)}
           strong
           tone={isNegative(cash) ? 'bad' : 'default'}

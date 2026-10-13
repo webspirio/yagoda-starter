@@ -27,10 +27,8 @@ export interface PointCashRow {
 }
 
 /** Дзеркалить `PointCashBreakdown` (`point-cash/point-cash.mapper.ts`, #73). */
-export type PointCashBreakdownKind = 'open' | 'closed' | 'carried' | 'none';
-
 export interface PointCashBreakdown {
-  kind: PointCashBreakdownKind;
+  kind: 'open' | 'closed' | 'carried' | 'none';
   anchor_date: string | null;
   opening: string | null;
   transfers_in: string | null;
