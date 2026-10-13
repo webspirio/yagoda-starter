@@ -52,6 +52,7 @@ export const payout = (over: Record<string, unknown> = {}) => ({
   shift_id: SHIFT_ID,
   supplier_id: SUPPLIER,
   amount: '1000.00',
+  balance_after: '0.00',
   paid_by_user_id: 'u-oksana',
   voided_at: null,
   voided_by_user_id: null,

@@ -17,9 +17,9 @@ import { CrateBalanceService } from '../crates/crate-balance.service';
 import { allocate } from '../crates/crate-allocation';
 import { nextIssuanceCode } from '../crates/crate-code';
 import { CrateIssuanceMode } from '../crates/crate-issuance-mode.enum';
+import { REBUILD_BALANCE_AFTER_SQL } from '../migrations/1788600000023-PayoutBalanceAfter';
 import { AllocationsService } from '../supplier-balance/services/allocations';
 import {
-
   DEV_OPERATOR_PASSWORD,
   SEED_GRADES,
   SEED_INTAKES,
@@ -597,7 +597,17 @@ async function seedDocuments(
                -- CHK_shifts_broken_crates_closed refuses the row.
                CASE WHEN $5::boolean THEN $9::int ELSE NULL END)
        RETURNING id`,
-      [pid, opener, date, sh.closed ? 'closed' : 'open', sh.closed, '19:10', '07:30', tz, sh.broken ?? 0],
+      [
+        pid,
+        opener,
+        date,
+        sh.closed ? 'closed' : 'open',
+        sh.closed,
+        '19:10',
+        '07:30',
+        tz,
+        sh.broken ?? 0,
+      ],
     );
     shiftId.set(key, row!.id);
     summary.shifts += 1;
@@ -669,15 +679,18 @@ async function seedDocuments(
     summary.intakes += 1;
   }
 
+  const newPayoutIds: string[] = [];
   for (const doc of allPayouts) {
     const code = nextSeedCode('PO', doc.point, doc.day, doc.typed);
     const found = await one<{ id: string }>(qr, `SELECT id FROM payouts WHERE code = $1`, [code]);
     if (found) continue;
     const shift = shiftId.get(`${doc.point}/${doc.day}`);
     if (!shift) throw new Error(`Seed payout ${code} has no shift`);
-    await qr.query(
-      `INSERT INTO payouts (code, shift_id, supplier_id, amount, paid_by_user_id, created_at)
-       VALUES ($1, $2, $3, $4, $5, ${localTs(6, 7, 8)})`,
+    // `balance_after` is rebuilt below, once every seeded document exists (#145).
+    const inserted = await one<{ id: string }>(
+      qr,
+      `INSERT INTO payouts (code, shift_id, supplier_id, amount, paid_by_user_id, created_at, balance_after)
+       VALUES ($1, $2, $3, $4, $5, ${localTs(6, 7, 8)}, '0.00') RETURNING id`,
       [
         code,
         shift,
@@ -689,7 +702,11 @@ async function seedDocuments(
         tz,
       ],
     );
+    newPayoutIds.push(inserted!.id);
     summary.payouts += 1;
+  }
+  if (newPayoutIds.length > 0) {
+    await qr.query(`${REBUILD_BALANCE_AFTER_SQL} WHERE p."id" = ANY($1)`, [newPayoutIds]);
   }
 
   // Crates: §6.5's two-tranches-at-different-prices case and ticket #58's
@@ -734,7 +751,9 @@ async function seedDocuments(
       iss.mode === 'deposit' &&
       SEED_CRATE_ISSUANCES.slice(0, i).some(
         (earlier) =>
-          earlier.point === iss.point && earlier.supplier === iss.supplier && earlier.mode === 'deposit',
+          earlier.point === iss.point &&
+          earlier.supplier === iss.supplier &&
+          earlier.mode === 'deposit',
       );
     if (isNewerTranche) {
       await qr.query(`UPDATE tare_types SET deposit_price = $1 WHERE id = $2`, [
@@ -847,9 +866,7 @@ async function seedDocuments(
   // stack a second 750 ₴ onto the same receipt.
   for (const row of SEED_TOP_UPS) {
     const code = intakeCodeFor(row.point, row.day, row.typed);
-    const intake = await one<{ id: string }>(qr, `SELECT id FROM intakes WHERE code = $1`, [
-      code,
-    ]);
+    const intake = await one<{ id: string }>(qr, `SELECT id FROM intakes WHERE code = $1`, [code]);
     if (!intake) throw new Error(`Seed top-up has no intake ${code}`);
 
     const existing = await one<{ id: string }>(
@@ -953,16 +970,7 @@ async function seedDocuments(
       `INSERT INTO cash_counts
          (shift_id, book, kind, counted_amount, expected_amount, counted_by_user_id, counted_at)
        VALUES ($1, 'berry', $2::cash_count_kind, $3, $4, $5, ${localTs(6, 7, 8)})`,
-      [
-        shift,
-        c.kind,
-        counted,
-        expected,
-        userByLogin.get(c.countedBy)!,
-        dateOf(c.day),
-        c.time,
-        tz,
-      ],
+      [shift, c.kind, counted, expected, userByLogin.get(c.countedBy)!, dateOf(c.day), c.time, tz],
     );
     summary.cashCounts += 1;
   }

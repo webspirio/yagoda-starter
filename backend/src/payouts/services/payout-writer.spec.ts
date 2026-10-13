@@ -16,11 +16,12 @@ describe('PayoutWriter', () => {
   let dataSource: PayoutsMocks['dataSource'];
   let audit: PayoutsMocks['audit'];
   let allocations: PayoutsMocks['allocations'];
+  let balance: PayoutsMocks['balance'];
   let writer: PayoutWriter;
 
   beforeEach(() => {
     const mocks = makePayoutsMocks();
-    ({ manager, dataSource, audit, allocations } = mocks);
+    ({ manager, dataSource, audit, allocations, balance } = mocks);
     writer = buildPayouts(mocks).writer;
   });
 
@@ -70,6 +71,45 @@ describe('PayoutWriter', () => {
       expect(manager.create).toHaveBeenCalledWith(
         expect.anything(),
         expect.objectContaining({ intake_id: null, amount: '380.00', paid_by_user_id: 'u-oksana' }),
+      );
+    });
+  });
+
+  describe('PayoutWriter.write — balance_after (#145)', () => {
+    const write = (amount: string) =>
+      dataSource.transaction(async (m: never) => {
+        await writer.write(m, {
+          actor: oksana,
+          pointId: POINT_A,
+          pointCode: 'KPG',
+          supplierId: SUPPLIER,
+          amount,
+          intakeId: null,
+        });
+      });
+
+    it('freezes balance_after = debt − amount on the saved payout', async () => {
+      balance.debtFor.mockResolvedValue('7266.00');
+      await write('2000.00');
+      expect(manager.create).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ balance_after: '5266.00' }),
+      );
+      expect(audit.record).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: 'payout.created',
+          after: expect.objectContaining({ balance_after: '5266.00' }),
+        }),
+        manager,
+      );
+    });
+
+    it('stores 0.00 for a payout equal to the whole debt (the §3.5 ceiling forbids less)', async () => {
+      balance.debtFor.mockResolvedValue('500.00');
+      await write('500.00');
+      expect(manager.create).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ balance_after: '0.00' }),
       );
     });
   });

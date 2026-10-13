@@ -66,8 +66,8 @@ describe('YagodaIntakesAndPayouts', () => {
   const insertPayout = (shift: string, code: string, amount = '50.00'): Promise<string> =>
     ds
       .query(
-        `INSERT INTO payouts (code, shift_id, supplier_id, amount, paid_by_user_id)
-         VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+        `INSERT INTO payouts (code, shift_id, supplier_id, amount, paid_by_user_id, balance_after)
+         VALUES ($1, $2, $3, $4, $5, '0.00') RETURNING id`,
         [code, shift, supplierA, amount, userId],
       )
       .then((rows: { id: string }[]) => rows[0].id);

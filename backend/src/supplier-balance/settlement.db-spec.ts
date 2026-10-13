@@ -95,9 +95,9 @@ describe('SupplierSettlementQuery.settlementFor (Postgres)', () => {
     voided = false,
   ): Promise<string> => {
     const [row] = await ds.query(
-      `INSERT INTO payouts (code, shift_id, supplier_id, amount, paid_by_user_id, intake_id, created_at,
+      `INSERT INTO payouts (code, shift_id, supplier_id, amount, paid_by_user_id, intake_id, created_at, balance_after,
                             voided_at, voided_by_user_id, void_reason)
-       VALUES ($1, $2, $3, $4, $5, $6, $7,
+       VALUES ($1, $2, $3, $4, $5, $6, $7, '0.00',
                CASE WHEN $8 THEN now() END, CASE WHEN $8 THEN $5::uuid END,
                CASE WHEN $8 THEN 'test' END) RETURNING id`,
       [`PO-${run}-${++seq}`, shiftId, supplierId, amount, userId, intakeId, createdAt, voided],

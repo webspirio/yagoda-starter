@@ -22,3 +22,12 @@ describe('toPayoutResponse — returned_on_void', () => {
     ).toBe(true);
   });
 });
+
+describe('toPayoutResponse — balance_after', () => {
+  it('carries the frozen balance the receipt prints (#145)', () => {
+    expect(
+      toPayoutResponse(payout({ balance_after: '5266.00' }) as never, shift() as never)
+        .balance_after,
+    ).toBe('5266.00');
+  });
+});

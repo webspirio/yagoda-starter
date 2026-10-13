@@ -150,6 +150,7 @@ describe('PointCashService.cashFor (Postgres)', () => {
       shift_id: shiftId,
       supplier_id: supplierId,
       amount,
+      balance_after: '0.00',
       paid_by_user_id: ownerId,
       ...over,
     };

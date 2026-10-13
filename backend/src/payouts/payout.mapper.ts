@@ -14,6 +14,8 @@ export interface PayoutResponse {
   supplier_id: string;
   intake_id: string | null;
   amount: string;
+  /** The supplier's debt right after this payout — frozen at write, #145. */
+  balance_after: string;
   paid_by_user_id: string;
   voided_at: string | null;
   voided_by_user_id: string | null;
@@ -39,6 +41,7 @@ export function toPayoutResponse(payout: Payout, shift: Shift): PayoutResponse {
     supplier_id: payout.supplier_id,
     intake_id: payout.intake_id,
     amount: payout.amount,
+    balance_after: payout.balance_after,
     paid_by_user_id: payout.paid_by_user_id,
     voided_at: payout.voided_at ? payout.voided_at.toISOString() : null,
     voided_by_user_id: payout.voided_by_user_id,

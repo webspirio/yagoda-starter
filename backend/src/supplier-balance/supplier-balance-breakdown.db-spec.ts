@@ -197,17 +197,17 @@ describe('supplier balance breakdown (HTTP)', () => {
 
     // Live payout — the one that must close part of the debt.
     await ds.query(
-      `INSERT INTO payouts (code, shift_id, supplier_id, amount, paid_by_user_id)
-       VALUES ($1, $2, $3, '5000.00', $4)`,
+      `INSERT INTO payouts (code, shift_id, supplier_id, amount, paid_by_user_id, balance_after)
+       VALUES ($1, $2, $3, '5000.00', $4, '0.00')`,
       [`BD-PO-${run}-1`, shiftLate.id, supplierId, userId],
     );
 
     // Voided payout — must NOT close any debt (§9.3 — a void does not return
     // cash on its own; that is a separate `settle-return`, irrelevant here).
     await ds.query(
-      `INSERT INTO payouts (code, shift_id, supplier_id, amount, paid_by_user_id,
+      `INSERT INTO payouts (code, shift_id, supplier_id, amount, paid_by_user_id, balance_after,
                             voided_at, voided_by_user_id, void_reason)
-       VALUES ($1, $2, $3, '1500.00', $4, now(), $4, 'тестове анулювання')`,
+       VALUES ($1, $2, $3, '1500.00', $4, '0.00', now(), $4, 'тестове анулювання')`,
       [`BD-PO-${run}-2`, shiftLate.id, supplierId, userId],
     );
   }, 30_000);
