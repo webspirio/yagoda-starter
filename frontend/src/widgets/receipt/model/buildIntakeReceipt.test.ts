@@ -109,7 +109,7 @@ describe('buildIntakeReceipt', () => {
 
   it('adds no crate group without a crate return', () => {
     const { sections } = build(intake());
-    expect(sections.flat().some((s) => s.kind === 'caption' && s.text.includes('rateReturn'))).toBe(false);
+    expect(sections.flat().some((s) => s.kind === 'rows' && s.rows.some((r) => r.label.includes('rateReturn')))).toBe(false);
   });
 
   it('prints the voided crate return as its annulment caption', () => {
@@ -123,7 +123,34 @@ describe('buildIntakeReceipt', () => {
       }),
     );
     expect(sections).toHaveLength(4);
-    expect(sections[2]).toEqual([{ kind: 'caption', text: 'receipt.crateReturnVoided' }]);
+    expect(sections[2]).toEqual([
+      { kind: 'rows', rows: [{ label: 'receipt.crateReturnVoided', value: '', muted: true }] },
+    ]);
+  });
+
+  it('prints a live crate return as a normal, unmuted row', () => {
+    const { sections } = build(
+      intake({
+        crate_return: { units: 3, deposit_refund: '30.00', voided_at: null } as IntakeDetail['crate_return'],
+      }),
+    );
+    expect(sections[2]).toHaveLength(1);
+    expect(sections[2][0]).toMatchObject({ kind: 'rows', rows: [{ value: '' }] });
+    const row = (sections[2][0] as { rows: { label: string; muted?: boolean }[] }).rows[0];
+    expect(row.label).toBe('receipt.crateReturn{"units":3,"amount":"30.00 ₴"}');
+    expect(row.muted).toBeUndefined();
+  });
+
+  it('prints a no-money crate return as a normal, unmuted row', () => {
+    const { sections } = build(
+      intake({
+        crate_return: { units: 3, deposit_refund: '0.00', voided_at: null } as IntakeDetail['crate_return'],
+      }),
+    );
+    const row = (sections[2][0] as { rows: { label: string; muted?: boolean }[] }).rows[0];
+    expect(sections[2][0].kind).toBe('rows');
+    expect(row.label).toBe('receipt.crateReturnNoMoney{"units":3}');
+    expect(row.muted).toBeUndefined();
   });
 
   it('omits «Видано готівкою» when nothing was paid', () => {

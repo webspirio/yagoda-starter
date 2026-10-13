@@ -55,16 +55,19 @@ export function buildIntakeReceipt({
 
   const crateReturn = intake.crate_return;
   if (crateReturn) {
-    const text =
-      crateReturn.voided_at !== null
-        ? t('receipt.crateReturnVoided')
-        : isZero(crateReturn.deposit_refund)
-          ? t('receipt.crateReturnNoMoney', { units: crateReturn.units })
-          : t('receipt.crateReturn', {
-              units: crateReturn.units,
-              amount: formatUah(crateReturn.deposit_refund, locale),
-            });
-    sections.push([{ kind: 'caption', text }]);
+    // The old sheet's markup: the live forms are a normal row (label only),
+    // only the annulment is muted.
+    if (crateReturn.voided_at !== null) {
+      sections.push([{ kind: 'rows', rows: [{ label: t('receipt.crateReturnVoided'), value: '', muted: true }] }]);
+    } else {
+      const label = isZero(crateReturn.deposit_refund)
+        ? t('receipt.crateReturnNoMoney', { units: crateReturn.units })
+        : t('receipt.crateReturn', {
+            units: crateReturn.units,
+            amount: formatUah(crateReturn.deposit_refund, locale),
+          });
+      sections.push([{ kind: 'rows', rows: [{ label, value: '' }] }]);
+    }
   }
 
   const totals: ReceiptSection[] = [

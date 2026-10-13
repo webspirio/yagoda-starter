@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { Badge } from '@/shared/ui/badge';
 
 /** One label/value pair on the paper, already resolved to display strings. */
-export interface ReceiptRow {
+interface ReceiptRow {
   label: string;
   value: string;
   strong?: boolean;
@@ -12,7 +12,7 @@ export interface ReceiptRow {
 
 /** One berry line, already resolved to display strings — the builder passes
  *  values only; the renderer owns the labels (Брутто, Піддон, Тара, …). */
-export interface ReceiptBerryLine {
+interface ReceiptBerryLine {
   label: string;
   gross: string;
   /** `null` hides the Піддон row — only shown when the intake had one. */
@@ -159,7 +159,7 @@ export function ReceiptView({ doc }: { doc: ReceiptDocument }) {
       <div className="mt-4 break-inside-avoid text-center font-mono">
         {noteLines.map((l, i) => (
           <div key={i} className="whitespace-pre">
-            {l || ' '}
+            {l || '\u00a0'}
           </div>
         ))}
         <div className={noteLines.length > 0 ? 'mt-2' : ''}>{t('receipt.thanks')}</div>
