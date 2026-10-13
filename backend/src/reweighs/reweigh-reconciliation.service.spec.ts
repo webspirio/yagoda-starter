@@ -49,6 +49,15 @@ describe('ReweighReconciliationService.forShift', () => {
     expect(out.products[0].missing_amount).toBe('1650.00');
   });
 
+  it('prices it off the whole-hryvnia amount, not off net × rate — §2.12 (#56)', async () => {
+    // 36,90 × 57,00 = 2 103,30 was paid as 2 103,00 → 56,99 ₴/кг, not 57,00.
+    const svc = build({ id: 's-1', closed_at: new Date() }, [
+      { ...raspberry, intake_net_kg: '36.90', intake_amount: '2103.00', reweigh_net_kg: '35.90' },
+    ]);
+    const out = await svc.forShift(owner, 's-1');
+    expect(out.products[0].missing_amount).toBe('56.99');
+  });
+
   it('reports «—» while the shift is still open — spec §3.9', async () => {
     const svc = build({ id: 's-1', closed_at: null }, [raspberry]);
     const out = await svc.forShift(owner, 's-1');

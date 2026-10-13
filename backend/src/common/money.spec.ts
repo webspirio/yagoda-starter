@@ -1,4 +1,16 @@
-import { add, allocate, cmp, div, gt, gte, isNegative, mul, mulWholeHryvnia, sub, sum } from './money';
+import {
+  add,
+  allocate,
+  cmp,
+  div,
+  gt,
+  gte,
+  isNegative,
+  mul,
+  mulWholeHryvnia,
+  sub,
+  sum,
+} from './money';
 
 /**
  * THIS FILE IS THE GUARANTEE. Every amount the system will ever print on a
@@ -85,11 +97,10 @@ describe('money', () => {
       ['49.00', '1.00', '49.00'],
       ['0.80', '1.00', '1.00'],
       ['0.79', '1.00', '0.00'],
-      // the threshold applies to the EXACT scale-4 product, not to mul's kopiykas
-      ['0.10', '497.95', '49.00'], // 49.7950 — mul would say 49.80, the rule says 49
-      ['0.01', '4979.99', '49.00'], // 49.7999
-      ['0.01', '4980.00', '50.00'], // 49.8000
-      ['12.35', '4.03', '49.00'], // 49.7705
+      // the threshold reads mul's kopiykas — what the supplier sees, not the exact product
+      ['0.10', '497.95', '50.00'], // 49.7950 → 49.80
+      ['0.01', '4979.49', '49.00'], // 49.7949 → 49.79
+      ['12.35', '4.03', '49.00'], // 49.7705 → 49.77
       // mirrored on the negative side, and never a negative zero
       ['-49.80', '1.00', '-50.00'],
       ['-0.79', '1.00', '0.00'],
@@ -193,11 +204,7 @@ describe('money', () => {
     });
 
     it('mirrors a negative total', () => {
-      expect(allocate('-100.00', ['1.00', '1.00', '1.00'])).toEqual([
-        '-33.34',
-        '-33.33',
-        '-33.33',
-      ]);
+      expect(allocate('-100.00', ['1.00', '1.00', '1.00'])).toEqual(['-33.34', '-33.33', '-33.33']);
     });
 
     it('returns an empty array for no weights', () => {

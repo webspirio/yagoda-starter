@@ -1023,7 +1023,7 @@ describe('documents pipeline (HTTP)', () => {
    * REFUSED. Spec §11 asked for «blocks and then fails»; the second half is
    * this test. Delete the `FOR UPDATE` from `PayoutsService.writePayout` and both
    * requests read the same debt, both clear the ceiling, and 800,00 ₴ leaves
-   * the drawer against a 615,60 ₴ debt with nothing downstream to notice.
+   * the drawer against a 615,00 ₴ debt with nothing downstream to notice.
    */
   describe('two payouts in flight at once', () => {
     let supplierId: string;

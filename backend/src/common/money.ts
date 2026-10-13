@@ -61,41 +61,37 @@ export function sub(a: string, b: string): string {
   return format(parse(a) - parse(b));
 }
 
+/** Rounds by magnitude, so a negative value mirrors its positive twin. */
+function byMagnitude(units: bigint, round: (magnitude: bigint) => bigint): bigint {
+  return units < 0n ? -round(-units) : round(units);
+}
+
 /**
  * Multiplies two scale-2 values and rounds the scale-4 product back to scale 2,
  * HALF-UP AWAY FROM ZERO.
  *
  * Half-up is foundation §5.1's stated policy, «applied where paper shows a
- * number» — and this is that place: `amount = net × (price + bonus)` is printed
- * on the supplier's copy. Away-from-zero (rather than half-up toward positive
- * infinity) keeps a negative line the mirror image of its positive twin, which
- * matters because `bonus` is legitimately negative for «м'ята чи цвіла ягода».
+ * number». Away-from-zero (rather than half-up toward positive infinity) keeps
+ * a negative value the mirror image of its positive twin, which matters because
+ * `bonus` is legitimately negative for «м'ята чи цвіла ягода». A reception
+ * line's `amount` goes one step further — `mulWholeHryvnia`.
  */
 export function mul(a: string, b: string): string {
-  const raw = parse(a) * parse(b); // scale 4
-  const negative = raw < 0n;
-  const magnitude = negative ? -raw : raw;
-  const rounded = (magnitude + UNIT / 2n) / UNIT; // +50, floor -> half-up
-  return format(negative ? -rounded : rounded);
+  return format(byMagnitude(parse(a) * parse(b), (m) => (m + UNIT / 2n) / UNIT));
 }
 
-/** #56: a reception line is paid in whole hryvnia — up from 0.80, otherwise
- *  the kopiykas are dropped. Scale-4 units of the exact product. */
-const ROUND_UP_FROM = 8000n;
-const HRYVNIA = UNIT * UNIT;
+/** #56: kopiykas from which a reception line rounds UP to the next hryvnia. */
+const ROUND_UP_FROM = 80n;
 
 /**
- * Multiplies two scale-2 values and rounds the EXACT product to whole hryvnia
- * (§2.12, #56): 0.80 and above goes up, anything less is dropped. One rounding,
- * on the scale-4 product — never on `mul`'s kopiykas, which would move the
- * threshold to 0.795. By magnitude, so a negative line mirrors its positive twin.
+ * `mul`, then whole hryvnia (§2.12, #56): 80 kopiykas and above go up, anything
+ * less is dropped. The threshold reads the kopiykas `mul` shows — the number a
+ * supplier can redo on a calculator — so 0,10 × 497,95 = 49,80 → 50,00.
  */
 export function mulWholeHryvnia(a: string, b: string): string {
-  const raw = parse(a) * parse(b); // scale 4
-  const negative = raw < 0n;
-  const magnitude = negative ? -raw : raw;
-  const whole = magnitude / HRYVNIA + (magnitude % HRYVNIA >= ROUND_UP_FROM ? 1n : 0n);
-  return format((negative ? -whole : whole) * UNIT);
+  return format(
+    byMagnitude(parse(mul(a, b)), (k) => (k / UNIT + (k % UNIT >= ROUND_UP_FROM ? 1n : 0n)) * UNIT),
+  );
 }
 
 /** Exact addition of already-rounded values. NEVER rounds — see money.spec.ts's

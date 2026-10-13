@@ -236,22 +236,22 @@ describe('buildIntake', () => {
     });
 
     it('produces Σ round(each), not round(Σ)', () => {
-      // Three lines of 0.70 each. Every line drops its kopiykas; rounding once
-      // at the end would give 2.10 → 2.00, a number the paper never shows.
-      const sevens = prices({ base_price: '7.00', max_markup: '0.00', max_discount: '0.00' });
-      const tiny = () =>
+      // 1.70 + 1.70 + 1.87: each line rounds on its own (1 + 1 + 2 = 4); rounding
+      // once at the end would give 5.27 → 5.00, a number the paper never shows.
+      const tens = prices({ base_price: '10.00', max_markup: '10.00', max_discount: '0.00' });
+      const small = (gross_kg: string) =>
         line({
-          gross_kg: '1.30',
+          gross_kg,
           pallet_kg: '0.00',
-          bonus: '0.00',
+          bonus: '7.00',
           tare: [{ tare_type_id: CRATE, units: 1 }],
         });
 
-      const built = buildIntake([tiny(), tiny(), tiny()], sevens, tare());
+      const built = buildIntake([small('1.30'), small('1.30'), small('1.31')], tens, tare());
 
-      expect(built.items[0].net_kg).toBe('0.10'); // 1.30 − 1.20
-      expect(built.items.map((i) => i.amount)).toEqual(['0.00', '0.00', '0.00']);
-      expect(built.amount).toBe('0.00');
+      expect(built.items.map((i) => i.net_kg)).toEqual(['0.10', '0.10', '0.11']); // − 1.20 crate
+      expect(built.items.map((i) => i.amount)).toEqual(['1.00', '1.00', '2.00']);
+      expect(built.amount).toBe('4.00');
     });
   });
 
@@ -269,15 +269,46 @@ describe('buildIntake', () => {
       expect(built.items[0].amount).toBe('2107.00'); // 36.90 × 57.10 = 2106.99
     });
 
-    it('applies the threshold to the exact product, not to its kopiykas', () => {
-      // 0.10 kg × 497.95 = 49.7950: half-up kopiykas would read 49.80 and round up.
+    it('applies the threshold to the kopiykas the supplier sees', () => {
+      // 0.10 kg × 497.95 = 49.7950 → 49.80 on screen and on a calculator → 50.00.
       const built = buildIntake(
         [line({ gross_kg: '1.30', pallet_kg: '0.00', tare: [{ tare_type_id: CRATE, units: 1 }] })],
         prices({ base_price: '497.95' }),
         tare(),
       );
 
-      expect(built.items[0].amount).toBe('49.00');
+      expect(built.items[0].amount).toBe('50.00');
+    });
+
+    it('refuses a line of berries that would be paid 0.00', () => {
+      // 0.10 kg × 7.00 = 0.70 → 0.00: the receipt would record berries taken for nothing.
+      const sevens = prices({ base_price: '7.00', max_markup: '0.00', max_discount: '0.00' });
+
+      expect(() =>
+        buildIntake(
+          [
+            line({
+              gross_kg: '1.30',
+              pallet_kg: '0.00',
+              bonus: '0.00',
+              tare: [{ tare_type_id: CRATE, units: 1 }],
+            }),
+          ],
+          sevens,
+          tare(),
+        ),
+      ).toThrow(
+        expect.objectContaining({
+          response: expect.objectContaining({ code: 'AMOUNT_ROUNDS_TO_ZERO' }),
+        }),
+      );
+    });
+
+    it('still accepts a zero rate — that is a docked line, not a rounding', () => {
+      const docked = prices({ base_price: '20.00', max_markup: '0.00', max_discount: '20.00' });
+      const built = buildIntake([line({ bonus: '-20.00' })], docked, tare());
+
+      expect(built.items[0].amount).toBe('0.00');
     });
   });
 

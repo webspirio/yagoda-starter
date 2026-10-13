@@ -124,10 +124,7 @@ describe('money — properties', () => {
     fc.assert(
       fc.property(fc.array(amount, { minLength: 2, maxLength: 6 }), amount, (lines, rate) => {
         const perLine = sum(lines.map((l) => mul(l, rate)));
-        const oracled = lines.reduce(
-          (acc, l) => acc.plus(oracle(new D(l).times(rate))),
-          new D(0),
-        );
+        const oracled = lines.reduce((acc, l) => acc.plus(oracle(new D(l).times(rate))), new D(0));
         expect(perLine).toBe(oracle(oracled));
       }),
       RUNS,
@@ -193,9 +190,9 @@ describe('money — properties', () => {
     );
   });
 
-  it('mulWholeHryvnia agrees with the oracle: up from 0.80 of the EXACT product, else down (#56)', () => {
+  it('mulWholeHryvnia agrees with the oracle: up from 0.80 of the shown kopiykas, else down (#56)', () => {
     const wholeOracle = (a: string, b: string): string => {
-      const product = new D(a).mul(b);
+      const product = new D(a).mul(b).toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
       const magnitude = product.abs();
       const whole = magnitude.floor();
       const rounded = magnitude.minus(whole).gte('0.8') ? whole.plus(1) : whole;
@@ -253,7 +250,10 @@ describe('money — properties', () => {
   it('allocate splits evenly when every weight is zero, and still sums to the total', () => {
     fc.assert(
       fc.property(amount, fc.integer({ min: 1, max: 12 }), (total, n) => {
-        const parts = allocate(total, Array.from({ length: n }, () => '0.00'));
+        const parts = allocate(
+          total,
+          Array.from({ length: n }, () => '0.00'),
+        );
         expect(sum(parts)).toBe(total);
         const spread = parts.map((p) => new D(p));
         const min = spread.reduce((a, b) => (a.lessThan(b) ? a : b));
