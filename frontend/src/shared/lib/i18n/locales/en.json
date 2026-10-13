@@ -887,7 +887,17 @@
     "voidReason": "Reason: {{reason}}",
     "print": "Print",
     "void": "Void",
-    "voidRow": "Void {{code}}"
+    "voidRow": "Void {{code}}",
+    "docTitle": "RECEIPT",
+    "thanks": "Thank you for working with us!",
+    "notFiscal": "Not a fiscal receipt",
+    "number": "Receipt No.",
+    "operation": "Operation",
+    "operationIntake": "Berry intake",
+    "operationPayoutDebt": "Debt payout",
+    "balanceAfterPayout": "Balance after payout",
+    "payoutTitle": "Payout receipt {{code}}",
+    "payoutDescription": "Printable payout receipt — you can void the document here."
   },
   "reception": {
     "eyebrow": "{{point}} · {{date}}",
