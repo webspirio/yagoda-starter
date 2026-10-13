@@ -46,6 +46,18 @@ describe('router', () => {
     meMock.mockReturnValue({ data: undefined, isPending: false, isError: false });
   });
 
+  it('serves the /ui-kit gallery without a token, loaded on demand (#243)', async () => {
+    renderAt('/ui-kit');
+    expect(await screen.findByRole('heading', { name: 'Ягода UI Kit' })).toBeInTheDocument();
+  });
+
+  it('keeps the /ui-kit gallery out of the entry chunk (#243)', () => {
+    const uiKit = routes.find((r) => r.path === '/ui-kit');
+    expect(uiKit?.lazy).toBeTypeOf('function');
+    expect(uiKit?.element).toBeUndefined();
+    expect(uiKit?.HydrateFallback).toBeDefined();
+  });
+
   it('sends an unauthenticated visitor from / to the login screen', async () => {
     renderAt('/');
     expect(await screen.findByRole('heading', { name: /sign in/i })).toBeInTheDocument();
