@@ -82,6 +82,7 @@ export function makePayoutsMocks() {
         Promise.resolve(sql.includes('count(*)') ? [{ n: 2 }] : []),
       ),
     findOne: jest.fn().mockResolvedValue(null),
+    find: jest.fn().mockResolvedValue([]),
     save: jest.fn().mockImplementation((_e, v) => Promise.resolve(payout(v))),
     create: jest.fn().mockImplementation((_e, v) => v),
   };

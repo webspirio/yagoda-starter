@@ -6,7 +6,7 @@ import { PayoutWriter } from '../services/payout-writer';
 import { SuppliersService } from '../../suppliers/suppliers.service';
 import { CollectionPointsService } from '../../collection-points/collection-points.service';
 import { AllocationsService } from '../../supplier-balance/services/allocations';
-import { User } from '../../users/user.entity';
+import { loadNameParts } from '../../users/display-names';
 import { isZero } from '../../common/money';
 import { resolveWritePoint } from '../../auth/access/point-scope';
 import type { AuthenticatedUser } from '../../auth/jwt.strategy';
@@ -58,8 +58,8 @@ export class CreatePayoutCommand {
           amount: dto.amount,
           intakeId: null,
         });
-        const paidBy = await m.findOne(User, { where: { id: actor.sub } });
-        return toPayoutResponse(payout, shift, paidBy);
+        const names = await loadNameParts(m, [actor.sub]);
+        return toPayoutResponse(payout, shift, names.get(actor.sub) ?? null);
       }),
     );
   }

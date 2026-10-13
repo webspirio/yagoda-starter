@@ -1,5 +1,5 @@
 import type { EntityManager } from 'typeorm';
-import { loadDisplayNames } from './display-names';
+import { loadDisplayNames, loadNameParts } from './display-names';
 import { User } from './user.entity';
 
 /**
@@ -51,5 +51,27 @@ describe('loadDisplayNames', () => {
     await loadDisplayNames(manager, ['u-1', 'u-1', 'u-1']);
 
     expect(find).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('loadNameParts', () => {
+  const find = jest.fn();
+  const manager = { find } as unknown as EntityManager;
+
+  beforeEach(() => find.mockReset());
+
+  it('maps an id to its first and last name, untouched, in ONE query', async () => {
+    find.mockResolvedValue([{ id: 'u-1', first_name: 'Оксана', last_name: '' }]);
+
+    const parts = await loadNameParts(manager, ['u-1', 'u-1', 'gone']);
+
+    expect(parts.get('u-1')).toEqual({ first_name: 'Оксана', last_name: '' });
+    expect(parts.has('gone')).toBe(false);
+    expect(find).toHaveBeenCalledTimes(1);
+  });
+
+  it('asks nothing for an empty list', async () => {
+    expect((await loadNameParts(manager, [])).size).toBe(0);
+    expect(find).not.toHaveBeenCalled();
   });
 });

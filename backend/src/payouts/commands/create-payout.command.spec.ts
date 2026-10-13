@@ -33,12 +33,14 @@ describe('CreatePayoutCommand', () => {
 
   describe('create — paid_by', () => {
     it('answers the actor name parts, loaded by actor.sub in the transaction', async () => {
-      manager.findOne.mockResolvedValue({ first_name: 'Оксана', last_name: 'Гнатюк' });
+      manager.find.mockResolvedValue([
+        { id: oksana.sub, first_name: 'Оксана', last_name: 'Гнатюк' },
+      ]);
 
       const res = await command.create(oksana, dto({ amount: '380.00' }));
 
       expect(res.paid_by).toEqual({ first_name: 'Оксана', last_name: 'Гнатюк' });
-      expect(manager.findOne).toHaveBeenCalledWith(User, { where: { id: oksana.sub } });
+      expect(manager.find).toHaveBeenCalledWith(User, expect.anything());
     });
   });
 
