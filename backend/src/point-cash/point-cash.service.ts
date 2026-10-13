@@ -112,7 +112,8 @@ export class PointCashService {
    * `cashFor` PLUS THE TERMS IT IS MADE OF, in ONE statement so the two can
    * never disagree (#73). `cash` is the same CASE `cashFor` runs; `expected`
    * is the closing count's stored snapshot, and `late_change` is how far the
-   * shift's movements moved after it was taken (spec 2026-10-13). With no
+   * shift's movements moved after it was taken (spec 2026-10-13) — a missing
+   * opening count reads 0.00 there, so the rows still reach `expected`. With no
    * anchor every term sees `s.id = NULL` and reads 0.00 — the mapper drops them.
    */
   async breakdownFor(
@@ -134,7 +135,7 @@ export class PointCashService {
               a.counted_amount::text AS counted,
               cl.expected_amount::text AS expected,
               (cl.counted_amount - cl.expected_amount)::text AS difference,
-              (o.counted_amount + ${movements} - cl.expected_amount)::text AS late_change
+              (COALESCE(o.counted_amount, 0.00) + ${movements} - cl.expected_amount)::text AS late_change
          FROM (SELECT ${asOfSql('$2', '$3')} AS as_of) b
          LEFT JOIN LATERAL ${anchorSql('$1::uuid', 'b.as_of')} a ON TRUE
          LEFT JOIN cash_counts o

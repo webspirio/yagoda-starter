@@ -672,6 +672,42 @@ describe('PointCashService.cashFor (Postgres)', () => {
       expect(b.breakdown.transfers_in).toBe('35000.00');
     });
 
+    it('closed with no opening count — late_change absorbs the whole gap, not NULL', async () => {
+      // shifts.service closes such a shift with expected = counted.
+      const p = await newPoint();
+      const sh = await shift(p, '2026-09-22');
+      await payoutIn(sh, '300.00');
+      await transfer(p, { cash: '1000.00', accepted_date: '2026-09-22' });
+      await count(sh, 'closing', '500.00', '500.00', CLOSED_AT);
+
+      const b = await both(p, '2026-09-22');
+
+      expect(b.breakdown.opening).toBeNull();
+      // 0 + 1 000 − 300 + 0 − 200 = 500 = expected.
+      expect(b.breakdown.closing).toEqual({
+        counted: '500.00',
+        expected: '500.00',
+        difference: '0.00',
+        late_change: '200.00',
+      });
+    });
+
+    it('open — a payout returned on void is in returns, and still in payouts', async () => {
+      const p = await newPoint();
+      const sh = await shift(p, '2026-09-22', false);
+      await count(sh, 'opening', '1000.00', '1000.00');
+      const at = new Date('2026-09-22T10:00:00Z');
+      await payoutIn(sh, '250.00', {
+        voided_at: at, voided_by_user_id: ownerId, void_reason: 'помилка',
+        return_settled_at: at, return_settled_by_user_id: ownerId, returned_on_void: true,
+      });
+
+      const b = await both(p, '2026-09-22');
+
+      expect(b.cash).toBe('1000.00');
+      expect(b.breakdown).toMatchObject({ payouts: '250.00', returns: '250.00' });
+    });
+
     it('carried — a date with no shift reads the last close, and only that', async () => {
       const p = await newPoint();
       const sh = await shift(p, '2026-09-22');
