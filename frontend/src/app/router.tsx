@@ -18,7 +18,6 @@ import { PricesPage } from '@/pages/prices';
 import { DayPage } from '@/pages/day';
 import { ReceptionPage } from '@/pages/reception';
 import { CratesPage } from '@/pages/crates';
-import { PointCashPage } from '@/pages/point-cash';
 import { NotFoundPage } from '@/pages/not-found';
 import { UiKitPage } from '@/pages/ui-kit';
 
@@ -34,6 +33,7 @@ import {
   CatalogPage,
   CostOfDayPage,
   JournalPage,
+  PointCashPage,
   PointsPage,
   ReweighPage,
   SettingsPage,

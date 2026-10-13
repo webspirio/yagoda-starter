@@ -54,3 +54,14 @@ export const TransfersPage = lazy(() => ownerPages().then((m) => ({ default: m.T
 export const ReweighPage = lazy(() => ownerPages().then((m) => ({ default: m.ReweighPage })));
 export const CostOfDayPage = lazy(() => ownerPages().then((m) => ({ default: m.CostOfDayPage })));
 export const SettingsPage = lazy(() => ownerPages().then((m) => ({ default: m.SettingsPage })));
+
+/**
+ * «Каса точки» — BOTH roles, so not in the owner chunk, and lazy on its own
+ * (#73): the first load had no headroom left, and this screen is not the
+ * operator's per-shift path — shifts open and close from «Прийомка» and «Каса
+ * за день» too — so one round trip the first time it is opened is the right
+ * trade. No `RequireRole` to order around: any signed-in user may load it.
+ */
+export const PointCashPage = lazy(() =>
+  import('@/pages/point-cash').then((m) => ({ default: m.PointCashPage })),
+);
