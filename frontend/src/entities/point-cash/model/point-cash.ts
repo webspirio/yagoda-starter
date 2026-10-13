@@ -19,7 +19,9 @@ export interface PointCashRow {
   /** `null` коли `target_cash` порожній: порівнювати нема з чим (§7.10). */
   shortfall: string | null;
   unexplained_difference: string;
-  latest_transfer: { status: TransferStatus; sent_at: string } | null;
+  /** `resolved_at` lets a settled dispute read «Врегульовано» rather than
+   *  «Не сходиться» forever — `resolve()` never touches `status` (#76). */
+  latest_transfer: { status: TransferStatus; sent_at: string; resolved_at: string | null } | null;
   /** Сума завдатків, які досі утримано (крейти видані «за кошти», ще не повернуті). */
   crate_deposits: string;
   /** §R8 — скільки ящиків з тих завдатків: видано «за кошти» мінус повернуто. */

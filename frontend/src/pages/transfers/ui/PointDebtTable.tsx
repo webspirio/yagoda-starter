@@ -1,7 +1,9 @@
+import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Send, HandCoins } from 'lucide-react';
+import { Send, HandCoins, TriangleAlert, ChevronDown } from 'lucide-react';
 import { DataTable, type Column } from '@/shared/ui/data-table';
 import { Button } from '@/shared/ui/button';
+import { Badge } from '@/shared/ui/badge';
 import { EmptyState } from '@/shared/ui/empty-state';
 import { PendingSlice } from '@/shared/ui/pending-slice';
 import { cn } from '@/shared/lib/cn';
@@ -9,6 +11,7 @@ import { formatUah } from '@/shared/lib/money';
 import { shortfallTone, formatNullableUah, type PointCashRow } from '@/entities/point-cash';
 import type { Transfer } from '@/entities/transfer';
 import { TransferStatusBadge } from './TransferStatusBadge';
+import { DisputeList } from './DisputeDetails';
 
 /**
  * §7.10's table, one row per point: наділ · у касі · не хватає · ящиків ·
@@ -38,6 +41,17 @@ import { TransferStatusBadge } from './TransferStatusBadge';
  * as a side effect no longer requires the dispute to also be the point's
  * literal *latest* transfer — an unresolved dispute stays actionable even
  * if a later, unrelated transfer has since become "latest" for the badge.
+ *
+ * RULE 4 (#76) — EVERY open dispute stays reachable, not just the first.
+ * One open dispute: the badge reads «Не сходиться» and «Вирішити» sits
+ * inline, one click as before. Two or more: the badge reads «Не сходиться
+ * (N)» and becomes the row's toggle (so does a click on the row itself);
+ * the sub-row lists each dispute newest first, each with its own
+ * «Вирішити». An open dispute outranks `latest_transfer` for the badge; with
+ * none, `latest_transfer.resolved_at` lets a settled dispute read
+ * «Врегульовано». `expanded` is DERIVED (`openId === id && count >= 2`), so
+ * a refetch that leaves one dispute falls back to the inline layout with no
+ * reset effect.
  */
 export function PointDebtTable({
   rows,
@@ -57,8 +71,28 @@ export function PointDebtTable({
   const { t, i18n } = useTranslation();
   const locale = i18n.language;
 
-  const findResolvable = (row: PointCashRow): Transfer | undefined =>
-    unresolvedDisputes.find((tr) => tr.collection_point_id === row.collection_point_id);
+  const [openId, setOpenId] = useState<string | null>(null);
+
+  // Open disputes per point, newest `sent_at` first (ISO strings sort
+  // chronologically).
+  const disputesByPoint = useMemo(() => {
+    const map = new Map<string, Transfer[]>();
+    for (const tr of unresolvedDisputes) {
+      const list = map.get(tr.collection_point_id);
+      if (list) list.push(tr);
+      else map.set(tr.collection_point_id, [tr]);
+    }
+    for (const list of map.values()) list.sort((a, b) => b.sent_at.localeCompare(a.sent_at));
+    return map;
+  }, [unresolvedDisputes]);
+
+  const disputesOf = (row: PointCashRow): Transfer[] =>
+    disputesByPoint.get(row.collection_point_id) ?? [];
+  const isExpandable = (row: PointCashRow) => disputesOf(row).length >= 2;
+  const isExpanded = (row: PointCashRow) =>
+    openId === row.collection_point_id && isExpandable(row);
+  const toggle = (row: PointCashRow) =>
+    setOpenId(isExpanded(row) ? null : row.collection_point_id);
 
   const columns: Column<PointCashRow>[] = [
     {
@@ -116,17 +150,56 @@ export function PointDebtTable({
       header: t('transfers.col.status'),
       align: 'right',
       cell: (row) => {
-        const resolvable = findResolvable(row);
+        const disputes = disputesOf(row);
+        const expanded = isExpanded(row);
         return (
           <div className="flex items-center justify-end gap-2">
-            {row.latest_transfer ? <TransferStatusBadge status={row.latest_transfer.status} /> : null}
-            {resolvable ? (
-              <Button size="sm" variant="outline" onClick={() => onResolve(resolvable)}>
-                <HandCoins className="size-3.5" />
-                {t('transfers.resolve')}
-              </Button>
+            {disputes.length >= 2 ? (
+              <Badge asChild variant="outline" className="cursor-pointer border-destructive/40 text-destructive hover:bg-destructive/10">
+                <button
+                  type="button"
+                  aria-expanded={expanded}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    toggle(row);
+                  }}
+                >
+                  <TriangleAlert aria-hidden="true" />
+                  {t('transfers.disputedCount', { n: disputes.length })}
+                  <ChevronDown
+                    aria-hidden="true"
+                    className={cn('transition-transform', expanded ? undefined : '-rotate-90')}
+                  />
+                </button>
+              </Badge>
+            ) : disputes.length === 1 ? (
+              <>
+                <TransferStatusBadge status="disputed" />
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onResolve(disputes[0]);
+                  }}
+                >
+                  <HandCoins className="size-3.5" />
+                  {t('transfers.resolve')}
+                </Button>
+              </>
+            ) : row.latest_transfer ? (
+              <TransferStatusBadge
+                status={row.latest_transfer.status}
+                resolvedAt={row.latest_transfer.resolved_at}
+              />
             ) : null}
-            <Button size="sm" onClick={() => onSend(row.collection_point_id, row.name)}>
+            <Button
+              size="sm"
+              onClick={(e) => {
+                e.stopPropagation();
+                onSend(row.collection_point_id, row.name);
+              }}
+            >
               <Send className="size-3.5" />
               {t('transfers.send')}
             </Button>
@@ -141,6 +214,17 @@ export function PointDebtTable({
       columns={columns}
       rows={rows}
       rowKey={(row) => row.collection_point_id}
+      onRowClick={toggle}
+      rowClickable={isExpandable}
+      renderExpanded={(row) =>
+        isExpanded(row) ? (
+          <DisputeList
+            transfers={disputesOf(row)}
+            label={t('transfers.dispute.listLabel', { point: row.name })}
+            onResolve={onResolve}
+          />
+        ) : null
+      }
       empty={<EmptyState title={t('transfers.empty.title')} />}
     />
   );

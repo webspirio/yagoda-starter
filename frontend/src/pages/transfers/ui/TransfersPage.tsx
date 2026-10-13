@@ -193,6 +193,7 @@ export function TransfersPage() {
               transfers={allTransfers}
               pointName={lookupPointName}
               onVoid={openVoid}
+              onResolve={openResolve}
             />
           </div>
         )}

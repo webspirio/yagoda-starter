@@ -26,6 +26,8 @@ export function DataTable<Row>({
   empty,
   frame = true,
   className,
+  renderExpanded,
+  rowClickable,
 }: {
   columns: Column<Row>[];
   rows: Row[];
@@ -36,6 +38,13 @@ export function DataTable<Row>({
    *  lives inside a card, so it does not draw a card within a card. */
   frame?: boolean;
   className?: string;
+  /** Detail content shown UNDER a row, in one cell spanning every column.
+   *  Return `null` for a row that is not expanded (or not expandable) — the
+   *  table owns no open/closed state, the caller decides per row. */
+  renderExpanded?: (row: Row, index: number) => React.ReactNode | null;
+  /** Narrows `onRowClick` (and its pointer cursor) to the rows this accepts —
+   *  e.g. only the expandable ones. Omitted: every row is clickable. */
+  rowClickable?: (row: Row, index: number) => boolean;
 }) {
   const colClass = (c: Column<Row>) =>
     cn(c.align && ALIGN[c.align], c.hideBelow && HIDE[c.hideBelow], c.className);
@@ -57,19 +66,31 @@ export function DataTable<Row>({
             <TableCell colSpan={columns.length}>{empty}</TableCell>
           </TableRow>
         ) : (
-          rows.map((row, i) => (
-            <TableRow
-              key={rowKey ? rowKey(row, i) : i}
-              onClick={onRowClick ? () => onRowClick(row, i) : undefined}
-              className={onRowClick ? 'cursor-pointer' : undefined}
-            >
-              {columns.map((c) => (
-                <TableCell key={c.id} className={colClass(c)}>
-                  {c.cell(row, i)}
-                </TableCell>
-              ))}
-            </TableRow>
-          ))
+          rows.map((row, i) => {
+            const expanded = renderExpanded ? renderExpanded(row, i) : null;
+            const clickable = onRowClick != null && (rowClickable ? rowClickable(row, i) : true);
+            return (
+              <React.Fragment key={rowKey ? rowKey(row, i) : i}>
+                <TableRow
+                  onClick={clickable && onRowClick ? () => onRowClick(row, i) : undefined}
+                  className={clickable ? 'cursor-pointer' : undefined}
+                >
+                  {columns.map((c) => (
+                    <TableCell key={c.id} className={colClass(c)}>
+                      {c.cell(row, i)}
+                    </TableCell>
+                  ))}
+                </TableRow>
+                {expanded != null ? (
+                  <TableRow data-slot="data-table-expanded" className="bg-muted/40 hover:bg-muted/40">
+                    <TableCell colSpan={columns.length} className="whitespace-normal">
+                      {expanded}
+                    </TableCell>
+                  </TableRow>
+                ) : null}
+              </React.Fragment>
+            );
+          })
         )}
       </TableBody>
     </Table>
