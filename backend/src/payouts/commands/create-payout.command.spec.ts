@@ -1,3 +1,4 @@
+import { In } from 'typeorm';
 import { NotFoundException } from '@nestjs/common';
 import {
   POINT_A,
@@ -40,7 +41,10 @@ describe('CreatePayoutCommand', () => {
       const res = await command.create(oksana, dto({ amount: '380.00' }));
 
       expect(res.paid_by).toEqual({ first_name: 'Оксана', last_name: 'Гнатюк' });
-      expect(manager.find).toHaveBeenCalledWith(User, expect.anything());
+      expect(manager.find).toHaveBeenCalledWith(
+        User,
+        expect.objectContaining({ where: { id: In([oksana.sub]) } }),
+      );
     });
   });
 

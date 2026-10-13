@@ -874,16 +874,17 @@ async function seedDocuments(
     if (existing) continue;
 
     await qr.query(
-      `INSERT INTO intake_top_ups (intake_id, amount, reason, created_by_user_id)
-       VALUES ($1, $2, $3, $4)`,
+      `INSERT INTO intake_top_ups (intake_id, amount, reason, created_by_user_id, created_at)
+       SELECT $1, $2, $3, $4, i.created_at + interval '1 minute' FROM intakes i WHERE i.id = $1`,
       [intake.id, row.amount, row.reason, ownerId],
     );
     summary.topUps += 1;
   }
 
   // The as-of rebuild of the new payouts' `balance_after` (#145) runs HERE, after the last
-  // document that feeds it: the top-ups above land at `now()`, so one made before a payout's
-  // `created_at` (a curated payout later today) must already exist for the rebuild to count it.
+  // document that feeds it. A top-up is timed one minute after its receipt (deterministic, on
+  // the receipt's business date), so a payout recorded later that day must see it: the top-up
+  // must already exist for the rebuild to count it.
   // Id-scoped, so re-running the seed leaves earlier payouts untouched.
   if (newPayoutIds.length > 0) {
     await qr.query(`${REBUILD_BALANCE_AFTER_SQL} WHERE p."id" = ANY($1)`, [newPayoutIds]);

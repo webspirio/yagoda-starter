@@ -1,3 +1,5 @@
+import { In } from 'typeorm';
+import { User } from '../../users/user.entity';
 import { GetPayoutQuery } from './get-payout.query';
 import { oksana, payout, shift } from '../../testing/unit/payouts.mocks';
 
@@ -16,6 +18,10 @@ describe('GetPayoutQuery', () => {
 
     expect(res.paid_by).toEqual({ first_name: 'Оксана', last_name: 'Гнатюк' });
     expect(find).toHaveBeenCalledTimes(1);
+    expect(find).toHaveBeenCalledWith(
+      User,
+      expect.objectContaining({ where: { id: In(['u-oksana']) } }),
+    );
   });
 
   it('answers null if the user row is gone', async () => {
