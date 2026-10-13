@@ -56,7 +56,18 @@ export function CashLedger({
   const locale = i18n.resolvedLanguage;
   const money = (v: string) => formatUah(v, locale);
   const day = (iso: string) => formatShortDate(iso, locale);
-  const info = buildLedger({ date, intakes, payouts, intakesTruncated, payoutsTruncated });
+  const shiftDate =
+    breakdown?.kind === 'open' || breakdown?.kind === 'closed'
+      ? (breakdown.anchor_date ?? date)
+      : date;
+  const info = buildLedger({
+    date,
+    shiftDate,
+    intakes,
+    payouts,
+    intakesTruncated,
+    payoutsTruncated,
+  });
 
   const body = (): ReactNode => {
     if (failed) {
@@ -125,7 +136,7 @@ export function CashLedger({
             <LedgerRowView label={t('pointCash.panel.closing')} value={money(c.counted)} />
             <LedgerRowView
               label={t('pointCash.panel.discrepancy')}
-              value={money(c.difference ?? '0.00')}
+              value={signed(money(c.difference ?? '0.00'), c.difference)}
               tone={differenceTone(c.difference)}
             />
           </>
@@ -134,7 +145,7 @@ export function CashLedger({
         {b.kind === 'carried' && c && b.anchor_date ? (
           <>
             <LedgerRowView
-              label={`${t('pointCash.panel.closing')} ${day(b.anchor_date)}`}
+              label={t('pointCash.ledger.closedOn', { date: day(b.anchor_date) })}
               value={money(c.counted)}
             />
             <p className="pt-1 text-xs text-muted-foreground">{t('day.status.none')}</p>
@@ -147,7 +158,9 @@ export function CashLedger({
 
         <div className="my-2 border-t border-border" />
         <LedgerRowView
-          label={t('pointCash.ledger.total')}
+          label={t(
+            b.kind === 'closed' ? 'pointCash.ledger.totalAtClose' : 'pointCash.ledger.total',
+          )}
           value={money(cash)}
           strong
           tone={isNegative(cash) ? 'bad' : 'default'}
@@ -184,6 +197,11 @@ export function CashLedger({
       </div>
     </SectionCard>
   );
+}
+
+/** A surplus carries its «+», so it never reads as a shortage by colour alone. */
+function signed(formatted: string, difference: string | null): string {
+  return difference !== null && cmp(difference, '0') > 0 ? `+${formatted}` : formatted;
 }
 
 /** A shortage reads bad, a surplus amber, an exact match plain. */

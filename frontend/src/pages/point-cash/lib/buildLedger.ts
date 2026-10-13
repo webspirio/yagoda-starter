@@ -30,6 +30,12 @@ export interface LedgerRow {
 export interface BuildLedgerInput {
   /** The business date this ledger explains — `YYYY-MM-DD`. */
   date: string;
+  /**
+   * The business date of the shift the total is made of — earlier than `date`
+   * for a shift left open since an earlier day (#114). Its own payouts are in
+   * the total, so they are not «past». Defaults to `date`.
+   */
+  shiftDate?: string;
   intakes: LedgerIntake[];
   payouts: LedgerPayout[];
   /** `total > data.length` on the fetched page (`PointCashPage` caps each read at 100). */
@@ -44,6 +50,7 @@ export interface BuildLedgerInput {
  */
 export function buildLedger({
   date,
+  shiftDate = date,
   intakes,
   payouts,
   intakesTruncated = false,
@@ -52,7 +59,7 @@ export function buildLedger({
   const accruedToday = sum(
     intakes.filter((i) => i.voided_at === null && i.business_date === date).map((i) => i.amount),
   );
-  const paidPast = sum(payouts.filter((p) => p.business_date !== date).map((p) => p.amount));
+  const paidPast = sum(payouts.filter((p) => p.business_date < shiftDate).map((p) => p.amount));
 
   return [
     { key: 'accruedToday', value: accruedToday, truncated: intakesTruncated },

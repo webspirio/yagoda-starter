@@ -701,13 +701,15 @@
       "paidPastTruncated": "Showing recent payouts only — older ones may be missing from this total.",
       "returnedToday": "Returned to the drawer",
       "cashIn": "Received by transfer today",
-      "lateChange": "Changed after close",
+      "lateChange": "Correction to the closing count",
       "lateChangeHint": "recorded after the close",
       "expected": "Expected",
       "openSince": "Shift open since {{date}}",
       "total": "Berry cash",
       "negative": "Berry cash has gone negative: the target does not cover this day. This is not a data-entry mistake — it means more was paid out than the point had in berry cash.",
-      "twoRowsNote": "Payouts show as two rows on purpose: a day can pay out more than it earned, because old balances get settled too — one \"paid out\" figure would not explain that."
+      "twoRowsNote": "Payouts show as two rows on purpose: a day can pay out more than it earned, because old balances get settled too — one \"paid out\" figure would not explain that.",
+      "closedOn": "Counted at close on {{date}}",
+      "totalAtClose": "Berry cash — counted at close"
     },
     "crates": {
       "title": "Crate cash",

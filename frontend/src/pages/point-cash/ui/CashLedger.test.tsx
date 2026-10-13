@@ -83,8 +83,9 @@ describe('CashLedger', () => {
     expect(value('Expected')).toHaveTextContent('43,820.00 ₴');
     expect(value('Counted at close')).toHaveTextContent('43,730.00 ₴');
     expect(value('Discrepancy')).toHaveTextContent('−90.00 ₴');
-    expect(value('Berry cash')).toHaveTextContent('43,730.00 ₴');
-    expect(screen.queryByText('Changed after close')).toBeNull();
+    expect(value('Berry cash — counted at close')).toHaveTextContent('43,730.00 ₴');
+    expect(screen.queryByText('Berry cash')).toBeNull();
+    expect(screen.queryByText('Correction to the closing count')).toBeNull();
   });
 
   it('closed day — a shortage reads bad, a surplus amber, zero neither', () => {
@@ -98,6 +99,8 @@ describe('CashLedger', () => {
       '2026-09-22',
     );
     expect(value('Discrepancy')).toHaveClass('text-[var(--amber)]');
+    // A surplus says so in its sign too, not by colour alone.
+    expect(value('Discrepancy')).toHaveTextContent('+80.00 ₴');
     surplus.unmount();
 
     ledger(closed({ counted: '43820.00', difference: '0.00' }), '43820.00', '2026-09-22');
@@ -117,7 +120,7 @@ describe('CashLedger', () => {
       '2026-09-22',
     );
 
-    expect(value('Changed after close')).toHaveTextContent('1,000.00 ₴');
+    expect(value('Correction to the closing count')).toHaveTextContent('1,000.00 ₴');
     expect(value('Expected')).toHaveTextContent('44,820.00 ₴');
   });
 
@@ -133,7 +136,7 @@ describe('CashLedger', () => {
       '2026-09-24',
     );
 
-    expect(value('Counted at close 09/22')).toHaveTextContent('43,730.00 ₴');
+    expect(value('Counted at close on 09/22')).toHaveTextContent('43,730.00 ₴');
     expect(screen.getByText('No shift that day')).toBeInTheDocument();
     expect(screen.queryByText('Paid out today')).toBeNull();
     expect(value('Berry cash')).toHaveTextContent('43,730.00 ₴');
@@ -239,5 +242,22 @@ describe('CashLedger', () => {
   it('has no axe violations', async () => {
     const { container } = ledger(closed(), '43730.00', '2026-09-22');
     await expectNoAxeViolations(container);
+  });
+
+  it('open since an earlier day — that shift’s own payouts are not «past days» (#114)', () => {
+    render(
+      <CashLedger
+        date="2026-09-23"
+        cash="54730.00"
+        breakdown={open({ anchor_date: '2026-09-20' })}
+        intakes={[]}
+        payouts={[
+          { business_date: '2026-09-20', amount: '300.00' }, // that shift's own
+          { business_date: '2026-09-19', amount: '99.00' },
+        ]}
+      />,
+    );
+
+    expect(value('Paid for past days')).toHaveTextContent('−99.00 ₴');
   });
 });

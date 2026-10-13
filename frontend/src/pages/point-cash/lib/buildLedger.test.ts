@@ -52,4 +52,18 @@ describe('buildLedger', () => {
       expect(capped({})).toEqual([]);
     });
   });
+
+  it('counts as «past» only payouts before the shift the total is made of (#114)', () => {
+    const rows = buildLedger({
+      date: '2026-09-23',
+      shiftDate: '2026-09-20',
+      intakes: [],
+      payouts: [
+        { business_date: '2026-09-23', amount: '1.00' },
+        { business_date: '2026-09-20', amount: '300.00' },
+        { business_date: '2026-09-19', amount: '99.00' },
+      ],
+    });
+    expect(rows.find((r) => r.key === 'paidPast')?.value).toBe('99.00');
+  });
 });
