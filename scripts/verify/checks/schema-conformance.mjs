@@ -28,7 +28,7 @@
  * `@Column({ name })` or a configured `namingStrategy` (either one breaks the
  * property-name-IS-column-name mapping every comparison here depends on), and any
  * `numeric`/`decimal` token in an `up()` SQL string the CREATE TABLE parser did not
- * consume — an `ALTER COLUMN … TYPE`, an `ADD COLUMN`, or a shape nobody has written yet.
+ * consume — an `ALTER COLUMN … TYPE`, or a shape nobody has written yet.
  * That last one is a token-count reconciliation rather than a pattern list, so it fires on
  * SQL this check has never seen instead of waving it through.
  */
@@ -163,9 +163,9 @@ function readMigrations(root) {
       if (seen > consumed) {
         findings.push(
           `${rel}:${line}: ${seen - consumed} \`numeric\`/\`decimal\` token(s) in this SQL that ` +
-            'the CREATE TABLE parser did not consume as a column (an ALTER COLUMN … TYPE? an ' +
-            'ADD COLUMN?) — this check models CREATE TABLE only, and reports what it cannot ' +
-            'model rather than passing over it.',
+            'this check did not consume as a column (an ALTER COLUMN … TYPE? a shape other than ' +
+            'CREATE TABLE columns and `ALTER TABLE … ADD <col> numeric(p,s)` / `ALTER COLUMN … ' +
+            'SET NOT NULL`?) — it reports what it cannot model rather than passing over it.',
         )
       }
     }

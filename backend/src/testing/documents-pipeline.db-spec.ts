@@ -1141,8 +1141,8 @@ describe('documents pipeline (HTTP)', () => {
 
       const stored = await app
         .get(DataSource)
-        .query(`SELECT balance_after FROM payouts WHERE supplier_id = $1 AND amount = '100.00'`, [
-          supplierId,
+        .query(`SELECT balance_after FROM payouts WHERE id = ANY($1::uuid[])`, [
+          results.map((r) => r.body.id as string),
         ]);
       expect(stored.map((r: { balance_after: string }) => r.balance_after).sort()).toEqual([
         '115.60',

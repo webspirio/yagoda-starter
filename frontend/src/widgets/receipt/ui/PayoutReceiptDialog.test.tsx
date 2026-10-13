@@ -177,6 +177,24 @@ describe('PayoutReceiptDialog', () => {
     expect(screen.getByRole('button', { name: 'Print' })).toBeDisabled();
   });
 
+  it('warns and still renders and prints, without the note, when the note fails to load', () => {
+    setUp();
+    settingsMock.mockReturnValue({
+      data: undefined,
+      isPending: false,
+      isFetching: false,
+      isError: true,
+      refetch: refetchSettings,
+    });
+    render(<PayoutReceiptDialog payoutId="payout-1" open onClose={vi.fn()} />);
+
+    expect(screen.getByText(/note didn't load/)).toBeInTheDocument();
+    expect(screen.getByText('SHP-PO-20260908-00031')).toBeInTheDocument();
+    expect(screen.getByText('Thank you for working with us!')).toBeInTheDocument();
+    expect(screen.getByText('Not a fiscal receipt')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Print' })).toBeEnabled();
+  });
+
   it('prints via window.print', async () => {
     setUp();
     const printSpy = vi.spyOn(window, 'print').mockImplementation(() => {});

@@ -81,7 +81,9 @@ export function PayoutReceiptDialog({
   let content: ReactNode = <p className="text-sm text-muted-foreground">{t('common.loading')}</p>;
   let actions: ReactNode = null;
   let dialogs: ReactNode = null;
-  let title = t('receipt.payoutTitle', { code: payout?.code ?? '' });
+  // Trimmed: before the payout loads there is no code, and the bare
+  // «Квитанція видачі {{code}}» would end in a dangling space.
+  let title = t('receipt.payoutTitle', { code: payout?.code ?? '' }).trim();
 
   if (isError) {
     content = (

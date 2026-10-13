@@ -25,6 +25,11 @@ export const REBUILD_BALANCE_AFTER_SQL = `
  * created no later than it and not yet voided at that moment. The key is `created_at` (the
  * transaction's start), so two transactions that queued on the supplier lock may order
  * differently here than they committed — historic rows only; new rows are exact.
+ *
+ * SHIPPED — DO NOT EDIT. `REBUILD_BALANCE_AFTER_SQL` is shared with the dev seed, so a future
+ * change to the debt formula needs a NEW constant and a NEW migration, never an edit here:
+ * changing it would silently rewrite what this migration did on databases that already ran it
+ * and diverge from them.
  */
 export class PayoutBalanceAfter1788600000023 implements MigrationInterface {
   name = 'PayoutBalanceAfter1788600000023';
