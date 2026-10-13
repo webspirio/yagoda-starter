@@ -265,7 +265,8 @@ jobs:
             services: true
             browser: true
     runs-on: ubuntu-latest
-    # A full-tier, --no-skip run exercises every row in scripts/verify/registry.mjs.
+    # The four legs TOGETHER are a full-tier, --no-skip run over every row in
+    # scripts/verify/registry.mjs — no single leg is (registry.test.mjs pins the partition).
     # The slowest are now `selfcheck` (node --test over the layer's own 163 tests,
     # which nothing caches, in CI or on a laptop) and `smoke` (a real browser against
     # a real Compose stack). Sized from what CI ITSELF measured, not from the laptop.
@@ -532,6 +533,11 @@ jobs:
   # A matrix job's `result` is `success` only when every leg succeeded, so a failed or
   # cancelled leg turns this red. Skipped on a dispatch exactly as `verify` is, which
   # keeps `deploy-prod`'s dispatch path (it expects a skipped verdict) unchanged.
+  #
+  # `always()`, not `!cancelled()`, although a run superseded by a newer push then ends
+  # with a red gate («verify: cancelled»). Under `!cancelled()` a cancelled run leaves this
+  # job SKIPPED, and a skipped required check reads as passing — the one outcome a gate
+  # must never have. A red gate on a SHA nobody will merge is the cheaper error.
   ci-gate:
     if: always() && github.event_name != 'workflow_dispatch'
     needs: [verify]

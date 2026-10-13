@@ -98,12 +98,52 @@ function canConnect(host, port) {
  * "the check found a problem". It gated the deleted `docker` row too, until 2026-09-15;
  * `smoke` is the only row that needs a daemon now, for the Compose stack it drives.
  *
+ * ONE ATTEMPT IS NOT AN ANSWER (#238). A daemon that has just pulled images and started
+ * containers can take longer than one `docker info` to answer, and a single slow reply
+ * read as "no daemon" — under --no-skip, a red `smoke` on a commit with nothing wrong.
+ * It stayed hidden while `smoke` was the last of every row: by then the daemon had been
+ * idle for minutes. CI's `smoke` leg runs it seconds after `docker compose up`, which is
+ * where it surfaced. So a daemon that does not answer is asked again until the budget is
+ * spent; a missing CLI (`ENOENT`) is final at once, so a laptop without Docker pays
+ * nothing for the retry.
+ *
  * @returns {Promise<boolean>}
  */
 function probeDocker() {
+  return retryProbe(dockerInfoOnce, { budgetMs: 30_000, intervalMs: 2_000 })
+}
+
+/**
+ * One `docker info`: `'up'`, `'down'` (the CLI ran and failed — may be transient), or
+ * `'absent'` (no CLI to run — never transient).
+ *
+ * @returns {Promise<'up' | 'down' | 'absent'>}
+ */
+function dockerInfoOnce() {
   return new Promise((resolve) => {
-    execFile('docker', ['info'], { timeout: 4000 }, (err) => resolve(!err))
+    execFile('docker', ['info'], { timeout: 4000 }, (err) =>
+      resolve(!err ? 'up' : /** @type {any} */ (err).code === 'ENOENT' ? 'absent' : 'down'),
+    )
   })
+}
+
+/**
+ * Re-asks `once` while it answers `'down'` and the budget lasts. `'up'` is true at once,
+ * `'absent'` is false at once, and a budget spent on `'down'` is false.
+ *
+ * @param {() => Promise<'up' | 'down' | 'absent'>} once
+ * @param {{ budgetMs: number, intervalMs: number, now?: () => number, sleep?: (ms: number) => Promise<void> }} opts
+ * @returns {Promise<boolean>}
+ */
+export async function retryProbe(once, { budgetMs, intervalMs, now = Date.now, sleep }) {
+  const wait = sleep ?? ((/** @type {number} */ ms) => new Promise((r) => setTimeout(r, ms)))
+  const deadline = now() + budgetMs
+  for (;;) {
+    const answer = await once()
+    if (answer === 'up') return true
+    if (answer === 'absent' || now() >= deadline) return false
+    await wait(intervalMs)
+  }
 }
 
 /**
@@ -177,7 +217,7 @@ export const PRECONDITIONS = {
   docker: {
     describe:
       'Docker is not reachable (no CLI, or the CLI cannot reach a running daemon — ' +
-      '`docker info` did not exit 0). Under --no-skip this is a failure, not "nothing to ' +
+      '`docker info` did not exit 0, retried until its budget ran out). Under --no-skip this is a failure, not "nothing to ' +
       'report": smoke needs a real daemon to bring up the Compose stack it drives.',
     probe: probeDocker,
   },

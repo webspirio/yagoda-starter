@@ -4,7 +4,7 @@ import { execFileSync } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 
-import { CHECKS, PRECONDITIONS, checkById, inTier, tierCovers } from './registry.mjs'
+import { CHECKS, PRECONDITIONS, checkById, inTier, retryProbe, tierCovers } from './registry.mjs'
 import { DEFAULT_TIMEOUT_MS } from './run.mjs'
 import { gitEnv } from './scan-root.mjs'
 
@@ -445,4 +445,81 @@ test('neither config pins a rule off in its own source', () => {
         'the block with `files`, so the decision is where a reader can see it.',
     )
   }
+})
+
+/**
+ * THE CI LEGS PARTITION THE REGISTRY (#238). `.github/workflows/ci.yml` runs `verify:ci` as
+ * four matrix legs, each naming its rows with `--only` or `--exclude`. Four hand-kept lists
+ * are exactly what this layer refuses to trust, so the partition is checked, not asked
+ * for: every row runs in exactly one leg, or is superseded by a row that does — and never
+ * runs beside its superseder in another leg, which would be the same work done twice.
+ * `test` is the case that makes this load-bearing: the `fast` leg drops it by hand, and
+ * only the `coverage` leg's `--only coverage` keeps the unit suites in CI at all.
+ */
+function ciVerifyLegs() {
+  const ci = backendFile('.github/workflows/ci.yml')
+  return [...ci.matchAll(/^\s+- leg: (\S+)\n\s+rows: --(only|exclude) (\S+)\s*$/gm)].map((m) => ({
+    leg: m[1],
+    mode: /** @type {'only' | 'exclude'} */ (m[2]),
+    ids: m[3].split(','),
+  }))
+}
+
+test('the CI verify legs partition the registry — every row runs in exactly one leg', () => {
+  const legs = ciVerifyLegs()
+  // Discriminator: the parse found the matrix. Without it, a reworded ci.yml parses to no
+  // legs and every assertion below holds vacuously over an empty list.
+  assert.ok(legs.length >= 2, `found ${legs.length} verify legs in ci.yml — the matrix parse no longer matches`)
+  const excluding = legs.filter((l) => l.mode === 'exclude')
+  assert.equal(excluding.length, 1, 'exactly one leg must take its rows by --exclude, so a row added later lands somewhere')
+
+  const all = CHECKS.map((c) => c.id)
+  for (const l of legs) for (const id of l.ids) assert.ok(all.includes(id), `leg ${l.leg} names unknown row ${id}`)
+
+  /** @type {Map<string, string[]>} row id -> legs that run it */
+  const runsIn = new Map(all.map((id) => [id, []]))
+  for (const l of legs) {
+    const selected = l.mode === 'only' ? l.ids : all.filter((id) => !l.ids.includes(id))
+    const superseded = new Set(selected.flatMap((id) => checkById(id)?.supersedes ?? []))
+    for (const id of selected) if (!superseded.has(id)) runsIn.get(id)?.push(l.leg)
+  }
+
+  const twice = [...runsIn].filter(([, ls]) => ls.length > 1).map(([id, ls]) => `${id} (${ls.join(', ')})`)
+  assert.deepEqual(twice, [], 'a row runs in more than one leg')
+
+  const supersededAnywhere = new Map(
+    CHECKS.flatMap((c) => (c.supersedes ?? []).map((s) => /** @type {[string, string]} */ ([s, c.id]))),
+  )
+  for (const [id, ls] of runsIn) {
+    const by = supersededAnywhere.get(id)
+    if (ls.length === 0) {
+      assert.ok(by && (runsIn.get(by)?.length ?? 0) > 0, `row ${id} runs in no CI leg`)
+    } else if (by && (runsIn.get(by)?.length ?? 0) > 0) {
+      assert.fail(`row ${id} runs in ${ls.join(', ')} while ${by}, which supersedes it, runs too — the same work twice`)
+    }
+  }
+})
+
+test('retryProbe: up is final, absent is final, down is retried until the budget is spent', async () => {
+  let t = 0
+  const clock = { now: () => t, sleep: async (/** @type {number} */ ms) => void (t += ms) }
+  const seq = (/** @type {Array<'up' | 'down' | 'absent'>} */ answers) => {
+    let i = 0
+    const once = async () => answers[Math.min(i++, answers.length - 1)]
+    return { once, calls: () => i }
+  }
+
+  const slowDaemon = seq(['down', 'down', 'up'])
+  assert.equal(await retryProbe(slowDaemon.once, { budgetMs: 10, intervalMs: 2, ...clock }), true)
+  assert.equal(slowDaemon.calls(), 3, 'a daemon that answers on the third ask is up')
+
+  t = 0
+  const noCli = seq(['absent'])
+  assert.equal(await retryProbe(noCli.once, { budgetMs: 10, intervalMs: 2, ...clock }), false)
+  assert.equal(noCli.calls(), 1, 'a missing CLI is not retried')
+
+  t = 0
+  const deadDaemon = seq(['down'])
+  assert.equal(await retryProbe(deadDaemon.once, { budgetMs: 10, intervalMs: 2, ...clock }), false)
+  assert.equal(deadDaemon.calls(), 6, 'down is asked at 0, 2, 4, 6, 8 and 10, then the budget is spent')
 })
