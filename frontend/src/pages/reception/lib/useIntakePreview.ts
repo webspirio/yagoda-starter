@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { cmp } from '@/shared/lib/money';
+import { cmp, parseCrateCount } from '@/shared/lib/money';
 import { useDebouncedValue } from '@/shared/lib/useDebouncedValue';
 import { usePreviewIntakeMutation } from '../api/intakes';
 import { toPreviewBody, type IntakeFormValues, type IntakePreview } from '../model/intakeForm';
@@ -21,13 +21,16 @@ function isPositiveDecimal(value: string): boolean {
   }
 }
 
-function hasValidTareRow(line: IntakeFormValues['items'][number]): boolean {
-  return line.tare.some((row) => Number.parseInt(row.units, 10) >= 1);
+/** ≥1 row counting at least one, and no row the form refuses («0,5») — a
+ *  refused count is named under the tare, not sent to be refused again. */
+function hasValidTare(line: IntakeFormValues['items'][number]): boolean {
+  const counts = line.tare.map((row) => parseCrateCount(row.units));
+  return counts.every((n) => n !== null) && counts.some((n) => n !== null && n >= 1);
 }
 
 function isLineComplete(line: IntakeFormValues['items'][number]): boolean {
   return (
-    line.product_grade_id.trim() !== '' && isPositiveDecimal(line.gross_kg) && hasValidTareRow(line)
+    line.product_grade_id.trim() !== '' && isPositiveDecimal(line.gross_kg) && hasValidTare(line)
   );
 }
 

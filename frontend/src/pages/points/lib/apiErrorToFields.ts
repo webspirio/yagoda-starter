@@ -23,7 +23,7 @@ const CODE_FIELD: Readonly<Record<string, readonly [field: string | null, messag
 const PROPERTY: Readonly<Record<string, string>> = {
   name: 'points.errors.nameInvalid',
   code: 'points.errors.codeFormat',
-  target_cash: 'points.errors.cashFormat',
+  target_cash: 'errors.decimalFormat',
   target_crates: 'points.errors.cratesFormat',
 };
 

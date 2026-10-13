@@ -27,8 +27,8 @@ const CODE_KEY: Readonly<Record<string, string>> = {
  */
 const PROPERTY: Readonly<Record<string, string>> = {
   name: 'catalog.errors.nameTooLong',
-  weight_kg: 'catalog.errors.weightFormat',
-  deposit_price: 'catalog.errors.depositFormat',
+  weight_kg: 'errors.decimalFormat',
+  deposit_price: 'errors.decimalFormat',
 };
 
 /**

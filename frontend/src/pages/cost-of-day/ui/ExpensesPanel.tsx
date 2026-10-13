@@ -4,8 +4,10 @@ import { Check, Pencil, Plus, Trash2, X } from 'lucide-react';
 import { Button } from '@/shared/ui/button';
 import { Eyebrow } from '@/shared/ui/eyebrow';
 import { TextInput } from '@/shared/ui/text-input';
+import { DecimalInput } from '@/shared/ui/decimal-input';
+import { useDecimalField } from '@/shared/ui/use-decimal-field';
 import { toast } from '@/shared/ui/toast';
-import { DECIMAL_INPUT, formatUah, maskDecimalInput } from '@/shared/lib/money';
+import { formatUah } from '@/shared/lib/money';
 import { apiErrorToBanner } from '@/shared/lib/api-error';
 import {
   useCreateDayExpenseMutation,
@@ -15,20 +17,27 @@ import {
 } from '@/entities/day-expense';
 import type { CostOfDay } from '@/entities/cost-of-day';
 
-/**
- * `maskDecimalInput` is a TYPING mask, not a validator: '.' and '12.' both
- * survive it mid-keystroke, and `CreateDayExpenseDto`'s
- * `@Matches(/^\d{1,10}(\.\d{1,2})?$/)` refuses both — as a 400 that reaches
- * the person as «щось пішло не так», which says nothing about which field was
- * wrong. Gate on the same `DECIMAL_INPUT` shape `amountRules` submits against
- * everywhere else in this repo, so the refusal is a disabled button instead.
- * (`DECIMAL_INPUT` stops two digits SHORT of the DTO on purpose — `input.ts`
- * says why: 99 999 999,99 ₴ of пальне is a missed key, not a day.)
- *
- * The mask has already done `normalizeAmount`'s work — comma to dot, spaces
- * dropped — on every keystroke, so the raw state is what gets tested.
- */
-const isAmount = (value: string) => DECIMAL_INPUT.test(value);
+// Why the amount inputs gate on the grammar, not the mask (#72):
+// `DecimalInput`'s mask is a TYPING mask, not a validator: '.' and '12.' both
+// survive it mid-keystroke, and `CreateDayExpenseDto`'s
+// `@Matches(/^\d{1,10}(\.\d{1,2})?$/)` refuses both — as a 400 that reaches
+// the person as «щось пішло не так», which says nothing about which field was
+// wrong. Gate on THE grammar, `parseDecimal` (#72), so the refusal is a
+// disabled button plus the shared `errors.decimalFormat` line under the field.
+// (The grammar stops two digits SHORT of the DTO on purpose — `input.ts` says
+// why: 99 999 999,99 ₴ of пальне is a missed key, not a day.) What is sent is
+// `parseDecimal`'s canonical output (`useDecimalField`'s `parsed`), never the
+// raw text.
+
+/** `Field`'s error line, for the two amount inputs that sit outside a `Field`. */
+function FormatError({ id }: { id: string }) {
+  const { t } = useTranslation();
+  return (
+    <p id={id} role="alert" className="mt-1.5 w-full text-xs leading-snug text-destructive">
+      {t('errors.decimalFormat')}
+    </p>
+  );
+}
 
 /**
  * §8.3's «Витрати дня» and §8.4's КОШИК — «Права (ВИТРАТИ) — єдине місце
@@ -71,6 +80,10 @@ export function ExpensesPanel({
   const [editing, setEditing] = useState<string | null>(null);
   const [draftLabel, setDraftLabel] = useState('');
   const [draftAmount, setDraftAmount] = useState('');
+  // #72 — parse, the shared message (once the field is left) and the aria
+  // wiring: these inputs sit outside a `Field`, so the hook carries it.
+  const addAmount = useDecimalField(amount, { errorId: 'expense-amount-error' });
+  const editAmount = useDecimalField(draftAmount, { errorId: 'expense-edit-amount-error' });
 
   // `per_kg` is null when nothing was weighed — the amber «awaiting» panel.
   // It is the only nullable figure the branch below formats (`formatUah` throws on null).
@@ -79,9 +92,10 @@ export function ExpensesPanel({
 
   async function add() {
     const trimmed = label.trim();
-    if (!trimmed || !isAmount(amount)) return;
+    const canonical = addAmount.parsed;
+    if (!trimmed || canonical === null) return;
     try {
-      await create.mutateAsync({ shiftId, label: trimmed, amount });
+      await create.mutateAsync({ shiftId, label: trimmed, amount: canonical });
       setLabel('');
       setAmount('');
     } catch (error) {
@@ -102,7 +116,8 @@ export function ExpensesPanel({
     const patch: { id: string; label?: string; amount?: string } = { id: line.id };
     const trimmed = draftLabel.trim();
     if (trimmed && trimmed !== line.label) patch.label = trimmed;
-    if (isAmount(draftAmount) && draftAmount !== line.amount) patch.amount = draftAmount;
+    const canonical = editAmount.parsed;
+    if (canonical !== null && canonical !== line.amount) patch.amount = canonical;
 
     if (patch.label === undefined && patch.amount === undefined) {
       setEditing(null);
@@ -144,10 +159,10 @@ export function ExpensesPanel({
                 aria-label={t('costOfDay.expenses.labelField')}
                 className="h-8 min-w-24 flex-1 text-xs"
               />
-              <TextInput
+              <DecimalInput
                 value={draftAmount}
-                onChange={(e) => setDraftAmount(maskDecimalInput(e.target.value))}
-                inputMode="decimal"
+                onChange={(e) => setDraftAmount(e.target.value)}
+                {...editAmount.inputProps}
                 aria-label={t('costOfDay.expenses.amountField')}
                 className="h-8 w-24 text-right font-mono text-xs"
               />
@@ -155,7 +170,7 @@ export function ExpensesPanel({
                 variant="secondary"
                 size="sm"
                 onClick={() => void saveEdit(line)}
-                disabled={!draftLabel.trim() || !isAmount(draftAmount) || update.isPending}
+                disabled={!draftLabel.trim() || editAmount.parsed === null || update.isPending}
               >
                 <Check className="size-3.5" />
                 {t('costOfDay.expenses.save')}
@@ -168,6 +183,7 @@ export function ExpensesPanel({
               >
                 <X className="size-3.5" />
               </Button>
+              {editAmount.error ? <FormatError id="expense-edit-amount-error" /> : null}
             </div>
           ) : (
             <div key={line.id} className="flex items-baseline gap-2">
@@ -206,10 +222,10 @@ export function ExpensesPanel({
           aria-label={t('costOfDay.expenses.labelField')}
           className="h-8 min-w-28 flex-1 text-xs"
         />
-        <TextInput
+        <DecimalInput
           value={amount}
-          onChange={(e) => setAmount(maskDecimalInput(e.target.value))}
-          inputMode="decimal"
+          onChange={(e) => setAmount(e.target.value)}
+          {...addAmount.inputProps}
           placeholder={t('costOfDay.expenses.amountField')}
           aria-label={t('costOfDay.expenses.amountField')}
           className="h-8 w-24 text-right font-mono text-xs"
@@ -218,11 +234,12 @@ export function ExpensesPanel({
           variant="secondary"
           size="sm"
           onClick={() => void add()}
-          disabled={!label.trim() || !isAmount(amount) || create.isPending}
+          disabled={!label.trim() || addAmount.parsed === null || create.isPending}
         >
           <Plus className="size-3.5" />
           {t('costOfDay.expenses.add')}
         </Button>
+        {addAmount.error ? <FormatError id="expense-amount-error" /> : null}
       </div>
 
       {notSpread ? (

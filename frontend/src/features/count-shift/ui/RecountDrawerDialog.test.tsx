@@ -49,6 +49,7 @@ describe('RecountDrawerDialog', () => {
     const { container } = render(<RecountDrawerDialog open onClose={vi.fn()} />);
 
     await userEvent.type(screen.getByRole('textbox'), '1 500,00');
+    expect(screen.getByRole('textbox')).toHaveValue('1500.00');
     await userEvent.click(screen.getByRole('button', { name: 'Recorded the count' }));
 
     await waitFor(() =>
@@ -57,10 +58,10 @@ describe('RecountDrawerDialog', () => {
     await expectNoAxeViolations(container);
   });
 
-  it('masks while typing — comma becomes dot, two decimals only, like the reception fields', async () => {
+  it('masks while typing — comma becomes dot; a third decimal stays visible to be refused, never cut (#72)', async () => {
     setup();
     await userEvent.type(screen.getByRole('textbox'), '12,345');
-    expect(screen.getByRole('textbox')).toHaveValue('12.34');
+    expect(screen.getByRole('textbox')).toHaveValue('12.345');
   });
 
   it('never shows the expected figure before a count is submitted', () => {
@@ -136,7 +137,7 @@ describe('RecountDrawerDialog', () => {
     // the (client-side validation, unrelated) amount-format message either.
     expect(screen.queryByText('No open shift at this point — open one first')).toBeNull();
     expect(
-      screen.queryByText('Enter the amount you counted in the drawer — a number, not less than zero.'),
+      screen.queryByText('Enter a number, e.g. 12000 or 980.40'),
     ).toBeNull();
   });
 
@@ -202,5 +203,19 @@ describe('RecountDrawerDialog — the second recount of the day starts blank (Im
     expect(screen.getByRole('textbox')).toHaveValue('');
     expect(screen.queryByText('Expected')).toBeNull();
     expect(screen.queryByRole('alert')).toBeNull();
+  });
+});
+
+describe('the shared money field (#72)', () => {
+  it('never holds a space and refuses a half-typed sum with the shared message', async () => {
+    setup();
+    const input = screen.getByRole('textbox');
+    await userEvent.clear(input);
+    await userEvent.type(input, '980 40');
+    expect(input).toHaveValue('98040');
+    await userEvent.clear(input);
+    await userEvent.type(input, '12.');
+    await userEvent.click(screen.getByRole('button', { name: 'Recorded the count' }));
+    expect(await screen.findByText('Enter a number, e.g. 12000 or 980.40')).toBeInTheDocument();
   });
 });

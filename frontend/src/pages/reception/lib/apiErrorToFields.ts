@@ -78,14 +78,28 @@ const PAID_FIELD: Readonly<Record<string, string>> = {
   PAYOUT_AMOUNT_ZERO: 'reception.errors.paidFormat',
 };
 
+/** The money/weight fields #72's shared message covers — not tare units. */
+const DECIMAL_FIELD = /^paid_amount$|\.(gross_kg|pallet_kg|bonus)$/;
+/** A tare row's crate count — a whole number, so the crates screens' message. */
+const UNITS_FIELD = /\.tare\.\d+\.units$/;
+
+/** The per-field message for a placed property, or `null` → the form banner. */
+function fieldMessageKey(field: string): string | null {
+  if (DECIMAL_FIELD.test(field)) return 'errors.decimalFormat';
+  if (UNITS_FIELD.test(field)) return 'crates.errors.unitsFormat';
+  return null;
+}
+
 /**
  * class-validator emits `"<property> <complaint>"` for `CreateIntakeDto`'s
  * nested items — `items.0.gross_kg must be …`, `items.0.tare.1.units must
  * not be less than 1`. The PROPERTY (first token) IS the RHF field path
- * already, so no re-mapping is needed beyond taking it verbatim; every such
- * detail maps to the same `decimalFormat` key regardless of which nested
- * field it names (the class-validator complaint text is not stable enough to
- * branch on, and this slice has no other per-property message to show). A
+ * already, so no re-mapping is needed beyond taking it verbatim. A detail on
+ * one of the four money/weight fields (`gross_kg`, `pallet_kg`, `bonus`,
+ * `paid_amount`) maps to the one shared `errors.decimalFormat` key (#72); any
+ * tare row's `units` — a whole crate count — gets the crates screens' integer
+ * message. Any OTHER property (a grade or tare-type id: picked, never typed)
+ * has no honest per-field message, so it falls to the form-level banner. A
  * detail naming anything outside `items.*` (e.g. a picked `supplier_id`) is
  * never something the operator typed here, so it is unplaceable and falls to
  * the form-level banner instead of a phantom field error.
@@ -134,13 +148,9 @@ export function apiErrorToFields(error: unknown, lineCount: number): ApiFieldErr
   let unattributed = false;
   for (const detail of error.details ?? []) {
     const field = fieldFromDetail(detail);
-    if (field) {
-      fieldErrors.push({
-        field,
-        messageKey:
-          field === 'paid_amount' ? 'reception.errors.paidFormat' : 'reception.errors.decimalFormat',
-      });
-    } else unattributed = true;
+    const messageKey = field === null ? null : fieldMessageKey(field);
+    if (field !== null && messageKey !== null) fieldErrors.push({ field, messageKey });
+    else unattributed = true;
   }
   if (fieldErrors.length > 0) {
     return { fieldErrors, formErrorKey: unattributed ? FORM_LEVEL : null };

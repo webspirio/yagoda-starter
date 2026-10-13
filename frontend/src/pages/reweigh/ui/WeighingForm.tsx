@@ -6,28 +6,15 @@ import { Eyebrow } from '@/shared/ui/eyebrow';
 import { Field } from '@/shared/ui/field';
 import { SelectField } from '@/shared/ui/select-field';
 import { TextInput } from '@/shared/ui/text-input';
-import { DECIMAL_INPUT, cmp, formatDecimal, formatKg, normalizeAmount } from '@/shared/lib/money';
+import { DecimalInput } from '@/shared/ui/decimal-input';
+import { useDecimalField } from '@/shared/ui/use-decimal-field';
+import { cmp, formatDecimal, formatKg } from '@/shared/lib/money';
 import { formatShortDate } from '@/shared/lib/date';
 import { useTareTypeOptionsQuery } from '@/entities/tare-type';
 import type { ReconciliationGrade } from '@/entities/reweigh';
 import { netOf, newDraftKey, tareWeightOf, type Draft } from '../model/draft';
 import { addBlockReason, grossHint, tareHint } from '../lib/hints';
 import { FieldWarning } from './FieldWarning';
-
-/**
- * A decimal field's RAW typed text, made safe for `@/shared/lib/money`
- * arithmetic — normalized (comma/space) and checked against the same
- * `DECIMAL_INPUT` shape the server accepts. An in-progress keystroke like
- * `"120."` would make `money.ts` throw; falling back to `'0.00'` here keeps
- * the FIELD itself unrestricted while typing (same discipline as every other
- * money field in this repo — see `TopUpDialog`/`amountRules`, which validate
- * on submit rather than filtering keystrokes), so a live чиста вага never
- * crashes mid-type.
- */
-function toCalcAmount(raw: string): string {
-  const normalized = normalizeAmount(raw);
-  return DECIMAL_INPUT.test(normalized) ? normalized : '0.00';
-}
 
 interface ProductGroup {
   product_id: string;
@@ -68,7 +55,7 @@ function groupByProduct(grades: ReconciliationGrade[]): ProductGroup[] {
  *
  * Five `useState`s, no `react-hook-form`: `LoginForm`'s reasoning applies
  * here too — this is a handful of fields with no schema to validate against,
- * just the decimal-string shape `DECIMAL_INPUT` already checks.
+ * just the decimal-string grammar `parseDecimal` already checks.
  */
 export function WeighingForm({
   grades,
@@ -110,8 +97,17 @@ export function WeighingForm({
   const effectiveTareId = tareId ?? tareTypes.data?.[0]?.id ?? null;
   const tareCount = tareCountInput === '' ? 0 : Number(tareCountInput);
 
-  const grossForCalc = toCalcAmount(gross);
-  const palletForCalc = toCalcAmount(pallet);
+  // #72 — a malformed weight blocks the add at once (`isMalformed`), but the
+  // line under the field waits until the owner leaves it (`error`): «120.» on
+  // the way to «120.5» is not a mistake yet. An unparsed weight counts as
+  // '0.00' so a live чиста вага never makes `money.ts` throw mid-type.
+  const grossField = useDecimalField(gross);
+  const palletField = useDecimalField(pallet);
+  const grossForCalc = grossField.parsed ?? '0.00';
+  const palletForCalc = palletField.parsed ?? '0.00';
+  const badFormat = grossField.isMalformed || palletField.isMalformed;
+  const grossError = grossField.error ?? undefined;
+  const palletError = palletField.error ?? undefined;
 
   const tare =
     tareCount > 0 && effectiveTareId ? [{ tare_type_id: effectiveTareId, units: tareCount }] : [];
@@ -126,6 +122,7 @@ export function WeighingForm({
     hasShift,
     acceptedAnything,
     gradeId,
+    badFormat,
     grossKg: grossForCalc,
     netKg: net,
   });
@@ -134,14 +131,19 @@ export function WeighingForm({
     block === 'noShift'
       ? t('reweigh.block.noShift')
       : block === 'nothingAccepted'
-        ? t('reweigh.block.nothingAccepted', { point: pointName, date: formatShortDate(date, locale) })
+        ? t('reweigh.block.nothingAccepted', {
+            point: pointName,
+            date: formatShortDate(date, locale),
+          })
         : block === 'noGrade'
           ? t('reweigh.block.noGrade')
-          : block === 'noGross'
-            ? t('reweigh.block.noGross')
-            : block === 'noNet'
-              ? t('reweigh.block.noNet')
-              : null;
+          : block === 'badFormat'
+            ? t('errors.decimalFormat')
+            : block === 'noGross'
+              ? t('reweigh.block.noGross')
+              : block === 'noNet'
+                ? t('reweigh.block.noNet')
+                : null;
 
   const grossWarningText = grossHint(grossForCalc)
     ? t('reweigh.warn.gross', { value: formatKg(grossForCalc, locale) })
@@ -195,15 +197,14 @@ export function WeighingForm({
       <div className="border-b border-border/70 p-4">
         <Eyebrow className="mb-2">{t('reweigh.step1')}</Eyebrow>
         <div className="flex flex-wrap items-start gap-3">
-          <Field name="rw-gross" label={t('reweigh.gross')} required>
+          <Field name="rw-gross" label={t('reweigh.gross')} required error={grossError}>
             {(a11y) => (
               <div className="relative w-[200px]">
-                <TextInput
+                <DecimalInput
                   {...a11y}
                   value={gross}
                   onChange={(e) => setGross(e.target.value)}
-                  onBlur={() => setGross((current) => (current === '' ? current : normalizeAmount(current)))}
-                  inputMode="decimal"
+                  {...grossField.inputProps}
                   placeholder="0.00"
                   className="h-14 pr-12 font-mono text-2xl font-semibold"
                 />
@@ -213,17 +214,14 @@ export function WeighingForm({
               </div>
             )}
           </Field>
-          <Field name="rw-pallet" label={t('reweigh.pallet')}>
+          <Field name="rw-pallet" label={t('reweigh.pallet')} error={palletError}>
             {(a11y) => (
               <div className="relative w-[132px]">
-                <TextInput
+                <DecimalInput
                   {...a11y}
                   value={pallet}
                   onChange={(e) => setPallet(e.target.value)}
-                  onBlur={() =>
-                    setPallet((current) => (current === '' ? current : normalizeAmount(current)))
-                  }
-                  inputMode="decimal"
+                  {...palletField.inputProps}
                   placeholder="0.0"
                   className="h-14 pr-9 font-mono text-lg font-semibold"
                 />
@@ -248,7 +246,10 @@ export function WeighingForm({
           >
             {(tareTypes.data ?? []).map((tt) => (
               <option key={tt.id} value={tt.id}>
-                {t('reweigh.tareOption', { name: tt.name, weight: formatDecimal(tt.weight_kg, locale) })}
+                {t('reweigh.tareOption', {
+                  name: tt.name,
+                  weight: formatDecimal(tt.weight_kg, locale),
+                })}
               </option>
             ))}
           </SelectField>
@@ -281,15 +282,11 @@ export function WeighingForm({
               <Plus className="size-3.5" />
             </Button>
           </div>
-          <span className="font-mono text-sm text-muted-foreground">= {formatKg(tareWeight, locale)}</span>
+          <span className="font-mono text-sm text-muted-foreground">
+            = {formatKg(tareWeight, locale)}
+          </span>
           {[5, 10, 20].map((n) => (
-            <Button
-              key={n}
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={stepTare(n)}
-            >
+            <Button key={n} type="button" variant="outline" size="sm" onClick={stepTare(n)}>
               {t('reweigh.crateQuick', { n })}
             </Button>
           ))}
@@ -337,7 +334,9 @@ export function WeighingForm({
             {t('reweigh.addLine')}
           </Button>
           {blockCopy ? (
-            <span className="max-w-[300px] text-right text-xs text-[var(--amber)]">{blockCopy}</span>
+            <span className="max-w-[300px] text-right text-xs text-[var(--amber)]">
+              {blockCopy}
+            </span>
           ) : null}
         </div>
       </div>

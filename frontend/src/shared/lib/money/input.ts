@@ -1,53 +1,76 @@
 import { add, cmp } from './decimal';
 
-/**
- * Що людина має право надрукувати в грошовому полі: до 8 цифр цілої частини і
- * не більше двох після коми. Дзеркалить `@Matches(/^\d{1,10}(\.\d{1,2})?$/)`
- * бекендових DTO, але вужче на два розряди — 99 999 999,99 ₴ за зміну не буває,
- * а зайвий нуль у полі це найчастіше промах по клавіші.
- */
-export const DECIMAL_INPUT = /^\d{1,8}(\.\d{1,2})?$/;
-
 /** Ціле число ящиків, 0 або більше — дзеркалить `@IsInt() @Min(0)` DTO. */
 export const CRATES_INPUT = /^\d{1,7}$/;
 
 /**
- * Приводить надруковане до канонічного вигляду ПЕРЕД перевіркою: українська
- * розкладка дає кому, а звичка з паперу — пробіл між тисячами. Ні те, ні те не
- * помилка користувача, тому це нормалізація, а не відмова.
+ * A crate count typed into a field that may stay empty (reception's tare row):
+ * `''` is 0, «not counted yet»; a whole number is itself; anything else —
+ * «0,5», «2,0», «1.2.3» — is `null`, refused, never read as some other count.
  */
-export function normalizeAmount(value: string): string {
-  return value.replace(/\s/g, '').replace(',', '.');
+export function parseCrateCount(raw: string): number | null {
+  const value = raw.trim();
+  if (value === '') return 0;
+  return CRATES_INPUT.test(value) ? Number(value) : null;
 }
 
 /**
- * Keeps what a decimal field may hold WHILE TYPING: digits, one separator
- * (comma or dot, stored as dot), at most `decimals` places, an optional
- * leading minus when `allowNegative`. Never adds digits.
+ * Граматика грошового чи вагового поля: необовʼязковий мінус (лише там, де поле
+ * його дозволяє), до 8 цифр цілої частини, кома або крапка і не більше двох
+ * знаків після неї. Кому `parseDecimal` міняє на крапку ще до відправки — DTO
+ * бачать лише крапку. Мінус доходить до бекенду лише в `bonus` (надбавка
+ * приймальника), і там він навмисний: його DTO — `/^-?\d{1,8}(\.\d{1,2})?$/`.
+ * Ціни дня, `bonus` і ваги — `\d{1,8}` і в своїх DTO, тут те саме. Грошові
+ * колонки каси й застава тари (`deposit_price`) — `\d{1,10}` на бекенді, тут
+ * вужче на два розряди: 99 999 999,99 ₴ не буває ні за зміну, ні за ящик, а
+ * зайвий нуль у полі це найчастіше промах по клавіші.
+ */
+const DECIMAL_SHAPE = /^(-?)(\d{1,8})(?:[.,](\d{1,2}))?$/;
+
+/**
+ * THE grammar of a money or weight field (#72): whitespace of any kind removed
+ * (the field's mask never lets it in; this is the backstop for a default value
+ * or a paste that bypassed the mask), then up to 8 integer digits, comma or dot,
+ * up to 2 decimals. Returns the canonical dot form, or `null` when refused.
+ */
+export function parseDecimal(
+  raw: string,
+  { allowNegative = false }: { allowNegative?: boolean } = {},
+): string | null {
+  const match = DECIMAL_SHAPE.exec(raw.replace(/\s/g, ''));
+  if (!match || (match[1] === '-' && !allowNegative)) return null;
+  const [, sign, int, frac] = match;
+  return `${sign}${int}${frac === undefined ? '' : `.${frac}`}`;
+}
+
+/**
+ * What a decimal field lets through WHILE TYPING (#72): digits and separators
+ * (a comma is stored as a dot), plus a leading minus when `allowNegative`.
+ * Everything else — whitespace of any kind, letters — never gets in.
+ *
+ * It removes only characters that cannot be part of a number; it never drops
+ * a digit or a separator. Truncating `12,000.00` to `12.00`, `1,234` to `1.23`
+ * or a 9th digit away would be the same silent hundred- or thousand-fold
+ * change #72 exists to remove — so what does not fit the grammar stays
+ * visible in the field and `parseDecimal` refuses it with the shared message.
  */
 export function maskDecimalInput(
   raw: string,
-  { decimals = 2, allowNegative = false }: { decimals?: number; allowNegative?: boolean } = {},
+  { allowNegative = false }: { allowNegative?: boolean } = {},
 ): string {
   const negative = allowNegative && raw.trimStart().startsWith('-');
-  let seen = false;
   let body = '';
   for (const ch of raw) {
     if (ch >= '0' && ch <= '9') body += ch;
-    else if ((ch === '.' || ch === ',') && !seen) {
-      seen = true;
-      body += '.';
-    }
+    else if (ch === '.' || ch === ',') body += '.';
   }
-  const [int, frac = ''] = body.split('.');
-  const fraction = seen ? `.${frac.slice(0, decimals)}` : '';
-  return `${negative ? '-' : ''}${int}${fraction}`;
+  return `${negative ? '-' : ''}${body}`;
 }
 
 /** `value` clamped into [min, max]; a malformed value is returned unchanged. */
 export function clampDecimal(value: string, min: string, max: string): string {
-  const normalized = normalizeAmount(value);
-  if (!/^-?\d{1,10}(\.\d{1,2})?$/.test(normalized)) return value;
+  const normalized = parseDecimal(value, { allowNegative: true });
+  if (normalized === null) return value;
   // Re-canonicalise through add(x, '0') so '5' becomes '5.00' like the server would store it.
   const canonical = add(normalized, '0');
   if (cmp(canonical, min) === -1) return add(min, '0');
@@ -71,14 +94,13 @@ export function clampDecimal(value: string, min: string, max: string): string {
  * bug the same way negative is.
  */
 export function floorToHundreds(value: string): string {
-  const normalized = normalizeAmount(value);
-  if (normalized.startsWith('-')) {
+  if (value.startsWith('-')) {
     throw new Error('money: floorToHundreds needs a non-negative amount');
   }
-  if (add(normalized, '0') !== normalized) {
+  if (add(value, '0') !== value) {
     throw new Error('money: floorToHundreds needs a canonical amount');
   }
-  const int = normalized.split('.')[0];
+  const int = value.split('.')[0];
   const hundreds = int.length > 2 ? `${int.slice(0, -2)}00` : '0';
   return `${hundreds}.00`;
 }

@@ -16,6 +16,7 @@
     "print": "Print"
   },
   "errors": {
+    "decimalFormat": "Enter a number, e.g. 12000 or 980.40",
     "network": "Can't reach the server. Check your connection and try again.",
     "tooManyRequests": "Too many attempts. Wait a minute and try again.",
     "accessChanged": "Your access has changed. Reload the page.",
@@ -113,7 +114,6 @@
       "nameRequired": "Enter a name",
       "nameInvalid": "Name must be 1–128 characters",
       "hasActiveUsers": "This point still has assigned staff — reassign them before deactivating",
-      "cashFormat": "Enter an amount like 15000 or 15000.50",
       "cratesFormat": "Enter a whole number of crates",
       "codeTaken": "A point with this code already exists. Enter another code.",
       "codeFormat": "Code must be 2–8 Latin letters or digits"
@@ -338,9 +338,7 @@
       "nameEmpty": "Enter a name",
       "nameRequired": "Enter a name",
       "nameTooLong": "Name must be 1–128 characters",
-      "productRequired": "Choose a product",
-      "weightFormat": "Enter a weight like 1 or 1.20",
-      "depositFormat": "Enter an amount like 120 or 120.00"
+      "productRequired": "Choose a product"
     }
   },
   "prices": {
@@ -372,7 +370,6 @@
       "saveFailed": "Couldn't save the price. Reload the page and try again.",
       "gradeInactive": "This grade is switched off. Turn it on in the catalog or pick another.",
       "duplicatePoint": "The same point is selected twice. Keep it once.",
-      "priceFormat": "Enter an amount like 50 or 50.00",
       "reasonTooLong": "The reason must be at most 1000 characters"
     },
     "readOnly": "view only",
@@ -514,7 +511,6 @@
       "ownerOnly": "Only the network owner can do this. Ask the network owner.",
       "noPoint": "Your account has no collection point — ask the owner",
       "reasonRequired": "Give a reason",
-      "countFormat": "Enter an amount — at most two decimals",
       "brokenFormat": "Enter the breakage — a whole number, 0 if nothing broke"
     }
   },
@@ -658,7 +654,6 @@
       "note": "This figure cannot be changed in the app. Call the base — the owner will find where it went off."
     },
     "errors": {
-      "amount": "Enter the amount you counted in the drawer — a number, not less than zero.",
       "noOpenShift": "A recount does not attach to a closed shift — you can only count while the shift is open.",
       "failed": "Couldn't record the recount. Reload the page and try again."
     }
@@ -813,7 +808,6 @@
       "description": "{{point}}. The old target isn't recorded in history — it's a single number on the point."
     },
     "errors": {
-      "cashFormat": "Enter an amount — up to two decimal places",
       "reasonRequired": "Enter a reason",
       "reasonTooLong": "Reason — 500 characters or fewer",
       "failed": "Couldn't update the target. Reload the page and try again."
@@ -827,11 +821,11 @@
     },
     "allButton": "All — {{uah}}",
     "submit": "Pay out {{uah}}",
+    "submitPlain": "Pay out",
     "toast": {
       "paid": "Paid out {{uah}}"
     },
     "errors": {
-      "amountFormat": "Enter an amount like 4000 or 4000.50",
       "amountZero": "The amount must be above zero",
       "exceedsDebt": "Cannot pay more than the balance — balance {{debt}}",
       "exceedsDebtServer": "The amount is more than the balance owed. Lower it.",
@@ -1060,7 +1054,6 @@
     "errors": {
       "failed": "Couldn't record the receipt. Try again, and if it happens again, tell the network owner.",
       "lineRefused": "The server refused one of the lines — check the rows in the table",
-      "decimalFormat": "Enter a weight like 126.40",
       "gradeNotPriced": "This grade has no price for today — set it in Day prices",
       "tareRequired": "Add the tare — without it the whole gross weight would count as net",
       "tareTypeDuplicated": "The same tare type twice — merge the rows",
@@ -1201,7 +1194,6 @@
       "notEmpty": "A transfer must carry money, crates, or both",
       "carrierRequired": "Enter the carrier",
       "carrierTooLong": "Carrier name — 200 characters or fewer",
-      "cashFormat": "Enter an amount — up to two decimal places",
       "cratesFormat": "Enter a whole number of crates, 0 or more",
       "noteRequired": "Describe what doesn't match",
       "noteTooLong": "Note — 500 characters or fewer",
@@ -1319,7 +1311,6 @@
     },
     "errors": {
       "failed": "Couldn't add the balance. Reload the page and try again.",
-      "amountFormat": "Enter an amount like 500 or 500.00",
       "amountPositive": "The amount must be above zero",
       "reasonRequired": "Say why — this is what explains the debt later",
       "reasonTooLong": "At most 500 characters",

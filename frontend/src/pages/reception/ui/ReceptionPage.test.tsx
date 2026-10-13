@@ -468,7 +468,9 @@ beforeEach(() => {
   previewMock.mockReset().mockReturnValue(previewState());
   // Holds none of our crates by default, so «З них наших ящиків» stays hidden
   // and every body assertion below carries no `returned_crates`.
-  crateBalanceMock.mockReset().mockReturnValue({ data: undefined, isPending: true, isError: false });
+  crateBalanceMock
+    .mockReset()
+    .mockReturnValue({ data: undefined, isPending: true, isError: false });
   returnPreviewMock.mockReset().mockReturnValue({ data: undefined });
   createMock.mockReset().mockResolvedValue(CREATED);
   openShiftMock.mockReset().mockResolvedValue(openShift);
@@ -974,7 +976,9 @@ describe("ReceptionPage — «Void» on today's receipts", () => {
   it('opens the receipt straight into its void, not as a plain open', async () => {
     const user = userEvent.setup();
     intakesMock.mockImplementation((filter: { shiftId?: string }) =>
-      filter.shiftId ? page<Intake>([intake({ id: 'i2', code: 'SHP-IN-2', amount: '200.00' })]) : page<Intake>([]),
+      filter.shiftId
+        ? page<Intake>([intake({ id: 'i2', code: 'SHP-IN-2', amount: '200.00' })])
+        : page<Intake>([]),
     );
     renderReception();
 
@@ -986,7 +990,9 @@ describe("ReceptionPage — «Void» on today's receipts", () => {
   it('a plain row click still opens the receipt without the void', async () => {
     const user = userEvent.setup();
     intakesMock.mockImplementation((filter: { shiftId?: string }) =>
-      filter.shiftId ? page<Intake>([intake({ id: 'i2', code: 'SHP-IN-2', amount: '200.00' })]) : page<Intake>([]),
+      filter.shiftId
+        ? page<Intake>([intake({ id: 'i2', code: 'SHP-IN-2', amount: '200.00' })])
+        : page<Intake>([]),
     );
     renderReception();
 
@@ -1024,9 +1030,7 @@ describe('ReceptionPage — a refusal from the server', () => {
       previewState({
         preview: PREVIEW,
         error: {
-          fieldErrors: [
-            { field: 'items.0.gross_kg', messageKey: 'reception.errors.decimalFormat' },
-          ],
+          fieldErrors: [{ field: 'items.0.gross_kg', messageKey: 'errors.decimalFormat' }],
           formErrorKey: null,
         },
       }),
@@ -1040,7 +1044,7 @@ describe('ReceptionPage — a refusal from the server', () => {
     const gross = screen.getByLabelText('Gross — berries including tare');
     expect(gross).toHaveAttribute('aria-invalid', 'true');
     expect(gross.getAttribute('aria-describedby')).toContain('items.0.gross_kg-error');
-    expect(screen.getByText('Enter a weight like 126.40')).toBeInTheDocument();
+    expect(screen.getByText('Enter a number, e.g. 12000 or 980.40')).toBeInTheDocument();
 
     // A refused line is neither submittable nor committable — the last good
     // preview is still on screen, and it is not an answer to THIS form.
@@ -1055,9 +1059,7 @@ describe('ReceptionPage — a refusal from the server', () => {
       previewState({
         preview: PREVIEW,
         error: {
-          fieldErrors: [
-            { field: 'items.0.pallet_kg', messageKey: 'reception.errors.decimalFormat' },
-          ],
+          fieldErrors: [{ field: 'items.0.pallet_kg', messageKey: 'errors.decimalFormat' }],
           formErrorKey: null,
         },
       }),
@@ -1069,7 +1071,7 @@ describe('ReceptionPage — a refusal from the server', () => {
     const pallet = screen.getByLabelText('Pallet');
     expect(pallet).toHaveAttribute('aria-invalid', 'true');
     expect(pallet.getAttribute('aria-describedby')).toContain('items.0.pallet_kg-error');
-    expect(screen.getByText('Enter a weight like 126.40')).toBeInTheDocument();
+    expect(screen.getByText('Enter a number, e.g. 12000 or 980.40')).toBeInTheDocument();
   });
 
   it('says so out loud when the refused field is on a line the editor no longer shows', async () => {
@@ -1088,9 +1090,7 @@ describe('ReceptionPage — a refusal from the server', () => {
       previewState({
         preview: PREVIEW,
         error: {
-          fieldErrors: [
-            { field: 'items.0.gross_kg', messageKey: 'reception.errors.decimalFormat' },
-          ],
+          fieldErrors: [{ field: 'items.0.gross_kg', messageKey: 'errors.decimalFormat' }],
           formErrorKey: null,
         },
       }),
@@ -1222,6 +1222,85 @@ describe('ReceptionPage — «Видано готівкою» rides along with �
       ),
     );
   });
+
+  it('a malformed gross says so itself once left, even before a supplier (and so a preview) exists (#72)', async () => {
+    const user = userEvent.setup();
+    renderReception();
+
+    const gross = screen.getByLabelText(/^Gross/);
+    await user.type(gross, '1.2.3');
+    expect(screen.queryByText('Enter a number, e.g. 12000 or 980.40')).not.toBeInTheDocument();
+    await user.tab();
+    expect(await screen.findByText('Enter a number, e.g. 12000 or 980.40')).toBeInTheDocument();
+  });
+
+  it('Enter inside a malformed «Видано готівкою» is refused OUT LOUD, not silently (#72 review)', async () => {
+    const user = userEvent.setup();
+    renderReception();
+
+    await user.click(screen.getByRole('button', { name: 'pick-nina' }));
+    await fillDraft(user);
+
+    const paidInput = screen.getByLabelText('Paid in cash');
+    await user.clear(paidInput);
+    await user.type(paidInput, '1.2.3{Enter}');
+
+    expect(await screen.findByText('Enter a number, e.g. 12000 or 980.40')).toBeInTheDocument();
+    expect(createMock).not.toHaveBeenCalled();
+    // …and the keyboard stays where the operator left it.
+    expect(paidInput).toHaveFocus();
+  });
+
+  it('retyping the refused text does not bring the refusal back mid-keystroke (#72 review)', async () => {
+    const user = userEvent.setup();
+    renderReception();
+
+    await user.click(screen.getByRole('button', { name: 'pick-nina' }));
+    await fillDraft(user);
+    const paidInput = screen.getByLabelText('Paid in cash');
+    await user.clear(paidInput);
+    await user.type(paidInput, '1.2.3{Enter}');
+    expect(await screen.findByText('Enter a number, e.g. 12000 or 980.40')).toBeInTheDocument();
+
+    // Still focused: the same text typed again is an edit, not a submit.
+    await user.clear(paidInput);
+    await user.type(paidInput, '1.2.3');
+    expect(paidInput).toHaveFocus();
+    expect(screen.queryByText('Enter a number, e.g. 12000 or 980.40')).not.toBeInTheDocument();
+  });
+
+  it('the refusal goes with the value it refused — re-picking the supplier clears it (#72 review)', async () => {
+    const user = userEvent.setup();
+    renderReception();
+
+    await user.click(screen.getByRole('button', { name: 'pick-nina' }));
+    await fillDraft(user);
+    const paidInput = screen.getByLabelText('Paid in cash');
+    await user.clear(paidInput);
+    await user.type(paidInput, '1.2.3{Enter}');
+    expect(await screen.findByText('Enter a number, e.g. 12000 or 980.40')).toBeInTheDocument();
+
+    // Re-picking the supplier hands «Видано готівкою» back to the suggestion.
+    await user.click(screen.getByRole('button', { name: 'pick-nina' }));
+    expect(paidInput).not.toHaveValue('1.2.3');
+    expect(screen.queryByText('Enter a number, e.g. 12000 or 980.40')).not.toBeInTheDocument();
+  });
+
+  it('a malformed «Видано готівкою» stops «Прийняти» instead of recording the receipt without the payout (#72)', async () => {
+    const user = userEvent.setup();
+    renderReception();
+
+    await user.click(screen.getByRole('button', { name: 'pick-nina' }));
+    await fillDraft(user);
+
+    const paidInput = screen.getByLabelText('Paid in cash');
+    await user.clear(paidInput);
+    await user.type(paidInput, '1.2.3');
+    await user.click(screen.getByRole('button', { name: /Accept 120\.40 kg/ }));
+
+    expect(await screen.findByText('Enter a number, e.g. 12000 or 980.40')).toBeInTheDocument();
+    expect(createMock).not.toHaveBeenCalled();
+  });
 });
 
 describe('ReceptionPage — switching supplier mid-visit', () => {
@@ -1247,7 +1326,9 @@ describe('ReceptionPage — switching supplier mid-visit', () => {
 
     expect(screen.queryByRole('table')).toBeNull();
     expect(screen.getByLabelText('Gross — berries including tare')).toHaveValue('');
-    expect(toastMock).toHaveBeenCalledWith('Lines cleared — they belonged to the previous supplier');
+    expect(toastMock).toHaveBeenCalledWith(
+      'Lines cleared — they belonged to the previous supplier',
+    );
   });
 
   it('neither clears anything nor warns on a plain first pick — nothing was committed yet', async () => {
@@ -1320,7 +1401,13 @@ describe('ReceptionPage — line editor ergonomics (#117)', () => {
 
     const gross = screen.getByLabelText('Gross — berries including tare');
     await user.type(gross, '12a,3x45');
-    expect(gross).toHaveValue('12.34');
+    // #72: letters go, digits never do — a third decimal stays visible to be refused.
+    expect(gross).toHaveValue('12.345');
+
+    // #72 — the field never holds a space: «1 200,5» lands as «1200.5».
+    await user.clear(gross);
+    await user.type(gross, '1 200,5');
+    expect(gross).toHaveValue('1200.5');
 
     // §2.10 / ticket #117 — a bound is a limit, never a number shown to the
     // operator, whichever grade is selected.
@@ -1346,6 +1433,50 @@ describe('ReceptionPage — line editor ergonomics (#117)', () => {
     await user.click(screen.getByRole('button', { name: 'Extra price up' }));
     expect(bonus).toHaveValue('3.00');
   });
+
+  it('keeps the surcharge minus sign through the shared field (#72)', async () => {
+    const user = userEvent.setup();
+    renderReception();
+    const bonus = screen.getByLabelText('Extra price — for this line, ₴/kg');
+    await user.clear(bonus);
+    await user.type(bonus, '-2');
+    expect(bonus).toHaveValue('-2');
+  });
+
+  it('a tare count drops spaces and letters but never a separator — «2,0» is not 20 (#233 review)', async () => {
+    const user = userEvent.setup();
+    renderReception();
+
+    const units = screen.getByLabelText('Tare units 1');
+    await user.clear(units);
+    await user.type(units, '1 2');
+    expect(units).toHaveValue('12');
+    await user.clear(units);
+    await user.type(units, '2,0a');
+    expect(units).toHaveValue('2.0');
+    await user.clear(units);
+    await user.type(units, '15');
+    // …and the stepper still steps the masked value.
+    await user.click(screen.getByRole('button', { name: /^One more/ }));
+    expect(units).toHaveValue('16');
+  });
+
+  it.each(['0,5', '2,0', '1.2.3'])(
+    'refuses a tare count %j that is not whole, under the tare (#233 review)',
+    async (typed) => {
+      const user = userEvent.setup();
+      renderReception();
+
+      const units = screen.getByLabelText('Tare units 1');
+      await user.clear(units);
+      await user.type(units, typed);
+      expect(screen.getByText('Enter a whole number of crates')).toBeInTheDocument();
+
+      await user.clear(units);
+      await user.type(units, '2');
+      expect(screen.queryByText('Enter a whole number of crates')).toBeNull();
+    },
+  );
 
   it('reveals the pallet field on its own at twenty crates', async () => {
     const user = userEvent.setup();
@@ -1391,7 +1522,14 @@ describe('ReceptionPage — line editor ergonomics (#117)', () => {
 const RETURN_ON_RECEIPT = {
   data: {
     allocations: [
-      { issuance_id: 'i1', units: 30, per_unit: '0.00', amount: '0.00', mode: 'receipt', code: 'C1' },
+      {
+        issuance_id: 'i1',
+        units: 30,
+        per_unit: '0.00',
+        amount: '0.00',
+        mode: 'receipt',
+        code: 'C1',
+      },
     ],
     deposit_refund: '0.00',
     shortfall: 0,
@@ -1404,7 +1542,14 @@ const RETURN_ON_DEPOSIT = {
   ...RETURN_ON_RECEIPT,
   data: {
     allocations: [
-      { issuance_id: 'i1', units: 30, per_unit: '120.00', amount: '3600.00', mode: 'deposit', code: 'C1' },
+      {
+        issuance_id: 'i1',
+        units: 30,
+        per_unit: '120.00',
+        amount: '3600.00',
+        mode: 'deposit',
+        code: 'C1',
+      },
     ],
     deposit_refund: '3600.00',
     shortfall: 0,
@@ -1466,9 +1611,7 @@ describe('ReceptionPage — «З них наших ящиків» (our rented cr
     );
     expect(createMock).not.toHaveBeenCalled();
 
-    await user.click(
-      within(dialog).getByRole('button', { name: 'Handed over 3,600.00 ₴' }),
-    );
+    await user.click(within(dialog).getByRole('button', { name: 'Handed over 3,600.00 ₴' }));
     await waitFor(() =>
       expect(createMock).toHaveBeenCalledWith(expect.objectContaining({ returned_crates: 30 })),
     );

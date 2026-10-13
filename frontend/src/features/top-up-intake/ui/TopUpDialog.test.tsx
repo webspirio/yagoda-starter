@@ -98,7 +98,9 @@ describe('TopUpDialog', () => {
 
     await fill(user, 'abc', 'Доплата');
 
-    await waitFor(() => expect(screen.getByText(/enter an amount/i)).toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.getByText('Enter a number, e.g. 12000 or 980.40')).toBeInTheDocument(),
+    );
     expect(createMock).not.toHaveBeenCalled();
   });
 
@@ -132,5 +134,19 @@ describe('TopUpDialog', () => {
     await waitFor(() =>
       expect(screen.getByRole('alert').textContent).toMatch(/the server failed/i),
     );
+  });
+});
+
+describe('the shared money field (#72)', () => {
+  it('never holds a space and refuses a half-typed sum with the shared message', async () => {
+    open();
+    const input = screen.getByLabelText(/amount/i);
+    await userEvent.clear(input);
+    await userEvent.type(input, '980 40');
+    expect(input).toHaveValue('98040');
+    await userEvent.clear(input);
+    await userEvent.type(input, '12.');
+    await userEvent.click(screen.getByRole('button', { name: /^add$/i }));
+    expect(await screen.findByText('Enter a number, e.g. 12000 or 980.40')).toBeInTheDocument();
   });
 });

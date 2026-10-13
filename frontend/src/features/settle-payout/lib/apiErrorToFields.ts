@@ -59,7 +59,7 @@ export function apiErrorToFields(error: unknown): ApiFieldErrors {
   for (const detail of error.details ?? []) {
     if (detail.split(' ')[0] === 'amount') {
       return {
-        fieldErrors: [{ field: 'amount', messageKey: 'payout.errors.amountFormat' }],
+        fieldErrors: [{ field: 'amount', messageKey: 'errors.decimalFormat' }],
         formErrorKey: null,
       };
     }

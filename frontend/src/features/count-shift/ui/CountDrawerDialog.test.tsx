@@ -45,9 +45,10 @@ const amountBox = () => screen.getByRole('textbox', { name: /drawer|шухляд
 const brokenBox = () => screen.getByRole('textbox', { name: /broken|бій/i });
 
 describe('CountDrawerDialog', () => {
-  it('sends the amount normalised — a comma is how the keyboard types it', async () => {
+  it('sends the amount normalised — a comma is how the keyboard types it, a space never lands', async () => {
     const onConfirm = setup();
     await userEvent.type(screen.getByRole('textbox'), '1 500,50');
+    expect(screen.getByRole('textbox')).toHaveValue('1500.50');
     await userEvent.click(screen.getByRole('button', { name: SUBMIT_COUNT }));
     await waitFor(() => expect(onConfirm).toHaveBeenCalledWith('1500.50', null));
   });
@@ -124,14 +125,14 @@ describe('CountDrawerDialog', () => {
     // refuses it first — must not leave the stale server banner standing
     // alongside the new field error.
     await userEvent.clear(screen.getByRole('textbox'));
-    await userEvent.type(screen.getByRole('textbox'), '1.234');
+    await userEvent.type(screen.getByRole('textbox'), '12.');
     await userEvent.click(screen.getByRole('button', { name: SUBMIT_COUNT }));
 
     await waitFor(() =>
       expect(screen.queryByText('A shift is already open at this point')).toBeNull(),
     );
     expect(screen.getByRole('alert')).toHaveTextContent(
-      'Enter an amount — at most two decimals',
+      'Enter a number, e.g. 12000 or 980.40',
     );
   });
 
@@ -191,5 +192,19 @@ describe('CountDrawerDialog', () => {
     await userEvent.click(screen.getByRole('button', { name: SUBMIT_COUNT }));
 
     await waitFor(() => expect(onConfirm).toHaveBeenCalledWith('980.40', 2));
+  });
+});
+
+describe('the shared money field (#72)', () => {
+  it('never holds a space and refuses a half-typed sum with the shared message', async () => {
+    setup();
+    const input = amountBox();
+    await userEvent.clear(input);
+    await userEvent.type(input, '980 40');
+    expect(input).toHaveValue('98040');
+    await userEvent.clear(input);
+    await userEvent.type(input, '12.');
+    await userEvent.click(screen.getByRole('button', { name: SUBMIT_COUNT }));
+    expect(await screen.findByText('Enter a number, e.g. 12000 or 980.40')).toBeInTheDocument();
   });
 });

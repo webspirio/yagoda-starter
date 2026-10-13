@@ -11,19 +11,17 @@ import {
   DialogTitle,
 } from '@/shared/ui/dialog';
 import { Field } from '@/shared/ui/field';
-import { TextInput } from '@/shared/ui/text-input';
+import { DecimalInput } from '@/shared/ui/decimal-input';
 import { Textarea } from '@/shared/ui/textarea';
 import { Button } from '@/shared/ui/button';
 import { toast } from '@/shared/ui/toast';
 import { apiErrorToBanner } from '@/shared/lib/api-error';
 import {
-  DECIMAL_INPUT,
-  normalizeAmount,
+  parseDecimal,
   cmp,
   sub,
   formatUah,
-  amountRules,
-  maskDecimalInput,
+  decimalRules,
 } from '@/shared/lib/money';
 import { usePointCashForPointQuery } from '@/entities/point-cash';
 import { useSetPointTargetMutation } from '../api/useSetPointTarget';
@@ -80,20 +78,14 @@ export function SetTargetCashDialog({
     defaultValues: { target_cash: currentTarget ?? '', reason: '' },
   });
 
-  // Masked the same way `TotalsSection`'s «Видано готівкою» field is
-  // (comma or dot, two decimals, no letters) — wrapped around RHF's own
-  // `onChange` rather than replacing it, since this field stays an
-  // uncontrolled `register()` input; on-submit validation (`amountRules`)
-  // is unchanged.
-  const targetCashField = register('target_cash', amountRules('pointTarget.errors.cashFormat'));
-
   // `useWatch` rather than `form.watch()`: the latter returns a function the
   // React Compiler cannot memoize safely (see `pages/reception`'s own note).
   // The whole preview below is a RENDER-TIME derivation from this watched
   // value — no `useEffect`, so there is nothing to keep in sync by hand.
   const typedTarget = useWatch({ control, name: 'target_cash' });
-  const normalizedTarget = normalizeAmount(typedTarget);
-  const isTypedValid = DECIMAL_INPUT.test(normalizedTarget);
+  const parsedTarget = parseDecimal(typedTarget);
+  const isTypedValid = parsedTarget !== null;
+  const normalizedTarget = parsedTarget ?? '0.00';
   const currentCash = pointCash.data?.cash;
 
   // Fails open by design while the point's cash figure hasn't loaded yet (or
@@ -112,7 +104,7 @@ export function SetTargetCashDialog({
   const onSubmit = handleSubmit(async (values) => {
     setFormError(null);
     try {
-      const target_cash = normalizeAmount(values.target_cash);
+      const target_cash = values.target_cash;
       await setTarget.mutateAsync({
         pointId,
         target_cash,
@@ -147,15 +139,10 @@ export function SetTargetCashDialog({
             error={errors.target_cash?.message}
           >
             {(a11y) => (
-              <TextInput
+              <DecimalInput
                 {...a11y}
-                inputMode="decimal"
                 className="font-mono"
-                {...targetCashField}
-                onChange={(e) => {
-                  e.target.value = maskDecimalInput(e.target.value);
-                  void targetCashField.onChange(e);
-                }}
+                {...register('target_cash', decimalRules())}
                 autoFocus
               />
             )}

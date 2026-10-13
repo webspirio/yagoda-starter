@@ -23,7 +23,7 @@ describe('apiErrorToFields', () => {
     const err = new ApiError(400, 'bad', ['target_cash must be a decimal string']);
     const out = apiErrorToFields(err, FIELDS);
     expect(out.fieldErrors).toEqual([
-      { field: 'target_cash', messageKey: 'points.errors.cashFormat' },
+      { field: 'target_cash', messageKey: 'errors.decimalFormat' },
     ]);
   });
 
