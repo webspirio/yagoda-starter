@@ -111,7 +111,6 @@ export default tseslint.config(
             'tabsListVariants',
             'fieldBaseClass',
             'fieldGhostClass',
-            'staffName',
           ],
         },
       ],

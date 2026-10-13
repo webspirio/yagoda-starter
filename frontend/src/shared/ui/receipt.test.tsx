@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { i18n } from '../lib/i18n';
-import { ReceiptView, staffName, type ReceiptDocument } from './receipt';
+import { ReceiptView, type ReceiptDocument } from './receipt';
 
 const line = {
   label: 'Лохина',
@@ -99,15 +99,5 @@ describe('ReceiptView', () => {
   it('keeps the saved-in-system line on screen only', () => {
     render(<ReceiptView doc={makeDoc()} />);
     expect(screen.getByText(/Квитанція збережена в системі/)).toHaveClass('print:hidden');
-  });
-});
-
-describe('staffName', () => {
-  it('is a dash when there is no staff member', () => {
-    expect(staffName(null)).toBe('—');
-    expect(staffName(undefined)).toBe('—');
-  });
-  it('is «Last First»', () => {
-    expect(staffName({ first_name: 'Тарас', last_name: 'Бондар' })).toBe('Бондар Тарас');
   });
 });
