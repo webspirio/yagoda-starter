@@ -7,9 +7,23 @@ import { skipOf } from '../common/dto/pagination-query.dto';
 import { resolvePointFilter } from '../auth/access/point-scope';
 import type { AuthenticatedUser } from '../auth/jwt.strategy';
 import { ListPointCashQueryDto } from './dto/list-point-cash.query';
-import { PointCashRow, PointCashRowResponse, toPointCashRowResponse } from './point-cash.mapper';
+import {
+  PointCashBreakdown,
+  PointCashBreakdownRow,
+  PointCashRow,
+  PointCashRowResponse,
+  toPointCashBreakdown,
+  toPointCashRowResponse,
+} from './point-cash.mapper';
 import { crateBookSql, crateUnitsSql } from '../crates/crate-balance.service';
-import { anchorSql, asOfSql, movementsSql } from './point-cash.sql';
+import {
+  anchorSql,
+  asOfSql,
+  movementsSql,
+  payoutsOutSql,
+  returnsSql,
+  transfersInSql,
+} from './point-cash.sql';
 
 /**
  * A point's cash, computed and never stored.
@@ -92,6 +106,45 @@ export class PointCashService {
     }[];
 
     return row.cash;
+  }
+
+  /**
+   * `cashFor` PLUS THE TERMS IT IS MADE OF, in ONE statement so the two can
+   * never disagree (#73). `cash` is the same CASE `cashFor` runs; `expected`
+   * is the closing count's stored snapshot, and `late_change` is how far the
+   * shift's movements moved after it was taken (spec 2026-10-13). With no
+   * anchor every term sees `s.id = NULL` and reads 0.00 — the mapper drops them.
+   */
+  async breakdownFor(
+    pointId: string,
+    asOf?: string,
+  ): Promise<{ cash: string; breakdown: PointCashBreakdown }> {
+    const movements = movementsSql('a.shift_id', '$3');
+    const [row] = (await this.dataSource.manager.query(
+      `SELECT COALESCE(a.counted_amount
+                       + CASE WHEN a.kind = 'opening' THEN ${movements} ELSE 0.00 END,
+                       0.00)::text AS cash,
+              a.kind AS anchor_kind,
+              a.business_date::text AS anchor_date,
+              (a.business_date = b.as_of) AS same_day,
+              o.counted_amount::text AS opening,
+              ${transfersInSql('a.shift_id')}::text AS transfers_in,
+              ${payoutsOutSql('a.shift_id')}::text AS payouts,
+              ${returnsSql('a.shift_id', '$3')}::text AS returns,
+              a.counted_amount::text AS counted,
+              cl.expected_amount::text AS expected,
+              (cl.counted_amount - cl.expected_amount)::text AS difference,
+              (o.counted_amount + ${movements} - cl.expected_amount)::text AS late_change
+         FROM (SELECT ${asOfSql('$2', '$3')} AS as_of) b
+         LEFT JOIN LATERAL ${anchorSql('$1::uuid', 'b.as_of')} a ON TRUE
+         LEFT JOIN cash_counts o
+                ON o.shift_id = a.shift_id AND o.book = 'berry' AND o.kind = 'opening'
+         LEFT JOIN cash_counts cl
+                ON cl.shift_id = a.shift_id AND cl.book = 'berry' AND cl.kind = 'closing'`,
+      [pointId, asOf ?? null, this.tz.appTimezone],
+    )) as PointCashBreakdownRow[];
+
+    return { cash: row.cash, breakdown: toPointCashBreakdown(row) };
   }
 
   /**
