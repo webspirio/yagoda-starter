@@ -1,349 +1,245 @@
 import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { expectNoAxeViolations } from '../../../test-axe';
+import type { PointCashBreakdown } from '@/entities/point-cash';
 import { CashLedger } from './CashLedger';
 
+const open = (over: Partial<PointCashBreakdown> = {}): PointCashBreakdown => ({
+  kind: 'open',
+  anchor_date: '2026-09-23',
+  opening: '43730.00',
+  transfers_in: '15000.00',
+  payouts: '4000.00',
+  returns: '0.00',
+  closing: null,
+  ...over,
+});
+
+const closed = (
+  closing: Partial<NonNullable<PointCashBreakdown['closing']>> = {},
+): PointCashBreakdown => ({
+  kind: 'closed',
+  anchor_date: '2026-09-22',
+  opening: '21820.00',
+  transfers_in: '35000.00',
+  payouts: '13000.00',
+  returns: '0.00',
+  closing: {
+    counted: '43730.00',
+    expected: '43820.00',
+    difference: '-90.00',
+    late_change: '0.00',
+    ...closing,
+  },
+});
+
+const NONE: PointCashBreakdown = {
+  kind: 'none',
+  anchor_date: null,
+  opening: null,
+  transfers_in: null,
+  payouts: null,
+  returns: null,
+  closing: null,
+};
+
+/** The `LedgerRow` labelled `label` — `getByText` reads the label's own text, not its hint. */
+const row = (label: string) => screen.getByText(label).closest('div') as HTMLElement;
+/** The printed figure of that row. */
+const value = (label: string) => row(label).querySelector('.font-mono') as HTMLElement;
+
+const ledger = (
+  breakdown: PointCashBreakdown | undefined,
+  cash: string | undefined,
+  date = '2026-09-23',
+  failed = false,
+) =>
+  render(
+    <CashLedger
+      date={date}
+      cash={cash}
+      breakdown={breakdown}
+      failed={failed}
+      intakes={[]}
+      payouts={[]}
+    />,
+  );
+
 describe('CashLedger', () => {
-  it('shows the backend cash figure as the total, not the sum of the rows', () => {
-    // paidToday alone comes to 600.00 (its business_date matches `date`);
-    // every other row is 0.00. Naively summing buildLedger's own (unsigned)
-    // row values would read 600.00 — a different, and wrong, number from
-    // the server's 1,000.00.
-    render(
-      <CashLedger
-        date="2026-09-10"
-        cash="1000.00"
-        intakes={[]}
-        payouts={[
-          { business_date: '2026-09-10', amount: '600.00', voided_at: null, return_settled_at: null },
-        ]}
-        transfers={[]}
-      />,
-    );
+  it('open day — the rows add up to the total exactly (Shypynky 23.09: 43 730 − 4 000 + 0 + 15 000 = 54 730)', () => {
+    ledger(open(), '54730.00');
 
-    const total = screen.getByText('Berry cash').closest('div');
-    expect(total).toHaveTextContent('1,000.00 ₴');
-    // Never the naive row-sum. 600.00 (unsigned) would only appear if the
-    // total were computed by adding buildLedger's raw magnitudes instead of
-    // reading the `cash` prop — paidToday's own row always shows it signed
-    // (−600.00 ₴), never bare, so a bare "600.00 ₴" anywhere is the tell.
-    expect(screen.queryByText('600.00 ₴')).toBeNull();
+    expect(value('Opening count')).toHaveTextContent('43,730.00 ₴');
+    expect(value('Paid out today')).toHaveTextContent('−4,000.00 ₴');
+    expect(value('Returned to the drawer')).toHaveTextContent('0.00 ₴');
+    expect(value('Received by transfer today')).toHaveTextContent('15,000.00 ₴');
+    expect(value('Berry cash')).toHaveTextContent('54,730.00 ₴');
+    expect(screen.queryByText('Expected')).toBeNull();
   });
 
-  it('shows an outflow row with a minus sign', () => {
-    render(
-      <CashLedger
-        date="2026-09-10"
-        cash="0.00"
-        intakes={[]}
-        payouts={[
-          { business_date: '2026-09-10', amount: '600.00', voided_at: null, return_settled_at: null },
-        ]}
-        transfers={[]}
-      />,
-    );
+  it('closed day — expected, counted and the difference by number; the total says it is the closing count', () => {
+    ledger(closed(), '43730.00', '2026-09-22');
 
-    expect(screen.getByText('Paid out today')).toBeInTheDocument();
-    expect(screen.getByText('−600.00 ₴')).toBeInTheDocument();
+    expect(value('Expected')).toHaveTextContent('43,820.00 ₴');
+    expect(value('Counted at close')).toHaveTextContent('43,730.00 ₴');
+    expect(value('Difference')).toHaveTextContent('−90.00 ₴');
+    expect(screen.getByText('see the closing count')).toBeInTheDocument();
+    expect(value('Berry cash — counted at close')).toHaveTextContent('43,730.00 ₴');
+    expect(screen.queryByText('Berry cash')).toBeNull();
+    expect(screen.queryByText('Adjustment for changes after close')).toBeNull();
   });
 
-  it('keeps a voided payout counted in the outflow row (§9.3 — voiding does not return the cash)', () => {
-    render(
-      <CashLedger
-        date="2026-09-10"
-        cash="0.00"
-        intakes={[]}
-        payouts={[
-          {
-            business_date: '2026-09-10',
-            amount: '999.00',
-            voided_at: '2026-09-10T10:00:00Z',
-            return_settled_at: null,
-          },
-        ]}
-        transfers={[]}
-      />,
-    );
+  it('closed day — a shortage reads bad, a surplus amber, zero neither', () => {
+    const shortage = ledger(closed(), '43730.00', '2026-09-22');
+    expect(value('Difference')).toHaveClass('text-destructive');
+    shortage.unmount();
 
-    expect(screen.getByText('−999.00 ₴')).toBeInTheDocument();
+    const surplus = ledger(
+      closed({ counted: '43900.00', difference: '80.00' }),
+      '43900.00',
+      '2026-09-22',
+    );
+    expect(value('Difference')).toHaveClass('text-[var(--amber)]');
+    surplus.unmount();
+
+    ledger(closed({ counted: '43820.00', difference: '0.00' }), '43820.00', '2026-09-22');
+    expect(value('Difference')).toHaveClass('text-foreground');
   });
 
-  it('shows an inflow row without a minus sign', () => {
-    render(
-      <CashLedger
-        date="2026-09-10"
-        cash="0.00"
-        intakes={[]}
-        payouts={[]}
-        transfers={[
-          {
-            accepted_date: '2026-09-10',
-            status: 'accepted',
-            voided_at: null,
-            cash: '500.00',
-            reported_cash: null,
-            resolved_cash: null,
-          },
-        ]}
-      />,
+  it('closed day — a change after close is its own line, signed so the rows still reach Expected', () => {
+    // A 1 000 transfer voided after close: late_change −1 000; the line adds it back.
+    ledger(
+      closed({
+        expected: '44820.00',
+        counted: '44820.00',
+        difference: '0.00',
+        late_change: '-1000.00',
+      }),
+      '44820.00',
+      '2026-09-22',
     );
 
-    expect(screen.getByText('500.00 ₴')).toBeInTheDocument();
+    expect(value('Adjustment for changes after close')).toHaveTextContent('1,000.00 ₴');
+    expect(value('Expected')).toHaveTextContent('44,820.00 ₴');
   });
 
-  it('shows a settled return as an inflow, on the day it was returned', () => {
-    render(
-      <CashLedger
-        date="2026-09-10"
-        cash="0.00"
-        intakes={[]}
-        payouts={[
-          {
-            business_date: '2026-09-05',
-            amount: '8000.00',
-            voided_at: '2026-09-06T08:00:00Z',
-            return_settled_at: '2026-09-10T12:00:00Z',
-          },
-        ]}
-        transfers={[]}
-      />,
+  it('carried — one line for the last close, no movement rows', () => {
+    ledger(
+      {
+        ...NONE,
+        kind: 'carried',
+        anchor_date: '2026-09-22',
+        closing: { counted: '43730.00', expected: null, difference: null, late_change: null },
+      },
+      '43730.00',
+      '2026-09-24',
     );
 
-    expect(screen.getByText('Returned to the drawer')).toBeInTheDocument();
-    expect(screen.getByText('8,000.00 ₴')).toBeInTheDocument();
+    expect(value('Counted at close on 09/22')).toHaveTextContent('43,730.00 ₴');
+    expect(screen.getByText(/No shift on this day/)).toBeInTheDocument();
+    expect(screen.queryByText('Paid out today')).toBeNull();
+    expect(value('Berry cash')).toHaveTextContent('43,730.00 ₴');
   });
 
-  it('sets the accrued-today row visibly apart, with a caption saying it moves no cash', () => {
-    render(
-      <CashLedger
-        date="2026-09-10"
-        cash="0.00"
-        intakes={[{ business_date: '2026-09-10', amount: '1200.00', voided_at: null }]}
-        payouts={[]}
-        transfers={[]}
-      />,
-    );
+  it('none — says the drawer was never counted', () => {
+    ledger(NONE, '0.00');
 
-    const accruedLabel = screen.getByText('Accrued today');
-    expect(screen.getByText('does not move cash')).toBeInTheDocument();
-    // The distinguishing treatment lives on the row, not just the caption text.
-    expect(accruedLabel.closest('div')?.className).toContain('opacity-70');
+    expect(screen.getByText("This point's drawer has never been counted.")).toBeInTheDocument();
+    expect(screen.queryByText('Opening count')).toBeNull();
+    expect(value('Berry cash')).toHaveTextContent('0.00 ₴');
   });
 
-  it("sets paid-for-past-days visibly apart too — it explains no term of the server's formula", () => {
-    // review round 2, finding 2: `paidPast` maps onto nothing in
-    // `movementsSql` (an earlier day's payout is already folded into an
-    // earlier drawer count), so it gets the SAME informational treatment
-    // `accruedToday` already has, not the treatment of a row that actually
-    // moves today's cash.
-    render(
-      <CashLedger
-        date="2026-09-10"
-        cash="0.00"
-        intakes={[]}
-        payouts={[
-          { business_date: '2026-09-09', amount: '400.00', voided_at: null, return_settled_at: null },
-        ]}
-        transfers={[]}
-      />,
-    );
+  it('open since an earlier day (#114) — says whose movements the rows are', () => {
+    ledger(open({ anchor_date: '2026-09-20' }), '54730.00', '2026-09-23');
 
-    const pastLabel = screen.getByText('Paid for past days');
-    expect(screen.getByText("not part of today's figure")).toBeInTheDocument();
-    expect(pastLabel.closest('div')?.className).toContain('opacity-70');
+    expect(screen.getByText(/open since 09\/20/)).toBeInTheDocument();
   });
 
-  it('warns under «paid for past days» when the payouts read was truncated', () => {
+  it('says nothing about an earlier day when the shift opened on the date shown', () => {
+    ledger(open(), '54730.00', '2026-09-23');
+
+    expect(screen.queryByText(/open since/)).toBeNull();
+  });
+
+  it('a failed detail read says so inside the card and prints no total', () => {
+    ledger(undefined, undefined, '2026-09-23', true);
+
+    expect(screen.getByText(/Something went wrong/)).toBeInTheDocument();
+    expect(screen.queryByText('Berry cash')).toBeNull();
+  });
+
+  it('captions the opening row with the target when there is one', () => {
     render(
       <CashLedger
-        date="2026-09-10"
-        cash="0.00"
+        date="2026-09-23"
+        cash="54730.00"
+        breakdown={open()}
         intakes={[]}
         payouts={[]}
-        transfers={[]}
+        target="5000.00"
+      />,
+    );
+
+    expect(screen.getByText('target 5,000.00 ₴')).toBeInTheDocument();
+  });
+
+  it('keeps the informational rows apart from the sum', () => {
+    render(
+      <CashLedger
+        date="2026-09-23"
+        cash="54730.00"
+        breakdown={open()}
+        intakes={[{ business_date: '2026-09-23', amount: '700.00', voided_at: null }]}
+        payouts={[{ business_date: '2026-09-20', amount: '300.00' }]}
+      />,
+    );
+
+    expect(value('Accrued today')).toHaveTextContent('700.00 ₴');
+    expect(row('Accrued today').className).toContain('opacity-70');
+    expect(value('Paid for past days')).toHaveTextContent('−300.00 ₴');
+    expect(row('Paid for past days').className).toContain('opacity-70');
+  });
+
+  it('warns under an informational row whose page was capped', () => {
+    render(
+      <CashLedger
+        date="2026-09-23"
+        cash="54730.00"
+        breakdown={open()}
+        intakes={[]}
+        payouts={[]}
+        intakesTruncated
         payoutsTruncated
       />,
     );
 
-    const pastRow = screen.getByText('Paid for past days').closest('div');
-    expect(pastRow?.nextElementSibling?.tagName).toBe('P');
-    expect(pastRow?.nextElementSibling).toHaveTextContent(
-      /Showing recent payouts only — older ones may be missing/,
+    expect(row('Accrued today').nextElementSibling).toHaveTextContent(
+      /Showing recent receipts only/,
+    );
+    expect(row('Paid for past days').nextElementSibling).toHaveTextContent(
+      /Showing recent payouts only/,
     );
   });
 
-  it('warns under «returned to the drawer» too — it reads the same truncated payouts array', () => {
-    // `returnedToday` sums `payouts.filter(p => p.return_settled_at !== null
-    // …)` over the SAME array `paidPast` reads — fix round 1's minor
-    // finding: a settled return whose payout fell outside the fetched page
-    // vanishes with no caveat unless this row carries one too. The row
-    // renders (at 0.00) even with an empty `payouts` array, so this reuses
-    // the exact fixture the sibling «paid for past days» truncation test
-    // uses — the only change is which row's sibling `<p>` is asserted on.
-    render(
-      <CashLedger date="2026-09-10" cash="0.00" intakes={[]} payouts={[]} transfers={[]} payoutsTruncated />,
-    );
-
-    const returnedRow = screen.getByText('Returned to the drawer').closest('div');
-    expect(returnedRow?.nextElementSibling?.tagName).toBe('P');
-    expect(returnedRow?.nextElementSibling).toHaveTextContent(
-      /Showing recent payouts only — older ones may be missing/,
-    );
-  });
-
-  it('warns under «received by transfer today» when the transfers read was truncated', () => {
-    render(
-      <CashLedger
-        date="2026-09-10"
-        cash="0.00"
-        intakes={[]}
-        payouts={[]}
-        transfers={[]}
-        transfersTruncated
-      />,
-    );
-
-    const cashInRow = screen.getByText('Received by transfer today').closest('div');
-    expect(cashInRow?.nextElementSibling?.tagName).toBe('P');
-    // Named for what is actually missing: a row fed by the transfers page
-    // must not tell the reader that older PAYOUTS may be missing from it.
-    expect(cashInRow?.nextElementSibling).toHaveTextContent(
-      /Showing recent transfers only — older ones may be missing/,
-    );
-    expect(screen.queryByText(/recent payouts only/)).toBeNull();
-  });
-
-  it('warns under «accrued today» when the intakes read was truncated', () => {
-    render(
-      <CashLedger
-        date="2026-09-10"
-        cash="0.00"
-        intakes={[]}
-        payouts={[]}
-        transfers={[]}
-        intakesTruncated
-      />,
-    );
-
-    const accruedRow = screen.getByText('Accrued today').closest('div');
-    expect(accruedRow?.nextElementSibling?.tagName).toBe('P');
-    expect(accruedRow?.nextElementSibling).toHaveTextContent(
-      /Showing recent receipts only — older ones may be missing/,
-    );
-  });
-
-  it('says nothing about truncation when the payouts read came back whole', () => {
-    render(
-      <CashLedger date="2026-09-10" cash="0.00" intakes={[]} payouts={[]} transfers={[]} />,
-    );
-
-    expect(screen.queryByText(/older ones may be missing/)).toBeNull();
-  });
-
-  it('has no axe violations', async () => {
-    const { container } = render(
-      <CashLedger date="2026-09-10" cash="0.00" intakes={[]} payouts={[]} transfers={[]} />,
-    );
-    await expectNoAxeViolations(container);
-  });
-
-  describe('opening row — R6', () => {
-    it('shows the opening row only when an opening count was passed', () => {
-      render(
-        <CashLedger
-          date="2026-09-10"
-          cash="0.00"
-          intakes={[]}
-          payouts={[]}
-          transfers={[]}
-          openingCount="1500.00"
-        />,
-      );
-
-      expect(screen.getByText('Opening count')).toBeInTheDocument();
-      expect(screen.getByText('1,500.00 ₴')).toBeInTheDocument();
-    });
-
-    it('shows no opening row at all without one', () => {
-      render(
-        <CashLedger date="2026-09-10" cash="0.00" intakes={[]} payouts={[]} transfers={[]} />,
-      );
-
-      expect(screen.queryByText('Opening count')).toBeNull();
-    });
-
-    it('shows the target hint only when a target is assigned', () => {
-      render(
-        <CashLedger
-          date="2026-09-10"
-          cash="0.00"
-          intakes={[]}
-          payouts={[]}
-          transfers={[]}
-          openingCount="1500.00"
-          target="5000.00"
-        />,
-      );
-
-      expect(screen.getByText('target 5,000.00 ₴')).toBeInTheDocument();
-    });
-
-    it('shows the opening row with no hint at all when the point has no target', () => {
-      render(
-        <CashLedger
-          date="2026-09-10"
-          cash="0.00"
-          intakes={[]}
-          payouts={[]}
-          transfers={[]}
-          openingCount="1500.00"
-        />,
-      );
-
-      expect(screen.getByText('Opening count')).toBeInTheDocument();
-      expect(screen.queryByText(/^target /)).toBeNull();
-    });
-
-    it('still prints the server cash as the total, not the opening count plus the rows', () => {
-      // Rule 1 must survive the new row: `cash` alone is the total, whatever
-      // `openingCount` says.
-      render(
-        <CashLedger
-          date="2026-09-10"
-          cash="1000.00"
-          intakes={[]}
-          payouts={[]}
-          transfers={[]}
-          openingCount="1500.00"
-        />,
-      );
-
-      const total = screen.getByText('Berry cash').closest('div');
-      expect(total).toHaveTextContent('1,000.00 ₴');
-    });
-  });
-
-  describe('negative-cash notice — R6', () => {
+  describe('negative-cash notice', () => {
     it('shows the notice when the total has gone negative', () => {
-      render(
-        <CashLedger date="2026-09-10" cash="-100.00" intakes={[]} payouts={[]} transfers={[]} />,
-      );
-
+      ledger(open(), '-50.00');
       expect(screen.getByText(/Berry cash has gone negative/)).toBeInTheDocument();
     });
 
     it('says nothing when the total is not negative', () => {
-      render(
-        <CashLedger date="2026-09-10" cash="0.00" intakes={[]} payouts={[]} transfers={[]} />,
-      );
-
+      ledger(open(), '54730.00');
       expect(screen.queryByText(/Berry cash has gone negative/)).toBeNull();
     });
   });
 
   it('prints the two-rows footnote, unconditionally', () => {
-    render(<CashLedger date="2026-09-10" cash="0.00" intakes={[]} payouts={[]} transfers={[]} />);
-
+    ledger(NONE, '0.00');
     expect(screen.getByText(/Payouts show as two rows on purpose/)).toBeInTheDocument();
+  });
+
+  it('has no axe violations', async () => {
+    const { container } = ledger(closed(), '43730.00', '2026-09-22');
+    await expectNoAxeViolations(container);
   });
 });
