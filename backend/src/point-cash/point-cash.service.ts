@@ -443,13 +443,24 @@ export class PointCashService {
               s.crate_deposits::text AS crate_deposits,
               s.crate_deposit_units AS crate_deposit_units,
               lt.status  AS latest_transfer_status,
-              lt.sent_at AS latest_transfer_sent_at
+              lt.sent_at AS latest_transfer_sent_at,
+              lt.resolved_at AS latest_transfer_resolved_at
          FROM scoped s
          LEFT JOIN LATERAL (
               SELECT CASE WHEN t.accepted_date IS NULL OR t.accepted_date > s.as_of
                           THEN 'sent'::transfer_status
                           ELSE t.status END AS status,
-                     t.sent_at
+                     t.sent_at,
+                     -- #76: the owner's resolution, reconstructed like the
+                     -- status beside it -- shown only for a transfer that was
+                     -- already 'disputed' on as_of AND resolved by then, in
+                     -- the app timezone. Otherwise NULL.
+                     CASE WHEN t.status = 'disputed'
+                               AND t.accepted_date IS NOT NULL
+                               AND t.accepted_date <= s.as_of
+                               AND t.resolved_at IS NOT NULL
+                               AND (t.resolved_at AT TIME ZONE $3::text)::date <= s.as_of
+                          THEN t.resolved_at END AS resolved_at
                 FROM transfers t
                WHERE t.collection_point_id = s.id
                  AND (t.sent_at AT TIME ZONE $3::text)::date <= s.as_of
