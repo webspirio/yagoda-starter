@@ -1,4 +1,4 @@
-import { add, allocate, cmp, div, gt, gte, isNegative, mul, sub, sum } from './money';
+import { add, allocate, cmp, div, gt, gte, isNegative, mul, mulWholeHryvnia, sub, sum } from './money';
 
 /**
  * THIS FILE IS THE GUARANTEE. Every amount the system will ever print on a
@@ -73,6 +73,28 @@ describe('money', () => {
       // numeric(12,2) tops out at 9_999_999_999.99; this proves the internals
       // are bigint, not double.
       expect(mul('9999999999.99', '1.00')).toBe('9999999999.99');
+    });
+  });
+
+  describe('mulWholeHryvnia — whole hryvnia, up only from 80 kopiykas (#56)', () => {
+    it.each([
+      // the ticket's own table, as products with rate 1.00
+      ['49.80', '1.00', '50.00'],
+      ['49.79', '1.00', '49.00'],
+      ['49.99', '1.00', '50.00'],
+      ['49.00', '1.00', '49.00'],
+      ['0.80', '1.00', '1.00'],
+      ['0.79', '1.00', '0.00'],
+      // the threshold applies to the EXACT scale-4 product, not to mul's kopiykas
+      ['0.10', '497.95', '49.00'], // 49.7950 — mul would say 49.80, the rule says 49
+      ['0.01', '4979.99', '49.00'], // 49.7999
+      ['0.01', '4980.00', '50.00'], // 49.8000
+      ['12.35', '4.03', '49.00'], // 49.7705
+      // mirrored on the negative side, and never a negative zero
+      ['-49.80', '1.00', '-50.00'],
+      ['-0.79', '1.00', '0.00'],
+    ])('%s × %s = %s', (a, b, expected) => {
+      expect(mulWholeHryvnia(a, b)).toBe(expected);
     });
   });
 

@@ -1,5 +1,5 @@
 import { BadRequestException } from '@nestjs/common';
-import { add, gt, lt, lte, mul, sub, sum } from '../common/money';
+import { add, gt, lt, lte, mul, mulWholeHryvnia, sub, sum } from '../common/money';
 
 /**
  * EVERY ARITHMETIC OPERATION IN THIS SLICE HAPPENS HERE, and nothing here
@@ -189,7 +189,8 @@ function buildLine(
     net_kg,
     price: price.base_price,
     bonus: input.bonus,
-    amount: mul(net_kg, rate),
+    // §2.12 (#56) — the line is paid in whole hryvnia; weight and rate stay exact.
+    amount: mulWholeHryvnia(net_kg, rate),
     tare: input.tare,
   };
 }

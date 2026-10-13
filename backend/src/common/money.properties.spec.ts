@@ -2,7 +2,7 @@ import { Decimal } from 'decimal.js';
 import * as fc from 'fast-check';
 
 import * as moneyModule from './money';
-import { add, allocate, div, mul, sub, sum, lt, lte, isZero } from './money';
+import { add, allocate, div, mul, mulWholeHryvnia, sub, sum, lt, lte, isZero } from './money';
 import { canonicalizeDecimalString } from './dto/canonical-decimal';
 
 /**
@@ -193,6 +193,22 @@ describe('money — properties', () => {
     );
   });
 
+  it('mulWholeHryvnia agrees with the oracle: up from 0.80 of the EXACT product, else down (#56)', () => {
+    const wholeOracle = (a: string, b: string): string => {
+      const product = new D(a).mul(b);
+      const magnitude = product.abs();
+      const whole = magnitude.floor();
+      const rounded = magnitude.minus(whole).gte('0.8') ? whole.plus(1) : whole;
+      return (product.isNegative() && !rounded.isZero() ? rounded.neg() : rounded).toFixed(2);
+    };
+    fc.assert(
+      fc.property(amount, amount, (a, b) => {
+        expect(mulWholeHryvnia(a, b)).toBe(wholeOracle(a, b));
+      }),
+      RUNS,
+    );
+  });
+
   it('div by zero throws rather than returning anything', () => {
     fc.assert(
       fc.property(amount, (a) => {
@@ -249,12 +265,14 @@ describe('money — properties', () => {
   });
 
   it('does NOT implement §12.1 payout rounding, and pins the surface that would carry it', () => {
-    // §12.1 defines a SECOND rounding — to whole hryvnia, with exactly 0.50 going DOWN —
-    // unresolved at the source («-> Правка: точно???») and deliberately absent here. It is
-    // guarded today by ONE comment in ONE file and nothing else. If someone implements it,
-    // this export list is where they must say so.
+    // §12.1 defines a whole-hryvnia rounding for the SUGGESTED PAYOUT — exactly 0.50 going
+    // DOWN — unresolved at the source («-> Правка: точно???») and deliberately absent here.
+    // #56's `mulWholeHryvnia` (§2.12) is a different rule for a different number: a reception
+    // line, up only from 0.80. If someone implements §12.1, this export list is where they
+    // must say so.
     expect(add('120.50', '0.00')).toBe('120.50');
     expect(mul('120.50', '1.00')).toBe('120.50');
+    expect(mulWholeHryvnia('120.50', '1.00')).toBe('120.00');
     expect(Object.keys(moneyModule).sort()).toEqual([
       'add',
       'allocate',
@@ -267,6 +285,7 @@ describe('money — properties', () => {
       'lt',
       'lte',
       'mul',
+      'mulWholeHryvnia',
       'sub',
       'sum',
     ]);

@@ -21,11 +21,11 @@
  * provisional, the replacement is the internals of THIS FILE and nothing else.
  * That is the whole reason the seam exists — see spec §6.8.
  *
- * NOT THE ONLY ROUNDING IN THE DOMAIN. §12.1 defines a SECOND one for the
- * suggested payout — to whole hryvnia, with exactly 0.50 going DOWN — which is
- * neither implemented here nor a replacement for `mul`'s half-up at scale 2.
- * It is unresolved at the source («→ Правка: точно???») and arrives with the
- * slice that suggests a payout.
+ * NOT THE ONLY ROUNDING IN THE DOMAIN. `mulWholeHryvnia` (§2.12, #56) rounds a
+ * reception line to whole hryvnia — up only from 0.80 — and is used there and
+ * nowhere else. §12.1 defines a THIRD one for the suggested payout — whole
+ * hryvnia, exactly 0.50 going DOWN — still unresolved at the source
+ * («→ Правка: точно???») and not implemented here.
  */
 
 const SCALE = 2;
@@ -77,6 +77,25 @@ export function mul(a: string, b: string): string {
   const magnitude = negative ? -raw : raw;
   const rounded = (magnitude + UNIT / 2n) / UNIT; // +50, floor -> half-up
   return format(negative ? -rounded : rounded);
+}
+
+/** #56: a reception line is paid in whole hryvnia — up from 0.80, otherwise
+ *  the kopiykas are dropped. Scale-4 units of the exact product. */
+const ROUND_UP_FROM = 8000n;
+const HRYVNIA = UNIT * UNIT;
+
+/**
+ * Multiplies two scale-2 values and rounds the EXACT product to whole hryvnia
+ * (§2.12, #56): 0.80 and above goes up, anything less is dropped. One rounding,
+ * on the scale-4 product — never on `mul`'s kopiykas, which would move the
+ * threshold to 0.795. By magnitude, so a negative line mirrors its positive twin.
+ */
+export function mulWholeHryvnia(a: string, b: string): string {
+  const raw = parse(a) * parse(b); // scale 4
+  const negative = raw < 0n;
+  const magnitude = negative ? -raw : raw;
+  const whole = magnitude / HRYVNIA + (magnitude % HRYVNIA >= ROUND_UP_FROM ? 1n : 0n);
+  return format((negative ? -whole : whole) * UNIT);
 }
 
 /** Exact addition of already-rounded values. NEVER rounds — see money.spec.ts's
