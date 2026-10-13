@@ -1528,9 +1528,6 @@ The slice rounds only a reception line's `amount` (§2.12). The ticket says
   reweigh shortfall (`reweigh-reconciliation.service.ts`), and cost-of-day's
   shortfall, per-kg figures and §8.5 top-up split (`product-cost-rows.ts`,
   `cost-of-day.service.ts`, `top-up-allocation.ts`).
-- **The threshold sits on the exact product.** `0,10 × 497,95 = 49,7950 → 49`;
-  a calculator reading kopecks shows 49,80 and expects 50. Only [0.795, 0.800)
-  differs — confirm with the client.
 - **Cost-of-day's «ціна була» drops below the rate on new receipts.** It is
   `accrued ÷ net kg`, so a tiny line reads far low (0,10 kg × 497,95 → 49 →
   490,00/kg). Arguably right — it is what was accrued — but undocumented on screen.
