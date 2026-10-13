@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { act, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createMemoryRouter, RouterProvider } from 'react-router';
 import { ApiError } from '@/shared/api';
@@ -60,7 +60,8 @@ vi.mock('@/entities/intake', async (importOriginal) => ({
   useIntakesQuery: (filter: unknown) => intakesMock(filter),
 }));
 
-vi.mock('@/entities/payout', () => ({
+vi.mock('@/entities/payout', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/entities/payout')>()),
   usePayoutsQuery: (filter: unknown) => payoutsMock(filter),
 }));
 
@@ -82,6 +83,8 @@ vi.mock('@/widgets/receipt', async (importOriginal) => ({
     receiptDialogMock(props);
     return props.open ? <div data-testid="receipt-dialog-mock" /> : null;
   },
+  PayoutReceiptDialog: (props: { payoutId: string | null; open: boolean }) =>
+    props.open ? <div data-testid="payout-receipt-mock">{props.payoutId}</div> : null,
 }));
 
 vi.mock('@/features/void-document', () => ({
@@ -496,6 +499,52 @@ describe('SupplierCardPage', () => {
     expect(receiptDialogMock).toHaveBeenLastCalledWith(
       expect.objectContaining({ open: true, intakeId: 'i1' }),
     );
+  });
+
+  it('opens the payout receipt when a standalone payout row is clicked', async () => {
+    payoutsMock.mockReturnValue(
+      page<Payout>([
+        payout({ id: 'y1', code: 'VD-0001', amount: '300.00', created_at: '2026-09-08T09:20:00Z' }),
+      ]),
+    );
+
+    renderCard();
+    expect(screen.queryByTestId('payout-receipt-mock')).toBeNull();
+    await userEvent.click(screen.getByRole('button', { name: /VD-0001/ }));
+
+    expect(screen.getByTestId('payout-receipt-mock')).toHaveTextContent('y1');
+    expect(screen.queryByTestId('receipt-dialog-mock')).toBeNull();
+  });
+
+  it('leaves a payout row that belongs to a receipt non-clickable', () => {
+    payoutsMock.mockReturnValue(
+      page<Payout>([
+        payout({
+          id: 'y1',
+          code: 'VD-0001',
+          amount: '300.00',
+          created_at: '2026-09-08T09:20:00Z',
+          intake_id: 'i1',
+        }),
+      ]),
+    );
+
+    renderCard();
+
+    expect(screen.getByText('VD-0001')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /VD-0001/ })).toBeNull();
+  });
+
+  it('opens the payout receipt once a payout from the header action is recorded', () => {
+    renderCard();
+    expect(screen.queryByTestId('payout-receipt-mock')).toBeNull();
+
+    const { onPaid } = payoutDialogMock.mock.lastCall![0] as {
+      onPaid: (p: { id: string }) => void;
+    };
+    act(() => onPaid({ id: 'pay-1' }));
+
+    expect(screen.getByTestId('payout-receipt-mock')).toHaveTextContent('pay-1');
   });
 
   it('shows Void on a payout row for the operator who recorded it', () => {

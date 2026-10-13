@@ -28,7 +28,12 @@ import { useShiftOnDateQuery, useCurrentShiftQuery, type Shift } from '@/entitie
 import { canVoidIntake, useIntakesQuery, type Intake } from '@/entities/intake';
 import { usePayoutsQuery, type Payout } from '@/entities/payout';
 import { useSuppliersQuery, supplierName } from '@/entities/supplier';
-import { ReceiptDialog, ReceiptVoidButton, useReceiptOpener } from '@/widgets/receipt';
+import {
+  PayoutReceiptDialog,
+  ReceiptDialog,
+  ReceiptVoidButton,
+  useReceiptOpener,
+} from '@/widgets/receipt';
 import { ShiftCountResult, type ShiftCountResultFor } from '@/widgets/count-result';
 import {
   useOpenShiftMutation,
@@ -44,6 +49,9 @@ interface FeedRow {
   kind: 'intake' | 'payout';
   /** The receipt itself on an intake row — what `canVoidIntake` reads. */
   intake: Intake | null;
+  /** True on a payout row with no receipt behind it — the only one with a
+   *  document of its own to open. */
+  standalonePayout: boolean;
   id: string;
   code: string;
   amount: string;
@@ -99,6 +107,7 @@ export function DayPage() {
   const [reopenOpen, setReopenOpen] = useState(false);
   const receipt = useReceiptOpener();
   const { openReceipt } = receipt;
+  const payoutReceipt = useReceiptOpener();
   // Bumped on every open so the dialog remounts with fresh RHF defaults and no
   // banner from the refusal before it — the convention SetPriceDialog documents.
   const [reopenInstance, setReopenInstance] = useState(0);
@@ -199,6 +208,7 @@ export function DayPage() {
     ...(intakes.data?.data ?? []).map((i: Intake): FeedRow => ({
       kind: 'intake',
       intake: i,
+      standalonePayout: false,
       id: i.id,
       code: i.code,
       amount: i.amount,
@@ -210,6 +220,7 @@ export function DayPage() {
     ...(payouts.data?.data ?? []).map((p: Payout): FeedRow => ({
       kind: 'payout',
       intake: null,
+      standalonePayout: p.intake_id === null,
       id: p.id,
       code: p.code,
       amount: p.amount,
@@ -367,8 +378,9 @@ export function DayPage() {
 
           return (
             <li key={`${row.kind}-${row.id}`} className="py-2.5">
-              {/* Intake rows open the receipt (spec §5.1); a payout row has no
-                  document view, so it stays a plain, non-interactive row. */}
+              {/* Intake rows open the receipt (spec §5.1), and so does a
+                  standalone payout (its own slip); a payout tied to a receipt
+                  is read on that receipt, so it stays a plain row. */}
               {row.intake ? (
                 // The void action is a SIBLING of the row button, never nested in it.
                 <div className="flex items-center gap-1">
@@ -386,6 +398,14 @@ export function DayPage() {
                     />
                   ) : null}
                 </div>
+              ) : row.standalonePayout ? (
+                <button
+                  type="button"
+                  onClick={() => payoutReceipt.openReceipt(row.id)}
+                  className={cn(rowClassName, 'w-full text-left')}
+                >
+                  {rowContent}
+                </button>
               ) : (
                 <div className={rowClassName}>{rowContent}</div>
               )}
@@ -492,6 +512,13 @@ export function DayPage() {
         open={receipt.open}
         startWithVoid={receipt.startWithVoid}
         onClose={receipt.clear}
+      />
+
+      <PayoutReceiptDialog
+        key={`payout-${payoutReceipt.receiptId}`}
+        payoutId={payoutReceipt.receiptId}
+        open={payoutReceipt.open}
+        onClose={payoutReceipt.clear}
       />
       <ShiftCountResult result={staleResult} onClose={() => setStaleResult(null)} />
     </>

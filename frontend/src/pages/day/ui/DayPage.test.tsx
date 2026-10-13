@@ -95,6 +95,8 @@ vi.mock('@/widgets/receipt', async (importOriginal) => ({
         {startWithVoid ? ' (void)' : ''}
       </div>
     ) : null,
+  PayoutReceiptDialog: ({ payoutId, open }: { payoutId: string | null; open: boolean }) =>
+    open ? <div>Payout receipt for {payoutId}</div> : null,
 }));
 
 vi.mock('@/entities/collection-point', () => ({
@@ -460,15 +462,32 @@ describe('DayPage — the operator on an open shift', () => {
     expect(duplicateKey).toEqual([]);
   });
 
-  it('opens the receipt for an intake row, but a payout row stays non-clickable', async () => {
+  it('opens the receipt for an intake row', async () => {
     const user = userEvent.setup();
     renderDay();
 
     expect(screen.queryByText('Receipt for i1')).toBeNull();
     await user.click(screen.getByText('KV-0001'));
     expect(screen.getByText('Receipt for i1')).toBeInTheDocument();
+  });
 
-    // The payout row carries no button at all — the spec has no document view for it.
+  it('opens the payout receipt for a standalone payout row', async () => {
+    const user = userEvent.setup();
+    renderDay();
+
+    expect(screen.queryByText('Payout receipt for y1')).toBeNull();
+    await user.click(screen.getByRole('button', { name: /VD-0001/ }));
+    expect(screen.getByText('Payout receipt for y1')).toBeInTheDocument();
+    expect(screen.queryByText(/^Receipt for/)).toBeNull();
+  });
+
+  it('leaves a payout row that belongs to a receipt non-clickable', () => {
+    payoutsMock.mockReturnValue(
+      page<Payout>([payout({ id: 'y1', code: 'VD-0001', amount: '4000.00', intake_id: 'i1' })]),
+    );
+    renderDay();
+
+    expect(screen.getByText('VD-0001')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /VD-0001/ })).toBeNull();
   });
 
