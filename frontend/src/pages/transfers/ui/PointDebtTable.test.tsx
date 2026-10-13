@@ -215,7 +215,7 @@ describe('PointDebtTable — the status column', () => {
 });
 
 describe('PointDebtTable — the point badge (#76)', () => {
-  it('reads «Doesn\'t match» for a point with one open dispute, whatever its latest transfer says', () => {
+  it('reads «Doesn\'t match» for a point with one open dispute, beside its newer latest transfer', () => {
     render(
       <PointDebtTable
         rows={[
@@ -230,7 +230,49 @@ describe('PointDebtTable — the point badge (#76)', () => {
     );
 
     expect(screen.getByText("Doesn't match")).toBeInTheDocument();
-    expect(screen.queryByText('Accepted')).toBeNull();
+    // A newer transfer's own status stays visible next to the dispute.
+    expect(screen.getByText('Accepted')).toBeInTheDocument();
+  });
+
+  it('keeps a newer transfer «In transit» beside one open dispute', () => {
+    render(
+      <PointDebtTable
+        rows={[row({ latest_transfer: { status: 'sent', sent_at: '2026-09-12T08:00:00.000Z', resolved_at: null } })]}
+        unresolvedDisputes={[transfer()]}
+        onSend={noop}
+        onResolve={noop}
+      />,
+    );
+
+    expect(screen.getByText('In transit')).toBeInTheDocument();
+    expect(screen.getByText("Doesn't match")).toBeInTheDocument();
+  });
+
+  it('keeps a newer transfer «In transit» beside several open disputes', () => {
+    render(
+      <PointDebtTable
+        rows={[row({ latest_transfer: { status: 'sent', sent_at: '2026-09-12T08:00:00.000Z', resolved_at: null } })]}
+        unresolvedDisputes={[transfer({ id: 'a' }), transfer({ id: 'b' })]}
+        onSend={noop}
+        onResolve={noop}
+      />,
+    );
+
+    expect(screen.getByText('In transit')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: "Doesn't match (2)" })).toBeInTheDocument();
+  });
+
+  it('does not repeat the disputed badge when the latest transfer IS the open dispute', () => {
+    render(
+      <PointDebtTable
+        rows={[row({ latest_transfer: { status: 'disputed', sent_at: '2026-09-10T08:00:00.000Z', resolved_at: null } })]}
+        unresolvedDisputes={[transfer()]}
+        onSend={noop}
+        onResolve={noop}
+      />,
+    );
+
+    expect(screen.getAllByText("Doesn't match")).toHaveLength(1);
   });
 
   it('reads «Resolved» when the latest transfer is a dispute the owner already settled', () => {
@@ -392,6 +434,21 @@ describe('PointDebtTable — a point with several open disputes (#76)', () => {
     expect(screen.queryByRole('list')).toBeNull();
     expect(document.querySelector('[aria-expanded]')).toBeNull();
     expect(screen.getByRole('button', { name: 'Resolve' })).toBeInTheDocument();
+  });
+
+  it('does not re-open by itself after the point drops below two disputes and gains one again', async () => {
+    const user = userEvent.setup();
+    const { rerender } = render(
+      <PointDebtTable rows={[row()]} unresolvedDisputes={three} onSend={noop} onResolve={noop} />,
+    );
+    await user.click(screen.getByRole('button', { name: "Doesn't match (3)" }));
+    expect(screen.getByRole('list')).toBeInTheDocument();
+
+    rerender(<PointDebtTable rows={[row()]} unresolvedDisputes={three.slice(0, 1)} onSend={noop} onResolve={noop} />);
+    rerender(<PointDebtTable rows={[row()]} unresolvedDisputes={three.slice(0, 2)} onSend={noop} onResolve={noop} />);
+
+    expect(screen.getByRole('button', { name: "Doesn't match (2)" })).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByRole('list')).toBeNull();
   });
 
   it('has no axe violations while expanded', async () => {

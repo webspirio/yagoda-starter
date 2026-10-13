@@ -92,9 +92,9 @@ export function TransferHistory({
       {
         id: 'status',
         header: t('transfers.history.col.status'),
-        // `row` is the FULL `Transfer` here (unlike `PointDebtTable`'s thin
-        // `latest_transfer`), so this is the one place that can actually tell
-        // a settled dispute from an open one (fix round 1, finding 4).
+        // `row` is the FULL `Transfer` here, so `resolved_at` tells a settled
+        // dispute from an open one (fix round 1, finding 4) — the same field
+        // `PointDebtTable` reads off `latest_transfer.resolved_at` since #76.
         cell: (row) => {
           const badge = <TransferStatusBadge status={row.status} resolvedAt={row.resolved_at} />;
           if (!isDisputed(row)) return badge;

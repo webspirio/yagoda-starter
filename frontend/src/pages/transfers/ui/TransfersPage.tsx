@@ -32,8 +32,10 @@ type DialogTarget =
  * same array is filtered client-side to `status === 'disputed' &&
  * resolved_at === null` so `PointDebtTable` can hand `ResolveTransferDialog`
  * a full `Transfer` (id included) for whichever point still has an open
- * dispute — the `GET /point-cash` row itself carries only
- * `{ status, sent_at }`, no id and no `resolved_at`.
+ * dispute (EVERY open one, #76) — the `GET /point-cash` row itself carries only
+ * `latest_transfer: { status, sent_at, resolved_at }` (`resolved_at` since
+ * #76, enough for its badge to read «Врегульовано»), but no id, and only the
+ * point's latest transfer, not every open dispute.
  *
  * RULE 4 — this read is never given `includeVoided: true`. A voided
  * transfer stopped counting toward any point's cash (§9.3); showing it in

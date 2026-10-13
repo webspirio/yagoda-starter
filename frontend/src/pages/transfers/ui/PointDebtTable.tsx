@@ -1,9 +1,8 @@
 import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Send, HandCoins, TriangleAlert, ChevronDown } from 'lucide-react';
+import { Send, HandCoins, ChevronDown } from 'lucide-react';
 import { DataTable, type Column } from '@/shared/ui/data-table';
 import { Button } from '@/shared/ui/button';
-import { Badge } from '@/shared/ui/badge';
 import { EmptyState } from '@/shared/ui/empty-state';
 import { PendingSlice } from '@/shared/ui/pending-slice';
 import { cn } from '@/shared/lib/cn';
@@ -27,31 +26,26 @@ import { DisputeList } from './DisputeDetails';
  * (no crate tables exist yet).
  *
  * RULE 3 — «Вирішити» renders whenever a point has an unresolved disputed
- * transfer, full stop. Fix round 1 (finding 4) moved this OFF matching
- * `GET /point-cash`'s thin `latest_transfer: { status, sent_at }` by
- * `sent_at` string equality against the full `Transfer` records — that
- * match was fragile (a cross-endpoint string comparison) AND wrong in a
- * second way: `resolve()` never touches `status` (transfers.service.ts's
- * own doc comment: "THE STATUS IS NOT TOUCHED"), so a dispute the owner
- * already settled stays `status: 'disputed'` forever, and gating on
- * `latest_transfer.status === 'disputed'` alone would keep offering
- * «Вирішити» for it with no way to ever clear the button. Gating directly
- * on the full record's own `resolved_at === null` (done by the page before
- * this component ever sees `unresolvedDisputes`) fixes both at once, and
- * as a side effect no longer requires the dispute to also be the point's
- * literal *latest* transfer — an unresolved dispute stays actionable even
- * if a later, unrelated transfer has since become "latest" for the badge.
+ * transfer, full stop, gated on the full records' own `resolved_at === null`
+ * (done by the page before this component ever sees `unresolvedDisputes`)
+ * and matched by point id, never by `sent_at` against `latest_transfer`
+ * (fix round 1, finding 4: that cross-endpoint string match was fragile).
+ * `resolve()` never touches `status` (transfers.service.ts: "THE STATUS IS
+ * NOT TOUCHED"), so a settled dispute stays `status: 'disputed'` forever;
+ * `latest_transfer.resolved_at` (#76) is what lets that row's badge read
+ * «Врегульовано» instead. An open dispute need not be the point's latest
+ * transfer: when a newer one exists, its own badge («У дорозі» /
+ * «Прийнято») stays visible BESIDE the dispute badge, never replaced by it.
  *
  * RULE 4 (#76) — EVERY open dispute stays reachable, not just the first.
  * One open dispute: the badge reads «Не сходиться» and «Вирішити» sits
  * inline, one click as before. Two or more: the badge reads «Не сходиться
  * (N)» and becomes the row's toggle (so does a click on the row itself);
  * the sub-row lists each dispute newest first, each with its own
- * «Вирішити». An open dispute outranks `latest_transfer` for the badge; with
- * none, `latest_transfer.resolved_at` lets a settled dispute read
- * «Врегульовано». `expanded` is DERIVED (`openId === id && count >= 2`), so
- * a refetch that leaves one dispute falls back to the inline layout with no
- * reset effect.
+ * «Вирішити». With no open dispute the badge is `latest_transfer`'s alone.
+ * `expanded` is DERIVED (`openId === id && count >= 2`), so a refetch that
+ * leaves one dispute falls back to the inline layout at once; `openId` is
+ * then cleared during render, so a later second dispute arrives collapsed.
  */
 export function PointDebtTable({
   rows,
@@ -85,6 +79,11 @@ export function PointDebtTable({
     for (const list of map.values()) list.sort((a, b) => b.sent_at.localeCompare(a.sent_at));
     return map;
   }, [unresolvedDisputes]);
+
+  // A point that drops below two disputes forgets it was open, so gaining a
+  // second one later does not re-open the list by itself. Adjusting state
+  // during render (React's documented pattern), not a reset effect.
+  if (openId !== null && (disputesByPoint.get(openId)?.length ?? 0) < 2) setOpenId(null);
 
   const disputesOf = (row: PointCashRow): Transfer[] =>
     disputesByPoint.get(row.collection_point_id) ?? [];
@@ -152,26 +151,37 @@ export function PointDebtTable({
       cell: (row) => {
         const disputes = disputesOf(row);
         const expanded = isExpanded(row);
+        // RULE 3: an open dispute does not hide a NEWER transfer — its own
+        // «У дорозі»/«Прийнято» stays beside the dispute badge. Only when the
+        // latest transfer IS a dispute would that repeat «Не сходиться».
+        const latest = row.latest_transfer;
+        const latestBadge = latest ? (
+          <TransferStatusBadge status={latest.status} resolvedAt={latest.resolved_at} />
+        ) : null;
         return (
           <div className="flex items-center justify-end gap-2">
+            {disputes.length > 0 && latest?.status !== 'disputed' ? latestBadge : null}
             {disputes.length >= 2 ? (
-              <Badge asChild variant="outline" className="cursor-pointer border-destructive/40 text-destructive hover:bg-destructive/10">
-                <button
-                  type="button"
-                  aria-expanded={expanded}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    toggle(row);
-                  }}
+              <button
+                type="button"
+                aria-expanded={expanded}
+                className="group cursor-pointer rounded-4xl outline-none focus-visible:ring-[3px] focus-visible:ring-destructive/30"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  toggle(row);
+                }}
+              >
+                <TransferStatusBadge
+                  status="disputed"
+                  count={disputes.length}
+                  className="group-hover:bg-destructive/10"
                 >
-                  <TriangleAlert aria-hidden="true" />
-                  {t('transfers.disputedCount', { n: disputes.length })}
                   <ChevronDown
                     aria-hidden="true"
                     className={cn('transition-transform', expanded ? undefined : '-rotate-90')}
                   />
-                </button>
-              </Badge>
+                </TransferStatusBadge>
+              </button>
             ) : disputes.length === 1 ? (
               <>
                 <TransferStatusBadge status="disputed" />
@@ -187,12 +197,9 @@ export function PointDebtTable({
                   {t('transfers.resolve')}
                 </Button>
               </>
-            ) : row.latest_transfer ? (
-              <TransferStatusBadge
-                status={row.latest_transfer.status}
-                resolvedAt={row.latest_transfer.resolved_at}
-              />
-            ) : null}
+            ) : (
+              latestBadge
+            )}
             <Button
               size="sm"
               onClick={(e) => {

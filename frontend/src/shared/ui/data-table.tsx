@@ -43,7 +43,10 @@ export function DataTable<Row>({
    *  table owns no open/closed state, the caller decides per row. */
   renderExpanded?: (row: Row, index: number) => React.ReactNode | null;
   /** Narrows `onRowClick` (and its pointer cursor) to the rows this accepts —
-   *  e.g. only the expandable ones. Omitted: every row is clickable. */
+   *  e.g. only the expandable ones. Omitted: every row is clickable.
+   *  A clickable row has no keyboard affordance of its own (no tab stop, no
+   *  Enter/Space), so the caller must also render a keyboard-reachable
+   *  control in the row — a button — that does the same thing. */
   rowClickable?: (row: Row, index: number) => boolean;
 }) {
   const colClass = (c: Column<Row>) =>
@@ -68,12 +71,13 @@ export function DataTable<Row>({
         ) : (
           rows.map((row, i) => {
             const expanded = renderExpanded ? renderExpanded(row, i) : null;
-            const clickable = onRowClick != null && (rowClickable ? rowClickable(row, i) : true);
+            const onClick =
+              onRowClick && (rowClickable?.(row, i) ?? true) ? () => onRowClick(row, i) : undefined;
             return (
               <React.Fragment key={rowKey ? rowKey(row, i) : i}>
                 <TableRow
-                  onClick={clickable && onRowClick ? () => onRowClick(row, i) : undefined}
-                  className={clickable ? 'cursor-pointer' : undefined}
+                  onClick={onClick}
+                  className={onClick ? 'cursor-pointer' : undefined}
                 >
                   {columns.map((c) => (
                     <TableCell key={c.id} className={colClass(c)}>

@@ -1,7 +1,9 @@
+import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Truck, Check, TriangleAlert, CircleCheck } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { Badge } from '@/shared/ui/badge';
+import { cn } from '@/shared/lib/cn';
 import type { TransferStatus } from '@/entities/transfer';
 
 /**
@@ -27,8 +29,18 @@ const TONE: Record<TransferStatus, string> = {
 export function TransferStatusBadge({
   status,
   resolvedAt = null,
+  count,
+  className,
+  children,
 }: {
   status: TransferStatus;
+  /** How many open disputes this badge stands for (#76). At 2 or more the
+   *  label reads «Не сходиться (N)» (`transfers.disputedCount`); below that
+   *  it is the plain per-status label. */
+  count?: number;
+  className?: string;
+  /** Trailing content inside the badge, e.g. a toggle's chevron. */
+  children?: ReactNode;
   /**
    * `Transfer.resolved_at` (fix round 1, finding 4) — `resolve()` never
    * touches `status` (transfers.service.ts's own doc comment: "THE STATUS
@@ -45,18 +57,22 @@ export function TransferStatusBadge({
 
   if (status === 'disputed' && resolvedAt != null) {
     return (
-      <Badge variant="outline" className="border-leaf/40 text-leaf">
+      <Badge variant="outline" className={cn('border-leaf/40 text-leaf', className)}>
         <CircleCheck />
         {t('transfers.status.resolved')}
+        {children}
       </Badge>
     );
   }
 
   const Icon = ICON[status];
   return (
-    <Badge variant="outline" className={TONE[status]}>
+    <Badge variant="outline" className={cn(TONE[status], className)}>
       <Icon />
-      {t(`transfers.status.${status}`)}
+      {count != null && count >= 2
+        ? t('transfers.disputedCount', { n: count })
+        : t(`transfers.status.${status}`)}
+      {children}
     </Badge>
   );
 }
