@@ -165,6 +165,27 @@ describe('payouts.balance_after (Postgres)', () => {
     expect(got).toEqual(['950.00']);
   });
 
+  it('orders payouts sharing a created_at by id, so each subtracts only the earlier one', async () => {
+    let ids: string[] = [];
+    const got = await replay(async (q) => {
+      const s = await supplier();
+      await intake(q, s, '1000.00', 0);
+      ids = [await payout(q, s, '100.00', 1), await payout(q, s, '200.00', 1)];
+      return ids;
+    });
+    // Counting each other would print 700 twice; the id tiebreak gives one 900 (100 first) and one 700.
+    const rows = ids.map((id, i) => ({ id, own: i === 0 ? '100.00' : '200.00', bal: got[i] }));
+    rows.sort((a, b) => (a.id < b.id ? -1 : 1));
+    const after = {
+      '100.00': { first: '900.00', second: '700.00' },
+      '200.00': { first: '800.00', second: '700.00' },
+    };
+    expect([rows[0].bal, rows[1].bal]).toEqual([
+      after[rows[0].own as '100.00' | '200.00'].first,
+      after[rows[0].own as '100.00' | '200.00'].second,
+    ]);
+  });
+
   it('leaves the column NOT NULL after up(), and down() drops it', async () => {
     const col = () =>
       ds.query(

@@ -13,7 +13,8 @@ export const REBUILD_BALANCE_AFTER_SQL = `
                        AND (t."voided_at"  IS NULL OR t."voided_at"  > p."created_at")
                        AND (ti."voided_at" IS NULL OR ti."voided_at" > p."created_at")), 0.00)
         - COALESCE((SELECT SUM(q2."amount") FROM "payouts" q2
-                     WHERE q2."supplier_id" = p."supplier_id" AND q2."created_at" <= p."created_at"
+                     WHERE q2."supplier_id" = p."supplier_id"
+                       AND (q2."created_at", q2."id") <= (p."created_at", p."id")
                        AND (q2."voided_at" IS NULL OR q2."voided_at" > p."created_at")), 0.00)`;
 
 /**
@@ -24,10 +25,18 @@ export const REBUILD_BALANCE_AFTER_SQL = `
  * Historic rows are rebuilt AS OF each payout: the supplier's intakes, top-ups and payouts
  * created no later than it and not yet voided at that moment. The key is `created_at` (the
  * transaction's start), so two transactions that queued on the supplier lock may order
- * differently here than they committed — historic rows only; new rows are exact.
+ * differently here than they committed — historic rows only; new rows are exact. Payouts that
+ * share a `created_at` are ordered by `id` (the payouts term counts those strictly before this
+ * one by `(created_at, id)`, plus itself), so each subtracts only the earlier one, never both
+ * ways; intakes and top-ups stay `<=` on `created_at` alone — one written in the payout's own
+ * transaction must count.
  *
- * SHIPPED — DO NOT EDIT. `REBUILD_BALANCE_AFTER_SQL` is shared with the dev seed, so a future
- * change to the debt formula needs a NEW constant and a NEW migration, never an edit here:
+ * The SQL lives in a module-level constant, so `scripts/verify/checks/schema-conformance.mjs`
+ * (which scans string literals inside `up()` only) never sees it. It holds no column types and
+ * no DDL — a future migration must keep its DDL (`ADD`/`ALTER`/`numeric(...)`) inside `up()`.
+ *
+ * SHIPPED — DO NOT EDIT (the rule from merge on; #145 itself was edited before it shipped).
+ * `REBUILD_BALANCE_AFTER_SQL` is shared with the dev seed, so a future change to the debt formula needs a NEW constant and a NEW migration, never an edit here:
  * changing it would silently rewrite what this migration did on databases that already ran it
  * and diverge from them.
  */

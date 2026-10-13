@@ -686,7 +686,7 @@ async function seedDocuments(
     if (found) continue;
     const shift = shiftId.get(`${doc.point}/${doc.day}`);
     if (!shift) throw new Error(`Seed payout ${code} has no shift`);
-    // `balance_after` is rebuilt below, once every seeded document exists (#145).
+    // `balance_after` is rebuilt after the top-ups below, once every seeded document exists (#145).
     const inserted = await one<{ id: string }>(
       qr,
       `INSERT INTO payouts (code, shift_id, supplier_id, amount, paid_by_user_id, created_at, balance_after)
@@ -704,9 +704,6 @@ async function seedDocuments(
     );
     newPayoutIds.push(inserted!.id);
     summary.payouts += 1;
-  }
-  if (newPayoutIds.length > 0) {
-    await qr.query(`${REBUILD_BALANCE_AFTER_SQL} WHERE p."id" = ANY($1)`, [newPayoutIds]);
   }
 
   // Crates: §6.5's two-tranches-at-different-prices case and ticket #58's
@@ -882,6 +879,14 @@ async function seedDocuments(
       [intake.id, row.amount, row.reason, ownerId],
     );
     summary.topUps += 1;
+  }
+
+  // The as-of rebuild of the new payouts' `balance_after` (#145) runs HERE, after the last
+  // document that feeds it: the top-ups above land at `now()`, so one made before a payout's
+  // `created_at` (a curated payout later today) must already exist for the rebuild to count it.
+  // Id-scoped, so re-running the seed leaves earlier payouts untouched.
+  if (newPayoutIds.length > 0) {
+    await qr.query(`${REBUILD_BALANCE_AFTER_SQL} WHERE p."id" = ANY($1)`, [newPayoutIds]);
   }
 
   // TRANSFERS BEFORE COUNTS, and both after the payouts above: a closing
