@@ -169,6 +169,27 @@ describe('PayoutReceiptDialog', () => {
     );
   });
 
+  it('passes reopens: null while the settlement is in flight', async () => {
+    setUp({ me: OWNER });
+    settlementMock.mockReturnValue({ data: undefined, isPending: true, isError: false });
+    render(<PayoutReceiptDialog payoutId="payout-1" open onClose={vi.fn()} />);
+    await userEvent.click(screen.getByRole('button', { name: 'Void' }));
+
+    expect(voidDialogMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({ reopens: null, reopensFailed: false }),
+    );
+  });
+
+  it('passes reopensFailed when the settlement errors', async () => {
+    setUp({ me: OWNER });
+    settlementMock.mockReturnValue({ data: undefined, isPending: false, isError: true });
+    render(<PayoutReceiptDialog payoutId="payout-1" open onClose={vi.fn()} />);
+    await userEvent.click(screen.getByRole('button', { name: 'Void' }));
+    expect(voidDialogMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({ reopens: null, reopensFailed: true }),
+    );
+  });
+
   it('re-reads the note on opening and waits for it to print', () => {
     setUp({ isFetching: true });
     render(<PayoutReceiptDialog payoutId="payout-1" open onClose={vi.fn()} />);

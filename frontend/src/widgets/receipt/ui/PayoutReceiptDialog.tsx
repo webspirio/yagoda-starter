@@ -139,6 +139,8 @@ export function PayoutReceiptDialog({
         reopens={
           settlementQuery.data ? reopenedCodes(settlementQuery.data, payout.id, null) : null
         }
+        reopensFailed={settlementQuery.isError}
+        retryReopens={() => void settlementQuery.refetch()}
       />
     );
   }
