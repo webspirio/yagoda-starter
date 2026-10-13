@@ -262,6 +262,28 @@ describe('PointDebtTable — the point badge (#76)', () => {
     expect(screen.getByRole('button', { name: "Doesn't match (2)" })).toBeInTheDocument();
   });
 
+  it('keeps a newer, already settled dispute «Resolved» beside an older open one', () => {
+    render(
+      <PointDebtTable
+        rows={[
+          row({
+            latest_transfer: {
+              status: 'disputed',
+              sent_at: '2026-09-12T08:00:00.000Z',
+              resolved_at: '2026-09-12T10:00:00.000Z',
+            },
+          }),
+        ]}
+        unresolvedDisputes={[transfer()]}
+        onSend={noop}
+        onResolve={noop}
+      />,
+    );
+
+    expect(screen.getByText("Doesn't match")).toBeInTheDocument();
+    expect(screen.getByText('Resolved')).toBeInTheDocument();
+  });
+
   it('does not repeat the disputed badge when the latest transfer IS the open dispute', () => {
     render(
       <PointDebtTable

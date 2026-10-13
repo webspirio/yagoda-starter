@@ -118,6 +118,10 @@ describe('TransferHistory', () => {
   });
 
   describe('a disputed row expands to the dispute (#76)', () => {
+    afterEach(() => {
+      vi.unstubAllEnvs();
+    });
+
     const open = transfer({
       id: 'open',
       status: 'disputed',
@@ -178,7 +182,6 @@ describe('TransferHistory', () => {
       const item = within(screen.getByRole('list')).getByRole('listitem');
       expect(item).toHaveTextContent('Resolved: 480.00 ₴ · 20 cr. · 09/11 · 09:00 AM');
       expect(within(item).queryByRole('button', { name: 'Resolve' })).toBeNull();
-      vi.unstubAllEnvs();
     });
 
     it('toggles on a row click, but «Void» does not toggle', async () => {

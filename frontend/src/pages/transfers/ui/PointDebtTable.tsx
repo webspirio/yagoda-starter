@@ -164,7 +164,12 @@ export function PointDebtTable({
                 dispute AND a newer transfer in transit carries two, and in one
                 line they pushed the table past its card at 1440 px (#76). */}
             <div className="flex flex-col items-end gap-1">
-              {disputes.length > 0 && latest?.status !== 'disputed' ? latestBadge : null}
+              {/* The latest transfer's own badge stays beside the dispute badge —
+                  unless it IS an open dispute, which the badge below already
+                  names. A settled one reads «Врегульовано», so it stays. */}
+              {disputes.length > 0 && !(latest?.status === 'disputed' && latest.resolved_at == null)
+                ? latestBadge
+                : null}
               {disputes.length >= 2 ? (
                 <button
                   type="button"

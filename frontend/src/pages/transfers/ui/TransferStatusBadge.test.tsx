@@ -60,4 +60,9 @@ describe('TransferStatusBadge', () => {
     const { container } = render(<TransferStatusBadge status="disputed" />);
     await expectNoAxeViolations(container);
   });
+  it('ignores count on a status other than disputed', () => {
+    render(<TransferStatusBadge status="sent" count={3} />);
+    expect(screen.getByText('In transit')).toBeInTheDocument();
+    expect(screen.queryByText(/\(3\)/)).not.toBeInTheDocument();
+  });
 });

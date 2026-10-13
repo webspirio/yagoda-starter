@@ -105,7 +105,7 @@ export function TransferHistory({
               aria-expanded={expanded}
               onClick={(e) => {
                 e.stopPropagation();
-                setOpenId(expanded ? null : row.id);
+                toggle(row);
               }}
               className="inline-flex items-center gap-1 rounded-4xl focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
             >

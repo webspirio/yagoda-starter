@@ -69,7 +69,7 @@ export function TransferStatusBadge({
   return (
     <Badge variant="outline" className={cn(TONE[status], className)}>
       <Icon />
-      {count != null && count >= 2
+      {status === 'disputed' && count != null && count >= 2
         ? t('transfers.disputedCount', { n: count })
         : t(`transfers.status.${status}`)}
       {children}
