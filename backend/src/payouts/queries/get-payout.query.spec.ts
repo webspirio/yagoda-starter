@@ -1,12 +1,12 @@
 import { In } from 'typeorm';
 import { User } from '../../users/user.entity';
 import { GetPayoutQuery } from './get-payout.query';
-import { oksana, payout, shift } from '../../testing/unit/payouts.mocks';
+import { maria, oksana, payout, shift } from '../../testing/unit/payouts.mocks';
 
 describe('GetPayoutQuery', () => {
   // The payer is NOT the viewer: an owner reprinting an operator's payout is the path this
   // read exists for, so the lookup must use paid_by_user_id, never actor.sub.
-  const PAYER = 'u-maria';
+  const PAYER = maria.sub;
   const build = (user: unknown) => {
     const visible = {
       load: jest
