@@ -35,8 +35,9 @@ export function TransferStatusBadge({
 }: {
   status: TransferStatus;
   /** How many open disputes this badge stands for (#76). At 2 or more the
-   *  label reads «Не сходиться (N)» (`transfers.disputedCount`); below that
-   *  it is the plain per-status label. */
+   *  label reads «Не сходиться (N)» (`transfers.disputedCount`), and only for
+   *  a `disputed` status — `count` is ignored on any other; below 2 it is the
+   *  plain per-status label. */
   count?: number;
   className?: string;
   /** Trailing content inside the badge, e.g. a toggle's chevron. */
