@@ -709,6 +709,21 @@ describe('PointCashPage — the ledger reads the server breakdown (#73)', () => 
     expect(pointCashOneMock).toHaveBeenCalledWith('p1', '2026-09-08');
   });
 
+  it('reads the receipts from the day a still-open shift began (#114, PR #242 review)', () => {
+    const one = pointCashOneMock();
+    pointCashOneMock.mockReturnValue({
+      ...one,
+      data: { ...one.data, breakdown: { ...one.data.breakdown, anchor_date: '2026-09-07' } },
+    });
+    renderPointCash();
+    expect(intakesMock).toHaveBeenLastCalledWith({
+      pointId: 'p1',
+      from: '2026-09-07',
+      to: '2026-09-08',
+      limit: 100,
+    });
+  });
+
   it('no longer reads a day-scoped opening count of its own', () => {
     renderPointCash();
     expect(cashCountsMock).not.toHaveBeenCalledWith({

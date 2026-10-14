@@ -1,4 +1,5 @@
 import { sum } from '@/shared/lib/money';
+import type { PointCashBreakdown } from '@/entities/point-cash';
 
 /** One line of `GET /intakes` the ledger cares about. */
 export interface LedgerIntake {
@@ -33,7 +34,8 @@ export interface BuildLedgerInput {
   /**
    * The business date of the shift the total is made of — earlier than `date`
    * for a shift left open since an earlier day (#114). Its own payouts are in
-   * the total, so they are not «past». Defaults to `date`.
+   * the total, so they are not «past», and its receipts are what it accrued.
+   * Defaults to `date`.
    */
   shiftDate?: string;
   intakes: LedgerIntake[];
@@ -41,6 +43,17 @@ export interface BuildLedgerInput {
   /** `total > data.length` on the fetched page (`PointCashPage` caps each read at 100). */
   intakesTruncated?: boolean;
   payoutsTruncated?: boolean;
+}
+
+/**
+ * The business date of the shift `breakdown`'s terms are made of — earlier
+ * than `date` for a shift left open since an earlier day (#114), and `date`
+ * itself while the breakdown has not arrived or has no shift.
+ */
+export function shiftDateOf(breakdown: PointCashBreakdown | undefined, date: string): string {
+  return (breakdown?.kind === 'open' || breakdown?.kind === 'closed') && breakdown.anchor_date
+    ? breakdown.anchor_date
+    : date;
 }
 
 /**
@@ -57,7 +70,11 @@ export function buildLedger({
   payoutsTruncated = false,
 }: BuildLedgerInput): LedgerRow[] {
   const accruedToday = sum(
-    intakes.filter((i) => i.voided_at === null && i.business_date === date).map((i) => i.amount),
+    intakes
+      .filter(
+        (i) => i.voided_at === null && i.business_date >= shiftDate && i.business_date <= date,
+      )
+      .map((i) => i.amount),
   );
   const paidPast = sum(payouts.filter((p) => p.business_date < shiftDate).map((p) => p.amount));
 

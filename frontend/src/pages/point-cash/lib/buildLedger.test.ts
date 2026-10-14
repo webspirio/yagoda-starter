@@ -66,4 +66,17 @@ describe('buildLedger', () => {
     });
     expect(rows.find((r) => r.key === 'paidPast')?.value).toBe('99.00');
   });
+
+  it('accrues the receipts of a shift left open since an earlier day (#114, PR #242 review)', () => {
+    const rows = buildLedger({
+      date: '2026-10-14',
+      shiftDate: '2026-10-13',
+      intakes: [
+        { business_date: '2026-10-13', amount: '23986.30', voided_at: null },
+        { business_date: '2026-10-12', amount: '500.00', voided_at: null },
+      ],
+      payouts: [],
+    });
+    expect(rows.find((r) => r.key === 'accruedToday')?.value).toBe('23986.30');
+  });
 });

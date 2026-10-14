@@ -39,6 +39,7 @@ import {
 } from '@/features/count-shift';
 import { ShiftCountResult, type ShiftCountResultFor } from '@/widgets/count-result';
 import { CashLedger } from './CashLedger';
+import { shiftDateOf } from '../lib/buildLedger';
 import { CratesBookCard } from './CratesBookCard';
 import { IncomingTransfers } from './IncomingTransfers';
 import { CashCountHistory } from './CashCountHistory';
@@ -148,11 +149,16 @@ export function PointCashPage() {
   // they cannot disagree. Kept out of `isError`: a failed breakdown degrades
   // the ledger card only, never the stats above it.
   const pointCashOne = usePointCashForPointQuery(pointId, date);
-  // The ledger's two INFORMATIONAL rows (accrued today, paid for past days),
-  // each capped at `limit: 100` and caveated under its row when it was. Both
-  // hooks disable themselves when the filter names no scope (hence the empty
-  // object rather than a bare date range), `useCashCountsQuery` likewise.
-  const intakes = useIntakesQuery(pointId ? { pointId, from: date, to: date, limit: 100 } : {});
+  // The ledger's two INFORMATIONAL rows (accrued, paid for past days), each
+  // capped at `limit: 100` and caveated under its row when it was. Receipts
+  // are read from the day the shift began — a shift left open since an
+  // earlier day files them under that day (#114). Both hooks disable
+  // themselves when the filter names no scope (hence the empty object rather
+  // than a bare date range), `useCashCountsQuery` likewise.
+  const shiftDate = shiftDateOf(pointCashOne.data?.breakdown, date);
+  const intakes = useIntakesQuery(
+    pointId ? { pointId, from: shiftDate, to: date, limit: 100 } : {},
+  );
   const payouts = usePayoutsQuery({ pointId: pointId ?? undefined, to: date, limit: 100 });
   const cashCounts = useCashCountsQuery({ pointId: pointId ?? undefined });
   // R4 — «Зміна і перерахунок каси». `useShiftOnDateQuery` already gates

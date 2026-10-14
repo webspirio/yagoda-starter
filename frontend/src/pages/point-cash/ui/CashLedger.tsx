@@ -8,6 +8,7 @@ import { formatShortDate } from '@/shared/lib/date';
 import type { PointCashBreakdown } from '@/entities/point-cash';
 import {
   buildLedger,
+  shiftDateOf,
   type LedgerIntake,
   type LedgerPayout,
   type LedgerRowKey,
@@ -56,10 +57,10 @@ export function CashLedger({
   const locale = i18n.resolvedLanguage;
   const money = (v: string) => formatUah(v, locale);
   const day = (iso: string) => formatShortDate(iso, locale);
-  const shiftDate =
-    breakdown?.kind === 'open' || breakdown?.kind === 'closed'
-      ? (breakdown.anchor_date ?? date)
-      : date;
+  const shiftDate = shiftDateOf(breakdown, date);
+  // A shift left open since an earlier day (#114): every term covers the whole
+  // shift, so no row may say «today».
+  const spansDays = breakdown?.kind === 'open' && shiftDate !== date;
   const info = buildLedger({
     date,
     shiftDate,
@@ -89,14 +90,18 @@ export function CashLedger({
         {hasTerms ? (
           <>
             <LedgerRowView
-              label={t('pointCash.ledger.opening')}
+              label={
+                spansDays
+                  ? t('pointCash.ledger.openingOn', { date: day(shiftDate) })
+                  : t('pointCash.ledger.opening')
+              }
               hint={
                 target ? t('pointCash.ledger.openingHint', { target: money(target) }) : undefined
               }
               value={money(b.opening ?? '0.00')}
             />
             <LedgerRowView
-              label={t('pointCash.ledger.paidToday')}
+              label={t(spansDays ? 'pointCash.ledger.paidShift' : 'pointCash.ledger.paidToday')}
               value={money(sub('0', b.payouts ?? '0.00'))}
             />
             <LedgerRowView
@@ -105,17 +110,11 @@ export function CashLedger({
               tone="leaf"
             />
             <LedgerRowView
-              label={t('pointCash.ledger.cashIn')}
+              label={t(spansDays ? 'pointCash.ledger.cashInShift' : 'pointCash.ledger.cashIn')}
               value={money(b.transfers_in ?? '0.00')}
               tone="leaf"
             />
           </>
-        ) : null}
-
-        {b.kind === 'open' && b.anchor_date && b.anchor_date !== date ? (
-          <p className="pt-1 text-xs text-muted-foreground">
-            {t('pointCash.ledger.openSince', { date: day(b.anchor_date) })}
-          </p>
         ) : null}
 
         {b.kind === 'closed' && c ? (
@@ -179,7 +178,11 @@ export function CashLedger({
         {info.map((row) => (
           <Fragment key={row.key}>
             <LedgerRowView
-              label={t(`pointCash.ledger.${row.key}`)}
+              label={t(
+                spansDays && row.key === 'accruedToday'
+                  ? 'pointCash.ledger.accruedShift'
+                  : `pointCash.ledger.${row.key}`,
+              )}
               hint={t(`pointCash.ledger.${row.key}Hint`)}
               value={money(row.key === 'paidPast' ? sub('0', row.value) : row.value)}
               className="opacity-70"

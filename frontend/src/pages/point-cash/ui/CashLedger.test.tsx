@@ -50,7 +50,10 @@ const row = (label: string) => screen.getByText(label).closest('div') as HTMLEle
 const value = (label: string) => row(label).querySelector('.font-mono') as HTMLElement;
 /** That figure as a decimal string, sign included — for adding rows up. */
 const amount = (label: string) =>
-  (value(label).textContent ?? '').replace('\u2212', '-').replace(/[^\d.+-]/g, '').replace('+', '');
+  (value(label).textContent ?? '')
+    .replace('\u2212', '-')
+    .replace(/[^\d.+-]/g, '')
+    .replace('+', '');
 
 const ledger = (
   breakdown: PointCashBreakdown | undefined,
@@ -126,8 +129,13 @@ describe('CashLedger', () => {
 
     // Exact, not a substring: «−1,000.00 ₴» contains «1,000.00 ₴».
     expect(amount('Correction to the closing count')).toBe('1000.00');
-    const rows = ['Opening count', 'Paid out today', 'Returned to the drawer',
-      'Received by transfer today', 'Correction to the closing count'];
+    const rows = [
+      'Opening count',
+      'Paid out today',
+      'Returned to the drawer',
+      'Received by transfer today',
+      'Correction to the closing count',
+    ];
     expect(sum(rows.map(amount))).toBe(amount('Expected'));
     expect(amount('Expected')).toBe('44820.00');
   });
@@ -158,16 +166,29 @@ describe('CashLedger', () => {
     expect(value('Berry cash')).toHaveTextContent('0.00 ₴');
   });
 
-  it('open since an earlier day (#114) — says whose movements the rows are', () => {
-    ledger(open({ anchor_date: '2026-09-20' }), '54730.00', '2026-09-23');
+  it('open since an earlier day (#114) — the rows are labelled for the shift, not «today»', () => {
+    render(
+      <CashLedger
+        date="2026-10-14"
+        cash="20910.00"
+        breakdown={open({ anchor_date: '2026-10-13' })}
+        intakes={[{ business_date: '2026-10-13', amount: '23986.30', voided_at: null }]}
+        payouts={[]}
+      />,
+    );
 
-    expect(screen.getByText('Shift open since 09/20')).toBeInTheDocument();
+    expect(value('Accrued this shift')).toHaveTextContent('23,986.30 ₴');
+    expect(value('Opening count on 10/13')).toHaveTextContent('43,730.00 ₴');
+    expect(value('Paid out this shift')).toHaveTextContent('−4,000.00 ₴');
+    expect(value('Received by transfer this shift')).toHaveTextContent('15,000.00 ₴');
+    expect(screen.queryByText(/today/i)).toBeNull();
   });
 
-  it('says nothing about an earlier day when the shift opened on the date shown', () => {
+  it('keeps the «today» labels when the shift opened on the date shown', () => {
     ledger(open(), '54730.00', '2026-09-23');
 
-    expect(screen.queryByText(/open since/i)).toBeNull();
+    expect(screen.getByText('Paid out today')).toBeInTheDocument();
+    expect(screen.queryByText(/this shift/i)).toBeNull();
   });
 
   it('a failed detail read says so inside the card and prints no total', () => {
