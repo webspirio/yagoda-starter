@@ -8,6 +8,7 @@ import { resolvePointFilter } from '../auth/access/point-scope';
 import type { AuthenticatedUser } from '../auth/jwt.strategy';
 import { ListPointCashQueryDto } from './dto/list-point-cash.query';
 import { PointCashRow, PointCashRowResponse, toPointCashRowResponse } from './point-cash.mapper';
+import { CashBook } from '../cash-counts/cash-book.enum';
 import { crateBookSql, crateUnitsSql } from '../crates/crate-balance.service';
 
 /**
@@ -103,12 +104,10 @@ const asOfSql = (asOf: string, tz: string): string =>
  * without `GROUP BY book` is exactly what `cash-book.enum.ts` exists to make
  * impossible to write by accident.
  *
- * IT DOES NOT HONOUR `as_of`, AND THAT IS NOT AN OVERSIGHT. §7.5 gives the
- * crates book no lower bound — «від першої видачі» — and no physical count to
- * anchor on, because this book is never counted (spec §4.3). It is a
- * point-lifetime running sum, which is a different shape from the berry book
- * on the same screen; the field name and this comment are what keep a reader
- * from "fixing" one into the other.
+ * TWO CRATE FIGURES, TWO SHAPES (#178). `crate_deposits` (the LIABILITY, what
+ * suppliers are owed back) stays a point-lifetime running sum that does not
+ * honour `as_of`. `crate_cash` (the DRAWER) is anchored on the crates book's
+ * own counts exactly like berry cash — see `crateMovementsSql` and `anchorSql`.
  *
  * `crate_deposit_units` (R8) SITS RIGHT BESIDE IT, SAME EXEMPTIONS. §7.5's
  * card names both — money held AND units still out — and `crateUnitsSql`
@@ -143,6 +142,19 @@ const movementsSql = (shift: string, tz: string): string => `(
 )`;
 
 /**
+ * The crates book's movements of ONE shift (#178, spec D4) — a voided crate
+ * document is out at once: in an open shift the deposit went back over the
+ * counter, the same reading `returned_on_void` gives a payout. Receipt-mode
+ * issuances carry 0 by CHK_crate_issuances_receipt_no_money.
+ */
+const crateMovementsSql = (shift: string): string => `(
+    COALESCE((SELECT SUM(ci.deposit_taken) FROM crate_issuances ci
+        WHERE ci.shift_id = ${shift} AND ci.voided_at IS NULL), 0.00)
+  - COALESCE((SELECT SUM(cr.deposit_refund) FROM crate_returns cr
+        WHERE cr.shift_id = ${shift} AND cr.voided_at IS NULL), 0.00)
+)`;
+
+/**
  * THE ANCHOR — the latest `opening` or `closing` count at a point, on or
  * before `asOf`. `midday` is excluded and that is load-bearing rather than
  * tidy: a demoted midday count (spec §6.3) sits mid-shift, and isolating "the
@@ -151,12 +163,12 @@ const movementsSql = (shift: string, tz: string): string => `(
  *
  * The ordering tiebreak puts `closing` after `opening` within one shift.
  */
-const anchorSql = (point: string, asOf: string): string => `(
+const anchorSql = (point: string, asOf: string, book: CashBook = CashBook.Berry): string => `(
   SELECT c.counted_amount, c.kind, c.shift_id
     FROM cash_counts c
     JOIN shifts s ON s.id = c.shift_id
    WHERE s.collection_point_id = ${point}
-     AND c.book = 'berry'
+     AND c.book = '${book}'
      AND c.kind <> 'midday'
      AND s.business_date <= ${asOf}
    ORDER BY s.business_date DESC, (c.kind = 'closing') DESC, c.counted_at DESC
@@ -247,6 +259,27 @@ export class PointCashService {
   }
 
   /**
+   * The crates DRAWER as of `asOf` (default: today), anchored on the crates
+   * book's own latest non-midday count like `cashFor` — `null` until the point
+   * has ever counted deposits (#178), where berry reads `0.00`.
+   */
+  async crateCashFor(
+    pointId: string,
+    asOf?: string,
+    manager?: EntityManager,
+  ): Promise<string | null> {
+    const runner = manager ?? this.dataSource.manager;
+    const [row] = (await runner.query(
+      `SELECT (SELECT (a.counted_amount
+                       + CASE WHEN a.kind = 'opening' THEN ${crateMovementsSql('a.shift_id')}
+                              ELSE 0.00 END)
+                 FROM ${anchorSql('$1::uuid', asOfSql('$2', '$3'), CashBook.Crates)} a)::text AS crate_cash`,
+      [pointId, asOf ?? null, this.tz.appTimezone],
+    )) as { crate_cash: string | null }[];
+    return row.crate_cash;
+  }
+
+  /**
    * The point's crate-deposits book, LIFETIME, as a decimal STRING —
    * `Σ deposit_taken − Σ deposit_refund` (spec §4.3), the SAME formula
    * `CrateBalanceService.pointDepositBook` reads, imported rather than
@@ -308,11 +341,15 @@ export class PointCashService {
    * shift (spec §4.1), and a shift's movements are settled by its own closing
    * count. Nothing can move between one shift's close and the next one's open.
    */
-  async expectedForOpening(pointId: string, manager?: EntityManager): Promise<string | null> {
+  async expectedForOpening(
+    pointId: string,
+    manager?: EntityManager,
+    book: CashBook = CashBook.Berry,
+  ): Promise<string | null> {
     const runner = manager ?? this.dataSource.manager;
     const rows = (await runner.query(
       `SELECT a.counted_amount::text AS expected
-         FROM ${anchorSql('$1::uuid', "'infinity'::date")} a`,
+         FROM ${anchorSql('$1::uuid', "'infinity'::date", book)} a`,
       [pointId],
     )) as { expected: string }[];
     return rows[0]?.expected ?? null;
@@ -324,13 +361,19 @@ export class PointCashService {
    * the API (§6.1 writes one in the same transaction) and therefore a signal
    * that something wrote a shift directly.
    */
-  async expectedForClosing(shiftId: string, manager?: EntityManager): Promise<string | null> {
+  async expectedForClosing(
+    shiftId: string,
+    manager?: EntityManager,
+    book: CashBook = CashBook.Berry,
+  ): Promise<string | null> {
     const runner = manager ?? this.dataSource.manager;
+    const crates = book === CashBook.Crates;
+    const movements = crates ? crateMovementsSql('$1::uuid') : movementsSql('$1::uuid', '$2');
     const rows = (await runner.query(
-      `SELECT (c.counted_amount + ${movementsSql('$1::uuid', '$2')})::text AS expected
+      `SELECT (c.counted_amount + ${movements})::text AS expected
          FROM cash_counts c
-        WHERE c.shift_id = $1::uuid AND c.book = 'berry' AND c.kind = 'opening'`,
-      [shiftId, this.tz.appTimezone],
+        WHERE c.shift_id = $1::uuid AND c.book = '${book}' AND c.kind = 'opening'`,
+      crates ? [shiftId] : [shiftId, this.tz.appTimezone],
     )) as { expected: string }[];
     return rows[0]?.expected ?? null;
   }
@@ -479,4 +522,4 @@ export class PointCashService {
   }
 }
 
-export { movementsSql, anchorSql, asOfSql };
+export { movementsSql, crateMovementsSql, anchorSql, asOfSql };
