@@ -923,6 +923,79 @@ describe('PointCashService.list (Postgres)', () => {
     const late = await service.list(owner, query({ collection_point_id: p }) as never);
     expect(late.data[0].latest_transfer).toBeNull();
   });
+
+  it('reports resolved_at only once the resolution had happened by as_of (#76)', async () => {
+    const tag = randomUUID().slice(0, 8);
+    const [{ id: p }] = (await ds.query(
+      `INSERT INTO collection_points (name, code, kind, target_cash, is_active)
+       VALUES ($1, $2, 'reception', NULL, true) RETURNING id`,
+      [`Точка ${tag}`, `R${tag.slice(0, 6).toUpperCase()}`],
+    )) as { id: string }[];
+
+    // Sent on the 1st, signed for with a dispute on the 2nd, resolved by the
+    // owner at 2026-09-04T22:30Z — still the 4th in UTC, but already 01:30 on
+    // the 5th in Kyiv. The cut is the APP-timezone date, so as_of = the 4th
+    // must not see it.
+    await ds.query(
+      `INSERT INTO transfers (collection_point_id, cash, crates, carrier, sent_by_user_id,
+                              sent_at, status, accepted_by_user_id, accepted_date, accepted_at,
+                              reported_cash, dispute_note,
+                              resolved_cash, resolved_crates, resolved_by_user_id, resolved_at)
+       VALUES ($1, '300.00', 0, 'Іван', $2, '2026-09-01T06:00:00Z', 'disputed',
+               $2, '2026-09-02', '2026-09-02T07:00:00Z',
+               '280.00', 'мішок легший',
+               '290.00', 0, $2, '2026-09-04T22:30:00Z')`,
+      [p, ownerId],
+    );
+
+    const before = await service.list(
+      owner,
+      query({ collection_point_id: p, as_of: '2026-09-04' }) as never,
+    );
+    expect(before.data[0].latest_transfer?.status).toBe('disputed');
+    expect(before.data[0].latest_transfer?.resolved_at).toBeNull();
+
+    const onTheDay = await service.list(
+      owner,
+      query({ collection_point_id: p, as_of: '2026-09-05' }) as never,
+    );
+    expect(onTheDay.data[0].latest_transfer?.status).toBe('disputed');
+    expect(onTheDay.data[0].latest_transfer?.resolved_at?.toISOString()).toBe('2026-09-04T22:30:00.000Z');
+
+    const now = await service.list(owner, query({ collection_point_id: p }) as never);
+    expect(now.data[0].latest_transfer?.resolved_at?.toISOString()).toBe('2026-09-04T22:30:00.000Z');
+
+    // Before it was signed for at all it was a van on the road: no
+    // resolution can show through a 'sent' status.
+    const onTheRoad = await service.list(
+      owner,
+      query({ collection_point_id: p, as_of: '2026-09-01' }) as never,
+    );
+    expect(onTheRoad.data[0].latest_transfer?.status).toBe('sent');
+    expect(onTheRoad.data[0].latest_transfer?.resolved_at).toBeNull();
+  });
+
+  it('reports resolved_at as null for a dispute the owner has not resolved (#76)', async () => {
+    const tag = randomUUID().slice(0, 8);
+    const [{ id: p }] = (await ds.query(
+      `INSERT INTO collection_points (name, code, kind, target_cash, is_active)
+       VALUES ($1, $2, 'reception', NULL, true) RETURNING id`,
+      [`Точка ${tag}`, `U${tag.slice(0, 6).toUpperCase()}`],
+    )) as { id: string }[];
+
+    await ds.query(
+      `INSERT INTO transfers (collection_point_id, cash, crates, carrier, sent_by_user_id,
+                              sent_at, status, accepted_by_user_id, accepted_date, accepted_at,
+                              reported_cash, dispute_note)
+       VALUES ($1, '300.00', 0, 'Іван', $2, '2026-09-01T06:00:00Z', 'disputed',
+               $2, '2026-09-02', '2026-09-02T07:00:00Z', '280.00', 'мішок легший')`,
+      [p, ownerId],
+    );
+
+    const now = await service.list(owner, query({ collection_point_id: p }) as never);
+    expect(now.data[0].latest_transfer?.status).toBe('disputed');
+    expect(now.data[0].latest_transfer?.resolved_at).toBeNull();
+  });
 });
 
 /**
