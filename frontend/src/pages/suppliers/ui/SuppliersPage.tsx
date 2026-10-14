@@ -44,7 +44,13 @@ export function SuppliersPage() {
     setDialogOpen(true);
   };
 
-  const rows = data?.pages.flatMap((p) => p.data) ?? [];
+  // Offset pages shift when a supplier is added between fetches, so one can repeat; keep the first.
+  const seen = new Set<string>();
+  const rows = (data?.pages.flatMap((p) => p.data) ?? []).filter((s) =>
+    seen.has(s.id) ? false : (seen.add(s.id), true),
+  );
+  // Spinner only when there is nothing to show: a refetch (new sort) keeps the table mounted.
+  const showSpinner = isPending && !data;
   const total = data?.pages[0]?.total ?? 0;
   const locale = i18n.language;
 
@@ -140,10 +146,10 @@ export function SuppliersPage() {
         sort={sort}
         onSortChange={(key) => patchUrl(toUrl(nextSort(sort, key)))}
         footer={footer}
-        isEmpty={!isPending && !isError && rows.length === 0}
+        isEmpty={!showSpinner && !isError && rows.length === 0}
         empty={<EmptyState title={t('suppliers.empty.title')} hint={t('suppliers.empty.hint')} />}
       >
-        {isPending ? (
+        {showSpinner ? (
           <div className="flex justify-center py-12">
             <Spinner />
           </div>

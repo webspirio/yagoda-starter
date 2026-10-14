@@ -1,4 +1,4 @@
-import { useInfiniteQuery } from '@tanstack/react-query';
+import { keepPreviousData, useInfiniteQuery } from '@tanstack/react-query';
 import { httpClient } from '@/shared/api';
 import { queryKeys } from '@/shared/api/queryKeys';
 import { STALE } from '@/shared/api/queryClient';
@@ -36,5 +36,7 @@ export function useSupplierTotalsInfiniteQuery(filter: {
       ).data,
     getNextPageParam: nextTotalsPage,
     staleTime: STALE.list,
+    // A new sort keeps the old rows on screen (and the header focused) until it lands.
+    placeholderData: keepPreviousData,
   });
 }

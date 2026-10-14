@@ -160,6 +160,32 @@ describe('SuppliersPage', () => {
     expect(queryMock).toHaveBeenLastCalledWith({ search: '', sort: 'amount', order: 'desc' });
   });
 
+  it('keeps the table, the clicked header and the rows mounted while a new sort loads', async () => {
+    // keepPreviousData: the old rows stay as data while the new sort is in flight.
+    queryMock.mockImplementation((args: { sort: string }) =>
+      args.sort === 'amount' ? { ...loaded([ivan]), isPending: true, isFetching: true } : loaded([ivan]),
+    );
+    renderSuppliers();
+    const header = screen.getByRole('button', { name: 'Accrued' });
+    await userEvent.click(header);
+    expect(screen.getByRole('button', { name: 'Accrued' })).toBe(header);
+    expect(header).toBeInTheDocument();
+    expect(screen.getByText('Ivan Koval')).toBeInTheDocument();
+  });
+
+  it('renders a supplier once when a shifted offset page repeats it', () => {
+    queryMock.mockReturnValue(
+      infinite([
+        { rows: [ivan], total: 2 },
+        { rows: [ivan, petro], total: 2 },
+      ]),
+    );
+    renderSuppliers();
+    expect(screen.getAllByText('Ivan Koval')).toHaveLength(1);
+    expect(screen.getByText('Petro Melnyk')).toBeInTheDocument();
+    expect(screen.getByText('Showing 2 of 2')).toBeInTheDocument();
+  });
+
   it('restores the sort from the URL, e.g. after Back from a card', () => {
     queryMock.mockReturnValue(loaded([ivan]));
     renderSuppliers('/suppliers?sort=name&order=desc');
