@@ -5,6 +5,7 @@ import { PointCashService } from './point-cash.service';
 import { CashBook } from '../cash-counts/cash-book.enum';
 import { UserRole } from '../users/user-role.enum';
 import type { AuthenticatedUser } from '../auth/jwt.strategy';
+import { PointCashController } from './point-cash.controller';
 
 /**
  * THE FORMULA, AGAINST A REAL POSTGRES. A unit spec can only assert the text
@@ -1181,6 +1182,27 @@ describe('PointCashService.crateUnitsFor (Postgres)', () => {
       );
       expect(await service.expectedForClosing(shiftId, undefined, CashBook.Crates)).toBe('15960.00');
       expect(await service.crateCashFor(pointId)).toBe('15960.00');
+    });
+
+    it('list and GET /point-cash/:id read an OPENING crates anchor plus that shift’s movements (list has its own SQL)', async () => {
+      const { pointId, shiftId, supplierId } = await freshPointWithShift();
+      await insertCount(shiftId, 'crates', 'opening', '14400.00', '14400.00');
+      const issued = await crateIssuance(shiftId, supplierId, 20, 'deposit'); // +2400.00
+      await returnAgainst(shiftId, supplierId, issued, 7); // −840.00
+      const actor: AuthenticatedUser = {
+        sub: ownerId,
+        username: 'owner',
+        role: UserRole.NetworkOwner,
+        collection_point_id: null,
+      };
+
+      const page = await service.list(actor, { page: 1, limit: 50, collection_point_id: pointId } as never);
+      expect(page.data).toHaveLength(1);
+      expect(page.data[0].crate_cash).toBe('15960.00');
+      expect(page.data[0].crate_unexplained_difference).toBe('0.00');
+
+      const one = await new PointCashController(service).findOne(actor, pointId, {} as never);
+      expect(one.crate_cash).toBe('15960.00');
     });
 
     it('closing: null when the shift has no crates opening row (opened before the release)', async () => {

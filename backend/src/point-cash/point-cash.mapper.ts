@@ -17,8 +17,9 @@ export interface PointCashRow {
 }
 
 /**
- * One line of the cash screen — §7.10's table, minus the «ящиків» column,
- * which has no source tables until the crates slice.
+ * One line of the cash screen — §7.10's table. The «ящиків» column is the
+ * `crate_*` fields: the deposits book (`crate_cash`, its drift) and the
+ * issued-not-returned units, all read from the crates tables and `cash_counts`.
  *
  * `shortfall` IS `null`, NEVER `0.00`, FOR A POINT WITH NO TARGET, and the
  * point still appears. §7.10 says a point without a target «в таблицю не
