@@ -16,26 +16,39 @@ export interface CountResultRow {
   discrepancy: string;
 }
 
-interface CountResultBodyProps {
+interface CountResultBaseProps {
   title: ReactNode;
-  /** The counted figure — every result shows this one. */
-  counted: string;
-  /** The recount's own «Очікувано» row — omitted by the open/close result. */
-  expected?: string | null;
-  /** Renders the «Розбіжність» pill when given; `null` (open) shows no pill at all. */
-  discrepancy?: string | null;
-  /**
-   * #178 — the open/close result: one labelled block per book (counted,
-   * expected and its own discrepancy pill) instead of the single trio above,
-   * which only the recount still uses.
-   */
-  rows?: CountResultRow[] | null;
   /** An optional line under the pill — the recount's «cannot be changed» note; the close result folds its own equivalent into `title` instead. */
   note?: ReactNode | null;
   /** An extra footer button before «Готово» — the page's, never this feature's (FSD). */
   action?: ReactNode;
   onClose: () => void;
 }
+
+/** The recount's single trio: the counted figure, optionally its «Очікувано» row and «Розбіжність» pill. */
+interface CountResultTrioProps extends CountResultBaseProps {
+  /** The counted figure. */
+  counted: string;
+  /** The recount's own «Очікувано» row. */
+  expected?: string | null;
+  /** Renders the «Розбіжність» pill when given; `null` shows no pill at all. */
+  discrepancy?: string | null;
+  rows?: null;
+}
+
+/**
+ * #178 — the open/close result: one labelled block per book (counted,
+ * expected and its own discrepancy pill) instead of the single trio, which
+ * only the recount still uses. The blocks carry every figure, so no `counted`.
+ */
+interface CountResultRowsProps extends CountResultBaseProps {
+  rows: CountResultRow[];
+  counted?: never;
+  expected?: never;
+  discrepancy?: never;
+}
+
+type CountResultBodyProps = CountResultTrioProps | CountResultRowsProps;
 
 /**
  * The result's own markup — everything from `DialogHeader` through
@@ -58,18 +71,11 @@ interface CountResultBodyProps {
  * component tolerating `null` props — there is nothing honest to render
  * before the row exists.
  */
-export function CountResultBody({
-  title,
-  counted,
-  expected = null,
-  discrepancy = null,
-  rows = null,
-  note = null,
-  action = null,
-  onClose,
-}: CountResultBodyProps) {
+export function CountResultBody(props: CountResultBodyProps) {
+  const { title, rows = null, note = null, action = null, onClose } = props;
   const { t, i18n } = useTranslation();
   const locale = i18n.resolvedLanguage;
+  const { counted = '0.00', expected, discrepancy } = props;
 
   return (
     <>
@@ -86,13 +92,13 @@ export function CountResultBody({
               be markup for a description list with no descriptions in it
               (review, minor 12). */}
           <div className="flex flex-col gap-1">
-            {expected !== null ? (
+            {expected != null ? (
               <LedgerRow label={t('countResult.expected')} value={formatUah(expected, locale)} />
             ) : null}
             <LedgerRow label={t('countResult.counted')} value={formatUah(counted, locale)} strong />
           </div>
 
-          {discrepancy !== null ? <DiscrepancyPill discrepancy={discrepancy} /> : null}
+          {discrepancy != null ? <DiscrepancyPill discrepancy={discrepancy} /> : null}
         </>
       )}
 
@@ -143,6 +149,8 @@ function BookBlock({ row }: { row: CountResultRow }) {
   );
 }
 
+type DistributiveOmit<T, K extends keyof never> = T extends unknown ? Omit<T, K> : never;
+
 /**
  * The ONE result view every drawer count ends on for a caller that shows
  * NOTHING else in its own dialog — `PointCashPage`'s open/close result.
@@ -160,7 +168,7 @@ export function CountResultView({
   onClose,
   swap = null,
   ...body
-}: { open: boolean; onClose: () => void; swap?: ReactNode | null } & Omit<CountResultBodyProps, 'onClose'>) {
+}: { open: boolean; onClose: () => void; swap?: ReactNode | null } & DistributiveOmit<CountResultBodyProps, 'onClose'>) {
   return (
     <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
       <DialogContent>{swap ?? <CountResultBody {...body} onClose={onClose} />}</DialogContent>

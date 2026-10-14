@@ -107,17 +107,36 @@ describe('ShiftCountResult', () => {
       operator_note_editable: false,
     });
 
-    it('lists Cash and Deposits separately; any book off makes the title a discrepancy', async () => {
+    it('lists Cash and Deposits separately; a deposits-only difference names the deposits in the title', async () => {
       cashCountsMock.mockReturnValue(list([berrySettled, crates()]));
       render(<ShiftCountResult result={{ mode: 'close', shiftId: 's-old' }} onClose={() => {}} />);
       const dialog = await screen.findByRole('dialog');
-      expect(dialog).toHaveTextContent(/Shift closed\. Discrepancy .*360\.00/);
+      expect(dialog).toHaveTextContent(/Shift closed\. Deposits discrepancy .*360\.00/);
       const cash = within(dialog).getByRole('group', { name: 'Cash' });
       const deposits = within(dialog).getByRole('group', { name: 'Deposits' });
       expect(within(cash).getByText(/Discrepancy/).closest('span')).toHaveClass('text-leaf');
       expect(within(deposits).getByText(/Discrepancy/).closest('span')).toHaveClass('text-destructive');
       expect(deposits).toHaveTextContent(/640\.00/);
       expect(screen.queryByRole('textbox')).toBeNull();
+    });
+
+    it('a deposits-only difference on an open names the deposits too', async () => {
+      cashCountsMock.mockReturnValue(
+        list([
+          count({ kind: 'opening', discrepancy: '0.00', operator_note_editable: false }),
+          crates({ kind: 'opening' }),
+        ]),
+      );
+      render(<ShiftCountResult result={{ mode: 'open', shiftId: 's-old' }} onClose={() => {}} />);
+      expect(await screen.findByRole('dialog')).toHaveTextContent(/off in deposits against the previous close/);
+    });
+
+    it('when Cash is off the title keeps the cash wording and the cash amount', async () => {
+      cashCountsMock.mockReturnValue(list([count({ operator_note_editable: false }), crates()]));
+      render(<ShiftCountResult result={{ mode: 'close', shiftId: 's-old' }} onClose={() => {}} />);
+      const dialog = await screen.findByRole('dialog');
+      expect(dialog).toHaveTextContent(/Shift closed\. Discrepancy .*50\.00 ₴ — the owner/);
+      expect(dialog).not.toHaveTextContent(/Deposits discrepancy/);
     });
 
     it('shows each book on an open too, discrepancy and all', async () => {

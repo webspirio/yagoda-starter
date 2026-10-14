@@ -70,16 +70,19 @@ export function ShiftCountResult({
   if (noteOfferedFor.size === 0 && nextToOffer !== null) offerNote(nextToOffer);
 
   if (result !== null && rows.length > 0) {
+    // «Каса» wins the title when it is off; only a deposits-only difference
+    // names «завдатки», so its amount is never read as the cash drawer's.
     const off = rows.find((row) => !isZero(row.discrepancy)) ?? null;
     const amount = off === null ? '' : formatUah(off.discrepancy, i18n.language);
+    const suffix = off?.book === 'crates' ? 'Deposits' : '';
     const title =
       result.mode === 'open'
         ? off === null
           ? t('pointCash.result.opened')
-          : t('pointCash.result.openedDiscrepancy', { amount })
+          : t(`pointCash.result.openedDiscrepancy${suffix}`, { amount })
         : off === null
           ? t('pointCash.result.closedSettled')
-          : t('pointCash.result.closedDiscrepancy', { amount });
+          : t(`pointCash.result.closedDiscrepancy${suffix}`, { amount });
     const viewRows = rows.map((row) => ({
       label: t(`countResult.book.${row.book}`),
       counted: row.counted_amount,
@@ -96,7 +99,6 @@ export function ShiftCountResult({
     <CountResultView
       open={result !== null && rows.length > 0}
       title={view?.title ?? ''}
-      counted={view?.rows[0]?.counted ?? '0.00'}
       rows={view?.rows ?? []}
       onClose={onClose}
       action={editable.map((row) => (

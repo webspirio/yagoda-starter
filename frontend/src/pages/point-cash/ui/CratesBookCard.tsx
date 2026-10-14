@@ -20,7 +20,7 @@ export function CratesBookCard({
 }: {
   /** `PointCashRow.crate_cash` — the counted drawer figure; `null` = never counted at this point. */
   crateCash: string | null;
-  /** `PointCashRow.crate_unexplained_difference` — `0.00` when the book has no open incident. */
+  /** `PointCashRow.crate_unexplained_difference` — the LIFETIME sum of every crates discrepancy, explained ones included — so it does not clear when the owner explains one; `0.00` = the drawer never differed. */
   crateUnexplained: string;
   /** `PointCashRow.crate_deposits` — the supplier liability: money still held against issued crates. */
   crateDeposits: string;
@@ -50,7 +50,7 @@ export function CratesBookCard({
             })}
       </div>
       {isZero(crateUnexplained) ? null : (
-        <p className="mt-1.5 text-xs font-medium text-destructive">
+        <p className="mt-1.5 text-xs text-muted-foreground">
           {t('pointCash.crates.unexplained', { amount: formatUah(crateUnexplained, locale) })}
         </p>
       )}
@@ -60,7 +60,7 @@ export function CratesBookCard({
       <p className="mt-3 text-xs text-muted-foreground opacity-70">
         {t('pointCash.crates.twoBooks', {
           berry: formatUah(berryCash, locale),
-          crates: formatUah(crateCash ?? crateDeposits, locale),
+          crates: crateCash === null ? '—' : formatUah(crateCash, locale),
         })}
       </p>
     </SectionCard>

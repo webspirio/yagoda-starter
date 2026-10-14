@@ -718,7 +718,7 @@
       "caption_other": "deposits for {{count}} crates — {{amount}}",
       "captionZero": "no crate deposits held",
       "notCounted": "not counted yet",
-      "unexplained": "Discrepancy {{amount}}",
+      "unexplained": "All-time discrepancies: {{amount}}",
       "footnote": "This money sits apart from the berry cash: we pay someone for their crates even if the berry drawer is empty. No deposit was taken against a signed receipt — those crates are not counted here.",
       "twoBooks": "Two books: berries {{berry}} · crates {{crates}}"
     },
@@ -790,7 +790,9 @@
       "opened": "Shift opened",
       "closedSettled": "Shift closed. The day matched.",
       "openedDiscrepancy": "Shift opened. {{amount}} off the previous close — the owner will see it in their list.",
-      "closedDiscrepancy": "Shift closed. Discrepancy {{amount}} — the owner will see it on their own list."
+      "closedDiscrepancy": "Shift closed. Discrepancy {{amount}} — the owner will see it on their own list.",
+      "openedDiscrepancyDeposits": "Shift opened. {{amount}} off in deposits against the previous close — the owner will see it in their list.",
+      "closedDiscrepancyDeposits": "Shift closed. Deposits discrepancy {{amount}} — the owner will see it on their own list."
     },
     "target": {
       "set": "Assign a target",

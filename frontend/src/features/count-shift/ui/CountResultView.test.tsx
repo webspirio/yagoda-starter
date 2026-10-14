@@ -112,7 +112,7 @@ describe('CountResultView — the two-book shape (#178: one block per book)', ()
 
   it('renders one labelled block per book, each with its own expected, counted and discrepancy', async () => {
     const { container } = render(
-      <CountResultView open title="Shift closed" counted="0.00" rows={rows} onClose={vi.fn()} />,
+      <CountResultView open title="Shift closed" rows={rows} onClose={vi.fn()} />,
     );
 
     const cash = screen.getByRole('group', { name: 'Cash' });

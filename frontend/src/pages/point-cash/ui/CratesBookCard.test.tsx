@@ -47,10 +47,13 @@ describe('CratesBookCard', () => {
 
   it('prints the unexplained difference only when there is one', () => {
     const { rerender } = render(card());
-    expect(screen.queryByText(/Discrepancy/)).toBeNull();
+    expect(screen.queryByText(/discrepancies/)).toBeNull();
 
     rerender(card({ crateUnexplained: '-360.00' }));
-    expect(screen.getByText('Discrepancy −360.00 ₴')).toBeInTheDocument();
+    const line = screen.getByText('All-time discrepancies: −360.00 ₴');
+    expect(line).toBeInTheDocument();
+    // lifetime figure: explained incidents stay in it, so it must not read as an open alarm
+    expect(line).not.toHaveClass('text-destructive');
   });
 
   it('prints the footnote explaining the crates book sits apart from the berry book', () => {
@@ -67,10 +70,11 @@ describe('CratesBookCard', () => {
     expect(screen.queryByText(/15,400\.00/)).toBeNull();
   });
 
-  it('with the drawer never counted, the two-books line falls back to the liability', () => {
+  it('with the drawer never counted, the two-books line prints a dash, not the liability', () => {
     render(card({ crateCash: null }));
 
-    expect(screen.getByText('Two books: berries 1,000.00 ₴ · crates 14,760.00 ₴')).toBeInTheDocument();
+    expect(screen.getByText('Two books: berries 1,000.00 ₴ · crates —')).toBeInTheDocument();
+    expect(screen.getByText(/Two books/)).not.toHaveTextContent(/14,760\.00 ₴$/);
   });
 
   it('has no axe violations', async () => {
