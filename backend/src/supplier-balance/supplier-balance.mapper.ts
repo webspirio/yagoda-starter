@@ -1,5 +1,7 @@
 import type { DebtKind, Settlement } from './settlement';
 import type { DebtTerms } from './queries/supplier-debt.query';
+import type { Supplier } from '../suppliers/supplier.entity';
+import { SupplierResponse, toSupplierResponse } from '../suppliers/supplier.mapper';
 
 /** `debt` plus the season counters the card's tiles read instead of summing a
  *  page that truncates past 100 documents (#103). The three terms of `debt`
@@ -146,5 +148,26 @@ export function toSupplierSettlementResponse(
       covers: p.covers.map((c) => ({ line_id: c.line_id, kind: c.kind, amount: c.amount })),
       unallocated: p.unallocated,
     })),
+  };
+}
+
+/** The three aggregates `/supplier-totals` adds to a supplier — numeric strings, never parsed. */
+export interface SupplierTotals {
+  kg_total: string;
+  accrued: string;
+  main_product_name: string | null;
+}
+
+export type SupplierTotalsRowResponse = SupplierResponse & SupplierTotals;
+
+export function toSupplierTotalsRowResponse(
+  supplier: Supplier,
+  totals: SupplierTotals,
+): SupplierTotalsRowResponse {
+  return {
+    ...toSupplierResponse(supplier),
+    kg_total: totals.kg_total,
+    accrued: totals.accrued,
+    main_product_name: totals.main_product_name,
   };
 }

@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { debtSql } from '../supplier-debt.sql';
+import { kgTotalSql } from '../supplier-totals.sql';
 import type { SupplierBalanceBreakdown } from '../supplier-balance.mapper';
 
 /**
@@ -34,9 +35,7 @@ export class SupplierBalanceBreakdownQuery {
       ${debtSql('$1')}::text AS debt,
       (SELECT COUNT(i.id)::int FROM intakes i
         WHERE i.supplier_id = $1 AND i.voided_at IS NULL) AS intakes_count,
-      (SELECT COALESCE(SUM(ii.net_kg)::text, '0.00') FROM intake_items ii
-         JOIN intakes i ON i.id = ii.intake_id
-        WHERE i.supplier_id = $1 AND i.voided_at IS NULL) AS kg_total,
+      ${kgTotalSql('$1')}::text AS kg_total,
       -- ::text, like every other raw-query date in this codebase
       -- (cash-counts.service.ts, seed/dev-seed.ts): the pg driver hands a
       -- bare date column back as a JS Date, and JSON.stringify would then
