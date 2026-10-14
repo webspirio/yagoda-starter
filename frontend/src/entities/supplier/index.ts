@@ -1,5 +1,7 @@
 export type {
   Supplier,
+  SupplierTotalsRow,
+  SupplierTotalsSort,
   SupplierKind,
   SupplierBalanceRow,
   SupplierBalanceOne,
@@ -12,3 +14,4 @@ export { useSuppliersQuery, useSupplierQuery } from './api/useSuppliers';
 export { useSupplierBalanceQuery, useSupplierBalancesQuery, useSupplierSettlementQuery } from './api/useSupplierBalances';
 export { KindBadge } from './ui/KindBadge';
 export { kindHintKey } from './lib/kindHint';
+export { useSupplierTotalsInfiniteQuery } from './api/useSupplierTotals';

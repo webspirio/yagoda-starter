@@ -1,7 +1,10 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { Supplier } from './supplier.entity';
-import { SuppliersService } from './suppliers.service';
+import { ListSuppliersQuery } from './queries/list-suppliers.query';
+import { FindSupplierQuery } from './queries/find-supplier.query';
+import { CreateSupplierCommand } from './commands/create-supplier.command';
+import { UpdateSupplierCommand } from './commands/update-supplier.command';
 import { SuppliersController } from './suppliers.controller';
 import { AuditModule } from '../audit/audit.module';
 import { CollectionPointsModule } from '../collection-points/collection-points.module';
@@ -16,15 +19,13 @@ import { CollectionPointsModule } from '../collection-points/collection-points.m
  * `GradePricesModule`; no cycle, since `CollectionPointsModule` imports only
  * `UsersModule` and `AuditModule`.
  *
- * `SuppliersService` is exported for the module that will need it: `intakes`
- * must validate a `supplier_id` through its owner rather than growing its own
- * query. It has no `findOneRaw` yet — the three catalog services grew theirs
- * when the first caller appeared, and this one should too.
+ * `FindSupplierQuery` is exported: every module that takes a `supplier_id`
+ * validates it through its owner rather than growing its own query.
  */
 @Module({
   imports: [TypeOrmModule.forFeature([Supplier]), AuditModule, CollectionPointsModule],
   controllers: [SuppliersController],
-  providers: [SuppliersService],
-  exports: [TypeOrmModule, SuppliersService],
+  providers: [ListSuppliersQuery, FindSupplierQuery, CreateSupplierCommand, UpdateSupplierCommand],
+  exports: [TypeOrmModule, FindSupplierQuery],
 })
 export class SuppliersModule {}

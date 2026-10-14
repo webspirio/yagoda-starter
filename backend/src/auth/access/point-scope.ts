@@ -31,7 +31,7 @@ export function assertOwnsPoint(actor: AuthenticatedUser, pointId: string): void
  * is refused by `assertOwnsPoint`. An owner has no point of their own, so they
  * must name one.
  *
- * Lifted here from `SuppliersService`, which grew it first, for the reason this
+ * Lifted here from the suppliers module, which grew it first, for the reason this
  * module's header already gives: keeping the rule in one place is what stops
  * several endpoints each implementing it slightly differently — and the
  * documents slice adds three more callers.

@@ -1,7 +1,7 @@
 import type * as React from 'react';
 import { cn } from '@/shared/lib/cn';
 import { PageHeader } from '@/shared/ui/page-header';
-import { DataTable, type Column } from '@/shared/ui/data-table';
+import { DataTable, type Column, type SortState } from '@/shared/ui/data-table';
 
 /**
  * Domain-free admin list/CRUD page scaffold. Owns only layout and spacing —
@@ -20,6 +20,9 @@ export interface ListPageProps<Row = unknown> {
   rows?: Row[];
   rowKey?: (row: Row, index: number) => React.Key;
   onRowClick?: (row: Row, index: number) => void;
+  /** Forwarded to the built-in table; see `DataTable`. */
+  sort?: SortState;
+  onSortChange?: (key: string) => void;
   children?: React.ReactNode;
   isEmpty?: boolean;
   empty?: React.ReactNode;
@@ -39,6 +42,8 @@ export function ListPage<Row = unknown>({
   rows,
   rowKey,
   onRowClick,
+  sort,
+  onSortChange,
   children,
   isEmpty,
   empty,
@@ -59,6 +64,8 @@ export function ListPage<Row = unknown>({
         rowKey={rowKey}
         onRowClick={onRowClick}
         empty={empty}
+        sort={sort}
+        onSortChange={onSortChange}
       />
     );
   }

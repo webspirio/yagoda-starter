@@ -14,7 +14,7 @@ import {
 import { PreviewIntakeDto } from '../dto/preview-intake.dto';
 import { Shift } from '../../shifts/shift.entity';
 import { ShiftsService } from '../../shifts/shifts.service';
-import { SuppliersService } from '../../suppliers/suppliers.service';
+import { FindSupplierQuery } from '../../suppliers/queries/find-supplier.query';
 import type { SupplierResponse } from '../../suppliers/supplier.mapper';
 import { GradePricesService } from '../../grade-prices/grade-prices.service';
 import { TareTypesService } from '../../tare-types/tare-types.service';
@@ -32,7 +32,7 @@ import type { AuthenticatedUser } from '../../auth/jwt.strategy';
 export class PriceIntakeQuery {
   constructor(
     private readonly points: CollectionPointsService,
-    private readonly suppliers: SuppliersService,
+    private readonly suppliers: FindSupplierQuery,
     private readonly shifts: ShiftsService,
     private readonly prices: GradePricesService,
     private readonly tare: TareTypesService,

@@ -72,3 +72,19 @@ it('has no axe violations', async () => {
   );
   await expectNoAxeViolations(container);
 });
+
+it('forwards sort and onSortChange to the table', async () => {
+  const onSortChange = vi.fn();
+  render(
+    <ListPage<{ id: string; name: string }>
+      title="T"
+      columns={[{ id: 'name', header: 'Name', sortable: true, cell: (r) => r.name }]}
+      rows={[{ id: '1', name: 'A' }]}
+      rowKey={(r) => r.id}
+      sort={{ key: 'name', order: 'asc' }}
+      onSortChange={onSortChange}
+    />,
+  );
+  await userEvent.click(screen.getByRole('button', { name: 'Name' }));
+  expect(onSortChange).toHaveBeenCalledWith('name');
+});

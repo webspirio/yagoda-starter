@@ -11,7 +11,11 @@ export function useCreateSupplierMutation() {
       const { data } = await httpClient.post<Supplier>('/suppliers', input);
       return data;
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.suppliers }),
+    onSuccess: () =>
+      Promise.all([
+        qc.invalidateQueries({ queryKey: queryKeys.suppliers }),
+        qc.invalidateQueries({ queryKey: queryKeys.supplierBalances }),
+      ]),
   });
 }
 
@@ -22,6 +26,10 @@ export function useUpdateSupplierMutation() {
       const { data } = await httpClient.patch<Supplier>(`/suppliers/${id}`, body);
       return data;
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.suppliers }),
+    onSuccess: () =>
+      Promise.all([
+        qc.invalidateQueries({ queryKey: queryKeys.suppliers }),
+        qc.invalidateQueries({ queryKey: queryKeys.supplierBalances }),
+      ]),
   });
 }

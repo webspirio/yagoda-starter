@@ -4,21 +4,21 @@ import userEvent from '@testing-library/user-event';
 import { createMemoryRouter, RouterProvider } from 'react-router';
 import { expectNoAxeViolations } from '../../../test-axe';
 import { SuppliersPage } from './SuppliersPage';
-import type { Supplier } from '@/entities/supplier';
+import type { SupplierTotalsRow } from '@/entities/supplier';
 import type { Me } from '@/entities/user';
 
 /** `SuppliersPage` now links each row to its card (`/suppliers/:id`), so it
  *  needs a real router context — a stub route stands in for the card page
  *  itself, which this test suite has no business depending on. */
-function renderSuppliers() {
+function renderSuppliers(initial = '/suppliers') {
   const router = createMemoryRouter(
     [
       { path: '/suppliers', element: <SuppliersPage /> },
       { path: '/suppliers/:id', element: <div>Card stub</div> },
     ],
-    { initialEntries: ['/suppliers'] },
+    { initialEntries: [initial] },
   );
-  return render(<RouterProvider router={router} />);
+  return { router, ...render(<RouterProvider router={router} />) };
 }
 
 const { queryMock, createMock, updateMock, meMock } = vi.hoisted(() => ({
@@ -29,7 +29,7 @@ const { queryMock, createMock, updateMock, meMock } = vi.hoisted(() => ({
 }));
 
 vi.mock('@/entities/supplier', () => ({
-  useSuppliersQuery: () => queryMock(),
+  useSupplierTotalsInfiniteQuery: (args: unknown) => queryMock(args),
 }));
 
 vi.mock('@/features/edit-supplier/api/suppliers', () => ({
@@ -37,6 +37,7 @@ vi.mock('@/features/edit-supplier/api/suppliers', () => ({
   useUpdateSupplierMutation: () => ({ mutateAsync: updateMock }),
 }));
 
+// The page no longer reads points, but SupplierFormDialog (the owner's point select) does.
 vi.mock('@/entities/collection-point', () => ({
   usePointOptionsQuery: () => ({
     data: [
@@ -72,7 +73,7 @@ const operator: Me = {
   collection_point_id: 'p1',
 };
 
-const ivan: Supplier = {
+const ivan: SupplierTotalsRow = {
   id: 's1',
   collection_point_id: 'p1',
   first_name: 'Ivan',
@@ -82,9 +83,12 @@ const ivan: Supplier = {
   kind: 'farmer',
   is_active: true,
   created_at: '2026-08-01',
+  kg_total: '3603.99',
+  accrued: '466180.00',
+  main_product_name: 'Raspberry',
 };
 
-const petro: Supplier = {
+const petro: SupplierTotalsRow = {
   id: 's2',
   collection_point_id: 'p2',
   first_name: 'Petro',
@@ -92,15 +96,23 @@ const petro: Supplier = {
   phone: null,
   note: null,
   kind: 'none',
-  is_active: false,
+  is_active: true,
   created_at: '2026-08-01',
+  kg_total: '0.00',
+  accrued: '0.00',
+  main_product_name: null,
 };
 
-const loaded = (rows: Supplier[]) => ({
-  data: { data: rows, total: rows.length, page: 1, limit: 20 },
+const infinite = (pages: { rows: SupplierTotalsRow[]; total: number }[], over: Record<string, unknown> = {}) => ({
+  data: { pages: pages.map((p, i) => ({ data: p.rows, total: p.total, page: i + 1, limit: 100 })), pageParams: [] },
   isPending: false,
   isError: false,
+  hasNextPage: false,
+  isFetchingNextPage: false,
+  fetchNextPage: vi.fn(),
+  ...over,
 });
+const loaded = (rows: SupplierTotalsRow[]) => infinite([{ rows, total: rows.length }]);
 
 beforeEach(() => {
   queryMock.mockReset();
@@ -116,19 +128,91 @@ describe('SuppliersPage', () => {
     expect(screen.queryByText('Ivan Koval')).toBeNull();
   });
 
-  it('renders suppliers and the New action when loaded', async () => {
+  it('renders weight, main product, kind and accrued — and no phone, point or status', async () => {
     queryMock.mockReturnValue(loaded([ivan, petro]));
     const { container } = renderSuppliers();
     expect(screen.getByRole('heading', { level: 1, name: 'Suppliers' })).toBeInTheDocument();
-    expect(screen.getByText('Ivan Koval')).toBeInTheDocument();
-    expect(screen.getByText('Petro Melnyk')).toBeInTheDocument();
-    expect(screen.getByText('+380671234567')).toBeInTheDocument();
-    expect(screen.getByText('Farmer')).toBeInTheDocument();
-    expect(screen.getByText('Shypynky')).toBeInTheDocument();
-    expect(screen.getByText('Haiove')).toBeInTheDocument();
-    expect(screen.getByText('Inactive')).toBeInTheDocument();
+    const ivanRow = screen.getByText('Ivan Koval').closest('tr') as HTMLElement;
+    expect(within(ivanRow).getByText('3,603.99 kg')).toBeInTheDocument();
+    expect(within(ivanRow).getByText('Raspberry')).toBeInTheDocument();
+    expect(within(ivanRow).getByText('Farmer')).toBeInTheDocument();
+    expect(within(ivanRow).getByText('466,180.00 ₴')).toBeInTheDocument();
+    const petroRow = screen.getByText('Petro Melnyk').closest('tr') as HTMLElement;
+    expect(within(petroRow).getByText('—')).toBeInTheDocument();
+    expect(screen.queryByText('+380671234567')).toBeNull();
+    expect(screen.queryByRole('columnheader', { name: /phone|point|status/i })).toBeNull();
     expect(screen.getByRole('button', { name: 'New supplier' })).toBeInTheDocument();
     await expectNoAxeViolations(container);
+  });
+
+  it('asks for heaviest first by default and marks Total weight as the active sort', () => {
+    queryMock.mockReturnValue(loaded([ivan]));
+    renderSuppliers();
+    expect(queryMock).toHaveBeenLastCalledWith({ search: '', sort: 'weight', order: 'desc' });
+    expect(screen.getByRole('columnheader', { name: 'Total weight' })).toHaveAttribute('aria-sort', 'descending');
+  });
+
+  it('a click on Accrued puts the sort in the URL and asks the server for it', async () => {
+    queryMock.mockReturnValue(loaded([ivan]));
+    const { router } = renderSuppliers();
+    await userEvent.click(screen.getByRole('button', { name: 'Accrued' }));
+    expect(router.state.location.search).toBe('?sort=amount&order=desc');
+    expect(queryMock).toHaveBeenLastCalledWith({ search: '', sort: 'amount', order: 'desc' });
+  });
+
+  it('keeps the table, the clicked header and the rows mounted while a new sort loads', async () => {
+    // keepPreviousData: the old rows stay as data while the new sort is in flight.
+    queryMock.mockImplementation((args: { sort: string }) =>
+      args.sort === 'amount' ? { ...loaded([ivan]), isPending: true, isFetching: true } : loaded([ivan]),
+    );
+    renderSuppliers();
+    const header = screen.getByRole('button', { name: 'Accrued' });
+    await userEvent.click(header);
+    expect(screen.getByRole('button', { name: 'Accrued' })).toBe(header);
+    expect(header).toBeInTheDocument();
+    expect(screen.getByText('Ivan Koval')).toBeInTheDocument();
+  });
+
+  it('renders a supplier once when a shifted offset page repeats it', () => {
+    queryMock.mockReturnValue(
+      infinite([
+        { rows: [ivan], total: 2 },
+        { rows: [ivan, petro], total: 2 },
+      ]),
+    );
+    renderSuppliers();
+    expect(screen.getAllByText('Ivan Koval')).toHaveLength(1);
+    expect(screen.getByText('Petro Melnyk')).toBeInTheDocument();
+    expect(screen.getByText('Showing 2 of 2')).toBeInTheDocument();
+  });
+
+  it('restores the sort from the URL, e.g. after Back from a card', () => {
+    queryMock.mockReturnValue(loaded([ivan]));
+    renderSuppliers('/suppliers?sort=name&order=desc');
+    expect(queryMock).toHaveBeenLastCalledWith({ search: '', sort: 'name', order: 'desc' });
+  });
+
+  it('shows N of M and loads the next page on Show more', async () => {
+    const fetchNextPage = vi.fn();
+    queryMock.mockReturnValue(infinite([{ rows: [ivan], total: 193 }], { hasNextPage: true, fetchNextPage }));
+    renderSuppliers();
+    expect(screen.getByText('Showing 1 of 193')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Show more' }));
+    expect(fetchNextPage).toHaveBeenCalledTimes(1);
+  });
+
+  it('flattens loaded pages and hides Show more once everything is in', () => {
+    queryMock.mockReturnValue(
+      infinite([
+        { rows: [ivan], total: 2 },
+        { rows: [petro], total: 2 },
+      ]),
+    );
+    renderSuppliers();
+    expect(screen.getByText('Ivan Koval')).toBeInTheDocument();
+    expect(screen.getByText('Petro Melnyk')).toBeInTheDocument();
+    expect(screen.getByText('Showing 2 of 2')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Show more' })).toBeNull();
   });
 
   it('shows the point select in the New dialog for a network owner', async () => {
