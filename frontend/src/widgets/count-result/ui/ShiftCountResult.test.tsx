@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { CashCount } from '@/entities/cash-count';
 import { ShiftCountResult } from './ShiftCountResult';
@@ -87,5 +87,88 @@ describe('ShiftCountResult', () => {
     await user.click(await screen.findByRole('button', { name: 'Cancel' }));
     await user.click(await screen.findByRole('button', { name: 'Explain the discrepancy' }));
     expect(await screen.findByLabelText('Your explanation')).toBeInTheDocument();
+  });
+
+  describe('two books (#178)', () => {
+    const crates = (over: Partial<CashCount> = {}) =>
+      count({
+        id: 'cc',
+        book: 'crates',
+        counted_amount: '640.00',
+        expected_amount: '1000.00',
+        discrepancy: '-360.00',
+        operator_note_editable: false,
+        ...over,
+      });
+    const berrySettled = count({
+      discrepancy: '0.00',
+      counted_amount: '1000.00',
+      is_open: false,
+      operator_note_editable: false,
+    });
+
+    it('lists Cash and Deposits separately; any book off makes the title a discrepancy', async () => {
+      cashCountsMock.mockReturnValue(list([berrySettled, crates()]));
+      render(<ShiftCountResult result={{ mode: 'close', shiftId: 's-old' }} onClose={() => {}} />);
+      const dialog = await screen.findByRole('dialog');
+      expect(dialog).toHaveTextContent(/Shift closed\. Discrepancy .*360\.00/);
+      const cash = within(dialog).getByRole('group', { name: 'Cash' });
+      const deposits = within(dialog).getByRole('group', { name: 'Deposits' });
+      expect(within(cash).getByText(/Discrepancy/).closest('span')).toHaveClass('text-leaf');
+      expect(within(deposits).getByText(/Discrepancy/).closest('span')).toHaveClass('text-destructive');
+      expect(deposits).toHaveTextContent(/640\.00/);
+      expect(screen.queryByRole('textbox')).toBeNull();
+    });
+
+    it('shows each book on an open too, discrepancy and all', async () => {
+      cashCountsMock.mockReturnValue(
+        list([
+          count({ kind: 'opening', discrepancy: '0.00', operator_note_editable: false }),
+          crates({ kind: 'opening', discrepancy: '0.00', counted_amount: '1000.00' }),
+        ]),
+      );
+      render(<ShiftCountResult result={{ mode: 'open', shiftId: 's-old' }} onClose={() => {}} />);
+      const dialog = await screen.findByRole('dialog');
+      expect(dialog).toHaveTextContent('Shift opened');
+      expect(within(dialog).getByRole('group', { name: 'Deposits' })).toBeInTheDocument();
+      expect(within(dialog).getByRole('group', { name: 'Cash' })).toBeInTheDocument();
+    });
+
+    it('offers the note for Deposits when only Deposits is off', async () => {
+      cashCountsMock.mockReturnValue(list([berrySettled, crates({ operator_note_editable: true })]));
+      render(<ShiftCountResult result={{ mode: 'close', shiftId: 's-old' }} onClose={() => {}} />);
+      expect(await screen.findByLabelText('Your explanation')).toBeInTheDocument();
+      expect(screen.getByRole('dialog')).toHaveTextContent(/Closing discrepancy .*360\.00/);
+    });
+
+    it('offers Cash first and, once it is saved, Deposits; saving that closes', async () => {
+      const user = userEvent.setup();
+      const onClose = vi.fn();
+      noteMock.mockResolvedValue({});
+      cashCountsMock.mockReturnValue(list([count(), crates({ operator_note_editable: true })]));
+      render(<ShiftCountResult result={{ mode: 'close', shiftId: 's-old' }} onClose={onClose} />);
+
+      await user.type(await screen.findByLabelText('Your explanation'), 'short change');
+      expect(screen.getByRole('dialog')).toHaveTextContent(/Closing discrepancy .*50\.00/);
+      await user.click(screen.getByRole('button', { name: 'Save explanation' }));
+      expect(noteMock).toHaveBeenLastCalledWith({ countId: 'cl', operatorNote: 'short change' });
+      await waitFor(() => expect(screen.getByRole('dialog')).toHaveTextContent(/Closing discrepancy .*360\.00/));
+      expect(onClose).not.toHaveBeenCalled();
+
+      await user.type(screen.getByLabelText('Your explanation'), 'crates lent');
+      await user.click(screen.getByRole('button', { name: 'Save explanation' }));
+      expect(noteMock).toHaveBeenLastCalledWith({ countId: 'cc', operatorNote: 'crates lent' });
+      await waitFor(() => expect(onClose).toHaveBeenCalled());
+    });
+
+    it('«Cancel» returns to the result, which offers a note per book that takes one', async () => {
+      const user = userEvent.setup();
+      cashCountsMock.mockReturnValue(list([count(), crates({ operator_note_editable: true })]));
+      render(<ShiftCountResult result={{ mode: 'close', shiftId: 's-old' }} onClose={() => {}} />);
+      await user.click(await screen.findByRole('button', { name: 'Cancel' }));
+      expect(await screen.findByRole('group', { name: 'Deposits' })).toBeInTheDocument();
+      await user.click(screen.getByRole('button', { name: 'Explain the discrepancy · Deposits' }));
+      expect(screen.getByRole('dialog')).toHaveTextContent(/Closing discrepancy .*360\.00/);
+    });
   });
 });

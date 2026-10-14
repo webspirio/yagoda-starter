@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { useId, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { CheckCircle2, TriangleAlert } from 'lucide-react';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/shared/ui/dialog';
@@ -8,6 +8,14 @@ import { LedgerRow } from '@/shared/ui/ledger-row';
 import { formatUah } from '@/shared/lib/money';
 import { discrepancyTone } from '../lib/discrepancyTone';
 
+/** One book's figures in an open/close result (#178) — «Каса» or «Завдатки». */
+export interface CountResultRow {
+  label: string;
+  counted: string;
+  expected: string;
+  discrepancy: string;
+}
+
 interface CountResultBodyProps {
   title: ReactNode;
   /** The counted figure — every result shows this one. */
@@ -16,6 +24,12 @@ interface CountResultBodyProps {
   expected?: string | null;
   /** Renders the «Розбіжність» pill when given; `null` (open) shows no pill at all. */
   discrepancy?: string | null;
+  /**
+   * #178 — the open/close result: one labelled block per book (counted,
+   * expected and its own discrepancy pill) instead of the single trio above,
+   * which only the recount still uses.
+   */
+  rows?: CountResultRow[] | null;
   /** An optional line under the pill — the recount's «cannot be changed» note; the close result folds its own equivalent into `title` instead. */
   note?: ReactNode | null;
   /** An extra footer button before «Готово» — the page's, never this feature's (FSD). */
@@ -35,10 +49,9 @@ interface CountResultBodyProps {
  * Deliberately dumb about WHOSE result this is: `title` and `note` are
  * caller-supplied `ReactNode`s (each caller's own copy, its own i18n
  * namespace — «Перерахунок каси» never changes, but «Зміна закрита...» is
- * computed per row), and `expected`/`discrepancy` are individually optional
- * because a recount shows all three figures while an open/close result shows
- * only `counted` (plus `discrepancy` for a close, never for an open — §7.3,
- * the first count IS the balance, nothing to compare it against yet).
+ * computed per row). A recount shows the single expected/counted/discrepancy
+ * trio; an open/close result passes `rows` instead — one block per book,
+ * «Каса» and «Завдатки», each with its own discrepancy (#178).
  *
  * Callers gate visibility on having real data (see `RecountDrawerDialog`'s
  * `result` state and `PointCashPage`'s `resultRow`) rather than this
@@ -50,13 +63,13 @@ export function CountResultBody({
   counted,
   expected = null,
   discrepancy = null,
+  rows = null,
   note = null,
   action = null,
   onClose,
 }: CountResultBodyProps) {
   const { t, i18n } = useTranslation();
   const locale = i18n.resolvedLanguage;
-  const tone = discrepancy === null ? null : discrepancyTone(discrepancy);
 
   return (
     <>
@@ -64,32 +77,24 @@ export function CountResultBody({
         <DialogTitle>{title}</DialogTitle>
       </DialogHeader>
 
-      {/* Plain rows, not a `<dl>` — `LedgerRow` renders a `div`/`span` pair,
-          not a `dt`/`dd` pair, so wrapping it in a description list used to
-          be markup for a description list with no descriptions in it
-          (review, minor 12). */}
-      <div className="flex flex-col gap-1">
-        {expected !== null ? (
-          <LedgerRow label={t('countResult.expected')} value={formatUah(expected, locale)} />
-        ) : null}
-        <LedgerRow label={t('countResult.counted')} value={formatUah(counted, locale)} strong />
-      </div>
+      {rows !== null ? (
+        rows.map((row) => <BookBlock key={row.label} row={row} />)
+      ) : (
+        <>
+          {/* Plain rows, not a `<dl>` — `LedgerRow` renders a `div`/`span` pair,
+              not a `dt`/`dd` pair, so wrapping it in a description list used to
+              be markup for a description list with no descriptions in it
+              (review, minor 12). */}
+          <div className="flex flex-col gap-1">
+            {expected !== null ? (
+              <LedgerRow label={t('countResult.expected')} value={formatUah(expected, locale)} />
+            ) : null}
+            <LedgerRow label={t('countResult.counted')} value={formatUah(counted, locale)} strong />
+          </div>
 
-      {tone !== null ? (
-        <div>
-          <Badge
-            variant="outline"
-            className={tone === 'leaf' ? 'border-leaf/40 text-leaf' : 'border-destructive/40 text-destructive'}
-          >
-            {tone === 'leaf' ? (
-              <CheckCircle2 aria-hidden="true" />
-            ) : (
-              <TriangleAlert aria-hidden="true" />
-            )}
-            {t('countResult.discrepancy')}
-          </Badge>
-        </div>
-      ) : null}
+          {discrepancy !== null ? <DiscrepancyPill discrepancy={discrepancy} /> : null}
+        </>
+      )}
 
       {note ? <p className="text-sm text-muted-foreground">{note}</p> : null}
 
@@ -100,6 +105,41 @@ export function CountResultBody({
         </Button>
       </DialogFooter>
     </>
+  );
+}
+
+/** ✓/⚠ «Розбіжність» pill; `amount` adds the figure itself (a book's block). */
+function DiscrepancyPill({ discrepancy, amount = null }: { discrepancy: string; amount?: string | null }) {
+  const { t } = useTranslation();
+  const tone = discrepancyTone(discrepancy);
+  return (
+    <div>
+      <Badge
+        variant="outline"
+        className={tone === 'leaf' ? 'border-leaf/40 text-leaf' : 'border-destructive/40 text-destructive'}
+      >
+        {tone === 'leaf' ? <CheckCircle2 aria-hidden="true" /> : <TriangleAlert aria-hidden="true" />}
+        {t('countResult.discrepancy')}
+        {amount !== null ? ` ${amount}` : null}
+      </Badge>
+    </div>
+  );
+}
+
+/** One book of the open/close result (#178) — a named group, so each book reads as its own unit. */
+function BookBlock({ row }: { row: CountResultRow }) {
+  const { t, i18n } = useTranslation();
+  const locale = i18n.resolvedLanguage;
+  const labelId = useId();
+  return (
+    <div role="group" aria-labelledby={labelId} className="flex flex-col gap-1">
+      <p id={labelId} className="text-sm font-medium">
+        {row.label}
+      </p>
+      <LedgerRow label={t('countResult.expected')} value={formatUah(row.expected, locale)} />
+      <LedgerRow label={t('countResult.counted')} value={formatUah(row.counted, locale)} strong />
+      <DiscrepancyPill discrepancy={row.discrepancy} amount={formatUah(row.discrepancy, locale)} />
+    </div>
   );
 }
 

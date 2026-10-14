@@ -663,7 +663,11 @@
     "expected": "Expected",
     "counted": "Counted",
     "discrepancy": "Discrepancy",
-    "done": "Done"
+    "done": "Done",
+    "book": {
+      "berry": "Cash",
+      "crates": "Deposits"
+    }
   },
   "pointCash": {
     "eyebrow": "{{point}} · {{date}}, {{weekday}}",

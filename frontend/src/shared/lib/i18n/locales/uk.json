@@ -675,7 +675,11 @@
     "expected": "Очікувано",
     "counted": "Пораховано",
     "discrepancy": "Розбіжність",
-    "done": "Готово"
+    "done": "Готово",
+    "book": {
+      "berry": "Каса",
+      "crates": "Завдатки"
+    }
   },
   "pointCash": {
     "eyebrow": "{{point}} · {{date}}, {{weekday}}",

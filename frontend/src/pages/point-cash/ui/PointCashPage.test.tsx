@@ -1047,7 +1047,7 @@ describe('PointCashPage — R4: the open/close result view', () => {
     expect(screen.getByText('2,500.00 ₴')).toBeInTheDocument();
     // Since 09.09 the opening is compared with the last close, so it carries
     // the same pill a close does (spec 2026-10-08, decision 5).
-    expect(screen.getByText('Discrepancy')).toBeInTheDocument();
+    expect(screen.getByText(/^Discrepancy/)).toBeInTheDocument();
   });
 
   it('dismisses via «Done» rather than hard-popping, without leaking stale content into the next result (minor 14)', async () => {

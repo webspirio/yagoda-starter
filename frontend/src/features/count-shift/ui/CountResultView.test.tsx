@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { expectNoAxeViolations } from '../../../test-axe';
 import { CountResultView } from './CountResultView';
@@ -101,6 +101,30 @@ describe('CountResultView — the open/close shape (counted only, optional pill,
     );
 
     expect(screen.getByText('Discrepancy').closest('span')).toHaveClass('text-destructive');
+  });
+});
+
+describe('CountResultView — the two-book shape (#178: one block per book)', () => {
+  const rows = [
+    { label: 'Cash', counted: '1000.00', expected: '1000.00', discrepancy: '0.00' },
+    { label: 'Deposits', counted: '640.00', expected: '1000.00', discrepancy: '-360.00' },
+  ];
+
+  it('renders one labelled block per book, each with its own expected, counted and discrepancy', async () => {
+    const { container } = render(
+      <CountResultView open title="Shift closed" counted="0.00" rows={rows} onClose={vi.fn()} />,
+    );
+
+    const cash = screen.getByRole('group', { name: 'Cash' });
+    const deposits = screen.getByRole('group', { name: 'Deposits' });
+    expect(cash).toHaveTextContent('Expected');
+    expect(cash).toHaveTextContent('Counted');
+    expect(within(cash).getByText(/Discrepancy/).closest('span')).toHaveClass('text-leaf');
+    expect(deposits).toHaveTextContent('640.00');
+    const pill = within(deposits).getByText(/Discrepancy/).closest('span');
+    expect(pill).toHaveClass('text-destructive');
+    expect(pill).toHaveTextContent(/360\.00/);
+    await expectNoAxeViolations(container);
   });
 });
 
