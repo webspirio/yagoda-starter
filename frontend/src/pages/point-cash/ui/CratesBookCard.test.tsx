@@ -22,13 +22,13 @@ describe('CratesBookCard', () => {
 
     expect(screen.getByText('Crate cash')).toBeInTheDocument();
     expect(screen.getByText('14,400.00 ₴')).toBeInTheDocument();
-    expect(screen.getByText('deposits for 123 crates — 14,760.00 ₴')).toBeInTheDocument();
+    expect(screen.getByText('owed now: deposits for 123 crates — 14,760.00 ₴')).toBeInTheDocument();
   });
 
   it('uses the singular for exactly one crate', () => {
     render(card({ crateDeposits: '150.00', crateDepositUnits: 1 }));
 
-    expect(screen.getByText('deposits for 1 crate — 150.00 ₴')).toBeInTheDocument();
+    expect(screen.getByText('owed now: deposits for 1 crate — 150.00 ₴')).toBeInTheDocument();
   });
 
   it('says no deposits are held instead of printing «deposits for 0 crates»', () => {

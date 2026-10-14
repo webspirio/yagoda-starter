@@ -131,8 +131,26 @@ describe('ShiftCountResult', () => {
       expect(await screen.findByRole('dialog')).toHaveTextContent(/off in deposits against the previous close/);
     });
 
-    it('when Cash is off the title keeps the cash wording and the cash amount', async () => {
+    it('when BOTH books differ the close title names both amounts', async () => {
       cashCountsMock.mockReturnValue(list([count({ operator_note_editable: false }), crates()]));
+      render(<ShiftCountResult result={{ mode: 'close', shiftId: 's-old' }} onClose={() => {}} />);
+      expect(await screen.findByRole('dialog')).toHaveTextContent(
+        /Shift closed\. Discrepancy .*50\.00 ₴ in cash and .*360\.00 ₴ in deposits/,
+      );
+    });
+
+    it('when BOTH books differ the open title names both amounts', async () => {
+      cashCountsMock.mockReturnValue(
+        list([count({ kind: 'opening', operator_note_editable: false }), crates({ kind: 'opening' })]),
+      );
+      render(<ShiftCountResult result={{ mode: 'open', shiftId: 's-old' }} onClose={() => {}} />);
+      expect(await screen.findByRole('dialog')).toHaveTextContent(
+        /Off the previous close by .*50\.00 ₴ in cash and .*360\.00 ₴ in deposits/,
+      );
+    });
+
+    it('when Cash is off the title keeps the cash wording and the cash amount', async () => {
+      cashCountsMock.mockReturnValue(list([count({ operator_note_editable: false }), crates({ discrepancy: '0.00', counted_amount: '1000.00' })]));
       render(<ShiftCountResult result={{ mode: 'close', shiftId: 's-old' }} onClose={() => {}} />);
       const dialog = await screen.findByRole('dialog');
       expect(dialog).toHaveTextContent(/Shift closed\. Discrepancy .*50\.00 ₴ — the owner/);

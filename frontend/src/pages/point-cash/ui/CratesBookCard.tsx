@@ -4,7 +4,11 @@ import { formatUah, isZero } from '@/shared/lib/money';
 
 /**
  * «Каса за ящики» (R1, R8) — the crates book, on its own, beside the berry
- * book on `PointCashPage`. The mock's dark «У шухляді має бути» block, which
+ * book on `PointCashPage`. The HEADLINE is the counted drawer (#178: the
+ * anchored `crate_cash`, `as_of`-bounded, «ще не перераховували» when never
+ * counted) and so is the discrepancy line; the caption beneath is a different
+ * thing — the point's LIFETIME liability to suppliers (§7.5), labelled «зараз
+ * винні» so a back-dated page never reads it as the drawer on that date. The mock's dark «У шухляді має бути» block, which
  * ADDS the two books into one figure, is NOT ported: the client's «Правка»
  * under the 20:50 story says berry cash and crate deposits do not lie in one
  * drawer, and `point-cash.service.ts` (backend) already refuses to sum them.
@@ -20,9 +24,9 @@ export function CratesBookCard({
 }: {
   /** `PointCashRow.crate_cash` — the counted drawer figure; `null` = never counted at this point. */
   crateCash: string | null;
-  /** `PointCashRow.crate_unexplained_difference` — the LIFETIME sum of every crates discrepancy, explained ones included — so it does not clear when the owner explains one; `0.00` = the drawer never differed. */
+  /** `PointCashRow.crate_unexplained_difference` — the sum of every crates discrepancy up to `as_of`, explained ones included — so it does not clear when the owner explains one; `0.00` = the drawer never differed. */
   crateUnexplained: string;
-  /** `PointCashRow.crate_deposits` — the supplier liability: money still held against issued crates. */
+  /** `PointCashRow.crate_deposits` — the supplier liability (lifetime, not `as_of`-bounded): money still held against issued crates. */
   crateDeposits: string;
   /** `PointCashRow.crate_deposit_units` (§R8) — issued «за кошти», not yet returned. */
   crateDepositUnits: number;

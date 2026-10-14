@@ -781,7 +781,7 @@ describe('PointCashPage — R1: the crates book beside the berry book, never a c
 
     expect(screen.getByText('Crate cash')).toBeInTheDocument();
     expect(screen.getByText('240.00 ₴')).toBeInTheDocument();
-    expect(screen.getByText('deposits for 3 crates — 250.00 ₴')).toBeInTheDocument();
+    expect(screen.getByText('owed now: deposits for 3 crates — 250.00 ₴')).toBeInTheDocument();
   });
 
   it('never shows a combined drawer figure — the mock’s dark block is not ported', () => {

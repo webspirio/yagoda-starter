@@ -73,16 +73,26 @@ export function ShiftCountResult({
     // «Каса» wins the title when it is off; only a deposits-only difference
     // names «завдатки», so its amount is never read as the cash drawer's.
     const off = rows.find((row) => !isZero(row.discrepancy)) ?? null;
+    // Both books off: one title naming both amounts, not just the cash one.
+    const offCash = rows.find((row) => row.book === 'berry' && !isZero(row.discrepancy));
+    const offDeposits = rows.find((row) => row.book === 'crates' && !isZero(row.discrepancy));
+    const both =
+      offCash && offDeposits
+        ? {
+            cash: formatUah(offCash.discrepancy, i18n.language),
+            deposits: formatUah(offDeposits.discrepancy, i18n.language),
+          }
+        : null;
     const amount = off === null ? '' : formatUah(off.discrepancy, i18n.language);
-    const suffix = off?.book === 'crates' ? 'Deposits' : '';
+    const suffix = both ? 'Both' : off?.book === 'crates' ? 'Deposits' : '';
     const title =
       result.mode === 'open'
         ? off === null
           ? t('pointCash.result.opened')
-          : t(`pointCash.result.openedDiscrepancy${suffix}`, { amount })
+          : t(`pointCash.result.openedDiscrepancy${suffix}`, both ?? { amount })
         : off === null
           ? t('pointCash.result.closedSettled')
-          : t(`pointCash.result.closedDiscrepancy${suffix}`, { amount });
+          : t(`pointCash.result.closedDiscrepancy${suffix}`, both ?? { amount });
     const viewRows = rows.map((row) => ({
       label: t(`countResult.book.${row.book}`),
       counted: row.counted_amount,
