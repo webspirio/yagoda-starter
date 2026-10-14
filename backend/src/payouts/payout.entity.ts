@@ -107,8 +107,8 @@ export class Payout {
   @Column({ type: 'numeric', precision: 12, scale: 2 })
   amount: string;
 
-  /** The supplier's debt across the whole network (`debtSql` has no point filter) right AFTER
-   *  this payout, frozen at write time under the supplier lock (#145) — what the payout receipt
+  /** The supplier's debt at this point (a supplier row IS a point, §3.9) right AFTER this
+   *  payout, frozen at write time under the supplier lock (#145) — what the payout receipt
    *  prints, so a reprint is the same paper.
    *  A RECORD of what was printed, never a source of debt: `debtSql` is. A void leaves it. */
   @Column({ type: 'numeric', precision: 12, scale: 2 })

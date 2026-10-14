@@ -3,11 +3,13 @@ import type { IntakeDetail } from '@/entities/intake';
 import type { ReceiptDocument, ReceiptSection } from '@/shared/ui/receipt';
 import { add, cmp, formatKg, formatUah, isZero } from '@/shared/lib/money';
 import { formatLongDate, formatTime } from '@/shared/lib/date';
+import { receiptHeader } from './receiptHeader';
 
 /**
  * One intake as a `ReceiptDocument` — every number and string resolved here,
  * so `ReceiptView` stays pure layout. `balance` is the supplier's LIVE debt
- * across the network (not frozen at write time), read by the caller.
+ * at this point (a supplier row is a point, §3.9), not frozen at write time,
+ * read by the caller.
  */
 export function buildIntakeReceipt({
   intake,
@@ -101,13 +103,7 @@ export function buildIntakeReceipt({
 
   return {
     voided: intake.voided_at ? { reason: intake.void_reason ?? '' } : null,
-    header: {
-      point: t('receipt.headerPoint', { number: intake.point_number }),
-      staff:
-        intake.received_by_number === null
-          ? '—'
-          : t('receipt.headerStaff', { number: intake.received_by_number }),
-    },
+    header: receiptHeader(t, intake.point_number, intake.received_by_number),
     meta: [
       { label: t('receipt.number'), value: intake.code },
       { label: t('receipt.operation'), value: t('receipt.operationIntake') },

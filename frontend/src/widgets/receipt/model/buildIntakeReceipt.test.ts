@@ -81,6 +81,13 @@ describe('buildIntakeReceipt', () => {
     });
   });
 
+  it('prints a dash, never «№ undefined», when a response lacks the numbers', () => {
+    const bare = intake();
+    delete (bare as Partial<IntakeDetail>).point_number;
+    delete (bare as Partial<IntakeDetail>).received_by_number;
+    expect(build(bare).header).toEqual({ point: '—', staff: '—' });
+  });
+
   it('prints a dash for staff when the receiver is unknown', () => {
     expect(build(intake({ received_by_number: null })).header.staff).toBe('—');
   });
