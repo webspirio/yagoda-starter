@@ -219,4 +219,34 @@ describe('count explanations and operator notes (Postgres)', () => {
     expect(row.before).toBeNull();
     expect(row.after).toBe('знайшов 50');
   });
+
+  it('#178: the owner explains a crates closing discrepancy; berry lists before crates', async () => {
+    const p = await point('K');
+    const opened = await shifts.open(p.closer, { counted_amount: '1000.00', counted_deposits: '14400.00' });
+    const [{ id: supplierId }] = (await ds.query(
+      `INSERT INTO suppliers (collection_point_id, first_name, last_name, kind, is_active)
+       VALUES ($1, 'Петро', $2, 'none', true) RETURNING id`,
+      [p.id, `Мельник ${run}`],
+    )) as { id: string }[];
+    await ds.query(
+      `INSERT INTO crate_issuances (code, shift_id, supplier_id, units, mode, deposit_per_unit,
+                                    deposit_taken, issued_by_user_id)
+       VALUES ($1, $2, $3, 20, 'deposit', '120.00', '2400.00', $4)`,
+      [`CI-${randomUUID().slice(0, 12)}`, opened.id, supplierId, p.closer.sub],
+    );
+    await shifts.close(p.closer, opened.id, { counted_amount: '1000.00', counted_deposits: '16440.00', broken_crates: 0 });
+
+    const rows = await rowsOf(owner, opened.id);
+    const closing = rows.filter((r) => r.kind === 'closing');
+    expect(closing.map((r) => r.book)).toEqual(['berry', 'crates']);
+    const crates = closing[1];
+    expect(crates.is_open).toBe(true);
+    expect(crates.explainable).toBe(true);
+
+    await counts.setExplanation(owner, crates.id, { explanation: 'вісім ящиків у дорозі' });
+    const after = (await rowsOf(owner, opened.id)).find((r) => r.id === crates.id)!;
+    expect(after.is_open).toBe(false);
+    const mine = await rowsOf(p.closer, opened.id);
+    expect(mine.find((r) => r.id === crates.id)!.operator_note_editable).toBe(false);
+  });
 });

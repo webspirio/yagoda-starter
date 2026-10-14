@@ -242,7 +242,7 @@ export class CashCountsService {
               c.expected_amount::text AS expected_amount,
               c.counted_by_user_id, c.counted_at, c.explanation, c.operator_note
        ${scope}
-        ORDER BY s.business_date DESC, c.counted_at DESC, c.id ASC
+        ORDER BY s.business_date DESC, c.counted_at DESC, c.book ASC, c.id ASC
         LIMIT $6 OFFSET $7`,
       [...params, query.limit, skipOf(query)],
     )) as CashCountRow[];

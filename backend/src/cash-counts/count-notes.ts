@@ -1,6 +1,5 @@
 import { ConflictException, ForbiddenException, HttpException } from '@nestjs/common';
 import { cmp } from '../common/money';
-import { CashBook } from './cash-book.enum';
 import { CashCountKind } from './cash-count-kind.enum';
 import type { CashCount } from './cash-count.entity';
 import { UserRole } from '../users/user-role.enum';
@@ -39,7 +38,8 @@ export function countNoteRefusal(
     });
   }
   // A midday row is a recount (a witness, §7.6) or a demoted close (superseded history).
-  if (count.book !== CashBook.Berry || count.kind === CashCountKind.Midday) {
+  // Either book since #178.
+  if (count.kind === CashCountKind.Midday) {
     return new ConflictException({
       message: 'Only an opening or closing count can be explained',
       code: 'COUNT_NOT_EXPLAINABLE',
