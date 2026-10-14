@@ -111,7 +111,7 @@ describe('CrateStockGuard (real Postgres)', () => {
       const res = await request(app.getHttpServer())
         .post(`/shifts/${id}/close`)
         .set('Authorization', `Bearer ${operatorToken}`)
-        .send({ counted_amount: '0.00', broken_crates: 25 });
+        .send({ counted_amount: '0.00', counted_deposits: '0.00', broken_crates: 25 });
       refused(res, 10, 25);
       const [{ closed_at }] = (await ds.query(`SELECT closed_at FROM shifts WHERE id = $1`, [id])) as { closed_at: Date | null }[];
       expect(closed_at).toBeNull();
@@ -168,7 +168,7 @@ describe('CrateStockGuard (real Postgres)', () => {
         [p.pointId, n],
       );
       await request(app.getHttpServer()).post('/shifts').set('Authorization', `Bearer ${p.operatorToken}`)
-        .send({ counted_amount: '0.00' }).expect(201);
+        .send({ counted_amount: '0.00', counted_deposits: '0.00' }).expect(201);
       expect(await onHand(ds, p.pointId)).toBe(-n);
       return p;
     };
@@ -207,7 +207,7 @@ describe('CrateStockGuard (real Postgres)', () => {
       await stockPoint(app, ownerToken, operatorToken, pointId, 10);
       const id = await openShiftId(pointId);
       await request(app.getHttpServer()).post(`/shifts/${id}/close`).set('Authorization', `Bearer ${operatorToken}`)
-        .send({ counted_amount: '0.00', broken_crates: 10 }).expect(201);
+        .send({ counted_amount: '0.00', counted_deposits: '0.00', broken_crates: 10 }).expect(201);
       expect(await onHand(ds, pointId)).toBe(0);
       await request(app.getHttpServer()).post(`/shifts/${id}/reopen`).set('Authorization', `Bearer ${ownerToken}`)
         .send({ reason: 'помилка' }).expect(201);
@@ -286,7 +286,7 @@ describe('CrateStockGuard (real Postgres)', () => {
       const [ri, rc] = await Promise.all([
         issue(operatorToken, sup, 6),
         request(app.getHttpServer()).post(`/shifts/${id}/close`).set('Authorization', `Bearer ${operatorToken}`)
-          .send({ counted_amount: '0.00', broken_crates: 6 }),
+          .send({ counted_amount: '0.00', counted_deposits: '0.00', broken_crates: 6 }),
       ]);
       expect([ri.status, rc.status]).toContain(409);
       // The shift row serialises these two; the issuance may lose on either count.

@@ -66,7 +66,7 @@ describe('ShiftsService', () => {
   // §6.1's opening count, minimal and unused by anything outside the `open`
   // describe block below — most tests here care only that a shift row lands,
   // not what the drawer held.
-  const openDto = { counted_amount: '100.00' } as never;
+  const openDto = { counted_amount: '100.00', counted_deposits: '0.00' } as never;
 
   beforeEach(() => {
     stock.assertOnHand.mockClear();
@@ -87,9 +87,11 @@ describe('ShiftsService', () => {
     // `repo.findOne.mockResolvedValue(...)` and does not have to know which of
     // the two the production code reached for.
     manager = {
-      save: jest.fn().mockImplementation((_entityClass: unknown, data: Record<string, unknown>) =>
-        Promise.resolve({ id: SHIFT_ID, ...data }),
-      ),
+      save: jest
+        .fn()
+        .mockImplementation((_entityClass: unknown, data: Record<string, unknown>) =>
+          Promise.resolve({ id: SHIFT_ID, ...data }),
+        ),
       update: jest.fn().mockResolvedValue({ affected: 1 }),
       findOne: jest.fn((_entityClass: unknown, opts: unknown) => repo.findOne(opts)),
       // D-8's `loadDisplayNames` — no test in this file asserts a name, so an
@@ -172,7 +174,10 @@ describe('ShiftsService', () => {
       // Two constraints, two causes, two remedies: «close the open one» versus
       // «ask the owner to reopen today's». One message for both would send the
       // operator down the wrong path with cars waiting.
-      manager.save.mockRejectedValue({ code: '23505', constraint: 'UQ_shifts_point_business_date' });
+      manager.save.mockRejectedValue({
+        code: '23505',
+        constraint: 'UQ_shifts_point_business_date',
+      });
 
       await expect(service.open(operator, openDto)).rejects.toMatchObject({
         response: { code: 'SHIFT_DAY_ALREADY_USED' },
@@ -193,7 +198,7 @@ describe('ShiftsService', () => {
   // `ShiftsService.close with a count` describe block below — these tests
   // (and `reopen`'s) care only that a shift row lands and refuses correctly,
   // not what the drawer held.
-  const closeDto = { counted_amount: '100.00' } as never;
+  const closeDto = { counted_amount: '100.00', counted_deposits: '0.00' } as never;
 
   describe('close', () => {
     it('stamps closed_at, closed_by and status', async () => {
@@ -248,6 +253,7 @@ describe('ShiftsService', () => {
 
       const saved = await service.close(operator, SHIFT_ID, {
         counted_amount: '100.00',
+        counted_deposits: '0.00',
         broken_crates: 3,
       } as never);
 
@@ -262,6 +268,7 @@ describe('ShiftsService', () => {
 
       const saved = await service.close(operator, SHIFT_ID, {
         counted_amount: '100.00',
+        counted_deposits: '0.00',
         broken_crates: 0,
       } as never);
 
@@ -275,6 +282,7 @@ describe('ShiftsService', () => {
 
       await service.close(operator, SHIFT_ID, {
         counted_amount: '100.00',
+        counted_deposits: '0.00',
         broken_crates: 3,
       } as never);
 
@@ -291,7 +299,11 @@ describe('ShiftsService', () => {
       repo.findOne.mockResolvedValue(shift());
       cash.expectedForClosing.mockResolvedValue('100.00');
 
-      await service.close(operator, SHIFT_ID, { counted_amount: '100.00', broken_crates: 3 } as never);
+      await service.close(operator, SHIFT_ID, {
+        counted_amount: '100.00',
+        counted_deposits: '0.00',
+        broken_crates: 3,
+      } as never);
       expect(stock.assertOnHand).toHaveBeenCalledWith(expect.anything(), POINT_A, 3);
     });
 
@@ -299,7 +311,11 @@ describe('ShiftsService', () => {
       repo.findOne.mockResolvedValue(shift());
       cash.expectedForClosing.mockResolvedValue('100.00');
 
-      await service.close(operator, SHIFT_ID, { counted_amount: '100.00', broken_crates: 0 } as never);
+      await service.close(operator, SHIFT_ID, {
+        counted_amount: '100.00',
+        counted_deposits: '0.00',
+        broken_crates: 0,
+      } as never);
       expect(stock.assertOnHand).not.toHaveBeenCalled();
     });
 
@@ -470,13 +486,16 @@ describe('ShiftsService.open with a count', () => {
     };
     const dataSource = { transaction: jest.fn((cb: (m: unknown) => unknown) => cb(manager)) };
     const cash = {
-      expectedForOpening: jest.fn().mockResolvedValue(
-        opts.previous === undefined ? null : opts.previous,
-      ),
+      expectedForOpening: jest
+        .fn()
+        .mockResolvedValue(opts.previous === undefined ? null : opts.previous),
     };
     const audit = { record: jest.fn().mockResolvedValue(undefined) };
     const time = {
-      now: () => ({ toISODate: () => '2026-09-09', toJSDate: () => new Date('2026-09-09T04:30:00Z') }),
+      now: () => ({
+        toISODate: () => '2026-09-09',
+        toJSDate: () => new Date('2026-09-09T04:30:00Z'),
+      }),
     };
     const service = new ShiftsService(
       { create: (x: unknown) => x } as never,
@@ -499,7 +518,7 @@ describe('ShiftsService.open with a count', () => {
 
   it("a point's FIRST count sets expected = counted, so the discrepancy is zero", async () => {
     const { service, saved } = build({ previous: null });
-    await service.open(operator, { counted_amount: '47000.00' } as never);
+    await service.open(operator, { counted_amount: '47000.00', counted_deposits: '0.00' } as never);
 
     const countRow = saved.find((r) => 'counted_amount' in r)!;
     // The regression test for spec §3.2 — get this wrong and every point's
@@ -512,14 +531,17 @@ describe('ShiftsService.open with a count', () => {
 
   it("a later opening expects the previous close's COUNTED figure", async () => {
     const { service, saved } = build({ previous: '15066.10' });
-    await service.open(operator, { counted_amount: '15066.10' } as never);
+    await service.open(operator, { counted_amount: '15066.10', counted_deposits: '0.00' } as never);
     const countRow = saved.find((r) => 'counted_amount' in r)!;
     expect(countRow.expected_amount).toBe('15066.10');
   });
 
   it('records a discrepancy without refusing', async () => {
     const { service, saved } = build({ previous: '15416.10' });
-    const result = await service.open(operator, { counted_amount: '15066.10' } as never);
+    const result = await service.open(operator, {
+      counted_amount: '15066.10',
+      counted_deposits: '0.00',
+    } as never);
     const countRow = saved.find((r) => 'counted_amount' in r)!;
     expect(countRow.counted_amount).toBe('15066.10');
     expect(countRow.expected_amount).toBe('15416.10');
@@ -528,14 +550,14 @@ describe('ShiftsService.open with a count', () => {
 
   it('stamps the counter, not the shift opener', async () => {
     const { service, saved } = build({ previous: null });
-    await service.open(operator, { counted_amount: '10.00' } as never);
+    await service.open(operator, { counted_amount: '10.00', counted_deposits: '0.00' } as never);
     const countRow = saved.find((r) => 'counted_amount' in r)!;
     expect(countRow.counted_by_user_id).toBe('u-op');
   });
 
   it('writes a cash-count.recorded audit entry inside the transaction', async () => {
     const { service, audit } = build({ previous: null });
-    await service.open(operator, { counted_amount: '10.00' } as never);
+    await service.open(operator, { counted_amount: '10.00', counted_deposits: '0.00' } as never);
     expect(audit.record).toHaveBeenCalledWith(
       expect.objectContaining({ action: 'cash-count.recorded' }),
       expect.anything(),
@@ -574,7 +596,10 @@ describe('ShiftsService.close with a count', () => {
     };
     const audit = { record: jest.fn().mockResolvedValue(undefined) };
     const time = {
-      now: () => ({ toISODate: () => '2026-09-09', toJSDate: () => new Date('2026-09-09T17:55:00Z') }),
+      now: () => ({
+        toISODate: () => '2026-09-09',
+        toJSDate: () => new Date('2026-09-09T17:55:00Z'),
+      }),
     };
     const repo = { findOne: jest.fn().mockResolvedValue(shiftRow), create: (x: unknown) => x };
     const service = new ShiftsService(
@@ -598,7 +623,10 @@ describe('ShiftsService.close with a count', () => {
 
   it('CLOSES DESPITE A DISCREPANCY — the ruling that overrules §7.7', async () => {
     const { service, saved } = build({ expected: '15416.10' });
-    const result = await service.close(operator, 'sh-1', { counted_amount: '15066.10' } as never);
+    const result = await service.close(operator, 'sh-1', {
+      counted_amount: '15066.10',
+      counted_deposits: '0.00',
+    } as never);
 
     expect(result.status).toBe(ShiftStatus.Closed);
     expect(result.status).not.toBe(ShiftStatus.AwaitingExplanation);
@@ -610,7 +638,10 @@ describe('ShiftsService.close with a count', () => {
 
   it('closes cleanly when the count matches', async () => {
     const { service, saved } = build({ expected: '15416.10' });
-    const result = await service.close(operator, 'sh-1', { counted_amount: '15416.10' } as never);
+    const result = await service.close(operator, 'sh-1', {
+      counted_amount: '15416.10',
+      counted_deposits: '0.00',
+    } as never);
     expect(result.status).toBe(ShiftStatus.Closed);
     const countRow = saved.find((r) => 'counted_amount' in r)!;
     expect(countRow.counted_amount).toBe(countRow.expected_amount);
@@ -619,7 +650,10 @@ describe('ShiftsService.close with a count', () => {
   it('refuses a shift that is already closed', async () => {
     const { service } = build({ shift: { closed_at: new Date(), status: ShiftStatus.Closed } });
     await expect(
-      service.close(operator, 'sh-1', { counted_amount: '1.00' } as never),
+      service.close(operator, 'sh-1', {
+        counted_amount: '1.00',
+        counted_deposits: '0.00',
+      } as never),
     ).rejects.toThrow(ConflictException);
   });
 });
@@ -660,9 +694,7 @@ describe('ShiftsService.reopen demotes the closing count', () => {
     // where clause.
     const repo = {
       findOne: jest.fn((opts: { where?: Record<string, unknown> }) =>
-        Promise.resolve(
-          opts?.where && 'closed_at' in opts.where ? null : shiftRow,
-        ),
+        Promise.resolve(opts?.where && 'closed_at' in opts.where ? null : shiftRow),
       ),
       create: (x: unknown) => x,
     };

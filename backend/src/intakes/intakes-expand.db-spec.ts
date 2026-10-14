@@ -165,7 +165,7 @@ describe('GET /intakes?expand=items (HTTP, Postgres)', () => {
     await request(app.getHttpServer())
       .post('/shifts')
       .set('Authorization', `Bearer ${operatorToken}`)
-      .send({ counted_amount: '0.00' })
+      .send({ counted_amount: '0.00', counted_deposits: '0.00' })
       .expect(201);
 
     // Two lines, so the assertions below can check BOTH the count and the

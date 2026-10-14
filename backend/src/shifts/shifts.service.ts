@@ -96,21 +96,6 @@ export class ShiftsService {
         throw this.translateUniqueViolation(error);
       }
 
-      // `null` means this point has never been counted — see the header.
-      const previous = await this.cash.expectedForOpening(pointId, m);
-      const expected = previous ?? dto.counted_amount;
-
-      const countRow = await m.save(CashCount, {
-        shift_id: shift.id,
-        book: CashBook.Berry,
-        kind: CashCountKind.Opening,
-        counted_amount: dto.counted_amount,
-        expected_amount: expected,
-        // §10.6 — whoever pressed the button, not whoever opened the shift.
-        counted_by_user_id: actor.sub,
-        counted_at: countedAt,
-      });
-
       await this.audit.record(
         {
           action: 'shift.opened',
@@ -121,20 +106,27 @@ export class ShiftsService {
         },
         m,
       );
-      await this.audit.record(
-        {
-          action: 'cash-count.recorded',
-          actor_id: actor.sub,
-          target_type: 'cash_count',
-          target_id: countRow.id,
-          after: {
-            shift_id: shift.id,
-            kind: CashCountKind.Opening,
-            counted_amount: dto.counted_amount,
-            expected_amount: expected,
-          },
-        },
+      // `null` from `expectedFor*` means the book has never been counted at
+      // this point — the counted figure becomes its anchor (see `writeCount`).
+      await this.writeCount(
         m,
+        actor,
+        shift.id,
+        CashBook.Berry,
+        CashCountKind.Opening,
+        dto.counted_amount,
+        await this.cash.expectedForOpening(pointId, m),
+        countedAt,
+      );
+      await this.writeCount(
+        m,
+        actor,
+        shift.id,
+        CashBook.Crates,
+        CashCountKind.Opening,
+        dto.counted_deposits,
+        await this.cash.expectedForOpening(pointId, m, CashBook.Crates),
+        countedAt,
       );
 
       const [response] = await this.respond([shift], m);
@@ -157,11 +149,7 @@ export class ShiftsService {
    * cost is named in the spec's §9.1 — a transfer accepted into that shift on
    * Saturday takes Friday's date.
    */
-  async close(
-    actor: AuthenticatedUser,
-    id: string,
-    dto: CloseShiftDto,
-  ): Promise<ShiftResponse> {
+  async close(actor: AuthenticatedUser, id: string, dto: CloseShiftDto): Promise<ShiftResponse> {
     return this.dataSource.transaction(async (m) => {
       // UNDER THE ROW LOCK, and the check with it — see `loadVisible`. Read
       // outside, `closed_at` is a check-then-write: a double-tapped button
@@ -182,19 +170,6 @@ export class ShiftsService {
       // started queuing for the right to.
       const closedAt = this.time.now().toJSDate();
 
-      // `null` only if something wrote a shift without going through `open`.
-      const expected = (await this.cash.expectedForClosing(shift.id, m)) ?? dto.counted_amount;
-
-      const countRow = await m.save(CashCount, {
-        shift_id: shift.id,
-        book: CashBook.Berry,
-        kind: CashCountKind.Closing,
-        counted_amount: dto.counted_amount,
-        expected_amount: expected,
-        counted_by_user_id: actor.sub,
-        counted_at: closedAt,
-      });
-
       shift.closed_at = closedAt;
       shift.closed_by_user_id = actor.sub;
       shift.status = ShiftStatus.Closed;
@@ -212,20 +187,27 @@ export class ShiftsService {
         },
         m,
       );
-      await this.audit.record(
-        {
-          action: 'cash-count.recorded',
-          actor_id: actor.sub,
-          target_type: 'cash_count',
-          target_id: countRow.id,
-          after: {
-            shift_id: saved.id,
-            kind: CashCountKind.Closing,
-            counted_amount: dto.counted_amount,
-            expected_amount: expected,
-          },
-        },
+      // `null` from `expectedForClosing`: the berry book only if something wrote a
+      // shift without `open`; the crates book also for a shift opened before #178.
+      await this.writeCount(
         m,
+        actor,
+        saved.id,
+        CashBook.Berry,
+        CashCountKind.Closing,
+        dto.counted_amount,
+        await this.cash.expectedForClosing(saved.id, m),
+        closedAt,
+      );
+      await this.writeCount(
+        m,
+        actor,
+        saved.id,
+        CashBook.Crates,
+        CashCountKind.Closing,
+        dto.counted_deposits,
+        await this.cash.expectedForClosing(saved.id, m, CashBook.Crates),
+        closedAt,
       );
       // §6.8's breakage leaves the empties (spec 2026-09-30) — refused if there are not that many.
       if (dto.broken_crates > 0) {
@@ -315,6 +297,7 @@ export class ShiftsService {
       // (§7.6 forbids it) or making every closing-count lookup an ordering
       // problem, where a bug returns a wrong cash figure instead of an error.
       // Everything except `kind` is preserved.
+      // One UPDATE, both books: it keys on `kind`, not `book`.
       await m.update(
         CashCount,
         { shift_id: shift.id, kind: CashCountKind.Closing },
@@ -505,5 +488,44 @@ export class ShiftsService {
       });
     }
     return error;
+  }
+
+  /**
+   * One count row plus its `cash-count.recorded` audit entry, for either book.
+   * `expected === null` is the book's first count at this point (or crates on a
+   * shift opened before #178): the counted figure becomes the anchor, so the
+   * discrepancy is zero rather than the whole drawer.
+   */
+  private async writeCount(
+    m: EntityManager,
+    actor: AuthenticatedUser,
+    shiftId: string,
+    book: CashBook,
+    kind: CashCountKind,
+    counted: string,
+    expected: string | null,
+    countedAt: Date,
+  ): Promise<void> {
+    const exp = expected ?? counted;
+    const row = await m.save(CashCount, {
+      shift_id: shiftId,
+      book,
+      kind,
+      counted_amount: counted,
+      expected_amount: exp,
+      // §10.6 — whoever pressed the button, not whoever opened the shift.
+      counted_by_user_id: actor.sub,
+      counted_at: countedAt,
+    });
+    await this.audit.record(
+      {
+        action: 'cash-count.recorded',
+        actor_id: actor.sub,
+        target_type: 'cash_count',
+        target_id: row.id,
+        after: { shift_id: shiftId, book, kind, counted_amount: counted, expected_amount: exp },
+      },
+      m,
+    );
   }
 }
