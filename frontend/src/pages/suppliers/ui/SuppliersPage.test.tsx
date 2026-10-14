@@ -1,11 +1,16 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { createMemoryRouter, RouterProvider } from 'react-router';
+import { createMemoryRouter, RouterProvider, useParams } from 'react-router';
 import { expectNoAxeViolations } from '../../../test-axe';
 import { SuppliersPage } from './SuppliersPage';
 import type { Supplier } from '@/entities/supplier';
 import type { Me } from '@/entities/user';
+
+function CardStub() {
+  const { id } = useParams();
+  return <div>{`Card stub ${id}`}</div>;
+}
 
 /** `SuppliersPage` now links each row to its card (`/suppliers/:id`), so it
  *  needs a real router context — a stub route stands in for the card page
@@ -14,7 +19,7 @@ function renderSuppliers() {
   const router = createMemoryRouter(
     [
       { path: '/suppliers', element: <SuppliersPage /> },
-      { path: '/suppliers/:id', element: <div>Card stub</div> },
+      { path: '/suppliers/:id', element: <CardStub /> },
     ],
     { initialEntries: ['/suppliers'] },
   );
@@ -175,34 +180,63 @@ describe('SuppliersPage', () => {
     });
   });
 
-  it('links each row to its supplier card, labelled for the supplier it opens', () => {
+  it('names each row with a link to its supplier card', () => {
     queryMock.mockReturnValue(loaded([ivan, petro]));
     renderSuppliers();
 
     const row = screen.getByText('Ivan Koval').closest('tr') as HTMLElement;
-    expect(within(row).getByRole('link', { name: 'Card: Ivan Koval' })).toHaveAttribute(
+    expect(within(row).getByRole('link', { name: 'Ivan Koval' })).toHaveAttribute(
       'href',
       '/suppliers/s1',
     );
   });
 
-  it('clicking the row still opens the edit dialog with the card link in place', async () => {
-    queryMock.mockReturnValue(loaded([ivan]));
+  it("clicking the row opens that supplier's card, not the edit dialog", async () => {
+    queryMock.mockReturnValue(loaded([ivan, petro]));
     renderSuppliers();
 
-    await userEvent.click(screen.getByText('Ivan Koval'));
+    const row = screen.getByText('Petro Melnyk').closest('tr') as HTMLElement;
+    await userEvent.click(within(row).getByText('Haiove'));
 
-    expect(screen.getByLabelText('First name')).toHaveValue('Ivan');
+    expect(await screen.findByText('Card stub s2')).toBeInTheDocument();
+    expect(screen.queryByLabelText('First name')).toBeNull();
   });
 
-  it('the card link does not also open the edit dialog', async () => {
+  it('every row has an Edit button in place of the card link', () => {
+    queryMock.mockReturnValue(loaded([ivan, petro]));
+    renderSuppliers();
+
+    for (const name of ['Ivan Koval', 'Petro Melnyk']) {
+      const row = screen.getByText(name).closest('tr') as HTMLElement;
+      expect(within(row).getByRole('button', { name: `Edit ${name}` })).toHaveTextContent('Edit');
+      expect(within(row).queryByText('Card')).toBeNull();
+    }
+  });
+
+  it("Edit opens the dialog with that supplier's data and never the card", async () => {
+    queryMock.mockReturnValue(loaded([ivan, petro]));
+    renderSuppliers();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Edit Petro Melnyk' }));
+
+    expect(screen.getByLabelText('First name')).toHaveValue('Petro');
+    expect(screen.getByLabelText('Last name')).toHaveValue('Melnyk');
+    expect(screen.queryByText(/Card stub/)).toBeNull();
+    // Still on the list, under the modal (which hides it from the a11y tree).
+    expect(
+      screen.getByRole('heading', { level: 1, name: 'Suppliers', hidden: true }),
+    ).toBeInTheDocument();
+  });
+
+  it('cancelling the edit leaves the user on the list', async () => {
     queryMock.mockReturnValue(loaded([ivan]));
     renderSuppliers();
 
-    const row = screen.getByText('Ivan Koval').closest('tr') as HTMLElement;
-    await userEvent.click(within(row).getByRole('link', { name: 'Card: Ivan Koval' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Edit Ivan Koval' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Cancel' }));
 
-    expect(screen.queryByLabelText('First name')).toBeNull();
-    expect(screen.getByText('Card stub')).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByLabelText('First name')).toBeNull());
+    expect(screen.queryByText(/Card stub/)).toBeNull();
+    expect(screen.getByText('Ivan Koval')).toBeInTheDocument();
   });
 });
