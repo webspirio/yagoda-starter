@@ -191,9 +191,10 @@
       "kind": "Тип",
       "point": "Точка",
       "status": "Стан",
-      "card": "Картка"
+      "action": "Дія"
     },
-    "cardOf": "Картка: {{name}}",
+    "edit": "Редагувати",
+    "editOf": "Редагувати: {{name}}",
     "kindLabel": {
       "none": "Звичайний",
       "wholesale": "Опт",

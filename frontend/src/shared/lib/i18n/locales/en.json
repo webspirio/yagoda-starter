@@ -191,9 +191,10 @@
       "kind": "Kind",
       "point": "Point",
       "status": "Status",
-      "card": "Card"
+      "action": "Action"
     },
-    "cardOf": "Card: {{name}}",
+    "edit": "Edit",
+    "editOf": "Edit {{name}}",
     "kindLabel": {
       "none": "Regular",
       "wholesale": "Wholesale",
