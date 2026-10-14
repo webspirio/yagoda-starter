@@ -10,7 +10,7 @@ import { EmptyState } from '@/shared/ui/empty-state';
 import { Spinner } from '@/shared/ui/spinner';
 import { useDebouncedValue } from '@/shared/lib/useDebouncedValue';
 import { usePointOptionsQuery } from '@/entities/collection-point';
-import { useSuppliersQuery } from '@/entities/supplier';
+import { supplierName, useSuppliersQuery } from '@/entities/supplier';
 import type { Supplier } from '@/entities/supplier';
 import { SupplierFormDialog } from '@/features/edit-supplier';
 
@@ -56,7 +56,7 @@ export function SuppliersPage() {
           onClick={(e) => e.stopPropagation()}
           className="font-medium text-primary underline-offset-2 hover:underline"
         >
-          {`${s.first_name} ${s.last_name}`}
+          {supplierName(s)}
         </Link>
       ),
     },
@@ -97,7 +97,7 @@ export function SuppliersPage() {
             e.stopPropagation();
             openEdit(s);
           }}
-          aria-label={t('suppliers.editOf', { name: `${s.first_name} ${s.last_name}` })}
+          aria-label={t('suppliers.editOf', { name: supplierName(s) })}
         >
           {t('suppliers.edit')}
         </Button>

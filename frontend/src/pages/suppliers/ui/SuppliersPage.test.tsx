@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createMemoryRouter, RouterProvider, useParams } from 'react-router';
 import { expectNoAxeViolations } from '../../../test-axe';
@@ -23,7 +23,7 @@ function renderSuppliers() {
     ],
     { initialEntries: ['/suppliers'] },
   );
-  return render(<RouterProvider router={router} />);
+  return { router, ...render(<RouterProvider router={router} />) };
 }
 
 const { queryMock, createMock, updateMock, meMock } = vi.hoisted(() => ({
@@ -33,7 +33,8 @@ const { queryMock, createMock, updateMock, meMock } = vi.hoisted(() => ({
   meMock: vi.fn(),
 }));
 
-vi.mock('@/entities/supplier', () => ({
+vi.mock('@/entities/supplier', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/entities/supplier')>()),
   useSuppliersQuery: () => queryMock(),
 }));
 
@@ -180,15 +181,22 @@ describe('SuppliersPage', () => {
     });
   });
 
-  it('names each row with a link to its supplier card', () => {
+  it('the name links to its card and opens it once, not the edit dialog', async () => {
     queryMock.mockReturnValue(loaded([ivan, petro]));
-    renderSuppliers();
+    const { router } = renderSuppliers();
 
     const row = screen.getByText('Ivan Koval').closest('tr') as HTMLElement;
-    expect(within(row).getByRole('link', { name: 'Ivan Koval' })).toHaveAttribute(
-      'href',
-      '/suppliers/s1',
-    );
+    const link = within(row).getByRole('link', { name: 'Ivan Koval' });
+    expect(link).toHaveAttribute('href', '/suppliers/s1');
+
+    await userEvent.click(link);
+
+    expect(await screen.findByText('Card stub s1')).toBeInTheDocument();
+    expect(screen.queryByLabelText('First name')).toBeNull();
+    // One click, one history entry: a single Back returns to the list. Were
+    // the row's own navigation to fire too, Back would land on the card again.
+    await act(() => router.navigate(-1));
+    expect(await screen.findByRole('heading', { level: 1, name: 'Suppliers' })).toBeInTheDocument();
   });
 
   it("clicking the row opens that supplier's card, not the edit dialog", async () => {
@@ -202,14 +210,13 @@ describe('SuppliersPage', () => {
     expect(screen.queryByLabelText('First name')).toBeNull();
   });
 
-  it('every row has an Edit button in place of the card link', () => {
+  it('every row has an Edit button, named for its supplier', () => {
     queryMock.mockReturnValue(loaded([ivan, petro]));
     renderSuppliers();
 
     for (const name of ['Ivan Koval', 'Petro Melnyk']) {
       const row = screen.getByText(name).closest('tr') as HTMLElement;
       expect(within(row).getByRole('button', { name: `Edit ${name}` })).toHaveTextContent('Edit');
-      expect(within(row).queryByText('Card')).toBeNull();
     }
   });
 
