@@ -1,4 +1,5 @@
 import * as React from 'react';
+import { ArrowDown, ArrowUp } from 'lucide-react';
 import { cn } from '@/shared/lib/cn';
 import { Card } from './card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './table';
@@ -13,6 +14,14 @@ export interface Column<Row> {
   className?: string;
   /** Hide this column below the given breakpoint. */
   hideBelow?: 'sm' | 'md' | 'lg';
+  /** Clickable when the table is given `sort` + `onSortChange`; inert otherwise. */
+  sortable?: boolean;
+}
+
+/** Which column the rows are ordered by. The table renders it; the page decides it. */
+export interface SortState {
+  key: string;
+  order: 'asc' | 'desc';
 }
 
 const HIDE = { sm: 'max-sm:hidden', md: 'max-md:hidden', lg: 'max-lg:hidden' } as const;
@@ -26,6 +35,8 @@ export function DataTable<Row>({
   empty,
   frame = true,
   className,
+  sort,
+  onSortChange,
 }: {
   columns: Column<Row>[];
   rows: Row[];
@@ -36,6 +47,9 @@ export function DataTable<Row>({
    *  lives inside a card, so it does not draw a card within a card. */
   frame?: boolean;
   className?: string;
+  /** Opt-in. The table reports which header was clicked; direction rules belong to the caller. */
+  sort?: SortState;
+  onSortChange?: (key: string) => void;
 }) {
   const colClass = (c: Column<Row>) =>
     cn(c.align && ALIGN[c.align], c.hideBelow && HIDE[c.hideBelow], c.className);
@@ -44,11 +58,39 @@ export function DataTable<Row>({
     <Table className={className}>
       <TableHeader>
         <TableRow>
-          {columns.map((c) => (
-            <TableHead key={c.id} className={colClass(c)}>
-              {c.header}
-            </TableHead>
-          ))}
+          {columns.map((c) => {
+            const sortableHere = c.sortable && sort && onSortChange;
+            const active = sortableHere && sort.key === c.id;
+            const ariaSort = !sortableHere
+              ? undefined
+              : active
+                ? sort.order === 'asc'
+                  ? 'ascending'
+                  : 'descending'
+                : 'none';
+            const Arrow = active && sort.order === 'asc' ? ArrowUp : ArrowDown;
+            return (
+              <TableHead key={c.id} className={colClass(c)} aria-sort={ariaSort}>
+                {sortableHere ? (
+                  <button
+                    type="button"
+                    onClick={() => onSortChange(c.id)}
+                    className={cn(
+                      'inline-flex items-center gap-1 hover:text-foreground',
+                      c.align === 'right' && 'flex-row-reverse',
+                      active ? 'text-foreground' : undefined,
+                    )}
+                  >
+                    {c.header}
+                    {/* Invisible, not absent, when inactive: the header keeps its width as the sort moves. */}
+                    <Arrow aria-hidden className={cn('size-3.5', !active && 'invisible')} />
+                  </button>
+                ) : (
+                  c.header
+                )}
+              </TableHead>
+            );
+          })}
         </TableRow>
       </TableHeader>
       <TableBody>
