@@ -540,4 +540,4 @@ export class PointCashService {
   }
 }
 
-export { movementsSql, crateMovementsSql, anchorSql, asOfSql };
+export { movementsSql, anchorSql, asOfSql };
