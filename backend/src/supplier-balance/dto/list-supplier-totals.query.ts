@@ -1,7 +1,7 @@
 import { IsIn, IsOptional, IsString, IsUUID, MaxLength } from 'class-validator';
 import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
 
-export const SUPPLIER_TOTALS_SORTS = ['weight', 'amount', 'name'] as const;
+const SUPPLIER_TOTALS_SORTS = ['weight', 'amount', 'name'] as const;
 export type SupplierTotalsSort = (typeof SUPPLIER_TOTALS_SORTS)[number];
 export type SortOrder = 'asc' | 'desc';
 
