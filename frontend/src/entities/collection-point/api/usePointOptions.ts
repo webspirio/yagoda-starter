@@ -21,7 +21,6 @@ export function usePointOptionsQuery() {
         Paginated<{
           id: string;
           name: string;
-          number: number;
           kind: 'reception' | 'base';
           target_crates: number | null;
         }>
@@ -35,7 +34,6 @@ export function usePointOptionsQuery() {
       return data.data.map((p) => ({
         id: p.id,
         name: p.name,
-        number: p.number,
         kind: p.kind,
         target_crates: p.target_crates ?? null,
       }));

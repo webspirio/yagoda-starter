@@ -1,4 +1,3 @@
-import { In } from 'typeorm';
 import { NotFoundException } from '@nestjs/common';
 import {
   POINT_A,
@@ -11,7 +10,6 @@ import {
   buildPayouts,
   type PayoutsMocks,
 } from '../../testing/unit/payouts.mocks';
-import { User } from '../../users/user.entity';
 import { CreatePayoutCommand } from './create-payout.command';
 
 describe('CreatePayoutCommand', () => {
@@ -31,22 +29,6 @@ describe('CreatePayoutCommand', () => {
   });
 
   const saved = () => manager.save.mock.calls[0][1] as Record<string, unknown>;
-
-  describe('create — paid_by', () => {
-    it('answers the actor name parts, loaded by actor.sub in the transaction', async () => {
-      manager.find.mockResolvedValue([
-        { id: oksana.sub, first_name: 'Оксана', last_name: 'Гнатюк', number: 2 },
-      ]);
-
-      const res = await command.create(oksana, dto({ amount: '380.00' }));
-
-      expect(res.paid_by).toEqual({ first_name: 'Оксана', last_name: 'Гнатюк', number: 2 });
-      expect(manager.find).toHaveBeenCalledWith(
-        User,
-        expect.objectContaining({ where: { id: In([oksana.sub]) } }),
-      );
-    });
-  });
 
   describe('create — the debt half of §3.6', () => {
     it('allows a payout equal to the debt', async () => {

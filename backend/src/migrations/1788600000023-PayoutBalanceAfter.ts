@@ -31,6 +31,10 @@ export const REBUILD_BALANCE_AFTER_SQL = `
  * ways; intakes and top-ups stay `<=` on `created_at` alone — one written in the payout's own
  * transaction must count.
  *
+ * A rebuilt figure prints with no «reconstructed» mark on purpose: no payout receipt existed
+ * before #145, so no historic payout was ever printed — the first print of a historic row is
+ * the rebuild, and there is no earlier paper for it to contradict.
+ *
  * The SQL lives in a module-level constant, so `scripts/verify/checks/schema-conformance.mjs`
  * (which scans string literals inside `up()` only) never sees it. It holds no column types and
  * no DDL — a future migration must keep its DDL (`ADD`/`ALTER`/`numeric(...)`) inside `up()`.

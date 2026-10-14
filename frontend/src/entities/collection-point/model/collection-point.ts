@@ -5,8 +5,6 @@
 export interface PointOption {
   id: string;
   name: string;
-  /** «Точка № 3» on the receipt header (#145) — assigned by the backend, never typed. */
-  number: number;
   /**
    * `'reception'` or `'base'` — §4.8's склад.
    *

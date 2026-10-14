@@ -54,7 +54,7 @@ export class User {
 
   /** «Приймальник № 5» on the receipt header (#145). Assigned by the database in creation
    *  order, never typed — `PointAndUserNumbers` migration. */
-  @Column({ type: 'int', generated: 'identity', generatedIdentity: 'BY DEFAULT' })
+  @Column({ type: 'int', generated: 'identity', generatedIdentity: 'ALWAYS' })
   number: number;
 
   @Column({ type: 'varchar', nullable: true })
