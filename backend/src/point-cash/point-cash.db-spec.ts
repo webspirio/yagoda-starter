@@ -860,6 +860,56 @@ describe('PointCashService.list (Postgres)', () => {
     expect(late.data[0].unexplained_difference).toBe('-100.00');
   });
 
+  describe('crate_cash and crate_unexplained_difference (#178)', () => {
+    const newPoint = async (): Promise<string> => {
+      const tag = randomUUID().slice(0, 8);
+      const [{ id }] = (await ds.query(
+        `INSERT INTO collection_points (name, code, kind, target_cash, is_active)
+         VALUES ($1, $2, 'reception', NULL, true) RETURNING id`,
+        [`Точка ${tag}`, `C${tag.slice(0, 6).toUpperCase()}`],
+      )) as { id: string }[];
+      return id;
+    };
+    const cratesCount = (
+      shiftId: string,
+      kind: 'opening' | 'closing',
+      counted: string,
+      expected: string,
+    ) =>
+      ds.query(
+        `INSERT INTO cash_counts (shift_id, book, kind, counted_amount, expected_amount,
+                                  counted_by_user_id, counted_at)
+         VALUES ($1, 'crates', $2::cash_count_kind, $3, $4, $5, $6)`,
+        [shiftId, kind, counted, expected, ownerId, new Date('2026-09-10T07:30:00Z')],
+      );
+    const rowOf = async (pointId: string, asOf: string) => {
+      const page = await service.list(owner, query({ collection_point_id: pointId, as_of: asOf }) as never);
+      return page.data[0];
+    };
+
+    it('anchors the drawer on the closing count and carries the drift, deposits untouched', async () => {
+      const pointId = await newPoint();
+      const shiftId = await localShift(pointId, '2026-09-10');
+      await cratesCount(shiftId, 'opening', '14400.00', '14400.00');
+      await cratesCount(shiftId, 'closing', '16440.00', '16800.00');
+      const row = await rowOf(pointId, '2026-09-30');
+      expect(row.crate_cash).toBe('16440.00');
+      expect(row.crate_unexplained_difference).toBe('-360.00');
+      expect(row.crate_deposits).toBe('0.00');
+      // as_of before the first crates count
+      const early = await rowOf(pointId, '2026-09-09');
+      expect(early.crate_cash).toBeNull();
+      expect(early.crate_unexplained_difference).toBe('0.00');
+    });
+
+    it('a point without crates counts: crate_cash null, drift 0.00', async () => {
+      const pointId = await newPoint();
+      const row = await rowOf(pointId, '2026-09-30');
+      expect(row.crate_cash).toBeNull();
+      expect(row.crate_unexplained_difference).toBe('0.00');
+    });
+  });
+
   it('bounds the latest transfer by as_of — a later trip is not yet visible', async () => {
     const tag = randomUUID().slice(0, 8);
     const [{ id: p }] = (await ds.query(

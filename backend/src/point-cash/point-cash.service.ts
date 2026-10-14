@@ -470,6 +470,22 @@ export class PointCashService {
                 -- CTE instead of a query per row. UNBOUNDED by b.as_of,
                 -- unlike every other column of this row: section 7.5.
                 ${crateBookSql('cp.id')} AS crate_deposits,
+                -- The crates DRAWER (#178): anchored on the point's own crates
+                -- count exactly as the cash column is on the berry one. NULL = never
+                -- counted -- no COALESCE, an unknown drawer is not an empty one.
+                (SELECT (a.counted_amount
+                         + CASE WHEN a.kind = 'opening' THEN ${crateMovementsSql('a.shift_id')}
+                                ELSE 0.00 END)
+                   FROM ${anchorSql('cp.id', 'b.as_of', CashBook.Crates)} a) AS crate_cash,
+                -- Mirrors unexplained_difference above (midday excluded for
+                -- the same reopen reason), over the crates book.
+                COALESCE((SELECT SUM(c.counted_amount - c.expected_amount)
+                            FROM cash_counts c
+                            JOIN shifts sh ON sh.id = c.shift_id
+                           WHERE sh.collection_point_id = cp.id
+                             AND c.book = 'crates'
+                             AND c.kind <> 'midday'
+                             AND sh.business_date <= b.as_of), 0.00) AS crate_unexplained_difference,
                 -- The SAME book in units rather than money (R8) -- same
                 -- correlated-column call shape, same unbounded lifetime.
                 ${crateUnitsSql('cp.id')} AS crate_deposit_units
@@ -484,6 +500,8 @@ export class PointCashService {
               (s.target_cash - s.cash)::text AS shortfall,
               s.unexplained_difference::text AS unexplained_difference,
               s.crate_deposits::text AS crate_deposits,
+              s.crate_cash::text AS crate_cash,
+              s.crate_unexplained_difference::text AS crate_unexplained_difference,
               s.crate_deposit_units AS crate_deposit_units,
               lt.status  AS latest_transfer_status,
               lt.sent_at AS latest_transfer_sent_at
