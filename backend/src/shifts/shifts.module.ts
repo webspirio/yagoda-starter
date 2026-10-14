@@ -6,6 +6,7 @@ import { ShiftsController } from './shifts.controller';
 import { AuditModule } from '../audit/audit.module';
 import { CollectionPointsModule } from '../collection-points/collection-points.module';
 import { CashCount } from '../cash-counts/cash-count.entity';
+import { CrateStockModule } from '../crate-stock/crate-stock.module';
 import { PointCashModule } from '../point-cash/point-cash.module';
 
 /**
@@ -33,6 +34,7 @@ import { PointCashModule } from '../point-cash/point-cash.module';
     AuditModule,
     CollectionPointsModule,
     PointCashModule,
+    CrateStockModule,
   ],
   providers: [ShiftsService],
   controllers: [ShiftsController],

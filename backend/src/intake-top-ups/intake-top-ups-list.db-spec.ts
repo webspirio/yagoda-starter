@@ -202,7 +202,7 @@ describe('ListIntakeTopUpsQuery.list (Postgres)', () => {
       [topUpOnA],
     );
     await ds.query(
-      `UPDATE intakes SET voided_at = now(), voided_by_user_id = $2, void_reason = 'сторно'
+      `UPDATE intakes SET voided_at = now(), voided_by_user_id = $2, void_reason = 'анулювання'
         WHERE id = $1`,
       [id, ownerId],
     );

@@ -19,6 +19,7 @@ import { CredentialsService } from '../users/credentials.service';
 import { LOCAL_PROVIDER } from '../users/user-identity.entity';
 import { UserRole } from '../users/user-role.enum';
 import { add, sub } from '../common/money';
+import { stockPoint } from '../testing/crate-stock-fixture';
 
 const pointCode = (): string => randomUUID().replace(/-/g, '').slice(0, 8).toUpperCase();
 
@@ -148,6 +149,9 @@ beforeAll(async () => {
     .send({ counted_amount: '100000.00' })
     .expect(201);
   shiftId = sh.body.id as string;
+  // Spec 2026-09-30: empties must exist before crates can go out. 1000 is far above
+  // anything this file issues or weighs, and the transfer carries no cash.
+  await stockPoint(app, ownerToken, operatorToken, pointId, 1000);
 }, 30_000);
 
 afterAll(async () => {

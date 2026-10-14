@@ -267,9 +267,35 @@ describe('TotalsSection — refusal and hints', () => {
     );
   });
 
+  it('shows the shared format message for a malformed sum once the field is left, none while empty (#72)', async () => {
+    const user = userEvent.setup();
+    render(<Harness />);
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    const input = screen.getByLabelText('Paid in cash');
+    // A second separator is kept, never silently dropped — and refused.
+    await user.type(input, '1.2.3');
+    expect(input).toHaveValue('1.2.3');
+    // Mid-keystroke the message waits; leaving the field shows it.
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    await user.tab();
+    expect(screen.getByRole('alert')).toHaveTextContent('Enter a number, e.g. 12000 or 980.40');
+    await user.clear(input);
+    await user.type(input, '12.5');
+    await user.tab();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('never lets a space into «Видано готівкою» (#72)', async () => {
+    const user = userEvent.setup();
+    render(<Harness />);
+    const input = screen.getByLabelText('Paid in cash');
+    await user.type(input, '1 200,5');
+    expect(input).toHaveValue('1200.5');
+  });
+
   it('renders the form-level banner as its own alert', () => {
     render(<Harness formErrorKey="reception.errors.failed" />);
-    expect(screen.getByRole('alert')).toHaveTextContent('Could not record the receipt');
+    expect(screen.getByRole('alert')).toHaveTextContent("Couldn't record the receipt. Try again, and if it happens again, tell the network owner.");
   });
 
   it('shows the draft hint when asked to', () => {

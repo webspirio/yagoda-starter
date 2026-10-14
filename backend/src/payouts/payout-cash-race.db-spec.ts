@@ -18,6 +18,7 @@ import { UsersService } from '../users/users.service';
 import { CredentialsService } from '../users/credentials.service';
 import { LOCAL_PROVIDER } from '../users/user-identity.entity';
 import { UserRole } from '../users/user-role.enum';
+import { stockPoint } from '../testing/crate-stock-fixture';
 
 const pointCode = (): string => randomUUID().replace(/-/g, '').slice(0, 8).toUpperCase();
 
@@ -209,6 +210,9 @@ describe('payout cash race: two suppliers, one drawer (HTTP, Postgres)', () => {
       .send({ counted_amount: '1500.00' })
       .expect(201);
     const shiftId = shiftRes.body.id as string;
+    // Spec 2026-09-30: a receipt's crate tare leaves the point's empties. 1000 is far above
+    // the crate tare this fixture weighs, and the transfer carries no cash — the drawer stays 1500.00.
+    await stockPoint(app, ownerToken, operatorToken, pointId, 1000);
 
     // Give EACH supplier 1000.00 of debt — an unpaid intake apiece — so
     // `debtFor` passes a 1000.00 payout to either one and only the CASH half

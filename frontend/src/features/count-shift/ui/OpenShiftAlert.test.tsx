@@ -20,7 +20,9 @@ attachAuthInterceptors(httpClient, { getToken: () => null, onUnauthorized: () =>
 // suite's locale renders.
 const SUBMIT_COUNT = /day\.count\.submit|Записати|Record/i;
 
-const { meMock } = vi.hoisted(() => ({ meMock: vi.fn() }));
+const { meMock, toastSuccess } = vi.hoisted(() => ({ meMock: vi.fn(), toastSuccess: vi.fn() }));
+
+vi.mock('@/shared/ui/toast', () => ({ toast: { success: toastSuccess, error: vi.fn() } }));
 
 vi.mock('@/entities/user', () => ({
   useMeQuery: () => meMock(),
@@ -53,7 +55,6 @@ const staleShift: Shift = {
   closed_by_name: null,
   closed_at: null,
   created_at: '2026-09-08T05:00:00Z',
-  explanation: null,
   broken_crates: null,
 };
 
@@ -79,6 +80,7 @@ beforeEach(() => {
     .onGet('/shifts/s-stale/crates')
     .reply(200, { with_berry: 12, broken: null, dispatched: null });
   mock.onPost('/shifts/s-stale/close').reply(200, { ...staleShift, status: 'closed' });
+  toastSuccess.mockReset();
   meMock.mockReset().mockReturnValue({ data: OPERATOR });
 });
 
@@ -149,6 +151,34 @@ describe('OpenShiftAlert — closing in place', () => {
     });
   });
 
+  it('hands the closed shift to onClosed AND still toasts — the result may never load', async () => {
+    const user = userEvent.setup();
+    const onClosed = vi.fn();
+    renderAlert({ onClosed });
+
+    await user.click(await screen.findByRole('button', { name: 'Close shift' }));
+    const dialog = await screen.findByRole('dialog');
+    await user.type(within(dialog).getByRole('textbox', { name: /drawer|amount/i }), '500');
+    await user.type(within(dialog).getByRole('textbox', { name: /broken/i }), '0');
+    await user.click(within(dialog).getByRole('button', { name: SUBMIT_COUNT }));
+
+    await waitFor(() => expect(onClosed).toHaveBeenCalledWith('s-stale'));
+    expect(toastSuccess).toHaveBeenCalledTimes(1);
+  });
+
+  it('still toasts when no onClosed is given', async () => {
+    const user = userEvent.setup();
+    renderAlert();
+
+    await user.click(await screen.findByRole('button', { name: 'Close shift' }));
+    const dialog = await screen.findByRole('dialog');
+    await user.type(within(dialog).getByRole('textbox', { name: /drawer|amount/i }), '500');
+    await user.type(within(dialog).getByRole('textbox', { name: /broken/i }), '0');
+    await user.click(within(dialog).getByRole('button', { name: SUBMIT_COUNT }));
+
+    await waitFor(() => expect(toastSuccess).toHaveBeenCalledTimes(1));
+  });
+
   it('keeps the refusal inside the dialog instead of dropping the alert', async () => {
     const user = userEvent.setup();
     mock
@@ -162,7 +192,7 @@ describe('OpenShiftAlert — closing in place', () => {
     await user.type(within(dialog).getByRole('textbox', { name: /broken/i }), '0');
     await user.click(within(dialog).getByRole('button', { name: SUBMIT_COUNT }));
 
-    expect(await within(dialog).findByRole('alert')).toHaveTextContent('The shift is not open');
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent('The shift is already closed. Reload the page.');
     expect(screen.getByRole('dialog')).toBeInTheDocument();
   });
 });

@@ -14,7 +14,7 @@ import { Textarea } from '@/shared/ui/textarea';
 import { Button } from '@/shared/ui/button';
 import { toast } from '@/shared/ui/toast';
 import { useVoidDocumentMutation } from '../api/useVoidDocument';
-import { apiErrorToBanner } from '@/shared/lib/api-error';
+import { toBannerError, type BannerError } from '@/shared/lib/api-error';
 import { formatUah } from '@/shared/lib/money';
 import { formatTime } from '@/shared/lib/date';
 import { VoidConsequences } from './VoidConsequences';
@@ -123,7 +123,7 @@ export function VoidDocumentDialog({
     formState: { errors, isSubmitting },
   } = useForm<VoidFormValues>({ defaultValues: { reason: '', acks: {} } });
 
-  const [formError, setFormError] = useState<string | null>(null);
+  const [formError, setFormError] = useState<BannerError | null>(null);
 
   const onSubmit = handleSubmit(async (values) => {
     setFormError(null);
@@ -137,7 +137,7 @@ export function VoidDocumentDialog({
       onVoided?.();
       onClose();
     } catch (error) {
-      setFormError(apiErrorToBanner(error, 'void.errors.failed'));
+      setFormError(toBannerError(error, 'void.errors.failed'));
     }
   });
 
@@ -210,7 +210,7 @@ export function VoidDocumentDialog({
 
           {formError ? (
             <p role="alert" className="text-sm text-destructive">
-              {t(formError)}
+              {t(formError.key, formError.params)}
             </p>
           ) : null}
 

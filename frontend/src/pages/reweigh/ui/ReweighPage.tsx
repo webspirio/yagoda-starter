@@ -184,7 +184,7 @@ export function ReweighPage() {
         setDrafts(remaining);
         toast.error(t('reweigh.postFailed', { grade: draft.product_grade_name }), {
           // The POST path's own fallback, NOT the day table's
-          // `reweigh.day.errors.failed` («Позицію не сторновано») — that
+          // `reweigh.day.errors.failed` («Позицію не анульовано») — that
           // sentence describes a failed STORNO and would report the wrong
           // operation entirely. §6.4 wants the backend's own code named,
           // which `CODE` now carries for all five this endpoint throws.

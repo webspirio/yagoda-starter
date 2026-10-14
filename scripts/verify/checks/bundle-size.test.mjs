@@ -19,7 +19,6 @@ import { randomBytes } from 'node:crypto'
 import { gzipSync } from 'node:zlib'
 import os from 'node:os'
 import path from 'node:path'
-import { pathToFileURL } from 'node:url'
 
 const ROOT = path.resolve(import.meta.dirname, '..', '..', '..')
 const CHECK = path.join(ROOT, 'scripts', 'verify', 'checks', 'bundle-size.mjs')
@@ -202,63 +201,6 @@ test('a manifest whose entry statically imports a key the manifest does not cont
   assert.equal(r.status, 1)
   assert.match(r.out, /ghost-missing-key/)
   rmSync(r.root, { recursive: true, force: true })
-})
-
-test('a manifest containing the dev-only ui-kit gallery fails, naming the key — production must never ship it', () => {
-  const r = runIn({
-    files: { 'index-A.js': noise(4 * KIB), 'ui-kit-B.js': noise(4 * KIB) },
-    manifest: {
-      'index.html': {
-        file: 'assets/index-A.js',
-        isEntry: true,
-        dynamicImports: ['src/pages/ui-kit/index.ts'],
-      },
-      'src/pages/ui-kit/index.ts': { file: 'assets/ui-kit-B.js' },
-    },
-    budget: budgetFile(AMPLE),
-  })
-  assert.equal(r.status, 1)
-  assert.match(r.out, /src\/pages\/ui-kit\/index\.ts/)
-  rmSync(r.root, { recursive: true, force: true })
-})
-
-test('the file-name half derives its dev-only substring from DEV_ONLY_SOURCE_PREFIXES, not a hard-coded "ui-kit"', () => {
-  // DEV_ONLY_SOURCE_PREFIXES has exactly one real entry today (ui-kit), and its derived last
-  // path segment happens to equal the old hard-coded literal — so proving this actually
-  // READS the array, rather than still being hard-coded, needs a SECOND prefix. Importing
-  // the real check module directly (instead of spawning it, the way every other test here
-  // does) and pushing onto the exported, un-frozen array is what gets one without inventing
-  // a second real dev-only route just for this test. This runs in its OWN subprocess (a
-  // helper file, executed with node) because a caught chunk calls fail() -> process.exit(1)
-  // — calling assertNoDevOnlyChunksShipped() in-process would kill the test runner itself.
-  const root = mkdtempSync(path.join(os.tmpdir(), 'bundle-size-devonly-'))
-  const helper = path.join(root, 'helper.mjs')
-  writeFileSync(
-    helper,
-    [
-      `import { assertNoDevOnlyChunksShipped, DEV_ONLY_SOURCE_PREFIXES } from ${JSON.stringify(pathToFileURL(CHECK).href)}`,
-      `DEV_ONLY_SOURCE_PREFIXES.push('src/pages/second-dev-only/')`,
-      'assertNoDevOnlyChunksShipped({',
-      '  // Key deliberately does NOT start with any DEV_ONLY_SOURCE_PREFIXES entry — only the',
-      "  // FILE-NAME half can catch this, isolating exactly the bug the 'ui-kit' literal",
-      '  // caused: a second prefix with a different last segment went unchecked by file name.',
-      "  'some/unrelated/key': { file: 'assets/second-dev-only-XYZ.js' },",
-      '})',
-    ].join('\n'),
-  )
-  let status = 0
-  let out = ''
-  try {
-    out = execFileSync(process.execPath, [helper], { encoding: 'utf8' })
-  } catch (err) {
-    const e = /** @type {any} */ (err)
-    status = e.status ?? 1
-    out = `${e.stdout ?? ''}${e.stderr ?? ''}`
-  }
-  assert.notEqual(status, 0, out)
-  assert.match(out, /second-dev-only-XYZ\.js/)
-  assert.match(out, /"second-dev-only"/)
-  rmSync(root, { recursive: true, force: true })
 })
 
 test('a manifest chunk reachable through neither static nor dynamic imports trips the closure invariant, not a silent pass', () => {

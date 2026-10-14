@@ -164,6 +164,51 @@ describe('PricesPage — the sheet', () => {
     expect(bulkMock).not.toHaveBeenCalled();
   });
 
+  describe('the money fields (#72)', () => {
+    const openCell = async (user: ReturnType<typeof userEvent.setup>) => {
+      render(<PricesPage />, { wrapper: MemoryRouter });
+      const row = rowFor('Вищий сорт');
+      await user.click(within(row).getByRole('button', { name: /Малина · Вищий сорт.*Гайове/i }));
+      return screen.findByRole('dialog');
+    };
+
+    it('never holds a space: «12 000» shows and submits as 12000', async () => {
+      const user = userEvent.setup();
+      const dialog = await openCell(user);
+      const base = within(dialog).getByLabelText(/base price/i);
+      await user.clear(base);
+      await user.type(base, '12 000');
+      expect(base).toHaveValue('12000');
+      await user.click(within(dialog).getByRole('button', { name: /^save$/i }));
+      await waitFor(() => expect(setPriceMock).toHaveBeenCalledTimes(1));
+      expect(setPriceMock.mock.calls[0][0].base_price).toBe('12000');
+    });
+
+    it('submits a comma decimal as a dot: «980,40» → 980.40', async () => {
+      const user = userEvent.setup();
+      const dialog = await openCell(user);
+      const markup = within(dialog).getByLabelText(/max markup/i);
+      await user.clear(markup);
+      await user.type(markup, '980,40');
+      await user.click(within(dialog).getByRole('button', { name: /^save$/i }));
+      await waitFor(() => expect(setPriceMock).toHaveBeenCalledTimes(1));
+      expect(setPriceMock.mock.calls[0][0].max_markup).toBe('980.40');
+    });
+
+    it('refuses a half-typed «12.» with the shared message and sends nothing', async () => {
+      const user = userEvent.setup();
+      const dialog = await openCell(user);
+      const discount = within(dialog).getByLabelText(/max discount/i);
+      await user.clear(discount);
+      await user.type(discount, '12.');
+      await user.click(within(dialog).getByRole('button', { name: /^save$/i }));
+      expect(
+        await within(dialog).findByText('Enter a number, e.g. 12000 or 980.40'),
+      ).toBeInTheDocument();
+      expect(setPriceMock).not.toHaveBeenCalled();
+    });
+  });
+
   it("shows today's price changes under the sheet (#151)", () => {
     render(<PricesPage />, { wrapper: MemoryRouter });
     expect(screen.getByText('Changes during the day')).toBeInTheDocument();

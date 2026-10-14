@@ -420,7 +420,7 @@ describe('ReweighReconciliationService.forShift (DB)', () => {
     );
     const [orphaned] = await ds.query(
       `INSERT INTO product_grades (product_id, name) VALUES ($1, $2) RETURNING id`,
-      [product.id, `Сорт сторнований ${tag}`],
+      [product.id, `Сорт анульований ${tag}`],
     );
 
     // One live receipt, for `kept`.

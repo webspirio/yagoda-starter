@@ -202,6 +202,7 @@ export function makeIntakesMocks() {
       return result;
     },
   );
+  const stock = { assertOnHand: jest.fn().mockResolvedValue(undefined) };
   return {
     state,
     itemRepo,
@@ -218,6 +219,7 @@ export function makeIntakesMocks() {
     payouts,
     crates,
     allocations,
+    stock,
   };
 }
 export type IntakesMocks = ReturnType<typeof makeIntakesMocks>;
@@ -241,6 +243,7 @@ export function buildIntakes(m: IntakesMocks) {
       m.crates as never,
       m.audit as never,
       detail,
+      m.stock as never,
     ),
     voidCmd: new VoidIntakeCommand(
       m.dataSource as never,

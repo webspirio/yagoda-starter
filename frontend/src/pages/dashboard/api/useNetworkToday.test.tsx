@@ -37,7 +37,6 @@ const openShift: Shift = {
   closed_by_name: null,
   closed_at: null,
   created_at: '2026-09-08T05:00:00Z',
-  explanation: null,
   broken_crates: null,
 };
 
@@ -74,6 +73,7 @@ const payout = (over: Partial<Payout> & Pick<Payout, 'id' | 'code' | 'amount'>):
   return_settled_at: null,
   return_settled_by_user_id: null,
   return_note: null,
+  returned_on_void: false,
   created_at: '2026-09-08T11:00:00Z',
   ...over,
 });

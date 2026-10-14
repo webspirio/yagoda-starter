@@ -174,6 +174,7 @@ const payout = (
   return_settled_at: null,
   return_settled_by_user_id: null,
   return_note: null,
+  returned_on_void: false,
   ...over,
 });
 
@@ -672,7 +673,7 @@ describe('SupplierCardPage', () => {
 
     renderCard();
 
-    expect(screen.getByRole('progressbar', { name: 'loading' })).toBeInTheDocument();
+    expect(screen.getByRole('progressbar', { name: 'Loading…' })).toBeInTheDocument();
     expect(screen.queryByText('Accrued')).toBeNull();
     expect(screen.queryByRole('heading', { level: 1, name: 'Ivan Koval' })).toBeNull();
   });
@@ -969,7 +970,7 @@ describe('SupplierCardPage — receipt lines (uk locale)', () => {
   });
 
   /**
-   * A receipt row grew a whole block of new content; the СТОРНОВАНО
+   * A receipt row grew a whole block of new content; the АНУЛЬОВАНО
    * treatment sits on the `<li>` it grew inside, so the lines must ride
    * along with it rather than escape the struck-through row.
    */

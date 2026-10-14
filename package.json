@@ -13,7 +13,6 @@
     "@playwright/test": "^1.63.0",
     "knip": "^6.35.1",
     "prettier": "^3.9.6",
-    "shadcn": "^4.18.0",
     "turbo": "^2",
     "typescript": "~6.0.3"
   },
@@ -43,6 +42,9 @@
     "schema:check": "node scripts/verify/checks/schema-conformance.mjs",
     "documents": "node scripts/verify/checks/document-immutability.mjs",
     "compose:check": "node scripts/verify/checks/compose-conventions.mjs",
+    "i18n:plain-text": "node scripts/verify/checks/plain-text.mjs",
+    "i18n:locales": "node scripts/verify/checks/locales.mjs",
+    "i18n:error-codes": "node scripts/verify/checks/error-codes.mjs",
     "audit:check": "node scripts/verify/checks/audit.mjs",
     "coverage": "turbo coverage",
     "bundle": "node scripts/verify/checks/bundle-size.mjs",

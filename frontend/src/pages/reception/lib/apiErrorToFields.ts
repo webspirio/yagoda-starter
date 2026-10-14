@@ -1,10 +1,13 @@
 import { ApiError } from '@/shared/api';
+import { onHandKey, apiErrorParams, statusKey } from '@/shared/lib/api-error';
 
 export interface ApiFieldErrors {
   /** field name (RHF path, e.g. `items.0.gross_kg`) -> i18n message key */
   fieldErrors: Array<{ field: string; messageKey: string }>;
   /** i18n key for a form-level banner, or null */
   formErrorKey: string | null;
+  /** numbers for interpolating `formErrorKey` */
+  formErrorParams?: Record<string, number>;
 }
 
 const FORM_LEVEL = 'reception.errors.failed';
@@ -51,6 +54,10 @@ const BANNER: Readonly<Record<string, string>> = {
   RETURNED_EXCEEDS_TARE: 'reception.returned.exceedsTare',
   RETURN_EXCEEDS_OUTSTANDING: 'crates.errors.returnExceeds',
   CRATE_CASH_INSUFFICIENT: 'crates.errors.cashInsufficient',
+  // Not a race — `nextDocumentCode` locks the counter. Only a shift numbered
+  // by hand before 2026-09-18 can collide, and a retry recomputes the same
+  // number, so the advice is the owner, never «press again».
+  INTAKE_CODE_TAKEN: 'errors.documentNumberTaken',
 };
 
 /**
@@ -71,14 +78,28 @@ const PAID_FIELD: Readonly<Record<string, string>> = {
   PAYOUT_AMOUNT_ZERO: 'reception.errors.paidFormat',
 };
 
+/** The money/weight fields #72's shared message covers — not tare units. */
+const DECIMAL_FIELD = /^paid_amount$|\.(gross_kg|pallet_kg|bonus)$/;
+/** A tare row's crate count — a whole number, so the crates screens' message. */
+const UNITS_FIELD = /\.tare\.\d+\.units$/;
+
+/** The per-field message for a placed property, or `null` → the form banner. */
+function fieldMessageKey(field: string): string | null {
+  if (DECIMAL_FIELD.test(field)) return 'errors.decimalFormat';
+  if (UNITS_FIELD.test(field)) return 'crates.errors.unitsFormat';
+  return null;
+}
+
 /**
  * class-validator emits `"<property> <complaint>"` for `CreateIntakeDto`'s
  * nested items — `items.0.gross_kg must be …`, `items.0.tare.1.units must
  * not be less than 1`. The PROPERTY (first token) IS the RHF field path
- * already, so no re-mapping is needed beyond taking it verbatim; every such
- * detail maps to the same `decimalFormat` key regardless of which nested
- * field it names (the class-validator complaint text is not stable enough to
- * branch on, and this slice has no other per-property message to show). A
+ * already, so no re-mapping is needed beyond taking it verbatim. A detail on
+ * one of the four money/weight fields (`gross_kg`, `pallet_kg`, `bonus`,
+ * `paid_amount`) maps to the one shared `errors.decimalFormat` key (#72); any
+ * tare row's `units` — a whole crate count — gets the crates screens' integer
+ * message. Any OTHER property (a grade or tare-type id: picked, never typed)
+ * has no honest per-field message, so it falls to the form-level banner. A
  * detail naming anything outside `items.*` (e.g. a picked `supplier_id`) is
  * never something the operator typed here, so it is unplaceable and falls to
  * the form-level banner instead of a phantom field error.
@@ -104,13 +125,6 @@ export function apiErrorToFields(error: unknown, lineCount: number): ApiFieldErr
     const paid = PAID_FIELD[error.code];
     if (paid) return { fieldErrors: [{ field: 'paid_amount', messageKey: paid }], formErrorKey: null };
 
-    // NOTHING ELSE MAPS TO A TOP-LEVEL FIELD ANY MORE. `INTAKE_CODE_TAKEN`
-    // used to, onto the typed receipt number; that field is gone
-    // (2026-09-18 — the server numbers each shift itself) and the code now
-    // means a generated number met a row this shift was given by hand before
-    // the change. There is nothing the operator can retype to get past it,
-    // so it falls through to the banner at the bottom, which says the
-    // receipt did not go through.
     const line = LINE_FIELD[error.code];
     if (line) {
       const lastLine = Math.max(lineCount - 1, 0);
@@ -120,26 +134,26 @@ export function apiErrorToFields(error: unknown, lineCount: number): ApiFieldErr
       };
     }
 
+    if (error.code === 'CRATES_ON_HAND_INSUFFICIENT') {
+      return { fieldErrors: [], formErrorKey: onHandKey(error), formErrorParams: apiErrorParams(error) };
+    }
+
     const banner = BANNER[error.code];
     if (banner) return { fieldErrors: [], formErrorKey: banner };
 
-    return { fieldErrors: [], formErrorKey: FORM_LEVEL };
+    return { fieldErrors: [], formErrorKey: statusKey(error) ?? FORM_LEVEL };
   }
 
   const fieldErrors: Array<{ field: string; messageKey: string }> = [];
   let unattributed = false;
   for (const detail of error.details ?? []) {
     const field = fieldFromDetail(detail);
-    if (field) {
-      fieldErrors.push({
-        field,
-        messageKey:
-          field === 'paid_amount' ? 'reception.errors.paidFormat' : 'reception.errors.decimalFormat',
-      });
-    } else unattributed = true;
+    const messageKey = field === null ? null : fieldMessageKey(field);
+    if (field !== null && messageKey !== null) fieldErrors.push({ field, messageKey });
+    else unattributed = true;
   }
   if (fieldErrors.length > 0) {
     return { fieldErrors, formErrorKey: unattributed ? FORM_LEVEL : null };
   }
-  return { fieldErrors: [], formErrorKey: FORM_LEVEL };
+  return { fieldErrors: [], formErrorKey: statusKey(error) ?? FORM_LEVEL };
 }

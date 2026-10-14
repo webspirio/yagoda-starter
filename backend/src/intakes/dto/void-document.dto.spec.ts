@@ -4,7 +4,7 @@ import { VoidDocumentDto } from './void-document.dto';
 
 /**
  * ONE DTO, THREE MODULES. `intakes`, `payouts` and `transfers` all void through
- * this class, so this spec is the single place §9.3's «сторно повне, з
+ * this class, so this spec is the single place §9.3's «анулювання повне, з
  * обов'язковою причиною» is enforced for all of them.
  *
  * The blank case is the one that mattered: `@Length(1, 500)` counts characters,

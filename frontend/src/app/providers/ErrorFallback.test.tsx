@@ -4,8 +4,7 @@ import { afterEach, expect, test, vi } from 'vitest';
 /**
  * `import.meta.env.DEV` is a compile-time constant Vite substitutes when a module is
  * TRANSFORMED, not a runtime lookup — `vi.stubEnv('DEV', …)` after a module has already
- * been imported does nothing (see router.tsx's own note on this exact limitation, re: the
- * `/ui-kit` route). Every OTHER test file in this repo runs under `DEV: true` (vitest's
+ * been imported does nothing. Every OTHER test file in this repo runs under `DEV: true` (vitest's
  * `MODE` is `"test"`) and so only ever exercises ErrorFallback's DEV branch — which is why
  * `fullHeight`, a PRODUCTION-branch-only prop, has no coverage anywhere else. The one way to
  * actually reach the production branch here is `vi.resetModules()` before a fresh dynamic

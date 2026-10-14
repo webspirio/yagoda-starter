@@ -7,6 +7,7 @@ import { Shift } from './shift.entity';
 import { AuditService } from '../audit/audit.service';
 import { AuditLog } from '../audit/audit-log.entity';
 import { TimeService } from '../time/time.service';
+import { CrateStockGuard } from '../crate-stock/crate-stock.guard';
 import { PointCashService } from '../point-cash/point-cash.service';
 import type { CollectionPointsService } from '../collection-points/collection-points.service';
 import { UserRole } from '../users/user-role.enum';
@@ -53,6 +54,7 @@ describe('ShiftsService close/reopen under concurrency (Postgres)', () => {
       new TimeService({ appTimezone: 'Europe/Kyiv' }),
       ds,
       new PointCashService(ds, { appTimezone: 'Europe/Kyiv' }),
+      new CrateStockGuard(),
     );
 
     const run = randomUUID().slice(0, 8);

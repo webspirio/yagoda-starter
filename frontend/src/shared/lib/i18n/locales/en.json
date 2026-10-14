@@ -5,11 +5,24 @@
     "close": "Close",
     "loading": "Loading…",
     "retry": "Retry",
-    "somethingWentWrong": "Something went wrong",
+    "somethingWentWrong": "Something went wrong. Reload the page and try again.",
     "copy": "Copy",
     "copied": "Copied",
     "showPassword": "Show password",
-    "hidePassword": "Hide password"
+    "hidePassword": "Hide password",
+    "today": "Today",
+    "previousDay": "Previous day",
+    "nextDay": "Next day",
+    "print": "Print"
+  },
+  "errors": {
+    "decimalFormat": "Enter a number, e.g. 12000 or 980.40",
+    "network": "Can't reach the server. Check your connection and try again.",
+    "tooManyRequests": "Too many attempts. Wait a minute and try again.",
+    "accessChanged": "Your access has changed. Reload the page.",
+    "server": "The server failed. Try again in a minute.",
+    "pointRequired": "No point is selected. Choose one and try again.",
+    "documentNumberTaken": "The document number clashes with an old hand-entered one. Ask the network owner."
   },
   "auth": {
     "signIn": "Sign in",
@@ -17,7 +30,8 @@
     "username": "Username",
     "password": "Password",
     "usernameHint": "The login your network owner gave you",
-    "invalidCredentials": "Invalid username or password"
+    "invalidCredentials": "Invalid username or password",
+    "loginFailed": "Couldn't sign in. Check your login and password and try again."
   },
   "nav": {
     "group": {
@@ -94,15 +108,14 @@
       "updated": "Point updated"
     },
     "errors": {
-      "saveFailed": "Could not save the point",
-      "nameTaken": "A point with this name already exists",
+      "saveFailed": "Couldn't save the point. Reload the page and try again.",
+      "nameTaken": "A point with this name already exists. Enter another name.",
       "nameEmpty": "Enter a name",
       "nameRequired": "Enter a name",
       "nameInvalid": "Name must be 1–128 characters",
       "hasActiveUsers": "This point still has assigned staff — reassign them before deactivating",
-      "cashFormat": "Enter an amount like 15000 or 15000.50",
       "cratesFormat": "Enter a whole number of crates",
-      "codeTaken": "A point with this code already exists",
+      "codeTaken": "A point with this code already exists. Enter another code.",
       "codeFormat": "Code must be 2–8 Latin letters or digits"
     }
   },
@@ -122,7 +135,7 @@
     "password": {
       "reissue": "Reissue to see it",
       "vaultOff": "Viewing is off",
-      "failed": "Could not read the password"
+      "failed": "Couldn't read the password. Reload the page and try again."
     },
     "roleLabel": {
       "network_owner": "Network owner",
@@ -153,13 +166,17 @@
       "passwordSet": "Password updated"
     },
     "errors": {
-      "saveFailed": "Could not save the user",
-      "loginTaken": "This login is already taken",
+      "saveFailed": "Couldn't save the user. Reload the page and try again.",
+      "loginTaken": "This login is already taken. Enter another.",
       "loginRequired": "Enter a login",
       "loginWhitespace": "The login must not contain spaces",
       "nameRequired": "Enter a name",
       "passwordShort": "Password must be at least 8 characters",
-      "pointRequired": "Choose a collection point"
+      "pointRequired": "Choose a collection point",
+      "lastOwner": "This is the last active owner. Make someone else an owner first.",
+      "selfLockout": "You can't deactivate or demote yourself. Ask another owner.",
+      "ownerHasNoPoint": "An owner doesn't belong to a point. Reload the page and try again.",
+      "pointUnusable": "That point is deactivated. Choose another."
     }
   },
   "suppliers": {
@@ -212,8 +229,8 @@
       "updated": "Supplier updated"
     },
     "errors": {
-      "saveFailed": "Could not save the supplier",
-      "phoneTaken": "A supplier with this phone already exists at this point",
+      "saveFailed": "Couldn't save the supplier. Reload the page and try again.",
+      "phoneTaken": "A supplier with this phone already exists at this point. Check the number.",
       "phoneInvalid": "Enter a valid phone number",
       "nameRequired": "Enter a name",
       "pointRequired": "Choose a collection point"
@@ -316,14 +333,12 @@
       }
     },
     "errors": {
-      "saveFailed": "Could not save",
-      "nameTaken": "This name is already taken",
+      "saveFailed": "Couldn't save. Reload the page and try again.",
+      "nameTaken": "This name is already taken. Enter another.",
       "nameEmpty": "Enter a name",
       "nameRequired": "Enter a name",
       "nameTooLong": "Name must be 1–128 characters",
-      "productRequired": "Choose a product",
-      "weightFormat": "Enter a weight like 1 or 1.20",
-      "depositFormat": "Enter an amount like 120 or 120.00"
+      "productRequired": "Choose a product"
     }
   },
   "prices": {
@@ -352,8 +367,9 @@
       "setAll_other": "Price set at {{count}} points"
     },
     "errors": {
-      "saveFailed": "Could not save",
-      "priceFormat": "Enter an amount like 50 or 50.00",
+      "saveFailed": "Couldn't save the price. Reload the page and try again.",
+      "gradeInactive": "This grade is switched off. Turn it on in the catalog or pick another.",
+      "duplicatePoint": "The same point is selected twice. Keep it once.",
       "reasonTooLong": "The reason must be at most 1000 characters"
     },
     "readOnly": "view only",
@@ -392,6 +408,11 @@
         "today": "Today",
         "yesterday": "Yesterday",
         "week": "7 days"
+      },
+      "errors": {
+        "invalidDate": "That date doesn't exist. Pick one from the calendar.",
+        "periodReversed": "The period ends before it starts. Swap the dates.",
+        "periodTooLong": "The period is too long. Choose a shorter one."
       }
     }
   },
@@ -400,7 +421,6 @@
     "title": "Cash for {{date}}",
     "description": "How much berry came in, how much cash went out and what carried over to balances — from the shift's own documents.",
     "pickPoint": "Select a point",
-    "today": "Today",
     "status": {
       "open": "Shift open",
       "closed": "Shift closed",
@@ -438,15 +458,34 @@
       "dispatched": "Dispatched"
     },
     "tiles": {
-      "receipts": "Receipts",
+      "received": "Berry received",
+      "receipts_one": "{{count}} receipt",
+      "receipts_other": "{{count}} receipts",
       "accrued": "Accrued",
       "accruedHint": "value of the berry taken in",
-      "paid": "Paid",
-      "paidHint": "cash for the day",
-      "toDebt": "To balance",
-      "toDebtHint": "carries over to supplier balances",
+      "cashOut": "Cash out",
+      "cashOutHint": "cash for the day, balances included, and voided payouts until their cash is back",
+      "debtCreated": "Balances created",
+      "debtCreatedHint": "carries over to supplier balances",
+      "debtPaidDown": "Paid beyond accrued",
+      "debtPaidDownHint": "reduces supplier balances",
       "truncated_one": "Showing the first {{count}} document — totals are partial",
       "truncated_other": "Showing the first {{count}} documents — totals are partial"
+    },
+    "ledger": {
+      "title": "Cash reconciliation",
+      "accrued": "Accrued for this day's berry",
+      "paidAtReception": "Paid in cash on the spot",
+      "paidAtReceptionHint": "with a receipt",
+      "paidWithoutBerry": "Paid without berry",
+      "debtCreated": "Left on balance for us",
+      "debtPaidDown": "Paid out beyond accrued",
+      "cashOut": "Total cash out",
+      "voidedReturned": "of which {{voided}} on voided payouts returned later, on the day of the return",
+      "voidedNotReturned": "of which {{voided}} on voided payouts, {{notReturned}} of it still waiting to come back to the drawer",
+      "voidedNoneReturned": "of which {{voided}} on voided payouts still waiting to come back to the drawer",
+      "note": "This screen has no per-date breakdown of payouts yet (#175), so the day shows how much the balance grew. The owner's top-ups carry no date and are not included, nor is cash returned today for an earlier day's voided payout.",
+      "truncated": "Showing only the first documents — totals are partial"
     },
     "feed": {
       "title": "Day feed",
@@ -463,16 +502,15 @@
       "reopened": "Shift reopened"
     },
     "errors": {
-      "failed": "Could not change the shift",
-      "alreadyOpen": "A shift is already open at this point",
-      "notOpen": "The shift is not open",
+      "failed": "Couldn't change the shift. Reload the page and try again.",
+      "alreadyOpen": "A shift is already open at this point. Reload the page.",
+      "alreadyClosed": "The shift is already closed. Reload the page.",
       "notClosed": "Only a closed shift can be reopened",
       "dayAlreadyUsed": "A shift for this date already exists — a day cannot have two",
       "notNewest": "Only the point's most recent shift can be reopened",
-      "ownerOnly": "Only the network owner can do this",
+      "ownerOnly": "Only the network owner can do this. Ask the network owner.",
       "noPoint": "Your account has no collection point — ask the owner",
       "reasonRequired": "Give a reason",
-      "countFormat": "Enter an amount — at most two decimals",
       "brokenFormat": "Enter the breakage — a whole number, 0 if nothing broke"
     }
   },
@@ -489,7 +527,7 @@
     "changeAvatar": "Change avatar",
     "avatarTooLarge": "Image must be smaller than 10 MB",
     "avatarWrongType": "Image must be JPEG, PNG or WebP",
-    "avatarUploadFailed": "Could not upload that image"
+    "avatarUploadFailed": "Couldn't upload the image. Use a JPEG, PNG or WebP under 10 MB."
   },
   "dashboard": {
     "eyebrow": "{{weekday}} · season {{year}}",
@@ -514,13 +552,13 @@
         "awaiting_explanation": "Needs an explanation",
         "none": "Shift not opened yet"
       },
-      "dayCash": "Cash for the day",
+      "dayCash": "Day cash",
       "reception": "Intake"
     },
     "staleShifts": {
       "title": "Unclosed shifts",
       "hint": "These shifts were left open on earlier days — a point cannot open a new one until its shift is closed, and the operator is the one who closes it.",
-      "loadFailed": "Could not check for unclosed shifts",
+      "loadFailed": "Could not check for unclosed shifts. Reload the page.",
       "inactivePoint": "Inactive point"
     },
     "topBalances": {
@@ -529,7 +567,7 @@
     },
     "shortcuts": {
       "reception": "Intake",
-      "dayCash": "Cash for the day",
+      "dayCash": "Day cash",
       "balances": "Balances"
     }
   },
@@ -545,7 +583,10 @@
   },
   "actions": {
     "showAll": "Show all ({{count}})",
-    "collapse": "Collapse"
+    "collapse": "Collapse",
+    "showMore": "Show more",
+    "showMoreOf": "Show more: {{what}}",
+    "collapseOf": "Collapse: {{what}}"
   },
   "picker": {
     "searchPlaceholder": "Start typing or pick below…",
@@ -581,18 +622,19 @@
     "errors": {
       "notYourDocument": "Only the author or the owner can void a document",
       "shiftClosed": "The shift is closed — ask the network owner",
-      "alreadyVoided": "Already voided",
-      "failed": "Could not void",
+      "alreadyVoided": "The document is already voided. Reload the page.",
+      "failed": "Couldn't void it. Reload the page and try again.",
       "reasonRequired": "Enter a reason"
     },
-    "reopensFailed": "Couldn't load the receipts that will reopen"
+    "reopensFailed": "Couldn't load the receipts that will reopen. Reload the page."
   },
   "cash": {
     "explainDialog": {
       "title": "Explain the {{amount}} discrepancy",
-      "description": "A discrepancy never blocks closing a shift — the operator already closed it. This explanation does not change the count; it stays in the journal alongside it.",
+      "description": "A discrepancy never stops a shift from working. This explanation does not change the count; it stays in the journal alongside it.",
       "explanation": "Explanation",
-      "submit": "Save explanation"
+      "submit": "Save explanation",
+      "operatorNote": "The operator wrote"
     },
     "toast": {
       "explained": "Explanation saved"
@@ -600,7 +642,7 @@
     "errors": {
       "explanationRequired": "Enter an explanation",
       "explanationTooLong": "Explanation — 2000 characters or fewer",
-      "failed": "Could not save the explanation"
+      "failed": "Couldn't save the explanation. Reload the page and try again."
     }
   },
   "recount": {
@@ -612,9 +654,8 @@
       "note": "This figure cannot be changed in the app. Call the base — the owner will find where it went off."
     },
     "errors": {
-      "amount": "Enter the amount you counted in the drawer — a number, not less than zero.",
       "noOpenShift": "A recount does not attach to a closed shift — you can only count while the shift is open.",
-      "failed": "Could not record the recount"
+      "failed": "Couldn't record the recount. Reload the page and try again."
     }
   },
   "countResult": {
@@ -628,7 +669,6 @@
     "title": "Point cash",
     "description": "How much cash the point should have on hand right now, and how much is missing from its target. Berry cash and crate deposits are two separate books — neither borrows from the other.",
     "pickPoint": "Select a point",
-    "today": "Today",
     "errors": {
       "pointMissing": "This point does not exist — pick another one"
     },
@@ -675,11 +715,12 @@
       "twoBooks": "Two books: berries {{berry}} · crates {{crates}}"
     },
     "incoming": {
-      "loadFailed": "Could not load the transfers on their way"
+      "loadFailed": "Could not load the transfers on their way. Reload the page."
     },
     "countHistory": {
       "title": "Cash counts",
       "toggle": "Full recount history",
+      "notYours": "counted by {{name}}",
       "empty": "No cash counts recorded for this point yet.",
       "columns": {
         "when": "When",
@@ -697,7 +738,11 @@
       "matched": "Matched",
       "open": "Unexplained",
       "noExplanationNeeded": "needs no explanation",
-      "explain": "Explain"
+      "settled": "Settled by the owner",
+      "explain": "Explain",
+      "operatorNote": "Operator: “{{text}}”",
+      "explanationLabel": "the owner's explanation",
+      "operatorNoteLabel": "the operator's note"
     },
     "panel": {
       "title": "Shift and recount",
@@ -712,6 +757,7 @@
       "discrepancy": "Discrepancy",
       "closedBy": "closed by {{name}}",
       "explanation": "“{{text}}”",
+      "settled": "Settled by the owner",
       "countAt": "Count at {{time}}",
       "matched": "✓ matched",
       "mismatched": "⚠ did not match",
@@ -728,11 +774,13 @@
         "noShiftNote": "There is no shift for this day — there is nothing for a recount to attach to."
       },
       "footnote": "The drawer can be recounted as many times a day as needed — every recount stays its own record and corrects nothing.",
-      "readFailed": "The shift could not be read — reload the page"
+      "readFailed": "The shift could not be read — reload the page",
+      "operatorNote": "Operator: “{{text}}”"
     },
     "result": {
       "opened": "Shift opened",
       "closedSettled": "Shift closed. The day matched.",
+      "openedDiscrepancy": "Shift opened. {{amount}} off the previous close — the owner will see it in their list.",
       "closedDiscrepancy": "Shift closed. Discrepancy {{amount}} — the owner will see it on their own list."
     },
     "target": {
@@ -760,10 +808,9 @@
       "description": "{{point}}. The old target isn't recorded in history — it's a single number on the point."
     },
     "errors": {
-      "cashFormat": "Enter an amount — up to two decimal places",
       "reasonRequired": "Enter a reason",
       "reasonTooLong": "Reason — 500 characters or fewer",
-      "failed": "Could not update the target"
+      "failed": "Couldn't update the target. Reload the page and try again."
     }
   },
   "payout": {
@@ -774,22 +821,39 @@
     },
     "allButton": "All — {{uah}}",
     "submit": "Pay out {{uah}}",
+    "submitPlain": "Pay out",
     "toast": {
       "paid": "Paid out {{uah}}"
     },
     "errors": {
-      "amountFormat": "Enter an amount like 4000 or 4000.50",
       "amountZero": "The amount must be above zero",
       "exceedsDebt": "Cannot pay more than the balance — balance {{debt}}",
-      "exceedsDebtServer": "Refused: the amount exceeds the balance",
-      "exceedsCash": "There isn't enough cash for berries at the till — nothing to pay this amount out of right now",
-      "noOpenShift": "No open shift — open one in Cash for the day",
-      "supplierInactive": "The supplier is deactivated",
-      "shiftClosed": "The shift is already closed",
-      "failed": "Could not record the payout"
+      "exceedsDebtServer": "The amount is more than the balance owed. Lower it.",
+      "exceedsCash": "There isn't enough berry cash at the till for this amount. Lower it.",
+      "noOpenShift": "No open shift — open one in Day cash",
+      "supplierInactive": "The supplier is deactivated. Ask an owner before paying out.",
+      "shiftClosed": "The shift is already closed. Ask an owner.",
+      "failed": "Couldn't record the payout. Reload the page and try again."
+    }
+  },
+  "settings": {
+    "eyebrow": "Network",
+    "title": "Network settings",
+    "description": "Apply at every collection point.",
+    "receipt": {
+      "title": "Receipt",
+      "label": "Note on every receipt",
+      "hint": "printed at the foot of every receipt in the network",
+      "lines": "Line {{n}} of {{max}}"
+    },
+    "saved": "Settings saved",
+    "errors": {
+      "failed": "Could not save the settings. Try again.",
+      "noteTooLong": "The note doesn't fit seven lines of forty characters."
     }
   },
   "receipt": {
+    "noteLoadFailed": "The network's note didn't load — the receipt will print without it.",
     "title": "Receipt {{code}}",
     "titleLines_one": "Receipt {{code}} · {{count}} line",
     "titleLines_other": "Receipt {{code}} · {{count}} lines",
@@ -824,7 +888,7 @@
     "title": "Berry intake",
     "pickPoint": "Select a point",
     "toPrices": "Day prices",
-    "toDay": "Cash for the day",
+    "toDay": "Day cash",
     "shift": {
       "none": "Shift not opened yet",
       "noneOwner": "Shift not opened yet — the operator opens it",
@@ -919,7 +983,7 @@
       "pending": "Accept",
       "back": "Back",
       "loading": "Working out the deposit…",
-      "failed": "Could not work out the deposit",
+      "failed": "Could not work out the deposit. Press “Try again”.",
       "retry": "Try again"
     },
     "totals": {
@@ -980,19 +1044,18 @@
       "linesCleared": "Lines cleared — they belonged to the previous supplier"
     },
     "errors": {
-      "failed": "Could not record the receipt",
+      "failed": "Couldn't record the receipt. Try again, and if it happens again, tell the network owner.",
       "lineRefused": "The server refused one of the lines — check the rows in the table",
-      "decimalFormat": "Enter a weight like 126.40",
       "gradeNotPriced": "This grade has no price for today — set it in Day prices",
       "tareRequired": "Add the tare — without it the whole gross weight would count as net",
       "tareTypeDuplicated": "The same tare type twice — merge the rows",
-      "tareTypeUnknown": "No such tare type",
-      "bonusOutOfRange": "The extra price is outside this grade's limits",
-      "netNotPositive": "Net weight comes out zero: the pallet and tare eat the whole gross",
-      "rateNegative": "Price plus extra price cannot be negative",
-      "noOpenShift": "No open shift — open one in Cash for the day",
-      "supplierInactive": "The supplier is deactivated",
-      "shiftClosed": "The shift is already closed",
+      "tareTypeUnknown": "That tare type doesn't exist. Pick another tare type.",
+      "bonusOutOfRange": "The extra price is outside this grade's limits. Correct it.",
+      "netNotPositive": "Net weight comes out zero: the pallet and tare eat the whole gross. Check the weight and tare.",
+      "rateNegative": "Price plus extra price cannot be negative. Correct the extra price.",
+      "noOpenShift": "No open shift — open one in Day cash",
+      "supplierInactive": "The supplier is deactivated. Pick another or ask an owner.",
+      "shiftClosed": "The shift is already closed. Ask an owner.",
       "paidExceedsCash": "The receipt was not recorded: the berry cash drawer holds less. Lower the amount and try again.",
       "paidExceedsDebt": "The receipt was not recorded: you cannot pay out more than the total.",
       "paidFormat": "Enter an amount, e.g. 4000 or 4000.50"
@@ -1119,20 +1182,19 @@
   "transfer": {
     "errors": {
       "noOpenShift": "No open shift at this point — open one first",
-      "failed": "Could not process the transfer",
+      "failed": "Couldn't process the transfer. Reload the page and try again.",
       "notEmpty": "A transfer must carry money, crates, or both",
       "carrierRequired": "Enter the carrier",
       "carrierTooLong": "Carrier name — 200 characters or fewer",
-      "cashFormat": "Enter an amount — up to two decimal places",
       "cratesFormat": "Enter a whole number of crates, 0 or more",
       "noteRequired": "Describe what doesn't match",
       "noteTooLong": "Note — 500 characters or fewer",
-      "voided": "This transfer has been voided",
-      "alreadyAnswered": "This transfer has already been answered",
+      "voided": "This transfer was voided. Reload the page.",
+      "alreadyAnswered": "This transfer was already answered. Reload the page.",
       "pointOperatorOnly": "Only the collection point may accept or dispute a transfer",
       "notDisputed": "Only a disputed transfer can be resolved",
-      "alreadyResolved": "This dispute has already been resolved",
-      "pointInactive": "This collection point is deactivated",
+      "alreadyResolved": "This dispute is already resolved. Reload the page.",
+      "pointInactive": "That collection point is deactivated. A transfer can't be sent to it.",
       "correctionPointMismatch": "A correction must name a transfer at the same point"
     },
     "send": {
@@ -1240,12 +1302,11 @@
       "created": "Balance added"
     },
     "errors": {
-      "failed": "Could not add the balance",
-      "amountFormat": "Enter an amount like 500 or 500.00",
+      "failed": "Couldn't add the balance. Reload the page and try again.",
       "amountPositive": "The amount must be above zero",
       "reasonRequired": "Say why — this is what explains the debt later",
       "reasonTooLong": "At most 500 characters",
-      "supplierInactive": "This supplier is deactivated, so a debt raised now could never be paid out"
+      "supplierInactive": "This supplier is deactivated, so the debt could never be paid out. Reactivate the supplier first."
     }
   },
   "crates": {
@@ -1288,7 +1349,9 @@
       "title": "Issue crates",
       "description": "Crates go home with a person. Both modes put the same crates on the same balance — the difference is only in the money.",
       "submit": "Issue",
-      "toast": "Crates issued"
+      "toast": "Crates issued",
+      "onHandHint": "{{on_hand}} empty crates at the point.",
+      "inTransitHint": "{{in_transit}} in transit — accept the transfer first."
     },
     "return": {
       "title": "Accept crates",
@@ -1297,7 +1360,7 @@
       "toast": "Crates accepted",
       "splitTitle": "How the refund is made up",
       "splitIdle": "Choose a person and a number to see the split.",
-      "splitFailed": "Could not work out the split",
+      "splitFailed": "Could not work out the split. Reload the page.",
       "byDeposit": "at {{price}}",
       "byReceipt": "on a receipt, no money",
       "refund": "Refund",
@@ -1326,7 +1389,7 @@
     "docs": {
       "title": "This person's crate documents",
       "empty": "No crate documents for this person.",
-      "failed": "Could not load the documents",
+      "failed": "Could not load the documents. Reload the page.",
       "issued_one": "issued {{count}} crate",
       "issued_other": "issued {{count}} crates",
       "returned_one": "accepted {{count}} crate",
@@ -1346,14 +1409,17 @@
     "errors": {
       "supplierRequired": "Pick who is taking the crates",
       "unitsFormat": "Enter a whole number of crates",
-      "issueFailed": "Could not issue the crates",
-      "returnFailed": "Could not accept the crates",
+      "issueFailed": "Couldn't issue the crates. Reload the page and try again.",
+      "returnFailed": "Couldn't take the crates back. Reload the page and try again.",
       "noCrateType": "No tare type is marked as the crate — set one in the catalogue first",
-      "returnExceeds": "That is more crates than this person is holding",
-      "cashInsufficient": "The crate deposits drawer holds less than this refund needs",
+      "returnExceeds": "That is more crates than this person is holding. Lower the number.",
+      "cashInsufficient": "The crate deposits drawer holds less than this refund needs. Ask an owner.",
+      "onHandInsufficient": "The point has {{available}} empty crates, and this takes {{required}}. Lower the number.",
+      "onHandInsufficientInTransit": "The point has {{available}} empty crates, and this takes {{required}}. {{in_transit}} more are in transit — press «Accept» in Point cash first.",
       "hasReturns": "A return has already been allocated against this issuance — void the return first",
       "returnBelongsToIntake": "This return was recorded with a receipt — void the receipt instead",
-      "supplierInactive": "This person is deactivated, so crates cannot be issued to them"
+      "supplierInactive": "This person is deactivated, so crates cannot be issued to them. Pick another.",
+      "overOnHand": "Only {{on_hand}} empty crates at the point. Lower the number."
     }
   },
   "reweigh": {
@@ -1437,21 +1503,21 @@
       "reasonPlaceholder": "e.g. entered the same truck twice",
       "empty": "No reweighing has been recorded for this day yet.",
       "errors": {
-        "failed": "Could not void the line"
+        "failed": "The line wasn't voided. Try again."
       }
     },
     "post": "Post reweighing · {{kg}}",
     "postNote": "Positions are written one at a time: if the server refuses the third, the first two are already recorded, and the rest stay on screen.",
     "noShift": "The shift for {{date}} at {{point}} was never opened — there is nothing to reweigh.",
     "posted": "Reweighing posted · {{kg}}",
-    "postFailed": "The position “{{grade}}” was not posted",
+    "postFailed": "The position “{{grade}}” wasn't posted.",
     "errors": {
-      "postFailed": "The position was not posted",
+      "postFailed": "Check the position and try again.",
       "nothingAccepted": "Nothing was accepted at this point that day — there is nothing to reweigh",
-      "gradeNotAccepted": "That grade was not accepted on this shift. Reload the page — the grade list is stale",
-      "netNotPositive": "The pallet and tare consume the whole gross weight — no net weight is left",
+      "gradeNotAccepted": "That grade was not accepted on this shift. Remove the position and enter it with another grade.",
+      "netNotPositive": "The pallet and tare consume the whole gross weight, so no net weight is left. Check the weight and tare.",
       "tareDuplicated": "One tare type is listed twice on a single position — record it once with the total count",
-      "tareUnknown": "That tare type is unknown or deactivated"
+      "tareUnknown": "That tare type is unknown or deactivated. Remove the position and enter it again with another tare type."
     },
     "draftsCleared": "Positions cleared — they belonged to a different day or point"
   },
@@ -1469,13 +1535,15 @@
     "berry": {
       "title": "Berries",
       "product": "product",
-      "weight": "weight",
+      "pointWeight": "point weight",
       "perKg": "₴/kg",
       "accrued": "accrued",
       "ourWeight": "our weight",
-      "shortfall": "shortfall",
+      "shortfallKg": "shortfall, kg",
+      "shortfallUah": "shortfall, ₴",
+      "shortfallHelpLabel": "How the shortfall is counted",
+      "shortfallHelp": "Counted for each grade separately: a surplus in one grade does not reduce another grade's shortfall. That is why it can be larger than «point weight» minus «our weight». In the TOTAL row, unweighed products count towards «point weight» but not towards «our weight» or the shortfall.",
       "total": "TOTAL at the point",
-      "totalOurWeight": "our weight, total",
       "notReweighed": "not re-weighed",
       "note": "«Accrued» is the purchase accrued, not cash out of the drawer: debts exist, so the cash that left the drawer that day is a different number and does not affect the cost of day."
     },
@@ -1493,13 +1561,16 @@
       "expensesRow": "Day expenses",
       "basket": "Shared basket",
       "perKg": "per kilogram",
-      "split": "of which shortfall {{shortfall}} · of which expenses {{expenses}}",
       "awaiting": "Awaiting re-weighing",
       "awaitingAmount": "{{amount}} not spread",
       "awaitingNote": "Until the load is weighed at the base there is no shortfall yet — the day's expenses have landed nowhere.",
-      "addFailed": "Line not added",
-      "updateFailed": "Line not changed",
-      "removeFailed": "Line not removed"
+      "addFailed": "The line wasn't added.",
+      "updateFailed": "The line wasn't changed.",
+      "removeFailed": "The line wasn't removed.",
+      "errors": {
+        "amountPositive": "The amount must be above zero. Correct it.",
+        "labelRequired": "The expense has no name. Say what the money went on."
+      }
     },
     "final": {
       "title": "Average price after expenses",
@@ -1510,12 +1581,35 @@
       "fromBasket": "from basket",
       "together": "together",
       "cost": "cost",
-      "was": "was",
-      "byOurWeight": "accrued ÷ our weight",
+      "was": "receipt price",
+      "byOurWeight": "purchase price",
+      "byOurWeightHelpLabel": "What purchase price means",
+      "byOurWeightHelp": "What a kilogram that reached the base really cost: accrued ÷ our weight. Counts: the receipt price, top-ups and this product's own shrinkage. Leaves out: the day's expenses and other products' shortfall.",
       "total": "TOTAL",
       "summary": "The day's expenses together with the shortfall — {{basket}} over {{kg}} — come to {{rate}} ₴ on every kilogram of any berry.",
       "checkShare": "Σ from basket {{shares}} = basket {{basket}}",
-      "checkTotal": "{{total}} = accrued {{accrued}} + expenses {{expenses}}"
+      "checkTotal": "{{total}} = accrued {{accrued}} + expenses {{expenses}}",
+      "checkTotalUnweighed": "{{total}} + not re-weighed {{unweighed}} = accrued {{accrued}} + expenses {{expenses}}"
+    }
+  },
+  "operatorNote": {
+    "write": "Add my explanation",
+    "edit": "Edit my explanation",
+    "resultAction": "Explain the discrepancy",
+    "titleOpening": "What happened? Opening discrepancy {{amount}}",
+    "titleClosing": "What happened? Closing discrepancy {{amount}}",
+    "description": "Write what you know while you are still at the point. The owner reads it next to the discrepancy and makes the final decision.",
+    "label": "Your explanation",
+    "submit": "Save explanation",
+    "saved": "Saved — the owner will see it next to the discrepancy",
+    "errors": {
+      "required": "Write what happened",
+      "tooLong": "2000 characters or fewer",
+      "failed": "Could not save the explanation. Try again.",
+      "notCounter": "Only the person who counted this drawer can explain it.",
+      "notExplainable": "This count no longer stands — explain the new one. Refresh the page.",
+      "ownerExplained": "The owner has already decided on this discrepancy. Refresh the page.",
+      "noDiscrepancy": "The drawer matched here — there is nothing to explain. Refresh the page."
     }
   }
 }

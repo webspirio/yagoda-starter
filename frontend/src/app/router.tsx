@@ -1,7 +1,7 @@
 import { createBrowserRouter, Outlet, type RouteObject } from 'react-router';
 import { AppLayout } from './layouts/AppLayout';
 import { RouteError } from './providers/RouteError';
-import { HydrateFallback } from './providers/HydrateFallback';
+import { RouteFallback } from './layouts/RouteFallback';
 import { RequireAuth, RequireRole } from '@/features/auth';
 
 // EAGER — the screens an operator opens every shift, plus the two auth-shaped
@@ -23,19 +23,20 @@ import { PointCashPage } from '@/pages/point-cash';
 import { NotFoundPage } from '@/pages/not-found';
 
 // LAZY — the owner-only group, in ONE chunk fetched the first time an owner
-// opens any of these seven screens. They live in their own module because a
+// opens any of these eight screens. They live in their own module because a
 // file that DEFINES components and also exports plain values (`routes`,
 // `router`) is not a Fast Refresh boundary — eslint-plugin-react-refresh
 // says so, and this repo's eslint config answers that by extracting rather
 // than whitelisting. `./lazy-routes` carries the measurements behind the
 // one-chunk choice and the guard-before-chunk ordering the routes below
-// depend on; read it before adding an eighth.
+// depend on; read it before adding a ninth.
 import {
   CatalogPage,
   CostOfDayPage,
   JournalPage,
   PointsPage,
   ReweighPage,
+  SettingsPage,
   TransfersPage,
   UsersPage,
 } from './lazy-routes';
@@ -56,23 +57,19 @@ import {
  */
 export const routes: RouteObject[] = [
   // Standalone dev gallery of the shared/ui kit — no AppLayout shell, no auth,
-  // so it opens directly at /ui-kit for visual review. Dev-only: a developer
-  // tool, not something production ships. `import.meta.env.DEV` is baked in
-  // at build time, so the production bundle never even contains this array
-  // entry, let alone the lazily-imported page module.
-  ...(import.meta.env.DEV
-    ? [
-        {
-          path: '/ui-kit',
-          lazy: () => import('@/pages/ui-kit').then((m) => ({ Component: m.UiKitPage })),
-          errorElement: <RouteError />,
-          // Outside AppLayout, so no ancestor route supplies a fallback for a
-          // direct load — without its own, React Router warns "No
-          // HydrateFallback element provided" and renders nothing meanwhile.
-          hydrateFallbackElement: <HydrateFallback />,
-        } satisfies RouteObject,
-      ]
-    : []),
+  // so it opens directly at /ui-kit for visual review. Route-level `lazy`
+  // (#243): no user opens it, yet as an eager import it shipped ~10 KiB in
+  // every operator's first load. It sits outside AppLayout's Suspense
+  // boundary, which is why this is the router's own `lazy` — a data router
+  // waits for the module before rendering — and not React.lazy.
+  {
+    path: '/ui-kit',
+    lazy: async () => ({ Component: (await import('@/pages/ui-kit')).UiKitPage }),
+    // A direct load of /ui-kit renders this while the chunk arrives; without
+    // one React Router warns on every such load.
+    HydrateFallback: RouteFallback,
+    errorElement: <RouteError />,
+  },
   {
     element: <AppLayout />,
     errorElement: <RouteError />,
@@ -217,6 +214,7 @@ export const routes: RouteObject[] = [
             path: '/cost-of-day',
             element: <CostOfDayPage />,
           },
+          { path: '/settings', element: <SettingsPage /> },
         ],
       },
       {

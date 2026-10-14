@@ -42,5 +42,20 @@ export function formatDecimal(value: string, locale = 'uk'): string {
 export const formatUah = (value: string, locale = 'uk'): string =>
   `${formatDecimal(value, locale)} ₴`;
 
+/** Same caching reason as `separatorCache`: the unit depends only on `locale`. */
+const kgUnitCache = new Map<string, string>();
+
+function kgUnitFor(locale: string): string {
+  let unit = kgUnitCache.get(locale);
+  if (unit === undefined) {
+    unit =
+      new Intl.NumberFormat(locale, { style: 'unit', unit: 'kilogram' })
+        .formatToParts(1)
+        .find((p) => p.type === 'unit')?.value ?? 'kg';
+    kgUnitCache.set(locale, unit);
+  }
+  return unit;
+}
+
 export const formatKg = (value: string, locale = 'uk'): string =>
-  `${formatDecimal(value, locale)} ${locale.startsWith('uk') ? 'кг' : 'kg'}`;
+  `${formatDecimal(value, locale)} ${kgUnitFor(locale)}`;

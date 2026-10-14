@@ -18,7 +18,9 @@ export interface ResolveTransferInput {
  * Invalidates `transfers` (the document's `resolved_*` fields just changed)
  * AND `pointCash`: `PointCashService`'s formula switches from
  * `reported_cash` to `resolved_cash` the moment `resolved_at` is set, so the
- * point's cash figure itself moves the instant a dispute is resolved.
+ * point's cash figure itself moves the instant a dispute is resolved. And
+ * `crateBalances`: `resolved_crates` replaces `reported_crates` in the
+ * point's empties the same instant.
  */
 export function useResolveTransferMutation() {
   const qc = useQueryClient();
@@ -28,6 +30,7 @@ export function useResolveTransferMutation() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: queryKeys.transfers });
       qc.invalidateQueries({ queryKey: queryKeys.pointCash });
+      qc.invalidateQueries({ queryKey: queryKeys.crateBalances });
     },
   });
 }

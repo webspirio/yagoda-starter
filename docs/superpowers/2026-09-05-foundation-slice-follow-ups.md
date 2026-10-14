@@ -767,12 +767,18 @@ doubled every point's starting cash); the un-anchored formula still standing in
   asserts the single-read discipline for `accepted_at`/`accepted_date`; `open`
   does not follow it. `close` now reads once, after the lock.
 
-- **`setExplanation` writes its row and its audit entry outside any
-  transaction**, unlike every other verb on `shifts`.
+- ~~**`setExplanation` writes its row and its audit entry outside any
+  transaction**, unlike every other verb on `shifts`.~~ **FIXED 2026-10-06 on
+  the operator-note branch (commit `856645a`).** It now runs in one
+  transaction under `loadVisible`'s `pessimistic_write`, the lock the operator's
+  note write takes too (spec `2026-10-06-yagoda-operator-note-design.md` §4.2).
+  Both writes have since moved to the count (spec
+  `2026-10-08-yagoda-count-explanations-design.md`): `CashCountsService.writeNote`
+  does the same, one transaction under `pessimistic_write` on the count row.
 
 - **`SetExplanationDto` refuses a blank string, so there is no un-explain
   path.** An owner who explains the wrong shift cannot reopen the incident,
-  since `is_open` keys on a non-empty `explanation`.
+  since a count's `is_open` keys on that count's own non-empty `explanation`.
 
 - **The reopen demotion does not filter `book`**, so it will demote the crates
   closing count too once that book exists. Probably intended; nothing says so.
@@ -1370,6 +1376,14 @@ Spec `docs/superpowers/specs/2026-09-27-allocations-cluster-refactor-design.md`,
   merge and were handled by hand. Not a repository defect; re-check on the next
   PR before relying on it.
 
+## From the crates on-hand invariant (2026-09-30)
+
+- **`tare_types.is_crate` toggle** is an eighth path below zero: moving the single crate flag onto
+  a tare type already on receipts reclassifies history at every point at once. Candidate: refuse
+  the toggle once the type is on any live receipt.
+- **Up-front hints** in the void-transfer, resolve-dispute and close-shift dialogs (e.g. «з цього
+  переказу вже видано 15»); today they learn of the guard only from the 409.
+
 ## Deferred from forbidding the closed-shift intake void (2026-09-30)
 
 Nobody voids an intake in a closed shift any more, the owner included (§9.4, правка
@@ -1393,3 +1407,113 @@ Nobody voids an intake in a closed shift any more, the owner included (§9.4, п
   shift. Reopening the point's newest shift is now the ONLY way to correct a closed day's receipt, so this
   display gap sits on that path. The server's figure is right; the ledger rows explaining it
   are not.
+
+## Deferred from preview links (2026-10-02)
+
+- ~~**GitHub environments for `staging` and `production`.**~~ Done (2026-10-02,
+  `scripts/ci/deployment-record.sh`). The note above suggested a job-level
+  `environment: { name, url }`, and that turned out NOT to be enough: `deploy-staging` ends
+  green when it skips a superseded commit, which would leave a success record for a deploy
+  that never ran; a `workflow_dispatch` rollback runs at main's tip, so the record would
+  name the wrong commit; and GitHub's `auto_inactive` never touches production records,
+  so every release would stay «active». The script sets the ref itself (the tag for
+  production, the commit for staging) and sweeps the previous live record.
+- **Coolify skips a PR whose author it sees as `CONTRIBUTOR`.** The staging application's
+  *PR deployment access: repository members only* reads `author_association` from the App
+  webhook, which is the PUBLIC view: an org member with private membership (and no direct
+  collaborator grant) arrives as `CONTRIBUTOR`, Coolify creates no preview record, and
+  `deploy-preview` fails with «Pull request N not found for this resource» — on every push
+  and on a close/reopen alike. Found on #199 (author `swefd`: `CONTRIBUTOR` anonymously,
+  `MEMBER` to an authenticated member; the authors whose previews work read `COLLABORATOR`).
+  Check with `curl -s https://api.github.com/repos/webspirio/yagoda-starter/pulls/<N> | jq -r .author_association`.
+  Fix per person: a DIRECT repository grant (any role; it reads `COLLABORATOR` and the
+  membership stays private), or a public org membership (`MEMBER`). Org-admin access and a
+  team grant (`internal-team`, `admin`) both still read `CONTRIBUTOR` — tried on #199. The
+  fix is per repository: any other repository that gets Coolify previews needs the same.
+- **An issue unlinked after its block was written keeps the block.** Deleting `Closes #7`
+  from a PR body after #7 received its block leaves it there: later runs and `closed` read
+  only the CURRENT closing references. Fix if it bites: remember the issue numbers in the
+  deployment `payload` and act on the union. From the branch review of the preview-links change.
+- **Two writers on one issue can lose an update.** `preview-closed` for PR A and
+  `deploy-preview` for PR B read-modify-write the same issue body in different concurrency
+  groups; one write can be lost. Rare (two PRs closing one issue, at the same second); a
+  duplicated block it leaves behind is collapsed by the next write. A re-read-and-retry after
+  the PATCH would close it.
+
+## Opening-count discrepancy is invisible to the operator (2026-10-06)
+
+**Closed 2026-10-08** — spec `2026-10-08-yagoda-count-explanations-design.md`.
+
+`ShiftsService.open` compares the morning count with the previous close
+(`expectedForOpening`), and a mismatch is an `is_open` incident on the NEW shift.
+`PointCashPage` deliberately shows no discrepancy pill for an open (§7.3), so the
+operator neither sees it nor can explain it — the operator's note (spec
+`2026-10-06-yagoda-operator-note-design.md`) covers the closing count only. Decide
+whether the opening result should name the gap, and whether the opener may explain it.
+
+## An explained opening discrepancy disarms the closing note (2026-10-07)
+
+**Closed 2026-10-08** — spec `2026-10-08-yagoda-count-explanations-design.md`.
+
+From the PR #218 review. `shifts.explanation` is one column per shift, and
+`operatorNoteRefusal` (`backend/src/shifts/operator-note.ts`) refuses on any
+non-empty one before it asks whether the closing count disagreed. So: the
+morning count disagrees with yesterday's close → the owner explains it while
+the shift is open → the evening close is short → the closer's `PUT` is 409
+`OWNER_ALREADY_EXPLAINED` («the owner has already decided», untrue for this
+discrepancy) and no button shows. The owner is blind to it too, and that half
+predates the note: the closing row is `is_open: false`
+(`cash-count.mapper.ts`) and filtered out of `only_discrepancies`
+(`cash-counts.service.ts`), explained by a text about the morning. A matched
+close in the same state gets `OWNER_ALREADY_EXPLAINED` rather than
+`NO_DISCREPANCY`.
+
+Gating the refusal alone on when the explanation was written (`explained_at`
+vs `closed_at`) would let the operator write a note the owner's list still
+never shows, so it is not the fix on its own. The options:
+
+- **(a) Per-count explanation** — `explanation` on `cash_counts`, or an
+  `explained_at` that `is_open`, the list SQL and the refusal all compare
+  against. Schema change; its own slice. Also retires reopen's
+  `has_discrepancy` read and the accepted «both counts disagreed» residual
+  (§7.7 amendment of 07.10).
+- **(b) `close` clears a pre-close explanation when the closing count
+  disagrees**, mirroring reopen's 07.10 amendment, with the same residual (the
+  owner explains both again). No schema change, but an operator action erasing
+  the owner's text touches §10.2 — needs the client's sign-off first.
+
+Whichever is chosen, a db-spec — opening discrepancy explained → close with a
+discrepancy → assert the outcome — should pin it.
+
+## The owner's explanation renders on every count row (2026-10-07)
+
+**Closed 2026-10-08** — spec `2026-10-08-yagoda-count-explanations-design.md`.
+
+From the PR #218 review; predates the operator note. The `GET /cash-counts`
+shifts join puts `explanation` on every count of the shift, and
+`CashCountHistory`'s explanation cell prints it unconditionally, before its
+«matched» branch. So a `midday` recount (including a closing count reopen
+demoted) and a matched opening row both show the owner's text about a
+different count. The operator note one line above is already guarded to the
+`closing` row; the same guard — `row.kind !== 'midday'` and not a `leaf`
+discrepancy — fixes it. Once (a) above lands, the guard becomes «the count
+this explanation belongs to».
+
+## Left over from the PR #218 browser walkthrough (2026-10-08)
+
+Found by driving the count-explanations slice in a browser. None of them blocks it.
+
+- **The day screen's own «Закрити зміну» still only toasts.** The stale-shift
+  banner on «Прийомка» and «Каса за день» now shows the result and the note
+  form (`widgets/count-result`). `DayPage`'s toolbar close does not; it is one
+  `ShiftCountResult` away.
+- **«рахував» / «закрив» are masculine for everyone.** «рахував Оксана Гнатюк»
+  (`pointCash.countHistory.notYours`) and «закрив …» on the shift panel. Fixing
+  this needs the user's gender, or a wording without a past-tense verb.
+- **After a reopen the shift panel shows the demoted closing count as a plain
+  recount** («Підрахунок о 17:51 · ⚠ не зійшлося») without its texts, even when
+  the owner explained it. The history row shows them. The spec scoped the panel
+  to opening/closing.
+- **The operator has to find the note form again.** Once dismissed, the closed
+  shift's panel shows a «Розбіжність» pill with no amount and no action. The
+  only way back is «Уся історія перерахунків».

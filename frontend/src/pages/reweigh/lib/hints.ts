@@ -9,7 +9,14 @@ import { cmp } from '@/shared/lib/money';
 export const GROSS_SUSPECT_KG = 800;
 export const TARE_SUSPECT_UNITS = 120;
 
-export type BlockReason = 'noShift' | 'nothingAccepted' | 'noGrade' | 'noGross' | 'noNet' | null;
+export type BlockReason =
+  | 'noShift'
+  | 'nothingAccepted'
+  | 'noGrade'
+  | 'badFormat'
+  | 'noGross'
+  | 'noNet'
+  | null;
 
 /**
  * Why «+ Додати позицію» is inactive — a REASON CODE, resolved to copy by the page.
@@ -23,23 +30,31 @@ export type BlockReason = 'noShift' | 'nothingAccepted' | 'noGrade' | 'noGross' 
  * The mock's «Товар … не приймали» rung is GONE: the picker is built from the
  * server's `grades[]`, so an unaccepted grade is unpickable rather than
  * pickable-then-refused.
+ *
+ * `badFormat` (#72) — gross or pallet holds text `parseDecimal` refuses (`12.`).
+ * It sits ABOVE `noGross` because a refused gross computes as zero, and «вкажіть
+ * вагу» under a field that plainly holds a number would be the wrong lesson.
  */
 export function addBlockReason({
   hasShift,
   acceptedAnything,
   gradeId,
+  badFormat = false,
   grossKg,
   netKg,
 }: {
   hasShift: boolean;
   acceptedAnything: boolean;
   gradeId: string | null;
+  /** Gross or pallet is non-empty and not a number `parseDecimal` accepts. */
+  badFormat?: boolean;
   grossKg: string;
   netKg: string;
 }): BlockReason {
   if (!hasShift) return 'noShift';
   if (!acceptedAnything) return 'nothingAccepted';
   if (!gradeId) return 'noGrade';
+  if (badFormat) return 'badFormat';
   if (cmp(grossKg, '0.00') <= 0) return 'noGross';
   if (cmp(netKg, '0.00') <= 0) return 'noNet';
   return null;

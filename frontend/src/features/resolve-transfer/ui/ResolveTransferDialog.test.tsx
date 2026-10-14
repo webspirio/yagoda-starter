@@ -81,3 +81,27 @@ describe('ResolveTransferDialog', () => {
     });
   });
 });
+
+describe('the shared money field (#72)', () => {
+  it('never holds a space and refuses a half-typed sum with the shared message', async () => {
+    setup();
+    const input = screen.getByLabelText('Resolved cash');
+    await userEvent.clear(input);
+    await userEvent.type(input, '980 40');
+    expect(input).toHaveValue('98040');
+    await userEvent.clear(input);
+    await userEvent.type(input, '12.');
+    await userEvent.click(screen.getByRole('button', { name: 'Resolve' }));
+    expect(await screen.findByText('Enter a number, e.g. 12000 or 980.40')).toBeInTheDocument();
+  });
+
+  it('submits the server-canonical reported_cash default untouched', async () => {
+    setup();
+    mock.onPost('/transfers/t1/resolve').reply(200, { ...disputed, resolved_at: 'now' });
+    await userEvent.click(screen.getByRole('button', { name: 'Resolve' }));
+    await waitFor(() => expect(mock.history.post).toHaveLength(1));
+    expect(JSON.parse(mock.history.post[0].data as string)).toMatchObject({
+      resolved_cash: '49500.00',
+    });
+  });
+});

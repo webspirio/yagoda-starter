@@ -1,0 +1,52 @@
+# .github/workflows/preview-closed.yml
+#
+# When a PR with a preview closes, Coolify removes the stack itself (its GitHub App
+# webhook — docs/coolify-deploy.md). This workflow tidies only GitHub's side of the link
+# (docs/superpowers/specs/2026-10-02-preview-links-design.md): the PR's deployment record
+# goes inactive, and the block in each issue the PR closes either points at staging
+# (merged) or is removed (closed unmerged). It touches no server.
+name: Preview closed
+
+on:
+  pull_request:
+    types: [closed]
+
+permissions: {}
+
+jobs:
+  preview-links:
+    # Same gates as deploy-preview: internal PRs only, and only while previews are on.
+    # Deliberately NOT gated on the `preview` label: the runbook tells people to drop it
+    # by hand to free a cap slot, and such a PR would keep its record and block for good.
+    # A PR that never had a preview costs one quick no-op run — the script finds no
+    # record, and on a merge it only REPLACES a block, never writes a new one.
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository
+      && vars.COOLIFY_ENABLED == 'true'
+      && vars.PREVIEWS_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    concurrency:
+      group: preview-closed-${{ github.event.pull_request.number }}
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      deployments: write
+      issues: write
+      pull-requests: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      PR: ${{ github.event.pull_request.number }}
+      HEAD_REF: ${{ github.event.pull_request.head.ref }}
+      HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+      PREVIEW_URL: https://pr-${{ github.event.pull_request.number }}.${{ vars.PREVIEW_DOMAIN }}
+      STAGING_URL: ${{ vars.STAGING_URL }}
+    steps:
+      # The head SHA, not the default merge ref: a PR closed without merging may have
+      # no merge ref left to check out. Only the script is needed.
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          sparse-checkout: scripts/ci
+      - name: Deployment record and issue blocks
+        run: bash scripts/ci/preview-links.sh closed ${{ github.event.pull_request.merged && 'true' || 'false' }}

@@ -60,4 +60,21 @@ describe('apiErrorToFields', () => {
     expect(out.fieldErrors).toEqual([]);
     expect(out.formErrorKey).toBe('suppliers.errors.saveFailed');
   });
+
+  it('SUPPLIER_NAME_EMPTY lands on the first-name field', () => {
+    const err = new ApiError(400, 'x', undefined, 'SUPPLIER_NAME_EMPTY');
+    expect(apiErrorToFields(err, FIELDS).fieldErrors).toEqual([
+      { field: 'first_name', messageKey: 'suppliers.errors.nameRequired' },
+    ]);
+  });
+
+  it('a made-up FOO_PHONE_TAKEN no longer matches', () => {
+    const err = new ApiError(409, 'x', undefined, 'FOO_PHONE_TAKEN');
+    expect(apiErrorToFields(err, FIELDS).formErrorKey).toBe('suppliers.errors.saveFailed');
+  });
+
+  it('a network failure and a 500 get the status sentence, not saveFailed', () => {
+    expect(apiErrorToFields(new ApiError(0, 'x'), FIELDS).formErrorKey).toBe('errors.network');
+    expect(apiErrorToFields(new ApiError(500, 'x'), FIELDS).formErrorKey).toBe('errors.server');
+  });
 });

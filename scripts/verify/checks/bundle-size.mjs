@@ -191,17 +191,6 @@ const MIN_HEADROOM_RAW_BYTES = 100 * 1024
 const STEP_GZIP_BYTES = 5 * 1024
 const STEP_RAW_BYTES = 20 * 1024
 
-/**
- * The one place this check's "must never ship" scope is DECLARED, so it stays mechanically
- * tied to what it enforces rather than drifting into a second, hand-kept copy. Mirrors
- * `frontend/src/app/router.tsx`'s own guard: `routes` spreads the `/ui-kit` gallery in only
- * `...(import.meta.env.DEV ? [ { path: '/ui-kit', ... } ] : [])`, so the production bundle
- * is meant to never contain that route's module at all. A leaked chunk here would be LAZY
- * (it sits behind its own `lazy()` import, excluded from first paint by definition), so
- * this is the only gate in this file that would ever see it.
- */
-export const DEV_ONLY_SOURCE_PREFIXES = ['src/pages/ui-kit/']
-
 /** @param {string[]} lines @returns {never} */
 function fail(lines) {
   process.stderr.write('bundle: RED\n')
@@ -336,54 +325,6 @@ function readManifest() {
     fail([`${MANIFEST_REL} is not valid JSON (${errMessage(err)}) — rebuild the frontend.`])
   }
   return manifest
-}
-
-/**
- * FAILs if the manifest contains anything under {@link DEV_ONLY_SOURCE_PREFIXES}, by KEY or
- * by `file` name — a dev-only gallery must never reach a production build, and because a
- * leaked chunk would be lazy (see the file header), no other check in this file would ever
- * notice on its own.
- *
- * The file-name half is DERIVED from {@link DEV_ONLY_SOURCE_PREFIXES}, not a second,
- * hand-typed copy of today's one entry: each prefix's last non-empty path segment
- * (`'src/pages/ui-kit/'` → `'ui-kit'`) becomes a substring `chunk.file` is checked against.
- * DEV_ONLY_SOURCE_PREFIXES is documented as the ONE place this check's scope is declared —
- * a literal `'ui-kit'` here used to make that false: a second prefix added to the array
- * would have silently gone unchecked by file name (though still caught by key, since that
- * half already read the array). Recomputed on every call, not cached at module load, so a
- * prefix appended to the array after this module has already been imported — which is
- * exactly how this file's own tests reach a second prefix without a second real dev-only
- * route — is still honoured.
- *
- * @param {Manifest} manifest
- */
-export function assertNoDevOnlyChunksShipped(manifest) {
-  // Each prefix ends in '/' and names at least one real segment, so `.pop()` here never
-  // actually returns undefined — the cast is only to satisfy the type checker's general
-  // Array#pop() signature, not a runtime assumption this file doesn't already make.
-  const fileSubstrings = /** @type {string[]} */ (
-    DEV_ONLY_SOURCE_PREFIXES.map((prefix) => prefix.split('/').filter(Boolean).pop())
-  )
-  /** @type {string[]} */
-  const problems = []
-  for (const [key, chunk] of Object.entries(manifest)) {
-    if (DEV_ONLY_SOURCE_PREFIXES.some((prefix) => key.startsWith(prefix))) {
-      problems.push(
-        `${MANIFEST_REL} contains ${key} — a dev-only source that router.tsx keeps out of a ` +
-          'production build behind `import.meta.env.DEV`; a leaked chunk here means that gate ' +
-          'failed or was bypassed, and it would otherwise ship silently inside the lazy figure.',
-      )
-    }
-    const matchedSubstring =
-      typeof chunk?.file === 'string' ? fileSubstrings.find((substr) => chunk.file.includes(substr)) : undefined
-    if (matchedSubstring) {
-      problems.push(
-        `${MANIFEST_REL}'s ${key} names a file (${chunk.file}) containing "${matchedSubstring}" — a ` +
-          'dev-only chunk must never reach a production build.',
-      )
-    }
-  }
-  if (problems.length > 0) fail(problems)
 }
 
 /**
@@ -832,7 +773,6 @@ function main() {
   /** @type {Map<string, AssetFile>} */
   const byName = new Map(files.map((f) => [f.file, f]))
   const manifest = readManifest()
-  assertNoDevOnlyChunksShipped(manifest)
   const { resolved: firstPaint, visited: firstPaintVisited } = firstPaintFiles(manifest, byName)
   // Before --write as well as before the gate: a dev-mode build must never be recorded as
   // a baseline either.

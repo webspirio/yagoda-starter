@@ -6,6 +6,7 @@ import { Shift } from './shift.entity';
 import { AuditService } from '../audit/audit.service';
 import { AuditLog } from '../audit/audit-log.entity';
 import { TimeService } from '../time/time.service';
+import { CrateStockGuard } from '../crate-stock/crate-stock.guard';
 import { PointCashService } from '../point-cash/point-cash.service';
 import type { CollectionPointsService } from '../collection-points/collection-points.service';
 import { UserRole } from '../users/user-role.enum';
@@ -17,7 +18,7 @@ import type { AuthenticatedUser } from '../auth/jwt.strategy';
  * `expectedForClosing` is the opening count plus this shift's SIGNED movements
  * (spec §3.3), and nothing bounds that sum below zero: payouts are subtracted,
  * and a transfer that was accepted and then voided stops being added while the
- * payouts it funded stay gone (§9.3 — «інакше сторно стає способом красти»).
+ * payouts it funded stay gone (§9.3 — «інакше анулювання стає способом красти»).
  *
  * The flow below is the one `TransfersService.void` documents as the intended
  * way to undo a mistaken «Прийняв», and before `1788600000010` it ended in a
@@ -57,6 +58,7 @@ describe('ShiftsService.close with negative expected movements (Postgres)', () =
       new TimeService({ appTimezone: 'Europe/Kyiv' }),
       ds,
       new PointCashService(ds, { appTimezone: 'Europe/Kyiv' }),
+      new CrateStockGuard(),
     );
 
     const run = randomUUID().slice(0, 8);

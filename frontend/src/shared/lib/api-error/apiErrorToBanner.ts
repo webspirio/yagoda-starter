@@ -1,4 +1,4 @@
-import { apiErrorCode } from '@/shared/api';
+import { ApiError, apiErrorCode } from '@/shared/api';
 
 /**
  * Business-rule codes across every screen that maps a failed mutation onto a
@@ -22,7 +22,7 @@ const CODE: Readonly<Record<string, string>> = {
   ALREADY_VOIDED: 'void.errors.alreadyVoided',
   // features/count-shift
   SHIFT_ALREADY_OPEN: 'day.errors.alreadyOpen',
-  SHIFT_ALREADY_CLOSED: 'day.errors.notOpen',
+  SHIFT_ALREADY_CLOSED: 'day.errors.alreadyClosed',
   SHIFT_NOT_CLOSED: 'day.errors.notClosed',
   SHIFT_DAY_ALREADY_USED: 'day.errors.dayAlreadyUsed',
   SHIFT_NOT_NEWEST: 'day.errors.notNewest',
@@ -81,10 +81,50 @@ const CODE: Readonly<Record<string, string>> = {
   NET_NOT_POSITIVE: 'reweigh.errors.netNotPositive',
   TARE_TYPE_DUPLICATED: 'reweigh.errors.tareDuplicated',
   TARE_TYPE_UNKNOWN: 'reweigh.errors.tareUnknown',
+  // Count explanations (spec 2026-10-08) — `PUT /cash-counts/:id/{explanation,operator-note}`.
+  NOT_COUNTER: 'operatorNote.errors.notCounter',
+  COUNT_NOT_EXPLAINABLE: 'operatorNote.errors.notExplainable',
+  OWNER_ALREADY_EXPLAINED: 'operatorNote.errors.ownerExplained',
+  NO_DISCREPANCY: 'operatorNote.errors.noDiscrepancy',
+  // Network settings — the note does not fit its seven receipt lines. The
+  // editor wraps as the owner types, so this is reachable only past the UI.
+  RECEIPT_NOTE_TOO_LONG: 'settings.errors.noteTooLong',
+  // Cross-cutting (#52): the two 403s that carry a code — a role or a point
+  // changed while the page was open — and an owner write that named no point.
+  // `POINT_REQUIRED` is absent: only GET /crate-standing throws it, and no
+  // screen maps that read's error (see the error-codes baseline).
+  INSUFFICIENT_ROLE: 'errors.accessChanged',
+  WRONG_COLLECTION_POINT: 'errors.accessChanged',
+  COLLECTION_POINT_REQUIRED: 'errors.pointRequired',
+  // Codes whose form already guards the input, reachable through a stale tab or
+  // a second click; each still gets its own sentence.
+  TRANSFER_EMPTY: 'transfer.errors.notEmpty',
+  TOP_UP_AMOUNT_NOT_POSITIVE: 'topUp.errors.amountPositive',
+  EXPENSE_AMOUNT_NOT_POSITIVE: 'costOfDay.expenses.errors.amountPositive',
+  LABEL_EMPTY: 'costOfDay.expenses.errors.labelRequired',
+  // Price-changes period filter (GET /grade-prices/changes).
+  INVALID_DATE: 'prices.changes.errors.invalidDate',
+  CHANGES_PERIOD_REVERSED: 'prices.changes.errors.periodReversed',
+  CHANGES_PERIOD_TOO_LONG: 'prices.changes.errors.periodTooLong',
   // SUPPLIER_INACTIVE IS DELIBERATELY ABSENT — it is the one code whose
   // sentence depends on which endpoint refused, so each caller passes its own
   // via `overrides` below. See that argument's doc.
 };
+
+/**
+ * The shared sentence for a failure no code explains: no connection, the rate
+ * limit, a permission that changed under an open page, or the server itself.
+ * It sits between the code map and the caller's fallback, so a known code —
+ * `OWNER_ONLY` is a 403 too — always keeps its own sentence.
+ */
+export function statusKey(error: unknown): string | undefined {
+  if (!(error instanceof ApiError)) return undefined;
+  if (error.status === 0) return 'errors.network';
+  if (error.status === 429) return 'errors.tooManyRequests';
+  if (error.status === 403) return 'errors.accessChanged';
+  if (error.status >= 500) return 'errors.server';
+  return undefined;
+}
 
 /**
  * Maps a failed mutation onto an i18n key for a form-level banner.
@@ -115,6 +155,36 @@ export function apiErrorToBanner(
   overrides?: Readonly<Record<string, string>>,
 ): string {
   const code = apiErrorCode(error);
-  if (!code) return fallback;
-  return overrides?.[code] ?? CODE[code] ?? fallback;
+  if (code === 'CRATES_ON_HAND_INSUFFICIENT') return onHandKey(error);
+  return (code && (overrides?.[code] ?? CODE[code])) || statusKey(error) || fallback;
+}
+
+/** Spec 2026-09-30 — the one code whose sentence depends on a FIELD, not the endpoint: with a
+ *  transfer in transit the operator's fix is «Прийняв», not a smaller number. */
+export function onHandKey(error: unknown): string {
+  const inTransit = error instanceof ApiError ? error.payload?.in_transit : undefined;
+  return typeof inTransit === 'number' && inTransit > 0
+    ? 'crates.errors.onHandInsufficientInTransit'
+    : 'crates.errors.onHandInsufficient';
+}
+
+/** The error body's numeric context fields, for `t(key, params)`. */
+export function apiErrorParams(error: unknown): Record<string, number> {
+  if (!(error instanceof ApiError) || !error.payload) return {};
+  return Object.fromEntries(
+    Object.entries(error.payload).filter((e): e is [string, number] => typeof e[1] === 'number'),
+  );
+}
+
+export interface BannerError {
+  key: string;
+  params: Record<string, number>;
+}
+
+export function toBannerError(
+  error: unknown,
+  fallback: string,
+  overrides?: Readonly<Record<string, string>>,
+): BannerError {
+  return { key: apiErrorToBanner(error, fallback, overrides), params: apiErrorParams(error) };
 }

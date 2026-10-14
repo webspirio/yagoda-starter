@@ -75,6 +75,8 @@ interface FieldProps {
   hintTone?: 'muted' | 'warning';
   /** i18n key of a validation error (resolved here). Rendered under the hint. */
   error?: string;
+  /** Interpolation values for `error`, for a message that names a figure. */
+  errorParams?: Record<string, unknown>;
   children: (a11y: FieldA11y) => ReactNode;
   className?: string;
 }
@@ -94,6 +96,7 @@ export function Field({
   hint,
   hintTone = 'muted',
   error,
+  errorParams,
   children,
   className,
 }: FieldProps) {
@@ -152,7 +155,7 @@ export function Field({
       )}
       {error && (
         <p id={errorId} role="alert" className={cn('mt-1.5 text-xs leading-snug text-destructive')}>
-          {t(error)}
+          {t(error, errorParams)}
         </p>
       )}
     </div>

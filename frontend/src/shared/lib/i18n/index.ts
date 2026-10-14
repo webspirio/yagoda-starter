@@ -33,8 +33,8 @@ function syncHtmlLang(): void {
  * `modulepreload` in index.html — the en chunk (13.6 KiB gzip) is fetched
  * only by a user who picks English, or in the background as the fallback.
  * `uk` stays static: it is the default and must paint without a round trip.
- * English is still the fallback, but locales.test.ts keeps the key sets
- * equal, so uk never needs it before it arrives.
+ * English is still the fallback, but the `locales` verify row keeps the key
+ * sets equal, so uk never needs it before it arrives.
  */
 const loadEnglish = async (): Promise<void> => {
   if (i18n.hasResourceBundle('en', 'translation')) return;

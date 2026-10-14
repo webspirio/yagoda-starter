@@ -3,6 +3,7 @@ import { useNavigate, useLocation } from 'react-router';
 import { useMutation } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { ApiError } from '@/shared/api';
+import { apiErrorToBanner } from '@/shared/lib/api-error';
 import { useSession } from '@/entities/user';
 import { Button } from '@/shared/ui/button';
 import { Field } from '@/shared/ui/field';
@@ -27,15 +28,15 @@ export function LoginForm() {
     },
   });
 
-  // Branch on the machine-readable `code` first; the status is only a
-  // fallback for a body that (for whatever reason) didn't carry one.
-  const message =
-    mutation.error instanceof ApiError
-      ? (mutation.error.code ?? (mutation.error.status === 401 ? 'INVALID_CREDENTIALS' : null)) ===
-        'INVALID_CREDENTIALS'
-        ? t('auth.invalidCredentials')
-        : mutation.error.message
-      : null;
+  // A 401 here means bad credentials whether or not the body carried the code;
+  // every other failure goes through the shared map. The server's `message` is
+  // English prose for a log and is never rendered.
+  const error = mutation.error;
+  const messageKey = !error
+    ? null
+    : error instanceof ApiError && (error.code === 'INVALID_CREDENTIALS' || (!error.code && error.status === 401))
+      ? 'auth.invalidCredentials'
+      : apiErrorToBanner(error, 'auth.loginFailed');
 
   return (
     <form
@@ -73,9 +74,9 @@ export function LoginForm() {
         )}
       </Field>
 
-      {message && (
+      {messageKey && (
         <p role="alert" className="text-sm text-destructive">
-          {message}
+          {t(messageKey)}
         </p>
       )}
 

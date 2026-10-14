@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { i18n } from '@/shared/lib/i18n';
+import uk from '@/shared/lib/i18n/locales/uk.json';
 import { expectNoAxeViolations } from '../../../test-axe';
 import { PayoutDialog } from './PayoutDialog';
 
@@ -57,6 +59,25 @@ describe('PayoutDialog', () => {
       await screen.findByText('Cannot pay more than the balance — balance 10,944.00 ₴'),
     ).toBeInTheDocument();
     expect(createPayoutMock).not.toHaveBeenCalled();
+  });
+
+  it('re-translates the above-the-balance error when the language switches', async () => {
+    render(<PayoutDialog supplier={supplier} pointId="p1" debt="100.00" open onClose={vi.fn()} />);
+    try {
+      const amountField = screen.getByLabelText('Amount');
+      await userEvent.clear(amountField);
+      await userEvent.type(amountField, '150');
+      await userEvent.click(screen.getByRole('button', { name: /Pay out/ }));
+      expect(
+        await screen.findByText('Cannot pay more than the balance — balance 100.00 ₴'),
+      ).toBeInTheDocument();
+
+      await act(() => i18n.changeLanguage('uk'));
+      const ukText = uk.payout.errors.exceedsDebt.replace('{{debt}}', '100,00 ₴');
+      expect(screen.getByText(ukText)).toBeInTheDocument();
+    } finally {
+      await act(() => i18n.changeLanguage('en'));
+    }
   });
 
   it('submits a valid payout, toasts, and closes', async () => {
@@ -159,7 +180,43 @@ describe('PayoutDialog', () => {
     await userEvent.click(screen.getByRole('button', { name: /Pay out/ }));
 
     expect(
-      await screen.findByText('No open shift — open one in Cash for the day'),
+      await screen.findByText('No open shift — open one in Day cash'),
     ).toBeInTheDocument();
+  });
+});
+
+describe('the shared money field (#72)', () => {
+  it('never holds a space and refuses a half-typed sum with the shared message', async () => {
+    render(<PayoutDialog supplier={supplier} pointId="p1" debt="10944.00" open onClose={vi.fn()} />);
+    const input = screen.getByLabelText('Amount');
+    await userEvent.clear(input);
+    await userEvent.type(input, '980 40');
+    expect(input).toHaveValue('98040');
+    await userEvent.clear(input);
+    await userEvent.type(input, '12.');
+    await userEvent.click(screen.getByRole('button', { name: /Pay out/ }));
+    expect(await screen.findByText('Enter a number, e.g. 12000 or 980.40')).toBeInTheDocument();
+  });
+
+  it('never names the full balance on the button under a value it will refuse (#72 review)', async () => {
+    render(<PayoutDialog supplier={supplier} pointId="p1" debt="10944.00" open onClose={vi.fn()} />);
+    const input = screen.getByLabelText('Amount');
+    await userEvent.clear(input);
+    await userEvent.type(input, '1.2.3');
+    // Exact name: the submit no longer offers «Pay out 10,944.00 ₴» (the full
+    // balance) under a value it is about to refuse.
+    expect(screen.getByRole('button', { name: 'Pay out' })).toHaveAttribute('type', 'submit');
+  });
+
+  it('submits the server-canonical prefill untouched', async () => {
+    render(<PayoutDialog supplier={supplier} pointId="p1" debt="10944.00" open onClose={vi.fn()} />);
+    await userEvent.click(screen.getByRole('button', { name: /Pay out/ }));
+    await waitFor(() =>
+      expect(createPayoutMock).toHaveBeenCalledWith({
+        supplier_id: 's1',
+        amount: '10944.00',
+        collection_point_id: 'p1',
+      }),
+    );
   });
 });

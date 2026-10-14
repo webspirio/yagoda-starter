@@ -23,6 +23,7 @@ export interface SendTransferInput {
  * owner's «Перекази» table reads for its status badge — so sending a new
  * transfer must flip that badge to `sent` right away, or the row keeps
  * showing whatever the PREVIOUS transfer to that point last did.
+ * `crateBalances` because the point's standing shows crates in transit.
  */
 export function useSendTransferMutation() {
   const qc = useQueryClient();
@@ -32,6 +33,7 @@ export function useSendTransferMutation() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: queryKeys.transfers });
       qc.invalidateQueries({ queryKey: queryKeys.pointCash });
+      qc.invalidateQueries({ queryKey: queryKeys.crateBalances });
     },
   });
 }

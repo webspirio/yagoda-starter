@@ -1,8 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
-import { cmp } from '@/shared/lib/money';
+import { cmp, parseCrateCount } from '@/shared/lib/money';
 import { useDebouncedValue } from '@/shared/lib/useDebouncedValue';
 import { usePreviewIntakeMutation } from '../api/intakes';
-import { toPreviewBody, type IntakeFormValues, type IntakePreview } from '../model/intakeForm';
+import {
+  toPreviewBody,
+  type IntakeFormValues,
+  type IntakePreview,
+  type IntakePreviewItem,
+  type PreviewIntakeBody,
+} from '../model/intakeForm';
 import { apiErrorToFields, type ApiFieldErrors } from './apiErrorToFields';
 
 const PREVIEW_DEBOUNCE_MS = 250;
@@ -21,13 +27,16 @@ function isPositiveDecimal(value: string): boolean {
   }
 }
 
-function hasValidTareRow(line: IntakeFormValues['items'][number]): boolean {
-  return line.tare.some((row) => Number.parseInt(row.units, 10) >= 1);
+/** ≥1 row counting at least one, and no row the form refuses («0,5») — a
+ *  refused count is named under the tare, not sent to be refused again. */
+function hasValidTare(line: IntakeFormValues['items'][number]): boolean {
+  const counts = line.tare.map((row) => parseCrateCount(row.units));
+  return counts.every((n) => n !== null) && counts.some((n) => n !== null && n >= 1);
 }
 
 function isLineComplete(line: IntakeFormValues['items'][number]): boolean {
   return (
-    line.product_grade_id.trim() !== '' && isPositiveDecimal(line.gross_kg) && hasValidTareRow(line)
+    line.product_grade_id.trim() !== '' && isPositiveDecimal(line.gross_kg) && hasValidTare(line)
   );
 }
 
@@ -48,6 +57,27 @@ function isPreviewable(values: IntakeFormValues): boolean {
     values.items.length > 0 &&
     values.items.every(isLineComplete)
   );
+}
+
+/**
+ * Each current line's numbers from the last answer that priced a line with the
+ * same content, for the same supplier and point — or `null`. Safe because the
+ * server prices every line on its own (`buildLine`), and matching by content
+ * rather than index keeps a removed line's numbers off its neighbour (#213).
+ */
+function priceRows(
+  current: PreviewIntakeBody,
+  answeredBody: string | null,
+  preview: IntakePreview | null,
+): (IntakePreviewItem | null)[] {
+  const answered = preview && answeredBody ? (JSON.parse(answeredBody) as PreviewIntakeBody) : null;
+  const priced =
+    answered?.supplier_id === current.supplier_id &&
+    answered.collection_point_id === current.collection_point_id
+      ? answered.items.map((line) => JSON.stringify(line))
+      : [];
+  // A miss reads index -1, which is `undefined` → `null`, the same as «not priced yet».
+  return current.items.map((line) => preview?.items[priced.indexOf(JSON.stringify(line))] ?? null);
 }
 
 /**
@@ -77,6 +107,9 @@ function isPreviewable(values: IntakeFormValues): boolean {
  * `preview` there would act on numbers that no longer describe the form. This
  * is true only when the preview in hand ANSWERED THE CURRENT (un-debounced)
  * body, with no request in flight and no refusal standing.
+ *
+ * `rowItems` is the one figure that outlives a non-previewable form: a fresh
+ * empty draft must not blank the lines already priced above it (#213).
  */
 export function useIntakePreview(
   values: IntakeFormValues,
@@ -87,6 +120,7 @@ export function useIntakePreview(
   error: ApiFieldErrors | null;
   isPending: boolean;
   isSettled: boolean;
+  rowItems: (IntakePreviewItem | null)[];
 } {
   const { mutateAsync } = usePreviewIntakeMutation();
   // Captured via a ref, not the effect's dependency array: `mutateAsync`'s
@@ -101,7 +135,8 @@ export function useIntakePreview(
   });
 
   const previewable = isPreviewable(values);
-  const serializedBody = previewable ? JSON.stringify(toPreviewBody(values, pointId)) : null;
+  const body = toPreviewBody(values, pointId);
+  const serializedBody = previewable ? JSON.stringify(body) : null;
   const debounced = useDebouncedValue(serializedBody, PREVIEW_DEBOUNCE_MS);
   // Whether the debounced body is one worth showing/fetching for. Gating the
   // RETURNED preview/error/isPending on this (rather than resetting them with
@@ -157,5 +192,6 @@ export function useIntakePreview(
     // already moved and the request has not yet been sent.
     isSettled:
       active && preview !== null && !isPending && error === null && answeredBody === serializedBody,
+    rowItems: priceRows(body, enabled ? answeredBody : null, preview),
   };
 }

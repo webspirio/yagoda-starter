@@ -34,7 +34,7 @@ export const queryKeys = {
   pointCash: ['point-cash'] as const,
   /** Ящики — префікс для видач і повернень; читання дописує свій фільтр. */
   crates: ['crates'] as const,
-  /** Переважування — префікс; читання дописує зміну і прапорець сторнованих. */
+  /** Переважування — префікс; читання дописує зміну і прапорець анульованих. */
   reweighs: ['reweighs'] as const,
   /**
    * Залишки ящиків — і список точки (`/crate-balances`), і баланс однієї
@@ -49,4 +49,6 @@ export const queryKeys = {
   costOfDay: ['cost-of-day'] as const,
   /** §8.3's витрати дня — prefix; a read appends the shift. */
   dayExpenses: ['day-expenses'] as const,
+  /** The network's one settings row (`/network-settings`); a save seeds it from the response. */
+  networkSettings: ['network-settings'] as const,
 };

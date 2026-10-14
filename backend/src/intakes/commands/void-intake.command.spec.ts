@@ -47,7 +47,7 @@ describe('VoidIntakeCommand', () => {
      * double-tapped button, a retry on a slow response — both see null and both
      * write, leaving two `intake.voided` audit entries with possibly different
      * actors and reasons and a last-writer-wins `voided_by_user_id`. §9.3's
-     * «спроба сторнувати той самий документ удруге → кнопки просто немає» is a
+     * «спроба анулювати той самий документ удруге → кнопки просто немає» is a
      * statement about the record, not just the button.
      */
     it('reads the row under a row lock, inside the transaction', async () => {
@@ -122,7 +122,7 @@ describe('VoidIntakeCommand', () => {
     });
 
     it('409s an already-voided intake', async () => {
-      // §9.3 — «спроба сторнувати той самий документ удруге → кнопки просто немає».
+      // §9.3 — «спроба анулювати той самий документ удруге → кнопки просто немає».
       manager.findOne.mockResolvedValue(
         intake({ voided_at: new Date(), voided_by_user_id: 'u-owner', void_reason: 'вже' }),
       );
@@ -174,10 +174,10 @@ describe('VoidIntakeCommand', () => {
     });
 
     it('does NOT refuse a void that drives the supplier’s debt negative', async () => {
-      // «сторно КВИТАНЦІЇ ЄДИНИЙ шлях у мінус, і воно ДОЗВОЛЕНЕ, з попередженням».
+      // «анулювання КВИТАНЦІЇ ЄДИНИЙ шлях у мінус, і воно ДОЗВОЛЕНЕ, з попередженням».
       // There is no balance lookup in this path at all, and adding a floor check
       // would contradict «інваріанта борг >= 0 в цій схемі теж немає».
-      await expect(command.void(owner, INTAKE_ID, { reason: 'сторно' })).resolves.toBeDefined();
+      await expect(command.void(owner, INTAKE_ID, { reason: 'анулювання' })).resolves.toBeDefined();
     });
 
     describe('with a live bound payout, open shift', () => {

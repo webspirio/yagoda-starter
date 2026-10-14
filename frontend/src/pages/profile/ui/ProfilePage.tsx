@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { toastError } from '@/shared/ui/toast';
 import { useMeQuery } from '@/entities/user';
 import { useUploadAvatarMutation } from '@/features/edit-profile';
+import { apiErrorToBanner } from '@/shared/lib/api-error';
 import { resolveUploadUrl, validateImageFile } from '@/shared/lib/upload';
 import { Avatar, AvatarImage, AvatarFallback } from '@/shared/ui/avatar';
 import { ImagePicker } from '@/shared/ui/image-picker';
@@ -78,7 +79,7 @@ export function ProfilePage() {
               // Without onError a failed upload is indistinguishable from a
               // successful one: the picker just reverts and nothing tells the
               // user why.
-              onError: () => toastError(t('profile.avatarUploadFailed')),
+              onError: (error) => toastError(t(apiErrorToBanner(error, 'profile.avatarUploadFailed'))),
               onSettled: () => setPendingAvatar(null),
             });
           }}

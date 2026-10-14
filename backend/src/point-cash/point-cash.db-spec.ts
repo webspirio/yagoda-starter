@@ -14,7 +14,7 @@ import type { AuthenticatedUser } from '../auth/jwt.strategy';
  * Five of the numbered thirteen exist specifically to stop someone harmonising
  * the two opposite readings of `voided_at`: voided PAYOUTS stay subtracted (the
  * money left the drawer), voided TRANSFERS stop being added (no valid document
- * accounts for them). §9.3 — «інакше сторно стає способом красти». Scenario 13 is
+ * accounts for them). §9.3 — «інакше анулювання стає способом красти». Scenario 13 is
  * narrower still: it defends the PLACEMENT of the transfer filter, which no
  * other scenario can distinguish.
  *
@@ -781,7 +781,7 @@ describe('PointCashService.list (Postgres)', () => {
     const s2 = await localShift(p, '2026-09-02');
     await localCount(s2, 'opening', '990.00', '990.00');
     await localCount(s2, 'closing', '980.00', '990.00'); // −10
-    await ds.query(`UPDATE shifts SET explanation = 'знайшли причину' WHERE id = $1`, [s2]);
+    await ds.query(`UPDATE cash_counts SET explanation = 'знайшли причину' WHERE shift_id = $1 AND kind = 'closing'`, [s2]);
 
     const page = await service.list(owner, query({ collection_point_id: p }) as never);
     // §6.5 — an explanation changes what is OPEN, never what is TRUE.

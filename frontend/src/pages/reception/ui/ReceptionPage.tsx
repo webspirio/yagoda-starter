@@ -9,7 +9,7 @@ import { SelectField } from '@/shared/ui/select-field';
 import { EmptyState } from '@/shared/ui/empty-state';
 import { Spinner } from '@/shared/ui/spinner';
 import { toast, toastSuccess } from '@/shared/ui/toast';
-import { add, cmp, formatKg, formatUah, sub, sum } from '@/shared/lib/money';
+import { add, cmp, formatKg, formatUah, parseDecimal, sub, sum } from '@/shared/lib/money';
 import { formatLongDate, todayIso } from '@/shared/lib/date';
 import { useMeQuery } from '@/entities/user';
 import { useWorkingPoint } from '@/features/point-scope';
@@ -21,6 +21,7 @@ import { useTareTypeOptionsQuery } from '@/entities/tare-type';
 import { usePointCashForPointQuery } from '@/entities/point-cash';
 import { ReceiptDialog, useReceiptOpener } from '@/widgets/receipt';
 import { useOpenShiftMutation, CountDrawerDialog, OpenShiftAlert } from '@/features/count-shift';
+import { ShiftCountResult, type ShiftCountResultFor } from '@/widgets/count-result';
 import type { SupplierPickerHandle } from '@/features/pick-supplier';
 import { useCreateIntakeMutation } from '../api/intakes';
 import { apiErrorToFields, type ApiFieldErrors } from '../lib/apiErrorToFields';
@@ -120,6 +121,8 @@ export function ReceptionPage() {
   // banner from the refusal before it — the convention `ReopenShiftDialog`
   // (pages/day) documents.
   const [openDialogInstance, setOpenDialogInstance] = useState(0);
+  // A banner close shows its result and the note form, not a bare toast (S2).
+  const [staleResult, setStaleResult] = useState<ShiftCountResultFor | null>(null);
   const [submitFailure, setSubmitFailure] = useState<{ at: string; errors: ApiFieldErrors } | null>(
     null,
   );
@@ -127,6 +130,11 @@ export function ReceptionPage() {
   // types in it themselves (`suggestedPaid`, below) — this is the only thing
   // that switches it over to what RHF actually holds.
   const [paidTouched, setPaidTouched] = useState(false);
+  // #72 — the «Видано готівкою» text «Прийняти» last refused. The refusal is
+  // shown only while the field still holds exactly that text, so it cannot
+  // outlive it (a re-picked supplier or the post-save reset change
+  // `paidShown`), and any edit clears it outright (`onPaidChange`).
+  const [paidRefused, setPaidRefused] = useState<string | null>(null);
   // Bumped on every supplier pick — even a re-pick of the same row, which
   // `reset()` above may have just emptied — so «З них наших ящиків» remounts
   // and pre-fills afresh.
@@ -180,6 +188,7 @@ export function ReceptionPage() {
   const hasUnplaceableError = (serverErrors?.fieldErrors ?? []).some(
     (e) => !isFieldRendered(e.field),
   );
+  const formErrorParams = serverErrors?.formErrorParams;
   const formErrorKey =
     serverErrors?.formErrorKey ?? (hasUnplaceableError ? 'reception.errors.lineRefused' : null);
 
@@ -198,17 +207,13 @@ export function ReceptionPage() {
     const grade = grades.data.find((g) => g.id === gradeId);
     return grade ? `${grade.productName} · ${grade.name}` : '—';
   };
-  // The preview's items only line up with the FORM's items 1:1 the moment
-  // both describe the same number of lines — read by index otherwise (e.g.
-  // right after `remove(0)`, before the next response) and a surviving row
-  // is relabelled instantly while its numbers are still the DELETED line's.
-  // Falling back to `null` for one cycle shows «…» instead of a wrong number.
-  const rowsPreview =
-    preview.preview?.items.length === lines.fields.length ? preview.preview : null;
+  // Each committed row reads the numbers the server gave a line with exactly
+  // its content (`rowItems`) — so an empty draft below it never blanks it
+  // (#213), and a removed line's numbers never land on its neighbour.
   const committed: CommittedLine[] = lines.fields.slice(0, draftIndex).map((field, index) => ({
     key: field.id,
     gradeLabel: gradeLabel(values.items[index]?.product_grade_id ?? ''),
-    item: rowsPreview?.items[index] ?? null,
+    item: preview.rowItems[index] ?? null,
   }));
 
   // ONLY a settled preview may become a number on screen or a submitted body.
@@ -218,15 +223,11 @@ export function ReceptionPage() {
   const settled = preview.isSettled ? preview.preview : null;
   const accrued = settled?.amount ?? null;
   const netKg = settled ? sum(settled.items.map((i) => i.net_kg)) : null;
-  // `netKg`/`lineCount` above describe the WHOLE form, draft included — right
-  // for `TotalsSection`'s submit button, wrong for the table's own counter,
-  // which sits over `committed` rows only (`rows.length` there). Summed off
-  // `rowsPreview` (already scoped to the draft-excluded slice `committed`
-  // reads from) rather than `settled`, so the counter stays in step with the
-  // same rows the table renders even in the debounce window `isSettled`
-  // excludes.
-  const committedNetKg = rowsPreview
-    ? sum(rowsPreview.items.slice(0, draftIndex).map((i) => i.net_kg))
+  // The table's own counter covers committed rows only, unlike `netKg` above,
+  // and is withheld until every one of them is priced.
+  const committedItems = committed.map((row) => row.item);
+  const committedNetKg = committedItems.every((item) => item !== null)
+    ? sum(committedItems.map((item) => item.net_kg))
     : null;
   const isPreviewing = !preview.isSettled && (preview.isPending || preview.preview !== null);
   const canSubmit = shiftOpen && values.supplier_id !== '' && settled !== null && !hasServerError;
@@ -240,6 +241,9 @@ export function ReceptionPage() {
   const paidShown = paidTouched ? values.paid_amount : suggested;
   const onPaidChange = (v: string) => {
     setPaidTouched(true);
+    // Belt to the equality check below: a new edit is not the refused submit,
+    // so retyping the same text does not bring the refusal back mid-keystroke.
+    setPaidRefused(null);
     setValue('paid_amount', v, { shouldDirty: true });
   };
 
@@ -310,6 +314,17 @@ export function ReceptionPage() {
   // which decides on the server's FRESH split whether there is a deposit to
   // hand over — and confirms straight through when there is none.
   const requestSubmit = (formValues: IntakeFormValues) => {
+    // #72 — a malformed «Видано готівкою» is never sent (`toCreateBody`), so
+    // going ahead would record the receipt WITHOUT the payout the operator
+    // typed. The field already names the refusal; the submit agrees with it.
+    // Enter submits WITHOUT moving focus, and the field holds its own format
+    // line back while focused — so the refusal is said through `paidError`,
+    // which shows regardless of focus, and the caret stays where the operator
+    // left it (Enter is how they move on the scale's numeric pad).
+    if (paidShown.trim() !== '' && parseDecimal(paidShown) === null) {
+      setPaidRefused(paidShown);
+      return;
+    }
     if (parseCount(formValues.returned_crates) > 0) setPendingSubmit(formValues);
     else void submitIntake(formValues);
   };
@@ -407,7 +422,12 @@ export function ReceptionPage() {
             post the receipt. Whether the form should be blocked while the open
             shift is stale is a separate question this deliberately leaves
             alone: there IS an open shift, so `shiftOpen` is unchanged. */}
-        <OpenShiftAlert pointId={pointId} viewedDate={todayIso()} onGoToDate={goToDay} />
+        <OpenShiftAlert
+          pointId={pointId}
+          viewedDate={todayIso()}
+          onGoToDate={goToDay}
+          onClosed={(id) => setStaleResult({ mode: 'close', shiftId: id })}
+        />
 
         <div className="grid gap-5 lg:grid-cols-[minmax(0,1.35fr)_minmax(320px,1fr)]">
           <form
@@ -515,11 +535,15 @@ export function ReceptionPage() {
                 cashUnavailable={pointCash.isError}
                 paid={paidShown}
                 onPaidChange={onPaidChange}
-                paidError={errorAt('paid_amount')}
+                paidError={
+                  errorAt('paid_amount') ??
+                  (paidRefused !== null && paidShown === paidRefused ? 'errors.decimalFormat' : null)
+                }
                 disabled={!canSubmit}
                 isPreviewing={isPreviewing}
                 isSubmitting={create.isPending}
                 formErrorKey={formErrorKey}
+                formErrorParams={formErrorParams}
                 showDraftHint={draftIndex > 0 && !draftReady}
               />
             </Card>
@@ -583,6 +607,7 @@ export function ReceptionPage() {
         startWithVoid={receipt.startWithVoid}
         onClose={receipt.clear}
       />
+      <ShiftCountResult result={staleResult} onClose={() => setStaleResult(null)} />
     </>
   );
 }

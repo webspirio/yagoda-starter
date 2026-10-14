@@ -6,10 +6,15 @@ import type { CostOfDay } from '@/entities/cost-of-day';
 import type { DayExpense } from '@/entities/day-expense';
 import { ExpensesPanel } from './ExpensesPanel';
 
-const { createMock, updateMock, removeMock } = vi.hoisted(() => ({
+const { createMock, updateMock, removeMock, toastErrorMock } = vi.hoisted(() => ({
   createMock: vi.fn(),
   updateMock: vi.fn(),
   removeMock: vi.fn(),
+  toastErrorMock: vi.fn(),
+}));
+
+vi.mock('@/shared/ui/toast', () => ({
+  toast: { error: (...args: unknown[]) => toastErrorMock(...args) },
 }));
 
 vi.mock('@/entities/day-expense', () => ({
@@ -68,15 +73,15 @@ beforeEach(() => {
   createMock.mockReset().mockResolvedValue(undefined);
   updateMock.mockReset().mockResolvedValue(undefined);
   removeMock.mockReset().mockResolvedValue(undefined);
+  toastErrorMock.mockReset();
 });
 
 describe('ExpensesPanel', () => {
-  it('prints the basket and §8.4 «з них» split', () => {
+  it('prints the basket and the rate without the «з них» split', () => {
     renderPanel();
 
     expect(screen.getByText('5 460,00 ₴')).toBeInTheDocument();
-    expect(screen.getByText(/з них недостача 1,94/)).toBeInTheDocument();
-    expect(screen.getByText(/з них витрати 4,45/)).toBeInTheDocument();
+    expect(screen.queryByText(/з них/)).not.toBeInTheDocument();
   });
 
   it('adds a line and clears the form only after the write succeeds', async () => {
@@ -110,6 +115,23 @@ describe('ExpensesPanel', () => {
     await waitFor(() => expect(createMock).toHaveBeenCalled());
     expect(screen.getByPlaceholderText('Підпис витрати')).toHaveValue('водій');
     expect(screen.getByPlaceholderText('₴')).toHaveValue('500');
+  });
+
+  // A title paired with a description is one sentence of what happened; the
+  // description carries the action.
+  it('a refused write toasts what happened as the title and the action beneath it', async () => {
+    createMock.mockRejectedValue(new Error('nope'));
+    const user = userEvent.setup();
+    renderPanel();
+
+    await user.type(screen.getByPlaceholderText('Підпис витрати'), 'водій');
+    await user.type(screen.getByPlaceholderText('₴'), '500');
+    await user.click(screen.getByRole('button', { name: 'Додати' }));
+
+    await waitFor(() => expect(toastErrorMock).toHaveBeenCalled());
+    expect(toastErrorMock).toHaveBeenCalledWith('Рядок не додано.', {
+      description: 'Щось пішло не так. Оновіть сторінку й спробуйте ще раз.',
+    });
   });
 
   it('patches only the field that actually moved', async () => {
@@ -196,6 +218,60 @@ describe('ExpensesPanel', () => {
     // the person had every reason to think was saved.
     expect(screen.getByRole('button', { name: 'Зберегти' })).toBeDisabled();
     expect(updateMock).not.toHaveBeenCalled();
+  });
+
+  it('names the shared format message under a half-typed amount and keeps add disabled (#72)', async () => {
+    const user = userEvent.setup();
+    renderPanel();
+
+    await user.type(screen.getByLabelText('Підпис витрати'), 'водій');
+    await user.type(screen.getByLabelText('₴'), '12.');
+
+    // Mid-keystroke: the button is blocked, the message waits.
+    expect(screen.getByRole('button', { name: 'Додати' })).toBeDisabled();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    await user.tab();
+
+    expect(screen.getByRole('alert')).toHaveTextContent('Введіть число, напр. 12000 або 980,40');
+    expect(screen.getByLabelText('₴')).toHaveAttribute('aria-invalid', 'true');
+    expect(screen.getByRole('button', { name: 'Додати' })).toBeDisabled();
+  });
+
+  it('names the shared format message in the inline editor too (#72)', async () => {
+    const user = userEvent.setup();
+    renderPanel();
+
+    await user.click(screen.getByRole('button', { name: 'Змінити «пальне»' }));
+    const amount = screen.getByDisplayValue('1000.00');
+    await user.clear(amount);
+    await user.type(amount, '13.');
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    await user.tab();
+
+    expect(screen.getByRole('alert')).toHaveTextContent('Введіть число, напр. 12000 або 980,40');
+  });
+
+  it('shows no format message on an empty or a well-formed amount (#72)', async () => {
+    const user = userEvent.setup();
+    renderPanel();
+
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    await user.type(screen.getByLabelText('₴'), '12.5');
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('never holds a space: «1 500» is added as 1500 (#72)', async () => {
+    const user = userEvent.setup();
+    renderPanel();
+
+    await user.type(screen.getByLabelText('Підпис витрати'), 'водій');
+    await user.type(screen.getByLabelText('₴'), '1 500');
+    expect(screen.getByLabelText('₴')).toHaveValue('1500');
+    await user.click(screen.getByRole('button', { name: 'Додати' }));
+
+    await waitFor(() =>
+      expect(createMock).toHaveBeenCalledWith({ shiftId: 's1', label: 'водій', amount: '1500' }),
+    );
   });
 
   it('removes a line', async () => {

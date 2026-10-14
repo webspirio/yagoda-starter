@@ -18,7 +18,7 @@ import type { AuthenticatedUser } from '../auth/jwt.strategy';
  *
  * `settle-return` IS THE ONLY OWNER-ONLY VERB HERE, and the reason is §9.3's:
  * an operator who could both void their own payout and certify that the cash
- * came back would close that loop alone and unobserved — «інакше сторно стає
+ * came back would close that loop alone and unobserved — «інакше анулювання стає
  * способом красти». The person holding the drawer is not the person who
  * attests it was refilled.
  *

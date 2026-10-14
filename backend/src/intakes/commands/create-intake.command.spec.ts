@@ -28,6 +28,7 @@ describe('CreateIntakeCommand', () => {
   let payouts: IntakesMocks['payouts'];
   let allocations: IntakesMocks['allocations'];
   let crates: IntakesMocks['crates'];
+  let stock: IntakesMocks['stock'];
   let tare: IntakesMocks['tare'];
   let state: IntakesMocks['state'];
   let command: CreateIntakeCommand;
@@ -35,7 +36,7 @@ describe('CreateIntakeCommand', () => {
   beforeEach(() => {
     const mocks = makeIntakesMocks();
     ({ manager, dataSource, shifts, suppliers, prices, audit, payouts, allocations } = mocks);
-    ({ crates, tare, state } = mocks);
+    ({ crates, tare, state, stock } = mocks);
     command = buildIntakes(mocks).create;
   });
 
@@ -414,11 +415,22 @@ describe('CreateIntakeCommand', () => {
       ).rejects.toThrow('CRATE_CASH_INSUFFICIENT');
       expect(payouts.write).not.toHaveBeenCalled();
     });
+
+    it('asks the stock guard for crate tare net of the crates returned', async () => {
+      // `dto()` carries 3 crate units.
+      await command.create(oksana, dto({ returned_crates: 1 }) as never);
+      expect(stock.assertOnHand).toHaveBeenCalledWith(expect.anything(), expect.any(String), 2);
+    });
+
+    it('does not ask when the receipt gives back every crate it weighs', async () => {
+      await command.create(oksana, dto({ returned_crates: 3 }) as never);
+      expect(stock.assertOnHand).not.toHaveBeenCalled();
+    });
   });
 
   describe('there is no update path', () => {
     it('exposes no method that mutates a posted document’s numbers', () => {
-      // §2.7 — «після проведення не міняється НІКОЛИ». §9.3 — «Часткового сторно
+      // §2.7 — «після проведення не міняється НІКОЛИ». §9.3 — «Часткового анулювання
       // немає. Тільки повне + новий правильний документ». This asserts the
       // SHAPE of the write surface, which is the cheapest place to catch a
       // PATCH being added back.

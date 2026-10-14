@@ -12,6 +12,7 @@ import { Payout } from '../../payouts/payout.entity';
 import { PayoutWriter } from '../../payouts/services/payout-writer';
 import { AllocationsService } from '../../supplier-balance/services/allocations';
 import { CratesService } from '../../crates/crates.service';
+import { CrateStockGuard } from '../../crate-stock/crate-stock.guard';
 import { AuditService } from '../../audit/audit.service';
 import { nextDocumentCode } from '../../common/document-code';
 import { isZero } from '../../common/money';
@@ -35,6 +36,7 @@ export class CreateIntakeCommand {
     private readonly crates: CratesService,
     private readonly audit: AuditService,
     private readonly detail: IntakeDetailQuery,
+    private readonly stock: CrateStockGuard,
   ) {}
 
   async create(actor: AuthenticatedUser, dto: CreateIntakeDto): Promise<IntakeDetailResponse> {
@@ -88,6 +90,12 @@ export class CreateIntakeCommand {
               intakeId: intake.id,
             });
           }
+
+          // Spec 2026-09-30 — full crates are always ours, so the crate tare this receipt weighs
+          // comes out of the empties, less any it gives back (`returned`). Before the payout, so a
+          // refusal hands no cash over.
+          const taken = built.crate_units - returned;
+          if (taken > 0) await this.stock.assertOnHand(m, pointId, taken);
 
           // §2.1 ⑥ — the cash leaves in the same transaction; a ceiling refusal rolls the receipt
           // back with it. Truthiness on purpose: absent, null and '' all mean «нічого не видано» (§3.7).

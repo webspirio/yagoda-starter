@@ -17,6 +17,7 @@ import { UsersService } from '../users/users.service';
 import { CredentialsService } from '../users/credentials.service';
 import { LOCAL_PROVIDER } from '../users/user-identity.entity';
 import { UserRole } from '../users/user-role.enum';
+import { stockPoint } from '../testing/crate-stock-fixture';
 
 const pointCode = (): string => randomUUID().replace(/-/g, '').slice(0, 8).toUpperCase();
 
@@ -200,6 +201,9 @@ describe('paid at reception (HTTP, Postgres)', () => {
         .send({ counted_amount: '500.00' })
         .expect(201);
       shiftId = sh.body.id;
+      // Spec 2026-09-30: a receipt's crate tare leaves the point's empties. 1000 is far above
+      // the crate tare this block weighs, and the transfer carries no cash — the drawer is unchanged.
+      await stockPoint(app, ownerToken, oksanaToken, pointAId, 1000);
     });
 
     it('refuses 600.00 against 500.00 in the drawer, and writes NO intake', async () => {
@@ -345,6 +349,9 @@ describe('paid at reception (HTTP, Postgres)', () => {
         .send({ counted_amount: '100000.00' })
         .expect(201);
       shiftId = sh.body.id;
+      // Spec 2026-09-30: a receipt's crate tare leaves the point's empties. 1000 is far above
+      // the crate tare this block weighs, and the transfer carries no cash — the drawer is unchanged.
+      await stockPoint(app, ownerToken, bohdanToken, pointBId, 1000);
     });
 
     it('refuses more than «Разом» — the debt half', async () => {

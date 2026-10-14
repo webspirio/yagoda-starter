@@ -73,6 +73,30 @@ describe('LoginForm', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent(/invalid username or password/i);
   });
 
+  it.each([
+    [429, { statusCode: 429, message: 'ThrottlerException: Too Many Requests' }, 'Too many attempts. Wait a minute and try again.'],
+    [500, { statusCode: 500, message: 'Internal server error' }, 'The server failed. Try again in a minute.'],
+    [400, { statusCode: 400, message: ['username must be a string'] }, "Couldn't sign in. Check your login and password and try again."],
+  ])('a %i shows a translated sentence and never the server text', async (status, body, expected) => {
+    mock.onPost('/auth/login').reply(status, body);
+    renderForm();
+    await userEvent.type(screen.getByLabelText(/username/i), 'alice');
+    await userEvent.type(screen.getByLabelText('Password'), 'pw');
+    await userEvent.click(screen.getByRole('button', { name: /sign in/i }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(expected);
+    expect(screen.queryByText(/ThrottlerException|Internal server error|must be a string/)).toBeNull();
+  });
+
+  it('a network failure shows the connection sentence', async () => {
+    mock.onPost('/auth/login').networkError();
+    renderForm();
+    await userEvent.type(screen.getByLabelText(/username/i), 'alice');
+    await userEvent.type(screen.getByLabelText('Password'), 'pw');
+    await userEvent.click(screen.getByRole('button', { name: /sign in/i }));
+    expect(await screen.findByRole('alert')).toHaveTextContent("Can't reach the server.");
+    expect(screen.queryByText(/Request failed/)).toBeNull();
+  });
+
   it('does not submit an empty form', async () => {
     renderForm();
     await userEvent.click(screen.getByRole('button', { name: /sign in/i }));

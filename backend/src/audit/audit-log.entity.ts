@@ -55,7 +55,9 @@ export const AUDIT_ACTIONS = [
   'transfer.resolved',
   'transfer.voided',
   'cash-count.recorded',
-  'shift.explained',
+  'cash-count.explained',
+  'cash-count.operator_noted',
+  'shift.explained', // historic rows only — since 2026-10-08 explanations are per count
   'crate-issuance.created',
   'crate-issuance.voided',
   'crate-return.created',
@@ -65,6 +67,7 @@ export const AUDIT_ACTIONS = [
   'day-expense.created',
   'day-expense.updated',
   'day-expense.deleted',
+  'network-settings.updated',
 ] as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];

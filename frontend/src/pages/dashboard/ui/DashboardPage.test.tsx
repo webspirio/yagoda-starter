@@ -71,7 +71,6 @@ const openShift: Shift = {
   closed_by_name: null,
   closed_at: null,
   created_at: '2026-09-08T05:00:00Z',
-  explanation: null,
   broken_crates: null,
 };
 
@@ -165,7 +164,7 @@ describe('DashboardPage — the owner', () => {
     expect(screen.getByText('Shift not opened yet')).toBeInTheDocument();
 
     const p1Row = screen.getByText('Shypynky').closest('[data-slot="card"]') as HTMLElement;
-    expect(within(p1Row).getByRole('link', { name: 'Cash for the day' })).toHaveAttribute(
+    expect(within(p1Row).getByRole('link', { name: 'Day cash' })).toHaveAttribute(
       'href',
       '/day?point=p1',
     );
@@ -381,7 +380,7 @@ describe('DashboardPage — the operator', () => {
     renderDashboard();
 
     expect(screen.getByRole('link', { name: 'Intake' })).toHaveAttribute('href', '/reception');
-    expect(screen.getByRole('link', { name: 'Cash for the day' })).toHaveAttribute('href', '/day');
+    expect(screen.getByRole('link', { name: 'Day cash' })).toHaveAttribute('href', '/day');
     expect(screen.getByRole('link', { name: 'Balances' })).toHaveAttribute('href', '/debts');
   });
 });
@@ -394,7 +393,7 @@ describe('DashboardPage — a failed read', () => {
 
     // Rendering nothing would be byte-for-byte «nothing is stranded» — the
     // answer the owner comes to this section FOR.
-    expect(screen.getByText('Could not check for unclosed shifts')).toBeInTheDocument();
+    expect(screen.getByText('Could not check for unclosed shifts. Reload the page.')).toBeInTheDocument();
     // A note, not the section itself, and not the screen's error state either:
     // today's numbers are still true and must not be replaced by a red page.
     expect(screen.queryByRole('alert')).toBeNull();

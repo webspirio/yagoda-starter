@@ -2,7 +2,7 @@ import { BooleanQueryParam } from '../../common/dto/boolean-query-param';
 
 /**
  * `GET /shifts/:shiftId/reweigh`'s one flag. §8.7's storno leaves the row:
- * «документ НЕ зникає: лишається з позначкою "сторновано", часом, автором і
+ * «документ НЕ зникає: лишається з позначкою "анульовано", часом, автором і
  * причиною» — without this, the line the owner just voided disappears from
  * `items[]` on the next refetch, taking its reason and author with it.
  *

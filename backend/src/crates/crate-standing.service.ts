@@ -3,6 +3,8 @@ import { DataSource } from 'typeorm';
 import {
   crateBookSql,
   crateTareUnitsSql,
+  inTransitCratesSql,
+  onHandSql,
   openTranchesSql,
   transferCratesSql,
 } from './crate-balance.service';
@@ -18,11 +20,12 @@ export interface CrateStandingResponse {
   /** Σ empty crates brought to the point by transfer — `transferCratesSql`. */
   received: number;
   /**
-   * Empties at the point: `received − Σ issued + Σ returned − Σ crate tare on
-   * ALL live receipts − Σ broken_crates`. Never null; MAY be < 0 when the
-   * documents disagree (§6.9 — shown red).
+   * Empties at the point — `onHandSql`, the one formula the stock guard shares.
+   * Never null; MAY be < 0 when the documents disagree (§6.9 — shown red).
    */
   on_hand: number;
+  /** Σ crates of `sent` transfers — on their way, not yet empties. */
+  in_transit: number;
   /** Open units of live tranches — out with people. */
   in_field: number;
   /** Of `in_field`, the units out on a deposit (the rest are on a розписка). */
@@ -89,45 +92,29 @@ export class CrateStandingService {
          SELECT cp.id AS collection_point_id,
                 cp.target_crates AS allotment,
                 ${transferCratesSql('$1')} AS received,
-                (SELECT COALESCE(SUM(ci.units), 0)::int
-                   FROM crate_issuances ci
-                   JOIN shifts s ON s.id = ci.shift_id
-                  WHERE s.collection_point_id = $1
-                    AND ci.voided_at IS NULL) AS issued,
-                (SELECT COALESCE(SUM(cr.units), 0)::int
-                   FROM crate_returns cr
-                   JOIN shifts s ON s.id = cr.shift_id
-                  WHERE s.collection_point_id = $1
-                    AND cr.voided_at IS NULL) AS returned,
-                ${crateTareUnitsSql('sh.collection_point_id = $1')} AS all_receipt_crates,
+                ${onHandSql('$1')} AS on_hand,
+                ${inTransitCratesSql('$1')} AS in_transit,
                 ${crateTareUnitsSql('sh.collection_point_id = $1 AND sh.closed_at IS NULL')} AS with_berry,
-                (SELECT COALESCE(SUM(bs.broken_crates), 0)::int
-                   FROM shifts bs
-                  WHERE bs.collection_point_id = $1) AS broken,
                 (SELECT COALESCE(SUM(remaining_units), 0)::int FROM tranche) AS in_field,
                 (SELECT COALESCE(SUM(remaining_units), 0)::int FROM tranche
                   WHERE mode = '${CrateIssuanceMode.Deposit}'::crate_issuance_mode) AS deposit_units,
                 ${crateBookSql('$1')}::text AS deposit_held
            FROM collection_points cp
           WHERE cp.id = $1
-       ),
-       standing AS (
-         SELECT f.*,
-                (f.received - f.issued + f.returned - f.all_receipt_crates - f.broken)::int AS on_hand
-           FROM figures f
        )
-       SELECT st.collection_point_id,
-              st.allotment,
-              st.received,
-              st.on_hand,
-              st.in_field,
-              st.deposit_units,
-              st.deposit_held,
-              st.with_berry,
-              (st.on_hand + st.in_field + st.with_berry)::int AS total,
-              CASE WHEN st.allotment IS NULL THEN NULL
-                   ELSE (st.allotment - (st.on_hand + st.in_field + st.with_berry))::int END AS shortfall
-         FROM standing st`,
+       SELECT f.collection_point_id,
+              f.allotment,
+              f.received,
+              f.on_hand,
+              f.in_transit,
+              f.in_field,
+              f.deposit_units,
+              f.deposit_held,
+              f.with_berry,
+              (f.on_hand + f.in_field + f.with_berry)::int AS total,
+              CASE WHEN f.allotment IS NULL THEN NULL
+                   ELSE (f.allotment - (f.on_hand + f.in_field + f.with_berry))::int END AS shortfall
+         FROM figures f`,
       [pointId],
     );
 

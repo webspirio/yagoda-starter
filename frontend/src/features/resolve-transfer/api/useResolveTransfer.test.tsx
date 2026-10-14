@@ -39,6 +39,7 @@ describe('useResolveTransferMutation', () => {
     await waitFor(() => {
       expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: queryKeys.transfers });
       expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: queryKeys.pointCash });
+      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: queryKeys.crateBalances });
     });
   });
 });

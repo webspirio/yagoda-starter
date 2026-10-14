@@ -21,6 +21,7 @@ import { AuditModule } from '../audit/audit.module';
 import { PayoutsModule } from '../payouts/payouts.module';
 import { SupplierBalanceModule } from '../supplier-balance/supplier-balance.module';
 import { CratesModule } from '../crates/crates.module';
+import { CrateStockModule } from '../crate-stock/crate-stock.module';
 
 /**
  * The berry receipt. Reads other modules through their services (grade prices and tare for
@@ -41,6 +42,7 @@ import { CratesModule } from '../crates/crates.module';
     AuditModule,
     PayoutsModule,
     CratesModule,
+    CrateStockModule,
     SupplierBalanceModule,
   ],
   providers: [

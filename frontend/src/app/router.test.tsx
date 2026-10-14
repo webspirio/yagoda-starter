@@ -43,6 +43,9 @@ vi.mock('@/pages/reweigh', () => ({
 vi.mock('@/pages/cost-of-day', () => ({
   CostOfDayPage: () => <p>cost-of-day page</p>,
 }));
+vi.mock('@/pages/settings', () => ({
+  SettingsPage: () => <p>settings page</p>,
+}));
 
 /**
  * Deep-copies just the ancestors of the route matching `path`, swapping that route's own
@@ -111,6 +114,18 @@ describe('router', () => {
     // Default: no role opinion yet (mirrors a pending/absent `me`) — tests
     // that care about a specific role override this explicitly.
     meMock.mockReturnValue({ data: undefined, isPending: false, isError: false });
+  });
+
+  it('serves the /ui-kit gallery without a token, loaded on demand (#243)', async () => {
+    renderAt('/ui-kit');
+    expect(await screen.findByRole('heading', { name: 'Ягода UI Kit' })).toBeInTheDocument();
+  });
+
+  it('keeps the /ui-kit gallery out of the entry chunk (#243)', () => {
+    const uiKit = routes.find((r) => r.path === '/ui-kit');
+    expect(uiKit?.lazy).toBeTypeOf('function');
+    expect(uiKit?.element).toBeUndefined();
+    expect(uiKit?.HydrateFallback).toBeDefined();
   });
 
   it('sends an unauthenticated visitor from / to the login screen', async () => {
@@ -215,6 +230,29 @@ describe('router', () => {
     expect(await screen.findByText(text)).toBeInTheDocument();
   });
 
+  it('keeps /settings away from an operator', async () => {
+    useSession.setState({ token: 'tok' });
+    meMock.mockReturnValue({
+      data: { role: 'point_operator', display_name: 'Оператор Тест' },
+      isPending: false,
+      isError: false,
+    });
+    renderAt('/settings');
+    expect(await screen.findByRole('heading', { name: /summary/i })).toBeInTheDocument();
+    expect(screen.queryByText('settings page')).not.toBeInTheDocument();
+  });
+
+  it('lets an owner onto /settings', async () => {
+    useSession.setState({ token: 'tok' });
+    meMock.mockReturnValue({
+      data: { role: 'network_owner', display_name: 'Керівник Тест' },
+      isPending: false,
+      isError: false,
+    });
+    renderAt('/settings');
+    expect(await screen.findByText('settings page')).toBeInTheDocument();
+  });
+
   it('lets both roles onto /point-cash', async () => {
     // An operator is pinned to their own point by the token, an owner picks
     // one — either way `/point-cash` is RequireAuth with no role gate.
@@ -239,16 +277,8 @@ describe('router', () => {
   });
 
   it('serves the ui-kit gallery at /ui-kit, no auth required, without a HydrateFallback warning', async () => {
-    // `import.meta.env.DEV` is `true` for every Vitest run (mode defaults to
-    // "test", never "production"), and it is read once when router.tsx's
-    // module-level `routes` array is built — `vi.stubEnv('DEV', ...)` cannot
-    // flip it after that, so this only proves today's (dev) behaviour: the
-    // route exists and renders unauthenticated. The production branch (the
-    // route entry not existing at all) is asserted by the bundle build
-    // itself having no `ui-kit` chunk, not by a test here.
-    //
     // `/ui-kit` sits OUTSIDE `AppLayout`, so it has no ancestor to inherit a
-    // `hydrateFallbackElement` from — it needs its own on this exact route
+    // `HydrateFallback` from — it needs its own on this exact route
     // object, or a direct load like this one warns and renders nothing
     // until the module resolves.
     const warning = watchForHydrateFallbackWarning();

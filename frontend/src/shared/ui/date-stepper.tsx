@@ -1,4 +1,5 @@
 import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { cn } from '@/shared/lib/cn';
 import { Button } from './button';
 
@@ -10,7 +11,6 @@ export function DateStepper({
   onNext,
   onToday,
   canNext = true,
-  todayLabel = 'Сьогодні',
   className,
 }: {
   label: string;
@@ -18,19 +18,19 @@ export function DateStepper({
   onNext: () => void;
   onToday?: () => void;
   canNext?: boolean;
-  todayLabel?: string;
   className?: string;
 }) {
+  const { t } = useTranslation();
   return (
     <div className={cn('flex items-center gap-1', className)}>
-      <Button variant="ghost" size="icon" aria-label="Попередній день" onClick={onPrev}>
+      <Button variant="ghost" size="icon" aria-label={t('common.previousDay')} onClick={onPrev}>
         <ChevronLeft />
       </Button>
       <span className="min-w-[7ch] text-center font-mono text-sm tabular-nums">{label}</span>
       <Button
         variant="ghost"
         size="icon"
-        aria-label="Наступний день"
+        aria-label={t('common.nextDay')}
         onClick={onNext}
         disabled={!canNext}
       >
@@ -38,7 +38,7 @@ export function DateStepper({
       </Button>
       {onToday ? (
         <Button variant="outline" size="sm" onClick={onToday}>
-          {todayLabel}
+          {t('common.today')}
         </Button>
       ) : null}
     </div>

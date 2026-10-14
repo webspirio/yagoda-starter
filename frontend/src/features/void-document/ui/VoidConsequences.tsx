@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import type { UseFormRegisterReturn } from 'react-hook-form';
 import { NativeCheckbox } from '@/shared/ui/native-checkbox';
 
-/** 2026-09-28: every consequence of an open-shift void, each one ticked before «Сторнувати».
+/** 2026-09-28: every consequence of an open-shift void, each one ticked before «Анулювати».
  *  Native checkboxes, not a Radix primitive: dropping Radix's RadioGroup from this feature took the
  *  first-load bundle back under its ceiling (measured 2026-09-26). */
 export function VoidConsequences({

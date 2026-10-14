@@ -15,6 +15,7 @@ const {
   pointsMock,
   meMock,
   voidDialogMock,
+  settingsMock,
 } = vi.hoisted(() => ({
   intakeMock: vi.fn(),
   supplierMock: vi.fn(),
@@ -25,6 +26,7 @@ const {
   pointsMock: vi.fn(),
   meMock: vi.fn(),
   voidDialogMock: vi.fn(),
+  settingsMock: vi.fn(),
 }));
 
 vi.mock('@/entities/intake', async (importOriginal) => ({
@@ -57,6 +59,11 @@ vi.mock('@/entities/collection-point', () => ({
 
 vi.mock('@/entities/user', () => ({
   useMeQuery: () => meMock(),
+}));
+
+vi.mock('@/entities/network-settings', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/entities/network-settings')>()),
+  useNetworkSettingsQuery: () => settingsMock(),
 }));
 
 vi.mock('@/features/void-document', () => ({
@@ -152,6 +159,24 @@ function buildIntake(overrides: Partial<IntakeDetail> = {}): IntakeDetail {
   };
 }
 
+const AT = '2026-10-08T09:00:00.000Z';
+const refetchSettings = vi.fn();
+function settingsState(over: {
+  data?: { receipt_note: string | null; updated_at: string };
+  isPending?: boolean;
+  isFetching?: boolean;
+  isError?: boolean;
+}) {
+  return {
+    data: undefined,
+    isPending: false,
+    isFetching: false,
+    isError: false,
+    refetch: refetchSettings,
+    ...over,
+  };
+}
+
 function setUp({
   intake = buildIntake(),
   debt = '9000.00',
@@ -159,6 +184,7 @@ function setUp({
   intakeIsError = false,
   grades = [GRADE_1],
   gradesIsError = false,
+  note = null,
 }: {
   intake?: IntakeDetail | null;
   debt?: string;
@@ -166,6 +192,7 @@ function setUp({
   intakeIsError?: boolean;
   grades?: Array<typeof GRADE_1>;
   gradesIsError?: boolean;
+  note?: string | null;
 } = {}) {
   intakeMock.mockReturnValue({
     data: intake ?? undefined,
@@ -195,6 +222,7 @@ function setUp({
   });
   meMock.mockReturnValue({ data: me, isPending: false, isError: false });
   settlementMock.mockReturnValue({ data: undefined, isPending: false, isError: false });
+  settingsMock.mockReturnValue(settingsState({ data: { receipt_note: note, updated_at: AT } }));
 }
 
 beforeEach(() => {
@@ -211,7 +239,7 @@ describe('ReceiptDialog', () => {
 
     expect(screen.getByText('SHP-IN-20260908-00412')).toBeInTheDocument();
     expect(screen.getByText('Галина Кушнірук')).toBeInTheDocument();
-    expect(screen.getByText('Малина · 1 сорт')).toBeInTheDocument();
+    expect(screen.getByText('Малина')).toBeInTheDocument();
     expect(screen.getByText('112.00 kg')).toBeInTheDocument();
     expect(screen.getAllByText('14,560.00 ₴').length).toBeGreaterThan(0);
     // received_by_name from the fixture, independent of who is logged in
@@ -231,7 +259,7 @@ describe('ReceiptDialog', () => {
     setUp({ grades: [] });
     render(<ReceiptDialog intakeId="intake-1" open onClose={vi.fn()} />);
 
-    expect(screen.getByText('Малина · 1 сорт')).toBeInTheDocument();
+    expect(screen.getByText('Малина')).toBeInTheDocument();
   });
 
   it('prints the receipt even when the grade catalog read fails — it no longer depends on it', () => {
@@ -239,36 +267,37 @@ describe('ReceiptDialog', () => {
     render(<ReceiptDialog intakeId="intake-1" open onClose={vi.fn()} />);
 
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
-    expect(screen.getByText('Малина · 1 сорт')).toBeInTheDocument();
+    expect(screen.getByText('Малина')).toBeInTheDocument();
   });
 
-  it('keeps the known name, not a bare « · », when the line has lost the other', () => {
+  // #162: the supplier's paper names the berry, never the grade — the grade
+  // shows only through the price it set.
+  it('names the line by its product alone, without the grade', () => {
+    setUp();
+    render(<ReceiptDialog intakeId="intake-1" open onClose={vi.fn()} />);
+
+    expect(screen.queryByText(/1 сорт/)).not.toBeInTheDocument();
+  });
+
+  it('prints a dash, not the grade, when the line has lost its product name', () => {
     const base = buildIntake();
     setUp({ intake: buildIntake({ items: [{ ...base.items![0], product_name: '' }] }) });
     render(<ReceiptDialog intakeId="intake-1" open onClose={vi.fn()} />);
 
-    expect(screen.queryByText(/^\s*·/)).not.toBeInTheDocument();
-    expect(screen.getByText('1 сорт')).toBeInTheDocument();
-  });
-
-  it('prints a dash when the line has lost both names', () => {
-    const base = buildIntake();
-    setUp({
-      intake: buildIntake({ items: [{ ...base.items![0], product_name: '', grade_name: '' }] }),
-    });
-    render(<ReceiptDialog intakeId="intake-1" open onClose={vi.fn()} />);
-
     expect(screen.getByText('—')).toBeInTheDocument();
+    expect(screen.queryByText(/1 сорт/)).not.toBeInTheDocument();
   });
 
-  it('shows price − bonus = total for a per-kilogram discount', () => {
+  // #164: the supplier sees the price they were paid, not how it was built.
+  it('shows only the final price for a per-kilogram discount', () => {
     setUp();
     render(<ReceiptDialog intakeId="intake-1" open onClose={vi.fn()} />);
 
-    expect(screen.getByText('135.00 ₴ − 5.00 ₴ = 130.00 ₴')).toBeInTheDocument();
+    expect(screen.getByText('130.00 ₴')).toBeInTheDocument();
+    expect(screen.queryByText(/135\.00/)).not.toBeInTheDocument();
   });
 
-  it('shows price + bonus = total for a per-kilogram markup', () => {
+  it('shows only the final price for a per-kilogram markup', () => {
     setUp({
       intake: buildIntake({
         items: [
@@ -292,7 +321,8 @@ describe('ReceiptDialog', () => {
     });
     render(<ReceiptDialog intakeId="intake-1" open onClose={vi.fn()} />);
 
-    expect(screen.getByText('135.00 ₴ + 5.00 ₴ = 140.00 ₴')).toBeInTheDocument();
+    expect(screen.getByText('140.00 ₴')).toBeInTheDocument();
+    expect(screen.queryByText(/135\.00/)).not.toBeInTheDocument();
   });
 
   it("shows who received the document from received_by_name, regardless of who is logged in", () => {
@@ -544,6 +574,93 @@ describe('ReceiptDialog', () => {
     expect(screen.getByText('VOIDED')).toBeInTheDocument();
     expect(screen.getByText(/Помилка ваги/)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Void' })).not.toBeInTheDocument();
+  });
+
+  // Decided at the meeting (PR #234 review): no ruled lines and no blank ones
+  // for handwriting — the paper ends at «Приймав», or at the network's note.
+  it('ends the paper at «Приймав» when the network has no note', () => {
+    setUp();
+    render(<ReceiptDialog intakeId="intake-1" open onClose={vi.fn()} />);
+
+    expect(document.querySelector('.printable .print-only')).toBeNull();
+  });
+
+  // index.css's print rule hides every OTHER child of <body> while a receipt is
+  // open (#212). It only matches while the dialog is a direct child of <body>,
+  // and jsdom evaluates no print CSS — so pin that DOM shape here, where a
+  // portal wrapper from a Radix upgrade would otherwise bring #212 back unseen.
+  it('portals the receipt dialog straight into <body>, as the print rule expects', () => {
+    setUp();
+    render(<ReceiptDialog intakeId="intake-1" open onClose={vi.fn()} />);
+
+    const dialog = document.querySelector('.printable')?.closest("[data-slot='dialog-content']");
+    expect(dialog?.parentElement).toBe(document.body);
+  });
+
+  it("prints the network's note as plain lines, with no rules and no blank ones", () => {
+    setUp({ note: 'Ящики повертати до 20:00\nТел. 067 000 00 00' });
+    render(<ReceiptDialog intakeId="intake-1" open onClose={vi.fn()} />);
+
+    const tail = document.querySelector('.printable')?.lastElementChild;
+    expect(tail).toHaveClass('print-only', 'break-inside-avoid');
+    expect(Array.from(tail?.children ?? [], (line) => line.textContent)).toEqual([
+      'Ящики повертати до 20:00',
+      'Тел. 067 000 00 00',
+    ]);
+    for (const line of Array.from(tail?.children ?? [])) {
+      expect(line).not.toHaveClass('border-b');
+    }
+    expect(screen.queryByRole('textbox')).toBeNull();
+  });
+
+  it('re-reads the note each time the receipt opens, and waits for it to print', () => {
+    setUp();
+    const { rerender } = render(<ReceiptDialog intakeId="intake-1" open={false} onClose={vi.fn()} />);
+    refetchSettings.mockClear();
+
+    settingsMock.mockReturnValue(
+      settingsState({ data: { receipt_note: 'стара', updated_at: AT }, isFetching: true }),
+    );
+    rerender(<ReceiptDialog intakeId="intake-1" open onClose={vi.fn()} />);
+
+    expect(refetchSettings).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole('button', { name: 'Print' })).toBeDisabled();
+  });
+
+  it('prints the last-known note without the warning when a re-read fails', () => {
+    setUp();
+    settingsMock.mockReturnValue(
+      settingsState({ data: { receipt_note: 'Тел. 067', updated_at: AT }, isError: true }),
+    );
+    render(<ReceiptDialog intakeId="intake-1" open onClose={vi.fn()} />);
+
+    expect(screen.queryByText(/note didn't load/)).toBeNull();
+    const tail = document.querySelector('.printable')?.lastElementChild;
+    expect(tail?.children[0]?.textContent).toBe('Тел. 067');
+  });
+
+  it('waits to print until the note has loaded', () => {
+    setUp();
+    settingsMock.mockReturnValue(settingsState({ isPending: true, isFetching: true }));
+    render(<ReceiptDialog intakeId="intake-1" open onClose={vi.fn()} />);
+    expect(screen.getByRole('button', { name: 'Print' })).toBeDisabled();
+  });
+
+  it('warns and still prints, without the note, when the note fails to load', () => {
+    setUp();
+    settingsMock.mockReturnValue(settingsState({ isError: true }));
+    render(<ReceiptDialog intakeId="intake-1" open onClose={vi.fn()} />);
+
+    expect(screen.getByText(/note didn't load/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Print' })).toBeEnabled();
+    expect(document.querySelector('.printable .print-only')).toBeNull();
+  });
+
+  it('keeps the «saved in the system» footer off the paper', () => {
+    setUp();
+    render(<ReceiptDialog intakeId="intake-1" open onClose={vi.fn()} />);
+
+    expect(screen.getByText(/The receipt is saved in the system/)).toHaveClass('print:hidden');
   });
 
   it('prints via window.print', async () => {

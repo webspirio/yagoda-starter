@@ -11,9 +11,9 @@ it('fires prev / next / today callbacks', async () => {
   render(
     <DateStepper label="04.08.2026" onPrev={onPrev} onNext={onNext} onToday={onToday} />,
   );
-  await userEvent.click(screen.getByRole('button', { name: 'Попередній день' }));
-  await userEvent.click(screen.getByRole('button', { name: 'Наступний день' }));
-  await userEvent.click(screen.getByRole('button', { name: 'Сьогодні' }));
+  await userEvent.click(screen.getByRole('button', { name: 'Previous day' }));
+  await userEvent.click(screen.getByRole('button', { name: 'Next day' }));
+  await userEvent.click(screen.getByRole('button', { name: 'Today' }));
   expect(onPrev).toHaveBeenCalledTimes(1);
   expect(onNext).toHaveBeenCalledTimes(1);
   expect(onToday).toHaveBeenCalledTimes(1);
@@ -21,7 +21,7 @@ it('fires prev / next / today callbacks', async () => {
 
 it('disables next when canNext is false', () => {
   render(<DateStepper label="04.08.2026" onPrev={vi.fn()} onNext={vi.fn()} canNext={false} />);
-  expect(screen.getByRole('button', { name: 'Наступний день' })).toBeDisabled();
+  expect(screen.getByRole('button', { name: 'Next day' })).toBeDisabled();
 });
 
 it('has no axe violations', async () => {

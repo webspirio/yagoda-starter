@@ -8,7 +8,7 @@ import { Badge } from '@/shared/ui/badge';
  *  `yagoda-crm`'s `components/reception/ReceiptDialog.tsx`). */
 export interface ReceiptSheetLine {
   key: string;
-  /** «{product} · {grade}» */
+  /** The product name — never the grade (#162). */
   label: string;
   gross: string;
   /** `null` hides the Піддон row — only shown when the intake had one. */
@@ -17,9 +17,8 @@ export interface ReceiptSheetLine {
   tareLabel: string;
   tareWeight: string;
   net: string;
+  /** The final per-kilogram price, bonus included (#164). */
   price: string;
-  /** Formatted bonus (already signed), or `null` when the bonus is 0.00. */
-  bonus: string | null;
   amount: string;
 }
 
@@ -41,6 +40,8 @@ export interface ReceiptSheetProps {
   voidedPayouts: string[];
   /** Who received this document (`received_by_name`), or «—» when unknown. */
   receivedBy: string;
+  /** The network's `receipt_note`, already wrapped — one printed line per `\n`. */
+  note: string | null;
   voided: { reason: string } | null;
   /** Our rented crates handed back in the SAME «Прийняти» as this receipt
    *  (2026-09-24) — `null` when none came back with it. Printed as its own
@@ -94,10 +95,12 @@ export function ReceiptSheet({
   paid,
   voidedPayouts,
   receivedBy,
+  note,
   voided,
   crateReturn,
 }: ReceiptSheetProps) {
   const { t } = useTranslation();
+  const noteLines = note?.split('\n') ?? [];
 
   return (
     <div className="printable rounded-lg border border-dashed border-border bg-white p-4 text-[13px] text-neutral-900">
@@ -135,10 +138,7 @@ export function ReceiptSheet({
           <Row label={t('receipt.tare', { detail: line.tareLabel })} value={`− ${line.tareWeight}`} />
           <div className="my-1.5 border-t border-neutral-900" />
           <Row label={t('receipt.net')} value={line.net} strong />
-          <Row
-            label={t('receipt.pricePerKg')}
-            value={line.bonus !== null ? `${line.price} ${line.bonus}` : line.price}
-          />
+          <Row label={t('receipt.pricePerKg')} value={line.price} />
           <Row label={t('receipt.amount')} value={line.amount} />
         </div>
       ))}
@@ -175,7 +175,22 @@ export function ReceiptSheet({
       <Row label={t('receipt.balanceAtPoint')} value={balance} />
       <Row label={t('receipt.receivedBy')} value={receivedBy} muted />
 
-      <div className="mt-4 text-center text-[10px] text-neutral-400">{t('receipt.footer')}</div>
+      {/* A note for the screen only — the paper ends with the network's note below. */}
+      <div className="mt-4 text-center text-[10px] text-neutral-400 print:hidden">
+        {t('receipt.footer')}
+      </div>
+
+      {/* The network's note as plain text: no rules and no blank lines for
+          handwriting (decided at the meeting, PR #234 review). No note, no block. */}
+      {noteLines.length > 0 ? (
+        <div className="print-only mt-4 break-inside-avoid font-mono" aria-hidden="true">
+          {noteLines.map((line, i) => (
+            <div key={i} className="whitespace-pre">
+              {line || '\u00a0'}
+            </div>
+          ))}
+        </div>
+      ) : null}
     </div>
   );
 }

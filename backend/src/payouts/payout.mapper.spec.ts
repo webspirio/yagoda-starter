@@ -9,3 +9,16 @@ describe('toPayoutResponse', () => {
     ).toBe(true);
   });
 });
+
+describe('toPayoutResponse — returned_on_void', () => {
+  // «Каса за день» mirrors `movementsSql`, which credits a void-time return to
+  // the payout's own shift. Without this flag on the wire the client cannot
+  // tell that return from one the owner confirmed later, on another day.
+  it('carries whether the cash came back at void time', () => {
+    expect(toPayoutResponse(payout() as never, shift() as never).returned_on_void).toBe(false);
+    expect(
+      toPayoutResponse(payout({ returned_on_void: true }) as never, shift() as never)
+        .returned_on_void,
+    ).toBe(true);
+  });
+});

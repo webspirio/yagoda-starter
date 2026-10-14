@@ -16,7 +16,7 @@ it('малює заголовок як h1 і тіло документа', () =>
   expect(screen.getByText('Тіло документа')).toBeInTheDocument();
 });
 
-it('малює кнопку «Друк» і клік по ній кличе onPrint рівно раз', async () => {
+it('малює кнопку «Print» і клік по ній кличе onPrint рівно раз', async () => {
   const onPrint = vi.fn();
   render(
     <DocumentPage title="Аркуш керівника" onPrint={onPrint}>
@@ -24,7 +24,7 @@ it('малює кнопку «Друк» і клік по ній кличе onPr
     </DocumentPage>,
   );
 
-  const button = screen.getByRole('button', { name: /Друк/ });
+  const button = screen.getByRole('button', { name: /Print/ });
   expect(button).toBeInTheDocument();
 
   await userEvent.click(button);

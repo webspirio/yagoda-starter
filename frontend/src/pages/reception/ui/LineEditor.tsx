@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type ChangeEvent } from 'react';
 import { AlertTriangle, Minus, Package, Plus, Trash2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import {
@@ -12,6 +12,8 @@ import { Button } from '@/shared/ui/button';
 import { Eyebrow } from '@/shared/ui/eyebrow';
 import { Field } from '@/shared/ui/field';
 import { SelectField } from '@/shared/ui/select-field';
+import { DecimalInput } from '@/shared/ui/decimal-input';
+import { useDecimalField } from '@/shared/ui/use-decimal-field';
 import { TextInput } from '@/shared/ui/text-input';
 import { cn } from '@/shared/lib/cn';
 import {
@@ -24,6 +26,7 @@ import {
   formatUah,
   maskDecimalInput,
   mul,
+  parseCrateCount,
   sub,
 } from '@/shared/lib/money';
 import type { PricedGrade } from '@/entities/product-grade';
@@ -114,19 +117,53 @@ export function LineEditor({
   const usedTareTypeIds = new Set(tareRows.map((row) => row.tare_type_id));
   const freeTareType = tareTypes.find((type) => !usedTareTypeIds.has(type.id));
 
+  // Each row's count, read once: `null` is a count the form refuses.
+  const tareCounts = tareRows.map((row) => parseCrateCount(row.units));
   // The tare block has no `Field` of its own (a type select plus a stepper is
-  // not one control), so it carries both of the tare errors the mapper can
-  // produce: the business-rule one it pins to row 0, and a class-validator
-  // complaint about any row's `units`.
+  // not one control), so it carries every tare error: a count that is not
+  // whole, refused here at once — a separator in a count is never on its way
+  // to anything (#233 review) — ahead of the server's two, the business-rule
+  // one it pins to row 0 and a class-validator complaint about any row's `units`.
   const tareError =
+    (tareCounts.includes(null) ? 'crates.errors.unitsFormat' : null) ??
     errorAt(`items.${index}.tare.0.tare_type_id`) ??
     tareRows.reduce<string | null>(
       (found, _row, rowIndex) => found ?? errorAt(`items.${index}.tare.${rowIndex}.units`),
       null,
     );
-  const grossError = errorAt(`items.${index}.gross_kg`);
-  const palletError = errorAt(`items.${index}.pallet_kg`);
-  const bonusError = errorAt(`items.${index}.bonus`);
+  // #72 — the shape of a weight or a surcharge is the field's own business,
+  // not the preview's: with no supplier picked yet there IS no preview, and a
+  // «1.2.3» must not sit there unremarked. Shown once the field is left.
+  // A tare row's crate count takes the money fields' mask (#233 review):
+  // spaces and letters never get in, a digit or a separator is never dropped.
+  // `\D`-stripping read «2,0» as 20 — ten times the tare, a silent change of
+  // the net weight and so the sum (#72). A separator stays visible instead,
+  // and `tareError` refuses it.
+  const unitsField = (rowIndex: number) => {
+    const field = register(`items.${index}.tare.${rowIndex}.units`);
+    return {
+      ...field,
+      onChange: (e: ChangeEvent<HTMLInputElement>) => {
+        const masked = maskDecimalInput(e.target.value);
+        if (masked !== e.target.value) e.target.value = masked;
+        return field.onChange(e);
+      },
+    };
+  };
+  const grossField = useDecimalField(gross);
+  const palletField = useDecimalField(pallet);
+  const bonusField = useDecimalField(bonus, {
+    allowNegative: true,
+    onBlur: () => {
+      if (!grade || bonusFloor === null) return;
+      setValue(`items.${index}.bonus`, clampDecimal(bonus, bonusFloor, grade.max_markup), {
+        shouldDirty: true,
+      });
+    },
+  });
+  const grossError = grossField.error ?? errorAt(`items.${index}.gross_kg`);
+  const palletError = palletField.error ?? errorAt(`items.${index}.pallet_kg`);
+  const bonusError = bonusField.error ?? errorAt(`items.${index}.bonus`);
   const gradeError = errorAt(`items.${index}.product_grade_id`);
   const hasLineError = Boolean(grossError || palletError || bonusError || gradeError || tareError);
 
@@ -146,17 +183,16 @@ export function LineEditor({
   // A tare row that counts nothing is still a row — zero is a real (if
   // incomplete) state the mock lets an operator sit in while they weigh out
   // the crates; «remove» is how a row goes away entirely. The stepper floors
-  // at 0 rather than 1.
+  // at 0 rather than 1, and steps a refused count from 0.
   const stepUnits = (row: number, direction: 1 | -1) => {
-    const parsed = Number.parseInt(tareRows[row]?.units ?? '', 10);
-    const current = Number.isInteger(parsed) ? parsed : 0;
+    const current = tareCounts[row] ?? 0;
     setValue(`items.${index}.tare.${row}.units`, String(Math.max(0, current + direction)), {
       shouldDirty: true,
     });
   };
 
-  // Integer unit COUNTS, never money — `Number.parseInt`, not `cmp`.
-  const totalUnits = tareRows.reduce((n, r) => n + (Number.parseInt(r.units, 10) || 0), 0);
+  // Integer unit COUNTS, never money; a refused count adds nothing.
+  const totalUnits = tareCounts.reduce<number>((n, c) => n + (c ?? 0), 0);
 
   // ONE normalization, fed to both the comparison and the formatter: they use
   // different regexes, and `formatDecimal`'s admits no surrounding whitespace —
@@ -194,18 +230,15 @@ export function LineEditor({
           >
             {(a11y) => (
               <div className="relative">
-                <TextInput
+                <DecimalInput
                   {...a11y}
                   value={gross}
                   onChange={(e) =>
-                    setValue(`items.${index}.gross_kg`, maskDecimalInput(e.target.value), {
-                      shouldDirty: true,
-                    })
+                    setValue(`items.${index}.gross_kg`, e.target.value, { shouldDirty: true })
                   }
+                  {...grossField.inputProps}
                   disabled={disabled}
-                  inputMode="decimal"
                   placeholder="0,00"
-                  autoComplete="off"
                   className="h-14 pr-12 font-mono text-2xl font-semibold"
                 />
                 <span className="pointer-events-none absolute top-1/2 right-3.5 -translate-y-1/2 font-mono text-sm text-muted-foreground">
@@ -223,17 +256,14 @@ export function LineEditor({
               className="w-[124px]"
             >
               {(a11y) => (
-                <TextInput
+                <DecimalInput
                   {...a11y}
                   value={pallet}
                   onChange={(e) =>
-                    setValue(`items.${index}.pallet_kg`, maskDecimalInput(e.target.value), {
-                      shouldDirty: true,
-                    })
+                    setValue(`items.${index}.pallet_kg`, e.target.value, { shouldDirty: true })
                   }
+                  {...palletField.inputProps}
                   disabled={disabled}
-                  inputMode="decimal"
-                  autoComplete="off"
                   className="h-14 font-mono"
                 />
               )}
@@ -266,7 +296,7 @@ export function LineEditor({
             const rowTareType = tareTypes.find(
               (type) => type.id === tareRows[rowIndex]?.tare_type_id,
             );
-            const rowUnits = Math.max(0, Number.parseInt(tareRows[rowIndex]?.units ?? '', 10) || 0);
+            const rowUnits = tareCounts[rowIndex] ?? 0;
             return (
               <div key={row.id} className="flex items-center gap-2">
                 <div className="min-w-0 flex-1">
@@ -304,7 +334,7 @@ export function LineEditor({
                     autoComplete="off"
                     disabled={disabled}
                     className="w-12 text-center font-mono font-semibold"
-                    {...register(`items.${index}.tare.${rowIndex}.units`)}
+                    {...unitsField(rowIndex)}
                   />
                   <Button
                     type="button"
@@ -358,7 +388,7 @@ export function LineEditor({
           ) : null}
           {/* Instant, client-side hints — never a rule the server enforces,
               just what the operator is about to be surprised by. */}
-          {grossPositive && totalUnits === 0 ? (
+          {grossPositive && totalUnits === 0 && !tareError ? (
             <p className="flex items-start gap-2 text-xs text-amber">
               <AlertTriangle className="mt-px size-3.5 shrink-0" />
               {t('reception.line.tareMissing')}
@@ -459,29 +489,14 @@ export function LineEditor({
                 >
                   <Minus className="size-3.5" />
                 </Button>
-                <TextInput
+                <DecimalInput
                   {...a11y}
                   variant="ghost"
                   value={bonus}
                   onChange={(e) =>
-                    setValue(
-                      `items.${index}.bonus`,
-                      maskDecimalInput(e.target.value, { allowNegative: true }),
-                      { shouldDirty: true },
-                    )
+                    setValue(`items.${index}.bonus`, e.target.value, { shouldDirty: true })
                   }
-                  onBlur={() => {
-                    if (!grade || bonusFloor === null) return;
-                    setValue(
-                      `items.${index}.bonus`,
-                      clampDecimal(bonus, bonusFloor, grade.max_markup),
-                      {
-                        shouldDirty: true,
-                      },
-                    );
-                  }}
-                  inputMode="decimal"
-                  autoComplete="off"
+                  {...bonusField.inputProps}
                   disabled={disabled}
                   className="w-16 text-center font-mono font-semibold"
                 />

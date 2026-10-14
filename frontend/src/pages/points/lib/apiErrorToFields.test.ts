@@ -23,7 +23,7 @@ describe('apiErrorToFields', () => {
     const err = new ApiError(400, 'bad', ['target_cash must be a decimal string']);
     const out = apiErrorToFields(err, FIELDS);
     expect(out.fieldErrors).toEqual([
-      { field: 'target_cash', messageKey: 'points.errors.cashFormat' },
+      { field: 'target_cash', messageKey: 'errors.decimalFormat' },
     ]);
   });
 
@@ -31,6 +31,28 @@ describe('apiErrorToFields', () => {
     const out = apiErrorToFields(new Error('network'), FIELDS);
     expect(out.fieldErrors).toEqual([]);
     expect(out.formErrorKey).toBe('points.errors.saveFailed');
+  });
+
+  it.each([
+    ['POINT_NAME_EMPTY', 'name', 'points.errors.nameEmpty'],
+    ['POINT_NAME_TAKEN', 'name', 'points.errors.nameTaken'],
+    ['POINT_CODE_TAKEN', 'code', 'points.errors.codeTaken'],
+  ])('%s lands on the %s field', (code, field, messageKey) => {
+    const err = new ApiError(400, 'x', undefined, code);
+    expect(apiErrorToFields(err, [...FIELDS, 'code'])).toEqual({
+      fieldErrors: [{ field, messageKey }],
+      formErrorKey: null,
+    });
+  });
+
+  it('a made-up FOO_NAME_TAKEN no longer matches', () => {
+    const err = new ApiError(409, 'x', undefined, 'FOO_NAME_TAKEN');
+    expect(apiErrorToFields(err, FIELDS).formErrorKey).toBe('points.errors.saveFailed');
+  });
+
+  it('a network failure and a 500 get the status sentence, not saveFailed', () => {
+    expect(apiErrorToFields(new ApiError(0, 'x'), FIELDS).formErrorKey).toBe('errors.network');
+    expect(apiErrorToFields(new ApiError(500, 'x'), FIELDS).formErrorKey).toBe('errors.server');
   });
 });
 

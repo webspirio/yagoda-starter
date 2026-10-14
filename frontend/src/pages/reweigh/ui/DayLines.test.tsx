@@ -20,12 +20,12 @@ vi.mock('@/entities/user', () => ({
 
 /** The reason row's confirm button, selected BY NAME rather than by DOM
  *  position. It used to be reachable only as "the last button whose name
- *  matches /void|сторнувати/", because the row's opener and the confirm
+ *  matches /void|анулювати/", because the row's opener and the confirm
  *  shared one accessible name — selecting by position is the test-side smell
  *  that names a real a11y defect, so the component gives the confirm its own
  *  `reweigh.day.confirmVoidLine` label and this helper asserts it. */
 function confirmButton(): HTMLElement {
-  return screen.getByRole('button', { name: /confirm voiding|підтвердити сторно/i });
+  return screen.getByRole('button', { name: /confirm voiding|підтвердити анулювання/i });
 }
 
 const line = (over = {}): DayLine => ({
@@ -136,7 +136,7 @@ describe('DayLines', () => {
 
   it('asks for a reason and keeps the button inactive until one is typed', async () => {
     render(<DayLines lines={[line()]} isPending={false} isError={false} date="2026-09-21" />);
-    await userEvent.click(screen.getByRole('button', { name: /void|сторнувати/i }));
+    await userEvent.click(screen.getByRole('button', { name: /void|анулювати/i }));
 
     const confirm = confirmButton();
     expect(confirm).toBeDisabled();
@@ -147,7 +147,7 @@ describe('DayLines', () => {
   it('voids by LINE id with the typed reason', async () => {
     voidMock.mockResolvedValue({});
     render(<DayLines lines={[line()]} isPending={false} isError={false} date="2026-09-21" />);
-    await userEvent.click(screen.getByRole('button', { name: /void|сторнувати/i }));
+    await userEvent.click(screen.getByRole('button', { name: /void|анулювати/i }));
     await userEvent.type(screen.getByLabelText(/reason|причина/i), 'двічі ввели ту саму машину');
     await userEvent.click(confirmButton());
 
@@ -156,7 +156,7 @@ describe('DayLines', () => {
 
   /**
    * The a11y finding in one assertion. With the reason row open there are two
-   * buttons on screen that both read «Сторнувати» visibly — the row's opener
+   * buttons on screen that both read «Анулювати» visibly — the row's opener
    * and the destructive confirm. If they also share an accessible name, a
    * screen-reader user cannot tell "open the form" from "commit the void",
    * and axe does NOT flag a duplicate button name, so nothing else here
@@ -165,7 +165,7 @@ describe('DayLines', () => {
    */
   it('gives the confirm button an accessible name distinct from the opener', async () => {
     render(<DayLines lines={[line()]} isPending={false} isError={false} date="2026-09-21" />);
-    const opener = screen.getByRole('button', { name: /void|сторнувати/i });
+    const opener = screen.getByRole('button', { name: /void|анулювати/i });
     await userEvent.click(opener);
 
     const confirm = confirmButton();
@@ -198,7 +198,7 @@ describe('DayLines', () => {
       />,
     );
     const row = screen.getByRole('row', { name: /Шипинки/ });
-    expect(within(row).getByText(/voided|сторновано/i)).toBeInTheDocument();
+    expect(within(row).getByText(/voided|анульовано/i)).toBeInTheDocument();
     expect(within(row).getByText(/Керівник/)).toBeInTheDocument();
     expect(within(row).getByText(/двічі ввели/)).toBeInTheDocument();
   });
@@ -208,7 +208,7 @@ describe('DayLines', () => {
       <DayLines lines={[line({ voided_at: '2026-09-21T12:00:00.000Z', voided_by_user_id: 'u9', void_reason: 'x' })]} isPending={false} isError={false} date="2026-09-21" />,
     );
     const row = screen.getByRole('row', { name: /Шипинки/ });
-    expect(within(row).queryByRole('button', { name: /void|сторнувати/i })).not.toBeInTheDocument();
+    expect(within(row).queryByRole('button', { name: /void|анулювати/i })).not.toBeInTheDocument();
   });
 
   /**
@@ -216,7 +216,7 @@ describe('DayLines', () => {
    * far more than a handful of rows — and the action column's header carries
    * no visible text (Finding 2), so a screen-reader user has only the
    * button's OWN accessible name to tell one row's storno button from
-   * another's. The visible label stays the shared "Void"/«Сторнувати» text;
+   * another's. The visible label stays the shared "Void"/«Анулювати» text;
    * only the accessible name is per-row.
    */
   it("gives each row's storno button its own accessible name — point and time, not a repeated \"Void\"", () => {
@@ -257,10 +257,10 @@ describe('DayLines', () => {
   it("surfaces the server's own refusal", async () => {
     voidMock.mockRejectedValue(new ApiError(409, 'Already voided', undefined, 'ALREADY_VOIDED'));
     render(<DayLines lines={[line()]} isPending={false} isError={false} date="2026-09-21" />);
-    await userEvent.click(screen.getByRole('button', { name: /void|сторнувати/i }));
+    await userEvent.click(screen.getByRole('button', { name: /void|анулювати/i }));
     await userEvent.type(screen.getByLabelText(/reason|причина/i), 'x');
     await userEvent.click(confirmButton());
 
-    await waitFor(() => expect(screen.getByText(/already voided|вже сторновано/i)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/already voided|уже анульовано/i)).toBeInTheDocument());
   });
 });

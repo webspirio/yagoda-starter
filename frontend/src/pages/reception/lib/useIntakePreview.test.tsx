@@ -87,6 +87,24 @@ describe('useIntakePreview', () => {
     expect(result.current.preview).toBeNull();
   });
 
+  it.each([[['0.5']], [['2', '0.5']], [['2', '1.2.3']]])(
+    'never asks the server while a tare count is not whole: %j (#233 review)',
+    async (units) => {
+      mock.onPost('/intakes/preview').reply(200, previewResponse('990.00'));
+      const values: IntakeFormValues = {
+        ...previewableValues('100'),
+        items: [line({ tare: units.map((u) => ({ tare_type_id: 't1', units: u })) })],
+      };
+      renderHook(() => useIntakePreview(values, null, { enabled: true }), { wrapper });
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1000);
+      });
+
+      expect(mock.history.post.length).toBe(0);
+    },
+  );
+
   it('fires once, 250ms after the last of two rapid edits', async () => {
     mock.onPost('/intakes/preview').reply(200, previewResponse('990.00'));
     const { result, rerender } = renderHook(
@@ -256,5 +274,106 @@ describe('useIntakePreview', () => {
     });
 
     expect(mock.history.post.length).toBe(0);
+  });
+});
+
+// #213 — the server prices each line on its own (`buildLine`), so a line's
+// numbers belong to its CONTENT, not to its index or to the rest of the form.
+describe('useIntakePreview — rowItems', () => {
+  /** Echoes one priced item per line, `gross_kg` carried through as `net_kg`
+   *  so each row's numbers name the line they belong to. */
+  const echo = (cfg: { data?: string }) => {
+    const body = JSON.parse(cfg.data ?? '{}') as { items: { gross_kg: string }[] };
+    return [
+      200,
+      {
+        ...previewResponse('0.00'),
+        items: body.items.map((i, n) => ({
+          ...previewResponse('0.00').items[0],
+          item_order: n + 1,
+          net_kg: i.gross_kg,
+        })),
+      },
+    ] as [number, unknown];
+  };
+  const emptyDraft = line({ product_grade_id: '', gross_kg: '' });
+  const form = (items: IntakeFormValues['items'], supplier = 's1'): IntakeFormValues => ({
+    supplier_id: supplier,
+    items,
+    paid_amount: '',
+    returned_crates: '',
+  });
+  const settle = async () => {
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(250);
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+  };
+  const nets = (rows: ({ net_kg: string } | null)[]) => rows.map((r) => r?.net_kg ?? null);
+
+  it('keeps the committed lines priced while the fresh draft is still empty', async () => {
+    mock.onPost('/intakes/preview').reply(echo);
+    const { result, rerender } = renderHook(
+      (v: IntakeFormValues) => useIntakePreview(v, null, { enabled: true }),
+      {
+        wrapper,
+        initialProps: form([line({ gross_kg: '100' }), line({ gross_kg: '50' })]),
+      },
+    );
+    await settle();
+
+    rerender(form([line({ gross_kg: '100' }), line({ gross_kg: '50' }), emptyDraft]));
+    await settle();
+
+    expect(result.current.preview).toBeNull(); // nothing to ask the server about
+    expect(nets(result.current.rowItems)).toEqual(['100', '50', null]);
+    expect(mock.history.post.length).toBe(1);
+  });
+
+  it('never moves a removed line’s numbers onto the line that takes its place', async () => {
+    mock.onPost('/intakes/preview').reply(echo);
+    const { result, rerender } = renderHook(
+      (v: IntakeFormValues) => useIntakePreview(v, null, { enabled: true }),
+      {
+        wrapper,
+        initialProps: form([line({ gross_kg: '100' }), line({ gross_kg: '50' }), emptyDraft]),
+      },
+    );
+    // Nothing answered yet — every row is pending, not zero.
+    expect(nets(result.current.rowItems)).toEqual([null, null, null]);
+
+    rerender(form([line({ gross_kg: '100' }), line({ gross_kg: '50' })]));
+    await settle();
+    rerender(form([line({ gross_kg: '50' }), emptyDraft]));
+
+    expect(nets(result.current.rowItems)).toEqual(['50', null]);
+  });
+
+  it.each([
+    ['the supplier changes', { supplier: 's2', point: 'p1', enabled: true }],
+    ['the point changes', { supplier: 's1', point: 'p2', enabled: true }],
+    ['the hook is disabled', { supplier: 's1', point: 'p1', enabled: false }],
+  ])('drops every row’s numbers once %s', async (_, next) => {
+    mock.onPost('/intakes/preview').reply(echo);
+    const { result, rerender } = renderHook(
+      (p: { v: IntakeFormValues; point: string; enabled: boolean }) =>
+        useIntakePreview(p.v, p.point, { enabled: p.enabled }),
+      {
+        wrapper,
+        initialProps: { v: form([line({ gross_kg: '100' })]), point: 'p1', enabled: true },
+      },
+    );
+    await settle();
+    expect(nets(result.current.rowItems)).toEqual(['100']);
+
+    rerender({
+      v: form([line({ gross_kg: '100' }), emptyDraft], next.supplier),
+      point: next.point,
+      enabled: next.enabled,
+    });
+
+    expect(nets(result.current.rowItems)).toEqual([null, null]);
   });
 });

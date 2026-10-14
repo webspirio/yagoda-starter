@@ -180,7 +180,7 @@ describe('supplier balance breakdown (HTTP)', () => {
     const [intakeVoided] = await ds.query(
       `INSERT INTO intakes (code, shift_id, supplier_id, amount, received_by_user_id,
                             voided_at, voided_by_user_id, void_reason)
-       VALUES ($1, $2, $3, '2000.00', $4, now(), $4, 'тестове сторно') RETURNING id`,
+       VALUES ($1, $2, $3, '2000.00', $4, now(), $4, 'тестове анулювання') RETURNING id`,
       [`BD-IN-${run}-3`, shiftEarly.id, supplierId, userId],
     );
     await ds.query(
@@ -191,7 +191,7 @@ describe('supplier balance breakdown (HTTP)', () => {
     );
     await ds.query(
       `INSERT INTO intake_top_ups (intake_id, amount, reason, created_by_user_id)
-       VALUES ($1, '999.00', 'доплата на сторновану квитанцію', $2)`,
+       VALUES ($1, '999.00', 'доплата на анульовану квитанцію', $2)`,
       [intakeVoided.id, userId],
     );
 
@@ -207,7 +207,7 @@ describe('supplier balance breakdown (HTTP)', () => {
     await ds.query(
       `INSERT INTO payouts (code, shift_id, supplier_id, amount, paid_by_user_id,
                             voided_at, voided_by_user_id, void_reason)
-       VALUES ($1, $2, $3, '1500.00', $4, now(), $4, 'тестове сторно')`,
+       VALUES ($1, $2, $3, '1500.00', $4, now(), $4, 'тестове анулювання')`,
       [`BD-PO-${run}-2`, shiftLate.id, supplierId, userId],
     );
   }, 30_000);

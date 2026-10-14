@@ -15,6 +15,9 @@ export interface Payout {
   return_settled_at: string | null;
   return_settled_by_user_id: string | null;
   return_note: string | null;
+  /** The cash came back at void time, into this payout's own shift (open-shift
+   *  void). A later owner `settle-return` leaves this `false`. */
+  returned_on_void: boolean;
   /** Open shift: a void returns the cash at once (2026-09-28). */
   shift_closed: boolean;
   created_at: string;

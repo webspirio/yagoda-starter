@@ -27,6 +27,8 @@ import { TimeService } from '../time/time.service';
 import { timezoneConfig } from '../config/timezone.config';
 import { UserRole } from '../users/user-role.enum';
 import { ShiftsService } from '../shifts/shifts.service';
+import { CrateStockGuard } from '../crate-stock/crate-stock.guard';
+import { countedCrates } from './transfer-crates';
 import type { AuthenticatedUser } from '../auth/jwt.strategy';
 
 /**
@@ -72,6 +74,7 @@ export class TransfersService {
      * existing positional construction sites in the unit spec keep their order.
      */
     private readonly shifts: ShiftsService,
+    private readonly stock: CrateStockGuard,
   ) {}
 
   /** §7.9 step 1 — OWNER ONLY. */
@@ -394,6 +397,7 @@ export class TransfersService {
         });
       }
 
+      const before = transfer.reported_crates ?? 0;
       transfer.resolved_cash = dto.resolved_cash;
       transfer.resolved_crates = dto.resolved_crates;
       transfer.resolved_by_user_id = actor.sub;
@@ -412,12 +416,18 @@ export class TransfersService {
         m,
       );
 
+      // A resolution below the point's own count takes the difference back out of the empties —
+      // unless the transfer is voided: it counts nothing either way, so there is nothing to take.
+      if (!transfer.voided_at && dto.resolved_crates < before) {
+        await this.stock.assertOnHand(m, saved.collection_point_id, before - dto.resolved_crates);
+      }
+
       return saved;
     });
   }
 
   /**
-   * §9.4 — «сторнує переказ ТІЛЬКИ керівник; точка сторнувати не може.»
+   * §9.4 — «анулює переказ ТІЛЬКИ керівник; точка анулювати не може.»
    *
    * LEGAL IN ANY STATE, INCLUDING `accepted`, and that is anticipated rather
    * than tolerated: the DBML says in as many words that a voided transfer
@@ -446,6 +456,7 @@ export class TransfersService {
         });
       }
 
+      const counted = countedCrates(transfer);
       transfer.voided_at = this.time.now().toJSDate();
       transfer.voided_by_user_id = actor.sub;
       transfer.void_reason = dto.reason.trim();
@@ -463,6 +474,9 @@ export class TransfersService {
         },
         m,
       );
+
+      // Whatever this transfer put into the empties leaves with it (spec 2026-09-30).
+      if (counted > 0) await this.stock.assertOnHand(m, saved.collection_point_id, counted);
 
       return saved;
     });

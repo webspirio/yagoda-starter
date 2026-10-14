@@ -9,6 +9,7 @@ import { TextInput } from '@/shared/ui/text-input';
 import { formatDecimal } from '@/shared/lib/money';
 import { formatLongDate, todayIso } from '@/shared/lib/date';
 import { useUrlPatch } from '@/shared/lib/url-state';
+import { apiErrorToBanner } from '@/shared/lib/api-error';
 import { usePriceChangesQuery } from '../api/priceChanges';
 import type { PriceChange } from '../model/gradePrice';
 import {
@@ -144,7 +145,7 @@ export function PriceChanges() {
         </div>
       ) : query.isError ? (
         <p role="alert" className="text-sm text-destructive">
-          {t('common.somethingWentWrong')}
+          {t(apiErrorToBanner(query.error, 'common.somethingWentWrong'))}
         </p>
       ) : changes.length === 0 ? (
         <p className="text-sm text-muted-foreground">

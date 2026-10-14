@@ -31,7 +31,7 @@ import { IntakeItem } from './intake-item.entity';
  *
  * `amount` NEVER CHANGES AFTER INSERT. §2.7 — «після проведення не міняється
  * НІКОЛИ». There is no `PATCH` route and no update path in the service; a
- * correction is a void plus a new document (§9.3, «Часткового сторно немає»).
+ * correction is a void plus a new document (§9.3, «Часткового анулювання немає»).
  *
  * `received_by_user_id` is WHO PUNCHED IT, not who opened the shift. §10.6:
  * Оксана leaves her account at 14:00 and Марія enters hers at 14:01, and «підпис
@@ -40,7 +40,7 @@ import { IntakeItem } from './intake-item.entity';
  * саму зміну».
  *
  * VOIDING AN INTAKE IS THE ONLY WAY A SUPPLIER'S DEBT GOES NEGATIVE, and that
- * is allowed: «сторно КВИТАНЦІЇ ЄДИНИЙ шлях у мінус, і воно ДОЗВОЛЕНЕ, з
+ * is allowed: «анулювання КВИТАНЦІЇ ЄДИНИЙ шлях у мінус, і воно ДОЗВОЛЕНЕ, з
  * попередженням». There is no floor check anywhere, and adding one would
  * contradict the schema outright — «інваріанта борг >= 0 в цій схемі теж
  * немає».
@@ -97,7 +97,7 @@ export class Intake {
   @Column({ type: 'uuid', nullable: true })
   voided_by_user_id: string | null;
 
-  /** MANDATORY when voided — §9.3, «сторно з обов'язковою причиною». That is
+  /** MANDATORY when voided — §9.3, «анулювання з обов'язковою причиною». That is
    *  why voiding is a trio of columns and not a status value, and why
    *  `transfer_status` lost its `void` member on 03.09.2026. */
   @Column({ type: 'text', nullable: true })

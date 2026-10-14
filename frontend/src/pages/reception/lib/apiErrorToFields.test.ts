@@ -8,10 +8,15 @@ const apiError = (init: { status: number; message?: string; code?: string; detai
   new ApiError(init.status, init.message ?? 'Request failed', init.details, init.code);
 
 describe('apiErrorToFields', () => {
-  it('INTAKE_CODE_TAKEN has no field left to land on, so it banners', () => {
+  it('INTAKE_CODE_TAKEN is a legacy hand-numbered collision, so it banners the ask-the-owner sentence', () => {
     const out = apiErrorToFields(apiError({ status: 409, code: 'INTAKE_CODE_TAKEN' }), 1);
     expect(out.fieldErrors).toEqual([]);
-    expect(out.formErrorKey).toBe('reception.errors.failed');
+    expect(out.formErrorKey).toBe('errors.documentNumberTaken');
+  });
+
+  it('a network failure gets the status sentence, not failed', () => {
+    const out = apiErrorToFields(apiError({ status: 0 }), 1);
+    expect(out).toEqual({ fieldErrors: [], formErrorKey: 'errors.network' });
   });
 
   it('maps GRADE_NOT_PRICED onto the last line’s product_grade_id', () => {
@@ -96,12 +101,12 @@ describe('apiErrorToFields', () => {
       1,
     );
     expect(out.fieldErrors).toEqual([
-      { field: 'items.0.gross_kg', messageKey: 'reception.errors.decimalFormat' },
+      { field: 'items.0.gross_kg', messageKey: 'errors.decimalFormat' },
     ]);
     expect(out.formErrorKey).toBeNull();
   });
 
-  it('maps a class-validator detail on a nested tare field to decimalFormat', () => {
+  it('maps a class-validator detail on a tare row\'s units to the crates integer message', () => {
     const out = apiErrorToFields(
       apiError({
         status: 400,
@@ -110,8 +115,17 @@ describe('apiErrorToFields', () => {
       1,
     );
     expect(out.fieldErrors).toEqual([
-      { field: 'items.0.tare.1.units', messageKey: 'reception.errors.decimalFormat' },
+      { field: 'items.0.tare.1.units', messageKey: 'crates.errors.unitsFormat' },
     ]);
+  });
+
+  it('banners a detail on a picked id — no honest per-field message for it', () => {
+    const out = apiErrorToFields(
+      apiError({ status: 400, details: ['items.0.product_grade_id must be a UUID'] }),
+      1,
+    );
+    expect(out.fieldErrors).toEqual([]);
+    expect(out.formErrorKey).not.toBeNull();
   });
 
   it('keeps a placeable detail but banners an unplaceable one alongside it', () => {
@@ -126,7 +140,7 @@ describe('apiErrorToFields', () => {
       1,
     );
     expect(out.fieldErrors).toEqual([
-      { field: 'items.0.gross_kg', messageKey: 'reception.errors.decimalFormat' },
+      { field: 'items.0.gross_kg', messageKey: 'errors.decimalFormat' },
     ]);
     expect(out.formErrorKey).toBe('reception.errors.failed');
   });
@@ -146,7 +160,7 @@ describe('apiErrorToFields', () => {
   });
 
   it('falls back to the form-level banner for a code-less, detail-less ApiError', () => {
-    const out = apiErrorToFields(apiError({ status: 500 }), 1);
+    const out = apiErrorToFields(apiError({ status: 400 }), 1);
     expect(out.fieldErrors).toEqual([]);
     expect(out.formErrorKey).toBe('reception.errors.failed');
   });
@@ -181,7 +195,7 @@ describe('apiErrorToFields', () => {
     expect(out.formErrorKey).toBeNull();
   });
 
-  it('maps a class-validator detail on paid_amount to paidFormat, not decimalFormat', () => {
+  it('maps a class-validator detail on paid_amount to the shared decimalFormat (#72)', () => {
     const out = apiErrorToFields(
       apiError({
         status: 400,
@@ -190,8 +204,18 @@ describe('apiErrorToFields', () => {
       1,
     );
     expect(out.fieldErrors).toEqual([
-      { field: 'paid_amount', messageKey: 'reception.errors.paidFormat' },
+      { field: 'paid_amount', messageKey: 'errors.decimalFormat' },
     ]);
     expect(out.formErrorKey).toBeNull();
+  });
+});
+
+describe('apiErrorToFields crates on hand', () => {
+  it('maps CRATES_ON_HAND_INSUFFICIENT to a banner carrying the numbers', () => {
+    const e = new ApiError(409, 'x', undefined, 'CRATES_ON_HAND_INSUFFICIENT', { available: 0, required: 12, in_transit: 0 });
+    expect(apiErrorToFields(e, 1)).toEqual({
+      fieldErrors: [], formErrorKey: 'crates.errors.onHandInsufficient',
+      formErrorParams: { available: 0, required: 12, in_transit: 0 },
+    });
   });
 });

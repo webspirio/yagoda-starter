@@ -312,7 +312,27 @@ describe('CostOfDayProduct carries the figures it was built from (§8.4 left hal
       intake_net_kg: '800.00',
       reweigh_net_kg: '790.00',
       shortfall: '1600.00',
+      shortfall_kg: '10.00',
     });
+  });
+
+  it('counts недостача in kilograms per grade, so a surplus grade never lowers it', async () => {
+    // Сорт 1 is 10 кг short, сорт 2 is 3 кг over: the product is 10 кг short,
+    // not 7 — the same clamp the ₴ figure applies, or the two columns disagree.
+    const res = await build(
+      [
+        { ...DAY[0], product_grade_id: 'g-rasp-1' },
+        { ...DAY[0], product_grade_id: 'g-rasp-2', reweigh_net_kg: '803.00' },
+      ],
+      '0.00',
+    ).forShift(owner, 's-1');
+
+    expect(res.products[0]).toMatchObject({ shortfall: '1600.00', shortfall_kg: '10.00' });
+  });
+
+  it('books no shortfall_kg for a partially weighed product', async () => {
+    const res = await svcPartial.forShift(owner, 's-1');
+    expect(res.products[0].shortfall_kg).toBe('0.00');
   });
 
   it('reports reweigh_net_kg as null — never 0.00 — for a product nothing weighed', async () => {
@@ -322,6 +342,7 @@ describe('CostOfDayProduct carries the figures it was built from (§8.4 left hal
     // zero that reads as «the berries vanished».
     expect(res.products.map((p) => p.reweigh_net_kg)).toEqual([null, null]);
     expect(res.products.map((p) => p.shortfall)).toEqual(['0.00', '0.00']);
+    expect(res.products.map((p) => p.shortfall_kg)).toEqual(['0.00', '0.00']);
   });
 });
 

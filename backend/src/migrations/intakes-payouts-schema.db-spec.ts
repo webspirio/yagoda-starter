@@ -216,13 +216,12 @@ describe('YagodaIntakesAndPayouts', () => {
       // the cash_counts slice needs a migration to use its own column.
       await ds.query(
         `UPDATE shifts SET closed_at = now(), closed_by_user_id = $2,
-                           status = 'awaiting_explanation', explanation = 'розбіжність 350 ₴'
+                           status = 'awaiting_explanation'
           WHERE id = $1`,
         [shift, userId],
       );
-      const [row] = await ds.query(`SELECT status, explanation FROM shifts WHERE id = $1`, [shift]);
+      const [row] = await ds.query(`SELECT status FROM shifts WHERE id = $1`, [shift]);
       expect(row.status).toBe('awaiting_explanation');
-      expect(row.explanation).toBe('розбіжність 350 ₴');
     });
 
     it('has NO void_* columns — a shift is reopened, not voided', async () => {
@@ -282,7 +281,7 @@ describe('YagodaIntakesAndPayouts', () => {
 
     it('cannot be settled unless the payout is voided', async () => {
       const id = await insertPayout(shift, `${short}-PO-settle-a`);
-      // §9.3 — «каса НЕ виросла на 8 000… інакше сторно стає способом красти».
+      // §9.3 — «каса НЕ виросла на 8 000… інакше анулювання стає способом красти».
       // Settling a LIVE payout would claim money came back that never left.
       await expect(
         ds.query(

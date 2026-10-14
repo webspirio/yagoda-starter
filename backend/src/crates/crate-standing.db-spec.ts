@@ -276,6 +276,7 @@ describe('CrateStandingService.forPoint (Postgres)', () => {
     collection_point_id: point,
     allotment: 500,
     received: 500,
+    in_transit: 0,
     deposit_units: 0,
     deposit_held: '0.00',
     ...over,
@@ -454,6 +455,14 @@ describe('CrateStandingService.forPoint (Postgres)', () => {
     expect(got).toMatchObject({ received: 20, on_hand: 20, total: 20, shortfall: 80 });
   });
 
+  it('reports crates still in transit, and they do not count as empties', async () => {
+    const p = await newPoint(100);
+    await transfer(p, acceptedTransfer(10));
+    await transfer(p, { status: 'sent', crates: 30 });
+    const got = await service.forPoint(owner(), { collection_point_id: p });
+    expect(got).toMatchObject({ in_transit: 30, on_hand: 10 });
+  });
+
   /** §6.9 — «—», not 0: without an allotment there is no shortfall. */
   it('reports a point without an allotment as null, not zero', async () => {
     await expect(service.forPoint(owner(), { collection_point_id: bare })).resolves.toEqual({
@@ -461,6 +470,7 @@ describe('CrateStandingService.forPoint (Postgres)', () => {
       allotment: null,
       received: 0,
       on_hand: 0,
+      in_transit: 0,
       in_field: 0,
       deposit_units: 0,
       deposit_held: '0.00',

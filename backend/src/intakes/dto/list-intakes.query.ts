@@ -30,7 +30,7 @@ export class ListIntakesQueryDto extends PaginationQueryDto {
 
   /**
    * DEFAULTS TO TRUE — the journal is the default view. §9.3: a voided document
-   * «лишається в журналі НАЗАВЖДИ з печаткою "СТОРНОВАНО"», and §11.5 calls the
+   * «лишається в журналі НАЗАВЖДИ з печаткою "АНУЛЬОВАНО"», and §11.5 calls the
    * screen «Журнал прийомки — усі квитанції поспіль». Hiding them by default
    * would make a voided receipt invisible to the person holding its paper.
    */

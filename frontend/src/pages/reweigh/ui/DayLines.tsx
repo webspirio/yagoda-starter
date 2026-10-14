@@ -117,7 +117,7 @@ export function DayLines({
               const voided = item.voided_at !== null;
               const authorName =
                 item.voided_by_user_id !== null ? (staff.data?.get(item.voided_by_user_id) ?? '') : '';
-              // The visible button text is the same «Сторнувати»/"Void" on
+              // The visible button text is the same «Анулювати»/"Void" on
               // every row — this table can carry every weighing recorded
               // NETWORK-WIDE for the day, so a screen reader landing on one
               // of N identical "Void" buttons (with an EMPTY action-column
@@ -129,7 +129,7 @@ export function DayLines({
                 point: pointName,
                 time: formatTime(item.created_at, locale),
               });
-              // The trigger and the confirm below it BOTH say «Сторнувати»
+              // The trigger and the confirm below it BOTH say «Анулювати»
               // visibly, and both are on screen at once once the reason row
               // opens. Giving them the same accessible name leaves a screen
               // reader with two identically-named buttons where one opens a

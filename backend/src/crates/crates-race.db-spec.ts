@@ -16,6 +16,7 @@ import { UsersService } from '../users/users.service';
 import { CredentialsService } from '../users/credentials.service';
 import { LOCAL_PROVIDER } from '../users/user-identity.entity';
 import { UserRole } from '../users/user-role.enum';
+import { stockPoint } from '../testing/crate-stock-fixture';
 
 /**
  * UNVERIFIED AT WRITE TIME — no Postgres was reachable in this environment;
@@ -120,6 +121,9 @@ describe('crates concurrency (HTTP)', () => {
       .set('Authorization', `Bearer ${operatorToken}`)
       .send({ counted_amount: '0.00' })
       .expect(201);
+    // Spec 2026-09-30: empties must exist before crates can go out. 1000 is far above
+    // anything these races issue, and the transfer carries no cash.
+    await stockPoint(app, ownerToken, operatorToken, pointId, 1000);
   }, 30_000);
 
   afterAll(async () => {

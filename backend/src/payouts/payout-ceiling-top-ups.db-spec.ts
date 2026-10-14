@@ -171,7 +171,7 @@ describe('payout ceiling with top-ups (Postgres)', () => {
   });
 
   it('voiding the parent receipt takes the ceiling back down', async () => {
-    const supplierId = await supplier('Сторно');
+    const supplierId = await supplier('Анулювання');
     const intakeId = await intake(supplierId, '100.00');
     await topUps.create(owner(), {
       intake_id: intakeId,

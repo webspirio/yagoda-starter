@@ -273,20 +273,21 @@ export const CHECKS = [
     tier: 'fast',
     cmd: 'npm run test:ci-scripts',
     needs: ['jq'],
-    // No `after`: neither suite reads any other row's output, and both fake their own
-    // `curl`/PATH fixtures from scratch on every run.
+    // No `after`: no suite reads any other row's output, and each fakes its own
+    // `curl`/`gh`/PATH fixtures from scratch on every run.
     proves:
-      'Both deploy shell scripts behave under a faked `curl`: ' +
-      'scripts/ci/coolify-deploy.sh and ghcr-cleanup.sh are driven through their success, ' +
-      'retry, timeout, HTML-instead-of-JSON and log-redaction paths with canned ' +
-      'responses, and every assertion passes. These scripts run only in CI, against a ' +
-      'live Coolify and GHCR, so this is the only place their logic is exercised at all.',
+      'Every shell suite the glob `scripts/ci/*.test.sh` matches passes — the same glob ' +
+      'the npm script loops over, so a new suite joins this row without an edit here. Each ' +
+      'drives its script against a faked `curl` or `gh` with canned responses, through ' +
+      'success, refusal, retry and malformed-response paths, and asserts what the script ' +
+      'sent, not only where. These scripts run only in CI against live services, so this ' +
+      'is the only place their logic is exercised.',
     blindSpot:
-      'A fake curl, not Coolify. It proves the scripts parse and branch correctly on ' +
-      'responses this suite invents; it proves nothing about what the real API returns, ' +
-      'whether the token is valid, or whether the deployment actually happened. It SKIPS ' +
-      'without jq rather than failing. Nothing here runs the workflow YAML that calls ' +
-      'these scripts.',
+      'Fakes, not Coolify, GHCR or GitHub. It proves the scripts parse and branch correctly ' +
+      'on responses the suites invent; it proves nothing about what the real APIs return, ' +
+      'whether a token carries the permission a call needs, or whether GitHub renders a ' +
+      'deployment record as «View deployment». It SKIPS without jq rather than failing. ' +
+      'Nothing here runs the workflow YAML that calls these scripts.',
   },
   {
     id: 'testfiles',
@@ -421,6 +422,61 @@ export const CHECKS = [
       'service name inside free text or a space-separated list is not read as a host. Both ' +
       'allowlists, keyed per service, are trusted, not verified: an entry whose value later ' +
       'diverges between env sets leaks unnoticed. Anchors are refused, not followed.',
+  },
+  {
+    id: 'plain-text',
+    tier: 'fast',
+    // No `after`, for the reason on `migrations`: syntax-only parse, so a type error neither
+    // hides nor fakes a finding here.
+    cmd: 'npm run i18n:plain-text',
+    proves:
+      'Every .ts and .tsx file under frontend/src, tests and locale data aside, is parsed, ' +
+      'and this command fails when one renders untranslated ' +
+      'text: JSX text, a letter-bearing literal as a JSX child, in a listed UI ' +
+      'attribute or passed to a toast call, or any literal containing Cyrillic. Every exception is dated and reasoned, must still match, and a file-wide one ' +
+      'fails once the file holds more or fewer candidates than it accepts.',
+    blindSpot:
+      'A Latin-only literal anywhere else is invisible: a column header in an object literal, ' +
+      'a string a helper returns, or another aria attribute. Text assembled at runtime, text ' +
+      'the backend sends, and a prop not on the fixed list go unseen. A toast callee is recognised only through an import from sonner ' +
+      'or the app\'s toast module. It proves text reaches the screen through a key, never ' +
+      'that the translation behind the key is right.',
+  },
+  {
+    id: 'locales',
+    tier: 'fast',
+    cmd: 'npm run i18n:locales',
+    proves:
+      'Every locales JSON file under frontend/src is compared with en.json, and this command ' +
+      'fails when a language in SUPPORTED_LANGUAGES has no file or a file is not listed there, ' +
+      'Intl knows no plural rules for a locale, a key is one-sided, a plural category is ' +
+      'missing, a value is empty, blank or non-string, placeholder names differ, or a literal ' +
+      'key passed to t(), returned by a validate rule, or given as a register or setError ' +
+      'message is absent from en.json.',
+    blindSpot:
+      'A key built from a template or a variable, or passed through a helper such as ' +
+      'amountRules, is never checked, so a typo there still reaches the screen raw. Unused keys are not reported. Nothing judges ' +
+      'the text itself: a Ukrainian value copied verbatim from English, a misused plural form, ' +
+      'or a placeholder in the wrong place all pass. Locale files outside frontend/src lie ' +
+      'outside its scope.',
+  },
+  {
+    id: 'error-codes',
+    tier: 'fast',
+    // No `after`, for the reason on `migrations`: syntax-only parse on both sides.
+    cmd: 'npm run i18n:error-codes',
+    proves:
+      'Every UPPER_SNAKE string literal in shipped backend source, tests, migrations and seed ' +
+      'aside, is named by a string literal or object key in shipped frontend source, and every ' +
+      'such name in the frontend is one the backend produces; this command fails on a gap ' +
+      'either way unless the name is excused individually, dated and reasoned, in its ' +
+      'baseline, and on an excuse that matches nothing.',
+    blindSpot:
+      'A reference is not a correct mapping: a code named only in a comparison, mapped to the ' +
+      'wrong sentence, or named in a map the screen that receives it never consults, passes. A ' +
+      'code assembled at runtime is invisible. Failures that carry no code, such as a ' +
+      'not-found or a validation rejection, are covered only by the status fallback in the ' +
+      'frontend, never by this row, and the wording of any message is not judged.',
   },
   {
     id: 'selfcheck',

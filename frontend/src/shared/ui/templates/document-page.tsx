@@ -1,5 +1,6 @@
 import * as React from 'react';
 import { Printer } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
 import { cn } from '@/shared/lib/cn';
 import { PageHeader } from '@/shared/ui/page-header';
@@ -48,12 +49,13 @@ export function DocumentPage({
   maxWidth,
   className,
 }: DocumentPageProps): React.JSX.Element {
+  const { t } = useTranslation();
   const headerActions = (
     <>
       {actions}
       <Button variant="outline" size="sm" onClick={onPrint ?? (() => window.print())}>
         <Printer />
-        Друк
+        {t('common.print')}
       </Button>
     </>
   );
