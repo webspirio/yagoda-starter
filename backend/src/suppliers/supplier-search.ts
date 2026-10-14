@@ -5,7 +5,7 @@ import { canonicalizePhone } from './phone';
 /** A `q` made only of digits and phone punctuation takes the phone lane.
  *  Unicode dashes are written as code points for the same reason as in
  *  `phone.ts` — a literal range is invisible in review. */
-const LOOKS_LIKE_PHONE = /^[+\d\s()\-‐-―]+$/;
+const LOOKS_LIKE_PHONE = /^[+\d\s()\-\u2010-\u2015]+$/;
 
 /**
  * THE supplier search box, shared by `GET /suppliers` and `GET /supplier-totals`

@@ -220,6 +220,22 @@ describe('ListSupplierTotalsQuery.list (Postgres)', () => {
     expect(walked).toEqual(all.data.map((r) => r.id));
   });
 
+  it('orders by name — last name, first name, id — and leaves the inactive one out', async () => {
+    const page = await service.list(owner, q({ sort: 'name' }));
+    // Бондар, (Гнатюк inactive), Коваль, Мельник, Шевчук, Ярема, Ярема
+    expect(names(page)).toEqual(['Марія', 'Іван', 'Петро', 'Андрій', 'Ольга', 'Ольга']);
+    expect(page.total).toBe(6);
+  });
+
+  it('breaks a same-name tie by id, so one-row pages neither repeat nor drop', async () => {
+    const walked: string[] = [];
+    for (let p = 1; p <= 2; p++) {
+      walked.push(...(await service.list(owner, q({ sort: 'name', q: 'Ярема', page: p, limit: 1 }))).data.map((r) => r.id));
+    }
+    expect(new Set(walked).size).toBe(2);
+    expect(walked[0] < walked[1]).toBe(true);
+  });
+
   it('keeps an operator to their own point', async () => {
     const page = await service.list(operatorAtA, q({ collection_point_id: pointB }));
     expect(names(page)).not.toContain('Богдан');
