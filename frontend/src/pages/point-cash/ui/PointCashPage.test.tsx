@@ -114,12 +114,12 @@ vi.mock('@/features/count-shift', async (importOriginal) => {
     }: {
       open: boolean;
       mode: 'open' | 'close';
-      onConfirm: (amount: string, broken: number | null) => Promise<unknown>;
+      onConfirm: (amount: string, deposits: string, broken: number | null) => Promise<unknown>;
     }) =>
       open ? (
         <div role="dialog">
           Count dialog — {mode}
-          <button onClick={() => onConfirm('1000.00', mode === 'close' ? 0 : null)}>
+          <button onClick={() => onConfirm('1000.00', '14400.00', mode === 'close' ? 0 : null)}>
             Confirm {mode}
           </button>
         </div>
@@ -1042,7 +1042,7 @@ describe('PointCashPage — R4: the open/close result view', () => {
     expect(await screen.findByRole('dialog')).toHaveTextContent('Count dialog — open');
     await user.click(screen.getByRole('button', { name: 'Confirm open' }));
 
-    expect(openShiftMock).toHaveBeenCalledWith({ counted_amount: '1000.00' });
+    expect(openShiftMock).toHaveBeenCalledWith({ counted_amount: '1000.00', counted_deposits: '14400.00' });
     expect(await screen.findByRole('heading', { name: 'Shift opened' })).toBeInTheDocument();
     expect(screen.getByText('2,500.00 ₴')).toBeInTheDocument();
     // Since 09.09 the opening is compared with the last close, so it carries
@@ -1102,6 +1102,7 @@ describe('PointCashPage — R4: the open/close result view', () => {
     expect(closeShiftMock).toHaveBeenCalledWith({
       id: 's5',
       counted_amount: '1000.00',
+      counted_deposits: '14400.00',
       broken_crates: 0,
     });
     expect(

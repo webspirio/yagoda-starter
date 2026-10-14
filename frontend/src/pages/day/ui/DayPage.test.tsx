@@ -224,7 +224,9 @@ function tile(label: string): HTMLElement {
 /** The close dialog's two fields. `getByRole('textbox')` is ambiguous there
  *  since #110 added §6.8's breakage beside the drawer count. */
 const drawerBox = (dialog: HTMLElement) =>
-  within(dialog).getByRole('textbox', { name: /drawer|amount/i });
+  within(dialog).getByRole('textbox', { name: /^cash/i });
+const depositsBox = (dialog: HTMLElement) =>
+  within(dialog).getByRole('textbox', { name: /^deposits/i });
 const breakageBox = (dialog: HTMLElement) =>
   within(dialog).getByRole('textbox', { name: /broken/i });
 
@@ -360,12 +362,15 @@ describe('DayPage — the operator on an open shift', () => {
     expect(closeMock).not.toHaveBeenCalled();
 
     await user.type(drawerBox(dialog), '980.40');
+
+    await user.type(depositsBox(dialog), '14400.00');
     await user.type(breakageBox(dialog), '3');
     await user.click(within(dialog).getByRole('button', { name: SUBMIT_COUNT }));
     await waitFor(() =>
       expect(closeMock).toHaveBeenCalledWith({
         id: 's1',
         counted_amount: '980.40',
+        counted_deposits: '14400.00',
         broken_crates: 3,
       }),
     );
@@ -394,6 +399,7 @@ describe('DayPage — the operator on an open shift', () => {
     await user.click(screen.getByRole('button', { name: 'Close shift' }));
     const dialog = await screen.findByRole('dialog');
     await user.type(drawerBox(dialog), '980.40');
+    await user.type(depositsBox(dialog), '14400.00');
     await user.type(breakageBox(dialog), '0');
     await user.click(within(dialog).getByRole('button', { name: SUBMIT_COUNT }));
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
@@ -428,12 +434,15 @@ describe('DayPage — the operator on an open shift', () => {
     }); // …and the page re-rendered under the still-open dialog
 
     await user.type(drawerBox(dialog), '980.40');
+
+    await user.type(depositsBox(dialog), '14400.00');
     await user.type(breakageBox(dialog), '0');
     await user.click(within(dialog).getByRole('button', { name: SUBMIT_COUNT }));
     await waitFor(() =>
       expect(closeMock).toHaveBeenCalledWith({
         id: 's1',
         counted_amount: '980.40',
+        counted_deposits: '14400.00',
         broken_crates: 0,
       }),
     );
@@ -550,10 +559,11 @@ describe('DayPage — the operator before the shift is open', () => {
 
     await user.click(screen.getByRole('button', { name: 'Open shift' }));
     const dialog = await screen.findByRole('dialog');
-    await user.type(within(dialog).getByRole('textbox'), '1500.00');
+    await user.type(within(dialog).getByRole('textbox', { name: /^cash/i }), '1500.00');
+    await user.type(within(dialog).getByRole('textbox', { name: /^deposits/i }), '14400.00');
     await user.click(within(dialog).getByRole('button', { name: SUBMIT_COUNT }));
     await waitFor(() =>
-      expect(openMock).toHaveBeenCalledWith({ counted_amount: '1500.00' }),
+      expect(openMock).toHaveBeenCalledWith({ counted_amount: '1500.00', counted_deposits: '14400.00' }),
     );
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
   });
@@ -1086,6 +1096,7 @@ describe('DayPage — an open shift left behind on another day (#114)', () => {
     await user.click(screen.getByRole('button', { name: 'Close shift' }));
     const dialog = await screen.findByRole('dialog');
     await user.type(drawerBox(dialog), '980.40');
+    await user.type(depositsBox(dialog), '14400.00');
     await user.type(breakageBox(dialog), '2');
     await user.click(within(dialog).getByRole('button', { name: SUBMIT_COUNT }));
 
@@ -1093,6 +1104,7 @@ describe('DayPage — an open shift left behind on another day (#114)', () => {
       expect(closeMock).toHaveBeenCalledWith({
         id: 's-stranded',
         counted_amount: '980.40',
+        counted_deposits: '14400.00',
         broken_crates: 2,
       }),
     );
@@ -1107,6 +1119,7 @@ describe('DayPage — an open shift left behind on another day (#114)', () => {
     await user.click(screen.getByRole('button', { name: 'Close shift' }));
     const dialog = await screen.findByRole('dialog');
     await user.type(drawerBox(dialog), '980.40');
+    await user.type(depositsBox(dialog), '14400.00');
     await user.type(breakageBox(dialog), '0');
     await user.click(within(dialog).getByRole('button', { name: SUBMIT_COUNT }));
 

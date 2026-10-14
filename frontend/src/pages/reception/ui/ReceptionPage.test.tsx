@@ -512,9 +512,10 @@ describe('ReceptionPage — before the shift is open', () => {
 
     await user.click(screen.getByRole('button', { name: 'Open shift' }));
     const dialog = await screen.findByRole('dialog');
-    await user.type(within(dialog).getByRole('textbox'), '1500.00');
+    await user.type(within(dialog).getByRole('textbox', { name: /^cash/i }), '1500.00');
+    await user.type(within(dialog).getByRole('textbox', { name: /^deposits/i }), '14400.00');
     await user.click(within(dialog).getByRole('button', { name: SUBMIT_COUNT }));
-    await waitFor(() => expect(openShiftMock).toHaveBeenCalledWith({ counted_amount: '1500.00' }));
+    await waitFor(() => expect(openShiftMock).toHaveBeenCalledWith({ counted_amount: '1500.00', counted_deposits: '14400.00' }));
   });
 
   it('shows the refusal in the shared dialog and keeps it open when opening fails', async () => {
@@ -524,7 +525,8 @@ describe('ReceptionPage — before the shift is open', () => {
 
     await user.click(screen.getByRole('button', { name: 'Open shift' }));
     const dialog = await screen.findByRole('dialog');
-    await user.type(within(dialog).getByRole('textbox'), '1500.00');
+    await user.type(within(dialog).getByRole('textbox', { name: /^cash/i }), '1500.00');
+    await user.type(within(dialog).getByRole('textbox', { name: /^deposits/i }), '14400.00');
     await user.click(within(dialog).getByRole('button', { name: SUBMIT_COUNT }));
 
     expect(await within(dialog).findByRole('alert')).toHaveTextContent(
@@ -1757,7 +1759,8 @@ describe('ReceptionPage — an open shift left behind on another day (#114)', ()
 
     await user.click(screen.getByRole('button', { name: 'Close shift' }));
     const dialog = await screen.findByRole('dialog');
-    await user.type(within(dialog).getByRole('textbox', { name: /drawer|amount/i }), '1500.00');
+    await user.type(within(dialog).getByRole('textbox', { name: /^cash/i }), '1500.00');
+    await user.type(within(dialog).getByRole('textbox', { name: /^deposits/i }), '14400.00');
     await user.type(within(dialog).getByRole('textbox', { name: /broken/i }), '0');
     await user.click(within(dialog).getByRole('button', { name: SUBMIT_COUNT }));
 
@@ -1765,6 +1768,7 @@ describe('ReceptionPage — an open shift left behind on another day (#114)', ()
       expect(closeShiftMock).toHaveBeenCalledWith({
         id: 's-stranded',
         counted_amount: '1500.00',
+        counted_deposits: '14400.00',
         broken_crates: 0,
       }),
     );
@@ -1776,7 +1780,8 @@ describe('ReceptionPage — an open shift left behind on another day (#114)', ()
 
     await user.click(screen.getByRole('button', { name: 'Close shift' }));
     const dialog = await screen.findByRole('dialog');
-    await user.type(within(dialog).getByRole('textbox', { name: /drawer|amount/i }), '980.40');
+    await user.type(within(dialog).getByRole('textbox', { name: /^cash/i }), '980.40');
+    await user.type(within(dialog).getByRole('textbox', { name: /^deposits/i }), '14400.00');
     await user.type(within(dialog).getByRole('textbox', { name: /broken/i }), '0');
     await user.click(within(dialog).getByRole('button', { name: SUBMIT_COUNT }));
 
@@ -1797,7 +1802,8 @@ describe('ReceptionPage — an open shift left behind on another day (#114)', ()
     await fillDraft(user);
     await user.click(screen.getByRole('button', { name: 'Close shift' }));
     const dialog = await screen.findByRole('dialog');
-    await user.type(within(dialog).getByRole('textbox', { name: /drawer|amount/i }), '1500.00');
+    await user.type(within(dialog).getByRole('textbox', { name: /^cash/i }), '1500.00');
+    await user.type(within(dialog).getByRole('textbox', { name: /^deposits/i }), '14400.00');
     await user.type(within(dialog).getByRole('textbox', { name: /broken/i }), '0');
     await user.click(within(dialog).getByRole('button', { name: SUBMIT_COUNT }));
 

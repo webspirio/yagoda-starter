@@ -19,6 +19,8 @@ import { useCrateDispatchQuery } from '../api/crateDispatch';
 
 interface CountFormValues {
   amount: string;
+  /** Завдатки за ящики — друга книга шухляди, рядком з тієї ж причини. */
+  deposits: string;
   /** Тримається РЯДКОМ, як і сума: порожнє поле мусить лишатись порожнім, а
    *  не ставати `0` через числовий інпут. `0` вписує людина. */
   broken: string;
@@ -28,7 +30,8 @@ interface CountFormValues {
  * ЧОМУ ТУТ НЕ ПОКАЗАНО «ОЧІКУВАНО». Спокуса поставити поруч `expected_amount`
  * велика і вона знищує сенс дії: підрахунок — це контроль, а людина, яка
  * бачить очікуване число, впише саме його. Очікуване й розбіжність з'являються
- * ПІСЛЯ запису — у тості й на «Касі точки».
+ * ПІСЛЯ запису — у тості й на «Касі точки». Те саме стосується очікуваних
+ * завдатків: їх теж не показуємо.
  */
 export function CountDrawerDialog({
   mode,
@@ -48,7 +51,7 @@ export function CountDrawerDialog({
    * лишиться відкритим. `brokenCrates` — `null` ЛИШЕ в режимі відкриття:
    * закриття завжди несе число, і `0` серед них (§6.8).
    */
-  onConfirm: (countedAmount: string, brokenCrates: number | null) => Promise<unknown>;
+  onConfirm: (countedAmount: string, countedDeposits: string, brokenCrates: number | null) => Promise<unknown>;
 }) {
   const { t } = useTranslation();
   const [formError, setFormError] = useState<BannerError | null>(null);
@@ -59,7 +62,7 @@ export function CountDrawerDialog({
     handleSubmit,
     control,
     formState: { errors, isSubmitting },
-  } = useForm<CountFormValues>({ defaultValues: { amount: '', broken: '' } });
+  } = useForm<CountFormValues>({ defaultValues: { amount: '', deposits: '', broken: '' } });
 
   // ЧИТАННЯ, А НЕ УМОВА. Якщо воно впаде або ще не приїхало, «з ягодою» показує
   // риску, а закриття лишається доступним: підпис під шухлядою не може залежати
@@ -80,6 +83,7 @@ export function CountDrawerDialog({
     try {
       await onConfirm(
         values.amount,
+        values.deposits,
         // Не `Number(...) || 0` і не falsy-перевірка: `0` це відповідь.
         closing ? Number.parseInt(values.broken.trim(), 10) : null,
       );
@@ -122,6 +126,21 @@ export function CountDrawerDialog({
                 className="font-mono"
                 {...register('amount', decimalRules())}
                 autoFocus
+              />
+            )}
+          </Field>
+
+          <Field
+            name="deposits"
+            label={t('day.count.deposits')}
+            required
+            error={errors.deposits?.message}
+          >
+            {(a11y) => (
+              <DecimalInput
+                {...a11y}
+                className="font-mono"
+                {...register('deposits', decimalRules())}
               />
             )}
           </Field>

@@ -139,7 +139,8 @@ describe('OpenShiftAlert — closing in place', () => {
 
     await user.click(await screen.findByRole('button', { name: 'Close shift' }));
     const dialog = await screen.findByRole('dialog');
-    await user.type(within(dialog).getByRole('textbox', { name: /drawer|amount/i }), '980.40');
+    await user.type(within(dialog).getByRole('textbox', { name: /^cash/i }), '980.40');
+    await user.type(within(dialog).getByRole('textbox', { name: /^deposits/i }), '14400.00');
     await user.type(within(dialog).getByRole('textbox', { name: /broken/i }), '3');
     await user.click(within(dialog).getByRole('button', { name: SUBMIT_COUNT }));
 
@@ -147,6 +148,7 @@ describe('OpenShiftAlert — closing in place', () => {
     expect(mock.history.post[0].url).toBe('/shifts/s-stale/close');
     expect(JSON.parse(mock.history.post[0].data as string)).toEqual({
       counted_amount: '980.40',
+      counted_deposits: '14400.00',
       broken_crates: 3,
     });
   });
@@ -158,7 +160,8 @@ describe('OpenShiftAlert — closing in place', () => {
 
     await user.click(await screen.findByRole('button', { name: 'Close shift' }));
     const dialog = await screen.findByRole('dialog');
-    await user.type(within(dialog).getByRole('textbox', { name: /drawer|amount/i }), '500');
+    await user.type(within(dialog).getByRole('textbox', { name: /^cash/i }), '500');
+    await user.type(within(dialog).getByRole('textbox', { name: /^deposits/i }), '14400.00');
     await user.type(within(dialog).getByRole('textbox', { name: /broken/i }), '0');
     await user.click(within(dialog).getByRole('button', { name: SUBMIT_COUNT }));
 
@@ -172,7 +175,8 @@ describe('OpenShiftAlert — closing in place', () => {
 
     await user.click(await screen.findByRole('button', { name: 'Close shift' }));
     const dialog = await screen.findByRole('dialog');
-    await user.type(within(dialog).getByRole('textbox', { name: /drawer|amount/i }), '500');
+    await user.type(within(dialog).getByRole('textbox', { name: /^cash/i }), '500');
+    await user.type(within(dialog).getByRole('textbox', { name: /^deposits/i }), '14400.00');
     await user.type(within(dialog).getByRole('textbox', { name: /broken/i }), '0');
     await user.click(within(dialog).getByRole('button', { name: SUBMIT_COUNT }));
 
@@ -188,7 +192,8 @@ describe('OpenShiftAlert — closing in place', () => {
 
     await user.click(await screen.findByRole('button', { name: 'Close shift' }));
     const dialog = await screen.findByRole('dialog');
-    await user.type(within(dialog).getByRole('textbox', { name: /drawer|amount/i }), '980.40');
+    await user.type(within(dialog).getByRole('textbox', { name: /^cash/i }), '980.40');
+    await user.type(within(dialog).getByRole('textbox', { name: /^deposits/i }), '14400.00');
     await user.type(within(dialog).getByRole('textbox', { name: /broken/i }), '0');
     await user.click(within(dialog).getByRole('button', { name: SUBMIT_COUNT }));
 

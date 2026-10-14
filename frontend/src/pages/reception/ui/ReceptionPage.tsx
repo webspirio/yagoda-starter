@@ -581,8 +581,8 @@ export function ReceptionPage() {
         shiftId={null}
         open={openDialogOpen}
         onClose={() => setOpenDialogOpen(false)}
-        onConfirm={async (counted_amount) => {
-          await openShift.mutateAsync({ counted_amount });
+        onConfirm={async (counted_amount, counted_deposits) => {
+          await openShift.mutateAsync({ counted_amount, counted_deposits });
           toast.success(t('reception.toast.opened'));
           setOpenDialogOpen(false);
         }}
