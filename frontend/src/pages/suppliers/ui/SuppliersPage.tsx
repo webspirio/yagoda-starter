@@ -4,23 +4,29 @@ import { useTranslation } from 'react-i18next';
 import { ListPage } from '@/shared/ui/templates/list-page';
 import type { Column } from '@/shared/ui/data-table';
 import { Button } from '@/shared/ui/button';
-import { Badge } from '@/shared/ui/badge';
 import { TextInput } from '@/shared/ui/text-input';
 import { EmptyState } from '@/shared/ui/empty-state';
 import { Spinner } from '@/shared/ui/spinner';
 import { useDebouncedValue } from '@/shared/lib/useDebouncedValue';
-import { usePointOptionsQuery } from '@/entities/collection-point';
-import { useSuppliersQuery } from '@/entities/supplier';
-import type { Supplier } from '@/entities/supplier';
+import { useUrlPatch, useUrlParam } from '@/shared/lib/url-state';
+import { formatKg, formatUah } from '@/shared/lib/money';
+import { useSupplierTotalsInfiniteQuery } from '@/entities/supplier';
+import type { Supplier, SupplierTotalsRow } from '@/entities/supplier';
 import { SupplierFormDialog } from '@/features/edit-supplier';
+import { nextSort, readSort, toUrl } from '../model/supplierSort';
 
 export function SuppliersPage() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [search, setSearch] = useState('');
   // Debounced so each keystroke does not fire its own request.
   const debouncedSearch = useDebouncedValue(search);
-  const { data, isPending, isError } = useSuppliersQuery(debouncedSearch);
-  const { data: points } = usePointOptionsQuery();
+  // In the URL so Back from a card returns to the same ranking (#230).
+  const [sortParam] = useUrlParam('sort');
+  const [orderParam] = useUrlParam('order');
+  const patchUrl = useUrlPatch();
+  const sort = readSort(sortParam, orderParam);
+  const { data, isPending, isError, hasNextPage, isFetchingNextPage, fetchNextPage } =
+    useSupplierTotalsInfiniteQuery({ search: debouncedSearch, sort: sort.key, order: sort.order });
 
   const [editing, setEditing] = useState<Supplier | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -38,16 +44,31 @@ export function SuppliersPage() {
     setDialogOpen(true);
   };
 
-  const rows = data?.data ?? [];
-  const pointName = new Map((points ?? []).map((p) => [p.id, p.name]));
+  const rows = data?.pages.flatMap((p) => p.data) ?? [];
+  const total = data?.pages[0]?.total ?? 0;
+  const locale = i18n.language;
 
-  const columns: Column<Supplier>[] = [
+  const columns: Column<SupplierTotalsRow>[] = [
     {
       id: 'name',
       header: t('suppliers.col.name'),
+      sortable: true,
       cell: (s) => <span className="font-medium">{`${s.first_name} ${s.last_name}`}</span>,
     },
-    { id: 'phone', header: t('suppliers.col.phone'), cell: (s) => s.phone ?? '—' },
+    {
+      id: 'weight',
+      header: t('suppliers.col.weight'),
+      sortable: true,
+      align: 'right',
+      className: 'tabular-nums',
+      cell: (s) => formatKg(s.kg_total, locale),
+    },
+    {
+      id: 'mainProduct',
+      header: t('suppliers.col.mainProduct'),
+      hideBelow: 'sm',
+      cell: (s) => s.main_product_name ?? '—',
+    },
     {
       id: 'kind',
       header: t('suppliers.col.kind'),
@@ -55,20 +76,12 @@ export function SuppliersPage() {
       cell: (s) => t(`suppliers.kindLabel.${s.kind}`),
     },
     {
-      id: 'point',
-      header: t('suppliers.col.point'),
-      hideBelow: 'sm',
-      cell: (s) => pointName.get(s.collection_point_id) ?? '—',
-    },
-    {
-      id: 'is_active',
-      header: t('suppliers.col.status'),
+      id: 'amount',
+      header: t('suppliers.col.accrued'),
+      sortable: true,
       align: 'right',
-      cell: (s) => (
-        <Badge variant={s.is_active ? 'default' : 'secondary'}>
-          {s.is_active ? t('suppliers.active') : t('suppliers.inactive')}
-        </Badge>
-      ),
+      className: 'tabular-nums',
+      cell: (s) => formatUah(s.accrued, locale),
     },
     {
       id: 'card',
@@ -90,9 +103,22 @@ export function SuppliersPage() {
     },
   ];
 
+  const footer =
+    rows.length > 0 ? (
+      <div className="flex items-center justify-between gap-3 text-sm text-muted-foreground">
+        <span>{t('suppliers.shownOf', { shown: rows.length, total })}</span>
+        {hasNextPage ? (
+          <Button variant="outline" onClick={() => fetchNextPage()} disabled={isFetchingNextPage}>
+            {isFetchingNextPage ? <Spinner /> : null}
+            {t('suppliers.showMore')}
+          </Button>
+        ) : null}
+      </div>
+    ) : null;
+
   return (
     <>
-      <ListPage<Supplier>
+      <ListPage<SupplierTotalsRow>
         eyebrow={t('suppliers.eyebrow')}
         title={t('suppliers.title')}
         description={t('suppliers.description')}
@@ -110,7 +136,10 @@ export function SuppliersPage() {
         columns={columns}
         rows={rows}
         rowKey={(s) => s.id}
-        onRowClick={openEdit}
+        onRowClick={(s: Supplier) => openEdit(s)}
+        sort={sort}
+        onSortChange={(key) => patchUrl(toUrl(nextSort(sort, key)))}
+        footer={footer}
         isEmpty={!isPending && !isError && rows.length === 0}
         empty={<EmptyState title={t('suppliers.empty.title')} hint={t('suppliers.empty.hint')} />}
       >

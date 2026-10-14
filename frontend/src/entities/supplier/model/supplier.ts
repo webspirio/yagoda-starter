@@ -26,6 +26,15 @@ export interface Supplier {
   created_at: string;
 }
 
+/** One row of `GET /supplier-totals` (#230): the supplier plus all-time totals — numeric strings, formatted, never summed. */
+export type SupplierTotalsRow = Supplier & {
+  kg_total: string;
+  accrued: string;
+  main_product_name: string | null;
+};
+
+export type SupplierTotalsSort = 'weight' | 'amount' | 'name';
+
 /** One row of `GET /supplier-balances` — the debts list of a point. */
 export interface SupplierBalanceRow {
   supplier_id: string;
