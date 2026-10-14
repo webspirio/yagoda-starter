@@ -25,8 +25,9 @@ import { lazy } from 'react';
  * screen — a trade taken at a desk, not in a field.
  *
  * THE GUARD MUST STAY OUTSIDE THE LAZY COMPONENT, and that ordering lives in
- * `router.tsx`: `<RequireRole><ReweighPage /></RequireRole>`, never the other
- * way round. `children` there is a React element — constructed, not rendered
+ * `router.tsx`: the owner group's `<RequireRole><Outlet /></RequireRole>`
+ * renders `<ReweighPage />` only once the check passes, never the other way
+ * round. A route's `element` is a React element — constructed, not rendered
  * — and `React.lazy` calls its factory only when the element is actually
  * rendered, so an operator is redirected before the request goes out. Invert
  * the two and code-splitting becomes authorisation-by-download: the chunk
@@ -37,7 +38,8 @@ import { lazy } from 'react';
  * page barrels; `React.lazy` wants a module whose `default` is the component.
  *
  * ADDING A ROUTE? If it is owner-only, re-export it from `./owner-pages`, add
- * a line here, and wrap it in `RequireAuth` + `RequireRole` in `router.tsx`.
+ * a line here, and add it as a child of the owner-only group in `router.tsx`
+ * (that group's pathless route carries `RequireAuth` + `RequireRole`).
  * The Suspense boundary it needs already exists — AppLayout's main column,
  * one for the whole app — so there is nothing else to wire. If it is a screen
  * an operator opens every shift, import it eagerly in `router.tsx` instead: a
