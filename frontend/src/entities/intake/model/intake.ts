@@ -97,8 +97,8 @@ export interface IntakeDetail extends Intake {
   items: IntakeItem[];
   payouts: IntakePayout[];
   received_by_name: string | null;
-  /** Name parts for the receipt header; `received_by_name` stays for the void dialog. */
-  received_by: { first_name: string; last_name: string } | null;
+  /** The receiver; the receipt header prints `number` (#145), `received_by_name` stays for the void dialog. */
+  received_by: { first_name: string; last_name: string; number: number } | null;
   /** `null` when no crates came back with this receipt. */
   crate_return: IntakeCrateReturn | null;
 }

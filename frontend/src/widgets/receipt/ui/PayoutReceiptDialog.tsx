@@ -92,7 +92,7 @@ export function PayoutReceiptDialog({
       </p>
     );
   } else if (payout && supplier && points && me) {
-    const pointName = points.find((p) => p.id === payout.collection_point_id)?.name ?? '—';
+    const pointNumber = points.find((p) => p.id === payout.collection_point_id)?.number ?? null;
     title = t('receipt.payoutTitle', { code: payout.code });
 
     content = (
@@ -101,7 +101,7 @@ export function PayoutReceiptDialog({
           doc={buildPayoutReceipt({
             payout,
             supplierName: supplierName(supplier),
-            pointName,
+            pointNumber,
             note: settingsQuery.data?.receipt_note ?? null,
             t,
             locale,

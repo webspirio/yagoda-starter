@@ -35,7 +35,8 @@ export type ReceiptSection =
  *  is the one place that turns it into paper. */
 export interface ReceiptDocument {
   voided: { reason: string } | null;
-  header: { pointName: string; staffName: string };
+  /** «Точка № 3», «Приймальник № 5» — resolved by the builder (#145: numbers, not names). */
+  header: { point: string; staff: string };
   /** № квитанції, Операція, Дата, Постачальник. */
   meta: ReceiptRow[];
   /** Groups; a dashed rule precedes each group. */
@@ -129,7 +130,7 @@ export function ReceiptView({ doc }: { doc: ReceiptDocument }) {
       <div className="text-center">
         <div className="text-sm font-semibold tracking-tight">{t('receipt.docTitle')}</div>
         <div className="text-[11px] text-neutral-500">
-          {doc.header.pointName} · {doc.header.staffName}
+          {doc.header.point} · {doc.header.staff}
         </div>
       </div>
 

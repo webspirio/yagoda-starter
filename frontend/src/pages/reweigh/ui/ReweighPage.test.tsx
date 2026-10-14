@@ -108,8 +108,8 @@ vi.mock('../api/useDayReweighs', () => ({
 }));
 
 const POINTS: PointOption[] = [
-  { id: 'p1', name: 'Шипинки', kind: 'reception', target_crates: null },
-  { id: 'p2', name: 'Гайове', kind: 'reception', target_crates: null },
+  { id: 'p1', name: 'Шипинки', number: 1, kind: 'reception', target_crates: null },
+  { id: 'p2', name: 'Гайове', number: 3, kind: 'reception', target_crates: null },
 ];
 
 // §4.8's склад — `useWorkingPoint()`'s own first-visit default for a money
@@ -118,6 +118,7 @@ const POINTS: PointOption[] = [
 const BASE_POINT: PointOption = {
   id: 'base1',
   name: 'Байківці (база)',
+  number: 6,
   kind: 'base',
   target_crates: null,
 };

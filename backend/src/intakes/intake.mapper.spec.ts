@@ -34,10 +34,10 @@ describe('intake mapper', () => {
   });
 
   it('carries the receiver name parts beside the joined name', () => {
-    const detail = (receiver: { first_name: string; last_name: string } | null) =>
+    const detail = (receiver: { first_name: string; last_name: string; number: number } | null) =>
       toIntakeDetailResponse(intake() as never, shift() as never, [], extras, [], receiver, null);
-    const res = detail({ first_name: 'Тарас', last_name: 'Бондар' });
-    expect(res.received_by).toEqual({ first_name: 'Тарас', last_name: 'Бондар' });
+    const res = detail({ first_name: 'Тарас', last_name: 'Бондар', number: 5 });
+    expect(res.received_by).toEqual({ first_name: 'Тарас', last_name: 'Бондар', number: 5 });
     expect(res.received_by_name).toBe('Тарас Бондар');
     expect(detail(null).received_by).toBeNull();
   });

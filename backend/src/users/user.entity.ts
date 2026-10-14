@@ -8,6 +8,7 @@ import {
   ManyToOne,
   OneToMany,
   PrimaryGeneratedColumn,
+  Unique,
   UpdateDateColumn,
 } from 'typeorm';
 import { UserIdentity } from './user-identity.entity';
@@ -40,6 +41,7 @@ import { CollectionPoint } from '../collection-points/collection-point.entity';
     OR ("role" = 'network_owner' AND "collection_point_id" IS NULL)`,
 )
 @Index('IDX_users_collection_point', ['collection_point_id'])
+@Unique('UQ_users_number', ['number'])
 export class User {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -49,6 +51,11 @@ export class User {
 
   @Column({ type: 'varchar' })
   last_name: string;
+
+  /** «Приймальник № 5» on the receipt header (#145). Assigned by the database in creation
+   *  order, never typed — `PointAndUserNumbers` migration. */
+  @Column({ type: 'int', generated: 'identity', generatedIdentity: 'BY DEFAULT' })
+  number: number;
 
   @Column({ type: 'varchar', nullable: true })
   avatar_url: string | null;

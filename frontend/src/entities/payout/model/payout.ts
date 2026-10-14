@@ -24,7 +24,7 @@ export interface Payout {
   /** The supplier's debt right after this payout, frozen at write time. */
   balance_after: string;
   /** The payer's name — set on `GET /payouts/:id` and `POST /payouts`, `null` on list/void/settle-return responses. */
-  paid_by: { first_name: string; last_name: string } | null;
+  paid_by: { first_name: string; last_name: string; number: number } | null;
 }
 
 /** Re-exported so existing `../model/payout` importers keep working — see `@/shared/api/pagination.ts`. */

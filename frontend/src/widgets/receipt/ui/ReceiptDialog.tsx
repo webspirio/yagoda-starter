@@ -151,7 +151,7 @@ export function ReceiptDialog({
       </p>
     );
   } else if (intake && supplier && balance && tareTypes && points && me) {
-    const pointName = points.find((p) => p.id === intake.collection_point_id)?.name ?? '—';
+    const pointNumber = points.find((p) => p.id === intake.collection_point_id)?.number ?? null;
 
     // §3 quotes «· 1 позиція» — the count rides on every receipt, not only
     // once there is more than one line; `titleLines_one` carries the singular
@@ -166,7 +166,7 @@ export function ReceiptDialog({
           doc={buildIntakeReceipt({
             intake,
             supplierName: supplierName(supplier),
-            pointName,
+            pointNumber,
             tareNameById: new Map(tareTypes.map((tt) => [tt.id, tt.name])),
             note: settingsQuery.data?.receipt_note ?? null,
             balance: balance.debt,

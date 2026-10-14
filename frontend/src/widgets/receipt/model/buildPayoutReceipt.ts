@@ -3,7 +3,6 @@ import type { Payout } from '@/entities/payout';
 import type { ReceiptDocument } from '@/shared/ui/receipt';
 import { formatUah } from '@/shared/lib/money';
 import { formatLongDate, formatTime } from '@/shared/lib/date';
-import { staffName } from '@/shared/lib/staff-name';
 
 /**
  * One standalone payout as a `ReceiptDocument`. `balance_after` is the debt
@@ -12,21 +11,25 @@ import { staffName } from '@/shared/lib/staff-name';
 export function buildPayoutReceipt({
   payout,
   supplierName,
-  pointName,
+  pointNumber,
   note,
   t,
   locale,
 }: {
   payout: Payout;
   supplierName: string;
-  pointName: string;
+  /** `null` when the point is not in the caller's list — the header prints «—». */
+  pointNumber: number | null;
   note: string | null;
   t: TFunction;
   locale: string;
 }): ReceiptDocument {
   return {
     voided: payout.voided_at ? { reason: payout.void_reason ?? '' } : null,
-    header: { pointName, staffName: staffName(payout.paid_by) },
+    header: {
+      point: pointNumber === null ? '—' : t('receipt.headerPoint', { number: pointNumber }),
+      staff: payout.paid_by ? t('receipt.headerStaff', { number: payout.paid_by.number }) : '—',
+    },
     meta: [
       { label: t('receipt.number'), value: payout.code },
       { label: t('receipt.operation'), value: t('receipt.operationPayoutDebt') },

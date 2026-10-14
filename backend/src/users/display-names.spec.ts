@@ -60,12 +60,12 @@ describe('loadNameParts', () => {
 
   beforeEach(() => find.mockReset());
 
-  it('maps an id to its first and last name, untouched, in ONE query', async () => {
-    find.mockResolvedValue([{ id: 'u-1', first_name: 'Оксана', last_name: '' }]);
+  it('maps an id to its name parts and number, untouched, in ONE query', async () => {
+    find.mockResolvedValue([{ id: 'u-1', first_name: 'Оксана', last_name: '', number: 4 }]);
 
     const parts = await loadNameParts(manager, ['u-1', 'u-1', 'gone']);
 
-    expect(parts.get('u-1')).toEqual({ first_name: 'Оксана', last_name: '' });
+    expect(parts.get('u-1')).toEqual({ first_name: 'Оксана', last_name: '', number: 4 });
     expect(parts.has('gone')).toBe(false);
     expect(find).toHaveBeenCalledTimes(1);
   });

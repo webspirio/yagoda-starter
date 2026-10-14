@@ -137,7 +137,7 @@ function buildIntake(overrides: Partial<IntakeDetail> = {}): IntakeDetail {
     open_amount: '0.00',
     payouts: [],
     received_by_name: 'Оксана Гнатюк',
-    received_by: { first_name: 'Оксана', last_name: 'Гнатюк' },
+    received_by: { first_name: 'Оксана', last_name: 'Гнатюк', number: 2 },
     crate_return: null,
     items: [
       {
@@ -217,7 +217,7 @@ function setUp({
     isError: false,
   });
   pointsMock.mockReturnValue({
-    data: [{ id: 'point-1', name: 'Шипинки' }],
+    data: [{ id: 'point-1', name: 'Шипинки', number: 1 }],
     isPending: false,
     isError: false,
   });
@@ -243,8 +243,8 @@ describe('ReceiptDialog', () => {
     expect(screen.getByText('Малина')).toBeInTheDocument();
     expect(screen.getByText('112.00 kg')).toBeInTheDocument();
     expect(screen.getAllByText('14,560.00 ₴').length).toBeGreaterThan(0);
-    // the receiver from the fixture, independent of who is logged in
-    expect(screen.getByText(/Гнатюк Оксана/)).toBeInTheDocument();
+    // the point and the receiver from the fixture, by number, independent of who is logged in
+    expect(screen.getByText('Point No. 1 · Operator No. 2')).toBeInTheDocument();
 
     await expectNoAxeViolations(container);
   });
@@ -330,8 +330,8 @@ describe('ReceiptDialog', () => {
     setUp({ me: OPERATOR_AUTHOR });
     render(<ReceiptDialog intakeId="intake-1" open onClose={vi.fn()} />);
 
-    expect(screen.getByText(/Гнатюк Оксана/)).toBeInTheDocument();
-    expect(screen.queryByText('Оксана Приймальник')).not.toBeInTheDocument();
+    expect(screen.getByText('Point No. 1 · Operator No. 2')).toBeInTheDocument();
+    expect(screen.queryByText(/Гнатюк/)).not.toBeInTheDocument();
   });
 
   it('falls back to a dash in the header when the receiver is unknown', () => {

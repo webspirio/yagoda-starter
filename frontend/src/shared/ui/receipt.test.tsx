@@ -17,7 +17,7 @@ const line = {
 function makeDoc(over: Partial<ReceiptDocument> = {}): ReceiptDocument {
   return {
     voided: null,
-    header: { pointName: 'Кониців', staffName: 'Бондар Тарас' },
+    header: { point: 'Точка № 3', staff: 'Приймальник № 5' },
     meta: [
       { label: '№ квитанції', value: 'Q-1' },
       { label: 'Операція', value: 'Прийомка ягоди' },
@@ -39,7 +39,7 @@ describe('ReceiptView', () => {
   it('prints the title and the point · staff header', () => {
     render(<ReceiptView doc={makeDoc()} />);
     expect(screen.getByText('КВИТАНЦІЯ')).toBeInTheDocument();
-    expect(screen.getByText('Кониців · Бондар Тарас')).toBeInTheDocument();
+    expect(screen.getByText('Точка № 3 · Приймальник № 5')).toBeInTheDocument();
   });
 
   it('lists the meta rows in order', () => {

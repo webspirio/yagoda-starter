@@ -130,7 +130,7 @@ export interface IntakeDetailResponse extends IntakeResponse {
   received_by_name: string | null;
   /** The same person as name PARTS — the printed receipt header writes «Прізвище Ім'я»,
    *  which `received_by_name` («Ім'я Прізвище») cannot be split back into. */
-  received_by: { first_name: string; last_name: string } | null;
+  received_by: { first_name: string; last_name: string; number: number } | null;
   /** `null` when no crates came back with this receipt. */
   crate_return: IntakeCrateReturnResponse | null;
 }
@@ -193,7 +193,7 @@ export function toIntakeDetailResponse(
   items: IntakeItem[],
   extras: IntakeRowExtras,
   payouts: Payout[],
-  receiver: Pick<User, 'first_name' | 'last_name'> | null,
+  receiver: Pick<User, 'first_name' | 'last_name' | 'number'> | null,
   crateReturn: IntakeCrateReturnRow | null,
 ): IntakeDetailResponse {
   return {
@@ -206,7 +206,7 @@ export function toIntakeDetailResponse(
       .map(toIntakePayoutResponse),
     received_by_name: receiver ? displayNameOf(receiver) : null,
     received_by: receiver
-      ? { first_name: receiver.first_name, last_name: receiver.last_name }
+      ? { first_name: receiver.first_name, last_name: receiver.last_name, number: receiver.number }
       : null,
     crate_return: crateReturn ? toIntakeCrateReturnResponse(crateReturn) : null,
   };

@@ -23,22 +23,26 @@ export async function loadDisplayNames(
   return new Map([...parts].map(([id, row]) => [id, displayNameOf(row)]));
 }
 
-/** The name parts a response carries separately (`paid_by: { first_name, last_name }`) — the
- *  same ONE-query seam as `loadDisplayNames`, which is built on it, for a caller that must not
- *  join the two into a string. An unknown id is absent from the map. */
+/** The name parts a response carries separately (`paid_by: { first_name, last_name, number }`) —
+ *  the same ONE-query seam as `loadDisplayNames`, which is built on it, for a caller that must
+ *  not join the two into a string. `number` is the receipt header's «Приймальник № 5» (#145).
+ *  An unknown id is absent from the map. */
 export async function loadNameParts(
   manager: EntityManager,
   ids: Iterable<string>,
-): Promise<Map<string, Pick<User, 'first_name' | 'last_name'>>> {
+): Promise<Map<string, Pick<User, 'first_name' | 'last_name' | 'number'>>> {
   const uniqueIds = [...new Set(ids)];
   if (uniqueIds.length === 0) return new Map();
 
   const rows = await manager.find(User, {
     where: { id: In(uniqueIds) },
-    select: { id: true, first_name: true, last_name: true },
+    select: { id: true, first_name: true, last_name: true, number: true },
   });
 
   return new Map(
-    rows.map((row) => [row.id, { first_name: row.first_name, last_name: row.last_name }]),
+    rows.map((row) => [
+      row.id,
+      { first_name: row.first_name, last_name: row.last_name, number: row.number },
+    ]),
   );
 }

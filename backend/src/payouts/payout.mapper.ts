@@ -20,7 +20,7 @@ export interface PayoutResponse {
   paid_by_user_id: string;
   /** The payer as name PARTS, for the printed receipt header («Прізвище Ім'я»). `null` on list
    *  rows — only `GET /payouts/:id` and `POST /payouts` load the user. */
-  paid_by: { first_name: string; last_name: string } | null;
+  paid_by: { first_name: string; last_name: string; number: number } | null;
   voided_at: string | null;
   voided_by_user_id: string | null;
   void_reason: string | null;
@@ -37,7 +37,7 @@ export interface PayoutResponse {
 export function toPayoutResponse(
   payout: Payout,
   shift: Shift,
-  paidBy: Pick<User, 'first_name' | 'last_name'> | null = null,
+  paidBy: Pick<User, 'first_name' | 'last_name' | 'number'> | null = null,
 ): PayoutResponse {
   return {
     id: payout.id,
@@ -51,7 +51,9 @@ export function toPayoutResponse(
     amount: payout.amount,
     balance_after: payout.balance_after,
     paid_by_user_id: payout.paid_by_user_id,
-    paid_by: paidBy ? { first_name: paidBy.first_name, last_name: paidBy.last_name } : null,
+    paid_by: paidBy
+      ? { first_name: paidBy.first_name, last_name: paidBy.last_name, number: paidBy.number }
+      : null,
     voided_at: payout.voided_at ? payout.voided_at.toISOString() : null,
     voided_by_user_id: payout.voided_by_user_id,
     void_reason: payout.void_reason,

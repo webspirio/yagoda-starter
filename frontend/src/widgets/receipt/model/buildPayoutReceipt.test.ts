@@ -29,7 +29,7 @@ function payout(over: Partial<Payout> = {}): Payout {
     shift_closed: false,
     created_at: '2026-09-08T08:20:00.000Z',
     balance_after: '9000.00',
-    paid_by: { first_name: 'Тарас', last_name: 'Бондар' },
+    paid_by: { first_name: 'Тарас', last_name: 'Бондар', number: 5 },
     ...over,
   };
 }
@@ -38,7 +38,7 @@ function build(p: Payout, note: string | null = null) {
   return buildPayoutReceipt({
     payout: p,
     supplierName: 'Ніна Ільчук',
-    pointName: 'Шипинки',
+    pointNumber: 3,
     note,
     t,
     locale: 'uk',
@@ -46,8 +46,11 @@ function build(p: Payout, note: string | null = null) {
 }
 
 describe('buildPayoutReceipt', () => {
-  it('puts the point and the payer in the header', () => {
-    expect(build(payout()).header).toEqual({ pointName: 'Шипинки', staffName: 'Бондар Тарас' });
+  it('puts the point number and the payer number in the header, not their names', () => {
+    expect(build(payout()).header).toEqual({
+      point: 'receipt.headerPoint{"number":3}',
+      staff: 'receipt.headerStaff{"number":5}',
+    });
   });
 
   it('lists meta in order: number, operation, date, supplier', () => {
@@ -104,6 +107,6 @@ describe('buildPayoutReceipt', () => {
   });
 
   it('prints a dash for a payout whose payer is unknown', () => {
-    expect(build(payout({ paid_by: null })).header.staffName).toBe('—');
+    expect(build(payout({ paid_by: null })).header.staff).toBe('—');
   });
 });

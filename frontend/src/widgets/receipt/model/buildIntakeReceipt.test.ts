@@ -50,7 +50,7 @@ function intake(over: Partial<IntakeDetail> = {}): IntakeDetail {
     open_amount: '0.00',
     payouts: [],
     received_by_name: 'Тарас Бондар',
-    received_by: { first_name: 'Тарас', last_name: 'Бондар' },
+    received_by: { first_name: 'Тарас', last_name: 'Бондар', number: 5 },
     crate_return: null,
     items: [item('item-1'), item('item-2')],
     ...over,
@@ -61,7 +61,7 @@ function build(i: IntakeDetail) {
   return buildIntakeReceipt({
     intake: i,
     supplierName: 'Галина Кушнірук',
-    pointName: 'Пункт 1',
+    pointNumber: 3,
     tareNameById: new Map([['tare-1', 'Ящик']]),
     note: null,
     balance: '9000.00',
@@ -71,12 +71,30 @@ function build(i: IntakeDetail) {
 }
 
 describe('buildIntakeReceipt', () => {
-  it('puts the point and the staff name in the header', () => {
-    expect(build(intake()).header).toEqual({ pointName: 'Пункт 1', staffName: 'Бондар Тарас' });
+  it('puts the point number and the receiver number in the header, not their names', () => {
+    expect(build(intake()).header).toEqual({
+      point: 'receipt.headerPoint{"number":3}',
+      staff: 'receipt.headerStaff{"number":5}',
+    });
   });
 
   it('prints a dash for staff when the receiver is unknown', () => {
-    expect(build(intake({ received_by: null })).header.staffName).toBe('—');
+    expect(build(intake({ received_by: null })).header.staff).toBe('—');
+  });
+
+  it('prints a dash for the point when it is not in the list', () => {
+    expect(
+      buildIntakeReceipt({
+        intake: intake(),
+        supplierName: 'X',
+        pointNumber: null,
+        tareNameById: new Map(),
+        note: null,
+        balance: '0.00',
+        t,
+        locale: 'en',
+      }).header.point,
+    ).toBe('—');
   });
 
   it('fills the meta rows: code, operation, date, supplier', () => {
@@ -165,7 +183,7 @@ describe('buildIntakeReceipt', () => {
   it('omits «Видано готівкою» when nothing was paid', () => {
     const totals = (sections => sections[sections.length - 1])(build(intake()).sections);
     const labels = totals.flatMap((s) => (s.kind === 'rows' ? s.rows.map((r) => r.label) : []));
-    expect(labels).toEqual(['receipt.accrued', 'receipt.balanceAtPoint']);
+    expect(labels).toEqual(['receipt.accrued', 'receipt.balance']);
   });
 
   it('totals: accrued, paid, live codes, voided annulments, live balance', () => {
@@ -185,7 +203,7 @@ describe('buildIntakeReceipt', () => {
       { kind: 'rows', rows: [{ label: 'receipt.paid', value: '10,000.00 ₴' }] },
       { kind: 'caption', text: 'PO-1, PO-2' },
       { kind: 'caption', text: 'receipt.payoutVoided{"code":"PO-3"}' },
-      { kind: 'rows', rows: [{ label: 'receipt.balanceAtPoint', value: '9,000.00 ₴' }] },
+      { kind: 'rows', rows: [{ label: 'receipt.balance', value: '9,000.00 ₴' }] },
     ]);
   });
 
@@ -193,7 +211,7 @@ describe('buildIntakeReceipt', () => {
     const doc = buildIntakeReceipt({
       intake: intake({ voided_at: '2026-09-08T10:00:00.000Z', void_reason: 'Помилка' }),
       supplierName: 'X',
-      pointName: 'P',
+      pointNumber: 1,
       tareNameById: new Map(),
       note: 'Дякуємо',
       balance: '0.00',

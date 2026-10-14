@@ -3,7 +3,6 @@ import type { IntakeDetail } from '@/entities/intake';
 import type { ReceiptDocument, ReceiptSection } from '@/shared/ui/receipt';
 import { add, cmp, formatKg, formatUah, isZero } from '@/shared/lib/money';
 import { formatLongDate, formatTime } from '@/shared/lib/date';
-import { staffName } from '@/shared/lib/staff-name';
 
 /**
  * One intake as a `ReceiptDocument` — every number and string resolved here,
@@ -13,7 +12,7 @@ import { staffName } from '@/shared/lib/staff-name';
 export function buildIntakeReceipt({
   intake,
   supplierName,
-  pointName,
+  pointNumber,
   tareNameById,
   note,
   balance,
@@ -22,7 +21,8 @@ export function buildIntakeReceipt({
 }: {
   intake: IntakeDetail;
   supplierName: string;
-  pointName: string;
+  /** `null` when the point is not in the caller's list — the header prints «—». */
+  pointNumber: number | null;
   tareNameById: Map<string, string>;
   note: string | null;
   balance: string;
@@ -91,13 +91,16 @@ export function buildIntakeReceipt({
   }
   totals.push({
     kind: 'rows',
-    rows: [{ label: t('receipt.balanceAtPoint'), value: formatUah(balance, locale) }],
+    rows: [{ label: t('receipt.balance'), value: formatUah(balance, locale) }],
   });
   sections.push(totals);
 
   return {
     voided: intake.voided_at ? { reason: intake.void_reason ?? '' } : null,
-    header: { pointName, staffName: staffName(intake.received_by) },
+    header: {
+      point: pointNumber === null ? '—' : t('receipt.headerPoint', { number: pointNumber }),
+      staff: intake.received_by ? t('receipt.headerStaff', { number: intake.received_by.number }) : '—',
+    },
     meta: [
       { label: t('receipt.number'), value: intake.code },
       { label: t('receipt.operation'), value: t('receipt.operationIntake') },

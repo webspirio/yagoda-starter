@@ -81,7 +81,7 @@ function buildPayout(over: Partial<Payout> = {}): Payout {
     shift_closed: false,
     created_at: '2026-09-08T08:20:00.000Z',
     balance_after: '9000.00',
-    paid_by: { first_name: 'Оксана', last_name: 'Гнатюк' },
+    paid_by: { first_name: 'Оксана', last_name: 'Гнатюк', number: 2 },
     ...over,
   };
 }
@@ -97,7 +97,7 @@ function setUp({
 } = {}) {
   payoutMock.mockReturnValue({ data: payout ?? undefined, isPending: payout === null, isError: false });
   supplierMock.mockReturnValue({ data: SUPPLIER, isPending: false, isError: false });
-  pointsMock.mockReturnValue({ data: [{ id: 'point-1', name: 'Шипинки' }], isPending: false, isError: false });
+  pointsMock.mockReturnValue({ data: [{ id: 'point-1', name: 'Шипинки', number: 1 }], isPending: false, isError: false });
   meMock.mockReturnValue({ data: me, isPending: false, isError: false });
   settlementMock.mockReturnValue({ data: { stub: true }, isPending: false, isError: false });
   settingsMock.mockReturnValue({
@@ -126,7 +126,7 @@ describe('PayoutReceiptDialog', () => {
     expect(screen.getByText('Debt payout')).toBeInTheDocument();
     expect(screen.getByText('Paid out in cash')).toBeInTheDocument();
     expect(screen.getByText('Balance after payout')).toBeInTheDocument();
-    expect(screen.getByText(/Гнатюк Оксана/)).toBeInTheDocument();
+    expect(screen.getByText('Point No. 1 · Operator No. 2')).toBeInTheDocument();
 
     await expectNoAxeViolations(container);
   });

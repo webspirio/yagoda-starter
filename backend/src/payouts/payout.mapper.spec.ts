@@ -34,10 +34,11 @@ describe('toPayoutResponse — balance_after', () => {
 
 describe('toPayoutResponse — paid_by', () => {
   it('carries the name parts of the user who paid', () => {
-    const user = { first_name: 'Тарас', last_name: 'Бондар' };
+    const user = { first_name: 'Тарас', last_name: 'Бондар', number: 5 };
     expect(toPayoutResponse(payout() as never, shift() as never, user).paid_by).toEqual({
       first_name: 'Тарас',
       last_name: 'Бондар',
+      number: 5,
     });
   });
 

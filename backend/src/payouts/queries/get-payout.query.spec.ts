@@ -19,11 +19,11 @@ describe('GetPayoutQuery', () => {
   };
 
   it('carries the name parts of the user in paid_by_user_id', async () => {
-    const { query, find } = build({ first_name: 'Марія', last_name: 'Коваль' });
+    const { query, find } = build({ first_name: 'Марія', last_name: 'Коваль', number: 3 });
 
     const res = await query.get(oksana, 'p-1');
 
-    expect(res.paid_by).toEqual({ first_name: 'Марія', last_name: 'Коваль' });
+    expect(res.paid_by).toEqual({ first_name: 'Марія', last_name: 'Коваль', number: 3 });
     expect(find).toHaveBeenCalledTimes(1);
     expect(find).toHaveBeenCalledWith(
       User,

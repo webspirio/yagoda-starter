@@ -96,23 +96,25 @@ export function makeIntakesMocks() {
         : sql.includes('FROM crate_returns')
           ? state.crateReturnRows
           : sql.includes('AS net_kg')
-          ? [
-              {
-                net_kg: '36.90',
-                lines_count: 2,
-                supplier_name: 'Іван Коваль',
-                paid_amount: '0.00',
-                open_amount: '1200.00',
-              },
-            ]
-          : // `nextDocumentCode` locks, then counts the documents already in
-            // this shift. Three of them, so the next receipt is 004.
-            [{ n: 3 }],
+            ? [
+                {
+                  net_kg: '36.90',
+                  lines_count: 2,
+                  supplier_name: 'Іван Коваль',
+                  paid_amount: '0.00',
+                  open_amount: '1200.00',
+                },
+              ]
+            : // `nextDocumentCode` locks, then counts the documents already in
+              // this shift. Three of them, so the next receipt is 004.
+              [{ n: 3 }],
     );
   // `receiver` reads `User` by id; branch on the entity CLASS's `.name` so
   // every other `findOne(Entity, …)` call keeps its own mock untouched.
   const findOneUserOrNull = (entity: { name?: string }) =>
-    Promise.resolve(entity?.name === 'User' ? { first_name: 'Оксана', last_name: 'Гнатюк' } : null);
+    Promise.resolve(
+      entity?.name === 'User' ? { first_name: 'Оксана', last_name: 'Гнатюк', number: 2 } : null,
+    );
   const manager = {
     getRepository: jest.fn().mockReturnValue(itemRepo),
     query: jest.fn().mockImplementation(queryExtrasOrCount),
