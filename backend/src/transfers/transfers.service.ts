@@ -487,7 +487,7 @@ export class TransfersService {
    *
    * NEWEST FIRST BY DISPATCH, with `id` as the tiebreaker. Postgres promises
    * no order among ties, so without it `skip`/`take` can serve one row twice
-   * and another never — the same reasoning as `SuppliersService.list`.
+   * and another never — the same reasoning as `ListSuppliersQuery.list`.
    */
   async list(
     actor: AuthenticatedUser,

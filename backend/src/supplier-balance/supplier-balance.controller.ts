@@ -3,7 +3,7 @@ import { Auth } from '../auth/decorators/auth.decorators';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { SupplierBalanceBreakdownQuery } from './queries/supplier-balance-breakdown.query';
 import { SupplierSettlementQuery } from './queries/supplier-settlement.query';
-import { SuppliersService } from '../suppliers/suppliers.service';
+import { FindSupplierQuery } from '../suppliers/queries/find-supplier.query';
 import { toSupplierBalanceResponse, toSupplierSettlementResponse } from './supplier-balance.mapper';
 import type { AuthenticatedUser } from '../auth/jwt.strategy';
 
@@ -14,14 +14,14 @@ import type { AuthenticatedUser } from '../auth/jwt.strategy';
  * than `GET /suppliers/:id`. Nest resolves handlers in registration order, so a
  * later route at the SAME depth would have to live in `SuppliersModule` instead.
  *
- * Visibility is `SuppliersService.findOne`'s — another point's supplier is a 404.
+ * Visibility is `FindSupplierQuery.findOne`'s — another point's supplier is a 404.
  */
 @Controller('suppliers')
 export class SupplierBalanceController {
   constructor(
     private readonly breakdown: SupplierBalanceBreakdownQuery,
     private readonly settlementQuery: SupplierSettlementQuery,
-    private readonly suppliers: SuppliersService,
+    private readonly suppliers: FindSupplierQuery,
   ) {}
 
   @Get(':id/balance')

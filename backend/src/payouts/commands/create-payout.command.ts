@@ -3,7 +3,7 @@ import { DataSource } from 'typeorm';
 import { CreatePayoutDto } from '../dto/create-payout.dto';
 import { PayoutResponse, toPayoutResponse } from '../payout.mapper';
 import { PayoutWriter } from '../services/payout-writer';
-import { SuppliersService } from '../../suppliers/suppliers.service';
+import { FindSupplierQuery } from '../../suppliers/queries/find-supplier.query';
 import { CollectionPointsService } from '../../collection-points/collection-points.service';
 import { AllocationsService } from '../../supplier-balance/services/allocations';
 import { isZero } from '../../common/money';
@@ -16,7 +16,7 @@ export class CreatePayoutCommand {
   constructor(
     private readonly dataSource: DataSource,
     private readonly points: CollectionPointsService,
-    private readonly suppliers: SuppliersService,
+    private readonly suppliers: FindSupplierQuery,
     private readonly allocations: AllocationsService,
     private readonly writer: PayoutWriter,
   ) {}

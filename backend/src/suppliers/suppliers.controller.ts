@@ -1,7 +1,10 @@
 import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post, Query } from '@nestjs/common';
 import { Auth } from '../auth/decorators/auth.decorators';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
-import { SuppliersService } from './suppliers.service';
+import { ListSuppliersQuery } from './queries/list-suppliers.query';
+import { FindSupplierQuery } from './queries/find-supplier.query';
+import { CreateSupplierCommand } from './commands/create-supplier.command';
+import { UpdateSupplierCommand } from './commands/update-supplier.command';
 import { CreateSupplierDto } from './dto/create-supplier.dto';
 import { UpdateSupplierDto } from './dto/update-supplier.dto';
 import { ListSuppliersQueryDto } from './dto/list-suppliers.query';
@@ -20,7 +23,7 @@ import type { AuthenticatedUser } from '../auth/jwt.strategy';
  * is a reporting marker with no effect on money.
  *
  * Every handler is `@Auth()` — both roles — and the point-level rule is
- * enforced in the SERVICE by `assertOwnsPoint`/`resolvePointFilter`, per this
+ * enforced in the commands and queries by `assertOwnsPoint`/`resolvePointFilter`, per this
  * codebase's convention that guards decide from the request alone and
  * `assert*` decides from a row.
  *
@@ -28,24 +31,29 @@ import type { AuthenticatedUser } from '../auth/jwt.strategy';
  */
 @Controller('suppliers')
 export class SuppliersController {
-  constructor(private readonly suppliers: SuppliersService) {}
+  constructor(
+    private readonly listSuppliers: ListSuppliersQuery,
+    private readonly findSupplier: FindSupplierQuery,
+    private readonly createSupplier: CreateSupplierCommand,
+    private readonly updateSupplier: UpdateSupplierCommand,
+  ) {}
 
   @Get()
   @Auth()
   list(@CurrentUser() actor: AuthenticatedUser, @Query() query: ListSuppliersQueryDto) {
-    return this.suppliers.list(actor, query);
+    return this.listSuppliers.list(actor, query);
   }
 
   @Get(':id')
   @Auth()
   findOne(@CurrentUser() actor: AuthenticatedUser, @Param('id', ParseUUIDPipe) id: string) {
-    return this.suppliers.findOne(actor, id);
+    return this.findSupplier.findOne(actor, id);
   }
 
   @Post()
   @Auth()
   create(@CurrentUser() actor: AuthenticatedUser, @Body() dto: CreateSupplierDto) {
-    return this.suppliers.create(actor, dto);
+    return this.createSupplier.create(actor, dto);
   }
 
   @Patch(':id')
@@ -55,6 +63,6 @@ export class SuppliersController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateSupplierDto,
   ) {
-    return this.suppliers.update(actor, id, dto);
+    return this.updateSupplier.update(actor, id, dto);
   }
 }

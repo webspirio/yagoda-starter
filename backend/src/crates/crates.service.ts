@@ -25,7 +25,7 @@ import { allocate, CrateAllocationRow } from './crate-allocation';
 import { CrateBalanceService, CrateTrancheView } from './crate-balance.service';
 import { nextIssuanceCode } from './crate-code';
 import { ShiftsService } from '../shifts/shifts.service';
-import { SuppliersService } from '../suppliers/suppliers.service';
+import { FindSupplierQuery } from '../suppliers/queries/find-supplier.query';
 import { CollectionPointsService } from '../collection-points/collection-points.service';
 import { TareTypesService } from '../tare-types/tare-types.service';
 import { AuditService } from '../audit/audit.service';
@@ -41,7 +41,7 @@ export class CratesService {
   constructor(
     private readonly dataSource: DataSource,
     private readonly shifts: ShiftsService,
-    private readonly suppliers: SuppliersService,
+    private readonly suppliers: FindSupplierQuery,
     private readonly points: CollectionPointsService,
     private readonly tareTypes: TareTypesService,
     private readonly audit: AuditService,
