@@ -300,4 +300,43 @@ describe('dev seed', () => {
     );
     expect(count).toBe(0);
   });
+  it('counts the deposits drawer wherever it counts the berry one, anchored on this shift\u2019s deposit movements (#178)', async () => {
+    const berry: { shift_id: string; kind: string }[] = await ds.query(
+      `SELECT shift_id, kind::text AS kind FROM cash_counts WHERE book = 'berry' AND kind <> 'midday'`,
+    );
+    expect(berry.length).toBeGreaterThan(0);
+    const crates: { shift_id: string; kind: string }[] = await ds.query(
+      `SELECT shift_id, kind::text AS kind FROM cash_counts WHERE book = 'crates'`,
+    );
+    const key = (r: { shift_id: string; kind: string }) => `${r.shift_id}/${r.kind}`;
+    const have = new Set(crates.map(key));
+    expect(berry.filter((b) => !have.has(key(b)))).toEqual([]);
+
+    // Seeded deposits always reconcile: counted = expected, and a closing
+    // expectation is the opening count plus that shift's live movements.
+    const bad = await ds.query(
+      `SELECT c.shift_id FROM cash_counts c
+         JOIN cash_counts o ON o.shift_id = c.shift_id AND o.book = 'crates' AND o.kind = 'opening'
+        WHERE c.book = 'crates' AND c.kind = 'closing'
+          AND (c.counted_amount <> c.expected_amount
+            OR c.expected_amount <> o.counted_amount
+               + COALESCE((SELECT sum(deposit_taken) FROM crate_issuances i
+                            WHERE i.shift_id = c.shift_id AND i.voided_at IS NULL), 0)
+               - COALESCE((SELECT sum(deposit_refund) FROM crate_returns r
+                            WHERE r.shift_id = c.shift_id AND r.voided_at IS NULL), 0))`,
+    );
+    expect(bad).toEqual([]);
+  });
+
+  it('a database seeded before #178 gains its crates counts on the next run, without doubling the berry ones', async () => {
+    const count = async (book: string): Promise<number> =>
+      (await ds.query(`SELECT count(*)::int AS n FROM cash_counts WHERE book = $1`, [book]))[0].n;
+    const berryBefore = await count('berry');
+    const cratesBefore = await count('crates');
+    await ds.query(`DELETE FROM cash_counts WHERE book = 'crates' AND explanation IS NULL AND operator_note IS NULL`);
+    const again = await seedDev(ds);
+    expect(again.cashCounts).toBeGreaterThan(0);
+    expect(await count('berry')).toBe(berryBefore);
+    expect(await count('crates')).toBe(cratesBefore);
+  });
 });
