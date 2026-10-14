@@ -1,6 +1,7 @@
 import { createBrowserRouter, type RouteObject } from 'react-router';
 import { AppLayout } from './layouts/AppLayout';
 import { RouteError } from './providers/RouteError';
+import { RouteFallback } from './layouts/RouteFallback';
 import { RequireAuth, RequireRole } from '@/features/auth';
 
 // EAGER — the screens an operator opens every shift, plus the two auth-shaped
@@ -20,7 +21,6 @@ import { ReceptionPage } from '@/pages/reception';
 import { CratesPage } from '@/pages/crates';
 import { PointCashPage } from '@/pages/point-cash';
 import { NotFoundPage } from '@/pages/not-found';
-import { UiKitPage } from '@/pages/ui-kit';
 
 // LAZY — the owner-only group, in ONE chunk fetched the first time an owner
 // opens any of these eight screens. They live in their own module because a
@@ -51,8 +51,19 @@ import {
  */
 export const routes: RouteObject[] = [
   // Standalone dev gallery of the shared/ui kit — no AppLayout shell, no auth,
-  // so it opens directly at /ui-kit for visual review.
-  { path: '/ui-kit', element: <UiKitPage />, errorElement: <RouteError /> },
+  // so it opens directly at /ui-kit for visual review. Route-level `lazy`
+  // (#243): no user opens it, yet as an eager import it shipped ~10 KiB in
+  // every operator's first load. It sits outside AppLayout's Suspense
+  // boundary, which is why this is the router's own `lazy` — a data router
+  // waits for the module before rendering — and not React.lazy.
+  {
+    path: '/ui-kit',
+    lazy: async () => ({ Component: (await import('@/pages/ui-kit')).UiKitPage }),
+    // A direct load of /ui-kit renders this while the chunk arrives; without
+    // one React Router warns on every such load.
+    HydrateFallback: RouteFallback,
+    errorElement: <RouteError />,
+  },
   {
     element: <AppLayout />,
     errorElement: <RouteError />,
