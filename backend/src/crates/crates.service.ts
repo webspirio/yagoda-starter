@@ -227,7 +227,10 @@ export class CratesService {
      * negative through any sequence of valid documents. It ships anyway: if
      * it ever fires, the data is wrong, and a named 409 beats a silently
      * negative drawer. The REAL §6.7 risk — deposit cash spent on berries out
-     * of the one physical drawer — is invisible to a book nobody counts.
+     * of the one physical drawer — is not caught here: this guard (like
+     * CrateStockGuard and pointDepositBook) gates on the lifetime LIABILITY,
+     * not on the counted drawer. A counted crates drawer (#178) surfaces it
+     * as a discrepancy on the next count instead.
      */
     const book = await this.balance.pointDepositBook(pointId, m);
     if (lt(book, result.deposit_refund)) {
@@ -380,8 +383,9 @@ export class CratesService {
    *
    * A CLOSED SHIFT IS STILL THE OWNER'S ALONE («квитанція минулого дня → тільки
    * керівник»), and that bound is load-bearing: spec §7 lets a void drop a
-   * taken deposit straight out of the crates book with no counted figure
-   * anywhere to notice. Today's mistake is the operator's to fix; last week's
+   * taken deposit straight out of the crates book, and the only thing to
+   * notice is the crates drawer's discrepancy on the NEXT count (#178) — a
+   * closed day's count is already filed by then. Today's mistake is the operator's to fix; last week's
    * is not.
    */
   private assertMayVoid(

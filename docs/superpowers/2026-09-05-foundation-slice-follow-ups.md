@@ -959,12 +959,12 @@ Spec: `docs/superpowers/specs/2026-09-15-yagoda-crates-slice.md`, §9 «out of s
   Display rules come with it: a negative residual is shown red and does NOT block («система
   показує факт, а не спиняє день заднім числом»), and a point with no `target_crates` shows «—»,
   never `0`.
-- **A counted crates drawer, together with the settlement trio for voided crate money.** One
-  physical drawer cannot become two counted numbers without either asking the operator to
-  distinguish identical banknotes or deriving one book from the other (which makes it
-  unfalsifiable) — `cash-book.enum.ts`'s `CashBook.Crates` exists but no row is ever written with
-  it. The trigger to build both together is the day someone actually needs to count that drawer
-  (spec §4.3, §11.1).
+- **The settlement trio for voided crate money.** The counted crates drawer half of this
+  deferral is DONE (#178, spec `2026-10-14-yagoda-crates-cash-count-design.md`): shift open/close
+  now write one `cash_counts` row per book. The two were separated on purpose (spec D4): counting
+  the drawer needs no «expected return» figure, so the trio (settle a voided crate deposit the
+  way `settle-return` does for payouts) stays open on its own. Until then a void that drops a
+  taken deposit surfaces only as a crates discrepancy on the next count (spec §4.3, §11.1).
 - **Ticket #57's reception-screen pairing (the client half).** The backend ships `POST
   /crate-returns/preview` as the primitive; composing a return with an intake on one screen is
   client work, not a backend seam — no `intake_id`, no combined endpoint (spec §4, decision 4).
