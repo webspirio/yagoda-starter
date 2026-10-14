@@ -18,7 +18,6 @@ import {
   supplierName,
 } from '@/entities/supplier';
 import { useTareTypeOptionsQuery } from '@/entities/tare-type';
-import { usePointOptionsQuery } from '@/entities/collection-point';
 import { useMeQuery } from '@/entities/user';
 import { useNetworkSettingsQuery } from '@/entities/network-settings';
 import { VoidDocumentDialog, reopenedCodes } from '@/features/void-document';
@@ -77,9 +76,6 @@ export function ReceiptDialog({
   const tareTypesQuery = useTareTypeOptionsQuery();
   const tareTypes = tareTypesQuery.data;
 
-  const pointsQuery = usePointOptionsQuery();
-  const points = pointsQuery.data;
-
   const meQuery = useMeQuery();
   const me = meQuery.data;
 
@@ -109,7 +105,6 @@ export function ReceiptDialog({
     supplierQuery.isError ||
     balanceQuery.isError ||
     tareTypesQuery.isError ||
-    pointsQuery.isError ||
     meQuery.isError;
 
   // VoidDocumentDialog keeps its form state for its lifetime (react-hook-form's
@@ -135,9 +130,7 @@ export function ReceiptDialog({
     return null;
   }
 
-  let content: ReactNode = (
-    <p className="text-sm text-muted-foreground">{t('common.loading')}</p>
-  );
+  let content: ReactNode = <p className="text-sm text-muted-foreground">{t('common.loading')}</p>;
   // Extra actions beyond the always-present «Закрити» — only meaningful once
   // the receipt actually resolved.
   let actions: ReactNode = null;
@@ -150,9 +143,7 @@ export function ReceiptDialog({
         {t('common.somethingWentWrong')}
       </p>
     );
-  } else if (intake && supplier && balance && tareTypes && points && me) {
-    const pointNumber = points.find((p) => p.id === intake.collection_point_id)?.number ?? null;
-
+  } else if (intake && supplier && balance && tareTypes && me) {
     // §3 quotes «· 1 позиція» — the count rides on every receipt, not only
     // once there is more than one line; `titleLines_one` carries the singular
     // form (M4).
@@ -166,7 +157,6 @@ export function ReceiptDialog({
           doc={buildIntakeReceipt({
             intake,
             supplierName: supplierName(supplier),
-            pointNumber,
             tareNameById: new Map(tareTypes.map((tt) => [tt.id, tt.name])),
             note: settingsQuery.data?.receipt_note ?? null,
             balance: balance.debt,

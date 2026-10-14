@@ -25,7 +25,7 @@ describe('usePayoutQuery', () => {
   });
 
   it('fetches GET /payouts/:id', async () => {
-    const payout = { id: 'p1', balance_after: '-100.00', paid_by: { first_name: 'Тарас', last_name: 'Бондар' } };
+    const payout = { id: 'p1', balance_after: '-100.00', paid_by_number: 5, point_number: 3 };
     mock.onGet('/payouts/p1').reply(200, payout);
     const { result } = renderHook(() => usePayoutQuery('p1'), { wrapper });
     await waitFor(() => expect(result.current.data).toEqual(payout));

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { TFunction } from 'i18next';
-import type { Payout } from '@/entities/payout';
+import type { PayoutDetail } from '@/entities/payout';
 import { formatUah } from '@/shared/lib/money';
 import { formatLongDate, formatTime } from '@/shared/lib/date';
 import { buildPayoutReceipt } from './buildPayoutReceipt';
@@ -8,7 +8,7 @@ import { buildPayoutReceipt } from './buildPayoutReceipt';
 const t = ((key: string, opts?: Record<string, unknown>) =>
   opts ? `${key}${JSON.stringify(opts)}` : key) as unknown as TFunction;
 
-function payout(over: Partial<Payout> = {}): Payout {
+function payout(over: Partial<PayoutDetail> = {}): PayoutDetail {
   return {
     id: 'payout-1',
     code: 'SHP-PO-20260908-00031',
@@ -29,16 +29,16 @@ function payout(over: Partial<Payout> = {}): Payout {
     shift_closed: false,
     created_at: '2026-09-08T08:20:00.000Z',
     balance_after: '9000.00',
-    paid_by: { first_name: 'Тарас', last_name: 'Бондар', number: 5 },
+    paid_by_number: 5,
+    point_number: 3,
     ...over,
   };
 }
 
-function build(p: Payout, note: string | null = null) {
+function build(p: PayoutDetail, note: string | null = null) {
   return buildPayoutReceipt({
     payout: p,
     supplierName: 'Ніна Ільчук',
-    pointNumber: 3,
     note,
     t,
     locale: 'uk',
@@ -70,7 +70,9 @@ describe('buildPayoutReceipt', () => {
     // 00:05 local on the 8th, but the shift (business) day is the 7th.
     const created_at = new Date(2026, 8, 8, 0, 5).toISOString();
     const { meta } = build(payout({ business_date: '2026-09-07', created_at }));
-    expect(meta[2].value).toBe(`${formatLongDate('2026-09-07', 'uk')} · ${formatTime(created_at, 'uk')}`);
+    expect(meta[2].value).toBe(
+      `${formatLongDate('2026-09-07', 'uk')} · ${formatTime(created_at, 'uk')}`,
+    );
     expect(meta[2].value).not.toContain(formatLongDate('2026-09-08', 'uk'));
   });
 
@@ -107,6 +109,6 @@ describe('buildPayoutReceipt', () => {
   });
 
   it('prints a dash for a payout whose payer is unknown', () => {
-    expect(build(payout({ paid_by: null })).header.staff).toBe('—');
+    expect(build(payout({ paid_by_number: null })).header.staff).toBe('—');
   });
 });

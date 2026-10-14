@@ -9,7 +9,10 @@ import { buildIntakeReceipt } from './buildIntakeReceipt';
 const t = ((key: string, opts?: Record<string, unknown>) =>
   opts ? `${key}${JSON.stringify(opts)}` : key) as unknown as TFunction;
 
-function item(id: string, over: Partial<IntakeDetail['items'][number]> = {}): IntakeDetail['items'][number] {
+function item(
+  id: string,
+  over: Partial<IntakeDetail['items'][number]> = {},
+): IntakeDetail['items'][number] {
   return {
     id,
     item_order: 1,
@@ -50,7 +53,8 @@ function intake(over: Partial<IntakeDetail> = {}): IntakeDetail {
     open_amount: '0.00',
     payouts: [],
     received_by_name: 'Тарас Бондар',
-    received_by: { first_name: 'Тарас', last_name: 'Бондар', number: 5 },
+    received_by_number: 5,
+    point_number: 3,
     crate_return: null,
     items: [item('item-1'), item('item-2')],
     ...over,
@@ -61,7 +65,6 @@ function build(i: IntakeDetail) {
   return buildIntakeReceipt({
     intake: i,
     supplierName: 'Галина Кушнірук',
-    pointNumber: 3,
     tareNameById: new Map([['tare-1', 'Ящик']]),
     note: null,
     balance: '9000.00',
@@ -79,22 +82,7 @@ describe('buildIntakeReceipt', () => {
   });
 
   it('prints a dash for staff when the receiver is unknown', () => {
-    expect(build(intake({ received_by: null })).header.staff).toBe('—');
-  });
-
-  it('prints a dash for the point when it is not in the list', () => {
-    expect(
-      buildIntakeReceipt({
-        intake: intake(),
-        supplierName: 'X',
-        pointNumber: null,
-        tareNameById: new Map(),
-        note: null,
-        balance: '0.00',
-        t,
-        locale: 'en',
-      }).header.point,
-    ).toBe('—');
+    expect(build(intake({ received_by_number: null })).header.staff).toBe('—');
   });
 
   it('fills the meta rows: code, operation, date, supplier', () => {
@@ -114,7 +102,9 @@ describe('buildIntakeReceipt', () => {
     // 00:05 local on the 8th, but the shift (business) day is the 7th.
     const created_at = new Date(2026, 8, 8, 0, 5).toISOString();
     const { meta } = build(intake({ business_date: '2026-09-07', created_at }));
-    expect(meta[2].value).toBe(`${formatLongDate('2026-09-07', 'en')} · ${formatTime(created_at, 'en')}`);
+    expect(meta[2].value).toBe(
+      `${formatLongDate('2026-09-07', 'en')} · ${formatTime(created_at, 'en')}`,
+    );
     expect(meta[2].value).not.toContain(formatLongDate('2026-09-08', 'en'));
   });
 
@@ -124,7 +114,13 @@ describe('buildIntakeReceipt', () => {
     expect(sections[0]).toHaveLength(1);
     expect(sections[0][0]).toMatchObject({
       kind: 'berryLine',
-      line: { label: 'Малина', net: '112.00 kg', price: '130.00 ₴', pallet: null, tareLabel: '12 × Ящик' },
+      line: {
+        label: 'Малина',
+        net: '112.00 kg',
+        price: '130.00 ₴',
+        pallet: null,
+        tareLabel: '12 × Ящик',
+      },
     });
     expect(sections[1][0].kind).toBe('berryLine');
   });
@@ -136,7 +132,11 @@ describe('buildIntakeReceipt', () => {
 
   it('adds no crate group without a crate return', () => {
     const { sections } = build(intake());
-    expect(sections.flat().some((s) => s.kind === 'rows' && s.rows.some((r) => r.label.includes('rateReturn')))).toBe(false);
+    expect(
+      sections
+        .flat()
+        .some((s) => s.kind === 'rows' && s.rows.some((r) => r.label.includes('rateReturn'))),
+    ).toBe(false);
   });
 
   it('prints the voided crate return as its annulment caption', () => {
@@ -158,7 +158,11 @@ describe('buildIntakeReceipt', () => {
   it('prints a live crate return as a normal, unmuted row', () => {
     const { sections } = build(
       intake({
-        crate_return: { units: 3, deposit_refund: '30.00', voided_at: null } as IntakeDetail['crate_return'],
+        crate_return: {
+          units: 3,
+          deposit_refund: '30.00',
+          voided_at: null,
+        } as IntakeDetail['crate_return'],
       }),
     );
     expect(sections[2]).toHaveLength(1);
@@ -171,7 +175,11 @@ describe('buildIntakeReceipt', () => {
   it('prints a no-money crate return as a normal, unmuted row', () => {
     const { sections } = build(
       intake({
-        crate_return: { units: 3, deposit_refund: '0.00', voided_at: null } as IntakeDetail['crate_return'],
+        crate_return: {
+          units: 3,
+          deposit_refund: '0.00',
+          voided_at: null,
+        } as IntakeDetail['crate_return'],
       }),
     );
     const row = (sections[2][0] as { rows: { label: string; muted?: boolean }[] }).rows[0];
@@ -181,7 +189,7 @@ describe('buildIntakeReceipt', () => {
   });
 
   it('omits «Видано готівкою» when nothing was paid', () => {
-    const totals = (sections => sections[sections.length - 1])(build(intake()).sections);
+    const totals = ((sections) => sections[sections.length - 1])(build(intake()).sections);
     const labels = totals.flatMap((s) => (s.kind === 'rows' ? s.rows.map((r) => r.label) : []));
     expect(labels).toEqual(['receipt.accrued', 'receipt.balance']);
   });
@@ -193,7 +201,13 @@ describe('buildIntakeReceipt', () => {
         payouts: [
           { id: 'p1', code: 'PO-1', amount: '6000.00', created_at: '', voided_at: null },
           { id: 'p2', code: 'PO-2', amount: '4000.00', created_at: '', voided_at: null },
-          { id: 'p3', code: 'PO-3', amount: '1.00', created_at: '', voided_at: '2026-09-08T10:00:00.000Z' },
+          {
+            id: 'p3',
+            code: 'PO-3',
+            amount: '1.00',
+            created_at: '',
+            voided_at: '2026-09-08T10:00:00.000Z',
+          },
         ],
       }),
     ).sections;
@@ -211,7 +225,6 @@ describe('buildIntakeReceipt', () => {
     const doc = buildIntakeReceipt({
       intake: intake({ voided_at: '2026-09-08T10:00:00.000Z', void_reason: 'Помилка' }),
       supplierName: 'X',
-      pointNumber: 1,
       tareNameById: new Map(),
       note: 'Дякуємо',
       balance: '0.00',

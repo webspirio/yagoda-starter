@@ -131,6 +131,8 @@ export function makeIntakesMocks() {
     getRepository: jest.fn().mockReturnValue(itemRepo),
     query: jest.fn().mockImplementation(queryExtrasOrCount),
     findOne: jest.fn().mockImplementation(findOneUserOrNull),
+    // `pointNumber` — the receipt header's «Точка № 7», read with the document.
+    findOneOrFail: jest.fn().mockResolvedValue({ id: POINT_A, number: 7 }),
     find: jest.fn().mockResolvedValue([]),
   };
   const dataSource = {
@@ -162,7 +164,9 @@ export function makeIntakesMocks() {
   const tare = {
     findManyRaw: jest.fn().mockResolvedValue([{ id: CRATE, weight_kg: '1.20', is_crate: true }]),
   };
-  const points = { findOneRaw: jest.fn().mockResolvedValue({ id: POINT_A, code: 'KPG' }) };
+  const points = {
+    findOneRaw: jest.fn().mockResolvedValue({ id: POINT_A, code: 'KPG', number: 7 }),
+  };
   const audit = { record: jest.fn().mockResolvedValue(undefined) };
   const payouts = {
     write: jest.fn().mockImplementation((_m, input: { amount: string; intakeId: string }) =>

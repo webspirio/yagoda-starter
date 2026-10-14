@@ -124,6 +124,7 @@ export class CreateIntakeCommand {
         paid,
         await this.detail.receiver(actor.sub, m),
         await this.detail.crateReturn(intake.id, m),
+        point.number,
       );
     });
   }

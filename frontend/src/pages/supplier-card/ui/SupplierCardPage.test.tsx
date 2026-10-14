@@ -179,7 +179,6 @@ const payout = (
   return_note: null,
   returned_on_void: false,
   balance_after: '0.00',
-  paid_by: null,
   ...over,
 });
 

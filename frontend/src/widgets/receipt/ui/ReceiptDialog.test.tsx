@@ -12,7 +12,6 @@ const {
   settlementMock,
   gradesMock,
   tareTypesMock,
-  pointsMock,
   meMock,
   voidDialogMock,
   settingsMock,
@@ -23,7 +22,6 @@ const {
   settlementMock: vi.fn(),
   gradesMock: vi.fn(),
   tareTypesMock: vi.fn(),
-  pointsMock: vi.fn(),
   meMock: vi.fn(),
   voidDialogMock: vi.fn(),
   settingsMock: vi.fn(),
@@ -53,8 +51,11 @@ vi.mock('@/entities/tare-type', () => ({
   useTareTypeOptionsQuery: () => tareTypesMock(),
 }));
 
+// INERT ON PURPOSE (#145 review): the dialog reads «Точка № N» from the document
+// (`point_number`), never from the point list. The list answers an ERROR here, so
+// re-wiring the dialog to it turns every receipt test below into «Something went wrong».
 vi.mock('@/entities/collection-point', () => ({
-  usePointOptionsQuery: () => pointsMock(),
+  usePointOptionsQuery: () => ({ data: undefined, isPending: false, isError: true }),
 }));
 
 vi.mock('@/entities/user', () => ({
@@ -137,7 +138,8 @@ function buildIntake(overrides: Partial<IntakeDetail> = {}): IntakeDetail {
     open_amount: '0.00',
     payouts: [],
     received_by_name: 'Оксана Гнатюк',
-    received_by: { first_name: 'Оксана', last_name: 'Гнатюк', number: 2 },
+    received_by_number: 2,
+    point_number: 1,
     crate_return: null,
     items: [
       {
@@ -216,11 +218,6 @@ function setUp({
     isPending: false,
     isError: false,
   });
-  pointsMock.mockReturnValue({
-    data: [{ id: 'point-1', name: 'Шипинки', number: 1 }],
-    isPending: false,
-    isError: false,
-  });
   meMock.mockReturnValue({ data: me, isPending: false, isError: false });
   settlementMock.mockReturnValue({ data: undefined, isPending: false, isError: false });
   settingsMock.mockReturnValue(settingsState({ data: { receipt_note: note, updated_at: AT } }));
@@ -234,9 +231,7 @@ beforeEach(() => {
 describe('ReceiptDialog', () => {
   it('renders the composed receipt and is axe-clean', async () => {
     setUp();
-    const { container } = render(
-      <ReceiptDialog intakeId="intake-1" open onClose={vi.fn()} />,
-    );
+    const { container } = render(<ReceiptDialog intakeId="intake-1" open onClose={vi.fn()} />);
 
     expect(screen.getByText('SHP-IN-20260908-00412')).toBeInTheDocument();
     expect(screen.getByText('Галина Кушнірук')).toBeInTheDocument();
@@ -326,7 +321,7 @@ describe('ReceiptDialog', () => {
     expect(screen.queryByText(/135\.00/)).not.toBeInTheDocument();
   });
 
-  it("shows who received the document in the header, regardless of who is logged in", () => {
+  it('shows who received the document in the header, regardless of who is logged in', () => {
     setUp({ me: OPERATOR_AUTHOR });
     render(<ReceiptDialog intakeId="intake-1" open onClose={vi.fn()} />);
 
@@ -335,7 +330,7 @@ describe('ReceiptDialog', () => {
   });
 
   it('falls back to a dash in the header when the receiver is unknown', () => {
-    setUp({ intake: buildIntake({ received_by_name: null, received_by: null }) });
+    setUp({ intake: buildIntake({ received_by_name: null, received_by_number: null }) });
     render(<ReceiptDialog intakeId="intake-1" open onClose={vi.fn()} />);
 
     expect(screen.getByText(/ · —$/)).toBeInTheDocument();
@@ -346,7 +341,13 @@ describe('ReceiptDialog', () => {
       intake: buildIntake({
         paid_amount: '10000.00',
         payouts: [
-          { id: 'payout-1', code: 'SHP-PO-20260908-00031', amount: '10000.00', created_at: '2026-09-08T08:25:00.000Z', voided_at: null },
+          {
+            id: 'payout-1',
+            code: 'SHP-PO-20260908-00031',
+            amount: '10000.00',
+            created_at: '2026-09-08T08:25:00.000Z',
+            voided_at: null,
+          },
         ],
       }),
     });
@@ -622,7 +623,9 @@ describe('ReceiptDialog', () => {
 
   it('re-reads the note each time the receipt opens, and waits for it to print', () => {
     setUp();
-    const { rerender } = render(<ReceiptDialog intakeId="intake-1" open={false} onClose={vi.fn()} />);
+    const { rerender } = render(
+      <ReceiptDialog intakeId="intake-1" open={false} onClose={vi.fn()} />,
+    );
     refetchSettings.mockClear();
 
     settingsMock.mockReturnValue(
@@ -697,8 +700,20 @@ describe('ReceiptDialog wiring into VoidDocumentDialog (#125)', () => {
       me: OWNER,
       intake: buildIntake({
         payouts: [
-          { id: 'payout-1', code: 'SHP-PO-1', amount: '5000.00', created_at: '2026-09-08T08:25:00.000Z', voided_at: '2026-09-07T12:00:00.000Z' },
-          { id: 'payout-2', code: 'SHP-PO-2', amount: '3000.00', created_at: '2026-09-08T08:25:00.000Z', voided_at: null },
+          {
+            id: 'payout-1',
+            code: 'SHP-PO-1',
+            amount: '5000.00',
+            created_at: '2026-09-08T08:25:00.000Z',
+            voided_at: '2026-09-07T12:00:00.000Z',
+          },
+          {
+            id: 'payout-2',
+            code: 'SHP-PO-2',
+            amount: '3000.00',
+            created_at: '2026-09-08T08:25:00.000Z',
+            voided_at: null,
+          },
         ],
       }),
     });
@@ -716,7 +731,13 @@ describe('ReceiptDialog wiring into VoidDocumentDialog (#125)', () => {
       me: OWNER,
       intake: buildIntake({
         payouts: [
-          { id: 'payout-1', code: 'SHP-PO-1', amount: '5000.00', created_at: '2026-09-08T08:25:00.000Z', voided_at: '2026-09-07T12:00:00.000Z' },
+          {
+            id: 'payout-1',
+            code: 'SHP-PO-1',
+            amount: '5000.00',
+            created_at: '2026-09-08T08:25:00.000Z',
+            voided_at: '2026-09-07T12:00:00.000Z',
+          },
         ],
       }),
     });
@@ -745,7 +766,15 @@ describe('ReceiptDialog wiring into VoidDocumentDialog (#125)', () => {
     setUp({
       me: OWNER,
       intake: buildIntake({
-        payouts: [{ id: 'payout-1', code: 'SHP-PO-1', amount: '3000.00', created_at: '2026-09-08T08:25:00.000Z', voided_at: null }],
+        payouts: [
+          {
+            id: 'payout-1',
+            code: 'SHP-PO-1',
+            amount: '3000.00',
+            created_at: '2026-09-08T08:25:00.000Z',
+            voided_at: null,
+          },
+        ],
       }),
     });
     settlementMock.mockReturnValue({ data: undefined, isPending: false, isError: true });
@@ -762,7 +791,15 @@ describe('ReceiptDialog wiring into VoidDocumentDialog (#125)', () => {
     setUp({
       me: OWNER,
       intake: buildIntake({
-        payouts: [{ id: 'payout-1', code: 'SHP-PO-1', amount: '3000.00', created_at: '2026-09-08T08:25:00.000Z', voided_at: null }],
+        payouts: [
+          {
+            id: 'payout-1',
+            code: 'SHP-PO-1',
+            amount: '3000.00',
+            created_at: '2026-09-08T08:25:00.000Z',
+            voided_at: null,
+          },
+        ],
       }),
     });
     settlementMock.mockReturnValue({ data: undefined, isPending: false, isError: true });

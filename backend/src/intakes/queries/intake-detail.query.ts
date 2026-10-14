@@ -10,6 +10,7 @@ import {
 } from '../intake.mapper';
 import { ROW_EXTRAS_SQL, type IntakeRowExtras } from '../intake-row-extras';
 import { Payout } from '../../payouts/payout.entity';
+import { CollectionPoint } from '../../collection-points/collection-point.entity';
 import { Shift } from '../../shifts/shift.entity';
 import { User } from '../../users/user.entity';
 
@@ -38,9 +39,18 @@ export class IntakeDetailQuery {
   }
 
   /** The receiving user — ONE read feeding both `received_by_name` (via `displayNameOf`, the
-   *  ONE definition of a user's name) and the `received_by` parts. `null` if the row is gone. */
+   *  ONE definition of a user's name) and `received_by_number`. `null` if the row is gone. */
   async receiver(userId: string, m: EntityManager): Promise<User | null> {
     return m.findOne(User, { where: { id: userId } });
+  }
+
+  /** The header's «Точка № 3» — read with the document, never from the client's point list. */
+  async pointNumber(pointId: string, m: EntityManager): Promise<number> {
+    const point = await m.findOneOrFail(CollectionPoint, {
+      where: { id: pointId },
+      select: { id: true, number: true },
+    });
+    return point.number;
   }
 
   /**
@@ -84,6 +94,7 @@ export class IntakeDetailQuery {
       payouts,
       await this.receiver(intake.received_by_user_id, m),
       await this.crateReturn(intake.id, m),
+      await this.pointNumber(shift.collection_point_id, m),
     );
   }
 }

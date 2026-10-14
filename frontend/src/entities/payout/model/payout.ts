@@ -23,8 +23,14 @@ export interface Payout {
   created_at: string;
   /** The supplier's debt right after this payout, frozen at write time. */
   balance_after: string;
-  /** The payer's name — set on `GET /payouts/:id` and `POST /payouts`, `null` on list/void/settle-return responses. */
-  paid_by: { first_name: string; last_name: string; number: number } | null;
+}
+
+/** `GET /payouts/:id` — the row plus the two numbers the receipt header prints (#145). */
+export interface PayoutDetail extends Payout {
+  /** «Приймальник № 5»; `null` only if the user row is gone. */
+  paid_by_number: number | null;
+  /** «Точка № 3». */
+  point_number: number;
 }
 
 /** Re-exported so existing `../model/payout` importers keep working — see `@/shared/api/pagination.ts`. */

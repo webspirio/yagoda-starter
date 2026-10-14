@@ -1,5 +1,5 @@
 import type { TFunction } from 'i18next';
-import type { Payout } from '@/entities/payout';
+import type { PayoutDetail } from '@/entities/payout';
 import type { ReceiptDocument } from '@/shared/ui/receipt';
 import { formatUah } from '@/shared/lib/money';
 import { formatLongDate, formatTime } from '@/shared/lib/date';
@@ -11,15 +11,12 @@ import { formatLongDate, formatTime } from '@/shared/lib/date';
 export function buildPayoutReceipt({
   payout,
   supplierName,
-  pointNumber,
   note,
   t,
   locale,
 }: {
-  payout: Payout;
+  payout: PayoutDetail;
   supplierName: string;
-  /** `null` when the point is not in the caller's list — the header prints «—». */
-  pointNumber: number | null;
   note: string | null;
   t: TFunction;
   locale: string;
@@ -27,8 +24,11 @@ export function buildPayoutReceipt({
   return {
     voided: payout.voided_at ? { reason: payout.void_reason ?? '' } : null,
     header: {
-      point: pointNumber === null ? '—' : t('receipt.headerPoint', { number: pointNumber }),
-      staff: payout.paid_by ? t('receipt.headerStaff', { number: payout.paid_by.number }) : '—',
+      point: t('receipt.headerPoint', { number: payout.point_number }),
+      staff:
+        payout.paid_by_number === null
+          ? '—'
+          : t('receipt.headerStaff', { number: payout.paid_by_number }),
     },
     meta: [
       { label: t('receipt.number'), value: payout.code },
@@ -44,11 +44,18 @@ export function buildPayoutReceipt({
       [
         {
           kind: 'rows',
-          rows: [{ label: t('receipt.paid'), value: formatUah(payout.amount, locale), strong: true }],
+          rows: [
+            { label: t('receipt.paid'), value: formatUah(payout.amount, locale), strong: true },
+          ],
         },
         {
           kind: 'rows',
-          rows: [{ label: t('receipt.balanceAfterPayout'), value: formatUah(payout.balance_after, locale) }],
+          rows: [
+            {
+              label: t('receipt.balanceAfterPayout'),
+              value: formatUah(payout.balance_after, locale),
+            },
+          ],
         },
       ],
     ],

@@ -12,7 +12,6 @@ import { Button } from '@/shared/ui/button';
 import { ReceiptView } from '@/shared/ui/receipt';
 import { canVoidPayout, usePayoutQuery } from '@/entities/payout';
 import { useSupplierQuery, useSupplierSettlementQuery, supplierName } from '@/entities/supplier';
-import { usePointOptionsQuery } from '@/entities/collection-point';
 import { useMeQuery } from '@/entities/user';
 import { useNetworkSettingsQuery } from '@/entities/network-settings';
 import { VoidDocumentDialog, reopenedCodes } from '@/features/void-document';
@@ -20,7 +19,7 @@ import { buildPayoutReceipt } from '../model/buildPayoutReceipt';
 
 /**
  * The receipt for one standalone payout — `GET /payouts/:id` composed with the
- * names a bare id doesn't carry (supplier, point). Same shell as
+ * supplier's name, which a bare id doesn't carry. Same shell as
  * `ReceiptDialog`: network note re-read on every opening, «Друк» waits for it,
  * «Анулювати» only where §9.4 allows (`canVoidPayout`).
  *
@@ -45,9 +44,6 @@ export function PayoutReceiptDialog({
   const supplierQuery = useSupplierQuery(payout?.supplier_id ?? null);
   const supplier = supplierQuery.data;
 
-  const pointsQuery = usePointOptionsQuery();
-  const points = pointsQuery.data;
-
   const meQuery = useMeQuery();
   const me = meQuery.data;
 
@@ -63,10 +59,11 @@ export function PayoutReceiptDialog({
 
   // Only fetched while the void dialog is open: it names the receipts the void
   // reopens, which nothing else on screen shows.
-  const settlementQuery = useSupplierSettlementQuery(voidOpen ? (payout?.supplier_id ?? null) : null);
+  const settlementQuery = useSupplierSettlementQuery(
+    voidOpen ? (payout?.supplier_id ?? null) : null,
+  );
 
-  const isError =
-    payoutQuery.isError || supplierQuery.isError || pointsQuery.isError || meQuery.isError;
+  const isError = payoutQuery.isError || supplierQuery.isError || meQuery.isError;
 
   // A fresh VoidDocumentDialog per opening — see ReceiptDialog.
   const openVoid = () => {
@@ -91,8 +88,7 @@ export function PayoutReceiptDialog({
         {t('common.somethingWentWrong')}
       </p>
     );
-  } else if (payout && supplier && points && me) {
-    const pointNumber = points.find((p) => p.id === payout.collection_point_id)?.number ?? null;
+  } else if (payout && supplier && me) {
     title = t('receipt.payoutTitle', { code: payout.code });
 
     content = (
@@ -101,7 +97,6 @@ export function PayoutReceiptDialog({
           doc={buildPayoutReceipt({
             payout,
             supplierName: supplierName(supplier),
-            pointNumber,
             note: settingsQuery.data?.receipt_note ?? null,
             t,
             locale,
@@ -136,9 +131,7 @@ export function PayoutReceiptDialog({
         onClose={() => setVoidOpen(false)}
         shiftClosed={payout.shift_closed}
         payoutAmount={payout.amount}
-        reopens={
-          settlementQuery.data ? reopenedCodes(settlementQuery.data, payout.id, null) : null
-        }
+        reopens={settlementQuery.data ? reopenedCodes(settlementQuery.data, payout.id, null) : null}
         reopensFailed={settlementQuery.isError}
         retryReopens={() => void settlementQuery.refetch()}
       />

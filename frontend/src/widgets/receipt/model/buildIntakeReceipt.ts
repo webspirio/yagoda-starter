@@ -7,12 +7,11 @@ import { formatLongDate, formatTime } from '@/shared/lib/date';
 /**
  * One intake as a `ReceiptDocument` — every number and string resolved here,
  * so `ReceiptView` stays pure layout. `balance` is the supplier's LIVE debt
- * at this point (not frozen at write time), read by the caller.
+ * across the network (not frozen at write time), read by the caller.
  */
 export function buildIntakeReceipt({
   intake,
   supplierName,
-  pointNumber,
   tareNameById,
   note,
   balance,
@@ -21,8 +20,6 @@ export function buildIntakeReceipt({
 }: {
   intake: IntakeDetail;
   supplierName: string;
-  /** `null` when the point is not in the caller's list — the header prints «—». */
-  pointNumber: number | null;
   tareNameById: Map<string, string>;
   note: string | null;
   balance: string;
@@ -58,7 +55,9 @@ export function buildIntakeReceipt({
     // The old sheet's markup: the live forms are a normal row (label only),
     // only the annulment is muted.
     if (crateReturn.voided_at !== null) {
-      sections.push([{ kind: 'rows', rows: [{ label: t('receipt.crateReturnVoided'), value: '', muted: true }] }]);
+      sections.push([
+        { kind: 'rows', rows: [{ label: t('receipt.crateReturnVoided'), value: '', muted: true }] },
+      ]);
     } else {
       const label = isZero(crateReturn.deposit_refund)
         ? t('receipt.crateReturnNoMoney', { units: crateReturn.units })
@@ -71,7 +70,12 @@ export function buildIntakeReceipt({
   }
 
   const totals: ReceiptSection[] = [
-    { kind: 'rows', rows: [{ label: t('receipt.accrued'), value: formatUah(intake.amount, locale), strong: true }] },
+    {
+      kind: 'rows',
+      rows: [
+        { label: t('receipt.accrued'), value: formatUah(intake.amount, locale), strong: true },
+      ],
+    },
   ];
   if (cmp(intake.paid_amount, '0') !== 0) {
     totals.push({
@@ -98,8 +102,11 @@ export function buildIntakeReceipt({
   return {
     voided: intake.voided_at ? { reason: intake.void_reason ?? '' } : null,
     header: {
-      point: pointNumber === null ? '—' : t('receipt.headerPoint', { number: pointNumber }),
-      staff: intake.received_by ? t('receipt.headerStaff', { number: intake.received_by.number }) : '—',
+      point: t('receipt.headerPoint', { number: intake.point_number }),
+      staff:
+        intake.received_by_number === null
+          ? '—'
+          : t('receipt.headerStaff', { number: intake.received_by_number }),
     },
     meta: [
       { label: t('receipt.number'), value: intake.code },

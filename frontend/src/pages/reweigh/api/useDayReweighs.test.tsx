@@ -24,8 +24,8 @@ afterEach(() => {
 });
 
 const POINTS: PointOption[] = [
-  { id: 'p1', name: 'Шипинки', number: 1, kind: 'reception', target_crates: null },
-  { id: 'p2', name: 'Конищів', number: 2, kind: 'reception', target_crates: null },
+  { id: 'p1', name: 'Шипинки', kind: 'reception', target_crates: null },
+  { id: 'p2', name: 'Конищів', kind: 'reception', target_crates: null },
 ];
 
 const shift = (id: string, pointId: string): Shift => ({

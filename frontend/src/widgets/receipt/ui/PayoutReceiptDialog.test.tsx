@@ -2,20 +2,26 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { expectNoAxeViolations } from '../../../test-axe';
-import type { Payout } from '@/entities/payout';
+import type { PayoutDetail } from '@/entities/payout';
 import { PayoutReceiptDialog } from './PayoutReceiptDialog';
 
-const { payoutMock, supplierMock, settlementMock, pointsMock, meMock, voidDialogMock, settingsMock, refetchSettings } =
-  vi.hoisted(() => ({
-    payoutMock: vi.fn(),
-    supplierMock: vi.fn(),
-    settlementMock: vi.fn(),
-    pointsMock: vi.fn(),
-    meMock: vi.fn(),
-    voidDialogMock: vi.fn(),
-    settingsMock: vi.fn(),
-    refetchSettings: vi.fn(),
-  }));
+const {
+  payoutMock,
+  supplierMock,
+  settlementMock,
+  meMock,
+  voidDialogMock,
+  settingsMock,
+  refetchSettings,
+} = vi.hoisted(() => ({
+  payoutMock: vi.fn(),
+  supplierMock: vi.fn(),
+  settlementMock: vi.fn(),
+  meMock: vi.fn(),
+  voidDialogMock: vi.fn(),
+  settingsMock: vi.fn(),
+  refetchSettings: vi.fn(),
+}));
 
 vi.mock('@/entities/payout', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/entities/payout')>()),
@@ -28,8 +34,11 @@ vi.mock('@/entities/supplier', () => ({
   supplierName: (s: { first_name: string; last_name: string }) => `${s.first_name} ${s.last_name}`,
 }));
 
+// INERT ON PURPOSE (#145 review): the dialog reads «Точка № N» from the document
+// (`point_number`), never from the point list. The list answers an ERROR here, so
+// re-wiring the dialog to it turns every receipt test below into «Something went wrong».
 vi.mock('@/entities/collection-point', () => ({
-  usePointOptionsQuery: () => pointsMock(),
+  usePointOptionsQuery: () => ({ data: undefined, isPending: false, isError: true }),
 }));
 
 vi.mock('@/entities/user', () => ({
@@ -60,7 +69,7 @@ const OPERATOR_OTHER = { id: 'user-2', role: 'point_operator' as const };
 const OWNER = { id: 'user-9', role: 'network_owner' as const };
 const AT = '2026-10-08T09:00:00.000Z';
 
-function buildPayout(over: Partial<Payout> = {}): Payout {
+function buildPayout(over: Partial<PayoutDetail> = {}): PayoutDetail {
   return {
     id: 'payout-1',
     code: 'SHP-PO-20260908-00031',
@@ -81,7 +90,8 @@ function buildPayout(over: Partial<Payout> = {}): Payout {
     shift_closed: false,
     created_at: '2026-09-08T08:20:00.000Z',
     balance_after: '9000.00',
-    paid_by: { first_name: 'Оксана', last_name: 'Гнатюк', number: 2 },
+    paid_by_number: 2,
+    point_number: 1,
     ...over,
   };
 }
@@ -91,13 +101,16 @@ function setUp({
   me = OPERATOR_AUTHOR,
   isFetching = false,
 }: {
-  payout?: Payout | null;
+  payout?: PayoutDetail | null;
   me?: typeof OPERATOR_AUTHOR | typeof OPERATOR_OTHER | typeof OWNER;
   isFetching?: boolean;
 } = {}) {
-  payoutMock.mockReturnValue({ data: payout ?? undefined, isPending: payout === null, isError: false });
+  payoutMock.mockReturnValue({
+    data: payout ?? undefined,
+    isPending: payout === null,
+    isError: false,
+  });
   supplierMock.mockReturnValue({ data: SUPPLIER, isPending: false, isError: false });
-  pointsMock.mockReturnValue({ data: [{ id: 'point-1', name: 'Шипинки', number: 1 }], isPending: false, isError: false });
   meMock.mockReturnValue({ data: me, isPending: false, isError: false });
   settlementMock.mockReturnValue({ data: { stub: true }, isPending: false, isError: false });
   settingsMock.mockReturnValue({
@@ -119,7 +132,9 @@ afterEach(() => vi.restoreAllMocks());
 describe('PayoutReceiptDialog', () => {
   it('renders the payout document and is axe-clean', async () => {
     setUp();
-    const { container } = render(<PayoutReceiptDialog payoutId="payout-1" open onClose={vi.fn()} />);
+    const { container } = render(
+      <PayoutReceiptDialog payoutId="payout-1" open onClose={vi.fn()} />,
+    );
 
     expect(screen.getByText('SHP-PO-20260908-00031')).toBeInTheDocument();
     expect(screen.getByText('Галина Кушнірук')).toBeInTheDocument();

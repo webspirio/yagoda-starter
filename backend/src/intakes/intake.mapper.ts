@@ -126,11 +126,15 @@ export interface IntakeDetailResponse extends IntakeResponse {
   /** Payouts handed over WITH this receipt (§2.1 ⑥) — `intake_id` = this id,
    *  voided ones included so the receipt can say a payout was cancelled. */
   payouts: IntakePayoutResponse[];
-  /** «Приймав» on the printed receipt. `null` only if the user row is gone. */
+  /** The receiver's name — the void dialog's «видано … ким». `null` only if the user row is gone. */
   received_by_name: string | null;
-  /** The same person as name PARTS — the printed receipt header writes «Прізвище Ім'я»,
-   *  which `received_by_name` («Ім'я Прізвище») cannot be split back into. */
-  received_by: { first_name: string; last_name: string; number: number } | null;
+  /** `users.number` — the receipt header's «Приймальник № 5» (#145, client correction
+   *  2026-10-14). `null` only if the user row is gone. */
+  received_by_number: number | null;
+  /** `collection_points.number` — the header's «Точка № 3». Joined here rather than looked
+   *  up in the client's point list, so a receipt never waits on that list and a deactivated
+   *  point still prints its number. Never null: a point has no DELETE path (§5.6). */
+  point_number: number;
   /** `null` when no crates came back with this receipt. */
   crate_return: IntakeCrateReturnResponse | null;
 }
@@ -195,6 +199,7 @@ export function toIntakeDetailResponse(
   payouts: Payout[],
   receiver: Pick<User, 'first_name' | 'last_name' | 'number'> | null,
   crateReturn: IntakeCrateReturnRow | null,
+  pointNumber: number,
 ): IntakeDetailResponse {
   return {
     ...toIntakeResponse(intake, shift, extras),
@@ -205,9 +210,8 @@ export function toIntakeDetailResponse(
       .sort((a, b) => a.created_at.getTime() - b.created_at.getTime())
       .map(toIntakePayoutResponse),
     received_by_name: receiver ? displayNameOf(receiver) : null,
-    received_by: receiver
-      ? { first_name: receiver.first_name, last_name: receiver.last_name, number: receiver.number }
-      : null,
+    received_by_number: receiver ? receiver.number : null,
+    point_number: pointNumber,
     crate_return: crateReturn ? toIntakeCrateReturnResponse(crateReturn) : null,
   };
 }
