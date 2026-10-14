@@ -59,6 +59,11 @@ describe('OperatorNoteDialog', () => {
     await expectNoAxeViolations(container);
   });
 
+  it('names the book the count belongs to', () => {
+    renderDialog({ book: 'crates' });
+    expect(screen.getByRole('dialog')).toHaveTextContent('Book: Deposits');
+  });
+
   it('prefills the current note so it can be corrected', () => {
     renderDialog({ operator_note: 'перша версія' });
     expect(screen.getByLabelText('Your explanation')).toHaveValue('перша версія');

@@ -53,7 +53,9 @@ export function OperatorNoteForm({
             amount: formatUah(count.discrepancy, i18n.resolvedLanguage),
           })}
         </DialogTitle>
-        <DialogDescription>{t('operatorNote.description')}</DialogDescription>
+        <DialogDescription>
+          {t('operatorNote.book', { book: t(`countResult.book.${count.book}`) })}. {t('operatorNote.description')}
+        </DialogDescription>
       </DialogHeader>
 
       <form onSubmit={onSubmit} className="flex flex-col gap-4" noValidate>

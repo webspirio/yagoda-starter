@@ -1,6 +1,6 @@
 import { useTranslation } from 'react-i18next';
 import { SectionCard } from '@/shared/ui/section-card';
-import { formatUah } from '@/shared/lib/money';
+import { formatUah, isZero } from '@/shared/lib/money';
 
 /**
  * «Каса за ящики» (R1, R8) — the crates book, on its own, beside the berry
@@ -12,11 +12,17 @@ import { formatUah } from '@/shared/lib/money';
  * side — never their sum — for exactly the same reason.
  */
 export function CratesBookCard({
+  crateCash,
+  crateUnexplained,
   crateDeposits,
   crateDepositUnits,
   berryCash,
 }: {
-  /** `PointCashRow.crate_deposits` — money still held against issued crates. */
+  /** `PointCashRow.crate_cash` — the counted drawer figure; `null` = never counted at this point. */
+  crateCash: string | null;
+  /** `PointCashRow.crate_unexplained_difference` — `0.00` when the book has no open incident. */
+  crateUnexplained: string;
+  /** `PointCashRow.crate_deposits` — the supplier liability: money still held against issued crates. */
   crateDeposits: string;
   /** `PointCashRow.crate_deposit_units` (§R8) — issued «за кошти», not yet returned. */
   crateDepositUnits: number;
@@ -29,20 +35,32 @@ export function CratesBookCard({
   return (
     <SectionCard eyebrow={t('pointCash.crates.title')}>
       <div className="font-mono text-[26px] leading-none font-semibold tracking-tight">
-        {formatUah(crateDeposits, locale)}
+        {crateCash === null ? (
+          <span className="text-base font-medium text-muted-foreground">{t('pointCash.crates.notCounted')}</span>
+        ) : (
+          formatUah(crateCash, locale)
+        )}
       </div>
       <div className="mt-1.5 text-xs text-muted-foreground">
         {crateDepositUnits === 0
           ? t('pointCash.crates.captionZero')
-          : t('pointCash.crates.caption', { count: crateDepositUnits })}
+          : t('pointCash.crates.caption', {
+              count: crateDepositUnits,
+              amount: formatUah(crateDeposits, locale),
+            })}
       </div>
+      {isZero(crateUnexplained) ? null : (
+        <p className="mt-1.5 text-xs font-medium text-destructive">
+          {t('pointCash.crates.unexplained', { amount: formatUah(crateUnexplained, locale) })}
+        </p>
+      )}
       <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
         {t('pointCash.crates.footnote')}
       </p>
       <p className="mt-3 text-xs text-muted-foreground opacity-70">
         {t('pointCash.crates.twoBooks', {
           berry: formatUah(berryCash, locale),
-          crates: formatUah(crateDeposits, locale),
+          crates: formatUah(crateCash ?? crateDeposits, locale),
         })}
       </p>
     </SectionCard>

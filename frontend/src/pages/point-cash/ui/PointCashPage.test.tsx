@@ -196,6 +196,8 @@ const pointRow = (over: Partial<PointCashRow> = {}): PointCashRow => ({
   latest_transfer: null,
   crate_deposits: '0.00',
   crate_deposit_units: 0,
+  crate_cash: null,
+  crate_unexplained_difference: '0.00',
   ...over,
 });
 
@@ -771,15 +773,15 @@ describe('PointCashPage — R1: the crates book beside the berry book, never a c
   it('shows the crates book from the row', () => {
     pointCashMock.mockImplementation((opts: { asOf?: string } = {}) =>
       'asOf' in opts
-        ? list([pointRow({ crate_deposits: '250.00', crate_deposit_units: 3 })])
+        ? list([pointRow({ crate_cash: '240.00', crate_deposits: '250.00', crate_deposit_units: 3 })])
         : list([]),
     );
 
     renderPointCash();
 
     expect(screen.getByText('Crate cash')).toBeInTheDocument();
-    expect(screen.getByText('250.00 ₴')).toBeInTheDocument();
-    expect(screen.getByText('deposits for 3 crates')).toBeInTheDocument();
+    expect(screen.getByText('240.00 ₴')).toBeInTheDocument();
+    expect(screen.getByText('deposits for 3 crates — 250.00 ₴')).toBeInTheDocument();
   });
 
   it('never shows a combined drawer figure — the mock’s dark block is not ported', () => {

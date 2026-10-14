@@ -632,6 +632,7 @@
   "cash": {
     "explainDialog": {
       "title": "Explain the {{amount}} discrepancy",
+      "book": "Book: {{book}}",
       "description": "A discrepancy never stops a shift from working. This explanation does not change the count; it stays in the journal alongside it.",
       "explanation": "Explanation",
       "submit": "Save explanation",
@@ -713,9 +714,11 @@
     },
     "crates": {
       "title": "Crate cash",
-      "caption_one": "deposits for {{count}} crate",
-      "caption_other": "deposits for {{count}} crates",
+      "caption_one": "deposits for {{count}} crate — {{amount}}",
+      "caption_other": "deposits for {{count}} crates — {{amount}}",
       "captionZero": "no crate deposits held",
+      "notCounted": "not counted yet",
+      "unexplained": "Discrepancy {{amount}}",
       "footnote": "This money sits apart from the berry cash: we pay someone for their crates even if the berry drawer is empty. No deposit was taken against a signed receipt — those crates are not counted here.",
       "twoBooks": "Two books: berries {{berry}} · crates {{crates}}"
     },
@@ -733,7 +736,8 @@
         "expected": "Expected",
         "discrepancy": "Discrepancy",
         "explanation": "Explanation",
-        "countedBy": "Counted by"
+        "countedBy": "Counted by",
+        "book": "Book"
       },
       "kind": {
         "opening": "Opening",
@@ -1601,6 +1605,8 @@
     "write": "Add my explanation",
     "edit": "Edit my explanation",
     "resultAction": "Explain the discrepancy",
+    "resultActionFor": "Explain the discrepancy · {{book}}",
+    "book": "Book: {{book}}",
     "titleOpening": "What happened? Opening discrepancy {{amount}}",
     "titleClosing": "What happened? Closing discrepancy {{amount}}",
     "description": "Write what you know while you are still at the point. The owner reads it next to the discrepancy and makes the final decision.",

@@ -102,7 +102,7 @@ export function ShiftCountResult({
       action={editable.map((row) => (
         <Button key={row.book} type="button" variant="outline" onClick={() => offerNote(row)}>
           {editable.length > 1
-            ? `${t('operatorNote.resultAction')} · ${t(`countResult.book.${row.book}`)}`
+            ? t('operatorNote.resultActionFor', { book: t(`countResult.book.${row.book}`) })
             : t('operatorNote.resultAction')}
         </Button>
       ))}

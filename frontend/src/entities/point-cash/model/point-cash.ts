@@ -24,6 +24,10 @@ export interface PointCashRow {
   crate_deposits: string;
   /** §R8 — скільки ящиків з тих завдатків: видано «за кошти» мінус повернуто. */
   crate_deposit_units: number;
+  /** Касова книга завдатків: що пораховано в шухляді. `null` = завдатки на цій точці ще не перераховували. */
+  crate_cash: string | null;
+  /** Нез'ясована розбіжність книги завдатків (`0.00`, коли її нема). */
+  crate_unexplained_difference: string;
 }
 
 /** Дзеркалить відповідь `GET /point-cash/:pointId` — лише сума однієї точки. */
@@ -34,6 +38,8 @@ export interface PointCashOne {
   crate_deposits: string;
   /** §R8 — скільки ящиків з тих завдатків: видано «за кошти» мінус повернуто. */
   crate_deposit_units: number;
+  /** Див. `PointCashRow.crate_cash`. */
+  crate_cash: string | null;
 }
 
 /** Реекспорт для існуючих імпортерів `../model/point-cash` — див. `@/shared/api/pagination.ts`. */

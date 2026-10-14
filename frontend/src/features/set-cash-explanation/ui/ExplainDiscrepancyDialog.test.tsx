@@ -35,12 +35,12 @@ const row = (over: Partial<CashCount> = {}): CashCount => ({
   explained: over.explained ?? over.explanation != null,
 });
 
-function renderDialog(onClose = vi.fn()) {
+function renderDialog(onClose = vi.fn(), over: Partial<CashCount> = {}) {
   return {
     onClose,
     ...render(
       <>
-        <ExplainDiscrepancyDialog count={row()} open onClose={onClose} />
+        <ExplainDiscrepancyDialog count={row(over)} open onClose={onClose} />
         <Toaster />
       </>,
     ),
@@ -58,6 +58,11 @@ describe('ExplainDiscrepancyDialog', () => {
       screen.getByRole('heading', { name: 'Explain the −320.00 ₴ discrepancy' }),
     ).toBeInTheDocument();
     await expectNoAxeViolations(container);
+  });
+
+  it('names the book the count belongs to', () => {
+    renderDialog(vi.fn(), { book: 'crates' });
+    expect(screen.getByRole('dialog')).toHaveTextContent('Book: Deposits');
   });
 
   it('does not claim the shift is closed — the owner may explain an opening while it is open', () => {

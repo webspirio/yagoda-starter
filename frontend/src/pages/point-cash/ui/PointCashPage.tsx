@@ -435,6 +435,8 @@ export function PointCashPage() {
                 crates figure alone, with a muted two-books line that prints
                 both figures side by side and never their sum. */}
             <CratesBookCard
+              crateCash={shownRow.crate_cash}
+              crateUnexplained={shownRow.crate_unexplained_difference}
               crateDeposits={shownRow.crate_deposits}
               crateDepositUnits={shownRow.crate_deposit_units}
               berryCash={shownRow.cash}
