@@ -239,4 +239,17 @@ describe('SuppliersPage', () => {
     expect(screen.queryByText(/Card stub/)).toBeNull();
     expect(screen.getByText('Ivan Koval')).toBeInTheDocument();
   });
+
+  it('saving the edit leaves the user on the list', async () => {
+    queryMock.mockReturnValue(loaded([ivan]));
+    renderSuppliers();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Edit Ivan Koval' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => expect(updateMock).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(screen.queryByLabelText('First name')).toBeNull());
+    expect(screen.queryByText(/Card stub/)).toBeNull();
+    expect(screen.getByRole('heading', { level: 1, name: 'Suppliers' })).toBeInTheDocument();
+  });
 });
