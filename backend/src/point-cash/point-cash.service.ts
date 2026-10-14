@@ -163,12 +163,21 @@ const crateMovementsSql = (shift: string): string => `(
  *
  * The ordering tiebreak puts `closing` after `opening` within one shift.
  */
+/**
+ * The book as a SQL literal, from a closed map: the statement text comes from
+ * literals in this file, never from the argument's runtime value.
+ */
+const BOOK_SQL: Record<CashBook, string> = {
+  [CashBook.Berry]: "'berry'",
+  [CashBook.Crates]: "'crates'",
+};
+
 const anchorSql = (point: string, asOf: string, book: CashBook = CashBook.Berry): string => `(
   SELECT c.counted_amount, c.kind, c.shift_id
     FROM cash_counts c
     JOIN shifts s ON s.id = c.shift_id
    WHERE s.collection_point_id = ${point}
-     AND c.book = '${book}'
+     AND c.book = ${BOOK_SQL[book]}
      AND c.kind <> 'midday'
      AND s.business_date <= ${asOf}
    ORDER BY s.business_date DESC, (c.kind = 'closing') DESC, c.counted_at DESC
@@ -372,7 +381,7 @@ export class PointCashService {
     const rows = (await runner.query(
       `SELECT (c.counted_amount + ${movements})::text AS expected
          FROM cash_counts c
-        WHERE c.shift_id = $1::uuid AND c.book = '${book}' AND c.kind = 'opening'`,
+        WHERE c.shift_id = $1::uuid AND c.book = ${BOOK_SQL[book]} AND c.kind = 'opening'`,
       crates ? [shiftId] : [shiftId, this.tz.appTimezone],
     )) as { expected: string }[];
     return rows[0]?.expected ?? null;

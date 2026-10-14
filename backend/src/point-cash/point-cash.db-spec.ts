@@ -1184,6 +1184,22 @@ describe('PointCashService.crateUnitsFor (Postgres)', () => {
       expect(await service.crateCashFor(pointId)).toBe('15960.00');
     });
 
+    it('closing: a voided crate RETURN’s refund is excluded from the expectation', async () => {
+      const { pointId, shiftId, supplierId } = await freshPointWithShift();
+      await insertCount(shiftId, 'crates', 'opening', '14400.00', '14400.00');
+      const issued = await crateIssuance(shiftId, supplierId, 20, 'deposit'); // +2400.00
+      await returnAgainst(shiftId, supplierId, issued, 7); // −840.00, live
+      await returnAgainst(shiftId, supplierId, issued, 7); // −840.00, about to be voided
+      await ds.query(
+        `UPDATE crate_returns SET voided_at = now(), voided_by_user_id = $2, void_reason = 'помилка'
+          WHERE id = (SELECT id FROM crate_returns WHERE shift_id = $1 ORDER BY created_at DESC, id DESC LIMIT 1)`,
+        [shiftId, ownerId],
+      );
+      // 14400 + 2400 − 840 (the voided second refund does not leave the drawer)
+      expect(await service.expectedForClosing(shiftId, undefined, CashBook.Crates)).toBe('15960.00');
+      expect(await service.crateCashFor(pointId)).toBe('15960.00');
+    });
+
     it('list and GET /point-cash/:id read an OPENING crates anchor plus that shift’s movements (list has its own SQL)', async () => {
       const { pointId, shiftId, supplierId } = await freshPointWithShift();
       await insertCount(shiftId, 'crates', 'opening', '14400.00', '14400.00');
