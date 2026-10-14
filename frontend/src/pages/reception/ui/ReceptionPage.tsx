@@ -207,17 +207,13 @@ export function ReceptionPage() {
     const grade = grades.data.find((g) => g.id === gradeId);
     return grade ? `${grade.productName} · ${grade.name}` : '—';
   };
-  // The preview's items only line up with the FORM's items 1:1 the moment
-  // both describe the same number of lines — read by index otherwise (e.g.
-  // right after `remove(0)`, before the next response) and a surviving row
-  // is relabelled instantly while its numbers are still the DELETED line's.
-  // Falling back to `null` for one cycle shows «…» instead of a wrong number.
-  const rowsPreview =
-    preview.preview?.items.length === lines.fields.length ? preview.preview : null;
+  // Each committed row reads the numbers the server gave a line with exactly
+  // its content (`rowItems`) — so an empty draft below it never blanks it
+  // (#213), and a removed line's numbers never land on its neighbour.
   const committed: CommittedLine[] = lines.fields.slice(0, draftIndex).map((field, index) => ({
     key: field.id,
     gradeLabel: gradeLabel(values.items[index]?.product_grade_id ?? ''),
-    item: rowsPreview?.items[index] ?? null,
+    item: preview.rowItems[index] ?? null,
   }));
 
   // ONLY a settled preview may become a number on screen or a submitted body.
@@ -227,15 +223,11 @@ export function ReceptionPage() {
   const settled = preview.isSettled ? preview.preview : null;
   const accrued = settled?.amount ?? null;
   const netKg = settled ? sum(settled.items.map((i) => i.net_kg)) : null;
-  // `netKg`/`lineCount` above describe the WHOLE form, draft included — right
-  // for `TotalsSection`'s submit button, wrong for the table's own counter,
-  // which sits over `committed` rows only (`rows.length` there). Summed off
-  // `rowsPreview` (already scoped to the draft-excluded slice `committed`
-  // reads from) rather than `settled`, so the counter stays in step with the
-  // same rows the table renders even in the debounce window `isSettled`
-  // excludes.
-  const committedNetKg = rowsPreview
-    ? sum(rowsPreview.items.slice(0, draftIndex).map((i) => i.net_kg))
+  // The table's own counter covers committed rows only, unlike `netKg` above,
+  // and is withheld until every one of them is priced.
+  const committedItems = committed.map((row) => row.item);
+  const committedNetKg = committedItems.every((item) => item !== null)
+    ? sum(committedItems.map((item) => item.net_kg))
     : null;
   const isPreviewing = !preview.isSettled && (preview.isPending || preview.preview !== null);
   const canSubmit = shiftOpen && values.supplier_id !== '' && settled !== null && !hasServerError;
