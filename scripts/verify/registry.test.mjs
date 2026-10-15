@@ -4,7 +4,7 @@ import { execFileSync } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 
-import { CHECKS, PRECONDITIONS, checkById, inTier, tierCovers } from './registry.mjs'
+import { CHECKS, PRECONDITIONS, checkById, inTier, retryProbe, tierCovers } from './registry.mjs'
 import { DEFAULT_TIMEOUT_MS } from './run.mjs'
 import { gitEnv } from './scan-root.mjs'
 
@@ -445,4 +445,168 @@ test('neither config pins a rule off in its own source', () => {
         'the block with `files`, so the decision is where a reader can see it.',
     )
   }
+})
+
+/**
+ * THE CI LEGS PARTITION THE REGISTRY (#238). `.github/workflows/ci.yml` runs `verify:ci` as
+ * four matrix legs, each naming its rows with `--only` or `--exclude`. Four hand-kept lists
+ * are exactly what this layer refuses to trust, so the partition is checked, not asked
+ * for: every row runs in exactly one leg, or is superseded by a row that does — and never
+ * runs beside its superseder in another leg, which would be the same work done twice.
+ * `test` is the case that makes this load-bearing: the `fast` leg drops it by hand, and
+ * only the `coverage` leg's `--only coverage` keeps the unit suites in CI at all.
+ */
+function ciVerifyLegs() {
+  const lines = backendFile('.github/workflows/ci.yml').split('\n')
+  /** @type {Array<{ leg: string, indent: number, keys: Record<string, string> }>} */
+  const raw = []
+  /** @type {{ leg: string, indent: number, keys: Record<string, string> } | undefined} */
+  let open
+  // Line by line rather than one regex, so a comment or a blank line inside a leg — at any
+  // indentation — neither ends that leg nor drops the keys below it. A leg closes only at
+  // the next `- leg:` or at the first non-comment line no deeper than its own dash; any
+  // other deeper line must be `key: value`, or the test names it.
+  for (const line of lines) {
+    const start = /^(\s*)- leg: (\S+)\s*$/.exec(line)
+    if (start) {
+      open = { leg: start[2], indent: start[1].length, keys: {} }
+      raw.push(open)
+      continue
+    }
+    if (!open || /^\s*(#.*)?$/.test(line)) continue
+    const indent = /^\s*/.exec(line)?.[0].length ?? 0
+    if (indent <= open.indent) {
+      open = undefined
+      continue
+    }
+    const key = /^\s*(\w+): (.*?)\s*$/.exec(line)
+    // A deeper line that is not `key: value` is YAML this parse does not model; say so at
+    // that line rather than drop the keys below it and blame a flag two lines away.
+    assert.ok(key, `ci.yml: leg ${open.leg} has a line this test cannot read: «${line.trim()}»`)
+    open.keys[key[1]] = key[2]
+  }
+  return raw.map(({ leg, keys }) => {
+    const rows = /^--(only|exclude) (\S+)$/.exec(keys.rows ?? '')
+    return {
+      leg,
+      mode: /** @type {'only' | 'exclude' | undefined} */ (rows?.[1]),
+      ids: rows ? rows[2].split(',') : [],
+      services: keys.services === 'true',
+      browser: keys.browser === 'true',
+    }
+  })
+}
+
+/**
+ * Which matrix flag provides each precondition in CI — `null` where every hosted runner
+ * already has it (`docker` and `jq` ship on ubuntu-latest; `npm-registry` is the network).
+ * Typed by `PreconditionId`, so `typecheck` refuses a missing or an unknown key; the test
+ * below repeats both directions at runtime for a reader who never runs tsc.
+ *
+ * @type {Record<import('./registry.mjs').PreconditionId, 'services' | 'browser' | null>}
+ */
+const PROVIDED_IN_CI_BY = {
+  postgres: 'services',
+  redis: 'services',
+  'playwright-browser': 'browser',
+  docker: null,
+  jq: null,
+  'npm-registry': null,
+}
+
+test('the CI verify legs partition the registry — every row runs in exactly one leg', () => {
+  const legs = ciVerifyLegs()
+  // Discriminator: the parse found the matrix. Without it, a reworded ci.yml parses to no
+  // legs and every assertion below holds vacuously over an empty list.
+  assert.ok(legs.length >= 2, `found ${legs.length} verify legs in ci.yml — the matrix parse no longer matches`)
+  const excluding = legs.filter((l) => l.mode === 'exclude')
+  assert.equal(excluding.length, 1, 'exactly one leg must take its rows by --exclude, so a row added later lands somewhere')
+
+  const all = CHECKS.map((c) => c.id)
+  for (const l of legs) {
+    assert.ok(l.mode, `leg ${l.leg} has no \`rows: --only|--exclude\` line`)
+    for (const id of l.ids) assert.ok(all.includes(id), `leg ${l.leg} names unknown row ${id}`)
+  }
+  assert.deepEqual(
+    Object.keys(PRECONDITIONS).filter((p) => !(p in PROVIDED_IN_CI_BY)),
+    [],
+    'a precondition with no entry in PROVIDED_IN_CI_BY — say which CI leg can satisfy it',
+  )
+  assert.deepEqual(
+    Object.keys(PROVIDED_IN_CI_BY).filter((p) => !(p in PRECONDITIONS)),
+    [],
+    'an entry in PROVIDED_IN_CI_BY names no precondition — a dead entry is a silent hole',
+  )
+
+  /** @type {Map<string, string[]>} row id -> legs that run it */
+  const runsIn = new Map(all.map((id) => [id, []]))
+  for (const l of legs) {
+    const selected = l.mode === 'only' ? l.ids : all.filter((id) => !l.ids.includes(id))
+    const superseded = new Set(selected.flatMap((id) => checkById(id)?.supersedes ?? []))
+    for (const id of selected) if (!superseded.has(id)) runsIn.get(id)?.push(l.leg)
+    // `--only` never pulls in an `after` dependency, and a leg is its own runner with its
+    // own checkout — so a row whose `after` row runs in ANOTHER leg reads output that
+    // does not exist there (bundle and smoke read build's frontend/dist).
+    for (const id of selected) {
+      const away = (checkById(id)?.after ?? []).filter((dep) => !selected.includes(dep))
+      assert.deepEqual(away, [], `row ${id} in leg ${l.leg} needs ${away.join(', ')} in the same leg`)
+      // Under --no-skip a missing precondition is a FAILURE, so a row needing Postgres in a
+      // leg that never starts it is a red leg on every commit.
+      for (const need of checkById(id)?.needs ?? []) {
+        const flag = PROVIDED_IN_CI_BY[need]
+        if (flag) assert.ok(l[flag], `row ${id} needs ${need}, but leg ${l.leg} does not set \`${flag}: true\``)
+      }
+    }
+    // The other direction, and the rule is DECLARED needs, not actual use: a row that
+    // starts what it uses itself (smoke's global-setup.ts brings up Postgres and Redis)
+    // does not declare it, so a flag set for it is redundant setup held up by a comment
+    // alone. To pre-start something for such a row anyway — say, to buy back the seconds
+    // its own `docker compose up` costs — declare it in that row's `needs` first.
+    for (const flag of /** @type {const} */ (['services', 'browser'])) {
+      if (!l[flag]) continue
+      const readers = selected.filter((id) =>
+        (checkById(id)?.needs ?? []).some((n) => PROVIDED_IN_CI_BY[n] === flag),
+      )
+      assert.ok(readers.length > 0, `leg ${l.leg} sets \`${flag}: true\`, but no row in it needs what that starts`)
+    }
+  }
+
+  const twice = [...runsIn].filter(([, ls]) => ls.length > 1).map(([id, ls]) => `${id} (${ls.join(', ')})`)
+  assert.deepEqual(twice, [], 'a row runs in more than one leg')
+
+  const supersededAnywhere = new Map(
+    CHECKS.flatMap((c) => (c.supersedes ?? []).map((s) => /** @type {[string, string]} */ ([s, c.id]))),
+  )
+  for (const [id, ls] of runsIn) {
+    const by = supersededAnywhere.get(id)
+    if (ls.length === 0) {
+      assert.ok(by && (runsIn.get(by)?.length ?? 0) > 0, `row ${id} runs in no CI leg`)
+    } else if (by && (runsIn.get(by)?.length ?? 0) > 0) {
+      assert.fail(`row ${id} runs in ${ls.join(', ')} while ${by}, which supersedes it, runs too — the same work twice`)
+    }
+  }
+})
+
+test('retryProbe: up is final, absent is final, down is retried until the budget is spent', async () => {
+  let t = 0
+  const clock = { now: () => t, sleep: async (/** @type {number} */ ms) => void (t += ms) }
+  const seq = (/** @type {Array<'up' | 'down' | 'absent'>} */ answers) => {
+    let i = 0
+    const once = async () => answers[Math.min(i++, answers.length - 1)]
+    return { once, calls: () => i }
+  }
+
+  const slowDaemon = seq(['down', 'down', 'up'])
+  assert.equal(await retryProbe(slowDaemon.once, { budgetMs: 10, intervalMs: 2, ...clock }), true)
+  assert.equal(slowDaemon.calls(), 3, 'a daemon that answers on the third ask is up')
+
+  t = 0
+  const noCli = seq(['absent'])
+  assert.equal(await retryProbe(noCli.once, { budgetMs: 10, intervalMs: 2, ...clock }), false)
+  assert.equal(noCli.calls(), 1, 'a missing CLI is not retried')
+
+  t = 0
+  const deadDaemon = seq(['down'])
+  assert.equal(await retryProbe(deadDaemon.once, { budgetMs: 10, intervalMs: 2, ...clock }), false)
+  assert.equal(deadDaemon.calls(), 6, 'down is asked at 0, 2, 4, 6, 8 and 10, then the budget is spent')
 })

@@ -92,7 +92,8 @@ gh release create v0.3.0 --target main --generate-notes --title "v0.3.0"
 
 The workflow then, in this order and stopping loudly at the first failure:
 the `docker` job builds and pushes the images for the tag's commit with both
-the `sha-<commit>` and the `v0.3.0` tag (in parallel with `verify`); then
+the `sha-<commit>` and the `v0.3.0` tag (in parallel with the four `verify`
+legs and `ci-gate`, their one verdict, which every deploy job waits for); then
 `deploy-prod` resolves the tag (it must exist and its commit must be on
 `main`), checks both images are in GHCR, runs the release guard (below — a
 release only ever moves production forward), moves `production` to the tag's
@@ -654,6 +655,7 @@ ssh root@<vps> 'docker ps --format "{{.Names}}\t{{.Status}}\t{{.Image}}"; docker
 | «a yagoda-preview:pr-N start marker has no end marker — left untouched» | someone edited the issue and cut the block's end marker | delete the block's remaining lines by hand; the next deploy writes a fresh one |
 | `deploy-preview`: «Pull request N not found for this resource», on every push and after a close/reopen too | Coolify skipped the PR's webhook: *PR deployment access: repository members only* reads the author's PUBLIC `author_association`, and an org member with private membership arrives as `CONTRIBUTOR` | `curl -s https://api.github.com/repos/webspirio/yagoda-starter/pulls/<N> \| jq -r .author_association` — anything but `OWNER`/`MEMBER`/`COLLABORATOR` is this. Give that person a DIRECT repository grant (any role; membership can stay private) or make their org membership public, then push to the PR. Org-role and team access do not count — both were tried on #199 |
 | *Deployments* shows an old commit for `staging`/`production` although the deploy job is green | a `deployment-record.sh` step failed — it is `continue-on-error`, so the job stays green | the `::warning::` annotation on the run names the call; the next deploy writes a fresh record and sweeps the stale one |
+| `ci-gate` red with «verify: cancelled» on a PR | a newer push superseded the run (`cancel-in-progress`) and the gate still reports, by design — a skipped gate would read as passing | nothing — the newer run's gate is the one that counts |
 | `deploy-preview` shows "cancelled", no comment | another PR took the single pending slot of the `preview-allocation` concurrency group while this one waited | re-run the job |
 | `deploy-staging` skipped with «main is at X, not Y» | correct: a newer merge owns staging, and its own run deploys it | nothing — unless that newer run went red, in which case staging is behind `main` until it is fixed and re-run |
 | CI green after a merge but production unchanged | expected — production moves only on a release («Releasing to production»); check staging instead | publish a release when the change is meant for production |

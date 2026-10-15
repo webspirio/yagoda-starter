@@ -219,12 +219,53 @@ jobs:
   # buildx cache exactly as it always had, and it is now the only thing in this
   # workflow that builds an image at all.
 
+  # ONE JOB, FOUR PARALLEL LEGS (#238). Until 2026-10-13 this was a single job that ran
+  # every row of `verify:ci` one after another, so a PR waited for the SUM of the rows
+  # (~7.6 min on a code PR, of which coverage ~217s, test:db ~107s, smoke ~55s) and a
+  # lint error surfaced only at the end. Each leg now runs on its own runner and the PR
+  # waits for the slowest leg. Public-repo hosted runners are free, so the extra setup
+  # per leg costs wall-clock seconds, not money.
+  #
+  # HOW THE ROWS ARE SPLIT — the `fast` leg is the one that uses `--exclude`, on purpose:
+  # a row added to scripts/verify/registry.mjs later lands in `fast` automatically
+  # instead of silently running nowhere (the same reasoning as `verify:prepush`). The
+  # other three legs name their rows with `--only`, and every row they name is in the
+  # `fast` leg's exclude list, so each row runs in exactly one leg:
+  #   fast      everything except the rows below
+  #   coverage  coverage            (`test` is excluded from `fast` as well: coverage
+  #                                  supersedes it, but only inside one run — without
+  #                                  the exclude, the unit tests would run twice)
+  #   db        test:db
+  #   smoke     build, bundle, smoke (`--only` never pulls in `after` dependencies, so
+  #                                  `build` must sit in the same leg as both rows that
+  #                                  read its output)
+  #
+  # `ci-gate` below is the single job that says whether ALL legs passed; the deploy
+  # jobs wait for it, and it is the check to require on `main`.
   verify:
     # Not on a dispatch: a dispatch deploys an already-released commit, main's
     # HEAD says nothing about it, and a red main must not block a rollback.
     if: github.event_name != 'workflow_dispatch'
+    name: verify (${{ matrix.leg }})
+    strategy:
+      # Every leg reports even when another fails — a red `fast` leg must not hide
+      # whether test:db would also have been red.
+      fail-fast: false
+      matrix:
+        include:
+          - leg: fast
+            rows: --exclude test,coverage,test:db,build,bundle,smoke
+          - leg: coverage
+            rows: --only coverage
+          - leg: db
+            rows: --only test:db
+            services: true
+          - leg: smoke
+            rows: --only build,bundle,smoke
+            browser: true
     runs-on: ubuntu-latest
-    # A full-tier, --no-skip run exercises every row in scripts/verify/registry.mjs.
+    # The four legs TOGETHER are a full-tier, --no-skip run over every row in
+    # scripts/verify/registry.mjs — no single leg is (registry.test.mjs pins the partition).
     # The slowest are now `selfcheck` (node --test over the layer's own 163 tests,
     # which nothing caches, in CI or on a laptop) and `smoke` (a real browser against
     # a real Compose stack). Sized from what CI ITSELF measured, not from the laptop.
@@ -269,6 +310,10 @@ jobs:
     # together on 35017224544 — almost all of it `selfcheck` (54.4s) and `smoke` (49.7s). It stays the loosest number in this file on purpose — a job-level
     # timeout is the last line of defence, and the failure it causes (a log that simply
     # stops) is strictly less useful than the one it would pre-empt.
+    #
+    # Since the split (#238) each leg carries only its own rows' budgets — coverage 600s,
+    # test:db 300s, smoke 180s plus build — so 30 is now looser per leg than it was for
+    # the whole job, never tighter.
     timeout-minutes: 30
 
     env:
@@ -412,20 +457,38 @@ jobs:
       # PR-created caches remain scoped by GitHub's cache visibility rules; main acts
       # as the canonical shared seed for new PRs — which also means this new lineage
       # stays cold on PRs until main's own run seeds it once.
+      #
+      # SINCE THE SPLIT (#238) THE KEY NAMES THE LEG — the opposite of the rule above, for
+      # a reason that rule did not have to face. Four legs finish one commit at different
+      # times, and an Actions cache key is write-once: with one shared key, whichever leg
+      # finished first would save ITS `.turbo` (say `fast`'s, with no coverage outputs in
+      # it) and the other three saves would be refused, so `coverage` would run cold on the
+      # next commit. A leg's name is stable where a job's name was not, and the second
+      # restore key still reaches the pre-split `turbo-<os>-<sha>` lineage, so the first
+      # run of each leg starts warm rather than from nothing.
+      #
+      # Not in the `db` leg: test:db is plain jest (`npm run test:db -w backend`), never a
+      # turbo task, so that leg would only re-upload a restored `.turbo` it never touched —
+      # one dead ~100 MB entry per commit in the repo's 10 GB cache budget, which it shares
+      # with the docker job's buildx caches.
       - name: Cache turbo
+        if: matrix.leg != 'db'
         uses: actions/cache@v6
         with:
           path: .turbo
-          key: turbo-${{ runner.os }}-${{ github.sha }}
+          key: turbo-${{ runner.os }}-${{ matrix.leg }}-${{ github.sha }}
           restore-keys: |
+            turbo-${{ runner.os }}-${{ matrix.leg }}-
             turbo-${{ runner.os }}-
 
       # Load-bearing, not a convenience. The `smoke` row declares `needs:
       # ['playwright-browser', 'docker']`; under `--no-skip` a missing precondition
       # is a FAILURE, not a narrower run (see registry.mjs's PRECONDITIONS and
       # run.mjs's --no-skip handling) — so skipping this step would not skip
-      # `smoke` quietly, it would turn the whole job red.
-      - run: npx playwright install --with-deps chromium
+      # `smoke` quietly, it would turn the whole job red. Only the `smoke` leg runs a row
+      # that needs it.
+      - if: matrix.browser
+        run: npx playwright install --with-deps chromium
 
       # Services come from Compose, not from this workflow's own `services:`
       # block. That is the point: CI now brings up Postgres and Redis on the exact
@@ -434,10 +497,16 @@ jobs:
       # open, not a second, CI-only definition of "a database" that could drift
       # from the first. The `postgres` and `redis` PRECONDITIONS (registry.mjs)
       # become true here for the identical reason they become true on a laptop
-      # that ran this same command.
-      - run: docker compose up -d --wait postgres redis
+      # that ran this same command. Only the `db` leg sets `services`: test:db needs them.
+      # The `smoke` leg does not — e2e/global-setup.ts runs `docker compose up -d --wait
+      # postgres redis backend` itself, exactly as on a laptop, so starting them here
+      # first only cost seconds. registry.test.mjs fails on a flag no row in its leg needs.
+      - if: matrix.services
+        run: docker compose up -d --wait postgres redis
 
-      - run: npm run verify:ci
+      # `verify:ci` is `--tier full --no-skip`; the leg only narrows WHICH rows run, never
+      # the tier or --no-skip, so a missing precondition is still a failure in every leg.
+      - run: npm run verify:ci -- ${{ matrix.rows }}
         env:
           # Every other DB_*/REDIS_* variable the `test:db` row's app boot needs
           # already defaults (Joi, app.module.ts) to exactly what the `docker
@@ -454,9 +523,31 @@ jobs:
       - if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: verify-report
+          name: verify-report-${{ matrix.leg }}
           path: .verify/last-run.json
           if-no-files-found: warn
+
+  # The one verdict over every `verify` leg — what the deploy jobs wait for and the check
+  # to require on `main`. `always()` is the point: without it, a failed leg makes this job
+  # SKIPPED rather than failed, and GitHub treats a skipped required check as passing.
+  # A matrix job's `result` is `success` only when every leg succeeded, so a failed or
+  # cancelled leg turns this red. Skipped on a dispatch exactly as `verify` is, which
+  # keeps `deploy-prod`'s dispatch path (it expects a skipped verdict) unchanged.
+  #
+  # `always()`, not `!cancelled()`, although a run superseded by a newer push then ends
+  # with a red gate («verify: cancelled»). Under `!cancelled()` a cancelled run leaves this
+  # job SKIPPED, and a skipped required check reads as passing — the one outcome a gate
+  # must never have. A red gate on a SHA nobody will merge is the cheaper error.
+  ci-gate:
+    if: always() && github.event_name != 'workflow_dispatch'
+    needs: [verify]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Every verify leg succeeded
+        run: |
+          echo "verify: ${{ needs.verify.result }}"
+          test "${{ needs.verify.result }}" = success
 
   docker:
     runs-on: ubuntu-latest
@@ -664,7 +755,7 @@ jobs:
   deploy-preview:
     runs-on: ubuntu-latest
     timeout-minutes: 25
-    needs: [verify, docker]
+    needs: [ci-gate, docker]
     # Internal PRs only (forks have no secrets), and only when an image for
     # this head was actually pushed. A preview is "the CI-passed commit": both
     # jobs must be green.
@@ -682,7 +773,7 @@ jobs:
     # production tracks `production` — see docs/coolify-deploy.md §Environments.
     if: >-
       !cancelled()
-      && needs.verify.result == 'success'
+      && needs.ci-gate.result == 'success'
       && needs.docker.result == 'success'
       && github.event_name == 'pull_request'
       && needs.docker.outputs.pushed == 'true'
@@ -866,7 +957,7 @@ jobs:
   deploy-staging:
     runs-on: ubuntu-latest
     timeout-minutes: 25
-    needs: [verify, docker]
+    needs: [ci-gate, docker]
     # `!cancelled()` is load-bearing, not decoration. A skip propagates DOWN the
     # needs graph transitively: `changes` skips itself on push, `docker` survives
     # only via `always()`, and every job downstream of it then inherits that skip
@@ -879,7 +970,7 @@ jobs:
     # to stop staging deploys without a commit.
     if: >-
       !cancelled()
-      && needs.verify.result == 'success'
+      && needs.ci-gate.result == 'success'
       && needs.docker.result == 'success'
       && github.event_name == 'push'
       && github.ref == 'refs/heads/main'
@@ -969,15 +1060,15 @@ jobs:
   deploy-prod:
     runs-on: ubuntu-latest
     timeout-minutes: 25
-    needs: [verify, docker]
+    needs: [ci-gate, docker]
     if: >-
       !cancelled()
       && needs.docker.result == 'success'
-      && ((github.event_name == 'release' && needs.verify.result == 'success')
-        || (github.event_name == 'workflow_dispatch' && needs.verify.result == 'skipped'))
+      && ((github.event_name == 'release' && needs.ci-gate.result == 'success')
+        || (github.event_name == 'workflow_dispatch' && needs.ci-gate.result == 'skipped'))
       && github.event.release.prerelease != true
       && vars.COOLIFY_ENABLED == 'true'
-    # A release gates on `verify` of its own commit; a dispatch skips `verify`
+    # A release gates on `ci-gate` (every `verify` leg) of its own commit; a dispatch skips both
     # (see that job) and re-deploys an already-released commit. A GitHub
     # pre-release deploys nothing — `prerelease` is empty on a dispatch, so
     # that clause only ever stops a release.
@@ -1018,7 +1109,7 @@ jobs:
             || { echo "::error::no tag named '$TAG' — releases are published from an existing tag"; exit 1; }
           git merge-base --is-ancestor "$target" origin/main \
             || { echo "::error::$TAG ($target) is not on main — releases are cut from main; merge the hotfix first"; exit 1; }
-          # The verify job this deploy is gated on checked out github.sha. On
+          # The verify legs this deploy is gated on (via ci-gate) checked out github.sha. On
           # a release GitHub sets that to the tagged commit, so the two agree
           # by GitHub's rule — and this check makes the gate rest on the
           # checked fact rather than on the rule.
