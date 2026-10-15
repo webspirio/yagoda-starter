@@ -1,6 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
 import { httpClient } from '@/shared/api';
-import { STALE } from '@/shared/api/queryClient';
 import { queryKeys } from '@/shared/api/queryKeys';
 import type { TareTypeOption } from '../model/tare-type';
 
@@ -42,6 +41,5 @@ export function useTareTypeOptionsQuery() {
         is_crate: t.is_crate,
       }));
     },
-    staleTime: STALE.reference,
   });
 }

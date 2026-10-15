@@ -16,7 +16,6 @@ export function useSupplierBalanceQuery(id: string | null) {
     queryFn: async (): Promise<SupplierBalanceOne> =>
       (await httpClient.get<SupplierBalanceOne>(`/suppliers/${id}/balance`)).data,
     // A balance moves with every receipt and payout; those writes invalidate the prefix.
-    staleTime: 30_000,
   });
 }
 
@@ -44,7 +43,6 @@ export function useSupplierBalancesQuery(filter: {
           },
         })
       ).data,
-    staleTime: 30_000,
   });
 }
 
@@ -61,6 +59,5 @@ export function useSupplierSettlementQuery(id: string | null) {
     enabled: id !== null,
     queryFn: async (): Promise<SupplierSettlement> =>
       (await httpClient.get<SupplierSettlement>(`/suppliers/${id}/settlement`)).data,
-    staleTime: 30_000,
   });
 }

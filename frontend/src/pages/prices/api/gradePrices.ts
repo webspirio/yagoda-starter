@@ -1,7 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { httpClient } from '@/shared/api';
 import { queryKeys } from '@/shared/api/queryKeys';
-import { STALE } from '@/shared/api/queryClient';
 import type { GradePrice, SetPriceInput } from '../model/gradePrice';
 
 /** `GET /grade-prices` envelope — the full journal, newest first (unlike
@@ -32,7 +31,6 @@ export function usePriceHistoryQuery(pointId: string | null, gradeId: string | n
       });
       return data.data;
     },
-    staleTime: STALE.list,
   });
 }
 

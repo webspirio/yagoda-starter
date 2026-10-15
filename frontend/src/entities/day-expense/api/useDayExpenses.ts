@@ -1,7 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { httpClient } from '@/shared/api';
 import { queryKeys } from '@/shared/api/queryKeys';
-import { STALE } from '@/shared/api/queryClient';
 import type { DayExpense } from '../model/day-expense';
 
 /**
@@ -19,6 +18,5 @@ export function useDayExpensesQuery(shiftId: string | undefined) {
       const { data } = await httpClient.get<DayExpense[]>(`/shifts/${shiftId}/expenses`);
       return data;
     },
-    staleTime: STALE.detail,
   });
 }

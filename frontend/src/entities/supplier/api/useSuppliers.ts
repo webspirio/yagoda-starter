@@ -1,7 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { httpClient } from '@/shared/api';
 import { queryKeys } from '@/shared/api/queryKeys';
-import { STALE } from '@/shared/api/queryClient';
 import type { Paginated, Supplier } from '../model/supplier';
 
 /**
@@ -27,7 +26,6 @@ export function useSuppliersQuery(search: string, pointId?: string | null) {
       });
       return data;
     },
-    staleTime: STALE.list,
   });
 }
 
@@ -38,6 +36,5 @@ export function useSupplierQuery(id: string | null) {
     enabled: id !== null,
     queryFn: async (): Promise<Supplier> =>
       (await httpClient.get<Supplier>(`/suppliers/${id}`)).data,
-    staleTime: STALE.detail,
   });
 }

@@ -2,7 +2,6 @@ import { useQuery } from '@tanstack/react-query';
 import { httpClient } from '@/shared/api';
 import type { Paginated } from '@/shared/api';
 import { queryKeys } from '@/shared/api/queryKeys';
-import { STALE } from '@/shared/api/queryClient';
 import type { IntakeTopUp, TopUpFilter } from '../model/intakeTopUp';
 
 /**
@@ -32,6 +31,5 @@ export function useIntakeTopUpsQuery(filter: TopUpFilter) {
       });
       return data;
     },
-    staleTime: STALE.list,
   });
 }

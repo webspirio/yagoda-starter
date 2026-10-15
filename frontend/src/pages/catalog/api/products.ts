@@ -1,7 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { httpClient } from '@/shared/api';
 import { queryKeys } from '@/shared/api/queryKeys';
-import { STALE } from '@/shared/api/queryClient';
 import type {
   CreateProductInput,
   Paginated,
@@ -12,8 +11,8 @@ import type {
 /**
  * `products` has no `is_active` column (visibility is derived from grades), so
  * unlike the other catalogs this read sends no `include_inactive` — there is
- * nothing to include. `STALE.reference`: a berry catalog changes a few times a
- * season.
+ * nothing to include. Cached: `queryKeys.products` is on `shared/api/cachePolicy.ts`'s
+ * allowlist — a berry catalog changes a few times a season.
  */
 export function useProductsQuery() {
   return useQuery({
@@ -22,7 +21,6 @@ export function useProductsQuery() {
       const { data } = await httpClient.get<Paginated<Product>>('/products');
       return data;
     },
-    staleTime: STALE.reference,
   });
 }
 
