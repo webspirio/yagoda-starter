@@ -1071,6 +1071,7 @@
       "bonusOutOfRange": "The extra price is outside this grade's limits. Correct it.",
       "netNotPositive": "Net weight comes out zero: the pallet and tare eat the whole gross. Check the weight and tare.",
       "rateNegative": "Price plus extra price cannot be negative. Correct the extra price.",
+      "amountRoundsToZero": "The amount is too small. Check the weight.",
       "noOpenShift": "No open shift — open one in Day cash",
       "supplierInactive": "The supplier is deactivated. Pick another or ask an owner.",
       "shiftClosed": "The shift is already closed. Ask an owner.",

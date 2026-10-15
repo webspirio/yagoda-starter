@@ -57,7 +57,7 @@ export const intake = (over: Record<string, unknown> = {}) => ({
   code: 'KPG-IN-20260908-004',
   shift_id: SHIFT_ID,
   supplier_id: SUPPLIER,
-  amount: '2103.30',
+  amount: '2103.30', // a pre-#56 record: a new receipt's line amounts are whole hryvnia (§2.12)
   received_by_user_id: 'u-oksana',
   voided_at: null,
   voided_by_user_id: null,

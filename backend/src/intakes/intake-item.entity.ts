@@ -21,8 +21,8 @@ import { IntakeItemTareType } from './intake-item-tare-type.entity';
  * touched again (§2.7).
  *
  * NO EQUALITY CHECK ON `amount`. Foundation §5.4 refuses it outright: stored
- * money is rounded to two decimals, so `amount = net × (price + bonus)` as a
- * constraint rejects legitimate rows, and loosening it to a tolerance would be
+ * money is rounded — to whole hryvnia since #56 (§2.12), up to 0,79 ₴ off
+ * `net × (price + bonus)` — so that product as a constraint rejects legitimate rows, and loosening it to a tolerance would be
  * the «допустима розбіжність» the schema will not have.
  *
  * `bonus` HAS NO NON-NEGATIVE CHECK, deliberately. §2.8 — «від'ємний bonus це

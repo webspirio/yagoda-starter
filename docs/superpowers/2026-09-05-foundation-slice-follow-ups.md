@@ -1552,3 +1552,25 @@ the review bot found.
   fix is `number` on `UserResponse` plus a column on the Users page. The Points page needs
   the same column: `CollectionPointResponse` already carries `number`, but the page's
   hand-mirrored type does not.
+
+## Left over from whole-hryvnia line amounts (#56, 2026-10-13)
+
+The slice rounds only a reception line's `amount` (§2.12). The ticket says
+«ніде не лишилося сум із копійками», so these are open questions for the client:
+
+- **Other computed sums still carry kopecks.** Crate deposit (`crates.service.ts`,
+  `crate-allocation.ts`), payouts, owner top-ups (`intake_top_ups.amount`), the
+  reweigh shortfall (`reweigh-reconciliation.service.ts`), and cost-of-day's
+  shortfall, per-kg figures and §8.5 top-up split (`product-cost-rows.ts`,
+  `cost-of-day.service.ts`, `top-up-allocation.ts`).
+- **Cost-of-day's «ціна була» and the reweigh shortfall price off the rounded
+  amount.** Both are `accrued ÷ net kg`, so they sit up to 0,79 ₴ per line under the
+  rate (36,90 kg for 2 103,00 → 56,99/kg, not 57,00). Kept on purpose — the reweigh
+  spec's §3.6 prices a shortfall at what was actually paid, and that is now whole
+  hryvnia; §2.12 and `reweigh-reconciliation.service.spec.ts` pin it. Nothing says so
+  on screen.
+- **A line under 0,80 is refused, not paid 0,00** (`AMOUNT_ROUNDS_TO_ZERO`, PR #240
+  review). A UI hint before «Прийняти» — rather than the field error after the
+  preview — is open.
+- **The receipt prints net × rate beside an amount that is not their product**
+  (36,90 × 57,00 next to 2 103,00). A hint for the supplier is possible.

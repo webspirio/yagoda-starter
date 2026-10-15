@@ -177,7 +177,7 @@ describe('CreateIntakeCommand', () => {
           net_kg: '36.90',
           price: '57.00',
           bonus: '0.00',
-          amount: '2103.30',
+          amount: '2103.00',
           tare: [{ tare_type_id: CRATE, units: 3 }],
           product_grade: { name: 'Альба', product: { name: 'Полуниця' } },
         },
@@ -198,7 +198,7 @@ describe('CreateIntakeCommand', () => {
     it('stores amount as Σ of the line amounts', async () => {
       await command.create(oksana, dto());
 
-      expect(savedIntake().amount).toBe('2103.30');
+      expect(savedIntake().amount).toBe('2103.00');
     });
 
     it('signs the document with WHO PUNCHED IT', async () => {
