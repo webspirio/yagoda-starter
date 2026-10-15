@@ -25,15 +25,19 @@ export interface JournalRow {
   reason: string | null;
   /** The receipt behind a receipts-tab row — what `canVoidIntake` reads. */
   intake?: Intake;
+  /** A payout-tab row with no receipt behind it — the only payout that has a
+   *  document of its own to open. */
+  standalonePayout?: boolean;
 }
 
 /**
  * The journal's table body: loading/error/empty states, the shared column
  * set (identical for a receipts page and a payouts page — both documents
  * carry the same header shape), and the «Назад»/«Далі» pager. `onRowClick`
- * is the receipts-only affordance — a payout row has no detail dialog to
- * open, so the payouts panel simply omits it — and so is `onVoid`, the row's
- * «Анулювати», shown where `canVoidIntake(me, row.intake)` holds.
+ * opens a row's receipt: every receipts-tab row, but on the payouts tab only
+ * a standalone payout (`standalonePayout`) — one tied to a receipt is read on
+ * that receipt. `onVoid` is receipts-only, the row's «Анулювати», shown where
+ * `canVoidIntake(me, row.intake)` holds.
  */
 export function JournalTable({
   isPending,
@@ -44,6 +48,7 @@ export function JournalTable({
   limit,
   onPageChange,
   onRowClick,
+  rowClickable,
   me,
   onVoid,
 }: {
@@ -55,6 +60,7 @@ export function JournalTable({
   limit: number;
   onPageChange: (page: number) => void;
   onRowClick?: (row: JournalRow) => void;
+  rowClickable?: (row: JournalRow) => boolean;
   me?: Me;
   onVoid?: (row: JournalRow) => void;
 }) {
@@ -157,6 +163,7 @@ export function JournalTable({
         rows={rows}
         rowKey={(r) => r.id}
         onRowClick={onRowClick}
+        rowClickable={rowClickable}
       />
       <div className="mt-3 flex items-center justify-between gap-3 text-sm text-muted-foreground">
         <span>{t('journal.pagination.range', { from: start, to: end, total })}</span>

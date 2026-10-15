@@ -4,6 +4,8 @@ import type { BuiltIntake } from './intake-lines';
 import type { IntakeRowExtras } from './intake-row-extras';
 import { Shift } from '../shifts/shift.entity';
 import type { Payout } from '../payouts/payout.entity';
+import type { User } from '../users/user.entity';
+import { displayNameOf } from '../users/display-name';
 
 /**
  * `collection_point_id` and `business_date` are JOINED IN from the shift and
@@ -124,8 +126,15 @@ export interface IntakeDetailResponse extends IntakeResponse {
   /** Payouts handed over WITH this receipt (§2.1 ⑥) — `intake_id` = this id,
    *  voided ones included so the receipt can say a payout was cancelled. */
   payouts: IntakePayoutResponse[];
-  /** «Приймав» on the printed receipt. `null` only if the user row is gone. */
+  /** The receiver's name — the void dialog's «видано … ким». `null` only if the user row is gone. */
   received_by_name: string | null;
+  /** `users.number` — the receipt header's «Приймальник № 5» (#145, client correction
+   *  2026-10-14). `null` only if the user row is gone. */
+  received_by_number: number | null;
+  /** `collection_points.number` — the header's «Точка № 3». Joined here rather than looked
+   *  up in the client's point list, so a receipt never waits on that list and a deactivated
+   *  point still prints its number. Never null: a point has no DELETE path (§5.6). */
+  point_number: number;
   /** `null` when no crates came back with this receipt. */
   crate_return: IntakeCrateReturnResponse | null;
 }
@@ -188,8 +197,9 @@ export function toIntakeDetailResponse(
   items: IntakeItem[],
   extras: IntakeRowExtras,
   payouts: Payout[],
-  receivedByName: string | null,
+  receiver: Pick<User, 'first_name' | 'last_name' | 'number'> | null,
   crateReturn: IntakeCrateReturnRow | null,
+  pointNumber: number,
 ): IntakeDetailResponse {
   return {
     ...toIntakeResponse(intake, shift, extras),
@@ -199,7 +209,9 @@ export function toIntakeDetailResponse(
     payouts: [...payouts]
       .sort((a, b) => a.created_at.getTime() - b.created_at.getTime())
       .map(toIntakePayoutResponse),
-    received_by_name: receivedByName,
+    received_by_name: receiver ? displayNameOf(receiver) : null,
+    received_by_number: receiver ? receiver.number : null,
+    point_number: pointNumber,
     crate_return: crateReturn ? toIntakeCrateReturnResponse(crateReturn) : null,
   };
 }

@@ -125,6 +125,7 @@ Table users {
 
   first_name varchar [not null]
   last_name varchar [not null]
+  number int [unique, not null, note: 'Номер приймальника для шапки чека «Приймальник № 5» (#145, правка замовника 14.10.2026): видається базою за порядком створення (GENERATED ALWAYS), вручну не вводиться.']
   login varchar [unique, not null]
   password_hash varchar [not null]
 
@@ -142,6 +143,7 @@ Table collection_points {
   id uuid [pk]
 
   name varchar [not null]
+  number int [unique, not null, note: 'Номер точки для шапки чека «Точка № 3» (#145, правка замовника 14.10.2026): видається базою за порядком створення (GENERATED ALWAYS), вручну не вводиться. Не code: замовник попросив саме номер, а code уже друкується в «№ квитанції». Нумерація наскрізна по всіх точках, разом зі складом і точками лише в реєстрі.']
 
   kind point_kind [not null, default: 'reception']
 
@@ -756,6 +758,13 @@ Table payouts {
   intake_id uuid [ref: > intakes.id]
 
   amount numeric(12,2) [not null]
+
+  // Борг постачальника на цій точці (постачальник і є точкою, §3.9) одразу ПІСЛЯ цієї виплати,
+  // заморожений у момент запису під блокуванням постачальника (#145). Його друкує квитанція
+  // видачі, тож передрук — той самий папірець. Це ЗАПИС надрукованого, а не джерело боргу: борг
+  // рахує лише формула (Note suppliers), ніхто не читає цю колонку для розрахунків (§3.2 не
+  // порушено). Анулювання її не змінює. Додано 2026-10-13; наявні рядки відновлено міграцією станом на created_at.
+  balance_after numeric(12,2) [not null]
 
   paid_by_user_id uuid [not null, ref: > users.id]
 

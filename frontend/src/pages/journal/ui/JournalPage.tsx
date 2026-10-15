@@ -12,7 +12,7 @@ import { useIntakesQuery, type DocumentFilter } from '@/entities/intake';
 import { usePayoutsQuery } from '@/entities/payout';
 import { useSuppliersQuery, useSupplierBalancesQuery, supplierName } from '@/entities/supplier';
 import { useMeQuery } from '@/entities/user';
-import { ReceiptDialog, useReceiptOpener } from '@/widgets/receipt';
+import { PayoutReceiptDialog, ReceiptDialog, useReceiptOpener } from '@/widgets/receipt';
 import { monthRange, parseFilters, PAGE_SIZE } from '../model/journalFilters';
 import { JournalToolbar } from './JournalToolbar';
 import { JournalTable, type JournalRow } from './JournalTable';
@@ -116,6 +116,7 @@ export function JournalPage() {
 
   const receipt = useReceiptOpener();
   const { openReceipt } = receipt;
+  const payoutReceipt = useReceiptOpener();
   const { data: me } = useMeQuery();
 
   const setPage = (page: number) => patch({ page: page === 1 ? null : page });
@@ -183,13 +184,16 @@ export function JournalPage() {
             <JournalTable
               isPending={payoutsQuery.isPending}
               isError={payoutsQuery.isError}
-              rows={(payoutsQuery.data?.data ?? []).map((doc) =>
-                toJournalRow(doc, pointName, supplierLabel),
-              )}
+              rows={(payoutsQuery.data?.data ?? []).map((doc) => ({
+                ...toJournalRow(doc, pointName, supplierLabel),
+                standalonePayout: doc.intake_id === null,
+              }))}
               total={payoutsQuery.data?.total ?? 0}
               page={filters.page}
               limit={PAGE_SIZE}
               onPageChange={setPage}
+              onRowClick={(row) => payoutReceipt.openReceipt(row.id)}
+              rowClickable={(row) => row.standalonePayout === true}
             />
           </TabsContent>
         </ListPage>
@@ -201,6 +205,13 @@ export function JournalPage() {
         open={receipt.open}
         startWithVoid={receipt.startWithVoid}
         onClose={receipt.close}
+      />
+
+      <PayoutReceiptDialog
+        key={`payout-${payoutReceipt.receiptId}`}
+        payoutId={payoutReceipt.receiptId}
+        open={payoutReceipt.open}
+        onClose={payoutReceipt.close}
       />
     </>
   );
