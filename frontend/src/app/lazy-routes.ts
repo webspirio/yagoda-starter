@@ -22,7 +22,9 @@ import { lazy } from 'react';
  * all: the operator gets one JS file and one CSS file, strictly fewer bytes
  * AND strictly fewer round trips. The owner pays 20.4 KiB gzip once, the
  * first time they open any management screen, instead of 2.4-5.7 KiB per
- * screen — a trade taken at a desk, not in a field.
+ * screen — a trade taken at a desk, not in a field. That held while this
+ * was the ONLY dynamic entry point; «Каса точки» below is a second one, and
+ * it changed the picture — see its own note.
  *
  * THE GUARD MUST STAY OUTSIDE THE LAZY COMPONENT, and that ordering lives in
  * `router.tsx`: the owner group's `<RequireRole><Outlet /></RequireRole>`
@@ -56,3 +58,21 @@ export const TransfersPage = lazy(() => ownerPages().then((m) => ({ default: m.T
 export const ReweighPage = lazy(() => ownerPages().then((m) => ({ default: m.ReweighPage })));
 export const CostOfDayPage = lazy(() => ownerPages().then((m) => ({ default: m.CostOfDayPage })));
 export const SettingsPage = lazy(() => ownerPages().then((m) => ({ default: m.SettingsPage })));
+
+/**
+ * «Каса точки» — BOTH roles, so not in the owner chunk, and lazy on its own
+ * (#73): the first load had no headroom left, and this screen is not the
+ * operator's per-shift path — shifts open and close from «Прийомка» and «Каса
+ * за день» too. No `RequireRole` to order around: any signed-in user may load it.
+ *
+ * WHAT IT COST, MEASURED (2026-10-13, first-load set from dist/index.html).
+ * A SECOND dynamic entry point is exactly what the note above warns about:
+ * rolldown hoisted the code shared with the eager graph into a preloaded
+ * chunk (named after this page, but it is shared code, ~430 KiB raw) plus a
+ * runtime chunk. Before: 2 files, 1,085,685 B raw / 309,225 B gzip, over
+ * budget. After: 4 files, 1,057,344 B raw / 305,673 B gzip; the page itself
+ * is a ~30 KiB deferred chunk. Fewer bytes, two more parallel requests.
+ */
+export const PointCashPage = lazy(() =>
+  import('@/pages/point-cash').then((m) => ({ default: m.PointCashPage })),
+);

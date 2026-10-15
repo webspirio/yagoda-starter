@@ -19,7 +19,6 @@ import { PricesPage } from '@/pages/prices';
 import { DayPage } from '@/pages/day';
 import { ReceptionPage } from '@/pages/reception';
 import { CratesPage } from '@/pages/crates';
-import { PointCashPage } from '@/pages/point-cash';
 import { NotFoundPage } from '@/pages/not-found';
 
 // LAZY — the owner-only group, in ONE chunk fetched the first time an owner
@@ -34,6 +33,7 @@ import {
   CatalogPage,
   CostOfDayPage,
   JournalPage,
+  PointCashPage,
   PointsPage,
   ReweighPage,
   SettingsPage,
