@@ -1518,6 +1518,41 @@ Found by driving the count-explanations slice in a browser. None of them blocks 
   shift's panel shows a «Розбіжність» pill with no amount and no action. The
   only way back is «Уся історія перерахунків».
 
+## Deferred from the payout receipt, PR #236 review (2026-10-14)
+
+From Гліб's review of #145
+([review](https://github.com/webspirio/yagoda-starter/pull/236#pullrequestreview-5518571954)).
+Blocking items 1–3 were fixed in the PR. These four were agreed as follow-ups, plus one gap
+the review bot found.
+
+- **Two «Залишок» lines, two meanings (review item 4).** The payout receipt prints the frozen
+  `balance_after`, so a reprint is the same paper. The intake receipt's «Залишок» is the LIVE
+  debt (`buildIntakeReceipt`'s `balance`), so tomorrow's reprint shows a different figure than
+  the supplier took home. The spec scoped that out («Поза тікетом»); closing it means a frozen
+  balance on `intakes` too. Related: `balance_after` is also written for payouts bound to a
+  receipt (`intake_id` set), which nothing prints today.
+- **The builders are hand assembly (review item 5).** `buildIntakeReceipt` and
+  `buildPayoutReceipt` differ only in `sections`. `voided`, `header`, the four `meta` rows
+  (number, operation, date, supplier) and `footer` are copied in both, and a third document
+  kind would copy them again. One skeleton function that takes the operation and the sections
+  is enough. `ReceiptDocument` is plain data, so a fluent builder would be overkill.
+- **Receipt wiring is copied onto four pages (review item 6).** `DayPage`, `JournalPage`,
+  `DebtsPage` and `SupplierCardPage` each hold a second `useReceiptOpener()` and their own
+  `<PayoutReceiptDialog …/>`. The rule «a payout gets its own receipt only when
+  `intake_id === null`» is written separately in Day, Journal and the supplier timeline.
+  `useReceiptOpener`'s parameter is still named `intakeId`. Target: one opener taking
+  `{ kind, id }` and one host, so a new document kind is added in one place.
+- **`shared/ui/receipt.tsx` knows the domain (review item 7).** `berryLine` and its labels
+  («Брутто», «Піддон», «Тара») live in `shared`, against FSD. The next domain section
+  (crates) would widen `shared` again. `shared` should keep only the `rows` and `caption`
+  primitives. Domain sections move to `widgets/receipt` or `entities/*`.
+- **Nobody can resolve «Приймальник № 5» to a person.** The number prints on paper, but
+  `UserResponse` (`GET /users`) and `Me` carry no `number`, and the Users page has no column
+  for it. An owner holding a supplier's receipt cannot tell who wrote it without psql. The
+  fix is `number` on `UserResponse` plus a column on the Users page. The Points page needs
+  the same column: `CollectionPointResponse` already carries `number`, but the page's
+  hand-mirrored type does not.
+
 ## Left over from whole-hryvnia line amounts (#56, 2026-10-13)
 
 The slice rounds only a reception line's `amount` (§2.12). The ticket says

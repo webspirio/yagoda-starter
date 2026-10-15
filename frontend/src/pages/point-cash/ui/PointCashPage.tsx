@@ -9,14 +9,25 @@ import { Spinner } from '@/shared/ui/spinner';
 import { isTruncated } from '@/shared/api';
 import { useUrlParam } from '@/shared/lib/url-state';
 import { isNegative, formatUah, cmp } from '@/shared/lib/money';
-import { todayIso, addDaysIso, isRealIsoDate, formatLongDate, formatWeekday, formatShortDate } from '@/shared/lib/date';
+import {
+  todayIso,
+  addDaysIso,
+  isRealIsoDate,
+  formatLongDate,
+  formatWeekday,
+  formatShortDate,
+} from '@/shared/lib/date';
 import { useMeQuery } from '@/entities/user';
 import { useWorkingPoint } from '@/features/point-scope';
 import { usePointOptionsQuery } from '@/entities/collection-point';
-import { usePointCashQuery, shortfallTone, formatNullableUah } from '@/entities/point-cash';
+import {
+  usePointCashQuery,
+  usePointCashForPointQuery,
+  shortfallTone,
+  formatNullableUah,
+} from '@/entities/point-cash';
 import { useIntakesQuery } from '@/entities/intake';
 import { usePayoutsQuery } from '@/entities/payout';
-import { useTransfersQuery } from '@/entities/transfer';
 import { useCashCountsQuery } from '@/entities/cash-count';
 import { useShiftOnDateQuery, useCurrentShiftQuery } from '@/entities/shift';
 import { SetTargetCashDialog } from '@/features/set-point-target';
@@ -28,6 +39,7 @@ import {
 } from '@/features/count-shift';
 import { ShiftCountResult, type ShiftCountResultFor } from '@/widgets/count-result';
 import { CashLedger } from './CashLedger';
+import { shiftDateOf } from '../lib/buildLedger';
 import { CratesBookCard } from './CratesBookCard';
 import { IncomingTransfers } from './IncomingTransfers';
 import { CashCountHistory } from './CashCountHistory';
@@ -45,13 +57,11 @@ type CountTarget = { mode: 'open' } | { mode: 'close'; shiftId: string };
  * FOUR RULES THIS PAGE MUST NOT BREAK (Task 19):
  *
  * 1. The ledger EXPLAINS the figure; the figure itself is the server's.
- *    `stats`/`CashLedger` both read their headline `cash` from THE ONE
- *    SCOPED ROW this page fetches (`GET /point-cash?collection_point_id=` —
- *    one SQL formula) — never from a client-side sum of `intakes`/`payouts`/
- *    `transfers`. `CashLedger`'s own rows are built from a bounded page of
- *    those documents (`limit: 100`, no lower date bound on payouts/transfers)
- *    and may not add up to that figure on a busy point — that gap is left
- *    visible on purpose rather than papered over with a second total.
+ *    `stats` read `cash` from THE ONE SCOPED ROW this page fetches
+ *    (`GET /point-cash?collection_point_id=`); `CashLedger` reads its rows
+ *    AND its total from `GET /point-cash/:pointId`'s `breakdown` (#73), one
+ *    statement, so the rows add up to the figure under them. Only the two
+ *    informational rows still read a bounded page of `intakes`/`payouts`.
  * 2. A point with zero cash-counts reads `0.00`, correctly (§7.3 — a
  *    point's first count IS its opening balance) — but says so in words
  *    (`neverCounted`) so it does not read as a regression.
@@ -135,41 +145,22 @@ export function PointCashPage() {
         }
       : null;
 
-  // §7.9's cash counts as what was CREDITED (`resolved_cash ?? reported_cash
-  // ?? cash`, `buildLedger`'s job), not what was SENT — `from`/`to` on
-  // `/transfers` filter `sent_at`, which is the wrong date for that check, so
-  // this read carries no date bound at all rather than silently excluding a
-  // transfer sent before the window but accepted inside it. `intakes`/
-  // `payouts` bound cleanly on `business_date` instead. All three cap at the
-  // default `limit: 100`; rule 1 above is why that cap never corrupts the
-  // TOTAL on screen — but it does bound the individual ledger rows, and each
-  // of the three says so under its own row (`*Truncated` below).
-  //
-  // EACH OF THESE IS GATED ON A POINT, by whichever means its own hook
-  // offers: `intakesQueryOptions` and `payoutsQueryOptions` disable
+  // #73 — the ledger's rows and its total, read in ONE server statement so
+  // they cannot disagree. Kept out of `isError`: a failed breakdown degrades
+  // the ledger card only, never the stats above it.
+  const pointCashOne = usePointCashForPointQuery(pointId, date);
+  // The ledger's two INFORMATIONAL rows (accrued, paid for past days), each
+  // capped at `limit: 100` and caveated under its row when it was. Receipts
+  // are read from the day the shift began — a shift left open since an
+  // earlier day files them under that day (#114). Both hooks disable
   // themselves when the filter names no scope (hence the empty object rather
-  // than a bare date range), `useCashCountsQuery` likewise, and
-  // `useTransfersQuery` cannot — `pages/transfers` reads it network-wide on
-  // purpose — so it takes an explicit `enabled`.
-  const intakes = useIntakesQuery(pointId ? { pointId, from: date, to: date, limit: 100 } : {});
+  // than a bare date range), `useCashCountsQuery` likewise.
+  const shiftDate = shiftDateOf(pointCashOne.data?.breakdown, date);
+  const intakes = useIntakesQuery(
+    pointId ? { pointId, from: shiftDate, to: date, limit: 100 } : {},
+  );
   const payouts = usePayoutsQuery({ pointId: pointId ?? undefined, to: date, limit: 100 });
-  const ledgerTransfers = useTransfersQuery({
-    pointId: pointId ?? undefined,
-    limit: 100,
-    enabled: pointId !== null,
-  });
   const cashCounts = useCashCountsQuery({ pointId: pointId ?? undefined });
-  // R6 — the ledger's «на початок дня» row needs exactly ONE count: THIS
-  // date's opening berry count. `cashCounts` above is unbounded and
-  // newest-first, so on a long-running point today's opening count is
-  // exactly the kind of row a capped page could drop — a date-scoped read
-  // of its own can never lose it to that cap. Gated the same way
-  // `intakes` is just above (an empty object rather than a bare date
-  // range) so it never fires network-wide before a point is picked —
-  // `useCashCountsQuery`'s own `isScoped` would otherwise treat `from`/`to`
-  // alone as scope enough.
-  const openingCashCounts = useCashCountsQuery(pointId ? { pointId, from: date, to: date } : {});
-
   // R4 — «Зміна і перерахунок каси». `useShiftOnDateQuery` already gates
   // itself on `pointId !== null` (`shiftOnDateQueryOptions`), same as every
   // other read on this page. The panel's own counts read is scoped to the
@@ -227,13 +218,7 @@ export function PointCashPage() {
   // id, not a truncated list. Left out of `isError` it would spin forever.
   const pointMissing = pointCash.data !== undefined && pointRow === null;
   const isError =
-    pointCash.isError ||
-    pointMissing ||
-    intakes.isError ||
-    payouts.isError ||
-    ledgerTransfers.isError ||
-    cashCounts.isError ||
-    openingCashCounts.isError;
+    pointCash.isError || pointMissing || intakes.isError || payouts.isError || cashCounts.isError;
 
   // THE ROW NAMES THE POINT, NOT THE PICKER — `pointRow` is the one source
   // guaranteed to describe the figures actually on screen, so it goes
@@ -243,18 +228,9 @@ export function PointCashPage() {
   // dangling dash — when the picker was tried first and came up empty.
   const pointName = pointRow?.name ?? (points ?? []).find((p) => p.id === pointId)?.name ?? '';
   const hasTarget = pointRow?.target_cash != null;
-  // Finding 4 (review round 1) — each of the three reads is capped at 100,
-  // so each can feed a ledger row that covers recent history only: the
-  // payouts read has no lower date bound at all, the transfers read has no
-  // date bound of any kind, and even the one-day intakes read runs out on a
-  // point with more than a hundred receipts in a day. `total` beats what was
-  // actually fetched exactly when that happened; `CashLedger` turns it into a
-  // caveat under the affected row rather than a number that quietly is not
-  // what its label claims — and it was told about payouts alone for a whole
-  // review round.
+  // `total` beats what was fetched exactly when a capped page dropped rows.
   const intakesTruncated = isTruncated(intakes.data);
   const payoutsTruncated = isTruncated(payouts.data);
-  const transfersTruncated = isTruncated(ledgerTransfers.data);
   // §7.3 — a point with no counts at all reads `0.00`, correctly, but would
   // look like a regression on deploy without saying so in words.
   //
@@ -275,16 +251,6 @@ export function PointCashPage() {
     counts !== undefined &&
     counts.total === counts.data.length &&
     !counts.data.some((c) => c.business_date <= date);
-
-  // R6 — the ledger's opening row, from `openingCashCounts` alone (never
-  // from `counts` above — that read is unbounded and can drop THIS date's
-  // row on a long-running point, exactly the failure mode `neverCounted`'s
-  // own comment names). §7.6: one drawer, two books — `book === 'berry'`
-  // picks the book this page's ledger explains, leaving the crates count
-  // (if any) for `CratesBookCard` to worry about, not this row.
-  const openingCount =
-    openingCashCounts.data?.data.find((c) => c.kind === 'opening' && c.book === 'berry')
-      ?.counted_amount ?? null;
 
   // Nothing is shown off a page whose reads failed — including the target,
   // whose «—» would otherwise be a claim made on top of an error.
@@ -417,14 +383,13 @@ export function PointCashPage() {
         <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(320px,0.8fr)]">
           <CashLedger
             date={date}
-            cash={shownRow.cash}
+            cash={pointCashOne.data?.cash}
+            breakdown={pointCashOne.data?.breakdown}
+            failed={pointCashOne.isError}
             intakes={intakes.data?.data ?? []}
             payouts={payouts.data?.data ?? []}
-            transfers={ledgerTransfers.data?.data ?? []}
             intakesTruncated={intakesTruncated}
             payoutsTruncated={payoutsTruncated}
-            transfersTruncated={transfersTruncated}
-            openingCount={openingCount}
             target={shownRow.target_cash}
           />
           <div className="flex flex-col gap-5">
@@ -545,7 +510,11 @@ export function PointCashPage() {
             if (broken_crates === null) {
               throw new Error('close confirmed without a breakage count');
             }
-            await closeShift.mutateAsync({ id: countTarget.shiftId, counted_amount, broken_crates });
+            await closeShift.mutateAsync({
+              id: countTarget.shiftId,
+              counted_amount,
+              broken_crates,
+            });
             setResultFor({ mode: 'close', shiftId: countTarget.shiftId });
           }
           setCountTarget(null);

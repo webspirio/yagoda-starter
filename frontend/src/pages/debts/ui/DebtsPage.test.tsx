@@ -1,15 +1,16 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { act, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createMemoryRouter, RouterProvider } from 'react-router';
 import { expectNoAxeViolations } from '../../../test-axe';
 import type { SupplierBalanceRow } from '@/entities/supplier';
 import { DebtsPage } from './DebtsPage';
 
-const { pointScopeMock, balancesMock, payoutDialogMock } = vi.hoisted(() => ({
+const { pointScopeMock, balancesMock, payoutDialogMock, payoutReceiptMock } = vi.hoisted(() => ({
   pointScopeMock: vi.fn(),
   balancesMock: vi.fn(),
   payoutDialogMock: vi.fn(),
+  payoutReceiptMock: vi.fn(),
 }));
 
 vi.mock('@/features/point-scope', () => ({
@@ -37,6 +38,14 @@ vi.mock('@/features/settle-payout', () => ({
   PayoutDialog: (props: Record<string, unknown>) => {
     payoutDialogMock(props);
     return props.open ? <div data-testid="payout-dialog-mock" /> : null;
+  },
+}));
+
+vi.mock('@/widgets/receipt', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/widgets/receipt')>()),
+  PayoutReceiptDialog: (props: { payoutId: string | null; open: boolean }) => {
+    payoutReceiptMock(props);
+    return props.open ? <div data-testid="payout-receipt-mock">{props.payoutId}</div> : null;
   },
 }));
 
@@ -94,6 +103,7 @@ beforeEach(() => {
     .mockReturnValue({ pointId: 'p1', canPick: false, setPointId: vi.fn(), isLoading: false });
   balancesMock.mockReset().mockReturnValue(page([rowA, rowB, rowC]));
   payoutDialogMock.mockReset();
+  payoutReceiptMock.mockReset();
 });
 
 describe('DebtsPage — the operator', () => {
@@ -191,6 +201,24 @@ describe('DebtsPage — the operator', () => {
       }),
     );
     expect(router.state.location.pathname).toBe('/debts');
+  });
+
+  it('opens the payout receipt once the payout is recorded', async () => {
+    const user = userEvent.setup();
+    renderDebts();
+    expect(screen.queryByTestId('payout-receipt-mock')).toBeNull();
+
+    await user.click(
+      within(tableRow('Оксана Кушнірук')).getByRole('button', {
+        name: 'Pay out without berries',
+      }),
+    );
+    const { onPaid } = payoutDialogMock.mock.lastCall![0] as {
+      onPaid: (p: { id: string }) => void;
+    };
+    act(() => onPaid({ id: 'pay-1' }));
+
+    expect(screen.getByTestId('payout-receipt-mock')).toHaveTextContent('pay-1');
   });
 
   it('navigates to the supplier card when a row is clicked', async () => {

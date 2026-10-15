@@ -15,9 +15,9 @@ const {
   pointScopeMock,
   pointOptionsMock,
   pointCashMock,
+  pointCashOneMock,
   intakesMock,
   payoutsMock,
-  ledgerTransfersMock,
   cashCountsMock,
   shiftMock,
   currentShiftMock,
@@ -29,9 +29,9 @@ const {
   pointScopeMock: vi.fn(),
   pointOptionsMock: vi.fn(),
   pointCashMock: vi.fn(),
+  pointCashOneMock: vi.fn(),
   intakesMock: vi.fn(),
   payoutsMock: vi.fn(),
-  ledgerTransfersMock: vi.fn(),
   cashCountsMock: vi.fn(),
   shiftMock: vi.fn(),
   currentShiftMock: vi.fn(),
@@ -61,6 +61,8 @@ vi.mock('@/entities/point-cash', async (importOriginal) => {
   return {
     ...actual,
     usePointCashQuery: (opts: unknown) => pointCashMock(opts),
+    usePointCashForPointQuery: (pointId: string | null, asOf?: string) =>
+      pointCashOneMock(pointId, asOf),
   };
 });
 
@@ -70,10 +72,6 @@ vi.mock('@/entities/intake', () => ({
 
 vi.mock('@/entities/payout', () => ({
   usePayoutsQuery: (filter: unknown) => payoutsMock(filter),
-}));
-
-vi.mock('@/entities/transfer', () => ({
-  useTransfersQuery: (filter: unknown) => ledgerTransfersMock(filter),
 }));
 
 vi.mock('@/entities/cash-count', () => ({
@@ -217,6 +215,7 @@ const payout = (over: Partial<Payout> & Pick<Payout, 'amount'>): Payout => ({
   return_note: null,
   returned_on_void: false,
   created_at: '2026-09-08T11:00:00Z',
+  balance_after: '0.00',
   ...over,
 });
 
@@ -293,12 +292,32 @@ beforeEach(() => {
   // defaults to an empty page so it never bleeds a duplicate name into a
   // test that is only pinning the scoped row's own figures. Tests that
   // actually exercise the grouped `<select>` override this explicitly.
-  pointCashMock.mockReset().mockImplementation((opts: { asOf?: string } = {}) =>
-    'asOf' in opts ? list([pointRow()]) : list([]),
-  );
+  pointCashMock
+    .mockReset()
+    .mockImplementation((opts: { asOf?: string } = {}) =>
+      'asOf' in opts ? list([pointRow()]) : list([]),
+    );
+  pointCashOneMock.mockReset().mockReturnValue({
+    data: {
+      collection_point_id: 'p1',
+      cash: '1000.00',
+      crate_deposits: '0.00',
+      crate_deposit_units: 0,
+      breakdown: {
+        kind: 'open',
+        anchor_date: '2026-09-08',
+        opening: '1000.00',
+        transfers_in: '0.00',
+        payouts: '0.00',
+        returns: '0.00',
+        closing: null,
+      },
+    },
+    isPending: false,
+    isError: false,
+  });
   intakesMock.mockReset().mockReturnValue(list([]));
   payoutsMock.mockReset().mockReturnValue(list([]));
-  ledgerTransfersMock.mockReset().mockReturnValue(list([]));
   cashCountsMock.mockReset().mockReturnValue(list([cashCount()]));
   shiftMock.mockReset().mockReturnValue({ data: null, isPending: false, isError: false });
   // The same world `shiftMock` describes by default: nothing open anywhere.
@@ -318,14 +337,15 @@ function renderPointCash(entry = '/point-cash') {
 }
 
 describe('PointCashPage — honesty rule 1: the total is the server’s, not the sum of the rows', () => {
-  it('prints the server’s 1,000.00 everywhere, never the 900.00 the rows alone would sum to', () => {
+  it('takes today’s movement rows from the server breakdown, never from the payouts page (#73)', () => {
+    // A 900.00 payout on the page, but the breakdown says 0.00 went out —
+    // the ledger prints the server's term, not a client re-sum.
     payoutsMock.mockReturnValue(list([payout({ amount: '900.00' })]));
 
     renderPointCash();
 
     expect(screen.getAllByText('1,000.00 ₴').length).toBeGreaterThan(0);
-    expect(screen.queryByText('900.00 ₴')).toBeNull();
-    expect(screen.getByText('−900.00 ₴')).toBeInTheDocument();
+    expect(screen.queryByText('−900.00 ₴')).toBeNull();
   });
 });
 
@@ -339,24 +359,21 @@ describe('PointCashPage — review round 1, finding 4: paidPast truncation', () 
 
     renderPointCash();
 
-    // Two rows read the same possibly-truncated `payouts` array now
-    // (`paidPast` and `returnedToday` — fix round 1's minor finding), so
-    // the caveat legitimately appears twice.
-    expect(await screen.findAllByText(/older ones may be missing/i)).toHaveLength(2);
+    // Only `paidPast` still reads the payouts page — the movement rows come
+    // from the server's breakdown (#73), so the caveat appears once.
+    expect(await screen.findAllByText(/older ones may be missing/i)).toHaveLength(1);
   });
 
-  it('carries the same caveat to the rows fed by transfers and by intakes', () => {
+  it('carries the same caveat to the row fed by intakes', () => {
     const truncated = <T,>(data: T[]) => ({
       data: { data, total: 250, page: 1, limit: 100 },
       isPending: false,
       isError: false,
     });
-    ledgerTransfersMock.mockReturnValue(truncated([]));
     intakesMock.mockReturnValue(truncated([]));
 
     renderPointCash();
 
-    expect(screen.getByText(/Showing recent transfers only/)).toBeInTheDocument();
     expect(screen.getByText(/Showing recent receipts only/)).toBeInTheDocument();
   });
 
@@ -646,9 +663,9 @@ describe('PointCashPage — one scoped read, not the whole network', () => {
 
     expect(tile('Target')).toHaveTextContent('5,000.00 ₴');
     expect(tile('Short of target')).toHaveTextContent('3,766.00 ₴');
-    // «Berry cash» labels both the stat tile and the ledger total, and the
-    // row's `cash` is what both of them print.
-    expect(screen.getAllByText('1,234.00 ₴').length).toBeGreaterThan(1);
+    // The stat tile prints the row's `cash`; the ledger total is the detail
+    // read's (#73), which here still says 1,000.00.
+    expect(screen.getAllByText('1,234.00 ₴')).toHaveLength(1);
   });
 
   it('claims nothing about the target while the read is still in flight', () => {
@@ -687,59 +704,50 @@ describe('PointCashPage — one scoped read, not the whole network', () => {
   });
 });
 
-describe('PointCashPage — R6: the ledger’s opening row', () => {
-  it('asks for THIS point’s THIS date’s opening count, separately from the unbounded history read', () => {
+describe('PointCashPage — the ledger reads the server breakdown (#73)', () => {
+  it('asks the detail read for THIS point and THIS date', () => {
     renderPointCash();
+    expect(pointCashOneMock).toHaveBeenCalledWith('p1', '2026-09-08');
+  });
 
-    expect(cashCountsMock).toHaveBeenCalledWith({
+  it('reads the receipts from the day a still-open shift began (#114, PR #242 review)', () => {
+    const one = pointCashOneMock();
+    pointCashOneMock.mockReturnValue({
+      ...one,
+      data: { ...one.data, breakdown: { ...one.data.breakdown, anchor_date: '2026-09-07' } },
+    });
+    renderPointCash();
+    expect(intakesMock).toHaveBeenLastCalledWith({
+      pointId: 'p1',
+      from: '2026-09-07',
+      to: '2026-09-08',
+      limit: 100,
+    });
+  });
+
+  it('no longer reads a day-scoped opening count of its own', () => {
+    renderPointCash();
+    expect(cashCountsMock).not.toHaveBeenCalledWith({
       pointId: 'p1',
       from: '2026-09-08',
       to: '2026-09-08',
     });
   });
 
-  it('picks the opening BERRY count out of a mixed day, ignoring midday and crates rows', () => {
-    // `cashCountsMock` backs three different call sites in this render
-    // (this page's own unbounded `neverCounted` read, the R6 day-scoped
-    // read, and `CashCountHistory`'s own read) — distinguish the day-scoped
-    // one by shape, the way `pointCashMock` above already distinguishes its
-    // two call sites by `'asOf' in opts`.
-    cashCountsMock.mockImplementation((filter: { from?: string }) =>
-      'from' in filter
-        ? list([
-            cashCount({ kind: 'midday', book: 'berry', counted_amount: '400.00' }),
-            cashCount({ kind: 'opening', book: 'crates', counted_amount: '999.00' }),
-            cashCount({ kind: 'opening', book: 'berry', counted_amount: '750.00' }),
-          ])
-        : list([cashCount()]),
-    );
-
-    renderPointCash();
-
-    expect(screen.getByText('Opening count')).toBeInTheDocument();
-    expect(screen.getByText('750.00 ₴')).toBeInTheDocument();
-    expect(screen.queryByText('999.00 ₴')).toBeNull();
-    expect(screen.queryByText('400.00 ₴')).toBeNull();
-  });
-
-  it('shows no opening row when this date has no opening count yet, even with older history elsewhere', () => {
-    cashCountsMock.mockImplementation((filter: { from?: string }) =>
-      'from' in filter ? list([]) : list([cashCount()]),
-    );
-
-    renderPointCash();
-
-    expect(screen.queryByText('Opening count')).toBeNull();
-  });
-
-  it('captions the opening row with the point’s target — read from the same scoped `point-cash` row as every other figure', () => {
+  it('shows the breakdown’s opening row, captioned with the point’s target', () => {
     pointCashMock.mockImplementation((opts: { asOf?: string } = {}) =>
       'asOf' in opts ? list([pointRow({ target_cash: '5000.00' })]) : list([]),
     );
-
     renderPointCash();
-
+    expect(screen.getByText('Opening count')).toBeInTheDocument();
     expect(screen.getByText('target 5,000.00 ₴')).toBeInTheDocument();
+  });
+
+  it('a failed detail read stays inside the ledger card — the stats still render', () => {
+    pointCashOneMock.mockReturnValue({ data: undefined, isPending: false, isError: true });
+    renderPointCash();
+    expect(screen.getByText(/Something went wrong/)).toBeInTheDocument();
+    expect(tile('Target')).toBeInTheDocument();
   });
 });
 
@@ -890,11 +898,6 @@ describe('PointCashPage — scope and failure states', () => {
       pointId: undefined,
       enabled: false,
     });
-    expect(ledgerTransfersMock).toHaveBeenCalledWith({
-      pointId: undefined,
-      limit: 100,
-      enabled: false,
-    });
     expect(intakesMock).toHaveBeenCalledWith({});
     expect(payoutsMock).toHaveBeenCalledWith({
       pointId: undefined,
@@ -902,11 +905,7 @@ describe('PointCashPage — scope and failure states', () => {
       limit: 100,
     });
     expect(cashCountsMock).toHaveBeenCalledWith({ pointId: undefined });
-    // R6's day-scoped opening-count read gates the same way `intakes` does
-    // just above — an empty object, not `{ from: date, to: date }` with no
-    // point, which `useCashCountsQuery`'s own `isScoped` would treat as
-    // scope enough to fire network-wide.
-    expect(cashCountsMock).toHaveBeenCalledWith({});
+    expect(pointCashOneMock).toHaveBeenCalledWith(null, '2026-09-08');
     // THE EXCEPTION (review, minor 8): the owner's OWN unscoped `/point-cash`
     // read (Task 2 — the grouping for this very `<select>`) is not gated on
     // `pointId` at all, only on `isOwner` — it has to fire before a point is
@@ -1148,7 +1147,12 @@ describe('PointCashPage — R4: the open/close result view', () => {
       date === '2026-09-08'
         ? { data: shift({ id: 's5', status: 'open' }), isPending: false, isError: false }
         : {
-            data: shift({ id: 's9', status: 'closed', closed_by_name: 'Petro', business_date: date }),
+            data: shift({
+              id: 's9',
+              status: 'closed',
+              closed_by_name: 'Petro',
+              business_date: date,
+            }),
             isPending: false,
             isError: false,
           },
@@ -1159,7 +1163,15 @@ describe('PointCashPage — R4: the open/close result view', () => {
             filter.shiftId === 's9'
               ? [cashCount({ id: 'c9', shift_id: 's9', kind: 'closing', discrepancy: '-10.00' })]
               : filter.shiftId === 's5'
-                ? [cashCount({ id: 'cl', shift_id: 's5', kind: 'closing', counted_amount: '3000.00', discrepancy: '0.00' })]
+                ? [
+                    cashCount({
+                      id: 'cl',
+                      shift_id: 's5',
+                      kind: 'closing',
+                      counted_amount: '3000.00',
+                      discrepancy: '0.00',
+                    }),
+                  ]
                 : [],
           )
         : list([cashCount()]),
@@ -1178,15 +1190,30 @@ describe('PointCashPage — R4: the open/close result view', () => {
 
     await router.navigate('/point-cash?date=2026-09-07');
 
-    expect(screen.getByRole('heading', { name: 'Shift closed. The day matched.' })).toBeInTheDocument();
+    expect(
+      screen.getByRole('heading', { name: 'Shift closed. The day matched.' }),
+    ).toBeInTheDocument();
     expect(screen.queryByText(/Discrepancy .*10\.00/)).toBeNull();
   });
 
   const closeWith = (row: Partial<CashCount>) => {
-    shiftMock.mockReturnValue({ data: shift({ id: 's5', status: 'open' }), isPending: false, isError: false });
+    shiftMock.mockReturnValue({
+      data: shift({ id: 's5', status: 'open' }),
+      isPending: false,
+      isError: false,
+    });
     cashCountsMock.mockImplementation((filter: { shiftId?: string }) =>
       'shiftId' in filter
-        ? list([cashCount({ id: 'cl', shift_id: 's5', kind: 'closing', counted_amount: '2950.00', discrepancy: '-50.00', ...row })])
+        ? list([
+            cashCount({
+              id: 'cl',
+              shift_id: 's5',
+              kind: 'closing',
+              counted_amount: '2950.00',
+              discrepancy: '-50.00',
+              ...row,
+            }),
+          ])
         : list([cashCount()]),
     );
   };
@@ -1200,7 +1227,9 @@ describe('PointCashPage — R4: the open/close result view', () => {
     await user.click(await screen.findByRole('button', { name: 'Confirm close' }));
 
     expect(
-      await screen.findByRole('heading', { name: `What happened? Closing discrepancy ${formatUah('-50.00', 'en')}` }),
+      await screen.findByRole('heading', {
+        name: `What happened? Closing discrepancy ${formatUah('-50.00', 'en')}`,
+      }),
     ).toBeInTheDocument();
     expect(screen.getAllByRole('dialog')).toHaveLength(1);
   });
@@ -1214,7 +1243,9 @@ describe('PointCashPage — R4: the open/close result view', () => {
     await user.click(await screen.findByRole('button', { name: 'Confirm close' }));
     await user.click(await screen.findByRole('button', { name: 'Cancel' }));
 
-    expect(await screen.findByRole('button', { name: 'Explain the discrepancy' })).toBeInTheDocument();
+    expect(
+      await screen.findByRole('button', { name: 'Explain the discrepancy' }),
+    ).toBeInTheDocument();
     expect(screen.queryByLabelText('Your explanation')).toBeNull();
 
     await user.click(screen.getByRole('button', { name: 'Explain the discrepancy' }));
@@ -1328,7 +1359,11 @@ describe('PointCashPage — count explanations: the opening note (S4) and a bann
   const openWith = (row: Partial<CashCount>) =>
     cashCountsMock.mockImplementation((filter: { shiftId?: string }) =>
       'shiftId' in filter
-        ? list(filter.shiftId === 's-new' ? [cashCount({ id: 'op', shift_id: 's-new', kind: 'opening', ...row })] : [])
+        ? list(
+            filter.shiftId === 's-new'
+              ? [cashCount({ id: 'op', shift_id: 's-new', kind: 'opening', ...row })]
+              : [],
+          )
         : list([cashCount()]),
     );
 
@@ -1377,7 +1412,16 @@ describe('PointCashPage — count explanations: the opening note (S4) and a bann
       'shiftId' in filter
         ? list(
             filter.shiftId === 's-old'
-              ? [cashCount({ id: 'old-cl', shift_id: 's-old', kind: 'closing', counted_amount: '950.00', discrepancy: '-50.00', operator_note_editable: true })]
+              ? [
+                  cashCount({
+                    id: 'old-cl',
+                    shift_id: 's-old',
+                    kind: 'closing',
+                    counted_amount: '950.00',
+                    discrepancy: '-50.00',
+                    operator_note_editable: true,
+                  }),
+                ]
               : [],
           )
         : list([cashCount()]),
@@ -1413,7 +1457,9 @@ describe('PointCashPage — an open shift left behind on another day (#114)', ()
 
     expect(screen.queryByRole('button', { name: 'Open shift' })).toBeNull();
     expect(
-      screen.getByText('A shift from another day is still open — close it before opening a new one'),
+      screen.getByText(
+        'A shift from another day is still open — close it before opening a new one',
+      ),
     ).toBeInTheDocument();
   });
 

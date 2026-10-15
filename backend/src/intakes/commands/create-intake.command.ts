@@ -122,8 +122,9 @@ export class CreateIntakeCommand {
         await this.detail.items(intake.id, m),
         await this.detail.extras(intake.id, m),
         paid,
-        await this.detail.receiverName(actor.sub, m),
+        await this.detail.receiver(actor.sub, m),
         await this.detail.crateReturn(intake.id, m),
+        point.number,
       );
     });
   }

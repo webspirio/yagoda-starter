@@ -23,6 +23,7 @@ export function DataTable<Row>({
   rows,
   rowKey,
   onRowClick,
+  rowClickable,
   empty,
   frame = true,
   className,
@@ -31,6 +32,9 @@ export function DataTable<Row>({
   rows: Row[];
   rowKey?: (row: Row, index: number) => React.Key;
   onRowClick?: (row: Row, index: number) => void;
+  /** Narrows `onRowClick` to some rows: a row it rejects is inert and does not
+   *  get the pointer cursor. Omitted, every row is clickable. */
+  rowClickable?: (row: Row, index: number) => boolean;
   empty?: React.ReactNode;
   /** Wrap in the card shell (default). Pass `false` when the table already
    *  lives inside a card, so it does not draw a card within a card. */
@@ -60,8 +64,10 @@ export function DataTable<Row>({
           rows.map((row, i) => (
             <TableRow
               key={rowKey ? rowKey(row, i) : i}
-              onClick={onRowClick ? () => onRowClick(row, i) : undefined}
-              className={onRowClick ? 'cursor-pointer' : undefined}
+              onClick={
+                onRowClick && (rowClickable?.(row, i) ?? true) ? () => onRowClick(row, i) : undefined
+              }
+              className={onRowClick && (rowClickable?.(row, i) ?? true) ? 'cursor-pointer' : undefined}
             >
               {columns.map((c) => (
                 <TableCell key={c.id} className={colClass(c)}>

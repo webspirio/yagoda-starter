@@ -78,9 +78,9 @@ describe('ListSupplierBalancesQuery.list (Postgres)', () => {
   };
   const insertPayout = async (shift: string, supplier: string, amount: string, voided = false) => {
     await ds.query(
-      `INSERT INTO payouts (code, shift_id, supplier_id, amount, paid_by_user_id,
+      `INSERT INTO payouts (code, shift_id, supplier_id, amount, paid_by_user_id, balance_after,
                             voided_at, voided_by_user_id, void_reason)
-       VALUES ($1, $2, $3, $4, $5,
+       VALUES ($1, $2, $3, $4, $5, '0.00',
                CASE WHEN $6 THEN now() END, CASE WHEN $6 THEN $5::uuid END,
                CASE WHEN $6 THEN 'test' END)`,
       [`PO-${run}-${++seq}`, shift, supplier, amount, userId, voided],

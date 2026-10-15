@@ -1,11 +1,16 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { createMemoryRouter, RouterProvider } from 'react-router';
+import { createMemoryRouter, RouterProvider, useParams } from 'react-router';
 import { expectNoAxeViolations } from '../../../test-axe';
 import { SuppliersPage } from './SuppliersPage';
 import type { Supplier } from '@/entities/supplier';
 import type { Me } from '@/entities/user';
+
+function CardStub() {
+  const { id } = useParams();
+  return <div>{`Card stub ${id}`}</div>;
+}
 
 /** `SuppliersPage` now links each row to its card (`/suppliers/:id`), so it
  *  needs a real router context — a stub route stands in for the card page
@@ -14,11 +19,11 @@ function renderSuppliers() {
   const router = createMemoryRouter(
     [
       { path: '/suppliers', element: <SuppliersPage /> },
-      { path: '/suppliers/:id', element: <div>Card stub</div> },
+      { path: '/suppliers/:id', element: <CardStub /> },
     ],
     { initialEntries: ['/suppliers'] },
   );
-  return render(<RouterProvider router={router} />);
+  return { router, ...render(<RouterProvider router={router} />) };
 }
 
 const { queryMock, createMock, updateMock, meMock } = vi.hoisted(() => ({
@@ -28,7 +33,8 @@ const { queryMock, createMock, updateMock, meMock } = vi.hoisted(() => ({
   meMock: vi.fn(),
 }));
 
-vi.mock('@/entities/supplier', () => ({
+vi.mock('@/entities/supplier', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/entities/supplier')>()),
   useSuppliersQuery: () => queryMock(),
 }));
 
@@ -175,34 +181,82 @@ describe('SuppliersPage', () => {
     });
   });
 
-  it('links each row to its supplier card, labelled for the supplier it opens', () => {
+  it('the name links to its card and opens it once, not the edit dialog', async () => {
+    queryMock.mockReturnValue(loaded([ivan, petro]));
+    const { router } = renderSuppliers();
+
+    const row = screen.getByText('Ivan Koval').closest('tr') as HTMLElement;
+    const link = within(row).getByRole('link', { name: 'Ivan Koval' });
+    expect(link).toHaveAttribute('href', '/suppliers/s1');
+
+    await userEvent.click(link);
+
+    expect(await screen.findByText('Card stub s1')).toBeInTheDocument();
+    expect(screen.queryByLabelText('First name')).toBeNull();
+    // One click, one history entry: a single Back returns to the list. Were
+    // the row's own navigation to fire too, Back would land on the card again.
+    await act(() => router.navigate(-1));
+    expect(await screen.findByRole('heading', { level: 1, name: 'Suppliers' })).toBeInTheDocument();
+  });
+
+  it("clicking the row opens that supplier's card, not the edit dialog", async () => {
     queryMock.mockReturnValue(loaded([ivan, petro]));
     renderSuppliers();
 
-    const row = screen.getByText('Ivan Koval').closest('tr') as HTMLElement;
-    expect(within(row).getByRole('link', { name: 'Card: Ivan Koval' })).toHaveAttribute(
-      'href',
-      '/suppliers/s1',
-    );
-  });
+    const row = screen.getByText('Petro Melnyk').closest('tr') as HTMLElement;
+    await userEvent.click(within(row).getByText('Haiove'));
 
-  it('clicking the row still opens the edit dialog with the card link in place', async () => {
-    queryMock.mockReturnValue(loaded([ivan]));
-    renderSuppliers();
-
-    await userEvent.click(screen.getByText('Ivan Koval'));
-
-    expect(screen.getByLabelText('First name')).toHaveValue('Ivan');
-  });
-
-  it('the card link does not also open the edit dialog', async () => {
-    queryMock.mockReturnValue(loaded([ivan]));
-    renderSuppliers();
-
-    const row = screen.getByText('Ivan Koval').closest('tr') as HTMLElement;
-    await userEvent.click(within(row).getByRole('link', { name: 'Card: Ivan Koval' }));
-
+    expect(await screen.findByText('Card stub s2')).toBeInTheDocument();
     expect(screen.queryByLabelText('First name')).toBeNull();
-    expect(screen.getByText('Card stub')).toBeInTheDocument();
+  });
+
+  it('every row has an Edit button, named for its supplier', () => {
+    queryMock.mockReturnValue(loaded([ivan, petro]));
+    renderSuppliers();
+
+    for (const name of ['Ivan Koval', 'Petro Melnyk']) {
+      const row = screen.getByText(name).closest('tr') as HTMLElement;
+      expect(within(row).getByRole('button', { name: `Edit ${name}` })).toHaveTextContent('Edit');
+    }
+  });
+
+  it("Edit opens the dialog with that supplier's data and never the card", async () => {
+    queryMock.mockReturnValue(loaded([ivan, petro]));
+    renderSuppliers();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Edit Petro Melnyk' }));
+
+    expect(screen.getByLabelText('First name')).toHaveValue('Petro');
+    expect(screen.getByLabelText('Last name')).toHaveValue('Melnyk');
+    expect(screen.queryByText(/Card stub/)).toBeNull();
+    // Still on the list, under the modal (which hides it from the a11y tree).
+    expect(
+      screen.getByRole('heading', { level: 1, name: 'Suppliers', hidden: true }),
+    ).toBeInTheDocument();
+  });
+
+  it('cancelling the edit leaves the user on the list', async () => {
+    queryMock.mockReturnValue(loaded([ivan]));
+    renderSuppliers();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Edit Ivan Koval' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+
+    await waitFor(() => expect(screen.queryByLabelText('First name')).toBeNull());
+    expect(screen.queryByText(/Card stub/)).toBeNull();
+    expect(screen.getByText('Ivan Koval')).toBeInTheDocument();
+  });
+
+  it('saving the edit leaves the user on the list', async () => {
+    queryMock.mockReturnValue(loaded([ivan]));
+    renderSuppliers();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Edit Ivan Koval' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => expect(updateMock).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(screen.queryByLabelText('First name')).toBeNull());
+    expect(screen.queryByText(/Card stub/)).toBeNull();
+    expect(screen.getByRole('heading', { level: 1, name: 'Suppliers' })).toBeInTheDocument();
   });
 });

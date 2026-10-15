@@ -7,7 +7,7 @@ import { cn } from '@/shared/lib/cn';
 import { formatShortDate } from '@/shared/lib/date';
 import { formatUah, formatKg, formatDecimal, add, cmp, isZero } from '@/shared/lib/money';
 import { canVoidIntake, type Intake } from '@/entities/intake';
-import type { Payout } from '@/entities/payout';
+import { canVoidPayout, type Payout } from '@/entities/payout';
 import type { IntakeTopUp } from '@/entities/intake-top-up';
 import type { Me } from '@/entities/user';
 import { ReceiptVoidButton } from '@/widgets/receipt';
@@ -56,6 +56,7 @@ export function SupplierTimeline({
   openByLineId,
   coversByPayoutId,
   onOpenReceipt,
+  onOpenPayoutReceipt,
   onVoidPayout,
   onAddTopUp,
   onVoidTopUp,
@@ -74,6 +75,8 @@ export function SupplierTimeline({
   /** Payout id → the business dates it closed and what it left unallocated. */
   coversByPayoutId: Map<string, { dates: string[]; unallocated: string }>;
   onOpenReceipt: (intakeId: string, options?: { void?: boolean }) => void;
+  /** A standalone payout (no `intake_id`) has a slip of its own to open. */
+  onOpenPayoutReceipt: (payoutId: string) => void;
   onVoidPayout: (payout: Payout) => void;
   /** Owner only. Absent for an operator — §10.2: «заблокована кнопка вчить
    *  шукати обхід, відсутня не вчить нічого». */
@@ -83,8 +86,6 @@ export function SupplierTimeline({
   const { t, i18n } = useTranslation();
   const locale = i18n.language;
 
-  const canVoid = (p: Payout) =>
-    p.voided_at === null && (me?.role === 'network_owner' || me?.id === p.paid_by_user_id);
   // Both top-up writes are `@Auth(UserRole.NetworkOwner)` — the operator never
   // writes one, so §9.4's «своя квитанція» has no meaning here.
   const isOwner = me?.role === 'network_owner';
@@ -141,6 +142,40 @@ export function SupplierTimeline({
   if (rows.length === 0) {
     return <EmptyState title={t('supplierCard.timeline.empty')} />;
   }
+
+  const payoutBody = (row: Extract<TimelineRow, { kind: 'payout' }>) => (
+    <>
+      <Badge variant="outline">{t('supplierCard.timeline.payout')}</Badge>
+      <span className="font-mono">{row.code}</span>
+      {row.voided ? <span className="text-xs">{row.reason}</span> : null}
+      <span className="ml-auto text-right">
+        <span
+          className={cn('block font-mono tabular-nums', !row.voided && 'text-[var(--leaf)]')}
+        >
+          {formatUah(row.amount, locale)}
+        </span>
+        {!row.voided && coversByPayoutId?.get(row.id)?.dates.length ? (
+          <span className="block text-[11px] text-muted-foreground">
+            {t('supplierCard.timeline.closed', {
+              dates: coversByPayoutId
+                .get(row.id)!
+                .dates.map((d) => formatShortDate(d, locale))
+                .join(', '),
+            })}
+          </span>
+        ) : null}
+        {!row.voided &&
+        coversByPayoutId?.get(row.id) &&
+        !isZero(coversByPayoutId.get(row.id)!.unallocated) ? (
+          <span className="block font-mono text-[11px] text-[var(--leaf)]">
+            {t('supplierCard.timeline.unallocated', {
+              uah: formatUah(coversByPayoutId.get(row.id)!.unallocated, locale),
+            })}
+          </span>
+        ) : null}
+      </span>
+    </>
+  );
 
   return (
     <ul className="divide-y divide-border">
@@ -301,36 +336,21 @@ export function SupplierTimeline({
             </>
           ) : (
             <>
-              <Badge variant="outline">{t('supplierCard.timeline.payout')}</Badge>
-              <span className="font-mono">{row.code}</span>
-              {row.voided ? <span className="text-xs">{row.reason}</span> : null}
-              <span className="ml-auto text-right">
-                <span
-                  className={cn('block font-mono tabular-nums', !row.voided && 'text-[var(--leaf)]')}
+              {/* A standalone payout opens its own slip; one tied to a receipt is
+                  read on that receipt, so it stays a plain row. «Анулювати» is a
+                  SIBLING of the button, never nested in it. */}
+              {row.payout.intake_id === null ? (
+                <button
+                  type="button"
+                  onClick={() => onOpenPayoutReceipt(row.id)}
+                  className="flex flex-1 items-center gap-3 text-left"
                 >
-                  {formatUah(row.amount, locale)}
-                </span>
-                {!row.voided && coversByPayoutId?.get(row.id)?.dates.length ? (
-                  <span className="block text-[11px] text-muted-foreground">
-                    {t('supplierCard.timeline.closed', {
-                      dates: coversByPayoutId
-                        .get(row.id)!
-                        .dates.map((d) => formatShortDate(d, locale))
-                        .join(', '),
-                    })}
-                  </span>
-                ) : null}
-                {!row.voided &&
-                coversByPayoutId?.get(row.id) &&
-                !isZero(coversByPayoutId.get(row.id)!.unallocated) ? (
-                  <span className="block font-mono text-[11px] text-[var(--leaf)]">
-                    {t('supplierCard.timeline.unallocated', {
-                      uah: formatUah(coversByPayoutId.get(row.id)!.unallocated, locale),
-                    })}
-                  </span>
-                ) : null}
-              </span>
-              {canVoid(row.payout) ? (
+                  {payoutBody(row)}
+                </button>
+              ) : (
+                <div className="flex flex-1 items-center gap-3">{payoutBody(row)}</div>
+              )}
+              {me && canVoidPayout(me, row.payout) ? (
                 <Button
                   type="button"
                   variant="ghost"

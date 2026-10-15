@@ -288,6 +288,44 @@ test('a numeric token in `up()` SQL outside a CREATE TABLE column is red', () =>
   })
 })
 
+test('an ALTER TABLE … ADD numeric column, made NOT NULL later, is compared like a CREATE TABLE one', () => {
+  withFixture((root) => {
+    write(
+      root,
+      '28-db-schema.dbml',
+      DBML.replace('  bonus  numeric(10,2) [not null, default: 0]\n', '  bonus  numeric(10,2) [not null, default: 0]\n  after  numeric(12,2) [not null]\n'),
+    )
+    write(
+      root,
+      'backend/src/demo/demo.entity.ts',
+      ENTITY.replace(
+        /\n}\n$/,
+        "\n\n  @Column({ type: 'numeric', precision: 12, scale: 2 })\n  after: string;\n}\n",
+      ),
+    )
+    const added =
+      MIGRATION.replace(
+        '  }\n}\n',
+        '    await queryRunner.query(\'ALTER TABLE "demo" ADD "after" numeric(12,2)\');\n' +
+          '    await queryRunner.query(\'ALTER TABLE "demo" ALTER COLUMN "after" SET NOT NULL\');\n  }\n}\n',
+      )
+    write(root, 'backend/src/migrations/1700000000000-Demo.ts', added)
+    const result = scan(root)
+    assert.deepEqual(result.findings, [])
+    assert.equal(result.dbmlNumeric, 4)
+
+    // Without the SET NOT NULL the SQL is nullable and the DBML says not null: red.
+    write(
+      root,
+      'backend/src/migrations/1700000000000-Demo.ts',
+      added.replace(/.*SET NOT NULL.*\n/, ''),
+    )
+    const res = run(root)
+    assert.equal(res.status, 1, res.out)
+    assert.match(res.out, /demo\.after SQL nullable, 28-db-schema\.dbml says not null/)
+  })
+})
+
 test('a DBML table with no @Entity is red', () => {
   withFixture((root) => {
     write(root, 'backend/src/plain/plain.entity.ts', PLAIN_ENTITY.replace("'plain'", "'renamed'"))

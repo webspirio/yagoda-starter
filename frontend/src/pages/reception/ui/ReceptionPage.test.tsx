@@ -347,6 +347,8 @@ const CREATED: IntakeDetail = {
   open_amount: '1204.00',
   payouts: [],
   received_by_name: 'Оксана Гнатюк',
+  received_by_number: 2,
+  point_number: 1,
   crate_return: null,
   items: [
     {
@@ -402,6 +404,7 @@ interface PreviewState {
   } | null;
   isPending: boolean;
   isSettled: boolean;
+  rowItems: (IntakePreview['items'][number] | null)[];
 }
 
 /** `useIntakePreview`'s return shape. Nothing on screen may act on numbers that
@@ -411,6 +414,7 @@ const previewState = (over: Partial<PreviewState> = {}): PreviewState => ({
   error: null,
   isPending: false,
   isSettled: false,
+  rowItems: [],
   ...over,
 });
 
@@ -720,6 +724,7 @@ describe('ReceptionPage — several lines', () => {
       previewState({
         preview: { ...PREVIEW, items: values.items.map(() => PREVIEW.items[0]) },
         isSettled: true,
+        rowItems: values.items.map(() => PREVIEW.items[0]),
       }),
     );
   });
@@ -843,12 +848,15 @@ describe('ReceptionPage — an accidental extra line', () => {
 });
 
 describe('ReceptionPage — the committed table while the preview catches up', () => {
-  it('shows pending cells instead of a stale number right after a commit', async () => {
+  // The hook decides which numbers still describe a committed line
+  // (`rowItems`, matched by content); the table only ever reads that (#213).
+  it('keeps a committed row priced while the fresh draft is still empty', async () => {
     const user = userEvent.setup();
-    // A settled preview that still describes the PRE-commit form (one line) —
-    // the same shape the real hook returns for the debounce window right
-    // after a commit changes the form's line count.
-    previewMock.mockReturnValue(SETTLED);
+    previewMock.mockImplementation((values: IntakeFormValues) =>
+      values.items.length === 1
+        ? { ...SETTLED, rowItems: [PREVIEW.items[0]] }
+        : previewState({ rowItems: [PREVIEW.items[0], null] }),
+    );
 
     renderReception();
     await user.click(screen.getByRole('button', { name: 'pick-nina' }));
@@ -856,10 +864,24 @@ describe('ReceptionPage — the committed table while the preview catches up', (
     await user.click(screen.getByRole('button', { name: 'Add line' }));
 
     const table = screen.getByRole('table');
-    // The preview still has ONE item; the form now has a committed line PLUS
-    // a fresh draft (two lines) — the committed row's preview item is no
-    // longer reliably at the same index, so its cells read pending, never
-    // the stale number.
+    expect(within(table).getByText('120.40')).toBeInTheDocument();
+    expect(within(table).queryByText('…')).toBeNull();
+  });
+
+  it('shows pending cells for a committed row the hook has no numbers for', async () => {
+    const user = userEvent.setup();
+    previewMock.mockImplementation((values: IntakeFormValues) =>
+      values.items.length === 1
+        ? { ...SETTLED, rowItems: [PREVIEW.items[0]] }
+        : previewState({ rowItems: [null, null] }),
+    );
+
+    renderReception();
+    await user.click(screen.getByRole('button', { name: 'pick-nina' }));
+    await fillDraft(user);
+    await user.click(screen.getByRole('button', { name: 'Add line' }));
+
+    const table = screen.getByRole('table');
     expect(within(table).queryByText('120.40')).toBeNull();
     expect(within(table).getAllByText('…').length).toBeGreaterThan(0);
   });
@@ -1309,6 +1331,7 @@ describe('ReceptionPage — switching supplier mid-visit', () => {
       previewState({
         preview: { ...PREVIEW, items: values.items.map(() => PREVIEW.items[0]) },
         isSettled: true,
+        rowItems: values.items.map(() => PREVIEW.items[0]),
       }),
     );
 

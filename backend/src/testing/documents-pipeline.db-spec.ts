@@ -9,11 +9,7 @@ import { Reflector } from '@nestjs/core';
 import { DataSource } from 'typeorm';
 // MUST be imported before `../app.module` — it loads `.env` as a side effect,
 // and AppModule's decorator runs ConfigModule.forRoot() eagerly at import time.
-import {
-  ensureTestDatabase,
-  relaxThrottleForTests,
-  resolveTestDatabaseName,
-} from './db-harness';
+import { ensureTestDatabase, relaxThrottleForTests, resolveTestDatabaseName } from './db-harness';
 
 import { AppModule } from '../app.module';
 import { UsersService } from '../users/users.service';
@@ -1121,6 +1117,37 @@ describe('documents pipeline (HTTP)', () => {
         .set('Authorization', `Bearer ${operatorToken}`)
         .expect(200);
       expect(balance.body.debt).toBe('215.00');
+
+      // #145 — the survivor froze the debt it left behind.
+      const survivor = results.find((r) => r.status === 201);
+      expect(survivor?.body.balance_after).toBe('215.00');
+    });
+
+    it('freezes a distinct balance_after on each of two payouts that both fit (#145)', async () => {
+      // 100 + 100 <= 215.00: the lock serialises them, so the second reads the debt the first
+      // left — {115.00, 15.00} in either arrival order, never the same figure twice.
+      const attempt = () =>
+        request(app.getHttpServer())
+          .post('/payouts')
+          .set('Authorization', `Bearer ${operatorToken}`)
+          .send({ supplier_id: supplierId, amount: '100.00' });
+
+      const results = await Promise.all([attempt(), attempt()]);
+      expect(results.map((r) => r.status)).toEqual([201, 201]);
+      expect(results.map((r) => r.body.balance_after as string).sort()).toEqual([
+        '115.00',
+        '15.00',
+      ]);
+
+      const stored = await app
+        .get(DataSource)
+        .query(`SELECT balance_after FROM payouts WHERE id = ANY($1::uuid[])`, [
+          results.map((r) => r.body.id as string),
+        ]);
+      expect(stored.map((r: { balance_after: string }) => r.balance_after).sort()).toEqual([
+        '115.00',
+        '15.00',
+      ]);
     });
   });
 

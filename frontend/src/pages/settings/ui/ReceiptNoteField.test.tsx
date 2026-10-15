@@ -32,6 +32,10 @@ describe('ReceiptNoteField', () => {
     render(<Controlled />);
 
     await user.type(box(), 'x'.repeat(40));
+    // Every keystroke queues a frame that puts the caret back; let the last
+    // one land now, or it can fire after the caret is moved to 5 below and
+    // send the «y» to the end (jsdom's frame is a ~16 ms timer).
+    await new Promise<void>((r) => requestAnimationFrame(() => r()));
     await user.type(box(), 'y', { initialSelectionStart: 5, initialSelectionEnd: 5 });
     expect(box()).toHaveValue(`xxxxxy${'x'.repeat(34)}\nx`);
     await waitFor(() => expect(box().selectionStart).toBe(6));
