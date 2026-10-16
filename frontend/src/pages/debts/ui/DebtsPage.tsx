@@ -105,11 +105,31 @@ export function DebtsPage() {
   const showPointColumn = pointId === null;
   const pointName = new Map((points ?? []).map((p) => [p.id, p.name]));
 
+  // Beside the name rather than a column of its own: on a phone a fourth column pushed the
+  // balance off the screen, and the age means nothing without the name it belongs to.
+  const ageBadge = (row: SupplierBalanceRow) => {
+    // A credit or a zero row has nothing waiting, whatever the date says.
+    if (row.oldest_open_date === null || cmp(row.debt, '0') !== 1) return null;
+    const days = ageInDays(row.oldest_open_date);
+    const since = t('debts.ageSince', { date: formatShortDate(row.oldest_open_date, locale) });
+    return (
+      <Badge
+        variant={days > STALE_AFTER_DAYS ? 'destructive' : 'secondary'}
+        className="font-mono tabular-nums"
+        title={since}
+      >
+        {t('debts.days', { count: days })}
+        {/* `title` alone reaches neither touch nor a screen reader. */}
+        <span className="sr-only">, {since}</span>
+      </Badge>
+    );
+  };
+
   const supplierColumn: Column<SupplierBalanceRow> = {
     id: 'supplier',
     header: t('debts.col.supplier'),
     cell: (row) => (
-      <span className="flex items-center gap-2 font-medium">
+      <span className="flex flex-wrap items-center gap-x-2 gap-y-1 font-medium">
         <Link
           to={`/suppliers/${row.supplier_id}`}
           // The row itself navigates to the supplier card too (`onRowClick`
@@ -121,6 +141,7 @@ export function DebtsPage() {
           {supplierName(row)}
         </Link>
         {!row.is_active ? <Badge variant="secondary">{t('debts.inactive')}</Badge> : null}
+        {ageBadge(row)}
       </span>
     ),
   };
@@ -130,35 +151,6 @@ export function DebtsPage() {
     header: t('debts.col.point'),
     hideBelow: 'sm',
     cell: (row) => pointName.get(row.collection_point_id) ?? '—',
-  };
-
-  const ageColumn: Column<SupplierBalanceRow> = {
-    id: 'age',
-    header: t('debts.col.age'),
-    align: 'right',
-    cell: (row) => {
-      // A credit or a zero row has nothing waiting, whatever the date says.
-      if (row.oldest_open_date === null || cmp(row.debt, '0') !== 1) {
-        return <span className="text-muted-foreground">—</span>;
-      }
-      const days = ageInDays(row.oldest_open_date);
-      return (
-        <Badge
-          variant={days > STALE_AFTER_DAYS ? 'destructive' : 'secondary'}
-          className="font-mono tabular-nums"
-          title={t('debts.ageSince', {
-            date: formatShortDate(row.oldest_open_date, locale),
-          })}
-        >
-          {t('debts.days', { count: days })}
-          {/* `title` alone reaches neither touch nor a screen reader. */}
-          <span className="sr-only">
-            {', '}
-            {t('debts.ageSince', { date: formatShortDate(row.oldest_open_date, locale) })}
-          </span>
-        </Badge>
-      );
-    },
   };
 
   const balanceColumn: Column<SupplierBalanceRow> = {
@@ -200,7 +192,6 @@ export function DebtsPage() {
   const columns: Column<SupplierBalanceRow>[] = [
     supplierColumn,
     ...(showPointColumn ? [pointColumn] : []),
-    ageColumn,
     balanceColumn,
     actionColumn,
   ];

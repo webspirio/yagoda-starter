@@ -1097,7 +1097,6 @@
     "col": {
       "supplier": "Supplier",
       "point": "Point",
-      "age": "Oldest",
       "balance": "Balance",
       "action": "Action"
     },
