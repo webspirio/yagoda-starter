@@ -1,4 +1,29 @@
-import { toSupplierSettlementResponse } from './supplier-balance.mapper';
+import {
+  toSupplierBalanceRowResponse,
+  toSupplierSettlementResponse,
+} from './supplier-balance.mapper';
+
+describe('toSupplierBalanceRowResponse', () => {
+  it('carries the oldest open date, null included, and nothing a later SELECT adds (#101)', () => {
+    const row = {
+      supplier_id: 'sup',
+      first_name: 'Ганна',
+      last_name: 'Коваль',
+      is_active: true,
+      collection_point_id: 'pt',
+      debt: '30.00',
+    };
+
+    expect(
+      toSupplierBalanceRowResponse({
+        ...row,
+        oldest_open_date: '2026-07-05',
+        ...({ stray: 'x' } as object),
+      }),
+    ).toEqual({ ...row, oldest_open_date: '2026-07-05' });
+    expect(toSupplierBalanceRowResponse({ ...row, oldest_open_date: null }).oldest_open_date).toBeNull();
+  });
+});
 
 describe('toSupplierSettlementResponse', () => {
   it('maps field by field and resolves payout codes onto covered_by', () => {

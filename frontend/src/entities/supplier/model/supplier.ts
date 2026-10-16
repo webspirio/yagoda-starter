@@ -6,7 +6,8 @@
 export type SupplierKind = 'none' | 'wholesale' | 'farmer';
 
 /** Re-exported so existing `../model/supplier` importers keep working — see `@/shared/api/pagination.ts`. */
-export type { Paginated } from '@/shared/api';
+import type { Paginated } from '@/shared/api';
+export type { Paginated };
 
 /**
  * Mirrors the backend `SupplierResponse`. `collection_point_id` is always a
@@ -34,6 +35,14 @@ export interface SupplierBalanceRow {
   is_active: boolean;
   collection_point_id: string;
   debt: string;
+  /** Business date of the supplier's oldest line still open (#101); `null` when nothing is open. */
+  oldest_open_date: string | null;
+}
+
+/** `GET /supplier-balances` — the page, plus the oldest open date among EVERY row owed money in
+ *  scope, not just the loaded ones, for «Найстаріший залишок» (#101). */
+export interface SupplierBalanceList extends Paginated<SupplierBalanceRow> {
+  oldest_open_date: string | null;
 }
 
 /**
@@ -43,8 +52,9 @@ export interface SupplierBalanceRow {
  * truncates past 100 documents (#103). The three terms of `debt` are on
  * `SupplierSettlement`, not here (#153). Every money and weight field is a decimal STRING;
  * `debt` is legitimately negative after a voided receipt that had already
- * been paid for. Only THIS single-supplier read widened — `SupplierBalanceRow`
- * above (`GET /supplier-balances`, the list) did not.
+ * been paid for. The season counters widened only THIS single-supplier read —
+ * `SupplierBalanceRow` above (`GET /supplier-balances`, the list) gained just
+ * `oldest_open_date` (#101).
  */
 export interface SupplierBalanceOne {
   supplier_id: string;
