@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { act, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createMemoryRouter, RouterProvider } from 'react-router';
@@ -30,8 +30,7 @@ vi.mock('@/entities/collection-point', () => ({
 
 vi.mock('@/entities/supplier', () => ({
   useSupplierBalancesQuery: (filter: unknown) => balancesMock(filter),
-  supplierName: (s: { first_name: string; last_name: string }) =>
-    `${s.first_name} ${s.last_name}`,
+  supplierName: (s: { first_name: string; last_name: string }) => `${s.first_name} ${s.last_name}`,
 }));
 
 vi.mock('@/features/settle-payout', () => ({
@@ -56,6 +55,7 @@ const rowA: SupplierBalanceRow = {
   is_active: true,
   collection_point_id: 'p1',
   debt: '15000.00',
+  oldest_open_date: '2026-07-01',
 };
 const rowB: SupplierBalanceRow = {
   supplier_id: 's2',
@@ -64,6 +64,7 @@ const rowB: SupplierBalanceRow = {
   is_active: false,
   collection_point_id: 'p1',
   debt: '3670.40',
+  oldest_open_date: '2026-07-12',
 };
 const rowC: SupplierBalanceRow = {
   supplier_id: 's3',
@@ -72,10 +73,15 @@ const rowC: SupplierBalanceRow = {
   is_active: true,
   collection_point_id: 'p1',
   debt: '-500.00',
+  oldest_open_date: null,
 };
 
-const page = (data: SupplierBalanceRow[], total = data.length) => ({
-  data: { data, total, page: 1, limit: 100 },
+const page = (
+  data: SupplierBalanceRow[],
+  total = data.length,
+  oldest_open_date: string | null = '2026-07-01',
+) => ({
+  data: { data, total, page: 1, limit: 100, oldest_open_date },
   isPending: false,
   isError: false,
 });
@@ -110,9 +116,7 @@ describe('DebtsPage — the operator', () => {
   it('titles the page, totals only the positive balances and counts every supplier from the envelope', async () => {
     const { container } = renderDebts();
 
-    expect(
-      screen.getByRole('heading', { level: 1, name: 'Balances owed' }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 1, name: 'Balances owed' })).toBeInTheDocument();
     expect(screen.getByText('3 suppliers')).toBeInTheDocument();
 
     expect(screen.getByText('Total owed').closest('[data-slot="stat-tile"]')).toHaveTextContent(
@@ -254,6 +258,62 @@ describe('DebtsPage — the operator', () => {
     balancesMock.mockReturnValue(page([rowA, rowB, rowC], 150));
     renderDebts();
     expect(screen.getByText('on this page')).toBeInTheDocument();
+  });
+});
+
+describe('DebtsPage — how old the balances are (#101)', () => {
+  beforeEach(() => {
+    // Only `Date` is faked: «today» is 16.07, and userEvent keeps its real timers.
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date(2026, 6, 16, 12));
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  const oldestTile = () =>
+    screen.getByText('Oldest balance').closest('[data-slot="stat-tile"]') as HTMLElement;
+
+  it("shows the oldest open balance's age in days, dated by the drop-off", () => {
+    renderDebts();
+
+    expect(oldestTile()).toHaveTextContent('15 days');
+    expect(oldestTile()).toHaveTextContent(/since the drop-off on/);
+  });
+
+  it("reads the tile off the server's envelope, not the loaded rows", () => {
+    // The server saw an older balance past the loaded page — the tile must say so.
+    balancesMock.mockReturnValue(page([rowA, rowB, rowC], 150, '2026-06-16'));
+    renderDebts();
+
+    expect(oldestTile()).toHaveTextContent('30 days');
+  });
+
+  it('shows a dash when nothing is open', () => {
+    balancesMock.mockReturnValue(page([rowC], 1, null));
+    renderDebts();
+
+    expect(oldestTile()).toHaveTextContent('—');
+  });
+
+  it('counts the days per row, in red past a week, and none for a credit', () => {
+    renderDebts();
+
+    const stale = within(tableRow('Оксана Кушнірук')).getByText('15 days');
+    expect(stale).toHaveAttribute('data-variant', 'destructive');
+    const fresh = within(tableRow('Петро Іваненко')).getByText('4 days');
+    expect(fresh).toHaveAttribute('data-variant', 'secondary');
+    expect(within(tableRow('Марія Бондар')).queryByText(/days?$/)).toBeNull();
+  });
+
+  it('never prints a negative age for a business date after today', () => {
+    balancesMock.mockReturnValue(
+      page([{ ...rowA, oldest_open_date: '2026-07-17' }], 1, '2026-07-17'),
+    );
+    renderDebts();
+
+    expect(within(tableRow('Оксана Кушнірук')).getByText('0 days')).toBeInTheDocument();
+    expect(oldestTile()).toHaveTextContent('0 days');
   });
 });
 

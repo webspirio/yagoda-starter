@@ -1124,16 +1124,24 @@
     "tiles": {
       "totalOwed": "Всього винні",
       "totalOwedHint": "на цій сторінці",
+      "oldest": "Найстаріший залишок",
+      "oldestHint": "від здачі ягоди {{date}}",
       "withDebt": "Постачальників із залишком"
     },
     "col": {
       "supplier": "Постачальник",
       "point": "Точка",
+      "age": "Найстаріший",
       "balance": "Залишок",
       "action": "Дія"
     },
     "inactive": "неактивний",
     "overpaid": "переплата {{uah}}",
+    "days_one": "{{count}} день",
+    "days_few": "{{count}} дні",
+    "days_many": "{{count}} днів",
+    "days_other": "{{count}} дня",
+    "ageSince": "найстаріший залишок з {{date}}",
     "payout": "Видати без ягоди",
     "empty": {
       "title": "Відкритих залишків немає",

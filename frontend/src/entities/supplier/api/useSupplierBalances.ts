@@ -2,9 +2,8 @@ import { useQuery } from '@tanstack/react-query';
 import { httpClient } from '@/shared/api';
 import { queryKeys } from '@/shared/api/queryKeys';
 import type {
-  Paginated,
+  SupplierBalanceList,
   SupplierBalanceOne,
-  SupplierBalanceRow,
   SupplierSettlement,
 } from '../model/supplier';
 
@@ -34,9 +33,9 @@ export function useSupplierBalancesQuery(filter: {
   return useQuery({
     queryKey: [...queryKeys.supplierBalances, 'list', { pointId: pointId ?? null, includeZero }],
     enabled,
-    queryFn: async (): Promise<Paginated<SupplierBalanceRow>> =>
+    queryFn: async (): Promise<SupplierBalanceList> =>
       (
-        await httpClient.get<Paginated<SupplierBalanceRow>>('/supplier-balances', {
+        await httpClient.get<SupplierBalanceList>('/supplier-balances', {
           params: {
             ...(pointId ? { collection_point_id: pointId } : {}),
             include_zero: includeZero,
