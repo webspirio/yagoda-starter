@@ -151,6 +151,11 @@ export function DebtsPage() {
           })}
         >
           {t('debts.days', { count: days })}
+          {/* `title` alone reaches neither touch nor a screen reader. */}
+          <span className="sr-only">
+            {', '}
+            {t('debts.ageSince', { date: formatShortDate(row.oldest_open_date, locale) })}
+          </span>
         </Badge>
       );
     },

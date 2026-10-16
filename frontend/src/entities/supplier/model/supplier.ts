@@ -52,8 +52,9 @@ export interface SupplierBalanceList extends Paginated<SupplierBalanceRow> {
  * truncates past 100 documents (#103). The three terms of `debt` are on
  * `SupplierSettlement`, not here (#153). Every money and weight field is a decimal STRING;
  * `debt` is legitimately negative after a voided receipt that had already
- * been paid for. Only THIS single-supplier read widened — `SupplierBalanceRow`
- * above (`GET /supplier-balances`, the list) did not.
+ * been paid for. The season counters widened only THIS single-supplier read —
+ * `SupplierBalanceRow` above (`GET /supplier-balances`, the list) gained just
+ * `oldest_open_date` (#101).
  */
 export interface SupplierBalanceOne {
   supplier_id: string;

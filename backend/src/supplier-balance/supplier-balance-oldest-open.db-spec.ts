@@ -11,13 +11,19 @@ import type { AuthenticatedUser } from '../auth/jwt.strategy';
  * «Найстаріший залишок» (#101) against a real Postgres: each row's `oldest_open_date` and the
  * envelope's. Every payout goes through `AllocationsService.allocate`, as every real write path
  * does, so «open» here is read off STORED allocations — the fixture cannot agree with the query
- * by accident. One point, five suppliers, one rule each:
+ * by accident. One point, eight suppliers, one rule each:
  *
  *   Ганна   07-01 100, 07-05 50; payout 120 → 07-01 closed, 07-05 open 30  → 2026-07-05
  *   Василь  07-03 40 paid in full, then a 10 top-up on it; 07-10 25        → 2026-07-03
  *   Зіна    07-02 60 VOIDED; 07-08 15                                      → 2026-07-08
+ *   Ніна    07-04 50 paid in full, then the payout VOIDED (rows released)  → 2026-07-04
+ *   Тарас   07-02 40 paid, a 10 top-up on it VOIDED; 07-10 20              → 2026-07-10
+ *   Олег    07-01 30 + a 5 top-up, the receipt VOIDED; 07-08 12            → 2026-07-08
  *   Марко   07-04 30, payout 30                                            → null (zero, hidden)
  *   Лука    payout 20, nothing delivered                                   → null (−20.00)
+ *
+ * Ніна, Тарас and Олег each pin one `voided_at IS NULL` filter of the expression: on the
+ * allocation, on the top-up, on the top-up's parent receipt.
  *
  * Point-level, among rows owed money: Василь's 07-03 — not Зіна's voided 07-02, not Ганна's
  * fully paid 07-01.
@@ -81,23 +87,41 @@ describe('ListSupplierBalancesQuery — oldest open date (Postgres, #101)', () =
     });
 
   const payout = (s: string, date: string, amount: string) =>
-    event(s, (m) =>
-      m.query(
+    event(s, async (m) => {
+      const [row] = await m.query(
         `INSERT INTO payouts (code, shift_id, supplier_id, amount, paid_by_user_id,
                               created_at, balance_after)
-         VALUES ($1, $2, $3, $4, $5, clock_timestamp(), '0.00')`,
+         VALUES ($1, $2, $3, $4, $5, clock_timestamp(), '0.00') RETURNING id`,
         [`OO-PO-${run}-${++seq}`, shiftOn.get(date), s, amount, userId],
-      ),
-    );
+      );
+      return row.id as string;
+    });
 
   const topUp = (s: string, intakeId: string, amount: string) =>
-    event(s, (m) =>
-      m.query(
+    event(s, async (m) => {
+      const [row] = await m.query(
         `INSERT INTO intake_top_ups (intake_id, amount, reason, created_by_user_id)
-         VALUES ($1, $2, 'доплата за спеціальною ціною', $3)`,
+         VALUES ($1, $2, 'доплата за спеціальною ціною', $3) RETURNING id`,
         [intakeId, amount, userId],
-      ),
-    );
+      );
+      return row.id as string;
+    });
+
+  /** A void as the commands run it: release the document's live rows, stamp it, re-allocate. */
+  const voidDoc = (
+    s: string,
+    table: 'intakes' | 'payouts' | 'intake_top_ups',
+    target: Parameters<AllocationsService['release']>[1],
+    id: string,
+  ) =>
+    event(s, async (m) => {
+      await alloc.release(m, target);
+      await m.query(
+        `UPDATE ${table} SET voided_at = now(), voided_by_user_id = $2, void_reason = 'test'
+          WHERE id = $1`,
+        [id, userId],
+      );
+    });
 
   beforeAll(async () => {
     ds = await openTestDataSource();
@@ -141,6 +165,24 @@ describe('ListSupplierBalancesQuery — oldest open date (Postgres, #101)', () =
     await intake(zina, '2026-07-02', '60.00', true);
     await intake(zina, '2026-07-08', '15.00');
 
+    const nina = await supplier('Ніна');
+    await intake(nina, '2026-07-04', '50.00');
+    const ninaPayout = await payout(nina, '2026-07-04', '50.00');
+    await voidDoc(nina, 'payouts', { payoutId: ninaPayout }, ninaPayout);
+
+    const taras = await supplier('Тарас');
+    const tarasPaid = await intake(taras, '2026-07-02', '40.00');
+    await payout(taras, '2026-07-02', '40.00');
+    const tarasTopUp = await topUp(taras, tarasPaid, '10.00');
+    await voidDoc(taras, 'intake_top_ups', { topUpId: tarasTopUp }, tarasTopUp);
+    await intake(taras, '2026-07-10', '20.00');
+
+    const oleh = await supplier('Олег');
+    const olehVoided = await intake(oleh, '2026-07-01', '30.00');
+    await topUp(oleh, olehVoided, '5.00');
+    await voidDoc(oleh, 'intakes', { intakeId: olehVoided }, olehVoided);
+    await intake(oleh, '2026-07-08', '12.00');
+
     const marko = await supplier('Марко');
     await intake(marko, '2026-07-04', '30.00');
     await payout(marko, '2026-07-04', '30.00');
@@ -163,6 +205,9 @@ describe('ListSupplierBalancesQuery — oldest open date (Postgres, #101)', () =
       Ганна: '2026-07-05',
       Василь: '2026-07-03',
       Зіна: '2026-07-08',
+      Ніна: '2026-07-04',
+      Тарас: '2026-07-10',
+      Олег: '2026-07-08',
       Лука: null,
     });
     expect(page.data.find((r) => r.first_name === 'Ганна')?.debt).toBe('30.00');
@@ -176,17 +221,17 @@ describe('ListSupplierBalancesQuery — oldest open date (Postgres, #101)', () =
 
   it('puts the oldest date among rows OWED money on the envelope', async () => {
     await expect(service.list(owner, query())).resolves.toMatchObject({
-      total: 4,
+      total: 7,
       oldest_open_date: '2026-07-03',
     });
   });
 
   it("reads the envelope's date over every visible row, not the loaded page", async () => {
-    // Debt DESC is Василь 35, Ганна 30, Зіна 15, Лука −20: page 3 holds Зіна's 07-08 alone,
-    // and the tile still owes the point's oldest date.
+    // Debt DESC is Ніна 50, Василь 35, Ганна 30, Тарас 20, Зіна 15, Олег 12, Лука −20: page 3
+    // holds Ганна's 07-05 alone, and the tile still owes the point's oldest date.
     const page = await service.list(owner, query({ limit: 1, page: 3 }));
 
-    expect(page.data).toHaveLength(1);
+    expect(page.data.map((r) => r.first_name)).toEqual(['Ганна']);
     expect(page.oldest_open_date).toBe('2026-07-03');
   });
 
