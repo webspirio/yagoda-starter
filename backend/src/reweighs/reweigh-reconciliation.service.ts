@@ -225,7 +225,8 @@ export class ReweighReconciliationService {
       }
 
       // §3.6 — per GRADE, at the weighted average actually accrued (bonuses
-      // included, because it is already paid), then summed for display.
+      // included, because it is already paid), then summed for display. Since
+      // #56 that is the whole-hryvnia amount, so it can sit just under the rate.
       const amounts = productGrades.map((g) => {
         const missing = sub(g.intake_net_kg, g.reweigh_net_kg as string);
         if (isZero(g.intake_net_kg)) return '0.00';

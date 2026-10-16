@@ -153,8 +153,8 @@ describe('POST /cash-counts — midday recount (HTTP)', () => {
 
     // One standalone 400 payout — the only row that actually moves cash here.
     await ds.query(
-      `INSERT INTO payouts (code, shift_id, supplier_id, amount, paid_by_user_id)
-       VALUES ($1, $2, $3, '400.00', $4)`,
+      `INSERT INTO payouts (code, shift_id, supplier_id, amount, paid_by_user_id, balance_after)
+       VALUES ($1, $2, $3, '400.00', $4, '0.00')`,
       [`RC-PO-${randomUUID()}`, shiftId, supplierId, operator.id],
     );
   }, 30_000);

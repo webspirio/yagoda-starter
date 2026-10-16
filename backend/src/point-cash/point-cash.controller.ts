@@ -37,8 +37,8 @@ export class PointCashController {
     assertOwnsPoint(actor, pointId);
     // Four independent reads — no query depends on another's result — so
     // they run concurrently rather than one round trip after another.
-    const [cash, crateDeposits, crateCash, crateDepositUnits] = await Promise.all([
-      this.cash.cashFor(pointId, query.as_of),
+    const [{ cash, breakdown }, crateDeposits, crateCash, crateDepositUnits] = await Promise.all([
+      this.cash.breakdownFor(pointId, query.as_of),
       // Never bounded by `as_of` — see `crateDepositsFor`'s doc comment.
       this.cash.crateDepositsFor(pointId),
       // The counted drawer, bounded by `as_of`; null = never counted.
@@ -52,6 +52,7 @@ export class PointCashController {
       crate_deposits: crateDeposits,
       crate_cash: crateCash,
       crate_deposit_units: crateDepositUnits,
+      breakdown,
     };
   }
 }

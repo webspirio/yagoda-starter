@@ -222,4 +222,42 @@ describe('VoidDocumentDialog — open shift', () => {
     );
     expect(screen.getAllByRole('checkbox')).toHaveLength(2);
   });
+
+  describe('a payout void while the reopened receipts are unknown', () => {
+    const payoutDialog = (extra: object) => (
+      <VoidDocumentDialog kind="payout" id="p1" code="PO-7" open onClose={vi.fn()}
+        payoutAmount="1500.00" {...extra} />
+    );
+
+    it('refuses to submit while the settlement is still loading', async () => {
+      render(payoutDialog({ reopens: null }));
+      expect(screen.getByText('Loading…')).toBeInTheDocument();
+      await userEvent.type(screen.getByLabelText(/Reason/), 'клієнт повернув');
+      for (const box of screen.getAllByRole('checkbox')) await userEvent.click(box);
+      expect(screen.getByRole('button', { name: 'Void' })).toBeDisabled();
+      expect(voidDocumentMock).not.toHaveBeenCalled();
+    });
+
+    it('a closed shift has no box, so nothing waits on the list', () => {
+      render(payoutDialog({ reopens: null, shiftClosed: true }));
+      expect(screen.queryByText('Loading…')).toBeNull();
+      expect(screen.getByRole('button', { name: 'Void' })).toBeEnabled();
+    });
+
+    it('after a failed read offers a retry and lets the void go on behind a «list unknown» box', async () => {
+      const retryReopens = vi.fn();
+      render(payoutDialog({ reopens: null, reopensFailed: true, retryReopens }));
+      expect(screen.getByRole('alert')).toHaveTextContent("Couldn't load the receipts that will reopen");
+      await userEvent.click(screen.getByRole('button', { name: 'Retry' }));
+      expect(retryReopens).toHaveBeenCalledTimes(1);
+
+      expect(screen.getAllByRole('checkbox')).toHaveLength(2);
+      await userEvent.type(screen.getByLabelText(/Reason/), 'клієнт повернув');
+      for (const box of screen.getAllByRole('checkbox')) await userEvent.click(box);
+      await userEvent.click(screen.getByRole('button', { name: 'Void' }));
+      await waitFor(() =>
+        expect(voidDocumentMock).toHaveBeenCalledWith({ kind: 'payout', id: 'p1', reason: 'клієнт повернув' }),
+      );
+    });
+  });
 });

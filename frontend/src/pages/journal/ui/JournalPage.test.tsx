@@ -70,6 +70,8 @@ vi.mock('@/widgets/receipt', async (importOriginal) => ({
     receiptMock(props);
     return props.open ? <div data-testid="receipt-dialog">{props.intakeId}</div> : null;
   },
+  PayoutReceiptDialog: (props: { payoutId: string | null; open: boolean }) =>
+    props.open ? <div data-testid="payout-receipt-dialog">{props.payoutId}</div> : null,
 }));
 
 const intake = (over: Partial<Intake> & Pick<Intake, 'id' | 'code' | 'amount'>): Intake => ({
@@ -107,6 +109,7 @@ const payout = (over: Partial<Payout> & Pick<Payout, 'id' | 'code' | 'amount'>):
   return_note: null,
   returned_on_void: false,
   created_at: '2026-09-08T11:00:00Z',
+  balance_after: '0.00',
   ...over,
 });
 
@@ -435,5 +438,36 @@ describe('JournalPage — the voided switch', () => {
     await user.click(screen.getByRole('switch', { name: 'show voided' }));
 
     expect(new URLSearchParams(router.state.location.search).get('page')).toBeNull();
+  });
+});
+
+describe('JournalPage — the payouts tab opens the payout receipt', () => {
+  beforeEach(() => {
+    payoutsMock.mockReturnValue(
+      page<Payout>([
+        payout({ id: 'y1', code: 'VD-0001', amount: '300.00' }),
+        payout({ id: 'y2', code: 'VD-0002', amount: '150.00', intake_id: 'i1' }),
+      ]),
+    );
+  });
+
+  it('opens it from a standalone payout row', async () => {
+    const user = userEvent.setup();
+    renderJournal('/journal?kind=payouts');
+
+    expect(screen.queryByTestId('payout-receipt-dialog')).toBeNull();
+    await user.click(screen.getByText('VD-0001'));
+    expect(screen.getByTestId('payout-receipt-dialog')).toHaveTextContent('y1');
+    expect(screen.queryByTestId('receipt-dialog')).toBeNull();
+  });
+
+  it('leaves a payout row that belongs to a receipt non-clickable', async () => {
+    const user = userEvent.setup();
+    renderJournal('/journal?kind=payouts');
+
+    await user.click(screen.getByText('VD-0002'));
+    expect(screen.queryByTestId('payout-receipt-dialog')).toBeNull();
+    expect(screen.getByText('VD-0002').closest('tr')).not.toHaveClass('cursor-pointer');
+    expect(screen.getByText('VD-0001').closest('tr')).toHaveClass('cursor-pointer');
   });
 });

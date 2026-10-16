@@ -5,6 +5,7 @@ import { verifyPassword } from '../users/password-hashing';
 import { allocationViolations } from '../testing/allocation-invariants';
 import { onHandSql } from '../crates/crate-balance.service';
 import { seedDev } from './dev-seed';
+import { REBUILD_BALANCE_AFTER_SQL } from '../migrations/1788600000023-PayoutBalanceAfter';
 import {
   DEV_OPERATOR_PASSWORD,
   SEED_GRADES,
@@ -116,6 +117,28 @@ describe('dev seed', () => {
     );
     expect(balances.length).toBeGreaterThan(0);
     for (const b of balances) expect(b.debt.startsWith('-')).toBe(false);
+  });
+
+  it('stores each seeded payout the as-of balance, with every seeded receipt and top-up already written (#145)', async () => {
+    const qr = ds.createQueryRunner();
+    await qr.startTransaction(); // the rebuild below rewrites rows; the rollback puts them back
+    try {
+      const scope = `p."supplier_id" IN (SELECT s.id FROM suppliers s JOIN collection_points cp
+                      ON cp.id = s.collection_point_id WHERE cp.code IN ('SHP', 'KON', 'HAI'))`;
+      const stored: { id: string; balance_after: string }[] = await qr.query(
+        `SELECT p.id, p.balance_after::text AS balance_after FROM payouts p WHERE ${scope}`,
+      );
+      expect(stored.length).toBeGreaterThan(0);
+      await qr.query(`${REBUILD_BALANCE_AFTER_SQL} WHERE ${scope}`);
+      const rebuilt: { id: string; balance_after: string }[] = await qr.query(
+        `SELECT p.id, p.balance_after::text AS balance_after FROM payouts p WHERE ${scope}`,
+      );
+      const want = new Map(rebuilt.map((r) => [r.id, r.balance_after]));
+      for (const r of stored) expect([r.id, r.balance_after]).toEqual([r.id, want.get(r.id)]);
+    } finally {
+      await qr.rollbackTransaction();
+      await qr.release();
+    }
   });
 
   it('leaves no seeded point with negative empties (spec 2026-09-30)', async () => {

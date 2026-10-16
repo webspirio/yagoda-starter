@@ -152,6 +152,7 @@ describe('PointCashService.cashFor (Postgres)', () => {
       shift_id: shiftId,
       supplier_id: supplierId,
       amount,
+      balance_after: '0.00',
       paid_by_user_id: ownerId,
       ...over,
     };
@@ -587,6 +588,186 @@ describe('PointCashService.cashFor (Postgres)', () => {
     it('expectedForClosing is null for a shift with no opening count', async () => {
       const p = await newPoint();
       await expect(service.expectedForClosing(await shift(p, '2026-09-02'))).resolves.toBeNull();
+    });
+  });
+
+  describe('breakdownFor — the rows add up to the figure under them (#73)', () => {
+    /** Every scenario also pins the one rule that matters most: same cash as cashFor. */
+    const both = async (p: string, asOf: string) => {
+      const b = await service.breakdownFor(p, asOf);
+      await expect(service.cashFor(p, asOf)).resolves.toBe(b.cash);
+      return b;
+    };
+
+    it('open — opening + transfers − payouts + returns = cash (Шипинки 23.09)', async () => {
+      const p = await newPoint();
+      const sh = await shift(p, '2026-09-23', false);
+      await count(sh, 'opening', '43730.00', '43730.00');
+      await payoutIn(sh, '4000.00');
+      await transfer(p, { cash: '15000.00', accepted_date: '2026-09-23' });
+
+      const b = await both(p, '2026-09-23');
+
+      expect(b.cash).toBe('54730.00');
+      expect(b.breakdown).toEqual({
+        kind: 'open',
+        anchor_date: '2026-09-23',
+        opening: '43730.00',
+        transfers_in: '15000.00',
+        payouts: '4000.00',
+        returns: '0.00',
+        closing: null,
+      });
+    });
+
+    it('closed — the snapshot, the count and the difference by number (Шипинки 22.09, −90)', async () => {
+      const p = await newPoint();
+      const sh = await shift(p, '2026-09-22');
+      await count(sh, 'opening', '21820.00', '21820.00');
+      await payoutIn(sh, '13000.00');
+      await transfer(p, { cash: '35000.00', accepted_date: '2026-09-22' });
+      await count(sh, 'closing', '43730.00', '43820.00', CLOSED_AT);
+
+      const b = await both(p, '2026-09-22');
+
+      expect(b.cash).toBe('43730.00');
+      expect(b.breakdown).toEqual({
+        kind: 'closed',
+        anchor_date: '2026-09-22',
+        opening: '21820.00',
+        transfers_in: '35000.00',
+        payouts: '13000.00',
+        returns: '0.00',
+        closing: {
+          counted: '43730.00',
+          expected: '43820.00',
+          difference: '-90.00',
+          late_change: '0.00',
+        },
+      });
+    });
+
+    it('closed — a transfer voided after close is late_change; expected stays the snapshot', async () => {
+      const p = await newPoint();
+      const sh = await shift(p, '2026-09-22');
+      await count(sh, 'opening', '21820.00', '21820.00');
+      await payoutIn(sh, '13000.00');
+      await transfer(p, { cash: '35000.00', accepted_date: '2026-09-22' });
+      await transfer(p, {
+        cash: '1000.00',
+        accepted_date: '2026-09-22',
+        voided_at: new Date(),
+        voided_by_user_id: ownerId,
+        void_reason: 'дубль',
+      });
+      // Counted while the 1 000 was still live: expected 44 820.
+      await count(sh, 'closing', '44820.00', '44820.00', CLOSED_AT);
+
+      const b = await both(p, '2026-09-22');
+
+      expect(b.breakdown.closing).toEqual({
+        counted: '44820.00',
+        expected: '44820.00',
+        difference: '0.00',
+        late_change: '-1000.00',
+      });
+      // 21 820 + 35 000 − 13 000 + 0 − (−1 000) = 44 820 = expected.
+      expect(b.breakdown.transfers_in).toBe('35000.00');
+    });
+
+    it('closed with no opening count — late_change absorbs the whole gap, not NULL', async () => {
+      // shifts.service closes such a shift with expected = counted.
+      const p = await newPoint();
+      const sh = await shift(p, '2026-09-22');
+      await payoutIn(sh, '300.00');
+      await transfer(p, { cash: '1000.00', accepted_date: '2026-09-22' });
+      await count(sh, 'closing', '500.00', '500.00', CLOSED_AT);
+
+      const b = await both(p, '2026-09-22');
+
+      expect(b.breakdown.opening).toBeNull();
+      // 0 + 1 000 − 300 + 0 − 200 = 500 = expected.
+      expect(b.breakdown.closing).toEqual({
+        counted: '500.00',
+        expected: '500.00',
+        difference: '0.00',
+        late_change: '200.00',
+      });
+    });
+
+    it('open — a payout returned on void is in returns, and still in payouts', async () => {
+      const p = await newPoint();
+      const sh = await shift(p, '2026-09-22', false);
+      await count(sh, 'opening', '1000.00', '1000.00');
+      const at = new Date('2026-09-22T10:00:00Z');
+      await payoutIn(sh, '250.00', {
+        voided_at: at, voided_by_user_id: ownerId, void_reason: 'помилка',
+        return_settled_at: at, return_settled_by_user_id: ownerId, returned_on_void: true,
+      });
+
+      const b = await both(p, '2026-09-22');
+
+      expect(b.cash).toBe('1000.00');
+      expect(b.breakdown).toMatchObject({ payouts: '250.00', returns: '250.00' });
+    });
+
+    it('carried — a date with no shift reads the last close, and only that', async () => {
+      const p = await newPoint();
+      const sh = await shift(p, '2026-09-22');
+      await count(sh, 'opening', '21820.00', '21820.00');
+      await count(sh, 'closing', '43730.00', '43820.00', CLOSED_AT);
+
+      const b = await both(p, '2026-09-24');
+
+      expect(b.cash).toBe('43730.00');
+      expect(b.breakdown).toEqual({
+        kind: 'carried',
+        anchor_date: '2026-09-22',
+        opening: null,
+        transfers_in: null,
+        payouts: null,
+        returns: null,
+        closing: { counted: '43730.00', expected: null, difference: null, late_change: null },
+      });
+    });
+
+    it('none — never counted reads 0.00 and no breakdown', async () => {
+      const p = await newPoint();
+
+      const b = await both(p, '2026-09-24');
+
+      expect(b.cash).toBe('0.00');
+      expect(b.breakdown.kind).toBe('none');
+    });
+
+    it('open from an earlier day (#114) — full terms of THAT shift, not carried', async () => {
+      const p = await newPoint();
+      const sh = await shift(p, '2026-09-20', false);
+      await count(sh, 'opening', '1000.00', '1000.00');
+      await payoutIn(sh, '300.00');
+
+      const b = await both(p, '2026-09-22');
+
+      expect(b.cash).toBe('700.00');
+      expect(b.breakdown).toMatchObject({
+        kind: 'open',
+        anchor_date: '2026-09-20',
+        opening: '1000.00',
+        payouts: '300.00',
+        closing: null,
+      });
+    });
+
+    it('reopened — the demoted closing count reads as open again', async () => {
+      const p = await newPoint();
+      const sh = await shift(p, '2026-09-22', false);
+      await count(sh, 'opening', '1000.00', '1000.00');
+      await count(sh, 'midday', '900.00', '1000.00', CLOSED_AT); // the demoted close
+
+      const b = await both(p, '2026-09-22');
+
+      expect(b.breakdown.kind).toBe('open');
+      expect(b.cash).toBe('1000.00');
     });
   });
 });

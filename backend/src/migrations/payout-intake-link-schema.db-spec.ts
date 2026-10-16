@@ -52,8 +52,8 @@ describe('payouts.intake_id schema (Postgres)', () => {
 
   const insertPayout = (code: string, intake: string | null) =>
     ds.query(
-      `INSERT INTO payouts (code, shift_id, supplier_id, amount, paid_by_user_id, intake_id)
-       VALUES ($1, $2, $3, '500.00', $4, $5) RETURNING id, intake_id`,
+      `INSERT INTO payouts (code, shift_id, supplier_id, amount, paid_by_user_id, intake_id, balance_after)
+       VALUES ($1, $2, $3, '500.00', $4, $5, '0.00') RETURNING id, intake_id`,
       [code, shiftId, supplierId, userId, intake],
     );
 

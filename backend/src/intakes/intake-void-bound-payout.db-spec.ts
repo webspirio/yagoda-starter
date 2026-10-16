@@ -133,8 +133,8 @@ describe('intake void with a bound payout (HTTP, Postgres)', () => {
     const oldId = await intake(oldShiftId, '1000.00');
     const rId = await intake(shiftId, '500.00');
     const [p] = await ds.query(
-      `INSERT INTO payouts (code, shift_id, supplier_id, amount, paid_by_user_id, intake_id)
-       VALUES ($1, $2, $3, '1500.00', $4, $5) RETURNING id`,
+      `INSERT INTO payouts (code, shift_id, supplier_id, amount, paid_by_user_id, intake_id, balance_after)
+       VALUES ($1, $2, $3, '1500.00', $4, $5, '0.00') RETURNING id`,
       [`PO-${run}-${++seq}`, shiftId, supplier.id, operatorId, rId],
     );
 

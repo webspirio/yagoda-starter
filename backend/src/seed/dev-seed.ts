@@ -18,9 +18,9 @@ import { CrateBalanceService } from '../crates/crate-balance.service';
 import { allocate } from '../crates/crate-allocation';
 import { nextIssuanceCode } from '../crates/crate-code';
 import { CrateIssuanceMode } from '../crates/crate-issuance-mode.enum';
+import { REBUILD_BALANCE_AFTER_SQL } from '../migrations/1788600000023-PayoutBalanceAfter';
 import { AllocationsService } from '../supplier-balance/services/allocations';
 import {
-
   DEV_OPERATOR_PASSWORD,
   SEED_GRADES,
   SEED_INTAKES,
@@ -598,7 +598,17 @@ async function seedDocuments(
                -- CHK_shifts_broken_crates_closed refuses the row.
                CASE WHEN $5::boolean THEN $9::int ELSE NULL END)
        RETURNING id`,
-      [pid, opener, date, sh.closed ? 'closed' : 'open', sh.closed, '19:10', '07:30', tz, sh.broken ?? 0],
+      [
+        pid,
+        opener,
+        date,
+        sh.closed ? 'closed' : 'open',
+        sh.closed,
+        '19:10',
+        '07:30',
+        tz,
+        sh.broken ?? 0,
+      ],
     );
     shiftId.set(key, row!.id);
     summary.shifts += 1;
@@ -670,15 +680,18 @@ async function seedDocuments(
     summary.intakes += 1;
   }
 
+  const newPayoutIds: string[] = [];
   for (const doc of allPayouts) {
     const code = nextSeedCode('PO', doc.point, doc.day, doc.typed);
     const found = await one<{ id: string }>(qr, `SELECT id FROM payouts WHERE code = $1`, [code]);
     if (found) continue;
     const shift = shiftId.get(`${doc.point}/${doc.day}`);
     if (!shift) throw new Error(`Seed payout ${code} has no shift`);
-    await qr.query(
-      `INSERT INTO payouts (code, shift_id, supplier_id, amount, paid_by_user_id, created_at)
-       VALUES ($1, $2, $3, $4, $5, ${localTs(6, 7, 8)})`,
+    // `balance_after` is rebuilt after the top-ups below, once every seeded document exists (#145).
+    const inserted = await one<{ id: string }>(
+      qr,
+      `INSERT INTO payouts (code, shift_id, supplier_id, amount, paid_by_user_id, created_at, balance_after)
+       VALUES ($1, $2, $3, $4, $5, ${localTs(6, 7, 8)}, '0.00') RETURNING id`,
       [
         code,
         shift,
@@ -690,6 +703,7 @@ async function seedDocuments(
         tz,
       ],
     );
+    newPayoutIds.push(inserted!.id);
     summary.payouts += 1;
   }
 
@@ -735,7 +749,9 @@ async function seedDocuments(
       iss.mode === 'deposit' &&
       SEED_CRATE_ISSUANCES.slice(0, i).some(
         (earlier) =>
-          earlier.point === iss.point && earlier.supplier === iss.supplier && earlier.mode === 'deposit',
+          earlier.point === iss.point &&
+          earlier.supplier === iss.supplier &&
+          earlier.mode === 'deposit',
       );
     if (isNewerTranche) {
       await qr.query(`UPDATE tare_types SET deposit_price = $1 WHERE id = $2`, [
@@ -848,9 +864,7 @@ async function seedDocuments(
   // stack a second 750 ₴ onto the same receipt.
   for (const row of SEED_TOP_UPS) {
     const code = intakeCodeFor(row.point, row.day, row.typed);
-    const intake = await one<{ id: string }>(qr, `SELECT id FROM intakes WHERE code = $1`, [
-      code,
-    ]);
+    const intake = await one<{ id: string }>(qr, `SELECT id FROM intakes WHERE code = $1`, [code]);
     if (!intake) throw new Error(`Seed top-up has no intake ${code}`);
 
     const existing = await one<{ id: string }>(
@@ -861,11 +875,20 @@ async function seedDocuments(
     if (existing) continue;
 
     await qr.query(
-      `INSERT INTO intake_top_ups (intake_id, amount, reason, created_by_user_id)
-       VALUES ($1, $2, $3, $4)`,
+      `INSERT INTO intake_top_ups (intake_id, amount, reason, created_by_user_id, created_at)
+       SELECT $1, $2, $3, $4, i.created_at + interval '1 minute' FROM intakes i WHERE i.id = $1`,
       [intake.id, row.amount, row.reason, ownerId],
     );
     summary.topUps += 1;
+  }
+
+  // The as-of rebuild of the new payouts' `balance_after` (#145) runs HERE, after the last
+  // document that feeds it. A top-up is timed one minute after its receipt (deterministic, on
+  // the receipt's business date), so a payout recorded later that day must see it: the top-up
+  // must already exist for the rebuild to count it.
+  // Id-scoped, so re-running the seed leaves earlier payouts untouched.
+  if (newPayoutIds.length > 0) {
+    await qr.query(`${REBUILD_BALANCE_AFTER_SQL} WHERE p."id" = ANY($1)`, [newPayoutIds]);
   }
 
   // TRANSFERS BEFORE COUNTS, and both after the payouts above: a closing

@@ -40,8 +40,8 @@ describe('PayoutReturnedOnVoid migration', () => {
 
   const insert = (extra: string, values: unknown[]) =>
     ds.query(
-      `INSERT INTO payouts (code, shift_id, supplier_id, amount, paid_by_user_id${extra ? ', ' + extra : ''})
-       VALUES ($1, $2, $3, '100.00', $4${values.map((_, i) => `, $${i + 5}`).join('')}) RETURNING returned_on_void`,
+      `INSERT INTO payouts (code, shift_id, supplier_id, amount, paid_by_user_id, balance_after${extra ? ', ' + extra : ''})
+       VALUES ($1, $2, $3, '100.00', $4, '0.00'${values.map((_, i) => `, $${i + 5}`).join('')}) RETURNING returned_on_void`,
       [`PO-${randomUUID().slice(0, 12)}`, shiftId, supplierId, userId, ...values],
     );
 

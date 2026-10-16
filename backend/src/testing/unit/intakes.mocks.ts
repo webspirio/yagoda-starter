@@ -57,7 +57,7 @@ export const intake = (over: Record<string, unknown> = {}) => ({
   code: 'KPG-IN-20260908-004',
   shift_id: SHIFT_ID,
   supplier_id: SUPPLIER,
-  amount: '2103.30',
+  amount: '2103.30', // a pre-#56 record: a new receipt's line amounts are whole hryvnia (§2.12)
   received_by_user_id: 'u-oksana',
   voided_at: null,
   voided_by_user_id: null,
@@ -96,23 +96,25 @@ export function makeIntakesMocks() {
         : sql.includes('FROM crate_returns')
           ? state.crateReturnRows
           : sql.includes('AS net_kg')
-          ? [
-              {
-                net_kg: '36.90',
-                lines_count: 2,
-                supplier_name: 'Іван Коваль',
-                paid_amount: '0.00',
-                open_amount: '1200.00',
-              },
-            ]
-          : // `nextDocumentCode` locks, then counts the documents already in
-            // this shift. Three of them, so the next receipt is 004.
-            [{ n: 3 }],
+            ? [
+                {
+                  net_kg: '36.90',
+                  lines_count: 2,
+                  supplier_name: 'Іван Коваль',
+                  paid_amount: '0.00',
+                  open_amount: '1200.00',
+                },
+              ]
+            : // `nextDocumentCode` locks, then counts the documents already in
+              // this shift. Three of them, so the next receipt is 004.
+              [{ n: 3 }],
     );
-  // `receiverName` reads `User` by id; branch on the entity CLASS's `.name` so
+  // `receiver` reads `User` by id; branch on the entity CLASS's `.name` so
   // every other `findOne(Entity, …)` call keeps its own mock untouched.
   const findOneUserOrNull = (entity: { name?: string }) =>
-    Promise.resolve(entity?.name === 'User' ? { first_name: 'Оксана', last_name: 'Гнатюк' } : null);
+    Promise.resolve(
+      entity?.name === 'User' ? { first_name: 'Оксана', last_name: 'Гнатюк', number: 2 } : null,
+    );
   const manager = {
     getRepository: jest.fn().mockReturnValue(itemRepo),
     query: jest.fn().mockImplementation(queryExtrasOrCount),
@@ -129,6 +131,8 @@ export function makeIntakesMocks() {
     getRepository: jest.fn().mockReturnValue(itemRepo),
     query: jest.fn().mockImplementation(queryExtrasOrCount),
     findOne: jest.fn().mockImplementation(findOneUserOrNull),
+    // `pointNumber` — the receipt header's «Точка № 7», read with the document.
+    findOneOrFail: jest.fn().mockResolvedValue({ id: POINT_A, number: 7 }),
     find: jest.fn().mockResolvedValue([]),
   };
   const dataSource = {
@@ -160,7 +164,9 @@ export function makeIntakesMocks() {
   const tare = {
     findManyRaw: jest.fn().mockResolvedValue([{ id: CRATE, weight_kg: '1.20', is_crate: true }]),
   };
-  const points = { findOneRaw: jest.fn().mockResolvedValue({ id: POINT_A, code: 'KPG' }) };
+  const points = {
+    findOneRaw: jest.fn().mockResolvedValue({ id: POINT_A, code: 'KPG', number: 7 }),
+  };
   const audit = { record: jest.fn().mockResolvedValue(undefined) };
   const payouts = {
     write: jest.fn().mockImplementation((_m, input: { amount: string; intakeId: string }) =>

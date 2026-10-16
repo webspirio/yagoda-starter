@@ -9,11 +9,7 @@ import { Reflector } from '@nestjs/core';
 import { DataSource } from 'typeorm';
 // MUST be imported before `../app.module` — it loads `.env` as a side effect,
 // and AppModule's decorator runs ConfigModule.forRoot() eagerly at import time.
-import {
-  ensureTestDatabase,
-  relaxThrottleForTests,
-  resolveTestDatabaseName,
-} from './db-harness';
+import { ensureTestDatabase, relaxThrottleForTests, resolveTestDatabaseName } from './db-harness';
 
 import { AppModule } from '../app.module';
 import { UsersService } from '../users/users.service';
@@ -453,7 +449,7 @@ describe('documents pipeline (HTTP)', () => {
         .send({ supplier_id: supplierId, items })
         .expect(200);
 
-      expect(preview.body.amount).toBe('3137.30');
+      expect(preview.body.amount).toBe('3137.00');
       expect(preview.body.items.map((i: { net_kg: string }) => i.net_kg)).toEqual([
         '36.90',
         '18.80',
@@ -508,9 +504,9 @@ describe('documents pipeline (HTTP)', () => {
         .expect(201);
 
       expect(res.body.code).toMatch(/^[A-Z0-9]{2,8}-IN-\d{8}-\d{3}$/);
-      // (42.00 − 1.50 − 3.60) × 57.00 = 2103.30
+      // (42.00 − 1.50 − 3.60) × 57.00 = 2103.30 → 2103.00 (§2.12)
       // (20.00 − 0.00 − 1.20) × 55.00 = 1034.00
-      expect(res.body.amount).toBe('3137.30');
+      expect(res.body.amount).toBe('3137.00');
       expect(res.body.items).toHaveLength(2);
       expect(res.body.items[0].net_kg).toBe('36.90');
       expect(res.body.items[1].amount).toBe('1034.00');
@@ -740,24 +736,24 @@ describe('documents pipeline (HTTP)', () => {
           ],
         })
         .expect(201);
-      // (12.00 − 0.00 − 1.20) × 57.00 = 615.60
-      expect(intakeRes.body.amount).toBe('615.60');
+      // (12.00 − 0.00 − 1.20) × 57.00 = 615.60 → 615.00 (§2.12)
+      expect(intakeRes.body.amount).toBe('615.00');
       intakeId = intakeRes.body.id as string;
     }, 30_000);
 
     it('shows the debt after the intake — §3.1’s «Разом»', async () => {
-      expect(await balanceOf(operatorToken)).toBe('615.60');
+      expect(await balanceOf(operatorToken)).toBe('615.00');
     });
 
     it('refuses a payout above the debt and NAMES the balance', async () => {
       const res = await request(app.getHttpServer())
         .post('/payouts')
         .set('Authorization', `Bearer ${operatorToken}`)
-        .send({ supplier_id: supplierId, amount: '615.61' })
+        .send({ supplier_id: supplierId, amount: '615.01' })
         .expect(400);
 
       expect(res.body.code).toBe('PAYOUT_EXCEEDS_DEBT');
-      expect(JSON.stringify(res.body)).toContain('615.60');
+      expect(JSON.stringify(res.body)).toContain('615.00');
     });
 
     it('pays part of it and lowers the balance', async () => {
@@ -769,7 +765,7 @@ describe('documents pipeline (HTTP)', () => {
 
       expect(res.body.code).toMatch(/^[A-Z0-9]{2,8}-PO-\d{8}-\d{3}$/);
       payoutId = res.body.id as string;
-      expect(await balanceOf(operatorToken)).toBe('15.60');
+      expect(await balanceOf(operatorToken)).toBe('15.00');
     });
 
     it('the SECOND payout sees the first one’s effect on the balance', async () => {
@@ -780,13 +776,13 @@ describe('documents pipeline (HTTP)', () => {
       await request(app.getHttpServer())
         .post('/payouts')
         .set('Authorization', `Bearer ${operatorToken}`)
-        .send({ supplier_id: supplierId, amount: '15.61' })
+        .send({ supplier_id: supplierId, amount: '15.01' })
         .expect(400);
 
       await request(app.getHttpServer())
         .post('/payouts')
         .set('Authorization', `Bearer ${operatorToken}`)
-        .send({ supplier_id: supplierId, amount: '15.60' })
+        .send({ supplier_id: supplierId, amount: '15.00' })
         .expect(201);
 
       expect(await balanceOf(operatorToken)).toBe('0.00');
@@ -909,8 +905,8 @@ describe('documents pipeline (HTTP)', () => {
         .send({ reason: 'квитанція на іншу людину' })
         .expect(201);
 
-      // intakes: 0 (voided). payouts: 15.60 live, 600.00 voided → debt −15.60.
-      expect(await balanceOf(operatorToken)).toBe('-15.60');
+      // intakes: 0 (voided). payouts: 15.00 live, 600.00 voided → debt −15.00.
+      expect(await balanceOf(operatorToken)).toBe('-15.00');
     });
 
     it('404s another point’s supplier balance for an operator', async () => {
@@ -1023,7 +1019,7 @@ describe('documents pipeline (HTTP)', () => {
    * REFUSED. Spec §11 asked for «blocks and then fails»; the second half is
    * this test. Delete the `FOR UPDATE` from `PayoutsService.writePayout` and both
    * requests read the same debt, both clear the ceiling, and 800,00 ₴ leaves
-   * the drawer against a 615,60 ₴ debt with nothing downstream to notice.
+   * the drawer against a 615,00 ₴ debt with nothing downstream to notice.
    */
   describe('two payouts in flight at once', () => {
     let supplierId: string;
@@ -1091,12 +1087,12 @@ describe('documents pipeline (HTTP)', () => {
           ],
         })
         .expect(201);
-      // (12.00 − 0.00 − 1.20) × 57.00 = 615.60
-      expect(intakeRes.body.amount).toBe('615.60');
+      // (12.00 − 0.00 − 1.20) × 57.00 = 615.60 → 615.00 (§2.12)
+      expect(intakeRes.body.amount).toBe('615.00');
     }, 30_000);
 
     it('lets exactly ONE of two simultaneous payouts through', async () => {
-      // 400 + 400 = 800 > 615.60, but EITHER one alone clears the ceiling — so
+      // 400 + 400 = 800 > 615.00, but EITHER one alone clears the ceiling — so
       // a serial pair of checks passes both and only the lock stops it. The
       // refusal is the CEILING, not the unique index on `code`: the loser is
       // turned away at the debt check, which `create` reaches before it numbers
@@ -1120,7 +1116,38 @@ describe('documents pipeline (HTTP)', () => {
         .get(`/suppliers/${supplierId}/balance`)
         .set('Authorization', `Bearer ${operatorToken}`)
         .expect(200);
-      expect(balance.body.debt).toBe('215.60');
+      expect(balance.body.debt).toBe('215.00');
+
+      // #145 — the survivor froze the debt it left behind.
+      const survivor = results.find((r) => r.status === 201);
+      expect(survivor?.body.balance_after).toBe('215.00');
+    });
+
+    it('freezes a distinct balance_after on each of two payouts that both fit (#145)', async () => {
+      // 100 + 100 <= 215.00: the lock serialises them, so the second reads the debt the first
+      // left — {115.00, 15.00} in either arrival order, never the same figure twice.
+      const attempt = () =>
+        request(app.getHttpServer())
+          .post('/payouts')
+          .set('Authorization', `Bearer ${operatorToken}`)
+          .send({ supplier_id: supplierId, amount: '100.00' });
+
+      const results = await Promise.all([attempt(), attempt()]);
+      expect(results.map((r) => r.status)).toEqual([201, 201]);
+      expect(results.map((r) => r.body.balance_after as string).sort()).toEqual([
+        '115.00',
+        '15.00',
+      ]);
+
+      const stored = await app
+        .get(DataSource)
+        .query(`SELECT balance_after FROM payouts WHERE id = ANY($1::uuid[])`, [
+          results.map((r) => r.body.id as string),
+        ]);
+      expect(stored.map((r: { balance_after: string }) => r.balance_after).sort()).toEqual([
+        '115.00',
+        '15.00',
+      ]);
     });
   });
 
@@ -1141,7 +1168,7 @@ describe('documents pipeline (HTTP)', () => {
     let topUpId: string;
     let secondTopUpId: string;
     let thirdTopUpId: string;
-    const expectedDebtWithTopUp = '3231.20';
+    const expectedDebtWithTopUp = '3230.00';
 
     beforeAll(async () => {
       const productRes = await request(app.getHttpServer())
@@ -1208,7 +1235,7 @@ describe('documents pipeline (HTTP)', () => {
         },
       ];
 
-      // (12.00 − 0.00 − 1.20) × 57.00 = 615.60 — one plain receipt for the
+      // (12.00 − 0.00 − 1.20) × 57.00 = 615.60 → 615.00 (§2.12) — one plain receipt for the
       // negative-case tests (role, blank reason, zero amount), none of which
       // ever reach the intake lookup.
       const intakeRes = await request(app.getHttpServer())
@@ -1216,7 +1243,7 @@ describe('documents pipeline (HTTP)', () => {
         .set('Authorization', `Bearer ${operatorToken}`)
         .send({ supplier_id: supplierId, items })
         .expect(201);
-      expect(intakeRes.body.amount).toBe('615.60');
+      expect(intakeRes.body.amount).toBe('615.00');
       intakeId = intakeRes.body.id as string;
 
       // A second receipt for the SAME supplier — this is the one the real
@@ -1226,7 +1253,7 @@ describe('documents pipeline (HTTP)', () => {
         .set('Authorization', `Bearer ${operatorToken}`)
         .send({ supplier_id: supplierId, items })
         .expect(201);
-      expect(closedIntakeRes.body.amount).toBe('615.60');
+      expect(closedIntakeRes.body.amount).toBe('615.00');
       closedShiftIntakeId = closedIntakeRes.body.id as string;
 
       // An UNRELATED supplier/intake, purely so the void tests below have

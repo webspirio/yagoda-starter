@@ -21,6 +21,16 @@ export interface Payout {
   /** Open shift: a void returns the cash at once (2026-09-28). */
   shift_closed: boolean;
   created_at: string;
+  /** The supplier's debt right after this payout, frozen at write time. */
+  balance_after: string;
+}
+
+/** `GET /payouts/:id` — the row plus the two numbers the receipt header prints (#145). */
+export interface PayoutDetail extends Payout {
+  /** «Приймальник № 5»; `null` only if the user row is gone. */
+  paid_by_number: number | null;
+  /** «Точка № 3». */
+  point_number: number;
 }
 
 /** Re-exported so existing `../model/payout` importers keep working — see `@/shared/api/pagination.ts`. */

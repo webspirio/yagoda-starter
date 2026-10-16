@@ -30,7 +30,25 @@ export interface PointCashRow {
   crate_unexplained_difference: string;
 }
 
-/** Дзеркалить відповідь `GET /point-cash/:pointId` — лише сума однієї точки. */
+/** Дзеркалить `PointCashBreakdown` (`point-cash/point-cash.mapper.ts`, #73). */
+export interface PointCashBreakdown {
+  kind: 'open' | 'closed' | 'carried' | 'none';
+  anchor_date: string | null;
+  opening: string | null;
+  transfers_in: string | null;
+  /** Невід'ємна величина — знак ставить екран. */
+  payouts: string | null;
+  returns: string | null;
+  closing: {
+    counted: string;
+    /** Знімок при закритті, не перерахунок. */
+    expected: string | null;
+    difference: string | null;
+    late_change: string | null;
+  } | null;
+}
+
+/** Дзеркалить відповідь `GET /point-cash/:pointId` — сума однієї точки і розклад, з якого вона складається. */
 export interface PointCashOne {
   collection_point_id: string;
   cash: string;
@@ -40,6 +58,7 @@ export interface PointCashOne {
   crate_deposit_units: number;
   /** Див. `PointCashRow.crate_cash`. */
   crate_cash: string | null;
+  breakdown: PointCashBreakdown;
 }
 
 /** Реекспорт для існуючих імпортерів `../model/point-cash` — див. `@/shared/api/pagination.ts`. */

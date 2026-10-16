@@ -1,5 +1,5 @@
 import { BadRequestException } from '@nestjs/common';
-import { add, gt, lt, lte, mul, sub, sum } from '../common/money';
+import { add, gt, isZero, lt, lte, mul, mulWholeHryvnia, sub, sum } from '../common/money';
 
 /**
  * EVERY ARITHMETIC OPERATION IN THIS SLICE HAPPENS HERE, and nothing here
@@ -180,6 +180,16 @@ function buildLine(
     );
   }
 
+  // §2.12 (#56) — the line is paid in whole hryvnia; weight and rate stay exact.
+  // Below 0,80 that is nothing, and a receipt for berries paid 0,00 is refused.
+  const amount = mulWholeHryvnia(net_kg, rate);
+  if (gt(rate, '0.00') && isZero(amount)) {
+    bad(
+      `the line comes to less than 0.80 (${net_kg} × ${rate}) and would be paid 0.00`,
+      'AMOUNT_ROUNDS_TO_ZERO',
+    );
+  }
+
   return {
     item_order,
     product_grade_id: input.product_grade_id,
@@ -189,7 +199,7 @@ function buildLine(
     net_kg,
     price: price.base_price,
     bonus: input.bonus,
-    amount: mul(net_kg, rate),
+    amount,
     tare: input.tare,
   };
 }

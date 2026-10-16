@@ -127,8 +127,8 @@ describe('ShiftsService.close with negative expected movements (Postgres)', () =
       [pointId, `Мельник ${randomUUID().slice(0, 8)}`],
     )) as { id: string }[];
     await ds.query(
-      `INSERT INTO payouts (code, shift_id, supplier_id, amount, paid_by_user_id)
-       VALUES ($1, $2, $3, '9000.00', $4)`,
+      `INSERT INTO payouts (code, shift_id, supplier_id, amount, paid_by_user_id, balance_after)
+       VALUES ($1, $2, $3, '9000.00', $4, '0.00')`,
       [`PO-${randomUUID().slice(0, 12)}`, shift.id, supplierId, operator.sub],
     );
 

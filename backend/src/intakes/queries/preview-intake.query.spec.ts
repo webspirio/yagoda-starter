@@ -53,7 +53,7 @@ describe('PreviewIntakeQuery', () => {
         collection_point_id: POINT_A,
         supplier_id: SUPPLIER,
         business_date: '2026-09-08',
-        amount: '2103.30',
+        amount: '2103.00',
         items: [
           {
             item_order: 1,
@@ -64,7 +64,7 @@ describe('PreviewIntakeQuery', () => {
             net_kg: '36.90',
             price: '57.00',
             bonus: '0.00',
-            amount: '2103.30',
+            amount: '2103.00',
             tare: [{ tare_type_id: CRATE, units: 3 }],
           },
         ],

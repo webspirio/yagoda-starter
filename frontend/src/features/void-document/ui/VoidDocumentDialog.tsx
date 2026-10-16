@@ -57,6 +57,10 @@ interface VoidDocumentDialogProps {
   /** Payout only: the amount going back to the drawer, and the receipts that reopen. */
   payoutAmount?: string;
   reopens?: string[] | null;
+  /** Payout only: the settlement read failed (`reopens` stays null) — as for an intake's linked
+   *  payout, the box becomes «list unknown» and the void goes on; `retryReopens` refetches. */
+  reopensFailed?: boolean;
+  retryReopens?: () => void;
   /** Payout only: a closed shift's void returns no cash, so there is nothing to tick. An intake
    *  is never voided in a closed shift (2026-09-30). */
   shiftClosed?: boolean;
@@ -82,17 +86,25 @@ export function VoidDocumentDialog({
   intakeAmount,
   payoutAmount,
   reopens,
+  reopensFailed: payoutReopensFailed,
+  retryReopens: payoutRetryReopens,
 }: VoidDocumentDialogProps) {
   const { t, i18n } = useTranslation();
   const locale = i18n.resolvedLanguage ?? 'uk';
   const money = (v: string) => formatUah(v, locale);
   const voidDocument = useVoidDocumentMutation();
   const openLinkedPayout = kind === 'intake' ? linkedPayout : undefined;
+  // The reopen list in play: an intake's linked payout carries its own, a payout void takes
+  // `reopens` (null = settlement not read yet) — except in a closed shift, which reopens nothing.
+  const payoutBox = kind === 'payout' && !shiftClosed && !!payoutAmount;
+  const reopenList = openLinkedPayout ? openLinkedPayout.reopens : payoutBox ? reopens : undefined;
+  const failedFlag = openLinkedPayout ? openLinkedPayout.reopensFailed : payoutReopensFailed;
+  const retryReopens = openLinkedPayout ? openLinkedPayout.retryReopens : payoutRetryReopens;
   // A failed read is not «not ready»: `reopens` is disclosure only, so the void goes on
   // behind its own box (#173 review) rather than locking the operator out.
-  const reopensFailed =
-    openLinkedPayout?.reopens === null && openLinkedPayout.reopensFailed === true;
-  const notReady = openLinkedPayout?.reopens === null && !reopensFailed;
+  const reopensFailed = reopenList === null && failedFlag === true;
+  const notReady = reopenList === null && !reopensFailed;
+  const reopensUnknownBox = { id: 'reopensUnknown', text: t('void.ack.reopensUnknown') };
 
   const reopen = (codes?: string[] | null) =>
     codes?.length
@@ -103,15 +115,13 @@ export function VoidDocumentDialog({
     : kind === 'payout' && payoutAmount
       ? [
           { id: 'payoutCash', text: t('void.ack.payoutCash', { amount: money(payoutAmount) }) },
-          ...reopen(reopens),
+          ...(reopensFailed ? [reopensUnknownBox] : reopen(reopens)),
         ]
       : openLinkedPayout
         ? [
             { id: 'cash', text: t('void.ack.cash', { amount: money(openLinkedPayout.amount) }) },
             { id: 'payout', text: t('void.ack.payout', { code: openLinkedPayout.code }) },
-            ...(reopensFailed
-              ? [{ id: 'reopensUnknown', text: t('void.ack.reopensUnknown') }]
-              : reopen(openLinkedPayout.reopens)),
+            ...(reopensFailed ? [reopensUnknownBox] : reopen(openLinkedPayout.reopens)),
           ]
         : kind === 'intake' && intakeAmount
           ? [{ id: 'debt', text: t('void.ack.debt', { amount: money(intakeAmount) }) }]
@@ -183,13 +193,8 @@ export function VoidDocumentDialog({
               className="flex items-center justify-between gap-2 text-sm text-destructive"
             >
               <span>{t('void.reopensFailed')}</span>
-              {openLinkedPayout.retryReopens ? (
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={openLinkedPayout.retryReopens}
-                >
+              {retryReopens ? (
+                <Button type="button" variant="outline" size="sm" onClick={retryReopens}>
                   {t('common.retry')}
                 </Button>
               ) : null}

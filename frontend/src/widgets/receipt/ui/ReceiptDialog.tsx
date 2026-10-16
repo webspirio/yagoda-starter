@@ -9,8 +9,7 @@ import {
   DialogTitle,
 } from '@/shared/ui/dialog';
 import { Button } from '@/shared/ui/button';
-import { add, cmp, formatKg, formatUah, isZero } from '@/shared/lib/money';
-import { formatLongDate, formatTime } from '@/shared/lib/date';
+import { ReceiptView } from '@/shared/ui/receipt';
 import { canVoidIntake, useIntakeQuery } from '@/entities/intake';
 import {
   useSupplierBalanceQuery,
@@ -19,11 +18,10 @@ import {
   supplierName,
 } from '@/entities/supplier';
 import { useTareTypeOptionsQuery } from '@/entities/tare-type';
-import { usePointOptionsQuery } from '@/entities/collection-point';
 import { useMeQuery } from '@/entities/user';
 import { useNetworkSettingsQuery } from '@/entities/network-settings';
 import { VoidDocumentDialog, reopenedCodes } from '@/features/void-document';
-import { ReceiptSheet, type ReceiptSheetLine } from './ReceiptSheet';
+import { buildIntakeReceipt } from '../model/buildIntakeReceipt';
 
 /**
  * The receipt for one intake — `GET /intakes/:id` composed with the names a
@@ -78,9 +76,6 @@ export function ReceiptDialog({
   const tareTypesQuery = useTareTypeOptionsQuery();
   const tareTypes = tareTypesQuery.data;
 
-  const pointsQuery = usePointOptionsQuery();
-  const points = pointsQuery.data;
-
   const meQuery = useMeQuery();
   const me = meQuery.data;
 
@@ -110,7 +105,6 @@ export function ReceiptDialog({
     supplierQuery.isError ||
     balanceQuery.isError ||
     tareTypesQuery.isError ||
-    pointsQuery.isError ||
     meQuery.isError;
 
   // VoidDocumentDialog keeps its form state for its lifetime (react-hook-form's
@@ -136,9 +130,7 @@ export function ReceiptDialog({
     return null;
   }
 
-  let content: ReactNode = (
-    <p className="text-sm text-muted-foreground">{t('common.loading')}</p>
-  );
+  let content: ReactNode = <p className="text-sm text-muted-foreground">{t('common.loading')}</p>;
   // Extra actions beyond the always-present «Закрити» — only meaningful once
   // the receipt actually resolved.
   let actions: ReactNode = null;
@@ -151,81 +143,26 @@ export function ReceiptDialog({
         {t('common.somethingWentWrong')}
       </p>
     );
-  } else if (intake && supplier && balance && tareTypes && points && me) {
-    const tareById = new Map(tareTypes.map((tt) => [tt.id, tt]));
-    const pointName = points.find((p) => p.id === intake.collection_point_id)?.name ?? '—';
-    const receivedBy = intake.received_by_name ?? '—';
-    const voided = Boolean(intake.voided_at);
-
+  } else if (intake && supplier && balance && tareTypes && me) {
     // §3 quotes «· 1 позиція» — the count rides on every receipt, not only
     // once there is more than one line; `titleLines_one` carries the singular
     // form (M4).
     title = t('receipt.titleLines', { code: intake.code, count: intake.items.length });
 
-    const lines: ReceiptSheetLine[] = intake.items.map((item) => {
-      const tareLabel = item.tare
-        .map((tareLine) => `${tareLine.units} × ${tareById.get(tareLine.tare_type_id)?.name ?? '—'}`)
-        .join(', ');
-      return {
-        key: item.id,
-        // #162: the product alone — the grade shows only through its price.
-        // `intake.mapper` keeps `?? ''` for a missing name, hence the «—».
-        label: item.product_name || '—',
-        gross: formatKg(item.gross_kg, locale),
-        pallet: cmp(item.pallet_kg, '0') !== 0 ? formatKg(item.pallet_kg, locale) : null,
-        tareLabel,
-        tareWeight: formatKg(item.tare_weight_kg, locale),
-        net: formatKg(item.net_kg, locale),
-        // #164: the final price only — the bonus is folded in, not shown.
-        price: formatUah(add(item.price, item.bonus), locale),
-        amount: formatUah(item.amount, locale),
-      };
-    });
-
-    const paid =
-      cmp(intake.paid_amount, '0') === 0
-        ? null
-        : {
-            amount: formatUah(intake.paid_amount, locale),
-            codes: intake.payouts.filter((p) => p.voided_at === null).map((p) => p.code),
-          };
-    const voidedPayouts = intake.payouts
-      .filter((p) => p.voided_at !== null)
-      .map((p) => p.code);
-
-    const crateReturn = intake.crate_return
-      ? {
-          units: intake.crate_return.units,
-          amount: isZero(intake.crate_return.deposit_refund)
-            ? null
-            : formatUah(intake.crate_return.deposit_refund, locale),
-          voided: intake.crate_return.voided_at !== null,
-        }
-      : null;
-
     const showVoid = canVoidIntake(me, intake);
 
     content = (
       <>
-        <ReceiptSheet
-          code={intake.code}
-          // §5 row 50 — the BUSINESS date (from the shift, §2.3), not the
-          // calendar day `created_at` happens to carry: a receipt written just
-          // past local midnight is still that shift's day, and printing
-          // `created_at`'s own date could show one day while `business_date`
-          // (and every other document on this receipt's shift) says another.
-          date={`${formatLongDate(intake.business_date, locale)} · ${formatTime(intake.created_at, locale)}`}
-          pointName={pointName}
-          supplierName={supplierName(supplier)}
-          lines={lines}
-          accrued={formatUah(intake.amount, locale)}
-          balance={formatUah(balance.debt, locale)}
-          paid={paid}
-          voidedPayouts={voidedPayouts}
-          receivedBy={receivedBy}
-          voided={voided ? { reason: intake.void_reason ?? '' } : null}
-          crateReturn={crateReturn}
-          note={settingsQuery.data?.receipt_note ?? null}
+        <ReceiptView
+          doc={buildIntakeReceipt({
+            intake,
+            supplierName: supplierName(supplier),
+            tareNameById: new Map(tareTypes.map((tt) => [tt.id, tt.name])),
+            note: settingsQuery.data?.receipt_note ?? null,
+            balance: balance.debt,
+            t,
+            locale,
+          })}
         />
         {settingsQuery.isError && !settingsQuery.data ? (
           <p className="print-hide text-sm text-muted-foreground">{t('receipt.noteLoadFailed')}</p>
