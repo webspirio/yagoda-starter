@@ -727,7 +727,7 @@
       "caption_other": "owed now: deposits for {{count}} crates — {{amount}}",
       "captionZero": "no crate deposits held",
       "notCounted": "not counted yet",
-      "unexplained": "All-time discrepancies: {{amount}}",
+      "unexplained": "Discrepancies to date: {{amount}}",
       "footnote": "This money sits apart from the berry cash: we pay someone for their crates even if the berry drawer is empty. No deposit was taken against a signed receipt — those crates are not counted here.",
       "twoBooks": "Two books: berries {{berry}} · crates {{crates}}"
     },

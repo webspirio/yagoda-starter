@@ -392,12 +392,28 @@ export class ShiftsService {
    * an intake and a payout, but the seam should not decide their wording.
    *
    * Takes an `EntityManager` so a document write reads it INSIDE its own
-   * transaction, which is what stops a shift being closed between the check and
-   * the insert.
+   * transaction — and there it takes `FOR SHARE` on the row, which is what
+   * actually stops a shift being closed between the check and the insert
+   * (#178 review). Reading inside the transaction alone does not: under READ
+   * COMMITTED the row is unlocked, `close` commits in the gap and the document
+   * lands 201 in a closed shift — for the crates book that is money no count
+   * ever expected. With the share lock `close` (`pessimistic_write` in
+   * `loadVisible`) waits for the write to commit and counts it, and a write
+   * that arrives after `close` re-reads the committed row, finds `closed_at`
+   * set and gets its 409. Shared locks never block one another, so concurrent
+   * documents at one point do not serialise on it.
+   *
+   * ONLY INSIDE A TRANSACTION: the intake preview passes the plain
+   * `dataSource.manager`, and a lock outside one is TypeORM's
+   * `PessimisticLockTransactionRequiredError` — a read has nothing to hold.
    */
   async findOpenAtPoint(pointId: string, manager?: EntityManager): Promise<Shift | null> {
     const repo = manager ? manager.getRepository(Shift) : this.repo;
-    return repo.findOne({ where: { collection_point_id: pointId, closed_at: IsNull() } });
+    const inTransaction = manager?.queryRunner?.isTransactionActive === true;
+    return repo.findOne({
+      where: { collection_point_id: pointId, closed_at: IsNull() },
+      ...(inTransaction ? { lock: { mode: 'pessimistic_read' as const } } : {}),
+    });
   }
 
   /** Raw row by id, for the document services. No access check — the caller

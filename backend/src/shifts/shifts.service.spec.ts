@@ -468,6 +468,22 @@ describe('ShiftsService', () => {
 
       await expect(service.findOpenAtPoint(POINT_A)).resolves.toBeNull();
     });
+
+    // #178 review: without the share lock a close commits between a document's
+    // check and its insert, and the document lands in a closed shift.
+    it('takes FOR SHARE on the row inside a transaction, and no lock outside one', async () => {
+      const txRepo = { findOne: jest.fn().mockResolvedValue(null) };
+      const manager = (isTransactionActive: boolean) =>
+        ({ queryRunner: { isTransactionActive }, getRepository: () => txRepo }) as never;
+
+      await service.findOpenAtPoint(POINT_A, manager(true));
+      expect(txRepo.findOne).toHaveBeenLastCalledWith(
+        expect.objectContaining({ lock: { mode: 'pessimistic_read' } }),
+      );
+
+      await service.findOpenAtPoint(POINT_A, manager(false));
+      expect(txRepo.findOne).toHaveBeenLastCalledWith(expect.not.objectContaining({ lock: expect.anything() }));
+    });
   });
 });
 

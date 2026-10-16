@@ -1574,3 +1574,29 @@ The slice rounds only a reception line's `amount` (§2.12). The ticket says
   preview — is open.
 - **The receipt prints net × rate beside an amount that is not their product**
   (36,90 × 57,00 next to 2 103,00). A hint for the supplier is possible.
+
+## Left over from the #178 behavioural review (PR #249, 2026-10-16)
+
+The review's race (a document landing 201 in a shift closed between its open-shift check and
+its insert) is FIXED in that PR: `ShiftsService.findOpenAtPoint` takes `FOR SHARE` inside a
+transaction. Three edges were decided rather than built:
+
+- **An owner void of a crate document in a CLOSED shift leaves the drawer's money owned by no
+  one — accepted (spec D4).** The liability (`crate_deposits`) drops by the deposit; the
+  expectation does not, because the closing count already snapshotted it. Every later count
+  reconciles at 0 and nothing names the gap between drawer and liability. Accepted because only
+  the owner can do it (an operator never voids in a closed shift) — the person who reads the
+  books is the one who made the gap, so it is not a theft path. Two ways out when the client
+  asks: forbid the closed-shift crate void the way the intake void was forbidden on 2026-09-30,
+  or bring in the «expected return» trio above for crates.
+- **A refund larger than the counted drawer reads a negative «має бути» — accepted, shown as
+  is (spec D7).** `createReturn` gates the refund on the lifetime LIABILITY, never on the
+  counted drawer, on purpose: refusing a supplier's deposit back because the operator spent it
+  would punish the supplier and keep the crates out. The money then comes out of the berry
+  drawer and the berry count shows the shortage; the crates book's own discrepancies sum to 0
+  across the two days, which is correct for that book. A guard, or a warning on the card, waits
+  for the client.
+- **Question for the client: can deposits ever leave the point?** No document takes money out
+  of the crates drawer except a supplier refund. If the owner takes deposit cash to the base,
+  every later count reads short. Ask whether that happens; if it does, the crates book needs an
+  outgoing transfer.

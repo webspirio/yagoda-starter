@@ -229,8 +229,13 @@ export class CratesService {
      * negative drawer. The REAL §6.7 risk — deposit cash spent on berries out
      * of the one physical drawer — is not caught here: this guard (like
      * CrateStockGuard and pointDepositBook) gates on the lifetime LIABILITY,
-     * not on the counted drawer. A counted crates drawer (#178) surfaces it
-     * as a discrepancy on the next count instead.
+     * not on the counted drawer, ON PURPOSE (#178 spec D7): refusing a
+     * supplier's deposit back because the operator spent it would punish the
+     * supplier. The spending shows as a crates shortage on the count that
+     * finds it; a refund made after that reads a negative «має бути», the
+     * money comes out of the berry drawer and the berry count shows it — the
+     * crates book's own discrepancies then net to 0, which is right for that
+     * book.
      */
     const book = await this.balance.pointDepositBook(pointId, m);
     if (lt(book, result.deposit_refund)) {

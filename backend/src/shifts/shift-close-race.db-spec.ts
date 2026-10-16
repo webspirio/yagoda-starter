@@ -130,6 +130,55 @@ describe('ShiftsService close/reopen under concurrency (Postgres)', () => {
     expect(audits).toHaveLength(1);
   });
 
+  // #178 review: a document write's open-shift check held no lock, so a close
+  // committed between the check and the insert and the document landed 201 in
+  // a closed shift. Under `FOR SHARE` the close waits for the write instead,
+  // and a write after the close finds no open shift at all.
+  it('makes a close wait for a document write that already found the shift open', async () => {
+    const run = randomUUID().slice(0, 8);
+    const [{ id: racePoint }] = (await ds.query(
+      `INSERT INTO collection_points (name, code, kind, is_active)
+       VALUES ($1, $2, 'reception', true) RETURNING id`,
+      [`Точка ${run}`, `R${run.slice(0, 6).toUpperCase()}`],
+    )) as { id: string }[];
+    const raceOperator: AuthenticatedUser = { ...operator, collection_point_id: racePoint };
+    const shift = await service.open(raceOperator, { counted_amount: '0.00', counted_deposits: '0.00' });
+
+    const writer = ds.createQueryRunner();
+    await writer.connect();
+    await writer.startTransaction();
+    try {
+      const found = await service.findOpenAtPoint(racePoint, writer.manager);
+      expect(found?.id).toBe(shift.id);
+
+      let closed = false;
+      const closing = service
+        .close(raceOperator, shift.id, { counted_amount: '0.00', counted_deposits: '0.00', broken_crates: 0 })
+        .then(() => (closed = true));
+      // Long enough for the close to reach its row lock; without the share
+      // lock it commits here, before the writer's insert.
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      expect(closed).toBe(false);
+
+      await writer.commitTransaction();
+      await closing;
+      expect(closed).toBe(true);
+    } finally {
+      if (writer.isTransactionActive) await writer.rollbackTransaction();
+      await writer.release();
+    }
+
+    const late = ds.createQueryRunner();
+    await late.connect();
+    await late.startTransaction();
+    try {
+      await expect(service.findOpenAtPoint(racePoint, late.manager)).resolves.toBeNull();
+    } finally {
+      await late.rollbackTransaction();
+      await late.release();
+    }
+  });
+
   it('reopens once and 409s the loser when two reopens race', async () => {
     // A second point: the shift above is already spent for today.
     const run = randomUUID().slice(0, 8);

@@ -50,7 +50,7 @@ describe('CratesBookCard', () => {
     expect(screen.queryByText(/discrepancies/)).toBeNull();
 
     rerender(card({ crateUnexplained: '-360.00' }));
-    const line = screen.getByText('All-time discrepancies: −360.00 ₴');
+    const line = screen.getByText('Discrepancies to date: −360.00 ₴');
     expect(line).toBeInTheDocument();
     // lifetime figure: explained incidents stay in it, so it must not read as an open alarm
     expect(line).not.toHaveClass('text-destructive');

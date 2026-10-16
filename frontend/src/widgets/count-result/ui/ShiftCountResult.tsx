@@ -70,12 +70,12 @@ export function ShiftCountResult({
   if (noteOfferedFor.size === 0 && nextToOffer !== null) offerNote(nextToOffer);
 
   if (result !== null && rows.length > 0) {
-    // «Каса» wins the title when it is off; only a deposits-only difference
-    // names «завдатки», so its amount is never read as the cash drawer's.
-    const off = rows.find((row) => !isZero(row.discrepancy)) ?? null;
-    // Both books off: one title naming both amounts, not just the cash one.
+    // Both books off: one title naming both amounts. One book off: that book's
+    // amount, and only a deposits-only difference names «завдатки», so its
+    // amount is never read as the cash drawer's.
     const offCash = rows.find((row) => row.book === 'berry' && !isZero(row.discrepancy));
     const offDeposits = rows.find((row) => row.book === 'crates' && !isZero(row.discrepancy));
+    const off = offCash ?? offDeposits ?? null;
     const both =
       offCash && offDeposits
         ? {

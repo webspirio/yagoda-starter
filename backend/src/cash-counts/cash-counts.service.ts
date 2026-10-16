@@ -134,16 +134,13 @@ export class CashCountsService {
       // demotes only `closing` — so there is nothing here for a lock to
       // protect against.
       //
-      // UNDER READ COMMITTED, `findOpenAtPoint` above and this read are two
-      // separate statements — a recount can therefore land on a shift that
-      // closed microseconds earlier, between them, with no lock taken on
-      // purpose (see immediately above). Nothing moves when that happens:
+      // `findOpenAtPoint` above holds `FOR SHARE` on the shift row (#178
+      // review), so a concurrent close now waits for this insert instead of
+      // landing between the two statements. That is the shared document-write
+      // lock, not one a recount needs: even without it nothing would move —
       // every consumer of a `midday` row (`list`'s `only_discrepancies`,
       // `is_open`, `point-cash`'s `unexplained_difference`) already excludes
-      // `kind = 'midday'` unconditionally. The only residue is a `midday`
-      // row timestamped after the shift's `closed_at`, which the point-cash
-      // panel then renders under a shift it shows as closed — evidence of a
-      // race that settled itself, not a bug to guard against here.
+      // `kind = 'midday'` unconditionally.
       const expected = await this.cash.cashFor(pointId, undefined, m);
       const countedAt = this.time.now().toJSDate();
 
