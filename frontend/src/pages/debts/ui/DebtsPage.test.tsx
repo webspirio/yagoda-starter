@@ -306,6 +306,41 @@ describe('DebtsPage — how old the balances are (#101)', () => {
     expect(within(tableRow('Марія Бондар')).queryByText(/days?$/)).toBeNull();
   });
 
+  it('turns red only past seven days, and says «1 day» in the singular', () => {
+    balancesMock.mockReturnValue(
+      page([
+        { ...rowA, oldest_open_date: '2026-07-09' }, // 7 days
+        { ...rowB, is_active: true, oldest_open_date: '2026-07-08' }, // 8 days
+        { ...rowC, debt: '10.00', oldest_open_date: '2026-07-15' }, // 1 day
+      ]),
+    );
+    renderDebts();
+
+    expect(within(tableRow('Оксана Кушнірук')).getByText('7 days')).toHaveAttribute(
+      'data-variant',
+      'secondary',
+    );
+    expect(within(tableRow('Петро Іваненко')).getByText('8 days')).toHaveAttribute(
+      'data-variant',
+      'destructive',
+    );
+    expect(within(tableRow('Марія Бондар')).getByText('1 day')).toBeInTheDocument();
+  });
+
+  it('shows no badge for a row that owes nothing, even with a date — and none without a date', () => {
+    balancesMock.mockReturnValue(
+      page([
+        // Each guard on its own: a dated credit, and an undated debt.
+        { ...rowC, oldest_open_date: '2026-07-01' },
+        { ...rowA, oldest_open_date: null },
+      ]),
+    );
+    renderDebts();
+
+    expect(within(tableRow('Марія Бондар')).queryByText(/days?$/)).toBeNull();
+    expect(within(tableRow('Оксана Кушнірук')).queryByText(/days?$/)).toBeNull();
+  });
+
   it('never prints a negative age for a business date after today', () => {
     balancesMock.mockReturnValue(
       page([{ ...rowA, oldest_open_date: '2026-07-17' }], 1, '2026-07-17'),

@@ -14,7 +14,7 @@ import { Spinner } from '@/shared/ui/spinner';
 import { StatGrid } from '@/shared/ui/stat-grid';
 import { StatTile } from '@/shared/ui/stat-tile';
 import { sum, sub, cmp, isNegative, formatUah } from '@/shared/lib/money';
-import { daysBetween, formatShortDate, todayIso } from '@/shared/lib/date';
+import { ageInDays, formatShortDate } from '@/shared/lib/date';
 import { useWorkingPoint } from '@/features/point-scope';
 import { usePointOptionsQuery } from '@/entities/collection-point';
 import {
@@ -30,10 +30,6 @@ import { PayoutReceiptDialog, useReceiptOpener } from '@/widgets/receipt';
  * threshold for the eye, not a rule — no section of the rules names one (#101).
  */
 const STALE_AFTER_DAYS = 7;
-
-/** Whole days since `iso`, never negative: a business date after «today» (a reopened shift, a
- *  clock skew) must not print «−1 day» — the supplier card guards the same way. */
-const ageInDays = (iso: string): number => Math.max(0, daysBetween(iso, todayIso()));
 
 /**
  * «Залишки за нами» (spec §5.3) — every supplier who currently has an open
