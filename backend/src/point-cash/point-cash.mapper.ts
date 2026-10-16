@@ -9,14 +9,17 @@ export interface PointCashRow {
   shortfall: string | null;
   unexplained_difference: string;
   crate_deposits: string;
+  crate_cash: string | null;
+  crate_unexplained_difference: string;
   crate_deposit_units: number;
   latest_transfer_status: TransferStatus | null;
   latest_transfer_sent_at: Date | null;
 }
 
 /**
- * One line of the cash screen — §7.10's table, minus the «ящиків» column,
- * which has no source tables until the crates slice.
+ * One line of the cash screen — §7.10's table. The «ящиків» column is the
+ * `crate_*` fields: the deposits book (`crate_cash`, its drift) and the
+ * issued-not-returned units, all read from the crates tables and `cash_counts`.
  *
  * `shortfall` IS `null`, NEVER `0.00`, FOR A POINT WITH NO TARGET, and the
  * point still appears. §7.10 says a point without a target «в таблицю не
@@ -64,16 +67,28 @@ export interface PointCashRowResponse {
    */
   unexplained_difference: string;
   /**
-   * §7.6: «фізично шухляда одна, книг дві». `Σ deposit_taken − Σ deposit_refund`
-   * over the point's WHOLE LIFETIME (spec §4.3) — NEVER folded into `cash`,
-   * and NEVER bounded by `as_of` the way every other column on this row is:
-   * §7.5 gives it no lower bound («від першої видачі») and there is no
-   * physical count to anchor it on, because this book is never counted. A
-   * sum across the two books would need no `GROUP BY book` to write by
-   * accident — `cash-book.enum.ts` exists precisely so that mistake cannot
-   * happen silently.
+   * §7.6: «фізично шухляда одна, книг дві». The supplier LIABILITY:
+   * `Σ deposit_taken − Σ deposit_refund` over the point's WHOLE LIFETIME
+   * (spec §4.3) — NEVER folded into `cash`, and NEVER bounded by `as_of` the
+   * way every other column on this row is (§7.5 gives it no lower bound,
+   * «від першої видачі»). It is no longer «never counted» (#178): the COUNTED
+   * drawer is `crate_cash` beside it. A sum across the books would need no
+   * `GROUP BY book` to write by accident — `cash-book.enum.ts` exists
+   * precisely so that mistake cannot happen silently.
    */
   crate_deposits: string;
+  /**
+   * The crates DRAWER as counted (#178): anchored on the point's own `crates`
+   * count the way `cash` is on the berry one, bounded by `as_of`. `null` =
+   * the drawer was never counted (or not yet, as of that date) — not zero.
+   */
+  crate_cash: string | null;
+  /**
+   * `Σ (counted − expected)` over the point's non-midday `crates` counts up to
+   * `as_of` — mirrors `unexplained_difference`, over the crates book. `0.00`
+   * when there are none.
+   */
+  crate_unexplained_difference: string;
   /**
    * §7.5's card again, in units rather than money — «завдатків за N ящиків».
    * `Σ units` of every live deposit-mode issuance minus `Σ units` returned
@@ -113,6 +128,8 @@ export function toPointCashRowResponse(row: PointCashRow): PointCashRowResponse 
     shortfall: row.shortfall,
     unexplained_difference: row.unexplained_difference,
     crate_deposits: row.crate_deposits,
+    crate_cash: row.crate_cash,
+    crate_unexplained_difference: row.crate_unexplained_difference,
     crate_deposit_units: row.crate_deposit_units,
     latest_transfer:
       row.latest_transfer_status && row.latest_transfer_sent_at

@@ -41,22 +41,47 @@ function setup(onConfirm = vi.fn().mockResolvedValue(undefined), mode: 'open' | 
 
 /** The drawer-count field, which every mode has. Close mode has a second
  *  textbox (the breakage), so `getByRole('textbox')` is ambiguous there. */
-const amountBox = () => screen.getByRole('textbox', { name: /drawer|шухляд|amount/i });
+const amountBox = () => screen.getByRole('textbox', { name: /^(cash|каса)/i });
+const depositsBox = () => screen.getByRole('textbox', { name: /^(deposits|завдатки)/i });
 const brokenBox = () => screen.getByRole('textbox', { name: /broken|бій/i });
 
 describe('CountDrawerDialog', () => {
   it('sends the amount normalised — a comma is how the keyboard types it, a space never lands', async () => {
     const onConfirm = setup();
-    await userEvent.type(screen.getByRole('textbox'), '1 500,50');
-    expect(screen.getByRole('textbox')).toHaveValue('1500.50');
+    await userEvent.type(amountBox(), '1 500,50');
+    expect(amountBox()).toHaveValue('1500.50');
+    await userEvent.type(depositsBox(), '14400');
     await userEvent.click(screen.getByRole('button', { name: SUBMIT_COUNT }));
-    await waitFor(() => expect(onConfirm).toHaveBeenCalledWith('1500.50', null));
+    await waitFor(() => expect(onConfirm).toHaveBeenCalledWith('1500.50', '14400', null));
+  });
+
+  it('asks for the cash and the deposits as two separate fields', () => {
+    setup();
+    expect(amountBox()).toBeInTheDocument();
+    expect(depositsBox()).toBeInTheDocument();
+  });
+
+  it('refuses to submit with the deposits left blank', async () => {
+    const onConfirm = setup();
+    await userEvent.type(amountBox(), '1000');
+    await userEvent.click(screen.getByRole('button', { name: SUBMIT_COUNT }));
+    await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument());
+    expect(onConfirm).not.toHaveBeenCalled();
+  });
+
+  it('sends a typed zero in deposits as the shared field normalises it', async () => {
+    const onConfirm = setup();
+    await userEvent.type(amountBox(), '1000.00');
+    await userEvent.type(depositsBox(), '0');
+    await userEvent.click(screen.getByRole('button', { name: SUBMIT_COUNT }));
+    await waitFor(() => expect(onConfirm).toHaveBeenCalledWith('1000.00', '0', null));
   });
 
   it('refuses to submit an empty drawer count', async () => {
     const onConfirm = setup();
     await userEvent.click(screen.getByRole('button', { name: SUBMIT_COUNT }));
-    await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument());
+    // Both fields are empty, so both carry their own refusal.
+    await waitFor(() => expect(screen.getAllByRole('alert')).toHaveLength(2));
     expect(onConfirm).not.toHaveBeenCalled();
   });
 
@@ -87,7 +112,8 @@ describe('CountDrawerDialog', () => {
       ),
     );
 
-    await userEvent.type(screen.getByRole('textbox'), '1500.00');
+    await userEvent.type(amountBox(), '1500.00');
+    await userEvent.type(depositsBox(), '100');
     await userEvent.click(screen.getByRole('button', { name: SUBMIT_COUNT }));
 
     expect(await screen.findByRole('alert')).toHaveTextContent(
@@ -96,7 +122,7 @@ describe('CountDrawerDialog', () => {
     // Stays open: the caller was never told to close it, and the typed
     // amount — the one thing worth not losing on a refusal — is still there.
     expect(onClose).not.toHaveBeenCalled();
-    expect(screen.getByRole('textbox')).toHaveValue('1500.00');
+    expect(amountBox()).toHaveValue('1500.00');
   });
 
   it('clears a stale server banner as soon as the next submit is attempted', async () => {
@@ -115,7 +141,8 @@ describe('CountDrawerDialog', () => {
       ),
     );
 
-    await userEvent.type(screen.getByRole('textbox'), '1500.00');
+    await userEvent.type(amountBox(), '1500.00');
+    await userEvent.type(depositsBox(), '100');
     await userEvent.click(screen.getByRole('button', { name: SUBMIT_COUNT }));
     expect(await screen.findByRole('alert')).toHaveTextContent(
       'A shift is already open at this point',
@@ -124,8 +151,8 @@ describe('CountDrawerDialog', () => {
     // A later submit that never reaches `onConfirm` — client validation
     // refuses it first — must not leave the stale server banner standing
     // alongside the new field error.
-    await userEvent.clear(screen.getByRole('textbox'));
-    await userEvent.type(screen.getByRole('textbox'), '12.');
+    await userEvent.clear(amountBox());
+    await userEvent.type(amountBox(), '12.');
     await userEvent.click(screen.getByRole('button', { name: SUBMIT_COUNT }));
 
     await waitFor(() =>
@@ -151,6 +178,7 @@ describe('CountDrawerDialog', () => {
     const onConfirm = setup(vi.fn().mockResolvedValue(undefined), 'close');
 
     await userEvent.type(amountBox(), '980.40');
+    await userEvent.type(depositsBox(), '500');
     await userEvent.click(screen.getByRole('button', { name: SUBMIT_COUNT }));
 
     // «А number that can be skipped gets skipped» — the field starts EMPTY, never
@@ -164,10 +192,11 @@ describe('CountDrawerDialog', () => {
     const onConfirm = setup(vi.fn().mockResolvedValue(undefined), 'close');
 
     await userEvent.type(amountBox(), '980.40');
+    await userEvent.type(depositsBox(), '500');
     await userEvent.type(brokenBox(), '0');
     await userEvent.click(screen.getByRole('button', { name: SUBMIT_COUNT }));
 
-    await waitFor(() => expect(onConfirm).toHaveBeenCalledWith('980.40', 0));
+    await waitFor(() => expect(onConfirm).toHaveBeenCalledWith('980.40', '500', 0));
   });
 
   it('shows §6.8’s three numbers and adds the breakage as it is typed', async () => {
@@ -188,10 +217,11 @@ describe('CountDrawerDialog', () => {
     const onConfirm = setup(vi.fn().mockResolvedValue(undefined), 'close');
 
     await userEvent.type(amountBox(), '980.40');
+    await userEvent.type(depositsBox(), '500');
     await userEvent.type(brokenBox(), '2');
     await userEvent.click(screen.getByRole('button', { name: SUBMIT_COUNT }));
 
-    await waitFor(() => expect(onConfirm).toHaveBeenCalledWith('980.40', 2));
+    await waitFor(() => expect(onConfirm).toHaveBeenCalledWith('980.40', '500', 2));
   });
 });
 
@@ -205,6 +235,7 @@ describe('the shared money field (#72)', () => {
     await userEvent.clear(input);
     await userEvent.type(input, '12.');
     await userEvent.click(screen.getByRole('button', { name: SUBMIT_COUNT }));
-    expect(await screen.findByText('Enter a number, e.g. 12000 or 980.40')).toBeInTheDocument();
+    // The deposits field is empty too, so it repeats the same refusal.
+    expect(await screen.findAllByText('Enter a number, e.g. 12000 or 980.40')).not.toHaveLength(0);
   });
 });

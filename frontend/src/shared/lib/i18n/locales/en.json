@@ -448,10 +448,11 @@
     },
     "count": {
       "openTitle": "Count the drawer",
-      "openBody": "How much cash is in the drawer right now. This figure opens the shift and becomes the point's opening balance.",
+      "openBody": "How much is in the drawer right now: berry money and crate deposits, counted separately. These figures open the shift and become the point's opening balance.",
       "closeTitle": "Count the drawer before closing",
-      "closeBody": "How much is left. A discrepancy will not block the close — the owner sees it afterwards. Once closed, no more receipts or payouts can be booked for this day; only the owner can reopen it.",
-      "amount": "In the drawer, ₴",
+      "closeBody": "How much is left: berry money and crate deposits, counted separately. A discrepancy will not block the close — the owner sees it afterwards. Once closed, no more receipts or payouts can be booked for this day; only the owner can reopen it.",
+      "amount": "Cash, ₴",
+      "deposits": "Deposits, ₴",
       "submit": "Record",
       "broken": "Broken crates",
       "withBerry": "With berry",
@@ -632,6 +633,7 @@
   "cash": {
     "explainDialog": {
       "title": "Explain the {{amount}} discrepancy",
+      "book": "Book: {{book}}",
       "description": "A discrepancy never stops a shift from working. This explanation does not change the count; it stays in the journal alongside it.",
       "explanation": "Explanation",
       "submit": "Save explanation",
@@ -663,7 +665,11 @@
     "expected": "Expected",
     "counted": "Counted",
     "discrepancy": "Discrepancy",
-    "done": "Done"
+    "done": "Done",
+    "book": {
+      "berry": "Cash",
+      "crates": "Deposits"
+    }
   },
   "pointCash": {
     "eyebrow": "{{point}} · {{date}}, {{weekday}}",
@@ -717,9 +723,11 @@
     },
     "crates": {
       "title": "Crate cash",
-      "caption_one": "deposits for {{count}} crate",
-      "caption_other": "deposits for {{count}} crates",
+      "caption_one": "owed now: deposits for {{count}} crate — {{amount}}",
+      "caption_other": "owed now: deposits for {{count}} crates — {{amount}}",
       "captionZero": "no crate deposits held",
+      "notCounted": "not counted yet",
+      "unexplained": "Discrepancies to date: {{amount}}",
       "footnote": "This money sits apart from the berry cash: we pay someone for their crates even if the berry drawer is empty. No deposit was taken against a signed receipt — those crates are not counted here.",
       "twoBooks": "Two books: berries {{berry}} · crates {{crates}}"
     },
@@ -737,7 +745,8 @@
         "expected": "Expected",
         "discrepancy": "Discrepancy",
         "explanation": "Explanation",
-        "countedBy": "Counted by"
+        "countedBy": "Counted by",
+        "book": "Book"
       },
       "kind": {
         "opening": "Opening",
@@ -790,7 +799,11 @@
       "opened": "Shift opened",
       "closedSettled": "Shift closed. The day matched.",
       "openedDiscrepancy": "Shift opened. {{amount}} off the previous close — the owner will see it in their list.",
-      "closedDiscrepancy": "Shift closed. Discrepancy {{amount}} — the owner will see it on their own list."
+      "closedDiscrepancy": "Shift closed. Discrepancy {{amount}} — the owner will see it on their own list.",
+      "openedDiscrepancyDeposits": "Shift opened. {{amount}} off in deposits against the previous close — the owner will see it in their list.",
+      "closedDiscrepancyDeposits": "Shift closed. Deposits discrepancy {{amount}} — the owner will see it on their own list.",
+      "openedDiscrepancyBoth": "Shift opened. Off the previous close by {{cash}} in cash and {{deposits}} in deposits — the owner will see it in their list.",
+      "closedDiscrepancyBoth": "Shift closed. Discrepancy {{cash}} in cash and {{deposits}} in deposits — the owner will see it on their own list."
     },
     "target": {
       "set": "Assign a target",
@@ -1615,6 +1628,8 @@
     "write": "Add my explanation",
     "edit": "Edit my explanation",
     "resultAction": "Explain the discrepancy",
+    "resultActionFor": "Explain the discrepancy · {{book}}",
+    "book": "Book: {{book}}",
     "titleOpening": "What happened? Opening discrepancy {{amount}}",
     "titleClosing": "What happened? Closing discrepancy {{amount}}",
     "description": "Write what you know while you are still at the point. The owner reads it next to the discrepancy and makes the final decision.",

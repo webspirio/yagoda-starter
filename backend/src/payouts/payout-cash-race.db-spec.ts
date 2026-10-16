@@ -207,7 +207,7 @@ describe('payout cash race: two suppliers, one drawer (HTTP, Postgres)', () => {
     const shiftRes = await request(app.getHttpServer())
       .post('/shifts')
       .set('Authorization', `Bearer ${operatorToken}`)
-      .send({ counted_amount: '1500.00' })
+      .send({ counted_amount: '1500.00', counted_deposits: '0.00' })
       .expect(201);
     const shiftId = shiftRes.body.id as string;
     // Spec 2026-09-30: a receipt's crate tare leaves the point's empties. 1000 is far above

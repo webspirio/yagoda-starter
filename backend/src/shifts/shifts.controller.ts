@@ -37,11 +37,12 @@ import type { AuthenticatedUser } from '../auth/jwt.strategy';
  *   explanations → see `cash-counts.controller.ts` (spec 2026-10-08).
  *   reads         → both, scoped by `resolvePointFilter`.
  *
- * `POST /shifts` AND `POST /shifts/:id/close` EACH TAKE ONE FIELD,
- * `counted_amount` — see `OpenShiftDto` / `CloseShiftDto`.
- * `business_date` stays server-derived (foundation §5.2) and the point still
- * comes from the operator's token; `counted_amount` is the one thing a caller
- * supplies, because only a human standing at the drawer can supply it.
+ * `POST /shifts` takes `counted_amount` (berry) and `counted_deposits`; `POST
+ * /shifts/:id/close` takes the same two plus `broken_crates` — see
+ * `OpenShiftDto` / `CloseShiftDto`. Each count writes its own `cash_counts`
+ * row, one per book (#178). `business_date` stays server-derived (foundation
+ * §5.2) and the point still comes from the operator's token; the counted sums
+ * are what a caller supplies, because only a human standing at the drawer can.
  */
 @Controller('shifts')
 export class ShiftsController {

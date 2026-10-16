@@ -16,9 +16,12 @@ import {
   toPointCashRowResponse,
 } from './point-cash.mapper';
 import { crateBookSql, crateUnitsSql } from '../crates/crate-balance.service';
+import { CashBook } from '../cash-counts/cash-book.enum';
 import {
+  BOOK_SQL,
   anchorSql,
   asOfSql,
+  crateMovementsSql,
   movementsSql,
   payoutsOutSql,
   returnsSql,
@@ -149,6 +152,27 @@ export class PointCashService {
   }
 
   /**
+   * The crates DRAWER as of `asOf` (default: today), anchored on the crates
+   * book's own latest non-midday count like `cashFor` — `null` until the point
+   * has ever counted deposits (#178), where berry reads `0.00`.
+   */
+  async crateCashFor(
+    pointId: string,
+    asOf?: string,
+    manager?: EntityManager,
+  ): Promise<string | null> {
+    const runner = manager ?? this.dataSource.manager;
+    const [row] = (await runner.query(
+      `SELECT (SELECT (a.counted_amount
+                       + CASE WHEN a.kind = 'opening' THEN ${crateMovementsSql('a.shift_id')}
+                              ELSE 0.00 END)
+                 FROM ${anchorSql('$1::uuid', asOfSql('$2', '$3'), CashBook.Crates)} a)::text AS crate_cash`,
+      [pointId, asOf ?? null, this.tz.appTimezone],
+    )) as { crate_cash: string | null }[];
+    return row.crate_cash;
+  }
+
+  /**
    * The point's crate-deposits book, LIFETIME, as a decimal STRING —
    * `Σ deposit_taken − Σ deposit_refund` (spec §4.3), the SAME formula
    * `CrateBalanceService.pointDepositBook` reads, imported rather than
@@ -211,11 +235,15 @@ export class PointCashService {
    * shift (spec §4.1), and a shift's movements are settled by its own closing
    * count. Nothing can move between one shift's close and the next one's open.
    */
-  async expectedForOpening(pointId: string, manager?: EntityManager): Promise<string | null> {
+  async expectedForOpening(
+    pointId: string,
+    manager?: EntityManager,
+    book: CashBook = CashBook.Berry,
+  ): Promise<string | null> {
     const runner = manager ?? this.dataSource.manager;
     const rows = (await runner.query(
       `SELECT a.counted_amount::text AS expected
-         FROM ${anchorSql('$1::uuid', "'infinity'::date")} a`,
+         FROM ${anchorSql('$1::uuid', "'infinity'::date", book)} a`,
       [pointId],
     )) as { expected: string }[];
     return rows[0]?.expected ?? null;
@@ -227,13 +255,19 @@ export class PointCashService {
    * the API (§6.1 writes one in the same transaction) and therefore a signal
    * that something wrote a shift directly.
    */
-  async expectedForClosing(shiftId: string, manager?: EntityManager): Promise<string | null> {
+  async expectedForClosing(
+    shiftId: string,
+    manager?: EntityManager,
+    book: CashBook = CashBook.Berry,
+  ): Promise<string | null> {
     const runner = manager ?? this.dataSource.manager;
+    const crates = book === CashBook.Crates;
+    const movements = crates ? crateMovementsSql('$1::uuid') : movementsSql('$1::uuid', '$2');
     const rows = (await runner.query(
-      `SELECT (c.counted_amount + ${movementsSql('$1::uuid', '$2')})::text AS expected
+      `SELECT (c.counted_amount + ${movements})::text AS expected
          FROM cash_counts c
-        WHERE c.shift_id = $1::uuid AND c.book = 'berry' AND c.kind = 'opening'`,
-      [shiftId, this.tz.appTimezone],
+        WHERE c.shift_id = $1::uuid AND c.book = ${BOOK_SQL[book]} AND c.kind = 'opening'`,
+      crates ? [shiftId] : [shiftId, this.tz.appTimezone],
     )) as { expected: string }[];
     return rows[0]?.expected ?? null;
   }
@@ -330,6 +364,22 @@ export class PointCashService {
                 -- CTE instead of a query per row. UNBOUNDED by b.as_of,
                 -- unlike every other column of this row: section 7.5.
                 ${crateBookSql('cp.id')} AS crate_deposits,
+                -- The crates DRAWER (#178): anchored on the point's own crates
+                -- count exactly as the cash column is on the berry one. NULL = never
+                -- counted -- no COALESCE, an unknown drawer is not an empty one.
+                (SELECT (a.counted_amount
+                         + CASE WHEN a.kind = 'opening' THEN ${crateMovementsSql('a.shift_id')}
+                                ELSE 0.00 END)
+                   FROM ${anchorSql('cp.id', 'b.as_of', CashBook.Crates)} a) AS crate_cash,
+                -- Mirrors unexplained_difference above (midday excluded for
+                -- the same reopen reason), over the crates book.
+                COALESCE((SELECT SUM(c.counted_amount - c.expected_amount)
+                            FROM cash_counts c
+                            JOIN shifts sh ON sh.id = c.shift_id
+                           WHERE sh.collection_point_id = cp.id
+                             AND c.book = 'crates'
+                             AND c.kind <> 'midday'
+                             AND sh.business_date <= b.as_of), 0.00) AS crate_unexplained_difference,
                 -- The SAME book in units rather than money (R8) -- same
                 -- correlated-column call shape, same unbounded lifetime.
                 ${crateUnitsSql('cp.id')} AS crate_deposit_units
@@ -344,6 +394,8 @@ export class PointCashService {
               (s.target_cash - s.cash)::text AS shortfall,
               s.unexplained_difference::text AS unexplained_difference,
               s.crate_deposits::text AS crate_deposits,
+              s.crate_cash::text AS crate_cash,
+              s.crate_unexplained_difference::text AS crate_unexplained_difference,
               s.crate_deposit_units AS crate_deposit_units,
               lt.status  AS latest_transfer_status,
               lt.sent_at AS latest_transfer_sent_at

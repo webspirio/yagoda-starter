@@ -138,7 +138,7 @@ describe('POST /cash-counts — midday recount (HTTP)', () => {
     const shiftRes = await request(app.getHttpServer())
       .post('/shifts')
       .set('Authorization', `Bearer ${operatorToken}`)
-      .send({ counted_amount: '1500.00' })
+      .send({ counted_amount: '1500.00', counted_deposits: '0.00' })
       .expect(201);
     shiftId = shiftRes.body.id as string;
 
@@ -261,7 +261,7 @@ describe('POST /cash-counts — midday recount (HTTP)', () => {
     await request(app.getHttpServer())
       .post(`/shifts/${shiftId}/close`)
       .set('Authorization', `Bearer ${operatorToken}`)
-      .send({ counted_amount: '1100.00', broken_crates: 0 })
+      .send({ counted_amount: '1100.00', counted_deposits: '0.00', broken_crates: 0 })
       .expect(201);
 
     const res = await request(app.getHttpServer())

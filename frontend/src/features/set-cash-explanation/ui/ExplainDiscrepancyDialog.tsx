@@ -72,7 +72,10 @@ export function ExplainDiscrepancyDialog({
               amount: formatUah(count?.discrepancy ?? '0', i18n.resolvedLanguage),
             })}
           </DialogTitle>
-          <DialogDescription>{t('cash.explainDialog.description')}</DialogDescription>
+          <DialogDescription>
+            {count ? `${t('cash.explainDialog.book', { book: t(`countResult.book.${count.book}`) })}. ` : ''}
+            {t('cash.explainDialog.description')}
+          </DialogDescription>
         </DialogHeader>
 
         {/* Spec 2026-10-06 — what the counter said, as context; never prefilled into the owner's field. */}

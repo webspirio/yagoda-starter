@@ -114,6 +114,33 @@ describe('CashCountHistory', () => {
     expect(screen.queryByText('Matched')).toBeNull();
   });
 
+  it('a Book column names which book each count belongs to', () => {
+    countsMock.mockReturnValue(
+      page([count({ id: 'c1', book: 'berry' }), count({ id: 'c2', book: 'crates', kind: 'closing' })]),
+    );
+    render(<CashCountHistory pointId="p1" isOwner={false} meId="u1" />);
+
+    expect(screen.getByRole('columnheader', { name: 'Book' })).toBeInTheDocument();
+    const [, berryRow, cratesRow] = screen.getAllByRole('row');
+    expect(within(berryRow).getByText('Cash')).toBeInTheDocument();
+    expect(within(cratesRow).getByText('Deposits')).toBeInTheDocument();
+  });
+
+  it('an open crates closing of −360 is flagged, and the owner can explain it', async () => {
+    const user = userEvent.setup();
+    countsMock.mockReturnValue(
+      page([
+        count({ book: 'crates', kind: 'closing', discrepancy: '-360.00', is_open: true, explainable: true }),
+      ]),
+    );
+    render(<CashCountHistory pointId="p1" isOwner meId="u1" />);
+
+    const row = screen.getAllByRole('row')[1];
+    expect(within(row).getByText(/360\.00/)).toBeInTheDocument();
+    await user.click(within(row).getByRole('button', { name: 'Explain' }));
+    expect(await screen.findByRole('dialog')).toHaveTextContent('Book: Deposits');
+  });
+
   it('offers «Explain» only to the owner, only on an open discrepancy', () => {
     countsMock.mockReturnValue(page([count({ is_open: true, explainable: true, discrepancy: '-40.00' })]));
     const { rerender } = render(<CashCountHistory pointId="p1" isOwner={false} meId="u1" />);

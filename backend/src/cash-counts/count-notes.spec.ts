@@ -38,9 +38,15 @@ describe('countNoteRefusal', () => {
     expect(code(countNoteRefusal(OPERATOR, count({ kind: CashCountKind.Midday }), 'explanation'))).toBe('OWNER_ONLY');
   });
 
-  it('refuses a midday row and the crates book — COUNT_NOT_EXPLAINABLE', () => {
+  it('refuses a midday row — COUNT_NOT_EXPLAINABLE', () => {
     expect(code(countNoteRefusal(OPERATOR, count({ kind: CashCountKind.Midday }), 'operator_note'))).toBe('COUNT_NOT_EXPLAINABLE');
-    expect(code(countNoteRefusal(OWNER, count({ book: CashBook.Crates }), 'explanation'))).toBe('COUNT_NOT_EXPLAINABLE');
+  });
+
+  it('explains a crates closing count like a berry one, but not a crates midday row (#178)', () => {
+    const crates = count({ book: CashBook.Crates, counted_amount: '16440.00', expected_amount: '16800.00' });
+    expect(countNoteRefusal(OWNER, crates, 'explanation')).toBeNull();
+    expect(countNoteRefusal(OPERATOR, crates, 'operator_note')).toBeNull();
+    expect(code(countNoteRefusal(OWNER, { ...crates, kind: CashCountKind.Midday }, 'explanation'))).toBe('COUNT_NOT_EXPLAINABLE');
   });
 
   it('refuses a matched count — NO_DISCREPANCY', () => {

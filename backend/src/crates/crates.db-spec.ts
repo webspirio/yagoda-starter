@@ -193,7 +193,7 @@ describe('crates lifecycle (HTTP)', () => {
     const shiftRes = await request(app.getHttpServer())
       .post('/shifts')
       .set('Authorization', `Bearer ${operatorToken}`)
-      .send({ counted_amount: '0.00' })
+      .send({ counted_amount: '0.00', counted_deposits: '0.00' })
       .expect(201);
     shiftId = shiftRes.body.id as string;
     // Spec 2026-09-30: empties must exist before crates can go out. 1000 is far above the
@@ -568,7 +568,7 @@ describe('crates lifecycle (HTTP)', () => {
       await request(app.getHttpServer())
         .post('/shifts')
         .set('Authorization', `Bearer ${r8OperatorToken}`)
-        .send({ counted_amount: '0.00' })
+        .send({ counted_amount: '0.00', counted_deposits: '0.00' })
         .expect(201);
       // Spec 2026-09-30: empties must exist before crates can go out. 1000 is far above
       // anything this block issues, and the transfer carries no cash.
@@ -662,7 +662,7 @@ describe('crates lifecycle (HTTP)', () => {
       const shiftRes = await request(app.getHttpServer())
         .post('/shifts')
         .set('Authorization', `Bearer ${r2OperatorToken}`)
-        .send({ counted_amount: '0.00' })
+        .send({ counted_amount: '0.00', counted_deposits: '0.00' })
         .expect(201);
       const r2ShiftId = shiftRes.body.id as string;
       // Spec 2026-09-30: empties must exist before crates can go out. 1000 is far above

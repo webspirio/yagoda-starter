@@ -472,7 +472,7 @@ export function DayPage() {
         shiftId={countTarget?.mode === 'close' ? countTarget.shiftId : null}
         open={countTarget !== null}
         onClose={() => setCountTarget(null)}
-        onConfirm={async (counted_amount, broken_crates) => {
+        onConfirm={async (counted_amount, counted_deposits, broken_crates) => {
           if (countTarget === null) {
             // The dialog can only confirm while it is open, and it is only
             // open when `countTarget` is set — reaching here with no target
@@ -482,7 +482,7 @@ export function DayPage() {
             throw new Error('count dialog confirmed without a target');
           }
           if (countTarget.mode === 'open') {
-            await open.mutateAsync({ counted_amount });
+            await open.mutateAsync({ counted_amount, counted_deposits });
             toast.success(t('day.toast.opened'));
           } else {
             if (broken_crates === null) {
@@ -491,7 +491,7 @@ export function DayPage() {
               // це помилка коду, а не дія користувача.
               throw new Error('close confirmed without a breakage count');
             }
-            await close.mutateAsync({ id: countTarget.shiftId, counted_amount, broken_crates });
+            await close.mutateAsync({ id: countTarget.shiftId, counted_amount, counted_deposits, broken_crates });
             toast.success(t('day.toast.closed'));
           }
           setCountTarget(null);

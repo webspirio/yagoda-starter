@@ -7,9 +7,9 @@ import { CashBook } from '../cash-book.enum';
  * «перерахунок — це свідчення, а не коригування». It writes a `midday`
  * `CashCount` and touches nothing else — no shift, no document, no balance.
  *
- * `book` IS CONSTRAINED TO `berry` (`@IsIn([CashBook.Berry])`). The crates
- * book is never counted (crates spec §4.3, `cash-book.enum.ts`'s header) — it
- * is derived only, so there is nothing here for an operator to count.
+ * `book` IS CONSTRAINED TO `berry` (`@IsIn([CashBook.Berry])`), and stays so
+ * after #178 (spec `2026-10-14-yagoda-crates-cash-count-design.md`, D6): the
+ * crates book is counted at shift open and close only, never midday.
  *
  * `counted_amount` — same shape as `OpenShiftDto`/`CloseShiftDto`: an
  * unsigned decimal string, at most 10 integer digits and 2 places, canonicalised

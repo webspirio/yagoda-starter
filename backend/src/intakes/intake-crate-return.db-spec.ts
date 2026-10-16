@@ -146,7 +146,7 @@ beforeAll(async () => {
   const sh = await request(app.getHttpServer())
     .post('/shifts')
     .set('Authorization', `Bearer ${operatorToken}`)
-    .send({ counted_amount: '100000.00' })
+    .send({ counted_amount: '100000.00', counted_deposits: '0.00' })
     .expect(201);
   shiftId = sh.body.id as string;
   // Spec 2026-09-30: empties must exist before crates can go out. 1000 is far above

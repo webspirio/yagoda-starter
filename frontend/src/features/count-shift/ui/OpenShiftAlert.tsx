@@ -131,7 +131,7 @@ export function OpenShiftAlert({
         shiftId={closingId}
         open={closingId !== null}
         onClose={() => setClosingId(null)}
-        onConfirm={async (counted_amount, broken_crates) => {
+        onConfirm={async (counted_amount, counted_deposits, broken_crates) => {
           if (closingId === null || broken_crates === null) {
             // Діалог підтверджується лише поки він відкритий, а відкритий він
             // лише з `closingId`; у режимі закриття бій завжди число (`0`
@@ -139,7 +139,7 @@ export function OpenShiftAlert({
             // кинути краще, ніж тихо нічого не зробити — діалог покаже банер.
             throw new Error('stale-shift close confirmed without a target');
           }
-          await close.mutateAsync({ id: closingId, counted_amount, broken_crates });
+          await close.mutateAsync({ id: closingId, counted_amount, counted_deposits, broken_crates });
           // Always toast: the result `onClosed` opens waits on a read that may never land.
           toast.success(t('day.toast.closed'));
           onClosed?.(closingId);

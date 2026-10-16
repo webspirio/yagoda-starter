@@ -141,7 +141,7 @@ describe('allocation write paths (HTTP, Postgres)', () => {
     await request(app.getHttpServer())
       .post('/shifts')
       .set('Authorization', `Bearer ${operatorToken}`)
-      .send({ counted_amount: '100000.00' })
+      .send({ counted_amount: '100000.00', counted_deposits: '0.00' })
       .expect(201);
     // Spec 2026-09-30: a receipt's crate tare leaves the point's empties. 1000 is far above
     // the crate tare this file weighs, and the transfer carries no cash.

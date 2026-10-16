@@ -119,7 +119,7 @@ describe('crates concurrency (HTTP)', () => {
     await request(app.getHttpServer())
       .post('/shifts')
       .set('Authorization', `Bearer ${operatorToken}`)
-      .send({ counted_amount: '0.00' })
+      .send({ counted_amount: '0.00', counted_deposits: '0.00' })
       .expect(201);
     // Spec 2026-09-30: empties must exist before crates can go out. 1000 is far above
     // anything these races issue, and the transfer carries no cash.

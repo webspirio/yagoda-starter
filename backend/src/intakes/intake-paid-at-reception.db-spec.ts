@@ -198,7 +198,7 @@ describe('paid at reception (HTTP, Postgres)', () => {
       const sh = await request(app.getHttpServer())
         .post('/shifts')
         .set('Authorization', `Bearer ${oksanaToken}`)
-        .send({ counted_amount: '500.00' })
+        .send({ counted_amount: '500.00', counted_deposits: '0.00' })
         .expect(201);
       shiftId = sh.body.id;
       // Spec 2026-09-30: a receipt's crate tare leaves the point's empties. 1000 is far above
@@ -346,7 +346,7 @@ describe('paid at reception (HTTP, Postgres)', () => {
       const sh = await request(app.getHttpServer())
         .post('/shifts')
         .set('Authorization', `Bearer ${bohdanToken}`)
-        .send({ counted_amount: '100000.00' })
+        .send({ counted_amount: '100000.00', counted_deposits: '0.00' })
         .expect(201);
       shiftId = sh.body.id;
       // Spec 2026-09-30: a receipt's crate tare leaves the point's empties. 1000 is far above

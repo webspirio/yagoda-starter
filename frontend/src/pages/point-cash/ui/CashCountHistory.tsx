@@ -47,6 +47,11 @@ export function CashCountHistory({
         `${formatShortDate(row.business_date, i18n.resolvedLanguage)} · ${t(`pointCash.countHistory.kind.${row.kind}`)}`,
     },
     {
+      id: 'book',
+      header: t('pointCash.countHistory.columns.book'),
+      cell: (row) => t(`countResult.book.${row.book}`),
+    },
+    {
       id: 'countedBy',
       header: t('pointCash.countHistory.columns.countedBy'),
       // `displayNameOf` — `null` only for a row recorded before this field

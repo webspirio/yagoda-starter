@@ -400,6 +400,8 @@ export function PointCashPage() {
                 crates figure alone, with a muted two-books line that prints
                 both figures side by side and never their sum. */}
             <CratesBookCard
+              crateCash={shownRow.crate_cash}
+              crateUnexplained={shownRow.crate_unexplained_difference}
               crateDeposits={shownRow.crate_deposits}
               crateDepositUnits={shownRow.crate_deposit_units}
               berryCash={shownRow.cash}
@@ -492,7 +494,7 @@ export function PointCashPage() {
         shiftId={countTarget?.mode === 'close' ? countTarget.shiftId : null}
         open={countTarget !== null}
         onClose={() => setCountTarget(null)}
-        onConfirm={async (counted_amount, broken_crates) => {
+        onConfirm={async (counted_amount, counted_deposits, broken_crates) => {
           if (countTarget === null) {
             // Only reachable while the dialog is open, which only happens
             // with a target set — same guard `DayPage` keeps for the same
@@ -504,7 +506,7 @@ export function PointCashPage() {
             // The response NAMES the new shift — no need to wait on
             // `shift.data?.id` catching up with its own refetch just to know
             // which id `resultRow` should watch for.
-            const opened = await openShift.mutateAsync({ counted_amount });
+            const opened = await openShift.mutateAsync({ counted_amount, counted_deposits });
             setResultFor({ mode: 'open', shiftId: opened.id });
           } else {
             if (broken_crates === null) {
@@ -513,6 +515,7 @@ export function PointCashPage() {
             await closeShift.mutateAsync({
               id: countTarget.shiftId,
               counted_amount,
+              counted_deposits,
               broken_crates,
             });
             setResultFor({ mode: 'close', shiftId: countTarget.shiftId });

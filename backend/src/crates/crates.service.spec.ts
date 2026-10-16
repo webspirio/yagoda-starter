@@ -275,6 +275,20 @@ describe('CratesService', () => {
       );
     });
 
+    // #178 bot review: `findOpenAtPoint` holds FOR SHARE on the shift, and
+    // payouts and receipts lock the supplier BEFORE it. Taking the shift first
+    // here inverts that order, and a concurrent close closes the cycle.
+    it('locks the supplier row before the open shift, the order payouts and receipts use', async () => {
+      balance.tranchesFor.mockResolvedValue(tranches);
+
+      await service.returnCrates(operator, { supplier_id: 's-1', units: 7 });
+
+      expect(manager.query.mock.calls[0][0]).toContain('FOR UPDATE');
+      expect(manager.query.mock.invocationCallOrder[0]).toBeLessThan(
+        shifts.findOpenAtPoint.mock.invocationCallOrder[0],
+      );
+    });
+
     it('writes the CrateReturn header with the frozen refund', async () => {
       balance.tranchesFor.mockResolvedValue(tranches);
 

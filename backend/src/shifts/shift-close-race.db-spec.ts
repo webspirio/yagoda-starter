@@ -96,13 +96,13 @@ describe('ShiftsService close/reopen under concurrency (Postgres)', () => {
   });
 
   it('closes once and 409s the loser when two closes race', async () => {
-    const shift = await service.open(operator, { counted_amount: '1000.00' });
+    const shift = await service.open(operator, { counted_amount: '1000.00', counted_deposits: '0.00' });
 
     // Both promises are created before either is awaited, so the two
     // `close` calls are genuinely in flight together.
     const results = await Promise.allSettled([
-      service.close(operator, shift.id, { counted_amount: '1000.00', broken_crates: 0 }),
-      service.close(operator, shift.id, { counted_amount: '1000.00', broken_crates: 0 }),
+      service.close(operator, shift.id, { counted_amount: '1000.00', counted_deposits: '0.00', broken_crates: 0 }),
+      service.close(operator, shift.id, { counted_amount: '1000.00', counted_deposits: '0.00', broken_crates: 0 }),
     ]);
 
     const fulfilled = results.filter((r) => r.status === 'fulfilled');
@@ -130,6 +130,66 @@ describe('ShiftsService close/reopen under concurrency (Postgres)', () => {
     expect(audits).toHaveLength(1);
   });
 
+  // #178 review: a document write's open-shift check held no lock, so a close
+  // committed between the check and the insert and the document landed 201 in
+  // a closed shift. Under `FOR SHARE` the close waits for the write instead,
+  // and a write after the close finds no open shift at all.
+  it('makes a close wait for a document write that already found the shift open', async () => {
+    const run = randomUUID().slice(0, 8);
+    const [{ id: racePoint }] = (await ds.query(
+      `INSERT INTO collection_points (name, code, kind, is_active)
+       VALUES ($1, $2, 'reception', true) RETURNING id`,
+      [`Точка ${run}`, `R${run.slice(0, 6).toUpperCase()}`],
+    )) as { id: string }[];
+    const raceOperator: AuthenticatedUser = { ...operator, collection_point_id: racePoint };
+    const shift = await service.open(raceOperator, { counted_amount: '0.00', counted_deposits: '0.00' });
+
+    const writer = ds.createQueryRunner();
+    await writer.connect();
+    await writer.startTransaction();
+    try {
+      const found = await service.findOpenAtPoint(racePoint, writer.manager);
+      expect(found?.id).toBe(shift.id);
+
+      let closed = false;
+      const closing = service
+        .close(raceOperator, shift.id, { counted_amount: '0.00', counted_deposits: '0.00', broken_crates: 0 })
+        .then(() => (closed = true));
+      // Wait until the close is SEEN blocked on a lock, or has finished. A
+      // fixed sleep would pass for the wrong reason on a slow runner; this
+      // fails by `closed` being true, never by timing.
+      const blockedOnLock = async () => {
+        const [{ n }] = (await ds.query(
+          `SELECT count(*)::int AS n FROM pg_stat_activity
+            WHERE datname = current_database() AND wait_event_type = 'Lock'`,
+        )) as { n: number }[];
+        return n > 0;
+      };
+      for (let i = 0; i < 100 && !closed && !(await blockedOnLock()); i++) {
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      }
+      expect(closed).toBe(false);
+      expect(await blockedOnLock()).toBe(true);
+
+      await writer.commitTransaction();
+      await closing;
+      expect(closed).toBe(true);
+    } finally {
+      if (writer.isTransactionActive) await writer.rollbackTransaction();
+      await writer.release();
+    }
+
+    const late = ds.createQueryRunner();
+    await late.connect();
+    await late.startTransaction();
+    try {
+      await expect(service.findOpenAtPoint(racePoint, late.manager)).resolves.toBeNull();
+    } finally {
+      await late.rollbackTransaction();
+      await late.release();
+    }
+  });
+
   it('reopens once and 409s the loser when two reopens race', async () => {
     // A second point: the shift above is already spent for today.
     const run = randomUUID().slice(0, 8);
@@ -140,8 +200,8 @@ describe('ShiftsService close/reopen under concurrency (Postgres)', () => {
     )) as { id: string }[];
     const secondOperator: AuthenticatedUser = { ...operator, collection_point_id: secondPoint };
 
-    const shift = await service.open(secondOperator, { counted_amount: '500.00' });
-    await service.close(secondOperator, shift.id, { counted_amount: '500.00', broken_crates: 0 });
+    const shift = await service.open(secondOperator, { counted_amount: '500.00', counted_deposits: '0.00' });
+    await service.close(secondOperator, shift.id, { counted_amount: '500.00', counted_deposits: '0.00', broken_crates: 0 });
 
     const results = await Promise.allSettled([
       service.reopen(owner, shift.id, { reason: 'Помилково закрито' }),

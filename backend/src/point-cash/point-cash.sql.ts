@@ -1,3 +1,5 @@
+import { CashBook } from '../cash-counts/cash-book.enum';
+
 /**
  * «As of» resolves to TODAY IN `APP_TIMEZONE` when the caller names no date,
  * and it does so IN SQL rather than in TypeScript for one reason: Postgres's
@@ -129,6 +131,34 @@ export const movementsSql = (shift: string, tz: string): string =>
 )`;
 
 /**
+ * The crates book's movements of ONE shift (#178, spec D4) — a voided crate
+ * document is out at once: in an open shift the deposit went back over the
+ * counter, the same reading `returned_on_void` gives a payout. Receipt-mode
+ * issuances carry 0 by CHK_crate_issuances_receipt_no_money.
+ *
+ * TWO CRATE FIGURES, TWO SHAPES. `crate_deposits` (the LIABILITY, what
+ * suppliers are owed back) stays a point-lifetime running sum that does not
+ * honour `as_of`. `crate_cash` (the DRAWER) is anchored on the crates book's
+ * own counts exactly like berry cash — this term plus `anchorSql`. §7.6:
+ * «фізично шухляда одна, книг дві», so neither is ever added to `cash`.
+ */
+export const crateMovementsSql = (shift: string): string => `(
+    COALESCE((SELECT SUM(ci.deposit_taken) FROM crate_issuances ci
+        WHERE ci.shift_id = ${shift} AND ci.voided_at IS NULL), 0.00)
+  - COALESCE((SELECT SUM(cr.deposit_refund) FROM crate_returns cr
+        WHERE cr.shift_id = ${shift} AND cr.voided_at IS NULL), 0.00)
+)`;
+
+/**
+ * The book as a SQL literal, from a closed map: the statement text comes from
+ * literals in this file, never from the argument's runtime value.
+ */
+export const BOOK_SQL: Record<CashBook, string> = {
+  [CashBook.Berry]: "'berry'",
+  [CashBook.Crates]: "'crates'",
+};
+
+/**
  * THE ANCHOR — the latest `opening` or `closing` count at a point, on or
  * before `asOf`. `midday` is excluded and that is load-bearing rather than
  * tidy: a demoted midday count (spec §6.3) sits mid-shift, and isolating "the
@@ -137,12 +167,12 @@ export const movementsSql = (shift: string, tz: string): string =>
  *
  * The ordering tiebreak puts `closing` after `opening` within one shift.
  */
-export const anchorSql = (point: string, asOf: string): string => `(
+export const anchorSql = (point: string, asOf: string, book: CashBook = CashBook.Berry): string => `(
   SELECT c.counted_amount, c.kind, c.shift_id, s.business_date
     FROM cash_counts c
     JOIN shifts s ON s.id = c.shift_id
    WHERE s.collection_point_id = ${point}
-     AND c.book = 'berry'
+     AND c.book = ${BOOK_SQL[book]}
      AND c.kind <> 'midday'
      AND s.business_date <= ${asOf}
    ORDER BY s.business_date DESC, (c.kind = 'closing') DESC, c.counted_at DESC
