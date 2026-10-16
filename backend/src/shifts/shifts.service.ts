@@ -403,6 +403,13 @@ export class ShiftsService {
    * set and gets its 409. Shared locks never block one another, so concurrent
    * documents at one point do not serialise on it.
    *
+   * THE SHIFT LOCK IS THE INNER ONE: a write that locks a supplier row takes
+   * that lock BEFORE calling here (payouts and receipts through
+   * `withinSupplierLedger`, `CratesService.returnCrates` explicitly). A queued
+   * close's `FOR UPDATE` makes later share requests wait behind it, so a
+   * writer holding the shift while waiting for a supplier that another writer
+   * holds while waiting for the shift is a deadlock — keep the order.
+   *
    * ONLY INSIDE A TRANSACTION: the intake preview passes the plain
    * `dataSource.manager`, and a lock outside one is TypeORM's
    * `PessimisticLockTransactionRequiredError` — a read has nothing to hold.

@@ -155,10 +155,21 @@ describe('ShiftsService close/reopen under concurrency (Postgres)', () => {
       const closing = service
         .close(raceOperator, shift.id, { counted_amount: '0.00', counted_deposits: '0.00', broken_crates: 0 })
         .then(() => (closed = true));
-      // Long enough for the close to reach its row lock; without the share
-      // lock it commits here, before the writer's insert.
-      await new Promise((resolve) => setTimeout(resolve, 300));
+      // Wait until the close is SEEN blocked on a lock, or has finished. A
+      // fixed sleep would pass for the wrong reason on a slow runner; this
+      // fails by `closed` being true, never by timing.
+      const blockedOnLock = async () => {
+        const [{ n }] = (await ds.query(
+          `SELECT count(*)::int AS n FROM pg_stat_activity
+            WHERE datname = current_database() AND wait_event_type = 'Lock'`,
+        )) as { n: number }[];
+        return n > 0;
+      };
+      for (let i = 0; i < 100 && !closed && !(await blockedOnLock()); i++) {
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      }
       expect(closed).toBe(false);
+      expect(await blockedOnLock()).toBe(true);
 
       await writer.commitTransaction();
       await closing;

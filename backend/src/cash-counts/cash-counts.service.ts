@@ -140,7 +140,8 @@ export class CashCountsService {
       // lock, not one a recount needs: even without it nothing would move —
       // every consumer of a `midday` row (`list`'s `only_discrepancies`,
       // `is_open`, `point-cash`'s `unexplained_difference`) already excludes
-      // `kind = 'midday'` unconditionally.
+      // `kind = 'midday'` unconditionally. The cost runs the other way: a
+      // close pressed during a recount waits for it to commit.
       const expected = await this.cash.cashFor(pointId, undefined, m);
       const countedAt = this.time.now().toJSDate();
 

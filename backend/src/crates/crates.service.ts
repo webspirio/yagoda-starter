@@ -304,6 +304,13 @@ export class CratesService {
     }
 
     return this.dataSource.transaction(async (m) => {
+      // SUPPLIER FIRST, THEN THE SHIFT — the order payouts and receipts take
+      // (`AllocationsService.withinSupplierLedger` locks the supplier before
+      // their `findOpenAtPoint`). The shift is held FOR SHARE from here on, so
+      // the opposite order plus a concurrent close is a three-way deadlock.
+      // `writeReturn` re-locks the same row, a no-op in one transaction.
+      await m.query('SELECT id FROM suppliers WHERE id = $1 FOR UPDATE', [dto.supplier_id]);
+
       const shift = await this.shifts.findOpenAtPoint(pointId, m);
       if (!shift) {
         throw new ConflictException({
