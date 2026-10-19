@@ -6,6 +6,8 @@ export interface CollectionPointResponse {
   name: string;
   /** The first segment of every receipt code written at this point (§6.2). */
   code: string;
+  /** «Точка № 3» on the receipt header (#145) — assigned by the database, never typed. */
+  number: number;
   kind: PointKind;
   /** `numeric` — a string, or null for "not set". NEVER 0, and never a number:
    *  a client that receives 0 cannot tell an unset target from a zero one, and
@@ -21,6 +23,7 @@ export function toCollectionPointResponse(point: CollectionPoint): CollectionPoi
     id: point.id,
     name: point.name,
     code: point.code,
+    number: point.number,
     kind: point.kind,
     target_cash: point.target_cash,
     target_crates: point.target_crates,

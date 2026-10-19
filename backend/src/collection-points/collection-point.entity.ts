@@ -46,6 +46,7 @@ import { PointKind } from './point-kind.enum';
  */
 @Entity('collection_points')
 @Unique('UQ_collection_points_code', ['code'])
+@Unique('UQ_collection_points_number', ['number'])
 @Check('CHK_collection_points_code', `"code" ~ '^[A-Z0-9]{2,8}$'`)
 @Check('CHK_collection_points_target_cash', `"target_cash" IS NULL OR "target_cash" >= 0`)
 @Check('CHK_collection_points_target_crates', `"target_crates" IS NULL OR "target_crates" >= 0`)
@@ -83,6 +84,11 @@ export class CollectionPoint {
    */
   @Column({ type: 'varchar' })
   code: string;
+
+  /** «Точка № 3» on the receipt header (#145). Assigned by the database in creation order,
+   *  never typed — `PointAndUserNumbers` migration. */
+  @Column({ type: 'int', generated: 'identity', generatedIdentity: 'ALWAYS' })
+  number: number;
 
   @Column({ type: 'enum', enum: PointKind, enumName: 'point_kind', default: PointKind.Reception })
   kind: PointKind;

@@ -28,7 +28,7 @@
  * `@Column({ name })` or a configured `namingStrategy` (either one breaks the
  * property-name-IS-column-name mapping every comparison here depends on), and any
  * `numeric`/`decimal` token in an `up()` SQL string the CREATE TABLE parser did not
- * consume — an `ALTER COLUMN … TYPE`, an `ADD COLUMN`, or a shape nobody has written yet.
+ * consume — an `ALTER COLUMN … TYPE`, or a shape nobody has written yet.
  * That last one is a token-count reconciliation rather than a pattern list, so it fires on
  * SQL this check has never seen instead of waving it through.
  */
@@ -68,7 +68,7 @@ const DATA_SOURCE_FILES = ['backend/src/app.module.ts', 'backend/src/data-source
  */
 
 /**
- * Every `numeric` CREATE TABLE column in every migration's `up()`, plus a finding for
+ * Every `numeric` CREATE TABLE (or `ALTER TABLE … ADD`) column in every migration's `up()`, plus a finding for
  * every `numeric`/`decimal` token in one of those SQL strings that this parser did NOT
  * consume as such a column.
  *
@@ -82,6 +82,9 @@ function readMigrations(root) {
   const columns = new Map()
   /** @type {string[]} */
   const findings = []
+
+  /** @type {string[]} */
+  const setNotNull = []
 
   const migrationDir = path.join(root, MIGRATIONS_REL)
   const files = backendSrcFiles(root).filter(
@@ -137,16 +140,40 @@ function readMigrations(root) {
             })
           })
       }
+      // `ALTER TABLE "t" ADD "c" numeric(p,s)` is a column too (#145 added the first). Its
+      // NOT NULL usually arrives in a later `SET NOT NULL` statement, applied after the loop.
+      for (const add of text.matchAll(
+        /ALTER\s+TABLE\s+"?(\w+)"?\s+ADD\s+(?:COLUMN\s+)?"?(\w+)"?\s+(?:numeric|decimal)\s*\(\s*(\d+)\s*,\s*(\d+)\s*\)([^;\n]*)/gi,
+      )) {
+        consumed++
+        columns.set(`${add[1]}.${add[2]}`, {
+          precision: Number(add[3]),
+          scale: Number(add[4]),
+          notNull: /NOT\s+NULL/i.test(add[5]),
+          default: /DEFAULT\s+([^,\s]+)/i.exec(add[5])?.[1] ?? null,
+          at: `${rel}:${line}`,
+        })
+      }
+      for (const nn of text.matchAll(
+        /ALTER\s+TABLE\s+"?(\w+)"?\s+ALTER\s+COLUMN\s+"?(\w+)"?\s+SET\s+NOT\s+NULL/gi,
+      )) {
+        setNotNull.push(`${nn[1]}.${nn[2]}`)
+      }
       const seen = (text.match(/\b(?:numeric|decimal)\b/gi) ?? []).length
       if (seen > consumed) {
         findings.push(
           `${rel}:${line}: ${seen - consumed} \`numeric\`/\`decimal\` token(s) in this SQL that ` +
-            'the CREATE TABLE parser did not consume as a column (an ALTER COLUMN … TYPE? an ' +
-            'ADD COLUMN?) — this check models CREATE TABLE only, and reports what it cannot ' +
-            'model rather than passing over it.',
+            'this check did not consume as a column (an ALTER COLUMN … TYPE? a shape other than ' +
+            'CREATE TABLE columns and `ALTER TABLE … ADD <col> numeric(p,s)` / `ALTER COLUMN … ' +
+            'SET NOT NULL`?) — it reports what it cannot model rather than passing over it.',
         )
       }
     }
+  }
+
+  for (const key of setNotNull) {
+    const column = columns.get(key)
+    if (column) column.notNull = true
   }
 
   return { columns, findings }

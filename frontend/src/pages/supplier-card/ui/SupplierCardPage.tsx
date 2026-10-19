@@ -24,7 +24,7 @@ import { daysBetween, todayIso, formatShortDate } from '@/shared/lib/date';
 import { PayoutDialog } from '@/features/settle-payout';
 import { VoidDocumentDialog, reopenedCodes } from '@/features/void-document';
 import { TopUpDialog } from '@/features/top-up-intake';
-import { ReceiptDialog, useReceiptOpener } from '@/widgets/receipt';
+import { PayoutReceiptDialog, ReceiptDialog, useReceiptOpener } from '@/widgets/receipt';
 import { OpenBalances } from './OpenBalances';
 import { SupplierTimeline } from './SupplierTimeline';
 
@@ -61,6 +61,7 @@ export function SupplierCardPage() {
   const [payoutKey, setPayoutKey] = useState(0);
   const receipt = useReceiptOpener();
   const { openReceipt } = receipt;
+  const payoutReceipt = useReceiptOpener();
   // ONE void dialog for both kinds. `features/void-document` grew a fourth
   // `kind` rather than this page growing a second dialog — a top-up is voided
   // by the same §9.3 rule, with the same required reason.
@@ -283,6 +284,7 @@ export function SupplierCardPage() {
           openByLineId={openByLineId}
           coversByPayoutId={coversByPayoutId}
           onOpenReceipt={openReceipt}
+          onOpenPayoutReceipt={payoutReceipt.openReceipt}
           onVoidPayout={openVoidPayout}
           onAddTopUp={openTopUp}
           onVoidTopUp={openVoidTopUp}
@@ -300,6 +302,13 @@ export function SupplierCardPage() {
         open={receipt.open}
         startWithVoid={receipt.startWithVoid}
         onClose={receipt.close}
+      />
+
+      <PayoutReceiptDialog
+        key={`payout-${payoutReceipt.receiptId}`}
+        payoutId={payoutReceipt.receiptId}
+        open={payoutReceipt.open}
+        onClose={payoutReceipt.close}
       />
 
       {voidTarget ? (
@@ -338,6 +347,7 @@ export function SupplierCardPage() {
         defaultAmount={debt}
         open={payoutOpen}
         onClose={() => setPayoutOpen(false)}
+        onPaid={(paid) => payoutReceipt.openReceipt(paid.id)}
       />
     </>
   );

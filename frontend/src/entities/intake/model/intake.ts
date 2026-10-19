@@ -96,7 +96,12 @@ interface IntakeCrateReturn {
 export interface IntakeDetail extends Intake {
   items: IntakeItem[];
   payouts: IntakePayout[];
+  /** The receiver's name — the void dialog's «видано … ким». */
   received_by_name: string | null;
+  /** The receiver's number — the receipt header's «Приймальник № 5» (#145); `null` only if the user row is gone. */
+  received_by_number: number | null;
+  /** The point's number — the receipt header's «Точка № 3», read with the document (#145). */
+  point_number: number;
   /** `null` when no crates came back with this receipt. */
   crate_return: IntakeCrateReturn | null;
 }

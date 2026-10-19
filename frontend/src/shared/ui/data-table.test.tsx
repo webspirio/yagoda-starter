@@ -100,3 +100,48 @@ it('marks an ascending sort and stays axe-clean', async () => {
   expect(screen.getByRole('columnheader', { name: 'Назва' })).toHaveAttribute('aria-sort', 'ascending');
   await expectNoAxeViolations(container);
 });
+
+it('renders renderExpanded under its row in one full-width cell, and nothing for null', () => {
+  render(
+    <DataTable
+      columns={columns}
+      rows={rows}
+      rowKey={(r) => r.id}
+      renderExpanded={(r) => (r.id === 'a' ? <span>Деталі малини</span> : null)}
+    />,
+  );
+  const detail = screen.getByText('Деталі малини');
+  const cell = detail.closest('td');
+  expect(cell).toHaveAttribute('colspan', String(columns.length));
+  // The detail row sits directly under its own row, before the next one.
+  const tr = cell?.closest('tr');
+  expect(tr?.previousElementSibling).toHaveTextContent('Малина');
+  expect(tr?.nextElementSibling).toHaveTextContent('Полуниця');
+  // Two data rows + one detail row, plus the header row.
+  expect(screen.getAllByRole('row')).toHaveLength(4);
+});
+
+it('adds no extra rows when renderExpanded is not given', () => {
+  render(<DataTable columns={columns} rows={rows} rowKey={(r) => r.id} />);
+  expect(screen.getAllByRole('row')).toHaveLength(3);
+});
+
+it('limits onRowClick (and its pointer cursor) to rows rowClickable accepts', async () => {
+  const onRowClick = vi.fn();
+  render(
+    <DataTable
+      columns={columns}
+      rows={rows}
+      rowKey={(r) => r.id}
+      onRowClick={onRowClick}
+      rowClickable={(r) => r.id === 'b'}
+    />,
+  );
+  await userEvent.click(screen.getByText('Малина'));
+  expect(onRowClick).not.toHaveBeenCalled();
+  expect(screen.getByText('Малина').closest('tr')).not.toHaveClass('cursor-pointer');
+
+  await userEvent.click(screen.getByText('Полуниця'));
+  expect(onRowClick).toHaveBeenCalledWith(rows[1], 1);
+  expect(screen.getByText('Полуниця').closest('tr')).toHaveClass('cursor-pointer');
+});

@@ -14,6 +14,8 @@ export interface PayoutResponse {
   supplier_id: string;
   intake_id: string | null;
   amount: string;
+  /** The supplier's debt right after this payout — frozen at write, #145. */
+  balance_after: string;
   paid_by_user_id: string;
   voided_at: string | null;
   voided_by_user_id: string | null;
@@ -28,6 +30,16 @@ export interface PayoutResponse {
   created_at: string;
 }
 
+/** `GET /payouts/:id` — the row plus what only the printed receipt reads, so a list row never
+ *  carries a field it would have to leave unloaded. */
+export interface PayoutDetailResponse extends PayoutResponse {
+  /** `users.number` — the receipt header's «Приймальник № 5» (#145, client correction
+   *  2026-10-14). `null` only if the user row is gone. */
+  paid_by_number: number | null;
+  /** `collection_points.number` — the header's «Точка № 3»; see `IntakeDetailResponse`. */
+  point_number: number;
+}
+
 export function toPayoutResponse(payout: Payout, shift: Shift): PayoutResponse {
   return {
     id: payout.id,
@@ -39,6 +51,7 @@ export function toPayoutResponse(payout: Payout, shift: Shift): PayoutResponse {
     supplier_id: payout.supplier_id,
     intake_id: payout.intake_id,
     amount: payout.amount,
+    balance_after: payout.balance_after,
     paid_by_user_id: payout.paid_by_user_id,
     voided_at: payout.voided_at ? payout.voided_at.toISOString() : null,
     voided_by_user_id: payout.voided_by_user_id,
@@ -48,5 +61,18 @@ export function toPayoutResponse(payout: Payout, shift: Shift): PayoutResponse {
     return_note: payout.return_note,
     returned_on_void: payout.returned_on_void,
     created_at: payout.created_at.toISOString(),
+  };
+}
+
+export function toPayoutDetailResponse(
+  payout: Payout,
+  shift: Shift,
+  paidByNumber: number | null,
+  pointNumber: number,
+): PayoutDetailResponse {
+  return {
+    ...toPayoutResponse(payout, shift),
+    paid_by_number: paidByNumber,
+    point_number: pointNumber,
   };
 }

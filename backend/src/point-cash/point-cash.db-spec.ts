@@ -150,6 +150,7 @@ describe('PointCashService.cashFor (Postgres)', () => {
       shift_id: shiftId,
       supplier_id: supplierId,
       amount,
+      balance_after: '0.00',
       paid_by_user_id: ownerId,
       ...over,
     };
@@ -587,6 +588,186 @@ describe('PointCashService.cashFor (Postgres)', () => {
       await expect(service.expectedForClosing(await shift(p, '2026-09-02'))).resolves.toBeNull();
     });
   });
+
+  describe('breakdownFor — the rows add up to the figure under them (#73)', () => {
+    /** Every scenario also pins the one rule that matters most: same cash as cashFor. */
+    const both = async (p: string, asOf: string) => {
+      const b = await service.breakdownFor(p, asOf);
+      await expect(service.cashFor(p, asOf)).resolves.toBe(b.cash);
+      return b;
+    };
+
+    it('open — opening + transfers − payouts + returns = cash (Шипинки 23.09)', async () => {
+      const p = await newPoint();
+      const sh = await shift(p, '2026-09-23', false);
+      await count(sh, 'opening', '43730.00', '43730.00');
+      await payoutIn(sh, '4000.00');
+      await transfer(p, { cash: '15000.00', accepted_date: '2026-09-23' });
+
+      const b = await both(p, '2026-09-23');
+
+      expect(b.cash).toBe('54730.00');
+      expect(b.breakdown).toEqual({
+        kind: 'open',
+        anchor_date: '2026-09-23',
+        opening: '43730.00',
+        transfers_in: '15000.00',
+        payouts: '4000.00',
+        returns: '0.00',
+        closing: null,
+      });
+    });
+
+    it('closed — the snapshot, the count and the difference by number (Шипинки 22.09, −90)', async () => {
+      const p = await newPoint();
+      const sh = await shift(p, '2026-09-22');
+      await count(sh, 'opening', '21820.00', '21820.00');
+      await payoutIn(sh, '13000.00');
+      await transfer(p, { cash: '35000.00', accepted_date: '2026-09-22' });
+      await count(sh, 'closing', '43730.00', '43820.00', CLOSED_AT);
+
+      const b = await both(p, '2026-09-22');
+
+      expect(b.cash).toBe('43730.00');
+      expect(b.breakdown).toEqual({
+        kind: 'closed',
+        anchor_date: '2026-09-22',
+        opening: '21820.00',
+        transfers_in: '35000.00',
+        payouts: '13000.00',
+        returns: '0.00',
+        closing: {
+          counted: '43730.00',
+          expected: '43820.00',
+          difference: '-90.00',
+          late_change: '0.00',
+        },
+      });
+    });
+
+    it('closed — a transfer voided after close is late_change; expected stays the snapshot', async () => {
+      const p = await newPoint();
+      const sh = await shift(p, '2026-09-22');
+      await count(sh, 'opening', '21820.00', '21820.00');
+      await payoutIn(sh, '13000.00');
+      await transfer(p, { cash: '35000.00', accepted_date: '2026-09-22' });
+      await transfer(p, {
+        cash: '1000.00',
+        accepted_date: '2026-09-22',
+        voided_at: new Date(),
+        voided_by_user_id: ownerId,
+        void_reason: 'дубль',
+      });
+      // Counted while the 1 000 was still live: expected 44 820.
+      await count(sh, 'closing', '44820.00', '44820.00', CLOSED_AT);
+
+      const b = await both(p, '2026-09-22');
+
+      expect(b.breakdown.closing).toEqual({
+        counted: '44820.00',
+        expected: '44820.00',
+        difference: '0.00',
+        late_change: '-1000.00',
+      });
+      // 21 820 + 35 000 − 13 000 + 0 − (−1 000) = 44 820 = expected.
+      expect(b.breakdown.transfers_in).toBe('35000.00');
+    });
+
+    it('closed with no opening count — late_change absorbs the whole gap, not NULL', async () => {
+      // shifts.service closes such a shift with expected = counted.
+      const p = await newPoint();
+      const sh = await shift(p, '2026-09-22');
+      await payoutIn(sh, '300.00');
+      await transfer(p, { cash: '1000.00', accepted_date: '2026-09-22' });
+      await count(sh, 'closing', '500.00', '500.00', CLOSED_AT);
+
+      const b = await both(p, '2026-09-22');
+
+      expect(b.breakdown.opening).toBeNull();
+      // 0 + 1 000 − 300 + 0 − 200 = 500 = expected.
+      expect(b.breakdown.closing).toEqual({
+        counted: '500.00',
+        expected: '500.00',
+        difference: '0.00',
+        late_change: '200.00',
+      });
+    });
+
+    it('open — a payout returned on void is in returns, and still in payouts', async () => {
+      const p = await newPoint();
+      const sh = await shift(p, '2026-09-22', false);
+      await count(sh, 'opening', '1000.00', '1000.00');
+      const at = new Date('2026-09-22T10:00:00Z');
+      await payoutIn(sh, '250.00', {
+        voided_at: at, voided_by_user_id: ownerId, void_reason: 'помилка',
+        return_settled_at: at, return_settled_by_user_id: ownerId, returned_on_void: true,
+      });
+
+      const b = await both(p, '2026-09-22');
+
+      expect(b.cash).toBe('1000.00');
+      expect(b.breakdown).toMatchObject({ payouts: '250.00', returns: '250.00' });
+    });
+
+    it('carried — a date with no shift reads the last close, and only that', async () => {
+      const p = await newPoint();
+      const sh = await shift(p, '2026-09-22');
+      await count(sh, 'opening', '21820.00', '21820.00');
+      await count(sh, 'closing', '43730.00', '43820.00', CLOSED_AT);
+
+      const b = await both(p, '2026-09-24');
+
+      expect(b.cash).toBe('43730.00');
+      expect(b.breakdown).toEqual({
+        kind: 'carried',
+        anchor_date: '2026-09-22',
+        opening: null,
+        transfers_in: null,
+        payouts: null,
+        returns: null,
+        closing: { counted: '43730.00', expected: null, difference: null, late_change: null },
+      });
+    });
+
+    it('none — never counted reads 0.00 and no breakdown', async () => {
+      const p = await newPoint();
+
+      const b = await both(p, '2026-09-24');
+
+      expect(b.cash).toBe('0.00');
+      expect(b.breakdown.kind).toBe('none');
+    });
+
+    it('open from an earlier day (#114) — full terms of THAT shift, not carried', async () => {
+      const p = await newPoint();
+      const sh = await shift(p, '2026-09-20', false);
+      await count(sh, 'opening', '1000.00', '1000.00');
+      await payoutIn(sh, '300.00');
+
+      const b = await both(p, '2026-09-22');
+
+      expect(b.cash).toBe('700.00');
+      expect(b.breakdown).toMatchObject({
+        kind: 'open',
+        anchor_date: '2026-09-20',
+        opening: '1000.00',
+        payouts: '300.00',
+        closing: null,
+      });
+    });
+
+    it('reopened — the demoted closing count reads as open again', async () => {
+      const p = await newPoint();
+      const sh = await shift(p, '2026-09-22', false);
+      await count(sh, 'opening', '1000.00', '1000.00');
+      await count(sh, 'midday', '900.00', '1000.00', CLOSED_AT); // the demoted close
+
+      const b = await both(p, '2026-09-22');
+
+      expect(b.breakdown.kind).toBe('open');
+      expect(b.cash).toBe('1000.00');
+    });
+  });
 });
 
 describe('PointCashService.list (Postgres)', () => {
@@ -922,6 +1103,79 @@ describe('PointCashService.list (Postgres)', () => {
     // struck out.
     const late = await service.list(owner, query({ collection_point_id: p }) as never);
     expect(late.data[0].latest_transfer).toBeNull();
+  });
+
+  it('reports resolved_at only once the resolution had happened by as_of (#76)', async () => {
+    const tag = randomUUID().slice(0, 8);
+    const [{ id: p }] = (await ds.query(
+      `INSERT INTO collection_points (name, code, kind, target_cash, is_active)
+       VALUES ($1, $2, 'reception', NULL, true) RETURNING id`,
+      [`Точка ${tag}`, `R${tag.slice(0, 6).toUpperCase()}`],
+    )) as { id: string }[];
+
+    // Sent on the 1st, signed for with a dispute on the 2nd, resolved by the
+    // owner at 2026-09-04T22:30Z — still the 4th in UTC, but already 01:30 on
+    // the 5th in Kyiv. The cut is the APP-timezone date, so as_of = the 4th
+    // must not see it.
+    await ds.query(
+      `INSERT INTO transfers (collection_point_id, cash, crates, carrier, sent_by_user_id,
+                              sent_at, status, accepted_by_user_id, accepted_date, accepted_at,
+                              reported_cash, dispute_note,
+                              resolved_cash, resolved_crates, resolved_by_user_id, resolved_at)
+       VALUES ($1, '300.00', 0, 'Іван', $2, '2026-09-01T06:00:00Z', 'disputed',
+               $2, '2026-09-02', '2026-09-02T07:00:00Z',
+               '280.00', 'мішок легший',
+               '290.00', 0, $2, '2026-09-04T22:30:00Z')`,
+      [p, ownerId],
+    );
+
+    const before = await service.list(
+      owner,
+      query({ collection_point_id: p, as_of: '2026-09-04' }) as never,
+    );
+    expect(before.data[0].latest_transfer?.status).toBe('disputed');
+    expect(before.data[0].latest_transfer?.resolved_at).toBeNull();
+
+    const onTheDay = await service.list(
+      owner,
+      query({ collection_point_id: p, as_of: '2026-09-05' }) as never,
+    );
+    expect(onTheDay.data[0].latest_transfer?.status).toBe('disputed');
+    expect(onTheDay.data[0].latest_transfer?.resolved_at?.toISOString()).toBe('2026-09-04T22:30:00.000Z');
+
+    const now = await service.list(owner, query({ collection_point_id: p }) as never);
+    expect(now.data[0].latest_transfer?.resolved_at?.toISOString()).toBe('2026-09-04T22:30:00.000Z');
+
+    // Before it was signed for at all it was a van on the road: no
+    // resolution can show through a 'sent' status.
+    const onTheRoad = await service.list(
+      owner,
+      query({ collection_point_id: p, as_of: '2026-09-01' }) as never,
+    );
+    expect(onTheRoad.data[0].latest_transfer?.status).toBe('sent');
+    expect(onTheRoad.data[0].latest_transfer?.resolved_at).toBeNull();
+  });
+
+  it('reports resolved_at as null for a dispute the owner has not resolved (#76)', async () => {
+    const tag = randomUUID().slice(0, 8);
+    const [{ id: p }] = (await ds.query(
+      `INSERT INTO collection_points (name, code, kind, target_cash, is_active)
+       VALUES ($1, $2, 'reception', NULL, true) RETURNING id`,
+      [`Точка ${tag}`, `U${tag.slice(0, 6).toUpperCase()}`],
+    )) as { id: string }[];
+
+    await ds.query(
+      `INSERT INTO transfers (collection_point_id, cash, crates, carrier, sent_by_user_id,
+                              sent_at, status, accepted_by_user_id, accepted_date, accepted_at,
+                              reported_cash, dispute_note)
+       VALUES ($1, '300.00', 0, 'Іван', $2, '2026-09-01T06:00:00Z', 'disputed',
+               $2, '2026-09-02', '2026-09-02T07:00:00Z', '280.00', 'мішок легший')`,
+      [p, ownerId],
+    );
+
+    const now = await service.list(owner, query({ collection_point_id: p }) as never);
+    expect(now.data[0].latest_transfer?.status).toBe('disputed');
+    expect(now.data[0].latest_transfer?.resolved_at).toBeNull();
   });
 });
 

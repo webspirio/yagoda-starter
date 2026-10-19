@@ -40,6 +40,9 @@ const LINE_FIELD: Readonly<Record<string, { suffix: string; messageKey: string }
   // same as `BONUS_OUT_OF_RANGE`: it is the field the operator would change
   // to fix it.
   RATE_NEGATIVE: { suffix: 'bonus', messageKey: 'reception.errors.rateNegative' },
+  // §2.12 (#56): under 0.80 the whole-hryvnia line pays nothing. More weight
+  // is the honest fix, so it lands on the weight.
+  AMOUNT_ROUNDS_TO_ZERO: { suffix: 'gross_kg', messageKey: 'reception.errors.amountRoundsToZero' },
 };
 
 /** Codes that are refusals of the whole request, not one field. */

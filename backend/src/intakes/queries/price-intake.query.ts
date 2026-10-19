@@ -47,8 +47,8 @@ export class PriceIntakeQuery {
   ): Promise<{ pointId: string; point: CollectionPoint; supplier: SupplierResponse }> {
     const pointId = resolveWritePoint(actor, dto.collection_point_id);
 
-    // Loaded for its `code` (the receipt's first segment); a bad body-supplied point would
-    // otherwise reach the FK as a 500.
+    // Loaded for its `code` (the receipt's first segment) and `number` (the header's «Точка № N»);
+    // a bad body-supplied point would otherwise reach the FK as a 500.
     const point = await this.points.findOneRaw(pointId);
     if (!point) throw new NotFoundException('Collection point not found');
 

@@ -107,6 +107,13 @@ export class Payout {
   @Column({ type: 'numeric', precision: 12, scale: 2 })
   amount: string;
 
+  /** The supplier's debt at this point (a supplier row IS a point, §3.9) right AFTER this
+   *  payout, frozen at write time under the supplier lock (#145) — what the payout receipt
+   *  prints, so a reprint is the same paper.
+   *  A RECORD of what was printed, never a source of debt: `debtSql` is. A void leaves it. */
+  @Column({ type: 'numeric', precision: 12, scale: 2 })
+  balance_after: string;
+
   /** §10.6 — «підпис під документом належить тому, хто натиснув». */
   @Column({ type: 'uuid' })
   paid_by_user_id: string;

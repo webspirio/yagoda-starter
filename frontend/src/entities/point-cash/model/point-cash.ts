@@ -19,14 +19,34 @@ export interface PointCashRow {
   /** `null` коли `target_cash` порожній: порівнювати нема з чим (§7.10). */
   shortfall: string | null;
   unexplained_difference: string;
-  latest_transfer: { status: TransferStatus; sent_at: string } | null;
+  /** `resolved_at` lets a settled dispute read «Врегульовано» rather than
+   *  «Не сходиться» forever — `resolve()` never touches `status` (#76). */
+  latest_transfer: { status: TransferStatus; sent_at: string; resolved_at: string | null } | null;
   /** Сума завдатків, які досі утримано (крейти видані «за кошти», ще не повернуті). */
   crate_deposits: string;
   /** §R8 — скільки ящиків з тих завдатків: видано «за кошти» мінус повернуто. */
   crate_deposit_units: number;
 }
 
-/** Дзеркалить відповідь `GET /point-cash/:pointId` — лише сума однієї точки. */
+/** Дзеркалить `PointCashBreakdown` (`point-cash/point-cash.mapper.ts`, #73). */
+export interface PointCashBreakdown {
+  kind: 'open' | 'closed' | 'carried' | 'none';
+  anchor_date: string | null;
+  opening: string | null;
+  transfers_in: string | null;
+  /** Невід'ємна величина — знак ставить екран. */
+  payouts: string | null;
+  returns: string | null;
+  closing: {
+    counted: string;
+    /** Знімок при закритті, не перерахунок. */
+    expected: string | null;
+    difference: string | null;
+    late_change: string | null;
+  } | null;
+}
+
+/** Дзеркалить відповідь `GET /point-cash/:pointId` — сума однієї точки і розклад, з якого вона складається. */
 export interface PointCashOne {
   collection_point_id: string;
   cash: string;
@@ -34,6 +54,7 @@ export interface PointCashOne {
   crate_deposits: string;
   /** §R8 — скільки ящиків з тих завдатків: видано «за кошти» мінус повернуто. */
   crate_deposit_units: number;
+  breakdown: PointCashBreakdown;
 }
 
 /** Реекспорт для існуючих імпортерів `../model/point-cash` — див. `@/shared/api/pagination.ts`. */
