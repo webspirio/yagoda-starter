@@ -1339,6 +1339,17 @@
     },
     "send": "Надіслати",
     "resolve": "Вирішити",
+    "disputedCount": "Не сходиться ({{n}})",
+    "dispute": {
+      "listLabel": "Розбіжності — {{point}}",
+      "sentAt": "Відправлено",
+      "sentCash": "Відправили",
+      "reportedCash": "Нарахувала точка",
+      "discrepancy": "Різниця",
+      "crates": "Ящики: відправили {{sent}} · нарахувала {{reported}} · різниця {{diff}}",
+      "note": "Точка написала: «{{note}}»",
+      "resolved": "Врегульовано: {{cash}} · {{crates}} ящ. · {{date}}"
+    },
     "empty": {
       "title": "Точок поки немає"
     },

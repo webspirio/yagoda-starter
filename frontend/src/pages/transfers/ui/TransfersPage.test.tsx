@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { expectNoAxeViolations } from '../../../test-axe';
 import type { PointCashRow } from '@/entities/point-cash';
@@ -273,7 +273,7 @@ describe('TransfersPage — wiring the table to the resolve dialog', () => {
     pointCashMock.mockReturnValue(
       single(
         points([
-          pointRow({ latest_transfer: { status: 'disputed', sent_at: '2026-09-10T08:00:00.000Z' } }),
+          pointRow({ latest_transfer: { status: 'disputed', sent_at: '2026-09-10T08:00:00.000Z', resolved_at: null } }),
         ]),
       ),
     );
@@ -300,7 +300,13 @@ describe('TransfersPage — wiring the table to the resolve dialog', () => {
     pointCashMock.mockReturnValue(
       single(
         points([
-          pointRow({ latest_transfer: { status: 'disputed', sent_at: '2026-09-10T08:00:00.000Z' } }),
+          pointRow({
+            latest_transfer: {
+              status: 'disputed',
+              sent_at: '2026-09-10T08:00:00.000Z',
+              resolved_at: '2026-09-11T09:00:00.000Z',
+            },
+          }),
         ]),
       ),
     );
@@ -309,6 +315,25 @@ describe('TransfersPage — wiring the table to the resolve dialog', () => {
     render(<TransfersPage />);
 
     expect(screen.queryByRole('button', { name: 'Resolve' })).toBeNull();
+    // #76 — the point's badge and the history row both read «Resolved».
+    expect(screen.getAllByText('Resolved')).toHaveLength(2);
+  });
+});
+
+describe('TransfersPage — wiring the history to the resolve dialog (#76)', () => {
+  it('resolves an open dispute from its expanded history row', async () => {
+    const user = userEvent.setup();
+    const disputed = transfer({ id: 't11', status: 'disputed', sent_at: '2026-09-10T08:00:00.000Z' });
+    transfersMock.mockReturnValue(single(list([disputed])));
+
+    render(<TransfersPage />);
+
+    // The point table's single dispute is not expandable — the only toggle
+    // on the page is the history row's.
+    await user.click(screen.getByRole('button', { expanded: false }));
+    const item = within(screen.getByRole('list', { name: /Disputes/ })).getByRole('listitem');
+    await user.click(within(item).getByRole('button', { name: 'Resolve' }));
+    expect(await screen.findByRole('dialog')).toHaveTextContent('t11');
   });
 });
 

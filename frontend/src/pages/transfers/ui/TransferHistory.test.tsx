@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { expectNoAxeViolations } from '../../../test-axe';
 import type { Transfer } from '@/entities/transfer';
@@ -114,6 +114,97 @@ describe('TransferHistory', () => {
       // Test locale is 'en' (test-setup.ts) — month/day order and 12-hour
       // clock, not the uk `10.09 · 08:05` shown in iso.test.ts.
       expect(screen.getByText('09/10 · 08:05 AM')).toBeInTheDocument();
+    });
+  });
+
+  describe('a disputed row expands to the dispute (#76)', () => {
+    afterEach(() => {
+      vi.unstubAllEnvs();
+    });
+
+    const open = transfer({
+      id: 'open',
+      status: 'disputed',
+      reported_cash: '450.00',
+      cash_discrepancy: '50.00',
+      reported_crates: 18,
+      crates_discrepancy: 2,
+      dispute_note: 'Порахували менше',
+    });
+    const settled = transfer({
+      id: 'settled',
+      status: 'disputed',
+      reported_cash: '450.00',
+      cash_discrepancy: '50.00',
+      reported_crates: 20,
+      crates_discrepancy: 0,
+      resolved_cash: '480.00',
+      resolved_crates: 20,
+      resolved_at: '2026-09-11T09:00:00.000Z',
+    });
+
+    it('makes only disputed rows expandable', () => {
+      render(
+        <TransferHistory
+          transfers={[transfer({ id: 'plain', status: 'accepted' }), open]}
+          pointName={() => 'Shypynky'}
+          onVoid={noop}
+        />,
+      );
+      expect(screen.getAllByRole('button', { expanded: false })).toHaveLength(1);
+    });
+
+    it('shows an open dispute\'s details and its own «Resolve»', async () => {
+      const user = userEvent.setup();
+      const onResolve = vi.fn();
+      render(
+        <TransferHistory transfers={[open]} pointName={() => 'Shypynky'} onVoid={noop} onResolve={onResolve} />,
+      );
+
+      await user.click(screen.getByRole('button', { name: "Doesn't match" }));
+      const item = within(screen.getByRole('list')).getByRole('listitem');
+      expect(item).toHaveTextContent('450.00 ₴');
+      expect(item).toHaveTextContent('Порахували менше');
+      expect(item).toHaveTextContent('Crates: sent 20 · counted 18 · difference 2');
+
+      await user.click(within(item).getByRole('button', { name: 'Resolve' }));
+      expect(onResolve).toHaveBeenCalledWith(open);
+    });
+
+    it('shows how a settled dispute was resolved, and no «Resolve»', async () => {
+      const user = userEvent.setup();
+      vi.stubEnv('TZ', 'UTC');
+      render(
+        <TransferHistory transfers={[settled]} pointName={() => 'Shypynky'} onVoid={noop} onResolve={noop} />,
+      );
+
+      await user.click(screen.getByRole('button', { name: 'Resolved' }));
+      const item = within(screen.getByRole('list')).getByRole('listitem');
+      expect(item).toHaveTextContent('Resolved: 480.00 ₴ · 20 cr. · 09/11 · 09:00 AM');
+      expect(within(item).queryByRole('button', { name: 'Resolve' })).toBeNull();
+    });
+
+    it('toggles on a row click, but «Void» does not toggle', async () => {
+      const user = userEvent.setup();
+      const onVoid = vi.fn();
+      render(<TransferHistory transfers={[open]} pointName={() => 'Shypynky'} onVoid={onVoid} />);
+
+      await user.click(screen.getByText('Shypynky'));
+      expect(screen.getByRole('list')).toBeInTheDocument();
+      await user.click(screen.getByRole('button', { name: 'Void' }));
+      expect(onVoid).toHaveBeenCalledWith(open);
+      expect(screen.getByRole('list')).toBeInTheDocument();
+      await user.click(screen.getByText('Shypynky'));
+      expect(screen.queryByRole('list')).toBeNull();
+    });
+
+    it('does not make a plain row clickable', async () => {
+      const user = userEvent.setup();
+      render(
+        <TransferHistory transfers={[transfer({ status: 'sent' })]} pointName={() => 'Shypynky'} onVoid={noop} />,
+      );
+      await user.click(screen.getByText('Shypynky'));
+      expect(screen.queryByRole('list')).toBeNull();
     });
   });
 

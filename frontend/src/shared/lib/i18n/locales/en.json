@@ -1293,6 +1293,17 @@
     },
     "send": "Send",
     "resolve": "Resolve",
+    "disputedCount": "Doesn't match ({{n}})",
+    "dispute": {
+      "listLabel": "Disputes — {{point}}",
+      "sentAt": "Sent at",
+      "sentCash": "Sent",
+      "reportedCash": "Counted at the point",
+      "discrepancy": "Difference",
+      "crates": "Crates: sent {{sent}} · counted {{reported}} · difference {{diff}}",
+      "note": "The point wrote: “{{note}}”",
+      "resolved": "Resolved: {{cash}} · {{crates}} cr. · {{date}}"
+    },
     "empty": {
       "title": "No collection points yet"
     },
