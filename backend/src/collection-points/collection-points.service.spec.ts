@@ -33,6 +33,8 @@ describe('CollectionPointsService', () => {
     id: 'p-1',
     name: 'Копайгород',
     code: 'KPG',
+    // The database's identity — `save()` gets it back via RETURNING (#145).
+    number: 7,
     kind: PointKind.Reception,
     target_cash: null,
     target_crates: null,
@@ -58,8 +60,8 @@ describe('CollectionPointsService', () => {
       save: jest.fn().mockImplementation((p) => Promise.resolve(p)),
       // `point(p)` rather than the bare `p`: a real repo.create() merges its
       // partial onto a fresh entity, so the result still has id/created_at/
-      // updated_at/is_active defaults — exactly what toCollectionPointResponse
-      // needs. Returning the partial as-is would leave created_at undefined
+      // updated_at/is_active defaults and, once saved, the generated `number` —
+      // exactly what toCollectionPointResponse needs. Returning the partial as-is would leave created_at undefined
       // and crash the mapper in the "creates a point" test below.
       create: jest.fn().mockImplementation((p) => point(p)),
       createQueryBuilder: jest.fn().mockReturnValue({
@@ -119,7 +121,9 @@ describe('CollectionPointsService', () => {
   });
 
   it('creates a point with both targets unset — NOT zero', async () => {
-    await service.create(owner, { name: 'Нова точка', code: 'NOVA' });
+    const res = await service.create(owner, { name: 'Нова точка', code: 'NOVA' });
+
+    expect(res.number).toBe(7);
 
     const saved = repo.save.mock.calls[0][0];
     expect(saved.target_cash).toBeNull();

@@ -45,10 +45,15 @@ describe('GetIntakeQuery', () => {
     expect(result.paid_amount).toBe('0.00');
   });
 
-  it('names the receiver on the detail', async () => {
+  it('names and numbers the receiver on the detail', async () => {
     const result = await query.get(oksana, INTAKE_ID);
 
     expect(result.received_by_name).toBe('Оксана Гнатюк');
+    expect(result.received_by_number).toBe(2);
+  });
+
+  it('carries the point number, so the receipt never waits on the point list', async () => {
+    expect((await query.get(oksana, INTAKE_ID)).point_number).toBe(7);
   });
 
   it('carries the linked crate return — the receipt widget reads it here', async () => {

@@ -153,6 +153,14 @@ describe('apiErrorToFields', () => {
     expect(out.formErrorKey).toBeNull();
   });
 
+  it('maps AMOUNT_ROUNDS_TO_ZERO onto the last line’s weight', () => {
+    const out = apiErrorToFields(apiError({ status: 400, code: 'AMOUNT_ROUNDS_TO_ZERO' }), 2);
+    expect(out.fieldErrors).toEqual([
+      { field: 'items.1.gross_kg', messageKey: 'reception.errors.amountRoundsToZero' },
+    ]);
+    expect(out.formErrorKey).toBeNull();
+  });
+
   it('falls back to the form-level banner for a genuinely unknown code', () => {
     const out = apiErrorToFields(apiError({ status: 400, code: 'SOME_FUTURE_CODE' }), 1);
     expect(out.fieldErrors).toEqual([]);

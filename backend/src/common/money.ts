@@ -21,11 +21,11 @@
  * provisional, the replacement is the internals of THIS FILE and nothing else.
  * That is the whole reason the seam exists — see spec §6.8.
  *
- * NOT THE ONLY ROUNDING IN THE DOMAIN. §12.1 defines a SECOND one for the
- * suggested payout — to whole hryvnia, with exactly 0.50 going DOWN — which is
- * neither implemented here nor a replacement for `mul`'s half-up at scale 2.
- * It is unresolved at the source («→ Правка: точно???») and arrives with the
- * slice that suggests a payout.
+ * NOT THE ONLY ROUNDING IN THE DOMAIN. `mulWholeHryvnia` (§2.12, #56) rounds a
+ * reception line to whole hryvnia — up only from 0.80 — and is used there and
+ * nowhere else. §12.1 defines a THIRD one for the suggested payout — whole
+ * hryvnia, exactly 0.50 going DOWN — still unresolved at the source
+ * («→ Правка: точно???») and not implemented here.
  */
 
 const SCALE = 2;
@@ -61,22 +61,37 @@ export function sub(a: string, b: string): string {
   return format(parse(a) - parse(b));
 }
 
+/** Rounds by magnitude, so a negative value mirrors its positive twin. */
+function byMagnitude(units: bigint, round: (magnitude: bigint) => bigint): bigint {
+  return units < 0n ? -round(-units) : round(units);
+}
+
 /**
  * Multiplies two scale-2 values and rounds the scale-4 product back to scale 2,
  * HALF-UP AWAY FROM ZERO.
  *
  * Half-up is foundation §5.1's stated policy, «applied where paper shows a
- * number» — and this is that place: `amount = net × (price + bonus)` is printed
- * on the supplier's copy. Away-from-zero (rather than half-up toward positive
- * infinity) keeps a negative line the mirror image of its positive twin, which
- * matters because `bonus` is legitimately negative for «м'ята чи цвіла ягода».
+ * number». Away-from-zero (rather than half-up toward positive infinity) keeps
+ * a negative value the mirror image of its positive twin, which matters because
+ * `bonus` is legitimately negative for «м'ята чи цвіла ягода». A reception
+ * line's `amount` goes one step further — `mulWholeHryvnia`.
  */
 export function mul(a: string, b: string): string {
-  const raw = parse(a) * parse(b); // scale 4
-  const negative = raw < 0n;
-  const magnitude = negative ? -raw : raw;
-  const rounded = (magnitude + UNIT / 2n) / UNIT; // +50, floor -> half-up
-  return format(negative ? -rounded : rounded);
+  return format(byMagnitude(parse(a) * parse(b), (m) => (m + UNIT / 2n) / UNIT));
+}
+
+/** #56: kopiykas from which a reception line rounds UP to the next hryvnia. */
+const ROUND_UP_FROM = 80n;
+
+/**
+ * `mul`, then whole hryvnia (§2.12, #56): 80 kopiykas and above go up, anything
+ * less is dropped. The threshold reads the kopiykas `mul` shows — the number a
+ * supplier can redo on a calculator — so 0,10 × 497,95 = 49,80 → 50,00.
+ */
+export function mulWholeHryvnia(a: string, b: string): string {
+  return format(
+    byMagnitude(parse(mul(a, b)), (k) => (k / UNIT + (k % UNIT >= ROUND_UP_FROM ? 1n : 0n)) * UNIT),
+  );
 }
 
 /** Exact addition of already-rounded values. NEVER rounds — see money.spec.ts's

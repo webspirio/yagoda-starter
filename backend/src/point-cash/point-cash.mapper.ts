@@ -128,3 +128,81 @@ export function toPointCashRowResponse(row: PointCashRow): PointCashRowResponse 
         : null,
   };
 }
+
+/** `breakdownFor`'s one row — every figure already computed in SQL. */
+export interface PointCashBreakdownRow {
+  cash: string;
+  anchor_kind: 'opening' | 'closing' | null;
+  anchor_date: string | null;
+  same_day: boolean | null;
+  opening: string | null;
+  transfers_in: string | null;
+  payouts: string | null;
+  returns: string | null;
+  counted: string | null;
+  expected: string | null;
+  difference: string | null;
+  late_change: string | null;
+}
+
+/** What `GET /point-cash/:pointId` says `cash` is made of (#73, spec 2026-10-13). */
+export interface PointCashBreakdown {
+  kind: 'open' | 'closed' | 'carried' | 'none';
+  anchor_date: string | null;
+  opening: string | null;
+  transfers_in: string | null;
+  payouts: string | null;
+  returns: string | null;
+  closing: {
+    counted: string;
+    expected: string | null;
+    difference: string | null;
+    late_change: string | null;
+  } | null;
+}
+
+/**
+ * THE KIND IS DECIDED HERE, THE NUMBERS ARE NOT. Every figure comes from
+ * `breakdownFor`'s one statement; this only nulls out what a kind must not
+ * show — a carried day's terms belong to another day.
+ */
+export function toPointCashBreakdown(row: PointCashBreakdownRow): PointCashBreakdown {
+  const blank = {
+    anchor_date: null,
+    opening: null,
+    transfers_in: null,
+    payouts: null,
+    returns: null,
+  };
+  if (row.anchor_kind === null) return { kind: 'none', ...blank, closing: null };
+
+  const terms = {
+    anchor_date: row.anchor_date,
+    opening: row.opening,
+    transfers_in: row.transfers_in,
+    payouts: row.payouts,
+    returns: row.returns,
+  };
+  if (row.anchor_kind === 'opening') return { kind: 'open', ...terms, closing: null };
+
+  // A closing anchor IS a count, and `counted_amount` is NOT NULL.
+  const counted = row.counted ?? '0.00';
+  if (!row.same_day) {
+    return {
+      kind: 'carried',
+      ...blank,
+      anchor_date: row.anchor_date,
+      closing: { counted, expected: null, difference: null, late_change: null },
+    };
+  }
+  return {
+    kind: 'closed',
+    ...terms,
+    closing: {
+      counted,
+      expected: row.expected,
+      difference: row.difference,
+      late_change: row.late_change,
+    },
+  };
+}

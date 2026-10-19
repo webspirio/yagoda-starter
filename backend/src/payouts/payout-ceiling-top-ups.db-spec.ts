@@ -64,8 +64,8 @@ describe('payout ceiling with top-ups (Postgres)', () => {
 
   const payout = async (supplierId: string, amount: string): Promise<void> => {
     await ds.query(
-      `INSERT INTO payouts (code, shift_id, supplier_id, amount, paid_by_user_id)
-       VALUES ($1, $2, $3, $4, $5)`,
+      `INSERT INTO payouts (code, shift_id, supplier_id, amount, paid_by_user_id, balance_after)
+       VALUES ($1, $2, $3, $4, $5, '0.00')`,
       [`B-PO-${randomUUID().slice(0, 8)}`, shiftId, supplierId, amount, ownerId],
     );
   };

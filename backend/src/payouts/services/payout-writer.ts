@@ -8,7 +8,7 @@ import { PointCashService } from '../../point-cash/point-cash.service';
 import { AuditService } from '../../audit/audit.service';
 import { AllocationsService } from '../../supplier-balance/services/allocations';
 import { nextDocumentCode } from '../../common/document-code';
-import { gt } from '../../common/money';
+import { gt, sub } from '../../common/money';
 import { translateUniqueViolation } from '../../common/unique-violation';
 import type { AuthenticatedUser } from '../../auth/jwt.strategy';
 
@@ -83,6 +83,9 @@ export class PayoutWriter {
       });
     }
 
+    // The ceiling above makes this >= 0 at write time; a later void never rewrites it.
+    const balanceAfter = sub(debt, amount);
+
     try {
       const payout = await m.save(
         Payout,
@@ -91,6 +94,7 @@ export class PayoutWriter {
           shift_id: shift.id,
           supplier_id: supplierId,
           amount,
+          balance_after: balanceAfter,
           paid_by_user_id: actor.sub,
           intake_id: intakeId,
         }),
@@ -101,7 +105,13 @@ export class PayoutWriter {
           actor_id: actor.sub,
           target_type: 'payout',
           target_id: payout.id,
-          after: { code, amount, supplier_id: supplierId, intake_id: intakeId },
+          after: {
+            code,
+            amount,
+            balance_after: balanceAfter,
+            supplier_id: supplierId,
+            intake_id: intakeId,
+          },
         },
         m,
       );

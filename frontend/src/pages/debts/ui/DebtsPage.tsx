@@ -18,6 +18,7 @@ import { useWorkingPoint } from '@/features/point-scope';
 import { usePointOptionsQuery } from '@/entities/collection-point';
 import { useSupplierBalancesQuery, supplierName, type SupplierBalanceRow } from '@/entities/supplier';
 import { PayoutDialog } from '@/features/settle-payout';
+import { PayoutReceiptDialog, useReceiptOpener } from '@/widgets/receipt';
 
 /**
  * «Залишки за нами» (spec §5.3) — every supplier who currently has an open
@@ -50,6 +51,9 @@ export function DebtsPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   // Bumped on every open so PayoutDialog remounts with fresh RHF defaults.
   const [dialogInstance, setDialogInstance] = useState(0);
+
+  // The slip of the payout just recorded — opened from `onPaid`, never an effect.
+  const payoutReceipt = useReceiptOpener();
 
   const openPayout = (row: SupplierBalanceRow) => {
     setEditing(row);
@@ -236,8 +240,16 @@ export function DebtsPage() {
           debt={editing.debt}
           open={dialogOpen}
           onClose={() => setDialogOpen(false)}
+          onPaid={(payout) => payoutReceipt.openReceipt(payout.id)}
         />
       ) : null}
+
+      <PayoutReceiptDialog
+        key={`payout-${payoutReceipt.receiptId}`}
+        payoutId={payoutReceipt.receiptId}
+        open={payoutReceipt.open}
+        onClose={payoutReceipt.close}
+      />
     </>
   );
 }

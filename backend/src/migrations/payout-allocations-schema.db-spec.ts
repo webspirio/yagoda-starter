@@ -60,8 +60,8 @@ describe('PayoutAllocations migration', () => {
     at: string,
   ) => {
     const [row] = await ds.query(
-      `INSERT INTO payouts (code, shift_id, supplier_id, amount, paid_by_user_id, intake_id, created_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
+      `INSERT INTO payouts (code, shift_id, supplier_id, amount, paid_by_user_id, intake_id, created_at, balance_after)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, '0.00') RETURNING id`,
       [`PO-${run}-${++seq}`, shiftId, s, amount, userId, intakeId, at],
     );
     return row.id as string;

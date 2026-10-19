@@ -29,8 +29,20 @@ describe('intake mapper', () => {
       [{ id: 'p', code: 'PO', amount: '1.00', voided_at: null, created_at: at }] as never,
       null,
       null,
+      3,
     );
     expect(res.payouts[0].created_at).toBe('2026-09-08T11:32:00.000Z');
+  });
+
+  it('carries the receiver number beside the joined name, and the point number', () => {
+    const detail = (receiver: { first_name: string; last_name: string; number: number } | null) =>
+      toIntakeDetailResponse(intake() as never, shift() as never, [], extras, [], receiver, null, 3);
+    const res = detail({ first_name: 'Тарас', last_name: 'Бондар', number: 5 });
+    expect(res.received_by_number).toBe(5);
+    expect(res.received_by_name).toBe('Тарас Бондар');
+    expect(res.point_number).toBe(3);
+    expect(detail(null).received_by_number).toBeNull();
+    expect(detail(null).received_by_name).toBeNull();
   });
 
   it('carries the product and grade names so a list row can be read without a catalog lookup', () => {

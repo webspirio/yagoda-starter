@@ -23,16 +23,22 @@ export function DataTable<Row>({
   rows,
   rowKey,
   onRowClick,
+  rowClickable,
   empty,
   frame = true,
   className,
   renderExpanded,
-  rowClickable,
 }: {
   columns: Column<Row>[];
   rows: Row[];
   rowKey?: (row: Row, index: number) => React.Key;
   onRowClick?: (row: Row, index: number) => void;
+  /** Narrows `onRowClick` (and its pointer cursor) to the rows this accepts —
+   *  e.g. only the expandable ones. Omitted: every row is clickable.
+   *  A clickable row has no keyboard affordance of its own (no tab stop, no
+   *  Enter/Space), so the caller must also render a keyboard-reachable
+   *  control in the row — a button — that does the same thing. */
+  rowClickable?: (row: Row, index: number) => boolean;
   empty?: React.ReactNode;
   /** Wrap in the card shell (default). Pass `false` when the table already
    *  lives inside a card, so it does not draw a card within a card. */
@@ -42,12 +48,6 @@ export function DataTable<Row>({
    *  Return `null` for a row that is not expanded (or not expandable) — the
    *  table owns no open/closed state, the caller decides per row. */
   renderExpanded?: (row: Row, index: number) => React.ReactNode | null;
-  /** Narrows `onRowClick` (and its pointer cursor) to the rows this accepts —
-   *  e.g. only the expandable ones. Omitted: every row is clickable.
-   *  A clickable row has no keyboard affordance of its own (no tab stop, no
-   *  Enter/Space), so the caller must also render a keyboard-reachable
-   *  control in the row — a button — that does the same thing. */
-  rowClickable?: (row: Row, index: number) => boolean;
 }) {
   const colClass = (c: Column<Row>) =>
     cn(c.align && ALIGN[c.align], c.hideBelow && HIDE[c.hideBelow], c.className);
