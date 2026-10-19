@@ -1,25 +1,8 @@
-import { BadRequestException, ConflictException } from '@nestjs/common';
+import { ConflictException } from '@nestjs/common';
 import type { Repository } from 'typeorm';
 import type { Supplier } from './supplier.entity';
-import { assertOwnsPoint } from '../auth/access/point-scope';
 import { UserRole } from '../users/user-role.enum';
 import type { AuthenticatedUser } from '../auth/jwt.strategy';
-
-/** An operator's point is derived from their token — a body value naming a
- *  different point is refused. An owner has no point of their own and must
- *  name one, which is then validated with `assertOwnsPoint` (a no-op for an
- *  owner, since they own every point). */
-export function resolveWritePoint(actor: AuthenticatedUser, requested?: string): string {
-  if (actor.collection_point_id && !requested) return actor.collection_point_id;
-  if (!requested) {
-    throw new BadRequestException({
-      message: 'collection_point_id is required',
-      code: 'COLLECTION_POINT_REQUIRED',
-    });
-  }
-  assertOwnsPoint(actor, requested);
-  return requested;
-}
 
 export function visibleTo(actor: AuthenticatedUser, supplier: Supplier): boolean {
   if (actor.role === UserRole.NetworkOwner) return true;
