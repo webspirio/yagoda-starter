@@ -21,8 +21,9 @@ export interface ReturnCratesInput {
  * implementation of the rule that decides real money.
  *
  * A POST that writes nothing, so it is modelled as a query: `enabled` only
- * once both inputs are real, keyed by them, and `gcTime: 0` because a stale
- * preview is a wrong number about money.
+ * once both inputs are real, keyed by them, and never cached (`queryKeys.crates`
+ * is off `shared/api/cachePolicy.ts`'s allowlist) because a stale preview is a
+ * wrong number about money.
  */
 export function useReturnPreviewQuery(input: {
   supplierId: string | null;
@@ -32,8 +33,6 @@ export function useReturnPreviewQuery(input: {
   return useQuery({
     queryKey: [...queryKeys.crates, 'return-preview', input] as const,
     enabled: input.supplierId !== null && Number.isInteger(input.units) && input.units > 0,
-    gcTime: 0,
-    staleTime: 0,
     retry: false,
     queryFn: async (): Promise<CrateReturnPreview> => {
       const { data } = await httpClient.post<CrateReturnPreview>('/crate-returns/preview', {

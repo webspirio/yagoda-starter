@@ -2,7 +2,6 @@ import { useQuery } from '@tanstack/react-query';
 import { httpClient } from '@/shared/api';
 import type { Paginated } from '@/shared/api';
 import { queryKeys } from '@/shared/api/queryKeys';
-import { STALE } from '@/shared/api/queryClient';
 
 /**
  * The `GET /users` row shape this hook needs. Mirrors `AdminUser`
@@ -62,6 +61,5 @@ export function useStaffQuery(enabled: boolean) {
         ]),
       );
     },
-    staleTime: STALE.reference,
   });
 }

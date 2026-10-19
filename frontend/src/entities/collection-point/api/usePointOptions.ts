@@ -1,6 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
 import { httpClient, type Paginated } from '@/shared/api';
-import { STALE } from '@/shared/api/queryClient';
 import { queryKeys } from '@/shared/api/queryKeys';
 import type { PointOption } from '../model/collection-point';
 
@@ -38,6 +37,5 @@ export function usePointOptionsQuery() {
         target_crates: p.target_crates ?? null,
       }));
     },
-    staleTime: STALE.reference,
   });
 }

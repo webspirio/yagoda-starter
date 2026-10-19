@@ -1,7 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { httpClient } from '@/shared/api';
 import { queryKeys } from '@/shared/api/queryKeys';
-import { STALE } from '@/shared/api/queryClient';
 import type { IntakeDetail } from '../model/intake';
 
 /**
@@ -11,9 +10,9 @@ import type { IntakeDetail } from '../model/intake';
  * takes an `'one'` LEAF so a single-document cache entry never collides with a
  * list read that happens to share the same id as a filter value.
  *
- * `STALE.detail` — a receipt is immutable once written (§2.7: `amount` never
- * changes after posting), but a fresh void could land seconds later, so this
- * is a single-entity detail window, not the longer `reference` one.
+ * Not cached (`shared/api/cachePolicy.ts`): a receipt is immutable once written
+ * (§2.7: `amount` never changes after posting), but a fresh void could land
+ * seconds later.
  */
 export function useIntakeQuery(id: string | null) {
   return useQuery({
@@ -23,6 +22,5 @@ export function useIntakeQuery(id: string | null) {
       const { data } = await httpClient.get<IntakeDetail>(`/intakes/${id}`);
       return data;
     },
-    staleTime: STALE.detail,
   });
 }

@@ -33,8 +33,8 @@ describe('useCreatePayoutMutation', () => {
       supplier_id: 's1',
       amount: '300.00',
     });
-    // A payout is a term of the drawer formula: «Каса точки» must not keep
-    // the pre-payout `cash` for `STALE.list` after the operator walks back.
+    // A payout is a term of the drawer formula: whatever screen still shows
+    // «Каса точки» must refetch its `cash`, not keep the pre-payout figure.
     await waitFor(() => {
       expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: queryKeys.payouts });
       expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: queryKeys.supplierBalances });

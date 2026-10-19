@@ -13,6 +13,27 @@ const STORAGE_MESSAGE =
   'modules wrap every call in try/catch and narrow what comes back — import from them ' +
   'instead of touching storage directly.';
 
+// FRESHNESS IS DECIDED IN ONE PLACE. `src/shared/api/cachePolicy.ts` builds the app's
+// QueryClient with nothing cached and grants a window only to the keys on its allowlist;
+// a hook that sets one of these options itself silently re-opens the per-hook model that
+// left /reception showing a five-minute-old drawer (spec 2026-09-24). Test files may set
+// them — they build their own clients to test hooks, not policy.
+const FRESHNESS_RESTRICTIONS = [
+  {
+    selector: 'Property[key.name=/^(staleTime|gcTime|refetchOnMount|refetchOnWindowFocus)$/]',
+    message:
+      'Query freshness is decided in src/shared/api/cachePolicy.ts only. Nothing is cached ' +
+      'unless its key is on CACHEABLE_KEYS there — add the key to that list instead of ' +
+      'setting this option here.',
+  },
+];
+
+const RAW_INPUT_RESTRICTION = {
+  selector: 'JSXOpeningElement[name.name="input"]',
+  message:
+    'Use <TextInput> (variant="ghost" for borderless rows) instead of a raw <input> — hand-rolled inputs miss the 16px iOS no-zoom floor. For an sr-only type="file" picker, disable this line with a reason.',
+};
+
 // Feature-Sliced Design layer boundaries: shared < entities < features < widgets < pages < app.
 // A layer may import from any layer below it, never from one above. Cross-imports
 // between slices of the *same* layer (e.g. features/auth -> features/other) are
@@ -147,14 +168,32 @@ export default tseslint.config(
       'src/pages/**/*.tsx',
     ],
     rules: {
-      'no-restricted-syntax': [
-        'error',
-        {
-          selector: 'JSXOpeningElement[name.name="input"]',
-          message:
-            'Use <TextInput> (variant="ghost" for borderless rows) instead of a raw <input> — hand-rolled inputs miss the 16px iOS no-zoom floor. For an sr-only type="file" picker, disable this line with a reason.',
-        },
-      ],
+      'no-restricted-syntax': ['error', RAW_INPUT_RESTRICTION],
+    },
+  },
+  {
+    // The same four layers' NON-TEST .tsx files carry both restrictions. Flat config
+    // REPLACES a rule's options when a later block overlaps an earlier one (see the
+    // storage block below), so this block repeats RAW_INPUT_RESTRICTION rather than
+    // relying on the block above; test .tsx files fall outside it and keep only that one.
+    files: [
+      'src/entities/**/*.tsx',
+      'src/features/**/*.tsx',
+      'src/widgets/**/*.tsx',
+      'src/pages/**/*.tsx',
+    ],
+    ignores: ['src/**/*.test.tsx'],
+    rules: {
+      'no-restricted-syntax': ['error', RAW_INPUT_RESTRICTION, ...FRESHNESS_RESTRICTIONS],
+    },
+  },
+  {
+    // Everywhere else the raw-<input> rule never reached: every .ts file, and app/ and
+    // shared/ components. cachePolicy.ts is the one file allowed to set freshness.
+    files: ['src/**/*.ts', 'src/app/**/*.tsx', 'src/shared/**/*.tsx'],
+    ignores: ['src/shared/api/cachePolicy.ts', 'src/**/*.test.ts', 'src/**/*.test.tsx'],
+    rules: {
+      'no-restricted-syntax': ['error', ...FRESHNESS_RESTRICTIONS],
     },
   },
   {
