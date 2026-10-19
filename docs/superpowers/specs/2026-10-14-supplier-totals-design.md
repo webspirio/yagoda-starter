@@ -8,6 +8,17 @@ was settled with the owner in a grilling session on 2026-10-14.
 **Position in the schema:** none. A new read endpoint, a module refactor, a shared-table
 option. No table, column, index or migration changes.
 
+**Amended 2026-10-19 (PR #253 review).** Three decisions below were reversed after review:
+- **Unpaged.** `/supplier-totals` returns every active supplier in scope as one array. There is
+  no `page`/`limit`, no «Показати ще», no «Показано N з M» and no client dedup. The sort keys
+  are live sums, so an offset page drifted between clicks and could skip a supplier entirely.
+  Ranking evaluates every aggregate for every supplier in scope anyway. §3.2's infinite query
+  and §3.3's footer are superseded.
+- **«Ім'я» shows «Прізвище Ім'я»**, matching the last-then-first sort.
+- **Names sort by `COLLATE "uk-UA-x-icu"`**, on this list and on `/suppliers`, through one
+  `suppliers/supplier-order.ts`. The cluster's default `c` provider orders by code point, which
+  puts Є and І before А and Ґ after Я.
+
 ---
 
 ## 1. Goal

@@ -35,7 +35,7 @@ const { queryMock, createMock, updateMock, meMock } = vi.hoisted(() => ({
 
 vi.mock('@/entities/supplier', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/entities/supplier')>()),
-  useSupplierTotalsInfiniteQuery: (args: unknown) => queryMock(args),
+  useSupplierTotalsQuery: (args: unknown) => queryMock(args),
 }));
 
 vi.mock('@/features/edit-supplier/api/suppliers', () => ({
@@ -109,16 +109,14 @@ const petro: SupplierTotalsRow = {
   main_product_name: null,
 };
 
-const infinite = (pages: { rows: SupplierTotalsRow[]; total: number }[], over: Record<string, unknown> = {}) => ({
-  data: { pages: pages.map((p, i) => ({ data: p.rows, total: p.total, page: i + 1, limit: 100 })), pageParams: [] },
+const loaded = (rows: SupplierTotalsRow[], over: Record<string, unknown> = {}) => ({
+  data: rows,
   isPending: false,
   isError: false,
-  hasNextPage: false,
-  isFetchingNextPage: false,
-  fetchNextPage: vi.fn(),
+  isFetching: false,
+  refetch: vi.fn(),
   ...over,
 });
-const loaded = (rows: SupplierTotalsRow[]) => infinite([{ rows, total: rows.length }]);
 
 beforeEach(() => {
   queryMock.mockReset();
@@ -131,19 +129,19 @@ describe('SuppliersPage', () => {
   it('shows a spinner while loading', () => {
     queryMock.mockReturnValue({ data: undefined, isPending: true, isError: false });
     renderSuppliers();
-    expect(screen.queryByText('Ivan Koval')).toBeNull();
+    expect(screen.queryByText('Koval Ivan')).toBeNull();
   });
 
   it('renders weight, main product, kind and accrued — and no phone, point or status', async () => {
     queryMock.mockReturnValue(loaded([ivan, petro]));
     const { container } = renderSuppliers();
     expect(screen.getByRole('heading', { level: 1, name: 'Suppliers' })).toBeInTheDocument();
-    const ivanRow = screen.getByText('Ivan Koval').closest('tr') as HTMLElement;
+    const ivanRow = screen.getByText('Koval Ivan').closest('tr') as HTMLElement;
     expect(within(ivanRow).getByText('3,603.99 kg')).toBeInTheDocument();
     expect(within(ivanRow).getByText('Raspberry')).toBeInTheDocument();
     expect(within(ivanRow).getByText('Farmer')).toBeInTheDocument();
     expect(within(ivanRow).getByText('466,180.00 ₴')).toBeInTheDocument();
-    const petroRow = screen.getByText('Petro Melnyk').closest('tr') as HTMLElement;
+    const petroRow = screen.getByText('Melnyk Petro').closest('tr') as HTMLElement;
     expect(within(petroRow).getByText('—')).toBeInTheDocument();
     expect(screen.queryByText('+380671234567')).toBeNull();
     expect(screen.queryByRole('columnheader', { name: /phone|point|status/i })).toBeNull();
@@ -167,29 +165,17 @@ describe('SuppliersPage', () => {
   });
 
   it('keeps the table, the clicked header and the rows mounted while a new sort loads', async () => {
-    // keepPreviousData: the old rows stay as data while the new sort is in flight.
+    // keepPreviousData: the old rows stay as placeholder data — status 'success',
+    // so isPending is false — while the new sort is in flight.
     queryMock.mockImplementation((args: { sort: string }) =>
-      args.sort === 'amount' ? { ...loaded([ivan]), isPending: true, isFetching: true } : loaded([ivan]),
+      args.sort === 'amount' ? loaded([ivan], { isFetching: true, isPlaceholderData: true }) : loaded([ivan]),
     );
     renderSuppliers();
     const header = screen.getByRole('button', { name: 'Accrued' });
     await userEvent.click(header);
     expect(screen.getByRole('button', { name: 'Accrued' })).toBe(header);
     expect(header).toBeInTheDocument();
-    expect(screen.getByText('Ivan Koval')).toBeInTheDocument();
-  });
-
-  it('renders a supplier once when a shifted offset page repeats it', () => {
-    queryMock.mockReturnValue(
-      infinite([
-        { rows: [ivan], total: 2 },
-        { rows: [ivan, petro], total: 2 },
-      ]),
-    );
-    renderSuppliers();
-    expect(screen.getAllByText('Ivan Koval')).toHaveLength(1);
-    expect(screen.getByText('Petro Melnyk')).toBeInTheDocument();
-    expect(screen.getByText('Showing 2 of 2')).toBeInTheDocument();
+    expect(screen.getByText('Koval Ivan')).toBeInTheDocument();
   });
 
   it('restores the sort from the URL, e.g. after Back from a card', () => {
@@ -198,27 +184,29 @@ describe('SuppliersPage', () => {
     expect(queryMock).toHaveBeenLastCalledWith({ search: '', sort: 'name', order: 'desc' });
   });
 
-  it('shows N of M and loads the next page on Show more', async () => {
-    const fetchNextPage = vi.fn();
-    queryMock.mockReturnValue(infinite([{ rows: [ivan], total: 193 }], { hasNextPage: true, fetchNextPage }));
+  it('shows the name last name first, so the A→Z order reads at a glance', () => {
+    queryMock.mockReturnValue(loaded([ivan]));
     renderSuppliers();
-    expect(screen.getByText('Showing 1 of 193')).toBeInTheDocument();
-    await userEvent.click(screen.getByRole('button', { name: 'Show more' }));
-    expect(fetchNextPage).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole('link', { name: 'Koval Ivan' })).toHaveAttribute('href', '/suppliers/s1');
   });
 
-  it('flattens loaded pages and hides Show more once everything is in', () => {
-    queryMock.mockReturnValue(
-      infinite([
-        { rows: [ivan], total: 2 },
-        { rows: [petro], total: 2 },
-      ]),
-    );
+  it('keeps the loaded rows when a refetch fails, with the alert and a retry under them', async () => {
+    const refetch = vi.fn();
+    queryMock.mockReturnValue(loaded([ivan, petro], { isError: true, refetch }));
     renderSuppliers();
-    expect(screen.getByText('Ivan Koval')).toBeInTheDocument();
-    expect(screen.getByText('Petro Melnyk')).toBeInTheDocument();
-    expect(screen.getByText('Showing 2 of 2')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Show more' })).toBeNull();
+    expect(screen.getByText('Koval Ivan')).toBeInTheDocument();
+    expect(screen.getByText('Melnyk Petro')).toBeInTheDocument();
+    expect(screen.getByRole('alert')).toHaveTextContent('Something went wrong');
+    await userEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    expect(refetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('replaces the table with the alert when the first load fails', () => {
+    queryMock.mockReturnValue({ ...loaded([]), data: undefined, isError: true });
+    renderSuppliers();
+    expect(screen.getByRole('alert')).toHaveTextContent('Something went wrong');
+    expect(screen.queryByRole('table')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
   });
 
   it('shows the point select in the New dialog for a network owner', async () => {
@@ -269,8 +257,8 @@ describe('SuppliersPage', () => {
     queryMock.mockReturnValue(loaded([ivan, petro]));
     const { router } = renderSuppliers();
 
-    const row = screen.getByText('Ivan Koval').closest('tr') as HTMLElement;
-    const link = within(row).getByRole('link', { name: 'Ivan Koval' });
+    const row = screen.getByText('Koval Ivan').closest('tr') as HTMLElement;
+    const link = within(row).getByRole('link', { name: 'Koval Ivan' });
     expect(link).toHaveAttribute('href', '/suppliers/s1');
 
     await userEvent.click(link);
@@ -287,7 +275,7 @@ describe('SuppliersPage', () => {
     queryMock.mockReturnValue(loaded([ivan, petro]));
     renderSuppliers();
 
-    const row = screen.getByText('Petro Melnyk').closest('tr') as HTMLElement;
+    const row = screen.getByText('Melnyk Petro').closest('tr') as HTMLElement;
     await userEvent.click(within(row).getByText('Regular'));
 
     expect(await screen.findByText('Card stub s2')).toBeInTheDocument();
@@ -298,7 +286,7 @@ describe('SuppliersPage', () => {
     queryMock.mockReturnValue(loaded([ivan, petro]));
     renderSuppliers();
 
-    for (const name of ['Ivan Koval', 'Petro Melnyk']) {
+    for (const name of ['Koval Ivan', 'Melnyk Petro']) {
       const row = screen.getByText(name).closest('tr') as HTMLElement;
       expect(within(row).getByRole('button', { name: `Edit ${name}` })).toHaveTextContent('Edit');
     }
@@ -308,7 +296,7 @@ describe('SuppliersPage', () => {
     queryMock.mockReturnValue(loaded([ivan, petro]));
     renderSuppliers();
 
-    await userEvent.click(screen.getByRole('button', { name: 'Edit Petro Melnyk' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Edit Melnyk Petro' }));
 
     expect(screen.getByLabelText('First name')).toHaveValue('Petro');
     expect(screen.getByLabelText('Last name')).toHaveValue('Melnyk');
@@ -323,19 +311,19 @@ describe('SuppliersPage', () => {
     queryMock.mockReturnValue(loaded([ivan]));
     renderSuppliers();
 
-    await userEvent.click(screen.getByRole('button', { name: 'Edit Ivan Koval' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Edit Koval Ivan' }));
     await userEvent.click(screen.getByRole('button', { name: 'Cancel' }));
 
     await waitFor(() => expect(screen.queryByLabelText('First name')).toBeNull());
     expect(screen.queryByText(/Card stub/)).toBeNull();
-    expect(screen.getByText('Ivan Koval')).toBeInTheDocument();
+    expect(screen.getByText('Koval Ivan')).toBeInTheDocument();
   });
 
   it('saving the edit leaves the user on the list', async () => {
     queryMock.mockReturnValue(loaded([ivan]));
     renderSuppliers();
 
-    await userEvent.click(screen.getByRole('button', { name: 'Edit Ivan Koval' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Edit Koval Ivan' }));
     await userEvent.click(screen.getByRole('button', { name: 'Save' }));
 
     await waitFor(() => expect(updateMock).toHaveBeenCalledTimes(1));

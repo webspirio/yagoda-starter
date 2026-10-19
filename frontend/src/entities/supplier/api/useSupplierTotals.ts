@@ -1,40 +1,32 @@
-import { keepPreviousData, useInfiniteQuery } from '@tanstack/react-query';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { httpClient } from '@/shared/api';
 import { queryKeys } from '@/shared/api/queryKeys';
 import { STALE } from '@/shared/api/queryClient';
-import type { Paginated, SupplierTotalsRow, SupplierTotalsSort } from '../model/supplier';
-
-const PAGE_SIZE = 100;
-
-/** The next page number while the server still has rows beyond the last page fetched. */
-export function nextTotalsPage(last: Paginated<unknown>): number | undefined {
-  return last.page * last.limit < last.total ? last.page + 1 : undefined;
-}
+import type { SupplierTotalsRow, SupplierTotalsSort } from '../model/supplier';
 
 /**
- * The suppliers page (#230): `GET /supplier-totals`, 100 at a time, «показати ще».
+ * The suppliers page (#230): `GET /supplier-totals`, every active supplier in
+ * one list — unpaged, because the sort keys move with every document and an
+ * offset page would skip a supplier (PR #253 review).
  * UNDER THE `supplierBalances` PREFIX on purpose — every receipt, payout and
  * top-up write (and its void) already invalidates it, so a new receipt moves
- * the weight here with no new invalidation. Sort and search are in the key, so
- * changing either starts a fresh list at page 1.
+ * the weight here with no new invalidation.
  */
-export function useSupplierTotalsInfiniteQuery(filter: {
+export function useSupplierTotalsQuery(filter: {
   search: string;
   sort: SupplierTotalsSort;
   order: 'asc' | 'desc';
 }) {
   const q = filter.search.trim();
   const { sort, order } = filter;
-  return useInfiniteQuery({
+  return useQuery({
     queryKey: [...queryKeys.supplierBalances, 'totals', { q, sort, order }],
-    initialPageParam: 1,
-    queryFn: async ({ pageParam }): Promise<Paginated<SupplierTotalsRow>> =>
+    queryFn: async (): Promise<SupplierTotalsRow[]> =>
       (
-        await httpClient.get<Paginated<SupplierTotalsRow>>('/supplier-totals', {
-          params: { ...(q ? { q } : {}), sort, order, page: pageParam, limit: PAGE_SIZE },
+        await httpClient.get<SupplierTotalsRow[]>('/supplier-totals', {
+          params: { ...(q ? { q } : {}), sort, order },
         })
       ).data,
-    getNextPageParam: nextTotalsPage,
     staleTime: STALE.list,
     // A new sort keeps the old rows on screen (and the header focused) until it lands.
     placeholderData: keepPreviousData,

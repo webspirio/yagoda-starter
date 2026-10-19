@@ -193,8 +193,6 @@
       "kind": "Kind",
       "action": "Action"
     },
-    "shownOf": "Showing {{shown}} of {{total}}",
-    "showMore": "Show more",
     "edit": "Edit",
     "editOf": "Edit {{name}}",
     "kindLabel": {

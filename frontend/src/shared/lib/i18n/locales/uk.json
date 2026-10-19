@@ -193,8 +193,6 @@
       "kind": "Тип",
       "action": "Дія"
     },
-    "shownOf": "Показано {{shown}} з {{total}}",
-    "showMore": "Показати ще",
     "edit": "Редагувати",
     "editOf": "Редагувати: {{name}}",
     "kindLabel": {

@@ -1553,6 +1553,16 @@ the review bot found.
   the same column: `CollectionPointResponse` already carries `number`, but the page's
   hand-mirrored type does not.
 
+## Deferred from the suppliers totals, PR #253 review (2026-10-19)
+
+- **The search box is not in the URL.** `sort`/`order` are, so Back from a card restores the
+  ranking but drops a typed «Ковал». Pre-existing on the suppliers page; `useUrlParam('q')`
+  plus the existing debounce is the whole fix.
+- **`SortState.key` is a bare `string`.** A mistyped column id is a header that never
+  activates, and `nextSort` silently keeps the current key. Threading a
+  `SortState<K extends string>` from the column ids would make that a type error. `DataTable`
+  is domain-free on purpose, so this stays a note until a second sortable table exists.
+
 ## Left over from whole-hryvnia line amounts (#56, 2026-10-13)
 
 The slice rounds only a reception line's `amount` (§2.12). The ticket says

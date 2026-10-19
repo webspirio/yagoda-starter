@@ -4,6 +4,8 @@ import { SupplierKind } from '../../suppliers/supplier-kind.enum';
 
 const POINT_A = '11111111-1111-1111-1111-111111111111';
 const POINT_B = '22222222-2222-2222-2222-222222222222';
+const LAST = 's.last_name COLLATE "uk-UA-x-icu"';
+const FIRST = 's.first_name COLLATE "uk-UA-x-icu"';
 const owner = { sub: 'u-owner', username: 'owner', role: UserRole.NetworkOwner, collection_point_id: null };
 const operator = { sub: 'u-op', username: 'op', role: UserRole.PointOperator, collection_point_id: POINT_A };
 
@@ -25,10 +27,9 @@ describe('ListSupplierTotalsQuery', () => {
 
   beforeEach(() => {
     qb = {};
-    for (const m of ['where', 'andWhere', 'addSelect', 'orderBy', 'addOrderBy', 'offset', 'limit']) {
+    for (const m of ['where', 'andWhere', 'addSelect', 'orderBy', 'addOrderBy']) {
       qb[m] = jest.fn().mockReturnValue(qb);
     }
-    qb.getCount = jest.fn().mockResolvedValue(1);
     qb.getRawAndEntities = jest.fn().mockResolvedValue({
       entities: [supplier],
       raw: [{ kg_total: '950.00', accrued: '9650.00', main_product_name: 'Малина' }],
@@ -37,7 +38,7 @@ describe('ListSupplierTotalsQuery', () => {
   });
 
   const list = (actor: typeof owner | typeof operator, over: Record<string, unknown> = {}) =>
-    query.list(actor, { page: 1, limit: 100, sort: 'weight', ...over } as never);
+    query.list(actor, { sort: 'weight', ...over } as never);
 
   it('lists active suppliers only', async () => {
     await list(owner);
@@ -49,23 +50,20 @@ describe('ListSupplierTotalsQuery', () => {
     expect(qb.andWhere).toHaveBeenCalledWith('s.collection_point_id = :pointId', { pointId: POINT_A });
   });
 
-  it('applies the shared search, and counts AFTER it so total matches the filtered list', async () => {
+  it('applies the shared search', async () => {
     await list(operator, { q: 'Ковал' });
     expect(qb.andWhere).toHaveBeenCalledWith(
       "(s.first_name ILIKE :q ESCAPE '\\' OR s.last_name ILIKE :q ESCAPE '\\')",
       { q: '%Ковал%' },
     );
-    const searched = Math.max(...qb.andWhere.mock.invocationCallOrder);
-    expect(qb.getCount.mock.invocationCallOrder[0]).toBeGreaterThan(searched);
-    expect(qb.getCount.mock.invocationCallOrder[0]).toBeLessThan(qb.addSelect.mock.invocationCallOrder[0]);
   });
 
   it('defaults to heaviest first, with the name-then-id tail', async () => {
     await list(owner);
     expect(qb.orderBy).toHaveBeenCalledWith('kg_total', 'DESC');
     expect(qb.addOrderBy.mock.calls).toEqual([
-      ['s.last_name', 'ASC'],
-      ['s.first_name', 'ASC'],
+      [LAST, 'ASC'],
+      [FIRST, 'ASC'],
       ['s.id', 'ASC'],
     ]);
   });
@@ -77,34 +75,25 @@ describe('ListSupplierTotalsQuery', () => {
 
   it('sorts by name A→Z by default and Z→A on request, id last either way', async () => {
     await list(owner, { sort: 'name' });
-    expect(qb.orderBy).toHaveBeenCalledWith('s.last_name', 'ASC');
-    expect(qb.addOrderBy.mock.calls).toEqual([['s.first_name', 'ASC'], ['s.id', 'ASC']]);
+    expect(qb.orderBy).not.toHaveBeenCalled();
+    expect(qb.addOrderBy.mock.calls).toEqual([[LAST, 'ASC'], [FIRST, 'ASC'], ['s.id', 'ASC']]);
 
-    qb.orderBy.mockClear();
     qb.addOrderBy.mockClear();
     await list(owner, { sort: 'name', order: 'desc' });
-    expect(qb.orderBy).toHaveBeenCalledWith('s.last_name', 'DESC');
-    expect(qb.addOrderBy.mock.calls).toEqual([['s.first_name', 'DESC'], ['s.id', 'ASC']]);
+    expect(qb.addOrderBy.mock.calls).toEqual([[LAST, 'DESC'], [FIRST, 'DESC'], ['s.id', 'ASC']]);
   });
 
-  it('pages with offset/limit and returns the supplier plus its three totals', async () => {
-    const page = await list(owner, { page: 3, limit: 100 });
-    expect(qb.offset).toHaveBeenCalledWith(200);
-    expect(qb.limit).toHaveBeenCalledWith(100);
-    expect(page).toEqual({
-      data: [
-        expect.objectContaining({
-          id: 's-1',
-          kind: SupplierKind.Wholesale,
-          created_at: '2026-07-15T06:00:00.000Z',
-          kg_total: '950.00',
-          accrued: '9650.00',
-          main_product_name: 'Малина',
-        }),
-      ],
-      total: 1,
-      page: 3,
-      limit: 100,
-    });
+  it('returns every row unpaged, the supplier plus its three totals', async () => {
+    const rows = await list(owner);
+    expect(rows).toEqual([
+      expect.objectContaining({
+        id: 's-1',
+        kind: SupplierKind.Wholesale,
+        created_at: '2026-07-15T06:00:00.000Z',
+        kg_total: '950.00',
+        accrued: '9650.00',
+        main_product_name: 'Малина',
+      }),
+    ]);
   });
 });

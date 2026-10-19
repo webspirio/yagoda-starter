@@ -10,10 +10,13 @@ import { Spinner } from '@/shared/ui/spinner';
 import { useDebouncedValue } from '@/shared/lib/useDebouncedValue';
 import { useUrlPatch, useUrlParam } from '@/shared/lib/url-state';
 import { formatKg, formatUah } from '@/shared/lib/money';
-import { supplierName, useSupplierTotalsInfiniteQuery } from '@/entities/supplier';
+import { useSupplierTotalsQuery } from '@/entities/supplier';
 import type { Supplier, SupplierTotalsRow } from '@/entities/supplier';
 import { SupplierFormDialog } from '@/features/edit-supplier';
 import { nextSort, readSort, toUrl } from '../model/supplierSort';
+
+/** Last name first: the «Ім'я» column sorts by it, so the order reads at a glance. */
+const listName = (s: { first_name: string; last_name: string }) => `${s.last_name} ${s.first_name}`;
 
 export function SuppliersPage() {
   const { t, i18n } = useTranslation();
@@ -26,8 +29,11 @@ export function SuppliersPage() {
   const [orderParam] = useUrlParam('order');
   const patchUrl = useUrlPatch();
   const sort = readSort(sortParam, orderParam);
-  const { data, isPending, isError, hasNextPage, isFetchingNextPage, fetchNextPage } =
-    useSupplierTotalsInfiniteQuery({ search: debouncedSearch, sort: sort.key, order: sort.order });
+  const { data, isPending, isError, isFetching, refetch } = useSupplierTotalsQuery({
+    search: debouncedSearch,
+    sort: sort.key,
+    order: sort.order,
+  });
 
   const [editing, setEditing] = useState<Supplier | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -45,14 +51,9 @@ export function SuppliersPage() {
     setDialogOpen(true);
   };
 
-  // Offset pages shift when a supplier is added between fetches, so one can repeat; keep the first.
-  const seen = new Set<string>();
-  const rows = (data?.pages.flatMap((p) => p.data) ?? []).filter((s) =>
-    seen.has(s.id) ? false : (seen.add(s.id), true),
-  );
-  // Spinner only when there is nothing to show: a refetch (new sort) keeps the table mounted.
-  const showSpinner = isPending && !data;
-  const total = data?.pages[0]?.total ?? 0;
+  const rows = data ?? [];
+  // A failed refetch keeps the rows it already has; only an empty table gives way to the alert.
+  const failedEmpty = isError && rows.length === 0;
   const locale = i18n.language;
 
   const columns: Column<SupplierTotalsRow>[] = [
@@ -70,7 +71,7 @@ export function SuppliersPage() {
           onClick={(e) => e.stopPropagation()}
           className="font-medium text-primary underline-offset-2 hover:underline"
         >
-          {supplierName(s)}
+          {listName(s)}
         </Link>
       ),
     },
@@ -116,7 +117,7 @@ export function SuppliersPage() {
             e.stopPropagation();
             openEdit(s);
           }}
-          aria-label={t('suppliers.editOf', { name: supplierName(s) })}
+          aria-label={t('suppliers.editOf', { name: listName(s) })}
         >
           {t('suppliers.edit')}
         </Button>
@@ -125,15 +126,15 @@ export function SuppliersPage() {
   ];
 
   const footer =
-    rows.length > 0 ? (
-      <div className="flex items-center justify-between gap-3 text-sm text-muted-foreground">
-        <span>{t('suppliers.shownOf', { shown: rows.length, total })}</span>
-        {hasNextPage ? (
-          <Button variant="outline" onClick={() => fetchNextPage()} disabled={isFetchingNextPage}>
-            {isFetchingNextPage ? <Spinner /> : null}
-            {t('suppliers.showMore')}
-          </Button>
-        ) : null}
+    isError && rows.length > 0 ? (
+      <div className="flex items-center justify-between gap-3 text-sm">
+        <p role="alert" className="text-destructive">
+          {t('common.somethingWentWrong')}
+        </p>
+        <Button variant="outline" onClick={() => refetch()} disabled={isFetching}>
+          {isFetching ? <Spinner /> : null}
+          {t('common.retry')}
+        </Button>
       </div>
     ) : null;
 
@@ -161,14 +162,14 @@ export function SuppliersPage() {
         sort={sort}
         onSortChange={(key) => patchUrl(toUrl(nextSort(sort, key)))}
         footer={footer}
-        isEmpty={!showSpinner && !isError && rows.length === 0}
+        isEmpty={!isPending && !isError && rows.length === 0}
         empty={<EmptyState title={t('suppliers.empty.title')} hint={t('suppliers.empty.hint')} />}
       >
-        {showSpinner ? (
+        {isPending ? (
           <div className="flex justify-center py-12">
             <Spinner />
           </div>
-        ) : isError ? (
+        ) : failedEmpty ? (
           <p role="alert" className="py-6 text-center text-destructive">
             {t('common.somethingWentWrong')}
           </p>

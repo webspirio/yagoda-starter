@@ -5,6 +5,8 @@ import { ListSupplierTotalsQuery } from './queries/list-supplier-totals.query';
 import { SupplierBalanceBreakdownQuery } from './queries/supplier-balance-breakdown.query';
 import { ListSupplierTotalsQueryDto } from './dto/list-supplier-totals.query';
 import { Supplier } from '../suppliers/supplier.entity';
+import { ListSuppliersQuery } from '../suppliers/queries/list-suppliers.query';
+import type { ListSuppliersQueryDto } from '../suppliers/dto/list-suppliers.query';
 import { UserRole } from '../users/user-role.enum';
 import type { AuthenticatedUser } from '../auth/jwt.strategy';
 
@@ -23,6 +25,8 @@ import type { AuthenticatedUser } from '../auth/jwt.strategy';
  *   Степан  INACTIVE, 10 kg                    → absent
  *   Ольга²  second «Ольга Ярема» at A, nothing → same name, told apart by id
  * Point B: Богдан 500 kg — an operator at A never sees him.
+ * Point C: Єрмак, Ільчук, Андрієнко, Яремчук, Ґудзь, Бойко — the Ukrainian
+ *   alphabet, which a code-point order gets wrong (Є, І before А; Ґ after Я).
  */
 describe('ListSupplierTotalsQuery.list (Postgres)', () => {
   let ds: DataSource;
@@ -31,6 +35,7 @@ describe('ListSupplierTotalsQuery.list (Postgres)', () => {
   let run: string;
   let pointA: string;
   let pointB: string;
+  let pointC: string;
   let userId: string;
   let shiftA: string;
   let ivanId: string;
@@ -45,7 +50,7 @@ describe('ListSupplierTotalsQuery.list (Postgres)', () => {
     collection_point_id: null,
   };
   const q = (over: Partial<ListSupplierTotalsQueryDto> = {}): ListSupplierTotalsQueryDto =>
-    ({ page: 1, limit: 100, sort: 'weight', collection_point_id: pointA, ...over }) as ListSupplierTotalsQueryDto;
+    ({ sort: 'weight', collection_point_id: pointA, ...over }) as ListSupplierTotalsQueryDto;
 
   let seq = 0;
   const insertSupplier = async (point: string, first: string, last: string, active = true) => {
@@ -108,8 +113,13 @@ describe('ListSupplierTotalsQuery.list (Postgres)', () => {
       `INSERT INTO collection_points (name, kind, code) VALUES ($1, 'reception', $2) RETURNING id`,
       [`Підсумки Б-${run}`, `B${short}`],
     );
+    const [c] = await ds.query(
+      `INSERT INTO collection_points (name, kind, code) VALUES ($1, 'reception', $2) RETURNING id`,
+      [`Підсумки В-${run}`, `C${short}`],
+    );
     pointA = a.id;
     pointB = b.id;
+    pointC = c.id;
     operatorAtA = { sub: 'u-op', username: 'op', role: UserRole.PointOperator, collection_point_id: pointA };
 
     const [user] = await ds.query(
@@ -162,14 +172,19 @@ describe('ListSupplierTotalsQuery.list (Postgres)', () => {
 
     const bohdan = await insertSupplier(pointB, 'Богдан', 'Сусід');
     await insertIntake(sb.id, bohdan, '5000.00', [[strawberry, '500.00']]);
+
+    for (const last of ['Єрмак', 'Ільчук', 'Андрієнко', 'Яремчук', 'Ґудзь', 'Бойко']) {
+      await insertSupplier(pointC, 'Тест', last);
+    }
   });
 
   afterAll(async () => {
     await ds?.destroy();
   });
 
-  const row = <T extends { id: string }>(page: { data: T[] }, id: string) => page.data.find((r) => r.id === id);
-  const names = (page: { data: { first_name: string }[] }) => page.data.map((r) => r.first_name);
+  const row = <T extends { id: string }>(rows: T[], id: string) => rows.find((r) => r.id === id);
+  const names = (rows: { first_name: string }[]) => rows.map((r) => r.first_name);
+  const lastNames = (rows: { last_name: string }[]) => rows.map((r) => r.last_name.replace(`-${run}`, ''));
 
   it('sums live weight, accrues receipts plus live top-ups on live receipts, and names the main PRODUCT', async () => {
     const page = await service.list(owner, q());
@@ -182,12 +197,12 @@ describe('ListSupplierTotalsQuery.list (Postgres)', () => {
 
   it('breaks a main-product tie by name', async () => {
     const page = await service.list(owner, q());
-    expect(page.data.find((r) => r.first_name === 'Марія')?.main_product_name).toBe(`Малина ${run}`);
+    expect(page.find((r) => r.first_name === 'Марія')?.main_product_name).toBe(`Малина ${run}`);
   });
 
   it('reads 0.00 / 0.00 / null for a supplier with no receipts', async () => {
     const page = await service.list(owner, q());
-    expect(page.data.find((r) => r.first_name === 'Петро')).toMatchObject({
+    expect(page.find((r) => r.first_name === 'Петро')).toMatchObject({
       kg_total: '0.00',
       accrued: '0.00',
       main_product_name: null,
@@ -197,7 +212,6 @@ describe('ListSupplierTotalsQuery.list (Postgres)', () => {
   it('orders weight numerically, heaviest first — 9.50 below 100.00 — and leaves inactive suppliers out', async () => {
     const page = await service.list(owner, q());
     expect(names(page)).toEqual(['Іван', 'Ольга', 'Марія', 'Андрій', 'Петро', 'Ольга']);
-    expect(page.total).toBe(6);
   });
 
   it('orders by accrued ascending on request', async () => {
@@ -205,46 +219,45 @@ describe('ListSupplierTotalsQuery.list (Postgres)', () => {
     expect(names(page).slice(0, 4)).toEqual(['Петро', 'Ольга', 'Андрій', 'Марія']);
   });
 
-  it('narrows page AND total by q while keeping the sort', async () => {
+  it('narrows by q while keeping the sort', async () => {
     const page = await service.list(owner, q({ q: 'Ярема' }));
-    expect(page.total).toBe(2);
-    expect(page.data.map((r) => r.kg_total)).toEqual(['100.00', '0.00']);
-  });
-
-  it('walks pages of 2 with no row repeated or dropped, same-named people included', async () => {
-    const all = await service.list(owner, q());
-    const walked: string[] = [];
-    for (let p = 1; p <= 3; p++) {
-      walked.push(...(await service.list(owner, q({ page: p, limit: 2 }))).data.map((r) => r.id));
-    }
-    expect(walked).toEqual(all.data.map((r) => r.id));
+    expect(page.map((r) => r.kg_total)).toEqual(['100.00', '0.00']);
   });
 
   it('orders by name — last name, first name, id — and leaves the inactive one out', async () => {
     const page = await service.list(owner, q({ sort: 'name' }));
     // Бондар, (Гнатюк inactive), Коваль, Мельник, Шевчук, Ярема, Ярема
     expect(names(page)).toEqual(['Марія', 'Іван', 'Петро', 'Андрій', 'Ольга', 'Ольга']);
-    expect(page.total).toBe(6);
   });
 
-  it('breaks a same-name tie by id, so one-row pages neither repeat nor drop', async () => {
-    const walked: string[] = [];
-    for (let p = 1; p <= 2; p++) {
-      walked.push(...(await service.list(owner, q({ sort: 'name', q: 'Ярема', page: p, limit: 1 }))).data.map((r) => r.id));
-    }
-    expect(new Set(walked).size).toBe(2);
-    expect(walked[0] < walked[1]).toBe(true);
+  it('breaks a same-name tie by id', async () => {
+    const ids = (await service.list(owner, q({ sort: 'name', q: 'Ярема' }))).map((r) => r.id);
+    expect(ids).toHaveLength(2);
+    expect(ids[0] < ids[1]).toBe(true);
   });
 
   it('keeps an operator to their own point', async () => {
     const page = await service.list(operatorAtA, q({ collection_point_id: pointB }));
     expect(names(page)).not.toContain('Богдан');
-    expect(page.total).toBe(6);
+    expect(page).toHaveLength(6);
   });
 
   it('agrees with the supplier card on kg_total', async () => {
     const page = await service.list(owner, q());
     const card = await breakdown.breakdownFor(ivanId);
     expect(row(page, ivanId)?.kg_total).toBe(card.kg_total);
+  });
+
+  it('orders names by the Ukrainian alphabet, here and on /suppliers', async () => {
+    const ukrainian = ['Андрієнко', 'Бойко', 'Ґудзь', 'Єрмак', 'Ільчук', 'Яремчук'];
+    const totals = await service.list(owner, q({ sort: 'name', collection_point_id: pointC }));
+    expect(lastNames(totals)).toEqual(ukrainian);
+
+    const directory = await new ListSuppliersQuery(ds.getRepository(Supplier)).list(owner, {
+      page: 1,
+      limit: 20,
+      collection_point_id: pointC,
+    } as ListSuppliersQueryDto);
+    expect(lastNames(directory.data)).toEqual(ukrainian);
   });
 });

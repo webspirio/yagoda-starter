@@ -5,8 +5,10 @@ import { Supplier } from '../supplier.entity';
 import { ListSuppliersQueryDto } from '../dto/list-suppliers.query';
 import { SupplierResponse, toSupplierResponse } from '../supplier.mapper';
 import { applySupplierSearch } from '../supplier-search';
+import { orderBySupplierName } from '../supplier-order';
 import { resolvePointFilter } from '../../auth/access/point-scope';
 import { Paginated } from '../../common/dto/paginated';
+import { skipOf } from '../../common/dto/pagination-query.dto';
 import type { AuthenticatedUser } from '../../auth/jwt.strategy';
 
 /** The browsable directory: the pickers, the journal filter, the day screen. Totals
@@ -23,9 +25,8 @@ export class ListSuppliersQuery {
     if (!query.include_inactive) qb.andWhere('s.is_active = true');
     applySupplierSearch(qb, query.q);
 
+    orderBySupplierName(qb, 'ASC');
     const [data, total] = await qb
-      .orderBy('s.last_name', 'ASC')
-      .addOrderBy('s.first_name', 'ASC')
       // Tiebreaker, not a third sort key anyone reads. §6.3 refuses name
       // uniqueness outright — two «Іван Коваль»s at one point are ordinary —
       // and §3.9 makes the tie STRUCTURAL for an owner reading network-wide,
@@ -34,7 +35,7 @@ export class ListSuppliersQuery {
       // `skip`/`take` can return one twice across pages or drop it entirely.
       // Same reasoning as `ProductGradesService.list`.
       .addOrderBy('s.id', 'ASC')
-      .skip((query.page - 1) * query.limit)
+      .skip(skipOf(query))
       .take(query.limit)
       .getManyAndCount();
 
