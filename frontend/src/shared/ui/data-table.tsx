@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { ArrowDown, ArrowUp } from 'lucide-react';
+import { ArrowDown, ArrowUp, ArrowUpDown } from 'lucide-react';
 import { cn } from '@/shared/lib/cn';
 import { Card } from './card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './table';
@@ -80,22 +80,22 @@ export function DataTable<Row>({
                   ? 'ascending'
                   : 'descending'
                 : 'none';
-            const Arrow = active && sort.order === 'asc' ? ArrowUp : ArrowDown;
+            const Arrow = !active ? ArrowUpDown : sort.order === 'asc' ? ArrowUp : ArrowDown;
             return (
               <TableHead key={c.id} className={colClass(c)} aria-sort={ariaSort}>
                 {sortableHere ? (
                   <button
                     type="button"
                     onClick={() => onSortChange(c.id)}
+                    // A button resets text-transform; `uppercase` keeps it level with the plain headers.
                     className={cn(
-                      'inline-flex items-center gap-1 hover:text-foreground',
+                      'inline-flex cursor-pointer items-center gap-1 uppercase',
                       c.align === 'right' && 'flex-row-reverse',
-                      active ? 'text-foreground' : undefined,
                     )}
                   >
                     {c.header}
-                    {/* Invisible, not absent, when inactive: the header keeps its width as the sort moves. */}
-                    <Arrow aria-hidden className={cn('size-3.5', !active && 'invisible')} />
+                    {/* Every sortable header shows an arrow, so the affordance is visible before the first click. */}
+                    <Arrow aria-hidden className={cn('size-3.5', !active && 'text-muted-foreground')} />
                   </button>
                 ) : (
                   c.header

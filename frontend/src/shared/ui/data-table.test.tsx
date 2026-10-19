@@ -83,6 +83,9 @@ it('makes sortable headers buttons, marks the active one, and reports the clicke
   expect(screen.getByRole('columnheader', { name: 'Примітка' })).not.toHaveAttribute('aria-sort');
   expect(screen.queryByRole('button', { name: 'Примітка' })).toBeNull();
 
+  // An inactive sortable header still shows its arrow, so it reads as clickable.
+  expect(screen.getByRole('button', { name: 'Назва' }).querySelector('svg')).not.toBeNull();
+
   await userEvent.click(screen.getByRole('button', { name: 'Назва' }));
   expect(onSortChange).toHaveBeenCalledWith('name');
 });
