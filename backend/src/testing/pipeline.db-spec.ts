@@ -145,6 +145,8 @@ describe('auth + me pipeline (HTTP)', () => {
       id: expect.any(String),
       username,
       display_name: 'Pipeline User',
+      // Assigned by the database (#250) — the receipt header's «Приймальник № N».
+      number: expect.any(Number),
       avatar_url: null,
       language_code: null,
       role: 'network_owner',
@@ -315,6 +317,8 @@ describe('auth + me pipeline (HTTP)', () => {
     expect(createRes.body).toMatchObject({
       login,
       display_name: 'Оксана Приймальник',
+      // The INSERT's RETURNING carries the database-assigned number (#250).
+      number: expect.any(Number),
       role: 'point_operator',
       collection_point_id: pointId,
       is_active: true,
