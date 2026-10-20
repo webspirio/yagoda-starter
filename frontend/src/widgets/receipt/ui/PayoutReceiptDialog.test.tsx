@@ -141,7 +141,9 @@ describe('PayoutReceiptDialog', () => {
     expect(screen.getByText('Debt payout')).toBeInTheDocument();
     expect(screen.getByText('Paid out in cash')).toBeInTheDocument();
     expect(screen.getByText('Balance after payout')).toBeInTheDocument();
-    expect(screen.getByText('Point No. 1 · Operator No. 2')).toBeInTheDocument();
+    expect(screen.getByText('Point No. 1').parentElement).toHaveTextContent(
+      'Point No. 1 · Operator No. 2',
+    );
 
     await expectNoAxeViolations(container);
   });
