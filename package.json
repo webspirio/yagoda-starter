@@ -46,7 +46,7 @@
     "i18n:locales": "node scripts/verify/checks/locales.mjs",
     "i18n:error-codes": "node scripts/verify/checks/error-codes.mjs",
     "audit:check": "node scripts/verify/checks/audit.mjs",
-    "coverage": "turbo coverage",
+    "coverage": "turbo coverage --concurrency=1",
     "bundle": "node scripts/verify/checks/bundle-size.mjs",
     "docker:build": "docker build -f backend/Dockerfile --target prod -t web-starter-backend:verify . && docker build -f nginx/Dockerfile -t web-starter-nginx:verify .",
     "test:e2e": "playwright test",
