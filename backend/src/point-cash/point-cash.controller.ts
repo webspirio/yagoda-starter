@@ -36,7 +36,9 @@ export class PointCashController {
   ) {
     assertOwnsPoint(actor, pointId);
     // Three independent reads — no query depends on another's result — so
-    // they run concurrently rather than one round trip after another.
+    // they run concurrently rather than one round trip after another. The
+    // crates DRAWER (`crate_cash`) and its drift are the list row's alone: the
+    // reception screens poll this endpoint and read neither (#178 review).
     const [{ cash, breakdown }, crateDeposits, crateDepositUnits] = await Promise.all([
       this.cash.breakdownFor(pointId, query.as_of),
       // Never bounded by `as_of` — see `crateDepositsFor`'s doc comment.

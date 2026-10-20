@@ -82,7 +82,7 @@ describe('count explanations and operator notes (Postgres)', () => {
     (await counts.list(actor, { shift_id: shiftId, page: 1, limit: 50, only_discrepancies: false } as never)).data;
 
   const closingRow = async (actor: AuthenticatedUser, shiftId: string) =>
-    (await rowsOf(actor, shiftId)).find((r) => r.kind === 'closing')!;
+    (await rowsOf(actor, shiftId)).find((r) => r.kind === 'closing' && r.book === 'berry')!;
 
   /** A closed earlier shift whose closing count was `amount` — today's opening is measured against it. */
   const earlierClose = async (p: { id: string; closer: AuthenticatedUser }, amount: string) => {
@@ -101,10 +101,10 @@ describe('count explanations and operator notes (Postgres)', () => {
   it('S6: an explained opening leaves the closing discrepancy open and writable', async () => {
     const p = await point('F');
     await earlierClose(p, '1000.00');
-    const opened = await shifts.open(p.closer, { counted_amount: '900.00' });
-    const opening = (await rowsOf(owner, opened.id)).find((r) => r.kind === 'opening')!;
+    const opened = await shifts.open(p.closer, { counted_amount: '900.00', counted_deposits: '0.00' });
+    const opening = (await rowsOf(owner, opened.id)).find((r) => r.kind === 'opening' && r.book === 'berry')!;
     await counts.setExplanation(owner, opening.id, { explanation: 'недостача з учора' });
-    await shifts.close(p.closer, opened.id, { counted_amount: '800.00', broken_crates: 0 });
+    await shifts.close(p.closer, opened.id, { counted_amount: '800.00', counted_deposits: '0.00', broken_crates: 0 });
 
     const closing = await closingRow(p.closer, opened.id);
     expect(closing.is_open).toBe(true);
@@ -118,8 +118,8 @@ describe('count explanations and operator notes (Postgres)', () => {
 
   it('S3: the closer still writes after the next shift opened', async () => {
     const p = await point('B');
-    const opened = await shifts.open(p.closer, { counted_amount: '1000.00' });
-    await shifts.close(p.closer, opened.id, { counted_amount: '800.00', broken_crates: 0 });
+    const opened = await shifts.open(p.closer, { counted_amount: '1000.00', counted_deposits: '0.00' });
+    await shifts.close(p.closer, opened.id, { counted_amount: '800.00', counted_deposits: '0.00', broken_crates: 0 });
     // Tomorrow's shift, inserted directly: `open` takes today's date from the clock.
     await ds.query(
       `INSERT INTO shifts (collection_point_id, opened_by_user_id, business_date, status)
@@ -136,8 +136,8 @@ describe('count explanations and operator notes (Postgres)', () => {
   it('S4: the opener explains the opening; another operator is NOT_COUNTER', async () => {
     const p = await point('G');
     await earlierClose(p, '1000.00');
-    const opened = await shifts.open(p.opener, { counted_amount: '900.00' });
-    const opening = (await rowsOf(p.opener, opened.id)).find((r) => r.kind === 'opening')!;
+    const opened = await shifts.open(p.opener, { counted_amount: '900.00', counted_deposits: '0.00' });
+    const opening = (await rowsOf(p.opener, opened.id)).find((r) => r.kind === 'opening' && r.book === 'berry')!;
 
     await counts.setOperatorNote(p.opener, opening.id, { operator_note: 'учора недорахували' });
     expect(await code(counts.setOperatorNote(p.other, opening.id, { operator_note: 'я' }))).toBe('NOT_COUNTER');
@@ -145,8 +145,8 @@ describe('count explanations and operator notes (Postgres)', () => {
 
   it('reopen keeps the demoted row texts; the re-close is a fresh incident; the demoted row is COUNT_NOT_EXPLAINABLE', async () => {
     const p = await point('A');
-    const opened = await shifts.open(p.closer, { counted_amount: '1000.00' });
-    await shifts.close(p.closer, opened.id, { counted_amount: '900.00', broken_crates: 0 });
+    const opened = await shifts.open(p.closer, { counted_amount: '1000.00', counted_deposits: '0.00' });
+    await shifts.close(p.closer, opened.id, { counted_amount: '900.00', counted_deposits: '0.00', broken_crates: 0 });
     const closingId = (await closingRow(p.closer, opened.id)).id;
 
     await counts.setOperatorNote(p.closer, closingId, { operator_note: 'перший раз' });
@@ -161,7 +161,7 @@ describe('count explanations and operator notes (Postgres)', () => {
       'COUNT_NOT_EXPLAINABLE',
     );
 
-    await shifts.close(p.closer, opened.id, { counted_amount: '950.00', broken_crates: 0 });
+    await shifts.close(p.closer, opened.id, { counted_amount: '950.00', counted_deposits: '0.00', broken_crates: 0 });
     const reclosed = await closingRow(p.closer, opened.id);
     expect(reclosed.is_open).toBe(true);
     expect(reclosed.explanation).toBeNull();
@@ -169,8 +169,8 @@ describe('count explanations and operator notes (Postgres)', () => {
 
   it('an operator note never closes the incident; the owner then refuses further notes', async () => {
     const p = await point('C');
-    const opened = await shifts.open(p.closer, { counted_amount: '1000.00' });
-    await shifts.close(p.closer, opened.id, { counted_amount: '900.00', broken_crates: 0 });
+    const opened = await shifts.open(p.closer, { counted_amount: '1000.00', counted_deposits: '0.00' });
+    await shifts.close(p.closer, opened.id, { counted_amount: '900.00', counted_deposits: '0.00', broken_crates: 0 });
     const closingId = (await closingRow(p.closer, opened.id)).id;
 
     await counts.setOperatorNote(p.closer, closingId, { operator_note: 'знайшов 50' });
@@ -193,8 +193,8 @@ describe('count explanations and operator notes (Postgres)', () => {
   it("another point's operator gets 404 for a count id", async () => {
     const p = await point('H');
     const q = await point('I');
-    const opened = await shifts.open(p.closer, { counted_amount: '1000.00' });
-    await shifts.close(p.closer, opened.id, { counted_amount: '900.00', broken_crates: 0 });
+    const opened = await shifts.open(p.closer, { counted_amount: '1000.00', counted_deposits: '0.00' });
+    await shifts.close(p.closer, opened.id, { counted_amount: '900.00', counted_deposits: '0.00', broken_crates: 0 });
     const closingId = (await closingRow(p.closer, opened.id)).id;
 
     await expect(
@@ -204,8 +204,8 @@ describe('count explanations and operator notes (Postgres)', () => {
 
   it('records cash-count.operator_noted with before/after in the same transaction', async () => {
     const p = await point('J');
-    const opened = await shifts.open(p.closer, { counted_amount: '1000.00' });
-    await shifts.close(p.closer, opened.id, { counted_amount: '900.00', broken_crates: 0 });
+    const opened = await shifts.open(p.closer, { counted_amount: '1000.00', counted_deposits: '0.00' });
+    await shifts.close(p.closer, opened.id, { counted_amount: '900.00', counted_deposits: '0.00', broken_crates: 0 });
     const closingId = (await closingRow(p.closer, opened.id)).id;
 
     await counts.setOperatorNote(p.closer, closingId, { operator_note: 'знайшов 50' });
@@ -218,5 +218,35 @@ describe('count explanations and operator notes (Postgres)', () => {
     )) as { before: string | null; after: string }[];
     expect(row.before).toBeNull();
     expect(row.after).toBe('знайшов 50');
+  });
+
+  it('#178: the owner explains a crates closing discrepancy; berry lists before crates', async () => {
+    const p = await point('K');
+    const opened = await shifts.open(p.closer, { counted_amount: '1000.00', counted_deposits: '14400.00' });
+    const [{ id: supplierId }] = (await ds.query(
+      `INSERT INTO suppliers (collection_point_id, first_name, last_name, kind, is_active)
+       VALUES ($1, 'Петро', $2, 'none', true) RETURNING id`,
+      [p.id, `Мельник ${run}`],
+    )) as { id: string }[];
+    await ds.query(
+      `INSERT INTO crate_issuances (code, shift_id, supplier_id, units, mode, deposit_per_unit,
+                                    deposit_taken, issued_by_user_id)
+       VALUES ($1, $2, $3, 20, 'deposit', '120.00', '2400.00', $4)`,
+      [`CI-${randomUUID().slice(0, 12)}`, opened.id, supplierId, p.closer.sub],
+    );
+    await shifts.close(p.closer, opened.id, { counted_amount: '1000.00', counted_deposits: '16440.00', broken_crates: 0 });
+
+    const rows = await rowsOf(owner, opened.id);
+    const closing = rows.filter((r) => r.kind === 'closing');
+    expect(closing.map((r) => r.book)).toEqual(['berry', 'crates']);
+    const crates = closing[1];
+    expect(crates.is_open).toBe(true);
+    expect(crates.explainable).toBe(true);
+
+    await counts.setExplanation(owner, crates.id, { explanation: 'вісім ящиків у дорозі' });
+    const after = (await rowsOf(owner, opened.id)).find((r) => r.id === crates.id)!;
+    expect(after.is_open).toBe(false);
+    const mine = await rowsOf(p.closer, opened.id);
+    expect(mine.find((r) => r.id === crates.id)!.operator_note_editable).toBe(false);
   });
 });

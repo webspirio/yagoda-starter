@@ -2,8 +2,9 @@ import { DataSource, QueryRunner } from 'typeorm';
 import { hashPassword } from '../users/password-hashing';
 import { encryptSecret, readVaultKey } from '../users/secret-box';
 import { PointCashService } from '../point-cash/point-cash.service';
+import { CashBook } from '../cash-counts/cash-book.enum';
 import { composeDocumentCode, padSequence } from '../common/document-code';
-import { mul } from '../common/money';
+import { cmp, mul } from '../common/money';
 import {
   buildIntake,
   type IntakeLineInput,
@@ -950,36 +951,74 @@ async function seedDocuments(
   for (const c of allCashCounts) {
     const shift = shiftId.get(`${c.point}/${c.day}`);
     if (!shift) throw new Error(`Seed cash count has no shift: ${c.point}/${c.day}`);
-    const found = await one<{ id: string }>(
-      qr,
-      `SELECT id FROM cash_counts WHERE shift_id = $1 AND book = 'berry' AND kind = $2::cash_count_kind`,
-      [shift, c.kind],
-    );
-    if (found) continue;
-
     const pid = pointId.get(c.point)!;
-    const expected =
-      c.anchor ??
-      (c.kind === 'opening'
-        ? await cash.expectedForOpening(pid, qr.manager)
-        : await cash.expectedForClosing(shift, qr.manager));
-    if (expected === null) {
-      throw new Error(
-        `Seed cash count ${c.point}/${c.day}/${c.kind} has no previous count — it needs an \`anchor\``,
-      );
-    }
-    // An anchoring count IS its own expectation: `drift` is '0.00' by the
-    // type's contract, so this stays `expected` either way.
-    const counted = addMoney(expected, c.drift);
 
-    await qr.query(
-      `INSERT INTO cash_counts
-         (shift_id, book, kind, counted_amount, expected_amount, counted_by_user_id, counted_at)
-       VALUES ($1, 'berry', $2::cash_count_kind, $3, $4, $5, ${localTs(6, 7, 8)})`,
-      [shift, c.kind, counted, expected, userByLogin.get(c.countedBy)!, dateOf(c.day), c.time, tz],
-    );
-    summary.cashCounts += 1;
+    // ONE ROW PER BOOK, EACH WITH ITS OWN `found` CHECK (#178): shift open and
+    // close write a berry AND a crates count, and a database seeded before the
+    // crates book was counted gains its crates rows on the next run without
+    // duplicating the berry ones. The crate issuances/returns above are already
+    // written, so the crates closing expectation sees this shift's movements.
+    for (const book of [CashBook.Berry, CashBook.Crates]) {
+      const found = await one<{ id: string }>(
+        qr,
+        `SELECT id FROM cash_counts WHERE shift_id = $1 AND book = $2::cash_book AND kind = $3::cash_count_kind`,
+        [shift, book, c.kind],
+      );
+      if (found) continue;
+
+      let expected: string | null;
+      if (book === CashBook.Berry) {
+        expected =
+          c.anchor ??
+          (c.kind === 'opening'
+            ? await cash.expectedForOpening(pid, qr.manager)
+            : await cash.expectedForClosing(shift, qr.manager));
+        if (expected === null) {
+          throw new Error(
+            `Seed cash count ${c.point}/${c.day}/${c.kind} has no previous count — it needs an \`anchor\``,
+          );
+        }
+      } else {
+        // The first deposits count at a point anchors itself (D2): null → 0.00.
+        expected =
+          c.kind === 'opening'
+            ? ((await cash.expectedForOpening(pid, qr.manager, CashBook.Crates)) ?? '0.00')
+            : ((await cash.expectedForClosing(shift, qr.manager, CashBook.Crates)) ?? '0.00');
+      }
+      // An anchoring berry count IS its own expectation: `drift` is '0.00' by
+      // the type's contract. Seeded deposits reconcile — no demo crates drift —
+      // so the crates figure is counted = expected, EXCEPT below zero: a refund
+      // larger than the drawer makes «має бути» negative (spec D7), a drawer
+      // cannot hold less than nothing, and CHK_cash_counts_counted_non_negative
+      // would fail the whole seed. The count reads 0.00 and the gap is recorded
+      // as that day's crates discrepancy, as a real count would record it.
+      const counted =
+        book === CashBook.Berry ? addMoney(expected, c.drift) : seededCratesCount(expected);
+
+      await qr.query(
+        `INSERT INTO cash_counts
+           (shift_id, book, kind, counted_amount, expected_amount, counted_by_user_id, counted_at)
+         VALUES ($1, $2::cash_book, $3::cash_count_kind, $4, $5, $6, ${localTs(7, 8, 9)})`,
+        [
+          shift,
+          book,
+          c.kind,
+          counted,
+          expected,
+          userByLogin.get(c.countedBy)!,
+          dateOf(c.day),
+          c.time,
+          tz,
+        ],
+      );
+      summary.cashCounts += 1;
+    }
   }
+}
+
+/** A seeded crates count: what the drawer should hold, or 0.00 when that is negative. */
+export function seededCratesCount(expected: string): string {
+  return cmp(expected, '0.00') < 0 ? '0.00' : expected;
 }
 
 /**

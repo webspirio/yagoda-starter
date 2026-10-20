@@ -58,9 +58,49 @@ beforeEach(() => {
 afterEach(() => vi.restoreAllMocks());
 
 describe('CashCountHistory', () => {
-  it('asks the cash-count entity for this point', () => {
+  it('asks the cash-count entity for this point, first page first', () => {
     render(<CashCountHistory pointId="p1" isOwner={false} meId="u1" />);
-    expect(countsMock).toHaveBeenCalledWith({ pointId: 'p1' });
+    expect(countsMock).toHaveBeenCalledWith({ pointId: 'p1', page: 1, limit: 100 });
+  });
+
+  it('shows no pager while the whole history fits on one page', () => {
+    countsMock.mockReturnValue(page([count()]));
+    render(<CashCountHistory pointId="p1" isOwner={false} meId="u1" />);
+    expect(screen.queryByRole('button', { name: 'Next' })).toBeNull();
+  });
+
+  it('pages through a history longer than one page, and says how much there is', async () => {
+    const user = userEvent.setup();
+    countsMock.mockImplementation((filter: { page: number }) => ({
+      data: { data: [count({ id: `c-${filter.page}` })], total: 250, page: filter.page, limit: 100 },
+      isPending: false,
+    }));
+    render(<CashCountHistory pointId="p1" isOwner={false} meId="u1" />);
+
+    expect(screen.getByText('1–100 of 250')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Back' })).toBeDisabled();
+
+    await user.click(screen.getByRole('button', { name: 'Next' }));
+    expect(countsMock).toHaveBeenLastCalledWith({ pointId: 'p1', page: 2, limit: 100 });
+    expect(screen.getByText('101–200 of 250')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Next' }));
+    expect(screen.getByText('201–250 of 250')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Next' })).toBeDisabled();
+  });
+
+  it('starts another point’s history at its first page', async () => {
+    const user = userEvent.setup();
+    countsMock.mockImplementation((filter: { page: number }) => ({
+      data: { data: [count({ id: `c-${filter.page}` })], total: 250, page: filter.page, limit: 100 },
+      isPending: false,
+    }));
+    const { rerender } = render(<CashCountHistory pointId="p1" isOwner={false} meId="u1" />);
+    await user.click(screen.getByRole('button', { name: 'Next' }));
+
+    rerender(<CashCountHistory pointId="p2" isOwner={false} meId="u1" />);
+
+    expect(countsMock).toHaveBeenLastCalledWith({ pointId: 'p2', page: 1, limit: 100 });
   });
 
   it('waits for the read before saying the point was never counted', () => {
@@ -112,6 +152,33 @@ describe('CashCountHistory', () => {
 
     expect(screen.getByText('needs no explanation')).toBeInTheDocument();
     expect(screen.queryByText('Matched')).toBeNull();
+  });
+
+  it('a Book column names which book each count belongs to', () => {
+    countsMock.mockReturnValue(
+      page([count({ id: 'c1', book: 'berry' }), count({ id: 'c2', book: 'crates', kind: 'closing' })]),
+    );
+    render(<CashCountHistory pointId="p1" isOwner={false} meId="u1" />);
+
+    expect(screen.getByRole('columnheader', { name: 'Book' })).toBeInTheDocument();
+    const [, berryRow, cratesRow] = screen.getAllByRole('row');
+    expect(within(berryRow).getByText('Cash')).toBeInTheDocument();
+    expect(within(cratesRow).getByText('Deposits')).toBeInTheDocument();
+  });
+
+  it('an open crates closing of −360 is flagged, and the owner can explain it', async () => {
+    const user = userEvent.setup();
+    countsMock.mockReturnValue(
+      page([
+        count({ book: 'crates', kind: 'closing', discrepancy: '-360.00', is_open: true, explainable: true }),
+      ]),
+    );
+    render(<CashCountHistory pointId="p1" isOwner meId="u1" />);
+
+    const row = screen.getAllByRole('row')[1];
+    expect(within(row).getByText(/360\.00/)).toBeInTheDocument();
+    await user.click(within(row).getByRole('button', { name: 'Explain' }));
+    expect(await screen.findByRole('dialog')).toHaveTextContent('Book: Deposits');
   });
 
   it('offers «Explain» only to the owner, only on an open discrepancy', () => {

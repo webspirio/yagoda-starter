@@ -1,3 +1,5 @@
+import { CashBook } from '../cash-counts/cash-book.enum';
+
 /**
  * «As of» resolves to TODAY IN `APP_TIMEZONE` when the caller names no date,
  * and it does so IN SQL rather than in TypeScript for one reason: Postgres's
@@ -129,6 +131,34 @@ export const movementsSql = (shift: string, tz: string): string =>
 )`;
 
 /**
+ * The crates book's movements of ONE shift (#178, spec D4) — a voided crate
+ * document is out at once: in an open shift the deposit went back over the
+ * counter, the same reading `returned_on_void` gives a payout. Receipt-mode
+ * issuances carry 0 by CHK_crate_issuances_receipt_no_money.
+ *
+ * TWO CRATE FIGURES, TWO SHAPES. `crate_deposits` (the LIABILITY, what
+ * suppliers are owed back) stays a point-lifetime running sum that does not
+ * honour `as_of`. `crate_cash` (the DRAWER) is anchored on the crates book's
+ * own counts exactly like berry cash — this term plus `anchorSql`. §7.6:
+ * «фізично шухляда одна, книг дві», so neither is ever added to `cash`.
+ */
+export const crateMovementsSql = (shift: string): string => `(
+    COALESCE((SELECT SUM(ci.deposit_taken) FROM crate_issuances ci
+        WHERE ci.shift_id = ${shift} AND ci.voided_at IS NULL), 0.00)
+  - COALESCE((SELECT SUM(cr.deposit_refund) FROM crate_returns cr
+        WHERE cr.shift_id = ${shift} AND cr.voided_at IS NULL), 0.00)
+)`;
+
+/**
+ * The book as a SQL literal, from a closed map: the statement text comes from
+ * literals in this file, never from the argument's runtime value.
+ */
+export const BOOK_SQL: Record<CashBook, string> = {
+  [CashBook.Berry]: "'berry'",
+  [CashBook.Crates]: "'crates'",
+};
+
+/**
  * THE ANCHOR — the latest `opening` or `closing` count at a point, on or
  * before `asOf`. `midday` is excluded and that is load-bearing rather than
  * tidy: a demoted midday count (spec §6.3) sits mid-shift, and isolating "the
@@ -137,14 +167,73 @@ export const movementsSql = (shift: string, tz: string): string =>
  *
  * The ordering tiebreak puts `closing` after `opening` within one shift.
  */
-export const anchorSql = (point: string, asOf: string): string => `(
+export const anchorSql = (point: string, asOf: string, book: CashBook = CashBook.Berry): string => `(
   SELECT c.counted_amount, c.kind, c.shift_id, s.business_date
     FROM cash_counts c
     JOIN shifts s ON s.id = c.shift_id
    WHERE s.collection_point_id = ${point}
-     AND c.book = 'berry'
+     AND c.book = ${BOOK_SQL[book]}
      AND c.kind <> 'midday'
      AND s.business_date <= ${asOf}
    ORDER BY s.business_date DESC, (c.kind = 'closing') DESC, c.counted_at DESC
    LIMIT 1
 )`;
+
+/**
+ * ONE BOOK'S DRAWER as of `asOf`: the anchor count plus, when the anchor is an
+ * OPENING count, that shift's movements in the same book. A scalar subquery
+ * that reads NULL when the book has never been counted at the point — berry
+ * callers COALESCE it to `0.00` (§7.3), the crates drawer keeps the NULL
+ * (#178: an unknown drawer is not an empty one).
+ *
+ * There is no third term for "shifts after the anchor": §6.1 makes every shift
+ * opening write a count, so a later shift would hold a later count and BE the
+ * anchor. ONE definition for `cashFor` and both columns of
+ * `list()` — a change to the anchor (spec D4's «очікуване повернення», say)
+ * lands in all of them or in none (#178 second review).
+ *
+ * `tz` is only read by the berry movements; the crates book has no
+ * date-attributed term.
+ */
+export const drawerSql = (point: string, asOf: string, book: CashBook, tz: string): string => {
+  const movements =
+    book === CashBook.Crates ? crateMovementsSql('a.shift_id') : movementsSql('a.shift_id', tz);
+  return `(
+  SELECT a.counted_amount + CASE WHEN a.kind = 'opening' THEN ${movements} ELSE 0.00 END
+    FROM ${anchorSql(point, asOf, book)} a
+)`;
+};
+
+/**
+ * §3.1 — ONE BOOK'S RECORDED DISCREPANCIES at a point, on or before `asOf`.
+ * The count chain and the document line can differ by these and by nothing
+ * else, so this SUM IS the divergence. It is free: no second stored line, no
+ * write path of its own. EXPLAINED INCIDENTS STAY IN IT — an explanation
+ * changes what is OPEN, never what is TRUE (§7.7).
+ *
+ * MIDDAY IS EXCLUDED, AND WITHOUT THAT FILTER THE HEADLINE DOUBLE-COUNTS A
+ * REOPEN. §3.1's claim telescopes over the ANCHORING counts only, and §6.3's
+ * demotion breaks the chain: reopening a shift rewrites its closing count's
+ * kind to midday, and the re-close then writes a FRESH count against the SAME
+ * unchanged expectation, because the expectation is a snapshot and nothing
+ * moved. A drawer that opened at 1 000, closed at 900, was reopened and closed
+ * at 900 again drifted -100 ONCE; summing every kind reports -200. The demoted
+ * row is SUPERSEDED by the re-close, not additional to it.
+ *
+ * A midday RECOUNT (R2, 2026-09-22) is kind = 'midday' too and is excluded on
+ * purpose: §7.6 makes a recount a WITNESS, never an incident — see
+ * CashCountsService's doc comment for the same check against its
+ * only_discrepancies filter and cash-count.mapper.ts's is_open.
+ *
+ * Unlike the anchor, this is NOT only_discrepancies-filtered — that predicate
+ * belongs to a different read with a different question. Both books go through
+ * this one function so the midday rule cannot drift between them (#178).
+ */
+export const discrepancySql = (point: string, asOf: string, book: CashBook): string => `
+    COALESCE((SELECT SUM(c.counted_amount - c.expected_amount)
+                FROM cash_counts c
+                JOIN shifts sh ON sh.id = c.shift_id
+               WHERE sh.collection_point_id = ${point}
+                 AND c.book = ${BOOK_SQL[book]}
+                 AND c.kind <> 'midday'
+                 AND sh.business_date <= ${asOf}), 0.00)`;

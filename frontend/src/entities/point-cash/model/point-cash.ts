@@ -26,6 +26,10 @@ export interface PointCashRow {
   crate_deposits: string;
   /** §R8 — скільки ящиків з тих завдатків: видано «за кошти» мінус повернуто. */
   crate_deposit_units: number;
+  /** Касова книга завдатків: що пораховано в шухляді. `null` = завдатки на цій точці ще не перераховували. */
+  crate_cash: string | null;
+  /** Нез'ясована розбіжність книги завдатків (`0.00`, коли її нема). */
+  crate_unexplained_difference: string;
 }
 
 /** Дзеркалить `PointCashBreakdown` (`point-cash/point-cash.mapper.ts`, #73). */

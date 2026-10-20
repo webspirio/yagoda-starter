@@ -959,12 +959,12 @@ Spec: `docs/superpowers/specs/2026-09-15-yagoda-crates-slice.md`, §9 «out of s
   Display rules come with it: a negative residual is shown red and does NOT block («система
   показує факт, а не спиняє день заднім числом»), and a point with no `target_crates` shows «—»,
   never `0`.
-- **A counted crates drawer, together with the settlement trio for voided crate money.** One
-  physical drawer cannot become two counted numbers without either asking the operator to
-  distinguish identical banknotes or deriving one book from the other (which makes it
-  unfalsifiable) — `cash-book.enum.ts`'s `CashBook.Crates` exists but no row is ever written with
-  it. The trigger to build both together is the day someone actually needs to count that drawer
-  (spec §4.3, §11.1).
+- **The settlement trio for voided crate money.** The counted crates drawer half of this
+  deferral is DONE (#178, spec `2026-10-14-yagoda-crates-cash-count-design.md`): shift open/close
+  now write one `cash_counts` row per book. The two were separated on purpose (spec D4): counting
+  the drawer needs no «expected return» figure, so the trio (settle a voided crate deposit the
+  way `settle-return` does for payouts) stays open on its own. Until then a void that drops a
+  taken deposit surfaces only as a crates discrepancy on the next count (spec §4.3, §11.1).
 - **Ticket #57's reception-screen pairing (the client half).** The backend ships `POST
   /crate-returns/preview` as the primitive; composing a return with an intake on one screen is
   client work, not a backend seam — no `intake_id`, no combined endpoint (spec §4, decision 4).
@@ -1574,3 +1574,29 @@ The slice rounds only a reception line's `amount` (§2.12). The ticket says
   preview — is open.
 - **The receipt prints net × rate beside an amount that is not their product**
   (36,90 × 57,00 next to 2 103,00). A hint for the supplier is possible.
+
+## Left over from the #178 behavioural review (PR #249, 2026-10-16)
+
+The review's race (a document landing 201 in a shift closed between its open-shift check and
+its insert) is FIXED in that PR: `ShiftsService.findOpenAtPoint` takes `FOR SHARE` inside a
+transaction. Three edges were decided rather than built:
+
+- **An owner void of a crate document in a CLOSED shift leaves the drawer's money owned by no
+  one — accepted (spec D4).** The liability (`crate_deposits`) drops by the deposit; the
+  expectation does not, because the closing count already snapshotted it. Every later count
+  reconciles at 0 and nothing names the gap between drawer and liability. Accepted because only
+  the owner can do it (an operator never voids in a closed shift) — the person who reads the
+  books is the one who made the gap, so it is not a theft path. Two ways out when the client
+  asks: forbid the closed-shift crate void the way the intake void was forbidden on 2026-09-30,
+  or bring in the «expected return» trio above for crates.
+- **A refund larger than the counted drawer reads a negative «має бути» — accepted, shown as
+  is (spec D7).** `createReturn` gates the refund on the lifetime LIABILITY, never on the
+  counted drawer, on purpose: refusing a supplier's deposit back because the operator spent it
+  would punish the supplier and keep the crates out. The money then comes out of the berry
+  drawer and the berry count shows the shortage; the crates book's own discrepancies sum to 0
+  across the two days, which is correct for that book. A guard, or a warning on the card, waits
+  for the client.
+- **Question for the client: can deposits ever leave the point?** No document takes money out
+  of the crates drawer except a supplier refund. If the owner takes deposit cash to the base,
+  every later count reads short. Ask whether that happens; if it does, the crates book needs an
+  outgoing transfer.

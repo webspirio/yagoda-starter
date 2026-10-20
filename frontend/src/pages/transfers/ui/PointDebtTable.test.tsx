@@ -16,6 +16,8 @@ const row = (over: Partial<PointCashRow> = {}): PointCashRow => ({
   latest_transfer: null,
   crate_deposits: '0.00',
   crate_deposit_units: 0,
+  crate_cash: null,
+  crate_unexplained_difference: '0.00',
   ...over,
 });
 

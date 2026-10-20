@@ -7,6 +7,7 @@ import { Button } from '@/shared/ui/button';
 import { EmptyState } from '@/shared/ui/empty-state';
 import { ExpandableText } from '@/shared/ui/expandable-text';
 import { Spinner } from '@/shared/ui/spinner';
+import { Pager } from '@/shared/ui/pager';
 import { cn } from '@/shared/lib/cn';
 import { formatUah } from '@/shared/lib/money';
 import { formatShortDate } from '@/shared/lib/date';
@@ -14,6 +15,9 @@ import { useCashCountsQuery, type CashCount } from '@/entities/cash-count';
 import { ExplainDiscrepancyDialog } from '@/features/set-cash-explanation';
 import { OperatorNoteDialog } from '@/features/set-operator-note';
 import { discrepancyTone } from '@/features/count-shift';
+
+/** One page of the history — the server's own cap (`@Max(100)`). */
+const HISTORY_PAGE_SIZE = 100;
 
 /**
  * §7.6's journal for one point — every drawer count, opening/midday/closing
@@ -34,10 +38,17 @@ export function CashCountHistory({
   meId: string | null;
 }) {
   const { t, i18n } = useTranslation();
-  const counts = useCashCountsQuery({ pointId });
+  // Paged, newest first: two books write four counts a shift, so a long-
+  // running point outgrows one page, and the pager says how much is left.
+  // The page is remembered WITH the point it belongs to — another point
+  // starts at page 1, derived here rather than reset in an effect.
+  const [paging, setPaging] = useState({ pointId, page: 1 });
+  const page = paging.pointId === pointId ? paging.page : 1;
+  const counts = useCashCountsQuery({ pointId, page, limit: HISTORY_PAGE_SIZE });
   const [explainTarget, setExplainTarget] = useState<CashCount | null>(null);
   const [noteTarget, setNoteTarget] = useState<CashCount | null>(null);
   const rows = counts.data?.data ?? [];
+  const total = counts.data?.total ?? 0;
 
   const columns: Column<CashCount>[] = [
     {
@@ -45,6 +56,11 @@ export function CashCountHistory({
       header: t('pointCash.countHistory.columns.when'),
       cell: (row) =>
         `${formatShortDate(row.business_date, i18n.resolvedLanguage)} · ${t(`pointCash.countHistory.kind.${row.kind}`)}`,
+    },
+    {
+      id: 'book',
+      header: t('pointCash.countHistory.columns.book'),
+      cell: (row) => t(`countResult.book.${row.book}`),
     },
     {
       id: 'countedBy',
@@ -187,7 +203,17 @@ export function CashCountHistory({
       ) : rows.length === 0 ? (
         <EmptyState title={t('pointCash.countHistory.empty')} />
       ) : (
-        <DataTable columns={columns} rows={rows} rowKey={(row) => row.id} frame={false} />
+        <>
+          <DataTable columns={columns} rows={rows} rowKey={(row) => row.id} frame={false} />
+          {total > HISTORY_PAGE_SIZE ? (
+            <Pager
+              page={page}
+              limit={HISTORY_PAGE_SIZE}
+              total={total}
+              onPageChange={(next) => setPaging({ pointId, page: next })}
+            />
+          ) : null}
+        </>
       )}
 
       {explainTarget ? (

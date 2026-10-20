@@ -42,8 +42,14 @@ export function useInvalidateDay() {
 export function useOpenShiftMutation() {
   const invalidate = useInvalidateDay();
   return useMutation({
-    mutationFn: async ({ counted_amount }: { counted_amount: string }): Promise<Shift> =>
-      (await httpClient.post<Shift>('/shifts', { counted_amount })).data,
+    mutationFn: async ({
+      counted_amount,
+      counted_deposits,
+    }: {
+      counted_amount: string;
+      counted_deposits: string;
+    }): Promise<Shift> =>
+      (await httpClient.post<Shift>('/shifts', { counted_amount, counted_deposits })).data,
     onSuccess: invalidate,
   });
 }
@@ -62,13 +68,19 @@ export function useCloseShiftMutation() {
     mutationFn: async ({
       id,
       counted_amount,
+      counted_deposits,
       broken_crates,
     }: {
       id: string;
       counted_amount: string;
+      counted_deposits: string;
       broken_crates: number;
     }): Promise<Shift> =>
-      (await httpClient.post<Shift>(`/shifts/${id}/close`, { counted_amount, broken_crates })).data,
+      (await httpClient.post<Shift>(`/shifts/${id}/close`, {
+        counted_amount,
+        counted_deposits,
+        broken_crates,
+      })).data,
     onSuccess: invalidate,
   });
 }

@@ -2,5 +2,5 @@ export { useOpenShiftMutation, useCloseShiftMutation, useInvalidateDay } from '.
 export { CountDrawerDialog } from './ui/CountDrawerDialog';
 export { OpenShiftAlert } from './ui/OpenShiftAlert';
 export { RecountDrawerDialog } from './ui/RecountDrawerDialog';
-export { CountResultView } from './ui/CountResultView';
+export { CountResultView, type CountResultRow } from './ui/CountResultView';
 export { discrepancyTone } from './lib/discrepancyTone';

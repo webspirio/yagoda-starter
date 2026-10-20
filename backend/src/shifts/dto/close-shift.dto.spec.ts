@@ -8,7 +8,7 @@ const validate = (body: Record<string, unknown>) =>
   );
 
 describe('CloseShiftDto.broken_crates', () => {
-  const base = { counted_amount: '100.00' };
+  const base = { counted_amount: '100.00', counted_deposits: '0.00' };
 
   it('accepts zero', () => {
     expect(validate({ ...base, broken_crates: 0 })).toEqual([]);
@@ -28,5 +28,27 @@ describe('CloseShiftDto.broken_crates', () => {
 
   it('rejects an absent count — a number that can be skipped gets skipped', () => {
     expect(validate(base)).toContain('isInt');
+  });
+});
+
+describe('CloseShiftDto.counted_deposits', () => {
+  const base = { counted_amount: '100.00', broken_crates: 0 };
+  const errorsOn = (body: Record<string, unknown>) =>
+    validateSync(plainToInstance(CloseShiftDto, body)).filter(
+      (e) => e.property === 'counted_deposits',
+    );
+
+  it('rejects an absent figure — a number that can be skipped gets skipped', () => {
+    expect(errorsOn(base)).not.toHaveLength(0);
+  });
+
+  it('accepts zero, canonicalised to 0.00', () => {
+    const dto = plainToInstance(CloseShiftDto, { ...base, counted_deposits: '0' });
+    expect(validateSync(dto)).toEqual([]);
+    expect(dto.counted_deposits).toBe('0.00');
+  });
+
+  it('rejects a decimal comma', () => {
+    expect(errorsOn({ ...base, counted_deposits: '1,5' })).not.toHaveLength(0);
   });
 });

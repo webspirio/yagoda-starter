@@ -154,7 +154,7 @@ describe('documents pipeline (HTTP)', () => {
       const res = await request(app.getHttpServer())
         .post('/shifts')
         .set('Authorization', `Bearer ${operatorToken}`)
-        .send({ counted_amount: '5000.00' })
+        .send({ counted_amount: '5000.00', counted_deposits: '0.00' })
         .expect(201);
 
       expect(res.body.collection_point_id).toBe(pointId);
@@ -185,7 +185,7 @@ describe('documents pipeline (HTTP)', () => {
       const res = await request(app.getHttpServer())
         .post('/shifts')
         .set('Authorization', `Bearer ${operatorToken}`)
-        .send({ counted_amount: '5000.00' })
+        .send({ counted_amount: '5000.00', counted_deposits: '0.00' })
         .expect(409);
       expect(res.body.code ?? res.body.message).toBeDefined();
     });
@@ -208,7 +208,7 @@ describe('documents pipeline (HTTP)', () => {
       await request(app.getHttpServer())
         .post(`/shifts/${shiftId}/close`)
         .set('Authorization', `Bearer ${operatorToken}`)
-        .send({ counted_amount: '5000.00', broken_crates: 0 })
+        .send({ counted_amount: '5000.00', counted_deposits: '0.00', broken_crates: 0 })
         .expect(201);
 
       // §10.2 puts corrections with the owner; the operator who closed it
@@ -231,7 +231,7 @@ describe('documents pipeline (HTTP)', () => {
       await request(app.getHttpServer())
         .post(`/shifts/${shiftId}/close`)
         .set('Authorization', `Bearer ${ownerToken}`)
-        .send({ counted_amount: '5000.00', broken_crates: 0 })
+        .send({ counted_amount: '5000.00', counted_deposits: '0.00', broken_crates: 0 })
         .expect(403);
     });
 
@@ -255,13 +255,13 @@ describe('documents pipeline (HTTP)', () => {
       await request(app.getHttpServer())
         .post(`/shifts/${shiftId}/close`)
         .set('Authorization', `Bearer ${operatorToken}`)
-        .send({ counted_amount: '5000.00', broken_crates: 0 })
+        .send({ counted_amount: '5000.00', counted_deposits: '0.00', broken_crates: 0 })
         .expect(201);
 
       const res = await request(app.getHttpServer())
         .post('/shifts')
         .set('Authorization', `Bearer ${operatorToken}`)
-        .send({ counted_amount: '5000.00' })
+        .send({ counted_amount: '5000.00', counted_deposits: '0.00' })
         .expect(409);
       expect(res.body.code).toBe('SHIFT_DAY_ALREADY_USED');
 
@@ -277,7 +277,7 @@ describe('documents pipeline (HTTP)', () => {
       await request(app.getHttpServer())
         .post(`/shifts/${shiftId}/close`)
         .set('Authorization', `Bearer ${operatorToken}`)
-        .send({ counted_amount: '5000.00', broken_crates: 3 })
+        .send({ counted_amount: '5000.00', counted_deposits: '0.00', broken_crates: 3 })
         .expect(201);
 
       await request(app.getHttpServer())
@@ -295,7 +295,7 @@ describe('documents pipeline (HTTP)', () => {
       const reclosed = await request(app.getHttpServer())
         .post(`/shifts/${shiftId}/close`)
         .set('Authorization', `Bearer ${operatorToken}`)
-        .send({ counted_amount: '5000.00', broken_crates: 0 })
+        .send({ counted_amount: '5000.00', counted_deposits: '0.00', broken_crates: 0 })
         .expect(201);
       // 0 survives as 0 — it is not null, and it is not dropped as falsy.
       expect(reclosed.body.broken_crates).toBe(0);
@@ -413,7 +413,7 @@ describe('documents pipeline (HTTP)', () => {
         await request(app.getHttpServer())
           .post('/shifts')
           .set('Authorization', `Bearer ${operatorToken}`)
-          .send({ counted_amount: '5000.00' })
+          .send({ counted_amount: '5000.00', counted_deposits: '0.00' })
           .expect(201);
       }
     }, 30_000);
@@ -816,7 +816,7 @@ describe('documents pipeline (HTTP)', () => {
       await request(app.getHttpServer())
         .post(`/shifts/${shiftId}/close`)
         .set('Authorization', `Bearer ${operatorToken}`)
-        .send({ counted_amount: '5000.00', broken_crates: 0 })
+        .send({ counted_amount: '5000.00', counted_deposits: '0.00', broken_crates: 0 })
         .expect(201);
 
       // §9.3 — «анульовано виплату 8 000,00 ₴ → каса НЕ виросла на 8 000».
@@ -1069,7 +1069,7 @@ describe('documents pipeline (HTTP)', () => {
         await request(app.getHttpServer())
           .post('/shifts')
           .set('Authorization', `Bearer ${operatorToken}`)
-          .send({ counted_amount: '5000.00' })
+          .send({ counted_amount: '5000.00', counted_deposits: '0.00' })
           .expect(201);
       }
 
@@ -1213,7 +1213,7 @@ describe('documents pipeline (HTTP)', () => {
         const opened = await request(app.getHttpServer())
           .post('/shifts')
           .set('Authorization', `Bearer ${operatorToken}`)
-          .send({ counted_amount: '5000.00' })
+          .send({ counted_amount: '5000.00', counted_deposits: '0.00' })
           .expect(201);
         shiftId = opened.body.id as string;
       } else {
@@ -1278,7 +1278,7 @@ describe('documents pipeline (HTTP)', () => {
       await request(app.getHttpServer())
         .post(`/shifts/${shiftId}/close`)
         .set('Authorization', `Bearer ${operatorToken}`)
-        .send({ counted_amount: '5000.00', broken_crates: 0 })
+        .send({ counted_amount: '5000.00', counted_deposits: '0.00', broken_crates: 0 })
         .expect(201);
 
       const secondRes = await request(app.getHttpServer())

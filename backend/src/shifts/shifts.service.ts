@@ -96,21 +96,6 @@ export class ShiftsService {
         throw this.translateUniqueViolation(error);
       }
 
-      // `null` means this point has never been counted — see the header.
-      const previous = await this.cash.expectedForOpening(pointId, m);
-      const expected = previous ?? dto.counted_amount;
-
-      const countRow = await m.save(CashCount, {
-        shift_id: shift.id,
-        book: CashBook.Berry,
-        kind: CashCountKind.Opening,
-        counted_amount: dto.counted_amount,
-        expected_amount: expected,
-        // §10.6 — whoever pressed the button, not whoever opened the shift.
-        counted_by_user_id: actor.sub,
-        counted_at: countedAt,
-      });
-
       await this.audit.record(
         {
           action: 'shift.opened',
@@ -121,20 +106,27 @@ export class ShiftsService {
         },
         m,
       );
-      await this.audit.record(
-        {
-          action: 'cash-count.recorded',
-          actor_id: actor.sub,
-          target_type: 'cash_count',
-          target_id: countRow.id,
-          after: {
-            shift_id: shift.id,
-            kind: CashCountKind.Opening,
-            counted_amount: dto.counted_amount,
-            expected_amount: expected,
-          },
-        },
+      // `null` from `expectedFor*` means the book has never been counted at
+      // this point — the counted figure becomes its anchor (see `writeCount`).
+      await this.writeCount(
         m,
+        actor,
+        shift.id,
+        CashBook.Berry,
+        CashCountKind.Opening,
+        dto.counted_amount,
+        await this.cash.expectedForOpening(pointId, m),
+        countedAt,
+      );
+      await this.writeCount(
+        m,
+        actor,
+        shift.id,
+        CashBook.Crates,
+        CashCountKind.Opening,
+        dto.counted_deposits,
+        await this.cash.expectedForOpening(pointId, m, CashBook.Crates),
+        countedAt,
       );
 
       const [response] = await this.respond([shift], m);
@@ -157,11 +149,7 @@ export class ShiftsService {
    * cost is named in the spec's §9.1 — a transfer accepted into that shift on
    * Saturday takes Friday's date.
    */
-  async close(
-    actor: AuthenticatedUser,
-    id: string,
-    dto: CloseShiftDto,
-  ): Promise<ShiftResponse> {
+  async close(actor: AuthenticatedUser, id: string, dto: CloseShiftDto): Promise<ShiftResponse> {
     return this.dataSource.transaction(async (m) => {
       // UNDER THE ROW LOCK, and the check with it — see `loadVisible`. Read
       // outside, `closed_at` is a check-then-write: a double-tapped button
@@ -182,19 +170,6 @@ export class ShiftsService {
       // started queuing for the right to.
       const closedAt = this.time.now().toJSDate();
 
-      // `null` only if something wrote a shift without going through `open`.
-      const expected = (await this.cash.expectedForClosing(shift.id, m)) ?? dto.counted_amount;
-
-      const countRow = await m.save(CashCount, {
-        shift_id: shift.id,
-        book: CashBook.Berry,
-        kind: CashCountKind.Closing,
-        counted_amount: dto.counted_amount,
-        expected_amount: expected,
-        counted_by_user_id: actor.sub,
-        counted_at: closedAt,
-      });
-
       shift.closed_at = closedAt;
       shift.closed_by_user_id = actor.sub;
       shift.status = ShiftStatus.Closed;
@@ -212,20 +187,27 @@ export class ShiftsService {
         },
         m,
       );
-      await this.audit.record(
-        {
-          action: 'cash-count.recorded',
-          actor_id: actor.sub,
-          target_type: 'cash_count',
-          target_id: countRow.id,
-          after: {
-            shift_id: saved.id,
-            kind: CashCountKind.Closing,
-            counted_amount: dto.counted_amount,
-            expected_amount: expected,
-          },
-        },
+      // `null` from `expectedForClosing`: the berry book only if something wrote a
+      // shift without `open`; the crates book also for a shift opened before #178.
+      await this.writeCount(
         m,
+        actor,
+        saved.id,
+        CashBook.Berry,
+        CashCountKind.Closing,
+        dto.counted_amount,
+        await this.cash.expectedForClosing(saved.id, m),
+        closedAt,
+      );
+      await this.writeCount(
+        m,
+        actor,
+        saved.id,
+        CashBook.Crates,
+        CashCountKind.Closing,
+        dto.counted_deposits,
+        await this.cash.expectedForClosing(saved.id, m, CashBook.Crates),
+        closedAt,
       );
       // §6.8's breakage leaves the empties (spec 2026-09-30) — refused if there are not that many.
       if (dto.broken_crates > 0) {
@@ -315,6 +297,7 @@ export class ShiftsService {
       // (§7.6 forbids it) or making every closing-count lookup an ordering
       // problem, where a bug returns a wrong cash figure instead of an error.
       // Everything except `kind` is preserved.
+      // One UPDATE, both books: it keys on `kind`, not `book`.
       await m.update(
         CashCount,
         { shift_id: shift.id, kind: CashCountKind.Closing },
@@ -409,19 +392,58 @@ export class ShiftsService {
    * an intake and a payout, but the seam should not decide their wording.
    *
    * Takes an `EntityManager` so a document write reads it INSIDE its own
-   * transaction, which is what stops a shift being closed between the check and
-   * the insert.
+   * transaction — and there it takes `FOR SHARE` on the row, which is what
+   * actually stops a shift being closed between the check and the insert
+   * (#178 review). Reading inside the transaction alone does not: under READ
+   * COMMITTED the row is unlocked, `close` commits in the gap and the document
+   * lands 201 in a closed shift — for the crates book that is money no count
+   * ever expected. With the share lock `close` (`pessimistic_write` in
+   * `loadVisible`) waits for the write to commit and counts it, and a write
+   * that arrives after `close` re-reads the committed row, finds `closed_at`
+   * set and gets its 409. Shared locks never block one another, so concurrent
+   * documents at one point do not serialise on it.
+   *
+   * THE SHIFT LOCK IS THE INNER ONE: a write that locks a supplier row takes
+   * that lock BEFORE calling here (payouts and receipts through
+   * `withinSupplierLedger`, `CratesService.returnCrates` explicitly). A queued
+   * close's `FOR UPDATE` makes later share requests wait behind it, so a
+   * writer holding the shift while waiting for a supplier that another writer
+   * holds while waiting for the shift is a deadlock — keep the order.
+   *
+   * ONLY INSIDE A TRANSACTION: the intake preview passes the plain
+   * `dataSource.manager`, and a lock outside one is TypeORM's
+   * `PessimisticLockTransactionRequiredError` — a read has nothing to hold.
    */
   async findOpenAtPoint(pointId: string, manager?: EntityManager): Promise<Shift | null> {
     const repo = manager ? manager.getRepository(Shift) : this.repo;
-    return repo.findOne({ where: { collection_point_id: pointId, closed_at: IsNull() } });
+    const inTransaction = manager?.queryRunner?.isTransactionActive === true;
+    return repo.findOne({
+      where: { collection_point_id: pointId, closed_at: IsNull() },
+      ...(inTransaction ? { lock: { mode: 'pessimistic_read' as const } } : {}),
+    });
   }
 
-  /** Raw row by id, for the document services. No access check — the caller
-   *  already resolved the point it is allowed to write to. */
+  /**
+   * Raw row by id, for the document services. No access check — the caller
+   * already resolved the point it is allowed to write to.
+   *
+   * INSIDE A TRANSACTION IT TAKES `FOR SHARE`, for the reason
+   * `findOpenAtPoint` does (#178 second review): every void — crate issuance
+   * and return, receipt, payout — decides from `closed_at` read here. Unlocked,
+   * a close could commit between that read and the void's own commit: the
+   * closing crates count expects the document live, the void then strikes it
+   * out of a closed shift, and the next opening inherits a phantom shortfall
+   * (and for a payout, `returned_on_void` books cash into a shift already
+   * counted). Every void locks supplier → document → this row, the same
+   * order the writes use, so the shift lock stays the inner one.
+   */
   async findOneRaw(id: string, manager?: EntityManager): Promise<Shift | null> {
     const repo = manager ? manager.getRepository(Shift) : this.repo;
-    return repo.findOne({ where: { id } });
+    const inTransaction = manager?.queryRunner?.isTransactionActive === true;
+    return repo.findOne({
+      where: { id },
+      ...(inTransaction ? { lock: { mode: 'pessimistic_read' as const } } : {}),
+    });
   }
 
   /**
@@ -505,5 +527,44 @@ export class ShiftsService {
       });
     }
     return error;
+  }
+
+  /**
+   * One count row plus its `cash-count.recorded` audit entry, for either book.
+   * `expected === null` is the book's first count at this point (or crates on a
+   * shift opened before #178): the counted figure becomes the anchor, so the
+   * discrepancy is zero rather than the whole drawer.
+   */
+  private async writeCount(
+    m: EntityManager,
+    actor: AuthenticatedUser,
+    shiftId: string,
+    book: CashBook,
+    kind: CashCountKind,
+    counted: string,
+    expected: string | null,
+    countedAt: Date,
+  ): Promise<void> {
+    const exp = expected ?? counted;
+    const row = await m.save(CashCount, {
+      shift_id: shiftId,
+      book,
+      kind,
+      counted_amount: counted,
+      expected_amount: exp,
+      // §10.6 — whoever pressed the button, not whoever opened the shift.
+      counted_by_user_id: actor.sub,
+      counted_at: countedAt,
+    });
+    await this.audit.record(
+      {
+        action: 'cash-count.recorded',
+        actor_id: actor.sub,
+        target_type: 'cash_count',
+        target_id: row.id,
+        after: { shift_id: shiftId, book, kind, counted_amount: counted, expected_amount: exp },
+      },
+      m,
+    );
   }
 }

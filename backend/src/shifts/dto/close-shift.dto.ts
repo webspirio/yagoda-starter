@@ -25,6 +25,15 @@ export class CloseShiftDto {
   @CanonicalDecimal()
   counted_amount: string;
 
+  /** #178 — the crate-deposits drawer, counted beside the berry one. Required
+   *  for the reason `counted_amount` is: a figure that can be skipped gets
+   *  skipped. `0` is a valid answer (a point that has never taken a deposit). */
+  @Matches(/^\d{1,10}(\.\d{1,2})?$/, {
+    message: 'counted_deposits must be a non-negative decimal string with at most 2 decimal places',
+  })
+  @CanonicalDecimal()
+  counted_deposits: string;
+
   /**
    * §6.8's «бій» — crates that broke during the shift (#110).
    *

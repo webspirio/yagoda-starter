@@ -23,9 +23,9 @@ describe('useOpenShiftMutation', () => {
   it('sends the counted drawer amount — the backend requires it', async () => {
     mock.onPost('/shifts').reply(201, { id: 's1' });
     const { result } = renderHook(() => useOpenShiftMutation(), { wrapper });
-    await result.current.mutateAsync({ counted_amount: '1500.00' });
+    await result.current.mutateAsync({ counted_amount: '1500.00', counted_deposits: '14400.00' });
     await waitFor(() => expect(mock.history.post).toHaveLength(1));
-    expect(JSON.parse(mock.history.post[0].data)).toEqual({ counted_amount: '1500.00' });
+    expect(JSON.parse(mock.history.post[0].data)).toEqual({ counted_amount: '1500.00', counted_deposits: '14400.00' });
   });
 });
 
@@ -33,11 +33,12 @@ describe('useCloseShiftMutation', () => {
   it('posts the count AND the breakage to the shift being closed', async () => {
     mock.onPost('/shifts/s1/close').reply(200, { id: 's1' });
     const { result } = renderHook(() => useCloseShiftMutation(), { wrapper });
-    await result.current.mutateAsync({ id: 's1', counted_amount: '980.40', broken_crates: 3 });
+    await result.current.mutateAsync({ id: 's1', counted_amount: '980.40', counted_deposits: '500.00', broken_crates: 3 });
     await waitFor(() => expect(mock.history.post).toHaveLength(1));
     expect(mock.history.post[0].url).toBe('/shifts/s1/close');
     expect(JSON.parse(mock.history.post[0].data)).toEqual({
       counted_amount: '980.40',
+      counted_deposits: '500.00',
       broken_crates: 3,
     });
   });
@@ -48,10 +49,11 @@ describe('useCloseShiftMutation', () => {
     // clean day.
     mock.onPost('/shifts/s1/close').reply(200, { id: 's1' });
     const { result } = renderHook(() => useCloseShiftMutation(), { wrapper });
-    await result.current.mutateAsync({ id: 's1', counted_amount: '980.40', broken_crates: 0 });
+    await result.current.mutateAsync({ id: 's1', counted_amount: '980.40', counted_deposits: '500.00', broken_crates: 0 });
     await waitFor(() => expect(mock.history.post).toHaveLength(1));
     expect(JSON.parse(mock.history.post[0].data)).toEqual({
       counted_amount: '980.40',
+      counted_deposits: '500.00',
       broken_crates: 0,
     });
   });
@@ -61,7 +63,7 @@ describe('useCloseShiftMutation', () => {
     const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries');
     const { result } = renderHook(() => useCloseShiftMutation(), { wrapper });
 
-    await result.current.mutateAsync({ id: 's1', counted_amount: '980.40', broken_crates: 0 });
+    await result.current.mutateAsync({ id: 's1', counted_amount: '980.40', counted_deposits: '500.00', broken_crates: 0 });
 
     await waitFor(() => {
       expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: queryKeys.shifts });

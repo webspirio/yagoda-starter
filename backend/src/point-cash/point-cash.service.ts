@@ -16,9 +16,14 @@ import {
   toPointCashRowResponse,
 } from './point-cash.mapper';
 import { crateBookSql, crateUnitsSql } from '../crates/crate-balance.service';
+import { CashBook } from '../cash-counts/cash-book.enum';
 import {
+  BOOK_SQL,
   anchorSql,
   asOfSql,
+  crateMovementsSql,
+  discrepancySql,
+  drawerSql,
   movementsSql,
   payoutsOutSql,
   returnsSql,
@@ -87,20 +92,11 @@ export class PointCashService {
    */
   async cashFor(pointId: string, asOf?: string, manager?: EntityManager): Promise<string> {
     const runner = manager ?? this.dataSource.manager;
-    // The anchor plus, when the anchor is an OPENING count, that shift's
-    // movements. There is no third term for "shifts after the anchor": §6.1
-    // makes every shift opening write a count, so a later shift would hold a
-    // later count and BE the anchor.
-    //
-    // `::text` on the numeric expression so the value never passes through a
-    // JS number on its way out of the driver (foundation §5.1).
+    // `drawerSql` is the anchor plus, for an OPENING anchor, its shift's
+    // movements. `::text` on the numeric expression so the value never passes
+    // through a JS number on its way out of the driver (foundation §5.1).
     const sql = `
-      SELECT COALESCE((
-        SELECT (a.counted_amount
-                + CASE WHEN a.kind = 'opening' THEN ${movementsSql('a.shift_id', '$3')}
-                       ELSE 0.00 END)
-          FROM ${anchorSql('$1::uuid', asOfSql('$2', '$3'))} a
-      ), 0.00)::text AS cash`;
+      SELECT COALESCE(${drawerSql('$1::uuid', asOfSql('$2', '$3'), CashBook.Berry, '$3')}, 0.00)::text AS cash`;
     const [row] = (await runner.query(sql, [pointId, asOf ?? null, this.tz.appTimezone])) as {
       cash: string;
     }[];
@@ -211,11 +207,15 @@ export class PointCashService {
    * shift (spec §4.1), and a shift's movements are settled by its own closing
    * count. Nothing can move between one shift's close and the next one's open.
    */
-  async expectedForOpening(pointId: string, manager?: EntityManager): Promise<string | null> {
+  async expectedForOpening(
+    pointId: string,
+    manager?: EntityManager,
+    book: CashBook = CashBook.Berry,
+  ): Promise<string | null> {
     const runner = manager ?? this.dataSource.manager;
     const rows = (await runner.query(
       `SELECT a.counted_amount::text AS expected
-         FROM ${anchorSql('$1::uuid', "'infinity'::date")} a`,
+         FROM ${anchorSql('$1::uuid', "'infinity'::date", book)} a`,
       [pointId],
     )) as { expected: string }[];
     return rows[0]?.expected ?? null;
@@ -227,13 +227,19 @@ export class PointCashService {
    * the API (§6.1 writes one in the same transaction) and therefore a signal
    * that something wrote a shift directly.
    */
-  async expectedForClosing(shiftId: string, manager?: EntityManager): Promise<string | null> {
+  async expectedForClosing(
+    shiftId: string,
+    manager?: EntityManager,
+    book: CashBook = CashBook.Berry,
+  ): Promise<string | null> {
     const runner = manager ?? this.dataSource.manager;
+    const crates = book === CashBook.Crates;
+    const movements = crates ? crateMovementsSql('$1::uuid') : movementsSql('$1::uuid', '$2');
     const rows = (await runner.query(
-      `SELECT (c.counted_amount + ${movementsSql('$1::uuid', '$2')})::text AS expected
+      `SELECT (c.counted_amount + ${movements})::text AS expected
          FROM cash_counts c
-        WHERE c.shift_id = $1::uuid AND c.book = 'berry' AND c.kind = 'opening'`,
-      [shiftId, this.tz.appTimezone],
+        WHERE c.shift_id = $1::uuid AND c.book = ${BOOK_SQL[book]} AND c.kind = 'opening'`,
+      crates ? [shiftId] : [shiftId, this.tz.appTimezone],
     )) as { expected: string }[];
     return rows[0]?.expected ?? null;
   }
@@ -278,58 +284,20 @@ export class PointCashService {
       `WITH bounds AS (SELECT ${asOfSql('$2', '$3')} AS as_of),
        scoped AS (
          SELECT cp.id, cp.name, cp.target_cash, b.as_of,
-                COALESCE((
-                  SELECT (a.counted_amount
-                          + CASE WHEN a.kind = 'opening' THEN ${movementsSql('a.shift_id', '$3')}
-                                 ELSE 0.00 END)
-                    FROM ${anchorSql('cp.id', 'b.as_of')} a
-                ), 0.00) AS cash,
-                -- §3.1 — the count chain and the document line can differ by
-                -- the recorded discrepancies and by nothing else, so this SUM
-                -- IS the divergence. It is free: no second stored line, no
-                -- write path of its own. EXPLAINED INCIDENTS STAY IN IT — an
-                -- explanation changes what is OPEN, never what is TRUE (§7.7).
-                --
-                -- MIDDAY IS EXCLUDED, AND WITHOUT THAT FILTER THE HEADLINE
-                -- DOUBLE-COUNTS A REOPEN. §3.1's claim that this sum IS the
-                -- divergence telescopes over the ANCHORING counts only, and
-                -- §6.3's demotion breaks the chain: reopening a shift rewrites
-                -- its closing count's kind to midday, and the re-close then
-                -- writes a FRESH count against the SAME unchanged expectation,
-                -- because the expectation is a snapshot and nothing moved. A
-                -- drawer that opened at 1 000, closed at 900, was reopened and
-                -- closed at 900 again drifted -100 ONCE; summing every kind
-                -- reports -200. The demoted row is SUPERSEDED by the re-close,
-                -- not additional to it.
-                --
-                -- THE LIMIT NAMED HERE IS NOW RESOLVED, not open: a midday
-                -- RECOUNT route has existed since 2026-09-22 (R2), and its
-                -- rows are kind = 'midday' too, exactly like a demoted
-                -- closing count. This filter was RE-CHECKED against that —
-                -- see CashCountsService's own doc comment for the same check
-                -- against its only_discrepancies filter and
-                -- cash-count.mapper.ts's is_open — and it still excludes
-                -- midday UNCONDITIONALLY, on purpose: a recount's
-                -- discrepancy is not superseded by anything, but §7.6 makes a
-                -- recount a WITNESS, never an incident, so it was never meant
-                -- to add to this sum in the first place.
-                --
-                -- Unlike the anchor above, this is NOT
-                -- only_discrepancies-filtered -- that predicate belongs to a
-                -- different read with a different question.
-                COALESCE((SELECT SUM(c.counted_amount - c.expected_amount)
-                            FROM cash_counts c
-                            JOIN shifts sh ON sh.id = c.shift_id
-                           WHERE sh.collection_point_id = cp.id
-                             AND c.book = 'berry'
-                             AND c.kind <> 'midday'
-                             AND sh.business_date <= b.as_of), 0.00) AS unexplained_difference,
+                COALESCE(${drawerSql('cp.id', 'b.as_of', CashBook.Berry, '$3')}, 0.00) AS cash,
+                -- §3.1's divergence, midday excluded -- see discrepancySql.
+                ${discrepancySql('cp.id', 'b.as_of', CashBook.Berry)} AS unexplained_difference,
                 -- The crates book, correlated per point -- crateBookSql
                 -- called with the row's own cp.id rather than a shared
                 -- bind, so every row gets its own figure inside this one
                 -- CTE instead of a query per row. UNBOUNDED by b.as_of,
                 -- unlike every other column of this row: section 7.5.
                 ${crateBookSql('cp.id')} AS crate_deposits,
+                -- The crates DRAWER (#178): anchored on the point's own crates
+                -- count exactly as the cash column is on the berry one. NULL = never
+                -- counted -- no COALESCE, an unknown drawer is not an empty one.
+                ${drawerSql('cp.id', 'b.as_of', CashBook.Crates, '$3')} AS crate_cash,
+                ${discrepancySql('cp.id', 'b.as_of', CashBook.Crates)} AS crate_unexplained_difference,
                 -- The SAME book in units rather than money (R8) -- same
                 -- correlated-column call shape, same unbounded lifetime.
                 ${crateUnitsSql('cp.id')} AS crate_deposit_units
@@ -344,6 +312,8 @@ export class PointCashService {
               (s.target_cash - s.cash)::text AS shortfall,
               s.unexplained_difference::text AS unexplained_difference,
               s.crate_deposits::text AS crate_deposits,
+              s.crate_cash::text AS crate_cash,
+              s.crate_unexplained_difference::text AS crate_unexplained_difference,
               s.crate_deposit_units AS crate_deposit_units,
               lt.status  AS latest_transfer_status,
               lt.sent_at AS latest_transfer_sent_at,

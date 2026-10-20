@@ -1,7 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import { DataTable, type Column } from '@/shared/ui/data-table';
 import { Badge } from '@/shared/ui/badge';
-import { Button } from '@/shared/ui/button';
+import { Pager } from '@/shared/ui/pager';
 import { EmptyState } from '@/shared/ui/empty-state';
 import { Spinner } from '@/shared/ui/spinner';
 import { formatShortDate } from '@/shared/lib/date';
@@ -153,9 +153,6 @@ export function JournalTable({
     });
   }
 
-  const start = (page - 1) * limit + 1;
-  const end = Math.min(page * limit, total);
-
   return (
     <>
       <DataTable<JournalRow>
@@ -165,27 +162,7 @@ export function JournalTable({
         onRowClick={onRowClick}
         rowClickable={rowClickable}
       />
-      <div className="mt-3 flex items-center justify-between gap-3 text-sm text-muted-foreground">
-        <span>{t('journal.pagination.range', { from: start, to: end, total })}</span>
-        <div className="flex gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={page <= 1}
-            onClick={() => onPageChange(page - 1)}
-          >
-            {t('journal.pagination.prev')}
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={end >= total}
-            onClick={() => onPageChange(page + 1)}
-          >
-            {t('journal.pagination.next')}
-          </Button>
-        </div>
-      </div>
+      <Pager page={page} limit={limit} total={total} onPageChange={onPageChange} />
     </>
   );
 }
