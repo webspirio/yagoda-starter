@@ -479,9 +479,11 @@ schedules yet — a kit/consistency pass, not a feature:
   users). It is a transport envelope, not a domain type — move it to
   `shared/api` and delete the copies. The ESLint layer rule only checks
   direction, so nothing stops a sixth copy today.
-- **`pages/day/api/shiftActions.ts` has no test** for the invalidation trio
+- ~~**`pages/day/api/shiftActions.ts` has no test** for the invalidation trio
   (`shifts`, `intakes`, `payouts`) that every later screen relies on; ~30 lines
-  with a real `QueryClient` would lock it.
+  with a real `QueryClient` would lock it.~~ **CLOSED 2026-10-20 (#221):** the
+  file now lives at `pages/point-cash/api/shiftActions.ts` with its own test, and
+  the shared invalidation list is pinned in `features/count-shift`.
 - **The day page's truncation notice counts the merged feed**, while the cap
   is 100 per journal — 100 intakes + 5 payouts reads «перші 105 документів».
 - **A refused close banner survives navigation** on the day page (step to another
@@ -1503,10 +1505,11 @@ this explanation belongs to».
 
 Found by driving the count-explanations slice in a browser. None of them blocks it.
 
-- **The day screen's own «Закрити зміну» still only toasts.** The stale-shift
+- ~~**The day screen's own «Закрити зміну» still only toasts.** The stale-shift
   banner on «Прийомка» and «Каса за день» now shows the result and the note
   form (`widgets/count-result`). `DayPage`'s toolbar close does not; it is one
-  `ShiftCountResult` away.
+  `ShiftCountResult` away.~~ **CLOSED 2026-10-20 (#221):** `DayPage` is gone; the
+  day is closed from «Каса точки»'s shift panel, which shows `ShiftCountResult`.
 - **«рахував» / «закрив» are masculine for everyone.** «рахував Оксана Гнатюк»
   (`pointCash.countHistory.notYours`) and «закрив …» on the shift panel. Fixing
   this needs the user's gender, or a wording without a past-tense verb.
@@ -1536,7 +1539,7 @@ the review bot found.
   (number, operation, date, supplier) and `footer` are copied in both, and a third document
   kind would copy them again. One skeleton function that takes the operation and the sections
   is enough. `ReceiptDocument` is plain data, so a fluent builder would be overkill.
-- **Receipt wiring is copied onto four pages (review item 6).** `DayPage`, `JournalPage`,
+- **Receipt wiring is copied onto four pages (review item 6).** `PointCashPage` (was `DayPage` until #221), `JournalPage`,
   `DebtsPage` and `SupplierCardPage` each hold a second `useReceiptOpener()` and their own
   `<PayoutReceiptDialog …/>`. The rule «a payout gets its own receipt only when
   `intake_id === null`» is written separately in Day, Journal and the supplier timeline.

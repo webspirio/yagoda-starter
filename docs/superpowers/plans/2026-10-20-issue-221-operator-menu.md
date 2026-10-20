@@ -17,7 +17,7 @@
 3. The surviving page is «Каса точки» at `/point-cash`. `/day` redirects there and keeps `?date=` / `?point=`. Both pages already read the same two params (`useUrlParam('date')`, `useWorkingPoint`).
 4. ALL four `pages/day` blocks move over, including «Звірка каси» (`DayLedger`), even though it duplicates `CashLedger`. Pruning is a later, separate decision (follow-up entry, Task 9).
 5. Layout, top to bottom:
-   - header with the three cash tiles (unchanged);
+   - header with the three cash tiles (unchanged) — **changed during implementation:** «Каса за ящики» joined them as a fourth tile, never summed with the berry cash; the old card's note that signed-receipt crates are not counted is kept as the tile's hint;
    - `OpenShiftAlert`;
    - a separate row of the four day tiles;
    - `IncomingTransfers`;

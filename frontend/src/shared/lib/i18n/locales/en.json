@@ -705,7 +705,8 @@
       "title": "Crate cash",
       "caption_one": "deposits for {{count}} crate",
       "caption_other": "deposits for {{count}} crates",
-      "captionZero": "no crate deposits held"
+      "captionZero": "no crate deposits held",
+      "hint": "{{caption}} · signed-receipt crates not counted"
     },
     "incoming": {
       "loadFailed": "Could not load the transfers on their way. Reload the page."

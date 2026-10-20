@@ -319,10 +319,15 @@ export function PointCashPage() {
         {
           label: t('pointCash.crates.title'),
           value: formatUah(shownRow.crate_deposits, locale),
-          hint:
-            shownRow.crate_deposit_units === 0
-              ? t('pointCash.crates.captionZero')
-              : t('pointCash.crates.caption', { count: shownRow.crate_deposit_units }),
+          // The old card's footnote, kept: a crate handed out against a
+          // signed receipt carries no deposit, so this count can be smaller
+          // than the crates out in the field.
+          hint: t('pointCash.crates.hint', {
+            caption:
+              shownRow.crate_deposit_units === 0
+                ? t('pointCash.crates.captionZero')
+                : t('pointCash.crates.caption', { count: shownRow.crate_deposit_units }),
+          }),
         },
       ]
     : undefined;
@@ -399,13 +404,76 @@ export function PointCashPage() {
     </div>
   );
 
+  const dayTiles = dayFiguresVisible ? (
+    <DayTiles summary={day.summary} truncated={day.truncated} shown={day.feed.length} />
+  ) : null;
+
+  // #221 — «Звірка каси» first, then ONE card with two tabs: the day's feed
+  // and the point's recount history. «Звірка» is a fixed handful of rows; the
+  // feed grows with every document of the day, and a history placed under it
+  // would be out of reach on a busy one — as a tab it is one click away
+  // whatever the feed's length. (`DayLedger` overlaps `CashLedger` and is a
+  // candidate for removal — follow-ups.)
+  const daySection =
+    pointId === null ? null : (
+      <div className="mt-5 flex flex-col gap-5">
+        {dayFiguresVisible ? <DayLedger summary={day.summary} truncated={day.truncated} /> : null}
+        <Tabs
+          value={activityTab}
+          onValueChange={(next) => setActivityTab(next === 'counts' ? 'counts' : 'feed')}
+          className="rounded-xl bg-card p-5 ring-1 ring-foreground/10"
+        >
+          <TabsList className="mb-3">
+            <TabsTrigger value="feed">{t('day.feed.title')}</TabsTrigger>
+            <TabsTrigger value="counts">{t('pointCash.tabs.countHistory')}</TabsTrigger>
+          </TabsList>
+          <TabsContent value="feed">
+            <DayFeed
+              me={me}
+              pointId={pointId}
+              hasShift={hasShift}
+              isToday={isToday}
+              isLoading={shift.isPending || (hasShift && !day.ready)}
+              // A failed SHIFT read is announced once, by the panel; the feed
+              // cannot claim «no shift» over it, so it says so quietly.
+              isError={shift.isError || day.isError}
+              quietError={shift.isError}
+              feed={day.feed}
+              onOpenReceipt={receipt.openReceipt}
+              onOpenPayoutReceipt={payoutReceipt.openReceipt}
+              framed={false}
+            />
+          </TabsContent>
+          <TabsContent value="counts">
+            <CashCountHistory
+              pointId={pointId}
+              isOwner={isOwner}
+              meId={me?.id ?? null}
+              framed={false}
+            />
+          </TabsContent>
+        </Tabs>
+      </div>
+    );
+
   const body =
     pointId === null ? (
       <EmptyState title={t('pointCash.pickPoint')} />
-    ) : isError ? (
+    ) : pointMissing ? (
       <p role="alert" className="py-6 text-center text-destructive">
-        {pointMissing ? t('pointCash.errors.pointMissing') : t('common.somethingWentWrong')}
+        {t('pointCash.errors.pointMissing')}
       </p>
+    ) : isError ? (
+      // The cash figures failed; the day did not have to. Its own reads are
+      // by shift, so the tiles, «Звірка» and the feed stay — as on «Каса за
+      // день», which showed them whatever the ledger's reads did.
+      <>
+        <p role="alert" className="py-6 text-center text-destructive">
+          {t('common.somethingWentWrong')}
+        </p>
+        {dayTiles}
+        {daySection}
+      </>
     ) : !shownRow ? (
       // Nothing but "not answered yet" is left: `pointId` is set (so the read
       // is enabled), a failed one took the branch above, and so did a settled
@@ -415,9 +483,7 @@ export function PointCashPage() {
       </div>
     ) : (
       <>
-        {dayFiguresVisible ? (
-          <DayTiles summary={day.summary} truncated={day.truncated} shown={day.feed.length} />
-        ) : null}
+        {dayTiles}
         <IncomingTransfers pointId={pointId} canAct={isOperator} />
         <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(320px,0.8fr)]">
           <CashLedger
@@ -459,52 +525,7 @@ export function PointCashPage() {
             />
           </div>
         </div>
-        {/* #221 — «Звірка каси» first, then ONE card with two tabs: the day's
-            feed and the point's recount history. «Звірка» is a fixed handful
-            of rows; the feed grows with every document of the day, and a
-            history placed under it would be out of reach on a busy one — as a
-            tab it is one click away whatever the feed's length. (`DayLedger`
-            overlaps `CashLedger` and is a candidate for removal — follow-ups.) */}
-        <div className="mt-5 flex flex-col gap-5">
-          {dayFiguresVisible ? (
-            <DayLedger summary={day.summary} truncated={day.truncated} />
-          ) : null}
-          <Tabs
-            value={activityTab}
-            onValueChange={(next) => setActivityTab(next === 'counts' ? 'counts' : 'feed')}
-            className="rounded-xl bg-card p-5 ring-1 ring-foreground/10"
-          >
-            <TabsList className="mb-3">
-              <TabsTrigger value="feed">{t('day.feed.title')}</TabsTrigger>
-              <TabsTrigger value="counts">{t('pointCash.tabs.countHistory')}</TabsTrigger>
-            </TabsList>
-            <TabsContent value="feed">
-              <DayFeed
-                me={me}
-                pointId={pointId}
-                hasShift={hasShift}
-                isToday={isToday}
-                isLoading={shift.isPending || (hasShift && !day.ready)}
-                // A failed SHIFT read is announced once, by the panel; the feed
-                // cannot claim «no shift» over it, so it says so quietly.
-                isError={shift.isError || day.isError}
-                quietError={shift.isError}
-                feed={day.feed}
-                onOpenReceipt={receipt.openReceipt}
-                onOpenPayoutReceipt={payoutReceipt.openReceipt}
-                framed={false}
-              />
-            </TabsContent>
-            <TabsContent value="counts">
-              <CashCountHistory
-                pointId={pointId}
-                isOwner={isOwner}
-                meId={me?.id ?? null}
-                framed={false}
-              />
-            </TabsContent>
-          </Tabs>
-        </div>
+        {daySection}
       </>
     );
 
