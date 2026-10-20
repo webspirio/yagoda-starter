@@ -157,4 +157,36 @@ describe('AppLayout', () => {
     const dashboardLink = await screen.findByRole('link', { name: 'Summary' });
     expect(dashboardLink).toHaveAttribute('href', '/');
   });
+
+  // #221 — «Ціни дня» is the owner's screen; the operator reads a grade's
+  // price at reception, where it is shown on the grade option itself.
+  it('gives the operator no link to the day prices', async () => {
+    useSession.setState({ token: 'tok' });
+    mock.onGet('/me').reply(200, {
+      id: 'u1',
+      username: 'operator',
+      display_name: 'Olha',
+      role: 'point_operator',
+      collection_point_id: 'p1',
+    });
+    renderLayout('/');
+    await screen.findByRole('link', { name: 'Summary' });
+    expect(screen.queryByRole('link', { name: 'Day prices' })).not.toBeInTheDocument();
+  });
+
+  it('keeps the day prices link for the owner', async () => {
+    useSession.setState({ token: 'tok' });
+    mock.onGet('/me').reply(200, {
+      id: 'u0',
+      username: 'owner',
+      display_name: 'Ivan',
+      role: 'network_owner',
+      collection_point_id: null,
+    });
+    renderLayout('/');
+    expect(await screen.findByRole('link', { name: 'Day prices' })).toHaveAttribute(
+      'href',
+      '/prices',
+    );
+  });
 });

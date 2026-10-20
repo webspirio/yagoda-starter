@@ -1858,3 +1858,27 @@ describe('ReceptionPage — an open shift left behind on another day (#114)', ()
     ).toBeInTheDocument();
   });
 });
+
+// #221 — «Ціни дня» is the owner's screen; the operator reads each grade's
+// price on the grade option itself, right here.
+describe('ReceptionPage — the day prices shortcut', () => {
+  it('offers the operator no link to the day prices', () => {
+    renderReception();
+
+    expect(screen.queryByRole('link', { name: 'Day prices' })).toBeNull();
+  });
+
+  it('keeps the link for the owner', () => {
+    meMock.mockReturnValue({ data: OWNER });
+    pointScopeMock.mockReturnValue({
+      pointId: 'p1',
+      canPick: true,
+      setPointId: vi.fn(),
+      isLoading: false,
+    });
+
+    renderReception();
+
+    expect(screen.getByRole('link', { name: 'Day prices' })).toHaveAttribute('href', '/prices');
+  });
+});

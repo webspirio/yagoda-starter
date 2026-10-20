@@ -64,8 +64,8 @@ const NAV_GROUPS: NavGroup[] = [
       { labelKey: 'nav.crates', icon: Boxes, to: '/crates' },
       { labelKey: 'nav.day', icon: CalendarCheck2, to: '/day' },
       { labelKey: 'nav.pointCash', icon: Banknote, to: '/point-cash' },
-      // Both roles: the owner sets the day's price, the operator sees it locked.
-      { labelKey: 'nav.prices', icon: CircleDollarSign, to: '/prices' },
+      // Owner only (#221): the operator reads a grade's price at reception.
+      { labelKey: 'nav.prices', icon: CircleDollarSign, to: '/prices', role: 'network_owner' },
     ],
   },
   {

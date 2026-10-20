@@ -58,6 +58,7 @@ export const TransfersPage = lazy(() => ownerPages().then((m) => ({ default: m.T
 export const ReweighPage = lazy(() => ownerPages().then((m) => ({ default: m.ReweighPage })));
 export const CostOfDayPage = lazy(() => ownerPages().then((m) => ({ default: m.CostOfDayPage })));
 export const SettingsPage = lazy(() => ownerPages().then((m) => ({ default: m.SettingsPage })));
+export const PricesPage = lazy(() => ownerPages().then((m) => ({ default: m.PricesPage })));
 
 /**
  * «Каса точки» — BOTH roles, so not in the owner chunk, and lazy on its own

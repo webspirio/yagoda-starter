@@ -362,11 +362,13 @@ export function ReceptionPage() {
           ))}
         </SelectField>
       ) : null}
-      {/* Both roles: an operator's /prices is read-only (no role gate on the
-          route), so «Ціни дня» is a look, not just a set. */}
-      <Button variant="outline" asChild>
-        <Link to="/prices">{t('reception.toPrices')}</Link>
-      </Button>
+      {/* Owner only (#221): /prices is the owner's screen, and the operator
+          already sees each grade's price on its option in the form below. */}
+      {isOwner ? (
+        <Button variant="outline" asChild>
+          <Link to="/prices">{t('reception.toPrices')}</Link>
+        </Button>
+      ) : null}
       <Button variant="secondary" asChild>
         <Link to="/day">{t('reception.toDay')}</Link>
       </Button>
@@ -388,9 +390,8 @@ export function ReceptionPage() {
         title={t('reception.noPrices.title')}
         hint={t('reception.noPrices.hint')}
         action={
-          // Only the owner can actually set a price on the next screen — an
-          // operator's own `/prices` is read-only, so this call to action is
-          // theirs alone.
+          // Only the owner can set a price — and since #221 only the owner
+          // can open `/prices` at all — so this call to action is theirs alone.
           isOwner ? (
             <Button asChild>
               <Link to="/prices">{t('reception.noPrices.action')}</Link>

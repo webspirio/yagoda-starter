@@ -15,26 +15,26 @@ import { ProfilePage } from '@/pages/profile';
 import { SuppliersPage } from '@/pages/suppliers';
 import { DebtsPage } from '@/pages/debts';
 import { SupplierCardPage } from '@/pages/supplier-card';
-import { PricesPage } from '@/pages/prices';
 import { DayPage } from '@/pages/day';
 import { ReceptionPage } from '@/pages/reception';
 import { CratesPage } from '@/pages/crates';
 import { NotFoundPage } from '@/pages/not-found';
 
 // LAZY — the owner-only group, in ONE chunk fetched the first time an owner
-// opens any of these eight screens. They live in their own module because a
+// opens any of these nine screens. They live in their own module because a
 // file that DEFINES components and also exports plain values (`routes`,
 // `router`) is not a Fast Refresh boundary — eslint-plugin-react-refresh
 // says so, and this repo's eslint config answers that by extracting rather
 // than whitelisting. `./lazy-routes` carries the measurements behind the
 // one-chunk choice and the guard-before-chunk ordering the routes below
-// depend on; read it before adding a ninth.
+// depend on; read it before adding a tenth.
 import {
   CatalogPage,
   CostOfDayPage,
   JournalPage,
   PointCashPage,
   PointsPage,
+  PricesPage,
   ReweighPage,
   SettingsPage,
   TransfersPage,
@@ -215,18 +215,14 @@ export const routes: RouteObject[] = [
             element: <CostOfDayPage />,
           },
           { path: '/settings', element: <SettingsPage /> },
+          {
+            // The owner's screen (#221). `GET /grade-prices/*` stays open to
+            // both roles server-side — reception reads the operator's prices
+            // from it — but the price table itself is not the operator's.
+            path: '/prices',
+            element: <PricesPage />,
+          },
         ],
-      },
-      {
-        // Both roles: `GET /grade-prices` (current + history) is open to both
-        // server-side, but `POST /grade-prices` is @Auth(NetworkOwner) — the
-        // operator sees the same table LOCKED instead of Change/Set.
-        path: '/prices',
-        element: (
-          <RequireAuth>
-            <PricesPage />
-          </RequireAuth>
-        ),
       },
       {
         // Обидві ролі: приймальник прибитий до своєї точки токеном, керівник
