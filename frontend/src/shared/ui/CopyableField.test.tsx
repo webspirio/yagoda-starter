@@ -5,7 +5,8 @@ import { CopyableField } from './CopyableField';
 const writeText = vi.fn().mockResolvedValue(undefined);
 beforeEach(() => {
   writeText.mockClear();
-  Object.assign(navigator, { clipboard: { writeText } });
+  // defineProperty, not assignment: happy-dom's navigator.clipboard is a getter.
+  Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
 });
 
 describe('CopyableField', () => {

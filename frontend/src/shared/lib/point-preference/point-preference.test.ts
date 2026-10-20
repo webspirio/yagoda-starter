@@ -44,14 +44,17 @@ describe('point preference', () => {
    * remembered», never to a crash on a money screen.
    */
   it('survives storage being unavailable, in both directions', () => {
-    vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+    // On the instance: happy-dom's localStorage never reaches Storage.prototype.
+    const get = vi.spyOn(localStorage, 'getItem').mockImplementation(() => {
       throw new Error('denied');
     });
-    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+    const set = vi.spyOn(localStorage, 'setItem').mockImplementation(() => {
       throw new Error('denied');
     });
 
     expect(getStoredPoint()).toBeNull();
     expect(() => storePoint(UUID)).not.toThrow();
+    expect(get).toHaveBeenCalled();
+    expect(set).toHaveBeenCalled();
   });
 });

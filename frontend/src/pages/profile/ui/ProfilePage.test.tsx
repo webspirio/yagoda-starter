@@ -30,9 +30,9 @@ const ME = {
 };
 
 // Radix Avatar preloads via `new Image()` and only commits the real <img>
-// once that preloader fires `load` AND jsdom's `complete`/`naturalWidth`
-// getters agree the load succeeded — jsdom never resolves those on its own
-// (no `canvas` package installed here), so without this shim the fallback
+// once that preloader fires `load` AND the `complete`/`naturalWidth` getters
+// agree the load succeeded — happy-dom fires no `load` and decodes no image
+// (`naturalWidth` stays 0), so without this shim the fallback
 // initials render forever and the URL-resolution test below has no <img> to
 // assert against. Mirrors the shim in shared/ui/avatar.test.tsx.
 let originalSrc: PropertyDescriptor | undefined;

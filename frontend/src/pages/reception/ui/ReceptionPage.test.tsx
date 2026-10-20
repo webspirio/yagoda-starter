@@ -1368,7 +1368,7 @@ describe('ReceptionPage — Enter never submits a half-typed receipt', () => {
     const grossInput = screen.getByLabelText('Gross — berries including tare');
 
     // Not ready: no supplier chosen yet, so `canSubmit` is false — Enter must
-    // not reach the browser's own (nonexistent in jsdom) implicit submit.
+    // not reach the browser's own (absent from happy-dom) implicit submit.
     const notReadyEvent = new KeyboardEvent('keydown', {
       key: 'Enter',
       bubbles: true,

@@ -1,6 +1,19 @@
 import { expect } from 'vitest';
 import { axe } from 'vitest-axe';
-import type { AxeResults } from 'axe-core';
+import type { AxeResults, Result } from 'axe-core';
+
+/**
+ * Radix's focus guards, the one exemption here (2026-10-21), from `aria-hidden-focus`
+ * alone. @radix-ui/react-focus-guards puts a `tabindex=0` span at each end of <body>,
+ * then the dialog's `hideOthers` marks them `aria-hidden`; axe flags that pair. It
+ * cannot see that a trapped FocusScope answers `focusin` outside the dialog by moving
+ * focus straight back in, so a keyboard user never rests on a guard. test-axe.test.tsx
+ * fails once Radix stops rendering them that way — delete this then.
+ */
+export const FOCUS_GUARD = '[data-radix-focus-guard]';
+
+const isExempt = (rule: Result['id'], node: Result['nodes'][number]): boolean =>
+  rule === 'aria-hidden-focus' && (node.element?.matches(FOCUS_GUARD) ?? false);
 
 /**
  * Asserts a rendered container has no machine-detectable a11y violations.
@@ -12,16 +25,20 @@ import type { AxeResults } from 'axe-core';
  *     makes that a compile error instead;
  *   - it does NOT catch a missing aria-describedby to an error message —
  *     shared/ui/field.test.tsx covers that explicitly;
- *   - color-contrast is disabled: no stylesheet loads under jsdom, so the rule
- *     is meaningless here and only emits canvas warnings.
+ *   - color-contrast is disabled: no stylesheet loads in the test DOM, so the
+ *     rule is meaningless here and only emits canvas warnings.
  * A green axe run means "no obvious markup defects", not "accessible".
  */
 export async function expectNoAxeViolations(container: HTMLElement): Promise<void> {
   const results = (await axe(container, {
     rules: { 'color-contrast': { enabled: false } },
+    elementRef: true,
   })) as AxeResults;
 
-  const summary = results.violations.map(
+  const violations = results.violations
+    .map((v) => ({ ...v, nodes: v.nodes.filter((n) => !isExempt(v.id, n)) }))
+    .filter((v) => v.nodes.length > 0);
+  const summary = violations.map(
     (v) =>
       `[${v.impact}] ${v.id}: ${v.help}\n` + v.nodes.map((n) => `      ${n.html}`).join('\n'),
   );

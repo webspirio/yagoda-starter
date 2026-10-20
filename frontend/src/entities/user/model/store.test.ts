@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useSession, TOKEN_STORAGE_KEY } from './store';
 
 describe('session store', () => {
@@ -25,12 +25,13 @@ describe('session store', () => {
   });
 
   it('tolerates localStorage throwing (private mode, blocked storage)', () => {
-    const original = Storage.prototype.setItem;
-    Storage.prototype.setItem = () => {
+    // On the instance: happy-dom's localStorage never reaches Storage.prototype.
+    const spy = vi.spyOn(localStorage, 'setItem').mockImplementation(() => {
       throw new DOMException('denied');
-    };
+    });
     expect(() => useSession.getState().setToken('abc')).not.toThrow();
     expect(useSession.getState().token).toBe('abc');
-    Storage.prototype.setItem = original;
+    expect(spy).toHaveBeenCalled();
+    spy.mockRestore();
   });
 });

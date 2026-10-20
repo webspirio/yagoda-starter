@@ -198,7 +198,7 @@ describe('CashCountHistory', () => {
 
   it('clamps both long texts to two lines, each expandable on its own, so the table keeps its width', async () => {
     const user = userEvent.setup();
-    // jsdom has no layout — fake a clamp that hides text.
+    // No layout in the test DOM — fake a clamp that hides text.
     vi.spyOn(HTMLElement.prototype, 'scrollHeight', 'get').mockReturnValue(120);
     vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(40);
     countsMock.mockReturnValue(

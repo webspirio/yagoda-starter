@@ -78,7 +78,7 @@ export default defineConfig(() => ({
     manifest: true,
   },
   test: {
-    environment: 'jsdom',
+    environment: 'happy-dom',
     globals: true,
     setupFiles: ['./src/test-setup.ts'],
     // Above `asyncUtilTimeout` (5000ms, set in test-setup.ts) with headroom, so
