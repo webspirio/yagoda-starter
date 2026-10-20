@@ -42,7 +42,6 @@
     "dashboard": "Summary",
     "reception": "Intake",
     "crates": "Crates",
-    "day": "Day cash",
     "pointCash": "Point cash",
     "prices": "Day prices",
     "suppliers": "Suppliers",
@@ -414,21 +413,12 @@
     }
   },
   "day": {
-    "eyebrow": "{{point}} · {{weekday}}",
     "title": "Cash for {{date}}",
-    "description": "How much berry came in, how much cash went out and what carried over to balances — from the shift's own documents.",
-    "pickPoint": "Select a point",
     "status": {
-      "open": "Shift open",
-      "closed": "Shift closed",
-      "awaiting_explanation": "Needs an explanation",
       "none": "No shift that day",
-      "noneToday": "Shift not opened yet",
-      "loading": "Loading…"
+      "noneToday": "Shift not opened yet"
     },
-    "open": "Open shift",
     "close": "Close shift",
-    "currentShiftFailed": "Could not check whether a shift is already open — reload the page",
     "staleShift": {
       "title": "The shift for {{date}} is not closed yet",
       "hint": "No new shift can be opened until it is closed.",
@@ -494,7 +484,6 @@
       "voidedReason": "Voided: {{reason}}"
     },
     "toast": {
-      "opened": "Shift opened",
       "closed": "Shift closed",
       "reopened": "Shift reopened"
     },
@@ -550,7 +539,7 @@
         "awaiting_explanation": "Needs an explanation",
         "none": "Shift not opened yet"
       },
-      "dayCash": "Day cash",
+      "pointCash": "Point cash",
       "reception": "Intake"
     },
     "staleShifts": {
@@ -565,7 +554,7 @@
     },
     "shortcuts": {
       "reception": "Intake",
-      "dayCash": "Day cash",
+      "pointCash": "Point cash",
       "balances": "Balances"
     }
   },
@@ -902,7 +891,7 @@
     "title": "Berry intake",
     "pickPoint": "Select a point",
     "toPrices": "Day prices",
-    "toDay": "Day cash",
+    "toPointCash": "Point cash",
     "shift": {
       "none": "Shift not opened yet",
       "noneOwner": "Shift not opened yet — the operator opens it",

@@ -119,7 +119,7 @@ export function ReceptionPage() {
   const [openDialogOpen, setOpenDialogOpen] = useState(false);
   // Bumped on every open so the dialog remounts with fresh RHF defaults and no
   // banner from the refusal before it — the convention `ReopenShiftDialog`
-  // (pages/day) documents.
+  // (pages/point-cash) follows too.
   const [openDialogInstance, setOpenDialogInstance] = useState(0);
   // A banner close shows its result and the note form, not a bare toast (S2).
   const [staleResult, setStaleResult] = useState<ShiftCountResultFor | null>(null);
@@ -301,13 +301,14 @@ export function ReceptionPage() {
     }
   };
 
-  // #114 — «Каса за день» for the day a shift was left open on. An operator's
-  // point comes from their token, so only the owner's has to ride in the link
-  // or that screen opens on whichever point it remembers.
-  const goToDay = (businessDate: string) => {
+  // #114 — «Каса точки» for the day a shift was left open on (#221: that
+  // day's documents and close live there now). An operator's point comes from
+  // their token, so only the owner's has to ride in the link or that screen
+  // opens on whichever point it remembers.
+  const goToPointCash = (businessDate: string) => {
     const params = new URLSearchParams({ date: businessDate });
     if (canPick && pointId !== null) params.set('point', pointId);
-    void navigate(`/day?${params.toString()}`);
+    void navigate(`/point-cash?${params.toString()}`);
   };
 
   // Every receipt that returns our crates passes through `ConfirmRefundDialog`,
@@ -370,7 +371,7 @@ export function ReceptionPage() {
         </Button>
       ) : null}
       <Button variant="secondary" asChild>
-        <Link to="/day">{t('reception.toDay')}</Link>
+        <Link to="/point-cash">{t('reception.toPointCash')}</Link>
       </Button>
     </>
   );
@@ -426,7 +427,7 @@ export function ReceptionPage() {
         <OpenShiftAlert
           pointId={pointId}
           viewedDate={todayIso()}
-          onGoToDate={goToDay}
+          onGoToDate={goToPointCash}
           onClosed={(id) => setStaleResult({ mode: 'close', shiftId: id })}
         />
 

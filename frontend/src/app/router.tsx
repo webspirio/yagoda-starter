@@ -1,4 +1,5 @@
 import { createBrowserRouter, Outlet, type RouteObject } from 'react-router';
+import { RedirectToPointCash } from './RedirectToPointCash';
 import { AppLayout } from './layouts/AppLayout';
 import { RouteError } from './providers/RouteError';
 import { RouteFallback } from './layouts/RouteFallback';
@@ -7,7 +8,7 @@ import { RequireAuth, RequireRole } from '@/features/auth';
 // EAGER — the screens an operator opens every shift, plus the two auth-shaped
 // ones. These stay in the entry chunk deliberately: a chunk request costs a
 // round trip on the mobile data an operator is standing in the field with, and
-// paying it for /reception or /day would make the daily path slower to save
+// paying it for /reception would make the daily path slower to save
 // bytes the daily path was already going to need.
 import { LoginPage } from '@/pages/login';
 import { DashboardPage } from '@/pages/dashboard';
@@ -15,7 +16,6 @@ import { ProfilePage } from '@/pages/profile';
 import { SuppliersPage } from '@/pages/suppliers';
 import { DebtsPage } from '@/pages/debts';
 import { SupplierCardPage } from '@/pages/supplier-card';
-import { DayPage } from '@/pages/day';
 import { ReceptionPage } from '@/pages/reception';
 import { CratesPage } from '@/pages/crates';
 import { NotFoundPage } from '@/pages/not-found';
@@ -134,11 +134,12 @@ export const routes: RouteObject[] = [
         ),
       },
       {
-        // Both roles: the operator runs their shift, the owner reads (and reopens).
+        // #221 — «Каса за день» was folded into «Каса точки». The address stays
+        // for bookmarks and shared links, and keeps their ?point= and ?date=.
         path: '/day',
         element: (
           <RequireAuth>
-            <DayPage />
+            <RedirectToPointCash />
           </RequireAuth>
         ),
       },
@@ -192,7 +193,7 @@ export const routes: RouteObject[] = [
           },
           {
             // The full receipts/payouts register is owner-only — an operator's
-            // view is scoped to their own point's shift already (Каса за день).
+            // view is scoped to their own point's shift already («Каса точки»).
             path: '/journal',
             element: <JournalPage />,
           },

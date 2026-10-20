@@ -38,17 +38,21 @@ import {
   OpenShiftAlert,
 } from '@/features/count-shift';
 import { ShiftCountResult, type ShiftCountResultFor } from '@/widgets/count-result';
+import { PayoutReceiptDialog, ReceiptDialog, useReceiptOpener } from '@/widgets/receipt';
 import { CashLedger } from './CashLedger';
 import { shiftDateOf } from '../lib/buildLedger';
 import { CratesBookCard } from './CratesBookCard';
 import { IncomingTransfers } from './IncomingTransfers';
 import { CashCountHistory } from './CashCountHistory';
 import { ShiftCountPanel, type OpenShiftGate } from './ShiftCountPanel';
+import { DayTiles } from './DayTiles';
+import { DayFeed } from './DayFeed';
+import { DayLedger } from './DayLedger';
+import { ReopenShiftDialog } from './ReopenShiftDialog';
+import { useDayDocuments } from '../model/useDayDocuments';
 
 /** What the shift-count dialog is open for: which verb, and — for a close —
- *  the shift it closes. Same shape `pages/day/ui/DayPage.tsx` keeps locally;
- *  not shared, because the two pages' surrounding wiring (toolbar vs panel)
- *  differs enough that a shared type would buy nothing but an import. */
+ *  the shift it closes. */
 type CountTarget = { mode: 'open' } | { mode: 'close'; shiftId: string };
 
 /**
@@ -178,7 +182,7 @@ export function PointCashPage() {
   // #114 — `shift` answers only for the date on screen; a shift left open on
   // an earlier day is invisible to it, and «Відкрити зміну» over one is the
   // SHIFT_ALREADY_OPEN refusal of #113. `/shifts/current` is date-blind — the
-  // same gate `pages/day` and `pages/reception` put on their own button.
+  // same gate `pages/reception` puts on its own button.
   const current = useCurrentShiftQuery(pointId);
   const openShiftGate: OpenShiftGate = current.isError
     ? 'failed'
@@ -189,13 +193,30 @@ export function PointCashPage() {
         : 'blocked';
   const panelCounts = shiftCashCounts.data?.data ?? [];
 
+  // #221 — what «Каса за день» showed, folded in: the shift's own documents,
+  // read BY SHIFT (see `useDayDocuments` for why these are not the ledger's
+  // reads above). Kept out of the page-wide `isError`, like the shift read:
+  // a failed journal degrades the day's tiles, feed and reconciliation only.
+  const day = useDayDocuments(date, shift.data?.id);
+  const hasShift = shift.data != null;
+  // One gate for the day's figures: a shift, a clean read, both journals in.
+  // Tiles and «Звірка каси» must never disagree on it.
+  const dayFiguresVisible = hasShift && !shift.isError && !day.isError && day.ready;
+  const receipt = useReceiptOpener();
+  const payoutReceipt = useReceiptOpener();
+  const [reopenOpen, setReopenOpen] = useState(false);
+  // Bumped on every open so the dialog remounts with fresh RHF defaults and no
+  // banner from the refusal before it.
+  const [reopenInstance, setReopenInstance] = useState(0);
+
   const openShift = useOpenShiftMutation();
   const closeShift = useCloseShiftMutation();
   const [countTarget, setCountTarget] = useState<CountTarget | null>(null);
-  // The COPY the dialog shows — same split from `countTarget` (and the same
-  // reason) `DayPage` documents: `open={countTarget !== null}` alone drives
-  // visibility, so `countMode` must survive the close (exit) animation after
-  // `countTarget` is already cleared.
+  // The COPY the dialog shows, split from `countTarget`: `open={countTarget
+  // !== null}` alone drives visibility, so `countMode` must survive the close
+  // (exit) animation after `countTarget` is already cleared — resetting it
+  // too would flip a closing close-dialog to the open copy for ~100ms. (CSS-
+  // driven and untestable under jsdom — no test covers it.)
   const [countMode, setCountMode] = useState<'open' | 'close'>('open');
   const [countInstance, setCountInstance] = useState(0);
   const openCountDialog = (target: CountTarget) => {
@@ -379,6 +400,9 @@ export function PointCashPage() {
       </div>
     ) : (
       <>
+        {dayFiguresVisible ? (
+          <DayTiles summary={day.summary} truncated={day.truncated} shown={day.feed.length} />
+        ) : null}
         <IncomingTransfers pointId={pointId} canAct={isOperator} />
         <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(320px,0.8fr)]">
           <CashLedger
@@ -420,8 +444,40 @@ export function PointCashPage() {
               onOpenShift={() => openCountDialog({ mode: 'open' })}
               openShiftGate={openShiftGate}
               onCloseShift={(shiftId) => openCountDialog({ mode: 'close', shiftId })}
+              onReopenShift={
+                isOwner
+                  ? () => {
+                      setReopenInstance((n) => n + 1);
+                      setReopenOpen(true);
+                    }
+                  : undefined
+              }
             />
           </div>
+        </div>
+        {/* #221 — «Каса за день»'s feed and reconciliation, full width under
+            the grid. «Звірка каси» sits last on purpose: it overlaps
+            `CashLedger` and is the candidate for removal (follow-ups). */}
+        <div className="mt-5 flex flex-col gap-5">
+          {/* A failed SHIFT read is already said once, by the panel; the feed
+              cannot honestly claim «no shift» over it either, so it stays out
+              rather than raising a second alert for the same failure. */}
+          {shift.isError ? null : (
+            <DayFeed
+              me={me}
+              pointId={pointId}
+              hasShift={hasShift}
+              isToday={isToday}
+              isLoading={shift.isPending || (hasShift && !day.ready)}
+              isError={day.isError}
+              feed={day.feed}
+              onOpenReceipt={receipt.openReceipt}
+              onOpenPayoutReceipt={payoutReceipt.openReceipt}
+            />
+          )}
+          {dayFiguresVisible ? (
+            <DayLedger summary={day.summary} truncated={day.truncated} />
+          ) : null}
         </div>
         {/* Full width, below the ledger/right-column grid — the journal is a
             wide table, and the 320px column it used to sit in truncated it.
@@ -495,9 +551,8 @@ export function PointCashPage() {
         onConfirm={async (counted_amount, broken_crates) => {
           if (countTarget === null) {
             // Only reachable while the dialog is open, which only happens
-            // with a target set — same guard `DayPage` keeps for the same
-            // reason: a programming error here must not look like a silent
-            // no-op success.
+            // with a target set: a programming error here must not look like
+            // a silent no-op success.
             throw new Error('count dialog confirmed without a target');
           }
           if (countTarget.mode === 'open') {
@@ -522,6 +577,28 @@ export function PointCashPage() {
       />
 
       <ShiftCountResult result={resultFor} onClose={() => setResultFor(null)} />
+
+      {shift.data ? (
+        <ReopenShiftDialog
+          key={`reopen-${reopenInstance}`}
+          shift={shift.data}
+          open={reopenOpen}
+          onClose={() => setReopenOpen(false)}
+        />
+      ) : null}
+      <ReceiptDialog
+        key={receipt.receiptId}
+        intakeId={receipt.receiptId}
+        open={receipt.open}
+        startWithVoid={receipt.startWithVoid}
+        onClose={receipt.clear}
+      />
+      <PayoutReceiptDialog
+        key={`payout-${payoutReceipt.receiptId}`}
+        payoutId={payoutReceipt.receiptId}
+        open={payoutReceipt.open}
+        onClose={payoutReceipt.clear}
+      />
     </>
   );
 }

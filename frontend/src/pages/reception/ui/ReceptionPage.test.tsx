@@ -426,7 +426,7 @@ function renderReception() {
     [
       { path: '/reception', element: <ReceptionPage /> },
       { path: '/suppliers/:id', element: <div>Supplier card</div> },
-      { path: '/day', element: <div>Day screen</div> },
+      { path: '/point-cash', element: <div>Point cash screen</div> },
     ],
     { initialEntries: ['/reception'] },
   );
@@ -1809,7 +1809,7 @@ describe('ReceptionPage — an open shift left behind on another day (#114)', ()
     const { router } = renderReception();
 
     await user.click(screen.getByRole('button', { name: 'Go to that day' }));
-    await waitFor(() => expect(router.state.location.pathname).toBe('/day'));
+    await waitFor(() => expect(router.state.location.pathname).toBe('/point-cash'));
     expect(new URLSearchParams(router.state.location.search).get('date')).toBe(STRANDED_DATE);
   });
 
@@ -1826,9 +1826,9 @@ describe('ReceptionPage — an open shift left behind on another day (#114)', ()
     const { router } = renderReception();
 
     await user.click(screen.getByRole('button', { name: 'Go to that day' }));
-    await waitFor(() => expect(router.state.location.pathname).toBe('/day'));
+    await waitFor(() => expect(router.state.location.pathname).toBe('/point-cash'));
     // An operator's point comes from their token; only the owner's has to ride
-    // in the link, or «Каса за день» opens on whichever point it remembers.
+    // in the link, or «Каса точки» opens on whichever point it remembers.
     expect(new URLSearchParams(router.state.location.search).get('point')).toBe('p1');
   });
 
@@ -1880,5 +1880,14 @@ describe('ReceptionPage — the day prices shortcut', () => {
     renderReception();
 
     expect(screen.getByRole('link', { name: 'Day prices' })).toHaveAttribute('href', '/prices');
+  });
+});
+
+// #221 — «Каса за день» was folded into «Каса точки»; the toolbar goes there.
+describe('ReceptionPage — the point cash shortcut', () => {
+  it('links the toolbar to «Каса точки»', () => {
+    renderReception();
+
+    expect(screen.getByRole('link', { name: 'Point cash' })).toHaveAttribute('href', '/point-cash');
   });
 });

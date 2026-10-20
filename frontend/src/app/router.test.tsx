@@ -253,6 +253,33 @@ describe('router', () => {
     expect(await screen.findByText('settings page')).toBeInTheDocument();
   });
 
+  // #221 — «Каса за день» was folded into «Каса точки». The old address stays
+  // a redirect for bookmarks, and it must carry the point and the date with
+  // it: a bare redirect would land a shared link on the wrong day.
+  it('redirects /day to /point-cash, keeping ?point= and ?date=', async () => {
+    useSession.setState({ token: 'tok' });
+    meMock.mockReturnValue({
+      data: { role: 'network_owner', display_name: 'Керівник Тест' },
+      isPending: false,
+      isError: false,
+    });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const router = createMemoryRouter(routes, {
+      initialEntries: ['/day?point=p1&date=2026-10-01'],
+    });
+    render(
+      <QueryClientProvider client={client}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>,
+    );
+
+    expect(await screen.findByText('point-cash page')).toBeInTheDocument();
+    expect(router.state.location.pathname).toBe('/point-cash');
+    expect(router.state.location.search).toBe('?point=p1&date=2026-10-01');
+    // `replace`, so «Back» does not bounce the visitor into the redirect again.
+    expect(router.state.historyAction).toBe('REPLACE');
+  });
+
   it('lets both roles onto /point-cash', async () => {
     // An operator is pinned to their own point by the token, an owner picks
     // one — either way `/point-cash` is RequireAuth with no role gate.

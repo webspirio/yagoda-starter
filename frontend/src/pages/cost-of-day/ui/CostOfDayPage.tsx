@@ -32,7 +32,8 @@ import { FinalPrices } from './FinalPrices';
  * THE DATE IS LOCAL, and `?date=` is this screen's own: the owner works
  * through yesterday's day while the points are still buying today, so a
  * global date would move the working day under the very people being checked.
- * Copied from `pages/day` and `pages/reweigh`, clamp included.
+ * Copied from «Каса за день» (now `pages/point-cash`, #221) and `pages/reweigh`,
+ * clamp included.
  *
  * THE POINT PICKER IS NOT FILTERED BY `kind`, and that is the one place this
  * screen deliberately differs from `pages/reweigh`. The base is a reception

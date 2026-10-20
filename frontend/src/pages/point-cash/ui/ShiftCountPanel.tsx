@@ -33,8 +33,7 @@ import { RecountDrawerDialog, discrepancyTone } from '@/features/count-shift';
  *   - `openPastDay` — an open shift left over from a date that is no longer
  *                     today, viewed on its own day. It blocks every new shift
  *                     until it is closed (#114), and this is the screen for
- *                     it, so the operator gets «Закрити зміну» here — the
- *                     same close `/day` offers on that date. No recount: R4
+ *                     it, so the operator gets «Закрити зміну» here. No recount: R4
  *                     promises that live, today only.
  *   - `other`       — the genuine no-shift case on a date that is not today:
  *                     nothing to attach a recount to.
@@ -131,6 +130,7 @@ export function ShiftCountPanel({
   onOpenShift,
   openShiftGate,
   onCloseShift,
+  onReopenShift,
 }: {
   shift: Shift | null;
   isShiftLoading: boolean;
@@ -140,8 +140,7 @@ export function ShiftCountPanel({
    * page turns into `shift ?? null` / an empty `counts` array — exactly the
    * shape a genuinely shift-less day has. Without this flag the panel would
    * silently offer an operator «Відкрити зміну» over a shift it never
-   * actually confirmed doesn't exist (the same failure mode `DayPage`'s own
-   * `isError` guards against, and `IncomingTransfers`'s doc comment names
+   * actually confirmed doesn't exist (the failure mode `IncomingTransfers`'s doc comment names
    * directly: "A FAILED READ IS NOT «NOTHING IN TRANSIT»").
    */
   isShiftError: boolean;
@@ -151,6 +150,13 @@ export function ShiftCountPanel({
   onOpenShift: () => void;
   openShiftGate: OpenShiftGate;
   onCloseShift: (shiftId: string) => void;
+  /**
+   * «Відкрити зміну наново» — the owner's correction (#221: it came over
+   * from «Каса за день»). The PAGE passes it for the owner only; absent, the
+   * button is absent, so the panel itself never decides who may reopen. The
+   * dialog stays page-level, like the open/close one.
+   */
+  onReopenShift?: () => void;
 }) {
   const { t, i18n } = useTranslation();
   // `formatTime` (unlike `formatUah`) takes a required locale — same
@@ -160,7 +166,7 @@ export function ShiftCountPanel({
   const [recountOpen, setRecountOpen] = useState(false);
   // Bumped on every open so the dialog remounts with a blank form and no
   // stale result/banner from the last recount — the convention
-  // `CountDrawerDialog`'s own callers already follow (`DayPage`'s `countInstance`).
+  // `CountDrawerDialog`'s own callers already follow (`PointCashPage`'s `countInstance`).
   const [recountInstance, setRecountInstance] = useState(0);
   const openRecount = () => {
     setRecountInstance((n) => n + 1);
@@ -284,6 +290,29 @@ export function ShiftCountPanel({
                 <p className="text-xs text-muted-foreground">
                   {t('pointCash.panel.closedBy', { name: shift.closed_by_name ?? '—' })}
                 </p>
+              ) : null}
+              {/* §6.8's «бій», read back after the close. `=== null`, never `??` or a
+                  falsy test: `0` is «нічого не побилось» — a number the operator typed
+                  — and «—» is «не записано», which is every shift closed before this
+                  column existed. Gated on `closed` because the CHECK allows a number
+                  nowhere else, and a reopen clears it back to `null`. */}
+              {shift.status === 'closed' ? (
+                <p className="text-xs text-muted-foreground">
+                  {t('day.count.brokenSummary')}:{' '}
+                  {shift.broken_crates === null ? '—' : shift.broken_crates}
+                </p>
+              ) : null}
+              {/* `closed` only, exactly as «Каса за день» gated it. The server
+                  would also reopen a legacy `awaiting_explanation` row (it
+                  checks `closed_at`), but that status is unreachable by
+                  decision (09.09), so widening the gate here is a separate
+                  question, not part of moving the button. */}
+              {onReopenShift && shift.status === 'closed' ? (
+                <div className="pt-2">
+                  <Button size="sm" variant="outline" onClick={onReopenShift}>
+                    {t('day.reopen')}
+                  </Button>
+                </div>
               ) : null}
             </div>
           ) : null}

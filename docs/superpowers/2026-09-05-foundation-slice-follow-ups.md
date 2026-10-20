@@ -1600,3 +1600,23 @@ The slice rounds only a reception line's `amount` (§2.12). The ticket says
   preview — is open.
 - **The receipt prints net × rate beside an amount that is not their product**
   (36,90 × 57,00 next to 2 103,00). A hint for the supplier is possible.
+
+## Left over from merging «Каса за день» into «Каса точки» (#221, 2026-10-20)
+
+The client asked to move what was needed and decide later what to drop, so
+everything `pages/day` showed now sits on `/point-cash`, and two things overlap:
+
+- **Two cash ledgers on one page.** `DayLedger` («Звірка каси») is a client-side
+  decomposition of the shift's own documents and cannot see a `settle-return`
+  made today for an earlier shift's payout (its own note says so). `CashLedger` is
+  the server's `breakdown` (#73), whose rows add up to the figure by construction.
+  Decide with the client which to keep; the likely answer is `CashLedger` alone.
+- **«Документи дня» beside «Журнал прийомки».** The feed is the shift's
+  documents for both roles; the journal is the owner's season-wide register.
+  Probably both stay, but the client has not said.
+- **The `day.*` locale keys still in use were not renamed** (tiles, feed, ledger,
+  reopen, count dialog copy, `day.errors.*`). Rename them to `pointCash.*` in the
+  same change that settles the two points above, so the locale churn happens once.
+- **`/day` is a redirect** (`app/RedirectToPointCash.tsx`) kept for bookmarks.
+  It can go once nobody can still be holding an old link — not before the next
+  season.
