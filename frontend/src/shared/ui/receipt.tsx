@@ -128,10 +128,10 @@ export function ReceiptView({ doc }: { doc: ReceiptDocument }) {
     <div className="printable receipt-paper rounded-lg border border-dashed border-border bg-white p-4 text-[15px] font-semibold text-black">
       {doc.voided ? (
         <div className="mb-3 rounded-md border-2 border-destructive p-2 text-center">
-          <Badge variant="destructive" className="h-auto px-3 py-1 text-sm font-semibold">
+          <Badge variant="destructive" className="h-auto px-3 py-1 text-[1.13em] font-bold">
             {t('receipt.voided')}
           </Badge>
-          <p className="mt-1 text-xs text-destructive">
+          <p className="mt-1 text-[0.87em] text-destructive">
             {t('receipt.voidReason', { reason: doc.voided.reason })}
           </p>
         </div>

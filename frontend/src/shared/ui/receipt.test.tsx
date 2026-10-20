@@ -130,7 +130,11 @@ describe('ReceiptView', () => {
     const paper = [...container.querySelectorAll<HTMLElement>('.printable, .printable *')].filter(
       (el) => !el.closest('.print\\:hidden'),
     );
-    expect(paper.filter((el) => /\btext-(neutral|gray|muted)/.test(el.className))).toEqual([]);
+    expect(
+      paper.filter((el) =>
+        /\b(text-(neutral|gray|slate|zinc|stone|muted)|opacity-)/.test(el.className),
+      ),
+    ).toEqual([]);
   });
 
   it('marks its root as receipt paper — the print rules size the 58 mm strip by it', () => {
