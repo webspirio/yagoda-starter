@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { expectNoAxeViolations } from '../../../test-axe';
@@ -239,7 +239,9 @@ describe('ReceiptDialog', () => {
     expect(screen.getByText('112.00 kg')).toBeInTheDocument();
     expect(screen.getAllByText('14,560.00 ₴').length).toBeGreaterThan(0);
     // the point and the receiver from the fixture, by number, independent of who is logged in
-    expect(screen.getByText('Point No. 1 · Operator No. 2')).toBeInTheDocument();
+    expect(screen.getByText('Point No. 1').parentElement).toHaveTextContent(
+      'Point No. 1 · Operator No. 2',
+    );
 
     await expectNoAxeViolations(container);
   });
@@ -325,7 +327,9 @@ describe('ReceiptDialog', () => {
     setUp({ me: OPERATOR_AUTHOR });
     render(<ReceiptDialog intakeId="intake-1" open onClose={vi.fn()} />);
 
-    expect(screen.getByText('Point No. 1 · Operator No. 2')).toBeInTheDocument();
+    expect(screen.getByText('Point No. 1').parentElement).toHaveTextContent(
+      'Point No. 1 · Operator No. 2',
+    );
     expect(screen.queryByText(/Гнатюк/)).not.toBeInTheDocument();
   });
 
@@ -333,7 +337,7 @@ describe('ReceiptDialog', () => {
     setUp({ intake: buildIntake({ received_by_name: null, received_by_number: null }) });
     render(<ReceiptDialog intakeId="intake-1" open onClose={vi.fn()} />);
 
-    expect(screen.getByText(/ · —$/)).toBeInTheDocument();
+    expect(screen.getByText('Point No. 1').parentElement).toHaveTextContent('Point No. 1 · —');
   });
 
   it('prints what was paid out, with the amount and the live payout codes in muted text', () => {
@@ -356,7 +360,7 @@ describe('ReceiptDialog', () => {
     expect(screen.getByText('Paid out in cash')).toBeInTheDocument();
     expect(screen.getByText('10,000.00 ₴')).toBeInTheDocument();
     const codes = screen.getByText('SHP-PO-20260908-00031');
-    expect(codes).toHaveClass('text-neutral-500');
+    expect(codes).toHaveClass('text-[0.87em]');
   });
 
   it('hides the paid row when nothing has been paid out yet', () => {
@@ -383,7 +387,7 @@ describe('ReceiptDialog', () => {
     render(<ReceiptDialog intakeId="intake-1" open onClose={vi.fn()} />);
 
     const line = screen.getByText('payout SHP-PO-20260907-00020 voided');
-    expect(line).toHaveClass('text-neutral-500');
+    expect(line).toHaveClass('text-[0.87em]');
   });
 
   it('prints the crates returned with the receipt, amount form, even when the return is mixed deposit/receipt', () => {
@@ -440,38 +444,16 @@ describe('ReceiptDialog', () => {
     render(<ReceiptDialog intakeId="intake-1" open onClose={vi.fn()} />);
 
     const line = screen.getByText('crate return voided');
-    expect(line).toHaveClass('text-neutral-500');
+    expect(line).toHaveClass('italic');
     expect(screen.queryByText(/Returned our crates/)).not.toBeInTheDocument();
   });
 
-  describe('the date — the BUSINESS date plus the time, pinned to TZ=UTC for a fixed literal', () => {
-    afterEach(() => {
-      vi.unstubAllEnvs();
-    });
+  it('prints no date row — the code already carries the day (#254)', () => {
+    setUp();
+    render(<ReceiptDialog intakeId="intake-1" open onClose={vi.fn()} />);
 
-    it('shows the shift’s business_date (formatLongDate), not created_at’s own calendar day, plus the time from created_at', () => {
-      vi.stubEnv('TZ', 'UTC');
-      setUp();
-      render(<ReceiptDialog intakeId="intake-1" open onClose={vi.fn()} />);
-
-      expect(screen.getByText('September 8, 2026 · 08:20 AM')).toBeInTheDocument();
-    });
-
-    it('reads business_date even when it differs from created_at’s own calendar day', () => {
-      // A receipt written just past local midnight: `created_at` is already
-      // the 9th, but the shift — and everything else on it — is still the
-      // 8th. The printed date must follow the shift, not the raw timestamp.
-      vi.stubEnv('TZ', 'UTC');
-      setUp({
-        intake: buildIntake({
-          business_date: '2026-09-08',
-          created_at: '2026-09-09T00:20:00.000Z',
-        }),
-      });
-      render(<ReceiptDialog intakeId="intake-1" open onClose={vi.fn()} />);
-
-      expect(screen.getByText('September 8, 2026 · 12:20 AM')).toBeInTheDocument();
-    });
+    expect(screen.queryByText('Date')).not.toBeInTheDocument();
+    expect(screen.queryByText(/September 8, 2026/)).not.toBeInTheDocument();
   });
 
   it('counts the single line too — «· 1 line», not the bare code (M4)', () => {

@@ -37,7 +37,7 @@ export interface ReceiptDocument {
   voided: { reason: string } | null;
   /** «Точка № 3», «Приймальник № 5» — resolved by the builder (#145: numbers, not names). */
   header: { point: string; staff: string };
-  /** № квитанції, Операція, Дата, Постачальник. */
+  /** № квитанції, Операція, Постачальник. */
   meta: ReceiptRow[];
   /** Groups; a dashed rule precedes each group. */
   sections: ReceiptSection[][];
@@ -50,29 +50,39 @@ function Row({
   value,
   strong,
   muted,
+  text,
 }: {
   label: ReactNode;
   value: ReactNode;
   strong?: boolean;
   muted?: boolean;
+  /** A text value (a name, a code) wraps; a number never does. */
+  text?: boolean;
 }) {
+  // #254: a 58 mm strip holds ~32 characters. A pair that doesn't fit drops
+  // its number onto the next line, right-aligned — never clipped the way
+  // «24,50 кг» printed as «24,50 к».
   return (
-    <div className="flex items-baseline justify-between gap-4 py-[3px]">
-      <span className={muted ? 'text-neutral-500' : ''}>{label}</span>
-      <span className={`font-mono ${strong ? 'text-base font-semibold' : ''}`}>{value}</span>
+    <div className="flex flex-wrap items-baseline justify-between gap-x-2 py-[3px]">
+      <span className={muted ? 'italic' : ''}>{label}</span>
+      <span
+        className={`ml-auto font-mono ${text ? 'text-right [overflow-wrap:anywhere]' : 'whitespace-nowrap'} ${strong ? 'text-[1.2em] font-bold' : ''}`}
+      >
+        {value}
+      </span>
     </div>
   );
 }
 
 function Rule() {
-  return <div className="my-3 border-t border-dashed border-neutral-300" />;
+  return <div className="my-3 border-t border-dashed border-neutral-900" />;
 }
 
 function BerryLine({ line }: { line: ReceiptBerryLine }) {
   const { t } = useTranslation();
   return (
     <div>
-      <Row label={line.label} value="" muted />
+      <div className="py-[3px] font-bold">{line.label}</div>
       <Row label={t('receipt.gross')} value={line.gross} />
       {line.pallet !== null ? <Row label={t('receipt.pallet')} value={`− ${line.pallet}`} /> : null}
       <Row label={t('receipt.tare', { detail: line.tareLabel })} value={`− ${line.tareWeight}`} />
@@ -97,7 +107,7 @@ function Section({ section }: { section: ReceiptSection }) {
     case 'berryLine':
       return <BerryLine line={section.line} />;
     case 'caption':
-      return <div className="text-[10px] text-neutral-500">{section.text}</div>;
+      return <div className="text-[0.87em]">{section.text}</div>;
     default: {
       const unreachable: never = section;
       return unreachable;
@@ -115,7 +125,7 @@ export function ReceiptView({ doc }: { doc: ReceiptDocument }) {
   const noteLines = doc.footer.note?.split('\n') ?? [];
 
   return (
-    <div className="printable rounded-lg border border-dashed border-border bg-white p-4 text-[13px] text-neutral-900">
+    <div className="printable receipt-paper rounded-lg border border-dashed border-border bg-white p-4 text-[15px] font-semibold text-black">
       {doc.voided ? (
         <div className="mb-3 rounded-md border-2 border-destructive p-2 text-center">
           <Badge variant="destructive" className="h-auto px-3 py-1 text-sm font-semibold">
@@ -128,16 +138,18 @@ export function ReceiptView({ doc }: { doc: ReceiptDocument }) {
       ) : null}
 
       <div className="text-center">
-        <div className="text-sm font-semibold tracking-tight">{t('receipt.docTitle')}</div>
-        <div className="text-[11px] text-neutral-500">
-          {doc.header.point} · {doc.header.staff}
+        <div className="text-[1.13em] font-bold tracking-tight">{t('receipt.docTitle')}</div>
+        {/* Each half wraps as a whole — «№» never parts from its number. */}
+        <div className="text-[0.87em]">
+          <span className="whitespace-nowrap">{doc.header.point}</span> ·{' '}
+          <span className="whitespace-nowrap">{doc.header.staff}</span>
         </div>
       </div>
 
       <Rule />
 
       {doc.meta.map((r, i) => (
-        <Row key={i} label={r.label} value={r.value} strong={r.strong} muted={r.muted} />
+        <Row key={i} label={r.label} value={r.value} strong={r.strong} muted={r.muted} text />
       ))}
 
       {doc.sections.map((group, gi) => (
@@ -164,7 +176,7 @@ export function ReceiptView({ doc }: { doc: ReceiptDocument }) {
           </div>
         ))}
         <div className={noteLines.length > 0 ? 'mt-2' : ''}>{t('receipt.thanks')}</div>
-        <div className="text-[10px] text-neutral-500">{t('receipt.notFiscal')}</div>
+        <div className="text-[0.87em]">{t('receipt.notFiscal')}</div>
       </div>
     </div>
   );

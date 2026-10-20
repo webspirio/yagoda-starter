@@ -21,16 +21,18 @@ function makeDoc(over: Partial<ReceiptDocument> = {}): ReceiptDocument {
     meta: [
       { label: '№ квитанції', value: 'Q-1' },
       { label: 'Операція', value: 'Прийомка ягоди' },
-      { label: 'Дата', value: '13.10.2026' },
       { label: 'Постачальник', value: 'Іваненко Петро' },
     ],
-    sections: [[{ kind: 'berryLine', line }], [{ kind: 'rows', rows: [{ label: 'Нараховано', value: '5 000,00 ₴', strong: true }] }]],
+    sections: [
+      [{ kind: 'berryLine', line }],
+      [{ kind: 'rows', rows: [{ label: 'Нараховано', value: '5 000,00 ₴', strong: true }] }],
+    ],
     footer: { note: null },
     ...over,
   };
 }
 
-const rules = (c: HTMLElement) => c.querySelectorAll('.border-dashed.border-neutral-300');
+const rules = (c: HTMLElement) => c.querySelectorAll('.border-dashed.border-neutral-900');
 
 describe('ReceiptView', () => {
   beforeEach(() => void i18n.changeLanguage('uk'));
@@ -39,13 +41,16 @@ describe('ReceiptView', () => {
   it('prints the title and the point · staff header', () => {
     render(<ReceiptView doc={makeDoc()} />);
     expect(screen.getByText('КВИТАНЦІЯ')).toBeInTheDocument();
-    expect(screen.getByText('Точка № 3 · Приймальник № 5')).toBeInTheDocument();
+    const point = screen.getByText('Точка № 3');
+    expect(point.parentElement).toHaveTextContent('Точка № 3 · Приймальник № 5');
+    expect(point).toHaveClass('whitespace-nowrap');
+    expect(screen.getByText('Приймальник № 5')).toHaveClass('whitespace-nowrap');
   });
 
   it('lists the meta rows in order', () => {
     const { container } = render(<ReceiptView doc={makeDoc()} />);
     const text = container.textContent ?? '';
-    const at = ['№ квитанції', 'Операція', 'Дата', 'Постачальник'].map((l) => text.indexOf(l));
+    const at = ['№ квитанції', 'Операція', 'Постачальник'].map((l) => text.indexOf(l));
     expect(at.every((i) => i >= 0)).toBe(true);
     expect([...at].sort((a, b) => a - b)).toEqual(at);
   });
@@ -56,7 +61,9 @@ describe('ReceiptView', () => {
     expect(screen.getByText('Брутто')).toBeInTheDocument();
     expect(screen.getByText('Тара (10 × Ящик)')).toBeInTheDocument();
     rerender(
-      <ReceiptView doc={makeDoc({ sections: [[{ kind: 'berryLine', line: { ...line, pallet: '2,00 кг' } }]] })} />,
+      <ReceiptView
+        doc={makeDoc({ sections: [[{ kind: 'berryLine', line: { ...line, pallet: '2,00 кг' } }]] })}
+      />,
     );
     expect(screen.getByText('Піддон')).toBeInTheDocument();
     expect(screen.getByText('− 2,00 кг')).toBeInTheDocument();
@@ -68,7 +75,11 @@ describe('ReceiptView', () => {
   });
 
   it('renders a caption section', () => {
-    render(<ReceiptView doc={makeDoc({ sections: [[{ kind: 'caption', text: 'виплату P-1 анульовано' }]] })} />);
+    render(
+      <ReceiptView
+        doc={makeDoc({ sections: [[{ kind: 'caption', text: 'виплату P-1 анульовано' }]] })}
+      />,
+    );
     expect(screen.getByText('виплату P-1 анульовано')).toBeInTheDocument();
   });
 
@@ -79,7 +90,9 @@ describe('ReceiptView', () => {
   });
 
   it('prints the note lines before the thanks and the not-fiscal line', () => {
-    const { container } = render(<ReceiptView doc={makeDoc({ footer: { note: 'Рядок 1\n\nРядок 3' } })} />);
+    const { container } = render(
+      <ReceiptView doc={makeDoc({ footer: { note: 'Рядок 1\n\nРядок 3' } })} />,
+    );
     const text = container.textContent ?? '';
     const note = text.indexOf('Рядок 1');
     const thanks = text.indexOf('Дякуємо за співпрацю!');
@@ -94,6 +107,57 @@ describe('ReceiptView', () => {
     render(<ReceiptView doc={makeDoc()} />);
     expect(screen.getByText('Дякуємо за співпрацю!')).toBeInTheDocument();
     expect(screen.getByText('Не є фіскальним чеком')).toBeInTheDocument();
+  });
+
+  // #254: a 58 mm thermal printer prints grey as a dot screen, and the paper was
+  // unreadable — everything that reaches the paper is black.
+  it('prints nothing grey', () => {
+    const { container } = render(
+      <ReceiptView
+        doc={makeDoc({
+          voided: { reason: 'помилка' },
+          sections: [
+            [{ kind: 'berryLine', line }],
+            [
+              { kind: 'caption', text: 'P-1' },
+              { kind: 'rows', rows: [{ label: 'анульовано', value: '', muted: true }] },
+            ],
+          ],
+          footer: { note: 'Рядок' },
+        })}
+      />,
+    );
+    const paper = [...container.querySelectorAll<HTMLElement>('.printable, .printable *')].filter(
+      (el) => !el.closest('.print\\:hidden'),
+    );
+    expect(paper.filter((el) => /\btext-(neutral|gray|muted)/.test(el.className))).toEqual([]);
+  });
+
+  it('marks its root as receipt paper — the print rules size the 58 mm strip by it', () => {
+    const { container } = render(<ReceiptView doc={makeDoc()} />);
+    expect(container.firstElementChild).toHaveClass('printable', 'receipt-paper');
+  });
+
+  it('drops a number that does not fit onto its own line, never breaking or clipping it', () => {
+    render(
+      <ReceiptView
+        doc={makeDoc({
+          sections: [
+            [{ kind: 'berryLine', line: { ...line, tareLabel: '6 × Чешка, 2 × Ящик великий' } }],
+          ],
+        })}
+      />,
+    );
+    const value = screen.getByText('− 20,00 кг');
+    expect(value).toHaveClass('whitespace-nowrap', 'ml-auto');
+    expect(value.parentElement).toHaveClass('flex-wrap');
+  });
+
+  it('lets a text value — a supplier name, a code — wrap instead of overflowing', () => {
+    render(<ReceiptView doc={makeDoc()} />);
+    const name = screen.getByText('Іваненко Петро');
+    expect(name).not.toHaveClass('whitespace-nowrap');
+    expect(name).toHaveClass('[overflow-wrap:anywhere]');
   });
 
   it('keeps the saved-in-system line on screen only', () => {

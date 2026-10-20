@@ -867,7 +867,6 @@
     "titleLines_one": "Receipt {{code}} · {{count}} line",
     "titleLines_other": "Receipt {{code}} · {{count}} lines",
     "description": "Printable receipt — void the document from here.",
-    "date": "Date",
     "supplier": "Supplier",
     "gross": "Gross",
     "pallet": "Pallet",

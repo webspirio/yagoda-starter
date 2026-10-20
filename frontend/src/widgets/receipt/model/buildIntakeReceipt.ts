@@ -2,7 +2,6 @@ import type { TFunction } from 'i18next';
 import type { IntakeDetail } from '@/entities/intake';
 import type { ReceiptDocument, ReceiptSection } from '@/shared/ui/receipt';
 import { add, cmp, formatKg, formatUah, isZero } from '@/shared/lib/money';
-import { formatLongDate, formatTime } from '@/shared/lib/date';
 import { receiptHeader } from './receiptHeader';
 
 /**
@@ -104,15 +103,10 @@ export function buildIntakeReceipt({
   return {
     voided: intake.voided_at ? { reason: intake.void_reason ?? '' } : null,
     header: receiptHeader(t, intake.point_number, intake.received_by_number),
+    // No «Дата» (#254, client correction): the code already carries the day.
     meta: [
       { label: t('receipt.number'), value: intake.code },
       { label: t('receipt.operation'), value: t('receipt.operationIntake') },
-      {
-        label: t('receipt.date'),
-        // §5 row 50 — the BUSINESS date (from the shift, §2.3), not the
-        // calendar day `created_at` happens to carry.
-        value: `${formatLongDate(intake.business_date, locale)} · ${formatTime(intake.created_at, locale)}`,
-      },
       { label: t('receipt.supplier'), value: supplierName },
     ],
     sections,

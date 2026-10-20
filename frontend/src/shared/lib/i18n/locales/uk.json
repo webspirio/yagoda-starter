@@ -883,7 +883,6 @@
     "titleLines_many": "Квитанція {{code}} · {{count}} позицій",
     "titleLines_other": "Квитанція {{code}} · {{count}} позицій",
     "description": "Друкована квитанція — тут можна анулювати документ.",
-    "date": "Дата",
     "supplier": "Постачальник",
     "gross": "Брутто",
     "pallet": "Піддон",
