@@ -35,14 +35,14 @@ export class PointCashController {
     @Query() query: ListPointCashQueryDto,
   ) {
     assertOwnsPoint(actor, pointId);
-    // Four independent reads — no query depends on another's result — so
-    // they run concurrently rather than one round trip after another.
-    const [{ cash, breakdown }, crateDeposits, crateCash, crateDepositUnits] = await Promise.all([
+    // Three independent reads — no query depends on another's result — so
+    // they run concurrently rather than one round trip after another. The
+    // crates DRAWER (`crate_cash`) and its drift are the list row's alone: the
+    // reception screens poll this endpoint and read neither (#178 review).
+    const [{ cash, breakdown }, crateDeposits, crateDepositUnits] = await Promise.all([
       this.cash.breakdownFor(pointId, query.as_of),
       // Never bounded by `as_of` — see `crateDepositsFor`'s doc comment.
       this.cash.crateDepositsFor(pointId),
-      // The counted drawer, bounded by `as_of`; null = never counted.
-      this.cash.crateCashFor(pointId, query.as_of),
       // Same exemption, same shape, in units rather than money (R8).
       this.cash.crateUnitsFor(pointId),
     ]);
@@ -50,7 +50,6 @@ export class PointCashController {
       collection_point_id: pointId,
       cash,
       crate_deposits: crateDeposits,
-      crate_cash: crateCash,
       crate_deposit_units: crateDepositUnits,
       breakdown,
     };

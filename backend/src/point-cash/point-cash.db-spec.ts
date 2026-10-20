@@ -1390,6 +1390,18 @@ describe('PointCashService.crateUnitsFor (Postgres)', () => {
   });
 
   describe('the crates book expectation (#178)', () => {
+    // The drawer figure as the screen reads it — the list row's `crate_cash`.
+    const crateCashOf = async (pointId: string): Promise<string | null> => {
+      const actor: AuthenticatedUser = {
+        sub: ownerId,
+        username: 'owner',
+        role: UserRole.NetworkOwner,
+        collection_point_id: null,
+      };
+      const page = await service.list(actor, { page: 1, limit: 50, collection_point_id: pointId } as never);
+      return page.data[0].crate_cash;
+    };
+
     const freshPointWithShift = async () => {
       const pointId = await newPoint();
       const [{ id: shiftId }] = (await ds.query(
@@ -1435,7 +1447,7 @@ describe('PointCashService.crateUnitsFor (Postgres)', () => {
         [voided, ownerId],
       );
       expect(await service.expectedForClosing(shiftId, undefined, CashBook.Crates)).toBe('15960.00');
-      expect(await service.crateCashFor(pointId)).toBe('15960.00');
+      expect(await crateCashOf(pointId)).toBe('15960.00');
     });
 
     it('closing: a voided crate RETURN’s refund is excluded from the expectation', async () => {
@@ -1451,10 +1463,10 @@ describe('PointCashService.crateUnitsFor (Postgres)', () => {
       );
       // 14400 + 2400 − 840 (the voided second refund does not leave the drawer)
       expect(await service.expectedForClosing(shiftId, undefined, CashBook.Crates)).toBe('15960.00');
-      expect(await service.crateCashFor(pointId)).toBe('15960.00');
+      expect(await crateCashOf(pointId)).toBe('15960.00');
     });
 
-    it('list and GET /point-cash/:id read an OPENING crates anchor plus that shift’s movements (list has its own SQL)', async () => {
+    it('list reads an OPENING crates anchor plus that shift’s movements; GET /point-cash/:id leaves the drawer out', async () => {
       const { pointId, shiftId, supplierId } = await freshPointWithShift();
       await insertCount(shiftId, 'crates', 'opening', '14400.00', '14400.00');
       const issued = await crateIssuance(shiftId, supplierId, 20, 'deposit'); // +2400.00
@@ -1471,8 +1483,9 @@ describe('PointCashService.crateUnitsFor (Postgres)', () => {
       expect(page.data[0].crate_cash).toBe('15960.00');
       expect(page.data[0].crate_unexplained_difference).toBe('0.00');
 
+      // The single-point read carries the liability, not the drawer (#178 review).
       const one = await new PointCashController(service).findOne(actor, pointId, {} as never);
-      expect(one.crate_cash).toBe('15960.00');
+      expect(one).not.toHaveProperty('crate_cash');
     });
 
     it('closing: null when the shift has no crates opening row (opened before the release)', async () => {
@@ -1481,9 +1494,9 @@ describe('PointCashService.crateUnitsFor (Postgres)', () => {
       expect(await service.expectedForClosing(shiftId, undefined, CashBook.Crates)).toBeNull();
     });
 
-    it('crateCashFor: null for a point that never counted deposits', async () => {
+    it('crate_cash: null for a point that never counted deposits', async () => {
       const { pointId } = await freshPointWithShift();
-      expect(await service.crateCashFor(pointId)).toBeNull();
+      expect(await crateCashOf(pointId)).toBeNull();
     });
   });
 });

@@ -178,3 +178,62 @@ export const anchorSql = (point: string, asOf: string, book: CashBook = CashBook
    ORDER BY s.business_date DESC, (c.kind = 'closing') DESC, c.counted_at DESC
    LIMIT 1
 )`;
+
+/**
+ * ONE BOOK'S DRAWER as of `asOf`: the anchor count plus, when the anchor is an
+ * OPENING count, that shift's movements in the same book. A scalar subquery
+ * that reads NULL when the book has never been counted at the point — berry
+ * callers COALESCE it to `0.00` (§7.3), the crates drawer keeps the NULL
+ * (#178: an unknown drawer is not an empty one).
+ *
+ * There is no third term for "shifts after the anchor": §6.1 makes every shift
+ * opening write a count, so a later shift would hold a later count and BE the
+ * anchor. ONE definition for `cashFor`, `crateCashFor` and both columns of
+ * `list()` — a change to the anchor (spec D4's «очікуване повернення», say)
+ * lands in all of them or in none (#178 second review).
+ *
+ * `tz` is only read by the berry movements; the crates book has no
+ * date-attributed term.
+ */
+export const drawerSql = (point: string, asOf: string, book: CashBook, tz: string): string => {
+  const movements =
+    book === CashBook.Crates ? crateMovementsSql('a.shift_id') : movementsSql('a.shift_id', tz);
+  return `(
+  SELECT a.counted_amount + CASE WHEN a.kind = 'opening' THEN ${movements} ELSE 0.00 END
+    FROM ${anchorSql(point, asOf, book)} a
+)`;
+};
+
+/**
+ * §3.1 — ONE BOOK'S RECORDED DISCREPANCIES at a point, on or before `asOf`.
+ * The count chain and the document line can differ by these and by nothing
+ * else, so this SUM IS the divergence. It is free: no second stored line, no
+ * write path of its own. EXPLAINED INCIDENTS STAY IN IT — an explanation
+ * changes what is OPEN, never what is TRUE (§7.7).
+ *
+ * MIDDAY IS EXCLUDED, AND WITHOUT THAT FILTER THE HEADLINE DOUBLE-COUNTS A
+ * REOPEN. §3.1's claim telescopes over the ANCHORING counts only, and §6.3's
+ * demotion breaks the chain: reopening a shift rewrites its closing count's
+ * kind to midday, and the re-close then writes a FRESH count against the SAME
+ * unchanged expectation, because the expectation is a snapshot and nothing
+ * moved. A drawer that opened at 1 000, closed at 900, was reopened and closed
+ * at 900 again drifted -100 ONCE; summing every kind reports -200. The demoted
+ * row is SUPERSEDED by the re-close, not additional to it.
+ *
+ * A midday RECOUNT (R2, 2026-09-22) is kind = 'midday' too and is excluded on
+ * purpose: §7.6 makes a recount a WITNESS, never an incident — see
+ * CashCountsService's doc comment for the same check against its
+ * only_discrepancies filter and cash-count.mapper.ts's is_open.
+ *
+ * Unlike the anchor, this is NOT only_discrepancies-filtered — that predicate
+ * belongs to a different read with a different question. Both books go through
+ * this one function so the midday rule cannot drift between them (#178).
+ */
+export const discrepancySql = (point: string, asOf: string, book: CashBook): string => `
+    COALESCE((SELECT SUM(c.counted_amount - c.expected_amount)
+                FROM cash_counts c
+                JOIN shifts sh ON sh.id = c.shift_id
+               WHERE sh.collection_point_id = ${point}
+                 AND c.book = ${BOOK_SQL[book]}
+                 AND c.kind <> 'midday'
+                 AND sh.business_date <= ${asOf}), 0.00)`;
