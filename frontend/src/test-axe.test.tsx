@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import { render } from '@testing-library/react';
 import { axe } from 'vitest-axe';
 import type { AxeResults } from 'axe-core';
@@ -16,6 +16,11 @@ const openDialog = () =>
   );
 
 describe('expectNoAxeViolations', () => {
+  const elementFromPoint = document.elementFromPoint;
+  afterEach(() => {
+    document.elementFromPoint = elementFromPoint;
+  });
+
   it('still needs the focus-guard exemption: raw axe flags the guards and nothing else', async () => {
     openDialog();
     const raw = (await axe(document.body, {
@@ -41,5 +46,16 @@ describe('expectNoAxeViolations', () => {
       </div>,
     );
     await expect(expectNoAxeViolations(container)).rejects.toThrow(/aria-hidden-focus/);
+  });
+
+  it('fails when axe could not run a rule, instead of passing without it', async () => {
+    const { container } = render(
+      <div aria-hidden="true">
+        <button type="button">Hidden but focusable</button>
+      </div>,
+    );
+    // What jsdom lacked: without it axe skips aria-hidden-focus into `incomplete`.
+    document.elementFromPoint = undefined as unknown as typeof document.elementFromPoint;
+    await expect(expectNoAxeViolations(container)).rejects.toThrow(/could not run/);
   });
 });

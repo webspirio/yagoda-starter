@@ -25,13 +25,19 @@ const isExempt = (rule: Result['id'], node: Result['nodes'][number]): boolean =>
  *     makes that a compile error instead;
  *   - it does NOT catch a missing aria-describedby to an error message —
  *     shared/ui/field.test.tsx covers that explicitly;
- *   - color-contrast is disabled: no stylesheet loads in the test DOM, so the
- *     rule is meaningless here and only emits canvas warnings.
+ *   - color-contrast and link-in-text-block are disabled: both judge colours,
+ *     and no stylesheet loads in the test DOM. Under jsdom the first only
+ *     emitted canvas warnings and the second was inapplicable to every link
+ *     (no layout, so none looked visible); happy-dom computes no colour at all.
  * A green axe run means "no obvious markup defects", not "accessible".
+ *
+ * A rule axe could not RUN fails too. Under jsdom, which has no elementFromPoint,
+ * `aria-hidden-focus` errored into `incomplete` on every call and this passed
+ * without it ever having been checked.
  */
 export async function expectNoAxeViolations(container: HTMLElement): Promise<void> {
   const results = (await axe(container, {
-    rules: { 'color-contrast': { enabled: false } },
+    rules: { 'color-contrast': { enabled: false }, 'link-in-text-block': { enabled: false } },
     elementRef: true,
   })) as AxeResults;
 
@@ -42,6 +48,11 @@ export async function expectNoAxeViolations(container: HTMLElement): Promise<voi
     (v) =>
       `[${v.impact}] ${v.id}: ${v.help}\n` + v.nodes.map((n) => `      ${n.html}`).join('\n'),
   );
+  const errored = results.incomplete
+    .filter((r) =>
+      r.nodes.some((n) => [...n.any, ...n.all, ...n.none].some((c) => c.id === 'error-occurred')),
+    )
+    .map((r) => `${r.id}: axe could not run this rule here`);
 
-  expect(summary, summary.join('\n\n')).toEqual([]);
+  expect([...summary, ...errored], [...summary, ...errored].join('\n\n')).toEqual([]);
 }
