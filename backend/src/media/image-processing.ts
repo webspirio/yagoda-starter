@@ -1,13 +1,13 @@
 import { BadRequestException } from '@nestjs/common';
 import type { ImageKind } from './image-signature';
 
-// sharp ships ESM-style type defs (`export default`) over a CJS runtime whose
-// module.exports IS the factory (no `.default`, no `__esModule`). With this
-// project's esModuleInterop off, a default import emits an undefined `.default`
-// call at runtime and import-equals binds the non-callable namespace type. Bind
-// the runtime factory via require, typed as sharp's default export.
+// sharp's CJS module.exports IS the factory (no `.default`, no `__esModule`), so
+// with esModuleInterop off a default import calls an undefined `.default` at
+// runtime: require() it. The type is the factory whichever declaration TS picks —
+// tsc reads the `export =` .d.cts, ts-jest's resolver the ESM `export default` .d.mts.
+export type SharpFactory = typeof import('sharp') extends { default: infer F } ? F : typeof import('sharp');
 // eslint-disable-next-line @typescript-eslint/no-require-imports -- sharp's CJS export cannot be default-imported without esModuleInterop, which this tsconfig does not set
-const sharp: typeof import('sharp').default = require('sharp');
+const sharp: SharpFactory = require('sharp');
 
 /**
  * Re-encode an uploaded image in its detected format with ALL metadata

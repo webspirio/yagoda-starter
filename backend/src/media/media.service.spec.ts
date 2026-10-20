@@ -6,9 +6,10 @@ import { Repository } from 'typeorm';
 import { MediaService } from './media.service';
 import { MediaFile } from './media-file.entity';
 import { MediaPurpose } from './media.constants';
-// sharp: CJS export= runtime under ESM-typed defs; see image-processing.ts.
+import type { SharpFactory } from './image-processing';
+// sharp is required, not default-imported; see image-processing.ts.
 // eslint-disable-next-line @typescript-eslint/no-require-imports -- same sharp CJS require() workaround, here only to build a JPEG fixture buffer
-const sharp: typeof import('sharp').default = require('sharp');
+const sharp: SharpFactory = require('sharp');
 
 async function jpeg(): Promise<Buffer> {
   return sharp({ create: { width: 8, height: 8, channels: 3, background: { r: 1, g: 2, b: 3 } } })
