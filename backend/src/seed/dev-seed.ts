@@ -4,7 +4,7 @@ import { encryptSecret, readVaultKey } from '../users/secret-box';
 import { PointCashService } from '../point-cash/point-cash.service';
 import { CashBook } from '../cash-counts/cash-book.enum';
 import { composeDocumentCode, padSequence } from '../common/document-code';
-import { mul } from '../common/money';
+import { cmp, mul } from '../common/money';
 import {
   buildIntake,
   type IntakeLineInput,
@@ -986,9 +986,14 @@ async function seedDocuments(
             : ((await cash.expectedForClosing(shift, qr.manager, CashBook.Crates)) ?? '0.00');
       }
       // An anchoring berry count IS its own expectation: `drift` is '0.00' by
-      // the type's contract. Seeded deposits always reconcile — no demo crates
-      // drift — so the crates figure is counted = expected.
-      const counted = book === CashBook.Berry ? addMoney(expected, c.drift) : expected;
+      // the type's contract. Seeded deposits reconcile — no demo crates drift —
+      // so the crates figure is counted = expected, EXCEPT below zero: a refund
+      // larger than the drawer makes «має бути» negative (spec D7), a drawer
+      // cannot hold less than nothing, and CHK_cash_counts_counted_non_negative
+      // would fail the whole seed. The count reads 0.00 and the gap is recorded
+      // as that day's crates discrepancy, as a real count would record it.
+      const counted =
+        book === CashBook.Berry ? addMoney(expected, c.drift) : seededCratesCount(expected);
 
       await qr.query(
         `INSERT INTO cash_counts
@@ -1009,6 +1014,11 @@ async function seedDocuments(
       summary.cashCounts += 1;
     }
   }
+}
+
+/** A seeded crates count: what the drawer should hold, or 0.00 when that is negative. */
+export function seededCratesCount(expected: string): string {
+  return cmp(expected, '0.00') < 0 ? '0.00' : expected;
 }
 
 /**

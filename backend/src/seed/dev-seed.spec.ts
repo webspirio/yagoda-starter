@@ -1,4 +1,4 @@
-import { addMoney, isoDaysBefore } from './dev-seed';
+import { addMoney, isoDaysBefore, seededCratesCount } from './dev-seed';
 import { HISTORY_INTAKES } from './dev-seed.history';
 import {
   SEED_GRADES,
@@ -258,5 +258,18 @@ describe('isoDaysBefore', () => {
 
   it('walks back across a leap day', () => {
     expect(isoDaysBefore('2028-03-01', 1)).toBe('2028-02-29');
+  });
+});
+
+// #178 review: a negative crates expectation (spec D7) must not reach
+// CHK_cash_counts_counted_non_negative and fail the whole seed.
+describe('seededCratesCount', () => {
+  it('counts what the drawer should hold', () => {
+    expect(seededCratesCount('360.00')).toBe('360.00');
+    expect(seededCratesCount('0.00')).toBe('0.00');
+  });
+
+  it('reads 0.00 for a negative expectation, leaving the gap as the discrepancy', () => {
+    expect(seededCratesCount('-120.00')).toBe('0.00');
   });
 });
