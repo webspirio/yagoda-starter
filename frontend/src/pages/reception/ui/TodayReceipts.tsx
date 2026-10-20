@@ -6,9 +6,7 @@ import { Eyebrow } from '@/shared/ui/eyebrow';
 import { cn } from '@/shared/lib/cn';
 import { formatTime } from '@/shared/lib/date';
 import { cmp, formatKg, formatUah, sum } from '@/shared/lib/money';
-import { canVoidIntake, useIntakesQuery } from '@/entities/intake';
-import type { Me } from '@/entities/user';
-import { ReceiptVoidButton } from '@/widgets/receipt';
+import { useIntakesQuery } from '@/entities/intake';
 
 /**
  * The right column: every receipt of the CURRENT shift, newest first, each one
@@ -18,15 +16,15 @@ import { ReceiptVoidButton } from '@/widgets/receipt';
  *
  * A row is READ, not recomputed: `net_kg`, `lines_count`, `supplier_name` and
  * `open_amount` all arrive already on the `Intake` header.
+ *
+ * No «Анулювати» on the row: the receipt it opens already carries one.
  */
 export function TodayReceipts({
   shiftId,
-  me,
   onOpen,
 }: {
   shiftId: string | undefined;
-  me: Me | undefined;
-  onOpen: (intakeId: string, options?: { void?: boolean }) => void;
+  onOpen: (intakeId: string) => void;
 }) {
   const { t, i18n } = useTranslation();
   const locale = i18n.resolvedLanguage ?? 'uk';
@@ -65,13 +63,12 @@ export function TodayReceipts({
             const remainder = row.open_amount;
             const hasRemainder = row.voided_at === null && cmp(remainder, '0') === 1;
             return (
-              // The void action is a SIBLING of the row button, never nested in it.
-              <li key={row.id} className="flex items-center gap-1">
+              <li key={row.id}>
                 <button
                   type="button"
                   onClick={() => onOpen(row.id)}
                   className={cn(
-                    'flex min-w-0 flex-1 items-center gap-2 py-2 text-left text-sm transition-colors hover:text-brand',
+                    'flex w-full min-w-0 items-center gap-2 py-2 text-left text-sm transition-colors hover:text-brand',
                     row.voided_at !== null && 'text-muted-foreground line-through',
                   )}
                 >
@@ -100,9 +97,6 @@ export function TodayReceipts({
                   </span>
                   <Receipt className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
                 </button>
-                {me && canVoidIntake(me, row) ? (
-                  <ReceiptVoidButton code={row.code} onClick={() => onOpen(row.id, { void: true })} />
-                ) : null}
               </li>
             );
           })}
