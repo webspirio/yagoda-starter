@@ -18,6 +18,9 @@ import type { DayFeedRow } from '../model/useDayDocuments';
  * and, when `canVoidIntake` allows, offers «Анулювати» beside it; a standalone
  * payout opens its own slip; a payout tied to a receipt is read on that
  * receipt, so it stays a plain row. The dialogs are the page's.
+ *
+ * `framed={false}` drops the card and its eyebrow — the page shows the feed
+ * as one tab of a card it owns, beside the recount history.
  */
 export function DayFeed({
   me,
@@ -29,6 +32,8 @@ export function DayFeed({
   feed,
   onOpenReceipt,
   onOpenPayoutReceipt,
+  quietError = false,
+  framed = true,
 }: {
   me: Me | undefined;
   pointId: string;
@@ -40,6 +45,10 @@ export function DayFeed({
   feed: DayFeedRow[];
   onOpenReceipt: (id: string, opts?: { void: boolean }) => void;
   onOpenPayoutReceipt: (id: string) => void;
+  /** Say the failure WITHOUT `role="alert"` — for a failure some other part of
+   *  the page (the shift panel) already announces. */
+  quietError?: boolean;
+  framed?: boolean;
 }) {
   const { t, i18n } = useTranslation();
   // §5.1 — every feed row (intake AND payout) carries the supplier's name; the
@@ -51,7 +60,10 @@ export function DayFeed({
   );
 
   const content = isError ? (
-    <p role="alert" className="py-6 text-center text-destructive">
+    <p
+      role={quietError ? undefined : 'alert'}
+      className="py-6 text-center text-destructive"
+    >
       {t('common.somethingWentWrong')}
     </p>
   ) : isLoading ? (
@@ -137,5 +149,5 @@ export function DayFeed({
     </ul>
   );
 
-  return <SectionCard eyebrow={t('day.feed.title')}>{content}</SectionCard>;
+  return framed ? <SectionCard eyebrow={t('day.feed.title')}>{content}</SectionCard> : content;
 }

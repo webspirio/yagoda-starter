@@ -714,7 +714,6 @@
     },
     "countHistory": {
       "title": "Cash counts",
-      "toggle": "Full recount history",
       "notYours": "counted by {{name}}",
       "empty": "No cash counts recorded for this point yet.",
       "columns": {
@@ -738,6 +737,9 @@
       "operatorNote": "Operator: “{{text}}”",
       "explanationLabel": "the owner's explanation",
       "operatorNoteLabel": "the operator's note"
+    },
+    "tabs": {
+      "countHistory": "Recount history"
     },
     "panel": {
       "title": "Shift and recount",

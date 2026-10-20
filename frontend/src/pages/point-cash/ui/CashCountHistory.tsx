@@ -27,11 +27,15 @@ export function CashCountHistory({
   pointId,
   isOwner,
   meId,
+  framed = true,
 }: {
   pointId: string;
   isOwner: boolean;
   /** Names the counter on an open row this operator may not explain. */
   meId: string | null;
+  /** `false` drops the card and its eyebrow — «Каса точки» shows this as a
+   *  tab of a card it owns, beside «Стрічка дня» (#221). */
+  framed?: boolean;
 }) {
   const { t, i18n } = useTranslation();
   const counts = useCashCountsQuery({ pointId });
@@ -175,7 +179,7 @@ export function CashCountHistory({
   ];
 
   return (
-    <SectionCard eyebrow={t('pointCash.countHistory.title')}>
+    <SectionCard eyebrow={framed ? t('pointCash.countHistory.title') : undefined} card={framed}>
       {/* «Цю точку ще жодного разу не рахували» is a claim about the point's
           whole history — an unanswered query is not evidence for it, and a
           journal that flashes it on every load teaches the reader to

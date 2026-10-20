@@ -6,6 +6,7 @@ import { SelectField } from '@/shared/ui/select-field';
 import { Button } from '@/shared/ui/button';
 import { EmptyState } from '@/shared/ui/empty-state';
 import { Spinner } from '@/shared/ui/spinner';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/shared/ui/tabs';
 import { isTruncated } from '@/shared/api';
 import { useUrlParam } from '@/shared/lib/url-state';
 import { isNegative, formatUah, cmp } from '@/shared/lib/money';
@@ -227,7 +228,10 @@ export function PointCashPage() {
   // R4 — the result view after an open/close; see `ShiftCountResult`.
   const [resultFor, setResultFor] = useState<ShiftCountResultFor | null>(null);
 
-  const [showCountHistory, setShowCountHistory] = useState(false);
+  // «Стрічка дня» | «Історія перерахунків» (#221). Radix unmounts the inactive
+  // tab, so `CashCountHistory`'s own unbounded whole-point read stays off the
+  // network until its tab is opened — what the old toggle bought.
+  const [activityTab, setActivityTab] = useState<'feed' | 'counts'>('feed');
 
   const [targetOpen, setTargetOpen] = useState(false);
   const [targetInstance, setTargetInstance] = useState(0);
@@ -455,50 +459,51 @@ export function PointCashPage() {
             />
           </div>
         </div>
-        {/* #221 — «Каса за день»'s feed and reconciliation, full width under
-            the grid. «Звірка каси» sits last on purpose: it overlaps
-            `CashLedger` and is the candidate for removal (follow-ups). */}
+        {/* #221 — «Звірка каси» first, then ONE card with two tabs: the day's
+            feed and the point's recount history. «Звірка» is a fixed handful
+            of rows; the feed grows with every document of the day, and a
+            history placed under it would be out of reach on a busy one — as a
+            tab it is one click away whatever the feed's length. (`DayLedger`
+            overlaps `CashLedger` and is a candidate for removal — follow-ups.) */}
         <div className="mt-5 flex flex-col gap-5">
-          {/* A failed SHIFT read is already said once, by the panel; the feed
-              cannot honestly claim «no shift» over it either, so it stays out
-              rather than raising a second alert for the same failure. */}
-          {shift.isError ? null : (
-            <DayFeed
-              me={me}
-              pointId={pointId}
-              hasShift={hasShift}
-              isToday={isToday}
-              isLoading={shift.isPending || (hasShift && !day.ready)}
-              isError={day.isError}
-              feed={day.feed}
-              onOpenReceipt={receipt.openReceipt}
-              onOpenPayoutReceipt={payoutReceipt.openReceipt}
-            />
-          )}
           {dayFiguresVisible ? (
             <DayLedger summary={day.summary} truncated={day.truncated} />
           ) : null}
-        </div>
-        {/* Full width, below the ledger/right-column grid — the journal is a
-            wide table, and the 320px column it used to sit in truncated it.
-            Behind a toggle: the whole-point history is a long table nobody
-            reads on every visit, and `CashCountHistory` owns its own
-            unbounded `useCashCountsQuery({ pointId })` read, which now stays
-            off the network entirely until asked for. */}
-        <div className="mt-5">
-          <Button
-            variant="outline"
-            size="sm"
-            aria-expanded={showCountHistory}
-            onClick={() => setShowCountHistory((v) => !v)}
+          <Tabs
+            value={activityTab}
+            onValueChange={(next) => setActivityTab(next === 'counts' ? 'counts' : 'feed')}
+            className="rounded-xl bg-card p-5 ring-1 ring-foreground/10"
           >
-            {t('pointCash.countHistory.toggle')}
-          </Button>
-          {showCountHistory ? (
-            <div className="mt-3">
-              <CashCountHistory pointId={pointId} isOwner={isOwner} meId={me?.id ?? null} />
-            </div>
-          ) : null}
+            <TabsList className="mb-3">
+              <TabsTrigger value="feed">{t('day.feed.title')}</TabsTrigger>
+              <TabsTrigger value="counts">{t('pointCash.tabs.countHistory')}</TabsTrigger>
+            </TabsList>
+            <TabsContent value="feed">
+              <DayFeed
+                me={me}
+                pointId={pointId}
+                hasShift={hasShift}
+                isToday={isToday}
+                isLoading={shift.isPending || (hasShift && !day.ready)}
+                // A failed SHIFT read is announced once, by the panel; the feed
+                // cannot claim «no shift» over it, so it says so quietly.
+                isError={shift.isError || day.isError}
+                quietError={shift.isError}
+                feed={day.feed}
+                onOpenReceipt={receipt.openReceipt}
+                onOpenPayoutReceipt={payoutReceipt.openReceipt}
+                framed={false}
+              />
+            </TabsContent>
+            <TabsContent value="counts">
+              <CashCountHistory
+                pointId={pointId}
+                isOwner={isOwner}
+                meId={me?.id ?? null}
+                framed={false}
+              />
+            </TabsContent>
+          </Tabs>
         </div>
       </>
     );

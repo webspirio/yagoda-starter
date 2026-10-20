@@ -22,9 +22,10 @@
    - a separate row of the four day tiles;
    - `IncomingTransfers`;
    - the ledger/right-column grid (unchanged);
-   - «Документи дня» full width;
    - «Звірка каси» full width;
-   - the count-history toggle.
+   - one card with two tabs: «Стрічка дня» | «Історія перерахунків».
+
+   Revised after review on 2026-10-20: the feed grows with the day, so «Звірка» moved above it, and the history became a tab rather than a toggle stranded under a long feed.
 
    «Відкрити зміну наново» goes into `ShiftCountPanel`, not the toolbar.
 6. Backend unchanged. `GET /grade-prices/*` stays `@Auth()`, because reception reads the operator's prices from it (the grade option and the lines table already show the price). This is a hidden screen, not a data restriction.

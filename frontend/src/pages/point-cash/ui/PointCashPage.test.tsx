@@ -872,8 +872,8 @@ describe('PointCashPage — R10: composition order', () => {
 
   /**
    * Stats → `IncomingTransfers` (full width) → the grid (`CashLedger` left,
-   * right column `CratesBookCard` then `ShiftCountPanel`) → the history
-   * toggle. Asserted on DOM order alone — the grid's `lg:grid-cols-[…]`
+   * right column `CratesBookCard` then `ShiftCountPanel`) → «Звірка каси» →
+   * the feed/history tabs (#221). Asserted on DOM order alone — the grid's `lg:grid-cols-[…]`
    * class only ever adds COLUMNS at that breakpoint; nothing here reorders
    * children, so this same order is what renders in one column below `lg`
    * (the brief's "DOM order = mobile order").
@@ -885,13 +885,13 @@ describe('PointCashPage — R10: composition order', () => {
     if (!ledgerCard) throw new Error('CashLedger’s SectionCard root not found');
     const cratesEyebrow = screen.getByText('Crate cash');
     const panelEyebrow = screen.getByText('Shift and recount');
-    const historyToggle = screen.getByRole('button', { name: 'Full recount history' });
+    const historyTab = screen.getByRole('tab', { name: 'Recount history' });
 
     precedes(targetTile, transfers);
     precedes(transfers, ledgerCard);
     precedes(ledgerCard, cratesEyebrow);
     precedes(cratesEyebrow, panelEyebrow);
-    precedes(panelEyebrow, historyToggle);
+    precedes(panelEyebrow, historyTab);
 
     // The grid itself: `CashLedger`'s card is the FIRST child (left column);
     // `CratesBookCard` and `ShiftCountPanel` both live inside the SECOND
@@ -1044,38 +1044,40 @@ describe('PointCashPage — scope and failure states', () => {
   });
 });
 
-describe('PointCashPage — R4: the count history toggle', () => {
-  it('keeps the whole-point history off the screen until the toggle is pressed', async () => {
-    const user = userEvent.setup();
+describe('PointCashPage — the feed and the recount history share one card (#221)', () => {
+  it('opens on the day feed, with the whole-point history not even mounted', () => {
     renderPointCash();
 
-    // `CashCountHistory` is not even mounted yet — not merely hidden — so
-    // its own eyebrow title cannot be on screen.
-    expect(screen.queryByText('Cash counts')).toBeNull();
-    expect(screen.getByRole('button', { name: 'Full recount history' })).toHaveAttribute(
-      'aria-expanded',
-      'false',
-    );
-
-    await user.click(screen.getByRole('button', { name: 'Full recount history' }));
-
-    expect(screen.getByText('Cash counts')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Full recount history' })).toHaveAttribute(
-      'aria-expanded',
-      'true',
-    );
+    expect(screen.getByRole('tab', { name: 'Day feed' })).toHaveAttribute('aria-selected', 'true');
+    // Not merely hidden — Radix unmounts the inactive tab, so
+    // `CashCountHistory` (and its own whole-point read) is not in the tree.
+    expect(screen.queryByRole('columnheader', { name: 'When' })).toBeNull();
   });
 
-  it('hides the history again on a second press of the same toggle', async () => {
+  it('shows the history on its tab and the feed again on the other', async () => {
     const user = userEvent.setup();
     renderPointCash();
 
-    const toggle = screen.getByRole('button', { name: 'Full recount history' });
-    await user.click(toggle);
-    expect(screen.getByText('Cash counts')).toBeInTheDocument();
+    await user.click(screen.getByRole('tab', { name: 'Recount history' }));
+    expect(screen.getByRole('tab', { name: 'Recount history' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+    expect(screen.getByRole('columnheader', { name: 'When' })).toBeInTheDocument();
 
-    await user.click(toggle);
-    expect(screen.queryByText('Cash counts')).toBeNull();
+    await user.click(screen.getByRole('tab', { name: 'Day feed' }));
+    expect(screen.queryByRole('columnheader', { name: 'When' })).toBeNull();
+  });
+
+  it('keeps the history one click away on a failed shift read, the alert said once', async () => {
+    const user = userEvent.setup();
+    shiftMock.mockReturnValue({ data: undefined, isPending: false, isError: true });
+    renderPointCash();
+
+    // The panel's alert is the only one; the feed tab says it quietly.
+    expect(screen.getAllByRole('alert')).toHaveLength(1);
+    await user.click(screen.getByRole('tab', { name: 'Recount history' }));
+    expect(screen.getByRole('columnheader', { name: 'When' })).toBeInTheDocument();
   });
 });
 
@@ -1741,13 +1743,13 @@ describe('PointCashPage — the day’s tiles and documents (#221)', () => {
     expect(tile('Short of target')).toBeInTheDocument();
   });
 
-  it('puts the feed and then the reconciliation after the ledger grid', () => {
+  it('puts the reconciliation and then the feed after the ledger grid — the feed grows, the reconciliation does not', () => {
     renderPointCash();
     const ledgerCard = screen.getByText('Cash reconciliation');
     const feed = screen.getByText('Day feed');
     const panel = screen.getByText('Shift and recount');
-    expect(panel.compareDocumentPosition(feed) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(feed.compareDocumentPosition(ledgerCard) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(panel.compareDocumentPosition(ledgerCard) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(ledgerCard.compareDocumentPosition(feed) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 });
 
