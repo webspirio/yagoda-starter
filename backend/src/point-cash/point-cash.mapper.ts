@@ -14,6 +14,7 @@ export interface PointCashRow {
   crate_deposit_units: number;
   latest_transfer_status: TransferStatus | null;
   latest_transfer_sent_at: Date | null;
+  latest_transfer_resolved_at: Date | null;
 }
 
 /**
@@ -111,10 +112,13 @@ export interface PointCashRowResponse {
    * dates a transfer can move on are all stored on it: `sent_at` (it had not
    * left the base before it), `accepted_date` (still `sent` before it,
    * whatever the stored status says) and `voided_at` (no document at all after
-   * it). A resolution is deliberately NOT one of them — resolving leaves the
-   * status `disputed`, so it changes nothing this column shows.
+   * it). A resolution does not move the status — resolving leaves it
+   * `disputed` — so it is carried beside it as `resolved_at` (#76): the
+   * owner's resolution time when the transfer was `disputed` on `as_of` and
+   * resolved by then (its app-timezone date `<= as_of`), else `null`. It lets
+   * the screen tell «Врегульовано» from an open dispute.
    */
-  latest_transfer: { status: TransferStatus; sent_at: Date } | null;
+  latest_transfer: { status: TransferStatus; sent_at: Date; resolved_at: Date | null } | null;
 }
 
 /** Field by field, not `...row`: a raw projection must not reach the client
@@ -133,7 +137,11 @@ export function toPointCashRowResponse(row: PointCashRow): PointCashRowResponse 
     crate_deposit_units: row.crate_deposit_units,
     latest_transfer:
       row.latest_transfer_status && row.latest_transfer_sent_at
-        ? { status: row.latest_transfer_status, sent_at: row.latest_transfer_sent_at }
+        ? {
+            status: row.latest_transfer_status,
+            sent_at: row.latest_transfer_sent_at,
+            resolved_at: row.latest_transfer_resolved_at,
+          }
         : null,
   };
 }

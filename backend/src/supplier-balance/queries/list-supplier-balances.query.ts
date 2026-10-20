@@ -2,13 +2,12 @@ import { Injectable } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { ListSupplierBalancesQueryDto } from '../dto/list-supplier-balances.query';
 import {
+  SupplierBalanceListResponse,
   SupplierBalanceRow,
-  SupplierBalanceRowResponse,
   toSupplierBalanceRowResponse,
 } from '../supplier-balance.mapper';
-import { debtSql } from '../supplier-debt.sql';
+import { debtSql, oldestOpenDateSql } from '../supplier-debt.sql';
 import { resolvePointFilter } from '../../auth/access/point-scope';
-import { Paginated } from '../../common/dto/paginated';
 import { skipOf } from '../../common/dto/pagination-query.dto';
 import type { AuthenticatedUser } from '../../auth/jwt.strategy';
 
@@ -17,6 +16,10 @@ import type { AuthenticatedUser } from '../../auth/jwt.strategy';
  * filtered, ordered and paged in Postgres. `include_zero=false` drops exactly `0.00` — a
  * deactivated supplier still owed money stays. The order is total (debt, names, id) so paging
  * is stable. The point filter chooses WHICH suppliers appear; the formula has none.
+ *
+ * Each row also carries its oldest open line's date, and the envelope the oldest of those among
+ * the rows owed money (#101) — computed beside `total`, over every visible row rather than the
+ * loaded page, so «Найстаріший залишок» stays true past the screen's 100-row `limit`.
  */
 @Injectable()
 export class ListSupplierBalancesQuery {
@@ -25,20 +28,22 @@ export class ListSupplierBalancesQuery {
   async list(
     actor: AuthenticatedUser,
     query: ListSupplierBalancesQueryDto,
-  ): Promise<Paginated<SupplierBalanceRowResponse>> {
+  ): Promise<SupplierBalanceListResponse> {
     const pointId = resolvePointFilter(actor, query.collection_point_id) ?? null;
     const manager = this.dataSource.manager;
 
     // Shared by the page and the count, so the two cannot drift apart.
     const scoped = `SELECT s.id, s.first_name, s.last_name, s.is_active, s.collection_point_id,
-                           ${debtSql('s.id')} AS debt
+                           ${debtSql('s.id')} AS debt,
+                           ${oldestOpenDateSql('s.id')} AS oldest_open_date
                       FROM suppliers s
                      WHERE ($1::uuid IS NULL OR s.collection_point_id = $1::uuid)`;
     const visible = `($2::boolean OR b.debt <> 0)`;
 
     const rows = (await manager.query(
       `SELECT b.id AS supplier_id, b.first_name, b.last_name, b.is_active,
-              b.collection_point_id, b.debt::text AS debt
+              b.collection_point_id, b.debt::text AS debt,
+              b.oldest_open_date::text AS oldest_open_date
          FROM (${scoped}) b
         WHERE ${visible}
         ORDER BY b.debt DESC, b.last_name ASC, b.first_name ASC, b.id ASC
@@ -48,16 +53,20 @@ export class ListSupplierBalancesQuery {
 
     // `::int` so the driver hands back a number: `COUNT` is `bigint`, which
     // `pg` returns as a string, and `Number()` is banned in this module.
-    const [{ total }] = (await manager.query(
-      `SELECT COUNT(*)::int AS total FROM (${scoped}) b WHERE ${visible}`,
+    // The tile's date is over rows OWED money only, as «Всього винні» sums only positive debts.
+    const [{ total, oldest_open_date }] = (await manager.query(
+      `SELECT COUNT(*)::int AS total,
+              (MIN(b.oldest_open_date) FILTER (WHERE b.debt > 0))::text AS oldest_open_date
+         FROM (${scoped}) b WHERE ${visible}`,
       [pointId, query.include_zero],
-    )) as { total: number }[];
+    )) as { total: number; oldest_open_date: string | null }[];
 
     return {
       data: rows.map(toSupplierBalanceRowResponse),
       total,
       page: query.page,
       limit: query.limit,
+      oldest_open_date,
     };
   }
 }

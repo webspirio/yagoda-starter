@@ -2,7 +2,6 @@ import type { TFunction } from 'i18next';
 import type { PayoutDetail } from '@/entities/payout';
 import type { ReceiptDocument } from '@/shared/ui/receipt';
 import { formatUah } from '@/shared/lib/money';
-import { formatLongDate, formatTime } from '@/shared/lib/date';
 import { receiptHeader } from './receiptHeader';
 
 /**
@@ -25,14 +24,10 @@ export function buildPayoutReceipt({
   return {
     voided: payout.voided_at ? { reason: payout.void_reason ?? '' } : null,
     header: receiptHeader(t, payout.point_number, payout.paid_by_number),
+    // No «Дата» (#254, client correction): the code already carries the day.
     meta: [
       { label: t('receipt.number'), value: payout.code },
       { label: t('receipt.operation'), value: t('receipt.operationPayoutDebt') },
-      {
-        label: t('receipt.date'),
-        // §5 row 50 — the BUSINESS date (from the shift), as on the intake receipt.
-        value: `${formatLongDate(payout.business_date, locale)} · ${formatTime(payout.created_at, locale)}`,
-      },
       { label: t('receipt.supplier'), value: supplierName },
     ],
     sections: [

@@ -896,7 +896,6 @@
     "titleLines_many": "Квитанція {{code}} · {{count}} позицій",
     "titleLines_other": "Квитанція {{code}} · {{count}} позицій",
     "description": "Друкована квитанція — тут можна анулювати документ.",
-    "date": "Дата",
     "supplier": "Постачальник",
     "gross": "Брутто",
     "pallet": "Піддон",
@@ -922,7 +921,7 @@
     "docTitle": "КВИТАНЦІЯ",
     "thanks": "Дякуємо за співпрацю!",
     "notFiscal": "Не є фіскальним чеком",
-    "number": "№ квитанції",
+    "number": "№",
     "operation": "Операція",
     "operationIntake": "Прийомка ягоди",
     "operationPayoutDebt": "Видача боргу",
@@ -1137,6 +1136,8 @@
     "tiles": {
       "totalOwed": "Всього винні",
       "totalOwedHint": "на цій сторінці",
+      "oldest": "Найстаріший залишок",
+      "oldestHint": "від здачі ягоди {{date}}",
       "withDebt": "Постачальників із залишком"
     },
     "col": {
@@ -1147,6 +1148,11 @@
     },
     "inactive": "неактивний",
     "overpaid": "переплата {{uah}}",
+    "days_one": "{{count}} день",
+    "days_few": "{{count}} дні",
+    "days_many": "{{count}} днів",
+    "days_other": "{{count}} дня",
+    "ageSince": "найстаріший залишок з {{date}}",
     "payout": "Видати без ягоди",
     "empty": {
       "title": "Відкритих залишків немає",
@@ -1352,6 +1358,17 @@
     },
     "send": "Надіслати",
     "resolve": "Вирішити",
+    "disputedCount": "Не сходиться ({{n}})",
+    "dispute": {
+      "listLabel": "Розбіжності — {{point}}",
+      "sentAt": "Відправлено",
+      "sentCash": "Відправили",
+      "reportedCash": "Нарахувала точка",
+      "discrepancy": "Різниця",
+      "crates": "Ящики: відправили {{sent}} · нарахувала {{reported}} · різниця {{diff}}",
+      "note": "Точка написала: «{{note}}»",
+      "resolved": "Врегульовано: {{cash}} · {{crates}} ящ. · {{date}}"
+    },
     "empty": {
       "title": "Точок поки немає"
     },

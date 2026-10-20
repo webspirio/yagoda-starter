@@ -556,7 +556,7 @@ export function ReceptionPage() {
               isOwner={isOwner}
               targetCrates={targetCrates}
             />
-            <TodayReceipts shiftId={shift.data?.id} me={me} onOpen={openReceipt} />
+            <TodayReceipts shiftId={shift.data?.id} onOpen={openReceipt} />
           </div>
         </div>
       </>

@@ -37,8 +37,32 @@ describe('TransferStatusBadge', () => {
     expect(screen.queryByText('Resolved')).toBeNull();
   });
 
+  it('shows the count for two or more disputes', () => {
+    render(<TransferStatusBadge status="disputed" count={3} />);
+    expect(screen.getByText("Doesn't match (3)")).toBeInTheDocument();
+  });
+
+  it('keeps the plain label for a count below two', () => {
+    render(<TransferStatusBadge status="disputed" count={1} />);
+    expect(screen.getByText("Doesn't match")).toBeInTheDocument();
+  });
+
+  it('renders trailing children inside the badge', () => {
+    render(
+      <TransferStatusBadge status="disputed">
+        <span data-testid="tail" />
+      </TransferStatusBadge>,
+    );
+    expect(screen.getByText("Doesn't match")).toContainElement(screen.getByTestId('tail'));
+  });
+
   it('has no axe violations', async () => {
     const { container } = render(<TransferStatusBadge status="disputed" />);
     await expectNoAxeViolations(container);
+  });
+  it('ignores count on a status other than disputed', () => {
+    render(<TransferStatusBadge status="sent" count={3} />);
+    expect(screen.getByText('In transit')).toBeInTheDocument();
+    expect(screen.queryByText(/\(3\)/)).not.toBeInTheDocument();
   });
 });

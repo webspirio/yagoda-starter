@@ -995,9 +995,8 @@ describe("ReceptionPage — the supplier's history and today's badge", () => {
   });
 });
 
-describe("ReceptionPage — «Void» on today's receipts", () => {
-  it('opens the receipt straight into its void, not as a plain open', async () => {
-    const user = userEvent.setup();
+describe("ReceptionPage — today's receipts open the receipt, which carries the void", () => {
+  it('has no «Void» of its own on a row', () => {
     intakesMock.mockImplementation((filter: { shiftId?: string }) =>
       filter.shiftId
         ? page<Intake>([intake({ id: 'i2', code: 'SHP-IN-2', amount: '200.00' })])
@@ -1005,12 +1004,10 @@ describe("ReceptionPage — «Void» on today's receipts", () => {
     );
     renderReception();
 
-    await user.click(screen.getByRole('button', { name: 'Void SHP-IN-2' }));
-
-    expect(await screen.findByText('Receipt for i2 (void)')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Void SHP-IN-2' })).toBeNull();
   });
 
-  it('a plain row click still opens the receipt without the void', async () => {
+  it('a row click still opens the receipt without the void', async () => {
     const user = userEvent.setup();
     intakesMock.mockImplementation((filter: { shiftId?: string }) =>
       filter.shiftId

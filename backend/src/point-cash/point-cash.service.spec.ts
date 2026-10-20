@@ -146,6 +146,7 @@ describe('PointCashService — crate deposits book', () => {
       crate_deposit_units: 13,
       latest_transfer_status: null,
       latest_transfer_sent_at: null,
+      latest_transfer_resolved_at: null,
     };
 
     beforeEach(() => {
@@ -168,6 +169,14 @@ describe('PointCashService — crate deposits book', () => {
       expect(pageSql).toMatch(/AS crate_deposits/);
       expect(pageSql).toMatch(/AS crate_deposit_units/);
       expect(pageSql).toMatch(/crate_issuances/);
+    });
+
+    it('selects the latest transfer\'s resolved_at, bounded by as_of in the app timezone (#76)', async () => {
+      await service.list({ sub: 'u', username: 'owner', role: 'network_owner', collection_point_id: null } as never, listQuery() as never);
+
+      const [pageSql] = query.mock.calls[0] as [string, unknown[]];
+      expect(pageSql).toMatch(/AS latest_transfer_resolved_at/);
+      expect(pageSql).toMatch(/\(t\.resolved_at AT TIME ZONE \$3::text\)::date <= s\.as_of/);
     });
 
     it('maps crate_deposits onto the response as its own field', async () => {
@@ -205,6 +214,7 @@ describe('toPointCashRowResponse — crate deposits stay separate', () => {
     crate_deposit_units: 13,
     latest_transfer_status: TransferStatus.Accepted,
     latest_transfer_sent_at: new Date('2026-09-01T00:00:00Z'),
+    latest_transfer_resolved_at: null,
   };
 
   it('reports the crates book as its own field, never folded into cash', () => {
@@ -219,5 +229,45 @@ describe('toPointCashRowResponse — crate deposits stay separate', () => {
     const response = toPointCashRowResponse(row);
 
     expect(response.crate_deposit_units).toBe(13);
+  });
+});
+
+describe('toPointCashRowResponse — latest transfer resolution (#76)', () => {
+  const base: PointCashRow = {
+    collection_point_id: 'point-1',
+    name: 'Точка',
+    target_cash: null,
+    cash: '0.00',
+    shortfall: null,
+    unexplained_difference: '0.00',
+    crate_deposits: '0.00',
+    crate_deposit_units: 0,
+    latest_transfer_status: TransferStatus.Disputed,
+    latest_transfer_sent_at: new Date('2026-09-01T06:00:00Z'),
+    latest_transfer_resolved_at: null,
+  };
+
+  it('carries resolved_at on the latest transfer when the dispute was resolved', () => {
+    const resolvedAt = new Date('2026-09-05T09:00:00Z');
+    const response = toPointCashRowResponse({ ...base, latest_transfer_resolved_at: resolvedAt });
+
+    expect(response.latest_transfer).toEqual({
+      status: TransferStatus.Disputed,
+      sent_at: base.latest_transfer_sent_at,
+      resolved_at: resolvedAt,
+    });
+  });
+
+  it('reports resolved_at as null for an unresolved dispute', () => {
+    expect(toPointCashRowResponse(base).latest_transfer?.resolved_at).toBeNull();
+  });
+
+  it('keeps latest_transfer null when there is no transfer', () => {
+    const response = toPointCashRowResponse({
+      ...base,
+      latest_transfer_status: null,
+      latest_transfer_sent_at: null,
+    });
+    expect(response.latest_transfer).toBeNull();
   });
 });

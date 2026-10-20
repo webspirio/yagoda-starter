@@ -10,6 +10,7 @@ import {
   formatTime,
   formatDateTime,
   daysBetween,
+  ageInDays,
 } from './iso';
 
 describe('iso dates', () => {
@@ -93,5 +94,20 @@ describe('daysBetween', () => {
   it('is immune to the DST change (last Sunday of March / October)', () => {
     expect(daysBetween('2026-03-28', '2026-03-30')).toBe(2);
     expect(daysBetween('2026-10-24', '2026-10-26')).toBe(2);
+  });
+});
+
+describe('ageInDays', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('counts the days since a date as of today, and never below zero', () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date(2026, 7, 4, 12));
+
+    expect(ageInDays('2026-07-12')).toBe(23);
+    expect(ageInDays('2026-08-04')).toBe(0);
+    expect(ageInDays('2026-08-05')).toBe(0);
   });
 });

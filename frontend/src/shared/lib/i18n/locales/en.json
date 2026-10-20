@@ -880,7 +880,6 @@
     "titleLines_one": "Receipt {{code}} · {{count}} line",
     "titleLines_other": "Receipt {{code}} · {{count}} lines",
     "description": "Printable receipt — void the document from here.",
-    "date": "Date",
     "supplier": "Supplier",
     "gross": "Gross",
     "pallet": "Pallet",
@@ -906,7 +905,7 @@
     "docTitle": "RECEIPT",
     "thanks": "Thank you for working with us!",
     "notFiscal": "Not a fiscal receipt",
-    "number": "Receipt No.",
+    "number": "No.",
     "operation": "Operation",
     "operationIntake": "Berry intake",
     "operationPayoutDebt": "Debt payout",
@@ -1103,6 +1102,8 @@
     "tiles": {
       "totalOwed": "Total owed",
       "totalOwedHint": "on this page",
+      "oldest": "Oldest balance",
+      "oldestHint": "since the drop-off on {{date}}",
       "withDebt": "Suppliers with a balance"
     },
     "col": {
@@ -1113,6 +1114,9 @@
     },
     "inactive": "inactive",
     "overpaid": "overpaid {{uah}}",
+    "days_one": "{{count}} day",
+    "days_other": "{{count}} days",
+    "ageSince": "oldest balance since {{date}}",
     "payout": "Pay out without berries",
     "empty": {
       "title": "No open balances",
@@ -1306,6 +1310,17 @@
     },
     "send": "Send",
     "resolve": "Resolve",
+    "disputedCount": "Doesn't match ({{n}})",
+    "dispute": {
+      "listLabel": "Disputes — {{point}}",
+      "sentAt": "Sent at",
+      "sentCash": "Sent",
+      "reportedCash": "Counted at the point",
+      "discrepancy": "Difference",
+      "crates": "Crates: sent {{sent}} · counted {{reported}} · difference {{diff}}",
+      "note": "The point wrote: “{{note}}”",
+      "resolved": "Resolved: {{cash}} · {{crates}} cr. · {{date}}"
+    },
     "empty": {
       "title": "No collection points yet"
     },
