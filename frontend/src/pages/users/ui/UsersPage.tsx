@@ -6,6 +6,8 @@ import { Button } from '@/shared/ui/button';
 import { Badge } from '@/shared/ui/badge';
 import { EmptyState } from '@/shared/ui/empty-state';
 import { Spinner } from '@/shared/ui/spinner';
+import { useClientSort } from '@/shared/ui/data-table-sort';
+import { isTruncated } from '@/shared/api';
 import { usePointOptionsQuery } from '@/entities/collection-point';
 import { useUsersQuery } from '../api/users';
 import { UserFormDialog } from './UserFormDialog';
@@ -41,8 +43,22 @@ export function UsersPage() {
     setPasswordOpen(true);
   };
 
-  const rows = data?.data ?? [];
   const pointName = new Map((points ?? []).map((p) => [p.id, p.name]));
+  const pointOf = (u: AdminUser) =>
+    u.collection_point_id ? (pointName.get(u.collection_point_id) ?? null) : null;
+  // What each sortable column orders by (#250) — the value, not the rendered cell.
+  const { rows, sort, onSortChange } = useClientSort(
+    data?.data ?? [],
+    {
+      number: (u) => u.number,
+      name: (u) => u.display_name,
+      login: (u) => u.login,
+      role: (u) => t(`users.roleLabel.${u.role}`),
+      point: pointOf,
+      is_active: (u) => (u.is_active ? t('users.active') : t('users.inactive')),
+    },
+    { key: 'name', order: 'asc' },
+  );
 
   const columns: Column<AdminUser>[] = [
     {
@@ -51,33 +67,33 @@ export function UsersPage() {
       className: 'font-mono tabular-nums',
       // The receipt header's «Приймальник № N» (#250) — kept on narrow screens too.
       cell: (u) => u.number,
-      sortValue: (u) => u.number,
+      sortable: true,
     },
     {
       id: 'name',
       header: t('users.col.name'),
       cell: (u) => <span className="font-medium">{u.display_name}</span>,
-      sortValue: (u) => u.display_name,
+      sortable: true,
     },
-    { id: 'login', header: t('users.col.login'), cell: (u) => u.login, sortValue: (u) => u.login },
+    { id: 'login', header: t('users.col.login'), cell: (u) => u.login, sortable: true },
     {
       id: 'role',
       header: t('users.col.role'),
       cell: (u) => t(`users.roleLabel.${u.role}`),
-      sortValue: (u) => t(`users.roleLabel.${u.role}`),
+      sortable: true,
     },
     {
       id: 'point',
       header: t('users.col.point'),
       hideBelow: 'sm',
-      cell: (u) => (u.collection_point_id ? (pointName.get(u.collection_point_id) ?? '—') : '—'),
-      sortValue: (u) => (u.collection_point_id ? (pointName.get(u.collection_point_id) ?? null) : null),
+      cell: (u) => pointOf(u) ?? '—',
+      sortable: true,
     },
     {
       id: 'is_active',
       header: t('users.col.status'),
       align: 'right',
-      sortValue: (u) => (u.is_active ? t('users.active') : t('users.inactive')),
+      sortable: true,
       cell: (u) => (
         <Badge variant={u.is_active ? 'default' : 'secondary'}>
           {u.is_active ? t('users.active') : t('users.inactive')}
@@ -97,6 +113,17 @@ export function UsersPage() {
         rows={rows}
         rowKey={(u) => u.id}
         onRowClick={openEdit}
+        sort={sort}
+        onSortChange={onSortChange}
+        footer={
+          // The server caps a read at 100: past that the table — and its sort —
+          // holds only the first page, so say so rather than look complete.
+          isTruncated(data) ? (
+            <p className="text-xs text-muted-foreground">
+              {t('users.truncated', { shown: rows.length, total: data?.total })}
+            </p>
+          ) : undefined
+        }
         isEmpty={!isPending && !isError && rows.length === 0}
         empty={<EmptyState title={t('users.empty.title')} hint={t('users.empty.hint')} />}
       >

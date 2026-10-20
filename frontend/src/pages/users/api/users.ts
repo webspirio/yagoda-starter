@@ -16,8 +16,8 @@ export function useUsersQuery() {
     queryKey: queryKeys.users,
     queryFn: async (): Promise<Paginated<AdminUser>> => {
       const { data } = await httpClient.get<Paginated<AdminUser>>('/users', {
-        // The whole registry, not the server's default first 20: the table sorts
-        // client-side (#250), and a page of it would sort only that page.
+        // As much of the registry as one read allows (100), not the default 20: the
+        // table sorts client-side (#250). Past 100 the page says it is partial.
         params: { limit: 100, include_inactive: true },
       });
       return data;

@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { ChevronDown, ChevronUp, ChevronsUpDown } from 'lucide-react';
+import { ArrowDown, ArrowUp, ArrowUpDown } from 'lucide-react';
 import { cn } from '@/shared/lib/cn';
 import { Card } from './card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './table';
@@ -14,23 +14,14 @@ export interface Column<Row> {
   className?: string;
   /** Hide this column below the given breakpoint. */
   hideBelow?: 'sm' | 'md' | 'lg';
-  /** Makes the header a sort toggle. The value is compared, not the rendered cell:
-   *  numbers numerically, text in Ukrainian alphabet order; `null` sorts last
-   *  in both directions. Sorting is client-side, so only for a table that holds
-   *  its whole list — never for a server-paged one. */
-  sortValue?: (row: Row) => string | number | null;
+  /** Clickable when the table is given `sort` + `onSortChange`; inert otherwise. */
+  sortable?: boolean;
 }
 
-type SortDir = 'ascending' | 'descending';
-
-const collator = new Intl.Collator('uk', { numeric: true, sensitivity: 'base' });
-
-function compareValues(a: string | number | null, b: string | number | null, dir: SortDir): number {
-  // Empty last whichever way the column runs: «—» is no value, not the smallest one.
-  if (a == null || b == null) return a == null ? (b == null ? 0 : 1) : -1;
-  const order =
-    typeof a === 'number' && typeof b === 'number' ? a - b : collator.compare(String(a), String(b));
-  return dir === 'ascending' ? order : -order;
+/** Which column the rows are ordered by. The table renders it; the page decides it. */
+export interface SortState {
+  key: string;
+  order: 'asc' | 'desc';
 }
 
 const HIDE = { sm: 'max-sm:hidden', md: 'max-md:hidden', lg: 'max-lg:hidden' } as const;
@@ -45,6 +36,8 @@ export function DataTable<Row>({
   empty,
   frame = true,
   className,
+  sort,
+  onSortChange,
   renderExpanded,
 }: {
   columns: Column<Row>[];
@@ -62,6 +55,9 @@ export function DataTable<Row>({
    *  lives inside a card, so it does not draw a card within a card. */
   frame?: boolean;
   className?: string;
+  /** Opt-in. The table reports which header was clicked; direction rules belong to the caller. */
+  sort?: SortState;
+  onSortChange?: (key: string) => void;
   /** Detail content shown UNDER a row, in one cell spanning every column.
    *  Return `null` for a row that is not expanded (or not expandable) — the
    *  table owns no open/closed state, the caller decides per row. */
@@ -70,53 +66,40 @@ export function DataTable<Row>({
   const colClass = (c: Column<Row>) =>
     cn(c.align && ALIGN[c.align], c.hideBelow && HIDE[c.hideBelow], c.className);
 
-  // Unsorted until a header is pressed: the rows keep the order the caller gave.
-  const [sort, setSort] = React.useState<{ id: string; dir: SortDir } | null>(null);
-  const sortColumn = sort && columns.find((c) => c.id === sort.id && c.sortValue);
-  const shown = sortColumn
-    ? // Sorted with their original index, so `onRowClick`/`cell` still get it.
-      rows
-        .map((row, i) => ({ row, i }))
-        .sort(
-          (x, y) =>
-            compareValues(sortColumn.sortValue!(x.row), sortColumn.sortValue!(y.row), sort.dir) ||
-            x.i - y.i,
-        )
-    : rows.map((row, i) => ({ row, i }));
-  const toggleSort = (id: string) =>
-    setSort((cur) =>
-      cur?.id === id
-        ? { id, dir: cur.dir === 'ascending' ? 'descending' : 'ascending' }
-        : { id, dir: 'ascending' },
-    );
-
   const table = (
     <Table className={className}>
       <TableHeader>
         <TableRow>
           {columns.map((c) => {
-            if (!c.sortValue) {
-              return (
-                <TableHead key={c.id} className={colClass(c)}>
-                  {c.header}
-                </TableHead>
-              );
-            }
-            const dir = sort?.id === c.id ? sort.dir : null;
-            const Icon = dir === 'ascending' ? ChevronUp : dir === 'descending' ? ChevronDown : ChevronsUpDown;
+            const sortableHere = c.sortable && sort && onSortChange;
+            const active = sortableHere && sort.key === c.id;
+            const ariaSort = !sortableHere
+              ? undefined
+              : active
+                ? sort.order === 'asc'
+                  ? 'ascending'
+                  : 'descending'
+                : 'none';
+            const Arrow = !active ? ArrowUpDown : sort.order === 'asc' ? ArrowUp : ArrowDown;
             return (
-              <TableHead key={c.id} className={colClass(c)} aria-sort={dir ?? 'none'}>
-                <button
-                  type="button"
-                  onClick={() => toggleSort(c.id)}
-                  className={cn(
-                    'inline-flex items-center gap-1 uppercase tracking-[inherit] hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring',
-                    c.align === 'right' && 'flex-row-reverse',
-                  )}
-                >
-                  {c.header}
-                  <Icon aria-hidden className={cn('size-3.5', !dir && 'opacity-40')} />
-                </button>
+              <TableHead key={c.id} className={colClass(c)} aria-sort={ariaSort}>
+                {sortableHere ? (
+                  <button
+                    type="button"
+                    onClick={() => onSortChange(c.id)}
+                    // A button resets text-transform; `uppercase` keeps it level with the plain headers.
+                    className={cn(
+                      'inline-flex cursor-pointer items-center gap-1 uppercase',
+                      c.align === 'right' && 'flex-row-reverse',
+                    )}
+                  >
+                    {c.header}
+                    {/* Every sortable header shows an arrow, so the affordance is visible before the first click. */}
+                    <Arrow aria-hidden className={cn('size-3.5', !active && 'text-muted-foreground')} />
+                  </button>
+                ) : (
+                  c.header
+                )}
               </TableHead>
             );
           })}
@@ -128,7 +111,7 @@ export function DataTable<Row>({
             <TableCell colSpan={columns.length}>{empty}</TableCell>
           </TableRow>
         ) : (
-          shown.map(({ row, i }) => {
+          rows.map((row, i) => {
             const expanded = renderExpanded ? renderExpanded(row, i) : null;
             const onClick =
               onRowClick && (rowClickable?.(row, i) ?? true) ? () => onRowClick(row, i) : undefined;

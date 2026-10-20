@@ -69,6 +69,7 @@
     "soon": "Coming soon"
   },
   "points": {
+    "truncated": "Showing the first {{shown}} of {{total}} points — sorting covers only these.",
     "eyebrow": "Directory",
     "title": "Collection points",
     "description": "The points where berries are received, with their daily cash and crate targets.",
@@ -121,6 +122,7 @@
     }
   },
   "users": {
+    "truncated": "Showing the first {{shown}} of {{total}} users — sorting covers only these.",
     "eyebrow": "Directory",
     "title": "Users",
     "description": "The people who sign in to Yagoda — owners and point operators, with their roles and points.",

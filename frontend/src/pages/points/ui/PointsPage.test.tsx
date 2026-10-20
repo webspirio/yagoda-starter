@@ -118,6 +118,16 @@ describe('PointsPage', () => {
     expect(screen.getByLabelText('Name')).toHaveValue('Шипинки');
   });
 
+  it('says the list is partial when the server holds more points than it sent', () => {
+    queryMock.mockReturnValue({
+      data: { data: [point], total: 120, page: 1, limit: 100 },
+      isPending: false,
+      isError: false,
+    });
+    render(<PointsPage />);
+    expect(screen.getByText(/first 1 of 120 points/)).toBeInTheDocument();
+  });
+
   // #250: a header press sorts; the cash target compares as an amount, unset last.
   it('sorts the points by a pressed header', async () => {
     const big: CollectionPoint = { ...point, id: 'p2', name: 'Гайове', number: 1, target_cash: '145453.00' };

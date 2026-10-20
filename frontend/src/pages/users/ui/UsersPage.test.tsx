@@ -159,6 +159,24 @@ describe('UsersPage', () => {
     expect(screen.queryByRole('button', { name: 'Show password' })).toBeNull();
   });
 
+  // The server caps a read at 100 rows: a sorted table that holds only the first
+  // page must say so instead of looking complete.
+  it('says the list is partial when the server holds more users than it sent', () => {
+    queryMock.mockReturnValue({
+      data: { data: [owner, operator], total: 101, page: 1, limit: 100 },
+      isPending: false,
+      isError: false,
+    });
+    render(<UsersPage />);
+    expect(screen.getByText(/first 2 of 101 users/)).toBeInTheDocument();
+  });
+
+  it('says nothing about a partial list when it holds every user', () => {
+    queryMock.mockReturnValue(loaded([owner, operator]));
+    render(<UsersPage />);
+    expect(screen.queryByText(/sorting covers only these/)).toBeNull();
+  });
+
   // #250: every column but none sorts on a header press — by number as a number.
   it('sorts the users by a pressed header', async () => {
     const third: AdminUser = { ...operator, id: 'u3', login: 'bohdan', display_name: 'Bohdan R.', number: 3 };
@@ -169,12 +187,12 @@ describe('UsersPage', () => {
         .getAllByRole('row')
         .slice(1)
         .map((r) => within(r).getAllByRole('cell')[0].textContent);
-    expect(firstCells()).toEqual(['12', '1', '3']);
+    expect(firstCells()).toEqual(['3', '12', '1']); // by name first: Bohdan, Maria, Olena
     await userEvent.click(screen.getByRole('button', { name: 'No.' }));
     expect(firstCells()).toEqual(['1', '3', '12']);
     await userEvent.click(screen.getByRole('button', { name: 'No.' }));
     expect(firstCells()).toEqual(['12', '3', '1']);
     await userEvent.click(screen.getByRole('button', { name: 'Name' }));
-    expect(firstCells()).toEqual(['3', '12', '1']); // Bohdan, Maria, Olena
+    expect(firstCells()).toEqual(['3', '12', '1']);
   });
 });
