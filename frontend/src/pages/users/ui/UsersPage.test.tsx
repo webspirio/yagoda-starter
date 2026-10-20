@@ -103,8 +103,6 @@ describe('UsersPage', () => {
     await expectNoAxeViolations(container);
   });
 
-  // #250: the same number the receipt header prints as «Operator No. 12» —
-  // and a deactivated user keeps theirs, because their old receipts still print it.
   // #250: the number is assigned by the database — neither dialog offers a field for it.
   it.each([
     ['create', 'New user'],
@@ -117,6 +115,8 @@ describe('UsersPage', () => {
     expect(screen.queryByLabelText(/^(No\.|Number)$/)).toBeNull();
   });
 
+  // #250: the same number the receipt header prints as «Operator No. 12» —
+  // and a deactivated user keeps theirs, because their old receipts still print it.
   it('shows each user\'s number, deactivated ones included', () => {
     queryMock.mockReturnValue(loaded([owner, { ...operator, is_active: false }]));
     render(<UsersPage />);

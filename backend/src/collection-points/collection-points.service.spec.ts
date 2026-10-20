@@ -305,22 +305,6 @@ describe('CollectionPointsService', () => {
   // and `is_active` are NOT NULL columns: an explicit null must be REJECTED
   // here (400 once the global ValidationPipe is in front of it), not silently
   // assigned and left to crash the database constraint at `repo.save()`.
-  // The number is assigned by the database (GENERATED ALWAYS) and never typed
-  // (#250): a body that names it is refused under the global ValidationPipe's
-  // options, not silently dropped.
-  describe('the point number is read-only', () => {
-    it.each<[string, new () => object]>([
-      ['create', CreateCollectionPointDto],
-      ['update', UpdateCollectionPointDto],
-    ])('%s refuses a body that sets number', async (_, Dto) => {
-      const errors = await validate(plainToInstance(Dto, { number: 9 }), {
-        whitelist: true,
-        forbidNonWhitelisted: true,
-      });
-      expect(errors.some((e) => e.property === 'number')).toBe(true);
-    });
-  });
-
   describe('UpdateCollectionPointDto nullability', () => {
     it('rejects an explicit null for name', async () => {
       const dto = Object.assign(new UpdateCollectionPointDto(), { name: null });
@@ -346,6 +330,22 @@ describe('CollectionPointsService', () => {
 
       const absent = Object.assign(new UpdateCollectionPointDto(), { reason: 'бо треба' });
       expect(await validate(absent)).toHaveLength(0);
+    });
+  });
+
+  // The number is assigned by the database (GENERATED ALWAYS) and never typed
+  // (#250): a body that names it is refused under the global ValidationPipe's
+  // options, not silently dropped.
+  describe('the point number is read-only', () => {
+    it.each<[string, new () => object]>([
+      ['create', CreateCollectionPointDto],
+      ['update', UpdateCollectionPointDto],
+    ])('%s refuses a body that sets number', async (_, Dto) => {
+      const errors = await validate(plainToInstance(Dto, { number: 9 }), {
+        whitelist: true,
+        forbidNonWhitelisted: true,
+      });
+      expect(errors.some((e) => e.property === 'number')).toBe(true);
     });
   });
 });
