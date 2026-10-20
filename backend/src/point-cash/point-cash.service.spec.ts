@@ -241,6 +241,8 @@ describe('toPointCashRowResponse — latest transfer resolution (#76)', () => {
     shortfall: null,
     unexplained_difference: '0.00',
     crate_deposits: '0.00',
+    crate_cash: null,
+    crate_unexplained_difference: '0.00',
     crate_deposit_units: 0,
     latest_transfer_status: TransferStatus.Disputed,
     latest_transfer_sent_at: new Date('2026-09-01T06:00:00Z'),
