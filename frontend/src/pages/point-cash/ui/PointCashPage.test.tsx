@@ -1767,6 +1767,16 @@ describe('PointCashPage — the day’s tiles and documents (#221)', () => {
     expect(screen.getByText('KV-0001')).toBeInTheDocument();
   });
 
+  it('keeps «Close shift» reachable when a ledger read fails — no other screen closes today’s shift', () => {
+    cashCountsMock.mockImplementation((f: { pointId?: string; shiftId?: string }) =>
+      f.pointId ? { data: undefined, isPending: false, isError: true } : list([cashCount()]),
+    );
+    renderPointCash();
+
+    expect(screen.getByRole('alert')).toHaveTextContent('Something went wrong');
+    expect(screen.getByRole('button', { name: 'Close shift' })).toBeInTheDocument();
+  });
+
   it('shows no day for a point that does not exist — only the message', () => {
     pointCashMock.mockReturnValue(list([]));
     renderPointCash();

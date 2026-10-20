@@ -6,6 +6,7 @@ import { SelectField } from '@/shared/ui/select-field';
 import { Button } from '@/shared/ui/button';
 import { EmptyState } from '@/shared/ui/empty-state';
 import { Spinner } from '@/shared/ui/spinner';
+import { SectionCard } from '@/shared/ui/section-card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/shared/ui/tabs';
 import { isTruncated } from '@/shared/api';
 import { useUrlParam } from '@/shared/lib/url-state';
@@ -423,46 +424,77 @@ export function PointCashPage() {
   const daySection =
     pointId === null ? null : (
       <div className="mt-5 flex flex-col gap-5">
-        {dayFiguresVisible ? (
-          <DayLedger summary={day.summary} truncated={day.truncated} />
-        ) : null}
-        <Tabs
-          value={activityTab}
-          onValueChange={(next) => setActivityTab(next === 'counts' ? 'counts' : 'feed')}
-          className="rounded-xl bg-card p-5 ring-1 ring-foreground/10"
-        >
-          <TabsList className="mb-3">
-            <TabsTrigger value="feed">{t('day.feed.title')}</TabsTrigger>
-            <TabsTrigger value="counts">{t('pointCash.tabs.countHistory')}</TabsTrigger>
-          </TabsList>
-          <TabsContent value="feed">
-            <DayFeed
-              me={me}
-              pointId={pointId}
-              hasShift={hasShift}
-              isToday={isToday}
-              isLoading={shift.isPending || (hasShift && !day.ready)}
-              // A failed SHIFT read is announced once, by the panel; the feed
-              // cannot claim «no shift» over it, so it says so quietly.
-              isError={shift.isError || day.isError}
-              quietError={shift.isError}
-              feed={day.feed}
-              onOpenReceipt={receipt.openReceipt}
-              onOpenPayoutReceipt={payoutReceipt.openReceipt}
-              framed={false}
-            />
-          </TabsContent>
-          <TabsContent value="counts">
-            <CashCountHistory
-              pointId={pointId}
-              isOwner={isOwner}
-              meId={me?.id ?? null}
-              framed={false}
-            />
-          </TabsContent>
-        </Tabs>
+        {dayFiguresVisible ? <DayLedger summary={day.summary} truncated={day.truncated} /> : null}
+        <SectionCard>
+          <Tabs
+            value={activityTab}
+            onValueChange={(next) => setActivityTab(next === 'counts' ? 'counts' : 'feed')}
+          >
+            <TabsList className="mb-3">
+              <TabsTrigger value="feed">{t('day.feed.title')}</TabsTrigger>
+              <TabsTrigger value="counts">{t('pointCash.tabs.countHistory')}</TabsTrigger>
+            </TabsList>
+            <TabsContent value="feed">
+              <DayFeed
+                me={me}
+                pointId={pointId}
+                hasShift={hasShift}
+                isToday={isToday}
+                isLoading={shift.isPending || (hasShift && !day.ready)}
+                // A failed SHIFT read is announced once, by the panel; the feed
+                // cannot claim «no shift» over it, so it says so quietly.
+                isError={shift.isError || day.isError}
+                quietError={shift.isError}
+                feed={day.feed}
+                onOpenReceipt={receipt.openReceipt}
+                onOpenPayoutReceipt={payoutReceipt.openReceipt}
+              />
+            </TabsContent>
+            <TabsContent value="counts">
+              <CashCountHistory
+                pointId={pointId}
+                isOwner={isOwner}
+                meId={me?.id ?? null}
+                framed={false}
+              />
+            </TabsContent>
+          </Tabs>
+        </SectionCard>
       </div>
     );
+
+  // The ONLY place today's shift can be closed since «Каса за день» went
+  // (#221) — `OpenShiftAlert` closes only an EARLIER day's. So it renders in
+  // the page-wide error branch too: it needs none of the ledger's reads and
+  // degrades on its own (`isShiftError`), and a failed ledger read must not
+  // leave a shift nobody can close.
+  const shiftPanel = (
+    <ShiftCountPanel
+      shift={shift.data ?? null}
+      // `shift.isPending` alone hangs the spinner forever while
+      // `shiftCashCounts` sits DISABLED (no `shift.data?.id` yet) —
+      // a disabled query's own `isPending` never clears, it just
+      // never fetches. `isLoading` (`isPending && isFetching`) is
+      // `false` for a disabled query, so it only adds real wait
+      // time, never a phantom one.
+      isShiftLoading={shift.isPending || shiftCashCounts.isLoading}
+      isShiftError={isShiftError}
+      counts={panelCounts}
+      isOperator={isOperator}
+      isToday={isToday}
+      onOpenShift={() => openCountDialog({ mode: 'open' })}
+      openShiftGate={openShiftGate}
+      onCloseShift={(shiftId) => openCountDialog({ mode: 'close', shiftId })}
+      onReopenShift={
+        isOwner
+          ? () => {
+              setReopenInstance((n) => n + 1);
+              setReopenOpen(true);
+            }
+          : undefined
+      }
+    />
+  );
 
   const body =
     pointId === null ? (
@@ -473,13 +505,14 @@ export function PointCashPage() {
       </p>
     ) : isError ? (
       // The cash figures failed; the day did not have to. Its own reads are
-      // by shift, so the tiles, «Звірка» and the feed stay — as on «Каса за
-      // день», which showed them whatever the ledger's reads did.
+      // by shift, so the tiles, the shift panel, «Звірка» and the feed stay —
+      // as on «Каса за день», which showed them whatever the ledger's reads did.
       <>
         <p role="alert" className="py-6 text-center text-destructive">
           {t('common.somethingWentWrong')}
         </p>
         {dayTiles}
+        {shiftPanel}
         {daySection}
       </>
     ) : !shownRow ? (
@@ -505,33 +538,7 @@ export function PointCashPage() {
             payoutsTruncated={payoutsTruncated}
             target={shownRow.target_cash}
           />
-          <div className="flex flex-col gap-5">
-            <ShiftCountPanel
-              shift={shift.data ?? null}
-              // `shift.isPending` alone hangs the spinner forever while
-              // `shiftCashCounts` sits DISABLED (no `shift.data?.id` yet) —
-              // a disabled query's own `isPending` never clears, it just
-              // never fetches. `isLoading` (`isPending && isFetching`) is
-              // `false` for a disabled query, so it only adds real wait
-              // time, never a phantom one.
-              isShiftLoading={shift.isPending || shiftCashCounts.isLoading}
-              isShiftError={isShiftError}
-              counts={panelCounts}
-              isOperator={isOperator}
-              isToday={isToday}
-              onOpenShift={() => openCountDialog({ mode: 'open' })}
-              openShiftGate={openShiftGate}
-              onCloseShift={(shiftId) => openCountDialog({ mode: 'close', shiftId })}
-              onReopenShift={
-                isOwner
-                  ? () => {
-                      setReopenInstance((n) => n + 1);
-                      setReopenOpen(true);
-                    }
-                  : undefined
-              }
-            />
-          </div>
+          <div className="flex flex-col gap-5">{shiftPanel}</div>
         </div>
         {daySection}
       </>
