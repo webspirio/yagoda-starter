@@ -151,7 +151,7 @@ export function ShiftCountPanel({
   openShiftGate: OpenShiftGate;
   onCloseShift: (shiftId: string) => void;
   /**
-   * «Відкрити зміну наново» — the owner's correction (#221: it came over
+   * «Перевідкрити зміну» — the owner's correction (#221: it came over
    * from «Каса за день»). The PAGE passes it for the owner only; absent, the
    * button is absent, so the panel itself never decides who may reopen. The
    * dialog stays page-level, like the open/close one.

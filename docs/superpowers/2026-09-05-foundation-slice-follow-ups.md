@@ -484,10 +484,15 @@ schedules yet — a kit/consistency pass, not a feature:
   with a real `QueryClient` would lock it.~~ **CLOSED 2026-10-20 (#221):** the
   file now lives at `pages/point-cash/api/shiftActions.ts` with its own test, and
   the shared invalidation list is pinned in `features/count-shift`.
-- **The day page's truncation notice counts the merged feed**, while the cap
-  is 100 per journal — 100 intakes + 5 payouts reads «перші 105 документів».
-- **A refused close banner survives navigation** on the day page (step to another
-  day, switch point); clear it in the date/point setters.
+- **The day's truncation notice counts the merged feed**, while the cap is 100
+  per journal — 100 intakes + 5 payouts reads «перші 105 документів». Moved with
+  #221 from the deleted day page to «Каса точки»: `pages/point-cash/ui/DayTiles.tsx`
+  (`count: shown`, which is `day.feed.length`).
+- ~~**A refused close banner survives navigation** on the day page (step to another
+  day, switch point); clear it in the date/point setters.~~ **CLOSED 2026-10-20
+  (#221):** the day page is gone. On «Каса точки» a refused close shows only inside
+  the modal count dialog, which gets a new `key` every time it opens, so the
+  refusal never outlives the dialog.
 
 ## Learned from the debts and overview screens (2026-09-09)
 

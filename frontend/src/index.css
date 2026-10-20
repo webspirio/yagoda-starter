@@ -270,7 +270,7 @@
   }
 }
 
-/* Anything marked .printable is what goes on paper — receipts and the day report */
+/* Anything marked .printable is what goes on paper — receipts and the cost-of-day sheet */
 @media print {
   body * {
     visibility: hidden;

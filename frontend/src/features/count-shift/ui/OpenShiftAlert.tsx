@@ -14,7 +14,7 @@ import { CountDrawerDialog } from './CountDrawerDialog';
  * «Зміна за … ще не закрита» — the one place an open shift left behind on an
  * earlier day is reachable from (#114).
  *
- * ЧОМУ ЦЕ ОКРЕМИЙ КОМПОНЕНТ, А НЕ ШМАТОК `pages/day`. Every screen reads the
+ * ЧОМУ ЦЕ ОКРЕМИЙ КОМПОНЕНТ, А НЕ ШМАТОК ОДНІЄЇ СТОРІНКИ. Every screen reads the
  * shift of the day it is ABOUT (`useShiftOnDateQuery` on «Каса точки»,
  * `useCurrentShiftQuery`-for-today on «Прийомка»), so a shift opened five days
  * ago is invisible on both and the only way back to it used to be five clicks

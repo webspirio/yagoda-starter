@@ -1,6 +1,5 @@
 import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { SectionCard } from '@/shared/ui/section-card';
 import { Badge } from '@/shared/ui/badge';
 import { EmptyState } from '@/shared/ui/empty-state';
 import { Spinner } from '@/shared/ui/spinner';
@@ -19,8 +18,8 @@ import type { DayFeedRow } from '../model/useDayDocuments';
  * payout opens its own slip; a payout tied to a receipt is read on that
  * receipt, so it stays a plain row. The dialogs are the page's.
  *
- * `framed={false}` drops the card and its eyebrow — the page shows the feed
- * as one tab of a card it owns, beside the recount history.
+ * No card of its own: the page shows the feed as one tab of a card it owns,
+ * beside the recount history.
  */
 export function DayFeed({
   me,
@@ -33,7 +32,6 @@ export function DayFeed({
   onOpenReceipt,
   onOpenPayoutReceipt,
   quietError = false,
-  framed = true,
 }: {
   me: Me | undefined;
   pointId: string;
@@ -48,7 +46,6 @@ export function DayFeed({
   /** Say the failure WITHOUT `role="alert"` — for a failure some other part of
    *  the page (the shift panel) already announces. */
   quietError?: boolean;
-  framed?: boolean;
 }) {
   const { t, i18n } = useTranslation();
   // §5.1 — every feed row (intake AND payout) carries the supplier's name; the
@@ -59,11 +56,8 @@ export function DayFeed({
     [suppliers.data],
   );
 
-  const content = isError ? (
-    <p
-      role={quietError ? undefined : 'alert'}
-      className="py-6 text-center text-destructive"
-    >
+  return isError ? (
+    <p role={quietError ? undefined : 'alert'} className="py-6 text-center text-destructive">
       {t('common.somethingWentWrong')}
     </p>
   ) : isLoading ? (
@@ -148,6 +142,4 @@ export function DayFeed({
       })}
     </ul>
   );
-
-  return framed ? <SectionCard eyebrow={t('day.feed.title')}>{content}</SectionCard> : content;
 }
