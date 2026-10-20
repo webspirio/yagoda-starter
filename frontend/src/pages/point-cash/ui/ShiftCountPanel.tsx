@@ -106,9 +106,12 @@ export type OpenShiftGate = 'allowed' | 'checking' | 'failed' | 'blocked';
  * times, who closed it, each count's explanation and note), the day's opening
  * and closing counts, the day's midday recounts, and the operator's actions.
  *
- * `counts` is the RAW `GET /cash-counts?shift_id=` page — narrowed to the
- * berry book and sorted by `counted_at` HERE (not by the caller), so the
- * fixtures a test hands this component can include a stray crates-book or
+ * `counts` is the RAW `GET /cash-counts?shift_id=` page — split by book and
+ * sorted by `counted_at` HERE (not by the caller): the opening and closing
+ * counts of BOTH books (#178 — «Каса» and «Завдатки», each with its own pill,
+ * labelled by book once the crates book has been counted), the middays of
+ * the berry book alone (the recount is berry-only, spec D6). So the fixtures
+ * a test hands this component can include a crates-book midday or an
  * out-of-order row and still exercise the real filter/sort, the same way
  * `PointCashPage` already lets `CashLedger`/`buildLedger` own their own
  * derivations rather than pre-chewing them.
@@ -167,10 +170,23 @@ export function ShiftCountPanel({
     setRecountOpen(true);
   };
 
-  const berry = counts.filter((c) => c.book === 'berry');
-  const opening = berry.find((c) => c.kind === 'opening') ?? null;
-  const closing = berry.find((c) => c.kind === 'closing') ?? null;
-  const middays = berry
+  const bookCounts = (book: CashCount['book']) => {
+    const rows = counts.filter((c) => c.book === book);
+    return {
+      book,
+      opening: rows.find((c) => c.kind === 'opening') ?? null,
+      closing: rows.find((c) => c.kind === 'closing') ?? null,
+    };
+  };
+  const crates = bookCounts('crates');
+  const hasCrates = crates.opening !== null || crates.closing !== null;
+  // A crates discrepancy must not hide behind a matched berry count — a
+  // green «Каса» pill over a −360,00 «Завдатки» one reads as a clean day.
+  const books = hasCrates ? [bookCounts('berry'), crates] : [bookCounts('berry')];
+  const labelBooks = hasCrates;
+  // The midday recount is berry-only (spec D6), so the list stays berry-only.
+  const middays = counts
+    .filter((c) => c.book === 'berry')
     .filter((c) => c.kind === 'midday')
     .sort((a, b) => (a.counted_at < b.counted_at ? -1 : a.counted_at > b.counted_at ? 1 : 0));
 
@@ -261,24 +277,42 @@ export function ShiftCountPanel({
                 <span className="font-mono text-xs text-muted-foreground">{timeRange}</span>
               </div>
 
-              {opening ? (
-                <LedgerRow
-                  label={t('pointCash.panel.opening')}
-                  value={formatUah(opening.counted_amount, locale)}
-                />
-              ) : null}
-              {opening && discrepancyTone(opening.discrepancy) !== 'leaf' ? (
-                <DiscrepancyPill discrepancy={opening.discrepancy} />
-              ) : null}
-              {opening ? <CountTexts count={opening} /> : null}
-              {closing ? (
-                <LedgerRow
-                  label={t('pointCash.panel.closing')}
-                  value={formatUah(closing.counted_amount, locale)}
-                />
-              ) : null}
-              {closing ? <DiscrepancyPill discrepancy={closing.discrepancy} /> : null}
-              {closing ? <CountTexts count={closing} /> : null}
+              {/* One group per book (§7.6: one drawer, two books, #178). The
+                  crates book only shows up once a shift has counted it —
+                  a shift opened before #178 has berry rows alone, and
+                  reads exactly as it always did, with no book headings. */}
+              {books.map(({ book, opening, closing }) => (
+                <div
+                  key={book}
+                  role={labelBooks ? 'group' : undefined}
+                  aria-label={labelBooks ? t(`countResult.book.${book}`) : undefined}
+                  className="flex flex-col gap-1"
+                >
+                  {labelBooks ? (
+                    <span className="pt-1 text-xs font-medium text-muted-foreground">
+                      {t(`countResult.book.${book}`)}
+                    </span>
+                  ) : null}
+                  {opening ? (
+                    <LedgerRow
+                      label={t('pointCash.panel.opening')}
+                      value={formatUah(opening.counted_amount, locale)}
+                    />
+                  ) : null}
+                  {opening && discrepancyTone(opening.discrepancy) !== 'leaf' ? (
+                    <DiscrepancyPill discrepancy={opening.discrepancy} />
+                  ) : null}
+                  {opening ? <CountTexts count={opening} /> : null}
+                  {closing ? (
+                    <LedgerRow
+                      label={t('pointCash.panel.closing')}
+                      value={formatUah(closing.counted_amount, locale)}
+                    />
+                  ) : null}
+                  {closing ? <DiscrepancyPill discrepancy={closing.discrepancy} /> : null}
+                  {closing ? <CountTexts count={closing} /> : null}
+                </div>
+              ))}
 
               {shift.status !== 'open' ? (
                 <p className="text-xs text-muted-foreground">

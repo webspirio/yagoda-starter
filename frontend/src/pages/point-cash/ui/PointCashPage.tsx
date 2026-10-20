@@ -160,7 +160,10 @@ export function PointCashPage() {
     pointId ? { pointId, from: shiftDate, to: date, limit: 100 } : {},
   );
   const payouts = usePayoutsQuery({ pointId: pointId ?? undefined, to: date, limit: 100 });
-  const cashCounts = useCashCountsQuery({ pointId: pointId ?? undefined });
+  // «Ще не рахована» (below) needs ONE number: how many counts this point had
+  // on or before `date`. `to` is an inclusive bound on the shift's business
+  // date, `limit: 1` keeps the page to a single row — `total` is the answer.
+  const cashCounts = useCashCountsQuery({ pointId: pointId ?? undefined, to: date, limit: 1 });
   // R4 — «Зміна і перерахунок каси». `useShiftOnDateQuery` already gates
   // itself on `pointId !== null` (`shiftOnDateQueryOptions`), same as every
   // other read on this page. The panel's own counts read is scoped to the
@@ -236,21 +239,16 @@ export function PointCashPage() {
   //
   // AT OR BEFORE `date`, NOT «EVER»: this page reads a past date as readily
   // as today, and a count taken this morning explains nothing about a drawer
-  // that had never been counted back on the date being read. The rows carry
-  // their shift's `business_date`, which is the same calendar the page's
-  // `date` is on — no timestamp/timezone conversion needed.
+  // that had never been counted back on the date being read. The read is
+  // bounded by `to: date` on the shift's `business_date` — the same calendar
+  // the page's `date` is on, no timestamp/timezone conversion needed.
   //
-  // AND ONLY OFF A COMPLETE PAGE: the counts read is capped at 100 and comes
-  // back newest-first (`cash-counts.service.ts` orders by `business_date
-  // DESC`), so on a long-running point the counts that would settle an old
-  // date are exactly the ones that did not fit. «Ще не рахована» is a claim
-  // about the point's whole history; a page that admits it is partial cannot
-  // support it, and the generic cash hint is the honest fallback.
-  const counts = cashCounts.data;
-  const neverCounted =
-    counts !== undefined &&
-    counts.total === counts.data.length &&
-    !counts.data.some((c) => c.business_date <= date);
+  // OFF `total`, NOT THE ROWS: the server counts every matching row whatever
+  // the page size, so the answer is exact on a point of any age. Reading it
+  // off a capped newest-first page used to fall back to the generic hint
+  // once the history outgrew 100 rows — and with two books a shift writes
+  // twice as many.
+  const neverCounted = cashCounts.data !== undefined && cashCounts.data.total === 0;
 
   // Nothing is shown off a page whose reads failed — including the target,
   // whose «—» would otherwise be a claim made on top of an error.
@@ -429,7 +427,7 @@ export function PointCashPage() {
             wide table, and the 320px column it used to sit in truncated it.
             Behind a toggle: the whole-point history is a long table nobody
             reads on every visit, and `CashCountHistory` owns its own
-            unbounded `useCashCountsQuery({ pointId })` read, which now stays
+            paged `useCashCountsQuery({ pointId, page })` read, which stays
             off the network entirely until asked for. */}
         <div className="mt-5">
           <Button

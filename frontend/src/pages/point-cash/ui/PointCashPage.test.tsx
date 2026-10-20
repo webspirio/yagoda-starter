@@ -400,24 +400,30 @@ describe('PointCashPage — honesty rule 2: zero counts read 0.00 and say so', (
     expect(screen.queryByText(/never counted/i)).toBeNull();
   });
 
+  it('asks for an exact count bounded by the date on screen, one row at most', () => {
+    renderPointCash('/point-cash?date=2026-09-01');
+    expect(cashCountsMock).toHaveBeenCalledWith({ pointId: 'p1', to: '2026-09-01', limit: 1 });
+  });
+
   it('says it for a PAST date the point had not been counted on yet', async () => {
     // The point's first count is today's; on the 1st its drawer had never
     // been counted, and «0.00» there needs the same words it needs on a
-    // point with no counts at all.
-    cashCountsMock.mockReturnValue(list([cashCount({ business_date: '2026-09-08' })]));
+    // point with no counts at all. The mock answers the way the server does
+    // — `to` bounds the shift's business date, `total` counts what matched.
+    const counts = [cashCount({ business_date: '2026-09-08' })];
+    cashCountsMock.mockImplementation((filter: { to?: string }) =>
+      list(counts.filter((c) => filter.to === undefined || c.business_date <= filter.to)),
+    );
 
     renderPointCash('/point-cash?date=2026-09-01');
 
     expect(await screen.findByText(/ще не рахована|never counted/i)).toBeInTheDocument();
   });
 
-  it('makes no claim about a date older than the counts page it could fetch', () => {
-    // Capped at 100, newest first (`cash-counts.service.ts` orders by
-    // `business_date DESC`) — the counts that would settle a date this old
-    // are exactly the ones that did not fit, so silence is the honest
-    // answer, not «never counted».
+  it('reads `total`, not the rows: a one-row page of a long history is still «counted»', () => {
+    // `limit: 1` brings back one row of 250 — the claim rests on `total`.
     cashCountsMock.mockReturnValue({
-      data: { data: [cashCount({ business_date: '2026-09-08' })], total: 250, page: 1, limit: 100 },
+      data: { data: [cashCount({ business_date: '2026-08-01' })], total: 250, page: 1, limit: 1 },
       isPending: false,
       isError: false,
     });
@@ -906,7 +912,11 @@ describe('PointCashPage — scope and failure states', () => {
       to: '2026-09-08',
       limit: 100,
     });
-    expect(cashCountsMock).toHaveBeenCalledWith({ pointId: undefined });
+    expect(cashCountsMock).toHaveBeenCalledWith({
+      pointId: undefined,
+      to: '2026-09-08',
+      limit: 1,
+    });
     expect(pointCashOneMock).toHaveBeenCalledWith(null, '2026-09-08');
     // THE EXCEPTION (review, minor 8): the owner's OWN unscoped `/point-cash`
     // read (Task 2 — the grouping for this very `<select>`) is not gated on

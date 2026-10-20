@@ -13,7 +13,12 @@
     "today": "Today",
     "previousDay": "Previous day",
     "nextDay": "Next day",
-    "print": "Print"
+    "print": "Print",
+    "pagination": {
+      "prev": "Back",
+      "next": "Next",
+      "range": "{{from}}–{{to}} of {{total}}"
+    }
   },
   "errors": {
     "decimalFormat": "Enter a number, e.g. 12000 or 980.40",
@@ -1203,12 +1208,7 @@
       "action": "Action"
     },
     "voided": "Voided",
-    "empty": "No records for this period.",
-    "pagination": {
-      "prev": "Back",
-      "next": "Next",
-      "range": "{{from}}–{{to}} of {{total}}"
-    }
+    "empty": "No records for this period."
   },
   "theme": {
     "label": "Theme",

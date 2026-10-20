@@ -58,8 +58,6 @@ export interface PointCashOne {
   crate_deposits: string;
   /** §R8 — скільки ящиків з тих завдатків: видано «за кошти» мінус повернуто. */
   crate_deposit_units: number;
-  /** Див. `PointCashRow.crate_cash`. */
-  crate_cash: string | null;
   breakdown: PointCashBreakdown;
 }
 

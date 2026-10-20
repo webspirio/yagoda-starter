@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { Shift } from '@/entities/shift';
 import type { CashCount } from '@/entities/cash-count';
@@ -255,6 +255,59 @@ describe('ShiftCountPanel — the shift line and names', () => {
   it('shows the opening discrepancy pill when the opening count did not match', () => {
     renderWith([count({ kind: 'opening', discrepancy: '-50.00', is_open: true })]);
     expect(screen.getByText('Discrepancy')).toBeInTheDocument();
+  });
+
+  it('shows the crates book too: a matched «Cash» does not hide a −360.00 «Deposits» closing (#178)', () => {
+    renderWith([
+      count({ id: 'bo', kind: 'opening', book: 'berry' }),
+      count({ id: 'bc', kind: 'closing', book: 'berry', discrepancy: '0.00' }),
+      count({ id: 'co', kind: 'opening', book: 'crates', counted_amount: '500.00' }),
+      count({
+        id: 'cc',
+        kind: 'closing',
+        book: 'crates',
+        counted_amount: '140.00',
+        expected_amount: '500.00',
+        discrepancy: '-360.00',
+        is_open: true,
+      }),
+    ]);
+    const berry = screen.getByRole('group', { name: 'Cash' });
+    const crates = screen.getByRole('group', { name: 'Deposits' });
+    expect(within(berry).getByText('Discrepancy').closest('span')).toHaveClass('text-leaf');
+    expect(within(crates).getByText('Counted this morning')).toBeInTheDocument();
+    expect(within(crates).getByText('500.00 ₴')).toBeInTheDocument();
+    expect(within(crates).getByText('Counted at close')).toBeInTheDocument();
+    expect(within(crates).getByText('140.00 ₴')).toBeInTheDocument();
+    // One pill only: the opening matched, so (like berry) it gets none.
+    const pills = within(crates).getAllByText('Discrepancy');
+    expect(pills).toHaveLength(1);
+    expect(pills[0].closest('span')).toHaveClass('text-destructive');
+  });
+
+  it('shows the crates opening pill when the crates opening count did not match', () => {
+    renderWith([
+      count({ id: 'bo', kind: 'opening', book: 'berry' }),
+      count({ id: 'co', kind: 'opening', book: 'crates', discrepancy: '-50.00', is_open: true }),
+    ]);
+    const crates = screen.getByRole('group', { name: 'Deposits' });
+    expect(within(crates).getByText('Discrepancy').closest('span')).toHaveClass('text-destructive');
+    expect(within(screen.getByRole('group', { name: 'Cash' })).queryByText('Discrepancy')).toBeNull();
+  });
+
+  it('puts each crates count’s own texts under it', () => {
+    renderWith([
+      count({ id: 'bc', kind: 'closing', book: 'berry' }),
+      count({ id: 'cc', kind: 'closing', book: 'crates', operator_note: 'ящик не той' }),
+    ]);
+    const crates = screen.getByRole('group', { name: 'Deposits' });
+    expect(within(crates).getByText('Operator: “ящик не той”')).toBeInTheDocument();
+  });
+
+  it('labels no books while only the berry book was counted (a shift from before #178)', () => {
+    renderWith([count({ kind: 'opening' }), count({ id: 'c2', kind: 'closing' })]);
+    expect(screen.queryByRole('group')).toBeNull();
+    expect(screen.queryByText('Deposits')).toBeNull();
   });
 
   it('reads a legacy «awaiting_explanation» shift as closed', () => {
@@ -904,7 +957,7 @@ describe('ShiftCountPanel — wiring the actions', () => {
     expect(onOpenShift).toHaveBeenCalled();
   });
 
-  it('has no axe violations across the busiest state (closed shift, midday history, both roles)', async () => {
+  it('has no axe violations across the busiest state (closed shift, both books, midday history, both roles)', async () => {
     const { container, rerender } = render(
       <ShiftCountPanel
         shift={shift({ status: 'closed', closed_by_name: 'Petro' })}
@@ -914,6 +967,7 @@ describe('ShiftCountPanel — wiring the actions', () => {
           count({ id: 'op', kind: 'opening' }),
           count({ id: 'md', kind: 'midday', discrepancy: '-5.00' }),
           count({ id: 'cl', kind: 'closing', discrepancy: '-5.00' }),
+          count({ id: 'cc', kind: 'closing', book: 'crates', discrepancy: '-360.00' }),
         ]}
         isOperator
         isToday={false}
@@ -933,6 +987,7 @@ describe('ShiftCountPanel — wiring the actions', () => {
           count({ id: 'op', kind: 'opening' }),
           count({ id: 'md', kind: 'midday', discrepancy: '-5.00' }),
           count({ id: 'cl', kind: 'closing', discrepancy: '-5.00' }),
+          count({ id: 'cc', kind: 'closing', book: 'crates', discrepancy: '-360.00' }),
         ]}
         isOperator={false}
         isToday={false}
