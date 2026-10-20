@@ -423,11 +423,27 @@ export class ShiftsService {
     });
   }
 
-  /** Raw row by id, for the document services. No access check — the caller
-   *  already resolved the point it is allowed to write to. */
+  /**
+   * Raw row by id, for the document services. No access check — the caller
+   * already resolved the point it is allowed to write to.
+   *
+   * INSIDE A TRANSACTION IT TAKES `FOR SHARE`, for the reason
+   * `findOpenAtPoint` does (#178 second review): every void — crate issuance
+   * and return, receipt, payout — decides from `closed_at` read here. Unlocked,
+   * a close could commit between that read and the void's own commit: the
+   * closing crates count expects the document live, the void then strikes it
+   * out of a closed shift, and the next opening inherits a phantom shortfall
+   * (and for a payout, `returned_on_void` books cash into a shift already
+   * counted). Every void locks supplier → document → this row, the same
+   * order the writes use, so the shift lock stays the inner one.
+   */
   async findOneRaw(id: string, manager?: EntityManager): Promise<Shift | null> {
     const repo = manager ? manager.getRepository(Shift) : this.repo;
-    return repo.findOne({ where: { id } });
+    const inTransaction = manager?.queryRunner?.isTransactionActive === true;
+    return repo.findOne({
+      where: { id },
+      ...(inTransaction ? { lock: { mode: 'pessimistic_read' as const } } : {}),
+    });
   }
 
   /**

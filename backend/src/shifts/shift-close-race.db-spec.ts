@@ -190,6 +190,54 @@ describe('ShiftsService close/reopen under concurrency (Postgres)', () => {
     }
   });
 
+  // #178 second review: every void (crate issuance/return, receipt, payout)
+  // reads its document's shift through `findOneRaw` inside its transaction and
+  // decides from `closed_at` — a void the close overtook would land in a closed
+  // shift whose crates count already expected the document live. Under
+  // `FOR SHARE` the close waits for the void instead.
+  it('makes a close wait for a void that already read the shift open', async () => {
+    const run = randomUUID().slice(0, 8);
+    const [{ id: racePoint }] = (await ds.query(
+      `INSERT INTO collection_points (name, code, kind, is_active)
+       VALUES ($1, $2, 'reception', true) RETURNING id`,
+      [`Точка ${run}`, `R${run.slice(0, 6).toUpperCase()}`],
+    )) as { id: string }[];
+    const raceOperator: AuthenticatedUser = { ...operator, collection_point_id: racePoint };
+    const shift = await service.open(raceOperator, { counted_amount: '0.00', counted_deposits: '0.00' });
+
+    const voider = ds.createQueryRunner();
+    await voider.connect();
+    await voider.startTransaction();
+    try {
+      const found = await service.findOneRaw(shift.id, voider.manager);
+      expect(found?.closed_at).toBeNull();
+
+      let closed = false;
+      const closing = service
+        .close(raceOperator, shift.id, { counted_amount: '0.00', counted_deposits: '0.00', broken_crates: 0 })
+        .then(() => (closed = true));
+      const blockedOnLock = async () => {
+        const [{ n }] = (await ds.query(
+          `SELECT count(*)::int AS n FROM pg_stat_activity
+            WHERE datname = current_database() AND wait_event_type = 'Lock'`,
+        )) as { n: number }[];
+        return n > 0;
+      };
+      for (let i = 0; i < 100 && !closed && !(await blockedOnLock()); i++) {
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      }
+      expect(closed).toBe(false);
+      expect(await blockedOnLock()).toBe(true);
+
+      await voider.commitTransaction();
+      await closing;
+      expect(closed).toBe(true);
+    } finally {
+      if (voider.isTransactionActive) await voider.rollbackTransaction();
+      await voider.release();
+    }
+  });
+
   it('reopens once and 409s the loser when two reopens race', async () => {
     // A second point: the shift above is already spent for today.
     const run = randomUUID().slice(0, 8);
