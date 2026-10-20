@@ -1090,6 +1090,8 @@
     "tiles": {
       "totalOwed": "Total owed",
       "totalOwedHint": "on this page",
+      "oldest": "Oldest balance",
+      "oldestHint": "since the drop-off on {{date}}",
       "withDebt": "Suppliers with a balance"
     },
     "col": {
@@ -1100,6 +1102,9 @@
     },
     "inactive": "inactive",
     "overpaid": "overpaid {{uah}}",
+    "days_one": "{{count}} day",
+    "days_other": "{{count}} days",
+    "ageSince": "oldest balance since {{date}}",
     "payout": "Pay out without berries",
     "empty": {
       "title": "No open balances",

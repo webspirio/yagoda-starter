@@ -14,11 +14,22 @@ import { Spinner } from '@/shared/ui/spinner';
 import { StatGrid } from '@/shared/ui/stat-grid';
 import { StatTile } from '@/shared/ui/stat-tile';
 import { sum, sub, cmp, isNegative, formatUah } from '@/shared/lib/money';
+import { ageInDays, formatShortDate } from '@/shared/lib/date';
 import { useWorkingPoint } from '@/features/point-scope';
 import { usePointOptionsQuery } from '@/entities/collection-point';
-import { useSupplierBalancesQuery, supplierName, type SupplierBalanceRow } from '@/entities/supplier';
+import {
+  useSupplierBalancesQuery,
+  supplierName,
+  type SupplierBalanceRow,
+} from '@/entities/supplier';
 import { PayoutDialog } from '@/features/settle-payout';
 import { PayoutReceiptDialog, useReceiptOpener } from '@/widgets/receipt';
+
+/**
+ * A balance older than this many days reads red, as in the mock's «Залишки за нами». A
+ * threshold for the eye, not a rule — no section of the rules names one (#101).
+ */
+const STALE_AFTER_DAYS = 7;
 
 /**
  * «Залишки за нами» (spec §5.3) — every supplier who currently has an open
@@ -32,6 +43,12 @@ import { PayoutReceiptDialog, useReceiptOpener } from '@/widgets/receipt';
  * cash), and «Постачальників із залишком» is the server's own `total` —
  * the honest count even when the page itself was capped at the 100-row
  * `limit`, which is also when the «на цій сторінці» hint appears.
+ *
+ * «Найстаріший залишок» (#101) is the server's too: the oldest open line among EVERY row owed
+ * money, not the loaded page, so unlike «Всього винні» it needs no partial-page hint. Each row
+ * says how many days its own oldest open line has waited; «open» is read off the stored payout
+ * allocations, so a partly paid receipt still counts — the same date the supplier card prints as
+ * «найстаріший з 12.07 — 23 дні».
  *
  * The name search is client-side over the loaded rows (spec: no server
  * round trip for a filter over at most 100 rows already in memory).
@@ -77,17 +94,38 @@ export function DebtsPage() {
   // balance is settled" — the rows exist, the search just didn't find them.
   const noMatch = needle !== '' && filteredRows.length === 0;
 
+  const oldestOpen = data?.oldest_open_date ?? null;
   const totalOwed = sum(rows.filter((r) => cmp(r.debt, '0') === 1).map((r) => r.debt));
   // No point picked (owner default) is the only time rows can straddle more
   // than one point — a picked point makes the column redundant.
   const showPointColumn = pointId === null;
   const pointName = new Map((points ?? []).map((p) => [p.id, p.name]));
 
+  // Beside the name rather than a column of its own: on a phone a fourth column pushed the
+  // balance off the screen, and the age means nothing without the name it belongs to.
+  const ageBadge = (row: SupplierBalanceRow) => {
+    // A credit or a zero row has nothing waiting, whatever the date says.
+    if (row.oldest_open_date === null || cmp(row.debt, '0') !== 1) return null;
+    const days = ageInDays(row.oldest_open_date);
+    const since = t('debts.ageSince', { date: formatShortDate(row.oldest_open_date, locale) });
+    return (
+      <Badge
+        variant={days > STALE_AFTER_DAYS ? 'destructive' : 'secondary'}
+        className="font-mono tabular-nums"
+        title={since}
+      >
+        {t('debts.days', { count: days })}
+        {/* `title` alone reaches neither touch nor a screen reader. */}
+        <span className="sr-only">, {since}</span>
+      </Badge>
+    );
+  };
+
   const supplierColumn: Column<SupplierBalanceRow> = {
     id: 'supplier',
     header: t('debts.col.supplier'),
     cell: (row) => (
-      <span className="flex items-center gap-2 font-medium">
+      <span className="flex flex-wrap items-center gap-x-2 gap-y-1 font-medium">
         <Link
           to={`/suppliers/${row.supplier_id}`}
           // The row itself navigates to the supplier card too (`onRowClick`
@@ -99,6 +137,7 @@ export function DebtsPage() {
           {supplierName(row)}
         </Link>
         {!row.is_active ? <Badge variant="secondary">{t('debts.inactive')}</Badge> : null}
+        {ageBadge(row)}
       </span>
     ),
   };
@@ -160,12 +199,21 @@ export function DebtsPage() {
         title={t('debts.title')}
         description={t('debts.description')}
         stats={
-          <StatGrid columns={2}>
+          <StatGrid columns={3}>
             <StatTile
               label={t('debts.tiles.totalOwed')}
               value={formatUah(totalOwed, locale)}
               tone="amber"
               hint={isTruncated(data) ? t('debts.tiles.totalOwedHint') : undefined}
+            />
+            <StatTile
+              label={t('debts.tiles.oldest')}
+              value={oldestOpen ? t('debts.days', { count: ageInDays(oldestOpen) }) : '—'}
+              hint={
+                oldestOpen
+                  ? t('debts.tiles.oldestHint', { date: formatShortDate(oldestOpen, locale) })
+                  : undefined
+              }
             />
             <StatTile label={t('debts.tiles.withDebt')} value={total} />
           </StatGrid>

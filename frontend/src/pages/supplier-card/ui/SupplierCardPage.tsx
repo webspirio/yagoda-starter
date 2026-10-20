@@ -20,7 +20,7 @@ import { usePayoutsQuery, type Payout } from '@/entities/payout';
 import { useIntakeTopUpsQuery, type IntakeTopUp } from '@/entities/intake-top-up';
 import { useMeQuery } from '@/entities/user';
 import { usePointOptionsQuery } from '@/entities/collection-point';
-import { daysBetween, todayIso, formatShortDate } from '@/shared/lib/date';
+import { ageInDays, formatShortDate } from '@/shared/lib/date';
 import { PayoutDialog } from '@/features/settle-payout';
 import { VoidDocumentDialog, reopenedCodes } from '@/features/void-document';
 import { TopUpDialog } from '@/features/top-up-intake';
@@ -195,9 +195,8 @@ export function SupplierCardPage() {
   const balanceHint = oldestOpen
     ? t('supplierCard.open.oldest', {
         date: formatShortDate(oldestOpen.business_date, i18n.language),
-        // A business_date after "today" (a reopened-shift receipt, a clock
-        // skew) must never print a negative day count.
-        count: Math.max(0, daysBetween(oldestOpen.business_date, todayIso())),
+        // Never negative — see `ageInDays`.
+        count: ageInDays(oldestOpen.business_date),
       })
     : isZero(debt)
       ? t('supplierCard.tiles.balanceHint')

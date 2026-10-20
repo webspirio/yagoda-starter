@@ -37,3 +37,27 @@ export const debtTermsSql = {
  */
 export const debtSql = (supplier: string): string =>
   `(${intakesTermSql(supplier)} + ${topUpsTermSql(supplier)} - ${payoutsTermSql(supplier)})`;
+
+/**
+ * The business date of the supplier's OLDEST OPEN LINE (#101) — `NULL` when nothing is open.
+ * «Open» is exactly `AllocationsService`'s residual: a live line whose live `payout_allocations`
+ * fall short of its amount, a partly paid receipt included. A top-up queues under its PARENT
+ * receipt's shift, as everywhere in the settlement (spec 2026-09-26 §3.5). The same expression
+ * lives in `services/allocations.ts` `RESIDUAL_LINES_SQL` and `intake-row-extras.ts`
+ * `open_amount` — change all three together. `os`, not `s`: the caller's suppliers row is `s`.
+ */
+export const oldestOpenDateSql = (supplier: string): string =>
+  `(SELECT MIN(o.business_date) FROM (
+      SELECT os.business_date FROM intakes i
+        JOIN shifts os ON os.id = i.shift_id
+       WHERE i.supplier_id = ${supplier} AND i.voided_at IS NULL
+         AND i.amount > COALESCE((SELECT SUM(a.amount) FROM payout_allocations a
+                                   WHERE a.intake_id = i.id AND a.voided_at IS NULL), 0)
+      UNION ALL
+      SELECT os.business_date FROM intake_top_ups t
+        JOIN intakes ti ON ti.id = t.intake_id
+        JOIN shifts os ON os.id = ti.shift_id
+       WHERE ti.supplier_id = ${supplier} AND ti.voided_at IS NULL AND t.voided_at IS NULL
+         AND t.amount > COALESCE((SELECT SUM(a.amount) FROM payout_allocations a
+                                   WHERE a.intake_top_up_id = t.id AND a.voided_at IS NULL), 0)
+    ) o)`;

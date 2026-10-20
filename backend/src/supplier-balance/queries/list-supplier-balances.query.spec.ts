@@ -44,6 +44,7 @@ describe('ListSupplierBalancesQuery', () => {
       is_active: true,
       collection_point_id: POINT_A,
       debt: '380.00',
+      oldest_open_date: '2026-07-12',
     };
     const listQuery = (over: Record<string, unknown> = {}) => ({
       page: 1,
@@ -60,17 +61,45 @@ describe('ListSupplierBalancesQuery', () => {
 
     beforeEach(() => {
       query.mockReset();
-      query.mockResolvedValueOnce([row]).mockResolvedValueOnce([{ total: 7 }]);
+      query
+        .mockResolvedValueOnce([row])
+        .mockResolvedValueOnce([{ total: 7, oldest_open_date: '2026-07-01' }]);
     });
 
-    it('returns the standard envelope — rows mapped field by field, total from a second count', async () => {
+    it('returns the standard envelope — rows mapped field by field, total and the oldest open date from a second count', async () => {
       await expect(service.list(oksana, listQuery())).resolves.toEqual({
         data: [row],
         total: 7,
         page: 1,
         limit: 20,
+        oldest_open_date: '2026-07-01',
       });
       expect(query).toHaveBeenCalledTimes(2);
+    });
+
+    it("reads each row's oldest open line from LIVE allocations, top-ups under their parent's date (#101)", async () => {
+      await service.list(oksana, listQuery());
+
+      const sql = pageSql();
+      expect(sql).toMatch(/oldest_open_date::text AS oldest_open_date/);
+      // An intake is open while its live allocations fall short of its amount…
+      expect(sql).toMatch(
+        /i\.amount > COALESCE\(\(SELECT SUM\(a\.amount\) FROM payout_allocations a\s+WHERE a\.intake_id = i\.id AND a\.voided_at IS NULL\), 0\)/,
+      );
+      // …and a top-up likewise, queued under its parent receipt's shift.
+      expect(sql).toMatch(
+        /t\.amount > COALESCE\(\(SELECT SUM\(a\.amount\) FROM payout_allocations a\s+WHERE a\.intake_top_up_id = t\.id AND a\.voided_at IS NULL\), 0\)/,
+      );
+      expect(sql).toMatch(/JOIN shifts os ON os\.id = ti\.shift_id/);
+    });
+
+    it("takes the tile's oldest date over EVERY visible row owed money, not the loaded page (#101)", async () => {
+      await service.list(oksana, listQuery());
+
+      expect(countSql()).toMatch(
+        /MIN\(b\.oldest_open_date\) FILTER \(WHERE b\.debt > 0\)\)::text AS oldest_open_date/,
+      );
+      expect(countSql()).not.toMatch(/LIMIT/);
     });
 
     it('uses THE debt formula, correlated on the supplier row, with voided rows out of BOTH halves', async () => {
@@ -105,7 +134,7 @@ describe('ListSupplierBalancesQuery', () => {
       expect(countParams()[0]).toBeNull();
 
       query.mockReset();
-      query.mockResolvedValueOnce([]).mockResolvedValueOnce([{ total: 0 }]);
+      query.mockResolvedValueOnce([]).mockResolvedValueOnce([{ total: 0, oldest_open_date: null }]);
       await service.list(owner, listQuery({ collection_point_id: POINT_B }));
       expect(pageParams()[0]).toBe(POINT_B);
     });
@@ -126,7 +155,9 @@ describe('ListSupplierBalancesQuery', () => {
       expect(countParams()[1]).toBe(false);
 
       query.mockReset();
-      query.mockResolvedValueOnce([row]).mockResolvedValueOnce([{ total: 1 }]);
+      query
+        .mockResolvedValueOnce([row])
+        .mockResolvedValueOnce([{ total: 1, oldest_open_date: null }]);
       await service.list(oksana, listQuery({ include_zero: true }));
       expect(pageParams()[1]).toBe(true);
       expect(countParams()[1]).toBe(true);
