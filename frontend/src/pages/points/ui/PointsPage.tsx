@@ -39,14 +39,27 @@ export function PointsPage() {
       className: 'font-mono tabular-nums',
       // The receipt header's «Точка № N» (#250) — kept on narrow screens too.
       cell: (p) => p.number,
+      sortValue: (p) => p.number,
     },
     {
       id: 'name',
       header: t('points.col.name'),
       cell: (p) => <span className="font-medium">{p.name}</span>,
+      sortValue: (p) => p.name,
     },
-    { id: 'code', header: t('points.col.code'), className: 'font-mono', cell: (p) => p.code },
-    { id: 'kind', header: t('points.col.kind'), cell: (p) => t(`points.kind.${p.kind}`) },
+    {
+      id: 'code',
+      header: t('points.col.code'),
+      className: 'font-mono',
+      cell: (p) => p.code,
+      sortValue: (p) => p.code,
+    },
+    {
+      id: 'kind',
+      header: t('points.col.kind'),
+      cell: (p) => t(`points.kind.${p.kind}`),
+      sortValue: (p) => t(`points.kind.${p.kind}`),
+    },
     {
       id: 'target_cash',
       header: t('points.col.targetCash'),
@@ -54,6 +67,9 @@ export function PointsPage() {
       className: 'font-mono tabular-nums',
       hideBelow: 'sm',
       cell: (p) => p.target_cash ?? '—',
+      // The decimal string itself — never a float. The table's numeric collation
+      // reads «50000.00» < «145453.00» digit-run by digit-run; «—» (unset) sorts last.
+      sortValue: (p) => p.target_cash,
     },
     {
       id: 'target_crates',
@@ -62,11 +78,13 @@ export function PointsPage() {
       className: 'font-mono tabular-nums',
       hideBelow: 'sm',
       cell: (p) => (p.target_crates == null ? '—' : p.target_crates),
+      sortValue: (p) => p.target_crates,
     },
     {
       id: 'is_active',
       header: t('points.col.status'),
       align: 'right',
+      sortValue: (p) => (p.is_active ? t('points.active') : t('points.inactive')),
       cell: (p) => (
         <Badge variant={p.is_active ? 'default' : 'secondary'}>
           {p.is_active ? t('points.active') : t('points.inactive')}

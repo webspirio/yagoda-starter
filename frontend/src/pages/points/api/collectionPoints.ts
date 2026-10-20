@@ -15,7 +15,9 @@ export function useCollectionPointsQuery() {
     queryKey: queryKeys.collectionPoints,
     queryFn: async (): Promise<Paginated<CollectionPoint>> => {
       const { data } = await httpClient.get<Paginated<CollectionPoint>>('/collection-points', {
-        params: { include_inactive: true },
+        // The whole registry, not the server's default first 20: the table sorts
+        // client-side (#250), and a page of it would sort only that page.
+        params: { limit: 100, include_inactive: true },
       });
       return data;
     },

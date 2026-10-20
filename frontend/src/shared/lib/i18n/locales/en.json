@@ -129,15 +129,9 @@
       "number": "No.",
       "name": "Name",
       "login": "Login",
-      "password": "Password",
       "role": "Role",
       "point": "Point",
       "status": "Status"
-    },
-    "password": {
-      "reissue": "Reissue to see it",
-      "vaultOff": "Viewing is off",
-      "failed": "Couldn't read the password. Reload the page and try again."
     },
     "roleLabel": {
       "network_owner": "Network owner",

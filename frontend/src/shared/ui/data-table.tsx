@@ -1,4 +1,5 @@
 import * as React from 'react';
+import { ChevronDown, ChevronUp, ChevronsUpDown } from 'lucide-react';
 import { cn } from '@/shared/lib/cn';
 import { Card } from './card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './table';
@@ -13,6 +14,23 @@ export interface Column<Row> {
   className?: string;
   /** Hide this column below the given breakpoint. */
   hideBelow?: 'sm' | 'md' | 'lg';
+  /** Makes the header a sort toggle. The value is compared, not the rendered cell:
+   *  numbers numerically, text in Ukrainian alphabet order; `null` sorts last
+   *  in both directions. Sorting is client-side, so only for a table that holds
+   *  its whole list — never for a server-paged one. */
+  sortValue?: (row: Row) => string | number | null;
+}
+
+type SortDir = 'ascending' | 'descending';
+
+const collator = new Intl.Collator('uk', { numeric: true, sensitivity: 'base' });
+
+function compareValues(a: string | number | null, b: string | number | null, dir: SortDir): number {
+  // Empty last whichever way the column runs: «—» is no value, not the smallest one.
+  if (a == null || b == null) return a == null ? (b == null ? 0 : 1) : -1;
+  const order =
+    typeof a === 'number' && typeof b === 'number' ? a - b : collator.compare(String(a), String(b));
+  return dir === 'ascending' ? order : -order;
 }
 
 const HIDE = { sm: 'max-sm:hidden', md: 'max-md:hidden', lg: 'max-lg:hidden' } as const;
@@ -52,15 +70,56 @@ export function DataTable<Row>({
   const colClass = (c: Column<Row>) =>
     cn(c.align && ALIGN[c.align], c.hideBelow && HIDE[c.hideBelow], c.className);
 
+  // Unsorted until a header is pressed: the rows keep the order the caller gave.
+  const [sort, setSort] = React.useState<{ id: string; dir: SortDir } | null>(null);
+  const sortColumn = sort && columns.find((c) => c.id === sort.id && c.sortValue);
+  const shown = sortColumn
+    ? // Sorted with their original index, so `onRowClick`/`cell` still get it.
+      rows
+        .map((row, i) => ({ row, i }))
+        .sort(
+          (x, y) =>
+            compareValues(sortColumn.sortValue!(x.row), sortColumn.sortValue!(y.row), sort.dir) ||
+            x.i - y.i,
+        )
+    : rows.map((row, i) => ({ row, i }));
+  const toggleSort = (id: string) =>
+    setSort((cur) =>
+      cur?.id === id
+        ? { id, dir: cur.dir === 'ascending' ? 'descending' : 'ascending' }
+        : { id, dir: 'ascending' },
+    );
+
   const table = (
     <Table className={className}>
       <TableHeader>
         <TableRow>
-          {columns.map((c) => (
-            <TableHead key={c.id} className={colClass(c)}>
-              {c.header}
-            </TableHead>
-          ))}
+          {columns.map((c) => {
+            if (!c.sortValue) {
+              return (
+                <TableHead key={c.id} className={colClass(c)}>
+                  {c.header}
+                </TableHead>
+              );
+            }
+            const dir = sort?.id === c.id ? sort.dir : null;
+            const Icon = dir === 'ascending' ? ChevronUp : dir === 'descending' ? ChevronDown : ChevronsUpDown;
+            return (
+              <TableHead key={c.id} className={colClass(c)} aria-sort={dir ?? 'none'}>
+                <button
+                  type="button"
+                  onClick={() => toggleSort(c.id)}
+                  className={cn(
+                    'inline-flex items-center gap-1 uppercase tracking-[inherit] hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring',
+                    c.align === 'right' && 'flex-row-reverse',
+                  )}
+                >
+                  {c.header}
+                  <Icon aria-hidden className={cn('size-3.5', !dir && 'opacity-40')} />
+                </button>
+              </TableHead>
+            );
+          })}
         </TableRow>
       </TableHeader>
       <TableBody>
@@ -69,7 +128,7 @@ export function DataTable<Row>({
             <TableCell colSpan={columns.length}>{empty}</TableCell>
           </TableRow>
         ) : (
-          rows.map((row, i) => {
+          shown.map(({ row, i }) => {
             const expanded = renderExpanded ? renderExpanded(row, i) : null;
             const onClick =
               onRowClick && (rowClickable?.(row, i) ?? true) ? () => onRowClick(row, i) : undefined;

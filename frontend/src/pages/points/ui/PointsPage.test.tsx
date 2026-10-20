@@ -118,6 +118,25 @@ describe('PointsPage', () => {
     expect(screen.getByLabelText('Name')).toHaveValue('Шипинки');
   });
 
+  // #250: a header press sorts; the cash target compares as an amount, unset last.
+  it('sorts the points by a pressed header', async () => {
+    const big: CollectionPoint = { ...point, id: 'p2', name: 'Гайове', number: 1, target_cash: '145453.00' };
+    const unset: CollectionPoint = { ...point, id: 'p3', name: 'Дашківці', number: 2, target_cash: null };
+    queryMock.mockReturnValue(loaded([point, big, unset]));
+    render(<PointsPage />);
+    const firstCells = () =>
+      screen
+        .getAllByRole('row')
+        .slice(1)
+        .map((r) => within(r).getAllByRole('cell')[0].textContent);
+    await userEvent.click(screen.getByRole('button', { name: 'No.' }));
+    expect(firstCells()).toEqual(['1', '2', '3']);
+    await userEvent.click(screen.getByRole('button', { name: 'Cash target' }));
+    expect(firstCells()).toEqual(['3', '1', '2']); // 15 000 < 145 453, unset last
+    await userEvent.click(screen.getByRole('button', { name: 'Cash target' }));
+    expect(firstCells()).toEqual(['1', '3', '2']);
+  });
+
   // #250: the number is assigned by the database — neither dialog offers a field for it.
   it.each([
     ['create', 'New point'],

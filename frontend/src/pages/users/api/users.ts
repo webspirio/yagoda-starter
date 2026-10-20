@@ -6,7 +6,6 @@ import type {
   AdminUser,
   CreateUserInput,
   Paginated,
-  RevealedPassword,
   SetPasswordInput,
   UpdateUserInput,
 } from '../model/user';
@@ -17,7 +16,9 @@ export function useUsersQuery() {
     queryKey: queryKeys.users,
     queryFn: async (): Promise<Paginated<AdminUser>> => {
       const { data } = await httpClient.get<Paginated<AdminUser>>('/users', {
-        params: { include_inactive: true },
+        // The whole registry, not the server's default first 20: the table sorts
+        // client-side (#250), and a page of it would sort only that page.
+        params: { limit: 100, include_inactive: true },
       });
       return data;
     },
@@ -55,29 +56,5 @@ export function useSetPasswordMutation() {
       await httpClient.put(`/users/${id}/password`, { password });
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.users }),
-  });
-}
-
-/**
- * Reads a password back for the owner (`GET /users/:id/password`).
- *
- * A MUTATION ON PURPOSE, THOUGH THE REQUEST IS A GET. `useQuery` would keep
- * the plaintext in the react-query cache — shared across the app, alive after
- * the eye is closed, and served again from memory on the next render. This
- * fetches on the press, hands the value to the one cell that asked, and keeps
- * nothing. The backend audits every call, which is also why nothing here
- * should dedupe them away.
- */
-export function useRevealPasswordMutation() {
-  return useMutation({
-    mutationFn: async (id: string): Promise<RevealedPassword> => {
-      const { data } = await httpClient.get<RevealedPassword>(`/users/${id}/password`);
-      return data;
-    },
-    // No retention window: react-query keeps a settled mutation (and its
-    // `data` — here, a plaintext password) for `gcTime`, five minutes by
-    // default. The caller calls `reset()` when the row closes; this makes the
-    // unobserved case forget too.
-    gcTime: 0,
   });
 }
