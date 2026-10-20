@@ -52,6 +52,8 @@ export interface SupplierBalanceRow {
  *  scope, not just the loaded ones, for «Найстаріший залишок» (#101). */
 export interface SupplierBalanceList extends Paginated<SupplierBalanceRow> {
   oldest_open_date: string | null;
+  /** Σ of the positive debts over EVERY visible row, not the loaded page (#229). */
+  total_owed: string;
 }
 
 /**

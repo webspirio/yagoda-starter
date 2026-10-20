@@ -1085,7 +1085,6 @@
     "searchPlaceholder": "Find a supplier",
     "tiles": {
       "totalOwed": "Total owed",
-      "totalOwedHint": "on this page",
       "oldest": "Oldest balance",
       "oldestHint": "since the drop-off on {{date}}",
       "withDebt": "Suppliers with a balance"

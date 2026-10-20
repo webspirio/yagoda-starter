@@ -1119,7 +1119,6 @@
     "searchPlaceholder": "Знайти постачальника",
     "tiles": {
       "totalOwed": "Всього винні",
-      "totalOwedHint": "на цій сторінці",
       "oldest": "Найстаріший залишок",
       "oldestHint": "від здачі ягоди {{date}}",
       "withDebt": "Постачальників із залишком"

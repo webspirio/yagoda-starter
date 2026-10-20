@@ -13,8 +13,8 @@ const { pointScopeMock, balancesMock, payoutDialogMock, payoutReceiptMock } = vi
   payoutReceiptMock: vi.fn(),
 }));
 
-vi.mock('@/features/point-scope', () => ({
-  useWorkingPoint: () => pointScopeMock(),
+vi.mock('@/entities/user', () => ({
+  usePointScope: (options: unknown) => pointScopeMock(options),
 }));
 
 vi.mock('@/entities/collection-point', () => ({
@@ -80,8 +80,9 @@ const page = (
   data: SupplierBalanceRow[],
   total = data.length,
   oldest_open_date: string | null = '2026-07-01',
+  total_owed = '18670.40',
 ) => ({
-  data: { data, total, page: 1, limit: 100, oldest_open_date },
+  data: { data, total, page: 1, limit: 100, oldest_open_date, total_owed },
   isPending: false,
   isError: false,
 });
@@ -249,15 +250,14 @@ describe('DebtsPage — the operator', () => {
     expect(screen.queryByText('Point')).toBeNull();
   });
 
-  it('does not warn about a partial total when the server returned every row', () => {
+  it("reads «Total owed» off the server's envelope, so a truncated list still shows the whole sum (#229)", () => {
+    balancesMock.mockReturnValue(page([rowA, rowB, rowC], 150, '2026-07-01', '250000.00'));
     renderDebts();
-    expect(screen.queryByText('on this page')).toBeNull();
-  });
 
-  it('warns the total is partial when the server truncated the list', () => {
-    balancesMock.mockReturnValue(page([rowA, rowB, rowC], 150));
-    renderDebts();
-    expect(screen.getByText('on this page')).toBeInTheDocument();
+    expect(screen.getByText('Total owed').closest('[data-slot="stat-tile"]')).toHaveTextContent(
+      '250,000.00 ₴',
+    );
+    expect(screen.queryByText('on this page')).toBeNull();
   });
 });
 
@@ -366,10 +366,50 @@ describe('DebtsPage — the owner', () => {
     const { container } = renderDebts();
 
     expect(screen.getByLabelText('All points')).toBeInTheDocument();
-    expect(within(tableRow('Оксана Кушнірук')).getByText('Shypynky')).toBeInTheDocument();
+    expect(
+      within(tableRow('Оксана Кушнірук')).getByText('Shypynky', { selector: 'td' }),
+    ).toBeInTheDocument();
     expect(balancesMock).toHaveBeenCalledWith({ pointId: null });
 
     await expectNoAxeViolations(container);
+  });
+
+  it('ignores the point remembered from other screens — the whole network is the default (#229)', () => {
+    renderDebts();
+
+    expect(pointScopeMock).toHaveBeenCalledWith({ remembered: false });
+  });
+
+  it('names the point under the supplier on a phone, where the point column is hidden (#229)', () => {
+    renderDebts();
+
+    const cell = within(tableRow('Оксана Кушнірук')).getByRole('link', {
+      name: 'Оксана Кушнірук',
+    }).parentElement as HTMLElement;
+    expect(within(cell).getByText('Shypynky')).toHaveClass('sm:hidden');
+  });
+
+  it('names no point under the supplier once a point is chosen', () => {
+    pointScopeMock.mockReturnValue({
+      pointId: 'p1',
+      canPick: true,
+      setPointId: vi.fn(),
+      isLoading: false,
+    });
+    renderDebts();
+
+    expect(within(tableRow('Оксана Кушнірук')).queryByText('Shypynky')).toBeNull();
+  });
+
+  it('clears the pick when the owner chooses «All points»', async () => {
+    const user = userEvent.setup();
+    const setPointId = vi.fn();
+    pointScopeMock.mockReturnValue({ pointId: 'p1', canPick: true, setPointId, isLoading: false });
+    renderDebts();
+
+    await user.selectOptions(screen.getByLabelText('All points'), '');
+
+    expect(setPointId).toHaveBeenCalledWith(null);
   });
 
   it('asks the point scope to change when the owner picks a point', async () => {

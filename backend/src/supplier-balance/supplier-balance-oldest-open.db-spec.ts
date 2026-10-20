@@ -235,6 +235,13 @@ describe('ListSupplierBalancesQuery — oldest open date (Postgres, #101)', () =
     expect(page.oldest_open_date).toBe('2026-07-03');
   });
 
+  it('sums «Всього винні» over every row OWED money, past the loaded page (#229)', async () => {
+    // 50 + 35 + 30 + 20 + 15 + 12 — Лука's −20 credit must not shrink what the others wait for.
+    await expect(service.list(owner, query({ limit: 1, page: 3 }))).resolves.toMatchObject({
+      total_owed: '162.00',
+    });
+  });
+
   it('is null for a point where nothing is open', async () => {
     const [empty] = await ds.query(
       `INSERT INTO collection_points (name, kind, code) VALUES ($1, 'reception', $2) RETURNING id`,
@@ -243,6 +250,6 @@ describe('ListSupplierBalancesQuery — oldest open date (Postgres, #101)', () =
 
     await expect(
       service.list(owner, query({ collection_point_id: empty.id as string })),
-    ).resolves.toMatchObject({ total: 0, data: [], oldest_open_date: null });
+    ).resolves.toMatchObject({ total: 0, data: [], oldest_open_date: null, total_owed: '0.00' });
   });
 });
