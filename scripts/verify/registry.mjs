@@ -253,6 +253,7 @@ export const CHECKS = [
     cmd: 'npm test',
     // 1445 tests across two workspaces. Warm on a laptop this is ~27s and CI's first run
     // of it blew through 120s with an empty Turbo cache — see the timeoutMs note above.
+    // One workspace at a time (`--concurrency=1`), for the reason `coverage` gives.
     timeoutMs: 600_000,
     proves:
       'Every jest unit suite under backend/src and every vitest suite under frontend/src ' +

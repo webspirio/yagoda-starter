@@ -27,7 +27,7 @@
   "scripts": {
     "dev": "turbo dev",
     "build": "turbo build",
-    "test": "turbo test",
+    "test": "turbo test --concurrency=1",
     "lint": "turbo lint",
     "typecheck": "turbo typecheck && tsc -p tsconfig.scripts.json && tsc -p tsconfig.e2e.json",
     "format": "prettier --write .",
