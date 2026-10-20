@@ -102,7 +102,7 @@ cross-import (e.g. `entities/payout` reaching into `entities/intake`) compiles a
 lints clean, so keeping slices independent within a layer is a review discipline,
 not something lint enforces. `widgets/` sits between `features` and `pages` in FSD, for
 composed UI shared across multiple pages. `widgets/receipt` was the first: the printable
-receipt (`ReceiptDialog`) is opened from the reception screen, the day screen and the
+receipt (`ReceiptDialog`) is opened from the reception screen, point cash and the
 supplier card alike, so it can't live inside any single one of them. `widgets/count-result`
 (`ShiftCountResult`) is the second: the open/close result with its discrepancy and the
 operator-note form, shown by «Каса точки» and «Прийомка». It has to be a
