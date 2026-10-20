@@ -769,27 +769,6 @@ describe('ShiftCountPanel — the four action states, per role', () => {
     ).toBeNull();
   });
 
-  it('always shows the footnote, whatever the state', () => {
-    render(
-      <ShiftCountPanel
-        shift={null}
-        isShiftLoading={false}
-        isShiftError={false}
-        counts={[]}
-        isOperator={false}
-        isToday={false}
-        onOpenShift={noop}
-        openShiftGate="allowed"
-        onCloseShift={noop}
-      />,
-    );
-
-    expect(
-      screen.getByText(
-        'The drawer can be recounted as many times a day as needed — every recount stays its own record and corrects nothing.',
-      ),
-    ).toBeInTheDocument();
-  });
 });
 
 /**

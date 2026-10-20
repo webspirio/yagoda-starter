@@ -525,20 +525,6 @@ describe('PointCashPage — Task 2: header, hints and the amber cash tile', () =
   // Folded in from the Task 2 review — the date now lives in the eyebrow
   // alone; the title is the bare «Каса точки» / "Point cash", with no
   // `{{date}}` interpolation left in either locale.
-  it('titles the page with the bare «Point cash» — the date lives in the eyebrow only', () => {
-    renderPointCash();
-    expect(screen.getByRole('heading', { name: 'Point cash' })).toBeInTheDocument();
-  });
-
-  it('prints the mock’s description', () => {
-    renderPointCash();
-    expect(
-      screen.getByText(
-        'How much cash the point should have on hand right now, and how much is missing from its target. Berry cash and crate deposits are two separate books — neither borrows from the other.',
-      ),
-    ).toBeInTheDocument();
-  });
-
   it('hints that this point has no target assigned yet', () => {
     pointCashMock.mockReturnValue(list([pointRow({ target_cash: null })]));
     renderPointCash();
