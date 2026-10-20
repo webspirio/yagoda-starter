@@ -76,6 +76,16 @@ export function daysBetween(fromIso: string, toIso: string): number {
   return Math.round((toUtcNoon(toIso).getTime() - toUtcNoon(fromIso).getTime()) / DAY_MS);
 }
 
+/**
+ * How many whole days a balance dated `iso` has waited as of today — never
+ * negative: a business date after «today» (a reopened shift, a clock skew)
+ * must not print «−1 день». The supplier card and «Залишки за нами» (#101)
+ * both print it, so they cannot disagree about the same balance.
+ */
+export function ageInDays(iso: string): number {
+  return Math.max(0, daysBetween(iso, todayIso()));
+}
+
 export const formatLongDate = (iso: string, locale = 'uk'): string =>
   new Intl.DateTimeFormat(locale, {
     day: 'numeric',

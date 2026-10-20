@@ -1,7 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { TFunction } from 'i18next';
 import type { IntakeDetail } from '@/entities/intake';
-import { formatLongDate, formatTime } from '@/shared/lib/date';
 import { buildIntakeReceipt } from './buildIntakeReceipt';
 
 // Keys echo back with their params, so the test pins WHICH string was chosen
@@ -92,27 +91,16 @@ describe('buildIntakeReceipt', () => {
     expect(build(intake({ received_by_number: null })).header.staff).toBe('—');
   });
 
-  it('fills the meta rows: code, operation, date, supplier', () => {
+  it('fills the meta rows: code, operation, supplier — no date (#254)', () => {
     const { meta } = build(intake());
     expect(meta.map((r) => r.label)).toEqual([
       'receipt.number',
       'receipt.operation',
-      'receipt.date',
       'receipt.supplier',
     ]);
     expect(meta[0].value).toBe('SHP-IN-20260908-00412');
     expect(meta[1].value).toBe('receipt.operationIntake');
-    expect(meta[3].value).toBe('Галина Кушнірук');
-  });
-
-  it('«Дата» is the business date and the created_at time, even just past local midnight', () => {
-    // 00:05 local on the 8th, but the shift (business) day is the 7th.
-    const created_at = new Date(2026, 8, 8, 0, 5).toISOString();
-    const { meta } = build(intake({ business_date: '2026-09-07', created_at }));
-    expect(meta[2].value).toBe(
-      `${formatLongDate('2026-09-07', 'en')} · ${formatTime(created_at, 'en')}`,
-    );
-    expect(meta[2].value).not.toContain(formatLongDate('2026-09-08', 'en'));
+    expect(meta[2].value).toBe('Галина Кушнірук');
   });
 
   it('makes one berry group per item, then the totals group', () => {

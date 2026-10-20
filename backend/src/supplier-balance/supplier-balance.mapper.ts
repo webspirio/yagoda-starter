@@ -1,5 +1,6 @@
 import type { DebtKind, Settlement } from './settlement';
 import type { DebtTerms } from './queries/supplier-debt.query';
+import type { Paginated } from '../common/dto/paginated';
 import type { Supplier } from '../suppliers/supplier.entity';
 import { SupplierResponse, toSupplierResponse } from '../suppliers/supplier.mapper';
 
@@ -37,6 +38,8 @@ export interface SupplierBalanceRow {
   is_active: boolean;
   collection_point_id: string;
   debt: string;
+  /** Business date of the oldest line still open (#101); `null` when nothing is open. */
+  oldest_open_date: string | null;
 }
 
 /**
@@ -51,6 +54,8 @@ export interface SupplierBalanceRowResponse {
   is_active: boolean;
   collection_point_id: string;
   debt: string;
+  /** Business date of the oldest line still open (#101); `null` when nothing is open. */
+  oldest_open_date: string | null;
 }
 
 /** Field by field, not `...row`: a raw projection must not reach the client
@@ -63,7 +68,14 @@ export function toSupplierBalanceRowResponse(row: SupplierBalanceRow): SupplierB
     is_active: row.is_active,
     collection_point_id: row.collection_point_id,
     debt: row.debt,
+    oldest_open_date: row.oldest_open_date,
   };
+}
+
+/** The «Залишки» page plus the oldest open date among EVERY visible row owed money — not just
+ *  this page's — for the «Найстаріший залишок» tile (#101). */
+export interface SupplierBalanceListResponse extends Paginated<SupplierBalanceRowResponse> {
+  oldest_open_date: string | null;
 }
 
 /** One line of «Відкриті залишки» — spec §4.3. Every amount a scale-2 string. */

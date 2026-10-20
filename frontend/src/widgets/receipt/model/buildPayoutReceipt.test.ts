@@ -2,7 +2,6 @@ import { describe, it, expect } from 'vitest';
 import type { TFunction } from 'i18next';
 import type { PayoutDetail } from '@/entities/payout';
 import { formatUah } from '@/shared/lib/money';
-import { formatLongDate, formatTime } from '@/shared/lib/date';
 import { buildPayoutReceipt } from './buildPayoutReceipt';
 
 const t = ((key: string, opts?: Record<string, unknown>) =>
@@ -53,27 +52,16 @@ describe('buildPayoutReceipt', () => {
     });
   });
 
-  it('lists meta in order: number, operation, date, supplier', () => {
+  it('lists meta in order: number, operation, supplier — no date (#254)', () => {
     const doc = build(payout());
     expect(doc.meta.map((r) => r.label)).toEqual([
       'receipt.number',
       'receipt.operation',
-      'receipt.date',
       'receipt.supplier',
     ]);
     expect(doc.meta[0].value).toBe('SHP-PO-20260908-00031');
     expect(doc.meta[1].value).toBe('receipt.operationPayoutDebt');
-    expect(doc.meta[3].value).toBe('Ніна Ільчук');
-  });
-
-  it('«Дата» is the business date and the created_at time, even just past local midnight', () => {
-    // 00:05 local on the 8th, but the shift (business) day is the 7th.
-    const created_at = new Date(2026, 8, 8, 0, 5).toISOString();
-    const { meta } = build(payout({ business_date: '2026-09-07', created_at }));
-    expect(meta[2].value).toBe(
-      `${formatLongDate('2026-09-07', 'uk')} · ${formatTime(created_at, 'uk')}`,
-    );
-    expect(meta[2].value).not.toContain(formatLongDate('2026-09-08', 'uk'));
+    expect(doc.meta[2].value).toBe('Ніна Ільчук');
   });
 
   it('prints cash paid (strong) and the balance after as one totals group', () => {

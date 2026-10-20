@@ -55,14 +55,17 @@ export function JournalToolbar({
         </SelectField>
       </div>
 
-      <div className="w-40">
-        <TextInput
-          type="month"
-          aria-label={t('journal.pickMonth')}
-          value={month}
-          onChange={(e) => onMonthChange(e.target.value)}
-        />
-      </div>
+      {/* `w-auto`, not a fixed width: the native month field sizes itself to
+          its longest month in the browser's locale plus the picker icon (206px
+          in Chromium en-US, 214px in uk-UA), so a fixed `w-40` hid the year
+          under the icon (#231). */}
+      <TextInput
+        type="month"
+        className="w-auto"
+        aria-label={t('journal.pickMonth')}
+        value={month}
+        onChange={(e) => onMonthChange(e.target.value)}
+      />
 
       <div className="w-52">
         <SelectField

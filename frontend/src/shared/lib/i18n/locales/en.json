@@ -865,7 +865,6 @@
     "titleLines_one": "Receipt {{code}} · {{count}} line",
     "titleLines_other": "Receipt {{code}} · {{count}} lines",
     "description": "Printable receipt — void the document from here.",
-    "date": "Date",
     "supplier": "Supplier",
     "gross": "Gross",
     "pallet": "Pallet",
@@ -891,7 +890,7 @@
     "docTitle": "RECEIPT",
     "thanks": "Thank you for working with us!",
     "notFiscal": "Not a fiscal receipt",
-    "number": "Receipt No.",
+    "number": "No.",
     "operation": "Operation",
     "operationIntake": "Berry intake",
     "operationPayoutDebt": "Debt payout",
@@ -1088,6 +1087,8 @@
     "tiles": {
       "totalOwed": "Total owed",
       "totalOwedHint": "on this page",
+      "oldest": "Oldest balance",
+      "oldestHint": "since the drop-off on {{date}}",
       "withDebt": "Suppliers with a balance"
     },
     "col": {
@@ -1098,6 +1099,9 @@
     },
     "inactive": "inactive",
     "overpaid": "overpaid {{uah}}",
+    "days_one": "{{count}} day",
+    "days_other": "{{count}} days",
+    "ageSince": "oldest balance since {{date}}",
     "payout": "Pay out without berries",
     "empty": {
       "title": "No open balances",
