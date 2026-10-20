@@ -8,7 +8,7 @@ interface DecimalKey {
 }
 
 /** What a column sorts by. `null` is «no value» and sorts last in both directions. */
-export type SortKey = number | string | DecimalKey | null;
+type SortKey = number | string | DecimalKey | null;
 
 /** Per sortable column id, how to read a row's sort key. */
 export type SortKeys<Row> = Record<string, (row: Row) => SortKey>;
