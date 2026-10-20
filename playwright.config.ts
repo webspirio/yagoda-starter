@@ -1,5 +1,5 @@
 import { defineConfig } from '@playwright/test';
-import { BACKEND_URL, E2E_OUT_DIR, PREVIEW_ORIGIN } from './e2e/constants';
+import { APP_TIMEZONE, BACKEND_URL, E2E_OUT_DIR, PREVIEW_ORIGIN } from './e2e/constants';
 
 /**
  * The `smoke` row (root CLAUDE.md's verify table) — the one check in this repo that
@@ -69,6 +69,9 @@ export default defineConfig({
   reporter: 'list',
   use: {
     baseURL: PREVIEW_ORIGIN,
+    // The dashboard's «today» is the browser's local date; left to the OS it is a day off
+    // the seed's whenever the two zones straddle midnight (see constants.ts).
+    timezoneId: APP_TIMEZONE,
   },
   webServer: {
     // Builds THEN serves, every run, self-sufficient regardless of what (if anything) ran
