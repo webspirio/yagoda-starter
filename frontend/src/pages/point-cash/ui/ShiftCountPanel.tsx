@@ -109,10 +109,11 @@ export type OpenShiftGate = 'allowed' | 'checking' | 'failed' | 'blocked';
  * `counts` is the RAW `GET /cash-counts?shift_id=` page — split by book and
  * sorted by `counted_at` HERE (not by the caller): the opening and closing
  * counts of BOTH books (#178 — «Каса» and «Завдатки», each with its own pill,
- * labelled by book once the crates book has been counted), the middays of
- * the berry book alone (the recount is berry-only, spec D6). So the fixtures
- * a test hands this component can include a crates-book midday or an
- * out-of-order row and still exercise the real filter/sort, the same way
+ * labelled by book once the crates book has been counted), and the middays of
+ * both — a recount is berry-only (spec D6), but a reopen demotes the crates
+ * closing count to midday too, and a crates row is labelled with its book.
+ * So the fixtures a test hands this component can include a crates-book
+ * midday or an out-of-order row and still exercise the real sort, the same way
  * `PointCashPage` already lets `CashLedger`/`buildLedger` own their own
  * derivations rather than pre-chewing them.
  *
@@ -184,9 +185,9 @@ export function ShiftCountPanel({
   // green «Каса» pill over a −360,00 «Завдатки» one reads as a clean day.
   const books = hasCrates ? [bookCounts('berry'), crates] : [bookCounts('berry')];
   const labelBooks = hasCrates;
-  // The midday recount is berry-only (spec D6), so the list stays berry-only.
+  // Both books: the recount is berry-only (spec D6), but a reopen demotes the
+  // closing count of BOTH books to midday, and a crates one belongs here too.
   const middays = counts
-    .filter((c) => c.book === 'berry')
     .filter((c) => c.kind === 'midday')
     .sort((a, b) => (a.counted_at < b.counted_at ? -1 : a.counted_at > b.counted_at ? 1 : 0));
 
@@ -341,6 +342,12 @@ export function ShiftCountPanel({
                           operator's action nobody necessarily took. */}
                       {t('pointCash.panel.countAt', { time: formatTime(c.counted_at, locale) })}
                     </span>
+                    {c.book === 'crates' ? (
+                      <>
+                        <span aria-hidden="true">·</span>
+                        <span>{t('countResult.book.crates')}</span>
+                      </>
+                    ) : null}
                     <span aria-hidden="true">·</span>
                     <span
                       className={

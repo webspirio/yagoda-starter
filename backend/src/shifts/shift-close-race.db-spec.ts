@@ -95,6 +95,19 @@ describe('ShiftsService close/reopen under concurrency (Postgres)', () => {
     await ds?.destroy();
   });
 
+  // Another backend waiting on a lock in a statement that reads `shifts` FOR
+  // UPDATE — the close's `loadVisible`, not just any wait in the database.
+  const blockedOnLock = async () => {
+    const [{ n }] = (await ds.query(
+      `SELECT count(*)::int AS n FROM pg_stat_activity
+        WHERE datname = current_database()
+          AND pid <> pg_backend_pid()
+          AND wait_event_type = 'Lock'
+          AND query ILIKE '%FROM "shifts"%FOR UPDATE%'`,
+    )) as { n: number }[];
+    return n > 0;
+  };
+
   it('closes once and 409s the loser when two closes race', async () => {
     const shift = await service.open(operator, { counted_amount: '1000.00', counted_deposits: '0.00' });
 
@@ -158,13 +171,6 @@ describe('ShiftsService close/reopen under concurrency (Postgres)', () => {
       // Wait until the close is SEEN blocked on a lock, or has finished. A
       // fixed sleep would pass for the wrong reason on a slow runner; this
       // fails by `closed` being true, never by timing.
-      const blockedOnLock = async () => {
-        const [{ n }] = (await ds.query(
-          `SELECT count(*)::int AS n FROM pg_stat_activity
-            WHERE datname = current_database() AND wait_event_type = 'Lock'`,
-        )) as { n: number }[];
-        return n > 0;
-      };
       for (let i = 0; i < 100 && !closed && !(await blockedOnLock()); i++) {
         await new Promise((resolve) => setTimeout(resolve, 50));
       }
@@ -216,13 +222,6 @@ describe('ShiftsService close/reopen under concurrency (Postgres)', () => {
       const closing = service
         .close(raceOperator, shift.id, { counted_amount: '0.00', counted_deposits: '0.00', broken_crates: 0 })
         .then(() => (closed = true));
-      const blockedOnLock = async () => {
-        const [{ n }] = (await ds.query(
-          `SELECT count(*)::int AS n FROM pg_stat_activity
-            WHERE datname = current_database() AND wait_event_type = 'Lock'`,
-        )) as { n: number }[];
-        return n > 0;
-      };
       for (let i = 0; i < 100 && !closed && !(await blockedOnLock()); i++) {
         await new Promise((resolve) => setTimeout(resolve, 50));
       }

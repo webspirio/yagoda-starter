@@ -188,7 +188,7 @@ export const anchorSql = (point: string, asOf: string, book: CashBook = CashBook
  *
  * There is no third term for "shifts after the anchor": §6.1 makes every shift
  * opening write a count, so a later shift would hold a later count and BE the
- * anchor. ONE definition for `cashFor`, `crateCashFor` and both columns of
+ * anchor. ONE definition for `cashFor` and both columns of
  * `list()` — a change to the anchor (spec D4's «очікуване повернення», say)
  * lands in all of them or in none (#178 second review).
  *

@@ -288,6 +288,8 @@ Then update every test caller (`grep -rn "counted_amount: '" backend/src --inclu
 
 ### Task 4: `crate_cash` and `crate_unexplained_difference` on `GET /point-cash`
 
+> **Superseded after the second review (2026-10-20):** `crate_cash` lives on the LIST row only. `GET /point-cash/:pointId` and `PointCashOne` no longer carry it, and `crateCashFor` is gone. The drawer and the discrepancy sum for each book come from `drawerSql` / `discrepancySql` in `point-cash.sql.ts`. The steps below record what was first built.
+
 **Files:**
 - Modify: `backend/src/point-cash/point-cash.service.ts` (`list`), `backend/src/point-cash/point-cash.mapper.ts`, `backend/src/point-cash/point-cash.controller.ts` (`findOne`)
 - Test: `backend/src/point-cash/point-cash.db-spec.ts`

@@ -482,7 +482,7 @@ describe('ShiftCountPanel — the day’s recounts', () => {
     expect(screen.getByText('The drawer has not been recounted today.')).toBeInTheDocument();
   });
 
-  it('lists a midday row with its time, ✓/⚠ and the counted figure — ignoring the crates book', () => {
+  it('lists a midday row with its time, ✓/⚠ and the counted figure — a crates one labelled by book', () => {
     vi.stubEnv('TZ', 'UTC');
     render(
       <ShiftCountPanel
@@ -497,7 +497,15 @@ describe('ShiftCountPanel — the day’s recounts', () => {
             discrepancy: '0.00',
             counted_at: '2026-09-22T10:00:00.000Z',
           }),
-          count({ id: 'm2', kind: 'midday', book: 'crates', counted_amount: '999.00' }),
+          // A reopen demotes the crates closing count to midday too.
+          count({
+            id: 'm2',
+            kind: 'midday',
+            book: 'crates',
+            counted_amount: '999.00',
+            discrepancy: '-360.00',
+            counted_at: '2026-09-22T11:00:00.000Z',
+          }),
         ]}
         isOperator={false}
         isToday
@@ -510,7 +518,10 @@ describe('ShiftCountPanel — the day’s recounts', () => {
     expect(screen.getByText('Count at 10:00 AM')).toBeInTheDocument();
     expect(screen.getByText('✓ matched')).toBeInTheDocument();
     expect(screen.getByText('1,200.00 ₴')).toBeInTheDocument();
-    expect(screen.queryByText('999.00 ₴')).toBeNull();
+    expect(screen.getByText('Count at 11:00 AM')).toBeInTheDocument();
+    expect(screen.getByText('999.00 ₴')).toBeInTheDocument();
+    expect(screen.getByText('⚠ did not match')).toBeInTheDocument();
+    expect(screen.getAllByText('Deposits')).toHaveLength(1);
     vi.unstubAllEnvs();
   });
 
