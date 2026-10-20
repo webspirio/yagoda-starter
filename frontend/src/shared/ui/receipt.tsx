@@ -37,7 +37,7 @@ export interface ReceiptDocument {
   voided: { reason: string } | null;
   /** «Точка № 3», «Приймальник № 5» — resolved by the builder (#145: numbers, not names). */
   header: { point: string; staff: string };
-  /** № квитанції, Операція, Постачальник. */
+  /** №, Операція, Постачальник — the bare «№» (#254) keeps the code on its line. */
   meta: ReceiptRow[];
   /** Groups; a dashed rule precedes each group. */
   sections: ReceiptSection[][];

@@ -448,6 +448,14 @@ describe('ReceiptDialog', () => {
     expect(screen.queryByText(/Returned our crates/)).not.toBeInTheDocument();
   });
 
+  it('labels the code with the bare «№», so it shares the code’s line on 58 mm (#254)', () => {
+    setUp();
+    render(<ReceiptDialog intakeId="intake-1" open onClose={vi.fn()} />);
+
+    expect(screen.getByText('No.').parentElement).toHaveTextContent('No.SHP-IN-20260908-00412');
+    expect(screen.queryByText('Receipt No.')).not.toBeInTheDocument();
+  });
+
   it('prints no date row — the code already carries the day (#254)', () => {
     setUp();
     render(<ReceiptDialog intakeId="intake-1" open onClose={vi.fn()} />);

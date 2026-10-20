@@ -19,7 +19,7 @@ function makeDoc(over: Partial<ReceiptDocument> = {}): ReceiptDocument {
     voided: null,
     header: { point: 'Точка № 3', staff: 'Приймальник № 5' },
     meta: [
-      { label: '№ квитанції', value: 'Q-1' },
+      { label: '№', value: 'Q-1' },
       { label: 'Операція', value: 'Прийомка ягоди' },
       { label: 'Постачальник', value: 'Іваненко Петро' },
     ],
@@ -50,7 +50,7 @@ describe('ReceiptView', () => {
   it('lists the meta rows in order', () => {
     const { container } = render(<ReceiptView doc={makeDoc()} />);
     const text = container.textContent ?? '';
-    const at = ['№ квитанції', 'Операція', 'Постачальник'].map((l) => text.indexOf(l));
+    const at = ['№', 'Операція', 'Постачальник'].map((l) => text.indexOf(l));
     expect(at.every((i) => i >= 0)).toBe(true);
     expect([...at].sort((a, b) => a - b)).toEqual(at);
   });
