@@ -46,6 +46,7 @@ const owner: AdminUser = {
   first_name: 'Olena',
   last_name: 'H',
   display_name: 'Olena H.',
+  number: 1,
   role: 'network_owner',
   collection_point_id: null,
   is_active: true,
@@ -59,6 +60,7 @@ const operator: AdminUser = {
   first_name: 'Maria',
   last_name: 'S',
   display_name: 'Maria S.',
+  number: 12,
   role: 'point_operator',
   collection_point_id: 'p1',
   is_active: true,
@@ -99,6 +101,29 @@ describe('UsersPage', () => {
     expect(screen.getByText('Shypynky')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'New user' })).toBeInTheDocument();
     await expectNoAxeViolations(container);
+  });
+
+  // #250: the same number the receipt header prints as «Operator No. 12» —
+  // and a deactivated user keeps theirs, because their old receipts still print it.
+  // #250: the number is assigned by the database — neither dialog offers a field for it.
+  it.each([
+    ['create', 'New user'],
+    ['edit', 'Maria S.'],
+  ])('offers no number field in the %s dialog', async (_, opener) => {
+    queryMock.mockReturnValue(loaded([operator]));
+    render(<UsersPage />);
+    await userEvent.click(screen.getByText(opener));
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    expect(screen.queryByLabelText(/^(No\.|Number)$/)).toBeNull();
+  });
+
+  it('shows each user\'s number, deactivated ones included', () => {
+    queryMock.mockReturnValue(loaded([owner, { ...operator, is_active: false }]));
+    render(<UsersPage />);
+    expect(screen.getByRole('columnheader', { name: 'No.' })).toBeInTheDocument();
+    const row = screen.getByText('Maria S.').closest('tr')!;
+    expect(within(row).getByRole('cell', { name: '12' })).toBeInTheDocument();
+    expect(within(row).getByText('Inactive')).toBeInTheDocument();
   });
 
   it('creates an operator through the New dialog with the mapped payload', async () => {

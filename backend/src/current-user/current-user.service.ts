@@ -15,6 +15,8 @@ export interface MeResponse {
   username: string;
   /** DERIVED from first_name + last_name — there is no such column. */
   display_name: string;
+  /** «Приймальник № 5» on every receipt this user writes (#250). */
+  number: number;
   avatar_url: string | null;
   language_code: string | null;
   role: UserRole;
@@ -105,6 +107,7 @@ export class CurrentUserService {
       id: user.id,
       username,
       display_name: displayNameOf(user),
+      number: user.number,
       avatar_url: user.avatar_url,
       language_code: user.language_code,
       role: user.role,

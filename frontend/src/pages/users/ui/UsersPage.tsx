@@ -81,6 +81,13 @@ export function UsersPage() {
 
   const columns: Column<AdminUser>[] = [
     {
+      id: 'number',
+      header: t('users.col.number'),
+      className: 'font-mono tabular-nums',
+      // The receipt header's «Приймальник № N» (#250) — kept on narrow screens too.
+      cell: (u) => u.number,
+    },
+    {
       id: 'name',
       header: t('users.col.name'),
       cell: (u) => <span className="font-medium">{u.display_name}</span>,

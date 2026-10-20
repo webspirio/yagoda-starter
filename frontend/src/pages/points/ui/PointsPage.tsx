@@ -34,6 +34,13 @@ export function PointsPage() {
 
   const columns: Column<CollectionPoint>[] = [
     {
+      id: 'number',
+      header: t('points.col.number'),
+      className: 'font-mono tabular-nums',
+      // The receipt header's «Точка № N» (#250) — kept on narrow screens too.
+      cell: (p) => p.number,
+    },
+    {
       id: 'name',
       header: t('points.col.name'),
       cell: (p) => <span className="font-medium">{p.name}</span>,

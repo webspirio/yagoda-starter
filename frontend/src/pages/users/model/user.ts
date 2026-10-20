@@ -15,6 +15,8 @@ export interface AdminUser {
   first_name: string;
   last_name: string;
   display_name: string;
+  /** «Приймальник № 5» on the receipt header (#145, #250) — assigned by the database, read-only. */
+  number: number;
   role: UserRole;
   collection_point_id: string | null;
   is_active: boolean;

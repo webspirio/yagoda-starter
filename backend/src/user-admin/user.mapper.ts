@@ -9,6 +9,8 @@ export interface UserResponse {
   last_name: string;
   /** DERIVED — there is no display_name column. */
   display_name: string;
+  /** «Приймальник № 5» on the receipt header (#145, #250) — assigned by the database, never typed. */
+  number: number;
   role: UserRole;
   collection_point_id: string | null;
   is_active: boolean;
@@ -25,6 +27,7 @@ export function toUserResponse(user: User, login: string): UserResponse {
     // Not spelled inline here: `displayNameOf` is the one definition, shared
     // with GET /me and with the "reassign these users first" message.
     display_name: displayNameOf(user),
+    number: user.number,
     role: user.role,
     collection_point_id: user.collection_point_id,
     is_active: user.is_active,

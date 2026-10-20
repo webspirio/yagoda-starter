@@ -20,6 +20,7 @@ const point: CollectionPoint = {
   id: 'p1',
   name: 'Шипинки',
   code: 'SHP',
+  number: 3,
   kind: 'reception',
   target_cash: '15000.00',
   target_crates: 800,
@@ -54,6 +55,15 @@ describe('PointsPage', () => {
     ).toBeInTheDocument();
     expect(screen.getByText('Шипинки')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'New point' })).toBeInTheDocument();
+  });
+
+  // #250: the same number the receipt header prints as «Point No. 3» — and a
+  // deactivated point keeps it, because its old receipts still print it.
+  it('shows each point\'s number, deactivated ones included', () => {
+    queryMock.mockReturnValue(loaded([{ ...point, is_active: false }]));
+    render(<PointsPage />);
+    expect(screen.getByRole('columnheader', { name: 'No.' })).toBeInTheDocument();
+    expect(screen.getByRole('cell', { name: '3' })).toBeInTheDocument();
   });
 
   it('creates a point through the New dialog (empty targets → null)', async () => {
@@ -106,5 +116,17 @@ describe('PointsPage', () => {
     await userEvent.click(screen.getByText('Шипинки'));
     expect(screen.getByText('Edit collection point')).toBeInTheDocument();
     expect(screen.getByLabelText('Name')).toHaveValue('Шипинки');
+  });
+
+  // #250: the number is assigned by the database — neither dialog offers a field for it.
+  it.each([
+    ['create', 'New point'],
+    ['edit', 'Шипинки'],
+  ])('offers no number field in the %s dialog', async (_, opener) => {
+    queryMock.mockReturnValue(loaded([point]));
+    render(<PointsPage />);
+    await userEvent.click(screen.getByText(opener));
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    expect(screen.queryByLabelText(/^(No\.|Number)$/)).toBeNull();
   });
 });

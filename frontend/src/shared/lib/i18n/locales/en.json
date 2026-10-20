@@ -74,6 +74,7 @@
     "description": "The points where berries are received, with their daily cash and crate targets.",
     "new": "New point",
     "col": {
+      "number": "No.",
       "name": "Name",
       "kind": "Kind",
       "targetCash": "Cash target",
@@ -125,6 +126,7 @@
     "description": "The people who sign in to Yagoda — owners and point operators, with their roles and points.",
     "new": "New user",
     "col": {
+      "number": "No.",
       "name": "Name",
       "login": "Login",
       "password": "Password",
@@ -520,6 +522,7 @@
     "name": "Name",
     "login": "Login",
     "role": "Role",
+    "number": "Number",
     "roles": {
       "network_owner": "Network owner",
       "point_operator": "Point operator"
