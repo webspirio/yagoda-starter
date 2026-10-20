@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { PointsPage } from './PointsPage';
 import type { CollectionPoint } from '../model/collectionPoint';
@@ -126,7 +126,10 @@ describe('PointsPage', () => {
     queryMock.mockReturnValue(loaded([point]));
     render(<PointsPage />);
     await userEvent.click(screen.getByText(opener));
-    expect(screen.getByRole('dialog')).toBeInTheDocument();
-    expect(screen.queryByLabelText(/^(No\.|Number)$/)).toBeNull();
+    const dialog = screen.getByRole('dialog');
+    // Neither a field labelled as a number in either language, nor one holding
+    // the row's number (the edit dialog prefills every field it has).
+    expect(within(dialog).queryByLabelText(/number|номер|№|^No\.?$/i)).toBeNull();
+    expect(within(dialog).queryByDisplayValue(String(point.number))).toBeNull();
   });
 });

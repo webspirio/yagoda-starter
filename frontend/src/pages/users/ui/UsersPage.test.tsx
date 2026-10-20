@@ -111,8 +111,11 @@ describe('UsersPage', () => {
     queryMock.mockReturnValue(loaded([operator]));
     render(<UsersPage />);
     await userEvent.click(screen.getByText(opener));
-    expect(screen.getByRole('dialog')).toBeInTheDocument();
-    expect(screen.queryByLabelText(/^(No\.|Number)$/)).toBeNull();
+    const dialog = screen.getByRole('dialog');
+    // Neither a field labelled as a number in either language, nor one holding
+    // the row's number (the edit dialog prefills every field it has).
+    expect(within(dialog).queryByLabelText(/number|номер|№|^No\.?$/i)).toBeNull();
+    expect(within(dialog).queryByDisplayValue(String(operator.number))).toBeNull();
   });
 
   // #250: the same number the receipt header prints as «Operator No. 12» —
