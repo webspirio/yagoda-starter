@@ -839,9 +839,25 @@ describe('PointCashPage — R1: the crates book beside the berry book, never a c
 
     renderPointCash();
 
-    expect(screen.getByText('Crate cash')).toBeInTheDocument();
-    expect(screen.getByText('250.00 ₴')).toBeInTheDocument();
-    expect(screen.getByText('deposits for 3 crates')).toBeInTheDocument();
+    // Its own tile in the header row (#221), beside berry cash.
+    expect(tile('Crate cash')).toHaveTextContent('250.00 ₴');
+    expect(tile('Crate cash')).toHaveTextContent('deposits for 3 crates');
+  });
+
+  it('counts one crate in the singular, and says no deposits rather than «for 0 crates»', () => {
+    pointCashMock.mockImplementation((opts: { asOf?: string } = {}) =>
+      'asOf' in opts ? list([pointRow({ crate_deposits: '50.00', crate_deposit_units: 1 })]) : list([]),
+    );
+    const { unmount } = renderPointCash();
+    expect(tile('Crate cash')).toHaveTextContent('deposits for 1 crate');
+    unmount();
+
+    pointCashMock.mockImplementation((opts: { asOf?: string } = {}) =>
+      'asOf' in opts ? list([pointRow({ crate_deposits: '0.00', crate_deposit_units: 0 })]) : list([]),
+    );
+    renderPointCash();
+    expect(tile('Crate cash')).toHaveTextContent('no crate deposits held');
+    expect(screen.queryByText(/deposits for 0/)).toBeNull();
   });
 
   it('never shows a combined drawer figure — the mock’s dark block is not ported', () => {
@@ -871,46 +887,30 @@ describe('PointCashPage — R10: composition order', () => {
   }
 
   /**
-   * Stats → `IncomingTransfers` (full width) → the grid (`CashLedger` left,
-   * right column `CratesBookCard` then `ShiftCountPanel`) → «Звірка каси» →
-   * the feed/history tabs (#221). Asserted on DOM order alone — the grid's `lg:grid-cols-[…]`
+   * Stats (crates the fourth tile, #221) → `IncomingTransfers` → the grid
+   * (`CashLedger`, then `ShiftCountPanel`) → «Звірка каси» → the feed/history
+   * tabs. Asserted on DOM order alone — the grid's `lg:grid-cols-[…]`
    * class only ever adds COLUMNS at that breakpoint; nothing here reorders
    * children, so this same order is what renders in one column below `lg`
    * (the brief's "DOM order = mobile order").
    */
   function assertCompositionOrder() {
-    const targetTile = tile('Target');
+    const cratesTile = tile('Crate cash');
     const transfers = screen.getByTestId('incoming-transfers-stub');
-    const ledgerCard = screen.getByText('Where this number comes from').closest('.rounded-xl');
-    if (!ledgerCard) throw new Error('CashLedger’s SectionCard root not found');
-    const cratesEyebrow = screen.getByText('Crate cash');
+    const ledgerCard = screen.getByText('Where this number comes from');
     const panelEyebrow = screen.getByText('Shift and recount');
     const historyTab = screen.getByRole('tab', { name: 'Recount history' });
 
-    precedes(targetTile, transfers);
+    // DOM order is the phone's reading order: the grid only adds columns at
+    // `lg`, so this is also what one column below it shows.
+    precedes(tile('Target'), cratesTile);
+    precedes(cratesTile, transfers);
     precedes(transfers, ledgerCard);
-    precedes(ledgerCard, cratesEyebrow);
-    precedes(cratesEyebrow, panelEyebrow);
+    precedes(ledgerCard, panelEyebrow);
     precedes(panelEyebrow, historyTab);
-
-    // The grid itself: `CashLedger`'s card is the FIRST child (left column);
-    // `CratesBookCard` and `ShiftCountPanel` both live inside the SECOND
-    // child (the right column) — so below `lg`, where the grid falls back
-    // to a single column, the right column still renders after the ledger
-    // because nothing reorders it, not because of any breakpoint-specific
-    // class.
-    const grid = ledgerCard.parentElement;
-    if (!grid) throw new Error('grid container not found');
-    expect(grid.className).toContain('lg:grid-cols-[minmax(0,1fr)_minmax(320px,0.8fr)]');
-    expect(grid.className).not.toMatch(/\border-/); // no order-* utility undoing source order
-    expect(grid.children[0]).toBe(ledgerCard);
-    const rightColumn = grid.children[1];
-    if (!rightColumn) throw new Error('right column not found');
-    expect(rightColumn).toContainElement(cratesEyebrow);
-    expect(rightColumn).toContainElement(panelEyebrow);
   }
 
-  it('stats → transfers → ledger|[crates, panel] → history toggle, for an operator', () => {
+  it('stats → transfers → ledger → panel → history tab, for an operator', () => {
     renderPointCash();
     assertCompositionOrder();
   });

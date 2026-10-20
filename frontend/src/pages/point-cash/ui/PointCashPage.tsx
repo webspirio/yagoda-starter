@@ -42,7 +42,6 @@ import { ShiftCountResult, type ShiftCountResultFor } from '@/widgets/count-resu
 import { PayoutReceiptDialog, ReceiptDialog, useReceiptOpener } from '@/widgets/receipt';
 import { CashLedger } from './CashLedger';
 import { shiftDateOf } from '../lib/buildLedger';
-import { CratesBookCard } from './CratesBookCard';
 import { IncomingTransfers } from './IncomingTransfers';
 import { CashCountHistory } from './CashCountHistory';
 import { ShiftCountPanel, type OpenShiftGate } from './ShiftCountPanel';
@@ -313,6 +312,18 @@ export function PointCashPage() {
                   ? t('pointCash.stats.shortfallOver')
                   : t('pointCash.stats.shortfallSettled'),
         },
+        // R1 — the crates book as its OWN tile (#221), beside the berry cash
+        // and never summed with it: the client's «Правка» says berry cash and
+        // crate deposits do not lie in one drawer, and `point-cash.service.ts`
+        // refuses to add the two books. No combined «У шухляді має бути» tile.
+        {
+          label: t('pointCash.crates.title'),
+          value: formatUah(shownRow.crate_deposits, locale),
+          hint:
+            shownRow.crate_deposit_units === 0
+              ? t('pointCash.crates.captionZero')
+              : t('pointCash.crates.caption', { count: shownRow.crate_deposit_units }),
+        },
       ]
     : undefined;
 
@@ -421,17 +432,6 @@ export function PointCashPage() {
             target={shownRow.target_cash}
           />
           <div className="flex flex-col gap-5">
-            {/* R1 — no combined «У шухляді має бути» figure here: the
-                client's «Правка» says berry cash and crate deposits do not
-                lie in one drawer, and `point-cash.service.ts` already
-                refuses to add the two books. `CratesBookCard` shows the
-                crates figure alone, with a muted two-books line that prints
-                both figures side by side and never their sum. */}
-            <CratesBookCard
-              crateDeposits={shownRow.crate_deposits}
-              crateDepositUnits={shownRow.crate_deposit_units}
-              berryCash={shownRow.cash}
-            />
             <ShiftCountPanel
               shift={shift.data ?? null}
               // `shift.isPending` alone hangs the spinner forever while
@@ -524,7 +524,7 @@ export function PointCashPage() {
         description={t('pointCash.description')}
         actions={actions}
         stats={stats}
-        statColumns={3}
+        statColumns={4}
       >
         <OpenShiftAlert
           pointId={pointId}

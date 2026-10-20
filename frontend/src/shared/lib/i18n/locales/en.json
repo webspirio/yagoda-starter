@@ -705,9 +705,7 @@
       "title": "Crate cash",
       "caption_one": "deposits for {{count}} crate",
       "caption_other": "deposits for {{count}} crates",
-      "captionZero": "no crate deposits held",
-      "footnote": "This money sits apart from the berry cash: we pay someone for their crates even if the berry drawer is empty. No deposit was taken against a signed receipt — those crates are not counted here.",
-      "twoBooks": "Two books: berries {{berry}} · crates {{crates}}"
+      "captionZero": "no crate deposits held"
     },
     "incoming": {
       "loadFailed": "Could not load the transfers on their way. Reload the page."
