@@ -561,6 +561,8 @@ describe('ReceptionPage — before the shift is open', () => {
 
     expect(screen.getByText('Shift not opened yet — the operator opens it')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Open shift' })).toBeNull();
+    // Only real points to pick from — no «Select a point» entry.
+    expect(screen.getByLabelText('Select a point').querySelector('option[value=""]')).toBeNull();
   });
 });
 

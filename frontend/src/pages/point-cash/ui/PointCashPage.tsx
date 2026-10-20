@@ -338,10 +338,16 @@ export function PointCashPage() {
         <SelectField
           aria-label={t('pointCash.pickPoint')}
           value={pointId ?? ''}
-          onChange={(e) => setPointId(e.target.value || null)}
+          onChange={(e) => setPointId(e.target.value)}
           className="w-48"
         >
-          <option value="">{t('pointCash.pickPoint')}</option>
+          {/* No «Оберіть точку» entry: `useWorkingPoint` always resolves the
+              owner to a point. A deactivated one reached by `?point=` is in
+              neither list below, so it gets its own entry — otherwise the
+              select would show the first active point over its figures. */}
+          {pointId && !(points ?? []).some((p) => p.id === pointId) ? (
+            <option value={pointId}>{pointName}</option>
+          ) : null}
           {groupedPoints ? (
             <>
               {/* R6 — the owner's select lists points with a target first, so
@@ -417,7 +423,9 @@ export function PointCashPage() {
   const daySection =
     pointId === null ? null : (
       <div className="mt-5 flex flex-col gap-5">
-        {dayFiguresVisible ? <DayLedger summary={day.summary} truncated={day.truncated} /> : null}
+        {dayFiguresVisible ? (
+          <DayLedger summary={day.summary} truncated={day.truncated} />
+        ) : null}
         <Tabs
           value={activityTab}
           onValueChange={(next) => setActivityTab(next === 'counts' ? 'counts' : 'feed')}

@@ -50,7 +50,8 @@ const {
 // closed shift, and rows open a receipt: none of it needs a QueryClient here.
 vi.mock('@/entities/supplier', () => ({
   useSuppliersQuery: (search: string, pointId: string | null) => suppliersMock(search, pointId),
-  supplierName: (s: { first_name: string; last_name: string }) => `${s.first_name} ${s.last_name}`,
+  supplierName: (s: { first_name: string; last_name: string }) =>
+    `${s.first_name} ${s.last_name}`,
 }));
 
 vi.mock('../api/shiftActions', () => ({
@@ -607,6 +608,8 @@ describe('PointCashPage — Task 2: the owner’s grouped point select', () => {
     expect(within(withoutTarget as HTMLElement).getByText('Haiove')).toBeInTheDocument();
     // Never grouped into the wrong bucket.
     expect(within(withTarget as HTMLElement).queryByText('Haiove')).toBeNull();
+    // Only real points to pick from — no «Select a point» entry.
+    expect(select.querySelector('option[value=""]')).toBeNull();
   });
 
   it('renders no select at all for an operator — grouping never reaches someone who cannot pick', () => {
@@ -835,18 +838,14 @@ describe('PointCashPage — R1: the crates book beside the berry book, never a c
 
   it('counts one crate in the singular, and says no deposits rather than «for 0 crates»', () => {
     pointCashMock.mockImplementation((opts: { asOf?: string } = {}) =>
-      'asOf' in opts
-        ? list([pointRow({ crate_deposits: '50.00', crate_deposit_units: 1 })])
-        : list([]),
+      'asOf' in opts ? list([pointRow({ crate_deposits: '50.00', crate_deposit_units: 1 })]) : list([]),
     );
     const { unmount } = renderPointCash();
     expect(tile('Crate cash')).toHaveTextContent('deposits for 1 crate');
     unmount();
 
     pointCashMock.mockImplementation((opts: { asOf?: string } = {}) =>
-      'asOf' in opts
-        ? list([pointRow({ crate_deposits: '0.00', crate_deposit_units: 0 })])
-        : list([]),
+      'asOf' in opts ? list([pointRow({ crate_deposits: '0.00', crate_deposit_units: 0 })]) : list([]),
     );
     renderPointCash();
     expect(tile('Crate cash')).toHaveTextContent('no crate deposits held');
@@ -981,7 +980,12 @@ describe('PointCashPage — scope and failure states', () => {
 
     renderPointCash();
 
-    expect(screen.getByText(/Shypynky/)).toBeInTheDocument();
+    expect(screen.getByText(/^Shypynky ·/)).toBeInTheDocument();
+    // The select names the point on screen too, rather than showing Haiove
+    // as picked while Shypynky's figures sit under it.
+    const select = screen.getByLabelText('Select a point') as HTMLSelectElement;
+    expect(select.value).toBe('p1');
+    expect(select.selectedOptions[0]).toHaveTextContent('Shypynky');
     await user.click(screen.getByRole('button', { name: 'Change the target' }));
     expect(await screen.findByRole('dialog')).toHaveTextContent('Shypynky');
   });
@@ -1588,10 +1592,8 @@ const page = <T,>(data: T[], total = data.length) => ({
  * have come from the day's documents.
  */
 function dayDocs(
-  intakes:
-    ReturnType<typeof page<Intake>> | { data: undefined; isPending: boolean; isError: boolean },
-  payouts:
-    ReturnType<typeof page<Payout>> | { data: undefined; isPending: boolean; isError: boolean },
+  intakes: ReturnType<typeof page<Intake>> | { data: undefined; isPending: boolean; isError: boolean },
+  payouts: ReturnType<typeof page<Payout>> | { data: undefined; isPending: boolean; isError: boolean },
 ) {
   intakesMock.mockImplementation((f: object) => ('shiftId' in f ? intakes : list([])));
   payoutsMock.mockImplementation((f: object) => ('shiftId' in f ? payouts : list([])));
@@ -1615,12 +1617,7 @@ describe('PointCashPage — the day’s tiles and documents (#221)', () => {
     dayDocs(
       page<Intake>([
         intake({ id: 'i1', code: 'KV-0001', amount: '10944.00' }),
-        intake({
-          id: 'i2',
-          code: 'KV-0002',
-          amount: '1827.00',
-          created_at: '2026-09-08T09:20:00Z',
-        }),
+        intake({ id: 'i2', code: 'KV-0002', amount: '1827.00', created_at: '2026-09-08T09:20:00Z' }),
         intake({
           id: 'i3',
           code: 'KV-0003',
@@ -1661,9 +1658,7 @@ describe('PointCashPage — the day’s tiles and documents (#221)', () => {
 
     renderPointCash();
 
-    expect(
-      screen.getByText('Showing the first 100 documents — totals are partial'),
-    ).toBeInTheDocument();
+    expect(screen.getByText('Showing the first 100 documents — totals are partial')).toBeInTheDocument();
     // A partial total is still the truth about what was read.
     expect(tile('Accrued')).toHaveTextContent('100.00 ₴');
   });
@@ -1773,9 +1768,7 @@ describe('PointCashPage — the day’s tiles and documents (#221)', () => {
   });
 
   it('shows no day for a point that does not exist — only the message', () => {
-    pointCashMock.mockImplementation((opts: { asOf?: string } = {}) =>
-      'asOf' in opts ? list([]) : list([]),
-    );
+    pointCashMock.mockReturnValue(list([]));
     renderPointCash();
 
     expect(screen.getByRole('alert')).toBeInTheDocument();
@@ -1788,12 +1781,8 @@ describe('PointCashPage — the day’s tiles and documents (#221)', () => {
     const ledgerCard = screen.getByText('Cash reconciliation');
     const feed = screen.getByText('Day feed');
     const panel = screen.getByText('Shift and recount');
-    expect(
-      panel.compareDocumentPosition(ledgerCard) & Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
-    expect(
-      ledgerCard.compareDocumentPosition(feed) & Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
+    expect(panel.compareDocumentPosition(ledgerCard) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(ledgerCard.compareDocumentPosition(feed) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 });
 
@@ -1858,10 +1847,7 @@ describe('PointCashPage — the balances-created tile tone', () => {
   });
 
   it('turns amber once a balance is owed', () => {
-    dayDocs(
-      page<Intake>([intake({ id: 'i1', code: 'KV-0001', amount: '10.00' })]),
-      page<Payout>([]),
-    );
+    dayDocs(page<Intake>([intake({ id: 'i1', code: 'KV-0001', amount: '10.00' })]), page<Payout>([]));
     renderPointCash();
     expect(within(tile('Balances created')).getByText('10.00 ₴').className).toContain('amber');
   });
@@ -1875,11 +1861,7 @@ describe('PointCashPage — «Звірка каси» (#221, from «Каса з�
     if (!el) throw new Error(`No ledger row "${label}"`);
     return el as HTMLElement;
   };
-  const voided = {
-    voided_at: '2026-09-08T12:00:00Z',
-    voided_by_user_id: 'u1',
-    void_reason: 'typo',
-  };
+  const voided = { voided_at: '2026-09-08T12:00:00Z', voided_by_user_id: 'u1', void_reason: 'typo' };
 
   beforeEach(() => {
     shiftMock.mockReturnValue({ data: openToday, isPending: false, isError: false });
@@ -1903,10 +1885,7 @@ describe('PointCashPage — «Звірка каси» (#221, from «Каса з�
   });
 
   it('hides the without-berry row on a day with no such payout', () => {
-    dayDocs(
-      page<Intake>([intake({ id: 'i1', code: 'KV-0001', amount: '100.00' })]),
-      page<Payout>([]),
-    );
+    dayDocs(page<Intake>([intake({ id: 'i1', code: 'KV-0001', amount: '100.00' })]), page<Payout>([]));
     renderPointCash();
     expect(within(ledger()).queryByText('Paid without berry')).toBeNull();
     expect(row('Paid in cash on the spot')).toHaveTextContent(
@@ -1932,13 +1911,7 @@ describe('PointCashPage — «Звірка каси» (#221, from «Каса з�
   it('shows nothing out when every payout was voided in the open shift (#170 review)', () => {
     dayDocs(
       page<Intake>([
-        intake({
-          id: 'i1',
-          code: 'KV-0001',
-          amount: '510.00',
-          voided_at: '2026-09-08T12:00:00Z',
-          void_reason: 'x',
-        }),
+        intake({ id: 'i1', code: 'KV-0001', amount: '510.00', voided_at: '2026-09-08T12:00:00Z', void_reason: 'x' }),
       ]),
       page<Payout>([
         payout({
@@ -1971,9 +1944,7 @@ describe('PointCashPage — «Звірка каси» (#221, from «Каса з�
     expect(tile('Cash out')).toHaveTextContent('40.00 ₴');
     expect(row('Total cash out')).toHaveTextContent('40.00 ₴');
     expect(
-      screen.getByText(
-        'of which 40.00 ₴ on voided payouts still waiting to come back to the drawer',
-      ),
+      screen.getByText('of which 40.00 ₴ on voided payouts still waiting to come back to the drawer'),
     ).toBeInTheDocument();
     expect(row('Left on balance for us')).toHaveTextContent('−500.00 ₴');
   });
@@ -2016,9 +1987,7 @@ describe('PointCashPage — «Звірка каси» (#221, from «Каса з�
     );
     renderPointCash();
     expect(
-      screen.getByText(
-        'of which 65.00 ₴ on voided payouts, 40.00 ₴ of it still waiting to come back to the drawer',
-      ),
+      screen.getByText('of which 65.00 ₴ on voided payouts, 40.00 ₴ of it still waiting to come back to the drawer'),
     ).toBeInTheDocument();
   });
 
@@ -2038,17 +2007,12 @@ describe('PointCashPage — «Звірка каси» (#221, from «Каса з�
     );
     renderPointCash();
     expect(
-      screen.getByText(
-        'of which 25.00 ₴ on voided payouts returned later, on the day of the return',
-      ),
+      screen.getByText('of which 25.00 ₴ on voided payouts returned later, on the day of the return'),
     ).toBeInTheDocument();
   });
 
   it('puts the voided-payout line between the rows and the plaque it explains', () => {
-    dayDocs(
-      page<Intake>([]),
-      page<Payout>([payout({ id: 'y1', code: 'VD-0001', amount: '40.00', ...voided })]),
-    );
+    dayDocs(page<Intake>([]), page<Payout>([payout({ id: 'y1', code: 'VD-0001', amount: '40.00', ...voided })]));
     renderPointCash();
     const line = screen.getByText(/on voided payouts/);
     const plaque = screen.getByText('Total cash out');
@@ -2072,12 +2036,7 @@ describe('PointCashPage — «Звірка каси» (#221, from «Каса з�
 describe('PointCashPage — the owner reopens a closed day (#221, from «Каса за день»)', () => {
   beforeEach(() => {
     meMock.mockReturnValue({ data: OWNER });
-    pointScopeMock.mockReturnValue({
-      pointId: 'p1',
-      canPick: true,
-      setPointId: vi.fn(),
-      isLoading: false,
-    });
+    pointScopeMock.mockReturnValue({ pointId: 'p1', canPick: true, setPointId: vi.fn(), isLoading: false });
     shiftMock.mockReturnValue({ data: closedYesterday, isPending: false, isError: false });
     dayDocs(page<Intake>([]), page<Payout>([]));
   });
@@ -2117,12 +2076,7 @@ describe('PointCashPage — the owner reopens a closed day (#221, from «Кас�
 
   it('offers the operator no reopen on the same closed day', () => {
     meMock.mockReturnValue({ data: OPERATOR });
-    pointScopeMock.mockReturnValue({
-      pointId: 'p1',
-      canPick: false,
-      setPointId: vi.fn(),
-      isLoading: false,
-    });
+    pointScopeMock.mockReturnValue({ pointId: 'p1', canPick: false, setPointId: vi.fn(), isLoading: false });
     renderPointCash('/point-cash?date=2026-09-07');
 
     expect(screen.queryByRole('button', { name: 'Reopen shift' })).toBeNull();

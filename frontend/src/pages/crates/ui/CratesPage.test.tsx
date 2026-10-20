@@ -186,6 +186,12 @@ describe('CratesPage — the owner', () => {
     expect(screen.getByText(/no point selected/i)).toBeInTheDocument();
   });
 
+  it('offers only real points in the owner’s select — no «Select a point» entry', () => {
+    scopeMock.mockReturnValue({ pointId: 'p1', canPick: true, setPointId: vi.fn() });
+    render(<CratesPage />);
+    expect(screen.getByLabelText('Select a point').querySelector('option[value=""]')).toBeNull();
+  });
+
   it('passes the chosen point to the dialogs, since an owner has none of their own', async () => {
     const user = userEvent.setup();
     scopeMock.mockReturnValue({ pointId: 'p1', canPick: true, setPointId: vi.fn() });

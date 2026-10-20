@@ -76,9 +76,8 @@ export function CratesPage() {
                 <SelectField
                   aria-label={t('crates.pickPoint')}
                   value={pointId ?? ''}
-                  onChange={(e) => setPointId(e.target.value || null)}
+                  onChange={(e) => setPointId(e.target.value)}
                 >
-                  <option value="">{t('crates.pickPoint')}</option>
                   {(points ?? []).map((p) => (
                     <option key={p.id} value={p.id}>
                       {p.name}

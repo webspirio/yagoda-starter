@@ -352,10 +352,9 @@ export function ReceptionPage() {
         <SelectField
           aria-label={t('reception.pickPoint')}
           value={pointId ?? ''}
-          onChange={(e) => setPointId(e.target.value || null)}
+          onChange={(e) => setPointId(e.target.value)}
           className="w-48"
         >
-          <option value="">{t('reception.pickPoint')}</option>
           {(points ?? []).map((p) => (
             <option key={p.id} value={p.id}>
               {p.name}
