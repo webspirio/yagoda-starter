@@ -253,6 +253,7 @@ export const CHECKS = [
     cmd: 'npm test',
     // 1445 tests across two workspaces. Warm on a laptop this is ~27s and CI's first run
     // of it blew through 120s with an empty Turbo cache — see the timeoutMs note above.
+    // One workspace at a time (`--concurrency=1`), for the reason `coverage` gives.
     timeoutMs: 600_000,
     proves:
       'Every jest unit suite under backend/src and every vitest suite under frontend/src ' +
@@ -647,6 +648,11 @@ export const CHECKS = [
     supersedes: ['test'],
     // The same two suites again, under instrumentation, and never served from Turbo's
     // cache on a first run. Budgeted like `test`, for the same reason.
+    //
+    // ONE WORKSPACE AT A TIME (`turbo coverage --concurrency=1` in package.json): jest and
+    // vitest each size their worker pool to the machine's cores, so run side by side they
+    // asked for about twice the cores there are and the pair took longer than running
+    // them back to back.
     timeoutMs: 600_000,
     // No `after`: this row re-runs the full suite itself (jest --coverage / vitest run
     // --coverage), so a failing test fails THIS command directly — it does not need `test`

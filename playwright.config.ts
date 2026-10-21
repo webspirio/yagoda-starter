@@ -1,5 +1,5 @@
 import { defineConfig } from '@playwright/test';
-import { BACKEND_URL, E2E_OUT_DIR, PREVIEW_ORIGIN } from './e2e/constants';
+import { APP_TIMEZONE, BACKEND_URL, E2E_OUT_DIR, PREVIEW_ORIGIN } from './e2e/constants';
 
 /**
  * The `smoke` row (root CLAUDE.md's verify table) — the one check in this repo that
@@ -69,6 +69,9 @@ export default defineConfig({
   reporter: 'list',
   use: {
     baseURL: PREVIEW_ORIGIN,
+    // The dashboard's «today» is the browser's local date; left to the OS it is a day off
+    // the seed's whenever the two zones straddle midnight (see constants.ts).
+    timezoneId: APP_TIMEZONE,
   },
   webServer: {
     // Builds THEN serves, every run, self-sufficient regardless of what (if anything) ran
@@ -81,14 +84,16 @@ export default defineConfig({
     // host-published port (docker-compose.yml's `ports: "3000:3000"`) so the browser this
     // row drives talks to the real compose backend rather than throwing "VITE_API_URL is
     // required" the instant the app boots.
-    command: `npm run build -w frontend -- --outDir ${E2E_OUT_DIR} && npm run preview -w frontend -- --port 4173 --strictPort --outDir ${E2E_OUT_DIR}`,
+    // `vite build` alone, not `npm run build` (`tsc -b && vite build`): the `typecheck` row
+    // already checks these types, and this row proves the bundle runs, not that it types.
+    command: `npm exec -w frontend -- vite build --outDir ${E2E_OUT_DIR} && npm run preview -w frontend -- --port 4173 --strictPort --outDir ${E2E_OUT_DIR}`,
     env: { VITE_API_URL: BACKEND_URL },
     url: PREVIEW_ORIGIN,
     // strictPort is deliberate: a collision (e.g. something else already bound to 4173)
     // must fail loudly, not silently hand the tests a server on a different port than the
     // one baseURL points at.
     reuseExistingServer: false,
-    // The build alone is ~0.5s warm, but a cold `tsc -b` plus `vite build` on a busy
+    // The build alone is ~0.5s warm, but a cold `vite build` on a busy
     // machine can run longer than Playwright's own default `timeout` (60s) budgets for
     // "server never became ready" — this is the one number in this file that pads for a
     // slow BUILD, not a slow SERVER, so it is intentionally generous rather than tuned to

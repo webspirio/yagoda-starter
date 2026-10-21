@@ -1,8 +1,25 @@
 /**
- * Shared between `playwright.config.ts` and `global-setup.ts` so the two origins this row
+ * Shared between `playwright.config.ts` and `global-setup.ts` so the values this row
  * depends on are declared exactly once. See the two files' own comments for how each is
- * used; this file is intentionally just data.
+ * used.
  */
+import { existsSync, readFileSync } from 'node:fs';
+import path from 'node:path';
+import { parseEnv } from 'node:util';
+
+/**
+ * The app's timezone as the backend container and the seed resolve it: the environment,
+ * then the root `.env` (compose interpolates it, the seed's data-source loads it), then
+ * their shared default. The browser (`timezoneId`), the stale-shift cutoff and the seed
+ * all take THIS value: with three clocks, the dashboard's «today» landed a day away from
+ * the seed's for three hours around midnight whenever `.env` disagreed with the OS.
+ */
+export const APP_TIMEZONE: string = (() => {
+  if (process.env.APP_TIMEZONE) return process.env.APP_TIMEZONE;
+  const file = path.resolve(__dirname, '..', '.env');
+  const fromFile = existsSync(file) ? parseEnv(readFileSync(file, 'utf8')).APP_TIMEZONE : undefined;
+  return fromFile || 'Europe/Kyiv';
+})();
 
 /**
  * The frontend preview server's own fixed, `--strictPort` origin (playwright.config.ts's

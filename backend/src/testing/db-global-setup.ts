@@ -1,8 +1,10 @@
-import { ensureTestDatabase } from './db-harness';
+import { buildTestTemplate, ensureTestDatabase } from './db-harness';
 
 /**
  * jest `globalSetup` for jest.db.config.js — runs ONCE, before any db-spec, and guarantees
- * the test database exists.
+ * the test database exists. It also rebuilds the migrated template every
+ * `openTestDataSource()` copies, so the migrations run once per run rather than per suite,
+ * and a migration added since the last run cannot be missing from it.
  *
  * WHY THIS IS A GLOBAL SETUP RATHER THAN A CALL IN EACH SUITE, which is how it was first
  * fixed on 2026-09-15 and why that was the wrong shape. Suites that open a bare DataSource
@@ -22,4 +24,5 @@ import { ensureTestDatabase } from './db-harness';
  */
 export default async function globalSetup(): Promise<void> {
   await ensureTestDatabase();
+  await buildTestTemplate();
 }

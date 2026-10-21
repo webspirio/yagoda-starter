@@ -1,0 +1,6 @@
+{
+  // Editor-only, compiles nothing: tsserver looks for files named tsconfig.json alone, so
+  // without this e2e/ and scripts/ open in an inferred project with no Node types.
+  "files": [],
+  "references": [{ "path": "./tsconfig.e2e.json" }, { "path": "./tsconfig.scripts.json" }]
+}

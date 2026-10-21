@@ -22,7 +22,7 @@ describe('copyToClipboard', () => {
     const writeText = vi.fn().mockRejectedValue(new Error('denied'));
     vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText } });
 
-    // jsdom doesn't implement execCommand at all, so it must be defined before it can be spied on.
+    // happy-dom doesn't implement execCommand at all, so it must be defined before it can be spied on.
     let capturedValue: string | undefined;
     const execCommand = vi.fn(() => {
       capturedValue = document.querySelector('textarea')?.value;

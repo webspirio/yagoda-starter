@@ -30,12 +30,12 @@ void initI18n();
 i18n.addResourceBundle('en', 'translation', en);
 void i18n.changeLanguage('en');
 
-// jsdom doesn't implement ResizeObserver; Radix's Popper-based components
-// (e.g. Tooltip) read element size on mount and throw without a stub. The
-// constructor/observe/unobserve signatures mirror the real ResizeObserver so
-// callers that pass the required callback/target resolve against a faithful
-// shape and static analysis doesn't flag them as passing a superfluous
-// argument. The params are intentionally unused: the stub stays a no-op
+// A no-op ResizeObserver rather than the test DOM's own: Radix's Popper-based
+// components (e.g. Tooltip) read element size on mount, and there is no layout
+// here to measure. The constructor/observe/unobserve signatures mirror the
+// real ResizeObserver so callers that pass the required callback/target
+// resolve against a faithful shape and static analysis doesn't flag them as
+// passing a superfluous argument. The params are intentionally unused: the stub stays a no-op
 // (invoking the callback could re-enter Radix's measure loop).
 /* eslint-disable @typescript-eslint/no-unused-vars -- ResizeObserverStub's constructor and method parameters are unused deliberately, so its signature mirrors the real ResizeObserver */
 class ResizeObserverStub {
@@ -47,34 +47,26 @@ class ResizeObserverStub {
 /* eslint-enable @typescript-eslint/no-unused-vars -- closes the block opened above, so the rule is back in force for the rest of this file rather than off to the end */
 globalThis.ResizeObserver = ResizeObserverStub;
 
-// jsdom doesn't implement pointer capture; vaul (the bottom-sheet drawer)
-// calls setPointerCapture on pointerdown inside the sheet and would throw on
-// every click a test makes there.
-if (!Element.prototype.setPointerCapture) {
-  Element.prototype.setPointerCapture = () => {};
-  Element.prototype.releasePointerCapture = () => {};
-  Element.prototype.hasPointerCapture = () => false;
-}
+// useAppTheme (mounted by AppLayout, so every test that renders the real router
+// tree hits this) and useIsDesktop both call window.matchMedia() on mount.
+// Default to "no preference matches" (light theme, mobile layout) — a neutral
+// baseline a test can override per-file with vi.stubGlobal('matchMedia', …)
+// (see useAppTheme.test.ts / AppLayout.test.tsx for that pattern) when the
+// specific match value is what's under test. Unconditional: happy-dom has a
+// real matchMedia over a 1024px window, which would turn every test desktop.
+window.matchMedia = ((query: string) => ({
+  matches: false,
+  media: query,
+  onchange: null,
+  addListener: () => {},
+  removeListener: () => {},
+  addEventListener: () => {},
+  removeEventListener: () => {},
+  dispatchEvent: () => false,
+})) as unknown as typeof window.matchMedia;
 
-// jsdom doesn't implement matchMedia; useAppTheme (mounted by AppLayout, so
-// every test that renders the real router tree hits this) and useIsDesktop
-// both call window.matchMedia() unconditionally on mount. Default to "no
-// preference matches" (light theme, mobile layout) — a neutral baseline a
-// test can override per-file with vi.stubGlobal('matchMedia', …) (see
-// useAppTheme.test.ts / AppLayout.test.tsx for that pattern) when the
-// specific match value is what's under test.
-if (!window.matchMedia) {
-  window.matchMedia = ((query: string) => ({
-    matches: false,
-    media: query,
-    onchange: null,
-    addListener: () => {},
-    removeListener: () => {},
-    addEventListener: () => {},
-    removeEventListener: () => {},
-    dispatchEvent: () => false,
-  })) as unknown as typeof window.matchMedia;
-}
+// happy-dom has no window.print; the receipts call it from their Print button.
+window.print = () => {};
 
 // Some hooks persist form drafts or UI state to localStorage/sessionStorage
 // on mount. A single global clear here covers every test that touches one of

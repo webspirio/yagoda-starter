@@ -3,17 +3,16 @@ import { render, screen } from '@testing-library/react';
 import { Avatar, AvatarImage, AvatarFallback } from './avatar';
 
 // Radix preloads via `new Image()` and only commits the real <img> once that
-// preloader fires `load`. jsdom never fires it, so without this shim the <img>
+// preloader fires `load`. happy-dom never fires it, so without this shim the <img>
 // never mounts and its class can't be asserted. Preserve the native src
 // reflection and additionally resolve every assignment as a successful load.
 //
 // Dispatching a synthetic `load` event alone is not enough in this repo:
 // Radix's loading-status check (`image.complete ? image.naturalWidth > 0 ? ...`)
-// reads jsdom's native `complete`/`naturalWidth` getters, which only flip once
-// jsdom's optional `canvas` native dependency decodes the image data — that
-// package isn't installed here, so `complete` stays `false` forever and the
-// <img> never commits even after `load` fires. Stub `complete`/`naturalWidth`
-// too, flipped by the same fake load, so the status check resolves to "loaded".
+// reads the native `complete`/`naturalWidth` getters, and happy-dom decodes no
+// image: `naturalWidth` stays 0, which reads as a failed load. Stub
+// `complete`/`naturalWidth` too, flipped by the same fake load, so the status
+// check resolves to "loaded".
 let originalSrc: PropertyDescriptor | undefined;
 let originalComplete: PropertyDescriptor | undefined;
 let originalNaturalWidth: PropertyDescriptor | undefined;

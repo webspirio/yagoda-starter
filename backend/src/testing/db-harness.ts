@@ -47,13 +47,7 @@ const originalDbName = databaseEnv().name;
 export const resolveTestDatabaseName = (): string => {
   const database = process.env.TEST_DB_NAME ?? 'app_test';
 
-  if (database === originalDbName) {
-    throw new Error(
-      `Refusing to run db-specs against "${database}": it is the same database as DB_NAME. ` +
-        `These specs TRUNCATE tables. Point TEST_DB_NAME at a dedicated database ` +
-        `(create it with: docker compose exec postgres createdb -U app app_test).`,
-    );
-  }
+  refuseAppDatabase(database);
   if (!database.endsWith('_test')) {
     throw new Error(
       `Refusing to run db-specs against "${database}": TEST_DB_NAME must end in "_test". ` +
@@ -61,6 +55,27 @@ export const resolveTestDatabaseName = (): string => {
     );
   }
   return database;
+};
+
+const refuseAppDatabase = (database: string): void => {
+  if (database === originalDbName) {
+    throw new Error(
+      `Refusing to run db-specs against "${database}": it is the same database as DB_NAME. ` +
+        `These specs TRUNCATE tables. Point TEST_DB_NAME at a dedicated database ` +
+        `(create it with: docker compose exec postgres createdb -U app app_test).`,
+    );
+  }
+};
+
+/**
+ * The migrated database every `openTestDataSource()` call copies: `app_test` →
+ * `app_template_test`. It keeps the `_test` suffix, so it is disposable by the same rule,
+ * and it is checked against DB_NAME because it gets dropped too.
+ */
+export const resolveTemplateDatabaseName = (): string => {
+  const template = `${resolveTestDatabaseName().slice(0, -'_test'.length)}_template_test`;
+  refuseAppDatabase(template);
+  return template;
 };
 
 /**
@@ -91,10 +106,80 @@ export const relaxThrottleForTests = (): void => {
   process.env.THROTTLE_LIMIT = '100000';
 };
 
+/** Runs `fn` on a connection to the `postgres` administrative database. */
+const withMaintenance = async <T>(
+  db: ReturnType<typeof databaseEnv>,
+  fn: (maintenance: DataSource) => Promise<T>,
+): Promise<T> => {
+  const maintenance = new DataSource({
+    type: 'postgres',
+    host: db.host,
+    port: db.port,
+    username: db.username,
+    password: db.password,
+    database: 'postgres',
+  });
+  await maintenance.initialize();
+  try {
+    return await fn(maintenance);
+  } finally {
+    await maintenance.destroy();
+  }
+};
+
+const databaseExists = async (maintenance: DataSource, database: string): Promise<boolean> =>
+  (await maintenance.query('SELECT 1 FROM pg_database WHERE datname = $1', [database])).length > 0;
+
+const testDataSource = (db: ReturnType<typeof databaseEnv>, database: string): DataSource =>
+  new DataSource({
+    type: 'postgres',
+    host: db.host,
+    port: db.port,
+    username: db.username,
+    password: db.password,
+    database,
+    // Entity metadata IS required: the services under test build statements with
+    // the QueryBuilder, which resolves table and column names from metadata
+    // (`.update(User)` throws EntityMetadataNotFound without it). It never
+    // creates schema — `synchronize: false` stands, so `runMigrations()` remains
+    // the only DDL path.
+    entities: [join(__dirname, '../**/*.entity{.ts,.js}')],
+    // Numeric-prefixed only — the third site of this restriction, alongside
+    // app.module.ts's runtime TypeORM config and data-source.ts's CLI data
+    // source. A bare `*{.ts,.js}` here also matches this very directory's
+    // sibling specs (e.g. `migrations/schema.db-spec.ts`), which TypeORM
+    // would then try to `require()` and run as a migration.
+    migrations: [join(__dirname, '../migrations/[0-9]*{.ts,.js}')],
+    migrationsTableName: 'migrations',
+    synchronize: false,
+  });
+
 /**
- * DROP + CREATE `database` on a MAINTENANCE connection, so every `openTestDataSource()`
- * call starts from a database with no rows in it — including its migrations table —
- * before a single migration runs.
+ * (Re)builds the template from nothing: DROP, CREATE, every migration. `globalSetup`
+ * calls it once per jest run, so a migration added or edited since the last run is
+ * always in it.
+ */
+export const buildTestTemplate = async (): Promise<void> => {
+  const db = databaseEnv();
+  const template = resolveTemplateDatabaseName();
+  await withMaintenance(db, async (maintenance) => {
+    await maintenance.query(`DROP DATABASE IF EXISTS "${template}" WITH (FORCE)`);
+    await maintenance.query(`CREATE DATABASE "${template}"`);
+  });
+  const ds = testDataSource(db, template);
+  await ds.initialize();
+  try {
+    await ds.runMigrations();
+  } finally {
+    // A template accepts no CREATE … TEMPLATE while anyone is connected to it.
+    await ds.destroy();
+  }
+};
+
+/**
+ * DROP `database`, then CREATE it as a copy of the migrated template, on a MAINTENANCE
+ * connection — so every `openTestDataSource()` call starts from a freshly migrated
+ * database with no rows beyond what the migrations themselves insert.
  *
  * This exists because idempotency is only provable from a known starting state:
  * `dev-seed.db-spec.ts`'s "is idempotent — a second run inserts nothing" assertion
@@ -126,23 +211,16 @@ export const relaxThrottleForTests = (): void => {
  */
 const resetTestDatabase = async (
   database: string,
+  template: string,
   db: ReturnType<typeof databaseEnv>,
 ): Promise<void> => {
-  const maintenance = new DataSource({
-    type: 'postgres',
-    host: db.host,
-    port: db.port,
-    username: db.username,
-    password: db.password,
-    database: 'postgres',
-  });
-  await maintenance.initialize();
-  try {
+  // A file run on its own (an IDE runner skips globalSetup) finds no template the first time.
+  const hasTemplate = await withMaintenance(db, (maintenance) => databaseExists(maintenance, template));
+  if (!hasTemplate) await buildTestTemplate();
+  await withMaintenance(db, async (maintenance) => {
     await maintenance.query(`DROP DATABASE IF EXISTS "${database}" WITH (FORCE)`);
-    await maintenance.query(`CREATE DATABASE "${database}"`);
-  } finally {
-    await maintenance.destroy();
-  }
+    await maintenance.query(`CREATE DATABASE "${database}" TEMPLATE "${template}"`);
+  });
 };
 
 /**
@@ -184,23 +262,9 @@ const resetTestDatabase = async (
  */
 export const ensureTestDatabase = async (): Promise<void> => {
   const database = resolveTestDatabaseName();
-  const db = databaseEnv();
 
-  const maintenance = new DataSource({
-    type: 'postgres',
-    host: db.host,
-    port: db.port,
-    username: db.username,
-    password: db.password,
-    database: 'postgres',
-  });
-  await maintenance.initialize();
-  try {
-    const existing: unknown[] = await maintenance.query(
-      'SELECT 1 FROM pg_database WHERE datname = $1',
-      [database],
-    );
-    if (existing.length > 0) return;
+  await withMaintenance(databaseEnv(), async (maintenance) => {
+    if (await databaseExists(maintenance, database)) return;
     try {
       await maintenance.query(`CREATE DATABASE "${database}"`);
     } catch (err) {
@@ -209,48 +273,28 @@ export const ensureTestDatabase = async (): Promise<void> => {
       // two. Losing that race means the database exists, which is the whole goal.
       if ((err as { code?: string }).code !== '42P04') throw err;
     }
-  } finally {
-    await maintenance.destroy();
-  }
+  });
 };
 
 /**
  * The data source for `*.db-spec.ts` suites — the ONLY tests here that touch a real
  * Postgres. No prerequisite database to create by hand: `resetTestDatabase` above drops
- * and recreates `database` on every call, before migrations run, so there is nothing to
- * carry over between one call and the next, in this file or the next `test:db` invocation.
+ * and recreates `database` from the template on every call, so there is nothing to carry
+ * over between one call and the next, in this file or the next `test:db` invocation.
  *
  * Migrations are RUN, not synchronized — the point is to test the schema the
- * migration actually produces, including constraints TypeORM cannot express.
+ * migration actually produces, including constraints TypeORM cannot express. They run
+ * once per jest run, into the template; `runMigrations()` here is a no-op on a fresh copy
+ * and catches the copy up only if a migration is newer than the template.
  */
 export const openTestDataSource = async (): Promise<DataSource> => {
   const db = databaseEnv();
   const database = resolveTestDatabaseName();
+  const template = resolveTemplateDatabaseName();
 
-  await resetTestDatabase(database, db);
+  await resetTestDatabase(database, template, db);
 
-  const ds = new DataSource({
-    type: 'postgres',
-    host: db.host,
-    port: db.port,
-    username: db.username,
-    password: db.password,
-    database,
-    // Entity metadata IS required: the services under test build statements with
-    // the QueryBuilder, which resolves table and column names from metadata
-    // (`.update(User)` throws EntityMetadataNotFound without it). It never
-    // creates schema — `synchronize: false` stands, so `runMigrations()` below
-    // remains the only DDL path.
-    entities: [join(__dirname, '../**/*.entity{.ts,.js}')],
-    // Numeric-prefixed only — the third site of this restriction, alongside
-    // app.module.ts's runtime TypeORM config and data-source.ts's CLI data
-    // source. A bare `*{.ts,.js}` here also matches this very directory's
-    // sibling specs (e.g. `migrations/schema.db-spec.ts`), which TypeORM
-    // would then try to `require()` and run as a migration.
-    migrations: [join(__dirname, '../migrations/[0-9]*{.ts,.js}')],
-    migrationsTableName: 'migrations',
-    synchronize: false,
-  });
+  const ds = testDataSource(db, database);
   await ds.initialize();
   await ds.runMigrations();
   return ds;

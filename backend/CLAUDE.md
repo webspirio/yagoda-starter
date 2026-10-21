@@ -27,8 +27,11 @@ if that name equals `DB_NAME` or does not end in `_test`, because these specs
 database, every time it is called — so `app_test` need not exist beforehand, and
 a database carrying rows from a previous `test:db` run can never make a later
 run's idempotency assertions (`dev-seed.db-spec.ts`'s in particular) pass for the
-wrong reason. They run serially (`jest.db.config.js`, `maxWorkers: 1`) and apply
-migrations on connect, against a database that is empty every time they do.
+wrong reason. They run serially (`jest.db.config.js`, `maxWorkers: 1`). The
+migrations run ONCE per jest run, in `globalSetup`, into `app_template_test`, and
+each `openTestDataSource()` creates `app_test` as a copy of it (`CREATE DATABASE …
+TEMPLATE`) — a freshly migrated database every time, without paying for the DDL
+per suite.
 
 **The three suites that boot the whole AppModule get there a different way, and
 until 2026-09-15 they did not get there at all.** `testing/{pipeline,catalog-pipeline,documents-pipeline}.db-spec.ts`

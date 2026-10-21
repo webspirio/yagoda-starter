@@ -1,7 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
-import { PREVIEW_ORIGIN } from './constants';
+import { APP_TIMEZONE, PREVIEW_ORIGIN } from './constants';
 
 const ROOT = path.resolve(__dirname, '..');
 const AUTH_DIR = path.join(__dirname, '.auth');
@@ -13,13 +13,10 @@ const COMPOSE_SERVICES = ['postgres', 'redis', 'backend'];
 const PG_USER = 'app';
 const PG_DB = 'app';
 
-// The SAME default `dev-seed.ts:331` and `timezone.config.ts` use for the identical
-// value — read here, not hardcoded, so the "close stale shifts" step below compares
-// against the SAME business date the seed itself is about to write, on whatever
-// APP_TIMEZONE this process actually has. A hardcoded 'Europe/Kyiv' here would be a
-// second source of truth that silently stops matching the moment anyone runs this
-// suite with a different APP_TIMEZONE.
-const APP_TIMEZONE = process.env.APP_TIMEZONE ?? 'Europe/Kyiv';
+// One timezone for the whole run (see `APP_TIMEZONE` in constants.ts), handed explicitly
+// to compose and the seed below so the "close stale shifts" step compares against the
+// same business date the seed writes and the browser reads.
+const appEnv = { ...process.env, APP_TIMEZONE };
 
 /**
  * `admin` / `admin` — the one account `backend/src/migrations/1788600000001-
@@ -187,7 +184,7 @@ export default async function globalSetup(): Promise<void> {
     'docker compose up (postgres, redis, backend)',
     'docker',
     ['compose', 'up', '-d', '--wait', 'postgres', 'redis', 'backend'],
-    { ...process.env, APP_URL: PREVIEW_ORIGIN },
+    { ...appEnv, APP_URL: PREVIEW_ORIGIN },
   );
 
   runOrExplain('close stale seeded shifts from a previous day', 'docker', [
@@ -220,7 +217,7 @@ export default async function globalSetup(): Promise<void> {
       `WHERE status = 'open' AND business_date < (now() AT TIME ZONE '${APP_TIMEZONE.replace(/'/g, "''")}')::date;`,
   ]);
 
-  runOrExplain('db seed', 'npm', ['run', 'db:seed']);
+  runOrExplain('db seed', 'npm', ['run', 'db:seed'], appEnv);
 
   writeFileSync(
     path.join(AUTH_DIR, 'owner.json'),

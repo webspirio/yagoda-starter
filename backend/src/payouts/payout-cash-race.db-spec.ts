@@ -78,7 +78,10 @@ describe('payout cash race: two suppliers, one drawer (HTTP, Postgres)', () => {
       new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }),
     );
     app.useGlobalInterceptors(new ClassSerializerInterceptor(app.get(Reflector)));
-    await app.init();
+    // Listening once is what lets `racingAgent`'s sockets be reused: handed a server that is
+    // not listening, supertest listens on a fresh port per request, and its end() waits on
+    // server.close(), which holds until the agent's idle keep-alive sockets time out.
+    await app.listen(0);
 
     const users = app.get(UsersService);
     const credentials = app.get(CredentialsService);

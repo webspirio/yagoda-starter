@@ -583,7 +583,7 @@ describe('ReceiptDialog', () => {
 
   // index.css's print rule hides every OTHER child of <body> while a receipt is
   // open (#212). It only matches while the dialog is a direct child of <body>,
-  // and jsdom evaluates no print CSS — so pin that DOM shape here, where a
+  // and the test DOM evaluates no print CSS — so pin that DOM shape here, where a
   // portal wrapper from a Radix upgrade would otherwise bring #212 back unseen.
   it('portals the receipt dialog straight into <body>, as the print rule expects', () => {
     setUp();

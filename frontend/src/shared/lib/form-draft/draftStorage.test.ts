@@ -12,18 +12,21 @@ describe('draftStorage', () => {
   });
 
   it('loadLocal returns null when storage throws', () => {
-    const spy = vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+    // On the instance: happy-dom's localStorage never reaches Storage.prototype.
+    const spy = vi.spyOn(localStorage, 'getItem').mockImplementation(() => {
       throw new Error('SecurityError');
     });
     expect(storage.loadLocal('k')).toBeNull();
+    expect(spy).toHaveBeenCalled();
     spy.mockRestore();
   });
 
   it('writeLocal never throws when storage is disabled', () => {
-    const spy = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+    const spy = vi.spyOn(localStorage, 'setItem').mockImplementation(() => {
       throw new Error('QuotaExceeded');
     });
     expect(() => storage.writeLocal('k', 'v')).not.toThrow();
+    expect(spy).toHaveBeenCalled();
     spy.mockRestore();
   });
 

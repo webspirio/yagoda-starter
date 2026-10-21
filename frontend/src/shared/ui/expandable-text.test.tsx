@@ -3,7 +3,7 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { ExpandableText } from './expandable-text';
 
-// jsdom has no layout: every height reads 0. Fake an overflowing clamp.
+// No layout in the test DOM: every height reads 0. Fake an overflowing clamp.
 function overflow(scroll: number, client: number) {
   vi.spyOn(HTMLElement.prototype, 'scrollHeight', 'get').mockReturnValue(scroll);
   vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(client);

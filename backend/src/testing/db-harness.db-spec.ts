@@ -1,7 +1,32 @@
 import { DataSource } from 'typeorm';
 
 import { databaseEnv } from '../config/database.defaults';
-import { ensureTestDatabase, openTestDataSource, resolveTestDatabaseName } from './db-harness';
+import {
+  buildTestTemplate,
+  ensureTestDatabase,
+  openTestDataSource,
+  resolveTemplateDatabaseName,
+  resolveTestDatabaseName,
+} from './db-harness';
+
+/** Runs `sql` against `database` on a connection of its own. */
+const queryOn = async (database: string, sql: string): Promise<{ t: string | null }[]> => {
+  const db = databaseEnv();
+  const ds = new DataSource({
+    type: 'postgres',
+    host: db.host,
+    port: db.port,
+    username: db.username,
+    password: db.password,
+    database,
+  });
+  await ds.initialize();
+  try {
+    return await ds.query(sql);
+  } finally {
+    await ds.destroy();
+  }
+};
 
 /**
  * The harness guarding itself. `.env` is loaded into this process, so a stray
@@ -30,6 +55,66 @@ describe('openTestDataSource safety guard', () => {
   it('refuses any database whose name does not end in _test', async () => {
     process.env.TEST_DB_NAME = 'scratch';
     await expect(openTestDataSource()).rejects.toThrow(/must end in "_test"/);
+  });
+
+  it('refuses a template name that is the database the app itself uses', async () => {
+    // DB_NAME is captured when db-harness loads, so the module is loaded afresh under it.
+    const appDb = process.env.DB_NAME;
+    process.env.TEST_DB_NAME = 'app_test';
+    process.env.DB_NAME = 'app_template_test';
+    try {
+      await jest.isolateModulesAsync(async () => {
+        const fresh = await import('./db-harness');
+        expect(() => fresh.resolveTemplateDatabaseName()).toThrow(/same database as DB_NAME/);
+      });
+    } finally {
+      if (appDb === undefined) delete process.env.DB_NAME;
+      else process.env.DB_NAME = appDb;
+    }
+  });
+});
+
+/**
+ * `openTestDataSource()` copies one migrated template (`CREATE DATABASE … TEMPLATE`)
+ * instead of running every migration per suite — the copy is file-level and the
+ * migrations are what each suite used to pay for.
+ */
+describe('the migrated template', () => {
+  afterAll(async () => {
+    // Later suites copy this template; leave it exactly as globalSetup built it.
+    await buildTestTemplate();
+  });
+
+  it('is disposable by the same rule as the test database', () => {
+    const template = resolveTemplateDatabaseName();
+    expect(template).toMatch(/_test$/);
+    expect(template).not.toBe(resolveTestDatabaseName());
+  });
+
+  it('is what openTestDataSource copies, not a fresh migration run', async () => {
+    await buildTestTemplate();
+    await queryOn(resolveTemplateDatabaseName(), 'CREATE TABLE template_marker (id int)');
+
+    const ds = await openTestDataSource();
+    try {
+      const rows = await ds.query("SELECT to_regclass('public.template_marker') AS t");
+      expect(rows[0].t).toBe('template_marker');
+    } finally {
+      await ds.destroy();
+    }
+  });
+
+  it('is rebuilt when absent, and the copy has no migration left to run', async () => {
+    await queryOn('postgres', `DROP DATABASE IF EXISTS "${resolveTemplateDatabaseName()}" WITH (FORCE)`);
+
+    const ds = await openTestDataSource();
+    try {
+      await expect(ds.showMigrations()).resolves.toBe(false);
+      const [{ n }] = await ds.query('SELECT count(*)::int AS n FROM migrations');
+      expect(n).toBeGreaterThan(0);
+    } finally {
+      await ds.destroy();
+    }
   });
 });
 
