@@ -8,6 +8,7 @@ import {
   ListSupplierTotalsQueryDto,
   SortOrder,
   SupplierTotalsSort,
+  SupplierTotalsStatus,
 } from '../dto/list-supplier-totals.query';
 import {
   SupplierTotals,
@@ -22,7 +23,7 @@ const DEFAULT_ORDER: Record<SupplierTotalsSort, SortOrder> = { weight: 'desc', a
 const AGGREGATE: Record<Exclude<SupplierTotalsSort, 'name'>, string> = { weight: 'kg_total', amount: 'accrued' };
 
 /**
- * §11.4's «топ здавальників»: every active supplier in scope with all-time
+ * §11.4's «топ здавальників»: every supplier in scope matching `status` (active by default) with all-time
  * weight, accrued and main product, ranked in Postgres.
  *
  * UNPAGED on purpose (PR #253 review): the sort keys are live sums, so an
@@ -34,6 +35,12 @@ const AGGREGATE: Record<Exclude<SupplierTotalsSort, 'name'>, string> = { weight:
  * The tail (names, then id) keeps the order total: same-named people at two
  * points are ordinary (§3.9).
  */
+const STATUS_PREDICATE: Record<SupplierTotalsStatus, string | null> = {
+  active: 's.is_active = true',
+  inactive: 's.is_active = false',
+  all: null,
+};
+
 @Injectable()
 export class ListSupplierTotalsQuery {
   constructor(@InjectRepository(Supplier) private readonly repo: Repository<Supplier>) {}
@@ -42,10 +49,11 @@ export class ListSupplierTotalsQuery {
     const pointId = resolvePointFilter(actor, query.collection_point_id);
     const qb = this.repo
       .createQueryBuilder('s')
-      .where('s.is_active = true')
       .addSelect(kgTotalSql('s.id'), 'kg_total')
       .addSelect(accruedSql('s.id'), 'accrued')
       .addSelect(mainProductSql('s.id'), 'main_product_name');
+    const active = STATUS_PREDICATE[query.status ?? 'active'];
+    if (active) qb.andWhere(active);
     if (pointId) qb.andWhere('s.collection_point_id = :pointId', { pointId });
     applySupplierSearch(qb, query.q);
 
