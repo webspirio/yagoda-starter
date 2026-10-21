@@ -1069,7 +1069,7 @@ describe('PointCashPage — the feed and the recount history share one card (#22
 
     expect(screen.getByRole('tab', { name: 'Day feed' })).toHaveAttribute('aria-selected', 'true');
     // Not merely hidden — Radix unmounts the inactive tab, so
-    // `CashCountHistory` (and its own whole-point read) is not in the tree.
+    // `CashCountHistory` is not in the tree.
     expect(screen.queryByRole('columnheader', { name: 'When' })).toBeNull();
   });
 

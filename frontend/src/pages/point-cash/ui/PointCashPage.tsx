@@ -228,9 +228,9 @@ export function PointCashPage() {
   // R4 — the result view after an open/close; see `ShiftCountResult`.
   const [resultFor, setResultFor] = useState<ShiftCountResultFor | null>(null);
 
-  // «Стрічка дня» | «Історія перерахунків» (#221). Radix unmounts the inactive
-  // tab, so `CashCountHistory`'s own unbounded whole-point read stays off the
-  // network until its tab is opened — what the old toggle bought.
+  // «Стрічка дня» | «Історія перерахунків» (#221). The history reads the same
+  // `useCashCountsQuery({ pointId })` key as `cashCounts` above, so opening its
+  // tab costs no request; the tab only keeps the long table off the screen.
   const [activityTab, setActivityTab] = useState<'feed' | 'counts'>('feed');
 
   const [targetOpen, setTargetOpen] = useState(false);
@@ -457,7 +457,6 @@ export function PointCashPage() {
                 pointId={pointId}
                 isOwner={isOwner}
                 meId={me?.id ?? null}
-                framed={false}
               />
             </TabsContent>
           </Tabs>

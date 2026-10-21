@@ -713,7 +713,6 @@
       "loadFailed": "Could not load the transfers on their way. Reload the page."
     },
     "countHistory": {
-      "title": "Cash counts",
       "notYours": "counted by {{name}}",
       "empty": "No cash counts recorded for this point yet.",
       "columns": {
