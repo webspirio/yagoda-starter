@@ -1600,3 +1600,16 @@ The slice rounds only a reception line's `amount` (§2.12). The ticket says
   preview — is open.
 - **The receipt prints net × rate beside an amount that is not their product**
   (36,90 × 57,00 next to 2 103,00). A hint for the supplier is possible.
+
+## Left over from inactive suppliers (#228, 2026-10-21)
+
+Spec: `docs/superpowers/specs/2026-10-21-inactive-suppliers-design.md` §7.
+
+- **Can an owed inactive supplier be paid?** Today no: the backend refuses the payout
+  (`SUPPLIER_INACTIVE`, `create-payout.command.ts`) and the UI copy says «спершу активуйте»,
+  so the workflow is activate → pay → deactivate. A question for the client, not a defect.
+- **«Борги» offers «Виплатити» on an inactive row** (`DebtsPage.tsx`, the row already carries
+  a «неактивний» badge) — a guaranteed `SUPPLIER_INACTIVE`. Give it the card's treatment
+  (#228 spec §6.3) once the policy above is settled.
+- **Optional:** warn in the supplier edit dialog when deactivating someone who still holds
+  crates or is owed money.
