@@ -369,7 +369,7 @@ export class ShiftsService {
       // Tiebreaker: an owner reading network-wide gets one row per point per
       // day, so business_date alone leaves ties and Postgres promises no order
       // among them — `skip`/`take` could then repeat or drop a row across
-      // pages. Same reasoning as SuppliersService.list.
+      // pages. Same reasoning as ListSuppliersQuery.list.
       .addOrderBy('s.id', 'ASC')
       .skip(skipOf(query))
       .take(query.limit)
@@ -425,7 +425,7 @@ export class ShiftsService {
   }
 
   /**
-   * 404 — not 403 — for another point's shift, matching `SuppliersService`.
+   * 404 — not 403 — for another point's shift, matching `FindSupplierQuery`.
    *
    * PASSING A MANAGER TAKES `pessimistic_write` ON THE ROW, and every verb
    * that writes passes one. The lock is not a precaution: `close` and `reopen`

@@ -55,6 +55,55 @@ it('sits in the card frame by default, and renders bare with frame={false}', () 
   expect(container.querySelector('table')).not.toBeNull();
 });
 
+const sortable: Column<Row>[] = [
+  { id: 'name', header: 'Назва', sortable: true, cell: (r) => r.name },
+  { id: 'qty', header: 'К-сть', sortable: true, align: 'right', cell: (r) => r.qty },
+  { id: 'note', header: 'Примітка', cell: () => '' },
+];
+
+it('renders plain headers when no sort is given, even for sortable columns', () => {
+  render(<DataTable columns={sortable} rows={rows} rowKey={(r) => r.id} />);
+  expect(screen.queryByRole('button', { name: 'Назва' })).toBeNull();
+  expect(screen.getByRole('columnheader', { name: 'Назва' })).not.toHaveAttribute('aria-sort');
+});
+
+it('makes sortable headers buttons, marks the active one, and reports the clicked key', async () => {
+  const onSortChange = vi.fn();
+  render(
+    <DataTable
+      columns={sortable}
+      rows={rows}
+      rowKey={(r) => r.id}
+      sort={{ key: 'qty', order: 'desc' }}
+      onSortChange={onSortChange}
+    />,
+  );
+  expect(screen.getByRole('columnheader', { name: 'К-сть' })).toHaveAttribute('aria-sort', 'descending');
+  expect(screen.getByRole('columnheader', { name: 'Назва' })).toHaveAttribute('aria-sort', 'none');
+  expect(screen.getByRole('columnheader', { name: 'Примітка' })).not.toHaveAttribute('aria-sort');
+  expect(screen.queryByRole('button', { name: 'Примітка' })).toBeNull();
+
+  // An inactive sortable header still shows its arrow, so it reads as clickable.
+  expect(screen.getByRole('button', { name: 'Назва' }).querySelector('svg')).not.toBeNull();
+
+  await userEvent.click(screen.getByRole('button', { name: 'Назва' }));
+  expect(onSortChange).toHaveBeenCalledWith('name');
+});
+
+it('marks an ascending sort and stays axe-clean', async () => {
+  const { container } = render(
+    <DataTable
+      columns={sortable}
+      rows={rows}
+      rowKey={(r) => r.id}
+      sort={{ key: 'name', order: 'asc' }}
+      onSortChange={() => {}}
+    />,
+  );
+  expect(screen.getByRole('columnheader', { name: 'Назва' })).toHaveAttribute('aria-sort', 'ascending');
+  await expectNoAxeViolations(container);
+});
+
 it('renders renderExpanded under its row in one full-width cell, and nothing for null', () => {
   render(
     <DataTable

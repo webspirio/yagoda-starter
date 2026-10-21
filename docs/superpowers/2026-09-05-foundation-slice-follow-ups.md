@@ -1553,6 +1553,34 @@ the review bot found.
   the same column: `CollectionPointResponse` already carries `number`, but the page's
   hand-mirrored type does not.
 
+## Deferred from the suppliers totals, PR #253 review (2026-10-19)
+
+- **The search box is not in the URL.** `sort`/`order` are, so Back from a card restores the
+  ranking but drops a typed «Ковал». Pre-existing on the suppliers page; `useUrlParam('q')`
+  plus the existing debounce is the whole fix.
+- **`SortState.key` is a bare `string`.** A mistyped column id is a header that never
+  activates, and `nextSort` silently keeps the current key. Threading a
+  `SortState<K extends string>` from the column ids would make that a type error. `DataTable`
+  is domain-free on purpose, so this stays a note until a second sortable table exists.
+- **Calculated lists recompute from documents on every read — a materialized view is the
+  fallback if that becomes a problem.** The project computes weight, accrued and debt from the
+  documents every time, so baking them in is not worth it at this stage. `/supplier-totals` is
+  one unpaged request. Every subquery is index-driven (`IDX_intakes_supplier_created`,
+  `UQ_intake_items_order`), but ranking by a sum evaluates it for every supplier in scope, and
+  it would do so with a `LIMIT` too. If an owner's 500+ network makes that slow, a
+  materialized view of per-supplier stats (`kg_total`, `accrued`, `main_product`) indexed on the
+  sort key is the option. Know beforehand:
+  - `REFRESH MATERIALIZED VIEW` always recomputes everything. Refreshing per document costs more
+    than today, so it means a scheduled `REFRESH … CONCURRENTLY` (`@nestjs/schedule`), minutes
+    stale.
+  - While stale, the list disagrees with the card's live `kg_total`.
+  - Between refreshes the data stands still, so pagination is safe again.
+
+  The live alternative is a stats table that every write recomputes for its one supplier
+  inside `withinSupplierLedger`. Either way it is its own architectural task (migration, spec),
+  and it starts with measurements on a generated network
+  ([PR #253 discussion](https://github.com/webspirio/yagoda-starter/pull/253)).
+
 ## Left over from whole-hryvnia line amounts (#56, 2026-10-13)
 
 The slice rounds only a reception line's `amount` (§2.12). The ticket says

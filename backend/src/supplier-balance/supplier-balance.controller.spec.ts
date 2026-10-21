@@ -3,7 +3,7 @@ import { SupplierBalanceController } from './supplier-balance.controller';
 import { UserRole } from '../users/user-role.enum';
 
 /**
- * The route is thin on purpose: visibility is `SuppliersService.findOne`'s
+ * The route is thin on purpose: visibility is `FindSupplierQuery.findOne`'s
  * (404, not 403, for another point's supplier — an operator must not learn
  * that a person exists elsewhere), and the body is the mapper's. Both are
  * asserted here through the controller, with the two services mocked.

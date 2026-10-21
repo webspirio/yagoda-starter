@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { createMemoryRouter, RouterProvider, useParams } from 'react-router';
 import { expectNoAxeViolations } from '../../../test-axe';
 import { SuppliersPage } from './SuppliersPage';
-import type { Supplier } from '@/entities/supplier';
+import type { SupplierTotalsRow } from '@/entities/supplier';
 import type { Me } from '@/entities/user';
 
 function CardStub() {
@@ -15,13 +15,13 @@ function CardStub() {
 /** `SuppliersPage` now links each row to its card (`/suppliers/:id`), so it
  *  needs a real router context — a stub route stands in for the card page
  *  itself, which this test suite has no business depending on. */
-function renderSuppliers() {
+function renderSuppliers(initial = '/suppliers') {
   const router = createMemoryRouter(
     [
       { path: '/suppliers', element: <SuppliersPage /> },
       { path: '/suppliers/:id', element: <CardStub /> },
     ],
-    { initialEntries: ['/suppliers'] },
+    { initialEntries: [initial] },
   );
   return { router, ...render(<RouterProvider router={router} />) };
 }
@@ -35,7 +35,7 @@ const { queryMock, createMock, updateMock, meMock } = vi.hoisted(() => ({
 
 vi.mock('@/entities/supplier', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/entities/supplier')>()),
-  useSuppliersQuery: () => queryMock(),
+  useSupplierTotalsQuery: (args: unknown) => queryMock(args),
 }));
 
 vi.mock('@/features/edit-supplier/api/suppliers', () => ({
@@ -43,6 +43,7 @@ vi.mock('@/features/edit-supplier/api/suppliers', () => ({
   useUpdateSupplierMutation: () => ({ mutateAsync: updateMock }),
 }));
 
+// The page no longer reads points, but SupplierFormDialog (the owner's point select) does.
 vi.mock('@/entities/collection-point', () => ({
   usePointOptionsQuery: () => ({
     data: [
@@ -78,7 +79,7 @@ const operator: Me = {
   collection_point_id: 'p1',
 };
 
-const ivan: Supplier = {
+const ivan: SupplierTotalsRow = {
   id: 's1',
   collection_point_id: 'p1',
   first_name: 'Ivan',
@@ -88,9 +89,12 @@ const ivan: Supplier = {
   kind: 'farmer',
   is_active: true,
   created_at: '2026-08-01',
+  kg_total: '3603.99',
+  accrued: '466180.00',
+  main_product_name: 'Raspberry',
 };
 
-const petro: Supplier = {
+const petro: SupplierTotalsRow = {
   id: 's2',
   collection_point_id: 'p2',
   first_name: 'Petro',
@@ -98,14 +102,20 @@ const petro: Supplier = {
   phone: null,
   note: null,
   kind: 'none',
-  is_active: false,
+  is_active: true,
   created_at: '2026-08-01',
+  kg_total: '0.00',
+  accrued: '0.00',
+  main_product_name: null,
 };
 
-const loaded = (rows: Supplier[]) => ({
-  data: { data: rows, total: rows.length, page: 1, limit: 20 },
+const loaded = (rows: SupplierTotalsRow[], over: Record<string, unknown> = {}) => ({
+  data: rows,
   isPending: false,
   isError: false,
+  isFetching: false,
+  refetch: vi.fn(),
+  ...over,
 });
 
 beforeEach(() => {
@@ -119,22 +129,84 @@ describe('SuppliersPage', () => {
   it('shows a spinner while loading', () => {
     queryMock.mockReturnValue({ data: undefined, isPending: true, isError: false });
     renderSuppliers();
-    expect(screen.queryByText('Ivan Koval')).toBeNull();
+    expect(screen.queryByText('Koval Ivan')).toBeNull();
   });
 
-  it('renders suppliers and the New action when loaded', async () => {
+  it('renders weight, main product, kind and accrued — and no phone, point or status', async () => {
     queryMock.mockReturnValue(loaded([ivan, petro]));
     const { container } = renderSuppliers();
     expect(screen.getByRole('heading', { level: 1, name: 'Suppliers' })).toBeInTheDocument();
-    expect(screen.getByText('Ivan Koval')).toBeInTheDocument();
-    expect(screen.getByText('Petro Melnyk')).toBeInTheDocument();
-    expect(screen.getByText('+380671234567')).toBeInTheDocument();
-    expect(screen.getByText('Farmer')).toBeInTheDocument();
-    expect(screen.getByText('Shypynky')).toBeInTheDocument();
-    expect(screen.getByText('Haiove')).toBeInTheDocument();
-    expect(screen.getByText('Inactive')).toBeInTheDocument();
+    const ivanRow = screen.getByText('Koval Ivan').closest('tr') as HTMLElement;
+    expect(within(ivanRow).getByText('3,603.99 kg')).toBeInTheDocument();
+    expect(within(ivanRow).getByText('Raspberry')).toBeInTheDocument();
+    expect(within(ivanRow).getByText('Farmer')).toBeInTheDocument();
+    expect(within(ivanRow).getByText('466,180.00 ₴')).toBeInTheDocument();
+    const petroRow = screen.getByText('Melnyk Petro').closest('tr') as HTMLElement;
+    expect(within(petroRow).getByText('—')).toBeInTheDocument();
+    expect(screen.queryByText('+380671234567')).toBeNull();
+    expect(screen.queryByRole('columnheader', { name: /phone|point|status/i })).toBeNull();
     expect(screen.getByRole('button', { name: 'New supplier' })).toBeInTheDocument();
     await expectNoAxeViolations(container);
+  });
+
+  it('asks for heaviest first by default and marks Total weight as the active sort', () => {
+    queryMock.mockReturnValue(loaded([ivan]));
+    renderSuppliers();
+    expect(queryMock).toHaveBeenLastCalledWith({ search: '', sort: 'weight', order: 'desc' });
+    expect(screen.getByRole('columnheader', { name: 'Total weight' })).toHaveAttribute('aria-sort', 'descending');
+  });
+
+  it('a click on Accrued puts the sort in the URL and asks the server for it', async () => {
+    queryMock.mockReturnValue(loaded([ivan]));
+    const { router } = renderSuppliers();
+    await userEvent.click(screen.getByRole('button', { name: 'Accrued' }));
+    expect(router.state.location.search).toBe('?sort=amount&order=desc');
+    expect(queryMock).toHaveBeenLastCalledWith({ search: '', sort: 'amount', order: 'desc' });
+  });
+
+  it('keeps the table, the clicked header and the rows mounted while a new sort loads', async () => {
+    // keepPreviousData: the old rows stay as placeholder data — status 'success',
+    // so isPending is false — while the new sort is in flight.
+    queryMock.mockImplementation((args: { sort: string }) =>
+      args.sort === 'amount' ? loaded([ivan], { isFetching: true, isPlaceholderData: true }) : loaded([ivan]),
+    );
+    renderSuppliers();
+    const header = screen.getByRole('button', { name: 'Accrued' });
+    await userEvent.click(header);
+    expect(screen.getByRole('button', { name: 'Accrued' })).toBe(header);
+    expect(header).toBeInTheDocument();
+    expect(screen.getByText('Koval Ivan')).toBeInTheDocument();
+  });
+
+  it('restores the sort from the URL, e.g. after Back from a card', () => {
+    queryMock.mockReturnValue(loaded([ivan]));
+    renderSuppliers('/suppliers?sort=name&order=desc');
+    expect(queryMock).toHaveBeenLastCalledWith({ search: '', sort: 'name', order: 'desc' });
+  });
+
+  it('shows the name last name first, so the A→Z order reads at a glance', () => {
+    queryMock.mockReturnValue(loaded([ivan]));
+    renderSuppliers();
+    expect(screen.getByRole('link', { name: 'Koval Ivan' })).toHaveAttribute('href', '/suppliers/s1');
+  });
+
+  it('keeps the loaded rows when a refetch fails, with the alert and a retry under them', async () => {
+    const refetch = vi.fn();
+    queryMock.mockReturnValue(loaded([ivan, petro], { isError: true, refetch }));
+    renderSuppliers();
+    expect(screen.getByText('Koval Ivan')).toBeInTheDocument();
+    expect(screen.getByText('Melnyk Petro')).toBeInTheDocument();
+    expect(screen.getByRole('alert')).toHaveTextContent('Something went wrong');
+    await userEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    expect(refetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('replaces the table with the alert when the first load fails', () => {
+    queryMock.mockReturnValue({ ...loaded([]), data: undefined, isError: true });
+    renderSuppliers();
+    expect(screen.getByRole('alert')).toHaveTextContent('Something went wrong');
+    expect(screen.queryByRole('table')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
   });
 
   it('shows the point select in the New dialog for a network owner', async () => {
@@ -185,8 +257,8 @@ describe('SuppliersPage', () => {
     queryMock.mockReturnValue(loaded([ivan, petro]));
     const { router } = renderSuppliers();
 
-    const row = screen.getByText('Ivan Koval').closest('tr') as HTMLElement;
-    const link = within(row).getByRole('link', { name: 'Ivan Koval' });
+    const row = screen.getByText('Koval Ivan').closest('tr') as HTMLElement;
+    const link = within(row).getByRole('link', { name: 'Koval Ivan' });
     expect(link).toHaveAttribute('href', '/suppliers/s1');
 
     await userEvent.click(link);
@@ -203,8 +275,8 @@ describe('SuppliersPage', () => {
     queryMock.mockReturnValue(loaded([ivan, petro]));
     renderSuppliers();
 
-    const row = screen.getByText('Petro Melnyk').closest('tr') as HTMLElement;
-    await userEvent.click(within(row).getByText('Haiove'));
+    const row = screen.getByText('Melnyk Petro').closest('tr') as HTMLElement;
+    await userEvent.click(within(row).getByText('Regular'));
 
     expect(await screen.findByText('Card stub s2')).toBeInTheDocument();
     expect(screen.queryByLabelText('First name')).toBeNull();
@@ -214,7 +286,7 @@ describe('SuppliersPage', () => {
     queryMock.mockReturnValue(loaded([ivan, petro]));
     renderSuppliers();
 
-    for (const name of ['Ivan Koval', 'Petro Melnyk']) {
+    for (const name of ['Koval Ivan', 'Melnyk Petro']) {
       const row = screen.getByText(name).closest('tr') as HTMLElement;
       expect(within(row).getByRole('button', { name: `Edit ${name}` })).toHaveTextContent('Edit');
     }
@@ -224,7 +296,7 @@ describe('SuppliersPage', () => {
     queryMock.mockReturnValue(loaded([ivan, petro]));
     renderSuppliers();
 
-    await userEvent.click(screen.getByRole('button', { name: 'Edit Petro Melnyk' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Edit Melnyk Petro' }));
 
     expect(screen.getByLabelText('First name')).toHaveValue('Petro');
     expect(screen.getByLabelText('Last name')).toHaveValue('Melnyk');
@@ -239,19 +311,19 @@ describe('SuppliersPage', () => {
     queryMock.mockReturnValue(loaded([ivan]));
     renderSuppliers();
 
-    await userEvent.click(screen.getByRole('button', { name: 'Edit Ivan Koval' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Edit Koval Ivan' }));
     await userEvent.click(screen.getByRole('button', { name: 'Cancel' }));
 
     await waitFor(() => expect(screen.queryByLabelText('First name')).toBeNull());
     expect(screen.queryByText(/Card stub/)).toBeNull();
-    expect(screen.getByText('Ivan Koval')).toBeInTheDocument();
+    expect(screen.getByText('Koval Ivan')).toBeInTheDocument();
   });
 
   it('saving the edit leaves the user on the list', async () => {
     queryMock.mockReturnValue(loaded([ivan]));
     renderSuppliers();
 
-    await userEvent.click(screen.getByRole('button', { name: 'Edit Ivan Koval' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Edit Koval Ivan' }));
     await userEvent.click(screen.getByRole('button', { name: 'Save' }));
 
     await waitFor(() => expect(updateMock).toHaveBeenCalledTimes(1));

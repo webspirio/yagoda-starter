@@ -182,15 +182,15 @@
   "suppliers": {
     "eyebrow": "Directory",
     "title": "Suppliers",
-    "description": "The people who bring berries to a point — their contact, kind and point.",
+    "description": "Who delivered how much, all time — weight, main product and accrued.",
     "new": "New supplier",
     "searchPlaceholder": "Search by name or phone",
     "col": {
       "name": "Name",
-      "phone": "Phone",
+      "weight": "Total weight",
+      "mainProduct": "Main product",
+      "accrued": "Accrued",
       "kind": "Kind",
-      "point": "Point",
-      "status": "Status",
       "action": "Action"
     },
     "edit": "Edit",
@@ -207,8 +207,6 @@
     "kindHint": {
       "wholesale": "A wholesaler — add an extra price."
     },
-    "active": "Active",
-    "inactive": "Inactive",
     "empty": {
       "title": "No suppliers yet",
       "hint": "Add the first supplier to start taking deliveries."

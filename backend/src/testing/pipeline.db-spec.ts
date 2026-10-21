@@ -827,7 +827,7 @@ describe('suppliers + grade prices (HTTP)', () => {
   });
 
   it('treats % and _ in the search box as literal characters, not wildcards', async () => {
-    // Without the ESCAPE clause in `SuppliersService.list`, `?q=%` matches
+    // Without the ESCAPE clause in `applySupplierSearch`, `?q=%` matches
     // every supplier at the point and `?q=_` any single character — a search
     // box that silently dumps the whole customer list. Unit-proven against a
     // mocked query builder; this is the same claim against real Postgres.
@@ -944,7 +944,7 @@ describe('suppliers + grade prices (HTTP)', () => {
     expect(afterUpdate[1].action).toBe('supplier.updated');
     // `diffFields` narrows to what MOVED: the phone and the surname are
     // untouched and must not appear. A rename reassigns a money balance
-    // (see `SuppliersService.update`) and this diff is the only trail of it,
+    // (see `UpdateSupplierCommand.update`) and this diff is the only trail of it,
     // so a diff padded with unchanged fields is a trail nobody reads.
     expect(afterUpdate[1].before).toEqual({ first_name: 'Іван' });
     expect(afterUpdate[1].after).toEqual({ first_name: 'Петро' });
