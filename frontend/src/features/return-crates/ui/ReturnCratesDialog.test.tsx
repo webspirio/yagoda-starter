@@ -5,10 +5,10 @@ import { ApiError } from '@/shared/api';
 import { ReturnCratesDialog } from './ReturnCratesDialog';
 import type { CrateReturnPreview } from '@/entities/crate';
 
-const { previewMock, acceptMock, suppliersMock } = vi.hoisted(() => ({
+const { previewMock, acceptMock, holdersMock } = vi.hoisted(() => ({
   previewMock: vi.fn(),
   acceptMock: vi.fn(),
-  suppliersMock: vi.fn(),
+  holdersMock: vi.fn(),
 }));
 
 vi.mock('../api/useReturnCrates', () => ({
@@ -16,11 +16,19 @@ vi.mock('../api/useReturnCrates', () => ({
   useReturnCratesMutation: () => ({ mutateAsync: acceptMock }),
 }));
 
-vi.mock('@/entities/supplier', () => ({
-  useSuppliersQuery: () => suppliersMock(),
-  supplierName: (s: { first_name: string; last_name: string }) =>
-    `${s.first_name} ${s.last_name}`,
+vi.mock('@/entities/crate', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/entities/crate')>()),
+  useCrateHoldersQuery: (pointId: string | null, enabled: boolean) =>
+    holdersMock(pointId, enabled),
 }));
+
+const holder = (id: string, first: string, last: string, units: number, active: boolean) => ({
+  supplier_id: id,
+  first_name: first,
+  last_name: last,
+  is_active: active,
+  outstanding_units: units,
+});
 
 /** §6.5's own case: 20 taken at 120, 20 at 130; 25 come back. */
 const SPLIT: CrateReturnPreview = {
@@ -49,14 +57,17 @@ const SPLIT: CrateReturnPreview = {
 const idle = { data: undefined, isFetching: false, isError: false };
 const ready = (data: CrateReturnPreview) => ({ data, isFetching: false, isError: false });
 
-function open() {
-  return render(<ReturnCratesDialog open onClose={() => {}} />);
+function open(pointId?: string) {
+  return render(<ReturnCratesDialog open pointId={pointId} onClose={() => {}} />);
 }
 
 beforeEach(() => {
   vi.clearAllMocks();
-  suppliersMock.mockReturnValue({
-    data: { data: [{ id: 's1', first_name: 'Василь', last_name: 'Яремчук' }], total: 1 },
+  holdersMock.mockReturnValue({
+    data: [
+      holder('s1', 'Ivan', 'Koval', 12, true),
+      holder('s2', 'Petro', 'Hnatiuk', 7, false),
+    ],
     isPending: false,
     isError: false,
   });
@@ -185,5 +196,41 @@ describe('ReturnCratesDialog', () => {
     previewMock.mockReturnValue({ data: undefined, isFetching: false, isError: true });
     open();
     expect(screen.getByText(/could not work out the split/i)).toBeInTheDocument();
+  });
+
+  it('labels holders with their crates and marks an inactive one', () => {
+    open();
+    expect(screen.getByRole('option', { name: 'Ivan Koval — 12' })).toBeInTheDocument();
+    expect(
+      screen.getByRole('option', { name: 'Petro Hnatiuk — 7 · deactivated' }),
+    ).toBeInTheDocument();
+  });
+
+  it('lets an inactive holder be chosen and sent', async () => {
+    const user = userEvent.setup();
+    previewMock.mockReturnValue(ready(SPLIT));
+    open();
+
+    await user.selectOptions(screen.getByLabelText('Person'), 's2');
+    await user.type(screen.getByLabelText('Crates'), '3');
+    await user.click(screen.getByRole('button', { name: /^accept$/i }));
+
+    await waitFor(() => expect(acceptMock).toHaveBeenCalledTimes(1));
+    expect(acceptMock).toHaveBeenCalledWith({ supplier_id: 's2', units: 3 });
+  });
+
+  it('asks for holders of the chosen point, or the pinned one for an operator', () => {
+    open();
+    expect(holdersMock).toHaveBeenCalledWith(null, true);
+    holdersMock.mockClear();
+    open('p1');
+    expect(holdersMock).toHaveBeenCalledWith('p1', true);
+  });
+
+  it('says so and blocks the write when nobody holds crates', () => {
+    holdersMock.mockReturnValue({ data: [], isPending: false, isError: false });
+    open();
+    expect(screen.getByText('Nobody at this point is holding crates.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^accept$/i })).toBeDisabled();
   });
 });
