@@ -11,10 +11,12 @@ import { SelectField } from '@/shared/ui/select-field';
 import { TextInput } from '@/shared/ui/text-input';
 import { EmptyState } from '@/shared/ui/empty-state';
 import { Spinner } from '@/shared/ui/spinner';
+import { decimalKey, useClientSort } from '@/shared/ui/data-table-sort';
 import { StatGrid } from '@/shared/ui/stat-grid';
 import { StatTile } from '@/shared/ui/stat-tile';
 import { sub, cmp, isNegative, formatUah } from '@/shared/lib/money';
 import { ageInDays, formatShortDate } from '@/shared/lib/date';
+import { cn } from '@/shared/lib/cn';
 import { usePointScope } from '@/entities/user';
 import { usePointOptionsQuery } from '@/entities/collection-point';
 import {
@@ -54,7 +56,8 @@ const STALE_AFTER_DAYS = 7;
  * «найстаріший з 12.07 — 23 дні».
  *
  * The name search is client-side over the loaded rows (spec: no server
- * round trip for a filter over at most 100 rows already in memory).
+ * round trip for a filter over at most 100 rows already in memory), and so is the
+ * column sort (#229): it opens on the server's own order, the biggest balance first.
  */
 export function DebtsPage() {
   const { t, i18n } = useTranslation();
@@ -103,18 +106,34 @@ export function DebtsPage() {
   // than one point — a picked point makes the column redundant.
   const showPointColumn = pointId === null;
   const pointName = new Map((points ?? []).map((p) => [p.id, p.name]));
+  const pointOf = (row: SupplierBalanceRow) => pointName.get(row.collection_point_id) ?? null;
 
-  // Beside the name rather than a column of its own: on a phone a fourth column pushed the
-  // balance off the screen, and the age means nothing without the name it belongs to.
-  const ageBadge = (row: SupplierBalanceRow) => {
-    // A credit or a zero row has nothing waiting, whatever the date says.
-    if (row.oldest_open_date === null || cmp(row.debt, '0') !== 1) return null;
-    const days = ageInDays(row.oldest_open_date);
+  // A credit or a zero row has nothing waiting, whatever the date says.
+  const openDays = (row: SupplierBalanceRow) =>
+    row.oldest_open_date === null || cmp(row.debt, '0') !== 1
+      ? null
+      : ageInDays(row.oldest_open_date);
+
+  // What each sortable column orders by — the value, not the rendered cell.
+  const sorted = useClientSort(
+    filteredRows,
+    {
+      supplier: supplierName,
+      point: pointOf,
+      age: openDays,
+      balance: (row) => decimalKey(row.debt),
+    },
+    { key: 'balance', order: 'desc' },
+  );
+
+  const ageBadge = (row: SupplierBalanceRow, className?: string) => {
+    const days = openDays(row);
+    if (days === null || row.oldest_open_date === null) return null;
     const since = t('debts.ageSince', { date: formatShortDate(row.oldest_open_date, locale) });
     return (
       <Badge
         variant={days > STALE_AFTER_DAYS ? 'destructive' : 'secondary'}
-        className="font-mono tabular-nums"
+        className={cn('font-mono tabular-nums', className)}
         title={since}
       >
         {t('debts.days', { count: days })}
@@ -127,6 +146,7 @@ export function DebtsPage() {
   const supplierColumn: Column<SupplierBalanceRow> = {
     id: 'supplier',
     header: t('debts.col.supplier'),
+    sortable: true,
     cell: (row) => (
       <span className="flex flex-wrap items-center gap-x-2 gap-y-1 font-medium">
         <Link
@@ -140,12 +160,15 @@ export function DebtsPage() {
           {supplierName(row)}
         </Link>
         {!row.is_active ? <Badge variant="secondary">{t('debts.inactive')}</Badge> : null}
-        {ageBadge(row)}
+        {/* A column of its own from `sm` up (sortable by how long the balance has waited);
+            on a phone a fourth column pushed the balance off the screen, so the age rides
+            beside the name there. */}
+        {ageBadge(row, 'sm:hidden')}
         {/* The point column is hidden on a phone, yet a balance is paid only where it was
             run up (§3.9) — so the point rides under the name there instead (#229). */}
         {showPointColumn ? (
           <span className="basis-full text-xs font-normal text-muted-foreground sm:hidden">
-            {pointName.get(row.collection_point_id) ?? '—'}
+            {pointOf(row) ?? '—'}
           </span>
         ) : null}
       </span>
@@ -156,7 +179,16 @@ export function DebtsPage() {
     id: 'point',
     header: t('debts.col.point'),
     hideBelow: 'sm',
-    cell: (row) => pointName.get(row.collection_point_id) ?? '—',
+    cell: (row) => pointOf(row) ?? '—',
+    sortable: true,
+  };
+
+  const ageColumn: Column<SupplierBalanceRow> = {
+    id: 'age',
+    header: t('debts.col.age'),
+    hideBelow: 'sm',
+    sortable: true,
+    cell: (row) => ageBadge(row),
   };
 
   const balanceColumn: Column<SupplierBalanceRow> = {
@@ -164,6 +196,7 @@ export function DebtsPage() {
     header: t('debts.col.balance'),
     align: 'right',
     className: 'font-mono tabular-nums',
+    sortable: true,
     cell: (row) =>
       isNegative(row.debt) ? (
         <span className="text-[var(--leaf)]">
@@ -198,6 +231,7 @@ export function DebtsPage() {
   const columns: Column<SupplierBalanceRow>[] = [
     supplierColumn,
     ...(showPointColumn ? [pointColumn] : []),
+    ageColumn,
     balanceColumn,
     actionColumn,
   ];
@@ -255,9 +289,19 @@ export function DebtsPage() {
           </div>
         }
         columns={columns}
-        rows={filteredRows}
+        rows={sorted.rows}
         rowKey={(row) => row.supplier_id}
         onRowClick={(row) => navigate(`/suppliers/${row.supplier_id}`)}
+        sort={sorted.sort}
+        onSortChange={sorted.onSortChange}
+        footer={
+          // The server caps a read at 100: past that the sort orders only the loaded rows.
+          isTruncated(data) ? (
+            <p className="text-xs text-muted-foreground">
+              {t('debts.truncated', { shown: rows.length, total })}
+            </p>
+          ) : undefined
+        }
         isEmpty={!isPending && !isError && filteredRows.length === 0}
         empty={
           noMatch ? (

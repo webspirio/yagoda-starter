@@ -1092,6 +1092,7 @@
     "col": {
       "supplier": "Supplier",
       "point": "Point",
+      "age": "Age",
       "balance": "Balance",
       "action": "Action"
     },
@@ -1101,6 +1102,7 @@
     "days_other": "{{count}} days",
     "ageSince": "oldest balance since {{date}}",
     "payout": "Pay out without berries",
+    "truncated": "Showing the first {{shown}} of {{total}} suppliers — sorting covers only these.",
     "empty": {
       "title": "No open balances",
       "hint": "Every drop-off has been settled in full.",
