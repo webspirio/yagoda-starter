@@ -22,6 +22,12 @@ import type { AuthenticatedUser } from '../../auth/jwt.strategy';
 const DEFAULT_ORDER: Record<SupplierTotalsSort, SortOrder> = { weight: 'desc', amount: 'desc', name: 'asc' };
 const AGGREGATE: Record<Exclude<SupplierTotalsSort, 'name'>, string> = { weight: 'kg_total', amount: 'accrued' };
 
+const STATUS_PREDICATE: Record<SupplierTotalsStatus, string | null> = {
+  active: 's.is_active = true',
+  inactive: 's.is_active = false',
+  all: null,
+};
+
 /**
  * §11.4's «топ здавальників»: every supplier in scope matching `status` (active by default) with all-time
  * weight, accrued and main product, ranked in Postgres.
@@ -35,12 +41,6 @@ const AGGREGATE: Record<Exclude<SupplierTotalsSort, 'name'>, string> = { weight:
  * The tail (names, then id) keeps the order total: same-named people at two
  * points are ordinary (§3.9).
  */
-const STATUS_PREDICATE: Record<SupplierTotalsStatus, string | null> = {
-  active: 's.is_active = true',
-  inactive: 's.is_active = false',
-  all: null,
-};
-
 @Injectable()
 export class ListSupplierTotalsQuery {
   constructor(@InjectRepository(Supplier) private readonly repo: Repository<Supplier>) {}
@@ -52,8 +52,8 @@ export class ListSupplierTotalsQuery {
       .addSelect(kgTotalSql('s.id'), 'kg_total')
       .addSelect(accruedSql('s.id'), 'accrued')
       .addSelect(mainProductSql('s.id'), 'main_product_name');
-    const active = STATUS_PREDICATE[query.status ?? 'active'];
-    if (active) qb.andWhere(active);
+    const statusPredicate = STATUS_PREDICATE[query.status ?? 'active'];
+    if (statusPredicate) qb.andWhere(statusPredicate);
     if (pointId) qb.andWhere('s.collection_point_id = :pointId', { pointId });
     applySupplierSearch(qb, query.q);
 
