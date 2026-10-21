@@ -954,6 +954,13 @@ describe('ShiftCountPanel — what came over from «Каса за день»', (
     expect(onReopenShift).toHaveBeenCalledTimes(1);
   });
 
+  it('keeps «Reopen shift» beside the read-failed line — /day is gone, so nothing else reopens', () => {
+    renderPanel({ isShiftError: true, onReopenShift: noop });
+
+    expect(screen.getByRole('alert')).toHaveTextContent('The shift could not be read');
+    expect(screen.getByRole('button', { name: 'Reopen shift' })).toBeInTheDocument();
+  });
+
   it('offers no reopen when the page gives no handler — the operator’s case', () => {
     renderPanel({ isOperator: true });
 

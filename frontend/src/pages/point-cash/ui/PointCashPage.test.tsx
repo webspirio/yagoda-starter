@@ -2084,6 +2084,23 @@ describe('PointCashPage — the owner reopens a closed day (#221, from «Кас�
     expect(screen.queryByText(banner)).toBeNull();
   });
 
+  it('keeps «Reopen shift» when only the shift’s counts read fails — /day is a redirect now', () => {
+    cashCountsMock.mockImplementation((f: { pointId?: string; shiftId?: string }) =>
+      f.shiftId ? { data: undefined, isPending: false, isError: true } : list([]),
+    );
+    renderPointCash('/point-cash?point=p1&date=2026-09-07');
+
+    expect(screen.getByText('The shift could not be read — reload the page')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Reopen shift' })).toBeInTheDocument();
+  });
+
+  it('offers no reopen over a failed shift read, whatever stale shift it still holds', () => {
+    shiftMock.mockReturnValue({ data: closedYesterday, isPending: false, isError: true });
+    renderPointCash('/point-cash?point=p1&date=2026-09-07');
+
+    expect(screen.queryByRole('button', { name: 'Reopen shift' })).toBeNull();
+  });
+
   it('offers the operator no reopen on the same closed day', () => {
     meMock.mockReturnValue({ data: OPERATOR });
     pointScopeMock.mockReturnValue({ pointId: 'p1', canPick: false, setPointId: vi.fn(), isLoading: false });

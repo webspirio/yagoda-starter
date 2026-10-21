@@ -485,8 +485,10 @@ export function PointCashPage() {
       onOpenShift={() => openCountDialog({ mode: 'open' })}
       openShiftGate={openShiftGate}
       onCloseShift={(shiftId) => openCountDialog({ mode: 'close', shiftId })}
+      // Not while the shift read itself failed: the panel shows reopen over a
+      // failed COUNTS read, and a stale `shift.data` must not offer it.
       onReopenShift={
-        isOwner
+        isOwner && !shift.isError
           ? () => {
               setReopenInstance((n) => n + 1);
               setReopenOpen(true);

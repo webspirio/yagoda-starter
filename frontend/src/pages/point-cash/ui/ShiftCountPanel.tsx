@@ -154,7 +154,9 @@ export function ShiftCountPanel({
    * «Перевідкрити зміну» — the owner's correction (#221: it came over
    * from «Каса за день»). The PAGE passes it for the owner only; absent, the
    * button is absent, so the panel itself never decides who may reopen. The
-   * dialog stays page-level, like the open/close one.
+   * dialog stays page-level, like the open/close one. The page also withholds
+   * it while the SHIFT read failed, which is what lets the button survive a
+   * failed COUNTS read below — there is no other place left to reopen from.
    */
   onReopenShift?: () => void;
 }) {
@@ -193,6 +195,19 @@ export function ShiftCountPanel({
               to: formatTime(shift.closed_at, locale),
             })
           : t('pointCash.panel.since', { from: formatTime(shift.created_at, locale) });
+
+  // `closed` only, exactly as «Каса за день» gated it. The server would also
+  // reopen a legacy `awaiting_explanation` row (it checks `closed_at`), but
+  // that status is unreachable by decision (09.09), so widening the gate here
+  // is a separate question, not part of moving the button.
+  const reopenButton =
+    onReopenShift && shift?.status === 'closed' ? (
+      <div className="pt-2">
+        <Button size="sm" variant="outline" onClick={onReopenShift}>
+          {t('day.reopen')}
+        </Button>
+      </div>
+    ) : null;
 
   const actionContent =
     state === 'openToday' && shift ? (
@@ -246,10 +261,14 @@ export function ShiftCountPanel({
       ) : isShiftError ? (
         // No shift line, no midday list, no actions — none of those claims
         // ("no shift today", "you've never recounted") are ones a failed
-        // read can honestly make.
-        <p role="alert" className="text-sm text-destructive">
-          {t('pointCash.panel.readFailed')}
-        </p>
+        // read can honestly make. Reopen is the exception: it needs only
+        // the shift, and the page gates it on that read alone.
+        <>
+          <p role="alert" className="text-sm text-destructive">
+            {t('pointCash.panel.readFailed')}
+          </p>
+          {reopenButton}
+        </>
       ) : (
         <>
           {shift ? (
@@ -302,18 +321,7 @@ export function ShiftCountPanel({
                   {shift.broken_crates === null ? '—' : shift.broken_crates}
                 </p>
               ) : null}
-              {/* `closed` only, exactly as «Каса за день» gated it. The server
-                  would also reopen a legacy `awaiting_explanation` row (it
-                  checks `closed_at`), but that status is unreachable by
-                  decision (09.09), so widening the gate here is a separate
-                  question, not part of moving the button. */}
-              {onReopenShift && shift.status === 'closed' ? (
-                <div className="pt-2">
-                  <Button size="sm" variant="outline" onClick={onReopenShift}>
-                    {t('day.reopen')}
-                  </Button>
-                </div>
-              ) : null}
+              {reopenButton}
             </div>
           ) : null}
 
