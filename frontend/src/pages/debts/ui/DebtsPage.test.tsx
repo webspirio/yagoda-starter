@@ -465,6 +465,12 @@ describe('DebtsPage — sorting by a column (#229)', () => {
       setPointId: vi.fn(),
       isLoading: false,
     });
+    // The age sort reads «today» — pinned as in the #101 block, so no machine clock decides it.
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date(2026, 6, 16, 12));
+  });
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it('opens on the biggest balance first, whatever order the rows arrive in', () => {
@@ -529,6 +535,38 @@ describe('DebtsPage — sorting by a column (#229)', () => {
     renderDebts();
 
     expect(screen.queryByText(/sorting covers only these/)).toBeNull();
+  });
+
+  it('leaves the partial-list note to the empty state when a search finds nobody', async () => {
+    balancesMock.mockReturnValue(page([rowA, rowB], 150));
+    const user = userEvent.setup();
+    renderDebts();
+
+    await user.type(screen.getByLabelText('Find a supplier'), 'zzzzz');
+
+    expect(screen.getByText('Check the name. Only the first 2 balances are loaded.')).toBeVisible();
+    expect(screen.queryByText(/sorting covers only these/)).toBeNull();
+  });
+
+  it('goes back to the biggest balance first when a picked point takes the «Point» column away', async () => {
+    balancesMock.mockReturnValue(page([rowA, rowB, rowC, rowD]));
+    const user = userEvent.setup();
+    const { router } = renderDebts();
+    await user.click(screen.getByRole('button', { name: 'Point' }));
+
+    pointScopeMock.mockReturnValue({
+      pointId: 'p1',
+      canPick: true,
+      setPointId: vi.fn(),
+      isLoading: false,
+    });
+    await act(() => router.navigate('/debts?point=p1'));
+
+    expect(screen.queryByRole('columnheader', { name: 'Point' })).toBeNull();
+    expect(screen.getByRole('columnheader', { name: 'Balance' })).toHaveAttribute(
+      'aria-sort',
+      'descending',
+    );
   });
 });
 

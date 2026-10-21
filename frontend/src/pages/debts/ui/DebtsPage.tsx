@@ -50,10 +50,9 @@ const STALE_AFTER_DAYS = 7;
  * neither stops at the 100-row `limit` (#229).
  *
  * «Найстаріший залишок» (#101) is the server's too: the oldest open line among EVERY row owed
- * money, not the loaded page, so unlike «Всього винні» it needs no partial-page hint. Each row
- * says how many days its own oldest open line has waited; «open» is read off the stored payout
- * allocations, so a partly paid receipt still counts — the same date the supplier card prints as
- * «найстаріший з 12.07 — 23 дні».
+ * money, not the loaded page. Each row says how many days its own oldest open line has waited;
+ * «open» is read off the stored payout allocations, so a partly paid receipt still counts — the
+ * same date the supplier card prints as «найстаріший з 12.07 — 23 дні».
  *
  * The name search is client-side over the loaded rows (spec: no server
  * round trip for a filter over at most 100 rows already in memory), and so is the
@@ -114,12 +113,13 @@ export function DebtsPage() {
       ? null
       : ageInDays(row.oldest_open_date);
 
-  // What each sortable column orders by — the value, not the rendered cell.
+  // What each sortable column orders by — the value, not the rendered cell. No key for a
+  // column the table hides, so a sort on it falls back to the biggest balance first.
   const sorted = useClientSort(
     filteredRows,
     {
       supplier: supplierName,
-      point: pointOf,
+      ...(showPointColumn ? { point: pointOf } : {}),
       age: openDays,
       balance: (row) => decimalKey(row.debt),
     },
@@ -295,8 +295,9 @@ export function DebtsPage() {
         sort={sorted.sort}
         onSortChange={sorted.onSortChange}
         footer={
-          // The server caps a read at 100: past that the sort orders only the loaded rows.
-          isTruncated(data) ? (
+          // The server caps a read at 100: past that the sort orders only the loaded rows. A
+          // search that found nobody says so in its own empty state.
+          isTruncated(data) && !noMatch ? (
             <p className="text-xs text-muted-foreground">
               {t('debts.truncated', { shown: rows.length, total })}
             </p>

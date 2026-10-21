@@ -186,6 +186,22 @@ describe('usePointScope — a screen that ignores the remembered pick', () => {
     expect(next.result.current.pointId).toBe(A);
   });
 
+  /** «Усі точки» is this screen's default view, not a working point — the others keep theirs. */
+  it('leaves the remembered point alone when the whole network is chosen on it', () => {
+    asOwner();
+    const first = renderHook(() => usePointScope(), { wrapper: wrapperAt('/x') });
+    act(() => first.result.current.setPointId(A));
+
+    const here = renderHook(() => usePointScope({ remembered: false }), {
+      wrapper: wrapperAt(`/debts?point=${B}`),
+    });
+    act(() => here.result.current.setPointId(null));
+    expect(here.result.current.pointId).toBeNull();
+
+    const next = renderHook(() => usePointScope(), { wrapper: wrapperAt('/y') });
+    expect(next.result.current.pointId).toBe(A);
+  });
+
   it('leaves an operator pinned to their own point', () => {
     meMock.mockReturnValue({
       data: { role: 'point_operator', collection_point_id: 'p1' },

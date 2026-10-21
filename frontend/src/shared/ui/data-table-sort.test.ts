@@ -77,4 +77,21 @@ describe('useClientSort (#250)', () => {
     act(() => result.current.onSortChange('note'));
     expect(result.current.sort).toEqual({ key: 'name', order: 'asc' });
   });
+
+  /** A column the table drops (#229: «Точка» once a point is picked) takes its sort with it. */
+  it('goes back to the initial sort when the sorted column leaves', () => {
+    const { result, rerender } = renderHook(
+      ({ k }) => useClientSort(people, k, { key: 'name', order: 'asc' }),
+      { initialProps: { k: keys } },
+    );
+    act(() => result.current.onSortChange('point'));
+
+    rerender({ k: { no: keys.no, name: keys.name, cash: keys.cash } });
+    expect(result.current.sort).toEqual({ key: 'name', order: 'asc' });
+    expect(ids(result.current.rows)).toEqual(['c', 'b', 'a']);
+
+    // …and stays there when the column comes back.
+    rerender({ k: keys });
+    expect(result.current.sort).toEqual({ key: 'name', order: 'asc' });
+  });
 });

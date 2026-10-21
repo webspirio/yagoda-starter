@@ -25,8 +25,9 @@ import { useMeQuery } from '../api/useMeQuery';
  *
  * `remembered: false` IS FOR A SCREEN WHOSE DEFAULT IS THE WHOLE NETWORK —
  * «Залишки за нами» (§3.9, #229). It ignores the remembered point when READING,
- * so it opens unpicked unless the URL says otherwise, but a pick made on it is
- * still remembered for the screens that do read it.
+ * so it opens unpicked unless the URL says otherwise, and going back to the
+ * network there forgets nothing — that is its default view, not a working point.
+ * A point picked on it is still remembered for the screens that do read it.
  */
 export function usePointScope({ remembered = true }: { remembered?: boolean } = {}) {
   const { data: me, isPending } = useMeQuery();
@@ -37,9 +38,9 @@ export function usePointScope({ remembered = true }: { remembered?: boolean } = 
     (id: string | null) => {
       setParam(id);
       // Remembered only for the role that can choose.
-      if (isOwner) storePoint(id);
+      if (isOwner && (remembered || id !== null)) storePoint(id);
     },
-    [setParam, isOwner],
+    [setParam, isOwner, remembered],
   );
 
   // `collection_point_id` is `@IsUUID()` server-side; a hand-edited or stale
