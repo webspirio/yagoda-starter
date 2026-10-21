@@ -1619,6 +1619,10 @@ everything `pages/day` showed now sits on `/point-cash`, and two things overlap:
   made today for an earlier shift's payout (its own note says so). `CashLedger` is
   the server's `breakdown` (#73), whose rows add up to the figure by construction.
   Decide with the client which to keep; the likely answer is `CashLedger` alone.
+  The overlap also costs requests (PR #266 review, item 5): `useDayDocuments`
+  reads the shift's intakes and payouts by `shiftId`, and the ledger reads them
+  again by point + date — four reads instead of two on every open, all
+  invalidated by each receipt and payout. Dropping one ledger drops one pair.
 - **«Документи дня» beside «Журнал прийомки».** The feed is the shift's
   documents for both roles; the journal is the owner's season-wide register.
   Probably both stay, but the client has not said.
@@ -1628,3 +1632,13 @@ everything `pages/day` showed now sits on `/point-cash`, and two things overlap:
 - **`/day` is a redirect** (`app/RedirectToPointCash.tsx`) kept for bookmarks.
   It can go once nobody can still be holding an old link — not before the next
   season.
+- **The stat tiles crowd a phone** (PR #266 review, item 8). `StatGrid` puts
+  two tiles per row below `sm`, so at 390 px a figure like «12 345,00 ₴» drops
+  its «₴» onto a line of its own and «НЕ ХВАТАЄ ДО НАДІЛУ» truncates. Not new —
+  main's three tiles sat two per row too — and the fix belongs to the kit's
+  `StatTile`/`StatGrid`, which every screen with tiles shares.
+- **«…сьогодні» labels on a past date** (PR #266 review, item 9). `CashLedger`
+  says «Нараховано сьогодні», «Видано сьогодні», «Прийнято переказом сьогодні»
+  whatever `?date=` is. Also not new — the date stepper predates #221 — but the
+  page now stands in for «Каса за день» on past days too, so the wording should
+  follow the date.
