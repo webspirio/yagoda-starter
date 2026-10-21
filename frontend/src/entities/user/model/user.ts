@@ -6,6 +6,8 @@ export interface Me {
   /** Server-derived from first_name + last_name. Read-only: the owner names
    *  staff through the users admin API, not the profile screen. */
   display_name: string;
+  /** «Приймальник № 5» on every receipt this user writes (#250) — assigned by the database. */
+  number: number;
   avatar_url: string | null;
   language_code: string | null;
   role: UserRole;

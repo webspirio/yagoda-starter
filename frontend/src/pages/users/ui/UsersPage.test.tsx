@@ -5,28 +5,18 @@ import { expectNoAxeViolations } from '../../../test-axe';
 import { UsersPage } from './UsersPage';
 import type { AdminUser } from '../model/user';
 
-const { queryMock, createMock, updateMock, setPasswordMock, revealMock, revealResetMock } =
-  vi.hoisted(() => ({
-    queryMock: vi.fn(),
-    createMock: vi.fn(),
-    updateMock: vi.fn(),
-    setPasswordMock: vi.fn(),
-    revealMock: vi.fn(),
-    revealResetMock: vi.fn(),
-  }));
+const { queryMock, createMock, updateMock, setPasswordMock } = vi.hoisted(() => ({
+  queryMock: vi.fn(),
+  createMock: vi.fn(),
+  updateMock: vi.fn(),
+  setPasswordMock: vi.fn(),
+}));
 
 vi.mock('../api/users', () => ({
   useUsersQuery: () => queryMock(),
   useCreateUserMutation: () => ({ mutateAsync: createMock }),
   useUpdateUserMutation: () => ({ mutateAsync: updateMock }),
   useSetPasswordMutation: () => ({ mutateAsync: setPasswordMock }),
-  // Mirrors the real mutation's surface: the cell calls `reset()` when its
-  // row closes, which is how the plaintext leaves the mutation cache.
-  useRevealPasswordMutation: () => ({
-    mutateAsync: revealMock,
-    reset: revealResetMock,
-    isPending: false,
-  }),
 }));
 
 vi.mock('@/entities/collection-point', () => ({
@@ -46,6 +36,7 @@ const owner: AdminUser = {
   first_name: 'Olena',
   last_name: 'H',
   display_name: 'Olena H.',
+  number: 1,
   role: 'network_owner',
   collection_point_id: null,
   is_active: true,
@@ -59,6 +50,7 @@ const operator: AdminUser = {
   first_name: 'Maria',
   last_name: 'S',
   display_name: 'Maria S.',
+  number: 12,
   role: 'point_operator',
   collection_point_id: 'p1',
   is_active: true,
@@ -77,8 +69,6 @@ beforeEach(() => {
   createMock.mockReset().mockResolvedValue(operator);
   updateMock.mockReset().mockResolvedValue(operator);
   setPasswordMock.mockReset().mockResolvedValue(undefined);
-  revealMock.mockReset().mockResolvedValue({ password: 'operator', vault_enabled: true });
-  revealResetMock.mockReset();
 });
 
 describe('UsersPage', () => {
@@ -99,6 +89,32 @@ describe('UsersPage', () => {
     expect(screen.getByText('Shypynky')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'New user' })).toBeInTheDocument();
     await expectNoAxeViolations(container);
+  });
+
+  // #250: the number is assigned by the database — neither dialog offers a field for it.
+  it.each([
+    ['create', 'New user'],
+    ['edit', 'Maria S.'],
+  ])('offers no number field in the %s dialog', async (_, opener) => {
+    queryMock.mockReturnValue(loaded([operator]));
+    render(<UsersPage />);
+    await userEvent.click(screen.getByText(opener));
+    const dialog = screen.getByRole('dialog');
+    // Neither a field labelled as a number in either language, nor one holding
+    // the row's number (the edit dialog prefills every field it has).
+    expect(within(dialog).queryByLabelText(/number|номер|№|^No\.?$/i)).toBeNull();
+    expect(within(dialog).queryByDisplayValue(String(operator.number))).toBeNull();
+  });
+
+  // #250: the same number the receipt header prints as «Operator No. 12» —
+  // and a deactivated user keeps theirs, because their old receipts still print it.
+  it('shows each user\'s number, deactivated ones included', () => {
+    queryMock.mockReturnValue(loaded([owner, { ...operator, is_active: false }]));
+    render(<UsersPage />);
+    expect(screen.getByRole('columnheader', { name: 'No.' })).toBeInTheDocument();
+    const row = screen.getByText('Maria S.').closest('tr')!;
+    expect(within(row).getByRole('cell', { name: '12' })).toBeInTheDocument();
+    expect(within(row).getByText('Inactive')).toBeInTheDocument();
   });
 
   it('creates an operator through the New dialog with the mapped payload', async () => {
@@ -133,96 +149,50 @@ describe('UsersPage', () => {
     await userEvent.selectOptions(screen.getByLabelText('Role'), 'network_owner');
     expect(screen.queryByLabelText('Collection point')).toBeNull();
   });
-});
 
-/**
- * Issue #11 asks for the owner to SEE a password, not only reissue it. The
- * value is fetched per press — it is never part of the list response — and one
- * row is shown at a time.
- */
-describe('reading a password back', () => {
-  const eyeIn = (row: HTMLElement) => within(row).getByRole('button', { name: 'Show password' });
-
-  const rowFor = async (login: string) => {
+  // The column could only ever say «Viewing is off» where the deployment has no
+  // vault key — the client asked for it gone (#250). Reissuing stays in the dialog.
+  it('has no password column', () => {
     queryMock.mockReturnValue(loaded([owner, operator]));
     render(<UsersPage />);
-    return (await screen.findByText(login)).closest('tr') as HTMLElement;
-  };
-
-  it('fetches the password on the eye and masks it again on a second press', async () => {
-    const row = await rowFor('maria');
-
-    await userEvent.click(eyeIn(row));
-
-    expect(revealMock).toHaveBeenCalledWith('u2');
-    expect(await within(row).findByText('operator')).toBeInTheDocument();
-
-    await userEvent.click(within(row).getByRole('button', { name: 'Hide password' }));
-    expect(within(row).queryByText('operator')).toBeNull();
-
-    // Closed means FORGOTTEN, not hidden: re-opening asks the server again,
-    // which is also what keeps every reading in the audit log.
-    await userEvent.click(eyeIn(row));
-    expect(revealMock).toHaveBeenCalledTimes(2);
+    expect(screen.queryByRole('columnheader', { name: /password/i })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Show password' })).toBeNull();
   });
 
-  // A failed read belongs to the press that failed. Without the reset it stays
-  // beside a CLOSED eye — and beside the wrong row once another is opened.
-  it('clears a failed read when the row is closed', async () => {
-    revealMock.mockRejectedValue(new Error('offline'));
-    const row = await rowFor('maria');
-
-    await userEvent.click(eyeIn(row));
-    expect(await within(row).findByText("Couldn't read the password. Reload the page and try again.")).toBeInTheDocument();
-
-    await userEvent.click(within(row).getByRole('button', { name: 'Hide password' }));
-    expect(within(row).queryByText("Couldn't read the password. Reload the page and try again.")).toBeNull();
+  // The server caps a read at 100 rows: a sorted table that holds only the first
+  // page must say so instead of looking complete.
+  it('says the list is partial when the server holds more users than it sent', () => {
+    queryMock.mockReturnValue({
+      data: { data: [owner, operator], total: 101, page: 1, limit: 100 },
+      isPending: false,
+      isError: false,
+    });
+    render(<UsersPage />);
+    expect(screen.getByText(/first 2 of 101 users/)).toBeInTheDocument();
   });
 
-  it('shows one password at a time — revealing another row hides the first', async () => {
+  it('says nothing about a partial list when it holds every user', () => {
     queryMock.mockReturnValue(loaded([owner, operator]));
     render(<UsersPage />);
-    const ownerRow = (await screen.findByText('owner')).closest('tr') as HTMLElement;
-    const operatorRow = (await screen.findByText('maria')).closest('tr') as HTMLElement;
-
-    revealMock.mockResolvedValueOnce({ password: 'admin', vault_enabled: true });
-    await userEvent.click(eyeIn(ownerRow));
-    expect(await within(ownerRow).findByText('admin')).toBeInTheDocument();
-
-    await userEvent.click(eyeIn(operatorRow));
-    expect(await within(operatorRow).findByText('operator')).toBeInTheDocument();
-    expect(within(ownerRow).queryByText('admin')).toBeNull();
+    expect(screen.queryByText(/sorting covers only these/)).toBeNull();
   });
 
-  // A password issued before the vault existed cannot be recovered — say what
-  // to do about it rather than showing an empty cell.
-  it('asks the owner to reissue when nothing readable is stored', async () => {
-    revealMock.mockResolvedValue({ password: null, vault_enabled: true });
-    const row = await rowFor('maria');
-
-    await userEvent.click(eyeIn(row));
-
-    expect(await within(row).findByText('Reissue to see it')).toBeInTheDocument();
-  });
-
-  // Told apart from the case above: nothing the owner does in the UI fixes a
-  // missing PASSWORD_VAULT_KEY.
-  it('says the vault is off when the deployment has no key', async () => {
-    revealMock.mockResolvedValue({ password: null, vault_enabled: false });
-    const row = await rowFor('maria');
-
-    await userEvent.click(eyeIn(row));
-
-    expect(await within(row).findByText('Viewing is off')).toBeInTheDocument();
-  });
-
-  // The row opens the edit dialog on click; the eye must not.
-  it('does not open the edit dialog', async () => {
-    const row = await rowFor('maria');
-
-    await userEvent.click(eyeIn(row));
-    await within(row).findByText('operator');
-
-    expect(screen.queryByText('Edit user')).toBeNull();
+  // #250: every column but none sorts on a header press — by number as a number.
+  it('sorts the users by a pressed header', async () => {
+    const third: AdminUser = { ...operator, id: 'u3', login: 'bohdan', display_name: 'Bohdan R.', number: 3 };
+    queryMock.mockReturnValue(loaded([operator, owner, third]));
+    render(<UsersPage />);
+    const firstCells = () =>
+      screen
+        .getAllByRole('row')
+        .slice(1)
+        .map((r) => within(r).getAllByRole('cell')[0].textContent);
+    expect(firstCells()).toEqual(['3', '12', '1']); // by name first: Bohdan, Maria, Olena
+    await userEvent.click(screen.getByRole('button', { name: 'No.' }));
+    expect(firstCells()).toEqual(['1', '3', '12']);
+    await userEvent.click(screen.getByRole('button', { name: 'No.' }));
+    expect(firstCells()).toEqual(['12', '3', '1']);
+    await userEvent.click(screen.getByRole('button', { name: 'Name' }));
+    expect(firstCells()).toEqual(['3', '12', '1']);
   });
 });

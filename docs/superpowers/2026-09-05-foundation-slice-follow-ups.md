@@ -1546,12 +1546,10 @@ the review bot found.
   («Брутто», «Піддон», «Тара») live in `shared`, against FSD. The next domain section
   (crates) would widen `shared` again. `shared` should keep only the `rows` and `caption`
   primitives. Domain sections move to `widgets/receipt` or `entities/*`.
-- **Nobody can resolve «Приймальник № 5» to a person.** The number prints on paper, but
-  `UserResponse` (`GET /users`) and `Me` carry no `number`, and the Users page has no column
-  for it. An owner holding a supplier's receipt cannot tell who wrote it without psql. The
-  fix is `number` on `UserResponse` plus a column on the Users page. The Points page needs
-  the same column: `CollectionPointResponse` already carries `number`, but the page's
-  hand-mirrored type does not.
+- **CLOSED (#250).** ~~Nobody can resolve «Приймальник № 5» to a person.~~ `UserResponse`
+  and `MeResponse` now carry `number`. The Users and Points pages open with a «№» column,
+  and the profile shows «Приймальник № N» in the receipt header's own words. The client
+  asked for that last part. Both create and update DTOs refuse a body that names `number`.
 
 ## Deferred from the suppliers totals, PR #253 review (2026-10-19)
 

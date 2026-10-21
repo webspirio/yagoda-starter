@@ -96,6 +96,11 @@ export function ProfilePage() {
 
         <dt className="text-muted-foreground">{t('profile.role')}</dt>
         <dd>{t(`profile.roles.${data.role}`)}</dd>
+
+        {/* The receipt header's own wording (#250), so the operator can match a
+            receipt to themselves at a glance. An owner's receipts print it too. */}
+        <dt className="text-muted-foreground">{t('profile.number')}</dt>
+        <dd>{t('receipt.headerStaff', { number: data.number })}</dd>
       </dl>
     </section>
   );

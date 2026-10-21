@@ -69,11 +69,13 @@
     "soon": "Coming soon"
   },
   "points": {
+    "truncated": "Showing the first {{shown}} of {{total}} points — sorting covers only these.",
     "eyebrow": "Directory",
     "title": "Collection points",
     "description": "The points where berries are received, with their daily cash and crate targets.",
     "new": "New point",
     "col": {
+      "number": "No.",
       "name": "Name",
       "kind": "Kind",
       "targetCash": "Cash target",
@@ -120,22 +122,18 @@
     }
   },
   "users": {
+    "truncated": "Showing the first {{shown}} of {{total}} users — sorting covers only these.",
     "eyebrow": "Directory",
     "title": "Users",
     "description": "The people who sign in to Yagoda — owners and point operators, with their roles and points.",
     "new": "New user",
     "col": {
+      "number": "No.",
       "name": "Name",
       "login": "Login",
-      "password": "Password",
       "role": "Role",
       "point": "Point",
       "status": "Status"
-    },
-    "password": {
-      "reissue": "Reissue to see it",
-      "vaultOff": "Viewing is off",
-      "failed": "Couldn't read the password. Reload the page and try again."
     },
     "roleLabel": {
       "network_owner": "Network owner",
@@ -518,6 +516,7 @@
     "name": "Name",
     "login": "Login",
     "role": "Role",
+    "number": "Number",
     "roles": {
       "network_owner": "Network owner",
       "point_operator": "Point operator"

@@ -15,7 +15,9 @@ export function useCollectionPointsQuery() {
     queryKey: queryKeys.collectionPoints,
     queryFn: async (): Promise<Paginated<CollectionPoint>> => {
       const { data } = await httpClient.get<Paginated<CollectionPoint>>('/collection-points', {
-        params: { include_inactive: true },
+        // As much of the registry as one read allows (100), not the default 20: the
+        // table sorts client-side (#250). Past 100 the page says it is partial.
+        params: { limit: 100, include_inactive: true },
       });
       return data;
     },

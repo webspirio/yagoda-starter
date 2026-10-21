@@ -23,6 +23,7 @@ const ME = {
   id: 'u1',
   username: 'alice',
   display_name: 'Alice Operator',
+  number: 5,
   avatar_url: null,
   language_code: null,
   role: 'point_operator',
@@ -120,6 +121,14 @@ describe('ProfilePage', () => {
     renderPage();
     expect(await screen.findByText('Alice Operator')).toBeInTheDocument();
     expect(screen.getByText('alice')).toBeInTheDocument();
+  });
+
+  // #250: the client wants an operator to see their own number — worded exactly
+  // as the receipt header prints it, so the two can be matched at a glance.
+  it('shows the user\'s number as the receipt header prints it', async () => {
+    renderPage();
+    expect(await screen.findByText('Operator No. 5')).toBeInTheDocument();
+    expect(screen.getByText('Number')).toBeInTheDocument();
   });
 
   it('shows the name as read-only text, with no field to edit it', async () => {

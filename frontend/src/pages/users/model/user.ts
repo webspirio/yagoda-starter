@@ -15,6 +15,8 @@ export interface AdminUser {
   first_name: string;
   last_name: string;
   display_name: string;
+  /** «Приймальник № 5» on the receipt header (#145, #250) — assigned by the database, read-only. */
+  number: number;
   role: UserRole;
   collection_point_id: string | null;
   is_active: boolean;
@@ -55,18 +57,6 @@ export interface UpdateUserInput {
 export interface SetPasswordInput {
   id: string;
   password: string;
-}
-
-/**
- * `GET /users/:id/password`. `password` is null whenever there is nothing to
- * show, and `vault_enabled` says WHY: false means the deployment has no
- * `PASSWORD_VAULT_KEY` (nothing the owner can do in the UI), true means this
- * particular password was issued before the vault and reissuing it makes it
- * readable.
- */
-export interface RevealedPassword {
-  password: string | null;
-  vault_enabled: boolean;
 }
 
 /**

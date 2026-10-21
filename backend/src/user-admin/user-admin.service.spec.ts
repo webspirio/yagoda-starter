@@ -8,6 +8,7 @@ import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
 import { UserRole } from '../users/user-role.enum';
 import { UserAdminService } from './user-admin.service';
+import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import type { AuthenticatedUser } from '../auth/jwt.strategy';
 
@@ -412,6 +413,22 @@ describe('UserAdminService', () => {
     it('accepts an entirely absent body and a well-formed one', async () => {
       expect(await validate(dtoWith({}))).toHaveLength(0);
       expect(await validate(dtoWith({ first_name: 'Оксана', is_active: false }))).toHaveLength(0);
+    });
+  });
+
+  // The number is assigned by the database (GENERATED ALWAYS) and never typed
+  // (#250): a body that names it is refused under the global ValidationPipe's
+  // options, not silently dropped.
+  describe('the user number is read-only', () => {
+    it.each<[string, new () => object]>([
+      ['create', CreateUserDto],
+      ['update', UpdateUserDto],
+    ])('%s refuses a body that sets number', async (_, Dto) => {
+      const errors = await validate(plainToInstance(Dto, { number: 9 }), {
+        whitelist: true,
+        forbidNonWhitelisted: true,
+      });
+      expect(errors.some((e) => e.property === 'number')).toBe(true);
     });
   });
 

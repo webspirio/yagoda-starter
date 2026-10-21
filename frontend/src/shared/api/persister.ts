@@ -16,7 +16,7 @@ import type { Query } from '@tanstack/react-query';
  * missing a field its readers treat as required does not fail loudly — it
  * renders the wrong thing for up to the 24h `maxAge`.
  */
-export const PERSIST_VERSION = 1;
+export const PERSIST_VERSION = 2;
 
 /**
  * Default-deny allowlist of queries that are safe to keep in `localStorage`.

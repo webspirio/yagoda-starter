@@ -13,6 +13,8 @@ export interface CollectionPoint {
   name: string;
   /** 2–8 A–Z/0–9 — the first segment of every receipt code written at this point (§6.2). */
   code: string;
+  /** «Точка № 3» on the receipt header (#145, #250) — assigned by the database, read-only. */
+  number: number;
   kind: PointKind;
   target_cash: string | null;
   target_crates: number | null;
