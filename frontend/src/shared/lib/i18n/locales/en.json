@@ -1122,6 +1122,8 @@
     }
   },
   "supplierCard": {
+    "inactive": "Inactive",
+    "inactiveBanner": "This supplier is deactivated — receipts, payouts and top-ups are unavailable. Activate them first to move money.",
     "eyebrow": "{{point}} · {{kind}}",
     "noPhone": "no phone on file",
     "note": "“{{note}}”",

@@ -1,11 +1,12 @@
 import { useState } from 'react';
-import { useParams, Link } from 'react-router';
+import { useParams, useLocation, Link } from 'react-router';
 import { useTranslation } from 'react-i18next';
 import { PageHeader } from '@/shared/ui/page-header';
 import { StatGrid } from '@/shared/ui/stat-grid';
 import { StatTile } from '@/shared/ui/stat-tile';
 import { SectionCard } from '@/shared/ui/section-card';
 import { Button } from '@/shared/ui/button';
+import { Badge } from '@/shared/ui/badge';
 import { Spinner } from '@/shared/ui/spinner';
 import { ApiError, isTruncated } from '@/shared/api';
 import { add, cmp, isZero, formatUah, formatKg } from '@/shared/lib/money';
@@ -42,6 +43,11 @@ import { SupplierTimeline } from './SupplierTimeline';
 export function SupplierCardPage() {
   const { t, i18n } = useTranslation();
   const { id } = useParams<{ id: string }>();
+  // The list passes its own query string so «back» restores the view it left;
+  // anything but a `?…` string (a hand-made or stale state) is ignored.
+  const from = (useLocation().state as { from?: unknown } | null)?.from;
+  const listPath =
+    typeof from === 'string' && from.startsWith('?') ? `/suppliers${from}` : '/suppliers';
 
   const supplier = useSupplierQuery(id ?? null);
   // The season counters (#103). No money on the card reads this — see `debt` below.
@@ -115,7 +121,7 @@ export function SupplierCardPage() {
     return (
       <div className="flex flex-col items-center gap-3 py-16 text-center text-muted-foreground">
         <p>{t('supplierCard.notFound')}</p>
-        <Link to="/suppliers" className="text-sm underline">
+        <Link to={listPath} className="text-sm underline">
           {t('supplierCard.backLink')}
         </Link>
       </div>
@@ -135,7 +141,7 @@ export function SupplierCardPage() {
         <p role="alert" className="text-destructive">
           {t('common.somethingWentWrong')}
         </p>
-        <Link to="/suppliers" className="text-sm underline">
+        <Link to={listPath} className="text-sm underline">
           {t('supplierCard.backLink')}
         </Link>
       </div>
@@ -161,6 +167,9 @@ export function SupplierCardPage() {
   }
 
   const s = supplier.data;
+  // The backend refuses every new money document for an inactive supplier
+  // (SUPPLIER_INACTIVE), so the card offers none; voids stay.
+  const inactive = !s.is_active;
   // EVERY MONEY FIGURE ON THE CARD READS ONE SNAPSHOT: `settlement.data` —
   // the balance tile, its hint, «Нараховано», the breakdown line under them
   // and OpenBalances. Two separate requests can land either side of a write
@@ -205,7 +214,7 @@ export function SupplierCardPage() {
   return (
     <>
       <Link
-        to="/suppliers"
+        to={listPath}
         className="mb-3 inline-block text-sm text-muted-foreground hover:text-foreground hover:underline"
       >
         ← {t('supplierCard.backLink')}
@@ -221,16 +230,31 @@ export function SupplierCardPage() {
           <>
             {s.phone ?? t('supplierCard.noPhone')}
             {s.note ? <> · {t('supplierCard.note', { note: s.note })}</> : null}
+            {inactive ? (
+              <>
+                {' '}
+                <Badge variant="outline">{t('supplierCard.inactive')}</Badge>
+              </>
+            ) : null}
           </>
         }
         actions={
-          cmp(debt, '0') === 1 ? (
+          !inactive && cmp(debt, '0') === 1 ? (
             <Button onClick={openPayout}>
               {t('supplierCard.payOut', { uah: formatUah(debt, i18n.language) })}
             </Button>
           ) : undefined
         }
       />
+
+      {inactive ? (
+        <p
+          role="status"
+          className="mb-4 rounded-lg border border-line2 bg-muted/40 px-3 py-2 text-sm text-muted-foreground"
+        >
+          {t('supplierCard.inactiveBanner')}
+        </p>
+      ) : null}
 
       <StatGrid columns={4} className="mb-1.5">
         <StatTile
@@ -285,7 +309,7 @@ export function SupplierCardPage() {
           onOpenReceipt={openReceipt}
           onOpenPayoutReceipt={payoutReceipt.openReceipt}
           onVoidPayout={openVoidPayout}
-          onAddTopUp={openTopUp}
+          onAddTopUp={inactive ? undefined : openTopUp}
           onVoidTopUp={openVoidTopUp}
         />
         {truncated ? (
