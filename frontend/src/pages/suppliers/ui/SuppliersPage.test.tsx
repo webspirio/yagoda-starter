@@ -357,17 +357,17 @@ describe('SuppliersPage', () => {
     expect(screen.getByRole('heading', { level: 1, name: 'Suppliers' })).toBeInTheDocument();
   });
 
-  it('asks for active suppliers by default, with Active checked', () => {
+  it('asks for active suppliers by default, with Active selected', () => {
     queryMock.mockReturnValue(loaded([ivan]));
     renderSuppliers();
     expect(queryMock).toHaveBeenLastCalledWith(expect.objectContaining({ status: 'active' }));
-    expect(screen.getByRole('radio', { name: 'Active' })).toBeChecked();
+    expect(screen.getByRole('combobox', { name: 'Show' })).toHaveValue('active');
   });
 
   it('Inactive puts the status in the URL and keeps the sort', async () => {
     queryMock.mockReturnValue(loaded([ivan]));
     const { router } = renderSuppliers('/suppliers?sort=amount&order=desc');
-    await userEvent.click(screen.getByRole('radio', { name: 'Inactive' }));
+    await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Show' }), 'inactive');
     expect(router.state.location.search).toContain('status=inactive');
     expect(queryMock).toHaveBeenLastCalledWith({
       search: '',
@@ -386,14 +386,14 @@ describe('SuppliersPage', () => {
       order: 'desc',
       status: 'all',
     });
-    expect(screen.getByRole('radio', { name: 'All' })).toBeChecked();
+    expect(screen.getByRole('combobox', { name: 'Show' })).toHaveValue('all');
   });
 
   it('reads an unknown status as Active', () => {
     queryMock.mockReturnValue(loaded([ivan]));
     renderSuppliers('/suppliers?status=archived');
     expect(queryMock).toHaveBeenLastCalledWith(expect.objectContaining({ status: 'active' }));
-    expect(screen.getByRole('radio', { name: 'Active' })).toBeChecked();
+    expect(screen.getByRole('combobox', { name: 'Show' })).toHaveValue('active');
   });
 
   it('badges an inactive supplier by name and no active one', () => {

@@ -5,7 +5,7 @@ import { ListPage } from '@/shared/ui/templates/list-page';
 import type { Column } from '@/shared/ui/data-table';
 import { Badge } from '@/shared/ui/badge';
 import { Button } from '@/shared/ui/button';
-import { Segmented } from '@/shared/ui/segmented';
+import { SelectField } from '@/shared/ui/select-field';
 import { TextInput } from '@/shared/ui/text-input';
 import { EmptyState } from '@/shared/ui/empty-state';
 import { Spinner } from '@/shared/ui/spinner';
@@ -168,16 +168,18 @@ export function SuppliersPage() {
               aria-label={t('suppliers.searchPlaceholder')}
               className="max-w-xs"
             />
-            <Segmented
-              fit="content"
-              label={t('suppliers.status.label')}
-              options={(['active', 'inactive', 'all'] as const).map((v) => ({
-                value: v,
-                label: t(`suppliers.status.${v}`),
-              }))}
+            <SelectField
+              aria-label={t('suppliers.status.label')}
               value={status}
-              onChange={(next) => patchUrl({ status: statusToUrl(next) })}
-            />
+              onChange={(e) => patchUrl({ status: statusToUrl(readStatus(e.target.value)) })}
+              className="w-auto"
+            >
+              {(['active', 'inactive', 'all'] as const).map((v) => (
+                <option key={v} value={v}>
+                  {t(`suppliers.status.${v}`)}
+                </option>
+              ))}
+            </SelectField>
           </>
         }
         columns={columns}
