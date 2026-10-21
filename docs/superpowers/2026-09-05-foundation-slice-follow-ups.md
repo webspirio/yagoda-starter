@@ -1634,7 +1634,7 @@ everything `pages/day` showed now sits on `/point-cash`, and two things overlap:
   season.
 - **The stat tiles crowd a phone** (PR #266 review, item 8). `StatGrid` puts
   two tiles per row below `sm`, so at 390 px a figure like «12 345,00 ₴» drops
-  its «₴» onto a line of its own and «НЕ ХВАТАЄ ДО НАДІЛУ» truncates. Not new —
+  its «₴» onto a line of its own and «НЕ ВИСТАЧАЄ ДО НАДІЛУ» truncates. Not new —
   main's three tiles sat two per row too — and the fix belongs to the kit's
   `StatTile`/`StatGrid`, which every screen with tiles shares.
 - **«…сьогодні» labels on a past date** (PR #266 review, item 9). `CashLedger`

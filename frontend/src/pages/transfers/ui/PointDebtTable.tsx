@@ -13,7 +13,7 @@ import { TransferStatusBadge } from './TransferStatusBadge';
 import { DisputeList } from './DisputeDetails';
 
 /**
- * §7.10's table, one row per point: наділ · у касі · не хватає · ящиків ·
+ * §7.10's table, one row per point: наділ · у касі · не вистачає · ящиків ·
  * стан. `GET /point-cash` gives every column except crates.
  *
  * RULE 1 — `target_cash`/`shortfall` are `null` = «не призначали», NEVER
