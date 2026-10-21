@@ -154,8 +154,16 @@ describe('SuppliersPage', () => {
   it('asks for heaviest first by default and marks Total weight as the active sort', () => {
     queryMock.mockReturnValue(loaded([ivan]));
     renderSuppliers();
-    expect(queryMock).toHaveBeenLastCalledWith({ search: '', sort: 'weight', order: 'desc' });
-    expect(screen.getByRole('columnheader', { name: 'Total weight' })).toHaveAttribute('aria-sort', 'descending');
+    expect(queryMock).toHaveBeenLastCalledWith({
+      search: '',
+      sort: 'weight',
+      order: 'desc',
+      status: 'active',
+    });
+    expect(screen.getByRole('columnheader', { name: 'Total weight' })).toHaveAttribute(
+      'aria-sort',
+      'descending',
+    );
   });
 
   it('a click on Accrued puts the sort in the URL and asks the server for it', async () => {
@@ -163,14 +171,21 @@ describe('SuppliersPage', () => {
     const { router } = renderSuppliers();
     await userEvent.click(screen.getByRole('button', { name: 'Accrued' }));
     expect(router.state.location.search).toBe('?sort=amount&order=desc');
-    expect(queryMock).toHaveBeenLastCalledWith({ search: '', sort: 'amount', order: 'desc' });
+    expect(queryMock).toHaveBeenLastCalledWith({
+      search: '',
+      sort: 'amount',
+      order: 'desc',
+      status: 'active',
+    });
   });
 
   it('keeps the table, the clicked header and the rows mounted while a new sort loads', async () => {
     // keepPreviousData: the old rows stay as placeholder data — status 'success',
     // so isPending is false — while the new sort is in flight.
     queryMock.mockImplementation((args: { sort: string }) =>
-      args.sort === 'amount' ? loaded([ivan], { isFetching: true, isPlaceholderData: true }) : loaded([ivan]),
+      args.sort === 'amount'
+        ? loaded([ivan], { isFetching: true, isPlaceholderData: true })
+        : loaded([ivan]),
     );
     renderSuppliers();
     const header = screen.getByRole('button', { name: 'Accrued' });
@@ -183,13 +198,21 @@ describe('SuppliersPage', () => {
   it('restores the sort from the URL, e.g. after Back from a card', () => {
     queryMock.mockReturnValue(loaded([ivan]));
     renderSuppliers('/suppliers?sort=name&order=desc');
-    expect(queryMock).toHaveBeenLastCalledWith({ search: '', sort: 'name', order: 'desc' });
+    expect(queryMock).toHaveBeenLastCalledWith({
+      search: '',
+      sort: 'name',
+      order: 'desc',
+      status: 'active',
+    });
   });
 
   it('shows the name last name first, so the A→Z order reads at a glance', () => {
     queryMock.mockReturnValue(loaded([ivan]));
     renderSuppliers();
-    expect(screen.getByRole('link', { name: 'Koval Ivan' })).toHaveAttribute('href', '/suppliers/s1');
+    expect(screen.getByRole('link', { name: 'Koval Ivan' })).toHaveAttribute(
+      'href',
+      '/suppliers/s1',
+    );
   });
 
   it('keeps the loaded rows when a refetch fails, with the alert and a retry under them', async () => {
@@ -332,5 +355,74 @@ describe('SuppliersPage', () => {
     await waitFor(() => expect(screen.queryByLabelText('First name')).toBeNull());
     expect(screen.queryByText(/Card stub/)).toBeNull();
     expect(screen.getByRole('heading', { level: 1, name: 'Suppliers' })).toBeInTheDocument();
+  });
+
+  it('asks for active suppliers by default, with Active checked', () => {
+    queryMock.mockReturnValue(loaded([ivan]));
+    renderSuppliers();
+    expect(queryMock).toHaveBeenLastCalledWith(expect.objectContaining({ status: 'active' }));
+    expect(screen.getByRole('radio', { name: 'Active' })).toBeChecked();
+  });
+
+  it('Inactive puts the status in the URL and keeps the sort', async () => {
+    queryMock.mockReturnValue(loaded([ivan]));
+    const { router } = renderSuppliers('/suppliers?sort=amount&order=desc');
+    await userEvent.click(screen.getByRole('radio', { name: 'Inactive' }));
+    expect(router.state.location.search).toContain('status=inactive');
+    expect(queryMock).toHaveBeenLastCalledWith({
+      search: '',
+      sort: 'amount',
+      order: 'desc',
+      status: 'inactive',
+    });
+  });
+
+  it('restores status and sort from the URL', () => {
+    queryMock.mockReturnValue(loaded([ivan]));
+    renderSuppliers('/suppliers?status=all&sort=amount');
+    expect(queryMock).toHaveBeenLastCalledWith({
+      search: '',
+      sort: 'amount',
+      order: 'desc',
+      status: 'all',
+    });
+    expect(screen.getByRole('radio', { name: 'All' })).toBeChecked();
+  });
+
+  it('reads an unknown status as Active', () => {
+    queryMock.mockReturnValue(loaded([ivan]));
+    renderSuppliers('/suppliers?status=archived');
+    expect(queryMock).toHaveBeenLastCalledWith(expect.objectContaining({ status: 'active' }));
+    expect(screen.getByRole('radio', { name: 'Active' })).toBeChecked();
+  });
+
+  it('badges an inactive supplier by name and no active one', () => {
+    queryMock.mockReturnValue(loaded([ivan, { ...petro, is_active: false }]));
+    renderSuppliers('/suppliers?status=all');
+    const petroRow = screen.getByText('Melnyk Petro').closest('tr') as HTMLElement;
+    expect(within(petroRow).getByText('Inactive')).toBeInTheDocument();
+    const ivanRow = screen.getByText('Koval Ivan').closest('tr') as HTMLElement;
+    expect(within(ivanRow).queryByText('Inactive')).toBeNull();
+  });
+
+  it('an empty Inactive list says so, not that there are no suppliers', () => {
+    queryMock.mockReturnValue(loaded([]));
+    renderSuppliers('/suppliers?status=inactive');
+    expect(screen.getByText('No deactivated suppliers')).toBeInTheDocument();
+    expect(screen.queryByText('No suppliers yet')).toBeNull();
+  });
+
+  it('hands the list search to the card as router state, from the row and from the link', async () => {
+    queryMock.mockReturnValue(loaded([ivan, petro]));
+    const { router } = renderSuppliers('/suppliers?status=all');
+    const row = screen.getByText('Melnyk Petro').closest('tr') as HTMLElement;
+    await userEvent.click(within(row).getByText('Regular'));
+    await screen.findByText('Card stub s2');
+    expect(router.state.location.state).toEqual({ from: '?status=all' });
+
+    await act(() => router.navigate(-1));
+    await userEvent.click(await screen.findByRole('link', { name: 'Koval Ivan' }));
+    await screen.findByText('Card stub s1');
+    expect(router.state.location.state).toEqual({ from: '?status=all' });
   });
 });
