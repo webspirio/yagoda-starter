@@ -69,12 +69,21 @@ export function useCrateHoldersQuery(pointId: string | null, enabled: boolean) {
     enabled,
     queryFn: async (): Promise<CrateBalanceRow[]> => {
       const rows: CrateBalanceRow[] = [];
+      const seen = new Set<string>();
+      let fetched = 0;
       for (let page = 1; ; page++) {
         const { data } = await httpClient.get<Paginated<CrateBalanceRow>>('/crate-balances', {
           params: { ...(pointId ? { collection_point_id: pointId } : {}), limit: 100, page },
         });
-        rows.push(...data.data);
-        if (data.data.length === 0 || rows.length >= data.total) return rows;
+        // The sort moves with every crate write, so a row can land on two pages: keep the first.
+        for (const row of data.data) {
+          if (!seen.has(row.supplier_id)) {
+            seen.add(row.supplier_id);
+            rows.push(row);
+          }
+        }
+        fetched += data.data.length;
+        if (data.data.length === 0 || fetched >= data.total) return rows;
       }
     },
     staleTime: STALE.list,

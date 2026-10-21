@@ -95,7 +95,10 @@ export function ReturnCratesDialog({
     }
   });
 
-  const rows = holders.data ?? [];
+  // The server ranks by crates held; someone returning crates knows the name.
+  const rows = [...(holders.data ?? [])].sort((a, b) =>
+    supplierName(a).localeCompare(supplierName(b), 'uk'),
+  );
   const nobody = holders.data?.length === 0;
   const split = preview.data;
 

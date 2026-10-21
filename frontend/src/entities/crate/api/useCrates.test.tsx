@@ -91,6 +91,20 @@ describe('useCrateHoldersQuery', () => {
     ]);
   });
 
+  it('keeps a holder once when a shifting sort serves it on two pages', async () => {
+    mock
+      .onGet('/crate-balances')
+      .replyOnce(200, page(0, 100, 150))
+      .onGet('/crate-balances')
+      .replyOnce(200, page(99, 51, 150));
+    const { result } = renderHook(() => useCrateHoldersQuery('p1', true), { wrapper });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    const ids = result.current.data!.map((r) => r.supplier_id);
+    expect(ids).toHaveLength(150);
+    expect(new Set(ids).size).toBe(150);
+    expect(mock.history.get).toHaveLength(2);
+  });
+
   it('makes one request when everything fits on one page', async () => {
     mock.onGet('/crate-balances').reply(200, page(0, 100, 100));
     const { result } = renderHook(() => useCrateHoldersQuery('p1', true), { wrapper });

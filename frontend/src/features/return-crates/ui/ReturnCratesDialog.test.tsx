@@ -206,6 +206,17 @@ describe('ReturnCratesDialog', () => {
     ).toBeInTheDocument();
   });
 
+  it('lists holders alphabetically, not by crates held', () => {
+    holdersMock.mockReturnValue({
+      data: [holder('s3', 'Zoya', 'Bondar', 20, true), holder('s4', 'Anna', 'Lys', 5, true)],
+      isPending: false,
+      isError: false,
+    });
+    open();
+    const names = screen.getAllByRole('option').map((o) => o.textContent);
+    expect(names).toEqual(['Choose a person', 'Anna Lys — 5', 'Zoya Bondar — 20']);
+  });
+
   it('lets an inactive holder be chosen and sent', async () => {
     const user = userEvent.setup();
     previewMock.mockReturnValue(ready(SPLIT));
