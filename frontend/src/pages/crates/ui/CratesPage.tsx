@@ -136,7 +136,7 @@ export function CratesPage() {
             ) : (
               <InFieldTable
                 rows={rows}
-                holders={balances.data?.total ?? rows.length}
+                total={balances.data?.total ?? rows.length}
                 standing={standing.data}
                 truncated={isTruncated(balances.data)}
                 renderDocs={(supplierId) => <PersonCrateDocs supplierId={supplierId} isOwner={Boolean(isOwner)} />}

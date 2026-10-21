@@ -157,6 +157,8 @@ export interface CrateStanding {
   /** `on_hand + in_field + with_berry`. */
   total: number;
   shortfall: number | null;
+  /** People holding ≥1 crate — not the list's row count, which `include_zero` inflates. */
+  holders: number;
 }
 
 /** Filters `GET /crate-issuances` and `GET /crate-returns` accept. */

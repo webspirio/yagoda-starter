@@ -5,7 +5,7 @@ import MockAdapter from 'axios-mock-adapter';
 import type { ReactNode } from 'react';
 import { httpClient, attachAuthInterceptors } from '@/shared/api';
 import type { CrateStanding } from '../model/crate';
-import { useCrateStandingQuery, useCrateIssuancesQuery } from './useCrates';
+import { useCrateStandingQuery, useCrateIssuancesQuery, useCrateHoldersQuery } from './useCrates';
 
 attachAuthInterceptors(httpClient, { getToken: () => null, onUnauthorized: () => {} });
 
@@ -28,6 +28,7 @@ const STANDING: CrateStanding = {
   with_berry: 264,
   total: 800,
   shortfall: 0,
+  holders: 2,
 };
 
 beforeEach(() => {
@@ -67,5 +68,57 @@ describe('useCrateIssuancesQuery', () => {
     renderHook(() => useCrateIssuancesQuery({ supplierId: 's1', includeVoided: true }), { wrapper });
     await waitFor(() => expect(mock.history.get).toHaveLength(1));
     expect(mock.history.get[0].params).toEqual({ supplier_id: 's1', include_voided: true, limit: 100 });
+  });
+});
+
+describe('useCrateHoldersQuery', () => {
+  const holder = (i: number) => ({ supplier_id: `s${i}` });
+  const page = (from: number, n: number, total: number) => ({
+    data: Array.from({ length: n }, (_, i) => holder(from + i)),
+    total,
+    page: 1,
+    limit: 100,
+  });
+
+  it('walks every page until it has `total` rows', async () => {
+    mock.onGet('/crate-balances').replyOnce(200, page(0, 100, 150)).onGet('/crate-balances').replyOnce(200, page(100, 50, 150));
+    const { result } = renderHook(() => useCrateHoldersQuery('p1', true), { wrapper });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(result.current.data).toHaveLength(150);
+    expect(mock.history.get.map((c) => c.params)).toEqual([
+      { collection_point_id: 'p1', limit: 100, page: 1 },
+      { collection_point_id: 'p1', limit: 100, page: 2 },
+    ]);
+  });
+
+  it('makes one request when everything fits on one page', async () => {
+    mock.onGet('/crate-balances').reply(200, page(0, 100, 100));
+    const { result } = renderHook(() => useCrateHoldersQuery('p1', true), { wrapper });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(result.current.data).toHaveLength(100);
+    expect(mock.history.get).toHaveLength(1);
+  });
+
+  it('returns [] after one request when there are no holders', async () => {
+    mock.onGet('/crate-balances').reply(200, page(0, 0, 0));
+    const { result } = renderHook(() => useCrateHoldersQuery('p1', true), { wrapper });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(result.current.data).toEqual([]);
+    expect(mock.history.get).toHaveLength(1);
+  });
+
+  it('stops on an empty page even if `total` promised more', async () => {
+    mock.onGet('/crate-balances').replyOnce(200, page(0, 100, 150)).onGet('/crate-balances').replyOnce(200, page(100, 0, 150));
+    const { result } = renderHook(() => useCrateHoldersQuery('p1', true), { wrapper });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(result.current.data).toHaveLength(100);
+    expect(mock.history.get).toHaveLength(2);
+  });
+
+  it('does not fire when disabled', async () => {
+    const { result } = renderHook(() => useCrateHoldersQuery('p1', false), { wrapper });
+    await new Promise((r) => setTimeout(r, 0));
+    expect(result.current.fetchStatus).toBe('idle');
+    expect(mock.history.get).toHaveLength(0);
   });
 });

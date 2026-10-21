@@ -58,6 +58,30 @@ export function useCrateBalancesQuery({
 }
 
 /**
+ * Every current holder at a point, for pickers that must offer all of them.
+ * `/crate-balances` caps a page at 100, so walk it until `total` rows are in
+ * hand — or a page comes back empty, which stops a lying `total` from looping.
+ * Under the `crateBalances` prefix so every crate write refreshes it.
+ */
+export function useCrateHoldersQuery(pointId: string | null, enabled: boolean) {
+  return useQuery({
+    queryKey: [...queryKeys.crateBalances, 'holders', pointId] as const,
+    enabled,
+    queryFn: async (): Promise<CrateBalanceRow[]> => {
+      const rows: CrateBalanceRow[] = [];
+      for (let page = 1; ; page++) {
+        const { data } = await httpClient.get<Paginated<CrateBalanceRow>>('/crate-balances', {
+          params: { ...(pointId ? { collection_point_id: pointId } : {}), limit: 100, page },
+        });
+        rows.push(...data.data);
+        if (data.data.length === 0 || rows.length >= data.total) return rows;
+      }
+    },
+    staleTime: STALE.list,
+  });
+}
+
+/**
  * The allotment bar — one point's standing, computed by the server. The page
  * never re-derives it from `/crate-balances`, which is PAGINATED: summing a
  * page is wrong the moment a point has more holders than fit on it.

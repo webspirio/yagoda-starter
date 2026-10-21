@@ -36,8 +36,8 @@ vi.mock('./CrateStandingBar', () => ({
   ),
 }));
 vi.mock('./InFieldTable', () => ({
-  InFieldTable: (p: { holders: number; truncated: boolean }) => (
-    <div data-testid="table" data-holders={p.holders} data-truncated={String(p.truncated)} />
+  InFieldTable: (p: { total: number; truncated: boolean }) => (
+    <div data-testid="table" data-total={p.total} data-truncated={String(p.truncated)} />
   ),
 }));
 
@@ -60,7 +60,7 @@ const OPERATOR = { id: 'u2', role: 'point_operator', collection_point_id: 'p1' }
 
 const STANDING: CrateStanding = {
   collection_point_id: 'p1', allotment: 800, received: 808, on_hand: 341, in_transit: 0, in_field: 195,
-  deposit_units: 115, deposit_held: '13800.00', with_berry: 264, total: 800, shortfall: 0,
+  deposit_units: 115, deposit_held: '13800.00', with_berry: 264, total: 800, shortfall: 0, holders: 2,
 };
 
 const row = (over: Partial<CrateBalanceRow> & Pick<CrateBalanceRow, 'supplier_id'>): CrateBalanceRow => ({
@@ -102,7 +102,7 @@ describe('CratesPage', () => {
     balancesMock.mockReturnValue({ data: { data: [row({ supplier_id: 's1' })], total: 11, page: 1, limit: 100 }, isPending: false, isError: false });
     render(<CratesPage />);
     expect(screen.getByTestId('bar')).toHaveTextContent('195');
-    expect(screen.getByTestId('table')).toHaveAttribute('data-holders', '11');
+    expect(screen.getByTestId('table')).toHaveAttribute('data-total', '11');
     expect(screen.getByTestId('table')).toHaveAttribute('data-truncated', 'true');
   });
 

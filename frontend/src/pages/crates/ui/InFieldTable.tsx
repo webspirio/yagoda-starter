@@ -19,13 +19,13 @@ import type { CrateBalanceRow, CrateStanding } from '@/entities/crate';
  */
 export function InFieldTable({
   rows,
-  holders,
+  total,
   standing,
   truncated,
   renderDocs,
 }: {
   rows: CrateBalanceRow[];
-  holders: number;
+  total: number;
   standing: CrateStanding;
   truncated: boolean;
   renderDocs: (supplierId: string) => ReactNode;
@@ -49,7 +49,7 @@ export function InFieldTable({
           {t('crates.inField.title')}
         </h2>
         <span className="font-mono text-xs text-muted-foreground">
-          {t('crates.inField.summary', { units: standing.in_field, count: holders })}
+          {t('crates.inField.summary', { units: standing.in_field, count: standing.holders })}
         </span>
       </div>
       <div className="overflow-x-auto">
@@ -122,7 +122,7 @@ export function InFieldTable({
       </div>
       {truncated ? (
         <p className="border-t border-line2 px-4 py-3 text-xs text-muted-foreground">
-          {t('crates.inField.truncated', { shown: rows.length, total: holders })}
+          {t('crates.inField.truncated', { shown: rows.length, total })}
         </p>
       ) : null}
     </Card>
