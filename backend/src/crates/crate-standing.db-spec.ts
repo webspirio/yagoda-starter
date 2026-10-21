@@ -279,6 +279,7 @@ describe('CrateStandingService.forPoint (Postgres)', () => {
     in_transit: 0,
     deposit_units: 0,
     deposit_held: '0.00',
+    holders: 2,
     ...over,
   });
 
@@ -295,7 +296,7 @@ describe('CrateStandingService.forPoint (Postgres)', () => {
     it('1. a transfer of 500 empties lands them all on hand', async () => {
       await transfer(point, acceptedTransfer(500));
       await expect(service.forPoint(owner(), { collection_point_id: point })).resolves.toEqual(
-        standing({ on_hand: 500, in_field: 0, with_berry: 0, total: 500, shortfall: 0 }),
+        standing({ holders: 0, on_hand: 500, in_field: 0, with_berry: 0, total: 500, shortfall: 0 }),
       );
     });
 
@@ -381,6 +382,7 @@ describe('CrateStandingService.forPoint (Postgres)', () => {
       const sum = page.data.reduce((n, r) => n + r.outstanding_units, 0);
       const got = await service.forPoint(owner(), { collection_point_id: point });
       expect(got.in_field).toBe(sum);
+      expect(got.holders).toBe(page.total);
     });
 
     it('pins an operator to their own point', async () => {
@@ -474,10 +476,24 @@ describe('CrateStandingService.forPoint (Postgres)', () => {
       in_field: 0,
       deposit_units: 0,
       deposit_held: '0.00',
+      holders: 0,
       with_berry: 0,
       total: 0,
       shortfall: null,
     });
+  });
+
+  it('counts only suppliers still holding crates, not one who returned everything', async () => {
+    const p = await newPoint(100);
+    await transfer(p, acceptedTransfer(100));
+    const open = await shift(p, '2026-09-10', null);
+    const keeper = await supplier(p);
+    const returner = await supplier(p);
+    await issue(open, keeper, 5, 'receipt', '0.00');
+    const gone = await issue(open, returner, 7, 'deposit', '840.00');
+    await giveBack(open, returner, gone, 7, '120.00', '840.00');
+    const got = await service.forPoint(owner(), { collection_point_id: p });
+    expect(got).toMatchObject({ in_field: 5, holders: 1 });
   });
 
   it('lets on_hand go negative when the documents issue more than was received', async () => {
