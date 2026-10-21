@@ -13,7 +13,8 @@
     "today": "Today",
     "previousDay": "Previous day",
     "nextDay": "Next day",
-    "print": "Print"
+    "print": "Print",
+    "inactivePoint": "Inactive point"
   },
   "errors": {
     "decimalFormat": "Enter a number, e.g. 12000 or 980.40",

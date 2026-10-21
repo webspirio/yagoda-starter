@@ -564,6 +564,22 @@ describe('ReceptionPage — before the shift is open', () => {
     // Only real points to pick from — no «Select a point» entry.
     expect(screen.getByLabelText('Select a point').querySelector('option[value=""]')).toBeNull();
   });
+
+  it('names a deactivated point in the select rather than showing the first active one over it', () => {
+    meMock.mockReturnValue({ data: OWNER });
+    pointScopeMock.mockReturnValue({
+      pointId: 'p-off',
+      canPick: true,
+      setPointId: vi.fn(),
+      isLoading: false,
+    });
+
+    renderReception();
+
+    const select = screen.getByLabelText<HTMLSelectElement>('Select a point');
+    expect(select.value).toBe('p-off');
+    expect(select.selectedOptions[0]).toHaveTextContent('Inactive point');
+  });
 });
 
 describe('ReceptionPage — choosing the supplier', () => {

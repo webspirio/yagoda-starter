@@ -23,7 +23,10 @@ vi.mock('@/entities/crate', () => ({
 
 vi.mock('@/entities/user', () => ({
   useMeQuery: () => meMock(),
-  usePointScope: () => scopeMock(),
+}));
+
+vi.mock('@/features/point-scope', () => ({
+  useWorkingPoint: () => scopeMock(),
 }));
 
 vi.mock('@/entities/collection-point', () => ({
@@ -190,6 +193,23 @@ describe('CratesPage — the owner', () => {
     scopeMock.mockReturnValue({ pointId: 'p1', canPick: true, setPointId: vi.fn() });
     render(<CratesPage />);
     expect(screen.getByLabelText('Select a point').querySelector('option[value=""]')).toBeNull();
+  });
+
+  it('names a deactivated point in the select rather than showing the first active one over it', () => {
+    scopeMock.mockReturnValue({ pointId: 'p-off', canPick: true, setPointId: vi.fn() });
+    render(<CratesPage />);
+    const select = screen.getByLabelText<HTMLSelectElement>('Select a point');
+    expect(select.value).toBe('p-off');
+    expect(select.selectedOptions[0]).toHaveTextContent('Inactive point');
+  });
+
+  it('waits on the point list instead of asking for a point it is about to resolve', () => {
+    scopeMock.mockReturnValue({ pointId: null, canPick: true, setPointId: vi.fn(), isLoading: true });
+    balancesMock.mockReturnValue({ data: undefined, isPending: true, isError: false });
+    standingMock.mockReturnValue({ data: undefined, isPending: true, isError: false });
+    render(<CratesPage />);
+    expect(screen.queryByText(/no point selected/i)).toBeNull();
+    expect(screen.getByRole('progressbar')).toBeInTheDocument();
   });
 
   it('passes the chosen point to the dialogs, since an owner has none of their own', async () => {

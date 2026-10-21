@@ -345,9 +345,11 @@ export function PointCashPage() {
           {/* No «Оберіть точку» entry: `useWorkingPoint` always resolves the
               owner to a point. A deactivated one reached by `?point=` is in
               neither list below, so it gets its own entry — otherwise the
-              select would show the first active point over its figures. */}
-          {pointId && !(points ?? []).some((p) => p.id === pointId) ? (
-            <option value={pointId}>{pointName}</option>
+              select would show the first active point over its figures.
+              Its name comes from `pointRow`, so it is generic until that
+              read lands — or for good, if it failed. */}
+          {pointId && points && !points.some((p) => p.id === pointId) ? (
+            <option value={pointId}>{pointName || t('common.inactivePoint')}</option>
           ) : null}
           {groupedPoints ? (
             <>

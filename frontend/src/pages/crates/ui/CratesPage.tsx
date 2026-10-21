@@ -8,8 +8,9 @@ import { EmptyState } from '@/shared/ui/empty-state';
 import { Spinner } from '@/shared/ui/spinner';
 import { Switch } from '@/shared/ui/switch';
 import { isTruncated } from '@/shared/api';
-import { useMeQuery, usePointScope } from '@/entities/user';
+import { useMeQuery } from '@/entities/user';
 import { usePointOptionsQuery } from '@/entities/collection-point';
+import { useWorkingPoint } from '@/features/point-scope';
 import { useCrateBalancesQuery, useCrateStandingQuery } from '@/entities/crate';
 import { IssueCratesDialog } from '@/features/issue-crates';
 import { ReturnCratesDialog } from '@/features/return-crates';
@@ -46,7 +47,7 @@ import { PersonCrateDocs } from './PersonCrateDocs';
 export function CratesPage() {
   const { t } = useTranslation();
   const { data: me } = useMeQuery();
-  const { pointId, canPick, setPointId } = usePointScope();
+  const { pointId, canPick, setPointId, isLoading } = useWorkingPoint();
   const { data: points } = usePointOptionsQuery();
 
   const isOwner = me?.role === 'network_owner';
@@ -61,7 +62,9 @@ export function CratesPage() {
 
   const rows = balances.data?.data ?? [];
 
-  const needsPoint = Boolean(isOwner) && pointId === null;
+  // `useWorkingPoint` resolves the owner to a point once the list is in, so
+  // a `null` after that means the network has no active point at all.
+  const needsPoint = Boolean(isOwner) && !isLoading && pointId === null;
 
   return (
     <>
@@ -78,6 +81,12 @@ export function CratesPage() {
                   value={pointId ?? ''}
                   onChange={(e) => setPointId(e.target.value)}
                 >
+                  {/* A deactivated point reached by `?point=` is not in
+                      `points` (active only); without its own entry the
+                      select would show the first active point instead. */}
+                  {pointId && points && !points.some((p) => p.id === pointId) ? (
+                    <option value={pointId}>{t('common.inactivePoint')}</option>
+                  ) : null}
                   {(points ?? []).map((p) => (
                     <option key={p.id} value={p.id}>
                       {p.name}

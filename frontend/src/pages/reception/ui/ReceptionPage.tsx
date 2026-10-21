@@ -355,6 +355,12 @@ export function ReceptionPage() {
           onChange={(e) => setPointId(e.target.value)}
           className="w-48"
         >
+          {/* A deactivated point reached by `?point=` is not in `points`
+              (active only) — without its own entry the select would show
+              the first active point over this point's shift and receipts. */}
+          {pointId && points && !points.some((p) => p.id === pointId) ? (
+            <option value={pointId}>{t('common.inactivePoint')}</option>
+          ) : null}
           {(points ?? []).map((p) => (
             <option key={p.id} value={p.id}>
               {p.name}

@@ -990,6 +990,28 @@ describe('PointCashPage — scope and failure states', () => {
     expect(await screen.findByRole('dialog')).toHaveTextContent('Shypynky');
   });
 
+  it('gives a deactivated point a generic name, never a blank one, until its cash row is read', () => {
+    meMock.mockReturnValue({ data: OWNER });
+    pointScopeMock.mockReturnValue({
+      pointId: 'p1',
+      canPick: true,
+      setPointId: vi.fn(),
+      isLoading: false,
+    });
+    pointOptionsMock.mockReturnValue({
+      data: [{ id: 'p2', name: 'Haiove' }],
+      isPending: false,
+      isError: false,
+    });
+    pointCashMock.mockReturnValue({ data: undefined, isPending: true, isError: false });
+
+    renderPointCash();
+
+    const select = screen.getByLabelText<HTMLSelectElement>('Select a point');
+    expect(select.value).toBe('p1');
+    expect(select.selectedOptions[0]).toHaveTextContent('Inactive point');
+  });
+
   it('prefers the cash row’s own name over the active-points list when both know the point', async () => {
     // When BOTH sources have loaded, the row must win — it is the one
     // source guaranteed to describe the figures actually on screen. Fix
