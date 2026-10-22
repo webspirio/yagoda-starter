@@ -38,7 +38,7 @@ case "$a" in
   *"pr view"*"--json body"*)           pr=$(awk '{for(i=1;i<=NF;i++) if($i=="view") print $(i+1)}' <<<"$a"); v="FAKE_BODY_$pr"; printf '%s\n' "${!v:-${FAKE_BODY:-}}" ;;
   *"pr view"*"--json number,state"*)   printf '%s\t%s\t%s\n' "${FAKE_PR_STATE:-OPEN}" "${FAKE_AUTHOR:-colleague}" "PR line" ;;
   *"pr view"*"--json headRefOid"*)     echo "${FAKE_HEAD:-abcdef1234567}" ;;
-  *"pr list"*"--head"*)                echo "${FAKE_PR_STATE:-MERGED}" ;;
+  *"pr list"*"--head"*)                echo "${FAKE_PR_STATE:-MERGED} ${FAKE_PR_HEAD:-}" ;;
   *"pr list"*"--search"*)              printf '%s\n' ${FAKE_SEARCH:-} ;;
   "api graphql"*)                      printf '%s' "${FAKE_LINKED:-}" ;;
   *"issues/"*"/comments"*)             printf '%s' "${FAKE_BOT_BODY:-}" ;;
@@ -51,7 +51,7 @@ FAKE
 chmod +x "$T/bin/gh"
 export PATH="$T/bin:$PATH" FAKE_LOG="$T/calls" DRY_RUN=0
 reset() { : > "$T/calls"; unset FAKE_STATE FAKE_DEVELOP_FAILS FAKE_DRAFT FAKE_AUTHOR FAKE_CLOSES FAKE_BODY \
-  FAKE_PR_STATE FAKE_SEARCH FAKE_LINKED FAKE_BOT_BODY FAKE_HEAD FAKE_BODY_11 FAKE_BODY_12 FAKE_LOGIN || true; }
+  FAKE_PR_STATE FAKE_PR_HEAD FAKE_SEARCH FAKE_LINKED FAKE_BOT_BODY FAKE_HEAD FAKE_BODY_11 FAKE_BODY_12 FAKE_BODY_13 FAKE_LOGIN || true; }
 
 echo "# 1. board: an unknown status refuses and writes nothing; a known one writes its option id"
 reset; check_fail bash "$TK/board.sh" 5 "Inprogress"; check not_called "item-edit"
@@ -96,6 +96,8 @@ reset; export FAKE_BODY="Опис. Закриває #7"
 check bash "$TR/return-to-author.sh" 9; check called "issue edit 7 --repo webspirio/yagoda-starter --add-assignee colleague --remove-assignee me"
 reset; export FAKE_BODY="Опис. Закриває #8"
 check env LC_ALL=C bash "$TR/return-to-author.sh" 9; check called "issue edit 8 --repo"
+reset; export FAKE_SEARCH="13" FAKE_BODY_13="Закриває #5"
+check env LC_ALL=C bash -c "bash '$TR/pr-for-issue.sh' 5 > /dev/null"; check called "pr view 13 --repo webspirio/yagoda-starter --json number"
 reset; export FAKE_BODY="no keyword here"
 check_fail bash -c "bash '$TR/return-to-author.sh' 9 2> '$T/err'"; check has "$T/err" "names no issue it closes"
 
@@ -129,7 +131,11 @@ git -C "$T/w/main" worktree add -q "$T/w/yagoda-6" feat/6-y 2>/dev/null
 git -C "$T/w/main" push -q origin --delete feat/6-y 2>/dev/null; git -C "$T/w/main" fetch -q --prune origin
 reset; export FAKE_PR_STATE=CLOSED
 check_fail bash -c "cd '$T/w/main' && bash '$TK/cleanup.sh' 6 2> '$T/err'"; check has "$T/err" "closed unmerged"
-reset; export FAKE_PR_STATE=MERGED
+merged_head=$(git -C "$T/w/yagoda-6" rev-parse HEAD)
+git -C "$T/w/yagoda-6" -c user.email=t@t -c user.name=t commit -q --allow-empty -m after-merge
+reset; export FAKE_PR_STATE=MERGED FAKE_PR_HEAD=$merged_head
+check_fail bash -c "cd '$T/w/main' && bash '$TK/cleanup.sh' 6 2> '$T/err'"; check has "$T/err" "never saw"
+git -C "$T/w/yagoda-6" reset -q --hard "$merged_head"
 check bash -c "cd '$T/w/main' && bash '$TK/cleanup.sh' 6 > /dev/null"; check test ! -e "$T/w/yagoda-6"
 
 echo "# 10. shots: the file name is URL-encoded"

@@ -77,7 +77,9 @@ the reviewer, requests their PR review, board → «Ready for review».
 **8. After the merge.** Never close the issue by hand and never set «Done» yourself: if
 the merge automation closed it, leave it; if it stayed open, comment the merge commit and
 leave the board. From the main checkout, `bash .claude/skills/ticket/scripts/cleanup.sh <N>`
-removes the worktree once the PR is merged (or closed unmerged).
+removes the worktree once the PR is merged (or closed unmerged). It refuses uncommitted
+changes and commits that exist only locally — push them, or show the user what they are,
+before removing anything by hand.
 Don't `gh pr merge --delete-branch` from inside the worktree — it deletes the worktree too.
 
 ## Not decided yet (don't present these as rules)

@@ -11,17 +11,21 @@ wt="$(dirname "$main")/yagoda-$n"
 [[ -d "$wt" ]] || die "no worktree at $wt"
 branch=$(git -C "$wt" branch --show-current)
 # PR state, not `merge-base --is-ancestor`: a squash merge is never an ancestor.
-state=$(gh pr list --repo "$REPO" --head "$branch" --state all --json state --jq '.[0].state // "NONE"')
+read -r state head_sha < <(gh pr list --repo "$REPO" --head "$branch" --state all \
+  --json state,headRefOid --jq '.[0] | "\(.state // "NONE") \(.headRefOid // "")"')
 [[ "$state" == MERGED || "$state" == CLOSED ]] || die "PR for $branch is $state — not removing the worktree"
 [[ -z "$(git -C "$wt" status --porcelain)" ]] || die "$wt has uncommitted changes — look before removing"
 # `branch -D` below is forced (a squash merge is never «merged» for git), so check here that
 # no commit exists only locally. A merged PR whose remote branch was deleted and pruned has no
-# upstream any more — its work is in main, so that is fine; a closed-unmerged one is not.
+# upstream any more — then the PR's recorded head is the authority: HEAD must be it.
 if git -C "$wt" rev-parse -q --verify '@{u}' >/dev/null; then
   ahead=$(git -C "$wt" rev-list --count '@{u}..HEAD')
   [[ "$ahead" == 0 ]] || die "$branch has $ahead commit(s) not on the remote — push or inspect them before removing"
 elif [[ "$state" == CLOSED ]]; then
   die "$branch has no upstream and its PR was closed unmerged — push or inspect it before removing"
+else
+  [[ "$(git -C "$wt" rev-parse HEAD)" == "$head_sha" ]] \
+    || die "$branch has commits the merged PR never saw — push or inspect them before removing"
 fi
 run git -C "$main" worktree remove "$wt"
 run git -C "$main" branch -D "$branch"
