@@ -8,10 +8,10 @@ source "$(dirname "$0")/../../ticket/scripts/lib.sh"
 pr=$1
 login=$(me)
 author=$(gh pr view "$pr" --repo "$REPO" --json author --jq .author.login)
+[[ "$author" != "$login" ]] || die "PR #$pr is your own — there is no one to return it to"
 issues=$(gh pr view "$pr" --repo "$REPO" --json closingIssuesReferences --jq '.closingIssuesReferences[].number')
 # The PR-body «Closes #N» often doesn't register here — fall back to the numbers in the body.
-[[ -n "$issues" ]] || issues=$(gh pr view "$pr" --repo "$REPO" --json body --jq .body \
-  | grep -oiE '(close[sd]?|fix(e[sd])?|resolve[sd]?) #[0-9]+' | grep -oE '[0-9]+' | sort -u)
+[[ -n "$issues" ]] || issues=$(gh pr view "$pr" --repo "$REPO" --json body --jq .body | closing_numbers)
 [[ -n "$issues" ]] || die "PR #$pr names no issue it closes — ask the user which issue to return"
 for n in $issues; do
   run gh issue edit "$n" --repo "$REPO" --add-assignee "$author" --remove-assignee "$login" >/dev/null

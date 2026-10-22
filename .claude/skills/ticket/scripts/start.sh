@@ -19,15 +19,17 @@ wt="$(dirname "$main")/yagoda-$n"
 [[ ! -e "$wt" ]] || die "$wt already exists — reuse it or remove it first"
 [[ -f "$main/.env" ]] || die "no .env in the main checkout $main — copy .env.example and fill it first"
 
-login=$(me)
-run gh issue edit "$n" --repo "$REPO" --add-assignee "$login" >/dev/null
-echo "assigned: $login"
-set_status "$(issue_url "$n")" "In progress"
-
+# Branch and worktree first: if any of them fails, the issue is not left assigned and
+# «In progress» with nothing behind it.
 run timeout 60 gh issue develop "$n" --repo "$REPO" --base main --name "$branch" >/dev/null
 run git -C "$main" fetch -q origin "$branch"
 run git -C "$main" worktree add -q "$wt" "$branch"
 run cp "$main/.env" "$wt/.env"
+
+login=$(me)
+run gh issue edit "$n" --repo "$REPO" --add-assignee "$login" >/dev/null
+echo "assigned: $login"
+set_status "$(issue_url "$n")" "In progress"
 
 db="$(echo "$branch" | tr '/-' '__')_test"
 cat <<EOF

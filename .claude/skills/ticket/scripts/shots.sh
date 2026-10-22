@@ -17,7 +17,7 @@ for f in "$@"; do
     echo "DRY_RUN: upload $f"; url="https://github.com/user-attachments/assets/<uuid>"
   else
     url=$(gh api -X POST \
-      "https://uploads.github.com/user-attachments/assets?content_type=${type/\//%2F}&name=$name&repository_id=$repo_id" \
+      "https://uploads.github.com/user-attachments/assets?content_type=$(urlencode "$type")&name=$(urlencode "$name")&repository_id=$repo_id" \
       -H "Content-Type: $type" --input "$f" --jq .url)
   fi
   echo "![${name%.*}]($url)"

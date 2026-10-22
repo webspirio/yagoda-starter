@@ -13,6 +13,11 @@ branch=$(git -C "$wt" branch --show-current)
 state=$(gh pr list --repo "$REPO" --head "$branch" --state all --json state --jq '.[0].state // "NONE"')
 [[ "$state" == MERGED || "$state" == CLOSED ]] || die "PR for $branch is $state — not removing the worktree"
 [[ -z "$(git -C "$wt" status --porcelain)" ]] || die "$wt has uncommitted changes — look before removing"
+# `branch -D` below is forced (a squash merge is never «merged» for git), so check here that
+# no commit exists only locally — a closed-unmerged PR with an unpushed fix would lose it.
+git -C "$wt" rev-parse -q --verify '@{u}' >/dev/null || die "$branch has no upstream — push or inspect it before removing"
+ahead=$(git -C "$wt" rev-list --count '@{u}..HEAD')
+[[ "$ahead" == 0 ]] || die "$branch has $ahead commit(s) not on the remote — push or inspect them before removing"
 run git -C "$main" worktree remove "$wt"
 run git -C "$main" branch -D "$branch"
 db="$(echo "$branch" | tr '/-' '__')_test"
