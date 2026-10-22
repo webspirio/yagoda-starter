@@ -8,6 +8,13 @@ REPO=webspirio/yagoda-starter
 PROJECT_NUMBER=4          # «Main board»
 BOT_LOGIN=swefd           # the automated PR reviewer
 
+# Review pairs: developers review each other. A new developer is added here with their
+# partner — both directions. Nobody listed → handoff.sh asks instead of guessing.
+declare -A REVIEW_PAIR=(
+  [dz-vadim]=hlibVasylevskyi
+  [hlibVasylevskyi]=dz-vadim
+)
+
 die() { echo "error: $*" >&2; exit 1; }
 
 # DRY_RUN=1 prints every write instead of doing it; reads still run.

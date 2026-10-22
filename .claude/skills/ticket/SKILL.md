@@ -15,9 +15,10 @@ not off your terminal. Every phase below leaves a trace there. The mechanical st
 scripts (`bash .claude/skills/ticket/scripts/<name>.sh`, `DRY_RUN=1` prints writes instead
 of doing them); the judgement steps are yours. Run them from the repo root or the worktree.
 
-Team: Гліб `hlibVasylevskyi` (reviewer) · Ліна `linaokhrimenko` (tester/PM, works from
-the board) · Вадим `dz-vadim` · review bot `swefd`. The hand-off reviewer is whoever the
-user names; if nobody is named, ask.
+Team: Вадим `dz-vadim` · Гліб `hlibVasylevskyi` · Ліна `linaokhrimenko` (tester/PM, works
+from the board) · review bot `swefd`. **Developers review each other in pairs** — Вадим ↔
+Гліб; a new developer gets a partner in `REVIEW_PAIR` (`scripts/lib.sh`). The hand-off goes
+to your partner unless the user names someone else.
 
 ## Phases
 
@@ -71,8 +72,9 @@ screenshots if a fix changed the UI.
 
 **7. Hand off.** Final issue comment, Ukrainian, plain words, for the tester: what is on
 the screen now, preview link + login, numbered steps to check, screenshots, what is NOT in
-this ticket. Then `bash .claude/skills/ticket/scripts/handoff.sh <N> <PR> <reviewer>` — unassigns you, assigns
-the reviewer, requests their PR review, board → «Ready for review».
+this ticket. Then `bash .claude/skills/ticket/scripts/handoff.sh <N> <PR> [reviewer]` — unassigns you,
+assigns the reviewer (default: your review partner), requests their PR review, board →
+«Ready for review».
 
 **8. After the merge.** Never close the issue by hand and never set «Done» yourself: if
 the merge automation closed it, leave it; if it stayed open, comment the merge commit and

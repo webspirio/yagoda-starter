@@ -89,6 +89,10 @@ reset; check bash "$TK/handoff.sh" 5 9 reviewer
 check called "issue edit 5 --repo webspirio/yagoda-starter --remove-assignee me --add-assignee reviewer"
 check called "pulls/9/requested_reviewers -f reviewers[]=reviewer"
 check called "--single-select-option-id O_RFR"
+echo "# 5b. handoff: no reviewer named → your review partner; nobody paired → ask"
+reset; check_fail bash -c "bash '$TK/handoff.sh' 5 9 2> '$T/err'"; check has "$T/err" "no review partner"
+reset; export FAKE_LOGIN=dz-vadim; check bash "$TK/handoff.sh" 5 9; check called "--add-assignee hlibVasylevskyi"
+reset; export FAKE_LOGIN=hlibVasylevskyi; check bash "$TK/handoff.sh" 5 9; check called "--add-assignee dz-vadim"
 
 echo "# 6. return-to-author: own PR refuses; body fallback (also «Закриває»); no issue → a message, not silence"
 reset; export FAKE_AUTHOR=me; check_fail bash "$TR/return-to-author.sh" 9
