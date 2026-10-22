@@ -91,6 +91,10 @@ function canConnect(host, port) {
   })
 }
 
+/** How long `probeDocker` keeps re-asking a daemon that answers `'down'`, and how often. */
+const DOCKER_PROBE_BUDGET_MS = 30_000
+const DOCKER_PROBE_INTERVAL_MS = 2_000
+
 /**
  * `docker info` exits 0 only when the CLI can reach a running daemon — a missing
  * binary, a daemon that is not started, and a permission error all resolve `false` here,
@@ -98,12 +102,55 @@ function canConnect(host, port) {
  * "the check found a problem". It gated the deleted `docker` row too, until 2026-09-15;
  * `smoke` is the only row that needs a daemon now, for the Compose stack it drives.
  *
+ * ONE ATTEMPT IS NOT AN ANSWER (#238). A daemon that has just pulled images and started
+ * containers can take longer than one `docker info` to answer, and a single slow reply
+ * read as "no daemon" — under --no-skip, a red `smoke` on a commit with nothing wrong.
+ * It stayed hidden while `smoke` was the last of every row: by then the daemon had been
+ * idle for minutes. CI's `smoke` leg runs it seconds after `docker compose up`, which is
+ * where it surfaced. So a daemon that does not answer is asked again until the budget is
+ * spent; a missing CLI (`ENOENT`) is final at once, so a laptop without Docker pays
+ * nothing for the retry. A laptop with Docker INSTALLED but not running does pay: its CLI
+ * answers `'down'`, which is indistinguishable from a busy daemon, so `verify:full` waits
+ * out the whole budget before `smoke` SKIPS. The pre-push gate excludes `smoke`, so a push
+ * never waits for it.
+ *
  * @returns {Promise<boolean>}
  */
 function probeDocker() {
+  return retryProbe(dockerInfoOnce, { budgetMs: DOCKER_PROBE_BUDGET_MS, intervalMs: DOCKER_PROBE_INTERVAL_MS })
+}
+
+/**
+ * One `docker info`: `'up'`, `'down'` (the CLI ran and failed — may be transient), or
+ * `'absent'` (no CLI to run — never transient).
+ *
+ * @returns {Promise<'up' | 'down' | 'absent'>}
+ */
+function dockerInfoOnce() {
   return new Promise((resolve) => {
-    execFile('docker', ['info'], { timeout: 4000 }, (err) => resolve(!err))
+    execFile('docker', ['info'], { timeout: 4000 }, (err) =>
+      resolve(!err ? 'up' : /** @type {any} */ (err).code === 'ENOENT' ? 'absent' : 'down'),
+    )
   })
+}
+
+/**
+ * Re-asks `once` while it answers `'down'` and the budget lasts. `'up'` is true at once,
+ * `'absent'` is false at once, and a budget spent on `'down'` is false.
+ *
+ * @param {() => Promise<'up' | 'down' | 'absent'>} once
+ * @param {{ budgetMs: number, intervalMs: number, now?: () => number, sleep?: (ms: number) => Promise<void> }} opts
+ * @returns {Promise<boolean>}
+ */
+export async function retryProbe(once, { budgetMs, intervalMs, now = Date.now, sleep }) {
+  const wait = sleep ?? ((/** @type {number} */ ms) => new Promise((r) => setTimeout(r, ms)))
+  const deadline = now() + budgetMs
+  for (;;) {
+    const answer = await once()
+    if (answer === 'up') return true
+    if (answer === 'absent' || now() >= deadline) return false
+    await wait(intervalMs)
+  }
 }
 
 /**
@@ -176,8 +223,8 @@ export const PRECONDITIONS = {
   },
   docker: {
     describe:
-      'Docker is not reachable (no CLI, or the CLI cannot reach a running daemon — ' +
-      '`docker info` did not exit 0). Under --no-skip this is a failure, not "nothing to ' +
+      'Docker is not reachable (no CLI, or a daemon that `docker info` could not reach ' +
+      `through ${DOCKER_PROBE_BUDGET_MS / 1000}s of retries). Under --no-skip this is a failure, not "nothing to ` +
       'report": smoke needs a real daemon to bring up the Compose stack it drives.',
     probe: probeDocker,
   },
@@ -768,7 +815,12 @@ export const CHECKS = [
     // the variance is the runner's rather than the cache's. It relied on the runner default
     // until 2026-09-16 and no longer fits under the 60s that default now is.
     //
-    // 180s is ~3.6x the worst reading. The hang it exists to catch is real and named in
+    // RE-MEASURED after the CI split (#238): 65.8s (run 38414284091). Both readings above
+    // were taken while CI pre-started Postgres and Redis before this row; the `smoke` leg
+    // no longer does, so global-setup.ts's own `docker compose up` now runs inside the row
+    // and counts against this budget. Read 65.8s, not 49.7s, as the current cost.
+    //
+    // 180s is ~2.7x that reading. The hang it exists to catch is real and named in
     // this row's own proves: an earlier version of it died on `Timed out waiting 60000ms
     // from config.webServer` with global-setup.ts never having run a line.
     timeoutMs: 180_000,
