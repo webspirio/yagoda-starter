@@ -9,11 +9,14 @@ PROJECT_NUMBER=4          # «Main board»
 BOT_LOGIN=swefd           # the automated PR reviewer
 
 # Review pairs: developers review each other. A new developer is added here with their
-# partner — both directions. Nobody listed → handoff.sh asks instead of guessing.
-declare -A REVIEW_PAIR=(
-  [dz-vadim]=hlibVasylevskyi
-  [hlibVasylevskyi]=dz-vadim
-)
+# partner — both directions. Nobody listed → empty, and handoff.sh asks instead of guessing.
+# A `case`, not an associative array: these scripts stay inside bash 3.2 (stock macOS).
+review_pair() {
+  case "$1" in
+    dz-vadim) echo hlibVasylevskyi ;;
+    hlibVasylevskyi) echo dz-vadim ;;
+  esac
+}
 
 die() { echo "error: $*" >&2; exit 1; }
 

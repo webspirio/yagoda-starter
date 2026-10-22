@@ -140,6 +140,10 @@ git -C "$T/w/yagoda-6" -c user.email=t@t -c user.name=t commit -q --allow-empty 
 reset; export FAKE_PR_STATE=MERGED FAKE_PR_HEAD=$merged_head
 check_fail bash -c "cd '$T/w/main' && bash '$TK/cleanup.sh' 6 2> '$T/err'"; check has "$T/err" "never saw"
 git -C "$T/w/yagoda-6" reset -q --hard "$merged_head"
+git -C "$T/w/yagoda-6" -c user.email=t@t -c user.name=t commit -q --allow-empty -m in-the-pr
+pr_head=$(git -C "$T/w/yagoda-6" rev-parse HEAD)
+git -C "$T/w/yagoda-6" reset -q --hard HEAD~1     # local is OLDER than what was merged
+reset; export FAKE_PR_STATE=MERGED FAKE_PR_HEAD=$pr_head
 check bash -c "cd '$T/w/main' && bash '$TK/cleanup.sh' 6 > /dev/null"; check test ! -e "$T/w/yagoda-6"
 
 echo "# 10. shots: the file name is URL-encoded"

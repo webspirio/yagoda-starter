@@ -24,8 +24,15 @@ if git -C "$wt" rev-parse -q --verify '@{u}' >/dev/null; then
 elif [[ "$state" == CLOSED ]]; then
   die "$branch has no upstream and its PR was closed unmerged — push or inspect it before removing"
 else
-  [[ "$(git -C "$wt" rev-parse HEAD)" == "$head_sha" ]] \
-    || die "$branch has commits the merged PR never saw — push or inspect them before removing"
+  # Safe when every local commit is in what was merged: HEAD is the PR head or its ancestor.
+  # Without the PR head object locally, fall back to plain equality.
+  if git -C "$wt" cat-file -e "${head_sha}^{commit}" 2>/dev/null; then
+    git -C "$wt" merge-base --is-ancestor HEAD "$head_sha" \
+      || die "$branch has commits the merged PR never saw — push or inspect them before removing"
+  else
+    [[ "$(git -C "$wt" rev-parse HEAD)" == "$head_sha" ]] \
+      || die "$branch has commits the merged PR never saw — push or inspect them before removing"
+  fi
 fi
 run git -C "$main" worktree remove "$wt"
 run git -C "$main" branch -D "$branch"

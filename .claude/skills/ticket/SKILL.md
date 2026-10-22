@@ -17,7 +17,7 @@ of doing them); the judgement steps are yours. Run them from the repo root or th
 
 Team: Вадим `dz-vadim` · Гліб `hlibVasylevskyi` · Ліна `linaokhrimenko` (tester/PM, works
 from the board) · review bot `swefd`. **Developers review each other in pairs** — Вадим ↔
-Гліб; a new developer gets a partner in `REVIEW_PAIR` (`scripts/lib.sh`). The hand-off goes
+Гліб; a new developer gets a partner in `review_pair` (`scripts/lib.sh`). The hand-off goes
 to your partner unless the user names someone else.
 
 ## Phases
@@ -28,7 +28,8 @@ panel and the worktree `../yagoda-<N>` with `.env`, then assigns you and sets th
 to «In progress». Then:
 - `npm ci` in the worktree, in the background.
 - `gh issue comment <N> --body-file <f>`, Ukrainian, for the tester: «Взято в роботу» +
-  what will and what will NOT be done.
+  what will and what will NOT be done, as far as it is known; the issue's open questions are
+  listed as open — the grilling settles them.
 - Open questions in the issue («Треба уточнити») go into the grilling below — never
   settled by an assumption of yours.
 
@@ -83,6 +84,9 @@ removes the worktree once the PR is merged (or closed unmerged). It refuses unco
 changes and commits that exist only locally — push them, or show the user what they are,
 before removing anything by hand.
 Don't `gh pr merge --delete-branch` from inside the worktree — it deletes the worktree too.
+
+A NEW ticket you create (a follow-up, a bug found on the way) starts at «Not ready» on the
+board — the team moves it on: `bash .claude/skills/ticket/scripts/board.sh <N> "Not ready"`.
 
 ## Not decided yet (don't present these as rules)
 
