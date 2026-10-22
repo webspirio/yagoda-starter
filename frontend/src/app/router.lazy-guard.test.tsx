@@ -28,11 +28,25 @@ import { routes } from './router';
  * not the module was loaded — a false green. A plain hoisted object is not
  * reset, so it records what actually happened.
  */
-const loaded = vi.hoisted(() => ({ reweigh: 0 }));
+const loaded = vi.hoisted(() => ({ reweigh: 0, prices: 0 }));
 vi.mock('@/pages/reweigh', () => {
   loaded.reweigh += 1;
   return { ReweighPage: () => <p>reweigh page</p> };
 });
+vi.mock('@/pages/prices', () => {
+  loaded.prices += 1;
+  return { PricesPage: () => <p>prices page</p> };
+});
+// The rest of the owner chunk, stubbed: the owner case evaluates the WHOLE
+// chunk, and under a loaded parallel run importing nine real pages took it
+// past `asyncUtilTimeout`. What this file proves is the gate, not the pages.
+vi.mock('@/pages/points', () => ({ PointsPage: () => null }));
+vi.mock('@/pages/users', () => ({ UsersPage: () => null }));
+vi.mock('@/pages/catalog', () => ({ CatalogPage: () => null }));
+vi.mock('@/pages/journal', () => ({ JournalPage: () => null }));
+vi.mock('@/pages/transfers', () => ({ TransfersPage: () => null }));
+vi.mock('@/pages/cost-of-day', () => ({ CostOfDayPage: () => null }));
+vi.mock('@/pages/settings', () => ({ SettingsPage: () => null }));
 
 const meMock = vi.hoisted(() => vi.fn());
 vi.mock('@/entities/user', async (importOriginal) => {
@@ -73,11 +87,25 @@ describe('owner-only chunks are gated, not merely deferred', () => {
     expect(loaded.reweigh).toBe(0);
   });
 
+  // #221 — «Ціни дня» joined the owner group. Same ordering rule: this runs
+  // before anything renders an owner-only route.
+  it('turns an operator away from /prices without ever loading the prices module', async () => {
+    signInAs('point_operator');
+    renderAt('/prices');
+
+    expect(await screen.findByRole('heading', { name: /summary/i })).toBeInTheDocument();
+    expect(screen.queryByText('prices page')).not.toBeInTheDocument();
+    expect(loaded.prices).toBe(0);
+  });
+
   it('loads the reweigh module only once an owner actually reaches it', async () => {
     signInAs('network_owner');
     renderAt('/reweigh');
 
     expect(await screen.findByText('reweigh page')).toBeInTheDocument();
     expect(loaded.reweigh).toBe(1);
+    // ONE owner chunk: reaching any owner page evaluates them all, prices
+    // included — which is what proves the module is in that chunk at all.
+    expect(loaded.prices).toBe(1);
   });
 });

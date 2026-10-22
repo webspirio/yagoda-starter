@@ -31,7 +31,7 @@ import { DayLines } from './DayLines';
  * weighs pallets that arrived from a collection point, and sees the недостача
  * against what the point claims it sent (§8).
  *
- * THE DATE HEADER copies `pages/day/ui/DayPage.tsx` verbatim — `useUrlParam`,
+ * THE DATE HEADER copies «Каса за день»'s (now `pages/point-cash`, #221) verbatim — `useUrlParam`,
  * the same clamp, `useWorkingPoint`, `DateStepper` — rather than inventing a
  * second one. It is deliberately LOCAL to this screen: the owner works
  * through yesterday's trucks while the points are still buying today, and a
@@ -88,7 +88,7 @@ export function ReweighPage() {
   const [dateParam, setDateParam] = useUrlParam('date');
   const today = todayIso();
   // A hand-edited (or stale-link) date is clamped rather than sent on — same
-  // guard as DayPage: there is no shift in the future.
+  // guard as `pages/point-cash`: there is no shift in the future.
   const date = isRealIsoDate(dateParam) && dateParam <= today ? dateParam : today;
 
   const shift = useShiftOnDateQuery(pointId, date);
@@ -104,8 +104,7 @@ export function ReweighPage() {
   // about their own shift. `pointId !== null` / `shiftId !== undefined`
   // guard the DISABLED queries: TanStack reports `isPending` on a query it
   // never ran, and gating on it bare would park the screen on a spinner
-  // whenever there is legitimately no point or no shift. Same shape as
-  // `pages/day`'s `isLoadingShift`.
+  // whenever there is legitimately no point or no shift.
   // `pointsQuery` is gated by nothing and is never disabled, so unlike the two
   // below it needs no `enabled`-guard companion — its own flags are honest.
   const readsPending =

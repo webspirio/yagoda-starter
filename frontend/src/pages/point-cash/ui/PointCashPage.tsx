@@ -6,6 +6,8 @@ import { SelectField } from '@/shared/ui/select-field';
 import { Button } from '@/shared/ui/button';
 import { EmptyState } from '@/shared/ui/empty-state';
 import { Spinner } from '@/shared/ui/spinner';
+import { SectionCard } from '@/shared/ui/section-card';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/shared/ui/tabs';
 import { isTruncated } from '@/shared/api';
 import { useUrlParam } from '@/shared/lib/url-state';
 import { isNegative, formatUah, cmp } from '@/shared/lib/money';
@@ -38,17 +40,20 @@ import {
   OpenShiftAlert,
 } from '@/features/count-shift';
 import { ShiftCountResult, type ShiftCountResultFor } from '@/widgets/count-result';
+import { PayoutReceiptDialog, ReceiptDialog, useReceiptOpener } from '@/widgets/receipt';
 import { CashLedger } from './CashLedger';
 import { shiftDateOf } from '../lib/buildLedger';
-import { CratesBookCard } from './CratesBookCard';
 import { IncomingTransfers } from './IncomingTransfers';
 import { CashCountHistory } from './CashCountHistory';
 import { ShiftCountPanel, type OpenShiftGate } from './ShiftCountPanel';
+import { DayTiles } from './DayTiles';
+import { DayFeed } from './DayFeed';
+import { DayLedger } from './DayLedger';
+import { ReopenShiftDialog } from './ReopenShiftDialog';
+import { useDayDocuments } from '../model/useDayDocuments';
 
 /** What the shift-count dialog is open for: which verb, and — for a close —
- *  the shift it closes. Same shape `pages/day/ui/DayPage.tsx` keeps locally;
- *  not shared, because the two pages' surrounding wiring (toolbar vs panel)
- *  differs enough that a shared type would buy nothing but an import. */
+ *  the shift it closes. */
 type CountTarget = { mode: 'open' } | { mode: 'close'; shiftId: string };
 
 /**
@@ -178,7 +183,7 @@ export function PointCashPage() {
   // #114 — `shift` answers only for the date on screen; a shift left open on
   // an earlier day is invisible to it, and «Відкрити зміну» over one is the
   // SHIFT_ALREADY_OPEN refusal of #113. `/shifts/current` is date-blind — the
-  // same gate `pages/day` and `pages/reception` put on their own button.
+  // same gate `pages/reception` puts on its own button.
   const current = useCurrentShiftQuery(pointId);
   const openShiftGate: OpenShiftGate = current.isError
     ? 'failed'
@@ -189,13 +194,30 @@ export function PointCashPage() {
         : 'blocked';
   const panelCounts = shiftCashCounts.data?.data ?? [];
 
+  // #221 — what «Каса за день» showed, folded in: the shift's own documents,
+  // read BY SHIFT (see `useDayDocuments` for why these are not the ledger's
+  // reads above). Kept out of the page-wide `isError`, like the shift read:
+  // a failed journal degrades the day's tiles, feed and reconciliation only.
+  const day = useDayDocuments(date, shift.data?.id);
+  const hasShift = shift.data != null;
+  // One gate for the day's figures: a shift, a clean read, both journals in.
+  // Tiles and «Звірка каси» must never disagree on it.
+  const dayFiguresVisible = hasShift && !shift.isError && !day.isError && day.ready;
+  const receipt = useReceiptOpener();
+  const payoutReceipt = useReceiptOpener();
+  const [reopenOpen, setReopenOpen] = useState(false);
+  // Bumped on every open so the dialog remounts with fresh RHF defaults and no
+  // banner from the refusal before it.
+  const [reopenInstance, setReopenInstance] = useState(0);
+
   const openShift = useOpenShiftMutation();
   const closeShift = useCloseShiftMutation();
   const [countTarget, setCountTarget] = useState<CountTarget | null>(null);
-  // The COPY the dialog shows — same split from `countTarget` (and the same
-  // reason) `DayPage` documents: `open={countTarget !== null}` alone drives
-  // visibility, so `countMode` must survive the close (exit) animation after
-  // `countTarget` is already cleared.
+  // The COPY the dialog shows, split from `countTarget`: `open={countTarget
+  // !== null}` alone drives visibility, so `countMode` must survive the close
+  // (exit) animation after `countTarget` is already cleared — resetting it
+  // too would flip a closing close-dialog to the open copy for ~100ms. (CSS-
+  // driven and untestable under jsdom — no test covers it.)
   const [countMode, setCountMode] = useState<'open' | 'close'>('open');
   const [countInstance, setCountInstance] = useState(0);
   const openCountDialog = (target: CountTarget) => {
@@ -206,7 +228,10 @@ export function PointCashPage() {
   // R4 — the result view after an open/close; see `ShiftCountResult`.
   const [resultFor, setResultFor] = useState<ShiftCountResultFor | null>(null);
 
-  const [showCountHistory, setShowCountHistory] = useState(false);
+  // «Стрічка дня» | «Історія перерахунків» (#221). The history reads the same
+  // `useCashCountsQuery({ pointId })` key as `cashCounts` above, so opening its
+  // tab costs no request; the tab only keeps the long table off the screen.
+  const [activityTab, setActivityTab] = useState<'feed' | 'counts'>('feed');
 
   const [targetOpen, setTargetOpen] = useState(false);
   const [targetInstance, setTargetInstance] = useState(0);
@@ -288,6 +313,23 @@ export function PointCashPage() {
                   ? t('pointCash.stats.shortfallOver')
                   : t('pointCash.stats.shortfallSettled'),
         },
+        // R1 — the crates book as its OWN tile (#221), beside the berry cash
+        // and never summed with it: the client's «Правка» says berry cash and
+        // crate deposits do not lie in one drawer, and `point-cash.service.ts`
+        // refuses to add the two books. No combined «У шухляді має бути» tile.
+        {
+          label: t('pointCash.crates.title'),
+          value: formatUah(shownRow.crate_deposits, locale),
+          // The old card's footnote, kept: a crate handed out against a
+          // signed receipt carries no deposit, so this count can be smaller
+          // than the crates out in the field.
+          hint: t('pointCash.crates.hint', {
+            caption:
+              shownRow.crate_deposit_units === 0
+                ? t('pointCash.crates.captionZero')
+                : t('pointCash.crates.caption', { count: shownRow.crate_deposit_units }),
+          }),
+        },
       ]
     : undefined;
 
@@ -297,10 +339,18 @@ export function PointCashPage() {
         <SelectField
           aria-label={t('pointCash.pickPoint')}
           value={pointId ?? ''}
-          onChange={(e) => setPointId(e.target.value || null)}
+          onChange={(e) => setPointId(e.target.value)}
           className="w-48"
         >
-          <option value="">{t('pointCash.pickPoint')}</option>
+          {/* No «Оберіть точку» entry: `useWorkingPoint` always resolves the
+              owner to a point. A deactivated one reached by `?point=` is in
+              neither list below, so it gets its own entry — otherwise the
+              select would show the first active point over its figures.
+              Its name comes from `pointRow`, so it is generic until that
+              read lands — or for good, if it failed. */}
+          {pointId && points && !points.some((p) => p.id === pointId) ? (
+            <option value={pointId}>{pointName || t('common.inactivePoint')}</option>
+          ) : null}
           {groupedPoints ? (
             <>
               {/* R6 — the owner's select lists points with a target first, so
@@ -363,13 +413,111 @@ export function PointCashPage() {
     </div>
   );
 
+  const dayTiles = dayFiguresVisible ? (
+    <DayTiles summary={day.summary} truncated={day.truncated} shown={day.feed.length} />
+  ) : null;
+
+  // #221 — «Звірка каси» first, then ONE card with two tabs: the day's feed
+  // and the point's recount history. «Звірка» is a fixed handful of rows; the
+  // feed grows with every document of the day, and a history placed under it
+  // would be out of reach on a busy one — as a tab it is one click away
+  // whatever the feed's length. (`DayLedger` overlaps `CashLedger` and is a
+  // candidate for removal — follow-ups.)
+  const daySection =
+    pointId === null ? null : (
+      <div className="mt-5 flex flex-col gap-5">
+        {dayFiguresVisible ? <DayLedger summary={day.summary} truncated={day.truncated} /> : null}
+        <SectionCard>
+          <Tabs
+            value={activityTab}
+            onValueChange={(next) => setActivityTab(next === 'counts' ? 'counts' : 'feed')}
+          >
+            <TabsList className="mb-3">
+              <TabsTrigger value="feed">{t('day.feed.title')}</TabsTrigger>
+              <TabsTrigger value="counts">{t('pointCash.tabs.countHistory')}</TabsTrigger>
+            </TabsList>
+            <TabsContent value="feed">
+              <DayFeed
+                me={me}
+                pointId={pointId}
+                hasShift={hasShift}
+                isToday={isToday}
+                isLoading={shift.isPending || (hasShift && !day.ready)}
+                // A failed SHIFT read is announced once, by the panel; the feed
+                // cannot claim «no shift» over it, so it says so quietly.
+                isError={shift.isError || day.isError}
+                quietError={shift.isError}
+                feed={day.feed}
+                onOpenReceipt={receipt.openReceipt}
+                onOpenPayoutReceipt={payoutReceipt.openReceipt}
+              />
+            </TabsContent>
+            <TabsContent value="counts">
+              <CashCountHistory
+                pointId={pointId}
+                isOwner={isOwner}
+                meId={me?.id ?? null}
+              />
+            </TabsContent>
+          </Tabs>
+        </SectionCard>
+      </div>
+    );
+
+  // The ONLY place today's shift can be closed since «Каса за день» went
+  // (#221) — `OpenShiftAlert` closes only an EARLIER day's. So it renders in
+  // the page-wide error branch too: it needs none of the ledger's reads and
+  // degrades on its own (`isShiftError`), and a failed ledger read must not
+  // leave a shift nobody can close.
+  const shiftPanel = (
+    <ShiftCountPanel
+      shift={shift.data ?? null}
+      // `shift.isPending` alone hangs the spinner forever while
+      // `shiftCashCounts` sits DISABLED (no `shift.data?.id` yet) —
+      // a disabled query's own `isPending` never clears, it just
+      // never fetches. `isLoading` (`isPending && isFetching`) is
+      // `false` for a disabled query, so it only adds real wait
+      // time, never a phantom one.
+      isShiftLoading={shift.isPending || shiftCashCounts.isLoading}
+      isShiftError={isShiftError}
+      counts={panelCounts}
+      isOperator={isOperator}
+      isToday={isToday}
+      onOpenShift={() => openCountDialog({ mode: 'open' })}
+      openShiftGate={openShiftGate}
+      onCloseShift={(shiftId) => openCountDialog({ mode: 'close', shiftId })}
+      // Not while the shift read itself failed: the panel shows reopen over a
+      // failed COUNTS read, and a stale `shift.data` must not offer it.
+      onReopenShift={
+        isOwner && !shift.isError
+          ? () => {
+              setReopenInstance((n) => n + 1);
+              setReopenOpen(true);
+            }
+          : undefined
+      }
+    />
+  );
+
   const body =
     pointId === null ? (
       <EmptyState title={t('pointCash.pickPoint')} />
-    ) : isError ? (
+    ) : pointMissing ? (
       <p role="alert" className="py-6 text-center text-destructive">
-        {pointMissing ? t('pointCash.errors.pointMissing') : t('common.somethingWentWrong')}
+        {t('pointCash.errors.pointMissing')}
       </p>
+    ) : isError ? (
+      // The cash figures failed; the day did not have to. Its own reads are
+      // by shift, so the tiles, the shift panel, «Звірка» and the feed stay —
+      // as on «Каса за день», which showed them whatever the ledger's reads did.
+      <>
+        <p role="alert" className="py-6 text-center text-destructive">
+          {t('common.somethingWentWrong')}
+        </p>
+        {dayTiles}
+        {shiftPanel}
+        {daySection}
+      </>
     ) : !shownRow ? (
       // Nothing but "not answered yet" is left: `pointId` is set (so the read
       // is enabled), a failed one took the branch above, and so did a settled
@@ -379,6 +527,7 @@ export function PointCashPage() {
       </div>
     ) : (
       <>
+        {dayTiles}
         <IncomingTransfers pointId={pointId} canAct={isOperator} />
         <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(320px,0.8fr)]">
           <CashLedger
@@ -392,58 +541,9 @@ export function PointCashPage() {
             payoutsTruncated={payoutsTruncated}
             target={shownRow.target_cash}
           />
-          <div className="flex flex-col gap-5">
-            {/* R1 — no combined «У шухляді має бути» figure here: the
-                client's «Правка» says berry cash and crate deposits do not
-                lie in one drawer, and `point-cash.service.ts` already
-                refuses to add the two books. `CratesBookCard` shows the
-                crates figure alone, with a muted two-books line that prints
-                both figures side by side and never their sum. */}
-            <CratesBookCard
-              crateDeposits={shownRow.crate_deposits}
-              crateDepositUnits={shownRow.crate_deposit_units}
-              berryCash={shownRow.cash}
-            />
-            <ShiftCountPanel
-              shift={shift.data ?? null}
-              // `shift.isPending` alone hangs the spinner forever while
-              // `shiftCashCounts` sits DISABLED (no `shift.data?.id` yet) —
-              // a disabled query's own `isPending` never clears, it just
-              // never fetches. `isLoading` (`isPending && isFetching`) is
-              // `false` for a disabled query, so it only adds real wait
-              // time, never a phantom one.
-              isShiftLoading={shift.isPending || shiftCashCounts.isLoading}
-              isShiftError={isShiftError}
-              counts={panelCounts}
-              isOperator={isOperator}
-              isToday={isToday}
-              onOpenShift={() => openCountDialog({ mode: 'open' })}
-              openShiftGate={openShiftGate}
-              onCloseShift={(shiftId) => openCountDialog({ mode: 'close', shiftId })}
-            />
-          </div>
+          <div className="flex flex-col gap-5">{shiftPanel}</div>
         </div>
-        {/* Full width, below the ledger/right-column grid — the journal is a
-            wide table, and the 320px column it used to sit in truncated it.
-            Behind a toggle: the whole-point history is a long table nobody
-            reads on every visit, and `CashCountHistory` owns its own
-            unbounded `useCashCountsQuery({ pointId })` read, which now stays
-            off the network entirely until asked for. */}
-        <div className="mt-5">
-          <Button
-            variant="outline"
-            size="sm"
-            aria-expanded={showCountHistory}
-            onClick={() => setShowCountHistory((v) => !v)}
-          >
-            {t('pointCash.countHistory.toggle')}
-          </Button>
-          {showCountHistory ? (
-            <div className="mt-3">
-              <CashCountHistory pointId={pointId} isOwner={isOwner} meId={me?.id ?? null} />
-            </div>
-          ) : null}
-        </div>
+        {daySection}
       </>
     );
 
@@ -463,7 +563,7 @@ export function PointCashPage() {
         description={t('pointCash.description')}
         actions={actions}
         stats={stats}
-        statColumns={3}
+        statColumns={4}
       >
         <OpenShiftAlert
           pointId={pointId}
@@ -495,9 +595,8 @@ export function PointCashPage() {
         onConfirm={async (counted_amount, broken_crates) => {
           if (countTarget === null) {
             // Only reachable while the dialog is open, which only happens
-            // with a target set — same guard `DayPage` keeps for the same
-            // reason: a programming error here must not look like a silent
-            // no-op success.
+            // with a target set: a programming error here must not look like
+            // a silent no-op success.
             throw new Error('count dialog confirmed without a target');
           }
           if (countTarget.mode === 'open') {
@@ -522,6 +621,28 @@ export function PointCashPage() {
       />
 
       <ShiftCountResult result={resultFor} onClose={() => setResultFor(null)} />
+
+      {shift.data ? (
+        <ReopenShiftDialog
+          key={`reopen-${reopenInstance}`}
+          shift={shift.data}
+          open={reopenOpen}
+          onClose={() => setReopenOpen(false)}
+        />
+      ) : null}
+      <ReceiptDialog
+        key={receipt.receiptId}
+        intakeId={receipt.receiptId}
+        open={receipt.open}
+        startWithVoid={receipt.startWithVoid}
+        onClose={receipt.clear}
+      />
+      <PayoutReceiptDialog
+        key={`payout-${payoutReceipt.receiptId}`}
+        payoutId={payoutReceipt.receiptId}
+        open={payoutReceipt.open}
+        onClose={payoutReceipt.clear}
+      />
     </>
   );
 }

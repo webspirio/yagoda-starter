@@ -42,6 +42,11 @@ interface Editing {
  * THE OPERATOR IS SCOPED BY THE SERVER, not by this component: the sheet route
  * runs `resolvePointFilter`, so their response has one column. Nothing here
  * filters by role except the WRITE affordances.
+ *
+ * SINCE #221 THE ROUTE IS OWNER-ONLY (`RequireRole` in `app/router.tsx`), so
+ * the operator's locked branch is no longer reachable through navigation. It
+ * stays as this page's own defence — `canEdit` is still read from `me`, not
+ * assumed from the route — rather than being stripped out.
  */
 export function PricesPage() {
   const { t } = useTranslation();

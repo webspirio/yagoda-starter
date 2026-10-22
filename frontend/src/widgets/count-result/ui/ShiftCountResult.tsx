@@ -11,8 +11,7 @@ export type ShiftCountResultFor = { mode: 'open' | 'close'; shiftId: string };
 /**
  * The result after an open or close — its discrepancy and, when the counter may
  * explain it, the note form opened once (spec 2026-10-08). A widget because the
- * banner close on «Прийомка» and «Каса за день» needs the same screen as «Каса
- * точки», and `count-shift` may not import `set-operator-note`.
+ * banner close on «Прийомка» needs the same screen as «Каса точки», and `count-shift` may not import `set-operator-note`.
  *
  * Read back from the counts of `result.shiftId`, not from the mutation's
  * response: the mutations' `onSuccess` refetches the counts, and that refetch is

@@ -233,7 +233,7 @@ describe('ReweighPage', () => {
    * so before this branch existed, a 500 was reported to the owner as a
    * business fact about their own day: «зміну не відкривали», or «нічого не
    * приймали. Перевірте пункт і дату» — the screen telling them to check a
-   * point and a date that were never the problem. `pages/day`, `pages/crates`
+   * point and a date that were never the problem. `pages/point-cash`, `pages/crates`
    * and `useNetworkToday` all already draw this line; the reweigh screen
    * dropped it in the port.
    */

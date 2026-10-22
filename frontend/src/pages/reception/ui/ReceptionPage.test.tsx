@@ -426,7 +426,7 @@ function renderReception() {
     [
       { path: '/reception', element: <ReceptionPage /> },
       { path: '/suppliers/:id', element: <div>Supplier card</div> },
-      { path: '/day', element: <div>Day screen</div> },
+      { path: '/point-cash', element: <div>Point cash screen</div> },
     ],
     { initialEntries: ['/reception'] },
   );
@@ -561,6 +561,24 @@ describe('ReceptionPage — before the shift is open', () => {
 
     expect(screen.getByText('Shift not opened yet — the operator opens it')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Open shift' })).toBeNull();
+    // Only real points to pick from — no «Select a point» entry.
+    expect(screen.getByLabelText('Select a point').querySelector('option[value=""]')).toBeNull();
+  });
+
+  it('names a deactivated point in the select rather than showing the first active one over it', () => {
+    meMock.mockReturnValue({ data: OWNER });
+    pointScopeMock.mockReturnValue({
+      pointId: 'p-off',
+      canPick: true,
+      setPointId: vi.fn(),
+      isLoading: false,
+    });
+
+    renderReception();
+
+    const select = screen.getByLabelText<HTMLSelectElement>('Select a point');
+    expect(select.value).toBe('p-off');
+    expect(select.selectedOptions[0]).toHaveTextContent('Inactive point');
   });
 });
 
@@ -1809,7 +1827,7 @@ describe('ReceptionPage — an open shift left behind on another day (#114)', ()
     const { router } = renderReception();
 
     await user.click(screen.getByRole('button', { name: 'Go to that day' }));
-    await waitFor(() => expect(router.state.location.pathname).toBe('/day'));
+    await waitFor(() => expect(router.state.location.pathname).toBe('/point-cash'));
     expect(new URLSearchParams(router.state.location.search).get('date')).toBe(STRANDED_DATE);
   });
 
@@ -1826,9 +1844,9 @@ describe('ReceptionPage — an open shift left behind on another day (#114)', ()
     const { router } = renderReception();
 
     await user.click(screen.getByRole('button', { name: 'Go to that day' }));
-    await waitFor(() => expect(router.state.location.pathname).toBe('/day'));
+    await waitFor(() => expect(router.state.location.pathname).toBe('/point-cash'));
     // An operator's point comes from their token; only the owner's has to ride
-    // in the link, or «Каса за день» opens on whichever point it remembers.
+    // in the link, or «Каса точки» opens on whichever point it remembers.
     expect(new URLSearchParams(router.state.location.search).get('point')).toBe('p1');
   });
 
@@ -1856,5 +1874,38 @@ describe('ReceptionPage — an open shift left behind on another day (#114)', ()
     expect(
       screen.getByText(`The shift for ${formatLongDate(yesterday, 'en')} is not closed yet`),
     ).toBeInTheDocument();
+  });
+});
+
+// #221 — «Ціни дня» is the owner's screen; the operator reads each grade's
+// price on the grade option itself, right here.
+describe('ReceptionPage — the day prices shortcut', () => {
+  it('offers the operator no link to the day prices', () => {
+    renderReception();
+
+    expect(screen.queryByRole('link', { name: 'Day prices' })).toBeNull();
+  });
+
+  it('keeps the link for the owner', () => {
+    meMock.mockReturnValue({ data: OWNER });
+    pointScopeMock.mockReturnValue({
+      pointId: 'p1',
+      canPick: true,
+      setPointId: vi.fn(),
+      isLoading: false,
+    });
+
+    renderReception();
+
+    expect(screen.getByRole('link', { name: 'Day prices' })).toHaveAttribute('href', '/prices');
+  });
+});
+
+// #221 — «Каса за день» was folded into «Каса точки»; the toolbar goes there.
+describe('ReceptionPage — the point cash shortcut', () => {
+  it('links the toolbar to «Каса точки»', () => {
+    renderReception();
+
+    expect(screen.getByRole('link', { name: 'Point cash' })).toHaveAttribute('href', '/point-cash');
   });
 });

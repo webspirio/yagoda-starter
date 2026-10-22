@@ -270,7 +270,7 @@
   }
 }
 
-/* Anything marked .printable is what goes on paper — receipts and the day report */
+/* Anything marked .printable is what goes on paper — receipts and the cost-of-day sheet */
 @media print {
   body * {
     visibility: hidden;
@@ -329,9 +329,8 @@
 }
 
 /* ─── Друк широкого аркуша: «Собівартість дня» (Н8) ───────────────────────────────
-   Споживачів `.printable` тепер три: чек (ReceiptDialog), звіт дня (DayPage) і аркуш
-   собівартості. Перші два — вузькі колонки, третій — широка таблиця, і саме її керівник
-   несе з собою.
+   Друкують `.printable` чек (ReceiptDialog) і аркуш собівартості. Чек — вузька колонка,
+   аркуш — широка таблиця, і саме її керівник несе з собою.
 
    ОРІЄНТАЦІЯ — єдине рішення тут, яке могло тихо зламати те, що вже працює.
    `@page` не селектується класом, тому глобальний `@page { size: A4 landscape }`

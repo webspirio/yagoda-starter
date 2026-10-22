@@ -56,7 +56,7 @@ function toJournalRow(
 /**
  * «Журнал прийомки» — the owner's register of every receipt and payout,
  * filtered by point, a «з»/«по» date range (the current month by default)
- * and supplier. Unlike «Каса за день»
+ * and supplier. Unlike «Каса точки»'s «Документи дня»
  * (one point's one working day, scoped by its shift), this reads straight
  * off `from`/`to` business dates — a season of documents, not a day's — so
  * every filter lives in the URL rather than in `usePointScope`, and the
