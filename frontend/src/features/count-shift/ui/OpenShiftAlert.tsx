@@ -14,15 +14,15 @@ import { CountDrawerDialog } from './CountDrawerDialog';
  * «Зміна за … ще не закрита» — the one place an open shift left behind on an
  * earlier day is reachable from (#114).
  *
- * ЧОМУ ЦЕ ОКРЕМИЙ КОМПОНЕНТ, А НЕ ШМАТОК `pages/day`. Every screen reads the
- * shift of the day it is ABOUT (`useShiftOnDateQuery` on «Каса за день»,
+ * ЧОМУ ЦЕ ОКРЕМИЙ КОМПОНЕНТ, А НЕ ШМАТОК ОДНІЄЇ СТОРІНКИ. Every screen reads the
+ * shift of the day it is ABOUT (`useShiftOnDateQuery` on «Каса точки»,
  * `useCurrentShiftQuery`-for-today on «Прийомка»), so a shift opened five days
  * ago is invisible on both and the only way back to it used to be five clicks
  * on the day stepper. `GET /shifts/current` answers regardless of date, and
  * that answer belongs on every screen that would otherwise pretend the day is
  * clean — so the alert composes `entities/shift`'s read with this feature's
  * own close mutation and `CountDrawerDialog` and lives at the feature layer,
- * where every consumer (`pages/day`, `pages/reception`, `pages/point-cash`)
+ * where every consumer (`pages/reception`, `pages/point-cash`)
  * can reach it.
  *
  * Closing happens IN PLACE: there is nothing on the stale day's screen an
@@ -30,7 +30,7 @@ import { CountDrawerDialog } from './CountDrawerDialog';
  * first is the five clicks this component exists to remove.
  *
  * STALE MEANS EARLIER THAN TODAY, not merely «some other day than the screen».
- * The looser rule nagged on «Каса за день» whenever anyone stepped back
+ * The looser rule nagged on the day screen whenever anyone stepped back
  * through the week: today's shift is open exactly where it should be, and
  * «Зміна за сьогодні ще не закрита» over last Tuesday's feed is a warning
  * about nothing. It also stands down on the stale shift's OWN day, where the
@@ -48,7 +48,7 @@ export function OpenShiftAlert({
 }: {
   pointId: string | null;
   /** The business date the SCREEN is about — today on «Прийомка», `?date=` on
-   *  «Каса за день». It narrows the warning, it does not define it: a shift
+   *  «Каса точки». It narrows the warning, it does not define it: a shift
    *  must be earlier than TODAY to be stale at all, and this only silences the
    *  alert on that shift's own day, where the screen already offers a close. */
   viewedDate: string;
@@ -58,9 +58,9 @@ export function OpenShiftAlert({
    *
    * A CALLBACK TAKING THE DATE, not a `to=` link and not a ready-made node:
    * this component is the only one that knows WHICH date, and each page is
-   * the only one that knows what «go there» means for it — `pages/day` and
-   * `pages/point-cash` write their own `?date=` (no navigation at all),
-   * `pages/reception` navigates to `/day`. One shape covers all three
+   * the only one that knows what «go there» means for it — `pages/point-cash`
+   * writes its own `?date=` (no navigation at all), `pages/reception`
+   * navigates to `/point-cash`. One shape covers both
    * without any of them re-deriving the date.
    */
   onGoToDate?: (businessDate: string) => void;
@@ -73,11 +73,11 @@ export function OpenShiftAlert({
   const close = useCloseShiftMutation();
   // Bumped on every open so the dialog remounts with fresh RHF defaults and no
   // banner from the refusal before it — the convention `ReopenShiftDialog`
-  // (pages/day) documents.
+  // (pages/point-cash) follows too.
   const [countInstance, setCountInstance] = useState(0);
   // The shift being closed, captured at CLICK time rather than read back off
-  // `shift.data` at submit time — the same reason `DayPage`'s `CountTarget`
-  // exists: a refetch landing under the open dialog must not change what the
+  // `shift.data` at submit time — the same reason `PointCashPage`'s
+  // `CountTarget` exists: a refetch landing under the open dialog must not change what the
   // submit closes (or turn it into a silent no-op).
   const [closingId, setClosingId] = useState<string | null>(null);
 

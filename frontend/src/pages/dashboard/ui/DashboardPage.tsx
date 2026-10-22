@@ -19,9 +19,7 @@ import { useNetworkToday, type PointToday } from '../api/useNetworkToday';
 
 /** Shift `Badge` variant for a point's row — open and "needs an explanation"
  *  read loud (`default`/`destructive`), closed is quiet (`secondary`). "No
- *  shift today" here is the emptiest `outline`; `pages/day`'s own toolbar
- *  badge instead falls back to `secondary` for that same case, so this is
- *  NOT the same convention for every status, just the loud/quiet ones. */
+ *  shift today" here is the emptiest `outline`. */
 function shiftBadgeVariant(status: Shift['status'] | 'none'): 'default' | 'secondary' | 'destructive' | 'outline' {
   if (status === 'open') return 'default';
   if (status === 'awaiting_explanation') return 'destructive';
@@ -156,7 +154,7 @@ export function DashboardPage() {
           {withLinks ? (
             <div className="flex items-center gap-2">
               <Button asChild variant="outline" size="sm">
-                <Link to={`/day?point=${row.pointId}`}>{t('dashboard.points.dayCash')}</Link>
+                <Link to={`/point-cash?point=${row.pointId}`}>{t('dashboard.points.pointCash')}</Link>
               </Button>
               <Button asChild size="sm">
                 <Link to={`/reception?point=${row.pointId}`}>{t('dashboard.points.reception')}</Link>
@@ -179,7 +177,7 @@ export function DashboardPage() {
    *
    * СПИСОК ІЗ ПОСИЛАННЯМИ, А НЕ `OpenShiftAlert`: закриває зміну лише
    * приймальник (§10.3), тому кнопки тут немає — робота керівника побачити й
-   * перейти. Посилання несе І точку, І дату, бо «Каса за день» читає обидві з
+   * перейти. Посилання несе І точку, І дату, бо «Каса точки» читає обидві з
    * query-рядка: керівник потрапляє одразу на той день, без крокування.
    *
    * Порожньо — не рендериться НІЧОГО: картка «незакритих змін немає» на
@@ -203,7 +201,7 @@ export function DashboardPage() {
         {staleRows.map((shift) => (
           <li key={shift.id}>
             <Link
-              to={`/day?point=${shift.collection_point_id}&date=${shift.business_date}`}
+              to={`/point-cash?point=${shift.collection_point_id}&date=${shift.business_date}`}
               className="flex items-center justify-between gap-3 py-2.5 text-sm transition-colors hover:bg-muted/60"
             >
               {/* `pointName` читає лише АКТИВНІ точки, а точку виводять з
@@ -290,7 +288,7 @@ export function DashboardPage() {
             <Link to="/reception">{t('dashboard.shortcuts.reception')}</Link>
           </Button>
           <Button asChild variant="outline">
-            <Link to="/day">{t('dashboard.shortcuts.dayCash')}</Link>
+            <Link to="/point-cash">{t('dashboard.shortcuts.pointCash')}</Link>
           </Button>
           <Button asChild variant="outline">
             <Link to="/debts">{t('dashboard.shortcuts.balances')}</Link>

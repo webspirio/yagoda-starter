@@ -36,11 +36,12 @@ export interface NetworkTodayResult {
  * waterfalls. Each query is built with the day screen's own `queryOptions`
  * factories (`shiftOnDateQueryOptions`, `intakesQueryOptions`,
  * `payoutsQueryOptions`). Only the SHIFT read actually shares a cache entry
- * with `/day`: both call `shiftOnDateQueryOptions(pointId, date)` with the
- * same `pointId`/date, so a point opened here and then opened on `/day` for
- * today reuses that query instead of refetching it. The intakes/payouts
- * reads do NOT — this hook keys them by the day's date range, while `/day`
- * reads the same documents keyed by `shiftId`, a different queryKey — so
+ * with `/point-cash`: both call `shiftOnDateQueryOptions(pointId, date)` with
+ * the same `pointId`/date, so a point opened here and then opened on
+ * `/point-cash` for today reuses that query instead of refetching it. The
+ * intakes/payouts reads do NOT — this hook keys them by the day's date range,
+ * while `/point-cash`'s «Документи дня» reads them keyed by `shiftId`, a
+ * different queryKey — so
  * those two screens each pay their own request for intakes/payouts.
  *
  * `combine` (rather than a plain `useMemo` over the raw results) gives the

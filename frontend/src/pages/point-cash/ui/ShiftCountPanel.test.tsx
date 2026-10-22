@@ -769,34 +769,13 @@ describe('ShiftCountPanel — the four action states, per role', () => {
     ).toBeNull();
   });
 
-  it('always shows the footnote, whatever the state', () => {
-    render(
-      <ShiftCountPanel
-        shift={null}
-        isShiftLoading={false}
-        isShiftError={false}
-        counts={[]}
-        isOperator={false}
-        isToday={false}
-        onOpenShift={noop}
-        openShiftGate="allowed"
-        onCloseShift={noop}
-      />,
-    );
-
-    expect(
-      screen.getByText(
-        'The drawer can be recounted as many times a day as needed — every recount stays its own record and corrects nothing.',
-      ),
-    ).toBeInTheDocument();
-  });
 });
 
 /**
  * #114 — today's date having no shift is not the same as the point having
  * none open. `openShiftGate` carries the date-blind answer (`/shifts/current`)
  * the page read, so the panel withholds «Open shift» the server would refuse
- * with SHIFT_ALREADY_OPEN, exactly as `/day` and `/reception` do.
+ * with SHIFT_ALREADY_OPEN, exactly as `/reception` does.
  */
 describe('ShiftCountPanel — «Open shift» waits for the point to have none open', () => {
   const renderNoneToday = (openShiftGate: 'allowed' | 'checking' | 'failed' | 'blocked') =>
@@ -942,5 +921,79 @@ describe('ShiftCountPanel — wiring the actions', () => {
       />,
     );
     await expectNoAxeViolations(container);
+  });
+});
+
+// #221 — «Каса за день» was folded into this page; the two things its toolbar
+// said about a closed shift that this panel did not are said here now.
+describe('ShiftCountPanel — what came over from «Каса за день»', () => {
+  const closed = (over: Partial<Shift> = {}) =>
+    shift({ status: 'closed', closed_by_name: 'Petro', closed_at: '2026-09-22T18:00:00.000Z', ...over });
+
+  const renderPanel = (props: Partial<Parameters<typeof ShiftCountPanel>[0]> = {}) =>
+    render(
+      <ShiftCountPanel
+        shift={closed()}
+        isShiftLoading={false}
+        isShiftError={false}
+        counts={[]}
+        isOperator={false}
+        isToday={false}
+        onOpenShift={noop}
+        openShiftGate="allowed"
+        onCloseShift={noop}
+        {...props}
+      />,
+    );
+
+  it('offers the owner «Reopen shift» on a closed shift, and reports the click', async () => {
+    const onReopenShift = vi.fn();
+    renderPanel({ onReopenShift });
+
+    await userEvent.click(screen.getByRole('button', { name: 'Reopen shift' }));
+    expect(onReopenShift).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps «Reopen shift» beside the read-failed line — /day is gone, so nothing else reopens', () => {
+    renderPanel({ isShiftError: true, onReopenShift: noop });
+
+    expect(screen.getByRole('alert')).toHaveTextContent('The shift could not be read');
+    expect(screen.getByRole('button', { name: 'Reopen shift' })).toBeInTheDocument();
+  });
+
+  it('offers no reopen when the page gives no handler — the operator’s case', () => {
+    renderPanel({ isOperator: true });
+
+    expect(screen.queryByRole('button', { name: 'Reopen shift' })).toBeNull();
+  });
+
+  it('offers no reopen on an open shift, nor on a legacy «awaiting_explanation» one', () => {
+    const { unmount } = renderPanel({ shift: shift({ status: 'open' }), onReopenShift: noop });
+    expect(screen.queryByRole('button', { name: 'Reopen shift' })).toBeNull();
+    unmount();
+
+    renderPanel({ shift: closed({ status: 'awaiting_explanation' }), onReopenShift: noop });
+    expect(screen.queryByRole('button', { name: 'Reopen shift' })).toBeNull();
+  });
+
+  it('prints the broken crates recorded at the close — zero is a number, not «not recorded»', () => {
+    const { unmount } = renderPanel({ shift: closed({ broken_crates: 0 }) });
+    expect(screen.getByText('Broken: 0')).toBeInTheDocument();
+    unmount();
+
+    renderPanel({ shift: closed({ broken_crates: 3 }) });
+    expect(screen.getByText('Broken: 3')).toBeInTheDocument();
+  });
+
+  it('prints «—» for a shift closed before the column existed', () => {
+    renderPanel({ shift: closed({ broken_crates: null }) });
+
+    expect(screen.getByText('Broken: —')).toBeInTheDocument();
+  });
+
+  it('prints no breakage on an open shift', () => {
+    renderPanel({ shift: shift({ status: 'open' }) });
+
+    expect(screen.queryByText(/^Broken:/)).toBeNull();
   });
 });

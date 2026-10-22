@@ -7,7 +7,6 @@ import {
   BarChart3,
   Boxes,
   Calculator,
-  CalendarCheck2,
   Cherry,
   CircleDollarSign,
   History,
@@ -62,10 +61,9 @@ const NAV_GROUPS: NavGroup[] = [
       { labelKey: 'nav.dashboard', icon: BarChart3, to: '/' },
       { labelKey: 'nav.reception', icon: Scale, to: '/reception' },
       { labelKey: 'nav.crates', icon: Boxes, to: '/crates' },
-      { labelKey: 'nav.day', icon: CalendarCheck2, to: '/day' },
       { labelKey: 'nav.pointCash', icon: Banknote, to: '/point-cash' },
-      // Both roles: the owner sets the day's price, the operator sees it locked.
-      { labelKey: 'nav.prices', icon: CircleDollarSign, to: '/prices' },
+      // Owner only (#221): the operator reads a grade's price at reception.
+      { labelKey: 'nav.prices', icon: CircleDollarSign, to: '/prices', role: 'network_owner' },
     ],
   },
   {

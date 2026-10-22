@@ -3,7 +3,7 @@
  *
  * WHY THIS EXISTS. The point lives in `?point=` so a reload or a shared link
  * lands on the same place — but every screen has its own URL, so walking from
- * «Каса за день» to «Прийомка» dropped the choice and the owner picked the
+ * «Каса точки» to «Прийомка» dropped the choice and the owner picked the
  * same point again on every screen. The URL stays the source of truth when it
  * carries one; this is only the memory for when it does not.
  *
