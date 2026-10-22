@@ -70,7 +70,8 @@ issue_url() { echo "https://github.com/$REPO/issues/$1"; }
 urlencode() { jq -rn --arg s "$1" '$s|@uri'; }
 
 # Issue numbers a PR body names with a closing keyword (English or «Закриває»). Empty, not
-# an error, when there are none — callers decide what an empty answer means.
+# an error, when there are none — callers decide what an empty answer means. Both cases of
+# «З» are spelled out: `-i` folds non-ASCII only under a UTF-8 locale.
 closing_numbers() {
-  grep -oiE '(close[sd]?|fix(e[sd])?|resolve[sd]?|закриває)[: ]+#[0-9]+' | grep -oE '[0-9]+' | sort -u || true
+  grep -oiE '(close[sd]?|fix(e[sd])?|resolve[sd]?|[Зз]акриває)[: ]+#[0-9]+' | grep -oE '[0-9]+' | sort -u || true
 }

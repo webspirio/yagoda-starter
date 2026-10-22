@@ -94,6 +94,8 @@ echo "# 6. return-to-author: own PR refuses; body fallback (also «Закрив�
 reset; export FAKE_AUTHOR=me; check_fail bash "$TR/return-to-author.sh" 9
 reset; export FAKE_BODY="Опис. Закриває #7"
 check bash "$TR/return-to-author.sh" 9; check called "issue edit 7 --repo webspirio/yagoda-starter --add-assignee colleague --remove-assignee me"
+reset; export FAKE_BODY="Опис. Закриває #8"
+check env LC_ALL=C bash "$TR/return-to-author.sh" 9; check called "issue edit 8 --repo"
 reset; export FAKE_BODY="no keyword here"
 check_fail bash -c "bash '$TR/return-to-author.sh' 9 2> '$T/err'"; check has "$T/err" "names no issue it closes"
 
@@ -121,6 +123,14 @@ reset; export FAKE_PR_STATE=MERGED
 check_fail bash -c "cd '$T/w/main' && bash '$TK/cleanup.sh' 5 2> '$T/err'"; check has "$T/err" "not on the remote"
 git -C "$T/w/yagoda-5" push -q 2>/dev/null
 check bash -c "cd '$T/w/main' && bash '$TK/cleanup.sh' 5 > /dev/null"; check test ! -e "$T/w/yagoda-5"
+
+echo "# 9b. cleanup: a merged branch deleted on the remote and pruned is removed; a closed-unmerged one is refused"
+git -C "$T/w/main" worktree add -q "$T/w/yagoda-6" feat/6-y 2>/dev/null
+git -C "$T/w/main" push -q origin --delete feat/6-y 2>/dev/null; git -C "$T/w/main" fetch -q --prune origin
+reset; export FAKE_PR_STATE=CLOSED
+check_fail bash -c "cd '$T/w/main' && bash '$TK/cleanup.sh' 6 2> '$T/err'"; check has "$T/err" "closed unmerged"
+reset; export FAKE_PR_STATE=MERGED
+check bash -c "cd '$T/w/main' && bash '$TK/cleanup.sh' 6 > /dev/null"; check test ! -e "$T/w/yagoda-6"
 
 echo "# 10. shots: the file name is URL-encoded"
 reset; printf 'png' > "$T/Знімок екрана.png"

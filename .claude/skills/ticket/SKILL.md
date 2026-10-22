@@ -22,8 +22,9 @@ user names; if nobody is named, ask.
 ## Phases
 
 **1. Take it.** `bash .claude/skills/ticket/scripts/start.sh <N> <type>/<N>-<slug>` — refuses a closed issue
-(ask the user which ticket they meant), assigns you, board → «In progress», creates the
-branch via the issue's Development panel, worktree `../yagoda-<N>` with `.env`. Then:
+(ask the user which ticket they meant), creates the branch via the issue's Development
+panel and the worktree `../yagoda-<N>` with `.env`, then assigns you and sets the board
+to «In progress». Then:
 - `npm ci` in the worktree, in the background.
 - `gh issue comment <N> --body-file <f>`, Ukrainian, for the tester: «Взято в роботу» +
   what will and what will NOT be done.

@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # Usage: bash start.sh <issue-number> <branch>     e.g.  bash start.sh 265 fix/265-profile-avatar
 #
-# Takes the ticket: refuses a closed issue, assigns you, board → «In progress», creates
-# the branch through the issue's Development panel (so the merge closes the issue), and
-# a sibling worktree ../yagoda-<N> with the main checkout's .env copied in.
+# Takes the ticket: refuses a closed issue; creates the branch through the issue's
+# Development panel (so the merge closes the issue) and a sibling worktree ../yagoda-<N>
+# with the main checkout's .env copied in; only then assigns you and sets «In progress».
 # It does NOT post the «взято в роботу» comment (that text is yours) and does NOT run
 # `npm ci` (minutes — run it in the background yourself; the last line prints the command).
 source "$(dirname "$0")/lib.sh"
