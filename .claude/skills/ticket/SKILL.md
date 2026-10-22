@@ -29,15 +29,15 @@ to «In progress». Then:
 - `npm ci` in the worktree, in the background.
 - `gh issue comment <N> --body-file <f>`, Ukrainian, for the tester: «Взято в роботу» +
   what will and what will NOT be done.
-- Open questions in the issue («Треба уточнити»): if the user said «автономно», state the
-  assumption you take in this comment and go on; ask only when the answer changes what
-  gets built.
+- Open questions in the issue («Треба уточнити») go into the grilling below — never
+  settled by an assumption of yours.
 
-**2. Plan.** `grilling` → `superpowers:brainstorming` → plan (CLAUDE.md). Under «автономно»
-answer the grilling questions yourself from the code and `26-rules-by-example.md`, and
-write the decisions into the plan instead of waiting. Post a short plan on the issue. Too
-big (> ~2 days / ~1000 lines) → split or say why not. No superpowers plugin installed →
-do the same steps by hand.
+**2. Plan — WITH the user.** `grilling` → `superpowers:brainstorming` → plan (CLAUDE.md),
+each one an exchange with the user: ask, wait for the answer. **Autonomous work starts only
+after both are done and the user agreed the design** — «роби автономно» given earlier
+covers phases 3–7, never these two. Post a short plan on the issue. Too big (> ~2 days /
+~1000 lines) → split or say why not. No superpowers plugin installed → do the same steps
+by hand, still with the user.
 
 **3. Build.** TDD and the domain skills. The pre-push hook runs `test:db`, so Postgres must
 be up (`docker compose up -d postgres redis` from the main checkout — not backend/frontend,
@@ -93,6 +93,7 @@ is needed besides the bot · deleting remote branches after merge · the Stop-ho
 
 | Mistake | Instead |
 |---|---|
+| «Роби автономно» read as «skip grilling/brainstorming» | both happen with the user first; autonomy is for building |
 | Working on a closed issue the user named by mistake | start.sh refuses; ask |
 | PR opened only at the end | draft after the first commit — the board and issue show work |
 | Screenshots committed to the branch | `shots.sh` → user-attachments |
