@@ -15,10 +15,6 @@ import { addDaysIso, isRealIsoDate, toLocalIsoDate } from '@/shared/lib/date';
  */
 export const MAX_CHANGES_DAYS = 31;
 
-/** The earliest date the inputs accept. Anything before it is a year still
- *  being typed (`0002-…`, `0202-…`), never a period anyone means. */
-export const MIN_CHANGES_DATE = '2020-01-01';
-
 export interface ChangesPeriod {
   from: string | null;
   to: string | null;
@@ -51,12 +47,6 @@ export function readPeriod(from: string | null, to: string | null, today: string
 export function isOneDay(period: ChangesPeriod, today: string): boolean {
   const to = period.to ?? today;
   return (period.from ?? to) === to;
-}
-
-/** A value from a date input worth committing: on the calendar and within
- *  `[MIN_CHANGES_DATE, today]`. */
-export function isPickableDate(value: string, today: string): boolean {
-  return isRealIsoDate(value) && value >= MIN_CHANGES_DATE && value <= today;
 }
 
 /** «Сьогодні» is NO period, so the server's today still decides the day. */

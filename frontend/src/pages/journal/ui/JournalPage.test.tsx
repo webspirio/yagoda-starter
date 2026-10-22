@@ -9,8 +9,9 @@ import type { Supplier } from '@/entities/supplier';
 import { PAGE_SIZE } from '../model/journalFilters';
 import { JournalPage } from './JournalPage';
 
-const { intakesMock, payoutsMock, suppliersMock, balancesMock, receiptMock, meMock } = vi.hoisted(() => ({
+const { intakesMock, payoutsMock, suppliersMock, balancesMock, receiptMock, meMock, totalsMock } = vi.hoisted(() => ({
   meMock: vi.fn(),
+  totalsMock: vi.fn(),
   intakesMock: vi.fn(),
   payoutsMock: vi.fn(),
   suppliersMock: vi.fn(),
@@ -21,6 +22,10 @@ const { intakesMock, payoutsMock, suppliersMock, balancesMock, receiptMock, meMo
 vi.mock('@/entities/intake', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/entities/intake')>()),
   useIntakesQuery: (filter: unknown) => intakesMock(filter),
+}));
+
+vi.mock('../api/journalTotals', () => ({
+  useJournalTotalsQuery: (filter: unknown) => totalsMock(filter),
 }));
 
 vi.mock('@/entities/user', () => ({
@@ -153,6 +158,7 @@ beforeEach(() => {
   suppliersMock.mockReset().mockReturnValue(page<Supplier>([]));
   balancesMock.mockReset().mockReturnValue(page<{ supplier_id: string; first_name: string; last_name: string }>([]));
   receiptMock.mockReset();
+  totalsMock.mockReset().mockReturnValue({ data: { accrued: '0.00', paid: '0.00' }, isPending: false, isError: false });
   meMock.mockReset().mockReturnValue({ data: OWNER });
 });
 
@@ -167,7 +173,8 @@ describe('JournalPage — the default view', () => {
     ).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: 'Receipts' })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: 'Payouts' })).toBeInTheDocument();
-    expect(screen.getByLabelText('Month')).toHaveValue('2026-09');
+    expect(screen.getByLabelText('From')).toHaveValue('2026-09-01');
+    expect(screen.getByLabelText('To')).toHaveValue('2026-09-30');
 
     expect(intakesMock).toHaveBeenCalledWith(
       expect.objectContaining({ from: '2026-09-01', to: '2026-09-30' }),
@@ -176,54 +183,38 @@ describe('JournalPage — the default view', () => {
     await expectNoAxeViolations(container);
   });
 
-  it('shows the true total in the count tile, and flags the sum as page-only when truncated', () => {
+  it('shows the server sums for the whole range, not one page', () => {
+    totalsMock.mockReturnValue({ data: { accrued: '12500.00', paid: '8000.00' }, isPending: false, isError: false });
     intakesMock.mockReturnValue(
-      page<Intake>(
-        [
-          intake({ id: 'i1', code: 'KV-0001', amount: '100.00' }),
-          intake({ id: 'i2', code: 'KV-0002', amount: '50.00' }),
-        ],
-        45,
-      ),
+      page<Intake>([intake({ id: 'i1', code: 'KV-0001', amount: '100.00' })], 45),
     );
 
-    renderJournal();
+    const { container } = renderJournal();
 
-    expect(tile('Receipt count')).toHaveTextContent('45');
-    expect(tile('Accrued')).toHaveTextContent('150.00 ₴');
-    expect(tile('Accrued')).toHaveTextContent('on this page');
+    expect(container.querySelectorAll('[data-slot="stat-tile"]')).toHaveLength(2);
+    expect(tile('Berries received')).toHaveTextContent('12,500.00 ₴');
+    expect(tile('Cash paid out')).toHaveTextContent('8,000.00 ₴');
   });
 
-  it('says nothing about a page-only sum once the whole result fits on one page', () => {
-    intakesMock.mockReturnValue(
-      page<Intake>([intake({ id: 'i1', code: 'KV-0001', amount: '100.00' })]),
-    );
-
-    renderJournal();
-
-    expect(tile('Receipt count')).toHaveTextContent('1');
-    expect(tile('Accrued')).not.toHaveTextContent('on this page');
+  it('asks for the sums over the range, point and supplier — never the voided switch', () => {
+    renderJournal(`/journal?from=2026-07-03&to=2026-08-14&point=${P1}&supplier=${SUP1}&voided=0`);
+    expect(totalsMock).toHaveBeenLastCalledWith({
+      from: '2026-07-03',
+      to: '2026-08-14',
+      pointId: P1,
+      supplierId: SUP1,
+    });
   });
 
-  it('excludes voided documents from the sum but keeps them in the count', () => {
-    intakesMock.mockReturnValue(
-      page<Intake>([
-        intake({ id: 'i1', code: 'KV-0001', amount: '100.00' }),
-        intake({
-          id: 'i2',
-          code: 'KV-0002',
-          amount: '999.00',
-          voided_at: '2026-09-08T10:00:00Z',
-          void_reason: 'Wrong supplier',
-        }),
-      ]),
-    );
+  it('shows a dash while the sums load or fail', () => {
+    totalsMock.mockReturnValue({ data: undefined, isPending: true, isError: false });
+    const { unmount } = renderJournal();
+    expect(tile('Berries received')).toHaveTextContent('—');
+    unmount();
 
+    totalsMock.mockReturnValue({ data: undefined, isPending: false, isError: true });
     renderJournal();
-
-    expect(tile('Receipt count')).toHaveTextContent('2');
-    expect(tile('Accrued')).toHaveTextContent('100.00 ₴');
-    expect(screen.getByText('Voided')).toBeInTheDocument();
+    expect(tile('Cash paid out')).toHaveTextContent('—');
   });
 
   it('shows the empty state when nothing matches the period', () => {
@@ -239,18 +230,17 @@ describe('JournalPage — the default view', () => {
 });
 
 describe('JournalPage — switching kind', () => {
-  it('reads the payout totals and calls usePayoutsQuery with the same range as intakes', async () => {
+  it('keeps the same tiles on both tabs and reads both lists over one range', async () => {
     const user = userEvent.setup();
-    intakesMock.mockReturnValue(page<Intake>([intake({ id: 'i1', code: 'KV-1', amount: '100.00' })]));
+    totalsMock.mockReturnValue({ data: { accrued: '100.00', paid: '80.00' }, isPending: false, isError: false });
     payoutsMock.mockReturnValue(page<Payout>([payout({ id: 'y1', code: 'VD-1', amount: '80.00' })]));
 
     renderJournal();
-    expect(tile('Receipt count')).toHaveTextContent('1');
-
     await user.click(screen.getByRole('tab', { name: 'Payouts' }));
 
-    expect(tile('Payout count')).toHaveTextContent('1');
-    expect(tile('Paid')).toHaveTextContent('80.00 ₴');
+    expect(screen.getByText('VD-1')).toBeInTheDocument();
+    expect(tile('Berries received')).toHaveTextContent('100.00 ₴');
+    expect(tile('Cash paid out')).toHaveTextContent('80.00 ₴');
 
     const intakeArgs = intakesMock.mock.calls[intakesMock.mock.calls.length - 1][0];
     const payoutArgs = payoutsMock.mock.calls[payoutsMock.mock.calls.length - 1][0];
@@ -258,16 +248,36 @@ describe('JournalPage — switching kind', () => {
   });
 });
 
-describe('JournalPage — the month filter', () => {
-  it('updates ?from and ?to when the month changes, and resets the page', () => {
+describe('JournalPage — the date range', () => {
+  /** A calendar pick: a `change` with no keystroke before it commits at once. */
+  const pick = (label: string, value: string) =>
+    fireEvent.change(screen.getByLabelText(label), { target: { value } });
+
+  it('moves ?from and ?to independently, and resets the page', () => {
     const { router } = renderJournal('/journal?page=2');
 
-    fireEvent.change(screen.getByLabelText('Month'), { target: { value: '2026-07' } });
-
-    const search = new URLSearchParams(router.state.location.search);
-    expect(search.get('from')).toBe('2026-07-01');
-    expect(search.get('to')).toBe('2026-07-31');
+    pick('From', '2026-09-05');
+    let search = new URLSearchParams(router.state.location.search);
+    expect(search.get('from')).toBe('2026-09-05');
+    expect(search.get('to')).toBe('2026-09-30');
     expect(search.get('page')).toBeNull();
+
+    pick('To', '2026-10-20');
+    search = new URLSearchParams(router.state.location.search);
+    expect(search.get('from')).toBe('2026-09-05');
+    expect(search.get('to')).toBe('2026-10-20');
+  });
+
+  it('bounds each field by the other, so the range cannot be reversed', () => {
+    renderJournal('/journal?from=2026-09-05&to=2026-09-20');
+    expect(screen.getByLabelText('From')).toHaveAttribute('max', '2026-09-20');
+    expect(screen.getByLabelText('To')).toHaveAttribute('min', '2026-09-05');
+  });
+
+  it('never commits a «from» past «to»', () => {
+    const { router } = renderJournal('/journal?from=2026-09-05&to=2026-09-20');
+    pick('From', '2026-09-21');
+    expect(new URLSearchParams(router.state.location.search).get('from')).toBe('2026-09-05');
   });
 });
 

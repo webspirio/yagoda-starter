@@ -69,6 +69,16 @@ describe('parseFilters', () => {
     expect(parseFilters(params)).toMatchObject({ from: '2026-09-01', to: '2026-09-30' });
   });
 
+  it('falls back to the current month when the range is reversed', () => {
+    const params = new URLSearchParams({ from: '2026-07-31', to: '2026-07-01' });
+    expect(parseFilters(params)).toMatchObject({ from: '2026-09-01', to: '2026-09-30' });
+  });
+
+  it('reads a one-day range', () => {
+    const params = new URLSearchParams({ from: '2026-07-14', to: '2026-07-14' });
+    expect(parseFilters(params)).toMatchObject({ from: '2026-07-14', to: '2026-07-14' });
+  });
+
   it('falls back to the current month when from/to are unparseable garbage', () => {
     const params = new URLSearchParams({ from: 'not-a-date', to: 'also-not-a-date' });
     expect(parseFilters(params)).toMatchObject({ from: '2026-09-01', to: '2026-09-30' });
