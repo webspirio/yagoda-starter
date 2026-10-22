@@ -20,8 +20,11 @@ describe('JournalTotalsQueryDto', () => {
   });
 
   it('requires both bounds — an open range would sum the whole season', () => {
-    expect(parse({ from: '2026-10-01' })).not.toHaveLength(0);
-    expect(parse({ to: '2026-10-31' })).not.toHaveLength(0);
+    expect(parse({ from: '2026-10-01' }).map((e) => e.property)).toEqual(['to']);
+    // A missing `from` is reported as missing, not as an inverted range.
+    const [error, ...rest] = parse({ to: '2026-10-31' });
+    expect(rest).toHaveLength(0);
+    expect(error.property).toBe('from');
   });
 
   it('refuses a malformed date', () => {

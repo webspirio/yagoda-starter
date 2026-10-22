@@ -10,11 +10,13 @@ import {
 
 const BUSINESS_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
-/** `YYYY-MM-DD` compares correctly as text, so no date parsing is needed. */
+/** `YYYY-MM-DD` compares correctly as text, so no date parsing is needed. A missing
+ *  `from` is `from`'s own error, not an inverted range. */
 @ValidatorConstraint({ name: 'notBeforeFrom' })
 class NotBeforeFrom implements ValidatorConstraintInterface {
   validate(to: string, args: ValidationArguments): boolean {
-    return (args.object as JournalTotalsQueryDto).from <= to;
+    const { from } = args.object as JournalTotalsQueryDto;
+    return from === undefined || from <= to;
   }
 
   defaultMessage(): string {

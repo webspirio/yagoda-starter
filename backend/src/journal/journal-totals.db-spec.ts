@@ -17,6 +17,10 @@ import type { AuthenticatedUser } from '../auth/jwt.strategy';
  *   10-15  Богдан  at point B, receipt 3000.00, payout 1200.00
  *
  * October at A: accrued 1750.00, paid 1000.00. Network-wide: 4750.00, 2200.00.
+ *
+ * The fixtures insert intakes and payouts by raw SQL WITHOUT calling `allocate`,
+ * which backend/CLAUDE.md requires of such fixtures — safe here only because this
+ * query never reads `payout_allocations`. A spec that does must allocate.
  */
 describe('JournalTotalsQuery.totals (Postgres)', () => {
   let ds: DataSource;

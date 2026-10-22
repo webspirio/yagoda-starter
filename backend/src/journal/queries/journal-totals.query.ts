@@ -30,12 +30,13 @@ export class JournalTotalsQuery {
 
   async totals(actor: AuthenticatedUser, query: JournalTotalsQueryDto): Promise<JournalTotalsResponse> {
     const pointId = resolvePointFilter(actor, query.collection_point_id);
-    const [row] = await this.dataSource.query(
+    // Two scalar subqueries and no FROM: always exactly one row.
+    const [row] = (await this.dataSource.query(
       `SELECT
          (SELECT COALESCE(SUM(i.amount), 0.00) FROM intakes i ${scope('i')})::text AS accrued,
          (SELECT COALESCE(SUM(p.amount), 0.00) FROM payouts p ${scope('p')})::text AS paid`,
       [query.from, query.to, pointId ?? null, query.supplier_id ?? null],
-    );
+    )) as JournalTotalsResponse[];
     return { accrued: row.accrued, paid: row.paid };
   }
 }

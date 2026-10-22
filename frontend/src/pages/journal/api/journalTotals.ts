@@ -1,4 +1,4 @@
-import { keepPreviousData, useQuery } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { httpClient } from '@/shared/api';
 import { queryKeys } from '@/shared/api/queryKeys';
 import { STALE } from '@/shared/api/queryClient';
@@ -35,8 +35,8 @@ export function useJournalTotalsQuery(filter: {
           },
         })
       ).data,
+    // No `keepPreviousData`: a placeholder would show the previous range's money
+    // under the new bounds as if settled (PR #275 review), so a new range reads «—».
     staleTime: STALE.list,
-    // A new range keeps the old sums on screen until the new ones land.
-    placeholderData: keepPreviousData,
   });
 }
