@@ -19,6 +19,8 @@ Web Starter — a production-ready web application boilerplate with a NestJS bac
 | When the task involves… | Invoke |
 |---|---|
 | Stress-testing a plan before building, or any "grill" phrasing | `grilling` |
+| Taking a GitHub issue into work — «робимо тікет N» — through PR, review bot, hand-off and after-merge | `ticket` |
+| Reviewing a teammate's PR for an issue — «зроби ревʼю на тікет N» | `ticket-review` |
 | Any new feature, component, or behavior change — before writing code | `superpowers:brainstorming`, then the `superpowers:*` implementation skills |
 | **Backend** (`backend/src`) — writing/reviewing/refactoring a Nest module | `nest-module-conventions` |
 | **Backend** — NestJS architecture: DI, module boundaries, security, performance | `nestjs-best-practices` |
