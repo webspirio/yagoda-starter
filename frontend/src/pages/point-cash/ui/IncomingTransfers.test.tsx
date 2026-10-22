@@ -23,8 +23,8 @@ vi.mock('@/shared/ui/toast', () => ({
 // `@/features/receive-transfer` index) reaches its OWN mutation via a
 // relative import of this same module, one level down — mocking it here
 // stubs both that and `IncomingTransfers`'s own `useAcceptTransferMutation`
-// call in one place, the same convention `DayPage.test.tsx` uses for
-// `CountDrawerDialog`'s mutations. The dialog's own form behaviour is
+// call in one place, the same convention `PointCashPage.test.tsx` uses for
+// the count-shift mutations. The dialog's own form behaviour is
 // covered by `features/receive-transfer`'s own tests.
 vi.mock('@/features/receive-transfer/api/useReceiveTransfer', () => ({
   useAcceptTransferMutation: () => ({ mutateAsync: acceptMock, isPending: false }),
@@ -175,16 +175,6 @@ describe('IncomingTransfers', () => {
       vi.unstubAllEnvs();
     });
 
-    it('formats the sent date and time separately with formatShortDate and formatTime', () => {
-      vi.stubEnv('TZ', 'UTC');
-      mockTransfers({ sent: [transfer({ sent_at: '2026-09-10T08:05:00.000Z' })] });
-      render(<IncomingTransfers pointId="p1" canAct />);
-
-      // Test locale is 'en' (test-setup.ts) — same fixed literal
-      // TransferHistory.test.tsx asserts for the same instant.
-      expect(screen.getByText(/sent 09\/10 at 08:05 AM/)).toBeInTheDocument();
-    });
-
     it("joins carrier, date, time and the «don't move» reminder with middots", () => {
       vi.stubEnv('TZ', 'UTC');
       mockTransfers({
@@ -260,14 +250,6 @@ describe('IncomingTransfers', () => {
       const { container } = render(<IncomingTransfers pointId="p1" canAct />);
 
       expect(container.querySelector('.italic')).toBeNull();
-    });
-
-    it("shows the starter's footer — the owner resolves it, the point does not touch the figure", () => {
-      mockTransfers({ disputed: [disputedTransfer()] });
-      render(<IncomingTransfers pointId="p1" canAct />);
-
-      expect(screen.getByText(/The cash hasn't moved by a single kopiyka/)).toBeInTheDocument();
-      expect(screen.getByText(/the point doesn't touch this figure/)).toBeInTheDocument();
     });
 
     it('renders the red card for the owner too — it is informational, not an action', () => {

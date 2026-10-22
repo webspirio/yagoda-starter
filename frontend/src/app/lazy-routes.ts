@@ -58,12 +58,16 @@ export const TransfersPage = lazy(() => ownerPages().then((m) => ({ default: m.T
 export const ReweighPage = lazy(() => ownerPages().then((m) => ({ default: m.ReweighPage })));
 export const CostOfDayPage = lazy(() => ownerPages().then((m) => ({ default: m.CostOfDayPage })));
 export const SettingsPage = lazy(() => ownerPages().then((m) => ({ default: m.SettingsPage })));
+export const PricesPage = lazy(() => ownerPages().then((m) => ({ default: m.PricesPage })));
 
 /**
  * «Каса точки» — BOTH roles, so not in the owner chunk, and lazy on its own
- * (#73): the first load had no headroom left, and this screen is not the
- * operator's per-shift path — shifts open and close from «Прийомка» and «Каса
- * за день» too. No `RequireRole` to order around: any signed-in user may load it.
+ * (#73): the first load had no headroom left. Since #221 it also carries what
+ * «Каса за день» showed (the day's tiles, documents and reconciliation), so it
+ * is closer to the operator's daily path than when this was decided — but
+ * «Прийомка», which stays eager, still opens and closes the shift, so a chunk
+ * request here costs a round trip on a screen the shift does not depend on.
+ * No `RequireRole` to order around: any signed-in user may load it.
  *
  * WHAT IT COST, MEASURED (2026-10-13, first-load set from dist/index.html).
  * A SECOND dynamic entry point is exactly what the note above warns about:

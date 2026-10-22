@@ -119,7 +119,7 @@ export function ReceptionPage() {
   const [openDialogOpen, setOpenDialogOpen] = useState(false);
   // Bumped on every open so the dialog remounts with fresh RHF defaults and no
   // banner from the refusal before it — the convention `ReopenShiftDialog`
-  // (pages/day) documents.
+  // (pages/point-cash) follows too.
   const [openDialogInstance, setOpenDialogInstance] = useState(0);
   // A banner close shows its result and the note form, not a bare toast (S2).
   const [staleResult, setStaleResult] = useState<ShiftCountResultFor | null>(null);
@@ -301,13 +301,14 @@ export function ReceptionPage() {
     }
   };
 
-  // #114 — «Каса за день» for the day a shift was left open on. An operator's
-  // point comes from their token, so only the owner's has to ride in the link
-  // or that screen opens on whichever point it remembers.
-  const goToDay = (businessDate: string) => {
+  // #114 — «Каса точки» for the day a shift was left open on (#221: that
+  // day's documents and close live there now). An operator's point comes from
+  // their token, so only the owner's has to ride in the link or that screen
+  // opens on whichever point it remembers.
+  const goToPointCash = (businessDate: string) => {
     const params = new URLSearchParams({ date: businessDate });
     if (canPick && pointId !== null) params.set('point', pointId);
-    void navigate(`/day?${params.toString()}`);
+    void navigate(`/point-cash?${params.toString()}`);
   };
 
   // Every receipt that returns our crates passes through `ConfirmRefundDialog`,
@@ -351,10 +352,15 @@ export function ReceptionPage() {
         <SelectField
           aria-label={t('reception.pickPoint')}
           value={pointId ?? ''}
-          onChange={(e) => setPointId(e.target.value || null)}
+          onChange={(e) => setPointId(e.target.value)}
           className="w-48"
         >
-          <option value="">{t('reception.pickPoint')}</option>
+          {/* A deactivated point reached by `?point=` is not in `points`
+              (active only) — without its own entry the select would show
+              the first active point over this point's shift and receipts. */}
+          {pointId && points && !points.some((p) => p.id === pointId) ? (
+            <option value={pointId}>{t('common.inactivePoint')}</option>
+          ) : null}
           {(points ?? []).map((p) => (
             <option key={p.id} value={p.id}>
               {p.name}
@@ -362,13 +368,15 @@ export function ReceptionPage() {
           ))}
         </SelectField>
       ) : null}
-      {/* Both roles: an operator's /prices is read-only (no role gate on the
-          route), so «Ціни дня» is a look, not just a set. */}
-      <Button variant="outline" asChild>
-        <Link to="/prices">{t('reception.toPrices')}</Link>
-      </Button>
+      {/* Owner only (#221): /prices is the owner's screen, and the operator
+          already sees each grade's price on its option in the form below. */}
+      {isOwner ? (
+        <Button variant="outline" asChild>
+          <Link to="/prices">{t('reception.toPrices')}</Link>
+        </Button>
+      ) : null}
       <Button variant="secondary" asChild>
-        <Link to="/day">{t('reception.toDay')}</Link>
+        <Link to="/point-cash">{t('reception.toPointCash')}</Link>
       </Button>
     </>
   );
@@ -388,9 +396,8 @@ export function ReceptionPage() {
         title={t('reception.noPrices.title')}
         hint={t('reception.noPrices.hint')}
         action={
-          // Only the owner can actually set a price on the next screen — an
-          // operator's own `/prices` is read-only, so this call to action is
-          // theirs alone.
+          // Only the owner can set a price — and since #221 only the owner
+          // can open `/prices` at all — so this call to action is theirs alone.
           isOwner ? (
             <Button asChild>
               <Link to="/prices">{t('reception.noPrices.action')}</Link>
@@ -425,7 +432,7 @@ export function ReceptionPage() {
         <OpenShiftAlert
           pointId={pointId}
           viewedDate={todayIso()}
-          onGoToDate={goToDay}
+          onGoToDate={goToPointCash}
           onClosed={(id) => setStaleResult({ mode: 'close', shiftId: id })}
         />
 

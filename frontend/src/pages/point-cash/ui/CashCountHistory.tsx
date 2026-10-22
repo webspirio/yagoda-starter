@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { TriangleAlert } from 'lucide-react';
-import { SectionCard } from '@/shared/ui/section-card';
 import { DataTable, type Column } from '@/shared/ui/data-table';
 import { Button } from '@/shared/ui/button';
 import { EmptyState } from '@/shared/ui/empty-state';
@@ -22,6 +21,9 @@ import { discrepancyTone } from '@/features/count-shift';
  * 2026-10-08, the operator who counted), neither of which ever moves the counted
  * or expected figure, only attaches a reason to a discrepancy that already
  * happened.
+ *
+ * Bare content: «Каса точки» shows it as a tab of a card it owns, beside
+ * «Стрічка дня» (#221).
  */
 export function CashCountHistory({
   pointId,
@@ -175,7 +177,7 @@ export function CashCountHistory({
   ];
 
   return (
-    <SectionCard eyebrow={t('pointCash.countHistory.title')}>
+    <>
       {/* «Цю точку ще жодного разу не рахували» is a claim about the point's
           whole history — an unanswered query is not evidence for it, and a
           journal that flashes it on every load teaches the reader to
@@ -204,6 +206,6 @@ export function CashCountHistory({
           onClose={() => setNoteTarget(null)}
         />
       ) : null}
-    </SectionCard>
+    </>
   );
 }

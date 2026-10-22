@@ -479,13 +479,20 @@ schedules yet — a kit/consistency pass, not a feature:
   users). It is a transport envelope, not a domain type — move it to
   `shared/api` and delete the copies. The ESLint layer rule only checks
   direction, so nothing stops a sixth copy today.
-- **`pages/day/api/shiftActions.ts` has no test** for the invalidation trio
+- ~~**`pages/day/api/shiftActions.ts` has no test** for the invalidation trio
   (`shifts`, `intakes`, `payouts`) that every later screen relies on; ~30 lines
-  with a real `QueryClient` would lock it.
-- **The day page's truncation notice counts the merged feed**, while the cap
-  is 100 per journal — 100 intakes + 5 payouts reads «перші 105 документів».
-- **A refused close banner survives navigation** on the day page (step to another
-  day, switch point); clear it in the date/point setters.
+  with a real `QueryClient` would lock it.~~ **CLOSED 2026-10-20 (#221):** the
+  file now lives at `pages/point-cash/api/shiftActions.ts` with its own test, and
+  the shared invalidation list is pinned in `features/count-shift`.
+- **The day's truncation notice counts the merged feed**, while the cap is 100
+  per journal — 100 intakes + 5 payouts reads «перші 105 документів». Moved with
+  #221 from the deleted day page to «Каса точки»: `pages/point-cash/ui/DayTiles.tsx`
+  (`count: shown`, which is `day.feed.length`).
+- ~~**A refused close banner survives navigation** on the day page (step to another
+  day, switch point); clear it in the date/point setters.~~ **CLOSED 2026-10-20
+  (#221):** the day page is gone. On «Каса точки» a refused close shows only inside
+  the modal count dialog, which gets a new `key` every time it opens, so the
+  refusal never outlives the dialog.
 
 ## Learned from the debts and overview screens (2026-09-09)
 
@@ -1503,10 +1510,11 @@ this explanation belongs to».
 
 Found by driving the count-explanations slice in a browser. None of them blocks it.
 
-- **The day screen's own «Закрити зміну» still only toasts.** The stale-shift
+- ~~**The day screen's own «Закрити зміну» still only toasts.** The stale-shift
   banner on «Прийомка» and «Каса за день» now shows the result and the note
   form (`widgets/count-result`). `DayPage`'s toolbar close does not; it is one
-  `ShiftCountResult` away.
+  `ShiftCountResult` away.~~ **CLOSED 2026-10-20 (#221):** `DayPage` is gone; the
+  day is closed from «Каса точки»'s shift panel, which shows `ShiftCountResult`.
 - **«рахував» / «закрив» are masculine for everyone.** «рахував Оксана Гнатюк»
   (`pointCash.countHistory.notYours`) and «закрив …» on the shift panel. Fixing
   this needs the user's gender, or a wording without a past-tense verb.
@@ -1536,7 +1544,7 @@ the review bot found.
   (number, operation, date, supplier) and `footer` are copied in both, and a third document
   kind would copy them again. One skeleton function that takes the operation and the sections
   is enough. `ReceiptDocument` is plain data, so a fluent builder would be overkill.
-- **Receipt wiring is copied onto four pages (review item 6).** `DayPage`, `JournalPage`,
+- **Receipt wiring is copied onto four pages (review item 6).** `PointCashPage` (was `DayPage` until #221), `JournalPage`,
   `DebtsPage` and `SupplierCardPage` each hold a second `useReceiptOpener()` and their own
   `<PayoutReceiptDialog …/>`. The rule «a payout gets its own receipt only when
   `intake_id === null`» is written separately in Day, Journal and the supplier timeline.
@@ -1600,3 +1608,37 @@ The slice rounds only a reception line's `amount` (§2.12). The ticket says
   preview — is open.
 - **The receipt prints net × rate beside an amount that is not their product**
   (36,90 × 57,00 next to 2 103,00). A hint for the supplier is possible.
+
+## Left over from merging «Каса за день» into «Каса точки» (#221, 2026-10-20)
+
+The client asked to move what was needed and decide later what to drop, so
+everything `pages/day` showed now sits on `/point-cash`, and two things overlap:
+
+- **Two cash ledgers on one page.** `DayLedger` («Звірка каси») is a client-side
+  decomposition of the shift's own documents and cannot see a `settle-return`
+  made today for an earlier shift's payout (its own note says so). `CashLedger` is
+  the server's `breakdown` (#73), whose rows add up to the figure by construction.
+  Decide with the client which to keep; the likely answer is `CashLedger` alone.
+  The overlap also costs requests (PR #266 review, item 5): `useDayDocuments`
+  reads the shift's intakes and payouts by `shiftId`, and the ledger reads them
+  again by point + date — four reads instead of two on every open, all
+  invalidated by each receipt and payout. Dropping one ledger drops one pair.
+- **«Документи дня» beside «Журнал прийомки».** The feed is the shift's
+  documents for both roles; the journal is the owner's season-wide register.
+  Probably both stay, but the client has not said.
+- **The `day.*` locale keys still in use were not renamed** (tiles, feed, ledger,
+  reopen, count dialog copy, `day.errors.*`). Rename them to `pointCash.*` in the
+  same change that settles the two points above, so the locale churn happens once.
+- **`/day` is a redirect** (`app/RedirectToPointCash.tsx`) kept for bookmarks.
+  It can go once nobody can still be holding an old link — not before the next
+  season.
+- **The stat tiles crowd a phone** (PR #266 review, item 8). `StatGrid` puts
+  two tiles per row below `sm`, so at 390 px a figure like «12 345,00 ₴» drops
+  its «₴» onto a line of its own and «НЕ ВИСТАЧАЄ ДО НАДІЛУ» truncates. Not new —
+  main's three tiles sat two per row too — and the fix belongs to the kit's
+  `StatTile`/`StatGrid`, which every screen with tiles shares.
+- **«…сьогодні» labels on a past date** (PR #266 review, item 9). `CashLedger`
+  says «Нараховано сьогодні», «Видано сьогодні», «Прийнято переказом сьогодні»
+  whatever `?date=` is. Also not new — the date stepper predates #221 — but the
+  page now stands in for «Каса за день» on past days too, so the wording should
+  follow the date.

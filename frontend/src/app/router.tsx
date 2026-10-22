@@ -1,4 +1,5 @@
 import { createBrowserRouter, Outlet, type RouteObject } from 'react-router';
+import { RedirectToPointCash } from './RedirectToPointCash';
 import { AppLayout } from './layouts/AppLayout';
 import { RouteError } from './providers/RouteError';
 import { RouteFallback } from './layouts/RouteFallback';
@@ -7,7 +8,7 @@ import { RequireAuth, RequireRole } from '@/features/auth';
 // EAGER — the screens an operator opens every shift, plus the two auth-shaped
 // ones. These stay in the entry chunk deliberately: a chunk request costs a
 // round trip on the mobile data an operator is standing in the field with, and
-// paying it for /reception or /day would make the daily path slower to save
+// paying it for /reception would make the daily path slower to save
 // bytes the daily path was already going to need.
 import { LoginPage } from '@/pages/login';
 import { DashboardPage } from '@/pages/dashboard';
@@ -15,26 +16,25 @@ import { ProfilePage } from '@/pages/profile';
 import { SuppliersPage } from '@/pages/suppliers';
 import { DebtsPage } from '@/pages/debts';
 import { SupplierCardPage } from '@/pages/supplier-card';
-import { PricesPage } from '@/pages/prices';
-import { DayPage } from '@/pages/day';
 import { ReceptionPage } from '@/pages/reception';
 import { CratesPage } from '@/pages/crates';
 import { NotFoundPage } from '@/pages/not-found';
 
 // LAZY — the owner-only group, in ONE chunk fetched the first time an owner
-// opens any of these eight screens. They live in their own module because a
+// opens any of these nine screens. They live in their own module because a
 // file that DEFINES components and also exports plain values (`routes`,
 // `router`) is not a Fast Refresh boundary — eslint-plugin-react-refresh
 // says so, and this repo's eslint config answers that by extracting rather
 // than whitelisting. `./lazy-routes` carries the measurements behind the
 // one-chunk choice and the guard-before-chunk ordering the routes below
-// depend on; read it before adding a ninth.
+// depend on; read it before adding a tenth.
 import {
   CatalogPage,
   CostOfDayPage,
   JournalPage,
   PointCashPage,
   PointsPage,
+  PricesPage,
   ReweighPage,
   SettingsPage,
   TransfersPage,
@@ -134,11 +134,12 @@ export const routes: RouteObject[] = [
         ),
       },
       {
-        // Both roles: the operator runs their shift, the owner reads (and reopens).
+        // #221 — «Каса за день» was folded into «Каса точки». The address stays
+        // for bookmarks and shared links, and keeps their ?point= and ?date=.
         path: '/day',
         element: (
           <RequireAuth>
-            <DayPage />
+            <RedirectToPointCash />
           </RequireAuth>
         ),
       },
@@ -192,7 +193,7 @@ export const routes: RouteObject[] = [
           },
           {
             // The full receipts/payouts register is owner-only — an operator's
-            // view is scoped to their own point's shift already (Каса за день).
+            // view is scoped to their own point's shift already («Каса точки»).
             path: '/journal',
             element: <JournalPage />,
           },
@@ -215,18 +216,14 @@ export const routes: RouteObject[] = [
             element: <CostOfDayPage />,
           },
           { path: '/settings', element: <SettingsPage /> },
+          {
+            // The owner's screen (#221). `GET /grade-prices/*` stays open to
+            // both roles server-side — reception reads the operator's prices
+            // from it — but the price table itself is not the operator's.
+            path: '/prices',
+            element: <PricesPage />,
+          },
         ],
-      },
-      {
-        // Both roles: `GET /grade-prices` (current + history) is open to both
-        // server-side, but `POST /grade-prices` is @Auth(NetworkOwner) — the
-        // operator sees the same table LOCKED instead of Change/Set.
-        path: '/prices',
-        element: (
-          <RequireAuth>
-            <PricesPage />
-          </RequireAuth>
-        ),
       },
       {
         // Обидві ролі: приймальник прибитий до своєї точки токеном, керівник

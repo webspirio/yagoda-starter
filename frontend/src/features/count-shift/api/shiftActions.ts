@@ -6,7 +6,7 @@ import type { Shift } from '@/entities/shift';
 /**
  * Opening, closing and reopening a shift all change what «today» means for
  * the documents of that point, so all three invalidate shifts AND both
- * journals. Exported for `pages/day/api/shiftActions.ts`'s
+ * journals. Exported for `pages/point-cash/api/shiftActions.ts`'s
  * `useReopenShiftMutation`, which used to carry a byte-for-byte copy of this
  * function — reopening is owner-only and takes a reason rather than a count,
  * but its invalidation set is identical to open/close's, so there was

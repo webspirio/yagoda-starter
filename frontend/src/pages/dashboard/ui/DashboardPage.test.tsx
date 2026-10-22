@@ -164,9 +164,9 @@ describe('DashboardPage — the owner', () => {
     expect(screen.getByText('Shift not opened yet')).toBeInTheDocument();
 
     const p1Row = screen.getByText('Shypynky').closest('[data-slot="card"]') as HTMLElement;
-    expect(within(p1Row).getByRole('link', { name: 'Day cash' })).toHaveAttribute(
+    expect(within(p1Row).getByRole('link', { name: 'Point cash' })).toHaveAttribute(
       'href',
-      '/day?point=p1',
+      '/point-cash?point=p1',
     );
     expect(within(p1Row).getByRole('link', { name: 'Intake' })).toHaveAttribute(
       'href',
@@ -230,7 +230,7 @@ describe('DashboardPage — the owner', () => {
 
     const section = screen.getByText('Unclosed shifts').closest('[data-slot="card"]') as HTMLElement;
     const link = within(section).getByRole('link');
-    expect(link).toHaveAttribute('href', '/day?point=p2&date=2026-09-05');
+    expect(link).toHaveAttribute('href', '/point-cash?point=p2&date=2026-09-05');
     expect(link).toHaveTextContent('Haiove');
     expect(link).toHaveTextContent('September 5, 2026');
 
@@ -262,8 +262,8 @@ describe('DashboardPage — the owner', () => {
     expect(links).toHaveLength(2);
     // Read in the other direction: the shift stranded longest is the urgent
     // one, so it leads.
-    expect(links[0]).toHaveAttribute('href', '/day?point=p2&date=2026-09-05');
-    expect(links[1]).toHaveAttribute('href', '/day?point=p1&date=2026-09-06');
+    expect(links[0]).toHaveAttribute('href', '/point-cash?point=p2&date=2026-09-05');
+    expect(links[1]).toHaveAttribute('href', '/point-cash?point=p1&date=2026-09-06');
   });
 
   it('shows today’s points and tiles while the stale-shift read is still in flight', () => {
@@ -298,7 +298,7 @@ describe('DashboardPage — the owner', () => {
     const link = within(section).getByRole('link');
     expect(link).toHaveTextContent('Inactive point');
     expect(link).toHaveTextContent('September 5, 2026');
-    expect(link).toHaveAttribute('href', '/day?point=p9&date=2026-09-05');
+    expect(link).toHaveAttribute('href', '/point-cash?point=p9&date=2026-09-05');
   });
 
   it('renders no section at all when nothing was left open', () => {
@@ -380,7 +380,7 @@ describe('DashboardPage — the operator', () => {
     renderDashboard();
 
     expect(screen.getByRole('link', { name: 'Intake' })).toHaveAttribute('href', '/reception');
-    expect(screen.getByRole('link', { name: 'Day cash' })).toHaveAttribute('href', '/day');
+    expect(screen.getByRole('link', { name: 'Point cash' })).toHaveAttribute('href', '/point-cash');
     expect(screen.getByRole('link', { name: 'Balances' })).toHaveAttribute('href', '/debts');
   });
 });
