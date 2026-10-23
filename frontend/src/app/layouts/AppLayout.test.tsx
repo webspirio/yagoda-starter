@@ -189,4 +189,33 @@ describe('AppLayout', () => {
       '/prices',
     );
   });
+
+  it('folds the sidebar to its icons and remembers it, labels kept for screen readers', async () => {
+    window.localStorage.removeItem('web-starter:sidebar-collapsed');
+    useSession.setState({ token: 'tok' });
+    mock.onGet('/me').reply(200, {
+      id: 'u0',
+      username: 'owner',
+      display_name: 'Ivan',
+      role: 'network_owner',
+      collection_point_id: null,
+    });
+    const user = userEvent.setup();
+    renderLayout('/');
+
+    const prices = await screen.findByRole('link', { name: 'Day prices' });
+    expect(prices).not.toHaveAttribute('title');
+
+    await user.click(screen.getByRole('button', { name: 'Collapse menu' }));
+
+    expect(screen.getByRole('navigation')).toHaveClass('md:w-16');
+    // Still named for assistive tech, and the name returns on hover.
+    expect(screen.getByRole('link', { name: 'Day prices' })).toHaveAttribute('title', 'Day prices');
+    expect(screen.getByText('Day prices')).toHaveClass('md:sr-only');
+    expect(window.localStorage.getItem('web-starter:sidebar-collapsed')).toBe('1');
+
+    await user.click(screen.getByRole('button', { name: 'Expand menu' }));
+    expect(screen.getByRole('navigation')).not.toHaveClass('md:w-16');
+    expect(window.localStorage.getItem('web-starter:sidebar-collapsed')).toBe('0');
+  });
 });

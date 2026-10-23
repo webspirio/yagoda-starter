@@ -59,7 +59,9 @@
     "profile": "Профіль",
     "settings": "Налаштування",
     "openMenu": "Відкрити меню",
-    "closeMenu": "Закрити меню"
+    "closeMenu": "Закрити меню",
+    "collapseSidebar": "Згорнути меню",
+    "expandSidebar": "Розгорнути меню"
   },
   "shell": {
     "brand": "Ягода",

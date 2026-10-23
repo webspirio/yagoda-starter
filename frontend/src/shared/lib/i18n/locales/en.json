@@ -59,7 +59,9 @@
     "profile": "Profile",
     "settings": "Settings",
     "openMenu": "Open menu",
-    "closeMenu": "Close menu"
+    "closeMenu": "Close menu",
+    "collapseSidebar": "Collapse menu",
+    "expandSidebar": "Expand menu"
   },
   "shell": {
     "brand": "Yagoda",
