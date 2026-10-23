@@ -98,7 +98,10 @@ export function PointStrip({
   const cratesHref = isOwner ? `/crates?point=${pointId}` : '/crates';
 
   return (
-    <div className="mb-3 grid gap-x-6 gap-y-3 rounded-xl border border-line2 bg-card px-4 py-3 sm:grid-cols-2 lg:flex lg:flex-wrap lg:items-center">
+    // One row at `lg` (spec §5.1 budgets the strip one ~56 px row): every
+    // cell is a label line over a value line, and what does not fit
+    // truncates rather than wrapping. Below `lg` the wrapping grid stays.
+    <div className="mb-3 grid gap-x-6 gap-y-2 rounded-xl border border-line2 bg-card px-3 py-2 sm:grid-cols-2 lg:flex lg:flex-nowrap lg:items-center lg:gap-x-4">
       <StatusCell
         shift={shift}
         canOpen={canOpen}
@@ -135,28 +138,30 @@ export function PointStrip({
 
       <Popover>
         <PopoverTrigger className="min-w-0 rounded-md text-left outline-none hover:text-brand focus-visible:ring-2 focus-visible:ring-ring lg:ml-auto">
-          <Eyebrow className="flex items-center gap-1 truncate">
-            {t('reception.today.trigger')}
-            <ChevronDown className="size-3" aria-hidden="true" />
-          </Eyebrow>
-          <span className="mt-1 flex items-baseline gap-2 whitespace-nowrap font-mono text-sm leading-none font-semibold">
-            <span>
-              {t('reception.today.summary', {
-                count: liveRows.length,
-                kg: formatKg(liveNetKg, locale),
-              })}
-            </span>
+          {/* Two lines, never three: the amber «відкрито …» and the
+              truncation caption ride on the LABEL line and truncate there. */}
+          <span className="flex min-w-0 items-baseline gap-2 leading-4">
+            <Eyebrow className="flex shrink-0 items-center gap-1 leading-4 tracking-wide">
+              {t('reception.today.trigger')}
+              <ChevronDown className="size-3" aria-hidden="true" />
+            </Eyebrow>
             {cmp(openToday, '0') === 1 ? (
-              <span className="text-xs text-amber">
+              <span className="min-w-0 truncate font-mono text-xs font-semibold text-amber">
                 {t('reception.today.open', { uah: formatUah(openToday, locale) })}
               </span>
             ) : null}
+            {todayTruncated ? (
+              <span className="min-w-0 truncate text-[10px] text-muted-foreground">
+                {t('reception.state.truncatedCaption')}
+              </span>
+            ) : null}
           </span>
-          {todayTruncated ? (
-            <span className="mt-0.5 block truncate text-[10px] text-muted-foreground">
-              {t('reception.state.truncatedCaption')}
-            </span>
-          ) : null}
+          <span className="mt-0.5 block truncate font-mono text-sm leading-5 font-semibold">
+            {t('reception.today.summary', {
+              count: liveRows.length,
+              kg: formatKg(liveNetKg, locale),
+            })}
+          </span>
         </PopoverTrigger>
         <PopoverContent className="w-[420px] max-w-[calc(100vw-2rem)]">
           <Eyebrow className="mb-2 truncate">{t('reception.today.title')}</Eyebrow>
@@ -197,7 +202,7 @@ function StatusCell({
   }
   if (shift.status === 'none') {
     return (
-      <div className="flex min-w-0 items-center gap-2">
+      <div className="flex min-w-0 shrink-0 items-center gap-2">
         <AlertTriangle className="size-4 shrink-0 text-amber" aria-hidden="true" />
         <p className="text-sm font-medium text-amber">
           {canOpen ? t('reception.shift.none') : t('reception.shift.noneOwner')}
@@ -211,7 +216,7 @@ function StatusCell({
     );
   }
   return (
-    <p className="text-sm font-medium text-success">
+    <p className="shrink-0 text-sm font-medium whitespace-nowrap text-success">
       {t('reception.state.shiftOpen', { time: formatTime(shift.shift.created_at, locale) })}
     </p>
   );
@@ -230,7 +235,7 @@ function Cell({
   to: string;
   label: string;
   value: string;
-  /** Muted note under the value — today only «перші 100 документів» when the
+  /** Muted note beside the label — today only «перші 100 документів» when the
    *  sum behind `value` is over a truncated page. */
   caption?: string;
   emphasised?: boolean;
@@ -240,18 +245,21 @@ function Cell({
       to={to}
       className="min-w-0 rounded-md hover:text-brand focus-visible:ring-2 focus-visible:ring-ring"
     >
-      <Eyebrow className="truncate">{label}</Eyebrow>
+      {/* The caption shares the label line, so a cell stays two lines. */}
+      <div className="flex min-w-0 items-baseline gap-1.5 leading-4">
+        <Eyebrow className="min-w-0 truncate leading-4 tracking-wide">{label}</Eyebrow>
+        {caption ? (
+          <span className="min-w-0 truncate text-[10px] text-muted-foreground">{caption}</span>
+        ) : null}
+      </div>
       <div
         className={cn(
-          'mt-1 truncate font-mono leading-none font-semibold tracking-tight',
+          'mt-0.5 truncate font-mono leading-none font-semibold tracking-tight',
           emphasised ? 'text-xl' : 'text-sm',
         )}
       >
         {value}
       </div>
-      {caption ? (
-        <div className="mt-0.5 truncate text-[10px] text-muted-foreground">{caption}</div>
-      ) : null}
     </Link>
   );
 }

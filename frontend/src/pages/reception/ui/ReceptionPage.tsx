@@ -349,7 +349,7 @@ export function ReceptionPage() {
           aria-label={t('reception.pickPoint')}
           value={pointId ?? ''}
           onChange={(e) => setPointId(e.target.value)}
-          className="h-9 w-48"
+          className="h-8 w-48"
         >
           {/* A deactivated point reached by `?point=` is not in `points`
               (active only) — without its own entry the select would show
@@ -367,11 +367,11 @@ export function ReceptionPage() {
       {/* Owner only (#221): /prices is the owner's screen, and the operator
           already sees each grade's price on its option in the form below. */}
       {isOwner ? (
-        <Button variant="outline" asChild>
+        <Button variant="outline" size="sm" asChild>
           <Link to="/prices">{t('reception.toPrices')}</Link>
         </Button>
       ) : null}
-      <Button variant="secondary" asChild>
+      <Button variant="secondary" size="sm" asChild>
         <Link to="/point-cash">{t('reception.toPointCash')}</Link>
       </Button>
     </>
@@ -565,7 +565,8 @@ export function ReceptionPage() {
 
   return (
     <>
-      <div className="flex items-center justify-between gap-3 pb-3">
+      {/* ≤ 40 px tall (spec §5.1): 32 px actions + `pb-2`. */}
+      <div className="flex items-center justify-between gap-3 pb-2">
         <div className="flex min-w-0 items-baseline gap-3">
           <h1 className="font-display text-xl leading-tight font-medium">{t('reception.title')}</h1>
           <span className="truncate text-sm text-muted-foreground">

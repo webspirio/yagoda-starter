@@ -237,7 +237,7 @@ export function LineEditor({
 
   return (
     <div className="px-4 pb-3">
-      <div className="rounded-lg border border-dashed border-border p-3">
+      <div className="rounded-lg border border-dashed border-border p-2.5">
         {/* Row 1 — weighing, in §2.4's order: the gross, the pallet taken off
             first, then the tare. Брутто stays the widest, largest field. */}
         <div className="flex flex-wrap items-start gap-3">
@@ -302,8 +302,9 @@ export function LineEditor({
             </Button>
           )}
 
-          {/* The tare column: extra rows («Інша тара») stack under the first
-              and push the block down rather than widen it (spec §4). */}
+          {/* The tare column: extra rows («Інша тара», in the footer) stack
+              under the first and push the block down rather than widen it
+              (spec §4). */}
           <div className="min-w-[260px] flex-[2]">
             <div className="mb-[7px] text-[11px] font-bold tracking-wider text-muted-foreground uppercase">
               {t('reception.weight.tare')}
@@ -385,25 +386,12 @@ export function LineEditor({
                 );
               })}
             </div>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="mt-0.5 -ml-2 h-7"
-              disabled={disabled || !freeTareType}
-              onClick={() =>
-                freeTareType && tare.append({ tare_type_id: freeTareType.id, units: '1' })
-              }
-            >
-              <Package className="size-3.5" />
-              {t('reception.weight.otherTare')}
-            </Button>
           </div>
         </div>
 
         {/* Row 2 — pricing: the product, its grade at the day's price, and
             this line's own extra price (§2.8). */}
-        <div className="mt-2 flex flex-wrap items-start gap-3">
+        <div className="mt-1.5 flex flex-wrap items-start gap-3">
           <Field
             name={`product-line-${index}`}
             label={t('reception.grade.product')}
@@ -518,7 +506,7 @@ export function LineEditor({
             alert per refusal, not two. */}
         <p
           className={cn(
-            'mt-2 font-mono text-sm',
+            'mt-1.5 font-mono text-sm',
             hasLineError
               ? 'text-destructive'
               : previewItem
@@ -564,7 +552,23 @@ export function LineEditor({
             : null}
         </div>
 
-        <div className="mt-2 flex flex-wrap items-center gap-3">
+        <div className="mt-1.5 flex flex-wrap items-center gap-3">
+          {/* «Інша тара» lives here, not under the tare rows, so row 1 stays
+              one control tall; in DOM order it still follows the tare and
+              precedes «Прибрати позицію» / «Ще позиція» (spec §5.2). */}
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="-ml-2"
+            disabled={disabled || !freeTareType}
+            onClick={() =>
+              freeTareType && tare.append({ tare_type_id: freeTareType.id, units: '1' })
+            }
+          >
+            <Package className="size-3.5" />
+            {t('reception.weight.otherTare')}
+          </Button>
           {/* «Ще позиція» always leaves an empty draft behind, and an empty
               draft cannot preview (`isPreviewable` wants every line complete)
               — with no way back the operator is stuck staring at a dark submit
@@ -575,7 +579,7 @@ export function LineEditor({
               type="button"
               variant="ghost"
               size="sm"
-              className="-ml-2 text-muted-foreground"
+              className="text-muted-foreground"
               disabled={disabled}
               onClick={onRemoveDraft}
             >

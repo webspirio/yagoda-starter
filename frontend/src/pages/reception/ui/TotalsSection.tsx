@@ -152,7 +152,7 @@ export function TotalsSection({
           : t('reception.submitKg', { kg: formatKg(netKg, locale) });
 
   return (
-    <div className="flex flex-col gap-2 border-t border-border p-4">
+    <div className="flex flex-col gap-1.5 border-t border-border p-3">
       <Eyebrow>{t('reception.totals.eyebrow')}</Eyebrow>
 
       <div className="flex items-baseline justify-between gap-3 text-sm">
@@ -209,7 +209,7 @@ export function TotalsSection({
             <div className="relative">
               <DecimalInput
                 {...a11y}
-                className="h-11 pr-9 font-mono text-xl font-semibold"
+                className="h-10 pr-9 font-mono text-xl font-semibold"
                 value={paid}
                 onChange={(e) => onPaidChange(e.target.value)}
                 {...paidField.inputProps}
@@ -277,7 +277,7 @@ export function TotalsSection({
         </p>
       ) : null}
 
-      <Button type="submit" className="h-12 w-full text-base" disabled={disabled || isSubmitting}>
+      <Button type="submit" className="h-11 w-full text-base" disabled={disabled || isSubmitting}>
         <Check className="size-5" />
         {label}
       </Button>
