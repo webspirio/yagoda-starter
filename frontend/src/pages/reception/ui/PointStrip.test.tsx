@@ -4,7 +4,6 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import type { Intake } from '@/entities/intake';
 import type { Shift } from '@/entities/shift';
-import { formatTime } from '@/shared/lib/date';
 import { PointStrip } from './PointStrip';
 
 const { pointCashMock, cashCountsMock, payoutsMock, intakesMock, crateBalancesMock } = vi.hoisted(
@@ -152,9 +151,6 @@ function renderStrip(over: Partial<Props> = {}) {
         pointId="p1"
         shift={{ status: 'open', shift: SHIFT }}
         isOwner={false}
-        canOpen
-        isOpening={false}
-        onOpenShift={vi.fn()}
         targetCrates={40}
         onOpenReceipt={vi.fn()}
         {...over}
@@ -283,48 +279,6 @@ describe('PointStrip — the cash and crates links', () => {
   });
 });
 
-describe('PointStrip — the shift status', () => {
-  it('offers the operator «Open shift» when there is no shift, and calls onOpenShift', async () => {
-    const onOpenShift = vi.fn();
-    renderStrip({ shift: { status: 'none' }, onOpenShift });
-
-    expect(screen.getByText('Shift not opened yet')).toBeInTheDocument();
-    await userEvent.click(screen.getByRole('button', { name: 'Open shift' }));
-    expect(onOpenShift).toHaveBeenCalledTimes(1);
-  });
-
-  it('tells the owner the operator opens the shift, with no button', () => {
-    renderStrip({ shift: { status: 'none' }, canOpen: false, isOwner: true });
-
-    expect(
-      screen.getByText('No shift opened at this point yet. The operator opens it.'),
-    ).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Open shift' })).toBeNull();
-  });
-
-  it('shows the error, not the open button, when the shift read failed', () => {
-    renderStrip({ shift: { status: 'error' } });
-
-    expect(screen.getByRole('alert')).toHaveTextContent('Something went wrong');
-    expect(screen.queryByText('Shift not opened yet')).toBeNull();
-    expect(screen.queryByRole('button', { name: 'Open shift' })).toBeNull();
-  });
-
-  it('shows neither the open button nor the error while the shift is still loading', () => {
-    renderStrip({ shift: { status: 'pending' } });
-
-    expect(screen.queryByRole('alert')).toBeNull();
-    expect(screen.queryByRole('button', { name: 'Open shift' })).toBeNull();
-  });
-
-  it('reads the opening time from the shift’s created_at', () => {
-    renderStrip();
-    expect(
-      screen.getByText(`Shift open since ${formatTime(SHIFT.created_at, 'en')}`),
-    ).toBeInTheDocument();
-  });
-});
-
 describe('PointStrip — today’s receipts', () => {
   const LIVE_A = intake({
     id: 'a',
@@ -363,15 +317,13 @@ describe('PointStrip — today’s receipts', () => {
 
   it('a row click in the popover calls onOpenReceipt and nothing else', async () => {
     const onOpenReceipt = vi.fn();
-    const onOpenShift = vi.fn();
     intakesMock.mockReturnValue(page([LIVE_A]));
-    renderStrip({ onOpenReceipt, onOpenShift });
+    renderStrip({ onOpenReceipt });
 
     await userEvent.click(screen.getByRole('button', { name: /Today/ }));
     await userEvent.click(await screen.findByText('Ніна Ільчук'));
 
     expect(onOpenReceipt).toHaveBeenCalledTimes(1);
     expect(onOpenReceipt).toHaveBeenCalledWith('a');
-    expect(onOpenShift).not.toHaveBeenCalled();
   });
 });

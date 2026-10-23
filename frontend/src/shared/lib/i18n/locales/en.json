@@ -908,8 +908,10 @@
     "toPointCash": "Point cash",
     "shift": {
       "none": "Shift not opened yet",
-      "noneOwner": "No shift opened at this point yet. The operator opens it.",
-      "open": "Open shift"
+      "open": "Open shift",
+      "closedTitle": "Today's shift isn't open yet",
+      "closedHint": "To receive berries, open the shift: count the cash in the drawer first.",
+      "closedHintOwner": "The point's operator opens the shift. Once it's open, reception appears here."
     },
     "noPoint": "Select a point to receive berries",
     "noPrices": {

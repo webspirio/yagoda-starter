@@ -505,12 +505,15 @@ describe('ReceptionPage — before the shift is open', () => {
     shiftMock.mockReturnValue({ data: null, isPending: false, isError: false });
   });
 
-  it('says the shift is not open, offers to open it and refuses to accept anything', async () => {
+  it('replaces the form with what to do: the status in the header, «Open shift» in place of the form', async () => {
     const user = userEvent.setup();
     renderReception();
 
     expect(screen.getByText('Shift not opened yet')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Accept' })).toBeDisabled();
+    expect(screen.getByText("Today's shift isn't open yet")).toBeInTheDocument();
+    // Nothing can be received without a shift, so nothing is offered.
+    expect(screen.queryByRole('button', { name: 'Accept' })).toBeNull();
+    expect(screen.queryByLabelText('Gross, kg')).toBeNull();
 
     await user.click(screen.getByRole('button', { name: 'Open shift' }));
     const dialog = await screen.findByRole('dialog');
@@ -560,7 +563,9 @@ describe('ReceptionPage — before the shift is open', () => {
     renderReception();
 
     expect(
-      screen.getByText('No shift opened at this point yet. The operator opens it.'),
+      screen.getByText(
+        "The point's operator opens the shift. Once it's open, reception appears here.",
+      ),
     ).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Open shift' })).toBeNull();
     // Only real points to pick from — no «Select a point» entry.
@@ -791,7 +796,7 @@ describe('ReceptionPage — several lines', () => {
     ).toBeInTheDocument();
   });
 
-  it('locks the per-row trash once the shift is closed, like every other control', async () => {
+  it('takes the form away once the shift is closed elsewhere', async () => {
     const user = userEvent.setup();
     renderReception();
 
@@ -805,13 +810,14 @@ describe('ReceptionPage — several lines', () => {
     expect(rowTrash()).toBeEnabled();
 
     // The operator closed the shift in the other tab; the receipt cannot be
-    // written any more, so it cannot be edited any more either.
+    // written any more, so the form gives way to the closed-shift state.
     shiftMock.mockReturnValue({ data: null, isPending: false, isError: false });
     // Any keystroke will do — this one just has to re-render the screen with
     // the mock above in place.
     await user.type(screen.getByLabelText('Gross, kg'), '1');
 
-    expect(rowTrash()).toBeDisabled();
+    expect(screen.queryByRole('table')).toBeNull();
+    expect(screen.getByText("Today's shift isn't open yet")).toBeInTheDocument();
   });
 
   // §5.2 — DOM order is §2.1 order, with no `tabIndex` overrides: the one

@@ -1,12 +1,10 @@
 import type * as React from 'react';
 import { Link } from 'react-router';
-import { AlertTriangle, ChevronDown } from 'lucide-react';
+import { ChevronDown } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import { Button } from '@/shared/ui/button';
 import { Eyebrow } from '@/shared/ui/eyebrow';
 import { Popover, PopoverContent, PopoverTrigger } from '@/shared/ui/popover';
 import { cn } from '@/shared/lib/cn';
-import { formatTime } from '@/shared/lib/date';
 import { add, cmp, formatKg, formatUah, sum } from '@/shared/lib/money';
 import { isTruncated } from '@/shared/api';
 import { usePointCashForPointQuery } from '@/entities/point-cash';
@@ -17,14 +15,14 @@ import { useCrateBalancesQuery } from '@/entities/crate';
 import type { Shift } from '@/entities/shift';
 import { TodayReceipts } from './TodayReceipts';
 
-type StripShift =
+export type StripShift =
   | { status: 'pending' }
   | { status: 'error' }
   | { status: 'none' }
   | { status: 'open'; shift: Shift };
 
 /**
- * One horizontal strip above the intake form: shift status, the berry drawer,
+ * One horizontal strip above the intake form: the berry drawer,
  * the crates out with people and today's receipts — what the operator would
  * otherwise have to leave the form to look up. The figures come from the SAME
  * reads «Каса точки» and «Ящики» use for themselves: every one is a straight
@@ -32,26 +30,19 @@ type StripShift =
  * different way (a second arithmetic path could silently disagree with the
  * first).
  *
- * A document needs an open shift at the point (§10.3), and only the OPERATOR
- * may open one — so the owner is told whose job it is rather than shown a
- * button the server would refuse.
+ * The shift's status is NOT here: it sits in the page header, and a day
+ * with no open shift replaces the form itself (`ShiftClosedState`).
  */
 export function PointStrip({
   pointId,
   shift,
   isOwner,
-  canOpen,
-  isOpening,
-  onOpenShift,
   targetCrates,
   onOpenReceipt,
 }: {
   pointId: string;
   shift: StripShift;
   isOwner: boolean;
-  canOpen: boolean;
-  isOpening: boolean;
-  onOpenShift: () => void;
   /** `collection_points.target_crates` — `null` means «не задано», never
    *  zero (see `PointOption`'s own doc for why that distinction matters). */
   targetCrates: number | null;
@@ -118,38 +109,11 @@ export function PointStrip({
         : t('reception.state.cratesLeft', { count: targetCrates - outstanding });
 
   return (
-    // One compact row at `xl`: the shift, two meters (label over «figure +
-    // bar»), today's receipts. «No shift» is the one state that takes a band
-    // of its own above the row — a sentence that must be read is never cut.
+    // One compact row at `xl`: two meters (label over «figure + bar») and
+    // today's receipts. The shift's own status lives in the page header.
     // Below `xl` the meters sit two to a row, one to a row on a phone.
-    <section className="mb-4 overflow-hidden rounded-xl border border-line2 bg-card">
-      {shift.status === 'none' || shift.status === 'error' ? (
-        <StatusBand
-          shift={shift}
-          canOpen={canOpen}
-          isOpening={isOpening}
-          onOpenShift={onOpenShift}
-        />
-      ) : null}
-
+    <section className="mb-4 rounded-xl border border-line2 bg-card">
       <div className="grid gap-x-6 gap-y-3 px-4 py-2.5 sm:grid-cols-2 xl:flex xl:items-center">
-        {shift.status === 'open' || shift.status === 'pending' ? (
-          <div className="flex items-center gap-2 sm:col-span-2 xl:shrink-0">
-            {shift.status === 'open' ? (
-              <>
-                <span className="size-2 shrink-0 rounded-full bg-success" aria-hidden="true" />
-                <p className="text-sm font-medium whitespace-nowrap text-success">
-                  {t('reception.state.shiftOpen', {
-                    time: formatTime(shift.shift.created_at, locale),
-                  })}
-                </p>
-              </>
-            ) : (
-              <span className="text-sm text-muted-foreground">…</span>
-            )}
-          </div>
-        ) : null}
-
         <Meter
           to={pointCashHref}
           title={t('reception.state.cashTitle')}
@@ -229,45 +193,6 @@ function share(part: string, whole: string): number {
   const w = Number(whole);
   if (!(w > 0)) return 0;
   return Math.min(1, Math.max(0, Number(part) / w));
-}
-
-/** «No shift» (or a failed read of it): a band of its own, whole sentence. */
-function StatusBand({
-  shift,
-  canOpen,
-  isOpening,
-  onOpenShift,
-}: {
-  shift: StripShift;
-  canOpen: boolean;
-  isOpening: boolean;
-  onOpenShift: () => void;
-}) {
-  const { t } = useTranslation();
-  const band = 'flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-line2 px-4 py-2';
-  // A failed read and «no shift» are the same `null` in the data, and an
-  // «Open shift» button on the first one lets an operator open a shift that
-  // is already open.
-  if (shift.status === 'error') {
-    return (
-      <p role="alert" className={cn(band, 'text-sm text-destructive')}>
-        {t('common.somethingWentWrong')}
-      </p>
-    );
-  }
-  return (
-    <div className={cn(band, 'bg-amber/10')}>
-      <AlertTriangle className="size-4 shrink-0 text-amber" aria-hidden="true" />
-      <p className="min-w-0 flex-1 text-sm font-medium text-amber">
-        {canOpen ? t('reception.shift.none') : t('reception.shift.noneOwner')}
-      </p>
-      {canOpen ? (
-        <Button size="sm" className="shrink-0" onClick={onOpenShift} disabled={isOpening}>
-          {t('reception.shift.open')}
-        </Button>
-      ) : null}
-    </div>
-  );
 }
 
 /** A label line (title left, a muted note right) over the figure and its bar
