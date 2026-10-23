@@ -15,8 +15,12 @@ describe('totalToPay', () => {
     expect(totalToPay('5460.00', '0.00')).toBe('5460.00');
   });
 
-  it('adds nothing for a negative debt — a credit stays on the balance', () => {
-    expect(totalToPay('5460.00', '-250.00')).toBe('5460.00');
+  it('adds a NEGATIVE balance signed — «Разом» is the balance (§3.5, 04.09.2026)', () => {
+    expect(totalToPay('5460.00', '-250.00')).toBe('5210.00');
+  });
+
+  it('may itself be negative — the supplier still owes us after today', () => {
+    expect(totalToPay('300.00', '-500.00')).toBe('-200.00');
   });
 
   it('adds nothing when debt is null (no supplier picked yet)', () => {
@@ -47,5 +51,15 @@ describe('suggestedPaid', () => {
 
   it('is the total (zero) when the total itself is zero, even with no cash', () => {
     expect(suggestedPaid('0.00', null, null)).toBe('0.00');
+  });
+
+  it('is the signed total when the supplier owes us part of today — the server ceiling', () => {
+    // 1 000 accrued − 500 they owe = 500, the most the server lets out.
+    expect(suggestedPaid('1000.00', '-500.00', '9000.00')).toBe('500.00');
+  });
+
+  it('never goes below zero when the supplier still owes us after today', () => {
+    expect(suggestedPaid('300.00', '-500.00', '9000.00')).toBe('0.00');
+    expect(suggestedPaid('300.00', '-500.00', null)).toBe('0.00');
   });
 });

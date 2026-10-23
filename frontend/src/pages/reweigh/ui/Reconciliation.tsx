@@ -1,38 +1,56 @@
+import { Fragment } from 'react';
 import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import { Eyebrow } from '@/shared/ui/eyebrow';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/shared/ui/table';
 import { cn } from '@/shared/lib/cn';
-import { cmp, formatKg, formatUah, isNegative, sub, sum } from '@/shared/lib/money';
-import type { ReconciliationProduct } from '@/entities/reweigh';
+import { cmp, formatDecimal, formatKg, formatUah, sub, sum } from '@/shared/lib/money';
+import type {
+  ReconciliationCrates,
+  ReconciliationGrade,
+  ReconciliationProduct,
+} from '@/entities/reweigh';
 import type { Draft } from '../model/draft';
 
 const ZERO = '0.00';
 
 /**
- * §3.7's звірка, one row per PRODUCT. Every cell but the two footnotes below
- * the table is the SERVER's own number — `intake_net_kg`, `reweigh_net_kg`,
- * `missing_kg`, `missing_amount` all arrive computed, and none of them is
- * re-derived from `drafts` here. Drafts get their own line beneath the
- * table (`check.drafted`) instead of being folded into «Наша»: `missing_kg`
- * is the server's verdict on «Наша» vs «Пункт», and mixing an unposted
- * draft into that sum would leave «Різниця» half-server, half-browser next
- * to a money claim.
+ * §3.7's звірка, one row per PRODUCT. EVERY FIGURE IS THE SERVER'S —
+ * `intake_net_kg`, `reweigh_net_kg`, `missing_kg`, `rate`, `missing_amount`,
+ * the crate counts and the day's `missing_total_*` all arrive computed; the
+ * browser formats and colours them and derives none of them (spec 2026-10-23
+ * W2: the browser total used to let one berry's surplus cancel another's
+ * shortfall). The one sum here is the unposted drafts' preview line, which is
+ * explicitly NOT part of the звірка.
+ *
+ * Colour is one concept: amber is недостача — «−1,40 кг» and «1,40 × 189,42 =
+ * 265,19 ₴», the formula a calculator re-checks (W3). A surplus is data, muted,
+ * with no money claim (§8.2 правка: «надлишок неможливий»).
+ *
+ * Under each product, muted: the tare units point → base per type (W5, from
+ * `intake_item_tare_types` / `reweigh_item_tare_types`, never inferred from kg),
+ * and — when the product had more than one grade — a sub-row per grade with its
+ * point and base kilograms, so a пересорт (crates moved between grades at equal
+ * weight) reads at a glance.
  *
  * Three states never collapse into one another (spec §3.9/§3.15): a real
- * difference (`state: 'weighed'`, `missing_kg` non-null, SIGNED — negative
- * is a надлишок/surplus, never shown as a bare minus), «не перезважено»
- * (`state: 'not_reweighed'`, a STATE and never a zero, row tinted amber),
- * and the shift still open (every `missing_kg` null — the claim waits for
- * the close, §3.9).
+ * difference, «не перезважено» (a STATE, never a zero) and the shift still
+ * open (every `missing_kg` null — the claim waits for the close).
  */
 export function Reconciliation({
   products,
+  grades,
+  missingTotalKg,
+  missingTotalAmount,
   drafts,
   shiftClosed,
   acceptedAnything,
   pointName,
 }: {
   products: ReconciliationProduct[];
+  grades: ReconciliationGrade[];
+  missingTotalKg: string | null;
+  missingTotalAmount: string | null;
   drafts: Draft[];
   shiftClosed: boolean;
   acceptedAnything: boolean;
@@ -41,16 +59,11 @@ export function Reconciliation({
   const { t, i18n } = useTranslation();
   const locale = i18n.resolvedLanguage ?? 'uk';
 
-  // Totals sum ONLY the products whose `missing_kg` is non-null — a product
-  // still «не перезважено» or waiting on an open shift contributes nothing,
-  // never a silent zero.
-  const priced = products.filter((p) => p.missing_kg !== null);
-  const totalKg = priced.length ? sum(priced.map((p) => p.missing_kg as string)) : null;
-  const totalUah = priced.length ? sum(priced.map((p) => p.missing_amount as string)) : null;
-  const totalIsSurplus = totalKg !== null && isNegative(totalKg);
   const notWeighedCount = products.filter((p) => p.state === 'not_reweighed').length;
   const draftedKg = drafts.length ? sum(drafts.map((d) => d.net_kg)) : null;
   const hasRows = acceptedAnything && products.length > 0;
+  const totalShort =
+    missingTotalKg !== null && missingTotalAmount !== null && cmp(missingTotalKg, ZERO) > 0;
 
   return (
     <div className="rounded-xl bg-card ring-1 ring-foreground/10">
@@ -70,9 +83,19 @@ export function Reconciliation({
         </TableHeader>
         <TableBody>
           {hasRows ? (
-            products.map((product) => (
-              <ReconciliationRow key={product.product_id} product={product} locale={locale} notReweighedText={t('reweigh.check.notReweighed')} />
-            ))
+            products.map((product) => {
+              const productGrades = grades.filter((g) => g.product_id === product.product_id);
+              return (
+                <Fragment key={product.product_id}>
+                  <ReconciliationRow product={product} locale={locale} t={t} />
+                  {productGrades.length > 1
+                    ? productGrades.map((grade) => (
+                        <GradeRow key={grade.product_grade_id} grade={grade} locale={locale} t={t} />
+                      ))
+                    : null}
+                </Fragment>
+              );
+            })
           ) : (
             <TableRow>
               <TableCell colSpan={5} className="text-sm text-muted-foreground">
@@ -84,25 +107,29 @@ export function Reconciliation({
       </Table>
       <div className="border-t border-border/70 px-4 py-3">
         <div className="flex items-baseline justify-between gap-3">
-          <span className="text-sm text-muted-foreground">
-            {totalKg === null
+          <span className="text-sm text-muted-foreground">{t('reweigh.check.shortfallTotal')}</span>
+          <span
+            data-testid="missing-total"
+            className={cn(
+              'font-mono font-semibold whitespace-nowrap',
+              totalShort ? 'text-amber' : 'text-muted-foreground',
+            )}
+          >
+            {missingTotalKg === null || missingTotalAmount === null
               ? '—'
-              : t(totalIsSurplus ? 'reweigh.check.surplusTotal' : 'reweigh.check.shortfallTotal')}
+              : t('reweigh.check.totalValue', {
+                  kg: totalShort
+                    ? t('reweigh.check.shortfallKg', { kg: formatKg(missingTotalKg, locale) })
+                    : formatKg(missingTotalKg, locale),
+                  amount: formatUah(missingTotalAmount, locale),
+                })}
           </span>
-          {totalKg !== null && totalUah !== null ? (
-            <span
-              className={cn('font-mono font-semibold', !totalIsSurplus && 'text-destructive')}
-            >
-              {formatKg(totalIsSurplus ? sub(ZERO, totalKg) : totalKg, locale)} ·{' '}
-              {formatUah(totalIsSurplus ? sub(ZERO, totalUah) : totalUah, locale)}
-            </span>
-          ) : null}
         </div>
-        {totalKg === null && !shiftClosed ? (
+        {missingTotalKg === null && !shiftClosed ? (
           <p className="mt-2 text-xs leading-relaxed text-muted-foreground">{t('reweigh.check.shiftOpen')}</p>
         ) : null}
         {notWeighedCount > 0 ? (
-          <p className="mt-2 rounded-lg bg-[var(--amber)]/10 px-3 py-2 text-xs leading-relaxed text-[var(--amber)]">
+          <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
             {t('reweigh.check.notWeighed', { count: notWeighedCount })}
           </p>
         ) : null}
@@ -116,62 +143,132 @@ export function Reconciliation({
   );
 }
 
+/** «Ящик 136 → 136 · Лубянка 4 → 4» — `null` when neither side counted a unit. */
+function cratesLine(t: TFunction, crates: ReconciliationCrates): { text: string; differs: boolean } | null {
+  if (crates.by_type.length === 0) return null;
+  return {
+    text: crates.by_type
+      .map((type) =>
+        t('reweigh.check.cratesType', { name: type.tare_type_name, point: type.point, base: type.base }),
+      )
+      .join(t('reweigh.check.cratesJoin')),
+    differs: crates.by_type.some((type) => type.point !== type.base),
+  };
+}
+
+function CratesNote({ t, crates }: { t: TFunction; crates: ReconciliationCrates }) {
+  const line = cratesLine(t, crates);
+  if (!line) return null;
+  return (
+    <div
+      data-testid="crates-line"
+      className={cn('mt-0.5 font-mono text-xs font-normal', line.differs ? 'text-amber' : 'text-muted-foreground')}
+    >
+      {line.text}
+    </div>
+  );
+}
+
 /** One product's row — kept a plain function, not a component export: it has
  *  no reason to be reused outside this table. */
 function ReconciliationRow({
   product,
   locale,
-  notReweighedText,
+  t,
 }: {
   product: ReconciliationProduct;
   locale: string;
-  notReweighedText: string;
+  t: TFunction;
 }) {
   return (
-    <TableRow className={product.state === 'not_reweighed' ? 'bg-[var(--amber)]/8' : undefined}>
-      <TableCell className="font-medium">{product.product_name}</TableCell>
-      <TableCell className="text-right font-mono tabular-nums">
+    <TableRow>
+      <TableCell className="font-medium">
+        {product.product_name}
+        <CratesNote t={t} crates={product.crates} />
+      </TableCell>
+      <TableCell className="text-right font-mono tabular-nums whitespace-nowrap">
         {formatKg(product.intake_net_kg, locale)}
       </TableCell>
-      <TableCell className="text-right font-mono tabular-nums">
+      <TableCell className="text-right font-mono tabular-nums whitespace-nowrap">
         {product.state === 'not_reweighed' ? (
-          <span className="text-[var(--amber)]">{notReweighedText}</span>
+          <span className="text-muted-foreground">{t('reweigh.check.notReweighed')}</span>
         ) : (
           formatKg(product.reweigh_net_kg, locale)
         )}
       </TableCell>
-      <SignedCell value={product.missing_kg} locale={locale} format={formatKg} />
-      <SignedCell value={product.missing_amount} locale={locale} format={formatUah} />
+      <DiffCell value={product.missing_kg} locale={locale} t={t} />
+      <MoneyCell product={product} locale={locale} t={t} />
+    </TableRow>
+  );
+}
+
+/** A grade under its product: point kg next to base kg, muted, no money —
+ *  пересорт is information, the недостача belongs to the product. */
+function GradeRow({ grade, locale, t }: { grade: ReconciliationGrade; locale: string; t: TFunction }) {
+  return (
+    <TableRow className="text-xs text-muted-foreground hover:bg-transparent">
+      <TableCell className="py-1.5 pl-6">
+        {grade.product_grade_name}
+        <CratesNote t={t} crates={grade.crates} />
+      </TableCell>
+      <TableCell className="py-1.5 text-right font-mono tabular-nums whitespace-nowrap">
+        {formatKg(grade.intake_net_kg, locale)}
+      </TableCell>
+      <TableCell className="py-1.5 text-right font-mono tabular-nums whitespace-nowrap">
+        {/* '0.00' is the server's «nothing weighed for this grade» — a dash, never a zero. */}
+        {cmp(grade.reweigh_net_kg, ZERO) === 0 ? '—' : formatKg(grade.reweigh_net_kg, locale)}
+      </TableCell>
+      <TableCell className="py-1.5" />
+      <TableCell className="py-1.5" />
     </TableRow>
   );
 }
 
 /**
- * `missing_kg`/`missing_amount` are SIGNED: negative is a надлишок/surplus,
- * which must read as a surplus (a leading `+` on the absolute value) and
- * never as a bare minus in front of what looks like a shortfall. `null`
- * (open shift, or a state that never prices) renders `—` — the one thing it
- * is never allowed to render is `0`.
+ * `missing_kg` is SIGNED: positive is a недостача, printed «−1,40 кг» in
+ * amber (§8.2's «НЕДОСТАЧА −10 кг»); negative is a surplus, printed «+x кг»
+ * muted. `null` (open shift, or a state that never prices) renders `—` — the
+ * one thing it is never allowed to render is `0`.
  */
-function SignedCell({
-  value,
-  locale,
-  format,
-}: {
-  value: string | null;
-  locale: string;
-  format: (value: string, locale?: string) => string;
-}) {
+function DiffCell({ value, locale, t }: { value: string | null; locale: string; t: TFunction }) {
   if (value === null) {
     return <TableCell className="text-right font-mono tabular-nums">—</TableCell>;
   }
-  const isSurplus = isNegative(value);
-  const shortfall = !isSurplus && cmp(value, ZERO) > 0;
-  const shown = isSurplus ? sub(ZERO, value) : value;
+  const sign = cmp(value, ZERO);
   return (
-    <TableCell className={cn('text-right font-mono tabular-nums', shortfall && 'text-destructive')}>
-      {isSurplus ? '+' : ''}
-      {format(shown, locale)}
+    <TableCell
+      className={cn(
+        'text-right font-mono tabular-nums whitespace-nowrap',
+        sign > 0 ? 'text-amber' : 'text-muted-foreground',
+      )}
+    >
+      {sign > 0
+        ? t('reweigh.check.shortfallKg', { kg: formatKg(value, locale) })
+        : sign < 0
+          ? // Negating a sign for display — the figure itself is the server's.
+            t('reweigh.check.surplusKg', { kg: formatKg(sub(ZERO, value), locale) })
+          : formatKg(value, locale)}
+    </TableCell>
+  );
+}
+
+/** «1,40 × 189,42 = 265,19 ₴» for a shortfall; nothing for a surplus or an
+ *  exact match — a surplus makes no money claim (§8.2 правка). */
+function MoneyCell({ product, locale, t }: { product: ReconciliationProduct; locale: string; t: TFunction }) {
+  const { missing_kg: kg, missing_amount: amount, rate } = product;
+  if (kg === null || amount === null) {
+    return <TableCell className="text-right font-mono tabular-nums">—</TableCell>;
+  }
+  if (cmp(kg, ZERO) <= 0) return <TableCell />;
+  return (
+    <TableCell className="text-right font-mono tabular-nums whitespace-nowrap text-amber">
+      {rate === null
+        ? formatUah(amount, locale)
+        : t('reweigh.check.moneyFormula', {
+            kg: formatDecimal(kg, locale),
+            rate: formatDecimal(rate, locale),
+            amount: formatUah(amount, locale),
+          })}
     </TableCell>
   );
 }

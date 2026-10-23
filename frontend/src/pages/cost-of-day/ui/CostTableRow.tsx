@@ -2,7 +2,7 @@ import { useTranslation } from 'react-i18next';
 import { ChevronRight } from 'lucide-react';
 import { Badge } from '@/shared/ui/badge';
 import { TableCell, TableRow } from '@/shared/ui/table';
-import { formatDecimal, formatUah } from '@/shared/lib/money';
+import { formatDecimal, formatKg, formatUah } from '@/shared/lib/money';
 import type { CostOfDayProduct } from '@/entities/cost-of-day';
 
 /**
@@ -25,7 +25,21 @@ export const PLUM = 'bg-[var(--plum)]/8 text-[var(--plum)]';
  *  is boxed by a 1.5 pt rule on both sides instead. */
 export const LEAF =
   'bg-[var(--leaf)]/10 print:border-x-[1.5pt] print:border-solid print:border-foreground';
-export const COLUMNS = 11;
+export const COLUMNS = 10;
+
+/**
+ * «у т.ч. доплати …» under a «Нараховано» figure — the part of it no receipt
+ * shows (review C3). Nothing at all when the server says '0.00'.
+ */
+function TopUpsNote({ value, locale }: { value: string; locale: string }) {
+  const { t } = useTranslation();
+  if (value === '0.00') return null;
+  return (
+    <div className="text-xs font-normal text-muted-foreground">
+      {t('costOfDay.table.topUps', { amount: formatDecimal(value, locale) })}
+    </div>
+  );
+}
 
 /**
  * A недостача figure — `Не доїхало`, `Своя, ₴`, `Дня, ₴/кг`. Above zero it is
@@ -60,19 +74,21 @@ export function ShortfallValue({
 
 /**
  * One product, read left to right in §8.4's order:
- * ціна в квитанції + недостача дня + витрати = собівартість, and every one of
+ * ціна закупки + недостача дня + витрати = собівартість, and every one of
  * those four is a server field printed as it came — the row adds up on screen
- * because the server split `per_kg` into its two halves exactly (spec §3.2),
- * not because the browser added anything.
+ * because the server DEFINES `per_kg` as the sum of its two halves (review
+ * C1), not because the browser added anything.
  *
  * A product not reweighed in full keeps its row: what the POINT knows (its
- * weight, нараховано, ₴/кг у квитанції) is printed, everything the base's
- * scale would have told us is «—», and it collects nothing from the day's
- * недостача or витрати (§3.15) — so its result cells are «—» too.
+ * weight, нараховано, ціна закупки) is printed, everything the base's scale
+ * would have told us is «—», and it collects nothing from the day's недостача
+ * or витрати (§3.15) — so its result cells are «—» too.
+ *
+ * Opened, the row shows its own calculator chain (review C4) — every operand
+ * a figure printed in the row or the day's halves — then its grades.
  */
 export function CostTableRow({
   product: p,
-  perKg,
   shortfallPerKg,
   expensesPerKg,
   open,
@@ -80,7 +96,6 @@ export function CostTableRow({
   locale,
 }: {
   product: CostOfDayProduct;
-  perKg: string | null;
   shortfallPerKg: string | null;
   expensesPerKg: string | null;
   open: boolean;
@@ -118,7 +133,10 @@ export function CostTableRow({
         <TableCell className={NUM} data-group="shortfall-kg">
           <ShortfallValue value={p.complete ? p.shortfall_kg : null} minus locale={locale} />
         </TableCell>
-        <TableCell className={`${NUM} ${SKY}`}>{formatUah(p.accrued, locale)}</TableCell>
+        <TableCell className={`${NUM} ${SKY}`}>
+          {formatUah(p.accrued, locale)}
+          <TopUpsNote value={p.top_ups} locale={locale} />
+        </TableCell>
         <TableCell className={`${NUM} ${SKY} text-[var(--sky)]`}>{dec(p.price_was)}</TableCell>
         <TableCell className={`${NUM} ${AMBER}`} data-group="shortfall">
           <ShortfallValue value={p.complete ? p.shortfall : null} minus locale={locale} />
@@ -132,31 +150,41 @@ export function CostTableRow({
         <TableCell className={`${NUM} ${LEAF} text-base font-bold text-[var(--leaf)]`}>
           {dash(p.price_cost, dec)}
         </TableCell>
-        {/* Δ is the day's на кілограм, the same for every product (§8.4
-            «однаково на ВСІ товари»), printed only where it became a price.
-            An empty basket (§3.5 «basket 0») is exactly '0.00': a muted 0,00
-            with no «+», since nothing was added to the receipt price. */}
-        <TableCell className={`${NUM} text-muted-foreground`}>
-          {p.price_cost === null || perKg === null
-            ? '—'
-            : perKg === '0.00'
-              ? dec(perKg)
-              : `+${dec(perKg)}`}
-        </TableCell>
       </TableRow>
 
-      {/* The product's share of the day in hryvnia — the money behind the
-          per-kilogram halves. Only a product that collected one has it. */}
-      {open && p.basket_share !== null ? (
+      {open ? (
         <TableRow className="bg-muted/40 text-muted-foreground hover:bg-muted/40">
           <TableCell colSpan={COLUMNS} className="!pl-9 text-xs whitespace-normal">
-            {t('costOfDay.table.share', {
-              shortfall: dash(p.shortfall_share, dec),
-              expenses: dash(p.expenses_share, dec),
-              share: formatUah(p.basket_share, locale),
-              full: dash(p.full_cost, (v) => formatUah(v, locale)),
-              byOur: dash(p.price_by_our_weight, dec),
-            })}
+            <ul data-chain className="flex flex-wrap gap-x-6 gap-y-1 font-mono tabular-nums">
+              <li>
+                {t('costOfDay.chain.price', {
+                  accrued: dec(p.accrued),
+                  kg: dec(p.intake_net_kg),
+                  price: dec(p.price_was),
+                })}
+              </li>
+              {/* Only a weighed, non-zero недостача has a line: a zero is
+                  already the muted 0,00 in the row. */}
+              {p.complete && p.shortfall_kg !== '0.00' ? (
+                <li data-group="shortfall" className="text-[var(--amber)]">
+                  {t('costOfDay.chain.shortfall', {
+                    kg: formatKg(p.shortfall_kg, locale),
+                    price: dec(p.price_was),
+                    amount: formatUah(p.shortfall, locale),
+                  })}
+                </li>
+              ) : null}
+              {p.price_cost !== null && shortfallPerKg !== null && expensesPerKg !== null ? (
+                <li>
+                  {t('costOfDay.chain.cost', {
+                    price: dec(p.price_was),
+                    shortfall: dec(shortfallPerKg),
+                    expenses: dec(expensesPerKg),
+                    cost: dec(p.price_cost),
+                  })}
+                </li>
+              ) : null}
+            </ul>
           </TableCell>
         </TableRow>
       ) : null}
@@ -170,13 +198,15 @@ export function CostTableRow({
               <TableCell className={NUM}>{dec(g.intake_net_kg)}</TableCell>
               <TableCell className={NUM}>{dash(g.reweigh_net_kg, dec)}</TableCell>
               <TableCell data-group="shortfall-kg" />
-              <TableCell className={`${NUM} ${SKY}`}>{formatUah(g.accrued, locale)}</TableCell>
+              <TableCell className={`${NUM} ${SKY}`}>
+                {formatUah(g.accrued, locale)}
+                <TopUpsNote value={g.top_ups} locale={locale} />
+              </TableCell>
               <TableCell className={`${NUM} ${SKY}`}>{dec(g.price_was)}</TableCell>
               <TableCell className={AMBER} data-group="shortfall" />
               <TableCell className={AMBER} data-group="shortfall" />
               <TableCell className={PLUM} />
               <TableCell className={LEAF} />
-              <TableCell />
             </TableRow>
           ))
         : null}

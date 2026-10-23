@@ -8,7 +8,7 @@ import { SelectField } from '@/shared/ui/select-field';
 import { EmptyState } from '@/shared/ui/empty-state';
 import { Spinner } from '@/shared/ui/spinner';
 import { toast, toastSuccess } from '@/shared/ui/toast';
-import { add, cmp, formatKg, formatUah, parseDecimal, sub, sum } from '@/shared/lib/money';
+import { add, cmp, formatKg, formatUah, parseDecimal, sub } from '@/shared/lib/money';
 import { formatLongDate, todayIso } from '@/shared/lib/date';
 import { useMeQuery } from '@/entities/user';
 import { useWorkingPoint } from '@/features/point-scope';
@@ -234,9 +234,7 @@ export function ReceptionPage() {
   // operator has already changed.
   const settled = preview.isSettled ? preview.preview : null;
   const accrued = settled?.amount ?? null;
-  const netKg = settled ? sum(settled.items.map((i) => i.net_kg)) : null;
   const isPreviewing = !preview.isSettled && (preview.isPending || preview.preview !== null);
-  const canSubmit = shiftOpen && values.supplier_id !== '' && settled !== null && !hasServerError;
 
   // «Видано готівкою» auto-suggests the cash-capped total (§2.1 ⑥) until the
   // operator types into it themselves — `paidTouched` is the one switch, and
@@ -245,6 +243,13 @@ export function ReceptionPage() {
   // a fresh preview).
   const suggested = suggestedPaid(accrued, debt, cash);
   const paidShown = paidTouched ? values.paid_amount : suggested;
+  // R1 (client, 23.10): a payout above the cap — the suggestion IS the cap —
+  // is refused here, not clamped: «Прийняти» is disabled and Enter does not
+  // submit, while `TotalsSection` names the most that may go out.
+  const paidParsed = parseDecimal(paidShown);
+  const overCap = suggested !== '' && paidParsed !== null && cmp(paidParsed, suggested) === 1;
+  const canSubmit =
+    shiftOpen && values.supplier_id !== '' && settled !== null && !hasServerError && !overCap;
   const onPaidChange = (v: string) => {
     setPaidTouched(true);
     // Belt to the equality check below: a new edit is not the refused submit,
@@ -262,8 +267,9 @@ export function ReceptionPage() {
     setSubmitFailure(null);
     // Captured BEFORE the write: a successful create invalidates
     // `supplierBalances`, which can refetch before the toast below reads
-    // `debt` — this is what the supplier owed WALKING IN, not after.
-    const carriedIn = debt !== null && cmp(debt, '0') === 1 ? debt : '0.00';
+    // `debt` — this is the balance WALKING IN, not after. Signed, the same
+    // way «Разом» adds it (§3.5).
+    const carriedIn = debt ?? '0.00';
     try {
       const created = await create.mutateAsync(
         toCreateBody({ ...formValues, paid_amount: paidShown }, bodyPointId),
@@ -280,7 +286,7 @@ export function ReceptionPage() {
         }),
         {
           description:
-            cmp(remainderOf, '0') === 1
+            cmp(remainderOf, '0') !== 0
               ? t('reception.toast.remainder', { uah: formatUah(remainderOf, locale) })
               : t('reception.toast.settled'),
         },
@@ -328,10 +334,13 @@ export function ReceptionPage() {
     // line back while focused — so the refusal is said through `paidError`,
     // which shows regardless of focus, and the caret stays where the operator
     // left it (Enter is how they move on the scale's numeric pad).
-    if (paidShown.trim() !== '' && parseDecimal(paidShown) === null) {
+    if (paidShown.trim() !== '' && paidParsed === null) {
       setPaidRefused(paidShown);
       return;
     }
+    // R1 — the button is disabled over the cap and the Enter guard holds; this
+    // is the last word for any other path to a submit.
+    if (overCap) return;
     if (parseCount(formValues.returned_crates) > 0) setPendingSubmit(formValues);
     else void submitIntake(formValues);
   };
@@ -544,10 +553,8 @@ export function ReceptionPage() {
             <Card>
               <TotalsSection
                 accrued={accrued}
-                netKg={netKg}
                 lineCount={settled?.items.length ?? lines.fields.length}
                 debt={debt}
-                credit={debt !== null && cmp(debt, '0') === -1 ? sub('0', debt) : null}
                 cash={cash}
                 cashUnavailable={pointCash.isError}
                 paid={paidShown}

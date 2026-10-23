@@ -1,7 +1,7 @@
 import type { TFunction } from 'i18next';
 import type { IntakeDetail } from '@/entities/intake';
 import type { ReceiptDocument, ReceiptSection } from '@/shared/ui/receipt';
-import { add, cmp, formatKg, formatUah, isZero } from '@/shared/lib/money';
+import { add, cmp, formatKg, formatUah, isZero, sub } from '@/shared/lib/money';
 import { receiptHeader } from './receiptHeader';
 
 /**
@@ -9,6 +9,14 @@ import { receiptHeader } from './receiptHeader';
  * so `ReceiptView` stays pure layout. `balance` is the supplier's LIVE debt
  * at this point (a supplier row is a point, §3.9), not frozen at write time,
  * read by the caller.
+ *
+ * The footer is the client's agreed five lines (23.10, read off their own
+ * Excel receipt): Сума · Борг · Разом · Виплачено · Залишок, each always
+ * printed — «Борг» and «Виплачено» as 0,00 when there is none — so they
+ * re-check on a calculator: Сума + Борг = Разом, Разом − Виплачено = Залишок.
+ * «Борг» is DERIVED from the other three (Залишок − Сума + Виплачено), never
+ * read separately, so that check holds by construction. Then the tare tally:
+ * one emphasised line per tare type, summed over every line of the receipt.
  */
 export function buildIntakeReceipt({
   intake,
@@ -70,35 +78,52 @@ export function buildIntakeReceipt({
     }
   }
 
+  const paid = intake.paid_amount;
+  const debt = sub(add(balance, paid), intake.amount);
   const totals: ReceiptSection[] = [
     {
       kind: 'rows',
       rows: [
-        { label: t('receipt.accrued'), value: formatUah(intake.amount, locale), strong: true },
+        { label: t('receipt.sum'), value: formatUah(intake.amount, locale) },
+        { label: t('receipt.debt'), value: formatUah(debt, locale) },
+        { label: t('receipt.total'), value: formatUah(add(intake.amount, debt), locale), strong: true },
+        { label: t('receipt.paidOut'), value: formatUah(paid, locale) },
       ],
     },
   ];
-  if (cmp(intake.paid_amount, '0') !== 0) {
-    totals.push({
-      kind: 'rows',
-      rows: [{ label: t('receipt.paid'), value: formatUah(intake.paid_amount, locale) }],
-    });
-    totals.push({
-      kind: 'caption',
-      text: intake.payouts
-        .filter((p) => p.voided_at === null)
-        .map((p) => p.code)
-        .join(', '),
-    });
+  const livePayoutCodes = intake.payouts.filter((p) => p.voided_at === null).map((p) => p.code);
+  if (livePayoutCodes.length > 0) {
+    totals.push({ kind: 'caption', text: livePayoutCodes.join(', ') });
   }
   for (const p of intake.payouts.filter((p) => p.voided_at !== null)) {
     totals.push({ kind: 'caption', text: t('receipt.payoutVoided', { code: p.code }) });
   }
   totals.push({
     kind: 'rows',
-    rows: [{ label: t('receipt.balance'), value: formatUah(balance, locale) }],
+    rows: [{ label: t('receipt.balance'), value: formatUah(balance, locale), strong: true }],
   });
   sections.push(totals);
+
+  // The tare tally (client 23.10, 38:18–47:06): how many of each tare type
+  // the supplier takes away, the same type summed across lines, in the order
+  // the receipt first names it. Integer unit counts, not money.
+  const tally = new Map<string, number>();
+  for (const item of intake.items) {
+    for (const tareLine of item.tare) {
+      tally.set(tareLine.tare_type_id, (tally.get(tareLine.tare_type_id) ?? 0) + tareLine.units);
+    }
+  }
+  if (tally.size > 0) {
+    sections.push([
+      {
+        kind: 'emphasis',
+        rows: [...tally].map(([id, units]) => ({
+          label: tareNameById.get(id) ?? '—',
+          value: String(units),
+        })),
+      },
+    ]);
+  }
 
   return {
     voided: intake.voided_at ? { reason: intake.void_reason ?? '' } : null,
@@ -106,7 +131,7 @@ export function buildIntakeReceipt({
     // No «Дата» (#254, client correction): the code already carries the day.
     meta: [
       { label: t('receipt.number'), value: intake.code },
-      { label: t('receipt.operation'), value: t('receipt.operationIntake') },
+      // No «Операція» line (client 23.10, 02:43): an intake receipt says so by itself.
       { label: t('receipt.supplier'), value: supplierName },
     ],
     sections,

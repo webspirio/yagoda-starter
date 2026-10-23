@@ -2,6 +2,7 @@ import { randomUUID } from 'crypto';
 import { DataSource } from 'typeorm';
 import { openTestDataSource } from '../testing/db-harness';
 import { ReweighReconciliationService } from './reweigh-reconciliation.service';
+import { productCostRows } from '../day-costs/product-cost-rows';
 import { Shift } from '../shifts/shift.entity';
 import type { AuthenticatedUser } from '../auth/jwt.strategy';
 import { UserRole } from '../users/user-role.enum';
@@ -208,7 +209,7 @@ describe('ReweighReconciliationService.forShift (DB)', () => {
     expect(out.items[1].product_name).toBe(`Малина ${tag}`);
     expect(out.items[1].product_grade_name).toBe(`Сорт ${tag}`);
     expect(out.items[1].tare).toEqual([
-      { tare_type_id: tareType.id, tare_type_name: `Чешка ${tag}`, units: 1 },
+      { tare_type_id: tareType.id, tare_type_name: `Чешка ${tag}`, units: 1, unit_weight_kg: '1.20' },
     ]);
   });
 
@@ -459,5 +460,212 @@ describe('ReweighReconciliationService.forShift (DB)', () => {
     // the voided receipt's grade would still contain `kept`, so the negative
     // assertion above is the one carrying the weight, and this pins the size.
     expect(offered).toHaveLength(1);
+  });
+  /** One closed shift with a point, a supplier and an owner-made product. */
+  const closedDay = async (tag: string) => {
+    const [point] = await ds.query(
+      `INSERT INTO collection_points (name, code, kind) VALUES ($1, $2, 'reception') RETURNING id`,
+      [`Точка ${tag}`, pointCode()],
+    );
+    const [shift] = await ds.query(
+      `INSERT INTO shifts (collection_point_id, business_date, status, opened_by_user_id, closed_at, closed_by_user_id)
+       VALUES ($1, CURRENT_DATE, 'closed', $2, now(), $2) RETURNING id`,
+      [point.id, ownerId],
+    );
+    const [supplier] = await ds.query(
+      `INSERT INTO suppliers (collection_point_id, first_name, last_name)
+       VALUES ($1, 'Іван', $2) RETURNING id`,
+      [point.id, `Постачальник-${tag}`],
+    );
+    return { shiftId: shift.id as string, supplierId: supplier.id as string };
+  };
+
+  const product = async (name: string, grades: string[]) => {
+    const [p] = await ds.query(`INSERT INTO products (name) VALUES ($1) RETURNING id`, [name]);
+    const ids: string[] = [];
+    for (const g of grades) {
+      const [row] = await ds.query(
+        `INSERT INTO product_grades (product_id, name) VALUES ($1, $2) RETURNING id`,
+        [p.id, g],
+      );
+      ids.push(row.id);
+    }
+    return { productId: p.id as string, gradeIds: ids };
+  };
+
+  const intakeLine = async (
+    intakeId: string,
+    order: number,
+    gradeId: string,
+    netKg: string,
+    amount: string,
+  ): Promise<string> => {
+    const [row] = await ds.query(
+      `INSERT INTO intake_items (intake_id, item_order, product_grade_id,
+           gross_kg, pallet_kg, tare_weight_kg, net_kg, price, bonus, amount)
+       VALUES ($1, $2, $3, $4, '0.00', '0.00', $4, '1.00', '0.00', $5) RETURNING id`,
+      [intakeId, order, gradeId, netKg, amount],
+    );
+    return row.id;
+  };
+
+  const reweighLine = async (
+    reweighId: string,
+    order: number,
+    gradeId: string,
+    netKg: string,
+    voided = false,
+  ): Promise<string> => {
+    const [row] = await ds.query(
+      `INSERT INTO reweigh_items (reweigh_id, item_order, product_grade_id,
+           gross_kg, pallet_kg, tare_weight_kg, net_kg, weighed_by_user_id,
+           voided_at, voided_by_user_id, void_reason)
+       VALUES ($1, $2, $3, $4, '0.00', '0.00', $4, $5,
+               ${voided ? "now(), $5, 'не та машина'" : 'NULL, NULL, NULL'}) RETURNING id`,
+      [reweighId, order, gradeId, netKg, ownerId],
+    );
+    return row.id;
+  };
+
+  /**
+   * Spec 2026-10-23 §0/W2 — Гайове 19.10 reproduced: Малина 333,70 + 263,10 кг
+   * at the point for 41 977,00 + 56 067,20 ₴, one 15 000,00 доплата, 227,40 +
+   * 368,00 кг at the base. The shortfall is 1,40 кг at 189,42 = 265,19 ₴ —
+   * receipts AND доплати — and cost-of-day prints the very same figure. Кизил
+   * comes back 2,00 кг heavier and must not offset it in the day's total.
+   */
+  it('prices a Гайове-style shortfall WITH the доплата, the same as cost-of-day, totals shortfalls only', async () => {
+    const tag = randomUUID();
+    const short = tag.slice(0, 8).toUpperCase();
+    const { shiftId, supplierId } = await closedDay(tag);
+    const rasp = await product(`Малина ${tag}`, ['1 сорт', '2 сорт']);
+    const cornel = await product(`Кизил ${tag}`, ['1 сорт']);
+
+    const [first] = await ds.query(
+      `INSERT INTO intakes (code, shift_id, supplier_id, amount, received_by_user_id)
+       VALUES ($1, $2, $3, '41977.00', $4) RETURNING id`,
+      [`${short}-HA-1`, shiftId, supplierId, ownerId],
+    );
+    await intakeLine(first.id, 1, rasp.gradeIds[0], '333.70', '41977.00');
+    const [second] = await ds.query(
+      `INSERT INTO intakes (code, shift_id, supplier_id, amount, received_by_user_id)
+       VALUES ($1, $2, $3, '56667.20', $4) RETURNING id`,
+      [`${short}-HA-2`, shiftId, supplierId, ownerId],
+    );
+    await intakeLine(second.id, 1, rasp.gradeIds[1], '263.10', '56067.20');
+    await intakeLine(second.id, 2, cornel.gradeIds[0], '15.70', '600.00');
+    await ds.query(
+      `INSERT INTO intake_top_ups (intake_id, amount, reason, created_by_user_id)
+       VALUES ($1, '15000.00', 'доплата', $2)`,
+      [first.id, ownerId],
+    );
+    // A VOIDED доплата never prices anything.
+    await ds.query(
+      `INSERT INTO intake_top_ups (intake_id, amount, reason, created_by_user_id,
+           voided_at, voided_by_user_id, void_reason)
+       VALUES ($1, '9999.00', 'помилка', $2, now(), $2, 'помилка')`,
+      [first.id, ownerId],
+    );
+
+    const [reweigh] = await ds.query(`INSERT INTO reweighs (shift_id) VALUES ($1) RETURNING id`, [
+      shiftId,
+    ]);
+    await reweighLine(reweigh.id, 1, rasp.gradeIds[0], '227.40');
+    await reweighLine(reweigh.id, 2, rasp.gradeIds[1], '368.00');
+    await reweighLine(reweigh.id, 3, cornel.gradeIds[0], '17.70');
+
+    const out = await service.forShift(actor(), shiftId);
+    const raspRow = out.products.find((p) => p.product_id === rasp.productId);
+    const cornelRow = out.products.find((p) => p.product_id === cornel.productId);
+
+    expect(raspRow?.missing_kg).toBe('1.40');
+    expect(raspRow?.rate).toBe('189.42');
+    expect(raspRow?.missing_amount).toBe('265.19');
+    expect(cornelRow?.missing_kg).toBe('-2.00');
+
+    // Shortfalls only: Кизил's surplus does not net against Малина.
+    expect(out.missing_total_kg).toBe('1.40');
+    expect(out.missing_total_amount).toBe('265.19');
+
+    // One price for the shortfall on both screens (spec §0).
+    const costRows = await productCostRows(ds, shiftId);
+    expect(costRows.find((r) => r.product_id === rasp.productId)?.shortfall).toBe(
+      raspRow?.missing_amount,
+    );
+  });
+
+  /**
+   * W5 — tare UNITS point vs base, per grade and per product, from
+   * `intake_item_tare_types` / `reweigh_item_tare_types`. A voided receipt's
+   * units and a voided reweigh line's units never count, and two tare types
+   * stay apart in `by_type`. The 19.10 пересорт shape: 136 crates either side,
+   * 34 of them moved from 1 сорт to 2 сорт.
+   */
+  it('counts crate units point vs base per grade and product, live documents only', async () => {
+    const tag = randomUUID();
+    const short = tag.slice(0, 8).toUpperCase();
+    const { shiftId, supplierId } = await closedDay(tag);
+    const rasp = await product(`Малина ${tag}`, ['1 сорт', '2 сорт']);
+    const [crate] = await ds.query(
+      `INSERT INTO tare_types (name, weight_kg, deposit_price) VALUES ($1, '1.20', '0.00') RETURNING id`,
+      [`Ящик ${tag}`],
+    );
+    const [lub] = await ds.query(
+      `INSERT INTO tare_types (name, weight_kg, deposit_price) VALUES ($1, '0.30', '0.00') RETURNING id`,
+      [`Лубянка ${tag}`],
+    );
+    const units = (table: string, itemId: string, tareId: string, n: number) =>
+      ds.query(`INSERT INTO ${table} (item_id, tare_type_id, units) VALUES ($1, $2, $3)`, [
+        itemId,
+        tareId,
+        n,
+      ]);
+
+    const [live] = await ds.query(
+      `INSERT INTO intakes (code, shift_id, supplier_id, amount, received_by_user_id)
+       VALUES ($1, $2, $3, '600.00', $4) RETURNING id`,
+      [`${short}-CR-1`, shiftId, supplierId, ownerId],
+    );
+    const i1 = await intakeLine(live.id, 1, rasp.gradeIds[0], '333.70', '333.70');
+    const i2 = await intakeLine(live.id, 2, rasp.gradeIds[1], '263.10', '263.10');
+    await units('intake_item_tare_types', i1, crate.id, 82);
+    await units('intake_item_tare_types', i2, crate.id, 54);
+    await units('intake_item_tare_types', i2, lub.id, 4);
+
+    const [dead] = await ds.query(
+      `INSERT INTO intakes (code, shift_id, supplier_id, amount, received_by_user_id,
+           voided_at, voided_by_user_id, void_reason)
+       VALUES ($1, $2, $3, '10.00', $4, now(), $4, 'помилково') RETURNING id`,
+      [`${short}-CR-2`, shiftId, supplierId, ownerId],
+    );
+    const iDead = await intakeLine(dead.id, 1, rasp.gradeIds[0], '10.00', '10.00');
+    await units('intake_item_tare_types', iDead, crate.id, 500);
+
+    const [reweigh] = await ds.query(`INSERT INTO reweighs (shift_id) VALUES ($1) RETURNING id`, [
+      shiftId,
+    ]);
+    const r1 = await reweighLine(reweigh.id, 1, rasp.gradeIds[0], '227.40');
+    const r2 = await reweighLine(reweigh.id, 2, rasp.gradeIds[1], '368.00');
+    const rDead = await reweighLine(reweigh.id, 3, rasp.gradeIds[1], '9.00', true);
+    await units('reweigh_item_tare_types', r1, crate.id, 48);
+    await units('reweigh_item_tare_types', r2, crate.id, 88);
+    await units('reweigh_item_tare_types', r2, lub.id, 4);
+    await units('reweigh_item_tare_types', rDead, crate.id, 700);
+
+    const out = await service.forShift(actor(), shiftId);
+    const byGrade = (id: string) => out.grades.find((g) => g.product_grade_id === id)?.crates;
+    expect(byGrade(rasp.gradeIds[0])).toMatchObject({ point: 82, base: 48 });
+    expect(byGrade(rasp.gradeIds[1])).toMatchObject({ point: 58, base: 92 });
+
+    const p = out.products.find((row) => row.product_id === rasp.productId);
+    expect(p?.crates.point).toBe(140);
+    expect(p?.crates.base).toBe(140);
+    expect(p?.crates.by_type).toEqual(
+      expect.arrayContaining([
+        { tare_type_id: crate.id, tare_type_name: `Ящик ${tag}`, point: 136, base: 136 },
+        { tare_type_id: lub.id, tare_type_name: `Лубянка ${tag}`, point: 4, base: 4 },
+      ]),
+    );
+    expect(p?.crates.by_type).toHaveLength(2);
   });
 });

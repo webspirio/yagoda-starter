@@ -87,6 +87,10 @@ export interface IntakePreviewItem {
   price: string;
   bonus: string;
   amount: string;
+  /** `net_kg × (price + bonus)` at 2 decimals, half-up — the calculator's
+   *  figure before §2.12's whole-hryvnia rounding (`amount`). The server's,
+   *  never multiplied here (spec 2026-10-23 R4). */
+  amount_exact: string;
   tare: { tare_type_id: string; units: number }[];
 }
 

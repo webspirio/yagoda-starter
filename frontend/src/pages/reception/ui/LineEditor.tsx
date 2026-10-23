@@ -22,7 +22,6 @@ import {
   div,
   formatDecimal,
   formatKg,
-  formatUah,
   maskDecimalInput,
   mul,
   parseCrateCount,
@@ -31,6 +30,7 @@ import {
 import type { PricedGrade } from '@/entities/product-grade';
 import type { TareTypeOption } from '@/entities/tare-type';
 import { formatBonusSign } from '../lib/formatBonusSign';
+import { formatWholeHryvnia } from '../lib/formatWholeHryvnia';
 import type { IntakeFormValues, IntakePreviewItem } from '../model/intakeForm';
 
 /** §5.2 — the largest line of the season was 701,5 kg; above this we ask. */
@@ -183,6 +183,9 @@ export function LineEditor({
   const priceCeil = grade ? add(grade.base_price, grade.max_markup) : null;
   const shownPrice = grade ? add(grade.base_price, bonusValue) : '';
   const priceText = priceDraft ?? shownPrice;
+  // At rest the price reads like every other figure on the screen — «28,00»,
+  // the locale's comma (R8); while typed into it is exactly what was typed.
+  const priceDisplay = priceDraft ?? (grade ? formatDecimal(shownPrice, locale) : '');
 
   const setBonusFromPrice = (price: string) => {
     if (!grade) return;
@@ -401,7 +404,7 @@ export function LineEditor({
                           <option key={type.id} value={type.id}>
                             {t('reception.weight.tareOption', {
                               name: type.name,
-                              weight: type.weight_kg,
+                              weight: formatDecimal(type.weight_kg, locale),
                             })}
                           </option>
                         ))}
@@ -532,7 +535,10 @@ export function LineEditor({
                 <option value="">{t('reception.grade.gradePlaceholder')}</option>
                 {productGrades.map((g) => (
                   <option key={g.id} value={g.id}>
-                    {t('reception.grade.gradeOption', { name: g.name, price: g.base_price })}
+                    {t('reception.grade.gradeOption', {
+                      name: g.name,
+                      price: formatDecimal(g.base_price, locale),
+                    })}
                   </option>
                 ))}
               </SelectField>
@@ -569,7 +575,7 @@ export function LineEditor({
                 <DecimalInput
                   {...a11y}
                   variant="ghost"
-                  value={priceText}
+                  value={priceDisplay}
                   onChange={(e) => onPriceChange(e.target.value)}
                   {...priceField.inputProps}
                   disabled={disabled || !grade}
@@ -593,10 +599,15 @@ export function LineEditor({
         {/* The line's numbers, kept visible (dimmed) while a newer preview is in
             flight — §3. A mapped refusal is shown at the FIELD it names (above),
             so this reads destructive rather than repeating the message: one
-            alert per refusal, not two. */}
+            alert per refusal, not two.
+            R4 (spec 2026-10-23): the line reads as its own formula, §2.4's
+            order, every figure the server's — «52,30 − 1,20 тара = 51,10 кг ×
+            28,00 = 1 430,80 → 1 431 ₴». The pallet only when there is one; the
+            exact product (`amount_exact`) only when §2.12's whole-hryvnia
+            rounding moved it. */}
         <p
           className={cn(
-            'rounded-md bg-muted/50 px-3 py-2 font-mono text-base',
+            'rounded-md bg-muted/50 px-3 py-2 font-mono text-sm tabular-nums',
             hasLineError
               ? 'text-destructive'
               : previewItem
@@ -606,13 +617,30 @@ export function LineEditor({
           )}
         >
           {previewItem
-            ? t('reception.line.preview', {
-                tare: formatKg(previewItem.tare_weight_kg, locale),
-                net: formatKg(previewItem.net_kg, locale),
+            ? t('reception.line.formula', {
+                gross: formatDecimal(previewItem.gross_kg, locale),
+                pallet:
+                  cmp(previewItem.pallet_kg, '0') !== 0
+                    ? t('reception.line.palletPart', {
+                        kg: formatDecimal(previewItem.pallet_kg, locale),
+                      })
+                    : '',
+                tare: t('reception.line.tarePart', {
+                  kg: formatDecimal(previewItem.tare_weight_kg, locale),
+                }),
+                net: formatDecimal(previewItem.net_kg, locale),
                 // The line's own price, as the operator set it in «Ціна» —
                 // not the grade's price plus a signed bonus to add up.
                 price: formatDecimal(add(previewItem.price, previewItem.bonus), locale),
-                amount: formatUah(previewItem.amount, locale),
+                amount:
+                  cmp(previewItem.amount, previewItem.amount_exact) !== 0
+                    ? t('reception.line.amountRounded', {
+                        exact: formatDecimal(previewItem.amount_exact, locale),
+                        amount: formatWholeHryvnia(previewItem.amount, locale),
+                      })
+                    : t('reception.line.amountWhole', {
+                        amount: formatWholeHryvnia(previewItem.amount, locale),
+                      }),
               })
             : t('reception.line.pending')}
         </p>

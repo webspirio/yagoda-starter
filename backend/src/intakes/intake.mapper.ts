@@ -223,7 +223,12 @@ export function toIntakeDetailResponse(
 export type PreviewIntakeItemResponse = Omit<
   IntakeItemResponse,
   'id' | 'product_name' | 'grade_name'
->;
+> & {
+  /** `net_kg × (price + bonus)` at 2 decimals, half-up — the line before
+   *  §2.12's whole-hryvnia rounding, so the screen can print «1 430,80 → 1 431».
+   *  Preview-only: a saved line keeps just the rounded `amount`. */
+  amount_exact: string;
+};
 
 /**
  * `POST /intakes/preview`'s answer — the COMPUTED part of `IntakeDetailResponse`
@@ -263,6 +268,7 @@ export function toPreviewIntakeResponse(
       price: line.price,
       bonus: line.bonus,
       amount: line.amount,
+      amount_exact: line.amount_exact,
       tare: line.tare.map((t) => ({ tare_type_id: t.tare_type_id, units: t.units })),
     })),
   };

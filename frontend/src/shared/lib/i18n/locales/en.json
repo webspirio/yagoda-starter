@@ -212,7 +212,7 @@
       "farmer": "Farmer"
     },
     "kindHint": {
-      "wholesale": "A wholesaler — add an extra price."
+      "wholesale": "A wholesaler — check the price."
     },
     "empty": {
       "title": "No suppliers yet",
@@ -874,7 +874,10 @@
     "net": "Net",
     "pricePerKg": "Price per kg",
     "amount": "Amount",
-    "accrued": "Accrued",
+    "sum": "Amount",
+    "debt": "Debt",
+    "total": "Total",
+    "paidOut": "Paid out",
     "paid": "Paid out in cash",
     "payoutVoided": "payout {{code}} voided",
     "crateReturn": "Returned our crates: {{units}} · deposit refunded {{amount}}",
@@ -894,7 +897,6 @@
     "notFiscal": "Not a fiscal receipt",
     "number": "No.",
     "operation": "Operation",
-    "operationIntake": "Berry intake",
     "operationPayoutDebt": "Debt payout",
     "balanceAfterPayout": "Balance after payout",
     "payoutTitle": "Payout receipt {{code}}",
@@ -920,8 +922,12 @@
       "action": "Set today's prices"
     },
     "supplier": {
-      "credit": "Overpaid by us {{uah}}",
-      "recent": "Recent:",
+      "recent": "Recent intakes",
+      "profile": {
+        "open": "Supplier profile",
+        "crates": "Crates on hand",
+        "deposit": "deposit {{uah}}"
+      },
       "card": "Supplier card",
       "historyEmpty": "No intakes yet — this will be the first."
     },
@@ -951,7 +957,11 @@
       "priceDelta": "{{delta}} vs the grade price"
     },
     "line": {
-      "preview": "tare {{tare}} · net {{net}} · {{price}} ₴/kg → {{amount}}",
+      "formula": "{{gross}}{{pallet}}{{tare}} = {{net}} kg × {{price}} = {{amount}}",
+      "palletPart": " − {{kg}} pallet",
+      "tarePart": " − {{kg}} tare",
+      "amountWhole": "{{amount}} ₴",
+      "amountRounded": "{{exact}} → {{amount}} ₴",
       "pending": "…",
       "tareMissing": "Enter the tare quantity — without it the gross weight would count entirely as net.",
       "gradeMissing": "Choose a grade for this line — otherwise it won't make it into the receipt.",
@@ -965,6 +975,8 @@
       "remove": "Remove line",
       "draftHint": "Finish this line or remove it",
       "title": "Receipt lines",
+      "tareUnits_one": "{{count}} tare unit",
+      "tareUnits_other": "{{count}} tare units",
       "col": {
         "grade": "Grade",
         "gross": "Gross",
@@ -1010,8 +1022,8 @@
       "all": "Full amount",
       "toHundreds": "Round to 100",
       "allToBalance": "All to balance",
-      "overCap": "Cannot pay out more than the total — using {{uah}}",
-      "overCash": "Cannot pay out more than is in the berry drawer — using {{uah}}",
+      "overCap": "Cannot pay out more than the total — at most {{uah}}",
+      "overCash": "Cannot pay out more than is in the berry drawer — at most {{uah}}",
       "cashNote": "Only {{uah}} is in the berry drawer — nothing more to pay out right now. The difference is added to the supplier's balance; a transfer from the owner restocks it.",
       "cashUnavailable": "The berry cash drawer could not be read — the server will check the amount when the receipt is recorded",
       "settled": "Settled in full",
@@ -1020,12 +1032,8 @@
       "balanceAfter": "Owed by us after this"
     },
     "submit": "Accept",
-    "submitKg": "Accept {{kg}}",
-    "submitLines_one": "Accept {{count}} line · {{kg}}",
-    "submitLines_other": "Accept {{count}} lines · {{kg}}",
-    "submitPay": "Accept {{lines}}{{kg}} · pay out {{uah}}",
-    "linesPart_one": "{{count}} line · ",
-    "linesPart_other": "{{count}} lines · ",
+    "submitPay": "Accept · pay out {{uah}}",
+    "submitNoPay": "Accept without payout",
     "state": {
       "shiftOpen": "Shift open since {{time}}",
       "cashTitle": "Berry cash",
@@ -1461,11 +1469,11 @@
   "reweigh": {
     "title": "Reweighing",
     "eyebrow": "For the owner · work at the scale",
-    "description": "The berries arrived at the base from the point: we reweigh them and see any shortfall before the truck is unloaded. Nothing prints from here — this is the screen at the scale, not paper.",
+    "description": "A second weighing at the base — the system counts the shortfall.",
     "fromPoint": "from the point",
     "berryOn": "berries for",
-    "step1": "1 · Gross weight with berries and pallet",
-    "step2": "2 · Number of crates",
+    "step1": "1 · Weight",
+    "step2": "2 · Tare",
     "step3": "3 · Grade",
     "gross": "Gross weight with berries",
     "pallet": "Pallet",
@@ -1480,7 +1488,7 @@
     "crateFewer": "Remove one crate",
     "crateMore": "Add one crate",
     "crateQuick": "+{{n}} cr.",
-    "netEyebrow": "Net weight · calculated by the system",
+    "netEyebrow": "Net weight",
     "addLine": "Add position",
     "block": {
       "noShift": "The shift for this day at this point was not opened",
@@ -1496,17 +1504,14 @@
     },
     "drafts": {
       "title": "Positions entered",
-      "hint": "(kept in the page's memory — there is no document yet)",
+      "hint": "not saved",
       "empty": "No positions yet.",
       "total": "Our total weight",
-      "remove": "Remove position",
-      "grossSuffix": "gross",
-      "palletPrefix": "pallet",
-      "tareFallback": "tare"
+      "remove": "Remove position"
     },
     "check": {
       "title": "Reconciliation with the point",
-      "byProduct": "by product, not by grade",
+      "byProduct": "shortfall by product",
       "product": "Product",
       "point": "Point",
       "ours": "Ours",
@@ -1515,10 +1520,15 @@
       "notReweighed": "not reweighed ⚠",
       "nothingAccepted": "Nothing was accepted at {{point}} that day — there is nothing to compare.",
       "shortfallTotal": "Total shortfall",
-      "surplusTotal": "Total surplus",
-      "shiftOpen": "The shift is still open — the shortfall will be counted once the shift closes.",
-      "notWeighed": "Products without a line: {{count}}. This guards against “forgot to weigh the currants”, not a mistake — but while ⚠ stands, the shortfall for this product does not count at all.",
-      "drafted": "Unposted positions: +{{kg}} — not recorded yet, and “Ours” does not include them."
+      "shiftOpen": "The shift is still open — the shortfall is counted once it closes.",
+      "notWeighed": "⚠ Not reweighed: {{count}} — no shortfall is counted for them.",
+      "drafted": "Not recorded yet: +{{kg}} — “Ours” does not include them.",
+      "shortfallKg": "−{{kg}}",
+      "surplusKg": "+{{kg}}",
+      "moneyFormula": "{{kg}} × {{rate}} = {{amount}}",
+      "totalValue": "{{kg}} · {{amount}}",
+      "cratesType": "{{name}} {{point}} → {{base}}",
+      "cratesJoin": " · "
     },
     "day": {
       "title": "Reweighings recorded for {{date}}",
@@ -1543,7 +1553,6 @@
       }
     },
     "post": "Post reweighing · {{kg}}",
-    "postNote": "Positions are written one at a time: if the server refuses the third, the first two are already recorded, and the rest stay on screen.",
     "noShift": "The shift for {{date}} at {{point}} was never opened — there is nothing to reweigh.",
     "posted": "Reweighing posted · {{kg}}",
     "postFailed": "The position “{{grade}}” wasn't posted.",
@@ -1555,7 +1564,13 @@
       "tareDuplicated": "One tare type is listed twice on a single position — record it once with the total count",
       "tareUnknown": "That tare type is unknown or deactivated. Remove the position and enter it again with another tare type."
     },
-    "draftsCleared": "Positions cleared — they belonged to a different day or point"
+    "draftsCleared": "Positions cleared — they belonged to a different day or point",
+    "formula": {
+      "net": "{{gross}} − {{terms}} = {{net}}",
+      "join": " − ",
+      "tareUnits": "{{units}} × {{weight}}",
+      "tareKg": "{{kg}} tare"
+    }
   },
   "costOfDay": {
     "eyebrow": "Management",
@@ -1599,7 +1614,8 @@
       "closed": "Shift closed",
       "allWeighed": "Everything reweighed",
       "notWeighed": "Not reweighed: {{names}}",
-      "topUps": "Top-ups included up to {{at}}",
+      "topUps": "Top-ups: {{amount}} ({{names}})",
+      "topUpsLatest": "Last top-up entered {{at}}",
       "checked": "Reconciled",
       "mismatch": "Does not add up",
       "checksPending": "Reconciliation — after reweighing"
@@ -1615,20 +1631,23 @@
       "base": "Base",
       "notArrived": "Not arrived",
       "accrued": "Accrued",
-      "priceWas": "₴/kg on the receipt",
+      "priceWas": "Purchase price, ₴/kg",
       "ownShortfall": "Own, ₴",
       "dayShortfall": "Day, ₴/kg",
       "expensesPerKg": "₴/kg",
       "cost": "Cost price",
-      "delta": "Δ vs receipt",
-      "total": "Point",
+      "total": "Total",
+      "topUps": "incl. top-ups {{amount}}",
       "unweighed": "Not reweighed, left out of the total: {{kg}} · {{amount}}",
-      "share": "The day's share in hryvnia: {{shortfall}} shortfall + {{expenses}} expenses = {{share}} · full cost {{full}} · kg that arrived, before expenses: {{byOur}}",
-      "howToRead": "How to read a row: <sky>receipt price</sky> + <amber>day shortfall per kg</amber> + <plum>day expenses per kg</plum> = <leaf>cost price</leaf>. The shortfall and expenses are spread evenly over every kilogram that reached the base ({{kg}}).",
+      "howToRead": "How to read a row: <sky>purchase price</sky> + <amber>day shortfall per kg</amber> + <plum>day expenses per kg</plum> = <leaf>cost price</leaf>. The shortfall and expenses are spread evenly over every kilogram that reached the base: <amber>{{shortfall}} ÷ {{kg}} = {{shortfallPerKg}}</amber>, <plum>{{expenses}} ÷ {{kg}} = {{expensesPerKg}}</plum>.",
+      "dayFormula": "Average cost of a kilogram for the day: (accrued {{accrued}} + expenses {{expenses}}) ÷ {{kg}} = <leaf>{{avg}} ₴/kg</leaf>",
       "accruedHelpLabel": "What «accrued» means",
-      "accruedHelp": "«Accrued» is the purchase accrued, not cash out of the drawer: debts exist, so the cash that left the drawer that day is a different number and does not affect the cost of day.",
-      "avgHelpLabel": "How the average is calculated",
-      "avgHelp": "Sum of full costs ÷ weight at the base (§8.6), not an average of prices."
+      "accruedHelp": "«Accrued» is the receipts together with their top-ups, not cash out of the drawer: debts exist, so the cash that left the drawer that day is a different number and does not affect the cost of day."
+    },
+    "chain": {
+      "price": "Purchase price: {{accrued}} ÷ {{kg}} = {{price}}",
+      "shortfall": "Shortfall: {{kg}} × {{price}} = {{amount}}",
+      "cost": "Cost price: {{price}} + {{shortfall}} + {{expenses}} = {{cost}}"
     },
     "checks": {
       "title": "How to check that not a single hryvnia got lost",

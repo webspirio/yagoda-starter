@@ -20,7 +20,7 @@ import {
 /**
  * §8.4 on one table (spec 2026-10-23 §4.2): one row per product, read left to
  * right in calculation order — weight → purchase → недостача → витрати →
- * собівартість — so «ціна в квитанції + недостача дня + витрати = собівартість»
+ * собівартість — so «ціна закупки + недостача дня + витрати = собівартість»
  * can be checked by eye on every row.
  *
  * There is no control here but the grade toggles, by rule: the only input on
@@ -28,12 +28,12 @@ import {
  * arithmetic: every figure, the total row included, is the server's own — the
  * «−» and «+» are text in front of a formatted server value, never a result.
  *
- * The total row «Пункт» covers the products weighed in full only (spec §3.4),
- * so each of its columns adds up within itself. A product not reweighed in full
- * is reported on its own muted line under it, never folded in. Its Δ cell is
- * EMPTY on purpose: the point's ₴/кг is per point-kilogram and the average
- * собівартість per base-kilogram, so 185,54 + 3,22 ≠ 188,74 and a Δ there would
- * be the one figure on the table that does not add up.
+ * The total row «Усього» covers the products weighed in full only (spec §3.4)
+ * and prints SUMS ONLY (review C2): a per-kg cell there mixed point kilograms
+ * with base kilograms, so 185,54 + 0,43 + 3,11 = 189,08 sat beside 189,07 in
+ * one row. The day's one per-kg figure is the formula line under the table,
+ * every operand of it a server field. A product not reweighed in full is
+ * reported on its own muted line under the total, never folded in.
  */
 export function CostTable({ day, locale }: { day: CostOfDay; locale: string }) {
   const { t } = useTranslation();
@@ -91,7 +91,7 @@ export function CostTable({ day, locale }: { day: CostOfDay; locale: string }) {
               {group(t('costOfDay.table.groupExpenses'), 1, `${PLUM} border-[var(--plum)]`)}
               {group(
                 t('costOfDay.table.groupResult'),
-                2,
+                1,
                 `${LEAF} border-[var(--leaf)] text-[var(--leaf)]`,
               )}
             </TableRow>
@@ -131,9 +131,6 @@ export function CostTable({ day, locale }: { day: CostOfDay; locale: string }) {
               <TableHead scope="col" className={`text-right ${LEAF}`}>
                 {t('costOfDay.table.cost')}
               </TableHead>
-              <TableHead scope="col" className="text-right">
-                {t('costOfDay.table.delta')}
-              </TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -141,7 +138,6 @@ export function CostTable({ day, locale }: { day: CostOfDay; locale: string }) {
               <CostTableRow
                 key={p.product_id}
                 product={p}
-                perKg={day.per_kg}
                 shortfallPerKg={day.shortfall_per_kg}
                 expensesPerKg={day.expenses_per_kg}
                 open={expanded.has(p.product_id)}
@@ -151,7 +147,8 @@ export function CostTable({ day, locale }: { day: CostOfDay; locale: string }) {
             ))}
 
             {/* `weighed` is `null` until something is on the scale: then the
-                whole row is «—», never a zero (§8.6). */}
+                whole row is «—», never a zero (§8.6). The per-kg cells stay
+                empty — sums only (review C2). */}
             <TableRow className="border-t-2 border-border font-semibold">
               <TableCell className={STICKY}>{t('costOfDay.table.total')}</TableCell>
               <TableCell className={NUM}>{dash(w?.intake_kg)}</TableCell>
@@ -162,25 +159,13 @@ export function CostTable({ day, locale }: { day: CostOfDay; locale: string }) {
               <TableCell className={`${NUM} ${SKY}`}>
                 {dash(w?.accrued, (v) => formatUah(v, locale))}
               </TableCell>
-              <TableCell className={`${NUM} ${SKY} text-[var(--sky)]`}>
-                {dash(w?.price_was)}
-              </TableCell>
+              <TableCell className={SKY} />
               <TableCell className={`${NUM} ${AMBER}`} data-group="shortfall">
                 <ShortfallValue value={w?.shortfall ?? null} minus locale={locale} />
               </TableCell>
-              <TableCell className={`${NUM} ${AMBER}`} data-group="shortfall">
-                <ShortfallValue value={day.shortfall_per_kg} locale={locale} />
-              </TableCell>
-              <TableCell className={`${NUM} ${PLUM}`}>{dash(day.expenses_per_kg)}</TableCell>
-              <TableCell className={`${NUM} ${LEAF} text-base font-bold text-[var(--leaf)]`}>
-                <span className="inline-flex items-center gap-1">
-                  {dash(day.price_cost_avg)}
-                  <Help label={t('costOfDay.table.avgHelpLabel')}>
-                    {t('costOfDay.table.avgHelp')}
-                  </Help>
-                </span>
-              </TableCell>
-              <TableCell />
+              <TableCell className={AMBER} data-group="shortfall" />
+              <TableCell className={PLUM} />
+              <TableCell className={LEAF} />
             </TableRow>
 
             {anyUnweighed ? (
@@ -197,20 +182,52 @@ export function CostTable({ day, locale }: { day: CostOfDay; locale: string }) {
         </Table>
       </div>
 
-      {day.per_kg !== null ? (
-        <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
-          <Trans
-            t={t}
-            i18nKey="costOfDay.table.howToRead"
-            values={{ kg: formatKg(day.reweighed_kg, locale) }}
-            components={{
-              sky: <span className="font-medium text-[var(--sky)]" />,
-              amber: <span className="font-medium text-[var(--amber)]" />,
-              plum: <span className="font-medium text-[var(--plum)]" />,
-              leaf: <span className="font-medium text-[var(--leaf)]" />,
-            }}
-          />
-        </p>
+      {day.per_kg !== null &&
+      day.shortfall_per_kg !== null &&
+      day.expenses_per_kg !== null &&
+      w !== null &&
+      day.price_cost_avg !== null ? (
+        <div className="mt-2 space-y-1 text-xs leading-relaxed text-muted-foreground">
+          {/* The day's average, as a formula (review C2): Σ нараховано of the
+              total row + витрати, ÷ the base's kilograms. The server's
+              `full_cost` IS that numerator, exactly. */}
+          <p data-day-formula className="text-sm text-foreground">
+            <Trans
+              t={t}
+              i18nKey="costOfDay.table.dayFormula"
+              values={{
+                accrued: dec(w.accrued),
+                expenses: dec(day.expenses_amount),
+                kg: formatKg(day.reweighed_kg, locale),
+                avg: dec(day.price_cost_avg),
+              }}
+              components={{
+                leaf: <span className="font-mono font-semibold text-[var(--leaf)]" />,
+              }}
+            />
+          </p>
+          <p>
+            <Trans
+              t={t}
+              i18nKey="costOfDay.table.howToRead"
+              values={{
+                kg: formatKg(day.reweighed_kg, locale),
+                shortfall: dec(day.shortfall_amount),
+                shortfallPerKg: dec(day.shortfall_per_kg),
+                expenses: dec(day.expenses_amount),
+                expensesPerKg: dec(day.expenses_per_kg),
+              }}
+              components={{
+                sky: <span className="font-medium text-[var(--sky)]" />,
+                amber: (
+                  <span data-group="shortfall" className="font-medium text-[var(--amber)]" />
+                ),
+                plum: <span className="font-medium text-[var(--plum)]" />,
+                leaf: <span className="font-medium text-[var(--leaf)]" />,
+              }}
+            />
+          </p>
+        </div>
       ) : (
         // Nothing weighed yet: the expenses have landed nowhere. Muted, not
         // amber — amber is the недостача's, and there is none yet (§4.3).
@@ -225,17 +242,11 @@ export function CostTable({ day, locale }: { day: CostOfDay; locale: string }) {
         </div>
       )}
 
-      {/* ⓘ vanishes on paper with `print-hide`, so its texts print here. */}
-      <ol className="print-only mt-2 list-decimal pl-5 text-xs">
-        <li>
-          <span className="font-medium">{t('costOfDay.table.accruedHelpLabel')}</span>{' '}
-          {t('costOfDay.table.accruedHelp')}
-        </li>
-        <li>
-          <span className="font-medium">{t('costOfDay.table.avgHelpLabel')}</span>{' '}
-          {t('costOfDay.table.avgHelp')}
-        </li>
-      </ol>
+      {/* ⓘ vanishes on paper with `print-hide`, so its text prints here. */}
+      <p className="print-only mt-2 text-xs">
+        <span className="font-medium">{t('costOfDay.table.accruedHelpLabel')}</span>{' '}
+        {t('costOfDay.table.accruedHelp')}
+      </p>
     </div>
   );
 }

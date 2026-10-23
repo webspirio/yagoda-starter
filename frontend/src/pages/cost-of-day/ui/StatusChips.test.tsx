@@ -14,13 +14,20 @@ afterAll(async () => {
 });
 
 const product = (over: Partial<CostOfDayProduct> = {}): CostOfDayProduct =>
-  ({ product_id: 'p1', product_name: 'Малина', complete: true, ...over }) as CostOfDayProduct;
+  ({
+    product_id: 'p1',
+    product_name: 'Малина',
+    complete: true,
+    top_ups: '0.00',
+    ...over,
+  }) as CostOfDayProduct;
 
 const day: CostOfDay = {
   shift_id: 's1',
   closed_at: '2026-10-19T18:00:00.000Z',
   provisional: false,
   top_ups_latest_at: null,
+  top_ups_total: '0.00',
   checks: { shares_ok: true, total_ok: true },
   products: [product()],
 } as CostOfDay;
@@ -57,9 +64,26 @@ describe('StatusChips', () => {
     expect(screen.getByText('Не перезважено: Ожина')).toBeInTheDocument();
   });
 
-  it('shows the latest top-up time', () => {
-    renderChips({ top_ups_latest_at: '2026-10-20T10:00:00.000Z' });
-    expect(screen.getByText(/Доплати враховано до /)).toBeInTheDocument();
+  it('names the доплати by amount and product, the latest time as its title', () => {
+    renderChips({
+      top_ups_latest_at: '2026-10-20T10:00:00.000Z',
+      top_ups_total: '15000.00',
+      products: [
+        product({ top_ups: '15000.00' }),
+        product({ product_id: 'p2', product_name: 'Кизил' }),
+      ],
+    });
+    const chip = screen.getByText(/^Доплати:/);
+    expect(chip).toHaveTextContent('Доплати: 15 000,00 ₴ (Малина)');
+    expect(chip.closest('[title]')).toHaveAttribute(
+      'title',
+      expect.stringMatching(/^Остання доплата внесена /),
+    );
+  });
+
+  it('shows no доплати chip on a day without them', () => {
+    renderChips();
+    expect(screen.queryByText(/^Доплати/)).not.toBeInTheDocument();
   });
 
   it('checks null reads as pending and is not a button', () => {

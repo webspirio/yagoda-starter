@@ -357,17 +357,43 @@ describe('ReceiptDialog', () => {
     });
     render(<ReceiptDialog intakeId="intake-1" open onClose={vi.fn()} />);
 
-    expect(screen.getByText('Paid out in cash')).toBeInTheDocument();
-    expect(screen.getByText('10,000.00 ₴')).toBeInTheDocument();
+    expect(screen.getByText('Paid out').parentElement).toHaveTextContent('10,000.00 ₴');
     const codes = screen.getByText('SHP-PO-20260908-00031');
     expect(codes).toHaveClass('text-[0.87em]');
   });
 
-  it('hides the paid row when nothing has been paid out yet', () => {
+  it('prints «Paid out» as 0.00 when nothing has been paid out yet (client 23.10)', () => {
     setUp();
     render(<ReceiptDialog intakeId="intake-1" open onClose={vi.fn()} />);
 
-    expect(screen.queryByText('Paid out in cash')).not.toBeInTheDocument();
+    expect(screen.getByText('Paid out').parentElement).toHaveTextContent('0.00 ₴');
+  });
+
+  it('prints the agreed footer in order and ends with the tare tally', () => {
+    // 14 560 accrued, nothing paid, the live balance 20 000: owed 5 440 before.
+    setUp({ debt: '20000.00' });
+    render(<ReceiptDialog intakeId="intake-1" open onClose={vi.fn()} />);
+
+    const last = (text: string) => {
+      const all = screen.getAllByText(text);
+      return all[all.length - 1];
+    };
+    const labels = ['Amount', 'Debt', 'Total', 'Paid out', 'Balance'].map(last);
+    for (let i = 1; i < labels.length; i++) {
+      expect(
+        labels[i - 1].compareDocumentPosition(labels[i]) & Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+    }
+    expect(labels[1].parentElement).toHaveTextContent('5,440.00 ₴');
+    expect(labels[2].parentElement).toHaveTextContent('20,000.00 ₴');
+    expect(screen.queryByText('Operation')).not.toBeInTheDocument();
+    // The fixture's one line carries 12 × Чешка — the tally prints it last, emphasised.
+    const tally = last('Чешка');
+    expect(tally.parentElement).toHaveTextContent('12');
+    expect(tally.closest('.font-bold')).not.toBeNull();
+    expect(
+      labels[4].compareDocumentPosition(tally) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
   });
 
   it('renders a voided linked payout as a muted annulment line', () => {

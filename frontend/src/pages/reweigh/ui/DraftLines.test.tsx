@@ -25,6 +25,14 @@ const draft = (over: Partial<Draft> = {}): Draft => ({
   ...over,
 });
 
+const props = {
+  onRemove: vi.fn(),
+  onPost: vi.fn(),
+  posting: false,
+  canPost: true,
+  note: null,
+};
+
 beforeEach(() => {
   vi.clearAllMocks();
   tareMock.mockReturnValue({ data: [], isPending: false });
@@ -39,7 +47,7 @@ describe('DraftLines', () => {
    * always available.
    */
   it('names the product alongside the grade, not the grade alone', () => {
-    render(<DraftLines drafts={[draft()]} onRemove={vi.fn()} />);
+    render(<DraftLines {...props} drafts={[draft()]} />);
     expect(screen.getByText('Малина — 1 сорт')).toBeInTheDocument();
   });
 
@@ -61,12 +69,43 @@ describe('DraftLines', () => {
       product_name: 'Порічка',
       product_grade_name: 'Стандарт',
     });
-    render(<DraftLines drafts={[strawberry, currant]} onRemove={vi.fn()} />);
+    render(<DraftLines {...props} drafts={[strawberry, currant]} />);
 
     const list = screen.getByRole('list');
     const [firstItem, secondItem] = within(list).getAllByRole('listitem');
     expect(firstItem.textContent).not.toBe(secondItem.textContent);
     expect(within(firstItem).getByText('Полуниця — Стандарт')).toBeInTheDocument();
     expect(within(secondItem).getByText('Порічка — Стандарт')).toBeInTheDocument();
+  });
+
+  it('reads each draft as its own net formula — W4', () => {
+    tareMock.mockReturnValue({
+      data: [{ id: 't1', name: 'Ящик', weight_kg: '1.20', is_crate: true }],
+      isPending: false,
+    });
+    render(
+      <DraftLines
+        {...props}
+        drafts={[
+          draft({
+            gross_kg: '300.60',
+            pallet_kg: '15.60',
+            tare: [{ tare_type_id: 't1', units: 48 }],
+            tare_weight_kg: '57.60',
+            net_kg: '227.40',
+          }),
+        ]}
+      />,
+    );
+    expect(screen.getByText('300.60 − 15.60 − 48 × 1.20 = 227.40')).toBeInTheDocument();
+  });
+
+  it('posts from its own footer, and only while there is something to post', async () => {
+    const onPost = vi.fn();
+    const { rerender } = render(<DraftLines {...props} drafts={[]} onPost={onPost} />);
+    expect(screen.queryByRole('button', { name: /post|провести/i })).not.toBeInTheDocument();
+    rerender(<DraftLines {...props} drafts={[draft()]} onPost={onPost} />);
+    screen.getByRole('button', { name: /post|провести/i }).click();
+    expect(onPost).toHaveBeenCalledTimes(1);
   });
 });

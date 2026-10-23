@@ -23,10 +23,8 @@ function Harness({
   return (
     <TotalsSection
       accrued="5460.00"
-      netKg="39.00"
       lineCount={1}
       debt="37.37"
-      credit={null}
       cash="1616.10"
       cashUnavailable={false}
       paidError={null}
@@ -54,13 +52,37 @@ describe('TotalsSection — the total and the carried-in balance', () => {
     expect(screen.getByText('+ 37.37 ₴')).toBeInTheDocument();
   });
 
-  it('shows a credit below «Разом» and leaves «Разом» equal to the accrual', () => {
-    render(<Harness accrued="100.00" debt="-50.00" credit="50.00" cash="9000.00" />);
-    expect(screen.getByText('Total to pay out').parentElement).toHaveTextContent('100.00 ₴');
-    const total = screen.getByText('Total to pay out');
-    const credit = screen.getByText('Overpaid by us 50.00 ₴');
-    expect(total.compareDocumentPosition(credit) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(screen.queryByText('Previous balance')).toBeNull();
+  it('adds a NEGATIVE balance signed — «Разом» is the balance (§3.5, R3)', () => {
+    // The supplier owes us 50: 100 accrued − 50 = 50, the server's own ceiling.
+    render(<Harness accrued="100.00" debt="-50.00" cash="9000.00" />);
+    expect(screen.getByText('Previous balance').parentElement).toHaveTextContent('− 50.00 ₴');
+    expect(screen.getByText('Total to pay out').parentElement).toHaveTextContent('50.00 ₴');
+    // No «overpaid» plaque any more — §3.8 is cancelled.
+    expect(screen.queryByText(/Overpaid/)).toBeNull();
+    // The suggestion and «Full amount» stop at that ceiling.
+    expect(screen.getByLabelText('Paid in cash')).toHaveValue('');
+  });
+
+  it('never caps below zero when the supplier still owes us after today (R3)', async () => {
+    const user = userEvent.setup();
+    // 300 accrued − 500 owed to us = −200: nothing may go out.
+    render(<Harness accrued="300.00" debt="-500.00" cash="9000.00" />);
+    expect(screen.getByText('Total to pay out').parentElement).toHaveTextContent('−200.00 ₴');
+
+    await user.click(screen.getByRole('button', { name: 'Full amount' }));
+    expect(screen.getByLabelText('Paid in cash')).toHaveValue('0.00');
+    expect(screen.getByRole('button', { name: 'Round to 100' })).toBeDisabled();
+    // The balance stays signed after the visit, never «Settled in full».
+    const row = screen.getByTestId('remainder-row');
+    expect(row).toHaveTextContent('Owed by us after this');
+    expect(row).toHaveTextContent('−200.00 ₴');
+    expect(screen.queryByText('Settled in full')).toBeNull();
+
+    // Any payout at all is over the cap: refused, the button disabled.
+    await user.clear(screen.getByLabelText('Paid in cash'));
+    await user.type(screen.getByLabelText('Paid in cash'), '1');
+    expect(screen.getByText('Cannot pay out more than the total — at most 0.00 ₴')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Accept/ })).toBeDisabled();
   });
 
   it('renders the crate return slot between the cash note and the submit', () => {
@@ -136,13 +158,15 @@ describe('TotalsSection — the remainder panel', () => {
   });
 
   it('reads «Settled in full» once the whole total is paid out', () => {
-    render(<Harness paid="5497.37" />);
+    // A drawer that can cover it — over the cap the payout is refused (R1)
+    // and nothing below the field may read as settled.
+    render(<Harness paid="5497.37" cash="9000.00" />);
     expect(screen.getByText('Settled in full')).toBeInTheDocument();
     expect(screen.queryByText('Owed by us after this')).toBeNull();
   });
 
   it('shows a neutral dash instead of a false «Settled in full» before anything has settled (M1)', () => {
-    render(<Harness accrued={null} netKg={null} />);
+    render(<Harness accrued={null} />);
     expect(screen.queryByText('Settled in full')).toBeNull();
     expect(screen.queryByText('Owed by us after this')).toBeNull();
     // The one-line row shows a bare dash instead of claiming settlement over
@@ -152,21 +176,34 @@ describe('TotalsSection — the remainder panel', () => {
 });
 
 describe('TotalsSection — the cap and the clamp', () => {
-  it('clamps an over-cap figure on blur, naming the DRAWER when that is what limits it (M2)', async () => {
+  it('refuses an over-cap figure instead of clamping it, naming the DRAWER when that is what limits it (R1, M2)', async () => {
     const user = userEvent.setup();
     // The default fixture's cap is the cash drawer (1616.10), not the total
-    // (5497.37) — so the note has to say "the berry drawer", not "the total".
+    // (5497.37) — so the hint has to say "the berry drawer", not "the total".
     render(<Harness />);
     const input = screen.getByLabelText('Paid in cash');
 
     await user.type(input, '9999');
     expect(input).toHaveValue('9999');
     expect(
-      screen.getByText('Cannot pay out more than is in the berry drawer — using 1,616.10 ₴'),
+      screen.getByText('Cannot pay out more than is in the berry drawer — at most 1,616.10 ₴'),
     ).toBeInTheDocument();
+    expect(input).toHaveAttribute('aria-invalid', 'true');
+    expect(screen.getByRole('button', { name: /Accept/ })).toBeDisabled();
+    // Nothing below the field claims a balance for a payout that cannot go out.
+    expect(screen.getByTestId('remainder-row')).toHaveTextContent(/^—$/);
+    expect(screen.queryByText('Paying down earlier balance')).toBeNull();
 
+    // Leaving the field canonicalises the figure — it never moves it to the cap.
     await user.tab();
-    expect(input).toHaveValue('1,616.10');
+    expect(input).toHaveValue('9,999.00');
+    expect(screen.getByRole('button', { name: /Accept/ })).toBeDisabled();
+
+    // Bringing it under the cap is what re-enables «Accept».
+    await user.clear(input);
+    await user.type(input, '1616.10');
+    expect(screen.queryByText(/Cannot pay out more than/)).toBeNull();
+    expect(screen.getByRole('button', { name: /Accept/ })).toBeEnabled();
   });
 
   it('names the TOTAL instead once cash is ample enough that the cap IS the total (M2)', async () => {
@@ -176,31 +213,27 @@ describe('TotalsSection — the cap and the clamp', () => {
 
     await user.type(input, '9999');
     expect(
-      screen.getByText('Cannot pay out more than the total — using 5,497.37 ₴'),
+      screen.getByText('Cannot pay out more than the total — at most 5,497.37 ₴'),
     ).toBeInTheDocument();
     expect(screen.queryByText(/is in the berry drawer/)).toBeNull();
   });
 
-  it('gives the clamp note a warning tone, leaves the plain state muted, and stays muted when the drawer is unavailable even over the cap', async () => {
+  it('gives the over-cap hint a warning tone and leaves the plain and unavailable-drawer states muted', async () => {
     const user = userEvent.setup();
     const { unmount } = render(<Harness />);
     const input = screen.getByLabelText('Paid in cash');
 
-    // Plain state: no clamp note yet, so the (absent) hint has nothing to warn about.
+    // Plain state: no hint yet, so nothing to warn about.
     expect(screen.queryByText(/Cannot pay out more than/)).toBeNull();
 
     await user.type(input, '9999');
     expect(
-      screen.getByText('Cannot pay out more than is in the berry drawer — using 1,616.10 ₴'),
+      screen.getByText('Cannot pay out more than is in the berry drawer — at most 1,616.10 ₴'),
     ).toHaveClass('text-amber');
     unmount();
 
-    // Composition rule: a failed cash read is information, not a warning
-    // about what the operator typed — so the hint stays muted even though
-    // the typed amount is (still) over whatever cap would otherwise apply.
+    // A failed cash read is information, not a warning about what was typed.
     render(<Harness cash={null} cashUnavailable />);
-    const input2 = screen.getByLabelText('Paid in cash');
-    await user.type(input2, '9999');
     expect(
       screen.getByText(
         'The berry cash drawer could not be read — the server will check the amount when the receipt is recorded',
@@ -208,21 +241,25 @@ describe('TotalsSection — the cap and the clamp', () => {
     ).not.toHaveClass('text-amber');
   });
 
-  it('a null (unread) drawer clamps to the TOTAL on blur, not to zero, and shows no cash note (review finding 2)', async () => {
+  it('caps a null (unread) drawer at the TOTAL, never at zero, and says so when typed over (review finding 2, R1)', async () => {
     const user = userEvent.setup();
     // `cash === null` must never read as an empty drawer: the cap is the
-    // uncapped total (`suggestedPaid`), so typing above it clamps to
-    // 5497.37, never to 0.00, and neither cash-related note (the amber
-    // over-cash chip note nor the below-form cash note) renders.
-    render(<Harness cash={null} />);
+    // uncapped total (`suggestedPaid`). Typing above it is refused against
+    // 5497.37 — the reason the button is disabled is said even though the
+    // drawer could not be read, and no cash note claims a drawer figure.
+    render(<Harness cash={null} cashUnavailable />);
     const input = screen.getByLabelText('Paid in cash');
 
-    await user.type(input, '9999');
-    expect(input).toHaveValue('9999');
+    await user.type(input, '5497.37');
+    expect(screen.getByRole('button', { name: /Accept/ })).toBeEnabled();
 
-    await user.tab();
-    expect(input).toHaveValue('5,497.37');
-    expect(screen.queryByText(/berry drawer/)).toBeNull();
+    await user.clear(input);
+    await user.type(input, '9999');
+    expect(
+      screen.getByText('Cannot pay out more than the total — at most 5,497.37 ₴'),
+    ).toHaveClass('text-amber');
+    expect(screen.getByRole('button', { name: /Accept/ })).toBeDisabled();
+    expect(screen.queryByText(/Only .* is in the berry drawer/)).toBeNull();
   });
 
   it('cashUnavailable renders a muted note instead, and it does not depend on typing anything', () => {
@@ -243,10 +280,8 @@ describe('TotalsSection — the cap and the clamp', () => {
     render(
       <TotalsSection
         accrued="5460.00"
-        netKg="39.00"
         lineCount={1}
         debt="37.37"
-        credit={null}
         cash="1616.10"
         cashUnavailable={false}
         paid="1616.10"
@@ -280,20 +315,25 @@ describe('TotalsSection — the cap and the clamp', () => {
 });
 
 describe('TotalsSection — the submit label', () => {
-  it('reads the accepted weight and the payout together once something is paid', () => {
+  // R2 (client, 23.10): the money only — «нам не важливі ці кілограми».
+  it('names the payout once something is paid out', () => {
     render(<Harness paid="1616.10" />);
-    expect(
-      screen.getByRole('button', { name: 'Accept 39.00 kg · pay out 1,616.10 ₴' }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Accept · pay out 1,616.10 ₴' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /kg/ })).toBeNull();
   });
 
-  it('falls back to the plain kg label when nothing is being paid out', () => {
+  it('says «without payout» when nothing is being paid out', () => {
     render(<Harness paid="0" />);
-    expect(screen.getByRole('button', { name: 'Accept 39.00 kg' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Accept without payout' })).toBeInTheDocument();
   });
 
-  it('falls back to the bare label while the preview has not settled on a net weight', () => {
-    render(<Harness netKg={null} paid="1616.10" />);
+  it('says «without payout» for an empty field too — empty means nothing paid', () => {
+    render(<Harness paid="" />);
+    expect(screen.getByRole('button', { name: 'Accept without payout' })).toBeInTheDocument();
+  });
+
+  it('falls back to the bare label while the preview has not settled', () => {
+    render(<Harness accrued={null} paid="1616.10" />);
     expect(screen.getByRole('button', { name: 'Accept' })).toBeInTheDocument();
   });
 });

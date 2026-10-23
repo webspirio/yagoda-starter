@@ -1,6 +1,6 @@
 import * as fc from 'fast-check';
 import { CostOfDayService } from './cost-of-day.service';
-import { add, sub, gte, mul, sum } from '../common/money';
+import { add, div, sub, gte, mul, sum } from '../common/money';
 import { UserRole } from '../users/user-role.enum';
 import type { GradeTotalsRow } from '../reweighs/reweigh-reconciliation.service';
 
@@ -218,6 +218,25 @@ describe('CostOfDayService.forShift', () => {
     expect(out.top_ups_latest_at).not.toBeNull();
   });
 
+  it('says how much of нараховано is доплати, per product, per grade and per day — review C3', async () => {
+    const out = await svcWithTopUp.forShift(owner, 's-1');
+    const raspberry = out.products.find((p) => p.product_id === 'p-rasp')!;
+    const blackberry = out.products.find((p) => p.product_id === 'p-black')!;
+
+    // 128 000,00 on the receipt + 2 000,00 доплата = 130 000,00 нараховано.
+    expect(raspberry.accrued).toBe('130000.00');
+    expect(raspberry.top_ups).toBe('2000.00');
+    expect(raspberry.grades[0].top_ups).toBe('2000.00');
+    expect(blackberry.top_ups).toBe('0.00');
+    expect(out.top_ups_total).toBe('2000.00');
+  });
+
+  it('reports a day without доплати as a real 0.00', async () => {
+    const out = await svc.forShift(owner, 's-1');
+    expect(out.top_ups_total).toBe('0.00');
+    expect(out.products.map((p) => p.top_ups)).toEqual(['0.00', '0.00']);
+  });
+
   it('clamps a SURPLUS out of the basket so it can never lower the day cost — §8.2', async () => {
     const out = await svcWithSurplus.forShift(owner, 's-1');
     expect(gte(out.shortfall_amount, '0.00')).toBe(true);
@@ -355,8 +374,8 @@ describe('на кілограм splits into its two halves (§8.4)', () => {
   it('prints з них недостача 1,94 and з них витрати 4,45 on §8.4 own numbers', async () => {
     const res = await svc.forShift(owner, 's-1');
 
-    // КОШИК 5 460,00 over 854 кг. The three divisions are independent, which
-    // is why they are asserted as three facts and not as an addition.
+    // 1 660,00 ÷ 854 = 1,94 and 3 800,00 ÷ 854 = 4,45, each its own
+    // quotient; на кілограм is their sum, 6,39 (here also КОШИК 5 460,00 ÷ 854).
     expect(res.basket).toBe('5460.00');
     expect(res.reweighed_kg).toBe('854.00');
     expect(res.per_kg).toBe('6.39');
@@ -452,15 +471,18 @@ describe('one-table fields (spec 2026-10-23)', () => {
   const productOf = <T extends { product_id: string }>(products: T[], id: string): T =>
     products.find((p) => p.product_id === id)!;
 
-  it('splits на кілограм so the halves sum to it', async () => {
+  it('divides each half on its own and adds them into на кілограм — review C1', async () => {
     const res = await svcGaiove.forShift(owner, 's-1');
 
-    // КОШИК 265,19 + 1 700,00 = 1 965,19 over 611,10 кг = 3,22. Two
-    // independent quotients would read 0,43 + 2,78 = 3,21 and miss by a
-    // kopiyka; `allocate(per_kg, [недостача, витрати])` cannot.
-    expect(res.per_kg).toBe('3.22');
+    // A calculator dividing the printed figures: 265,19 ÷ 611,10 = 0,43 and
+    // 1 700,00 ÷ 611,10 = 2,78. На кілограм is their sum, 3,21 — a kopiyka
+    // under 1 965,19 ÷ 611,10 = 3,22, which is printed nowhere. The old
+    // `allocate` split printed 2,79, which no calculator reproduces.
     expect(res.shortfall_per_kg).toBe('0.43');
-    expect(res.expenses_per_kg).toBe('2.79');
+    expect(res.expenses_per_kg).toBe('2.78');
+    expect(res.per_kg).toBe('3.21');
+    expect(res.shortfall_per_kg).toBe(div(res.shortfall_amount, res.reweighed_kg));
+    expect(res.expenses_per_kg).toBe(div(res.expenses_amount, res.reweighed_kg));
     expect(add(res.shortfall_per_kg!, res.expenses_per_kg!)).toBe(res.per_kg);
   });
 
@@ -495,9 +517,13 @@ describe('one-table fields (spec 2026-10-23)', () => {
     expect(productOf(res.products, 'p-rasp').full_cost).toBe('114693.71');
     expect(res.full_cost).toBe('115340.80');
     expect(res.price_cost_avg).toBe('188.74');
-    // собівартість itself is unchanged: «було» + «на кілограм» (spec §3.1).
-    expect(productOf(res.products, 'p-cornel').price_cost).toBe('41.22');
-    expect(productOf(res.products, 'p-rasp').price_cost).toBe('192.64');
+    // The day's formula line prints exactly this numerator and divisor.
+    expect(add(res.weighed!.accrued, res.expenses_amount)).toBe(res.full_cost);
+    expect(div(res.full_cost!, res.reweighed_kg)).toBe(res.price_cost_avg);
+    // собівартість is «було» + «на кілограм» (spec §3.1), на кілограм now
+    // 0,43 + 2,78 = 3,21 (review C1).
+    expect(productOf(res.products, 'p-cornel').price_cost).toBe('41.21');
+    expect(productOf(res.products, 'p-rasp').price_cost).toBe('192.63');
   });
 
   it('totals weighed products only', async () => {
@@ -508,7 +534,6 @@ describe('one-table fields (spec 2026-10-23)', () => {
       shortfall_kg: '1.40',
       accrued: '113640.80',
       shortfall: '265.19',
-      price_was: '185.54',
     });
     expect(res.unweighed).toEqual({ intake_kg: '0.00', accrued: '0.00' });
     expect(res.checks).toEqual({ shares_ok: true, total_ok: true });
@@ -529,7 +554,6 @@ describe('one-table fields (spec 2026-10-23)', () => {
     });
     expect(res.full_cost).toBe('135700.00');
     expect(res.price_cost_avg).toBe('158.90');
-    expect(res.weighed?.price_was).toBe('152.49');
     expect(res.checks).toEqual({ shares_ok: true, total_ok: true });
   });
 
@@ -543,7 +567,6 @@ describe('one-table fields (spec 2026-10-23)', () => {
       shortfall_kg: '0.00',
       accrued: '10000.00',
       shortfall: '0.00',
-      price_was: '100.00',
     });
     expect(res.unweighed).toEqual({ intake_kg: '200.00', accrued: '18000.00' });
 
@@ -580,8 +603,7 @@ describe('one-table fields (spec 2026-10-23)', () => {
       '0.00',
     ).forShift(owner, 's-1');
 
-    // allocate over two zero weights splits evenly — of a zero total, so
-    // both halves are 0,00 rather than a surprise.
+    // Both quotients of a zero are 0,00, and so is their sum.
     expect(res.basket).toBe('0.00');
     expect(res.per_kg).toBe('0.00');
     expect(res.shortfall_per_kg).toBe('0.00');
@@ -590,7 +612,7 @@ describe('one-table fields (spec 2026-10-23)', () => {
     expect(res.checks).toEqual({ shares_ok: true, total_ok: true });
   });
 
-  it('holds both splits and both checks for any day (property)', async () => {
+  it('holds every printed identity for any day (property)', async () => {
     const kopiykas = (min: bigint, max: bigint) => fc.bigInt({ min, max }).map(fromKopiyka);
     const product = fc
       .record({
@@ -623,7 +645,19 @@ describe('one-table fields (spec 2026-10-23)', () => {
           }));
           const res = await build(grades, expenses).forShift(owner, 's-1');
 
+          // Review C1: each half is its own ÷, на кілограм their +, and
+          // every row still reads ціна закупки + на кілограм = собівартість.
+          expect(res.shortfall_per_kg).toBe(div(res.shortfall_amount, res.reweighed_kg));
+          expect(res.expenses_per_kg).toBe(div(res.expenses_amount, res.reweighed_kg));
           expect(add(res.shortfall_per_kg!, res.expenses_per_kg!)).toBe(res.per_kg);
+          for (const p of res.products) {
+            expect(p.price_cost).toBe(add(p.price_was, res.per_kg!));
+            // Review C4: the row's недостача is its kilograms × its price.
+            expect(p.shortfall).toBe(mul(p.shortfall_kg, p.price_was));
+          }
+          // Review C2: the day's formula line, (Σ нараховано + витрати) ÷ кг.
+          expect(add(res.weighed!.accrued, res.expenses_amount)).toBe(res.full_cost);
+          expect(div(res.full_cost!, res.reweighed_kg)).toBe(res.price_cost_avg);
           expect(sum(res.products.map((p) => p.shortfall_share!))).toBe(res.shortfall_amount);
           expect(sum(res.products.map((p) => p.expenses_share!))).toBe(res.expenses_amount);
           expect(res.checks).toEqual({ shares_ok: true, total_ok: true });

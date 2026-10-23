@@ -6,4 +6,5 @@ export type {
   ReweighItem,
   ReconciliationProduct,
   ReconciliationGrade,
+  ReconciliationCrates,
 } from './model/reweigh';

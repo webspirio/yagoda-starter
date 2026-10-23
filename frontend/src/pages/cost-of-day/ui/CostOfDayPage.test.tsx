@@ -61,7 +61,6 @@ const day = {
     shortfall_kg: '10.00',
     accrued: '128000.00',
     shortfall: '1600.00',
-    price_was: '160.00',
   },
   full_cost: '133460.00',
   price_cost_avg: '168.94',
@@ -69,11 +68,13 @@ const day = {
   checks: { shares_ok: true, total_ok: true } as { shares_ok: boolean; total_ok: boolean } | null,
   top_ups_included: true as const,
   top_ups_latest_at: null,
+  top_ups_total: '0.00',
   products: [
     {
       product_id: 'p-rasp',
       product_name: 'Малина',
       accrued: '128000.00',
+      top_ups: '0.00',
       intake_net_kg: '800.00',
       reweigh_net_kg: '790.00',
       shortfall: '1600.00',
@@ -153,14 +154,15 @@ describe('CostOfDayPage', () => {
     expect(container.querySelector('details#cost-checks')).not.toHaveAttribute('open');
   });
 
-  it('prints the disclosure body and the two footnotes', () => {
+  it('prints the disclosure body and the «нараховано» footnote', () => {
     const { container } = render(<CostOfDayPage />);
 
     // The body is in the DOM even while the <details> is closed, and the
-    // footnotes carry `print-only` — the print stylesheet shows both.
+    // footnote carries `print-only` — the print stylesheet shows both. The
+    // day's average needs no footnote: its formula is printed under the table.
     expect(container.querySelector('details#cost-checks')).toHaveTextContent('Частки товарів');
-    expect(container.querySelectorAll('ol.print-only')).toHaveLength(1);
-    expect(container.querySelectorAll('ol.print-only li')).toHaveLength(2);
+    expect(container.querySelectorAll('.print-only')).not.toHaveLength(0);
+    expect(container.querySelector('p.print-only')).toHaveTextContent(/разом із доплатами/);
   });
 
   it('marks an open shift as still moving', () => {
