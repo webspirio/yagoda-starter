@@ -198,6 +198,26 @@ describe('ReturnCratesDialog', () => {
     expect(screen.getByText(/could not work out the split/i)).toBeInTheDocument();
   });
 
+  it('names a failed holders read, offers a retry and blocks the write', async () => {
+    const refetch = vi.fn();
+    holdersMock.mockReturnValue({ data: undefined, isPending: false, isError: true, refetch });
+    open();
+
+    expect(screen.getByRole('alert')).toHaveTextContent(/could not load who holds crates/i);
+    // A failure is not «nobody holds crates».
+    expect(screen.queryByText(/nobody at this point is holding crates/i)).toBeNull();
+    expect(screen.getByRole('button', { name: 'Accept' })).toBeDisabled();
+
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Retry' }));
+    expect(refetch).toHaveBeenCalled();
+  });
+
+  it('keeps the write blocked while the holders are still loading', () => {
+    holdersMock.mockReturnValue({ data: undefined, isPending: true, isError: false });
+    open();
+    expect(screen.getByRole('button', { name: 'Accept' })).toBeDisabled();
+  });
+
   it('labels holders with their crates and marks an inactive one', () => {
     open();
     expect(screen.getByRole('option', { name: 'Ivan Koval — 12' })).toBeInTheDocument();

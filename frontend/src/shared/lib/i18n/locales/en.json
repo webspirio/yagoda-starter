@@ -1389,6 +1389,7 @@
     },
     "return": {
       "noHolders": "Nobody at this point is holding crates.",
+      "holdersFailed": "Could not load who holds crates.",
       "title": "Accept crates",
       "description": "Returns consume the oldest issuances first and refund each at the price it was taken at.",
       "submit": "Accept",

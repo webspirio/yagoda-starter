@@ -99,7 +99,9 @@ export function ReturnCratesDialog({
   const rows = [...(holders.data ?? [])].sort((a, b) =>
     supplierName(a).localeCompare(supplierName(b), 'uk'),
   );
-  const nobody = holders.data?.length === 0;
+  // A failed or unfinished read is not «nobody holds crates», and either blocks the write.
+  const nobody = !holders.isError && holders.data?.length === 0;
+  const holdersUnavailable = holders.isPending || holders.isError;
   const split = preview.data;
 
   return (
@@ -133,7 +135,14 @@ export function ReturnCratesDialog({
             )}
           </Field>
 
-          {nobody ? (
+          {holders.isError ? (
+            <div role="alert" className="flex items-center gap-2 text-sm text-destructive">
+              <span>{t('crates.return.holdersFailed')}</span>
+              <Button type="button" size="sm" variant="outline" onClick={() => holders.refetch()}>
+                {t('common.retry')}
+              </Button>
+            </div>
+          ) : nobody ? (
             <p className="text-sm text-muted-foreground">{t('crates.return.noHolders')}</p>
           ) : null}
 
@@ -220,7 +229,9 @@ export function ReturnCratesDialog({
             </Button>
             <Button
               type="submit"
-              disabled={isSubmitting || nobody || (split ? split.shortfall > 0 : false)}
+              disabled={
+                isSubmitting || holdersUnavailable || nobody || (split ? split.shortfall > 0 : false)
+              }
             >
               {t('crates.return.submit')}
             </Button>
