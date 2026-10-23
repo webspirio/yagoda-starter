@@ -1559,7 +1559,7 @@
   "costOfDay": {
     "eyebrow": "Management",
     "title": "Cost of day",
-    "description": "The day's shortfall and expenses, spread over every kilogram of berries. The left half only reads; the right is the only place anything is entered.",
+    "description": "What a kilogram of berries really costs after the day's shortfall and expenses.",
     "point": "Point",
     "print": "Print",
     "provisional": "The shift is still open — these figures are still moving",
@@ -1585,7 +1585,7 @@
       "note": "«Accrued» is the purchase accrued, not cash out of the drawer: debts exist, so the cash that left the drawer that day is a different number and does not affect the cost of day."
     },
     "expenses": {
-      "title": "Expenses for the day",
+      "title": "Day expenses",
       "empty": "No expenses have been entered for this day yet.",
       "labelField": "Expense label",
       "amountField": "₴",
@@ -1607,7 +1607,10 @@
       "errors": {
         "amountPositive": "The amount must be above zero. Correct it.",
         "labelRequired": "The expense has no name. Say what the money went on."
-      }
+      },
+      "addLine": "Add an expense",
+      "total": "= {{amount}} · {{perKg}} ₴/kg",
+      "totalNoRate": "= {{amount}}"
     },
     "final": {
       "title": "Average price after expenses",
@@ -1627,6 +1630,47 @@
       "checkShare": "Σ from basket {{shares}} = basket {{basket}}",
       "checkTotal": "{{total}} = accrued {{accrued}} + expenses {{expenses}}",
       "checkTotalUnweighed": "{{total}} + not re-weighed {{unweighed}} = accrued {{accrued}} + expenses {{expenses}}"
+    },
+    "status": {
+      "closed": "Shift closed",
+      "allWeighed": "Everything reweighed",
+      "notWeighed": "Not reweighed: {{names}}",
+      "topUps": "Top-ups included up to {{at}}",
+      "checked": "Reconciled",
+      "mismatch": "Does not add up",
+      "checksPending": "Reconciliation — after reweighing"
+    },
+    "table": {
+      "groupWeight": "Weight, kg",
+      "groupPurchase": "Purchase",
+      "groupShortfall": "Shortfall",
+      "groupExpenses": "Expenses",
+      "groupResult": "Result",
+      "product": "Product",
+      "point": "Point",
+      "base": "Base",
+      "notArrived": "Not arrived",
+      "accrued": "Accrued",
+      "priceWas": "₴/kg on the receipt",
+      "ownShortfall": "Own, ₴",
+      "dayShortfall": "Day, ₴/kg",
+      "expensesPerKg": "₴/kg",
+      "cost": "Cost price",
+      "delta": "Δ vs receipt",
+      "total": "Point",
+      "unweighed": "Not reweighed, left out of the total: {{kg}} · {{amount}}",
+      "share": "The day's share in hryvnia: {{shortfall}} shortfall + {{expenses}} expenses = {{share}} · full cost {{full}} · kg that arrived, before expenses: {{byOur}}",
+      "howToRead": "How to read a row: <sky>receipt price</sky> + <amber>day shortfall per kg</amber> + <plum>day expenses per kg</plum> = <leaf>cost price</leaf>. The shortfall and expenses are spread evenly over every kilogram that reached the base ({{kg}}).",
+      "accruedHelpLabel": "What «accrued» means",
+      "accruedHelp": "«Accrued» is the purchase accrued, not cash out of the drawer: debts exist, so the cash that left the drawer that day is a different number and does not affect the cost of day.",
+      "avgHelpLabel": "How the average is calculated",
+      "avgHelp": "Sum of full costs ÷ weight at the base (§8.6), not an average of prices."
+    },
+    "checks": {
+      "title": "How to check that not a single hryvnia got lost",
+      "shares": "Product shares: {{shares}} = {{basket}} = shortfall {{shortfall}} + expenses {{expenses}}",
+      "total": "Full cost: {{fulls}} = {{full}} = accrued {{accrued}} + expenses {{expenses}}",
+      "totalUnweighed": "Full cost: {{fulls}} = {{full}}; {{full}} + not reweighed {{unweighed}} = accrued {{accrued}} + expenses {{expenses}}"
     }
   },
   "operatorNote": {

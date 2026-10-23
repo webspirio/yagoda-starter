@@ -117,7 +117,7 @@ describe('CostOfDayPage', () => {
 
     expect(screen.getByRole('heading', { name: 'Собівартість дня' })).toBeInTheDocument();
     expect(screen.getByText('Ягода')).toBeInTheDocument();
-    expect(screen.getByText('Витрати за день')).toBeInTheDocument();
+    expect(screen.getAllByText('Витрати дня')[0]).toBeInTheDocument();
     expect(screen.getByText('Середня ціна після витрат')).toBeInTheDocument();
   });
 
@@ -170,7 +170,7 @@ describe('CostOfDayPage', () => {
     render(<CostOfDayPage />);
 
     expect(screen.getByText('Цього дня на цьому пункті прийомки не було.')).toBeInTheDocument();
-    expect(screen.getByText('Витрати за день')).toBeInTheDocument();
+    expect(screen.getAllByText('Витрати дня')[0]).toBeInTheDocument();
   });
 
   it('offers every active point, base included — this screen does not filter by kind', () => {

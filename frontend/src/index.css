@@ -48,6 +48,7 @@
   --leaf: #2e7a3c;
   --amber: #c57a00;
   --sky: #2e7bc4;
+  --plum: #7a4cc4;
 
   /* validated categorical set — mock DESIGN.md */
   --chart-1: #c81e4e;
@@ -108,6 +109,7 @@
   --leaf: #4ea85e;
   --amber: #e0a038;
   --sky: #5aa0e0;
+  --plum: #a98bf0;
 
   --chart-1: #e8557a;
   --chart-2: #5aa0e0;
@@ -147,6 +149,7 @@
   --color-leaf: var(--leaf);
   --color-amber: var(--amber);
   --color-sky: var(--sky);
+  --color-plum: var(--plum);
   --color-chart-1: var(--chart-1);
   --color-chart-2: var(--chart-2);
   --color-chart-3: var(--chart-3);
@@ -383,6 +386,7 @@
   .printable [class*='bg-destructive'],
   .printable [class*='bg-[var(--leaf)]'],
   .printable [class*='bg-[var(--amber)]'],
+  .printable [class*='bg-[var(--plum)]'],
   .printable [data-slot='badge'] {
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
