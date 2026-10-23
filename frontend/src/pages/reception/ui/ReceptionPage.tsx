@@ -563,17 +563,19 @@ export function ReceptionPage() {
       </>
     );
 
+  const headerCaption = t('reception.eyebrow', {
+    point: pointName,
+    date: formatLongDate(todayIso(), locale),
+  });
+
   return (
     <>
       {/* ≤ 40 px tall (spec §5.1): 32 px actions + `pb-1.5`. */}
-      <div className="flex items-center justify-between gap-3 pb-1.5">
+      <div className="flex flex-wrap items-center justify-between gap-3 pb-1.5">
         <div className="flex min-w-0 items-baseline gap-3">
           <h1 className="font-display text-xl leading-tight font-medium">{t('reception.title')}</h1>
-          <span className="truncate text-sm text-muted-foreground">
-            {t('reception.eyebrow', {
-              point: pointName,
-              date: formatLongDate(todayIso(), locale),
-            })}
+          <span className="truncate text-sm text-muted-foreground" title={headerCaption}>
+            {headerCaption}
           </span>
         </div>
         <div className="flex shrink-0 items-center gap-2">{actions}</div>

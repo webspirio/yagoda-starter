@@ -94,6 +94,12 @@ export function PointStrip({
     0,
   );
 
+  const openTodayText = t('reception.today.open', { uah: formatUah(openToday, locale) });
+  const todaySummary = t('reception.today.summary', {
+    count: liveRows.length,
+    kg: formatKg(liveNetKg, locale),
+  });
+
   const pointCashHref = isOwner ? `/point-cash?point=${pointId}` : '/point-cash';
   const cratesHref = isOwner ? `/crates?point=${pointId}` : '/crates';
 
@@ -146,21 +152,27 @@ export function PointStrip({
               <ChevronDown className="size-3" aria-hidden="true" />
             </Eyebrow>
             {cmp(openToday, '0') === 1 ? (
-              <span className="min-w-0 truncate font-mono text-xs font-semibold text-amber">
-                {t('reception.today.open', { uah: formatUah(openToday, locale) })}
+              <span
+                className="min-w-0 truncate font-mono text-xs font-semibold text-amber"
+                title={openTodayText}
+              >
+                {openTodayText}
               </span>
             ) : null}
             {todayTruncated ? (
-              <span className="min-w-0 truncate text-[10px] text-muted-foreground">
+              <span
+                className="min-w-0 truncate text-[10px] text-muted-foreground"
+                title={t('reception.state.truncatedCaption')}
+              >
                 {t('reception.state.truncatedCaption')}
               </span>
             ) : null}
           </span>
-          <span className="mt-0.5 block truncate font-mono text-sm leading-5 font-semibold">
-            {t('reception.today.summary', {
-              count: liveRows.length,
-              kg: formatKg(liveNetKg, locale),
-            })}
+          <span
+            className="mt-0.5 block truncate font-mono text-sm leading-5 font-semibold"
+            title={todaySummary}
+          >
+            {todaySummary}
           </span>
         </PopoverTrigger>
         <PopoverContent className="w-[420px] max-w-[calc(100vw-2rem)]">
@@ -201,14 +213,19 @@ function StatusCell({
     );
   }
   if (shift.status === 'none') {
+    const noneText = canOpen ? t('reception.shift.none') : t('reception.shift.noneOwner');
     return (
-      <div className="flex min-w-0 shrink-0 items-center gap-2">
+      // The owner's read-only sentence is capped and truncates, so the figures
+      // keep their room; the operator's sentence + «Відкрити зміну» never shrink.
+      <div
+        className={cn('flex min-w-0 items-center gap-2', canOpen ? 'shrink-0' : 'max-w-[220px]')}
+      >
         <AlertTriangle className="size-4 shrink-0 text-amber" aria-hidden="true" />
-        <p className="text-sm font-medium text-amber">
-          {canOpen ? t('reception.shift.none') : t('reception.shift.noneOwner')}
+        <p className="min-w-0 truncate text-sm font-medium text-amber" title={noneText}>
+          {noneText}
         </p>
         {canOpen ? (
-          <Button size="sm" onClick={onOpenShift} disabled={isOpening}>
+          <Button size="sm" className="shrink-0" onClick={onOpenShift} disabled={isOpening}>
             {t('reception.shift.open')}
           </Button>
         ) : null}
@@ -246,13 +263,16 @@ function Cell({
       className="min-w-0 rounded-md hover:text-brand focus-visible:ring-2 focus-visible:ring-ring"
     >
       {/* The caption shares the label line, so a cell stays two lines. */}
-      <div className="flex min-w-0 items-baseline gap-1.5 leading-4">
+      <div className="flex min-w-0 items-baseline gap-1.5 leading-4" title={label}>
         <Eyebrow className="min-w-0 truncate leading-4 tracking-wide">{label}</Eyebrow>
         {caption ? (
-          <span className="min-w-0 truncate text-[10px] text-muted-foreground">{caption}</span>
+          <span className="min-w-0 truncate text-[10px] text-muted-foreground" title={caption}>
+            {caption}
+          </span>
         ) : null}
       </div>
       <div
+        title={value}
         className={cn(
           'mt-0.5 truncate font-mono leading-none font-semibold tracking-tight',
           emphasised ? 'text-xl' : 'text-sm',

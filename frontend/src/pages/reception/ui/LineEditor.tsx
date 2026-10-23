@@ -246,7 +246,7 @@ export function LineEditor({
             label={t('reception.weight.gross')}
             required
             error={grossError ?? undefined}
-            className="min-w-[150px] flex-[1.4]"
+            className="min-w-[140px] flex-1"
           >
             {(a11y) => (
               <div className="relative">
@@ -305,7 +305,7 @@ export function LineEditor({
           {/* The tare column: extra rows («Інша тара», in the footer) stack
               under the first and push the block down rather than widen it
               (spec §4). */}
-          <div className="min-w-[260px] flex-[2]">
+          <div className="min-w-[260px] flex-[2.4]">
             <div className="mb-[7px] text-[11px] font-bold tracking-wider text-muted-foreground uppercase">
               {t('reception.weight.tare')}
             </div>
@@ -317,7 +317,7 @@ export function LineEditor({
                 const rowUnits = tareCounts[rowIndex] ?? 0;
                 return (
                   <div key={row.id} className="flex items-center gap-2">
-                    <div className="min-w-0 flex-1">
+                    <div className="min-w-[140px] flex-1">
                       <SelectField
                         aria-label={t('reception.weight.tareType', { n: rowIndex + 1 })}
                         disabled={disabled}
@@ -552,7 +552,7 @@ export function LineEditor({
             : null}
         </div>
 
-        <div className="mt-1 flex flex-nowrap items-center gap-3">
+        <div className="mt-1 flex flex-wrap items-center gap-3">
           {/* «Інша тара» lives here, not under the tare rows, so row 1 stays
               one control tall; in DOM order it still follows the tare and
               precedes «Прибрати позицію» / «Ще позиція» (spec §5.2). */}
@@ -587,15 +587,16 @@ export function LineEditor({
               {t('reception.lines.remove')}
             </Button>
           ) : null}
-          <div className="flex min-w-0 flex-1 items-center justify-end gap-3">
+          <div className="flex flex-1 items-center justify-end gap-3">
             {/* At five lines the cap hint is said out loud; below it the
-                multi-grade hint rides on the button's title. Either way the
-                footer stays ONE row: the hint truncates (whole sentence on
-                hover), the buttons never shrink. */}
+                multi-grade hint rides on the button's title. The hint truncates
+                (whole sentence on hover) and claims no width of its own, so
+                it never forces a wrap; the footer wraps only when the buttons
+                themselves do not fit. */}
             {atCap ? (
               <span
                 title={t('reception.lines.capHint')}
-                className="min-w-0 flex-1 truncate text-right text-xs text-muted-foreground"
+                className="min-w-0 flex-1 basis-0 truncate text-right text-xs text-muted-foreground"
               >
                 {t('reception.lines.capHint')}
               </span>

@@ -53,7 +53,7 @@ export function SupplierSection({
   return (
     // `py-2` around the picker's 48 px trigger keeps the row at 64 px (§5.1).
     <div className="flex items-center gap-3 px-3 py-2">
-      <div className="min-w-0 max-w-[360px] flex-1">
+      <div className="w-[340px] max-w-full shrink-0">
         <SupplierPicker
           ref={pickerRef}
           pointId={pointId}
@@ -66,7 +66,7 @@ export function SupplierSection({
       </div>
 
       {supplier ? (
-        <div className="flex min-w-0 flex-1 items-center gap-2 text-xs text-muted-foreground">
+        <div className="flex min-w-0 flex-1 basis-0 items-center gap-2 text-xs text-muted-foreground">
           <span className="min-w-0 truncate">
             {rows.length === 0 ? (
               t('reception.supplier.historyEmpty')
