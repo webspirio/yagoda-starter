@@ -1216,10 +1216,10 @@ decision rather than guessing whether something was missed.
 
 ## Deferred from the cost-of-day screen (2026-09-22)
 
-- **§8.6 «Середня ціна по мережі».** `GET /reports/network-average?date=` is served, tested and
-  read by no screen — exactly where §8.4 stood before this branch. `nav.network` is the next
-  disabled placeholder in the management group.
-- **«Аркуш керівника»** (`nav.sheet`) — a placeholder with no endpoint behind it at all.
+- ~~**§8.6 «Середня ціна по мережі»** and **«Аркуш керівника»**~~ — CLOSED 2026-10-23: both
+  became «Усі точки» on «Собівартість дня» (client, 23.10 call), served by
+  `GET /reports/cost-of-day?date=`, which replaced the unread `/reports/network-average`. Spec
+  `docs/superpowers/specs/2026-10-23-cost-of-day-all-points-design.md`.
 - **§8.5's allocation-policy selector.** Still blocked on the rules file's own open question
   («узнать як вони це роблять»); ③ additionally needs `expense_allocation` and
   `allocation_product_id` on the columnless `reweighs` header.

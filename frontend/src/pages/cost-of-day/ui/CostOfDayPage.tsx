@@ -17,13 +17,19 @@ import {
 import { useWorkingPoint } from '@/features/point-scope';
 import { usePointOptionsQuery } from '@/entities/collection-point';
 import { useShiftOnDateQuery } from '@/entities/shift';
-import { useCostOfDayQuery } from '@/entities/cost-of-day';
+import { useCostOfDayQuery, useNetworkCostOfDayQuery } from '@/entities/cost-of-day';
 import { useDayExpensesQuery } from '@/entities/day-expense';
 import type { CostOfDay } from '@/entities/cost-of-day';
 import { StatusChips } from './StatusChips';
 import { ExpensesStrip } from './ExpensesStrip';
 import { CostTable } from './CostTable';
 import { ChecksDisclosure } from './ChecksDisclosure';
+import { NetworkCostOfDay } from './NetworkCostOfDay';
+
+/** `?point=all` — «Усі точки». Not a uuid, so `usePointScope` drops it and
+ *  no other screen ever reads it; `setPointId` is never called with it, so
+ *  it is never remembered either. */
+const ALL_POINTS = 'all';
 
 /**
  * The day's body below the title row. A component of its own so the checks
@@ -107,6 +113,12 @@ function CostOfDayBody({
  * THREE READ STATES, never two. A failed `/collection-points` leaves every
  * downstream query disabled, and reporting that as «зміну не відкривали»
  * states a business fact about a shift nobody managed to read.
+ *
+ * «УСІ ТОЧКИ» is the picker's first option (client, 23.10 — it replaces the
+ * separate «Середня ціна по мережі» page and the «Аркуш керівника», which was
+ * only ever a printout): the same date, every point's day summed by the
+ * server, no expense entry. The single-point reads are switched off while it
+ * is on, and the network read while it is off.
  */
 export function CostOfDayPage() {
   const { t, i18n } = useTranslation();
@@ -116,33 +128,48 @@ export function CostOfDayPage() {
   const pointsQuery = usePointOptionsQuery();
   const points = pointsQuery.data ?? [];
 
+  const [pointParam, setPointParam] = useUrlParam('point');
+  const allPoints = canPick && pointParam === ALL_POINTS;
+
   const [dateParam, setDateParam] = useUrlParam('date');
   const today = todayIso();
   const date = isRealIsoDate(dateParam) && dateParam <= today ? dateParam : today;
 
-  const shift = useShiftOnDateQuery(pointId, date);
-  const shiftId = shift.data?.id;
+  const shift = useShiftOnDateQuery(allPoints ? null : pointId, date);
+  const shiftId = allPoints ? undefined : shift.data?.id;
   const cost = useCostOfDayQuery(shiftId);
   const expenses = useDayExpensesQuery(shiftId);
+  const network = useNetworkCostOfDayQuery(allPoints ? date : null);
 
-  const readsPending =
-    pointsQuery.isPending ||
-    (pointId !== null && shift.isPending) ||
-    (shiftId !== undefined && (cost.isPending || expenses.isPending));
-  const readsFailed = pointsQuery.isError || shift.isError || cost.isError || expenses.isError;
+  const readsPending = allPoints
+    ? pointsQuery.isPending || network.isPending
+    : pointsQuery.isPending ||
+      (pointId !== null && shift.isPending) ||
+      (shiftId !== undefined && (cost.isPending || expenses.isPending));
+  const readsFailed = allPoints
+    ? pointsQuery.isError || network.isError
+    : pointsQuery.isError || shift.isError || cost.isError || expenses.isError;
 
-  const pointName = points.find((p) => p.id === pointId)?.name ?? '—';
+  const pointName = allPoints
+    ? t('costOfDay.network.allPoints')
+    : (points.find((p) => p.id === pointId)?.name ?? '—');
   const day = cost.data;
+  const networkDay = network.data;
 
   const actions = (
     <div className="print-hide flex flex-wrap items-center gap-2">
       {canPick ? (
         <SelectField
           aria-label={t('costOfDay.point')}
-          value={pointId ?? ''}
-          onChange={(e) => setPointId(e.target.value || null)}
+          value={allPoints ? ALL_POINTS : (pointId ?? '')}
+          onChange={(e) =>
+            e.target.value === ALL_POINTS
+              ? setPointParam(ALL_POINTS)
+              : setPointId(e.target.value || null)
+          }
           className="w-44"
         >
+          <option value={ALL_POINTS}>{t('costOfDay.network.allPoints')}</option>
           {points.map((p) => (
             <option key={p.id} value={p.id}>
               {p.name}
@@ -181,27 +208,24 @@ export function CostOfDayPage() {
         <div className="flex justify-center py-12">
           <Spinner />
         </div>
+      ) : allPoints ? (
+        !networkDay || networkDay.points.length === 0 ? (
+          <p className="py-8 text-center text-sm text-muted-foreground">
+            {t('costOfDay.network.noShifts', { date: formatShortDate(date, locale) })}
+          </p>
+        ) : (
+          <div className="printable print-landscape rounded-xl bg-card p-5 ring-1 ring-foreground/10">
+            <SheetHeading date={date} pointName={pointName} locale={locale} />
+            <NetworkCostOfDay day={networkDay} locale={locale} />
+          </div>
+        )
       ) : !day ? (
         <p className="py-8 text-center text-sm text-muted-foreground">
           {t('costOfDay.noShift', { date: formatShortDate(date, locale), point: pointName })}
         </p>
       ) : (
         <div className="printable print-landscape rounded-xl bg-card p-5 ring-1 ring-foreground/10">
-          <div className="print-only mb-4">
-            <div className="font-display text-lg font-semibold">
-              {t('costOfDay.sheetTitle', {
-                date: formatLongDate(date, locale),
-                point: pointName,
-              })}
-            </div>
-          </div>
-
-          <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-border pb-3">
-            <span className="font-display text-lg leading-none font-medium">{pointName}</span>
-            <span className="font-mono text-xs text-muted-foreground">
-              {formatShortDate(date, locale)}
-            </span>
-          </div>
+          <SheetHeading date={date} pointName={pointName} locale={locale} />
 
           <CostOfDayBody
             key={day.shift_id}
@@ -212,5 +236,35 @@ export function CostOfDayPage() {
         </div>
       )}
     </div>
+  );
+}
+
+/** The sheet's title on paper and its name-and-date line on screen — the
+ *  same for one point and for «Усі точки». */
+function SheetHeading({
+  date,
+  pointName,
+  locale,
+}: {
+  date: string;
+  pointName: string;
+  locale: string;
+}) {
+  const { t } = useTranslation();
+  return (
+    <>
+      <div className="print-only mb-4">
+        <div className="font-display text-lg font-semibold">
+          {t('costOfDay.sheetTitle', { date: formatLongDate(date, locale), point: pointName })}
+        </div>
+      </div>
+
+      <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-border pb-3">
+        <span className="font-display text-lg leading-none font-medium">{pointName}</span>
+        <span className="font-mono text-xs text-muted-foreground">
+          {formatShortDate(date, locale)}
+        </span>
+      </div>
+    </>
   );
 }

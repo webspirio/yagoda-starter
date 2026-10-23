@@ -50,8 +50,6 @@
     "journal": "Journal",
     "cost": "Cost of day",
     "reweigh": "Re-weighing",
-    "network": "Network average",
-    "sheet": "Owner sheet",
     "transfers": "Transfers",
     "points": "Points",
     "users": "Users",
@@ -1654,6 +1652,36 @@
       "shares": "Product shares: {{shares}} = {{basket}} = shortfall {{shortfall}} + expenses {{expenses}}",
       "total": "Full cost: {{fulls}} = {{full}} = accrued {{accrued}} + expenses {{expenses}}",
       "totalUnweighed": "Full cost: {{fulls}} = {{full}}; {{full}} + not reweighed {{unweighed}} = accrued {{accrued}} + expenses {{expenses}}"
+    },
+    "network": {
+      "allPoints": "All points",
+      "noShifts": "No point opened a shift on {{date}}.",
+      "noIntake": "No point received berries this day.",
+      "showPoints": "Show points: {{product}}",
+      "hidePoints": "Hide points: {{product}}",
+      "rule": "The network average is total ÷ weight, never an average of the points' prices. Under each product, each point's cost as on its own page.",
+      "status": {
+        "open": "Shift still open: {{names}}",
+        "allClosed": "All shifts closed",
+        "nothingWeighed": "Nothing reweighed: {{names}}"
+      },
+      "expenses": {
+        "list": "Day expenses: {{list}} · total {{total}}",
+        "none": "No day expenses entered at any point.",
+        "unspread": "Not spread yet — nothing reweighed at the point: {{list}}",
+        "where": "Expenses are entered on the point's page."
+      },
+      "table": {
+        "shortfallShare": "Day's share, ₴",
+        "expensesShare": "Share, ₴",
+        "fullCost": "Full cost, ₴",
+        "cost": "Cost, ₴/kg"
+      },
+      "chain": {
+        "full": "Full cost: {{accrued}} − {{shortfall}} + {{shortfallShare}} + {{expensesShare}} = {{full}}",
+        "cost": "Cost: {{full}} ÷ {{kg}} = {{cost}} — total ÷ weight over points: {{names}}",
+        "unweighed": "Not reweighed, left out of the row: {{names}} — {{kg}} · {{amount}}"
+      }
     }
   },
   "operatorNote": {
