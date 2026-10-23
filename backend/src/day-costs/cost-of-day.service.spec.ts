@@ -316,9 +316,10 @@ describe('CostOfDayProduct carries the figures it was built from (§8.4 left hal
     });
   });
 
-  it('counts недостача in kilograms per grade, so a surplus grade never lowers it', async () => {
-    // Сорт 1 is 10 кг short, сорт 2 is 3 кг over: the product is 10 кг short,
-    // not 7 — the same clamp the ₴ figure applies, or the two columns disagree.
+  it('counts недостача per product, so a surplus grade offsets a short one', async () => {
+    // Сорт 1 is 10 кг short, сорт 2 is 3 кг over: the product is 7 кг short
+    // (client call 23.10.2026 — the base does not weigh the point's grades),
+    // at the product's 160,00 ₴/кг, and the ₴ figure agrees with the kilograms.
     const res = await build(
       [
         { ...DAY[0], product_grade_id: 'g-rasp-1' },
@@ -327,7 +328,7 @@ describe('CostOfDayProduct carries the figures it was built from (§8.4 left hal
       '0.00',
     ).forShift(owner, 's-1');
 
-    expect(res.products[0]).toMatchObject({ shortfall: '1600.00', shortfall_kg: '10.00' });
+    expect(res.products[0]).toMatchObject({ shortfall: '1120.00', shortfall_kg: '7.00' });
   });
 
   it('books no shortfall_kg for a partially weighed product', async () => {
