@@ -78,10 +78,11 @@ export function ReturnedCratesField({
 
   return (
     // ≤ 64 px (spec §5.1): the settlement card already pads, so only a
-    // separator here; label + «із N ящиків…» stacked beside a 36 px input on
-    // one row, the refund instruction on its own 20 px line under it. The
-    // a11y wiring is `Field`'s, by hand — `Field` stacks label over control.
-    <div className="border-t border-border pt-2">
+    // separator here; label + «із N ящиків…» (32 px) stacked beside a 32 px
+    // input on one row, the refund instruction on its own 20 px line under
+    // it. The a11y wiring is `Field`'s, by hand — `Field` stacks label over
+    // control.
+    <div className="border-t border-border pt-1">
       <div className="flex items-center gap-3">
         <div className="min-w-0 flex-1">
           <label
@@ -100,7 +101,7 @@ export function ReturnedCratesField({
           aria-labelledby={labelId}
           aria-describedby={hintId}
           inputMode="numeric"
-          className="h-9 w-20 shrink-0 font-mono"
+          className="h-8 w-20 shrink-0 font-mono"
           value={value}
           disabled={disabled}
           onChange={(e) => {

@@ -101,7 +101,7 @@ export function PointStrip({
     // One row at `lg` (spec §5.1 budgets the strip one ~56 px row): every
     // cell is a label line over a value line, and what does not fit
     // truncates rather than wrapping. Below `lg` the wrapping grid stays.
-    <div className="mb-3 grid gap-x-6 gap-y-2 rounded-xl border border-line2 bg-card px-3 py-2 sm:grid-cols-2 lg:flex lg:flex-nowrap lg:items-center lg:gap-x-4">
+    <div className="mb-2 grid gap-x-6 gap-y-2 rounded-xl border border-line2 bg-card px-3 py-2 sm:grid-cols-2 lg:flex lg:flex-nowrap lg:items-center lg:gap-x-4">
       <StatusCell
         shift={shift}
         canOpen={canOpen}

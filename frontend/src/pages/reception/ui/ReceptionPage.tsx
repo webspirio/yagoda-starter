@@ -565,8 +565,8 @@ export function ReceptionPage() {
 
   return (
     <>
-      {/* ≤ 40 px tall (spec §5.1): 32 px actions + `pb-2`. */}
-      <div className="flex items-center justify-between gap-3 pb-2">
+      {/* ≤ 40 px tall (spec §5.1): 32 px actions + `pb-1.5`. */}
+      <div className="flex items-center justify-between gap-3 pb-1.5">
         <div className="flex min-w-0 items-baseline gap-3">
           <h1 className="font-display text-xl leading-tight font-medium">{t('reception.title')}</h1>
           <span className="truncate text-sm text-muted-foreground">

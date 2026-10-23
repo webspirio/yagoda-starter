@@ -189,7 +189,7 @@ export function TotalsSection({
         </div>
       ) : null}
 
-      <div className="flex flex-wrap items-baseline justify-between gap-2 border-t border-foreground/20 pt-1.5">
+      <div className="flex flex-wrap items-baseline justify-between gap-2 border-t border-foreground/20 pt-1">
         <Eyebrow>{t('reception.totals.total')}</Eyebrow>
         <span className="font-mono text-3xl leading-none font-semibold tracking-tight">
           {total === null ? (
@@ -281,7 +281,7 @@ export function TotalsSection({
       </div>
 
       {limitedByCash ? (
-        <p className="rounded-lg bg-amber/10 px-2.5 py-1 text-xs leading-snug text-amber">
+        <p className="rounded-lg bg-amber/10 px-2.5 py-0.5 text-xs leading-snug text-amber">
           {t('reception.totals.cashNote', { uah: formatUah(drawer, locale) })}
         </p>
       ) : null}
