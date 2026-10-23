@@ -1014,7 +1014,9 @@
       "cashNote": "Only {{uah}} is in the berry drawer — nothing more to pay out right now. The difference is added to the supplier's balance; a transfer from the owner restocks it.",
       "cashUnavailable": "The berry cash drawer could not be read — the server will check the amount when the receipt is recorded",
       "settled": "Settled in full",
-      "remainderLine": "Owed by us {{uah}} · added with today's date"
+      "newDebt": "New debt from this delivery",
+      "paysOld": "Paid off the earlier balance",
+      "balanceAfter": "Owed by us after this"
     },
     "submit": "Accept",
     "submitKg": "Accept {{kg}}",

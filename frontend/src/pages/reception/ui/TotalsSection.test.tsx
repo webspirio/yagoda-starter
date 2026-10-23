@@ -59,9 +59,7 @@ describe('TotalsSection — the total and the carried-in balance', () => {
     expect(screen.getByText('Total to pay out').parentElement).toHaveTextContent('100.00 ₴');
     const total = screen.getByText('Total to pay out');
     const credit = screen.getByText('Overpaid by us 50.00 ₴');
-    expect(
-      total.compareDocumentPosition(credit) & Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
+    expect(total.compareDocumentPosition(credit) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(screen.queryByText('Previous balance')).toBeNull();
   });
 
@@ -84,13 +82,13 @@ describe('TotalsSection — the chips', () => {
     const input = screen.getByLabelText('Paid in cash');
 
     await user.click(screen.getByRole('button', { name: 'Full amount' }));
-    expect(input).toHaveValue('5497.37');
+    expect(input).toHaveValue('5,497.37');
 
     await user.click(screen.getByRole('button', { name: 'Round to 100' }));
-    expect(input).toHaveValue('5400.00');
+    expect(input).toHaveValue('5,400.00');
 
     await user.click(screen.getByRole('button', { name: 'All to balance' }));
-    expect(input).toHaveValue('0');
+    expect(input).toHaveValue('0.00');
   });
 
   it('disables «Round to 100» when the CAP is under 100, even though the total is not', () => {
@@ -110,22 +108,43 @@ describe('TotalsSection — the chips', () => {
 describe('TotalsSection — the remainder panel', () => {
   it('reads «Owed by us» and the cash note when less than the total is paid out', () => {
     render(<Harness paid="1616.10" />);
-    expect(
-      screen.getByText(/Only 1,616.10 ₴ is in the berry drawer/),
-    ).toBeInTheDocument();
-    expect(screen.getByText(/Owed by us 3,881.27 ₴/)).toBeInTheDocument();
+    expect(screen.getByText(/Only 1,616.10 ₴ is in the berry drawer/)).toBeInTheDocument();
+    // 5460.00 accrued − 1616.10 paid: this delivery's own new debt…
+    expect(screen.getByText('New debt from this delivery')).toBeInTheDocument();
+    expect(screen.getByText('+ 3,843.90 ₴')).toBeInTheDocument();
+    // …and the balance it all comes to, the earlier 37.37 included.
+    const row = screen.getByTestId('remainder-row');
+    expect(row).toHaveTextContent('Owed by us after this');
+    expect(row).toHaveTextContent('3,881.27 ₴');
+    expect(screen.queryByText('Paid off the earlier balance')).toBeNull();
+  });
+
+  it('shows what the cash pays off the earlier balance when it is more than today accrues', () => {
+    render(<Harness paid="5497.37" cash="9000.00" />);
+    expect(screen.getByText('Paid off the earlier balance')).toBeInTheDocument();
+    expect(screen.getByText('− 37.37 ₴')).toBeInTheDocument();
+    expect(screen.queryByText('New debt from this delivery')).toBeNull();
+  });
+
+  it('shows the paid figure formatted like the total at rest, raw while typed into', async () => {
+    const user = userEvent.setup();
+    render(<Harness paid="1200.5" cash="9000.00" />);
+    const input = screen.getByLabelText('Paid in cash');
+    expect(input).toHaveValue('1,200.50');
+    await user.click(input);
+    expect(input).toHaveValue('1200.5');
   });
 
   it('reads «Settled in full» once the whole total is paid out', () => {
     render(<Harness paid="5497.37" />);
     expect(screen.getByText('Settled in full')).toBeInTheDocument();
-    expect(screen.queryByText(/Owed by us/)).toBeNull();
+    expect(screen.queryByText('Owed by us after this')).toBeNull();
   });
 
   it('shows a neutral dash instead of a false «Settled in full» before anything has settled (M1)', () => {
     render(<Harness accrued={null} netKg={null} />);
     expect(screen.queryByText('Settled in full')).toBeNull();
-    expect(screen.queryByText(/Owed by us/)).toBeNull();
+    expect(screen.queryByText('Owed by us after this')).toBeNull();
     // The one-line row shows a bare dash instead of claiming settlement over
     // a total that isn't there yet.
     expect(screen.getByTestId('remainder-row')).toHaveTextContent('—');
@@ -147,7 +166,7 @@ describe('TotalsSection — the cap and the clamp', () => {
     ).toBeInTheDocument();
 
     await user.tab();
-    expect(input).toHaveValue('1616.10');
+    expect(input).toHaveValue('1,616.10');
   });
 
   it('names the TOTAL instead once cash is ample enough that the cap IS the total (M2)', async () => {
@@ -202,7 +221,7 @@ describe('TotalsSection — the cap and the clamp', () => {
     expect(input).toHaveValue('9999');
 
     await user.tab();
-    expect(input).toHaveValue('5497.37');
+    expect(input).toHaveValue('5,497.37');
     expect(screen.queryByText(/berry drawer/)).toBeNull();
   });
 
@@ -256,7 +275,7 @@ describe('TotalsSection — the cap and the clamp', () => {
     expect(input).toHaveValue('1200.');
 
     await user.tab();
-    expect(input).toHaveValue('1200.00');
+    expect(input).toHaveValue('1,200.00');
   });
 });
 
@@ -315,7 +334,9 @@ describe('TotalsSection — refusal and hints', () => {
 
   it('renders the form-level banner as its own alert', () => {
     render(<Harness formErrorKey="reception.errors.failed" />);
-    expect(screen.getByRole('alert')).toHaveTextContent("Couldn't record the receipt. Try again, and if it happens again, tell the network owner.");
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      "Couldn't record the receipt. Try again, and if it happens again, tell the network owner.",
+    );
   });
 
   it('shows the draft hint when asked to', () => {

@@ -1,8 +1,7 @@
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Check } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/shared/ui/button';
-import { Field } from '@/shared/ui/field';
 import { DecimalInput } from '@/shared/ui/decimal-input';
 import { useDecimalField } from '@/shared/ui/use-decimal-field';
 import { cn } from '@/shared/lib/cn';
@@ -10,6 +9,7 @@ import {
   clampDecimal,
   cmp,
   floorToHundreds,
+  formatDecimal,
   formatKg,
   formatUah,
   parseDecimal,
@@ -126,6 +126,17 @@ export function TotalsSection({
   // It waits until the operator leaves the field — «1200.» mid-keystroke is
   // not a mistake yet (`useDecimalField`).
   const formatError = paidField.error ?? undefined;
+  const paidErrorText = paidError ?? formatError ?? null;
+  const [paidFocused, setPaidFocused] = useState(false);
+  const paidDisplay =
+    paidParsed !== null && paid.trim() !== '' ? formatDecimal(paidParsed, locale) : paid;
+  // What THIS delivery adds to the balance (paid less than today's accrual),
+  // or how much of the earlier balance the cash pays down (paid more) —
+  // never both. Strings through `shared/lib/money`, never floats.
+  const newDebt =
+    accrued !== null && cmp(accrued, paidValue) === 1 ? sub(accrued, paidValue) : null;
+  const paysOld =
+    accrued !== null && cmp(paidValue, accrued) === 1 ? sub(paidValue, accrued) : null;
   const settle = (v: string) => onPaidChange(v);
   // The unavailable-drawer note takes the Field hint slot over the over-cap
   // one — a failed read is the more important thing to say, and `overCap`
@@ -149,15 +160,6 @@ export function TotalsSection({
         : lineCount > 1
           ? t('reception.submitLines', { count: lineCount, kg: formatKg(netKg, locale) })
           : t('reception.submitKg', { kg: formatKg(netKg, locale) });
-
-  const remainderText =
-    total === null
-      ? // M1: neither «Розраховано повністю» nor a remainder claims
-        // anything about a total that has not settled yet.
-        '—'
-      : owed && remainder !== null
-        ? t('reception.totals.remainderLine', { uah: formatUah(remainder, locale) })
-        : t('reception.totals.settled');
 
   return (
     // «Розрахунок» is the card's accessible name (a labelled `section` is a
@@ -190,7 +192,10 @@ export function TotalsSection({
           </div>
         ) : null}
 
-        <div className="mt-1 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 border-t border-border pt-3">
+        {/* «Разом» and «Видано готівкою» share ONE shape — label left, the
+            figure right in the same 30 px mono with the same «₴» — so the
+            two sums sit one under the other and are read as a subtraction. */}
+        <div className="mt-1 flex items-baseline justify-between gap-x-3 border-t border-border pt-3">
           <span className="text-base font-semibold">{t('reception.totals.total')}</span>
           <span className="font-mono text-3xl leading-none font-semibold tracking-tight">
             {total === null ? (
@@ -208,75 +213,129 @@ export function TotalsSection({
             {t('reception.supplier.credit', { uah: formatUah(credit, locale) })}
           </p>
         ) : null}
+
+        <div className="flex items-center justify-between gap-x-3">
+          <label htmlFor="paid_amount" id="paid_amount-label" className="shrink-0 text-base font-semibold whitespace-nowrap">
+            {t('reception.totals.paid')}
+          </label>
+          <div className="flex min-w-0 items-baseline font-mono text-3xl leading-none font-semibold tracking-tight">
+            <DecimalInput
+              id="paid_amount"
+              variant="ghost"
+              aria-labelledby="paid_amount-label"
+              aria-invalid={paidErrorText ? true : undefined}
+              aria-describedby={
+                [paidErrorText ? 'paid_amount-error' : null, fieldHint ? 'paid_amount-hint' : null]
+                  .filter(Boolean)
+                  .join(' ') || undefined
+              }
+              placeholder="0,00"
+              // Formatted like «Разом» while at rest, raw while typed into —
+              // a half-typed «1200.» must stay exactly as typed.
+              value={paidFocused ? paid : paidDisplay}
+              onChange={(e) => onPaidChange(e.target.value)}
+              {...paidField.inputProps}
+              onFocus={() => {
+                setPaidFocused(true);
+                paidField.inputProps.onFocus();
+              }}
+              onBlur={(e) => {
+                setPaidFocused(false);
+                paidField.inputProps.onBlur(e);
+              }}
+              className="h-11 w-full min-w-0 rounded-md border-b-2 border-dashed border-line2 bg-muted/40 pr-0 pl-2 text-right font-mono text-3xl leading-none font-semibold tracking-tight focus:border-brand"
+            />
+            <span className="ml-[1ch] shrink-0">₴</span>
+          </div>
+        </div>
+        {fieldHint ? (
+          <p
+            id="paid_amount-hint"
+            className={cn(
+              'flex items-center gap-1.5 text-sm leading-snug',
+              overCap && !cashUnavailable ? 'text-amber' : 'text-muted-foreground',
+            )}
+          >
+            {fieldHint}
+          </p>
+        ) : null}
+        {paidErrorText ? (
+          <p id="paid_amount-error" role="alert" className="text-sm leading-snug text-destructive">
+            {t(paidErrorText)}
+          </p>
+        ) : null}
+
+        <div className="grid grid-cols-3 gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            className="h-9 px-2 text-sm"
+            onClick={() => settle(cap ?? '0')}
+          >
+            {t('reception.totals.all')}
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            className="h-9 px-2 text-sm"
+            disabled={cap === null || cmp(cap, '100') === -1}
+            onClick={() => settle(floorToHundreds(cap ?? '0'))}
+          >
+            {t('reception.totals.toHundreds')}
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            className="h-9 px-2 text-sm"
+            onClick={() => settle('0')}
+          >
+            {t('reception.totals.allToBalance')}
+          </Button>
+        </div>
       </div>
 
-      <Field
-        size="large"
-        name="paid_amount"
-        label={t('reception.totals.paid')}
-        error={paidError ?? formatError}
-        hint={fieldHint}
-        hintTone={overCap && !cashUnavailable ? 'warning' : undefined}
-      >
-        {(a11y) => (
-          <>
-            <div className="relative">
-              <DecimalInput
-                {...a11y}
-                className="h-12 pr-10 font-mono text-2xl font-semibold"
-                value={paid}
-                onChange={(e) => onPaidChange(e.target.value)}
-                {...paidField.inputProps}
-              />
-              <span className="pointer-events-none absolute top-1/2 right-3.5 -translate-y-1/2 font-mono text-base text-muted-foreground">
-                ₴
+      {/* What this payout leaves: the debt THIS delivery adds (or how much of
+          the earlier balance it pays down), then the balance it all comes
+          to — the sentence the operator says out loud to the supplier. */}
+      <div className="flex flex-col gap-2 border-t border-border pt-3">
+        {newDebt !== null ? (
+          <div className="flex items-baseline justify-between gap-3 text-base">
+            <span className="text-muted-foreground">{t('reception.totals.newDebt')}</span>
+            <span className="font-mono font-medium text-amber">+ {formatUah(newDebt, locale)}</span>
+          </div>
+        ) : null}
+        {paysOld !== null ? (
+          <div className="flex items-baseline justify-between gap-3 text-base">
+            <span className="text-muted-foreground">{t('reception.totals.paysOld')}</span>
+            <span className="font-mono font-medium text-leaf">− {formatUah(paysOld, locale)}</span>
+          </div>
+        ) : null}
+        <div
+          data-testid="remainder-row"
+          className={cn(
+            'flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 rounded-lg px-3 py-2',
+            total === null
+              ? 'bg-muted/50 text-muted-foreground'
+              : owed
+                ? 'bg-amber/10 text-amber'
+                : 'bg-leaf/10 text-leaf',
+          )}
+        >
+          {total === null || remainder === null ? (
+            // M1: neither «Розраховано повністю» nor a balance claims
+            // anything about a total that has not settled yet.
+            '—'
+          ) : owed ? (
+            <>
+              <span className="text-base font-semibold">{t('reception.totals.balanceAfter')}</span>
+              <span className="font-mono text-xl font-semibold">
+                {formatUah(remainder, locale)}
               </span>
-            </div>
-            <div className="mt-2 grid grid-cols-3 gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                className="h-9 px-2 text-sm"
-                onClick={() => settle(cap ?? '0')}
-              >
-                {t('reception.totals.all')}
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                className="h-9 px-2 text-sm"
-                disabled={cap === null || cmp(cap, '100') === -1}
-                onClick={() => settle(floorToHundreds(cap ?? '0'))}
-              >
-                {t('reception.totals.toHundreds')}
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                className="h-9 px-2 text-sm"
-                onClick={() => settle('0')}
-              >
-                {t('reception.totals.allToBalance')}
-              </Button>
-            </div>
-          </>
-        )}
-      </Field>
-
-      {/* Wraps rather than truncates: what is left owed is the one sentence
-          the operator says out loud to the supplier. */}
-      <div
-        data-testid="remainder-row"
-        className={cn(
-          'rounded-lg px-3 py-2 text-sm leading-snug font-medium',
-          total === null
-            ? 'bg-muted/50 text-muted-foreground'
-            : owed
-              ? 'bg-amber/10 text-amber'
-              : 'bg-leaf/10 text-leaf',
-        )}
-      >
-        {remainderText}
+            </>
+          ) : (
+            <span className="text-base font-semibold">{t('reception.totals.settled')}</span>
+          )}
+        </div>
       </div>
 
       {limitedByCash ? (

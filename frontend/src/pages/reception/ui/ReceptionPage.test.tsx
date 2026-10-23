@@ -1310,7 +1310,7 @@ describe('ReceptionPage — «Видано готівкою» rides along with �
     // Before the fix, `cash === null` suggested/clamped to '0.00' — a blur
     // here would have wiped the typed figure back to zero instead of merely
     // canonicalising it.
-    expect(paidInput).toHaveValue('1000.00');
+    expect(paidInput).toHaveValue('1,000.00');
 
     await user.click(screen.getByRole('button', { name: /Accept 120\.40 kg/ }));
 
