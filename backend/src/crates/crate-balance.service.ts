@@ -156,9 +156,9 @@ export const inTransitCratesSql = (pointExpr: string): string => `(
 )`;
 
 /**
- * EMPTIES AT THE POINT — the ONE formula (spec 2026-09-30 §4.1). `/crate-standing` shows it
- * and `CrateStockGuard` refuses a write that leaves it below zero, so the two cannot drift:
- * received − issued + returned − crate tare on every live receipt − breakage.
+ * EMPTIES AT THE POINT — the ONE formula (spec 2026-09-30 §4.1), shown by `/crate-standing`:
+ * received − issued + returned − crate tare on every live receipt − breakage. It may be
+ * negative — the point owes people crates (§6.9, Правка 23.10.2026) — and nothing refuses that.
  */
 export const onHandSql = (pointExpr: string): string => `(
     ${transferCratesSql(pointExpr)}

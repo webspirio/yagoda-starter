@@ -61,12 +61,11 @@ describe('CrateStandingBar', () => {
     expect(screen.queryByText('Allotment complete')).not.toBeInTheDocument();
   });
 
-  it('turns a negative on-hand red and warns, without blocking anything', () => {
+  it('shows a negative on-hand with its minus, in amber — a debt in crates, not an error (§6.9, 23.10.2026)', () => {
     render(<CrateStandingBar standing={{ ...base, on_hand: -5, total: 45 }} />);
-    expect(screen.getByText('−5')).toHaveClass('text-destructive');
-    expect(
-      screen.getByText(/Fewer than zero empty crates: the documents don't add up/),
-    ).toBeInTheDocument();
+    expect(screen.getByText('−5')).toHaveClass('text-amber');
+    expect(screen.getByText('−5')).not.toHaveClass('text-destructive');
+    expect(screen.getByText(/it owes people crates/)).toHaveClass('text-amber');
   });
 
   it('draws no segment wider than its share and never a negative width', () => {

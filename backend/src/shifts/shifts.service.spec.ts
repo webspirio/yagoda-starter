@@ -27,7 +27,6 @@ const otherOperator = {
   collection_point_id: POINT_B,
 };
 
-const stock = { assertOnHand: jest.fn().mockResolvedValue(undefined) };
 
 describe('ShiftsService', () => {
   let repo: {
@@ -69,7 +68,6 @@ describe('ShiftsService', () => {
   const openDto = { counted_amount: '100.00' } as never;
 
   beforeEach(() => {
-    stock.assertOnHand.mockClear();
     repo = {
       findOne: jest.fn().mockResolvedValue(null),
       findAndCount: jest.fn().mockResolvedValue([[], 0]),
@@ -113,7 +111,6 @@ describe('ShiftsService', () => {
       time as never,
       dataSource as never,
       cash as never,
-      stock as never,
     );
   });
 
@@ -285,22 +282,6 @@ describe('ShiftsService', () => {
         }),
         expect.anything(),
       );
-    });
-
-    it('asks the stock guard for the breakage', async () => {
-      repo.findOne.mockResolvedValue(shift());
-      cash.expectedForClosing.mockResolvedValue('100.00');
-
-      await service.close(operator, SHIFT_ID, { counted_amount: '100.00', broken_crates: 3 } as never);
-      expect(stock.assertOnHand).toHaveBeenCalledWith(expect.anything(), POINT_A, 3);
-    });
-
-    it('does not ask the stock guard when nothing broke', async () => {
-      repo.findOne.mockResolvedValue(shift());
-      cash.expectedForClosing.mockResolvedValue('100.00');
-
-      await service.close(operator, SHIFT_ID, { counted_amount: '100.00', broken_crates: 0 } as never);
-      expect(stock.assertOnHand).not.toHaveBeenCalled();
     });
 
     it('closes a stale shift from a previous day without complaint', async () => {
@@ -485,7 +466,6 @@ describe('ShiftsService.open with a count', () => {
       time as never,
       dataSource as never,
       cash as never,
-      stock as never,
     );
     return { service, saved, audit, cash };
   };
@@ -584,7 +564,6 @@ describe('ShiftsService.close with a count', () => {
       time as never,
       dataSource as never,
       cash as never,
-      stock as never,
     );
     return { service, saved, audit, manager };
   };
@@ -673,7 +652,6 @@ describe('ShiftsService.reopen demotes the closing count', () => {
       { now: () => ({ toISODate: () => '2026-09-09', toJSDate: () => new Date() }) } as never,
       dataSource as never,
       {} as never,
-      stock as never,
     );
     const owner = {
       sub: 'u-owner',

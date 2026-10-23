@@ -155,17 +155,7 @@ export function apiErrorToBanner(
   overrides?: Readonly<Record<string, string>>,
 ): string {
   const code = apiErrorCode(error);
-  if (code === 'CRATES_ON_HAND_INSUFFICIENT') return onHandKey(error);
   return (code && (overrides?.[code] ?? CODE[code])) || statusKey(error) || fallback;
-}
-
-/** Spec 2026-09-30 — the one code whose sentence depends on a FIELD, not the endpoint: with a
- *  transfer in transit the operator's fix is «Прийняв», not a smaller number. */
-export function onHandKey(error: unknown): string {
-  const inTransit = error instanceof ApiError ? error.payload?.in_transit : undefined;
-  return typeof inTransit === 'number' && inTransit > 0
-    ? 'crates.errors.onHandInsufficientInTransit'
-    : 'crates.errors.onHandInsufficient';
 }
 
 /** The error body's numeric context fields, for `t(key, params)`. */
