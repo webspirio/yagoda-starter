@@ -302,6 +302,25 @@ describe('CostTable', () => {
     expect(box.outerHTML).not.toContain('--amber');
   });
 
+  it('prints a zero Δ as a muted 0,00 without a plus on a day with an empty basket', () => {
+    // Spec §3.5 «basket 0»: nothing missing and no expenses — the receipt
+    // price IS the собівартість, and «+0,00» would promise an addition.
+    renderTable({
+      ...day,
+      shortfall_amount: '0.00',
+      expenses_amount: '0.00',
+      basket: '0.00',
+      per_kg: '0.00',
+      shortfall_per_kg: '0.00',
+      expenses_per_kg: '0.00',
+      products: [{ ...cornel, price_cost: '38.00' }],
+    });
+
+    const delta = cellsOf(screen.getByRole('row', { name: /Кизил/ }))[10];
+    expect(delta.textContent).toBe('0,00');
+    expect(delta.className).toContain('text-muted-foreground');
+  });
+
   it('prints the reading hint with the base weight when the day is weighed', () => {
     renderTable();
 

@@ -133,9 +133,15 @@ export function CostTableRow({
           {dash(p.price_cost, dec)}
         </TableCell>
         {/* Δ is the day's на кілограм, the same for every product (§8.4
-            «однаково на ВСІ товари»), printed only where it became a price. */}
+            «однаково на ВСІ товари»), printed only where it became a price.
+            An empty basket (§3.5 «basket 0») is exactly '0.00': a muted 0,00
+            with no «+», since nothing was added to the receipt price. */}
         <TableCell className={`${NUM} text-muted-foreground`}>
-          {p.price_cost !== null && perKg !== null ? `+${dec(perKg)}` : '—'}
+          {p.price_cost === null || perKg === null
+            ? '—'
+            : perKg === '0.00'
+              ? dec(perKg)
+              : `+${dec(perKg)}`}
         </TableCell>
       </TableRow>
 
