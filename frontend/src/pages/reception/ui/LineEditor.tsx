@@ -552,7 +552,7 @@ export function LineEditor({
             : null}
         </div>
 
-        <div className="mt-1 flex flex-wrap items-center gap-3">
+        <div className="mt-1 flex flex-nowrap items-center gap-3">
           {/* «Інша тара» lives here, not under the tare rows, so row 1 stays
               one control tall; in DOM order it still follows the tare and
               precedes «Прибрати позицію» / «Ще позиція» (spec §5.2). */}
@@ -587,12 +587,18 @@ export function LineEditor({
               {t('reception.lines.remove')}
             </Button>
           ) : null}
-          <div className="ml-auto flex items-center gap-3">
+          <div className="flex min-w-0 flex-1 items-center justify-end gap-3">
             {/* At five lines the cap hint is said out loud; below it the
-                multi-grade hint rides on the button's title, keeping the
-                footer one line tall. */}
+                multi-grade hint rides on the button's title. Either way the
+                footer stays ONE row: the hint truncates (whole sentence on
+                hover), the buttons never shrink. */}
             {atCap ? (
-              <span className="text-xs text-muted-foreground">{t('reception.lines.capHint')}</span>
+              <span
+                title={t('reception.lines.capHint')}
+                className="min-w-0 flex-1 truncate text-right text-xs text-muted-foreground"
+              >
+                {t('reception.lines.capHint')}
+              </span>
             ) : null}
             <Button
               type="button"

@@ -283,7 +283,13 @@ export function TotalsSection({
         </p>
       ) : null}
 
-      <Button type="submit" className="h-11 w-full text-base" disabled={disabled || isSubmitting}>
+      {/* The label carries the payout sum, so it wraps inside the button
+          rather than running past the ~355 px card — never truncated. */}
+      <Button
+        type="submit"
+        className="h-auto min-h-11 w-full py-1.5 text-center text-base leading-tight whitespace-normal"
+        disabled={disabled || isSubmitting}
+      >
         <Check className="size-5" />
         {label}
       </Button>
