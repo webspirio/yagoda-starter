@@ -80,15 +80,15 @@ describe('BerryTable', () => {
     expect(within(row).getByText('1 600,00 ₴')).toBeInTheDocument();
   });
 
-  it('explains why «недостача, кг» is not вага пункту minus наша вага', async () => {
+  it('explains that «недостача, кг» is counted per product, grades together', async () => {
     const user = userEvent.setup();
     renderTable([weighed]);
 
     await user.hover(screen.getByRole('button', { name: 'Як рахується недостача' }));
 
     const tip = await screen.findByRole('tooltip');
-    expect(tip).toHaveTextContent(/по кожному сорту окремо/);
-    expect(tip).toHaveTextContent(/надлишок одного сорту не зменшує/);
+    expect(tip).toHaveTextContent(/по кожному товару/);
+    expect(tip).toHaveTextContent(/надлишок одного сорту покриває недостачу іншого/);
     expect(tip).toHaveTextContent(/неперезважені продукти входять у «вагу пункту»/);
   });
 

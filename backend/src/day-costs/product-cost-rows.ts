@@ -1,7 +1,11 @@
 import { DataSource } from 'typeorm';
-import { gradeTotals, weighedInFull } from '../reweighs/reweigh-reconciliation.service';
+import {
+  gradeTotals,
+  productShortfall,
+  weighedInFull,
+} from '../reweighs/reweigh-reconciliation.service';
 import { allocateTopUps, ReceiptForAllocation } from './top-up-allocation';
-import { add, div, gt, mul, sub, sum } from '../common/money';
+import { add, gt, sum } from '../common/money';
 
 interface ReceiptRow {
   intake_id: string;
@@ -16,14 +20,15 @@ export interface ProductCostRow {
    *  over every grade this product had in this shift. */
   accrued: string;
   intake_net_kg: string;
-  /** «недостача» — Σ per-grade shortfall, already clamped so a surplus on one
-   *  grade never lowers it (§8.2's clamp — see `cost-of-day.service.ts`).
+  /** «недостача» — the PRODUCT's shortfall at its average accrued rate
+   *  (`productShortfall`), clamped at zero (§8.2's clamp); a surplus on one
+   *  grade offsets a shortfall on another.
    *  '0.00' both when nothing is missing AND when this product is not
    *  `complete`; the latter case is what `reweigh_net_kg === null` exists to
    *  distinguish. */
   shortfall: string;
-  /** The same недостача in kilograms — Σ per-grade missing kg, clamped the
-   *  same way, so it never disagrees with `shortfall`. */
+  /** The same недостача in kilograms — Σ point minus Σ base for the product,
+   *  clamped the same way, so it never disagrees with `shortfall`. */
   shortfall_kg: string;
   /** Σ reweigh net_kg across this product's grades. `null` — not '0.00' —
    *  whenever `complete` is false, which covers both «nothing weighed at
@@ -84,32 +89,13 @@ export async function productCostRows(
   }));
   const topUpsByGrade = allocateTopUps(receipts);
 
-  const gradeCosts = grades.map((g) => {
-    const accrued = add(g.intake_amount, topUpsByGrade.get(g.product_grade_id) ?? '0.00');
-    // §3.6 — per GRADE, never a product-level average of summed amounts.
-    const price = div(accrued, g.intake_net_kg);
-    const reweighNet = g.reweigh_net_kg;
-    let shortfall = '0.00';
-    let shortfall_kg = '0.00';
-    if (reweighNet !== null) {
-      const missing = sub(g.intake_net_kg, reweighNet);
-      // THE CLAMP — the one place a surplus (missing < 0) is discarded
-      // rather than shown, matching `CostOfDayService`.
-      if (gt(missing, '0.00')) {
-        shortfall_kg = missing;
-        shortfall = mul(missing, price);
-      }
-    }
-    return {
-      product_id: g.product_id,
-      product_name: g.product_name,
-      accrued,
-      intake_net_kg: g.intake_net_kg,
-      reweigh_net_kg: reweighNet,
-      shortfall,
-      shortfall_kg,
-    };
-  });
+  const gradeCosts = grades.map((g) => ({
+    product_id: g.product_id,
+    product_name: g.product_name,
+    accrued: add(g.intake_amount, topUpsByGrade.get(g.product_grade_id) ?? '0.00'),
+    intake_net_kg: g.intake_net_kg,
+    reweigh_net_kg: g.reweigh_net_kg,
+  }));
 
   const byProduct = new Map<string, typeof gradeCosts>();
   for (const g of gradeCosts) {
@@ -129,14 +115,29 @@ export async function productCostRows(
     // shortfall that nobody has confirmed. «Contributes nothing — not a
     // zero», and half a weighing is not a weighing.
     const complete = weighedInFull(list);
+    const accrued = sum(list.map((g) => g.accrued));
+    const intakeNet = sum(list.map((g) => g.intake_net_kg));
+    const reweighNet = complete ? sum(list.map((g) => g.reweigh_net_kg ?? '0.00')) : null;
+    let shortfall = '0.00';
+    let shortfall_kg = '0.00';
+    if (reweighNet !== null) {
+      // Per PRODUCT, at its average accrued rate — `productShortfall`, the reweigh screen's
+      // own arithmetic. THE CLAMP — the one place a surplus (missing < 0) is discarded rather
+      // than shown — now applies to the product, so one grade's surplus does offset another's.
+      const missing = productShortfall(intakeNet, reweighNet, accrued);
+      if (gt(missing.kg, '0.00')) {
+        shortfall_kg = missing.kg;
+        shortfall = missing.amount;
+      }
+    }
     rows.push({
       product_id: productId,
       product_name: list[0].product_name,
-      accrued: sum(list.map((g) => g.accrued)),
-      intake_net_kg: sum(list.map((g) => g.intake_net_kg)),
-      shortfall: complete ? sum(list.map((g) => g.shortfall)) : '0.00',
-      shortfall_kg: complete ? sum(list.map((g) => g.shortfall_kg)) : '0.00',
-      reweigh_net_kg: complete ? sum(list.map((g) => g.reweigh_net_kg ?? '0.00')) : null,
+      accrued,
+      intake_net_kg: intakeNet,
+      shortfall,
+      shortfall_kg,
+      reweigh_net_kg: reweighNet,
       complete,
     });
   }

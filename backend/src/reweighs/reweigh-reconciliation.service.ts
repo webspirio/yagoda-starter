@@ -83,6 +83,27 @@ export function weighedInFull(grades: Pick<GradeTotalsRow, 'reweigh_net_kg'>[]):
   return grades.every((g) => g.reweigh_net_kg !== null);
 }
 
+/**
+ * НЕДОСТАЧА BELONGS TO THE PRODUCT, NOT TO A GRADE (client call 23.10.2026).
+ *
+ * The point's grades are its price tiers; the base weighs the berry, not the tiers, and may
+ * put a crate onto another grade. Compared grade by grade, 596,8 кг against 595,4 кг read as
+ * 106,3 кг missing (one grade's surplus clamped away) and 1 124 ₴ (each grade at its own
+ * rate). So the kilograms are the product's — Σ point minus Σ base — and they are priced at
+ * the product's average rate, `accrued ÷ point kilograms`. Signed: a surplus comes back
+ * negative, and clamping it is the caller's call. Both readers of `gradeTotals` price the
+ * shortfall here, so the reweigh screen and собівартість дня cannot disagree again.
+ */
+export function productShortfall(
+  intakeNetKg: string,
+  reweighNetKg: string,
+  accrued: string,
+): { kg: string; amount: string } {
+  const kg = sub(intakeNetKg, reweighNetKg);
+  if (isZero(intakeNetKg)) return { kg, amount: '0.00' };
+  return { kg, amount: mul(kg, div(accrued, intakeNetKg)) };
+}
+
 export interface ReconciliationGrade {
   product_grade_id: string;
   product_grade_name: string;
@@ -224,14 +245,14 @@ export class ReweighReconciliationService {
         continue;
       }
 
-      // §3.6 — per GRADE, at the weighted average actually accrued (bonuses
-      // included, because it is already paid), then summed for display. Since
-      // #56 that is the whole-hryvnia amount, so it can sit just under the rate.
-      const amounts = productGrades.map((g) => {
-        const missing = sub(g.intake_net_kg, g.reweigh_net_kg as string);
-        if (isZero(g.intake_net_kg)) return '0.00';
-        return mul(missing, div(g.intake_amount, g.intake_net_kg));
-      });
+      // Per PRODUCT, at the product's average actually accrued (bonuses included, because it is
+      // already paid) — `productShortfall`. Since #56 that is the whole-hryvnia amount, so it
+      // can sit just under the rate.
+      const missing = productShortfall(
+        intakeNet,
+        reweighNet,
+        sum(productGrades.map((g) => g.intake_amount)),
+      );
 
       products.push({
         product_id: productId,
@@ -239,8 +260,8 @@ export class ReweighReconciliationService {
         intake_net_kg: intakeNet,
         reweigh_net_kg: reweighNet,
         state: 'weighed',
-        missing_kg: sub(intakeNet, reweighNet),
-        missing_amount: sum(amounts),
+        missing_kg: missing.kg,
+        missing_amount: missing.amount,
       });
     }
 

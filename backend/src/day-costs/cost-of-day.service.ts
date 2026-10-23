@@ -17,11 +17,11 @@ export interface CostOfDayProduct {
   /** Σ reweigh_items.net_kg — «наша вага». `null`, never '0.00', whenever
    *  `complete` is false: §8.6's «Це не нуль», so the screen prints «—». */
   reweigh_net_kg: string | null;
-  /** «недостача» for this product, already clamped so a surplus on one grade
-   *  never lowers it. '0.00' both when nothing is missing and when the product
+  /** «недостача» for this product as a whole, at its average accrued rate and
+   *  clamped at zero. '0.00' both when nothing is missing and when the product
    *  is not `complete` — `reweigh_net_kg === null` is what tells the two apart. */
   shortfall: string;
-  /** The same недостача in kilograms, clamped per grade like `shortfall`. */
+  /** The same недостача in kilograms, clamped per product like `shortfall`. */
   shortfall_kg: string;
   /** «із пулу» — this product's share of the СПІЛЬНИЙ КОШИК.
    *
@@ -68,7 +68,7 @@ export interface CostOfDayResponse {
   /** Σ intake_items.amount + allocated top-ups, non-voided, over every grade the shift accepted. */
   accrued: string;
   reweighed_kg: string;
-  /** Σ per-grade недостача, clamped so a surplus never contributes (§8.2/§8.4 — the discard is here, and only here). */
+  /** Σ per-product недостача, clamped so a product's surplus never contributes (§8.2/§8.4 — the discard is here, and only here). */
   shortfall_amount: string;
   expenses_amount: string;
   /** shortfall_amount + expenses_amount — СПІЛЬНИЙ КОШИК. */
