@@ -18,6 +18,7 @@ import { DataTable, type Column } from '@/shared/ui/data-table';
 import { DateStepper } from '@/shared/ui/date-stepper';
 import { Button } from '@/shared/ui/button';
 import { Badge } from '@/shared/ui/badge';
+import { Popover, PopoverContent, PopoverTrigger } from '@/shared/ui/popover';
 import { CHART_COLORS } from '@/shared/ui/chart-colors';
 import { ListPage } from '@/shared/ui/templates/list-page';
 import { DashboardPage } from '@/shared/ui/templates/dashboard-page';
@@ -104,6 +105,19 @@ function DecimalDemo() {
         />
       )}
     </Field>
+  );
+}
+
+/** Popover cell — real locale keys, no literal of its own (like DecimalDemo). */
+function PopoverDemo() {
+  const { t } = useTranslation();
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <Button variant="outline">{t('reception.totals.paid')}</Button>
+      </PopoverTrigger>
+      <PopoverContent>{t('reception.totals.paid')}</PopoverContent>
+    </Popover>
   );
 }
 
@@ -236,6 +250,9 @@ export function UiKitPage() {
         </Cell>
         <Cell name="DecimalInput · useDecimalField" tag="form">
           <DecimalDemo />
+        </Cell>
+        <Cell name="Popover" tag="overlay">
+          <PopoverDemo />
         </Cell>
         <Cell name="DateStepper" tag="layout">
           <DateStepper
