@@ -506,7 +506,7 @@ export function LineEditor({
             alert per refusal, not two. */}
         <p
           className={cn(
-            'mt-1.5 font-mono text-sm',
+            'mt-1 font-mono text-sm',
             hasLineError
               ? 'text-destructive'
               : previewItem
@@ -528,7 +528,7 @@ export function LineEditor({
 
         {/* Instant, client-side hints — never a rule the server enforces,
             just what the operator is about to be surprised by. */}
-        <div className="mt-1 flex flex-col gap-1 empty:hidden">
+        <div className="mt-1 flex flex-col gap-0.5 empty:hidden">
           {grossWarning
             ? warning(
                 t('reception.line.grossWarning', {
@@ -552,7 +552,7 @@ export function LineEditor({
             : null}
         </div>
 
-        <div className="mt-1.5 flex flex-wrap items-center gap-3">
+        <div className="mt-1 flex flex-wrap items-center gap-3">
           {/* «Інша тара» lives here, not under the tare rows, so row 1 stays
               one control tall; in DOM order it still follows the tare and
               precedes «Прибрати позицію» / «Ще позиція» (spec §5.2). */}

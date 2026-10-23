@@ -77,24 +77,24 @@ export function LinesTable({
           <tbody className="divide-y divide-border">
             {rows.map((row, index) => (
               <tr key={row.key} className="font-mono">
-                <td className="px-2 py-1 font-sans">{row.gradeLabel}</td>
-                <td className="px-2 py-1 text-right">
+                <td className="px-2 py-0.5 font-sans">{row.gradeLabel}</td>
+                <td className="px-2 py-0.5 text-right">
                   {row.item ? formatDecimal(row.item.gross_kg, locale) : <Pending />}
                 </td>
-                <td className="px-2 py-1 text-right text-muted-foreground">
+                <td className="px-2 py-0.5 text-right text-muted-foreground">
                   {row.item ? formatDecimal(row.item.pallet_kg, locale) : <Pending />}
                 </td>
-                <td className="px-2 py-1 text-right text-muted-foreground">
+                <td className="px-2 py-0.5 text-right text-muted-foreground">
                   {row.item ? (
                     row.item.tare.reduce((n, tareRow) => n + tareRow.units, 0)
                   ) : (
                     <Pending />
                   )}
                 </td>
-                <td className="px-2 py-1 text-right font-semibold">
+                <td className="px-2 py-0.5 text-right font-semibold">
                   {row.item ? formatDecimal(row.item.net_kg, locale) : <Pending />}
                 </td>
-                <td className="px-2 py-1 text-right">
+                <td className="px-2 py-0.5 text-right">
                   {row.item ? (
                     <>
                       {formatDecimal(row.item.price, locale)}
@@ -108,14 +108,14 @@ export function LinesTable({
                     <Pending />
                   )}
                 </td>
-                <td className="px-2 py-1 text-right font-semibold">
+                <td className="px-2 py-0.5 text-right font-semibold">
                   {row.item ? formatDecimal(row.item.amount, locale) : <Pending />}
                 </td>
-                <td className="py-1 text-right">
+                <td className="py-0.5 text-right">
                   <Button
                     type="button"
                     variant="ghost"
-                    size="icon-sm"
+                    size="icon-xs"
                     aria-label={t('reception.lines.remove')}
                     disabled={disabled}
                     onClick={() => onRemove(index)}

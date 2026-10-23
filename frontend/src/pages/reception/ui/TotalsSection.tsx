@@ -151,6 +151,15 @@ export function TotalsSection({
           ? t('reception.submitLines', { count: lineCount, kg: formatKg(netKg, locale) })
           : t('reception.submitKg', { kg: formatKg(netKg, locale) });
 
+  const remainderText =
+    total === null
+      ? // M1: neither «Розраховано повністю» nor a remainder claims
+        // anything about a total that has not settled yet.
+        '—'
+      : owed && remainder !== null
+        ? t('reception.totals.remainderLine', { uah: formatUah(remainder, locale) })
+        : t('reception.totals.settled');
+
   return (
     <div className="flex flex-col gap-1.5 border-t border-border p-3">
       <Eyebrow>{t('reception.totals.eyebrow')}</Eyebrow>
@@ -170,7 +179,7 @@ export function TotalsSection({
       </div>
 
       {cmp(carried, '0') === 1 ? (
-        <div className="flex items-center justify-between gap-3 rounded-lg bg-amber/10 px-3 py-1.5 text-sm">
+        <div className="flex items-center justify-between gap-3 rounded-lg bg-amber/10 px-3 py-1 text-sm">
           <span className="text-muted-foreground">{t('reception.totals.debt')}</span>
           <span className="font-mono">+ {formatUah(carried, locale)}</span>
         </div>
@@ -239,10 +248,13 @@ export function TotalsSection({
         )}
       </Field>
 
+      {/* One line at the card's ~355 px (spec §5.1): truncates, with the
+          whole sentence on hover — the DOM text is unchanged. */}
       <div
         data-testid="remainder-row"
+        title={remainderText}
         className={cn(
-          'rounded-lg px-3 py-1.5 text-sm',
+          'truncate rounded-lg px-3 py-1 text-xs whitespace-nowrap',
           total === null
             ? 'bg-muted/50 text-muted-foreground'
             : owed
@@ -250,17 +262,11 @@ export function TotalsSection({
               : 'bg-leaf/10 text-leaf',
         )}
       >
-        {total === null
-          ? // M1: neither «Розраховано повністю» nor a remainder claims
-            // anything about a total that has not settled yet.
-            '—'
-          : owed && remainder !== null
-            ? t('reception.totals.remainderLine', { uah: formatUah(remainder, locale) })
-            : t('reception.totals.settled')}
+        {remainderText}
       </div>
 
       {limitedByCash ? (
-        <p className="rounded-lg bg-amber/10 px-3 py-1.5 text-xs leading-relaxed text-amber">
+        <p className="rounded-lg bg-amber/10 px-2.5 py-1 text-xs leading-snug text-amber">
           {t('reception.totals.cashNote', { uah: formatUah(drawer, locale) })}
         </p>
       ) : null}
