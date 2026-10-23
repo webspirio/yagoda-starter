@@ -18,7 +18,7 @@ export interface CostOfDayProduct {
   reweigh_net_kg: string | null;
   /** «недостача», clamped: never negative, §8.2's надлишок is impossible. */
   shortfall: string;
-  /** The same недостача in kilograms, clamped per grade like `shortfall`. */
+  /** The same недостача in kilograms, clamped per product like `shortfall`. */
   shortfall_kg: string;
   /** «із пулу» — this product's allocated share of the basket. `null` when it
    *  contributed no kilograms to the day. */
@@ -31,6 +31,22 @@ export interface CostOfDayProduct {
   price_by_our_weight: string | null;
   /** §3.15 — every grade this product had this shift is on the scale. */
   complete: boolean;
+  /** The product's grades — a breakdown, not a second недостача: the
+   *  shortfall is the product's. */
+  grades: CostOfDayGrade[];
+}
+
+/** One grade under a product on §8.4's screen. */
+interface CostOfDayGrade {
+  product_grade_id: string;
+  product_grade_name: string;
+  /** This grade's нараховано, top-ups included. */
+  accrued: string;
+  intake_net_kg: string;
+  /** `null` when nothing was weighed for this grade. */
+  reweigh_net_kg: string | null;
+  /** accrued ÷ intake_net_kg. */
+  price_was: string;
 }
 
 /** §8.4 for one shift. `GET /shifts/:shiftId/cost-of-day`, owner-only. */

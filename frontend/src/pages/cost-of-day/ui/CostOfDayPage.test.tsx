@@ -72,6 +72,7 @@ const day = {
       price_cost: '166.39',
       price_by_our_weight: '162.03',
       complete: true,
+      grades: [],
     },
   ],
 };

@@ -5,7 +5,7 @@ import {
   weighedInFull,
 } from '../reweighs/reweigh-reconciliation.service';
 import { allocateTopUps, ReceiptForAllocation } from './top-up-allocation';
-import { add, gt, sum } from '../common/money';
+import { add, div, gt, sum } from '../common/money';
 
 interface ReceiptRow {
   intake_id: string;
@@ -40,6 +40,21 @@ export interface ProductCostRow {
    *  Exactly `reweigh_net_kg !== null`, named so callers can read the rule
    *  rather than infer it from a null. */
   complete: boolean;
+  /** The product's grades, for a breakdown under its row — information, not a
+   *  second недостача: the shortfall is the product's (`productShortfall`). */
+  grades: ProductCostGrade[];
+}
+
+export interface ProductCostGrade {
+  product_grade_id: string;
+  product_grade_name: string;
+  /** This grade's Σ intake_items.amount + its allocated top-ups. */
+  accrued: string;
+  intake_net_kg: string;
+  /** `null` when nothing was weighed for this grade. */
+  reweigh_net_kg: string | null;
+  /** accrued ÷ intake_net_kg. */
+  price_was: string;
 }
 
 /**
@@ -92,6 +107,8 @@ export async function productCostRows(
   const gradeCosts = grades.map((g) => ({
     product_id: g.product_id,
     product_name: g.product_name,
+    product_grade_id: g.product_grade_id,
+    product_grade_name: g.product_grade_name,
     accrued: add(g.intake_amount, topUpsByGrade.get(g.product_grade_id) ?? '0.00'),
     intake_net_kg: g.intake_net_kg,
     reweigh_net_kg: g.reweigh_net_kg,
@@ -139,6 +156,14 @@ export async function productCostRows(
       shortfall_kg,
       reweigh_net_kg: reweighNet,
       complete,
+      grades: list.map((g) => ({
+        product_grade_id: g.product_grade_id,
+        product_grade_name: g.product_grade_name,
+        accrued: g.accrued,
+        intake_net_kg: g.intake_net_kg,
+        reweigh_net_kg: g.reweigh_net_kg,
+        price_was: div(g.accrued, g.intake_net_kg),
+      })),
     });
   }
   return rows;

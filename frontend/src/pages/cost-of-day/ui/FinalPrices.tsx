@@ -77,7 +77,9 @@ export function FinalPrices({ day, locale }: { day: CostOfDay; locale: string })
       </div>
 
       <div className="overflow-hidden rounded-lg ring-1 ring-foreground/10">
-        <Table>
+        {/* Compact like BerryTable's: half the kit's padding and wrapping
+            headers, so the seven columns fit without a horizontal scroll. */}
+        <Table className="[&_td]:px-3 [&_th]:h-auto [&_th]:px-3 [&_th]:py-2 [&_th]:leading-tight [&_th]:whitespace-normal">
           <TableHeader>
             <TableRow>
               <TableHead scope="col">{t('costOfDay.final.product')}</TableHead>

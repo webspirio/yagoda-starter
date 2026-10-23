@@ -1,7 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { ShiftsService } from '../shifts/shifts.service';
-import { productCostRows, ProductCostRow } from './product-cost-rows';
+import { productCostRows, ProductCostGrade, ProductCostRow } from './product-cost-rows';
 import { add, allocate, div, isZero, sum } from '../common/money';
 import type { AuthenticatedUser } from '../auth/jwt.strategy';
 
@@ -52,6 +52,8 @@ export interface CostOfDayProduct {
    *  `false` is what makes the two nulls above a «не перезважено» dash rather
    *  than a zero, so the screen can say which of the two it is. */
   complete: boolean;
+  /** The product's grades, for the expandable breakdown under its row. */
+  grades: ProductCostGrade[];
 }
 
 export interface CostOfDayResponse {
@@ -212,6 +214,7 @@ export class CostOfDayService {
         price_cost: priceCost,
         price_by_our_weight: priceByOurWeight,
         complete: r.complete,
+        grades: r.grades,
       };
     });
   }

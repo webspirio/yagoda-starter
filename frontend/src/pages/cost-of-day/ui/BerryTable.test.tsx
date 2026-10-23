@@ -31,6 +31,24 @@ const weighed: CostOfDayProduct = {
   price_cost: '166.39',
   price_by_our_weight: '162.03',
   complete: true,
+  grades: [
+    {
+      product_grade_id: 'g-rasp-1',
+      product_grade_name: '1 сорт',
+      accrued: '80000.00',
+      intake_net_kg: '500.00',
+      reweigh_net_kg: '390.00',
+      price_was: '160.00',
+    },
+    {
+      product_grade_id: 'g-rasp-2',
+      product_grade_name: '2 сорт',
+      accrued: '48000.00',
+      intake_net_kg: '300.00',
+      reweigh_net_kg: '400.00',
+      price_was: '160.00',
+    },
+  ],
 };
 
 const unweighed: CostOfDayProduct = {
@@ -78,6 +96,26 @@ describe('BerryTable', () => {
     const row = screen.getByRole('row', { name: /Малина/ });
     expect(within(row).getByText('10,00 кг')).toBeInTheDocument();
     expect(within(row).getByText('1 600,00 ₴')).toBeInTheDocument();
+  });
+
+  it('shows a product row collapsed and opens its grades like an accordion', async () => {
+    const user = userEvent.setup();
+    renderTable([weighed]);
+
+    expect(screen.queryByText('1 сорт')).not.toBeInTheDocument();
+    const toggle = screen.getByRole('button', { name: 'Показати сорти: Малина' });
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+
+    await user.click(toggle);
+
+    const gradeOne = screen.getByText('1 сорт').closest('tr') as HTMLElement;
+    expect(within(gradeOne).getByText('500,00 кг')).toBeInTheDocument();
+    expect(within(gradeOne).getByText('390,00 кг')).toBeInTheDocument();
+    expect(within(gradeOne).getByText('80 000,00 ₴')).toBeInTheDocument();
+    expect(screen.getByText('2 сорт')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Сховати сорти: Малина' }));
+    expect(screen.queryByText('1 сорт')).not.toBeInTheDocument();
   });
 
   it('explains that «недостача, кг» is counted per product, grades together', async () => {

@@ -47,6 +47,7 @@ const day: CostOfDay = {
       price_cost: '166.39',
       price_by_our_weight: '162.03',
       complete: true,
+      grades: [],
     },
     {
       product_id: 'p-black',
@@ -61,6 +62,7 @@ const day: CostOfDay = {
       price_cost: '66.39',
       price_by_our_weight: '60.94',
       complete: true,
+      grades: [],
     },
   ],
 };

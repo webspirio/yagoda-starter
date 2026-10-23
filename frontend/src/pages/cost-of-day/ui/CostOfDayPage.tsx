@@ -156,21 +156,27 @@ export function CostOfDayPage() {
               reachable whenever a shift exists, not just when there are
               products. The berry side alone falls back to the empty-day
               message. */}
-          <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(290px,0.6fr)]">
-            {day.products.length === 0 ? (
-              <p className="py-8 text-center text-sm text-muted-foreground">
-                {t('costOfDay.noIntake')}
-              </p>
-            ) : (
-              <BerryTable
-                products={day.products}
-                reweighedKg={day.reweighed_kg}
-                accrued={day.accrued}
-                shortfallAmount={day.shortfall_amount}
-                locale={locale}
-              />
-            )}
-            {/* KEYED ON THE SHIFT, and that key is load-bearing. The panel
+          {/* Side by side only once the berry table's seven columns fit next to
+              the panel (≈780 + 20 + 290 px of the CARD, not of the viewport —
+              the sidebar and its fold change what a viewport width leaves);
+              narrower, the table takes the full width and the panel goes under
+              it, so the table never scrolls sideways. */}
+          <div className="@container">
+            <div className="grid grid-cols-[minmax(0,1fr)] gap-5 @min-[1100px]:grid-cols-[minmax(780px,1fr)_minmax(290px,0.6fr)]">
+              {day.products.length === 0 ? (
+                <p className="py-8 text-center text-sm text-muted-foreground">
+                  {t('costOfDay.noIntake')}
+                </p>
+              ) : (
+                <BerryTable
+                  products={day.products}
+                  reweighedKg={day.reweighed_kg}
+                  accrued={day.accrued}
+                  shortfallAmount={day.shortfall_amount}
+                  locale={locale}
+                />
+              )}
+              {/* KEYED ON THE SHIFT, and that key is load-bearing. The panel
                 holds the half-typed expense — label, amount, and which line is
                 open for editing — in its own state, and stepping to another
                 date only RE-RENDERS this tree: the queries for a day already
@@ -181,13 +187,14 @@ export function CostOfDayPage() {
                 business day. A draft belongs to its shift and should die with
                 it — the same rule `pages/reweigh` applies by clearing its
                 drafts when (date, point) changes. */}
-            <ExpensesPanel
-              key={day.shift_id}
-              day={day}
-              expenses={expenses.data ?? []}
-              shiftId={day.shift_id}
-              locale={locale}
-            />
+              <ExpensesPanel
+                key={day.shift_id}
+                day={day}
+                expenses={expenses.data ?? []}
+                shiftId={day.shift_id}
+                locale={locale}
+              />
+            </div>
           </div>
           {day.products.length === 0 || day.per_kg === null ? null : (
             <FinalPrices day={day} locale={locale} />
