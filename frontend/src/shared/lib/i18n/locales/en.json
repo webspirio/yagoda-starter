@@ -922,11 +922,10 @@
       "historyEmpty": "No intakes yet — this will be the first."
     },
     "weight": {
-      "eyebrow": "2 · Weight with tare",
-      "gross": "Gross — berries including tare",
+      "gross": "Gross, kg",
       "unit": "kg",
       "pallet": "Pallet",
-      "tare": "Tare — subtracted automatically",
+      "tare": "Tare",
       "tareType": "Tare type {{n}}",
       "tareOption": "{{name}} {{weight}} kg",
       "units": "Tare units {{n}}",
@@ -936,13 +935,12 @@
       "otherTare": "Other tare"
     },
     "grade": {
-      "eyebrow": "3 · Product, grade and day price",
       "product": "Product",
       "productPlaceholder": "Select a product",
-      "grade": "Grade and day price",
+      "grade": "Grade",
       "gradePlaceholder": "Select a grade",
       "gradeOption": "{{name}} · {{price}} ₴/kg",
-      "bonus": "Extra price — for this line, ₴/kg",
+      "bonus": "Extra price, ₴/kg",
       "bonusDown": "Extra price down",
       "bonusUp": "Extra price up"
     },
@@ -961,8 +959,6 @@
       "remove": "Remove line",
       "draftHint": "Finish this line or remove it",
       "title": "Receipt lines",
-      "counter_one": "{{count}} line · {{kg}}",
-      "counter_other": "{{count}} lines · {{kg}}",
       "col": {
         "grade": "Grade",
         "gross": "Gross",

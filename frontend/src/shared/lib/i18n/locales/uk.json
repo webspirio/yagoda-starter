@@ -938,11 +938,10 @@
       "historyEmpty": "Здач ще не було — це буде перша."
     },
     "weight": {
-      "eyebrow": "2 · Вага з тарою",
-      "gross": "Брутто — ягода разом із тарою",
+      "gross": "Брутто, кг",
       "unit": "кг",
       "pallet": "Піддон",
-      "tare": "Тара — знімається автоматично",
+      "tare": "Тара",
       "tareType": "Вид тари {{n}}",
       "tareOption": "{{name}} {{weight}} кг",
       "units": "Кількість тари {{n}}",
@@ -952,13 +951,12 @@
       "otherTare": "Інша тара"
     },
     "grade": {
-      "eyebrow": "3 · Товар, сорт і ціна дня",
       "product": "Товар",
       "productPlaceholder": "Оберіть товар",
-      "grade": "Сорт і ціна дня",
+      "grade": "Сорт",
       "gradePlaceholder": "Оберіть сорт",
       "gradeOption": "{{name}} · {{price}} ₴/кг",
-      "bonus": "Дод. ціна — на цю позицію, ₴/кг",
+      "bonus": "Дод. ціна, ₴/кг",
       "bonusDown": "Дод. ціна менше",
       "bonusUp": "Дод. ціна більше"
     },
@@ -977,10 +975,6 @@
       "remove": "Прибрати позицію",
       "draftHint": "Заповніть цю позицію або приберіть її",
       "title": "Позиції квитанції",
-      "counter_one": "{{count}} позиція · {{kg}}",
-      "counter_few": "{{count}} позиції · {{kg}}",
-      "counter_many": "{{count}} позицій · {{kg}}",
-      "counter_other": "{{count}} позицій · {{kg}}",
       "col": {
         "grade": "Сорт",
         "gross": "Брутто",

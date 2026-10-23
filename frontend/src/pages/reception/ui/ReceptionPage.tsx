@@ -83,7 +83,12 @@ export function ReceptionPage() {
     (tareTypes.data ?? []).find((type) => type.is_crate)?.id ?? tareTypes.data?.[0]?.id ?? '';
 
   const form = useForm<IntakeFormValues>({
-    defaultValues: { supplier_id: '', items: [emptyLine('')], paid_amount: '', returned_crates: '' },
+    defaultValues: {
+      supplier_id: '',
+      items: [emptyLine('')],
+      paid_amount: '',
+      returned_crates: '',
+    },
   });
   const { control, register, setValue, handleSubmit, reset } = form;
   const lines = useFieldArray({ control, name: 'items' });
@@ -221,12 +226,6 @@ export function ReceptionPage() {
   const settled = preview.isSettled ? preview.preview : null;
   const accrued = settled?.amount ?? null;
   const netKg = settled ? sum(settled.items.map((i) => i.net_kg)) : null;
-  // The table's own counter covers committed rows only, unlike `netKg` above,
-  // and is withheld until every one of them is priced.
-  const committedItems = committed.map((row) => row.item);
-  const committedNetKg = committedItems.every((item) => item !== null)
-    ? sum(committedItems.map((item) => item.net_kg))
-    : null;
   const isPreviewing = !preview.isSettled && (preview.isPending || preview.preview !== null);
   const canSubmit = shiftOpen && values.supplier_id !== '' && settled !== null && !hasServerError;
 
@@ -461,7 +460,11 @@ export function ReceptionPage() {
             // swallowed by a guard meant for THIS form.
             onKeyDown={(e) => {
               if (!isOwnFormEvent(e)) return;
-              if (e.key === 'Enter' && (e.target as HTMLElement).tagName === 'INPUT' && !canSubmit) {
+              if (
+                e.key === 'Enter' &&
+                (e.target as HTMLElement).tagName === 'INPUT' &&
+                !canSubmit
+              ) {
                 e.preventDefault();
               }
             }}
@@ -511,19 +514,17 @@ export function ReceptionPage() {
                 errorAt={errorAt}
                 disabled={!shiftOpen}
                 onRemoveDraft={() => lines.remove(draftIndex)}
-              />
-              <LinesTable
-                rows={committed}
                 // A line is committed only once the server has PRICED IT AS IT
                 // STANDS: the preview covers every line, so committing one the
                 // server has not settled on (or has just refused) would take
                 // the whole form's numbers down with it.
                 canAdd={draftReady && !atCap && shiftOpen && settled !== null && !hasServerError}
                 atCap={atCap}
-                disabled={!shiftOpen}
-                lineCount={committed.length}
-                netKg={committed.length > 0 ? committedNetKg : null}
                 onAdd={() => lines.append(emptyLine(defaultTareTypeId))}
+              />
+              <LinesTable
+                rows={committed}
+                disabled={!shiftOpen}
                 onRemove={(index) => lines.remove(index)}
               />
               <TotalsSection
@@ -538,7 +539,9 @@ export function ReceptionPage() {
                 onPaidChange={onPaidChange}
                 paidError={
                   errorAt('paid_amount') ??
-                  (paidRefused !== null && paidShown === paidRefused ? 'errors.decimalFormat' : null)
+                  (paidRefused !== null && paidShown === paidRefused
+                    ? 'errors.decimalFormat'
+                    : null)
                 }
                 disabled={!canSubmit}
                 isPreviewing={isPreviewing}
@@ -562,7 +565,6 @@ export function ReceptionPage() {
               />
             </Card>
           </form>
-
         </div>
       </>
     );
