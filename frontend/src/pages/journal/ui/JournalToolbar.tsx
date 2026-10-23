@@ -1,13 +1,13 @@
 import { useTranslation } from 'react-i18next';
 import { SelectField } from '@/shared/ui/select-field';
-import { TextInput } from '@/shared/ui/text-input';
+import { DateBound } from '@/shared/ui/date-bound';
 import { Switch } from '@/shared/ui/switch';
 import { TabsList, TabsTrigger } from '@/shared/ui/tabs';
 import type { PointOption } from '@/entities/collection-point';
 import { supplierName, type Supplier } from '@/entities/supplier';
 
 /**
- * The journal's filter row: point, month, supplier, the «показувати
+ * The journal's filter row: point, the «з»/«по» range, supplier, the «показувати
  * анульовані» switch, and the «Квитанції | Виплати» kind switch — the last
  * one is the kit's `Tabs` trigger list, its value/`onValueChange` owned by
  * the `Tabs` root the page mounts around this whole toolbar (see
@@ -17,8 +17,10 @@ export function JournalToolbar({
   points,
   pointId,
   onPointChange,
-  month,
-  onMonthChange,
+  from,
+  to,
+  onFromChange,
+  onToChange,
   suppliers,
   supplierId,
   onSupplierChange,
@@ -28,8 +30,10 @@ export function JournalToolbar({
   points: PointOption[];
   pointId: string;
   onPointChange: (value: string) => void;
-  month: string;
-  onMonthChange: (value: string) => void;
+  from: string;
+  to: string;
+  onFromChange: (value: string) => void;
+  onToChange: (value: string) => void;
   suppliers: Supplier[];
   supplierId: string;
   onSupplierChange: (value: string) => void;
@@ -55,17 +59,9 @@ export function JournalToolbar({
         </SelectField>
       </div>
 
-      {/* `w-auto`, not a fixed width: the native month field sizes itself to
-          its longest month in the browser's locale plus the picker icon (206px
-          in Chromium en-US, 214px in uk-UA), so a fixed `w-40` hid the year
-          under the icon (#231). */}
-      <TextInput
-        type="month"
-        className="w-auto"
-        aria-label={t('journal.pickMonth')}
-        value={month}
-        onChange={(e) => onMonthChange(e.target.value)}
-      />
+      {/* Each bound caps the other, so the range cannot be reversed. */}
+      <DateBound label={t('journal.pickFrom')} value={from} max={to} onCommit={onFromChange} />
+      <DateBound label={t('journal.pickTo')} value={to} min={from} onCommit={onToChange} />
 
       <div className="w-52">
         <SelectField

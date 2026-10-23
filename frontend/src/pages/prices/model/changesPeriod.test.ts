@@ -2,7 +2,6 @@ import { describe, it, expect } from 'vitest';
 import {
   MAX_CHANGES_DAYS,
   isOneDay,
-  isPickableDate,
   groupByLocalDay,
   periodOfPreset,
   presetOf,
@@ -132,16 +131,6 @@ describe('isOneDay', () => {
     [{ from: '2026-09-19', to: null }, false],
   ])('%o → %s', (period, expected) => {
     expect(isOneDay(period, TODAY)).toBe(expected);
-  });
-});
-
-describe('isPickableDate', () => {
-  it.each(['0002-09-25', '0202-09-25', '2026-09-26', '2026-02-30', ''])('refuses %o', (v) => {
-    expect(isPickableDate(v, TODAY)).toBe(false);
-  });
-
-  it('accepts a real date up to today', () => {
-    expect(isPickableDate('2026-09-25', TODAY)).toBe(true);
   });
 });
 

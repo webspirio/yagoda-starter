@@ -22,9 +22,8 @@ export interface JournalFilters {
 
 /**
  * The first and last calendar day of the month containing `iso` (only the
- * `YYYY-MM` prefix is read — a full `YYYY-MM-DD` works too, as the `<input
- * type="month">` toolbar control and `monthRange('2026-09-15')` callers both
- * rely on).
+ * `YYYY-MM` prefix is read, so a full `YYYY-MM-DD` works too) — the journal's
+ * default range.
  *
  * The last day comes from `Date.UTC(year, month, 0)` — `month` here is the
  * REAL 1-based month number, which JS's 0-based `Date.UTC` reads as "the 0th
@@ -64,7 +63,8 @@ function singleUuid(raw: string | null): string | null {
  * toolbar's «показувати анульовані» switch starts on). A `from`/`to` pair
  * that is missing, mismatched, or shaped right but not a real calendar day
  * (`isRealIsoDate`) falls back to the whole current month rather than reach
- * the API with a range it would refuse. A malformed id is dropped the same
+ * the API with a range it would refuse; so does a reversed one, which
+ * `/journal-totals` answers with a 400. A malformed id is dropped the same
  * way every other id filter in the app drops one (`keepUuids`) — a stray id
  * in a hand-edited or shared link should render an empty-feeling filter, not
  * an error page.
@@ -73,7 +73,7 @@ export function parseFilters(params: URLSearchParams): JournalFilters {
   const rawFrom = params.get('from');
   const rawTo = params.get('to');
   const { from, to } =
-    isRealIsoDate(rawFrom) && isRealIsoDate(rawTo)
+    isRealIsoDate(rawFrom) && isRealIsoDate(rawTo) && rawFrom <= rawTo
       ? { from: rawFrom, to: rawTo }
       : monthRange(todayIso());
 

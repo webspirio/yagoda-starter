@@ -1149,10 +1149,11 @@
   "journal": {
     "eyebrow": "full register",
     "title": "Receipt journal",
-    "description": "All receipts and payouts in one place, filtered by point, month and supplier.",
+    "description": "All receipts and payouts in one place, filtered by point, period and supplier.",
     "pickPoint": "Select a point",
     "allPoints": "All points",
-    "pickMonth": "Month",
+    "pickFrom": "From",
+    "pickTo": "To",
     "pickSupplier": "Select a supplier",
     "allSuppliers": "All suppliers",
     "showVoided": "show voided",
@@ -1161,11 +1162,8 @@
       "payouts": "Payouts"
     },
     "tiles": {
-      "receipts": "Receipt count",
-      "payouts": "Payout count",
-      "accrued": "Accrued",
-      "paid": "Paid",
-      "pageHint": "on this page"
+      "accrued": "Berries received",
+      "paid": "Cash paid out"
     },
     "col": {
       "date": "Date",

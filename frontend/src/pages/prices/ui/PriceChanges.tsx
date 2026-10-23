@@ -1,11 +1,11 @@
-import { useEffect, useId, useRef, useState } from 'react';
+import { useEffect, useId } from 'react';
 import { Clock } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useSearchParams } from 'react-router';
 import { SectionCard } from '@/shared/ui/section-card';
 import { Spinner } from '@/shared/ui/spinner';
 import { Chip } from '@/shared/ui/chip';
-import { TextInput } from '@/shared/ui/text-input';
+import { DateBound } from '@/shared/ui/date-bound';
 import { formatDecimal } from '@/shared/lib/money';
 import { formatLongDate, todayIso } from '@/shared/lib/date';
 import { useUrlPatch } from '@/shared/lib/url-state';
@@ -13,10 +13,8 @@ import { apiErrorToBanner } from '@/shared/lib/api-error';
 import { usePriceChangesQuery } from '../api/priceChanges';
 import type { PriceChange } from '../model/gradePrice';
 import {
-  MIN_CHANGES_DATE,
   groupByLocalDay,
   isOneDay,
-  isPickableDate,
   periodOfPreset,
   presetOf,
   readPeriod,
@@ -128,13 +126,13 @@ export function PriceChanges() {
         <DateBound
           label={t('prices.changes.from')}
           value={shownFrom}
-          today={today}
+          max={today}
           onCommit={(value) => setPeriod(withFrom(period, value, today))}
         />
         <DateBound
           label={t('prices.changes.to')}
           value={shownTo}
-          today={today}
+          max={today}
           onCommit={(value) => setPeriod(withTo(period, value, today))}
         />
       </div>
@@ -169,100 +167,5 @@ export function PriceChanges() {
         </div>
       )}
     </SectionCard>
-  );
-}
-
-/** Keys that move focus, move between segments, only modify another key, or
- *  dismiss the picker — not an edit of the date. */
-const NON_EDIT_KEYS = new Set([
-  'Tab',
-  'Shift',
-  'Control',
-  'Alt',
-  'Meta',
-  'Escape',
-  'ArrowLeft',
-  'ArrowRight',
-]);
-
-/** `Alt`+`↓`/`↑` opens the calendar from the keyboard, so the choice that
- *  follows is a pick, not typing — the keyboard's `pointerdown`. */
-const opensPicker = (e: { key: string; altKey: boolean }) =>
-  e.altKey && (e.key === 'ArrowDown' || e.key === 'ArrowUp');
-
-/**
- * One bound of the period, with TWO ways in that must commit differently.
- *
- * TYPING commits on blur or Enter only. A native date input reports a
- * complete date after every segment edit: typing `10` into the day passes
- * through the 1st, `12` into the month through January, a year through
- * `0002-…` and `0202-…`. Any commit mid-edit — at once or after a pause — fires
- * a request for a period nobody asked for and can drag the OTHER bound
- * (`withFrom` / `withTo`), losing it for good.
- *
- * THE CALENDAR PICKER commits at once. Choosing a date fires `change` with no
- * keystroke and leaves focus in the field, so waiting for a blur would leave
- * the old period's rows under the new label — and on touch the picker is the
- * only way in. A keystroke in the field is what tells the two apart, so no
- * timer has to guess.
- *
- * The draft follows `value` when it changes from outside (a preset, the other
- * bound dragging this one) by remembering the value it was last synced to —
- * React's «adjust state when a prop changes», with no effect and no remount,
- * so focus stays where the user left it.
- */
-function DateBound({
-  label,
-  value,
-  today,
-  onCommit,
-}: {
-  label: string;
-  value: string;
-  today: string;
-  onCommit: (value: string) => void;
-}) {
-  const [draft, setDraft] = useState(value);
-  const [syncedTo, setSyncedTo] = useState(value);
-  if (syncedTo !== value) {
-    setSyncedTo(value);
-    setDraft(value);
-  }
-  // Set by a keystroke in the field, cleared by a commit: «this draft is being
-  // typed». Only read in handlers, never during render.
-  const typing = useRef(false);
-
-  const commit = (next: string) => {
-    typing.current = false;
-    if (!isPickableDate(next, today)) setDraft(value);
-    else if (next !== value) onCommit(next);
-  };
-
-  return (
-    <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
-      {label}
-      <TextInput
-        type="date"
-        className="h-[34px] w-auto"
-        value={draft}
-        min={MIN_CHANGES_DATE}
-        max={today}
-        onChange={(e) => {
-          setDraft(e.target.value);
-          if (!typing.current && isPickableDate(e.target.value, today)) commit(e.target.value);
-        }}
-        onBlur={() => commit(draft)}
-        // A pointer in the field (opening the picker, clicking a segment)
-        // starts a fresh gesture; a keystroke after it flags typing again.
-        onPointerDown={() => {
-          typing.current = false;
-        }}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter') commit(draft);
-          else if (opensPicker(e)) typing.current = false;
-          else if (!NON_EDIT_KEYS.has(e.key)) typing.current = true;
-        }}
-      />
-    </label>
   );
 }

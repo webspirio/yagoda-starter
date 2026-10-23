@@ -4,16 +4,16 @@ import { ListPage } from '@/shared/ui/templates/list-page';
 import { StatGrid } from '@/shared/ui/stat-grid';
 import { StatTile } from '@/shared/ui/stat-tile';
 import { Tabs, TabsContent } from '@/shared/ui/tabs';
-import { isTruncated } from '@/shared/api';
 import { useUrlPatch } from '@/shared/lib/url-state';
-import { sum, formatUah } from '@/shared/lib/money';
+import { formatUah } from '@/shared/lib/money';
 import { usePointOptionsQuery } from '@/entities/collection-point';
 import { useIntakesQuery, type DocumentFilter } from '@/entities/intake';
 import { usePayoutsQuery } from '@/entities/payout';
 import { useSuppliersQuery, useSupplierBalancesQuery, supplierName } from '@/entities/supplier';
 import { useMeQuery } from '@/entities/user';
 import { PayoutReceiptDialog, ReceiptDialog, useReceiptOpener } from '@/widgets/receipt';
-import { monthRange, parseFilters, PAGE_SIZE } from '../model/journalFilters';
+import { parseFilters, PAGE_SIZE } from '../model/journalFilters';
+import { useJournalTotalsQuery } from '../api/journalTotals';
 import { JournalToolbar } from './JournalToolbar';
 import { JournalTable, type JournalRow } from './JournalTable';
 
@@ -55,8 +55,9 @@ function toJournalRow(
 
 /**
  * «Журнал прийомки» — the owner's register of every receipt and payout,
- * filtered by point, calendar month and supplier. Unlike «Каса точки»'s
- * «Документи дня» (one point's one working day, scoped by its shift), this reads straight
+ * filtered by point, a «з»/«по» date range (the current month by default)
+ * and supplier. Unlike «Каса точки»'s «Документи дня»
+ * (one point's one working day, scoped by its shift), this reads straight
  * off `from`/`to` business dates — a season of documents, not a day's — so
  * every filter lives in the URL rather than in `usePointScope`, and the
  * table is server-paginated instead of truncated at a fixed limit.
@@ -65,6 +66,10 @@ function toJournalRow(
  * API has no merged read: `useIntakesQuery`/`usePayoutsQuery` both run on
  * every render (React hooks can't be conditional), and the active tab only
  * decides which result renders.
+ *
+ * The two tiles are the same on both tabs (#257): `/journal-totals` sums the
+ * whole range on the server — live documents only, whatever the voided switch
+ * says, since that switch shapes the tables, not the money.
  */
 export function JournalPage() {
   const { t, i18n } = useTranslation();
@@ -102,17 +107,14 @@ export function JournalPage() {
 
   const intakesQuery = useIntakesQuery(documentFilter);
   const payoutsQuery = usePayoutsQuery(documentFilter);
-  const activeQuery = kind === 'payouts' ? payoutsQuery : intakesQuery;
-
-  const activeTotal = activeQuery.data?.total ?? 0;
-  const liveAmounts = (activeQuery.data?.data ?? [])
-    .filter((doc) => doc.voided_at === null)
-    .map((doc) => doc.amount);
-  const amountSum = sum(liveAmounts);
-  // The count tile is always the server's true `total`; only the money sum
-  // is a display total over what actually reached the browser, so only IT
-  // needs the «на цій сторінці» caveat once a page held back the rest.
-  const pageOnly = isTruncated<JournalDocument>(activeQuery.data);
+  const totalsQuery = useJournalTotalsQuery({
+    from: filters.from,
+    to: filters.to,
+    pointId: filters.pointId,
+    supplierId: filters.supplierId,
+  });
+  const totalTile = (amount: string | undefined) =>
+    amount === undefined ? '—' : formatUah(amount, i18n.language);
 
   const receipt = useReceiptOpener();
   const { openReceipt } = receipt;
@@ -136,12 +138,11 @@ export function JournalPage() {
               points={points ?? []}
               pointId={filters.pointId ?? ''}
               onPointChange={(value) => patch({ point: value || null, supplier: null, page: null })}
-              month={filters.from.slice(0, 7)}
-              onMonthChange={(value) => {
-                if (!value) return;
-                const { from, to } = monthRange(`${value}-01`);
-                patch({ from, to, page: null });
-              }}
+              from={filters.from}
+              to={filters.to}
+              // Both bounds every time: a URL holding only one falls back to the month.
+              onFromChange={(from) => patch({ from, to: filters.to, page: null })}
+              onToChange={(to) => patch({ from: filters.from, to, page: null })}
               suppliers={suppliers}
               supplierId={filters.supplierId ?? ''}
               onSupplierChange={(value) => patch({ supplier: value || null, page: null })}
@@ -151,15 +152,8 @@ export function JournalPage() {
           }
           stats={
             <StatGrid columns={2}>
-              <StatTile
-                label={kind === 'payouts' ? t('journal.tiles.payouts') : t('journal.tiles.receipts')}
-                value={String(activeTotal)}
-              />
-              <StatTile
-                label={kind === 'payouts' ? t('journal.tiles.paid') : t('journal.tiles.accrued')}
-                value={formatUah(amountSum, i18n.language)}
-                hint={pageOnly ? t('journal.tiles.pageHint') : undefined}
-              />
+              <StatTile label={t('journal.tiles.accrued')} value={totalTile(totalsQuery.data?.accrued)} />
+              <StatTile label={t('journal.tiles.paid')} value={totalTile(totalsQuery.data?.paid)} />
             </StatGrid>
           }
         >
