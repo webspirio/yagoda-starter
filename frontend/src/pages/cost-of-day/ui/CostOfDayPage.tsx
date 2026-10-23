@@ -1,10 +1,10 @@
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Printer } from 'lucide-react';
 import { PageHeader } from '@/shared/ui/page-header';
 import { SelectField } from '@/shared/ui/select-field';
 import { DateStepper } from '@/shared/ui/date-stepper';
 import { Button } from '@/shared/ui/button';
-import { Badge } from '@/shared/ui/badge';
 import { Spinner } from '@/shared/ui/spinner';
 import { useUrlParam } from '@/shared/lib/url-state';
 import {
@@ -13,16 +13,79 @@ import {
   isRealIsoDate,
   formatShortDate,
   formatLongDate,
-  formatDateTime,
 } from '@/shared/lib/date';
 import { useWorkingPoint } from '@/features/point-scope';
 import { usePointOptionsQuery } from '@/entities/collection-point';
 import { useShiftOnDateQuery } from '@/entities/shift';
 import { useCostOfDayQuery } from '@/entities/cost-of-day';
 import { useDayExpensesQuery } from '@/entities/day-expense';
-import { BerryTable } from './BerryTable';
-import { ExpensesPanel } from './ExpensesPanel';
-import { FinalPrices } from './FinalPrices';
+import type { CostOfDay } from '@/entities/cost-of-day';
+import { StatusChips } from './StatusChips';
+import { ExpensesStrip } from './ExpensesStrip';
+import { CostTable } from './CostTable';
+import { ChecksDisclosure } from './ChecksDisclosure';
+
+/**
+ * The day's body below the title row. A component of its own so the checks
+ * disclosure's `open` state can be keyed on the shift: it starts open when a
+ * check failed, and stepping to another cached date must re-derive that
+ * rather than carry the last day's choice over.
+ */
+function CostOfDayBody({
+  day,
+  expenses,
+  locale,
+}: {
+  day: CostOfDay;
+  expenses: React.ComponentProps<typeof ExpensesStrip>['expenses'];
+  locale: string;
+}) {
+  const { t } = useTranslation();
+  const [checksOpen, setChecksOpen] = useState(
+    day.checks !== null && !(day.checks.shares_ok && day.checks.total_ok),
+  );
+
+  return (
+    <div className="flex flex-col gap-4">
+      <StatusChips
+        day={day}
+        locale={locale}
+        onChecksClick={() => {
+          setChecksOpen(true);
+          document.getElementById('cost-checks')?.scrollIntoView({ block: 'nearest' });
+        }}
+      />
+      {/* The strip is the ONLY write path to `day_expenses`, and the server
+          keeps counting its lines in expenses_amount/basket/per_kg even when
+          every intake on the day is voided — so it stays reachable whenever a
+          shift exists, not just when there are products. The table alone falls
+          back to the empty-day message. */}
+      {/* KEYED ON THE SHIFT, and that key is load-bearing. The strip holds the
+          half-typed expense — label, amount, and which line is open for
+          editing — in its own state, and stepping to another date only
+          RE-RENDERS this tree: the queries for a day already visited come back
+          from cache with `isPending` false, so the pending branch never
+          unmounts anything. Without the key the words typed against one day
+          stay in the form while `shift_id` has moved to another, and «Додати»
+          writes them to the wrong business day. A draft belongs to its shift
+          and should die with it — the same rule `pages/reweigh` applies by
+          clearing its drafts when (date, point) changes. */}
+      <ExpensesStrip
+        key={day.shift_id}
+        day={day}
+        expenses={expenses}
+        shiftId={day.shift_id}
+        locale={locale}
+      />
+      {day.products.length === 0 ? (
+        <p className="py-8 text-center text-sm text-muted-foreground">{t('costOfDay.noIntake')}</p>
+      ) : (
+        <CostTable day={day} locale={locale} />
+      )}
+      <ChecksDisclosure day={day} locale={locale} open={checksOpen} onOpenChange={setChecksOpen} />
+    </div>
+  );
+}
 
 /**
  * §8.4 «Собівартість дня» — where the whole §8 slice converges. The
@@ -138,67 +201,14 @@ export function CostOfDayPage() {
             <span className="font-mono text-xs text-muted-foreground">
               {formatShortDate(date, locale)}
             </span>
-            {day.provisional ? (
-              <Badge variant="outline" className="border-[var(--amber)]/40 text-[var(--amber)]">
-                {t('costOfDay.provisional')}
-              </Badge>
-            ) : null}
-            {day.top_ups_latest_at ? (
-              <Badge variant="secondary" className="font-normal">
-                {t('costOfDay.topUps', { at: formatDateTime(day.top_ups_latest_at, locale) })}
-              </Badge>
-            ) : null}
           </div>
 
-          {/* ExpensesPanel is the ONLY write path to `day_expenses`, and the
-              server keeps counting its lines in expenses_amount/basket/per_kg
-              even when every intake on the day is voided — so it stays
-              reachable whenever a shift exists, not just when there are
-              products. The berry side alone falls back to the empty-day
-              message. */}
-          {/* Side by side only once the berry table's seven columns fit next to
-              the panel (≈780 + 20 + 290 px of the CARD, not of the viewport —
-              the sidebar and its fold change what a viewport width leaves);
-              narrower, the table takes the full width and the panel goes under
-              it, so the table never scrolls sideways. */}
-          <div className="@container">
-            <div className="grid grid-cols-[minmax(0,1fr)] gap-5 @min-[1100px]:grid-cols-[minmax(780px,1fr)_minmax(290px,0.6fr)]">
-              {day.products.length === 0 ? (
-                <p className="py-8 text-center text-sm text-muted-foreground">
-                  {t('costOfDay.noIntake')}
-                </p>
-              ) : (
-                <BerryTable
-                  products={day.products}
-                  reweighedKg={day.reweighed_kg}
-                  accrued={day.accrued}
-                  shortfallAmount={day.shortfall_amount}
-                  locale={locale}
-                />
-              )}
-              {/* KEYED ON THE SHIFT, and that key is load-bearing. The panel
-                holds the half-typed expense — label, amount, and which line is
-                open for editing — in its own state, and stepping to another
-                date only RE-RENDERS this tree: the queries for a day already
-                visited come back from cache with `isPending` false, so the
-                pending branch never unmounts anything. Without the key the
-                words typed against one day stay in the form while `shift_id`
-                has moved to another, and «Додати» writes them to the wrong
-                business day. A draft belongs to its shift and should die with
-                it — the same rule `pages/reweigh` applies by clearing its
-                drafts when (date, point) changes. */}
-              <ExpensesPanel
-                key={day.shift_id}
-                day={day}
-                expenses={expenses.data ?? []}
-                shiftId={day.shift_id}
-                locale={locale}
-              />
-            </div>
-          </div>
-          {day.products.length === 0 || day.per_kg === null ? null : (
-            <FinalPrices day={day} locale={locale} />
-          )}
+          <CostOfDayBody
+            key={day.shift_id}
+            day={day}
+            expenses={expenses.data ?? []}
+            locale={locale}
+          />
         </div>
       )}
     </div>
