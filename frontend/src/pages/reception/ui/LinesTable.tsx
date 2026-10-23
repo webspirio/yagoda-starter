@@ -42,7 +42,7 @@ export function LinesTable({
   if (rows.length === 0) return null;
 
   return (
-    <div className="px-4 pb-3">
+    <div className="px-4 pb-4">
       <div className="overflow-x-auto">
         <table className="w-full min-w-[560px] text-xs">
           <caption className="sr-only">{t('reception.lines.title')}</caption>

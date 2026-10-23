@@ -559,7 +559,9 @@ describe('ReceptionPage — before the shift is open', () => {
 
     renderReception();
 
-    expect(screen.getByText('Shift not opened yet — the operator opens it')).toBeInTheDocument();
+    expect(
+      screen.getByText('No shift opened at this point yet. The operator opens it.'),
+    ).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Open shift' })).toBeNull();
     // Only real points to pick from — no «Select a point» entry.
     expect(screen.getByLabelText('Select a point').querySelector('option[value=""]')).toBeNull();
@@ -843,10 +845,10 @@ describe('ReceptionPage — several lines', () => {
     const at = (el: Element) => visited.indexOf(el);
     const add = screen.getByRole('button', { name: 'Add line' });
     expect(at(screen.getByLabelText('Tare type 1'))).toBeGreaterThan(-1);
-    expect(at(screen.getByLabelText('Extra price, ₴/kg'))).toBeGreaterThan(
+    expect(at(screen.getByLabelText('Price, ₴/kg'))).toBeGreaterThan(
       at(screen.getByLabelText('Tare type 1')),
     );
-    expect(at(add)).toBeGreaterThan(at(screen.getByLabelText('Extra price, ₴/kg')));
+    expect(at(add)).toBeGreaterThan(at(screen.getByLabelText('Price, ₴/kg')));
     expect(at(rowTrash)).toBeGreaterThan(at(add));
   });
 });
@@ -1505,32 +1507,46 @@ describe('ReceptionPage — line editor ergonomics (#117)', () => {
     expect(screen.queryByText('out of range')).not.toBeInTheDocument();
   });
 
-  it("clamps the surcharge to the grade's bounds on blur and by the stepper", async () => {
+  it("starts the price at the grade's price and clamps it to the grade's bounds", async () => {
     const user = userEvent.setup();
     renderReception();
 
-    // Line 0 is pre-selected onto the fixture's first grade (g1: max_markup
+    // Line 0 is pre-selected onto the fixture's first grade (g1: 10.00, max_markup
     // 3.00, max_discount 2.00) — see the "pre-selects" test below.
     await waitFor(() => {
       expect(screen.getByLabelText('Grade')).toHaveValue('g1');
     });
-    const bonus = screen.getByLabelText('Extra price, ₴/kg');
-    await user.clear(bonus);
-    await user.type(bonus, '5');
-    await user.tab();
-    expect(bonus).toHaveValue('3.00');
+    const price = screen.getByLabelText('Price, ₴/kg');
+    expect(price).toHaveValue('10.00');
 
-    await user.click(screen.getByRole('button', { name: 'Extra price up' }));
-    expect(bonus).toHaveValue('3.00');
+    await user.clear(price);
+    await user.type(price, '15');
+    await user.tab();
+    expect(price).toHaveValue('13.00');
+    // The deviation is said; the bound itself never is (§2.10).
+    expect(screen.getByText('+3.00 vs the grade price')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Price up' }));
+    expect(price).toHaveValue('13.00');
+
+    await user.clear(price);
+    await user.type(price, '1');
+    await user.tab();
+    expect(price).toHaveValue('8.00');
   });
 
-  it('keeps the surcharge minus sign through the shared field (#72)', async () => {
+  it('a new grade starts at its own price', async () => {
     const user = userEvent.setup();
     renderReception();
-    const bonus = screen.getByLabelText('Extra price, ₴/kg');
-    await user.clear(bonus);
-    await user.type(bonus, '-2');
-    expect(bonus).toHaveValue('-2');
+    await waitFor(() => {
+      expect(screen.getByLabelText('Grade')).toHaveValue('g1');
+    });
+    const price = screen.getByLabelText('Price, ₴/kg');
+    await user.click(screen.getByRole('button', { name: 'Price up' }));
+    expect(price).toHaveValue('11.00');
+
+    await user.selectOptions(screen.getByLabelText('Grade'), 'g2');
+    expect(price).toHaveValue('8.00');
   });
 
   it('a tare count drops spaces and letters but never a separator — «2,0» is not 20 (#233 review)', async () => {

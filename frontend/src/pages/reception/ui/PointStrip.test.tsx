@@ -105,7 +105,13 @@ const intake = (over: Partial<Intake> & Pick<Intake, 'id'>): Intake => ({
 
 const INTAKES: Intake[] = [
   // open_amount 700.00, not amount − paid_amount (1000.00): a later payout closed 300 more.
-  intake({ id: 'i1', amount: '1204.00', paid_amount: '204.00', open_amount: '700.00', voided_at: null }),
+  intake({
+    id: 'i1',
+    amount: '1204.00',
+    paid_amount: '204.00',
+    open_amount: '700.00',
+    voided_at: null,
+  }),
   intake({
     id: 'i2',
     supplier_name: 'Petro Kotyk',
@@ -158,7 +164,9 @@ function renderStrip(over: Partial<Props> = {}) {
 }
 
 beforeEach(() => {
-  pointCashMock.mockReset().mockReturnValue({ data: { collection_point_id: 'p1', cash: '4500.00' } });
+  pointCashMock
+    .mockReset()
+    .mockReturnValue({ data: { collection_point_id: 'p1', cash: '4500.00' } });
   cashCountsMock.mockReset().mockReturnValue(page(CASH_COUNTS));
   payoutsMock.mockReset().mockReturnValue(page(PAYOUTS));
   intakesMock.mockReset().mockReturnValue(page(INTAKES));
@@ -169,31 +177,32 @@ describe('PointStrip — the figures', () => {
   it('reads the berry drawer, the morning count, payouts, open on today, crates and today’s receipts', () => {
     renderStrip();
 
-    expect(screen.getByText('In the berry drawer now')).toBeInTheDocument();
+    expect(screen.getByText('Berry cash')).toBeInTheDocument();
     expect(screen.getByText('4,500.00 ₴')).toBeInTheDocument();
 
-    // Only the BERRY book's opening row, never the crates one (999.00).
-    expect(screen.getByText('Counted this morning')).toBeInTheDocument();
-    expect(screen.getByText('1,500.00 ₴')).toBeInTheDocument();
-    expect(screen.queryByText('999.00 ₴')).not.toBeInTheDocument();
-
-    // Only the LIVE payout (800.00) counts — the voided 500.00 is excluded.
-    expect(screen.getByText('Paid out for berries')).toBeInTheDocument();
-    expect(screen.getByText('800.00 ₴')).toBeInTheDocument();
+    // Only the LIVE payout (800.00) counts — the voided 500.00 is excluded —
+    // and only the BERRY book's opening row, never the crates one (999.00).
+    expect(screen.getByText('paid out 800.00 ₴ · this morning 1,500.00 ₴')).toBeInTheDocument();
+    expect(screen.queryByText(/999\.00/)).not.toBeInTheDocument();
+    // The bar carries both figures for a screen reader.
+    expect(
+      screen.getByRole('img', { name: '4,500.00 ₴ in the drawer, 800.00 ₴ paid out' }),
+    ).toBeInTheDocument();
 
     // Only the LIVE intake counts: one receipt, 700.00 still open.
     expect(screen.getByText(/^1 rcpt\. · /)).toBeInTheDocument();
     const openToday = screen.getByText('open 700.00 ₴');
     expect(openToday).toHaveClass('text-amber');
 
-    expect(screen.getByText('Crates out with people / allotment')).toBeInTheDocument();
-    expect(screen.getByText('12 / 40')).toBeInTheDocument();
+    expect(screen.getByText('Crates out with people')).toBeInTheDocument();
+    expect(screen.getByText('12 of 40')).toBeInTheDocument();
+    expect(screen.getByText('28 left to the allotment')).toBeInTheDocument();
   });
 
   it('shows a dash for the morning count when there is no opening berry row', () => {
     cashCountsMock.mockReturnValue(page([]));
     renderStrip();
-    expect(screen.getByText('—')).toBeInTheDocument();
+    expect(screen.getByText(/this morning —$/)).toBeInTheDocument();
   });
 
   it('shows no amber «open» figure when nothing is outstanding', () => {
@@ -218,12 +227,13 @@ describe('PointStrip — the figures', () => {
 
   it('reads «… / —» when the point has no target', () => {
     renderStrip({ targetCrates: null });
-    expect(screen.getByText('12 / —')).toBeInTheDocument();
+    expect(screen.getByText('12 of —')).toBeInTheDocument();
+    expect(screen.getByText('no allotment set')).toBeInTheDocument();
   });
 });
 
 describe('PointStrip — a truncated page (100+ documents in one shift)', () => {
-  it('captions «Paid out for berries» with «first 100 documents» when the payouts page is truncated', () => {
+  it('captions the paid-out figure with «first 100 documents» when the payouts page is truncated', () => {
     payoutsMock.mockReturnValue({
       data: { data: PAYOUTS, total: PAYOUTS.length + 50, page: 1, limit: 100 },
       isPending: false,
@@ -233,11 +243,10 @@ describe('PointStrip — a truncated page (100+ documents in one shift)', () => 
 
     // Scoped to the cell: an unscoped `getByText` would be ambiguous the
     // moment a SECOND cell also carries the caption.
-    const cell = screen.getByText('Paid out for berries').parentElement;
-    expect(cell).toHaveTextContent('first 100 documents');
+    expect(screen.getByText(/^paid out 800\.00 ₴ · first 100 documents/)).toBeInTheDocument();
   });
 
-  it('captions the today cell when only the intakes page is truncated, and leaves «Paid out for berries» alone', () => {
+  it('captions the today cell when only the intakes page is truncated, and leaves the paid-out figure alone', () => {
     intakesMock.mockReturnValue({
       data: { data: INTAKES, total: INTAKES.length + 50, page: 1, limit: 100 },
       isPending: false,
@@ -248,8 +257,7 @@ describe('PointStrip — a truncated page (100+ documents in one shift)', () => 
     expect(screen.getAllByText('first 100 documents')).toHaveLength(1);
     const todayCell = screen.getByRole('button', { name: /Today/ });
     expect(todayCell).toHaveTextContent('first 100 documents');
-    const paidOutCell = screen.getByText('Paid out for berries').parentElement;
-    expect(paidOutCell).not.toHaveTextContent('first 100 documents');
+    expect(screen.getByText(/^paid out 800\.00 ₴ · this morning/)).toBeInTheDocument();
   });
 
   it('shows no caption at all when neither page is truncated', () => {
@@ -262,20 +270,13 @@ describe('PointStrip — the cash and crates links', () => {
   it('points at /point-cash and /crates for an operator, with no ?point=', () => {
     renderStrip({ isOwner: false });
     const links = screen.getAllByRole('link');
-    expect(links.map((l) => l.getAttribute('href'))).toEqual([
-      '/point-cash',
-      '/point-cash',
-      '/point-cash',
-      '/crates',
-    ]);
+    expect(links.map((l) => l.getAttribute('href'))).toEqual(['/point-cash', '/crates']);
   });
 
   it('appends ?point= for the owner', () => {
     renderStrip({ isOwner: true, pointId: 'p9' });
     const links = screen.getAllByRole('link');
     expect(links.map((l) => l.getAttribute('href'))).toEqual([
-      '/point-cash?point=p9',
-      '/point-cash?point=p9',
       '/point-cash?point=p9',
       '/crates?point=p9',
     ]);
@@ -295,7 +296,9 @@ describe('PointStrip — the shift status', () => {
   it('tells the owner the operator opens the shift, with no button', () => {
     renderStrip({ shift: { status: 'none' }, canOpen: false, isOwner: true });
 
-    expect(screen.getByText('Shift not opened yet — the operator opens it')).toBeInTheDocument();
+    expect(
+      screen.getByText('No shift opened at this point yet. The operator opens it.'),
+    ).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Open shift' })).toBeNull();
   });
 
@@ -323,8 +326,18 @@ describe('PointStrip — the shift status', () => {
 });
 
 describe('PointStrip — today’s receipts', () => {
-  const LIVE_A = intake({ id: 'a', supplier_name: 'Ніна Ільчук', net_kg: '36.90', created_at: '2026-09-21T09:15:00Z' });
-  const LIVE_B = intake({ id: 'b', supplier_name: 'Oleh Marchuk', net_kg: '10.10', created_at: '2026-09-21T07:30:00Z' });
+  const LIVE_A = intake({
+    id: 'a',
+    supplier_name: 'Ніна Ільчук',
+    net_kg: '36.90',
+    created_at: '2026-09-21T09:15:00Z',
+  });
+  const LIVE_B = intake({
+    id: 'b',
+    supplier_name: 'Oleh Marchuk',
+    net_kg: '10.10',
+    created_at: '2026-09-21T07:30:00Z',
+  });
   const VOIDED = intake({
     id: 'c',
     supplier_name: 'Petro Kotyk',

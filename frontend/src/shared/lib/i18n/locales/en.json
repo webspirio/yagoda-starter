@@ -908,7 +908,7 @@
     "toPointCash": "Point cash",
     "shift": {
       "none": "Shift not opened yet",
-      "noneOwner": "Shift not opened yet — the operator opens it",
+      "noneOwner": "No shift opened at this point yet. The operator opens it.",
       "open": "Open shift"
     },
     "noPoint": "Select a point to receive berries",
@@ -942,9 +942,10 @@
       "grade": "Grade",
       "gradePlaceholder": "Select a grade",
       "gradeOption": "{{name}} · {{price}} ₴/kg",
-      "bonus": "Extra price, ₴/kg",
-      "bonusDown": "Extra price down",
-      "bonusUp": "Extra price up"
+      "price": "Price, ₴/kg",
+      "priceDown": "Price down",
+      "priceUp": "Price up",
+      "priceDelta": "{{delta}} vs the grade price"
     },
     "line": {
       "preview": "tare {{tare}} · net {{net}} · {{price}}{{bonus}} → {{amount}}",
@@ -1022,11 +1023,17 @@
     "linesPart_other": "{{count}} lines · ",
     "state": {
       "shiftOpen": "Shift open since {{time}}",
-      "crates": "Crates out with people / allotment",
-      "cratesValue": "{{out}} / {{target}}",
-      "openingCash": "Counted this morning",
-      "currentCash": "In the berry drawer now",
-      "paidOut": "Paid out for berries",
+      "cashTitle": "Berry cash",
+      "paidOut": "paid out {{uah}}",
+      "openingCash": "this morning {{uah}}",
+      "cashBar": "{{cash}} in the drawer, {{paid}} paid out",
+      "crates": "Crates out with people",
+      "cratesValue": "{{out}} of {{target}}",
+      "cratesLeft_one": "{{count}} left to the allotment",
+      "cratesLeft_other": "{{count}} left to the allotment",
+      "cratesOver_one": "{{count}} over the allotment",
+      "cratesOver_other": "{{count}} over the allotment",
+      "noTarget": "no allotment set",
       "truncatedCaption": "first 100 documents"
     },
     "today": {
@@ -1054,9 +1061,9 @@
       "tareRequired": "Add the tare — without it the whole gross weight would count as net",
       "tareTypeDuplicated": "The same tare type twice — merge the rows",
       "tareTypeUnknown": "That tare type doesn't exist. Pick another tare type.",
-      "bonusOutOfRange": "The extra price is outside this grade's limits. Correct it.",
+      "bonusOutOfRange": "This price is outside what the grade allows. Correct it.",
       "netNotPositive": "Net weight comes out zero: the pallet and tare eat the whole gross. Check the weight and tare.",
-      "rateNegative": "Price plus extra price cannot be negative. Correct the extra price.",
+      "rateNegative": "The price cannot be negative. Correct it.",
       "amountRoundsToZero": "The amount is too small. Check the weight.",
       "noOpenShift": "No open shift — open one first",
       "supplierInactive": "The supplier is deactivated. Pick another or ask an owner.",

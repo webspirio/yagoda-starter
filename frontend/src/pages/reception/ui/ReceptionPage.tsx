@@ -349,7 +349,7 @@ export function ReceptionPage() {
           aria-label={t('reception.pickPoint')}
           value={pointId ?? ''}
           onChange={(e) => setPointId(e.target.value)}
-          className="h-8 w-48"
+          className="h-8 w-full sm:w-48"
         >
           {/* A deactivated point reached by `?point=` is not in `points`
               (active only) — without its own entry the select would show
@@ -440,7 +440,7 @@ export function ReceptionPage() {
         />
 
         <form
-          className="grid gap-3 lg:grid-cols-[minmax(0,1.75fr)_minmax(320px,1fr)]"
+          className="grid items-start gap-4 lg:grid-cols-[minmax(0,1.75fr)_minmax(320px,1fr)]"
           onSubmit={(e) => {
             // React bubbles `submit` along the fiber tree, not the DOM: the
             // inline supplier dialog (`SupplierPicker` → `SupplierFormDialog`)
@@ -571,14 +571,16 @@ export function ReceptionPage() {
   return (
     <>
       {/* ≤ 40 px tall (spec §5.1): 32 px actions + `pb-1.5`. */}
-      <div className="flex flex-wrap items-center justify-between gap-3 pb-1.5">
-        <div className="flex min-w-0 items-baseline gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-3 pb-4">
+        <div className="flex min-w-0 flex-col gap-0.5 sm:flex-row sm:items-baseline sm:gap-3">
           <h1 className="font-display text-xl leading-tight font-medium">{t('reception.title')}</h1>
           <span className="truncate text-sm text-muted-foreground" title={headerCaption}>
             {headerCaption}
           </span>
         </div>
-        <div className="flex shrink-0 items-center gap-2">{actions}</div>
+        <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:items-center [&>*:first-child]:col-span-2">
+          {actions}
+        </div>
       </div>
       {body}
       <CountDrawerDialog

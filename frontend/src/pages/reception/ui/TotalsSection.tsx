@@ -164,7 +164,7 @@ export function TotalsSection({
     // «Розрахунок» is the card's accessible name (a labelled `section` is a
     // region landmark), no longer a visible eyebrow — 23 px the 650 px
     // budget could not spare (spec §5.1).
-    <section aria-label={t('reception.totals.eyebrow')} className="flex flex-col gap-1 p-3">
+    <section aria-label={t('reception.totals.eyebrow')} className="flex flex-col gap-3 p-4">
       <div className="flex items-baseline justify-between gap-3 text-sm">
         <span className="text-muted-foreground">
           {t('reception.totals.accruedToday')}

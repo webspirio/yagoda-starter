@@ -924,7 +924,7 @@
     "toPointCash": "Каса точки",
     "shift": {
       "none": "Зміну не відкрито",
-      "noneOwner": "Зміну не відкрито — відкриває приймальник",
+      "noneOwner": "Зміну на цій точці ще не відкрито. Її відкриває приймальник.",
       "open": "Відкрити зміну"
     },
     "noPoint": "Оберіть точку, щоб приймати ягоду",
@@ -958,9 +958,10 @@
       "grade": "Сорт",
       "gradePlaceholder": "Оберіть сорт",
       "gradeOption": "{{name}} · {{price}} ₴/кг",
-      "bonus": "Дод. ціна, ₴/кг",
-      "bonusDown": "Дод. ціна менше",
-      "bonusUp": "Дод. ціна більше"
+      "price": "Ціна, ₴/кг",
+      "priceDown": "Ціна менше",
+      "priceUp": "Ціна більше",
+      "priceDelta": "{{delta}} до ціни сорту"
     },
     "line": {
       "preview": "тара {{tare}} · нетто {{net}} · {{price}}{{bonus}} → {{amount}}",
@@ -1048,11 +1049,21 @@
     "linesPart_other": "{{count}} позицій · ",
     "state": {
       "shiftOpen": "Зміна відкрита о {{time}}",
-      "crates": "Ящики у людей / наділ",
-      "cratesValue": "{{out}} / {{target}}",
-      "openingCash": "На ранок порахували",
-      "currentCash": "У касі за ягоду зараз",
-      "paidOut": "Видано за ягоду",
+      "cashTitle": "Каса за ягоду",
+      "paidOut": "видано {{uah}}",
+      "openingCash": "на ранок {{uah}}",
+      "cashBar": "У касі {{cash}}, видано {{paid}}",
+      "crates": "Ящики в людей",
+      "cratesValue": "{{out}} з {{target}}",
+      "cratesLeft_one": "ще {{count}} до наділу",
+      "cratesLeft_few": "ще {{count}} до наділу",
+      "cratesLeft_many": "ще {{count}} до наділу",
+      "cratesLeft_other": "ще {{count}} до наділу",
+      "cratesOver_one": "на {{count}} понад наділ",
+      "cratesOver_few": "на {{count}} понад наділ",
+      "cratesOver_many": "на {{count}} понад наділ",
+      "cratesOver_other": "на {{count}} понад наділ",
+      "noTarget": "наділ не задано",
       "truncatedCaption": "перші 100 документів"
     },
     "today": {
@@ -1082,9 +1093,9 @@
       "tareRequired": "Додайте тару — без неї брутто пішло б у чисту вагу цілком",
       "tareTypeDuplicated": "Один вид тари двічі — обʼєднайте рядки",
       "tareTypeUnknown": "Такого виду тари немає. Оберіть інший вид тари.",
-      "bonusOutOfRange": "Дод. ціна поза межами сорту. Виправте її.",
+      "bonusOutOfRange": "Така ціна для цього сорту недоступна. Виправте її.",
       "netNotPositive": "Чиста вага виходить нульова: піддон і тара зʼїдають усе брутто. Перевірте вагу й тару.",
-      "rateNegative": "Ціна з дод. ціною не може бути відʼємною. Виправте дод. ціну.",
+      "rateNegative": "Ціна не може бути відʼємною. Виправте її.",
       "amountRoundsToZero": "Сума замала. Перевірте вагу.",
       "noOpenShift": "Зміну не відкрито — відкрийте її",
       "supplierInactive": "Постачальника деактивовано. Оберіть іншого або зверніться до керівника.",
