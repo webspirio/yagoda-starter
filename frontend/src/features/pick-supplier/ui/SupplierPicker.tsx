@@ -254,7 +254,7 @@ export const SupplierPicker = forwardRef<
           <span className="flex min-w-0 items-center gap-2">
             <UserRound className="size-4 shrink-0 text-muted-foreground" />
             <span className="min-w-0 shrink truncate font-medium">{supplierName(value)}</span>
-            <span className="hidden min-w-0 shrink-[10] truncate font-mono text-sm text-muted-foreground sm:inline">
+            <span className="hidden min-w-0 shrink-[1000] truncate font-mono text-sm text-muted-foreground sm:inline">
               {value.phone ?? t('pickSupplier.noPhone')}
             </span>
             <KindBadge kind={value.kind} className="shrink-0 text-[10px]" />
