@@ -161,9 +161,13 @@ export function TotalsSection({
         : t('reception.totals.settled');
 
   return (
-    <div className="flex flex-col gap-1.5 border-t border-border p-3">
-      <Eyebrow>{t('reception.totals.eyebrow')}</Eyebrow>
-
+    // «Розрахунок» is the card's accessible name (a labelled `section` is a
+    // region landmark), no longer a visible eyebrow — 23 px the 650 px
+    // budget could not spare (spec §5.1).
+    <section
+      aria-label={t('reception.totals.eyebrow')}
+      className="flex flex-col gap-1 border-t border-border p-3"
+    >
       <div className="flex items-baseline justify-between gap-3 text-sm">
         <span className="text-muted-foreground">
           {t('reception.totals.accruedToday')}
@@ -185,9 +189,7 @@ export function TotalsSection({
         </div>
       ) : null}
 
-      <div className="border-t border-foreground/20" />
-
-      <div className="flex flex-wrap items-baseline justify-between gap-2">
+      <div className="flex flex-wrap items-baseline justify-between gap-2 border-t border-foreground/20 pt-1.5">
         <Eyebrow>{t('reception.totals.total')}</Eyebrow>
         <span className="font-mono text-3xl leading-none font-semibold tracking-tight">
           {total === null ? (
@@ -227,20 +229,33 @@ export function TotalsSection({
                 ₴
               </span>
             </div>
-            <div className="mt-1.5 flex flex-wrap gap-1.5">
-              <Button type="button" variant="outline" size="sm" onClick={() => settle(cap ?? '0')}>
+            <div className="mt-1 flex flex-wrap gap-1.5">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-7"
+                onClick={() => settle(cap ?? '0')}
+              >
                 {t('reception.totals.all')}
               </Button>
               <Button
                 type="button"
                 variant="outline"
                 size="sm"
+                className="h-7"
                 disabled={cap === null || cmp(cap, '100') === -1}
                 onClick={() => settle(floorToHundreds(cap ?? '0'))}
               >
                 {t('reception.totals.toHundreds')}
               </Button>
-              <Button type="button" variant="outline" size="sm" onClick={() => settle('0')}>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-7"
+                onClick={() => settle('0')}
+              >
                 {t('reception.totals.allToBalance')}
               </Button>
             </div>
@@ -293,6 +308,6 @@ export function TotalsSection({
         <Check className="size-5" />
         {label}
       </Button>
-    </div>
+    </section>
   );
 }

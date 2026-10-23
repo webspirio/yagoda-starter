@@ -631,7 +631,7 @@ describe('ReceptionPage — choosing the supplier', () => {
     await user.click(screen.getByRole('button', { name: 'pick-nina' }));
 
     // The credit sits inside the «Settlement» card, below «Total to pay out».
-    const card = screen.getByText('Total to pay out').closest('div.border-t') as HTMLElement;
+    const card = screen.getByRole('region', { name: 'Settlement' });
     expect(within(card).getByText('Overpaid by us 250.00 ₴')).toBeInTheDocument();
     expect(within(card).queryByText(/Previous balance/)).toBeNull();
     expect(screen.queryByText(/Previous balance/)).toBeNull();
