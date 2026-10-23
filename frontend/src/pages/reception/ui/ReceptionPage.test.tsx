@@ -83,9 +83,9 @@ vi.mock('@/entities/point-cash', () => ({
     pointCashMock(pointId, asOf, enabled),
 }));
 
-// `PointStatePanel`'s own three reads — this file's job is the FORM and the
+// `PointStrip`'s own three reads — this file's job is the FORM and the
 // header actions, so these are static "not fetched yet" stand-ins rather
-// than another set of per-test hoisted mocks; `PointStatePanel.test.tsx` is
+// than another set of per-test hoisted mocks; `PointStrip.test.tsx` is
 // where each of the six figures is actually exercised.
 vi.mock('@/entities/cash-count', () => ({
   useCashCountsQuery: () => ({ data: undefined, isPending: true, isError: false }),
@@ -445,7 +445,7 @@ function renderReception() {
 
 /** Fills the draft line so the «Add line» gate opens: gross, tare units, grade. */
 async function fillDraft(user: ReturnType<typeof userEvent.setup>, gross = '126,40') {
-  const grossInput = screen.getByLabelText('Gross — berries including tare');
+  const grossInput = screen.getByLabelText('Gross, kg');
   await user.clear(grossInput);
   await user.type(grossInput, gross);
   const units = screen.getByLabelText('Tare units 1');
@@ -583,7 +583,7 @@ describe('ReceptionPage — before the shift is open', () => {
 });
 
 describe('ReceptionPage — choosing the supplier', () => {
-  it('picks a supplier from the picker, then shows their balance note and last receipts', async () => {
+  it('picks a supplier and shows their last receipts in one line beside the picker', async () => {
     const user = userEvent.setup();
     balanceMock.mockReturnValue({
       data: { supplier_id: 's1', debt: '10944.00' },
@@ -602,17 +602,21 @@ describe('ReceptionPage — choosing the supplier', () => {
     renderReception();
     await user.click(screen.getByRole('button', { name: 'pick-nina' }));
 
-    expect(screen.getByText('Previous balance 10,944.00 ₴')).toBeInTheDocument();
-    // The note that the debt is not a separate payout — it lands in «Total».
-    expect(screen.getByText('added to “Total” below')).toBeInTheDocument();
-    expect(screen.getByText('Intake history')).toBeInTheDocument();
+    // The debt plaque and its note are gone from this section — the balance
+    // is read in «Settlement» only.
+    expect(screen.queryByText(/added to “Total” below/)).toBeNull();
+    // «Recent:» and every item share ONE truncating line.
+    const line = screen.getByText('Recent:').closest('.truncate') as HTMLElement;
+    expect(line).not.toBeNull();
     // Both mocked rows share the fixture's default net weight.
-    expect(screen.getAllByText('120.40 kg')).toHaveLength(2);
-    expect(screen.getByText('820.50 ₴')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Supplier card' })).toHaveAttribute(
-      'href',
-      '/suppliers/s1',
-    );
+    expect(within(line).getAllByText('120.40 kg')).toHaveLength(2);
+    expect(within(line).getByText('820.50 ₴')).toBeInTheDocument();
+    expect(within(line).getByText('1,290.00 ₴')).toBeInTheDocument();
+    // The card link is the row's only navigation: it sits OUTSIDE the
+    // truncating element so the ellipsis can never clip it.
+    const link = screen.getByRole('link', { name: 'Supplier card' });
+    expect(link).toHaveAttribute('href', '/suppliers/s1');
+    expect(line.contains(link)).toBe(false);
   });
 
   it('reads a negative balance as money owed to the supplier, not by them', async () => {
@@ -626,7 +630,10 @@ describe('ReceptionPage — choosing the supplier', () => {
     renderReception();
     await user.click(screen.getByRole('button', { name: 'pick-nina' }));
 
-    expect(screen.getByText('Overpaid by us 250.00 ₴')).toBeInTheDocument();
+    // The credit sits inside the «Settlement» card, below «Total to pay out».
+    const card = screen.getByRole('region', { name: 'Settlement' });
+    expect(within(card).getByText('Overpaid by us 250.00 ₴')).toBeInTheDocument();
+    expect(within(card).queryByText(/Previous balance/)).toBeNull();
     expect(screen.queryByText(/Previous balance/)).toBeNull();
   });
 });
@@ -641,8 +648,9 @@ describe('ReceptionPage — a one-line receipt', () => {
     renderReception();
 
     await user.click(screen.getByRole('button', { name: 'pick-nina' }));
-    // The history panel only renders while a supplier is chosen.
-    expect(screen.getByText('Intake history')).toBeInTheDocument();
+    // The history line only renders while a supplier is chosen (no receipts
+    // are mocked here, so it is the card link that proves it).
+    expect(screen.getByRole('link', { name: 'Supplier card' })).toBeInTheDocument();
     await fillDraft(user);
 
     // Net weight and the amount are the SERVER's, never computed here.
@@ -799,34 +807,47 @@ describe('ReceptionPage — several lines', () => {
     shiftMock.mockReturnValue({ data: null, isPending: false, isError: false });
     // Any keystroke will do — this one just has to re-render the screen with
     // the mock above in place.
-    await user.type(screen.getByLabelText('Gross — berries including tare'), '1');
+    await user.type(screen.getByLabelText('Gross, kg'), '1');
 
     expect(rowTrash()).toBeDisabled();
   });
 
-  it("counts only committed rows in the table's own counter, not the trailing draft", async () => {
+  // §5.2 — DOM order is §2.1 order, with no `tabIndex` overrides: the one
+  // stop between the picker and Брутто is the card link, and the committed
+  // rows' trash comes only after the whole draft, its footer included.
+  it('tabs from the supplier to Брутто through only the card link, and reaches committed rows after the draft', async () => {
     const user = userEvent.setup();
     renderReception();
 
     await user.click(screen.getByRole('button', { name: 'pick-nina' }));
     await fillDraft(user);
     await user.click(screen.getByRole('button', { name: 'Add line' }));
-    // The fresh draft is filled too — a real preview would settle over BOTH
-    // lines at this point, so the table's counter (unlike the submit
-    // button's own draft-inclusive count) must still describe only the ONE
-    // committed row the table actually shows.
+    // A filled draft, so «Add line» is enabled — and so a Tab stop.
     await fillDraft(user);
 
-    const table = screen.getByRole('table');
-    expect(within(table).getAllByRole('row')).toHaveLength(2); // header + one committed line
+    screen.getByRole('button', { name: 'pick-nina' }).focus();
+    await user.tab();
+    expect(screen.getByRole('link', { name: 'Supplier card' })).toHaveFocus();
+    await user.tab();
+    expect(screen.getByLabelText('Gross, kg')).toHaveFocus();
 
-    // Scoped to the «Add line» row itself — the submit button below
-    // legitimately reads «Accept 2 lines · 240.80 kg» (TotalsSection's own,
-    // draft-inclusive count), which a bare `screen.queryByText` would also
-    // match and turn a real bug into a false pass.
-    const addLineRow = screen.getByRole('button', { name: 'Add line' }).parentElement!;
-    expect(within(addLineRow).getByText('1 line · 120.40 kg')).toBeInTheDocument();
-    expect(within(addLineRow).queryByText(/2 lines/)).not.toBeInTheDocument();
+    const rowTrash = within(screen.getByRole('table')).getByRole('button', {
+      name: 'Remove line',
+    });
+    const visited: Element[] = [];
+    for (let n = 0; n < 40 && document.activeElement !== rowTrash; n++) {
+      await user.tab();
+      if (document.activeElement) visited.push(document.activeElement);
+    }
+    expect(rowTrash).toHaveFocus();
+    const at = (el: Element) => visited.indexOf(el);
+    const add = screen.getByRole('button', { name: 'Add line' });
+    expect(at(screen.getByLabelText('Tare type 1'))).toBeGreaterThan(-1);
+    expect(at(screen.getByLabelText('Extra price, ₴/kg'))).toBeGreaterThan(
+      at(screen.getByLabelText('Tare type 1')),
+    );
+    expect(at(add)).toBeGreaterThan(at(screen.getByLabelText('Extra price, ₴/kg')));
+    expect(at(rowTrash)).toBeGreaterThan(at(add));
   });
 });
 
@@ -973,7 +994,7 @@ describe("ReceptionPage — the supplier's history and today's badge", () => {
     expect(within(liveRow!).getByText('120.40 kg')).toBeInTheDocument();
   });
 
-  it("counts only live receipts in today's badge, though a voided one stays listed", async () => {
+  it("counts only live receipts in today's cell, though a voided one stays listed", async () => {
     intakesMock.mockImplementation((filter: { shiftId?: string }) =>
       filter.shiftId
         ? page<Intake>([
@@ -988,13 +1009,21 @@ describe("ReceptionPage — the supplier's history and today's badge", () => {
         : page<Intake>([]),
     );
 
+    const user = userEvent.setup();
     renderReception();
 
-    // Scoped to the receipts card itself: `PointStatePanel` reads the SAME
-    // `useIntakesQuery({ shiftId })` for its own «Відкрито за сьогоднішніми
-    // квитанціями» tile, so an amount could print there too.
-    const card = screen.getByText("Today's receipts").closest('[data-slot="card"]');
-    const scoped = within(card as HTMLElement);
+    // Only the live receipt counts in the «Сьогодні» cell, with only its
+    // kilos — the voided one (same 120.40 kg fixture default) does not double
+    // it up.
+    const trigger = screen.getByRole('button', { name: /Today/ });
+    expect(trigger).toHaveTextContent('1 rcpt. · 120.40 kg');
+
+    await user.click(trigger);
+    // Scoped to the popover itself: the strip reads the SAME
+    // `useIntakesQuery({ shiftId })` for its own «відкрито» figure, so an
+    // amount could print there too.
+    const popover = document.querySelector('[data-slot="popover-content"]');
+    const scoped = within(popover as HTMLElement);
 
     // No code any more — the rows are found by their amount, same as the
     // supplier-history test above.
@@ -1002,17 +1031,12 @@ describe("ReceptionPage — the supplier's history and today's badge", () => {
     expect(voidedRow).toHaveClass('line-through');
     const liveRow = scoped.getByText('200.00 ₴').closest('button');
     expect(liveRow).not.toHaveClass('line-through');
-
-    const badgeArea = screen.getByText("Today's receipts").parentElement;
-    expect(within(badgeArea!).getByText('1')).toBeInTheDocument();
-    // Only the live receipt's kilos count toward the header tonnage — the
-    // voided one (same 120.40 kg fixture default) does not double it up.
-    expect(within(badgeArea!).getByText('120.40 kg')).toBeInTheDocument();
   });
 });
 
 describe("ReceptionPage — today's receipts open the receipt, which carries the void", () => {
-  it('has no «Void» of its own on a row', () => {
+  it('has no «Void» of its own on a row', async () => {
+    const user = userEvent.setup();
     intakesMock.mockImplementation((filter: { shiftId?: string }) =>
       filter.shiftId
         ? page<Intake>([intake({ id: 'i2', code: 'SHP-IN-2', amount: '200.00' })])
@@ -1020,6 +1044,11 @@ describe("ReceptionPage — today's receipts open the receipt, which carries the
     );
     renderReception();
 
+    // The rows live in the «Сьогодні» popover — open it, or the query below
+    // would be null whatever the rows contain.
+    await user.click(screen.getByRole('button', { name: /Today/ }));
+    const popover = document.querySelector('[data-slot="popover-content"]');
+    expect(within(popover as HTMLElement).getByText('200.00 ₴')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Void SHP-IN-2' })).toBeNull();
   });
 
@@ -1032,10 +1061,34 @@ describe("ReceptionPage — today's receipts open the receipt, which carries the
     );
     renderReception();
 
-    const card = screen.getByText("Today's receipts").closest('[data-slot="card"]');
-    await user.click(within(card as HTMLElement).getByText('200.00 ₴'));
+    await user.click(screen.getByRole('button', { name: /Today/ }));
+    const popover = document.querySelector('[data-slot="popover-content"]');
+    await user.click(within(popover as HTMLElement).getByText('200.00 ₴'));
 
     expect(await screen.findByText('Receipt for i2')).toBeInTheDocument();
+  });
+
+  it('opening a receipt from the popover never submits a ready intake form', async () => {
+    const user = userEvent.setup();
+    previewMock.mockReturnValue(SETTLED);
+    intakesMock.mockImplementation((filter: { shiftId?: string }) =>
+      filter.shiftId
+        ? page<Intake>([intake({ id: 'i2', code: 'SHP-IN-2', amount: '200.00' })])
+        : page<Intake>([]),
+    );
+    renderReception();
+
+    // A fully fillable form, so a stray submit would really post.
+    await user.click(screen.getByRole('button', { name: 'pick-nina' }));
+    await fillDraft(user);
+    expect(await screen.findByRole('button', { name: 'Accept 120.40 kg' })).toBeEnabled();
+
+    await user.click(screen.getByRole('button', { name: /Today/ }));
+    const popover = document.querySelector('[data-slot="popover-content"]');
+    await user.click(within(popover as HTMLElement).getByText('200.00 ₴'));
+
+    expect(await screen.findByText('Receipt for i2')).toBeInTheDocument();
+    expect(createMock).not.toHaveBeenCalled();
   });
 });
 
@@ -1047,7 +1100,7 @@ describe('ReceptionPage — the client-side sanity hints', () => {
     // A leading space survives a paste from the scale's display; `formatDecimal`
     // admits no whitespace, so an untrimmed value used to throw mid-render and
     // take the half-typed receipt down with it.
-    const gross = screen.getByLabelText('Gross — berries including tare');
+    const gross = screen.getByLabelText('Gross, kg');
     await user.clear(gross);
     await user.type(gross, ' 800');
 
@@ -1077,7 +1130,7 @@ describe('ReceptionPage — a refusal from the server', () => {
     await user.click(screen.getByRole('button', { name: 'pick-nina' }));
     await fillDraft(user);
 
-    const gross = screen.getByLabelText('Gross — berries including tare');
+    const gross = screen.getByLabelText('Gross, kg');
     expect(gross).toHaveAttribute('aria-invalid', 'true');
     expect(gross.getAttribute('aria-describedby')).toContain('items.0.gross_kg-error');
     expect(screen.getByText('Enter a number, e.g. 12000 or 980.40')).toBeInTheDocument();
@@ -1133,7 +1186,7 @@ describe('ReceptionPage — a refusal from the server', () => {
     );
     // Any keystroke will do — this one just has to re-render the screen with
     // the mock above in place.
-    await user.type(screen.getByLabelText('Gross — berries including tare'), '1');
+    await user.type(screen.getByLabelText('Gross, kg'), '1');
 
     expect(
       screen.getByText('The server refused one of the lines — check the rows in the table'),
@@ -1221,7 +1274,7 @@ describe('ReceptionPage — «Видано готівкою» rides along with �
     // The WHOLE write rolled back server-side (the intake was never created)
     // — the draft the operator was completing is still exactly what they
     // typed, not a fresh blank form.
-    expect(screen.getByLabelText('Gross — berries including tare')).toHaveValue('126.40');
+    expect(screen.getByLabelText('Gross, kg')).toHaveValue('126.40');
     expect(screen.queryByText('Receipt for i-new')).toBeNull();
   });
 
@@ -1362,7 +1415,7 @@ describe('ReceptionPage — switching supplier mid-visit', () => {
     await user.click(screen.getByRole('button', { name: 'pick-nina' }));
 
     expect(screen.queryByRole('table')).toBeNull();
-    expect(screen.getByLabelText('Gross — berries including tare')).toHaveValue('');
+    expect(screen.getByLabelText('Gross, kg')).toHaveValue('');
     expect(toastMock).toHaveBeenCalledWith(
       'Lines cleared — they belonged to the previous supplier',
     );
@@ -1383,7 +1436,7 @@ describe('ReceptionPage — Enter never submits a half-typed receipt', () => {
     const user = userEvent.setup();
     renderReception();
 
-    const grossInput = screen.getByLabelText('Gross — berries including tare');
+    const grossInput = screen.getByLabelText('Gross, kg');
 
     // Not ready: no supplier chosen yet, so `canSubmit` is false — Enter must
     // not reach the browser's own (absent from happy-dom) implicit submit.
@@ -1436,7 +1489,7 @@ describe('ReceptionPage — line editor ergonomics (#117)', () => {
     renderReception();
     await user.click(screen.getByRole('button', { name: 'pick-nina' }));
 
-    const gross = screen.getByLabelText('Gross — berries including tare');
+    const gross = screen.getByLabelText('Gross, kg');
     await user.type(gross, '12a,3x45');
     // #72: letters go, digits never do — a third decimal stays visible to be refused.
     expect(gross).toHaveValue('12.345');
@@ -1459,9 +1512,9 @@ describe('ReceptionPage — line editor ergonomics (#117)', () => {
     // Line 0 is pre-selected onto the fixture's first grade (g1: max_markup
     // 3.00, max_discount 2.00) — see the "pre-selects" test below.
     await waitFor(() => {
-      expect(screen.getByLabelText('Grade and day price')).toHaveValue('g1');
+      expect(screen.getByLabelText('Grade')).toHaveValue('g1');
     });
-    const bonus = screen.getByLabelText('Extra price — for this line, ₴/kg');
+    const bonus = screen.getByLabelText('Extra price, ₴/kg');
     await user.clear(bonus);
     await user.type(bonus, '5');
     await user.tab();
@@ -1474,7 +1527,7 @@ describe('ReceptionPage — line editor ergonomics (#117)', () => {
   it('keeps the surcharge minus sign through the shared field (#72)', async () => {
     const user = userEvent.setup();
     renderReception();
-    const bonus = screen.getByLabelText('Extra price — for this line, ₴/kg');
+    const bonus = screen.getByLabelText('Extra price, ₴/kg');
     await user.clear(bonus);
     await user.type(bonus, '-2');
     expect(bonus).toHaveValue('-2');
@@ -1534,7 +1587,7 @@ describe('ReceptionPage — line editor ergonomics (#117)', () => {
     // The default line starts on one Czech crate (0.50 kg) at a count of 1.
     expect(screen.getByText('0.50 kg')).toBeInTheDocument();
 
-    const gross = screen.getByLabelText('Gross — berries including tare');
+    const gross = screen.getByLabelText('Gross, kg');
     await user.type(gross, '10');
     const units = screen.getByLabelText('Tare units 1');
     await user.clear(units);
@@ -1551,7 +1604,7 @@ describe('ReceptionPage — line editor ergonomics (#117)', () => {
     renderReception();
 
     await waitFor(() => {
-      expect(screen.getByLabelText('Grade and day price')).toHaveValue('g1');
+      expect(screen.getByLabelText('Grade')).toHaveValue('g1');
     });
   });
 });
@@ -1765,7 +1818,7 @@ describe('ReceptionPage — an open shift left behind on another day (#114)', ()
     expect(screen.getByText(STRANDED_TITLE)).toBeInTheDocument();
     // Unchanged on purpose: «Accept» is disabled here only because nothing is
     // drafted yet, never because the open shift is yesterday's.
-    expect(screen.getByLabelText('Gross — berries including tare')).toBeEnabled();
+    expect(screen.getByLabelText('Gross, kg')).toBeEnabled();
   });
 
   it('closes it from reception, sending the counted drawer to that shift', async () => {

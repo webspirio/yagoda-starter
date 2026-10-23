@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { useTranslation } from 'react-i18next';
 import { useFieldArray, useForm, useWatch } from 'react-hook-form';
-import { PageHeader } from '@/shared/ui/page-header';
 import { Card } from '@/shared/ui/card';
 import { Button } from '@/shared/ui/button';
 import { SelectField } from '@/shared/ui/select-field';
@@ -41,9 +40,7 @@ import { LinesTable, type CommittedLine } from './LinesTable';
 import { TotalsSection } from './TotalsSection';
 import { ReturnedCratesField } from './ReturnedCratesField';
 import { ConfirmRefundDialog } from './ConfirmRefundDialog';
-import { TodayReceipts } from './TodayReceipts';
-import { PointStatePanel } from './PointStatePanel';
-import { ShiftBanner } from './ShiftBanner';
+import { PointStrip } from './PointStrip';
 
 /** §3 — a UI cap that matches the paper book (4 committed + the draft). */
 const MAX_LINES = 5;
@@ -85,7 +82,12 @@ export function ReceptionPage() {
     (tareTypes.data ?? []).find((type) => type.is_crate)?.id ?? tareTypes.data?.[0]?.id ?? '';
 
   const form = useForm<IntakeFormValues>({
-    defaultValues: { supplier_id: '', items: [emptyLine('')], paid_amount: '', returned_crates: '' },
+    defaultValues: {
+      supplier_id: '',
+      items: [emptyLine('')],
+      paid_amount: '',
+      returned_crates: '',
+    },
   });
   const { control, register, setValue, handleSubmit, reset } = form;
   const lines = useFieldArray({ control, name: 'items' });
@@ -150,7 +152,7 @@ export function ReceptionPage() {
   // The drawer for berries — only read once a shift is open, same gate the
   // preview itself uses; `pointId` (not `bodyPointId`) because an operator's
   // OWN point still has cash to read even though their token, not this id,
-  // is what the intake body sends. `PointStatePanel` reads this SAME query
+  // is what the intake body sends. `PointStrip` reads this SAME query
   // key ungated, so the shared cache may end up populated even while this
   // gate is closed — harmless, since every consumer of `cash` below is
   // itself disabled while the shift is closed.
@@ -223,12 +225,6 @@ export function ReceptionPage() {
   const settled = preview.isSettled ? preview.preview : null;
   const accrued = settled?.amount ?? null;
   const netKg = settled ? sum(settled.items.map((i) => i.net_kg)) : null;
-  // The table's own counter covers committed rows only, unlike `netKg` above,
-  // and is withheld until every one of them is priced.
-  const committedItems = committed.map((row) => row.item);
-  const committedNetKg = committedItems.every((item) => item !== null)
-    ? sum(committedItems.map((item) => item.net_kg))
-    : null;
   const isPreviewing = !preview.isSettled && (preview.isPending || preview.preview !== null);
   const canSubmit = shiftOpen && values.supplier_id !== '' && settled !== null && !hasServerError;
 
@@ -342,7 +338,7 @@ export function ReceptionPage() {
   };
 
   const pointName = (points ?? []).find((p) => p.id === pointId)?.name ?? '';
-  // «Наділ» for `PointStatePanel`'s crates block — read off the same
+  // «Наділ» for `PointStrip`'s crates cell — read off the same
   // `usePointOptionsQuery()` list `pages/crates` resolves it from, rather
   // than a second network read for one field.
   const targetCrates = (points ?? []).find((p) => p.id === pointId)?.target_crates ?? null;
@@ -353,7 +349,7 @@ export function ReceptionPage() {
           aria-label={t('reception.pickPoint')}
           value={pointId ?? ''}
           onChange={(e) => setPointId(e.target.value)}
-          className="w-48"
+          className="h-8 w-48"
         >
           {/* A deactivated point reached by `?point=` is not in `points`
               (active only) — without its own entry the select would show
@@ -371,11 +367,11 @@ export function ReceptionPage() {
       {/* Owner only (#221): /prices is the owner's screen, and the operator
           already sees each grade's price on its option in the form below. */}
       {isOwner ? (
-        <Button variant="outline" asChild>
+        <Button variant="outline" size="sm" asChild>
           <Link to="/prices">{t('reception.toPrices')}</Link>
         </Button>
       ) : null}
-      <Button variant="secondary" asChild>
+      <Button variant="secondary" size="sm" asChild>
         <Link to="/point-cash">{t('reception.toPointCash')}</Link>
       </Button>
     </>
@@ -407,20 +403,27 @@ export function ReceptionPage() {
       />
     ) : (
       <>
-        {/* A failed read and «no shift» are the same `null` in the data, and an
-            «Open shift» button on the first one lets an operator open a shift
-            that is already open. */}
-        {shift.isError ? (
-          <p role="alert" className="mb-5 text-sm text-destructive">
-            {t('common.somethingWentWrong')}
-          </p>
-        ) : !shift.isPending && !shiftOpen ? (
-          <ShiftBanner
-            canOpen={me?.role === 'point_operator'}
-            isOpening={openShift.isPending}
-            onOpen={handleOpenShift}
-          />
-        ) : null}
+        {/* A failed read and «no shift» are the same `null` in the data; the
+            strip tells them apart, so an «Open shift» button never shows
+            on the first one. */}
+        <PointStrip
+          pointId={pointId}
+          shift={
+            shift.isError
+              ? { status: 'error' }
+              : shift.isPending
+                ? { status: 'pending' }
+                : shiftOpen && shift.data
+                  ? { status: 'open', shift: shift.data }
+                  : { status: 'none' }
+          }
+          isOwner={isOwner}
+          canOpen={me?.role === 'point_operator'}
+          isOpening={openShift.isPending}
+          onOpenShift={handleOpenShift}
+          targetCrates={targetCrates}
+          onOpenReceipt={openReceipt}
+        />
 
         {/* An open shift that is NOT today's (#114). A SIBLING of the intake
             form, never a child: its count dialog is portaled but stays a REACT
@@ -436,149 +439,147 @@ export function ReceptionPage() {
           onClosed={(id) => setStaleResult({ mode: 'close', shiftId: id })}
         />
 
-        <div className="grid gap-5 lg:grid-cols-[minmax(0,1.35fr)_minmax(320px,1fr)]">
-          <form
-            onSubmit={(e) => {
-              // React bubbles `submit` along the fiber tree, not the DOM: the
-              // inline supplier dialog (`SupplierPicker` → `SupplierFormDialog`)
-              // is portaled to `document.body` by `shared/ui/dialog.tsx`, but
-              // is still a REACT descendant of this form, so without this
-              // guard its own submit would reach `handleSubmit(requestSubmit)`
-              // — a real `POST /intakes` nobody pressed «Прийняти» for.
-              if (!isOwnFormEvent(e)) return;
-              void handleSubmit(requestSubmit)(e);
-            }}
-            // Enter is how an operator moves between fields on the scale's
-            // numeric pad; it must never fire a submit the form isn't ready
-            // for. Scoped to text inputs only, so it never swallows Enter
-            // inside the grade `<select>` or on a button. Same portal guard as
-            // `onSubmit` above — the dialog's own Enter keystrokes must not be
-            // swallowed by a guard meant for THIS form.
-            onKeyDown={(e) => {
-              if (!isOwnFormEvent(e)) return;
-              if (e.key === 'Enter' && (e.target as HTMLElement).tagName === 'INPUT' && !canSubmit) {
-                e.preventDefault();
-              }
-            }}
-            noValidate
-          >
-            <Card>
-              <SupplierSection
-                pointId={pointId}
-                ownerMode={isOwner}
-                supplier={supplier}
-                pickerRef={pickerRef}
-                autoFocus={supplier === null}
-                onChange={(s) => {
-                  // Lines belong to the SUPPLIER who brought them — switching
-                  // mid-visit (an operator picked the wrong row) leaves the
-                  // committed lines behind rather than filing them under
-                  // whoever is picked next. A draft-only form (one empty
-                  // line, nothing committed) has nothing to lose, so it is
-                  // left alone.
-                  if (lines.fields.length > 1) {
-                    reset({
-                      supplier_id: s.id,
-                      items: [emptyLine(defaultTareTypeId)],
-                      paid_amount: '',
-                      returned_crates: '',
-                    });
-                    toast(t('reception.toast.linesCleared'));
-                  } else {
-                    setValue('supplier_id', s.id, { shouldDirty: true });
-                  }
-                  setSupplier(s);
-                  setPaidTouched(false);
-                  setSupplierPick((n) => n + 1);
-                }}
-                debt={debt}
-                disabled={!shiftOpen}
-              />
-              <LineEditor
-                key={lines.fields[draftIndex]?.id}
-                index={draftIndex}
-                control={control}
-                register={register}
-                setValue={setValue}
-                grades={grades.data}
-                tareTypes={tareTypes.data ?? []}
-                previewItem={preview.preview?.items[draftIndex] ?? null}
-                isPreviewPending={!preview.isSettled}
-                errorAt={errorAt}
-                disabled={!shiftOpen}
-                onRemoveDraft={() => lines.remove(draftIndex)}
-              />
-              <LinesTable
-                rows={committed}
-                // A line is committed only once the server has PRICED IT AS IT
-                // STANDS: the preview covers every line, so committing one the
-                // server has not settled on (or has just refused) would take
-                // the whole form's numbers down with it.
-                canAdd={draftReady && !atCap && shiftOpen && settled !== null && !hasServerError}
-                atCap={atCap}
-                disabled={!shiftOpen}
-                lineCount={committed.length}
-                netKg={committed.length > 0 ? committedNetKg : null}
-                onAdd={() => lines.append(emptyLine(defaultTareTypeId))}
-                onRemove={(index) => lines.remove(index)}
-              />
-              {/* Keyed by the supplier pick: a new pick remounts it, so the
-                  pre-fill follows the ceiling again until the operator types. */}
-              <ReturnedCratesField
-                key={`${values.supplier_id}:${supplierPick}`}
-                supplierId={values.supplier_id || null}
-                pointId={bodyPointId ?? undefined}
-                crateTareUnits={crateTareUnits(values.items, tareTypes.data ?? [])}
-                value={values.returned_crates}
-                onChange={(v) => setValue('returned_crates', v, { shouldDirty: true })}
-                disabled={!shiftOpen}
-              />
-              <TotalsSection
-                accrued={accrued}
-                netKg={netKg}
-                lineCount={settled?.items.length ?? lines.fields.length}
-                debt={debt}
-                cash={cash}
-                cashUnavailable={pointCash.isError}
-                paid={paidShown}
-                onPaidChange={onPaidChange}
-                paidError={
-                  errorAt('paid_amount') ??
-                  (paidRefused !== null && paidShown === paidRefused ? 'errors.decimalFormat' : null)
-                }
-                disabled={!canSubmit}
-                isPreviewing={isPreviewing}
-                isSubmitting={create.isPending}
-                formErrorKey={formErrorKey}
-                formErrorParams={formErrorParams}
-                showDraftHint={draftIndex > 0 && !draftReady}
-              />
-            </Card>
-          </form>
-
-          <div className="flex flex-col gap-4">
-            <PointStatePanel
+        <form
+          className="grid gap-3 lg:grid-cols-[minmax(0,1.75fr)_minmax(320px,1fr)]"
+          onSubmit={(e) => {
+            // React bubbles `submit` along the fiber tree, not the DOM: the
+            // inline supplier dialog (`SupplierPicker` → `SupplierFormDialog`)
+            // is portaled to `document.body` by `shared/ui/dialog.tsx`, but
+            // is still a REACT descendant of this form, so without this
+            // guard its own submit would reach `handleSubmit(requestSubmit)`
+            // — a real `POST /intakes` nobody pressed «Прийняти» for.
+            if (!isOwnFormEvent(e)) return;
+            void handleSubmit(requestSubmit)(e);
+          }}
+          // Enter is how an operator moves between fields on the scale's
+          // numeric pad; it must never fire a submit the form isn't ready
+          // for. Scoped to text inputs only, so it never swallows Enter
+          // inside the grade `<select>` or on a button. Same portal guard as
+          // `onSubmit` above — the dialog's own Enter keystrokes must not be
+          // swallowed by a guard meant for THIS form.
+          onKeyDown={(e) => {
+            if (!isOwnFormEvent(e)) return;
+            if (e.key === 'Enter' && (e.target as HTMLElement).tagName === 'INPUT' && !canSubmit) {
+              e.preventDefault();
+            }
+          }}
+          noValidate
+        >
+          <Card>
+            <SupplierSection
               pointId={pointId}
-              shiftId={shift.data?.id}
-              isOwner={isOwner}
-              targetCrates={targetCrates}
+              ownerMode={isOwner}
+              supplier={supplier}
+              pickerRef={pickerRef}
+              autoFocus={supplier === null}
+              onChange={(s) => {
+                // Lines belong to the SUPPLIER who brought them — switching
+                // mid-visit (an operator picked the wrong row) leaves the
+                // committed lines behind rather than filing them under
+                // whoever is picked next. A draft-only form (one empty
+                // line, nothing committed) has nothing to lose, so it is
+                // left alone.
+                if (lines.fields.length > 1) {
+                  reset({
+                    supplier_id: s.id,
+                    items: [emptyLine(defaultTareTypeId)],
+                    paid_amount: '',
+                    returned_crates: '',
+                  });
+                  toast(t('reception.toast.linesCleared'));
+                } else {
+                  setValue('supplier_id', s.id, { shouldDirty: true });
+                }
+                setSupplier(s);
+                setPaidTouched(false);
+                setSupplierPick((n) => n + 1);
+              }}
+              disabled={!shiftOpen}
             />
-            <TodayReceipts shiftId={shift.data?.id} onOpen={openReceipt} />
-          </div>
-        </div>
+            <LineEditor
+              key={lines.fields[draftIndex]?.id}
+              index={draftIndex}
+              control={control}
+              register={register}
+              setValue={setValue}
+              grades={grades.data}
+              tareTypes={tareTypes.data ?? []}
+              previewItem={preview.preview?.items[draftIndex] ?? null}
+              isPreviewPending={!preview.isSettled}
+              errorAt={errorAt}
+              disabled={!shiftOpen}
+              onRemoveDraft={() => lines.remove(draftIndex)}
+              // A line is committed only once the server has PRICED IT AS IT
+              // STANDS: the preview covers every line, so committing one the
+              // server has not settled on (or has just refused) would take
+              // the whole form's numbers down with it.
+              canAdd={draftReady && !atCap && shiftOpen && settled !== null && !hasServerError}
+              atCap={atCap}
+              onAdd={() => lines.append(emptyLine(defaultTareTypeId))}
+            />
+            <LinesTable
+              rows={committed}
+              disabled={!shiftOpen}
+              onRemove={(index) => lines.remove(index)}
+            />
+          </Card>
+          <Card>
+            <TotalsSection
+              accrued={accrued}
+              netKg={netKg}
+              lineCount={settled?.items.length ?? lines.fields.length}
+              debt={debt}
+              credit={debt !== null && cmp(debt, '0') === -1 ? sub('0', debt) : null}
+              cash={cash}
+              cashUnavailable={pointCash.isError}
+              paid={paidShown}
+              onPaidChange={onPaidChange}
+              paidError={
+                errorAt('paid_amount') ??
+                (paidRefused !== null && paidShown === paidRefused ? 'errors.decimalFormat' : null)
+              }
+              disabled={!canSubmit}
+              isPreviewing={isPreviewing}
+              isSubmitting={create.isPending}
+              formErrorKey={formErrorKey}
+              formErrorParams={formErrorParams}
+              showDraftHint={draftIndex > 0 && !draftReady}
+              // Keyed by the supplier pick: a new pick remounts it, so the
+              // pre-fill follows the ceiling again until the operator types.
+              crateReturn={
+                <ReturnedCratesField
+                  key={`${values.supplier_id}:${supplierPick}`}
+                  supplierId={values.supplier_id || null}
+                  pointId={bodyPointId ?? undefined}
+                  crateTareUnits={crateTareUnits(values.items, tareTypes.data ?? [])}
+                  value={values.returned_crates}
+                  onChange={(v) => setValue('returned_crates', v, { shouldDirty: true })}
+                  disabled={!shiftOpen}
+                />
+              }
+            />
+          </Card>
+        </form>
       </>
     );
 
+  const headerCaption = t('reception.eyebrow', {
+    point: pointName,
+    date: formatLongDate(todayIso(), locale),
+  });
+
   return (
     <>
-      <PageHeader
-        eyebrow={t('reception.eyebrow', {
-          point: pointName,
-          date: formatLongDate(todayIso(), locale),
-        })}
-        title={t('reception.title')}
-        actions={actions}
-      />
+      {/* ≤ 40 px tall (spec §5.1): 32 px actions + `pb-1.5`. */}
+      <div className="flex flex-wrap items-center justify-between gap-3 pb-1.5">
+        <div className="flex min-w-0 items-baseline gap-3">
+          <h1 className="font-display text-xl leading-tight font-medium">{t('reception.title')}</h1>
+          <span className="truncate text-sm text-muted-foreground" title={headerCaption}>
+            {headerCaption}
+          </span>
+        </div>
+        <div className="flex shrink-0 items-center gap-2">{actions}</div>
+      </div>
       {body}
       <CountDrawerDialog
         key={openDialogInstance}

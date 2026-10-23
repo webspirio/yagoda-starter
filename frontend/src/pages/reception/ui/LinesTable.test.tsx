@@ -46,19 +46,8 @@ const ROWS: CommittedLine[] = [
 ];
 
 describe('LinesTable — reads like the mock', () => {
-  it('shows unit counts in the tare column, a signed amber bonus in the price cell, and the line/kg counter', () => {
-    render(
-      <LinesTable
-        rows={ROWS}
-        canAdd={false}
-        atCap={false}
-        disabled={false}
-        lineCount={2}
-        netKg="55.70"
-        onAdd={vi.fn()}
-        onRemove={vi.fn()}
-      />,
-    );
+  it('shows unit counts in the tare column and a signed amber bonus in the price cell', () => {
+    render(<LinesTable rows={ROWS} disabled={false} onRemove={vi.fn()} />);
 
     const table = screen.getByRole('table');
     const rows = within(table).getAllByRole('row');
@@ -78,25 +67,13 @@ describe('LinesTable — reads like the mock', () => {
     expect(within(line2).getByText('8.00')).toBeInTheDocument();
     const bonus = within(line2).getByText('−2.00');
     expect(bonus).toHaveClass('text-amber');
-
-    // The «Add line» row's right-aligned counter.
-    expect(screen.getByText('2 lines · 55.70 kg')).toBeInTheDocument();
   });
 
-  it('shows no counter while there is no settled net weight yet', () => {
-    render(
-      <LinesTable
-        rows={ROWS}
-        canAdd={false}
-        atCap={false}
-        disabled={false}
-        lineCount={2}
-        netKg={null}
-        onAdd={vi.fn()}
-        onRemove={vi.fn()}
-      />,
-    );
+  // «Ще позиція» and its hint live in the draft block's footer now (spec §4),
+  // so with nothing committed the table has nothing of its own to show.
+  it('renders nothing without committed rows', () => {
+    const { container } = render(<LinesTable rows={[]} disabled={false} onRemove={vi.fn()} />);
 
-    expect(screen.queryByText(/lines? ·/)).not.toBeInTheDocument();
+    expect(container).toBeEmptyDOMElement();
   });
 });

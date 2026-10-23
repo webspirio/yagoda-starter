@@ -9,7 +9,6 @@ import {
   type UseFormSetValue,
 } from 'react-hook-form';
 import { Button } from '@/shared/ui/button';
-import { Eyebrow } from '@/shared/ui/eyebrow';
 import { Field } from '@/shared/ui/field';
 import { SelectField } from '@/shared/ui/select-field';
 import { DecimalInput } from '@/shared/ui/decimal-input';
@@ -53,8 +52,10 @@ function compare(a: string, b: string): -1 | 0 | 1 | null {
 }
 
 /**
- * The draft line: the receipt number, the weights and tare (§2.5), the priced
- * grade and its per-line extra price (§2.8). NOTHING here computes money — the
+ * The draft line, one dashed block in two rows (spec §4): the weights and tare
+ * (§2.5) on top, the priced grade and its per-line extra price (§2.8) under
+ * them, then the server's numbers, the hints, and a footer that commits it
+ * («Ще позиція») or drops it. NOTHING here computes money — the
  * numbers under the line are `previewItem`, straight off `POST /intakes/preview`.
  *
  * The two hints are the mock's, and they are HINTS: an implausible gross weight
@@ -73,6 +74,9 @@ export function LineEditor({
   isPreviewPending,
   errorAt,
   disabled,
+  canAdd,
+  atCap,
+  onAdd,
   onRemoveDraft,
 }: {
   index: number;
@@ -92,6 +96,12 @@ export function LineEditor({
    *  one unremovable line. Removing the draft promotes the last committed
    *  line back into the editor — a coherent un-commit, not a delete. */
   onRemoveDraft: () => void;
+  /** Whether «Ще позиція» may commit this draft — the page's gate, unchanged. */
+  canAdd: boolean;
+  /** Five lines already (§2.3): the cap hint replaces the multi-grade one. */
+  atCap: boolean;
+  /** Commits the draft: the page appends a fresh empty line after it. */
+  onAdd: () => void;
 }) {
   const { t, i18n } = useTranslation();
   const locale = i18n.resolvedLanguage ?? 'uk';
@@ -215,18 +225,28 @@ export function LineEditor({
     perCrate !== null &&
     (cmp(perCrate, PER_CRATE_MIN) === -1 || cmp(perCrate, PER_CRATE_MAX) === 1);
 
-  return (
-    <>
-      <div className="border-t border-border p-4">
-        <Eyebrow className="mb-2">{t('reception.weight.eyebrow')}</Eyebrow>
+  // The warnings are amber HINTS, one line each, under the preview line (spec
+  // §4) — none of them disables anything. `tareError` is the one refusal among
+  // them, and reads destructive.
+  const warning = (text: string) => (
+    <p className="flex items-start gap-2 text-xs text-amber">
+      <AlertTriangle className="mt-px size-3.5 shrink-0" />
+      {text}
+    </p>
+  );
 
+  return (
+    <div className="px-4 pb-3">
+      <div className="rounded-lg border border-dashed border-border p-2.5">
+        {/* Row 1 — weighing, in §2.4's order: the gross, the pallet taken off
+            first, then the tare. Брутто stays the widest, largest field. */}
         <div className="flex flex-wrap items-start gap-3">
           <Field
             name={`items.${index}.gross_kg`}
             label={t('reception.weight.gross')}
             required
             error={grossError ?? undefined}
-            className="min-w-[180px] flex-1"
+            className="min-w-[140px] flex-1"
           >
             {(a11y) => (
               <div className="relative">
@@ -239,7 +259,7 @@ export function LineEditor({
                   {...grossField.inputProps}
                   disabled={disabled}
                   placeholder="0,00"
-                  className="h-14 pr-12 font-mono text-2xl font-semibold"
+                  className="h-12 pr-12 font-mono text-2xl font-semibold"
                 />
                 <span className="pointer-events-none absolute top-1/2 right-3.5 -translate-y-1/2 font-mono text-sm text-muted-foreground">
                   {t('reception.weight.unit')}
@@ -253,7 +273,7 @@ export function LineEditor({
               name={`items.${index}.pallet_kg`}
               label={t('reception.weight.pallet')}
               error={palletError ?? undefined}
-              className="w-[124px]"
+              className="w-[96px]"
             >
               {(a11y) => (
                 <DecimalInput
@@ -264,7 +284,7 @@ export function LineEditor({
                   }
                   {...palletField.inputProps}
                   disabled={disabled}
-                  className="h-14 font-mono"
+                  className="h-10 font-mono"
                 />
               )}
             </Field>
@@ -281,142 +301,108 @@ export function LineEditor({
               {t('reception.weight.pallet')}
             </Button>
           )}
-        </div>
 
-        {grossWarning ? (
-          <p className="mt-1.5 flex items-start gap-2 text-xs text-amber">
-            <AlertTriangle className="mt-px size-3.5 shrink-0" />
-            {t('reception.line.grossWarning', { gross: formatDecimal(normalizedGross, locale) })}
-          </p>
-        ) : null}
-
-        <p className="mt-3 mb-1.5 text-xs text-muted-foreground">{t('reception.weight.tare')}</p>
-        <div className="flex flex-col gap-2">
-          {tare.fields.map((row, rowIndex) => {
-            const rowTareType = tareTypes.find(
-              (type) => type.id === tareRows[rowIndex]?.tare_type_id,
-            );
-            const rowUnits = tareCounts[rowIndex] ?? 0;
-            return (
-              <div key={row.id} className="flex items-center gap-2">
-                <div className="min-w-0 flex-1">
-                  <SelectField
-                    aria-label={t('reception.weight.tareType', { n: rowIndex + 1 })}
-                    disabled={disabled}
-                    className="h-10"
-                    {...register(`items.${index}.tare.${rowIndex}.tare_type_id`)}
-                  >
-                    {tareTypes.map((type) => (
-                      <option key={type.id} value={type.id}>
-                        {t('reception.weight.tareOption', {
-                          name: type.name,
-                          weight: type.weight_kg,
-                        })}
-                      </option>
-                    ))}
-                  </SelectField>
-                </div>
-                <div className="flex items-center gap-1 rounded-lg border border-border bg-background p-1">
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon-sm"
-                    aria-label={t('reception.weight.fewer', { n: rowIndex + 1 })}
-                    disabled={disabled}
-                    onClick={() => stepUnits(rowIndex, -1)}
-                  >
-                    <Minus className="size-3.5" />
-                  </Button>
-                  <TextInput
-                    variant="ghost"
-                    aria-label={t('reception.weight.units', { n: rowIndex + 1 })}
-                    inputMode="numeric"
-                    autoComplete="off"
-                    disabled={disabled}
-                    className="w-12 text-center font-mono font-semibold"
-                    {...unitsField(rowIndex)}
-                  />
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon-sm"
-                    aria-label={t('reception.weight.more', { n: rowIndex + 1 })}
-                    disabled={disabled}
-                    onClick={() => stepUnits(rowIndex, 1)}
-                  >
-                    <Plus className="size-3.5" />
-                  </Button>
-                </div>
-                {rowTareType ? (
-                  <span className="w-16 shrink-0 text-right font-mono text-xs text-muted-foreground">
-                    {formatKg(mul(rowTareType.weight_kg, rowUnits), locale)}
-                  </span>
-                ) : null}
-                {tare.fields.length > 1 ? (
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon-sm"
-                    aria-label={t('reception.weight.removeTare')}
-                    disabled={disabled}
-                    onClick={() => tare.remove(rowIndex)}
-                  >
-                    <Trash2 className="size-3.5" />
-                  </Button>
-                ) : null}
-              </div>
-            );
-          })}
-          <div>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              disabled={disabled || !freeTareType}
-              onClick={() =>
-                freeTareType && tare.append({ tare_type_id: freeTareType.id, units: '1' })
-              }
-            >
-              <Package className="size-3.5" />
-              {t('reception.weight.otherTare')}
-            </Button>
+          {/* The tare column: extra rows («Інша тара», in the footer) stack
+              under the first and push the block down rather than widen it
+              (spec §4). */}
+          <div className="min-w-[260px] flex-[2.4]">
+            <div className="mb-[7px] text-[11px] font-bold tracking-wider text-muted-foreground uppercase">
+              {t('reception.weight.tare')}
+            </div>
+            <div className="flex flex-col gap-1.5">
+              {tare.fields.map((row, rowIndex) => {
+                const rowTareType = tareTypes.find(
+                  (type) => type.id === tareRows[rowIndex]?.tare_type_id,
+                );
+                const rowUnits = tareCounts[rowIndex] ?? 0;
+                return (
+                  <div key={row.id} className="flex items-center gap-2">
+                    <div className="min-w-[140px] flex-1">
+                      <SelectField
+                        aria-label={t('reception.weight.tareType', { n: rowIndex + 1 })}
+                        disabled={disabled}
+                        className="h-10"
+                        {...register(`items.${index}.tare.${rowIndex}.tare_type_id`)}
+                      >
+                        {tareTypes.map((type) => (
+                          <option key={type.id} value={type.id}>
+                            {t('reception.weight.tareOption', {
+                              name: type.name,
+                              weight: type.weight_kg,
+                            })}
+                          </option>
+                        ))}
+                      </SelectField>
+                    </div>
+                    <div className="flex h-10 items-center gap-1 rounded-lg border border-border bg-background p-1">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label={t('reception.weight.fewer', { n: rowIndex + 1 })}
+                        disabled={disabled}
+                        onClick={() => stepUnits(rowIndex, -1)}
+                      >
+                        <Minus className="size-3.5" />
+                      </Button>
+                      <TextInput
+                        variant="ghost"
+                        aria-label={t('reception.weight.units', { n: rowIndex + 1 })}
+                        inputMode="numeric"
+                        autoComplete="off"
+                        disabled={disabled}
+                        className="w-10 text-center font-mono font-semibold"
+                        {...unitsField(rowIndex)}
+                      />
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label={t('reception.weight.more', { n: rowIndex + 1 })}
+                        disabled={disabled}
+                        onClick={() => stepUnits(rowIndex, 1)}
+                      >
+                        <Plus className="size-3.5" />
+                      </Button>
+                    </div>
+                    {rowTareType ? (
+                      <span className="w-14 shrink-0 text-right font-mono text-xs text-muted-foreground">
+                        {formatKg(mul(rowTareType.weight_kg, rowUnits), locale)}
+                      </span>
+                    ) : null}
+                    {tare.fields.length > 1 ? (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label={t('reception.weight.removeTare')}
+                        disabled={disabled}
+                        onClick={() => tare.remove(rowIndex)}
+                      >
+                        <Trash2 className="size-3.5" />
+                      </Button>
+                    ) : null}
+                  </div>
+                );
+              })}
+            </div>
           </div>
-          {tareError ? (
-            <p role="alert" className="text-xs text-destructive">
-              {t(tareError)}
-            </p>
-          ) : null}
-          {/* Instant, client-side hints — never a rule the server enforces,
-              just what the operator is about to be surprised by. */}
-          {grossPositive && totalUnits === 0 && !tareError ? (
-            <p className="flex items-start gap-2 text-xs text-amber">
-              <AlertTriangle className="mt-px size-3.5 shrink-0" />
-              {t('reception.line.tareMissing')}
-            </p>
-          ) : null}
-          {grossPositive && totalUnits > 0 && gradeId === '' ? (
-            <p className="flex items-start gap-2 text-xs text-amber">
-              <AlertTriangle className="mt-px size-3.5 shrink-0" />
-              {t('reception.line.gradeMissing')}
-            </p>
-          ) : null}
         </div>
-      </div>
 
-      <div className="border-t border-border p-4">
-        <Eyebrow className="mb-2">{t('reception.grade.eyebrow')}</Eyebrow>
-
-        <div className="flex flex-wrap items-start gap-3">
+        {/* Row 2 — pricing: the product, its grade at the day's price, and
+            this line's own extra price (§2.8). */}
+        <div className="mt-1.5 flex flex-wrap items-start gap-3">
           <Field
             name={`product-line-${index}`}
             label={t('reception.grade.product')}
-            className="min-w-[150px] flex-1"
+            className="min-w-[130px] flex-1"
           >
             {(a11y) => (
               <SelectField
                 {...a11y}
                 value={product}
                 disabled={disabled}
+                className="h-10"
                 onChange={(e) => {
                   setPickedProduct(e.target.value);
                   // Changing the product must never leave a grade of the OTHER
@@ -442,7 +428,7 @@ export function LineEditor({
             label={t('reception.grade.grade')}
             required
             error={gradeError ?? undefined}
-            className="min-w-[180px] flex-1"
+            className="min-w-[160px] flex-[1.3]"
           >
             {(a11y) => (
               <SelectField
@@ -458,6 +444,7 @@ export function LineEditor({
                 // makes React re-apply it on every render until it sticks.
                 value={gradeId}
                 disabled={disabled || product === ''}
+                className="h-10"
                 {...register(`items.${index}.product_grade_id`)}
               >
                 <option value="">{t('reception.grade.gradePlaceholder')}</option>
@@ -469,16 +456,14 @@ export function LineEditor({
               </SelectField>
             )}
           </Field>
-        </div>
 
-        <div className="mt-3 flex flex-wrap items-end gap-3">
           <Field
             name={`items.${index}.bonus`}
             label={t('reception.grade.bonus')}
             error={bonusError ?? undefined}
           >
             {(a11y) => (
-              <div className="flex items-center gap-1 rounded-lg border border-border bg-background p-1">
+              <div className="flex h-10 items-center gap-1 rounded-lg border border-border bg-background p-1">
                 <Button
                   type="button"
                   variant="ghost"
@@ -498,7 +483,7 @@ export function LineEditor({
                   }
                   {...bonusField.inputProps}
                   disabled={disabled}
-                  className="w-16 text-center font-mono font-semibold"
+                  className="w-14 text-center font-mono font-semibold"
                 />
                 <Button
                   type="button"
@@ -521,7 +506,7 @@ export function LineEditor({
             alert per refusal, not two. */}
         <p
           className={cn(
-            'mt-3 font-mono text-sm',
+            'mt-1 font-mono text-sm',
             hasLineError
               ? 'text-destructive'
               : previewItem
@@ -541,32 +526,96 @@ export function LineEditor({
             : t('reception.line.pending')}
         </p>
 
-        {perCrateWarning && perCrate !== null ? (
-          <p className="mt-1.5 flex items-start gap-2 text-xs text-amber">
-            <AlertTriangle className="mt-px size-3.5 shrink-0" />
-            {t('reception.line.perCrateWarning', { kg: formatDecimal(perCrate, locale) })}
-          </p>
-        ) : null}
+        {/* Instant, client-side hints — never a rule the server enforces,
+            just what the operator is about to be surprised by. */}
+        <div className="mt-1 flex flex-col gap-0.5 empty:hidden">
+          {grossWarning
+            ? warning(
+                t('reception.line.grossWarning', {
+                  gross: formatDecimal(normalizedGross, locale),
+                }),
+              )
+            : null}
+          {tareError ? (
+            <p role="alert" className="text-xs text-destructive">
+              {t(tareError)}
+            </p>
+          ) : null}
+          {grossPositive && totalUnits === 0 && !tareError
+            ? warning(t('reception.line.tareMissing'))
+            : null}
+          {grossPositive && totalUnits > 0 && gradeId === ''
+            ? warning(t('reception.line.gradeMissing'))
+            : null}
+          {perCrateWarning && perCrate !== null
+            ? warning(t('reception.line.perCrateWarning', { kg: formatDecimal(perCrate, locale) }))
+            : null}
+        </div>
 
-        {/* «Ще позиція» always leaves an empty draft behind, and an empty
-            draft cannot preview (`isPreviewable` wants every line complete) —
-            with no way back the operator is stuck staring at a dark submit
-            button. This is that way back, offered the moment there IS a
-            committed line to fall back to. */}
-        {index > 0 ? (
+        <div className="mt-1 flex flex-wrap items-center gap-3 xl:flex-nowrap">
+          {/* «Інша тара» lives here, not under the tare rows, so row 1 stays
+              one control tall; in DOM order it still follows the tare and
+              precedes «Прибрати позицію» / «Ще позиція» (spec §5.2). */}
           <Button
             type="button"
             variant="ghost"
             size="sm"
-            className="mt-3 text-muted-foreground"
-            disabled={disabled}
-            onClick={onRemoveDraft}
+            className="-ml-2 shrink-0"
+            disabled={disabled || !freeTareType}
+            onClick={() =>
+              freeTareType && tare.append({ tare_type_id: freeTareType.id, units: '1' })
+            }
           >
-            <Trash2 className="size-3.5" />
-            {t('reception.lines.remove')}
+            <Package className="size-3.5" />
+            {t('reception.weight.otherTare')}
           </Button>
-        ) : null}
+          {/* «Ще позиція» always leaves an empty draft behind, and an empty
+              draft cannot preview (`isPreviewable` wants every line complete)
+              — with no way back the operator is stuck staring at a dark submit
+              button. This is that way back, offered the moment there IS a
+              committed line to fall back to. */}
+          {index > 0 ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="shrink-0 text-muted-foreground"
+              disabled={disabled}
+              onClick={onRemoveDraft}
+            >
+              <Trash2 className="size-3.5" />
+              {t('reception.lines.remove')}
+            </Button>
+          ) : null}
+          <div className="flex min-w-0 flex-1 items-center justify-end gap-3">
+            {/* At five lines the cap hint is said out loud; below it the
+                multi-grade hint rides on the button's title. The hint truncates
+                (whole sentence on hover) and claims no width of its own, so
+                it never forces a wrap; the footer wraps only when the buttons
+                themselves do not fit. */}
+            {atCap ? (
+              <span
+                title={t('reception.lines.capHint')}
+                className="min-w-0 flex-1 truncate text-right text-xs text-muted-foreground"
+              >
+                {t('reception.lines.capHint')}
+              </span>
+            ) : null}
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              title={atCap ? t('reception.lines.capHint') : t('reception.lines.hint')}
+              disabled={!canAdd}
+              onClick={onAdd}
+              className="shrink-0"
+            >
+              <Plus className="size-4" />
+              {t('reception.lines.add')}
+            </Button>
+          </div>
+        </div>
       </div>
-    </>
+    </div>
   );
 }

@@ -907,8 +907,7 @@
     "shift": {
       "none": "Shift not opened yet",
       "noneOwner": "Shift not opened yet — the operator opens it",
-      "open": "Open shift",
-      "hint": "Nothing can be received until the shift is open."
+      "open": "Open shift"
     },
     "noPoint": "Select a point to receive berries",
     "noPrices": {
@@ -917,20 +916,16 @@
       "action": "Set today's prices"
     },
     "supplier": {
-      "eyebrow": "1 · Supplier",
-      "debt": "Previous balance {{uah}}",
-      "debtNote": "added to “Total” below",
       "credit": "Overpaid by us {{uah}}",
-      "history": "Intake history",
+      "recent": "Recent:",
       "card": "Supplier card",
       "historyEmpty": "No intakes yet — this will be the first."
     },
     "weight": {
-      "eyebrow": "2 · Weight with tare",
-      "gross": "Gross — berries including tare",
+      "gross": "Gross, kg",
       "unit": "kg",
       "pallet": "Pallet",
-      "tare": "Tare — subtracted automatically",
+      "tare": "Tare",
       "tareType": "Tare type {{n}}",
       "tareOption": "{{name}} {{weight}} kg",
       "units": "Tare units {{n}}",
@@ -940,13 +935,12 @@
       "otherTare": "Other tare"
     },
     "grade": {
-      "eyebrow": "3 · Product, grade and day price",
       "product": "Product",
       "productPlaceholder": "Select a product",
-      "grade": "Grade and day price",
+      "grade": "Grade",
       "gradePlaceholder": "Select a grade",
       "gradeOption": "{{name}} · {{price}} ₴/kg",
-      "bonus": "Extra price — for this line, ₴/kg",
+      "bonus": "Extra price, ₴/kg",
       "bonusDown": "Extra price down",
       "bonusUp": "Extra price up"
     },
@@ -965,8 +959,6 @@
       "remove": "Remove line",
       "draftHint": "Finish this line or remove it",
       "title": "Receipt lines",
-      "counter_one": "{{count}} line · {{kg}}",
-      "counter_other": "{{count}} lines · {{kg}}",
       "col": {
         "grade": "Grade",
         "gross": "Gross",
@@ -1002,7 +994,7 @@
       "retry": "Try again"
     },
     "totals": {
-      "eyebrow": "4 · Settlement",
+      "eyebrow": "Settlement",
       "accruedToday": "Accrued today",
       "linesSuffix_one": " · {{count}} line",
       "linesSuffix_other": " · {{count}} lines",
@@ -1016,10 +1008,8 @@
       "overCash": "Cannot pay out more than is in the berry drawer — using {{uah}}",
       "cashNote": "Only {{uah}} is in the berry drawer — nothing more to pay out right now. The difference is added to the supplier's balance; a transfer from the owner restocks it.",
       "cashUnavailable": "The berry cash drawer could not be read — the server will check the amount when the receipt is recorded",
-      "remainder": "Owed by us",
       "settled": "Settled in full",
-      "remainderHint": "Added to the supplier's balance — dated today",
-      "settledHint": "Nothing is left hanging on the balance"
+      "remainderLine": "Owed by us {{uah}} · added with today's date"
     },
     "submit": "Accept",
     "submitKg": "Accept {{kg}}",
@@ -1029,22 +1019,19 @@
     "linesPart_one": "{{count}} line · ",
     "linesPart_other": "{{count}} lines · ",
     "state": {
-      "cashTitle": "Point cash",
-      "cratesTitle": "Crates",
-      "open": "Open",
+      "shiftOpen": "Shift open since {{time}}",
+      "crates": "Crates out with people / allotment",
+      "cratesValue": "{{out}} / {{target}}",
       "openingCash": "Counted this morning",
       "currentCash": "In the berry drawer now",
       "paidOut": "Paid out for berries",
-      "openToday": "Open on today's receipts",
-      "allotment": "Allotment",
-      "allotmentValue_one": "{{count}} crate",
-      "allotmentValue_other": "{{count}} crates",
-      "allotmentUnset": "no allotment set for this point yet",
-      "inField": "Out with people",
       "truncatedCaption": "first 100 documents"
     },
     "today": {
       "title": "Today's receipts",
+      "trigger": "Today",
+      "summary": "{{count}} rcpt. · {{kg}}",
+      "open": "open {{uah}}",
       "empty": "Nothing received yet. The first receipt will appear here.",
       "voided": "voided",
       "positions_one": "{{count}} position",
