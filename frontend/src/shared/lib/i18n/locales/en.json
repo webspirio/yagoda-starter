@@ -1352,7 +1352,7 @@
       "shortfallNone": "—",
       "complete": "Allotment complete",
       "over": "Over the allotment:",
-      "negative": "Fewer than zero empty crates: the documents don't add up — check the transfers, issues, returns, receipts and breakage."
+      "negative": "Fewer than zero empty crates at the point: it owes people crates — who exactly is in the operator's notebook. The next crate transfer pays the minus off."
     },
     "field": {
       "supplier": "Person",
@@ -1373,7 +1373,8 @@
       "submit": "Issue",
       "toast": "Crates issued",
       "onHandHint": "{{on_hand}} empty crates at the point.",
-      "inTransitHint": "{{in_transit}} in transit — accept the transfer first."
+      "inTransitHint": "{{in_transit}} in transit — accept the transfer first.",
+      "goesNegativeHint": "After this issue the point will have {{after}} — it owes people crates; note who in the notebook."
     },
     "return": {
       "noHolders": "Nobody at this point is holding crates.",
@@ -1438,12 +1439,9 @@
       "noCrateType": "No tare type is marked as the crate — set one in the catalogue first",
       "returnExceeds": "That is more crates than this person is holding. Lower the number.",
       "cashInsufficient": "The crate deposits drawer holds less than this refund needs. Ask an owner.",
-      "onHandInsufficient": "The point has {{available}} empty crates, and this takes {{required}}. Lower the number.",
-      "onHandInsufficientInTransit": "The point has {{available}} empty crates, and this takes {{required}}. {{in_transit}} more are in transit — press «Accept» in Point cash first.",
       "hasReturns": "A return has already been allocated against this issuance — void the return first",
       "returnBelongsToIntake": "This return was recorded with a receipt — void the receipt instead",
-      "supplierInactive": "This person is deactivated, so crates cannot be issued to them. Pick another.",
-      "overOnHand": "Only {{on_hand}} empty crates at the point. Lower the number."
+      "supplierInactive": "This person is deactivated, so crates cannot be issued to them. Pick another."
     }
   },
   "reweigh": {

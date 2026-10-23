@@ -12,8 +12,10 @@ import type { CrateStanding } from '@/entities/crate';
  *
  * NOTHING IS COMPUTED HERE beyond the bar's own widths (clamped at 0 — there
  * is no negative width) and `Math.abs` for the shortfall/overage magnitude.
- * Every figure comes from `GET /crate-standing`; a negative `on_hand` prints
- * red with the warning below rather than being hidden or clamped away.
+ * Every figure comes from `GET /crate-standing`. A negative `on_hand` is a
+ * legitimate state since the 23.10.2026 call (§6.9) — the point owes people
+ * crates — so it prints AMBER with its minus and the note below, never red,
+ * and never hidden or clamped to 0 in the figures (only the bar's width is).
  */
 export function CrateStandingBar({ standing }: { standing: CrateStanding }) {
   const { t, i18n } = useTranslation();
@@ -76,7 +78,7 @@ export function CrateStandingBar({ standing }: { standing: CrateStanding }) {
           label={t('crates.standing.onHand')}
           dot="bg-[var(--leaf)]"
           value={n(onHand)}
-          tone={negative ? 'text-destructive' : undefined}
+          tone={negative ? 'text-amber' : undefined}
         />
         <Figure label={t('crates.standing.inField')} dot="bg-[var(--amber)]" value={n(inField)} />
         <Figure label={t('crates.standing.withBerry')} dot="bg-primary" value={n(withBerry)} />
@@ -107,7 +109,7 @@ export function CrateStandingBar({ standing }: { standing: CrateStanding }) {
       </div>
 
       {negative ? (
-        <p className="mt-2 text-sm font-medium text-destructive">{t('crates.standing.negative')}</p>
+        <p className="mt-2 text-sm font-medium text-amber">{t('crates.standing.negative')}</p>
       ) : null}
     </Card>
   );

@@ -967,10 +967,11 @@ intake_items.tare_weight_kg знімається з тари прийомки (�
 тільки керівник. Стара форма («тільки керівник» для будь-якого ящикового документа) лишається
 записана в 26-rules-by-example.md як скасована, не стерта.
 
-Empties at the point (`onHandSql`) never go below zero through a new document: an issuance,
-breakage, a receipt's crate tare, voiding a transfer or a return, and resolving a dispute
-downwards are refused past zero by `CrateStockGuard` (spec 2026-09-30). Documents that give
-crates back are never refused.
+Empties at the point (`onHandSql`) MAY go below zero (client call 23.10.2026, §6.9 «Правка
+23.10.2026»): an issuance, breakage, a receipt's crate tare, voiding a transfer or a return, and
+resolving a dispute downwards are all written past zero. A minus is crates the point owes people;
+who is owed is kept in the operator's notebook, not here. The 2026-09-30 guard that refused those
+writes is gone.
 '''
 }
 

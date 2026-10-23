@@ -8,7 +8,6 @@ import { CollectionPointsModule } from '../collection-points/collection-points.m
 import { AuditModule } from '../audit/audit.module';
 import { TimeModule } from '../time/time.module';
 import { ShiftsModule } from '../shifts/shifts.module';
-import { CrateStockModule } from '../crate-stock/crate-stock.module';
 import { timezoneConfig } from '../config/timezone.config';
 
 /**
@@ -37,7 +36,6 @@ import { timezoneConfig } from '../config/timezone.config';
     AuditModule,
     TimeModule,
     ShiftsModule,
-    CrateStockModule,
   ],
   providers: [TransfersService],
   controllers: [TransfersController],
